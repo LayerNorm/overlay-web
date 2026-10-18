@@ -1,5 +1,6 @@
 'use client'
-
+import { Button } from '@overlay/ui/primitives'
+import { unstyledButton } from '@overlay/ui/control-reset'
 import { useCallback, useLayoutEffect, useRef, type CSSProperties } from 'react'
 import { SIDE, type SectionKey, type SideItem } from './landing-scenes'
 import { useRemeasure } from './use-remeasure'
@@ -34,15 +35,15 @@ export function LandingSide({ sec, active, onPick }: { sec: SectionKey; active: 
       {items?.map((item, j) => {
         const on = active === 'all' || active === j
         return (
-          <button
+          <Button variant="ghost"
             key={j}
             type="button"
-            className={on ? 'side-item on' : 'side-item'}
+            className={unstyledButton(on ? 'side-item on' : 'side-item')}
             style={{ '--c': `var(--c-${sec})`, '--i': j } as CSSProperties}
             onClick={() => onPick(j)}
           >
             <Label item={item} on={on} />
-          </button>
+          </Button>
         )
       })}
     </aside>

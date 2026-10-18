@@ -1,3 +1,5 @@
+import { unstyledButton } from '@overlay/ui/control-reset'
+import { Button } from '@overlay/ui/primitives'
 import type { ToolVisualBlock,WebSourceItem } from '@overlay/chat-core'
 import {
 ASSISTANT_COLLAPSIBLE_BODY_CLASS,
@@ -71,10 +73,10 @@ export function WebSearchToolBlock({
 
 function WebSearchExpandToggle({ expanded, onToggle }: { expanded: boolean; onToggle: () => void }) {
   return (
-    <button
+    <Button variant="ghost"
       type="button"
       onClick={onToggle}
-      className="inline-flex h-5 w-5 items-center justify-center rounded-md text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
+      className={unstyledButton(`inline-flex h-5 w-5 items-center justify-center rounded-md text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)`)}
       aria-label={expanded ? 'Collapse web search details' : 'Expand web search details'}
     >
       <ChevronDown
@@ -82,7 +84,7 @@ function WebSearchExpandToggle({ expanded, onToggle }: { expanded: boolean; onTo
         strokeWidth={1.75}
         className={`transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}
       />
-    </button>
+    </Button>
   )
 }
 

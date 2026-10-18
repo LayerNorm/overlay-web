@@ -1,5 +1,6 @@
 'use client'
-
+import { Button, Input } from '@overlay/ui/primitives'
+import { unstyledButton, unstyledInput } from '@overlay/ui/control-reset'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { DIcon } from './demo-icons'
 import { Message, TypingRow } from './DemoMessages'
@@ -55,7 +56,7 @@ export function ChatPane({
         </div>
         <div className="cwrap">
           <div className="composer" onClick={() => inputRef.current?.focus({ preventScroll: true })}>
-            <input
+            <Input
               ref={inputRef}
               type="text"
               value={draft}
@@ -70,11 +71,11 @@ export function ChatPane({
                   submit()
                 }
               }}
-            />
+             className={unstyledInput()}/>
             <div className="bar">
               <DIcon name="plus" />
               <DIcon name="at" />
-              <button type="button" className="send" aria-label="Send message" onClick={submit}><DIcon name="send" /></button>
+              <Button variant="ghost" type="button" className={unstyledButton("send")} aria-label="Send message" onClick={submit}><DIcon name="send" /></Button>
             </div>
           </div>
           <div className="note">Overlay can make mistakes. Check important info.</div>

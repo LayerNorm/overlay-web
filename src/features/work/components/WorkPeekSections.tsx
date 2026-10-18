@@ -1,8 +1,9 @@
 'use client'
+import { unstyledButton, unstyledInput, unstyledTextarea } from '@overlay/ui/control-reset'
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Check, FileText, Link as LinkIcon, MessageSquare, NotebookText, Plus, X } from 'lucide-react'
-import { FloatingMenu, MenuItem } from '@overlay/ui/primitives'
+import { FloatingMenu, MenuItem, Button, Input, Textarea } from '@overlay/ui/primitives'
 import { MarkdownMessage } from '@overlay/chat-react'
 import type { WorkContextRef, WorkContextType, WorkDoneWhen, WorkEvent, WorkItem } from '@overlay/app-core'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
@@ -41,7 +42,7 @@ export function ObjectiveSection({ value, editable, onSave }: { value: string | 
 
   if (editing) {
     return (
-      <textarea
+      <Textarea
         ref={field}
         value={draft}
         maxLength={WORK_LIMITS.description}
@@ -53,7 +54,7 @@ export function ObjectiveSection({ value, editable, onSave }: { value: string | 
           if (event.key === 'Escape') { event.stopPropagation(); setDraft(value ?? ''); setEditing(false) }
           if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) { event.preventDefault(); commit() }
         }}
-        className="w-full resize-y rounded-lg border border-(--muted-light) bg-(--surface-elevated) px-3 py-2 text-[14.5px] leading-relaxed text-(--foreground) outline-none"
+        className={unstyledTextarea(`w-full resize-y rounded-lg border border-(--muted-light) bg-(--surface-elevated) px-3 py-2 text-[14.5px] leading-relaxed text-(--foreground) outline-none`)}
         placeholder="Describe what a good result looks like. Markdown works."
       />
     )
@@ -124,25 +125,25 @@ function AddContext({ onAdd }: { onAdd: (ref: WorkContextRef) => void }) {
 
   return (
     <>
-      <button
+      <Button variant="ghost"
         ref={anchor}
         type="button"
         onClick={() => setOpen((current) => !current)}
-        className="inline-flex h-[26px] items-center gap-1.5 rounded-[5px] border border-dashed border-(--border) px-2.5 text-[12.5px] text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
+        className={unstyledButton(`inline-flex h-[26px] items-center gap-1.5 rounded-[5px] border border-dashed border-(--border) px-2.5 text-[12.5px] text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)`)}
       >
         <Plus size={12} aria-hidden />
         Add file, note, chat or link
-      </button>
+      </Button>
       <FloatingMenu anchorRef={anchor} open={open} onOpenChange={setOpen} className="w-72" role="dialog" aria-label="Add context" data-work-menu>
         <div className="px-2 pb-1 pt-1.5">
-          <input
+          <Input
             autoFocus
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             onKeyDown={(event) => { if (event.key === 'Enter' && link) pick({ type: 'link', id: link, label: labelForLink(link) }) }}
             aria-label="Search files, notes and chats, or paste a link"
             placeholder="Search, or paste a link"
-            className="h-8 w-full rounded-md border border-(--border) bg-(--background) px-2.5 text-[13px] text-(--foreground) outline-none focus:border-(--muted-light)"
+            className={unstyledInput(`h-8 w-full rounded-md border border-(--border) bg-(--background) px-2.5 text-[13px] text-(--foreground) outline-none focus:border-(--muted-light)`)}
           />
         </div>
         <div className="max-h-64 overflow-y-auto">
@@ -190,9 +191,9 @@ export function ContextSection({ items, editable, onChange }: { items: WorkConte
                 <a href={href} {...(ref.type === 'link' ? { target: '_blank', rel: 'noopener noreferrer' } : {})} className="inline-flex items-center gap-1.5 hover:underline">{body}</a>
               ) : body}
               {editable ? (
-                <button type="button" aria-label={`Remove ${ref.label}`} onClick={() => onChange(items.filter((_, i) => i !== index))} className="rounded p-0.5 text-(--muted-light) hover:bg-(--surface-subtle) hover:text-(--foreground)">
+                <Button variant="ghost" type="button" aria-label={`Remove ${ref.label}`} onClick={() => onChange(items.filter((_, i) => i !== index))} className={unstyledButton(`rounded p-0.5 text-(--muted-light) hover:bg-(--surface-subtle) hover:text-(--foreground)`)}>
                   <X size={11} />
-                </button>
+                </Button>
               ) : null}
             </span>
           )
@@ -215,19 +216,19 @@ export function DoneWhenSection({ items, editable, onChange }: { items: WorkDone
       <ul className="m-0 list-none p-0">
         {items.map((item, index) => (
           <li key={`${index}:${item.text}`} className="group/check flex items-start gap-2.5 py-1">
-            <button
+            <Button variant="ghost"
               type="button"
               role="checkbox"
               aria-checked={item.checked}
               aria-label={item.text}
               disabled={!editable}
               onClick={() => set(index, { checked: !item.checked })}
-              className={`mt-[3px] grid h-4 w-4 shrink-0 place-items-center rounded-[4px] border-[1.5px] transition-colors ${item.checked ? 'border-(--foreground) bg-(--foreground) text-(--background)' : 'border-(--muted-light) text-transparent'}`}
+              className={unstyledButton(`mt-[3px] grid h-4 w-4 shrink-0 place-items-center rounded-[4px] border-[1.5px] transition-colors ${item.checked ? 'border-(--foreground) bg-(--foreground) text-(--background)' : 'border-(--muted-light) text-transparent'}`)}
             >
               <Check size={11} strokeWidth={3} aria-hidden />
-            </button>
+            </Button>
             {editable ? (
-              <input
+              <Input
                 defaultValue={item.text}
                 maxLength={WORK_LIMITS.doneWhenText}
                 aria-label={`Condition ${index + 1}`}
@@ -237,15 +238,15 @@ export function DoneWhenSection({ items, editable, onChange }: { items: WorkDone
                   else if (text !== item.text) set(index, { text })
                 }}
                 onKeyDown={(event) => { if (event.key === 'Enter') event.currentTarget.blur() }}
-                className={`min-w-0 flex-1 bg-transparent text-[14.5px] leading-snug outline-none ${item.checked ? 'text-(--muted)' : 'text-(--foreground)'}`}
+                className={unstyledInput(`min-w-0 flex-1 bg-transparent text-[14.5px] leading-snug outline-none ${item.checked ? 'text-(--muted)' : 'text-(--foreground)'}`)}
               />
             ) : (
               <span className={`flex-1 text-[14.5px] leading-snug ${item.checked ? 'text-(--muted)' : 'text-(--foreground)'}`}>{item.text}</span>
             )}
             {editable ? (
-              <button type="button" aria-label={`Remove “${item.text}”`} onClick={() => onChange(items.filter((_, i) => i !== index))} className="rounded p-0.5 text-(--muted-light) opacity-0 transition-opacity hover:text-(--foreground) group-hover/check:opacity-100 focus:opacity-100">
+              <Button variant="ghost" type="button" aria-label={`Remove “${item.text}”`} onClick={() => onChange(items.filter((_, i) => i !== index))} className={unstyledButton(`rounded p-0.5 text-(--muted-light) opacity-0 transition-opacity hover:text-(--foreground) group-hover/check:opacity-100 focus:opacity-100`)}>
                 <X size={13} />
-              </button>
+              </Button>
             ) : null}
           </li>
         ))}
@@ -253,7 +254,7 @@ export function DoneWhenSection({ items, editable, onChange }: { items: WorkDone
       {editable && items.length < WORK_LIMITS.doneWhenItems ? (
         <div className="flex items-center gap-2.5 py-1 text-(--muted-light)">
           <span className="grid h-4 w-4 shrink-0 place-items-center rounded-[4px] border-[1.5px] border-dashed border-(--muted-light)" aria-hidden />
-          <input
+          <Input
             value={draft}
             maxLength={WORK_LIMITS.doneWhenText}
             aria-label="Add a condition"
@@ -267,7 +268,7 @@ export function DoneWhenSection({ items, editable, onChange }: { items: WorkDone
               onChange([...items, { text, checked: false }])
               setDraft('')
             }}
-            className="min-w-0 flex-1 bg-transparent text-[14.5px] text-(--foreground) outline-none placeholder:text-(--muted-light)"
+            className={unstyledInput(`min-w-0 flex-1 bg-transparent text-[14.5px] text-(--foreground) outline-none placeholder:text-(--muted-light)`)}
           />
         </div>
       ) : null}
@@ -343,7 +344,7 @@ export function ActivitySection({ taskId, version, canComment }: { taskId: strin
       {canComment ? (
         <div className="mt-4 flex items-center gap-2.5">
           <Avatar person={me} size={26} />
-          <input
+          <Input
             value={draft}
             maxLength={WORK_LIMITS.comment}
             disabled={busy}
@@ -351,7 +352,7 @@ export function ActivitySection({ taskId, version, canComment }: { taskId: strin
             placeholder="Leave a comment"
             onChange={(event) => setDraft(event.target.value)}
             onKeyDown={(event) => { if (event.key === 'Enter' && !event.nativeEvent.isComposing) { event.preventDefault(); void send() } }}
-            className="h-9 min-w-0 flex-1 rounded-[10px] border border-(--border) bg-(--surface-elevated) px-3.5 text-[13.5px] text-(--foreground) outline-none placeholder:text-(--muted-light) focus:border-(--muted-light)"
+            className={unstyledInput(`h-9 min-w-0 flex-1 rounded-[10px] border border-(--border) bg-(--surface-elevated) px-3.5 text-[13.5px] text-(--foreground) outline-none placeholder:text-(--muted-light) focus:border-(--muted-light)`)}
           />
         </div>
       ) : null}
@@ -380,9 +381,9 @@ export function WaitingOnSection({ item, editable, onChange }: { item: WorkItem;
       <StatusIcon status={task.status} size={13} />
       <span className="max-w-48 truncate">{task.title}</span>
       {onRemove ? (
-        <button type="button" aria-label={`Stop waiting on ${task.title}`} onClick={onRemove} className="rounded p-0.5 text-(--muted-light) hover:bg-(--surface-subtle) hover:text-(--foreground)">
+        <Button variant="ghost" type="button" aria-label={`Stop waiting on ${task.title}`} onClick={onRemove} className={unstyledButton(`rounded p-0.5 text-(--muted-light) hover:bg-(--surface-subtle) hover:text-(--foreground)`)}>
           <X size={11} />
-        </button>
+        </Button>
       ) : null}
     </span>
   )
@@ -392,24 +393,24 @@ export function WaitingOnSection({ item, editable, onChange }: { item: WorkItem;
         {blockers.map((task) => chip(task, editable ? () => onChange(item.blockedBy.filter((id) => id !== task.id)) : undefined))}
         {editable && item.blockedBy.length < WORK_LIMITS.blockedBy ? (
           <>
-            <button
+            <Button variant="ghost"
               ref={anchor}
               type="button"
               onClick={() => setOpen((current) => !current)}
-              className="inline-flex h-[26px] items-center gap-1.5 rounded-[5px] border border-dashed border-(--border) px-2.5 text-[12.5px] text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
+              className={unstyledButton(`inline-flex h-[26px] items-center gap-1.5 rounded-[5px] border border-dashed border-(--border) px-2.5 text-[12.5px] text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)`)}
             >
               <Plus size={12} aria-hidden />
               Wait on a task
-            </button>
+            </Button>
             <FloatingMenu anchorRef={anchor} open={open} onOpenChange={setOpen} className="w-72" role="dialog" aria-label="Wait on a task" data-work-menu>
               <div className="px-2 pb-1 pt-1.5">
-                <input
+                <Input
                   autoFocus
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
                   aria-label="Find a task to wait on"
                   placeholder="Find a task"
-                  className="h-8 w-full rounded-md border border-(--border) bg-(--background) px-2.5 text-[13px] text-(--foreground) outline-none focus:border-(--muted-light)"
+                  className={unstyledInput(`h-8 w-full rounded-md border border-(--border) bg-(--background) px-2.5 text-[13px] text-(--foreground) outline-none focus:border-(--muted-light)`)}
                 />
               </div>
               <div className="max-h-64 overflow-y-auto">

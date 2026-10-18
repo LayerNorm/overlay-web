@@ -1,5 +1,8 @@
 'use client'
 
+import { unstyledButton } from '@overlay/ui/control-reset'
+import { Button } from '@overlay/ui/primitives'
+
 import { useState } from 'react'
 import { ChevronRight } from 'lucide-react'
 import type { WorkspaceBillingUsage } from '@overlay/workspace-contracts'
@@ -45,12 +48,12 @@ export function WorkspaceUsagePanel({ usage }: { usage: WorkspaceBillingUsage })
             const expanded = open === line.key
             return (
               <li key={line.key}>
-                <button
+                <Button variant="ghost"
                   type="button"
                   disabled={!expandable}
                   aria-expanded={expandable ? expanded : undefined}
                   onClick={() => setOpen(expanded ? null : line.key)}
-                  className={`flex w-full items-center gap-2 px-4 py-2 text-left text-sm ${index % 2 === 0 ? 'bg-(--surface-subtle)' : ''} ${expandable ? 'cursor-pointer' : 'cursor-default'}`}
+                  className={unstyledButton(`flex w-full items-center gap-2 px-4 py-2 text-left text-sm ${index % 2 === 0 ? 'bg-(--surface-subtle)' : ''} ${expandable ? 'cursor-pointer' : 'cursor-default'}`)}
                 >
                   <span className="flex w-3 shrink-0 justify-center text-(--muted-light)">
                     {expandable ? <ChevronRight size={12} className={`transition-transform ${expanded ? 'rotate-90' : ''}`} /> : null}
@@ -58,7 +61,7 @@ export function WorkspaceUsagePanel({ usage }: { usage: WorkspaceBillingUsage })
                   <span className="text-(--foreground)">{line.label}</span>
                   <span className="text-xs text-(--muted)">{line.quantity}</span>
                   <span className="ml-auto tabular-nums text-(--foreground)">{usd(line.cents)}</span>
-                </button>
+                </Button>
                 {expanded ? (
                   <ul className="pb-1">
                     {line.details?.map((detail) => (

@@ -1,5 +1,6 @@
 'use client'
-
+import { Button, Input, Textarea } from '@overlay/ui/primitives'
+import { unstyledButton, unstyledInput, unstyledTextarea } from '@overlay/ui/control-reset'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Background,
@@ -257,65 +258,65 @@ function NodeConfigPanel({
             Node settings
           </span>
         </div>
-        <button
+        <Button variant="ghost"
           type="button"
           aria-label="Close node settings"
           onClick={onClose}
-          className="rounded-md p-1 text-(--muted) transition-colors hover:bg-(--border) hover:text-(--foreground)"
+          className={unstyledButton("rounded-md p-1 text-(--muted) transition-colors hover:bg-(--border) hover:text-(--foreground)")}
         >
           <X size={14} strokeWidth={1.75} />
-        </button>
+        </Button>
       </div>
       <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
         <label className="block text-sm font-medium text-(--foreground)">
           Label
-          <input
+          <Input
             value={label}
             onChange={(e) => commitLabel(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-(--border) bg-(--background) px-3 py-2 text-sm text-(--foreground) outline-hidden focus:ring-1 focus:ring-(--foreground)"
+            className={unstyledInput("mt-1 w-full rounded-lg border border-(--border) bg-(--background) px-3 py-2 text-sm text-(--foreground) outline-hidden focus:ring-1 focus:ring-(--foreground)")}
           />
         </label>
         {node.kind === 'prompt' && (
           <label className="block text-sm font-medium text-(--foreground)">
             Prompt text
-            <textarea
+            <Textarea
               value={text}
               onChange={(e) => commitText(e.target.value)}
               rows={4}
-              className="mt-1 w-full rounded-lg border border-(--border) bg-(--background) px-3 py-2 text-sm text-(--foreground) outline-hidden focus:ring-1 focus:ring-(--foreground)"
+              className={unstyledTextarea("mt-1 w-full rounded-lg border border-(--border) bg-(--background) px-3 py-2 text-sm text-(--foreground) outline-hidden focus:ring-1 focus:ring-(--foreground)")}
             />
           </label>
         )}
         {node.kind === 'condition' && (
           <label className="block text-sm font-medium text-(--foreground)">
             Condition expression
-            <input
+            <Input
               value={condition}
               onChange={(e) => commitCondition(e.target.value)}
               placeholder="e.g. result.success === true"
-              className="mt-1 w-full rounded-lg border border-(--border) bg-(--background) px-3 py-2 text-sm text-(--foreground) outline-hidden focus:ring-1 focus:ring-(--foreground)"
+              className={unstyledInput("mt-1 w-full rounded-lg border border-(--border) bg-(--background) px-3 py-2 text-sm text-(--foreground) outline-hidden focus:ring-1 focus:ring-(--foreground)")}
             />
           </label>
         )}
         {node.kind === 'tool' && (
           <label className="block text-sm font-medium text-(--foreground)">
             Tool ID
-            <input
+            <Input
               value={node.config.toolId ?? ''}
               onChange={(e) => onUpdate({ config: { toolId: e.target.value } })}
               placeholder="e.g. web_search"
-              className="mt-1 w-full rounded-lg border border-(--border) bg-(--background) px-3 py-2 text-sm text-(--foreground) outline-hidden focus:ring-1 focus:ring-(--foreground)"
+              className={unstyledInput("mt-1 w-full rounded-lg border border-(--border) bg-(--background) px-3 py-2 text-sm text-(--foreground) outline-hidden focus:ring-1 focus:ring-(--foreground)")}
             />
           </label>
         )}
         {node.kind === 'output' && (
           <label className="block text-sm font-medium text-(--foreground)">
             Output kind
-            <input
+            <Input
               value={node.config.outputKind ?? ''}
               onChange={(e) => onUpdate({ config: { outputKind: e.target.value } })}
               placeholder="e.g. chat"
-              className="mt-1 w-full rounded-lg border border-(--border) bg-(--background) px-3 py-2 text-sm text-(--foreground) outline-hidden focus:ring-1 focus:ring-(--foreground)"
+              className={unstyledInput("mt-1 w-full rounded-lg border border-(--border) bg-(--background) px-3 py-2 text-sm text-(--foreground) outline-hidden focus:ring-1 focus:ring-(--foreground)")}
             />
           </label>
         )}
@@ -338,14 +339,14 @@ function AddNodeButton({
   const config = NODE_KIND_CONFIG[kind]
   const Icon = config.icon
   return (
-    <button
+    <Button variant="ghost"
       type="button"
       onClick={() => onAdd(kind)}
-      className="inline-flex items-center gap-1.5 rounded-lg border border-(--border) bg-(--surface-elevated) px-2.5 py-1.5 text-xs font-medium text-(--foreground) shadow-xs transition-colors hover:bg-(--border)"
+      className={unstyledButton("inline-flex items-center gap-1.5 rounded-lg border border-(--border) bg-(--surface-elevated) px-2.5 py-1.5 text-xs font-medium text-(--foreground) shadow-xs transition-colors hover:bg-(--border)")}
     >
       <Icon size={12} strokeWidth={1.75} />
       {config.label}
-    </button>
+    </Button>
   )
 }
 
@@ -873,32 +874,32 @@ function GraphCanvasToolbar({
         ))}
       </div>
       <div className="absolute right-3 top-3 z-10 flex items-center gap-1.5">
-        <button
+        <Button variant="ghost"
           type="button"
           aria-label="Undo"
           onClick={onUndo}
           disabled={!canUndo}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-(--border) bg-(--surface-elevated) px-2.5 py-1.5 text-xs font-medium text-(--foreground) shadow-xs transition-colors hover:bg-(--border) disabled:opacity-40"
+          className={unstyledButton("inline-flex items-center gap-1.5 rounded-lg border border-(--border) bg-(--surface-elevated) px-2.5 py-1.5 text-xs font-medium text-(--foreground) shadow-xs transition-colors hover:bg-(--border) disabled:opacity-40")}
         >
           <Undo2 size={12} strokeWidth={1.75} />
-        </button>
-        <button
+        </Button>
+        <Button variant="ghost"
           type="button"
           aria-label="Redo"
           onClick={onRedo}
           disabled={!canRedo}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-(--border) bg-(--surface-elevated) px-2.5 py-1.5 text-xs font-medium text-(--foreground) shadow-xs transition-colors hover:bg-(--border) disabled:opacity-40"
+          className={unstyledButton("inline-flex items-center gap-1.5 rounded-lg border border-(--border) bg-(--surface-elevated) px-2.5 py-1.5 text-xs font-medium text-(--foreground) shadow-xs transition-colors hover:bg-(--border) disabled:opacity-40")}
         >
           <Redo2 size={12} strokeWidth={1.75} />
-        </button>
-        <button
+        </Button>
+        <Button variant="ghost"
           type="button"
           onClick={onTidyUp}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-(--border) bg-(--surface-elevated) px-2.5 py-1.5 text-xs font-medium text-(--foreground) shadow-xs transition-colors hover:bg-(--border)"
+          className={unstyledButton("inline-flex items-center gap-1.5 rounded-lg border border-(--border) bg-(--surface-elevated) px-2.5 py-1.5 text-xs font-medium text-(--foreground) shadow-xs transition-colors hover:bg-(--border)")}
         >
           <LayoutGrid size={12} strokeWidth={1.75} />
           Tidy up
-        </button>
+        </Button>
       </div>
 
       {/* Validation errors */}

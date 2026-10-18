@@ -1,5 +1,6 @@
 'use client'
-
+import { Button } from '@overlay/ui/primitives'
+import { unstyledButton } from '@overlay/ui/control-reset'
 import { memo, type MouseEvent } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
 import type { NotebookNote } from '@overlay/app-core'
@@ -22,13 +23,13 @@ export function NotebookNotesSidebar({
   return (
     <div className="w-52 h-full flex flex-col border-r border-(--border) bg-(--sidebar-surface)">
       <div className="flex h-16 items-center border-b border-(--border) px-3">
-        <button
+        <Button variant="ghost" type="submit"
           onClick={onCreateNote}
-          className="flex items-center gap-1.5 w-full px-3 py-1.5 rounded-md text-sm border border-(--border) bg-(--surface-muted) text-(--foreground) hover:bg-(--surface-subtle) transition-colors"
+          className={unstyledButton("flex items-center gap-1.5 w-full px-3 py-1.5 rounded-md text-sm border border-(--border) bg-(--surface-muted) text-(--foreground) hover:bg-(--surface-subtle) transition-colors")}
         >
           <Plus size={13} />
           New note
-        </button>
+        </Button>
       </div>
       <div className="flex-1 overflow-y-auto py-2 px-2 space-y-0.5">
         {notes.map((note) => (
@@ -64,21 +65,21 @@ const NotebookNoteRow = memo(function NotebookNoteRow({
         ? 'bg-(--surface-subtle) text-(--foreground)'
         : 'text-(--muted) hover:bg-(--surface-muted) hover:text-(--foreground)'
     }`}>
-      <button
+      <Button variant="ghost"
         type="button"
         onClick={() => onOpenNote(note)}
-        className="min-w-0 flex-1 truncate px-2.5 py-1.5 text-left text-xs"
+        className={unstyledButton("min-w-0 flex-1 truncate px-2.5 py-1.5 text-left text-xs")}
       >
         {note.title || 'Untitled'}
-      </button>
-      <button
+      </Button>
+      <Button variant="ghost"
         type="button"
         onClick={(event) => onDeleteNote(note._id, event)}
         aria-label={`Delete ${note.title || 'Untitled'}`}
-        className="mr-1 rounded-sm p-1 opacity-0 transition-opacity hover:bg-(--border) focus:opacity-100 group-hover:opacity-100"
+        className={unstyledButton("mr-1 rounded-sm p-1 opacity-0 transition-opacity hover:bg-(--border) focus:opacity-100 group-hover:opacity-100")}
       >
         <Trash2 size={11} />
-      </button>
+      </Button>
     </div>
   )
 })
@@ -95,13 +96,13 @@ export function NotebookEmptyState({ onCreateNote }: NotebookEmptyStateProps) {
           notes
         </p>
         <p className="text-sm text-(--muted) mb-4">Select a note or create a new one</p>
-        <button
+        <Button variant="ghost" type="submit"
           onClick={onCreateNote}
-          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-sm border border-(--border) bg-(--surface-muted) text-(--foreground) hover:bg-(--surface-subtle) transition-colors"
+          className={unstyledButton("inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-sm border border-(--border) bg-(--surface-muted) text-(--foreground) hover:bg-(--surface-subtle) transition-colors")}
         >
           <Plus size={14} />
           New Note
-        </button>
+        </Button>
       </div>
     </div>
   )

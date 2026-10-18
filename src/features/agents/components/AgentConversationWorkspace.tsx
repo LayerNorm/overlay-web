@@ -1,5 +1,7 @@
 'use client'
 
+import { unstyledButton } from '@overlay/ui/control-reset'
+
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Bot, Settings } from 'lucide-react'
@@ -31,17 +33,17 @@ function AgentSettingsButton({ hasAgent, active, onClick }: {
   onClick(): void
 }) {
   return (
-    <button
+    <Button variant="ghost"
       type="button"
       aria-label={hasAgent ? 'Agent settings' : 'Create agent'}
       title={hasAgent ? 'Agent settings' : 'Create agent'}
       onClick={onClick}
-      className={`inline-flex h-8 w-8 items-center justify-center rounded-md transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground) ${
+      className={unstyledButton(`inline-flex h-8 w-8 items-center justify-center rounded-md transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground) ${
         active ? 'bg-(--surface-subtle) text-(--foreground)' : 'text-(--muted)'
-      }`}
+      }`)}
     >
       <Settings size={15} />
-    </button>
+    </Button>
   )
 }
 

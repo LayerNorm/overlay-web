@@ -1,5 +1,6 @@
 'use client'
-
+import { Button } from '@overlay/ui/primitives'
+import { unstyledButton } from '@overlay/ui/control-reset'
 import Link from 'next/link'
 import { Github, MoonStar, SunMedium } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
@@ -33,9 +34,9 @@ export function LandingNav() {
         <Link href="/blog">Blog</Link>
       </nav>
       <div className="nav-right">
-        <button className="theme" type="button" onClick={toggleLandingTheme} aria-label="Toggle light / dark mode">
+        <Button variant="ghost" className={unstyledButton("theme")} type="button" onClick={toggleLandingTheme} aria-label="Toggle light / dark mode">
           {isLandingDark ? <SunMedium className="i" /> : <MoonStar className="i" />}
-        </button>
+        </Button>
         <a className="gh" href={MARKETING_DISCORD_URL} target="_blank" rel="noopener noreferrer" aria-label="Discord">
           <DiscordMark />
         </a>

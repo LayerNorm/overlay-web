@@ -1,3 +1,5 @@
+import { unstyledButton } from '@overlay/ui/control-reset'
+import { Button } from '@overlay/ui/primitives'
 import {
 ASSISTANT_COLLAPSIBLE_BODY_CLASS
 } from '@overlay/chat-core'
@@ -15,10 +17,10 @@ function ReasoningExpandButton({
   onToggle: () => void
 }) {
   return (
-    <button
+    <Button variant="ghost"
       type="button"
       onClick={onToggle}
-      className="inline-flex h-5 w-5 items-center justify-center rounded-md text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
+      className={unstyledButton(`inline-flex h-5 w-5 items-center justify-center rounded-md text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)`)}
       aria-label={expanded ? 'Collapse reasoning' : 'Expand reasoning'}
     >
       <ChevronDown
@@ -26,7 +28,7 @@ function ReasoningExpandButton({
         strokeWidth={1.75}
         className={`transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}
       />
-    </button>
+    </Button>
   )
 }
 

@@ -1,5 +1,6 @@
 'use client'
-
+import { Button } from '@overlay/ui/primitives'
+import { unstyledButton } from '@overlay/ui/control-reset'
 import type { ReactNode } from 'react'
 import { AlertCircle, ArrowRight, Check, RefreshCw } from 'lucide-react'
 import type { AccountEntitlements, TopUpHistoryItem } from '@overlay/app-core'
@@ -90,25 +91,25 @@ export function AccountMessageBanner({ message, onOpenDesktop, onOpenWeb, onDism
       <div className="ml-auto flex flex-wrap items-center gap-3">
         {message.type === 'success' ? (
           <>
-            <button
+            <Button variant="ghost"
               type="button"
               onClick={onOpenDesktop}
-              className="rounded-lg bg-emerald-600 px-3 py-1 text-sm font-medium text-white transition-colors hover:bg-emerald-700"
+              className={unstyledButton("rounded-lg bg-emerald-600 px-3 py-1 text-sm font-medium text-white transition-colors hover:bg-emerald-700")}
             >
               Open in desktop app
-            </button>
-            <button
+            </Button>
+            <Button variant="ghost"
               type="button"
               onClick={onOpenWeb}
-              className="rounded-lg border border-emerald-300 px-3 py-1 text-sm font-medium text-emerald-800 transition-colors hover:bg-emerald-100/70"
+              className={unstyledButton("rounded-lg border border-emerald-300 px-3 py-1 text-sm font-medium text-emerald-800 transition-colors hover:bg-emerald-100/70")}
             >
               Open web app
-            </button>
+            </Button>
           </>
         ) : null}
-        <button type="button" onClick={onDismiss} className="text-sm opacity-60 hover:opacity-100">
+        <Button variant="ghost" type="button" onClick={onDismiss} className={unstyledButton("text-sm opacity-60 hover:opacity-100")}>
           Dismiss
-        </button>
+        </Button>
       </div>
     </div>
   )
@@ -461,9 +462,9 @@ export function EntitlementsErrorPanel({
       <div className="text-sm space-y-2">
         <p className="font-medium">Plan information unavailable</p>
         <p className="text-amber-800/90">{message}</p>
-        <button type="button" onClick={onRetry} className="text-sm font-medium text-amber-950 underline hover:no-underline">
+        <Button variant="ghost" type="button" onClick={onRetry} className={unstyledButton("text-sm font-medium text-amber-950 underline hover:no-underline")}>
           Retry
-        </button>
+        </Button>
       </div>
     </div>
   )

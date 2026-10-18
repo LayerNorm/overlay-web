@@ -1,5 +1,5 @@
 'use client'
-
+import { unstyledButton } from '@overlay/ui/control-reset'
 import { useIsSoloWorkspace } from '@/hooks/use-solo-workspace'
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
@@ -9,13 +9,7 @@ import {
   Plus,
 } from 'lucide-react'
 import type { WorkspaceAgentBundle, WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
-import {
-  SidebarMenu,
-  SidebarMenuAction,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  SidebarMenuSkeleton,
-} from '@overlay/ui/primitives'
+import { SidebarMenu, SidebarMenuAction, SidebarMenuButton, SidebarMenuItem, SidebarMenuSkeleton, Button } from '@overlay/ui/primitives'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { announceArchived } from '@/shared/app/archive-toast'
 import { AgentCreature } from '@/components/orb/Creature'
@@ -672,13 +666,13 @@ export function AgentsInlinePanel({
         <SidebarMenuItem>
           <div className="px-2.5 py-2">
             <p role="alert" className="text-xs leading-4 text-red-500">{openError}</p>
-            <button
+            <Button variant="ghost"
               type="button"
               onClick={retryOpen}
-              className="mt-1.5 rounded-md border border-(--border) px-2 py-1 text-xs text-(--foreground) hover:bg-(--surface-subtle)"
+              className={unstyledButton("mt-1.5 rounded-md border border-(--border) px-2 py-1 text-xs text-(--foreground) hover:bg-(--surface-subtle)")}
             >
               Retry
-            </button>
+            </Button>
           </div>
         </SidebarMenuItem>
       ) : null}

@@ -35,7 +35,7 @@ import {
 import { clearLastChatForView, rememberLastChatForView } from '@/shared/chat/last-chat-by-view'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { announceArchived } from '@/shared/app/archive-toast'
-import { SidebarResourceList, SidebarResourceRow } from '@overlay/ui/primitives'
+import { Button, Input, SidebarResourceList, SidebarResourceRow } from '@overlay/ui/primitives'
 import { useAuth, type AuthUser } from '@/contexts/AuthContext'
 import { NewDirectMessageDialog } from './NewDirectMessageDialog'
 import { NewChannelDialog } from './NewChannelDialog'
@@ -633,7 +633,7 @@ function ChatListRow({
     >
       <ChatConversationIcon chat={chat} size={12} className="shrink-0" />
       {!isPublicShowcase && isEditing ? (
-        <input
+        <Input
           aria-label="Conversation title"
           ref={(el) => { el?.focus() }}
           value={editingTitle}
@@ -649,7 +649,7 @@ function ChatListRow({
             }
           }}
           onBlur={() => onSaveRename(chat._id)}
-          className="min-w-0 flex-1 rounded-md border border-(--border) bg-(--surface-elevated) px-2 py-1 text-[11px] text-(--foreground) outline-hidden"
+          className="h-auto min-w-0 flex-1 rounded-md border border-(--border) bg-(--surface-elevated) px-2 py-1 text-[11px] text-(--foreground) outline-hidden"
         />
       ) : (
         <span className="min-w-0 flex-1 truncate">{chat.title}</span>
@@ -663,38 +663,44 @@ function ChatListRow({
         </span>
       ) : null}
       {isPublicShowcase ? null : isEditing ? (
-        <button
+        <Button
+          variant="ghost"
+          size="icon"
           type="button"
           onMouseDown={(event) => {
             event.preventDefault()
             event.stopPropagation()
             onSaveRename(chat._id)
           }}
-          className="ml-1 shrink-0 rounded-sm p-0.5 text-(--foreground) hover:bg-(--border)"
+          className="ml-1 h-auto w-auto shrink-0 rounded-sm p-0.5 text-(--foreground) hover:bg-(--border)"
           aria-label="Save chat name"
         >
           <Check size={11} />
-        </button>
+        </Button>
       ) : (
         <>
           {chat.conversationType === 'dm' || chat.conversationType === 'channel' ? null : (
-            <button
+            <Button
+              variant="ghost"
+              size="icon"
               type="button"
               onClick={(event) => onBeginRename(chat, event)}
-              className="ml-1 shrink-0 rounded-sm p-0.5 opacity-0 transition-opacity hover:bg-(--border) group-hover:opacity-100"
+              className="ml-1 h-auto w-auto shrink-0 rounded-sm p-0.5 opacity-0 transition-opacity hover:bg-(--border) group-hover:opacity-100"
               aria-label="Rename chat"
             >
               <Pencil size={11} />
-            </button>
+            </Button>
           )}
-          <button
+          <Button
+            variant="ghost"
+            size="icon"
             type="button"
             onClick={(event) => onRequestArchive(chat, event)}
-            className="ml-1 shrink-0 rounded-sm p-0.5 opacity-0 transition-opacity hover:bg-(--border) group-hover:opacity-100"
+            className="ml-1 h-auto w-auto shrink-0 rounded-sm p-0.5 opacity-0 transition-opacity hover:bg-(--border) group-hover:opacity-100"
             aria-label="Archive chat"
           >
             <Archive size={11} />
-          </button>
+          </Button>
         </>
       )}
     </SidebarResourceRow>
@@ -802,14 +808,15 @@ function ChatListBody({
             />
           ))}
           {hasMore ? (
-            <button
+            <Button
+              variant="ghost"
               type="button"
               disabled={loadingMore}
               onClick={() => void loadMoreChats()}
-              className="h-7 w-full rounded-md px-2.5 text-left text-xs text-(--muted-light) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground) disabled:cursor-wait disabled:opacity-60"
+              className="h-7 w-full justify-start rounded-md px-2.5 text-left text-xs font-normal text-(--muted-light) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground) disabled:cursor-wait disabled:opacity-60"
             >
               {loadingMore ? 'Loading...' : 'Load more'}
-            </button>
+            </Button>
           ) : null}
         </>
     </SidebarResourceList>

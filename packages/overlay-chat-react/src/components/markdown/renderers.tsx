@@ -1,3 +1,5 @@
+import { unstyledButton } from '@overlay/ui/control-reset'
+import { Button } from '@overlay/ui/primitives'
 import { Code2, Copy, PanelRightOpen, Play } from 'lucide-react'
 import { Orb } from '@overlay/ui'
 import { isValidElement, lazy, Suspense, useId, useState, useSyncExternalStore, type ReactNode } from 'react'
@@ -85,9 +87,9 @@ function CodeBlockIconButton({
   children: ReactNode
 }) {
   return (
-    <button
+    <Button variant="ghost"
       type="button"
-      className="code-block-action"
+      className={unstyledButton(`code-block-action`)}
       data-active={active ? 'true' : undefined}
       disabled={disabled}
       aria-label={label}
@@ -96,7 +98,7 @@ function CodeBlockIconButton({
       onClick={onClick}
     >
       {children}
-    </button>
+    </Button>
   )
 }
 

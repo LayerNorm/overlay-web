@@ -1,5 +1,5 @@
 'use client'
-
+import { unstyledButton } from '@overlay/ui/control-reset'
 import type {
 ConnectorCatalogItem
 } from '@overlay/app-core'
@@ -8,7 +8,7 @@ Loader2,
 Plus
 } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
-import { HeaderSearch, ListRow } from '@overlay/ui/primitives'
+import { HeaderSearch, ListRow, Button } from '@overlay/ui/primitives'
 import { AppScreenBody, AppScreenHeader } from '../shell'
 
 export interface ExtensionPageHeaderProps {
@@ -120,7 +120,7 @@ export function IntegrationsPanel({
           {error ? (
             <div className="flex items-center justify-between rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-400">
               <span>{error}</span>
-              <button type="button" aria-label="Dismiss error" onClick={onClearError} className="ml-2 text-red-400 hover:text-red-300">✕</button>
+              <Button variant="ghost" type="button" aria-label="Dismiss error" onClick={onClearError} className={unstyledButton("ml-2 text-red-400 hover:text-red-300")}>✕</Button>
             </div>
           ) : null}
 
@@ -148,15 +148,15 @@ export function IntegrationsPanel({
           <div>
             <div className="mb-3 flex items-center justify-between gap-2">
               <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-(--muted-light)">Available</p>
-              <button
+              <Button variant="ghost"
                 type="button"
                 onClick={onOpenCatalog}
-                className="flex shrink-0 items-center gap-1 rounded-md border border-(--border) bg-(--surface-subtle) px-2 py-1 text-xs text-(--foreground) transition-colors hover:bg-(--border)"
+                className={unstyledButton("flex shrink-0 items-center gap-1 rounded-md border border-(--border) bg-(--surface-subtle) px-2 py-1 text-xs text-(--foreground) transition-colors hover:bg-(--border)")}
                 title="Browse all integrations"
               >
                 <Plus size={12} />
                 Add
-              </button>
+              </Button>
             </div>
             <div className="space-y-1">
               {availableShown.map((integration) => (
@@ -182,13 +182,13 @@ export function IntegrationsPanel({
 
 function ShowMoreButton({ onClick }: { onClick: () => void }) {
   return (
-    <button
+    <Button variant="ghost"
       type="button"
       onClick={onClick}
-      className="mt-3 w-full rounded-lg border border-(--border) bg-(--surface-subtle) py-2 text-xs font-medium text-(--foreground) transition-colors hover:bg-(--border)"
+      className={unstyledButton("mt-3 w-full rounded-lg border border-(--border) bg-(--surface-subtle) py-2 text-xs font-medium text-(--foreground) transition-colors hover:bg-(--border)")}
     >
       Show more
-    </button>
+    </Button>
   )
 }
 
@@ -215,16 +215,16 @@ function IntegrationRow({
       title={integration.name}
       description={integration.description}
       trailing={
-        <button
+        <Button variant="ghost"
           type="button"
           onClick={() => onAction(integration)}
           disabled={isConnecting || actionUnavailable}
-          className="shrink-0 rounded-md border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-xs text-(--foreground) transition-colors hover:bg-(--border) disabled:opacity-50"
+          className={unstyledButton("shrink-0 rounded-md border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-xs text-(--foreground) transition-colors hover:bg-(--border) disabled:opacity-50")}
         >
           {isConnecting ? (
             <Loader2 size={11} className="animate-spin" />
           ) : actionLabel}
-        </button>
+        </Button>
       }
     />
   )

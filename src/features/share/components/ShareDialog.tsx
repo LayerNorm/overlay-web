@@ -1,4 +1,6 @@
 'use client'
+import { unstyledButton } from '@overlay/ui/control-reset'
+import { Button } from '@overlay/ui/primitives'
 
 import { useMemo, useState } from 'react'
 import { Check, Linkedin, Link2, X } from 'lucide-react'
@@ -109,14 +111,14 @@ export function ShareDialog({
               Anyone with the link can view this {resource.type === 'chat' ? 'conversation' : 'file'}
             </p>
           </div>
-          <button
+          <Button variant="ghost"
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="shrink-0 rounded-md p-1 text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
+            className={unstyledButton(`shrink-0 rounded-md p-1 text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)`)}
           >
             <X size={18} />
-          </button>
+          </Button>
         </div>
 
         <div className="px-6 py-5">
@@ -160,21 +162,21 @@ export function ShareDialog({
             <span className="flex-1 truncate text-xs text-(--muted)" title={resource.url}>
               {resource.url}
             </span>
-            <button
+            <Button variant="ghost"
               type="button"
               onClick={handleCopy}
-              className="rounded-md bg-(--foreground) px-3 py-1 text-[11px] font-medium text-(--background) transition-opacity hover:opacity-90"
+              className={unstyledButton(`rounded-md bg-(--foreground) px-3 py-1 text-[11px] font-medium text-(--background) transition-opacity hover:opacity-90`)}
             >
               {copied ? 'Copied' : 'Copy'}
-            </button>
+            </Button>
           </div>
 
           {/* Social row */}
           <div className="mt-6 flex items-center justify-around">
-            <button
+            <Button variant="ghost"
               type="button"
               onClick={handleCopy}
-              className="flex flex-col items-center gap-2"
+              className={unstyledButton(`flex flex-col items-center gap-2`)}
               aria-label="Copy link"
             >
               <span className={SOCIAL_BUTTON_BASE}>
@@ -183,40 +185,40 @@ export function ShareDialog({
               <span className="text-[11px] text-(--muted)">
                 {copied ? 'Copied' : 'Copy link'}
               </span>
-            </button>
-            <button
+            </Button>
+            <Button variant="ghost"
               type="button"
               onClick={() => openSocial(socials.x)}
-              className="flex flex-col items-center gap-2"
+              className={unstyledButton(`flex flex-col items-center gap-2`)}
               aria-label="Share on X"
             >
               <span className={SOCIAL_BUTTON_BASE}>
                 <XIcon />
               </span>
               <span className="text-[11px] text-(--muted)">X</span>
-            </button>
-            <button
+            </Button>
+            <Button variant="ghost"
               type="button"
               onClick={() => openSocial(socials.linkedin)}
-              className="flex flex-col items-center gap-2"
+              className={unstyledButton(`flex flex-col items-center gap-2`)}
               aria-label="Share on LinkedIn"
             >
               <span className={SOCIAL_BUTTON_BASE}>
                 <Linkedin size={22} />
               </span>
               <span className="text-[11px] text-(--muted)">LinkedIn</span>
-            </button>
-            <button
+            </Button>
+            <Button variant="ghost"
               type="button"
               onClick={() => openSocial(socials.reddit)}
-              className="flex flex-col items-center gap-2"
+              className={unstyledButton(`flex flex-col items-center gap-2`)}
               aria-label="Share on Reddit"
             >
               <span className={SOCIAL_BUTTON_BASE}>
                 <RedditIcon />
               </span>
               <span className="text-[11px] text-(--muted)">Reddit</span>
-            </button>
+            </Button>
           </div>
         </div>
       </DialogContent>

@@ -1,5 +1,6 @@
 'use client'
-
+import { Button } from '@overlay/ui/primitives'
+import { unstyledButton } from '@overlay/ui/control-reset'
 import {
   FILE_PARITY_EDITOR_SCENARIOS,
   FILE_PARITY_FILES,
@@ -64,6 +65,16 @@ const SYNC_LABELS: Record<FileParitySyncState, string> = {
   conflicted: 'Resolve conflict',
   migration: 'Migrating notes',
 }
+
+const FILE_PARITY_CONTEXT_MENU_ITEM_CLASS =
+  'rounded-md border-0 bg-transparent px-2 py-1.5 text-left text-[10px] text-(--foreground) hover:bg-(--surface-muted)'
+const FILE_PARITY_ROW_CLASS = [
+  'file-parity-row flex min-h-[30px] w-full items-center gap-[7px]',
+  'rounded-lg border border-transparent bg-transparent px-[7px] py-[5px]',
+  'text-left cursor-default hover:bg-(--surface-muted) hover:border-(--border)',
+  'data-[selected=true]:bg-(--surface-muted) data-[selected=true]:border-(--border)',
+  'data-[bulk-selected=true]:bg-(--surface-muted) data-[bulk-selected=true]:border-(--border)',
+].join(' ')
 
 function CanonicalFilesSurfaceFixture() {
   const [route, setRoute] = useState<SharedKnowledgeRouteState>({
@@ -239,9 +250,9 @@ function FileRows({
             key={file._id}
             style={{ '--file-depth': fileDepth(file, scenario.files) } as CSSProperties}
           >
-            <button
+            <Button variant="ghost"
               type="button"
-              className="file-parity-row"
+              className={unstyledButton(FILE_PARITY_ROW_CLASS)}
               data-selected={selected || undefined}
               data-bulk-selected={bulkSelected || undefined}
               aria-pressed={selected || bulkSelected}
@@ -258,13 +269,13 @@ function FileRows({
               <span className="file-parity-row__actions" aria-hidden={!menuOpen}>
                 <MoreHorizontal size={15} />
               </span>
-            </button>
+            </Button>
             {menuOpen ? (
               <div className="file-parity-context-menu" role="menu">
-                <button type="button" role="menuitem">Open</button>
-                <button type="button" role="menuitem">Move to folder</button>
-                <button type="button" role="menuitem">Rename</button>
-                <button type="button" role="menuitem" data-danger>Delete</button>
+                <Button variant="ghost" type="button" role="menuitem" className={unstyledButton(FILE_PARITY_CONTEXT_MENU_ITEM_CLASS)}>Open</Button>
+                <Button variant="ghost" type="button" role="menuitem" className={unstyledButton(FILE_PARITY_CONTEXT_MENU_ITEM_CLASS)}>Move to folder</Button>
+                <Button variant="ghost" type="button" role="menuitem" className={unstyledButton(FILE_PARITY_CONTEXT_MENU_ITEM_CLASS)}>Rename</Button>
+                <Button variant="ghost" type="button" role="menuitem" data-danger className={unstyledButton(FILE_PARITY_CONTEXT_MENU_ITEM_CLASS)}>Delete</Button>
               </div>
             ) : null}
           </div>

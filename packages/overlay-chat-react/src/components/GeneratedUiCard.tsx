@@ -1,5 +1,8 @@
 'use client'
 
+import { unstyledButton, unstyledInput, unstyledTextarea } from '@overlay/ui/control-reset'
+import { Button, Input, Textarea } from '@overlay/ui/primitives'
+
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   Check,
@@ -101,16 +104,16 @@ function ToolbarButton({
   disabled?: boolean
 }) {
   return (
-    <button
+    <Button variant="ghost"
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground) disabled:cursor-not-allowed disabled:opacity-40"
+      className={unstyledButton(`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground) disabled:cursor-not-allowed disabled:opacity-40`)}
       aria-label={label}
       title={label}
     >
       {children}
-    </button>
+    </Button>
   )
 }
 
@@ -140,14 +143,14 @@ function AutoTextarea({
   }, [value, minRows, maxRows])
 
   return (
-    <textarea
+    <Textarea
       ref={ref}
       aria-label="Prompt"
       value={value}
       onChange={(event) => onChange(event.target.value)}
       onBlur={onBlur}
       rows={minRows}
-      className="w-full resize-none overscroll-contain border-0 bg-transparent p-0 text-sm leading-6 text-(--foreground) outline-hidden placeholder:text-(--muted-light)"
+      className={unstyledTextarea(`w-full resize-none overscroll-contain border-0 bg-transparent p-0 text-sm leading-6 text-(--foreground) outline-hidden placeholder:text-(--muted-light)`)}
     />
   )
 }
@@ -232,20 +235,20 @@ function ActionButton({
   variant?: 'primary' | 'secondary'
 }) {
   return (
-    <button
+    <Button variant="ghost"
       type="button"
       onClick={onClick}
       disabled={disabled}
       title={title}
-      className={classNames(
+      className={unstyledButton(classNames(
         'inline-flex h-9 items-center gap-2 rounded-md border px-3 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-45',
         variant === 'primary'
           ? 'border-(--foreground) bg-(--foreground) text-(--background) hover:opacity-85'
           : 'border-(--border) bg-(--surface-subtle) text-(--foreground) hover:bg-(--border)',
-      )}
+      ))}
     >
       {children}
-    </button>
+    </Button>
   )
 }
 
@@ -450,13 +453,13 @@ function TextDraftCardBody({
   if (editing) {
     return (
       <div className="space-y-3 px-5 py-5">
-        <input
+        <Input
           aria-label="Card title"
           value={data.title ?? ''}
           onChange={(event) => onChange({ ...data, title: event.target.value || undefined })}
           onBlur={onBlur}
           placeholder="Title"
-          className="w-full border-0 bg-transparent text-sm font-medium text-(--foreground) outline-hidden placeholder:text-(--muted-light)"
+          className={unstyledInput(`w-full border-0 bg-transparent text-sm font-medium text-(--foreground) outline-hidden placeholder:text-(--muted-light)`)}
         />
         <AutoTextarea
           value={data.body}
@@ -492,11 +495,11 @@ function EmailField({
   return (
     <label className="grid grid-cols-[4rem_1fr] items-center border-b border-(--border) px-4 py-2 text-sm">
       <span className="text-xs text-(--muted)">{label}</span>
-      <input
+      <Input
         value={value}
         onChange={(event) => onChange(event.target.value)}
         onBlur={onBlur}
-        className="min-w-0 border-0 bg-transparent text-sm text-(--foreground) outline-hidden placeholder:text-(--muted-light)"
+        className={unstyledInput(`min-w-0 border-0 bg-transparent text-sm text-(--foreground) outline-hidden placeholder:text-(--muted-light)`)}
       />
     </label>
   )
@@ -516,22 +519,22 @@ function EmailVariantPicker({
   return (
     <div className="flex flex-wrap gap-1.5 border-b border-(--border) px-3 py-2">
       {variants.map((variant) => (
-        <button
+        <Button variant="ghost"
           key={variant.id}
           type="button"
           onClick={readOnly ? undefined : () => onSelect(variant)}
           disabled={readOnly}
-          className={classNames(
+          className={unstyledButton(classNames(
             'inline-flex h-8 items-center rounded-full px-3 text-xs font-medium transition-colors disabled:cursor-default',
             activeVariantId === variant.id
               ? 'bg-(--foreground) text-(--background)'
               : readOnly
                 ? 'bg-(--surface-subtle) text-(--muted)'
                 : 'bg-(--surface-subtle) text-(--muted) hover:bg-(--border) hover:text-(--foreground)',
-          )}
+          ))}
         >
           {variant.label}
-        </button>
+        </Button>
       ))}
     </div>
   )

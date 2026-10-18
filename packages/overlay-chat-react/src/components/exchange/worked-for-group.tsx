@@ -1,3 +1,5 @@
+import { unstyledButton } from '@overlay/ui/control-reset'
+import { Button } from '@overlay/ui/primitives'
 import { ChevronDown } from 'lucide-react'
 
 import { ToolLogoColumn } from './tool-rail'
@@ -38,11 +40,11 @@ export function WorkedForGroup({
 
   return (
     <div className="w-full px-1 py-0.5">
-      <button
+      <Button variant="ghost"
         type="button"
         onClick={onToggle}
         aria-expanded={expanded}
-        className="inline-flex h-auto w-fit max-w-full items-stretch gap-2.5 rounded-md px-0 py-1 text-left text-[13px] leading-snug text-(--tool-line-label) hover:bg-transparent"
+        className={unstyledButton(`inline-flex h-auto w-fit max-w-full items-stretch gap-2.5 rounded-md px-0 py-1 text-left text-[13px] leading-snug text-(--tool-line-label) hover:bg-transparent`)}
       >
         <ToolLogoColumn connectTop={false} connectBottom={false} />
         <span className="inline-flex min-w-0 items-center gap-1">
@@ -54,7 +56,7 @@ export function WorkedForGroup({
             aria-hidden
           />
         </span>
-      </button>
+      </Button>
     </div>
   )
 }

@@ -1,5 +1,7 @@
 'use client'
 
+import { unstyledButton } from '@overlay/ui/control-reset'
+
 import { useCallback, useEffect, useState } from 'react'
 import { KeyRound, Plus, Trash2 } from 'lucide-react'
 import type { ProviderAccountResource } from '@overlay/api-client'
@@ -111,14 +113,14 @@ export function AgentAccountSettings() {
               >
                 Reconnect
               </Button>
-              <button
+              <Button variant="ghost"
                 type="button"
                 aria-label={`Remove ${account.label}`}
                 onClick={() => setRemoving(account)}
-                className="rounded-lg p-2 text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-red-400"
+                className={unstyledButton(`rounded-lg p-2 text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-red-400`)}
               >
                 <Trash2 size={14} />
-              </button>
+              </Button>
             </div>
           </div>
         ))}

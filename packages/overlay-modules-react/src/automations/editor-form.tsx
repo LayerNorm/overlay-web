@@ -1,5 +1,5 @@
 'use client'
-
+import { unstyledButton, unstyledInput } from '@overlay/ui/control-reset'
 import { lazy, Suspense, type ReactNode } from 'react'
 import type {
   AutomationGraph,
@@ -10,7 +10,7 @@ import type {
 } from '@overlay/app-core'
 import { MIN_AUTOMATION_INTERVAL_MINUTES, WEEKDAY_LABELS } from '@overlay/app-core/automations'
 import { SettingsCard, SettingsToggle } from '@overlay/modules-react/settings'
-import { Select } from '@overlay/ui/primitives'
+import { Select, Button, Input } from '@overlay/ui/primitives'
 
 const AutomationGraphCanvas = lazy(() =>
   import('./reactflow-canvas').then((mod) => ({ default: mod.AutomationGraphCanvas })),
@@ -172,14 +172,14 @@ function AutomationEditorHeader({
         <p className="text-sm font-medium text-(--foreground)">Automation editor</p>
         <p className="text-xs text-(--muted)">Configure and test this automation.</p>
       </div>
-      <button
+      <Button variant="ghost"
         type="button"
         onClick={onSave}
         disabled={saveState === 'saving' || !name.trim() || !instructions.trim()}
-        className="rounded-lg bg-(--foreground) px-3 py-1.5 text-xs font-medium text-(--background) transition-opacity hover:opacity-90 disabled:opacity-50"
+        className={unstyledButton("rounded-lg bg-(--foreground) px-3 py-1.5 text-xs font-medium text-(--background) transition-opacity hover:opacity-90 disabled:opacity-50")}
       >
         {saveState === 'saving' ? 'Saving...' : saveState === 'saved' ? 'Saved' : 'Save changes'}
-      </button>
+      </Button>
     </div>
   )
 }
@@ -207,18 +207,18 @@ function AutomationConfigurationCard({
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="block text-sm font-medium text-(--foreground)">
             Name
-            <input
+            <Input
               value={name}
               onChange={(event) => onNameChange(event.target.value)}
-              className="mt-1 w-full rounded-lg border border-(--border) bg-(--background) px-3 py-2 text-sm text-(--foreground) outline-hidden focus:ring-1 focus:ring-(--foreground)"
+              className={unstyledInput("mt-1 w-full rounded-lg border border-(--border) bg-(--background) px-3 py-2 text-sm text-(--foreground) outline-hidden focus:ring-1 focus:ring-(--foreground)")}
             />
           </label>
           <label className="block text-sm font-medium text-(--foreground)">
             Description
-            <input
+            <Input
               value={description}
               onChange={(event) => onDescriptionChange(event.target.value)}
-              className="mt-1 w-full rounded-lg border border-(--border) bg-(--background) px-3 py-2 text-sm text-(--foreground) outline-hidden focus:ring-1 focus:ring-(--foreground)"
+              className={unstyledInput("mt-1 w-full rounded-lg border border-(--border) bg-(--background) px-3 py-2 text-sm text-(--foreground) outline-hidden focus:ring-1 focus:ring-(--foreground)")}
             />
           </label>
         </div>
@@ -301,22 +301,22 @@ function AutomationScheduleCard({
         {scheduleKind === 'interval' ? (
           <label className="block text-sm font-medium text-(--foreground)">
             Every N minutes
-            <input
+            <Input
               type="number"
               min={MIN_AUTOMATION_INTERVAL_MINUTES}
               value={intervalMinutes}
               onChange={(event) => onIntervalMinutesChange(Number(event.target.value))}
-              className="mt-1 w-full rounded-lg border border-(--border) bg-(--background) px-3 py-2 text-sm text-(--foreground) outline-hidden"
+              className={unstyledInput("mt-1 w-full rounded-lg border border-(--border) bg-(--background) px-3 py-2 text-sm text-(--foreground) outline-hidden")}
             />
           </label>
         ) : (
           <label className="block text-sm font-medium text-(--foreground)">
             Time
-            <input
+            <Input
               type="time"
               value={time}
               onChange={(event) => onTimeChange(event.target.value)}
-              className="mt-1 w-full rounded-lg border border-(--border) bg-(--background) px-3 py-2 pr-8 text-sm text-(--foreground) outline-hidden"
+              className={unstyledInput("mt-1 w-full rounded-lg border border-(--border) bg-(--background) px-3 py-2 pr-8 text-sm text-(--foreground) outline-hidden")}
             />
           </label>
         )}
@@ -337,13 +337,13 @@ function AutomationScheduleCard({
         {scheduleKind === 'monthly' && (
           <label className="block text-sm font-medium text-(--foreground)">
             Day of month
-            <input
+            <Input
               type="number"
               min={1}
               max={31}
               value={dayOfMonth}
               onChange={(event) => onDayOfMonthChange(Number(event.target.value))}
-              className="mt-1 w-full rounded-lg border border-(--border) bg-(--background) px-3 py-2 pr-8 text-sm text-(--foreground) outline-hidden"
+              className={unstyledInput("mt-1 w-full rounded-lg border border-(--border) bg-(--background) px-3 py-2 pr-8 text-sm text-(--foreground) outline-hidden")}
             />
           </label>
         )}
@@ -422,14 +422,14 @@ function AutomationTestCard({
           <p className="text-sm font-medium text-(--foreground)">Run once</p>
           <p className="text-xs text-(--muted)">Executes the automation now and writes the result to the automation chat.</p>
         </div>
-        <button
+        <Button variant="ghost"
           type="button"
           onClick={onTest}
           disabled={testState === 'running' || !instructions.trim()}
-          className="rounded-lg border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-xs font-medium text-(--foreground) transition-colors hover:bg-(--border) disabled:opacity-50"
+          className={unstyledButton("rounded-lg border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-xs font-medium text-(--foreground) transition-colors hover:bg-(--border) disabled:opacity-50")}
         >
           {testState === 'running' ? 'Running...' : 'Test automation'}
-        </button>
+        </Button>
       </div>
       {testMessage ? (
         <p className={`mt-3 text-xs ${testState === 'error' ? 'text-red-500' : 'text-(--muted)'}`}>
