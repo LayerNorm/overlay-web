@@ -434,6 +434,19 @@ A run that seems stuck needs evidence from both sides. Decisions (see
   type, a class (`convex_occ`, `convex_limit`, `convex_timeout`, `convex_unavailable`, `convex_function`,
   `control_plane`, `validation`, …), our SCREAMING_SNAKE codes, and for Convex calls the function path and Convex
   request id. `callConvex` tags every thrown error with its function path for this purpose.
+- **Caught-failure receipts.** Unexpected agent-environment 500s return `x-overlay-diagnostic-id`, matching the
+  structured server record and explicit Sentry event id. The existing `x-overlay-request-id` links the host warning
+  to that record. Preserve the backend request id even when structured Convex error data replaces the exception
+  message. Fixed signatures distinguish argument/return validation, authorization, non-unique results and missing
+  functions; unmatched failures remain `CONVEX_UNCLASSIFIED`. Only bounded source locations are retained, never
+  raw messages, arguments, absolute paths or credentials. Reporting failure cannot replace the original response.
+- **Diagnostic acceptance.** Run `NODE_OPTIONS=--require=./scripts/ci/register-server-only.cjs npx tsx
+  scripts/smoke/cloud-agent-long-horizon/diagnostics.ts --backend-url https://<owned-PR-backend>.convex.cloud`.
+  It performs one read-only invalid query against an explicitly selected backend, then exercises the real local
+  HTTP boundary and Sentry SDK with an in-memory transport. It does not inject hosted BFF faults, prove remote
+  Sentry delivery or establish the cause of an older incident. Unit coverage checks correlation, known/unknown
+  causes, redaction and unchanged expected rejection statuses. Diagnose retained events by diagnostic id first,
+  then request/backend ids; record retention gaps honestly rather than inferring a historical cause.
 - **Run stream counters.** `applyRemoteEventsByServer` keeps `conversationAgentRuns.streamStats` (batches, events,
   bytes, `text_checkpoint` characters, message rewrites, refused batches, host-to-server lag, longest gap between
   batches, longest tool call). `GET /api/v1/conversations/run` returns them as `streamSummary`, including the

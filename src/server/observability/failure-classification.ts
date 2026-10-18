@@ -15,6 +15,8 @@ export type FailureDescription = {
   convexCallType?: string
   convexRequestId?: string
   httpStatus?: number
+  failureSignature?: ConvexFailureSignature
+  failureFrames?: string[]
 }
 
 export type FailureClass =
@@ -29,7 +31,9 @@ export type FailureClass =
   | 'network'
   | 'unknown'
 
-type ConvexCallContext = { path: string; type: string; httpStatus?: number }
+type ConvexCallContext = { path: string; type: string; httpStatus?: number; backendMessage?: string }
+type ConvexFailureSignature = 'CONVEX_ARGUMENT_VALIDATION' | 'CONVEX_RETURN_VALIDATION'
+  | 'CONVEX_AUTHORIZATION' | 'CONVEX_NON_UNIQUE_RESULT' | 'CONVEX_FUNCTION_NOT_FOUND' | 'CONVEX_UNCLASSIFIED'
 
 // Keyed by the thrown object so callers keep their error types and messages unchanged.
 const convexCalls = new WeakMap<object, ConvexCallContext>()
@@ -89,18 +93,44 @@ function classify(value: unknown, message: string, convex: ConvexCallContext | u
 }
 
 export function describeFailure(value: unknown, context: Partial<ConvexCallContext> = {}): FailureDescription {
-  const message = messageOf(value)
   const recorded = typeof value === 'object' && value !== null ? convexCalls.get(value) : undefined
   const convex = recorded ?? (context.path ? { path: context.path, type: context.type ?? 'unknown', httpStatus: context.httpStatus } : undefined)
-  const codes = codesFrom(value, message)
+  const message = recorded?.backendMessage ?? context.backendMessage ?? messageOf(value)
+  const codes = codesFrom(value, messageOf(value))
+  const frames = safeFrames(message + '\n' + (value instanceof Error ? value.stack ?? '' : ''))
   const requestId = CONVEX_REQUEST_ID_PATTERN.exec(message)?.[1]
   const status = (value as { statusCode?: unknown } | null)?.statusCode
   return {
     failureType: typeOf(value),
     failureClass: classify(value, message, convex),
+    ...(convex ? { failureSignature: convexFailureSignature(message) } : {}),
+    ...(frames.length ? { failureFrames: frames } : {}),
     ...(codes.length ? { failureCodes: codes } : {}),
     ...(convex ? { convexPath: convex.path.slice(0, 200), convexCallType: convex.type } : {}),
     ...(requestId ? { convexRequestId: requestId } : {}),
     ...(typeof status === 'number' ? { httpStatus: status } : convex?.httpStatus ? { httpStatus: convex.httpStatus } : {}),
   }
+}
+
+function safeFrames(stack: string): string[] {
+  const frames = new Set<string>()
+  for (const line of stack.split('\n').slice(0, 80)) {
+    // Keep source locations only, never the message, function name, absolute root or arguments.
+    if (!/^\s*at /.test(line)) continue
+    const location = /(?:^|[/( ])((?:convex|src\/server)\/(?:[A-Za-z0-9_-]+\/)*[A-Za-z0-9_-]+\.[cm]?[jt]sx?:\d{1,7}:\d{1,7})\)?$/.exec(line)
+    if (location?.[1]) frames.add(location[1])
+    if (frames.size === 8) break
+  }
+  return [...frames]
+}
+
+// Fixed vocabulary only: backend messages can contain arguments, credentials and user text.
+function convexFailureSignature(message: string): ConvexFailureSignature {
+  if (/ArgumentValidationError/.test(message)) return 'CONVEX_ARGUMENT_VALIDATION'
+  if (/ReturnValidationError/.test(message)) return 'CONVEX_RETURN_VALIDATION'
+  if (/^Unauthorized$|(?:Uncaught (?:Error|ConvexError):|Server Error)\s*Unauthorized\s*(?:\n|$)/m.test(message)) return 'CONVEX_AUTHORIZATION'
+  if (/unique\(\).*returned more than one|more than one document.*unique\(/i.test(message)) return 'CONVEX_NON_UNIQUE_RESULT'
+  if (/Could not find (?:public )?function for|No function found for/i.test(message)) return 'CONVEX_FUNCTION_NOT_FOUND'
+  // This is explicitly unclassified, not a guessed root cause.
+  return 'CONVEX_UNCLASSIFIED'
 }

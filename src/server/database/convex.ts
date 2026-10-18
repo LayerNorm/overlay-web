@@ -78,11 +78,12 @@ async function callConvexLabelled<T>(
     return await callConvex<T>(type, path, args, options)
   } catch (error) {
     // Callers see the same error; logs can now say which function failed and how.
-    throw recordConvexCallFailure(error, { path, type, httpStatus: lastHttpStatus.get(error as object) })
+    const response = typeof error === 'object' && error !== null ? failedResponses.get(error) : undefined
+    throw recordConvexCallFailure(error, { path, type, ...response })
   }
 }
 
-const lastHttpStatus = new WeakMap<object, number>()
+const failedResponses = new WeakMap<object, { httpStatus: number; backendMessage?: string }>()
 
 async function callConvex<T>(
   type: 'query' | 'mutation' | 'action',
@@ -154,7 +155,7 @@ async function callConvex<T>(
         const failure = data.errorData !== undefined
           ? new ConvexError(jsonToConvex(data.errorData))
           : new Error(message)
-        lastHttpStatus.set(failure, response.status)
+        failedResponses.set(failure, { httpStatus: response.status, backendMessage: message })
         throw failure
       }
       if (!shouldSuppressConvexError(options, message)) {
@@ -165,9 +166,11 @@ async function callConvex<T>(
 
     if (data.status === 'error') {
       if (options.throwOnError) {
-        throw data.errorData !== undefined
+        const failure = data.errorData !== undefined
           ? new ConvexError(jsonToConvex(data.errorData))
           : new Error(data.errorMessage || `Convex ${type} error`)
+        failedResponses.set(failure, { httpStatus: response.status, backendMessage: data.errorMessage })
+        throw failure
       }
       if (!shouldSuppressConvexError(options, data.errorMessage ?? '')) {
         logger.error(`Convex ${type} error`, describeFailure(data.errorMessage ?? '', { path, type }))

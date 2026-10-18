@@ -23,7 +23,7 @@ export async function withAgentHostRouteTelemetry(
   const supplied = request.headers.get('x-vercel-id')?.trim()
   const requestId = supplied && REQUEST_ID_PATTERN.test(supplied) ? supplied : randomUUID()
   const startedAt = now()
-  return await withObservabilityContext({ requestId, route: `agent-host/${route}` }, async () => {
+  return await withObservabilityContext({ requestId, route: `agent-host/${route.replaceAll('.', '/')}` }, async () => {
     const response = await handler()
     const durationMs = Math.round(now() - startedAt)
     response.headers.set('x-overlay-request-id', requestId)

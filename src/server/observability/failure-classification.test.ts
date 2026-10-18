@@ -13,12 +13,36 @@ test('a Convex failure names its function, class, codes and request id without i
   assert.deepEqual(described, {
     failureType: 'Error',
     failureClass: 'convex_function',
+    failureSignature: 'CONVEX_UNCLASSIFIED',
     failureCodes: ['AGENT_REMOTE_SESSION_NOT_FOUND'],
     convexPath: 'agents/connectedAgents:applyRemoteEventsByServer',
     convexCallType: 'mutation',
     convexRequestId: '4f2a9c81d0e3',
   })
   assert.ok(!JSON.stringify(described).includes('alice'))
+})
+
+test('known backend signatures and source locations retain no raw exception or arguments', () => {
+  for (const [message, signature] of [
+    ['ArgumentValidationError: Value does not match validator', 'CONVEX_ARGUMENT_VALIDATION'],
+    ['ReturnValidationError: invalid result', 'CONVEX_RETURN_VALIDATION'],
+    ['Uncaught Error: Unauthorized', 'CONVEX_AUTHORIZATION'],
+    ['unique() query returned more than one result', 'CONVEX_NON_UNIQUE_RESULT'],
+    ['Could not find public function for agents/missing:read', 'CONVEX_FUNCTION_NOT_FOUND'],
+    ['Server Error', 'CONVEX_UNCLASSIFIED'],
+  ]) {
+    assert.equal(describeFailure(new Error(message), { path: 'agents/environmentControlPlane:getEnvironmentByServer', type: 'query' }).failureSignature, signature)
+  }
+  const error = recordConvexCallFailure(new ConvexError({ code: 'AGENT_POLICY_LIMIT' }), {
+    path: 'agents/environmentControlPlane:getEnvironmentByServer', type: 'query', httpStatus: 200,
+    backendMessage: '[Request ID: abcdef123456] ArgumentValidationError: secret@example.com PRIVATE_PROMPT\n    at handler (convex/agents/environmentControlPlane.ts:165:5)\n    at privateFunction (/home/private/customer.ts:1:2)',
+  })
+  const diagnostic = describeFailure(error)
+  assert.equal(diagnostic.convexRequestId, 'abcdef123456')
+  assert.equal(diagnostic.failureSignature, 'CONVEX_ARGUMENT_VALIDATION')
+  assert.deepEqual(diagnostic.failureCodes, ['AGENT_POLICY_LIMIT'])
+  assert.ok(diagnostic.failureFrames?.includes('convex/agents/environmentControlPlane.ts:165:5'))
+  assert.doesNotMatch(JSON.stringify(diagnostic), /secret@example|PRIVATE_PROMPT|privateFunction|\/home\/private/)
 })
 
 test('write conflicts, limits, timeouts and outages are told apart', () => {

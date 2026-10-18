@@ -4,6 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Make caught agent failures traceable across response, server logs and Sentry with diagnostic ids, preserved backend request ids, safe cause signatures and bounded source locations. Keep unknown causes explicit and raw exception content private.
 - Keep connected-agent output streaming during uploads with coalesced text, byte-bounded batches, durable retry boundaries and negotiated incremental text. Preserve partial answers and tool history through cancellation, failure and reconnects.
 - Render live replies as formatted Markdown with bottom loading dots, compact tool groups, accurate tool ages and task deadlines. Preserve literal identifiers and wrap long hashes in tables.
 - Discover model, effort and permission choices from the bound agent account before the first task; persist and apply the selected settings across native recovery.

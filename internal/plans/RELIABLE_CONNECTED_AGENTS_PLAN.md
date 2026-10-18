@@ -1,6 +1,6 @@
 # Reliable connected agents
 
-Status: Phases 1–5 are implemented. Native Claude Code and Codex functional recovery, fresh-machine verification and strict latency acceptance pass. The historical poll-500 search is closed inconclusively; its underlying cause remains unproven, so the original named-cause gate is unmet. Keep the complete change in draft PR #247 pending acceptance of that evidence gap and final release review.
+Status: Phases 1–5 are implemented. Native Claude Code and Codex functional recovery, fresh-machine verification and strict latency acceptance pass. The historical poll-500 search is closed with its cause unknown. Its retrospective named-cause requirement is replaced by repeatable diagnostic acceptance below; this does not establish the old cause. Keep the complete change in draft PR #247 pending current-head diagnostic validation and final release review.
 
 Related: [`DURABLE_REMOTE_AGENT_RUNS.md`](./DURABLE_REMOTE_AGENT_RUNS.md) (run lifecycle v2),
 [`internal/develop/bring-your-own-agents.md`](../develop/bring-your-own-agents.md),
@@ -77,13 +77,17 @@ Each phase is one PR to `main` unless noted, with its own preview QA. Phases 1 a
   it, and read the transcript through the API rather than the box. The current direct mode stays as the
   provider baseline.
 - Add structured logs, with request id, route, error class and duration, to the host routes that returned 500
-  in production: poll, events, acknowledge, heartbeat. Find their root causes. Likely candidates are Convex OCC
+  in production: poll, events, acknowledge, heartbeat. Diagnose failures from retained records. Possible causes are Convex OCC
   contention from rewriting the full message on every batch, payload size, and function timeouts. Record the
   findings in the PR, not in the repo.
 - Add counters per run: events received, bytes, rejected batches, max quiet gap, longest open tool. Store them
   on `conversationAgentRuns` so QA can read them back.
 
-**Done when:** a preview smoke run reports these numbers and the 500s have a named cause.
+**Done when:** a preview smoke run reports these numbers; controlled failures prove HTTP/server/backend
+correlation, safe known-cause signatures, explicit unknown causes and redacted Sentry SDK delivery. Exercise
+the actual isolated backend with the repeatable read-only diagnostic smoke and verify current-head Preview
+behavior. Record the separate limits of local transport, remote event ingestion and historical retention.
+An exhausted historical search stays closed with cause unknown; passing new tests cannot establish its cause.
 
 ---
 
