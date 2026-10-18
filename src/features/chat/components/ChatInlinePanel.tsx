@@ -53,11 +53,18 @@ type Conversation = {
   title: string
   lastModified: number
   conversationType?: 'personal' | 'dm' | 'channel'
+  scope?: 'personal' | 'workspace'
   otherParticipantTypes?: Array<'human' | 'agent'>
   externalPlatform?: string
 }
 
-type ChatView = 'personal' | 'dms' | 'channels' | 'all'
+/** `workspace-chats` lists the AI chats filed under Workspace; `personal` lists the rest. */
+type ChatView = 'personal' | 'workspace-chats' | 'dms' | 'channels' | 'all'
+
+function isAiChatInView(chat: Pick<Conversation, 'conversationType' | 'scope'>, view: 'personal' | 'workspace-chats'): boolean {
+  if ((chat.conversationType ?? 'personal') !== 'personal') return false
+  return (chat.scope ?? 'personal') === (view === 'workspace-chats' ? 'workspace' : 'personal')
+}
 
 function DirectMessageIcon({
   participantTypes,
@@ -438,7 +445,7 @@ function useChatListEvents({
       if (activeId !== archivedChatId) return
       const nextChat = (getCachedChatList() ?? []).find((candidate) => {
         if (candidate._id === archivedChatId) return false
-        if (chatView === 'personal') return (candidate.conversationType ?? 'personal') === 'personal'
+        if (chatView === 'personal' || chatView === 'workspace-chats') return isAiChatInView(candidate, chatView)
         if (chatView === 'dms') return candidate.conversationType === 'dm'
         if (chatView === 'channels') return candidate.conversationType === 'channel'
         return true
@@ -752,8 +759,8 @@ function ChatListBody({
   saveRename: ReturnType<typeof useChatRename>['saveRename']
   cancelRename: ReturnType<typeof useChatRename>['cancelRename']
 }) {
-  const viewChats = chatView === 'personal'
-    ? chats.filter((chat) => (chat.conversationType ?? 'personal') === 'personal')
+  const viewChats = chatView === 'personal' || chatView === 'workspace-chats'
+    ? chats.filter((chat) => isAiChatInView(chat, chatView))
     : chatView === 'dms'
       ? chats.filter((chat) => chat.conversationType === 'dm')
       : chatView === 'channels'
@@ -764,6 +771,7 @@ function ChatListBody({
     : viewChats
   const emptyLabel = {
     personal: 'No personal chats yet',
+    'workspace-chats': 'No workspace chats yet',
     dms: 'No direct messages yet',
     channels: 'No channels yet',
     all: 'No chats yet',
@@ -857,10 +865,11 @@ export function ChatInlinePanel({
   const activeId = browserActiveId ?? searchActiveId
   const chatView: ChatView = (() => {
     const value = searchParams?.get('view')
-    if (value === 'dms' || value === 'channels' || value === 'all') return value
+    if (value === 'dms' || value === 'channels' || value === 'all' || value === 'workspace-chats') return value
     return 'personal'
   })()
-  setActiveChatListView(chatView)
+  // Both AI chat views share the personal list; the scope filter runs here.
+  setActiveChatListView(chatView === 'workspace-chats' ? 'personal' : chatView)
 
   const openChat = useCallback((chat: Conversation) => {
     const targetView = chat.conversationType === 'channel'

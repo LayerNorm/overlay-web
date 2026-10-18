@@ -122,9 +122,9 @@ function resolveToolsView(current: string | null): string {
   return 'connectors'
 }
 
-/** Chats keep their own routes: direct messages, channels, and activity are the Workspace scope. */
+/** Chats keep their own routes: Workspace AI chats, direct messages, channels, and activity are the Workspace scope. */
 export function chatScopeForView(chatsView: string): PanelScope {
-  if (chatsView === 'dms' || chatsView === 'channels' || chatsView === 'activity') return 'workspace'
+  if (chatsView === 'workspace-chats' || chatsView === 'dms' || chatsView === 'channels' || chatsView === 'activity') return 'workspace'
   return 'personal'
 }
 
@@ -136,6 +136,7 @@ function resolveChatsView({
   chatViewParam: string | null
 }): string {
   if (activityOpen) return 'activity'
+  if (chatViewParam === 'workspace-chats') return 'workspace-chats'
   if (chatViewParam === 'dms') return 'dms'
   if (chatViewParam === 'channels') return 'channels'
   if (chatViewParam === 'all') return 'all'

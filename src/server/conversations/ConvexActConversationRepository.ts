@@ -44,6 +44,7 @@ export class ConvexActConversationRepository implements ActConversationRepositor
     isAutomation?: boolean
     workspaceId?: string
     conversationType?: 'personal' | 'dm' | 'channel'
+    scope?: 'personal' | 'workspace'
     createdByPrincipalId?: string
     externalPlatform?: string
     externalChannelId?: string

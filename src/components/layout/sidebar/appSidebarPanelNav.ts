@@ -1,4 +1,4 @@
-import { Settings } from 'lucide-react'
+import { MessageSquare, Settings } from 'lucide-react'
 import type { OverlaySettingsSection } from '@overlay/app-core'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { getLastChatForView } from '@/shared/chat/last-chat-by-view'
@@ -137,11 +137,18 @@ function buildChatPanelNav({
   return buildScopedPanelNav({
     scope: chatScope,
     sub: chatScope === 'workspace' ? chatsView : null,
-    // Direct messages, channels, and activity are the Workspace scope; personal chats and archived chats have no sub-rows.
-    subItems: { workspace: chatItems.filter((item) => item.id === 'dms' || item.id === 'channels' || item.id === 'activity') },
+    // Workspace AI chats, direct messages, channels, and activity are the Workspace scope; personal chats have no sub-rows.
+    subItems: {
+      workspace: [
+        ...(publicShowcase ? [] : [{ id: 'workspace-chats', label: 'Chats', icon: MessageSquare }]),
+        ...chatItems.filter((item) => item.id === 'dms' || item.id === 'channels' || item.id === 'activity'),
+      ],
+    },
     pendingId: effectivePendingSecondaryNavId,
     badges: { workspace: unreadOf('dms') + unreadOf('channels') },
-    onSelect: (scope, sub) => flat.onSelect(sub ?? (scope === 'workspace' ? (chatScope === 'workspace' ? chatsView : 'dms') : scope)),
+    onSelect: (scope, sub) => flat.onSelect(sub ?? (scope === 'workspace'
+      ? (chatScope === 'workspace' ? chatsView : publicShowcase ? 'dms' : 'workspace-chats')
+      : scope)),
   })
 }
 

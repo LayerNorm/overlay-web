@@ -101,6 +101,7 @@ export async function createNewChatForSend({
       actModelId: normalizedInitialSelection.actModelId,
       lastMode: 'act',
       ...(trimmedClientId ? { clientId: trimmedClientId } : {}),
+      ...(workspaceChatsViewActive() ? { scope: 'workspace' as const } : {}),
     },
     { idempotencyKey: trimmedClientId ?? createIdempotencyKey() },
   )
@@ -168,4 +169,10 @@ export async function createNewChatForSend({
   resetRuntimeState(emptyRuntime)
   clearTransientComposerState()
   return data.id
+}
+
+/** A chat started from the Workspace "Chats" list belongs to the Workspace scope. */
+function workspaceChatsViewActive(): boolean {
+  if (typeof window === 'undefined') return false
+  return new URLSearchParams(window.location.search).get('view') === 'workspace-chats'
 }

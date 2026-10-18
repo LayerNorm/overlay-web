@@ -1114,6 +1114,8 @@ export default defineSchema({
       v.literal('dm'),
       v.literal('channel'),
     )),
+    /** Sidebar scope for AI chats; missing means personal. */
+    scope: v.optional(v.union(v.literal('personal'), v.literal('workspace'))),
     createdByPrincipalId: v.optional(v.string()),
     clientId: v.optional(v.string()),
     title: v.string(),

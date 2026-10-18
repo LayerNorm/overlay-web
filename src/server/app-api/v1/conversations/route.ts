@@ -207,13 +207,18 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
       .sort((left, right) => right.lastModified - left.lastModified)
 
     const view = searchParams.get('view')
+    const scopeParam = searchParams.get('scope')
+    const chatScope = scopeParam === 'personal' || scopeParam === 'workspace' ? scopeParam : null
     const filtered = view === 'dms'
       ? list.filter((conversation) => conversation.conversationType === 'dm')
       : view === 'channels'
         ? list.filter((conversation) => conversation.conversationType === 'channel')
         : view === 'all'
           ? list
-          : list.filter((conversation) => (conversation.conversationType ?? 'personal') === 'personal')
+          : list.filter((conversation) => (
+            (conversation.conversationType ?? 'personal') === 'personal'
+            && (chatScope === null || (conversation.scope ?? 'personal') === chatScope)
+          ))
 
     // Client list cache expects a paginated envelope. Filtering by view before
     // pagination keeps "Load more" truthful for DMs/channels (client-side type
@@ -246,6 +251,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       actModelId?: string
       lastMode?: 'ask' | 'act'
       clientId?: string
+      scope?: 'personal' | 'workspace'
       accessToken?: string
       userId?: string
     }
@@ -268,6 +274,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       askModelIds: isFreeTier ? freeAskModelIds : paidModels.askModelIds,
       actModelId: isFreeTier ? freeActModelId : paidModels.actModelId,
       lastMode: body.lastMode,
+      ...(body.scope === 'workspace' ? { scope: 'workspace' as const } : {}),
     })
     const conversation = await repository.getConversationById({
       conversationId: id,
