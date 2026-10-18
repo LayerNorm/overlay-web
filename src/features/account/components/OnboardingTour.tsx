@@ -5,7 +5,6 @@ import { Button, Textarea } from '@overlay/ui/primitives'
 import {
   useEffect,
   useLayoutEffect,
-  useRef,
   useState,
   useCallback,
   type CSSProperties,
@@ -29,43 +28,43 @@ const ONBOARDING_CONNECTOR_CARDS: ReadonlyArray<{
   slug: string
   name: string
   description: string
-  icon: string
+  logoSrc: string
 }> = [
   {
     slug: 'googledrive',
     name: 'Google Drive',
     description: 'Search and manage Drive files',
-    icon: '📁',
+    logoSrc: '/assets/svg/integrations/googledrive.svg',
   },
   {
     slug: 'notion',
     name: 'Notion',
     description: 'Create pages and manage workspace',
-    icon: '📝',
+    logoSrc: '/assets/svg/integrations/notion.svg',
   },
   {
     slug: 'gmail',
     name: 'Gmail',
     description: 'Compose, send, and search emails',
-    icon: '📧',
+    logoSrc: '/assets/svg/integrations/gmail.svg',
   },
   {
     slug: 'googlecalendar',
     name: 'Google Calendar',
     description: 'Read and create calendar events',
-    icon: '📅',
+    logoSrc: '/assets/svg/integrations/googlecalendar.svg',
   },
   {
     slug: 'outlook',
     name: 'Outlook',
     description: 'Send emails and manage calendar',
-    icon: '📨',
+    logoSrc: '/assets/svg/integrations/outlook.svg',
   },
   {
     slug: 'googlesheets',
     name: 'Google Sheets',
     description: 'Read, update, and create spreadsheets',
-    icon: '📊',
+    logoSrc: '/assets/svg/integrations/googlesheets.svg',
   },
 ]
 
@@ -74,34 +73,25 @@ const DIALOG_SECONDARY_CLASS =
 const DIALOG_PRIMARY_CLASS =
   'rounded-lg bg-(--foreground) px-4 py-1.5 text-sm font-medium text-(--background) transition-opacity hover:opacity-90 disabled:opacity-40'
 
-/** Logos from the configured integration provider catalog, with emoji fallback. */
+/** Self-hosted logos for popular integrations shown on the post-tour step. */
 function OnboardingConnectorCardLogo({
   name,
-  fallbackEmoji,
-  logoUrl,
+  logoSrc,
 }: {
   name: string
-  fallbackEmoji: string
-  logoUrl: string | null | undefined
+  logoSrc: string
 }) {
-  const [imgFailed, setImgFailed] = useState(false)
-  const showImage = Boolean(logoUrl) && !imgFailed
-
   return (
     <span className="mb-2 flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-(--border) bg-(--surface-elevated)">
-      {showImage ? (
-        <Image
-          src={logoUrl!}
-          alt={name}
-          width={28}
-          height={28}
-          unoptimized
-          className="h-7 w-7 object-contain"
-          onError={() => setImgFailed(true)}
-        />
-      ) : (
-        <span className="text-lg leading-none" aria-hidden>{fallbackEmoji}</span>
-      )}
+      <Image
+        src={logoSrc}
+        alt={name}
+        width={28}
+        height={28}
+        unoptimized
+        loading="eager"
+        className="h-7 w-7 object-contain"
+      />
     </span>
   )
 }
@@ -141,6 +131,12 @@ function getTargetRect(target: string): Rect | null {
   for (const el of els) {
     const r = el.getBoundingClientRect()
     if (r.width === 0 && r.height === 0) continue
+    if (
+      r.bottom <= 0
+      || r.right <= 0
+      || r.top >= window.innerHeight
+      || r.left >= window.innerWidth
+    ) continue
     hasVisible = true
     if (r.top < minTop) minTop = r.top
     if (r.left < minLeft) minLeft = r.left
@@ -387,7 +383,7 @@ function ImportMemoriesStep({ onFinish }: { onFinish: () => void }) {
           </Button>
         </div>
         <p className="mb-6 text-xs text-(--muted)">
-          Optional — bring over context from ChatGPT, Claude, or other tools. Copy the prompt, paste it there, then paste the reply below. We&apos;ll save it into your Overlay memories.
+          Optional. Bring over context from ChatGPT, Claude, or other tools: copy the prompt, paste it there, then paste the reply below. We&apos;ll save it into your Overlay memories.
         </p>
 
         <div className="relative mb-6 flex gap-3">
@@ -462,32 +458,8 @@ function ImportMemoriesStep({ onFinish }: { onFinish: () => void }) {
 function ConnectToolsStep({ onFinish }: { onFinish: () => void }) {
   const router = useRouter()
   const [connectorConnectingSlug, setConnectorConnectingSlug] = useState<string | null>(null)
-  const [connectorLogos, setConnectorLogos] = useState<Record<string, string | null>>({})
   const [connectedSlugs, setConnectedSlugs] = useState<Set<string>>(new Set())
   const [integrationsPickerOpen, setIntegrationsPickerOpen] = useState(false)
-
-  // Same provider-neutral catalog fetch as Extensions → loadCatalog.
-  useEffect(() => {
-    let cancelled = false
-    void (async () => {
-      try {
-        const res = await overlayAppClient.integrations.getResponse({ action: 'search', limit: 100 })
-        if (!res.ok || cancelled) return
-        const data = (await res.json()) as { items?: Array<{ slug: string; logoUrl?: string | null }> }
-        const items = Array.isArray(data.items) ? data.items : []
-        const next: Record<string, string | null> = {}
-        for (const item of items) {
-          next[item.slug] = item.logoUrl ?? null
-        }
-        if (!cancelled) setConnectorLogos(next)
-      } catch {
-        // keep emoji fallbacks
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [])
 
   // Track connected toolkits so cards reflect connections in real time after the
   // Provider setup completes in another tab and signals via focus/event refresh.
@@ -597,8 +569,7 @@ function ConnectToolsStep({ onFinish }: { onFinish: () => void }) {
             </Button>
           </div>
           <p className="mb-4 text-xs leading-relaxed text-(--muted)">
-            Optional — connect apps you use with Overlay. Use Connect on a card below (same OAuth flow as Extensions), or{' '}
-            <span className="text-(--foreground)">Add</span> to search the full integration catalog.
+            Optional. Connect the apps you already use, or add one from the full catalog.
           </p>
 
           <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
@@ -613,8 +584,7 @@ function ConnectToolsStep({ onFinish }: { onFinish: () => void }) {
                 >
                   <OnboardingConnectorCardLogo
                     name={c.name}
-                    fallbackEmoji={c.icon}
-                    logoUrl={connectorLogos[c.slug]}
+                    logoSrc={c.logoSrc}
                   />
                   <p className="text-xs font-semibold text-(--foreground)">{c.name}</p>
                   <p className="mb-2.5 mt-0.5 line-clamp-3 flex-1 text-[10px] leading-snug text-(--muted)">
@@ -856,6 +826,13 @@ export function OnboardingTour({
   memoryEnabled = true,
   integrationsEnabled = true,
 }: Props) {
+  useEffect(() => {
+    for (const c of ONBOARDING_CONNECTOR_CARDS) {
+      const img = new window.Image()
+      img.src = c.logoSrc
+    }
+  }, [])
+
   const step = steps[currentStep]
   const { postTourPhase, beginPostTour, finishImportStep, finishPostTour } = usePostTourPhase({
     currentStep,
@@ -868,13 +845,6 @@ export function OnboardingTour({
   })
   const [frame, setFrame] = useState<Frame>({ rect: null, stepIndex: -1, spotlightRect: null })
   const [backdropReady, setBackdropReady] = useState(false)
-  const rafRef = useRef<number | null>(null)
-  const observerRef = useRef<ResizeObserver | null>(null)
-
-  const measure = useCallback((idx: number, target: string) => {
-    const r = getTargetRect(target)
-    setFrame(prev => ({ rect: r, stepIndex: idx, spotlightRect: r ?? prev.spotlightRect }))
-  }, [])
 
   useLayoutEffect(() => {
     const raf = requestAnimationFrame(() => setBackdropReady(true))
@@ -887,51 +857,39 @@ export function OnboardingTour({
     const idx = currentStep
     const target = step.target
 
+    let rafId = 0
+    let hasMeasured = false
+    let previousRect: Rect | null = null
     const doMeasure = () => {
-      rafRef.current = null
-      measure(idx, target)
-    }
+      const r = getTargetRect(target)
+      const changed =
+        !hasMeasured
+        || (r === null) !== (previousRect === null)
+        || (
+          r !== null
+          && previousRect !== null
+          && (
+            Math.abs(r.top - previousRect.top) > 0.5
+            || Math.abs(r.left - previousRect.left) > 0.5
+            || Math.abs(r.width - previousRect.width) > 0.5
+            || Math.abs(r.height - previousRect.height) > 0.5
+          )
+        )
 
-    rafRef.current = requestAnimationFrame(() => {
-      rafRef.current = requestAnimationFrame(doMeasure)
-    })
-
-    observerRef.current = new ResizeObserver(() => measure(idx, target))
-    document.querySelectorAll(`[data-tour="${target}"]`).forEach(el => observerRef.current!.observe(el))
-    observerRef.current.observe(document.body)
-
-    // The target can mount after this component does (surface navigation, lazy
-    // headers). Watch for its insertion; without this the tour stays armed but
-    // invisible forever.
-    let lateObserver: MutationObserver | null = null
-    if (!getTargetRect(target)) {
-      lateObserver = new MutationObserver(() => {
-        if (getTargetRect(target)) {
-          doMeasure()
-          lateObserver?.disconnect()
-          lateObserver = null
-        }
-      })
-      lateObserver.observe(document.body, { childList: true, subtree: true })
-    }
-    const lateObserverTimeout = window.setTimeout(() => {
-      lateObserver?.disconnect()
-      lateObserver = null
-    }, 10000)
-
-    const onResize = () => measure(idx, target)
-    window.addEventListener('resize', onResize)
-    return () => {
-      if (rafRef.current != null) {
-        cancelAnimationFrame(rafRef.current)
-        rafRef.current = null
+      if (changed) {
+        hasMeasured = true
+        previousRect = r
+        setFrame(prev => ({ rect: r, stepIndex: idx, spotlightRect: r ?? prev.spotlightRect }))
       }
-      observerRef.current?.disconnect()
-      lateObserver?.disconnect()
-      window.clearTimeout(lateObserverTimeout)
-      window.removeEventListener('resize', onResize)
+      rafId = requestAnimationFrame(doMeasure)
     }
-  }, [currentStep, step, measure, postTourPhase])
+
+    // Poll each frame to catch late mounts and position-only changes like popper placement.
+    rafId = requestAnimationFrame(doMeasure)
+    return () => {
+      cancelAnimationFrame(rafId)
+    }
+  }, [currentStep, step, postTourPhase])
 
   // Steps 0-1 describe the model picker, including the generation-mode toggle
   // that only exists inside its open panel; the dropdown must stay open while

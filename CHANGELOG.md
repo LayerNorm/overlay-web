@@ -4,6 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Keep the onboarding tour's first tooltip anchored next to the model picker, and render the "Connect your tools" logos instantly from self-hosted assets.
 - Standardize the orb + wordmark on `BrandLockup` across the loader, landing, auth, and marketing surfaces, and play the loader's word reveal only once so it keeps blinking until the app appears. Once the app has rendered real content the loader can never reappear: boundary remounts and route fallbacks show plain skeletons instead.
 
 - Make first-run onboarding deterministic: it starts only on the post-signup redirect or an explicit replay, waits for the workspace to load before the name step, mounts the tour only on the chat surface where its targets render, holds the model picker open through the tour's early steps, and no longer refires on refresh or pops up mid-session.
