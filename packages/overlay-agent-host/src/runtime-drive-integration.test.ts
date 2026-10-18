@@ -341,3 +341,24 @@ test('confirmed startup rejection releases Drive; uncertain rejection retains fe
     } finally {await f.cleanup()}
   }
 })
+
+test('later prompt rejection also requires stop proof before Drive finalization', async () => {
+  const f = await fixture()
+  const adapter = f.options.adapters[0]!
+  const start = adapter.start.bind(adapter)
+  let prompts = 0
+  adapter.start = async (input, emit) => ({...await start(input, emit),
+    prompt: async () => {if (++prompts > 1) throw Error('Native close uncertain')},
+    stop: async () => {throw Error('Native writer still uncertain')},
+  })
+  try {
+    await f.runtime.processCommand(f.command)
+    await f.runtime.processCommand({...f.command, commandId: 'next-prompt', sequence: 2, type: 'prompt', payload: {prompt: 'Continue'}})
+    await setImmediate()
+    await f.runtime.flushOutbox()
+    const events = f.events.flatMap(batch => batch.events)
+    assert.equal(f.closes(), 0)
+    assert.equal(events.some(event => event.type === 'failed'), false)
+    assert.ok(events.some(event => event.type === 'process_observation' && event.payload.process === 'unknown'))
+  } finally {await f.cleanup()}
+})

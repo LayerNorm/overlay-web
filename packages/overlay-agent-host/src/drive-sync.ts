@@ -10,6 +10,7 @@ import { AgentDriveWriter } from './drive-writer.js'
 export class AgentDriveSynchronizer {
   private tail: Promise<unknown> = Promise.resolve()
   private prepared = false
+  private receiptChanged = false
   private readonly forceCopies = new Set<string>()
   private readonly writer: AgentDriveWriter
 
@@ -272,6 +273,7 @@ export class AgentDriveSynchronizer {
     if (state.phase !== 'writing' || state.operation.request.requestId !== operation.request.requestId) throw Error('DRIVE_SYNC_STATE_CHANGED')
     if (state.turn?.runId !== this.options.runId) throw Error('DRIVE_SYNC_EXECUTION_CHANGED')
     const manifest = await this.options.client.manifest()
+    this.receiptChanged = false
     let baseline = [...state.baseline]
     const saved = new Map(state.turn.saved.map(item => [item.fileId, item]))
     if (operation.kind === 'content' && record.kind === 'content' && record.phase.kind === 'committed')
@@ -286,10 +288,7 @@ export class AgentDriveSynchronizer {
     this.options.state.write({ phase: 'idle', initialized: state.initialized, baseline,
       turn: { runId: this.options.runId, saved: [...saved.values()] } })
     this.options.journal.forgetCompleted(operation.request.requestId)
-    const committedResult = record.phase.result
-    const current = manifest.find(entry => entry.fileId === committedResult.fileId)
-    return operation.kind === 'metadata' && operation.request.operation.kind === 'remove'
-      ? Boolean(current) : current?.updatedAt !== committedResult.updatedAt
+    return this.receiptChanged
   }
 
   private async applyContentEffect(operation: Extract<DriveSyncOperation, { kind: 'content' }>, result: DriveContentResult,
@@ -297,6 +296,7 @@ export class AgentDriveSynchronizer {
     const entry = manifest.find(item => item.fileId === result.fileId)
     if (!entry || entry.kind !== 'file' || entry.hydration !== 'ready' || entry.updatedAt !== result.updatedAt
       || entry.sha256 !== result.sha256 || entry.sizeBytes !== result.sizeBytes) {
+      this.receiptChanged = true
       await this.removeCommittedLocal(operation.target, result.sha256)
       baseline = baseline.map(row => row.entry.fileId === operation.priorFileId ? {...row, local: null} : row)
         .filter(row => row.entry.fileId !== result.fileId)
@@ -324,9 +324,11 @@ export class AgentDriveSynchronizer {
       const entry = manifest.find(item => item.fileId === result.fileId)
       const previous = baseline.find(row => row.entry.fileId === result.fileId)
       if (!entry || entry.updatedAt !== result.updatedAt && entry.kind !== 'folder') {
+        this.receiptChanged = true
         if (previous?.entry.kind === 'file' && previous.entry.hydration === 'ready')
           await this.removeCommittedLocal(operation.target, previous.entry.sha256)
-        baseline = baseline.filter(row => row.entry.fileId !== result.fileId)
+        baseline = baseline.filter(row => row.entry.fileId !== result.fileId
+          && !(previous?.entry.kind === 'folder' && previous.local && row.local?.path.startsWith(`${previous.local.path}/`)))
         if (entry) baseline.push({entry, local: null})
         if (entry) saved.set(entry.fileId, {fileId: entry.fileId, path: entry.path, kind: entry.kind})
         else saved.delete(result.fileId)
@@ -335,16 +337,28 @@ export class AgentDriveSynchronizer {
       baseline = baseline.filter(row => row.entry.fileId !== result.fileId)
       if (previous?.entry.kind === 'folder' && previous.local) {
         const oldPath = previous.local.path
-        baseline = baseline.map(row => {
-          if (!row.local?.path.startsWith(`${oldPath}/`)) return row
-          const fresh = manifest.find(item => item.fileId === row.entry.fileId)
-          return { entry: fresh && sameVersion(fresh, row.entry) ? fresh : row.entry, local: { ...row.local, path: operation.target.path + row.local.path.slice(oldPath.length) } }
-        })
+        baseline = await this.reconcileMovedChildren(baseline, manifest, oldPath, operation.target.path)
       }
       baseline.push({ entry, local: operation.target })
       saved.set(entry.fileId, { fileId: entry.fileId, path: entry.path, kind: entry.kind })
     }
     return baseline
+  }
+
+  private async reconcileMovedChildren(baseline: DriveBaseline[], manifest: DriveManifestEntry[], oldPath: string, newPath: string): Promise<DriveBaseline[]> {
+    const children: DriveBaseline[] = []
+    for (const row of baseline) {
+      if (!row.local?.path.startsWith(`${oldPath}/`)) { children.push(row); continue }
+      const local = {...row.local, path: newPath + row.local.path.slice(oldPath.length)}
+      const fresh = manifest.find(item => item.fileId === row.entry.fileId)
+      if (fresh && (fresh.kind === 'folder' || sameVersion(fresh, row.entry))) children.push({entry: fresh, local})
+      else {
+        this.receiptChanged = true
+        if (row.entry.kind === 'file' && row.entry.hydration === 'ready') await this.removeCommittedLocal(local, row.entry.sha256)
+        if (fresh) children.push({entry: fresh, local: null})
+      }
+    }
+    return children
   }
 
   /** A confirmed receipt is history. Discard only its exact unchanged local bytes;

@@ -295,9 +295,9 @@ export class AgentHostRuntime {
     }
     const session = await this.requireSession(command.runId, command.type === 'reconnect' ? command.payload.remoteSessionId : undefined)
     if (command.type === 'prompt') {
-      const execution = this.executions.get(command.runId)
-      this.prompts.track(session.prompt(command.payload.prompt).catch(error => this.emit(command.runId,
-        { type: 'failed', payload: { code: 'adapter_prompt_failed', message: safeError(error), retryable: true } }, execution)))
+      const report = this.failureReporter(command.runId)
+      this.prompts.track(session.prompt(command.payload.prompt).catch(error => report(
+        { type: 'failed', payload: { code: 'adapter_prompt_failed', message: safeError(error), retryable: true } })))
     }
     else if (command.type === 'approval_response') await session.approve(command.payload.requestKey, command.payload.optionId)
     else if (command.type === 'elicitation_response') await session.elicit(command.payload.requestKey, command.payload.action, command.payload.content)
@@ -458,6 +458,11 @@ export class AgentHostRuntime {
     const adapter = this.adapters.get(adapterId)
     if (!adapter) throw new Error(`adapter is not installed: ${adapterId}`)
     return adapter
+  }
+
+  private failureReporter(runId: string, execution = this.executions.get(runId)): EmitAgentEvent {
+    return this.drives.get(runId)?.emit ?? this.streams.get(runId)?.emit
+      ?? (event => this.emit(runId, event, execution))
   }
 
   private createStream(runId: string, execution = this.executions.get(runId), drive?: RuntimeDrive, textBaseOffset?: number): EmitAgentEvent {
