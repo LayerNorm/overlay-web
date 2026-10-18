@@ -150,6 +150,7 @@ export default function AppSidebar({
       {classicLayout ? null : (
         <UnifiedSidebar
           brand={brandLink}
+          keyboardShortcut
           collapsed={s.sidebarCollapsed}
           onCollapsedChange={(collapsed) => {
             s.setAccountMenuOpen(false)

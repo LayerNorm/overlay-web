@@ -84,13 +84,19 @@ function NavRow({ item, collapsed }: { item: PrimaryRailItem; collapsed: boolean
 function ExploreMenu({ items, collapsed }: { items: readonly PrimaryRailItem[]; collapsed: boolean }) {
   const [open, setOpen] = useState(false)
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // A click right after hover opened the menu should keep it open, not toggle it shut.
+  const openedByHover = useRef(false)
   const cancelClose = () => {
     if (closeTimer.current) clearTimeout(closeTimer.current)
     closeTimer.current = null
   }
   const scheduleClose = () => {
     cancelClose()
-    closeTimer.current = setTimeout(() => setOpen(false), EXPLORE_CLOSE_DELAY_MS)
+    closeTimer.current = setTimeout(() => changeOpen(false), EXPLORE_CLOSE_DELAY_MS)
+  }
+  const changeOpen = (next: boolean) => {
+    if (!next) openedByHover.current = false
+    setOpen(next)
   }
   useEffect(() => cancelClose, [])
   if (items.length === 0) return null
@@ -99,6 +105,7 @@ function ExploreMenu({ items, collapsed }: { items: readonly PrimaryRailItem[]; 
   const hoverOpen = (event: React.PointerEvent) => {
     if (event.pointerType !== 'mouse') return
     cancelClose()
+    if (!open) openedByHover.current = true
     setOpen(true)
   }
   const hoverClose = (event: React.PointerEvent) => {
@@ -106,7 +113,7 @@ function ExploreMenu({ items, collapsed }: { items: readonly PrimaryRailItem[]; 
   }
   return (
     <SidebarMenuItem>
-      <Popover open={open} onOpenChange={setOpen}>
+      <Popover open={open} onOpenChange={changeOpen}>
         <PopoverTrigger asChild>
           <SidebarMenuButton
             size="lg"
@@ -116,6 +123,11 @@ function ExploreMenu({ items, collapsed }: { items: readonly PrimaryRailItem[]; 
             className={collapsed ? 'justify-center px-0' : undefined}
             onPointerEnter={hoverOpen}
             onPointerLeave={hoverClose}
+            onClick={(event) => {
+              if (!open || !openedByHover.current) return
+              openedByHover.current = false
+              event.preventDefault()
+            }}
           >
             {activeItem ? <activeItem.icon aria-hidden /> : <Ellipsis aria-hidden />}
             {collapsed ? null : (
@@ -138,7 +150,7 @@ function ExploreMenu({ items, collapsed }: { items: readonly PrimaryRailItem[]; 
             {items.map((item) => (
               <NavRow
                 key={item.id}
-                item={{ ...item, onSelect: () => { setOpen(false); item.onSelect() } }}
+                item={{ ...item, onSelect: () => { changeOpen(false); item.onSelect() } }}
                 collapsed={false}
               />
             ))}
@@ -222,6 +234,8 @@ export interface UnifiedSidebarProps {
   scope: PanelScope
   solo: boolean
   account: ReactNode
+  /** Toggle collapse with Cmd/Ctrl+B. */
+  keyboardShortcut?: boolean
   children?: ReactNode
   className?: string
 }
@@ -243,6 +257,7 @@ export function UnifiedSidebar({
   scope,
   solo,
   account,
+  keyboardShortcut = false,
   children,
   className,
 }: UnifiedSidebarProps) {
@@ -251,6 +266,19 @@ export function UnifiedSidebar({
   const scopedNav = panelKind && panelKind !== 'settings' ? panelNav : undefined
   const rows = scopeChildren(scopedNav, scope, solo)
   const tabsPage = Boolean(panelKind && TAB_PANEL_KINDS.has(panelKind))
+
+  useEffect(() => {
+    if (!keyboardShortcut) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key.toLowerCase() !== 'b' || !(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey) return
+      const target = event.target as HTMLElement | null
+      if (target?.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])')) return
+      event.preventDefault()
+      onCollapsedChange(!collapsed)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [keyboardShortcut, collapsed, onCollapsedChange])
 
   useEffect(() => {
     if (!tabsPage || !scopedNav || rows.length === 0) {
