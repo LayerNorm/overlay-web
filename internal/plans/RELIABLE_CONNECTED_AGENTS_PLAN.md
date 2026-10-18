@@ -1,6 +1,6 @@
 # Reliable connected agents
 
-Status: Phases 1–5 are implemented. Native Claude Code and Codex functional recovery acceptance passes. Fresh-machine verification passes. Strict latency acceptance and the historical poll-500 evidence gap remain open. Keep the complete change in draft PR #247 until these gates and final release review are resolved.
+Status: Phases 1–5 are implemented. Native Claude Code and Codex functional recovery, fresh-machine verification and strict latency acceptance pass. The historical poll-500 search is closed inconclusively; its underlying cause remains unproven, so the original named-cause gate is unmet. Keep the complete change in draft PR #247 pending acceptance of that evidence gap and final release review.
 
 Related: [`DURABLE_REMOTE_AGENT_RUNS.md`](./DURABLE_REMOTE_AGENT_RUNS.md) (run lifecycle v2),
 [`internal/develop/bring-your-own-agents.md`](../develop/bring-your-own-agents.md),
@@ -13,7 +13,7 @@ smoke [`scripts/smoke/cloud-agent-long-horizon/`](../../scripts/smoke/cloud-agen
 - Account-backed model, effort and permission discovery, per-turn settings and resumable MCP approval delivery are implemented.
 - Scoped Drive synchronization, exact-revision hydration, immutable write receipts, conflict preservation and final-save settlement are implemented.
 - Managed lifecycle-v2 recovery preserves the native conversation, assistant, settings, file bytes and execution fences; interrupted rows and timers settle before continuation.
-- Hosted native recovery and completed-file verification pass for both supported providers. Keep fresh-machine, latency and historical-error limitations separate in the PR's QA record; detailed run evidence belongs there or in the private evidence store.
+- Hosted native recovery, completed-file verification and strict latency acceptance pass for both supported providers. Retain the earlier failed latency result and the inconclusive historical-error search in the PR's QA record; detailed run evidence belongs there or in the private evidence store.
 - Required CI and security checks pass on the tested candidate. Package publication, production image activation, matching backend deployment and production smoke follow final integration review; none is claimed complete here.
 
 ## Outcome
@@ -379,7 +379,7 @@ Every host release follows the existing lockstep publish (protocol, then host) a
 Run the Phase 0 smoke through Overlay preview with Claude Code on a subscription, and the same with Codex:
 
 - [x] Long task (≥ 30 min, ≥ 40 tool calls) completes; no rejected batches; stream visible throughout
-- [ ] Max visible lag between agent output and UI under 2 s at p95
+- [x] Max visible lag between agent output and UI under 2 s at p95
 - [x] Zero false stalls; a forced 3-minute tool shows "running" the whole time
 - [x] Stop mid-run keeps all text and tool rows
 - [x] Auto mode: zero prompts for ordinary work; risky actions still surface one card
