@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { AgentDriveDownloadCache } from './agent-drive-download-cache'
 import { AgentDriveManifestService } from './AgentDriveManifestService'
 import { AgentDriveMaterializer } from './AgentDriveMaterializer'
 import { AgentDriveStorageReader } from './AgentDriveStorageReader'
@@ -7,14 +8,14 @@ import { createAgentDriveTokens } from './agent-drive-token'
 import type { AgentDriveManifestRepository } from './AgentDriveManifestRepository'
 
 const secret = 'drive-manifest-test-secret-at-least-32-bytes'
-function fixture(now?: () => number) {
+function fixture(now?: () => number, downloads?: AgentDriveDownloadCache) {
   const tokens = createAgentDriveTokens({ secret, now })
   const token = tokens.mint({ actorUserId: 'u', agentId: 'a', environmentId: 'e', bindingId: 'b', runId: 'r', sessionId: 's', scope: { kind: 'personal', workspaceId: 'w', ownerUserId: 'u' } }, (now ?? Date.now)() + 300000)
   const rows = [
     { _id: 'folder', name: 'Research', userId: 'u', workspaceId: 'w', type: 'folder', createdAt: 1, updatedAt: 2 },
     { _id: 'note', parentId: 'folder', name: 'note.md', userId: 'u', workspaceId: 'w', type: 'file', kind: 'note', content: 'Exact full note 🙂', createdAt: 1, updatedAt: 2 },
   ]
-  let active = true; let reads = 0; let authorizeCount = 0
+  let active = true; let reads = 0; let authorizeCount = 0; let contentReads = 0
   const commits: unknown[] = []
   const repository: AgentDriveManifestRepository = {
     async metadata(requestId, operation) { commits.push({ requestId, operation }); return { fileId: 'note', updatedAt: 3 } },
@@ -30,10 +31,10 @@ function fixture(now?: () => number) {
   }
   const materializer = new AgentDriveMaterializer(new AgentDriveStorageReader({
     async objectSize() { throw Error('unexpected object') }, async readObject() { throw Error('unexpected object') }, async convexSource() { throw Error('unexpected blob') },
-    async inlineSource(source) { const row = rows.find(row => row._id === source.fileId); if (!row || row.updatedAt !== source.updatedAt) throw Error('DRIVE_SOURCE_CHANGED'); return row.content ?? '' },
+    async inlineSource(source) { contentReads++; const row = rows.find(row => row._id === source.fileId); if (!row || row.updatedAt !== source.updatedAt) throw Error('DRIVE_SOURCE_CHANGED'); return row.content ?? '' },
   }))
-  const service = new AgentDriveManifestService({ secret, verifyToken: token => tokens.verify(token), repository: () => repository, materializer: () => materializer })
-  return { service, token, rows, commits, repository, materializer, revoke() { active = false }, get reads() { return reads }, get authorizeCount() { return authorizeCount }, tokens }
+  const service = new AgentDriveManifestService({downloads, secret, verifyToken: token => tokens.verify(token), repository: () => repository, materializer: () => materializer })
+  return { service, token, rows, commits, repository, materializer, revoke() { active = false }, get reads() { return reads }, get contentReads() { return contentReads }, get authorizeCount() { return authorizeCount }, tokens }
 }
 
 test('paged manifest preserves hierarchy without retaining inline text and its download round-trips exact bytes', async () => {
@@ -156,4 +157,22 @@ test('metadata grants include folders but exclude unhydrated file entries', asyn
   const entries = (await f.service.manifest(f.token)).entries
   assert.equal(entries[0]?.metadataMac?.length, 43)
   assert.equal(entries[1]?.metadataMac, undefined)
+})
+
+
+test('cached ranges still recheck current authority, revision and source before reuse', async () => {
+  const f = fixture(undefined, new AgentDriveDownloadCache())
+  const item = (await f.service.manifest(f.token)).entries.find(entry => entry.fileId === 'note')!
+  const {downloadMac, ...entry} = item
+  assert.ok(downloadMac)
+  const first = await f.service.download(f.token, {entry, downloadMac})
+  const before = f.authorizeCount, contentReads = f.contentReads
+  assert.deepEqual(await f.service.download(f.token, {entry, downloadMac}), first)
+  assert.ok(f.authorizeCount > before)
+  assert.equal(f.contentReads, contentReads, 'Verified bytes are reused across range requests')
+  f.rows[1]!.updatedAt = 3
+  await assert.rejects(f.service.download(f.token, {entry, downloadMac}), /DRIVE_SOURCE_CHANGED|DRIVE_FILE_UNAVAILABLE/)
+  f.rows[1]!.updatedAt = 2
+  f.revoke()
+  await assert.rejects(f.service.download(f.token, {entry, downloadMac}), /DRIVE_RUN_UNAVAILABLE/)
 })

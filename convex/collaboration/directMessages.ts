@@ -121,7 +121,7 @@ async function canAccess(
   }
 }
 
-async function requireConversationAccess(
+export async function requireConversationAccess(
   ctx: CollaborationCtx,
   args: {
     actorUserId: string

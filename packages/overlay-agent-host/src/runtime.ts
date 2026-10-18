@@ -1,3 +1,4 @@
+import { AdapterStartError } from './adapter.js'
 import { createHash, randomUUID } from 'node:crypto'
 import { homedir } from 'node:os'
 import { setTimeout as wait } from 'node:timers/promises'
@@ -382,7 +383,8 @@ export class AgentHostRuntime {
     // Bind callbacks before adapter code can emit, including during old-session teardown.
     const execution = this.executions.get(command.runId)
     const emit = this.createStream(command.runId, execution, drive, canonicalOffset)
-    const session = await adapter.start({
+    let session: AgentAdapterSession
+    try { session = await adapter.start({
       onNativeTurnEnded: createNativeTerminalIntent({execution, currentExecution: () => this.executions.get(command.runId),
         shuttingDown: () => this.shuttingDown, markEnded: () => {this.terminalRuns.add(command.runId)}}),
       runId: command.runId,
@@ -394,7 +396,15 @@ export class AgentHostRuntime {
       ...(credentials ? { credentials } : {}),
       adapterState: this.options.state.getAdapterSessionState(command.runId, command.payload.adapterId),
       persistAdapterState: (state) => this.options.state.saveAdapterSessionState(command.runId, command.payload.adapterId, state),
-    }, emit)
+    }, emit) } catch (error) {
+      if (error instanceof AdapterStartError && error.termination === 'confirmed') {
+        await this.drives.get(command.runId)?.closeAfterStopped()
+        this.drives.delete(command.runId)
+        this.streams.get(command.runId)?.stop()
+        this.streams.delete(command.runId)
+      } else this.drives.get(command.runId)?.retainUncertainStartup()
+      throw error
+    }
     this.sessions.set(command.runId, session)
     this.scheduleCapabilityRefresh()
     this.options.state.saveSession({ runId: command.runId, adapterId: command.payload.adapterId, remoteSessionId: session.remoteSessionId, workingDirectory: scope.workingDirectory,
@@ -482,14 +492,17 @@ export class AgentHostRuntime {
       onError: error => this.logger.warn('run heartbeat deferred', { runId, error: safeError(error) }),
     })
     this.streams.set(runId, stream)
-    let forward: EmitAgentEvent = stream.emit
-    if (drive) {
-      const controller = new RuntimeDriveController(drive, stream.emit, this.options.drive?.syncIntervalMs)
-      this.drives.set(runId, controller)
-      forward = controller.emit
-    }
-    return withNativeTerminalBoundary({forward, execution, currentExecution: () => this.executions.get(runId),
-      shuttingDown: () => this.shuttingDown, markEnded: () => {this.terminalRuns.add(runId)}})
+    const forward = withNativeTerminalBoundary({forward: stream.emit, execution,
+      currentExecution: () => this.executions.get(runId), shuttingDown: () => this.shuttingDown,
+      markEnded: () => {this.terminalRuns.add(runId)}})
+    if (!drive) return forward
+    const controller = new RuntimeDriveController(drive, forward, async () => {
+      const session = this.sessions.get(runId)
+      if (!session) throw Error('Native startup termination is unconfirmed')
+      await session.stop('Confirming failed native writer termination')
+    }, this.options.drive?.syncIntervalMs)
+    this.drives.set(runId, controller)
+    return controller.emit
   }
 
   /**

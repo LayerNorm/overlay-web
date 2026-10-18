@@ -7,6 +7,7 @@ import type { Doc } from '../_generated/dataModel'
 import type { QueryCtx } from '../_generated/server'
 import { requireAccessToken, validateServerSecret } from '../lib/auth'
 import { recordConversationEvent } from '../collaboration/events'
+import { requireConversationAccess } from '../collaboration/directMessages'
 import { conversationListVersion } from '../lib/conversationListVersion'
 import { deleteChunksForSource } from '../knowledge/knowledge'
 
@@ -1007,8 +1008,13 @@ export const getLatestAgentRun = query({
   handler: async (ctx, args) => {
     if (!validateServerSecret(args.serverSecret)) throw new Error('Unauthorized')
     const conversation = await ctx.db.get(args.conversationId)
-    if (!conversation || conversation.userId !== args.userId || conversation.deletedAt) {
-      throw new Error('Unauthorized')
+    if (!conversation || conversation.deletedAt) throw new Error('Unauthorized')
+    if ((conversation.conversationType ?? 'personal') === 'personal') {
+      if (conversation.userId !== args.userId) throw new Error('Unauthorized')
+    } else {
+      if (!conversation.workspaceId) throw new Error('Unauthorized')
+      await requireConversationAccess(ctx, {actorUserId: args.userId, conversationId: args.conversationId,
+        workspaceId: conversation.workspaceId, serverSecret: args.serverSecret})
     }
     if (args.remoteRunId) {
       const run = await ctx.db.query('conversationAgentRuns').withIndex('by_externalRunId', q => q.eq('externalRunId', args.remoteRunId)).unique()

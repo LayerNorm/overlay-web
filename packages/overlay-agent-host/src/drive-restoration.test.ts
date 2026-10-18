@@ -43,6 +43,7 @@ async function fixture(resolution: DriveRecoveryResult['resolution'], kind: 'con
   else journal.prepareMetadata(metadataRequest)
   const actions: string[] = []
   let failure = false, wrongExecution = false
+  let remoteChange: 'none' | 'edited' | 'deleted' = 'none'
   const client = new AgentDriveClient({apiUrl: 'https://preview.invalid/api/agent-drive',
     credentials: async (): Promise<DriveCredentialsResponse> => ({protocolVersion: 1, scope, expiresAt: Date.now() + 60000,
       token: `ovdrive_${'x'.repeat(32)}.${'y'.repeat(43)}`}),
@@ -54,13 +55,15 @@ async function fixture(resolution: DriveRecoveryResult['resolution'], kind: 'con
         previousExecution: wrongExecution ? {attemptId: 'foreign', generation: 1} : previousExecution, resolution})
       assert.equal(body.action, 'manifest', 'Recovery cannot replay an upload, commit or metadata write')
       const visible = kind === 'content' ? entry : {fileId: 'folder', path: 'new-folder', updatedAt: 2, kind: 'folder', metadataMac: 'a'.repeat(43)}
-      return new Response([{type: 'manifest', version: 1}, {type: 'entry', entry: visible}, {type: 'complete', entries: 1}]
+      const entries = remoteChange === 'deleted' ? [] : [remoteChange === 'edited' ? {...visible, updatedAt: 3} : visible]
+      return new Response([{type: 'manifest', version: 1}, ...entries.map(entry => ({type: 'entry', entry})), {type: 'complete', entries: entries.length}]
         .map(frame => JSON.stringify(frame) + '\n').join(''))
     }})
   const settle = (interrupt = false) => settleInterruptedDrive({previousExecution, journal, state, client,
     synchronizer: interrupt ? {settlePreviousWrite: async () => {throw Error('simulated crash after outcome')}}
       : new AgentDriveSynchronizer({runId: 'run', cache, client, journal, state})})
   return {directory, journalPath, state, cache, client, actions, settle,
+    changeRemote: (change: typeof remoteChange) => {remoteChange = change},
     get journal() {return journal}, fail: () => {failure = true}, mismatch: () => {wrongExecution = true},
     reopen: () => {journal.close(); journal = new SqliteDriveJournal(journalPath, context)},
     clean: async () => {journal.close(); state.close(); await rm(directory, {recursive: true, force: true})}}
@@ -168,6 +171,28 @@ test('metadata receipt and definitive noncommit both converge after interruption
       } else {
         assert.equal(f.journal.find(metadataRequest.requestId)?.kind, 'metadata')
         assert.throws(() => f.journal.advanceMetadata(metadataRequest.requestId), /REQUEST_FENCED/)
+      }
+    } finally {await f.clean()}
+  }
+})
+
+
+test('later remote edits and deletion cannot trap acknowledged content or metadata in writing', async () => {
+  for (const kind of ['content', 'metadata'] as const) for (const change of ['edited', 'deleted'] as const) {
+    const resolution: DriveRecoveryResult['resolution'] = kind === 'content'
+      ? {state: 'content_committed', uploadId, result}
+      : {state: 'metadata_committed', result: {fileId: 'folder', updatedAt: 2}}
+    const f = await fixture(resolution, kind)
+    try {
+      f.changeRemote(change)
+      if (kind === 'content') await writeFile(join(f.cache.root, 'report.md'), 'Keep my later local edit')
+      await f.settle()
+      assert.equal(f.state.read().phase, 'idle')
+      assert.equal(f.journal.pending().length, 0)
+      if (kind === 'content') {
+        assert.equal(await readFile(join(f.cache.root, 'report.md'), 'utf8'), 'Keep my later local edit')
+        assert.equal(f.state.read().baseline.some(row => row.local?.path === 'report.md'), false,
+          'Later local edits must create a separate file, never adopt the newer remote revision')
       }
     } finally {await f.clean()}
   }

@@ -1643,3 +1643,25 @@ Cloud drive preparation may add only `/home/user/drive` to an existing approved,
 environment and audits that scope change. Local/VPS grants never expand automatically; these
 bindings must explicitly opt in. Start metadata selects the cache location and internal remote
 session id; token issuance derives workspace, owner and permissions from the persisted binding.
+
+
+### Drive failure settlement and bounded reads
+
+A committed write receipt is settled independently of later remote edits or deletion.
+Unchanged acknowledged local bytes can yield to the current remote revision; later
+local edits remain a separate create, preserving newer remote content. Startup
+rejection releases the prepared Drive only when the adapter reports confirmed native
+termination. Unknown startup ownership remains fenced, including through shutdown.
+A failed turn must confirm native stop before final saving or releasing its lease.
+
+Hydration inventories the cache once and validates only the affected path around each
+write. Download ranges reuse a verified byte copy for at most 30 seconds, bounded to
+32 MiB and 64 entries including in-flight reads. Every range still verifies its
+credential, current Files revision/source, scope and live authorization before return;
+cache keys bind the exact execution grant and signed content identity. Cache pressure
+returns a retryable unavailable response rather than exceeding the bound.
+
+Long-horizon provider smoke defaults come from `infra/agent-image/versions.json`;
+`--adapter-version` is an explicit override for investigating a different candidate.
+Shared room run-status reads require active workspace membership and conversation
+participation; personal conversations remain owner-only.

@@ -20,6 +20,7 @@
  *   R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME
  */
 import { createHash } from 'node:crypto'
+import { z } from 'zod'
 import { Resolver } from 'node:dns/promises'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
@@ -59,7 +60,8 @@ const HOME = '/home/user'
 const DRIVE = `${HOME}/drive`
 const OVERLAY = `${HOME}/.overlay-smoke`
 const ACP_PREFIX = `${OVERLAY}/acp`
-const ADAPTER_VERSION = option('adapter-version', '0.91.0')!
+const imageVersions = z.object({packages: z.record(z.string())}).parse(JSON.parse(readFileSync(join(here, '../../../infra/agent-image/versions.json'), 'utf8')))
+const ADAPTER_VERSION = option('adapter-version', imageVersions.packages['@agentclientprotocol/claude-agent-acp'])!
 const ADAPTER_BIN = `${ACP_PREFIX}/node_modules/.bin/claude-agent-acp`
 const MODEL = option('model', 'claude-haiku-5-5')!
 const MODE = option('mode', 'bypassPermissions')!

@@ -2030,7 +2030,7 @@ test('explicit remote-run readback is restricted to the authorized conversation'
   const args = { serverSecret: secret, conversationId: seeded.conversationId, userId: actorUserId, remoteRunId: 'run-remote-turn' }
   expect(await convex.query(ref, args)).toEqual(expect.objectContaining({ externalRunId: 'run-remote-turn' }))
   expect(await convex.query(ref, { ...args, remoteRunId: 'foreign-run' })).toBeNull()
-  await expect(convex.query(ref, { ...args, userId: 'another-person' })).rejects.toThrow(/Unauthorized/)
+  await expect(convex.query(ref, { ...args, userId: 'another-person' })).rejects.toThrow('WORKSPACE_ACCESS_DENIED')
 })
 
 test('megabyte delta output stays lossless across storage, authorized reads, Stop and hard deletion with fewer message writes', async () => {

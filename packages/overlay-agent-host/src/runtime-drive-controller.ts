@@ -7,12 +7,14 @@ export class RuntimeDriveController {
   private readonly timer: ReturnType<typeof setInterval>
   private syncing?: Promise<void>
   private finishing = false
+  private uncertainStartup = false
   private closed = false
   private closing?: Promise<void>
   private lastSummary = '[]'
   private lastError = false
 
-  constructor(private readonly drive: RuntimeDrive, private readonly forward: EmitAgentEvent, intervalMs = 15000) {
+  constructor(private readonly drive: RuntimeDrive, private readonly forward: EmitAgentEvent,
+    private readonly confirmFailureStopped: () => Promise<void>, intervalMs = 15000) {
     this.timer = setInterval(() => { this.schedule() }, intervalMs)
     this.timer.unref?.()
   }
@@ -32,7 +34,10 @@ export class RuntimeDriveController {
 
   stopScheduling(): void { clearInterval(this.timer) }
 
+  retainUncertainStartup(): void { this.uncertainStartup = true; this.finishing = true; this.stopScheduling() }
+
   closeAfterStopped(): Promise<void> {
+    if (this.uncertainStartup) return Promise.reject(Error('Native startup termination is unconfirmed'))
     if (this.closing) return this.closing
     this.finishing = true
     this.stopScheduling()
@@ -54,6 +59,14 @@ export class RuntimeDriveController {
   }
 
   private async finish(event: NormalizedAgentEvent): Promise<void> {
+    if (event.type === 'failed') {
+      try { await this.confirmFailureStopped() }
+      catch {
+        await this.unsaved()
+        await this.forward({type: 'process_observation', payload: {process: 'unknown', recoveryOutcome: 'unavailable'}})
+        return
+      }
+    }
     try {
       if (event.type === 'cancelled') {
         // Cancellation revokes write authority. Preserve the pending journal and confirm

@@ -1,4 +1,6 @@
 import 'server-only'
+import { AgentDriveDownloadCache } from './agent-drive-download-cache'
+
 
 import { getOverlayRuntimeConfigSync } from '@/server/config'
 import { createAgentDriveTokens } from './agent-drive-token'
@@ -6,6 +8,8 @@ import { createAgentDriveManifestRepository } from './AgentDriveManifestReposito
 import { AgentDriveManifestService } from './AgentDriveManifestService'
 import { AgentDriveMaterializer } from './AgentDriveMaterializer'
 import { createAgentDriveStorageReader } from './AgentDriveStorageReader'
+
+const verifiedDownloads = new AgentDriveDownloadCache()
 
 export function connectedAgentDriveEnabled(): boolean {
   const features = getOverlayRuntimeConfigSync().features
@@ -18,7 +22,7 @@ export function createAgentDriveService(): AgentDriveManifestService {
     || process.env.INTERNAL_API_SECRET?.trim() || ''
   const tokens = createAgentDriveTokens({ secret })
   return new AgentDriveManifestService({
-    secret, verifyToken: token => tokens.verify(token), repository: createAgentDriveManifestRepository,
+    secret, downloads: verifiedDownloads, verifyToken: token => tokens.verify(token), repository: createAgentDriveManifestRepository,
     materializer: claims => new AgentDriveMaterializer(createAgentDriveStorageReader(claims)),
   })
 }

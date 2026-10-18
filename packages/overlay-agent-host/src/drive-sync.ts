@@ -123,9 +123,10 @@ export class AgentDriveSynchronizer {
 
   private async hydrateManifest() {
     const manifest = await this.options.client.manifest()
+    const inventory = new Map((await this.options.cache.inventory()).map(item => [item.path, item]))
     for (const entry of manifest.sort((a, b) => depth(a.path) - depth(b.path))) {
       const state = this.options.state.read(), row = state.baseline.find(row => row.entry.fileId === entry.fileId)
-      const local = (await this.options.cache.inventory()).find(item => item.path === entry.path)
+      const local = inventory.get(entry.path)
       if (entry.kind === 'file' && entry.hydration === 'deferred') {
         if (row?.local) throw Error('DRIVE_DEFERRED_LOCAL_CHANGES')
         this.replaceBaseline({ entry, local: null }); continue
@@ -180,7 +181,7 @@ export class AgentDriveSynchronizer {
         if (!file || file.kind !== 'file') throw Error('DRIVE_FILE_CHANGED')
         await this.writer.content(operation.request, file.bytes)
       } else await this.writer.metadata(operation.request)
-      await this.applyWrite(operation)
+      if (await this.applyWrite(operation)) inventory = await this.options.cache.inventory()
     }
   }
 
@@ -264,7 +265,7 @@ export class AgentDriveSynchronizer {
     await this.applyWrite(state.operation)
   }
 
-  private async applyWrite(operation: DriveSyncOperation): Promise<void> {
+  private async applyWrite(operation: DriveSyncOperation): Promise<boolean> {
     const record = this.options.journal.find(operation.request.requestId)
     if (!record || record.phase.kind !== 'committed') throw Error('DRIVE_WRITE_UNSAVED')
     const state = this.options.state.read()
@@ -274,9 +275,9 @@ export class AgentDriveSynchronizer {
     let baseline = [...state.baseline]
     const saved = new Map(state.turn.saved.map(item => [item.fileId, item]))
     if (operation.kind === 'content' && record.kind === 'content' && record.phase.kind === 'committed')
-      baseline = this.applyContentEffect(operation, record.phase.result, manifest, baseline, saved)
+      baseline = await this.applyContentEffect(operation, record.phase.result, manifest, baseline, saved)
     else if (operation.kind === 'metadata' && record.kind === 'metadata' && record.phase.kind === 'committed')
-      baseline = this.applyMetadataEffect(operation, record.phase.result, manifest, baseline, saved)
+      baseline = await this.applyMetadataEffect(operation, record.phase.result, manifest, baseline, saved)
     else throw Error('DRIVE_JOURNAL_REQUEST_CONFLICT')
     for (const fileId of saved.keys()) {
       const current = manifest.find(entry => entry.fileId === fileId)
@@ -285,13 +286,26 @@ export class AgentDriveSynchronizer {
     this.options.state.write({ phase: 'idle', initialized: state.initialized, baseline,
       turn: { runId: this.options.runId, saved: [...saved.values()] } })
     this.options.journal.forgetCompleted(operation.request.requestId)
+    const committedResult = record.phase.result
+    const current = manifest.find(entry => entry.fileId === committedResult.fileId)
+    return operation.kind === 'metadata' && operation.request.operation.kind === 'remove'
+      ? Boolean(current) : current?.updatedAt !== committedResult.updatedAt
   }
 
-  private applyContentEffect(operation: Extract<DriveSyncOperation, { kind: 'content' }>, result: DriveContentResult,
-    manifest: DriveManifestEntry[], baseline: DriveBaseline[], saved: Map<string, DriveSavedEntry>): DriveBaseline[] {
+  private async applyContentEffect(operation: Extract<DriveSyncOperation, { kind: 'content' }>, result: DriveContentResult,
+    manifest: DriveManifestEntry[], baseline: DriveBaseline[], saved: Map<string, DriveSavedEntry>): Promise<DriveBaseline[]> {
     const entry = manifest.find(item => item.fileId === result.fileId)
     if (!entry || entry.kind !== 'file' || entry.hydration !== 'ready' || entry.updatedAt !== result.updatedAt
-      || entry.sha256 !== result.sha256 || entry.sizeBytes !== result.sizeBytes) throw Error('DRIVE_COMMITTED_VERSION_CHANGED')
+      || entry.sha256 !== result.sha256 || entry.sizeBytes !== result.sizeBytes) {
+      await this.removeCommittedLocal(operation.target, result.sha256)
+      baseline = baseline.map(row => row.entry.fileId === operation.priorFileId ? {...row, local: null} : row)
+        .filter(row => row.entry.fileId !== result.fileId)
+      if (entry) {
+        baseline.push({entry, local: null})
+        saved.set(entry.fileId, {fileId: entry.fileId, path: entry.path, kind: entry.kind})
+      } else saved.delete(result.fileId)
+      return baseline
+    }
     baseline = baseline.map(row => row.entry.fileId === operation.priorFileId ? { ...row, local: null } : row)
       .filter(row => row.entry.fileId !== result.fileId)
     baseline.push({ entry, local: operation.target })
@@ -300,25 +314,31 @@ export class AgentDriveSynchronizer {
     return baseline
   }
 
-  private applyMetadataEffect(operation: Extract<DriveSyncOperation, { kind: 'metadata' }>, result: DriveMetadataResult,
-    manifest: DriveManifestEntry[], baseline: DriveBaseline[], saved: Map<string, DriveSavedEntry>): DriveBaseline[] {
+  private async applyMetadataEffect(operation: Extract<DriveSyncOperation, { kind: 'metadata' }>, result: DriveMetadataResult,
+    manifest: DriveManifestEntry[], baseline: DriveBaseline[], saved: Map<string, DriveSavedEntry>): Promise<DriveBaseline[]> {
     const op = operation.request.operation
     if (op.kind === 'remove') {
-      if (manifest.some(entry => entry.fileId === result.fileId)) throw Error('DRIVE_DELETE_CONFLICT')
       baseline = baseline.filter(row => row.entry.fileId !== result.fileId)
       saved.delete(result.fileId)
     } else {
       const entry = manifest.find(item => item.fileId === result.fileId)
-      if (!entry || entry.updatedAt !== result.updatedAt) throw Error('DRIVE_COMMITTED_VERSION_CHANGED')
       const previous = baseline.find(row => row.entry.fileId === result.fileId)
+      if (!entry || entry.updatedAt !== result.updatedAt && entry.kind !== 'folder') {
+        if (previous?.entry.kind === 'file' && previous.entry.hydration === 'ready')
+          await this.removeCommittedLocal(operation.target, previous.entry.sha256)
+        baseline = baseline.filter(row => row.entry.fileId !== result.fileId)
+        if (entry) baseline.push({entry, local: null})
+        if (entry) saved.set(entry.fileId, {fileId: entry.fileId, path: entry.path, kind: entry.kind})
+        else saved.delete(result.fileId)
+        return baseline
+      }
       baseline = baseline.filter(row => row.entry.fileId !== result.fileId)
       if (previous?.entry.kind === 'folder' && previous.local) {
         const oldPath = previous.local.path
         baseline = baseline.map(row => {
           if (!row.local?.path.startsWith(`${oldPath}/`)) return row
           const fresh = manifest.find(item => item.fileId === row.entry.fileId)
-          if (!fresh || !sameVersion(fresh, row.entry)) throw Error('DRIVE_CHILD_VERSION_CHANGED')
-          return { entry: fresh, local: { ...row.local, path: operation.target.path + row.local.path.slice(oldPath.length) } }
+          return { entry: fresh && sameVersion(fresh, row.entry) ? fresh : row.entry, local: { ...row.local, path: operation.target.path + row.local.path.slice(oldPath.length) } }
         })
       }
       baseline.push({ entry, local: operation.target })
@@ -327,10 +347,18 @@ export class AgentDriveSynchronizer {
     return baseline
   }
 
+  /** A confirmed receipt is history. Discard only its exact unchanged local bytes;
+   * later local edits/renames remain untracked and are saved as a separate create. */
+  private async removeCommittedLocal(target: DriveLocalReference, sha256: string) {
+    const current = await this.options.cache.entry(target.path)
+    if (current?.kind === 'file' && sameIdentity(current.identity, target.identity) && current.sha256 === sha256)
+      await this.options.cache.removeUnchanged(current)
+  }
+
   private async hydrate(entry: DriveManifestEntry, path: string, prior: DriveLocalReference | null): Promise<void> {
     if (entry.kind === 'file' && entry.hydration === 'deferred') {
       const row = this.options.state.read().baseline.find(row => row.entry.fileId === entry.fileId)
-      const local = (await this.options.cache.inventory()).find(item => item.path === path)
+      const local = await this.options.cache.entry(path)
       if (local && (!row || !sameContent(local, row.entry))) throw Error('DRIVE_DEFERRED_LOCAL_CHANGES')
       if (local) await this.options.cache.removeUnchanged(local)
       this.replaceBaseline({ entry, local: null }); return
@@ -342,7 +370,7 @@ export class AgentDriveSynchronizer {
   }
 
   private async finishHydration(entry: DriveManifestEntry, path: string, prior: DriveLocalReference | null): Promise<void> {
-    let item = (await this.options.cache.inventory()).find(item => item.path === path)
+    let item = await this.options.cache.entry(path)
     if (!sameContent(item, entry)) {
       const previous = this.options.state.read().baseline.find(row => row.entry.fileId === entry.fileId)
       if (item && (!prior || !sameIdentity(item.identity, prior.identity) || !previous || !sameContent(item, previous.entry))) throw Error('DRIVE_LOCAL_PATH_CONFLICT')
@@ -350,11 +378,11 @@ export class AgentDriveSynchronizer {
       else if (entry.hydration === 'ready') {
         const downloaded = await this.downloadHydration(entry)
         entry = downloaded.entry
-        const current = (await this.options.cache.inventory()).find(item => item.path === path)
+        const current = await this.options.cache.entry(path)
         if (item && !current || current && (!item || !previous || !sameIdentity(current.identity, item.identity) || !sameContent(current, previous.entry))) throw Error('DRIVE_LOCAL_PATH_CONFLICT')
         await this.options.cache.hydrate(path, downloaded.bytes, entry.sha256)
       } else throw Error('DRIVE_DEFERRED_LOCAL_CHANGES')
-      item = (await this.options.cache.inventory()).find(item => item.path === path)
+      item = await this.options.cache.entry(path)
     }
     if (!item || !sameContent(item, entry)) throw Error('DRIVE_HYDRATION_UNCONFIRMED')
     const state = this.options.state.read()

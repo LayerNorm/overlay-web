@@ -166,3 +166,36 @@ for (const race of ['unavailable', 'local-write'] as const) test(`hydration pres
     }
   } finally {await f.clean()}
 })
+
+test('warm hydration does not inventory the entire cache once per unchanged entry', async t => {
+  const {AgentDriveCache} = await import('./drive-cache.js')
+  const original = AgentDriveCache.prototype.inventory
+  let inventories = 0
+  t.mock.method(AgentDriveCache.prototype, 'inventory', function (this: InstanceType<typeof AgentDriveCache>) {
+    inventories++
+    return original.call(this)
+  })
+  const directory = await mkdtemp(join(tmpdir(), 'drive-inventory-budget-'))
+  const project = join(directory, 'project')
+  await mkdir(project)
+  const entries = Array.from({length: 40}, (_, index) => ({fileId: `folder-${index}`, path: `folder-${index}`,
+    updatedAt: 1, kind: 'folder', metadataMac: 'a'.repeat(43)}))
+  const start = () => createRuntimeDrive({environmentId: 'environment', workspaceId: 'workspace', runId: 'run', sessionId: 'session',
+    location: 'approved-root', approvedWorkingDirectory: project, filesystem: {mode: 'selected_roots', roots: [project]},
+    stateDirectory: join(directory, 'private'), apiUrl: 'https://preview.invalid/api/agent-drive',
+    credentials: async () => ({protocolVersion: 1, scope: {kind: 'personal', workspaceId: 'workspace', ownerUserId: 'owner'},
+      expiresAt: Date.now() + 3600000, token: `ovdrive_${'x'.repeat(32)}.${'y'.repeat(43)}`}),
+    fetch: async (_url, init) => {
+      assert.equal(JSON.parse(String(init?.body)).action, 'manifest')
+      return new Response([{type: 'manifest', version: 1}, ...entries.map(entry => ({type: 'entry', entry})),
+        {type: 'complete', entries: entries.length}].map(frame => JSON.stringify(frame) + '\n').join(''))
+    }})
+  try {
+    const fresh = await start()
+    await fresh.close()
+    inventories = 0
+    const warm = await start()
+    try {assert.ok(inventories < 10, `Expected bounded inventories, observed ${inventories}`)}
+    finally {await warm.close()}
+  } finally {await rm(directory, {recursive: true, force: true})}
+})

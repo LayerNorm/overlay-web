@@ -121,8 +121,8 @@ export class AgentDriveCache {
     await this.requireIdentity(absolute, entry.identity)
     if (entry.kind === 'folder') await rmdir(absolute)
     else {
-      const current = (await this.snapshot()).find(file => file.path === entry.path)
-      if (!current || current.sha256 !== entry.sha256) throw Error('DRIVE_FILE_CHANGED')
+      const current = await this.entry(entry.path)
+      if (current?.kind !== 'file' || current.sha256 !== entry.sha256) throw Error('DRIVE_FILE_CHANGED')
       await unlink(absolute)
     }
   }
@@ -131,6 +131,44 @@ export class AgentDriveCache {
     const stat = await lstat(path, { bigint: true })
     if (stat.isSymbolicLink() || String(stat.dev) !== identity.device || String(stat.ino) !== identity.inode
       || String(stat.birthtimeNs) !== identity.birthtimeNs) throw Error('DRIVE_FILE_CHANGED')
+  }
+
+  /** Same stable, no-follow validation as a full inventory, restricted to one path. */
+  async entry(path: string): Promise<DriveCacheEntry | undefined> {
+    try { return await this.readEntry(path) }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined
+      throw error
+    }
+  }
+
+  private async readEntry(path: string): Promise<DriveCacheEntry> {
+    const absolute = await this.checkedPath(path, false)
+    const stat = await lstat(absolute, { bigint: true })
+    if (stat.isSymbolicLink()) throw Error('DRIVE_UNSAFE_PATH')
+    const identity = { device: String(stat.dev), inode: String(stat.ino), birthtimeNs: String(stat.birthtimeNs) }
+    if (stat.isDirectory()) return {kind: 'folder', path, identity}
+    if (!stat.isFile()) throw Error('DRIVE_SPECIAL_FILE')
+    if (stat.nlink !== BigInt(1)) throw Error('DRIVE_HARD_LINK')
+    if (stat.size > BigInt(this.limits.fileBytes)) throw Error('DRIVE_FILE_TOO_LARGE')
+    const handle = await open(absolute, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0))
+    try {
+      const before = await handle.stat({ bigint: true })
+      if (!before.isFile() || before.nlink !== BigInt(1) || before.size > BigInt(this.limits.fileBytes)) throw Error('DRIVE_FILE_CHANGED')
+      if (before.ino !== stat.ino || before.dev !== stat.dev) throw new DriveSnapshotChangedError('opened-file')
+      const bytes = new Uint8Array(Number(before.size))
+      let read = 0
+      while (read < bytes.length) {
+        const result = await handle.read(bytes, read, bytes.length - read, read)
+        if (!result.bytesRead) throw new DriveSnapshotChangedError('read-truncated')
+        read += result.bytesRead
+      }
+      const after = await handle.stat({ bigint: true })
+      if (!within(this.root, await realpath(absolute))) throw Error('DRIVE_FILE_CHANGED')
+      if (after.size !== before.size || after.mtimeNs !== before.mtimeNs || after.ctimeNs !== before.ctimeNs)
+        throw new DriveSnapshotChangedError('read-metadata')
+      return {kind: 'file', path, identity, size: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex'), bytes}
+    } finally { await handle.close() }
   }
 
   async snapshot(): Promise<DriveCacheFile[]> {
@@ -150,37 +188,15 @@ export class AgentDriveCache {
       for (const name of (await readdir(dirname(directory))).sort()) {
         const path = prefix ? `${prefix}/${name}` : name
         if (++entries > this.limits.entries) throw Error('DRIVE_TOO_MANY_ENTRIES')
-        const absolute = await this.checkedPath(path, false)
         // Reject case/normalization collisions so a fresh machine cannot overwrite one entry with another.
         const portable = portableDrivePathKey(path)
         if (names.has(portable)) throw Error('DRIVE_AMBIGUOUS_PATH')
         names.add(portable)
-        const stat = await lstat(absolute, { bigint: true })
-        if (stat.isSymbolicLink()) throw Error('DRIVE_UNSAFE_PATH')
-        const identity = { device: String(stat.dev), inode: String(stat.ino), birthtimeNs: String(stat.birthtimeNs) }
-        if (stat.isDirectory()) { files.push({ kind: 'folder', path, identity }); await visit(path); continue }
-        if (!stat.isFile()) throw Error('DRIVE_SPECIAL_FILE')
-        if (stat.nlink !== BigInt(1)) throw Error('DRIVE_HARD_LINK')
-        if (stat.size > BigInt(this.limits.fileBytes)) throw Error('DRIVE_FILE_TOO_LARGE')
-        const handle = await open(absolute, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0))
-        try {
-          const before = await handle.stat({ bigint: true })
-          if (!before.isFile() || before.nlink !== BigInt(1) || before.size > BigInt(this.limits.fileBytes)) throw Error('DRIVE_FILE_CHANGED')
-          if (before.ino !== stat.ino || before.dev !== stat.dev) throw new DriveSnapshotChangedError('opened-file')
-          if ((totalBytes += Number(before.size)) > this.limits.totalBytes) throw Error('DRIVE_CACHE_TOO_LARGE')
-          const bytes = new Uint8Array(Number(before.size))
-          let read = 0
-          while (read < bytes.length) {
-            const result = await handle.read(bytes, read, bytes.length - read, read)
-            if (!result.bytesRead) throw new DriveSnapshotChangedError('read-truncated')
-            read += result.bytesRead
-          }
-          const after = await handle.stat({ bigint: true })
-          if (!within(this.root, await realpath(absolute))) throw Error('DRIVE_FILE_CHANGED')
-          if (after.size !== before.size || after.mtimeNs !== before.mtimeNs || after.ctimeNs !== before.ctimeNs)
-            throw new DriveSnapshotChangedError('read-metadata')
-          files.push({ kind: 'file', path, identity, size: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex'), bytes })
-        } finally { await handle.close() }
+        const entry = await this.entry(path)
+        if (!entry) throw new DriveSnapshotChangedError('opened-file')
+        if (entry.kind === 'file' && (totalBytes += entry.size) > this.limits.totalBytes) throw Error('DRIVE_CACHE_TOO_LARGE')
+        files.push(entry)
+        if (entry.kind === 'folder') await visit(path)
       }
     }
     await visit('')

@@ -23,6 +23,14 @@ export type StartAdapterSessionInput = {
   credentials?: Record<string, string>
 }
 
+/** A rejected start may release prepared resources only with native termination proof. */
+export class AdapterStartError extends Error {
+  constructor(message: string, readonly termination: 'confirmed' | 'unknown', options?: ErrorOptions) {
+    super(message, options)
+    this.name = 'AdapterStartError'
+  }
+}
+
 export interface AgentAdapterSession {
   readonly remoteSessionId: string
   /** The adapter dispatched the first prompt while creating the remote session. */

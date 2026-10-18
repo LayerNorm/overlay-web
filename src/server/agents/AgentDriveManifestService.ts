@@ -1,6 +1,7 @@
 import 'server-only'
+import type { AgentDriveDownloadCache } from './agent-drive-download-cache'
 
-import { createHmac, timingSafeEqual } from 'node:crypto'
+import { createHash, createHmac, timingSafeEqual } from 'node:crypto'
 import { z } from 'zod'
 import { drivePathSegments } from '@layernorm/overlay-agent-bridge-protocol'
 import { buildAgentDriveCandidates } from '@/shared/agents/agent-drive-manifest'
@@ -22,6 +23,7 @@ export type AgentDriveHostManifestEntry = AgentDriveManifestEntry & { downloadMa
 export class AgentDriveManifestService {
   constructor(private readonly dependencies: {
     secret: string
+    downloads?: AgentDriveDownloadCache
     verifyToken(token: string | null): AgentDriveTokenClaims | null
     repository(claims: AgentDriveTokenClaims): AgentDriveManifestRepository
     materializer(claims: AgentDriveTokenClaims): AgentDriveMaterializer
@@ -73,7 +75,10 @@ export class AgentDriveManifestService {
     const [candidate] = buildAgentDriveCandidates({ rows: [{ ...row, parentId: undefined }], scope: claims.scope,
       viewer: { userId: claims.actorUserId, role: 'member' } })
     if (!candidate || candidate.fileId !== entry.fileId || candidate.updatedAt !== entry.updatedAt) throw Error('DRIVE_SOURCE_CHANGED')
-    const bytes = await this.dependencies.materializer(claims).read(candidate, entry)
+    const load = () => this.dependencies.materializer(claims).read(candidate, entry)
+    const key = createHash('sha256').update(expected).update(JSON.stringify(candidate.source)).digest('hex')
+    const bytes = this.dependencies.downloads
+      ? await this.dependencies.downloads.read(key, entry.sizeBytes, load) : await load()
     await repository.authorize()
     return bytes
   }

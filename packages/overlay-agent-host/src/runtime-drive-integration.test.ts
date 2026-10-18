@@ -325,3 +325,19 @@ test('an already aborted host does not discover capabilities, heartbeat or poll 
     assert.equal(f.runtime.canCloseState, true)
   } finally { await f.cleanup() }
 })
+
+test('confirmed startup rejection releases Drive; uncertain rejection retains fencing', async () => {
+  const {AdapterStartError} = await import('./adapter.js')
+  for (const termination of ['confirmed', 'unknown'] as const) {
+    const f = await fixture()
+    f.options.adapters[0]!.start = async () => {throw new AdapterStartError('Unsupported saved setting', termination)}
+    try {
+      await assert.rejects(f.runtime.processCommand(f.command), /Unsupported saved setting/)
+      assert.equal(f.closes(), termination === 'confirmed' ? 1 : 0)
+      const cleanup = f.runtime.processCommand({...f.command, commandId: 'cleanup', sequence: 2, type: 'shutdown', payload: {reason: 'cleanup'}})
+      if (termination === 'confirmed') await cleanup
+      else await assert.rejects(cleanup, /termination is unconfirmed/)
+      assert.equal(f.closes(), termination === 'confirmed' ? 1 : 0)
+    } finally {await f.cleanup()}
+  }
+})

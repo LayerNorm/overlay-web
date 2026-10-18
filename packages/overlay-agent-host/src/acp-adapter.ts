@@ -1,3 +1,4 @@
+import { AdapterStartError } from './adapter.js'
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { Readable, Writable } from 'node:stream'
@@ -255,7 +256,7 @@ export class AcpAgentAdapter implements AgentAdapter {
     } catch (error) {
       if (child?.pid) await terminateProcess()
       else closed.resolve()
-      throw error
+      throw new AdapterStartError(error instanceof Error ? error.message : 'ACP initialization failed', 'confirmed', {cause: error})
     } finally { if (startupTimer) clearTimeout(startupTimer) }
     const requireContext = () => activeContext ?? initialized.context
     return {

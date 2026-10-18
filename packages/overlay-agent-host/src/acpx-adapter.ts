@@ -1,3 +1,4 @@
+import { AdapterStartError } from './adapter.js'
 import { randomUUID } from 'node:crypto'
 import { rm } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -195,8 +196,8 @@ export class AcpxAgentAdapter implements AgentAdapter {
       try { await applySettings(target) }
       catch (error) {
         try { await runtime.close({handle: target, reason: 'overlay session configuration failed'}) }
-        catch (closeError) { throw new AggregateError([error, closeError], 'Agent configuration failed and process closure is unconfirmed') }
-        throw error
+        catch (closeError) { throw new AdapterStartError('Agent configuration failed and process closure is unconfirmed', 'unknown', {cause: new AggregateError([error, closeError])}) }
+        throw new AdapterStartError(error instanceof Error ? error.message : 'Agent configuration failed', 'confirmed', {cause: error})
       }
       return target
     }
