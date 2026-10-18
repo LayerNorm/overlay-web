@@ -1,6 +1,15 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type Dispatch,
+  type MutableRefObject,
+  type SetStateAction,
+} from 'react'
 import {
   cloneOrphanModelThreadsMap,
   cloneUiMessageThread,
@@ -23,6 +32,7 @@ import {
   getVideoModelsBySubMode,
 } from '@/shared/ai/gateway/model-data'
 import { normalizeChatModelSelection } from '@/shared/chat/chat-model-prefs'
+import { subscribeTourModelPicker } from '@/shared/onboarding/tour-model-picker'
 import { readableModelId } from './chat-runtime-helpers'
 import { safeSetLocalStorage, toggleModelSelection } from './model-selection-utils'
 import {
@@ -45,17 +55,42 @@ type GatewayModel = {
 }
 
 function useModelPickerState() {
-  const [showModelPicker, setShowModelPicker] = useState(false)
+  const [showModelPicker, setShowModelPickerState] = useState(false)
   const [showVideoSubModePicker, setShowVideoSubModePicker] = useState(false)
   const [hoveredModelId, setHoveredModelId] = useState<string | null>(null)
   const [modelQualitiesPos, setModelQualitiesPos] = useState<{ x: number; y: number } | null>(null)
   const modelPickerRef = useRef<HTMLDivElement>(null)
   const videoSubModePickerRef = useRef<HTMLDivElement>(null)
   const modelPickerListScrollRef = useRef<HTMLDivElement>(null)
+  const tourPickerWantedRef = useRef(false)
 
   useEffect(() => {
     if (showModelPicker) void import('@overlay/chat-react/model-qualities-panel')
   }, [showModelPicker])
+
+  // While the onboarding tour holds the picker open, closes are ignored — the
+  // tour's own Next click is an outside pointer-down on the popover and would
+  // otherwise dismiss it between steps.
+  const setShowModelPicker = useCallback<Dispatch<SetStateAction<boolean>>>(
+    (value) => {
+      setShowModelPickerState((prev) => {
+        const next = typeof value === 'function' ? value(prev) : value
+        return !next && tourPickerWantedRef.current ? prev : next
+      })
+    },
+    [],
+  )
+
+  // The onboarding tour keeps the picker open while its steps anchor to
+  // elements inside the open panel (e.g. the generation-mode toggle).
+  useEffect(
+    () =>
+      subscribeTourModelPicker((open) => {
+        tourPickerWantedRef.current = open
+        setShowModelPickerState(open)
+      }),
+    [],
+  )
 
   useEffect(() => {
     if (!showModelPicker) {
@@ -64,17 +99,6 @@ function useModelPickerState() {
       return
     }
   }, [showModelPicker])
-
-  useEffect(() => {
-    function openPicker() { setShowModelPicker(true) }
-    function closePicker() { setShowModelPicker(false) }
-    window.addEventListener('overlay:tour:open-model-picker', openPicker)
-    window.addEventListener('overlay:tour:close-model-picker', closePicker)
-    return () => {
-      window.removeEventListener('overlay:tour:open-model-picker', openPicker)
-      window.removeEventListener('overlay:tour:close-model-picker', closePicker)
-    }
-  }, [])
 
   useEffect(() => {
     if (!showVideoSubModePicker) return
