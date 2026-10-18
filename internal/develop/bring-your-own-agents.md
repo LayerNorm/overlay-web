@@ -1664,4 +1664,7 @@ returns a retryable unavailable response rather than exceeding the bound.
 Long-horizon provider smoke defaults come from `infra/agent-image/versions.json`;
 `--adapter-version` is an explicit override for investigating a different candidate.
 Shared room run-status reads require active workspace membership and conversation
-participation; personal conversations remain owner-only.
+participation; personal conversations remain owner-only. During web-first deployment,
+only the previous validator's explicit extra-`remoteRunId` rejection retries the legacy
+read with the same actor and conversation. Its result must match the requested run;
+authorization and unrelated errors never trigger a fallback.
