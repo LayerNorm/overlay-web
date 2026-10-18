@@ -104,3 +104,10 @@ test('tab pages keep their subviews out of the sidebar', () => {
   assert.doesNotMatch(html, /Board/)
   publishPageSubviews(null)
 })
+
+test('the phone drawer lists Explore pages as plain rows', () => {
+  const html = render({ inlineExplore: true })
+  assert.match(html, /href="\/app\/files"/)
+  assert.match(html, /href="\/app\/tools"/)
+  assert.doesNotMatch(html, /aria-label="Explore"/)
+})

@@ -256,6 +256,7 @@ export default function AppSidebar({
           <UnifiedSidebar
             brand={brandLink}
             collapsed={false}
+            inlineExplore
             onCollapsedChange={s.closeMobileDrawer}
             items={s.railItems.map((item) => ({ ...item, onSelect: () => { s.closeMobileDrawer(); item.onSelect() } }))}
             footerItems={s.railFooterItems?.map((item) => ({ ...item, onSelect: () => { s.closeMobileDrawer(); item.onSelect() } }))}

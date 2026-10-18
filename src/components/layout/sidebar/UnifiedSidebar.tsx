@@ -236,6 +236,8 @@ export interface UnifiedSidebarProps {
   account: ReactNode
   /** Toggle collapse with Cmd/Ctrl+B. */
   keyboardShortcut?: boolean
+  /** List Explore pages as plain rows (the phone drawer has no room for a side menu). */
+  inlineExplore?: boolean
   children?: ReactNode
   className?: string
 }
@@ -258,6 +260,7 @@ export function UnifiedSidebar({
   solo,
   account,
   keyboardShortcut = false,
+  inlineExplore = false,
   children,
   className,
 }: UnifiedSidebarProps) {
@@ -351,8 +354,8 @@ export function UnifiedSidebar({
       <SidebarContent>
         <SidebarGroup>
           <SidebarMenu>
-            {mainItems.map((item) => <NavRow key={item.id} item={item} collapsed={collapsed} />)}
-            <ExploreMenu items={exploreItems} collapsed={collapsed} />
+            {(inlineExplore ? items : mainItems).map((item) => <NavRow key={item.id} item={item} collapsed={collapsed} />)}
+            {inlineExplore ? null : <ExploreMenu items={exploreItems} collapsed={collapsed} />}
           </SidebarMenu>
         </SidebarGroup>
         {!collapsed && sectionRows ? <SidebarGroup className="mt-3">{sectionRows}</SidebarGroup> : null}
