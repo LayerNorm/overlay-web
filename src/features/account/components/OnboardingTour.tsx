@@ -7,12 +7,13 @@ import {
   useLayoutEffect,
   useState,
   useCallback,
+  type ComponentType,
   type CSSProperties,
 } from 'react'
-import Image from 'next/image'
 import { X, ArrowRight, Copy, Check, Plus, Loader2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { IntegrationsDialog } from '@/features/integrations/components/IntegrationsDialog'
+import { ONBOARDING_CONNECTOR_LOGOS } from '@/features/account/components/OnboardingConnectorLogos'
 import { Dialog, DialogContent } from '@overlay/ui'
 import { INTEGRATIONS_BC_CHANNEL, notifyIntegrationsChanged } from '@/shared/integrations/integrations-events'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
@@ -28,43 +29,43 @@ const ONBOARDING_CONNECTOR_CARDS: ReadonlyArray<{
   slug: string
   name: string
   description: string
-  logoSrc: string
+  Logo: ComponentType<{ className?: string }>
 }> = [
   {
     slug: 'googledrive',
     name: 'Google Drive',
     description: 'Search and manage Drive files',
-    logoSrc: '/assets/svg/integrations/googledrive.svg',
+    Logo: ONBOARDING_CONNECTOR_LOGOS.googledrive,
   },
   {
     slug: 'notion',
     name: 'Notion',
     description: 'Create pages and manage workspace',
-    logoSrc: '/assets/svg/integrations/notion.svg',
+    Logo: ONBOARDING_CONNECTOR_LOGOS.notion,
   },
   {
     slug: 'gmail',
     name: 'Gmail',
     description: 'Compose, send, and search emails',
-    logoSrc: '/assets/svg/integrations/gmail.svg',
+    Logo: ONBOARDING_CONNECTOR_LOGOS.gmail,
   },
   {
     slug: 'googlecalendar',
     name: 'Google Calendar',
     description: 'Read and create calendar events',
-    logoSrc: '/assets/svg/integrations/googlecalendar.svg',
+    Logo: ONBOARDING_CONNECTOR_LOGOS.googlecalendar,
   },
   {
     slug: 'outlook',
     name: 'Outlook',
     description: 'Send emails and manage calendar',
-    logoSrc: '/assets/svg/integrations/outlook.svg',
+    Logo: ONBOARDING_CONNECTOR_LOGOS.outlook,
   },
   {
     slug: 'googlesheets',
     name: 'Google Sheets',
     description: 'Read, update, and create spreadsheets',
-    logoSrc: '/assets/svg/integrations/googlesheets.svg',
+    Logo: ONBOARDING_CONNECTOR_LOGOS.googlesheets,
   },
 ]
 
@@ -73,25 +74,13 @@ const DIALOG_SECONDARY_CLASS =
 const DIALOG_PRIMARY_CLASS =
   'rounded-lg bg-(--foreground) px-4 py-1.5 text-sm font-medium text-(--background) transition-opacity hover:opacity-90 disabled:opacity-40'
 
-/** Self-hosted logos for popular integrations shown on the post-tour step. */
-function OnboardingConnectorCardLogo({
-  name,
-  logoSrc,
-}: {
-  name: string
-  logoSrc: string
+/** Inline so they render on the dialog's first paint. */
+function OnboardingConnectorCardLogo({ Logo }: {
+  Logo: ComponentType<{ className?: string }>
 }) {
   return (
     <span className="mb-2 flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-(--border) bg-(--surface-elevated)">
-      <Image
-        src={logoSrc}
-        alt={name}
-        width={28}
-        height={28}
-        unoptimized
-        loading="eager"
-        className="h-7 w-7 object-contain"
-      />
+      <Logo className="h-7 w-7" />
     </span>
   )
 }
@@ -583,8 +572,7 @@ function ConnectToolsStep({ onFinish }: { onFinish: () => void }) {
                   className="flex flex-col rounded-xl border border-(--border) bg-(--surface-muted) p-3 shadow-xs"
                 >
                   <OnboardingConnectorCardLogo
-                    name={c.name}
-                    logoSrc={c.logoSrc}
+                    Logo={c.Logo}
                   />
                   <p className="text-xs font-semibold text-(--foreground)">{c.name}</p>
                   <p className="mb-2.5 mt-0.5 line-clamp-3 flex-1 text-[10px] leading-snug text-(--muted)">
@@ -826,13 +814,6 @@ export function OnboardingTour({
   memoryEnabled = true,
   integrationsEnabled = true,
 }: Props) {
-  useEffect(() => {
-    for (const c of ONBOARDING_CONNECTOR_CARDS) {
-      const img = new window.Image()
-      img.src = c.logoSrc
-    }
-  }, [])
-
   const step = steps[currentStep]
   const { postTourPhase, beginPostTour, finishImportStep, finishPostTour } = usePostTourPhase({
     currentStep,
