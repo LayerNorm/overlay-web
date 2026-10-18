@@ -4,15 +4,13 @@ import { Suspense, type ReactNode } from 'react'
 import Link from 'next/link'
 import { AuthBoundary } from '@/contexts/AuthContext'
 import { LandingThemeProvider } from '@/contexts/LandingThemeContext'
-import { OverlayMark } from '@/components/orb/Orb'
-import { MARKETING_LOGO_SIZE } from '@/features/marketing/lib/marketingLayout'
+import { BrandLockup } from '@/components/brand/BrandLockup'
 import { AuthPageSkeleton } from '@/app/_components/RouteLoadingFallbacks'
 
 function AuthBrandMark({ className = '' }: { className?: string }) {
   return (
-    <Link href="/" className={`flex items-center gap-2.5 ${className}`}>
-      <OverlayMark size={MARKETING_LOGO_SIZE} label="Overlay" />
-      <span className="font-serif text-xl font-medium tracking-tight text-(--foreground)">overlay</span>
+    <Link href="/" className={`inline-flex text-(--foreground) ${className}`}>
+      <BrandLockup style={{ fontSize: 20 }} />
     </Link>
   )
 }

@@ -369,8 +369,27 @@ settle immediately, with the workspace status text remaining visible.
 Pulse instances share their first document-timeline start time, applied before
 paint, so replacing a loading boundary preserves opacity and never restarts the
 800 ms pulse delay. Keep this clock shared by animated and settled instances.
+The brand entrance (mark fade + word reveal) is likewise claimed once per boot:
+the first loader to mount plays it and records it played, so every later gate
+renders the settled screen and the word never re-reveals. The loader is also
+always the first paint: `WorkspaceHydrationBoundary` only treats 'idle' as
+decided once the auth check has resolved (guests settle there; a session user
+enables workspaces after first paint), so children stay gated until status is
+'ready' and the app can never paint before the loader. The wordmark paints
+only in Libre Baskerville: the Regular face is preloaded in the root layout
+and the loader keeps the word hidden (`app-brand-loader--fontwait`) until
+`document.fonts` reports it loaded (1.5s cap). The loader is boot-only:
+once the app has rendered real content, `bootAppShown` is marked
+module-wide, so `WorkspaceHydrationBoundary` remounts (workspace switches)
+can never re-gate and `InitialAppLoading`/`AppShellLoadingFallback` swap to
+the work-route skeleton. Post-boot navigation must never show the brand
+screen again.
 
-App startup renders a single loading screen wherever the shell is still resolving: `AppBootLoader` (`src/components/layout/AppBootLoader.tsx`) behind `InitialAppLoading`/`AppShellLoadingFallback`, the `/` entry fallback, and the workspace-hydration gate (`WorkspaceAppBoundary`, which renders it `settled` so the handoff shows no second splash). The mark fades in, the word reveals from behind it, then the whole lockup breathes with the same opacity-only pulse as the chat stream marker (`appBrandLoaderPulse` in `globals.css`), with the "Opening workspace…" line beneath on the same screen. The orb rests on the wordmark's text baseline (`margin-top: -1px` on `.app-brand-loader-logo`); landing lockups do the same via `align-items: baseline` on `.lp .lockup`.
+## Brand lockup
+
+`BrandLockup` (`src/components/brand/BrandLockup.tsx`) is the canonical orb + serif "overlay" wordmark. Its geometry is `em`-scaled: the orb is `0.5em` resting on the wordmark's text baseline with a `0.4em` gap (`align-items: baseline` on `.brand-lockup` in `globals.css`), the same configuration the landing `.lp .lockup` defines. Size it with `font-size` on the component or an ancestor. The word sits inside `.brand-lockup-mask`, an `overflow: hidden` window, so reveals can slide it out from behind the orb. Use it wherever the logo and wordmark appear together (loader, auth pages, marketing nav/footer, skeletons) rather than composing `OverlayMark` plus text ad hoc.
+
+App startup renders a single loading screen wherever the shell is still resolving: `AppBootLoader` (`src/components/layout/AppBootLoader.tsx`) behind `InitialAppLoading`/`AppShellLoadingFallback`, the `/` entry fallback, and the workspace-hydration gate (`WorkspaceAppBoundary`, which renders it `settled` so the handoff shows no second splash). It renders `BrandLockup` at `24px`; the mark fades in, the word reveals from behind it, then the whole lockup breathes with the same opacity-only pulse as the chat stream marker (`appBrandLoaderPulse` in `globals.css`), with the "Opening workspace…" line beneath on the same screen.
 
 ## Avatar colors
 

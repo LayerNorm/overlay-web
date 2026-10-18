@@ -18,7 +18,7 @@ test('AppShellLoadingFallback renders only the animated app brand', () => {
   const markup = renderToStaticMarkup(<AppShellLoadingFallback />)
 
   assert.equal(markup.includes('Loading overlay'), true)
-  assert.equal(markup.includes('app-brand-loader-logo'), true)
-  assert.equal(markup.includes('app-brand-loader-word'), true)
+  assert.equal(markup.includes('app-brand-loader-lockup'), true)
+  assert.equal(markup.includes('brand-lockup-word'), true)
   assert.equal(markup.includes('border-r'), false)
 })
