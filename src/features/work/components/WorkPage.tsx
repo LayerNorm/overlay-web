@@ -25,6 +25,7 @@ import { WorkPeek } from './WorkPeek'
 import { WorkQuickAdd, type WorkQuickAddHandle } from './WorkQuickAdd'
 import { WorkTimeline } from './WorkTimeline'
 import { WorkToolbar } from './WorkToolbar'
+import { PageSubviewTabs } from '@/components/layout/PageSubviewTabs'
 
 function ListSkeleton() {
   return (
@@ -150,6 +151,7 @@ function WorkScreen() {
       header={(
         <AppScreenHeader
           title={title}
+          tabs={<PageSubviewTabs />}
           metadata={loaded ? <span className="text-xs text-(--muted-light)">{countOpen(items)} open</span> : undefined}
           search={<HeaderSearch value={query} onChange={setQuery} label="Search tasks" placeholder="Search tasks" />}
           actions={(

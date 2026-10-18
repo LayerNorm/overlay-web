@@ -5,6 +5,7 @@
 import { useSearchParams } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import { AllExtensionsComingSoonView, AppsComingSoonView } from '@overlay/modules-react/extensions'
+import { PageSubviewTabs } from '@/components/layout/PageSubviewTabs'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 import { usePanelScope } from '@/hooks/use-panel-scope'
 
@@ -20,7 +21,7 @@ export default function ToolsView({ userId }: { userId: string }) {
 
   if (view === 'skills' && capabilities.skills) return <SkillsView userId={userId} />
   if (view === 'mcps' && capabilities.mcpServers) return <McpServersView userId={userId} />
-  if (view === 'apps') return <AppsComingSoonView />
+  if (view === 'apps') return <AppsComingSoonView tabs={<PageSubviewTabs />} />
   if (view === 'all' && (capabilities.skills || capabilities.mcpServers)) return <AllExtensionsComingSoonView />
   if (!capabilities.integrations && capabilities.skills) return <SkillsView userId={userId} />
   if (!capabilities.integrations && capabilities.mcpServers) return <McpServersView userId={userId} />

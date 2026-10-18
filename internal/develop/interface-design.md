@@ -275,6 +275,18 @@ title row (`PanelRight` to dock, `AppWindow` to float). The two presentations
 share the same body, border, and chrome; only the frame differs, so switching
 never remounts form state.
 
+## The single sidebar (default)
+
+The default shell is one shadcn sidebar (`src/components/layout/sidebar/UnifiedSidebar.tsx`): the brand, search and
+collapse controls, the Personal/Workspace toggle (hidden for a solo workspace), the main pages with Files and
+Extensions under an Explore menu that opens on hover (click, Enter and touch also open it), then the current page's own
+rows and items, then the account. It reuses `useAppSidebarState`, so routes, scope persistence, badges and pending states
+match the classic layout. Subviews that are different views of one page (Work's List/Board/Timeline, Files categories,
+Extensions' Skills/MCPs/Connectors/Apps) are published through `pageSubviewStore` and rendered as header tabs by
+`PageSubviewTabs`; chat destinations (DMs, Channels, Activity) stay in the sidebar. There are no divider lines between
+sidebar, header and body: `AppScreenHeader` defaults to `border={false}`. The classic primary rail plus secondary panel
+below is the Settings > Customization "Rail and panel" option (`useSecondarySidebar`).
+
 ## The secondary panel: Personal, Workspace
 
 Chats, Files, Extensions, Automations, and Agents share one panel anatomy:

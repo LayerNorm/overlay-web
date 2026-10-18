@@ -30,6 +30,7 @@ import { ScopeBulkActions } from '@/components/layout/ScopeBulkActions'
 import { useWorkspaceCreateAccess } from '@/hooks/use-workspace-create-access'
 import { newItemScope } from '@/shared/workspaces/panel-scope'
 import { createWebKnowledgeSurfaceAdapters } from '../adapters/webKnowledgeSurfaceAdapters'
+import { PageSubviewTabs } from '@/components/layout/PageSubviewTabs'
 import { responseError, uploadWebFile } from '../adapters/webKnowledgeFilePort'
 
 const nextKnowledgeMutation = createKnowledgeMutationPublisher(
@@ -173,6 +174,7 @@ export default function KnowledgeView({
         route={route}
         queryPending={queryPending}
         onUpdateQuery={updateQuery}
+        headerTabs={mode === 'files' ? <PageSubviewTabs /> : undefined}
         adapters={adapters}
         memories={memories}
         files={files}

@@ -9,12 +9,13 @@ Lock
 import { type ReactNode } from 'react'
 import { AppScreenBody, AppScreenHeader, AppScreenShell } from '../shell'
 
-export function ToolsComingSoonView({ title, icon: Icon }: {
+export function ToolsComingSoonView({ title, icon: Icon, tabs }: {
   title: string
+  tabs?: ReactNode
   icon: React.ComponentType<{ size?: number; strokeWidth?: number; className?: string }>
 }) {
   return (
-    <AppScreenShell header={<AppScreenHeader title={title} className="px-6" />}>
+    <AppScreenShell header={<AppScreenHeader title={title} tabs={tabs} className="px-6" />}>
       <AppScreenBody padding="none" maxWidth="none" className="flex h-full flex-col items-center justify-center gap-4 text-(--muted)">
         <Icon size={40} strokeWidth={1} className="text-(--muted-light) opacity-80" />
         <div className="space-y-1 text-center">
@@ -26,8 +27,8 @@ export function ToolsComingSoonView({ title, icon: Icon }: {
   )
 }
 
-export function AppsComingSoonView() {
-  return <ToolsComingSoonView title="Apps" icon={Lock} />
+export function AppsComingSoonView({ tabs }: { tabs?: ReactNode } = {}) {
+  return <ToolsComingSoonView title="Apps" icon={Lock} tabs={tabs} />
 }
 
 export function AllExtensionsComingSoonView() {

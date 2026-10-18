@@ -6,7 +6,7 @@ import { unstyledButton } from '@overlay/ui/control-reset'
 import { Suspense, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { redirect, useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
-import { Link2, ListCollapse, Mail, Moon, Sun, Play, Palette, ShieldCheck } from 'lucide-react'
+import { Link2, ListCollapse, Mail, Moon, Sun, Play, Palette, PanelsLeftBottom, ShieldCheck } from 'lucide-react'
 import { AccountPageContent } from '@/app/app/account/account-content'
 import { DefaultChatModelSetting } from '@/features/settings/components/DefaultChatModelSetting'
 import { ModelCatalogSetting } from '@/features/settings/components/ModelCatalogSetting'
@@ -227,6 +227,14 @@ function CustomizationSettingsSection({
         checked={settings.theme === 'dark'}
         disabled={busy}
         onChange={() => void updateSettings({ theme: settings.theme === 'dark' ? 'light' : 'dark' })}
+      />
+      <SettingRow
+        icon={<PanelsLeftBottom size={18} strokeWidth={1.8} />}
+        title="Rail and panel"
+        description="Split the sidebar into a narrow rail and a panel for the current page."
+        checked={settings.useSecondarySidebar}
+        disabled={busy}
+        onChange={() => void updateSettings({ useSecondarySidebar: !settings.useSecondarySidebar })}
       />
       {settings.theme === 'dark' ? (
         <ThemePresetRow

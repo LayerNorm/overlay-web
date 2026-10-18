@@ -17,6 +17,8 @@ export interface ExtensionPageHeaderProps {
   searchPlaceholder: string
   searchTitle: string
   action?: ReactNode
+  /** Subview tabs (Skills, MCPs, Connectors, Apps) supplied by the app shell. */
+  tabs?: ReactNode
   onSearchQueryChange: (query: string) => void
 }
 
@@ -26,6 +28,7 @@ export function ExtensionPageHeader({
   searchPlaceholder,
   searchTitle,
   action,
+  tabs,
   onSearchQueryChange,
 }: ExtensionPageHeaderProps) {
   return (
@@ -40,6 +43,7 @@ export function ExtensionPageHeader({
         />
       }
       actions={action}
+      tabs={tabs}
     />
   )
 }

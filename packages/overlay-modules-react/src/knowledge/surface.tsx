@@ -68,6 +68,8 @@ export interface SharedKnowledgeSurfaceProps {
   queryPending?: boolean
   onUpdateQuery(updates: Record<string, string | null | undefined>): void
   adapters: KnowledgeSurfaceAdapters
+  /** Category tabs supplied by the app shell, shown in the header. */
+  headerTabs?: ReactNode
   memories: SharedKnowledgeMemoryPort
   files: SharedKnowledgeFilePort
   renderFileViewer(props: { file: FileNode; name: string; content: string; url?: string }): ReactNode
@@ -328,6 +330,7 @@ export function SharedKnowledgeSurface({
   queryPending = false,
   onUpdateQuery,
   adapters,
+  headerTabs,
   memories: memoryPort,
   files: filePort,
   renderFileViewer,
@@ -485,6 +488,7 @@ export function SharedKnowledgeSurface({
         header={
           <KnowledgeBulkSelectionContext.Provider value={bulkSelection}>
           <KnowledgeViewHeader
+            tabs={headerTabs}
             activeFolder={activeFolder}
             activeTab={activeTab}
             bulkDeleting={select.bulkDeleting}

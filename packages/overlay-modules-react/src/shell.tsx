@@ -337,7 +337,7 @@ export function AppScreenHeader({
   tabs,
   search,
   actions,
-  border = true,
+  border = false,
   className,
   children,
   ...props

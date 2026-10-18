@@ -632,7 +632,9 @@ export function KnowledgeViewHeader({
   uploadMenuOpen,
   uploadMenuRef,
   onCommitOutputFilter,
+  tabs,
 }: {
+  tabs?: React.ReactNode
   activeFolder: FileNode | null
   activeTab: Tab
   bulkDeleting: boolean
@@ -691,7 +693,7 @@ export function KnowledgeViewHeader({
   onCommitOutputFilter: (filter: OutputFilter) => void
 }) {
   return (
-    <AppScreenHeader>
+    <AppScreenHeader tabs={tabs}>
       <div className="flex min-w-0 flex-wrap items-center gap-2 sm:gap-3">
       {selectedFile ? (
         <SelectedFileHeader
