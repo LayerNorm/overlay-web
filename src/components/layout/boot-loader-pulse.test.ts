@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { createBootEntranceClaim, createBootLoaderPulseClock } from './boot-loader-pulse'
+import { createBootAppShownFlag, createBootEntranceClaim, createBootLoaderPulseClock } from './boot-loader-pulse'
 
 test('a replacement loader keeps the first pulse origin instead of restarting its delay', () => {
   const synchronize = createBootLoaderPulseClock()
@@ -27,4 +27,11 @@ test('the brand entrance plays on the first loader only', () => {
   assert.equal(entrance.wasPlayed(), false)
   entrance.markPlayed()
   assert.equal(entrance.wasPlayed(), true)
+})
+
+test('the app-shown flag flips only after the app rendered once', () => {
+  const appShown = createBootAppShownFlag()
+  assert.equal(appShown.wasShown(), false)
+  appShown.markShown()
+  assert.equal(appShown.wasShown(), true)
 })

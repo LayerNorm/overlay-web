@@ -1,4 +1,7 @@
+'use client'
+
 import { AppBootLoader } from '@/components/layout/AppBootLoader'
+import { bootAppShown } from '@/components/layout/boot-loader-pulse'
 
 function SkeletonBlock({ className = '' }: { className?: string }) {
   return <div className={`ui-skeleton-line rounded-md ${className}`} aria-hidden />
@@ -38,6 +41,11 @@ export function AppShellLoadingFallback() {
 }
 
 export function InitialAppLoading() {
+  // The brand loader is a boot screen: once the app has rendered real content,
+  // route fallbacks show a plain skeleton instead of re-flashing the lockup.
+  if (bootAppShown.wasShown()) {
+    return <WorkRouteSkeleton />
+  }
   return <AppBootLoader />
 }
 

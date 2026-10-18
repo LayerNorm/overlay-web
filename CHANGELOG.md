@@ -4,7 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
-- Standardize the orb + wordmark on `BrandLockup` across the loader, landing, auth, and marketing surfaces, and play the loader's word reveal only once so it keeps blinking until the app appears.
+- Standardize the orb + wordmark on `BrandLockup` across the loader, landing, auth, and marketing surfaces, and play the loader's word reveal only once so it keeps blinking until the app appears. Once the app has rendered real content the loader can never reappear: boundary remounts and route fallbacks show plain skeletons instead.
 
 - Complete operator backend separation: retire customer-secret operator endpoints, keep operational audit append-only, and provision ordinary member permissions through a restricted initializer.
 

@@ -22,3 +22,21 @@ export function createBootEntranceClaim() {
     },
   }
 }
+
+/**
+ * Set once the app has rendered real content this boot. The workspace
+ * boundary marks it when its children first mount: component remounts from
+ * navigation or workspace switches must never re-gate on it, and route
+ * fallbacks swap the brand loader for a plain skeleton once it is set.
+ */
+export function createBootAppShownFlag() {
+  let shown = false
+  return {
+    wasShown: () => shown,
+    markShown: () => {
+      shown = true
+    },
+  }
+}
+
+export const bootAppShown = createBootAppShownFlag()

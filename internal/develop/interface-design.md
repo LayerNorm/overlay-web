@@ -333,7 +333,12 @@ enables workspaces after first paint), so children stay gated until status is
 'ready' and the app can never paint before the loader. The wordmark paints
 only in Libre Baskerville: the Regular face is preloaded in the root layout
 and the loader keeps the word hidden (`app-brand-loader--fontwait`) until
-`document.fonts` reports it loaded (1.5s cap).
+`document.fonts` reports it loaded (1.5s cap). The loader is boot-only:
+once the app has rendered real content, `bootAppShown` is marked
+module-wide, so `WorkspaceHydrationBoundary` remounts (workspace switches)
+can never re-gate and `InitialAppLoading`/`AppShellLoadingFallback` swap to
+the work-route skeleton. Post-boot navigation must never show the brand
+screen again.
 
 ## Brand lockup
 

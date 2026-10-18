@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { CircleAlert } from 'lucide-react'
 import type { WorkspaceClient } from '@/shared/workspaces/types'
@@ -8,11 +8,12 @@ import { workspaceClient } from '../lib/workspace-client'
 import { useAuth } from '@/contexts/AuthContext'
 import { WorkspaceProvider, useWorkspace } from '@/contexts/WorkspaceContext'
 import { AppBootLoader } from '@/components/layout/AppBootLoader'
+import { bootAppShown } from '@/components/layout/boot-loader-pulse'
 
 function WorkspaceHydrationBoundary({ children }: { children: ReactNode }) {
   const { status, error, refresh } = useWorkspace()
   const { isLoading: authLoading, user } = useAuth()
-  const [hasShownApp, setHasShownApp] = useState(status === 'ready')
+  const [hasShownApp, setHasShownApp] = useState(status === 'ready' || bootAppShown.wasShown())
   if (status === 'ready' && !hasShownApp) {
     setHasShownApp(true)
   }
@@ -22,7 +23,15 @@ function WorkspaceHydrationBoundary({ children }: { children: ReactNode }) {
   // at 'idle' with auth done and no user, which still falls through below).
   const undecided =
     status === 'loading' || (status === 'idle' && (authLoading || Boolean(user)))
-  if (undecided && !hasShownApp) {
+  const gating = undecided && !hasShownApp
+  useEffect(() => {
+    // Once real app content has painted anywhere this boot, the flag keeps
+    // remounts (navigation, workspace switches) from ever gating again.
+    if (!gating) {
+      bootAppShown.markShown()
+    }
+  })
+  if (gating) {
     // Same screen as the boot loader, rendered already-settled so the handoff
     // shows no second splash.
     return <AppBootLoader settled />
