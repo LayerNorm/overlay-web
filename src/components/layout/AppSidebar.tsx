@@ -257,6 +257,7 @@ export default function AppSidebar({
             brand={brandLink}
             collapsed={false}
             inlineExplore
+            publishSubviews={false}
             onCollapsedChange={s.closeMobileDrawer}
             items={s.railItems.map((item) => ({ ...item, onSelect: () => { s.closeMobileDrawer(); item.onSelect() } }))}
             footerItems={s.railFooterItems?.map((item) => ({ ...item, onSelect: () => { s.closeMobileDrawer(); item.onSelect() } }))}

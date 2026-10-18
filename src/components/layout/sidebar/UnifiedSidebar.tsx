@@ -238,6 +238,8 @@ export interface UnifiedSidebarProps {
   keyboardShortcut?: boolean
   /** List Explore pages as plain rows (the phone drawer has no room for a side menu). */
   inlineExplore?: boolean
+  /** Owns the header tabs; a second copy (the phone drawer) must not clear them when it closes. */
+  publishSubviews?: boolean
   children?: ReactNode
   className?: string
 }
@@ -261,6 +263,7 @@ export function UnifiedSidebar({
   account,
   keyboardShortcut = false,
   inlineExplore = false,
+  publishSubviews = true,
   children,
   className,
 }: UnifiedSidebarProps) {
@@ -284,6 +287,7 @@ export function UnifiedSidebar({
   }, [keyboardShortcut, collapsed, onCollapsedChange])
 
   useEffect(() => {
+    if (!publishSubviews) return
     if (!tabsPage || !scopedNav || rows.length === 0) {
       publishPageSubviews(null)
       return
@@ -294,8 +298,8 @@ export function UnifiedSidebar({
       pendingId: scopedNav.pendingId,
       onSelect: scopedNav.onSelect,
     })
-  }, [rows, scopedNav, tabsPage])
-  useEffect(() => () => publishPageSubviews(null), [])
+  }, [publishSubviews, rows, scopedNav, tabsPage])
+  useEffect(() => (publishSubviews ? () => publishPageSubviews(null) : undefined), [publishSubviews])
 
   const changeScope = (next: PanelScope) => {
     if (next === scope) return
