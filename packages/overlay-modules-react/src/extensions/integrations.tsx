@@ -152,10 +152,9 @@ export function IntegrationsPanel({
           <div>
             <div className="mb-3 flex items-center justify-between gap-2">
               <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-(--muted-light)">Available</p>
-              <Button variant="ghost"
+              <Button variant="secondary" size="sm"
                 type="button"
                 onClick={onOpenCatalog}
-                className={unstyledButton("flex shrink-0 items-center gap-1 rounded-md border border-(--border) bg-(--surface-subtle) px-2 py-1 text-xs text-(--foreground) transition-colors hover:bg-(--border)")}
                 title="Browse all integrations"
               >
                 <Plus size={12} />
@@ -219,11 +218,10 @@ function IntegrationRow({
       title={integration.name}
       description={integration.description}
       trailing={
-        <Button variant="ghost"
+        <Button variant="secondary" size="sm"
           type="button"
           onClick={() => onAction(integration)}
           disabled={isConnecting || actionUnavailable}
-          className={unstyledButton("shrink-0 rounded-md border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-xs text-(--foreground) transition-colors hover:bg-(--border) disabled:opacity-50")}
         >
           {isConnecting ? (
             <Loader2 size={11} className="animate-spin" />

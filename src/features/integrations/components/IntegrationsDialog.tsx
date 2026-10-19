@@ -292,11 +292,10 @@ export function IntegrationsDialog({
                   </p>
                 </div>
                 {item.isConnected ? (
-                  <Button variant="ghost"
+                  <Button variant="secondary" size="sm"
                     type="button"
                     onClick={() => void handleDisconnect(item.slug)}
                     disabled={isActing || disconnectUnavailable}
-                    className={unstyledButton(`shrink-0 rounded-md border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-xs text-(--foreground) transition-colors hover:bg-(--border) disabled:opacity-50`)}
                   >
                     {isActing ? (
                       <Loader2 size={11} className='animate-spin' />
@@ -305,11 +304,10 @@ export function IntegrationsDialog({
                     )}
                   </Button>
                 ) : (
-                  <Button variant="ghost"
+                  <Button variant="secondary" size="sm"
                     type="button"
                     onClick={() => void handleConnect(item.slug)}
                     disabled={isActing}
-                    className={unstyledButton(`shrink-0 rounded-md border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-xs text-(--foreground) transition-colors hover:bg-(--border) disabled:opacity-50`)}
                   >
                     {isActing ? (
                       <Loader2 size={11} className='animate-spin' />

@@ -1,5 +1,4 @@
 'use client'
-import { unstyledButton } from '@overlay/ui/control-reset'
 import { Button } from '@overlay/ui/primitives'
 
 // Compatibility wrapper: skill contracts/controllers live in @overlay/app-core;
@@ -122,9 +121,8 @@ export default function SkillsView({ userId: _userId }: { userId: string; select
           searchPlaceholder="Search skills…"
           searchTitle="Search skills"
           action={canAdd ? (
-            <Button variant="ghost"
+            <Button variant="primary" size="sm"
               onClick={() => setDialog({ mode: 'create' })}
-              className={unstyledButton(`flex items-center gap-1.5 rounded-md border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-xs text-(--foreground) transition-colors hover:bg-(--border)`)}
             >
               <Plus size={12} />
               New Skill
