@@ -537,6 +537,7 @@ export function buildPrimaryRailItems({
   navItemDestination,
   navItemActive,
   onSelectItem,
+  recentChatHref,
 }: {
   effectivePendingHref: string | null
   navItems: SidebarNavItem[]
@@ -551,6 +552,7 @@ export function buildPrimaryRailItems({
   navItemDestination: (href: string) => string
   navItemActive: (item: SidebarNavItem) => boolean
   onSelectItem: (item: SidebarNavItem) => void
+  recentChatHref?: (baseHref: string) => Promise<string>
 }): PrimaryRailItem[] {
   const railItems: PrimaryRailItem[] = []
   navItems.forEach((item, navIdx) => {
@@ -582,17 +584,19 @@ export function buildPrimaryRailItems({
   if (settingsPathActive && !publicShowcase) {
     // Settings has no entry in the primary rail, so surface its return action
     // after the regular navigation items while it is open.
-    const chatDestination = navItemDestination('/app/chat')
     railItems.push({
       id: 'settings-close',
       label: 'Settings',
       icon: X,
       active: true,
       title: 'Settings',
-      onSelect: () => {
-        setPendingNav({ href: '/app/chat', fromPath: pathname })
-        router.push(chatDestination)
-      },
+      onSelect: () => pushNavDestination('/app/chat', {
+        destination: navItemDestination,
+        pathname,
+        router,
+        setPendingNav,
+        recentChatHref,
+      }),
     })
   }
 

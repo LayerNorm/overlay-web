@@ -110,6 +110,7 @@ export function PageSections({
                 <span className="truncate">{section.label}</span>
                 <ChevronDown aria-hidden className={cn('transition-transform', open ? null : '-rotate-90')} />
               </SidebarMenuButton>
+              <span aria-hidden className="min-w-0 flex-1" />
               {section.badgeCount ? (
                 <span className="shrink-0 px-1 text-[10px] font-medium text-(--muted)">{badgeLabel(section.badgeCount)}</span>
               ) : null}
@@ -121,7 +122,7 @@ export function PageSections({
                     type="button"
                     aria-label={sectionAction.label}
                     onClick={runAction}
-                    className="ml-auto size-7 shrink-0 rounded-md text-(--muted) opacity-0 hover:bg-(--surface-subtle) hover:text-(--foreground) focus-visible:opacity-100 group-hover/section:opacity-100"
+                    className="size-7 shrink-0 rounded-md text-(--muted) opacity-0 hover:bg-(--surface-subtle) hover:text-(--foreground) focus-visible:opacity-100 group-hover/section:opacity-100"
                   >
                     <Plus size={14} aria-hidden />
                   </Button>

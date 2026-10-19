@@ -403,6 +403,9 @@ function useSidebarPanelChrome(args: {
     navItemDestination,
     navItemActive: isNavItemActive,
     onSelectItem: onSelectNavItem,
+    recentChatHref: publicShowcase
+      ? undefined
+      : (baseHref: string) => resolveRecentChatHref(baseHref, routeState.scope),
   })
   const railFooterItems = buildShowcaseRailFooterItems(showcasePrimaryLinks, router)
   const mobileNavItems = resolveMobileNavItems(navItems, {
