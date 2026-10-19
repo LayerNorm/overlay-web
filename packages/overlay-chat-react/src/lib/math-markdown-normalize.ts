@@ -365,7 +365,9 @@ function repairStrayInlineDoubleDollarOpeners(text: string): string {
 function repairStrayInlineDoubleDollarClosers(text: string): string {
   if (!text.includes('$$')) return text
   return text.replace(
-    /((?:\\[A-Za-z@]+|[A-Za-z0-9Α-Ωα-ω+\-=^_{}().,\\ ]){1,120}(?:\\[A-Za-z@]+|O\([^)\n]{1,80}\))(?:[A-Za-z0-9Α-Ωα-ω+\-=^_{}().,\\ ]){0,80})\$\$(?=\s+[a-zA-Z])/g,
+    // Each piece matches one way only (a command is never split into a backslash plus
+    // letters), so long command-heavy lines cannot trigger exponential backtracking.
+    /((?:\\[A-Za-z@]+(?![A-Za-z@])|\\[^A-Za-z@\n]|[A-Za-z0-9Α-Ωα-ω+\-=^_{}().,\ ]){1,120}(?:\\[A-Za-z@]+(?![A-Za-z@])|O\([^)\n]{1,80}\))(?:\\[^A-Za-z@\n]|[A-Za-z0-9Α-Ωα-ω+\-=^_{}().,\ ]){0,80})\$\$(?=\s+[a-zA-Z])/g,
     (match, atom: string, offset: number, full: string) => {
       const delimiterOffset = offset + atom.length
       if (countDoubleDollarDelims(full.slice(0, delimiterOffset)) % 2 === 1) return match
