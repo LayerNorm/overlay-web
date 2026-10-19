@@ -353,6 +353,7 @@ export function selectSidebarNavItem(
     panelKind: SecondaryPanelKind | null
     sidebarCollapsed: boolean
     setSidebarCollapsed: (next: boolean) => void
+    recentChatHref?: (baseHref: string) => Promise<string>
   },
 ) {
   if (gateSidebarNavItem(item, ctx) !== 'ok' || !item.href) return
@@ -361,8 +362,25 @@ export function selectSidebarNavItem(
     if (ctx.panelKind && ctx.sidebarCollapsed) ctx.setSidebarCollapsed(false)
     return
   }
-  const destination = ctx.destination(item.href)
+  pushNavDestination(item.href, ctx)
+}
+
+function pushNavDestination(
+  href: string,
+  ctx: {
+    destination: (href: string) => string
+    pathname: string
+    router: { push: (href: string) => void }
+    setPendingNav: (nav: { href: string; fromPath: string }) => void
+    recentChatHref?: (baseHref: string) => Promise<string>
+  },
+) {
+  const destination = ctx.destination(href)
   ctx.setPendingNav({ href: destination, fromPath: ctx.pathname })
+  if (href === '/app/chat' && ctx.recentChatHref) {
+    void ctx.recentChatHref(destination).then((target) => ctx.router.push(target))
+    return
+  }
   ctx.router.push(destination)
 }
 
@@ -382,14 +400,11 @@ export function selectMobileNavItem(
     automationsEnabled: boolean
     openPanel: () => void
     closeDrawer: () => void
+    recentChatHref?: (baseHref: string) => Promise<string>
   },
 ) {
   if (gateSidebarNavItem(item, ctx) !== 'ok' || !item.href) return
-  if (!ctx.isActive(item)) {
-    const destination = ctx.destination(item.href)
-    ctx.setPendingNav({ href: destination, fromPath: ctx.pathname })
-    ctx.router.push(destination)
-  }
+  if (!ctx.isActive(item)) pushNavDestination(item.href, ctx)
   // Two-step drawer: destinations with a contextual panel drill into it;
   // everything else navigates and closes.
   if (panelKindForNavItem(item, ctx.automationsEnabled)) ctx.openPanel()

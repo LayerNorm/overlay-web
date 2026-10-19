@@ -44,6 +44,7 @@ import {
   type SidebarNavItem,
 } from './appSidebarNav'
 import { resolveSecondaryPanelNav } from './appSidebarPanelNav'
+import { resolveRecentChatHref } from './chatPanelNav'
 import { useIsSoloWorkspace } from '@/hooks/use-solo-workspace'
 import {
   useBodyScrollLock,
@@ -181,6 +182,9 @@ function useSidebarNavInteractions(args: {
     activeWorkspaceId,
     buildWorkspaceHref,
   })
+  const recentChatHref = publicShowcase
+    ? undefined
+    : (baseHref: string) => resolveRecentChatHref(baseHref, routeState.scope)
   const onSelectNavItem = (item: SidebarNavItem) => selectSidebarNavItem(item, {
     isGuestConfirmed,
     publicShowcase,
@@ -195,6 +199,7 @@ function useSidebarNavInteractions(args: {
     panelKind: routeState.panelKind,
     sidebarCollapsed,
     setSidebarCollapsed,
+    recentChatHref,
   })
   const onSelectMobileNavItem = (item: SidebarNavItem) => selectMobileNavItem(item, {
     isGuestConfirmed,
@@ -210,6 +215,7 @@ function useSidebarNavInteractions(args: {
     automationsEnabled,
     openPanel: () => setMobileView('panel'),
     closeDrawer: closeMobileDrawer,
+    recentChatHref,
   })
   const beginSecondaryNavigation = (id: string) => {
     setPendingSecondaryNav({ id, fromRouteKey: currentRouteKey })

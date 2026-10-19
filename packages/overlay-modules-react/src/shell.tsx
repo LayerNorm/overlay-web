@@ -429,7 +429,7 @@ export function AppScreenBody({
 }
 
 export interface AppScreenSidePanelProps extends Omit<HTMLAttributes<HTMLElement>, 'title'> {
-  /** Optional fully composed header. Use AppScreenSidePanelHeader for parity with page headers. */
+  /** Optional composed header built from AppScreenSidePanelHeader, Title, Actions and Close. */
   header?: ReactNode
   title?: ReactNode
   description?: ReactNode
@@ -456,37 +456,15 @@ function AppScreenSidePanelDefaultHeader({
   compact: boolean
 }) {
   return (
-    <div
-      className={cn(
-        'flex shrink-0 items-center justify-between gap-3 border-b border-(--border)',
-        // Non-compact matches AppScreenHeader's height so the two borders
-        // read as one continuous divider across the screen and the panel.
-        compact ? 'h-11 min-h-11 px-3' : 'min-h-14 px-4 md:min-h-16',
-      )}
-    >
-      <div className="min-w-0">
-        {title ? <h2 className="truncate text-sm font-medium text-(--foreground)">{title}</h2> : null}
-        {description ? <p className="truncate text-xs text-(--muted)">{description}</p> : null}
-      </div>
+    <AppScreenSidePanelHeader compact={compact}>
+      <AppScreenSidePanelTitle title={title} description={description} />
       {(actions || onClose) ? (
-        <div className="flex shrink-0 items-center gap-1.5">
+        <AppScreenSidePanelActions>
           {actions}
-          {onClose ? (
-            <Button variant="ghost"
-              type="button"
-              aria-label={closeLabel}
-              className={unstyledButton(cn(
-                'inline-flex items-center justify-center text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)',
-                compact ? 'h-7 w-7 rounded-md' : 'h-8 w-8 rounded-lg',
-              ))}
-              onClick={onClose}
-            >
-              <X size={compact ? 14 : 16} strokeWidth={1.8} />
-            </Button>
-          ) : null}
-        </div>
+          {onClose ? <AppScreenSidePanelClose label={closeLabel} onClose={onClose} /> : null}
+        </AppScreenSidePanelActions>
       ) : null}
-    </div>
+    </AppScreenSidePanelHeader>
   )
 }
 
@@ -527,21 +505,53 @@ export function AppScreenSidePanel({
 }
 
 /**
- * Header slot for right sidebars. Its vertical rhythm intentionally matches
- * AppScreenHeader so the divider remains continuous when a panel is docked.
+ * Right sidebar parts, composed like shadcn's sidebar: Header, Title, Actions and Close.
+ * The header has no divider and matches AppScreenHeader's height so titles line up across the screen.
  */
-export type AppScreenSidePanelHeaderProps = HTMLAttributes<HTMLElement>
+export interface AppScreenSidePanelHeaderProps extends HTMLAttributes<HTMLElement> {
+  compact?: boolean
+}
 
-export function AppScreenSidePanelHeader({ className, children, ...props }: AppScreenSidePanelHeaderProps) {
+export function AppScreenSidePanelHeader({ compact = false, className, children, ...props }: AppScreenSidePanelHeaderProps) {
   return (
     <header
+      data-slot="side-panel-header"
       className={cn(
-        'flex min-h-14 shrink-0 items-center justify-between gap-3 px-3 py-2.5 md:min-h-16 md:py-3',
+        'flex shrink-0 items-center justify-between gap-3',
+        compact ? 'h-11 min-h-11 px-3' : 'min-h-14 px-3 py-2.5 md:min-h-16 md:py-3',
         className,
       )}
       {...props}
     >
       {children}
     </header>
+  )
+}
+
+export function AppScreenSidePanelTitle({ title, description }: { title?: ReactNode; description?: ReactNode }) {
+  return (
+    <div data-slot="side-panel-title" className="min-w-0">
+      {title ? <h2 className="truncate text-sm font-medium text-(--foreground)">{title}</h2> : null}
+      {description ? <p className="truncate text-xs text-(--muted)">{description}</p> : null}
+    </div>
+  )
+}
+
+export function AppScreenSidePanelActions({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
+  return <div data-slot="side-panel-actions" className={cn('flex shrink-0 items-center gap-1', className)} {...props} />
+}
+
+export function AppScreenSidePanelClose({ label, onClose }: { label: string; onClose: () => void }) {
+  return (
+    <Button
+      variant="ghost"
+      size="icon"
+      type="button"
+      aria-label={label}
+      onClick={onClose}
+      className="size-7 rounded-md text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)"
+    >
+      <X size={14} strokeWidth={1.8} />
+    </Button>
   )
 }

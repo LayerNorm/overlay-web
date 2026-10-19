@@ -2,9 +2,15 @@
 import { Button, Input } from '@overlay/ui/primitives'
 import { unstyledButton, unstyledInput } from '@overlay/ui/control-reset'
 import type { ChangeEvent, KeyboardEvent, ReactNode } from 'react'
-import { ArrowLeft, FolderOpen, Maximize2, MessageCircle, PanelRightOpen, Plus, Trash2, X } from 'lucide-react'
+import { ArrowLeft, FolderOpen, Maximize2, MessageCircle, PanelRightOpen, Plus, Trash2 } from 'lucide-react'
 import type { NotebookNote } from '@overlay/app-core'
-import { AppScreenHeader, AppScreenSidePanelHeader } from '../shell'
+import {
+  AppScreenHeader,
+  AppScreenSidePanelActions,
+  AppScreenSidePanelClose,
+  AppScreenSidePanelHeader,
+  AppScreenSidePanelTitle,
+} from '../shell'
 
 export interface NotebookHeaderProps {
   activeNote: NotebookNote | null
@@ -218,8 +224,8 @@ export function NotebookAgentHeader({
   const presentationLabel = presentation === 'floating' ? 'Dock as side panel' : 'Show as floating panel'
   return (
     <AppScreenSidePanelHeader>
-      <span className="text-[13px] font-medium text-(--foreground)">Assistant</span>
-      <div className="flex items-center gap-2">
+      <AppScreenSidePanelTitle title="Assistant" />
+      <AppScreenSidePanelActions className="gap-2">
         {pendingDiffCount > 0 && (
           <>
             <Button variant="ghost"
@@ -252,16 +258,8 @@ export function NotebookAgentHeader({
               : <Maximize2 size={14} strokeWidth={1.8} />}
           </Button>
         ) : null}
-        <Button variant="ghost"
-          type="button"
-          onClick={onClose}
-          className={unstyledButton("inline-flex h-7 w-7 items-center justify-center rounded-md text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)")}
-          aria-label="Close note assistant"
-          title="Close note assistant"
-        >
-          <X size={14} strokeWidth={1.8} />
-        </Button>
-      </div>
+        <AppScreenSidePanelClose label="Close note assistant" onClose={onClose} />
+      </AppScreenSidePanelActions>
     </AppScreenSidePanelHeader>
   )
 }

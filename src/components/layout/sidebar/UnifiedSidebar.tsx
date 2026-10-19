@@ -2,7 +2,7 @@
 
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
 import Link from 'next/link'
-import { ChevronRight, Ellipsis, Loader2, PanelLeft, Plus, Search } from 'lucide-react'
+import { ChevronRight, Ellipsis, Loader2, PanelLeft, Search } from 'lucide-react'
 import {
   Button,
   Popover,
@@ -28,6 +28,7 @@ import type { PrimaryRailItem } from './AppSidebarPrimaryRail'
 import type { SecondaryPanelNav } from './AppSidebarSecondaryPanel'
 import { publishPageSubviews } from './pageSubviewStore'
 import { SettingsSidebarNav } from './SettingsSidebarNav'
+import { PageSections, badgeLabel } from './PageSections'
 
 /** Pages that live behind the More menu instead of the main list. */
 const MORE_ITEM_IDS = new Set(['files', 'extensions'])
@@ -35,9 +36,6 @@ const MORE_ITEM_IDS = new Set(['files', 'extensions'])
 const TAB_PANEL_KINDS = new Set(['work', 'files', 'notes', 'tools'])
 const MORE_CLOSE_DELAY_MS = 150
 
-function badgeLabel(count: number) {
-  return count > 99 ? '99+' : String(count)
-}
 
 function NavRow({ item, collapsed }: { item: PrimaryRailItem; collapsed: boolean }) {
   const Icon = item.pending ? Loader2 : item.icon
@@ -87,6 +85,8 @@ function MoreMenu({ items, collapsed }: { items: readonly PrimaryRailItem[]; col
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   // A click right after hover opened the menu should keep it open, not toggle it shut.
   const openedByHover = useRef(false)
+  // Closing because the pointer left must not hand focus back to the trigger, or its focus ring lingers.
+  const closedByHover = useRef(false)
   const cancelClose = () => {
     if (closeTimer.current) clearTimeout(closeTimer.current)
     closeTimer.current = null
@@ -106,11 +106,14 @@ function MoreMenu({ items, collapsed }: { items: readonly PrimaryRailItem[]; col
   const hoverOpen = (event: React.PointerEvent) => {
     if (event.pointerType !== 'mouse') return
     cancelClose()
+    closedByHover.current = false
     if (!open) openedByHover.current = true
     setOpen(true)
   }
   const hoverClose = (event: React.PointerEvent) => {
-    if (event.pointerType === 'mouse') scheduleClose()
+    if (event.pointerType !== 'mouse') return
+    closedByHover.current = true
+    scheduleClose()
   }
   return (
     <SidebarMenuItem>
@@ -146,6 +149,12 @@ function MoreMenu({ items, collapsed }: { items: readonly PrimaryRailItem[]; col
           className="w-48 p-1"
           onPointerEnter={hoverOpen}
           onPointerLeave={hoverClose}
+          onOpenAutoFocus={(event) => { if (openedByHover.current) event.preventDefault() }}
+          onCloseAutoFocus={(event) => {
+            if (!closedByHover.current) return
+            closedByHover.current = false
+            event.preventDefault()
+          }}
         >
           <SidebarMenu>
             {items.map((item) => (
@@ -217,129 +226,6 @@ function scopeChildren(nav: SecondaryPanelNav | undefined, scope: PanelScope, so
   const row = nav.items.find((item) => item.id === scope)
   if (row?.children?.length) return row.children
   return solo ? nav.items.filter((item) => item.id.includes(':')) : []
-}
-
-const SECTION_HEADER_PX = 32
-
-/** Scoped row ids look like `workspace:dms`; sections are keyed by the view after the scope. */
-const sectionViewId = (id: string) => id.slice(id.indexOf(':') + 1)
-
-interface PageSection {
-  id: string
-  label: string
-  icon?: InlineNavItem['icon']
-  active: boolean
-  badgeCount?: number
-  locked?: boolean
-}
-
-function pageSections(
-  nav: SecondaryPanelNav | undefined,
-  rows: ReadonlyArray<InlineNavItem>,
-  title: string,
-  hasContent: boolean,
-  titleIcon?: InlineNavItem['icon'],
-): PageSection[] {
-  if (nav && rows.length > 0) {
-    const activeId = nav.activeChildId ?? nav.activeId
-    return rows.map((row) => ({ id: row.id, label: row.label, icon: row.icon, active: activeId === row.id, badgeCount: row.badgeCount, locked: row.locked }))
-  }
-  return hasContent && title ? [{ id: 'page', label: title, icon: titleIcon, active: true }] : []
-}
-
-/** Collapsible page sections; headers are flat siblings so they can pin to the top and bottom of the scroll area. */
-function PageSections({
-  nav,
-  rows,
-  title,
-  titleIcon,
-  action,
-  sectionActions,
-  renderSection,
-  children,
-}: {
-  nav?: SecondaryPanelNav
-  rows: ReadonlyArray<InlineNavItem>
-  title: string
-  titleIcon?: InlineNavItem['icon']
-  action?: SidebarResourceAction | null
-  sectionActions?: Readonly<Record<string, SidebarResourceAction | null>>
-  renderSection?: (id: string) => ReactNode
-  children?: ReactNode
-}) {
-  const [closed, setClosed] = useState<ReadonlySet<string>>(() => new Set())
-  const sections = pageSections(nav, rows, title, Boolean(children || action), titleIcon)
-  if (sections.length === 0) return null
-  const multi = Boolean(nav && rows.length > 0)
-  // With a renderer every section lists its own items, so a header only opens and closes.
-  const independent = multi && Boolean(renderSection)
-  const toggle = (id: string) => setClosed((prev) => {
-    const next = new Set(prev)
-    if (next.has(id)) next.delete(id)
-    else next.add(id)
-    return next
-  })
-  return (
-    <SidebarGroup className="mt-3">
-      {sections.map((section, index) => {
-        const open = (independent || section.active) && !closed.has(section.id)
-        const pending = !independent && nav?.pendingId === section.id
-        const sectionAction = multi ? sectionActions?.[sectionViewId(section.id)] ?? (section.active ? action : null) : action
-        const content = !multi ? children : independent ? renderSection?.(sectionViewId(section.id)) : section.active ? children : null
-        const runAction = () => {
-          if (!sectionAction) return
-          if (open) {
-            sectionAction.onClick()
-            return
-          }
-          // The section's list owns the create dialog, so mount it before asking it to open.
-          toggle(section.id)
-          window.setTimeout(sectionAction.onClick, 50)
-        }
-        return (
-          <Fragment key={section.id}>
-            <div
-              className="sticky z-10 flex h-8 items-center gap-0.5 bg-(--sidebar-surface)"
-              style={{ top: index * SECTION_HEADER_PX, bottom: (sections.length - 1 - index) * SECTION_HEADER_PX }}
-            >
-              <SidebarMenuButton
-                aria-expanded={open}
-                isActive={!independent && section.active && multi}
-                disabled={section.locked}
-                className="flex-1 font-medium"
-                onClick={() => {
-                  if (independent || section.active) toggle(section.id)
-                  else nav?.onSelect(section.id)
-                }}
-              >
-                {pending ? <Loader2 aria-hidden className="animate-spin" /> : section.icon ? <section.icon aria-hidden /> : null}
-                <span className="truncate">{section.label}</span>
-                <ChevronRight aria-hidden className={cn('opacity-60 transition-transform', open ? 'rotate-90' : null)} />
-              </SidebarMenuButton>
-              {section.badgeCount ? (
-                <span className="shrink-0 px-1 text-[10px] font-medium text-(--muted)">{badgeLabel(section.badgeCount)}</span>
-              ) : null}
-              {sectionAction ? (
-                <DelayedTooltip label={sectionAction.label} side="bottom">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    type="button"
-                    aria-label={sectionAction.label}
-                    onClick={runAction}
-                    className="size-7 shrink-0 rounded-md text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)"
-                  >
-                    <Plus size={14} aria-hidden />
-                  </Button>
-                </DelayedTooltip>
-              ) : null}
-            </div>
-            {open && content ? <div className="min-w-0 pb-2">{content}</div> : null}
-          </Fragment>
-        )
-      })}
-    </SidebarGroup>
-  )
 }
 
 export interface UnifiedSidebarProps {
@@ -516,7 +402,7 @@ export function UnifiedSidebar({
           </SidebarMenu>
         </SidebarGroup>
         {collapsed ? null : (
-          <PageSections nav={tabsPage ? undefined : scopedNav} rows={tabsPage ? [] : rows} title={pageTitle} titleIcon={activePage?.icon} action={panelAction} sectionActions={sectionActions} renderSection={renderSection}>
+          <PageSections nav={tabsPage ? undefined : scopedNav} rows={tabsPage ? [] : rows} title={pageTitle} action={panelAction} sectionActions={sectionActions} renderSection={renderSection}>
             {children}
           </PageSections>
         )}
