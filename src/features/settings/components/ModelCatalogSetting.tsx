@@ -78,6 +78,7 @@ function ModelCatalogControls({
         type="button"
         disabled={disabled || !hasUsagePricing}
         onClick={() => onChange(model.type === 'image' ? { defaultImageModelId: model.id } : { defaultVideoModelId: model.id })}
+        // overlay:button-style: Toggle with a selected state.
         className={unstyledButton(`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border px-2.5 text-xs font-medium transition-colors disabled:opacity-50 ${mediaDefault ? 'border-(--foreground) bg-(--foreground) text-(--background)' : 'border-(--border) bg-(--surface-subtle) text-(--muted) hover:text-(--foreground)'}`)}
       >
         {mediaDefault ? <Check size={12} /> : null}
@@ -374,23 +375,21 @@ export function ModelCatalogSetting({
             />
           </div>
           {catalogType === 'language' ? <>
-            <Button variant="ghost"
+            <Button variant="secondary" size="icon"
               type="button"
               aria-label="Refresh models"
               disabled={isLoading}
               onClick={() => { void refresh(); void refreshByok() }}
-              className={unstyledButton(`flex h-10 w-10 items-center justify-center rounded-lg border border-(--border) bg-(--surface-subtle) text-(--muted) hover:text-(--foreground) disabled:opacity-50`)}
             >
               <RefreshCw size={16} className={isLoading ? 'animate-spin' : ''} />
             </Button>
-            <Button variant="ghost"
+            <Button variant="secondary" size="sm" className="hidden sm:inline-flex"
               type="button"
               disabled={disabled}
               onClick={() => onChange({
                 enabledChatModelIds: [...DEFAULT_CURATED_CHAT_MODEL_IDS],
                 modelOrder: [],
               })}
-              className={unstyledButton(`hidden h-10 rounded-lg border border-(--border) bg-(--surface-subtle) px-3 text-xs text-(--foreground) sm:block`)}
             >
               Reset defaults
             </Button>

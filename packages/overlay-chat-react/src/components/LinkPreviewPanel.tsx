@@ -158,10 +158,9 @@ function LinkPreviewFallback({
       </div>
       <div className="flex items-center gap-2">
         {safeUrl ? (
-          <Button variant="ghost"
+          <Button variant="secondary" size="sm"
             type="button"
             onClick={onOpenInNewTab}
-            className={unstyledButton(`inline-flex items-center gap-1.5 rounded-lg border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-xs font-medium text-(--foreground) transition-colors hover:bg-(--border)`)}
           >
             <ExternalLink size={13} strokeWidth={1.75} />
             Open in New Tab

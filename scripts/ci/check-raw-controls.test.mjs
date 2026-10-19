@@ -66,3 +66,25 @@ test('a reasoned comment on the tag line exempts the control', () => {
 test('component names and tag-like names are not raw controls', () => {
   assert.deepEqual(findTags('<Button /><InputGroup /><buttonish />'), [])
 })
+
+test('unstyledButton strings that rebuild a variant are reported', async () => {
+  const { findButtonStyleOverrides } = await import('./check-raw-controls.mjs')
+  const kinds = (source) => findButtonStyleOverrides(source, 'fixture.tsx').map(({ kind }) => kind)
+  assert.deepEqual(kinds('<Button className={unstyledButton("rounded-md bg-(--foreground) px-3 text-(--background)")} />'), ['rebuilt-primary'])
+  assert.deepEqual(kinds('<Button className={unstyledButton("border border-(--border) bg-(--surface-subtle) px-3")} />'), ['rebuilt-secondary'])
+  assert.deepEqual(kinds('<Button className={unstyledButton("border border-(--border) hover:bg-(--surface-subtle)")} />'), ['rebuilt-outline'])
+  assert.deepEqual(kinds('<Button className={unstyledButton("rounded-sm p-1 text-(--muted) hover:bg-(--surface-subtle)")} />'), [])
+})
+
+test('color classes on a standard variant are reported, ghost and layout classes are not', async () => {
+  const { findButtonStyleOverrides } = await import('./check-raw-controls.mjs')
+  const kinds = (source) => findButtonStyleOverrides(source, 'fixture.tsx').map(({ kind }) => kind)
+  assert.deepEqual(kinds('<Button variant="primary" className="bg-(--foreground) text-(--background)" />'), ['recolored-primary'])
+  assert.deepEqual(kinds('<Button variant="secondary" className="mt-3 w-full" />'), [])
+  assert.deepEqual(kinds('<Button variant="ghost" className="text-(--muted)" />'), [])
+})
+
+test('a reasoned button-style comment exempts the override', async () => {
+  const { findButtonStyleOverrides } = await import('./check-raw-controls.mjs')
+  assert.deepEqual(findButtonStyleOverrides('<Button\n  // overlay:button-style: Checkbox.\n  className={unstyledButton("bg-(--foreground) text-(--background)")}\n/>', 'fixture.tsx'), [])
+})

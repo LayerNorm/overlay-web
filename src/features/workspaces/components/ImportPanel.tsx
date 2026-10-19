@@ -100,6 +100,7 @@ export function ImportPanel() {
               key={item.key}
               type="button"
               onClick={() => setService(item.key)}
+              // overlay:button-style: Selectable import source card.
               className={unstyledButton(`flex items-center gap-3 rounded-xl border border-(--border) p-3 text-left transition-colors hover:border-(--foreground)/30 hover:bg-(--surface-subtle) focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-(--foreground)`)}
             >
               {cardBody}

@@ -309,23 +309,21 @@ function ComposerSendButton({
 }) {
   if (canStop && onStop) {
     return (
-      <Button variant="ghost"
+      <Button variant="primary" size="icon" className="shrink-0"
         type="button"
         onClick={onStop}
         title="Stop"
-        className={unstyledButton(`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-(--foreground) text-(--background) transition-colors hover:opacity-80`)}
       >
         <span className="h-3.5 w-3.5 rounded-xs bg-(--background)" />
       </Button>
     )
   }
   return (
-    <Button variant="ghost"
+    <Button variant="primary" size="icon" className="shrink-0"
       type="button"
       aria-label="Send message"
       onClick={onSubmit}
       disabled={disabled || loading || !canSend}
-      className={unstyledButton(`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-(--foreground) text-(--background) transition-colors hover:opacity-80 disabled:opacity-40`)}
     >
       {loading ? <Loader2 size={17} className="animate-spin" /> : <Send size={17} strokeWidth={1.75} />}
     </Button>

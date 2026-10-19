@@ -143,6 +143,7 @@ function MediaReplyAnchor({ snippet, onClick }: { snippet: string; onClick: () =
       <Button variant="ghost"
         type="button"
         onClick={onClick}
+        // overlay:button-style: Reply-quote card.
         className={unstyledButton(`max-w-[75%] rounded-lg border border-(--border) bg-(--surface-subtle) px-2.5 py-1.5 text-left text-[11px] text-(--muted) transition-colors hover:bg-(--border) hover:text-(--foreground)`)}
       >
         <span className="flex items-center gap-1.5 font-medium text-(--foreground)">

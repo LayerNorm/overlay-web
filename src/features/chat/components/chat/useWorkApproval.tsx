@@ -44,12 +44,11 @@ export function useWorkApproval({
             {agentRunLifecycle.run.approval.requests.map((request) => request.toolName).join(', ')}
           </p>
           <div className="mt-3 flex items-center gap-2">
-            <Button
+            <Button size="sm"
               variant="primary"
               type="button"
               disabled={approvalSubmitting}
               onClick={() => void submitWorkApproval(true)}
-              className="h-auto rounded-lg bg-(--foreground) px-3 py-1.5 text-xs font-medium text-(--background) disabled:opacity-50"
             >
               Approve
             </Button>

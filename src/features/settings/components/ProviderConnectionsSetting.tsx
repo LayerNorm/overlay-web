@@ -1,6 +1,5 @@
 'use client'
 
-import { unstyledButton } from '@overlay/ui/control-reset'
 import { Button } from '@overlay/ui/primitives'
 
 import { useCallback, useState } from 'react'
@@ -70,11 +69,10 @@ export function ProviderConnectionsSetting() {
             Connect your own AI provider keys. Expand a provider to choose which models appear in your model dropdown.
           </p>
         </div>
-        <Button variant="ghost"
+        <Button variant="secondary" size="sm" className="shrink-0"
           type="button"
           onClick={() => setDialog({ mode: 'add' })}
           disabled={isLoading}
-          className={unstyledButton(`inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-(--border) bg-(--surface-subtle) px-3 py-2 text-xs font-medium text-(--foreground) transition-colors hover:bg-(--surface-elevated) disabled:opacity-50`)}
         >
           <Plus size={14} strokeWidth={2} />
           Add provider

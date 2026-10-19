@@ -157,6 +157,78 @@ export function findRawControls(source, file) {
   return entries
 }
 
+const BUTTON_STYLE_MARKER = /overlay:button-style:\s*\S/
+const VARIANT_COLOR = /(?:^|[\s"'`])(?:[a-z-]+:)*(?:bg-(?!clip|cover|contain|center|no-repeat|fixed)|text-(?:\(--|\[#|white|black|red-|zinc-|gray-|neutral-|slate-|emerald-|amber-|rose-|blue-|green-)|border-(?:\(--|\[#|white|black|red-|zinc-|gray-|neutral-|transparent))/
+
+function buttonStyleAnnotated(source, index) {
+  const lineStart = source.lastIndexOf('\n', index - 1) + 1
+  const lineEnd = source.indexOf('\n', index)
+  const line = source.slice(lineStart, lineEnd === -1 ? undefined : lineEnd)
+  if (BUTTON_STYLE_MARKER.test(line)) return true
+  const above = commentsAboveLine(source.slice(0, lineStart).split('\n'), lineNumber(source, index) - 2)
+  return above.some((comment) => BUTTON_STYLE_MARKER.test(comment))
+}
+
+function closingParen(source, open) {
+  let depth = 0
+  let quote = null
+  for (let i = open; i < source.length; i += 1) {
+    const char = source[i]
+    if (quote) {
+      if (char === '\\') i += 1
+      else if (char === quote) quote = null
+      continue
+    }
+    if (QUOTES.has(char)) quote = char
+    else if (char === '(') depth += 1
+    else if (char === ')' && (depth -= 1) === 0) return i
+  }
+  return -1
+}
+
+export function variantLook(classes) {
+  if (/(?<![:\w-])bg-\(--foreground\)/.test(classes) && /(?<![:\w-])text-\(--background\)/.test(classes)) return 'primary'
+  if (!/(?<![\w-])border border-\(--border\)/.test(classes)) return null
+  if (/(?<![:\w-])bg-\(--surface-(?:subtle|muted)\)/.test(classes)) return 'secondary'
+  if (!/(?<![:\w-])bg-/.test(classes) && /hover:bg-\(--surface-subtle\)/.test(classes)) return 'outline'
+  return null
+}
+
+// Buttons should pick a variant rather than repaint one: flag unstyledButton() strings that
+// rebuild a variant's look, and color classes passed to a standard (non-ghost) variant.
+export function findButtonStyleOverrides(source, file) {
+  const entries = []
+  for (const match of source.matchAll(/unstyledButton\(/g)) {
+    const start = match.index ?? 0
+    const end = closingParen(source, start + 'unstyledButton'.length)
+    if (end === -1 || buttonStyleAnnotated(source, start)) continue
+    const look = variantLook(source.slice(start, end))
+    if (look) entries.push({ file, kind: 'rebuilt-' + look, line: lineNumber(source, start) })
+  }
+  for (const match of source.matchAll(/<Button(?=[\s>/])/g)) {
+    const start = match.index ?? 0
+    const end = tagEnd(source, start)
+    if (end === -1 || buttonStyleAnnotated(source, start)) continue
+    const opening = source.slice(start, end + 1)
+    const variant = attrValue(opening, 'variant')
+    if (!variant || variant === 'ghost') continue
+    const className = attrValue(opening, 'className')
+    if (className && !className.includes('unstyledButton(') && VARIANT_COLOR.test(className)) {
+      entries.push({ file, kind: 'recolored-' + variant, line: lineNumber(source, start) })
+    }
+  }
+  return entries
+}
+
+function buttonStyleInventory() {
+  const entries = []
+  for (const root of ROOTS) {
+    if (!existsSync(root)) continue
+    for (const file of collect(root)) entries.push(...findButtonStyleOverrides(readFileSync(file, 'utf8'), file))
+  }
+  return entries
+}
+
 function inventory() {
   const entries = []
   for (const root of ROOTS) {
@@ -212,6 +284,12 @@ function main() {
     for (const violation of violations) {
       console.error('- ' + violation.file + ' <' + violation.tag + '>' + (violation.type ? ' type=' + violation.type : '') + ' signature=' + violation.signature + ' current=' + violation.count + ' baseline=' + violation.allowed)
     }
+    process.exit(1)
+  }
+  const overrides = buttonStyleInventory()
+  if (overrides.length) {
+    console.error('Buttons must use a variant instead of restyling one (or annotate overlay:button-style: <reason>):')
+    for (const entry of overrides) console.error('- ' + entry.file + ':' + entry.line + ' ' + entry.kind)
     process.exit(1)
   }
   console.log('Raw control guardrail passed: 0 new controls; ' + current.length + ' current baseline controls; ' + stale + ' stale baseline entries from completed sweeps')

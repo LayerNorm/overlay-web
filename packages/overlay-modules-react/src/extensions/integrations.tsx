@@ -185,10 +185,9 @@ export function IntegrationsPanel({
 
 function ShowMoreButton({ onClick }: { onClick: () => void }) {
   return (
-    <Button variant="ghost"
+    <Button variant="secondary" size="sm" className="mt-3 w-full"
       type="button"
       onClick={onClick}
-      className={unstyledButton("mt-3 w-full rounded-lg border border-(--border) bg-(--surface-subtle) py-2 text-xs font-medium text-(--foreground) transition-colors hover:bg-(--border)")}
     >
       Show more
     </Button>

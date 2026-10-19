@@ -458,11 +458,10 @@ function ProviderDialogFooter({
       >
         Cancel
       </Button>
-      <Button variant="ghost"
+      <Button variant="primary" size="sm"
         type="button"
         onClick={onSave}
         disabled={busy || !canSave}
-        className={unstyledButton(`inline-flex items-center gap-1.5 rounded-lg bg-(--foreground) px-4 py-2 text-xs font-medium text-(--background) transition-opacity hover:opacity-90 disabled:opacity-50`)}
       >
         {busy ? <Loader2 size={14} className="animate-spin" /> : null}
         {isEdit ? 'Save changes' : 'Add provider'}

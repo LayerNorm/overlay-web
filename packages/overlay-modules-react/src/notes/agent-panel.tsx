@@ -1,6 +1,5 @@
 'use client'
 import { Button } from '@overlay/ui/primitives'
-import { unstyledButton } from '@overlay/ui/control-reset'
 import type { ReactNode } from 'react'
 import type { NotebookAgentUiItem } from '@overlay/app-core'
 import { Orb } from '@overlay/ui'
@@ -145,20 +144,18 @@ export function NotebookAgentComposer({
         {input}
         <div className="mt-2 flex min-h-9 items-center justify-end gap-2">
           {running ? (
-            <Button variant="ghost"
+            <Button variant="primary" size="icon" className="shrink-0"
               type="button"
               onClick={onStop}
-              className={unstyledButton("flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-(--foreground) text-(--background) transition-colors hover:opacity-80")}
               aria-label="Stop"
             >
               <div className="h-3.5 w-3.5 rounded-xs bg-(--background)" />
             </Button>
           ) : (
-            <Button variant="ghost"
+            <Button variant="primary" size="icon" className="shrink-0"
               type="button"
               onClick={onSend}
               disabled={!canSend}
-              className={unstyledButton("flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-(--foreground) text-(--background) transition-colors hover:opacity-80 disabled:opacity-40")}
               aria-label="Send"
             >
               <Send size={17} strokeWidth={1.75} />

@@ -1,5 +1,4 @@
 'use client'
-import { unstyledButton } from '@overlay/ui/control-reset'
 import { Button } from '@overlay/ui/primitives'
 
 import { useEffect } from 'react'
@@ -31,10 +30,9 @@ export function AppRouteErrorState({
         <p className="mt-2 text-sm text-(--muted)">
           The route failed while loading. Retry the segment without leaving the app.
         </p>
-        <Button variant="ghost"
+        <Button variant="primary" size="md" className="mt-5"
           type="button"
           onClick={reset}
-          className={unstyledButton(`mt-5 inline-flex h-9 items-center gap-2 rounded-md border border-(--border) bg-(--foreground) px-3 text-sm font-medium text-(--background) transition-opacity hover:opacity-90`)}
         >
           <RefreshCw size={14} strokeWidth={1.8} />
           Retry

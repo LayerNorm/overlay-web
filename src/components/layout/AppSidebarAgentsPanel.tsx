@@ -1,5 +1,4 @@
 'use client'
-import { unstyledButton } from '@overlay/ui/control-reset'
 import { useIsSoloWorkspace } from '@/hooks/use-solo-workspace'
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
@@ -666,10 +665,9 @@ export function AgentsInlinePanel({
         <SidebarMenuItem>
           <div className="px-2.5 py-2">
             <p role="alert" className="text-xs leading-4 text-red-500">{openError}</p>
-            <Button variant="ghost"
+            <Button variant="outline" size="sm" className="mt-1.5"
               type="button"
               onClick={retryOpen}
-              className={unstyledButton("mt-1.5 rounded-md border border-(--border) px-2 py-1 text-xs text-(--foreground) hover:bg-(--surface-subtle)")}
             >
               Retry
             </Button>
