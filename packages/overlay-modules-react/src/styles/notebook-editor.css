@@ -42,7 +42,7 @@
 
 .app-note-editor {
   color: var(--foreground);
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.95rem;
   line-height: 1.7;
   min-width: 0;

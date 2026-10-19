@@ -100,7 +100,7 @@ export function PageSections({
                 aria-expanded={open}
                 isActive={!independent && section.active && multi}
                 disabled={section.locked}
-                className="h-[30px] w-auto flex-none gap-1 px-2 font-medium text-(--muted-light) hover:bg-transparent hover:text-(--foreground)"
+                className="h-[30px] w-auto flex-none gap-1 px-2 text-xs font-medium text-(--muted) hover:bg-transparent hover:text-(--foreground)"
                 onClick={() => {
                   if (independent || section.active) toggle(section.id)
                   else nav?.onSelect(section.id)
