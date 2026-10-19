@@ -773,7 +773,7 @@ export function KnowledgeViewHeader({
             uploadMenuOpen={uploadMenuOpen}
             uploadMenuRef={uploadMenuRef}
           />
-          {tabs ? <div className="min-w-0 overflow-x-auto scrollbar-none [&::-webkit-scrollbar]:hidden">{tabs}</div> : null}
+          {tabs ? <div className="min-w-0 overflow-x-auto scrollbar-none max-sm:order-3 [&::-webkit-scrollbar]:hidden">{tabs}</div> : null}
         </>
       )}
       </div>
