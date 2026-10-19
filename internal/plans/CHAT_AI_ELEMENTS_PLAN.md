@@ -139,7 +139,7 @@ Adaptation rules for every copied file (from `SHADCN_MIGRATION_PLAN.md` and AGEN
 |---|---|---|
 | `packages/overlay-chat-react/src/components/ChatComposer.tsx` (450) and `src/features/chat/components/ChatComposer.tsx` (520) + `MentionInput` | **Prompt Input**: `InputGroup` with the textarea, attach button (`icon-sm`, outline, rounded), model menus in the `block-end` addon, submit (`ArrowUp` idle, spinner, stop) | `MentionInput` is a contenteditable editor (`mention-input-editor.ts`); it goes inside the group as the field, not replaced. Owner decision: merge both into one Prompt Input in `@overlay/chat-react`; both hosts render it. |
 | `AttachmentTray`, `ChatComposerAttachments`, `AttachmentPreviewShell` chips | **Attachment** `size="sm"` in the `block-start` addon with remove button | Previews keep using `AttachmentPreviewShell`. |
-| `ComprehensiveModelPicker`, `GenerationModeToggle` | **Model Selector** layout (model menu + effort menu next to send) | Keep ordering rules (quality priority, Auto on top for free tier) and capability chips. |
+| `ComprehensiveModelPicker`, `GenerationModeToggle` | **Model Selector**: a `Popover` + `Command` from the model button. Search on top. Left rail: Favorites star, then one logo per provider (click to jump, current group highlighted on scroll). List grouped by provider with section headers and a provider logo on every row. Typing in search collapses to one flat filtered list with no rail. **Text / Image / Video** segmented toggle next to attach (active segment shows its label); the mode swaps the model list and placeholder, and the effort menu shows only for text models that reason | Owner decision 6. This replaces the AGENTS.md "no provider grouping" rule (update it in slice 6). Providers are ordered by their best model and models within a provider by `CHAT_MODEL_QUALITY_PRIORITY`; free-tier Auto stays pinned on top; capability chips stay. Favorites are per user, stored in chat preferences (hover a row to star it). Provider logos: vendor the needed SVGs from `@lobehub/icons-static-svg` (MIT) as inline `currentColor` components in `@overlay/ui`, no runtime dependency. |
 | Budget / usage | **Context** (Hover Card + Progress, from `messageMetadata` usage on finish) | New, small. Optional. |
 | Empty-state starters | **Suggestion** | Only if we keep starters. |
 
@@ -214,10 +214,11 @@ depends on 1.
 | # | Topic | Decision |
 |---|---|---|
 | 1 | Step icon | The Orb in `TraceIcon` on every step. Status reads from `TraceLine status` and the title. |
-| 2 | Markdown renderer | Pending owner. Recommended: Streamdown, because the current renderer flickers. LaTeX is kept through `@streamdown/math` with `singleDollarTextMath: true` (same KaTeX stack as today). |
+| 2 | Markdown renderer | Approved: Streamdown, because the current renderer flickers. LaTeX is kept through `@streamdown/math` with `singleDollarTextMath: true` (same KaTeX stack as today). |
 | 3 | Code theme | Shiki `github-light` / `github-dark-default` on Overlay surface colors. Theme presets do not tint code. |
 | 4 | Scroll position | A thread opens at the very bottom (`defaultScrollPosition="end"`). Follow the live edge while at the bottom, jump-to-latest button when scrolled up. |
 | 5 | Composer | One Prompt Input in `@overlay/chat-react`, used by both hosts. |
+| 6 | Model selector | Search, provider rail with Favorites, models grouped by provider with logos, and a Text / Image / Video toggle in the composer. |
 
 ## Risks
 
