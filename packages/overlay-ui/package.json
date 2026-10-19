@@ -5,7 +5,8 @@
   "license": "AGPL-3.0-only",
   "type": "module",
   "sideEffects": [
-    "./src/styles.css"
+    "./src/styles.css",
+    "./src/typeset.css"
   ],
   "main": "./src/index.ts",
   "types": "./src/index.ts",
@@ -13,6 +14,7 @@
     ".": "./src/index.ts",
     "./control-reset": "./src/control-reset.ts",
     "./styles.css": "./src/styles.css",
+    "./typeset.css": "./src/typeset.css",
     "./tokens": "./src/tokens.ts",
     "./primitives": "./src/primitives.ts",
     "./hooks": "./src/hooks.ts",

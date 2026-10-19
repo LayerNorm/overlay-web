@@ -1,6 +1,7 @@
 /* Legacy full-host entrypoint retained for the Chrome extension. */
 @import url("https://fonts.googleapis.com/css2?family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&display=swap");
 @import "@overlay/ui/styles.css";
+@import "@overlay/ui/typeset.css";
 @import "./chat-surface.css";
 
 :root {

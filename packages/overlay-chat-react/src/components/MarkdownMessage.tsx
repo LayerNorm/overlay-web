@@ -297,7 +297,7 @@ function MarkdownMessageImpl({
     // and the marker disappears, but the underlying ReactMarkdown tree stays mounted
     // so the transition is seamless (no remount, no re-animation).
     return (
-      <div className={`markdown-content${isStreaming ? ' markdown-content--streaming' : ''}`}>
+      <div className={`typeset markdown-content${isStreaming ? ' markdown-content--streaming' : ''}`}>
         <ReactMarkdown
           remarkPlugins={activeRemarkPlugins}
           rehypePlugins={activeRehypePlugins}
@@ -310,7 +310,7 @@ function MarkdownMessageImpl({
   }
 
   return (
-    <div className="markdown-content">
+    <div className="typeset markdown-content">
       {completedBlocks.map((block, index) => (
         // Parsed blocks have no id; index is the stable identity for append-only output.
         // react-doctor-disable-next-line react-doctor/no-array-index-as-key
