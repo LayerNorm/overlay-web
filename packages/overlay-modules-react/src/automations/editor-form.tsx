@@ -1,5 +1,5 @@
 'use client'
-import { unstyledButton, unstyledInput } from '@overlay/ui/control-reset'
+import { unstyledInput } from '@overlay/ui/control-reset'
 import { lazy, Suspense, type ReactNode } from 'react'
 import type {
   AutomationGraph,
@@ -172,11 +172,10 @@ function AutomationEditorHeader({
         <p className="text-sm font-medium text-(--foreground)">Automation editor</p>
         <p className="text-xs text-(--muted)">Configure and test this automation.</p>
       </div>
-      <Button variant="ghost"
+      <Button variant="primary" size="sm"
         type="button"
         onClick={onSave}
         disabled={saveState === 'saving' || !name.trim() || !instructions.trim()}
-        className={unstyledButton("rounded-lg bg-(--foreground) px-3 py-1.5 text-xs font-medium text-(--background) transition-opacity hover:opacity-90 disabled:opacity-50")}
       >
         {saveState === 'saving' ? 'Saving...' : saveState === 'saved' ? 'Saved' : 'Save changes'}
       </Button>
@@ -422,11 +421,10 @@ function AutomationTestCard({
           <p className="text-sm font-medium text-(--foreground)">Run once</p>
           <p className="text-xs text-(--muted)">Executes the automation now and writes the result to the automation chat.</p>
         </div>
-        <Button variant="ghost"
+        <Button variant="secondary" size="sm"
           type="button"
           onClick={onTest}
           disabled={testState === 'running' || !instructions.trim()}
-          className={unstyledButton("rounded-lg border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-xs font-medium text-(--foreground) transition-colors hover:bg-(--border) disabled:opacity-50")}
         >
           {testState === 'running' ? 'Running...' : 'Test automation'}
         </Button>

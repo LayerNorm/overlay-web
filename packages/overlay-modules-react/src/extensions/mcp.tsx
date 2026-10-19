@@ -282,7 +282,7 @@ function McpOAuthSection({
               Disconnect
             </Button>
           ) : null}
-          <Button variant="ghost" type="button" onClick={onConnect} disabled={connecting || !canConnect} className={unstyledButton("flex items-center gap-1.5 rounded-md border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-xs text-(--foreground) transition-colors hover:bg-(--border) disabled:opacity-50")}>
+          <Button variant="secondary" size="sm" type="button" onClick={onConnect} disabled={connecting || !canConnect}>
             {connecting ? <Loader2 size={12} className="animate-spin" /> : <Link2 size={12} />}
             {connecting ? 'Opening…' : oauthStatus === 'connected' ? 'Reconnect' : 'Connect'}
           </Button>
@@ -394,11 +394,11 @@ function McpServerDialogFooter({
         ) : null}
       </div>
       <div className="flex items-center gap-2">
-        <Button variant="ghost" type="button" onClick={onTest} disabled={!canTest} className={unstyledButton("flex items-center gap-1.5 rounded-md border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-xs text-(--foreground) transition-colors hover:bg-(--border) disabled:opacity-50")}>
+        <Button variant="secondary" size="sm" type="button" onClick={onTest} disabled={!canTest}>
           {testing ? <Loader2 size={12} className="animate-spin" /> : <Zap size={12} />}
           {testing ? 'Testing…' : 'Test Connection'}
         </Button>
-        <Button variant="ghost" type="button" onClick={onSave} disabled={!canSave} className={unstyledButton("flex items-center gap-1.5 rounded-md border border-(--border) bg-(--surface-subtle) px-4 py-1.5 text-xs text-(--foreground) transition-colors hover:bg-(--border) disabled:opacity-50")}>
+        <Button variant="primary" size="sm" type="button" onClick={onSave} disabled={!canSave}>
           {saving ? <Loader2 size={12} className="animate-spin" /> : saved ? <Check size={12} /> : null}
           {saving ? 'Saving…' : saved ? 'Saved' : isEdit ? 'Save' : 'Add Server'}
         </Button>
@@ -529,7 +529,7 @@ export function McpServersPanel({ loading, servers, filteredServers, onCreate, o
           <p className="text-sm font-medium text-(--foreground)">No MCP servers configured</p>
           <p className="text-xs text-(--muted-light)">Add remote MCP servers to extend the AI agent with custom tools</p>
         </div>
-        {onCreate ? <Button variant="ghost" type="submit" onClick={onCreate} className={unstyledButton("flex items-center gap-1.5 rounded-md border border-(--border) bg-(--surface-subtle) px-4 py-2 text-sm text-(--foreground) transition-colors hover:bg-(--border)")}><Plus size={14} />Add Server</Button> : null}
+        {onCreate ? <Button variant="secondary" size="md" type="submit" onClick={onCreate}><Plus size={14} />Add Server</Button> : null}
       </AppScreenBody>
     )
   }

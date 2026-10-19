@@ -23,9 +23,8 @@ export function NotebookNotesSidebar({
   return (
     <div className="w-52 h-full flex flex-col border-r border-(--border) bg-(--sidebar-surface)">
       <div className="flex h-16 items-center border-b border-(--border) px-3">
-        <Button variant="ghost" type="submit"
+        <Button variant="secondary" size="md" className="w-full justify-start" type="submit"
           onClick={onCreateNote}
-          className={unstyledButton("flex items-center gap-1.5 w-full px-3 py-1.5 rounded-md text-sm border border-(--border) bg-(--surface-muted) text-(--foreground) hover:bg-(--surface-subtle) transition-colors")}
         >
           <Plus size={13} />
           New note
@@ -96,9 +95,8 @@ export function NotebookEmptyState({ onCreateNote }: NotebookEmptyStateProps) {
           notes
         </p>
         <p className="text-sm text-(--muted) mb-4">Select a note or create a new one</p>
-        <Button variant="ghost" type="submit"
+        <Button variant="secondary" size="md" type="submit"
           onClick={onCreateNote}
-          className={unstyledButton("inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-sm border border-(--border) bg-(--surface-muted) text-(--foreground) hover:bg-(--surface-subtle) transition-colors")}
         >
           <Plus size={14} />
           New Note
