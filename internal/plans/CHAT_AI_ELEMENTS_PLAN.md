@@ -214,7 +214,7 @@ depends on 1.
 Owner requirement, applied to every component in this migration and recorded in `internal/develop/interface-design.md` in slice 1:
 
 1. **Flat and borderless.** No borders on cards, code blocks, composer, chips, buttons, approval items, popovers or sidebars. Surfaces are told apart by fill only: `background` (page), `sidebar`, `muted` (bubbles, composer, code, items, chips), `muted-2` (controls sitting on a `muted` surface, selected rows), `popover` (floating layers, which keep a soft shadow and no ring). Focus rings stay for keyboard focus. Destructive states tint the fill rather than the border.
-2. **Blurred headers.** The page header and the sidebar header float over their scroll areas. Content scrolls under them and blurs progressively at their bottom edge (`backdrop-filter: blur(8px)` masked by a gradient, plus a short fade of the surface color), with no divider line. Scroll areas get top padding equal to the header height so nothing starts hidden. Wrap the blur in a shared `ScrollHeader` primitive in `@overlay/ui` so every page, the sidebar and settings use the same one.
+2. **Blurred headers.** The page header and the sidebar header float over their scroll areas. Content scrolls under them and blurs progressively toward the top: a stack of masked `backdrop-filter` layers (1, 3, 6, 12px) plus a surface tint, both easing to fully transparent about 40px below the header, so there is no visible edge or divider line. Scroll areas get top padding equal to the header height so nothing starts hidden. Wrap the blur in a shared `ScrollHeader` primitive in `@overlay/ui` so every page, the sidebar and settings use the same one.
 
 ## Decisions
 

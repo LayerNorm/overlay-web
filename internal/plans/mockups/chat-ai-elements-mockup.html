@@ -50,11 +50,16 @@ svg.i.sm { width: 14px; height: 14px; }
 .main { flex: 1; min-width: 0; display: flex; flex-direction: column; position: relative; }
 /* Headers float over their scroll areas; content blurs as it passes under them. */
 .top, .sbh { position: absolute; top: 0; left: 0; right: 0; z-index: 10; height: 48px; display: flex; align-items: center; gap: 8px; padding: 0 16px; }
-.top { background: color-mix(in srgb, var(--background) 72%, transparent); }
-.sbh { background: color-mix(in srgb, var(--sidebar) 72%, transparent); padding: 0 10px 0 14px; }
-.top::before, .sbh::before { content: ""; position: absolute; inset: 0 0 -28px 0; z-index: -1; pointer-events: none; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); mask-image: linear-gradient(to bottom, #000 0, #000 40%, transparent 100%); -webkit-mask-image: linear-gradient(to bottom, #000 0, #000 40%, transparent 100%); }
-.top::after, .sbh::after { content: ""; position: absolute; left: 0; right: 0; top: 100%; height: 28px; pointer-events: none; background: linear-gradient(to bottom, color-mix(in srgb, var(--background) 72%, transparent), transparent); }
-.sbh::after { background: linear-gradient(to bottom, color-mix(in srgb, var(--sidebar) 72%, transparent), transparent); }
+.top, .sbh { background: transparent; }
+.sbh { padding: 0 10px 0 14px; }
+.pb { --s: var(--background); position: absolute; left: 0; right: 0; top: 0; height: 88px; z-index: -1; pointer-events: none; }
+.sbh .pb { --s: var(--sidebar); }
+.pb::after { content: ""; position: absolute; inset: 0; background: linear-gradient(to bottom, color-mix(in srgb, var(--s) 92%, transparent) 0%, color-mix(in srgb, var(--s) 85%, transparent) 30%, color-mix(in srgb, var(--s) 62%, transparent) 50%, color-mix(in srgb, var(--s) 34%, transparent) 68%, color-mix(in srgb, var(--s) 12%, transparent) 84%, transparent 100%); }
+.pb i { position: absolute; inset: 0; }
+.pb i:nth-child(1) { backdrop-filter: blur(1px); -webkit-backdrop-filter: blur(1px); mask-image: linear-gradient(to bottom, #000 0%, #000 70%, transparent 100%); -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 70%, transparent 100%); }
+.pb i:nth-child(2) { backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); mask-image: linear-gradient(to bottom, #000 0%, #000 50%, transparent 85%); -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 50%, transparent 85%); }
+.pb i:nth-child(3) { backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); mask-image: linear-gradient(to bottom, #000 0%, #000 35%, transparent 70%); -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 35%, transparent 70%); }
+.pb i:nth-child(4) { backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); mask-image: linear-gradient(to bottom, #000 0%, transparent 55%); -webkit-mask-image: linear-gradient(to bottom, #000 0%, transparent 55%); }
 
 /* ---------- Sidebar ---------- */
 .sb { width: 256px; flex: none; background: var(--sidebar); position: relative; display: flex; flex-direction: column; }
@@ -238,7 +243,7 @@ button.line[aria-expanded="true"] .chev { transform: rotate(90deg); }
 <body>
 <div class="page">
   <aside class="sb" aria-label="Sidebar">
-    <div class="sbh"><span class="lockup"><span class="orb" data-orb></span>overlay</span><button class="ib" type="button" aria-label="New chat"><svg class="i" viewBox="0 0 24 24"><path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z"/></svg></button></div>
+    <div class="sbh"><div class="pb" aria-hidden="true"><i></i><i></i><i></i><i></i></div><span class="lockup"><span class="orb" data-orb></span>overlay</span><button class="ib" type="button" aria-label="New chat"><svg class="i" viewBox="0 0 24 24"><path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z"/></svg></button></div>
     <nav class="sbl" aria-label="AI chats">
       <div class="sbg"><span class="t">AI chats <svg class="i sm" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></span><button class="ib" type="button" aria-label="New AI chat" style="width:22px;height:22px"><svg class="i sm" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></svg></button></div>
       <button class="sbr" type="button" aria-current="page"><span>Quarterly churn analysis</span></button>
@@ -259,10 +264,20 @@ button.line[aria-expanded="true"] .chev { transform: rotate(90deg); }
       <button class="sbr" type="button"><span>Board meeting prep</span></button>
       <button class="sbr" type="button"><span>Customer interview themes</span></button>
       <button class="sbr" type="button"><span>Roadmap prioritization</span></button>
+      <button class="sbr" type="button"><span>Pricing experiment results</span></button>
+      <button class="sbr" type="button"><span>Churn interview notes</span></button>
+      <button class="sbr" type="button"><span>Partner program draft</span></button>
+      <button class="sbr" type="button"><span>API rate limit review</span></button>
+      <button class="sbr" type="button"><span>Docs search feedback</span></button>
+      <button class="sbr" type="button"><span>Q4 OKR draft</span></button>
+      <button class="sbr" type="button"><span>Agent sandbox costs</span></button>
+      <button class="sbr" type="button"><span>Mobile release checklist</span></button>
+      <button class="sbr" type="button"><span>Status page wording</span></button>
+      <button class="sbr" type="button"><span>Enterprise SSO questions</span></button>
     </nav>
   </aside>
   <div class="main">
-  <header class="top">
+  <header class="top"><div class="pb" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
     <span class="title">Quarterly churn analysis</span>
     <div class="seg" role="group" aria-label="Theme">
       <button type="button" data-theme="light" aria-pressed="true">Light</button>
