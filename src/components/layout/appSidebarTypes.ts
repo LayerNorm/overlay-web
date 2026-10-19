@@ -13,6 +13,8 @@ export interface AppSidebarChatPanelContext extends AppSidebarNavigateContext {
    * which nav item was chosen.
    */
   view: string
+  /** Rendered as one of several sidebar sections, pinned to `view`. */
+  section?: boolean
 }
 
 export interface AppSidebarWorkspaceAdapter {

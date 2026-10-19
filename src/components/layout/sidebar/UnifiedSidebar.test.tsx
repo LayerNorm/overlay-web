@@ -82,6 +82,19 @@ test('chat destinations for the selected scope render as sidebar rows', () => {
   assert.match(html, /data-active="true"(?:(?!data-active).)*<span>Direct messages/s)
 })
 
+test('chat sections each list their own items and headers only open or close', () => {
+  const html = render({
+    renderSection: (view) => <span>{`list:${view}`}</span>,
+    sectionActions: { channels: { label: 'New channel', onClick: noop } },
+  })
+  assert.match(html, /list:dms/)
+  assert.match(html, /list:channels/)
+  assert.match(html, /list:activity/)
+  assert.doesNotMatch(html, /data-active="true"(?:(?!data-active).)*<span>Direct messages/s)
+  assert.match(html, /aria-expanded="true"[^>]*>(?:(?!<\/button>).)*<span>Channels/s)
+  assert.match(html, /aria-label="New channel"/)
+})
+
 test('collapsed shows icons only, with labels as titles', () => {
   const html = render({ collapsed: true })
   assert.doesNotMatch(html, /<span>Work<\/span>/)

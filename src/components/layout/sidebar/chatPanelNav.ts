@@ -51,7 +51,7 @@ async function resolveViewConversationId({
   }
 }
 
-const WORKSPACE_CHATS_ITEM = { id: 'workspace-chats', label: 'Chats', icon: MessageSquare }
+const WORKSPACE_CHATS_ITEM = { id: 'workspace-chats', label: 'AI chats', icon: MessageSquare }
 const WORKSPACE_CHAT_IDS = new Set(['dms', 'channels', 'activity'])
 
 export function buildChatPanelNav({
@@ -122,7 +122,7 @@ export function buildChatPanelNav({
     // One person: no direct messages or activity feed, just chats and channels (rooms with agents).
     const soloRows = chatItems
       .filter((item) => item.id === 'personal' || item.id === 'channels')
-      .map((item) => (item.id === 'personal' ? { ...item, label: 'Chats' } : item))
+      .map((item) => (item.id === 'personal' ? { ...item, label: 'AI chats' } : item))
     return buildScopedPanelNav({
       scope: soloPanelScope(chatScope, true),
       sub: chatsView === 'channels' ? 'channels' : chatScope === 'personal' ? 'personal' : null,

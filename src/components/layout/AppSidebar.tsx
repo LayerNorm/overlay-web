@@ -117,6 +117,21 @@ export default function AppSidebar({
       onNavigate={s.closeMobileDrawer}
     />
   ) : null
+  const renderChatSection = s.routeState.hasResourcePanel && s.routeState.panelKind === 'chat'
+    ? (view: string) => (
+      <SecondaryPanelResourceList
+        panelKind="chat"
+        chatsView={view}
+        section
+        agentsView={s.routeState.agentsView}
+        activeWorkspaceId={s.activeWorkspaceId}
+        buildWorkspaceHref={s.buildWorkspaceHref}
+        chatPanelRefreshKey={s.chatPanelRefreshKey}
+        renderChatPanel={renderChatPanel}
+        onNavigate={s.closeMobileDrawer}
+      />
+    )
+    : undefined
 
   return (
     <>
@@ -161,6 +176,8 @@ export default function AppSidebar({
           panelKind={s.routeState.panelKind}
           panelNav={s.panelNav}
           panelAction={s.panelAction}
+          sectionActions={s.panelSectionActions}
+          renderSection={renderChatSection}
           onSearch={publicShowcase ? () => s.requireAuth('history') : () => s.openGlobalSearch(null)}
           scope={s.routeState.scope}
           solo={solo}
@@ -264,6 +281,8 @@ export default function AppSidebar({
             panelKind={s.routeState.panelKind}
             panelNav={s.panelNav}
             panelAction={s.panelAction}
+            sectionActions={s.panelSectionActions}
+            renderSection={renderChatSection}
             onSearch={publicShowcase ? () => s.requireAuth('history') : () => { s.closeMobileDrawer(); s.openGlobalSearch(null) }}
             scope={s.routeState.scope}
             solo={solo}

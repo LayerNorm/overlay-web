@@ -221,6 +221,9 @@ function scopeChildren(nav: SecondaryPanelNav | undefined, scope: PanelScope, so
 
 const SECTION_HEADER_PX = 32
 
+/** Scoped row ids look like `workspace:dms`; sections are keyed by the view after the scope. */
+const sectionViewId = (id: string) => id.slice(id.indexOf(':') + 1)
+
 interface PageSection {
   id: string
   label: string
@@ -248,28 +251,47 @@ function PageSections({
   rows,
   title,
   action,
+  sectionActions,
+  renderSection,
   children,
 }: {
   nav?: SecondaryPanelNav
   rows: ReadonlyArray<InlineNavItem>
   title: string
   action?: SidebarResourceAction | null
+  sectionActions?: Readonly<Record<string, SidebarResourceAction | null>>
+  renderSection?: (id: string) => ReactNode
   children?: ReactNode
 }) {
   const [closed, setClosed] = useState<ReadonlySet<string>>(() => new Set())
   const sections = pageSections(nav, rows, title, Boolean(children || action))
   if (sections.length === 0) return null
-  const setOpen = (id: string, open: boolean) => setClosed((prev) => {
+  const multi = Boolean(nav && rows.length > 0)
+  // With a renderer every section lists its own items, so a header only opens and closes.
+  const independent = multi && Boolean(renderSection)
+  const toggle = (id: string) => setClosed((prev) => {
     const next = new Set(prev)
-    if (open) next.delete(id)
+    if (next.has(id)) next.delete(id)
     else next.add(id)
     return next
   })
   return (
     <SidebarGroup className="mt-3">
       {sections.map((section, index) => {
-        const open = section.active && !closed.has(section.id)
-        const pending = nav?.pendingId === section.id
+        const open = (independent || section.active) && !closed.has(section.id)
+        const pending = !independent && nav?.pendingId === section.id
+        const sectionAction = multi ? sectionActions?.[sectionViewId(section.id)] ?? (section.active ? action : null) : action
+        const content = !multi ? children : independent ? renderSection?.(sectionViewId(section.id)) : section.active ? children : null
+        const runAction = () => {
+          if (!sectionAction) return
+          if (open) {
+            sectionAction.onClick()
+            return
+          }
+          // The section's list owns the create dialog, so mount it before asking it to open.
+          toggle(section.id)
+          window.setTimeout(sectionAction.onClick, 50)
+        }
         return (
           <Fragment key={section.id}>
             <div
@@ -278,15 +300,12 @@ function PageSections({
             >
               <SidebarMenuButton
                 aria-expanded={open}
-                isActive={section.active && Boolean(nav)}
+                isActive={!independent && section.active && multi}
                 disabled={section.locked}
                 className="flex-1 font-medium"
                 onClick={() => {
-                  if (section.active) setOpen(section.id, !open)
-                  else {
-                    setOpen(section.id, true)
-                    nav?.onSelect(section.id)
-                  }
+                  if (independent || section.active) toggle(section.id)
+                  else nav?.onSelect(section.id)
                 }}
               >
                 {pending
@@ -297,14 +316,14 @@ function PageSections({
               {section.badgeCount ? (
                 <span className="shrink-0 px-1 text-[10px] font-medium text-(--muted)">{badgeLabel(section.badgeCount)}</span>
               ) : null}
-              {section.active && action ? (
-                <DelayedTooltip label={action.label} side="bottom">
+              {sectionAction ? (
+                <DelayedTooltip label={sectionAction.label} side="bottom">
                   <Button
                     variant="ghost"
                     size="icon"
                     type="button"
-                    aria-label={action.label}
-                    onClick={action.onClick}
+                    aria-label={sectionAction.label}
+                    onClick={runAction}
                     className="size-7 shrink-0 rounded-md text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)"
                   >
                     <Plus size={14} aria-hidden />
@@ -312,7 +331,7 @@ function PageSections({
                 </DelayedTooltip>
               ) : null}
             </div>
-            {open ? <div className="min-w-0 pb-2">{children}</div> : null}
+            {open && content ? <div className="min-w-0 pb-2">{content}</div> : null}
           </Fragment>
         )
       })}
@@ -329,6 +348,10 @@ export interface UnifiedSidebarProps {
   panelKind: string | null
   panelNav?: SecondaryPanelNav
   panelAction?: SidebarResourceAction | null
+  /** New actions per section id, for pages whose sections each create their own kind of item. */
+  sectionActions?: Readonly<Record<string, SidebarResourceAction | null>>
+  /** Renders one section's own list; without it only the selected section shows the page list. */
+  renderSection?: (id: string) => ReactNode
   onSearch?: (() => void) | null
   scope: PanelScope
   solo: boolean
@@ -424,6 +447,8 @@ export function UnifiedSidebar({
   panelKind,
   panelNav,
   panelAction,
+  sectionActions,
+  renderSection,
   onSearch,
   scope,
   solo,
@@ -487,7 +512,7 @@ export function UnifiedSidebar({
           </SidebarMenu>
         </SidebarGroup>
         {collapsed ? null : (
-          <PageSections nav={tabsPage ? undefined : scopedNav} rows={tabsPage ? [] : rows} title={pageTitle} action={panelAction}>
+          <PageSections nav={tabsPage ? undefined : scopedNav} rows={tabsPage ? [] : rows} title={pageTitle} action={panelAction} sectionActions={sectionActions} renderSection={renderSection}>
             {children}
           </PageSections>
         )}

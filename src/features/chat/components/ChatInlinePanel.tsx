@@ -59,11 +59,22 @@ type Conversation = {
 }
 
 /** `workspace-chats` lists the AI chats filed under Workspace; `personal` lists the rest. */
-type ChatView = 'personal' | 'workspace-chats' | 'dms' | 'channels' | 'all'
+export type ChatView = 'personal' | 'workspace-chats' | 'dms' | 'channels' | 'all'
 
 function isAiChatInView(chat: Pick<Conversation, 'conversationType' | 'scope'>, view: 'personal' | 'workspace-chats'): boolean {
   if ((chat.conversationType ?? 'personal') !== 'personal') return false
   return (chat.scope ?? 'personal') === (view === 'workspace-chats' ? 'workspace' : 'personal')
+}
+
+export function sectionChatView(view: string): ChatView | undefined {
+  return view === 'personal' || view === 'workspace-chats' || view === 'dms' || view === 'channels' ? view : undefined
+}
+
+function chatInView(chat: Pick<Conversation, 'conversationType' | 'scope'>, view: ChatView): boolean {
+  if (view === 'personal' || view === 'workspace-chats') return isAiChatInView(chat, view)
+  if (view === 'dms') return chat.conversationType === 'dm'
+  if (view === 'channels') return chat.conversationType === 'channel'
+  return true
 }
 
 function DirectMessageIcon({
@@ -443,6 +454,7 @@ function useChatListEvents({
       removeActiveChat(archivedChatId)
       clearLastChatForView(workspaceId, chatView, archivedChatId)
       if (activeId !== archivedChatId) return
+      if (!chatInView(detail.chat, chatView)) return
       const nextChat = (getCachedChatList() ?? []).find((candidate) => {
         if (candidate._id === archivedChatId) return false
         if (chatView === 'personal' || chatView === 'workspace-chats') return isAiChatInView(candidate, chatView)
@@ -838,6 +850,7 @@ export function ChatInlinePanel({
   baseHref = '/app/chat',
   workspaceId,
   seededChats,
+  view: sectionView,
 }: {
   refreshKey: number
   searchQuery?: string
@@ -845,6 +858,8 @@ export function ChatInlinePanel({
   baseHref?: string
   workspaceId?: string | null
   seededChats?: Conversation[]
+  /** Pins the list to one view (a sidebar section) instead of following the route. */
+  view?: ChatView
 }) {
   const router = useRouter()
   const { activeWorkspace } = useWorkspace()
@@ -863,13 +878,14 @@ export function ChatInlinePanel({
     ? null
     : new URLSearchParams(window.location.search).get('id')
   const activeId = browserActiveId ?? searchActiveId
-  const chatView: ChatView = (() => {
+  const chatView: ChatView = sectionView ?? (() => {
     const value = searchParams?.get('view')
     if (value === 'dms' || value === 'channels' || value === 'all' || value === 'workspace-chats') return value
     return 'personal'
   })()
   // Both AI chat views share the personal list; the scope filter runs here.
-  setActiveChatListView(chatView === 'workspace-chats' ? 'personal' : chatView)
+  // Sections share one list of every conversation and each filters its own view.
+  setActiveChatListView(sectionView ? 'all' : chatView === 'workspace-chats' ? 'personal' : chatView)
 
   const openChat = useCallback((chat: Conversation) => {
     const targetView = chat.conversationType === 'channel'
