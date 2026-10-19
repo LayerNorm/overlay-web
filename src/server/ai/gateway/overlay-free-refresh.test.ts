@@ -50,11 +50,20 @@ function storage() {
   return { store, operations, routes: () => routes }
 }
 
-test('refresh parses real catalog shapes, pins a free provider, verifies its receipt, and keeps OpenRouter', async (t) => {
+test('refresh uses slash-separated Gateway URLs, pins a free provider, verifies its receipt, and keeps OpenRouter', async (t) => {
   const previous = process.env.INTERNAL_API_SECRET
   process.env.INTERNAL_API_SECRET = 'refresh-test-secret'
   t.after(() => { if (previous === undefined) delete process.env.INTERNAL_API_SECRET; else process.env.INTERNAL_API_SECRET = previous })
   const state = storage()
+  const requestedUrls: string[] = []
+  t.mock.method(globalThis, 'fetch', async (input: RequestInfo | URL) => {
+    const url = String(input)
+    requestedUrls.push(url)
+    if (url === 'https://ai-gateway.vercel.sh/v1/models') return Response.json(await fetchers.gatewayModels())
+    if (url === `https://ai-gateway.vercel.sh/v1/models/${modelId}/endpoints`) return Response.json(await fetchers.gatewayEndpoints())
+    if (url === 'https://openrouter.ai/api/v1/models') return Response.json(await fetchers.openrouterModels())
+    return new Response('Not found', { status: 404 })
+  })
   let requests = 0
   const canary: LanguageModelV4 = {
     specificationVersion: 'v4', provider: 'gateway', modelId, supportedUrls: {},
@@ -76,8 +85,9 @@ test('refresh parses real catalog shapes, pins a free provider, verifies its rec
       }
     },
   }
-  await refreshOverlayFreeCatalog({ fetchers, store: state.store, loadGateway: async () => () => canary })
+  await refreshOverlayFreeCatalog({ store: state.store, loadGateway: async () => () => canary })
   assert.equal(requests, 1)
+  assert.equal(requestedUrls.filter(url => url === `https://ai-gateway.vercel.sh/v1/models/${modelId}/endpoints`).length, 2)
   assert.equal(state.routes().length, 2)
   assert.ok(state.routes().find(route => route.transport === 'gateway')?.canaryExpiresAt)
   assert.ok(state.routes().find(route => route.modelId === 'openrouter/free'))

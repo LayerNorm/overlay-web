@@ -28,7 +28,7 @@ const defaultFetchers: CatalogFetcher = {
     return await response.json()
   },
   gatewayEndpoints: async (modelId) => {
-    const response = await fetch(`https://ai-gateway.vercel.sh/v1/models/${encodeURIComponent(modelId)}/endpoints`, { signal: AbortSignal.timeout(20_000) })
+    const response = await fetch(`https://ai-gateway.vercel.sh/v1/models/${modelId.split('/').map(encodeURIComponent).join('/')}/endpoints`, { signal: AbortSignal.timeout(20_000) })
     if (!response.ok) throw new Error(`gateway_endpoints:${response.status}`)
     return await response.json()
   },
