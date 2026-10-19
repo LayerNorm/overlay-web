@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Update connected-agent adapters to Claude ACP 0.93.0 and Codex ACP 2.2.2; prepare host/protocol 0.4.3 and image v10.
+
 - Make a single shadcn sidebar the default app shell: Personal/Workspace toggle under the brand, Files and Extensions under a hover More menu, page subviews as tabs on the header row, and no divider lines between sidebar, header and body. The rail and panel layout remains under Settings > Customization. Add Workspace AI chats: chats started from Workspace > Chats are filed under that scope (stored as an optional conversation `scope`; existing chats stay Personal). The Personal/Workspace toggle always shows; in a one-person workspace Workspace is disabled with a hint to invite members. Settings swaps the sidebar for a settings sidebar: Back to app, a settings search (matches page names and the settings on each page), then the settings pages in groups. The onboarding tour, its Replay tour setting, and the first-run workspace naming step are removed. Work's Needs you, Assigned to me and Everything filters move from chips under the header into collapsible sidebar sections that list their open tasks. Page headers read title and count, then search, actions, tabs, and the options menu last, so page tabs sit at the far right. The agent conversation's Share action moves into its options menu.
 
 - Keep the onboarding tour's first tooltip anchored next to the model picker, and render the "Connect your tools" logos inline so they appear on first paint.

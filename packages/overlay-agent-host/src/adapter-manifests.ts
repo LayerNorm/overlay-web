@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 
 export const CODEX_ACP_PACKAGE_VERSION = '2.2.2'
-export const CLAUDE_AGENT_ACP_PACKAGE_VERSION = '0.91.0'
+export const CLAUDE_AGENT_ACP_PACKAGE_VERSION = '0.93.0'
 export const HERMES_AGENT_MINIMUM_VERSION = '0.20.6'
 
 export const ACP_ADAPTER_MANIFESTS = {

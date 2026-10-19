@@ -908,7 +908,7 @@ flowchart LR
     Claude["Claude Code manifest"]
     Hermes["Hermes manifest"]
     CodexProcess["npx -y<br/>@agentclientprotocol/codex-acp@2.2.2"]
-    ClaudeProcess["npx -y<br/>@agentclientprotocol/claude-agent-acp@0.91.0"]
+    ClaudeProcess["npx -y<br/>@agentclientprotocol/claude-agent-acp@0.93.0"]
     HermesProcess["hermes acp<br/>Hermes 0.20.6 or newer"]
     Session["ACP session over stdio"]
 
