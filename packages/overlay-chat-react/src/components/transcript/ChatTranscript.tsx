@@ -1,3 +1,4 @@
+import { MessageScrollerItem } from '@overlay/ui/ai'
 import { Fragment, type ReactNode } from 'react'
 import type { ChatTranscriptExchangeView, ChatTranscriptView } from '@overlay/chat-core'
 import { recordRender } from '../../lib/perf-debug'
@@ -71,12 +72,15 @@ export interface ChatTranscriptProps {
   view: ChatTranscriptView
   actions: ChatTranscriptActions
   presentation?: Partial<ChatTranscriptPresentation>
+  /** Wrap each exchange in a Message Scroller item anchored on its user turn. Requires a MessageScrollerProvider. */
+  scrollItems?: boolean
 }
 
 export function ChatTranscript({
   view,
   actions,
   presentation,
+  scrollItems = false,
 }: ChatTranscriptProps) {
   recordRender('ChatTranscript')
   const resolvedPresentation = presentation
@@ -94,8 +98,10 @@ export function ChatTranscript({
       && exchange.user.createdAt
       && (!previous || !previousKey || previousKey !== currentKey),
     )
+    const Row = scrollItems ? MessageScrollerItem : Fragment
+    const rowProps = scrollItems ? { messageId: exchange.id, scrollAnchor: true } : {}
     return (
-      <Fragment key={exchange.id}>
+      <Row key={exchange.id} {...rowProps}>
         {showDayDivider ? (
           <div
             className="flex items-center gap-3 py-2 text-[10px] font-medium uppercase tracking-[0.12em] text-(--muted-light)"
@@ -107,7 +113,7 @@ export function ChatTranscript({
           </div>
         ) : null}
         {actions.renderExchange(exchange, resolvedPresentation)}
-      </Fragment>
+      </Row>
     )
   })
 }
