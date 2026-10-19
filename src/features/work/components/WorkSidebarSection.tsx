@@ -39,6 +39,15 @@ function loadSidebarWork(key: string, listView: PanelScope | undefined, force: b
   return promise
 }
 
+const listeners = new Set<(key: string, data: SidebarWork) => void>()
+
+/** The Work page hands its list to the sidebar after every change, so a new or edited task shows there at once. */
+export function publishSidebarWork(listView: PanelScope | undefined, data: SidebarWork) {
+  const key = listView ?? 'all'
+  shared = { key, promise: Promise.resolve(data) }
+  for (const listener of listeners) listener(key, data)
+}
+
 function useSidebarWork(): SidebarWork | null {
   const { listView } = useWorkRoute()
   const key = listView ?? 'all'
@@ -49,6 +58,11 @@ function useSidebarWork(): SidebarWork | null {
     return () => { live = false }
   }, [key, listView])
   useEffect(() => load(false), [load])
+  useEffect(() => {
+    const listener = (published: string, next: SidebarWork) => { if (published === key) setData(next) }
+    listeners.add(listener)
+    return () => { listeners.delete(listener) }
+  }, [key])
   useEffect(() => {
     const reload = () => { load(true) }
     window.addEventListener(WORK_UPDATED_EVENT, reload)
