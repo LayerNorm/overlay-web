@@ -397,7 +397,7 @@ export function RoomNoticeBar({
 }) {
   if (!notice) return null
   return (
-    <div className="flex items-center justify-between border-b border-(--border) bg-(--surface-subtle) px-4 py-2 text-xs text-(--muted)">
+    <div className="flex items-center justify-between bg-(--surface-subtle) px-4 py-2 text-xs text-(--muted)">
       <span>{notice}</span>
       <Button variant="ghost" size="icon" type="button" onClick={onDismiss} aria-label="Dismiss" className="h-auto w-auto p-0 text-inherit hover:bg-transparent hover:text-current"><X size={13} /></Button>
     </div>
@@ -589,7 +589,7 @@ export function RoomTranscript({
           type="button"
           onClick={onJumpToLatest}
           data-testid="jump-to-latest"
-          className="absolute bottom-4 left-1/2 z-10 h-auto -translate-x-1/2 rounded-full border border-(--border) bg-(--surface-elevated) px-3 py-1.5 text-xs font-medium text-(--foreground) shadow-lg transition-colors hover:bg-(--surface-subtle)"
+          className="absolute bottom-4 left-1/2 z-10 h-auto -translate-x-1/2 rounded-full bg-(--surface-elevated) px-3 py-1.5 text-xs font-medium text-(--foreground) shadow-lg transition-colors hover:bg-(--surface-subtle)"
         >
           {newMessageCount} new {newMessageCount === 1 ? 'message' : 'messages'} ↓
         </Button>
@@ -606,7 +606,7 @@ export function RoomTranscript({
               type="button"
               onClick={onLoadOlder}
               disabled={loadingOlderMessages}
-              className="mx-auto my-2 h-auto rounded-lg border border-(--border) px-3 py-1.5 text-xs font-normal text-(--muted) hover:bg-(--surface-subtle) disabled:opacity-60"
+              className="mx-auto my-2 h-auto rounded-lg bg-(--surface-subtle) px-3 py-1.5 text-xs font-normal text-(--muted) hover:bg-(--surface-muted) disabled:opacity-60"
             >
               {loadingOlderMessages ? 'Loading older messages…' : 'Load older messages'}
             </Button>
@@ -772,7 +772,7 @@ export function surfaceReadOnlyNotice(surfacePlatform: string): string {
 /** Stands in for the composer: surface-mirrored rooms are read-only in Overlay. */
 export function SurfaceReadOnlyComposer({ surfacePlatform }: { surfacePlatform: string }) {
   return (
-    <div className="border-t border-(--border) px-4 py-3.5">
+    <div className="px-4 py-3.5">
       <div className="flex items-center justify-center gap-2 text-xs text-(--muted)">
         {surfacePlatform === 'slack' ? <Slack size={13} /> : <Hash size={13} />}
         <span>{surfaceReadOnlyNotice(surfacePlatform)}</span>

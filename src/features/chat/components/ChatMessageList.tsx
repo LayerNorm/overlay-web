@@ -1,5 +1,11 @@
 'use client'
 
+import {
+  MessageScroller,
+  MessageScrollerContent,
+  MessageScrollerProvider,
+  MessageScrollerViewport,
+} from '@overlay/ui/ai'
 import type { ReactNode, RefObject } from 'react'
 import { useCallback, useMemo } from 'react'
 import type { UseChatHelpers } from '@/components/providers/ai-chat-client'
@@ -14,7 +20,6 @@ import type {
 import {
   ChatTranscript,
   type ChatTranscriptPresentation,
-  useTranscriptScroll,
 } from '@overlay/chat-react/transcript'
 import type { ChatTranscriptExchangeView } from '@overlay/chat-core'
 import type { DraftModalState, GenerationResult } from './chat-interface/types'
@@ -74,6 +79,7 @@ type ChatMessageListProps = {
   messagesEndRef: RefObject<HTMLDivElement | null>
   floatingControl?: ReactNode
   showLoadingState: boolean
+  /** @deprecated Message Scroller anchors the submitted turn; kept for host compatibility. */
   reserveLatestExchangeStartSpace?: boolean
   transcriptKey?: string | null
   afterMessages?: ReactNode
@@ -87,58 +93,41 @@ export function ChatMessageList({
   messagesEndRef,
   floatingControl,
   showLoadingState,
-  reserveLatestExchangeStartSpace = false,
   transcriptKey,
   afterMessages,
   state,
   runtime,
   actions,
 }: ChatMessageListProps) {
-  const submittedTurnCount = useMemo(
-    () => state.primaryMessages.filter((message) => message.role === 'user').length,
-    [state.primaryMessages],
-  )
-  const { reservedSpace } = useTranscriptScroll({
-    containerRef: messagesScrollRef,
-    endRef: messagesEndRef,
-    submittedTurnCount,
-    active: reserveLatestExchangeStartSpace,
-    transcriptKey,
-  })
-
   return (
-    <div className="overlay-chat-surface relative min-h-0 flex-1">
-      <div
-        ref={messagesScrollRef}
-        className="h-full min-h-0 w-full overscroll-contain overflow-y-auto overflow-x-hidden px-3 py-3 sm:px-4 sm:py-4"
-      >
-        <div className="mx-auto flex min-h-full w-full min-w-0 max-w-4xl flex-col gap-5 sm:gap-6">
-          {showLoadingState ? (
-            <ChatMessageListSkeleton />
-          ) : (
-            <ChatMessages
-              state={state}
-              runtime={runtime}
-              actions={actions}
-            />
-          )}
-          {afterMessages ? <div className="px-1 py-1">{afterMessages}</div> : null}
-          <div ref={messagesEndRef} className="h-px shrink-0" />
-          {reservedSpace !== null ? (
-            <div
-              aria-hidden
-              className="shrink-0"
-              style={{ height: reservedSpace }}
-            />
-          ) : null}
-        </div>
-      </div>
-      {floatingControl ? (
-        <div className="pointer-events-none absolute inset-x-0 bottom-3 z-20 flex justify-center">
-          <div className="pointer-events-auto">{floatingControl}</div>
-        </div>
-      ) : null}
-    </div>
+    <MessageScrollerProvider key={transcriptKey ?? undefined} defaultScrollPosition="end" autoScroll>
+      <MessageScroller className="overlay-chat-surface min-h-0 flex-1">
+        <MessageScrollerViewport
+          ref={messagesScrollRef}
+          aria-label="Conversation"
+          className="overflow-x-hidden px-3 py-3 sm:px-4 sm:py-4"
+        >
+          <MessageScrollerContent className="mx-auto w-full min-w-0 max-w-4xl gap-5 sm:gap-6">
+            {showLoadingState ? (
+              <ChatMessageListSkeleton />
+            ) : (
+              <ChatMessages
+                state={state}
+                runtime={runtime}
+                actions={actions}
+              />
+            )}
+            {afterMessages ? <div className="px-1 py-1">{afterMessages}</div> : null}
+            <div ref={messagesEndRef} className="h-px shrink-0" />
+          </MessageScrollerContent>
+        </MessageScrollerViewport>
+        {floatingControl ? (
+          <div className="pointer-events-none absolute inset-x-0 bottom-3 z-20 flex justify-center">
+            <div className="pointer-events-auto">{floatingControl}</div>
+          </div>
+        ) : null}
+      </MessageScroller>
+    </MessageScrollerProvider>
   )
 }
 
@@ -253,6 +242,7 @@ function ChatMessages({
 
   return (
     <ChatTranscript
+      scrollItems
       view={transcriptView}
       actions={transcriptActions}
     />

@@ -10,7 +10,8 @@ test('unfinished citation frames verify preceding prose without crediting transi
   const partial = 'A useful finding. [NASA F'
   const { index, finalText } = createMarkdownFrameIndex({ parts: [text], sourceOffsets: [partial.length, text.length] })
   assert.equal(finalText, 'Ausefulfinding.NASAFacts')
-  assert.equal(index.get(key('Ausefulfinding.[NASAF'))?.prefixUnits, 'Ausefulfinding.'.length)
+  // Streamdown renders the unfinished link as its visible text, which is a true prefix of the final text.
+  assert.equal(index.get(key('Ausefulfinding.NASAF'))?.prefixUnits, 'Ausefulfinding.NASAF'.length)
   assert.equal(index.get(key(finalText))?.prefixUnits, finalText.length)
   assert.equal(index.has(key('Ausefulfinding.[NASAX')), false)
 })

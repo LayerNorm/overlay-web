@@ -1,5 +1,6 @@
 'use client'
 
+import { latestContextUsage } from '@overlay/chat-react'
 import type React from 'react'
 import {
   ChevronDown,
@@ -262,6 +263,7 @@ export function buildChatExperienceViewProps(
             },
             surface: {
               mentionCategories: c.mentionCategories,
+              contextUsage: latestContextUsage(c.actChat.messages),
             },
             actions: {
               onStop: c.stopActiveChat,

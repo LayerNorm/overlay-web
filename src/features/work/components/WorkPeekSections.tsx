@@ -54,7 +54,7 @@ export function ObjectiveSection({ value, editable, onSave }: { value: string | 
           if (event.key === 'Escape') { event.stopPropagation(); setDraft(value ?? ''); setEditing(false) }
           if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) { event.preventDefault(); commit() }
         }}
-        className={unstyledTextarea(`w-full resize-y rounded-lg border border-(--muted-light) bg-(--surface-elevated) px-3 py-2 text-[14.5px] leading-relaxed text-(--foreground) outline-none`)}
+        className={unstyledTextarea(`w-full resize-y rounded-lg bg-(--surface-elevated) px-3 py-2 text-[14.5px] leading-relaxed text-(--foreground) outline-none`)}
         placeholder="Describe what a good result looks like. Markdown works."
       />
     )
@@ -129,7 +129,7 @@ function AddContext({ onAdd }: { onAdd: (ref: WorkContextRef) => void }) {
         ref={anchor}
         type="button"
         onClick={() => setOpen((current) => !current)}
-        className={unstyledButton(`inline-flex h-[26px] items-center gap-1.5 rounded-[5px] border border-dashed border-(--border) px-2.5 text-[12.5px] text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)`)}
+        className={unstyledButton(`inline-flex h-[26px] items-center gap-1.5 rounded-[5px] bg-(--surface-subtle) px-2.5 text-[12.5px] text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)`)}
       >
         <Plus size={12} aria-hidden />
         Add file, note, chat or link
@@ -143,7 +143,7 @@ function AddContext({ onAdd }: { onAdd: (ref: WorkContextRef) => void }) {
             onKeyDown={(event) => { if (event.key === 'Enter' && link) pick({ type: 'link', id: link, label: labelForLink(link) }) }}
             aria-label="Search files, notes and chats, or paste a link"
             placeholder="Search, or paste a link"
-            className={unstyledInput(`h-8 w-full rounded-md border border-(--border) bg-(--background) px-2.5 text-[13px] text-(--foreground) outline-none focus:border-(--muted-light)`)}
+            className={unstyledInput(`h-8 w-full rounded-md bg-(--surface-subtle) px-2.5 text-[13px] text-(--foreground) outline-none focus:bg-(--surface-muted)`)}
           />
         </div>
         <div className="max-h-64 overflow-y-auto">
@@ -186,7 +186,7 @@ export function ContextSection({ items, editable, onChange }: { items: WorkConte
             </>
           )
           return (
-            <span key={`${ref.type}:${ref.id}:${index}`} className="group/ctx inline-flex h-[26px] items-center gap-1.5 rounded-[5px] border border-(--border) bg-(--surface-elevated) pl-2.5 pr-1.5 text-[12.5px] text-(--foreground)">
+            <span key={`${ref.type}:${ref.id}:${index}`} className="group/ctx inline-flex h-[26px] items-center gap-1.5 rounded-[5px] bg-(--surface-elevated) pl-2.5 pr-1.5 text-[12.5px] text-(--foreground)">
               {href ? (
                 <a href={href} {...(ref.type === 'link' ? { target: '_blank', rel: 'noopener noreferrer' } : {})} className="inline-flex items-center gap-1.5 hover:underline">{body}</a>
               ) : body}
@@ -352,7 +352,7 @@ export function ActivitySection({ taskId, version, canComment }: { taskId: strin
             placeholder="Leave a comment"
             onChange={(event) => setDraft(event.target.value)}
             onKeyDown={(event) => { if (event.key === 'Enter' && !event.nativeEvent.isComposing) { event.preventDefault(); void send() } }}
-            className={unstyledInput(`h-9 min-w-0 flex-1 rounded-[10px] border border-(--border) bg-(--surface-elevated) px-3.5 text-[13.5px] text-(--foreground) outline-none placeholder:text-(--muted-light) focus:border-(--muted-light)`)}
+            className={unstyledInput(`h-9 min-w-0 flex-1 rounded-[10px] bg-(--surface-elevated) px-3.5 text-[13.5px] text-(--foreground) outline-none placeholder:text-(--muted-light) focus:border-(--muted-light)`)}
           />
         </div>
       ) : null}
@@ -377,7 +377,7 @@ export function WaitingOnSection({ item, editable, onChange }: { item: WorkItem;
   if (!editable && blockers.length === 0 && blocking.length === 0) return null
   if (state !== 'ready') return null
   const chip = (task: WorkItem, onRemove?: () => void) => (
-    <span key={task.id} className="inline-flex h-[26px] items-center gap-1.5 rounded-[5px] border border-(--border) bg-(--surface-elevated) pl-2 pr-1.5 text-[12.5px] text-(--foreground)">
+    <span key={task.id} className="inline-flex h-[26px] items-center gap-1.5 rounded-[5px] bg-(--surface-elevated) pl-2 pr-1.5 text-[12.5px] text-(--foreground)">
       <StatusIcon status={task.status} size={13} />
       <span className="max-w-48 truncate">{task.title}</span>
       {onRemove ? (
@@ -397,7 +397,7 @@ export function WaitingOnSection({ item, editable, onChange }: { item: WorkItem;
               ref={anchor}
               type="button"
               onClick={() => setOpen((current) => !current)}
-              className={unstyledButton(`inline-flex h-[26px] items-center gap-1.5 rounded-[5px] border border-dashed border-(--border) px-2.5 text-[12.5px] text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)`)}
+              className={unstyledButton(`inline-flex h-[26px] items-center gap-1.5 rounded-[5px] bg-(--surface-subtle) px-2.5 text-[12.5px] text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)`)}
             >
               <Plus size={12} aria-hidden />
               Wait on a task
@@ -410,7 +410,7 @@ export function WaitingOnSection({ item, editable, onChange }: { item: WorkItem;
                   onChange={(event) => setQuery(event.target.value)}
                   aria-label="Find a task to wait on"
                   placeholder="Find a task"
-                  className={unstyledInput(`h-8 w-full rounded-md border border-(--border) bg-(--background) px-2.5 text-[13px] text-(--foreground) outline-none focus:border-(--muted-light)`)}
+                  className={unstyledInput(`h-8 w-full rounded-md bg-(--surface-subtle) px-2.5 text-[13px] text-(--foreground) outline-none focus:bg-(--surface-muted)`)}
                 />
               </div>
               <div className="max-h-64 overflow-y-auto">

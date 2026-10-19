@@ -341,3 +341,16 @@
     animation: none;
   }
 }
+
+/* Trace: a running step's title shimmers. */
+@keyframes overlay-trace-shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+[data-slot='trace-line'][data-status='running'] > [data-slot='trace-title'] {
+  background: linear-gradient(90deg, var(--muted) 35%, var(--foreground) 50%, var(--muted) 65%) 0 0 / 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: overlay-trace-shimmer 1.8s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-slot='trace-line'][data-status='running'] > [data-slot='trace-title'] { animation: none; background: none; color: inherit; }
+}

@@ -11,3 +11,9 @@ Git submodules and linked repositories—including private submodules—are sepa
 The Overlay name, logos, hosted domains, and related brand assets are not licensed for use in modified distributions except as allowed by `TRADEMARKS.md` or a separate written agreement.
 
 Paid commercial licenses are available only under a written agreement signed by LayerNorm Inc. Contact `divyansh@layernorm.co`.
+
+## LobeHub Icons
+
+Provider logos in `packages/overlay-ui/src/components/ui/provider-logo.tsx` are adapted from
+`@lobehub/icons-static-svg` (https://github.com/lobehub/lobe-icons), Copyright (c) LobeHub, MIT License.
+Logos remain trademarks of their respective owners.
