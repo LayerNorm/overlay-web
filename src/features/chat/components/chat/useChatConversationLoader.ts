@@ -138,6 +138,8 @@ export function useChatConversationLoader({
       runtime.ui.generationResults.size > 0
     if (runtime.hydrated && runtimeHasLoadedHistory) {
       shouldScrollRef.current = true
+      // A conversation with history is never on its first message, even if a blank surface's UI was saved over it.
+      runtime.ui = { ...runtime.ui, isFirstMessage: false }
       applyUiStateToView(runtime.ui)
       setRuntimeHydrationVersion((value) => value + 1)
       return
