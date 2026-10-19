@@ -2,7 +2,7 @@
 
 import { useCallback, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
-import { Button } from '@overlay/ui/primitives'
+import { Confirmation, ConfirmationAction, ConfirmationActions, ConfirmationBody, ConfirmationIcon, ConfirmationRequest, ConfirmationTitle } from '@overlay/chat-react'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import type { useAgentRunLifecycle } from './useAgentRunLifecycle'
 
@@ -38,32 +38,23 @@ export function useWorkApproval({
 
   const workApprovalContent = agentRunLifecycle.run?.status === 'waiting_for_approval' && agentRunLifecycle.run.approval
     ? (
-        <div className="mb-2 rounded-2xl border border-(--border) bg-(--surface-elevated) px-4 py-3 shadow-xs">
-          <p className="text-sm font-medium text-(--foreground)">{agentRunLifecycle.run.approval.title ?? 'Work needs your approval'}</p>
-          <p className="mt-1 text-xs text-(--muted)">
-            {agentRunLifecycle.run.approval.requests.map((request) => request.toolName).join(', ')}
-          </p>
-          <div className="mt-3 flex items-center gap-2">
-            <Button
-              variant="primary"
-              type="button"
-              disabled={approvalSubmitting}
-              onClick={() => void submitWorkApproval(true)}
-              className="h-auto rounded-lg bg-(--foreground) px-3 py-1.5 text-xs font-medium text-(--background) disabled:opacity-50"
-            >
-              Approve
-            </Button>
-            <Button
-              variant="ghost"
-              type="button"
-              disabled={approvalSubmitting}
-              onClick={() => void submitWorkApproval(false)}
-              className="h-auto rounded-lg border border-(--border) px-3 py-1.5 text-xs font-medium text-(--foreground) hover:bg-transparent disabled:opacity-50"
-            >
-              Deny
-            </Button>
-          </div>
-        </div>
+        <Confirmation className="mb-2">
+          <ConfirmationIcon running={approvalSubmitting} />
+          <ConfirmationBody>
+            <ConfirmationTitle>{agentRunLifecycle.run.approval.title ?? 'Work needs your approval'}</ConfirmationTitle>
+            <ConfirmationRequest>
+              {agentRunLifecycle.run.approval.requests.map((request) => request.toolName).join(', ')}
+            </ConfirmationRequest>
+            <ConfirmationActions>
+              <ConfirmationAction tone="primary" disabled={approvalSubmitting} onClick={() => void submitWorkApproval(true)}>
+                Approve
+              </ConfirmationAction>
+              <ConfirmationAction disabled={approvalSubmitting} onClick={() => void submitWorkApproval(false)}>
+                Deny
+              </ConfirmationAction>
+            </ConfirmationActions>
+          </ConfirmationBody>
+        </Confirmation>
       )
     : undefined
 

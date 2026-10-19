@@ -223,7 +223,7 @@ function AuthorIdentityPopover({
         <div
           role="dialog"
           aria-label={name ? `${name} profile` : 'Message author'}
-          className="absolute left-0 top-[calc(100%+6px)] z-50 w-60 rounded-xl border border-(--border) bg-(--surface-elevated) p-3 shadow-xl"
+          className="absolute left-0 top-[calc(100%+6px)] z-50 w-60 rounded-xl bg-(--surface-elevated) p-3 shadow-xl"
         >
           <div className="flex items-center gap-2.5">
             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-(--surface-muted) text-[13px] font-semibold text-(--foreground)">
@@ -239,7 +239,7 @@ function AuthorIdentityPopover({
             </span>
           </div>
           {statusMeta ? (
-            <div className="mt-2.5 flex items-center justify-between border-t border-(--border) pt-2.5">
+            <div className="mt-2.5 flex items-center justify-between pt-2.5">
               <span className="text-[11px] text-(--muted)">Workspace</span>
               <span
                 className={`rounded-sm px-1.5 py-0.5 text-[10px] font-medium ${statusMeta.className}`}
@@ -535,7 +535,7 @@ function RoomMessageAttachments({ message, onOpenAttachmentPreview }: {
               <img
                 src={attachment.url}
                 alt={attachment.name}
-                className="max-h-[200px] max-w-[200px] rounded-xl border border-transparent object-cover transition-colors group-hover:border-(--border)"
+                className="max-h-[200px] max-w-[200px] rounded-xl object-cover transition-opacity group-hover:opacity-90"
               />
             </Button>
           ))}
@@ -546,7 +546,7 @@ function RoomMessageAttachments({ message, onOpenAttachmentPreview }: {
           {message.documentNames.map((name) => (
             <div
               key={name}
-              className="flex max-w-[220px] items-center gap-1.5 rounded-xl border border-(--border) bg-(--surface-elevated) px-2.5 py-1.5 text-xs text-(--muted) shadow-xs"
+              className="flex max-w-[220px] items-center gap-1.5 rounded-xl bg-(--surface-elevated) px-2.5 py-1.5 text-xs text-(--muted)"
             >
               <FileText size={13} className="shrink-0 text-(--muted)" />
               <span className='truncate font-medium text-(--foreground)'>
@@ -620,10 +620,10 @@ function RoomReactionRow({ reactions, alignEnd, onToggleReaction }: {
           key={reaction.emoji}
           type="button"
           onClick={() => onToggleReaction(reaction.emoji)}
-          className={`h-6 gap-1 rounded-full border px-2 text-[11px] font-normal text-inherit transition-colors ${
+          className={`h-6 gap-1 rounded-full px-2 text-[11px] font-normal text-inherit transition-colors ${
             reaction.reactedByCurrentPrincipal
-              ? 'border-(--foreground) bg-(--surface-subtle)'
-              : 'border-(--border) hover:bg-(--surface-subtle)'
+              ? 'bg-(--surface-muted) text-(--foreground)'
+              : 'bg-(--surface-subtle) hover:bg-(--surface-muted)'
           }`}
         >
           <span>{reaction.emoji}</span>
@@ -901,7 +901,7 @@ function RemoteRequestControls({ request, onResolve }: {
     initialElicitationValues(properties, required),
   )
   return (
-    <div className="mt-3 max-w-xl rounded-lg border border-(--border) bg-(--surface-subtle) p-3">
+    <div className="mt-3 max-w-xl rounded-lg bg-(--surface-subtle) p-3">
       <p className='text-xs font-medium text-(--foreground)'>
         {request.pendingDelivery ? 'Decision pending delivery' : request.kind === 'permission'
           ? 'Permission requested'
@@ -946,7 +946,7 @@ function RemoteRequestControls({ request, onResolve }: {
                     [key]: elicitationFieldValue(property.type, event.target.value),
                   }))
                 }
-                className="mt-1 h-8 w-full rounded-md border border-(--border) bg-(--surface) px-2 text-xs text-(--foreground)"
+                className="mt-1 h-8 w-full rounded-md bg-(--surface) px-2 text-xs text-(--foreground)"
               >
                 <option value="">Select…</option>
                 {elicitationOptions(property).map((option) => (
@@ -960,7 +960,7 @@ function RemoteRequestControls({ request, onResolve }: {
                 aria-label={key}
                 value={String(values[key] ?? '')}
                 onChange={(event) => setValues((current) => ({ ...current, [key]: elicitationFieldValue(property.type, event.target.value) }))}
-                className="mt-1 h-8 w-full rounded-md border border-(--border) bg-(--surface) px-2 text-xs text-(--foreground)" />
+                className="mt-1 h-8 w-full rounded-md bg-(--surface) px-2 text-xs text-(--foreground)" />
             )}
           </label>
         ),
@@ -974,7 +974,7 @@ function RemoteRequestControls({ request, onResolve }: {
               key={option.id}
               type='button'
               onClick={() => onResolve(request, option.id)}
-              className='h-auto rounded-md border border-(--border) px-2 py-1 text-xs font-normal text-(--foreground) hover:bg-(--surface)'
+              className='h-auto rounded-md bg-(--surface) px-2 py-1 text-xs font-normal text-(--foreground) hover:bg-(--surface-muted)'
             >
               {option.label}
             </Button>
@@ -985,7 +985,7 @@ function RemoteRequestControls({ request, onResolve }: {
               variant="ghost"
               type='button'
               onClick={() => onResolve(request, 'accept', values)}
-              className='h-auto rounded-md border border-(--border) px-2 py-1 text-xs font-normal text-(--foreground) hover:bg-(--surface)'
+              className='h-auto rounded-md bg-(--surface) px-2 py-1 text-xs font-normal text-(--foreground) hover:bg-(--surface-muted)'
             >
               Submit
             </Button>
@@ -1039,7 +1039,7 @@ function RemoteRunControls({ run, onControl }: {
   if (run.state === 'needs_attention') return (
     <div className="mt-2 flex items-center gap-2 text-xs text-(--muted)">
       <p role="status">Execution needs attention. Stop or isolate the original process before starting fresh.</p>
-      <Button variant="ghost" type="button" className={unstyledButton("shrink-0 rounded-md border border-(--border) px-2 py-1 text-(--foreground)")}
+      <Button variant="ghost" type="button" className={unstyledButton("shrink-0 rounded-md bg-(--surface-subtle) px-2 py-1 text-(--foreground) hover:bg-(--surface-muted)")}
         onClick={() => {
           if (window.confirm('Confirm that you inspected and stopped or isolated the original process. Starting fresh creates a new attempt and does not resume the old process.'))
             onControl(run.runId, 'start_fresh')
@@ -1057,7 +1057,7 @@ function RemoteRunControls({ run, onControl }: {
           variant="ghost"
           type='button'
           onClick={() => onControl(run.runId, 'resume')}
-          className='h-auto rounded-md border border-(--border) px-2 py-1 font-normal text-(--foreground) hover:bg-transparent'
+          className='h-auto rounded-md bg-(--surface-subtle) px-2 py-1 font-normal text-(--foreground) hover:bg-(--surface-muted)'
         >
           Resume
         </Button>
@@ -1110,7 +1110,7 @@ function RemoteQueueControls({
         variant="ghost"
         type='button'
         onClick={() => onControl(queue.runId, 'retry')}
-        className='h-auto rounded-md border border-(--border) px-2 py-1 font-normal text-(--foreground) hover:bg-(--surface-subtle)'
+        className='h-auto rounded-md bg-(--surface-subtle) px-2 py-1 font-normal text-(--foreground) hover:bg-(--surface-muted)'
       >
         Retry
       </Button>
@@ -1126,7 +1126,7 @@ const QUICK_REACTIONS = [
 
 function toolbarRailClass(floating: boolean, pickerOpen: boolean, alignEnd: boolean) {
   return floating
-    ? `absolute -top-3 right-0 z-20 flex items-center gap-0.5 rounded-lg border border-(--border) bg-(--surface-elevated) p-0.5 shadow-md transition-opacity focus-within:opacity-100 group-hover/exchange:opacity-100 ${
+    ? `absolute -top-3 right-0 z-20 flex items-center gap-0.5 rounded-lg bg-(--surface-elevated) p-0.5 shadow-md transition-opacity focus-within:opacity-100 group-hover/exchange:opacity-100 ${
         pickerOpen ? 'opacity-100' : 'opacity-0'
       }`
     : `chat-exchange-actions--hover flex items-center gap-1 px-1 pt-0.5 transition-opacity focus-within:opacity-100 group-hover/exchange:opacity-100 ${
@@ -1362,7 +1362,7 @@ function EmojiPickerButton({
         <div
           role="dialog"
           aria-label="Pick a reaction"
-          className={`overlay-pop-in absolute bottom-full z-30 mb-1.5 w-64 rounded-xl border border-(--border) bg-(--surface-elevated) p-2 shadow-lg ${
+          className={`overlay-pop-in absolute bottom-full z-30 mb-1.5 w-64 rounded-xl bg-(--surface-elevated) p-2 shadow-lg ${
             alignEnd ? 'right-0' : 'left-0'
           }`}
         >

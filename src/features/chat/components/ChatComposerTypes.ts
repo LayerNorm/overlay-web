@@ -61,6 +61,9 @@ export type ChatComposerSurface = {
   mentionCategories?: MentionCategory[]
   /** Slash commands the connected agent advertised over ACP, if any. */
   agentCommands?: RemoteAgentCommand[]
+  /** Model and video sub-mode controls rendered before the send button. */
+  modelControl?: ReactNode
+  contextUsage?: { usedTokens: number; contextWindow: number } | null
 }
 export type ChatComposerProps = {
   mode: 'chat' | 'automate'; emptyState: ChatComposerEmptyState; attachments: ChatComposerAttachmentState
