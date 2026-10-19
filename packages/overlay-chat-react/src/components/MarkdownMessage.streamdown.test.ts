@@ -12,6 +12,8 @@ function rendered(text: string, isStreaming = false): string {
 
 test('inline single-dollar math renders with KaTeX', () => {
   assert.match(rendered('Area is $\\pi r^2$ here.'), /class="katex"/)
+  // Superscripts are raised by KaTeX inline styles, which the span override must keep.
+  assert.match(rendered('Area is $\\pi r^2$ here.'), /style="top:-/)
 })
 
 test('block double-dollar math renders as display math', () => {

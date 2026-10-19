@@ -1063,13 +1063,13 @@ export async function executeActTurn(
         ) {
           metadata.routedModelId = streamedRoutedModelId
         }
-        if (part.type === 'finish' && part.totalUsage && attemptContextWindow) {
+        if (part.type === 'finish' && part.totalUsage) {
           metadata.usage = {
             inputTokens: part.totalUsage.inputTokens,
             outputTokens: part.totalUsage.outputTokens,
             totalTokens: part.totalUsage.totalTokens,
           }
-          metadata.contextWindow = attemptContextWindow
+          if (attemptContextWindow) metadata.contextWindow = attemptContextWindow
         }
         return Object.keys(metadata).length > 0 ? metadata : undefined
       },
