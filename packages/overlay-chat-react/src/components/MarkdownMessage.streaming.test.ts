@@ -6,7 +6,7 @@ import {MarkdownMessage} from './MarkdownMessage'
 
 function rendered(text: string, isStreaming: boolean): string {
   return renderToStaticMarkup(React.createElement(MarkdownMessage, {
-    text, isStreaming, suppressTypingIndicator: true, streamingMode: 'chunk',
+    text, isStreaming, suppressTypingIndicator: true,
   }))
 }
 test('streaming identifiers and inline filenames retain the exact text seen after completion', () => {

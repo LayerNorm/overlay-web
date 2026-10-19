@@ -7,7 +7,6 @@ import type { Pluggable } from 'unified'
 import type { SourceCitationMap } from '../lib/source-citations'
 import { knowledgeChipLabel, knowledgeSourcesFromCitations } from '../lib/knowledge-sources'
 import { webSourceDisplayKey, type WebSourceItem } from '../lib/web-sources'
-import type { ChatStreamingMode } from '../context/chat-settings'
 import { WebSourceTooltip } from './WebSourceTooltip'
 import type {
   AttachmentPreview,
@@ -43,16 +42,6 @@ interface Props {
   mentions?: ChatMessageMention[]
   /** Optional avatar renderer for mention chips (e.g. agent creatures). Falls back to the type icon. */
   renderMentionAvatar?: (mention: ChatMessageMention) => ReactNode
-  /**
-   * 'token': render the full normalized text through one ReactMarkdown pass
-   *   every update, with a shim that closes open structures so partial markdown still
-   *   renders styled. Shows a pulsing Overlay logo at the tail of the most recent token
-   *   (or standalone before any tokens arrive); each new block element fades in as it
-   *   enters the DOM.
-   * 'chunk' (default): split into completed paragraph blocks + a separate tail block, with the
-   *   pulsing Overlay logo as the trailing indicator. The in-flight tail updates as one formatted block; no character pacing.
-  */
-  streamingMode?: ChatStreamingMode
   /** Host-authorized saved paths can open their canonical Files records. */
   resolveFileHref?: (href: string) => string | undefined
   onOpenAttachmentPreview?: (
@@ -308,7 +297,6 @@ export const MarkdownMessage = memo(MarkdownMessageImpl, (prev, next) => {
   return (
     prev.text === next.text &&
     prev.isStreaming === next.isStreaming &&
-    prev.streamingMode === next.streamingMode &&
     prev.resolveFileHref === next.resolveFileHref &&
     prev.suppressTypingIndicator === next.suppressTypingIndicator &&
     prev.appBaseUrl === next.appBaseUrl &&
