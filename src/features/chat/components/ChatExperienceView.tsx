@@ -5,6 +5,7 @@ import dynamic from 'next/dynamic'
 import {
   AttachmentPreviewDialog,
   ChatExperienceHeader,
+  ChatModelControls,
 } from '@overlay/chat-react'
 import { AppScreenBody, AppScreenShell } from '@overlay/modules-react/shell'
 import type { AutomationDetail } from '@overlay/app-core'
@@ -74,6 +75,7 @@ export function ChatExperienceView({
   draftReviewProps,
   attachmentPreviewProps,
 }: ChatExperienceViewProps) {
+  const modelControlsInComposer = Boolean(composerProps) && !headerProps.hasAutomationContext
   return (
     <>
       <AppScreenShell
@@ -95,7 +97,7 @@ export function ChatExperienceView({
           {...main.dragHandlers}
         >
           {main.isDragging && <ChatDropOverlay />}
-          <ChatExperienceHeader {...headerProps} />
+          <ChatExperienceHeader {...headerProps} modelControlsInComposer={modelControlsInComposer} />
 
           <AppScreenBody
             padding="none"
@@ -119,7 +121,14 @@ export function ChatExperienceView({
             )}
 
             {messageListProps && <ChatMessageList {...messageListProps} />}
-            {composerProps && <ChatComposer {...composerProps} />}
+            {composerProps && (
+              <ChatComposer
+                {...composerProps}
+                surface={modelControlsInComposer
+                  ? { ...composerProps.surface, modelControl: <ChatModelControls {...headerProps} placement="composer" /> }
+                  : composerProps.surface}
+              />
+            )}
           </AppScreenBody>
 
           <DraftReviewModal {...draftReviewProps} />

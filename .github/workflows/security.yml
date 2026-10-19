@@ -138,6 +138,8 @@ jobs:
         run: npm run lint
       - name: Raw interactive control guardrail
         run: npm run check:raw-controls
+      - name: Removed chat renderer guard
+        run: npm run check:chat-legacy-imports
       - name: Web complexity ratchet
         run: npm run check:web-complexity
       - name: Generate current route types
