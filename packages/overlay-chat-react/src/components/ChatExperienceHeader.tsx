@@ -138,6 +138,8 @@ export interface ChatExperienceHeaderProps {
   showModelPicker: boolean
   onToggleModelPicker: () => void
   onSetShowModelPicker: (value: boolean | ((prev: boolean) => boolean)) => void
+  /** The composer renders the model controls, so the header leaves them out. */
+  modelControlsInComposer?: boolean
   modelPickerLabel: string
   hoveredModelId: string | null
   modelQualitiesPos: ModelQualitiesPosition | null
@@ -880,7 +882,8 @@ function ChatModelPicker({
   onTextModelSelectionModeChange,
   isFreeTierChatModelId,
   hasAutomationContext,
-}: Pick<
+  placement = 'header',
+}: { placement?: 'header' | 'composer' } & Pick<
   ChatExperienceHeaderProps,
   | 'modelPickerRef'
   | 'onToggleModelPicker'
@@ -920,12 +923,17 @@ function ChatModelPicker({
 >) {
   return (
     <Popover open={showModelPicker} onOpenChange={onSetShowModelPicker}>
-      <div data-tour="model-picker" className="relative min-w-0 flex-1 md:w-auto md:flex-none">
-        <DelayedTooltip label="Choose model (⇧⌘/)" side="bottom">
+      <div
+        data-tour="model-picker"
+        className={placement === 'composer' ? 'relative min-w-0 shrink' : 'relative min-w-0 flex-1 md:w-auto md:flex-none'}
+      >
+        <DelayedTooltip label="Choose model (⇧⌘/)" side={placement === 'composer' ? 'top' : 'bottom'}>
           <PopoverTrigger asChild>
             <Button variant="ghost"
               type="button"
-              className={unstyledButton(`flex h-8 min-h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md bg-(--surface-subtle) px-2.5 py-0 text-left text-xs leading-none text-(--muted) hover:bg-(--border) md:w-auto md:max-w-52`)}
+              className={unstyledButton(placement === 'composer'
+                ? 'flex h-9 min-w-0 max-w-44 items-center gap-1.5 rounded-lg px-2.5 text-left text-xs leading-none text-(--muted) transition-colors hover:bg-(--surface-muted) hover:text-(--foreground)'
+                : 'flex h-8 min-h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md bg-(--surface-subtle) px-2.5 py-0 text-left text-xs leading-none text-(--muted) hover:bg-(--border) md:w-auto md:max-w-52')}
             >
               <span className="min-w-0 truncate">{modelPickerLabel}</span>
               <ChevronDown size={11} className="shrink-0" />
@@ -984,12 +992,24 @@ function ChatModelPicker({
   )
 }
 
+/** Video sub-mode and model picker, placed in the header or in the composer footer. */
+export function ChatModelControls({
+  placement = 'header',
+  ...props
+}: ChatExperienceHeaderProps & { placement?: 'header' | 'composer' }) {
+  return (
+    <>
+      {props.generationMode === 'video' ? <VideoSubModePicker {...props} /> : null}
+      <ChatModelPicker {...props} placement={placement} />
+    </>
+  )
+}
+
 function ChatHeaderControls(props: ChatExperienceHeaderProps) {
   const {
     hasAutomationContext,
     personalChatMode,
     onPersonalChatModeChange,
-    generationMode,
     appMode,
     isTemporaryChat,
     isActiveLoading,
@@ -1005,10 +1025,7 @@ function ChatHeaderControls(props: ChatExperienceHeaderProps) {
             onChange={onPersonalChatModeChange}
           />
         ) : null}
-        {generationMode === 'video' ? (
-          <VideoSubModePicker {...props} />
-        ) : null}
-        <ChatModelPicker {...props} />
+        {props.modelControlsInComposer ? null : <ChatModelControls {...props} />}
         <div className="flex shrink-0 items-center gap-1.5 md:hidden">
           {appMode === 'chat' ? (
             <TemporaryChatButton
