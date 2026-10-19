@@ -213,7 +213,7 @@
      box; the scroll container would otherwise clip it mid-glyph. */
   padding: 0.35em 0 0.9em;
   overflow-x: auto;
-  overflow-y: auto;
+  overflow-y: hidden;
   text-align: center;
   font-size: 1.12em;
 }

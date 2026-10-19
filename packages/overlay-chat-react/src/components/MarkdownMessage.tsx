@@ -1,6 +1,6 @@
 import 'katex/dist/katex.min.css'
 import { Orb } from '@overlay/ui'
-import { type ReactNode, memo, useMemo } from 'react'
+import { type ReactNode, memo, useMemo, useState } from 'react'
 import { AtSign, BookOpen, Bot, FileText, Hash, Plug, Server, Sparkles } from 'lucide-react'
 import { Streamdown } from 'streamdown'
 import type { Pluggable } from 'unified'
@@ -83,9 +83,15 @@ function MarkdownMessageImpl({
 
   // Ordered the same way the chip hrefs are numbered, so `#overlay-knowcite-2`
   // is the second citation in the map.
+  // Parents pass new citation/source arrays on every render. Keeping the
+  // markdown components stable lets Streamdown reuse finished blocks (and their KaTeX)
+  // while a reply streams instead of re-rendering the whole message per token.
+  const stableSourceCitations = useValueStable(sourceCitations, sameCitations)
+  const stableWebSources = useValueStable(webSources, sameWebSources)
+
   const knowledgeSources = useMemo(
-    () => knowledgeSourcesFromCitations(sourceCitations, appBaseUrl),
-    [sourceCitations, appBaseUrl],
+    () => knowledgeSourcesFromCitations(stableSourceCitations, appBaseUrl),
+    [stableSourceCitations, appBaseUrl],
   )
 
   const mdRenderComponents = useMemo(
@@ -142,7 +148,7 @@ function MarkdownMessageImpl({
           if (typeof href === 'string' && href.startsWith('#overlay-knowcite-')) {
             const n = parseInt(href.slice('#overlay-knowcite-'.length), 10)
             const source = knowledgeSources[n - 1]
-            const citation = sourceCitations?.[String(n)]
+            const citation = stableSourceCitations?.[String(n)]
             if (source?.internalHref) {
               const label = linkText || (citation ? knowledgeChipLabel(citation) : source.title)
               return renderInternalChip(source.internalHref, label, [source])
@@ -156,8 +162,8 @@ function MarkdownMessageImpl({
             const indices = raw
               .split('-')
               .map((s) => parseInt(s, 10))
-              .filter((n) => Number.isFinite(n) && n >= 1 && n <= (webSources?.length ?? 0))
-            const picked = indices.map((i) => webSources![i - 1]!).filter(Boolean)
+              .filter((n) => Number.isFinite(n) && n >= 1 && n <= (stableWebSources?.length ?? 0))
+            const picked = indices.map((i) => stableWebSources![i - 1]!).filter(Boolean)
             if (picked.length > 0) {
               // Multi-chip opens the first source on click; tooltip surfaces the rest.
               return renderChip(picked[0]!.url, linkText || webSourceDisplayKey(picked[0]!.url), picked)
@@ -169,7 +175,7 @@ function MarkdownMessageImpl({
           if (typeof href === 'string' && href.startsWith('#overlay-webcite-')) {
             const raw = href.slice('#overlay-webcite-'.length)
             const n = parseInt(raw, 10)
-            const src = webSources?.[n - 1]
+            const src = stableWebSources?.[n - 1]
             if (src) {
               return renderChip(src.url, linkText || webSourceDisplayKey(src.url), [src])
             }
@@ -183,8 +189,8 @@ function MarkdownMessageImpl({
             /^https?:\/\//i.test(href) &&
             !/^connect\s+/i.test(linkText)
           ) {
-            // Prefer metadata from `webSources` when this URL was one of the collected sources.
-            const matched = webSources?.find((s) => s.url === href)
+            // Prefer metadata from `stableWebSources` when this URL was one of the collected sources.
+            const matched = stableWebSources?.find((s) => s.url === href)
             const fallback: WebSourceItem = matched ?? {
               url: href,
               title: '',
@@ -225,7 +231,7 @@ function MarkdownMessageImpl({
         },
       }
     },
-    [knowledgeSources, sourceCitations, webSources, appBaseUrl, mentions, renderMentionAvatar, onOpenAttachmentPreview, resolveFileHref],
+    [knowledgeSources, stableSourceCitations, stableWebSources, appBaseUrl, mentions, renderMentionAvatar, onOpenAttachmentPreview, resolveFileHref],
   )
   const activeRemarkPlugins = useMemo(
     (): Pluggable[] => [...streamdownRemarkPlugins, [remarkOverlayMentions, { mentions: mentions ?? [] }]],
@@ -293,6 +299,13 @@ function sameCitations(a?: SourceCitationMap, b?: SourceCitationMap): boolean {
  * intentionally ignored since its behavior is stable. While a message is actively
  * streaming, `text` changes each (throttled) update so it still re-renders normally.
  */
+function useValueStable<T>(value: T, same: (a: T, b: T) => boolean): T {
+  const [stable, setStable] = useState(value)
+  const isSame = stable === value || same(stable, value)
+  if (!isSame) setStable(value)
+  return isSame ? stable : value
+}
+
 export const MarkdownMessage = memo(MarkdownMessageImpl, (prev, next) => {
   return (
     prev.text === next.text &&

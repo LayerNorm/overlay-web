@@ -1,3 +1,4 @@
+import { MessageFooter } from '@overlay/ui/ai'
 import { FlashCopyIconButton } from '../DraftReviewModal'
 
 export function UserMessageActions({
@@ -10,12 +11,12 @@ export function UserMessageActions({
   if (!markdown.trim()) return null
 
   return (
-    <div className="chat-exchange-actions--hover flex items-center justify-end pr-1 opacity-0 transition-opacity group-hover/exchange:opacity-100 focus-within:opacity-100">
+    <MessageFooter className="px-0">
       <FlashCopyIconButton
         copyText={markdown}
         disabled={disabled}
         ariaLabel="Copy sent message as Markdown"
       />
-    </div>
+    </MessageFooter>
   )
 }

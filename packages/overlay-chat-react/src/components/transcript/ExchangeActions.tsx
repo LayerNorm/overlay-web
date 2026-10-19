@@ -1,4 +1,5 @@
-import { unstyledButton } from '@overlay/ui/control-reset'
+import { MessageFooter } from '@overlay/ui/ai'
+import { DelayedTooltip } from '@overlay/ui/overlays'
 import { Button } from '@overlay/ui/primitives'
 import { BookOpen, GitBranch, Reply, RotateCw, Trash2 } from 'lucide-react'
 import type { WebSourceItem } from '../../lib/web-sources'
@@ -24,6 +25,8 @@ export interface ExchangeActionsProps {
   showModelLabel?: boolean
 }
 
+const ACTION_BUTTON_CLASS = 'text-(--muted) hover:text-(--foreground) disabled:opacity-30'
+
 export function ExchangeActions({
   copyPlainText,
   isExiting,
@@ -39,73 +42,80 @@ export function ExchangeActions({
   userMsgId,
   isSourcesOpenForThis,
   modelLabel,
-  actionVisibility = 'hover',
+  actionVisibility = 'always',
   showModelLabel = true,
 }: ExchangeActionsProps) {
   const visibilityClass = actionVisibility === 'hover'
     ? 'chat-exchange-actions--hover opacity-0 transition-opacity group-hover/exchange:opacity-100 focus-within:opacity-100'
     : ''
-  const entranceClass = actionVisibility === 'always' ? 'message-appear' : ''
-
   return (
-    <div className={`${entranceClass} flex items-center gap-1 px-1 pt-0.5 ${visibilityClass}`}>
+    <MessageFooter className={`gap-0.5 px-0 ${visibilityClass}`}>
       <FlashCopyIconButton
         copyText={copyPlainText}
         disabled={copyPlainText.length === 0 || isExiting}
         ariaLabel="Copy response"
       />
       {onRetry && (
+        <DelayedTooltip label="Regenerate response">
         <Button variant="ghost"
           type="button"
           onClick={onRetry}
           disabled={retryDisabled}
-          className={unstyledButton(`rounded-md p-1.5 text-(--muted) transition-all hover:bg-(--surface-subtle) hover:text-(--foreground) active:scale-90 active:bg-(--border) disabled:cursor-not-allowed disabled:opacity-30`)}
+          size="icon-sm"
+          className={ACTION_BUTTON_CLASS}
           aria-label="Regenerate response"
-          title="Regenerate response"
         >
-          <RotateCw size={14} strokeWidth={1.75} />
+          <RotateCw strokeWidth={1.75} />
         </Button>
+        </DelayedTooltip>
       )}
-      <Button variant="ghost"
+      <DelayedTooltip label="Delete this turn from history">
+        <Button variant="ghost"
         type="button"
         onClick={onDeleteTurn}
         disabled={!turnIdForActions || actionsLocked || isExiting}
-        className={unstyledButton(`rounded-md p-1.5 text-(--muted) transition-all hover:bg-(--surface-subtle) hover:text-(--foreground) active:scale-90 active:bg-(--border) disabled:cursor-not-allowed disabled:opacity-30`)}
+        size="icon-sm"
+          className={ACTION_BUTTON_CLASS}
         aria-label="Delete this turn from history"
       >
-        <Trash2 size={14} strokeWidth={1.75} />
+        <Trash2 strokeWidth={1.75} />
       </Button>
-      <Button variant="ghost"
+        </DelayedTooltip>
+      <DelayedTooltip label="Reply">
+        <Button variant="ghost"
         type="button"
         onClick={onReply}
         disabled={isExiting}
-        className={unstyledButton(`rounded-md p-1.5 text-(--muted) transition-all hover:bg-(--surface-subtle) hover:text-(--foreground) active:scale-90 active:bg-(--border) disabled:cursor-not-allowed disabled:opacity-30`)}
+        size="icon-sm"
+          className={ACTION_BUTTON_CLASS}
         aria-label="Reply"
       >
-        <Reply size={14} strokeWidth={1.75} />
+        <Reply strokeWidth={1.75} />
       </Button>
+        </DelayedTooltip>
       {onBranch ? (
+        <DelayedTooltip label="Branch chat from here">
         <Button variant="ghost"
           type="button"
           onClick={onBranch}
           disabled={!turnIdForActions || actionsLocked || isExiting}
-          className={unstyledButton(`rounded-md p-1.5 text-(--muted) transition-all hover:bg-(--surface-subtle) hover:text-(--foreground) active:scale-90 active:bg-(--border) disabled:cursor-not-allowed disabled:opacity-30`)}
+          size="icon-sm"
+          className={ACTION_BUTTON_CLASS}
           aria-label="Branch chat from here"
-          title="Branch chat from here"
         >
-          <GitBranch size={14} strokeWidth={1.75} />
+          <GitBranch strokeWidth={1.75} />
         </Button>
+        </DelayedTooltip>
       ) : null}
       {sources.length > 0 && onOpenSources ? (
         <Button variant="ghost"
           type="button"
           onClick={() => onOpenSources(turnIdForActions ?? userMsgId, [...sources])}
           disabled={isExiting}
-          className={unstyledButton(`ml-0.5 inline-flex items-center gap-1 rounded-md px-2 py-1.5 transition-all hover:bg-(--surface-subtle) hover:text-(--foreground) active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-30 ${
-            isSourcesOpenForThis
-              ? 'bg-(--surface-subtle) text-(--foreground)'
-              : 'text-(--muted)'
-          }`)}
+          size="sm"
+          className={`ml-0.5 gap-1 px-2 hover:text-(--foreground) disabled:opacity-30 ${
+            isSourcesOpenForThis ? 'bg-(--surface-subtle) text-(--foreground)' : 'text-(--muted)'
+          }`}
           aria-label="Open sources"
           aria-pressed={isSourcesOpenForThis}
         >
@@ -118,6 +128,6 @@ export function ExchangeActions({
           {modelLabel}
         </span>
       ) : null}
-    </div>
+    </MessageFooter>
   )
 }
