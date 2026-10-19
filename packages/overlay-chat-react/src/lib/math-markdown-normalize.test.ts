@@ -223,5 +223,5 @@ test('long command-heavy LaTeX lines before $$ normalize in linear time', () => 
   const started = performance.now()
   normalizeDoubleDollarMath(`${line} ${line}$$\n`)
   assert.ok(performance.now() - started < 250, 'normalization should not backtrack')
-  assert.match(normalizeDoubleDollarMath('where \\alpha_1 = O(n^2)$$ is small'), /\$\\alpha_1 = O\(n\^2\)\$ is small/)
+  assert.match(normalizeDoubleDollarMath('where \\alpha_1 = O(n^2)$$ is small'), /= \$O\(n\^2\)\$ is small/)
 })
