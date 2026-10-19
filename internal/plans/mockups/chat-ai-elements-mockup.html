@@ -1,0 +1,391 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Overlay chat mockup: shadcn AI Elements</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&family=Libre+Baskerville&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.22/dist/katex.min.css">
+<style>
+/* shadcn/ui neutral tokens (new-york), same as app-shell-sidebar-mockup.html. */
+:root {
+  --background: #ffffff; --foreground: #0a0a0a;
+  --muted: #f5f5f5; --muted-foreground: #737373; --faint: #a3a3a3;
+  --accent: #f5f5f5; --border: #e5e5e5; --ring: #a3a3a3;
+  --popover: #ffffff; --card: #fafafa;
+  --primary: #171717; --primary-foreground: #fafafa;
+  --destructive: #dc2626;
+  --shadow: 0 1px 2px rgba(0,0,0,.05);
+  --pop-shadow: 0 10px 30px -10px rgba(0,0,0,.2), 0 4px 10px -4px rgba(0,0,0,.08);
+  --sans: 'Geist', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --mono: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --serif: 'Libre Baskerville', Georgia, serif;
+  /* Shiki github-light */
+  --sh-kw: #d73a49; --sh-fn: #6f42c1; --sh-str: #032f62; --sh-num: #005cc5; --sh-com: #6a737d; --sh-txt: #24292e;
+}
+.dark {
+  --background: #141414; --foreground: #fafafa;
+  --muted: #232323; --muted-foreground: #a1a1a1; --faint: #6b6b6b;
+  --accent: #262626; --border: #2a2a2a; --ring: #525252;
+  --popover: #1f1f1f; --card: #1a1a1a;
+  --primary: #e5e5e5; --primary-foreground: #171717;
+  --destructive: #f87171;
+  --shadow: 0 1px 2px rgba(0,0,0,.4);
+  --pop-shadow: 0 16px 40px -12px rgba(0,0,0,.7), 0 0 0 1px rgba(255,255,255,.06);
+  /* Shiki github-dark-default */
+  --sh-kw: #ff7b72; --sh-fn: #d2a8ff; --sh-str: #a5d6ff; --sh-num: #79c0ff; --sh-com: #8b949e; --sh-txt: #e6edf3;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; height: 100%; }
+body { font-family: var(--sans); background: var(--background); color: var(--foreground); font-size: 15px; line-height: 1.6; -webkit-font-smoothing: antialiased; }
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; border-radius: 6px; }
+svg.i { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+svg.i.sm { width: 14px; height: 14px; }
+
+/* ---------- page ---------- */
+.page { display: flex; flex-direction: column; height: 100vh; }
+.top { height: 48px; display: flex; align-items: center; gap: 8px; padding: 0 16px; flex: none; }
+.top .title { font-size: 14px; font-weight: 500; flex: 1; }
+.seg { display: inline-flex; background: var(--muted); border-radius: 8px; padding: 3px; gap: 2px; }
+.seg button { height: 24px; padding: 0 10px; border-radius: 6px; font-size: 12.5px; font-weight: 500; color: var(--muted-foreground); }
+.seg button[aria-pressed="true"] { background: var(--background); color: var(--foreground); box-shadow: var(--shadow); }
+.dark .seg button[aria-pressed="true"] { background: #3a3a3a; }
+
+/* ---------- Message Scroller ---------- */
+.scroller { flex: 1; overflow-y: auto; position: relative; }
+.content { max-width: 720px; margin: 0 auto; padding: 24px 24px 32px; display: flex; flex-direction: column; gap: 28px; }
+.row { content-visibility: auto; contain-intrinsic-size: auto 200px; }
+.jump { position: sticky; bottom: 12px; margin: 0 auto; width: 32px; height: 32px; border-radius: 999px; background: var(--background); border: 1px solid var(--border); box-shadow: var(--pop-shadow); display: none; align-items: center; justify-content: center; color: var(--muted-foreground); }
+.jump.on { display: flex; }
+.jump:hover { color: var(--foreground); }
+
+/* ---------- Message + Bubble ---------- */
+.msg { display: flex; flex-direction: column; gap: 6px; }
+.msg.end { align-items: flex-end; }
+.bubble { background: var(--muted); border-radius: 18px; padding: 8px 14px; max-width: 80%; }
+.msg-footer { display: flex; gap: 2px; height: 28px; opacity: 0; transition: opacity .15s; }
+.msg:hover .msg-footer, .msg:focus-within .msg-footer { opacity: 1; }
+.ib { width: 28px; height: 28px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; color: var(--muted-foreground); }
+.ib:hover { background: var(--accent); color: var(--foreground); }
+.ib[aria-pressed="true"] { color: var(--foreground); }
+.attach-chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px 0 8px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; color: var(--muted-foreground); }
+.attach-chip b { color: var(--foreground); font-weight: 500; }
+
+/* ---------- Trace ---------- */
+.trace { display: flex; flex-direction: column; gap: 2px; margin-bottom: 6px; }
+.trace .trace { margin: 2px 0 4px; padding-left: 22px; }
+.line { display: flex; align-items: center; gap: 8px; min-height: 26px; font-size: 14px; color: var(--muted-foreground); border-radius: 6px; text-align: left; width: fit-content; max-width: 100%; }
+button.line:hover { color: var(--foreground); }
+.line .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.line .d { color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.line .chev { width: 14px; height: 14px; color: var(--faint); transition: transform .15s; opacity: 0; }
+button.line:hover .chev, button.line:focus-visible .chev, button.line[aria-expanded="true"] .chev { opacity: 1; }
+button.line[aria-expanded="true"] .chev { transform: rotate(90deg); }
+.ticon { width: 14px; height: 14px; flex: none; display: inline-flex; align-items: center; justify-content: center; }
+.ticon .orb { width: 9px; height: 9px; display: inline-flex; }
+.ticon .orb svg { width: 100%; height: 100%; }
+.ticon .fav { width: 14px; height: 14px; border-radius: 3px; display: inline-flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 600; color: #fff; }
+.line[data-status="running"] .t { background: linear-gradient(90deg, var(--muted-foreground) 0%, var(--muted-foreground) 40%, var(--foreground) 50%, var(--muted-foreground) 60%, var(--muted-foreground) 100%); background-size: 250% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: shimmer 1.8s linear infinite; }
+.line[data-status="running"] .orb { animation: breathe 1.6s ease-in-out infinite; }
+.line[data-status="error"] .t { color: var(--destructive); }
+@keyframes shimmer { from { background-position: 100% 0; } to { background-position: -150% 0; } }
+@keyframes breathe { 50% { opacity: .45; transform: scale(.85); } }
+@media (prefers-reduced-motion: reduce) { .line[data-status="running"] .t, .line[data-status="running"] .orb, .dots span { animation: none; } .line[data-status="running"] .t { color: var(--foreground); } }
+.panel { padding: 2px 0 8px 22px; }
+.panel[hidden] { display: none; }
+.reason { font-size: 14px; color: var(--muted-foreground); max-width: 62ch; }
+.reason p { margin: 0 0 6px; }
+.src { display: flex; align-items: center; gap: 8px; min-height: 26px; font-size: 14px; color: var(--muted-foreground); text-decoration: none; width: fit-content; }
+.src:hover { color: var(--foreground); }
+.src .host { color: var(--faint); }
+
+/* ---------- Code Block ---------- */
+.cb { border: 1px solid var(--border); border-radius: 10px; background: var(--card); overflow: hidden; margin: 12px 0; }
+.cb-h { display: flex; align-items: center; height: 36px; padding: 0 6px 0 12px; font-size: 12.5px; color: var(--muted-foreground); gap: 4px; }
+.cb-h .ttl { flex: 1; font-family: var(--mono); }
+.cb pre { margin: 0; padding: 4px 0 12px; overflow-x: auto; font-family: var(--mono); font-size: 13px; line-height: 1.65; color: var(--sh-txt); }
+.cb .ln { display: block; padding: 0 14px; }
+.cb .ln.add { background: color-mix(in srgb, #22c55e 12%, transparent); }
+.cb .ln.del { background: color-mix(in srgb, #ef4444 12%, transparent); }
+.cb.sm { margin: 4px 0; border-radius: 8px; }
+.cb.sm .cb-h { height: 30px; font-size: 12px; }
+.cb.sm pre { font-size: 12px; padding: 2px 0 8px; }
+.cb.err { border-color: color-mix(in srgb, var(--destructive) 40%, var(--border)); }
+.cb.err pre { color: var(--destructive); }
+.k { color: var(--sh-kw); } .f { color: var(--sh-fn); } .s { color: var(--sh-str); } .n { color: var(--sh-num); } .c { color: var(--sh-com); }
+
+/* ---------- Markdown reply ---------- */
+.md p { margin: 0 0 12px; }
+.md h3 { font-size: 16px; font-weight: 600; margin: 20px 0 8px; }
+.md ul { margin: 0 0 12px; padding-left: 20px; }
+.md li { margin: 3px 0; }
+.md code.inl { font-family: var(--mono); font-size: 13px; background: var(--muted); padding: 1px 5px; border-radius: 5px; }
+.cite { position: relative; display: inline-flex; vertical-align: 1px; }
+.cite > button { height: 18px; padding: 0 6px; border-radius: 999px; background: var(--muted); font-size: 11.5px; font-weight: 500; color: var(--muted-foreground); line-height: 18px; }
+.cite > button:hover { color: var(--foreground); background: var(--accent); }
+.dark .cite > button:hover { background: #333; }
+.hc { position: absolute; left: 0; top: calc(100% + 6px); width: 300px; background: var(--popover); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--pop-shadow); padding: 12px; z-index: 20; opacity: 0; pointer-events: none; transform: translateY(-2px); transition: opacity .12s, transform .12s; font-size: 13px; line-height: 1.5; }
+.cite:hover .hc, .cite:focus-within .hc { opacity: 1; pointer-events: auto; transform: none; }
+.hc .h { display: flex; align-items: center; gap: 6px; color: var(--muted-foreground); font-size: 12px; margin-bottom: 4px; }
+.hc .tt { font-weight: 500; margin-bottom: 4px; }
+.hc .sn { color: var(--muted-foreground); }
+
+/* ---------- Confirmation (Item) ---------- */
+.item { display: flex; align-items: center; gap: 12px; border: 1px solid var(--border); border-radius: 12px; padding: 12px 12px 12px 14px; margin: 6px 0 10px; }
+.item .body { flex: 1; min-width: 0; }
+.item .tt { font-size: 14px; font-weight: 500; }
+.item .sn { font-size: 13px; color: var(--muted-foreground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.btn { height: 32px; padding: 0 12px; border-radius: 8px; font-size: 13.5px; font-weight: 500; display: inline-flex; align-items: center; gap: 6px; }
+.btn.outline { border: 1px solid var(--border); background: var(--background); }
+.btn.outline:hover { background: var(--accent); }
+.btn.solid { background: var(--primary); color: var(--primary-foreground); }
+.btn.solid:hover { opacity: .9; }
+
+/* ---------- loading dots (bottom) ---------- */
+.dots { display: inline-flex; gap: 4px; padding: 8px 0 4px; }
+.dots span { width: 6px; height: 6px; border-radius: 999px; background: var(--faint); animation: dot 1.2s ease-in-out infinite; }
+.dots span:nth-child(2) { animation-delay: .15s; } .dots span:nth-child(3) { animation-delay: .3s; }
+@keyframes dot { 0%, 80%, 100% { opacity: .3; } 40% { opacity: 1; } }
+
+/* ---------- Prompt Input (Input Group) ---------- */
+.composer-wrap { flex: none; padding: 0 24px 20px; }
+.composer { max-width: 720px; margin: 0 auto; border: 1px solid var(--border); border-radius: 20px; background: var(--background); box-shadow: var(--shadow); padding: 8px; }
+.composer:focus-within { border-color: var(--ring); }
+.composer .addon-start { display: flex; gap: 6px; padding: 2px 2px 6px; }
+.attach { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 4px 0 8px; border-radius: 8px; background: var(--muted); font-size: 12.5px; }
+.attach .x { width: 20px; height: 20px; border-radius: 5px; display: inline-flex; align-items: center; justify-content: center; color: var(--muted-foreground); }
+.attach .x:hover { color: var(--foreground); }
+.composer textarea { width: 100%; border: 0; outline: 0; resize: none; background: transparent; color: var(--foreground); font: inherit; padding: 4px 8px; min-height: 28px; max-height: 200px; }
+.composer textarea::placeholder { color: var(--faint); }
+.composer .addon-end { display: flex; align-items: center; gap: 4px; padding-top: 4px; }
+.round { width: 32px; height: 32px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; }
+.round.outline { border: 1px solid var(--border); color: var(--muted-foreground); }
+.round.outline:hover { color: var(--foreground); background: var(--accent); }
+.menu { height: 32px; padding: 0 8px 0 10px; border-radius: 8px; font-size: 13.5px; color: var(--muted-foreground); display: inline-flex; align-items: center; gap: 4px; }
+.menu:hover { background: var(--accent); color: var(--foreground); }
+.spacer { flex: 1; }
+.send { background: var(--primary); color: var(--primary-foreground); }
+.send:disabled { opacity: .35; cursor: default; }
+.hint { max-width: 720px; margin: 8px auto 0; text-align: center; font-size: 12px; color: var(--faint); }
+.katex { font-size: 1.02em; }
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="top">
+    <span class="title">Quarterly churn analysis</span>
+    <div class="seg" role="group" aria-label="Theme">
+      <button type="button" data-theme="light" aria-pressed="true">Light</button>
+      <button type="button" data-theme="dark" aria-pressed="false">Dark</button>
+    </div>
+  </header>
+
+  <main class="scroller" id="scroller" aria-label="Conversation">
+    <div class="content" id="content">
+
+      <!-- Turn 1: user -->
+      <div class="row msg end">
+        <span class="attach-chip"><svg class="i sm" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></svg><b>churn_q3.csv</b> 48 KB</span>
+        <div class="bubble">Why did churn go up last quarter? Compare it to the industry benchmark.</div>
+        <div class="msg-footer">
+          <button class="ib" type="button" aria-label="Copy"><svg class="i sm" viewBox="0 0 24 24"><rect x="8" y="8" width="14" height="14" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></button>
+          <button class="ib" type="button" aria-label="Edit"><svg class="i sm" viewBox="0 0 24 24"><path d="M21.17 6.81a1 1 0 0 0-3.99-3.98L3.84 16.17a2 2 0 0 0-.5.83l-1.32 4.35a.5.5 0 0 0 .62.62l4.35-1.32a2 2 0 0 0 .83-.5Z"/></svg></button>
+        </div>
+      </div>
+
+      <!-- Turn 1: assistant, settled -->
+      <div class="row msg">
+        <div class="trace">
+          <!-- Chain of Thought summary -->
+          <button class="line" type="button" aria-expanded="false" data-toggle="cot1">
+            <span class="ticon"><span class="orb" data-orb></span></span>
+            <span class="t">Worked for 14s</span><span class="d">4 steps</span>
+            <svg class="i chev" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
+          </button>
+          <div class="trace" id="cot1" hidden>
+            <!-- Reasoning -->
+            <button class="line" type="button" aria-expanded="false" data-toggle="r1">
+              <span class="ticon"><span class="orb" data-orb></span></span>
+              <span class="t">Thought for 4s</span>
+              <svg class="i chev" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
+            </button>
+            <div class="panel" id="r1" hidden><div class="reason">
+              <p>The file has monthly cohorts with start and end subscriber counts. I should compute churn per month, then find what changed in Q3. A benchmark needs a current source.</p>
+            </div></div>
+            <!-- Tool: file read -->
+            <div class="line"><span class="ticon"><span class="orb" data-orb></span></span><span class="t">Read churn_q3.csv</span><span class="d">1,204 rows</span></div>
+            <!-- Tool: code run -->
+            <button class="line" type="button" aria-expanded="false" data-toggle="t2">
+              <span class="ticon"><span class="orb" data-orb></span></span>
+              <span class="t">Ran analysis script</span><span class="d">python</span>
+              <svg class="i chev" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
+            </button>
+            <div class="panel" id="t2" hidden>
+              <div class="cb sm"><div class="cb-h"><span class="ttl">input</span></div><pre><code><span class="ln">df = pd.<span class="f">read_csv</span>(<span class="s">"churn_q3.csv"</span>)</span><span class="ln">df.<span class="f">groupby</span>(<span class="s">"month"</span>)[<span class="s">"churned"</span>].<span class="f">sum</span>() / df.<span class="f">groupby</span>(<span class="s">"month"</span>)[<span class="s">"start"</span>].<span class="f">sum</span>()</span></code></pre></div>
+              <div class="cb sm"><div class="cb-h"><span class="ttl">output</span></div><pre><code><span class="ln">month</span><span class="ln">2026-07    <span class="n">0.031</span></span><span class="ln">2026-08    <span class="n">0.046</span></span><span class="ln">2026-09    <span class="n">0.052</span></span></code></pre></div>
+            </div>
+            <!-- Tool: error -->
+            <button class="line" type="button" aria-expanded="false" data-toggle="t3" data-status="error">
+              <span class="ticon"><span class="orb" data-orb></span></span>
+              <span class="t">Failed to open billing_events.parquet</span>
+              <svg class="i chev" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
+            </button>
+            <div class="panel" id="t3" hidden>
+              <div class="cb sm err"><pre><code><span class="ln">FileNotFoundError: billing_events.parquet is not attached to this chat</span></code></pre></div>
+            </div>
+            <!-- Sources -->
+            <button class="line" type="button" aria-expanded="false" data-toggle="s1">
+              <span class="ticon"><span class="orb" data-orb></span></span>
+              <span class="t">Searched the web</span><span class="d">3 sources</span>
+              <svg class="i chev" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
+            </button>
+            <div class="trace" id="s1" hidden>
+              <a class="src" href="#"><span class="ticon"><span class="fav" style="background:#635bff">S</span></span>SaaS churn benchmarks 2026<span class="host">stripe.com</span></a>
+              <a class="src" href="#"><span class="ticon"><span class="fav" style="background:#0f766e">R</span></span>B2B retention report Q3<span class="host">recurly.com</span></a>
+              <a class="src" href="#"><span class="ticon"><span class="fav" style="background:#ea580c">C</span></span>What drives voluntary churn<span class="host">chartmogul.com</span></a>
+            </div>
+          </div>
+        </div>
+
+        <div class="md">
+          <p>Monthly churn rose from 3.1% in July to 5.2% in September. Almost all of the increase comes from annual plans that renewed in August after the price change <span class="cite"><button type="button">chartmogul</button><span class="hc" role="tooltip"><span class="h"><span class="fav" style="background:#ea580c;width:14px;height:14px;border-radius:3px;display:inline-flex;align-items:center;justify-content:center;font-size:9px;color:#fff">C</span>chartmogul.com</span><span class="tt">What drives voluntary churn</span><span class="sn">Price increases at renewal are the largest single driver of voluntary churn for annual B2B plans.</span></span></span>.</p>
+          <p>The industry median for B2B SaaS is about 3.5% a month <span class="cite"><button type="button">stripe +1</button><span class="hc" role="tooltip"><span class="h"><span class="fav" style="background:#635bff;width:14px;height:14px;border-radius:3px;display:inline-flex;align-items:center;justify-content:center;font-size:9px;color:#fff">S</span>stripe.com</span><span class="tt">SaaS churn benchmarks 2026</span><span class="sn">Median monthly logo churn for B2B SaaS under $10M ARR was 3.5%.</span></span></span>, so you were below it in July and 1.7 points above it by September.</p>
+          <p>Annualized, that is <span data-tex="1-(1-0.052)^{12} \approx 47\%"></span> of customers per year at the September rate.</p>
+          <h3>Reproduce it</h3>
+          <div class="cb">
+            <div class="cb-h"><span class="ttl">python</span>
+              <button class="ib" type="button" aria-label="Copy code" data-copy><svg class="i sm" viewBox="0 0 24 24"><rect x="8" y="8" width="14" height="14" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></button>
+            </div>
+<pre><code><span class="ln"><span class="k">import</span> pandas <span class="k">as</span> pd</span><span class="ln"> </span><span class="ln">df <span class="k">=</span> pd.<span class="f">read_csv</span>(<span class="s">"churn_q3.csv"</span>)</span><span class="ln">monthly <span class="k">=</span> df.<span class="f">groupby</span>(<span class="s">"month"</span>)[[<span class="s">"churned"</span>, <span class="s">"start"</span>]].<span class="f">sum</span>()</span><span class="ln">monthly[<span class="s">"rate"</span>] <span class="k">=</span> monthly.churned <span class="k">/</span> monthly.start</span><span class="ln"> </span><span class="ln"><span class="c"># Split by plan to see where August came from</span></span><span class="ln">by_plan <span class="k">=</span> df[df.month <span class="k">==</span> <span class="s">"2026-08"</span>].<span class="f">groupby</span>(<span class="s">"plan"</span>).churned.<span class="f">sum</span>()</span></code></pre>
+          </div>
+          <ul>
+            <li>Offer a one-time renewal discount to annual accounts renewing in the next 60 days.</li>
+            <li>Attach <code class="inl">billing_events.parquet</code> and I can check whether failed payments add to it.</li>
+          </ul>
+        </div>
+        <div class="msg-footer">
+          <button class="ib" type="button" aria-label="Copy"><svg class="i sm" viewBox="0 0 24 24"><rect x="8" y="8" width="14" height="14" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></button>
+          <button class="ib" type="button" aria-label="Good response" aria-pressed="false" data-press><svg class="i sm" viewBox="0 0 24 24"><path d="M7 10v12"/><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z"/></svg></button>
+          <button class="ib" type="button" aria-label="Bad response" aria-pressed="false" data-press><svg class="i sm" viewBox="0 0 24 24"><path d="M17 14V2"/><path d="M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22a3.13 3.13 0 0 1-3-3.88Z"/></svg></button>
+          <button class="ib" type="button" aria-label="Retry"><svg class="i sm" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg></button>
+        </div>
+      </div>
+
+      <!-- Turn 2: user -->
+      <div class="row msg end">
+        <div class="bubble">Email the summary to the retention team.</div>
+      </div>
+
+      <!-- Turn 2: assistant, in progress -->
+      <div class="row msg">
+        <div class="trace">
+          <div class="line"><span class="ticon"><span class="orb" data-orb></span></span><span class="t">Drafted email</span><span class="d">retention@acme.com</span></div>
+        </div>
+        <div class="item" role="group" aria-label="Approval">
+          <div class="body">
+            <div class="tt">Send email to retention@acme.com?</div>
+            <div class="sn">Subject: Q3 churn rose to 5.2%, driven by annual renewals</div>
+          </div>
+          <button class="btn outline" type="button" data-deny>Deny</button>
+          <button class="btn solid" type="button" data-approve>Approve</button>
+        </div>
+        <div class="trace" id="after" hidden>
+          <div class="line" data-status="running"><span class="ticon"><span class="orb" data-orb></span></span><span class="t">Sending email</span></div>
+        </div>
+        <div class="dots" id="dots" hidden aria-label="Working"><span></span><span></span><span></span></div>
+      </div>
+
+    </div>
+    <button class="jump" id="jump" type="button" aria-label="Jump to latest"><svg class="i" viewBox="0 0 24 24"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg></button>
+  </main>
+
+  <div class="composer-wrap">
+    <form class="composer" onsubmit="return false">
+      <div class="addon-start">
+        <span class="attach"><svg class="i sm" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></svg>churn_q3.csv<button class="x" type="button" aria-label="Remove churn_q3.csv"><svg class="i sm" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></span>
+      </div>
+      <textarea id="ta" rows="1" placeholder="Ask anything, @ to mention" aria-label="Message"></textarea>
+      <div class="addon-end">
+        <button class="round outline" type="button" aria-label="Attach"><svg class="i" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></svg></button>
+        <span class="spacer"></span>
+        <button class="menu" type="button">Claude Sonnet 4.5<svg class="i sm" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>
+        <button class="menu" type="button">High<svg class="i sm" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>
+        <button class="round send" id="send" type="submit" aria-label="Send" disabled><svg class="i" viewBox="0 0 24 24"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></svg></button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.22/dist/katex.min.js"></script>
+<script>
+const ORB = `<svg viewBox="0 0 200 200" aria-hidden="true"><defs><radialGradient id="ob1" cx="38%" cy="28%" r="78%"><stop offset="0%" stop-color="#fff"/><stop offset="22%" stop-color="#eceef1"/><stop offset="46%" stop-color="#a8adb5"/><stop offset="72%" stop-color="#4c5158"/><stop offset="100%" stop-color="#17191d"/></radialGradient><clipPath id="oc1"><circle cx="100" cy="100" r="96"/></clipPath></defs><g clip-path="url(#oc1)"><circle cx="100" cy="100" r="96" fill="url(#ob1)"/><ellipse cx="73" cy="59" rx="27" ry="17" fill="#fff" opacity=".85" transform="rotate(-24 73 59)"/></g></svg>`;
+document.querySelectorAll('[data-theme]').forEach(x => x.setAttribute('aria-pressed', String((x.dataset.theme === 'dark') === document.documentElement.classList.contains('dark'))));
+document.querySelectorAll('[data-orb]').forEach(el => { el.innerHTML = ORB; });
+
+document.querySelectorAll('[data-theme]').forEach(b => b.addEventListener('click', () => {
+  document.documentElement.classList.toggle('dark', b.dataset.theme === 'dark');
+  document.querySelectorAll('[data-theme]').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+}));
+
+document.querySelectorAll('[data-toggle]').forEach(b => b.addEventListener('click', () => {
+  const p = document.getElementById(b.dataset.toggle);
+  const open = b.getAttribute('aria-expanded') !== 'true';
+  b.setAttribute('aria-expanded', String(open));
+  p.hidden = !open;
+}));
+
+document.querySelectorAll('[data-press]').forEach(b => b.addEventListener('click', () => {
+  const on = b.getAttribute('aria-pressed') !== 'true';
+  b.parentElement.querySelectorAll('[data-press]').forEach(x => x.setAttribute('aria-pressed', 'false'));
+  b.setAttribute('aria-pressed', String(on));
+}));
+
+const CHECK = '<svg class="i sm" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>';
+document.querySelectorAll('[data-copy]').forEach(b => b.addEventListener('click', () => {
+  const prev = b.innerHTML; b.innerHTML = CHECK; setTimeout(() => { b.innerHTML = prev; }, 1200);
+}));
+
+document.querySelectorAll('[data-tex]').forEach(el => {
+  if (window.katex) katex.render(el.dataset.tex, el, { throwOnError: false, strict: 'ignore' });
+  else el.textContent = el.dataset.tex;
+});
+
+const item = document.querySelector('.item');
+function resolve(approved) {
+  item.remove();
+  const after = document.getElementById('after');
+  after.hidden = false;
+  if (approved) {
+    document.getElementById('dots').hidden = false;
+    setTimeout(() => {
+      const l = after.querySelector('.line');
+      l.removeAttribute('data-status');
+      l.querySelector('.t').textContent = 'Sent email';
+      document.getElementById('dots').hidden = true;
+    }, 2200);
+  } else {
+    after.querySelector('.line').removeAttribute('data-status');
+    after.querySelector('.t').textContent = 'Denied sending email';
+  }
+}
+document.querySelector('[data-approve]').addEventListener('click', () => resolve(true));
+document.querySelector('[data-deny]').addEventListener('click', () => resolve(false));
+
+const ta = document.getElementById('ta'), send = document.getElementById('send');
+ta.addEventListener('input', () => {
+  send.disabled = !ta.value.trim();
+  ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 200) + 'px';
+});
+
+const sc = document.getElementById('scroller'), jump = document.getElementById('jump');
+sc.scrollTop = sc.scrollHeight;
+sc.addEventListener('scroll', () => {
+  jump.classList.toggle('on', sc.scrollHeight - sc.scrollTop - sc.clientHeight > 96);
+}, { passive: true });
+jump.addEventListener('click', () => sc.scrollTo({ top: sc.scrollHeight, behavior: 'smooth' }));
+</script>
+</body>
+</html>
