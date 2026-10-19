@@ -135,71 +135,83 @@ export class ConversationalOnboardingService {
   }
 
   private async reduce(state: StoredState, userId: string, action: Exclude<OnboardingAction, { action: 'start' }>) {
+    if (action.action === 'consent') return this.reduceConsent(state, action)
+    if (action.action === 'answer') return this.reduceAnswer(state, userId, action)
+    if (action.action === 'advance') return this.reduceAdvance(state, userId, action)
+    return this.reduceFinish(state, userId, action)
+  }
+
+  private reduceConsent(state: StoredState, action: Extract<OnboardingAction, { action: 'consent' }>) {
+    return { completed: false, state: { ...state, session: { ...state.session, revision: state.session.revision + 1, aiEnabled: action.enabled } } }
+  }
+
+  private async reduceAnswer(state: StoredState, userId: string, action: Extract<OnboardingAction, { action: 'answer' }>) {
     const current = state.session
-    if (action.action === 'consent') {
-      return { completed: false, state: { ...state, session: { ...current, revision: current.revision + 1, aiEnabled: action.enabled } } }
+    if (!['name', 'about', 'daily'].includes(current.step)) {
+      throw new OnboardingServiceError('Answers are not accepted at this step', 409, 'invalid_step')
     }
-    if (action.action === 'answer') {
-      if (!['name', 'about', 'daily'].includes(current.step)) {
-        throw new OnboardingServiceError('Answers are not accepted at this step', 409, 'invalid_step')
-      }
-      const value = action.value.trim()
-      if (current.step === 'name' && value.length > 200) {
-        throw new OnboardingServiceError('Name is too long', 400, 'invalid_profile')
-      }
-      const profile = { ...current.profile, [current.step]: value } as OnboardingProfile
-      const step: OnboardingStep = current.step === 'name' ? 'about' : current.step === 'about' ? 'daily' : 'employees'
-      const reply = await this.makeReply(step, profile, current.aiEnabled, {})
-      const revision = current.revision + 1
-      return {
-        completed: false,
-        state: { ...state, session: { ...current, revision, step, profile, reply, employees: reply.employees ?? [], suggestions: reply.suggestions ?? [] },
-          outbox: [{ clientNonce: this.nonce(userId, current.runId, revision, 'user'), content: value, kind: 'user' as const },
-            { clientNonce: this.nonce(userId, current.runId, revision, 'assistant'), content: reply.message, kind: 'assistant' as const }] },
-      }
+    const value = action.value.trim()
+    if (current.step === 'name' && value.length > 200) {
+      throw new OnboardingServiceError('Name is too long', 400, 'invalid_profile')
     }
-    if (action.action === 'advance') {
-      if (!['employees', 'connections', 'memories', 'teammates'].includes(current.step)) {
-        throw new OnboardingServiceError('This step cannot be advanced', 409, 'invalid_step')
-      }
-      let createdAgentIds = current.createdAgentIds
-      if (action.agentIds?.length) {
-        if (current.step !== 'employees') throw new OnboardingServiceError('Agent ids are not valid at this step', 400, 'invalid_action')
-        const list = await this.deps.effects.agents.list({ actorUserId: userId, workspaceId: current.workspaceId })
-        const visible = new Map(list.agents.map((agent) => [agent.id, agent]))
-        for (const id of action.agentIds) {
-          const agent = visible.get(id)
-          if (!agent || agent.createdByPrincipalId !== list.viewerPrincipalId) {
-            throw new OnboardingServiceError('One or more agents are not available to you', 403, 'agent_forbidden')
-          }
-        }
-        createdAgentIds = [...new Set([...createdAgentIds, ...action.agentIds])]
-      }
-      if (action.memoryIds?.length) {
-        if (current.step !== 'memories') throw new OnboardingServiceError('Memory ids are not valid at this step', 400, 'invalid_action')
-        await Promise.all(action.memoryIds.map(async (memoryId) => {
-          const memory = await this.deps.effects.memories.get({ memoryId, userId, workspaceId: current.workspaceId })
-          if (!memory || memory.userId !== userId || memory.visibility === 'workspace') {
-            throw new OnboardingServiceError('One or more memories are not personal memories', 403, 'memory_forbidden')
-          }
-        }))
-      }
-      if (action.invitationIds?.length) {
-        if (current.step !== 'teammates') throw new OnboardingServiceError('Invitation ids are not valid at this step', 400, 'invalid_action')
-        const invitations = await this.deps.effects.workspaces.listInvitations({ actorUserId: userId, workspaceId: current.workspaceId })
-        const ids = new Set(invitations.filter((invitation) => invitation.status === 'pending').map((invitation) => invitation.id))
-        if (action.invitationIds.some((id) => !ids.has(id))) {
-          throw new OnboardingServiceError('One or more invitations are unavailable', 403, 'invitation_forbidden')
+    const profile = { ...current.profile, [current.step]: value } as OnboardingProfile
+    const step: OnboardingStep = current.step === 'name' ? 'about' : current.step === 'about' ? 'daily' : 'employees'
+    const reply = await this.makeReply(step, profile, current.aiEnabled, {})
+    const revision = current.revision + 1
+    return {
+      completed: false,
+      state: { ...state, session: { ...current, revision, step, profile, reply, employees: reply.employees ?? [], suggestions: reply.suggestions ?? [] },
+        outbox: [{ clientNonce: this.nonce(userId, current.runId, revision, 'user'), content: value, kind: 'user' as const },
+          { clientNonce: this.nonce(userId, current.runId, revision, 'assistant'), content: reply.message, kind: 'assistant' as const }] },
+    }
+  }
+
+  private async reduceAdvance(state: StoredState, userId: string, action: Extract<OnboardingAction, { action: 'advance' }>) {
+    const current = state.session
+    if (!['employees', 'connections', 'memories', 'teammates'].includes(current.step)) {
+      throw new OnboardingServiceError('This step cannot be advanced', 409, 'invalid_step')
+    }
+    let createdAgentIds = current.createdAgentIds
+    if (action.agentIds?.length) {
+      if (current.step !== 'employees') throw new OnboardingServiceError('Agent ids are not valid at this step', 400, 'invalid_action')
+      const list = await this.deps.effects.agents.list({ actorUserId: userId, workspaceId: current.workspaceId })
+      const visible = new Map(list.agents.map((agent) => [agent.id, agent]))
+      for (const id of action.agentIds) {
+        const agent = visible.get(id)
+        if (!agent || agent.createdByPrincipalId !== list.viewerPrincipalId) {
+          throw new OnboardingServiceError('One or more agents are not available to you', 403, 'agent_forbidden')
         }
       }
-      const step: OnboardingStep = current.step === 'employees' ? 'connections' : current.step === 'connections' ? 'memories' : current.step === 'memories' ? 'teammates' : 'task'
-      const reply = await this.makeReply(step, current.profile, current.aiEnabled, {})
-      const revision = current.revision + 1
-      const summary = onboardingAdvanceSummary(current.step, action)
-      return { completed: false, state: { ...state, session: { ...current, revision, step, reply, employees: reply.employees ?? [], suggestions: reply.suggestions ?? [], createdAgentIds },
-        outbox: [{ clientNonce: this.nonce(userId, current.runId, revision, 'user'), content: summary, kind: 'user' as const },
-          { clientNonce: this.nonce(userId, current.runId, revision, 'assistant'), content: reply.message, kind: 'assistant' as const }] } }
+      createdAgentIds = [...new Set([...createdAgentIds, ...action.agentIds])]
     }
+    if (action.memoryIds?.length) {
+      if (current.step !== 'memories') throw new OnboardingServiceError('Memory ids are not valid at this step', 400, 'invalid_action')
+      await Promise.all(action.memoryIds.map(async (memoryId) => {
+        const memory = await this.deps.effects.memories.get({ memoryId, userId, workspaceId: current.workspaceId })
+        if (!memory || memory.userId !== userId || memory.visibility === 'workspace') {
+          throw new OnboardingServiceError('One or more memories are not personal memories', 403, 'memory_forbidden')
+        }
+      }))
+    }
+    if (action.invitationIds?.length) {
+      if (current.step !== 'teammates') throw new OnboardingServiceError('Invitation ids are not valid at this step', 400, 'invalid_action')
+      const invitations = await this.deps.effects.workspaces.listInvitations({ actorUserId: userId, workspaceId: current.workspaceId })
+      const ids = new Set(invitations.filter((invitation) => invitation.status === 'pending').map((invitation) => invitation.id))
+      if (action.invitationIds.some((id) => !ids.has(id))) {
+        throw new OnboardingServiceError('One or more invitations are unavailable', 403, 'invitation_forbidden')
+      }
+    }
+    const step: OnboardingStep = current.step === 'employees' ? 'connections' : current.step === 'connections' ? 'memories' : current.step === 'memories' ? 'teammates' : 'task'
+    const reply = await this.makeReply(step, current.profile, current.aiEnabled, {})
+    const revision = current.revision + 1
+    const summary = onboardingAdvanceSummary(current.step, action)
+    return { completed: false, state: { ...state, session: { ...current, revision, step, reply, employees: reply.employees ?? [], suggestions: reply.suggestions ?? [], createdAgentIds },
+      outbox: [{ clientNonce: this.nonce(userId, current.runId, revision, 'user'), content: summary, kind: 'user' as const },
+        { clientNonce: this.nonce(userId, current.runId, revision, 'assistant'), content: reply.message, kind: 'assistant' as const }] } }
+  }
+
+  private async reduceFinish(state: StoredState, userId: string, action: Extract<OnboardingAction, { action: 'finish' }>) {
+    const current = state.session
     if (current.step !== 'task') throw new OnboardingServiceError('Finish is only available from the task step', 409, 'invalid_step')
     let task: Awaited<ReturnType<WorkService['get']>>
     try {
@@ -297,14 +309,20 @@ export class ConversationalOnboardingService {
 }
 
 function isValidState(value: unknown, userId: string): value is StoredState {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  if (!isExactKeys(value, ['version', 'userId', 'session', 'outbox'])) return false
   const state = value as Record<string, unknown>
-  if (state.version !== 1 || state.userId !== userId || !Array.isArray(state.outbox) || state.outbox.length > 2 || !isExactKeys(state, ['version', 'userId', 'session', 'outbox'])) return false
-  if (!state.session || typeof state.session !== 'object' || Array.isArray(state.session)) return false
-  const session = state.session as Record<string, unknown>
+  return state.version === 1 &&
+    state.userId === userId &&
+    isValidOnboardingSession(state.session) &&
+    isValidOutbox(state.outbox)
+}
+
+function isValidOnboardingSession(value: unknown): value is OnboardingSession {
+  if (!isObjectRecord(value)) return false
+  const session = value as Record<string, unknown>
   const sessionKeys = ['version', 'runId', 'revision', 'workspaceId', 'conversationId', 'agentId', 'agentPrincipalId', 'step', 'profile', 'aiEnabled', 'reply', 'employees', 'suggestions', 'createdAgentIds', 'taskId']
-  if (!isExactKeys(session, session.taskId === undefined ? sessionKeys.slice(0, -1) : sessionKeys)
-    || session.version !== 1
+  if (!isExactKeys(value, session.taskId === undefined ? sessionKeys.slice(0, -1) : sessionKeys)) return false
+  if (session.version !== 1
     || !OnboardingRunIdSchema.safeParse(session.runId).success
     || !Number.isInteger(session.revision)
     || (session.revision as number) < 1
@@ -317,25 +335,49 @@ function isValidState(value: unknown, userId: string): value is StoredState {
     || !Array.isArray(session.employees)
     || !Array.isArray(session.suggestions)
     || !Array.isArray(session.createdAgentIds)) return false
-  if (!session.profile || typeof session.profile !== 'object' || Array.isArray(session.profile)
-    || !isExactKeys(session.profile, ['name', 'about', 'daily'])) return false
-  const profile = session.profile as Record<string, unknown>
-  if (!boundedString(profile.name, 0, 200) || !boundedString(profile.about, 0, 3000) || !boundedString(profile.daily, 0, 3000)) return false
-  if (!session.reply || typeof session.reply !== 'object' || Array.isArray(session.reply)) return false
-  const reply = session.reply as Record<string, unknown>
-  if (!isValidReply(reply)) return false
+  return isValidProfile(session.profile) &&
+    isValidStoredReply(session.reply) &&
+    isValidSessionCollections(session) &&
+    (session.step === 'complete' ? boundedString(session.taskId, 1, 200) : session.taskId === undefined)
+}
+
+function isValidProfile(value: unknown): value is OnboardingProfile {
+  if (!isExactKeys(value, ['name', 'about', 'daily'])) return false
+  const profile = value as Record<string, unknown>
+  return boundedString(profile.name, 0, 200) &&
+    boundedString(profile.about, 0, 3000) &&
+    boundedString(profile.daily, 0, 3000)
+}
+
+function isValidStoredReply(value: unknown): value is OnboardingReply {
+  if (!isValidReply(value)) return false
+  const reply = value as Record<string, unknown>
   const replyKeys = ['message', 'mode', ...(Object.hasOwn(reply, 'employees') ? ['employees'] : []), ...(Object.hasOwn(reply, 'suggestions') ? ['suggestions'] : [])]
-  if (!isExactKeys(reply, replyKeys)) return false
-  if (session.employees.some((employee) => !isValidEmployee(employee))
-    || session.suggestions.some((suggestion) => !boundedString(suggestion, 1, 3000))
-    || session.createdAgentIds.some((id) => !boundedString(id, 1, 200))
-    || (session.step === 'complete' ? !boundedString(session.taskId, 1, 200) : session.taskId !== undefined)) return false
-  if (state.outbox.some((message) => !message || typeof message !== 'object' || Array.isArray(message)
-    || !isExactKeys(message, ['clientNonce', 'content', 'kind'])
-    || !boundedString((message as Record<string, unknown>).clientNonce, 1, 500)
-    || !boundedString((message as Record<string, unknown>).content, 1, 8000)
-    || !['user', 'assistant'].includes(String((message as Record<string, unknown>).kind)))) return false
-  return true
+  return isExactKeys(reply, replyKeys)
+}
+
+function isValidSessionCollections(session: Record<string, unknown>): boolean {
+  return Array.isArray(session.employees) &&
+    Array.isArray(session.suggestions) &&
+    Array.isArray(session.createdAgentIds) &&
+    !session.employees.some((employee) => !isValidEmployee(employee)) &&
+    !session.suggestions.some((suggestion) => !boundedString(suggestion, 1, 3000)) &&
+    !session.createdAgentIds.some((id) => !boundedString(id, 1, 200))
+}
+
+function isValidOutbox(value: unknown): value is Outbox[] {
+  if (!Array.isArray(value) || value.length > 2) return false
+  return value.every((message) => {
+    if (!isExactKeys(message, ['clientNonce', 'content', 'kind'])) return false
+    const record = message as Record<string, unknown>
+    return boundedString(record.clientNonce, 1, 500) &&
+      boundedString(record.content, 1, 8000) &&
+      ['user', 'assistant'].includes(String(record.kind))
+  })
+}
+
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }
 
 function onboardingAdvanceSummary(
