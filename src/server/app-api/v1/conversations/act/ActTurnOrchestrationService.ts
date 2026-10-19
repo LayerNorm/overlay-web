@@ -809,6 +809,7 @@ export async function executeActTurn(
     const attemptModelSupportsZdr = modelSupportsZeroDataRetention(attemptModelId)
     // Resolved in the background so the catalog lookup never delays the first token.
     let attemptContextWindow: number | undefined
+    let lastStepUsage: { inputTokens?: number; outputTokens?: number } | undefined
     void getGatewayCatalogModel(attemptModelId)
       .then((model) => {
         attemptContextWindow = model?.contextWindow
@@ -1063,11 +1064,17 @@ export async function executeActTurn(
         ) {
           metadata.routedModelId = streamedRoutedModelId
         }
-        if (part.type === 'finish' && part.totalUsage) {
+        if (part.type === 'finish-step') lastStepUsage = part.usage
+        // Context left for the next turn is the last step's prompt plus its reply;
+        // totalUsage sums every tool step and overstates it.
+        const contextUsage = part.type === 'finish' ? lastStepUsage ?? part.totalUsage : undefined
+        if (contextUsage) {
+          const inputTokens = contextUsage.inputTokens
+          const outputTokens = contextUsage.outputTokens
           metadata.usage = {
-            inputTokens: part.totalUsage.inputTokens,
-            outputTokens: part.totalUsage.outputTokens,
-            totalTokens: part.totalUsage.totalTokens,
+            inputTokens,
+            outputTokens,
+            totalTokens: (inputTokens ?? 0) + (outputTokens ?? 0),
           }
           if (attemptContextWindow) metadata.contextWindow = attemptContextWindow
         }
