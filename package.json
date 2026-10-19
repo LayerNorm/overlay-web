@@ -169,7 +169,7 @@
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.22",
-    "@ai-sdk/google": "^4.0.33",
+    "@ai-sdk/google": "^4.0.93",
     "@ai-sdk/groq": "^4.0.14",
     "@ai-sdk/openai": "^4.0.21",
     "@ai-sdk/openai-compatible": "^3.0.15",
