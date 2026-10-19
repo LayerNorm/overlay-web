@@ -3,6 +3,7 @@ import { Orb } from '@overlay/ui'
 import { type ReactNode, memo, useMemo } from 'react'
 import { AtSign, BookOpen, Bot, FileText, Hash, Plug, Server, Sparkles } from 'lucide-react'
 import { Streamdown } from 'streamdown'
+import type { Pluggable } from 'unified'
 import type { SourceCitationMap } from '../lib/source-citations'
 import { knowledgeChipLabel, knowledgeSourcesFromCitations } from '../lib/knowledge-sources'
 import { webSourceDisplayKey, type WebSourceItem } from '../lib/web-sources'
@@ -17,7 +18,7 @@ import { streamdownMath, streamdownRehypePlugins, streamdownRemarkPlugins } from
 import { createBaseMdComponents, extractLinkText } from './markdown/renderers'
 import { recordRender, timeSync } from '../lib/perf-debug'
 import {
-  createMentionRemarkPlugin,
+  remarkOverlayMentions,
   isMentionHref,
   mentionChipClass,
   type ChatMessageMention,
@@ -238,7 +239,7 @@ function MarkdownMessageImpl({
     [knowledgeSources, sourceCitations, webSources, appBaseUrl, mentions, renderMentionAvatar, onOpenAttachmentPreview, resolveFileHref],
   )
   const activeRemarkPlugins = useMemo(
-    () => [...streamdownRemarkPlugins, createMentionRemarkPlugin(mentions)],
+    (): Pluggable[] => [...streamdownRemarkPlugins, [remarkOverlayMentions, { mentions: mentions ?? [] }]],
     [mentions],
   )
   const showInlineMarker = isStreaming && !suppressTypingIndicator

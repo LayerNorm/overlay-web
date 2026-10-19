@@ -29,3 +29,11 @@ test('fenced code renders the shared Code Block', () => {
 test('unfinished emphasis is styled while streaming', () => {
   assert.match(rendered('Some **bold text', true), /<strong>bold text<\/strong>/)
 })
+
+test('mentions update when the same text renders with a different mention list', () => {
+  const text = '@Maya Chen can you take this?'
+  renderToStaticMarkup(React.createElement(MarkdownMessage, { text, isStreaming: false, mentions: [{ type: 'person', id: 'p_other', name: 'Sam Lee' }] }))
+  const html = renderToStaticMarkup(React.createElement(MarkdownMessage, { text, isStreaming: false, mentions: [{ type: 'person', id: 'p_maya', name: 'Maya Chen' }] }))
+  assert.doesNotMatch(html, /@Maya Chen/)
+  assert.match(html, /Maya Chen<\/span>/)
+})
