@@ -21,26 +21,6 @@
   animation: overlayChatMdBlockAppear 0.3s ease-out forwards;
 }
 
-:where(.overlay-chat-surface) .md-block-streaming {
-  opacity: 0.55;
-  transition: opacity 0.1s ease;
-}
-
-@keyframes overlayChatToolChipSoftBlink {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.68;
-  }
-}
-
-:where(.overlay-chat-surface) .tool-chip-running,
-:where(.overlay-chat-surface) .overlay-tool-chip-running {
-  animation: overlayChatToolChipSoftBlink 1.4s ease-in-out infinite;
-}
-
 :where(.overlay-chat-surface) .table-wrapper {
   overflow-x: auto;
   margin: 0 0 1em;
@@ -365,14 +345,7 @@
   min-height: 14px;
 }
 
-:where(.overlay-chat-surface) .overlay-stream-marker--standalone,
-:where(.overlay-chat-surface)
-  .markdown-content--streaming
-  p:first-child
-  > .overlay-stream-marker:only-child,
-:where(.overlay-chat-surface)
-  .markdown-content--streaming
-  > .overlay-stream-marker:only-child {
+:where(.overlay-chat-surface) .overlay-stream-marker--standalone {
   margin-left: 0;
   width: 1.25rem;
   height: 1.25rem;
@@ -409,39 +382,6 @@
   :where(.overlay-chat-surface) .chat-exchange-actions--hover {
     opacity: 1 !important;
   }
-}
-
-@keyframes overlayChatStreamBlockSoften {
-  from {
-    opacity: 0.4;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-:where(.overlay-chat-surface) .markdown-content--streaming p,
-:where(.overlay-chat-surface) .markdown-content--streaming li,
-:where(.overlay-chat-surface) .markdown-content--streaming td,
-:where(.overlay-chat-surface) .markdown-content--streaming th,
-:where(.overlay-chat-surface) .markdown-content--streaming h1,
-:where(.overlay-chat-surface) .markdown-content--streaming h2,
-:where(.overlay-chat-surface) .markdown-content--streaming h3,
-:where(.overlay-chat-surface) .markdown-content--streaming h4,
-:where(.overlay-chat-surface) .markdown-content--streaming h5,
-:where(.overlay-chat-surface) .markdown-content--streaming h6,
-:where(.overlay-chat-surface) .markdown-content--streaming blockquote,
-:where(.overlay-chat-surface) .markdown-content--streaming pre,
-:where(.overlay-chat-surface) .markdown-content--streaming [data-slot='code-block'] {
-  animation: overlayChatStreamBlockSoften 260ms ease-out both;
-  will-change: opacity;
-}
-
-:where(.overlay-chat-surface)
-  .markdown-content--streaming
-  .overlay-stream-marker {
-  animation: overlayChatStreamMarkerPulse 1.3s ease-in-out infinite;
-  opacity: 1;
 }
 
 @keyframes overlayChatMessageAppear {
@@ -503,34 +443,6 @@
   100% {
     transform: translateX(320%);
   }
-}
-
-:where(.overlay-chat-surface) .media-gen-shimmer {
-  position: relative;
-  overflow: hidden;
-  background-color: #d4d4d4;
-  min-height: 8rem;
-  min-width: 8rem;
-  flex-shrink: 0;
-  box-sizing: border-box;
-}
-
-:where(.overlay-chat-surface) .media-gen-shimmer::after {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: -55%;
-  width: 55%;
-  height: 100%;
-  background: linear-gradient(
-    105deg,
-    transparent 0%,
-    rgba(255, 255, 255, 0.12) 32%,
-    rgba(255, 255, 255, 0.85) 50%,
-    rgba(255, 255, 255, 0.12) 68%,
-    transparent 100%
-  );
-  animation: overlayChatMediaShimmerSlide 1.25s ease-in-out infinite;
 }
 
 :where(.overlay-chat-surface) .media-gen-mesh {
@@ -628,27 +540,10 @@
   }
 
   :where(.overlay-chat-surface) .overlay-stream-marker,
-  :where(.overlay-chat-surface) .overlay-loading-tool-logo,
-  :where(.overlay-chat-surface)
-    .markdown-content--streaming
-    .overlay-stream-marker {
+  :where(.overlay-chat-surface) .overlay-loading-tool-logo {
     animation: overlayChatStreamMarkerReducedPulse 1.8s ease-in-out infinite;
     transform: none;
   }
 
-  :where(.overlay-chat-surface) .markdown-content--streaming p,
-  :where(.overlay-chat-surface) .markdown-content--streaming li,
-  :where(.overlay-chat-surface) .markdown-content--streaming td,
-  :where(.overlay-chat-surface) .markdown-content--streaming th,
-  :where(.overlay-chat-surface) .markdown-content--streaming h1,
-  :where(.overlay-chat-surface) .markdown-content--streaming h2,
-  :where(.overlay-chat-surface) .markdown-content--streaming h3,
-  :where(.overlay-chat-surface) .markdown-content--streaming h4,
-  :where(.overlay-chat-surface) .markdown-content--streaming h5,
-  :where(.overlay-chat-surface) .markdown-content--streaming h6,
-  :where(.overlay-chat-surface) .markdown-content--streaming blockquote,
-  :where(.overlay-chat-surface) .markdown-content--streaming pre,
-  :where(.overlay-chat-surface) .markdown-content--streaming [data-slot='code-block'] {
-    animation: none;
-  }
+  
 }
