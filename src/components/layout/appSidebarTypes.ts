@@ -40,6 +40,8 @@ export interface AppSidebarProps {
   renderAutomationsPanel?: (context: AppSidebarNavigateContext) => ReactNode
   renderFilesPanel?: (context: AppSidebarNavigateContext) => ReactNode
   renderAgentsPanel?: (context: AppSidebarNavigateContext) => ReactNode
+  /** One Work sidebar section (`needs-you`, `mine`, `all`) and its tasks. */
+  renderWorkSection?: (context: AppSidebarNavigateContext & { filter: string }) => ReactNode
   workspace?: AppSidebarWorkspaceAdapter
 }
 

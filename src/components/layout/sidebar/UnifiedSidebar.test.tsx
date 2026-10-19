@@ -155,3 +155,23 @@ test('settings turn the sidebar into a settings sidebar with search and grouped 
   assert.doesNotMatch(html, /aria-label="Scope"/)
   assert.doesNotMatch(html, /aria-label="More"/)
 })
+
+test('Work lists Needs you, Assigned to me and Everything as open sections in that order', () => {
+  const html = render({
+    panelKind: 'work',
+    panelNav: { items: [], activeId: 'list', onSelect: noop },
+    sectionRows: [
+      { id: 'needs-you', label: 'Needs you' },
+      { id: 'mine', label: 'Assigned to me' },
+      { id: 'all', label: 'Everything' },
+    ],
+    renderSection: (id) => <span>{`tasks:${id}`}</span>,
+  })
+  const order = ['Needs you', 'Assigned to me', 'Everything'].map((label) => html.indexOf(`>${label}<`))
+  assert.ok(order.every((index) => index > 0))
+  assert.deepEqual([...order].sort((a, b) => a - b), order)
+  assert.match(html, /tasks:needs-you/)
+  assert.match(html, /tasks:mine/)
+  assert.match(html, /tasks:all/)
+  assert.equal((html.match(/aria-expanded="true"/g) ?? []).length >= 3, true)
+})

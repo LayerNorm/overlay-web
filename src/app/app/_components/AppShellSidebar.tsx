@@ -1,5 +1,6 @@
 'use client'
 
+import { WorkSidebarSection } from '@/features/work/components/WorkSidebarSection'
 import AppSidebar from '@/components/layout/AppSidebar'
 import { AgentsInlinePanel } from '@/components/layout/AppSidebarAgentsPanel'
 import { ChatInlinePanel, sectionChatView } from '@/features/chat/components/ChatInlinePanel'
@@ -89,6 +90,7 @@ export function AppShellSidebar({ publicShowcase: forcedPublicShowcase = false }
       renderFilesPanel={publicShowcase
         ? ({ onNavigate }) => <PublicShowcaseFilesInlinePanel onNavigate={onNavigate} />
         : undefined}
+      renderWorkSection={publicShowcase ? undefined : ({ filter, onNavigate }) => <WorkSidebarSection filter={filter} onNavigate={onNavigate} />}
       renderAgentsPanel={({ onNavigate }) => (
         publicShowcase
           ? undefined

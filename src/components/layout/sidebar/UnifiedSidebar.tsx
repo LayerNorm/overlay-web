@@ -241,6 +241,8 @@ export interface UnifiedSidebarProps {
   sectionActions?: Readonly<Record<string, SidebarResourceAction | null>>
   /** Renders one section's own list; without it only the selected section shows the page list. */
   renderSection?: (id: string) => ReactNode
+  /** Sections for a tabs page, whose subviews are header tabs (Work lists its tasks this way). */
+  sectionRows?: ReadonlyArray<InlineNavItem>
   onSearch?: (() => void) | null
   scope: PanelScope
   solo: boolean
@@ -338,6 +340,7 @@ export function UnifiedSidebar({
   panelAction,
   sectionActions,
   renderSection,
+  sectionRows,
   onSearch,
   scope,
   solo,
@@ -402,7 +405,7 @@ export function UnifiedSidebar({
           </SidebarMenu>
         </SidebarGroup>
         {collapsed ? null : (
-          <PageSections nav={tabsPage ? undefined : scopedNav} rows={tabsPage ? [] : rows} title={pageTitle} action={panelAction} sectionActions={sectionActions} renderSection={renderSection}>
+          <PageSections nav={tabsPage ? undefined : scopedNav} rows={tabsPage ? sectionRows ?? [] : rows} title={pageTitle} action={panelAction} sectionActions={sectionActions} renderSection={renderSection}>
             {children}
           </PageSections>
         )}

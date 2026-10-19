@@ -290,17 +290,6 @@ export function RoomHeaderActions({
           {collab.pins.length}
         </Button>
       ) : null}
-      {!showcase && currentParticipant?.role === 'moderator' ? (
-        <Button
-          variant="ghost"
-          type="button"
-          onClick={onShare}
-          className="h-8 gap-1.5 rounded-md px-2 text-xs font-normal text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)"
-        >
-          <Share2 size={14} />
-          <span className="hidden sm:inline">Share</span>
-        </Button>
-      ) : null}
       <Button
         variant="ghost"
         type="button"
@@ -334,6 +323,16 @@ export function RoomHeaderActions({
         align="end"
         className="w-48 p-1"
       >
+        {!showcase && currentParticipant?.role === 'moderator' ? (
+          <MenuButton
+            icon={Share2}
+            label="Share"
+            onClick={() => {
+              setMenuOpen(false)
+              onShare()
+            }}
+          />
+        ) : null}
         <MenuButton
           icon={currentParticipant?.notificationLevel === 'muted' ? Bell : BellOff}
           label={currentParticipant?.notificationLevel === 'muted' ? 'Unmute' : 'Mute'}

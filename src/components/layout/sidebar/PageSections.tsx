@@ -36,8 +36,8 @@ function pageSections(
   title: string,
   hasContent: boolean,
 ): PageSection[] {
-  if (nav && rows.length > 0) {
-    const activeId = nav.activeChildId ?? nav.activeId
+  if (rows.length > 0) {
+    const activeId = nav ? nav.activeChildId ?? nav.activeId : undefined
     return rows.map((row) => ({ id: row.id, label: row.label, active: activeId === row.id, badgeCount: row.badgeCount, locked: row.locked }))
   }
   return hasContent && title ? [{ id: 'page', label: title, active: true }] : []
@@ -64,7 +64,7 @@ export function PageSections({
   const [closed, setClosed] = useState<ReadonlySet<string>>(() => new Set())
   const sections = pageSections(nav, rows, title, Boolean(children || action))
   if (sections.length === 0) return null
-  const multi = Boolean(nav && rows.length > 0)
+  const multi = rows.length > 0
   // With a renderer every section lists its own items, so a header only opens and closes.
   const independent = multi && Boolean(renderSection)
   const toggle = (id: string) => setClosed((prev) => {

@@ -296,6 +296,7 @@ export interface AppScreenHeaderProps extends Omit<HTMLAttributes<HTMLDivElement
   tabs?: ReactNode
   search?: ReactNode
   actions?: ReactNode
+  menu?: ReactNode
   border?: boolean
 }
 
@@ -329,14 +330,8 @@ function AppScreenHeaderTitle({
 }
 
 export function AppScreenHeader({
-  title,
-  subtitle,
-  description,
-  leading,
-  metadata,
-  tabs,
-  search,
-  actions,
+  title, subtitle, description, leading, metadata,
+  tabs, search, actions, menu,
   border = false,
   className,
   children,
@@ -363,12 +358,13 @@ export function AppScreenHeader({
               leading={leading}
               metadata={metadata}
             />
-            {tabs ? <div className="min-w-0 shrink overflow-x-auto scrollbar-none [&::-webkit-scrollbar]:hidden">{tabs}</div> : null}
           </div>
-          {(search || actions) ? (
+          {(search || actions || tabs || menu) ? (
             <div className="flex max-w-full min-w-0 shrink-0 items-center gap-2 overflow-x-auto scrollbar-none md:overflow-visible [&::-webkit-scrollbar]:hidden">
               {search}
               {actions}
+              {tabs ? <div className="min-w-0 shrink overflow-x-auto scrollbar-none [&::-webkit-scrollbar]:hidden">{tabs}</div> : null}
+              {menu}
             </div>
           ) : null}
         </div>

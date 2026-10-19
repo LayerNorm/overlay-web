@@ -21,6 +21,11 @@ import { useIsSoloWorkspace } from '@/hooks/use-solo-workspace'
 import { useAppSidebarState } from './sidebar/useAppSidebarState'
 import { EMPTY_COLLABORATION_NOTIFICATIONS, type AppSidebarProps } from './appSidebarTypes'
 import { ROOT_SHOWCASE_DESTINATION } from '@/shared/auth/root-entry'
+import { WORK_FILTER_LABELS, type WorkFilter } from '@/shared/work/query'
+import type { InlineNavItem } from './AppSidebarInlinePanels'
+
+const WORK_SECTION_ORDER: readonly WorkFilter[] = ['needs-you', 'mine', 'all']
+const WORK_SECTION_ROWS: ReadonlyArray<InlineNavItem> = WORK_SECTION_ORDER.map((id) => ({ id, label: WORK_FILTER_LABELS[id] }))
 
 export type {
   AppSidebarChatPanelContext,
@@ -36,6 +41,7 @@ export default function AppSidebar({
   renderAutomationsPanel,
   renderFilesPanel,
   renderAgentsPanel,
+  renderWorkSection,
   workspace,
 }: AppSidebarProps) {
   const s = useAppSidebarState({
@@ -132,6 +138,12 @@ export default function AppSidebar({
       />
     )
     : undefined
+  const workSections = s.routeState.panelKind === 'work' && renderWorkSection
+  const renderSection = workSections
+    ? (filter: string) => renderWorkSection({ filter, onNavigate: s.closeMobileDrawer })
+    : renderChatSection
+  const sectionRows = workSections ? WORK_SECTION_ROWS : undefined
+  const sectionActions = workSections ? { all: s.panelAction } : s.panelSectionActions
 
   return (
     <>
@@ -176,8 +188,9 @@ export default function AppSidebar({
           panelKind={s.routeState.panelKind}
           panelNav={s.panelNav}
           panelAction={s.panelAction}
-          sectionActions={s.panelSectionActions}
-          renderSection={renderChatSection}
+          sectionActions={sectionActions}
+          renderSection={renderSection}
+          sectionRows={sectionRows}
           onSearch={publicShowcase ? () => s.requireAuth('history') : () => s.openGlobalSearch(null)}
           scope={s.routeState.scope}
           solo={solo}
@@ -281,8 +294,9 @@ export default function AppSidebar({
             panelKind={s.routeState.panelKind}
             panelNav={s.panelNav}
             panelAction={s.panelAction}
-            sectionActions={s.panelSectionActions}
-            renderSection={renderChatSection}
+            sectionActions={sectionActions}
+            renderSection={renderSection}
+            sectionRows={sectionRows}
             onSearch={publicShowcase ? () => s.requireAuth('history') : () => { s.closeMobileDrawer(); s.openGlobalSearch(null) }}
             scope={s.routeState.scope}
             solo={solo}

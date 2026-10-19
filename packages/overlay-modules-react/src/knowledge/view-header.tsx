@@ -724,7 +724,6 @@ export function KnowledgeViewHeader({
               mode={mode}
             />
           )}
-          {tabs ? <div className="min-w-0 overflow-x-auto scrollbar-none [&::-webkit-scrollbar]:hidden">{tabs}</div> : null}
           <HeaderSearchForTab
             activeTab={activeTab}
             fileSearchOpen={fileSearchOpen}
@@ -774,6 +773,7 @@ export function KnowledgeViewHeader({
             uploadMenuOpen={uploadMenuOpen}
             uploadMenuRef={uploadMenuRef}
           />
+          {tabs ? <div className="min-w-0 overflow-x-auto scrollbar-none [&::-webkit-scrollbar]:hidden">{tabs}</div> : null}
         </>
       )}
       </div>
