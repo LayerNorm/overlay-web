@@ -222,12 +222,6 @@
       "recordedAt": "2026-09-11T05:17:27.991Z"
     },
     {
-      "file": "src/features/account/components/OnboardingTour.tsx",
-      "loc": 865,
-      "complexity": 93,
-      "recordedAt": "2026-09-11T05:17:27.991Z"
-    },
-    {
       "file": "src/features/agents/components/AgentEditorForm.tsx",
       "loc": 1006,
       "complexity": 116,

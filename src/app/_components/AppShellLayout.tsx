@@ -7,7 +7,6 @@ import { AsyncSessionsProvider } from '@/components/providers/async-sessions-sto
 import BackgroundPollManager from '@/components/providers/BackgroundPollManager'
 import { NavigationProgressProvider, NavigationProgressBar } from '@/components/providers/navigation-progress'
 import { GuestGateProvider } from '@/components/providers/GuestGateProvider'
-import { OnboardingProvider } from '@/components/providers/OnboardingProvider'
 import { CapabilitiesProvider } from '@/components/providers/CapabilitiesProvider'
 import { AuthorizationProvider } from '@/components/providers/AuthorizationProvider'
 import { AuthorizationRouteGuard } from '@/components/providers/AuthorizationRouteGuard'
@@ -94,7 +93,6 @@ async function AppShellContent({
                   <AuthorizationProvider authorization={authorization}>
                     <BackgroundPollManager />
                     <GuestGateProvider suppressPrompts={suppressGuestPrompts}>
-                      <OnboardingProvider>
                         <AppShellSidebar publicShowcase={publicShowcase} />
                         <main className="app-main flex-1 overflow-hidden pt-14 transition-[padding] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] md:pt-0">
                           <Suspense fallback={<AppMainFallback />}>
@@ -103,7 +101,6 @@ async function AppShellContent({
                             </WorkspaceScopedContentBoundary>
                           </Suspense>
                         </main>
-                      </OnboardingProvider>
                     </GuestGateProvider>
                   </AuthorizationProvider>
                 </CollaborationRealtimeProvider>

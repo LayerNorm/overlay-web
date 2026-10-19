@@ -256,7 +256,7 @@ export default function AppSidebar({
           <UnifiedSidebar
             brand={brandLink}
             collapsed={false}
-            inlineExplore
+            inlineMore
             publishSubviews={false}
             onCollapsedChange={s.closeMobileDrawer}
             items={s.railItems.map((item) => ({ ...item, onSelect: () => { s.closeMobileDrawer(); item.onSelect() } }))}

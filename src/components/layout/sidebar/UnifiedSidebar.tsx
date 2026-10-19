@@ -21,18 +21,20 @@ import {
 } from '@overlay/ui/primitives'
 import { unstyledButton } from '@overlay/ui/control-reset'
 import { cn } from '@overlay/ui'
+import { DelayedTooltip } from '@overlay/ui/overlays'
 import { rememberPanelScope } from '@/hooks/use-panel-scope'
 import type { PanelScope } from '@/shared/workspaces/panel-scope'
 import type { InlineNavItem } from '@/components/layout/AppSidebarInlinePanels'
 import type { PrimaryRailItem } from './AppSidebarPrimaryRail'
 import type { SecondaryPanelNav } from './AppSidebarSecondaryPanel'
 import { publishPageSubviews } from './pageSubviewStore'
+import { SettingsSidebarNav } from './SettingsSidebarNav'
 
-/** Pages that live behind the Explore menu instead of the main list. */
-const EXPLORE_ITEM_IDS = new Set(['files', 'extensions'])
+/** Pages that live behind the More menu instead of the main list. */
+const MORE_ITEM_IDS = new Set(['files', 'extensions'])
 /** Pages whose subviews are different views of one page, so they become header tabs. */
 const TAB_PANEL_KINDS = new Set(['work', 'files', 'notes', 'tools'])
-const EXPLORE_CLOSE_DELAY_MS = 150
+const MORE_CLOSE_DELAY_MS = 150
 
 function badgeLabel(count: number) {
   return count > 99 ? '99+' : String(count)
@@ -81,7 +83,7 @@ function NavRow({ item, collapsed }: { item: PrimaryRailItem; collapsed: boolean
 }
 
 /** Files and Extensions. Opens on hover with a short close delay; click, Enter and touch still open it. */
-function ExploreMenu({ items, collapsed }: { items: readonly PrimaryRailItem[]; collapsed: boolean }) {
+function MoreMenu({ items, collapsed }: { items: readonly PrimaryRailItem[]; collapsed: boolean }) {
   const [open, setOpen] = useState(false)
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   // A click right after hover opened the menu should keep it open, not toggle it shut.
@@ -92,7 +94,7 @@ function ExploreMenu({ items, collapsed }: { items: readonly PrimaryRailItem[]; 
   }
   const scheduleClose = () => {
     cancelClose()
-    closeTimer.current = setTimeout(() => changeOpen(false), EXPLORE_CLOSE_DELAY_MS)
+    closeTimer.current = setTimeout(() => changeOpen(false), MORE_CLOSE_DELAY_MS)
   }
   const changeOpen = (next: boolean) => {
     if (!next) openedByHover.current = false
@@ -101,7 +103,7 @@ function ExploreMenu({ items, collapsed }: { items: readonly PrimaryRailItem[]; 
   useEffect(() => cancelClose, [])
   if (items.length === 0) return null
   const activeItem = items.find((item) => item.active)
-  const label = activeItem?.label ?? 'Explore'
+  const label = activeItem?.label ?? 'More'
   const hoverOpen = (event: React.PointerEvent) => {
     if (event.pointerType !== 'mouse') return
     cancelClose()
@@ -161,30 +163,51 @@ function ExploreMenu({ items, collapsed }: { items: readonly PrimaryRailItem[]; 
   )
 }
 
-function ScopeToggle({ scope, onChange }: { scope: PanelScope; onChange: (scope: PanelScope) => void }) {
+export const WORKSPACE_LOCKED_HINT = 'To enable Workspace features, invite members.'
+
+function ScopeToggle({
+  scope,
+  workspaceLocked,
+  onChange,
+}: {
+  scope: PanelScope
+  workspaceLocked: boolean
+  onChange: (scope: PanelScope) => void
+}) {
   const options: ReadonlyArray<{ id: PanelScope; label: string }> = [
     { id: 'personal', label: 'Personal' },
     { id: 'workspace', label: 'Workspace' },
   ]
   return (
     <div role="group" aria-label="Scope" className="mx-2 mb-2 grid grid-cols-2 gap-0.5 rounded-lg bg-(--surface-subtle) p-0.5">
-      {options.map((option) => (
-        <Button
-          key={option.id}
-          variant="ghost"
-          type="button"
-          aria-pressed={scope === option.id}
-          onClick={() => onChange(option.id)}
-          className={unstyledButton(cn(
-            'h-7 rounded-md text-xs font-medium transition-colors',
-            scope === option.id
-              ? 'bg-(--surface-elevated) text-(--foreground) shadow-sm'
-              : 'text-(--muted) hover:text-(--foreground)',
-          ))}
-        >
-          {option.label}
-        </Button>
-      ))}
+      {options.map((option) => {
+        const locked = workspaceLocked && option.id === 'workspace'
+        const button = (
+          <Button
+            key={option.id}
+            variant="ghost"
+            type="button"
+            aria-pressed={scope === option.id}
+            aria-disabled={locked || undefined}
+            onClick={() => { if (!locked) onChange(option.id) }}
+            className={unstyledButton(cn(
+              'h-7 w-full rounded-md text-xs font-medium transition-colors',
+              scope === option.id
+                ? 'bg-(--surface-elevated) text-(--foreground) shadow-sm'
+                : locked
+                  ? 'cursor-not-allowed text-(--muted-light)'
+                  : 'text-(--muted) hover:text-(--foreground)',
+            ))}
+          >
+            {option.label}
+          </Button>
+        )
+        return locked ? (
+          <DelayedTooltip key={option.id} label={WORKSPACE_LOCKED_HINT} side="bottom">
+            {button}
+          </DelayedTooltip>
+        ) : button
+      })}
     </div>
   )
 }
@@ -236,16 +259,81 @@ export interface UnifiedSidebarProps {
   account: ReactNode
   /** Toggle collapse with Cmd/Ctrl+B. */
   keyboardShortcut?: boolean
-  /** List Explore pages as plain rows (the phone drawer has no room for a side menu). */
-  inlineExplore?: boolean
+  /** List More pages as plain rows (the phone drawer has no room for a side menu). */
+  inlineMore?: boolean
   /** Owns the header tabs; a second copy (the phone drawer) must not clear them when it closes. */
   publishSubviews?: boolean
   children?: ReactNode
   className?: string
 }
 
+function useCollapseShortcut(enabled: boolean, collapsed: boolean, onCollapsedChange: (collapsed: boolean) => void) {
+  useEffect(() => {
+    if (!enabled) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key.toLowerCase() !== 'b' || !(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey) return
+      const target = event.target as HTMLElement | null
+      if (target?.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])')) return
+      event.preventDefault()
+      onCollapsedChange(!collapsed)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [enabled, collapsed, onCollapsedChange])
+}
+
+function SidebarHeaderBar({
+  brand,
+  collapsed,
+  onCollapsedChange,
+  onSearch,
+}: Pick<UnifiedSidebarProps, 'brand' | 'collapsed' | 'onCollapsedChange' | 'onSearch'>) {
+  return (
+    <div className={cn('flex h-14 shrink-0 items-center gap-1', collapsed ? 'justify-center px-2' : 'px-3')}>
+      {collapsed ? (
+        <Button
+          variant="ghost"
+          type="button"
+          aria-label="Expand sidebar"
+          title="Expand sidebar"
+          onClick={() => onCollapsedChange(false)}
+          className={unstyledButton('inline-flex size-8 items-center justify-center rounded-md text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)')}
+        >
+          <PanelLeft size={16} aria-hidden />
+        </Button>
+      ) : (
+        <>
+          <div className="min-w-0 flex-1">{brand}</div>
+          {onSearch ? (
+            <Button
+              variant="ghost"
+              type="button"
+              aria-label="Search"
+              title="Search (⌘K)"
+              onClick={onSearch}
+              className={unstyledButton('inline-flex size-8 shrink-0 items-center justify-center rounded-md text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)')}
+            >
+              <Search size={16} aria-hidden />
+            </Button>
+          ) : null}
+          <Button
+            variant="ghost"
+            type="button"
+            aria-label="Collapse sidebar"
+            title="Collapse sidebar (⌘B)"
+            onClick={() => onCollapsedChange(true)}
+            className={unstyledButton('inline-flex size-8 shrink-0 items-center justify-center rounded-md text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)')}
+          >
+            <PanelLeft size={16} aria-hidden />
+          </Button>
+        </>
+      )}
+    </div>
+  )
+}
+
 /**
- * The default app sidebar: brand, Personal/Workspace, the main pages (Files and Extensions under Explore), then the
+ * The default app sidebar: brand, Personal/Workspace, the main pages (Files and Extensions under More), then the
  * current page's own rows and items, then the account. Subviews that are views of one page go to header tabs.
  */
 export function UnifiedSidebar({
@@ -262,29 +350,20 @@ export function UnifiedSidebar({
   solo,
   account,
   keyboardShortcut = false,
-  inlineExplore = false,
+  inlineMore = false,
   publishSubviews = true,
   children,
   className,
 }: UnifiedSidebarProps) {
-  const mainItems = items.filter((item) => !EXPLORE_ITEM_IDS.has(item.id))
-  const exploreItems = items.filter((item) => EXPLORE_ITEM_IDS.has(item.id))
+  const settingsNav = panelKind === 'settings' ? panelNav : undefined
+  const settingsBack = items.find((item) => item.id === 'settings-close')
+  const mainItems = items.filter((item) => !MORE_ITEM_IDS.has(item.id))
+  const moreItems = items.filter((item) => MORE_ITEM_IDS.has(item.id))
   const scopedNav = panelKind && panelKind !== 'settings' ? panelNav : undefined
   const rows = scopeChildren(scopedNav, scope, solo)
   const tabsPage = Boolean(panelKind && TAB_PANEL_KINDS.has(panelKind))
 
-  useEffect(() => {
-    if (!keyboardShortcut) return
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key.toLowerCase() !== 'b' || !(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey) return
-      const target = event.target as HTMLElement | null
-      if (target?.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])')) return
-      event.preventDefault()
-      onCollapsedChange(!collapsed)
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [keyboardShortcut, collapsed, onCollapsedChange])
+  useCollapseShortcut(keyboardShortcut, collapsed, onCollapsedChange)
 
   useEffect(() => {
     if (!publishSubviews) return
@@ -314,52 +393,18 @@ export function UnifiedSidebar({
       data-collapsed={collapsed}
       className={cn('border-r-0', collapsed ? 'w-14' : 'w-64', className)}
     >
-      <div className={cn('flex h-14 shrink-0 items-center gap-1', collapsed ? 'justify-center px-2' : 'px-3')}>
-        {collapsed ? (
-          <Button
-            variant="ghost"
-            type="button"
-            aria-label="Expand sidebar"
-            title="Expand sidebar"
-            onClick={() => onCollapsedChange(false)}
-            className={unstyledButton('inline-flex size-8 items-center justify-center rounded-md text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)')}
-          >
-            <PanelLeft size={16} aria-hidden />
-          </Button>
-        ) : (
-          <>
-            <div className="min-w-0 flex-1">{brand}</div>
-            {onSearch ? (
-              <Button
-                variant="ghost"
-                type="button"
-                aria-label="Search"
-                title="Search (⌘K)"
-                onClick={onSearch}
-                className={unstyledButton('inline-flex size-8 shrink-0 items-center justify-center rounded-md text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)')}
-              >
-                <Search size={16} aria-hidden />
-              </Button>
-            ) : null}
-            <Button
-              variant="ghost"
-              type="button"
-              aria-label="Collapse sidebar"
-              title="Collapse sidebar (⌘B)"
-              onClick={() => onCollapsedChange(true)}
-              className={unstyledButton('inline-flex size-8 shrink-0 items-center justify-center rounded-md text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)')}
-            >
-              <PanelLeft size={16} aria-hidden />
-            </Button>
-          </>
-        )}
-      </div>
-      {!collapsed && !solo ? <ScopeToggle scope={scope} onChange={changeScope} /> : null}
+      <SidebarHeaderBar brand={brand} collapsed={collapsed} onCollapsedChange={onCollapsedChange} onSearch={settingsNav ? null : onSearch} />
+      {collapsed || settingsNav ? null : <ScopeToggle scope={solo ? 'personal' : scope} workspaceLocked={solo} onChange={changeScope} />}
+      {settingsNav ? (
+        <SidebarContent>
+          <SettingsSidebarNav nav={settingsNav} collapsed={collapsed} onBack={settingsBack?.onSelect} />
+        </SidebarContent>
+      ) : (
       <SidebarContent>
         <SidebarGroup>
           <SidebarMenu>
-            {(inlineExplore ? items : mainItems).map((item) => <NavRow key={item.id} item={item} collapsed={collapsed} />)}
-            {inlineExplore ? null : <ExploreMenu items={exploreItems} collapsed={collapsed} />}
+            {(inlineMore ? items : mainItems).map((item) => <NavRow key={item.id} item={item} collapsed={collapsed} />)}
+            {inlineMore ? null : <MoreMenu items={moreItems} collapsed={collapsed} />}
           </SidebarMenu>
         </SidebarGroup>
         {!collapsed && sectionRows ? <SidebarGroup className="mt-3">{sectionRows}</SidebarGroup> : null}
@@ -369,8 +414,9 @@ export function UnifiedSidebar({
           </SidebarResourceSection>
         ) : null}
       </SidebarContent>
+      )}
       <SidebarFooter className="border-t-0">
-        {footerItems.length > 0 ? (
+        {footerItems.length > 0 && !settingsNav ? (
           <SidebarMenu>
             {footerItems.map((item) => <NavRow key={item.id} item={item} collapsed={collapsed} />)}
           </SidebarMenu>

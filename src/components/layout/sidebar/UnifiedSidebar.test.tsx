@@ -54,21 +54,24 @@ function render(overrides: Partial<UnifiedSidebarProps> = {}) {
   )
 }
 
-test('main pages render as links and Files and Extensions move under Explore', () => {
+test('main pages render as links and Files and Extensions move under More', () => {
   const html = render()
   assert.match(html, /href="\/app\/work"/)
   assert.match(html, /href="\/app\/chat"/)
   assert.doesNotMatch(html, /href="\/app\/files"/)
   assert.doesNotMatch(html, /href="\/app\/tools"/)
-  assert.match(html, /aria-label="Explore"/)
+  assert.match(html, /aria-label="More"/)
   assert.match(html, />3</)
 })
 
-test('the scope toggle marks the selected scope and hides for a solo workspace', () => {
+test('the scope toggle marks the selected scope and locks Workspace for a solo workspace', () => {
   const html = render()
   assert.match(html, /aria-pressed="true"[^>]*>Workspace</)
   assert.match(html, /aria-pressed="false"[^>]*>Personal</)
-  assert.doesNotMatch(render({ solo: true }), /aria-label="Scope"/)
+  const solo = render({ solo: true })
+  assert.match(solo, /aria-label="Scope"/)
+  assert.match(solo, /aria-pressed="true"[^>]*>Personal</)
+  assert.match(solo, /aria-disabled="true"[^>]*>Workspace</)
 })
 
 test('chat destinations for the selected scope render as sidebar rows', () => {
@@ -105,9 +108,37 @@ test('tab pages keep their subviews out of the sidebar', () => {
   publishPageSubviews(null)
 })
 
-test('the phone drawer lists Explore pages as plain rows', () => {
-  const html = render({ inlineExplore: true })
+test('the phone drawer lists More pages as plain rows', () => {
+  const html = render({ inlineMore: true })
   assert.match(html, /href="\/app\/files"/)
   assert.match(html, /href="\/app\/tools"/)
-  assert.doesNotMatch(html, /aria-label="Explore"/)
+  assert.doesNotMatch(html, /aria-label="More"/)
+})
+
+const settingsNav: SecondaryPanelNav = {
+  items: [
+    { id: 'general', label: 'General', icon: ListChecks, href: '/app/settings?section=general' },
+    { id: 'customization', label: 'Customization', icon: Puzzle, href: '/app/settings?section=customization' },
+    { id: 'connected-apps', label: 'Connected apps', icon: Puzzle, href: '/app/settings?section=connected-apps' },
+  ],
+  activeId: 'general',
+  onSelect: noop,
+}
+
+test('settings turn the sidebar into a settings sidebar with search and grouped pages', () => {
+  const html = render({
+    panelKind: 'settings',
+    panelNav: settingsNav,
+    items: [...items, { id: 'settings-close', label: 'Settings', icon: Puzzle, active: true, onSelect: noop }],
+  })
+  assert.match(html, /overlay/)
+  assert.match(html, /Back to app/)
+  assert.match(html, /aria-label="Search settings"/)
+  assert.match(html, />Personal</)
+  assert.match(html, />Integrations</)
+  assert.match(html, /href="\/app\/settings\?section=customization"/)
+  assert.match(html, /aria-current="page"[^>]*href="\/app\/settings\?section=general"|href="\/app\/settings\?section=general"[^>]*aria-current="page"/)
+  assert.doesNotMatch(html, /href="\/app\/work"/)
+  assert.doesNotMatch(html, /aria-label="Scope"/)
+  assert.doesNotMatch(html, /aria-label="More"/)
 })

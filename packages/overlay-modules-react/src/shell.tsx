@@ -355,13 +355,16 @@ export function AppScreenHeader({
         children
       ) : (
         <div className="flex min-w-0 flex-wrap items-center justify-between gap-2 md:flex-nowrap md:gap-4">
-          <AppScreenHeaderTitle
-            title={title}
-            subtitle={subtitle}
-            description={description}
-            leading={leading}
-            metadata={metadata}
-          />
+          <div className="flex min-w-0 items-center gap-3">
+            <AppScreenHeaderTitle
+              title={title}
+              subtitle={subtitle}
+              description={description}
+              leading={leading}
+              metadata={metadata}
+            />
+            {tabs ? <div className="min-w-0 shrink overflow-x-auto scrollbar-none [&::-webkit-scrollbar]:hidden">{tabs}</div> : null}
+          </div>
           {(search || actions) ? (
             <div className="flex max-w-full min-w-0 shrink-0 items-center gap-2 overflow-x-auto scrollbar-none md:overflow-visible [&::-webkit-scrollbar]:hidden">
               {search}
@@ -370,7 +373,7 @@ export function AppScreenHeader({
           ) : null}
         </div>
       )}
-      {tabs ? <div className="min-w-0 overflow-x-auto">{tabs}</div> : null}
+      {children && tabs ? <div className="min-w-0 overflow-x-auto">{tabs}</div> : null}
     </header>
   )
 }
