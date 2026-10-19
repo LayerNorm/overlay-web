@@ -1,6 +1,5 @@
 'use client'
-import { unstyledButton } from '@overlay/ui/control-reset'
-import { Button } from '@overlay/ui/primitives'
+import { MenuItem } from '@overlay/ui/primitives'
 
 import { Check, Globe, Loader2, Lock } from 'lucide-react'
 
@@ -21,18 +20,18 @@ export function ShareVisibilitySubmenu({
   onOpenShareDialog(): void
 }) {
   return (
-    <div className="border-t border-(--border) bg-(--surface-subtle) py-1">
-      <Button variant="ghost"
+    <div className="pl-4">
+      <MenuItem
         type="button"
         onClick={() => onUpdateVisibility('private')}
         disabled={shareBusy}
-        className={unstyledButton(`flex w-full items-center gap-2 px-3 py-2 text-xs text-(--foreground) hover:bg-(--surface-muted) transition-colors disabled:opacity-50`)}
+        className="rounded-md"
       >
         <Lock size={14} />
         <span className="flex-1 text-left">Private</span>
         {shareVisibility === 'private' && <Check size={14} className="text-emerald-500" />}
-      </Button>
-      <Button variant="ghost"
+      </MenuItem>
+      <MenuItem
         type="button"
         onClick={() => {
           if (shareVisibility === 'public') {
@@ -42,7 +41,7 @@ export function ShareVisibilitySubmenu({
           onUpdateVisibility('public')
         }}
         disabled={shareBusy}
-        className={unstyledButton(`flex w-full items-center gap-2 px-3 py-2 text-xs text-(--foreground) hover:bg-(--surface-muted) transition-colors disabled:opacity-50`)}
+        className="rounded-md"
       >
         {shareBusy && shareVisibility !== 'public' ? (
           <Loader2 size={14} className="animate-spin" />
@@ -51,7 +50,7 @@ export function ShareVisibilitySubmenu({
         )}
         <span className="flex-1 text-left">Anyone with the link</span>
         {shareVisibility === 'public' && <Check size={14} className="text-emerald-500" />}
-      </Button>
+      </MenuItem>
     </div>
   )
 }

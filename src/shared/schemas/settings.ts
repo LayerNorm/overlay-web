@@ -27,6 +27,7 @@ export const UpdateSettingsRequest = z.object({
   dismissedZdrWarningGlobally: z.boolean().optional(),
   dismissedZdrWarningModelIds: z.array(z.string()).optional(),
   chatStreamingMode: z.enum(['token', 'chunk']).optional(),
+  useSecondarySidebar: z.boolean().optional(),
 }).passthrough()
 
 export const UpdateBillingSettingsRequest = z.object({

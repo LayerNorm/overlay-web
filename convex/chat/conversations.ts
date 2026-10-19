@@ -326,13 +326,14 @@ export const create = mutation({
       v.literal('dm'),
       v.literal('channel'),
     )),
+    scope: v.optional(v.union(v.literal('personal'), v.literal('workspace'))),
     createdByPrincipalId: v.optional(v.string()),
     externalPlatform: v.optional(v.string()),
     externalChannelId: v.optional(v.string()),
     externalThreadId: v.optional(v.string()),
     surfaceBindingId: v.optional(v.string()),
   },
-  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret, clientId, title, askModelIds, actModelId, lastMode, isAutomation, conversationType, createdByPrincipalId, externalPlatform, externalChannelId, externalThreadId, surfaceBindingId }) => {
+  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret, clientId, title, askModelIds, actModelId, lastMode, isAutomation, conversationType, scope, createdByPrincipalId, externalPlatform, externalChannelId, externalThreadId, surfaceBindingId }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
     if (clientId?.trim()) {
       const existing = await ctx.db
@@ -359,6 +360,7 @@ export const create = mutation({
       actModelId: act,
       isAutomation: isAutomation ?? false,
       conversationType,
+      ...(scope === 'workspace' ? { scope } : {}),
       createdByPrincipalId,
       externalPlatform,
       externalChannelId,

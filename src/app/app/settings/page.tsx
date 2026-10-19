@@ -1,12 +1,11 @@
 'use client'
-import { unstyledButton } from '@overlay/ui/control-reset'
 
 // Compatibility wrapper: canonical settings registry metadata lives in @overlay/app-core,
 // with reusable panel rendering primitives in @overlay/modules-react.
 import { Suspense, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { redirect, useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
-import { Link2, ListCollapse, Mail, Moon, Sun, Play, Palette, ShieldCheck } from 'lucide-react'
+import { Link2, ListCollapse, Mail, Moon, Sun, Play, Palette, PanelsLeftBottom, ShieldCheck } from 'lucide-react'
 import { AccountPageContent } from '@/app/app/account/account-content'
 import { DefaultChatModelSetting } from '@/features/settings/components/DefaultChatModelSetting'
 import { ModelCatalogSetting } from '@/features/settings/components/ModelCatalogSetting'
@@ -19,7 +18,7 @@ import overlayAppConfig from '@/overlay.config'
 import type { BillingSettings } from '@overlay/app-core'
 import { resolveOverlayAppShellConfig } from '@overlay/app-core'
 import { resolveSettingsPanel } from '@overlay/app-core/settings-account'
-import { ListboxSelect, Button } from '@overlay/ui/primitives'
+import { ListboxSelect } from '@overlay/ui/primitives'
 import type { LinkOpenPreference } from '@overlay/app-core'
 import {
   SettingRow,
@@ -72,7 +71,6 @@ function GeneralSettingsSection({
   billingEnabled: OverlayCapabilitiesApi['capabilities']['billing']
   updateSettings: AppSettingsApi['updateSettings']
 }) {
-  const router = useRouter()
   return (
     <SettingsGroup>
       <SettingRow
@@ -130,25 +128,6 @@ function GeneralSettingsSection({
             buttonClassName="min-w-38"
             onChange={(linkOpenPreference) => void updateSettings({ linkOpenPreference })}
           />
-        }
-      />
-      <SettingsActionRow
-        icon={<Play size={18} strokeWidth={1.8} />}
-        title="Onboarding tour"
-        description="Replay the guided walkthrough that highlights the key features of the app."
-        action={
-          <Button variant="ghost"
-            type="button"
-            onClick={() => {
-              void (async () => {
-                await overlayAppClient.onboarding.resetResponse()
-                router.push('/app/chat?tour=replay')
-              })()
-            }}
-            className={unstyledButton(`shrink-0 rounded-full border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-xs font-medium text-(--foreground) transition-colors hover:bg-(--surface-elevated)`)}
-          >
-            Replay tour
-          </Button>
         }
       />
     </SettingsGroup>
@@ -227,6 +206,14 @@ function CustomizationSettingsSection({
         checked={settings.theme === 'dark'}
         disabled={busy}
         onChange={() => void updateSettings({ theme: settings.theme === 'dark' ? 'light' : 'dark' })}
+      />
+      <SettingRow
+        icon={<PanelsLeftBottom size={18} strokeWidth={1.8} />}
+        title="Rail and panel"
+        description="Split the sidebar into a narrow rail and a panel for the current page."
+        checked={settings.useSecondarySidebar}
+        disabled={busy}
+        onChange={() => void updateSettings({ useSecondarySidebar: !settings.useSecondarySidebar })}
       />
       {settings.theme === 'dark' ? (
         <ThemePresetRow

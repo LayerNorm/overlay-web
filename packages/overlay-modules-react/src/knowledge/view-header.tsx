@@ -632,7 +632,9 @@ export function KnowledgeViewHeader({
   uploadMenuOpen,
   uploadMenuRef,
   onCommitOutputFilter,
+  tabs,
 }: {
+  tabs?: React.ReactNode
   activeFolder: FileNode | null
   activeTab: Tab
   bulkDeleting: boolean
@@ -771,6 +773,7 @@ export function KnowledgeViewHeader({
             uploadMenuOpen={uploadMenuOpen}
             uploadMenuRef={uploadMenuRef}
           />
+          {tabs ? <div className="min-w-0 overflow-x-auto scrollbar-none max-sm:order-3 [&::-webkit-scrollbar]:hidden">{tabs}</div> : null}
         </>
       )}
       </div>

@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import { Bell, Loader2 } from 'lucide-react'
-import { SidebarResourceList, SidebarResourceRow } from '@overlay/ui/primitives'
+import { SidebarMenuSub, SidebarMenuSubButton, SidebarMenuSubItem } from '@overlay/ui/primitives'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { dispatchCollaborationNotificationsChanged } from '@/shared/chat/collaboration-events'
 import { conversationActivityLabel } from '@/shared/chat/conversation-activity-state'
@@ -110,27 +110,25 @@ export function ActivityInlinePanel({ onNavigate }: { onNavigate?: () => void })
   }
 
   return (
-    <SidebarResourceList>
+    <SidebarMenuSub className="ml-0 border-l-0 pl-0">
       {items.map((item) => (
-        <SidebarResourceRow
-          key={item.id}
-          onClick={() => void openNotification(item)}
-          className="cursor-pointer"
-        >
-          <Bell size={12} className="shrink-0" aria-hidden />
-          <span className="min-w-0 flex-1 truncate">
-            {item.title?.trim() || 'Notification'}
-          </span>
-          {conversationActivityLabel(item.conversationState) ? (
-            <span className="shrink-0 text-[10px] text-(--muted-light)">
-              {conversationActivityLabel(item.conversationState)}
+        <SidebarMenuSubItem key={item.id}>
+          <SidebarMenuSubButton className="h-8 gap-2.5 text-sm" onClick={() => void openNotification(item)}>
+            <Bell aria-hidden />
+            <span className="min-w-0 flex-1 truncate">
+              {item.title?.trim() || 'Notification'}
             </span>
-          ) : null}
-          {!item.readAt ? (
-            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-(--muted)" aria-label="Unread" />
-          ) : null}
-        </SidebarResourceRow>
+            {conversationActivityLabel(item.conversationState) ? (
+              <span className="shrink-0 text-[10px] text-(--muted-light)">
+                {conversationActivityLabel(item.conversationState)}
+              </span>
+            ) : null}
+            {!item.readAt ? (
+              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-(--muted)" aria-label="Unread" />
+            ) : null}
+          </SidebarMenuSubButton>
+        </SidebarMenuSubItem>
       ))}
-    </SidebarResourceList>
+    </SidebarMenuSub>
   )
 }

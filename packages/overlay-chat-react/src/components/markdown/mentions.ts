@@ -20,6 +20,11 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
+/** Attacher form for Streamdown, which caches processors by plugin name and JSON options, so mentions must be options. */
+export function remarkOverlayMentions(options?: { mentions?: ChatMessageMention[] }) {
+  return createMentionRemarkPlugin(options?.mentions)()
+}
+
 /** Turns known @names in Markdown text nodes into safe internal links. */
 export function createMentionRemarkPlugin(mentions?: ChatMessageMention[]) {
   const unique = [...new Map(

@@ -166,6 +166,7 @@ export function SecondaryPanelResourceList({
   renderFilesPanel,
   renderAgentsPanel,
   onNavigate,
+  section = false,
 }: {
   panelKind: SecondaryPanelKind
   chatsView: string
@@ -178,6 +179,7 @@ export function SecondaryPanelResourceList({
   renderFilesPanel?: (context: AppSidebarNavigateContext) => ReactNode
   renderAgentsPanel?: (context: AppSidebarNavigateContext) => ReactNode
   onNavigate: () => void
+  section?: boolean
 }) {
   return (
     <Suspense fallback={<SidebarListSkeleton />}>
@@ -186,6 +188,7 @@ export function SecondaryPanelResourceList({
           refreshKey: chatPanelRefreshKey,
           onNavigate,
           view: chatsView,
+          section,
         })
         : null}
       {panelKind === 'files' || panelKind === 'notes' ? (

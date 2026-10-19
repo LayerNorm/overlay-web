@@ -24,7 +24,7 @@ function ChatSuspenseFallback({ hideHeader = false, mode = 'chat' }: { hideHeade
           matching AppScreenHeader's height and border so the layout doesn't
           jump once the real chat mounts. */}
       {hideHeader ? null : (
-        <div className="flex min-h-16 shrink-0 items-center justify-between gap-3 border-b border-(--border) px-4">
+        <div className="flex min-h-16 shrink-0 items-center justify-between gap-3 px-4">
           <div className="ui-skeleton-line h-4 w-40 rounded-md" aria-hidden />
           <div className="flex items-center gap-2">
             {mode === 'automate' ? (

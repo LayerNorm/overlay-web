@@ -33,6 +33,8 @@ export interface CreateConversationRequest {
   actModelId?: string
   lastMode?: 'ask' | 'act'
   clientId?: string
+  /** Sidebar scope for AI chats; missing means personal. */
+  scope?: 'personal' | 'workspace'
 }
 
 export interface CreateConversationResponse {

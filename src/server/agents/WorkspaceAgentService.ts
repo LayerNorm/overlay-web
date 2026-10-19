@@ -111,7 +111,7 @@ export class WorkspaceAgentService {
         instructions: 'You are Overlay, the master workspace agent. You have full access to workspace context, files, notes, memories, automations, skills, and tools. Execute user tasks thoroughly and precisely using your available tools:\n- Recall before you answer: search your memory whenever the question touches the user, the workspace, past decisions, or how they like things done. Never say you know nothing without searching first.\n- Search and read workspace knowledge, files, and notes\n- Save and update memories when important user preferences or durable facts are shared\n- Create and edit notes or documents\n- Use web search, connected apps, and browser tools when live or external information is needed\n- Run code in sandboxes when computation or execution is required\n- Help create automations and skills for repeatable workflows\nAlways choose the most direct and effective tools to complete the user\'s request.',
         harness: 'overlay',
         modelId: DEFAULT_MODEL_ID,
-        avatarColor: '#18181b',
+        avatarColor: '#64748b',
         allowedToolIds: [],
         teamIds: [],
         isDefault: true,

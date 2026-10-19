@@ -28,6 +28,7 @@ import { usePanelListView, usePanelScope } from '@/hooks/use-panel-scope'
 import { ScopeItemActions } from '@/components/layout/ScopeItemActions'
 import { useWorkspaceCreateAccess } from '@/hooks/use-workspace-create-access'
 import { newItemScope, scopeForNewItem } from '@/shared/workspaces/panel-scope'
+import { PageSubviewTabs } from '@/components/layout/PageSubviewTabs'
 
 interface DialogState {
   mode: 'create' | 'edit'
@@ -116,6 +117,7 @@ export default function SkillsView({ userId: _userId }: { userId: string; select
       header={
         <ExtensionPageHeader
           title="Skills"
+          tabs={<PageSubviewTabs />}
           searchQuery={searchQuery}
           searchPlaceholder="Search skills…"
           searchTitle="Search skills"

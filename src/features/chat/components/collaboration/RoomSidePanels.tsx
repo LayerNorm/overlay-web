@@ -105,7 +105,7 @@ export function RoomThreadPanel({
       onClose={onClose}
       bodyClassName="flex flex-col"
     >
-      <div className="flex items-center justify-end border-b border-(--border) px-3 py-2">
+      <div className="flex items-center justify-end px-3 py-2">
         <Button
           variant="ghost"
           type="button"
@@ -121,7 +121,7 @@ export function RoomThreadPanel({
         <div className="flex flex-col gap-5">{messages}</div>
       </div>
       {readOnlyNotice ? (
-        <div className="shrink-0 border-t border-(--border) px-4 py-3 text-center text-xs text-(--muted)">
+        <div className="shrink-0 px-4 py-3 text-center text-xs text-(--muted)">
           {readOnlyNotice}
         </div>
       ) : (

@@ -44,6 +44,7 @@ import {
   type SidebarNavItem,
 } from './appSidebarNav'
 import { resolveSecondaryPanelNav } from './appSidebarPanelNav'
+import { resolveRecentChatHref } from './chatPanelNav'
 import { useIsSoloWorkspace } from '@/hooks/use-solo-workspace'
 import {
   useBodyScrollLock,
@@ -63,6 +64,8 @@ type SidebarNavConfigArgs = {
   publicShowcase: boolean
   user: ReturnType<typeof useAuth>['user']
 }
+
+const CHAT_SECTION_VIEWS = ['personal', 'workspace-chats', 'dms', 'channels'] as const
 
 function useSidebarNavConfig({ appShell, capabilities, allows, publicShowcase, user }: SidebarNavConfigArgs) {
   const availableToolsInlineItems = useMemo(
@@ -179,6 +182,9 @@ function useSidebarNavInteractions(args: {
     activeWorkspaceId,
     buildWorkspaceHref,
   })
+  const recentChatHref = publicShowcase
+    ? undefined
+    : (baseHref: string) => resolveRecentChatHref(baseHref, routeState.scope)
   const onSelectNavItem = (item: SidebarNavItem) => selectSidebarNavItem(item, {
     isGuestConfirmed,
     publicShowcase,
@@ -193,6 +199,7 @@ function useSidebarNavInteractions(args: {
     panelKind: routeState.panelKind,
     sidebarCollapsed,
     setSidebarCollapsed,
+    recentChatHref,
   })
   const onSelectMobileNavItem = (item: SidebarNavItem) => selectMobileNavItem(item, {
     isGuestConfirmed,
@@ -208,6 +215,7 @@ function useSidebarNavInteractions(args: {
     automationsEnabled,
     openPanel: () => setMobileView('panel'),
     closeDrawer: closeMobileDrawer,
+    recentChatHref,
   })
   const beginSecondaryNavigation = (id: string) => {
     setPendingSecondaryNav({ id, fromRouteKey: currentRouteKey })
@@ -340,20 +348,39 @@ function useSidebarPanelChrome(args: {
   })
 
   const { access: createAccess, viewer: createViewer, canCreate } = useWorkspaceCreateAccess()
+  const createRules = {
+    canCreate,
+    isManager: createViewer?.role === 'owner' || createViewer?.role === 'admin',
+    memberCanCreateChannels: createAccess.memberCanCreateChannels,
+    memberCanCreateAgents: createAccess.memberCanCreateAgents,
+  }
   const panelAction = routeState.hasResourcePanel
     ? scopePanelAction({
       action: resourceAction,
       panelKind: routeState.panelKind,
       scope: routeState.scope,
       chatsView: routeState.chatsView,
-      rules: {
-        canCreate,
-        isManager: createViewer?.role === 'owner' || createViewer?.role === 'admin',
-        memberCanCreateChannels: createAccess.memberCanCreateChannels,
-        memberCanCreateAgents: createAccess.memberCanCreateAgents,
-      },
+      rules: createRules,
     })
     : null
+  // Chat sections are all on screen at once, so each one gets the New action for its own view.
+  const panelSectionActions: Record<string, ReturnType<typeof scopePanelAction>> = routeState.hasResourcePanel && routeState.panelKind === 'chat'
+    ? Object.fromEntries(CHAT_SECTION_VIEWS.map((view) => [view, scopePanelAction({
+      action: resolveResourceAction({
+        chatOpen: routeState.chatOpen,
+        chatsView: view,
+        contextualAction,
+        panelKind: routeState.panelKind,
+        publicShowcase,
+        requireAuth,
+        runSidebarAction,
+      }),
+      panelKind: routeState.panelKind,
+      scope: routeState.scope,
+      chatsView: view,
+      rules: createRules,
+    })]))
+    : {}
   const panelSearch = routeState.hasResourcePanel && contextualSearchCategory
     ? {
       title: contextualSearchCategory === 'chat' ? 'Search chats (⌘K)' : 'Search files (⌘K)',
@@ -376,6 +403,9 @@ function useSidebarPanelChrome(args: {
     navItemDestination,
     navItemActive: isNavItemActive,
     onSelectItem: onSelectNavItem,
+    recentChatHref: publicShowcase
+      ? undefined
+      : (baseHref: string) => resolveRecentChatHref(baseHref, routeState.scope),
   })
   const railFooterItems = buildShowcaseRailFooterItems(showcasePrimaryLinks, router)
   const mobileNavItems = resolveMobileNavItems(navItems, {
@@ -391,9 +421,11 @@ function useSidebarPanelChrome(args: {
     globalSearchOpen,
     globalSearchInitialCategory,
     closeGlobalSearch,
+    openGlobalSearch,
     shouldLoadCollaborationUnread,
     panelNav,
     panelAction,
+    panelSectionActions,
     panelSearch,
     showcasePrimaryLinks,
     railItems,
@@ -607,9 +639,11 @@ function useSidebarDerivedPanels(args: {
     globalSearchOpen,
     globalSearchInitialCategory,
     closeGlobalSearch,
+    openGlobalSearch,
     panelTitle,
     panelNav,
     panelAction,
+    panelSectionActions,
     panelSearch,
     showcasePrimaryLinks,
     railItems,
@@ -662,12 +696,14 @@ function useSidebarDerivedPanels(args: {
     globalSearchOpen,
     globalSearchInitialCategory,
     closeGlobalSearch,
+    openGlobalSearch,
     effectivePendingSecondaryNavId,
     cumulativeChatUnread,
     onSelectNavItem,
     onSelectMobileNavItem,
     panelNav,
     panelAction,
+    panelSectionActions,
     panelSearch,
     showcasePrimaryLinks,
     mobileNavItems,
@@ -763,12 +799,14 @@ export function useAppSidebarState({
     globalSearchOpen,
     globalSearchInitialCategory,
     closeGlobalSearch,
+    openGlobalSearch,
     effectivePendingSecondaryNavId,
     cumulativeChatUnread,
     onSelectNavItem,
     onSelectMobileNavItem,
     panelNav,
     panelAction,
+    panelSectionActions,
     panelSearch,
     showcasePrimaryLinks,
     mobileNavItems,
@@ -850,12 +888,14 @@ export function useAppSidebarState({
     globalSearchOpen,
     globalSearchInitialCategory,
     closeGlobalSearch,
+    openGlobalSearch,
     effectivePendingSecondaryNavId,
     cumulativeChatUnread,
     onSelectNavItem,
     onSelectMobileNavItem,
     panelNav,
     panelAction,
+    panelSectionActions,
     panelSearch,
     showcasePrimaryLinks,
     mobileNavItems,

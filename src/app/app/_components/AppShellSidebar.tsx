@@ -1,8 +1,9 @@
 'use client'
 
+import { WorkSidebarSection } from '@/features/work/components/WorkSidebarSection'
 import AppSidebar from '@/components/layout/AppSidebar'
 import { AgentsInlinePanel } from '@/components/layout/AppSidebarAgentsPanel'
-import { ChatInlinePanel } from '@/features/chat/components/ChatInlinePanel'
+import { ChatInlinePanel, sectionChatView } from '@/features/chat/components/ChatInlinePanel'
 import {
   ActivityInlinePanel,
 } from '@/features/chat/components/ChatSubviewInlinePanels'
@@ -66,7 +67,7 @@ export function AppShellSidebar({ publicShowcase: forcedPublicShowcase = false }
           />
         ),
       }}
-      renderChatPanel={({ refreshKey, onNavigate, view }) => (
+      renderChatPanel={({ refreshKey, onNavigate, view, section }) => (
         // Activity is its own route with its own list; only the conversation subviews render the chat list.
         view === 'activity' ? <ActivityInlinePanel onNavigate={onNavigate} />
         : (
@@ -77,6 +78,7 @@ export function AppShellSidebar({ publicShowcase: forcedPublicShowcase = false }
             baseHref={chatBaseHref}
             workspaceId={activeWorkspaceId}
             seededChats={publicShowcase ? SHOWCASE_CHAT_SUMMARIES : undefined}
+            view={section ? sectionChatView(view) : undefined}
           />
         )
       )}
@@ -88,6 +90,7 @@ export function AppShellSidebar({ publicShowcase: forcedPublicShowcase = false }
       renderFilesPanel={publicShowcase
         ? ({ onNavigate }) => <PublicShowcaseFilesInlinePanel onNavigate={onNavigate} />
         : undefined}
+      renderWorkSection={publicShowcase ? undefined : ({ filter, onNavigate }) => <WorkSidebarSection filter={filter} onNavigate={onNavigate} />}
       renderAgentsPanel={({ onNavigate }) => (
         publicShowcase
           ? undefined

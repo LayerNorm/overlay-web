@@ -77,6 +77,7 @@ test('a scope row shows an unread badge only while it is collapsed', () => {
 
 test('chat subviews map onto the scopes', () => {
   assert.equal(chatScopeForView('personal'), 'personal')
+  assert.equal(chatScopeForView('workspace-chats'), 'workspace')
   assert.equal(chatScopeForView('dms'), 'workspace')
   assert.equal(chatScopeForView('channels'), 'workspace')
   assert.equal(chatScopeForView('activity'), 'workspace')

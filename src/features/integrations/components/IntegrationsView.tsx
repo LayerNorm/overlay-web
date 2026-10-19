@@ -35,6 +35,7 @@ import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { safeHttpUrl } from '@/shared/security/safe-url'
 import { useWorkspaceChanged } from '@/hooks/use-workspace-changed'
 import { usePanelScope } from '@/hooks/use-panel-scope'
+import { PageSubviewTabs } from '@/components/layout/PageSubviewTabs'
 
 const LIST_PAGE_SIZE = 8
 
@@ -333,6 +334,7 @@ export default function IntegrationsView({
       header={
         <ExtensionPageHeader
           title={workspaceScope ? 'Workspace connectors' : 'Connectors'}
+          tabs={<PageSubviewTabs />}
           searchQuery={searchQuery}
           searchPlaceholder="Search integrations…"
           searchTitle="Search integrations"

@@ -275,6 +275,18 @@ title row (`PanelRight` to dock, `AppWindow` to float). The two presentations
 share the same body, border, and chrome; only the frame differs, so switching
 never remounts form state.
 
+## The single sidebar (default)
+
+The default shell is one shadcn sidebar (`src/components/layout/sidebar/UnifiedSidebar.tsx`): the brand, search and
+collapse controls, the Personal/Workspace toggle (hidden for a solo workspace), the main pages with Files and
+Extensions under an Explore menu that opens on hover (click, Enter and touch also open it), then the current page's own
+rows and items, then the account. It reuses `useAppSidebarState`, so routes, scope persistence, badges and pending states
+match the classic layout. Subviews that are different views of one page (Work's List/Board/Timeline, Files categories,
+Extensions' Skills/MCPs/Connectors/Apps) are published through `pageSubviewStore` and rendered as header tabs by
+`PageSubviewTabs`; chat destinations (DMs, Channels, Activity) stay in the sidebar. There are no divider lines between
+sidebar, header and body: `AppScreenHeader` defaults to `border={false}`. The classic primary rail plus secondary panel
+below is the Settings > Customization "Rail and panel" option (`useSecondarySidebar`).
+
 ## The secondary panel: Personal, Workspace
 
 Chats, Files, Extensions, Automations, and Agents share one panel anatomy:
@@ -411,6 +423,17 @@ Its visible answers and FAQ structured data share one source; describe available
 capabilities only. Public marketing pages define their own canonical paths so
 they do not inherit the root homepage canonical.
 
+
+## Chat AI primitives (`@overlay/ui/ai`)
+
+Chat surfaces build on shadcn AI Elements primitives copied into `packages/overlay-ui/src/components/ui` and exported from `@overlay/ui/ai` (kept out of the main barrel so Shiki only loads where chat renders): `Message`, `Bubble`, `Trace`, `CodeBlock` (+ `useHighlightedCode`, Shiki JS engine, GitHub light/dark themes that presets never tint), `MessageScroller` (`@shadcn/react`), `Item`, `InputGroup`, `Attachment`, `HoverCard`, `Collapsible`, `Spinner`. Upstream semantic classes are rewritten to Overlay variables (`bg-(--surface-subtle)`, `text-(--muted)`, `text-(--danger)`); `--muted` is a text color here, so never add a `--color-muted` theme alias. Every Trace step uses the Orb in `TraceIcon`; a running step's title shimmers (CSS in `styles.css`, off under reduced motion).
+
+Visual rules for these and every new component:
+
+1. **Flat and borderless.** No resting borders or rings on cards, code blocks, the composer, chips, buttons, approval items, popovers or sidebars. Surfaces differ by fill only (page, sidebar, subtle, elevated). Floating layers keep a soft shadow. Focus rings stay for keyboard focus; destructive states tint the fill.
+2. **Solid headers, no blur.** Page and sidebar headers use the same fill as the surface below them, with no divider and no backdrop blur.
+3. **One model selector.** Model menus render `ModelSelector` from `@overlay/chat-react`: Text / Image / Video at the top, a filled search field, then a provider rail (Favorites star, then one `ProviderLogo` per provider) beside the list grouped by provider. Rows read logo, name, favorite star, selected check, capability chips. Search collapses to one flat list. Free-tier Auto stays pinned on top. Favorites are per browser (`overlay:favorite-models`) and survive blocked storage in memory.
+4. **One Prompt Input.** Every chat composer is built from `PromptInput` parts in `@overlay/chat-react` (`PromptInputBody`, `PromptInputFooter`, `PromptInputTools`, `PromptInputButton`, `PromptInputSubmit`). Footer order: +, @, optional /, tool chips, model controls, submit (ArrowUp, spinner while submitted, stop while streaming). In web chat the model button lives in the composer, not the header.
 
 ## Streamed agent replies
 

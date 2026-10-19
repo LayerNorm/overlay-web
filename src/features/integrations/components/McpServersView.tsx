@@ -34,6 +34,7 @@ import { usePanelListView, usePanelScope } from '@/hooks/use-panel-scope'
 import { ScopeItemActions } from '@/components/layout/ScopeItemActions'
 import { useWorkspaceCreateAccess } from '@/hooks/use-workspace-create-access'
 import { newItemScope, scopeForNewItem } from '@/shared/workspaces/panel-scope'
+import { PageSubviewTabs } from '@/components/layout/PageSubviewTabs'
 
 interface DialogState {
   mode: 'create' | 'edit'
@@ -215,6 +216,7 @@ export default function McpServersView({ userId: _userId }: { userId: string }) 
       header={
         <ExtensionPageHeader
           title="MCP Servers"
+          tabs={<PageSubviewTabs />}
           searchQuery={searchQuery}
           searchPlaceholder="Search servers…"
           searchTitle="Search servers"

@@ -19,6 +19,7 @@ import { WORK_LIMITS } from '@/shared/work/status'
 import { newItemScope } from '@/shared/workspaces/panel-scope'
 import type { WorkViewer } from '@/shared/work/query'
 import { useWorkRoute } from '../lib/use-work-route'
+import { publishSidebarWork } from './WorkSidebarSection'
 import { describeWorkChange, trackWork } from '../lib/work-analytics'
 import { applyItemPatch, endRankOf, rankForDrop, removeItem, upsertItem } from '../lib/work-state'
 
@@ -291,6 +292,10 @@ export function WorkDataProvider({ children }: { children: ReactNode }) {
       // Keep what is on screen; the next load corrects it.
     }
   }, [])
+
+  useEffect(() => {
+    if (state === 'ready') publishSidebarWork(listView, { items, context })
+  }, [context, items, listView, state])
 
   const viewer = useMemo<WorkViewer | null>(
     () => (user?.id && context ? { userId: user.id, principalId: context.principalId } : null),

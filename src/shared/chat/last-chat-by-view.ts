@@ -3,12 +3,12 @@
  * to Direct Messages, Channels, or All restores that conversation.
  */
 
-export type RestorableChatListView = 'personal' | 'dms' | 'channels' | 'all'
+export type RestorableChatListView = 'personal' | 'workspace-chats' | 'dms' | 'channels' | 'all'
 
 const STORAGE_KEY = 'overlay:last-chat-by-view'
 
 function isRestorableView(view: string): view is RestorableChatListView {
-  return view === 'personal' || view === 'dms' || view === 'channels' || view === 'all'
+  return view === 'personal' || view === 'workspace-chats' || view === 'dms' || view === 'channels' || view === 'all'
 }
 
 function entryKey(workspaceId: string | null | undefined, view: RestorableChatListView): string {

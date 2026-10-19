@@ -2,19 +2,17 @@
 
 import { useCallback } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { WORK_FILTER_PARAM, parseWorkFilter, type WorkFilter } from '@/shared/work/query'
 
 export const WORK_TASK_PARAM = 'task'
 
 /**
- * The parts of the Work page that live in the URL besides scope and view: the filter chip and the open task. They are
+ * The part of the Work page that lives in the URL besides scope and view: the open task. It is
  * kept there so a link opens where it was copied, and Back closes a task instead of leaving the page.
  */
 export function useWorkUrlState() {
   const router = useRouter()
   const pathname = usePathname() ?? '/app/work'
   const params = useSearchParams()
-  const filter = parseWorkFilter(params?.get(WORK_FILTER_PARAM))
   const taskId = params?.get(WORK_TASK_PARAM) ?? null
 
   const update = useCallback((changes: Record<string, string | null>, mode: 'push' | 'replace' = 'replace') => {
@@ -30,9 +28,7 @@ export function useWorkUrlState() {
   }, [params, pathname, router])
 
   return {
-    filter,
     taskId,
-    setFilter: (next: WorkFilter) => update({ [WORK_FILTER_PARAM]: next === 'all' ? null : next }),
     openTask: (id: string) => update({ [WORK_TASK_PARAM]: id }, 'push'),
     closeTask: () => update({ [WORK_TASK_PARAM]: null }),
   }

@@ -217,3 +217,11 @@ test('keeps genuine minus expressions as math', () => {
   assert.equal(normalizeAssistantMathMarkdown('The equation $x - 1 = 0$ holds.'), 'The equation $x - 1 = 0$ holds.')
   assert.equal(normalizeAssistantMathMarkdown('Compute $a-b$ here.'), 'Compute $a-b$ here.')
 })
+
+test('long command-heavy LaTeX lines before $$ normalize in linear time', () => {
+  const line = String.raw`S = -\frac{T}{2}\int d\tau\, d\sigma\, \partial_+ X^\mu \partial_- X^\nu \eta_{\mu\nu} \qquad \partial_\pm = \partial_\tau \pm \partial_\sigma`
+  const started = performance.now()
+  normalizeDoubleDollarMath(`${line} ${line}$$\n`)
+  assert.ok(performance.now() - started < 250, 'normalization should not backtrack')
+  assert.match(normalizeDoubleDollarMath('where \\alpha_1 = O(n^2)$$ is small'), /= \$O\(n\^2\)\$ is small/)
+})

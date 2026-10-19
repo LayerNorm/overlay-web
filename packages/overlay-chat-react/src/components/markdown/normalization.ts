@@ -5,32 +5,6 @@ import { linkifyInlineKnowledgeCitations } from '../../lib/knowledge-sources'
 import type { SourceCitationMap } from '../../lib/source-citations'
 import { linkifyInlineWebCitations,type WebSourceItem } from '../../lib/web-sources'
 
-const STREAM_MARKER_HTML = '<span class="overlay-stream-marker" aria-hidden="true"></span>'
-
-/**
- * Append the streaming indicator span to `text` so it renders inline at the end
- * of the last token. If the last line is a structural marker (fence, math delim,
- * table row, horizontal rule), the span is placed on its own new line so we
- * don't break the preceding block’s parsing.
- */
-export function appendStreamMarker(text: string): string {
-  if (!text) return STREAM_MARKER_HTML
-  const lastNewline = text.lastIndexOf('\n')
-  const lastLine = lastNewline >= 0 ? text.slice(lastNewline + 1) : text
-  const trimmed = lastLine.trim()
-  const isStructural =
-    trimmed === '' ||
-    trimmed.startsWith('```') ||
-    trimmed === '$$' ||
-    trimmed.startsWith('|') ||
-    /^[-*_]{3,}\s*$/.test(trimmed)
-  if (isStructural) {
-    const sep = text.endsWith('\n\n') ? '' : text.endsWith('\n') ? '\n' : '\n\n'
-    return text + sep + STREAM_MARKER_HTML
-  }
-  return text + STREAM_MARKER_HTML
-}
-
 function stripHtmlishToMarkdown(text: string): string {
   return text
     .replace(/<br\s*\/?>/gi, '\n')
