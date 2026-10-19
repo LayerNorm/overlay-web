@@ -5,7 +5,7 @@ import { asRecord, freeEndpointCapabilities, freeRoutePriority, FREE_ROUTE_TTL_M
 import { getGatewayModelId, getOrCreateGateway, resolveGatewayApiKey } from './gateway-runtime'
 import { lazyConvex as convex } from '@/server/database/lazy-convex'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
-import type { OverlayFreeRoute } from './overlay-free-router'
+import type { OverlayFreeRoute } from './overlay-free-router-contracts'
 import {
   currentGatewayEndpoint,
   currentOpenRouterFreeModel,
@@ -111,6 +111,270 @@ export async function preflightOverlayFreeRoute(
   return model ? { capabilities: model.capabilities } : null
 }
 
+type RefreshStore = Pick<typeof convex, 'mutation'>
+type GatewayModelFactory = (modelId: string) => LanguageModelV4
+type RefreshLock = { leaseToken: string; generation: number }
+type CatalogDiscovery = {
+  gatewayCandidates: OverlayFreeRoute[]
+  openrouterRoutes: OverlayFreeRoute[]
+  gatewaySucceeded: boolean
+  openrouterSucceeded: boolean
+}
+
+type RefreshContext = {
+  serverSecret: string
+  lock: RefreshLock
+  deadline: number
+  fetchers: CatalogFetcher
+  onlyOpenRouter: boolean
+  store: RefreshStore
+}
+
+type CanaryContext = RefreshContext & {
+  gateway: GatewayModelFactory | null
+}
+
+async function discoverOpenRouter(
+  fetchers: CatalogFetcher,
+  deadline: number,
+  generation: number,
+): Promise<{ routes: OverlayFreeRoute[]; succeeded: boolean }> {
+  try {
+    const payload = await withinDeadline(fetchers.openrouterModels(), deadline)
+    const routes = parseGatewayModels(payload)
+      .map((value) => openrouterRoute(value, Date.now(), generation))
+      .filter((value): value is OverlayFreeRoute => value !== null)
+    return { routes, succeeded: true }
+  } catch (_error) {
+    return { routes: [], succeeded: false }
+  }
+}
+
+async function discoverGateway(
+  fetchers: CatalogFetcher,
+  deadline: number,
+  generation: number,
+  onlyOpenRouter: boolean,
+): Promise<{ routes: OverlayFreeRoute[]; succeeded: boolean }> {
+  if (onlyOpenRouter) return { routes: [], succeeded: false }
+  try {
+    const routes: OverlayFreeRoute[] = []
+    const models = parseGatewayModels(await withinDeadline(fetchers.gatewayModels(), deadline))
+    for (const model of models) {
+      if (Date.now() >= deadline) throw new Error('overlay_free_refresh_deadline_exceeded')
+      if (typeof model.id !== 'string' || !gatewayModelHasZeroPricing(model)) continue
+      const endpoints = parseGatewayEndpoints(
+        await withinDeadline(fetchers.gatewayEndpoints(model.id), deadline),
+      )
+      for (const endpoint of endpoints) {
+        const route = routeFromEndpoint(model, endpoint, Date.now(), generation)
+        if (route) routes.push(route)
+      }
+    }
+    if (Date.now() >= deadline) throw new Error('overlay_free_refresh_deadline_exceeded')
+    return { routes, succeeded: true }
+  } catch (_error) {
+    return { routes: [], succeeded: false }
+  }
+}
+
+async function discoverCatalog(
+  fetchers: CatalogFetcher,
+  deadline: number,
+  generation: number,
+  onlyOpenRouter: boolean,
+): Promise<CatalogDiscovery> {
+  const openrouter = await discoverOpenRouter(fetchers, deadline, generation)
+  const gateway = await discoverGateway(fetchers, deadline, generation, onlyOpenRouter)
+  return {
+    gatewayCandidates: gateway.routes,
+    openrouterRoutes: openrouter.routes,
+    gatewaySucceeded: gateway.succeeded,
+    openrouterSucceeded: openrouter.succeeded,
+  }
+}
+
+function prioritizedRoutes(discovery: CatalogDiscovery): OverlayFreeRoute[] {
+  const gatewayRoutes = discovery.gatewayCandidates.sort((a, b) =>
+    freeRoutePriority(a.modelId) - freeRoutePriority(b.modelId) ||
+    a.routeKey.localeCompare(b.routeKey))
+  return [...gatewayRoutes.slice(0, 11), ...discovery.openrouterRoutes.slice(0, 1)]
+}
+
+function preservedTransports(
+  discovery: CatalogDiscovery,
+  onlyOpenRouter: boolean,
+): Array<'gateway' | 'openrouter'> {
+  return [
+    ...(onlyOpenRouter || !discovery.gatewaySucceeded ? ['gateway' as const] : []),
+    ...(!discovery.openrouterSucceeded ? ['openrouter' as const] : []),
+  ]
+}
+
+async function publishRoutes(
+  context: RefreshContext,
+  routes: OverlayFreeRoute[],
+  preserveTransports: Array<'gateway' | 'openrouter'>,
+  probed?: Map<string, number>,
+): Promise<void> {
+  const { serverSecret, lock, store } = context
+  await store.mutation('platform/overlayFreeSafety:publishByServer', {
+    serverSecret,
+    generation: lock.generation,
+    refreshToken: lock.leaseToken,
+    now: Date.now(),
+    preserveTransports,
+    routes: routes.map((route) => {
+      const verifiedAt = probed?.get(route.routeKey)
+      return {
+        routeKey: route.routeKey,
+        transport: route.transport,
+        modelId: route.modelId,
+        provider: route.provider,
+        capabilitiesJson: route.capabilitiesJson,
+        pricingJson: route.pricingJson,
+        catalogVerifiedAt: route.catalogVerifiedAt,
+        catalogExpiresAt: route.catalogExpiresAt,
+        generation: route.generation,
+        canaryVerifiedAt: verifiedAt,
+        canaryExpiresAt: verifiedAt ? verifiedAt + FREE_ROUTE_TTL_MS : undefined,
+      }
+    }),
+  }, { throwOnError: true })
+}
+
+async function cooldownCanary(
+  context: CanaryContext,
+  routeKey: string,
+  leaseToken: string,
+  reason: string,
+  duration: number = FREE_ROUTE_COOLDOWN_MS,
+): Promise<void> {
+  const now = Date.now()
+  await context.store.mutation('platform/overlayFreeSafety:cooldownByServer', {
+    serverSecret: context.serverSecret,
+    routeKey,
+    leaseToken,
+    now,
+    cooldownUntil: now + duration,
+    reason,
+  }, { throwOnError: true })
+}
+
+async function failCanaryReceipt(
+  context: CanaryContext,
+  routeKey: string,
+  leaseToken: string,
+  reason: string,
+): Promise<void> {
+  await context.store.mutation('platform/overlayFreeSafety:settleByServer', {
+    serverSecret: context.serverSecret,
+    routeKey,
+    leaseToken,
+    now: Date.now(),
+    receiptJson: JSON.stringify({ safe: false, cost: null, reason }),
+    safe: false,
+    cost: null,
+    reason,
+  }, { throwOnError: true })
+}
+
+async function probeGatewayRoute(
+  context: CanaryContext,
+  route: OverlayFreeRoute,
+): Promise<number | null> {
+  const { serverSecret, lock, deadline, store, fetchers, gateway } = context
+  if (!gateway || Date.now() >= deadline) return null
+  const leaseToken = crypto.randomUUID()
+  const claimed = await store.mutation<{ status: string; route: OverlayFreeRoute | null }>(
+    'platform/overlayFreeSafety:claimByServer',
+    {
+      serverSecret,
+      routeKey: route.routeKey,
+      leaseToken,
+      now: Date.now(),
+      leaseMs: 3 * 60 * 1000,
+      purpose: 'canary',
+      expectedGeneration: lock.generation,
+      refreshToken: lock.leaseToken,
+    },
+    { throwOnError: true },
+  )
+  if (!claimed || claimed.status !== 'claimed' || !claimed.route) return null
+  let preflight: Awaited<ReturnType<typeof preflightOverlayFreeRoute>>
+  try {
+    preflight = await withinDeadline(preflightOverlayFreeRoute(claimed.route, fetchers), deadline)
+  } catch (_error) {
+    await cooldownCanary(context, route.routeKey, leaseToken, 'catalog unavailable before canary')
+    return null
+  }
+  if (!preflight) {
+    await failCanaryReceipt(context, route.routeKey, leaseToken, 'catalog price changed or unavailable')
+    return null
+  }
+  const remaining = deadline - Date.now()
+  if (remaining <= 0) {
+    await cooldownCanary(context, route.routeKey, leaseToken, 'canary deadline')
+    return null
+  }
+  try {
+    const result = await gateway(getGatewayModelId(claimed.route.modelId)).doGenerate({
+      prompt: [{ role: 'user', content: [{ type: 'text', text: 'Reply with OK.' }] }],
+      maxOutputTokens: 2,
+      abortSignal: AbortSignal.timeout(Math.min(20_000, remaining)),
+      providerOptions: { gateway: { only: [claimed.route.provider], models: [] } },
+    })
+    const receipt = assessFreeReceipt(result, {
+      transport: 'gateway',
+      modelId: claimed.route.modelId,
+      provider: claimed.route.provider,
+    })
+    await store.mutation('platform/overlayFreeSafety:settleByServer', {
+      serverSecret,
+      routeKey: route.routeKey,
+      leaseToken,
+      now: Date.now(),
+      receiptJson: JSON.stringify({
+        safe: receipt.safe,
+        cost: receipt.cost,
+        reason: receipt.reason,
+        actualModelId: receipt.actualModelId,
+        actualProvider: receipt.actualProvider,
+      }),
+      safe: receipt.safe,
+      cost: receipt.cost,
+      actualModelId: receipt.actualModelId,
+      actualProvider: receipt.actualProvider,
+      reason: receipt.reason ?? undefined,
+    }, { throwOnError: true })
+    return receipt.safe ? Date.now() : null
+  } catch (error) {
+    if (typeof error === 'object' && error !== null && 'statusCode' in error && error.statusCode === 429) {
+      await cooldownCanary(context, route.routeKey, leaseToken, 'canary rate limit', 60_000)
+    } else {
+      await failCanaryReceipt(context, route.routeKey, leaseToken, 'missing receipt')
+    }
+    return null
+  }
+}
+
+async function probeGatewayRoutes(
+  context: RefreshContext,
+  routes: OverlayFreeRoute[],
+  gatewayCandidates: OverlayFreeRoute[],
+  loadGateway: () => Promise<GatewayModelFactory | null>,
+): Promise<Map<string, number>> {
+  const probed = new Map<string, number>()
+  const gateway = !context.onlyOpenRouter && gatewayCandidates.length ? await loadGateway() : null
+  const canaryContext: CanaryContext = { ...context, gateway }
+  for (const route of routes.filter((value) => value.transport === 'gateway')) {
+    if (Date.now() >= context.deadline || !gateway) break
+    const verifiedAt = await probeGatewayRoute(canaryContext, route)
+    if (verifiedAt !== null) probed.set(route.routeKey, verifiedAt)
+  }
+  return probed
+}
+
 export async function refreshOverlayFreeCatalog({
   now = Date.now(),
   fetchers = defaultFetchers,
@@ -133,130 +397,30 @@ export async function refreshOverlayFreeCatalog({
   }, { throwOnError: true })
   if (!lock) return { refreshed: false, reason: 'locked' }
   const deadline = Date.now() + Math.min(timeoutMs ?? 200_000, 200_000)
+  const context: RefreshContext = {
+    serverSecret,
+    lock,
+    deadline,
+    fetchers,
+    onlyOpenRouter,
+    store,
+  }
   try {
-    const candidates: OverlayFreeRoute[] = []
-    // Discover the fallback before Gateway discovery can consume the deadline.
-    let openrouter: OverlayFreeRoute[] = []
-    let openrouterCatalogSucceeded = false
-    try {
-      openrouter = parseGatewayModels(await withinDeadline(fetchers.openrouterModels(), deadline))
-        .map((value) => openrouterRoute(value, Date.now(), lock.generation))
-        .filter((value): value is OverlayFreeRoute => value !== null)
-      openrouterCatalogSucceeded = true
-    } catch (_error) {
-      openrouter = []
-    }
-    let gatewayCatalogSucceeded = false
-    try {
-      if (onlyOpenRouter) throw new Error('gateway discovery skipped')
-      for (const model of parseGatewayModels(await withinDeadline(fetchers.gatewayModels(), deadline))) {
-        if (Date.now() >= deadline) throw new Error('overlay_free_refresh_deadline_exceeded')
-        if (typeof model.id !== 'string' || !gatewayModelHasZeroPricing(model)) continue
-        for (const endpoint of parseGatewayEndpoints(await withinDeadline(fetchers.gatewayEndpoints(model.id), deadline))) {
-          const route = routeFromEndpoint(model, endpoint, Date.now(), lock.generation)
-          if (route) candidates.push(route)
-        }
-      }
-      if (Date.now() >= deadline) throw new Error('overlay_free_refresh_deadline_exceeded')
-      gatewayCatalogSucceeded = true
-    } catch (_error) {
-      candidates.length = 0
-    }
-    candidates.sort((a, b) => freeRoutePriority(a.modelId) - freeRoutePriority(b.modelId) || a.routeKey.localeCompare(b.routeKey))
-    const routes = [...candidates.slice(0, 11), ...openrouter.slice(0, 1)]
-    const preserveTransports = [
-      ...(onlyOpenRouter || !gatewayCatalogSucceeded ? ['gateway' as const] : []),
-      ...(!openrouterCatalogSucceeded ? ['openrouter' as const] : []),
-    ]
-    await store.mutation('platform/overlayFreeSafety:publishByServer', {
-      serverSecret, generation: lock.generation, refreshToken: lockToken, now: Date.now(),
-      preserveTransports,
-      routes: routes.map(({ routeKey, transport, modelId, provider, capabilitiesJson, pricingJson, catalogVerifiedAt, catalogExpiresAt, generation }) =>
-        ({ routeKey, transport, modelId, provider, capabilitiesJson, pricingJson, catalogVerifiedAt, catalogExpiresAt, generation })),
-    }, { throwOnError: true })
+    const discovery = await discoverCatalog(fetchers, deadline, lock.generation, onlyOpenRouter)
+    const routes = prioritizedRoutes(discovery)
+    const preserveTransports = preservedTransports(discovery, onlyOpenRouter)
+    await publishRoutes(context, routes, preserveTransports)
 
-    const probed = new Map<string, number>()
-    const gateway = !onlyOpenRouter && candidates.length ? await loadGateway() : null
-    for (const route of routes.filter((value) => value.transport === 'gateway')) {
-      if (Date.now() >= deadline || !gateway) break
-      const leaseToken = crypto.randomUUID()
-      const claimed = await store.mutation<{ status: string; route: OverlayFreeRoute | null }>('platform/overlayFreeSafety:claimByServer', {
-        serverSecret, routeKey: route.routeKey, leaseToken, now: Date.now(), leaseMs: 3 * 60 * 1000,
-        purpose: 'canary', expectedGeneration: lock.generation, refreshToken: lockToken,
-      }, { throwOnError: true })
-      if (!claimed || claimed.status !== 'claimed' || !claimed.route) continue
-      let preflight: Awaited<ReturnType<typeof preflightOverlayFreeRoute>>
-      try {
-        preflight = await withinDeadline(preflightOverlayFreeRoute(claimed.route, fetchers), deadline)
-      } catch (_error) {
-        await store.mutation('platform/overlayFreeSafety:cooldownByServer', {
-          serverSecret, routeKey: route.routeKey, leaseToken, now: Date.now(),
-          cooldownUntil: Date.now() + FREE_ROUTE_COOLDOWN_MS, reason: 'catalog unavailable before canary',
-        }, { throwOnError: true })
-        continue
-      }
-      if (!preflight) {
-        await store.mutation('platform/overlayFreeSafety:settleByServer', {
-          serverSecret, routeKey: route.routeKey, leaseToken, now: Date.now(),
-          receiptJson: JSON.stringify({ safe: false, cost: null, reason: 'preflight failed' }),
-          safe: false, cost: null, reason: 'catalog price changed or unavailable',
-        }, { throwOnError: true })
-        continue
-      }
-      const remaining = deadline - Date.now()
-      if (remaining <= 0) {
-        await store.mutation('platform/overlayFreeSafety:cooldownByServer', {
-          serverSecret, routeKey: route.routeKey, leaseToken, now: Date.now(),
-          cooldownUntil: Date.now() + FREE_ROUTE_COOLDOWN_MS, reason: 'canary deadline',
-        }, { throwOnError: true })
-        continue
-      }
-      try {
-        const result = await gateway(getGatewayModelId(claimed.route.modelId)).doGenerate({
-          prompt: [{ role: 'user', content: [{ type: 'text', text: 'Reply with OK.' }] }],
-          maxOutputTokens: 2,
-          abortSignal: AbortSignal.timeout(Math.min(20_000, remaining)),
-          providerOptions: { gateway: { only: [claimed.route.provider], models: [] } },
-        })
-        const receipt = assessFreeReceipt(result, { transport: 'gateway', modelId: claimed.route.modelId, provider: claimed.route.provider })
-        await store.mutation('platform/overlayFreeSafety:settleByServer', {
-          serverSecret, routeKey: route.routeKey, leaseToken, now: Date.now(),
-          receiptJson: JSON.stringify({ safe: receipt.safe, cost: receipt.cost, reason: receipt.reason, actualModelId: receipt.actualModelId, actualProvider: receipt.actualProvider }), safe: receipt.safe, cost: receipt.cost,
-          actualModelId: receipt.actualModelId, actualProvider: receipt.actualProvider, reason: receipt.reason ?? undefined,
-        }, { throwOnError: true })
-        if (receipt.safe) probed.set(route.routeKey, Date.now())
-      } catch (error) {
-        if (typeof error === 'object' && error !== null && 'statusCode' in error && error.statusCode === 429) {
-          await store.mutation('platform/overlayFreeSafety:cooldownByServer', {
-            serverSecret, routeKey: route.routeKey, leaseToken, now: Date.now(),
-            cooldownUntil: Date.now() + 60_000, reason: 'canary rate limit',
-          }, { throwOnError: true })
-        } else {
-          await store.mutation('platform/overlayFreeSafety:settleByServer', {
-            serverSecret, routeKey: route.routeKey, leaseToken, now: Date.now(),
-            receiptJson: JSON.stringify({ safe: false, cost: null, reason: 'missing receipt' }), safe: false, cost: null,
-            reason: 'missing receipt',
-          }, { throwOnError: true })
-        }
-      }
-    }
-    await store.mutation('platform/overlayFreeSafety:publishByServer', {
-      serverSecret, generation: lock.generation, refreshToken: lockToken, now: Date.now(),
-      preserveTransports,
-      routes: routes.map((route) => {
-        const verifiedAt = probed.get(route.routeKey)
-        return {
-          routeKey: route.routeKey, transport: route.transport, modelId: route.modelId, provider: route.provider,
-          capabilitiesJson: route.capabilitiesJson, pricingJson: route.pricingJson,
-          catalogVerifiedAt: route.catalogVerifiedAt, catalogExpiresAt: route.catalogExpiresAt, generation: route.generation,
-          canaryVerifiedAt: verifiedAt,
-          canaryExpiresAt: verifiedAt ? verifiedAt + FREE_ROUTE_TTL_MS : undefined,
-        }
-      }),
-    }, { throwOnError: true })
+    const probed = await probeGatewayRoutes(
+      context,
+      routes,
+      discovery.gatewayCandidates,
+      loadGateway,
+    )
+    await publishRoutes(context, routes, preserveTransports, probed)
     await store.mutation('platform/overlayFreeSafety:releaseRefreshLockByServer', {
       serverSecret, leaseToken: lockToken, now: Date.now(),
-      success: (gatewayCatalogSucceeded || onlyOpenRouter) && openrouterCatalogSucceeded,
+      success: (discovery.gatewaySucceeded || onlyOpenRouter) && discovery.openrouterSucceeded,
       partial: onlyOpenRouter,
     }, { throwOnError: true })
     return { refreshed: true, routes: routes.length, generation: lock.generation }
