@@ -36,7 +36,7 @@ export type CodexPresetDefinition = {
   theme: CodexTheme
 }
 
-const DEFAULT_UI_FONT = "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+const DEFAULT_UI_FONT = "var(--font-geist, ui-sans-serif), system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
 const DEFAULT_MONO_FONT = "ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace"
 
 export const LIGHT_BASE: Record<string, string> = {
