@@ -152,7 +152,6 @@ export function RoomThreadPanel({
           type="submit"
           disabled={!input.trim()}
           aria-label="Send thread reply"
-          className="h-9 w-9 rounded-lg bg-(--foreground) p-0 text-(--background) disabled:opacity-30"
         >
           <Send size={14} />
         </Button>

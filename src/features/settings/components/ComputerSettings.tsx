@@ -174,11 +174,10 @@ export function ComputerSettings() {
           <h2 className="text-sm font-semibold text-(--foreground)">Workspace computers</h2>
           <div className="flex items-center gap-1">
             {!hasPersonal ? (
-              <Button variant="ghost"
+              <Button variant="secondary" size="sm"
                 type="button"
                 disabled={creating || busy !== null}
                 onClick={() => void provision()}
-                className={unstyledButton(`flex items-center gap-1.5 rounded-full border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-xs font-medium text-(--foreground) transition-colors hover:bg-(--surface-elevated) disabled:opacity-50`)}
               >
                 <Plus size={13} /> New computer
               </Button>
@@ -202,11 +201,10 @@ export function ComputerSettings() {
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-1">
-                <Button variant="ghost"
+                <Button variant="secondary" size="sm"
                   type="button"
                   disabled={busy !== null}
                   onClick={() => void openEnvironmentDesktop(environment.id)}
-                  className={unstyledButton(`rounded-full border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-xs font-medium text-(--foreground) transition-colors hover:bg-(--surface-elevated) disabled:opacity-50`)}
                 >
                   Open
                 </Button>
@@ -233,11 +231,10 @@ export function ComputerSettings() {
               </div>
               <div className="flex shrink-0 items-center gap-1">
                 {computer.status === 'ready' || computer.status === 'stopped' ? (
-                  <Button variant="ghost"
+                  <Button variant="secondary" size="sm"
                     type="button"
                     disabled={busy !== null}
                     onClick={() => void openDesktop(computer.id)}
-                    className={unstyledButton(`rounded-full border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-xs font-medium text-(--foreground) transition-colors hover:bg-(--surface-elevated) disabled:opacity-50`)}
                   >
                     Open
                   </Button>

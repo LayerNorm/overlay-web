@@ -124,14 +124,13 @@ export function DraftReviewModal({
           </div>
         </div>
         <div className="flex items-center justify-end gap-2 border-t border-(--border) px-4 py-3">
-          <Button variant="ghost"
+          <Button variant="secondary" size="sm"
             type="button"
             onClick={onClose}
-            className={unstyledButton(`inline-flex items-center rounded-md border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-[12px] font-medium text-(--foreground) transition-colors hover:bg-(--border)`)}
           >
             Cancel
           </Button>
-          <Button variant="ghost"
+          <Button variant="primary" size="sm"
             type="button"
             disabled={saving}
             onClick={() => {
@@ -141,7 +140,6 @@ export function DraftReviewModal({
                 void onSaveSkill(state.draft)
               }
             }}
-            className={unstyledButton(`inline-flex items-center rounded-md border border-(--border) bg-(--foreground) px-3 py-1.5 text-[12px] font-medium text-(--background) transition-colors hover:opacity-85 disabled:opacity-60`)}
           >
             {saving ? 'Saving...' : isAutomation ? 'Create automation' : 'Save skill'}
           </Button>

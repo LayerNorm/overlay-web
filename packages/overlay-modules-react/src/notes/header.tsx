@@ -227,17 +227,15 @@ export function NotebookAgentHeader({
       <AppScreenSidePanelActions className="gap-2">
         {pendingDiffCount > 0 && (
           <>
-            <Button variant="ghost"
+            <Button variant="secondary" size="sm"
               type="button"
               onClick={onAcceptAllDiffs}
-              className={unstyledButton("rounded-md border border-(--border) bg-(--surface-muted) px-2 py-1 text-[11px] text-(--foreground) hover:bg-(--surface-subtle)")}
             >
               Accept all
             </Button>
-            <Button variant="ghost"
+            <Button variant="outline" size="sm"
               type="button"
               onClick={onRejectAllDiffs}
-              className={unstyledButton("rounded-md border border-(--border) px-2 py-1 text-[11px] text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)")}
             >
               Reject all
             </Button>

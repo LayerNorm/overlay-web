@@ -493,11 +493,10 @@ function ProviderModelsPanel({
             className={unstyledInput(`h-9 w-full rounded-lg border border-(--border) bg-(--surface-subtle) pl-9 pr-3 text-sm text-(--foreground) outline-hidden focus:border-(--muted)`)}
           />
         </div>
-        <Button variant="ghost"
+        <Button variant="secondary" size="sm" className="shrink-0"
           type="button"
           onClick={onDiscover}
           disabled={discoverDisabled}
-          className={unstyledButton(`inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-(--border) bg-(--surface-subtle) px-3 text-xs font-medium text-(--foreground) hover:bg-(--surface-elevated) disabled:opacity-50`)}
         >
           {discovering ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
           Search

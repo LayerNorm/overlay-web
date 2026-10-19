@@ -240,6 +240,7 @@ function ActionButton({
       onClick={onClick}
       disabled={disabled}
       title={title}
+      // overlay:button-style: Generated ui theme toggle.
       className={unstyledButton(classNames(
         'inline-flex h-9 items-center gap-2 rounded-md border px-3 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-45',
         variant === 'primary'
@@ -524,6 +525,7 @@ function EmailVariantPicker({
           type="button"
           onClick={readOnly ? undefined : () => onSelect(variant)}
           disabled={readOnly}
+          // overlay:button-style: Generated ui theme toggle.
           className={unstyledButton(classNames(
             'inline-flex h-8 items-center rounded-full px-3 text-xs font-medium transition-colors disabled:cursor-default',
             activeVariantId === variant.id

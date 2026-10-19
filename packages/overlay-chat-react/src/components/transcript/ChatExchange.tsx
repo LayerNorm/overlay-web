@@ -476,6 +476,7 @@ function ExchangeUserMessage({
           <Button variant="ghost"
             type="button"
             onClick={() => onJumpToReply(replyThreadMeta.replyToTurnId)}
+            // overlay:button-style: Transcript chip with its own selected state.
             className={unstyledButton(`mb-1 max-w-full rounded-lg border border-(--border) bg-(--surface-subtle) px-2.5 py-1.5 text-left text-[11px] text-(--muted) transition-colors hover:bg-(--border) hover:text-(--foreground)`)}
           >
             <span className="flex items-center gap-1.5 font-medium text-(--foreground)">
@@ -575,6 +576,7 @@ function ExchangeModelTabs({
             onClick={() => !isLoadingTabs && onTabSelect(tabIdx)}
             disabled={isLoadingTabs}
             aria-pressed={isActive}
+            // overlay:button-style: Transcript chip with its own selected state.
             className={unstyledButton(`px-2.5 py-0.5 rounded-full text-xs transition-colors ${
               isLoadingTabs ? 'cursor-not-allowed opacity-60' : ''
             } ${
@@ -632,10 +634,9 @@ function ExchangeSettledNotices({
 
       {onContinue && responseSettled && !errorMessage && (
         <div className="flex justify-start px-1 py-1">
-          <Button variant="ghost"
+          <Button variant="secondary" size="sm"
             type="button"
             onClick={onContinue}
-            className={unstyledButton(`inline-flex items-center gap-1.5 rounded-lg border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-xs font-medium text-(--foreground) transition-colors hover:bg-(--border)`)}
           >
             <Play size={13} strokeWidth={1.75} />
             Continue

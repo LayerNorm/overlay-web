@@ -162,10 +162,9 @@ export function ShareDialog({
             <span className="flex-1 truncate text-xs text-(--muted)" title={resource.url}>
               {resource.url}
             </span>
-            <Button variant="ghost"
+            <Button variant="primary" size="sm"
               type="button"
               onClick={handleCopy}
-              className={unstyledButton(`rounded-md bg-(--foreground) px-3 py-1 text-[11px] font-medium text-(--background) transition-opacity hover:opacity-90`)}
             >
               {copied ? 'Copied' : 'Copy'}
             </Button>
