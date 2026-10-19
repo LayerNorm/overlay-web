@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { FREE_TIER_AUTO_MODEL_ID } from '@/shared/ai/gateway/model-types'
 
 import { resolveDefaultChatModelSelection } from './default-chat-model'
 
@@ -33,6 +34,6 @@ test('malformed BYOK defaults are rejected before model selection', () => {
     defaultAskModelIds: ['byok/missing-model'],
     isFreeTier: true,
   })
-  assert.equal(result.actModelId, 'openrouter/free')
-  assert.deepEqual(result.askModelIds, ['openrouter/free'])
+  assert.equal(result.actModelId, FREE_TIER_AUTO_MODEL_ID)
+  assert.deepEqual(result.askModelIds, [FREE_TIER_AUTO_MODEL_ID])
 })
