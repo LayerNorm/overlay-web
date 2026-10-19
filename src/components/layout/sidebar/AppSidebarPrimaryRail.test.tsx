@@ -72,7 +72,7 @@ test('active expanded button uses SidebarMenuButton sizing and active state', ()
   assert.ok(className)
   const classes = new Set(className.split(/\s+/))
 
-  for (const expected of ['h-9', 'gap-2.5', 'px-3', 'relative']) {
+  for (const expected of ['h-8', 'gap-2.5', 'px-2', 'relative']) {
     assert.equal(classes.has(expected), true, `${expected} should be present`)
   }
   for (const obsolete of ['inline-block', 'h-auto', 'rounded-none']) {
