@@ -1,33 +1,27 @@
-import { unstyledButton } from '@overlay/ui/control-reset'
 import { Button } from '@overlay/ui/primitives'
-import { Code2, Copy, PanelRightOpen, Play } from 'lucide-react'
+import {
+  CodeBlock as CodeBlockRoot,
+  CodeBlockActions,
+  CodeBlockContent,
+  CodeBlockCopyButton,
+  CodeBlockHeader,
+  CodeBlockLine,
+  CodeBlockTitle,
+  useHighlightedCode,
+} from '@overlay/ui/ai'
+import { Code2, PanelRightOpen, Play } from 'lucide-react'
 import { Orb } from '@overlay/ui'
-import { isValidElement, lazy, Suspense, useId, useState, useSyncExternalStore, type ReactNode } from 'react'
+import { isValidElement, useId, useState, type ReactNode } from 'react'
 import type {
   AttachmentPreview,
   AttachmentPreviewOpenOptions,
 } from '../AttachmentPreviewShell'
-
-const LazySyntaxHighlighter = lazy(() => import('../LazySyntaxHighlighter'))
 
 export type MarkdownCodeBlockActions = {
   onOpenAttachmentPreview?: (
     preview: AttachmentPreview,
     options?: AttachmentPreviewOpenOptions,
   ) => void
-}
-
-function useDocumentThemeIsDark(): boolean {
-  return useSyncExternalStore(
-    (onStoreChange) => {
-      const el = document.documentElement
-      const obs = new MutationObserver(onStoreChange)
-      obs.observe(el, { attributes: true, attributeFilter: ['data-theme'] })
-      return () => obs.disconnect()
-    },
-    () => document.documentElement.getAttribute('data-theme') === 'dark',
-    () => false,
-  )
 }
 
 export function extractLinkText(node: ReactNode): string {
@@ -68,7 +62,7 @@ function HtmlPreviewFrame({ html, title }: { html: string; title: string }) {
       title={title}
       srcDoc={html}
       sandbox="allow-scripts allow-forms allow-pointer-lock allow-modals"
-      className="code-block-render-frame"
+      className="block h-[clamp(260px,55vh,460px)] w-full border-0 bg-white sm:h-[clamp(320px,58vh,560px)]"
     />
   )
 }
@@ -87,10 +81,11 @@ function CodeBlockIconButton({
   children: ReactNode
 }) {
   return (
-    <Button variant="ghost"
-      type="button"
-      className={unstyledButton(`code-block-action`)}
+    <Button
+      variant="ghost"
+      size="icon-xs"
       data-active={active ? 'true' : undefined}
+      className="data-[active=true]:bg-(--foreground)/10 data-[active=true]:text-(--foreground)"
       disabled={disabled}
       aria-label={label}
       aria-pressed={active}
@@ -102,7 +97,18 @@ function CodeBlockIconButton({
   )
 }
 
-// Custom code block with syntax highlighting, copy, and HTML render controls.
+function HighlightedCode({ code, language }: { code: string; language: string }) {
+  const lines = useHighlightedCode(code, language)
+  return (
+    <CodeBlockContent>
+      {lines.map((line, index) => (
+        <CodeBlockLine key={index}>{line}</CodeBlockLine>
+      ))}
+    </CodeBlockContent>
+  )
+}
+
+// Fenced code: Shiki highlighting, copy, and HTML render controls.
 function CodeBlock({
   language,
   children,
@@ -111,92 +117,50 @@ function CodeBlock({
   language: string
   children: string
 } & MarkdownCodeBlockActions) {
-  const [copied, setCopied] = useState(false)
   const [mode, setMode] = useState<'code' | 'render'>('code')
-  const isDark = useDocumentThemeIsDark()
   const previewTitleId = useId()
-  const html = children
   const htmlBlock = isHtmlLanguage(language)
-  const label = languageLabel(language)
-
-  async function handleCopy() {
-    let copiedSuccessfully = false
-    try {
-      await navigator.clipboard.writeText(children)
-      copiedSuccessfully = true
-    } catch {
-      const textarea = document.createElement('textarea')
-      textarea.value = children
-      textarea.setAttribute('readonly', '')
-      textarea.style.position = 'fixed'
-      textarea.style.top = '-1000px'
-      textarea.style.opacity = '0'
-      document.body.appendChild(textarea)
-      textarea.select()
-      try {
-        copiedSuccessfully = document.execCommand('copy')
-      } finally {
-        document.body.removeChild(textarea)
-      }
-    }
-    if (copiedSuccessfully) {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    }
-  }
 
   function handleOpenSidebar() {
-    onOpenAttachmentPreview?.(
-      {
-        name: 'html-render.html',
-        content: html,
-      },
-      { mode: 'panel' },
-    )
+    onOpenAttachmentPreview?.({ name: 'html-render.html', content: children }, { mode: 'panel' })
   }
 
   return (
-    <div className="code-block-wrapper">
-      <div className="code-block-header">
-        <span className="code-block-lang">{label}</span>
-        <div className="code-block-actions">
+    <CodeBlockRoot className="my-3">
+      <CodeBlockHeader>
+        <CodeBlockTitle className="font-mono font-normal text-(--muted)">{languageLabel(language)}</CodeBlockTitle>
+        <CodeBlockActions>
           {htmlBlock ? (
             <>
               <CodeBlockIconButton label="Show code" active={mode === 'code'} onClick={() => setMode('code')}>
-                <Code2 size={14} strokeWidth={1.8} />
+                <Code2 />
               </CodeBlockIconButton>
               <CodeBlockIconButton label="Render HTML" active={mode === 'render'} onClick={() => setMode('render')}>
-                <Play size={14} strokeWidth={1.9} />
+                <Play />
               </CodeBlockIconButton>
             </>
           ) : null}
-          <CodeBlockIconButton label={copied ? 'Copied' : 'Copy code'} onClick={handleCopy}>
-            <Copy size={14} strokeWidth={1.8} />
-          </CodeBlockIconButton>
+          <CodeBlockCopyButton value={children} />
           {htmlBlock ? (
             <CodeBlockIconButton
               label="Open render in sidebar"
               disabled={!onOpenAttachmentPreview}
               onClick={handleOpenSidebar}
             >
-              <PanelRightOpen size={14} strokeWidth={1.8} />
+              <PanelRightOpen />
             </CodeBlockIconButton>
           ) : null}
-        </div>
-      </div>
+        </CodeBlockActions>
+      </CodeBlockHeader>
       {htmlBlock && mode === 'render' ? (
-        <div className="code-block-render" aria-labelledby={previewTitleId}>
+        <div className="mt-2" aria-labelledby={previewTitleId}>
           <span id={previewTitleId} className="sr-only">Rendered HTML preview</span>
-          <HtmlPreviewFrame html={html} title="Rendered HTML preview" />
+          <HtmlPreviewFrame html={children} title="Rendered HTML preview" />
         </div>
       ) : (
-        <Suspense fallback={<pre className="m-0 overflow-x-auto p-3 text-sm"><code>{children}</code></pre>}>
-          <LazySyntaxHighlighter isDark={isDark} language={language}>
-            {children}
-          </LazySyntaxHighlighter>
-        </Suspense>
+        <HighlightedCode code={children} language={language} />
       )}
-    </div>
+    </CodeBlockRoot>
   )
 }
 
@@ -258,9 +222,8 @@ export const baseMdComponents = {
   },
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   pre({ children }: any) {
-    // Fenced blocks render via CodeBlock, which carries its own border, header,
-    // and padding — unwrapping avoids a second padded box around it (and the
-    // invalid div-inside-pre nesting).
+    // Fenced blocks render via CodeBlock, which carries its own surface and
+    // padding; unwrapping avoids a second box and div-inside-pre nesting.
     if (isValidElement(children) && children.type === CodeBlock) return children
     return <pre>{children}</pre>
   },
