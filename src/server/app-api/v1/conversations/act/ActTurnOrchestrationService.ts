@@ -25,7 +25,7 @@ import {
   getLowCreditFallbackAttemptModelIds,
 } from '@/shared/ai/gateway/model-fallbacks'
 import { isGatewayCreditLow } from '@/server/ai/gateway/gateway-credits'
-import { getGatewayCatalogModel } from '@/server/ai/gateway/gateway-catalog'
+import { resolveModelContextWindow } from '@/server/chat/context-compaction'
 import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
 import { userFacingOpenRouterError } from '@/server/ai/model-runtime'
 import { uploadFilePartsForModel } from '@/server/ai/file-upload'
@@ -810,9 +810,9 @@ export async function executeActTurn(
     // Resolved in the background so the catalog lookup never delays the first token.
     let attemptContextWindow: number | undefined
     let lastStepUsage: { inputTokens?: number; outputTokens?: number } | undefined
-    void getGatewayCatalogModel(attemptModelId)
-      .then((model) => {
-        attemptContextWindow = model?.contextWindow
+    void resolveModelContextWindow(attemptModelId)
+      .then((contextWindow) => {
+        attemptContextWindow = contextWindow
       })
       .catch((_error: unknown) => undefined)
     // Kimi K3 always reasons and the AI SDK provider only exposes max effort.
