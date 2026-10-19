@@ -3,10 +3,12 @@ import { mutation, query } from '../_generated/server'
 import { requireServerSecret } from '../lib/auth'
 
 const MAX_ONBOARDING_SESSION_BYTES = 64_000
+const RUN_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 type StoredOnboardingSession = {
   version: 1
   userId: string
+  runId: string
   revision: number
   outbox: unknown[]
 }
@@ -28,9 +30,10 @@ function readStoredSession(value: string | undefined, userId?: string): StoredOn
     ) return null
     const stateKeys = ['version', 'userId', 'session', 'outbox']
     if (Object.keys(state).length !== stateKeys.length || Object.keys(state).some((key) => !stateKeys.includes(key))) return null
-    const session = state.session as { version?: unknown; revision?: unknown }
-    if (session.version !== 1 || !Number.isInteger(session.revision) || (session.revision as number) < 1) return null
-    return { version: 1, userId: state.userId, revision: session.revision as number, outbox: state.outbox }
+    const session = state.session as { version?: unknown; runId?: unknown; revision?: unknown }
+    if (session.version !== 1 || typeof session.runId !== 'string' || !RUN_ID_PATTERN.test(session.runId)
+      || !Number.isInteger(session.revision) || (session.revision as number) < 1) return null
+    return { version: 1, userId: state.userId, runId: session.runId, revision: session.revision as number, outbox: state.outbox }
   } catch {
     return null
   }
@@ -57,6 +60,7 @@ export const compareAndSetByServer = mutation({
     serverSecret: v.string(),
     userId: v.string(),
     expectedRevision: v.number(),
+    expectedRunId: v.optional(v.string()),
     onboardingSession: v.optional(v.string()),
     hasSeenOnboarding: v.boolean(),
   },
@@ -82,11 +86,12 @@ export const compareAndSetByServer = mutation({
     const current = subscription.onboardingSession
     const parsed = current ? readStoredSession(current, args.userId) : null
     const currentRevision = parsed?.revision ?? 0
+    const currentRunId = parsed?.runId
     if (current && !parsed) {
       return { ok: false as const, reason: 'invalid_state' as const, currentRevision }
     }
-    if (currentRevision !== args.expectedRevision) {
-      return { ok: false as const, reason: 'stale_revision' as const, currentRevision }
+    if (currentRevision !== args.expectedRevision || currentRunId !== args.expectedRunId) {
+      return { ok: false as const, reason: 'stale_revision' as const, currentRevision, currentRunId }
     }
     await ctx.db.patch(subscription._id, {
       hasSeenOnboarding: args.hasSeenOnboarding,
@@ -101,6 +106,7 @@ export const clearOutboxByServer = mutation({
     serverSecret: v.string(),
     userId: v.string(),
     expectedRevision: v.number(),
+    expectedRunId: v.string(),
     onboardingSession: v.string(),
   },
   handler: async (ctx, args) => {
@@ -115,7 +121,8 @@ export const clearOutboxByServer = mutation({
     if (!subscription) return false
     const current = readStoredSession(subscription.onboardingSession, args.userId)
     const next = readStoredSession(args.onboardingSession, args.userId)
-    if (!current || current.revision !== args.expectedRevision || !next || next.revision !== args.expectedRevision || next.outbox.length !== 0) return false
+    if (!current || current.runId !== args.expectedRunId || current.revision !== args.expectedRevision
+      || !next || next.runId !== args.expectedRunId || next.revision !== args.expectedRevision || next.outbox.length !== 0) return false
     await ctx.db.patch(subscription._id, { onboardingSession: args.onboardingSession })
     return true
   },

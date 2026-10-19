@@ -12,6 +12,7 @@ export type OnboardingReply = {
 }
 export type OnboardingSession = {
   version: 1
+  runId: string
   revision: number
   workspaceId: string
   conversationId: string
@@ -29,13 +30,14 @@ export type OnboardingSession = {
 export type OnboardingSessionResponse = { completed: boolean; session: OnboardingSession | null }
 
 const revision = z.number().int().nonnegative()
+export const OnboardingRunIdSchema = z.string().uuid()
 const ids = z.array(z.string().trim().min(1).max(200)).max(20)
 export const OnboardingActionSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('start') }).strict(),
-  z.object({ action: z.literal('consent'), revision, enabled: z.boolean() }).strict(),
-  z.object({ action: z.literal('answer'), revision, value: z.string().trim().min(1).max(3000) }).strict(),
-  z.object({ action: z.literal('advance'), revision, agentIds: ids.optional(), memoryIds: ids.optional(), invitationIds: ids.optional() }).strict(),
-  z.object({ action: z.literal('finish'), revision, taskId: z.string().trim().min(1).max(200) }).strict(),
+  z.object({ action: z.literal('consent'), runId: OnboardingRunIdSchema, revision, enabled: z.boolean() }).strict(),
+  z.object({ action: z.literal('answer'), runId: OnboardingRunIdSchema, revision, value: z.string().trim().min(1).max(3000) }).strict(),
+  z.object({ action: z.literal('advance'), runId: OnboardingRunIdSchema, revision, agentIds: ids.optional(), memoryIds: ids.optional(), invitationIds: ids.optional() }).strict(),
+  z.object({ action: z.literal('finish'), runId: OnboardingRunIdSchema, revision, taskId: z.string().trim().min(1).max(200) }).strict(),
 ])
 export type OnboardingAction = z.infer<typeof OnboardingActionSchema>
 

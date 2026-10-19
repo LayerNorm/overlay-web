@@ -10,17 +10,18 @@ export type OnboardingStateRecord = {
 
 export type OnboardingCommitResult =
   | { ok: true; revision: number }
-  | { ok: false; reason: 'invalid_state' | 'stale_revision' | 'subscription_not_found'; currentRevision?: number }
+  | { ok: false; reason: 'invalid_state' | 'stale_revision' | 'subscription_not_found'; currentRevision?: number; currentRunId?: string }
 
 export interface OnboardingStateRepository {
   get(userId: string): Promise<OnboardingStateRecord | null>
   compareAndSet(args: {
     userId: string
     expectedRevision: number
+    expectedRunId?: string
     onboardingSession?: string
     hasSeenOnboarding: boolean
   }): Promise<OnboardingCommitResult>
-  clearOutbox(args: { userId: string; expectedRevision: number; onboardingSession: string }): Promise<boolean>
+  clearOutbox(args: { userId: string; expectedRevision: number; expectedRunId: string; onboardingSession: string }): Promise<boolean>
   reset(userId: string): Promise<boolean>
 }
 
@@ -37,17 +38,20 @@ export class ConvexOnboardingStateRepository implements OnboardingStateRepositor
   }
 
   async compareAndSet(args: Parameters<OnboardingStateRepository['compareAndSet']>[0]) {
-    return await convex.mutation<OnboardingCommitResult>('auth/onboarding:compareAndSetByServer', {
+    const result = await convex.mutation<OnboardingCommitResult>('auth/onboarding:compareAndSetByServer', {
       ...args,
       serverSecret: this.serverSecret,
     }, { throwOnError: true })
+    if (!result) throw new Error('Onboarding compare-and-set returned no result')
+    return result
   }
 
   async clearOutbox(args: Parameters<OnboardingStateRepository['clearOutbox']>[0]) {
-    return await convex.mutation<boolean>('auth/onboarding:clearOutboxByServer', {
+    const result = await convex.mutation<boolean>('auth/onboarding:clearOutboxByServer', {
       ...args,
       serverSecret: this.serverSecret,
     }, { throwOnError: true })
+    return result === true
   }
 
   async reset(userId: string) {

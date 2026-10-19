@@ -1,7 +1,9 @@
 import 'server-only'
 
+import { randomUUID } from 'node:crypto'
 import {
   ONBOARDING_INTRO,
+  OnboardingRunIdSchema,
   preparedOnboardingReply,
   type OnboardingAction,
   type OnboardingProfile,
@@ -38,6 +40,7 @@ export type OnboardingServiceDependencies = {
   repository: OnboardingStateRepository
   effects: OnboardingEffects
   reply?: OnboardingReplyFactory
+  createRunId?: () => string
 }
 export type OnboardingSessionResponse = { completed: boolean; session: OnboardingSession | null }
 
@@ -57,7 +60,12 @@ export class ConversationalOnboardingService {
 
   async get(userId: string, workspaceId: string): Promise<OnboardingSessionResponse> {
     const record = await this.deps.repository.get(userId)
-    if (!record || record.hasSeenOnboarding) return { completed: Boolean(record?.hasSeenOnboarding), session: null }
+    if (!record) return { completed: false, session: null }
+    if (record.hasSeenOnboarding) {
+      const completed = this.read(record.onboardingSession, userId)
+      if (completed?.session.step === 'complete' && completed.session.workspaceId === workspaceId) await this.recover(completed)
+      return { completed: true, session: null }
+    }
     const state = this.read(record.onboardingSession, userId)
     if (!state) return { completed: false, session: null }
     this.assertWorkspace(state.session, workspaceId)
@@ -81,14 +89,16 @@ export class ConversationalOnboardingService {
     const thread = await this.deps.effects.agents.resolveMainThread({ actorUserId: userId, workspaceId, agentId: overlay.id })
     const profile = { name: '', about: '', daily: '' }
     const reply = await this.makeReply('name', profile, false, {})
+    const runId = this.deps.createRunId?.() ?? randomUUID()
+    if (!OnboardingRunIdSchema.safeParse(runId).success) throw new OnboardingServiceError('Onboarding run is invalid', 500, 'run_invalid')
     const session: OnboardingSession = {
-      version: 1, revision: 1, workspaceId, conversationId: thread.conversationId,
+      version: 1, runId, revision: 1, workspaceId, conversationId: thread.conversationId,
       agentId: overlay.id, agentPrincipalId: overlay.principalId, step: 'name', profile,
       aiEnabled: false, reply, employees: [], suggestions: [], createdAgentIds: [],
     }
     return await this.commit(userId, workspaceId, 0, {
       version: 1, userId, session,
-      outbox: [{ clientNonce: this.nonce(userId, 1, 'assistant'), content: `${ONBOARDING_INTRO}\n\n${reply.message}`, kind: 'assistant' }],
+      outbox: [{ clientNonce: this.nonce(userId, runId, 1, 'assistant'), content: `${ONBOARDING_INTRO}\n\n${reply.message}`, kind: 'assistant' }],
     }, false)
   }
 
@@ -110,7 +120,7 @@ export class ConversationalOnboardingService {
     if (!state) throw new OnboardingServiceError('Start onboarding before continuing', 409, 'session_not_started')
     this.assertWorkspace(state.session, workspaceId)
     await this.recover(state)
-    if (action.action === 'start' || action.revision !== state.session.revision) {
+    if (action.action === 'start' || action.runId !== state.session.runId || action.revision !== state.session.revision) {
       return { completed: false, session: state.session }
     }
     const next = await this.reduce(state, userId, action)
@@ -141,8 +151,8 @@ export class ConversationalOnboardingService {
       return {
         completed: false,
         state: { ...state, session: { ...current, revision, step, profile, reply, employees: reply.employees ?? [], suggestions: reply.suggestions ?? [] },
-          outbox: [{ clientNonce: this.nonce(userId, revision, 'user'), content: value, kind: 'user' },
-            { clientNonce: this.nonce(userId, revision, 'assistant'), content: reply.message, kind: 'assistant' }] },
+          outbox: [{ clientNonce: this.nonce(userId, current.runId, revision, 'user'), content: value, kind: 'user' as const },
+            { clientNonce: this.nonce(userId, current.runId, revision, 'assistant'), content: reply.message, kind: 'assistant' as const }] },
       }
     }
     if (action.action === 'advance') {
@@ -182,8 +192,10 @@ export class ConversationalOnboardingService {
       const step: OnboardingStep = current.step === 'employees' ? 'connections' : current.step === 'connections' ? 'memories' : current.step === 'memories' ? 'teammates' : 'task'
       const reply = await this.makeReply(step, current.profile, current.aiEnabled, {})
       const revision = current.revision + 1
+      const summary = onboardingAdvanceSummary(current.step, action)
       return { completed: false, state: { ...state, session: { ...current, revision, step, reply, employees: reply.employees ?? [], suggestions: reply.suggestions ?? [], createdAgentIds },
-        outbox: [{ clientNonce: this.nonce(userId, revision, 'assistant'), content: reply.message, kind: 'assistant' }] } }
+        outbox: [{ clientNonce: this.nonce(userId, current.runId, revision, 'user'), content: summary, kind: 'user' as const },
+          { clientNonce: this.nonce(userId, current.runId, revision, 'assistant'), content: reply.message, kind: 'assistant' as const }] } }
     }
     if (current.step !== 'task') throw new OnboardingServiceError('Finish is only available from the task step', 409, 'invalid_step')
     let task: Awaited<ReturnType<WorkService['get']>>
@@ -199,11 +211,27 @@ export class ConversationalOnboardingService {
     if (task.workspaceId !== current.workspaceId || task.createdBy !== userId) throw new OnboardingServiceError('Task is not available in this workspace', 403, 'task_forbidden')
     const reply = await this.makeReply('complete', current.profile, current.aiEnabled, {})
     const revision = current.revision + 1
-    return { completed: true, state: { ...state, session: { ...current, revision, step: 'complete', reply, taskId: task.id }, outbox: [{ clientNonce: this.nonce(userId, revision, 'assistant'), content: reply.message, kind: 'assistant' }] } }
+    return {
+      completed: true,
+      state: {
+        ...state,
+        session: { ...current, revision, step: 'complete' as const, reply, taskId: task.id },
+        outbox: [
+          { clientNonce: this.nonce(userId, current.runId, revision, 'user'), content: task.title.trim(), kind: 'user' as const },
+          { clientNonce: this.nonce(userId, current.runId, revision, 'assistant'), content: reply.message, kind: 'assistant' as const },
+        ],
+      },
+    }
   }
 
   private async commit(userId: string, workspaceId: string, expectedRevision: number, state: StoredState, completed: boolean) {
-    const result = await this.deps.repository.compareAndSet({ userId, expectedRevision, onboardingSession: this.serialize(state), hasSeenOnboarding: completed })
+    const result = await this.deps.repository.compareAndSet({
+      userId,
+      expectedRevision,
+      expectedRunId: expectedRevision === 0 ? undefined : state.session.runId,
+      onboardingSession: this.serialize(state),
+      hasSeenOnboarding: completed,
+    })
     if (!result.ok) {
       const current = await this.deps.repository.get(userId)
       if (!current?.onboardingSession) return { completed: Boolean(current?.hasSeenOnboarding), session: null }
@@ -224,12 +252,17 @@ export class ConversationalOnboardingService {
 
   private async recover(state: StoredState) {
     for (const message of state.outbox) {
-      const base = { actorUserId: state.userId, clientNonce: message.clientNonce, content: message.content, conversationId: state.session.conversationId, turnId: `onboarding:${state.userId}:${state.session.revision}`, workspaceId: state.session.workspaceId }
+      const base = { actorUserId: state.userId, clientNonce: message.clientNonce, content: message.content, conversationId: state.session.conversationId, turnId: `onboarding:${state.userId}:${state.session.runId}:${state.session.revision}`, workspaceId: state.session.workspaceId }
       if (message.kind === 'user') await this.deps.effects.collaboration.addMessage(base)
       else await this.deps.effects.collaboration.addAgentMessage({ ...base, authorPrincipalId: state.session.agentPrincipalId, modelId: 'onboarding:prepared' })
     }
     if (!state.outbox.length) return
-    if (!await this.deps.repository.clearOutbox({ userId: state.userId, expectedRevision: state.session.revision, onboardingSession: this.serialize({ ...state, outbox: [] }) })) {
+    if (!await this.deps.repository.clearOutbox({
+      userId: state.userId,
+      expectedRunId: state.session.runId,
+      expectedRevision: state.session.revision,
+      onboardingSession: this.serialize({ ...state, outbox: [] }),
+    })) {
       throw new OnboardingServiceError('Onboarding transcript is busy; retry shortly', 409, 'transcript_busy')
     }
     state.outbox.length = 0
@@ -257,7 +290,7 @@ export class ConversationalOnboardingService {
   private assertWorkspace(session: OnboardingSession, workspaceId: string) {
     if (session.workspaceId !== workspaceId) throw new OnboardingServiceError('Onboarding is already in progress in another workspace', 409, 'workspace_mismatch')
   }
-  private nonce(userId: string, revision: number, kind: string) { return `onboarding:${userId}:${revision}:${kind}` }
+  private nonce(userId: string, runId: string, revision: number, kind: string) { return `onboarding:${userId}:${runId}:${revision}:${kind}` }
 }
 
 function isValidState(value: unknown, userId: string): value is StoredState {
@@ -266,9 +299,10 @@ function isValidState(value: unknown, userId: string): value is StoredState {
   if (state.version !== 1 || state.userId !== userId || !Array.isArray(state.outbox) || state.outbox.length > 2 || !isExactKeys(state, ['version', 'userId', 'session', 'outbox'])) return false
   if (!state.session || typeof state.session !== 'object' || Array.isArray(state.session)) return false
   const session = state.session as Record<string, unknown>
-  const sessionKeys = ['version', 'revision', 'workspaceId', 'conversationId', 'agentId', 'agentPrincipalId', 'step', 'profile', 'aiEnabled', 'reply', 'employees', 'suggestions', 'createdAgentIds', 'taskId']
+  const sessionKeys = ['version', 'runId', 'revision', 'workspaceId', 'conversationId', 'agentId', 'agentPrincipalId', 'step', 'profile', 'aiEnabled', 'reply', 'employees', 'suggestions', 'createdAgentIds', 'taskId']
   if (!isExactKeys(session, session.taskId === undefined ? sessionKeys.slice(0, -1) : sessionKeys)
     || session.version !== 1
+    || !OnboardingRunIdSchema.safeParse(session.runId).success
     || !Number.isInteger(session.revision)
     || (session.revision as number) < 1
     || !['name', 'about', 'daily', 'employees', 'connections', 'memories', 'teammates', 'task', 'complete'].includes(String(session.step))
@@ -299,6 +333,16 @@ function isValidState(value: unknown, userId: string): value is StoredState {
     || !boundedString((message as Record<string, unknown>).content, 1, 8000)
     || !['user', 'assistant'].includes(String((message as Record<string, unknown>).kind)))) return false
   return true
+}
+
+function onboardingAdvanceSummary(
+  step: OnboardingStep,
+  action: Extract<OnboardingAction, { action: 'advance' }>,
+): string {
+  if (step === 'employees') return action.agentIds?.length ? `Selected ${action.agentIds.length} AI employee${action.agentIds.length === 1 ? '' : 's'}.` : 'Skipped selecting AI employees.'
+  if (step === 'memories') return action.memoryIds?.length ? `Imported ${action.memoryIds.length} Personal context item${action.memoryIds.length === 1 ? '' : 's'}.` : 'Skipped importing Personal context.'
+  if (step === 'teammates') return action.invitationIds?.length ? `Invited ${action.invitationIds.length} teammate${action.invitationIds.length === 1 ? '' : 's'}.` : 'Skipped inviting teammates.'
+  return 'Skipped connecting tools.'
 }
 
 function isValidReply(value: unknown): value is OnboardingReply {
