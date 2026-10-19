@@ -21,6 +21,7 @@ import type {
 } from '../AttachmentPreviewShell'
 import type { GeneratedUiConnectorActions } from '../GeneratedUiCard'
 import { UserMessageBubble } from '../UserMessageBubble'
+import { Message, MessageContent } from '@overlay/ui/ai'
 import { WorkedForGroup } from '../exchange'
 import type { GeneratedUiData } from '@overlay/chat-core/generated-ui'
 import { UsageExhaustedNotice } from '../UsageExhaustedNotice'
@@ -340,7 +341,8 @@ function ChatExchangeAssistantBody({
   showModelLabel,
 }: ChatExchangeAssistantBodyProps) {
   return (
-    <>
+    <Message>
+      <MessageContent className="gap-2">
         {exchModelList.length > 1 && (
           <ExchangeModelTabs
             exchModelList={exchModelList}
@@ -406,8 +408,8 @@ function ChatExchangeAssistantBody({
             showModelLabel={showModelLabel}
           />
         )}
-
-    </>
+      </MessageContent>
+    </Message>
   )
 }
 
@@ -468,8 +470,8 @@ function ExchangeUserMessage({
 }) {
   const showTextBubble = userBodyText.length > 0
   return (
-    <div className="flex min-w-0 justify-end">
-      <div className="flex min-w-0 max-w-[min(92%,36rem)] flex-col items-end gap-2 sm:max-w-[75%]">
+    <Message align="end">
+      <MessageContent className="max-w-[min(92%,36rem)] gap-2 sm:max-w-[75%]">
         {replyThreadMeta && (
           <Button variant="ghost"
             type="button"
@@ -544,8 +546,8 @@ function ExchangeUserMessage({
             <UserMessageActions markdown={userBodyText} disabled={isExiting} />
           </>
         )}
-      </div>
-    </div>
+      </MessageContent>
+    </Message>
   )
 }
 

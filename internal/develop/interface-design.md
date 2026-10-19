@@ -436,6 +436,17 @@ capabilities only. Public marketing pages define their own canonical paths so
 they do not inherit the root homepage canonical.
 
 
+## Chat AI primitives (`@overlay/ui/ai`)
+
+Chat surfaces build on shadcn AI Elements primitives copied into `packages/overlay-ui/src/components/ui` and exported from `@overlay/ui/ai` (kept out of the main barrel so Shiki only loads where chat renders): `Message`, `Bubble`, `Trace`, `CodeBlock` (+ `useHighlightedCode`, Shiki JS engine, GitHub light/dark themes that presets never tint), `MessageScroller` (`@shadcn/react`), `Item`, `InputGroup`, `Attachment`, `HoverCard`, `Collapsible`, `Spinner`. Upstream semantic classes are rewritten to Overlay variables (`bg-(--surface-subtle)`, `text-(--muted)`, `text-(--danger)`); `--muted` is a text color here, so never add a `--color-muted` theme alias. Every Trace step uses the Orb in `TraceIcon`; a running step's title shimmers (CSS in `styles.css`, off under reduced motion).
+
+Visual rules for these and every new component:
+
+1. **Flat and borderless.** No resting borders or rings on cards, code blocks, the composer, chips, buttons, approval items, popovers or sidebars. Surfaces differ by fill only (page, sidebar, subtle, elevated). Floating layers keep a soft shadow. Focus rings stay for keyboard focus; destructive states tint the fill.
+2. **Solid headers, no blur.** Page and sidebar headers use the same fill as the surface below them, with no divider and no backdrop blur.
+3. **One model selector.** Model menus render `ModelSelector` from `@overlay/chat-react`: Text / Image / Video at the top, a filled search field, then a provider rail (Favorites star, then one `ProviderLogo` per provider) beside the list grouped by provider. Rows read logo, name, favorite star, selected check, capability chips. Search collapses to one flat list. Free-tier Auto stays pinned on top. Favorites are per browser (`overlay:favorite-models`) and survive blocked storage in memory.
+4. **One Prompt Input.** Every chat composer is built from `PromptInput` parts in `@overlay/chat-react` (`PromptInputBody`, `PromptInputFooter`, `PromptInputTools`, `PromptInputButton`, `PromptInputSubmit`). Footer order: +, @, optional /, tool chips, model controls, submit (ArrowUp, spinner while submitted, stop while streaming). In web chat the model button lives in the composer, not the header.
+
 ## Streamed agent replies
 
 Markdown table cells wrap long identifiers and hashes without changing their text.
