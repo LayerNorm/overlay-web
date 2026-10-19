@@ -3,15 +3,9 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef, type ReactNode } from 'react'
 import { KNOWLEDGE_RECONCILE_EVENT } from '@overlay/app-core'
 import { trackSessionRefresh } from '@/shared/observability/client-metrics'
+import { requestSessionState, type BrowserAuthUser } from '@/shared/auth/browser-session'
 
-export interface AuthUser {
-  id: string
-  email: string
-  firstName?: string
-  lastName?: string
-  profilePictureUrl?: string
-  emailVerified?: boolean
-}
+export type AuthUser = BrowserAuthUser
 
 interface AuthContextType {
   user: AuthUser | null
@@ -23,66 +17,10 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 const SESSION_CHECK_INTERVAL_MS = 4 * 60 * 1000
-const SESSION_REFRESH_LOCK_NAME = 'overlay:auth-session-refresh'
 // Minimum time after a successful session check before a focus/visibility
 // refresh is allowed.  Prevents redundant checks when the user rapidly
 // switches tabs.
 const SESSION_MIN_STALE_BEFORE_FOCUS_MS = 30 * 1000
-
-type SessionCheckResult =
-  | { status: 'authenticated'; user: AuthUser }
-  | { status: 'unauthenticated' }
-  | { status: 'transient-error' }
-
-let sessionCheckInFlight: Promise<SessionCheckResult> | null = null
-
-async function fetchSessionState(): Promise<SessionCheckResult> {
-  const response = await fetch('/api/auth/session', {
-    credentials: 'same-origin',
-    cache: 'no-store',
-    signal: AbortSignal.timeout(30_000),
-  })
-  const contentType = response.headers.get('content-type') || ''
-  if (!response.ok || !contentType.includes('application/json')) {
-    return { status: 'transient-error' }
-  }
-
-  const data = await response.json() as {
-    authenticated?: boolean
-    user?: AuthUser
-  }
-  return data.authenticated && data.user
-    ? { status: 'authenticated', user: data.user }
-    : { status: 'unauthenticated' }
-}
-
-async function runWithSessionRefreshLock(
-  run: () => Promise<SessionCheckResult>,
-): Promise<SessionCheckResult> {
-  if (typeof navigator !== 'undefined' && navigator.locks) {
-    return await navigator.locks.request(
-      SESSION_REFRESH_LOCK_NAME,
-      async () => await run(),
-    )
-  }
-  return await run()
-}
-
-function requestSessionState(): Promise<SessionCheckResult> {
-  if (sessionCheckInFlight) return sessionCheckInFlight
-
-  const run = () => fetchSessionState().catch((error) => {
-    console.error('[Auth] Session check failed:', error)
-    return { status: 'transient-error' } as const
-  })
-  const request = runWithSessionRefreshLock(run)
-
-  sessionCheckInFlight = request
-  void request.finally(() => {
-    if (sessionCheckInFlight === request) sessionCheckInFlight = null
-  })
-  return request
-}
 
 type AuthProviderProps = {
   children: ReactNode
