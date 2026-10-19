@@ -34,6 +34,7 @@
     "@overlay/chat-core": "file:../overlay-chat-core",
     "@overlay/modules-react": "file:../overlay-modules-react",
     "@overlay/ui": "file:../overlay-ui",
+    "@streamdown/math": "^1.0.3",
     "katex": "^0.16.11",
     "lucide-react": "^0.575.0",
     "react-markdown": "^10.1.0",
@@ -42,6 +43,7 @@
     "rehype-sanitize": "^6.0.0",
     "remark-gfm": "^4.0.1",
     "remark-math": "^6.0.0",
+    "streamdown": "^2.7.0",
     "unified": "^11.0.5"
   },
   "peerDependencies": {

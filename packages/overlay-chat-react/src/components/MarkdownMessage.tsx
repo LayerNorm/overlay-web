@@ -2,24 +2,23 @@ import 'katex/dist/katex.min.css'
 import { Orb } from '@overlay/ui'
 import { type ReactNode, memo, useMemo } from 'react'
 import { AtSign, BookOpen, Bot, FileText, Hash, Plug, Server, Sparkles } from 'lucide-react'
-import ReactMarkdown from 'react-markdown'
+import { Streamdown } from 'streamdown'
+import type { Pluggable } from 'unified'
 import type { SourceCitationMap } from '../lib/source-citations'
 import { knowledgeChipLabel, knowledgeSourcesFromCitations } from '../lib/knowledge-sources'
 import { webSourceDisplayKey, type WebSourceItem } from '../lib/web-sources'
-import { shimIncompleteMarkdown } from '../lib/shim-incomplete-markdown'
 import type { ChatStreamingMode } from '../context/chat-settings'
 import { WebSourceTooltip } from './WebSourceTooltip'
 import type {
   AttachmentPreview,
   AttachmentPreviewOpenOptions,
 } from './AttachmentPreviewShell'
-import { appendStreamMarker, normalizeGeneratedMarkdown } from './markdown/normalization'
-import { markdownRehypePlugins, markdownRehypePluginsStreaming, markdownRemarkPlugins } from './markdown/plugins'
+import { normalizeGeneratedMarkdown } from './markdown/normalization'
+import { streamdownMath, streamdownRehypePlugins, streamdownRemarkPlugins } from './markdown/plugins'
 import { createBaseMdComponents, extractLinkText } from './markdown/renderers'
-import { splitStreamingMarkdown, useSmoothStreamedText } from './markdown/streaming'
 import { recordRender, timeSync } from '../lib/perf-debug'
 import {
-  createMentionRemarkPlugin,
+  remarkOverlayMentions,
   isMentionHref,
   mentionChipClass,
   type ChatMessageMention,
@@ -68,7 +67,6 @@ function MarkdownMessageImpl({
   sourceCitations,
   webSources,
   suppressTypingIndicator = false,
-  streamingMode = 'chunk',
   resolveFileHref,
   appBaseUrl = null,
   mentions,
@@ -126,6 +124,9 @@ function MarkdownMessageImpl({
 
       return {
         ...baseComponents,
+        // Keep semantic emphasis; Streamdown's defaults render styled spans.
+        strong: ({ children }: { children?: ReactNode }) => <strong>{children}</strong>,
+        em: ({ children }: { children?: ReactNode }) => <em>{children}</em>,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         a(props: any) {
           const href = props.href
@@ -238,106 +239,32 @@ function MarkdownMessageImpl({
     [knowledgeSources, sourceCitations, webSources, appBaseUrl, mentions, renderMentionAvatar, onOpenAttachmentPreview, resolveFileHref],
   )
   const activeRemarkPlugins = useMemo(
-    () => [...markdownRemarkPlugins, createMentionRemarkPlugin(mentions)],
+    (): Pluggable[] => [...streamdownRemarkPlugins, [remarkOverlayMentions, { mentions: mentions ?? [] }]],
     [mentions],
   )
-  // Smooth pacer: while streaming in token mode, reveal the normalized text one
-  // character at a time at a steady rate. When not streaming (or in chunk mode),
-  // this returns `normalizedDisplay` immediately so historical renders are untouched.
-  const pacedDisplay = useSmoothStreamedText(
-    normalizedDisplay,
-    isStreaming,
-    streamingMode === 'token',
-  )
-
-  // Token mode: render the entire shimmed document in one pass so React can reconcile
-  // stable nodes and only the tail paragraph/row/code-line actually re-renders.
-  // Append the streaming marker inline so the Overlay logo sits at the right side
-  // of the most recent token (and pulses while generation continues).
-  const tokenDisplay = useMemo(() => {
-    if (!(isStreaming && streamingMode === 'token')) return normalizedDisplay
-    const shimmed = shimIncompleteMarkdown(pacedDisplay)
-    return appendStreamMarker(shimmed)
-  }, [normalizedDisplay, pacedDisplay, isStreaming, streamingMode])
-
-  // Activate the per-character wrap plugin only while streaming in token mode.
-  // Outside streaming, the plain rehype pipeline runs so the final DOM is clean
-  // plain text (no span-per-character overhead in chat history).
-  const activeRehypePlugins = useMemo(() => {
-    if (isStreaming && streamingMode === 'token') return markdownRehypePluginsStreaming
-    return markdownRehypePlugins
-  }, [isStreaming, streamingMode])
-
-  // Chunk mode only: paragraph split + trailing pulsing marker. Token mode always
-  // uses the single-pass render below (both during and after streaming) so React
-  // reconciles the existing DOM when streaming ends instead of unmounting the whole
-  // subtree and re-animating every block — which previously caused a one-shot
-  // "whole answer blinks" flash at the moment the response finished.
-  const { completedBlocks, streamTail } = useMemo(
-    () => splitStreamingMarkdown(normalizedDisplay),
-    [normalizedDisplay],
-  )
-  const trailingBlock = streamTail.trim() ? streamTail.trim() : ''
-  const inChunkMode = streamingMode === 'chunk'
-  const showInlineTypingDots = isStreaming && !suppressTypingIndicator && inChunkMode
+  const showInlineMarker = isStreaming && !suppressTypingIndicator
 
   if (!normalizedDisplay.trim() && !isStreaming) {
     return null
   }
 
-  if (!inChunkMode) {
-    // Token mode — single ReactMarkdown pass over the (optionally shimmed + marker)
-    // text. While streaming, the `markdown-content--streaming` class plays a gentle
-    // opacity/translate fade-in each time a new block (paragraph, list item, table
-    // row, heading, pre, blockquote) enters the DOM; within a given block, continued
-    // token updates just extend the existing text so the pulsing
-    // `.overlay-stream-marker` at the tail carries the "still generating" cue. When
-    // no tokens have arrived yet, the marker stands alone and scales up via CSS to
-    // act as a large "thinking" indicator. When streaming ends, the class is dropped
-    // and the marker disappears, but the underlying ReactMarkdown tree stays mounted
-    // so the transition is seamless (no remount, no re-animation).
-    return (
-      <div className={`markdown-content${isStreaming ? ' markdown-content--streaming' : ''}`}>
-        <ReactMarkdown
-          remarkPlugins={activeRemarkPlugins}
-          rehypePlugins={activeRehypePlugins}
-          components={mdRenderComponents}
-        >
-          {tokenDisplay}
-        </ReactMarkdown>
-      </div>
-    )
-  }
-
+  // Streamdown memoizes per block and closes unfinished markdown, so a streaming reply
+  // updates only its last block and never shows raw syntax.
   return (
     <div className="markdown-content">
-      {completedBlocks.map((block, index) => (
-        // Parsed blocks have no id; index is the stable identity for append-only output.
-        // react-doctor-disable-next-line react-doctor/no-array-index-as-key
-        <div key={`md-block-${index}`} className="md-block-appear">
-          <ReactMarkdown
-            remarkPlugins={activeRemarkPlugins}
-            rehypePlugins={markdownRehypePlugins}
-            components={mdRenderComponents}
-          >
-            {block}
-          </ReactMarkdown>
-        </div>
-      ))}
-
-      {trailingBlock ? (
-        <div key={`md-block-${completedBlocks.length}`} className="md-block-appear">
-          <ReactMarkdown
-            remarkPlugins={activeRemarkPlugins}
-            rehypePlugins={markdownRehypePlugins}
-            components={mdRenderComponents}
-          >
-            {isStreaming ? shimIncompleteMarkdown(trailingBlock) : trailingBlock}
-          </ReactMarkdown>
-        </div>
-      ) : null}
-
-      {showInlineTypingDots ? (
+      <Streamdown
+        mode={isStreaming ? 'streaming' : 'static'}
+        isAnimating={isStreaming}
+        parseIncompleteMarkdown
+        controls={false}
+        remarkPlugins={activeRemarkPlugins}
+        rehypePlugins={streamdownRehypePlugins}
+        plugins={STREAMDOWN_PLUGINS}
+        components={mdRenderComponents}
+      >
+        {normalizedDisplay}
+      </Streamdown>
+      {showInlineMarker ? (
         <span className="overlay-stream-marker" aria-hidden>
           <Orb variant="metal" size={14} animated={false} label="" />
         </span>
@@ -345,6 +272,8 @@ function MarkdownMessageImpl({
     </div>
   )
 }
+
+const STREAMDOWN_PLUGINS = { math: streamdownMath }
 
 function sameWebSources(a?: WebSourceItem[], b?: WebSourceItem[]): boolean {
   if (a === b) return true
