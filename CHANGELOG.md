@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Keep onboarding tour controls inside the mobile navigation drawer, with visible navigation targets and automatic drawer cleanup when the tour ends.
+
 - Make conversational onboarding sessions reset-safe with run-scoped transcript recovery and durable summaries of validated user choices.
 
 - Recover browser API requests from an expired session without a page reload: share one locked session refresh with the auth provider, then retry once with the original mutation idempotency key. Signed-out users, permission denials, and failed refreshes remain failures.
