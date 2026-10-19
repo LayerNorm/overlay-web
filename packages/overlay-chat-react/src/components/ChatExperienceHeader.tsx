@@ -945,7 +945,7 @@ function ChatModelPicker({
           align="end"
           aria-label="Choose model"
           data-tour="model-picker"
-          className="w-[var(--radix-popover-trigger-width)] rounded-lg md:w-64"
+          className="w-[min(20rem,calc(100vw-1rem))] rounded-lg md:w-64"
         >
           {generationMode === 'text' && hoveredModelId && modelQualitiesPos ? (
             <ModelQualitiesHoverCard
