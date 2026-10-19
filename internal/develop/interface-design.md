@@ -424,6 +424,15 @@ capabilities only. Public marketing pages define their own canonical paths so
 they do not inherit the root homepage canonical.
 
 
+## Chat AI primitives (`@overlay/ui/ai`)
+
+Chat surfaces build on shadcn AI Elements primitives copied into `packages/overlay-ui/src/components/ui` and exported from `@overlay/ui/ai` (kept out of the main barrel so Shiki only loads where chat renders): `Message`, `Bubble`, `Trace`, `CodeBlock` (+ `useHighlightedCode`, Shiki JS engine, GitHub light/dark themes that presets never tint), `MessageScroller` (`@shadcn/react`), `Item`, `InputGroup`, `Attachment`, `HoverCard`, `Collapsible`, `Spinner`. Upstream semantic classes are rewritten to Overlay variables (`bg-(--surface-subtle)`, `text-(--muted)`, `text-(--danger)`); `--muted` is a text color here, so never add a `--color-muted` theme alias. Every Trace step uses the Orb in `TraceIcon`; a running step's title shimmers (CSS in `styles.css`, off under reduced motion).
+
+Visual rules for these and every new component:
+
+1. **Flat and borderless.** No resting borders or rings on cards, code blocks, the composer, chips, buttons, approval items, popovers or sidebars. Surfaces differ by fill only (page, sidebar, subtle, elevated). Floating layers keep a soft shadow. Focus rings stay for keyboard focus; destructive states tint the fill.
+2. **Solid headers, no blur.** Page and sidebar headers use the same fill as the surface below them, with no divider and no backdrop blur.
+
 ## Streamed agent replies
 
 Markdown table cells wrap long identifiers and hashes without changing their text.
