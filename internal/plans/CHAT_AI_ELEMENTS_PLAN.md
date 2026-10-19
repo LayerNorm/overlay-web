@@ -139,7 +139,7 @@ Adaptation rules for every copied file (from `SHADCN_MIGRATION_PLAN.md` and AGEN
 |---|---|---|
 | `packages/overlay-chat-react/src/components/ChatComposer.tsx` (450) and `src/features/chat/components/ChatComposer.tsx` (520) + `MentionInput` | **Prompt Input**: `InputGroup` with the textarea, attach button (`icon-sm`, outline, rounded), model menus in the `block-end` addon, submit (`ArrowUp` idle, spinner, stop) | `MentionInput` is a contenteditable editor (`mention-input-editor.ts`); it goes inside the group as the field, not replaced. Owner decision: merge both into one Prompt Input in `@overlay/chat-react`; both hosts render it. |
 | `AttachmentTray`, `ChatComposerAttachments`, `AttachmentPreviewShell` chips | **Attachment** `size="sm"` in the `block-start` addon with remove button | Previews keep using `AttachmentPreviewShell`. |
-| `ComprehensiveModelPicker`, `GenerationModeToggle` | **Model Selector**: a `Popover` + `Command` from the model button. Search on top. Left rail: Favorites star, then one logo per provider (click to jump, current group highlighted on scroll). List grouped by provider with section headers and a provider logo on every row. Typing in search collapses to one flat filtered list with no rail. **Text / Image / Video** segmented toggle next to attach (active segment shows its label); the mode swaps the model list and placeholder, and the effort menu shows only for text models that reason | Owner decision 6. This replaces the AGENTS.md "no provider grouping" rule (update it in slice 6). Providers are ordered by their best model and models within a provider by `CHAT_MODEL_QUALITY_PRIORITY`; free-tier Auto stays pinned on top; capability chips stay. Favorites are per user, stored in chat preferences (hover a row to star it). Provider logos: vendor the needed SVGs from `@lobehub/icons-static-svg` (MIT) as inline `currentColor` components in `@overlay/ui`, no runtime dependency. |
+| `ComprehensiveModelPicker`, `GenerationModeToggle` | **Model Selector**: a `Popover` + `Command` from the model button. Top to bottom: a **Text / Image / Video** segmented toggle (inside the dropdown, not in the composer), a filled search field, then a left rail (Favorites star, then one logo per provider; click to jump, current group highlighted on scroll) beside a list grouped by provider with section headers and a provider logo on every row. Row order: logo, name, favorite star, selected check, then capability chips (or the short description for image and video models). Typing collapses to one flat filtered list with no rail. The mode swaps the model list and placeholder; the effort menu shows only for text models that reason. Composer bottom row: attach (+), mention (@), spacer, model button, effort menu, send | Owner decision 6. This replaces the AGENTS.md "no provider grouping" rule (update it in slice 6). Providers are ordered by their best model and models within a provider by `CHAT_MODEL_QUALITY_PRIORITY`; free-tier Auto stays pinned on top; capability chips stay. Favorites are per user, stored in chat preferences (hover a row to star it). Provider logos: vendor the needed SVGs from `@lobehub/icons-static-svg` (MIT) as inline `currentColor` components in `@overlay/ui`, no runtime dependency. The @ button inserts `@` at the caret and opens the existing mention menu. |
 | Budget / usage | **Context** (Hover Card + Progress, from `messageMetadata` usage on finish) | New, small. Optional. |
 | Empty-state starters | **Suggestion** | Only if we keep starters. |
 
@@ -209,6 +209,13 @@ depends on 1.
   Act mode with tools, web search with citations, reopen a long thread, mobile
   width, light/dark/presets, keyboard only, reduced motion.
 
+## Visual rules (all components)
+
+Owner requirement, applied to every component in this migration and recorded in `internal/develop/interface-design.md` in slice 1:
+
+1. **Flat and borderless.** No borders on cards, code blocks, composer, chips, buttons, approval items, popovers or sidebars. Surfaces are told apart by fill only: `background` (page), `sidebar`, `muted` (bubbles, composer, code, items, chips), `muted-2` (controls sitting on a `muted` surface, selected rows), `popover` (floating layers, which keep a soft shadow and no ring). Focus rings stay for keyboard focus. Destructive states tint the fill rather than the border.
+2. **Blurred headers.** The page header and the sidebar header float over their scroll areas. Content scrolls under them and blurs progressively at their bottom edge (`backdrop-filter: blur(8px)` masked by a gradient, plus a short fade of the surface color), with no divider line. Scroll areas get top padding equal to the header height so nothing starts hidden. Wrap the blur in a shared `ScrollHeader` primitive in `@overlay/ui` so every page, the sidebar and settings use the same one.
+
 ## Decisions
 
 | # | Topic | Decision |
@@ -218,7 +225,8 @@ depends on 1.
 | 3 | Code theme | Shiki `github-light` / `github-dark-default` on Overlay surface colors. Theme presets do not tint code. |
 | 4 | Scroll position | A thread opens at the very bottom (`defaultScrollPosition="end"`). Follow the live edge while at the bottom, jump-to-latest button when scrolled up. |
 | 5 | Composer | One Prompt Input in `@overlay/chat-react`, used by both hosts. |
-| 6 | Model selector | Search, provider rail with Favorites, models grouped by provider with logos, and a Text / Image / Video toggle in the composer. |
+| 6 | Model selector | Text / Image / Video toggle at the top of the dropdown, search, provider rail with Favorites, models grouped by provider with logos; star and check sit left of the capability chips. Composer row: +, @, model, effort, send. |
+| 7 | Visual rules | Flat, borderless surfaces told apart by fill color, and progressively blurred page and sidebar headers (see Visual rules). |
 
 ## Risks
 
