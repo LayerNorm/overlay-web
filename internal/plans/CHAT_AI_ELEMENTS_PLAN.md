@@ -96,7 +96,7 @@ Adaptation rules for every copied file (from `SHADCN_MIGRATION_PLAN.md` and AGEN
 
 | Today | Target | Notes |
 |---|---|---|
-| `ChatTranscript.tsx` + `TranscriptScroll.ts` (custom near-bottom math, submitted-turn top inset, reserved spacer) | **Chat** pattern: `MessageScrollerProvider` + `MessageScroller`, `scrollAnchor` on the user turn, `autoScroll` while at the live edge, `defaultScrollPosition="last-anchor"`, `MessageScrollerButton` for "Jump to latest" | Upstream behavior matches our approved Class B differences (`intent-preserving-autoscroll`). Day separators become rows. Remove `TranscriptScroll.ts` and `useConversationScroll.ts` once parity tests pass. |
+| `ChatTranscript.tsx` + `TranscriptScroll.ts` (custom near-bottom math, submitted-turn top inset, reserved spacer) | **Chat** pattern: `MessageScrollerProvider` + `MessageScroller`, `scrollAnchor` on the user turn, `autoScroll` while at the live edge, `defaultScrollPosition="end"` (owner decision: a thread always opens at the very bottom), `MessageScrollerButton` for "Jump to latest" | Upstream behavior matches our approved Class B differences (`intent-preserving-autoscroll`). Day separators become rows. Remove `TranscriptScroll.ts` and `useConversationScroll.ts` once parity tests pass. |
 | `ChatExchange.tsx` (645 LOC) / `ExchangeUserMessage` / `UserMessageBubble` | **Message**: user turn is `Message align="end"` + `Bubble variant="muted"`; assistant turn is `Message` + `MessageContent` | Split `ChatExchange` into `UserTurn` and `AssistantTurn`; reply-context and attached-file chips move to `MessageHeader` + Attachment. |
 | `ExchangeActions.tsx`, `UserMessageActions.tsx` | `MessageFooter` with ghost `icon-sm` Buttons in Tooltips (Copy with check swap, Good/Bad as `aria-pressed` toggles, Retry, Edit) | Keeps the hover toolbar under the message (owner rule: message-level controls live there). Stop and Retry-after-failure stay in this toolbar. |
 | `ExchangeModelTabs` (multi-model Ask) | `MessageHeader` with existing `@overlay/ui` Tabs | No upstream pattern; keep ours. |
@@ -112,7 +112,7 @@ Adaptation rules for every copied file (from `SHADCN_MIGRATION_PLAN.md` and AGEN
 | `ToolCallRowWithReasoning`, `SingleToolCallRow` | **Tool**: `TraceLine` while running, `TraceCollapsible` once output exists, body is `CodeBlock size="sm"` (input + output, `variant="destructive"` on error) | `input-streaming`/`input-available` = running ("Running ..."); after stream stops = error, except client tools, which wait; `output-available` = none ("Ran ..."); `output-error` = error ("Failed to ..."); `output-denied` = none ("Denied ..."). Titles keep coming from `getDescriptiveToolLabel` phases. |
 | `ToolCallsCollapsedGroup` ("3 tools called") | Nested `Trace` inside a `TraceCollapsible` group line | Default collapsed, sequential (AGENTS.md: tool UIs minimal, collapsed, sequential). |
 | `WorkedForGroup` ("Worked for 12s, called 3 tools") | **Chain of Thought**: a summary line that expands into the steps | Keeps the current mode-toggle behavior: settled turns fold all work behind one line. |
-| `ToolLogoColumn` / `ToolLineLogo` (orb rail + connector line) | `TraceIcon` slot | Decision 1 below: orb vs Lucide status icons. The connector line goes away (Trace owns spacing). |
+| `ToolLogoColumn` / `ToolLineLogo` (orb rail + connector line) | `TraceIcon` slot holds the Orb on every step (owner decision) | Running/error/denied state shows through `TraceLine status` styling and the title, not by swapping the orb for a status icon. The connector line goes away (Trace owns spacing). |
 | `WebSearchToolBlock`, `SourcesPanel`, `ChatSourcesPanel` | **Sources**: "Used N sources" line that opens into one link row per source (deduped by URL, hostname fallback, favicon in `TraceIcon`) | The side panel stays for "view all"; the in-turn list becomes Sources. |
 | `WebSourceTooltip` + inline `[n]` chips in `MarkdownMessage` | **Inline Citation**: Hover Card on a `secondary` `xs` Button | Knowledge citations (`knowledgeChipLabel`) use the same component. |
 | `MemoryToolBlock` | Tool line with a `TraceDescription` of what was saved | |
@@ -129,15 +129,15 @@ Adaptation rules for every copied file (from `SHADCN_MIGRATION_PLAN.md` and AGEN
 
 | Today | Target | Notes |
 |---|---|---|
-| `MarkdownMessage.tsx` on `react-markdown` + `remark-gfm` + `remark-math`/`rehype-katex` + our `splitStreamingMarkdown`, `shimIncompleteMarkdown`, `useSmoothStreamedText`, mention plugin, citation chips | Decision 2: **Streamdown** (upstream default; handles incomplete markdown and memoizes blocks) or keep our pipeline. Either way fenced code routes to `CodeBlock` via `components.code` | Hard requirement (AGENTS.md): streaming renders in complete, formatted chunks with no per-character flicker. Spike both against `MarkdownMessage.streaming.test.ts` before choosing. |
-| `markdown/renderers.tsx` custom code block (header, lang label, copy, HTML render toggle) + `LazySyntaxHighlighter.tsx` (Prism, 24 lazy languages, one-dark/one-light) | `CodeBlock` + `CodeBlockHeader` (title = language), `CodeBlockCopyButton` (disabled until the fence closes: `useIsCodeFenceIncomplete` if Streamdown), HTML render toggle as an extra `CodeBlockActions` button. `useHighlightedCode` with Shiki JS engine, languages loaded on first use | Remove `react-syntax-highlighter` from root and `overlay-chat-react` deps. Shiki themes mapped to Overlay light/dark (decision 3). |
-| Math (`katex`) | Unchanged; Streamdown has a math plugin if chosen | |
+| `MarkdownMessage.tsx` on `react-markdown` + `remark-gfm` + `remark-math`/`rehype-katex` + our `splitStreamingMarkdown`, `shimIncompleteMarkdown`, `useSmoothStreamedText`, mention plugin, citation chips | **Streamdown** (recommended, decision 2): the current renderer flickers while streaming. Streamdown closes unterminated markdown and memoizes finished blocks. Fenced code routes to `CodeBlock` via `components.code` | Hard requirement (AGENTS.md): streaming renders in complete, formatted chunks with no per-character flicker. Our `rehypeWrapStreamChars` per-character spans and `useSmoothStreamedText` drip are the likely flicker sources and are dropped with the switch. Mentions and citation chips port as `components` overrides. |
+| `markdown/renderers.tsx` custom code block (header, lang label, copy, HTML render toggle) + `LazySyntaxHighlighter.tsx` (Prism, 24 lazy languages, one-dark/one-light) | `CodeBlock` + `CodeBlockHeader` (title = language), `CodeBlockCopyButton` (disabled until the fence closes: `useIsCodeFenceIncomplete` if Streamdown), HTML render toggle as an extra `CodeBlockActions` button. `useHighlightedCode` with Shiki JS engine, languages loaded on first use | Remove `react-syntax-highlighter` from root and `overlay-chat-react` deps. Shiki `github-light` / `github-dark-default` on Overlay surface colors; theme presets do not tint code (owner decision). |
+| Math: `remark-math` (single `$` on by default) + `rehype-katex` (`strict: 'ignore'`, `throwOnError: false`) | `@streamdown/math` via `createMathPlugin({ singleDollarTextMath: true })` | Same libraries (`remark-math`, `rehype-katex`, `katex`), so LaTeX keeps rendering. Streamdown defaults to `$$` only; the flag keeps today's `$...$` inline math. It also closes an unterminated `$$` while streaming. Parity tests: inline `$`, block `$$`, currency text, a broken equation. |
 
 ### Composer
 
 | Today | Target | Notes |
 |---|---|---|
-| `packages/overlay-chat-react/src/components/ChatComposer.tsx` (450) and `src/features/chat/components/ChatComposer.tsx` (520) + `MentionInput` | **Prompt Input**: `InputGroup` with the textarea, attach button (`icon-sm`, outline, rounded), model menus in the `block-end` addon, submit (`ArrowUp` idle, spinner, stop) | `MentionInput` is a contenteditable editor (`mention-input-editor.ts`); it goes inside the group as the field, not replaced. Converge the two composers onto one package component. |
+| `packages/overlay-chat-react/src/components/ChatComposer.tsx` (450) and `src/features/chat/components/ChatComposer.tsx` (520) + `MentionInput` | **Prompt Input**: `InputGroup` with the textarea, attach button (`icon-sm`, outline, rounded), model menus in the `block-end` addon, submit (`ArrowUp` idle, spinner, stop) | `MentionInput` is a contenteditable editor (`mention-input-editor.ts`); it goes inside the group as the field, not replaced. Owner decision: merge both into one Prompt Input in `@overlay/chat-react`; both hosts render it. |
 | `AttachmentTray`, `ChatComposerAttachments`, `AttachmentPreviewShell` chips | **Attachment** `size="sm"` in the `block-start` addon with remove button | Previews keep using `AttachmentPreviewShell`. |
 | `ComprehensiveModelPicker`, `GenerationModeToggle` | **Model Selector** layout (model menu + effort menu next to send) | Keep ordering rules (quality priority, Auto on top for free tier) and capability chips. |
 | Budget / usage | **Context** (Hover Card + Progress, from `messageMetadata` usage on finish) | New, small. Optional. |
@@ -182,12 +182,12 @@ presets, mobile width). Keep the branch merged with its base as #260 moves.
 
 | # | Slice | Contents | Done when |
 |---|---|---|---|
-| 0 | Plan + mockup | This doc; a standalone HTML mockup (`internal/plans/mockups/chat-ai-elements-mockup.html`) of one turn with reasoning, 3 tools, sources, code, citation, approval, and the composer | Owner approves the look and the open decisions below |
+| 0 | Plan + mockup | This doc; a standalone HTML mockup (`internal/plans/mockups/chat-ai-elements-mockup.html`) of one turn with reasoning, 3 tools, sources, code, citation, approval, and the composer | Owner approves the look |
 | 1 | Primitives | Add and adapt `collapsible`, `hover-card`, `item`, `input-group`, `spinner`, `message`, `bubble`, `trace`, `code-block` (+ Shiki hook/lib), `message-scroller` (+ `@shadcn/react`), `attachment` in `@overlay/ui`; `@overlay/ui/ai` entry; Storybook stories; unit tests. No consumer changes | Stories render in all themes; package tests green |
 | 2 | Code Block everywhere | Markdown fences, tool input/output, HTML render toggle; delete `LazySyntaxHighlighter` and `react-syntax-highlighter` | Bundle and highlight-latency numbers recorded; copy excludes line numbers |
 | 3 | Trace steps | `ai-elements/reasoning`, `tool`, `chain-of-thought`, `sources`; port web search, memory, browser, gated callout; delete `tool-rail.tsx`, `ToolCallsCollapsedGroup`, `WorkedForGroup` internals; update `tool-call-rows.test.tsx`, `tool-rail.test.tsx` | Every step type in the fixture renders as a Trace line with correct status |
-| 4 | Message + thread | `ai-elements/message` (user Bubble, assistant content, footer actions), `ChatTranscript` on Message Scroller, jump-to-latest button, last-anchor reopen; split `ChatExchange`; delete `TranscriptScroll.ts` | `ChatTranscript.test.tsx`, `TranscriptScroll` behaviors re-expressed as Message Scroller tests; no row re-render on scroll |
-| 5 | Markdown + citations | Streamdown spike vs current pipeline (decision 2), `ai-elements/inline-citation` for web and knowledge chips, mentions preserved | `MarkdownMessage.streaming.test.ts` green; no flicker in recorded streaming |
+| 4 | Message + thread | `ai-elements/message` (user Bubble, assistant content, footer actions), `ChatTranscript` on Message Scroller, jump-to-latest button, reopen at the very bottom; split `ChatExchange`; delete `TranscriptScroll.ts` | `ChatTranscript.test.tsx`, `TranscriptScroll` behaviors re-expressed as Message Scroller tests; no row re-render on scroll |
+| 5 | Markdown + citations | Streamdown with `@streamdown/math` (decision 2), `ai-elements/inline-citation` for web and knowledge chips, mentions preserved | `MarkdownMessage.streaming.test.ts` and math parity tests green; no flicker in recorded streaming |
 | 6 | Composer + approvals | `ai-elements/prompt-input` (one composer for both hosts), Attachment chips, Model Selector layout, Confirmation for approvals, Context meter, Terminal/Subagent/Plan where data exists | Send, stop, attach, mention, model switch, approve/deny all pass preview QA |
 | 7 | Other surfaces + cleanup | Rooms, DMs, shared chat, notes agent panel, work peek; prune `chat-surface.css`; lint guardrail that bans the removed components and direct `react-syntax-highlighter` imports | No legacy chat markup left; guardrail has bypass tests |
 
@@ -209,24 +209,15 @@ depends on 1.
   Act mode with tools, web search with citations, reopen a long thread, mobile
   width, light/dark/presets, keyboard only, reduced motion.
 
-## Open decisions
+## Decisions
 
-1. **Step icon.** Keep the metal Orb in `TraceIcon` for every step (brand), or use
-   upstream Lucide status icons (spinner, check, alert) with the orb only on the
-   Chain of Thought summary? Recommendation: Lucide status icons; it reads faster
-   and matches upstream.
-2. **Markdown renderer.** Adopt Streamdown, or keep our `react-markdown` pipeline
-   and only route fences to `CodeBlock`? Recommendation: spike in slice 5, adopt
-   Streamdown only if it passes the no-flicker test with mentions, math and
-   citations intact.
-3. **Code theme.** Which Shiki themes stand in for one-dark/one-light, and do
-   presets tint code blocks? Recommendation: `github-light` / `github-dark-default`
-   on Overlay surface colors, presets do not tint code.
-4. **Scroll behavior.** Accept Message Scroller defaults (reopen at last user
-   turn, not absolute bottom; jump-to-latest button)? Recommendation: yes.
-5. **Composer convergence.** Merge the package and `src` composers into one
-   Prompt Input in slice 6, or keep two hosts on shared parts? Recommendation:
-   one component.
+| # | Topic | Decision |
+|---|---|---|
+| 1 | Step icon | The Orb in `TraceIcon` on every step. Status reads from `TraceLine status` and the title. |
+| 2 | Markdown renderer | Pending owner. Recommended: Streamdown, because the current renderer flickers. LaTeX is kept through `@streamdown/math` with `singleDollarTextMath: true` (same KaTeX stack as today). |
+| 3 | Code theme | Shiki `github-light` / `github-dark-default` on Overlay surface colors. Theme presets do not tint code. |
+| 4 | Scroll position | A thread opens at the very bottom (`defaultScrollPosition="end"`). Follow the live edge while at the bottom, jump-to-latest button when scrolled up. |
+| 5 | Composer | One Prompt Input in `@overlay/chat-react`, used by both hosts. |
 
 ## Risks
 
