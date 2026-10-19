@@ -51,6 +51,23 @@
   --overlay-duration-fast: 150ms;
   --overlay-duration: 220ms;
   --overlay-duration-panel: 300ms;
+
+  /* shadcn token names, aliased to the palette above so presets carry through. */
+  --primary: var(--foreground);
+  --primary-foreground: var(--background);
+  --secondary: var(--surface-subtle);
+  --secondary-foreground: var(--foreground);
+  --muted-foreground: var(--muted);
+  --accent-foreground: var(--foreground);
+  --destructive: var(--danger);
+  --destructive-foreground: #ffffff;
+  --card: var(--surface-elevated);
+  --card-foreground: var(--foreground);
+  --popover: var(--surface-elevated);
+  --popover-foreground: var(--foreground);
+  --input: var(--input-border);
+  --ring: var(--muted-light);
+  --radius: 0.5rem;
 }
 
 [data-theme='dark'] {

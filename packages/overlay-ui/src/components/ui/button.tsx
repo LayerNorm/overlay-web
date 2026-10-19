@@ -4,7 +4,7 @@ import { cva, type VariantProps } from 'class-variance-authority'
 
 import { cn } from '../../utils/cn'
 
-export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger'
+export type ButtonVariant = 'primary' | 'secondary' | 'outline' | 'ghost' | 'link' | 'danger'
 export type ButtonSize = 'xs' | 'sm' | 'md' | 'lg' | 'icon' | 'icon-xs' | 'icon-sm'
 
 const buttonVariants = cva(
@@ -12,9 +12,11 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        primary: 'bg-(--foreground) text-(--background) hover:opacity-90',
-        secondary: 'border border-(--border) bg-(--surface-subtle) text-(--foreground) hover:bg-(--border)',
-        ghost: 'bg-transparent text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)',
+        primary: 'bg-primary text-primary-foreground hover:opacity-90',
+        secondary: 'border border-(--border) bg-secondary text-secondary-foreground hover:bg-(--border)',
+        outline: 'border border-(--border) bg-transparent text-(--foreground) hover:bg-(--surface-subtle)',
+        ghost: 'bg-transparent text-muted-foreground hover:bg-(--surface-subtle) hover:text-(--foreground)',
+        link: 'bg-transparent text-(--foreground) underline-offset-2 hover:underline',
         danger: 'bg-red-500 text-white hover:opacity-90',
       },
       size: {
@@ -27,6 +29,7 @@ const buttonVariants = cva(
         'icon-sm': 'size-8 rounded-lg p-0 [&_svg:not([class*=size-])]:size-4',
       },
     },
+    compoundVariants: [{ variant: 'link', class: 'h-auto rounded-none p-0' }],
     defaultVariants: {
       variant: 'secondary',
       size: 'md',
