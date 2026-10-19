@@ -353,7 +353,7 @@ export function useNotebookEditor({
     },
     editorProps: {
       attributes: {
-        class: 'app-note-editor',
+        class: 'typeset app-note-editor',
       },
       handlePaste(view, event) {
         const file = Array.from(event.clipboardData?.files ?? []).find((item) => item.type.startsWith('image/'))
