@@ -312,6 +312,7 @@ function ComposerSendButton({
       <Button variant="primary" size="icon" className="shrink-0"
         type="button"
         onClick={onStop}
+        aria-label="Stop generating"
         title="Stop"
       >
         <span className="h-3.5 w-3.5 rounded-xs bg-(--background)" />
