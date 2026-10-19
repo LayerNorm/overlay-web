@@ -60,7 +60,7 @@ export function UserMessageBubble({
     <Bubble variant="muted" align="end" className={className}>
       <BubbleContent
         className={cx(
-          'chat-user-bubble select-text',
+          'chat-user-bubble select-text rounded-[22px]',
           tone === 'room-self'
             ? 'room-message-self-bubble bg-(--room-message-self-bg)! text-(--room-message-self-text)'
             : 'text-(--foreground)',

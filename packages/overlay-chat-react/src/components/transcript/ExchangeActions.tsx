@@ -25,7 +25,7 @@ export interface ExchangeActionsProps {
   showModelLabel?: boolean
 }
 
-const ACTION_BUTTON_CLASS = 'text-(--muted) hover:text-(--foreground) disabled:opacity-30'
+const ACTION_BUTTON_CLASS = 'size-7 text-(--muted) hover:text-(--foreground) disabled:opacity-30'
 
 export function ExchangeActions({
   copyPlainText,
