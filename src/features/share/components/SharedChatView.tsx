@@ -73,7 +73,7 @@ function UserMessage({ message }: { message: Message }) {
                 key={part.url}
                 src={part.url}
                 alt=""
-                className="max-h-60 max-w-full rounded-lg border border-(--border) object-cover"
+                className="max-h-60 max-w-full rounded-lg object-cover"
               />
             ))}
           </div>
@@ -83,7 +83,7 @@ function UserMessage({ message }: { message: Message }) {
             {fileParts.map((part) => (
               <span
                 key={part.fileName}
-                className="inline-flex items-center gap-2 rounded-lg border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-xs text-(--muted)"
+                className="inline-flex items-center gap-2 rounded-lg bg-(--surface-subtle) px-3 py-1.5 text-xs text-(--muted)"
               >
                 {part.fileName ?? 'Attachment'}
               </span>
@@ -134,7 +134,7 @@ function AssistantMessage({ message }: { message: Message }) {
                     key={part.url}
                 src={part.url}
                 alt=""
-                className="max-h-96 max-w-full rounded-lg border border-(--border) object-contain"
+                className="max-h-96 max-w-full rounded-lg object-contain"
               />
             )
           }
@@ -160,7 +160,7 @@ export function SharedChatView({
 
   return (
     <div className="min-h-screen bg-(--background) text-(--foreground)">
-      <header className="sticky top-0 z-10 border-b border-(--border) bg-(--background)/95 backdrop-blur-sm">
+      <header className="sticky top-0 z-10 bg-(--background)">
         <div className="mx-auto flex max-w-3xl items-center justify-between gap-4 px-5 py-3">
           <div className="min-w-0">
             <h1 className='truncate text-sm font-medium'>
@@ -172,7 +172,7 @@ export function SharedChatView({
           </div>
           <Link
             href="/"
-            className="shrink-0 rounded-full border border-(--border) px-3 py-1 text-xs font-medium text-(--foreground) transition-colors hover:bg-(--surface-subtle)"
+            className="shrink-0 rounded-full bg-(--surface-subtle) px-3 py-1 text-xs font-medium text-(--foreground) transition-colors hover:bg-(--surface-muted)"
           >
             Open Overlay
           </Link>
@@ -214,7 +214,7 @@ export function SharedChatView({
       </main>
 
       <footer className="mx-auto max-w-3xl px-5 pb-10">
-        <div className="rounded-xl border border-(--border) bg-(--surface-subtle) px-4 py-3 text-xs text-(--muted)">
+        <div className="rounded-xl bg-(--surface-subtle) px-4 py-3 text-xs text-(--muted)">
           This is a read-only snapshot shared from{' '}
           <Link
             href='/'
