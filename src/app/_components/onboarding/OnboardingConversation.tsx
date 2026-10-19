@@ -43,7 +43,13 @@ export function OnboardingConversation({ session, initialName, onChange, onShowW
       try { onChange(await requestOnboarding(session.workspaceId)) } catch { /* Keep the last durable state available for retry. */ }
     } finally { working.current = false; setBusy(false); setPendingAnswer(null) }
   }
-  const act = async (action: OnboardingAction) => { onChange(await requestOnboarding(session.workspaceId, action)) }
+  const act = async (action: OnboardingAction) => {
+    const [next] = await Promise.all([
+      requestOnboarding(session.workspaceId, action),
+      new Promise((resolve) => window.setTimeout(resolve, 500)),
+    ])
+    onChange(next)
+  }
   const advance = (values: { agentIds?: string[]; memoryIds?: string[]; invitationIds?: string[] } = {}) => act({ action: 'advance', runId: session.runId, revision: session.revision, ...values })
   const skip = () => { void perform(() => advance()) }
   const answer = () => {

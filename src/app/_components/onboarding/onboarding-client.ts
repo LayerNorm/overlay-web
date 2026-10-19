@@ -1,4 +1,5 @@
 import type { OnboardingAction, OnboardingSession, OnboardingSessionResponse } from '@/shared/onboarding/session'
+import { fetchWithSessionRecovery } from '@/shared/auth/session-fetch'
 
 export function onboardingRequestInit(session: OnboardingSession, operation: string): RequestInit {
   return { headers: {
@@ -8,7 +9,7 @@ export function onboardingRequestInit(session: OnboardingSession, operation: str
 }
 
 export async function requestOnboarding(workspaceId: string, action?: OnboardingAction, signal?: AbortSignal): Promise<OnboardingSessionResponse> {
-  const response = await fetch('/api/v1/onboarding/session', {
+  const response = await fetchWithSessionRecovery('/api/v1/onboarding/session', {
     method: action ? 'POST' : 'GET',
     credentials: 'same-origin',
     cache: 'no-store',

@@ -63,7 +63,10 @@ export class ConversationalOnboardingService {
     if (!record) return { completed: false, session: null }
     if (record.hasSeenOnboarding) {
       const completed = this.read(record.onboardingSession, userId)
-      if (completed?.session.step === 'complete' && completed.session.workspaceId === workspaceId) await this.recover(completed)
+      if (completed?.session.step === 'complete' && completed.session.workspaceId === workspaceId) {
+        await this.recover(completed)
+        return { completed: true, session: completed.session }
+      }
       return { completed: true, session: null }
     }
     const state = this.read(record.onboardingSession, userId)

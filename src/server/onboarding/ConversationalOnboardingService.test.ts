@@ -305,6 +305,7 @@ test('GET recovers a completed final transcript outbox after a write failure', a
   assert.deepEqual(await f.service.get('user-1', 'workspace-2'), { completed: true, session: null })
   const result = await f.service.get('user-1', 'workspace-1')
   assert.equal(result.completed, true)
+  assert.equal(result.session?.taskId, 'task-1')
   assert.deepEqual(f.messages.slice(-2).map((message) => message.content), [
     'Review the launch plan',
     'Your first task is ready in Work. Happy working.',
