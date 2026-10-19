@@ -516,9 +516,8 @@ function PdfViewerStatusBar({
     <div className="flex shrink-0 items-center justify-between gap-3 border-t border-(--border) bg-(--surface-elevated) px-4 py-2 text-xs text-(--muted)">
       <span>{status}</span>
       {hasExtractedText ? (
-        <Button variant="ghost"
+        <Button variant="outline" size="sm" className="shrink-0"
           type="button"
-          className={unstyledButton("shrink-0 rounded-md border border-(--border) px-2.5 py-1.5 text-(--foreground) transition-colors hover:bg-(--surface-subtle)")}
           onClick={onToggleText}
         >
           {showingText ? 'Try PDF preview' : 'Show extracted text'}

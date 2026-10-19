@@ -124,9 +124,8 @@ export function WebhookSettings() {
             value={description}
             onChange={(event) => setDescription(event.target.value)}
           />
-          <Button variant="ghost"
+          <Button variant="primary" size="md"
             type="button"
-            className={unstyledButton(`inline-flex h-9 items-center justify-center gap-2 rounded-md bg-(--foreground) px-3 text-sm font-medium text-(--background) disabled:opacity-50`)}
             disabled={busy || !url.trim() || events.length === 0}
             onClick={() => void createSubscription()}
           >

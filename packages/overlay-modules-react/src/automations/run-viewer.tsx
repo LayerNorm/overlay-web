@@ -102,6 +102,7 @@ function RunModeSelector({
         type="button"
         onClick={() => onSelectMode('live')}
         disabled={liveDisabled}
+        // overlay:button-style: Segmented toggle.
         className={unstyledButton(`rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors ${
           mode === 'live'
             ? 'bg-(--surface-muted) text-(--foreground)'
@@ -113,6 +114,7 @@ function RunModeSelector({
       <Button variant="ghost"
         type="button"
         onClick={() => onSelectMode('replay')}
+        // overlay:button-style: Segmented toggle.
         className={unstyledButton(`rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors ${
           mode === 'replay'
             ? 'bg-(--surface-muted) text-(--foreground)'

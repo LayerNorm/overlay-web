@@ -75,17 +75,15 @@ export function PromptInputSubmit({
   const stopping = status === 'streaming' && Boolean(onStop)
   return (
     <Button
-      variant="ghost"
+      variant="primary"
+      size="icon"
       type="button"
       data-slot="prompt-input-submit"
       data-status={status}
       aria-label={stopping ? 'Stop generating' : 'Send message'}
       disabled={stopping ? false : disabled || status === 'submitted'}
       onClick={stopping ? () => onStop?.() : onClick}
-      className={unstyledButton(join(
-        'flex size-9 shrink-0 items-center justify-center rounded-lg bg-(--foreground) text-(--background) transition-opacity hover:opacity-80 disabled:opacity-40',
-        className,
-      ))}
+      className={join('shrink-0', className)}
       {...props}
     >
       {stopping ? (

@@ -245,6 +245,7 @@ function ToolbarButton({
     <Button variant="ghost"
       type="button"
       onClick={onClick}
+      // overlay:button-style: Toggle with a selected state.
       className={unstyledButton(`inline-flex h-7 w-7 items-center justify-center rounded-md transition-colors ${
         active
           ? 'bg-(--foreground) text-(--background)'

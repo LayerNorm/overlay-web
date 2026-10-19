@@ -40,6 +40,7 @@ export function OutputFilterMenu({
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
         aria-haspopup="listbox"
+        // overlay:button-style: Select trigger.
         className={unstyledButton(`flex h-8 min-h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md border border-(--border) bg-(--surface-subtle) px-2.5 py-0 text-left text-xs leading-none text-(--foreground) ${
           open ? '' : 'hover:bg-(--border)'
         }`)}

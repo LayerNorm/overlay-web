@@ -90,6 +90,7 @@ export function OtherAgentFields({ other, size, onChange, onSizeChange, onOpenMa
               <Button variant="ghost"
                 type="button"
                 onClick={() => setConnecting(true)}
+                // overlay:button-style: Account picker row, not a button.
                 className={unstyledButton(`flex w-full items-center justify-between rounded-xl border border-(--border) px-3 py-2.5 text-left text-sm text-(--foreground) transition-colors hover:bg-(--surface-subtle)`)}
               >
                 <span>Connect {AGENT_PROVIDERS[other.adapterId].label}</span>

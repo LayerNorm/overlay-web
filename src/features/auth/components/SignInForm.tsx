@@ -101,10 +101,10 @@ export function SignInForm({ redirectTo, onClose, ssoEnabled = true }: SignInFor
           placeholder="Enter your email"
           className={unstyledInput(`min-w-0 flex-1 rounded-xl border border-(--border) bg-(--surface-elevated) px-3 py-2.5 text-sm text-(--foreground) placeholder:text-(--muted) outline-hidden focus:border-(--muted) transition-colors`)}
         />
-        <Button variant="ghost"
+        <Button variant="secondary" size="lg"
           type="button"
           onClick={handleEmailContinue}
-          className={unstyledButton(`rounded-xl border border-(--border) bg-(--surface-subtle) px-3 py-2.5 text-sm font-medium text-(--foreground) transition-colors hover:bg-(--surface-elevated) whitespace-nowrap`)}
+ className="whitespace-nowrap"
         >
           Continue
         </Button>

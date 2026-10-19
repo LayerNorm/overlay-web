@@ -1,4 +1,3 @@
-import { unstyledButton } from '@overlay/ui/control-reset'
 import { Button } from '@overlay/ui/primitives'
 
 export function DraftSuggestionCard({
@@ -34,18 +33,16 @@ export function DraftSuggestionCard({
           </div>
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          <Button variant="ghost"
+          <Button variant="primary" size="sm"
             type="button"
             onClick={onPrimary}
-            className={unstyledButton(`inline-flex items-center rounded-md border border-(--border) bg-(--foreground) px-3 py-1.5 text-[12px] font-medium text-(--background) transition-colors hover:opacity-85`)}
           >
             {primaryLabel}
           </Button>
           {secondaryLabel && onSecondary ? (
-            <Button variant="ghost"
+            <Button variant="secondary" size="sm"
               type="button"
               onClick={onSecondary}
-              className={unstyledButton(`inline-flex items-center rounded-md border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-[12px] font-medium text-(--foreground) transition-colors hover:bg-(--border)`)}
             >
               {secondaryLabel}
             </Button>

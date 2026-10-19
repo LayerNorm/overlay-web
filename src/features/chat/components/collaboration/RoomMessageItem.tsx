@@ -588,7 +588,7 @@ function RoomMessageEditor({ editingContent, onEditingContentChange, onSaveEdit,
         type="button"
         onClick={onSaveEdit}
         aria-label="Save edit"
-        className="h-9 w-9 shrink-0 rounded-lg bg-(--foreground) p-0 text-(--background)"
+        className="shrink-0"
       >
         <Check size={14} />
       </Button>

@@ -223,6 +223,7 @@ export function DoneWhenSection({ items, editable, onChange }: { items: WorkDone
               aria-label={item.text}
               disabled={!editable}
               onClick={() => set(index, { checked: !item.checked })}
+              // overlay:button-style: Checkbox.
               className={unstyledButton(`mt-[3px] grid h-4 w-4 shrink-0 place-items-center rounded-[4px] border-[1.5px] transition-colors ${item.checked ? 'border-(--foreground) bg-(--foreground) text-(--background)' : 'border-(--muted-light) text-transparent'}`)}
             >
               <Check size={11} strokeWidth={3} aria-hidden />

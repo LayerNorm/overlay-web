@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Replace hand-styled buttons that copied the solid, gray or outlined look with the shared Button variants across chat, settings, sharing, notes and files, and extend `check:raw-controls` to fail on `unstyledButton()` strings that rebuild a variant or color classes passed to a non-ghost Button (exceptions carry an `overlay:button-style:` reason).
+
 - Give each page one solid create action (New skill, Add server, New note) and switch other hand-styled header, dialog and empty-state buttons on Skills, MCPs, Connectors, Notes and Automations to the shared `primary` and `secondary` Button variants.
 
 - Alias the shadcn design tokens (`--primary`, `--secondary`, `--muted-foreground`, `--destructive`, `--card`, `--popover`, `--input`, `--ring`, `--radius`) to the Overlay palette, and add `outline` and `link` Button variants plus `xs`, `icon-sm` and `icon-xs` sizes. No visual change.

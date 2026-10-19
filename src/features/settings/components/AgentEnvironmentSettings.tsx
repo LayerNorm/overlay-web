@@ -165,7 +165,7 @@ export function AgentEnvironmentSettings() {
                     <label className="block text-xs text-(--muted)">Approved project roots, one per line
                       <Textarea value={roots[environment.id] ?? (environment.kind === 'overlay_cloud' ? '/workspace' : '')} onChange={(event) => setRoots((current) => ({ ...current, [environment.id]: event.target.value }))} placeholder={environment.kind === 'overlay_cloud' ? '/workspace' : '/Users/you/Projects'} className={unstyledTextarea(`mt-2 min-h-20 w-full resize-y rounded-xl border border-(--border) bg-(--background) px-3 py-2 text-sm text-(--foreground) outline-hidden focus:ring-1 focus:ring-(--muted)`)} />
                     </label>
-                    <Button variant="ghost" type="button" disabled={busy !== null} onClick={() => void approve(environment.id)} className={unstyledButton(`rounded-full border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-xs font-medium text-(--foreground) transition-colors hover:bg-(--surface-elevated) disabled:opacity-50`)}>Approve environment</Button>
+                    <Button variant="secondary" size="sm" type="button" disabled={busy !== null} onClick={() => void approve(environment.id)}>Approve environment</Button>
                   </div>
                 ) : null}
                 {environment.status !== 'pending' && environment.status !== 'revoked' && environment.filesystemGrant ? (
@@ -176,7 +176,7 @@ export function AgentEnvironmentSettings() {
                           <Textarea value={roots[environment.id] ?? ''} onChange={(event) => setRoots((current) => ({ ...current, [environment.id]: event.target.value }))} className={unstyledTextarea(`mt-2 min-h-20 w-full resize-y rounded-xl border border-(--border) bg-(--background) px-3 py-2 text-sm text-(--foreground) outline-hidden focus:ring-1 focus:ring-(--muted)`)} />
                         </label>
                         <div className="flex gap-2">
-                          <Button variant="ghost" type="button" disabled={busy !== null} onClick={() => void updateRoots(environment.id)} className={unstyledButton(`rounded-full border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-xs font-medium text-(--foreground) transition-colors hover:bg-(--surface-elevated) disabled:opacity-50`)}>Save roots</Button>
+                          <Button variant="secondary" size="sm" type="button" disabled={busy !== null} onClick={() => void updateRoots(environment.id)}>Save roots</Button>
                           <Button variant="ghost" type="button" disabled={busy !== null} onClick={() => setEditingRoots(null)} className={unstyledButton(`rounded-full px-3 py-1.5 text-xs text-(--muted) hover:text-(--foreground)`)}>Cancel</Button>
                         </div>
                       </div>

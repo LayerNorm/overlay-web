@@ -568,6 +568,7 @@ function MemoriesHeaderActions({
       />
       <Button variant="ghost"
         onClick={onToggleSelectionMode}
+        // overlay:button-style: Toggle with a selected state.
         className={unstyledButton(`flex items-center gap-1.5 rounded-md border border-(--border) px-3 py-1.5 text-xs transition-colors ${
           selectionMode
             ? 'bg-(--surface-subtle) text-(--foreground)'

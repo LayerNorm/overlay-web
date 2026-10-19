@@ -75,22 +75,20 @@ export function PersonalMentionConversionPrompt({
       <span className="min-w-0 flex-1">
         You mentioned {names.join(', ')}. Send this in a shared conversation instead of your Personal chat; your existing Personal chat stays private.
       </span>
-      <Button
+      <Button size="sm"
         variant="primary"
         type="button"
         onClick={() => void create('dm')}
         disabled={Boolean(busy)}
-        className="h-8 gap-1.5 rounded-lg bg-(--foreground) px-2.5 font-medium text-(--background) disabled:opacity-60"
       >
         <MessageCircle size={13} />
         {busy === 'dm' ? 'Starting…' : 'Start DM'}
       </Button>
-      <Button
+      <Button size="sm"
         variant="secondary"
         type="button"
         onClick={() => void create('channel')}
         disabled={Boolean(busy)}
-        className="h-8 gap-1.5 rounded-lg border border-(--border) bg-(--surface-elevated) px-2.5 font-medium text-(--foreground) hover:bg-(--surface-elevated) disabled:opacity-60"
       >
         <Hash size={13} />
         {busy === 'channel' ? 'Creating…' : 'Private channel'}
