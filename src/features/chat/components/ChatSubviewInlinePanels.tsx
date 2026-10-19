@@ -42,7 +42,7 @@ function viewForConversationType(conversationType?: string): 'personal' | 'dms' 
   return 'personal'
 }
 
-export function ActivityInlinePanel({ onNavigate, indented = false }: { onNavigate?: () => void; indented?: boolean }) {
+export function ActivityInlinePanel({ onNavigate }: { onNavigate?: () => void }) {
   const router = useRouter()
   const pathname = usePathname() ?? ''
   const { notifications, notificationsReady } = useCollaborationRealtime()
@@ -110,10 +110,10 @@ export function ActivityInlinePanel({ onNavigate, indented = false }: { onNaviga
   }
 
   return (
-    <SidebarMenuSub className={indented ? undefined : 'ml-0 border-l-0 pl-0'}>
+    <SidebarMenuSub className="ml-0 border-l-0 pl-0">
       {items.map((item) => (
         <SidebarMenuSubItem key={item.id}>
-          <SidebarMenuSubButton onClick={() => void openNotification(item)}>
+          <SidebarMenuSubButton className="h-8 gap-2.5 text-sm" onClick={() => void openNotification(item)}>
             <Bell aria-hidden />
             <span className="min-w-0 flex-1 truncate">
               {item.title?.trim() || 'Notification'}

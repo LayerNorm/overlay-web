@@ -1,7 +1,7 @@
 'use client'
 
 import { Fragment, useState, type ReactNode } from 'react'
-import { ChevronRight, Loader2, Plus } from 'lucide-react'
+import { ChevronDown, Loader2, Plus } from 'lucide-react'
 import {
   Button,
   SidebarGroup,
@@ -17,7 +17,7 @@ export function badgeLabel(count: number) {
   return count > 99 ? '99+' : String(count)
 }
 
-const SECTION_HEADER_PX = 32
+const SECTION_HEADER_PX = 30
 
 /** Scoped row ids look like `workspace:dms`; sections are keyed by the view after the scope. */
 const sectionViewId = (id: string) => id.slice(id.indexOf(':') + 1)
@@ -93,14 +93,14 @@ export function PageSections({
         return (
           <Fragment key={section.id}>
             <div
-              className="sticky z-10 flex h-8 items-center gap-0.5 bg-(--sidebar-surface)"
+              className="group/section sticky z-10 flex h-[30px] items-center gap-0.5 bg-(--sidebar-surface)"
               style={{ top: index * SECTION_HEADER_PX, bottom: (sections.length - 1 - index) * SECTION_HEADER_PX }}
             >
               <SidebarMenuButton
                 aria-expanded={open}
                 isActive={!independent && section.active && multi}
                 disabled={section.locked}
-                className="h-7 flex-1 font-medium text-(--muted-light)"
+                className="h-[30px] w-auto flex-none gap-1 px-2 font-medium text-(--muted-light) hover:bg-transparent hover:text-(--foreground)"
                 onClick={() => {
                   if (independent || section.active) toggle(section.id)
                   else nav?.onSelect(section.id)
@@ -108,7 +108,7 @@ export function PageSections({
               >
                 {pending ? <Loader2 aria-hidden className="animate-spin" /> : null}
                 <span className="truncate">{section.label}</span>
-                <ChevronRight aria-hidden className={cn('opacity-60 transition-transform', open ? 'rotate-90' : null)} />
+                <ChevronDown aria-hidden className={cn('transition-transform', open ? null : '-rotate-90')} />
               </SidebarMenuButton>
               {section.badgeCount ? (
                 <span className="shrink-0 px-1 text-[10px] font-medium text-(--muted)">{badgeLabel(section.badgeCount)}</span>
@@ -121,14 +121,14 @@ export function PageSections({
                     type="button"
                     aria-label={sectionAction.label}
                     onClick={runAction}
-                    className="size-7 shrink-0 rounded-md text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)"
+                    className="ml-auto size-7 shrink-0 rounded-md text-(--muted) opacity-0 hover:bg-(--surface-subtle) hover:text-(--foreground) focus-visible:opacity-100 group-hover/section:opacity-100"
                   >
                     <Plus size={14} aria-hidden />
                   </Button>
                 </DelayedTooltip>
               ) : null}
             </div>
-            {open && content ? <div className="min-w-0 pb-2">{content}</div> : null}
+            {open && content ? <div className="min-w-0 pb-3">{content}</div> : null}
           </Fragment>
         )
       })}

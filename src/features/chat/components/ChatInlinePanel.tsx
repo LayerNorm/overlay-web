@@ -649,12 +649,12 @@ function ChatListRow({
   onCancelRename: () => void
 }) {
   const canRename = chat.conversationType !== 'dm' && chat.conversationType !== 'channel'
-  const hoverAction = 'top-1 md:opacity-0 group-hover/menu-sub-item:opacity-100 group-focus-within/menu-sub-item:opacity-100'
+  const hoverAction = 'top-1.5 md:opacity-0 group-hover/menu-sub-item:opacity-100 group-focus-within/menu-sub-item:opacity-100'
   return (
     <SidebarMenuSubItem
       className={cn(
         'overflow-hidden transition-all duration-200',
-        isDeleting ? 'max-h-0 -translate-y-1 opacity-0' : 'max-h-7 opacity-100',
+        isDeleting ? 'max-h-0 -translate-y-1 opacity-0' : 'max-h-8 opacity-100',
       )}
     >
       {!isPublicShowcase && isEditing ? (
@@ -698,7 +698,7 @@ function ChatListRow({
             isActive={active}
             aria-current={active ? 'page' : undefined}
             onClick={() => { if (!isDeleting) onOpenChat(chat) }}
-            className={isPublicShowcase ? undefined : canRename ? 'pr-14' : 'pr-8'}
+            className={cn('h-8 gap-2.5 text-sm', isPublicShowcase ? undefined : canRename ? 'pr-14' : 'pr-8')}
           >
             <ChatConversationIcon chat={chat} size={12} className="shrink-0" />
             <span className="flex-1 truncate">{chat.title}</span>
@@ -707,7 +707,7 @@ function ChatListRow({
             ) : null}
           </SidebarMenuSubButton>
           {unread > 0 ? (
-            <SidebarMenuBadge className="top-1 group-hover/menu-sub-item:hidden group-focus-within/menu-sub-item:hidden">
+            <SidebarMenuBadge className="top-1.5 group-hover/menu-sub-item:hidden group-focus-within/menu-sub-item:hidden">
               {unread > 9 ? '9+' : unread}
             </SidebarMenuBadge>
           ) : null}
@@ -738,7 +738,6 @@ function ChatListRow({
 }
 
 function ChatListBody({
-  indented,
   loading,
   chatView,
   chats,
@@ -761,7 +760,6 @@ function ChatListBody({
   saveRename,
   cancelRename,
 }: {
-  indented: boolean
   loading: boolean
   chatView: ChatView
   chats: Conversation[]
@@ -802,8 +800,7 @@ function ChatListBody({
     all: 'No chats yet',
   }[chatView]
   const deletingChatIdSet = new Set(deletingChatIds)
-  // Sections indent their rows under the section title, like threads under an agent.
-  const listClassName = indented ? undefined : 'ml-0 border-l-0 pl-0'
+  const listClassName = 'ml-0 border-l-0 pl-0'
   if (loading) {
     return (
       <SidebarMenuSub className={listClassName}>
@@ -997,7 +994,6 @@ export function ChatInlinePanel({
   return (
     <>
     <ChatListBody
-      indented={Boolean(sectionView)}
       loading={loading}
       chatView={chatView}
       chats={chats}
