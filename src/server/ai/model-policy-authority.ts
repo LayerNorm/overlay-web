@@ -47,6 +47,8 @@ export async function resolveRuntimeChatAllowlist(
  */
 export async function resolveAuthorizedModelIds(args: {
   entitlements: Entitlements | null
+  /** Onboarding only, after fresh verification that every advertised price is zero. Never changes ordinary chat access. */
+  verifiedFreeOnboardingModel?: 'minimax/minimax-m3.1-flash'
   /** When true, bypass the in-memory catalog TTL and re-fetch from AI Gateway. */
   forceCatalogRefresh?: boolean
 }) {
@@ -70,7 +72,7 @@ export async function resolveAuthorizedModelIds(args: {
   const chat = policyChatModels
     .filter((model) => !runtimeChatAllowlist || runtimeChatAllowlist.has(model.id))
     .filter((model) => Boolean(args.entitlements && isPaidPlan(args.entitlements)) ||
-      isFreeTierChatModelId(model.id))
+      isFreeTierChatModelId(model.id) || model.id === args.verifiedFreeOnboardingModel)
     .map((model) => model.id)
 
   const paid = Boolean(args.entitlements && isPaidPlan(args.entitlements))

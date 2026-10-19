@@ -148,10 +148,11 @@ function ComposerInputCard(props: ComposerViewProps & { disabledSend: boolean })
   const slash = useAgentSlashMenu(props.input, props.onInputChange, props.agentCommands)
 
   const handleComposerKeyDown = (event: ReactKeyboardEvent) => {
+    if (event.nativeEvent.isComposing || event.keyCode === 229) return
     if (slash.handleKeyDown(event)) return
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault()
-      void props.onSend()
+      if (!props.isSendBlocked && props.hasComposerText) void props.onSend()
     }
   }
 
@@ -230,12 +231,12 @@ function ComposerControls(props: ComposerControlsProps) {
   const hasAgentCommands = Boolean(props.agentCommands?.length)
   return (
     <PromptInputFooter>
-      <AttachMenu {...props} />
-      <DelayedTooltip label={mentionTooltip} side="top">
+      {props.textOnly ? null : <AttachMenu {...props} />}
+      {props.textOnly ? null : <DelayedTooltip label={mentionTooltip} side="top">
         <PromptInputButton onClick={() => props.textareaRef.current?.openMentionPopup()} aria-label="Insert mention">
           <AtSign size={16} strokeWidth={1.75} />
         </PromptInputButton>
-      </DelayedTooltip>
+      </DelayedTooltip>}
       {hasAgentCommands ? (
         <DelayedTooltip label="Agent slash commands" side="top">
           <PromptInputButton
@@ -282,7 +283,7 @@ function ComposerControls(props: ComposerControlsProps) {
           status={props.isActiveLoading ? 'streaming' : 'ready'}
           onStop={() => void props.onStop()}
           onClick={() => void props.onSend()}
-          disabled={props.disabledSend}
+          disabled={props.disabledSend || props.isSendBlocked}
         />
       </DelayedTooltip>
     </PromptInputFooter>

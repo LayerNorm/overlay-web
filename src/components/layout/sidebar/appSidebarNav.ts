@@ -570,7 +570,13 @@ export function buildPrimaryRailItems({
       href: canOpenDestinationInNewTab && item.href ? navItemDestination(item.href) : undefined,
       badgeCount: item.href === '/app/chat' ? cumulativeChatUnread : 0,
       title: shortcut ? `${item.label} · ⌥${shortcut}` : item.label,
-      dataTour: item.href === '/app/chat'
+      dataTour: item.href === '/app/work'
+        ? 'nav-work'
+        : item.href === '/app/agents'
+          ? 'nav-agents'
+          : item.href === '/app/automations'
+            ? 'nav-automations'
+            : item.href === '/app/chat'
         ? 'nav-chat'
         : item.href === '/app/files'
           ? 'nav-knowledge'

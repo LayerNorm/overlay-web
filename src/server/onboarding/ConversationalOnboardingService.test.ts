@@ -135,7 +135,7 @@ test('advance records only validated choice counts before each assistant reply',
   await act(f, { action: 'advance', revision: 4, agentIds: ['overlay'] })
   assert.equal(f.messages.at(-2)?.content, 'Selected 1 AI employee.')
   await act(f, { action: 'advance', revision: 5 })
-  assert.equal(f.messages.at(-2)?.content, 'Skipped connecting tools.')
+  assert.equal(f.messages.at(-2)?.content, 'Finished reviewing optional tool connections.')
   await act(f, { action: 'advance', revision: 6, memoryIds: ['memory-1'] })
   assert.equal(f.messages.at(-2)?.content, 'Imported 1 Personal context item.')
   await act(f, { action: 'advance', revision: 7, invitationIds: ['invitation-1'] })

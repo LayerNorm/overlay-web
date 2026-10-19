@@ -6,11 +6,13 @@ import { getWorkService } from '@/server/work'
 import { OnboardingActionSchema } from '@/shared/onboarding/session'
 import { ConvexOnboardingStateRepository, ConversationalOnboardingService, OnboardingServiceError } from '@/server/onboarding'
 import { ONBOARDING_SEEN_COOKIE } from '@/features/auth/lib/onboarding-cookie'
+import { createOnboardingReplyGenerator } from '@/server/onboarding/OnboardingReplyGenerator'
 
-function service() {
+function service(context: AppApiRouteContext) {
   const server = getOverlayServerContext()
   return new ConversationalOnboardingService({
     repository: new ConvexOnboardingStateRepository(),
+    reply: createOnboardingReplyGenerator(context),
     effects: {
       agents: server.workspaceAgentService,
       collaboration: server.appData.repositories.conversationCollaboration,
@@ -41,7 +43,7 @@ function responseWithCompletionCookie(result: Awaited<ReturnType<ConversationalO
 
 export async function GET(_request: NextRequest, context: AppApiRouteContext) {
   try {
-    const result = await service().get(context.auth.userId, context.workspace.workspace.id)
+    const result = await service(context).get(context.auth.userId, context.workspace.workspace.id)
     return responseWithCompletionCookie(result, context.auth.userId)
   } catch (error) {
     return errorResponse(error)
@@ -52,7 +54,7 @@ export async function POST(_request: NextRequest, context: AppApiRouteContext) {
   try {
     const parsed = OnboardingActionSchema.safeParse(context.parsedJson)
     if (!parsed.success) return NextResponse.json({ error: 'Invalid onboarding action', code: 'validation_error' }, { status: 400 })
-    const onboarding = service()
+    const onboarding = service(context)
     if (parsed.data.action === 'start') {
       const result = await onboarding.start(context.auth.userId, context.workspace.workspace.id)
       return responseWithCompletionCookie(result, context.auth.userId)

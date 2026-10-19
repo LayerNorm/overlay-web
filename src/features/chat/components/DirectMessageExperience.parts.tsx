@@ -558,6 +558,8 @@ export function RoomTranscript({
   title,
   channelTopic,
   ctx,
+  footer,
+  hideScrollbar,
 }: {
   transcript: ReturnType<typeof useRoomTranscript>
   readMarkers: ReturnType<typeof useReadMarkers>
@@ -567,6 +569,8 @@ export function RoomTranscript({
   title: string
   channelTopic: string | undefined
   ctx: RoomMessageContext
+  footer?: ReactNode
+  hideScrollbar?: boolean
 }) {
   const {
     listRef,
@@ -597,7 +601,7 @@ export function RoomTranscript({
       <div
         ref={listRef}
         onScroll={onScroll}
-        className="h-full min-h-0 w-full overflow-y-auto overflow-x-hidden overscroll-contain px-3 py-3 sm:px-4 sm:py-4"
+        className={`h-full min-h-0 w-full overflow-y-auto overflow-x-hidden overscroll-contain px-3 py-3 sm:px-4 sm:py-4 ${hideScrollbar ? '[scrollbar-width:none] [&::-webkit-scrollbar]:hidden' : ''}`}
       >
         <div className={`mx-auto flex min-h-full w-full min-w-0 max-w-4xl flex-col gap-1 sm:gap-1.5 ${!loading && mainMessages.length === 0 ? 'justify-center' : 'justify-end'}`}>
           {hasMoreMessages ? (
@@ -661,6 +665,7 @@ export function RoomTranscript({
               )
             })
           )}
+          {footer}
         </div>
       </div>
     </div>
@@ -781,6 +786,15 @@ export function SurfaceReadOnlyComposer({ surfacePlatform }: { surfacePlatform: 
   )
 }
 
+export type GuidedRoomComposer = {
+  value: string
+  onChange(value: string): void
+  onSubmit(): void
+  placeholder: string
+  disabled: boolean
+  revision: number
+}
+
 export function RoomComposer({
   composer,
   title,
@@ -793,6 +807,7 @@ export function RoomComposer({
   setMentions,
   onOpenAttachmentPreview,
   onOpenFilePreview,
+  guided,
 }: {
   composer: ReturnType<typeof useRoomComposer>
   title: string
@@ -805,6 +820,7 @@ export function RoomComposer({
   setMentions: Dispatch<SetStateAction<MentionItem[]>>
   onOpenAttachmentPreview: RoomMessageContext['onOpenAttachmentPreview']
   onOpenFilePreview: (name: string, fileIds: string[]) => void | Promise<void>
+  guided?: GuidedRoomComposer
 }) {
   return (
     <ChatComposer
@@ -812,9 +828,10 @@ export function RoomComposer({
       surface={{
         hideModeMenu: true,
         hideGenerationModes: true,
-        placeholder: `Message ${title}, use @ to notify someone…`,
-        mentionCategories,
-        agentCommands,
+        placeholder: guided?.placeholder ?? `Message ${title}, use @ to notify someone…`,
+        mentionCategories: guided ? [] : mentionCategories,
+        agentCommands: guided ? [] : agentCommands,
+        textOnly: Boolean(guided),
       }}
       emptyState={{ showCenteredEmptyChat: false, greetingLine: '' }}
       attachments={{
@@ -832,7 +849,7 @@ export function RoomComposer({
       }}
       runtime={{
         composerNotice: composer.composerNotice,
-        isSendBlocked: false,
+        isSendBlocked: guided?.disabled ?? false,
         isActiveLoading: false,
         isTemporaryChat: false,
         blockedComposerContent: null,
@@ -841,20 +858,20 @@ export function RoomComposer({
         replyContext: composer.replyContext,
         setReplyContext: composer.setReplyContext,
         textareaRef: composer.composerRef,
-        input: composer.input,
-        inputRevision: composer.inputRevision,
-        onInputChange: composer.onComposerInput,
+        input: guided?.value ?? composer.input,
+        inputRevision: guided?.revision ?? composer.inputRevision,
+        onInputChange: guided?.onChange ?? composer.onComposerInput,
         onMentionsChange: setMentions,
-        onPaste: composer.handlePaste,
-        hasComposerText: composer.hasComposerText,
+        onPaste: guided ? () => {} : composer.handlePaste,
+        hasComposerText: guided ? Boolean(guided.value.trim()) : composer.hasComposerText,
       }}
       toolState={{
         showAttachMenu: composer.showAttachMenu,
         setShowAttachMenu: composer.setShowAttachMenu,
         attachMenuRef: composer.attachMenuRef,
         selectedToolIds: [],
-        memoryEnabled,
-        capabilities: participantsHaveAgent
+        memoryEnabled: guided ? false : memoryEnabled,
+        capabilities: !guided && participantsHaveAgent
           ? capabilities
           : { ...capabilities, memory: false, vectorSearch: false },
         onToggleTool: () => {},
@@ -872,7 +889,7 @@ export function RoomComposer({
       }}
       actions={{
         onStop: () => {},
-        onSend: () => void composer.handleSend(),
+        onSend: guided ? () => { if (!guided.disabled) guided.onSubmit() } : () => void composer.handleSend(),
       }}
     />
   )

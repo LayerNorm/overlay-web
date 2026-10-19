@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from 'react'
+import { useEffect, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAppSettings } from '@/components/providers/AppSettingsProvider'
 import { LinkOpenInterceptor } from './LinkOpenInterceptor'
@@ -16,6 +16,7 @@ import {
   useRoomPanels,
 } from './DirectMessageExperience.hooks'
 import {
+  type GuidedRoomComposer,
   AttachmentViewer,
   RoomComposer,
   RoomDialogs,
@@ -102,6 +103,7 @@ export function DirectMessageExperience({
   externalRightPanelLabel,
   externalRightPanelMode,
   onExternalRightPanelClose,
+  guided,
 }: {
   conversationId: string;
   showcase?: boolean;
@@ -113,6 +115,7 @@ export function DirectMessageExperience({
   externalRightPanelLabel?: string;
   externalRightPanelMode?: "docked" | "floating";
   onExternalRightPanelClose?: () => void;
+  guided?: { footer: ReactNode; composer: GuidedRoomComposer | null; revision: number; headerActions?: ReactNode };
 }) {
   const { activeWorkspace, activeWorkspaceId } = useWorkspace()
   const { appDataCapabilities, capabilities } = useOverlayCapabilities()
@@ -142,6 +145,11 @@ export function DirectMessageExperience({
     onOpenAttachmentPreview: panels.openAttachmentPreview,
   })
   const { vm, roster, collab, thread, transcript, composer, roomActions, messageCtx } = room
+  const { loadMessages } = transcript
+  const guidedRevision = guided?.revision
+  useEffect(() => {
+    if (guidedRevision !== undefined) void loadMessages()
+  }, [guidedRevision, loadMessages])
 
   const { rightPanel, rightPanelClose } = resolveRoomRightPanel({
     panels,
@@ -188,8 +196,8 @@ export function DirectMessageExperience({
         >
           {composer.isDragging && <ChatDropOverlay />}
           <AppScreenHeader
-            title={vm.title}
-            subtitle={roster.participants.length > 2 ? `${roster.participants.length} people` : vm.online > 0 ? 'Online' : undefined}
+            title={guided ? 'Overlay' : vm.title}
+            subtitle={guided ? 'Your chief of staff' : roster.participants.length > 2 ? `${roster.participants.length} people` : vm.online > 0 ? 'Online' : undefined}
             leading={(
               <RoomHeaderLeading
                 soloAgentParticipant={vm.soloAgentParticipant}
@@ -199,7 +207,7 @@ export function DirectMessageExperience({
                 surfacePlatform={transcript.surfacePlatform}
               />
             )}
-            actions={(
+            actions={guided ? guided.headerActions : (
               <RoomHeaderActions
                 desktop={room.desktop}
                 vm={vm}
@@ -228,11 +236,14 @@ export function DirectMessageExperience({
               title={vm.title}
               channelTopic={collab.channel?.topic}
               ctx={messageCtx}
+              footer={guided?.footer}
+              hideScrollbar={Boolean(guided)}
             />
-            {transcript.surfacePlatform ? (
+            {guided && !guided.composer ? null : transcript.surfacePlatform ? (
               <SurfaceReadOnlyComposer surfacePlatform={transcript.surfacePlatform} />
             ) : (
               <RoomComposer
+                guided={guided?.composer ?? undefined}
                 composer={composer}
                 title={vm.title}
                 mentionCategories={vm.mentionCategories}

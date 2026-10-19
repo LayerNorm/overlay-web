@@ -342,7 +342,7 @@ function onboardingAdvanceSummary(
   if (step === 'employees') return action.agentIds?.length ? `Selected ${action.agentIds.length} AI employee${action.agentIds.length === 1 ? '' : 's'}.` : 'Skipped selecting AI employees.'
   if (step === 'memories') return action.memoryIds?.length ? `Imported ${action.memoryIds.length} Personal context item${action.memoryIds.length === 1 ? '' : 's'}.` : 'Skipped importing Personal context.'
   if (step === 'teammates') return action.invitationIds?.length ? `Invited ${action.invitationIds.length} teammate${action.invitationIds.length === 1 ? '' : 's'}.` : 'Skipped inviting teammates.'
-  return 'Skipped connecting tools.'
+  return 'Finished reviewing optional tool connections.'
 }
 
 function isValidReply(value: unknown): value is OnboardingReply {
