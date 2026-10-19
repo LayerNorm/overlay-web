@@ -42,14 +42,24 @@ async function fetchSessionState(): Promise<SessionCheckResult> {
   return { status: 'unauthenticated' }
 }
 
+async function runWithSessionRefreshLock(
+  run: () => Promise<SessionCheckResult>,
+): Promise<SessionCheckResult> {
+  if (typeof navigator !== 'undefined' && navigator.locks) {
+    return await navigator.locks.request(
+      SESSION_REFRESH_LOCK_NAME,
+      async () => await run(),
+    )
+  }
+  return await run()
+}
+
 export function requestSessionState(): Promise<SessionCheckResult> {
   if (sessionCheckInFlight) return sessionCheckInFlight
 
   const run = () => fetchSessionState()
-  const request = (typeof navigator !== 'undefined' && navigator.locks
-    ? navigator.locks.request(SESSION_REFRESH_LOCK_NAME, run)
-    : run()
-  ).catch(() => ({ status: 'transient-error' }) as const)
+  const request = runWithSessionRefreshLock(run)
+    .catch(() => ({ status: 'transient-error' }) as const)
 
   sessionCheckInFlight = request
   void request.then(() => {
