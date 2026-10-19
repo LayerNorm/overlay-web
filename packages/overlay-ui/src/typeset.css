@@ -503,3 +503,11 @@
     margin-block-start: 0;
   }
 }
+
+/* Overlay: no leading gap on the first block, including Tiptap list items that wrap their text in a div. */
+@layer components {
+  .typeset > :first-child,
+  .typeset :where(li > div > :first-child) {
+    margin-block-start: 0;
+  }
+}
