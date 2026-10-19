@@ -143,11 +143,11 @@ function ScreenRightPanel({
       <RightPanelOverlay visible={visible} onClose={onClose} />
       <aside
         className={cn(
-          'absolute right-0 z-30 flex min-h-0 w-full max-w-[min(24rem,100vw)] shrink-0 overflow-hidden bg-(--surface-elevated) transition-[transform,width,opacity] duration-300 ease-(--overlay-ease)',
+          'absolute right-0 z-30 flex min-h-0 w-full max-w-[min(24rem,100vw)] shrink-0 overflow-hidden bg-(--sidebar-surface) transition-[transform,width,opacity] duration-300 ease-(--overlay-ease)',
           resizing ? 'transition-none' : null,
           floating
             ? 'inset-y-2 right-2 max-w-[calc(100vw-1rem)] rounded-xl border border-(--border) bg-(--sidebar-surface) shadow-xl lg:max-w-none'
-            : 'inset-y-0 border-l border-(--border) shadow-2xl lg:static lg:z-auto lg:max-w-none lg:shadow-none',
+            : 'inset-y-0 shadow-2xl lg:static lg:z-auto lg:max-w-none lg:shadow-none',
           rightPanelVisibilityClasses(visible, floating, widthClassName),
         )}
         style={widthStyle}
@@ -506,7 +506,7 @@ export function AppScreenSidePanel({
   return (
     <section
       className={cn(
-        'flex h-full min-h-0 w-full flex-col bg-(--surface-elevated) text-(--foreground)',
+        'flex h-full min-h-0 w-full flex-col bg-(--sidebar-surface) text-(--foreground)',
         className,
       )}
       {...props}
@@ -536,7 +536,7 @@ export function AppScreenSidePanelHeader({ className, children, ...props }: AppS
   return (
     <header
       className={cn(
-        'flex min-h-14 shrink-0 items-center justify-between gap-3 border-b border-(--border) px-3 py-2.5 md:min-h-16 md:py-3',
+        'flex min-h-14 shrink-0 items-center justify-between gap-3 px-3 py-2.5 md:min-h-16 md:py-3',
         className,
       )}
       {...props}

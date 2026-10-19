@@ -291,41 +291,44 @@ function SidebarHeaderBar({
   return (
     <div className={cn('flex h-14 shrink-0 items-center gap-1', collapsed ? 'justify-center px-2' : 'px-3')}>
       {collapsed ? (
-        <Button
-          variant="ghost"
-          type="button"
-          aria-label="Expand sidebar"
-          title="Expand sidebar"
-          onClick={() => onCollapsedChange(false)}
-          className={unstyledButton('inline-flex size-8 items-center justify-center rounded-md text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)')}
-        >
-          <PanelLeft size={16} aria-hidden />
-        </Button>
+        <DelayedTooltip label="Expand sidebar" side="bottom">
+          <Button
+            variant="ghost"
+            type="button"
+            aria-label="Expand sidebar"
+            onClick={() => onCollapsedChange(false)}
+            className={unstyledButton('inline-flex size-8 items-center justify-center rounded-md text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)')}
+          >
+            <PanelLeft size={16} aria-hidden />
+          </Button>
+        </DelayedTooltip>
       ) : (
         <>
           <div className="min-w-0 flex-1">{brand}</div>
           {onSearch ? (
+            <DelayedTooltip label="Search (⌘K)" side="bottom">
+              <Button
+                variant="ghost"
+                type="button"
+                aria-label="Search"
+                onClick={onSearch}
+                className={unstyledButton('inline-flex size-8 shrink-0 items-center justify-center rounded-md text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)')}
+              >
+                <Search size={16} aria-hidden />
+              </Button>
+            </DelayedTooltip>
+          ) : null}
+          <DelayedTooltip label="Collapse sidebar (⌘B)" side="bottom">
             <Button
               variant="ghost"
               type="button"
-              aria-label="Search"
-              title="Search (⌘K)"
-              onClick={onSearch}
+              aria-label="Collapse sidebar"
+              onClick={() => onCollapsedChange(true)}
               className={unstyledButton('inline-flex size-8 shrink-0 items-center justify-center rounded-md text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)')}
             >
-              <Search size={16} aria-hidden />
+              <PanelLeft size={16} aria-hidden />
             </Button>
-          ) : null}
-          <Button
-            variant="ghost"
-            type="button"
-            aria-label="Collapse sidebar"
-            title="Collapse sidebar (⌘B)"
-            onClick={() => onCollapsedChange(true)}
-            className={unstyledButton('inline-flex size-8 shrink-0 items-center justify-center rounded-md text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)')}
-          >
-            <PanelLeft size={16} aria-hidden />
-          </Button>
+          </DelayedTooltip>
         </>
       )}
     </div>
