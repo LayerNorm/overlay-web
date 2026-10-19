@@ -36,6 +36,7 @@ export const PUBLIC_V1_ROUTE_SECURITY_EXCEPTIONS = {
   '/api/v1/agent-environments/operations/reconcile': internalServiceException(['POST'], 'Internal-secret authenticated remote-run supervision and settlement reconciliation.'),
   '/api/v1/files/ingest-jobs/process': internalServiceException(['POST'], 'Internal-secret authenticated Convex file-ingestion worker bridge.'),
   '/api/v1/imports/slack/process': internalServiceException(['POST'], 'Internal-secret authenticated Slack import worker bridge.'),
+  '/api/v1/models/overlay-free/refresh': internalServiceException(['POST'], 'Internal-secret authenticated overlay-free catalog refresh worker bridge.'),
   '/api/v1/surfaces/slack/connect': {
     methods: ['GET'],
     reason: 'Browser navigation that must end in a redirect to Slack consent, not a JSON envelope.',

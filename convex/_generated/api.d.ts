@@ -99,6 +99,8 @@ import type * as platform_http from "../platform/http.js";
 import type * as platform_idempotency from "../platform/idempotency.js";
 import type * as platform_metrics from "../platform/metrics.js";
 import type * as platform_migrations from "../platform/migrations.js";
+import type * as platform_overlayFreeRefresh from "../platform/overlayFreeRefresh.js";
+import type * as platform_overlayFreeSafety from "../platform/overlayFreeSafety.js";
 import type * as platform_rateLimits from "../platform/rateLimits.js";
 import type * as platform_seedDemoAccount from "../platform/seedDemoAccount.js";
 import type * as platform_uiSettings from "../platform/uiSettings.js";
@@ -213,6 +215,8 @@ declare const fullApi: ApiFromModules<{
   "platform/idempotency": typeof platform_idempotency;
   "platform/metrics": typeof platform_metrics;
   "platform/migrations": typeof platform_migrations;
+  "platform/overlayFreeRefresh": typeof platform_overlayFreeRefresh;
+  "platform/overlayFreeSafety": typeof platform_overlayFreeSafety;
   "platform/rateLimits": typeof platform_rateLimits;
   "platform/seedDemoAccount": typeof platform_seedDemoAccount;
   "platform/uiSettings": typeof platform_uiSettings;

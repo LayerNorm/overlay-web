@@ -6,7 +6,6 @@ import {
   getGatewayModelId,
   getGatewayVideoModel,
   getOpenRouterLanguageModel,
-  getOpenRouterLanguageModelCapturingRoutedModel,
 } from '@/server/ai/gateway/ai-gateway'
 import { userFacingOpenRouterError } from '@/server/ai/gateway/openrouter-service'
 import type { LanguageModel } from '@/server/ai/provider-types'
@@ -77,6 +76,5 @@ export {
   getGatewayModelId,
   getGatewayVideoModel,
   getOpenRouterLanguageModel,
-  getOpenRouterLanguageModelCapturingRoutedModel,
   userFacingOpenRouterError,
 }

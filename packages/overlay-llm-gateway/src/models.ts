@@ -14,7 +14,8 @@ export interface OverlayModelInfo extends ModelInfo {
   medianOutputTokensPerSecond?: number
 }
 
-export const FREE_TIER_AUTO_MODEL_ID = 'openrouter/free'
+export const FREE_TIER_AUTO_MODEL_ID = 'overlay-free'
+export const OPENROUTER_FREE_MODEL_ID = 'openrouter/free'
 export const DEFAULT_MODEL_ID = 'claude-sonnet-4-6'
 
 type MinimalModelDefinition = readonly [
@@ -47,11 +48,13 @@ const MODEL_DEFINITIONS: readonly MinimalModelDefinition[] = [
   ['qwen/qwen3.6-plus', 'Qwen 3.6 Plus', 'alibaba', false, true],
   ['openai/gpt-oss-120b', 'GPT OSS 120B', 'groq', false, true],
   ['nvidia/nemotron-nano-9b-v2', 'Nemotron Nano 9B', 'nvidia'],
-  [FREE_TIER_AUTO_MODEL_ID, 'Free Router', 'openrouter', true, true],
+  [FREE_TIER_AUTO_MODEL_ID, 'Auto', 'overlay', true, true],
+  [OPENROUTER_FREE_MODEL_ID, 'OpenRouter Free', 'openrouter', true, true],
 ]
 
 const FREE_MODEL_IDS = new Set([
   FREE_TIER_AUTO_MODEL_ID,
+  OPENROUTER_FREE_MODEL_ID,
 ])
 
 const ZDR_MODEL_IDS = new Set([

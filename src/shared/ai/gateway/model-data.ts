@@ -2,6 +2,7 @@ import type { ChatModel, ImageModel, ModelReasoningOption, VideoModel, VideoSubM
 import {
   FREE_TIER_AUTO_MODEL_ID,
   FREE_TIER_DEFAULT_MODEL_ID,
+  OPENROUTER_FREE_MODEL_ID,
   DEFAULT_MODEL_ID,
   isFreeTierChatModelId,
 } from '@/shared/ai/gateway/model-types'
@@ -62,7 +63,8 @@ const REASONING_KIMI_K3: readonly ModelReasoningOption[] = [
 ]
 
 const SPECIAL_CHAT_MODELS: ChatModel[] = [
-  { id: FREE_TIER_AUTO_MODEL_ID, name: 'Free Router', provider: 'openrouter', description: 'Auto-selects a free model', intelligence: 0, cost: 0, speedTier: 2, supportsVision: true, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false, pricePer1mTokens: 0 },
+  { id: FREE_TIER_AUTO_MODEL_ID, name: 'Auto', provider: 'overlay', description: 'Auto-selects a verified free model', intelligence: 0, cost: 0, speedTier: 2, supportsVision: true, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false, pricePer1mTokens: 0 },
+  { id: OPENROUTER_FREE_MODEL_ID, name: 'OpenRouter Free', provider: 'openrouter', description: 'OpenRouter free model router', intelligence: 0, cost: 0, speedTier: 2, supportsVision: true, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false, pricePer1mTokens: 0 },
 ]
 
 export const OVERLAY_FREE_CHAT_MODELS: readonly ChatModel[] = SPECIAL_CHAT_MODELS
@@ -352,6 +354,7 @@ export function modelUsesOpenRouterTransport(modelId: string): boolean {
  * (free router), NVIDIA NIM, and BYOK models use separate credentials.
  */
 export function modelUsesAiGatewayTransport(modelId: string): boolean {
+  if (isFreeTierChatModelId(modelId)) return false
   if (isByokModelId(modelId)) return false
   return !modelUsesOpenRouterTransport(modelId)
 }

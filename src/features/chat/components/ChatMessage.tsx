@@ -3,7 +3,7 @@
 import type { UseChatHelpers } from '@/components/providers/ai-chat-client'
 import { type ComponentProps, memo } from 'react'
 import type { UIMessage } from '@/shared/chat/ai-ui-message'
-import { FREE_TIER_AUTO_MODEL_ID } from '@/shared/ai/gateway/model-types'
+import { isFreeTierChatModelId } from '@/shared/ai/gateway/model-types'
 import {
   getChatModelDisplayName,
 } from '@/shared/ai/gateway/model-data'
@@ -276,8 +276,8 @@ function resolveTurnReplyState(
 
 function resolveModelLabel(responseMsg: UIMessage | null, selectedModelId: string, modelList: string[]): string {
   const routedModelId = responseMsg ? getRoutedModelId(responseMsg) : null
-  const routedModelName = selectedModelId === FREE_TIER_AUTO_MODEL_ID && routedModelId ? getChatModelDisplayName(routedModelId) : null
-  const modelLabelSingle = selectedModelId === FREE_TIER_AUTO_MODEL_ID && routedModelName ? `Free · ${routedModelName}` : getChatModelDisplayName(selectedModelId)
+  const routedModelName = isFreeTierChatModelId(selectedModelId) && routedModelId ? getChatModelDisplayName(routedModelId) : null
+  const modelLabelSingle = isFreeTierChatModelId(selectedModelId) && routedModelName ? `Free · ${routedModelName}` : getChatModelDisplayName(selectedModelId)
   return modelList.length > 1 ? `${modelLabelSingle} · ${modelList.length} models` : modelLabelSingle
 }
 
