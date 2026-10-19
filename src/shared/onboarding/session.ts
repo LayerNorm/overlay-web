@@ -1,0 +1,64 @@
+import { z } from 'zod'
+
+export const onboardingSteps = ['name', 'about', 'daily', 'employees', 'connections', 'memories', 'teammates', 'task', 'complete'] as const
+export type OnboardingStep = typeof onboardingSteps[number]
+export type OnboardingProfile = { name: string; about: string; daily: string }
+export type OnboardingEmployee = { name: string; role: string }
+export type OnboardingReply = {
+  message: string
+  employees?: OnboardingEmployee[]
+  suggestions?: string[]
+  mode: 'prepared' | 'live'
+}
+export type OnboardingSession = {
+  version: 1
+  revision: number
+  workspaceId: string
+  conversationId: string
+  agentId: string
+  agentPrincipalId: string
+  step: OnboardingStep
+  profile: OnboardingProfile
+  aiEnabled: boolean
+  reply: OnboardingReply
+  employees: OnboardingEmployee[]
+  suggestions: string[]
+  createdAgentIds: string[]
+  taskId?: string
+}
+export type OnboardingSessionResponse = { completed: boolean; session: OnboardingSession | null }
+
+const revision = z.number().int().nonnegative()
+const ids = z.array(z.string().trim().min(1).max(200)).max(20)
+export const OnboardingActionSchema = z.discriminatedUnion('action', [
+  z.object({ action: z.literal('start') }).strict(),
+  z.object({ action: z.literal('consent'), revision, enabled: z.boolean() }).strict(),
+  z.object({ action: z.literal('answer'), revision, value: z.string().trim().min(1).max(3000) }).strict(),
+  z.object({ action: z.literal('advance'), revision, agentIds: ids.optional(), memoryIds: ids.optional(), invitationIds: ids.optional() }).strict(),
+  z.object({ action: z.literal('finish'), revision, taskId: z.string().trim().min(1).max(200) }).strict(),
+])
+export type OnboardingAction = z.infer<typeof OnboardingActionSchema>
+
+export const ONBOARDING_INTRO = "I'm Overlay, your new chief of staff. I'm responsible for getting your work done and managing your fleet of AI employees to help you achieve your goals."
+
+export function preparedOnboardingReply(step: OnboardingStep, profile: OnboardingProfile): OnboardingReply {
+  const technical = /code|software|engineer|develop|build/i.test(profile.about + ' ' + profile.daily)
+  const employees = technical
+    ? [{ name: 'Spec', role: 'Turn product ideas into clear specs, review changes, and keep documentation up to date.' }, { name: 'Scout', role: 'Research decisions, prepare briefs, and organize follow-ups.' }]
+    : [{ name: 'Scout', role: 'Research decisions and prepare concise briefs grounded in your work.' }, { name: 'Flow', role: 'Draft replies, organize recurring work, and prepare follow-ups for review.' }]
+  const suggestions = technical
+    ? ['Draft a clear specification for my next product improvement.', 'Prepare a prioritized plan for my recurring work this week.']
+    : ['Draft a reusable reply for a question I answer every day.', 'Prepare a prioritized plan for my recurring work this week.']
+  const messages: Record<OnboardingStep, string> = {
+    name: 'What shall I call you?',
+    about: `Nice to meet you, ${profile.name}. Tell me a bit about yourself. What do you do, and what are you working on?`,
+    daily: "What tasks take up your time each day that you'd like AI employees to help with?",
+    employees: "Based on what you've told me, I'd suggest starting with these two AI employees.",
+    connections: 'Your AI employees are most useful with the right context. Which tools would you like to connect?',
+    memories: 'How about some more context? You can bring over what another AI assistant already knows about your work.',
+    teammates: 'Would you like anyone else to work with you and your AI employees here? They can bring their own agents, too.',
+    task: "What's one task we can get started with that would move your work forward?",
+    complete: 'Your first task is ready in Work. Happy working.',
+  }
+  return { message: messages[step], mode: 'prepared', ...(step === 'employees' ? { employees } : {}), ...(step === 'task' ? { suggestions } : {}) }
+}

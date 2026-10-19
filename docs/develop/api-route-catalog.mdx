@@ -262,6 +262,7 @@ This is the route-entry-point inventory for the web app. It is intended as a wor
 - `GET /api/v1/onboarding/status` — Returns the current user’s onboarding completion/status view. Files: `src/app/api/v1/onboarding/status/route.ts`; `src/server/app-api/v1/onboarding/status/route.ts`; `src/server/onboarding/OnboardingRepository.ts`; `src/features/auth/lib/onboarding-cookie.ts`.
 - `POST /api/v1/onboarding/complete` — Marks onboarding complete and records the associated user/profile state. Files: `src/app/api/v1/onboarding/complete/route.ts`; `src/server/app-api/v1/onboarding/complete/route.ts`; `src/server/onboarding/OnboardingRepository.ts`; `src/features/auth/lib/onboarding-cookie.ts`.
 - `POST /api/v1/onboarding/reset` — Resets onboarding state for the authenticated user according to the server policy. Files: `src/app/api/v1/onboarding/reset/route.ts`; `src/server/app-api/v1/onboarding/reset/route.ts`; `src/server/onboarding/OnboardingRepository.ts`.
+- `GET, POST /api/v1/onboarding/session` — Reads or advances the authenticated user's persisted conversational onboarding state, including its durable transcript outbox. Files: `src/app/api/v1/onboarding/session/route.ts`; `src/server/app-api/v1/onboarding/session/route.ts`; `src/server/onboarding/ConversationalOnboardingService.ts`; `src/server/onboarding/OnboardingStateRepository.ts`; `convex/auth/onboarding.ts`.
 
 ## Monitoring and security test index
 

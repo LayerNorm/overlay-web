@@ -214,6 +214,7 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
   { path: '/api/v1/onboarding/status', methods: { GET: authenticated() } },
   { path: '/api/v1/onboarding/complete', methods: { POST: authenticated() } },
   { path: '/api/v1/onboarding/reset', methods: { POST: authenticated() } },
+  { path: '/api/v1/onboarding/session', methods: { GET: authenticated(), POST: authenticated() } },
   { path: '/api/v1/subscription', methods: { GET: authenticated() } },
   // Workspace billing: WorkspaceBillingService requires an owner/admin
   // billing manager for every operation.

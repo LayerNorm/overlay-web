@@ -26,6 +26,14 @@ const ENDPOINT_RATE_LIMITS: Record<string, RateLimitSpec[]> = {
     { bucket: 'settings:ip', limit: 600, windowMs: TEN_MINUTES },
     { bucket: 'settings:user', limit: 300, windowMs: TEN_MINUTES },
   ],
+  'GET /api/v1/onboarding/session': [
+    { bucket: 'onboarding:session:read:ip', limit: 120, windowMs: TEN_MINUTES },
+    { bucket: 'onboarding:session:read:user', limit: 60, windowMs: TEN_MINUTES },
+  ],
+  'POST /api/v1/onboarding/session': [
+    { bucket: 'onboarding:session:write:ip', limit: 60, windowMs: TEN_MINUTES },
+    { bucket: 'onboarding:session:write:user', limit: 30, windowMs: TEN_MINUTES },
+  ],
   'GET /api/v1/workspaces': [
     { bucket: 'workspaces:list:ip', limit: 600, windowMs: TEN_MINUTES },
     { bucket: 'workspaces:list:user', limit: 300, windowMs: TEN_MINUTES },

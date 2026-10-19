@@ -286,6 +286,7 @@ export default defineSchema({
     chatStarterDay: v.optional(v.string()),
     // Onboarding tour state
     hasSeenOnboarding: v.optional(v.boolean()),
+    onboardingSession: v.optional(v.string()),
     overlayStorageBytesUsed: v.optional(v.number()),
     fileBandwidthBytesUsed: v.optional(v.number()),
     fileBandwidthPeriodStart: v.optional(v.number()),
