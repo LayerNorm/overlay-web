@@ -28,7 +28,7 @@
   "scripts": {
     "check:transcript-boundaries": "node scripts/check-transcript-boundaries.mjs",
     "typecheck": "npm run check:transcript-boundaries && tsc --noEmit",
-    "test": "TSX_TSCONFIG_PATH=tsconfig.json node --require ../../scripts/ci/register-style-noop.cjs --require ../../scripts/ci/register-react.cjs --import tsx --test src/**/*.test.tsx src/**/*.test.ts"
+    "test": "TSX_TSCONFIG_PATH=tsconfig.json node --require ../../scripts/ci/register-style-noop.cjs --require ../../scripts/ci/register-react.cjs --import tsx --test 'src/**/*.test.tsx' 'src/**/*.test.ts'"
   },
   "dependencies": {
     "@overlay/chat-core": "file:../overlay-chat-core",

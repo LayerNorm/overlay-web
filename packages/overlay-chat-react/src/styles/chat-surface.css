@@ -213,7 +213,7 @@
      box; the scroll container would otherwise clip it mid-glyph. */
   padding: 0.35em 0 0.9em;
   overflow-x: auto;
-  overflow-y: auto;
+  overflow-y: hidden;
   text-align: center;
   font-size: 1.12em;
 }
@@ -227,7 +227,7 @@
   border-bottom: 1px dotted color-mix(in srgb, currentColor 35%, transparent);
 }
 
-:where(.overlay-chat-surface) .markdown-content pre {
+:where(.overlay-chat-surface) .markdown-content pre:not([data-slot]) {
   margin: 0 0 1em;
   overflow-x: auto;
   border-radius: 12px;
@@ -237,7 +237,7 @@
   line-height: 1.6;
 }
 
-:where(.overlay-chat-surface) .markdown-content code {
+:where(.overlay-chat-surface) .markdown-content code:not([data-slot]) {
   border-radius: 6px;
   background: #f5f5f5;
   padding: 0.1rem 0.35rem;
@@ -503,10 +503,10 @@
   color: inherit !important;
 }
 
-[data-theme="dark"] :where(.overlay-chat-surface) .markdown-content pre,
-[data-theme="dark"] :where(.overlay-chat-surface) .markdown-content code,
-:where(.overlay-chat-surface[data-theme="dark"]) .markdown-content pre,
-:where(.overlay-chat-surface[data-theme="dark"]) .markdown-content code {
+[data-theme="dark"] :where(.overlay-chat-surface) .markdown-content pre:not([data-slot]),
+[data-theme="dark"] :where(.overlay-chat-surface) .markdown-content code:not([data-slot]),
+:where(.overlay-chat-surface[data-theme="dark"]) .markdown-content pre:not([data-slot]),
+:where(.overlay-chat-surface[data-theme="dark"]) .markdown-content code:not([data-slot]) {
   background: var(--surface-subtle);
   color: var(--foreground);
 }

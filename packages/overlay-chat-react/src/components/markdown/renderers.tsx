@@ -165,6 +165,14 @@ function CodeBlock({
 }
 
 // Stable markdown components — defined outside component to avoid re-creation
+// The fenced `code` override renders a CodeBlock, so its `pre` must not add a box.
+function isFencedCodeElement(node: ReactNode): boolean {
+  if (!isValidElement(node)) return false
+  if (node.type === CodeBlock) return true
+  const className = (node.props as { className?: unknown }).className
+  return typeof className === 'string' && /language-\w+/.test(className)
+}
+
 export const baseMdComponents = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   a({ href, children }: any) {
@@ -224,11 +232,11 @@ export const baseMdComponents = {
   pre({ children }: any) {
     // Fenced blocks render via CodeBlock, which carries its own surface and
     // padding; unwrapping avoids a second box and div-inside-pre nesting.
-    if (isValidElement(children) && children.type === CodeBlock) return children
+    if (isFencedCodeElement(children)) return children
     return <pre>{children}</pre>
   },
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  span({ className, children }: any) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars
+  span({ node: _node, className, children, ...rest }: any) {
     const classes = typeof className === 'string' ? className.split(/\s+/) : []
     // The injected streaming tail arrives as raw HTML; render the orb
     // component inside it instead of a background image.
@@ -240,7 +248,8 @@ export const baseMdComponents = {
         </span>
       )
     }
-    return <span className={className}>{children}</span>
+    // KaTeX positions superscripts and struts with inline styles; keep them.
+    return <span className={className} {...rest}>{children}</span>
   },
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   table({ children }: any) {

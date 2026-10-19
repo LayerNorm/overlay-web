@@ -23,3 +23,15 @@ test('inline code stays a plain code element', () => {
   const html = renderToStaticMarkup(md.code({ children: 'x' }))
   assert.equal(html, '<code>x</code>')
 })
+
+test('a fenced block is not wrapped in an extra pre box', () => {
+  const fenced = <md.code className="language-ts">const a = 1</md.code>
+  const html = renderToStaticMarkup(md.pre({ children: fenced }))
+  assert.ok(html.startsWith('<div data-slot="code-block"'), html.slice(0, 80))
+  assert.equal(html.match(/<pre/g)?.length, 1)
+})
+
+test('spans keep inline styles so KaTeX superscripts stay raised', () => {
+  const html = renderToStaticMarkup(md.span({ className: 'vlist', style: { top: '-3.06em' }, children: '2' }))
+  assert.equal(html, '<span class="vlist" style="top:-3.06em">2</span>')
+})
