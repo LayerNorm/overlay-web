@@ -112,6 +112,8 @@ export interface ChatMessageMetadata {
   sourceCitations?: SourceCitationMap
   routedModelId?: string
   mentions?: ChatMessageMention[]
+  usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number }
+  contextWindow?: number
 }
 
 export type DraftModalState = {

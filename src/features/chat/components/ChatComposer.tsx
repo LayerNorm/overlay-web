@@ -2,7 +2,7 @@
 
 /* eslint-disable react-hooks/refs */
 
-import { PromptInput, PromptInputBody, PromptInputButton, PromptInputFooter, PromptInputSubmit, PromptInputTools } from '@overlay/chat-react'
+import { ContextMeter, PromptInput, PromptInputBody, PromptInputButton, PromptInputFooter, PromptInputSubmit, PromptInputTools } from '@overlay/chat-react'
 import {
   AtSign,
   Brain,
@@ -275,6 +275,7 @@ function ComposerControls(props: ComposerControlsProps) {
         })}
         {props.generationChip && <GenerationChip chip={props.generationChip} onClear={() => props.setGenerationChip(null)} />}
       </PromptInputTools>
+      {props.contextUsage ? <ContextMeter {...props.contextUsage} /> : null}
       {props.modelControl}
       <DelayedTooltip label={props.isActiveLoading ? 'Stop generating' : 'Send (↵) · new line (⇧↵)'} side="top">
         <PromptInputSubmit
