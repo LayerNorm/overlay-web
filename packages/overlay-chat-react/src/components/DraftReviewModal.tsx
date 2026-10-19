@@ -45,7 +45,7 @@ export function FlashCopyIconButton({
       type="button"
       onClick={() => void handleClick()}
       disabled={disabled || !copyText}
-      className="text-(--muted) hover:text-(--foreground) disabled:opacity-30"
+      className="size-7 text-(--muted) hover:text-(--foreground) disabled:opacity-30"
       aria-label={ariaLabel}
     >
       {showCheck ? <Check size={14} strokeWidth={1.75} /> : <Copy size={14} strokeWidth={1.75} />}
