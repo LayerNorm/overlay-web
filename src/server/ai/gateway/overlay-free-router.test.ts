@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { generateText, stepCountIs, tool } from 'ai'
+import { z } from 'zod'
+import { getGatewayLanguageModel } from './ai-gateway'
 import type { LanguageModelV4, LanguageModelV4CallOptions, LanguageModelV4StreamPart } from '@ai-sdk/provider'
 import {
   createOverlayFreeLanguageModel,
@@ -402,4 +405,121 @@ test('awaits stream cancellation and settles its lease as unsafe', async () => {
   await reader.cancel()
   assert.equal(cancelled, true)
   assert.deepEqual(calls, ['settle:gateway:first/model:first:false'])
+})
+
+test('the shared resolver creates both virtual models without provider access', async () => {
+  for (const id of ['overlay-free', 'openrouter/free']) {
+    const resolved = await getGatewayLanguageModel(id)
+    assert.equal(resolved.modelId, id)
+    assert.equal(resolved.specificationVersion, 'v4')
+  }
+})
+
+test('AI SDK executes a two-step tool loop only after receipt settlement', async () => {
+  const calls: string[] = []
+  let generations = 0
+  const routed = createOverlayFreeLanguageModel({
+    ...dependencies([route('gateway', 'first/model', 'first')], calls),
+    providers: {
+      gateway: async () => model('first', async (request) => {
+        generations++
+        const result = gatewayReceipt('first/model', 'first')
+        if (generations === 1) return {
+          ...result,
+          content: [{ type: 'tool-call', toolCallId: 'lookup-1', toolName: 'lookup', input: '{"query":"hello"}' }],
+          finishReason: { unified: 'tool-calls', raw: 'tool_calls' },
+        }
+        assert.ok(request.prompt.some(message => message.role === 'tool'))
+        assert.deepEqual(calls, ['settle:gateway:first/model:first:true', 'execute:hello'])
+        return result
+      }),
+      openrouter: async () => { throw new Error('unexpected fallback') },
+    },
+  })
+  const result = await generateText({
+    model: routed,
+    prompt: 'Look up hello',
+    maxRetries: 0,
+    stopWhen: stepCountIs(2),
+    tools: {
+      lookup: tool({
+        inputSchema: z.object({ query: z.string() }),
+        execute: async ({ query }) => { calls.push(`execute:${query}`); return 'found' },
+      }),
+    },
+  })
+  assert.equal(result.text, 'free')
+  assert.equal(result.steps.length, 2)
+  assert.equal(generations, 2)
+  assert.equal(calls.at(-1), 'settle:gateway:first/model:first:true')
+})
+
+test('cancelling while waiting for first output cannot start fallback inference', async () => {
+  const calls: string[] = []
+  let reading!: () => void
+  const started = new Promise<void>(resolve => { reading = resolve })
+  const routed = createOverlayFreeLanguageModel({
+    ...dependencies([
+      route('gateway', 'first/model', 'first'),
+      route('openrouter', 'openrouter/free', 'openrouter'),
+    ], calls),
+    providers: {
+      gateway: async () => model('first', async () => gatewayReceipt('first/model', 'first'), () =>
+        new ReadableStream({ pull() { reading() } })),
+      openrouter: async () => { calls.push('fallback'); throw new Error('must not retry') },
+    },
+  })
+  const response = await routed.doStream(options())
+  const reader = response.stream.getReader()
+  const pending = reader.read()
+  await started
+  await reader.cancel()
+  assert.equal((await pending).done, true)
+  assert.deepEqual(calls, ['settle:gateway:first/model:first:false'])
+})
+
+test('a storage failure during early stream fallback aborts all remaining attempts', async () => {
+  const routes = [
+    route('gateway', 'first/model', 'first'),
+    route('gateway', 'second/model', 'second'),
+    route('openrouter', 'openrouter/free', 'openrouter'),
+  ]
+  const calls: string[] = []
+  let claims = 0
+  const deps = dependencies(routes, calls)
+  const originalClaim = deps.repository.claim
+  deps.repository.claim = async (...args) => {
+    claims++
+    if (claims === 2) throw new Error('storage unavailable')
+    return originalClaim(...args)
+  }
+  const routed = createOverlayFreeLanguageModel({
+    ...deps,
+    providers: {
+      gateway: async () => model('first', async () => gatewayReceipt('first/model', 'first'), () =>
+        new ReadableStream({ start(controller) {
+          controller.enqueue({ type: 'error', error: new Error('upstream failed') })
+          controller.close()
+        } })),
+      openrouter: async () => { calls.push('fallback'); throw new Error('must not retry') },
+    },
+  })
+  const response = await routed.doStream(options())
+  await assert.rejects(response.stream.getReader().read(), /storage unavailable/)
+  assert.equal(claims, 2)
+  assert.deepEqual(calls, ['settle:gateway:first/model:first:false'])
+})
+
+test('preflight network failures cool down without quarantining an uncalled provider', async () => {
+  const calls: string[] = []
+  const routed = createOverlayFreeLanguageModel({
+    ...dependencies([route('gateway', 'first/model', 'first')], calls),
+    preflight: async () => { throw new Error('catalog unavailable') },
+    providers: {
+      gateway: async () => { throw new Error('must not call') },
+      openrouter: async () => { throw new Error('must not call') },
+    },
+  })
+  await assert.rejects(routed.doGenerate(options()), /overlay_free_no_eligible_route/)
+  assert.deepEqual(calls, ['cooldown:gateway:first/model:first'])
 })

@@ -92,9 +92,7 @@ export function getLowCreditFallbackAttemptModelIds(params: FallbackParams & {
   paidFallbackModelIds?: readonly string[]
 }): string[] {
   if (isFreeTierChatModelId(params.modelId)) return [params.modelId]
-  const freeIds = isFreeTierChatModelId(params.modelId)
-    ? []
-    : [FREE_TIER_AUTO_MODEL_ID, ...freeFallbackCandidates(params)]
+  const freeIds = [FREE_TIER_AUTO_MODEL_ID, ...freeFallbackCandidates(params)]
     .filter((modelId) => supportsRequiredInputs(modelId, params))
   const merged = [...freeIds, params.modelId, ...(params.paidFallbackModelIds ?? [])]
   return [...new Set(merged)].slice(0, params.maxCandidates ?? 4)

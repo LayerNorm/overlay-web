@@ -16,13 +16,17 @@ const gatewayModel = {
 
 const gatewayEndpointsResponse = {
   data: {
+    id: 'minimax/minimax-m3.1-flash',
     endpoints: [{
       provider_name: 'minimax',
       context_length: 1_000_000,
       max_completion_tokens: 524_288,
       tags: ['reasoning', 'tool-use', 'vision', 'structured-output'],
       supported_parameters: ['tools', 'tool_choice', 'response_format', 'structured_outputs'],
-      pricing: { input: '0', output: '0' },
+      pricing: {
+        prompt: '0', completion: '0', request: '0', image: '0', image_output: '0',
+        web_search: '0', internal_reasoning: '0', input_cache_read: '0', discount: 0,
+      },
     }],
   },
 }
@@ -69,13 +73,14 @@ test('validates the exact OpenRouter free catalog entry and its native pricing k
   }), null)
 })
 
-test('rejects missing or nonzero Vercel endpoint prices', () => {
-  assert.equal(currentGatewayEndpoint({ data: { endpoints: [{
+test('rejects mismatched models and missing or nonzero Vercel endpoint prices', () => {
+  assert.equal(currentGatewayEndpoint(gatewayEndpointsResponse, 'different/model', 'minimax'), null)
+  assert.equal(currentGatewayEndpoint({ data: { id: gatewayModel.id, endpoints: [{
     ...gatewayEndpointsResponse.data.endpoints[0],
-    pricing: { input: '0', output: '0.000001' },
+    pricing: { prompt: '0', completion: '0.000001' },
   }] } }, 'minimax/minimax-m3.1-flash', 'minimax'), null)
-  assert.equal(currentGatewayEndpoint({ data: { endpoints: [{
+  assert.equal(currentGatewayEndpoint({ data: { id: gatewayModel.id, endpoints: [{
     ...gatewayEndpointsResponse.data.endpoints[0],
-    pricing: { input: '0' },
+    pricing: { prompt: '0' },
   }] } }, 'minimax/minimax-m3.1-flash', 'minimax'), null)
 })

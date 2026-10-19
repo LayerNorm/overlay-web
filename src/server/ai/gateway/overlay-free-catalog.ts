@@ -21,7 +21,7 @@ export function gatewayModelHasZeroPricing(model: unknown): boolean {
 }
 
 export function endpointHasZeroPricing(endpoint: unknown): boolean {
-  return hasZeroPricing(asRecord(endpoint).pricing, ['input', 'output'])
+  return hasZeroPricing(asRecord(endpoint).pricing, ['prompt', 'completion'])
 }
 
 export function openRouterFreeModelHasZeroPricing(model: unknown): boolean {
@@ -34,6 +34,7 @@ export function currentGatewayEndpoint(
   modelId: string,
   provider: string,
 ): { capabilities: FreeRouteCapabilities; pricing: Record<string, unknown> } | null {
+  if (asRecord(asRecord(payload).data).id !== modelId) return null
   const endpoint = parseGatewayEndpoints(payload).find((row) => row.provider_name === provider)
   if (!endpoint || !endpointHasZeroPricing(endpoint)) return null
   const capabilities = freeEndpointCapabilities(endpoint)

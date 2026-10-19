@@ -1,5 +1,6 @@
 import 'server-only'
 
+import type { LanguageModelV4 } from '@ai-sdk/provider'
 import { asRecord, freeEndpointCapabilities, freeRoutePriority, FREE_ROUTE_TTL_MS, FREE_ROUTE_COOLDOWN_MS, assessFreeReceipt } from '@/shared/ai/gateway/overlay-free-policy'
 import { getGatewayModelId, getOrCreateGateway, resolveGatewayApiKey } from './gateway-runtime'
 import { lazyConvex as convex } from '@/server/database/lazy-convex'
@@ -58,7 +59,7 @@ function routeFromEndpoint(model: Record<string, unknown>, endpoint: Record<stri
   const capabilities = freeEndpointCapabilities(endpoint)
   const pricing = asRecord(endpoint.pricing)
   if (!modelId || !provider || !capabilities || !gatewayModelHasZeroPricing(model)) return null
-  if (!currentGatewayEndpoint({ data: { endpoints: [endpoint] } }, modelId, provider)) return null
+  if (!currentGatewayEndpoint({ data: { id: modelId, endpoints: [endpoint] } }, modelId, provider)) return null
   return {
     routeKey: `gateway:${modelId}:${provider}`,
     transport: 'gateway',
@@ -115,16 +116,36 @@ export async function refreshOverlayFreeCatalog({
   fetchers = defaultFetchers,
   onlyOpenRouter = false,
   timeoutMs,
-}: { now?: number; fetchers?: CatalogFetcher; onlyOpenRouter?: boolean; timeoutMs?: number } = {}) {
+  store = convex,
+  loadGateway = async () => await resolveGatewayApiKey() ? await getOrCreateGateway() : null,
+}: {
+  now?: number
+  fetchers?: CatalogFetcher
+  onlyOpenRouter?: boolean
+  timeoutMs?: number
+  store?: Pick<typeof convex, 'mutation'>
+  loadGateway?: () => Promise<((modelId: string) => LanguageModelV4) | null>
+} = {}) {
   const serverSecret = getInternalApiSecret()
   const lockToken = crypto.randomUUID()
-  const lock = await convex.mutation<{ leaseToken: string; generation: number } | null>('platform/overlayFreeSafety:acquireRefreshLockByServer', {
+  const lock = await store.mutation<{ leaseToken: string; generation: number } | null>('platform/overlayFreeSafety:acquireRefreshLockByServer', {
     serverSecret, leaseToken: lockToken, now, leaseMs: 5 * 60 * 1000, retryMs: 5 * 60 * 1000,
   }, { throwOnError: true })
   if (!lock) return { refreshed: false, reason: 'locked' }
   const deadline = Date.now() + Math.min(timeoutMs ?? 200_000, 200_000)
   try {
     const candidates: OverlayFreeRoute[] = []
+    // Discover the fallback before Gateway discovery can consume the deadline.
+    let openrouter: OverlayFreeRoute[] = []
+    let openrouterCatalogSucceeded = false
+    try {
+      openrouter = parseGatewayModels(await withinDeadline(fetchers.openrouterModels(), deadline))
+        .map((value) => openrouterRoute(value, Date.now(), lock.generation))
+        .filter((value): value is OverlayFreeRoute => value !== null)
+      openrouterCatalogSucceeded = true
+    } catch (_error) {
+      openrouter = []
+    }
     let gatewayCatalogSucceeded = false
     try {
       if (onlyOpenRouter) throw new Error('gateway discovery skipped')
@@ -141,23 +162,13 @@ export async function refreshOverlayFreeCatalog({
     } catch (_error) {
       candidates.length = 0
     }
-    let openrouter: OverlayFreeRoute[] = []
-    let openrouterCatalogSucceeded = false
-    try {
-      openrouter = parseGatewayModels(await withinDeadline(fetchers.openrouterModels(), deadline))
-        .map((value) => openrouterRoute(value, Date.now(), lock.generation))
-        .filter((value): value is OverlayFreeRoute => value !== null)
-      openrouterCatalogSucceeded = true
-    } catch (_error) {
-      openrouter = []
-    }
     candidates.sort((a, b) => freeRoutePriority(a.modelId) - freeRoutePriority(b.modelId) || a.routeKey.localeCompare(b.routeKey))
     const routes = [...candidates.slice(0, 11), ...openrouter.slice(0, 1)]
     const preserveTransports = [
       ...(onlyOpenRouter || !gatewayCatalogSucceeded ? ['gateway' as const] : []),
       ...(!openrouterCatalogSucceeded ? ['openrouter' as const] : []),
     ]
-    await convex.mutation('platform/overlayFreeSafety:publishByServer', {
+    await store.mutation('platform/overlayFreeSafety:publishByServer', {
       serverSecret, generation: lock.generation, refreshToken: lockToken, now: Date.now(),
       preserveTransports,
       routes: routes.map(({ routeKey, transport, modelId, provider, capabilitiesJson, pricingJson, catalogVerifiedAt, catalogExpiresAt, generation }) =>
@@ -165,18 +176,27 @@ export async function refreshOverlayFreeCatalog({
     }, { throwOnError: true })
 
     const probed = new Map<string, number>()
-    const gatewayEnabled = !onlyOpenRouter && Boolean(await resolveGatewayApiKey())
+    const gateway = !onlyOpenRouter && candidates.length ? await loadGateway() : null
     for (const route of routes.filter((value) => value.transport === 'gateway')) {
-      if (Date.now() >= deadline || !gatewayEnabled) break
+      if (Date.now() >= deadline || !gateway) break
       const leaseToken = crypto.randomUUID()
-      const claimed = await convex.mutation<{ status: string; route: OverlayFreeRoute | null }>('platform/overlayFreeSafety:claimByServer', {
+      const claimed = await store.mutation<{ status: string; route: OverlayFreeRoute | null }>('platform/overlayFreeSafety:claimByServer', {
         serverSecret, routeKey: route.routeKey, leaseToken, now: Date.now(), leaseMs: 3 * 60 * 1000,
         purpose: 'canary', expectedGeneration: lock.generation, refreshToken: lockToken,
       }, { throwOnError: true })
       if (!claimed || claimed.status !== 'claimed' || !claimed.route) continue
-      const preflight = await withinDeadline(preflightOverlayFreeRoute(claimed.route, fetchers), deadline).catch((_error) => null)
+      let preflight: Awaited<ReturnType<typeof preflightOverlayFreeRoute>>
+      try {
+        preflight = await withinDeadline(preflightOverlayFreeRoute(claimed.route, fetchers), deadline)
+      } catch (_error) {
+        await store.mutation('platform/overlayFreeSafety:cooldownByServer', {
+          serverSecret, routeKey: route.routeKey, leaseToken, now: Date.now(),
+          cooldownUntil: Date.now() + FREE_ROUTE_COOLDOWN_MS, reason: 'catalog unavailable before canary',
+        }, { throwOnError: true })
+        continue
+      }
       if (!preflight) {
-        await convex.mutation('platform/overlayFreeSafety:settleByServer', {
+        await store.mutation('platform/overlayFreeSafety:settleByServer', {
           serverSecret, routeKey: route.routeKey, leaseToken, now: Date.now(),
           receiptJson: JSON.stringify({ safe: false, cost: null, reason: 'preflight failed' }),
           safe: false, cost: null, reason: 'catalog price changed or unavailable',
@@ -185,14 +205,13 @@ export async function refreshOverlayFreeCatalog({
       }
       const remaining = deadline - Date.now()
       if (remaining <= 0) {
-        await convex.mutation('platform/overlayFreeSafety:cooldownByServer', {
+        await store.mutation('platform/overlayFreeSafety:cooldownByServer', {
           serverSecret, routeKey: route.routeKey, leaseToken, now: Date.now(),
           cooldownUntil: Date.now() + FREE_ROUTE_COOLDOWN_MS, reason: 'canary deadline',
         }, { throwOnError: true })
         continue
       }
       try {
-        const gateway = await getOrCreateGateway()
         const result = await gateway(getGatewayModelId(claimed.route.modelId)).doGenerate({
           prompt: [{ role: 'user', content: [{ type: 'text', text: 'Reply with OK.' }] }],
           maxOutputTokens: 2,
@@ -200,7 +219,7 @@ export async function refreshOverlayFreeCatalog({
           providerOptions: { gateway: { only: [claimed.route.provider], models: [] } },
         })
         const receipt = assessFreeReceipt(result, { transport: 'gateway', modelId: claimed.route.modelId, provider: claimed.route.provider })
-        await convex.mutation('platform/overlayFreeSafety:settleByServer', {
+        await store.mutation('platform/overlayFreeSafety:settleByServer', {
           serverSecret, routeKey: route.routeKey, leaseToken, now: Date.now(),
           receiptJson: JSON.stringify({ safe: receipt.safe, cost: receipt.cost, reason: receipt.reason, actualModelId: receipt.actualModelId, actualProvider: receipt.actualProvider }), safe: receipt.safe, cost: receipt.cost,
           actualModelId: receipt.actualModelId, actualProvider: receipt.actualProvider, reason: receipt.reason ?? undefined,
@@ -208,12 +227,12 @@ export async function refreshOverlayFreeCatalog({
         if (receipt.safe) probed.set(route.routeKey, Date.now())
       } catch (error) {
         if (typeof error === 'object' && error !== null && 'statusCode' in error && error.statusCode === 429) {
-          await convex.mutation('platform/overlayFreeSafety:cooldownByServer', {
+          await store.mutation('platform/overlayFreeSafety:cooldownByServer', {
             serverSecret, routeKey: route.routeKey, leaseToken, now: Date.now(),
             cooldownUntil: Date.now() + 60_000, reason: 'canary rate limit',
           }, { throwOnError: true })
         } else {
-          await convex.mutation('platform/overlayFreeSafety:settleByServer', {
+          await store.mutation('platform/overlayFreeSafety:settleByServer', {
             serverSecret, routeKey: route.routeKey, leaseToken, now: Date.now(),
             receiptJson: JSON.stringify({ safe: false, cost: null, reason: 'missing receipt' }), safe: false, cost: null,
             reason: 'missing receipt',
@@ -221,7 +240,7 @@ export async function refreshOverlayFreeCatalog({
         }
       }
     }
-    await convex.mutation('platform/overlayFreeSafety:publishByServer', {
+    await store.mutation('platform/overlayFreeSafety:publishByServer', {
       serverSecret, generation: lock.generation, refreshToken: lockToken, now: Date.now(),
       preserveTransports,
       routes: routes.map((route) => {
@@ -235,16 +254,17 @@ export async function refreshOverlayFreeCatalog({
         }
       }),
     }, { throwOnError: true })
-    await convex.mutation('platform/overlayFreeSafety:releaseRefreshLockByServer', {
+    await store.mutation('platform/overlayFreeSafety:releaseRefreshLockByServer', {
       serverSecret, leaseToken: lockToken, now: Date.now(),
-      success: gatewayCatalogSucceeded || openrouterCatalogSucceeded,
+      success: (gatewayCatalogSucceeded || onlyOpenRouter) && openrouterCatalogSucceeded,
+      partial: onlyOpenRouter,
     }, { throwOnError: true })
     return { refreshed: true, routes: routes.length, generation: lock.generation }
   } catch (error) {
-    await convex.mutation('platform/overlayFreeSafety:invalidateGenerationByServer', {
+    await store.mutation('platform/overlayFreeSafety:invalidateGenerationByServer', {
       serverSecret, generation: lock.generation, refreshToken: lockToken, now: Date.now(),
     }, { throwOnError: true }).catch((_error) => undefined)
-    await convex.mutation('platform/overlayFreeSafety:releaseRefreshLockByServer', {
+    await store.mutation('platform/overlayFreeSafety:releaseRefreshLockByServer', {
       serverSecret, leaseToken: lockToken, now: Date.now(), success: false,
     }, { throwOnError: true }).catch((_error) => undefined)
     throw error

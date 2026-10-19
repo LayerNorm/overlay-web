@@ -263,6 +263,14 @@ export const settleByServer = mutation({
       activeLeaseExpiresAt: undefined,
       updatedAt: args.now,
     }
+    if (row.activeLeaseExpiresAt === undefined || row.activeLeaseExpiresAt <= args.now) {
+      await ctx.db.patch(row._id, {
+        ...patch,
+        quarantineReason: row.quarantineReason ?? 'missing receipt',
+        quarantineAt: row.quarantineAt ?? args.now,
+      })
+      return { status: 'late' as const }
+    }
     if (row.quarantineReason) {
       await ctx.db.patch(row._id, patch)
       return { status: 'settled' as const }
@@ -351,6 +359,7 @@ export const releaseRefreshLockByServer = mutation({
     leaseToken: v.string(),
     now: v.number(),
     success: v.boolean(),
+    partial: v.optional(v.boolean()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -359,7 +368,9 @@ export const releaseRefreshLockByServer = mutation({
     if (!current || current.leaseToken !== args.leaseToken) return null
     await ctx.db.patch(current._id, {
       leaseExpiresAt: args.now,
-      retryAfter: args.success ? args.now + 60 * 60 * 1000 : Math.max(current.retryAfter, args.now + 5 * 60 * 1000),
+      retryAfter: args.success
+        ? args.partial ? args.now : current.updatedAt + 55 * 60 * 1000
+        : Math.max(current.retryAfter, args.now + 5 * 60 * 1000),
       updatedAt: args.now,
     })
     return null

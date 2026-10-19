@@ -13,6 +13,7 @@ import { wrapLanguageModel } from 'ai'
 import {
   asRecord,
   assessFreeReceipt,
+  freeRoutePriority,
   FREE_ROUTE_COOLDOWN_MS,
   FREE_ROUTE_LEASE_MS,
   FREE_ROUTE_TIMEOUT_MS,
@@ -176,6 +177,7 @@ function isImagePart(part: Record<string, unknown>): boolean {
 function urlIsHttps(part: Record<string, unknown>): boolean {
   const data = asRecord(part.data)
   const candidate = typeof part.url === 'string' ? part.url : data.type === 'url' ? data.url : undefined
+  if (candidate instanceof URL) return candidate.protocol === 'https:'
   if (typeof candidate !== 'string') return true
   try {
     return new URL(candidate).protocol === 'https:'
@@ -216,6 +218,8 @@ function promptText(options: LanguageModelV4CallOptions): string {
     return message.content.map((part) => {
       const value = asRecord(part)
       if (typeof value.text === 'string') return value.text
+      const data = asRecord(value.data)
+      if (data.type === 'text' && typeof data.text === 'string') return data.text
       if (value.type === 'tool-call') return JSON.stringify(value.input)
       if (value.type === 'tool-result') {
         const output = asRecord(value.output)
@@ -348,7 +352,9 @@ class OverlayFreeLanguageModel implements LanguageModelV4 {
       .filter((route) => routeSupports(parseCapabilities(route) ?? {
         contextWindow: 0, maxOutputTokens: 0, supportsTools: false, supportsVision: false, supportsJson: false,
       }, options))
-      .sort((a, b) => (a.transport === 'gateway' ? 0 : 1) - (b.transport === 'gateway' ? 0 : 1))
+      .sort((a, b) => (a.transport === 'gateway' ? 0 : 1) - (b.transport === 'gateway' ? 0 : 1)
+        || freeRoutePriority(a.modelId) - freeRoutePriority(b.modelId)
+        || a.routeKey.localeCompare(b.routeKey))
   }
 
   private model(route: OverlayFreeRoute): Promise<LanguageModelV4> {
@@ -383,7 +389,8 @@ class OverlayFreeLanguageModel implements LanguageModelV4 {
         if (timer) clearTimeout(timer)
       }
     } catch (_error) {
-      current = null
+      await this.config.repository.cooldown(route.routeKey, leaseToken, this.clock())
+      return null
     }
     if (!current) {
       await this.config.repository.settle({
@@ -424,7 +431,7 @@ class OverlayFreeLanguageModel implements LanguageModelV4 {
       const timeout = Math.min(FREE_ROUTE_TIMEOUT_MS, remaining - (hasFallback ? 15_000 : 0))
       if (timeout <= 0) {
         await this.config.repository.cooldown(route.routeKey, token, this.clock())
-        break
+        continue
       }
       const controller = new AbortController()
       const timer = setTimeout(() => controller.abort(), timeout)
@@ -471,7 +478,7 @@ class OverlayFreeLanguageModel implements LanguageModelV4 {
           }
           throw error
         }
-        if (isRateLimited(error)) {
+        if (!generationStarted || isRateLimited(error)) {
           await this.config.repository.cooldown(route.routeKey, token, this.clock())
         } else {
           await this.config.repository.settle({
@@ -496,6 +503,8 @@ class OverlayFreeLanguageModel implements LanguageModelV4 {
     const onModelCaptured = this.config.onModelCaptured
     const now = () => this.clock()
     let safetyFailure = false
+    let closed = false
+    const streamAbort = new AbortController()
     const store = async <T>(operation: Promise<T>): Promise<T> => {
       try {
         return await operation
@@ -515,14 +524,22 @@ class OverlayFreeLanguageModel implements LanguageModelV4 {
       settled: boolean
     }
     const openNext = async (): Promise<Attempt | null> => {
-      while (attemptIndex < attempts.length && Date.now() < deadline) {
+      while (!closed && attemptIndex < attempts.length && Date.now() < deadline) {
         if (options.abortSignal?.aborted) throw options.abortSignal.reason ?? new Error('aborted')
         const claimed = await this.claim(attempts[attemptIndex++]!)
         const route = claimed.route
         const token = route?.activeLeaseToken
         if (claimed.status !== 'claimed' || !route || !token) continue
+        if (closed) {
+          await repository.cooldown(route.routeKey, token, now())
+          return null
+        }
         const checked = await this.preflight(route, token, options, deadline)
         if (!checked) continue
+        if (closed) {
+          await repository.cooldown(route.routeKey, token, now())
+          return null
+        }
         const remaining = deadline - Date.now()
         const fallbackRemains = route.transport === 'gateway' && attempts.slice(attemptIndex).some((item) => item.transport === 'openrouter')
         const timeout = Math.min(FREE_ROUTE_TIMEOUT_MS, remaining - (fallbackRemains ? 15_000 : 0))
@@ -532,25 +549,36 @@ class OverlayFreeLanguageModel implements LanguageModelV4 {
         }
         const controller = new AbortController()
         const timer = setTimeout(() => controller.abort(), timeout)
+        let generationStarted = false
         try {
           const model = await this.model(checked.route)
+          if (closed) throw new DOMException('Stream cancelled', 'AbortError')
+          if (options.abortSignal?.aborted) throw options.abortSignal.reason ?? new Error('aborted')
+          generationStarted = true
           const response = await model.doStream({
             ...trustedOptions(options, checked.route, checked.capabilities),
-            abortSignal: options.abortSignal ? AbortSignal.any([options.abortSignal, controller.signal]) : controller.signal,
+            abortSignal: AbortSignal.any([
+              controller.signal, streamAbort.signal, ...(options.abortSignal ? [options.abortSignal] : []),
+            ]),
           })
+          if (closed) {
+            await response.stream.cancel()
+            throw new DOMException('Stream cancelled', 'AbortError')
+          }
           return { route: checked.route, token, reader: response.stream.getReader(), response, timer, controller, settled: false }
         } catch (error) {
           clearTimeout(timer)
-          if (options.abortSignal?.aborted) {
-            if (isRateLimited(error)) await store(repository.cooldown(route.routeKey, token, now()))
+          if (closed || options.abortSignal?.aborted) {
+            if (!generationStarted || isRateLimited(error)) await store(repository.cooldown(route.routeKey, token, now()))
             else await store(repository.settle({
               routeKey: route.routeKey, leaseToken: token, now: now(),
               receipt: { safe: false, cost: null, reason: 'missing receipt' },
               safe: false, cost: null, reason: 'missing receipt',
             }))
+            if (closed) return null
             throw error
           }
-          if (isRateLimited(error)) await store(repository.cooldown(route.routeKey, token, now()))
+          if (!generationStarted || isRateLimited(error)) await store(repository.cooldown(route.routeKey, token, now()))
           else await store(repository.settle({
             routeKey: route.routeKey, leaseToken: token, now: now(),
             receipt: { safe: false, cost: null, reason: 'missing receipt' },
@@ -575,7 +603,6 @@ class OverlayFreeLanguageModel implements LanguageModelV4 {
     let semantic = false
     let prelude: LanguageModelV4StreamPart[] = []
     let preludeSize = 0
-    let closed = false
     const settleUnsafe = async (attempt: Attempt, reason: string) => {
       if (attempt.settled) return
       attempt.settled = true
@@ -590,11 +617,12 @@ class OverlayFreeLanguageModel implements LanguageModelV4 {
           try {
             if (options.abortSignal?.aborted) throw options.abortSignal.reason ?? new Error('aborted')
             const next = await current.reader.read()
+            if (closed) return
             if (next.done) {
               clearTimeout(current.timer)
               await settleUnsafe(current, 'missing receipt')
               if (semantic || options.abortSignal?.aborted) throw new Error('overlay_free_missing_stream_receipt')
-              current = await openNext()
+              current = await safeOpenNext()
               responseModelId = undefined
               prelude = []
               preludeSize = 0
@@ -607,15 +635,15 @@ class OverlayFreeLanguageModel implements LanguageModelV4 {
               clearTimeout(current.timer)
               await current.reader.cancel().catch((_error) => undefined)
               if (isRateLimited(error) && !semantic) {
-              if (!current.settled) {
-                current.settled = true
-                await store(repository.cooldown(current.route.routeKey, current.token, now()))
+                if (!current.settled) {
+                  current.settled = true
+                  await store(repository.cooldown(current.route.routeKey, current.token, now()))
                 }
               } else {
                 await settleUnsafe(current, semantic ? 'stream error after output' : 'missing receipt')
               }
               if (semantic || options.abortSignal?.aborted) throw error
-              current = await openNext()
+              current = await safeOpenNext()
               responseModelId = undefined
               prelude = []
               preludeSize = 0
@@ -649,6 +677,7 @@ class OverlayFreeLanguageModel implements LanguageModelV4 {
                 providerMetadata: overlayMetadata(part.providerMetadata, current.route, summary),
               })
               closed = true
+              void current.reader.cancel().catch((_error) => undefined)
               controller.close()
               return
             }
@@ -676,6 +705,7 @@ class OverlayFreeLanguageModel implements LanguageModelV4 {
             controller.enqueue(part)
             return
           } catch (error) {
+            if (closed) return
             if (current) {
               clearTimeout(current.timer)
               await current.reader.cancel().catch((_error) => undefined)
@@ -702,7 +732,10 @@ class OverlayFreeLanguageModel implements LanguageModelV4 {
         }
       },
       async cancel() {
-        if (closed || !current || current.settled) return
+        if (closed) return
+        closed = true
+        streamAbort.abort()
+        if (!current || current.settled) return
         clearTimeout(current.timer)
         current.controller.abort()
         try {
@@ -710,7 +743,6 @@ class OverlayFreeLanguageModel implements LanguageModelV4 {
         } finally {
           await settleUnsafe(current, 'stream cancelled')
         }
-        closed = true
       },
     })
     return { ...current.response, stream }
@@ -734,7 +766,13 @@ export function createOverlayFreeRepository(): OverlayFreeRepository {
         { serverSecret: secret(), now },
         { throwOnError: true },
       ), 'refresh_state')
-      if (state.due) {
+      const openRouter = fallbackOnly ? await convex.query<OverlayFreeRoute>(
+        'platform/overlayFreeSafety:getByServer',
+        { serverSecret: secret(), routeKey: `openrouter:${OPENROUTER_FREE_MODEL_ID}:openrouter` },
+        { throwOnError: true },
+      ) : null
+      const needsRefresh = !fallbackOnly || !openRouter || openRouter.catalogExpiresAt <= now
+      if (state.due && needsRefresh) {
         await refreshOverlayFreeCatalog({ onlyOpenRouter: fallbackOnly, timeoutMs: 75_000 })
         state = required(await convex.query<{ generation: number; due: boolean }>(
           'platform/overlayFreeSafety:getRefreshStateByServer',

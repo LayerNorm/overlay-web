@@ -43,6 +43,47 @@ async function lockAndPublish(convex: ReturnType<typeof convexTest>, now = 1) {
 }
 
 describe('overlay-free durable safety state', () => {
+  test('late settlement quarantines even when no cleanup has run', async () => {
+    const convex = convexTest(schema, modules)
+    const row = await lockAndPublish(convex)
+    await convex.mutation(api.platform.overlayFreeSafety.claimByServer, {
+      serverSecret: secret, routeKey: row.routeKey, leaseToken: 'late', now: 2,
+      leaseMs: 180_000, purpose: 'user', expectedGeneration: row.generation,
+    })
+    const settled = await convex.mutation(api.platform.overlayFreeSafety.settleByServer, {
+      serverSecret: secret, routeKey: row.routeKey, leaseToken: 'late', now: 180_003,
+      receiptJson: JSON.stringify({ safe: true, cost: 0, actualModelId: row.modelId, actualProvider: row.provider }),
+      safe: true, cost: 0,
+    })
+    expect(settled.status).toBe('late')
+    const state = await convex.query(api.platform.overlayFreeSafety.getByServer, {
+      serverSecret: secret, routeKey: row.routeKey,
+    })
+    expect(state?.quarantineReason).toBe('missing receipt')
+  })
+
+  test('partial OpenRouter initialization leaves full refresh due and hourly refresh is due before expiry', async () => {
+    const convex = convexTest(schema, modules)
+    await convex.mutation(api.platform.overlayFreeSafety.acquireRefreshLockByServer, {
+      serverSecret: secret, leaseToken: 'or-only', now: 1, leaseMs: 300_000, retryMs: 300_000,
+    })
+    await convex.mutation(api.platform.overlayFreeSafety.releaseRefreshLockByServer, {
+      serverSecret: secret, leaseToken: 'or-only', now: 2, success: true, partial: true,
+    })
+    expect((await convex.query(api.platform.overlayFreeSafety.getRefreshStateByServer, {
+      serverSecret: secret, now: 3,
+    })).due).toBe(true)
+    await convex.mutation(api.platform.overlayFreeSafety.acquireRefreshLockByServer, {
+      serverSecret: secret, leaseToken: 'full', now: 3, leaseMs: 300_000, retryMs: 300_000,
+    })
+    await convex.mutation(api.platform.overlayFreeSafety.releaseRefreshLockByServer, {
+      serverSecret: secret, leaseToken: 'full', now: 100_000, success: true,
+    })
+    expect((await convex.query(api.platform.overlayFreeSafety.getRefreshStateByServer, {
+      serverSecret: secret, now: 3_600_000,
+    })).due).toBe(true)
+  })
+
   test('authenticates server operations and atomically grants one user lease', async () => {
     const convex = convexTest(schema, modules)
     await expect(convex.mutation(api.platform.overlayFreeSafety.acquireRefreshLockByServer, {
