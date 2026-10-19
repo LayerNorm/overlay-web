@@ -144,7 +144,7 @@ function SidebarGroupLabel({
     <Comp
       data-slot="sidebar-group-label"
       className={cn(
-        'flex h-7 shrink-0 items-center px-2.5 text-[11px] font-medium uppercase tracking-[0.06em] text-(--muted-light)',
+        'flex h-[30px] shrink-0 items-center gap-1 px-2 text-xs font-medium text-(--muted)',
         className,
       )}
       {...props}
@@ -176,7 +176,7 @@ function SidebarGroupContent({ className, ...props }: React.ComponentProps<'div'
 }
 
 function SidebarMenu({ className, ...props }: React.ComponentProps<'ul'>) {
-  return <ul data-slot="sidebar-menu" className={cn('m-0 flex w-full min-w-0 list-none flex-col gap-0.5 p-0', className)} {...props} />
+  return <ul data-slot="sidebar-menu" className={cn('m-0 flex w-full min-w-0 list-none flex-col gap-px p-0', className)} {...props} />
 }
 
 function SidebarMenuItem({ className, ...props }: React.ComponentProps<'li'>) {
@@ -184,12 +184,12 @@ function SidebarMenuItem({ className, ...props }: React.ComponentProps<'li'>) {
 }
 
 const sidebarMenuButtonVariants = cva(
-  'peer/menu-button flex w-full min-w-0 items-center gap-2 overflow-hidden rounded-md text-left text-xs text-(--muted) outline-none transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground) focus-visible:ring-1 focus-visible:ring-(--muted-light) disabled:pointer-events-none disabled:opacity-60 aria-disabled:pointer-events-none aria-disabled:opacity-60 data-[active=true]:bg-(--surface-subtle) data-[active=true]:text-(--foreground) group-has-data-[sidebar=menu-action]/menu-item:pr-8 [&>svg]:size-[13px] [&>svg]:shrink-0 [&>span:last-child]:truncate',
+  'peer/menu-button flex w-full min-w-0 items-center gap-2.5 overflow-hidden rounded-md text-left text-sm text-(--foreground) outline-none transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground) focus-visible:ring-1 focus-visible:ring-(--muted-light) disabled:pointer-events-none disabled:opacity-60 aria-disabled:pointer-events-none aria-disabled:opacity-60 data-[active=true]:bg-(--surface-subtle) data-[active=true]:font-medium data-[active=true]:text-(--foreground) group-has-data-[sidebar=menu-action]/menu-item:pr-8 [&>svg]:size-4 [&>svg]:shrink-0 [&>span:last-child]:truncate',
   {
     variants: {
       size: {
-        default: 'h-8 px-2.5',
-        lg: 'h-9 px-3 text-sm [&>svg]:size-[15px]',
+        default: 'h-8 px-2',
+        lg: 'h-8 px-2',
       },
     },
     defaultVariants: { size: 'default' },
@@ -312,7 +312,7 @@ function SidebarMenuSubButton({
       data-active={isActive}
       {...(!asChild ? { type: 'button' as const } : {})}
       className={cn(
-        'flex h-7 w-full min-w-0 items-center gap-2 overflow-hidden rounded-md px-2 text-left text-xs text-(--muted) outline-none transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground) focus-visible:ring-1 focus-visible:ring-(--muted-light) disabled:pointer-events-none disabled:opacity-60 data-[active=true]:bg-(--surface-subtle) data-[active=true]:text-(--foreground) [&>svg]:size-[13px] [&>svg]:shrink-0 [&>span:last-child]:truncate',
+        'flex h-8 w-full min-w-0 items-center gap-2.5 overflow-hidden rounded-md px-2 text-left text-sm text-(--foreground) outline-none transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground) focus-visible:ring-1 focus-visible:ring-(--muted-light) disabled:pointer-events-none disabled:opacity-60 data-[active=true]:bg-(--surface-subtle) data-[active=true]:font-medium data-[active=true]:text-(--foreground) [&>svg]:size-4 [&>svg]:shrink-0 [&>span:last-child]:truncate',
         className,
       )}
       {...props}

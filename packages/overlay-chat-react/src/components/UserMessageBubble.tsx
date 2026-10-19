@@ -58,10 +58,10 @@ export function UserMessageBubble({
   return (
     <div
       className={cx(
-        'chat-user-bubble min-w-0 wrap-break-word select-text rounded-2xl border px-3 py-2.5 text-sm leading-relaxed sm:px-4',
+        'chat-user-bubble min-w-0 wrap-break-word select-text rounded-[18px] px-3.5 py-2.5 text-sm leading-normal',
         tone === 'room-self'
-          ? 'room-message-self-bubble rounded-br-sm border-transparent bg-(--room-message-self-bg) text-(--room-message-self-text)'
-          : 'rounded-br-sm border-(--border) bg-(--surface-subtle) text-(--foreground)',
+          ? 'room-message-self-bubble bg-(--room-message-self-bg) text-(--room-message-self-text)'
+          : 'bg-(--surface-subtle) text-(--foreground)',
         className,
       )}
     >
