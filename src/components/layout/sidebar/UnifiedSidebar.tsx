@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import Link from 'next/link'
-import { ChevronRight, Ellipsis, Loader2, PanelLeft, Search } from 'lucide-react'
+import { ChevronRight, Ellipsis, Loader2, PanelLeft, Plus, Search } from 'lucide-react'
 import {
   Button,
   Popover,
@@ -16,7 +16,6 @@ import {
   SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarResourceSection,
   type SidebarResourceAction,
 } from '@overlay/ui/primitives'
 import { unstyledButton } from '@overlay/ui/control-reset'
@@ -220,27 +219,104 @@ function scopeChildren(nav: SecondaryPanelNav | undefined, scope: PanelScope, so
   return solo ? nav.items.filter((item) => item.id.includes(':')) : []
 }
 
-function SectionRows({ nav, rows }: { nav: SecondaryPanelNav; rows: ReadonlyArray<InlineNavItem> }) {
-  const activeId = nav.activeChildId ?? nav.activeId
+const SECTION_HEADER_PX = 32
+
+interface PageSection {
+  id: string
+  label: string
+  active: boolean
+  badgeCount?: number
+  locked?: boolean
+}
+
+function pageSections(
+  nav: SecondaryPanelNav | undefined,
+  rows: ReadonlyArray<InlineNavItem>,
+  title: string,
+  hasContent: boolean,
+): PageSection[] {
+  if (nav && rows.length > 0) {
+    const activeId = nav.activeChildId ?? nav.activeId
+    return rows.map((row) => ({ id: row.id, label: row.label, active: activeId === row.id, badgeCount: row.badgeCount, locked: row.locked }))
+  }
+  return hasContent && title ? [{ id: 'page', label: title, active: true }] : []
+}
+
+/** Collapsible page sections; headers stick to the top and bottom so every section stays reachable. */
+function PageSections({
+  nav,
+  rows,
+  title,
+  action,
+  children,
+}: {
+  nav?: SecondaryPanelNav
+  rows: ReadonlyArray<InlineNavItem>
+  title: string
+  action?: SidebarResourceAction | null
+  children?: ReactNode
+}) {
+  const [closed, setClosed] = useState<ReadonlySet<string>>(() => new Set())
+  const sections = pageSections(nav, rows, title, Boolean(children || action))
+  if (sections.length === 0) return null
+  const setOpen = (id: string, open: boolean) => setClosed((prev) => {
+    const next = new Set(prev)
+    if (open) next.delete(id)
+    else next.add(id)
+    return next
+  })
   return (
-    <SidebarMenu>
-      {rows.map((row) => {
-        const Icon = nav.pendingId === row.id ? Loader2 : row.icon
+    <SidebarGroup className="mt-3">
+      {sections.map((section, index) => {
+        const open = section.active && !closed.has(section.id)
+        const pending = nav?.pendingId === section.id
         return (
-          <SidebarMenuItem key={row.id}>
-            <SidebarMenuButton
-              isActive={activeId === row.id}
-              disabled={row.locked}
-              onClick={() => nav.onSelect(row.id)}
+          <div key={section.id} className="min-w-0">
+            <div
+              className="sticky z-10 flex h-8 items-center gap-0.5 bg-(--sidebar-surface)"
+              style={{ top: index * SECTION_HEADER_PX, bottom: (sections.length - 1 - index) * SECTION_HEADER_PX }}
             >
-              {Icon ? <Icon aria-hidden className={nav.pendingId === row.id ? 'animate-spin' : undefined} /> : null}
-              <span>{row.label}</span>
-            </SidebarMenuButton>
-            {row.badgeCount ? <SidebarMenuBadge>{badgeLabel(row.badgeCount)}</SidebarMenuBadge> : null}
-          </SidebarMenuItem>
+              <SidebarMenuButton
+                aria-expanded={open}
+                isActive={section.active && Boolean(nav)}
+                disabled={section.locked}
+                className="flex-1 font-medium"
+                onClick={() => {
+                  if (section.active) setOpen(section.id, !open)
+                  else {
+                    setOpen(section.id, true)
+                    nav?.onSelect(section.id)
+                  }
+                }}
+              >
+                {pending
+                  ? <Loader2 aria-hidden className="animate-spin" />
+                  : <ChevronRight aria-hidden className={cn('transition-transform', open ? 'rotate-90' : null)} />}
+                <span>{section.label}</span>
+              </SidebarMenuButton>
+              {section.badgeCount ? (
+                <span className="shrink-0 px-1 text-[10px] font-medium text-(--muted)">{badgeLabel(section.badgeCount)}</span>
+              ) : null}
+              {section.active && action ? (
+                <DelayedTooltip label={action.label} side="bottom">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    type="button"
+                    aria-label={action.label}
+                    onClick={action.onClick}
+                    className="size-7 shrink-0 rounded-md text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)"
+                  >
+                    <Plus size={14} aria-hidden />
+                  </Button>
+                </DelayedTooltip>
+              ) : null}
+            </div>
+            {open ? <div className="min-w-0 pb-2">{children}</div> : null}
+          </div>
         )
       })}
-    </SidebarMenu>
+    </SidebarGroup>
   )
 }
 
@@ -289,7 +365,7 @@ function SidebarHeaderBar({
   onSearch,
 }: Pick<UnifiedSidebarProps, 'brand' | 'collapsed' | 'onCollapsedChange' | 'onSearch'>) {
   return (
-    <div className={cn('flex h-14 shrink-0 items-center gap-1', collapsed ? 'justify-center px-2' : 'px-3')}>
+    <div className={cn('flex h-14 shrink-0 items-center gap-1 md:h-16', collapsed ? 'justify-center px-2' : 'pl-[19px] pr-3')}>
       {collapsed ? (
         <DelayedTooltip label="Expand sidebar" side="bottom">
           <Button
@@ -388,7 +464,7 @@ export function UnifiedSidebar({
     if (scopedNav) scopedNav.onSelect(next)
     else rememberPanelScope(next)
   }
-  const sectionRows = !tabsPage && scopedNav && rows.length > 0 ? <SectionRows nav={scopedNav} rows={rows} /> : null
+  const pageTitle = items.find((item) => item.active)?.label ?? ''
 
   return (
     <Sidebar
@@ -410,12 +486,11 @@ export function UnifiedSidebar({
             {inlineMore ? null : <MoreMenu items={moreItems} collapsed={collapsed} />}
           </SidebarMenu>
         </SidebarGroup>
-        {!collapsed && sectionRows ? <SidebarGroup className="mt-3">{sectionRows}</SidebarGroup> : null}
-        {!collapsed && (children || panelAction) ? (
-          <SidebarResourceSection action={panelAction} search={null} className="mt-1 border-t-0">
+        {collapsed ? null : (
+          <PageSections nav={tabsPage ? undefined : scopedNav} rows={tabsPage ? [] : rows} title={pageTitle} action={panelAction}>
             {children}
-          </SidebarResourceSection>
-        ) : null}
+          </PageSections>
+        )}
       </SidebarContent>
       )}
       <SidebarFooter className="border-t-0">
