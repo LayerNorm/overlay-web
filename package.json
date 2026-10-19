@@ -212,7 +212,7 @@
     "@overlay/storage-contracts": "file:./packages/overlay-storage-contracts",
     "@overlay/tools-core": "file:./packages/overlay-tools-core",
     "@overlay/ui": "file:./packages/overlay-ui",
-    "@sentry/nextjs": "^10.46.0",
+    "@sentry/nextjs": "^11.6.0",
     "@tiptap/extension-code-block-lowlight": "^3.20.1",
     "@tiptap/extension-emoji": "^3.20.1",
     "@tiptap/extension-highlight": "^3.20.1",
