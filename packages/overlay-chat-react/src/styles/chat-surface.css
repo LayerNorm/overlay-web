@@ -131,7 +131,7 @@
  * bubble so assistant message spacing (which relies on the flex gap to its
  * actions) is unchanged.
  */
-:where(.overlay-chat-surface) .chat-user-bubble .markdown-content > :last-child {
+:where(.overlay-chat-surface) .chat-user-bubble .markdown-content :last-child {
   margin-bottom: 0;
 }
 
