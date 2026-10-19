@@ -246,7 +246,7 @@ function MarkdownMessageImpl({
   // Streamdown memoizes per block and closes unfinished markdown, so a streaming reply
   // updates only its last block and never shows raw syntax.
   return (
-    <div className="markdown-content">
+    <div className="typeset markdown-content">
       <Streamdown
         mode={isStreaming ? 'streaming' : 'static'}
         isAnimating={isStreaming}

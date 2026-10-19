@@ -174,6 +174,10 @@ at `z-50`, with Radix collision handling in both modes.
 
 `className` on a `Button` sets size and layout, not color, border or background. `npm run check:raw-controls` enforces this: it fails on an `unstyledButton()` string that rebuilds a variant's look and on color classes passed to a non-ghost variant. Real exceptions (checkboxes, segmented toggles, selectable cards) carry a `// overlay:button-style: <reason>` comment above the class line. Shadows: none on in-page surfaces, `shadow-md` for menus, popovers and tooltips, `shadow-lg` for dialogs and sheets. Motion: 150ms for hover and color, 200ms for menus and panels.
 
+## Prose (Typeset)
+
+Rendered Markdown and rich text use shadcn Typeset from `@overlay/ui/typeset.css`, our own copy of the upstream file. Add the `typeset` class to the element that wraps rendered prose (chat messages via `MarkdownMessage`, notes via the editor's `app-note-editor` root) and tune it with the `--typeset-*` variables rather than per-element overrides. Typeset skips `[data-slot]` components and anything under `.not-typeset`, so buttons, chips and cards inside prose keep their own styles. It is not for app chrome.
+
 ## Primitive style resets
 
 When migrating a control while preserving its existing visual contract, import
