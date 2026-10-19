@@ -2,6 +2,7 @@
 
 /* eslint-disable react-hooks/refs */
 
+import { ContextMeter, PromptInput, PromptInputBody, PromptInputButton, PromptInputFooter, PromptInputSubmit, PromptInputTools } from '@overlay/chat-react'
 import {
   AtSign,
   Brain,
@@ -11,13 +12,12 @@ import {
   Image as ImageIcon,
   MousePointerClick,
   Plus,
-  Send,
   Slash,
   Video,
   X,
   type LucideIcon,
 } from 'lucide-react'
-import { Button, IconButton } from '@overlay/ui/primitives'
+import { Button } from '@overlay/ui/primitives'
 import { useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from 'react'
 import { DelayedTooltip } from './DelayedTooltip'
 import { MentionInput } from './chat-interface/MentionInput'
@@ -156,9 +156,9 @@ function ComposerInputCard(props: ComposerViewProps & { disabledSend: boolean })
   }
 
   return (
-    <div className="overflow-visible rounded-2xl border border-(--border) bg-(--surface-elevated) shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-[background-color,border-color,box-shadow,color] duration-300">
+    <PromptInput>
       {props.replyContext && <ReplyContextBar replyContext={props.replyContext} setReplyContext={props.setReplyContext} />}
-      <div className="relative p-2.5 sm:p-3">
+      <PromptInputBody>
         {slash.open ? (
           <AgentSlashMenu
             commands={slash.commands}
@@ -214,8 +214,8 @@ function ComposerInputCard(props: ComposerViewProps & { disabledSend: boolean })
           {...props}
           mixedFileInputRef={mixedFileInputRef}
         />
-      </div>
-    </div>
+      </PromptInputBody>
+    </PromptInput>
   )
 }
 
@@ -229,37 +229,27 @@ function ComposerControls(props: ComposerControlsProps) {
   const mentionTooltip = mentionReferenceLabel(props)
   const hasAgentCommands = Boolean(props.agentCommands?.length)
   return (
-    <div className={`mt-2 grid min-h-9 items-center gap-2 ${
-      hasAgentCommands
-        ? (props.isTemporaryChat
-          ? 'grid-cols-[auto_auto_auto_minmax(0,1fr)_auto]'
-          : 'grid-cols-[auto_auto_auto_minmax(0,1fr)_auto_auto]')
-        : (props.isTemporaryChat
-          ? 'grid-cols-[auto_auto_minmax(0,1fr)_auto]'
-          : 'grid-cols-[auto_auto_minmax(0,1fr)_auto_auto]')
-    }`}>
+    <PromptInputFooter>
       <AttachMenu {...props} />
       <DelayedTooltip label={mentionTooltip} side="top">
-        <IconButton type="button" onClick={() => props.textareaRef.current?.openMentionPopup()} className="h-9 w-9 shrink-0 rounded-lg text-(--muted) transition-colors hover:bg-(--surface-muted) hover:text-(--foreground)" aria-label="Insert mention">
+        <PromptInputButton onClick={() => props.textareaRef.current?.openMentionPopup()} aria-label="Insert mention">
           <AtSign size={16} strokeWidth={1.75} />
-        </IconButton>
+        </PromptInputButton>
       </DelayedTooltip>
       {hasAgentCommands ? (
         <DelayedTooltip label="Agent slash commands" side="top">
-          <IconButton
-            type="button"
+          <PromptInputButton
             onClick={() => {
               if (!props.hasComposerText) props.onInputChange('/')
               props.textareaRef.current?.focus()
             }}
-            className="h-9 w-9 shrink-0 rounded-lg text-(--muted) transition-colors hover:bg-(--surface-muted) hover:text-(--foreground)"
             aria-label="Agent slash commands"
           >
             <Slash size={16} strokeWidth={1.75} />
-          </IconButton>
+          </PromptInputButton>
         </DelayedTooltip>
       ) : null}
-      <div className="flex min-w-0 items-center gap-2 overflow-x-auto overflow-y-hidden whitespace-nowrap scrollbar-none [&::-webkit-scrollbar]:hidden">
+      <PromptInputTools>
         {props.capabilities.memory && props.capabilities.vectorSearch && !props.memoryEnabled && (
           <DelayedTooltip label="Memory is off for this message." side="top">
             <div className="shrink-0">
@@ -284,35 +274,18 @@ function ComposerControls(props: ComposerControlsProps) {
           )
         })}
         {props.generationChip && <GenerationChip chip={props.generationChip} onClear={() => props.setGenerationChip(null)} />}
-      </div>
-      {props.isActiveLoading ? (
-        <DelayedTooltip label="Stop generating" side="top">
-          <Button
-            variant="primary"
-            size="icon"
-            type="button"
-            onClick={() => void props.onStop()}
-            className="shrink-0"
-          >
-            <div className="h-3.5 w-3.5 rounded-xs bg-current" />
-          </Button>
-        </DelayedTooltip>
-      ) : (
-        <DelayedTooltip label="Send (↵) · new line (⇧↵)" side="top">
-          <Button
-            variant="primary"
-            size="icon"
-            type="button"
-            aria-label="Send message"
-            onClick={() => void props.onSend()}
-            disabled={props.disabledSend}
-            className="shrink-0"
-          >
-            <Send size={17} strokeWidth={1.75} />
-          </Button>
-        </DelayedTooltip>
-      )}
-    </div>
+      </PromptInputTools>
+      {props.contextUsage ? <ContextMeter {...props.contextUsage} /> : null}
+      {props.modelControl}
+      <DelayedTooltip label={props.isActiveLoading ? 'Stop generating' : 'Send (↵) · new line (⇧↵)'} side="top">
+        <PromptInputSubmit
+          status={props.isActiveLoading ? 'streaming' : 'ready'}
+          onStop={() => void props.onStop()}
+          onClick={() => void props.onSend()}
+          disabled={props.disabledSend}
+        />
+      </DelayedTooltip>
+    </PromptInputFooter>
   )
 }
 
@@ -356,9 +329,9 @@ function AttachMenu(props: ComposerViewProps & { mixedFileInputRef: RefObject<HT
   return (
     <div ref={props.attachMenuRef} className="relative shrink-0">
       <DelayedTooltip label="Attach files or choose tools" side="top">
-        <IconButton type="button" onClick={handleToggle} className="h-9 w-9 shrink-0 rounded-lg text-(--muted) transition-colors hover:bg-(--surface-muted) hover:text-(--foreground)" aria-label="Open attachment and tools menu">
+        <PromptInputButton onClick={handleToggle} aria-label="Open attachment and tools menu">
           <Plus size={18} strokeWidth={1.75} />
-        </IconButton>
+        </PromptInputButton>
       </DelayedTooltip>
       {props.showAttachMenu && (
         <div className={`absolute left-0 z-20 w-64 rounded-xl border border-(--border) bg-(--surface-elevated) py-1 shadow-lg ${menuDirection === 'up' ? 'bottom-full mb-2' : 'top-full mt-2'}`}>

@@ -1,5 +1,6 @@
 'use client'
 
+import { Bubble, BubbleContent } from '@overlay/ui/ai'
 import { unstyledButton } from '@overlay/ui/control-reset'
 import { Button } from '@overlay/ui/primitives'
 
@@ -56,15 +57,15 @@ export function UserMessageBubble({
   const clamped = collapsible && !expanded
 
   return (
-    <div
-      className={cx(
-        'chat-user-bubble min-w-0 wrap-break-word select-text rounded-[18px] px-3.5 py-2.5 text-sm leading-normal',
-        tone === 'room-self'
-          ? 'room-message-self-bubble bg-(--room-message-self-bg) text-(--room-message-self-text)'
-          : 'bg-(--surface-subtle) text-(--foreground)',
-        className,
-      )}
-    >
+    <Bubble variant="muted" align="end" className={className}>
+      <BubbleContent
+        className={cx(
+          'chat-user-bubble select-text rounded-[18px] px-3.5 py-2.5 leading-normal',
+          tone === 'room-self'
+            ? 'room-message-self-bubble bg-(--room-message-self-bg)! text-(--room-message-self-text)'
+            : 'text-(--foreground)',
+        )}
+      >
       <div className="relative">
         <div
           ref={contentRef}
@@ -99,6 +100,7 @@ export function UserMessageBubble({
           />
         </Button>
       ) : null}
-    </div>
+      </BubbleContent>
+    </Bubble>
   )
 }

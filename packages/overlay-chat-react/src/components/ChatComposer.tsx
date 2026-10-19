@@ -1,4 +1,5 @@
 import { unstyledButton, unstyledTextarea } from '@overlay/ui/control-reset'
+import { PromptInput, PromptInputBody, PromptInputFooter, PromptInputSubmit } from './ai-elements/prompt-input'
 import { Button, Textarea } from '@overlay/ui/primitives'
 import type { ReactNode } from 'react'
 import { useEffect, useRef, useState } from 'react'
@@ -8,7 +9,6 @@ import {
   Loader2,
   Mic,
   Plus,
-  Send,
   Sparkles,
   Square,
   Video,
@@ -307,27 +307,13 @@ function ComposerSendButton({
   onStop?: () => void
   onSubmit?: () => void
 }) {
-  if (canStop && onStop) {
-    return (
-      <Button variant="primary" size="icon" className="shrink-0"
-        type="button"
-        onClick={onStop}
-        aria-label="Stop generating"
-        title="Stop"
-      >
-        <span className="h-3.5 w-3.5 rounded-xs bg-(--background)" />
-      </Button>
-    )
-  }
   return (
-    <Button variant="primary" size="icon" className="shrink-0"
-      type="button"
-      aria-label="Send message"
+    <PromptInputSubmit
+      status={canStop && onStop ? 'streaming' : loading ? 'submitted' : 'ready'}
+      onStop={onStop}
       onClick={onSubmit}
-      disabled={disabled || loading || !canSend}
-    >
-      {loading ? <Loader2 size={17} className="animate-spin" /> : <Send size={17} strokeWidth={1.75} />}
-    </Button>
+      disabled={disabled || !canSend}
+    />
   )
 }
 
@@ -375,18 +361,16 @@ export function ChatComposer({
 
   return (
     <div className="shrink-0 px-3 pb-3 sm:px-4 sm:pb-4">
-      <div
+      <PromptInput
+        dragging={dragOver}
         onDragOver={(e) => {
           e.preventDefault()
           setDragOver(true)
         }}
         onDragLeave={() => setDragOver(false)}
         onDrop={handleDrop}
-        className={`overflow-visible rounded-2xl border border-(--border) bg-(--surface-elevated) shadow-[0_1px_2px_rgba(0,0,0,0.04)] ${
-          dragOver ? 'ring-2 ring-(--foreground)/20' : ''
-        }`}
       >
-        <div className="p-2.5 sm:p-3">
+        <PromptInputBody>
           {toolbarAboveTextarea ? (
             <div className="mb-2 flex min-h-8 flex-wrap items-center gap-2">{toolbarAboveTextarea}</div>
           ) : null}
@@ -406,7 +390,7 @@ export function ChatComposer({
             className={unstyledTextarea(`w-full min-h-19 max-h-40 resize-none border-0 bg-transparent px-0.5 py-2 text-sm leading-6 text-(--foreground) shadow-none outline-hidden ring-0 placeholder:text-(--muted-light) focus:ring-0 disabled:cursor-not-allowed disabled:opacity-60`)}
           />
 
-          <div className="mt-2 flex min-h-9 flex-wrap items-center gap-2">
+          <PromptInputFooter className="flex-wrap">
             <ComposerAttachControls
               disabled={disabled}
               loading={loading}
@@ -441,9 +425,9 @@ export function ChatComposer({
               onStop={onStop}
               onSubmit={onSubmit}
             />
-          </div>
-        </div>
-      </div>
+          </PromptInputFooter>
+        </PromptInputBody>
+      </PromptInput>
     </div>
   )
 }
