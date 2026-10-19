@@ -214,7 +214,7 @@ depends on 1.
 Owner requirement, applied to every component in this migration and recorded in `internal/develop/interface-design.md` in slice 1:
 
 1. **Flat and borderless.** No borders on cards, code blocks, composer, chips, buttons, approval items, popovers or sidebars. Surfaces are told apart by fill only: `background` (page), `sidebar`, `muted` (bubbles, composer, code, items, chips), `muted-2` (controls sitting on a `muted` surface, selected rows), `popover` (floating layers, which keep a soft shadow and no ring). Focus rings stay for keyboard focus. Destructive states tint the fill rather than the border.
-2. **Blurred headers.** The page header and the sidebar header float over their scroll areas. Content scrolls under them and blurs progressively toward the top: a stack of masked `backdrop-filter` layers (1, 3, 6, 12px) plus a surface tint, both easing to fully transparent about 40px below the header, so there is no visible edge or divider line. Scroll areas get top padding equal to the header height so nothing starts hidden. Wrap the blur in a shared `ScrollHeader` primitive in `@overlay/ui` so every page, the sidebar and settings use the same one.
+2. **Solid headers, no blur.** The page header and the sidebar header sit above their scroll areas on the same fill as the surface below them (`background` or `sidebar`), with no divider line and no blur (owner tried a progressive blur and rejected it). Content scrolls cleanly under the header edge.
 
 ## Decisions
 
@@ -226,7 +226,7 @@ Owner requirement, applied to every component in this migration and recorded in 
 | 4 | Scroll position | A thread opens at the very bottom (`defaultScrollPosition="end"`). Follow the live edge while at the bottom, jump-to-latest button when scrolled up. |
 | 5 | Composer | One Prompt Input in `@overlay/chat-react`, used by both hosts. |
 | 6 | Model selector | Text / Image / Video toggle at the top of the dropdown, search, provider rail with Favorites, models grouped by provider with logos; star and check sit left of the capability chips. Composer row: +, @, model, effort, send. |
-| 7 | Visual rules | Flat, borderless surfaces told apart by fill color, and progressively blurred page and sidebar headers (see Visual rules). |
+| 7 | Visual rules | Flat, borderless surfaces told apart by fill color, and solid, divider-less page and sidebar headers with no blur (see Visual rules). |
 
 ## Risks
 
