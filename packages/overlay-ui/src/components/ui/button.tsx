@@ -4,26 +4,32 @@ import { cva, type VariantProps } from 'class-variance-authority'
 
 import { cn } from '../../utils/cn'
 
-export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger'
-export type ButtonSize = 'sm' | 'md' | 'lg' | 'icon'
+export type ButtonVariant = 'primary' | 'secondary' | 'outline' | 'ghost' | 'link' | 'danger'
+export type ButtonSize = 'xs' | 'sm' | 'md' | 'lg' | 'icon' | 'icon-sm' | 'icon-xs'
 
 const buttonVariants = cva(
   'inline-flex shrink-0 items-center justify-center gap-2 font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50',
   {
     variants: {
       variant: {
-        primary: 'bg-(--foreground) text-(--background) hover:opacity-90',
-        secondary: 'border border-(--border) bg-(--surface-subtle) text-(--foreground) hover:bg-(--border)',
-        ghost: 'bg-transparent text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)',
+        primary: 'bg-primary text-primary-foreground hover:opacity-90',
+        secondary: 'border border-(--border) bg-secondary text-secondary-foreground hover:bg-(--border)',
+        outline: 'border border-(--border) bg-transparent text-(--foreground) hover:bg-(--surface-subtle)',
+        ghost: 'bg-transparent text-muted-foreground hover:bg-(--surface-subtle) hover:text-(--foreground)',
+        link: 'bg-transparent text-(--foreground) underline-offset-2 hover:underline',
         danger: 'bg-red-500 text-white hover:opacity-90',
       },
       size: {
+        xs: 'h-7 rounded-md px-2.5 text-xs',
         sm: 'h-8 rounded-md px-3 text-xs',
         md: 'h-9 rounded-lg px-4 text-sm',
         lg: 'h-10 rounded-xl px-5 text-sm',
         icon: 'h-9 w-9 rounded-lg p-0',
+        'icon-sm': 'h-8 w-8 rounded-md p-0',
+        'icon-xs': 'h-7 w-7 rounded-md p-0',
       },
     },
+    compoundVariants: [{ variant: 'link', class: 'h-auto rounded-none p-0' }],
     defaultVariants: {
       variant: 'secondary',
       size: 'md',

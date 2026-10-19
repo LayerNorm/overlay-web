@@ -162,6 +162,18 @@ with the compatibility `Select`. Trigger dimensions, option rows, Overlay CSS
 variables and portalled `z-10090` remain unchanged. `portal=false` stays inline
 at `z-50`, with Radix collision handling in both modes.
 
+## Design tokens and button variants
+
+`@overlay/ui/styles.css` defines the palette once and aliases the shadcn token names to it (`--primary`, `--secondary`, `--muted-foreground`, `--destructive`, `--card`, `--popover`, `--input`, `--ring`, `--radius`), so theme presets carry through and shadcn components drop in unchanged. `globals.css` maps them to Tailwind colors (`bg-primary`, `text-muted-foreground`, ...). Pick a `Button` variant instead of restyling one:
+
+- `primary` (solid): at most one per page, the page's main create action.
+- `secondary` (bordered gray) or `outline` (bordered, transparent): other header actions.
+- `ghost`: icon buttons, row actions, menus. Use `size="icon-sm"` / `"icon-xs"` for square icon buttons.
+- `link`: inline text actions.
+- `danger`: destructive confirmations only.
+
+`className` on a `Button` sets size and layout, not color, border or background. Shadows: none on in-page surfaces, `shadow-md` for menus, popovers and tooltips, `shadow-lg` for dialogs and sheets. Motion: 150ms for hover and color, 200ms for menus and panels.
+
 ## Primitive style resets
 
 When migrating a control while preserving its existing visual contract, import
