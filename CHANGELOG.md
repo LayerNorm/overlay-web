@@ -6,8 +6,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Make a single shadcn sidebar the default app shell: Personal/Workspace toggle under the brand, Files and Extensions under a hover Explore menu, page subviews as header tabs, and no divider lines between sidebar, header and body. The rail and panel layout remains under Settings > Customization. Add Workspace AI chats: chats started from Workspace > Chats are filed under that scope (stored as an optional conversation `scope`; existing chats stay Personal).
 
+- Keep the onboarding tour's first tooltip anchored next to the model picker, and render the "Connect your tools" logos inline so they appear on first paint.
 - Standardize the orb + wordmark on `BrandLockup` across the loader, landing, auth, and marketing surfaces, and play the loader's word reveal only once so it keeps blinking until the app appears. Once the app has rendered real content the loader can never reappear: boundary remounts and route fallbacks show plain skeletons instead.
-
 - Make first-run onboarding deterministic: it starts only on the post-signup redirect or an explicit replay, waits for the workspace to load before the name step, mounts the tour only on the chat surface where its targets render, holds the model picker open through the tour's early steps, and no longer refires on refresh or pops up mid-session.
 
 - Fix connected-agent Drive recovery after remote edits, release leases after confirmed startup failure, and retain fencing for uncertain writers. Authorize shared-room run status correctly, bound repeated Drive reads, and derive QA adapter defaults from image pins.
