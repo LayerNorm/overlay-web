@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Match the app shell mockup: Geist as the app font, 14px chat text, a borderless symmetric user bubble, and sidebar rows at 14px with 16px icons and 12px section titles. Native `title` tooltips are replaced app-wide by one shadcn-style tooltip (`NativeTitleTooltips`).
+
 - Adopt shadcn Typeset (`@overlay/ui/typeset.css`, an owned copy) as the shared prose layer for chat messages and notes, so rendered Markdown gets one set of rules for paragraphs, lists, quotes, code, tables and rules. Existing chat-specific Markdown rules still take precedence.
 
 - Replace hand-styled buttons that copied the solid, gray or outlined look with the shared Button variants across chat, settings, sharing, notes and files, and extend `check:raw-controls` to fail on `unstyledButton()` strings that rebuild a variant or color classes passed to a non-ghost Button (exceptions carry an `overlay:button-style:` reason).

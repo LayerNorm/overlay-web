@@ -1,8 +1,12 @@
 import type { Metadata } from "next";
+import { Geist } from "next/font/google";
 import "katex/dist/katex.min.css";
 import "@overlay/chat-react/chat-surface.css";
 import "./globals.css";
 import { THEME_INIT_SCRIPT } from "@/shared/app/theme-init-script";
+import { NativeTitleTooltips } from "@/components/providers/NativeTitleTooltips";
+
+const geist = Geist({ subsets: ["latin"], variable: "--font-geist", display: "swap" });
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://getoverlay.io"),
@@ -83,7 +87,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" className={geist.variable} suppressHydrationWarning>
       <head>
         {/* Fetch the lockup face up front so the boot loader and landing
             lockup never paint a fallback serif first. */}
@@ -98,6 +102,7 @@ export default function RootLayout({
       </head>
       <body className="antialiased bg-background text-foreground">
         {children}
+        <NativeTitleTooltips />
       </body>
     </html>
   );

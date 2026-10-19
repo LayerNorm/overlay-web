@@ -76,14 +76,9 @@
 
 :where(.overlay-chat-surface) .markdown-content {
   color: var(--foreground);
-  font-family:
-    system-ui,
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    sans-serif;
-  font-size: 0.95rem;
-  line-height: 1.7;
+  font-family: var(--font-sans);
+  font-size: 0.875rem;
+  line-height: 1.65;
   min-width: 0;
   overflow-wrap: anywhere;
   word-break: break-word;
@@ -126,7 +121,7 @@
 }
 
 :where(.overlay-chat-surface) .markdown-content p {
-  margin: 0 0 0.8em;
+  margin: 0 0 0.7em;
 }
 
 /*
@@ -140,16 +135,26 @@
   margin-bottom: 0;
 }
 
+/* The bubble wrapper is pre-wrap, which renders the newline after the last block as an empty line. */
+:where(.overlay-chat-surface) .chat-user-bubble .markdown-content {
+  line-height: 1.5;
+  white-space: normal;
+}
+
+:where(.overlay-chat-surface) .chat-user-bubble .markdown-content :where(p, li) {
+  white-space: pre-wrap;
+}
+
 :where(.overlay-chat-surface) .markdown-content h1 {
   margin: 0 0 0.45em;
-  font-size: 2rem;
+  font-size: 1.5rem;
   line-height: 1.15;
   font-weight: 600;
 }
 
 :where(.overlay-chat-surface) .markdown-content h2 {
   margin: 0.4em 0 0.45em;
-  font-size: 1.45rem;
+  font-size: 1.25rem;
   line-height: 1.2;
   font-weight: 600;
 }
