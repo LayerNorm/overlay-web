@@ -103,7 +103,7 @@ function MoreMenu({ items, collapsed }: { items: readonly PrimaryRailItem[]; col
   useEffect(() => cancelClose, [])
   if (items.length === 0) return null
   const activeItem = items.find((item) => item.active)
-  const label = activeItem?.label ?? 'More'
+  const label = 'More'
   const hoverOpen = (event: React.PointerEvent) => {
     if (event.pointerType !== 'mouse') return
     cancelClose()
@@ -131,7 +131,7 @@ function MoreMenu({ items, collapsed }: { items: readonly PrimaryRailItem[]; col
               event.preventDefault()
             }}
           >
-            {activeItem ? <activeItem.icon aria-hidden /> : <Ellipsis aria-hidden />}
+            <Ellipsis aria-hidden />
             {collapsed ? null : (
               <>
                 <span className="min-w-0 flex-1 truncate">{label}</span>

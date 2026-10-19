@@ -693,7 +693,7 @@ export function KnowledgeViewHeader({
   onCommitOutputFilter: (filter: OutputFilter) => void
 }) {
   return (
-    <AppScreenHeader tabs={tabs}>
+    <AppScreenHeader>
       <div className="flex min-w-0 flex-wrap items-center gap-2 sm:gap-3">
       {selectedFile ? (
         <SelectedFileHeader
@@ -724,6 +724,7 @@ export function KnowledgeViewHeader({
               mode={mode}
             />
           )}
+          {tabs ? <div className="min-w-0 overflow-x-auto scrollbar-none [&::-webkit-scrollbar]:hidden">{tabs}</div> : null}
           <HeaderSearchForTab
             activeTab={activeTab}
             fileSearchOpen={fileSearchOpen}
