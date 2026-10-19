@@ -77,9 +77,8 @@ export function NotebookHeader({
         className={headerClassName}
         style={headerStyle}
         actions={!hideActions ? (
-          <Button variant="ghost" type="submit"
+          <Button variant="primary" size="sm" type="submit"
             onClick={onCreateNote}
-            className={unstyledButton("flex items-center gap-1.5 rounded-md border border-(--border) bg-(--surface-muted) px-3 py-1.5 text-sm text-(--foreground) transition-colors hover:bg-(--surface-subtle)")}
           >
             <Plus size={14} />
             New note

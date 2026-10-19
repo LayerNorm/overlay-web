@@ -154,11 +154,10 @@ export function SkillDialog({ state, onClose, onSave, onDelete, scopeActions }: 
               </Button>
             ) : null}
           </div>
-          <Button variant="ghost"
+          <Button variant="primary" size="sm"
             type="button"
             onClick={() => void handleSave()}
             disabled={saving}
-            className={unstyledButton("flex items-center gap-1.5 rounded-md border border-(--border) bg-(--surface-subtle) px-4 py-1.5 text-xs text-(--foreground) transition-colors hover:bg-(--border) disabled:opacity-50")}
           >
             {saving ? <Loader2 size={12} className="animate-spin" /> : saved ? <Check size={12} /> : null}
             {saving ? 'Saving…' : saved ? 'Saved' : isEdit ? 'Save' : 'Create'}
@@ -197,9 +196,8 @@ export function SkillsPanel({ loading, skills, filteredSkills, onCreate, onEdit,
           <p className="text-xs text-(--muted-light)">Create reusable instructions that are automatically injected into every conversation</p>
         </div>
         {onCreate ? (
-          <Button variant="ghost" type="submit"
+          <Button variant="secondary" size="md" type="submit"
             onClick={onCreate}
-            className={unstyledButton("flex items-center gap-1.5 rounded-md border border-(--border) bg-(--surface-subtle) px-4 py-2 text-sm text-(--foreground) transition-colors hover:bg-(--border)")}
           >
             <Plus size={14} />
             New Skill
