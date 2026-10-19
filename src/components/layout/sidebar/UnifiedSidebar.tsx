@@ -227,6 +227,7 @@ const sectionViewId = (id: string) => id.slice(id.indexOf(':') + 1)
 interface PageSection {
   id: string
   label: string
+  icon?: InlineNavItem['icon']
   active: boolean
   badgeCount?: number
   locked?: boolean
@@ -237,12 +238,13 @@ function pageSections(
   rows: ReadonlyArray<InlineNavItem>,
   title: string,
   hasContent: boolean,
+  titleIcon?: InlineNavItem['icon'],
 ): PageSection[] {
   if (nav && rows.length > 0) {
     const activeId = nav.activeChildId ?? nav.activeId
-    return rows.map((row) => ({ id: row.id, label: row.label, active: activeId === row.id, badgeCount: row.badgeCount, locked: row.locked }))
+    return rows.map((row) => ({ id: row.id, label: row.label, icon: row.icon, active: activeId === row.id, badgeCount: row.badgeCount, locked: row.locked }))
   }
-  return hasContent && title ? [{ id: 'page', label: title, active: true }] : []
+  return hasContent && title ? [{ id: 'page', label: title, icon: titleIcon, active: true }] : []
 }
 
 /** Collapsible page sections; headers are flat siblings so they can pin to the top and bottom of the scroll area. */
@@ -250,6 +252,7 @@ function PageSections({
   nav,
   rows,
   title,
+  titleIcon,
   action,
   sectionActions,
   renderSection,
@@ -258,13 +261,14 @@ function PageSections({
   nav?: SecondaryPanelNav
   rows: ReadonlyArray<InlineNavItem>
   title: string
+  titleIcon?: InlineNavItem['icon']
   action?: SidebarResourceAction | null
   sectionActions?: Readonly<Record<string, SidebarResourceAction | null>>
   renderSection?: (id: string) => ReactNode
   children?: ReactNode
 }) {
   const [closed, setClosed] = useState<ReadonlySet<string>>(() => new Set())
-  const sections = pageSections(nav, rows, title, Boolean(children || action))
+  const sections = pageSections(nav, rows, title, Boolean(children || action), titleIcon)
   if (sections.length === 0) return null
   const multi = Boolean(nav && rows.length > 0)
   // With a renderer every section lists its own items, so a header only opens and closes.
@@ -308,10 +312,9 @@ function PageSections({
                   else nav?.onSelect(section.id)
                 }}
               >
-                {pending
-                  ? <Loader2 aria-hidden className="animate-spin" />
-                  : <ChevronRight aria-hidden className={cn('transition-transform', open ? 'rotate-90' : null)} />}
-                <span>{section.label}</span>
+                {pending ? <Loader2 aria-hidden className="animate-spin" /> : section.icon ? <section.icon aria-hidden /> : null}
+                <span className="truncate">{section.label}</span>
+                <ChevronRight aria-hidden className={cn('opacity-60 transition-transform', open ? 'rotate-90' : null)} />
               </SidebarMenuButton>
               {section.badgeCount ? (
                 <span className="shrink-0 px-1 text-[10px] font-medium text-(--muted)">{badgeLabel(section.badgeCount)}</span>
@@ -489,7 +492,8 @@ export function UnifiedSidebar({
     if (scopedNav) scopedNav.onSelect(next)
     else rememberPanelScope(next)
   }
-  const pageTitle = items.find((item) => item.active)?.label ?? ''
+  const activePage = items.find((item) => item.active)
+  const pageTitle = activePage?.label ?? ''
 
   return (
     <Sidebar
@@ -512,7 +516,7 @@ export function UnifiedSidebar({
           </SidebarMenu>
         </SidebarGroup>
         {collapsed ? null : (
-          <PageSections nav={tabsPage ? undefined : scopedNav} rows={tabsPage ? [] : rows} title={pageTitle} action={panelAction} sectionActions={sectionActions} renderSection={renderSection}>
+          <PageSections nav={tabsPage ? undefined : scopedNav} rows={tabsPage ? [] : rows} title={pageTitle} titleIcon={activePage?.icon} action={panelAction} sectionActions={sectionActions} renderSection={renderSection}>
             {children}
           </PageSections>
         )}

@@ -79,7 +79,7 @@ test('chat destinations for the selected scope render as sidebar rows', () => {
   assert.match(html, /Direct messages/)
   assert.match(html, /Channels/)
   assert.match(html, /Activity/)
-  assert.match(html, /data-active="true"(?:(?!data-active).)*<span>Direct messages/s)
+  assert.match(html, /data-active="true"(?:(?!data-active).)*<span[^>]*>Direct messages/s)
 })
 
 test('chat sections each list their own items and headers only open or close', () => {
@@ -91,7 +91,7 @@ test('chat sections each list their own items and headers only open or close', (
   assert.match(html, /list:channels/)
   assert.match(html, /list:activity/)
   assert.doesNotMatch(html, /data-active="true"(?:(?!data-active).)*<span>Direct messages/s)
-  assert.match(html, /aria-expanded="true"[^>]*>(?:(?!<\/button>).)*<span>Channels/s)
+  assert.match(html, /aria-expanded="true"[^>]*>(?:(?!<\/button>).)*<span[^>]*>Channels/s)
   assert.match(html, /aria-label="New channel"/)
 })
 

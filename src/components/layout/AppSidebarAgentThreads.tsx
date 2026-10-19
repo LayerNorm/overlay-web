@@ -4,6 +4,7 @@ import { Loader2, MessageSquare, Plus, Archive, Trash2, Workflow } from 'lucide-
 import type { WorkspaceAgentBundle, WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
 import {
   SidebarMenuAction,
+  SidebarMenuBadge,
   SidebarMenuSkeleton,
   SidebarMenuSub,
   SidebarMenuSubButton,
@@ -69,10 +70,12 @@ export function AgentThreadRows({
             >
               <MessageSquare aria-hidden />
               <span className="flex-1 truncate">{thread.title}</span>
-              {thread.isMain ? (
-                <span className="text-[10px] text-(--muted-light) group-hover/menu-sub-item:hidden group-focus-within/menu-sub-item:hidden">Main</span>
-              ) : null}
             </SidebarMenuSubButton>
+            {thread.isMain ? (
+              <SidebarMenuBadge className="top-1 text-[10px] font-normal text-(--muted-light) group-hover/menu-sub-item:hidden group-focus-within/menu-sub-item:hidden">
+                Main
+              </SidebarMenuBadge>
+            ) : null}
             <SidebarMenuAction
               aria-label="Archive thread"
               title="Archive thread"

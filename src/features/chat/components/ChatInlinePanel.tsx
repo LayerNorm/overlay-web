@@ -35,7 +35,16 @@ import {
 import { clearLastChatForView, rememberLastChatForView } from '@/shared/chat/last-chat-by-view'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { announceArchived } from '@/shared/app/archive-toast'
-import { Button, Input, SidebarResourceList, SidebarResourceRow } from '@overlay/ui/primitives'
+import {
+  Button,
+  Input,
+  SidebarMenuAction,
+  SidebarMenuBadge,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
+} from '@overlay/ui/primitives'
+import { cn } from '@overlay/ui'
 import { useAuth, type AuthUser } from '@/contexts/AuthContext'
 import { NewDirectMessageDialog } from './NewDirectMessageDialog'
 import { NewChannelDialog } from './NewChannelDialog'
@@ -639,94 +648,97 @@ function ChatListRow({
   onSaveRename: (chatId: string) => void
   onCancelRename: () => void
 }) {
+  const canRename = chat.conversationType !== 'dm' && chat.conversationType !== 'channel'
+  const hoverAction = 'top-1 md:opacity-0 group-hover/menu-sub-item:opacity-100 group-focus-within/menu-sub-item:opacity-100'
   return (
-    <SidebarResourceRow
-      active={active}
-      onClick={() => {
-        if (isDeleting || isEditing) return
-        onOpenChat(chat)
-      }}
-      className={`cursor-pointer overflow-hidden transition-all duration-200 ${
-        isDeleting ? 'max-h-0 -translate-y-1 opacity-0' : 'max-h-7 opacity-100'
-      }`}
-    >
-      <ChatConversationIcon chat={chat} size={12} className="shrink-0" />
-      {!isPublicShowcase && isEditing ? (
-        <Input
-          aria-label="Conversation title"
-          ref={(el) => { el?.focus() }}
-          value={editingTitle}
-          onChange={(event) => onEditingTitleChange(event.target.value)}
-          onClick={(event) => event.stopPropagation()}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter') {
-              event.preventDefault()
-              onSaveRename(chat._id)
-            } else if (event.key === 'Escape') {
-              event.preventDefault()
-              onCancelRename()
-            }
-          }}
-          onBlur={() => onSaveRename(chat._id)}
-          className="h-auto min-w-0 flex-1 rounded-md border border-(--border) bg-(--surface-elevated) px-2 py-1 text-[11px] text-(--foreground) outline-hidden"
-        />
-      ) : (
-        <span className="min-w-0 flex-1 truncate">{chat.title}</span>
+    <SidebarMenuSubItem
+      className={cn(
+        'overflow-hidden transition-all duration-200',
+        isDeleting ? 'max-h-0 -translate-y-1 opacity-0' : 'max-h-7 opacity-100',
       )}
-      {isStreaming && !unread ? (
-        <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-(--muted)" />
-      ) : null}
-      {unread > 0 ? (
-        <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-(--surface-muted) text-[9px] font-medium text-(--foreground)">
-          {unread > 9 ? '9+' : unread}
-        </span>
-      ) : null}
-      {isPublicShowcase ? null : isEditing ? (
-        <Button
-          variant="ghost"
-          size="icon"
-          type="button"
-          onMouseDown={(event) => {
-            event.preventDefault()
-            event.stopPropagation()
-            onSaveRename(chat._id)
-          }}
-          className="ml-1 h-auto w-auto shrink-0 rounded-sm p-0.5 text-(--foreground) hover:bg-(--border)"
-          aria-label="Save chat name"
-        >
-          <Check size={11} />
-        </Button>
-      ) : (
-        <>
-          {chat.conversationType === 'dm' || chat.conversationType === 'channel' ? null : (
-            <Button
-              variant="ghost"
-              size="icon"
-              type="button"
-              onClick={(event) => onBeginRename(chat, event)}
-              className="ml-1 h-auto w-auto shrink-0 rounded-sm p-0.5 opacity-0 transition-opacity hover:bg-(--border) group-hover:opacity-100"
-              aria-label="Rename chat"
-            >
-              <Pencil size={11} />
-            </Button>
-          )}
+    >
+      {!isPublicShowcase && isEditing ? (
+        <div className="flex h-7 min-w-0 items-center gap-2 px-2 text-xs text-(--muted)">
+          <ChatConversationIcon chat={chat} size={12} className="shrink-0" />
+          <Input
+            aria-label="Conversation title"
+            ref={(el) => { el?.focus() }}
+            value={editingTitle}
+            onChange={(event) => onEditingTitleChange(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault()
+                onSaveRename(chat._id)
+              } else if (event.key === 'Escape') {
+                event.preventDefault()
+                onCancelRename()
+              }
+            }}
+            onBlur={() => onSaveRename(chat._id)}
+            className="h-auto min-w-0 flex-1 rounded-md border border-(--border) bg-(--surface-elevated) px-2 py-1 text-[11px] text-(--foreground) outline-hidden"
+          />
           <Button
             variant="ghost"
             size="icon"
             type="button"
-            onClick={(event) => onRequestArchive(chat, event)}
-            className="ml-1 h-auto w-auto shrink-0 rounded-sm p-0.5 opacity-0 transition-opacity hover:bg-(--border) group-hover:opacity-100"
-            aria-label="Archive chat"
+            onMouseDown={(event) => {
+              event.preventDefault()
+              event.stopPropagation()
+              onSaveRename(chat._id)
+            }}
+            className="h-auto w-auto shrink-0 rounded-sm p-0.5 text-(--foreground) hover:bg-(--border)"
+            aria-label="Save chat name"
           >
-            <Archive size={11} />
+            <Check size={11} />
           </Button>
+        </div>
+      ) : (
+        <>
+          <SidebarMenuSubButton
+            isActive={active}
+            aria-current={active ? 'page' : undefined}
+            onClick={() => { if (!isDeleting) onOpenChat(chat) }}
+            className={isPublicShowcase ? undefined : canRename ? 'pr-14' : 'pr-8'}
+          >
+            <ChatConversationIcon chat={chat} size={12} className="shrink-0" />
+            <span className="flex-1 truncate">{chat.title}</span>
+            {isStreaming && !unread ? (
+              <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-(--muted)" />
+            ) : null}
+          </SidebarMenuSubButton>
+          {unread > 0 ? (
+            <SidebarMenuBadge className="top-1 group-hover/menu-sub-item:hidden group-focus-within/menu-sub-item:hidden">
+              {unread > 9 ? '9+' : unread}
+            </SidebarMenuBadge>
+          ) : null}
+          {isPublicShowcase ? null : (
+            <>
+              {canRename ? (
+                <SidebarMenuAction
+                  aria-label="Rename chat"
+                  className={cn('right-7', hoverAction)}
+                  onClick={(event) => onBeginRename(chat, event)}
+                >
+                  <Pencil aria-hidden />
+                </SidebarMenuAction>
+              ) : null}
+              <SidebarMenuAction
+                aria-label="Archive chat"
+                className={cn('right-1', hoverAction)}
+                onClick={(event) => onRequestArchive(chat, event)}
+              >
+                <Archive aria-hidden />
+              </SidebarMenuAction>
+            </>
+          )}
         </>
       )}
-    </SidebarResourceRow>
+    </SidebarMenuSubItem>
   )
 }
 
 function ChatListBody({
+  indented,
   loading,
   chatView,
   chats,
@@ -749,6 +761,7 @@ function ChatListBody({
   saveRename,
   cancelRename,
 }: {
+  indented: boolean
   loading: boolean
   chatView: ChatView
   chats: Conversation[]
@@ -789,24 +802,28 @@ function ChatListBody({
     all: 'No chats yet',
   }[chatView]
   const deletingChatIdSet = new Set(deletingChatIds)
+  // Sections indent their rows under the section title, like threads under an agent.
+  const listClassName = indented ? undefined : 'ml-0 border-l-0 pl-0'
   if (loading) {
     return (
-      <SidebarResourceList>
+      <SidebarMenuSub className={listClassName}>
         <SidebarListSkeleton rows={6} />
-      </SidebarResourceList>
+      </SidebarMenuSub>
     )
   }
   if (filteredChats.length === 0) {
     return (
-      <SidebarResourceList>
-        <p className="px-2.5 py-2 text-xs text-(--muted-light)">
-          {viewChats.length === 0 ? emptyLabel : 'No results'}
-        </p>
-      </SidebarResourceList>
+      <SidebarMenuSub className={listClassName}>
+        <SidebarMenuSubItem>
+          <p className="px-2 py-1.5 text-xs text-(--muted-light)">
+            {viewChats.length === 0 ? emptyLabel : 'No results'}
+          </p>
+        </SidebarMenuSubItem>
+      </SidebarMenuSub>
     )
   }
   return (
-    <SidebarResourceList>
+    <SidebarMenuSub className={listClassName}>
       <>
           {filteredChats.map((chat) => (
             <ChatListRow
@@ -828,6 +845,7 @@ function ChatListBody({
             />
           ))}
           {hasMore ? (
+            <SidebarMenuSubItem>
             <Button
               variant="ghost"
               type="button"
@@ -837,9 +855,10 @@ function ChatListBody({
             >
               {loadingMore ? 'Loading...' : 'Load more'}
             </Button>
+            </SidebarMenuSubItem>
           ) : null}
         </>
-    </SidebarResourceList>
+    </SidebarMenuSub>
   )
 }
 
@@ -978,6 +997,7 @@ export function ChatInlinePanel({
   return (
     <>
     <ChatListBody
+      indented={Boolean(sectionView)}
       loading={loading}
       chatView={chatView}
       chats={chats}

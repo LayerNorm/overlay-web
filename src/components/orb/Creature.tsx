@@ -108,6 +108,15 @@ export function Creature({
  * An agent rendered as its creature: body shape from `avatarShape` (circle
  * when unset or unknown), body color from `avatarColor`.
  */
+// The default Overlay agent used to be seeded near-black; the picker never offered it, so show it gray like new ones.
+const LEGACY_DEFAULT_AGENT_COLOR = '#18181b'
+const DEFAULT_AGENT_COLOR = '#64748b'
+
+function agentBodyColor(color: string | undefined): string {
+  if (!color) return '#71717a'
+  return color.toLowerCase() === LEGACY_DEFAULT_AGENT_COLOR ? DEFAULT_AGENT_COLOR : color
+}
+
 export function AgentCreature({
   agent,
   size = 32,
@@ -120,7 +129,7 @@ export function AgentCreature({
   return (
     <Creature
       shape={agent.avatarShape}
-      color={agent.avatarColor ?? '#71717a'}
+      color={agentBodyColor(agent.avatarColor)}
       size={size}
       animated={animated}
       label={`${agent.name} avatar`}
