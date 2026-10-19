@@ -63,6 +63,7 @@ export type ChatComposerSurface = {
   agentCommands?: RemoteAgentCommand[]
   /** Model and video sub-mode controls rendered before the send button. */
   modelControl?: ReactNode
+  contextUsage?: { usedTokens: number; contextWindow: number } | null
 }
 export type ChatComposerProps = {
   mode: 'chat' | 'automate'; emptyState: ChatComposerEmptyState; attachments: ChatComposerAttachmentState

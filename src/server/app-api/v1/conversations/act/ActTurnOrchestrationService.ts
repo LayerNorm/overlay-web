@@ -25,6 +25,7 @@ import {
   getLowCreditFallbackAttemptModelIds,
 } from '@/shared/ai/gateway/model-fallbacks'
 import { isGatewayCreditLow } from '@/server/ai/gateway/gateway-credits'
+import { getGatewayCatalogModel } from '@/server/ai/gateway/gateway-catalog'
 import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
 import { userFacingOpenRouterError } from '@/server/ai/model-runtime'
 import { uploadFilePartsForModel } from '@/server/ai/file-upload'
@@ -806,6 +807,13 @@ export async function executeActTurn(
     }) => {
     const attemptModelId = params.modelId
     const attemptModelSupportsZdr = modelSupportsZeroDataRetention(attemptModelId)
+    // Resolved in the background so the catalog lookup never delays the first token.
+    let attemptContextWindow: number | undefined
+    void getGatewayCatalogModel(attemptModelId)
+      .then((model) => {
+        attemptContextWindow = model?.contextWindow
+      })
+      .catch((_error: unknown) => undefined)
     // Kimi K3 always reasons and the AI SDK provider only exposes max effort.
     // Do not send a stale persisted `none` value that the provider cannot honor.
     const effectiveReasoning = isKimiK3ModelId(attemptModelId) && rawReasoning && rawReasoning !== 'provider-default'
@@ -1054,6 +1062,14 @@ export async function executeActTurn(
           streamedRoutedModelId
         ) {
           metadata.routedModelId = streamedRoutedModelId
+        }
+        if (part.type === 'finish' && part.totalUsage && attemptContextWindow) {
+          metadata.usage = {
+            inputTokens: part.totalUsage.inputTokens,
+            outputTokens: part.totalUsage.outputTokens,
+            totalTokens: part.totalUsage.totalTokens,
+          }
+          metadata.contextWindow = attemptContextWindow
         }
         return Object.keys(metadata).length > 0 ? metadata : undefined
       },
