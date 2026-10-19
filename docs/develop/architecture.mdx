@@ -181,6 +181,7 @@ must be made from the resulting evidence.
 ## Auth
 
 - Browser auth uses the signed httpOnly `overlay_session` cookie.
+- Browser `overlayAppClient` requests recover one same-origin `/api/v1/*` 401 through the shared `browser-session` broker and retry once after an authenticated refresh. AuthContext and Convex token recovery use that same in-flight refresh and Web Lock. Delayed responses from before a completed refresh do not start another refresh. The retry preserves JSON bodies, workspace headers and idempotency keys; it excludes explicit bearer credentials, omitted cookies, redirects, request/stream bodies, and server-side callers. A failed refresh or second 401 remains a failure; 403 permission denials are never retried. API handlers stay read-only with respect to session rotation.
 - Native/mobile/desktop auth uses supported bearer access tokens against the same `/api/v1/*` backend.
 - Internal server-to-server calls use short-lived service auth from `src/server/auth/service-auth.ts`.
 - Shared route authentication flows through the API boundary helpers in `src/server/auth/app-api-auth.ts`.
