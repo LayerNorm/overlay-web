@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
 import Link from 'next/link'
 import { ChevronRight, Ellipsis, Loader2, PanelLeft, Plus, Search } from 'lucide-react'
 import {
@@ -242,7 +242,7 @@ function pageSections(
   return hasContent && title ? [{ id: 'page', label: title, active: true }] : []
 }
 
-/** Collapsible page sections; headers stick to the top and bottom so every section stays reachable. */
+/** Collapsible page sections; headers are flat siblings so they can pin to the top and bottom of the scroll area. */
 function PageSections({
   nav,
   rows,
@@ -271,7 +271,7 @@ function PageSections({
         const open = section.active && !closed.has(section.id)
         const pending = nav?.pendingId === section.id
         return (
-          <div key={section.id} className="min-w-0">
+          <Fragment key={section.id}>
             <div
               className="sticky z-10 flex h-8 items-center gap-0.5 bg-(--sidebar-surface)"
               style={{ top: index * SECTION_HEADER_PX, bottom: (sections.length - 1 - index) * SECTION_HEADER_PX }}
@@ -313,7 +313,7 @@ function PageSections({
               ) : null}
             </div>
             {open ? <div className="min-w-0 pb-2">{children}</div> : null}
-          </div>
+          </Fragment>
         )
       })}
     </SidebarGroup>
@@ -365,7 +365,7 @@ function SidebarHeaderBar({
   onSearch,
 }: Pick<UnifiedSidebarProps, 'brand' | 'collapsed' | 'onCollapsedChange' | 'onSearch'>) {
   return (
-    <div className={cn('flex h-14 shrink-0 items-center gap-1 md:h-16', collapsed ? 'justify-center px-2' : 'pl-[19px] pr-3')}>
+    <div className={cn('flex h-14 shrink-0 items-center gap-1 md:h-16', collapsed ? 'justify-center px-2' : 'pl-[22px] pr-3')}>
       {collapsed ? (
         <DelayedTooltip label="Expand sidebar" side="bottom">
           <Button
