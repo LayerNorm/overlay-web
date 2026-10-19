@@ -31,6 +31,8 @@ import { DelayedTooltip } from '@overlay/ui/overlays'
 import { AppScreenHeader } from '@overlay/modules-react/shell'
 import { ModelBadges } from './ModelIndicators'
 import { ModelQualitiesPanel } from './ModelQualitiesPanel'
+import { ModelSelector } from './ModelSelector'
+import { useFavoriteModelIds } from './useFavoriteModelIds'
 
 const TEMPORARY_CHAT_ICON_SRC = '/assets/icons/dashed-chat.png'
 
@@ -412,39 +414,6 @@ function ModelPickerRow({
   )
 }
 
-function MediaModelList({
-  models,
-  selectedModelIds,
-  selectionMode,
-  onToggleModel,
-}: {
-  models: { id: string; name: string }[]
-  selectedModelIds: string[]
-  selectionMode: AskModelSelectionMode
-  onToggleModel: (modelId: string) => void
-}) {
-  const selectedModelIdSet = new Set(selectedModelIds)
-  return (
-    <>
-      {models.map((m) => {
-        const isSel = selectedModelIdSet.has(m.id)
-        const isDisabled =
-          selectionMode === 'multiple' && !isSel && selectedModelIds.length >= 4
-        return (
-          <ModelPickerRow
-            key={m.id}
-            modelId={m.id}
-            name={m.name}
-            selected={isSel}
-            disabled={isDisabled}
-            onSelect={() => onToggleModel(m.id)}
-          />
-        )
-      })}
-    </>
-  )
-}
-
 function TextModelRows({
   models,
   isFreeTier,
@@ -592,7 +561,7 @@ function AutomationModelPicker({
           align="end"
           aria-label="Choose automation model"
           data-tour="model-picker"
-          className="w-[var(--radix-popover-trigger-width)] rounded-lg md:w-64"
+          className="w-[min(22rem,calc(100vw-1rem))] rounded-lg p-0"
         >
           {hoveredModelId && modelQualitiesPos ? (
             <ModelQualitiesHoverCard
@@ -800,91 +769,78 @@ function ChatModelPickerDropdown({
   | 'hasAutomationContext'
 >) {
   const selectedModelSet = new Set(selectedModels)
+  const { favoriteIds, toggleFavorite } = useFavoriteModelIds()
+  const mediaModels = generationMode === 'image' ? imageModels : videoModels
+  const selectedMediaIds = generationMode === 'image' ? selectedImageModels : selectedVideoModels
+  const mediaSelectionMode = generationMode === 'image' ? imageModelSelectionMode : videoModelSelectionMode
+  const onToggleMediaModel = generationMode === 'image' ? onToggleImageModel : onToggleVideoModel
+  const footer =
+    generationMode === 'image' || generationMode === 'video' ? (
+      <ModelSelectionModeButtons
+        selectionMode={mediaSelectionMode}
+        onSelectionModeChange={
+          generationMode === 'image' ? onImageModelSelectionModeChange : onVideoModelSelectionModeChange
+        }
+        isModeDisabled={(mode) => isActiveLoading || (isFreeTier && mode === 'multiple')}
+      />
+    ) : !hasAutomationContext ? (
+      <ModelSelectionModeButtons
+        selectionMode={askModelSelectionMode}
+        onSelectionModeChange={onTextModelSelectionModeChange}
+        isModeDisabled={(mode) => isFreeTier && mode === 'multiple'}
+      />
+    ) : null
+  const modeToggle = (
+    <DelayedTooltip label="Cycle text / image / video (⇧⌘.)" side="left" className="block w-full">
+      <span data-tour="generation-mode-toggle" className="block w-full">
+        <GenerationModeToggle
+          mode={generationMode}
+          onChange={onGenerationModeChange}
+          disabled={isActiveLoading}
+          layout="stretch"
+        />
+      </span>
+    </DelayedTooltip>
+  )
   return (
     <div data-tour="model-picker" className="min-w-0">
-      <div className="border-b border-(--border) px-2 pb-2 pt-1">
-        <DelayedTooltip
-          label="Cycle text / image / video (⇧⌘.)"
-          side="left"
-          className="block w-full"
-        >
-          <span data-tour="generation-mode-toggle" className="block w-full">
-            <GenerationModeToggle
-              mode={generationMode}
-              onChange={onGenerationModeChange}
-              disabled={isActiveLoading}
-              layout="stretch"
-            />
-          </span>
-        </DelayedTooltip>
-      </div>
-      <div ref={modelPickerListScrollRef} className="max-h-72 overflow-y-auto">
-        {generationMode === 'text' && textModelsLoading && !isFreeTier ? (
-          <PremiumModelsLoadingRows />
-        ) : null}
-        {generationMode === 'image' ? (
-          <MediaModelList
-            models={imageModels}
-            selectedModelIds={selectedImageModels}
-            selectionMode={imageModelSelectionMode}
-            onToggleModel={onToggleImageModel}
-          />
-        ) : generationMode === 'video' ? (
-          <MediaModelList
-            models={videoModels}
-            selectedModelIds={selectedVideoModels}
-            selectionMode={videoModelSelectionMode}
-            onToggleModel={onToggleVideoModel}
-          />
-        ) : (
-          <TextModelRows
-            models={selectableTextModels}
-            isFreeTier={isFreeTier}
-            isFreeTierChatModelId={isFreeTierChatModelId}
-            textModelsLoading={textModelsLoading}
-            onHoveredModelChange={onHoveredModelChange}
-            isSelected={(m) =>
-              askModelSelectionMode === 'single'
-                ? m.id === selectedActModel
-                : selectedModelSet.has(m.id)
-            }
-            isDisabled={(m, isSel) =>
-              askModelSelectionMode === 'multiple' && !isSel && selectedModels.length >= 4
-            }
-            onSelect={(m) => onToggleTextModel(m.id)}
-          />
-        )}
-        {generationMode === 'text' && textModelsLoading && isFreeTier ? (
-          <PremiumModelsLoadingRows divider />
-        ) : null}
-      </div>
-      {generationMode === 'image' ? (
-        <div className="border-t border-(--border) px-2 py-2">
-          <ModelSelectionModeButtons
-            selectionMode={imageModelSelectionMode}
-            onSelectionModeChange={onImageModelSelectionModeChange}
-            isModeDisabled={(mode) => isActiveLoading || (isFreeTier && mode === 'multiple')}
-          />
-        </div>
-      ) : null}
-      {generationMode === 'video' ? (
-        <div className="border-t border-(--border) px-2 py-2">
-          <ModelSelectionModeButtons
-            selectionMode={videoModelSelectionMode}
-            onSelectionModeChange={onVideoModelSelectionModeChange}
-            isModeDisabled={(mode) => isActiveLoading || (isFreeTier && mode === 'multiple')}
-          />
-        </div>
-      ) : null}
-      {generationMode === 'text' && !hasAutomationContext ? (
-        <div className="border-t border-(--border) px-2 py-2">
-          <ModelSelectionModeButtons
-            selectionMode={askModelSelectionMode}
-            onSelectionModeChange={onTextModelSelectionModeChange}
-            isModeDisabled={(mode) => isFreeTier && mode === 'multiple'}
-          />
-        </div>
-      ) : null}
+      <div className="px-1.5 pt-1.5">{modeToggle}</div>
+      {generationMode === 'text' ? (
+        <ModelSelector
+          models={selectableTextModels}
+          pinnedIds={isFreeTier ? selectableTextModels.filter((m) => isFreeTierChatModelId(m.id)).map((m) => m.id) : []}
+          favoriteIds={favoriteIds}
+          onToggleFavorite={toggleFavorite}
+          listRef={modelPickerListScrollRef}
+          isSelected={(m) =>
+            askModelSelectionMode === 'single' ? m.id === selectedActModel : selectedModelSet.has(m.id)
+          }
+          isDisabled={(m) =>
+            askModelSelectionMode === 'multiple' && !selectedModelSet.has(m.id) && selectedModels.length >= 4
+          }
+          onSelect={(m) => onToggleTextModel(m.id)}
+          renderBadges={(m) => <ModelBadges model={m} />}
+          onRowHover={(m, row) => {
+            const r = row.getBoundingClientRect()
+            onHoveredModelChange(m.id, { x: r.left - 8, y: r.top + r.height / 2 })
+          }}
+          beforeList={textModelsLoading ? <PremiumModelsLoadingRows /> : null}
+          footer={footer}
+        />
+      ) : (
+        <ModelSelector
+          models={mediaModels}
+          favoriteIds={favoriteIds}
+          onToggleFavorite={toggleFavorite}
+          listRef={modelPickerListScrollRef}
+          isSelected={(m) => selectedMediaIds.includes(m.id)}
+          isDisabled={(m) =>
+            mediaSelectionMode === 'multiple' && !selectedMediaIds.includes(m.id) && selectedMediaIds.length >= 4
+          }
+          onSelect={(m) => onToggleMediaModel(m.id)}
+          footer={footer}
+        />
+      )}
     </div>
   )
 }

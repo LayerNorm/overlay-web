@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { Bubble, BubbleContent } from './bubble'
 import { CodeBlock, CodeBlockContent, CodeBlockHeader, CodeBlockTitle } from './code-block'
 import { Message, MessageContent } from './message'
+import { ProviderLogo, providerLabel } from './provider-logo'
 import { Trace, TraceIcon, TraceLine, TraceTitle } from './trace'
 
 ;(globalThis as typeof globalThis & { React: typeof React }).React = React
@@ -41,4 +42,15 @@ test('a user message aligns to the end and its bubble renders the text', () => {
   )
   assert.match(html, /data-slot="message" data-align="end"/)
   assert.match(html, />Hi</)
+})
+
+test('provider logos render inline currentColor marks and fall back for unknown providers', () => {
+  const known = renderToStaticMarkup(<ProviderLogo provider="anthropic" size={14} />)
+  assert.match(known, /data-provider="anthropic"/)
+  assert.match(known, /fill="currentColor"/)
+  assert.match(known, /width="14"/)
+  const unknown = renderToStaticMarkup(<ProviderLogo provider="unknown-lab" />)
+  assert.match(unknown, /lucide-cpu/)
+  assert.equal(providerLabel('z-ai'), 'Z.ai')
+  assert.equal(providerLabel('unknown-lab'), 'unknown-lab')
 })
