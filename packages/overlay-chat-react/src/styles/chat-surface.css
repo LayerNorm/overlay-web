@@ -41,129 +41,6 @@
   animation: overlayChatToolChipSoftBlink 1.4s ease-in-out infinite;
 }
 
-:where(.overlay-chat-surface) .code-block-wrapper {
-  margin: 0 0 1em;
-  border-radius: 10px;
-  border: 1px solid var(--border);
-  overflow: hidden;
-}
-
-:where(.overlay-chat-surface) .code-block-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  padding: 0.45rem 0.9rem;
-  background: var(--surface-subtle);
-  border-bottom: 1px solid var(--border);
-}
-
-:where(.overlay-chat-surface) .code-block-lang {
-  font-size: 0.75rem;
-  color: var(--muted);
-  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
-}
-
-:where(.overlay-chat-surface) .code-block-copy {
-  font-size: 0.72rem;
-  color: var(--muted);
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 0;
-}
-
-:where(.overlay-chat-surface) .code-block-copy:hover {
-  color: var(--foreground);
-}
-
-:where(.overlay-chat-surface) .code-block-actions {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.2rem;
-}
-
-:where(.overlay-chat-surface) .code-block-action {
-  display: inline-flex;
-  width: 1.75rem;
-  height: 1.75rem;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid transparent;
-  border-radius: 7px;
-  background: transparent;
-  color: var(--muted);
-  cursor: pointer;
-  transition:
-    background-color 0.16s ease,
-    border-color 0.16s ease,
-    color 0.16s ease;
-}
-
-:where(.overlay-chat-surface) .code-block-action:hover:not(:disabled),
-:where(.overlay-chat-surface) .code-block-action[data-active="true"] {
-  border-color: var(--border);
-  background: var(--surface-elevated);
-  color: var(--foreground);
-}
-
-:where(.overlay-chat-surface) .code-block-action:disabled {
-  cursor: not-allowed;
-  opacity: 0.38;
-}
-
-:where(.overlay-chat-surface) .code-block-render {
-  min-height: 320px;
-  background: #fff;
-}
-
-:where(.overlay-chat-surface) .code-block-render-frame {
-  display: block;
-  width: 100%;
-  height: clamp(320px, 58vh, 560px);
-  border: 0;
-  background: #fff;
-}
-
-@media (max-width: 640px) {
-  :where(.overlay-chat-surface) .code-block-render {
-    min-height: 260px;
-  }
-
-  :where(.overlay-chat-surface) .code-block-render-frame {
-    height: clamp(260px, 55vh, 460px);
-  }
-}
-
-[data-theme="dark"]
-  :where(.overlay-chat-surface)
-  .code-block-wrapper
-  .react-syntax-highlighter,
-:where(.overlay-chat-surface[data-theme="dark"])
-  .code-block-wrapper
-  .react-syntax-highlighter {
-  background: var(--surface-subtle) !important;
-}
-
-[data-theme="dark"] :where(.overlay-chat-surface) .code-block-wrapper pre,
-[data-theme="dark"] :where(.overlay-chat-surface) .code-block-wrapper code,
-:where(.overlay-chat-surface[data-theme="dark"]) .code-block-wrapper pre,
-:where(.overlay-chat-surface[data-theme="dark"]) .code-block-wrapper code {
-  background: transparent !important;
-}
-
-[data-theme="dark"]
-  :where(.overlay-chat-surface)
-  .code-block-wrapper
-  .react-syntax-highlighter
-  code[class*="language-"],
-:where(.overlay-chat-surface[data-theme="dark"])
-  .code-block-wrapper
-  .react-syntax-highlighter
-  code[class*="language-"] {
-  text-shadow: none;
-}
-
 :where(.overlay-chat-surface) .table-wrapper {
   overflow-x: auto;
   margin: 0 0 1em;
@@ -555,7 +432,7 @@
 :where(.overlay-chat-surface) .markdown-content--streaming h6,
 :where(.overlay-chat-surface) .markdown-content--streaming blockquote,
 :where(.overlay-chat-surface) .markdown-content--streaming pre,
-:where(.overlay-chat-surface) .markdown-content--streaming .code-block-wrapper {
+:where(.overlay-chat-surface) .markdown-content--streaming [data-slot='code-block'] {
   animation: overlayChatStreamBlockSoften 260ms ease-out both;
   will-change: opacity;
 }
@@ -771,9 +648,7 @@
   :where(.overlay-chat-surface) .markdown-content--streaming h6,
   :where(.overlay-chat-surface) .markdown-content--streaming blockquote,
   :where(.overlay-chat-surface) .markdown-content--streaming pre,
-  :where(.overlay-chat-surface)
-    .markdown-content--streaming
-    .code-block-wrapper {
+  :where(.overlay-chat-surface) .markdown-content--streaming [data-slot='code-block'] {
     animation: none;
   }
 }
