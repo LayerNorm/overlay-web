@@ -45,11 +45,13 @@ test('new gateway models appear before the free section for paid users', () => {
 
   const models = getEnabledChatModels([
     'openrouter/free',
+    'overlay-free',
     DYNAMIC_MODEL_ID,
   ], false)
 
   assert.deepEqual(models.map((model) => model.id), [
     DYNAMIC_MODEL_ID,
+    'overlay-free',
     'openrouter/free',
   ])
 })
@@ -162,6 +164,7 @@ test('active BYOK models register without replacing hosted models and respect ex
 
 test('modelUsesAiGatewayTransport only flags models served by the metered gateway key', () => {
   assert.equal(modelUsesAiGatewayTransport('anthropic/claude-opus-4.7'), true)
+  assert.equal(modelUsesAiGatewayTransport('overlay-free'), false)
   assert.equal(modelUsesAiGatewayTransport('openrouter/free'), false)
   assert.equal(modelUsesAiGatewayTransport('byok/connection_1/vendor/model-a'), false)
 })
@@ -176,5 +179,5 @@ test('provider catalog includes older non-recommended models without enabling th
   assert.ok(getModelsByIntelligence(false).some((model) => model.id === oldModel))
   assert.equal(getModel(oldModel)?.id, oldModel)
   assert.ok(!MODEL_RECOMMENDATIONS.text.some((id: string) => id === oldModel))
-  assert.equal(getModelsByIntelligence(true)[0].id, 'openrouter/free')
+  assert.equal(getModelsByIntelligence(true)[0].id, 'overlay-free')
 })
