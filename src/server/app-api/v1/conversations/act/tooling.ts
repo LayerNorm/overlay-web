@@ -56,7 +56,6 @@ export interface ActToolPreloadTasks {
 
 export interface ActTooling {
   allowedOverlayToolIds: string[]
-  composioStrippedForCompareSlot: boolean
   exposedMediaTools: string[]
   /** Tool names contributed by the connected-app provider, for policy filtering. */
   integrationToolIds: string[]
@@ -137,7 +136,6 @@ export async function prepareActTooling(params: {
   entitlements: Entitlements
   effectiveModelId: string
   forwardCookie?: string | null
-  isMultiModelFollowUpSlot: boolean
   idempotencyKey?: string
   latestUserText?: string
   memoryEnabled?: boolean
@@ -202,7 +200,7 @@ export async function prepareActTooling(params: {
 
   const mcpCatalogStartedAt = performance.now()
   const mcpToolsTask: Promise<{ tools: ToolSet; toolApproval?: McpToolApprovalFn; toolsContext?: Record<string, unknown> }> =
-    params.isMultiModelFollowUpSlot || !capabilities.mcpServers
+    !capabilities.mcpServers
       ? Promise.resolve({ tools: {} })
       : createMcpLazyMetaTools({
           userId: params.userId,
@@ -270,15 +268,12 @@ export async function prepareActTooling(params: {
   // Connected accounts in such a room are the workspace's (`workspace_…`); the person's own are not offered.
   const integrationRaw = params.sharedRoom ? workspaceToolsOnly(integrationRawAll) : integrationRawAll
 
-  const mcpCatalogMs = params.isMultiModelFollowUpSlot
-    ? 0
-    : performance.now() - mcpCatalogStartedAt
+  const mcpCatalogMs = performance.now() - mcpCatalogStartedAt
 
   const tooling = buildActTooling({
     allowedOverlayToolIds,
     integrationProvider: getSelectedIntegrationProviderId(),
     integrationRaw,
-    isMultiModelFollowUpSlot: params.isMultiModelFollowUpSlot,
     mcpToolsRaw: mcpToolsResult.tools,
     mcpToolApproval: mcpToolsResult.toolApproval,
     mcpToolsContext: mcpToolsResult.toolsContext,
@@ -340,7 +335,6 @@ export function buildActTooling(params: {
   allowedOverlayToolIds: string[]
   integrationProvider?: 'composio' | 'executor' | 'none'
   integrationRaw: ToolSet
-  isMultiModelFollowUpSlot: boolean
   mcpToolsRaw: ToolSet
   mcpToolApproval?: McpToolApprovalFn
   mcpToolsContext?: Record<string, unknown>
@@ -356,10 +350,10 @@ export function buildActTooling(params: {
     params.paid,
     params.integrationProvider,
   )
-  const integrationsForAgent: ToolSet = params.isMultiModelFollowUpSlot ? {} : integrationTools
-  const freeTierStubsActive = !params.paid && !params.isMultiModelFollowUpSlot
+  const integrationsForAgent = integrationTools
+  const freeTierStubsActive = !params.paid
   const freeTierGatedStubs: ToolSet = createFreeTierGatedStubTools(freeTierStubsActive)
-  const mcpTools: ToolSet = params.isMultiModelFollowUpSlot ? {} : params.mcpToolsRaw
+  const mcpTools = params.mcpToolsRaw
   const tools: ToolSet = {
     ...integrationsForAgent,
     ...mcpTools,
@@ -372,7 +366,6 @@ export function buildActTooling(params: {
 
   return {
     allowedOverlayToolIds: params.allowedOverlayToolIds,
-    composioStrippedForCompareSlot: params.isMultiModelFollowUpSlot,
     exposedMediaTools: exposedMediaToolIds(params.webToolSet),
     integrationToolIds: Object.keys(integrationsForAgent),
     searchLog: [
@@ -382,10 +375,10 @@ export function buildActTooling(params: {
     ].join(' '),
     missingSearchTools: !params.webSearchTool || !params.deepSearchTool || !params.webFetchTool,
     tools,
-    ...(params.mcpToolApproval && !params.isMultiModelFollowUpSlot
+    ...(params.mcpToolApproval
       ? { toolApproval: params.mcpToolApproval }
       : {}),
-    ...(params.mcpToolsContext && !params.isMultiModelFollowUpSlot
+    ...(params.mcpToolsContext
       ? { toolsContext: params.mcpToolsContext }
       : {}),
   }
@@ -393,7 +386,6 @@ export function buildActTooling(params: {
 
 export function logActTooling(tooling: Pick<ActTooling,
   'allowedOverlayToolIds' |
-  'composioStrippedForCompareSlot' |
   'searchLog' |
   'missingSearchTools' |
   'tools'
@@ -403,7 +395,6 @@ export function logActTooling(tooling: Pick<ActTooling,
     summarizeToolSetForLog(tooling.tools),
     '| tool_index_map:',
     summarizeToolIndexMapForLog(tooling.tools),
-    tooling.composioStrippedForCompareSlot ? '| composio:stripped_for_compare_slot' : '',
     '| allowed_overlay_tools:',
     tooling.allowedOverlayToolIds.join(', ') || '(none)',
     '| web search (Elo/TinyFish):',

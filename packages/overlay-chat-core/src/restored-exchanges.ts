@@ -8,6 +8,7 @@ export type RestorableConversationMessage = {
   role: 'user' | 'assistant'
   parts: Array<{ type: string; text?: string }>
   model?: string
+  variantIndex?: number
   status?: 'generating' | 'completed' | 'error'
 }
 
@@ -29,6 +30,32 @@ export function syntheticMessagesForOutputGroups<TMessage extends RestorableConv
   } as TMessage))
 }
 
+function primaryAssistantIndices<TMessage extends RestorableConversationMessage>(
+  messages: TMessage[],
+): Set<number> {
+  const selected = new Set<number>()
+  const undefinedVariants = new Map<string, number[]>()
+  let currentTurnId: string | null = null
+  messages.forEach((message, index) => {
+    if (message.role === 'user') {
+      currentTurnId = message.turnId || message.id
+      return
+    }
+    const turnId = message.turnId || currentTurnId || `orphan-${index}`
+    if (message.variantIndex === undefined) {
+      selected.add(index)
+      const indices = undefinedVariants.get(turnId) ?? []
+      indices.push(index)
+      undefinedVariants.set(turnId, indices)
+      return
+    }
+    if (message.variantIndex !== 0) return
+    selected.add(index)
+    for (const previousIndex of undefinedVariants.get(turnId) ?? []) selected.delete(previousIndex)
+  })
+  return selected
+}
+
 export function buildRestoredMessageExchanges<TMessage extends RestorableConversationMessage>(
   rawMessages: TMessage[],
   options: {
@@ -37,12 +64,16 @@ export function buildRestoredMessageExchanges<TMessage extends RestorableConvers
     onOrphanAssistantTurn?: (turnId: string) => void
   },
 ): Array<RestoredMessageExchange<TMessage>> {
+  const primaryIndices = primaryAssistantIndices(rawMessages)
+  const messages = rawMessages.filter((message, index) =>
+    message.role !== 'assistant' || primaryIndices.has(index),
+  )
   const exchanges: Array<RestoredMessageExchange<TMessage>> = []
-  const hasTurnIds = rawMessages.some((message) => message.turnId)
+  const hasTurnIds = messages.some((message) => message.turnId)
 
   if (!hasTurnIds) {
     let current: RestoredMessageExchange<TMessage> | null = null
-    for (const message of rawMessages) {
+    for (const message of messages) {
       if (message.role === 'user') {
         if (current) exchanges.push(current)
         current = { userMsg: message, responses: [], mode: 'ask' }
@@ -56,7 +87,7 @@ export function buildRestoredMessageExchanges<TMessage extends RestorableConvers
 
   const turnOrder: string[] = []
   const byTurn = new Map<string, { user?: TMessage; assistants: TMessage[] }>()
-  for (const message of rawMessages) {
+  for (const message of messages) {
     const turnId = message.turnId || message.id
     if (!byTurn.has(turnId)) {
       byTurn.set(turnId, { assistants: [] })

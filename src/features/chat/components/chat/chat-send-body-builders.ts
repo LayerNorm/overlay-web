@@ -4,7 +4,6 @@ import type { ChatToolRequestId } from '@/shared/chat/tool-requests'
 import { normalizeChatModelSelection } from '@/shared/chat/chat-model-prefs'
 import type { ReasoningLevel } from '@overlay/chat-core'
 import type {
-  AskModelSelectionMode,
   AttachedImage,
   ChatMessageMetadata,
   ConversationRuntime,
@@ -66,7 +65,6 @@ export type SubmittedComposerSnapshot = {
 }
 
 export function buildSubmittedComposerSnapshot({
-  askModelSelectionMode,
   selectedModels,
   selectedActModel,
   activeChatTitle,
@@ -81,7 +79,6 @@ export function buildSubmittedComposerSnapshot({
   memoryEnabled,
   text,
 }: {
-  askModelSelectionMode: AskModelSelectionMode
   selectedModels: string[]
   selectedActModel: string
   activeChatTitle: string | null
@@ -97,7 +94,7 @@ export function buildSubmittedComposerSnapshot({
   text: string
 }): SubmittedComposerSnapshot {
   const normalizedTextSelection = normalizeChatModelSelection({
-    askModelIds: askModelSelectionMode === 'multiple' ? selectedModels.slice(0, 4) : [selectedActModel],
+    askModelIds: selectedModels.slice(0, 1),
     actModelId: selectedActModel,
   })
   const pendingChatDocumentsSnapshot = [...pendingChatDocuments]

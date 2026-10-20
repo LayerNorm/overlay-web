@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Remove multi-model selection and compare responses across text, image, and video chats. Existing saved model preferences and conversations continue with one primary model response.
+
 - Make both sidebar edges resizable, keep native agent text visible between tool calls while it streams, preserve its generation order after completion and reload, and match the approved agent hierarchy with regular-weight names, aligned icons and flush-left threads. Scale tool Orbs to the wordmark ratio and center them beside wrapped labels. Use the shared avatar popover for outside-click and Escape dismissal.
 
 - Preserve the live transcript when a new chat receives its saved conversation ID after completion, while still resetting scroll state when navigating between chats.

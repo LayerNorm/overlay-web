@@ -5,8 +5,8 @@ import type { Dispatch, MutableRefObject, SetStateAction } from 'react'
 import type { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import type { AutomationDetail, AutomationDetailTab } from '@overlay/app-core'
 import { toast } from '@overlay/ui/primitives'
-import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import type { useChatPreferences } from './useChatPreferences'
 import { usePanelScope } from '@/hooks/use-panel-scope'
 import { newItemScope } from '@/shared/workspaces/panel-scope'
@@ -26,10 +26,7 @@ export function useAutomationDetail({
   setSelectedAutomationLoading,
   selectedActModel,
   setSelectedActModel,
-  selectedModels,
   setSelectedModels,
-  askModelSelectionMode,
-  setAskModelSelectionMode,
   userAskModelOverrideRef,
 }: {
   mode: 'chat' | 'automate'
@@ -44,10 +41,7 @@ export function useAutomationDetail({
   setSelectedAutomationLoading: Dispatch<SetStateAction<boolean>>
   selectedActModel: ChatPrefs['selectedActModel']
   setSelectedActModel: ChatPrefs['setSelectedActModel']
-  selectedModels: ChatPrefs['selectedModels']
   setSelectedModels: ChatPrefs['setSelectedModels']
-  askModelSelectionMode: ChatPrefs['askModelSelectionMode']
-  setAskModelSelectionMode: ChatPrefs['setAskModelSelectionMode']
   userAskModelOverrideRef: MutableRefObject<boolean>
 }) {
   const creatingAutomationDraftRef = useRef(false)
@@ -138,26 +132,6 @@ export function useAutomationDetail({
   useEffect(() => {
     void refreshSelectedAutomation()
   }, [refreshSelectedAutomation])
-
-  // Automations must always run with exactly one model. Collapse multi-model selection
-  // whenever the user is working inside an automation surface so saved automations and
-  // automation-chat runs never inherit a stale multi-model state.
-  useEffect(() => {
-    if (mode !== 'automate') return
-    if (askModelSelectionMode !== 'multiple' && selectedModels.length <= 1) return
-    const primary = selectedActModel || selectedModels[0] || DEFAULT_MODEL_ID
-    setAskModelSelectionMode('single')
-    setSelectedModels([primary])
-    setSelectedActModel(primary)
-  }, [
-    askModelSelectionMode,
-    mode,
-    selectedActModel,
-    selectedModels,
-    setAskModelSelectionMode,
-    setSelectedActModel,
-    setSelectedModels,
-  ])
 
   // A new automation lands in the scope being viewed.
   const panelScope = usePanelScope()

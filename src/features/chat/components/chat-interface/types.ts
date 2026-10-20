@@ -167,25 +167,20 @@ export interface GenerationResult {
   upgradeRequired?: boolean
 }
 
-export type AskModelSelectionMode = 'single' | 'multiple'
-
 export interface ConversationUiState {
   selectedActModel: string
   selectedModels: string[]
-  askModelSelectionMode: AskModelSelectionMode
   exchangeModes: ('ask' | 'act')[]
   exchangeModels: string[][]
-  selectedTabPerExchange: number[]
   activeChatTitle: string | null
   generationResults: Map<number, GenerationResult[]>
   exchangeGenTypes: ('text' | 'image' | 'video')[]
   isFirstMessage: boolean
-  orphanModelThreads: Map<string, UIMessage[]>
   lastGeneratedImageUrl: string | null
 }
 
 export interface ConversationRuntime {
-  askChats: [Chat<UIMessage>, Chat<UIMessage>, Chat<UIMessage>, Chat<UIMessage>]
+  askChats: [Chat<UIMessage>]
   actChat: Chat<UIMessage>
   hydrated: boolean
   ui: ConversationUiState

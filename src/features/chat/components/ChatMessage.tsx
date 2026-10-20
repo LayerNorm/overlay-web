@@ -56,20 +56,18 @@ type TextChatMessageProps = CommonMessageProps & {
   chatInstances: ChatInstance[]
   exchangeModes: ('ask' | 'act')[]
   exchangeModels: string[][]
-  selectedTabPerExchange: number[]
   selectedModels: string[]
   isActiveLoading: boolean
   isOptimisticLoading: boolean
   interruptedExchangeIdx: number | null
   sourcesPanel: { turnId: string } | null
-  getResponseForExchangeForModel: (modelId: string, exchangeIndex: number, slotOrder?: string[]) => UIMessage | null
-  onTabSelect: (exchangeIndex: number, tabIndex: number) => void
+  getResponseForExchange: (exchangeIndex: number) => UIMessage | null
   onReplyToAssistantText: (assistantText: string, turnId: string | null) => void
   onBranch: (turnId: string | null) => void | Promise<void>
   onOpenDraft: (state: DraftModalState) => void
   onCreateAutomationDraft: (state: Extract<DraftModalState, { kind: 'automation' }>) => void | Promise<void>
   onOpenSources: Parameters<typeof ChatToolSurface>[0]['onOpenSources']
-  onRetry: (message: UIMessage, exchangeIndex: number, isActExchange: boolean, exchangeModels: string[]) => void | Promise<void>
+  onRetry: (message: UIMessage, exchangeIndex: number, isActExchange: boolean, modelId: string) => void | Promise<void>
   onOpenFilePreview: (name: string, fileIds: string[]) => void | Promise<void>
   onOpenAttachmentPreview: (
     preview: AttachmentPreview,
@@ -123,7 +121,6 @@ function areTextChatMessagePropsEqual(prev: TextChatMessageProps, next: TextChat
   if (exchangeIndex === next.latestExchangeIndex) return false
 
   if (prev.exchangeModes[exchangeIndex] !== next.exchangeModes[exchangeIndex]) return false
-  if (prev.selectedTabPerExchange[exchangeIndex] !== next.selectedTabPerExchange[exchangeIndex]) return false
   if (!sameStringArray(prev.exchangeModels[exchangeIndex], next.exchangeModels[exchangeIndex])) return false
   if (!sameStringArray(prev.selectedModels, next.selectedModels)) return false
   if (prev.interruptedExchangeIdx !== next.interruptedExchangeIdx) return false
@@ -147,17 +144,12 @@ function resolveStreamSelection(props: TextChatMessageProps) {
     chatInstances,
     exchangeModes,
     exchangeModels,
-    selectedTabPerExchange,
     selectedModels,
   } = props
-  const modelList = exchangeModels[exchangeIndex] ?? []
-  const selectedTab = selectedTabPerExchange[exchangeIndex] ?? 0
-  const selectedModelId = modelList[selectedTab] ?? selectedModels[0] ?? ''
+  const selectedModelId = exchangeModels[exchangeIndex]?.[0] ?? selectedModels[0] ?? ''
   const isActExchange = (exchangeModes[exchangeIndex] ?? 'ask') === 'act'
-  const isMultiAct = isActExchange && modelList.length > 1
-  const streamSlotIndex = !selectedModelId ? -1 : isMultiAct ? modelList.indexOf(selectedModelId) : isActExchange ? -1 : selectedModels.indexOf(selectedModelId)
-  const slotInstance = streamSlotIndex >= 0 ? chatInstances[streamSlotIndex] : null
-  return { modelList, selectedTab, selectedModelId, isActExchange, isMultiAct, streamSlotIndex, slotInstance }
+  const slotInstance = isActExchange ? null : chatInstances[0] ?? null
+  return { selectedModelId, isActExchange, slotInstance }
 }
 
 type StreamSelection = ReturnType<typeof resolveStreamSelection>
@@ -165,11 +157,11 @@ type StreamSelection = ReturnType<typeof resolveStreamSelection>
 function resolveExchangeResponse(props: TextChatMessageProps, selection: StreamSelection) {
   const { message, exchangeIndex, latestExchangeIndex, primaryMessages, actChat } = props
   const isLatest = exchangeIndex === latestExchangeIndex
-  const initialResponseMsg = props.getResponseForExchangeForModel(selection.selectedModelId, exchangeIndex, selection.isMultiAct ? selection.modelList : undefined)
-  const actResponseMsg = selection.isActExchange && !selection.isMultiAct
+  const initialResponseMsg = props.getResponseForExchange(exchangeIndex)
+  const actResponseMsg = selection.isActExchange
     ? resolveActAssistant(primaryMessages, actChat.messages, message.id)
     : null
-  const responseMsg = (selection.isActExchange && !selection.isMultiAct
+  const responseMsg = (selection.isActExchange
     ? (isLatest ? (actResponseMsg ?? initialResponseMsg) : (initialResponseMsg ?? actResponseMsg))
     : initialResponseMsg) as UIMessage | null
   const responseText = responseMsg ? getMessageText(responseMsg) : ''
@@ -193,14 +185,12 @@ function resolveExchangeResponse(props: TextChatMessageProps, selection: StreamS
 type ExchangeResponse = ReturnType<typeof resolveExchangeResponse>
 
 function resolveStreamLoadState(props: TextChatMessageProps, selection: StreamSelection, response: ExchangeResponse) {
-  const { actChat, chatInstances, isActiveLoading, isOptimisticLoading } = props
-  const { isActExchange, isMultiAct, streamSlotIndex, slotInstance } = selection
+  const { actChat, isActiveLoading, isOptimisticLoading } = props
+  const { isActExchange, slotInstance } = selection
   const { isLatest, persistedStatus, responseText } = response
   const activeHttpLoading = isLatest && (
     (isActExchange
-      ? (isMultiAct
-          ? (slotInstance?.status === 'streaming' || slotInstance?.status === 'submitted')
-          : (actChat.status === 'streaming' || actChat.status === 'submitted'))
+      ? (actChat.status === 'streaming' || actChat.status === 'submitted')
       : !!slotInstance && (slotInstance.status === 'streaming' || slotInstance.status === 'submitted')) ||
     isOptimisticLoading ||
     (isActExchange && isActiveLoading && persistedStatus !== 'completed')
@@ -212,9 +202,7 @@ function resolveStreamLoadState(props: TextChatMessageProps, selection: StreamSe
     ? persistedStatus === 'error'
       ? new Error(persistedErrorText)
       : isActExchange
-        ? isMultiAct && streamSlotIndex >= 0
-          ? chatInstances[streamSlotIndex]?.error ?? null
-          : isMultiAct ? null : actChat.error
+        ? actChat.error
         : slotInstance?.error ?? null
     : null
   return { instLoading: activeHttpLoading, instError }
@@ -274,11 +262,10 @@ function resolveTurnReplyState(
   return { turnId, isExiting, errLabelForTurn, interruptedHere, replyPlain }
 }
 
-function resolveModelLabel(responseMsg: UIMessage | null, selectedModelId: string, modelList: string[]): string {
+function resolveModelLabel(responseMsg: UIMessage | null, selectedModelId: string): string {
   const routedModelId = responseMsg ? getRoutedModelId(responseMsg) : null
   const routedModelName = isFreeTierChatModelId(selectedModelId) && routedModelId ? getChatModelDisplayName(routedModelId) : null
-  const modelLabelSingle = isFreeTierChatModelId(selectedModelId) && routedModelName ? `Free · ${routedModelName}` : getChatModelDisplayName(selectedModelId)
-  return modelList.length > 1 ? `${modelLabelSingle} · ${modelList.length} models` : modelLabelSingle
+  return isFreeTierChatModelId(selectedModelId) && routedModelName ? `Free · ${routedModelName}` : getChatModelDisplayName(selectedModelId)
 }
 
 function resolveUserDisplayParts(message: UIMessage) {
@@ -340,7 +327,7 @@ function TextChatMessage(props: TextChatMessageProps) {
   const isTextStreaming = instLoading && hasAssistantText
   const assistantPlainForReply = assistantBlocksToPlainText(assistantVisualBlocks)
   const turn = resolveTurnReplyState(props, instError, assistantPlainForReply)
-  const modelLabel = resolveModelLabel(response.responseMsg, selection.selectedModelId, selection.modelList)
+  const modelLabel = resolveModelLabel(response.responseMsg, selection.selectedModelId)
   const userDisplay = resolveUserDisplayParts(message)
   const responseMessageId = response.responseMessageId
 
@@ -359,10 +346,6 @@ function TextChatMessage(props: TextChatMessageProps) {
       isTextStreaming={isTextStreaming}
       workedDurationMs={response.workedDurationMs}
       errorMessage={turn.errLabelForTurn}
-      exchModelList={selection.modelList}
-      selectedTab={selection.selectedTab}
-      onTabSelect={(tabIndex) => props.onTabSelect(exchangeIndex, tabIndex)}
-      isLoadingTabs={false}
       responseInProgress={instLoading}
       status={props.status}
       sourceCitations={(response.responseMsg as { metadata?: { sourceCitations?: SourceCitationMap } } | undefined)?.metadata?.sourceCitations}
@@ -380,7 +363,7 @@ function TextChatMessage(props: TextChatMessageProps) {
       onCreateAutomationDraft={props.onCreateAutomationDraft}
       onOpenSources={props.onOpenSources}
       isSourcesOpenForThis={computeSourcesOpen(props.sourcesPanel, turn.turnId, message.id)}
-      onRetry={() => props.onRetry(message, exchangeIndex, selection.isActExchange, selection.modelList)}
+      onRetry={() => props.onRetry(message, exchangeIndex, selection.isActExchange, selection.selectedModelId)}
       retryDisabled={computeRetryDisabled({
         turnId: turn.turnId,
         isExiting: turn.isExiting,
@@ -392,7 +375,6 @@ function TextChatMessage(props: TextChatMessageProps) {
       onOpenAttachmentPreview={props.onOpenAttachmentPreview}
       userMentions={userDisplay.userMentions}
       onContinue={resolveContinueHandler(assistantPlainForReply, props.onContinue)}
-      getModelDisplayName={getChatModelDisplayName}
       onGeneratedUiChange={responseMessageId ? (partId, data) => props.onGeneratedUiChange(responseMessageId, partId, data) : undefined}
       generatedUiConnectorActions={props.generatedUiConnectorActions}
       presentation={props.presentation}

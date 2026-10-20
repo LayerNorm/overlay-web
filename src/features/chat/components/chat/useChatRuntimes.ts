@@ -26,14 +26,7 @@ function createConversationRuntime(
       const bodyRecord = (body ?? {}) as Record<string, unknown>
       const turnId = typeof bodyRecord.turnId === 'string' ? bodyRecord.turnId.trim() : ''
       const includeFullHistory = bodyRecord.temporaryChat === true
-      const slotFromBody = bodyRecord.multiModelSlotIndex ?? bodyRecord.variantIndex
-      let slotIndex = typeof slotFromBody === 'number' && Number.isFinite(slotFromBody)
-        ? slotFromBody
-        : 0
-      const askSlotMatch = /:ask:(\d+)$/.exec(id)
-      if (askSlotMatch) {
-        slotIndex = Number(askSlotMatch[1])
-      }
+      const slotIndex = 0
 
       const nextHeaders = new Headers(headers)
       if (!nextHeaders.has('x-request-id')) {
@@ -59,19 +52,7 @@ function createConversationRuntime(
   })
   const askChats: ConversationRuntime['askChats'] = [
     new Chat({
-      id: `${chatId}:ask:0`,
-      transport: transport(),
-    }),
-    new Chat({
-      id: `${chatId}:ask:1`,
-      transport: transport(),
-    }),
-    new Chat({
-      id: `${chatId}:ask:2`,
-      transport: transport(),
-    }),
-    new Chat({
-      id: `${chatId}:ask:3`,
+      id: `${chatId}:ask`,
       transport: transport(),
     }),
   ]
@@ -103,7 +84,6 @@ export function useChatRuntimes(activeChatId: string | null) {
           ...existing.ui,
           ...uiOverrides,
           generationResults: uiOverrides.generationResults ?? existing.ui.generationResults,
-          orphanModelThreads: uiOverrides.orphanModelThreads ?? existing.ui.orphanModelThreads,
         })
       }
       return existing
@@ -121,9 +101,7 @@ export function useChatRuntimes(activeChatId: string | null) {
     actMessages: UIMessage[],
   ) => {
     const runtime = createConversationRuntime(chatId, uiSnapshot)
-    runtime.askChats.forEach((chat, index) => {
-      if (askMessages[index]) chat.messages = askMessages[index] as never
-    })
+    runtime.askChats[0].messages = (askMessages[0] ?? []) as never
     runtime.actChat.messages = actMessages as never
     runtimesRef.current.delete(chatId)
     runtimesRef.current.set(chatId, runtime)
@@ -136,23 +114,14 @@ export function useChatRuntimes(activeChatId: string | null) {
   // store; only how often React re-renders the message list is capped. This is the main
   // lever that keeps long conversations responsive during streaming.
   const chat0 = useChat({ chat: activeRuntime.askChats[0], throttle: STREAM_THROTTLE_MS })
-  const chat1 = useChat({ chat: activeRuntime.askChats[1], throttle: STREAM_THROTTLE_MS })
-  const chat2 = useChat({ chat: activeRuntime.askChats[2], throttle: STREAM_THROTTLE_MS })
-  const chat3 = useChat({ chat: activeRuntime.askChats[3], throttle: STREAM_THROTTLE_MS })
   const actChat = useChat({ chat: activeRuntime.actChat, throttle: STREAM_THROTTLE_MS })
   const chat0Ref = useRef(chat0)
-  const chat1Ref = useRef(chat1)
-  const chat2Ref = useRef(chat2)
-  const chat3Ref = useRef(chat3)
   const actChatRef = useRef(actChat)
   useEffect(() => {
     chat0Ref.current = chat0
-    chat1Ref.current = chat1
-    chat2Ref.current = chat2
-    chat3Ref.current = chat3
     actChatRef.current = actChat
   })
-  const chatInstances = useMemo(() => [chat0, chat1, chat2, chat3], [chat0, chat1, chat2, chat3])
+  const chatInstances = useMemo(() => [chat0], [chat0])
 
   return {
     runtimesRef,
@@ -161,14 +130,8 @@ export function useChatRuntimes(activeChatId: string | null) {
     replaceConversationRuntime,
     activeRuntime,
     chat0,
-    chat1,
-    chat2,
-    chat3,
     actChat,
     chat0Ref,
-    chat1Ref,
-    chat2Ref,
-    chat3Ref,
     actChatRef,
     chatInstances,
   }

@@ -83,16 +83,16 @@ export async function sendMediaTurn({
   const wasFirst = isFirstMessage
   const promptForModel = buildMediaPromptForModel(replyContext, snapshot.text)
   const mediaTurnId = crypto.randomUUID()
-  const activeModels = effectiveGenType === 'image'
+  const selectedMediaModels = effectiveGenType === 'image'
     ? snapshot.selectedImageModelsSnapshot
     : snapshot.selectedVideoModelsSnapshot
+  const modelId = selectedMediaModels[0] ?? ''
   const mediaUserMessage = buildMediaUserMessage({
     turnId: mediaTurnId,
     text: snapshot.text,
     attachedImages: snapshot.attachedImagesSnapshot,
     replyContext,
   })
-  const mediaSlotCount = Math.max(1, activeModels.length)
   let exchIdx = 0
   let preparedFirstSendRuntime = false
   setGenerationChip(null)
@@ -103,23 +103,17 @@ export async function sendMediaTurn({
     const nextGenerationResults = cloneGenerationResultsMap(ui.generationResults)
     nextGenerationResults.set(
       exchIdx,
-      activeModels.map(() => ({ type: effectiveGenType, status: 'generating' as const })),
+      [{ type: effectiveGenType, status: 'generating' as const }],
     )
     runtime.ui = createConversationUiState({
       ...ui,
       exchangeModes: [...ui.exchangeModes, 'act'],
-      exchangeModels: [...ui.exchangeModels, [...activeModels]],
-      selectedTabPerExchange: [...ui.selectedTabPerExchange, 0],
+      exchangeModels: [...ui.exchangeModels, [modelId]],
       exchangeGenTypes: [...ui.exchangeGenTypes, effectiveGenType],
       generationResults: nextGenerationResults,
       isFirstMessage: false,
     })
-    runtime.askChats.slice(0, mediaSlotCount).forEach((chat) => {
-      chat.messages = [
-        ...chat.messages,
-        mediaUserMessage as never,
-      ]
-    })
+    runtime.askChats[0].messages = [...runtime.askChats[0].messages, mediaUserMessage as never]
   }
 
   const existingChatId = snapshot.temporaryChatSnapshot
@@ -140,8 +134,7 @@ export async function sendMediaTurn({
     const previewRuntime = emptyRuntime
     resetRuntimeState(previewRuntime, {
       selectedActModel,
-      selectedModels: activeModels,
-      askModelSelectionMode: activeModels.length > 1 ? 'multiple' : 'single',
+      selectedModels: [modelId],
       activeChatTitle: snapshot.activeChatTitleSnapshot ?? null,
       isFirstMessage: false,
     })
@@ -168,24 +161,18 @@ export async function sendMediaTurn({
       const nextGenerationResults = cloneGenerationResultsMap(prev.generationResults)
       nextGenerationResults.set(
         exchIdx,
-        activeModels.map(() => ({ type: effectiveGenType, status: 'generating' as const })),
+        [{ type: effectiveGenType, status: 'generating' as const }],
       )
       return {
         ...prev,
         exchangeModes: [...prev.exchangeModes, 'act'],
-        exchangeModels: [...prev.exchangeModels, [...activeModels]],
-        selectedTabPerExchange: [...prev.selectedTabPerExchange, 0],
+        exchangeModels: [...prev.exchangeModels, [modelId]],
         exchangeGenTypes: [...prev.exchangeGenTypes, effectiveGenType],
         generationResults: nextGenerationResults,
         isFirstMessage: false,
       }
     })
-    targetRuntime.askChats.slice(0, mediaSlotCount).forEach((chat) => {
-      chat.messages = [
-        ...chat.messages,
-        mediaUserMessage as never,
-      ]
-    })
+    targetRuntime.askChats[0].messages = [...targetRuntime.askChats[0].messages, mediaUserMessage as never]
   }
 
   setIsFirstMessage(false)
@@ -198,7 +185,7 @@ export async function sendMediaTurn({
         role: 'user',
         content: snapshot.text,
         parts: [{ type: 'text', text: snapshot.text }],
-        modelId: activeModels[0],
+        modelId,
         ...(replyContext?.replyToTurnId
           ? { replyToTurnId: replyContext.replyToTurnId, replySnippet: replyContext.snippet }
           : {}),
@@ -232,7 +219,6 @@ export async function sendMediaTurn({
       chatId,
       exchIdx,
       kind: effectiveGenType,
-      activeModels,
       isChatActive: mediaIsChatActive,
       updateRuntimeUiState: updateMediaRuntimeUiState,
       completeSession,
@@ -250,9 +236,8 @@ export async function sendMediaTurn({
       exchIdx,
       promptForModel,
       userPromptText: snapshot.text,
-      activeModels,
+      modelId,
       targetRuntime,
-      mediaSlotCount,
       imageUrl,
       isChatActive: mediaIsChatActive,
       updateRuntimeUiState: updateMediaRuntimeUiState,
@@ -269,9 +254,8 @@ export async function sendMediaTurn({
       exchIdx,
       promptForModel,
       userPromptText: snapshot.text,
-      activeModels,
+      modelId,
       targetRuntime,
-      mediaSlotCount,
       videoSubMode,
       imageUrl: snapshot.attachedImagesSnapshot[0]?.dataUrl ?? null,
       isChatActive: mediaIsChatActive,

@@ -10,7 +10,6 @@ test('buildActTooling preserves paid primary tool composition', () => {
   const tooling = buildActTooling({
     allowedOverlayToolIds: ['generate_image'],
     integrationRaw: toolSet({ GMAIL_SEND_EMAIL: {}, BROWSER_NAVIGATE: {} }),
-    isMultiModelFollowUpSlot: false,
     mcpToolsRaw: toolSet({ search_mcp_tools: {}, call_mcp_tool: {} }),
     paid: true,
     deepSearchTool: {} as ToolSet[string],
@@ -36,11 +35,10 @@ test('buildActTooling preserves paid primary tool composition', () => {
   ])
 })
 
-test('buildActTooling preserves free-tier and compare-slot stripping behavior', () => {
+test('buildActTooling preserves free-tier tool behavior', () => {
   const freePrimary = buildActTooling({
     allowedOverlayToolIds: [],
     integrationRaw: toolSet({ GMAIL_SEND_EMAIL: {}, BROWSER_NAVIGATE: {} }),
-    isMultiModelFollowUpSlot: false,
     mcpToolsRaw: toolSet({ search_mcp_tools: {}, call_mcp_tool: {} }),
     paid: false,
     deepSearchTool: null,
@@ -57,22 +55,6 @@ test('buildActTooling preserves free-tier and compare-slot stripping behavior', 
   assert.equal('web_fetch' in freePrimary.tools, true)
   assert.equal('run_daytona_sandbox' in freePrimary.tools, false)
 
-  const compareSlot = buildActTooling({
-    allowedOverlayToolIds: [],
-    integrationRaw: toolSet({ GMAIL_SEND_EMAIL: {} }),
-    isMultiModelFollowUpSlot: true,
-    mcpToolsRaw: toolSet({ search_mcp_tools: {}, call_mcp_tool: {} }),
-    paid: true,
-    deepSearchTool: {} as ToolSet[string],
-    webFetchTool: {} as ToolSet[string],
-    webSearchTool: {} as ToolSet[string],
-    webToolSet: toolSet({ save_memory: {} }),
-  })
-  assert.equal('GMAIL_SEND_EMAIL' in compareSlot.tools, false)
-  assert.equal('search_mcp_tools' in compareSlot.tools, false)
-  assert.equal('call_mcp_tool' in compareSlot.tools, false)
-  assert.equal('save_memory' in compareSlot.tools, true)
-  assert.equal('web_search' in compareSlot.tools, true)
 })
 
 test('agent turns union the grant into the tool surface; human turns keep intent gating', () => {

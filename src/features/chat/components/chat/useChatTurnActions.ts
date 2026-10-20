@@ -9,7 +9,7 @@ import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { scrollToExchangeTurn } from '@/features/chat/lib/scroll-to-exchange-turn'
 import { DEFAULT_CHAT_TITLE } from '../chat-interface/constants'
 import {
-  getResponseForExchangeForModel as selectResponseForExchangeForModel,
+  getResponseForExchange,
   removeTurnFromConversationRuntime,
 } from './chat-runtime-helpers'
 import type { useChatRuntimes } from './useChatRuntimes'
@@ -17,19 +17,14 @@ import type { useConversationUiState } from './useConversationUiState'
 import type { useChatRouteController } from './useChatRouteController'
 import type { useChatConversationLoader } from './useChatConversationLoader'
 import type { useChatSendController } from './useChatSendController'
-import type { useChatPreferences } from './useChatPreferences'
 import type { useComposerTools } from './useComposerTools'
 import type { MentionInputHandle } from '../chat-interface/MentionInput'
 
 type Runtimes = ReturnType<typeof useChatRuntimes>
-type ChatPrefs = ReturnType<typeof useChatPreferences>
 
 export function useChatTurnActions({
-  selectedModels,
   activeRuntime,
-  activeAskChats,
   isActiveLoading,
-  setSelectedTabPerExchange,
   setReplyContext,
   textareaRef,
   ensureConversationRuntime,
@@ -48,11 +43,8 @@ export function useChatTurnActions({
   activeChatTitle,
   setExitingTurnIds,
 }: {
-  selectedModels: ChatPrefs['selectedModels']
   activeRuntime: Runtimes['activeRuntime']
-  activeAskChats: Runtimes['activeRuntime']['askChats']
   isActiveLoading: boolean
-  setSelectedTabPerExchange: ReturnType<typeof useConversationUiState>['setSelectedTabPerExchange']
   setReplyContext: ReturnType<typeof useComposerTools>['setReplyContext']
   textareaRef: RefObject<MentionInputHandle | null>
   ensureConversationRuntime: Runtimes['ensureConversationRuntime']
@@ -71,28 +63,12 @@ export function useChatTurnActions({
   activeChatTitle: string | null
   setExitingTurnIds: Dispatch<SetStateAction<string[]>>
 }) {
-  const getResponseForExchangeForModel = useCallback((
-    modelId: string,
-    exchIdx: number,
-    /** For Act multi-compare, slot order is the exchange's model list, not the global picker. */
-    slotOrder?: string[],
-  ): UIMessage | null => selectResponseForExchangeForModel({
-    modelId,
-    exchangeIndex: exchIdx,
-    slotOrder,
-    selectedModels,
+  const getResponseForExchangeAtIndex = useCallback((
+    exchangeIndex: number,
+  ): UIMessage | null => getResponseForExchange({
+    exchangeIndex,
     activeRuntime,
-    activeAskChats,
-    isActiveLoading,
-  }), [activeAskChats, activeRuntime, isActiveLoading, selectedModels])
-
-  const handleTabSelect = useCallback((exchIdx: number, tabIdx: number) => {
-    setSelectedTabPerExchange((prev) => {
-      const next = [...prev]
-      next[exchIdx] = tabIdx
-      return next
-    })
-  }, [setSelectedTabPerExchange])
+  }), [activeRuntime])
 
   const beginReplyToAssistantText = useCallback((assistantText: string, targetUserTurnId: string | null) => {
     const t = assistantText.trim()
@@ -130,11 +106,9 @@ export function useChatTurnActions({
     const runtime = ensureConversationRuntime(chatId)
     const { removedExchangeIndex } = removeTurnFromConversationRuntime(runtime, turnId)
 
-    runtime.askChats.forEach((chat, index) => {
-      if (activeChatIdRef.current === chatId && chatInstances[index]) {
-        chatInstances[index].setMessages([...chat.messages] as UIMessage[])
-      }
-    })
+    if (activeChatIdRef.current === chatId) {
+      chatInstances[0]?.setMessages([...runtime.askChats[0].messages] as UIMessage[])
+    }
     if (activeChatIdRef.current === chatId) {
       actChat.setMessages([...runtime.actChat.messages] as UIMessage[])
     }
@@ -256,8 +230,7 @@ export function useChatTurnActions({
   }
 
   return {
-    getResponseForExchangeForModel,
-    handleTabSelect,
+    getResponseForExchange: getResponseForExchangeAtIndex,
     beginReplyToAssistantText,
     beginReplyToMediaPrompt,
     jumpToReplyTarget,

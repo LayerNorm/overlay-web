@@ -63,10 +63,6 @@ export interface ChatExchangeProps {
   /** Persisted turn time (assistant row createdAt→updatedAt); falls back to the live measure. */
   workedDurationMs?: number | null
   errorMessage: string | null
-  exchModelList: string[]
-  selectedTab: number
-  onTabSelect: (tabIdx: number) => void
-  isLoadingTabs: boolean
   responseInProgress: boolean
   /** Normalized selected-response status. Host booleans remain as a compatibility fallback. */
   status?: ChatExchangeStatus
@@ -97,7 +93,6 @@ export interface ChatExchangeProps {
   ) => void
   userMentions?: Array<{ type: string; id: string; name: string }>
   onContinue?: () => void
-  getModelDisplayName: (modelId: string) => string
   generatedUiConnectorActions?: GeneratedUiConnectorActions
   onGeneratedUiChange?: (partId: string, data: GeneratedUiData) => void
   presentation?: Partial<ChatTranscriptPresentation>
@@ -145,9 +140,9 @@ function useWorkedMs(isStreaming: boolean, workedDurationMs: number | null | und
 
 export function ChatExchange({
   userMsgId, userBodyText, userDocumentNames, userIndexedAttachments, userImages, exchIdx, responseModelId, assistantVisualBlocks, responseSources, isStreaming, isTextStreaming, workedDurationMs, errorMessage,
-  exchModelList, selectedTab, onTabSelect, isLoadingTabs, responseInProgress, status, sourceCitations,
+  responseInProgress, status, sourceCitations,
   turnIdForActions, modelLabel, onDeleteTurn, onReply, onBranch, interrupted = false, actionsLocked, isExiting = false, replyThreadMeta, onJumpToReply,
-  onOpenDraft, onCreateAutomationDraft, onOpenSources, isSourcesOpenForThis, onRetry, retryDisabled = true, onOpenFilePreview, onOpenAttachmentPreview, userMentions, onContinue, getModelDisplayName,
+  onOpenDraft, onCreateAutomationDraft, onOpenSources, isSourcesOpenForThis, onRetry, retryDisabled = true, onOpenFilePreview, onOpenAttachmentPreview, userMentions, onContinue,
   generatedUiConnectorActions, onGeneratedUiChange, presentation,
 }: ChatExchangeProps) {
     recordRender(isStreaming ? 'ChatExchange(streaming)' : 'ChatExchange')
@@ -216,13 +211,7 @@ export function ChatExchange({
           isExiting={isExiting}
         />
 
-        {/* Inline model tabs — only shown when multiple models are active for this exchange */}
         <ChatExchangeAssistantBody
-          exchModelList={exchModelList}
-          selectedTab={selectedTab}
-          isLoadingTabs={isLoadingTabs}
-          onTabSelect={onTabSelect}
-          getModelDisplayName={getModelDisplayName}
           collapsePlan={collapsePlan}
           workedMs={workedMs}
           workExpanded={workExpanded}
@@ -262,11 +251,6 @@ export function ChatExchange({
 }
 
 type ChatExchangeAssistantBodyProps = {
-  exchModelList: ChatExchangeProps['exchModelList']
-  selectedTab: ChatExchangeProps['selectedTab']
-  isLoadingTabs: ChatExchangeProps['isLoadingTabs']
-  onTabSelect: ChatExchangeProps['onTabSelect']
-  getModelDisplayName: ChatExchangeProps['getModelDisplayName']
   collapsePlan: ReturnType<typeof useCollapsePlan>['collapsePlan']
   workedMs: number | null
   workExpanded: boolean
@@ -303,11 +287,6 @@ type ChatExchangeAssistantBodyProps = {
 }
 
 function ChatExchangeAssistantBody({
-  exchModelList,
-  selectedTab,
-  isLoadingTabs,
-  onTabSelect,
-  getModelDisplayName,
   collapsePlan,
   workedMs,
   workExpanded,
@@ -345,16 +324,6 @@ function ChatExchangeAssistantBody({
   return (
     <Message>
       <MessageContent className="gap-2">
-        {exchModelList.length > 1 && (
-          <ExchangeModelTabs
-            exchModelList={exchModelList}
-            selectedTab={selectedTab}
-            isLoadingTabs={isLoadingTabs}
-            onTabSelect={onTabSelect}
-            getModelDisplayName={getModelDisplayName}
-          />
-        )}
-
         {collapsePlan.collapsedIndexes.length > 0 && (
           <WorkedForGroup
             durationMs={workedMs}
@@ -550,46 +519,6 @@ function ExchangeUserMessage({
         )}
       </MessageContent>
     </Message>
-  )
-}
-
-function ExchangeModelTabs({
-  exchModelList,
-  selectedTab,
-  isLoadingTabs,
-  onTabSelect,
-  getModelDisplayName,
-}: {
-  exchModelList: ChatExchangeProps['exchModelList']
-  selectedTab: ChatExchangeProps['selectedTab']
-  isLoadingTabs: ChatExchangeProps['isLoadingTabs']
-  onTabSelect: ChatExchangeProps['onTabSelect']
-  getModelDisplayName: ChatExchangeProps['getModelDisplayName']
-}) {
-  return (
-    <div className="flex items-center gap-1.5 flex-wrap mt-1">
-      {exchModelList.map((mId, tabIdx) => {
-        const mName = getModelDisplayName(mId)
-        const isActive = tabIdx === selectedTab
-        return (
-          <Button variant="ghost"
-            key={mId}
-            type="button"
-            onClick={() => !isLoadingTabs && onTabSelect(tabIdx)}
-            disabled={isLoadingTabs}
-            aria-pressed={isActive}
-            // overlay:button-style: Transcript chip with its own selected state.
-            className={unstyledButton(`px-2.5 py-0.5 rounded-full text-xs transition-colors ${
-              isLoadingTabs ? 'cursor-not-allowed opacity-60' : ''
-            } ${
-              isActive ? 'bg-(--foreground) text-(--background)' : 'bg-(--surface-subtle) text-(--muted) hover:bg-(--border)'
-            }`)}
-          >
-            {mName}
-          </Button>
-        )
-      })}
-    </div>
   )
 }
 

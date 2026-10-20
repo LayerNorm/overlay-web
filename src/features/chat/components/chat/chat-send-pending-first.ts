@@ -93,7 +93,7 @@ export function activatePendingFirstSend({
   replaceConversationRuntime(
     realId,
     cloneConversationUiState(preview.ui),
-    preview.askChats.map((chat) => [...chat.messages]),
+    [[...preview.askChats[0].messages]],
     [...preview.actChat.messages],
   )
   markChatModified(realId, pending.activeChatTitleSnapshot)

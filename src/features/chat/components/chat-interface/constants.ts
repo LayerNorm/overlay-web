@@ -33,10 +33,10 @@ export const INTEGRATION_SERVICE_NAMES: Record<string, string> = {
 }
 
 export const DEFAULT_CHAT_TITLE = 'New Chat'
-export const IMAGE_MODEL_SELECTION_MODE_KEY = 'overlay_image_model_selection_mode'
-export const VIDEO_MODEL_SELECTION_MODE_KEY = 'overlay_video_model_selection_mode'
-export const SELECTED_IMAGE_MODELS_KEY = 'overlay_selected_image_models'
-export const SELECTED_VIDEO_MODELS_KEY = 'overlay_selected_video_models'
+export const IMAGE_MODEL_KEY = 'overlay_image_model'
+export const VIDEO_MODEL_KEY = 'overlay_video_model'
+export const LEGACY_SELECTED_IMAGE_MODELS_KEY = 'overlay_selected_image_models'
+export const LEGACY_SELECTED_VIDEO_MODELS_KEY = 'overlay_selected_video_models'
 export const CHAT_GEN_MODE_KEY = 'overlay_chat_generation_mode'
 export const PERSONAL_CHAT_MODE_KEY = 'overlay_personal_chat_mode'
 export const VIDEO_SUB_MODE_KEY = 'overlay_video_sub_mode'

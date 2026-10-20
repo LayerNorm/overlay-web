@@ -30,7 +30,6 @@ import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
 import { userFacingOpenRouterError } from '@/server/ai/model-runtime'
 import { uploadFilePartsForModel } from '@/server/ai/file-upload'
 import {
-  FREE_TIER_AUTO_MODEL_ID,
   FREE_TIER_DEFAULT_MODEL_ID,
   isFreeTierChatModelId,
   OPENROUTER_FREE_MODEL_ID,
@@ -78,7 +77,6 @@ import {
   observeFirstTextToken,
   prefixFallbackNoticeAfterStart,
   resolveActAbortTimeoutMs,
-  resolveActMultiModelState,
   resolveActTurnId,
   resolveEffectiveActModelId,
   runActModelAttempts,
@@ -189,9 +187,6 @@ export async function executeActTurn(
       memoryEnabled: rawMemoryEnabled,
       actAbortTimeoutMs,
       mentions: rawMentions,
-      /** Parallel multi-model: slot 0 = primary (full tools including Composio). Slots 1+ are compare-only. */
-      multiModelSlotIndex: rawMultiModelSlotIndex,
-      multiModelTotal: rawMultiModelTotal,
       reasoning: rawReasoning,
     } = bodyResult.data
     if (!Array.isArray(messages) || messages.length === 0) {
@@ -231,7 +226,7 @@ export async function executeActTurn(
       automationExecution: automationExecution === true,
       conversationId,
       turnId,
-      variantIndex: rawMultiModelSlotIndex,
+      variantIndex: 0,
     })
     const effectiveModelId = resolveEffectiveActModelId(modelId)
     requestModelId = effectiveModelId
@@ -337,17 +332,6 @@ export async function executeActTurn(
     }
     const tid = resolveActTurnId(turnId)
 
-    const {
-      isMultiModelFollowUpSlot,
-      multiModelSlotIndex,
-      multiModelTotal,
-    } = resolveActMultiModelState({
-      rawMultiModelSlotIndex,
-      rawMultiModelTotal,
-      idempotencyKey: context.requestIdempotencyKey,
-    })
-    /** User message is persisted once (slot 0). Third-party (Composio) actions only on primary slot. */
-
     // P3.3: hoist Composio to Wave 1 — start before any await so it overlaps all prep work.
     // Cache in composio-tools.ts makes this ~0ms on repeat requests within 10 minutes.
     const toolPreloadTasks = preloadActExternalToolTasks({
@@ -392,7 +376,7 @@ export async function executeActTurn(
         : undefined,
       billingSpendSubjectId: resolvedBillingPayer.subject.id,
       billingSpendSubjectKind: resolvedBillingPayer.subject.kind,
-      skip: isMultiModelFollowUpSlot,
+      skip: false,
     }).catch((error): undefined => {
       // History loading remains the authoritative preparation failure. A
       // transient user-message write must not mask a later fatal context error
@@ -425,7 +409,7 @@ export async function executeActTurn(
 
     const structuredMediaToolIntent = normalizeStructuredMediaToolIntent(mediaToolIntent)
     const mediaIntentTask: Promise<MediaToolIntent> = (() => {
-      if (isMultiModelFollowUpSlot || !paid) return Promise.resolve(null)
+      if (!paid) return Promise.resolve(null)
       if (structuredMediaToolIntent != null) return Promise.resolve(structuredMediaToolIntent)
       if (!mayNeedMediaGenerationTools(latestUserText)) return Promise.resolve(null)
       return classifyMediaToolIntentForTurn({
@@ -551,7 +535,6 @@ export async function executeActTurn(
 
     const mediaHeuristicSkipped =
       paid &&
-      !isMultiModelFollowUpSlot &&
       structuredMediaToolIntent == null &&
       !mayNeedMediaGenerationTools(latestUserText) &&
       resolvedMediaToolIntent == null
@@ -574,7 +557,6 @@ export async function executeActTurn(
               turnId: tid,
               userId: conversationUserId,
               userMessageId,
-              variantIndex: multiModelSlotIndex,
             })
           : agentRunService.startChat({
               conversationId: cid,
@@ -583,7 +565,6 @@ export async function executeActTurn(
               turnId: tid,
               userId: conversationUserId,
               userMessageId,
-              variantIndex: multiModelSlotIndex,
             }))
       : Promise.resolve(undefined)
 	    const [agentRun, actTooling] = await Promise.all([
@@ -600,7 +581,6 @@ export async function executeActTurn(
         entitlements: runtimeEntitlements,
 	        effectiveModelId,
 	        forwardCookie: request.headers.get('cookie'),
-	        isMultiModelFollowUpSlot,
 	        latestUserText,
 	        memoryEnabled,
 	        mediaToolIntent: resolvedMediaToolIntent,
@@ -649,7 +629,6 @@ export async function executeActTurn(
       exposedMediaTools: actTooling.exposedMediaTools,
       hasPreloadedDocContext,
       indexedNote,
-      isMultiModelFollowUpSlot,
       memoryContext,
       memoryEnabled,
       mentionsContext,
@@ -730,8 +709,6 @@ export async function executeActTurn(
         instructions: actInstructions,
         messages: workMessages,
         modelId: effectiveModelId,
-        multiModelSlotIndex,
-        multiModelTotal,
         paid,
         ...(modelSupportsZeroDataRetention(effectiveModelId)
           ? { providerOptions: { gateway: { zeroDataRetention: true } } }
@@ -1013,8 +990,6 @@ export async function executeActTurn(
             automationExecution === true && auth.authType === 'service'
               ? automationName?.trim() || undefined
               : undefined,
-          multiModelSlotIndex,
-          multiModelTotal,
           routedModelId: streamedRoutedModelId,
           sourceCitations: sourceCitationMap,
           timedOut: wasAbortedByTimeout,

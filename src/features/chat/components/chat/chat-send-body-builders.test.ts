@@ -11,7 +11,6 @@ import {
 
 test('builds a stable submitted composer snapshot', () => {
   const snapshot = buildSubmittedComposerSnapshot({
-    askModelSelectionMode: 'multiple',
     selectedModels: [
       'moonshotai/kimi-k2.6',
       'z-ai/glm-5.1',
@@ -35,12 +34,9 @@ test('builds a stable submitted composer snapshot', () => {
 
   assert.equal(snapshot.requestMode, 'chat')
   assert.equal(snapshot.hasReadyDocs, true)
-  // Legacy stored ids resolve through the model alias map.
+  // Legacy stored ids resolve through the model alias map, retaining only the first model.
   assert.deepEqual(snapshot.textModelsForTurn, [
     'moonshotai/kimi-k2.6',
-    'z-ai/glm-5.1',
-    'qwen/qwen3.6-plus',
-    'deepseek/deepseek-v4-flash-0731',
   ])
   assert.deepEqual(snapshot.selectedToolIdsSnapshot, ['web_search'])
 })

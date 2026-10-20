@@ -43,8 +43,6 @@ const AUTOMATION_DETAIL_TABS = [
 
 export type AutomationDetailTabId = (typeof AUTOMATION_DETAIL_TABS)[number]['id']
 
-export type AskModelSelectionMode = 'single' | 'multiple'
-
 export type ModelQualitiesPosition = { x: number; y: number }
 
 function TemporaryChatButton({
@@ -162,21 +160,15 @@ export interface ChatExperienceHeaderProps {
   onVideoSubModeChange: (value: VideoSubMode) => void
   imageModels: ImageModel[]
   selectedImageModels: string[]
-  imageModelSelectionMode: AskModelSelectionMode
-  onToggleImageModel: (modelId: string) => void
-  onImageModelSelectionModeChange: (mode: AskModelSelectionMode) => void
+  onSelectImageModel: (modelId: string) => void
   videoModels: VideoModel[]
   selectedVideoModels: string[]
-  videoModelSelectionMode: AskModelSelectionMode
-  onToggleVideoModel: (modelId: string) => void
-  onVideoModelSelectionModeChange: (mode: AskModelSelectionMode) => void
+  onSelectVideoModel: (modelId: string) => void
   selectableTextModels: ChatModel[]
   textModelsLoading: boolean
-  askModelSelectionMode: AskModelSelectionMode
   selectedActModel: string
   selectedModels: string[]
   onToggleTextModel: (modelId: string) => void
-  onTextModelSelectionModeChange: (mode: AskModelSelectionMode) => void
   hasAutomationContext: boolean
   reasoning?: ReasoningLevel
   onReasoningChange?: (level: ReasoningLevel | undefined) => void
@@ -347,40 +339,6 @@ function ModelQualitiesHoverCard({
         </Suspense>
       </PopoverContent>
     </Popover>
-  )
-}
-
-function ModelSelectionModeButtons({
-  selectionMode,
-  onSelectionModeChange,
-  isModeDisabled,
-}: {
-  selectionMode: AskModelSelectionMode
-  onSelectionModeChange: (mode: AskModelSelectionMode) => void
-  isModeDisabled: (mode: AskModelSelectionMode) => boolean
-}) {
-  return (
-    <div className="grid grid-cols-2 gap-1 rounded-lg bg-(--surface-subtle) p-0.5">
-      {(['single', 'multiple'] as const).map((selMode) => {
-        const isActive = selectionMode === selMode
-        const disabled = isModeDisabled(selMode)
-        return (
-          <Button variant="ghost"
-            key={selMode}
-            type="button"
-            onClick={() => onSelectionModeChange(selMode)}
-            disabled={disabled}
-            className={unstyledButton(`rounded-md px-2 py-1 text-[11px] font-medium capitalize transition-colors ${
-              isActive
-                ? 'bg-(--surface-elevated) text-(--foreground) shadow-xs'
-                : 'text-(--muted) hover:text-(--foreground)'
-            } ${disabled ? 'cursor-not-allowed opacity-40' : ''}`)}
-          >
-            {selMode}
-          </Button>
-        )
-      })}
-    </div>
   )
 }
 
@@ -614,25 +572,17 @@ function ChatModelPickerDropdown({
   isFreeTier,
   imageModels,
   selectedImageModels,
-  imageModelSelectionMode,
-  onToggleImageModel,
-  onImageModelSelectionModeChange,
+  onSelectImageModel,
   videoModels,
   selectedVideoModels,
-  videoModelSelectionMode,
-  onToggleVideoModel,
-  onVideoModelSelectionModeChange,
+  onSelectVideoModel,
   selectableTextModels,
-  askModelSelectionMode,
   selectedActModel,
-  selectedModels,
   onToggleTextModel,
-  onTextModelSelectionModeChange,
   favoriteScope,
   modelRecommendations,
   isFreeTierChatModelId,
   onHoveredModelChange,
-  hasAutomationContext,
 }: Pick<
   ChatExperienceHeaderProps,
   | 'generationMode'
@@ -643,48 +593,22 @@ function ChatModelPickerDropdown({
   | 'isFreeTier'
   | 'imageModels'
   | 'selectedImageModels'
-  | 'imageModelSelectionMode'
-  | 'onToggleImageModel'
-  | 'onImageModelSelectionModeChange'
+  | 'onSelectImageModel'
   | 'videoModels'
   | 'selectedVideoModels'
-  | 'videoModelSelectionMode'
-  | 'onToggleVideoModel'
-  | 'onVideoModelSelectionModeChange'
+  | 'onSelectVideoModel'
   | 'selectableTextModels'
-  | 'askModelSelectionMode'
   | 'selectedActModel'
-  | 'selectedModels'
   | 'onToggleTextModel'
-  | 'onTextModelSelectionModeChange'
   | 'favoriteScope'
   | 'modelRecommendations'
   | 'isFreeTierChatModelId'
   | 'onHoveredModelChange'
-  | 'hasAutomationContext'
 >) {
-  const selectedModelSet = new Set(selectedModels)
   const { favoriteIds, toggleFavorite } = useFavoriteModelIds(favoriteScope)
   const mediaModels = generationMode === 'image' ? imageModels : videoModels
   const selectedMediaIds = generationMode === 'image' ? selectedImageModels : selectedVideoModels
-  const mediaSelectionMode = generationMode === 'image' ? imageModelSelectionMode : videoModelSelectionMode
-  const onToggleMediaModel = generationMode === 'image' ? onToggleImageModel : onToggleVideoModel
-  const footer =
-    generationMode === 'image' || generationMode === 'video' ? (
-      <ModelSelectionModeButtons
-        selectionMode={mediaSelectionMode}
-        onSelectionModeChange={
-          generationMode === 'image' ? onImageModelSelectionModeChange : onVideoModelSelectionModeChange
-        }
-        isModeDisabled={(mode) => isActiveLoading || (isFreeTier && mode === 'multiple')}
-      />
-    ) : !hasAutomationContext ? (
-      <ModelSelectionModeButtons
-        selectionMode={askModelSelectionMode}
-        onSelectionModeChange={onTextModelSelectionModeChange}
-        isModeDisabled={(mode) => isFreeTier && mode === 'multiple'}
-      />
-    ) : null
+  const onSelectMediaModel = generationMode === 'image' ? onSelectImageModel : onSelectVideoModel
   const modeToggle = (
     <DelayedTooltip label="Cycle text / image / video (⇧⌘.)" side="left" className="block w-full">
       <span data-tour="generation-mode-toggle" className="block w-full">
@@ -709,19 +633,13 @@ function ChatModelPickerDropdown({
           onToggleFavorite={toggleFavorite}
           onListChange={() => onHoveredModelChange(null, null)}
           listRef={modelPickerListScrollRef}
-          isSelected={(m) =>
-            askModelSelectionMode === 'single' ? m.id === selectedActModel : selectedModelSet.has(m.id)
-          }
-          isDisabled={(m) =>
-            askModelSelectionMode === 'multiple' && !selectedModelSet.has(m.id) && selectedModels.length >= 4
-          }
+          isSelected={(m) => m.id === selectedActModel}
           onSelect={(m) => onToggleTextModel(m.id)}
           onRowHover={(m, row) => {
             const r = row.getBoundingClientRect()
             onHoveredModelChange(m.id, { x: r.left - 8, y: r.top + r.height / 2 })
           }}
           beforeList={textModelsLoading ? <PremiumModelsLoadingRows /> : null}
-          footer={footer}
         />
       ) : (
         <ModelSelector
@@ -732,16 +650,12 @@ function ChatModelPickerDropdown({
           onToggleFavorite={toggleFavorite}
           onListChange={() => onHoveredModelChange(null, null)}
           listRef={modelPickerListScrollRef}
-          isSelected={(m) => selectedMediaIds.includes(m.id)}
-          isDisabled={(m) =>
-            mediaSelectionMode === 'multiple' && !selectedMediaIds.includes(m.id) && selectedMediaIds.length >= 4
-          }
-          onSelect={(m) => onToggleMediaModel(m.id)}
+          isSelected={(m) => m.id === selectedMediaIds[0]}
+          onSelect={(m) => onSelectMediaModel(m.id)}
           onRowHover={(m, row) => {
             const r = row.getBoundingClientRect()
             onHoveredModelChange(m.id, { x: r.right + 8, y: r.top })
           }}
-          footer={footer}
         />
       )}
     </div>
@@ -767,24 +681,16 @@ function ChatModelPicker({
   isFreeTier,
   imageModels,
   selectedImageModels,
-  imageModelSelectionMode,
-  onToggleImageModel,
-  onImageModelSelectionModeChange,
+  onSelectImageModel,
   videoModels,
   selectedVideoModels,
-  videoModelSelectionMode,
-  onToggleVideoModel,
-  onVideoModelSelectionModeChange,
+  onSelectVideoModel,
   selectableTextModels,
-  askModelSelectionMode,
   selectedActModel,
-  selectedModels,
   onToggleTextModel,
-  onTextModelSelectionModeChange,
   favoriteScope,
   modelRecommendations,
   isFreeTierChatModelId,
-  hasAutomationContext,
   placement = 'header',
 }: { placement?: 'header' | 'composer' } & Pick<
   ChatExperienceHeaderProps,
@@ -807,24 +713,16 @@ function ChatModelPicker({
   | 'isFreeTier'
   | 'imageModels'
   | 'selectedImageModels'
-  | 'imageModelSelectionMode'
-  | 'onToggleImageModel'
-  | 'onImageModelSelectionModeChange'
+  | 'onSelectImageModel'
   | 'videoModels'
   | 'selectedVideoModels'
-  | 'videoModelSelectionMode'
-  | 'onToggleVideoModel'
-  | 'onVideoModelSelectionModeChange'
+  | 'onSelectVideoModel'
   | 'selectableTextModels'
-  | 'askModelSelectionMode'
   | 'selectedActModel'
-  | 'selectedModels'
   | 'onToggleTextModel'
-  | 'onTextModelSelectionModeChange'
   | 'favoriteScope'
   | 'modelRecommendations'
   | 'isFreeTierChatModelId'
-  | 'hasAutomationContext'
 >) {
   return (
     <Popover open={showModelPicker} onOpenChange={onSetShowModelPicker}>
@@ -875,23 +773,15 @@ function ChatModelPicker({
             isFreeTier={isFreeTier}
             imageModels={imageModels}
             selectedImageModels={selectedImageModels}
-            imageModelSelectionMode={imageModelSelectionMode}
-            onToggleImageModel={onToggleImageModel}
-            onImageModelSelectionModeChange={onImageModelSelectionModeChange}
+            onSelectImageModel={onSelectImageModel}
             videoModels={videoModels}
             selectedVideoModels={selectedVideoModels}
-            videoModelSelectionMode={videoModelSelectionMode}
-            onToggleVideoModel={onToggleVideoModel}
-            onVideoModelSelectionModeChange={onVideoModelSelectionModeChange}
+            onSelectVideoModel={onSelectVideoModel}
             selectableTextModels={selectableTextModels}
-            askModelSelectionMode={askModelSelectionMode}
             selectedActModel={selectedActModel}
-            selectedModels={selectedModels}
             onToggleTextModel={onToggleTextModel}
-            onTextModelSelectionModeChange={onTextModelSelectionModeChange}
             isFreeTierChatModelId={isFreeTierChatModelId}
             onHoveredModelChange={onHoveredModelChange}
-            hasAutomationContext={hasAutomationContext}
           />
         </PopoverContent>
       </div>
