@@ -381,14 +381,14 @@ export interface ConnectedAgentRepository {
     limit: number
     claimToken: string
     claimUntil: number
-  }): Promise<AgentSandboxLease[]>
+  }): Promise<{ leases: AgentSandboxLease[]; deferred: boolean }>
   finishSandboxLeaseClaim?(args: {
     workspaceId: string
     leaseId: string
     claimToken: string
     now: number
     nextMeterAt: number
-    cleanupAfter?: number
+    cleanupAfter?: number | null
   }): Promise<boolean>
   claimComputerMaintenance?(args: {
     workspaceId: string
@@ -400,7 +400,27 @@ export interface ConnectedAgentRepository {
     force?: boolean
     idleBefore?: number
     reconcileToken?: string
+    expectedProviderReference?: string | null
+    actorUserId?: string
+    ownerType?: 'agent' | 'user'
+    ownerId?: string
   }): Promise<ComputerMaintenanceClaim | null>
+  transitionComputerLifecycle?(args: {
+    workspaceId: string
+    computerId: string
+    leaseId: string
+    token: string
+    transition: 'wake_armed' | 'session_armed' | 'ready' | 'paused' | 'deleted' | 'failed' | 'cancelled'
+    expectedProviderReference: string | null
+    now: number
+    reservedUntil?: number
+    cleanupAfter?: number | null
+    cleanupAttempts?: number
+    activityToken?: string
+    activityUserId?: string
+    activityExpiresAt?: number
+    allocationRetryable?: boolean
+  }): Promise<boolean>
   releaseComputerMaintenance?(args: { workspaceId: string; leaseId: string; token: string; now: number }): Promise<boolean>
   claimComputerActivity?(args: {
     workspaceId: string
@@ -416,6 +436,7 @@ export interface ConnectedAgentRepository {
     leaseId: string
     allocationKey: string
     allocationRecipe: string
+    maintenanceToken: string
     now: number
   }): Promise<{ requestedAt: number } | null>
   computerHasActiveRuns?(args: {

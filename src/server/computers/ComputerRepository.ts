@@ -19,5 +19,6 @@ export interface ComputerRepository {
     leaseId: string
     reference: string
     allocationKey: string
-  }): Promise<Computer | null>
+    maintenanceToken: string
+  }): Promise<{ computer: Computer; canContinue: boolean } | null>
 }

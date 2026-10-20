@@ -168,13 +168,16 @@ export class ConvexConnectedAgentRepository implements ConnectedAgentRepository 
     return connectedQuery<AgentSandboxLease[]>('listSandboxLeasesByServer', input)
   }
   claimSandboxLeases(input: Parameters<NonNullable<ConnectedAgentRepository['claimSandboxLeases']>>[0]) {
-    return mutation<AgentSandboxLease[]>('claimSandboxLeasesByServer', input)
+    return mutation<{ leases: AgentSandboxLease[]; deferred: boolean }>('claimSandboxLeasesByServer', input)
   }
   finishSandboxLeaseClaim(input: Parameters<NonNullable<ConnectedAgentRepository['finishSandboxLeaseClaim']>>[0]) {
     return mutation<boolean>('finishSandboxLeaseClaimByServer', input)
   }
   claimComputerMaintenance(input: Parameters<NonNullable<ConnectedAgentRepository['claimComputerMaintenance']>>[0]) {
     return mutation<ComputerMaintenanceClaim | null>('claimComputerMaintenanceByServer', input)
+  }
+  transitionComputerLifecycle(input: Parameters<NonNullable<ConnectedAgentRepository['transitionComputerLifecycle']>>[0]) {
+    return mutation<boolean>('transitionComputerLifecycleByServer', input)
   }
   releaseComputerMaintenance(input: Parameters<NonNullable<ConnectedAgentRepository['releaseComputerMaintenance']>>[0]) {
     return mutation<boolean>('releaseComputerMaintenanceByServer', input)

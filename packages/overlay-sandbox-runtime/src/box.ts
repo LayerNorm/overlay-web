@@ -65,7 +65,7 @@ export function boatApiKeyFromEnv(env: Record<string, string | undefined> = proc
 const WORK_DIR = '/home/user'
 const POLL_INTERVAL_MS = 750
 const PROVISION_TIMEOUT_MS = 5 * 60_000
-const STOP_TIMEOUT_MS = 10 * 60_000
+const STOP_TIMEOUT_MS = 2 * 60_000
 const SNAPSHOT_TIMEOUT_MS = 15 * 60_000
 const RUNTIME_FENCE_MS = 4 * 60_000
 

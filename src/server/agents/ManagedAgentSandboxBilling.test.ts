@@ -91,12 +91,54 @@ test('only a successfully reserved runtime tick renews the provider safety fence
   assert.deepEqual(renewals, [240_000])
 })
 
+test('an active Computer action still meters and renews after four minutes', async () => {
+  const renewals: number[] = []
+  const lease = leaseFixture({
+    provider: 'box', computerId: 'computer-1', status: 'running', reservedUntil: 2_000_000,
+    usage: {
+      meteredAt: 0, meteredUsage: {}, meteredProviderReference: 'sandbox-reference', meterVersion: 0,
+      lastPayer: { scope: 'workspace', userId: 'user', workspaceId: 'workspace', billingAccountId: 'billing' },
+    },
+  })
+  const usage = boatUsage(300_000)
+  const runtime = {
+    ...runtimeWithUsage(() => usage),
+    reconnect: async () => ({
+      status: async () => 'running' as const,
+      usage: async () => usage,
+      renewRuntime: async (ms: number) => { renewals.push(ms) },
+    }) as SandboxInstance,
+  }
+  let claimed = false
+  let meterCalls = 0
+  const service = new ManagedAgentSandboxBilling({
+    now: () => 300_000, policy: {} as never, runtime: () => runtime,
+    computerLeaseHandler: async (_lease, reason) => ({
+      leaseId: 'computer:computer-1', outcome: 'skipped', reason: reason === 'idle_check' ? 'computer_active' : reason,
+    }),
+    repository: {
+      claimSandboxLeases: async () => {
+        if (claimed) return { leases: [], deferred: false }
+        claimed = true
+        return { leases: [lease], deferred: false }
+      },
+      getSandboxLease: async () => lease,
+      finishSandboxLeaseClaim: async () => true,
+      meterSandboxLease: async () => { meterCalls += 1; return { applied: true, meterVersion: 1 } },
+    } as never,
+  })
+  const { ticks } = await service.meterLeases()
+  assert.equal(ticks[0]?.outcome, 'adopted')
+  assert.equal(meterCalls, 1)
+  assert.deepEqual(renewals, [240_000])
+})
+
 test('final stopped evidence settles after the provider resource disappears', async () => {
   const calls: Array<Record<string, unknown>> = []
   const final = { id: 'sandbox-reference:0', startedAt: 0, wallTimeMs: 60_000, complete: true, resources: { vcpus: 2, memoryGiB: 0.5 } }
   const lease = leaseFixture({ provider: 'e2b', status: 'cleanup_failed', usage: {
     meteredUsage: {}, meteredProviderReference: 'sandbox-reference', meterVersion: 0,
-    lastProviderEvidence: { stopped: true, providerReference: 'sandbox-reference', usage: { executions: [final] } },
+    lastProviderEvidence: { stopped: true, providerReference: 'sandbox-reference', observedAt: 100_000, usage: { executions: [final] } },
     lastPayer: { scope: 'workspace', userId: 'user', workspaceId: 'workspace', billingAccountId: 'billing' },
   } })
   const service = new ManagedAgentSandboxBilling({
@@ -872,7 +914,6 @@ test('reaped leases stop the sandbox before the final usage read and delete', as
       environmentHasActiveRuns: async () => false,
       listSandboxLeases: async (args: { statuses: string[]; cleanupBefore?: number }) =>
         args.statuses.includes('stopping') ? [stoppingLease] : [],
-      getSandboxLease: async () => stoppingLease,
       getSandboxLease: async () => stoppingLease,
       meterSandboxLease: async (args: Record<string, unknown>) => {
         meterCalls.push(args)

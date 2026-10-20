@@ -249,11 +249,17 @@ export function createOverlayServerContext(
     payerResolver: billingPayerResolver,
     meter: managedAgentSandboxBilling,
   })
+  const computerAdmissionRef: { current?: ComputerAdmission } = {}
   const computerLifecycle = new ComputerLifecycleService({
     repository: appData.repositories.computers,
     leases: appData.repositories.connectedAgents,
     billing: computerBilling,
     runtimeFor: computerRuntimeForProvider,
+    assertCanRun: (input) => {
+      const admission = computerAdmissionRef.current
+      if (!admission) throw new Error('COMPUTER_ADMISSION_NOT_INITIALIZED')
+      return admission.assertCanRun(input)
+    },
   })
   computerLifecycleRef.current = computerLifecycle
   const computerAdmission = new ComputerAdmission({
@@ -261,6 +267,7 @@ export function createOverlayServerContext(
     getEntitlements: async (billingAccountId) =>
       await appData.repositories.billing.getBillingAccountEntitlementsByServer({ billingAccountId }) as Entitlements | null,
   })
+  computerAdmissionRef.current = computerAdmission
   const computerLimits: ComputerLimits = {
     maxPerWorkspace: 25,
     maxPersonalPerUser: 1,
@@ -268,7 +275,6 @@ export function createOverlayServerContext(
   }
   const computerService = new ComputerService({
     repository: appData.repositories.computers,
-    runtimeFor: computerRuntimeForProvider,
     assertCanRun: (input) => computerAdmission.assertCanRun(input),
     agentOwner: async (workspaceId, agentId) => {
       const agent = await workspaceAgentRepository.get({ agentId, workspaceId })

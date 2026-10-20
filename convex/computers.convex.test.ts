@@ -112,34 +112,141 @@ describe('Convex computers repository surface', () => {
       workspaceId: 'ws_2', leaseId: 'computer:computer_lease_1', serverSecret: secret,
     })).toBeNull()
 
+    const provisionClaim = await convex.mutation(agentMutationRef('claimComputerMaintenanceByServer'), {
+      workspaceId: 'ws_1', leaseId: 'computer:computer_lease_1', kind: 'provision',
+      token: 'provision-1', actorUserId: 'user_1', expectedProviderReference: null,
+      now: 2_500, expiresAt: 362_500, serverSecret: secret,
+    })
+    expect(provisionClaim).toMatchObject({ token: 'provision-1' })
     await convex.mutation(agentMutationRef('prepareComputerAllocationByServer'), {
       workspaceId: 'ws_1', leaseId: 'computer:computer_lease_1',
       allocationKey: 'computer:computer_lease_1', allocationRecipe: '{"persistent":true}', now: 3_000,
-      serverSecret: secret,
+      maintenanceToken: 'provision-1', serverSecret: secret,
     })
     expect(await convex.mutation(mutationRef('bindProviderReference'), {
       computerId: 'computer_lease_1', workspaceId: 'ws_1', leaseId: 'computer:computer_lease_1',
-      reference: 'box-ref', allocationKey: 'computer:other', serverSecret: secret,
+      reference: 'box-ref', allocationKey: 'computer:other', maintenanceToken: 'provision-1', serverSecret: secret,
     })).toBeNull()
     expect(await convex.mutation(mutationRef('bindProviderReference'), {
       computerId: 'computer_lease_1', workspaceId: 'ws_1', leaseId: 'computer:computer_lease_1',
-      reference: 'box-ref', allocationKey: 'computer:computer_lease_1', serverSecret: secret,
-    })).toBe('computer_lease_1')
+      reference: 'box-ref', allocationKey: 'computer:computer_lease_1',
+      maintenanceToken: 'provision-1', serverSecret: secret,
+    })).toEqual({ id: 'computer_lease_1', canContinue: true })
     const bound = await convex.query(agentQueryRef('getSandboxLeaseByServer'), {
       workspaceId: 'ws_1', leaseId: 'computer:computer_lease_1', serverSecret: secret,
     })
     expect(bound).toMatchObject({
       providerReference: 'box-ref', usage: { meteredProviderReference: 'box-ref' },
     })
+    expect(await convex.mutation(agentMutationRef('transitionComputerLifecycleByServer'), {
+      workspaceId: 'ws_1', computerId: 'computer_lease_1', leaseId: 'computer:computer_lease_1',
+      token: 'provision-1', transition: 'session_armed', expectedProviderReference: 'box-ref',
+      now: 4_000, reservedUntil: 7_204_000, serverSecret: secret,
+    })).toBe(true)
+    expect(await convex.mutation(agentMutationRef('transitionComputerLifecycleByServer'), {
+      workspaceId: 'ws_1', computerId: 'computer_lease_1', leaseId: 'computer:computer_lease_1',
+      token: 'provision-1', transition: 'ready', expectedProviderReference: 'box-ref',
+      now: 5_000, reservedUntil: 7_204_000, serverSecret: secret,
+    })).toBe(true)
+    const runningLease = await convex.query(agentQueryRef('getSandboxLeaseByServer'), {
+      workspaceId: 'ws_1', leaseId: 'computer:computer_lease_1', serverSecret: secret,
+    })
+    expect(runningLease).toMatchObject({ status: 'running', runtimeStartedAt: 5_000, reservedUntil: 7_204_000 })
+    expect(await convex.query(queryRef('get'), { id: 'computer_lease_1', serverSecret: secret })).toMatchObject({ status: 'ready' })
+  })
+
+  test('stale provision and wake completions cannot overwrite stop; wake invalidates old stopped evidence', async () => {
+    const convex = convexTest(schema, modules)
+    await convex.mutation(mutationRef('createWithLease'), {
+      ...baseRow, id: 'computer_stale', status: 'provisioning', serverSecret: secret,
+      lease: {
+        leaseId: 'computer:computer_stale', workspaceId: 'ws_1', computerId: 'computer_stale',
+        provider: 'box', status: 'reserved', reservedUntil: 100_000,
+        usage: {
+          meteredUsage: {}, meterVersion: 0,
+          lastProviderEvidence: { stopped: true, providerReference: 'box-ref', observedAt: 10, usage: { total: 0 } },
+        },
+        cleanupAttempts: 0, now: 1_000,
+      },
+    })
+    await convex.mutation(agentMutationRef('claimComputerMaintenanceByServer'), {
+      workspaceId: 'ws_1', leaseId: 'computer:computer_stale', kind: 'provision', token: 'provision-stale',
+      expectedProviderReference: null, actorUserId: 'user_1', now: 2_000, expiresAt: 362_000, serverSecret: secret,
+    })
+    await convex.mutation(agentMutationRef('prepareComputerAllocationByServer'), {
+      workspaceId: 'ws_1', leaseId: 'computer:computer_stale',
+      allocationKey: 'computer:computer_stale', allocationRecipe: '{"persistent":true}',
+      maintenanceToken: 'provision-stale', now: 2_500, serverSecret: secret,
+    })
+    expect(await convex.mutation(agentMutationRef('claimComputerMaintenanceByServer'), {
+      workspaceId: 'ws_1', leaseId: 'computer:computer_stale', kind: 'stop', token: 'stop-new',
+      expectedProviderReference: null, now: 3_000, expiresAt: 363_000, force: true, serverSecret: secret,
+    })).toMatchObject({ token: 'stop-new' })
+    expect(await convex.mutation(mutationRef('bindProviderReference'), {
+      computerId: 'computer_stale', workspaceId: 'ws_1', leaseId: 'computer:computer_stale',
+      reference: 'box-ref', allocationKey: 'computer:computer_stale',
+      maintenanceToken: 'provision-stale', serverSecret: secret,
+    })).toEqual({ id: 'computer_stale', canContinue: false })
+    expect(await convex.mutation(agentMutationRef('transitionComputerLifecycleByServer'), {
+      workspaceId: 'ws_1', computerId: 'computer_stale', leaseId: 'computer:computer_stale',
+      token: 'provision-stale', transition: 'ready', expectedProviderReference: 'box-ref',
+      now: 4_000, serverSecret: secret,
+    })).toBe(false)
+    expect(await convex.query(agentQueryRef('getSandboxLeaseByServer'), {
+      workspaceId: 'ws_1', leaseId: 'computer:computer_stale', serverSecret: secret,
+    })).toMatchObject({ status: 'stopping' })
+    await convex.mutation(agentMutationRef('transitionComputerLifecycleByServer'), {
+      workspaceId: 'ws_1', computerId: 'computer_stale', leaseId: 'computer:computer_stale',
+      token: 'stop-new', transition: 'paused', expectedProviderReference: 'box-ref',
+      now: 5_000, serverSecret: secret,
+    })
+    await convex.mutation(agentMutationRef('claimComputerMaintenanceByServer'), {
+      workspaceId: 'ws_1', leaseId: 'computer:computer_stale', kind: 'wake', token: 'wake-new',
+      expectedProviderReference: 'box-ref', actorUserId: 'user_1', now: 6_000, expiresAt: 366_000, serverSecret: secret,
+    })
+    expect(await convex.mutation(agentMutationRef('transitionComputerLifecycleByServer'), {
+      workspaceId: 'ws_1', computerId: 'computer_stale', leaseId: 'computer:computer_stale',
+      token: 'wake-new', transition: 'paused', expectedProviderReference: 'box-ref',
+      now: 6_500, serverSecret: secret,
+    })).toBe(false)
+    expect(await convex.mutation(agentMutationRef('transitionComputerLifecycleByServer'), {
+      workspaceId: 'ws_1', computerId: 'computer_stale', leaseId: 'computer:computer_stale',
+      token: 'wake-new', transition: 'deleted', expectedProviderReference: 'box-ref',
+      now: 6_500, serverSecret: secret,
+    })).toBe(false)
+    expect(await convex.mutation(agentMutationRef('transitionComputerLifecycleByServer'), {
+      workspaceId: 'ws_1', computerId: 'computer_stale', leaseId: 'computer:computer_stale',
+      token: 'wake-new', transition: 'wake_armed', expectedProviderReference: 'box-ref',
+      now: 7_000, reservedUntil: 7_207_000, serverSecret: secret,
+    })).toBe(true)
+    const armed = await convex.query(agentQueryRef('getSandboxLeaseByServer'), {
+      workspaceId: 'ws_1', leaseId: 'computer:computer_stale', serverSecret: secret,
+    })
+    expect(armed).toMatchObject({
+      status: 'reserved', usage: { lastProviderEvidence: null, stoppedEvidenceInvalidatedAt: 7_000 },
+    })
+    expect(await convex.mutation(agentMutationRef('claimComputerMaintenanceByServer'), {
+      workspaceId: 'ws_1', leaseId: 'computer:computer_stale', kind: 'delete', token: 'delete-new',
+      expectedProviderReference: 'box-ref', now: 8_000, expiresAt: 368_000, force: true, serverSecret: secret,
+    })).toMatchObject({ token: 'delete-new' })
+    expect(await convex.mutation(agentMutationRef('transitionComputerLifecycleByServer'), {
+      workspaceId: 'ws_1', computerId: 'computer_stale', leaseId: 'computer:computer_stale',
+      token: 'wake-new', transition: 'ready', expectedProviderReference: 'box-ref',
+      now: 9_000, serverSecret: secret,
+    })).toBe(false)
+    expect(await convex.mutation(agentMutationRef('claimComputerMaintenanceByServer'), {
+      workspaceId: 'ws_1', leaseId: 'computer:computer_stale', kind: 'stop', token: 'stop-over-delete',
+      expectedProviderReference: 'box-ref', now: 10_000, expiresAt: 370_000, force: true, serverSecret: secret,
+    })).toBeNull()
   })
 
   test('atomically excludes idle maintenance while activity is live and isolates workspace claims', async () => {
     const convex = convexTest(schema, modules)
     await convex.mutation(mutationRef('createWithLease'), {
-      ...baseRow, id: 'computer_activity', lastActiveAt: 1_000, serverSecret: secret,
+      ...baseRow, id: 'computer_activity', providerRef: 'box-activity', status: 'ready', lastActiveAt: 1_000, serverSecret: secret,
       lease: {
         leaseId: 'computer:computer_activity', workspaceId: 'ws_1', computerId: 'computer_activity',
-        provider: 'box', status: 'running', reservedUntil: 900_000,
+        provider: 'box', providerReference: 'box-activity', status: 'running', reservedUntil: 900_000,
         usage: { meteredUsage: {}, meterVersion: 0 }, cleanupAttempts: 0, now: 1_000,
       },
     })
@@ -153,6 +260,7 @@ describe('Convex computers repository surface', () => {
     const idleArgs = {
       workspaceId: 'ws_1', leaseId: 'computer:computer_activity', kind: 'idle',
       token: 'idle-1', now: 700_000, expiresAt: 1_060_000, idleBefore: 500_000, serverSecret: secret,
+      ownerType: 'user', ownerId: 'user_1',
     }
     expect(await convex.mutation(agentMutationRef('claimComputerMaintenanceByServer'), {
       ...idleArgs, workspaceId: 'ws_2',
@@ -172,6 +280,57 @@ describe('Convex computers repository surface', () => {
       workspaceId: 'ws_1', leaseId: 'computer:computer_activity', token: 'stale-token',
       now: 720_000, serverSecret: secret,
     })).toBe(false)
+  })
+
+  test('live native and remote agent runs block an atomic idle claim', async () => {
+    const convex = convexTest(schema, modules)
+    await convex.mutation(mutationRef('createWithLease'), {
+      ...baseRow, id: 'computer_live_run', ownerType: 'agent', ownerId: 'agent_1',
+      providerRef: 'box-live-run', status: 'ready', lastActiveAt: 1_000, serverSecret: secret,
+      lease: {
+        leaseId: 'computer:computer_live_run', workspaceId: 'ws_1', computerId: 'computer_live_run',
+        provider: 'box', providerReference: 'box-live-run', status: 'running', reservedUntil: 900_000,
+        usage: { meteredUsage: {}, meterVersion: 0 }, cleanupAttempts: 0, now: 1_000,
+      },
+    })
+    const ids = await convex.run(async (ctx) => {
+      const conversationId = await ctx.db.insert('conversations', {
+        userId: 'user_1', workspaceId: 'ws_1', title: 'Live run', lastModified: 1_000,
+        createdAt: 1_000, lastMode: 'act', askModelIds: [], actModelId: 'openrouter/free',
+      })
+      const userMessageId = await ctx.db.insert('conversationMessages', {
+        conversationId, userId: 'user_1', turnId: 'run-1', role: 'user', mode: 'act',
+        content: 'start', contentType: 'text', status: 'completed', createdAt: 1_000, updatedAt: 1_000,
+      })
+      const assistantMessageId = await ctx.db.insert('conversationMessages', {
+        conversationId, userId: 'user_1', turnId: 'run-1', role: 'assistant', mode: 'act',
+        content: '', contentType: 'text', status: 'generating', createdAt: 1_000, updatedAt: 1_000,
+      })
+      const nativeRunId = await ctx.db.insert('conversationAgentRuns', {
+        conversationId, userId: 'user_1', userMessageId, assistantMessageId, turnId: 'run-1',
+        agentId: 'agent_1', mode: 'room', runner: 'workflow', status: 'running',
+        leaseExpiresAt: 800_000, createdAt: 1_000, updatedAt: 1_000,
+      })
+      return { conversationId, userMessageId, assistantMessageId, nativeRunId }
+    })
+    const idleArgs = {
+      workspaceId: 'ws_1', leaseId: 'computer:computer_live_run', kind: 'idle',
+      token: 'idle-live-run', now: 700_000, expiresAt: 1_060_000, idleBefore: 500_000,
+      serverSecret: secret, ownerType: 'agent', ownerId: 'agent_1',
+    }
+    expect(await convex.mutation(agentMutationRef('claimComputerMaintenanceByServer'), idleArgs)).toBeNull()
+    await convex.run(async (ctx) => {
+      await ctx.db.patch(ids.nativeRunId, { status: 'completed' })
+      await ctx.db.insert('conversationAgentRuns', {
+        conversationId: ids.conversationId, userId: 'user_1', userMessageId: ids.userMessageId,
+        assistantMessageId: ids.assistantMessageId, turnId: 'run-2', agentId: 'agent_1',
+        mode: 'room', runner: 'remote', status: 'running', leaseExpiresAt: 800_000,
+        createdAt: 2_000, updatedAt: 2_000,
+      })
+    })
+    expect(await convex.mutation(agentMutationRef('claimComputerMaintenanceByServer'), {
+      ...idleArgs, token: 'idle-live-remote',
+    })).toBeNull()
   })
 })
 

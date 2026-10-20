@@ -140,12 +140,14 @@ export class ConvexComputerRepository implements ComputerRepository {
     leaseId: string
     reference: string
     allocationKey: string
-  }): Promise<Computer | null> {
-    const id = await convex.mutation<string | null>('computers/computers:bindProviderReference', {
+    maintenanceToken: string
+  }): Promise<{ computer: Computer; canContinue: boolean } | null> {
+    const result = await convex.mutation<{ id: string; canContinue: boolean } | null>('computers/computers:bindProviderReference', {
       serverSecret: this.serverSecret,
       ...args,
     }, { throwOnError: true })
-    return id ? await this.get(id) : null
+    const computer = result ? await this.get(result.id) : null
+    return computer && result ? { computer, canContinue: result.canContinue } : null
   }
 }
 

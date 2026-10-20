@@ -2575,9 +2575,9 @@ export default defineSchema({
     leaseId: v.string(), workspaceId: v.string(), environmentId: v.optional(v.string()), computerId: v.optional(v.string()), runId: v.optional(v.string()),
     provider: v.string(), providerReference: v.optional(v.string()), status: v.string(),
     reservationId: v.optional(v.string()), reservedUntil: v.number(),
-    runtimeStartedAt: v.optional(v.number()), runtimeEndedAt: v.optional(v.number()), usage: v.any(),
-    cleanupAttempts: v.number(), cleanupAfter: v.optional(v.number()),
-    nextMeterAt: v.optional(v.number()), meterClaimToken: v.optional(v.string()), meterClaimUntil: v.optional(v.number()),
+    runtimeStartedAt: v.optional(v.number()), runtimeEndedAt: v.optional(v.union(v.number(), v.null())), usage: v.any(),
+    cleanupAttempts: v.number(), cleanupAfter: v.optional(v.union(v.number(), v.null())),
+    nextMeterAt: v.optional(v.union(v.number(), v.null())), meterClaimToken: v.optional(v.union(v.string(), v.null())), meterClaimUntil: v.optional(v.union(v.number(), v.null())),
     createdAt: v.number(), updatedAt: v.number(),
   }).index('by_leaseId', ['leaseId'])
     .index('by_workspaceId', ['workspaceId'])

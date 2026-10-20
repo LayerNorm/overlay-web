@@ -177,41 +177,51 @@ export class ManagedAgentSandboxBilling {
   // requested (low balance, environment revocation) or whose cleanup failed.
   async meterLeases(args?: { limit?: number }): Promise<{ disabled?: boolean; ticks: ManagedSandboxMeterTick[] }> {
     if (sandboxMeterDisabled()) return { disabled: true, ticks: [] }
-    const limit = Math.max(1, Math.min(20, args?.limit ?? sandboxMeterLeaseLimit()))
-    const now = this.now()
+    const limit = Math.max(1, Math.min(1_000, args?.limit ?? sandboxMeterLeaseLimit()))
     const statuses = [...ACTIVE_STATUSES, ...REAPABLE_STATUSES]
-    const claimToken = globalThis.crypto.randomUUID()
-    const claimed = this.dependencies.repository.claimSandboxLeases
-      ? await this.dependencies.repository.claimSandboxLeases({
-        statuses, now, limit, claimToken, claimUntil: now + 2 * 60_000,
-      })
-      : (await this.dependencies.repository.listSandboxLeases({
-        statuses, cleanupBefore: now, limit,
-      })).map((lease) => ({ ...lease, meterClaimToken: claimToken }))
-    const ticks = await mapConcurrent(claimed, 5, async (lease) => {
-      const tick = REAPABLE_STATUSES.some((status) => status === lease.status)
-        ? await this.reapLease(lease)
-        : await this.tickLease(lease)
-      const completedAt = this.now()
-      const current = await this.dependencies.repository.getSandboxLease({
-        workspaceId: lease.workspaceId, leaseId: lease.id,
-      }).catch((_error) => null)
-      const attempts = current?.cleanupAttempts ?? lease.cleanupAttempts
-      const failureBackoff = Math.min(CLEANUP_RETRY_MAX_MS, CLEANUP_RETRY_BASE_MS * 2 ** Math.min(attempts, 5))
-      await this.dependencies.repository.finishSandboxLeaseClaim?.({
-        workspaceId: lease.workspaceId, leaseId: lease.id, claimToken,
-        now: completedAt,
-        nextMeterAt: completedAt + (tick.outcome === 'cleanup_failed'
-          ? (current?.cleanupAfter ? Math.max(0, current.cleanupAfter - completedAt) : failureBackoff)
-          : tick.outcome === 'error' ? failureBackoff : 60_000),
+    const ticks: ManagedSandboxMeterTick[] = []
+    const wallStartedAt = Date.now()
+    const visitedLeaseIds = new Set<string>()
+    while (ticks.length < limit && Date.now() - wallStartedAt < 30_000) {
+      const now = this.now()
+      const batchLimit = Math.min(20, limit - ticks.length)
+      const claimToken = globalThis.crypto.randomUUID()
+      const claim = this.dependencies.repository.claimSandboxLeases
+        ? await this.dependencies.repository.claimSandboxLeases({
+          statuses, now, limit: batchLimit, claimToken, claimUntil: now + 2 * 60_000,
         })
-      return tick
-    })
-    // Fleet-level signal once per sweep when box leases exist: box bills from
-    // a shared account pool, so `canStart`/`remainingSeconds` exhaustion would
-    // stall every box environment at once.
-    if (claimed.some((lease) => lease.provider === 'box')) {
-      await this.probeBoxLimits()
+        : {
+          leases: (await this.dependencies.repository.listSandboxLeases({
+            statuses, cleanupBefore: now, limit: batchLimit,
+          })).map((lease) => ({ ...lease, meterClaimToken: claimToken })),
+          deferred: false,
+        }
+      const claimed = claim.leases.filter((lease) => !visitedLeaseIds.has(lease.id))
+      for (const lease of claimed) visitedLeaseIds.add(lease.id)
+      if (!claimed.length) {
+        if (claim.deferred && Date.now() - wallStartedAt < 30_000) continue
+        break
+      }
+      const batchTicks = await mapConcurrent(claimed, 5, async (lease) => {
+        const tick = REAPABLE_STATUSES.some((status) => status === lease.status)
+          ? await this.reapLease(lease)
+          : await this.tickLease(lease)
+        const completedAt = this.now()
+        const current = await this.dependencies.repository.getSandboxLease({
+          workspaceId: lease.workspaceId, leaseId: lease.id,
+        }).catch((_error) => null)
+        const attempts = current?.cleanupAttempts ?? lease.cleanupAttempts
+        const failureBackoff = Math.min(CLEANUP_RETRY_MAX_MS, CLEANUP_RETRY_BASE_MS * 2 ** Math.min(attempts, 5))
+        await this.dependencies.repository.finishSandboxLeaseClaim?.({
+          workspaceId: lease.workspaceId, leaseId: lease.id, claimToken, now: completedAt,
+          nextMeterAt: completedAt + (tick.outcome === 'cleanup_failed'
+            ? (current?.cleanupAfter ? Math.max(0, current.cleanupAfter - completedAt) : failureBackoff)
+            : tick.outcome === 'error' ? failureBackoff : 60_000),
+        })
+        return tick
+      })
+      ticks.push(...batchTicks)
+      if (claimed.some((lease) => lease.provider === 'box')) await this.probeBoxLimits()
     }
     return { ticks }
   }
@@ -226,6 +236,7 @@ export class ManagedAgentSandboxBilling {
   }> {
     const lease = await this.dependencies.repository.getSandboxLease({ workspaceId: args.workspaceId, leaseId: args.leaseId })
     if (!lease || lease.status !== 'running') return { outcome: 'gone' }
+    if (lease.computerId) return { outcome: 'gone' }
     const usage = lease.usage ?? {}
     if (usage.idleToken !== args.token) return { outcome: 'stale' }
     const now = this.now()
@@ -266,43 +277,56 @@ export class ManagedAgentSandboxBilling {
   // seed an empty cursor so their full lifetime is billed.
   async meterLease(lease: AgentSandboxLease, options?: { minRemainingCents?: number; idleStop?: 'timer' | 'sweep' | 'none' }): Promise<ManagedSandboxMeterResult> {
     const now = this.now()
-    const usage = lease.usage ?? {}
-    const storedCursor = usage.meteredUsage && typeof usage.meteredUsage === 'object'
-      ? usage.meteredUsage as Record<string, unknown>
-      : undefined
-    const expectedMeterVersion = typeof usage.meterVersion === 'number' ? usage.meterVersion : 0
-    const lifecycle = lease.usage.computerLifecycle as { maintenance?: { kind?: string } } | undefined
-    const stopIntent = lease.computerId !== undefined && ['stop', 'idle', 'delete'].includes(lifecycle?.maintenance?.kind ?? '')
-    const stopping = lease.status === 'stopping' || lease.status === 'cleanup_failed' || stopIntent
-
     let effectiveLease = lease
+    let usage = lease.usage ?? {}
     let probe = lease.providerReference
       ? await this.instanceProbe(lease.provider, lease.providerReference)
       : null
     if (probe === null && lease.providerReference) {
-      // The acquire step may have recreated the sandbox and repointed the
-      // lease since this snapshot was read — follow the repoint once.
-      if (!lease.environmentId || lease.computerId) return { applied: false, reason: 'usage_unavailable' }
-      const current = await this.dependencies.repository.getActiveSandboxLease({
-        workspaceId: lease.workspaceId,
-        environmentId: lease.environmentId,
-      }).catch((_error) => null)
+      const current = lease.computerId
+        ? await this.dependencies.repository.getSandboxLease({ workspaceId: lease.workspaceId, leaseId: lease.id }).catch((_error) => null)
+        : !lease.environmentId
+          ? null
+          : await this.dependencies.repository.getActiveSandboxLease({
+            workspaceId: lease.workspaceId, environmentId: lease.environmentId,
+          }).catch((_error) => null)
+      if (current?.status === 'released') {
+        return { applied: false, reason: 'lease_not_meterable' }
+      }
       if (current && current.id === lease.id && current.providerReference && current.providerReference !== lease.providerReference) {
         const probeAfterRepoint = await this.instanceProbe(current.provider, current.providerReference)
         if (probeAfterRepoint) {
           probe = probeAfterRepoint
           effectiveLease = current
+          usage = current.usage ?? {}
         }
+      } else if (lease.computerId && current?.id === lease.id) {
+        effectiveLease = current
+        usage = current.usage ?? {}
       }
     }
+    const lifecycle = usage.computerLifecycle as { maintenance?: { kind?: string } } | undefined
+    const stopIntent = lease.computerId !== undefined && ['stop', 'idle', 'delete'].includes(lifecycle?.maintenance?.kind ?? '')
+    const stopping = effectiveLease.status === 'stopping' || effectiveLease.status === 'cleanup_failed' || stopIntent
     if (probe === null && stopping) {
-      const evidence = usage.lastProviderEvidence as { usage?: SandboxUsage; stopped?: boolean; providerReference?: string } | undefined
-      if (evidence?.stopped && evidence.providerReference === effectiveLease.providerReference && evidence.usage) {
+      const evidence = usage.lastProviderEvidence as {
+        usage?: SandboxUsage
+        stopped?: boolean
+        providerReference?: string
+        observedAt?: number
+      } | undefined
+      const invalidatedAt = finiteNumber(usage.stoppedEvidenceInvalidatedAt)
+      if (evidence?.stopped && evidence.providerReference === effectiveLease.providerReference
+        && evidence.usage && finiteNumber(evidence.observedAt) > invalidatedAt) {
         probe = { status: 'stopped', usage: evidence.usage }
       }
     }
     if (probe === null) return { applied: false, reason: 'usage_unavailable' }
 
+    const storedCursor = usage.meteredUsage && typeof usage.meteredUsage === 'object'
+      ? usage.meteredUsage as Record<string, unknown>
+      : undefined
+    const expectedMeterVersion = typeof usage.meterVersion === 'number' ? usage.meterVersion : 0
     const cursorReference = typeof usage.meteredProviderReference === 'string' ? usage.meteredProviderReference : undefined
     const activeReference = effectiveLease.providerReference
     const legacyCursor = storedCursor === undefined
@@ -327,7 +351,7 @@ export class ManagedAgentSandboxBilling {
     // 'running', and the next turn's acquire resumes it. The primary trigger is the idle timer (`idleCheck`, set when
     // a run ends); this sweep is the fallback for a timer that never fired, so it waits a grace period past the
     // window. The tick still bills the elapsed window it ran through.
-    if (!stopping && instanceRunning && probe.instance && typeof probe.instance.stop === 'function' && options?.idleStop !== 'none' && fallbackDue
+    if (!effectiveLease.computerId && !stopping && instanceRunning && probe.instance && typeof probe.instance.stop === 'function' && options?.idleStop !== 'none' && fallbackDue
       && await this.leaseIsIdle(effectiveLease, now, options?.idleStop === 'timer' ? 0 : IDLE_FALLBACK_GRACE_MS)) {
       const idleForMs = now - idleActivityTimestamp(usage, effectiveLease, now)
       await probe.instance.stop().then(async () => {
@@ -352,7 +376,7 @@ export class ManagedAgentSandboxBilling {
       if (idleStoppedNow) probe.usage = await probe.instance.usage().catch((_error) => null)
     }
     // Fallback for a missing or overdue idle timer (a lost scheduled job, a run that ended without one): start it.
-    if (!stopping && instanceRunning && effectiveLease.status === 'running' && !idleStoppedNow && options?.idleStop !== 'none' && fallbackDue
+    if (!effectiveLease.computerId && !stopping && instanceRunning && effectiveLease.status === 'running' && !idleStoppedNow && options?.idleStop !== 'none' && fallbackDue
       && !idleTimerIsLive(usage, now)
       && !(await this.environmentHasActiveRuns(effectiveLease))) {
       const remainingMs = idleActivityTimestamp(usage, effectiveLease, now) + idleWindowMs(usage) - now
@@ -659,16 +683,18 @@ export class ManagedAgentSandboxBilling {
       if (lease.status === 'running'
         && typeof lease.reservedUntil === 'number'
         && this.now() > lease.reservedUntil) {
+        if (lease.computerId) return await this.killLease(lease, 'lease_expired')
         await this.killLease(lease, 'lease_expired')
         return { leaseId: lease.id, outcome: 'killed', reason: 'lease_expired' }
       }
       if (lease.computerId && lease.status === 'running' && this.dependencies.computerLeaseHandler) {
         const idleResult = await this.dependencies.computerLeaseHandler(lease, 'idle_check')
-        if (idleResult.reason !== 'computer_not_idle' && idleResult.reason !== 'computer_has_live_run') return idleResult
+        if (!['computer_not_idle', 'computer_has_live_run', 'computer_active'].includes(idleResult.reason ?? '')) return idleResult
       }
       const result = await this.meterLease(lease)
       if (!result.applied) {
         if (result.reason === 'insufficient_budget') {
+          if (lease.computerId) return await this.killLease(lease, 'budget_exhausted')
           await this.killLease(lease, 'budget_exhausted')
           return { leaseId: lease.id, outcome: 'killed', reason: 'budget_exhausted', remainingCents: result.remainingCents }
         }
@@ -679,6 +705,7 @@ export class ManagedAgentSandboxBilling {
         }
       }
       if (result.remainingCents !== undefined && result.remainingCents < sandboxLowBalanceCutoffCents()) {
+        if (lease.computerId) return await this.killLease(lease, 'low_balance')
         await this.killLease(lease, 'low_balance')
         return { leaseId: lease.id, outcome: 'killed', reason: 'low_balance', remainingCents: result.remainingCents }
       }
@@ -692,6 +719,11 @@ export class ManagedAgentSandboxBilling {
       if (isBillingAccountUnavailableError(error)) {
         // If the payer's wallet can't be debited at all (suspended/missing),
         // stop the lease rather than let unmetered usage accumulate.
+        if (lease.computerId) {
+          return await this.killLease(lease, 'billing_unavailable')
+            .catch((cleanupError) => ({ leaseId: lease.id, outcome: 'cleanup_failed' as const,
+              reason: cleanupError instanceof Error ? cleanupError.message : String(cleanupError) }))
+        }
         await this.killLease(lease, 'billing_unavailable').catch((_error) => undefined)
         return { leaseId: lease.id, outcome: 'killed', reason: 'billing_unavailable' }
       }
@@ -705,7 +737,7 @@ export class ManagedAgentSandboxBilling {
     }
   }
 
-  private async killLease(lease: AgentSandboxLease, reason: string) {
+  private async killLease(lease: AgentSandboxLease, reason: string): Promise<ManagedSandboxMeterTick> {
     if (lease.computerId) {
       if (this.dependencies.computerLeaseHandler) return await this.dependencies.computerLeaseHandler(lease, reason)
       return { leaseId: lease.id, outcome: 'cleanup_failed', reason: 'computer_lifecycle_unavailable' }
@@ -717,6 +749,7 @@ export class ManagedAgentSandboxBilling {
       now: this.now(),
     })
     await this.reapLease(stopped ?? lease)
+    return { leaseId: lease.id, outcome: 'killed' as const, reason }
   }
 
   private async reapLease(lease: AgentSandboxLease): Promise<ManagedSandboxMeterTick> {

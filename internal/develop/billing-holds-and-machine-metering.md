@@ -5,7 +5,7 @@ How the credit a person sees relates to what Overlay enforces, and how Overlay C
 ## Two separate accounts
 
 - **Boat** (the machine provider) is Overlay's own account. A person's Boat dashboard, if they have one, says nothing about Overlay billing. Overlay pays Boat for machine time.
-- **Overlay credit** is the person's allowance (for example $20/month on Pro) plus any top-ups. Machine compute is charged to it by the lease meter (`ManagedAgentSandboxBilling`) at provider cost plus Overlay's markup, per running minute. Paused machines cost storage only.
+- **Overlay credit** is the person's allowance (for example $20/month on Pro) plus any top-ups. Machine compute is charged to it by the lease meter (`ManagedAgentSandboxBilling`) at provider cost plus Overlay's markup, per running minute. Boat stopped runtime is unbilled; provider snapshot retention is separate from runtime accounting.
 
 Everything below is about Overlay credit.
 
@@ -38,7 +38,7 @@ Persistent Computers enforce admission in `ComputerService`, including desktop a
 
 The Computer integration is one cumulative Phase 2 substep, not completion of Phase 2. The schema changes are additive optional lease fields and indexes. No shared Convex deployment or migration was performed by this code change. Do not roll back lifecycle code or remove its fields while runtime holds, activity tokens, maintenance intents, or cleanup evidence remain unresolved: reconcile and settle them first. Provider allocation retries must use the saved exact recipe and key within Boat's idempotency-retention window; an older ambiguous allocation requires operator reconciliation.
 
-- **Floor.** The meter stops and deletes any machine whose payer is at or below `OVERLAY_SANDBOX_LOW_BALANCE_CUTOFF_CENTS` (default 100, $1.00) of remaining credit. A deleted machine takes its disk with it.
+- **Floor.** The meter stops and deletes disposable environment machines whose payer is at or below `OVERLAY_SANDBOX_LOW_BALANCE_CUTOFF_CENTS` (default 100, $1.00) of remaining credit. Persistent Computers pause and retain their disk and row at the same boundary; only explicit deletion removes the provider resource after final settlement.
 - **Start check.** Creating a cloud agent now needs more than the floor (`minimumBudgetToStartMachineCents`, floor + 1¢) and answers `402 insufficient_credit` otherwise; before this, a machine started under the floor was deleted about a minute later (`stopReason: budget_exhausted` on its lease).
 - **What the person sees.** The agent page says "Machine stopped" with an explanation when the machine is gone. There is no automatic top-up for machines; the person adds credit and recreates the agent.
 - Leases live in `agentSandboxLeases`; `usage.stopReason` records why one ended.
@@ -61,7 +61,7 @@ Flags (all set on production): `OVERLAY_FEATURE_CONNECTED_AGENT_CONTROL_PLANE`, 
 
 ## A machine deleted for lack of credit
 
-When the meter kills a lease (`budget_exhausted`, `low_balance`) the Boat machine and lease are deleted but the agent keeps its environment and a `ready` provision record. The agent page derives `unavailable` (`deriveCloudAgentState`: provision `ready`, no machine) and offers **Start a new machine**, which POSTs `/api/v1/agent-environments/cloud` again; `CloudAgentMachineService.reviveIfMachineGone` then revokes the old environment and clears the record so the normal provisioning runs (it still needs the $1 floor). A message to such an agent fails with the `machine_gone` start-failure message.
+When the meter kills a disposable environment lease (`budget_exhausted`, `low_balance`), the Boat machine and lease are deleted while the environment remains. A persistent Computer instead pauses on budget or idle stops and retains its disk and Computer row; only explicit deletion removes it after final settlement.
 
 ## Cancellation after spending plan credit
 
@@ -90,7 +90,7 @@ E2B lifecycle events supply completed execution duration and actual CPU/RAM allo
 
 Provider observations survive a rejected debit; the billed cursor does not advance. Cleanup must confirm stop and complete final settlement before deleting the provider resource. A stopped final observation can be replayed after a resource disappears. Missing or inconsistent evidence keeps the lease in retryable cleanup rather than releasing it as if no usage occurred. Usage operations retain compute cost, pricing and allocation evidence for audit. Settled executions absent beyond the provider's event retention window can leave the cursor only with a persisted retirement watermark; reappearing old evidence fails closed rather than being charged again.
 
-Boat seconds are already size-weighted billable seconds, not ordinary wall-clock seconds. Its authoritative counters must not be replaced by elapsed-time estimates. E2B paused compute is not charged; Boat includes stopped compute and automatic snapshot retention for 14 days. These compute entries do not invent a storage fee. Snapshot retention and any separately purchased storage must remain distinct from runtime accounting.
+Boat seconds are already size-weighted billable seconds, not ordinary wall-clock seconds. Its authoritative counters must not be replaced by elapsed-time estimates. E2B paused compute is not charged; Boat stopped runtime is unbilled. Boat snapshot retention (including automatic retention for 14 days) is separate from runtime accounting, as is any separately purchased storage.
 
 This accounting checkpoint does not complete Phase 2. Scoped provider inventory reconciliation and alerts, storage accounting, legacy `CloudAgentMachineService` pre-enrollment allocation recovery, and Phase 3 harness/preview QA remain follow-up work. Host viewer activity is not supervised by this Computer action-token integration.
 

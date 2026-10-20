@@ -110,8 +110,8 @@ export const createWithLease = mutation({
           ...leaseValue,
           computerId: existing.id,
           providerReference: existing.providerRef ?? undefined,
-          status: existing.status === 'ready' ? 'running' : existing.status === 'stopped' ? 'paused' : 'provisioning',
-          usage: existing.providerRef ? {} : leaseValue.usage,
+          status: existing.providerRef ? 'paused' : 'reserved',
+          usage: existing.providerRef ? { computerLifecycle: { adoptionPending: true } } : leaseValue.usage,
           leaseId: `computer:${existing.id}`,
           createdAt: now,
           updatedAt: now,
@@ -140,7 +140,7 @@ export const createWithLease = mutation({
 export const bindProviderReference = mutation({
   args: {
     computerId: v.string(), workspaceId: v.string(), leaseId: v.string(), reference: v.string(),
-    allocationKey: v.string(), serverSecret: v.string(),
+    allocationKey: v.string(), maintenanceToken: v.string(), serverSecret: v.string(),
   },
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
@@ -156,10 +156,16 @@ export const bindProviderReference = mutation({
       || (leaseRow.providerReference && leaseRow.providerReference !== args.reference)) {
       throw new Error('COMPUTER_PROVIDER_REFERENCE_CHANGED')
     }
+    const lifecycle = usage.computerLifecycle && typeof usage.computerLifecycle === 'object'
+      ? usage.computerLifecycle as Record<string, unknown>
+      : {}
+    const maintenance = lifecycle.maintenance as { token?: string; kind?: string } | null | undefined
+    const canContinue = maintenance?.token === args.maintenanceToken && maintenance.kind === 'provision'
+      && ['reserved', 'provisioning'].includes(leaseRow.status)
     const nextUsage = { ...usage, meteredProviderReference: args.reference }
     await ctx.db.patch(computer._id, { providerRef: args.reference, updatedAt: Date.now() })
     await ctx.db.patch(leaseRow._id, { providerReference: args.reference, usage: nextUsage, updatedAt: Date.now() })
-    return computer.id
+    return { id: computer.id, canContinue }
   },
 })
 

@@ -122,15 +122,45 @@ describe('Convex connected-agent provider contract', () => {
     const claim = (token: string) => call('claimSandboxLeasesByServer', {
       statuses: ['running'], now: 10_000, limit: 20, claimToken: token, claimUntil: 40_000,
     })
-    const [first, overlapping] = await Promise.all([claim('sweep-a'), claim('sweep-b')]) as Array<Array<{ id: string }>>
+    const [firstResult, overlappingResult] = await Promise.all([claim('sweep-a'), claim('sweep-b')]) as Array<{
+      leases: Array<{ id: string }>
+      deferred: boolean
+    }>
+    const first = firstResult.leases
+    const overlapping = overlappingResult.leases
     const firstIds = new Set([...first, ...overlapping].map((lease) => lease.id))
     expect(first.length + overlapping.length).toBe(40)
     expect(firstIds.size).toBe(40)
-    const remaining = await claim('sweep-c') as Array<{ id: string }>
+    const remaining = (await claim('sweep-c') as { leases: Array<{ id: string }> }).leases
     expect(remaining).toHaveLength(5)
     expect(remaining.some((lease) => firstIds.has(lease.id))).toBe(false)
-    const last = await claim('sweep-d')
-    expect(last).toHaveLength(0)
+    const last = await claim('sweep-d') as { leases: Array<{ id: string }> }
+    expect(last.leases).toHaveLength(0)
+  })
+
+  test('defers blocked cleanup heads so due leases behind more than one batch become claimable', async () => {
+    const convex = convexTest(schema, modules)
+    const call = (name: string, args: Record<string, unknown>) => convex.mutation(reference(name), { ...args, serverSecret: secret })
+    for (let index = 0; index < 33; index += 1) {
+      await call('createEnvironmentByServer', {
+        id: `blocked-env-${index}`, workspaceId: 'defer-ws', kind: 'managed', name: 'Deferred lease',
+        status: 'online', capabilities: {}, now: 1,
+      })
+      await call('createSandboxLeaseByServer', {
+        id: `defer-${index}`, workspaceId: 'defer-ws',
+        environmentId: `blocked-env-${index}`, provider: 'box', status: 'running',
+        reservedUntil: 500_000, usage: { meteredUsage: {}, meterVersion: 0 },
+        cleanupAttempts: 0, cleanupAfter: index < 30 ? 20_000 : undefined, now: 1,
+      })
+    }
+    const claim = (token: string) => call('claimSandboxLeasesByServer', {
+      statuses: ['running'], now: 10_000, limit: 20, claimToken: token, claimUntil: 40_000,
+    }) as Promise<{ leases: Array<{ id: string }>; deferred: boolean }>
+    const deferred = await claim('blocked-a')
+    expect(deferred.leases).toHaveLength(0)
+    expect(deferred.deferred).toBe(true)
+    const due = await claim('blocked-b')
+    expect(due.leases.map((lease) => lease.id)).toEqual(['defer-30', 'defer-31', 'defer-32'])
   })
 
   test('passes shared lifecycle, tenancy, ordering and deletion semantics', async () => {
