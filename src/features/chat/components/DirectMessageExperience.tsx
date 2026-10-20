@@ -33,6 +33,15 @@ import {
   RoomTranscript,
 } from './DirectMessageExperience.parts'
 
+function shouldDisableQuestionnaireSuggestions(
+  showcase: boolean,
+  guided: boolean,
+  hasSurfacePlatform: boolean,
+  agentResponding: boolean,
+) {
+  return showcase || guided || hasSurfacePlatform || agentResponding
+}
+
 function resolveRoomRightPanel({
   panels,
   externalRightPanel,
@@ -202,7 +211,7 @@ export function DirectMessageExperience({
   })
 
   return (
-    <QuestionnaireComposerProvider value={composer.input} readDraft={() => composer.inputRef.current} subscribe={composer.subscribeToInput} disabled={showcase || Boolean(guided) || Boolean(transcript.surfacePlatform) || isRoomAgentResponding(transcript.messages, room.agentResponding)} onChange={(value) => { composer.setInput(value); composer.onComposerInput(value); composer.composerRef.current?.focus() }}>
+    <QuestionnaireComposerProvider value={composer.input} readDraft={() => composer.inputRef.current} subscribe={composer.subscribeToInput} disabled={shouldDisableQuestionnaireSuggestions(showcase, Boolean(guided), Boolean(transcript.surfacePlatform), isRoomAgentResponding(transcript.messages, room.agentResponding))} onChange={(value) => { composer.setInput(value); composer.onComposerInput(value); composer.composerRef.current?.focus() }}>
       <LinkOpenInterceptor
         preference={appSettings.linkOpenPreference}
         onOpenInOverlay={panels.openLinkPreview}
