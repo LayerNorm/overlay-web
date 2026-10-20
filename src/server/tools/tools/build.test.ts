@@ -58,6 +58,37 @@ test('present_generated_ui still validates variant-specific required fields', as
   }).success, false)
 })
 
+test('computer screenshot returns image content and computer input validates action variants', () => {
+  const tools = buildOverlayToolSet({
+    userId: 'user-test',
+    serverSecret: 'secret-test',
+    baseUrl: 'http://localhost:3000',
+    includePaidOnlyOverlayTools: true,
+    memoryEnabled: true,
+  })
+  const screenshot = tools.computer_screenshot as unknown as {
+    toModelOutput(args: {
+      output: { success: boolean; width?: number; height?: number; image?: Uint8Array; error?: string }
+    }): unknown
+  }
+  const image = new Uint8Array([137, 80, 78, 71])
+  assert.deepEqual(screenshot.toModelOutput({
+    output: { success: true, width: 640, height: 360, image },
+  }), {
+    type: 'content',
+    value: [
+      { type: 'text', text: 'Screenshot captured at 640 by 360 pixels.' },
+      { type: 'file', data: { type: 'data', data: image }, mediaType: 'image/png' },
+    ],
+  })
+
+  const inputSchema = tools.computer_input.inputSchema as {
+    safeParse(input: unknown): { success: boolean }
+  }
+  assert.equal(inputSchema.safeParse({ action: 'click', x: 10, y: 20 }).success, true)
+  assert.equal(inputSchema.safeParse({ action: 'type' }).success, false)
+})
+
 test('Overlay tools expose Gateway-compatible input schemas', async () => {
   await assertGatewayCompatibleToolSet(buildOverlayToolSet({
     userId: 'user-test',

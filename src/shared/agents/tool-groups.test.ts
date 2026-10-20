@@ -74,13 +74,15 @@ test('every group grants either tool ids or a capability', () => {
   }
 })
 
-test('the computer group maps to the five computer tool ids', () => {
+test('the computer group maps to all computer tool ids', () => {
   const computer = AGENT_TOOL_GROUPS.find((g) => g.id === 'computer')!
   assert.deepEqual([...computer.toolIds].sort(), [
     'computer_exec',
+    'computer_input',
     'computer_list_files',
     'computer_open_url',
     'computer_read_file',
+    'computer_screenshot',
     'computer_write_file',
   ])
   assert.deepEqual(
@@ -106,7 +108,7 @@ test('new agents default to every group except computer', () => {
 test('the computer group needs every computer tool id to count as enabled', () => {
   const computer = AGENT_TOOL_GROUPS.find((g) => g.id === 'computer')!
   assert.equal(
-    enabledAgentToolGroupIds(computer.toolIds.slice(0, -1)).has('computer'),
+    enabledAgentToolGroupIds(computer.toolIds.filter((id) => id !== 'computer_exec')).has('computer'),
     false,
   )
   assert.equal(
@@ -125,6 +127,15 @@ test('grants saved before a group grew still hold the tools that joined it', () 
   const normalized = normalizeAgentToolGrant(beforeNoteEdits)
   for (const id of ['append_to_note', 'replace_note_section', 'edit_note']) assert.ok(normalized.includes(id))
   assert.ok(!normalizeAgentToolGrant(['get_note']).includes('edit_note'), 'read-only note grants gain no writes')
+  const savedComputerGrant = [
+    'computer_exec',
+    'computer_read_file',
+    'computer_write_file',
+    'computer_list_files',
+    'computer_open_url',
+  ]
+  assert.ok(normalizeAgentToolGrant(savedComputerGrant).includes('computer_screenshot'))
+  assert.ok(normalizeAgentToolGrant(savedComputerGrant).includes('computer_input'))
 })
 
 test('tool presets never include computer and are recognised from their groups', () => {

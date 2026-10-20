@@ -6,6 +6,10 @@ import { agentGatewayExecEnv } from '@/server/ai/agent-gateway/env'
 import { machineForAgent, touchEnvironmentMachine } from '@/server/agents/environment-machine'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import {
+  ComputerDesktopDriverError,
+  run as runComputerDesktopCommand,
+} from '@/server/computers/ComputerDesktopDriver'
+import {
   ComputerServiceError,
   type ComputerActor,
 } from '@/server/computers/ComputerService'
@@ -910,9 +914,17 @@ function truncateOutput(value: string): { text: string; truncated: boolean } {
 
 function computerErrorResult(err: unknown, fallback: string) {
   if (err instanceof ComputerServiceError) {
-    return { success: false, error: err.message, code: err.code }
+    return { success: false as const, error: err.message, code: err.code }
   }
-  return { success: false, error: err instanceof Error ? err.message : fallback }
+  if (err instanceof ComputerDesktopDriverError) {
+    return {
+      success: false as const,
+      error: err.message,
+      code: err.code,
+      ...(err.missing.length ? { missing: err.missing } : {}),
+    }
+  }
+  return { success: false as const, error: err instanceof Error ? err.message : fallback }
 }
 
 async function computerInstanceFor(
@@ -1134,6 +1146,66 @@ export async function executeComputerOpenUrl(
     }
   } catch (err) {
     return computerErrorResult(err, 'Failed to open the URL on the computer')
+  }
+}
+
+export async function executeComputerScreenshot(options: OverlayToolsOptions) {
+  const resolved = await computerInstanceFor(options)
+  if (!resolved.ok) return { success: false as const, error: resolved.error }
+  try {
+    const result = await resolved.operate(
+      (instance) => runComputerDesktopCommand(instance, 'screenshot'),
+      120_000,
+    )
+    if (
+      typeof result.width !== 'number'
+      || typeof result.height !== 'number'
+      || !(result.image instanceof Uint8Array)
+    ) {
+      throw new ComputerDesktopDriverError('desktop_driver_failed', 'The screenshot was incomplete.')
+    }
+    return {
+      success: true as const,
+      width: result.width,
+      height: result.height,
+      image: result.image,
+      computerId: resolved.computer.id,
+    }
+  } catch (err) {
+    return computerErrorResult(err, 'Failed to capture the computer screenshot')
+  }
+}
+
+export type ComputerInputAction =
+  | { action: 'click'; x: number; y: number; button?: 'left' | 'middle' | 'right'; count?: number }
+  | { action: 'double_click'; x: number; y: number }
+  | { action: 'right_click'; x: number; y: number }
+  | { action: 'move'; x: number; y: number }
+  | { action: 'drag'; from: { x: number; y: number }; to: { x: number; y: number } }
+  | { action: 'type'; text: string }
+  | { action: 'key'; keys: string }
+  | { action: 'scroll'; x?: number; y?: number; direction: 'up' | 'down' | 'left' | 'right'; amount: number }
+  | { action: 'wait'; ms: number }
+
+export async function executeComputerInput(
+  options: OverlayToolsOptions,
+  input: ComputerInputAction,
+) {
+  const resolved = await computerInstanceFor(options)
+  if (!resolved.ok) return { success: false as const, error: resolved.error }
+  const { action, ...inputArgs } = input
+  const command = action === 'double_click' || action === 'right_click' ? 'click' : action
+  const args: Record<string, unknown> = { ...inputArgs }
+  if (action === 'double_click') args.count = 2
+  if (action === 'right_click') args.button = 'right'
+  try {
+    await resolved.operate(
+      (instance) => runComputerDesktopCommand(instance, command, args),
+      120_000,
+    )
+    return { success: true as const, acknowledgement: `${action.replace('_', ' ')} completed.` }
+  } catch (err) {
+    return computerErrorResult(err, 'Computer input failed')
   }
 }
 

@@ -21,6 +21,8 @@ export const COMPUTER_TOOL_IDS = [
   'computer_write_file',
   'computer_list_files',
   'computer_open_url',
+  'computer_screenshot',
+  'computer_input',
 ] as const
 
 export const OVERLAY_TOOL_IDS = [

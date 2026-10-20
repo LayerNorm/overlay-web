@@ -18,9 +18,11 @@ import { executeBrowserRunTask } from './browser-executes'
 import { executeListChats, executeReadChat } from './chats-executes'
 import {
   executeComputerExec,
+  executeComputerInput,
   executeComputerListFiles,
   executeComputerOpenUrl,
   executeComputerReadFile,
+  executeComputerScreenshot,
   executeComputerWriteFile,
   executeCreateAutomation,
   executeDeleteAutomation,
@@ -58,6 +60,67 @@ import {
 } from './files-executes'
 import { runInToolCallScope } from './internal-api'
 import type { OverlayToolsOptions } from './types'
+
+const computerPointSchema = z.object({
+  x: z.number().int().min(0).max(8192),
+  y: z.number().int().min(0).max(8192),
+}).strict()
+const computerInputVariants = z.discriminatedUnion('action', [
+  z.object({
+    action: z.literal('click'),
+    x: z.number().int().min(0).max(8192),
+    y: z.number().int().min(0).max(8192),
+    button: z.enum(['left', 'middle', 'right']).optional(),
+    count: z.number().int().min(1).max(25).optional(),
+  }).strict(),
+  z.object({
+    action: z.literal('double_click'),
+    x: z.number().int().min(0).max(8192),
+    y: z.number().int().min(0).max(8192),
+  }).strict(),
+  z.object({
+    action: z.literal('right_click'),
+    x: z.number().int().min(0).max(8192),
+    y: z.number().int().min(0).max(8192),
+  }).strict(),
+  z.object({
+    action: z.literal('move'),
+    x: z.number().int().min(0).max(8192),
+    y: z.number().int().min(0).max(8192),
+  }).strict(),
+  z.object({ action: z.literal('drag'), from: computerPointSchema, to: computerPointSchema }).strict(),
+  z.object({ action: z.literal('type'), text: z.string().max(10000) }).strict(),
+  z.object({ action: z.literal('key'), keys: z.string().min(1).max(100) }).strict(),
+  z.object({
+    action: z.literal('scroll'),
+    x: z.number().int().min(0).max(8192).optional(),
+    y: z.number().int().min(0).max(8192).optional(),
+    direction: z.enum(['up', 'down', 'left', 'right']),
+    amount: z.number().int().min(1).max(25),
+  }).strict(),
+  z.object({ action: z.literal('wait'), ms: z.number().int().min(0).max(10000) }).strict(),
+])
+const computerInputSchema = z.object({
+  action: z.enum([
+    'click', 'double_click', 'right_click', 'move', 'drag', 'type', 'key', 'scroll', 'wait',
+  ]),
+  x: z.number().int().min(0).max(8192).optional(),
+  y: z.number().int().min(0).max(8192).optional(),
+  button: z.enum(['left', 'middle', 'right']).optional(),
+  count: z.number().int().min(1).max(25).optional(),
+  from: computerPointSchema.optional(),
+  to: computerPointSchema.optional(),
+  text: z.string().max(10000).optional(),
+  keys: z.string().min(1).max(100).optional(),
+  direction: z.enum(['up', 'down', 'left', 'right']).optional(),
+  amount: z.number().int().min(1).max(25).optional(),
+  ms: z.number().int().min(0).max(10000).optional(),
+}).strict().superRefine((input, ctx) => {
+  const parsed = computerInputVariants.safeParse(input)
+  if (!parsed.success) {
+    for (const issue of parsed.error.issues) ctx.addIssue(issue)
+  }
+})
 
 /**
  * Overlay-defined tools only (no Composio, no web search). Act agent: full tool surface.
@@ -845,6 +908,52 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
         return executeComputerOpenUrl(options, input)
       },
     })
+    }
+
+    if (shouldExposeTool('computer_screenshot')) {
+      tools.computer_screenshot = tool({
+        description: 'Capture the visible screen on the bound computer and return it as an image.',
+        inputSchema: z.object({}).strict(),
+        execute: async () => {
+          assertToolAllowed('computer_screenshot')
+          return executeComputerScreenshot(options)
+        },
+        toModelOutput: ({ output }) => {
+          if (!output.success) {
+            return { type: 'text', value: output.error }
+          }
+          if (!(output.image instanceof Uint8Array)) {
+            return { type: 'text', value: 'Screenshot failed.' }
+          }
+          return {
+            type: 'content',
+            value: [
+              { type: 'text', text: `Screenshot captured at ${output.width} by ${output.height} pixels.` },
+              {
+                type: 'file',
+                data: { type: 'data', data: output.image },
+                mediaType: 'image/png',
+              },
+            ],
+          }
+        },
+      })
+    }
+
+    if (shouldExposeTool('computer_input')) {
+      tools.computer_input = tool({
+        description:
+          'Interact with the visible desktop using coordinates from the latest computer_screenshot. ' +
+          'Take a screenshot before choosing coordinates and after each action to verify the result. ' +
+          'click, double_click, right_click, and move require x and y; drag requires from and to; ' +
+          'type requires text; key requires keys; scroll requires direction and amount with optional x and y; ' +
+          'wait requires ms. computer_open_url opens pages in this same visible browser.',
+        inputSchema: computerInputSchema,
+        execute: async (input) => {
+          assertToolAllowed('computer_input')
+          return executeComputerInput(options, computerInputVariants.parse(input))
+        },
+      })
     }
 
     if (shouldExposeTool('create_note')) {
