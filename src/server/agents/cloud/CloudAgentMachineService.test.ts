@@ -45,7 +45,7 @@ const environment = (overrides: Partial<AgentEnvironment> = {}): AgentEnvironmen
   capabilities: {}, createdAt: 0, updatedAt: 0, ...overrides,
 })
 
-function deps(machine: SandboxInstance, options: { enrolled?: boolean; lease?: AgentSandboxLease | null; env?: AgentEnvironment; bound?: boolean; disabled?: boolean; activeExecution?: boolean; enrollmentError?: Error } = {}) {
+function deps(machine: SandboxInstance, options: { enrolled?: boolean; lease?: AgentSandboxLease | null; env?: AgentEnvironment; bound?: boolean; disabled?: boolean; activeExecution?: boolean; enrollmentError?: Error; admissionError?: Error } = {}) {
   const log: Array<[string, unknown]> = []
   const phases: Array<{ phase: string; error?: string }> = []
   let removed = false
@@ -53,6 +53,10 @@ function deps(machine: SandboxInstance, options: { enrolled?: boolean; lease?: A
   const service = new CloudAgentMachineService({
     audit: { record: async () => undefined } as never,
     image: 'overlay-agent-v5',
+    assertCanRun: async (input) => {
+      log.push(['admission', input])
+      if (options.admissionError) throw options.admissionError
+    },
     accountSummary: async (userId, accountId) => {
       log.push(['account-read', {userId, accountId}])
       return {id: accountId, label: 'Existing subscription', provider: 'claude-code', method: 'subscription', status: 'active'}
@@ -98,6 +102,44 @@ const provisionArgs = {
   actorUserId: 'user', workspaceId: 'ws', agentId: 'agent-1', adapterId: 'claude-code' as const,
   providerAccountId: 'account-1', size: 'default' as const, serverUrl: 'https://www.getoverlay.io',
 }
+const machineActor = { actorUserId: 'user', agentId: 'agent-1' }
+
+test('denied workspace admission prevents allocation, wake, restart, and recovery authorization', async () => {
+  for (const action of ['provision', 'wake', 'resume', 'restart', 'restore'] as const) {
+    const { machine, calls, commands } = fakeMachine('stopped')
+    const refused = new Error('paid_workspace_required')
+    const { service, created, log, phases } = deps(machine, { admissionError: refused })
+    const actor = { actorUserId: 'current-user', workspaceId: 'ws', agentId: 'agent-1' }
+    let authorized = false
+    const execute = async () => {
+      if (action === 'provision') return service.provision({ ...provisionArgs, ...actor })
+      if (action === 'wake') return service.wake({ ...actor, environmentId: 'env-1' })
+      if (action === 'restore') return service.resumeStoppedExecution({ ...actor, environmentId: 'env-1', authorize: async () => { authorized = true; return true } })
+      return service.control({ ...actor, action })
+    }
+    await assert.rejects(execute, refused)
+    if (action === 'provision') assert.equal(phases.at(-1)?.phase, 'failed')
+    assert.deepEqual(created, [])
+    assert.deepEqual(calls, [])
+    assert.deepEqual(commands, [])
+    assert.equal(authorized, false)
+    assert.deepEqual(log.filter(([kind]) => kind === 'admission').map(([, input]) => input), [
+      { userId: 'current-user', workspaceId: 'ws', agentId: 'agent-1' },
+    ])
+  }
+})
+
+test('pause and teardown remain available after workspace admission is revoked', async () => {
+  for (const action of ['pause', 'teardown'] as const) {
+    const { machine, calls } = fakeMachine()
+    const { service, log } = deps(machine, { admissionError: new Error('paid_workspace_required') })
+    const actor = { actorUserId: 'current-user', workspaceId: 'ws', agentId: 'agent-1' }
+    if (action === 'pause') await service.control({ ...actor, action })
+    else await service.teardown(actor)
+    assert.equal(log.some(([kind]) => kind === 'admission'), false)
+    assert.ok(calls.includes(action === 'pause' ? 'stop' : 'delete'))
+  }
+})
 
 test('provision boots the image, redeems the code with acpx, approves the workspace root, leases, and binds', async () => {
   const { machine, commands } = fakeMachine()
@@ -150,8 +192,8 @@ test('Preview provision, resume and explicit restart prepare private access befo
         usage: mode === 'resume' || mode === 'restart' ? {previewHostingAccessVersion: 1} : {}}
       const {service, log} = deps(f.machine, mode === 'provision' || mode === 'already-online' ? {} : {env: environment({status: resuming ? 'offline' : 'online'}), lease})
       if (mode === 'provision') await service.provision({...provisionArgs, serverUrl: preview.NEXT_PUBLIC_APP_URL})
-      else if (mode === 'restart' || mode === 'legacy-restart') await service.control({workspaceId: 'ws', agentId: 'agent-1', action: 'restart'})
-      else await service.wake({workspaceId: 'ws', environmentId: 'env-1'})
+      else if (mode === 'restart' || mode === 'legacy-restart') await service.control({...machineActor, workspaceId: 'ws', action: 'restart'})
+      else await service.wake({...machineActor, workspaceId: 'ws', environmentId: 'env-1'})
       if (mode === 'already-online') {assert.deepEqual(order, []); continue}
       if (mode === 'legacy-resume' || mode === 'legacy-restart') {
         assert.deepEqual(f.written, [])
@@ -173,7 +215,7 @@ test('Preview provision, resume and explicit restart prepare private access befo
 test('wake resumes a stopped machine and restarts its host', async () => {
   const { machine, commands, calls } = fakeMachine('stopped')
   const { service, log } = deps(machine, { env: environment({ status: 'offline' }) })
-  assert.equal(await service.wake({ workspaceId: 'ws', environmentId: 'env-1' }), 'resumed')
+  assert.equal(await service.wake({ ...machineActor, workspaceId: 'ws', environmentId: 'env-1' }), 'resumed')
   assert.deepEqual(calls, ['resume'])
   assert.equal(commands[0], cloudAgentStopHostCommand())
   assert.match(commands[1]!, /overlay-agent-host run --config/)
@@ -183,7 +225,7 @@ test('wake resumes a stopped machine and restarts its host', async () => {
 test('recovery records the exact stopped machine before resume and starts only its managed host', async () => {
   const {machine, commands, calls} = fakeMachine('stopped')
   const {service, log} = deps(machine, {activeExecution: true})
-  const result = await service.resumeStoppedExecution({workspaceId: 'ws', environmentId: 'env-1', authorize: async proof => {
+  const result = await service.resumeStoppedExecution({...machineActor, workspaceId: 'ws', environmentId: 'env-1', authorize: async proof => {
     assert.deepEqual(proof, {leaseId: 'lease-1', providerReference: 'bx_agent', observedAt: 1000})
     assert.deepEqual(calls, [])
     assert.deepEqual(commands, [])
@@ -203,7 +245,7 @@ test('recovery never stops live work and never resumes a rejected authorization'
     const {machine, commands, calls} = fakeMachine(status)
     const {service} = deps(machine, {activeExecution: true})
     let requested = false
-    assert.equal(await service.resumeStoppedExecution({workspaceId: 'ws', environmentId: 'env-1', authorize: async () => {
+    assert.equal(await service.resumeStoppedExecution({...machineActor, workspaceId: 'ws', environmentId: 'env-1', authorize: async () => {
       requested = true; return false
     }}), 'unavailable')
     assert.equal(requested, status === 'stopped')
@@ -221,7 +263,7 @@ test('recovery refuses a lease replacement before or during provider resume', as
     const {service} = deps(machine, options)
     const replace = () => {options.lease = {...lease, id: 'replacement', providerReference: 'bx_other'}}
     if (when === 'resume') machine.resume = async () => {calls.push('resume'); replace()}
-    assert.equal(await service.resumeStoppedExecution({workspaceId: 'ws', environmentId: 'env-1', authorize: async () => {
+    assert.equal(await service.resumeStoppedExecution({...machineActor, workspaceId: 'ws', environmentId: 'env-1', authorize: async () => {
       if (when === 'authorize') replace()
       return true
     }}), 'unavailable')
@@ -233,7 +275,7 @@ test('recovery refuses a lease replacement before or during provider resume', as
 test('recovery leaves a concurrently resumed machine alone and rejects providers without disk-only isolation', async () => {
   const {machine, calls, commands} = fakeMachine('stopped')
   const {service} = deps(machine)
-  assert.equal(await service.resumeStoppedExecution({workspaceId: 'ws', environmentId: 'env-1', authorize: async () => {
+  assert.equal(await service.resumeStoppedExecution({...machineActor, workspaceId: 'ws', environmentId: 'env-1', authorize: async () => {
     machine.status = async () => 'running'
     return true
   }}), 'unavailable')
@@ -241,16 +283,16 @@ test('recovery leaves a concurrently resumed machine alone and rejects providers
   assert.deepEqual(commands, [])
   const unsupported = deps(machine, {lease: {id: 'lease-1', workspaceId: 'ws', environmentId: 'env-1', provider: 'e2b',
     providerReference: 'other', status: 'running', reservedUntil: 10000, cleanupAttempts: 0, createdAt: 0, updatedAt: 0}})
-  assert.equal(await unsupported.service.resumeStoppedExecution({workspaceId: 'ws', environmentId: 'env-1', authorize: async () => {
+  assert.equal(await unsupported.service.resumeStoppedExecution({...machineActor, workspaceId: 'ws', environmentId: 'env-1', authorize: async () => {
     assert.fail('Unsupported provider must not request a stop receipt')
   }}), 'unavailable')
 })
 
 test('wake leaves a running machine with a live host alone, and skips machines without a lease', async () => {
   const { machine, commands } = fakeMachine('running')
-  assert.equal(await deps(machine).service.wake({ workspaceId: 'ws', environmentId: 'env-1' }), 'running')
+  assert.equal(await deps(machine).service.wake({ ...machineActor, workspaceId: 'ws', environmentId: 'env-1' }), 'running')
   assert.deepEqual(commands, [])
-  assert.equal(await deps(machine, { lease: null }).service.wake({ workspaceId: 'ws', environmentId: 'env-1' }), 'unavailable')
+  assert.equal(await deps(machine, { lease: null }).service.wake({ ...machineActor, workspaceId: 'ws', environmentId: 'env-1' }), 'unavailable')
 })
 
 test('provision records each startup phase and a safe message when it fails', async () => {
@@ -270,28 +312,28 @@ test('pausing or restarting first fails the runs the machine was in the middle o
   for (const action of ['pause', 'restart'] as const) {
     const { machine } = fakeMachine()
     const { service, log } = deps(machine)
-    await service.control({ workspaceId: 'ws', agentId: 'agent-1', action })
+    await service.control({ ...machineActor, workspaceId: 'ws', action })
     assert.deepEqual(log.filter(([name]) => name === 'sweep'), [['sweep', { abandonEnvironmentId: 'env-1' }]])
   }
   const { machine } = fakeMachine()
   const resumed = deps(machine)
-  await resumed.service.control({ workspaceId: 'ws', agentId: 'agent-1', action: 'resume' })
+  await resumed.service.control({ ...machineActor, workspaceId: 'ws', action: 'resume' })
   assert.equal(resumed.log.filter(([name]) => name === 'sweep').length, 0)
 })
 
 test('pause stops the machine; restart replaces the host process', async () => {
   const paused = fakeMachine()
-  await deps(paused.machine).service.control({ workspaceId: 'ws', agentId: 'agent-1', action: 'pause' })
+  await deps(paused.machine).service.control({ ...machineActor, workspaceId: 'ws', action: 'pause' })
   assert.deepEqual(paused.calls, ['stop'])
 
   const restarted = fakeMachine('stopped')
-  await deps(restarted.machine).service.control({ workspaceId: 'ws', agentId: 'agent-1', action: 'restart' })
+  await deps(restarted.machine).service.control({ ...machineActor, workspaceId: 'ws', action: 'restart' })
   assert.deepEqual(restarted.calls, ['resume'])
   assert.equal(restarted.commands[0], cloudAgentStopHostCommand())
   assert.equal(restarted.commands.length, 2)
 
   await assert.rejects(
-    deps(fakeMachine().machine, { bound: false }).service.control({ workspaceId: 'ws', agentId: 'agent-1', action: 'pause' }),
+    deps(fakeMachine().machine, { bound: false }).service.control({ ...machineActor, workspaceId: 'ws', action: 'pause' }),
     /no Overlay Cloud machine/,
   )
 })
@@ -317,7 +359,7 @@ test('applying a profile removes what the earlier version wrote, prunes the fold
   const { machine, commands, written } = fakeMachine('running', { '/home/user/.overlay/profile-managed.json': previous })
   const { service } = deps(machine, { env: environment({ status: 'online', lastSeenAt: 999 }) })
   await service.applyProfile({
-    workspaceId: 'ws', agentId: 'agent-1', hooksEnabled: false, version: 2,
+    ...machineActor, workspaceId: 'ws', hooksEnabled: false, version: 2,
     bundle: { version: 1, harness: 'claude-code', mcpServers: {}, hooks: [], secrets: [], files: [{ path: 'CLAUDE.md', content: 'new' }] },
   })
   const removal = commands.find((command) => command.startsWith('rm -f'))
@@ -373,7 +415,7 @@ test('a deleted cloud machine retains its prior account and adapter as setup, wi
   assert.equal(status.machine, null)
   assert.equal(status.adapterId, 'claude-code')
   assert.deepEqual(status.account, {id: 'account-1', label: 'Existing subscription', provider: 'claude-code', method: 'subscription', status: 'active'})
-  await assert.rejects(service.control({workspaceId: 'ws', agentId: 'agent-1', action: 'resume'}), /no Overlay Cloud machine/)
+  await assert.rejects(service.control({...machineActor, workspaceId: 'ws', action: 'resume'}), /no Overlay Cloud machine/)
   assert.equal(log.some(([name]) => name === 'lease-read'), false)
   assert.deepEqual(calls, [])
 })
@@ -391,7 +433,7 @@ test('prior machine setup ignores local and foreign-workspace environments', asy
 test('wake never replaces a stale bridge while an observed execution may still own external writes', async () => {
   const { machine, commands } = fakeMachine('running')
   const { service } = deps(machine, { activeExecution: true, env: environment({ status: 'offline', lastSeenAt: 0 }) })
-  assert.equal(await service.wake({ workspaceId: 'ws', environmentId: 'env-1' }), 'unavailable')
+  assert.equal(await service.wake({ ...machineActor, workspaceId: 'ws', environmentId: 'env-1' }), 'unavailable')
   assert.equal(commands.length, 0)
 })
 

@@ -108,7 +108,7 @@ export class ConnectedAgentControlPlaneService {
     deliverMachineFiles?: (args: { workspaceId: string; environmentId: string; files: Array<{ path: string; contents: string; mode?: number }> }) => Promise<void>
     /** The agent's own secret values (an imported MCP server's token), added to a run's environment. */
     agentSecretEnv?: (agentId: string) => Promise<Record<string, string>>
-    wakeMachine?: (args: { workspaceId: string; environmentId: string }) => Promise<'running' | 'resumed' | 'unavailable'>
+    wakeMachine?: (args: { actorUserId: string; workspaceId: string; agentId: string; environmentId: string }) => Promise<'running' | 'resumed' | 'unavailable'>
     now?: () => number
     isEnabled?: (workspaceId?: string) => boolean | Promise<boolean>
     artifactsEnabled?: () => boolean | Promise<boolean>
@@ -461,7 +461,11 @@ export class ConnectedAgentControlPlaneService {
       for (const environment of environments) {
         const session = await this.dependencies.repository.getRemoteSessionForRun({ workspaceId: args.workspaceId, environmentId: environment.id, runId: args.runId })
         if (!session || environment.kind !== 'overlay_cloud') continue
-        const outcome = await this.dependencies.wakeMachine({ workspaceId: args.workspaceId, environmentId: environment.id })
+        const billing = session.capabilitySnapshot?.billing as { agentId?: unknown } | undefined
+        if (typeof billing?.agentId !== 'string' || !billing.agentId) break
+        const outcome = await this.dependencies.wakeMachine({
+          actorUserId: args.actorUserId, workspaceId: args.workspaceId, agentId: billing.agentId, environmentId: environment.id,
+        })
         if (outcome === 'unavailable') throw controlPlaneError('The agent machine is unavailable. Inspect its state before continuing.', 409, 'remote_machine_unavailable')
         break
       }

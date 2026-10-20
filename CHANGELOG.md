@@ -10,6 +10,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Enroll persistent Computers in the shared sandbox lease ledger before provider allocation or wake. Meter Boat's weighted counters, reserve both the runtime member and agent spend subject, preserve disks on idle/budget stops, and retain durable cleanup and allocation references for retries. Computer deletion settles usage before removing the provider resource; this is a scoped lifecycle/accounting substep, not completion of Phase 2.
 
+- Recheck paid workspace and finite-credit admission for cloud-agent machine allocation, explicit resume/restart controls, workflow wakes and stopped-execution recovery under the authenticated actor or the remote run's stored actor. Pause and cleanup remain available after downgrade.
+
 - Settle E2B compute from completed provider executions and actual allocation, reserve credit while executions run, and retain final usage for retry if billing fails. Enforce workspace and subject limits on machine metering; preserve Boat's weighted counters instead of substituting elapsed time.
 
 - Bind Computer access to the authorized workspace and require paid workspace credit before provisioning, starting, desktop access or tool execution. Concurrent owner claims allocate only one machine; failed deletion retains the provider reference for retry, and lifecycle reads never implicitly resume a machine.

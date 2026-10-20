@@ -65,6 +65,7 @@ export class CloudAgentMachineService {
     controlPlane: ControlPlane
     repository: Repository
     provisions: CloudAgentProvisionRepository
+    assertCanRun(input: { userId: string; workspaceId: string; agentId: string }): Promise<void>
     /** Looks up the account a binding chose, for the agent page. */
     accountSummary?: (userId: string, accountId: string) => Promise<CloudAgentAccountSummary | null>
     runtime?: SandboxRuntime
@@ -91,6 +92,7 @@ export class CloudAgentMachineService {
     let machine: SandboxInstance | null = null
     let environment: AgentEnvironment | null = null
     try {
+      await this.admit(args)
       const runtime = this.runtime()
       const enrollment = await this.dependencies.controlPlane.createEnrollmentSession({
         actorUserId: args.actorUserId,
@@ -208,7 +210,8 @@ export class CloudAgentMachineService {
   }
 
   /** Pause, resume, or restart an agent's machine. */
-  async control(args: { workspaceId: string; agentId: string; action: CloudAgentAction }): Promise<void> {
+  async control(args: { actorUserId: string; workspaceId: string; agentId: string; action: CloudAgentAction }): Promise<void> {
+    if (args.action !== 'pause') await this.admit(args)
     const bindings = await this.dependencies.repository.listBindings({ workspaceId: args.workspaceId, agentId: args.agentId })
     const found = await this.cloudBinding(args.workspaceId, bindings)
     if (!found) throw new CloudAgentMachineError('This agent has no Overlay Cloud machine', 404, 'cloud_agent_missing')
@@ -225,7 +228,7 @@ export class CloudAgentMachineService {
       return
     }
     if (args.action === 'resume') {
-      await this.wake({ workspaceId: args.workspaceId, environmentId: found.environment.id })
+      await this.wake({ actorUserId: args.actorUserId, workspaceId: args.workspaceId, agentId: args.agentId, environmentId: found.environment.id })
       return
     }
     // Restart: make sure the machine is up, then replace the host process.
@@ -238,11 +241,11 @@ export class CloudAgentMachineService {
    * `~/.claude.json`, and the removal of what an earlier version wrote. The machine is woken first (a stopped machine
    * cannot be written to); the host is back up when this returns.
    */
-  async applyProfile(args: { workspaceId: string; agentId: string; bundle: AgentProfileBundle; hooksEnabled: boolean; version: number }): Promise<void> {
+  async applyProfile(args: { actorUserId: string; workspaceId: string; agentId: string; bundle: AgentProfileBundle; hooksEnabled: boolean; version: number }): Promise<void> {
     const bindings = await this.dependencies.repository.listBindings({ workspaceId: args.workspaceId, agentId: args.agentId })
     const found = await this.cloudBinding(args.workspaceId, bindings)
     if (!found) throw new CloudAgentMachineError('This agent has no Overlay Cloud machine to apply a profile to', 409, 'cloud_agent_missing')
-    const woke = await this.wake({ workspaceId: args.workspaceId, environmentId: found.environment.id })
+    const woke = await this.wake({ actorUserId: args.actorUserId, workspaceId: args.workspaceId, agentId: args.agentId, environmentId: found.environment.id })
     const lease = await this.dependencies.repository.getActiveSandboxLease({ workspaceId: args.workspaceId, environmentId: found.environment.id })
     if (woke === 'unavailable' || !lease?.providerReference) throw new CloudAgentMachineError('This agent\'s machine is not available', 409, 'cloud_agent_unavailable')
     const machine = await this.runtime(lease.provider).reconnect(lease.providerReference, { resume: false })
@@ -394,27 +397,30 @@ export class CloudAgentMachineService {
    * turn is queued for an offline Overlay Cloud environment: the lease meter
    * stops idle machines, and a stopped machine has no host process.
    */
-  async wake(args: { workspaceId: string; environmentId: string }): Promise<'running' | 'resumed' | 'unavailable'> {
-    const lease = await this.dependencies.repository.getActiveSandboxLease(args)
+  async wake(args: { actorUserId: string; workspaceId: string; agentId: string; environmentId: string }): Promise<'running' | 'resumed' | 'unavailable'> {
+    await this.admit(args)
+    const scope = { workspaceId: args.workspaceId, environmentId: args.environmentId }
+    const lease = await this.dependencies.repository.getActiveSandboxLease(scope)
     if (!lease?.providerReference || lease.status !== 'running') return 'unavailable'
     const runtime = this.runtime(lease.provider)
     const machine = await runtime.reconnect(lease.providerReference, { resume: false })
     const status = await machine.status()
-    if (status === 'running' && await this.hostIsOnline(args)) return 'running'
+    if (status === 'running' && await this.hostIsOnline(scope)) return 'running'
     if (status === 'running' && await this.dependencies.repository.environmentHasActiveExecution?.({ environmentId: args.environmentId })) {
       // A stale heartbeat does not prove its child stopped. Do not restart a bridge
       // and destroy a live, non-restorable approval promise while trying to wake it.
       return 'unavailable'
     }
     if (status !== 'running') await machine.resume()
-    await this.restartManagedHost(machine, lease, args)
+    await this.restartManagedHost(machine, lease, scope)
     return status === 'running' ? 'running' : 'resumed'
   }
 
   /** The callback must persist the stopped-machine fence and authorize its queued restoration before resume. */
-  async resumeStoppedExecution(args: {workspaceId: string; environmentId: string;
+  async resumeStoppedExecution(args: {actorUserId: string; workspaceId: string; agentId: string; environmentId: string;
     authorize: (proof: {leaseId: string; providerReference: string; observedAt: number}) => Promise<boolean>
   }): Promise<'resumed' | 'unavailable'> {
+    await this.admit(args)
     const scope = {workspaceId: args.workspaceId, environmentId: args.environmentId}
     const lease = await this.dependencies.repository.getActiveSandboxLease(scope)
     // Only Boat's disk-only stop/resume contract proves that the previous OS processes cannot return.
@@ -559,6 +565,10 @@ export class CloudAgentMachineService {
       }).catch((_error) => undefined)
     }
     if (machine) await machine.delete().catch((_error) => undefined)
+  }
+
+  private async admit(args: { actorUserId: string; workspaceId: string; agentId: string }): Promise<void> {
+    await this.dependencies.assertCanRun({ userId: args.actorUserId, workspaceId: args.workspaceId, agentId: args.agentId })
   }
 
   private runtime(provider?: string): SandboxRuntime {
