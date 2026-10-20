@@ -7,6 +7,7 @@ import {
   defaultWorkingDirectory,
   environmentSupportsHarness,
   generatedByoInstructions,
+  resolveByoAdapterId,
   workspaceAgentUsesByo,
   workspaceAgentUsesManagedHarness,
   workspaceHarnessForByo,
@@ -34,6 +35,15 @@ test('BYO harness discovery exposes supported built-ins only', () => {
   assert.equal(environmentSupportsHarness(environment, 'hermes'), false)
   assert.equal(environmentSupportsHarness(environment, 'eve'), false)
   assert.equal(builtInHarnessCatalogIsComplete(), true)
+})
+
+test('BYO editor preserves saved adapter without a binding and prefers an explicit binding', () => {
+  assert.equal(resolveByoAdapterId(), 'codex')
+  assert.equal(resolveByoAdapterId('byo/claude-code'), 'claude-code')
+  assert.equal(resolveByoAdapterId('byo/claude-code#sonnet'), 'claude-code')
+  assert.equal(resolveByoAdapterId('byo/codex#gpt-6'), 'codex')
+  assert.equal(resolveByoAdapterId('byo/hermes'), 'hermes')
+  assert.equal(resolveByoAdapterId('byo/claude-code', 'codex'), 'codex')
 })
 
 test('BYO defaults preserve explicit filesystem and workspace harness boundaries', () => {

@@ -1,4 +1,5 @@
 import type { AgentEnvironmentResource } from '@overlay/api-client'
+import { parseByoModelId } from '@/shared/agents/agent-model'
 import {
   BUILT_IN_USER_OWNED_ACP_ADAPTER_IDS,
   type BuiltInUserOwnedAcpAdapterId,
@@ -51,6 +52,11 @@ export function acpAdaptersForEnvironment(environment: AgentEnvironmentResource)
 
 export function availableByoHarnesses(): ByoHarnessOption[] {
   return BUILT_IN_BYO_HARNESSES.map((harness) => ({ ...harness, connectable: true }))
+}
+
+export function resolveByoAdapterId(modelId?: string, bindingAdapterId?: unknown): string {
+  if (typeof bindingAdapterId === 'string' && bindingAdapterId) return bindingAdapterId
+  return (modelId && parseByoModelId(modelId)?.adapterId) || 'codex'
 }
 
 export function builtInHarnessCatalogIsComplete() {
