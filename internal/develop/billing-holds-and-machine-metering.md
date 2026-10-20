@@ -40,6 +40,10 @@ Cloud-agent machine allocation, explicit resume/restart controls, workflow wakes
 
 Cloud Agent provisioning stores its allocation key before provider creation and durably binds the provider reference from the allocation callback. The operations reconcile route reclaims stale setup attempts without a matching active lease, retaining retry state when deletion fails. This route-driven sweep is not a Convex cron; Preview has no Convex crons. It recovers allocations recorded by this flow, not older unrecorded machines or provider-wide orphan inventory, and does not unify Cloud Agent lifecycle paths.
 
+## Provider inventory reconciliation
+
+The operations reconcile route scans at most two pages of Boat or E2B inventory every 15 minutes; its connected-agent settlement caller runs every minute outside Preview, which has no Convex crons. It reports old live machines without a matching lease, Cloud Agent provision, or Computer record. This is report-only: an environment match alone is not strong ownership evidence, especially for Boat, and automatically stopping or deleting a machine could destroy a customer's disk. Alert on `[sandbox-inventory] unowned provider machines`.
+
 The Computer integration is one cumulative Phase 2 substep, not completion of Phase 2. The schema changes are additive optional lease fields and indexes. No shared Convex deployment or migration was performed by this code change. Do not roll back lifecycle code or remove its fields while runtime holds, activity tokens, maintenance intents, or cleanup evidence remain unresolved: reconcile and settle them first. Provider allocation retries must use the saved exact recipe and key within Boat's idempotency-retention window; an older ambiguous allocation requires operator reconciliation.
 
 - **Floor.** The meter stops and deletes disposable environment machines whose payer is at or below `OVERLAY_SANDBOX_LOW_BALANCE_CUTOFF_CENTS` (default 100, $1.00) of remaining credit. Persistent Computers pause and retain their disk and row at the same boundary; only explicit deletion removes the provider resource after final settlement.

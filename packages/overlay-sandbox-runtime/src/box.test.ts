@@ -77,6 +77,52 @@ test('a scoped Boat environment stays attached without injecting account credent
   })
 })
 
+test('inventory requests bounded live states and cost, filters environment, and returns only safe fields', async () => {
+  const { calls, fetch } = recorder(() => ok({
+    sandboxes: [
+      {
+        id: 'bx_preview', state: 'ready', environment: 'overlay-preview',
+        createdAt: '2026-10-01T00:00:00.000Z', cost: { dollars: 1.23 },
+        url: 'https://machine.invalid', ip: '192.0.2.1', sshEndpoint: 'machine.invalid:22',
+        desktopUrl: 'https://secret.invalid',
+      },
+      { id: 'bx_other', state: 'running', environment: 'production', createdAt: '2026-10-01T00:00:00.000Z' },
+    ],
+    pageInfo: { nextCursor: 'cursor-next', hasMore: true, limit: 17 },
+  }))
+  const rt = new BoxSandboxRuntime({ apiKey: 'preview-key', environment: 'overlay-preview', fetch })
+
+  const inventory = await rt.listInventory({ cursor: 'cursor-current', limit: 17 })
+  const url = new URL(calls[0]!.url)
+  assert.equal(calls[0]!.method, 'GET')
+  assert.equal(url.pathname, '/api/v1/sandboxes')
+  assert.equal(url.searchParams.get('limit'), '17')
+  assert.equal(url.searchParams.get('cursor'), 'cursor-current')
+  assert.equal(url.searchParams.get('state'), 'init,provisioning,provisioned,cloning,ready,idle,running,archiving')
+  assert.equal(url.searchParams.get('include'), 'cost')
+  assert.equal(inventory.nextCursor, 'cursor-next')
+  assert.deepEqual(inventory.items, [{
+    reference: 'bx_preview',
+    state: 'ready',
+    createdAt: Date.parse('2026-10-01T00:00:00.000Z'),
+    monthCostCents: 123,
+  }])
+  for (const key of ['url', 'ip', 'sshEndpoint', 'desktopUrl']) {
+    assert.equal(Object.hasOwn(inventory.items[0]!, key), false)
+  }
+})
+
+test('inventory includes all environments when no Boat environment is configured', async () => {
+  const { fetch } = recorder(() => ok({
+    sandboxes: [
+      { id: 'bx_one', state: 'ready', environment: 'one' },
+      { id: 'bx_two', state: 'idle', environment: 'two' },
+    ],
+  }))
+  const inventory = await runtime(fetch).listInventory({ limit: 200 })
+  assert.deepEqual(inventory.items.map((item) => item.reference), ['bx_one', 'bx_two'])
+})
+
 test('create maps default/large sizes and bounded ttl, and restore uses from', async () => {
   const { calls, fetch } = recorder(() => ({ ok: true, sandbox: { id: 'bx_1', state: 'ready' } }))
   const rt = runtime(fetch)

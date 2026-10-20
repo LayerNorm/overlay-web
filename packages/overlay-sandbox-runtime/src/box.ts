@@ -12,6 +12,7 @@ import type {
   SandboxFileEntry,
   SandboxInstance,
   SandboxLifecycleState,
+  SandboxInventoryItem,
   SandboxPort,
   SandboxResources,
   SandboxRuntime,
@@ -97,6 +98,19 @@ type BoxInfo = {
   vcpu?: number
   memoryGB?: number
 }
+
+type BoxInventoryResponse = {
+  sandboxes?: Array<{
+    id?: string
+    state?: string
+    createdAt?: string | null
+    environment?: string | null
+    cost?: { dollars?: number | null }
+  }>
+  pageInfo?: { nextCursor?: string | null }
+}
+
+const INVENTORY_STATES = 'init,provisioning,provisioned,cloning,ready,idle,running,archiving'
 
 export type BoxFetch = (
   input: string,
@@ -211,6 +225,43 @@ export class BoxSandboxRuntime implements SandboxRuntime {
     const state = (await instance.info()).state
     if (state === 'archived' && options?.resume !== false) await instance.resume()
     return instance
+  }
+
+  /** When scoped to a Boat environment, only matching inventory entries are returned. */
+  async listInventory(args: { cursor?: string; limit: number }): Promise<{
+    items: SandboxInventoryItem[]
+    nextCursor?: string
+  }> {
+    const response = await this.request<BoxInventoryResponse>('GET', '/sandboxes', {
+      query: {
+        limit: String(args.limit),
+        ...(args.cursor ? { cursor: args.cursor } : {}),
+        state: INVENTORY_STATES,
+        include: 'cost',
+      },
+    })
+    const items = (response.sandboxes ?? [])
+      .filter((sandbox) => typeof sandbox.id === 'string'
+        && typeof sandbox.state === 'string'
+        && (!this.environment || sandbox.environment === this.environment))
+      .map((sandbox): SandboxInventoryItem => {
+        const createdAt = sandbox.createdAt ? Date.parse(sandbox.createdAt) : NaN
+        const dollars = sandbox.cost?.dollars
+        const monthCostCents = typeof dollars === 'number' && Number.isFinite(dollars)
+          ? Math.round(dollars * 100)
+          : undefined
+        return {
+          reference: sandbox.id!,
+          state: sandbox.state!,
+          ...(Number.isFinite(createdAt) ? { createdAt } : {}),
+          ...(monthCostCents !== undefined ? { monthCostCents } : {}),
+        }
+      })
+    const nextCursor = response.pageInfo?.nextCursor
+    return {
+      items,
+      ...(typeof nextCursor === 'string' && nextCursor ? { nextCursor } : {}),
+    }
   }
 
   restore(snapshotId: string, request: Omit<SandboxCreateRequest, 'snapshotId'>) {

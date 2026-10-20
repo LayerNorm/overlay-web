@@ -12,7 +12,7 @@ import type { SandboxCreateRequest } from './contracts'
 
 /** An E2B stand-in: sandboxes in memory, with a real shell behind `commands.run` so behavior is not guessed. */
 function fakeE2b() {
-  type Box = { state: 'running' | 'paused' | 'killed'; files: Map<string, Uint8Array>; envs: Record<string, string>; startedAt: Date }
+  type Box = { state: 'running' | 'paused' | 'killed'; files: Map<string, Uint8Array>; envs: Record<string, string>; metadata: Record<string, string>; startedAt: Date }
   const sandboxes = new Map<string, Box>()
   const snapshots = new Map<string, Box>()
   const calls: Array<{ method: string; args: unknown[] }> = []
@@ -84,8 +84,33 @@ function fakeE2b() {
       calls.push({ method: 'create', args: [template, options] })
       const base = snapshots.get(template)
       const id = `sbx-${++counter}`
-      sandboxes.set(id, { state: 'running', files: new Map(base?.files ?? []), envs: (options.envs as Record<string, string>) ?? {}, startedAt: new Date() })
+      sandboxes.set(id, {
+        state: 'running', files: new Map(base?.files ?? []),
+        envs: (options.envs as Record<string, string>) ?? {},
+        metadata: (options.metadata as Record<string, string>) ?? {},
+        startedAt: new Date(),
+      })
       return handleFor(id)
+    },
+    list: (options) => {
+      calls.push({ method: 'list', args: [options] })
+      const query = options.query as { metadata?: Record<string, string>; state?: string[] }
+      const matches = [...sandboxes.entries()].filter(([, record]) =>
+        record.state !== 'killed'
+        && (!query.state || query.state.includes(record.state))
+        && Object.entries(query.metadata ?? {}).every(([key, value]) => record.metadata[key] === value))
+      const offset = Number(options.nextToken ?? 0)
+      const limit = Number(options.limit ?? 100)
+      const page = matches.slice(offset, offset + limit)
+      const nextToken = offset + page.length < matches.length ? String(offset + page.length) : undefined
+      return {
+        get hasNext() { return nextToken !== undefined },
+        get nextToken() { return nextToken },
+        nextItems: async () => page.map(([sandboxId, record]) => ({
+          sandboxId, state: record.state as 'running' | 'paused', startedAt: record.startedAt,
+          metadata: record.metadata,
+        })),
+      }
     },
     connect: async (id) => {
       calls.push({ method: 'connect', args: [id] })
@@ -129,10 +154,46 @@ test('a sandbox is created from the template with a pause-on-timeout lifecycle, 
   assert.deepEqual(options.lifecycle, { onTimeout: 'pause', autoResume: false })
   assert.equal(options.timeoutMs, 4 * 60_000)
   assert.equal(options.metadata?.agentId, 'a1')
+  assert.equal(options.metadata?.overlay, 'true')
   assert.ok(!JSON.stringify(options.metadata).includes('secret-key'))
   await assert.rejects(runtime.create(request('no-image', { image: undefined })), /template/i)
   await runtime.create(request('limit', { hardTimeoutMs: 999 * 60 * 60_000 }))
   assert.equal((calls.at(-1)!.args[1] as Record<string, unknown>).timeoutMs, 4 * 60_000, 'unmetered runtime is bounded by the safety fence')
+})
+
+test('inventory lists only tagged Overlay sandboxes and maps paused state, allocation key, and cursor', async () => {
+  const { sdk, calls, sandboxes } = fakeE2b()
+  const runtime = new E2BSandboxRuntime({ apiKey: 'k', sandbox: sdk })
+  const first = await runtime.create(request('inventory-first', { allocationKey: 'allocation-1' }))
+  const second = await runtime.create(request('inventory-second', { allocationKey: 'allocation-2' }))
+  const external = await runtime.create(request('external'))
+  sandboxes.get(external.reference)!.metadata.overlay = 'false'
+  await second.stop()
+
+  const firstPage = await runtime.listInventory({ limit: 1 })
+  assert.deepEqual(firstPage.items[0], {
+    reference: first.reference,
+    state: 'running',
+    createdAt: firstPage.items[0]!.createdAt,
+    allocationKey: 'allocation-1',
+  })
+  assert.equal(typeof firstPage.items[0]!.createdAt, 'number')
+  assert.equal(firstPage.nextCursor, '1')
+
+  const secondPage = await runtime.listInventory({ cursor: firstPage.nextCursor, limit: 2 })
+  assert.deepEqual(secondPage.items, [{
+    reference: second.reference,
+    state: 'paused',
+    createdAt: secondPage.items[0]!.createdAt,
+    allocationKey: 'allocation-2',
+  }])
+  const listCalls = calls.filter((call) => call.method === 'list')
+  assert.deepEqual(listCalls[0]!.args[0], {
+    apiKey: 'k',
+    query: { metadata: { overlay: 'true' }, state: ['running', 'paused'] },
+    limit: 1,
+  })
+  assert.equal((listCalls[1]!.args[0] as Record<string, unknown>).nextToken, '1')
 })
 
 test('stop pauses, resume connects, delete kills, and a missing sandbox reads as deleted', async () => {

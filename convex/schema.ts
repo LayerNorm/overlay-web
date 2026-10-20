@@ -274,6 +274,7 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index('by_workspaceId_agentId', ['workspaceId', 'agentId'])
+    .index('by_provider_providerReference', ['provider', 'providerReference'])
     .index('by_reclaimPending_updatedAt', ['reclaimPending', 'updatedAt'])
     .index('by_phase_updatedAt', ['phase', 'updatedAt']),
 
@@ -708,7 +709,8 @@ export default defineSchema({
   })
     .index('by_entityId', ['id'])
     .index('by_workspaceId', ['workspaceId'])
-    .index('by_workspaceId_owner', ['workspaceId', 'ownerType', 'ownerId']),
+    .index('by_workspaceId_owner', ['workspaceId', 'ownerType', 'ownerId'])
+    .index('by_provider_providerRef', ['provider', 'providerRef']),
 
   // External agent surfaces (Slack, later Teams/Discord). surfaceConnections
   // is metadata for one platform install — the Chat SDK state adapter owns
@@ -2591,6 +2593,7 @@ export default defineSchema({
     .index('by_workspaceId', ['workspaceId'])
     .index('by_workspaceId_environmentId', ['workspaceId', 'environmentId'])
     .index('by_workspaceId_computerId', ['workspaceId', 'computerId'])
+    .index('by_provider_providerReference', ['provider', 'providerReference'])
     .index('by_status_cleanupAfter', ['status', 'cleanupAfter'])
     .index('by_status_nextMeterAt', ['status', 'nextMeterAt']),
 

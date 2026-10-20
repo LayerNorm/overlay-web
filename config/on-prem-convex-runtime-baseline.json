@@ -361,6 +361,7 @@
     "src/server/agents/ConvexConnectedAgentRepository.ts",
     "src/server/agents/ConvexWorkspaceAgentRepository.ts",
     "src/server/agents/McpCallJournal.ts",
+    "src/server/agents/ProviderInventoryReconciler.ts",
     "src/server/agents/agent-drive-http.ts",
     "src/server/agents/cloud/ConvexCloudAgentProvisionRepository.ts",
     "src/server/agents/create-agent-drive-content-service.ts",

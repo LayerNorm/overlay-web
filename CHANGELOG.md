@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Report unowned Boat and E2B machines from bounded inventory scans without stopping or deleting them.
+
 - Record cloud agent allocations before setup and reclaim machines whose setup was interrupted instead of leaving them running unbilled.
 
 - Correct Computer Start and Stop notifications to match the completed action.

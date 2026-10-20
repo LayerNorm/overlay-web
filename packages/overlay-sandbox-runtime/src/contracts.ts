@@ -132,6 +132,14 @@ export type SandboxUsage = {
   providerMetrics?: Record<string, number | string | boolean | null>
 }
 
+export type SandboxInventoryItem = {
+  reference: string
+  state: string
+  createdAt?: number
+  allocationKey?: string
+  monthCostCents?: number
+}
+
 /** One provider execution between create/resume and pause/termination. */
 export type SandboxExecutionUsage = {
   id: string
@@ -187,6 +195,10 @@ export interface SandboxRuntime {
   readonly provider: SandboxProviderId
   readonly capabilities: SandboxCapabilities
   create(request: SandboxCreateRequest): Promise<SandboxInstance>
+  listInventory?(args: { cursor?: string; limit: number }): Promise<{
+    items: SandboxInventoryItem[]
+    nextCursor?: string
+  }>
   /**
    * Attach to an existing sandbox. `resume: false` returns the instance
    * without waking a provider-stopped session — metering and cleanup paths

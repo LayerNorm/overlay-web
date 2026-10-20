@@ -8,6 +8,7 @@ import type {
   SandboxCreateRequest,
   SandboxExecutionUsage,
   SandboxFileEntry,
+  SandboxInventoryItem,
   SandboxInstance,
   SandboxLifecycleState,
   SandboxNetworkPolicy,
@@ -74,6 +75,7 @@ export type E2BCommandHandle = {
 }
 export type E2BSandboxClass = {
   create(template: string, options: Record<string, unknown>): Promise<E2BSandboxHandle>
+  list(options: Record<string, unknown>): E2BSandboxPaginator
   connect(sandboxId: string, options?: Record<string, unknown>): Promise<E2BSandboxHandle>
   getInfo(sandboxId: string, options?: Record<string, unknown>): Promise<{ state: 'running' | 'paused'; startedAt: Date; cpuCount?: number; memoryMB?: number }>
   pause(sandboxId: string, options?: Record<string, unknown>): Promise<boolean>
@@ -81,6 +83,17 @@ export type E2BSandboxClass = {
   setTimeout(sandboxId: string, timeoutMs: number, options?: Record<string, unknown>): Promise<void>
   createSnapshot?(sandboxId: string, options?: { name?: string }): Promise<{ snapshotId: string }>
   deleteSnapshot(snapshotId: string, options?: Record<string, unknown>): Promise<boolean>
+}
+
+export type E2BSandboxPaginator = {
+  readonly hasNext: boolean
+  readonly nextToken?: string
+  nextItems(): Promise<Array<{
+    sandboxId: string
+    state: 'running' | 'paused'
+    startedAt: Date
+    metadata: Record<string, string>
+  }>>
 }
 
 export type E2BRuntimeOptions = {
@@ -117,13 +130,38 @@ export class E2BSandboxRuntime implements SandboxRuntime {
       ...this.connection(),
       timeoutMs: Math.min(Math.max(request.hardTimeoutMs, 60_000), RUNTIME_FENCE_MS),
       envs: request.environment ?? {},
-      metadata: { ...(request.metadata ?? {}), overlayName: request.name, ...(request.allocationKey ? { overlayAllocationKey: request.allocationKey } : {}) },
+      metadata: { ...(request.metadata ?? {}), overlay: 'true', overlayName: request.name, ...(request.allocationKey ? { overlayAllocationKey: request.allocationKey } : {}) },
       allowInternetAccess: request.networkPolicy.mode !== 'deny_all',
       // A sandbox that reaches its timeout is paused, not destroyed: its disk is a machine's whole state.
       lifecycle: { onTimeout: 'pause', autoResume: false },
     })
     await request.onAllocated?.(handle.sandboxId)
     return new E2BSandbox(this, handle.sandboxId, request.name, handle, request.environment ?? {})
+  }
+
+  async listInventory(args: { cursor?: string; limit: number }): Promise<{
+    items: SandboxInventoryItem[]
+    nextCursor?: string
+  }> {
+    const paginator = this.options.sandbox.list({
+      ...this.connection(),
+      query: { metadata: { overlay: 'true' }, state: ['running', 'paused'] },
+      limit: args.limit,
+      ...(args.cursor ? { nextToken: args.cursor } : {}),
+    })
+    const sandboxes = await paginator.nextItems()
+    const items = sandboxes.map((sandbox): SandboxInventoryItem => ({
+      reference: sandbox.sandboxId,
+      state: sandbox.state,
+      ...(Number.isFinite(sandbox.startedAt.getTime()) ? { createdAt: sandbox.startedAt.getTime() } : {}),
+      ...(sandbox.metadata.overlayAllocationKey
+        ? { allocationKey: sandbox.metadata.overlayAllocationKey }
+        : {}),
+    }))
+    return {
+      items,
+      ...(paginator.hasNext && paginator.nextToken ? { nextCursor: paginator.nextToken } : {}),
+    }
   }
 
   async reconnect(reference: string, options: { resume?: boolean } = {}): Promise<SandboxInstance> {

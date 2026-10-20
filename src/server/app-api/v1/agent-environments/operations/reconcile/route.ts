@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { getInternalApiSecret, matchesInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { createCloudAgentMachineService } from '@/server/agents/cloud/create-cloud-agent-machine-service'
+import { ProviderInventoryReconciler } from '@/server/agents/ProviderInventoryReconciler'
 import { logger } from '@/server/observability/logger'
 import { agentEnvironmentErrorResponse } from '../../shared'
 
@@ -28,17 +29,29 @@ export async function POST(request: Request) {
         })
         return { reclaimed: 0, skipped: 0, failed: 1 }
       })
-    const [supervised, reconciliation, meter, lifecycle, cloudReclaimResult] = await Promise.all([
+    const providerInventory = new Date().getUTCMinutes() % 15 === 0
+      ? Promise.resolve()
+        .then(() => new ProviderInventoryReconciler().reconcile())
+        .catch((error) => {
+          logger.warn('[operations-reconcile] provider inventory reconciliation failed', {
+            error: error instanceof Error ? error.name : 'UnknownError',
+          })
+          return { scanned: 0, live: 0, unowned: [], truncated: false, failed: true }
+        })
+      : Promise.resolve({ skipped: true })
+    const [supervised, reconciliation, meter, lifecycle, cloudReclaimResult, providerInventoryResult] = await Promise.all([
       controlPlane.sweepRemoteRuns(),
       controlPlane.reconcileSandboxSettlements(100),
       server.managedAgentSandboxBilling.meterLeases(),
       dispatchRemoteRunIntents(),
       cloudReclaim,
+      providerInventory,
     ])
     return NextResponse.json({
       reconciliation,
       lifecycle,
       cloudReclaim: cloudReclaimResult,
+      providerInventory: providerInventoryResult,
       supervised: supervised.expiredRunIds.length,
       metered: {
         disabled: meter.disabled === true,
