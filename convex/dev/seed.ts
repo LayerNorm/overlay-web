@@ -2,6 +2,7 @@ import { v } from 'convex/values'
 import { internalMutation, type MutationCtx } from '../_generated/server'
 import { requireStagingSeedEnvironment } from '../lib/staging'
 import { requirePreviewDeployment } from '../lib/preview'
+import { ensureEmptyBalance, ensureWorkspaceBillingAccount, uniqueWorkspaceAccount } from '../billing/accountModel'
 
 /** Internal, idempotent fixtures. Identity comes from the sandbox account configuration. */
 export const init = internalMutation({
@@ -12,7 +13,9 @@ export const init = internalMutation({
     const userId = process.env.PREVIEW_LOGIN_USER_ID?.trim()
     const email = process.env.PREVIEW_LOGIN_EMAIL?.trim()
     if (!userId?.startsWith('user_') || !email) throw new Error('Configure the sandbox preview login identity before seeding')
-    return seedFixtures(ctx, { userId, email, lane: 'preview' })
+    const personal = await seedFixtures(ctx, { userId, email, lane: 'preview' })
+    await seedComputerWorkspace(ctx, { userId, email })
+    return personal
   },
 })
 
@@ -25,6 +28,42 @@ export const initStaging = internalMutation({
     return seedFixtures(ctx, { ...identity, lane: 'staging' })
   },
 })
+
+async function seedComputerWorkspace(ctx: MutationCtx, { userId, email }: { userId: string; email: string }) {
+  requirePreviewDeployment()
+  const workspaceId = 'preview-computer-qa-' + userId
+  const principalId = workspaceId + '-owner'
+  const existing = await ctx.db.query('workspaces')
+    .withIndex('by_workspaceId', q => q.eq('workspaceId', workspaceId)).unique()
+  // Re-seeding must not restore spent credit, reset holds, or undo QA plan changes.
+  if (existing) return
+  if (await uniqueWorkspaceAccount(ctx, workspaceId)) throw new Error('Preview Computer fixture account already exists')
+  const now = Date.now()
+  await ctx.db.insert('workspaces', {
+    workspaceId, kind: 'organization', name: 'Computer QA', slug: workspaceId,
+    status: 'active', createdByPrincipalId: principalId, createdAt: now, updatedAt: now,
+  })
+  await ctx.db.insert('workspacePrincipals', {
+    principalId, workspaceId, type: 'human', userId, email, displayName: 'Preview QA',
+    createdAt: now, updatedAt: now,
+  })
+  await ctx.db.insert('workspaceMemberships', {
+    membershipId: workspaceId + '-membership', workspaceId, principalId,
+    role: 'owner', status: 'active', joinedAt: now, updatedAt: now,
+  })
+  const account = await ensureWorkspaceBillingAccount(ctx, { workspaceId, primaryBillingContactUserId: userId })
+  const planAmountCents = 500
+  await ctx.db.insert('billingAccountSubscriptions', {
+    billingAccountId: account.billingAccountId, provider: 'preview-fixture',
+    planKind: 'paid', planVersion: 'variable_v2', planAmountCents,
+    markupBasisPoints: account.markupBasisPoints, status: 'active',
+    autoTopUpEnabled: false, autoTopUpAmountCents: 0,
+    currentPeriodStart: now, currentPeriodEnd: now + 30 * 24 * 60 * 60_000,
+    createdAt: now, updatedAt: now,
+  })
+  const balance = await ensureEmptyBalance(ctx, account.billingAccountId)
+  await ctx.db.patch(balance._id, { includedMicros: planAmountCents * 10_000, version: balance.version + 1 })
+}
 
 async function seedFixtures(
   ctx: MutationCtx,

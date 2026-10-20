@@ -94,6 +94,24 @@ Boat seconds are already size-weighted billable seconds, not ordinary wall-clock
 
 This accounting checkpoint does not complete Phase 2. Scoped provider inventory reconciliation and alerts, storage accounting, legacy `CloudAgentMachineService` pre-enrollment allocation recovery, and Phase 3 harness/preview QA remain follow-up work. Host viewer activity is not supervised by this Computer action-token integration.
 
+### Isolated Computer preview QA
+
+The internal Preview seed retains the free Personal workspace and adds a separate
+`Computer QA` workspace for the configured sandbox identity. Its workspace account
+has $5 of synthetic included credit, no Stripe customer/subscription, and no
+automatic top-ups. Re-seeding never restores spent credit or changes an existing
+fixture's plan, balance, holds or membership. The seed refuses non-Preview backends.
+This is test ledger credit, not a payment or free provider compute.
+
+Enable `OVERLAY_FEATURE_COMPUTERS=1` only on the feature's Preview branch, reusing
+the shared Preview Boat credential. Keep production and other Preview branches
+unchanged. Test free admission in Personal and funded lifecycle in Computer QA;
+allocate at most one small disposable Computer, then stop and delete that resource.
+Record its ID, provider reference and operation timestamps for cost reconciliation.
+Preview registers no Convex crons: the four-minute provider fence is not proof of
+Overlay's ten-minute idle supervisor. Scheduled metering/idle acceptance requires
+separate controlled supervision; do not claim it from a successful desktop open.
+
 V2 remote tasks bind reservations to the logical run through `remoteRunId`.
 Expired/stale-hold policy preserves a task's hold while execution or terminal
 settlement is unresolved. The original hard deadline still triggers stop; it cannot
