@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { readFileSync } from 'node:fs'
+import { getPresetCssVars } from '../../overlay-app-core/src/theme/presets.ts'
+import { lightColorTheme, darkColorTheme } from '../../overlay-app-core/src/theme/base.ts'
 
 const { overlayDesignTokens, overlayTailwindTheme } = await import('./tokens.ts')
 
@@ -29,6 +31,20 @@ test('neutral buttons have separate surfaces and readable text in both themes', 
         const [lighter, darker] = [luminance(token(surface)), luminance(token('text'))].sort((a, b) => b - a)
         assert.ok((lighter + 0.05) / (darker + 0.05) >= 4.5, `${variant} ${surface} text contrast`)
       }
+    }
+  }
+})
+
+test('runtime default presets and fallback colors preserve the stylesheet control palette', () => {
+  const css = readFileSync(new URL('./styles.css', import.meta.url), 'utf8')
+  const blocks = [css.match(/:root \{([\s\S]*?)\}/)[1], css.match(/\[data-theme='dark'\] \{([\s\S]*?)\}/)[1]]
+  for (const [index, mode] of ['light', 'dark'].entries()) {
+    const preset = getPresetCssVars(`default-${mode}`)
+    const fallback = index === 0 ? lightColorTheme : darkColorTheme
+    for (const [, key, value] of blocks[index].matchAll(/(--(?:button|toast)-[\w-]+): (#[0-9a-f]+);/g)) {
+      assert.equal(preset[key], value, `${mode} runtime ${key}`)
+      const field = key.slice(2).replace(/-([a-z])/g, (_, letter) => letter.toUpperCase())
+      if (field in fallback) assert.equal(fallback[field], value, `${mode} fallback ${key}`)
     }
   }
 })
