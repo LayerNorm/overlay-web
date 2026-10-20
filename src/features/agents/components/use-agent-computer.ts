@@ -78,7 +78,7 @@ export function useAgentComputer({
     setLoadedFor(null)
   }
   const computerProvisionError = computerProvisionFailure?.agentId === agent?.id
-    ? computerProvisionFailure.message
+    ? computerProvisionFailure?.message ?? null
     : null
   const setComputerProvisionError = (message: string | null, agentId = agent?.id) => {
     if (!message) {

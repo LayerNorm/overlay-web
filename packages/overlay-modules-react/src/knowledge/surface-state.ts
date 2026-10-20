@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import type { Dispatch, SetStateAction } from 'react'
 import { toast } from '@overlay/ui/primitives'
 import { beginKnowledgeUploadToast } from './upload-toast'
 import {
@@ -867,6 +868,94 @@ async function pickedFileToBrowserFile(picked: KnowledgePickedFile): Promise<Fil
   return file
 }
 
+interface UploadBatchResult {
+  uploadedCount: number
+  errorMessage: string | null
+}
+
+async function uploadFlatBatch(
+  list: readonly File[],
+  filePort: SharedKnowledgeFilePort,
+  parentId: string | null,
+  setFiles: Dispatch<SetStateAction<FileNode[]>>,
+): Promise<UploadBatchResult> {
+  let uploadedCount = 0
+  try {
+    for (const file of list) {
+      const result = await uploadSingleFile(filePort, file, parentId)
+      if (!result.ok) return { uploadedCount, errorMessage: result.error ?? 'One or more files failed to upload.' }
+      uploadedCount += 1
+      if (result.file) {
+        setFiles((current) => [...current.filter((node) => node._id !== result.file!._id), result.file!])
+        filePort.entityChanged('file', result.file._id, 'created')
+      }
+    }
+    return { uploadedCount, errorMessage: null }
+  } catch (error) {
+    return {
+      uploadedCount,
+      errorMessage: error instanceof Error ? error.message : 'Could not upload files.',
+    }
+  }
+}
+
+async function uploadFolderBatch(
+  list: readonly File[],
+  adapters: KnowledgeSurfaceAdapters,
+  filePort: SharedKnowledgeFilePort,
+  parentId: string | null,
+  setFiles: Dispatch<SetStateAction<FileNode[]>>,
+): Promise<UploadBatchResult> {
+  let uploadedCount = 0
+  const folders = new Map<string, string>()
+  try {
+    for (const file of list) {
+      const parts = file.webkitRelativePath.split('/').filter(Boolean)
+      for (let index = 0; index < parts.length - 1; index += 1) {
+        const folderPath = parts.slice(0, index + 1).join('/')
+        if (folders.has(folderPath)) continue
+        const parentPath = index === 0 ? null : parts.slice(0, index).join('/')
+        // Sequential on purpose: nested folders need their parent's id,
+        // which only exists after the earlier create resolves.
+        // react-doctor-disable-next-line react-doctor/async-await-in-loop
+        const created = await adapters.repository.create({
+          name: parts[index] ?? 'Folder',
+          kind: 'folder',
+          parentId: parentPath ? (folders.get(parentPath) ?? null) : parentId,
+        })
+        folders.set(folderPath, created.id)
+      }
+      const parentFolderPath = parts.slice(0, -1).join('/')
+      const result = await uploadSingleFile(filePort, file, folders.get(parentFolderPath) ?? parentId)
+      if (!result.ok) return { uploadedCount, errorMessage: result.error ?? 'One or more files failed to upload.' }
+      uploadedCount += 1
+      if (result.file) setFiles((current) => [...current.filter((node) => node._id !== result.file!._id), result.file!])
+    }
+    return { uploadedCount, errorMessage: null }
+  } catch (error) {
+    return {
+      uploadedCount,
+      errorMessage: error instanceof Error ? error.message : 'Could not upload files.',
+    }
+  }
+}
+
+function settleUploadToast(
+  uploadToast: ReturnType<typeof beginKnowledgeUploadToast>,
+  result: UploadBatchResult,
+  total: number,
+  successMessage: string,
+) {
+  if (!result.errorMessage) {
+    uploadToast.success(successMessage)
+    return
+  }
+  const summary = result.uploadedCount > 0
+    ? `Uploaded ${result.uploadedCount} of ${total} files. ${result.errorMessage}`
+    : result.errorMessage
+  uploadToast.error(summary)
+}
+
 export function useFileUploads({
   adapters,
   filePort,
@@ -884,62 +973,11 @@ export function useFileUploads({
     if (list.length === 0) return
     const label = list.length === 1 ? list[0]!.name : `${folderUpload ? 'Folder' : 'Files'} · ${list.length} files`
     const uploadToast = beginKnowledgeUploadToast(toast, `Uploading ${label}…`)
-    let uploadedCount = 0
-    let errorMessage: string | null = null
-    try {
-      if (!folderUpload) {
-        for (const file of list) {
-          const result = await uploadSingleFile(filePort, file, activeFolder?._id ?? null)
-          if (!result.ok) {
-            errorMessage = result.error ?? 'One or more files failed to upload.'
-            break
-          }
-          uploadedCount += 1
-          if (result.file) {
-            setFiles((current) => [...current.filter((node) => node._id !== result.file!._id), result.file!])
-            filePort.entityChanged('file', result.file._id, 'created')
-          }
-        }
-      } else {
-        const folders = new Map<string, string>()
-        for (const file of list) {
-          const parts = file.webkitRelativePath.split('/').filter(Boolean)
-          for (let index = 0; index < parts.length - 1; index += 1) {
-            const folderPath = parts.slice(0, index + 1).join('/')
-            if (folders.has(folderPath)) continue
-            const parentPath = index === 0 ? null : parts.slice(0, index).join('/')
-            // Sequential on purpose: nested folders need their parent's id,
-            // which only exists after the earlier create resolves.
-            // react-doctor-disable-next-line react-doctor/async-await-in-loop
-            const created = await adapters.repository.create({
-              name: parts[index] ?? 'Folder',
-              kind: 'folder',
-              parentId: parentPath ? (folders.get(parentPath) ?? null) : (activeFolder?._id ?? null),
-            })
-            folders.set(folderPath, created.id)
-          }
-          const parentFolderPath = parts.slice(0, -1).join('/')
-          const result = await uploadSingleFile(filePort, file, folders.get(parentFolderPath) ?? activeFolder?._id ?? null)
-          if (!result.ok) {
-            errorMessage = result.error ?? 'One or more files failed to upload.'
-            break
-          }
-          uploadedCount += 1
-          if (result.file) setFiles((current) => [...current.filter((node) => node._id !== result.file!._id), result.file!])
-        }
-      }
-    } catch (error) {
-      errorMessage = error instanceof Error ? error.message : 'Could not upload files.'
-    } finally {
-      if (errorMessage) {
-        const summary = uploadedCount > 0
-          ? `Uploaded ${uploadedCount} of ${list.length} files. ${errorMessage}`
-          : errorMessage
-        uploadToast.error(summary)
-      } else {
-        uploadToast.success(list.length === 1 && !folderUpload ? `Uploaded ${list[0]!.name}.` : `Uploaded ${list.length} files.`)
-      }
-    }
+    const result = folderUpload
+      ? await uploadFolderBatch(list, adapters, filePort, activeFolder?._id ?? null, setFiles)
+      : await uploadFlatBatch(list, filePort, activeFolder?._id ?? null, setFiles)
+    const successMessage = list.length === 1 && !folderUpload ? `Uploaded ${list[0]!.name}.` : `Uploaded ${list.length} files.`
+    settleUploadToast(uploadToast, result, list.length, successMessage)
   }
 
   async function handleNativePick(folder: boolean) {
