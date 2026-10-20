@@ -91,6 +91,25 @@ function MachineActions({ state, busy, onRun, onRetry, onControl }: {
   )
 }
 
+function ReconnectNotice({ state, supported, label, onReconnect }: {
+  state: CloudAgentStatusResource['state']
+  supported: boolean
+  label: string
+  onReconnect(): void
+}) {
+  if (state !== 'needs_sign_in') return null
+  return supported ? (
+    <div className="mt-3 flex items-center justify-between gap-3 rounded-lg bg-(--surface-subtle) px-3 py-2">
+      <p className="text-xs text-(--foreground)">{label} could not sign in. Reconnect the account to continue.</p>
+      <Button variant="primary" size="sm" onClick={onReconnect}>Reconnect</Button>
+    </div>
+  ) : (
+    <p className="mt-3 rounded-lg bg-(--surface-subtle) px-3 py-2 text-xs text-(--foreground)">
+      This agent is no longer supported. Remove its account in Settings → Agent accounts.
+    </p>
+  )
+}
+
 /**
  * The agent's Overlay Cloud machine on its page: whether it is ready, the
  * account it signs in with, and pause / resume / restart. Deleting the machine
@@ -217,17 +236,7 @@ export function CloudAgentPanel({ agentId }: { agentId: string }) {
             {status.account ? <div className="flex justify-between gap-3"><dt>Account</dt><dd className="truncate text-(--foreground)">{status.account.label}</dd></div> : null}
           </dl>
 
-          {status.state === 'needs_sign_in' && reconnectSupported ? (
-            <div className="mt-3 flex items-center justify-between gap-3 rounded-lg bg-(--surface-subtle) px-3 py-2">
-              <p className="text-xs text-(--foreground)">{adapterLabel} could not sign in. Reconnect the account to continue.</p>
-              <Button variant="primary" size="sm" onClick={() => void openReconnect()}>Reconnect</Button>
-            </div>
-          ) : null}
-          {status.state === 'needs_sign_in' && !reconnectSupported ? (
-            <p className="mt-3 rounded-lg bg-(--surface-subtle) px-3 py-2 text-xs text-(--foreground)">
-              This agent is no longer supported. Remove its account in Settings → Agent accounts.
-            </p>
-          ) : null}
+          <ReconnectNotice state={status.state} supported={reconnectSupported} label={adapterLabel} onReconnect={() => void openReconnect()} />
 
           <MachineActions state={status.state} busy={busy} onRun={(action) => void run(action)} onRetry={() => void retry()} onControl={() => void control()} />
           {actionError ? <p role="alert" className="mt-2 text-xs text-red-500">{actionError}</p> : null}
