@@ -7,7 +7,7 @@ import type { AgentBinding, AgentEnvironment, AgentSandboxLease, ComputerSize } 
 import type { AuditService } from '@/server/admin'
 import { ConnectedAgentControlPlaneError, type ConnectedAgentControlPlaneService } from '../ConnectedAgentControlPlaneService'
 import type { ConnectedAgentRepository } from '../ConnectedAgentRepository'
-import type { CloudAgentProvisionRepository } from './CloudAgentProvisionRepository'
+import type { CloudAgentProvisionRecord, CloudAgentProvisionRepository } from './CloudAgentProvisionRepository'
 import { prepareCloudAgentPreviewAccess } from './cloud-agent-preview-access'
 import {
   deriveCloudAgentState,
@@ -17,7 +17,8 @@ import {
 } from '@/shared/agents/cloud-agent'
 import type { AgentProfileBundle } from '@layernorm/overlay-agent-bridge-protocol'
 import { CLAUDE_JSON_PATH, planProfileApply, PROFILE_HARNESS_HOME, PROFILE_MANAGED_PATH, type ManagedProfile } from '../profiles/agent-profile-apply'
-import { MANAGED_SANDBOX_IDLE_TIMEOUT_MS, managedSandboxRuntimeFromEnv } from '../managed-sandbox-runtime'
+import { MANAGED_SANDBOX_IDLE_TIMEOUT_MS, ManagedSandboxError, managedSandboxRuntimeFromEnv } from '../managed-sandbox-runtime'
+import { isMissingSandboxError } from '@/server/computers/ComputerLifecycleHelpers'
 import {
   CLOUD_AGENT_RESOURCES,
   CLOUD_AGENT_WORKSPACE,
@@ -83,17 +84,21 @@ export class CloudAgentMachineService {
     size: ComputerSize
     serverUrl: string
   }) {
-    const phase = (next: CloudAgentPhase, extra: { error?: string; environmentId?: string } = {}) =>
-      this.dependencies.provisions.setPhase({ workspaceId: args.workspaceId, agentId: args.agentId, phase: next, now: this.now(), ...extra })
-        .catch((error) => logger.warn('[cloud-agent] could not record the provisioning phase', {
-          error: error instanceof Error ? error.message : String(error),
-        }))
-    await phase('allocating')
+    const allocationKey = `cloud-agent:${args.workspaceId}:${args.agentId}:${randomUUID()}`
+    const phase = async (next: CloudAgentPhase, extra: { error?: string; environmentId?: string } = {}) => {
+      const recorded = await this.dependencies.provisions.setPhase({
+        workspaceId: args.workspaceId, agentId: args.agentId, phase: next, allocationKey, now: this.now(), ...extra,
+      })
+      if (!recorded) throw new Error('CLOUD_AGENT_PROVISION_SUPERSEDED')
+    }
     let machine: SandboxInstance | null = null
     let environment: AgentEnvironment | null = null
+    let runtime: SandboxRuntime | null = null
+    let allocatedReference: string | null = null
     try {
+      await phase('allocating')
       await this.admit(args)
-      const runtime = this.runtime()
+      runtime = this.runtime()
       const enrollment = await this.dependencies.controlPlane.createEnrollmentSession({
         actorUserId: args.actorUserId,
         workspaceId: args.workspaceId,
@@ -112,6 +117,19 @@ export class CloudAgentMachineService {
         hardTimeoutMs: 0,
         resources,
         metadata: { overlay: 'true', kind: 'cloud-agent', workspace: args.workspaceId, agent: args.agentId },
+        allocationKey,
+        onAllocated: async (reference) => {
+          const result = await this.dependencies.provisions.recordAllocation({
+            workspaceId: args.workspaceId,
+            agentId: args.agentId,
+            allocationKey,
+            provider: runtime!.provider,
+            providerReference: reference,
+            now: this.now(),
+          })
+          if (!result.bound) throw new Error('CLOUD_AGENT_ALLOCATION_NOT_RECORDED')
+          allocatedReference = reference
+        },
       })
       await phase('booting')
       const hostingAuthFile = await prepareCloudAgentPreviewAccess(machine, args.serverUrl)
@@ -124,6 +142,7 @@ export class CloudAgentMachineService {
       }))
       await phase('connecting')
       environment = await this.waitForEnrollment(args.workspaceId, name)
+      await phase('connecting', { environmentId: environment.id })
       await this.dependencies.controlPlane.approveEnvironment({
         actorUserId: args.actorUserId,
         workspaceId: args.workspaceId,
@@ -148,10 +167,150 @@ export class CloudAgentMachineService {
       const { publicKey: _publicKey, ...publicEnvironment } = environment
       return { environment: publicEnvironment, lease: { id: lease.id, status: lease.status }, binding }
     } catch (error) {
-      await this.abandon(args, machine, environment)
-      await phase('failed', { error: provisionFailureMessage(error) })
+      const deleted = await this.abandon(args, machine, environment, runtime, allocatedReference)
+      if (allocatedReference) {
+        const released = deleted
+          ? await this.dependencies.provisions.releaseAllocation({
+            workspaceId: args.workspaceId,
+            agentId: args.agentId,
+            allocationKey,
+            providerReference: allocatedReference,
+            now: this.now(),
+          }).catch((_releaseError) => false)
+          : false
+        if (!released) {
+          try {
+            const marked = await this.dependencies.provisions.markReclaimPending({
+              workspaceId: args.workspaceId, agentId: args.agentId, allocationKey, now: this.now(),
+            })
+            if (!marked) logger.warn('[cloud-agent] could not mark an allocation for reclaim', { reason: 'allocation_state_changed' })
+          } catch (reclaimError) {
+            logger.warn('[cloud-agent] could not mark an allocation for reclaim', {
+              error: reclaimError instanceof Error ? reclaimError.name : 'UnknownError',
+            })
+          }
+        }
+      }
+      await this.dependencies.provisions.setPhase({
+        workspaceId: args.workspaceId,
+        agentId: args.agentId,
+        phase: 'failed',
+        allocationKey,
+        error: provisionFailureMessage(error),
+        now: this.now(),
+      }).catch((phaseError) => logger.warn('[cloud-agent] could not record the failed provisioning phase', {
+        error: phaseError instanceof Error ? phaseError.name : 'UnknownError',
+      }))
       throw error
     }
+  }
+
+  async reclaimAbandonedProvisions(args: { limit?: number } = {}): Promise<{ reclaimed: number; skipped: number; failed: number }> {
+    if (!this.hasConfiguredRuntime()) return { reclaimed: 0, skipped: 0, failed: 0 }
+    const rows = await this.dependencies.provisions.listReclaimable({
+      before: this.now() - 10 * 60_000,
+      limit: Math.max(1, Math.min(50, Number.isFinite(args.limit) ? Math.floor(args.limit!) : 20)),
+    })
+    const summary = { reclaimed: 0, skipped: 0, failed: 0 }
+    for (const row of rows) {
+      summary[await this.reclaimAbandonedProvision(row)] += 1
+    }
+    return summary
+  }
+
+  private hasConfiguredRuntime(): boolean {
+    try {
+      this.runtime()
+      return true
+    } catch (error) {
+      if (error instanceof ManagedSandboxError && error.code === 'managed_sandbox_provider_invalid') return false
+      throw error
+    }
+  }
+
+  private async reclaimAbandonedProvision(row: CloudAgentProvisionRecord): Promise<'reclaimed' | 'skipped' | 'failed'> {
+    if (!row.providerReference || !row.provider || !row.allocationKey) return 'skipped'
+    try {
+      const claimed = await this.claimProvisionForReclaim(row)
+      if (!claimed) return 'skipped'
+      const { providerReference, allocationKey, provider } = claimed
+      if (!providerReference || !allocationKey || !provider) return 'skipped'
+      if (await this.leaseOwnsProvision(claimed, providerReference)) {
+        return await this.finishProvisionReclaim(claimed, allocationKey, providerReference) ? 'skipped' : 'failed'
+      }
+      await this.deleteReclaimableMachine(provider, providerReference)
+      await this.revokeReclaimedEnvironment(claimed)
+      if (!await this.finishProvisionReclaim(claimed, allocationKey, providerReference)) {
+        throw new Error('CLOUD_AGENT_RECLAIM_STATE_CHANGED')
+      }
+      await this.dependencies.audit.record({
+        action: 'agent_environment.cloud_allocation_reclaimed',
+        actorType: 'system',
+        outcome: 'success',
+        resourceType: 'agent_environment',
+        ...(claimed.environmentId ? { resourceId: claimed.environmentId } : {}),
+        workspaceId: claimed.workspaceId,
+        metadata: { workspaceId: claimed.workspaceId, agentId: claimed.agentId, provider },
+      } as never).catch((_error) => undefined)
+      return 'reclaimed'
+    } catch (error) {
+      logger.warn('[cloud-agent] abandoned machine reclaim failed', {
+        provider: row.provider,
+        error: error instanceof Error ? error.name : 'UnknownError',
+      })
+      return 'failed'
+    }
+  }
+
+  private async claimProvisionForReclaim(row: CloudAgentProvisionRecord) {
+    if (row.reclaimPending) return row
+    return await this.dependencies.provisions.claimReclaim({
+      workspaceId: row.workspaceId,
+      agentId: row.agentId,
+      expectedUpdatedAt: row.updatedAt,
+      now: this.now(),
+    })
+  }
+
+  private async leaseOwnsProvision(row: CloudAgentProvisionRecord, providerReference: string): Promise<boolean> {
+    if (!row.environmentId) return false
+    const lease = await this.dependencies.repository.getActiveSandboxLease({
+      workspaceId: row.workspaceId,
+      environmentId: row.environmentId,
+    })
+    return lease?.providerReference === providerReference
+  }
+
+  private async deleteReclaimableMachine(provider: string, providerReference: string): Promise<void> {
+    try {
+      const machine = await this.runtime(provider).reconnect(providerReference, { resume: false })
+      await machine.delete()
+    } catch (error) {
+      if (!isMissingSandboxError(error)) throw error
+    }
+  }
+
+  private async revokeReclaimedEnvironment(row: CloudAgentProvisionRecord): Promise<void> {
+    if (!row.environmentId) return
+    await this.dependencies.controlPlane.revokeEnvironment({
+      actorUserId: row.userId,
+      workspaceId: row.workspaceId,
+      environmentId: row.environmentId,
+    }).catch((_error) => undefined)
+  }
+
+  private async finishProvisionReclaim(
+    row: CloudAgentProvisionRecord,
+    allocationKey: string,
+    providerReference: string,
+  ): Promise<boolean> {
+    return await this.dependencies.provisions.finishReclaim({
+      workspaceId: row.workspaceId,
+      agentId: row.agentId,
+      allocationKey,
+      providerReference,
+      now: this.now(),
+    })
   }
 
   /**
@@ -556,7 +715,9 @@ export class CloudAgentMachineService {
     args: { actorUserId: string; workspaceId: string },
     machine: SandboxInstance | null,
     environment: AgentEnvironment | null,
-  ) {
+    runtime: SandboxRuntime | null,
+    providerReference: string | null,
+  ): Promise<boolean> {
     if (environment) {
       await this.dependencies.controlPlane.revokeEnvironment({
         actorUserId: args.actorUserId,
@@ -564,7 +725,36 @@ export class CloudAgentMachineService {
         environmentId: environment.id,
       }).catch((_error) => undefined)
     }
-    if (machine) await machine.delete().catch((_error) => undefined)
+    if (machine) {
+      try {
+        await machine.delete()
+        return true
+      } catch (error) {
+        if (!isMissingSandboxError(error)) {
+          logger.warn('[cloud-agent] could not delete an allocated machine', {
+            provider: runtime?.provider,
+            error: error instanceof Error ? error.name : 'UnknownError',
+          })
+        }
+        return isMissingSandboxError(error)
+      }
+    }
+    if (runtime && providerReference) {
+      try {
+        const connected = await runtime.reconnect(providerReference, { resume: false })
+        await connected.delete()
+        return true
+      } catch (error) {
+        if (!isMissingSandboxError(error)) {
+          logger.warn('[cloud-agent] could not delete an allocated machine', {
+            provider: runtime.provider,
+            error: error instanceof Error ? error.name : 'UnknownError',
+          })
+        }
+        return isMissingSandboxError(error)
+      }
+    }
+    return providerReference === null
   }
 
   async admit(args: { actorUserId: string; workspaceId: string; agentId: string }): Promise<void> {

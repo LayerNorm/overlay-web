@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import type { SandboxCreateRequest, SandboxInstance, SandboxRuntime } from '@overlay/sandbox-runtime'
+import type { SandboxCommandRequest, SandboxCreateRequest, SandboxInstance, SandboxRuntime } from '@overlay/sandbox-runtime'
 import type { AgentEnvironment, AgentSandboxLease } from '@overlay/workspace-contracts'
+import type { CloudAgentProvisionRecord } from './CloudAgentProvisionRepository'
 import {ConnectedAgentControlPlaneError} from '../ConnectedAgentControlPlaneService'
 import { CloudAgentMachineService } from './CloudAgentMachineService'
 import { CLOUD_AGENT_WORKSPACE, cloudAgentConnectCommand, cloudAgentRunCommand, cloudAgentStopHostCommand } from './cloud-agent-machine'
@@ -19,7 +20,7 @@ function fakeMachine(status: 'running' | 'stopped' = 'running', files: Record<st
     delete: async () => { calls.push('delete') },
     readFile: async (path: string) => (path in files ? new TextEncoder().encode(files[path]) : null),
     writeFiles: async (batch: Array<{ path: string }>) => { written.push(...batch.map((file) => file.path)) },
-    runCommand: async (request: { args?: string[] }) => {
+    runCommand: async (request: SandboxCommandRequest) => {
       commands.push(request.args?.[1] ?? '')
       return { wait: async () => ({ exitCode: 0, stdout: '', stderr: '' }) }
     },
@@ -27,13 +28,21 @@ function fakeMachine(status: 'running' | 'stopped' = 'running', files: Record<st
   return { machine, commands, calls, written }
 }
 
-function fakeRuntime(machine: SandboxInstance) {
+function fakeRuntime(machine: SandboxInstance, log: Array<[string, unknown]>) {
   const created: SandboxCreateRequest[] = []
   const runtime = {
     provider: 'box',
     capabilities: {} as never,
-    create: async (request: SandboxCreateRequest) => { created.push(request); return machine },
-    reconnect: async () => machine,
+    create: async (request: SandboxCreateRequest) => {
+      created.push(request)
+      log.push(['create', request])
+      await request.onAllocated?.(machine.reference)
+      return machine
+    },
+    reconnect: async (reference: string, options?: { resume?: boolean }) => {
+      log.push(['reconnect', { reference, options }])
+      return machine
+    },
     restore: async () => machine,
     deleteSnapshot: async () => undefined,
   } as SandboxRuntime
@@ -45,13 +54,31 @@ const environment = (overrides: Partial<AgentEnvironment> = {}): AgentEnvironmen
   capabilities: {}, createdAt: 0, updatedAt: 0, ...overrides,
 })
 
-function deps(machine: SandboxInstance, options: { enrolled?: boolean; lease?: AgentSandboxLease | null; env?: AgentEnvironment; bound?: boolean; disabled?: boolean; activeExecution?: boolean; enrollmentError?: Error; admissionError?: Error } = {}) {
+function deps(machine: SandboxInstance, options: {
+  enrolled?: boolean
+  lease?: AgentSandboxLease | null
+  env?: AgentEnvironment
+  bound?: boolean
+  disabled?: boolean
+  activeExecution?: boolean
+  enrollmentError?: Error
+  admissionError?: Error
+  reclaimableRows?: CloudAgentProvisionRecord[]
+  now?: number
+} = {}) {
   const log: Array<[string, unknown]> = []
   const phases: Array<{ phase: string; error?: string }> = []
   let removed = false
-  const { runtime, created } = fakeRuntime(machine)
+  let reclaimPending = false
+  const { runtime, created } = fakeRuntime(machine, log)
+  const runCommand = machine.runCommand.bind(machine)
+  machine.runCommand = async (request) => {
+    log.push(['command', request])
+    return await runCommand(request)
+  }
+  const reclaimableRows = options.reclaimableRows ?? []
   const service = new CloudAgentMachineService({
-    audit: { record: async () => undefined } as never,
+    audit: { record: async (args: unknown) => { log.push(['audit', args]) } } as never,
     image: 'overlay-agent-v5',
     assertCanRun: async (input) => {
       log.push(['admission', input])
@@ -64,12 +91,38 @@ function deps(machine: SandboxInstance, options: { enrolled?: boolean; lease?: A
     provisions: {
       get: async () => null,
       begin: async () => ({ started: true, phase: 'queued' }),
-      setPhase: async (args: { phase: string; error?: string }) => { phases.push({ phase: args.phase, ...(args.error ? { error: args.error } : {}) }) },
+      setPhase: async (args: { phase: string; error?: string; allocationKey?: string; environmentId?: string }) => {
+        log.push(['phase', args])
+        phases.push({ phase: args.phase, ...(args.error ? { error: args.error } : {}) })
+        return true
+      },
+      recordAllocation: async (args: unknown) => { log.push(['record-allocation', args]); return { bound: true } },
+      claimReclaim: async (args: { workspaceId: string; agentId: string; expectedUpdatedAt: number; now: number }) => {
+        log.push(['claim-reclaim', args])
+        const row = reclaimableRows.find(candidate => candidate.workspaceId === args.workspaceId && candidate.agentId === args.agentId)
+        if (!row || row.updatedAt !== args.expectedUpdatedAt || !row.providerReference) return null
+        Object.assign(row, {phase: 'failed', error: 'The machine setup was interrupted. Start it again.', reclaimPending: true, updatedAt: args.now})
+        return row
+      },
+      markReclaimPending: async (args: unknown) => { reclaimPending = true; log.push(['mark-reclaim-pending', args]); return true },
+      finishReclaim: async (args: { workspaceId: string; agentId: string; allocationKey: string; providerReference: string; now: number }) => {
+        log.push(['finish-reclaim', args])
+        const row = reclaimableRows.find(candidate => candidate.workspaceId === args.workspaceId && candidate.agentId === args.agentId)
+        if (!row || !row.reclaimPending || row.allocationKey !== args.allocationKey || row.providerReference !== args.providerReference) return false
+        delete row.provider
+        delete row.providerReference
+        delete row.allocatedAt
+        delete row.reclaimPending
+        row.updatedAt = args.now
+        return true
+      },
+      releaseAllocation: async (args: unknown) => { log.push(['release-allocation', args]); return true },
+      listReclaimable: async (args: unknown) => { log.push(['list-reclaimable', args]); return reclaimableRows },
       remove: async () => { removed = true },
     } as never,
     runtime,
     sleep: async () => undefined,
-    now: () => 1_000,
+    now: () => options.now ?? 1_000,
     controlPlane: {
       createEnrollmentSession: async () => {if (options.enrollmentError) throw options.enrollmentError; return {code: 'one-time-code', expiresAt: 0, enrollmentSessionId: 'abcdef12-0000'}},
       approveEnvironment: async (args: unknown) => { log.push(['approve', args]); return {} as never },
@@ -95,7 +148,7 @@ function deps(machine: SandboxInstance, options: { enrolled?: boolean; lease?: A
       } as never]),
     },
   })
-  return { service, log, created, phases, wasRemoved: () => removed }
+  return { service, log, created, phases, wasRemoved: () => removed, wasReclaimPending: () => reclaimPending }
 }
 
 const provisionArgs = {
@@ -149,6 +202,20 @@ test('provision boots the image, redeems the code with acpx, approves the worksp
   assert.equal(created[0]?.snapshotId, 'overlay-agent-v5')
   assert.equal(created[0]?.hardTimeoutMs, 0)
   assert.deepEqual(created[0]?.resources, { vcpus: 4, memoryGiB: 8, diskGiB: 40 })
+  const allocation = log.find(([kind]) => kind === 'record-allocation')?.[1] as { allocationKey: string; provider: string; providerReference: string }
+  const allocatingPhase = log.find(([kind, value]) => kind === 'phase' && (value as { phase: string }).phase === 'allocating')?.[1] as { allocationKey: string }
+  const createIndex = log.findIndex(([kind]) => kind === 'create')
+  const allocationIndex = log.findIndex(([kind]) => kind === 'record-allocation')
+  const bootCommandIndex = log.findIndex(([kind]) => kind === 'command')
+  assert.match(allocatingPhase.allocationKey, /^cloud-agent:ws:agent-1:[0-9a-f-]{36}$/)
+  assert.equal(created[0]?.allocationKey, allocatingPhase.allocationKey)
+  assert.equal(typeof created[0]?.onAllocated, 'function')
+  assert.equal(allocation.allocationKey, allocatingPhase.allocationKey)
+  assert.equal(allocation.provider, 'box')
+  assert.equal(allocation.providerReference, 'bx_agent')
+  assert.ok(log.findIndex(([kind, value]) => kind === 'phase' && (value as { phase: string }).phase === 'allocating') < createIndex)
+  assert.ok(createIndex < allocationIndex && allocationIndex < bootCommandIndex)
+  assert.ok(log.filter(([kind]) => kind === 'phase').every(([, value]) => (value as { allocationKey: string }).allocationKey === allocatingPhase.allocationKey))
   assert.equal(commands[0], cloudAgentConnectCommand({
     enrollmentCode: 'one-time-code', serverUrl: 'https://www.getoverlay.io', name: 'overlay-cloud-abcdef12', adapterId: 'claude-code',
   }))
@@ -170,6 +237,48 @@ test('a machine that never enrolls is deleted', async () => {
   const { service } = deps(machine, { enrolled: false })
   await assert.rejects(service.provision(provisionArgs), /did not enroll/)
   assert.deepEqual(calls, ['delete'])
+})
+
+test('reclaim deletes stale unleased allocations, revokes the environment, and preserves lease-owned machines', async () => {
+  const abandoned: CloudAgentProvisionRecord = {
+    workspaceId: 'ws', agentId: 'agent-1', userId: 'user', phase: 'connecting',
+    environmentId: 'env-1', allocationKey: 'allocation-old', provider: 'box', providerReference: 'bx_orphan',
+    allocatedAt: 1, createdAt: 0, updatedAt: 0,
+  }
+  const orphanMachine = fakeMachine()
+  const orphan = deps(orphanMachine.machine, { reclaimableRows: [abandoned], lease: null, now: 700_000 })
+  assert.deepEqual(await orphan.service.reclaimAbandonedProvisions(), { reclaimed: 1, skipped: 0, failed: 0 })
+  assert.deepEqual(orphanMachine.calls, ['delete'])
+  assert.equal(abandoned.providerReference, undefined)
+  assert.deepEqual(orphan.log.find(([kind]) => kind === 'revoke')?.[1], {
+    actorUserId: 'user', workspaceId: 'ws', environmentId: 'env-1',
+  })
+  const audit = orphan.log.find(([kind]) => kind === 'audit')?.[1] as { action: string; metadata: Record<string, unknown> }
+  assert.equal(audit.action, 'agent_environment.cloud_allocation_reclaimed')
+  assert.deepEqual(audit.metadata, { workspaceId: 'ws', agentId: 'agent-1', provider: 'box' })
+
+  const owned: CloudAgentProvisionRecord = {
+    ...abandoned, phase: 'connecting', provider: 'box', providerReference: 'bx_owned', allocatedAt: 1, updatedAt: 0,
+  }
+  const ownedMachine = fakeMachine()
+  const lease: AgentSandboxLease = {
+    id: 'lease-1', workspaceId: 'ws', environmentId: 'env-1', status: 'running',
+    provider: 'box', providerReference: 'bx_owned', reservedUntil: 10_000, cleanupAttempts: 0, createdAt: 0, updatedAt: 0,
+  }
+  const owner = deps(ownedMachine.machine, { reclaimableRows: [owned], lease, now: 700_000 })
+  assert.deepEqual(await owner.service.reclaimAbandonedProvisions(), { reclaimed: 0, skipped: 1, failed: 0 })
+  assert.deepEqual(ownedMachine.calls, [])
+  assert.equal(owned.providerReference, undefined)
+})
+
+test('a provider delete failure leaves the allocation pending for reclaim', async () => {
+  const { machine, calls } = fakeMachine()
+  machine.delete = async () => { calls.push('delete'); throw new Error('provider delete failed') }
+  const { service, log, wasReclaimPending } = deps(machine, { enrolled: false })
+  await assert.rejects(service.provision(provisionArgs), /did not enroll/)
+  assert.deepEqual(calls, ['delete'])
+  assert.equal(wasReclaimPending(), true)
+  assert.ok(log.some(([kind]) => kind === 'mark-reclaim-pending'))
 })
 
 test('Preview provision, resume and explicit restart prepare private access before launching the host, without putting its secret in commands', async () => {
@@ -299,7 +408,7 @@ test('provision records each startup phase and a safe message when it fails', as
   const { machine } = fakeMachine()
   const ok = deps(machine)
   await ok.service.provision(provisionArgs)
-  assert.deepEqual(ok.phases.map((entry) => entry.phase), ['allocating', 'booting', 'connecting', 'ready'])
+  assert.deepEqual(ok.phases.map((entry) => entry.phase), ['allocating', 'booting', 'connecting', 'connecting', 'ready'])
 
   const broken = deps(fakeMachine().machine, { enrolled: false })
   await assert.rejects(broken.service.provision(provisionArgs))

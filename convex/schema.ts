@@ -265,9 +265,17 @@ export default defineSchema({
     ),
     error: v.optional(v.string()),
     environmentId: v.optional(v.string()),
+    allocationKey: v.optional(v.string()),
+    provider: v.optional(v.string()),
+    providerReference: v.optional(v.string()),
+    allocatedAt: v.optional(v.number()),
+    reclaimPending: v.optional(v.boolean()),
     createdAt: v.number(),
     updatedAt: v.number(),
-  }).index('by_workspaceId_agentId', ['workspaceId', 'agentId']),
+  })
+    .index('by_workspaceId_agentId', ['workspaceId', 'agentId'])
+    .index('by_reclaimPending_updatedAt', ['reclaimPending', 'updatedAt'])
+    .index('by_phase_updatedAt', ['phase', 'updatedAt']),
 
   // A person's own row: profile, onboarding, chat starters, storage and bandwidth used, and the link to their personal
   // billing account. An account has no plan (plans belong to workspaces).

@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Record cloud agent allocations before setup and reclaim machines whose setup was interrupted instead of leaving them running unbilled.
+
 - Correct Computer Start and Stop notifications to match the completed action.
 
 - Add an isolated, synthetic funded Computer QA workspace to Preview fixtures while retaining the free Personal workspace. Re-seeding preserves spent credit, holds and plan changes; no Stripe payment or automatic top-up is created.

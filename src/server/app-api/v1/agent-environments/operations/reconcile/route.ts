@@ -2,6 +2,8 @@ import { dispatchRemoteRunIntents } from '@/server/agents/remote-agent-run-dispa
 import { NextResponse } from 'next/server'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { getInternalApiSecret, matchesInternalApiSecret } from '@/server/shared/internal-api-secret'
+import { createCloudAgentMachineService } from '@/server/agents/cloud/create-cloud-agent-machine-service'
+import { logger } from '@/server/observability/logger'
 import { agentEnvironmentErrorResponse } from '../../shared'
 
 export async function POST(request: Request) {
@@ -18,15 +20,23 @@ export async function POST(request: Request) {
       return NextResponse.json({ idleCheck: result }, { headers: { 'Cache-Control': 'no-store' } })
     }
     const controlPlane = server.connectedAgentControlPlane
-    const [supervised, reconciliation, meter, lifecycle] = await Promise.all([
+    const cloudReclaim = createCloudAgentMachineService().reclaimAbandonedProvisions().catch((error) => {
+      logger.warn('[operations-reconcile] cloud agent allocation reclaim failed', {
+        error: error instanceof Error ? error.name : 'UnknownError',
+      })
+      return { reclaimed: 0, skipped: 0, failed: 1 }
+    })
+    const [supervised, reconciliation, meter, lifecycle, cloudReclaimResult] = await Promise.all([
       controlPlane.sweepRemoteRuns(),
       controlPlane.reconcileSandboxSettlements(100),
       server.managedAgentSandboxBilling.meterLeases(),
       dispatchRemoteRunIntents(),
+      cloudReclaim,
     ])
     return NextResponse.json({
       reconciliation,
       lifecycle,
+      cloudReclaim: cloudReclaimResult,
       supervised: supervised.expiredRunIds.length,
       metered: {
         disabled: meter.disabled === true,
