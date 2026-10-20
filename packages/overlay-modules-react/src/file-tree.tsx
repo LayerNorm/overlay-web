@@ -1,15 +1,11 @@
 'use client'
-import { unstyledButton } from '@overlay/ui/control-reset'
 import type { FileTreeEntry } from '@overlay/app-core'
 import { childFilesForTree, rootFilesForTree } from '@overlay/app-core'
-import { SidebarMenuSub, SidebarMenuSubItem, Button } from '@overlay/ui/primitives'
+import { SidebarMenuAction, SidebarMenuSub, SidebarMenuSubButton, SidebarMenuSubItem } from '@overlay/ui/primitives'
 import { BookOpen, ChevronRight, Folder, FolderOpen } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 
 import { FileTypeIcon } from './shared/file-type-icon'
-
-const panelItemClass =
-  'group flex h-7 items-center gap-2 rounded-md px-2.5 py-0 text-xs text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)'
 
 export interface FilesInlineBranchProps {
   file: FileTreeEntry
@@ -58,35 +54,35 @@ export function FilesInlineBranch({
           if (!fileId || fileId === file._id) return
           onMove(fileId, file._id)
         }}
-        className={`${panelItemClass} ${dragOver ? 'bg-(--surface-subtle) ring-1 ring-inset ring-(--foreground)' : activeFileId === file._id ? 'bg-(--surface-subtle) text-(--foreground)' : ''}`}
+        className={`group/menu-sub-item relative rounded-md ${dragOver ? 'bg-(--surface-subtle) ring-1 ring-inset ring-(--foreground)' : ''}`}
       >
+        <SidebarMenuSubButton
+          isActive={activeFileId === file._id}
+          aria-current={activeFileId === file._id ? 'page' : undefined}
+          onClick={() => onOpen(file)}
+          className={file.type === 'folder' ? 'pr-8' : undefined}
+        >
+          {file.type === 'folder'
+            ? open
+              ? <FolderOpen aria-hidden />
+              : <Folder aria-hidden />
+            : file.kind === 'note'
+              ? <BookOpen aria-hidden />
+              : <FileTypeIcon file={file} size={16} />}
+          <span className="min-w-0 flex-1 truncate">{file.name}</span>
+        </SidebarMenuSubButton>
         {file.type === 'folder' ? (
-          <Button variant="ghost"
-            type="button"
+          <SidebarMenuAction
             onClick={(event) => {
               event.stopPropagation()
               onToggle(file._id)
             }}
-            className={unstyledButton("shrink-0 rounded-sm p-0.5 text-(--muted) hover:bg-(--border) hover:text-(--foreground)")}
             aria-label={open ? 'Collapse folder' : 'Expand folder'}
+            aria-expanded={open}
           >
-            <ChevronRight size={11} className={`transition-transform ${open ? 'rotate-90' : ''}`} />
-          </Button>
+            <ChevronRight className={`transition-transform ${open ? 'rotate-90' : ''}`} />
+          </SidebarMenuAction>
         ) : null}
-        <Button variant="ghost"
-          type="button"
-          onClick={() => onOpen(file)}
-          className={unstyledButton("flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-xs text-left outline-hidden focus-visible:ring-1 focus-visible:ring-(--foreground)")}
-        >
-          {file.type === 'folder'
-            ? open
-              ? <FolderOpen size={12} className="shrink-0" />
-              : <Folder size={12} className="shrink-0" />
-            : file.kind === 'note'
-              ? <BookOpen size={12} className="shrink-0 text-(--muted-light)" />
-              : <FileTypeIcon file={file} size={12} className="text-(--muted-light)" />}
-          <span className="min-w-0 flex-1 truncate">{file.name}</span>
-        </Button>
       </div>
 
       {file.type === 'folder' && open && children.length > 0 ? (
