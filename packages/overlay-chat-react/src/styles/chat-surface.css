@@ -271,11 +271,9 @@
   0%,
   100% {
     opacity: 0.5;
-    transform: scale(0.82);
   }
   50% {
     opacity: 1;
-    transform: scale(1.04);
   }
 }
 
@@ -330,9 +328,8 @@
 
 :where(.overlay-chat-surface) .overlay-loading-tool-logo {
   display: inline-flex;
-  width: 0.5rem;
-  flex: 0 0 0.5rem;
-  transform-origin: 50% 0.5625rem;
+  align-items: center;
+  flex: none;
   animation: overlayChatStreamMarkerPulse 1.3s ease-in-out infinite;
 }
 
@@ -455,14 +452,7 @@
   overflow: hidden;
   flex-shrink: 0;
   box-sizing: border-box;
-  background: linear-gradient(
-    135deg,
-    #efe8f4 0%,
-    #e6dcf2 28%,
-    #ddd0ea 52%,
-    #e8dff6 78%,
-    #f0e9f8 100%
-  );
+  background: var(--surface-muted);
   min-width: 8rem;
   min-height: 8rem;
 }
@@ -477,9 +467,9 @@
   background: linear-gradient(
     105deg,
     transparent 0%,
-    rgba(255, 255, 255, 0.08) 38%,
-    rgba(255, 255, 255, 0.65) 50%,
-    rgba(255, 255, 255, 0.08) 62%,
+    color-mix(in srgb, var(--skeleton-sheen) 13%, transparent) 38%,
+    var(--skeleton-sheen) 50%,
+    color-mix(in srgb, var(--skeleton-sheen) 13%, transparent) 62%,
     transparent 100%
   );
   filter: blur(0.5px);
