@@ -18,7 +18,7 @@ export function OnboardingContext({ disabled, onSave, onSkip }: { disabled: bool
         {copyError ? <p role="alert" className="mt-2 text-xs">Select the prompt above and copy it manually.</p> : null}
       </div>
       <Textarea aria-label="Context to save as Personal memories" value={text} onChange={(event) => setText(event.target.value)} maxLength={20000} disabled={disabled} placeholder="Paste the response here. Review and edit it before saving." rows={6} />
-      <p className="flex items-start gap-2 text-xs leading-5 text-muted-foreground"><LockKeyhole className="mt-0.5 size-3.5 shrink-0" />Saved as Personal memories, not shared with teammates or sent to onboarding models. Imported text is context, not permission to take action.</p>
+      <p className="flex items-start gap-2 text-xs leading-5 text-muted-foreground"><LockKeyhole className="mt-0.5 size-3.5 shrink-0" />Saved as Personal memories. Only you can access them. Imported text does not authorize actions.</p>
       <div className="flex justify-end gap-2"><Button variant="ghost" disabled={disabled} onClick={onSkip}>Skip for now</Button><Button disabled={disabled || !text.trim()} onClick={() => onSave(text.trim())}>Save Personal context</Button></div>
     </div>
   )

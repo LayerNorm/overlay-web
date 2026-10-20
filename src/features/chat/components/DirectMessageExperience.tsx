@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, type ReactNode } from 'react'
-import { useRouter } from 'next/navigation'
+import { MarkdownMessage, UserMessageBubble } from '@overlay/chat-react'
+import { usePathname, useRouter } from 'next/navigation'
+import { agentConversationRedirect } from '@/shared/chat/chat-view-navigation'
 import { useAppSettings } from '@/components/providers/AppSettingsProvider'
 import { LinkOpenInterceptor } from './LinkOpenInterceptor'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
@@ -92,6 +94,31 @@ function resolveRoomRightPanel({
   return { rightPanel, rightPanelClose }
 }
 
+function roomAgentId(vm: ReturnType<typeof useDirectMessageRoom>['vm']) {
+  return vm.soloAgentParticipant && vm.headerAgent && 'id' in vm.headerAgent
+    ? vm.headerAgent.id
+    : undefined
+}
+
+function GuidedPendingMessage({
+  pending,
+  messages,
+}: {
+  pending: { text: string; clientNonce: string } | null | undefined
+  messages: ReturnType<typeof useDirectMessageRoom>['vm']['mainMessages']
+}) {
+  if (!pending || messages.some((message) => message.clientNonce === pending.clientNonce)) return null
+  return (
+    <div className="relative -mx-1 flex justify-end px-1 py-1" data-testid="guided-pending-message">
+      <div className="flex min-w-0 max-w-[min(92%,36rem)] flex-col items-end sm:max-w-[75%]">
+        <UserMessageBubble className="ml-auto max-w-full" contentClassName="whitespace-normal">
+          <MarkdownMessage text={pending.text} isStreaming={false} />
+        </UserMessageBubble>
+      </div>
+    </div>
+  )
+}
+
 export function DirectMessageExperience({
   conversationId,
   showcase = false,
@@ -115,7 +142,7 @@ export function DirectMessageExperience({
   externalRightPanelLabel?: string;
   externalRightPanelMode?: "docked" | "floating";
   onExternalRightPanelClose?: () => void;
-  guided?: { footer: ReactNode; composer: GuidedRoomComposer | null; revision: number; headerActions?: ReactNode };
+  guided?: { footer: ReactNode; composer: GuidedRoomComposer | null; revision: number; headerActions?: ReactNode; pendingMessage?: { text: string; clientNonce: string } | null };
 }) {
   const { activeWorkspace, activeWorkspaceId } = useWorkspace()
   const { appDataCapabilities, capabilities } = useOverlayCapabilities()
@@ -145,7 +172,12 @@ export function DirectMessageExperience({
     onOpenAttachmentPreview: panels.openAttachmentPreview,
   })
   const { vm, roster, collab, thread, transcript, composer, roomActions, messageCtx } = room
+  const pathname = usePathname()
+  const agentId = roomAgentId(vm)
+  const agentHref = agentConversationRedirect({ pathname: pathname ?? '', workspaceId: activeWorkspaceId, agentId, conversationId, guided: Boolean(guided), showcase })
+  useEffect(() => { if (agentHref) router.replace(agentHref) }, [agentHref, router])
   const { loadMessages } = transcript
+  const pendingMessage = guided?.pendingMessage
   const guidedRevision = guided?.revision
   useEffect(() => {
     if (guidedRevision !== undefined) void loadMessages()
@@ -236,7 +268,10 @@ export function DirectMessageExperience({
               title={vm.title}
               channelTopic={collab.channel?.topic}
               ctx={messageCtx}
-              footer={guided?.footer}
+              footer={<>
+                <GuidedPendingMessage pending={pendingMessage} messages={vm.mainMessages} />
+                {guided?.footer}
+              </>}
               hideScrollbar={Boolean(guided)}
             />
             {guided && !guided.composer ? null : transcript.surfacePlatform ? (

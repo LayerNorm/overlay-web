@@ -19,8 +19,8 @@
 .dots span { width: 5px; height: 5px; border-radius: 50%; background: currentColor; animation: pulse 1s ease-in-out infinite; }
 .dots span:nth-child(2) { animation-delay: 150ms; }
 .dots span:nth-child(3) { animation-delay: 300ms; }
-.panel { max-width: 680px; margin: 20px 0 12px; animation: appear 250ms ease; }
-.highlight { outline: 2px solid var(--foreground) !important; outline-offset: 3px; border-radius: 6px; }
+.panel { width: 100%; max-width: 680px; margin: 24px auto 12px; }
+.highlight { background: var(--accent); box-shadow: inset 0 0 0 1px var(--border); border-radius: 8px; }
 @keyframes pulse { 0%,70%,100% { opacity: .3; transform: translateY(0); } 35% { opacity: 1; transform: translateY(-3px); } }
 @keyframes appear { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
 @media (prefers-reduced-motion: reduce) { .chrome, .identity, .orb, .creature, .introCopy, .subtitle, .intro { transition: none; } .panel, .dots span { animation: none; } }

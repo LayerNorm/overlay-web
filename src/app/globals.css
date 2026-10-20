@@ -272,7 +272,7 @@ body {
 }
 
 .app-brand-loader-lockup .brand-lockup-word {
-  animation: appBrandWordReveal 620ms cubic-bezier(0.16, 1, 0.3, 1) 180ms both;
+  opacity: 1;
 }
 
 /* Settled variant: the identical screen with the entrance already played. Every
@@ -280,13 +280,6 @@ body {
 .app-brand-loader--steady .brand-lockup-orb,
 .app-brand-loader--steady .brand-lockup-word,
 .app-brand-loader--steady .app-brand-loader-wsline {
-  animation: none;
-}
-
-/* Font wait: the wordmark stays hidden (and its reveal held) until Libre
-   Baskerville is loaded, so the lockup never flashes a fallback serif. */
-.app-brand-loader--fontwait .brand-lockup-word {
-  visibility: hidden;
   animation: none;
 }
 

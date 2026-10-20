@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Show loading branding immediately, keep onboarding answers in the normal message style, center guided panels, and anchor the workspace tour beside navigation. Open one-to-one AI employee conversations in Agents instead of Chats.
+
 - Use the shared Overlay Free router for onboarding personalization, with prepared replies when routing is unavailable or privacy settings require zero data retention.
 
 - Keep onboarding tour controls inside the mobile navigation drawer, with visible navigation targets and automatic drawer cleanup when the tour ends.

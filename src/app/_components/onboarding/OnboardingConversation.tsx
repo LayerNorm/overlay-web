@@ -1,9 +1,9 @@
 'use client'
 
 import { useRef, useState } from 'react'
-import { UserMessageBubble } from '@overlay/chat-react'
 import { Button, DialogFrame } from '@overlay/ui/primitives'
 import { DirectMessageExperience } from '@/features/chat/components/DirectMessageExperience'
+import { useAuth } from '@/contexts/AuthContext'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { FREE_TIER_AUTO_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import { AGENT_TOOL_PRESETS, toolIdsForEnabledGroups } from '@/shared/agents/tool-groups'
@@ -20,6 +20,7 @@ export function OnboardingDots() {
 }
 
 export function OnboardingConversation({ session, initialName, onChange, onShowWork }: { session: OnboardingSession; initialName: string; onChange(result: OnboardingSessionResponse): void; onShowWork(): void }) {
+  const { user } = useAuth()
   const [input, setInput] = useState(session.step === 'name' ? initialName : '')
   const [inputRevision, setInputRevision] = useState(0)
   const [previousStep, setPreviousStep] = useState(session.step)
@@ -28,7 +29,7 @@ export function OnboardingConversation({ session, initialName, onChange, onShowW
   const working = useRef(false)
   const [error, setError] = useState<string | null>(null)
   const [privacyOpen, setPrivacyOpen] = useState(false)
-  const [pendingAnswer, setPendingAnswer] = useState<{ value: string; revision: number } | null>(null)
+  const [pendingAnswer, setPendingAnswer] = useState<{ text: string; clientNonce: string } | null>(null)
   if (previousStep !== session.step) {
     setPreviousStep(session.step); setInput(''); setInputRevision((current) => current + 1); setTaskDraft(null)
   }
@@ -41,7 +42,7 @@ export function OnboardingConversation({ session, initialName, onChange, onShowW
       setError(value instanceof Error ? value.message : 'Something went wrong. Your progress is saved. Try again.')
       // A lost response or another device may already have advanced the session.
       try { onChange(await requestOnboarding(session.workspaceId)) } catch { /* Keep the last durable state available for retry. */ }
-    } finally { working.current = false; setBusy(false); setPendingAnswer(null) }
+    } finally { working.current = false; setBusy(false) }
   }
   const act = async (action: OnboardingAction) => {
     const [next] = await Promise.all([
@@ -54,10 +55,17 @@ export function OnboardingConversation({ session, initialName, onChange, onShowW
   const skip = () => { void perform(() => advance()) }
   const answer = () => {
     const value = input.trim()
-    if (!value || busy) return
+    if (!value || working.current || !user) return
     if (session.step === 'task') { setTaskDraft(value); return }
-    setPendingAnswer({ value, revision: session.revision })
-    void perform(() => act({ action: 'answer', runId: session.runId, revision: session.revision, value }))
+    setInput(''); setInputRevision((current) => current + 1)
+    setPendingAnswer({ text: value, clientNonce: `onboarding:${user.id}:${session.runId}:${session.revision + 1}:user` })
+    void perform(async () => {
+      try { await act({ action: 'answer', runId: session.runId, revision: session.revision, value }) }
+      catch (failure) {
+        setPendingAnswer(null); setInput(value); setInputRevision((current) => current + 1)
+        throw failure
+      }
+    })
   }
   const createEmployees = (indices: number[], externalIds: string[], employees: OnboardingEmployee[]) => {
     void perform(async () => {
@@ -104,7 +112,6 @@ export function OnboardingConversation({ session, initialName, onChange, onShowW
   const openEnded = ['name', 'about', 'daily', 'task'].includes(session.step) && !taskDraft
   const footer = (
     <div className={styles.panel}>
-      {pendingAnswer && pendingAnswer.revision === session.revision ? <UserMessageBubble tone="room-self">{pendingAnswer.value}</UserMessageBubble> : null}
       {busy ? <OnboardingDots /> : null}
       {error ? <p role="alert" className="mb-4 text-sm text-destructive">{error}</p> : null}
       <div aria-busy={busy} className={busy ? 'pointer-events-none opacity-60' : undefined}>
@@ -120,7 +127,7 @@ export function OnboardingConversation({ session, initialName, onChange, onShowW
   )
   return <>
     <DirectMessageExperience conversationId={session.conversationId} draftTitle="Overlay" guided={session.step === 'complete' ? { footer, composer: null, revision: session.revision } : {
-      revision: session.revision, footer,
+      revision: session.revision, footer, pendingMessage: pendingAnswer,
       headerActions: <Button variant="ghost" size="sm" disabled={busy} onClick={() => setPrivacyOpen(true)}>{session.aiEnabled ? 'Personalization on' : 'Personalize with AI'}</Button>,
       composer: openEnded ? { value: input, onChange: (value) => setInput(value.slice(0, 3000)), onSubmit: answer, placeholder: session.step === 'name' ? 'Your name' : session.step === 'task' ? 'What is one task we can get started with?' : 'Tell me in your own words...', disabled: busy, revision: inputRevision } : null,
     }} />
