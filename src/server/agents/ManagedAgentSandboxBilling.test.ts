@@ -459,7 +459,7 @@ test('meterLease bills a repointed sandbox from zero', async () => {
   assert.equal(charge.durationSeconds, 120)
 })
 
-test('meterLeases kills a lease when the meter debit is declined', async () => {
+for (const [declined, expected] of [['insufficient_budget', 'budget_exhausted'], ['paid_plan_required', 'paid_plan_required']] as const) test(`meterLeases kills a lease when the meter debit is declined (${declined})`, async () => {
   const deletes: string[] = []
   const stopped: string[] = []
   const released: Array<Record<string, unknown>> = []
@@ -492,7 +492,7 @@ test('meterLeases kills a lease when the meter debit is declined', async () => {
       environmentHasActiveRuns: async () => false,
       listSandboxLeases: async (args: { statuses: string[] }) => args.statuses.includes('running') ? [lease] : [],
       getSandboxLease: async () => lease,
-      meterSandboxLease: async () => ({ applied: false as const, reason: 'insufficient_budget' as const, remainingCents: 12 }),
+      meterSandboxLease: async () => ({ applied: false as const, reason: declined, remainingCents: 12 }),
       stopSandboxLease: async () => { stopping = true; stopped.push('lease'); return { ...lease, status: 'stopping' as const } },
       updateSandboxLease: async (args: Record<string, unknown>) => {
         released.push(args)
@@ -503,7 +503,7 @@ test('meterLeases kills a lease when the meter debit is declined', async () => {
   })
   const { ticks } = await service.meterLeases()
   assert.equal(ticks[0]?.outcome, 'killed')
-  assert.equal(ticks[0]?.reason, 'budget_exhausted')
+  assert.equal(ticks[0]?.reason, expected)
   assert.equal(stopping, true)
   assert.deepEqual(deletes, [])
   assert.equal(released.at(-1)?.status, 'cleanup_failed', 'Unsettled final cost retains the resource reference for reconciliation')

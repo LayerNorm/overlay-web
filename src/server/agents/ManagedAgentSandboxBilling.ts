@@ -548,8 +548,8 @@ export class ManagedAgentSandboxBilling {
         // periodic read, then release the bootstrap hold.
         // A run just ended: bill it, but do not idle-stop here (the idle window starts now, via the timer set below).
         const tick = await this.meterLeaseWithRetry(lease, { minRemainingCents: 0, idleStop: 'none' })
-        if (!tick.applied && tick.reason === 'insufficient_budget') {
-          await this.killLease(lease, 'budget_exhausted').catch((_error) => undefined)
+        if (!tick.applied && ['insufficient_budget', 'paid_plan_required'].includes(tick.reason)) {
+          await this.killLease(lease, tick.reason === 'paid_plan_required' ? tick.reason : 'budget_exhausted').catch((_error) => undefined)
         }
         if (billing.reservationId) {
           await this.dependencies.policy.release({
@@ -699,10 +699,11 @@ export class ManagedAgentSandboxBilling {
       }
       const result = await this.meterLease(lease)
       if (!result.applied) {
-        if (result.reason === 'insufficient_budget') {
-          if (lease.computerId) return await this.killLease(lease, 'budget_exhausted')
-          await this.killLease(lease, 'budget_exhausted')
-          return { leaseId: lease.id, outcome: 'killed', reason: 'budget_exhausted', remainingCents: result.remainingCents }
+        if (['insufficient_budget', 'paid_plan_required'].includes(result.reason)) {
+          const reason = result.reason === 'paid_plan_required' ? result.reason : 'budget_exhausted'
+          if (lease.computerId) return await this.killLease(lease, reason)
+          await this.killLease(lease, reason)
+          return { leaseId: lease.id, outcome: 'killed', reason, remainingCents: result.remainingCents }
         }
         return {
           leaseId: lease.id,

@@ -2538,6 +2538,16 @@ export const meterSandboxLeaseDebitByServer = mutation({
         ) {
           throw new Error('workspace_billing_account_mismatch')
         }
+        const subscription = await ctx.db
+          .query('billingAccountSubscriptions')
+          .withIndex('by_billingAccountId', (q) => q.eq('billingAccountId', billingAccountId))
+          .unique()
+        // Without a paid plan, only settle confirmed-stopped usage or release a hold; never extend live runtime.
+        const settlesWithoutRuntime = holdMicros === 0
+          && (args.providerEvidence ? args.providerEvidence.stopped : !charge)
+        if (subscription?.planKind !== 'paid' && !settlesWithoutRuntime) {
+          return { applied: false, reason: 'paid_plan_required' }
+        }
         const balance = await ctx.db
           .query('billingAccountBalances')
           .withIndex('by_billingAccountId', (q) =>

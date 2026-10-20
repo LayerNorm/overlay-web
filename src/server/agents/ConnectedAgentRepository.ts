@@ -132,7 +132,7 @@ export type ConnectedAgentSandboxMeterCharge = {
 
 export type ConnectedAgentMeterSandboxLeaseResult =
   | { applied: true; meterVersion: number; remainingCents?: number }
-  | { applied: false; reason: 'lease_missing' | 'lease_not_meterable' | 'lease_conflict' | 'insufficient_budget'; remainingCents?: number }
+  | { applied: false; reason: 'lease_missing' | 'lease_not_meterable' | 'lease_conflict' | 'insufficient_budget' | 'paid_plan_required'; remainingCents?: number }
 
 export type ComputerMaintenanceClaim = { token: string; kind: 'provision' | 'wake' | 'stop' | 'delete' | 'idle'; expiresAt: number }
 export type ComputerActivityClaim = { token: string; expiresAt: number }

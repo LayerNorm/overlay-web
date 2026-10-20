@@ -26,6 +26,7 @@ describe('Convex connected-agent provider contract', () => {
       await ctx.db.insert('billingAccounts', {
         billingAccountId: 'runtime_wallet', workspaceId, scope: 'workspace', status: 'active', pricingVersion: 'markup_25_v1', markupBasisPoints: 2_500, createdAt: 1, updatedAt: 1,
       })
+      await ctx.db.insert('billingAccountSubscriptions', subscriptionRow('runtime_wallet'))
       const balance = await ctx.db.insert('billingAccountBalances', {
         billingAccountId: 'runtime_wallet', mode: 'budgeted', includedMicros: 10_000_000, institutionalGrantMicros: 0, allowanceUsedMicros: 0,
         topUpPurchasedMicros: 0, topUpBalanceMicros: 0, usedMicros: 0, reservedMicros: 500_000, version: 1, createdAt: 1, updatedAt: 1,
@@ -76,6 +77,39 @@ describe('Convex connected-agent provider contract', () => {
       const operations = await ctx.db.query('usageOperations').collect()
       expect(operations).toHaveLength(2)
       expect(operations[0]?.sandboxEvidence).toMatchObject({ category: 'compute', provider: 'e2b', providerCostUsd: 0.8, pricingVersion: 'markup_25_v1' })
+    })
+  })
+
+  test('without a paid plan, live machine time is refused but confirmed-stopped usage still settles', async () => {
+    const convex = convexTest(schema, modules)
+    const workspaceId = 'downgrade_workspace'
+    const payer = { scope: 'workspace', billingAccountId: 'downgrade_wallet', userId: 'user', workspaceId }
+    const call = (name: string, args: Record<string, unknown>) => convex.mutation(reference(name), { ...args, serverSecret: secret })
+    await call('createEnvironmentByServer', { id: 'downgrade_env', workspaceId, kind: 'managed', name: 'Downgrade', status: 'online', capabilities: {}, now: 1 })
+    await call('createSandboxLeaseByServer', {
+      id: 'downgrade_lease', workspaceId, environmentId: 'downgrade_env', provider: 'box', providerReference: 'sandbox', status: 'running', reservedUntil: 1_000_000,
+      usage: { meteredUsage: {}, meterVersion: 0, meteredProviderReference: 'sandbox', lastPayer: payer }, cleanupAttempts: 0, now: 1,
+    })
+    await convex.run(async (ctx) => {
+      await ctx.db.insert('billingAccounts', {
+        billingAccountId: 'downgrade_wallet', workspaceId, scope: 'workspace', status: 'active', pricingVersion: 'markup_25_v1', markupBasisPoints: 2_500, createdAt: 1, updatedAt: 1,
+      })
+      await ctx.db.insert('billingAccountSubscriptions', subscriptionRow('downgrade_wallet', 'free'))
+      await ctx.db.insert('billingAccountBalances', {
+        billingAccountId: 'downgrade_wallet', mode: 'budgeted', includedMicros: 10_000_000, institutionalGrantMicros: 0, allowanceUsedMicros: 0,
+        topUpPurchasedMicros: 0, topUpBalanceMicros: 0, usedMicros: 0, reservedMicros: 0, version: 1, createdAt: 1, updatedAt: 1,
+      })
+    })
+    const charge = { costCents: 50, providerCostUsd: 0.4, durationSeconds: 60, modelId: 'sandbox/box', metadata: {} }
+    const tick = (overrides: Record<string, unknown>) => call('meterSandboxLeaseDebitByServer', {
+      workspaceId, leaseId: 'downgrade_lease', now: 10, meteredAt: 10, expectedMeterVersion: 0,
+      meteredProviderReference: 'sandbox', meteredUsage: { wallTimeMs: 60_000 }, payer, minRemainingCents: 0, ...overrides,
+    })
+    expect(await tick({ charge, providerEvidence: { usage: {}, stopped: false } })).toMatchObject({ applied: false, reason: 'paid_plan_required' })
+    expect(await tick({ runtimeHoldCents: 10, providerEvidence: { usage: {}, stopped: true } })).toMatchObject({ applied: false, reason: 'paid_plan_required' })
+    expect(await tick({ charge, providerEvidence: { usage: {}, stopped: true } })).toMatchObject({ applied: true, meterVersion: 1, remainingCents: 950 })
+    await convex.run(async (ctx) => {
+      expect(await ctx.db.query('usageOperations').collect()).toHaveLength(1)
     })
   })
 
@@ -254,6 +288,7 @@ describe('Convex connected-agent provider contract', () => {
         status: 'active', pricingVersion: 'markup_25_v1', markupBasisPoints: 2_500,
         createdAt: 1, updatedAt: 1,
       })
+      await ctx.db.insert('billingAccountSubscriptions', subscriptionRow('billing_meter'))
       // $10 funded: $10 = 1000 cents = 10_000_000 micros.
       await ctx.db.insert('billingAccountBalances', {
         billingAccountId: 'billing_meter', mode: 'budgeted',
@@ -377,6 +412,13 @@ describe('Convex connected-agent provider contract', () => {
     expect(lease.usage.meteredUsage.wallTimeMs).toBe(200_000)
   })
 })
+
+function subscriptionRow(billingAccountId: string, planKind: 'free' | 'paid' = 'paid') {
+  return {
+    billingAccountId, provider: 'test', planKind, planVersion: 'variable_v2' as const, planAmountCents: planKind === 'paid' ? 500 : 0,
+    markupBasisPoints: 2_500, status: 'active' as const, autoTopUpEnabled: false, autoTopUpAmountCents: 0, createdAt: 1, updatedAt: 1,
+  }
+}
 
 function reference(operation: string) {
   return makeFunctionReference<'mutation'>(`agents/connectedAgents:${operation}`)
