@@ -3,6 +3,7 @@ import type { UIMessage } from '@/shared/chat/ai-ui-message'
 import { AUTOMATIONS_UPDATED_EVENT } from '@overlay/app-core/automations'
 import { createConversationUiState } from '@overlay/chat-core'
 import type { ReasoningLevel } from '@overlay/chat-core'
+import { toast } from '@overlay/ui/primitives'
 import { markTtftClientMilestone, setTtftClientTurnId } from '@/shared/chat/ttft-client-debug'
 import type {
   ConversationRuntime,
@@ -51,7 +52,6 @@ export function sendTextTurn({
   refreshSelectedAutomation,
   replyContext,
   selectedActModelSnapshot,
-  setComposerNotice,
   setIsFirstMessage,
   setRuntimeHydrationVersion,
   snapshot,
@@ -80,7 +80,6 @@ export function sendTextTurn({
   selectedActModelSnapshot: string
   reasoning?: ReasoningLevel
   personalChatMode: 'chat' | 'work'
-  setComposerNotice: Dispatch<SetStateAction<string | null>>
   setIsFirstMessage: (isFirstMessage: boolean) => void
   setRuntimeHydrationVersion: Dispatch<SetStateAction<number>>
   snapshot: SubmittedComposerSnapshot
@@ -183,8 +182,7 @@ export function sendTextTurn({
       clientId: conversationClientId,
       deferActivation: true,
     }).catch(() => {
-      setComposerNotice('Could not create chat. Your reply may still stream.')
-      window.setTimeout(() => setComposerNotice(null), 4000)
+      toast.error('Could not create chat. Your reply may still stream.')
     })
     markTtftClientMilestone('create_started', { conversationClientId })
   } else {
@@ -291,7 +289,7 @@ export function sendTextTurn({
     completeSession: completeSessionForStream,
     loadChats: snapshot.temporaryChatSnapshot ? (() => {}) : loadChats,
     loadSubscription: refreshAfterActTextTurn,
-    onError: (error, fallbackMessage) => reportTextStreamError(setComposerNotice, error, fallbackMessage),
+    onError: (error, fallbackMessage) => reportTextStreamError(error, fallbackMessage),
     logPrefix: multiText ? 'Act multi' : 'Act',
   })
 }

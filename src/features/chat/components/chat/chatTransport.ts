@@ -1,6 +1,7 @@
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { unwrapPaginatedData } from '@/shared/api/pagination'
 import { trackChatOpenLatency } from '@/shared/observability/client-metrics'
+import { toast } from '@overlay/ui/primitives'
 import type { ChatMessageMetadata, ChatOutput, ConversationRuntime } from '../chat-interface/types'
 
 export type RawConversationMessage = {
@@ -320,11 +321,6 @@ export function startActRetryStream(params: StartActTextStreamParams) {
   /* eslint-enable @typescript-eslint/no-explicit-any */
 }
 
-export function reportTextStreamError(
-  setComposerNotice: (notice: string | null | ((current: string | null) => string | null)) => void,
-  error: unknown,
-  fallbackMessage: string,
-) {
-  setComposerNotice(error instanceof Error ? error.message : fallbackMessage)
-  window.setTimeout(() => setComposerNotice(null), 8000)
+export function reportTextStreamError(error: unknown, fallbackMessage: string) {
+  toast.error(error instanceof Error ? error.message : fallbackMessage)
 }

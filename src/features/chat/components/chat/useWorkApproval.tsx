@@ -1,19 +1,17 @@
 'use client'
 
 import { useCallback, useState } from 'react'
-import type { Dispatch, SetStateAction } from 'react'
 import { Confirmation, ConfirmationAction, ConfirmationActions, ConfirmationBody, ConfirmationIcon, ConfirmationRequest, ConfirmationTitle } from '@overlay/chat-react'
+import { toast } from '@overlay/ui/primitives'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import type { useAgentRunLifecycle } from './useAgentRunLifecycle'
 
 export function useWorkApproval({
   agentRunLifecycle,
   activeChatId,
-  setComposerNotice,
 }: {
   agentRunLifecycle: ReturnType<typeof useAgentRunLifecycle>
   activeChatId: string | null
-  setComposerNotice: Dispatch<SetStateAction<string | null>>
 }) {
   const [approvalSubmitting, setApprovalSubmitting] = useState(false)
 
@@ -30,11 +28,11 @@ export function useWorkApproval({
       })
       await agentRunLifecycle.refresh()
     } catch (error) {
-      setComposerNotice(error instanceof Error ? error.message : 'Could not submit approval.')
+      toast.error(error instanceof Error ? error.message : 'Could not submit approval.')
     } finally {
       setApprovalSubmitting(false)
     }
-  }, [activeChatId, agentRunLifecycle, setComposerNotice])
+  }, [activeChatId, agentRunLifecycle])
 
   const workApprovalContent = agentRunLifecycle.run?.status === 'waiting_for_approval' && agentRunLifecycle.run.approval
     ? (

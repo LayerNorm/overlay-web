@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import { toast } from '@overlay/ui/primitives'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { buildWorkspaceHref } from '@/shared/workspaces/routing'
 import { WorkspaceSwitcherView } from './WorkspaceSwitcherView'
@@ -39,7 +40,6 @@ export function WorkspaceSwitcher({
   const [open, setOpen] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
   const [createBusy, setCreateBusy] = useState(false)
-  const [actionError, setActionError] = useState<string | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
 
@@ -52,7 +52,6 @@ export function WorkspaceSwitcher({
   }, [])
 
   async function selectWorkspace(workspaceId: string) {
-    setActionError(null)
     try {
       await switchWorkspace(workspaceId)
       setOpen(false)
@@ -65,13 +64,12 @@ export function WorkspaceSwitcher({
       const query = params.toString()
       router.push(`${buildWorkspaceHref(workspaceId, pathname)}${query ? `?${query}` : ''}`)
     } catch (switchError) {
-      setActionError(switchError instanceof Error ? switchError.message : 'Could not switch workspaces.')
+      toast.error(switchError instanceof Error ? switchError.message : 'Could not switch workspaces.')
     }
   }
 
   async function createAndSelect(name: string) {
     setCreateBusy(true)
-    setActionError(null)
     try {
       const workspace = await createWorkspace({ name })
       await switchWorkspace(workspace.id)
@@ -84,7 +82,7 @@ export function WorkspaceSwitcher({
         `${buildWorkspaceHref(workspace.id, '/app/settings')}?${params.toString()}`,
       )
     } catch (createError) {
-      setActionError(createError instanceof Error ? createError.message : 'Could not create the workspace.')
+      toast.error(createError instanceof Error ? createError.message : 'Could not create the workspace.')
     } finally {
       setCreateBusy(false)
     }
@@ -93,13 +91,11 @@ export function WorkspaceSwitcher({
   function openCreateDialog() {
     setOpen(false)
     setCreateOpen(true)
-    setActionError(null)
   }
 
   function handleCreateOpenChange(nextOpen: boolean) {
     if (createBusy) return
     setCreateOpen(nextOpen)
-    if (!nextOpen) setActionError(null)
   }
 
   return (
@@ -117,7 +113,7 @@ export function WorkspaceSwitcher({
       activeWorkspaceId={activeWorkspaceId}
       switchingWorkspaceId={switchingWorkspaceId}
       error={error}
-      actionError={actionError}
+      actionError={null}
       refresh={() => void refresh()}
       onSelectWorkspace={(workspaceId) => void selectWorkspace(workspaceId)}
       onCreateRequest={openCreateDialog}

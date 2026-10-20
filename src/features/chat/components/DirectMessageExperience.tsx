@@ -21,7 +21,6 @@ import {
   RoomDialogs,
   RoomHeaderActions,
   RoomHeaderLeading,
-  RoomNoticeBar,
   RoomRealtimeSubscriptions,
   RoomSidePanel,
   SurfaceReadOnlyComposer,
@@ -218,7 +217,6 @@ export function DirectMessageExperience({
             )}
           />
           <AppScreenBody padding="none" maxWidth="none" scroll="hidden" className="flex min-h-0 flex-1 flex-col">
-            <RoomNoticeBar notice={room.notice} onDismiss={() => room.setNotice(null)} />
             <RoomTranscript
               transcript={transcript}
               readMarkers={room.readMarkers}

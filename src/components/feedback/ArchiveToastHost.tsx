@@ -54,12 +54,12 @@ export function ArchiveToastHost() {
       if (!detail) return
       toast.custom(
         (id) => <ArchiveToastContent detail={detail} dismiss={() => toast.dismiss(id)} />,
-        { id: ARCHIVE_TOAST_ID, duration: VISIBLE_MS, position: 'bottom-center' },
+        { id: ARCHIVE_TOAST_ID, duration: VISIBLE_MS },
       )
     }
     window.addEventListener(ARCHIVE_TOAST_EVENT, onToast)
     return () => window.removeEventListener(ARCHIVE_TOAST_EVENT, onToast)
   }, [])
 
-  return <Toaster position="bottom-center" offset={16} visibleToasts={1} />
+  return <Toaster visibleToasts={3} />
 }

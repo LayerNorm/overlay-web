@@ -10,7 +10,7 @@ import type {
   WorkspaceAgentDirectoryItem,
   WorkspaceAgentVisibility,
 } from '@overlay/workspace-contracts'
-import { Button, DialogFrame, Input, ListboxSelect, SegmentedControl, Textarea, Toggle } from '@overlay/ui/primitives'
+import { Button, DialogFrame, Input, ListboxSelect, SegmentedControl, Textarea, Toggle, toast } from '@overlay/ui/primitives'
 import { getEnabledChatModels, getGatewayCatalogRevision } from '@/shared/ai/gateway/model-data'
 import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import {
@@ -351,7 +351,6 @@ export function NewAgentDialog({ open, workspaceId, onClose, onCreated, onOpenMa
   const [rawDraft, setDraft] = useState(initialNewAgentDraft)
   const draft = { ...rawDraft, modelId: resolveDraftModelId(rawDraft.modelId, modelOptions) }
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const update = useCallback((patch: Partial<NewAgentDraft>) => setDraft((current) => ({ ...current, ...patch })), [])
   const cloud = useCloudAgentCreate({
     workspaceId,
@@ -370,7 +369,6 @@ export function NewAgentDialog({ open, workspaceId, onClose, onCreated, onOpenMa
       return
     }
     setDraft(initialNewAgentDraft())
-    setError(null)
     onClose()
   }
 
@@ -387,19 +385,19 @@ export function NewAgentDialog({ open, workspaceId, onClose, onCreated, onOpenMa
       return
     }
     setBusy(true)
-    setError(null)
     try {
       const { agent, computerError } = await createAgentFromDraft(workspaceId, draft, computersAvailable)
       setDraft(initialNewAgentDraft())
+      toast.success('Agent created.')
       onCreated(agent, computerError)
     } catch (createError) {
-      setError(createError instanceof Error ? createError.message : 'Could not create the agent.')
+      toast.error(createError instanceof Error ? createError.message : 'Could not create the agent.')
     } finally {
       setBusy(false)
     }
   }
 
-  const shownError = error ?? cloud.error
+  const shownError = cloud.error
   const failed = cloud.view?.phase === 'failed'
 
   return (

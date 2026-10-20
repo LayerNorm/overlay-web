@@ -6,6 +6,7 @@ import {
   pastedTextFileName,
   shouldAttachPastedTextAsFile,
 } from '@overlay/chat-core'
+import { toast } from '@overlay/ui/primitives'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { SUPPORTED_INPUT_IMAGE_TYPES } from './chat-interface/constants'
 import type { AttachedImage, PendingChatDocument } from './chat-interface/types'
@@ -86,11 +87,7 @@ async function prepareImageAttachment(file: File, mimeType: string): Promise<Att
   }
 }
 
-export function useChatAttachments({
-  setComposerNotice,
-}: {
-  setComposerNotice: (notice: string | null) => void
-}) {
+export function useChatAttachments() {
   const [attachedImages, setAttachedImages] = useState<AttachedImage[]>([])
   const [pendingChatDocuments, setPendingChatDocuments] = useState<
     PendingChatDocument[]
@@ -124,13 +121,15 @@ export function useChatAttachments({
       .then(async (res) => {
         if (!res.ok) {
           const err = (await res.json().catch(() => ({}))) as { error?: string }
+          const message = err.error ?? 'Could not index file'
           setPendingChatDocuments((prev) =>
             prev.map((d) =>
               d.clientId === clientId
-                ? { ...d, status: 'error' as const, error: err.error ?? 'Could not index file' }
+                ? { ...d, status: 'error' as const, error: message }
                 : d,
             ),
           )
+          toast.error(`Could not upload ${file.name}: ${message}`)
           return
         }
         const data = (await res.json().catch(() => ({}))) as {
@@ -156,6 +155,7 @@ export function useChatAttachments({
               : d,
           ),
         )
+        toast.error(`Could not upload ${file.name}. Check your connection and try again.`)
       })
   }
 
@@ -165,27 +165,29 @@ export function useChatAttachments({
   }
 
   function addImages(files: FileList | File[]) {
+    setAttachmentError(null)
     Array.from(files).forEach((file) => {
       const mimeType = supportedImageMimeType(file)
       if (!mimeType) {
         if (!file.type.startsWith('image/')) return
-        setAttachmentError(`Unsupported image format: ${file.name}. Use JPEG, PNG, GIF, or WebP.`)
+        toast.error(`Unsupported image format: ${file.name}. Use JPEG, PNG, GIF, or WebP.`)
         return
       }
       void prepareImageAttachment(file, mimeType).then((image) => {
         if (image.dataUrl.length > IMAGE_ATTACHMENT_MAX_DATA_URL_CHARS) {
-          setAttachmentError(`"${file.name}" is too large to attach. Try a smaller or cropped image.`)
+          toast.error(`"${file.name}" is too large to attach. Try a smaller or cropped image.`)
           return
         }
         if (
           attachedImagesTotalDataUrlChars(attachedImagesRef.current) + image.dataUrl.length >
           IMAGE_ATTACHMENTS_MAX_TOTAL_DATA_URL_CHARS
         ) {
-          setAttachmentError('Too much image data attached. Remove an image or use smaller ones.')
+          toast.error('Too much image data attached. Remove an image or use smaller ones.')
           return
         }
         setAttachedImages((prev) => [...prev, image])
-        setAttachmentError(null)
+      }).catch(() => {
+        toast.error(`Could not read ${file.name}. Try attaching it again.`)
       })
     })
   }
@@ -196,14 +198,13 @@ export function useChatAttachments({
       e.preventDefault()
       const blob = new Blob([pastedText], { type: 'text/plain;charset=utf-8' })
       if (blob.size > LARGE_PASTE_MAX_BYTES) {
-        setAttachmentError('Pasted text is too large to attach here. Upload it as a smaller text file.')
+        toast.error('Pasted text is too large to attach here. Upload it as a smaller text file.')
         return
       }
       const fileName = pastedTextFileName(pastedText)
       const file = new File([blob], fileName, { type: 'text/plain' })
       queueDocumentUpload(file)
-      setComposerNotice(`Large paste attached as ${fileName}.`)
-      window.setTimeout(() => setComposerNotice(null), 5000)
+      toast.message(`Large paste queued as ${fileName}.`)
       return
     }
 

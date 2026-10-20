@@ -14,6 +14,7 @@ import { generatedAgentSetupPrompt } from '../lib/byo-agent-setup'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { unwrapPaginatedData } from '@/shared/api/pagination'
 import { AgentAvatarPicker } from './AgentAvatarPicker'
+import { AgentComputerRecoveryNotice } from './AgentComputerRecoveryNotice'
 import { FieldLabel } from './InfoTip'
 import { useEditorLoad } from './EditorLoadGate'
 import type { SurfaceChannelPicker } from './use-agent-surfaces'
@@ -397,11 +398,14 @@ function ProvisionedComputerCard({ computer, openBusy, lifecycleBusy, onOpenDesk
  * destructive-save warning. The group's own ToggleRow is the on/off control —
  * enabled means "this agent gets a computer".
  */
-export function AgentComputerSection({ enabled, size, onSizeChange, computer, openBusy, lifecycleBusy, onOpenDesktop, onTogglePower, onDelete, disabled }: {
+export function AgentComputerSection({ enabled, size, onSizeChange, computer, openBusy, lifecycleBusy, onOpenDesktop, onTogglePower, onDelete, loadError, provisionError, onRetryLoad, disabled }: {
   enabled: boolean
   size: ComputerSize
   onSizeChange(next: ComputerSize): void
   computer: Computer | null
+  loadError: string | null
+  provisionError: string | null
+  onRetryLoad(): void
   openBusy: boolean
   lifecycleBusy: 'start' | 'stop' | 'delete' | null
   onOpenDesktop(): void
@@ -409,7 +413,7 @@ export function AgentComputerSection({ enabled, size, onSizeChange, computer, op
   onDelete(): void
   disabled?: boolean
 }) {
-  if (!enabled && !computer) return null
+  if (!enabled && !computer && !loadError && !provisionError) return null
   return (
     <div className="space-y-3 border-b border-(--border) pb-3 pt-1 last:border-b-0">
       {enabled && !computer ? <ComputerSizePicker size={size} onSizeChange={onSizeChange} disabled={disabled} /> : null}
@@ -433,6 +437,11 @@ export function AgentComputerSection({ enabled, size, onSizeChange, computer, op
           Saving deletes this computer and its disk permanently.
         </p>
       ) : null}
+      <AgentComputerRecoveryNotice
+        loadError={loadError}
+        provisionError={provisionError}
+        onRetryLoad={onRetryLoad}
+      />
     </div>
   )
 }
@@ -444,7 +453,7 @@ export function AgentComputerSection({ enabled, size, onSizeChange, computer, op
  * every connect/bind control for guests and non-creators of personal agents.
  */
 export function AgentSurfacesSection({
-  agentName, hasAgent, loading, connections, bindings, canBind, canBindResolved, channelPicker, busyId, error, notice,
+  agentName, hasAgent, loading, connections, bindings, canBind, canBindResolved, channelPicker, busyId, error,
   onConnectSlack, onToggleChannelPicker, onSelectChannel, onRemoveBinding,
 }: {
   agentName: string
@@ -458,7 +467,6 @@ export function AgentSurfacesSection({
   channelPicker: SurfaceChannelPicker | null
   busyId: string | null
   error: string | null
-  notice: { kind: 'success' | 'error'; message: string } | null
   onConnectSlack(): void
   onToggleChannelPicker(connectionId: string): void
   onSelectChannel(connectionId: string, channel: SurfaceChannelOption): void
@@ -474,9 +482,6 @@ export function AgentSurfacesSection({
         Reachable on
         {loading ? <Loader2 size={12} className="animate-spin text-(--muted)" /> : null}
       </p>
-      {notice ? (
-        <p className={`mt-1 text-[11px] leading-4 ${notice.kind === 'error' ? 'text-red-500' : 'text-(--muted)'}`}>{notice.message}</p>
-      ) : null}
       <div className="mt-1.5">
         <div className="flex items-center gap-3 border-b border-(--border) py-2.5 last:border-b-0">
           <div className="min-w-0 flex-1">
@@ -1077,4 +1082,3 @@ export function EnvironmentApprovalPanel({
     </div>
   )
 }
-

@@ -45,13 +45,11 @@ export function useAgentEditorForm({
     ? enabledAgentToolGroupIds(showcaseAgent.allowedToolIds)
     : new Set(DEFAULT_AGENT_TOOL_GROUP_IDS)))
   const [advanced, setAdvanced] = useState(false)
-  const [savedFlash, setSavedFlash] = useState(false)
   const [dirty, setDirty] = useState(false)
 
   // Explicit save model: every change marks the form dirty; nothing persists
   // until Save. Cancel discards back to the loaded agent and closes.
   const markDirty = useCallback(() => {
-    setSavedFlash(false)
     setDirty(true)
   }, [])
 
@@ -82,7 +80,6 @@ export function useAgentEditorForm({
       setLegacyHostedRuntime(workspaceAgentUsesManagedHarness(agent))
       setAgentType(workspaceAgentUsesByo(agent) ? 'byo' : 'overlay')
       setDirty(false)
-      setSavedFlash(false)
     }
   }
 
@@ -129,8 +126,6 @@ export function useAgentEditorForm({
     setEnabledToolGroups,
     advanced,
     setAdvanced,
-    savedFlash,
-    setSavedFlash,
     dirty,
     setDirty,
     markDirty,

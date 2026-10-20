@@ -5,6 +5,7 @@ import type { Dispatch, SetStateAction } from 'react'
 import type { Computer, ComputerSize, WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { COMPUTER_TOOL_IDS, enabledAgentToolGroupIds } from '@/shared/agents/tool-groups'
+import { toast } from '@overlay/ui/primitives'
 import type { AgentType } from './AgentEditorForm'
 
 export function useAgentComputer({
@@ -16,7 +17,6 @@ export function useAgentComputer({
   enabledToolGroups,
   setEnabledToolGroups,
   markDirty,
-  setError,
 }: {
   showcase: boolean
   computersAvailable: boolean
@@ -26,10 +26,11 @@ export function useAgentComputer({
   enabledToolGroups: Set<string>
   setEnabledToolGroups: Dispatch<SetStateAction<Set<string>>>
   markDirty(): void
-  setError: Dispatch<SetStateAction<string | null>>
 }) {
   const [agentComputer, setAgentComputer] = useState<Computer | null>(null)
   const [computerSize, setComputerSize] = useState<ComputerSize>('default')
+  const [computerLoadError, setComputerLoadError] = useState<string | null>(null)
+  const [computerProvisionFailure, setComputerProvisionFailure] = useState<{ agentId: string; message: string } | null>(null)
   const [computerOpenBusy, setComputerOpenBusy] = useState(false)
   const [computerLifecycleBusy, setComputerLifecycleBusy] = useState<'start' | 'stop' | 'delete' | null>(null)
   // Which agent's computer has been read once (derived, so the first render already knows it is loading).
@@ -42,13 +43,15 @@ export function useAgentComputer({
   // A bound machine implies the Computer tool group: force it on so the merged
   // toggle never shows "off" above a live machine.
   useEffect(() => {
-    if (showcase || !computersAvailable || !activeWorkspaceId || !agent || agentType !== 'overlay') return
+    if (showcase || !computersAvailable || !activeWorkspaceId || !agent || agentType !== 'overlay' || loadedFor === agent.id) return
     let cancelled = false
     const agentIdForLoad = agent.id
+    setComputerLoadError(null)
     void overlayAppClient.computers.list(activeWorkspaceId).then(
       (result) => {
         if (cancelled) return
         setLoadedFor(agentIdForLoad)
+        setComputerLoadError(null)
         const existing = result.computers.find(
           (computer) => computer.ownerType === 'agent' && computer.ownerId === agent.id,
         ) ?? null
@@ -61,20 +64,38 @@ export function useAgentComputer({
           }
         }
       },
-      () => { if (!cancelled) setLoadedFor(agentIdForLoad) },
+      (error: unknown) => {
+        if (cancelled) return
+        setComputerLoadError(error instanceof Error ? error.message : 'Could not load the computer.')
+        setLoadedFor(agentIdForLoad)
+      },
     )
     return () => { cancelled = true }
-  }, [showcase, computersAvailable, activeWorkspaceId, agent, agentType, markDirty, setEnabledToolGroups])
+  }, [showcase, computersAvailable, activeWorkspaceId, agent, agentType, loadedFor, markDirty, setEnabledToolGroups])
+
+  const retryComputerLoad = () => {
+    setComputerLoadError(null)
+    setLoadedFor(null)
+  }
+  const computerProvisionError = computerProvisionFailure?.agentId === agent?.id
+    ? computerProvisionFailure.message
+    : null
+  const setComputerProvisionError = (message: string | null, agentId = agent?.id) => {
+    if (!message) {
+      setComputerProvisionFailure(null)
+      return
+    }
+    if (agentId) setComputerProvisionFailure({ agentId, message })
+  }
 
   const openAgentComputer = async () => {
     if (!activeWorkspaceId || !agentComputer) return
     setComputerOpenBusy(true)
-    setError(null)
     try {
       const ticket = await overlayAppClient.computers.openDesktop(activeWorkspaceId, agentComputer.id)
       window.open(ticket.url, '_blank', 'noopener,noreferrer')
     } catch (openError) {
-      setError(openError instanceof Error ? openError.message : 'Could not open the desktop.')
+      toast.error(openError instanceof Error ? openError.message : 'Could not open the desktop.')
     } finally {
       setComputerOpenBusy(false)
     }
@@ -84,14 +105,14 @@ export function useAgentComputer({
     if (!activeWorkspaceId || !agentComputer || computerLifecycleBusy) return
     const action = agentComputer.status === 'ready' ? 'stop' : 'start'
     setComputerLifecycleBusy(action)
-    setError(null)
     try {
       const result = action === 'stop'
         ? await overlayAppClient.computers.stop(activeWorkspaceId, agentComputer.id)
         : await overlayAppClient.computers.start(activeWorkspaceId, agentComputer.id)
       setAgentComputer(result.computer)
+      toast.success(action === 'stop' ? 'Computer stopped.' : 'Computer started.')
     } catch (powerError) {
-      setError(powerError instanceof Error ? powerError.message : `Could not ${action} the computer.`)
+      toast.error(powerError instanceof Error ? powerError.message : `Could not ${action} the computer.`)
     } finally {
       setComputerLifecycleBusy(null)
     }
@@ -101,7 +122,6 @@ export function useAgentComputer({
     if (!activeWorkspaceId || !agentComputer || computerLifecycleBusy || !agent) return
     if (!window.confirm(`Delete ${agentComputer.name ?? "this agent's computer"}? Its disk state is destroyed permanently.`)) return
     setComputerLifecycleBusy('delete')
-    setError(null)
     try {
       await overlayAppClient.computers.destroy(activeWorkspaceId, agentComputer.id)
       // The machine is already gone, so persist the merged toggle off right
@@ -115,8 +135,9 @@ export function useAgentComputer({
         allowedToolIds: agent.allowedToolIds.filter((id) => !(COMPUTER_TOOL_IDS as readonly string[]).includes(id)),
       })
       setAgentComputer(null)
+      toast.success('Computer deleted.')
     } catch (deleteError) {
-      setError(deleteError instanceof Error ? deleteError.message : 'Could not delete the computer.')
+      toast.error(deleteError instanceof Error ? deleteError.message : 'Could not delete the computer.')
     } finally {
       setComputerLifecycleBusy(null)
     }
@@ -128,6 +149,10 @@ export function useAgentComputer({
     setAgentComputer,
     computerSize,
     setComputerSize,
+    computerLoadError,
+    computerProvisionError,
+    setComputerProvisionError,
+    retryComputerLoad,
     computerOpenBusy,
     computerLifecycleBusy,
     openAgentComputer,

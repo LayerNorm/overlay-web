@@ -93,14 +93,12 @@ export function KnowledgeEmptyState({
 export function AddMemoryDialog({
   value,
   saving,
-  error,
   onChange,
   onClose,
   onSave,
 }: {
   value: string
   saving: boolean
-  error?: string | null
   onChange: (value: string) => void
   onClose: () => void
   onSave: () => void
@@ -134,11 +132,6 @@ export function AddMemoryDialog({
         <p className="mt-2 text-[11px] leading-snug text-(--muted)">
           Long memories stay as one saved item; the list shows short previews so you can scan them quickly.
         </p>
-        {error ? (
-          <p className='mt-3 text-xs text-red-400' role='alert'>
-            {error}
-          </p>
-        ) : null}
         <div className="mt-3 flex justify-end gap-2">
           <Button variant="ghost" type="submit" onClick={onClose} className={unstyledButton(DIALOG_ACTION_BUTTON_CLASS)}>
             Cancel
@@ -158,7 +151,6 @@ export function AddMemoryDialog({
 export function ImportMemoryDialog({
   value,
   saving,
-  error,
   promptCopied,
   onChange,
   onClose,
@@ -167,7 +159,6 @@ export function ImportMemoryDialog({
 }: {
   value: string
   saving: boolean
-  error?: string | null
   promptCopied: boolean
   onChange: (value: string) => void
   onClose: () => void
@@ -229,11 +220,6 @@ export function ImportMemoryDialog({
             />
           </div>
         </div>
-        {error ? (
-          <p className='mb-3 text-xs text-red-400' role='alert'>
-            {error}
-          </p>
-        ) : null}
         <div className="flex justify-end gap-2">
           <Button variant="ghost" type="submit" onClick={onClose} className={unstyledButton(DIALOG_ACTION_BUTTON_CLASS)}>
             Cancel

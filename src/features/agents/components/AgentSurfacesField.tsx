@@ -21,7 +21,6 @@ export function AgentSurfacesField({ agentName, hasAgent, surfaces }: {
       channelPicker={surfaces.channelPicker}
       busyId={surfaces.busyBindingId}
       error={surfaces.error}
-      notice={surfaces.notice}
       onConnectSlack={surfaces.connectSlack}
       onToggleChannelPicker={(connectionId) => {
         if (surfaces.channelPicker?.connectionId === connectionId) surfaces.closeChannelPicker()

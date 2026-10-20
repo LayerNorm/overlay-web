@@ -41,7 +41,6 @@ type AgentEditorFormSectionProps = {
   modelOptions: { value: string; label: string }[]
   valid: boolean
   busy: boolean
-  error: string | null
   form: ReturnType<typeof useAgentEditorForm>
   runtime: ReturnType<typeof useAgentRuntime>
   byo: ReturnType<typeof useByoConnection>
@@ -65,7 +64,6 @@ function AgentEditorFormSection({
   modelOptions,
   valid,
   busy,
-  error,
   form,
   runtime,
   byo,
@@ -91,7 +89,6 @@ function AgentEditorFormSection({
     enabledToolGroups,
     advanced,
     dirty,
-    savedFlash,
     markDirty,
     toggleToolGroup,
     setName,
@@ -136,6 +133,9 @@ function AgentEditorFormSection({
     agentComputer,
     computerSize,
     setComputerSize,
+    computerLoadError,
+    computerProvisionError,
+    retryComputerLoad,
     computerOpenBusy,
     computerLifecycleBusy,
     openAgentComputer,
@@ -214,6 +214,9 @@ function AgentEditorFormSection({
               onOpenDesktop: () => void openAgentComputer(),
               onTogglePower: () => void toggleAgentComputerPower(),
               onDelete: () => void deleteAgentComputer(),
+              loadError: computerLoadError,
+              provisionError: computerProvisionError,
+              onRetryLoad: retryComputerLoad,
               disabled: showcase,
             } : undefined}
           />}
@@ -239,8 +242,6 @@ function AgentEditorFormSection({
 
           <AgentEditorFormFooter
             mode={mode}
-            error={error}
-            savedFlash={savedFlash}
             busy={busy}
             valid={valid}
             dirty={dirty}
@@ -257,8 +258,6 @@ function AgentEditorFormSection({
 
 function AgentEditorFormFooter({
   mode,
-  error,
-  savedFlash,
   busy,
   valid,
   dirty,
@@ -268,8 +267,6 @@ function AgentEditorFormFooter({
   onCancel,
 }: {
   mode: 'new' | 'edit'
-  error: string | null
-  savedFlash: boolean
   busy: boolean
   valid: boolean
   dirty: boolean
@@ -280,10 +277,6 @@ function AgentEditorFormFooter({
 }) {
   return (
     <>
-      {error ? <p role="alert" className="text-xs text-red-500">{error}</p> : null}
-      {savedFlash && mode === 'edit'
-        ? <p role="status" className="text-xs text-(--muted)">Saved.</p>
-        : null}
       {mode === 'new' ? (
         <>
           <Button className="mt-2 w-full" disabled={busy || !valid} onClick={onCreate}>
@@ -322,7 +315,6 @@ export function AgentEditorView({
   isDefaultMaster,
   valid,
   busy,
-  error,
   showcase,
   computersAvailable,
   connectedAgentsEnabled,
@@ -354,7 +346,6 @@ export function AgentEditorView({
   isDefaultMaster: boolean
   valid: boolean
   busy: boolean
-  error: string | null
   showcase: boolean
   computersAvailable: boolean
   connectedAgentsEnabled: boolean
@@ -372,8 +363,6 @@ export function AgentEditorView({
   cancelEdit(): void
   archiveAgent(): void
 }) {
-  const { savedFlash } = form
-
   const editor = (
     <AppScreenShell
       style={inPanel ? { background: 'transparent' } : undefined}
@@ -425,7 +414,6 @@ export function AgentEditorView({
             modelOptions={modelOptions}
             valid={valid}
             busy={busy}
-            error={error}
             form={form}
             runtime={runtime}
             byo={byo}
@@ -448,8 +436,6 @@ export function AgentEditorView({
       return (
         <AgentEditorSidePanel
           title={title}
-          mode={mode}
-          savedFlash={savedFlash}
           onTogglePanelMode={onTogglePanelMode}
           onClose={closeEditor}
         >

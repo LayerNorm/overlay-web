@@ -311,15 +311,15 @@ function AppScreenHeaderTitle({
     <div className="flex min-w-0 flex-1 items-center">
       {leading ? <div className="mr-2 shrink-0">{leading}</div> : null}
       <div className="min-w-0 flex-1">
-        <div className="flex min-w-0 items-center">
-          {title ? <h1 className="truncate text-sm font-medium text-(--foreground)">{title}</h1> : null}
+        <div className="flex min-w-0 items-baseline">
+          {title ? <h1 className="truncate text-sm font-medium leading-5 text-(--foreground)">{title}</h1> : null}
           {subtitle ? (
             <>
               <span className="mx-2 shrink-0 text-(--muted-light)">·</span>
               <span className="truncate text-sm text-(--muted)">{subtitle}</span>
             </>
           ) : null}
-          {metadata ? <span className="ml-2 shrink-0">{metadata}</span> : null}
+          {metadata ? <span className="ml-2 shrink-0 text-xs leading-5 text-(--muted)">{metadata}</span> : null}
         </div>
         {description ? (
           <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-(--muted)">{description}</p>
@@ -362,8 +362,8 @@ export function AppScreenHeader({
           {(search || actions || tabs || menu) ? (
             <div className="flex max-w-full min-w-0 shrink-0 items-center gap-2 overflow-x-auto scrollbar-none md:overflow-visible [&::-webkit-scrollbar]:hidden">
               {search}
-              {actions}
               {tabs ? <div className="min-w-0 shrink overflow-x-auto scrollbar-none [&::-webkit-scrollbar]:hidden">{tabs}</div> : null}
+              {actions}
               {menu}
             </div>
           ) : null}
