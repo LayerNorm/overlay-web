@@ -170,6 +170,10 @@ Persistent chat context and hybrid retrieval both resolve memories by `workspace
 
 `GET` and `POST /api/v1/account/workspaces` use an account-scoped BFF context and require a signed browser session. Listing never creates a Personal workspace: with no memberships it returns an empty `workspaces` array, an empty-string `activeWorkspaceId`, and invitations queried only for the email in the signed session. The Convex query returns pending, unexpired invitations for active workspaces, capped at the directory limit, and exposes only invitation/workspace summaries. Creation reuses the existing workspace validation and free-workspace limit, activates the created workspace, and sets the active-workspace cookie. Invitation acceptance is also account-scoped so accepting an invitation does not bootstrap Personal. `/api/v1/settings` is account-scoped without a session-only restriction to preserve its existing API authentication methods.
 
+## Conversational onboarding
+
+New owner sessions use `flowVersion: 2` and revision-checked name, about, team, website, and daily-work questions. Invited members skip owner questions and native employees; sessions without a flow version keep the legacy sequence. Back is limited to profile questions before side effects. Optional work-tool connections, external agents, Personal context, invitations, and the first Work task remain separate steps; solo owners skip invitations. Onboarding answers use the durable transcript outbox and completion is recorded only after the task is verified. Unfinished profile drafts are scoped to user, workspace, run, and step in session storage. Chat and agent questionnaires use the bounded `present_generated_ui` `questionnaire` kind: suggestions edit the composer but do not submit, authorize, or pause a tool call.
+
 ## Collaboration message contracts
 
 - Personal and organization workspaces expose the same collaboration routes.

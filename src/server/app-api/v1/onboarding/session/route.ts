@@ -56,7 +56,7 @@ export async function POST(_request: NextRequest, context: AppApiRouteContext) {
     if (!parsed.success) return NextResponse.json({ error: 'Invalid onboarding action', code: 'validation_error' }, { status: 400 })
     const onboarding = service(context)
     if (parsed.data.action === 'start') {
-      const result = await onboarding.start(context.auth.userId, context.workspace.workspace.id)
+      const result = await onboarding.start(context.auth.userId, context.workspace.workspace.id, { member: !['owner', 'admin'].includes(context.workspace.membership.role) })
       return responseWithCompletionCookie(result, context.auth.userId)
     }
     const result = await onboarding.act(context.auth.userId, context.workspace.workspace.id, parsed.data)

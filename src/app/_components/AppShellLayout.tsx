@@ -11,7 +11,7 @@ import { GuestGateProvider } from '@/components/providers/GuestGateProvider'
 import { CapabilitiesProvider } from '@/components/providers/CapabilitiesProvider'
 import { AuthorizationProvider } from '@/components/providers/AuthorizationProvider'
 import { AuthorizationRouteGuard } from '@/components/providers/AuthorizationRouteGuard'
-import { AppClientProviders } from '@/components/providers/AppClientProviders'
+import { AppClientProviders, GatewayModelCatalogPrefetch } from '@/components/providers/AppClientProviders'
 import type { AppAuthorizationState } from '@overlay/app-core'
 import { getAppDataCapabilitiesSync, getOverlayCapabilitiesSync } from '@/server/capabilities'
 import { getOverlayServerContext } from '@/server/bootstrap'
@@ -74,13 +74,13 @@ async function AppShellContent({
   return (
     <AppClientProviders
       initialUser={user}
-      publicShowcase={publicShowcase}
       requiresConvexClient={appDataCapabilities.requiresConvexClient}
     >
       <WorkspaceAppBoundaryWithShowcase
         hasAuthenticatedUser={Boolean(user)}
         publicShowcase={publicShowcase}
       >
+        <GatewayModelCatalogPrefetch publicShowcase={publicShowcase} />
         <div className="flex h-screen overflow-hidden bg-background text-foreground">
           <AsyncSessionsProvider>
             <NavigationProgressProvider>

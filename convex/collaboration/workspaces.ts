@@ -895,11 +895,9 @@ export const listReceivedInvitationsByServer = query({
     const invitations = await ctx.db
       .query('workspaceInvitations')
       .withIndex('by_email_status', (q) =>
-        q.eq('email', email).eq('status', 'pending'))
+        q.eq('email', email).eq('status', 'pending').gt('expiresAt', args.now))
       .take(MAX_DIRECTORY_ROWS)
-    const summaries = await Promise.all(invitations
-      .filter((invitation) => invitation.expiresAt > args.now)
-      .map(async (invitation) => {
+    const summaries = await Promise.all(invitations.map(async (invitation) => {
         const workspace = await getWorkspace(ctx, invitation.workspaceId)
         if (!workspace || workspace.status !== 'active') return null
         return {

@@ -1,7 +1,8 @@
 'use client'
 
 import { useRef, useState } from 'react'
-import { Button, DialogFrame } from '@overlay/ui/primitives'
+import { Button, DialogFrame, QuestionnaireSuggestions } from '@overlay/ui/primitives'
+import { ArrowLeft } from 'lucide-react'
 import { DirectMessageExperience } from '@/features/chat/components/DirectMessageExperience'
 import { useAuth } from '@/contexts/AuthContext'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
@@ -9,8 +10,10 @@ import { FREE_TIER_AUTO_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import { AGENT_TOOL_PRESETS, toolIdsForEnabledGroups } from '@/shared/agents/tool-groups'
 import { dispatchAgentDirectoryChanged } from '@/shared/workspace/sidebar-events'
 import type { OnboardingAction, OnboardingEmployee, OnboardingSession, OnboardingSessionResponse } from '@/shared/onboarding/session'
+import { onboardingChoices, onboardingProfileSteps } from '@/shared/onboarding/session'
 import { onboardingRequestInit, requestOnboarding } from './onboarding-client'
-import { OnboardingEmployees } from './OnboardingEmployees'
+import { OnboardingEmployees, OnboardingExternalAgents } from './OnboardingEmployees'
+import { readOnboardingDraft, writeOnboardingDraft } from './onboarding-drafts'
 import { OnboardingConnections } from './OnboardingConnections'
 import { OnboardingContext, OnboardingInvites } from './OnboardingContext'
 import styles from './onboarding.module.css'
@@ -19,10 +22,15 @@ export function OnboardingDots() {
   return <div className={styles.dots} role="status" aria-label="Overlay is preparing a response"><span /><span /><span /></div>
 }
 
+function canGoBackFromProfile(session: OnboardingSession) {
+  return onboardingProfileSteps(session).indexOf(session.step) > 0 && session.createdAgentIds.length === 0
+}
+
 export function OnboardingConversation({ session, initialName, onChange, onShowWork }: { session: OnboardingSession; initialName: string; onChange(result: OnboardingSessionResponse): void; onShowWork(): void }) {
   const { user } = useAuth()
-  const [input, setInput] = useState(session.step === 'name' ? initialName : '')
+  const [input, setInput] = useState(() => readOnboardingDraft(session, user?.id ?? '', initialName))
   const [inputRevision, setInputRevision] = useState(0)
+  const [focusRevision, setFocusRevision] = useState(0)
   const [previousStep, setPreviousStep] = useState(session.step)
   const [taskDraft, setTaskDraft] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -31,7 +39,17 @@ export function OnboardingConversation({ session, initialName, onChange, onShowW
   const [privacyOpen, setPrivacyOpen] = useState(false)
   const [pendingAnswer, setPendingAnswer] = useState<{ text: string; clientNonce: string } | null>(null)
   if (previousStep !== session.step) {
-    setPreviousStep(session.step); setInput(''); setInputRevision((current) => current + 1); setTaskDraft(null)
+    setPreviousStep(session.step); setInput(readOnboardingDraft(session, user?.id ?? '', initialName)); setInputRevision((current) => current + 1); setTaskDraft(null); setPendingAnswer(null)
+  }
+  const changeInput = (value: string) => {
+    const bounded = value.slice(0, 3000)
+    setInput(bounded)
+    if (user) writeOnboardingDraft(session, user.id, bounded)
+  }
+  const chooseDraft = (value: string) => {
+    changeInput(value)
+    setInputRevision((current) => current + 1)
+    setFocusRevision((current) => current + 1)
   }
   const perform = async (operation: () => Promise<void>) => {
     if (working.current) return
@@ -109,7 +127,9 @@ export function OnboardingConversation({ session, initialName, onChange, onShowW
       await act({ action: 'finish', runId: session.runId, revision: session.revision, taskId: result.item.id })
     })
   }
-  const openEnded = ['name', 'about', 'daily', 'task'].includes(session.step) && !taskDraft
+  const openEnded = [...onboardingProfileSteps(session), 'task'].includes(session.step) && !taskDraft
+  const choices = onboardingChoices(session, initialName)
+  const canGoBack = canGoBackFromProfile(session)
   const footer = (
     <div className={styles.panel}>
       {busy ? <OnboardingDots /> : null}
@@ -117,9 +137,11 @@ export function OnboardingConversation({ session, initialName, onChange, onShowW
       <div aria-busy={busy} className={busy ? 'pointer-events-none opacity-60' : undefined}>
         {session.step === 'employees' ? <OnboardingEmployees session={session} disabled={busy} onConfirm={createEmployees} /> : null}
         {session.step === 'connections' ? <OnboardingConnections session={session} disabled={busy} onContinue={skip} /> : null}
+        {session.step === 'external' ? <OnboardingExternalAgents session={session} disabled={busy} onContinue={(agentIds) => { void perform(() => advance({ agentIds })) }} /> : null}
         {session.step === 'memories' ? <OnboardingContext disabled={busy} onSave={saveMemories} onSkip={skip} /> : null}
         {session.step === 'teammates' ? <OnboardingInvites disabled={busy} onInvite={invite} onSkip={skip} /> : null}
-        {session.step === 'task' && !taskDraft ? <div className="flex flex-wrap gap-2">{session.suggestions.map((suggestion) => <Button key={suggestion} variant="outline" disabled={busy} className="h-auto py-2 text-left whitespace-normal" onClick={() => { setInput(suggestion); setInputRevision((current) => current + 1) }}>{suggestion}</Button>)}</div> : null}
+        {openEnded && choices.length ? <QuestionnaireSuggestions questionId={session.step} choices={choices} multiple={session.step === 'about' || session.step === 'daily'} value={input} onDraftChange={chooseDraft} disabled={busy} /> : null}
+        {canGoBack ? <Button variant="ghost" size="sm" className="mt-4 -ml-3 text-muted-foreground" disabled={busy} onClick={() => { void perform(() => act({ action: 'back', runId: session.runId, revision: session.revision })) }}><ArrowLeft className="size-3" />Back</Button> : null}
         {session.step === 'task' && taskDraft ? <div className="space-y-4 rounded-xl border p-4"><p className="text-sm font-medium break-words">{taskDraft}</p><p className="text-xs leading-5 text-muted-foreground">A Personal task in Work, linked to this conversation. Creating it does not start execution or incur model usage. Choose an assignee and start it from Work.</p><div className="flex justify-end gap-2"><Button variant="ghost" disabled={busy} onClick={() => setTaskDraft(null)}>Edit</Button><Button disabled={busy} onClick={createTask}>Create task</Button></div></div> : null}
         {session.step === 'complete' ? <Button onClick={onShowWork}>See your first task</Button> : null}
       </div>
@@ -129,7 +151,7 @@ export function OnboardingConversation({ session, initialName, onChange, onShowW
     <DirectMessageExperience conversationId={session.conversationId} draftTitle="Overlay" guided={session.step === 'complete' ? { footer, composer: null, revision: session.revision } : {
       revision: session.revision, footer, pendingMessage: pendingAnswer,
       headerActions: <Button variant="ghost" size="sm" disabled={busy} onClick={() => setPrivacyOpen(true)}>{session.aiEnabled ? 'Personalization on' : 'Personalize with AI'}</Button>,
-      composer: openEnded ? { value: input, onChange: (value) => setInput(value.slice(0, 3000)), onSubmit: answer, placeholder: session.step === 'name' ? 'Your name' : session.step === 'task' ? 'What is one task we can get started with?' : 'Tell me in your own words...', disabled: busy, revision: inputRevision } : null,
+      composer: openEnded ? { value: input, onChange: changeInput, onSubmit: answer, placeholder: session.step === 'name' ? 'Your name' : session.step === 'task' ? 'What is one task we can get started with?' : 'Choose a suggestion, or tell me in your own words...', disabled: busy, revision: inputRevision, focusRevision } : null,
     }} />
     <DialogFrame open={privacyOpen} onOpenChange={setPrivacyOpen} title="Personalize your onboarding" className="w-[min(460px,94vw)]">
       <p className="text-sm leading-6 text-muted-foreground">Use Overlay Free through Vercel AI Gateway or OpenRouter to personalize replies, employee suggestions, and starter tasks using your name, work description, and daily tasks. Imported memories and teammate emails are never included.</p>

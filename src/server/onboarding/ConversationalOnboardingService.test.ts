@@ -81,6 +81,118 @@ async function start(fixtureValue: ReturnType<typeof fixture>) {
   return result
 }
 
+async function currentSession(fixtureValue: ReturnType<typeof fixture>) {
+  const session = (await fixtureValue.service.get('user-1', 'workspace-1')).session
+  assert.ok(session)
+  return session
+}
+
+async function answerCurrent(fixtureValue: ReturnType<typeof fixture>, value: string) {
+  return await act(fixtureValue, {
+    action: 'answer',
+    revision: (await currentSession(fixtureValue)).revision,
+    value,
+  })
+}
+
+async function advanceCurrent(
+  fixtureValue: ReturnType<typeof fixture>,
+  options: Partial<Pick<Extract<OnboardingAction, { action: 'advance' }>, 'agentIds' | 'memoryIds' | 'invitationIds'>> = {},
+) {
+  return await act(fixtureValue, {
+    action: 'advance',
+    revision: (await currentSession(fixtureValue)).revision,
+    ...options,
+  })
+}
+
+async function answerOwnerProfile(fixtureValue: ReturnType<typeof fixture>) {
+  await start(fixtureValue)
+  await answerCurrent(fixtureValue, 'Ada')
+  await answerCurrent(fixtureValue, 'Builds software')
+  await answerCurrent(fixtureValue, 'A small team')
+  await answerCurrent(fixtureValue, "I'll add it later")
+  return await answerCurrent(fixtureValue, 'Planning and coding')
+}
+
+test('workspace-first questions resume with corrections and skip solo invitations', async () => {
+  const f = fixture()
+  let result = await start(f)
+  const answer = async (value: string) => {
+    result = await act(f, { action: 'answer', revision: result.session!.revision, value })
+  }
+  await answer('Ada')
+  await answer('Engineering · Product')
+  assert.equal(result.session?.step, 'team')
+  await answer('Just me')
+  assert.equal(result.session?.step, 'website')
+  result = await act(f, { action: 'back', revision: result.session!.revision })
+  assert.equal(result.session?.step, 'team')
+  assert.equal(result.session?.profile.team, 'Just me')
+  const staleRevision = result.session!.revision - 1
+  assert.equal((await act(f, { action: 'answer', revision: staleRevision, value: 'Several teams' })).session?.profile.team, 'Just me')
+  await answer('Just me')
+  await answer("I'll add it later")
+  await answer('Research · with my own custom requirements')
+  assert.equal(result.session?.profile.daily, 'Research · with my own custom requirements')
+  assert.equal((await f.service.get('user-1', 'workspace-1')).session?.step, 'employees')
+  for (const step of ['connections', 'external', 'memories', 'task']) {
+    result = await act(f, { action: 'advance', revision: result.session!.revision })
+    assert.equal(result.session?.step, step)
+  }
+})
+
+test('back remains within profile questions for owners and members', async () => {
+  const owner = fixture()
+  await answerOwnerProfile(owner)
+  const ownerSession = await currentSession(owner)
+  assert.equal(ownerSession.step, 'employees')
+  await assert.rejects(
+    () => act(owner, { action: 'back', revision: ownerSession.revision }),
+    (error: unknown) => error instanceof Error && 'code' in error && error.code === 'invalid_step',
+  )
+
+  const member = fixture()
+  const result = await member.service.start('user-1', 'workspace-1', { member: true })
+  member.runId = result.session!.runId
+  await answerCurrent(member, 'Ada')
+  await answerCurrent(member, 'Design')
+  await answerCurrent(member, 'Research')
+  const memberSession = await currentSession(member)
+  assert.equal(memberSession.step, 'connections')
+  await assert.rejects(
+    () => act(member, { action: 'back', revision: memberSession.revision }),
+    (error: unknown) => error instanceof Error && 'code' in error && error.code === 'invalid_step',
+  )
+})
+
+test('invited members get personal setup, not workspace-owner questions', async () => {
+  const f = fixture()
+  let result = await f.service.start('user-1', 'workspace-1', { member: true })
+  f.runId = result.session!.runId
+  for (const value of ['Ada', 'Design', 'Research']) result = await act(f, { action: 'answer', revision: result.session!.revision, value })
+  assert.equal(result.session?.step, 'connections')
+  assert.equal(result.session?.member, true)
+  for (const step of ['external', 'memories', 'task']) {
+    result = await act(f, { action: 'advance', revision: result.session!.revision })
+    assert.equal(result.session?.step, step)
+  }
+})
+
+test('legacy saved sessions continue their original questions without restarting', async () => {
+  const f = fixture()
+  const first = await start(f)
+  const record = await f.repository.get('user-1')
+  const stored = JSON.parse(record!.onboardingSession!)
+  delete stored.session.flowVersion
+  delete stored.session.member
+  await f.repository.compareAndSet({ userId: 'user-1', expectedRevision: first.session!.revision, expectedRunId: first.session!.runId, onboardingSession: JSON.stringify(stored), hasSeenOnboarding: false })
+  await act(f, { action: 'answer', revision: 1, value: 'Ada' })
+  const result = await act(f, { action: 'answer', revision: 2, value: 'Engineering' })
+  assert.equal(result.session?.step, 'daily')
+  assert.equal(result.session?.runId, first.session?.runId)
+})
+
 type ActionInput<T = Exclude<OnboardingAction, { action: 'start' }>> = T extends { runId: string } ? Omit<T, 'runId'> & { runId?: string } : never
 function act(fixtureValue: ReturnType<typeof fixture>, action: ActionInput, userId = 'user-1') {
   return fixtureValue.service.act(userId, 'workspace-1', { ...action, runId: action.runId ?? fixtureValue.runId } as OnboardingAction)
@@ -98,27 +210,29 @@ test('actions require a strict run id except for start', () => {
 })
 
 async function advanceToTask(fixtureValue: ReturnType<typeof fixture>) {
-  await start(fixtureValue)
-  await act(fixtureValue, { action: 'answer', revision: 1, value: 'Ada' })
-  await act(fixtureValue, { action: 'answer', revision: 2, value: 'Builds software' })
-  await act(fixtureValue, { action: 'answer', revision: 3, value: 'Planning and coding' })
-  await act(fixtureValue, { action: 'advance', revision: 4 })
-  await act(fixtureValue, { action: 'advance', revision: 5 })
-  await act(fixtureValue, { action: 'advance', revision: 6 })
-  return await act(fixtureValue, { action: 'advance', revision: 7 })
+  await answerOwnerProfile(fixtureValue)
+  await advanceCurrent(fixtureValue)
+  await advanceCurrent(fixtureValue)
+  await advanceCurrent(fixtureValue)
+  await advanceCurrent(fixtureValue)
+  return await advanceCurrent(fixtureValue)
 }
 
 test('normal onboarding actions advance the approved sequence', async () => {
   const f = fixture()
   let response = await start(f)
   assert.equal(response.session?.step, 'name')
-  response = await act(f, { action: 'answer', revision: 1, value: 'Ada' })
+  response = await answerCurrent(f, 'Ada')
   assert.equal(response.session?.step, 'about')
-  response = await act(f, { action: 'answer', revision: 2, value: 'Builds software' })
+  response = await answerCurrent(f, 'Builds software')
+  assert.equal(response.session?.step, 'team')
+  response = await answerCurrent(f, 'A small team')
+  assert.equal(response.session?.step, 'website')
+  response = await answerCurrent(f, "I'll add it later")
   assert.equal(response.session?.step, 'daily')
-  response = await act(f, { action: 'answer', revision: 3, value: 'Planning and coding' })
+  response = await answerCurrent(f, 'Planning and coding')
   assert.equal(response.session?.step, 'employees')
-  response = await act(f, { action: 'advance', revision: 4 })
+  response = await advanceCurrent(f)
   assert.equal(response.session?.step, 'connections')
   assert.equal(response.session?.aiEnabled, false)
   assert.equal(f.messages.at(-2)?.content, 'Skipped selecting AI employees.')
@@ -128,17 +242,16 @@ test('advance records only validated choice counts before each assistant reply',
   const f = fixture()
   f.effects.memories.get = async ({ memoryId }) => ({ id: memoryId, userId: 'user-1', visibility: 'personal' } as never)
   f.effects.workspaces.listInvitations = async () => [{ id: 'invitation-1', status: 'pending' }] as never
-  await start(f)
-  await act(f, { action: 'answer', revision: 1, value: 'Ada' })
-  await act(f, { action: 'answer', revision: 2, value: 'Builds software' })
-  await act(f, { action: 'answer', revision: 3, value: 'Planning and coding' })
-  await act(f, { action: 'advance', revision: 4, agentIds: ['overlay'] })
+  await answerOwnerProfile(f)
+  await advanceCurrent(f, { agentIds: ['overlay'] })
   assert.equal(f.messages.at(-2)?.content, 'Selected 1 AI employee.')
-  await act(f, { action: 'advance', revision: 5 })
+  await advanceCurrent(f)
   assert.equal(f.messages.at(-2)?.content, 'Finished reviewing optional tool connections.')
-  await act(f, { action: 'advance', revision: 6, memoryIds: ['memory-1'] })
+  await advanceCurrent(f)
+  assert.equal(f.messages.at(-2)?.content, 'Skipped external agent connections.')
+  await advanceCurrent(f, { memoryIds: ['memory-1'] })
   assert.equal(f.messages.at(-2)?.content, 'Imported 1 Personal context item.')
-  await act(f, { action: 'advance', revision: 7, invitationIds: ['invitation-1'] })
+  await advanceCurrent(f, { invitationIds: ['invitation-1'] })
   assert.equal(f.messages.at(-2)?.content, 'Invited 1 teammate.')
 })
 
@@ -201,10 +314,7 @@ test('another user cannot read or rebind an onboarding session', async () => {
 
 test('agent selections must be visible and owned by the authenticated user', async () => {
   const f = fixture()
-  await start(f)
-  await act(f, { action: 'answer', revision: 1, value: 'Ada' })
-  await act(f, { action: 'answer', revision: 2, value: 'Builds software' })
-  await act(f, { action: 'answer', revision: 3, value: 'Planning and coding' })
+  await answerOwnerProfile(f)
   const list = f.effects.agents.list
   f.effects.agents.list = async (args) => {
     const result = await list(args)
@@ -221,27 +331,25 @@ test('agent selections must be visible and owned by the authenticated user', asy
     } as never
   }
   await assert.rejects(
-    () => act(f, { action: 'advance', revision: 4, agentIds: ['agent-foreign'] }),
+    () => advanceCurrent(f, { agentIds: ['agent-foreign'] }),
     (error: unknown) => error instanceof Error && 'code' in error && error.code === 'agent_forbidden',
   )
 })
 
 test('memory and invitation selections require owned memories and listed invitations', async () => {
   const f = fixture()
-  await start(f)
-  await act(f, { action: 'answer', revision: 1, value: 'Ada' })
-  await act(f, { action: 'answer', revision: 2, value: 'Builds software' })
-  await act(f, { action: 'answer', revision: 3, value: 'Planning and coding' })
-  await act(f, { action: 'advance', revision: 4 })
-  await act(f, { action: 'advance', revision: 5 })
+  await answerOwnerProfile(f)
+  await advanceCurrent(f)
+  await advanceCurrent(f)
+  await advanceCurrent(f)
   f.effects.memories.get = async () => ({ userId: 'user-2', visibility: 'personal' } as never)
   await assert.rejects(
-    () => act(f, { action: 'advance', revision: 6, memoryIds: ['foreign-memory'] }),
+    () => advanceCurrent(f, { memoryIds: ['foreign-memory'] }),
     (error: unknown) => error instanceof Error && 'code' in error && error.code === 'memory_forbidden',
   )
-  await act(f, { action: 'advance', revision: 6 })
+  await advanceCurrent(f)
   await assert.rejects(
-    () => act(f, { action: 'advance', revision: 7, invitationIds: ['foreign-invitation'] }),
+    () => advanceCurrent(f, { invitationIds: ['foreign-invitation'] }),
     (error: unknown) => error instanceof Error && 'code' in error && error.code === 'invitation_forbidden',
   )
 })
@@ -257,9 +365,9 @@ test('consent updates do not add a transcript turn', async () => {
 
 test('missing and foreign tasks cannot falsely complete onboarding', async () => {
   const f = fixture()
-  await advanceToTask(f)
+  const task = await advanceToTask(f)
   await assert.rejects(
-    () => act(f, { action: 'finish', revision: 8, taskId: 'missing' }),
+    () => act(f, { action: 'finish', revision: task.session!.revision, taskId: 'missing' }),
   )
   f.effects.work.get = async () => ({
     id: 'task-foreign',
@@ -267,26 +375,26 @@ test('missing and foreign tasks cannot falsely complete onboarding', async () =>
     createdBy: 'user-2',
   } as never)
   await assert.rejects(
-    () => act(f, { action: 'finish', revision: 8, taskId: 'task-foreign' }),
+    () => act(f, { action: 'finish', revision: task.session!.revision, taskId: 'task-foreign' }),
   )
   assert.equal((await f.service.get('user-1', 'workspace-1')).completed, false)
 })
 
 test('a verified first task completes onboarding durably', async () => {
   const f = fixture()
-  await advanceToTask(f)
+  const task = await advanceToTask(f)
   f.effects.work.get = async () => ({
     id: 'task-1',
     title: 'Review the launch plan',
     workspaceId: 'workspace-1',
     createdBy: 'user-1',
   } as never)
-  const result = await act(f, { action: 'finish', revision: 8, taskId: 'task-1' })
+  const result = await act(f, { action: 'finish', revision: task.session!.revision, taskId: 'task-1' })
   assert.equal(result.completed, true)
   assert.equal(result.session?.step, 'complete')
   assert.equal(result.session?.taskId, 'task-1')
   const messageCount = f.messages.length
-  const retry = await act(f, { action: 'finish', revision: 8, taskId: 'task-1' })
+  const retry = await act(f, { action: 'finish', revision: task.session!.revision, taskId: 'task-1' })
   assert.deepEqual(retry, result)
   assert.equal(f.messages.length, messageCount)
   assert.equal((await f.service.get('user-1', 'workspace-1')).completed, true)
@@ -295,12 +403,12 @@ test('a verified first task completes onboarding durably', async () => {
 
 test('GET recovers a completed final transcript outbox after a write failure', async () => {
   const f = fixture()
-  await advanceToTask(f)
+  const task = await advanceToTask(f)
   f.effects.work.get = async () => ({
     id: 'task-1', title: 'Review the launch plan', workspaceId: 'workspace-1', createdBy: 'user-1',
   } as never)
   f.failTranscriptWrites = 1
-  await assert.rejects(() => act(f, { action: 'finish', revision: 8, taskId: 'task-1' }))
+  await assert.rejects(() => act(f, { action: 'finish', revision: task.session!.revision, taskId: 'task-1' }))
   f.failTranscriptWrites = 0
   assert.deepEqual(await f.service.get('user-1', 'workspace-2'), { completed: true, session: null })
   const result = await f.service.get('user-1', 'workspace-1')

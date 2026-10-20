@@ -5,6 +5,8 @@ import {
   ONBOARDING_INTRO,
   OnboardingRunIdSchema,
   preparedOnboardingReply,
+  onboardingProfileSteps,
+  onboardingSteps,
   type OnboardingAction,
   type OnboardingProfile,
   type OnboardingReply,
@@ -76,7 +78,7 @@ export class ConversationalOnboardingService {
     return { completed: false, session: state.session }
   }
 
-  async start(userId: string, workspaceId: string): Promise<OnboardingSessionResponse> {
+  async start(userId: string, workspaceId: string, options: { member?: boolean } = {}): Promise<OnboardingSessionResponse> {
     const record = await this.deps.repository.get(userId)
     if (!record) throw new OnboardingServiceError('Onboarding state is unavailable', 500, 'state_unavailable')
     if (record.hasSeenOnboarding) return { completed: true, session: null }
@@ -95,7 +97,7 @@ export class ConversationalOnboardingService {
     const runId = this.deps.createRunId?.() ?? randomUUID()
     if (!OnboardingRunIdSchema.safeParse(runId).success) throw new OnboardingServiceError('Onboarding run is invalid', 500, 'run_invalid')
     const session: OnboardingSession = {
-      version: 1, runId, revision: 1, workspaceId, conversationId: thread.conversationId,
+      version: 1, flowVersion: 2, member: options.member ?? false, runId, revision: 1, workspaceId, conversationId: thread.conversationId,
       agentId: overlay.id, agentPrincipalId: overlay.principalId, step: 'name', profile,
       aiEnabled: false, reply, employees: [], suggestions: [], createdAgentIds: [],
     }
@@ -137,6 +139,7 @@ export class ConversationalOnboardingService {
   private async reduce(state: StoredState, userId: string, action: Exclude<OnboardingAction, { action: 'start' }>) {
     if (action.action === 'consent') return this.reduceConsent(state, action)
     if (action.action === 'answer') return this.reduceAnswer(state, userId, action)
+    if (action.action === 'back') return this.reduceBack(state, userId)
     if (action.action === 'advance') return this.reduceAdvance(state, userId, action)
     return this.reduceFinish(state, userId, action)
   }
@@ -147,7 +150,7 @@ export class ConversationalOnboardingService {
 
   private async reduceAnswer(state: StoredState, userId: string, action: Extract<OnboardingAction, { action: 'answer' }>) {
     const current = state.session
-    if (!['name', 'about', 'daily'].includes(current.step)) {
+    if (!onboardingProfileSteps(current).includes(current.step)) {
       throw new OnboardingServiceError('Answers are not accepted at this step', 409, 'invalid_step')
     }
     const value = action.value.trim()
@@ -155,7 +158,16 @@ export class ConversationalOnboardingService {
       throw new OnboardingServiceError('Name is too long', 400, 'invalid_profile')
     }
     const profile = { ...current.profile, [current.step]: value } as OnboardingProfile
-    const step: OnboardingStep = current.step === 'name' ? 'about' : current.step === 'about' ? 'daily' : 'employees'
+    if (current.flowVersion === 2 && current.step === 'about') {
+      if (!profile.team && /\b(?:just me|work(?:ing)? (?:alone|solo|on my own)|solo founder)\b/i.test(value)) profile.team = 'Just me'
+      if (!profile.team && /\b(?:team of \d+|\d+[- ]person (?:team|agency|company))\b/i.test(value)) profile.team = 'A small team'
+      const website = value.match(/https?:\/\/[^\s<>]+/i)?.[0]
+      if (!profile.website && website) profile.website = website
+    }
+    const steps = onboardingProfileSteps(current)
+    let nextIndex = steps.indexOf(current.step) + 1
+    while ((steps[nextIndex] === 'team' && profile.team) || (steps[nextIndex] === 'website' && profile.website)) nextIndex++
+    const step: OnboardingStep = steps[nextIndex] ?? (current.member ? 'connections' : 'employees')
     const reply = await this.makeReply(step, profile, current.aiEnabled, {})
     const revision = current.revision + 1
     return {
@@ -166,14 +178,25 @@ export class ConversationalOnboardingService {
     }
   }
 
+  private async reduceBack(state: StoredState, userId: string) {
+    const current = state.session
+    const steps = onboardingProfileSteps(current)
+    const index = steps.indexOf(current.step)
+    if (index < 1 || current.createdAgentIds.length) throw new OnboardingServiceError('Previous answers can no longer be changed here', 409, 'invalid_step')
+    const step = steps[index - 1] as OnboardingStep
+    const reply = await this.makeReply(step, current.profile, current.aiEnabled, {})
+    const revision = current.revision + 1
+    return { completed: false, state: { ...state, session: { ...current, step, revision, reply }, outbox: [{ clientNonce: this.nonce(userId, current.runId, revision, 'assistant'), content: reply.message, kind: 'assistant' as const }] } }
+  }
+
   private async reduceAdvance(state: StoredState, userId: string, action: Extract<OnboardingAction, { action: 'advance' }>) {
     const current = state.session
-    if (!['employees', 'connections', 'memories', 'teammates'].includes(current.step)) {
+    if (!['employees', 'connections', 'external', 'memories', 'teammates'].includes(current.step)) {
       throw new OnboardingServiceError('This step cannot be advanced', 409, 'invalid_step')
     }
     let createdAgentIds = current.createdAgentIds
     if (action.agentIds?.length) {
-      if (current.step !== 'employees') throw new OnboardingServiceError('Agent ids are not valid at this step', 400, 'invalid_action')
+      if (current.step !== 'employees' && current.step !== 'external') throw new OnboardingServiceError('Agent ids are not valid at this step', 400, 'invalid_action')
       const list = await this.deps.effects.agents.list({ actorUserId: userId, workspaceId: current.workspaceId })
       const visible = new Map(list.agents.map((agent) => [agent.id, agent]))
       for (const id of action.agentIds) {
@@ -201,7 +224,11 @@ export class ConversationalOnboardingService {
         throw new OnboardingServiceError('One or more invitations are unavailable', 403, 'invitation_forbidden')
       }
     }
-    const step: OnboardingStep = current.step === 'employees' ? 'connections' : current.step === 'connections' ? 'memories' : current.step === 'memories' ? 'teammates' : 'task'
+    const solo = /^(just me|solo|on my own|by myself)[.!]?$/i.test(current.profile.team?.trim() ?? '')
+    const step: OnboardingStep = current.step === 'employees' ? 'connections'
+      : current.step === 'connections' ? (current.flowVersion === 2 ? 'external' : 'memories')
+        : current.step === 'external' ? 'memories'
+          : current.step === 'memories' && !current.member && !solo ? 'teammates' : 'task'
     const reply = await this.makeReply(step, current.profile, current.aiEnabled, {})
     const revision = current.revision + 1
     const summary = onboardingAdvanceSummary(current.step, action)
@@ -321,12 +348,15 @@ function isValidOnboardingSession(value: unknown): value is OnboardingSession {
   if (!isObjectRecord(value)) return false
   const session = value as Record<string, unknown>
   const sessionKeys = ['version', 'runId', 'revision', 'workspaceId', 'conversationId', 'agentId', 'agentPrincipalId', 'step', 'profile', 'aiEnabled', 'reply', 'employees', 'suggestions', 'createdAgentIds', 'taskId']
-  if (!isExactKeys(value, session.taskId === undefined ? sessionKeys.slice(0, -1) : sessionKeys)) return false
+  const optionalKeys = ['flowVersion', 'member'].filter((key) => Object.hasOwn(session, key))
+  if (!isExactKeys(value, [...(session.taskId === undefined ? sessionKeys.slice(0, -1) : sessionKeys), ...optionalKeys])) return false
+  if (session.flowVersion !== undefined && session.flowVersion !== 2) return false
+  if (session.member !== undefined && typeof session.member !== 'boolean') return false
   if (session.version !== 1
     || !OnboardingRunIdSchema.safeParse(session.runId).success
     || !Number.isInteger(session.revision)
     || (session.revision as number) < 1
-    || !['name', 'about', 'daily', 'employees', 'connections', 'memories', 'teammates', 'task', 'complete'].includes(String(session.step))
+    || !onboardingSteps.some((step) => step === session.step)
     || !boundedString(session.workspaceId, 1, 200)
     || !boundedString(session.conversationId, 1, 200)
     || !boundedString(session.agentId, 1, 200)
@@ -342,11 +372,13 @@ function isValidOnboardingSession(value: unknown): value is OnboardingSession {
 }
 
 function isValidProfile(value: unknown): value is OnboardingProfile {
-  if (!isExactKeys(value, ['name', 'about', 'daily'])) return false
+  if (!isObjectRecord(value) || !isExactKeys(value, ['name', 'about', 'daily', ...['team', 'website'].filter((key) => Object.hasOwn(value, key))])) return false
   const profile = value as Record<string, unknown>
   return boundedString(profile.name, 0, 200) &&
     boundedString(profile.about, 0, 3000) &&
-    boundedString(profile.daily, 0, 3000)
+    boundedString(profile.daily, 0, 3000) &&
+    (profile.team === undefined || boundedString(profile.team, 0, 3000)) &&
+    (profile.website === undefined || boundedString(profile.website, 0, 3000))
 }
 
 function isValidStoredReply(value: unknown): value is OnboardingReply {
@@ -385,6 +417,7 @@ function onboardingAdvanceSummary(
   action: Extract<OnboardingAction, { action: 'advance' }>,
 ): string {
   if (step === 'employees') return action.agentIds?.length ? `Selected ${action.agentIds.length} AI employee${action.agentIds.length === 1 ? '' : 's'}.` : 'Skipped selecting AI employees.'
+  if (step === 'external') return action.agentIds?.length ? 'Saved external agent connections.' : 'Skipped external agent connections.'
   if (step === 'memories') return action.memoryIds?.length ? `Imported ${action.memoryIds.length} Personal context item${action.memoryIds.length === 1 ? '' : 's'}.` : 'Skipped importing Personal context.'
   if (step === 'teammates') return action.invitationIds?.length ? `Invited ${action.invitationIds.length} teammate${action.invitationIds.length === 1 ? '' : 's'}.` : 'Skipped inviting teammates.'
   return 'Finished reviewing optional tool connections.'

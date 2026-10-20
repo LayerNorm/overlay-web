@@ -33,10 +33,10 @@ export function OnboardingEmployees({ session, disabled, onConfirm }: { session:
           </Button><Button variant="ghost" size="sm" disabled={disabled} onClick={() => setEditing(index)}>Edit responsibilities</Button></div>
         ))}
       </div>
-      <div className="space-y-2"><p className="text-xs text-muted-foreground">Already work with an agent?</p><div className="flex flex-wrap gap-2">
+      {session.flowVersion !== 2 ? <div className="space-y-2"><p className="text-xs text-muted-foreground">Already work with an agent?</p><div className="flex flex-wrap gap-2">
         <Button variant="outline" disabled={disabled} onClick={() => setHarness('claude-code')}><Terminal className="size-4" />Claude Code</Button>
         <Button variant="outline" disabled={disabled} onClick={() => setHarness('codex')}><Terminal className="size-4" />Codex</Button>
-      </div></div>
+      </div></div> : null}
       {externalIds.length ? <p className="text-xs text-muted-foreground">{externalIds.length} agent connection{externalIds.length === 1 ? '' : 's'} saved. Availability depends on its machine.</p> : null}
       <p className="text-xs text-muted-foreground">Created employees are Personal and can use your authorized workspace tools. Creating them does not start paid work.</p>
       <div className="flex justify-end gap-2"><Button variant="ghost" disabled={disabled} onClick={() => onConfirm([], externalIds, employees)}>Skip for now</Button><Button disabled={disabled || !valid} onClick={() => onConfirm(selected, externalIds, employees)}>{selected.length ? 'Create selected employees' : 'Continue'}</Button></div>
@@ -46,6 +46,20 @@ export function OnboardingEmployees({ session, disabled, onConfirm }: { session:
       {harness ? <ExternalAgentConnection key={harness} session={session} harness={harness} onClose={() => setHarness(null)} onSaved={(id) => { setExternalIds((current) => [...new Set([...current, id])]); setHarness(null) }} /> : null}
     </div>
   )
+}
+
+export function OnboardingExternalAgents({ session, disabled, onContinue }: { session: OnboardingSession; disabled: boolean; onContinue(agentIds: string[]): void }) {
+  const [harness, setHarness] = useState<Harness | null>(null)
+  const [agentIds, setAgentIds] = useState<string[]>([])
+  return <div className="space-y-5">
+    <div className="flex flex-wrap gap-2">
+      <Button variant="outline" disabled={disabled} onClick={() => setHarness('claude-code')}><Terminal className="size-4" />Claude Code</Button>
+      <Button variant="outline" disabled={disabled} onClick={() => setHarness('codex')}><Terminal className="size-4" />Codex</Button>
+    </div>
+    {agentIds.length ? <p className="text-xs text-muted-foreground">{agentIds.length} agent connection{agentIds.length === 1 ? '' : 's'} saved. Availability depends on its machine.</p> : null}
+    <div className="flex justify-end"><Button variant={agentIds.length ? 'primary' : 'ghost'} disabled={disabled} onClick={() => onContinue(agentIds)}>{agentIds.length ? 'Continue' : 'Not now'}</Button></div>
+    {harness ? <ExternalAgentConnection key={harness} session={session} harness={harness} onClose={() => setHarness(null)} onSaved={(id) => { setAgentIds((current) => [...new Set([...current, id])]); setHarness(null) }} /> : null}
+  </div>
 }
 
 function ExternalAgentConnection({ session, harness, onSaved, onClose }: { session: OnboardingSession; harness: Harness; onSaved(id: string): void; onClose(): void }) {

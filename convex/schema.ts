@@ -2094,7 +2094,7 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index('by_invitationId', ['invitationId'])
-    .index('by_email_status', ['email', 'status'])
+    .index('by_email_status', ['email', 'status', 'expiresAt'])
     .index('by_workspaceId_createdAt', ['workspaceId', 'createdAt'])
     .index('by_workspaceId_email_status', ['workspaceId', 'email', 'status'])
     .index('by_workspaceId_status_expiresAt', ['workspaceId', 'status', 'expiresAt'])

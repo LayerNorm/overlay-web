@@ -2,6 +2,7 @@
 
 import { useEffect, type ReactNode } from 'react'
 import { MarkdownMessage, UserMessageBubble } from '@overlay/chat-react'
+import { QuestionnaireComposerProvider } from '@overlay/chat-react/questionnaire'
 import { usePathname, useRouter } from 'next/navigation'
 import { agentConversationRedirect } from '@/shared/chat/chat-view-navigation'
 import { useAppSettings } from '@/components/providers/AppSettingsProvider'
@@ -97,6 +98,10 @@ function roomAgentId(vm: ReturnType<typeof useDirectMessageRoom>['vm']) {
   return vm.soloAgentParticipant && vm.headerAgent && 'id' in vm.headerAgent
     ? vm.headerAgent.id
     : undefined
+}
+
+function roomHeaderTitle(guided: boolean, title: string) {
+  return guided ? 'Overlay' : title
 }
 
 function GuidedPendingMessage({
@@ -196,7 +201,7 @@ export function DirectMessageExperience({
   })
 
   return (
-    <>
+    <QuestionnaireComposerProvider value={composer.input} readDraft={() => composer.inputRef.current} subscribe={composer.subscribeToInput} disabled={showcase || Boolean(guided) || Boolean(transcript.surfacePlatform)} onChange={(value) => { composer.setInput(value); composer.onComposerInput(value); composer.composerRef.current?.focus() }}>
       <LinkOpenInterceptor
         preference={appSettings.linkOpenPreference}
         onOpenInOverlay={panels.openLinkPreview}
@@ -227,7 +232,7 @@ export function DirectMessageExperience({
         >
           {composer.isDragging && <ChatDropOverlay />}
           <AppScreenHeader
-            title={guided ? 'Overlay' : vm.title}
+            title={roomHeaderTitle(Boolean(guided), vm.title)}
             subtitle={guided ? 'Your chief of staff' : roster.participants.length > 2 ? `${roster.participants.length} people` : vm.online > 0 ? 'Online' : undefined}
             leading={(
               <RoomHeaderLeading
@@ -315,6 +320,6 @@ export function DirectMessageExperience({
           void roster.loadParticipants()
         }}
       />
-    </>
+    </QuestionnaireComposerProvider>
   );
 }

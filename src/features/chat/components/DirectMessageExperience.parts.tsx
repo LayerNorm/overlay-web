@@ -775,6 +775,7 @@ export type GuidedRoomComposer = {
   placeholder: string
   disabled: boolean
   revision: number
+  focusRevision?: number
 }
 
 export function RoomComposer({
@@ -804,6 +805,9 @@ export function RoomComposer({
   onOpenFilePreview: (name: string, fileIds: string[]) => void | Promise<void>
   guided?: GuidedRoomComposer
 }) {
+  useEffect(() => {
+    if (guided?.focusRevision) composer.composerRef.current?.focus()
+  }, [guided?.focusRevision, composer.composerRef])
   return (
     <ChatComposer
       mode="chat"

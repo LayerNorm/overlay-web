@@ -24,6 +24,7 @@ export type {
 } from '@overlay/workspace-contracts'
 
 import type {
+  AccountWorkspaceInvitation,
   WorkspaceActivateResponse,
   WorkspaceCreateInput,
   WorkspaceCreateResponse,
@@ -48,8 +49,8 @@ import type {
 } from '@overlay/workspace-contracts'
 
 export interface WorkspaceClient {
-  list(signal?: AbortSignal): Promise<WorkspaceListResponse>
-  create(input: WorkspaceCreateInput): Promise<WorkspaceCreateResponse>
+  list(signal?: AbortSignal): Promise<WorkspaceListResponse & { invitations?: AccountWorkspaceInvitation[] }>
+  create(input: WorkspaceCreateInput, options?: { idempotencyKey: string }): Promise<WorkspaceCreateResponse>
   activate(workspaceId: string): Promise<WorkspaceActivateResponse>
 }
 

@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Add account-level workspace discovery, freeform workspace creation and invitation entry before onboarding. Suggested answers fill an editable composer in onboarding, main chat and agent conversations without submitting automatically. New owners get team and optional website context; invited members get a shorter setup. Keep work-tool and external-agent connections separate, restore profile drafts on Back and refresh, and remove the tour target border.
+
 - Show loading branding immediately, keep onboarding answers in the normal message style, center guided panels, and anchor the workspace tour beside navigation. Open one-to-one AI employee conversations in Agents instead of Chats.
 
 - Use the shared Overlay Free router for onboarding personalization, with prepared replies when routing is unavailable or privacy settings require zero data retention.

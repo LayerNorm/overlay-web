@@ -44,8 +44,10 @@ test('received invitation query filters recipients, status, expiry, and archived
         createdAt: now - 100,
         updatedAt: now - 100,
       })
+    for (let index = 0; index < 500; index += 1) {
+      await invite(`expired-${index}`, 'active', 'member@example.test', 'pending', now)
+    }
     await invite('valid', 'active', 'member@example.test', 'pending', now + 100)
-    await invite('expired', 'active', 'member@example.test', 'pending', now)
     await invite('cancelled', 'active', 'member@example.test', 'cancelled', now + 100)
     await invite('other', 'active', 'other@example.test', 'pending', now + 100)
     await invite('archived', 'archived', 'member@example.test', 'pending', now + 100)
