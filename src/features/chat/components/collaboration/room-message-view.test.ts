@@ -138,3 +138,22 @@ test('same-millisecond reconnect snapshots cannot regress a terminal row to gene
   const committed = { ...base, content: 'Done', status: 'completed' as const }
   assert.equal(mergeRoomMessages([snapshot], [committed])[0]?.status, 'completed')
 })
+
+
+test('generating native agent messages show text around tool parts exactly once', () => {
+  const view = toRoomMessageView({
+    message: record({
+      status: 'generating',
+      content: 'Before toolAfter tool',
+      parts: [
+        { type: 'text', text: 'Before tool' },
+        { type: 'tool-invocation', toolInvocation: { toolCallId: 'one', toolName: 'search', state: 'output-available', toolOutput: {} } },
+        { type: 'text', text: 'After tool' },
+      ],
+    }),
+    currentPrincipalId: 'me', authorName: 'Agent',
+  })
+  assert.equal(view.streaming, true)
+  assert.deepEqual(view.blocks.map((block) => block.kind), ['text', 'tool', 'text'])
+  assert.deepEqual(view.blocks.filter((block) => block.kind === 'text').map((block) => block.text), ['Before tool', 'After tool'])
+})
