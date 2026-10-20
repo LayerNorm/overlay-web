@@ -678,6 +678,16 @@ export class ManagedAgentSandboxBilling {
 
   private async tickLease(lease: AgentSandboxLease): Promise<ManagedSandboxMeterTick> {
     try {
+      if (lease.computerId) {
+        const handler = this.dependencies.computerLeaseHandler
+        if (!handler) {
+          return { leaseId: lease.id, outcome: 'cleanup_failed', reason: 'computer_lifecycle_unavailable' }
+        }
+        const lifecycleResult = await handler(lease, 'idle_check')
+        if (!['computer_not_idle', 'computer_has_live_run', 'computer_active'].includes(lifecycleResult.reason ?? '')) {
+          return lifecycleResult
+        }
+      }
       // A running lease past its reserved window has hit the hard runtime
       // limit — reap it (the reap path captures final usage before delete).
       if (lease.status === 'running'
@@ -686,10 +696,6 @@ export class ManagedAgentSandboxBilling {
         if (lease.computerId) return await this.killLease(lease, 'lease_expired')
         await this.killLease(lease, 'lease_expired')
         return { leaseId: lease.id, outcome: 'killed', reason: 'lease_expired' }
-      }
-      if (lease.computerId && lease.status === 'running' && this.dependencies.computerLeaseHandler) {
-        const idleResult = await this.dependencies.computerLeaseHandler(lease, 'idle_check')
-        if (!['computer_not_idle', 'computer_has_live_run', 'computer_active'].includes(idleResult.reason ?? '')) return idleResult
       }
       const result = await this.meterLease(lease)
       if (!result.applied) {

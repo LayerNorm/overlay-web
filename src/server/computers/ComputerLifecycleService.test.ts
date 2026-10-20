@@ -43,6 +43,25 @@ test('successful provisioning completes the lease to running before returning th
   assert.deepEqual(fixture.sequence.slice(-3), ['transition:session_armed', 'meter:running', 'transition:ready'])
 })
 
+test('idle reconciliation pauses a provisioned Computer while retaining its row and disk', async () => {
+  const fixture = lifecycleFixture()
+  const computer = await fixture.service.provision({
+    actorUserId: 'user-1', workspaceId: 'ws-1', ownerType: 'user', ownerId: 'user-1', size: 'default',
+  })
+  const leaseId = `computer:${computer.id}`
+  fixture.setNow(now + 10 * 60_000 + 1)
+  const lease = fixture.leaseRows.get(leaseId)!
+
+  await fixture.service.handleLease(lease, 'idle_check')
+
+  const stoppedComputer = await fixture.repository.get(computer.id)
+  assert.equal(stoppedComputer?.status, 'stopped')
+  assert.equal(fixture.leaseRows.get(leaseId)?.status, 'paused')
+  assert.equal(fixture.instances[0]?.state, 'stopped')
+  assert.equal(fixture.instances[0]?.stops, 1)
+  assert.equal(fixture.instances[0]?.deletes, 0)
+})
+
 test('an owner-claim response lost before requestedAt retries only after its provision claim expires', async () => {
   const fixture = lifecycleFixture({ failAfterLeaseCreateOnce: true })
   const args = { actorUserId: 'user-1', workspaceId: 'ws-1', ownerType: 'user' as const, ownerId: 'user-1', size: 'default' as const }

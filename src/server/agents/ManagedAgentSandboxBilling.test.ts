@@ -133,6 +133,154 @@ test('an active Computer action still meters and renews after four minutes', asy
   assert.deepEqual(renewals, [240_000])
 })
 
+test('active Computer leases reconcile lifecycle intents before ordinary metering', async () => {
+  const now = 300_000
+  const leases = [
+    leaseFixture({
+      id: 'computer:live-reserved', computerId: 'live-reserved', status: 'reserved',
+      usage: { computerLifecycle: { maintenance: { kind: 'provision', token: 'live', expiresAt: now + 1_000 } } },
+    }),
+    leaseFixture({
+      id: 'computer:live-provisioning', computerId: 'live-provisioning', status: 'provisioning',
+      usage: { computerLifecycle: { maintenance: { kind: 'wake', token: 'live', expiresAt: now + 1_000 } } },
+    }),
+    leaseFixture({
+      id: 'computer:expired-provision', computerId: 'expired-provision', status: 'reserved',
+      usage: { computerLifecycle: { maintenance: { kind: 'provision', token: 'expired', expiresAt: now - 1 } } },
+    }),
+    leaseFixture({
+      id: 'computer:expired-wake', computerId: 'expired-wake', status: 'provisioning',
+      usage: { computerLifecycle: { maintenance: { kind: 'wake', token: 'expired', expiresAt: now - 1 } } },
+    }),
+  ]
+  const handlerCalls: Array<{ id: string; reason?: string }> = []
+  const recoveryResults = new Map([
+    ['computer:live-reserved', { leaseId: 'computer:live-reserved', outcome: 'skipped' as const, reason: 'maintenance_in_progress' }],
+    ['computer:live-provisioning', { leaseId: 'computer:live-provisioning', outcome: 'skipped' as const, reason: 'maintenance_in_progress' }],
+    ['computer:expired-provision', { leaseId: 'computer:expired-provision', outcome: 'adopted' as const, reason: 'provision_recovered' }],
+    ['computer:expired-wake', { leaseId: 'computer:expired-wake', outcome: 'killed' as const, reason: 'expired_wake_paused' }],
+  ])
+  let providerProbes = 0
+  let renewals = 0
+  let meterCalls = 0
+  let claimConsumed = false
+  const runtime: SandboxRuntime = {
+    provider: 'box', capabilities: {} as never,
+    create: async () => { throw new Error('unexpected create') },
+    reconnect: async () => {
+      providerProbes += 1
+      return {
+        status: async () => 'stopped' as const,
+        usage: async () => boatUsage(300_000, false),
+        renewRuntime: async () => { renewals += 1 },
+      } as SandboxInstance
+    },
+    restore: async () => { throw new Error('unexpected restore') },
+    deleteSnapshot: async () => undefined,
+  }
+  const service = new ManagedAgentSandboxBilling({
+    now: () => now, policy: {} as never, runtime: () => runtime,
+    computerLeaseHandler: async (lease, reason) => {
+      handlerCalls.push({ id: lease.id, reason })
+      return recoveryResults.get(lease.id)!
+    },
+    repository: {
+      claimSandboxLeases: async () => {
+        if (claimConsumed) return { leases: [], deferred: false }
+        claimConsumed = true
+        return { leases, deferred: false }
+      },
+      getSandboxLease: async ({ leaseId }: { leaseId: string }) => leases.find((lease) => lease.id === leaseId) ?? null,
+      finishSandboxLeaseClaim: async () => true,
+      meterSandboxLease: async () => { meterCalls += 1; return { applied: true, meterVersion: 1 } },
+    } as never,
+  })
+
+  const { ticks } = await service.meterLeases()
+
+  assert.deepEqual(handlerCalls.map(({ id, reason }) => ({ id, reason })).sort((a, b) => a.id.localeCompare(b.id)), [
+    { id: 'computer:expired-provision', reason: 'idle_check' },
+    { id: 'computer:expired-wake', reason: 'idle_check' },
+    { id: 'computer:live-provisioning', reason: 'idle_check' },
+    { id: 'computer:live-reserved', reason: 'idle_check' },
+  ])
+  assert.deepEqual(ticks.map(({ leaseId, outcome, reason }) => ({ leaseId, outcome, reason })).sort((a, b) => a.leaseId.localeCompare(b.leaseId)), [
+    { leaseId: 'computer:expired-provision', outcome: 'adopted', reason: 'provision_recovered' },
+    { leaseId: 'computer:expired-wake', outcome: 'killed', reason: 'expired_wake_paused' },
+    { leaseId: 'computer:live-provisioning', outcome: 'skipped', reason: 'maintenance_in_progress' },
+    { leaseId: 'computer:live-reserved', outcome: 'skipped', reason: 'maintenance_in_progress' },
+  ])
+  assert.equal(providerProbes, 0)
+  assert.equal(renewals, 0)
+  assert.equal(meterCalls, 0)
+})
+
+test('meterLeases drains 45 leases in bounded batches and caps provider concurrency at five', async () => {
+  const leases = Array.from({ length: 45 }, (_, index) => leaseFixture({
+    id: `lease-${index}`,
+    status: 'running',
+    reservedUntil: 10_000_000,
+    usage: {
+      meteredAt: 0, meteredUsage: {}, meteredProviderReference: 'sandbox-reference', meterVersion: 0,
+      lastPayer: { scope: 'workspace', userId: 'user', workspaceId: 'workspace', billingAccountId: 'billing' },
+    },
+  }))
+  const batches: number[] = []
+  const meteredLeaseIds: string[] = []
+  let cursor = 0
+  let providerCalls = 0
+  let peakProviderCalls = 0
+  const providerCall = async <T,>(result: T): Promise<T> => {
+    providerCalls += 1
+    peakProviderCalls = Math.max(peakProviderCalls, providerCalls)
+    await new Promise((resolve) => setTimeout(resolve, 1))
+    providerCalls -= 1
+    return result
+  }
+  const usage = boatUsage(300_000)
+  const instance = {
+    status: async () => await providerCall('running' as const),
+    usage: async () => await providerCall(usage),
+    renewRuntime: async () => { await providerCall(undefined) },
+  } as SandboxInstance
+  const runtime: SandboxRuntime = {
+    provider: 'box', capabilities: {} as never,
+    create: async () => instance,
+    reconnect: async () => instance,
+    restore: async () => instance,
+    deleteSnapshot: async () => undefined,
+  }
+  const service = new ManagedAgentSandboxBilling({
+    now: () => 300_000,
+    idleFallbackDue: () => false,
+    policy: {} as never,
+    runtime: () => runtime,
+    repository: {
+      claimSandboxLeases: async ({ limit }: { limit: number }) => {
+        batches.push(limit)
+        const claimed = leases.slice(cursor, cursor + limit)
+        cursor += claimed.length
+        return { leases: claimed, deferred: false }
+      },
+      getSandboxLease: async ({ leaseId }: { leaseId: string }) => leases.find((lease) => lease.id === leaseId) ?? null,
+      finishSandboxLeaseClaim: async () => true,
+      meterSandboxLease: async ({ leaseId }: { leaseId: string }) => {
+        meteredLeaseIds.push(leaseId)
+        return { applied: true, meterVersion: 1, remainingCents: 1_000 }
+      },
+    } as never,
+  })
+
+  const { ticks } = await service.meterLeases({ limit: 45 })
+
+  assert.equal(ticks.length, 45)
+  assert.equal(new Set(ticks.map((tick) => tick.leaseId)).size, 45)
+  assert.deepEqual(batches, [20, 20, 5])
+  assert.equal(new Set(meteredLeaseIds).size, 45)
+  assert.ok(batches.every((batch) => batch <= 20))
+  assert.ok(peakProviderCalls <= 5)
+})
+
 test('final stopped evidence settles after the provider resource disappears', async () => {
   const calls: Array<Record<string, unknown>> = []
   const final = { id: 'sandbox-reference:0', startedAt: 0, wallTimeMs: 60_000, complete: true, resources: { vcpus: 2, memoryGiB: 0.5 } }
