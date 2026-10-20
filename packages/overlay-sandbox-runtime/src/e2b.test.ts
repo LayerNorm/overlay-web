@@ -16,7 +16,22 @@ function fakeE2b() {
   const sandboxes = new Map<string, Box>()
   const snapshots = new Map<string, Box>()
   const calls: Array<{ method: string; args: unknown[] }> = []
+  const events = new Map<string, unknown[]>()
   let counter = 0
+
+  function recordExecution(id: string, type: string) {
+    const record = sandboxes.get(id)!
+    events.set(id, [...(events.get(id) ?? []), {
+      sandboxId: id, type,
+      eventData: { execution: { started_at: record.startedAt.toISOString(), execution_time: Date.now() - record.startedAt.getTime(), vcpu_count: 2, memory_mb: 4096 } },
+    }])
+  }
+  const fetchEvents: typeof fetch = async (input) => {
+    const url = new URL(String(input))
+    const id = decodeURIComponent(url.pathname.split('/').at(-1)!)
+    const offset = Number(url.searchParams.get('offset') ?? 0)
+    return Response.json((events.get(id) ?? []).slice(offset, offset + 100))
+  }
 
   const handleFor = (id: string): E2BSandboxHandle => {
     const record = sandboxes.get(id)!
@@ -76,6 +91,7 @@ function fakeE2b() {
       calls.push({ method: 'connect', args: [id] })
       const record = sandboxes.get(id)
       if (!record || record.state === 'killed') throw Object.assign(new Error('sandbox not found'), { name: 'SandboxNotFoundError' })
+      if (record.state === 'paused') record.startedAt = new Date()
       record.state = 'running'
       return handleFor(id)
     },
@@ -84,11 +100,12 @@ function fakeE2b() {
       if (!record || record.state === 'killed') throw Object.assign(new Error('sandbox not found'), { name: 'SandboxNotFoundError' })
       return { state: record.state as 'running' | 'paused', startedAt: record.startedAt, cpuCount: 2, memoryMB: 4096 }
     },
-    pause: async (id) => { calls.push({ method: 'pause', args: [id] }); sandboxes.get(id)!.state = 'paused'; return true },
-    kill: async (id) => { calls.push({ method: 'kill', args: [id] }); const record = sandboxes.get(id); if (record) record.state = 'killed'; return Boolean(record) },
+    pause: async (id) => { calls.push({ method: 'pause', args: [id] }); recordExecution(id, 'sandbox.lifecycle.paused'); sandboxes.get(id)!.state = 'paused'; return true },
+    kill: async (id) => { calls.push({ method: 'kill', args: [id] }); const record = sandboxes.get(id); if (record && record.state !== 'killed') { recordExecution(id, 'sandbox.lifecycle.killed'); record.state = 'killed' } return Boolean(record) },
+    setTimeout: async (id, timeoutMs) => { calls.push({ method: 'setTimeout', args: [id, timeoutMs] }) },
     deleteSnapshot: async (id) => snapshots.delete(id),
   }
-  return { sdk, sandboxes, calls }
+  return { sdk, sandboxes, calls, events, fetch: fetchEvents }
 }
 
 const request = (name: string, overrides: Partial<SandboxCreateRequest> = {}): SandboxCreateRequest => ({
@@ -96,8 +113,8 @@ const request = (name: string, overrides: Partial<SandboxCreateRequest> = {}): S
 })
 
 test('the E2B adapter satisfies the shared sandbox conformance suite', async () => {
-  const { sdk } = fakeE2b()
-  const result = await runSandboxConformance(new E2BSandboxRuntime({ apiKey: 'k', sandbox: sdk }), request('e2b-conformance'))
+  const { sdk, fetch } = fakeE2b()
+  const result = await runSandboxConformance(new E2BSandboxRuntime({ apiKey: 'k', sandbox: sdk, fetch }), request('e2b-conformance'))
   assert.ok(result.checks.includes('provision') && result.checks.includes('files') && result.checks.includes('cancellation') && result.checks.includes('restore'))
 })
 
@@ -110,12 +127,12 @@ test('a sandbox is created from the template with a pause-on-timeout lifecycle, 
   assert.equal(options.apiKey, 'secret-key')
   assert.deepEqual(options.envs, { A: '1' })
   assert.deepEqual(options.lifecycle, { onTimeout: 'pause', autoResume: false })
-  assert.equal(options.timeoutMs, 2 * 60 * 60_000)
+  assert.equal(options.timeoutMs, 4 * 60_000)
   assert.equal(options.metadata?.agentId, 'a1')
   assert.ok(!JSON.stringify(options.metadata).includes('secret-key'))
   await assert.rejects(runtime.create(request('no-image', { image: undefined })), /template/i)
   await runtime.create(request('limit', { hardTimeoutMs: 999 * 60 * 60_000 }))
-  assert.equal((calls.at(-1)!.args[1] as Record<string, unknown>).timeoutMs, 24 * 60 * 60_000, 'a timeout above E2B\'s limit is clamped')
+  assert.equal((calls.at(-1)!.args[1] as Record<string, unknown>).timeoutMs, 4 * 60_000, 'unmetered runtime is bounded by the safety fence')
 })
 
 test('stop pauses, resume connects, delete kills, and a missing sandbox reads as deleted', async () => {
@@ -177,13 +194,50 @@ test('files round trip, a missing file is null, a mode is applied, and a port ca
   await assert.rejects(machine.updateNetworkPolicy({ mode: 'deny_all' }), /not support/)
 })
 
-test('usage counts only the current run, and a paused sandbox costs nothing', async () => {
-  const { sdk, sandboxes } = fakeE2b()
-  const machine = await new E2BSandboxRuntime({ apiKey: 'k', sandbox: sdk }).create(request('machine'))
+test('usage retains the completed execution tail while paused and identifies resumed generations', async () => {
+  const { sdk, sandboxes, fetch } = fakeE2b()
+  const machine = await new E2BSandboxRuntime({ apiKey: 'k', sandbox: sdk, fetch }).create(request('machine'))
   sandboxes.get(machine.reference)!.startedAt = new Date(Date.now() - 60_000)
   const running = await machine.usage()
   assert.ok((running.wallTimeMs ?? 0) >= 59_000)
   assert.equal(running.providerMetrics?.vcpus, 2)
   await machine.stop()
-  assert.equal((await machine.usage()).wallTimeMs, 0)
+  const paused = await machine.usage()
+  assert.ok(paused.wallTimeMs! >= running.wallTimeMs!)
+  assert.equal(paused.executions?.[0]?.complete, true)
+  assert.equal(paused.executions?.[0]?.id, running.executions?.[0]?.id)
+  assert.deepEqual((await machine.usage()).executions, paused.executions)
+  await machine.resume()
+  const resumed = await machine.usage()
+  assert.equal(resumed.executions?.length, 2)
+  assert.notEqual(resumed.executions?.[0]?.id, resumed.executions?.[1]?.id)
+  assert.deepEqual(resumed.executions?.[1]?.resources, { vcpus: 2, memoryGiB: 4 })
+  await machine.delete()
+  assert.equal((await machine.usage()).executions?.at(-1)?.complete, true)
+})
+
+test('missing pause evidence and an unavailable event API fail closed instead of reporting zero usage', async () => {
+  const { sdk, sandboxes } = fakeE2b()
+  const runtime = new E2BSandboxRuntime({ apiKey: 'k', sandbox: sdk, fetch: async () => Response.json([]) })
+  const machine = await runtime.create(request('machine'))
+  sandboxes.get(machine.reference)!.state = 'paused'
+  await assert.rejects(machine.usage(), /Waiting for the paused execution event/)
+  const broken = new E2BSandboxRuntime({ apiKey: 'k', sandbox: sdk, fetch: async () => new Response(null, { status: 503 }) })
+  await assert.rejects((await broken.reconnect(machine.reference, { resume: false })).usage(), /Execution usage unavailable/)
+})
+
+test('execution events are paginated and sandbox identity is verified', async () => {
+  const { sdk } = fakeE2b()
+  const offsets: string[] = []
+  const event = { sandboxId: 'sandbox', type: 'sandbox.lifecycle.paused', eventData: { execution: { started_at: new Date(0).toISOString(), execution_time: 60_000, vcpu_count: 2, memory_mb: 512 } } }
+  const runtime = new E2BSandboxRuntime({ apiKey: 'k', sandbox: sdk, fetch: async (input) => {
+    const offset = new URL(String(input)).searchParams.get('offset')!
+    offsets.push(offset)
+    return Response.json(offset === '0' ? Array.from({ length: 100 }, () => event) : [event])
+  } })
+  const result = await runtime.executionUsage('sandbox')
+  assert.equal(result.samples.length, 101)
+  assert.deepEqual(result.samples[0]?.resources, { vcpus: 2, memoryGiB: 0.5 })
+  assert.deepEqual(offsets, ['0', '100'])
+  await assert.rejects(runtime.executionUsage('other-sandbox'), /does not belong/)
 })

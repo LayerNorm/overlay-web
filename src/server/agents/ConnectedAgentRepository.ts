@@ -393,6 +393,8 @@ export interface ConnectedAgentRepository {
     meteredAt: number
     payer?: ConnectedAgentSandboxLeasePayer
     charge?: ConnectedAgentSandboxMeterCharge
+    runtimeHoldCents?: number
+    providerEvidence?: { usage: Record<string, unknown>; stopped: boolean }
     minRemainingCents: number
   }): Promise<ConnectedAgentMeterSandboxLeaseResult>
   stopSandboxLease(args: {

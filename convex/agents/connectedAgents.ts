@@ -2060,6 +2060,8 @@ export const meterSandboxLeaseDebitByServer = mutation({
       metadata: anyObject,
     })),
     minRemainingCents: v.number(),
+    runtimeHoldCents: v.optional(v.number()),
+    providerEvidence: v.optional(v.object({ usage: anyObject, stopped: v.boolean() })),
   },
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
@@ -2070,7 +2072,7 @@ export const meterSandboxLeaseDebitByServer = mutation({
     if (!lease || lease.workspaceId !== args.workspaceId)
       return { applied: false, reason: 'lease_missing' }
     if (
-      !['reserved', 'provisioning', 'running', 'stopping'].includes(
+      !['reserved', 'provisioning', 'running', 'stopping', 'cleanup_failed'].includes(
         lease.status,
       )
     ) {
@@ -2079,8 +2081,24 @@ export const meterSandboxLeaseDebitByServer = mutation({
     const usage = (lease.usage ?? {}) as Record<string, unknown>
     const meterVersion = typeof usage.meterVersion === 'number' ? usage.meterVersion : 0
     if (meterVersion !== args.expectedMeterVersion) return { applied: false, reason: 'lease_conflict' }
-    const nextUsage = {
+    const monetaryInputs = [args.minRemainingCents, args.runtimeHoldCents ?? 0, args.charge?.costCents ?? 0, args.charge?.providerCostUsd ?? 0, args.charge?.durationSeconds ?? 0]
+    if (!monetaryInputs.every((value) => Number.isFinite(value) && value >= 0)
+      || !Number.isSafeInteger(Math.round((args.charge?.costCents ?? 0) * 10_000))) {
+      throw new Error('sandbox_meter_amount_invalid')
+    }
+    const previousHoldMicros = typeof usage.runtimeHoldMicros === 'number' ? usage.runtimeHoldMicros : 0
+    const holdMicros = args.runtimeHoldCents === undefined ? previousHoldMicros : Math.round(args.runtimeHoldCents * 10_000)
+    if (![previousHoldMicros, holdMicros].every((value) => Number.isSafeInteger(value) && value >= 0)) throw new Error('sandbox_runtime_hold_invalid')
+    const evidence = args.providerEvidence ? {
+      ...args.providerEvidence, providerReference: args.meteredProviderReference, observedAt: args.meteredAt,
+    } : usage.lastProviderEvidence
+    if (args.providerEvidence) {
+      await ctx.db.patch(lease._id, { usage: { ...usage, lastProviderEvidence: evidence }, updatedAt: args.now })
+    }
+    const nextUsage: Record<string, unknown> = {
       ...usage,
+      ...(evidence ? { lastProviderEvidence: evidence } : {}),
+      runtimeHoldMicros: holdMicros,
       meteredUsage: args.meteredUsage,
       meteredAt: args.meteredAt,
       meterVersion: meterVersion + 1,
@@ -2090,8 +2108,22 @@ export const meterSandboxLeaseDebitByServer = mutation({
     let remainingCents: number | undefined
     const charge = args.charge && args.charge.costCents > 0 ? args.charge : undefined
     const payer = args.payer
+    if (!payer && (charge || holdMicros > 0 || previousHoldMicros > 0)) {
+      return { applied: false, reason: 'insufficient_budget', remainingCents: 0 }
+    }
+    const heldPayer = usage.runtimeHoldPayer as typeof payer
+    if (previousHoldMicros > 0 && (!heldPayer || !payer
+      || heldPayer.billingAccountId !== payer.billingAccountId
+      || heldPayer.spendSubjectKind !== payer.spendSubjectKind
+      || heldPayer.spendSubjectId !== payer.spendSubjectId
+      || args.meteredProviderReference !== usage.meteredProviderReference)) {
+      throw new Error('sandbox_runtime_hold_identity_changed')
+    }
     if (payer) {
       if (payer.scope === 'workspace') {
+        if (payer.workspaceId !== lease.workspaceId || payer.workspaceId !== args.workspaceId) {
+          throw new Error('workspace_billing_account_mismatch')
+        }
         const billingAccountId = payer.billingAccountId?.trim()
         if (!billingAccountId)
           throw new Error('workspace_billing_account_missing')
@@ -2115,19 +2147,21 @@ export const meterSandboxLeaseDebitByServer = mutation({
           )
           .unique()
         if (!balance) throw new Error('workspace_billing_balance_missing')
+        if (previousHoldMicros > balance.reservedMicros) throw new Error('sandbox_runtime_hold_balance_mismatch')
         const availableMicros = balance.mode === 'unlimited'
           ? Number.MAX_SAFE_INTEGER
-          : Math.max(0, balance.includedMicros + balance.institutionalGrantMicros + balance.topUpPurchasedMicros - balance.usedMicros - balance.reservedMicros)
+          : Math.max(0, balance.includedMicros + balance.institutionalGrantMicros + balance.topUpPurchasedMicros - balance.usedMicros - balance.reservedMicros + previousHoldMicros)
         const chargeMicros = charge ? Math.round(Math.max(0, charge.costCents) * 10_000) : 0
         const floorMicros = Math.round(Math.max(0, args.minRemainingCents) * 10_000)
-        if (account.status !== 'active' || chargeMicros + floorMicros > availableMicros) {
+        const settlingHeldUsage = previousHoldMicros > 0 && holdMicros === 0 && chargeMicros <= previousHoldMicros
+        if ((account.status !== 'active' && !settlingHeldUsage) || chargeMicros + holdMicros + floorMicros > availableMicros) {
           return {
             applied: false,
             reason: 'insufficient_budget',
             remainingCents: Math.round((availableMicros / 10_000) * 100) / 100,
           }
         }
-        if (charge) {
+        if (charge || holdMicros > 0 || previousHoldMicros > 0) {
           const limit =
             payer.spendSubjectKind && payer.spendSubjectId
               ? await ctx.db
@@ -2139,23 +2173,44 @@ export const meterSandboxLeaseDebitByServer = mutation({
                   .eq('subjectId', payer.spendSubjectId!))
                 .unique()
             : null
+          if (limit) {
+            const previousLimitHold = usage.runtimeHoldLimitId === limit._id ? previousHoldMicros : 0
+            const availableLimit = args.now >= limit.periodStart && args.now < limit.periodEnd
+              ? Math.max(0, limit.limitMicros - limit.usedMicros - limit.reservedMicros + previousLimitHold)
+              : previousLimitHold
+            if (chargeMicros + holdMicros > availableLimit) {
+              return { applied: false, reason: 'insufficient_budget', remainingCents: availableLimit / 10_000 }
+            }
+            await ctx.db.patch(limit._id, {
+              reservedMicros: Math.max(0, limit.reservedMicros - previousLimitHold) + holdMicros,
+              usedMicros: limit.usedMicros + chargeMicros, updatedAt: args.now, version: limit.version + 1,
+            })
+          }
           await finalizeWorkspaceLedger(ctx, {
-            actualMicros: chargeMicros, balance, limit, reservedMicros: 0,
+            actualMicros: chargeMicros, balance, limit: null, reservedMicros: previousHoldMicros, reserveMicros: holdMicros,
           })
-          await ctx.db.insert('usageOperations', {
+          nextUsage.runtimeHoldPayer = holdMicros > 0 ? payer : null
+          nextUsage.runtimeHoldLimitId = holdMicros > 0 ? limit?._id ?? null : null
+          if (charge) await ctx.db.insert('usageOperations', {
             userId: payer.userId,
             billingAccountId,
             operationId: `sandbox-meter:${args.leaseId}:${meterVersion + 1}`,
             recorded: 1,
             ...meterUsageFields(charge),
+            sandboxEvidence: {
+              category: 'compute', provider: lease.provider,
+              providerReference: args.meteredProviderReference ?? lease.providerReference ?? '',
+              providerCostUsd: charge.providerCostUsd, pricingVersion: account.pricingVersion,
+              metadataJson: JSON.stringify(charge.metadata),
+            },
             createdAt: args.now,
           })
         }
         remainingCents =
-          Math.round(((availableMicros - chargeMicros) / 10_000) * 100) / 100
+          Math.round(((availableMicros - chargeMicros - holdMicros) / 10_000) * 100) / 100
       } else {
         // Not a paid workspace: a person's own account has no credit, so metered machine time cannot be paid for.
-        if ((charge?.costCents ?? 0) + Math.max(0, args.minRemainingCents) > 0) {
+        if (holdMicros > 0 || previousHoldMicros > 0 || (charge?.costCents ?? 0) + Math.max(0, args.minRemainingCents) > 0) {
           return { applied: false, reason: 'insufficient_budget', remainingCents: 0 }
         }
         remainingCents = 0

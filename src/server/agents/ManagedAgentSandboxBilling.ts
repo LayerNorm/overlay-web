@@ -15,6 +15,7 @@ import type {
   RemoteAgentUsageSettlement,
 } from './ConnectedAgentRepository'
 import { MANAGED_SANDBOX_IDLE_TIMEOUT_MS, managedSandboxRuntimeFromEnv } from './managed-sandbox-runtime'
+import { E2B_COMPUTE_PRICE, meterExecutionUsage, type ExecutionMeterCursor } from './sandbox-execution-accounting'
 
 const DEFAULT_RESOURCES = { diskGiB: 10, memoryGiB: 4, vcpus: 2 }
 const DEFAULT_LOW_BALANCE_CUTOFF_CENTS = 100
@@ -266,6 +267,12 @@ export class ManagedAgentSandboxBilling {
         }
       }
     }
+    if (probe === null && stopping) {
+      const evidence = usage.lastProviderEvidence as { usage?: SandboxUsage; stopped?: boolean; providerReference?: string } | undefined
+      if (evidence?.stopped && evidence.providerReference === effectiveLease.providerReference && evidence.usage) {
+        probe = { status: 'stopped', usage: evidence.usage }
+      }
+    }
     if (probe === null) return { applied: false, reason: 'usage_unavailable' }
 
     const cursorReference = typeof usage.meteredProviderReference === 'string' ? usage.meteredProviderReference : undefined
@@ -292,7 +299,7 @@ export class ManagedAgentSandboxBilling {
     // 'running', and the next turn's acquire resumes it. The primary trigger is the idle timer (`idleCheck`, set when
     // a run ends); this sweep is the fallback for a timer that never fired, so it waits a grace period past the
     // window. The tick still bills the elapsed window it ran through.
-    if (!stopping && instanceRunning && typeof probe.instance.stop === 'function' && options?.idleStop !== 'none' && fallbackDue
+    if (!stopping && instanceRunning && probe.instance && typeof probe.instance.stop === 'function' && options?.idleStop !== 'none' && fallbackDue
       && await this.leaseIsIdle(effectiveLease, now, options?.idleStop === 'timer' ? 0 : IDLE_FALLBACK_GRACE_MS)) {
       const idleForMs = now - idleActivityTimestamp(usage, effectiveLease, now)
       await probe.instance.stop().then(() => {
@@ -311,6 +318,7 @@ export class ManagedAgentSandboxBilling {
           leaseId: effectiveLease.id,
         })
       })
+      if (idleStoppedNow) probe.usage = await probe.instance.usage().catch((_error) => null)
     }
     // Fallback for a missing or overdue idle timer (a lost scheduled job, a run that ended without one): start it.
     if (!stopping && instanceRunning && effectiveLease.status === 'running' && !idleStoppedNow && options?.idleStop !== 'none' && fallbackDue
@@ -331,7 +339,7 @@ export class ManagedAgentSandboxBilling {
       // stopped span is never billed as elapsed on the next running tick. A
       // never-metered lease has no window to advance — its first successful
       // read adopts counters instead.
-      if (!instanceRunning && storedCursor !== undefined) {
+      if (!instanceRunning && storedCursor !== undefined && !['box', 'e2b'].includes(effectiveLease.provider)) {
         const bumped = await this.dependencies.repository.meterSandboxLease({
           workspaceId: effectiveLease.workspaceId,
           leaseId: effectiveLease.id,
@@ -348,21 +356,40 @@ export class ManagedAgentSandboxBilling {
       return { applied: false, reason: 'usage_unavailable' }
     }
     const currentUsage = probe.usage
-    const delta = usageDelta(baseline, currentUsage, instanceRunning ? elapsedMs : 0)
+    const executionPrice = baseline.executionPrice && typeof baseline.executionPrice === 'object'
+      ? baseline.executionPrice as typeof E2B_COMPUTE_PRICE : E2B_COMPUTE_PRICE
+    const executionMeter = currentUsage.executions && effectiveLease.provider === 'e2b'
+      ? meterExecutionUsage({
+        previous: baseline.executionCursor as ExecutionMeterCursor ?? {},
+        samples: currentUsage.executions,
+        price: executionPrice,
+        now,
+        retiredBefore: typeof baseline.executionRetiredBefore === 'number' ? baseline.executionRetiredBefore : undefined,
+        adopt: !chargeEnabled || (Object.keys(baseline).length > 0 && !baseline.executionCursor),
+      })
+      : undefined
+    const authoritativeCounter = currentUsage.providerMetrics?.authoritativeCounter === true
+    const delta = executionMeter
+      ? { wallTimeMs: executionMeter.durationMs }
+      : usageDelta(baseline, currentUsage, instanceRunning && !authoritativeCounter ? elapsedMs : 0)
     const baselineWallMs = finiteNumber(baseline.wallTimeMs)
     const virtualWallApplied = currentUsage.wallTimeMs !== undefined
+      && !executionMeter && !authoritativeCounter
       && currentUsage.wallTimeMs <= baselineWallMs
       && instanceRunning
       && elapsedMs > 0
     const resources = sandboxResources(usage)
-    const providerCostUsd = chargeEnabled ? sandboxCostUsd({
+    const providerCostUsd = chargeEnabled ? executionMeter?.computeUsd ?? sandboxCostUsd({
       provider: effectiveLease.provider,
       resources,
       usage: delta,
     }) : 0
     const costCents = chargeEnabled ? billableBudgetCentsFromProviderUsd(providerCostUsd) : 0
+    const runtimeHoldCents = executionMeter
+      ? billableBudgetCentsFromProviderUsd(executionMeter.pendingComputeUsd + executionMeter.headroomComputeUsd)
+      : undefined
     const payer = await this.resolveLeasePayer(effectiveLease)
-    if (costCents > 0 && !payer) {
+    if ((costCents > 0 || (runtimeHoldCents ?? 0) > 0) && !payer) {
       logger.warn('Managed sandbox meter skipped — no billing payer resolved', {
         environmentId: effectiveLease.environmentId,
         leaseId: effectiveLease.id,
@@ -376,7 +403,12 @@ export class ManagedAgentSandboxBilling {
     // nets out instead of double-charging the whole session.
     const cursorUsage = {
       ...serializableUsage(currentUsage),
+      ...(executionMeter ? {
+        executionCursor: executionMeter.cursor, executionPrice,
+        ...(executionMeter.retiredBefore === undefined ? {} : { executionRetiredBefore: executionMeter.retiredBefore }),
+      } : {}),
       ...(currentUsage.wallTimeMs === undefined
+        || executionMeter
         ? {}
         : { wallTimeMs: Math.max(currentUsage.wallTimeMs, baselineWallMs + (virtualWallApplied ? elapsedMs : 0)) }),
     }
@@ -388,6 +420,8 @@ export class ManagedAgentSandboxBilling {
       meteredUsage: cursorUsage,
       meteredProviderReference: activeReference,
       meteredAt: now,
+      ...(runtimeHoldCents === undefined ? {} : { runtimeHoldCents }),
+      providerEvidence: { usage: serializableUsage(currentUsage), stopped: !instanceRunning || idleStoppedNow },
       ...(payer ? { payer } : {}),
       ...(costCents > 0 ? {
         charge: {
@@ -400,12 +434,24 @@ export class ManagedAgentSandboxBilling {
             provider: effectiveLease.provider,
             providerReference: activeReference ?? null,
             meterTick: true,
+            ...(executionMeter ? {
+              pricing: executionPrice,
+              executions: currentUsage.executions?.filter((sample) => {
+                const previous = (baseline.executionCursor as ExecutionMeterCursor | undefined)?.[sample.id]
+                return sample.complete && !previous?.complete && sample.wallTimeMs > (previous?.settledWallTimeMs ?? 0)
+              }),
+              computeOnly: true,
+            } : {}),
           },
         },
       } : {}),
       minRemainingCents: Math.max(0, options?.minRemainingCents ?? sandboxLowBalanceCutoffCents()),
     })
     if (!result.applied) return result
+    const runtimeFenceMs = Math.min(4 * 60_000, effectiveLease.reservedUntil - this.now())
+    if (instanceRunning && !idleStoppedNow && !stopping && runtimeFenceMs > 0) {
+      await probe?.instance?.renewRuntime?.(runtimeFenceMs)
+    }
     return {
       applied: true,
       usage: currentUsage,
@@ -641,17 +687,11 @@ export class ManagedAgentSandboxBilling {
       // still-running sandbox must be stopped before the final meter read —
       // deleting without it would lose the whole session's usage.
       const instance = await this.runtime(lease.provider).reconnect(reference, { resume: false })
-      const status = typeof instance.status === 'function'
-        ? await instance.status().catch((_error) => undefined)
-        : undefined
-      if (status !== 'stopped' && status !== 'archived' && status !== 'deleted' && typeof instance.stop === 'function') {
-        await instance.stop().catch((stopError) => {
-          logger.warn('Managed sandbox stop before cleanup failed', {
-            error: stopError instanceof Error ? stopError.message : String(stopError),
-            leaseId: lease.id,
-            providerReference: reference,
-          })
-        })
+      let status = await instance.status()
+      if (!['stopped', 'archived', 'deleted'].includes(status)) {
+        await instance.stop()
+        status = await instance.status()
+        if (!['stopped', 'archived', 'deleted'].includes(status)) throw new Error('SANDBOX_STOP_NOT_CONFIRMED')
       }
     } catch (error) {
       if (!isMissingSandboxError(error)) {
@@ -668,7 +708,12 @@ export class ManagedAgentSandboxBilling {
     }
     // A stopped lease gets one final charge-free-of-floor tick so tail usage
     // is still billed before the provider sandbox is deleted.
-    await this.meterLease({ ...lease, status: 'stopping' }, { minRemainingCents: 0 }).catch((_error) => undefined)
+    const finalMeter = await this.meterLeaseWithRetry({ ...lease, status: 'stopping' }, { minRemainingCents: 0 })
+      .catch((_error) => ({ applied: false as const, reason: 'usage_unavailable' as const }))
+    if (!finalMeter.applied) {
+      const attempts = lease.cleanupAttempts + 1
+      return await finish('cleanup_failed', attempts, now + cleanupRetryDelayMs(attempts))
+    }
     try {
       const instance = await this.runtime(lease.provider).reconnect(reference, { resume: false })
       await instance.delete()
@@ -697,7 +742,7 @@ export class ManagedAgentSandboxBilling {
   }
 
   private async resolveLeasePayer(lease: AgentSandboxLease): Promise<ConnectedAgentSandboxLeasePayer | undefined> {
-    const payer = lease.usage?.lastPayer
+    const payer = finiteNumber(lease.usage?.runtimeHoldMicros) > 0 ? lease.usage?.runtimeHoldPayer : lease.usage?.lastPayer
     if (payer && typeof payer === 'object') {
       const value = payer as Record<string, unknown>
       if ((value.scope === 'personal' || value.scope === 'workspace') && typeof value.userId === 'string' && value.userId) {
@@ -726,7 +771,7 @@ export class ManagedAgentSandboxBilling {
   private async instanceProbe(
     provider: string,
     providerReference: string,
-  ): Promise<{ instance: SandboxInstance; status: SandboxLifecycleState | undefined; usage: SandboxUsage | null } | null> {
+  ): Promise<{ instance?: SandboxInstance; status: SandboxLifecycleState | undefined; usage: SandboxUsage | null } | null> {
     try {
       const instance = await this.runtime(provider).reconnect(providerReference, { resume: false })
       const status = typeof instance.status === 'function'

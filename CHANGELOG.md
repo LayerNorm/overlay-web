@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Settle E2B compute from completed provider executions and actual allocation, reserve credit while executions run, and retain final usage for retry if billing fails. Enforce workspace and subject limits on machine metering; preserve Boat's weighted counters instead of substituting elapsed time.
+
 - Bind Computer access to the authorized workspace and require paid workspace credit before provisioning, starting, desktop access or tool execution. Concurrent owner claims allocate only one machine; failed deletion retains the provider reference for retry, and lifecycle reads never implicitly resume a machine.
 
 - Stop the app half-loading after bursts of throttled reads: Work list, Work context, subscription and workspace policy reads get their own per-user rate-limit buckets instead of sharing the default pool. Workspace bootstrap and policy requests now recover an expired session like other app requests. App pages without their own error boundary keep the shell, and both error screens show the error reference.

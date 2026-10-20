@@ -3,6 +3,105 @@ import test from 'node:test'
 import type { AgentSandboxLease } from '@overlay/workspace-contracts'
 import type { SandboxInstance, SandboxRuntime } from '@overlay/sandbox-runtime'
 import { ManagedAgentSandboxBilling, sandboxCostUsd } from './ManagedAgentSandboxBilling'
+import { E2B_COMPUTE_PRICE } from './sandbox-execution-accounting'
+
+test('execution metering settles completed E2B time and reserves resumed time with actual resources', async () => {
+  const calls: Array<Record<string, unknown>> = []
+  const first = { id: 'sandbox-reference:0', startedAt: 0, wallTimeMs: 30_000, complete: false, resources: { vcpus: 2, memoryGiB: 0.5 } }
+  const lease = leaseFixture({
+    provider: 'e2b',
+    usage: {
+      resources: { vcpus: 8, memoryGiB: 16, diskGiB: 20 },
+      meteredUsage: { executionCursor: { [first.id]: first }, executionPrice: E2B_COMPUTE_PRICE },
+      meteredProviderReference: 'sandbox-reference', meterVersion: 1,
+      lastPayer: { scope: 'workspace', userId: 'user', workspaceId: 'workspace', billingAccountId: 'billing' },
+    },
+  })
+  const sample = {
+    executions: [
+      { ...first, wallTimeMs: 60_000, complete: true },
+      { ...first, id: 'sandbox-reference:100000', startedAt: 100_000, wallTimeMs: 20_000 },
+    ],
+    wallTimeMs: 20_000,
+  }
+  const service = new ManagedAgentSandboxBilling({
+    now: () => 120_000, policy: {} as never,
+    runtime: () => ({ ...runtimeWithUsage(() => sample), provider: 'e2b' }),
+    repository: {
+      meterSandboxLease: async (input: Record<string, unknown>) => { calls.push(input); return { applied: true, meterVersion: 2 } },
+    } as never,
+  })
+  await service.meterLease(lease, { idleStop: 'none' })
+  const charge = calls[0]?.charge as { providerCostUsd: number; durationSeconds: number }
+  assert.equal(charge.durationSeconds, 60)
+  assert.ok(Math.abs(charge.providerCostUsd - 0.001815) < 1e-12)
+  const holdCents = calls[0]?.runtimeHoldCents as number
+  assert.ok(holdCents >= 0.00968 * 125)
+  assert.equal(calls[0]?.expectedMeterVersion, 1)
+})
+
+test('authoritative weighted Boat seconds are never replaced by unweighted wall-clock estimates', async () => {
+  const calls: Array<Record<string, unknown>> = []
+  const snapshot = { wallTimeMs: 30_000, providerMetrics: { authoritativeCounter: true, running: false } }
+  const lease = leaseFixture({
+    provider: 'box', usage: { meteredUsage: snapshot, meterVersion: 1, meteredAt: 60_000, meteredProviderReference: 'sandbox-reference' },
+  })
+  const service = new ManagedAgentSandboxBilling({
+    now: () => 120_000, policy: {} as never,
+    runtime: () => ({ ...runtimeWithUsage(() => snapshot), provider: 'box' }),
+    repository: {
+      meterSandboxLease: async (input: Record<string, unknown>) => { calls.push(input); return { applied: true, meterVersion: 2 } },
+    } as never,
+  })
+  await service.meterLease(lease, { idleStop: 'none' })
+  assert.equal(calls[0]?.charge, undefined)
+  assert.equal((calls[0]?.meteredUsage as { wallTimeMs: number }).wallTimeMs, 30_000)
+})
+
+test('only a successfully reserved runtime tick renews the provider safety fence', async () => {
+  const renewals: number[] = []
+  let applied = true
+  const lease = leaseFixture({ provider: 'e2b', reservedUntil: 1_000_000, usage: {
+    meteredUsage: {}, meteredProviderReference: 'sandbox-reference', meterVersion: 0,
+    lastPayer: { scope: 'workspace', userId: 'user', workspaceId: 'workspace', billingAccountId: 'billing' },
+  } })
+  const service = new ManagedAgentSandboxBilling({
+    now: () => 120_000, policy: {} as never,
+    runtime: () => ({ ...runtimeWithUsage(() => ({ wallTimeMs: 20_000 })), provider: 'e2b', reconnect: async () => ({
+      status: async () => 'running',
+      usage: async () => ({ executions: [{ id: 'sandbox-reference:100000', startedAt: 100_000, wallTimeMs: 20_000, complete: false, resources: { vcpus: 2, memoryGiB: 0.5 } }] }),
+      renewRuntime: async (ms: number) => { renewals.push(ms) },
+    }) as SandboxInstance }),
+    repository: { meterSandboxLease: async () => applied ? { applied: true, meterVersion: 1 } : { applied: false, reason: 'insufficient_budget' } } as never,
+  })
+  await service.meterLease(lease, { idleStop: 'none' })
+  assert.deepEqual(renewals, [240_000])
+  applied = false
+  await service.meterLease(lease, { idleStop: 'none' })
+  assert.deepEqual(renewals, [240_000])
+})
+
+test('final stopped evidence settles after the provider resource disappears', async () => {
+  const calls: Array<Record<string, unknown>> = []
+  const final = { id: 'sandbox-reference:0', startedAt: 0, wallTimeMs: 60_000, complete: true, resources: { vcpus: 2, memoryGiB: 0.5 } }
+  const lease = leaseFixture({ provider: 'e2b', status: 'cleanup_failed', usage: {
+    meteredUsage: {}, meteredProviderReference: 'sandbox-reference', meterVersion: 0,
+    lastProviderEvidence: { stopped: true, providerReference: 'sandbox-reference', usage: { executions: [final] } },
+    lastPayer: { scope: 'workspace', userId: 'user', workspaceId: 'workspace', billingAccountId: 'billing' },
+  } })
+  const service = new ManagedAgentSandboxBilling({
+    now: () => 120_000, policy: {} as never,
+    runtime: () => ({ ...runtimeWithUsage(() => ({ wallTimeMs: 0 })), provider: 'e2b', reconnect: async () => { throw new Error('gone') } }),
+    repository: {
+      getActiveSandboxLease: async () => null,
+      meterSandboxLease: async (input: Record<string, unknown>) => { calls.push(input); return { applied: true, meterVersion: 1 } },
+    } as never,
+  })
+  const result = await service.meterLease(lease, { idleStop: 'none' })
+  assert.equal(result.applied, true)
+  assert.ok(Math.abs((calls[0]?.charge as { providerCostUsd: number }).providerCostUsd - 0.001815) < 1e-12)
+  assert.equal(calls[0]?.runtimeHoldCents, 0)
+})
 
 test('reserve holds a bootstrap reservation and records the payer on the lease', async () => {
   const reservationArgs: Array<Record<string, unknown>> = []
@@ -160,6 +259,7 @@ test('meterLeases kills a lease when the meter debit is declined', async () => {
     provider: 'box', capabilities: {} as never,
     create: async () => { throw new Error('unreachable') },
     reconnect: async () => ({
+      status: async () => 'stopped' as const,
       usage: async () => ({ wallTimeMs: 60_000 }),
       delete: async () => { deletes.push('sandbox-reference') },
     }) as SandboxInstance,
@@ -187,9 +287,8 @@ test('meterLeases kills a lease when the meter debit is declined', async () => {
   assert.equal(ticks[0]?.outcome, 'killed')
   assert.equal(ticks[0]?.reason, 'budget_exhausted')
   assert.equal(stopping, true)
-  assert.deepEqual(deletes, ['sandbox-reference'])
-  // The reaper released the lease after the provider delete succeeded.
-  assert.equal(released.at(-1)?.status, 'released')
+  assert.deepEqual(deletes, [])
+  assert.equal(released.at(-1)?.status, 'cleanup_failed', 'Unsettled final cost retains the resource reference for reconciliation')
 })
 
 test('meterLeases kills a lease when remaining balance falls under the floor', async () => {
@@ -206,6 +305,7 @@ test('meterLeases kills a lease when remaining balance falls under the floor', a
     provider: 'box', capabilities: {} as never,
     create: async () => { throw new Error('unreachable') },
     reconnect: async () => ({
+      status: async () => 'stopped' as const,
       usage: async () => ({ wallTimeMs: 30_000 }),
       delete: async () => undefined,
     }) as SandboxInstance,
@@ -230,6 +330,41 @@ test('meterLeases kills a lease when remaining balance falls under the floor', a
   assert.equal(ticks[0]?.outcome, 'killed')
   assert.equal(ticks[0]?.reason, 'low_balance')
   assert.deepEqual(stopReasons, ['low_balance'])
+})
+
+test('cleanup requires stopped-state proof before final metering and deletion', async () => {
+  const updates: Array<Record<string, unknown>> = []
+  const deletes: string[] = []
+  const lease = leaseFixture({ status: 'stopping', cleanupAfter: 100_000 })
+  const runtime: SandboxRuntime = {
+    provider: 'box', capabilities: {} as never,
+    create: async () => { throw new Error('unreachable') },
+    reconnect: async () => ({
+      usage: async () => ({ wallTimeMs: 60_000 }),
+      delete: async () => { deletes.push('sandbox-reference') },
+    }) as SandboxInstance,
+    restore: async () => { throw new Error('unreachable') },
+    deleteSnapshot: async () => undefined,
+  }
+  const service = new ManagedAgentSandboxBilling({
+    now: () => 190_000,
+    policy: {} as never,
+    repository: {
+      patchSandboxLeaseUsage: async () => null,
+      environmentHasActiveRuns: async () => false,
+      listSandboxLeases: async (args: { statuses: string[] }) => args.statuses.includes('stopping') ? [lease] : [],
+      meterSandboxLease: async () => ({ applied: true as const, meterVersion: 2 }),
+      updateSandboxLease: async (args: Record<string, unknown>) => {
+        updates.push(args)
+        return { ...lease, status: args.status }
+      },
+    } as never,
+    runtime: () => runtime,
+  })
+  const { ticks } = await service.meterLeases()
+  assert.equal(ticks[0]?.outcome, 'cleanup_failed')
+  assert.equal(updates.at(-1)?.status, 'cleanup_failed')
+  assert.deepEqual(deletes, [])
 })
 
 test('meterLeases reaps a running lease past its reserved window even when the sandbox answers', async () => {
@@ -284,6 +419,7 @@ test('meterLeases reaps stopping leases and retries provider cleanup', async () 
     provider: 'box', capabilities: {} as never,
     create: async () => { throw new Error('unreachable') },
     reconnect: async () => ({
+      status: async () => 'stopped' as const,
       usage: async () => { throw new Error('gone') },
       delete: async () => { throw new Error('provider 500') },
     }) as SandboxInstance,
@@ -670,13 +806,14 @@ test('meterLease does not idle-stop a sandbox while a run is still going', async
 
 test('reaped leases stop the sandbox before the final usage read and delete', async () => {
   const events: string[] = []
+  let running = true
   const stoppingLease = leaseFixture({ status: 'stopping', cleanupAfter: 100_000 })
   const runtime: SandboxRuntime = {
     provider: 'box', capabilities: {} as never,
     create: async () => { throw new Error('unreachable') },
     reconnect: async () => ({
-      status: async () => 'running' as const,
-      stop: async () => { events.push('stop') },
+      status: async () => running ? 'running' as const : 'stopped' as const,
+      stop: async () => { running = false; events.push('stop') },
       usage: async () => ({ wallTimeMs: 300_000 }),
       delete: async () => { events.push('delete') },
     }) as SandboxInstance,

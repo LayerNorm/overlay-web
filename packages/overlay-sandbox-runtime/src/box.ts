@@ -519,10 +519,15 @@ class BoxSandboxInstance implements DesktopSandboxInstance {
       billingMultiplier?: number
       running?: boolean
     }>('GET', `/sandboxes/${this.reference}/usage`)
+    if (typeof response.seconds !== 'number' || !Number.isFinite(response.seconds) || response.seconds < 0
+      || (response.dollars !== undefined && (typeof response.dollars !== 'number' || !Number.isFinite(response.dollars) || response.dollars < 0))) {
+      throw new BoxApiError(502, 'invalid_usage_response', 'Provider usage counters are invalid')
+    }
     const seconds = finite(response.seconds)
     return {
       wallTimeMs: Math.max(0, seconds) * 1_000,
       providerMetrics: {
+        authoritativeCounter: true,
         // Absent (not zero) when the API predates dollar reporting — the
         // cost path falls back to the seconds rate card only then.
         ...(typeof response.dollars === 'number' && Number.isFinite(response.dollars)

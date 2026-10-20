@@ -504,6 +504,14 @@ export default defineSchema({
     modelId: v.optional(v.string()),
     usageTokens: v.optional(v.number()),
     usageSeconds: v.optional(v.number()),
+    sandboxEvidence: v.optional(v.object({
+      category: v.literal('compute'),
+      provider: v.string(),
+      providerReference: v.string(),
+      providerCostUsd: v.number(),
+      pricingVersion: v.string(),
+      metadataJson: v.string(),
+    })),
     createdAt: v.number(),
   })
     .index('by_operationId', ['operationId'])

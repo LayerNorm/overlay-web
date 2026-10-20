@@ -80,6 +80,18 @@ Canceled-plan funding also shrinks when holds are released or settled below thei
 
 ## Durable remote tasks
 
+### Provider execution accounting
+
+E2B create and resume use a four-minute pause-on-timeout safety fence. Only a successful runtime meter transaction renews it, bounded by the lease deadline. A five-minute credit headroom covers the next four minutes plus meter latency; a failed scheduler, provider read or ledger commit does not extend runtime. This requires the existing minute-level meter cron. Unmetered persistent Computers will pause at the fence until their shared-lease integration is complete.
+
+E2B lifecycle events supply completed execution duration and actual CPU/RAM allocation. The meter keys each generation by sandbox reference and execution start time, persists a frozen compute rate card, and settles completed generations exactly once with the lease meter version. Live wall-clock observations are estimates, not final charges: a durable workspace and spend-subject hold covers observed pending compute plus five minutes of actual-allocation headroom. Each tick atomically replaces that lease's hold without borrowing another operation's reservation. The payer remains bound until the hold settles. Final event duration may be shorter than a live estimate without requiring a credit refund.
+
+Provider observations survive a rejected debit; the billed cursor does not advance. Cleanup must confirm stop and complete final settlement before deleting the provider resource. A stopped final observation can be replayed after a resource disappears. Missing or inconsistent evidence keeps the lease in retryable cleanup rather than releasing it as if no usage occurred. Usage operations retain compute cost, pricing and allocation evidence for audit. Settled executions absent beyond the provider's event retention window can leave the cursor only with a persisted retirement watermark; reappearing old evidence fails closed rather than being charged again.
+
+Boat seconds are already size-weighted billable seconds, not ordinary wall-clock seconds. Its authoritative counters must not be replaced by elapsed-time estimates. E2B paused compute is not charged; Boat includes stopped compute and automatic snapshot retention for 14 days. These compute entries do not invent a storage fee. Snapshot retention and any separately purchased storage must remain distinct from runtime accounting.
+
+This accounting checkpoint does not yet complete persistent Computer lease supervision, provider inventory reconciliation or stalled-counter safety. Those remain required before enabling the expanded Computer harness.
+
 V2 remote tasks bind reservations to the logical run through `remoteRunId`.
 Expired/stale-hold policy preserves a task's hold while execution or terminal
 settlement is unresolved. The original hard deadline still triggers stop; it cannot

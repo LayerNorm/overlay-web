@@ -118,6 +118,7 @@ export type SandboxSnapshot = {
 }
 
 export type SandboxUsage = {
+  executions?: SandboxExecutionUsage[]
   wallTimeMs?: number
   activeCpuTimeMs?: number
   cpuPercent?: number
@@ -125,6 +126,15 @@ export type SandboxUsage = {
   ingressBytes?: number
   egressBytes?: number
   providerMetrics?: Record<string, number | string | boolean | null>
+}
+
+/** One provider execution between create/resume and pause/termination. */
+export type SandboxExecutionUsage = {
+  id: string
+  startedAt: number
+  wallTimeMs: number
+  complete: boolean
+  resources: { vcpus: number; memoryGiB: number }
 }
 
 export type SandboxCapabilities = {
@@ -163,6 +173,8 @@ export interface SandboxInstance {
   port(port: number): Promise<SandboxPort>
   snapshot(options?: { expiresInMs?: number; /** Stable snapshot name, where the provider supports naming. */ name?: string }): Promise<SandboxSnapshot>
   usage(): Promise<SandboxUsage>
+  /** Extend a running machine's provider-side safety timeout without resuming it. */
+  renewRuntime?(timeoutMs: number): Promise<void>
   /** Operator-only. Never serialize this value or expose it through Overlay's public API. */
   rawProviderDiagnosticHandle(): unknown
 }

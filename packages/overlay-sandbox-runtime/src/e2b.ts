@@ -6,6 +6,7 @@ import type {
   SandboxCommandRequest,
   SandboxCommandResult,
   SandboxCreateRequest,
+  SandboxExecutionUsage,
   SandboxFileEntry,
   SandboxInstance,
   SandboxLifecycleState,
@@ -46,8 +47,8 @@ const CAPABILITIES: SandboxCapabilities = {
   desktop: false,
 }
 
-/** E2B's longest sandbox lifetime (Pro). Requests above it are clamped. */
-const MAX_TIMEOUT_MS = 24 * 60 * 60_000
+/** Only a successful meter tick extends this fence; pause preserves the machine state. */
+const RUNTIME_FENCE_MS = 4 * 60_000
 
 /** The parts of the `e2b` SDK this adapter uses. The real `Sandbox` class satisfies it. */
 export type E2BSandboxHandle = {
@@ -77,6 +78,7 @@ export type E2BSandboxClass = {
   getInfo(sandboxId: string, options?: Record<string, unknown>): Promise<{ state: 'running' | 'paused'; startedAt: Date; cpuCount?: number; memoryMB?: number }>
   pause(sandboxId: string, options?: Record<string, unknown>): Promise<boolean>
   kill(sandboxId: string, options?: Record<string, unknown>): Promise<boolean>
+  setTimeout(sandboxId: string, timeoutMs: number, options?: Record<string, unknown>): Promise<void>
   createSnapshot?(sandboxId: string, options?: { name?: string }): Promise<{ snapshotId: string }>
   deleteSnapshot(snapshotId: string, options?: Record<string, unknown>): Promise<boolean>
 }
@@ -88,6 +90,8 @@ export type E2BRuntimeOptions = {
   /** Template used when a request names no image. */
   defaultTemplate?: string
   sandbox: E2BSandboxClass
+  fetch?: typeof fetch
+  now?: () => number
 }
 
 /** E2B credentials from the environment. */
@@ -111,7 +115,7 @@ export class E2BSandboxRuntime implements SandboxRuntime {
     if (!template) throw new E2BError('No E2B template named: set OVERLAY_CLOUD_AGENT_IMAGE to the template built by infra/agent-image/build.e2b.ts', 'template_missing')
     const handle = await this.options.sandbox.create(template, {
       ...this.connection(),
-      timeoutMs: Math.min(Math.max(request.hardTimeoutMs, 60_000), MAX_TIMEOUT_MS),
+      timeoutMs: Math.min(Math.max(request.hardTimeoutMs, 60_000), RUNTIME_FENCE_MS),
       envs: request.environment ?? {},
       metadata: { ...(request.metadata ?? {}), overlayName: request.name },
       allowInternetAccess: request.networkPolicy.mode !== 'deny_all',
@@ -138,6 +142,64 @@ export class E2BSandboxRuntime implements SandboxRuntime {
   get sdk(): E2BSandboxClass {
     return this.options.sandbox
   }
+
+  now(): number {
+    return (this.options.now ?? Date.now)()
+  }
+
+  async executionUsage(reference: string): Promise<{ samples: SandboxExecutionUsage[]; killed: boolean }> {
+    const samples: SandboxExecutionUsage[] = []
+    let killed = false
+    const deadline = this.now() + 30_000
+    for (let offset = 0; offset < 2_000; offset += 100) {
+      const remainingMs = deadline - this.now()
+      if (remainingMs <= 0) throw new E2BError('Execution event read deadline exceeded', 'usage_incomplete')
+      const url = new URL(`/events/sandboxes/${encodeURIComponent(reference)}`, `https://api.${this.options.domain ?? 'e2b.app'}`)
+      url.searchParams.set('offset', String(offset))
+      url.searchParams.set('limit', '100')
+      url.searchParams.set('orderAsc', 'false')
+      url.searchParams.append('types', 'sandbox.lifecycle.paused')
+      url.searchParams.append('types', 'sandbox.lifecycle.killed')
+      const response = await (this.options.fetch ?? fetch)(url, {
+        headers: { 'X-API-Key': this.options.apiKey },
+        signal: AbortSignal.timeout(Math.min(15_000, remainingMs)),
+        redirect: 'error',
+      })
+      if (!response.ok) throw new E2BError(`Execution usage unavailable (${response.status})`, 'usage_unavailable')
+      const events: unknown = await response.json()
+      if (!Array.isArray(events)) throw new E2BError('Invalid execution event response', 'usage_invalid')
+      for (const value of events) {
+        const event = value as E2BExecutionEvent
+        if (event.sandboxId !== reference || !['sandbox.lifecycle.paused', 'sandbox.lifecycle.killed'].includes(event.type)) {
+          throw new E2BError('Execution event does not belong to this sandbox', 'usage_invalid')
+        }
+        const execution = event.eventData?.execution
+        const startedAt = typeof execution?.started_at === 'string' ? Date.parse(execution.started_at) : NaN
+        if (!execution || !Number.isFinite(startedAt)
+          || !Number.isFinite(execution.execution_time) || execution.execution_time < 0
+          || !Number.isFinite(execution.vcpu_count) || execution.vcpu_count <= 0
+          || !Number.isFinite(execution.memory_mb) || execution.memory_mb <= 0) {
+          throw new E2BError('Execution event has no complete allocation and duration evidence', 'usage_invalid')
+        }
+        samples.push({
+          id: `${reference}:${startedAt}`,
+          startedAt,
+          wallTimeMs: execution.execution_time,
+          complete: true,
+          resources: { vcpus: execution.vcpu_count, memoryGiB: execution.memory_mb / 1024 },
+        })
+        killed ||= event.type === 'sandbox.lifecycle.killed'
+      }
+      if (events.length < 100) return { samples, killed }
+    }
+    throw new E2BError('Execution event pagination exceeded the safe read bound', 'usage_incomplete')
+  }
+}
+
+type E2BExecutionEvent = {
+  sandboxId: string
+  type: string
+  eventData?: { execution?: { started_at: string; execution_time: number; vcpu_count: number; memory_mb: number } }
 }
 
 export class E2BError extends Error {
@@ -165,7 +227,7 @@ class E2BSandbox implements SandboxInstance {
 
   /** The live sandbox, connecting (which resumes a paused one) on first use. */
   private async live(): Promise<E2BSandboxHandle> {
-    this.handle ??= await this.runtime.sdk.connect(this.reference, this.runtime.connection())
+    this.handle ??= await this.runtime.sdk.connect(this.reference, { ...this.runtime.connection(), timeoutMs: RUNTIME_FENCE_MS })
     return this.handle
   }
 
@@ -184,7 +246,12 @@ class E2BSandbox implements SandboxInstance {
   }
 
   async resume(): Promise<void> {
-    this.handle = await this.runtime.sdk.connect(this.reference, { ...this.runtime.connection(), timeoutMs: MAX_TIMEOUT_MS })
+    this.handle = await this.runtime.sdk.connect(this.reference, { ...this.runtime.connection(), timeoutMs: RUNTIME_FENCE_MS })
+  }
+
+  async renewRuntime(timeoutMs: number): Promise<void> {
+    if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) throw new E2BError('Invalid runtime fence', 'timeout_invalid')
+    await this.runtime.sdk.setTimeout(this.reference, Math.min(timeoutMs, RUNTIME_FENCE_MS), { ...this.runtime.connection(), requestTimeoutMs: 15_000 })
   }
 
   async stop(): Promise<void> {
@@ -301,12 +368,35 @@ class E2BSandbox implements SandboxInstance {
   }
 
   async usage(): Promise<SandboxUsage> {
-    const info = await this.runtime.sdk.getInfo(this.reference, this.runtime.connection())
-    const running = info.state === 'running'
+    const observedAt = this.runtime.now()
+    const info = await this.runtime.sdk.getInfo(this.reference, this.runtime.connection()).catch((error) => {
+      if (isNotFound(error)) return null
+      throw error
+    })
+    const { samples, killed } = await this.runtime.executionUsage(this.reference)
+    if (!info && !killed) throw new E2BError('Waiting for the final execution event', 'usage_incomplete')
+    const startedAt = info?.startedAt.getTime()
+    const current = samples.find((sample) => sample.startedAt === startedAt)
+    const running = info?.state === 'running' && !current
+    if (running && info) {
+      if (!Number.isFinite(startedAt) || !Number.isFinite(info.cpuCount) || !Number.isFinite(info.memoryMB)
+        || (info.cpuCount ?? 0) <= 0 || (info.memoryMB ?? 0) <= 0) {
+        throw new E2BError('Actual allocation is unavailable', 'usage_invalid')
+      }
+      samples.push({
+        id: `${this.reference}:${startedAt}`,
+        startedAt: startedAt!,
+        wallTimeMs: Math.max(0, observedAt - startedAt!),
+        complete: false,
+        resources: { vcpus: info.cpuCount!, memoryGiB: info.memoryMB! / 1024 },
+      })
+    } else if (info && !current) {
+      throw new E2BError('Waiting for the paused execution event', 'usage_incomplete')
+    }
     return {
-      // Wall time of the current run of the sandbox; a pause ends it and a resume starts a new one.
-      wallTimeMs: running ? Math.max(0, Date.now() - info.startedAt.getTime()) : 0,
-      providerMetrics: { running, ...(info.cpuCount ? { vcpus: info.cpuCount } : {}), ...(info.memoryMB ? { memoryMiB: info.memoryMB } : {}) },
+      executions: samples,
+      wallTimeMs: current?.wallTimeMs ?? (running ? Math.max(0, observedAt - startedAt!) : 0),
+      providerMetrics: { running, usageSource: 'execution-events-v2', ...(info?.cpuCount ? { vcpus: info.cpuCount } : {}), ...(info?.memoryMB ? { memoryMiB: info.memoryMB } : {}) },
     }
   }
 
