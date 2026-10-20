@@ -30,6 +30,9 @@ export function AppRouteErrorState({
         <p className="mt-2 text-sm text-(--muted)">
           The route failed while loading. Retry the segment without leaving the app.
         </p>
+        <p className="mt-2 break-words font-mono text-xs text-(--muted)">
+          {error.digest ? `Reference ${error.digest}` : error.message}
+        </p>
         <Button variant="primary" size="md" className="mt-5"
           type="button"
           onClick={reset}
