@@ -1,6 +1,5 @@
 import 'server-only'
 
-import { logger } from '@/server/observability/logger'
 import {
   isDesktopSandboxInstance,
   type DesktopStreamTicket,
@@ -29,6 +28,7 @@ export type { ComputerRepository } from './ComputerRepository'
  */
 export type ComputerActor = {
   userId: string
+  workspaceId: string
   /** Caller's workspace principal id — required for creator-only agent access checks. */
   principalId?: string
   workspaceRole?: 'owner' | 'member'
@@ -46,7 +46,7 @@ export type ComputerOwnerAccess =
 
 export class ComputerServiceError extends Error {
   constructor(
-    readonly code: 'not_found' | 'forbidden' | 'quota_exceeded' | 'size_not_allowed' | 'provider_unavailable' | 'provider_error',
+    readonly code: 'not_found' | 'forbidden' | 'paid_plan_required' | 'insufficient_credit' | 'quota_exceeded' | 'size_not_allowed' | 'provider_unavailable' | 'provider_error',
     message: string,
     readonly status: number,
     options?: { cause?: unknown },
@@ -73,6 +73,7 @@ export class ComputerService {
     repository: ComputerRepository
     /** Resolve the runtime a computer row lives on — keyed by row.provider. */
     runtimeFor(provider: string): SandboxRuntime | undefined
+    assertCanRun(input: { workspaceId: string; userId: string; agentId?: string }): Promise<void>
     /** Resolve an agent owner's visibility and creator principal for access checks. */
     agentOwner?: (workspaceId: string, agentId: string) => Promise<{ visibility: 'workspace' | 'creator'; createdByPrincipalId: string } | null>
     limits?: ((input: { workspaceId: string; ownerType: ComputerOwnerType }) => Promise<ComputerLimits | undefined> | ComputerLimits | undefined) | ComputerLimits
@@ -93,10 +94,12 @@ export class ComputerService {
     size?: ComputerSize
     name?: string
   }): Promise<Computer> {
+    this.assertWorkspace(args.actor, args.workspaceId)
     const ownerAccess = await this.ownerAccess(args.workspaceId, args.ownerType, args.ownerId)
     if (!this.canAccess(args.actor, args.ownerType, args.ownerId, ownerAccess)) {
       throw new ComputerServiceError('forbidden', 'You cannot manage this computer', 403)
     }
+    await this.admit(args.actor, args.workspaceId, args.ownerType, args.ownerId)
     const existing = await this.dependencies.repository.findByOwner(args.workspaceId, args.ownerType, args.ownerId)
     if (existing) {
       const staleProvisioning = existing.status === 'provisioning'
@@ -130,8 +133,9 @@ export class ComputerService {
 
     const runtime = this.runtimeFor('box')
     const now = this.now()
+    const id = this.newId()
     const computer = await this.dependencies.repository.create({
-      id: this.newId(),
+      id,
       workspaceId: args.workspaceId,
       ownerType: args.ownerType,
       ownerId: args.ownerId,
@@ -145,6 +149,7 @@ export class ComputerService {
       updatedAt: now,
       lastActiveAt: null,
     })
+    if (computer.id !== id) return computer
     try {
       const instance = await this.createMachine(runtime, computer, size)
       // Stamp the provider ref before the status flip: if the ready-update
@@ -165,11 +170,6 @@ export class ComputerService {
     }
   }
 
-  /**
-   * Provider create with one retry. Box provisioning flakes intermittently
-   * (capacity, rate limits); the adapter cleans up its own half-created
-   * machine on failure, so a second attempt is always safe.
-   */
   private async createMachine(
     runtime: SandboxRuntime,
     computer: Computer,
@@ -189,12 +189,7 @@ export class ComputerService {
       hardTimeoutMs: DEFAULT_HARD_TIMEOUT_MS,
       resources: SIZE_RESOURCES[size],
     }
-    try {
-      return await runtime.create(request)
-    } catch (firstError) {
-      logger.warn('[computers] provider create failed; retrying once', firstError)
-      return await runtime.create(request)
-    }
+    return await runtime.create(request)
   }
 
   /** Issue a live desktop stream ticket. The URL is a bearer secret — callers must not log it. */
@@ -204,6 +199,10 @@ export class ComputerService {
     mode?: 'webrtc' | 'vnc'
   }): Promise<DesktopStreamTicket> {
     const { computer, instance } = await this.accessibleInstance(args.actor, args.computerId)
+    await this.admit(args.actor, computer.workspaceId, computer.ownerType, computer.ownerId)
+    if (!isDesktopSandboxInstance(instance)) {
+      throw new ComputerServiceError('provider_error', 'This computer has no desktop', 502)
+    }
     if (await instance.status() === 'stopped') {
       await instance.resume()
       await this.touch(computer)
@@ -230,6 +229,7 @@ export class ComputerService {
 
   async start(args: { actor: ComputerActor; computerId: string }): Promise<Computer> {
     const { computer, instance } = await this.accessibleInstance(args.actor, args.computerId)
+    await this.admit(args.actor, computer.workspaceId, computer.ownerType, computer.ownerId)
     await instance.resume()
     return this.dependencies.repository.update(computer.id, { status: 'ready', updatedAt: this.now(), lastActiveAt: this.now() })
   }
@@ -237,6 +237,7 @@ export class ComputerService {
   async destroy(args: { actor: ComputerActor; computerId: string }): Promise<void> {
     const computer = await this.dependencies.repository.get(args.computerId)
     if (!computer) throw new ComputerServiceError('not_found', 'Computer not found', 404)
+    this.assertWorkspace(args.actor, computer.workspaceId)
     const ownerAccess = await this.ownerAccess(computer.workspaceId, computer.ownerType, computer.ownerId)
     if (!this.canAccess(args.actor, computer.ownerType, computer.ownerId, ownerAccess)) {
       throw new ComputerServiceError('forbidden', 'You cannot manage this computer', 403)
@@ -251,6 +252,7 @@ export class ComputerService {
     ownerType: ComputerOwnerType
     ownerId: string
   }): Promise<void> {
+    this.assertWorkspace(args.actor, args.workspaceId)
     const computer = await this.dependencies.repository.findByOwner(
       args.workspaceId,
       args.ownerType,
@@ -260,18 +262,13 @@ export class ComputerService {
     await this.destroy({ actor: args.actor, computerId: computer.id })
   }
 
-  /**
-   * Delete the row and, when one was recorded, the provider machine. Provider
-   * cleanup is best-effort — a dead machine or missing provider config must
-   * never block deleting the row, or errored computers become undeletable.
-   */
   private async deleteRowAndMachine(computer: Computer): Promise<void> {
     if (computer.providerRef) {
       try {
-        const instance = await this.runtimeFor(computer.provider).reconnect(computer.providerRef)
+        const instance = await this.runtimeFor(computer.provider).reconnect(computer.providerRef, { resume: false })
         await instance.delete()
-      } catch (_error) {
-        // best-effort — the row delete below proceeds regardless
+      } catch (error) {
+        throw new ComputerServiceError('provider_error', 'The computer could not be deleted. Its record has been retained for retry.', 502, { cause: error })
       }
     }
     await this.dependencies.repository.delete(computer.id)
@@ -288,6 +285,7 @@ export class ComputerService {
     ownerType: ComputerOwnerType
     ownerId: string
   }): Promise<{ computer: Computer; instance: SandboxInstance }> {
+    this.assertWorkspace(args.actor, args.workspaceId)
     const computer = await this.dependencies.repository.findByOwner(
       args.workspaceId,
       args.ownerType,
@@ -303,7 +301,8 @@ export class ComputerService {
     if (computer.status === 'error' || !computer.providerRef) {
       throw new ComputerServiceError('provider_error', 'The computer is still provisioning or failed to provision', 409)
     }
-    const instance = await this.runtimeFor(computer.provider).reconnect(computer.providerRef)
+    await this.admit(args.actor, computer.workspaceId, computer.ownerType, computer.ownerId)
+    const instance = await this.runtimeFor(computer.provider).reconnect(computer.providerRef, { resume: false })
     if (await instance.status() === 'stopped') {
       await instance.resume()
     }
@@ -315,6 +314,7 @@ export class ComputerService {
   async getForActor(args: { actor: ComputerActor; computerId: string }): Promise<Computer> {
     const computer = await this.dependencies.repository.get(args.computerId)
     if (!computer) throw new ComputerServiceError('not_found', 'Computer not found', 404)
+    this.assertWorkspace(args.actor, computer.workspaceId)
     const ownerAccess = await this.ownerAccess(computer.workspaceId, computer.ownerType, computer.ownerId)
     if (!this.canAccess(args.actor, computer.ownerType, computer.ownerId, ownerAccess)) {
       throw new ComputerServiceError('forbidden', 'You cannot manage this computer', 403)
@@ -323,6 +323,7 @@ export class ComputerService {
   }
 
   async listForWorkspace(args: { actor: ComputerActor; workspaceId: string }): Promise<Computer[]> {
+    this.assertWorkspace(args.actor, args.workspaceId)
     const computers = await this.dependencies.repository.listByWorkspace(args.workspaceId)
     const ownerAccesses = await Promise.all(computers.map((computer) =>
       this.ownerAccess(computer.workspaceId, computer.ownerType, computer.ownerId)))
@@ -333,6 +334,7 @@ export class ComputerService {
   private async accessibleInstance(actor: ComputerActor, computerId: string) {
     const computer = await this.dependencies.repository.get(computerId)
     if (!computer) throw new ComputerServiceError('not_found', 'Computer not found', 404)
+    this.assertWorkspace(actor, computer.workspaceId)
     const ownerAccess = await this.ownerAccess(computer.workspaceId, computer.ownerType, computer.ownerId)
     if (!this.canAccess(actor, computer.ownerType, computer.ownerId, ownerAccess)) {
       throw new ComputerServiceError('forbidden', 'You cannot manage this computer', 403)
@@ -341,11 +343,18 @@ export class ComputerService {
       throw new ComputerServiceError('provider_error', 'The computer is still provisioning', 409)
     }
     const runtime = this.runtimeFor(computer.provider)
-    const instance = await runtime.reconnect(computer.providerRef)
-    if (!isDesktopSandboxInstance(instance)) {
-      throw new ComputerServiceError('provider_error', 'This computer has no desktop', 502)
-    }
+    const instance = await runtime.reconnect(computer.providerRef, { resume: false })
     return { computer, instance }
+  }
+
+  private assertWorkspace(actor: ComputerActor, workspaceId: string): void {
+    if (!actor.workspaceId || actor.workspaceId !== workspaceId) {
+      throw new ComputerServiceError('forbidden', 'This computer belongs to a different workspace', 403)
+    }
+  }
+
+  private admit(actor: ComputerActor, workspaceId: string, ownerType: ComputerOwnerType, ownerId: string) {
+    return this.dependencies.assertCanRun({ workspaceId, userId: actor.userId, ...(ownerType === 'agent' ? { agentId: ownerId } : {}) })
   }
 
   private async ownerAccess(

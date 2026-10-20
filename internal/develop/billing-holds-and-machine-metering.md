@@ -34,6 +34,8 @@ To look at a person's holds in production: `CONVEX_DEPLOYMENT=prod:colorful-chic
 
 ## Machines and credit
 
+Persistent Computers enforce admission in `ComputerService`, including desktop and tool-driven wakes. `ComputerAdmission` requires a payer whose scope and ID match the workspace, then checks that wallet's paid plan and the same minimum start credit as managed machines. Personal paid credit cannot unlock a free workspace. Stop and delete remain available after downgrade or credit exhaustion. This admission check is not a reservation or ongoing metering: persistent Computer accounting and idle supervision remain required before the cumulative sandbox changes are released.
+
 - **Floor.** The meter stops and deletes any machine whose payer is at or below `OVERLAY_SANDBOX_LOW_BALANCE_CUTOFF_CENTS` (default 100, $1.00) of remaining credit. A deleted machine takes its disk with it.
 - **Start check.** Creating a cloud agent now needs more than the floor (`minimumBudgetToStartMachineCents`, floor + 1¢) and answers `402 insufficient_credit` otherwise; before this, a machine started under the floor was deleted about a minute later (`stopReason: budget_exhausted` on its lease).
 - **What the person sees.** The agent page says "Machine stopped" with an explanation when the machine is gone. There is no automatic top-up for machines; the person adds credit and recreates the agent.
