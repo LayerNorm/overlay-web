@@ -1,6 +1,6 @@
 # Codex subscription and E2B
 
-Credential brokerage, experimental agent adapters, and the E2B self-hosting
+Credential brokerage, retired provider records, and the E2B self-hosting
 adapter are three independent parts of the connected-agent system.
 
 ## A. Codex on a ChatGPT subscription (credential broker)
