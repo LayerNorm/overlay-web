@@ -1,6 +1,8 @@
 import 'server-only'
 
 import overlayAppConfig from '@/overlay.config'
+import type { Entitlements } from '@/shared/app/app-contracts'
+import { ComputerAdmission } from '@/server/computers/ComputerAdmission'
 import { NoOpLLMGateway, OpenAILLMGateway, OpenRouterGateway } from '@/server/ai/providers'
 import { ApiKeyService } from '@/server/auth/api-keys'
 import { resolveBetterAuthConnectionSet } from '@/server/auth/connections'
@@ -230,8 +232,11 @@ export function createOverlayServerContext(
 
   const workspaceAgentRepository = new ConvexWorkspaceAgentRepository()
   const workspaceAgentService = new WorkspaceAgentService(workspaceAgentRepository, workspaceService)
-  // v1 static quotas — entitlement-derived limits arrive with the quota +
-  // metering phase of the computers plan.
+  const computerAdmission = new ComputerAdmission({
+    payerResolver: billingPayerResolver,
+    getEntitlements: async (billingAccountId) =>
+      await appData.repositories.billing.getBillingAccountEntitlementsByServer({ billingAccountId }) as Entitlements | null,
+  })
   const computerLimits: ComputerLimits = {
     maxPerWorkspace: 25,
     maxPersonalPerUser: 1,
@@ -240,6 +245,7 @@ export function createOverlayServerContext(
   const computerService = new ComputerService({
     repository: appData.repositories.computers,
     runtimeFor: computerRuntimeForProvider,
+    assertCanRun: (input) => computerAdmission.assertCanRun(input),
     agentOwner: async (workspaceId, agentId) => {
       const agent = await workspaceAgentRepository.get({ agentId, workspaceId })
       return agent

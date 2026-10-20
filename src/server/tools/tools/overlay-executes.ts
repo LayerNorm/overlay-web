@@ -932,8 +932,10 @@ async function computerInstanceFor(
     // the creator-only access rule rather than failing closed.
     const access = (await workspaceService.listForUser(options.userId))
       .find((entry) => entry.workspace.id === options.workspaceId)
+    if (!access) return { ok: false, error: 'You do not have access to this workspace.' }
     const actor: ComputerActor = {
       userId: options.userId,
+      workspaceId: access.workspace.id,
       principalId: access?.principal.id,
       workspaceRole: access?.membership.role === 'owner' ? 'owner' : 'member',
     }

@@ -15,13 +15,18 @@ import {
 } from './ComputerService'
 import type { ComputerRepository } from './ComputerRepository'
 
-const member = { userId: 'user-1', principalId: 'principal-1', workspaceRole: 'member' as const }
-const otherMember = { userId: 'user-2', principalId: 'principal-2', workspaceRole: 'member' as const }
-const owner = { userId: 'user-9', principalId: 'principal-9', workspaceRole: 'owner' as const }
+const member = { workspaceId: 'ws-1', userId: 'user-1', principalId: 'principal-1', workspaceRole: 'member' as const }
+const otherMember = { workspaceId: 'ws-1', userId: 'user-2', principalId: 'principal-2', workspaceRole: 'member' as const }
+const owner = { workspaceId: 'ws-1', userId: 'user-9', principalId: 'principal-9', workspaceRole: 'owner' as const }
 
 class MemoryRepository implements ComputerRepository {
   rows = new Map<string, Computer>()
-  async create(row: Computer) { this.rows.set(row.id, { ...row }); return row }
+  async create(row: Computer) {
+    const existing = [...this.rows.values()].find((candidate) => candidate.workspaceId === row.workspaceId && candidate.ownerType === row.ownerType && candidate.ownerId === row.ownerId)
+    if (existing) return existing
+    this.rows.set(row.id, { ...row })
+    return row
+  }
   async get(id: string) { return this.rows.get(id) ?? null }
   async findByOwner(workspaceId: string, ownerType: string, ownerId: string) {
     return [...this.rows.values()].find((row) =>
@@ -64,6 +69,7 @@ class FakeRuntime implements SandboxRuntime {
   creates: SandboxCreateRequest[] = []
   instances: FakeInstance[] = []
   reconnects = 0
+  reconnectOptions: Array<{ resume?: boolean } | undefined> = []
   fail = false
   failuresLeft = 0
   async create(request: SandboxCreateRequest) {
@@ -73,8 +79,9 @@ class FakeRuntime implements SandboxRuntime {
     this.instances.push(instance)
     return instance as unknown as SandboxInstance
   }
-  async reconnect(reference: string) {
+  async reconnect(reference: string, options?: { resume?: boolean }) {
     this.reconnects += 1
+    this.reconnectOptions.push(options)
     return this.instances.find((instance) => instance.reference === reference) as unknown as SandboxInstance
   }
   async restore() { throw new Error('not implemented') }
@@ -93,6 +100,7 @@ function service(overrides: {
   runtimes?: Record<string, FakeRuntime>
   agents?: Record<string, { visibility: 'workspace' | 'creator'; createdByPrincipalId: string }>
   limits?: { maxPerWorkspace?: number; maxPersonalPerUser?: number; allowedSizes?: readonly ('small' | 'default' | 'large')[] }
+  assertCanRun?: (input: { workspaceId: string; userId: string; agentId?: string }) => Promise<void>
 } = {}) {
   const repository = overrides.repository ?? new MemoryRepository()
   const runtimes = overrides.runtimes ?? { box: new FakeRuntime() }
@@ -100,6 +108,7 @@ function service(overrides: {
   const svc = new ComputerService({
     repository,
     runtimeFor: (provider) => runtimes[provider],
+    assertCanRun: overrides.assertCanRun ?? (async () => {}),
     agentOwner: async (_workspaceId, agentId) => agents[agentId] ?? null,
     limits: overrides.limits,
     newId: (() => { let n = 0; return () => `computer-${++n}` })(),
@@ -228,14 +237,84 @@ test('a failed provider marks the row error instead of leaving it stuck provisio
   assert.equal(row.providerRef, null)
 })
 
-test('a transient provider failure is retried once before the row errors', async () => {
+test('an ambiguous provider failure is not retried with a second allocation', async () => {
   const runtime = new FakeRuntime()
   runtime.failuresLeft = 1
   const { svc, repository } = service({ runtimes: { box: runtime } })
-  const computer = await svc.provision({ actor: member, workspaceId: 'ws-1', ownerType: 'user', ownerId: 'user-1' })
-  assert.equal(runtime.creates.length, 2)
-  assert.equal(computer.status, 'ready')
+  await assert.rejects(svc.provision({ actor: member, workspaceId: 'ws-1', ownerType: 'user', ownerId: 'user-1' }),
+    (error) => error instanceof ComputerServiceError && error.code === 'provider_error')
+  assert.equal(runtime.creates.length, 1)
+  assert.equal([...repository.rows.values()][0].status, 'error')
   assert.equal(repository.rows.size, 1)
+})
+
+test('all Computer entry points bind authorization to the target workspace', async () => {
+  const { svc, runtimes } = service()
+  const computer = await svc.provision({ actor: member, workspaceId: 'ws-1', ownerType: 'agent', ownerId: 'agent-1' })
+  const stranger = { ...owner, workspaceId: 'ws-other' }
+  const requests = [
+    () => svc.getForActor({ actor: stranger, computerId: computer.id }),
+    () => svc.start({ actor: stranger, computerId: computer.id }),
+    () => svc.stop({ actor: stranger, computerId: computer.id }),
+    () => svc.openDesktop({ actor: stranger, computerId: computer.id }),
+    () => svc.destroy({ actor: stranger, computerId: computer.id }),
+    () => svc.destroyForOwner({ actor: stranger, workspaceId: 'ws-1', ownerType: 'agent', ownerId: 'agent-1' }),
+    () => svc.instanceForOwner({ actor: stranger, workspaceId: 'ws-1', ownerType: 'agent', ownerId: 'agent-1' }),
+    () => svc.listForWorkspace({ actor: stranger, workspaceId: 'ws-1' }),
+    () => svc.provision({ actor: stranger, workspaceId: 'ws-1', ownerType: 'agent', ownerId: 'agent-1' }),
+  ]
+  for (const request of requests) {
+    await assert.rejects(request(), (error) => error instanceof ComputerServiceError && error.code === 'forbidden')
+  }
+  assert.equal(runtimes.box.reconnects, 0)
+})
+
+test('admission denies allocation and every wake path but permits stop and delete', async () => {
+  let deny = false
+  const { svc, repository, runtimes } = service({ assertCanRun: async () => {
+    if (deny) throw new ComputerServiceError('insufficient_credit', 'No credit', 402)
+  } })
+  const computer = await svc.provision({ actor: member, workspaceId: 'ws-1', ownerType: 'user', ownerId: 'user-1' })
+  const instance = runtimes.box.instances.get(computer.providerRef!)!
+  instance.state = 'stopped'
+  deny = true
+  for (const request of [
+    () => svc.provision({ actor: member, workspaceId: 'ws-1', ownerType: 'user', ownerId: 'user-1' }),
+    () => svc.start({ actor: member, computerId: computer.id }),
+    () => svc.openDesktop({ actor: member, computerId: computer.id }),
+    () => svc.instanceForOwner({ actor: member, workspaceId: 'ws-1', ownerType: 'user', ownerId: 'user-1' }),
+  ]) {
+    await assert.rejects(request(), (error) => error instanceof ComputerServiceError && error.code === 'insufficient_credit')
+  }
+  assert.equal(instance.resumes, 0)
+  assert.equal(runtimes.box.creates.length, 1)
+  assert.ok(runtimes.box.reconnectOptions.every((options) => options?.resume === false))
+  await svc.stop({ actor: member, computerId: computer.id })
+  await svc.destroy({ actor: member, computerId: computer.id })
+  assert.equal(repository.rows.size, 0)
+})
+
+test('concurrent provisions allocate only for the winner of the owner claim', async () => {
+  const { svc, repository, runtimes } = service()
+  const [one, two] = await Promise.all(Array.from({ length: 2 }, () => svc.provision({
+    actor: member, workspaceId: 'ws-1', ownerType: 'user', ownerId: 'user-1',
+  })))
+  assert.equal(one.id, two.id)
+  assert.equal(repository.rows.size, 1)
+  assert.equal(runtimes.box.creates.length, 1)
+})
+
+test('failed deletion retains the provider reference for a successful retry', async () => {
+  const { svc, repository, runtimes } = service()
+  const computer = await svc.provision({ actor: member, workspaceId: 'ws-1', ownerType: 'user', ownerId: 'user-1' })
+  const instance = runtimes.box.instances.get(computer.providerRef!)!
+  instance.delete = async () => { throw new Error('Provider unavailable') }
+  await assert.rejects(svc.destroy({ actor: member, computerId: computer.id }),
+    (error) => error instanceof ComputerServiceError && error.code === 'provider_error')
+  assert.equal((await repository.get(computer.id))?.providerRef, computer.providerRef)
+  instance.delete = async () => { instance.state = 'deleted' }
+  await svc.destroy({ actor: member, computerId: computer.id })
+  assert.equal(await repository.get(computer.id), null)
 })
 
 test('provision reclaims a dead error row instead of creating a duplicate', async () => {
