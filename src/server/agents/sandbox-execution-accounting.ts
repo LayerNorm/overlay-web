@@ -9,10 +9,12 @@ export const E2B_COMPUTE_PRICE = {
   gibSecondUsd: 0.0000045,
 } as const
 
+type ExecutionMeterPrice = { vcpuSecondUsd: number; gibSecondUsd: number }
+
 export function meterExecutionUsage(input: {
   previous: ExecutionMeterCursor
   samples: SandboxExecutionUsage[]
-  price: { vcpuSecondUsd: number; gibSecondUsd: number }
+  price: ExecutionMeterPrice
   adopt?: boolean
   now?: number
   retiredBefore?: number
@@ -20,14 +22,44 @@ export function meterExecutionUsage(input: {
   if (![input.price.vcpuSecondUsd, input.price.gibSecondUsd].every(nonnegative)) {
     throw new Error('SANDBOX_PRICE_INVALID')
   }
-  const cursor: ExecutionMeterCursor = { ...input.previous }
   let retiredBefore = input.retiredBefore
   if (retiredBefore !== undefined && !nonnegative(retiredBefore)) throw new Error('SANDBOX_RETIREMENT_CURSOR_INVALID')
+  const { cursor, durationMs, computeUsd } = settleExecutionSamples({
+    previous: input.previous,
+    samples: input.samples,
+    price: input.price,
+    adopt: input.adopt,
+    retiredBefore,
+  })
+  const reservation = reservePendingExecutions({
+    cursor,
+    samples: input.samples,
+    price: input.price,
+    now: input.now,
+    retiredBefore,
+  })
+  retiredBefore = reservation.retiredBefore
+  const { pendingComputeUsd, headroomComputeUsd } = reservation
+  if (![computeUsd, durationMs, pendingComputeUsd, headroomComputeUsd].every(Number.isFinite)) {
+    throw new Error('SANDBOX_USAGE_OVERFLOW')
+  }
+  if (Object.keys(cursor).length > 2_000) throw new Error('SANDBOX_EXECUTION_CURSOR_LIMIT')
+  return { cursor, durationMs, computeUsd, pendingComputeUsd, headroomComputeUsd, ...(retiredBefore === undefined ? {} : { retiredBefore }) }
+}
+
+function settleExecutionSamples(input: {
+  previous: ExecutionMeterCursor
+  samples: SandboxExecutionUsage[]
+  price: ExecutionMeterPrice
+  adopt?: boolean
+  retiredBefore?: number
+}): { cursor: ExecutionMeterCursor; durationMs: number; computeUsd: number } {
+  const cursor: ExecutionMeterCursor = { ...input.previous }
   let durationMs = 0
   let computeUsd = 0
   for (const sample of input.samples) {
     validate(sample)
-    if (retiredBefore !== undefined && sample.startedAt <= retiredBefore) throw new Error('SANDBOX_RETIRED_USAGE_REAPPEARED')
+    if (input.retiredBefore !== undefined && sample.startedAt <= input.retiredBefore) throw new Error('SANDBOX_RETIRED_USAGE_REAPPEARED')
     const previous = cursor[sample.id]
     if (previous) {
       validate(previous)
@@ -55,18 +87,29 @@ export function meterExecutionUsage(input: {
     )
     cursor[sample.id] = { ...sample, resources: { ...sample.resources }, settledWallTimeMs: sample.complete ? sample.wallTimeMs : settledWallTimeMs }
   }
+  return { cursor, durationMs, computeUsd }
+}
+
+function reservePendingExecutions(input: {
+  cursor: ExecutionMeterCursor
+  samples: SandboxExecutionUsage[]
+  price: ExecutionMeterPrice
+  now?: number
+  retiredBefore?: number
+}): { pendingComputeUsd: number; headroomComputeUsd: number; retiredBefore?: number } {
+  let retiredBefore = input.retiredBefore
   let pendingComputeUsd = 0
   let headroomComputeUsd = 0
   const observed = new Set(input.samples.map((sample) => sample.id))
   const retirementCutoff = input.now === undefined ? -1 : Math.min(
     input.now - 8 * 24 * 60 * 60_000,
     ...input.samples.map((sample) => sample.startedAt),
-    ...Object.values(cursor).filter((sample) => !sample.complete).map((sample) => sample.startedAt),
+    ...Object.values(input.cursor).filter((sample) => !sample.complete).map((sample) => sample.startedAt),
   )
-  for (const execution of Object.values(cursor)) {
+  for (const execution of Object.values(input.cursor)) {
     if (execution.complete) {
       if (!observed.has(execution.id) && execution.startedAt < retirementCutoff) {
-        delete cursor[execution.id]
+        delete input.cursor[execution.id]
         retiredBefore = Math.max(retiredBefore ?? 0, execution.startedAt)
       }
       continue
@@ -77,11 +120,7 @@ export function meterExecutionUsage(input: {
     pendingComputeUsd += Math.max(0, execution.wallTimeMs - (execution.settledWallTimeMs ?? 0)) / 1_000 * perSecond
     headroomComputeUsd += 300 * perSecond
   }
-  if (![computeUsd, durationMs, pendingComputeUsd, headroomComputeUsd].every(Number.isFinite)) {
-    throw new Error('SANDBOX_USAGE_OVERFLOW')
-  }
-  if (Object.keys(cursor).length > 2_000) throw new Error('SANDBOX_EXECUTION_CURSOR_LIMIT')
-  return { cursor, durationMs, computeUsd, pendingComputeUsd, headroomComputeUsd, ...(retiredBefore === undefined ? {} : { retiredBefore }) }
+  return { pendingComputeUsd, headroomComputeUsd, ...(retiredBefore === undefined ? {} : { retiredBefore }) }
 }
 
 function nonnegative(value: number): boolean {
