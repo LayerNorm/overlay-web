@@ -453,22 +453,24 @@ function AgentListRow({
           isActive={isActive}
           disabled={anyOpening}
           // Reserve both actions on touch too; they are always visible below md.
-          className="group-has-data-[sidebar=menu-action]/menu-item:pr-14"
+          className="h-[38px] text-[15px] font-normal data-[active=true]:font-normal group-has-data-[sidebar=menu-action]/menu-item:pr-14"
           onClick={() => {
             if (!isExpanded) onToggleExpanded(agent.id)
             onOpenAgent(agent)
           }}
         >
-          {isOpening
-            ? <Loader2 size={13} className="shrink-0 animate-spin" />
-            : <AgentCreature agent={agent} size={16} />}
+          <span className="flex size-6 shrink-0 items-center justify-center">
+            {isOpening
+              ? <Loader2 size={16} className="animate-spin" />
+              : <AgentCreature agent={agent} size={24} />}
+          </span>
           <span className="truncate">{agent.name}</span>
         </SidebarMenuButton>
         <SidebarMenuAction
           aria-label={`New thread with ${agent.name}`}
           title="New thread"
           disabled={creatingThread}
-          className="right-7 md:opacity-0 group-hover/agent-row:opacity-100 group-focus-within/agent-row:opacity-100"
+          className="right-7 top-[9px] md:opacity-0 group-hover/agent-row:opacity-100 group-focus-within/agent-row:opacity-100"
           onClick={(event) => {
             event.stopPropagation()
             if (!isExpanded) onToggleExpanded(agent.id)
@@ -478,6 +480,7 @@ function AgentListRow({
           {creatingThread ? <Loader2 className="animate-spin" aria-hidden /> : <Plus aria-hidden />}
         </SidebarMenuAction>
         <SidebarMenuAction
+          className="top-[9px]"
           aria-label={isExpanded ? `Collapse ${agent.name}` : `Expand ${agent.name}`}
           aria-expanded={isExpanded}
           onClick={(event) => {

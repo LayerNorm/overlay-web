@@ -5,6 +5,7 @@ import {
   AGENT_STREAM_FLUSH_CHARS,
   AGENT_STREAM_FLUSH_INTERVAL_MS,
   createAgentMessageStream,
+  appendAgentTextPart,
   type AgentMessageStreamStore,
 } from './agent-message-stream'
 
@@ -189,4 +190,38 @@ test('failing an opened row keeps the partial text visible', async () => {
   const failed = calls.find((call) => call.method === 'fail')
   assert.ok(failed)
   assert.equal(failed.args.content, 'partial')
+})
+
+
+test('text and ordered parts stream atomically without writing every token', async () => {
+  let clock = 0
+  const { calls, store } = recordingStore()
+  const stream = streamFor(store, () => clock)
+  const parts: Array<Record<string, unknown>> = []
+  const push = (delta: string) => {
+    appendAgentTextPart(parts, delta)
+    stream.pushText(delta, parts.map((part) => ({ ...part })))
+  }
+  push('Before')
+  push(' tool')
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.deepEqual(calls, [])
+  parts.push({ type: 'tool-invocation', toolInvocation: { toolCallId: 'one', toolName: 'search', state: 'input-available' } })
+  stream.pushParts(parts.map((part) => ({ ...part })))
+  await stream.flush()
+  const first = calls.find((call) => call.method === 'append')!
+  assert.equal(first.args.contentDelta, 'Before tool')
+  assert.deepEqual(first.args.parts, parts)
+
+  clock += AGENT_STREAM_FLUSH_INTERVAL_MS
+  push('After')
+  await new Promise((resolve) => setImmediate(resolve))
+  const writes = calls.filter((call) => call.method === 'append')
+  assert.equal(writes.length, 2)
+  assert.equal(writes[1]!.args.contentDelta, 'After')
+  assert.deepEqual((writes[1]!.args.parts as Array<Record<string, unknown>>).map((part) => part.type), ['text', 'tool-invocation', 'text'])
+  push(' answer')
+  assert.equal((writes[1]!.args.parts as Array<Record<string, unknown>>)[2]!.text, 'After')
+  await stream.flush()
+  assert.equal(parts[2]!.text, 'After answer')
 })

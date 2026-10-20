@@ -32,6 +32,12 @@ border color for new controls.
 Tailwind utility names apply to class names. Literal CSS, including injected
 note-editor styles, uses standard properties such as `flex-shrink: 0`.
 
+## Resizable panels
+
+Use `PanelResizeHandle` from `@overlay/ui` for adjustable sidebar and side-panel
+widths. It exposes a vertical separator with pointer resizing, arrow-key steps,
+and Home/End bounds; the owning shell supplies and stores the width.
+
 ## Shared modal dialogs
 
 `DialogFrame` and `ConfirmDialog` keep their existing controlled APIs on top of
