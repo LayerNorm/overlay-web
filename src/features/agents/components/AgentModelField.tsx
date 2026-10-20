@@ -37,7 +37,7 @@ export function AgentModelField({ adapterId, model, onChange, disabled, options 
         options={[
           ...(values.some(value => value.id === 'default') ? [] : [{ value: 'default', label: 'Default · Agent chooses' }]),
           ...values.map(value => ({ value: value.id, label: value.label })),
-          ...(choice.model && !values.some(value => value.id === choice.model) ? [{ value: choice.model,
+          ...(choice.model && choice.model !== 'default' && !values.some(value => value.id === choice.model) ? [{ value: choice.model,
             label: `${choice.model} · ${options.model ? 'No longer offered' : 'Not reported by agent'}` }] : []),
         ]}
         onChange={value => onChange(value === 'default' ? DEFAULT_VALUE : choice.effort ? `${value}[${choice.effort}]` : value)} portal />
@@ -49,12 +49,15 @@ export function AgentModelField({ adapterId, model, onChange, disabled, options 
     const choices = AGENT_MODEL_CHOICES['claude-code'] ?? []
     return (
       <div>
-        <FieldLabel info="The model Claude Code uses. Default lets Claude Code choose; the others are the models your Claude account offers.">Model</FieldLabel>
+      <FieldLabel info="Model aliases resolved by your Claude Code runtime. Availability depends on your account and runtime version.">Model</FieldLabel>
         <ListboxSelect
           aria-label="Model"
           value={model || 'default'}
           disabled={disabled}
-          options={choices.map((choice) => ({ value: choice.value, label: choice.hint ? `${choice.label} · ${choice.hint}` : choice.label }))}
+          options={[
+            ...choices.map((choice) => ({ value: choice.value, label: choice.hint ? `${choice.label} · ${choice.hint}` : choice.label })),
+            ...(model && !choices.some(choice => choice.value === model) ? [{ value: model, label: `${model} · Not reported by agent` }] : []),
+          ]}
           onChange={(value) => onChange(value === 'default' ? DEFAULT_VALUE : value)}
           portal
         />

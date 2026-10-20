@@ -26,11 +26,12 @@ const environment = {
   createdAt: 1, updatedAt: 1,
 } satisfies AgentEnvironmentResource
 
-test('BYO harness discovery keeps built-in targets and adds advertised ACP adapters', () => {
-  assert.deepEqual(availableByoHarnesses([environment]).map((harness) => harness.id), [
-    'codex', 'claude-code', 'hermes', 'custom-acp',
+test('BYO harness discovery exposes supported built-ins only', () => {
+  assert.deepEqual(availableByoHarnesses().map((harness) => harness.id), [
+    'codex', 'claude-code',
   ])
-  assert.equal(environmentSupportsHarness(environment, 'custom-acp'), true)
+  assert.equal(environmentSupportsHarness(environment, 'custom-acp'), false)
+  assert.equal(environmentSupportsHarness(environment, 'hermes'), false)
   assert.equal(environmentSupportsHarness(environment, 'eve'), false)
   assert.equal(builtInHarnessCatalogIsComplete(), true)
 })

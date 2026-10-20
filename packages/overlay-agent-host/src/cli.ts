@@ -1,7 +1,7 @@
 import { join } from 'node:path'
 import { homedir } from 'node:os'
 import { AcpAgentAdapter } from './acp-adapter.js'
-import { ACPX_AGENT_DISPLAY_NAMES, ACPX_AGENT_LAUNCH_OVERRIDES, AcpxAgentAdapter, acpxAgentNameFor } from './acpx-adapter.js'
+import { ACPX_AGENT_DISPLAY_NAMES, AcpxAgentAdapter, acpxAgentNameFor } from './acpx-adapter.js'
 import type { AgentAdapter } from './adapter.js'
 import { loadAgentHostConfig, managedRestorationAdapters, saveAgentHostConfig } from './config.js'
 import type { AgentHostConfig } from './config.js'
@@ -17,14 +17,13 @@ import { loadOrCreateDeviceKeyPair } from './device-key.js'
 import { loadStoredConnection, saveStoredConnection } from './connection.js'
 import { resolveAcpAdapterManifest } from './adapter-manifests.js'
 import { EveAgentAdapter } from './eve-adapter.js'
-import { verifyHermesAcpReadiness } from './hermes-readiness.js'
 import { assertSupportedNodeVersion } from './runtime-version.js'
 import { installLaunchAgent, launchAgentStatus, uninstallLaunchAgent } from './launchd.js'
 import { checkOverlayImage } from './image-check.js'
 import { exportConfig } from './export-config.js'
 import { isAgentProfileHarness } from '@layernorm/overlay-agent-bridge-protocol'
 
-const PACKAGE_SPEC = '@layernorm/overlay-agent-host@0.4.2'
+const PACKAGE_SPEC = '@layernorm/overlay-agent-host@0.4.3'
 
 assertSupportedNodeVersion()
 
@@ -112,7 +111,6 @@ async function connectFromArgs(args: string[]) {
       if (!manifest) throw new Error(`unknown ACP adapter manifest: ${id}`)
       return { ...manifest, args: [...manifest.args] }
     })
-    if (adapterIds.includes('hermes')) await verifyHermesAcpReadiness()
     // An Overlay Cloud machine must run the prepared image (pinned adapters, no credentials).
     if (option(args, '--kind') === 'overlay_cloud') {
       const failed = checkOverlayImage().filter((check) => !check.ok)
@@ -222,7 +220,6 @@ function buildAdapters(configs: AgentHostConfigAdapter[], stateDirectory: string
       id: adapter.id, displayName: adapter.displayName, agent: adapter.agent, stateDirectory,
       ...(adapter.fencedSessionRestoration === true ? {fencedSessionRestoration: true} : {}),
       ...(adapter.env ? { env: adapter.env } : {}),
-      ...(ACPX_AGENT_LAUNCH_OVERRIDES[adapter.agent] ? { registryOverrides: { [adapter.agent]: ACPX_AGENT_LAUNCH_OVERRIDES[adapter.agent]! } } : {}),
     })
     if (adapter.protocol === 'eve') return new EveAgentAdapter({
       id: adapter.id, displayName: adapter.displayName, host: adapter.host,
@@ -236,17 +233,8 @@ function buildAdapters(configs: AgentHostConfigAdapter[], stateDirectory: string
       id: adapter.id, displayName: adapter.displayName, command: adapter.command,
       ...(adapter.fencedSessionRestoration === true ? {fencedSessionRestoration: true} : {}),
       ...(adapter.args ? { args: adapter.args } : {}), ...(adapter.env ? { env: adapter.env } : {}),
-      ...(isHermesManifestAdapter(adapter) ? { verify: verifyHermesAcpReadiness } : {}),
     })
   })
-}
-
-function isHermesManifestAdapter(adapter: AgentHostConfigAdapter): boolean {
-  return adapter.protocol === 'acp'
-    && adapter.id === 'hermes'
-    && adapter.command === 'hermes'
-    && adapter.args?.length === 1
-    && adapter.args[0] === 'acp'
 }
 
 type AgentHostConfigAdapter = Awaited<ReturnType<typeof loadAgentHostConfig>>['adapters'][number]
@@ -261,7 +249,7 @@ function options(args: string[], name: string): string[] {
 }
 
 function usage(): never {
-  process.stderr.write('Usage:\n  overlay-agent-host connect <code> --server https://getoverlay.io [--state-dir path] [--name name] [--kind local|vps|overlay_cloud|external] [--engine acpx] [--hosting-auth-file path] [--run] [--adapter codex|claude-code|hermes] [--adapter eve --eve-url http://127.0.0.1:3000 --eve-auth-env EVE_AGENT_TOKEN]\n  overlay-agent-host <run|doctor> --config /absolute/path/config.json [--hosting-auth-file path]\n  overlay-agent-host image-check\n  overlay-agent-host service <install|uninstall|status> --config /absolute/path/config.json\n')
+  process.stderr.write('Usage:\n  overlay-agent-host connect <code> --server https://getoverlay.io [--state-dir path] [--name name] [--kind local|vps|overlay_cloud|external] [--engine acpx] [--hosting-auth-file path] [--run] [--adapter codex|claude-code] [--adapter eve --eve-url http://127.0.0.1:3000 --eve-auth-env EVE_AGENT_TOKEN]\n  overlay-agent-host <run|doctor> --config /absolute/path/config.json [--hosting-auth-file path]\n  overlay-agent-host image-check\n  overlay-agent-host service <install|uninstall|status> --config /absolute/path/config.json\n')
   process.exit(2)
 }
 

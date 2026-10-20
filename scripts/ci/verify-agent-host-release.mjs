@@ -45,8 +45,4 @@ for (const [constant, name] of [['CODEX_ACP_PACKAGE_VERSION', 'codex-acp'], ['CL
   assert.match(version, /^\d+\.\d+\.\d+$/)
   assert.match(adapterManifests, new RegExp(`${constant} = '${version.replaceAll('.', '\\.')}'`), 'host and image adapter pins must match')
 }
-assert.match(adapterManifests, /HERMES_AGENT_MINIMUM_VERSION = '0\.20\.6'/)
-assert.match(adapterManifests, /command: 'hermes'/)
-assert.match(adapterManifests, /args: \['acp'\]/)
-
 console.log(`Agent Host release ${hostPackage.version} is internally pinned and consistent.`)

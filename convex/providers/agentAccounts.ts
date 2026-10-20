@@ -4,6 +4,7 @@ import { requireServerSecret } from '../lib/auth'
 import type { Doc } from '../_generated/dataModel'
 
 const providerValidator = v.union(v.literal('claude-code'), v.literal('codex'), v.literal('opencode'), v.literal('hermes'), v.literal('cursor'))
+const creatableProviderValidator = v.union(v.literal('claude-code'), v.literal('codex'))
 const methodValidator = v.union(v.literal('subscription'), v.literal('api_key'))
 const statusValidator = v.union(v.literal('active'), v.literal('needs_reauth'))
 
@@ -93,7 +94,7 @@ export const createByServer = mutation({
   args: {
     serverSecret: v.string(),
     userId: v.string(),
-    provider: providerValidator,
+    provider: creatableProviderValidator,
     method: methodValidator,
     label: v.string(),
     credentialRef: v.string(),

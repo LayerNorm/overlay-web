@@ -12,7 +12,7 @@
  * appearing here says nothing about availability on those surfaces.
  */
 import {
-  MANAGED_HARNESS_IDS,
+  SUPPORTED_MANAGED_HARNESS_IDS,
   type ManagedHarnessId,
 } from '@overlay/workspace-contracts'
 
@@ -80,35 +80,6 @@ export const MANAGED_HARNESS_CATALOG = [
     // The codex CLI owns model selection; usage bills against the GPT-5 tier.
     models: [{ value: 'default', label: 'Harness default', billingModelId: 'gpt-5.4' }],
   },
-  {
-    id: 'opencode',
-    label: 'OpenCode',
-    description: 'Open-source coding agent, running in an isolated Overlay Cloud sandbox.',
-    kind: 'bridge',
-    requiresSandboxPort: true,
-    byokProviders: ['user-vercel-ai-gateway'],
-    models: [{ value: 'default', label: 'Harness default', billingModelId: 'claude-sonnet-4-6' }],
-  },
-  {
-    id: 'pi',
-    label: 'Pi',
-    description: 'Pi coding agent; the agent loop runs on Overlay and the sandbox is its workspace.',
-    kind: 'host',
-    requiresSandboxPort: false,
-    // Pi's loop runs host-side, so a customer gateway key never enters the sandbox.
-    byokProviders: ['user-vercel-ai-gateway'],
-    // Pi resolves its model through the configured gateway at run time.
-    models: [{ value: 'default', label: 'Harness default', billingModelId: 'claude-sonnet-4-6' }],
-  },
-  {
-    id: 'hermes',
-    label: 'Hermes',
-    description: 'Hermes through its official ACP server, running in an isolated Overlay Cloud sandbox.',
-    kind: 'acp',
-    requiresSandboxPort: true,
-    byokProviders: ['openrouter'],
-    models: [{ value: 'default', label: 'Harness default', billingModelId: 'claude-sonnet-4-6' }],
-  },
 ] as const satisfies readonly ManagedHarnessCatalogEntry[]
 
 export function managedHarnessEntry(id: string): ManagedHarnessCatalogEntry | undefined {
@@ -126,8 +97,8 @@ export function managedHarnessModelOption(
 }
 
 export function managedHarnessCatalogIsComplete(): boolean {
-  return MANAGED_HARNESS_CATALOG.length === MANAGED_HARNESS_IDS.length
-    && MANAGED_HARNESS_IDS.every(
+  return MANAGED_HARNESS_CATALOG.length === SUPPORTED_MANAGED_HARNESS_IDS.length
+    && SUPPORTED_MANAGED_HARNESS_IDS.every(
       (id) => MANAGED_HARNESS_CATALOG.some((entry) => entry.id === id),
     )
 }

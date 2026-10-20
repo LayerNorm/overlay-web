@@ -58,6 +58,10 @@ Manual, Edits, Plan, Auto and Bypass; local Bypass requires the shared confirmat
 An identity edit must not overwrite choices saved through these independent controls.
 Older combined model/effort ids resolve to separate live controls only when both choices
 are advertised. Show the effective effort, preserve it when changing models, and leave
+saved but unavailable values visible instead of silently replacing them. Runtime catalogs are
+authoritative: discovery defaults do not imply settings applied to an active run. Keep loading
+and discovery errors explicit, and offer permission defaults only when the host advertises them.
+Full-access permission modes require explicit confirmation on both cloud and local agents.
 unsupported choices visibly marked; never replace them with discovery defaults.
 
 Connected-agent drive status sits below the answer without modifying provider Markdown. Saving

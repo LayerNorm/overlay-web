@@ -3,7 +3,7 @@ import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { AgentProviderAccountError } from '@/server/agents/provider-accounts/AgentProviderAccountService'
 import { logger } from '@/server/observability/logger'
-import { isAgentProviderAuthMethod, isAgentProviderId } from '@/shared/agents/provider-accounts'
+import { isAgentProviderAuthMethod, isSupportedAgentProviderId } from '@/shared/agents/provider-accounts'
 
 const ACCOUNT_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/
 const NO_STORE = { 'Cache-Control': 'no-store' }
@@ -40,7 +40,7 @@ export async function GET(_request: NextRequest, context: AppApiRouteContext) {
 export async function POST(_request: NextRequest, context: AppApiRouteContext) {
   try {
     const input = body(context)
-    if (!isAgentProviderId(input.provider) || !isAgentProviderAuthMethod(input.method)) {
+    if (!isSupportedAgentProviderId(input.provider) || !isAgentProviderAuthMethod(input.method)) {
       return NextResponse.json({ error: 'Choose an agent and a sign-in method', code: 'validation_error' }, { status: 400, headers: NO_STORE })
     }
     const account = await accounts().connect({

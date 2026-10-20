@@ -1,4 +1,4 @@
-# Codex subscription, experimental agents, and E2B
+# Codex subscription and E2B
 
 Credential brokerage, experimental agent adapters, and the E2B self-hosting
 adapter are three independent parts of the connected-agent system.
@@ -33,11 +33,14 @@ Modern Codex catalogs can report a base model and a separate effort selector. Ol
 
 Model, effort, permissions and Overlay access save independently for the next turn; the identity editor's Save leaves them alone. The host's recovery checkpoint retains validated nonsecret settings, while provider credentials and MCP tokens require fresh delivery. An advertised discovery default is not evidence of a particular run's applied model or effort.
 
-## B. Experimental bring-your-own-key agents
+## B. Retired provider records
 
-OpenCode and Hermes run on an OpenRouter key (`OPENROUTER_API_KEY`); Cursor on `CURSOR_API_KEY`. They are marked `experimental` in `src/shared/agents/provider-accounts.ts`. The host maps them through acpx (`ACPX_SYSTEM_AGENT_NAMES`, `ACPX_AGENT_LAUNCH_OVERRIDES` — Hermes needs a launch override — in `packages/overlay-agent-host/src/acpx-adapter.ts`). The machine image already contains these CLIs. The historical `overlay-agent-v5` image baked host/protocol 0.3.10; updating source does not upgrade an existing machine. Current candidate versions and activation gates live in `bring-your-own-agents.md`.
-
-**Live results (2026-10-03, production).** OpenCode on OpenRouter ran end to end: it answered as `deepseek/deepseek-v4-flash` (the default model set in `agentProviderEnv`). Cursor is untested (no key). **Hermes does not work yet**: its installer, run lazily on first use, fails on the Boat base layer (it downloads Python 3.14 and cannot unpack it), so the host's `hermes acp --check` fails and the machine never enrolls. Pre-installing it with uv's Python and cache directories on the real disk did not help (the base layer's filesystem drops files while uv unpacks), so Hermes is dropped for now. It is hidden from the pickers (`SELECTABLE_AGENT_PROVIDER_IDS`); backend support remains. The image is `overlay-agent-v5` because the host is baked into it. Found by the live run: the API boundary only accepted `claude-code` and `codex`.
+OpenCode, Hermes, and Cursor are no longer product-supported BYO providers. Existing records
+remain readable for history and account removal, but they are not offered for new setup or
+reconnection and their credentials are not issued to runs. Generic ACP transport remains
+available for self-hosted custom adapters. The source update prepares Agent Host/protocol `0.4.3`
+and image v10 with Claude ACP `0.93.0` and Codex ACP `2.2.2`; publication and machine rollout
+are separate work. Existing machines should upgrade only when idle.
 
 ## C. E2B adapter (self-hosting)
 

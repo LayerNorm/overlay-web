@@ -211,7 +211,7 @@ function parseRoots(value: string) {
 // Keep in sync with OVERLAY_AGENT_HOST_PACKAGE_VERSION in
 // src/server/agents/agent-enrollment-command.ts; enforced by
 // scripts/verify-agent-host-release.mjs.
-const HOST_PACKAGE_SPEC = '@layernorm/overlay-agent-host@0.4.2'
+const HOST_PACKAGE_SPEC = '@layernorm/overlay-agent-host@0.4.3'
 const DEFAULT_HOST_CONFIG_PATH = '~/.overlay/agent-host/config.json'
 
 /**

@@ -119,7 +119,7 @@ export function useByoConnection(args: {
     if (pending) setSetupEnvironmentId(pending.id)
   }, [command, enrollmentBaselineIds, environments, setupEnvironmentId])
 
-  const harnessOptions = useMemo(() => availableByoHarnesses(environments), [environments])
+  const harnessOptions = useMemo(() => availableByoHarnesses(), [])
   const selectedHarness = harnessOptions.find((harness) => harness.id === adapterId) ?? harnessOptions[0]!
   const compatibleEnvironments = useMemo(() => environments.filter((environment) => (
     environment.status !== 'pending'
@@ -241,4 +241,3 @@ export function useByoConnection(args: {
     copyCommand,
   }
 }
-
