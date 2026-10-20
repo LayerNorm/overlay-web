@@ -45,7 +45,7 @@ export function ToolCallRowWithReasoning({
     <div className="w-full max-w-[min(100%,36rem)]">
       <TraceLine
         status={running ? 'running' : err ? 'error' : undefined}
-        className={`${variant === 'nested' ? 'py-0.5' : 'py-1'} text-[13px] leading-snug`}
+        className={`${variant === 'nested' ? 'py-0.5' : 'py-1'} text-[13px] leading-5`}
       >
         <TraceOrb running={running} />
         <TraceTitle className="whitespace-normal">{label}</TraceTitle>
@@ -77,7 +77,7 @@ export function GatedPaidFeatureCallout({
     typeof out.message === 'string' && out.message.trim() ? out.message.trim() : 'This requires a paid plan.'
   return (
     <div className="w-full px-1 py-0.5">
-      <div className="flex w-full max-w-full items-start justify-start gap-2 [&>[data-slot=trace-icon]]:mt-1.5">
+      <div className="flex w-full max-w-full items-center justify-start gap-[0.4em] text-[11px]">
         <TraceOrb />
         <p className="w-fit max-w-[min(100%,22rem)] rounded-lg bg-(--surface-subtle) px-2.5 py-1.5 text-[11px] leading-relaxed text-(--muted)">
           {line} {upgradeLink}
@@ -128,7 +128,7 @@ export function ToolCallsCollapsedGroup({
   return (
     <Trace className="px-1 py-0.5">
       <TraceCollapsible open={open} onOpenChange={setOpen}>
-        <TraceCollapsibleTrigger className="py-1 text-[13px] leading-snug">
+        <TraceCollapsibleTrigger className="py-1 text-[13px] leading-5">
           <TraceLine status={anyErr ? 'error' : anyRunning ? 'running' : undefined}>
             <TraceOrb running={anyRunning && !anyErr} />
             <TraceTitle>{summary}</TraceTitle>

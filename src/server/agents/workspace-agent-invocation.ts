@@ -24,6 +24,7 @@ import {
 import { FREE_TIER_AUTO_MODEL_ID, isFreeTierChatModelId } from '@/shared/ai/gateway/model-types'
 import {
   createAgentMessageStream,
+  appendAgentTextPart,
   type AgentMessageStream,
 } from './agent-message-stream'
 import { buildWorkspaceAgentTooling } from './agent-tooling'
@@ -1043,7 +1044,8 @@ export async function runWorkspaceAgentTurn(args: {
         for await (const event of result.fullStream) {
           if (event.type === 'text-delta') {
             streamed += event.text
-            turnStream.pushText(event.text)
+            appendAgentTextPart(liveParts, event.text)
+            turnStream.pushText(event.text, liveParts.map((part) => ({ ...part })))
             continue
           }
           if (event.type === 'reasoning-delta') {

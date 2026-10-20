@@ -1,11 +1,12 @@
 'use client'
 
 import { cn } from '@overlay/ui'
-import type { ReactNode } from 'react'
+import { useState, type ReactNode, type CSSProperties } from 'react'
 import Link from 'next/link'
 import type { LucideIcon } from 'lucide-react'
 import { Loader2 } from 'lucide-react'
 import {
+  PanelResizeHandle,
   Sidebar,
   SidebarContent,
   SidebarFooter,
@@ -145,6 +146,8 @@ export function AppSidebarPrimaryRail({
   expanded?: boolean
   className?: string
 }) {
+  const [width, setWidth] = useState(224)
+  const [resizing, setResizing] = useState(false)
   // Icon-only rows need an icon; anything without one has no collapsed form.
   const sectionItems: PrimaryRailItem[] = !expanded && sectionNav
     ? sectionNav.items.flatMap((item) => {
@@ -167,7 +170,8 @@ export function AppSidebarPrimaryRail({
   const showSectionItems = sectionItems.length > 0
   return (
     <SidebarProvider open={expanded}>
-      <Sidebar className={className}>
+      <Sidebar className={cn(className, resizing && 'transition-none')} style={{ '--primary-sidebar-width': `${width}px` } as CSSProperties}>
+        {expanded ? <PanelResizeHandle edge="right" width={width} onResize={setWidth} onResizingChange={setResizing} minWidth={220} maxWidth={420} label="Resize navigation sidebar" /> : null}
         <SidebarHeader className={expanded ? 'justify-between px-2' : 'justify-center gap-0 px-0'}>
           {brand}
         </SidebarHeader>
