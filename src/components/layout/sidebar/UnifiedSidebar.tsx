@@ -1,10 +1,11 @@
 'use client'
 
-import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
+import { Fragment, useEffect, useRef, useState, type ReactNode, type CSSProperties } from 'react'
 import Link from 'next/link'
 import { ChevronRight, Ellipsis, Loader2, PanelLeft, Search } from 'lucide-react'
 import {
   Button,
+  PanelResizeHandle,
   Popover,
   PopoverContent,
   PopoverTrigger,
@@ -51,7 +52,7 @@ function NavRow({ item, collapsed }: { item: PrimaryRailItem; collapsed: boolean
     title: collapsed ? item.label : item.title,
     'aria-current': item.active ? ('page' as const) : undefined,
     'data-tour': item.dataTour,
-    className: collapsed ? 'justify-center px-0' : undefined,
+    className: collapsed ? 'justify-center px-0' : '[&>svg]:mx-1',
   }
   return (
     <SidebarMenuItem>
@@ -124,7 +125,7 @@ function MoreMenu({ items, collapsed }: { items: readonly PrimaryRailItem[]; col
             isActive={Boolean(activeItem)}
             title={collapsed ? label : undefined}
             aria-label={label}
-            className={collapsed ? 'justify-center px-0' : undefined}
+            className={collapsed ? 'justify-center px-0' : '[&>svg]:mx-1'}
             onPointerEnter={hoverOpen}
             onPointerLeave={hoverClose}
             onClick={(event) => {
@@ -249,6 +250,7 @@ export interface UnifiedSidebarProps {
   account: ReactNode
   /** Toggle collapse with Cmd/Ctrl+B. */
   keyboardShortcut?: boolean
+  resizable?: boolean
   /** List More pages as plain rows (the phone drawer has no room for a side menu). */
   inlineMore?: boolean
   /** Owns the header tabs; a second copy (the phone drawer) must not clear them when it closes. */
@@ -346,11 +348,14 @@ export function UnifiedSidebar({
   solo,
   account,
   keyboardShortcut = false,
+  resizable = false,
   inlineMore = false,
   publishSubviews = true,
   children,
   className,
 }: UnifiedSidebarProps) {
+  const [width, setWidth] = useState(264)
+  const [resizing, setResizing] = useState(false)
   const settingsNav = panelKind === 'settings' ? panelNav : undefined
   const settingsBack = items.find((item) => item.id === 'settings-close')
   const mainItems = items.filter((item) => !MORE_ITEM_IDS.has(item.id))
@@ -388,8 +393,10 @@ export function UnifiedSidebar({
     <Sidebar
       aria-label="Sidebar"
       data-collapsed={collapsed}
-      className={cn('border-r-0', collapsed ? 'w-14' : 'w-64', className)}
+      style={{ '--sidebar-resized-width': `${width}px` } as CSSProperties}
+      className={cn('border-r-0', collapsed ? 'w-14' : 'w-(--sidebar-resized-width)', className, resizing && 'transition-none')}
     >
+      {resizable && !collapsed ? <PanelResizeHandle edge="right" width={width} onResize={setWidth} onResizingChange={setResizing} minWidth={220} maxWidth={420} label="Resize left sidebar" /> : null}
       <SidebarHeaderBar brand={brand} collapsed={collapsed} onCollapsedChange={onCollapsedChange} onSearch={settingsNav ? null : onSearch} />
       {collapsed || settingsNav ? null : <ScopeToggle scope={solo ? 'personal' : scope} workspaceLocked={solo} onChange={changeScope} />}
       {settingsNav ? (

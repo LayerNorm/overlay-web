@@ -5,8 +5,8 @@ import React from 'react'
 /** The Orb sits in every Trace step's icon slot; it breathes while the step runs. */
 export function TraceOrb({ running = false }: { running?: boolean }) {
   return (
-    <TraceIcon>
-      <Orb variant="metal" size={14} animated={running} label="" className="select-none" />
+    <TraceIcon className="size-[0.5em]">
+      <Orb variant="metal" size={6.5} animated={running} label="" className="size-[0.5em]! select-none [&_svg]:size-full!" />
     </TraceIcon>
   )
 }
