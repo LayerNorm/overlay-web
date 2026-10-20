@@ -1,6 +1,7 @@
 'use client'
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { toast } from '@overlay/ui/primitives'
 import {
   WORK_UPDATED_EVENT,
   type CreateWorkItemRequest,
@@ -36,9 +37,8 @@ export interface WorkData {
   viewer: WorkViewer | null
   /** The server returned as many tasks as it ever sends (`WORK_LIMITS.listCap`), so there may be more than are shown. */
   truncated: boolean
-  /** The last change the server refused, in plain words; cleared by `dismissError` or the next change. */
+  /** A load failure after the list was shown; cleared by a successful reload. */
   error: string | null
-  dismissError: () => void
   refresh: () => Promise<void>
   /** Whether the viewer may edit this task (status, fields, comments). The server decides again on every change. */
   canWork: (item: WorkItem) => boolean
@@ -114,6 +114,7 @@ export function WorkDataProvider({ children }: { children: ReactNode }) {
       else refreshDue.current = true
       if (ctx) setContext(ctx)
       setState('ready')
+      setError(null)
     } catch (caught) {
       if (id !== loadId.current) return
       setState((current) => (current === 'ready' ? current : 'error'))
@@ -188,7 +189,6 @@ export function WorkDataProvider({ children }: { children: ReactNode }) {
     // Two changes to one task in flight can finish in either order on the server: check what is true once both settle.
     if (newest.current.has(id)) refreshDue.current = true
     newest.current.set(id, mine)
-    setError(null)
     pending.current += 1
     applyToTask(id, optimistic)
     try {
@@ -201,7 +201,7 @@ export function WorkDataProvider({ children }: { children: ReactNode }) {
         if (newest.current.get(id) === mine && before) applyToTask(id, swapIn(before))
         else refreshDue.current = true
       }
-      setError(messageOf(caught, fallback))
+      toast.error(messageOf(caught, fallback))
       return null
     } finally {
       if (view.current === startedIn && newest.current.get(id) === mine) newest.current.delete(id)
@@ -212,7 +212,6 @@ export function WorkDataProvider({ children }: { children: ReactNode }) {
   const createTask = useCallback<WorkData['createTask']>(async (input) => {
     const scopeToSend = newItemScope(solo ? 'personal' : scope)
     const startedIn = view.current
-    setError(null)
     pending.current += 1
     try {
       const { item } = await overlayAppClient.work.create({ ...input, ...(scopeToSend ? { scope: scopeToSend } : {}) })
@@ -220,7 +219,7 @@ export function WorkDataProvider({ children }: { children: ReactNode }) {
       trackWork('work_task_created', { scope: item.scope, status: item.status })
       return item
     } catch (caught) {
-      setError(messageOf(caught, 'Could not add the task.'))
+      toast.error(messageOf(caught, 'Could not add the task.'))
       return null
     } finally {
       settle(startedIn)
@@ -322,7 +321,6 @@ export function WorkDataProvider({ children }: { children: ReactNode }) {
   const value = useMemo<WorkData>(() => ({
     state, items, byId, context, people, personByPrincipal, viewer, error,
     truncated: items.length >= WORK_LIMITS.listCap,
-    dismissError: () => setError(null),
     refresh: load,
     canWork, createTask, updateTask, moveTask, dropLocal, adoptTask, refreshTask,
   }), [adoptTask, byId, canWork, context, createTask, dropLocal, error, items, load, moveTask, people, personByPrincipal, refreshTask, state, updateTask, viewer])

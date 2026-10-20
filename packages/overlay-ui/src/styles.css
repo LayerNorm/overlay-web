@@ -9,11 +9,15 @@
   --surface-subtle: #f0f0f0;
   --sidebar-surface: #f5f5f5;
   --overlay-scrim: rgba(0, 0, 0, 0.4);
-  --button-primary-bg: #0a0a0a;
-  --button-primary-text: #ffffff;
-  --button-secondary-bg: #ffffff;
+  --button-primary-bg: #dcdce1;
+  --button-primary-hover: #ccccd3;
+  --button-primary-text: #27272a;
+  --button-secondary-bg: #eaeaed;
+  --button-secondary-hover: #dedee4;
   --button-secondary-border: #e4e4e7;
-  --button-secondary-text: #0a0a0a;
+  --button-secondary-text: #27272a;
+  --toast-background: #f1f1f3;
+  --toast-border: #d3d3da;
   --input-background: #ffffff;
   --input-border: #e4e4e7;
   --input-text: #0a0a0a;
@@ -53,10 +57,10 @@
   --overlay-duration-panel: 300ms;
 
   /* shadcn token names, aliased to the palette above so presets carry through. */
-  --primary: var(--foreground);
-  --primary-foreground: var(--background);
-  --secondary: var(--surface-subtle);
-  --secondary-foreground: var(--foreground);
+  --primary: var(--button-primary-bg);
+  --primary-foreground: var(--button-primary-text);
+  --secondary: var(--button-secondary-bg);
+  --secondary-foreground: var(--button-secondary-text);
   --muted-foreground: var(--muted);
   --accent-foreground: var(--foreground);
   --destructive: var(--danger);
@@ -81,11 +85,15 @@
   --surface-subtle: #1c1c20;
   --sidebar-surface: #111113;
   --overlay-scrim: rgba(0, 0, 0, 0.58);
-  --button-primary-bg: #f5f5f5;
-  --button-primary-text: #09090b;
-  --button-secondary-bg: #111113;
+  --button-primary-bg: #3b3b42;
+  --button-primary-hover: #484850;
+  --button-primary-text: #ededf0;
+  --button-secondary-bg: #252529;
+  --button-secondary-hover: #303036;
   --button-secondary-border: #27272a;
-  --button-secondary-text: #f5f5f5;
+  --button-secondary-text: #ededf0;
+  --toast-background: #1c1c20;
+  --toast-border: #38383f;
   --input-background: #111113;
   --input-border: #27272a;
   --input-text: #f5f5f5;

@@ -302,7 +302,7 @@ export function useChatSendController({
           void createNewChat({
             clientId: conversationClientId,
             deferActivation: true,
-          }).catch(() => showPendingFirstSendSaveFailure(setComposerNotice))
+          }).catch(() => showPendingFirstSendSaveFailure())
         },
         pendingFirstSendRef,
         tryActivatePendingFirstSend,
@@ -310,7 +310,7 @@ export function useChatSendController({
       return
     }
     completeSession(chatId, active)
-  }, [completeSession, createNewChat, setComposerNotice, tryActivatePendingFirstSend])
+  }, [completeSession, createNewChat, tryActivatePendingFirstSend])
 
   const handleSend = useCallback(async () => {
     if (!userId && !authUser) {
@@ -441,7 +441,6 @@ export function useChatSendController({
       selectedActModelSnapshot: snapshot.selectedActModelSnapshot,
       reasoning,
       personalChatMode,
-      setComposerNotice,
       setIsFirstMessage,
       setRuntimeHydrationVersion,
       snapshot,

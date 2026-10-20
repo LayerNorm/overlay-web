@@ -16,10 +16,11 @@ import {
   Users,
   X,
 } from 'lucide-react'
-import { Button, EmptyState, Toggle } from '@overlay/ui/primitives'
+import { Button, EmptyState, Toggle, toast } from '@overlay/ui/primitives'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useAuth } from '@/contexts/AuthContext'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
+import { createOAuthCompletionGuard } from './oauth-completion-guard'
 
 interface SlackChannel {
   id: string
@@ -127,7 +128,6 @@ function useSlackImportPanel() {
   const [jobs, setJobs] = useState<SlackImportJob[]>([])
   const [starting, setStarting] = useState(false)
   const [cancelling, setCancelling] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const [view, setView] = useState<'people' | 'picker' | 'progress' | 'done'>('people')
   const [users, setUsers] = useState<SlackUser[]>([])
   const [usersLoaded, setUsersLoaded] = useState(false)
@@ -365,7 +365,7 @@ function useSlackImportPanel() {
 
   // ─── OAuth connect + poll for connection ──────────────────────────────────
   const handleConnect = useCallback(async () => {
-    setError(null)
+    const consumeCompletion = createOAuthCompletionGuard()
     setOauthPolling(true)
     const oauthTab = window.open('about:blank', '_blank')
     try {
@@ -376,7 +376,7 @@ function useSlackImportPanel() {
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
         oauthTab?.close()
-        setError(data.error || 'Failed to connect to Slack')
+        toast.error(data.error || 'Failed to connect to Slack')
         setOauthPolling(false)
       } else if (data.redirectUrl) {
         if (oauthTab) oauthTab.location.href = data.redirectUrl
@@ -396,7 +396,8 @@ function useSlackImportPanel() {
             return
           }
           const connected = await checkConnection()
-          if (connected && mountedRef.current) {
+          if (connected && mountedRef.current && consumeCompletion()) {
+            toast.success('Slack connected.')
             if (oauthPollRef.current) {
               clearInterval(oauthPollRef.current)
               oauthPollRef.current = null
@@ -406,12 +407,12 @@ function useSlackImportPanel() {
         }, 3000)
       } else {
         oauthTab?.close()
-        setError('No connection URL was returned')
+        toast.error('No connection URL was returned')
         setOauthPolling(false)
       }
     } catch (err) {
       oauthTab?.close()
-      setError(err instanceof Error ? err.message : 'Failed to connect to Slack')
+      toast.error(err instanceof Error ? err.message : 'Failed to connect to Slack')
       setOauthPolling(false)
     }
   }, [checkConnection])
@@ -425,7 +426,6 @@ function useSlackImportPanel() {
       return
     }
     setInviting(true)
-    setError(null)
     let failed = 0
     try {
       await Promise.all(
@@ -439,13 +439,15 @@ function useSlackImportPanel() {
         ),
       )
       if (failed > 0) {
-        setError(`Failed to invite ${failed} user(s). You can continue and import channels for people already in the workspace.`)
+        toast.error(`Failed to invite ${failed} user(s). You can continue and import channels for people already in the workspace.`)
+      } else {
+        toast.success('Invitations sent.')
       }
       // Refresh user list so newly-invited users appear as 'invited'
       void loadUsers(true)
       setView('picker')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to send invitations')
+      toast.error(err instanceof Error ? err.message : 'Failed to send invitations')
     } finally {
       setInviting(false)
     }
@@ -455,7 +457,6 @@ function useSlackImportPanel() {
   const handleStartImport = useCallback(async () => {
     if (selectedChannelIds.size === 0) return
     setStarting(true)
-    setError(null)
     try {
       const { ok, data } = await fetchWithRetry('/api/v1/imports/slack', {
         method: 'POST',
@@ -488,7 +489,7 @@ function useSlackImportPanel() {
       })
       setView('progress')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to start import')
+      toast.error(err instanceof Error ? err.message : 'Failed to start import')
     } finally {
       setStarting(false)
     }
@@ -569,10 +570,10 @@ function useSlackImportPanel() {
   return {
     activeWorkspace, user, workspaceId, currentUserEmail,
     connectionState, channels, channelsLoaded, channelsLoading, channelsError,
-    selectedChannelIds, activeJob, jobs, starting, cancelling, error, view,
+    selectedChannelIds, activeJob, jobs, starting, cancelling, view,
     users, usersLoaded, usersLoading, usersError, selectedUserIds, inviting,
     oauthPolling,
-    setError, setView, loadJobs, checkConnection, loadChannels, loadUsers,
+    setView, loadJobs, checkConnection, loadChannels, loadUsers,
     handleConnect, handleInviteUsers, handleStartImport, handleCancel,
     handleRefreshChannels, toggleChannel, selectAllPublic, clearSelection,
     toggleUser, showActiveJob, backToPicker,
@@ -582,10 +583,10 @@ function useSlackImportPanel() {
 export function SlackImportPanel({ onBack }: { onBack?: () => void } = {}) {
   const {
     connectionState, channels, channelsLoading, channelsError,
-    selectedChannelIds, activeJob, jobs, starting, cancelling, error, view,
+    selectedChannelIds, activeJob, jobs, starting, cancelling, view,
     users, usersLoading, usersError, selectedUserIds, inviting,
     oauthPolling,
-    setError, setView, loadUsers,
+    setView, loadUsers,
     handleConnect, handleInviteUsers, handleStartImport, handleCancel,
     handleRefreshChannels, toggleChannel, selectAllPublic, clearSelection,
     toggleUser, showActiveJob, backToPicker,
@@ -655,8 +656,6 @@ export function SlackImportPanel({ onBack }: { onBack?: () => void } = {}) {
     return (
       <ImportFlow serviceLabel="Slack" step={1} onBack={onBack}>
       <SlackPeopleStep
-        error={error}
-        onDismissError={() => setError(null)}
         usersLoading={usersLoading}
         usersError={usersError}
         onRetryUsers={() => void loadUsers(true)}
@@ -687,8 +686,6 @@ export function SlackImportPanel({ onBack }: { onBack?: () => void } = {}) {
       onClearSelection={clearSelection}
       starting={starting}
       onStartImport={() => void handleStartImport()}
-      error={error}
-      onDismissError={() => setError(null)}
     />
     </ImportFlow>
   )
@@ -830,9 +827,7 @@ function SlackUserListContent({ usersLoading, usersError, onRetryUsers, users, s
   )
 }
 
-function SlackPeopleStep({ error, onDismissError, usersLoading, usersError, onRetryUsers, users, selectedUserIds, onToggleUser, inviting, onSkip, onInvite }: {
-  error: string | null
-  onDismissError: () => void
+function SlackPeopleStep({ usersLoading, usersError, onRetryUsers, users, selectedUserIds, onToggleUser, inviting, onSkip, onInvite }: {
   usersLoading: boolean
   usersError: string | null
   onRetryUsers: () => void
@@ -854,8 +849,6 @@ function SlackPeopleStep({ error, onDismissError, usersLoading, usersError, onRe
           </p>
         </div>
       </div>
-
-      {error ? <ImportErrorBanner error={error} onDismiss={onDismissError} /> : null}
 
       <SlackUserListContent
         usersLoading={usersLoading}
@@ -1049,7 +1042,7 @@ function ChannelListContent({ channelsLoading, channelsError, onRefreshChannels,
   )
 }
 
-function SlackChannelsStep({ jobs, onShowActiveJob, channelsLoading, channelsError, onRefreshChannels, channels, selectedChannelIds, onToggleChannel, onSelectAllPublic, onClearSelection, starting, onStartImport, error, onDismissError }: {
+function SlackChannelsStep({ jobs, onShowActiveJob, channelsLoading, channelsError, onRefreshChannels, channels, selectedChannelIds, onToggleChannel, onSelectAllPublic, onClearSelection, starting, onStartImport }: {
   jobs: SlackImportJob[]
   onShowActiveJob: () => void
   channelsLoading: boolean
@@ -1062,8 +1055,6 @@ function SlackChannelsStep({ jobs, onShowActiveJob, channelsLoading, channelsErr
   onClearSelection: () => void
   starting: boolean
   onStartImport: () => void
-  error: string | null
-  onDismissError: () => void
 }) {
   const hasChannels = !channelsLoading && !channelsError && channels.length > 0
   return (
@@ -1086,9 +1077,6 @@ function SlackChannelsStep({ jobs, onShowActiveJob, channelsLoading, channelsErr
 
       {/* Recent jobs summary */}
       <JobsSummaryBar jobs={jobs} onShowActiveJob={onShowActiveJob} />
-
-      {/* Error */}
-      {error ? <ImportErrorBanner error={error} onDismiss={onDismissError} /> : null}
 
       {/* Channels loading / error / empty / list */}
       <ChannelListContent

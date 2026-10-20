@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import type { WorkspaceSummary } from '@overlay/workspace-contracts'
-import { Button, DialogFrame, Input, ListboxSelect, SegmentedControl } from '@overlay/ui/primitives'
+import { Button, DialogFrame, Input, ListboxSelect, SegmentedControl, toast } from '@overlay/ui/primitives'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { MCP_ACCESS_DESCRIPTION, MCP_ACCESS_LABEL, MCP_ACCESS_LEVELS, type McpAccessLevel } from '@/shared/mcp/access'
 import { McpCopyField } from './McpCopyField'
@@ -24,7 +24,6 @@ export function McpTokenDialog({ workspaces, onClose, onCreated }: {
   const [access, setAccess] = useState<McpAccessLevel>('read')
   const [days, setDays] = useState<string>('90')
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const [created, setCreated] = useState<{ token: string; endpoint: string } | null>(null)
 
   useEffect(() => {
@@ -34,15 +33,15 @@ export function McpTokenDialog({ workspaces, onClose, onCreated }: {
   const submit = async () => {
     if (busy || !workspaceId) return
     setBusy(true)
-    setError(null)
     try {
       const result = await overlayAppClient.mcpAccess.createToken({
         ...(name.trim() ? { name: name.trim() } : {}), workspaceId, access, ttlDays: Number(days),
       })
       setCreated({ token: result.token, endpoint: result.endpoint })
+      toast.success('MCP token created.')
       onCreated()
     } catch (createError) {
-      setError(createError instanceof Error ? createError.message : 'Could not create the token.')
+      toast.error(createError instanceof Error ? createError.message : 'Could not create the token.')
     } finally {
       setBusy(false)
     }
@@ -93,7 +92,6 @@ export function McpTokenDialog({ workspaces, onClose, onCreated }: {
             <p className="mb-1.5 text-xs font-medium text-(--foreground)">Expires</p>
             <ListboxSelect aria-label="Expires" value={days} options={[...EXPIRY_OPTIONS]} onChange={setDays} portal />
           </div>
-          {error ? <p role="alert" className="text-xs text-red-500">{error}</p> : null}
           <div className="flex justify-end gap-2 pt-1">
             <Button variant="secondary" size="sm" onClick={onClose} disabled={busy}>Cancel</Button>
             <Button variant="primary" size="sm" onClick={() => void submit()} disabled={busy || !workspaceId}>{busy ? 'Creating…' : 'Create token'}</Button>

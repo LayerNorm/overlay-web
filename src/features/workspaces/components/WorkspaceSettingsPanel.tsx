@@ -5,21 +5,15 @@ import React from 'react'
 import { useEffect, useMemo, useState } from 'react'
 import {
   Archive,
-  Bot,
   CircleAlert,
-  Download,
   KeyRound,
   Link2,
   Loader2,
   MessageSquareText,
   RefreshCw,
   RotateCw,
-  Shield,
   Trash2,
-  UserPlus,
-  Users,
   UsersRound,
-  WalletCards,
 } from 'lucide-react'
 import {
   Button,
@@ -27,6 +21,7 @@ import {
   Select,
   TabButton,
   TabsList,
+  toast,
 } from '@overlay/ui/primitives'
 import type {
   WorkspaceManagementItem,
@@ -39,7 +34,7 @@ import type {
 import { describeRolloutStage } from '@/shared/workspaces/collaboration-rollout'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { workspaceManagementClient } from '../lib/workspace-client'
-import { WORKSPACE_SETTINGS_TABS as TABS, isWorkspaceSettingsTab } from '../lib/workspace-settings-tabs'
+import { WORKSPACE_SETTINGS_TABS as TABS } from '../lib/workspace-settings-tabs'
 import type {
   WorkspaceLifecycleStatus,
   WorkspaceManagementClient,
@@ -763,8 +758,9 @@ export function WorkspaceSettingsPanel({
     try {
       await operation()
       setRefreshKey((current) => current + 1)
+      toast.success('Workspace settings updated.')
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : 'Workspace action failed.')
+      toast.error(error instanceof Error ? error.message : 'Workspace action failed.')
     } finally {
       setBusyItemId(null)
     }
@@ -995,7 +991,8 @@ function WorkspaceSharingTab({
         channelRetentionDays: result.policy.channelRetentionDays,
         metrics: current.status === 'ready' ? current.metrics : undefined,
       })))
-      .catch((error) => setActionError(
+      .then(() => toast.success('Workspace policy updated.'))
+      .catch((error) => toast.error(
         error instanceof Error ? error.message : 'Could not update workspace policy.',
       ))
       .finally(() => setPolicyBusy(false))
@@ -1171,8 +1168,9 @@ function WorkspaceActionDialogs({
     setActionError(null)
     try {
       await operation()
+      toast.success('Workspace updated.')
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : failureMessage)
+      toast.error(error instanceof Error ? error.message : failureMessage)
     } finally {
       setActionBusy(false)
     }
@@ -1218,8 +1216,9 @@ function WorkspaceActionDialogs({
         }
       })
       onRefresh()
+      toast.success('Team updated.')
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : 'Could not update team.')
+      toast.error(error instanceof Error ? error.message : 'Could not update team.')
     } finally {
       setTeamCandidateBusyId(null)
     }
@@ -1268,7 +1267,7 @@ function WorkspaceActionDialogs({
       await refreshWorkspaces()
       window.location.assign('/app/chat')
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : 'Could not archive workspace.')
+      toast.error(error instanceof Error ? error.message : 'Could not archive workspace.')
     } finally {
       setActionBusy(false)
     }

@@ -1,5 +1,5 @@
 'use client'
-import { Button } from '@overlay/ui/primitives'
+import { Button, toast } from '@overlay/ui/primitives'
 import { unstyledButton } from '@overlay/ui/control-reset'
 import { useState } from 'react'
 import { Archive, RotateCcw, User, Users } from 'lucide-react'
@@ -42,15 +42,13 @@ export function ScopeItemActions({
 }) {
   const actions = useScopeItemActions(kind, resource)
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const options = actions.optionsFor(item)
   if (!options.moveTo && !options.canArchive && !options.canRestore) return null
 
-  async function run(change: ScopeChange, request: Promise<unknown>) {
+  async function run(change: ScopeChange, request: () => Promise<unknown>) {
     setBusy(true)
-    setError(null)
     try {
-      await request
+      await request()
       onChanged?.(change)
       if (change.action === 'archive') {
         const named = item as ScopedItem & { name?: string; title?: string }
@@ -61,7 +59,7 @@ export function ScopeItemActions({
         })
       }
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'That did not work.')
+      toast.error(caught instanceof Error ? caught.message : 'That did not work.')
     } finally {
       setBusy(false)
     }
@@ -74,14 +72,14 @@ export function ScopeItemActions({
       key: 'move',
       label: to === 'workspace' ? 'Move to Workspace' : 'Move to Personal',
       icon: to === 'workspace' ? Users : User,
-      onClick: () => void run({ action: 'move', to }, actions.move(item._id, to)),
+      onClick: () => void run({ action: 'move', to }, () => actions.move(item._id, to)),
     })
   }
   if (options.canArchive) {
-    items.push({ key: 'archive', label: 'Archive', icon: Archive, onClick: () => void run({ action: 'archive' }, actions.archive(item._id)) })
+    items.push({ key: 'archive', label: 'Archive', icon: Archive, onClick: () => void run({ action: 'archive' }, () => actions.archive(item._id)) })
   }
   if (options.canRestore) {
-    items.push({ key: 'restore', label: 'Restore', icon: RotateCcw, onClick: () => void run({ action: 'restore' }, actions.restore(item._id)) })
+    items.push({ key: 'restore', label: 'Restore', icon: RotateCcw, onClick: () => void run({ action: 'restore' }, () => actions.restore(item._id)) })
   }
 
   if (variant === 'buttons') {
@@ -93,7 +91,6 @@ export function ScopeItemActions({
             {label}
           </Button>
         ))}
-        {error ? <span role="alert" className="text-xs text-red-500">{error}</span> : null}
       </div>
     )
   }
@@ -103,14 +100,14 @@ export function ScopeItemActions({
         <Button variant="ghost"
           key={key}
           type="button"
-          title={error ?? label}
+          title={label}
           aria-label={label}
           disabled={busy}
           onClick={(event) => {
             event.stopPropagation()
             onClick()
           }}
-          className={unstyledButton(`${ICON_BUTTON} ${error ? 'text-red-500' : 'text-(--muted-light)'}`)}
+          className={unstyledButton(`${ICON_BUTTON} text-(--muted-light)`)}
         >
           <Icon size={12} />
         </Button>

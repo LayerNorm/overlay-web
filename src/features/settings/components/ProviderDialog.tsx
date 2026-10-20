@@ -12,7 +12,7 @@ import {
   RefreshCw,
   X,
 } from 'lucide-react'
-import { DialogFrame, Toggle, Button, Input, Select } from '@overlay/ui/primitives'
+import { DialogFrame, Toggle, Button, Input, Select, toast } from '@overlay/ui/primitives'
 import {
   BYOK_PROVIDER_PRESETS,
   getByokPreset,
@@ -176,7 +176,8 @@ async function saveProviderConnection({
         testResult,
       })),
     })
-    if (res.ok) onSaved()
+    if (!res.ok) throw new Error('Could not save provider connection.')
+    onSaved()
     return
   }
 
@@ -195,7 +196,7 @@ async function saveProviderConnection({
       enabledModelIds,
     }),
   })
-  if (!res.ok) return
+  if (!res.ok) throw new Error('Could not save provider connection.')
   // After creation, update with test results if available
   const data = await res.json() as { id: string }
   if (testResult?.ok && data.id) {
@@ -566,6 +567,9 @@ function useProviderForm({ state, isEdit, onBusyChange, onSaved }: {
         providerId,
         onSaved,
       })
+      toast.success(isEdit ? 'Provider connection updated.' : 'Provider connected.')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not save provider connection.')
     } finally {
       onBusyChange(false)
     }

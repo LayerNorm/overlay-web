@@ -16,7 +16,6 @@ import {
   Slack,
   UserRound,
   UsersRound,
-  X,
 } from 'lucide-react'
 import { Button, FloatingMenu, MenuItem } from '@overlay/ui/primitives'
 import { agentThreadHref } from '@/components/layout/sidebar-nav'
@@ -387,23 +386,6 @@ function MenuButton({
     </MenuItem>
   )
 }
-
-export function RoomNoticeBar({
-  notice,
-  onDismiss,
-}: {
-  notice: string | null
-  onDismiss: () => void
-}) {
-  if (!notice) return null
-  return (
-    <div className="flex items-center justify-between bg-(--surface-subtle) px-4 py-2 text-xs text-(--muted)">
-      <span>{notice}</span>
-      <Button variant="ghost" size="icon" type="button" onClick={onDismiss} aria-label="Dismiss" className="h-auto w-auto p-0 text-inherit hover:bg-transparent hover:text-current"><X size={13} /></Button>
-    </div>
-  )
-}
-
 
 function resolveMessageAuthorName(message: OptimisticMessage, ctx: RoomMessageContext): string {
   return message.importedAuthorName?.trim()
@@ -831,7 +813,7 @@ export function RoomComposer({
         onOpenFilePreview,
       }}
       runtime={{
-        composerNotice: composer.composerNotice,
+        composerNotice: null,
         isSendBlocked: false,
         isActiveLoading: false,
         isTemporaryChat: false,

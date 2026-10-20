@@ -61,7 +61,6 @@ export function AgentEditorPage({
   // One initializer keeps per-field fallbacks out of the component body.
   const [initial] = useState(() => getInitialEditorState({ showcase, mode, agent: showcaseAgent }))
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
 
   const bootstrap = useAgentEditorBootstrap({ showcase, mode, agentId, activeWorkspaceId, initial })
   const { agent, setAgent, loading, loadFailed, canCreate, connectedAgentsEnabled, connectedAgentsChecked } = bootstrap
@@ -84,7 +83,7 @@ export function AgentEditorPage({
   const computer = useAgentComputer({
     showcase, computersAvailable, activeWorkspaceId, agent, agentType: runtime.agentType,
     enabledToolGroups: form.enabledToolGroups, setEnabledToolGroups: form.setEnabledToolGroups,
-    markDirty: form.markDirty, setError,
+    markDirty: form.markDirty,
   })
 
   const modelOptions = useMemo(() => {
@@ -147,7 +146,6 @@ export function AgentEditorPage({
     router,
     busy,
     setBusy,
-    setError,
     agent,
     setAgent,
     directoryHref,
@@ -191,7 +189,6 @@ export function AgentEditorPage({
       isDefaultMaster={isDefaultMaster}
       valid={valid}
       busy={busy}
-      error={error}
       showcase={showcase}
       computersAvailable={computersAvailable}
       connectedAgentsEnabled={connectedAgentsEnabled}

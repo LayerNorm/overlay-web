@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef } from 'react'
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react'
 import type { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import type { AutomationDetail, AutomationDetailTab } from '@overlay/app-core'
+import { toast } from '@overlay/ui/primitives'
 import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import type { useChatPreferences } from './useChatPreferences'
@@ -29,7 +30,6 @@ export function useAutomationDetail({
   setSelectedModels,
   askModelSelectionMode,
   setAskModelSelectionMode,
-  setComposerNotice,
   userAskModelOverrideRef,
 }: {
   mode: 'chat' | 'automate'
@@ -48,7 +48,6 @@ export function useAutomationDetail({
   setSelectedModels: ChatPrefs['setSelectedModels']
   askModelSelectionMode: ChatPrefs['askModelSelectionMode']
   setAskModelSelectionMode: ChatPrefs['setAskModelSelectionMode']
-  setComposerNotice: Dispatch<SetStateAction<string | null>>
   userAskModelOverrideRef: MutableRefObject<boolean>
 }) {
   const creatingAutomationDraftRef = useRef(false)
@@ -187,8 +186,7 @@ export function useAutomationDetail({
         params.set('tab', 'edit')
         router.replace(`${pathname}?${params.toString()}`)
       } catch (error) {
-        setComposerNotice(error instanceof Error ? error.message : 'Failed to open automation editor.')
-        window.setTimeout(() => setComposerNotice(null), 6000)
+        toast.error(error instanceof Error ? error.message : 'Failed to open automation editor.')
       } finally {
         creatingAutomationDraftRef.current = false
       }
@@ -202,7 +200,7 @@ export function useAutomationDetail({
     }
     const query = params.toString()
     router.replace(`${pathname}${query ? `?${query}` : ''}`)
-  }, [pathname, router, searchParams, mode, automationIdParam, selectedAutomation, selectedActModel, setComposerNotice, panelScope])
+  }, [pathname, router, searchParams, mode, automationIdParam, selectedAutomation, selectedActModel, panelScope])
 
   const saveAutomationHeaderModel = useCallback(async (modelId: string) => {
     // Mark the model as user-chosen so the new-chat-surface default-model effect

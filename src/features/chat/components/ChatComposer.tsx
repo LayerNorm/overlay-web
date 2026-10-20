@@ -116,7 +116,7 @@ export function ChatComposer(props: ChatComposerProps) {
           }`}
         >
           {viewProps.mode === 'chat' && !viewProps.showCenteredEmptyChat ? null : null}
-          <ComposerAlerts attachmentError={viewProps.attachmentError} composerNotice={viewProps.composerNotice} />
+          <ComposerAlerts attachmentError={null} composerNotice={viewProps.composerNotice} />
           {viewProps.beforeComposerContent}
           {viewProps.billingPromptContent}
           {viewProps.isSendBlocked && !viewProps.isActiveLoading && viewProps.blockedComposerContent ? (
@@ -167,6 +167,7 @@ function ComposerInputCard(props: ComposerViewProps & { disabledSend: boolean })
           />
         ) : null}
         <AttachmentPreviewTray {...props} />
+        <ComposerAlerts attachmentError={props.attachmentError} composerNotice={null} />
         {/* eslint-disable-next-line no-restricted-syntax -- overlay:raw-control: Native file picker exposes the browser FileList. */}
         <input ref={props.fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={(event) => event.target.files && props.onAddImages(event.target.files)} />
         {/* eslint-disable-next-line no-restricted-syntax -- overlay:raw-control: Native file picker exposes the browser FileList. */}
