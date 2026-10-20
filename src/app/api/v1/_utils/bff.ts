@@ -13,6 +13,7 @@ import {
   getClientIp,
   markRateLimitsSatisfied,
 } from '@/server/security/rate-limit'
+import { recordBffMutationAuditIfNeeded } from '@/server/app-api/bff-audit'
 import { getEndpointRateLimitSpecs } from '@/server/security/rate-limit-specs'
 import {
   fingerprintApiRequest,
@@ -365,7 +366,7 @@ async function handleScopedBffRoute(
   await recordBffMutationAuditIfNeeded({
     auth,
     clientIp,
-    enabled: bffSafety.mutationAuditEnabled,
+    enabled: shouldRecordMutationAudit(bffSafety.mutationAuditEnabled, request),
     request,
     response: standardizedResponse,
     serverContext,
@@ -379,6 +380,10 @@ function routeParams(context: unknown): BffRouteContext['params'] {
     return Promise.resolve((context as { params: BffRouteContext['params'] }).params)
   }
   return Promise.resolve({})
+}
+
+function shouldRecordMutationAudit(enabled: boolean, request: NextRequest): boolean {
+  return enabled && !SAFE_METHODS.has(request.method.toUpperCase())
 }
 
 function parseRetryAfterMs(value: string): number | undefined {
@@ -504,58 +509,6 @@ async function enforceBffRouteRateLimits(
   } catch (error) {
     if (isOverlayConfigError(error)) return runtimeConfigErrorResponse(error)
     throw error
-  }
-}
-
-async function recordBffMutationAuditIfNeeded(args: {
-  auth: NonNullable<Awaited<ReturnType<typeof resolveAuthenticatedAppUser>>>
-  clientIp: string
-  enabled: boolean
-  request: NextRequest
-  response: Response
-  serverContext: ReturnType<typeof getOverlayServerContext>
-}): Promise<void> {
-  if (!args.enabled || SAFE_METHODS.has(args.request.method.toUpperCase())) return
-  await recordBffMutationAudit(args)
-}
-
-async function recordBffMutationAudit(args: {
-  auth: NonNullable<Awaited<ReturnType<typeof resolveAuthenticatedAppUser>>>
-  clientIp: string
-  request: NextRequest
-  response: Response
-  serverContext: ReturnType<typeof getOverlayServerContext>
-}): Promise<void> {
-  const actorType = args.auth.authType === 'api-key'
-    ? 'api_key'
-    : args.auth.authType === 'service'
-      ? 'service'
-      : 'user'
-  try {
-    await args.serverContext.auditService.record({
-      action: 'api.mutation.completed',
-      actorType,
-      actorUserId: args.auth.userId,
-      ...(actorType === 'api_key' ? { actorApiKeyId: args.auth.apiKeyId } : {}),
-      ipAddress: args.clientIp,
-      metadata: {
-        method: args.request.method.toUpperCase(),
-        path: args.request.nextUrl.pathname,
-        statusCode: args.response.status,
-      },
-      outcome: args.response.ok ? 'success' : 'failure',
-      resourceId: args.request.nextUrl.pathname,
-      resourceType: 'api_route',
-    })
-  } catch (_error) {
-    // Audit infrastructure must not turn a completed customer mutation into a second,
-    // externally visible failure. The security event preserves an actionable signal.
-    logSecurityEvent('api_mutation_audit_failed', {
-      authType: args.auth.authType,
-      method: args.request.method.toUpperCase(),
-      path: args.request.nextUrl.pathname,
-      userHash: hashOperationalIdentifier('security-user:v1', args.auth.userId),
-    })
   }
 }
 
