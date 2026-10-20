@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Correct Computer Start and Stop notifications to match the completed action.
+
 - Add an isolated, synthetic funded Computer QA workspace to Preview fixtures while retaining the free Personal workspace. Re-seeding preserves spent credit, holds and plan changes; no Stripe payment or automatic top-up is created.
 
 - Enroll persistent Computers in the shared sandbox lease ledger before provider allocation or wake. Meter Boat's weighted counters, reserve both the runtime member and agent spend subject, preserve disks on idle/budget stops, and retain durable cleanup and allocation references for retries. Computer deletion settles usage before removing the provider resource; this is a scoped lifecycle/accounting substep, not completion of Phase 2.

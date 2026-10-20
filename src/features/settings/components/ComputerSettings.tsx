@@ -131,7 +131,7 @@ export function ComputerSettings() {
         await overlayAppClient.computers.stop(activeWorkspaceId, computer.id)
       }
       await refresh()
-      toast.success(running ? 'Computer stopped.' : 'Computer started.')
+      toast.success(running ? 'Computer started.' : 'Computer stopped.')
     } catch (value) {
       toast.error(value instanceof Error ? value.message : running ? 'Could not start the computer' : 'Could not stop the computer')
     } finally {
