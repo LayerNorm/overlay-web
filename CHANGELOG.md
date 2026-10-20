@@ -5,6 +5,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 ## Unreleased
 
 - Align Work quick-add with the sidebar scope, keep workspace storage quotas visible, and make sidebar create actions permanent with neutral placeholders, toasts, and centered loading marks.
+- Announce stopped and failed Work runs only when their status transitions live to a terminal state.
 
 - Make both sidebar edges resizable, keep native agent text visible between tool calls while it streams, preserve its generation order after completion and reload, and match the approved agent hierarchy with regular-weight names, aligned icons and flush-left threads. Scale tool Orbs to the wordmark ratio and center them beside wrapped labels. Use the shared avatar popover for outside-click and Escape dismissal.
 
