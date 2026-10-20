@@ -37,7 +37,7 @@ test('image generation request omits empty optional imageUrl', () => {
   )
 })
 
-test('free-tier media upgrade failure marks every slot failed and completes session', async () => {
+test('free-tier media upgrade failure marks the result failed and completes session', async () => {
   const originalWindow = globalThis.window
   Object.defineProperty(globalThis, 'window', {
     configurable: true,
@@ -53,7 +53,6 @@ test('free-tier media upgrade failure marks every slot failed and completes sess
       chatId: 'chat-1',
       exchIdx: 0,
       kind: 'image',
-      activeModels: ['image-a', 'image-b'],
       isChatActive: () => true,
       updateRuntimeUiState: (_chatId: string, updater: (prev: ConversationUiState) => ConversationUiState) => {
         ui = updater(ui)
@@ -66,10 +65,9 @@ test('free-tier media upgrade failure marks every slot failed and completes sess
 
     await new Promise((resolve) => setTimeout(resolve, 5))
     const results = ui.generationResults.get(0)
-    assert.equal(results?.length, 2)
+    assert.equal(results?.length, 1)
     assert.equal(results?.[0]?.status, 'failed')
     assert.equal(results?.[0]?.upgradeRequired, true)
-    assert.equal(results?.[1]?.status, 'failed')
     assert.deepEqual(completed, ['chat-1', true])
   } finally {
     Object.defineProperty(globalThis, 'window', {
