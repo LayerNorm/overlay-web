@@ -179,5 +179,5 @@ test('provider catalog includes older non-recommended models without enabling th
   assert.ok(getModelsByIntelligence(false).some((model) => model.id === oldModel))
   assert.equal(getModel(oldModel)?.id, oldModel)
   assert.ok(!MODEL_RECOMMENDATIONS.text.some((id: string) => id === oldModel))
-  assert.equal(getModelsByIntelligence(true)[0].id, 'openrouter/free')
+  assert.equal(getModelsByIntelligence(true)[0].id, 'overlay-free')
 })
