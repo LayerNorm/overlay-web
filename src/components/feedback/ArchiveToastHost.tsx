@@ -2,13 +2,14 @@
 import { unstyledButton } from '@overlay/ui/control-reset'
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { Toaster, toast, Button } from '@overlay/ui/primitives'
+import { X } from 'lucide-react'
+import { Toaster, toast, Button, IconButton } from '@overlay/ui/primitives'
 import { ARCHIVE_TOAST_EVENT, ARCHIVED_SETTINGS_HREF, type ArchiveToastDetail } from '@/shared/app/archive-toast'
 
 const VISIBLE_MS = 8000
 const ARCHIVE_TOAST_ID = 'archive-toast'
 
-function ArchiveToastContent({ detail, dismiss }: { detail: ArchiveToastDetail; dismiss: () => void }) {
+export function ArchiveToastContent({ detail, dismiss }: { detail: ArchiveToastDetail; dismiss: () => void }) {
   const [busy, setBusy] = useState(false)
   const [failed, setFailed] = useState(false)
 
@@ -27,8 +28,8 @@ function ArchiveToastContent({ detail, dismiss }: { detail: ArchiveToastDetail; 
   }
 
   return (
-    <span role="status" className="contents">
-      <span className="min-w-0 flex-1 truncate">
+    <div role="status" className="flex w-full flex-wrap items-center gap-2">
+      <span className="min-w-0 flex-1 break-words">
         {failed ? 'Could not undo that.' : (detail.summary ?? `Archived “${detail.name}”`)}
       </span>
       {detail.undo && !failed ? (
@@ -39,7 +40,16 @@ function ArchiveToastContent({ detail, dismiss }: { detail: ArchiveToastDetail; 
       <Link href={ARCHIVED_SETTINGS_HREF} onClick={dismiss} className="shrink-0 text-(--muted) underline-offset-2 hover:text-(--foreground) hover:underline">
         View archived
       </Link>
-    </span>
+      <IconButton
+        aria-label="Dismiss archive notification"
+        title="Dismiss notification"
+        size="sm"
+        onClick={dismiss}
+        className="shrink-0"
+      >
+        <X size={14} aria-hidden="true" />
+      </IconButton>
+    </div>
   )
 }
 

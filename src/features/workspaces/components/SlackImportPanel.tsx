@@ -20,6 +20,7 @@ import { Button, EmptyState, Toggle, toast } from '@overlay/ui/primitives'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useAuth } from '@/contexts/AuthContext'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
+import { createOAuthCompletionGuard } from './oauth-completion-guard'
 
 interface SlackChannel {
   id: string
@@ -364,6 +365,7 @@ function useSlackImportPanel() {
 
   // ─── OAuth connect + poll for connection ──────────────────────────────────
   const handleConnect = useCallback(async () => {
+    const consumeCompletion = createOAuthCompletionGuard()
     setOauthPolling(true)
     const oauthTab = window.open('about:blank', '_blank')
     try {
@@ -394,7 +396,7 @@ function useSlackImportPanel() {
             return
           }
           const connected = await checkConnection()
-          if (connected && mountedRef.current) {
+          if (connected && mountedRef.current && consumeCompletion()) {
             toast.success('Slack connected.')
             if (oauthPollRef.current) {
               clearInterval(oauthPollRef.current)

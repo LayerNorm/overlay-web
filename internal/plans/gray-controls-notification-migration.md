@@ -16,3 +16,7 @@
 - Archive Undo remains attached to the archive notification and is not duplicated by a success toast.
 
 The audited code has folder/file move actions but no separate memory-move operation. Those Knowledge file moves now report their outcome.
+
+## Host boundary
+
+Shared modules call the Sonner `toast` API and require a host in each consuming app. The web app mounts its single Toaster through `ArchiveToastHost`. Desktop has its own vendored shared packages and no Toaster today; this migration does not change desktop. A future vendor sync must mount one host there.

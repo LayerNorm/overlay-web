@@ -189,7 +189,6 @@ export function WorkDataProvider({ children }: { children: ReactNode }) {
     // Two changes to one task in flight can finish in either order on the server: check what is true once both settle.
     if (newest.current.has(id)) refreshDue.current = true
     newest.current.set(id, mine)
-    setError(null)
     pending.current += 1
     applyToTask(id, optimistic)
     try {
@@ -213,7 +212,6 @@ export function WorkDataProvider({ children }: { children: ReactNode }) {
   const createTask = useCallback<WorkData['createTask']>(async (input) => {
     const scopeToSend = newItemScope(solo ? 'personal' : scope)
     const startedIn = view.current
-    setError(null)
     pending.current += 1
     try {
       const { item } = await overlayAppClient.work.create({ ...input, ...(scopeToSend ? { scope: scopeToSend } : {}) })

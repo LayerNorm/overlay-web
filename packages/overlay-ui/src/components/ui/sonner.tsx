@@ -11,7 +11,7 @@ function Toaster({ toastOptions, style, ...props }: ToasterProps) {
       closeButton
       offset={{ bottom: 'max(24px, env(safe-area-inset-bottom))', right: 'max(24px, env(safe-area-inset-right))' }}
       mobileOffset={{ bottom: 'max(16px, env(safe-area-inset-bottom))', right: 16, left: 16 }}
-      style={{ zIndex: 80, ...style }}
+      style={{ zIndex: 80, fontFamily: 'inherit', ...style }}
       toastOptions={{
         unstyled: true,
         classNames: {
@@ -19,6 +19,7 @@ function Toaster({ toastOptions, style, ...props }: ToasterProps) {
           content: 'flex min-w-0 flex-1 flex-col gap-1',
           title: 'break-words text-(--foreground)',
           description: 'text-(--muted)',
+          icon: 'relative flex size-4 shrink-0 items-center justify-center',
           actionButton: 'shrink-0 rounded-md bg-secondary px-2.5 py-1.5 font-medium text-secondary-foreground hover:bg-(--button-secondary-hover)',
           cancelButton: 'shrink-0 text-(--muted)',
           closeButton: 'border-(--toast-border) bg-(--toast-background) text-(--muted)',
