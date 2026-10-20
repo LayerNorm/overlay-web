@@ -70,7 +70,7 @@ export function StatusPicker({
     <Picker
       label={`Status: ${WORK_STATUS_LABELS[status]}`}
       disabled={disabled}
-      className={className || 'grid h-6 w-6 place-items-center'}
+      className={className || 'flex h-6 w-6 shrink-0 items-center justify-center'}
       trigger={() => children ?? <StatusIcon status={status} />}
     >
       {(close) => (
@@ -127,7 +127,7 @@ export function OwnerPicker({
     <Picker
       label={`${label}: ${assignee?.displayName ?? 'Unassigned'}`}
       disabled={disabled}
-      className={className || 'grid place-items-center'}
+      className={className || 'flex shrink-0 items-center justify-center'}
       trigger={() => children ?? <Avatar person={assignee} />}
     >
       {(close) => {

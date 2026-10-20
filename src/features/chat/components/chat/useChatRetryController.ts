@@ -2,9 +2,7 @@
 
 import {
   useCallback,
-  type Dispatch,
   type MutableRefObject,
-  type SetStateAction,
 } from 'react'
 import posthog from 'posthog-js'
 import type { UIMessage } from '@/shared/chat/ai-ui-message'
@@ -34,7 +32,6 @@ export function useChatRetryController({
   loadSubscription,
   mode,
   selectedActModel,
-  setComposerNotice,
   shouldScrollRef,
   startSession,
 }: {
@@ -49,7 +46,6 @@ export function useChatRetryController({
   loadSubscription: () => Promise<unknown>
   mode: 'chat' | 'automate'
   selectedActModel: string
-  setComposerNotice: Dispatch<SetStateAction<string | null>>
   shouldScrollRef: MutableRefObject<boolean>
   startSession: (
     chatId: string,
@@ -139,7 +135,7 @@ export function useChatRetryController({
         completeSession,
         loadChats,
         loadSubscription,
-        onError: (error, fallbackMessage) => reportTextStreamError(setComposerNotice, error, fallbackMessage),
+        onError: (error, fallbackMessage) => reportTextStreamError(error, fallbackMessage),
         logPrefix: multiRetry ? 'Act multi retry' : 'Act retry',
       })
     },
@@ -155,7 +151,6 @@ export function useChatRetryController({
       loadSubscription,
       mode,
       selectedActModel,
-      setComposerNotice,
       shouldScrollRef,
       startSession,
     ],

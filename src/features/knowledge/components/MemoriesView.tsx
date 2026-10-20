@@ -5,7 +5,7 @@ import { unstyledButton, unstyledTextarea } from '@overlay/ui/control-reset'
 // with typed transport in @overlay/api-client.
 import { useState, useEffect, useCallback, useMemo, useRef, type ReactNode } from 'react'
 import { Brain, CheckSquare, Copy, Loader2, Plus, Square, Trash2, UserRound, X } from 'lucide-react'
-import { ListboxSelect, Button, Textarea } from '@overlay/ui/primitives'
+import { ListboxSelect, Button, Textarea, toast } from '@overlay/ui/primitives'
 import { Dialog, DialogContent } from '@overlay/ui'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { unwrapPaginatedData } from '@/shared/api/pagination'
@@ -235,7 +235,6 @@ export default function MemoriesView({ userId: _userId, onHeaderStateChange }: M
   const [addType, setAddType] = useState<Memory['type']>('fact')
   const [addImportance, setAddImportance] = useState('3')
   const [isSaving, setIsSaving] = useState(false)
-  const [saveError, setSaveError] = useState<string | null>(null)
   const [pendingSavePreview, setPendingSavePreview] = useState<string | null>(null)
   const actionButtonClass =
     'flex items-center gap-1.5 rounded-md border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-xs text-(--foreground) transition-colors hover:bg-(--border)'
@@ -304,7 +303,6 @@ export default function MemoriesView({ userId: _userId, onHeaderStateChange }: M
     const text = addText.trim();
     if (!text || isSaving) return;
     setIsSaving(true);
-    setSaveError(null);
     const preview = text.length > 160 ? `${text.slice(0, 160)}…` : text;
     setPendingSavePreview(preview);
     try {
@@ -319,7 +317,7 @@ export default function MemoriesView({ userId: _userId, onHeaderStateChange }: M
         error?: string;
       } | null;
       if (!res.ok) {
-        setSaveError(
+        toast.error(
           typeof data?.error === "string"
             ? data.error
             : "Could not save memory",
@@ -330,7 +328,10 @@ export default function MemoriesView({ userId: _userId, onHeaderStateChange }: M
       setAddType("fact");
       setAddImportance("3");
       setShowAdd(false);
+      toast.success('Memory saved.')
       await loadMemories(selectedMemberPrincipalId);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not save memory')
     } finally {
       setPendingSavePreview(null);
       setIsSaving(false);
@@ -338,24 +339,49 @@ export default function MemoriesView({ userId: _userId, onHeaderStateChange }: M
   }
 
   async function handleDelete(memoryId: string) {
-    await overlayAppClient.memory.deleteResponse({ memoryId });
-    setMemories((prev) =>
-      prev.filter((memory) => memory.memoryId !== memoryId),
-    );
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      next.delete(memoryId);
-      return next;
-    });
+    try {
+      const response = await overlayAppClient.memory.deleteResponse({ memoryId })
+      if (!response.ok) {
+        toast.error('Could not delete memory.')
+        return
+      }
+      setMemories((prev) => prev.filter((memory) => memory.memoryId !== memoryId))
+      setSelectedIds((prev) => {
+        const next = new Set(prev)
+        next.delete(memoryId)
+        return next
+      })
+      toast.success('Memory deleted.')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not delete memory.')
+    }
   }
 
   const handleBulkDelete = useCallback(async () => {
     const ids = Array.from(selectedIds)
     if (ids.length === 0) return
-    await Promise.all(ids.map((id) => overlayAppClient.memory.deleteResponse({ memoryId: id })))
-    setMemories((prev) => prev.filter((memory) => !selectedIds.has(memory.memoryId)))
-    setSelectedIds(new Set())
-    setSelectionMode(false)
+    const results = await Promise.all(ids.map(async (id) => {
+      try {
+        const response = await overlayAppClient.memory.deleteResponse({ memoryId: id })
+        return { id, deleted: response.ok }
+      } catch {
+        return { id, deleted: false }
+      }
+    }))
+    const deletedIds = new Set(results.filter((result) => result.deleted).map((result) => result.id))
+    const failedIds = results.filter((result) => !result.deleted).map((result) => result.id)
+    setMemories((prev) => prev.filter((memory) => !deletedIds.has(memory.memoryId)))
+    setSelectedIds(new Set(failedIds))
+    if (failedIds.length > 0) {
+      toast.error(
+        deletedIds.size === 0
+          ? 'Could not delete memories.'
+          : `Deleted ${deletedIds.size} of ${ids.length} memories. ${failedIds.length} could not be deleted.`,
+      )
+    } else {
+      setSelectionMode(false)
+      toast.success(ids.length === 1 ? 'Memory deleted.' : `${ids.length} memories deleted.`)
+    }
   }, [selectedIds, setSelectedIds, setSelectionMode])
 
   async function handleCopy(memory: Memory) {
@@ -386,12 +412,10 @@ export default function MemoriesView({ userId: _userId, onHeaderStateChange }: M
 
   const handleAddMemory = useCallback(() => {
     setShowAdd(true)
-    setSaveError(null)
   }, [])
 
   const handleCloseAddDialog = useCallback(() => {
     setShowAdd(false)
-    setSaveError(null)
   }, [])
 
   const handleDismissAddDialog = useCallback(() => {
@@ -461,7 +485,6 @@ export default function MemoriesView({ userId: _userId, onHeaderStateChange }: M
           addImportance={addImportance}
           onAddImportanceChange={setAddImportance}
           isSaving={isSaving}
-          saveError={saveError}
           onDismiss={handleDismissAddDialog}
           onClose={handleCloseAddDialog}
           onSave={handleAdd}
@@ -606,7 +629,6 @@ function AddMemoryDialog({
   addImportance,
   onAddImportanceChange,
   isSaving,
-  saveError,
   onDismiss,
   onClose,
   onSave,
@@ -619,7 +641,6 @@ function AddMemoryDialog({
   addImportance: string
   onAddImportanceChange: (value: string) => void
   isSaving: boolean
-  saveError: string | null
   onDismiss: () => void
   onClose: () => void
   onSave: () => Promise<void>
@@ -685,11 +706,6 @@ function AddMemoryDialog({
           Saved memories stay as a single record, but the knowledge sidebar can still preview
           them in short segments for easier scanning.
         </p>
-        {saveError ? (
-          <p className="mt-3 text-xs text-red-400" role="alert">
-            {saveError}
-          </p>
-        ) : null}
         <div className="mt-4 flex justify-end gap-2">
           <Button variant="ghost"
             onClick={onClose}

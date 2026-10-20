@@ -22,7 +22,7 @@ import {
   Workflow,
   type LucideIcon,
 } from 'lucide-react'
-import { Button, Input, ListboxSelect } from '@overlay/ui/primitives'
+import { Button, Input, ListboxSelect, toast } from '@overlay/ui/primitives'
 import { ConfirmDialog } from '@overlay/ui/overlays'
 import { useOptionalWorkspace } from '@/contexts/WorkspaceContext'
 import { useWorkspaceChanged } from '@/hooks/use-workspace-changed'
@@ -89,7 +89,6 @@ export function ArchivedSettings() {
   const [selected, setSelected] = useState<Set<string>>(() => new Set())
   const [pendingDelete, setPendingDelete] = useState<ArchivedItem[] | null>(null)
   const [busy, setBusy] = useState(false)
-  const [notice, setNotice] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null)
   const lastToggled = useRef<string | null>(null)
 
   const load = useCallback(async () => {
@@ -139,17 +138,18 @@ export function ArchivedSettings() {
 
   async function restore(targets: ArchivedItem[]) {
     setBusy(true)
-    setNotice(null)
     try {
       if (targets.length === 1) {
         await restoreArchivedItem(targets[0]!, workspaceId)
-        setNotice({ tone: 'ok', text: `Restored “${targets[0]!.name}”.` })
+        toast.success(`Restored “${targets[0]!.name}”.`)
       } else {
         const outcome = await runBulk(targets, 'restore', workspaceId)
-        setNotice({ tone: outcome.failed.length === 0 ? 'ok' : 'error', text: summarizeBulk('restored', outcome) })
+        const summary = summarizeBulk('restored', outcome)
+        if (outcome.failed.length === 0) toast.success(summary)
+        else toast.error(summary)
       }
     } catch {
-      setNotice({ tone: 'error', text: 'Could not restore that. You may not have access to it.' })
+      toast.error('Could not restore that. You may not have access to it.')
     } finally {
       setBusy(false)
       await load()
@@ -160,17 +160,18 @@ export function ArchivedSettings() {
     if (!pendingDelete) return
     const targets = pendingDelete
     setBusy(true)
-    setNotice(null)
     try {
       if (targets.length === 1) {
         await deleteArchivedItem(targets[0]!, workspaceId)
-        setNotice({ tone: 'ok', text: `Deleted “${targets[0]!.name}”.` })
+        toast.success(`Deleted “${targets[0]!.name}”.`)
       } else {
         const outcome = await runBulk(targets, 'delete', workspaceId)
-        setNotice({ tone: outcome.failed.length === 0 ? 'ok' : 'error', text: summarizeBulk('deleted', outcome) })
+        const summary = summarizeBulk('deleted', outcome)
+        if (outcome.failed.length === 0) toast.success(summary)
+        else toast.error(summary)
       }
     } catch {
-      setNotice({ tone: 'error', text: 'Could not delete that. You may not have access to it.' })
+      toast.error('Could not delete that. You may not have access to it.')
     } finally {
       setBusy(false)
       setPendingDelete(null)
@@ -216,12 +217,6 @@ export function ArchivedSettings() {
           Could not load archived {failedSources.join(', ')}. The rest are shown below.
         </p>
       ) : null}
-      {notice ? (
-        <p role={notice.tone === 'error' ? 'alert' : 'status'} className={notice.tone === 'error' ? 'text-xs text-red-500' : 'text-xs text-(--muted)'}>
-          {notice.text}
-        </p>
-      ) : null}
-
       {visible.length === 0 ? (
         <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-(--border) px-6 py-14 text-center">
           <Archive size={28} strokeWidth={1.25} className="text-(--muted-light)" aria-hidden />

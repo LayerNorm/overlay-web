@@ -1,7 +1,7 @@
 'use client'
 
 import { unstyledButton, unstyledInput } from '@overlay/ui/control-reset'
-import { Button, Input } from '@overlay/ui/primitives'
+import { Button, Input, toast } from '@overlay/ui/primitives'
 
 import { useState } from 'react'
 import { Check, Loader2, Pencil, X } from 'lucide-react'
@@ -23,7 +23,6 @@ export function WorkspaceNameEditor({
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(workspace.name)
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
 
   if (!canRename) {
     return <h2 className="truncate text-sm font-semibold text-(--foreground)">{workspace.name}</h2>
@@ -36,13 +35,13 @@ export function WorkspaceNameEditor({
       return
     }
     setBusy(true)
-    setError(null)
     try {
       await client.renameWorkspace(workspace.id, name)
       await refresh()
       setEditing(false)
+      toast.success('Workspace renamed.')
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Could not rename the workspace.')
+      toast.error(caught instanceof Error ? caught.message : 'Could not rename the workspace.')
     } finally {
       setBusy(false)
     }
@@ -87,7 +86,6 @@ export function WorkspaceNameEditor({
           <X size={13} />
         </Button>
       </div>
-      {error ? <p role="alert" className="mt-1 text-xs text-red-500">{error}</p> : null}
     </div>
   )
 }

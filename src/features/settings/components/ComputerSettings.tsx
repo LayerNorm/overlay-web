@@ -1,7 +1,7 @@
 'use client'
 
 import { unstyledButton } from '@overlay/ui/control-reset'
-import { Button } from '@overlay/ui/primitives'
+import { Button, toast } from '@overlay/ui/primitives'
 
 import { useCallback, useEffect, useState } from 'react'
 import { Monitor, Plus, RefreshCw, Square, Play, Trash2 } from 'lucide-react'
@@ -30,7 +30,7 @@ export function ComputerSettings() {
   const [agentNames, setAgentNames] = useState<Record<string, string>>({})
   const [busy, setBusy] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   const refresh = useCallback(async () => {
     if (!activeWorkspaceId) return
@@ -61,9 +61,9 @@ export function ComputerSettings() {
             return { environment, agentName: agentId ? names[agentId] ?? null : null }
           }),
       )
-      setError(null)
+      setLoadError(null)
     } catch (value) {
-      setError(value instanceof Error ? value.message : 'Failed to load computers')
+      setLoadError(value instanceof Error ? value.message : 'Failed to load computers')
     }
   }, [activeWorkspaceId])
 
@@ -80,15 +80,15 @@ export function ComputerSettings() {
   async function provision() {
     if (!activeWorkspaceId || !user) return
     setCreating(true)
-    setError(null)
     try {
       await overlayAppClient.computers.provision(activeWorkspaceId, {
         ownerType: 'user',
         ownerId: user.id,
       })
       await refresh()
+      toast.success('Computer creation started.')
     } catch (value) {
-      setError(value instanceof Error ? value.message : 'Could not create the computer')
+      toast.error(value instanceof Error ? value.message : 'Could not create the computer')
     } finally {
       setCreating(false)
     }
@@ -97,13 +97,12 @@ export function ComputerSettings() {
   async function openDesktop(computerId: string) {
     if (!activeWorkspaceId) return
     setBusy(computerId)
-    setError(null)
     try {
       const ticket = await overlayAppClient.computers.openDesktop(activeWorkspaceId, computerId)
       window.open(ticket.url, '_blank', 'noopener,noreferrer')
       await refresh()
     } catch (value) {
-      setError(value instanceof Error ? value.message : 'Could not open the desktop')
+      toast.error(value instanceof Error ? value.message : 'Could not open the desktop')
     } finally {
       setBusy(null)
     }
@@ -112,12 +111,11 @@ export function ComputerSettings() {
   async function openEnvironmentDesktop(environmentId: string) {
     if (!activeWorkspaceId) return
     setBusy(environmentId)
-    setError(null)
     try {
       const ticket = await overlayAppClient.agentEnvironments.openDesktop(activeWorkspaceId, environmentId)
       window.open(ticket.url, '_blank', 'noopener,noreferrer')
     } catch (value) {
-      setError(value instanceof Error ? value.message : 'Could not open the desktop')
+      toast.error(value instanceof Error ? value.message : 'Could not open the desktop')
     } finally {
       setBusy(null)
     }
@@ -126,7 +124,6 @@ export function ComputerSettings() {
   async function setRunning(computer: Computer, running: boolean) {
     if (!activeWorkspaceId) return
     setBusy(computer.id)
-    setError(null)
     try {
       if (running) {
         await overlayAppClient.computers.start(activeWorkspaceId, computer.id)
@@ -134,8 +131,9 @@ export function ComputerSettings() {
         await overlayAppClient.computers.stop(activeWorkspaceId, computer.id)
       }
       await refresh()
+      toast.success(running ? 'Computer stopped.' : 'Computer started.')
     } catch (value) {
-      setError(value instanceof Error ? value.message : running ? 'Could not start the computer' : 'Could not stop the computer')
+      toast.error(value instanceof Error ? value.message : running ? 'Could not start the computer' : 'Could not stop the computer')
     } finally {
       setBusy(null)
     }
@@ -145,12 +143,12 @@ export function ComputerSettings() {
     if (!activeWorkspaceId) return
     if (!window.confirm(`Delete ${ownerLabel(computer, agentNames)}? Its disk state is destroyed permanently.`)) return
     setBusy(computer.id)
-    setError(null)
     try {
       await overlayAppClient.computers.destroy(activeWorkspaceId, computer.id)
       await refresh()
+      toast.success('Computer deleted.')
     } catch (value) {
-      setError(value instanceof Error ? value.message : 'Could not delete the computer')
+      toast.error(value instanceof Error ? value.message : 'Could not delete the computer')
     } finally {
       setBusy(null)
     }
@@ -167,7 +165,7 @@ export function ComputerSettings() {
         <p className="mt-1 text-sm text-(--muted)">Persistent cloud desktops for you and your agents. Open one to watch or drive the live screen; stopped computers keep their disk.</p>
       </div>
 
-      {error ? <p role="alert" className="text-sm text-red-500">{error}</p> : null}
+      {loadError ? <p role="alert" className="text-sm text-red-500">{loadError}</p> : null}
 
       <div className="space-y-2">
         <div className="flex items-center justify-between">
