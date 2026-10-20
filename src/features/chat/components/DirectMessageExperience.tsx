@@ -13,6 +13,7 @@ import { useConvexAuthToken } from '@/components/providers/ConvexAuthProvider'
 import { useAuth } from '@/contexts/AuthContext'
 import { ChatDropOverlay } from './ChatDropOverlay'
 import { useCollaborationRealtime } from './collaboration/CollaborationRealtimeProvider'
+import { isRoomAgentResponding } from './collaboration/room-message-view'
 import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
 import {
   useDirectMessageRoom,
@@ -201,7 +202,7 @@ export function DirectMessageExperience({
   })
 
   return (
-    <QuestionnaireComposerProvider value={composer.input} readDraft={() => composer.inputRef.current} subscribe={composer.subscribeToInput} disabled={showcase || Boolean(guided) || Boolean(transcript.surfacePlatform)} onChange={(value) => { composer.setInput(value); composer.onComposerInput(value); composer.composerRef.current?.focus() }}>
+    <QuestionnaireComposerProvider value={composer.input} readDraft={() => composer.inputRef.current} subscribe={composer.subscribeToInput} disabled={showcase || Boolean(guided) || Boolean(transcript.surfacePlatform) || isRoomAgentResponding(transcript.messages, room.agentResponding)} onChange={(value) => { composer.setInput(value); composer.onComposerInput(value); composer.composerRef.current?.focus() }}>
       <LinkOpenInterceptor
         preference={appSettings.linkOpenPreference}
         onOpenInOverlay={panels.openLinkPreview}
