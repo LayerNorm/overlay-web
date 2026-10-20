@@ -12,6 +12,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Make conversational onboarding sessions reset-safe with run-scoped transcript recovery and durable summaries of validated user choices.
 
+- Stop the app half-loading after bursts of throttled reads: Work list, Work context, subscription and workspace policy reads get their own per-user rate-limit buckets instead of sharing the default pool. Workspace bootstrap and policy requests now recover an expired session like other app requests. App pages without their own error boundary keep the shell, and both error screens show the error reference.
+
 - Standardize shared controls on the approved gray palette, align Work rows and headers, and move transient action feedback to bottom-right Sonner notifications. Keep upload updates under stable operation ids and preserve Undo, inline validation, and durable recovery states.
 
 - Recover browser API requests from an expired session without a page reload: share one locked session refresh with the auth provider, then retry once with the original mutation idempotency key. Signed-out users, permission denials, and failed refreshes remain failures.
