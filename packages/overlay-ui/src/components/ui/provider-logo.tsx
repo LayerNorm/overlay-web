@@ -23,7 +23,12 @@ const PROVIDER_MARKS: Record<string, ProviderMark> = {
 }
 
 export function providerLabel(provider: string): string {
-  return PROVIDER_MARKS[provider]?.label ?? provider
+  const labels: Record<string, string> = {
+    google: 'Google', xai: 'xAI', spacexai: 'xAI', moonshotai: 'Moonshot AI',
+    minimax: 'MiniMax', alibaba: 'Alibaba', qwen: 'Alibaba', klingai: 'Kling AI',
+  }
+  return labels[provider] ?? PROVIDER_MARKS[provider]?.label
+    ?? provider.replace(/[-_]/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())
 }
 
 export function hasProviderLogo(provider: string): boolean {

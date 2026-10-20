@@ -3,6 +3,9 @@ import test from 'node:test'
 
 import {
   getEnabledChatModels,
+  getModelsByIntelligence,
+  getModel,
+  MODEL_RECOMMENDATIONS,
   getGatewayCatalogRevision,
   IMAGE_MODELS,
   VIDEO_MODELS,
@@ -161,4 +164,17 @@ test('modelUsesAiGatewayTransport only flags models served by the metered gatewa
   assert.equal(modelUsesAiGatewayTransport('anthropic/claude-opus-4.7'), true)
   assert.equal(modelUsesAiGatewayTransport('openrouter/free'), false)
   assert.equal(modelUsesAiGatewayTransport('byok/connection_1/vendor/model-a'), false)
+})
+
+test('provider catalog includes older non-recommended models without enabling them', () => {
+  const oldModel = 'moonshotai/kimi-k2-thinking'
+  registerGatewayCatalogModels([{
+    id: oldModel, gatewayId: oldModel, name: 'Older Kimi', type: 'language',
+    provider: 'moonshotai', tags: [], pricing: { input: '0.0000001', output: '0.0000002' },
+    inputPricePerMillion: 0.1, outputPricePerMillion: 0.2,
+  }])
+  assert.ok(getModelsByIntelligence(false).some((model) => model.id === oldModel))
+  assert.equal(getModel(oldModel)?.id, oldModel)
+  assert.ok(!MODEL_RECOMMENDATIONS.text.some((id: string) => id === oldModel))
+  assert.equal(getModelsByIntelligence(true)[0].id, 'openrouter/free')
 })
