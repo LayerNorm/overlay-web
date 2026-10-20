@@ -89,7 +89,7 @@ export function SidebarResourceSection({
 }
 
 export function SidebarResourceList({ children }: { children: ReactNode }) {
-  return <div className="space-y-0.5">{children}</div>
+  return <div className="space-y-px">{children}</div>
 }
 
 export interface SidebarResourceRowProps extends HTMLAttributes<HTMLDivElement> {

@@ -10,14 +10,14 @@ function join(...classes: Array<string | false | null | undefined>): string {
   return classes.filter(Boolean).join(' ')
 }
 
-/** One composer shell for every chat host: flat fill, no border; hosts own the field and wiring. */
+/** One outlined composer shell for every chat host; hosts own the field and wiring. */
 export function PromptInput({ className, dragging = false, ...props }: ComponentProps<'div'> & { dragging?: boolean }) {
   return (
     <div
       data-slot="prompt-input"
       data-dragging={dragging || undefined}
       className={join(
-        'overflow-visible rounded-2xl bg-(--surface-elevated) transition-colors duration-150',
+        'overflow-visible rounded-2xl border border-(--border) bg-(--surface-elevated) transition-colors duration-150',
         dragging && 'bg-(--surface-muted)',
         className,
       )}
