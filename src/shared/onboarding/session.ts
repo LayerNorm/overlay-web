@@ -75,9 +75,8 @@ export function onboardingProfileSteps(session: Pick<OnboardingSession, 'flowVer
   return session.flowVersion === 2 && !session.member ? ['name', 'about', 'team', 'website', 'daily'] : ['name', 'about', 'daily']
 }
 
-export function onboardingChoices(session: OnboardingSession, initialName: string): { id: string; label: string }[] {
+export function onboardingChoices(session: Pick<OnboardingSession, 'step' | 'suggestions'>): { id: string; label: string }[] {
   const choices: Partial<Record<OnboardingStep, readonly string[]>> = {
-    name: initialName.trim() ? [initialName.trim()] : [],
     about: ['Leadership', 'Engineering', 'Product', 'Design', 'Marketing', 'Operations'],
     team: ['Just me', 'A small team', 'Several teams'],
     website: ["I'll add it later", "I don't have one"],

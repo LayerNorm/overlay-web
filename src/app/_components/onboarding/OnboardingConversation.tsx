@@ -128,7 +128,7 @@ export function OnboardingConversation({ session, initialName, onChange, onShowW
     })
   }
   const openEnded = [...onboardingProfileSteps(session), 'task'].includes(session.step) && !taskDraft
-  const choices = onboardingChoices(session, initialName)
+  const choices = onboardingChoices(session)
   const canGoBack = canGoBackFromProfile(session)
   const footer = (
     <div className={styles.panel}>
