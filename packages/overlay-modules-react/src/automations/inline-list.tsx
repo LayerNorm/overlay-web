@@ -1,5 +1,5 @@
 'use client'
-import { Button, Input } from '@overlay/ui/primitives'
+import { Button, Input, SidebarMenu, SidebarMenuSubButton, SidebarMenuSubItem } from '@overlay/ui/primitives'
 import { unstyledButton, unstyledInput } from '@overlay/ui/control-reset'
 import type { MouseEvent, ReactNode } from 'react'
 import { Loader2, Pencil, Trash2, Workflow } from 'lucide-react'
@@ -60,14 +60,9 @@ export function AutomationsInlineList({
   const deletingAutomationIdSet = new Set(deletingAutomationIds)
 
   return (
-    <div className="space-y-0.5">
+    <SidebarMenu>
       {automations.map((automation) => {
         const status = automationStatus(automation)
-        const iconColor = status.tone === 'error'
-          ? 'text-red-500'
-          : status.tone === 'enabled'
-            ? 'text-green-500'
-            : 'text-(--muted-light)'
         const conversationId = getAutomationConversationId(automation)
         const automationLabel = getAutomationDisplayName(automation)
         const isActive = activeAutomationId === automation._id || activeId === automation._id || activeId === conversationId
@@ -76,24 +71,20 @@ export function AutomationsInlineList({
         const isConfirmingDelete = pendingDeleteAutomationId === automation._id
         const href = automationHref(automation)
         return (
-          <div
+          <SidebarMenuSubItem
             key={automation._id}
             title={automation.lastError || status.label}
             onMouseLeave={() => {
               if (isConfirmingDelete) onClearPendingDelete()
             }}
-            className={`group/automation-row flex h-7 w-full items-center gap-1 rounded-md px-2 py-0 text-xs transition-colors ${
-              isActive
-                ? 'bg-(--surface-subtle) text-(--foreground)'
-                : 'text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)'
-            }`}
+            className="group/automation-row"
           >
             {isEditing ? (
-              <div className="flex min-w-0 flex-1 items-center gap-2 rounded-xs px-0.5">
+              <div className="flex h-8 min-w-0 items-center gap-2.5 rounded-md bg-(--surface-subtle) px-2 text-sm text-(--foreground)">
                 {pendingNavId === automation._id ? (
-                  <Loader2 size={13} strokeWidth={1.75} className="shrink-0 animate-spin text-(--muted)" />
+                  <Loader2 size={16} className="shrink-0 animate-spin" />
                 ) : (
-                  <Workflow size={13} strokeWidth={1.75} className={`shrink-0 ${iconColor}`} />
+                  <Workflow size={16} className="shrink-0" />
                 )}
                 <Input
                   aria-label="Automation name"
@@ -111,26 +102,27 @@ export function AutomationsInlineList({
                     }
                   }}
                   onBlur={() => onCommitRename(automation)}
-                  className={unstyledInput("min-w-0 flex-1 rounded-md border border-(--border) bg-(--surface-elevated) px-2 py-1 text-[11px] text-(--foreground) outline-hidden")}
+                  className={unstyledInput("min-w-0 flex-1 rounded-md border border-(--border) bg-(--surface-elevated) px-2 py-1 text-sm text-(--foreground) outline-hidden")}
                 />
               </div>
             ) : (
-              <Button variant="ghost"
-                type="button"
+              <SidebarMenuSubButton
+                isActive={isActive}
+                aria-current={isActive ? 'page' : undefined}
                 disabled={isDeleting || pendingNavId === automation._id}
                 onClick={() => onNavigateAutomation(automation, href)}
-                className={unstyledButton("flex min-w-0 flex-1 items-center gap-2 rounded-xs px-0.5 text-left disabled:cursor-default disabled:opacity-50")}
+                className={renderRowActions ? 'pr-24' : 'pr-14'}
               >
                 {pendingNavId === automation._id ? (
-                  <Loader2 size={13} strokeWidth={1.75} className="shrink-0 animate-spin text-(--muted)" />
+                  <Loader2 className="animate-spin" aria-hidden />
                 ) : (
-                  <Workflow size={13} strokeWidth={1.75} className={`shrink-0 ${iconColor}`} />
+                  <Workflow aria-hidden />
                 )}
                 <span className="flex-1 truncate text-left">{automationLabel}</span>
-              </Button>
+              </SidebarMenuSubButton>
             )}
             {!isEditing ? (
-              <>
+              <div className="absolute right-1 top-1.5 flex h-5 items-center gap-1 text-(--muted-light)">
                 {isConfirmingDelete ? (
                   <Button variant="ghost"
                     type="button"
@@ -152,27 +144,27 @@ export function AutomationsInlineList({
                       type="button"
                       onClick={(event) => onBeginRename(automation, event)}
                       disabled={isDeleting}
-                      className={unstyledButton("shrink-0 rounded-sm p-0.5 opacity-0 transition-opacity hover:bg-(--border) disabled:opacity-30 group-hover/automation-row:opacity-100 focus-visible:opacity-100")}
+                      className={unstyledButton("flex size-5 shrink-0 items-center justify-center rounded-md opacity-0 transition-opacity hover:bg-(--surface-elevated) hover:text-(--foreground) disabled:opacity-30 group-hover/automation-row:opacity-100 group-focus-within/automation-row:opacity-100")}
                       aria-label="Rename automation"
                     >
-                      <Pencil size={11} />
+                      <Pencil size={14} />
                     </Button>
                     <Button variant="ghost"
                       type="button"
                       onClick={(event) => onRequestDelete(automation, event)}
                       disabled={isDeleting}
-                      className={unstyledButton("shrink-0 rounded-sm p-0.5 opacity-0 transition-opacity hover:bg-(--border) hover:text-red-500 disabled:opacity-30 group-hover/automation-row:opacity-100 focus-visible:opacity-100")}
+                      className={unstyledButton("flex size-5 shrink-0 items-center justify-center rounded-md opacity-0 transition-opacity hover:bg-(--surface-elevated) hover:text-red-500 disabled:opacity-30 group-hover/automation-row:opacity-100 group-focus-within/automation-row:opacity-100")}
                       aria-label="Delete automation"
                     >
-                      <Trash2 size={11} />
+                      <Trash2 size={14} />
                     </Button>
                   </>
                 )}
-              </>
+              </div>
             ) : null}
-          </div>
+          </SidebarMenuSubItem>
         )
       })}
-    </div>
+    </SidebarMenu>
   )
 }
