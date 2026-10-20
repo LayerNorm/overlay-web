@@ -157,7 +157,7 @@ test('runActModelAttempts describes the full budget fallback chain', async () =>
   assert.equal(result, 'ok')
   assert.deepEqual(events, [
     'fallback:anthropic/claude-opus-4.7->z-ai/glm-5.1:openrouter/free,anthropic/claude-opus-4.7',
-    'run:z-ai/glm-5.1:Free Router and Claude Opus 4.7 exceeded remaining budget, switching to GLM 5.1.',
+    'run:z-ai/glm-5.1:OpenRouter Free and Claude Opus 4.7 exceeded remaining budget, switching to GLM 5.1.',
   ])
 })
 

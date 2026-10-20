@@ -1,4 +1,4 @@
-import { FREE_TIER_AUTO_MODEL_ID } from './models'
+import { FREE_TIER_AUTO_MODEL_ID, OPENROUTER_FREE_MODEL_ID } from './models'
 
 /**
  * Highest quality first — used when picking a default Act model from a
@@ -32,6 +32,7 @@ export const CHAT_MODEL_QUALITY_PRIORITY: readonly string[] = [
 export function isFreeTierModel(modelId: string | undefined): modelId is string {
   if (!modelId) return false
   if (modelId === FREE_TIER_AUTO_MODEL_ID) return true
+  if (modelId === OPENROUTER_FREE_MODEL_ID) return true
   return modelId.endsWith(':free')
 }
 

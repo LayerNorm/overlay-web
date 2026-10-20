@@ -309,8 +309,6 @@ export function useChatExperienceController({
     modelCatalogReady: !byokModelsLoading,
     chatPrefsHydrated,
     onlyAllowZdrModels: settings.onlyAllowZdrModels,
-    enabledModelIds: settings.enabledChatModelIds,
-    modelOrder: settings.modelOrder,
     pathname,
     router,
     searchParams,
@@ -1068,6 +1066,7 @@ export function useChatExperienceController({
 
   return {
     chats,
+    favoriteScope: authUser?.id ?? userId,
     activeChatId,
     activeChatHydrated,
     idParam,

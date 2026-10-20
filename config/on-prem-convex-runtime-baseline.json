@@ -155,6 +155,7 @@
     "src/app/api/v1/memory/route.ts",
     "src/app/api/v1/mention-search/route.ts",
     "src/app/api/v1/model-catalog/route.ts",
+    "src/app/api/v1/models/overlay-free/refresh/route.ts",
     "src/app/api/v1/notebook-agent/route.ts",
     "src/app/api/v1/notes/route.ts",
     "src/app/api/v1/onboarding/complete/route.ts",
@@ -284,6 +285,11 @@
       "target": "internal.webhooks.deliveryRunner.runMinuteTick"
     },
     {
+      "cadence": "{ minuteUTC: 0 }",
+      "name": "overlay-free catalog refresh",
+      "target": "internal.platform.overlayFreeRefresh.runTick"
+    },
+    {
       "cadence": "{ minutes: 5 }",
       "name": "pending automatic top-up settlement",
       "target": "internal.billing.autoTopUpReconcile.reconcilePendingAutoTopUps"
@@ -375,6 +381,8 @@
     "src/server/agents/run-agent-drive-version-cleanup.ts",
     "src/server/ai/catalog/ConvexModelCatalogRepository.ts",
     "src/server/ai/catalog/index.ts",
+    "src/server/ai/gateway/overlay-free-refresh.ts",
+    "src/server/ai/gateway/overlay-free-router.ts",
     "src/server/ai/provider-connections/ConvexProviderConnectionRepository.ts",
     "src/server/ai/provider-connections/index.ts",
     "src/server/app-api/v1/bootstrap/route.ts",

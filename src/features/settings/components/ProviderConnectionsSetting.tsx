@@ -66,7 +66,7 @@ export function ProviderConnectionsSetting() {
       <div className="flex items-center justify-between gap-3">
         <div>
           <p className="text-sm text-(--muted)">
-            Connect your own AI provider keys. Expand a provider to choose which models appear in your model dropdown.
+            Connect your own AI provider keys and manage which models may use them. Overlay catalog models are available directly in the picker.
           </p>
         </div>
         <Button variant="secondary" size="sm" className="shrink-0"

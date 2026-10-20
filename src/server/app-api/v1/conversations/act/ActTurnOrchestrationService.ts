@@ -16,8 +16,8 @@ import {
   assertUserCanUseByokModel,
   getLanguageModel,
   getGatewayModelId,
-  getOpenRouterLanguageModelCapturingRoutedModel,
 } from '@/server/ai/model-runtime'
+import { createRuntimeOverlayFreeLanguageModel } from '@/server/ai/gateway/overlay-free-router'
 import { modelSupportsZeroDataRetention, modelUsesAiGatewayTransport } from '@/shared/ai/gateway/model-data'
 import { isKimiK3ModelId } from '@/shared/ai/gateway/model-types'
 import {
@@ -32,6 +32,8 @@ import { uploadFilePartsForModel } from '@/server/ai/file-upload'
 import {
   FREE_TIER_AUTO_MODEL_ID,
   FREE_TIER_DEFAULT_MODEL_ID,
+  isFreeTierChatModelId,
+  OPENROUTER_FREE_MODEL_ID,
 } from '@/shared/ai/gateway/model-types'
 import { normalizeChatToolRequestIds } from '@/shared/chat/tool-requests'
 import { MAX_TOOL_STEPS_ACT } from '@/server/tools/tools/policy'
@@ -962,7 +964,7 @@ export async function executeActTurn(
         const totalInputTokens = usage?.inputTokens ?? 0
         const totalOutputTokens = usage?.outputTokens ?? 0
         // Fallback: if the fetch-interceptor did not capture the model yet, try the step response.
-        if (attemptModelId === FREE_TIER_AUTO_MODEL_ID && !streamedRoutedModelId) {
+        if (isFreeTierChatModelId(attemptModelId) && !streamedRoutedModelId) {
           const rid = event.steps.at(-1)?.response.modelId
           if (typeof rid === 'string' && rid) streamedRoutedModelId = rid
         }
@@ -1058,7 +1060,7 @@ export async function executeActTurn(
           metadata.sourceCitations = sourceCitationMap
         }
         if (
-          attemptModelId === FREE_TIER_AUTO_MODEL_ID &&
+          isFreeTierChatModelId(attemptModelId) &&
           part.type === 'finish' &&
           streamedRoutedModelId
         ) {
@@ -1255,12 +1257,12 @@ export async function executeActTurn(
     }
 
     const languageModelForAttempt = async (attemptModelId: string): Promise<LanguageModel> => {
-      if (attemptModelId === FREE_TIER_AUTO_MODEL_ID) {
-        return getOpenRouterLanguageModelCapturingRoutedModel(
-          FREE_TIER_AUTO_MODEL_ID,
-          accessToken,
-          (m) => { streamedRoutedModelId = m },
-        )
+      if (isFreeTierChatModelId(attemptModelId)) {
+        return createRuntimeOverlayFreeLanguageModel({
+          modelId: attemptModelId,
+          fallbackOnly: attemptModelId === OPENROUTER_FREE_MODEL_ID,
+          onModelCaptured: (m) => { streamedRoutedModelId = m },
+        })
       }
 
       return getLanguageModel(attemptModelId, accessToken, userId, {
@@ -1442,4 +1444,3 @@ function safeGatewayModelId(modelId: string): string | null {
     return null
   }
 }
-
