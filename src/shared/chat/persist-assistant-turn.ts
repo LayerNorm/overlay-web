@@ -308,16 +308,24 @@ export function buildAssistantPersistenceFromSteps<TOOLS extends ToolSet>(
         .filter(Boolean)
         .join('\n\n')
     }
-    if (reasoningText) {
-      parts.push({
-        type: 'reasoning',
-        text: normalizeAgentAssistantText(reasoningText),
-        state: 'done',
-      })
-    }
-
-    const calls = step.toolCalls ?? []
-    for (const tc of calls) {
+    // SDK content preserves generation order; the convenience fields group by type.
+    const orderedContent = step.content?.length ? step.content : [
+      ...(reasoningText ? [{ type: 'reasoning' as const, text: reasoningText }] : []),
+      ...(step.toolCalls ?? []).map((call) => ({ ...call, type: 'tool-call' as const })),
+      ...(step.text?.trim() ? [{ type: 'text' as const, text: step.text }] : []),
+    ]
+    for (const tc of orderedContent) {
+      if (tc.type === 'text' || tc.type === 'reasoning') {
+        if (tc.text.trim()) {
+          parts.push({
+            type: tc.type,
+            text: normalizeAgentAssistantText(tc.text.trim()),
+            ...(tc.type === 'reasoning' ? { state: 'done' } : {}),
+          })
+        }
+        continue
+      }
+      if (tc.type !== 'tool-call') continue
       const result = allToolResultsById.get(tc.toolCallId)
       const toolOutput = result
         ? 'output' in result
@@ -349,9 +357,6 @@ export function buildAssistantPersistenceFromSteps<TOOLS extends ToolSet>(
           toolOutput: clampNestingDepth(toolOutput),
         },
       })
-    }
-    if (step.text?.trim()) {
-      parts.push({ type: 'text', text: normalizeAgentAssistantText(step.text.trim()) })
     }
   }
   if (!parts.some((part) => part.type === 'text') && content) {
