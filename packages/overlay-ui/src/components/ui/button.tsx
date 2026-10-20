@@ -12,8 +12,8 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        primary: 'bg-primary text-primary-foreground hover:opacity-90',
-        secondary: 'border border-(--border) bg-secondary text-secondary-foreground hover:bg-(--border)',
+        primary: 'bg-primary text-primary-foreground hover:bg-(--button-primary-hover)',
+        secondary: 'border border-(--button-secondary-border) bg-secondary text-secondary-foreground hover:bg-(--button-secondary-hover)',
         outline: 'border border-(--border) bg-transparent text-(--foreground) hover:bg-(--surface-subtle)',
         ghost: 'bg-transparent text-muted-foreground hover:bg-(--surface-subtle) hover:text-(--foreground)',
         link: 'bg-transparent text-(--foreground) underline-offset-2 hover:underline',

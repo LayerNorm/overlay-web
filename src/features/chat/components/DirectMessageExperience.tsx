@@ -21,7 +21,6 @@ import {
   RoomDialogs,
   RoomHeaderActions,
   RoomHeaderLeading,
-  RoomNoticeBar,
   RoomRealtimeSubscriptions,
   RoomSidePanel,
   SurfaceReadOnlyComposer,
@@ -179,7 +178,7 @@ export function DirectMessageExperience({
         rightPanelWidth={panels.shellRightPanel ? panels.shellRightPanelWidth : externalRightPanel ? 'lg' : 380}
         rightPanelMode={panels.shellRightPanel ? panels.shellRightPanelMode : (externalRightPanelMode ?? 'docked')}
         onRightPanelClose={rightPanelClose}
-        onRightPanelResize={panels.shellRightPanelResize}
+        onRightPanelResize={panels.shellRightPanel ? panels.shellRightPanelResize : undefined}
         rightPanelOverlayLabel={externalRightPanel ? externalRightPanelLabel : undefined}
       >
         <div
@@ -218,7 +217,6 @@ export function DirectMessageExperience({
             )}
           />
           <AppScreenBody padding="none" maxWidth="none" scroll="hidden" className="flex min-h-0 flex-1 flex-col">
-            <RoomNoticeBar notice={room.notice} onDismiss={() => room.setNotice(null)} />
             <RoomTranscript
               transcript={transcript}
               readMarkers={room.readMarkers}

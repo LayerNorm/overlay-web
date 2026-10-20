@@ -1,6 +1,9 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import type { Dispatch, SetStateAction } from 'react'
+import { toast } from '@overlay/ui/primitives'
+import { beginKnowledgeUploadToast } from './upload-toast'
 import {
   canMoveKnowledgeFile,
   collectKnowledgeFileSubtreeIds,
@@ -187,12 +190,10 @@ export function useSurfaceMemories({
   const [showAddMemory, setShowAddMemory] = useState(false)
   const [addText, setAddText] = useState('')
   const [isSavingMemory, setIsSavingMemory] = useState(false)
-  const [memorySaveError, setMemorySaveError] = useState<string | null>(null)
   const [memorySavePendingPreview, setMemorySavePendingPreview] = useState<string | null>(null)
   const [showImportMemory, setShowImportMemory] = useState(false)
   const [importText, setImportText] = useState('')
   const [isImporting, setIsImporting] = useState(false)
-  const [importMemoryError, setImportMemoryError] = useState<string | null>(null)
   const [importPendingPreview, setImportPendingPreview] = useState<string | null>(null)
   const [importPromptCopied, setImportPromptCopied] = useState(false)
   const [memorySearchOpen, setMemorySearchOpen] = useState(false)
@@ -229,18 +230,20 @@ export function useSurfaceMemories({
     const text = addText.trim()
     if (!text || isSavingMemory) return
     setIsSavingMemory(true)
-    setMemorySaveError(null)
     const preview = knowledgePendingPreview(text)
     setMemorySavePendingPreview(preview)
     try {
       const result = await memoryPort.create(text)
       if (!result.ok) {
-        setMemorySaveError(result.error ?? 'Could not save memory')
+        toast.error(result.error ?? 'Could not save memory')
         return
       }
       setAddText('')
       setShowAddMemory(false)
+      toast.success('Memory saved.')
       await loadMemories()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not save memory')
     } finally {
       setMemorySavePendingPreview(null)
       setIsSavingMemory(false)
@@ -251,18 +254,20 @@ export function useSurfaceMemories({
     const text = importText.trim()
     if (!text || isImporting) return
     setIsImporting(true)
-    setImportMemoryError(null)
     const preview = knowledgePendingPreview(text)
     setImportPendingPreview(preview)
     try {
       const result = await memoryPort.create(text)
       if (!result.ok) {
-        setImportMemoryError(result.error ?? 'Could not import memory')
+        toast.error(result.error ?? 'Could not import memory')
         return
       }
       setImportText('')
       setShowImportMemory(false)
+      toast.success('Memory imported.')
       await loadMemories()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not import memory')
     } finally {
       setImportPendingPreview(null)
       setIsImporting(false)
@@ -270,12 +275,20 @@ export function useSurfaceMemories({
   }
 
   async function handleDeleteMemory(memoryId: string) {
-    if (!(await memoryPort.delete(memoryId))) return
-    if (selectedMemory?.memoryId === memoryId) {
-      setSelectedMemory(null)
-      updateQuery({ memory: null })
+    try {
+      if (!(await memoryPort.delete(memoryId))) {
+        toast.error('Could not delete memory.')
+        return
+      }
+      if (selectedMemory?.memoryId === memoryId) {
+        setSelectedMemory(null)
+        updateQuery({ memory: null })
+      }
+      setMemories((prev) => prev.filter((m) => m.memoryId !== memoryId))
+      toast.success('Memory deleted.')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not delete memory.')
     }
-    setMemories((prev) => prev.filter((m) => m.memoryId !== memoryId))
   }
 
   function openMemory(memory: MemoryListItem) {
@@ -304,16 +317,12 @@ export function useSurfaceMemories({
     addText,
     setAddText,
     isSavingMemory,
-    memorySaveError,
-    setMemorySaveError,
     memorySavePendingPreview,
     showImportMemory,
     setShowImportMemory,
     importText,
     setImportText,
     isImporting,
-    importMemoryError,
-    setImportMemoryError,
     importPendingPreview,
     importPromptCopied,
     setImportPromptCopied,
@@ -547,8 +556,9 @@ export function useFolderBrowser({
     if (!canMoveKnowledgeFile(files, fileId, parentId)) return
     try {
       await adapters.repository.move({ id: fileId, parentId })
-    } catch {
-      // Keep the previous hierarchy when the host rejects the move.
+      toast.success('File moved.')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not move file.')
     }
   }
 
@@ -744,17 +754,33 @@ export function useSelectMode({
 
   async function bulkDeleteMemories() {
     if (selectedMemoryIds.size === 0 || bulkDeleting) return
+    const ids = [...selectedMemoryIds]
     setBulkDeleting(true)
     try {
-      await Promise.all(
-        [...selectedMemoryIds].map((id) => memoryPort.delete(id)),
-      )
-      if (selectedMemory && selectedMemoryIds.has(selectedMemory.memoryId)) {
+      const results = await Promise.all(ids.map(async (id) => ({
+        id,
+        deleted: await memoryPort.delete(id).catch(() => false),
+      })))
+      const deletedIds = new Set(results.filter((result) => result.deleted).map((result) => result.id))
+      const failedIds = results.filter((result) => !result.deleted).map((result) => result.id)
+      if (selectedMemory && deletedIds.has(selectedMemory.memoryId)) {
         setSelectedMemory(null)
         updateQuery({ memory: null })
       }
-      await loadMemories()
-      exitSelectMode()
+      if (deletedIds.size > 0) await loadMemories()
+      if (failedIds.length > 0) {
+        setSelectedMemoryIds(new Set(failedIds))
+        toast.error(
+          deletedIds.size === 0
+            ? 'Could not delete memories.'
+            : `Deleted ${deletedIds.size} of ${ids.length} memories. ${failedIds.length} could not be deleted.`,
+        )
+      } else {
+        toast.success(ids.length === 1 ? 'Memory deleted.' : `${ids.length} memories deleted.`)
+        exitSelectMode()
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not delete memories.')
     } finally {
       setBulkDeleting(false)
     }
@@ -842,70 +868,116 @@ async function pickedFileToBrowserFile(picked: KnowledgePickedFile): Promise<Fil
   return file
 }
 
+interface UploadBatchResult {
+  uploadedCount: number
+  errorMessage: string | null
+}
+
+async function uploadFlatBatch(
+  list: readonly File[],
+  filePort: SharedKnowledgeFilePort,
+  parentId: string | null,
+  setFiles: Dispatch<SetStateAction<FileNode[]>>,
+): Promise<UploadBatchResult> {
+  let uploadedCount = 0
+  try {
+    for (const file of list) {
+      const result = await uploadSingleFile(filePort, file, parentId)
+      if (!result.ok) return { uploadedCount, errorMessage: result.error ?? 'One or more files failed to upload.' }
+      uploadedCount += 1
+      if (result.file) {
+        setFiles((current) => [...current.filter((node) => node._id !== result.file!._id), result.file!])
+        filePort.entityChanged('file', result.file._id, 'created')
+      }
+    }
+    return { uploadedCount, errorMessage: null }
+  } catch (error) {
+    return {
+      uploadedCount,
+      errorMessage: error instanceof Error ? error.message : 'Could not upload files.',
+    }
+  }
+}
+
+async function uploadFolderBatch(
+  list: readonly File[],
+  adapters: KnowledgeSurfaceAdapters,
+  filePort: SharedKnowledgeFilePort,
+  parentId: string | null,
+  setFiles: Dispatch<SetStateAction<FileNode[]>>,
+): Promise<UploadBatchResult> {
+  let uploadedCount = 0
+  const folders = new Map<string, string>()
+  try {
+    for (const file of list) {
+      const parts = file.webkitRelativePath.split('/').filter(Boolean)
+      for (let index = 0; index < parts.length - 1; index += 1) {
+        const folderPath = parts.slice(0, index + 1).join('/')
+        if (folders.has(folderPath)) continue
+        const parentPath = index === 0 ? null : parts.slice(0, index).join('/')
+        // Sequential on purpose: nested folders need their parent's id,
+        // which only exists after the earlier create resolves.
+        // react-doctor-disable-next-line react-doctor/async-await-in-loop
+        const created = await adapters.repository.create({
+          name: parts[index] ?? 'Folder',
+          kind: 'folder',
+          parentId: parentPath ? (folders.get(parentPath) ?? null) : parentId,
+        })
+        folders.set(folderPath, created.id)
+      }
+      const parentFolderPath = parts.slice(0, -1).join('/')
+      const result = await uploadSingleFile(filePort, file, folders.get(parentFolderPath) ?? parentId)
+      if (!result.ok) return { uploadedCount, errorMessage: result.error ?? 'One or more files failed to upload.' }
+      uploadedCount += 1
+      if (result.file) setFiles((current) => [...current.filter((node) => node._id !== result.file!._id), result.file!])
+    }
+    return { uploadedCount, errorMessage: null }
+  } catch (error) {
+    return {
+      uploadedCount,
+      errorMessage: error instanceof Error ? error.message : 'Could not upload files.',
+    }
+  }
+}
+
+function settleUploadToast(
+  uploadToast: ReturnType<typeof beginKnowledgeUploadToast>,
+  result: UploadBatchResult,
+  total: number,
+  successMessage: string,
+) {
+  if (!result.errorMessage) {
+    uploadToast.success(successMessage)
+    return
+  }
+  const summary = result.uploadedCount > 0
+    ? `Uploaded ${result.uploadedCount} of ${total} files. ${result.errorMessage}`
+    : result.errorMessage
+  uploadToast.error(summary)
+}
+
 export function useFileUploads({
   adapters,
   filePort,
   activeFolder,
   setFiles,
-  setFileUploadPending,
-  setFileUploadError,
 }: {
   adapters: KnowledgeSurfaceAdapters
   filePort: SharedKnowledgeFilePort
   activeFolder: FileNode | null
   setFiles: React.Dispatch<React.SetStateAction<FileNode[]>>
-  setFileUploadPending: React.Dispatch<React.SetStateAction<{ label: string } | null>>
-  setFileUploadError: React.Dispatch<React.SetStateAction<string | null>>
 }) {
   const fileUploadRef = useRef<HTMLInputElement>(null)
 
   async function uploadFiles(list: readonly File[], folderUpload: boolean) {
     if (list.length === 0) return
-    setFileUploadError(null)
-    setFileUploadPending({ label: list.length === 1 ? list[0]!.name : `${folderUpload ? 'Folder' : 'Files'} · ${list.length} files` })
-    try {
-      if (!folderUpload) {
-        for (const file of list) {
-          const result = await uploadSingleFile(filePort, file, activeFolder?._id ?? null)
-          if (!result.ok) {
-            setFileUploadError(result.error ?? 'One or more files failed to upload.')
-            break
-          }
-          if (result.file) {
-            setFiles((current) => [...current.filter((node) => node._id !== result.file!._id), result.file!])
-            filePort.entityChanged('file', result.file._id, 'created')
-          }
-        }
-      } else {
-        const folders = new Map<string, string>()
-        for (const file of list) {
-          const parts = file.webkitRelativePath.split('/').filter(Boolean)
-          for (let index = 0; index < parts.length - 1; index += 1) {
-            const folderPath = parts.slice(0, index + 1).join('/')
-            if (folders.has(folderPath)) continue
-            const parentPath = index === 0 ? null : parts.slice(0, index).join('/')
-            // Sequential on purpose: nested folders need their parent's id,
-            // which only exists after the earlier create resolves.
-            // react-doctor-disable-next-line react-doctor/async-await-in-loop
-            const created = await adapters.repository.create({
-              name: parts[index] ?? 'Folder',
-              kind: 'folder',
-              parentId: parentPath ? (folders.get(parentPath) ?? null) : (activeFolder?._id ?? null),
-            })
-            folders.set(folderPath, created.id)
-          }
-          const parentFolderPath = parts.slice(0, -1).join('/')
-          const result = await uploadSingleFile(filePort, file, folders.get(parentFolderPath) ?? activeFolder?._id ?? null)
-          if (!result.ok) {
-            setFileUploadError(result.error ?? 'One or more files failed to upload.')
-            break
-          }
-          if (result.file) setFiles((current) => [...current.filter((node) => node._id !== result.file!._id), result.file!])
-        }
-      }
-    } finally {
-      setFileUploadPending(null)
-    }
+    const label = list.length === 1 ? list[0]!.name : `${folderUpload ? 'Folder' : 'Files'} · ${list.length} files`
+    const uploadToast = beginKnowledgeUploadToast(toast, `Uploading ${label}…`)
+    const result = folderUpload
+      ? await uploadFolderBatch(list, adapters, filePort, activeFolder?._id ?? null, setFiles)
+      : await uploadFlatBatch(list, filePort, activeFolder?._id ?? null, setFiles)
+    const successMessage = list.length === 1 && !folderUpload ? `Uploaded ${list[0]!.name}.` : `Uploaded ${list.length} files.`
+    settleUploadToast(uploadToast, result, list.length, successMessage)
   }
 
   async function handleNativePick(folder: boolean) {
@@ -919,20 +991,21 @@ export function useFileUploads({
   async function handleUploadFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
-    setFileUploadError(null)
-    setFileUploadPending({ label: file.name })
+    const uploadToast = beginKnowledgeUploadToast(toast, `Uploading ${file.name}…`)
     try {
       const result = await uploadSingleFile(filePort, file, activeFolder?._id ?? null)
       if (!result.ok) {
-        setFileUploadError(result.error ?? 'Upload failed. Check the file and try again.')
+        uploadToast.error(result.error ?? 'Upload failed. Check the file and try again.')
         return
       }
       if (result.file) {
         setFiles((current) => [...current.filter((node) => node._id !== result.file!._id), result.file!])
         filePort.entityChanged('file', result.file._id, 'created')
       }
+      uploadToast.success(`Uploaded ${file.name}.`)
+    } catch (error) {
+      uploadToast.error(error instanceof Error ? error.message : 'Could not upload file.')
     } finally {
-      setFileUploadPending(null)
       e.target.value = ''
     }
   }
@@ -949,14 +1022,10 @@ export function useFolderUpload({
   adapters,
   filePort,
   setFiles,
-  setFileUploadPending,
-  setFileUploadError,
 }: {
   adapters: KnowledgeSurfaceAdapters
   filePort: SharedKnowledgeFilePort
   setFiles: React.Dispatch<React.SetStateAction<FileNode[]>>
-  setFileUploadPending: React.Dispatch<React.SetStateAction<{ label: string } | null>>
-  setFileUploadError: React.Dispatch<React.SetStateAction<string | null>>
 }) {
   const folderUploadRef = useRef<HTMLInputElement>(null)
 
@@ -964,8 +1033,10 @@ export function useFolderUpload({
     const uploadedFiles = e.target.files
     if (!uploadedFiles) return
     const list = Array.from(uploadedFiles)
-    setFileUploadError(null)
-    setFileUploadPending({ label: list.length === 1 ? list[0]!.name : `Folder · ${list.length} files` })
+    if (list.length === 0) return
+    const uploadToast = beginKnowledgeUploadToast(toast, `Uploading Folder · ${list.length} files…`)
+    let uploadedCount = 0
+    let errorMessage: string | null = null
     try {
       const folders = new Map<string, string>()
       for (const file of list) {
@@ -990,16 +1061,26 @@ export function useFolderUpload({
         const parentId = folders.get(parentFolderPath) ?? null
         const result = await uploadSingleFile(filePort, file, parentId)
         if (!result.ok) {
-          setFileUploadError(result.error ?? 'One or more files failed to upload.')
+          errorMessage = result.error ?? 'One or more files failed to upload.'
           break
         }
+        uploadedCount += 1
         if (result.file) {
           setFiles((current) => [...current.filter((node) => node._id !== result.file!._id), result.file!])
           filePort.entityChanged('file', result.file._id, 'created')
         }
       }
+    } catch (error) {
+      errorMessage = error instanceof Error ? error.message : 'Could not upload folder.'
     } finally {
-      setFileUploadPending(null)
+      if (errorMessage) {
+        const summary = uploadedCount > 0
+          ? `Uploaded ${uploadedCount} of ${list.length} files. ${errorMessage}`
+          : errorMessage
+        uploadToast.error(summary)
+      } else {
+        uploadToast.success(`Uploaded ${list.length} files.`)
+      }
       e.target.value = ''
     }
   }

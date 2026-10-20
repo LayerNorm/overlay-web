@@ -10,8 +10,8 @@ import type {
   WorkspaceAgentDirectoryItem,
   WorkspaceAgentVisibility,
 } from '@overlay/workspace-contracts'
-import { Button, DialogFrame, Input, ListboxSelect, SegmentedControl, Textarea, Toggle } from '@overlay/ui/primitives'
-import { getEnabledChatModels, getGatewayCatalogRevision } from '@/shared/ai/gateway/model-data'
+import { Button, DialogFrame, Input, ListboxSelect, SegmentedControl, Textarea, Toggle, toast } from '@overlay/ui/primitives'
+import { getModelsByIntelligence, getGatewayCatalogRevision } from '@/shared/ai/gateway/model-data'
 import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import {
   AGENT_TOOL_GROUPS,
@@ -23,7 +23,6 @@ import { rememberAgentOpened } from '@/shared/agents/last-agent-by-workspace'
 import { dispatchAgentDirectoryChanged } from '@/shared/workspace/sidebar-events'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useGatewayModelCatalog } from '@/components/providers/useGatewayModelCatalog'
-import { useAppSettings } from '@/components/providers/AppSettingsProvider'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 import { buildWorkspaceAgentInput } from '../lib/agent-editor-input'
 import { AgentAvatarPicker } from './AgentAvatarPicker'
@@ -284,15 +283,13 @@ export function NewAgentFields({ draft, onChange, modelOptions, computersAvailab
 
 function useModelOptions(): ModelOption[] {
   const { revision } = useGatewayModelCatalog({ enabled: true })
-  const { settings } = useAppSettings()
-  const enabledModelIds = settings.enabledChatModelIds
   return useMemo(() => {
     void revision
     void getGatewayCatalogRevision()
-    return getEnabledChatModels(enabledModelIds, false)
+    return getModelsByIntelligence(false)
       .filter((model) => model.id !== 'nvidia/nemotron-nano-9b-v2')
       .map((model) => ({ value: model.id, label: model.name }))
-  }, [enabledModelIds, revision])
+  }, [revision])
 }
 
 /** Creates the agent (and its computer when asked for), then refreshes the roster. */
@@ -351,7 +348,6 @@ export function NewAgentDialog({ open, workspaceId, onClose, onCreated, onOpenMa
   const [rawDraft, setDraft] = useState(initialNewAgentDraft)
   const draft = { ...rawDraft, modelId: resolveDraftModelId(rawDraft.modelId, modelOptions) }
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const update = useCallback((patch: Partial<NewAgentDraft>) => setDraft((current) => ({ ...current, ...patch })), [])
   const cloud = useCloudAgentCreate({
     workspaceId,
@@ -370,7 +366,6 @@ export function NewAgentDialog({ open, workspaceId, onClose, onCreated, onOpenMa
       return
     }
     setDraft(initialNewAgentDraft())
-    setError(null)
     onClose()
   }
 
@@ -387,19 +382,19 @@ export function NewAgentDialog({ open, workspaceId, onClose, onCreated, onOpenMa
       return
     }
     setBusy(true)
-    setError(null)
     try {
       const { agent, computerError } = await createAgentFromDraft(workspaceId, draft, computersAvailable)
       setDraft(initialNewAgentDraft())
+      toast.success('Agent created.')
       onCreated(agent, computerError)
     } catch (createError) {
-      setError(createError instanceof Error ? createError.message : 'Could not create the agent.')
+      toast.error(createError instanceof Error ? createError.message : 'Could not create the agent.')
     } finally {
       setBusy(false)
     }
   }
 
-  const shownError = error ?? cloud.error
+  const shownError = cloud.error
   const failed = cloud.view?.phase === 'failed'
 
   return (

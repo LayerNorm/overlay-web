@@ -1,6 +1,6 @@
 'use client'
 import { unstyledButton, unstyledInput } from '@overlay/ui/control-reset'
-import { Button, Input } from '@overlay/ui/primitives'
+import { Button, Input, toast } from '@overlay/ui/primitives'
 
 import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
@@ -70,7 +70,7 @@ export function DeleteAccountSection({ isLandingDark }: { isLandingDark: boolean
       window.location.href = '/?account_deleted=1'
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : 'Could not delete your account.'
-      setError(message)
+      toast.error(message)
       setSubmitting(false)
     }
   }

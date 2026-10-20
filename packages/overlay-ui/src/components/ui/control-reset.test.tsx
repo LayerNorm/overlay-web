@@ -44,6 +44,18 @@ test('unstyled button consumer layout and typography classes take precedence', (
   }
 })
 
+test('compact picker layout overrides the reset and keeps its icon centered', () => {
+  const classes = renderedClasses(
+    <Button variant="ghost" className={unstyledButton('flex h-6 w-6 shrink-0 items-center justify-center')}>
+      <svg width="16" height="16" />
+    </Button>,
+  )
+  for (const centered of ['flex', 'h-6', 'w-6', 'shrink-0', 'items-center', 'justify-center']) {
+    assert.ok(classes.has(centered))
+  }
+  assert.equal(classes.has('items-stretch'), false)
+})
+
 test('unstyled inputs reset base typography while preserving consumer classes', () => {
   const resetClasses = renderedClasses(<Input className={unstyledInput('w-full')} />)
   assert.equal(resetClasses.has('border-(--border)'), false)

@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import type { UIMessage } from '@/shared/chat/ai-ui-message'
+import { toast } from '@overlay/ui/primitives'
 import type { GeneratedUiData } from '@overlay/chat-core/generated-ui'
 import type { AutomationDetail } from '@overlay/app-core'
 import { usePathname, useSearchParams, useRouter } from 'next/navigation'
@@ -269,7 +270,7 @@ export function useChatExperienceController({
     addDocumentsFromPicker,
     addImages,
     handlePaste,
-  } = useChatAttachments({ setComposerNotice })
+  } = useChatAttachments()
 
   const {
     showAttachMenu,
@@ -308,8 +309,6 @@ export function useChatExperienceController({
     modelCatalogReady: !byokModelsLoading,
     chatPrefsHydrated,
     onlyAllowZdrModels: settings.onlyAllowZdrModels,
-    enabledModelIds: settings.enabledChatModelIds,
-    modelOrder: settings.modelOrder,
     pathname,
     router,
     searchParams,
@@ -349,9 +348,7 @@ export function useChatExperienceController({
     isDraftSaving,
     saveSkillDraft,
     setDraftModalState,
-  } = useDraftReviewActions({
-    setComposerNotice,
-  })
+  } = useDraftReviewActions()
 
   useEffect(() => {
     setExitingTurnIds([])
@@ -648,11 +645,9 @@ export function useChatExperienceController({
       data,
     }).then((res) => {
       if (res.ok) return
-      setComposerNotice('Could not save draft edits.')
-      window.setTimeout(() => setComposerNotice(null), 4000)
+      toast.error('Could not save draft edits.')
     }).catch(() => {
-      setComposerNotice('Could not save draft edits.')
-      window.setTimeout(() => setComposerNotice(null), 4000)
+      toast.error('Could not save draft edits.')
     })
   }, [actChatRef, chat0Ref, chat1Ref, chat2Ref, chat3Ref, emptyRuntimeRef, forceLiveSyncRender, isPublicShowcase, isTemporaryChatRef, runtimesRef])
 
@@ -706,7 +701,6 @@ export function useChatExperienceController({
     setSelectedModels,
     askModelSelectionMode,
     setAskModelSelectionMode,
-    setComposerNotice,
     userAskModelOverrideRef,
   })
 
@@ -860,7 +854,6 @@ export function useChatExperienceController({
     loadSubscription,
     mode,
     selectedActModel,
-    setComposerNotice,
     shouldScrollRef,
     startSession,
   })
@@ -969,7 +962,6 @@ export function useChatExperienceController({
     resetToBlankChatSurface,
     isTemporaryChat,
     activeChatId,
-    setComposerNotice,
     setIsSwitchingChat,
     createNewChat,
     loadChat,
@@ -981,7 +973,6 @@ export function useChatExperienceController({
   const { workApprovalContent } = useWorkApproval({
     agentRunLifecycle,
     activeChatId,
-    setComposerNotice,
   })
 
   const {
@@ -1075,6 +1066,7 @@ export function useChatExperienceController({
 
   return {
     chats,
+    favoriteScope: authUser?.id ?? userId,
     activeChatId,
     activeChatHydrated,
     idParam,

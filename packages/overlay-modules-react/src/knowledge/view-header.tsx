@@ -166,12 +166,12 @@ function HeaderTitle({
           ? 'Outputs'
           : 'Files'
   return (
-    <div className="flex min-w-0 shrink-0 items-center gap-3">
-      <h1 className="text-sm font-medium text-(--foreground)">
+    <div className="flex min-w-0 shrink-0 items-baseline gap-3">
+      <h1 className="text-sm font-medium leading-5 text-(--foreground)">
         {mode === 'files' ? filesTitle : activeTab === 'memories' ? 'Memories' : activeTab === 'files' ? 'Files' : 'Outputs'}
       </h1>
       {activeTab !== 'outputs' && !memorySearchOpen && (
-        <span className="text-xs text-(--muted-light)">
+        <span className="text-xs leading-5 text-(--muted-light)">
           {activeTab === 'memories' ? memoryCount : fileCount} items
         </span>
       )}

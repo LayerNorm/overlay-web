@@ -4,6 +4,18 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Make both sidebar edges resizable, keep native agent text visible between tool calls while it streams, preserve its generation order after completion and reload, and match the approved agent hierarchy with regular-weight names, aligned icons and flush-left threads. Scale tool Orbs to the wordmark ratio and center them beside wrapped labels. Use the shared avatar popover for outside-click and Escape dismissal.
+
+- Preserve the live transcript when a new chat receives its saved conversation ID after completion, while still resetting scroll state when navigating between chats.
+
+- Widen the model picker, separate personal Favorites from Recommended, expose the full provider catalog, and move capabilities to right-side details. Free accounts can browse the same catalog metadata without gaining permission to generate with paid models. Remove the catalog enable/disable settings while retaining provider-key authorization and billing/ZDR safeguards. Keep streamed Markdown on the same block renderer through chat and agent completion without a completion label or automatic work collapse moving the live answer.
+
+- Stop the app half-loading after bursts of throttled reads: Work list, Work context, subscription and workspace policy reads get their own per-user rate-limit buckets instead of sharing the default pool. Workspace bootstrap and policy requests now recover an expired session like other app requests. App pages without their own error boundary keep the shell, and both error screens show the error reference.
+
+- Standardize shared controls on the approved gray palette, align Work rows and headers, and move transient action feedback to bottom-right Sonner notifications. Keep upload updates under stable operation ids and preserve Undo, inline validation, and durable recovery states.
+
+- Recover browser API requests from an expired session without a page reload: share one locked session refresh with the auth provider, then retry once with the original mutation idempotency key. Signed-out users, permission denials, and failed refreshes remain failures.
+
 - Match the app shell mockup: Geist as the app font, 14px chat text, a borderless symmetric user bubble, and sidebar rows at 14px with 16px icons and 12px section titles. Native `title` tooltips are replaced app-wide by one shadcn-style tooltip (`NativeTitleTooltips`).
 
 - Adopt shadcn Typeset (`@overlay/ui/typeset.css`, an owned copy) as the shared prose layer for chat messages and notes, so rendered Markdown gets one set of rules for paragraphs, lists, quotes, code, tables and rules. Existing chat-specific Markdown rules still take precedence.

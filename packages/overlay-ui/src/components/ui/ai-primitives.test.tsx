@@ -52,5 +52,5 @@ test('provider logos render inline currentColor marks and fall back for unknown 
   const unknown = renderToStaticMarkup(<ProviderLogo provider="unknown-lab" />)
   assert.match(unknown, /lucide-cpu/)
   assert.equal(providerLabel('z-ai'), 'Z.ai')
-  assert.equal(providerLabel('unknown-lab'), 'unknown-lab')
+  assert.equal(providerLabel('unknown-lab'), 'Unknown Lab')
 })

@@ -1,7 +1,7 @@
 'use client'
 
 import { unstyledButton, unstyledTextarea } from '@overlay/ui/control-reset'
-import { Button, Textarea } from '@overlay/ui/primitives'
+import { Button, Textarea, toast } from '@overlay/ui/primitives'
 
 import { useCallback, useEffect, useState } from 'react'
 import { Check, Copy, Laptop, RefreshCw, ShieldCheck, Trash2 } from 'lucide-react'
@@ -67,8 +67,9 @@ export function AgentEnvironmentSettings() {
         { mode: 'selected_roots', roots: selectedRoots },
       )
       await refresh()
+      toast.success('Environment approved.')
     } catch (value) {
-      setError(value instanceof Error ? value.message : 'Approval failed')
+      toast.error(value instanceof Error ? value.message : 'Approval failed')
     } finally {
       setBusy(null)
     }
@@ -91,8 +92,9 @@ export function AgentEnvironmentSettings() {
       )
       setEditingRoots(null)
       await refresh()
+      toast.success('Project roots updated.')
     } catch (value) {
-      setError(value instanceof Error ? value.message : 'Project root update failed')
+      toast.error(value instanceof Error ? value.message : 'Project root update failed')
     } finally {
       setBusy(null)
     }
@@ -106,7 +108,7 @@ export function AgentEnvironmentSettings() {
       setCopiedCommandId(environment.id)
       window.setTimeout(() => setCopiedCommandId((current) => (current === environment.id ? null : current)), 1500)
     } catch {
-      setError('Could not copy to the clipboard')
+      toast.error('Could not copy to the clipboard')
     }
   }
 
@@ -117,8 +119,9 @@ export function AgentEnvironmentSettings() {
       if (!activeWorkspaceId) throw new Error('Choose a workspace first')
       await overlayAppClient.agentEnvironments.revoke(activeWorkspaceId, environmentId)
       await refresh()
+      toast.success('Environment revoked.')
     } catch (value) {
-      setError(value instanceof Error ? value.message : 'Revocation failed')
+      toast.error(value instanceof Error ? value.message : 'Revocation failed')
     } finally {
       setBusy(null)
     }

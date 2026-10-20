@@ -42,6 +42,10 @@ test('bootstrap read routes get dedicated buckets so they cannot starve each oth
     { method: 'GET', pathname: '/api/v1/settings', expectedBucket: 'settings:user' },
     { method: 'GET', pathname: '/api/v1/workspaces', expectedBucket: 'workspaces:list:user' },
     { method: 'GET', pathname: '/api/v1/conversations', expectedBucket: 'conversations:list:user' },
+    { method: 'GET', pathname: '/api/v1/work', expectedBucket: 'work:list:user' },
+    { method: 'GET', pathname: '/api/v1/work/context', expectedBucket: 'work:context:user' },
+    { method: 'GET', pathname: '/api/v1/subscription', expectedBucket: 'subscription:read:user' },
+    { method: 'GET', pathname: '/api/v1/workspaces/personal-1/policies', expectedBucket: 'workspaces:policies:read:user' },
   ]
   for (const route of bootstrapRoutes) {
     const rules = getEndpointRateLimitSpecs({

@@ -149,7 +149,7 @@ test('an agent reply is persisted as it is generated, not only when it finishes'
   // The turn writes into a `generating` row rather than holding the reply in
   // the response stream, which is what lets it survive the sender's tab.
   assert.match(service, /createAgentMessageStream/)
-  assert.match(service, /turnStream\.pushText\(event\.text\)/)
+  assert.match(service, /turnStream\.pushText\(event\.text,\s*liveParts\.map/)
   assert.match(service, /turnStream\.finalize\(/)
   // A turn that dies partway must not leave a row generating forever.
   assert.match(service, /await agentStream\?\.fail\(\)/)

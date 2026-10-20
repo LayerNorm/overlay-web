@@ -4,11 +4,10 @@ import { useCallback, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import type { WorkspaceAgentCreateInput, WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
 import {
-  getEnabledChatModels,
+  getModelsByIntelligence,
   getGatewayCatalogRevision,
 } from '@/shared/ai/gateway/model-data'
 import { useGatewayModelCatalog } from '@/components/providers/useGatewayModelCatalog'
-import { useAppSettings } from '@/components/providers/AppSettingsProvider'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { parseByoModelId } from '@/shared/agents/agent-model'
@@ -54,14 +53,11 @@ export function AgentEditorPage({
   const { capabilities } = useOverlayCapabilities()
   const computersAvailable = capabilities.computers === true
   const { revision } = useGatewayModelCatalog({ enabled: true })
-  const { settings } = useAppSettings()
-  const enabledModelIds = settings.enabledChatModelIds
 
   const showcaseAgent = getShowcaseAgent(showcase, mode, agentId)
   // One initializer keeps per-field fallbacks out of the component body.
   const [initial] = useState(() => getInitialEditorState({ showcase, mode, agent: showcaseAgent }))
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
 
   const bootstrap = useAgentEditorBootstrap({ showcase, mode, agentId, activeWorkspaceId, initial })
   const { agent, setAgent, loading, loadFailed, canCreate, connectedAgentsEnabled, connectedAgentsChecked } = bootstrap
@@ -84,16 +80,16 @@ export function AgentEditorPage({
   const computer = useAgentComputer({
     showcase, computersAvailable, activeWorkspaceId, agent, agentType: runtime.agentType,
     enabledToolGroups: form.enabledToolGroups, setEnabledToolGroups: form.setEnabledToolGroups,
-    markDirty: form.markDirty, setError,
+    markDirty: form.markDirty,
   })
 
   const modelOptions = useMemo(() => {
     void revision
     void getGatewayCatalogRevision()
-    return getEnabledChatModels(enabledModelIds, false)
+    return getModelsByIntelligence(false)
       .filter((model) => model.id !== 'nvidia/nemotron-nano-9b-v2')
       .map((model) => ({ value: model.id, label: model.name }))
-  }, [enabledModelIds, revision])
+  }, [revision])
 
   const isDefaultMaster = isDefaultMasterAgent(agent)
   const valid = isAgentEditorValid({
@@ -147,7 +143,6 @@ export function AgentEditorPage({
     router,
     busy,
     setBusy,
-    setError,
     agent,
     setAgent,
     directoryHref,
@@ -191,7 +186,6 @@ export function AgentEditorPage({
       isDefaultMaster={isDefaultMaster}
       valid={valid}
       busy={busy}
-      error={error}
       showcase={showcase}
       computersAvailable={computersAvailable}
       connectedAgentsEnabled={connectedAgentsEnabled}

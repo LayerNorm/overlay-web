@@ -175,3 +175,12 @@ test('Work lists Needs you, Assigned to me and Everything as open sections in th
   assert.match(html, /tasks:all/)
   assert.equal((html.match(/aria-expanded="true"/g) ?? []).length >= 3, true)
 })
+
+
+test('expanded desktop sidebar has an accessible resize edge, collapsed and mobile copies do not', () => {
+  const html = render({ resizable: true })
+  assert.match(html, /aria-label="Resize left sidebar"/)
+  assert.match(html, /aria-valuenow="264"/)
+  assert.doesNotMatch(render({ resizable: true, collapsed: true }), /aria-label="Resize left sidebar"/)
+  assert.doesNotMatch(render({ resizable: false }), /aria-label="Resize left sidebar"/)
+})

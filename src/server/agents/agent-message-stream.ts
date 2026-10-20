@@ -54,6 +54,16 @@ export const AGENT_STREAM_FLUSH_CHARS = 200
  */
 export const AGENT_STREAM_EVENT_INTERVAL_MS = 1_000
 
+/** Keep text in the ordered parts snapshot as well as the searchable message content. */
+export function appendAgentTextPart(parts: Array<Record<string, unknown>>, delta: string): void {
+  const last = parts.at(-1)
+  if (last?.type === 'text' && typeof last.text === 'string') {
+    parts[parts.length - 1] = { ...last, text: last.text + delta }
+  } else {
+    parts.push({ type: 'text', text: delta })
+  }
+}
+
 export type AgentMessageStream = ReturnType<typeof createAgentMessageStream>
 
 /**
@@ -159,10 +169,10 @@ export function createAgentMessageStream(args: {
     }
   }
 
-  const maybeFlush = (): void => {
+  const maybeFlush = (flushParts = true): void => {
     if (disabled) return
     const due = pendingText.length >= AGENT_STREAM_FLUSH_CHARS
-      || pendingParts !== null
+      || (flushParts && pendingParts !== null)
       || (pendingText.length > 0 && now() - lastFlushAt >= AGENT_STREAM_FLUSH_INTERVAL_MS)
     if (!due) return
     // Detached from the buffer before queueing, so a later finalize cannot
@@ -180,10 +190,11 @@ export function createAgentMessageStream(args: {
     },
 
     /** Buffers generated text; writes once a flush threshold trips. */
-    pushText(delta: string): void {
+    pushText(delta: string, parts?: Array<Record<string, unknown>>): void {
       if (disabled || !delta) return
       pendingText += delta
-      maybeFlush()
+      if (parts) pendingParts = parts
+      maybeFlush(false)
     },
 
     /**

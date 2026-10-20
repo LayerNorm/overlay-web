@@ -71,14 +71,14 @@ function MarkdownMessageImpl({
         normalizeGeneratedMarkdown(text, {
           sourceCitations,
           appBaseUrl,
-          linkifyCitations: !isStreaming && hasCitationMap,
+          linkifyCitations: hasCitationMap,
           webSources,
           // Linkify web citations even while streaming so inline chips render with the text,
           // instead of appearing only after completion.
           linkifyWebCitations: hasWebSources,
         }),
       ),
-    [text, sourceCitations, isStreaming, hasCitationMap, webSources, hasWebSources, appBaseUrl],
+    [text, sourceCitations, hasCitationMap, webSources, hasWebSources, appBaseUrl],
   )
 
   // Ordered the same way the chip hrefs are numbered, so `#overlay-knowcite-2`
@@ -243,12 +243,12 @@ function MarkdownMessageImpl({
     return null
   }
 
-  // Streamdown memoizes per block and closes unfinished markdown, so a streaming reply
-  // updates only its last block and never shows raw syntax.
+  // Keep Streamdown's block tree through completion; switching to static mode
+  // replaces the rendered blocks when the final chunk settles.
   return (
     <div className="typeset markdown-content">
       <Streamdown
-        mode={isStreaming ? 'streaming' : 'static'}
+        mode="streaming"
         isAnimating={isStreaming}
         parseIncompleteMarkdown
         controls={false}

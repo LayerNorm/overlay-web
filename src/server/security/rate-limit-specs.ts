@@ -30,6 +30,21 @@ const ENDPOINT_RATE_LIMITS: Record<string, RateLimitSpec[]> = {
     { bucket: 'workspaces:list:ip', limit: 600, windowMs: TEN_MINUTES },
     { bucket: 'workspaces:list:user', limit: 300, windowMs: TEN_MINUTES },
   ],
+  // The Work page and its sidebar sections both read the list and context on
+  // every mount, and the shell reads the subscription; in the shared pool a
+  // few open tabs exhausted it and left the app half-loaded.
+  'GET /api/v1/work': [
+    { bucket: 'work:list:ip', limit: 900, windowMs: TEN_MINUTES },
+    { bucket: 'work:list:user', limit: 450, windowMs: TEN_MINUTES },
+  ],
+  'GET /api/v1/work/context': [
+    { bucket: 'work:context:ip', limit: 900, windowMs: TEN_MINUTES },
+    { bucket: 'work:context:user', limit: 450, windowMs: TEN_MINUTES },
+  ],
+  'GET /api/v1/subscription': [
+    { bucket: 'subscription:read:ip', limit: 600, windowMs: TEN_MINUTES },
+    { bucket: 'subscription:read:user', limit: 300, windowMs: TEN_MINUTES },
+  ],
   'GET /api/v1/conversations': [
     { bucket: 'conversations:list:ip', limit: 600, windowMs: TEN_MINUTES },
     { bucket: 'conversations:list:user', limit: 300, windowMs: TEN_MINUTES },
@@ -213,6 +228,15 @@ const DYNAMIC_ENDPOINT_RATE_LIMITS: DynamicEndpointRateLimit[] = [
     limits: [
       { bucket: 'agents:threads:write:ip', limit: 240, windowMs: TEN_MINUTES },
       { bucket: 'agents:threads:write:user', limit: 120, windowMs: TEN_MINUTES },
+    ],
+  },
+  {
+    // Read by the shell and the workspace create-access hook on every load.
+    method: 'GET',
+    pattern: /^\/api\/v1\/workspaces\/[^/]+\/policies$/,
+    limits: [
+      { bucket: 'workspaces:policies:read:ip', limit: 600, windowMs: TEN_MINUTES },
+      { bucket: 'workspaces:policies:read:user', limit: 300, windowMs: TEN_MINUTES },
     ],
   },
   {
