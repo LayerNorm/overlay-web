@@ -19,7 +19,14 @@ export const listKnownProviderReferencesByServer = query({
       const [lease, provision, computer] = await Promise.all([
         ctx.db.query('agentSandboxLeases')
           .withIndex('by_provider_providerReference', (q) => q.eq('provider', args.provider).eq('providerReference', reference))
-          .filter((q) => q.and(q.neq(q.field('status'), 'released'), q.neq(q.field('status'), 'deleted')))
+          .filter((q) => q.or(
+            q.eq(q.field('status'), 'reserved'),
+            q.eq(q.field('status'), 'provisioning'),
+            q.eq(q.field('status'), 'running'),
+            q.eq(q.field('status'), 'paused'),
+            q.eq(q.field('status'), 'stopping'),
+            q.eq(q.field('status'), 'cleanup_failed'),
+          ))
           .first(),
         ctx.db.query('cloudAgentProvisions')
           .withIndex('by_provider_providerReference', (q) => q.eq('provider', args.provider).eq('providerReference', reference))

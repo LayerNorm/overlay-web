@@ -7,6 +7,9 @@ import { ProviderInventoryReconciler } from '@/server/agents/ProviderInventoryRe
 import { logger } from '@/server/observability/logger'
 import { agentEnvironmentErrorResponse } from '../../shared'
 
+const PROVIDER_INVENTORY_CADENCE_MS = 15 * 60_000
+const SETTLEMENT_RECONCILIATION_INTERVAL_MS = 60_000
+
 export async function POST(request: Request) {
   try {
     const supplied = request.headers.get('x-internal-api-secret')?.trim()
@@ -29,7 +32,7 @@ export async function POST(request: Request) {
         })
         return { reclaimed: 0, skipped: 0, failed: 1 }
       })
-    const providerInventory = new Date().getUTCMinutes() % 15 === 0
+    const providerInventory = Date.now() % PROVIDER_INVENTORY_CADENCE_MS < SETTLEMENT_RECONCILIATION_INTERVAL_MS
       ? Promise.resolve()
         .then(() => new ProviderInventoryReconciler().reconcile())
         .catch((error) => {

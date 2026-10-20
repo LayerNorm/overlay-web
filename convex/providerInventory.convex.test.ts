@@ -18,8 +18,16 @@ describe('Convex provider inventory ownership lookup', () => {
         status: 'running', reservedUntil: 1_000, usage: {}, cleanupAttempts: 0, createdAt: 1, updatedAt: 1,
       })
       await ctx.db.insert('agentSandboxLeases', {
-        leaseId: 'lease-released', workspaceId: 'workspace', provider: 'e2b', providerReference: 'released-ref',
+        leaseId: 'lease-terminal', workspaceId: 'workspace', provider: 'e2b', providerReference: 'terminal-ref',
         status: 'released', reservedUntil: 1_000, usage: {}, cleanupAttempts: 0, createdAt: 1, updatedAt: 1,
+      })
+      await ctx.db.insert('agentSandboxLeases', {
+        leaseId: 'lease-paused', workspaceId: 'workspace', provider: 'e2b', providerReference: 'paused-ref',
+        status: 'paused', reservedUntil: 1_000, usage: {}, cleanupAttempts: 0, createdAt: 1, updatedAt: 1,
+      })
+      await ctx.db.insert('agentSandboxLeases', {
+        leaseId: 'lease-cleanup-failed', workspaceId: 'workspace', provider: 'e2b', providerReference: 'cleanup-failed-ref',
+        status: 'cleanup_failed', reservedUntil: 1_000, usage: {}, cleanupAttempts: 1, createdAt: 1, updatedAt: 1,
       })
       await ctx.db.insert('agentSandboxLeases', {
         leaseId: 'lease-box', workspaceId: 'workspace', provider: 'box', providerReference: 'box-ref',
@@ -42,8 +50,10 @@ describe('Convex provider inventory ownership lookup', () => {
 
     const args = { serverSecret: secret, provider: 'e2b' as const }
     expect(await convex.query(query, {
-      ...args, references: ['lease-ref', 'provision-ref', 'computer-ref', 'released-ref', 'box-ref'],
-    })).toEqual(['lease-ref', 'provision-ref', 'computer-ref'])
+      ...args, references: [
+        'lease-ref', 'paused-ref', 'cleanup-failed-ref', 'provision-ref', 'computer-ref', 'terminal-ref', 'box-ref',
+      ],
+    })).toEqual(['lease-ref', 'paused-ref', 'cleanup-failed-ref', 'provision-ref', 'computer-ref'])
     expect(await convex.query(query, {
       serverSecret: secret, provider: 'box', references: ['lease-ref', 'provision-ref', 'box-ref', 'box-provision-ref'],
     })).toEqual(['box-ref', 'box-provision-ref'])
