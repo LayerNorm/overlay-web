@@ -567,7 +567,7 @@ export class CloudAgentMachineService {
     if (machine) await machine.delete().catch((_error) => undefined)
   }
 
-  private async admit(args: { actorUserId: string; workspaceId: string; agentId: string }): Promise<void> {
+  async admit(args: { actorUserId: string; workspaceId: string; agentId: string }): Promise<void> {
     await this.dependencies.assertCanRun({ userId: args.actorUserId, workspaceId: args.workspaceId, agentId: args.agentId })
   }
 

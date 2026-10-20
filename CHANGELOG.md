@@ -12,7 +12,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Stop running machines and Computers at the next meter tick after a workspace leaves its paid plan, while still settling confirmed-stopped usage and releasing unused holds.
 
-- Recheck paid workspace and finite-credit admission for cloud-agent machine allocation, explicit resume/restart controls, workflow wakes and stopped-execution recovery under the authenticated actor or the remote run's stored actor. Pause and cleanup remain available after downgrade.
+- Recheck paid workspace and finite-credit admission for cloud-agent machine allocation, explicit resume/restart controls, workflow wakes and stopped-execution recovery under the authenticated actor or the remote run's stored actor. Remote resume, retry and start-fresh are refused before any control is recorded. Pause and cleanup remain available after downgrade.
 
 - Settle E2B compute from completed provider executions and actual allocation, reserve credit while executions run, and retain final usage for retry if billing fails. Enforce workspace and subject limits on machine metering; preserve Boat's weighted counters instead of substituting elapsed time.
 

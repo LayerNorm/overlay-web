@@ -109,6 +109,7 @@ export class ConnectedAgentControlPlaneService {
     /** The agent's own secret values (an imported MCP server's token), added to a run's environment. */
     agentSecretEnv?: (agentId: string) => Promise<Record<string, string>>
     wakeMachine?: (args: { actorUserId: string; workspaceId: string; agentId: string; environmentId: string }) => Promise<'running' | 'resumed' | 'unavailable'>
+    admitMachine?: (args: { actorUserId: string; workspaceId: string; agentId: string }) => Promise<void>
     now?: () => number
     isEnabled?: (workspaceId?: string) => boolean | Promise<boolean>
     artifactsEnabled?: () => boolean | Promise<boolean>
@@ -434,6 +435,10 @@ export class ConnectedAgentControlPlaneService {
     action: 'cancel' | 'retry' | 'resume' | 'start_fresh'
   }) {
     await this.assertEnabled(args.workspaceId)
+    const machine = args.action !== 'cancel' && this.dependencies.wakeMachine
+      ? await this.cloudMachineForRun(args)
+      : undefined
+    if (machine) await this.dependencies.admitMachine?.({ actorUserId: args.actorUserId, workspaceId: args.workspaceId, agentId: machine.agentId })
     const now = this.now()
     // Old Convex validators reject unknown arguments during web-first rollout.
     // Enable the optional control extension only after the v2 backend is live.
@@ -455,20 +460,11 @@ export class ConnectedAgentControlPlaneService {
       } as const
       throw controlPlaneError(errors[reason][1], errors[reason][0], `remote_run_${reason}`)
     }
-    if (args.action !== 'cancel' && this.dependencies.wakeMachine) {
-      const environments = await this.dependencies.repository.listEnvironments({ workspaceId: args.workspaceId })
-      // Resolve the authorized run through its session; never wake a BYOA environment.
-      for (const environment of environments) {
-        const session = await this.dependencies.repository.getRemoteSessionForRun({ workspaceId: args.workspaceId, environmentId: environment.id, runId: args.runId })
-        if (!session || environment.kind !== 'overlay_cloud') continue
-        const billing = session.capabilitySnapshot?.billing as { agentId?: unknown } | undefined
-        if (typeof billing?.agentId !== 'string' || !billing.agentId) break
-        const outcome = await this.dependencies.wakeMachine({
-          actorUserId: args.actorUserId, workspaceId: args.workspaceId, agentId: billing.agentId, environmentId: environment.id,
-        })
-        if (outcome === 'unavailable') throw controlPlaneError('The agent machine is unavailable. Inspect its state before continuing.', 409, 'remote_machine_unavailable')
-        break
-      }
+    if (machine && this.dependencies.wakeMachine) {
+      const outcome = await this.dependencies.wakeMachine({
+        actorUserId: args.actorUserId, workspaceId: args.workspaceId, agentId: machine.agentId, environmentId: machine.environmentId,
+      })
+      if (outcome === 'unavailable') throw controlPlaneError('The agent machine is unavailable. Inspect its state before continuing.', 409, 'remote_machine_unavailable')
     }
     if (result.terminal && this.dependencies.settleUsage &&
       (result.terminal.reservationId || result.terminal.sandboxBilling?.reservationId)) {
@@ -479,6 +475,21 @@ export class ConnectedAgentControlPlaneService {
       commandId: result.commandId,
     }, args.runId, 'agent_remote_run')
     return result
+  }
+
+  // Resolve the authorized run through its session; never wake a BYOA environment.
+  private async cloudMachineForRun(args: { workspaceId: string; runId: string }) {
+    const environments = await this.dependencies.repository.listEnvironments({ workspaceId: args.workspaceId })
+    for (const environment of environments) {
+      const session = await this.dependencies.repository.getRemoteSessionForRun({ workspaceId: args.workspaceId, environmentId: environment.id, runId: args.runId })
+      if (!session || environment.kind !== 'overlay_cloud') continue
+      const billing = session.capabilitySnapshot?.billing as { agentId?: unknown } | undefined
+      if (typeof billing?.agentId !== 'string' || !billing.agentId) {
+        throw controlPlaneError('The agent machine is unavailable. Inspect its state before continuing.', 409, 'remote_machine_unavailable')
+      }
+      return { agentId: billing.agentId, environmentId: environment.id }
+    }
+    return undefined
   }
 
   async resolveRemoteRequest(args: {
