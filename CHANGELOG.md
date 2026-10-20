@@ -7,6 +7,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 - Align Work quick-add with the sidebar scope, keep workspace storage quotas visible, and make sidebar create actions permanent with neutral placeholders, toasts, and centered loading marks.
 - Announce stopped and failed Work runs only when their status transitions live to a terminal state.
 
+- Match file and automation sidebar rows to chats with shared 32px rows, 14px text and 16px icons, reduce agent names to the conversation text size, and give every shared chat composer a subtle theme-aware outline.
+
 - Pin `follow-redirects` to 1.16.1 to clear two high-severity advisories (GHSA-q3jh-wrc6-jgq8, GHSA-8r9p-f939-6h3c) that block the production dependency audit.
 
 - Make both sidebar edges resizable, keep native agent text visible between tool calls while it streams, preserve its generation order after completion and reload, and match the approved agent hierarchy with regular-weight names, aligned icons and flush-left threads. Scale tool Orbs to the wordmark ratio and center them beside wrapped labels. Use the shared avatar popover for outside-click and Escape dismissal.
