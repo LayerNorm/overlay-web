@@ -19,10 +19,10 @@ export function OnboardingShell(props: ShellProps) {
   const { user } = useAuth()
   const { activeWorkspaceId } = useWorkspace()
   if (props.publicShowcase || !user || !activeWorkspaceId) return <>{props.sidebar}<main className="app-main min-w-0 flex-1 overflow-hidden pt-14 md:pt-0">{props.children}</main></>
-  return <AuthenticatedOnboardingShell key={`${user.id}:${activeWorkspaceId}`} {...props} workspaceId={activeWorkspaceId} initialName={user.firstName ?? ''} />
+  return <AuthenticatedOnboardingShell key={`${user.id}:${activeWorkspaceId}`} {...props} workspaceId={activeWorkspaceId} />
 }
 
-function AuthenticatedOnboardingShell({ sidebar, children, workspaceId, initialName }: ShellProps & { workspaceId: string; initialName: string }) {
+function AuthenticatedOnboardingShell({ sidebar, children, workspaceId }: ShellProps & { workspaceId: string }) {
   const router = useRouter()
   const pathname = usePathname()
   const [result, setResult] = useState<OnboardingSessionResponse | null>(null)
@@ -66,7 +66,7 @@ function AuthenticatedOnboardingShell({ sidebar, children, workspaceId, initialN
     <div className={styles.chrome} data-hidden={locked} inert={locked} aria-hidden={locked}>{sidebar}</div>
     <main className={`app-main ${styles.main} ${locked ? '' : 'pt-14 md:pt-0'}`}>
       {!bypass && !result ? <div className="flex h-full items-center justify-center px-6"><div className="max-w-sm space-y-4 text-center">{error ? <><p role="alert" className="text-sm text-muted-foreground">{error}</p><div className="flex justify-center gap-2"><Button variant="outline" onClick={() => setRetry((value) => value + 1)}>Retry</Button><Button variant="ghost" onClick={() => setBypass(true)}>Open workspace</Button></div></> : <OnboardingDots />}</div></div> : showConversation && result?.session ? <div ref={conversation} className={styles.conversation} data-hidden={intro} inert={intro}>
-        <OnboardingConversation session={result.session} initialName={initialName} onChange={setResult} onShowWork={openWork} />
+        <OnboardingConversation session={result.session} onChange={setResult} onShowWork={openWork} />
       </div> : children}
       {intro ? <OnboardingIntro target={conversation} onDone={dismissIntro} /> : null}
       {tour && atWork && result?.session?.taskId ? <OnboardingTour workspaceId={workspaceId} taskId={result.session.taskId} onClose={() => { setTour(false); setActive(false) }} /> : null}

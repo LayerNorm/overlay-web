@@ -26,9 +26,9 @@ function canGoBackFromProfile(session: OnboardingSession) {
   return onboardingProfileSteps(session).indexOf(session.step) > 0 && session.createdAgentIds.length === 0
 }
 
-export function OnboardingConversation({ session, initialName, onChange, onShowWork }: { session: OnboardingSession; initialName: string; onChange(result: OnboardingSessionResponse): void; onShowWork(): void }) {
+export function OnboardingConversation({ session, onChange, onShowWork }: { session: OnboardingSession; onChange(result: OnboardingSessionResponse): void; onShowWork(): void }) {
   const { user } = useAuth()
-  const [input, setInput] = useState(() => readOnboardingDraft(session, initialName))
+  const [input, setInput] = useState(() => readOnboardingDraft(session))
   const [inputRevision, setInputRevision] = useState(0)
   const [focusRevision, setFocusRevision] = useState(0)
   const [previousStep, setPreviousStep] = useState(session.step)
@@ -39,7 +39,7 @@ export function OnboardingConversation({ session, initialName, onChange, onShowW
   const [privacyOpen, setPrivacyOpen] = useState(false)
   const [pendingAnswer, setPendingAnswer] = useState<{ text: string; clientNonce: string } | null>(null)
   if (previousStep !== session.step) {
-    setPreviousStep(session.step); setInput(readOnboardingDraft(session, initialName)); setInputRevision((current) => current + 1); setTaskDraft(null); setPendingAnswer(null)
+    setPreviousStep(session.step); setInput(readOnboardingDraft(session)); setInputRevision((current) => current + 1); setTaskDraft(null); setPendingAnswer(null)
   }
   const changeInput = (value: string) => {
     const bounded = value.slice(0, 3000)

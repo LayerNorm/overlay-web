@@ -35,8 +35,11 @@ test('onboarding drafts persist within their workspace and run scope', () => {
 
   try {
     writeOnboardingDraft(session, 'Unsaved profile')
-    assert.equal(readOnboardingDraft(session, 'Ada'), 'Unsaved profile')
-    assert.equal(readOnboardingDraft({ ...session, runId: '22222222-2222-4222-8222-222222222222' }, 'Ada'), '')
+    assert.equal(readOnboardingDraft(session), 'Unsaved profile')
+    assert.equal(readOnboardingDraft({ ...session, runId: '22222222-2222-4222-8222-222222222222' }), '')
+    assert.equal(readOnboardingDraft({ ...session, step: 'name' }), '')
+    writeOnboardingDraft({ ...session, step: 'name' }, 'Ada')
+    assert.equal(readOnboardingDraft({ ...session, step: 'name' }), 'Ada')
   } finally {
     if (originalWindow) Object.defineProperty(globalThis, 'window', originalWindow)
     else Reflect.deleteProperty(globalThis, 'window')
