@@ -139,10 +139,6 @@ function useProviderConnectionActions({
       nextSettingsSet.add(model.appModelId)
     }
     const nextEnabledSettingsIds = Array.from(nextSettingsSet)
-    if (nextEnabledSettingsIds.length === 0) {
-      setRowError('At least one model must remain enabled.')
-      return
-    }
 
     const rawSet = new Set(connection.enabledModelIds)
     if (!defaultGateway) {
@@ -268,10 +264,12 @@ export function ProviderConnectionRow({
     [connection, gatewayModels],
   )
   const effectiveSettingsIds = useMemo(
-    () => new Set(getEffectiveSettingsModelIds(settingsEnabledModelIds)),
-    [settingsEnabledModelIds],
+    () => new Set(allModels
+      .filter((model) => defaultGateway || connection.enabledModelIds.includes(model.rawId))
+      .map((model) => model.appModelId)),
+    [allModels, connection.enabledModelIds, defaultGateway],
   )
-  const enabledCount = allModels.filter((model) => effectiveSettingsIds.has(model.appModelId)).length
+  const enabledCount = defaultGateway ? allModels.length : allModels.filter((model) => effectiveSettingsIds.has(model.appModelId)).length
   const displayModelCount = defaultGateway && allModels.length > 0 ? allModels.length : discoveredCount
   const providerLabel = preset?.allowsCustomEndpoint && endpointHost
     ? `${preset.label} · ${endpointHost}`
@@ -317,6 +315,7 @@ export function ProviderConnectionRow({
       />
       {expanded ? (
         <ProviderModelsPanel
+          catalogOnly={defaultGateway}
           connectionDisplayName={connection.displayName}
           query={query}
           onQueryChange={setQuery}
@@ -390,7 +389,7 @@ function ProviderConnectionHeader({
           <span className="truncate">{providerLabel}</span>
           <span>·</span>
           <span className="shrink-0">
-            {enabledCount} enabled
+            {isDefaultGatewayConnection(connection) ? `${enabledCount} available` : `${enabledCount} authorized`}
             {displayModelCount > 0 ? ` · ${displayModelCount} model${displayModelCount !== 1 ? 's' : ''}` : ' · 0 models'}
           </span>
           {connection.lastTestedAt ? (
@@ -455,6 +454,7 @@ function ProviderConnectionHeader({
 }
 
 function ProviderModelsPanel({
+  catalogOnly,
   connectionDisplayName,
   query,
   onQueryChange,
@@ -468,6 +468,7 @@ function ProviderModelsPanel({
   settingsDisabled,
   onToggleModel,
 }: {
+  catalogOnly: boolean
   connectionDisplayName: string
   query: string
   onQueryChange: (query: string) => void
@@ -517,6 +518,7 @@ function ProviderModelsPanel({
               <ProviderModelRow
                 key={model.appModelId}
                 model={model}
+                catalogOnly={catalogOnly}
                 checked={effectiveSettingsIds.has(model.appModelId)}
                 saving={savingModelId === model.rawId}
                 settingsDisabled={settingsDisabled}
@@ -538,6 +540,7 @@ function ProviderModelsPanel({
 }
 
 function ProviderModelRow({
+  catalogOnly,
   model,
   checked,
   saving,
@@ -545,6 +548,7 @@ function ProviderModelRow({
   connectionDisplayName,
   onToggle,
 }: {
+  catalogOnly: boolean
   model: ProviderModelOption
   checked: boolean
   saving: boolean
@@ -583,11 +587,11 @@ function ProviderModelRow({
           {model.isDefault ? <><span>·</span><span>Default</span></> : null}
         </div>
       </div>
-      <SettingsToggle
+      {!catalogOnly ? <SettingsToggle
         checked={checked}
         disabled={settingsDisabled || saving}
         onChange={() => { onToggle(model) }}
-      />
+      /> : null}
     </div>
   )
 }

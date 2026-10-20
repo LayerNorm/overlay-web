@@ -9,7 +9,7 @@ import {
   type ChatModel,
 } from '@/shared/ai/gateway/model-types'
 import {
-  getEnabledChatModels,
+  getModelsByIntelligence,
   modelSupportsZeroDataRetention,
 } from '@/shared/ai/gateway/model-data'
 import { useRouter } from 'next/navigation'
@@ -248,8 +248,6 @@ export function useChatBillingControls({
   modelCatalogReady = true,
   chatPrefsHydrated,
   onlyAllowZdrModels,
-  enabledModelIds,
-  modelOrder,
   selectedActModel,
   selectedModels,
   setAskModelSelectionMode,
@@ -266,8 +264,6 @@ export function useChatBillingControls({
   modelCatalogReady?: boolean
   chatPrefsHydrated: boolean
   onlyAllowZdrModels: boolean
-  enabledModelIds: readonly string[]
-  modelOrder?: readonly string[]
   pathname: string
   router: ChatRouter
   searchParams: ChatSearchParams
@@ -294,17 +290,17 @@ export function useChatBillingControls({
     isModelAccessRestricted,
     effectiveOnlyAllowZdrModels,
   } = resolveEntitlementDerived(entitlements, billingEnabled, onlyAllowZdrModels)
-  // catalogRevision is required: getEnabledChatModels reads module-level AVAILABLE_MODELS
+  // catalogRevision is required: getModelsByIntelligence reads module-level AVAILABLE_MODELS
   // which mutates when the gateway catalog registers.
   const selectableTextModels = useMemo(() => {
     void catalogRevision
     void modelCatalogVersion
-    const enabledTextModels = getEnabledChatModels(enabledModelIds, isModelAccessRestricted, modelOrder)
+    const availableTextModels = getModelsByIntelligence(isModelAccessRestricted)
       .filter((model) => model.id !== 'nvidia/nemotron-nano-9b-v2')
     return effectiveOnlyAllowZdrModels
-      ? enabledTextModels.filter((model) => model.supportsZeroDataRetention)
-      : enabledTextModels
-  }, [catalogRevision, effectiveOnlyAllowZdrModels, enabledModelIds, isModelAccessRestricted, modelCatalogVersion, modelOrder])
+      ? availableTextModels.filter((model) => model.supportsZeroDataRetention)
+      : availableTextModels
+  }, [catalogRevision, effectiveOnlyAllowZdrModels, isModelAccessRestricted, modelCatalogVersion])
   const premiumModelBlocked =
     isModelAccessRestricted &&
     !isByokModelId(selectedActModel) &&
