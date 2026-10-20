@@ -280,6 +280,8 @@ const LEGACY_CHAT_MODEL_ID_ALIASES: Record<string, string> = {
 }
 
 export function getModel(id: string): ChatModel | undefined {
+  const exact = AVAILABLE_MODELS.find((model) => model.id === id) ?? gatewayCatalogModels.get(id)
+  if (exact) return exact
   const resolved = LEGACY_CHAT_MODEL_ID_ALIASES[id] ?? id
   return AVAILABLE_MODELS.find((m) => m.id === resolved) ?? gatewayCatalogModels.get(resolved)
 }
@@ -470,6 +472,13 @@ export const VIDEO_MODELS: VideoModel[] = [
   // Motion control
   { id: 'klingai/kling-v2.6-motion-control', name: 'Kling Motion Control', provider: 'klingai', description: 'Transfer motion', billingUnit: 'per_video', defaultDuration: 5, defaultAspectRatio: '16:9', subModes: ['motion-control'] },
 ]
+
+/** Stable editorial collections, independent of the live provider catalog and personal favorites. */
+export const MODEL_RECOMMENDATIONS = {
+  text: [...DEFAULT_CURATED_CHAT_MODEL_IDS],
+  image: IMAGE_MODELS.map((model) => model.id),
+  video: VIDEO_MODELS.map((model) => model.id),
+}
 
 export function getVideoModel(id: string): VideoModel | undefined {
   return VIDEO_MODELS.find((m) => m.id === id)

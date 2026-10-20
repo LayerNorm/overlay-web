@@ -39,3 +39,11 @@ test('mentions update when the same text renders with a different mention list',
   assert.doesNotMatch(html, /@Maya Chen/)
   assert.match(html, /Maya Chen<\/span>/)
 })
+
+test('completed paragraphs, code, and math keep the streaming block structure', () => {
+  const text = '# Answer\n\nA **formatted** response.\n\n```python\na = 1\n```\n\nArea is $\\pi r^2$.'
+  const streaming = rendered(text, true)
+  const completed = rendered(text, false)
+  assert.equal(completed, streaming)
+  assert.doesNotMatch(completed, /Response complete|Completed/)
+})

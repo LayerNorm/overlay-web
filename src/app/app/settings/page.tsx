@@ -8,7 +8,6 @@ import { useAuth } from '@/contexts/AuthContext'
 import { Link2, ListCollapse, Mail, Moon, Sun, Play, Palette, PanelsLeftBottom, ShieldCheck } from 'lucide-react'
 import { AccountPageContent } from '@/app/app/account/account-content'
 import { DefaultChatModelSetting } from '@/features/settings/components/DefaultChatModelSetting'
-import { ModelCatalogSetting } from '@/features/settings/components/ModelCatalogSetting'
 import { useAppSettings } from '@/components/providers/AppSettingsProvider'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 import { SettingsSectionSkeleton } from '@overlay/ui/feedback'
@@ -86,8 +85,6 @@ function GeneralSettingsSection({
         defaultAskModelIds={settings.defaultAskModelIds}
         isFreeTier={billingSettings?.planKind === 'free'}
         onlyAllowZdrModels={settings.onlyAllowZdrModels}
-        enabledModelIds={settings.enabledChatModelIds}
-        modelOrder={settings.modelOrder}
         disabled={busy || (billingEnabled && !billingSettings)}
         onSelect={(actModelId, askModelIds) => {
           void updateSettings({
@@ -252,27 +249,6 @@ function MemoriesSettingsSection({
   )
 }
 
-function ModelsSettingsSection({
-  settings,
-  busy,
-  updateSettings,
-}: {
-  settings: AppSettingsApi['settings']
-  busy: boolean
-  updateSettings: AppSettingsApi['updateSettings']
-}) {
-  return (
-    <ModelCatalogSetting
-      enabledModelIds={settings.enabledChatModelIds}
-      modelOrder={settings.modelOrder}
-      defaultImageModelId={settings.defaultImageModelId}
-      defaultVideoModelId={settings.defaultVideoModelId}
-      disabled={busy}
-      onChange={(patch) => void updateSettings(patch)}
-    />
-  )
-}
-
 function ContactSettingsSection({
   supportEmail,
 }: {
@@ -376,9 +352,6 @@ function SettingsSectionContent({
   if (section === 'shortcuts') return <ShortcutsSettings />
   if (section === 'memories') {
     return <MemoriesSettingsSection onHeaderStateChange={onMemoriesHeaderStateChange} />
-  }
-  if (section === 'models') {
-    return <ModelsSettingsSection settings={settings} busy={busy} updateSettings={updateSettings} />
   }
   if (section === 'providers') return <ProviderConnectionsSetting />
   if (section === 'webhooks') return <WebhookSettings />

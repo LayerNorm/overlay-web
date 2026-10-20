@@ -2,7 +2,7 @@
 
 import { unstyledButton, unstyledInput } from '@overlay/ui/control-reset'
 
-import { Suspense, useMemo, type MouseEventHandler, type ReactNode, type RefObject } from 'react'
+import { Suspense, useMemo, type ReactNode, type RefObject } from 'react'
 import {
   Check,
   ChevronDown,
@@ -29,7 +29,7 @@ import {
 import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger, Button, Input } from '@overlay/ui/primitives'
 import { DelayedTooltip } from '@overlay/ui/overlays'
 import { AppScreenHeader } from '@overlay/modules-react/shell'
-import { ModelBadges } from './ModelIndicators'
+import type { ChatModelIndicatorModel } from './ModelIndicators'
 import { ModelQualitiesPanel } from './ModelQualitiesPanel'
 import { ModelSelector } from './ModelSelector'
 import { useFavoriteModelIds } from './useFavoriteModelIds'
@@ -109,6 +109,8 @@ function PremiumModelsLoadingRows({ divider = false }: { divider?: boolean }) {
 }
 
 export interface ChatExperienceHeaderProps {
+  favoriteScope?: string | null
+  modelRecommendations?: Partial<Record<GenerationMode, readonly string[]>>
   hideHeader?: boolean
   activeChatId: string | null
   editingChatId: string | null
@@ -280,7 +282,7 @@ function ModelQualitiesHoverCard({
   position: ModelQualitiesPosition
   modelPickerRef: RefObject<HTMLDivElement | null>
   onClosePicker: () => void
-  resolveModel: (modelId: string) => ChatModel | undefined
+  resolveModel: (modelId: string) => ChatModelIndicatorModel | undefined
   reasoning?: ReasoningLevel
   onReasoningChange?: (level: ReasoningLevel | undefined) => void
   onHoveredModelChange: (modelId: string | null, position: ModelQualitiesPosition | null) => void
@@ -288,10 +290,11 @@ function ModelQualitiesHoverCard({
   const virtualRef = useMemo(
     () => ({
       current: {
-        getBoundingClientRect: () =>
-          modelPickerRef.current
-            ?.querySelector(`[data-model-row="${CSS.escape(modelId)}"]`)
-            ?.getBoundingClientRect() ?? new DOMRect(),
+        getBoundingClientRect: () => {
+          const picker = modelPickerRef.current?.getBoundingClientRect()
+          const row = modelPickerRef.current?.querySelector(`[data-model-row="${CSS.escape(modelId)}"]`)?.getBoundingClientRect()
+          return picker && row ? new DOMRect(picker.x, row.y, picker.width, row.height) : new DOMRect()
+        },
         get contextElement() {
           // Floating UI must observe the row's scroll ancestors, including the
           // model list inside the outer popover, rather than only the panel.
@@ -310,11 +313,11 @@ function ModelQualitiesHoverCard({
     >
       <PopoverAnchor virtualRef={virtualRef} />
       <PopoverContent
-        side="left"
-        align="center"
+        side="right"
+        align="start"
         updatePositionStrategy="always"
         aria-label="Model details"
-        className="hidden w-56 overflow-visible rounded-lg px-3 py-2 shadow-md md:block"
+        className="hidden w-64 overflow-visible rounded-lg px-4 py-3 shadow-md md:block"
         onOpenAutoFocus={(event) => event.preventDefault()}
         onCloseAutoFocus={(event) => event.preventDefault()}
         onEscapeKeyDown={(event) => {
@@ -344,127 +347,6 @@ function ModelQualitiesHoverCard({
         </Suspense>
       </PopoverContent>
     </Popover>
-  )
-}
-
-function ModelGroupDivider({ label }: { label: string }) {
-  return (
-    <div className="mt-1 border-t border-(--border) px-3 pb-1 pt-2 text-[9px] font-medium uppercase tracking-[0.08em] text-(--muted-light)">
-      {label}
-    </div>
-  )
-}
-
-function modelGroupDividerLabel({
-  isFreeTier,
-  isFreeModelRow,
-  previousIsFreeModelRow,
-  textModelsLoading,
-  index,
-}: {
-  isFreeTier: boolean
-  isFreeModelRow: boolean
-  previousIsFreeModelRow: boolean
-  textModelsLoading: boolean
-  index: number
-}): 'Premium' | 'Free' | null {
-  const showFreeTierGroupDivider = isFreeTier && !isFreeModelRow && previousIsFreeModelRow
-  const showFreeGroupDivider =
-    !isFreeTier &&
-    isFreeModelRow &&
-    (!previousIsFreeModelRow || (textModelsLoading && index === 0))
-  if (showFreeTierGroupDivider) return 'Premium'
-  if (showFreeGroupDivider) return 'Free'
-  return null
-}
-
-function ModelPickerRow({
-  modelId,
-  name,
-  selected,
-  disabled = false,
-  onSelect,
-  onHoverStart,
-  badges,
-}: {
-  modelId: string
-  name: string
-  selected: boolean
-  disabled?: boolean
-  onSelect: () => void
-  onHoverStart?: MouseEventHandler<HTMLButtonElement>
-  badges?: ReactNode
-}) {
-  return (
-    <Button variant="ghost"
-      type="button"
-      data-model-row={onHoverStart ? modelId : undefined}
-      disabled={disabled}
-      onClick={onSelect}
-      aria-pressed={selected}
-      onMouseEnter={onHoverStart}
-      className={unstyledButton(`flex w-full items-center justify-between px-3 py-1.5 text-left text-xs ${
-        disabled ? 'cursor-not-allowed opacity-40' : 'hover:bg-(--surface-muted)'
-      } ${selected ? 'font-medium text-(--foreground)' : 'text-(--muted)'}`)}
-    >
-      <span className="flex items-center gap-2">
-        {selected ? <Check size={10} /> : <span className="inline-block w-[10px]" />}
-        {name}
-      </span>
-      {badges}
-    </Button>
-  )
-}
-
-function TextModelRows({
-  models,
-  isFreeTier,
-  isFreeTierChatModelId,
-  textModelsLoading,
-  onHoveredModelChange,
-  isSelected,
-  isDisabled,
-  onSelect,
-}: {
-  models: ChatModel[]
-  isFreeTier: boolean
-  isFreeTierChatModelId: (modelId: string) => boolean
-  textModelsLoading: boolean
-  onHoveredModelChange: (modelId: string | null, position: ModelQualitiesPosition | null) => void
-  isSelected: (model: ChatModel) => boolean
-  isDisabled: (model: ChatModel, selected: boolean) => boolean
-  onSelect: (model: ChatModel) => void
-}) {
-  return (
-    <>
-      {models.map((m, index, allModels) => {
-        const isSel = isSelected(m)
-        const dividerLabel = modelGroupDividerLabel({
-          isFreeTier,
-          isFreeModelRow: isFreeTierChatModelId(m.id),
-          previousIsFreeModelRow: index > 0 ? isFreeTierChatModelId(allModels[index - 1].id) : false,
-          textModelsLoading,
-          index,
-        })
-        return (
-          <div key={m.id}>
-            {dividerLabel ? <ModelGroupDivider label={dividerLabel} /> : null}
-            <ModelPickerRow
-              modelId={m.id}
-              name={m.name}
-              selected={isSel}
-              disabled={isDisabled(m, isSel)}
-              onSelect={() => onSelect(m)}
-              onHoverStart={(e) => {
-                const r = e.currentTarget.getBoundingClientRect()
-                onHoveredModelChange(m.id, { x: r.left - 8, y: r.top + r.height / 2 })
-              }}
-              badges={<ModelBadges model={m} />}
-            />
-          </div>
-        )
-      })}
-    </>
   )
 }
 
@@ -517,6 +399,8 @@ function AutomationModelPicker({
   textModelsLoading,
   isFreeTier,
   automationHeaderModels,
+  favoriteScope,
+  modelRecommendations,
   isFreeTierChatModelId,
   onSaveAutomationHeaderModel,
   onSetShowModelPicker,
@@ -537,10 +421,13 @@ function AutomationModelPicker({
   | 'textModelsLoading'
   | 'isFreeTier'
   | 'automationHeaderModels'
+  | 'favoriteScope'
+  | 'modelRecommendations'
   | 'isFreeTierChatModelId'
   | 'onSaveAutomationHeaderModel'
   | 'onSetShowModelPicker'
 >) {
+  const { favoriteIds, toggleFavorite } = useFavoriteModelIds(favoriteScope)
   return (
     <Popover open={showModelPicker} onOpenChange={onSetShowModelPicker}>
       <div data-tour="model-picker" className="relative min-w-0 flex-1 md:w-auto md:flex-none">
@@ -563,7 +450,7 @@ function AutomationModelPicker({
           align="end"
           aria-label="Choose automation model"
           data-tour="model-picker"
-          className="w-[min(22rem,calc(100vw-1rem))] rounded-lg p-0"
+          className="w-[min(24rem,calc(100vw-1rem))] rounded-lg p-0"
         >
           {hoveredModelId && modelQualitiesPos ? (
             <ModelQualitiesHoverCard
@@ -577,25 +464,25 @@ function AutomationModelPicker({
               onHoveredModelChange={onHoveredModelChange}
             />
           ) : null}
-          <div>
-            <div ref={modelPickerListScrollRef} className="max-h-72 overflow-y-auto">
-              {textModelsLoading && !isFreeTier ? <PremiumModelsLoadingRows /> : null}
-              <TextModelRows
-                models={automationHeaderModels}
-                isFreeTier={isFreeTier}
-                isFreeTierChatModelId={isFreeTierChatModelId}
-                textModelsLoading={textModelsLoading}
-                onHoveredModelChange={onHoveredModelChange}
-                isSelected={(m) => m.id === automationHeaderModelId}
-                isDisabled={() => false}
-                onSelect={(m) => {
-                  void onSaveAutomationHeaderModel(m.id)
-                  onSetShowModelPicker(false)
-                }}
-              />
-              {textModelsLoading && isFreeTier ? <PremiumModelsLoadingRows divider /> : null}
-            </div>
-          </div>
+          <ModelSelector
+            models={automationHeaderModels}
+            recommendedIds={modelRecommendations?.text}
+            pinnedIds={isFreeTier ? automationHeaderModels.filter((m) => isFreeTierChatModelId(m.id)).map((m) => m.id) : []}
+            favoriteIds={favoriteIds}
+            onToggleFavorite={toggleFavorite}
+          onListChange={() => onHoveredModelChange(null, null)}
+            listRef={modelPickerListScrollRef}
+            isSelected={(m) => m.id === automationHeaderModelId}
+            onSelect={(m) => {
+              void onSaveAutomationHeaderModel(m.id)
+              onSetShowModelPicker(false)
+            }}
+            onRowHover={(m, row) => {
+              const r = row.getBoundingClientRect()
+              onHoveredModelChange(m.id, { x: r.right + 8, y: r.top })
+            }}
+            beforeList={textModelsLoading ? <PremiumModelsLoadingRows /> : null}
+          />
         </PopoverContent>
       </div>
     </Popover>
@@ -647,6 +534,8 @@ function AutomationHeaderControls(props: Pick<ChatExperienceHeaderProps,
   | 'textModelsLoading'
   | 'isFreeTier'
   | 'automationHeaderModels'
+  | 'favoriteScope'
+  | 'modelRecommendations'
   | 'isFreeTierChatModelId'
   | 'onSaveAutomationHeaderModel'
   | 'onSetShowModelPicker'
@@ -739,6 +628,8 @@ function ChatModelPickerDropdown({
   selectedModels,
   onToggleTextModel,
   onTextModelSelectionModeChange,
+  favoriteScope,
+  modelRecommendations,
   isFreeTierChatModelId,
   onHoveredModelChange,
   hasAutomationContext,
@@ -766,12 +657,14 @@ function ChatModelPickerDropdown({
   | 'selectedModels'
   | 'onToggleTextModel'
   | 'onTextModelSelectionModeChange'
+  | 'favoriteScope'
+  | 'modelRecommendations'
   | 'isFreeTierChatModelId'
   | 'onHoveredModelChange'
   | 'hasAutomationContext'
 >) {
   const selectedModelSet = new Set(selectedModels)
-  const { favoriteIds, toggleFavorite } = useFavoriteModelIds()
+  const { favoriteIds, toggleFavorite } = useFavoriteModelIds(favoriteScope)
   const mediaModels = generationMode === 'image' ? imageModels : videoModels
   const selectedMediaIds = generationMode === 'image' ? selectedImageModels : selectedVideoModels
   const mediaSelectionMode = generationMode === 'image' ? imageModelSelectionMode : videoModelSelectionMode
@@ -810,9 +703,11 @@ function ChatModelPickerDropdown({
       {generationMode === 'text' ? (
         <ModelSelector
           models={selectableTextModels}
+          recommendedIds={modelRecommendations?.text}
           pinnedIds={isFreeTier ? selectableTextModels.filter((m) => isFreeTierChatModelId(m.id)).map((m) => m.id) : []}
           favoriteIds={favoriteIds}
           onToggleFavorite={toggleFavorite}
+          onListChange={() => onHoveredModelChange(null, null)}
           listRef={modelPickerListScrollRef}
           isSelected={(m) =>
             askModelSelectionMode === 'single' ? m.id === selectedActModel : selectedModelSet.has(m.id)
@@ -821,7 +716,6 @@ function ChatModelPickerDropdown({
             askModelSelectionMode === 'multiple' && !selectedModelSet.has(m.id) && selectedModels.length >= 4
           }
           onSelect={(m) => onToggleTextModel(m.id)}
-          renderBadges={(m) => <ModelBadges model={m} />}
           onRowHover={(m, row) => {
             const r = row.getBoundingClientRect()
             onHoveredModelChange(m.id, { x: r.left - 8, y: r.top + r.height / 2 })
@@ -831,15 +725,22 @@ function ChatModelPickerDropdown({
         />
       ) : (
         <ModelSelector
+          key={generationMode}
           models={mediaModels}
+          recommendedIds={modelRecommendations?.[generationMode]}
           favoriteIds={favoriteIds}
           onToggleFavorite={toggleFavorite}
+          onListChange={() => onHoveredModelChange(null, null)}
           listRef={modelPickerListScrollRef}
           isSelected={(m) => selectedMediaIds.includes(m.id)}
           isDisabled={(m) =>
             mediaSelectionMode === 'multiple' && !selectedMediaIds.includes(m.id) && selectedMediaIds.length >= 4
           }
           onSelect={(m) => onToggleMediaModel(m.id)}
+          onRowHover={(m, row) => {
+            const r = row.getBoundingClientRect()
+            onHoveredModelChange(m.id, { x: r.right + 8, y: r.top })
+          }}
           footer={footer}
         />
       )}
@@ -880,6 +781,8 @@ function ChatModelPicker({
   selectedModels,
   onToggleTextModel,
   onTextModelSelectionModeChange,
+  favoriteScope,
+  modelRecommendations,
   isFreeTierChatModelId,
   hasAutomationContext,
   placement = 'header',
@@ -918,6 +821,8 @@ function ChatModelPicker({
   | 'selectedModels'
   | 'onToggleTextModel'
   | 'onTextModelSelectionModeChange'
+  | 'favoriteScope'
+  | 'modelRecommendations'
   | 'isFreeTierChatModelId'
   | 'hasAutomationContext'
 >) {
@@ -945,21 +850,23 @@ function ChatModelPicker({
           align="end"
           aria-label="Choose model"
           data-tour="model-picker"
-          className="w-[min(20rem,calc(100vw-1rem))] rounded-lg md:w-64"
+          className="w-[min(24rem,calc(100vw-1rem))] rounded-lg p-0"
         >
-          {generationMode === 'text' && hoveredModelId && modelQualitiesPos ? (
+          {hoveredModelId && modelQualitiesPos ? (
             <ModelQualitiesHoverCard
               onClosePicker={() => onSetShowModelPicker(false)}
               modelPickerRef={modelPickerRef}
               modelId={hoveredModelId}
               position={modelQualitiesPos}
-              resolveModel={resolveModel}
+              resolveModel={(id) => resolveModel(id) ?? imageModels.find((model) => model.id === id) ?? videoModels.find((model) => model.id === id)}
               reasoning={reasoning}
               onReasoningChange={onReasoningChange}
               onHoveredModelChange={onHoveredModelChange}
             />
           ) : null}
           <ChatModelPickerDropdown
+            favoriteScope={favoriteScope}
+            modelRecommendations={modelRecommendations}
             generationMode={generationMode}
             onGenerationModeChange={onGenerationModeChange}
             isActiveLoading={isActiveLoading}

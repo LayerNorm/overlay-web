@@ -39,13 +39,11 @@ export async function resolveRuntimeChatAllowlist(
 }
 
 /**
- * Resolve which model IDs the user may use.
+ * Resolve discoverable model metadata, respecting deployment and extension policies.
  *
- * Chat authorization is based on the live AI Gateway language catalog (registered into
- * `AVAILABLE_MODELS`), not the small curated fallback list. Without loading the catalog
- * first, paid users only ever see ~20 hard-coded defaults in Model settings.
+ * Load the live gateway catalog before reading AVAILABLE_MODELS, not just its fallbacks.
  */
-export async function resolveAuthorizedModelIds(args: {
+export async function resolveCatalogModelIds(args: {
   entitlements: Entitlements | null
   /** When true, bypass the in-memory catalog TTL and re-fetch from AI Gateway. */
   forceCatalogRefresh?: boolean
@@ -69,23 +67,33 @@ export async function resolveAuthorizedModelIds(args: {
     AVAILABLE_MODELS
   const chat = policyChatModels
     .filter((model) => !runtimeChatAllowlist || runtimeChatAllowlist.has(model.id))
-    .filter((model) => Boolean(args.entitlements && isPaidPlan(args.entitlements)) ||
-      isFreeTierChatModelId(model.id))
     .map((model) => model.id)
 
-  const paid = Boolean(args.entitlements && isPaidPlan(args.entitlements))
-  const image = paid
-    ? (overlayAppConfig.modelPolicy?.filterImageModels?.(IMAGE_MODELS, context) ?? IMAGE_MODELS)
-      .map((model) => model.id)
-    : []
-  const video = paid
-    ? (overlayAppConfig.modelPolicy?.filterVideoModels?.(VIDEO_MODELS, context) ?? VIDEO_MODELS)
-      .map((model) => model.id)
-    : []
+  const image = (overlayAppConfig.modelPolicy?.filterImageModels?.(IMAGE_MODELS, context) ?? IMAGE_MODELS)
+    .map((model) => model.id)
+  const video = (overlayAppConfig.modelPolicy?.filterVideoModels?.(VIDEO_MODELS, context) ?? VIDEO_MODELS)
+    .map((model) => model.id)
 
   return {
     chat: new Set(chat),
     image: new Set(image),
     video: new Set(video),
   }
+}
+
+export function applyCatalogEntitlements(
+  catalog: Awaited<ReturnType<typeof resolveCatalogModelIds>>,
+  entitlements: Pick<Entitlements, 'tier' | 'planKind'> | null,
+) {
+  const paid = Boolean(entitlements && isPaidPlan(entitlements))
+  return {
+    chat: new Set([...catalog.chat].filter((id) => paid || isFreeTierChatModelId(id))),
+    image: new Set(paid ? catalog.image : []),
+    video: new Set(paid ? catalog.video : []),
+  }
+}
+
+/** Discovery never grants permission to generate with a model. */
+export async function resolveAuthorizedModelIds(args: Parameters<typeof resolveCatalogModelIds>[0]) {
+  return applyCatalogEntitlements(await resolveCatalogModelIds(args), args.entitlements)
 }

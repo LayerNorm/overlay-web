@@ -7,7 +7,7 @@ import {
   MessageScrollerViewport,
 } from '@overlay/ui/ai'
 import type { ReactNode, RefObject } from 'react'
-import { useCallback, useMemo } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import type { UseChatHelpers } from '@/components/providers/ai-chat-client'
 import type { UIMessage } from '@/shared/chat/ai-ui-message'
 import type { WebSourceItem } from '@/shared/web/web-sources'
@@ -22,10 +22,12 @@ import {
   type ChatTranscriptPresentation,
 } from '@overlay/chat-react/transcript'
 import type { ChatTranscriptExchangeView } from '@overlay/chat-core'
+import { getUserTurnId } from '@overlay/chat-core'
 import type { DraftModalState, GenerationResult } from './chat-interface/types'
 import { recordRender } from '@overlay/chat-react/lib/perf-debug'
 import { ChatMessage } from './ChatMessage'
 import { toChatTranscriptView } from './chat/toChatTranscriptView'
+import { reconcileTranscriptIdentity } from './chat/chat-transcript-identity'
 
 type ChatInstance = UseChatHelpers<UIMessage>
 
@@ -99,8 +101,15 @@ export function ChatMessageList({
   runtime,
   actions,
 }: ChatMessageListProps) {
+  const conversationId = transcriptKey ?? null
+  const firstUserMessage = state.primaryMessages.find((message) => message.role === 'user')
+  const firstTurnId = firstUserMessage ? getUserTurnId(firstUserMessage) ?? firstUserMessage.id : null
+  const [identity, setIdentity] = useState({ conversationId, firstTurnId, key: 0 })
+  const nextIdentity = reconcileTranscriptIdentity(identity, conversationId, firstTurnId)
+  if (nextIdentity !== identity) setIdentity(nextIdentity)
+
   return (
-    <MessageScrollerProvider key={transcriptKey ?? undefined} defaultScrollPosition="end" autoScroll>
+    <MessageScrollerProvider key={nextIdentity.key} defaultScrollPosition="end" autoScroll>
       <MessageScroller className="overlay-chat-surface min-h-0 flex-1">
         <MessageScrollerViewport
           ref={messagesScrollRef}
