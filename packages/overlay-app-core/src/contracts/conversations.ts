@@ -54,6 +54,13 @@ export type ConversationMessagePart =
             connectUrl?: string
             connected?: boolean
           }
+        | {
+            version: 1
+            kind: 'questionnaire'
+            prompt: string
+            choices: Array<{ id: string; label: string }>
+            multiple: boolean
+          }
       transient?: boolean
     }
   | {
