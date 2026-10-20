@@ -211,6 +211,7 @@
             "group": "Operations",
             "pages": [
               "deploy-operate/release-gates",
+              "deploy-operate/overlay-free",
               "deploy-operate/docs-hosting"
             ]
           }

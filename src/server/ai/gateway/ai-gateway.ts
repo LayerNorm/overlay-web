@@ -8,6 +8,8 @@ import {
 import { calculateGatewayLanguageTokenCostOrNull } from '@/shared/ai/gateway/model-pricing'
 import {
   FREE_TIER_AUTO_MODEL_ID,
+  isFreeTierChatModelId,
+  OPENROUTER_FREE_MODEL_ID,
 } from '@/shared/ai/gateway/model-types'
 import { logger } from '@/server/observability/logger'
 import { openRouterFetchWithRetry, toOpenRouterApiModelId } from '@/server/ai/gateway/openrouter-service'
@@ -18,6 +20,7 @@ import {
   getOrCreateGateway,
   resolveOpenRouterApiKey,
 } from './gateway-runtime'
+import { createRuntimeOverlayFreeLanguageModel } from './overlay-free-router'
 export {
   getGatewayModelId,
   resolveGatewayProviderToolProxyModelId,
@@ -131,10 +134,8 @@ export async function getOpenRouterLanguageModelCapturingRoutedModel(
  * OpenRouter free router. Returns null when no free transport is configured.
  */
 async function getLowBalanceFallbackLanguageModel(accessToken?: string) {
-  if (await resolveOpenRouterApiKey(accessToken)) {
-    return getOpenRouterLanguageModel(FREE_TIER_AUTO_MODEL_ID, accessToken)
-  }
-  return null
+  void accessToken
+  return await createRuntimeOverlayFreeLanguageModel()
 }
 
 export async function getGatewayLanguageModel(
@@ -142,6 +143,12 @@ export async function getGatewayLanguageModel(
   accessToken?: string,
   options?: { allowLowBalanceFallback?: boolean },
 ) {
+  if (isFreeTierChatModelId(modelId)) {
+    return await createRuntimeOverlayFreeLanguageModel({
+      modelId,
+      fallbackOnly: modelId === OPENROUTER_FREE_MODEL_ID,
+    })
+  }
   const model = getModel(modelId)
 
   // Route OpenRouter models to OpenRouter API
@@ -216,7 +223,7 @@ export class OpenRouterGateway implements LLMGateway {
     const allowlist = new Set(this.config.modelAllowlist ?? [])
     const catalog = await getGatewayLanguageCatalog()
     registerGatewayCatalogModels(catalog)
-    return catalog
+    const models = catalog
       .filter((model) => allowlist.size === 0 || allowlist.has(model.id))
       .map((model) => ({
       id: model.id,
@@ -228,10 +235,35 @@ export class OpenRouterGateway implements LLMGateway {
       supportsSearch: model.tags.includes('web-search'),
       pricePer1mTokens:
         ((model.inputPricePerMillion ?? 0) + (model.outputPricePerMillion ?? 0)) / 2,
-    }))
+      }))
+    for (const modelId of [FREE_TIER_AUTO_MODEL_ID, OPENROUTER_FREE_MODEL_ID]) {
+      if (allowlist.size > 0 && !allowlist.has(modelId)) continue
+      if (models.some((model) => model.id === modelId)) continue
+      const model = getModel(modelId)
+      if (model) models.push({
+        id: model.id,
+        name: model.name,
+        provider: model.provider,
+        description: model.description,
+        supportsVision: model.supportsVision,
+        supportsReasoning: model.supportsReasoning,
+        supportsSearch: model.supportsSearch,
+        pricePer1mTokens: 0,
+      })
+    }
+    return models
   }
 
   async getModelPricing(modelId: string): Promise<PricingInfo> {
+    if (isFreeTierChatModelId(modelId)) {
+      return {
+        modelId,
+        providerCostUsd: 0,
+        pricingModelId: modelId,
+        pricingType: 'language',
+        isFree: true,
+      }
+    }
     const model = await getGatewayCatalogModel(modelId)
     const providerCostUsd = model?.type === 'language'
       ? calculateGatewayLanguageTokenCostOrNull(model.pricing, 1_000_000, 0, 0) ?? undefined

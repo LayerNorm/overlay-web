@@ -129,6 +129,7 @@ The following tables are not user-owned tenant data today. They still need revie
 - `rateLimitWindows`
 - `serviceAuthReplayNonces`
 - `sessionTransferTokens`
+- `overlayFreeRoutes` and `overlayFreeRefreshLocks` (deployment-global operational safety state; the deployment is the tenant boundary, and rows contain only route capability, lease, receipt-status, and quarantine metadata, never user content or credentials)
 
 ## Shared Multi-Tenant Checklist
 

@@ -453,7 +453,7 @@ function AgentListRow({
           isActive={isActive}
           disabled={anyOpening}
           // Reserve both actions on touch too; they are always visible below md.
-          className="h-[38px] text-[15px] font-normal data-[active=true]:font-normal group-has-data-[sidebar=menu-action]/menu-item:pr-14"
+          className="h-[38px] text-sm font-normal data-[active=true]:font-normal group-has-data-[sidebar=menu-action]/menu-item:pr-14"
           onClick={() => {
             if (!isExpanded) onToggleExpanded(agent.id)
             onOpenAgent(agent)

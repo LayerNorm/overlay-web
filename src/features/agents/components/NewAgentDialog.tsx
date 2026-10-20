@@ -11,7 +11,7 @@ import type {
   WorkspaceAgentVisibility,
 } from '@overlay/workspace-contracts'
 import { Button, DialogFrame, Input, ListboxSelect, SegmentedControl, Textarea, Toggle, toast } from '@overlay/ui/primitives'
-import { getEnabledChatModels, getGatewayCatalogRevision } from '@/shared/ai/gateway/model-data'
+import { getModelsByIntelligence, getGatewayCatalogRevision } from '@/shared/ai/gateway/model-data'
 import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import {
   AGENT_TOOL_GROUPS,
@@ -23,7 +23,6 @@ import { rememberAgentOpened } from '@/shared/agents/last-agent-by-workspace'
 import { dispatchAgentDirectoryChanged } from '@/shared/workspace/sidebar-events'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useGatewayModelCatalog } from '@/components/providers/useGatewayModelCatalog'
-import { useAppSettings } from '@/components/providers/AppSettingsProvider'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 import { buildWorkspaceAgentInput } from '../lib/agent-editor-input'
 import { AgentAvatarPicker } from './AgentAvatarPicker'
@@ -284,15 +283,13 @@ export function NewAgentFields({ draft, onChange, modelOptions, computersAvailab
 
 function useModelOptions(): ModelOption[] {
   const { revision } = useGatewayModelCatalog({ enabled: true })
-  const { settings } = useAppSettings()
-  const enabledModelIds = settings.enabledChatModelIds
   return useMemo(() => {
     void revision
     void getGatewayCatalogRevision()
-    return getEnabledChatModels(enabledModelIds, false)
+    return getModelsByIntelligence(false)
       .filter((model) => model.id !== 'nvidia/nemotron-nano-9b-v2')
       .map((model) => ({ value: model.id, label: model.name }))
-  }, [enabledModelIds, revision])
+  }, [revision])
 }
 
 /** Creates the agent (and its computer when asked for), then refreshes the roster. */

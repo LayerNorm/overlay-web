@@ -113,11 +113,13 @@ function useExchangeSegments(assistantVisualBlocks: Parameters<typeof buildAssis
 }
 
 function useCollapsePlan(assistantSegments: ReturnType<typeof buildAssistantVisualSegments>, isStreaming: boolean) {
+  const [hasStreamed, setHasStreamed] = useState(isStreaming)
+  if (isStreaming && !hasStreamed) setHasStreamed(true)
   const collapsePlan = useMemo(
-    () => isStreaming
+    () => isStreaming || hasStreamed
       ? { collapsedIndexes: [] as number[], collapsedToolCallCount: 0 }
       : planAssistantWorkCollapse(assistantSegments),
-    [assistantSegments, isStreaming],
+    [assistantSegments, isStreaming, hasStreamed],
   )
   const collapsedSet = useMemo(
     () => new Set(collapsePlan.collapsedIndexes),

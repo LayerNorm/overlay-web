@@ -1,6 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
+  FREE_TIER_AUTO_MODEL_ID,
+  OPENROUTER_FREE_MODEL_ID,
   getModelForId,
   getModelsByIntelligence,
   listModelInfo,
@@ -27,6 +29,15 @@ test('maps Overlay OpenRouter registry ids to OpenRouter API ids', () => {
     toOpenRouterApiModelId('openrouter/vendor/example:free'),
     'vendor/example:free',
   )
+})
+
+test('keeps Overlay Free Auto distinct from the explicit OpenRouter Free model', () => {
+  assert.equal(FREE_TIER_AUTO_MODEL_ID, 'overlay-free')
+  assert.equal(OPENROUTER_FREE_MODEL_ID, 'openrouter/free')
+  assert.equal(getModelForId(FREE_TIER_AUTO_MODEL_ID)?.name, 'Auto')
+  assert.equal(getModelForId(OPENROUTER_FREE_MODEL_ID)?.name, 'OpenRouter Free')
+  assert.equal(getModelForId(FREE_TIER_AUTO_MODEL_ID)?.cost, 0)
+  assert.equal(getModelForId(OPENROUTER_FREE_MODEL_ID)?.cost, 0)
 })
 
 test('maps provider-prefixed direct ids to native API ids', () => {

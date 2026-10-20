@@ -1,5 +1,6 @@
 'use client'
 
+import { MODEL_RECOMMENDATIONS } from '@/shared/ai/gateway/model-data'
 import { latestContextUsage } from '@overlay/chat-react'
 import type React from 'react'
 import {
@@ -69,6 +70,8 @@ export function buildChatExperienceViewProps(
       },
     },
     headerProps: {
+      favoriteScope: c.favoriteScope,
+      modelRecommendations: MODEL_RECOMMENDATIONS,
       hideHeader: c.hideHeader,
       activeChatId: c.activeChatId,
       editingChatId: c.editingChatId,
