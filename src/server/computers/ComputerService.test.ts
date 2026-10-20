@@ -249,7 +249,9 @@ test('an ambiguous provider failure is not retried with a second allocation', as
 })
 
 test('all Computer entry points bind authorization to the target workspace', async () => {
-  const { svc, runtimes } = service()
+  const { svc, runtimes } = service({
+    agents: { 'agent-1': { visibility: 'workspace', createdByPrincipalId: 'principal-1' } },
+  })
   const computer = await svc.provision({ actor: member, workspaceId: 'ws-1', ownerType: 'agent', ownerId: 'agent-1' })
   const stranger = { ...owner, workspaceId: 'ws-other' }
   const requests = [
@@ -275,7 +277,7 @@ test('admission denies allocation and every wake path but permits stop and delet
     if (deny) throw new ComputerServiceError('insufficient_credit', 'No credit', 402)
   } })
   const computer = await svc.provision({ actor: member, workspaceId: 'ws-1', ownerType: 'user', ownerId: 'user-1' })
-  const instance = runtimes.box.instances.get(computer.providerRef!)!
+  const instance = runtimes.box.instances.find((candidate) => candidate.reference === computer.providerRef)!
   instance.state = 'stopped'
   deny = true
   for (const request of [
@@ -307,7 +309,7 @@ test('concurrent provisions allocate only for the winner of the owner claim', as
 test('failed deletion retains the provider reference for a successful retry', async () => {
   const { svc, repository, runtimes } = service()
   const computer = await svc.provision({ actor: member, workspaceId: 'ws-1', ownerType: 'user', ownerId: 'user-1' })
-  const instance = runtimes.box.instances.get(computer.providerRef!)!
+  const instance = runtimes.box.instances.find((candidate) => candidate.reference === computer.providerRef)!
   instance.delete = async () => { throw new Error('Provider unavailable') }
   await assert.rejects(svc.destroy({ actor: member, computerId: computer.id }),
     (error) => error instanceof ComputerServiceError && error.code === 'provider_error')
