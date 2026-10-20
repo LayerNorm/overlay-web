@@ -87,6 +87,20 @@ test('computer screenshot returns image content and computer input validates act
   }
   assert.equal(inputSchema.safeParse({ action: 'click', x: 10, y: 20 }).success, true)
   assert.equal(inputSchema.safeParse({ action: 'type' }).success, false)
+
+  const browser = tools.computer_browser as unknown as {
+    inputSchema: { safeParse(input: unknown): { success: boolean } }
+    toModelOutput(args: { output: { success: boolean; text?: string; error?: string } }): unknown
+  }
+  assert.equal(browser.inputSchema.safeParse({ action: 'navigate', url: 'https://example.test/' }).success, true)
+  assert.equal(browser.inputSchema.safeParse({ action: 'navigate', url: 'file:///etc/passwd' }).success, false)
+  assert.equal(browser.inputSchema.safeParse({ action: 'click' }).success, false)
+  assert.deepEqual(browser.toModelOutput({
+    output: { success: true, text: 'URL: https://example.test/\nTitle: Example' },
+  }), {
+    type: 'text',
+    value: 'URL: https://example.test/\nTitle: Example',
+  })
 })
 
 test('Overlay tools expose Gateway-compatible input schemas', async () => {

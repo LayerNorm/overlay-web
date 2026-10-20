@@ -1,23 +1,39 @@
-export const DRIVER_VERSION = '1'
+import { COMPUTER_BROWSER_DRIVER_SOURCE } from './browser-driver'
+
+export const DRIVER_VERSION = '2'
 
 export const COMPUTER_DRIVER_SOURCE = String.raw`#!/usr/bin/env python3
+import base64
 import contextlib
 import errno
 import fcntl
+import hashlib
 import json
 import os
+import re
 import shutil
+import socket
 import struct
 import subprocess
 import sys
 import time
+import urllib.error
+import urllib.parse
+import urllib.request
 
-VERSION = "1"
+VERSION = "2"
 DEFAULT_MAX_WIDTH = 1280
 LOCK_PATH = "/tmp/overlay-computer/input.lock"
 SHOT_PATH = "/tmp/overlay-computer/shot.png"
 LOCK_WAIT_SECONDS = 0.5
 SCREENSHOT_TOOLS = (("imagemagick", "import"), ("scrot", "scrot"), ("ffmpeg", "ffmpeg"))
+BROWSER_HOST = "127.0.0.1"
+BROWSER_PORT = 9222
+BROWSER_BASE_URL = "http://127.0.0.1:9222"
+BROWSER_START_TIMEOUT_SECONDS = 20
+BROWSER_PROFILE = os.path.expanduser("~/.config/overlay-browser")
+WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+MAX_CDP_MESSAGE_BYTES = 4_000_000
 
 
 class DriverError(Exception):
@@ -336,6 +352,8 @@ def run_input(request):
     return {"success": True}
 
 
+${COMPUTER_BROWSER_DRIVER_SOURCE}
+
 def dispatch(request):
     if not isinstance(request, dict):
         raise DriverError("invalid_input", "The request must be a JSON object.")
@@ -348,6 +366,10 @@ def dispatch(request):
         milliseconds = required_integer(request.get("ms"), "ms", 0, 10000)
         time.sleep(milliseconds / 1000)
         return {"success": True}
+    if command == "browser_ensure":
+        return ensure_browser()
+    if command == "browser":
+        return run_browser(request)
     if command in ("click", "move", "drag", "type", "key", "scroll"):
         return run_input(request)
     raise DriverError("invalid_input", "Unsupported desktop command.")

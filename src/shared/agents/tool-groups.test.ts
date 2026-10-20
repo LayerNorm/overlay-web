@@ -77,6 +77,7 @@ test('every group grants either tool ids or a capability', () => {
 test('the computer group maps to all computer tool ids', () => {
   const computer = AGENT_TOOL_GROUPS.find((g) => g.id === 'computer')!
   assert.deepEqual([...computer.toolIds].sort(), [
+    'computer_browser',
     'computer_exec',
     'computer_input',
     'computer_list_files',
@@ -136,6 +137,7 @@ test('grants saved before a group grew still hold the tools that joined it', () 
   ]
   assert.ok(normalizeAgentToolGrant(savedComputerGrant).includes('computer_screenshot'))
   assert.ok(normalizeAgentToolGrant(savedComputerGrant).includes('computer_input'))
+  assert.ok(normalizeAgentToolGrant(savedComputerGrant).includes('computer_browser'))
 })
 
 test('tool presets never include computer and are recognised from their groups', () => {

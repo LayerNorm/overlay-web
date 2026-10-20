@@ -18,6 +18,7 @@ import { executeBrowserRunTask } from './browser-executes'
 import { executeListChats, executeReadChat } from './chats-executes'
 import {
   executeComputerExec,
+  executeComputerBrowser,
   executeComputerInput,
   executeComputerListFiles,
   executeComputerOpenUrl,
@@ -65,6 +66,10 @@ const computerPointSchema = z.object({
   x: z.number().int().min(0).max(8192),
   y: z.number().int().min(0).max(8192),
 }).strict()
+const computerBrowserUrlSchema = z.string().url().refine(
+  (value) => /^https?:\/\//i.test(value),
+  'URL must use HTTP or HTTPS.',
+)
 const computerInputVariants = z.discriminatedUnion('action', [
   z.object({
     action: z.literal('click'),
@@ -117,6 +122,51 @@ const computerInputSchema = z.object({
   ms: z.number().int().min(0).max(10000).optional(),
 }).strict().superRefine((input, ctx) => {
   const parsed = computerInputVariants.safeParse(input)
+  if (!parsed.success) {
+    for (const issue of parsed.error.issues) ctx.addIssue(issue)
+  }
+})
+const computerBrowserVariants = z.discriminatedUnion('action', [
+  z.object({ action: z.literal('navigate'), url: computerBrowserUrlSchema }).strict(),
+  z.object({ action: z.literal('back') }).strict(),
+  z.object({ action: z.literal('forward') }).strict(),
+  z.object({ action: z.literal('reload') }).strict(),
+  z.object({ action: z.literal('snapshot') }).strict(),
+  z.object({ action: z.literal('click'), ref: z.string().min(1).max(64) }).strict(),
+  z.object({
+    action: z.literal('type'),
+    ref: z.string().min(1).max(64),
+    text: z.string().max(10000),
+    submit: z.boolean().optional(),
+  }).strict(),
+  z.object({
+    action: z.literal('scroll'),
+    direction: z.enum(['up', 'down', 'left', 'right']),
+    amount: z.number().int().min(1).max(25),
+  }).strict(),
+  z.object({
+    action: z.literal('press'),
+    keys: z.enum(['Enter', 'Tab', 'Escape', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'PageDown']),
+  }).strict(),
+  z.object({ action: z.literal('tabs') }).strict(),
+  z.object({ action: z.literal('switch_tab'), index: z.number().int().min(0).max(49) }).strict(),
+  z.object({ action: z.literal('new_tab'), url: computerBrowserUrlSchema }).strict(),
+])
+const computerBrowserSchema = z.object({
+  action: z.enum([
+    'navigate', 'back', 'forward', 'reload', 'snapshot', 'click', 'type',
+    'scroll', 'press', 'tabs', 'switch_tab', 'new_tab',
+  ]),
+  url: computerBrowserUrlSchema.optional(),
+  ref: z.string().min(1).max(64).optional(),
+  text: z.string().max(10000).optional(),
+  submit: z.boolean().optional(),
+  direction: z.enum(['up', 'down', 'left', 'right']).optional(),
+  amount: z.number().int().min(1).max(25).optional(),
+  keys: z.enum(['Enter', 'Tab', 'Escape', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'PageDown']).optional(),
+  index: z.number().int().min(0).max(49).optional(),
+}).strict().superRefine((input, ctx) => {
+  const parsed = computerBrowserVariants.safeParse(input)
   if (!parsed.success) {
     for (const issue of parsed.error.issues) ctx.addIssue(issue)
   }
@@ -901,7 +951,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
         'so signed-in sessions and web apps the user has set up there can be used. ' +
         'The user can watch the desktop live via Open desktop.',
       inputSchema: z.object({
-        url: z.string().url().describe('The URL to open in the computer’s browser'),
+        url: computerBrowserUrlSchema.describe('The HTTP or HTTPS URL to open in the computer’s browser'),
       }),
       execute: async (input) => {
         assertToolAllowed('computer_open_url')
@@ -953,6 +1003,23 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
           assertToolAllowed('computer_input')
           return executeComputerInput(options, computerInputVariants.parse(input))
         },
+      })
+    }
+
+    if (shouldExposeTool('computer_browser')) {
+      tools.computer_browser = tool({
+        description:
+          'Control the signed-in browser visible on this computer. Prefer this tool for websites: take a snapshot, then act using its element refs. ' +
+          'Use computer_screenshot and computer_input for non-browser apps or when snapshot refs fail. The user sees the same browser in Open desktop.',
+        inputSchema: computerBrowserSchema,
+        execute: async (input) => {
+          assertToolAllowed('computer_browser')
+          return executeComputerBrowser(options, computerBrowserVariants.parse(input))
+        },
+        toModelOutput: ({ output }) => ({
+          type: 'text',
+          value: output.success ? output.text : output.error,
+        }),
       })
     }
 

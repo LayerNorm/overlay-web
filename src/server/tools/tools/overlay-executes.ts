@@ -7,6 +7,8 @@ import { machineForAgent, touchEnvironmentMachine } from '@/server/agents/enviro
 import { getOverlayServerContext } from '@/server/bootstrap'
 import {
   ComputerDesktopDriverError,
+  openUrl as openComputerUrl,
+  runBrowserAction as runComputerBrowserAction,
   run as runComputerDesktopCommand,
 } from '@/server/computers/ComputerDesktopDriver'
 import {
@@ -1122,26 +1124,17 @@ export async function executeComputerOpenUrl(
   const resolved = await computerInstanceFor(options)
   if (!resolved.ok) return { success: false, error: resolved.error }
   try {
-    // The bearer ticket is never returned to the transcript — the user can
-    // watch through their own "Open desktop" surface. runCommand executes
-    // outside the desktop session, so DISPLAY is set explicitly.
-    const result = await resolved.operate(async (instance) => {
-      if (!instance.capabilities.desktop) throw new Error('This computer has no desktop to open URLs on.')
-      const handle = await instance.runCommand({
-        command: 'xdg-open', args: [input.url], environment: { DISPLAY: ':0' }, timeoutMs: 15_000,
-      })
-      return await handle.wait()
-    }, 15_000)
-    if (result.exitCode !== 0) {
-      return {
-        success: false,
-        error: `xdg-open failed (exit ${result.exitCode}): ${result.stderr.trim() || result.stdout.trim() || 'no output'}`,
-      }
-    }
+    const result = await resolved.operate(
+      (instance) => openComputerUrl(instance, input.url),
+      120_000,
+    )
     return {
       success: true,
       opened: input.url,
-      note: 'The URL opened on the computer’s desktop. The user can watch it live via Open desktop in Settings or the agent editor.',
+      openedWith: result.openedWith,
+      note: result.openedWith === 'browser'
+        ? 'Opened in the persistent browser on the visible desktop. The user can watch it live via Open desktop.'
+        : 'Opened with the desktop URL handler because the browser driver is unavailable. The user can watch it live via Open desktop.',
       computerId: resolved.computer.id,
     }
   } catch (err) {
@@ -1186,6 +1179,44 @@ export type ComputerInputAction =
   | { action: 'key'; keys: string }
   | { action: 'scroll'; x?: number; y?: number; direction: 'up' | 'down' | 'left' | 'right'; amount: number }
   | { action: 'wait'; ms: number }
+
+export type ComputerBrowserAction =
+  | { action: 'navigate'; url: string }
+  | { action: 'back' }
+  | { action: 'forward' }
+  | { action: 'reload' }
+  | { action: 'snapshot' }
+  | { action: 'click'; ref: string }
+  | { action: 'type'; ref: string; text: string; submit?: boolean }
+  | { action: 'scroll'; direction: 'up' | 'down' | 'left' | 'right'; amount: number }
+  | { action: 'press'; keys: 'Enter' | 'Tab' | 'Escape' | 'ArrowUp' | 'ArrowDown' | 'ArrowLeft' | 'ArrowRight' | 'PageDown' }
+  | { action: 'tabs' }
+  | { action: 'switch_tab'; index: number }
+  | { action: 'new_tab'; url: string }
+
+export async function executeComputerBrowser(
+  options: OverlayToolsOptions,
+  input: ComputerBrowserAction,
+) {
+  const resolved = await computerInstanceFor(options)
+  if (!resolved.ok) return { success: false as const, error: resolved.error }
+  const { action, ...args } = input
+  try {
+    const output = await resolved.operate(
+      (instance) => runComputerBrowserAction(instance, action, args),
+      120_000,
+    )
+    return {
+      success: true as const,
+      action,
+      result: output.result,
+      text: output.text,
+      computerId: resolved.computer.id,
+    }
+  } catch (err) {
+    return computerErrorResult(err, 'Browser action failed')
+  }
+}
 
 export async function executeComputerInput(
   options: OverlayToolsOptions,

@@ -23,6 +23,7 @@ export const COMPUTER_TOOL_IDS = [
   'computer_open_url',
   'computer_screenshot',
   'computer_input',
+  'computer_browser',
 ] as const
 
 export const OVERLAY_TOOL_IDS = [

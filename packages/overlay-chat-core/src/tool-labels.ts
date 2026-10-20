@@ -229,6 +229,7 @@ export function getDescriptiveToolLabel(
     computer_open_url: 'Opening a URL on the computer',
     computer_screenshot: 'Taking a screenshot of the computer',
     computer_input: 'Interacting with the computer',
+    computer_browser: 'Controlling the browser on the computer',
   }
   if (map[toolName]) return map[toolName]!
 
