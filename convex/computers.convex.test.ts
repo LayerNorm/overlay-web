@@ -88,6 +88,91 @@ describe('Convex computers repository surface', () => {
     // remove is idempotent on a missing row.
     await convex.mutation(mutationRef('remove'), { id: 'computer_1', serverSecret: secret })
   })
+
+  test('atomically claims a deterministic Computer lease and binds one allocation reference', async () => {
+    const convex = convexTest(schema, modules)
+    const claim = (id: string, now: number) => convex.mutation(mutationRef('createWithLease'), {
+      ...baseRow, id, serverSecret: secret,
+      lease: {
+        leaseId: `computer:${id}`, workspaceId: 'ws_1', computerId: id, provider: 'box',
+        status: 'reserved', reservedUntil: now + 7_200_000, usage: { meteredUsage: {}, meterVersion: 0 },
+        cleanupAttempts: 0, nextMeterAt: now, now,
+      },
+    })
+    expect(await claim('computer_lease_1', 1_000)).toEqual({ id: 'computer_lease_1', created: true })
+    expect(await claim('computer_lease_loser', 2_000)).toEqual({ id: 'computer_lease_1', created: false })
+    const lease = await convex.query(agentQueryRef('getSandboxLeaseByServer'), {
+      workspaceId: 'ws_1', leaseId: 'computer:computer_lease_1', serverSecret: secret,
+    })
+    expect(lease).toMatchObject({
+      computerId: 'computer_lease_1', status: 'reserved', reservedUntil: 7_201_000,
+      usage: { meteredUsage: {}, meterVersion: 0 },
+    })
+    expect(await convex.query(agentQueryRef('getSandboxLeaseByServer'), {
+      workspaceId: 'ws_2', leaseId: 'computer:computer_lease_1', serverSecret: secret,
+    })).toBeNull()
+
+    await convex.mutation(agentMutationRef('prepareComputerAllocationByServer'), {
+      workspaceId: 'ws_1', leaseId: 'computer:computer_lease_1',
+      allocationKey: 'computer:computer_lease_1', allocationRecipe: '{"persistent":true}', now: 3_000,
+      serverSecret: secret,
+    })
+    expect(await convex.mutation(mutationRef('bindProviderReference'), {
+      computerId: 'computer_lease_1', workspaceId: 'ws_1', leaseId: 'computer:computer_lease_1',
+      reference: 'box-ref', allocationKey: 'computer:other', serverSecret: secret,
+    })).toBeNull()
+    expect(await convex.mutation(mutationRef('bindProviderReference'), {
+      computerId: 'computer_lease_1', workspaceId: 'ws_1', leaseId: 'computer:computer_lease_1',
+      reference: 'box-ref', allocationKey: 'computer:computer_lease_1', serverSecret: secret,
+    })).toBe('computer_lease_1')
+    const bound = await convex.query(agentQueryRef('getSandboxLeaseByServer'), {
+      workspaceId: 'ws_1', leaseId: 'computer:computer_lease_1', serverSecret: secret,
+    })
+    expect(bound).toMatchObject({
+      providerReference: 'box-ref', usage: { meteredProviderReference: 'box-ref' },
+    })
+  })
+
+  test('atomically excludes idle maintenance while activity is live and isolates workspace claims', async () => {
+    const convex = convexTest(schema, modules)
+    await convex.mutation(mutationRef('createWithLease'), {
+      ...baseRow, id: 'computer_activity', lastActiveAt: 1_000, serverSecret: secret,
+      lease: {
+        leaseId: 'computer:computer_activity', workspaceId: 'ws_1', computerId: 'computer_activity',
+        provider: 'box', status: 'running', reservedUntil: 900_000,
+        usage: { meteredUsage: {}, meterVersion: 0 }, cleanupAttempts: 0, now: 1_000,
+      },
+    })
+    const activityArgs = {
+      workspaceId: 'ws_1', leaseId: 'computer:computer_activity', token: 'activity-1',
+      userId: 'user_1', now: 700_000, expiresAt: 800_000, serverSecret: secret,
+    }
+    expect(await convex.mutation(agentMutationRef('claimComputerActivityByServer'), activityArgs)).toMatchObject({
+      token: 'activity-1',
+    })
+    const idleArgs = {
+      workspaceId: 'ws_1', leaseId: 'computer:computer_activity', kind: 'idle',
+      token: 'idle-1', now: 700_000, expiresAt: 1_060_000, idleBefore: 500_000, serverSecret: secret,
+    }
+    expect(await convex.mutation(agentMutationRef('claimComputerMaintenanceByServer'), {
+      ...idleArgs, workspaceId: 'ws_2',
+    })).toBeNull()
+    expect(await convex.mutation(agentMutationRef('claimComputerMaintenanceByServer'), idleArgs)).toBeNull()
+    expect(await convex.mutation(agentMutationRef('releaseComputerActivityByServer'), {
+      workspaceId: 'ws_1', leaseId: 'computer:computer_activity', token: 'activity-1',
+      now: 710_000, serverSecret: secret,
+    })).toBe(true)
+    expect(await convex.mutation(agentMutationRef('claimComputerMaintenanceByServer'), idleArgs)).toMatchObject({
+      token: 'idle-1',
+    })
+    expect(await convex.mutation(agentMutationRef('claimComputerActivityByServer'), {
+      ...activityArgs, token: 'activity-2',
+    })).toBeNull()
+    expect(await convex.mutation(agentMutationRef('releaseComputerMaintenanceByServer'), {
+      workspaceId: 'ws_1', leaseId: 'computer:computer_activity', token: 'stale-token',
+      now: 720_000, serverSecret: secret,
+    })).toBe(false)
+  })
 })
 
 function mutationRef(operation: string) {
@@ -96,4 +181,12 @@ function mutationRef(operation: string) {
 
 function queryRef(operation: string) {
   return makeFunctionReference<'query'>(`computers/computers:${operation}`)
+}
+
+function agentMutationRef(operation: string) {
+  return makeFunctionReference<'mutation'>(`agents/connectedAgents:${operation}`)
+}
+
+function agentQueryRef(operation: string) {
+  return makeFunctionReference<'query'>(`agents/connectedAgents:${operation}`)
 }

@@ -16,6 +16,7 @@ import type {
 } from './ConnectedAgentRepository'
 import { MANAGED_SANDBOX_IDLE_TIMEOUT_MS, managedSandboxRuntimeFromEnv } from './managed-sandbox-runtime'
 import { E2B_COMPUTE_PRICE, meterExecutionUsage, type ExecutionMeterCursor } from './sandbox-execution-accounting'
+import { BOAT_COMPUTE_PRICE, meterBoatUsage, SANDBOX_RUNTIME_FENCE_MS, type BoatMeterCursor } from './sandbox-boat-accounting'
 
 const DEFAULT_RESOURCES = { diskGiB: 10, memoryGiB: 4, vcpus: 2 }
 const DEFAULT_LOW_BALANCE_CUTOFF_CENTS = 100
@@ -61,6 +62,7 @@ export class ManagedAgentSandboxBilling {
     policy: GenerationUsagePolicy
     repository: ConnectedAgentRepository
     runtime?: (provider: string) => SandboxRuntime
+    computerLeaseHandler?: (lease: AgentSandboxLease, reason?: string) => Promise<ManagedSandboxMeterTick>
     now?: () => number
     /** Whether this sweep tick is one that runs the idle fallback (default: once every 10 minutes). */
     idleFallbackDue?: (now: number) => boolean
@@ -175,19 +177,40 @@ export class ManagedAgentSandboxBilling {
   // requested (low balance, environment revocation) or whose cleanup failed.
   async meterLeases(args?: { limit?: number }): Promise<{ disabled?: boolean; ticks: ManagedSandboxMeterTick[] }> {
     if (sandboxMeterDisabled()) return { disabled: true, ticks: [] }
-    const limit = Math.max(1, Math.min(500, args?.limit ?? sandboxMeterLeaseLimit()))
-    const [active, reapable] = await Promise.all([
-      this.dependencies.repository.listSandboxLeases({ statuses: [...ACTIVE_STATUSES], limit }),
-      this.dependencies.repository.listSandboxLeases({ statuses: [...REAPABLE_STATUSES], cleanupBefore: this.now(), limit }),
-    ])
-    const ticks: ManagedSandboxMeterTick[] = [
-      ...(await Promise.all(active.map((lease) => this.tickLease(lease)))),
-      ...(await Promise.all(reapable.map((lease) => this.reapLease(lease)))),
-    ]
+    const limit = Math.max(1, Math.min(20, args?.limit ?? sandboxMeterLeaseLimit()))
+    const now = this.now()
+    const statuses = [...ACTIVE_STATUSES, ...REAPABLE_STATUSES]
+    const claimToken = globalThis.crypto.randomUUID()
+    const claimed = this.dependencies.repository.claimSandboxLeases
+      ? await this.dependencies.repository.claimSandboxLeases({
+        statuses, now, limit, claimToken, claimUntil: now + 2 * 60_000,
+      })
+      : (await this.dependencies.repository.listSandboxLeases({
+        statuses, cleanupBefore: now, limit,
+      })).map((lease) => ({ ...lease, meterClaimToken: claimToken }))
+    const ticks = await mapConcurrent(claimed, 5, async (lease) => {
+      const tick = REAPABLE_STATUSES.some((status) => status === lease.status)
+        ? await this.reapLease(lease)
+        : await this.tickLease(lease)
+      const completedAt = this.now()
+      const current = await this.dependencies.repository.getSandboxLease({
+        workspaceId: lease.workspaceId, leaseId: lease.id,
+      }).catch((_error) => null)
+      const attempts = current?.cleanupAttempts ?? lease.cleanupAttempts
+      const failureBackoff = Math.min(CLEANUP_RETRY_MAX_MS, CLEANUP_RETRY_BASE_MS * 2 ** Math.min(attempts, 5))
+      await this.dependencies.repository.finishSandboxLeaseClaim?.({
+        workspaceId: lease.workspaceId, leaseId: lease.id, claimToken,
+        now: completedAt,
+        nextMeterAt: completedAt + (tick.outcome === 'cleanup_failed'
+          ? (current?.cleanupAfter ? Math.max(0, current.cleanupAfter - completedAt) : failureBackoff)
+          : tick.outcome === 'error' ? failureBackoff : 60_000),
+        })
+      return tick
+    })
     // Fleet-level signal once per sweep when box leases exist: box bills from
     // a shared account pool, so `canStart`/`remainingSeconds` exhaustion would
     // stall every box environment at once.
-    if (active.concat(reapable).some((lease) => lease.provider === 'box')) {
+    if (claimed.some((lease) => lease.provider === 'box')) {
       await this.probeBoxLimits()
     }
     return { ticks }
@@ -221,6 +244,7 @@ export class ManagedAgentSandboxBilling {
 
   /** True when a run on the lease's environment has not finished. A failed lookup counts as running (keep it up, retry). */
   private async environmentHasActiveRuns(lease: AgentSandboxLease): Promise<boolean> {
+    if (!lease.environmentId) return false
     const repository = this.dependencies.repository
     if (typeof repository.environmentHasActiveRuns !== 'function') return finiteNumber(lease.usage?.activeUntil) > this.now()
     return await repository.environmentHasActiveRuns({ environmentId: lease.environmentId }).catch((_error) => true)
@@ -230,6 +254,7 @@ export class ManagedAgentSandboxBilling {
   private async leaseIsIdle(lease: AgentSandboxLease, now: number, graceMs: number): Promise<boolean> {
     const usage = lease.usage ?? {}
     if (now - idleActivityTimestamp(usage, lease, now) <= idleWindowMs(usage) + graceMs) return false
+    if (!lease.environmentId) return false
     return !(await this.environmentHasActiveRuns(lease))
   }
 
@@ -246,7 +271,9 @@ export class ManagedAgentSandboxBilling {
       ? usage.meteredUsage as Record<string, unknown>
       : undefined
     const expectedMeterVersion = typeof usage.meterVersion === 'number' ? usage.meterVersion : 0
-    const stopping = lease.status === 'stopping' || lease.status === 'cleanup_failed'
+    const lifecycle = lease.usage.computerLifecycle as { maintenance?: { kind?: string } } | undefined
+    const stopIntent = lease.computerId !== undefined && ['stop', 'idle', 'delete'].includes(lifecycle?.maintenance?.kind ?? '')
+    const stopping = lease.status === 'stopping' || lease.status === 'cleanup_failed' || stopIntent
 
     let effectiveLease = lease
     let probe = lease.providerReference
@@ -255,6 +282,7 @@ export class ManagedAgentSandboxBilling {
     if (probe === null && lease.providerReference) {
       // The acquire step may have recreated the sandbox and repointed the
       // lease since this snapshot was read — follow the repoint once.
+      if (!lease.environmentId || lease.computerId) return { applied: false, reason: 'usage_unavailable' }
       const current = await this.dependencies.repository.getActiveSandboxLease({
         workspaceId: lease.workspaceId,
         environmentId: lease.environmentId,
@@ -302,7 +330,10 @@ export class ManagedAgentSandboxBilling {
     if (!stopping && instanceRunning && probe.instance && typeof probe.instance.stop === 'function' && options?.idleStop !== 'none' && fallbackDue
       && await this.leaseIsIdle(effectiveLease, now, options?.idleStop === 'timer' ? 0 : IDLE_FALLBACK_GRACE_MS)) {
       const idleForMs = now - idleActivityTimestamp(usage, effectiveLease, now)
-      await probe.instance.stop().then(() => {
+      await probe.instance.stop().then(async () => {
+        const status = await probe.instance!.status()
+        if (!['stopped', 'archived', 'deleted'].includes(status)) throw new Error('SANDBOX_STOP_NOT_CONFIRMED')
+        probe.status = status
         idleStoppedNow = true
         logger.info('Managed sandbox idle-stopped', {
           environmentId: effectiveLease.environmentId,
@@ -356,6 +387,14 @@ export class ManagedAgentSandboxBilling {
       return { applied: false, reason: 'usage_unavailable' }
     }
     const currentUsage = probe.usage
+    const stoppedConfirmed = ['stopped', 'archived', 'deleted'].includes(probe.status ?? '')
+    const boatMeter = effectiveLease.provider === 'box' ? meterBoatUsage({
+      previous: baseline.boatCursor as BoatMeterCursor | undefined,
+      sample: currentUsage,
+      now,
+      stopped: stoppedConfirmed,
+      adopt: !chargeEnabled || (Object.keys(baseline).length > 0 && !baseline.boatCursor),
+    }) : undefined
     const executionPrice = baseline.executionPrice && typeof baseline.executionPrice === 'object'
       ? baseline.executionPrice as typeof E2B_COMPUTE_PRICE : E2B_COMPUTE_PRICE
     const executionMeter = currentUsage.executions && effectiveLease.provider === 'e2b'
@@ -371,7 +410,8 @@ export class ManagedAgentSandboxBilling {
     const authoritativeCounter = currentUsage.providerMetrics?.authoritativeCounter === true
     const delta = executionMeter
       ? { wallTimeMs: executionMeter.durationMs }
-      : usageDelta(baseline, currentUsage, instanceRunning && !authoritativeCounter ? elapsedMs : 0)
+      : boatMeter ? { wallTimeMs: boatMeter.billableSeconds * 1_000 }
+        : usageDelta(baseline, currentUsage, instanceRunning && !authoritativeCounter ? elapsedMs : 0)
     const baselineWallMs = finiteNumber(baseline.wallTimeMs)
     const virtualWallApplied = currentUsage.wallTimeMs !== undefined
       && !executionMeter && !authoritativeCounter
@@ -379,7 +419,7 @@ export class ManagedAgentSandboxBilling {
       && instanceRunning
       && elapsedMs > 0
     const resources = sandboxResources(usage)
-    const providerCostUsd = chargeEnabled ? executionMeter?.computeUsd ?? sandboxCostUsd({
+    const providerCostUsd = chargeEnabled ? executionMeter?.computeUsd ?? boatMeter?.computeUsd ?? sandboxCostUsd({
       provider: effectiveLease.provider,
       resources,
       usage: delta,
@@ -387,7 +427,7 @@ export class ManagedAgentSandboxBilling {
     const costCents = chargeEnabled ? billableBudgetCentsFromProviderUsd(providerCostUsd) : 0
     const runtimeHoldCents = executionMeter
       ? billableBudgetCentsFromProviderUsd(executionMeter.pendingComputeUsd + executionMeter.headroomComputeUsd)
-      : undefined
+      : boatMeter ? billableBudgetCentsFromProviderUsd(boatMeter.holdUsd) : undefined
     const payer = await this.resolveLeasePayer(effectiveLease)
     if ((costCents > 0 || (runtimeHoldCents ?? 0) > 0) && !payer) {
       logger.warn('Managed sandbox meter skipped — no billing payer resolved', {
@@ -403,12 +443,13 @@ export class ManagedAgentSandboxBilling {
     // nets out instead of double-charging the whole session.
     const cursorUsage = {
       ...serializableUsage(currentUsage),
+      ...(boatMeter ? { boatCursor: boatMeter.cursor } : {}),
       ...(executionMeter ? {
         executionCursor: executionMeter.cursor, executionPrice,
         ...(executionMeter.retiredBefore === undefined ? {} : { executionRetiredBefore: executionMeter.retiredBefore }),
       } : {}),
       ...(currentUsage.wallTimeMs === undefined
-        || executionMeter
+        || executionMeter || boatMeter
         ? {}
         : { wallTimeMs: Math.max(currentUsage.wallTimeMs, baselineWallMs + (virtualWallApplied ? elapsedMs : 0)) }),
     }
@@ -421,7 +462,7 @@ export class ManagedAgentSandboxBilling {
       meteredProviderReference: activeReference,
       meteredAt: now,
       ...(runtimeHoldCents === undefined ? {} : { runtimeHoldCents }),
-      providerEvidence: { usage: serializableUsage(currentUsage), stopped: !instanceRunning || idleStoppedNow },
+      providerEvidence: { usage: serializableUsage(currentUsage), stopped: stoppedConfirmed },
       ...(payer ? { payer } : {}),
       ...(costCents > 0 ? {
         charge: {
@@ -434,6 +475,11 @@ export class ManagedAgentSandboxBilling {
             provider: effectiveLease.provider,
             providerReference: activeReference ?? null,
             meterTick: true,
+            ...(boatMeter ? {
+              pricing: { version: BOAT_COMPUTE_PRICE.version, ...boatMeter.cursor.price },
+              providerMetrics: currentUsage.providerMetrics,
+              computeOnly: true,
+            } : {}),
             ...(executionMeter ? {
               pricing: executionPrice,
               executions: currentUsage.executions?.filter((sample) => {
@@ -448,8 +494,13 @@ export class ManagedAgentSandboxBilling {
       minRemainingCents: Math.max(0, options?.minRemainingCents ?? sandboxLowBalanceCutoffCents()),
     })
     if (!result.applied) return result
-    const runtimeFenceMs = Math.min(4 * 60_000, effectiveLease.reservedUntil - this.now())
-    if (instanceRunning && !idleStoppedNow && !stopping && runtimeFenceMs > 0) {
+    if (boatMeter?.stalled) {
+      await this.dependencies.repository.stopSandboxLease({ workspaceId: effectiveLease.workspaceId, leaseId: effectiveLease.id, reason: 'provider_usage_stalled', now })
+      return { applied: false, reason: 'provider_usage_stalled' }
+    }
+    const runtimeFenceMs = Math.min(SANDBOX_RUNTIME_FENCE_MS, effectiveLease.reservedUntil - this.now())
+    if (instanceRunning && !idleStoppedNow && !stopping && runtimeFenceMs > 0
+      && (!boatMeter || currentUsage.providerMetrics?.running === true)) {
       await probe?.instance?.renewRuntime?.(runtimeFenceMs)
     }
     return {
@@ -611,6 +662,10 @@ export class ManagedAgentSandboxBilling {
         await this.killLease(lease, 'lease_expired')
         return { leaseId: lease.id, outcome: 'killed', reason: 'lease_expired' }
       }
+      if (lease.computerId && lease.status === 'running' && this.dependencies.computerLeaseHandler) {
+        const idleResult = await this.dependencies.computerLeaseHandler(lease, 'idle_check')
+        if (idleResult.reason !== 'computer_not_idle' && idleResult.reason !== 'computer_has_live_run') return idleResult
+      }
       const result = await this.meterLease(lease)
       if (!result.applied) {
         if (result.reason === 'insufficient_budget') {
@@ -651,6 +706,10 @@ export class ManagedAgentSandboxBilling {
   }
 
   private async killLease(lease: AgentSandboxLease, reason: string) {
+    if (lease.computerId) {
+      if (this.dependencies.computerLeaseHandler) return await this.dependencies.computerLeaseHandler(lease, reason)
+      return { leaseId: lease.id, outcome: 'cleanup_failed', reason: 'computer_lifecycle_unavailable' }
+    }
     const stopped = await this.dependencies.repository.stopSandboxLease({
       workspaceId: lease.workspaceId,
       leaseId: lease.id,
@@ -661,6 +720,10 @@ export class ManagedAgentSandboxBilling {
   }
 
   private async reapLease(lease: AgentSandboxLease): Promise<ManagedSandboxMeterTick> {
+    if (lease.computerId) {
+      if (this.dependencies.computerLeaseHandler) return await this.dependencies.computerLeaseHandler(lease, 'cleanup_retry')
+      return { leaseId: lease.id, outcome: 'cleanup_failed', reason: 'computer_lifecycle_unavailable' }
+    }
     const reference = lease.providerReference
       ?? (lease.usage && typeof lease.usage.meteredProviderReference === 'string' ? lease.usage.meteredProviderReference : undefined)
     const now = this.now()
@@ -731,7 +794,7 @@ export class ManagedAgentSandboxBilling {
     }
   }
 
-  private async meterLeaseWithRetry(lease: AgentSandboxLease, options?: { minRemainingCents?: number; idleStop?: 'timer' | 'sweep' | 'none' }): Promise<ManagedSandboxMeterResult> {
+  async meterLeaseWithRetry(lease: AgentSandboxLease, options?: { minRemainingCents?: number; idleStop?: 'timer' | 'sweep' | 'none' }): Promise<ManagedSandboxMeterResult> {
     const first = await this.meterLease(lease, options)
     if (first.applied || first.reason !== 'lease_conflict') return first
     const fresh = await this.dependencies.repository.getSandboxLease({
@@ -756,6 +819,7 @@ export class ManagedAgentSandboxBilling {
         }
       }
     }
+    if (!lease.environmentId) return undefined
     const environment = typeof this.dependencies.repository.getEnvironment === 'function'
       ? await this.dependencies.repository.getEnvironment({
         workspaceId: lease.workspaceId,
@@ -993,9 +1057,24 @@ export function minimumBudgetToStartMachineCents(): number {
   return sandboxLowBalanceCutoffCents() + 1
 }
 
-function sandboxLowBalanceCutoffCents() {
+export function sandboxLowBalanceCutoffCents() {
   const configured = Number(process.env.OVERLAY_SANDBOX_LOW_BALANCE_CUTOFF_CENTS)
   return Number.isFinite(configured) && configured >= 0 ? configured : DEFAULT_LOW_BALANCE_CUTOFF_CENTS
+}
+
+async function mapConcurrent<T, R>(values: T[], concurrency: number, worker: (value: T) => Promise<R>): Promise<R[]> {
+  const results: R[] = []
+  let cursor = 0
+  const run = async () => {
+    for (;;) {
+      const index = cursor
+      cursor += 1
+      if (index >= values.length) return
+      results[index] = await worker(values[index])
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(concurrency, values.length) }, () => run()))
+  return results
 }
 
 function sandboxBootstrapCoverageMs() {

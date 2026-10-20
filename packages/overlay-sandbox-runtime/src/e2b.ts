@@ -117,11 +117,12 @@ export class E2BSandboxRuntime implements SandboxRuntime {
       ...this.connection(),
       timeoutMs: Math.min(Math.max(request.hardTimeoutMs, 60_000), RUNTIME_FENCE_MS),
       envs: request.environment ?? {},
-      metadata: { ...(request.metadata ?? {}), overlayName: request.name },
+      metadata: { ...(request.metadata ?? {}), overlayName: request.name, ...(request.allocationKey ? { overlayAllocationKey: request.allocationKey } : {}) },
       allowInternetAccess: request.networkPolicy.mode !== 'deny_all',
       // A sandbox that reaches its timeout is paused, not destroyed: its disk is a machine's whole state.
       lifecycle: { onTimeout: 'pause', autoResume: false },
     })
+    await request.onAllocated?.(handle.sandboxId)
     return new E2BSandbox(this, handle.sandboxId, request.name, handle, request.environment ?? {})
   }
 

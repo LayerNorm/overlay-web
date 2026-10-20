@@ -1265,6 +1265,8 @@ export default defineSchema({
     .index('by_conversationId_status_updatedAt', ['conversationId', 'status', 'updatedAt'])
     .index('by_userId_createdAt', ['userId', 'createdAt'])
     .index('by_environmentId_createdAt', ['environmentId', 'createdAt'])
+    .index('by_agentId_status', ['agentId', 'status'])
+    .index('by_userId_status', ['userId', 'status'])
     .index('by_externalRunId', ['externalRunId'])
     .index('by_runner_status_leaseExpiresAt', ['runner', 'status', 'leaseExpiresAt'])
     .index('by_assistantMessageId', ['assistantMessageId'])
@@ -2570,16 +2572,19 @@ export default defineSchema({
     .index('by_workspaceId_status', ['workspaceId', 'status']),
 
   agentSandboxLeases: defineTable({
-    leaseId: v.string(), workspaceId: v.string(), environmentId: v.string(), runId: v.optional(v.string()),
+    leaseId: v.string(), workspaceId: v.string(), environmentId: v.optional(v.string()), computerId: v.optional(v.string()), runId: v.optional(v.string()),
     provider: v.string(), providerReference: v.optional(v.string()), status: v.string(),
     reservationId: v.optional(v.string()), reservedUntil: v.number(),
     runtimeStartedAt: v.optional(v.number()), runtimeEndedAt: v.optional(v.number()), usage: v.any(),
     cleanupAttempts: v.number(), cleanupAfter: v.optional(v.number()),
+    nextMeterAt: v.optional(v.number()), meterClaimToken: v.optional(v.string()), meterClaimUntil: v.optional(v.number()),
     createdAt: v.number(), updatedAt: v.number(),
   }).index('by_leaseId', ['leaseId'])
     .index('by_workspaceId', ['workspaceId'])
     .index('by_workspaceId_environmentId', ['workspaceId', 'environmentId'])
-    .index('by_status_cleanupAfter', ['status', 'cleanupAfter']),
+    .index('by_workspaceId_computerId', ['workspaceId', 'computerId'])
+    .index('by_status_cleanupAfter', ['status', 'cleanupAfter'])
+    .index('by_status_nextMeterAt', ['status', 'nextMeterAt']),
 
   agentSandboxSettlements: defineTable({
     reservationId: v.string(), workspaceId: v.string(), environmentId: v.string(),

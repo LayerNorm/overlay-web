@@ -16,7 +16,9 @@ import type {
 } from '@overlay/workspace-contracts'
 import { lazyConvex as convex } from '@/server/database/lazy-convex'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
-import type { ApplyRemoteEventsResult, ConnectedAgentRepository } from './ConnectedAgentRepository'
+import type {
+  ApplyRemoteEventsResult, ComputerActivityClaim, ComputerMaintenanceClaim, ConnectedAgentRepository,
+} from './ConnectedAgentRepository'
 
 const PREFIX = 'agents/connectedAgents'
 const CONTROL_PREFIX = 'agents/environmentControlPlane'
@@ -164,6 +166,30 @@ export class ConvexConnectedAgentRepository implements ConnectedAgentRepository 
   }
   listSandboxLeases(input: Parameters<ConnectedAgentRepository['listSandboxLeases']>[0]) {
     return connectedQuery<AgentSandboxLease[]>('listSandboxLeasesByServer', input)
+  }
+  claimSandboxLeases(input: Parameters<NonNullable<ConnectedAgentRepository['claimSandboxLeases']>>[0]) {
+    return mutation<AgentSandboxLease[]>('claimSandboxLeasesByServer', input)
+  }
+  finishSandboxLeaseClaim(input: Parameters<NonNullable<ConnectedAgentRepository['finishSandboxLeaseClaim']>>[0]) {
+    return mutation<boolean>('finishSandboxLeaseClaimByServer', input)
+  }
+  claimComputerMaintenance(input: Parameters<NonNullable<ConnectedAgentRepository['claimComputerMaintenance']>>[0]) {
+    return mutation<ComputerMaintenanceClaim | null>('claimComputerMaintenanceByServer', input)
+  }
+  releaseComputerMaintenance(input: Parameters<NonNullable<ConnectedAgentRepository['releaseComputerMaintenance']>>[0]) {
+    return mutation<boolean>('releaseComputerMaintenanceByServer', input)
+  }
+  claimComputerActivity(input: Parameters<NonNullable<ConnectedAgentRepository['claimComputerActivity']>>[0]) {
+    return mutation<ComputerActivityClaim | null>('claimComputerActivityByServer', input)
+  }
+  releaseComputerActivity(input: Parameters<NonNullable<ConnectedAgentRepository['releaseComputerActivity']>>[0]) {
+    return mutation<boolean>('releaseComputerActivityByServer', input)
+  }
+  prepareComputerAllocation(input: Parameters<NonNullable<ConnectedAgentRepository['prepareComputerAllocation']>>[0]) {
+    return mutation<{ requestedAt: number } | null>('prepareComputerAllocationByServer', input)
+  }
+  computerHasActiveRuns(input: Parameters<NonNullable<ConnectedAgentRepository['computerHasActiveRuns']>>[0]) {
+    return connectedQuery<boolean>('computerHasActiveRunsByServer', input)
   }
   environmentHasActiveExecution(input: { environmentId: string }) {
     return connectedQuery<boolean>('environmentHasActiveExecutionByServer', input)

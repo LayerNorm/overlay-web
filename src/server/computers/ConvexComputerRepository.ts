@@ -1,6 +1,6 @@
 import 'server-only'
 
-import type { Computer, ComputerOwnerType } from '@overlay/workspace-contracts'
+import type { AgentSandboxLease, Computer, ComputerOwnerType } from '@overlay/workspace-contracts'
 import { lazyConvex as convex } from '@/server/database/lazy-convex'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import type { Doc } from '../../../convex/_generated/dataModel'
@@ -34,6 +34,50 @@ export class ConvexComputerRepository implements ComputerRepository {
     const computer = await this.get(id)
     if (!computer) throw new Error('Failed to create computer')
     return computer
+  }
+
+  async createWithLease(row: Computer, lease: Omit<AgentSandboxLease, 'createdAt' | 'updatedAt'> & { now: number }): Promise<{ computer: Computer; created: boolean }> {
+    const result = await convex.mutation<{ id: string; created: boolean }>('computers/computers:createWithLease', {
+      serverSecret: this.serverSecret,
+      id: row.id,
+      workspaceId: row.workspaceId,
+      ownerType: row.ownerType,
+      ownerId: row.ownerId,
+      provider: row.provider,
+      providerRef: row.providerRef ?? undefined,
+      size: row.size,
+      status: row.status,
+      name: row.name ?? undefined,
+      createdBy: row.createdBy,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      lastActiveAt: row.lastActiveAt ?? undefined,
+      lease: {
+        leaseId: lease.id,
+        workspaceId: lease.workspaceId,
+        computerId: lease.computerId,
+        environmentId: lease.environmentId,
+        runId: lease.runId,
+        provider: lease.provider,
+        providerReference: lease.providerReference,
+        status: lease.status,
+        reservationId: lease.reservationId,
+        reservedUntil: lease.reservedUntil,
+        runtimeStartedAt: lease.runtimeStartedAt,
+        runtimeEndedAt: lease.runtimeEndedAt,
+        usage: lease.usage,
+        cleanupAttempts: lease.cleanupAttempts,
+        cleanupAfter: lease.cleanupAfter,
+        nextMeterAt: lease.nextMeterAt,
+        meterClaimToken: lease.meterClaimToken,
+        meterClaimUntil: lease.meterClaimUntil,
+        now: lease.now,
+      },
+    }, { throwOnError: true })
+    if (!result) throw new Error('Failed to create computer')
+    const computer = await this.get(result.id)
+    if (!computer) throw new Error('Failed to create computer')
+    return { computer, created: result.created }
   }
 
   async get(id: string): Promise<Computer | null> {
@@ -88,6 +132,20 @@ export class ConvexComputerRepository implements ComputerRepository {
       id,
       serverSecret: this.serverSecret,
     }, { throwOnError: true })
+  }
+
+  async bindProviderReference(args: {
+    computerId: string
+    workspaceId: string
+    leaseId: string
+    reference: string
+    allocationKey: string
+  }): Promise<Computer | null> {
+    const id = await convex.mutation<string | null>('computers/computers:bindProviderReference', {
+      serverSecret: this.serverSecret,
+      ...args,
+    }, { throwOnError: true })
+    return id ? await this.get(id) : null
   }
 }
 

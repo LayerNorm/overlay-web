@@ -918,7 +918,11 @@ function computerErrorResult(err: unknown, fallback: string) {
 async function computerInstanceFor(
   options: OverlayToolsOptions,
 ): Promise<
-  | { ok: true; computer: Pick<Computer, 'id' | 'name'>; instance: SandboxInstance }
+  | {
+      ok: true
+      computer: Pick<Computer, 'id' | 'name'>
+      operate<T>(operation: (instance: SandboxInstance) => Promise<T>, actionDeadlineMs?: number): Promise<T>
+    }
   | { ok: false; error: string }
 > {
   if (!options.workspaceId) {
@@ -939,13 +943,21 @@ async function computerInstanceFor(
       principalId: access?.principal.id,
       workspaceRole: access?.membership.role === 'owner' ? 'owner' : 'member',
     }
-    const { computer, instance } = await computerService.instanceForOwner({
+    const computer = await computerService.getForOwner({
       actor,
       workspaceId: options.workspaceId,
       ownerType,
       ownerId,
     })
-    return { ok: true, computer, instance }
+    return {
+      ok: true,
+      computer,
+      operate: (operation, actionDeadlineMs) => computerService.withOwnerOperation({
+        actor, workspaceId: options.workspaceId!, ownerType, ownerId,
+        actionDeadlineMs,
+        operation: (_current, instance) => operation(instance),
+      }),
+    }
   } catch (err) {
     // An agent bound to an Overlay Cloud environment already has a machine —
     // its environment sandbox. Fall back to it before reporting "no computer"
@@ -960,7 +972,7 @@ async function computerInstanceFor(
         return {
           ok: true,
           computer: { id: `env:${machine.environment.id}`, name: machine.environment.name },
-          instance: machine.instance,
+          operate: async (operation) => await operation(machine.instance),
         }
       }
     }
@@ -989,20 +1001,20 @@ export async function executeComputerExec(
       Math.max(input.timeoutMs ?? COMPUTER_EXEC_TIMEOUT_DEFAULT_MS, 5_000),
       COMPUTER_EXEC_TIMEOUT_MAX_MS,
     )
-    const handle = await resolved.instance.runCommand({
-      command: input.command,
-      cwd: input.cwd,
-      // Scoped gateway credentials so agent CLIs on the machine authenticate
-      // through Overlay's metered proxy — no real provider keys in the box.
-      environment: agentGatewayExecEnv({
-        workspaceId: options.workspaceId!,
-        userId: options.userId,
-        agentId: options.agentId,
-        ttlMs: timeoutMs + 60_000,
-      }),
-      timeoutMs,
-    })
-    const result = await handle.wait()
+    const result = await resolved.operate(async (instance) => {
+      const handle = await instance.runCommand({
+        command: input.command,
+        cwd: input.cwd,
+        environment: agentGatewayExecEnv({
+          workspaceId: options.workspaceId!,
+          userId: options.userId,
+          agentId: options.agentId,
+          ttlMs: timeoutMs + 60_000,
+        }),
+        timeoutMs,
+      })
+      return await handle.wait()
+    }, timeoutMs)
     const stdout = truncateOutput(result.stdout)
     const stderr = truncateOutput(result.stderr)
     return {
@@ -1027,7 +1039,7 @@ export async function executeComputerReadFile(
   const resolved = await computerInstanceFor(options)
   if (!resolved.ok) return { success: false, error: resolved.error }
   try {
-    const bytes = await resolved.instance.readFile(input.path)
+    const bytes = await resolved.operate((instance) => instance.readFile(input.path))
     if (bytes === null) {
       return { success: false, error: `No file at ${input.path}` }
     }
@@ -1055,7 +1067,7 @@ export async function executeComputerWriteFile(
   if (!resolved.ok) return { success: false, error: resolved.error }
   try {
     const bytes = new TextEncoder().encode(input.contents)
-    await resolved.instance.writeFiles([{ path: input.path, contents: bytes }])
+    await resolved.operate((instance) => instance.writeFiles([{ path: input.path, contents: bytes }]))
     return {
       success: true,
       path: input.path,
@@ -1075,7 +1087,7 @@ export async function executeComputerListFiles(
   if (!resolved.ok) return { success: false, error: resolved.error }
   try {
     const path = input.path ?? '/home/user'
-    const entries = await resolved.instance.listFiles(path)
+    const entries = await resolved.operate((instance) => instance.listFiles(path))
     return {
       success: true,
       path,
@@ -1097,20 +1109,17 @@ export async function executeComputerOpenUrl(
 ) {
   const resolved = await computerInstanceFor(options)
   if (!resolved.ok) return { success: false, error: resolved.error }
-  if (!resolved.instance.capabilities.desktop) {
-    return { success: false, error: 'This computer has no desktop to open URLs on.' }
-  }
   try {
     // The bearer ticket is never returned to the transcript — the user can
     // watch through their own "Open desktop" surface. runCommand executes
     // outside the desktop session, so DISPLAY is set explicitly.
-    const handle = await resolved.instance.runCommand({
-      command: 'xdg-open',
-      args: [input.url],
-      environment: { DISPLAY: ':0' },
-      timeoutMs: 15_000,
-    })
-    const result = await handle.wait()
+    const result = await resolved.operate(async (instance) => {
+      if (!instance.capabilities.desktop) throw new Error('This computer has no desktop to open URLs on.')
+      const handle = await instance.runCommand({
+        command: 'xdg-open', args: [input.url], environment: { DISPLAY: ':0' }, timeoutMs: 15_000,
+      })
+      return await handle.wait()
+    }, 15_000)
     if (result.exitCode !== 0) {
       return {
         success: false,

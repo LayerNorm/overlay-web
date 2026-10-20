@@ -46,7 +46,7 @@ test('Computer admission denies missing/free plans and below-floor or invalid ba
 test('Computer admission resolves the workspace and agent payer and admits at the start floor', async () => {
   const admission = new ComputerAdmission({
     payerResolver: { resolve: async (args) => {
-      assert.deepEqual(args, { workspaceId: 'ws-1', userId: 'user-1', programmaticSubjectId: 'agent-1' })
+      assert.deepEqual(args, { workspaceId: 'ws-1', userId: 'user-1', programmaticSubjectId: 'agent:agent-1' })
       return workspacePayer
     } },
     getEntitlements: async (id) => {

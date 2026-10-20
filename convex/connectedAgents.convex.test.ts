@@ -4,6 +4,7 @@ import { makeFunctionReference } from 'convex/server'
 import schema from './schema'
 import type { ConnectedAgentContractRepository } from '../src/shared/agents/connected-agent-repository-contract'
 import { verifyConnectedAgentRepositoryContract } from '../src/shared/agents/connected-agent-repository-contract'
+import { prepareSandboxSpendLimits } from './lib/sandboxSpendLimits'
 
 const modules = import.meta.glob('./**/*.ts')
 const secret = 'connected-agent-contract-secret'
@@ -33,7 +34,11 @@ describe('Convex connected-agent provider contract', () => {
         billingAccountId: 'runtime_wallet', subjectKind: 'programmatic', subjectId: 'agent:a1', limitMicros: 5_000_000,
         usedMicros: 0, reservedMicros: 200_000, periodStart: 0, periodEnd: 1_000_000, version: 1, createdAt: 1, updatedAt: 1,
       })
-      return { balance, limit }
+      const member = await ctx.db.insert('billingAccountSpendLimits', {
+        billingAccountId: 'runtime_wallet', subjectKind: 'member', subjectId: 'user', limitMicros: 6_000_000,
+        usedMicros: 0, reservedMicros: 100_000, periodStart: 0, periodEnd: 1_000_000, version: 1, createdAt: 1, updatedAt: 1,
+      })
+      return { balance, limit, member }
     })
     const tick = (version: number, holdCents: number, costCents = 0, overrides = {}) => call('meterSandboxLeaseDebitByServer', {
       workspaceId, leaseId: 'runtime_lease', now: version + 10, meteredAt: version + 10,
@@ -45,7 +50,14 @@ describe('Convex connected-agent provider contract', () => {
     expect(await tick(0, 200)).toMatchObject({ applied: true, remainingCents: 750, meterVersion: 1 })
     expect(await tick(0, 200)).toMatchObject({ applied: false, reason: 'lease_conflict' })
     expect(await tick(1, 300)).toMatchObject({ applied: true, remainingCents: 650, meterVersion: 2 })
+    await convex.run(async (ctx) => {
+      expect(await ctx.db.get(ids.member)).toMatchObject({ usedMicros: 0, reservedMicros: 3_100_000 })
+      await ctx.db.patch(ids.member, { limitMicros: 3_500_000 })
+    })
+    expect(await tick(2, 400)).toMatchObject({ applied: false, reason: 'insufficient_budget', remainingCents: 340 })
+    await convex.run(async (ctx) => { await ctx.db.patch(ids.member, { limitMicros: 6_000_000 }) })
     await expect(tick(2, 300, 0, { payer: { ...payer, spendSubjectId: 'agent:other' } })).rejects.toThrow('sandbox_runtime_hold_identity_changed')
+    await expect(tick(2, 300, 0, { payer: { ...payer, userId: 'another-member' } })).rejects.toThrow('sandbox_runtime_hold_identity_changed')
     expect(await tick(2, 600, 0, { providerEvidence: { usage: { finalSeconds: 5 }, stopped: true } }))
       .toMatchObject({ applied: false, reason: 'insufficient_budget', remainingCents: 480 })
     await convex.run(async (ctx) => {
@@ -55,13 +67,32 @@ describe('Convex connected-agent provider contract', () => {
       expect(lease?.usage).toMatchObject({ meterVersion: 2, lastProviderEvidence: { usage: { finalSeconds: 5 }, stopped: true, providerReference: 'sandbox' } })
     })
     expect(await tick(2, 50, 100)).toMatchObject({ applied: true, remainingCents: 800, meterVersion: 3 })
+    await convex.run(async (ctx) => { await ctx.db.patch(ids.member, { limitMicros: 1 }) })
     expect(await tick(3, 0, 20)).toMatchObject({ applied: true, remainingCents: 830, meterVersion: 4 })
     await convex.run(async (ctx) => {
       expect(await ctx.db.get(ids.balance)).toMatchObject({ usedMicros: 1_200_000, allowanceUsedMicros: 1_200_000, reservedMicros: 500_000 })
       expect(await ctx.db.get(ids.limit)).toMatchObject({ usedMicros: 1_200_000, reservedMicros: 200_000 })
+      expect(await ctx.db.get(ids.member)).toMatchObject({ usedMicros: 1_200_000, reservedMicros: 100_000 })
       const operations = await ctx.db.query('usageOperations').collect()
       expect(operations).toHaveLength(2)
       expect(operations[0]?.sandboxEvidence).toMatchObject({ category: 'compute', provider: 'e2b', providerCostUsd: 0.8, pricingVersion: 'markup_25_v1' })
+    })
+  })
+
+  test('a previous-period runtime hold cannot consume another reservation after limit rollover', async () => {
+    const convex = convexTest(schema, modules)
+    await convex.run(async (ctx) => {
+      const limit = await ctx.db.insert('billingAccountSpendLimits', {
+        billingAccountId: 'wallet', subjectKind: 'member', subjectId: 'user', limitMicros: 600,
+        usedMicros: 100, reservedMicros: 200, periodStart: 100, periodEnd: 1_000, version: 2, createdAt: 1, updatedAt: 100,
+      })
+      const result = await prepareSandboxSpendLimits(ctx, {
+        billingAccountId: 'wallet', userId: 'user', now: 200,
+        usage: { runtimeHoldLimits: [{ id: limit, periodStart: 0 }] },
+        previousHoldMicros: 500, holdMicros: 350, chargeMicros: 0,
+      })
+      expect(result).toEqual({ ok: false, remainingMicros: 300 })
+      expect(await ctx.db.get(limit)).toMatchObject({ usedMicros: 100, reservedMicros: 200 })
     })
   })
 
@@ -71,6 +102,35 @@ describe('Convex connected-agent provider contract', () => {
       serverSecret: 'wrong-secret', id: 'environment', workspaceId: 'workspace', kind: 'local',
       name: 'Host', status: 'online', capabilities: {}, now: 1,
     })).rejects.toThrow(/Unauthorized/)
+  })
+
+  test('claims meter batches by due time and makes overlapping sweeps disjoint', async () => {
+    const convex = convexTest(schema, modules)
+    const call = (name: string, args: Record<string, unknown>) => convex.mutation(reference(name), { ...args, serverSecret: secret })
+    for (let index = 0; index < 45; index += 1) {
+      await call('createEnvironmentByServer', {
+        id: `env-${index}`, workspaceId: 'fair-ws', kind: 'managed', name: 'Fair lease',
+        status: 'online', capabilities: {}, now: 1,
+      })
+      await call('createSandboxLeaseByServer', {
+        id: `fair-${index}`, workspaceId: 'fair-ws',
+        environmentId: `env-${index}`, provider: 'box', status: 'running',
+        reservedUntil: 500_000, usage: { meteredUsage: {}, meterVersion: 0 },
+        cleanupAttempts: 0, now: 1, nextMeterAt: index === 0 ? undefined : 1,
+      })
+    }
+    const claim = (token: string) => call('claimSandboxLeasesByServer', {
+      statuses: ['running'], now: 10_000, limit: 20, claimToken: token, claimUntil: 40_000,
+    })
+    const [first, overlapping] = await Promise.all([claim('sweep-a'), claim('sweep-b')]) as Array<Array<{ id: string }>>
+    const firstIds = new Set([...first, ...overlapping].map((lease) => lease.id))
+    expect(first.length + overlapping.length).toBe(40)
+    expect(firstIds.size).toBe(40)
+    const remaining = await claim('sweep-c') as Array<{ id: string }>
+    expect(remaining).toHaveLength(5)
+    expect(remaining.some((lease) => firstIds.has(lease.id))).toBe(false)
+    const last = await claim('sweep-d')
+    expect(last).toHaveLength(0)
   })
 
   test('passes shared lifecycle, tenancy, ordering and deletion semantics', async () => {

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { AgentSandboxLease } from '@overlay/workspace-contracts'
-import type { SandboxInstance, SandboxRuntime } from '@overlay/sandbox-runtime'
+import type { SandboxInstance, SandboxRuntime, SandboxUsage } from '@overlay/sandbox-runtime'
 import { ManagedAgentSandboxBilling, sandboxCostUsd } from './ManagedAgentSandboxBilling'
 import { E2B_COMPUTE_PRICE } from './sandbox-execution-accounting'
 
@@ -42,9 +42,19 @@ test('execution metering settles completed E2B time and reserves resumed time wi
 
 test('authoritative weighted Boat seconds are never replaced by unweighted wall-clock estimates', async () => {
   const calls: Array<Record<string, unknown>> = []
-  const snapshot = { wallTimeMs: 30_000, providerMetrics: { authoritativeCounter: true, running: false } }
+  const snapshot = {
+    wallTimeMs: 30_000,
+    providerMetrics: {
+      authoritativeCounter: true, reportedUsd: 0, secondsPerDollar: 100_000,
+      billingMultiplier: 1, running: false,
+    },
+  }
   const lease = leaseFixture({
-    provider: 'box', usage: { meteredUsage: snapshot, meterVersion: 1, meteredAt: 60_000, meteredProviderReference: 'sandbox-reference' },
+    provider: 'box', usage: {
+      meteredUsage: snapshot, meterVersion: 1, meteredAt: 60_000,
+      meteredProviderReference: 'sandbox-reference',
+      lastPayer: { scope: 'personal', userId: 'user', billingAccountId: 'billing' },
+    },
   })
   const service = new ManagedAgentSandboxBilling({
     now: () => 120_000, policy: {} as never,
@@ -148,11 +158,18 @@ test('reserve holds a bootstrap reservation and records the payer on the lease',
 
 test('meterLease debits the usage delta against the lease cursor', async () => {
   const meterCalls: Array<Record<string, unknown>> = []
-  const usage = { wallTimeMs: 130_000, activeCpuTimeMs: 60_000 }
+  const usage = {
+    wallTimeMs: 130_000, activeCpuTimeMs: 60_000,
+    providerMetrics: { ...boatUsage(130_000).providerMetrics, reportedUsd: 0.01 },
+  }
   const lease = leaseFixture({
     usage: {
       resources: { vcpus: 2, memoryGiB: 4, diskGiB: 20 },
-      meteredUsage: { wallTimeMs: 60_000, activeCpuTimeMs: 30_000 },
+      meteredUsage: {
+        wallTimeMs: 60_000, activeCpuTimeMs: 30_000,
+        providerMetrics: { ...boatUsage(60_000).providerMetrics, reportedUsd: 0 },
+        boatCursor: boatCursor(60, 0, 60_000),
+      },
       meteredProviderReference: 'sandbox-reference',
       meteredAt: 60_000,
       meterVersion: 3,
@@ -176,7 +193,9 @@ test('meterLease debits the usage delta against the lease cursor', async () => {
   assert.equal(result.applied, true)
   const call = meterCalls[0]!
   assert.equal(call.expectedMeterVersion, 3)
-  assert.deepEqual(call.meteredUsage, usage)
+  const meteredUsage = call.meteredUsage as Record<string, unknown>
+  assert.equal(meteredUsage.wallTimeMs, usage.wallTimeMs)
+  assert.equal((meteredUsage.boatCursor as { billableSeconds: number }).billableSeconds, 130)
   assert.equal(call.meteredProviderReference, 'sandbox-reference')
   assert.equal(call.minRemainingCents, 100)
   const charge = call.charge as { costCents: number; providerCostUsd: number; durationSeconds: number }
@@ -189,7 +208,10 @@ test('meterLease debits the usage delta against the lease cursor', async () => {
 test('meterLease adopts current counters for a legacy lease without charging', async () => {
   const meterCalls: Array<Record<string, unknown>> = []
   const lease = leaseFixture({
-    usage: { resources: { vcpus: 2, memoryGiB: 4, diskGiB: 20 } },
+    usage: {
+      resources: { vcpus: 2, memoryGiB: 4, diskGiB: 20 },
+      lastPayer: { scope: 'personal', userId: 'user', billingAccountId: 'billing' },
+    },
   })
   const service = new ManagedAgentSandboxBilling({
     now: () => 190_000,
@@ -208,7 +230,9 @@ test('meterLease adopts current counters for a legacy lease without charging', a
   const result = await service.meterLease(lease)
   assert.equal(result.applied, true)
   assert.equal(meterCalls[0]!.charge, undefined)
-  assert.deepEqual(meterCalls[0]!.meteredUsage, { wallTimeMs: 3_600_000, activeCpuTimeMs: 60_000 })
+  const meteredUsage = meterCalls[0]!.meteredUsage as Record<string, unknown>
+  assert.equal(meteredUsage.wallTimeMs, 3_600_000)
+  assert.equal((meteredUsage.boatCursor as { billableSeconds: number }).billableSeconds, 3_600)
 })
 
 test('meterLease bills a repointed sandbox from zero', async () => {
@@ -234,7 +258,10 @@ test('meterLease bills a repointed sandbox from zero', async () => {
         return { applied: true as const, meterVersion: 8, remainingCents: 900 }
       },
     } as never,
-    runtime: () => runtimeWithUsage(() => ({ wallTimeMs: 120_000 })),
+    runtime: () => runtimeWithUsage(() => ({
+      wallTimeMs: 120_000,
+      providerMetrics: { ...boatUsage(120_000).providerMetrics, reportedUsd: 0.01 },
+    })),
   })
   const result = await service.meterLease(lease)
   assert.equal(result.applied, true)
@@ -260,7 +287,7 @@ test('meterLeases kills a lease when the meter debit is declined', async () => {
     create: async () => { throw new Error('unreachable') },
     reconnect: async () => ({
       status: async () => 'stopped' as const,
-      usage: async () => ({ wallTimeMs: 60_000 }),
+      usage: async () => boatUsage(60_000, false),
       delete: async () => { deletes.push('sandbox-reference') },
     }) as SandboxInstance,
     restore: async () => { throw new Error('unreachable') },
@@ -274,6 +301,7 @@ test('meterLeases kills a lease when the meter debit is declined', async () => {
       patchSandboxLeaseUsage: async () => null,
       environmentHasActiveRuns: async () => false,
       listSandboxLeases: async (args: { statuses: string[] }) => args.statuses.includes('running') ? [lease] : [],
+      getSandboxLease: async () => lease,
       meterSandboxLease: async () => ({ applied: false as const, reason: 'insufficient_budget' as const, remainingCents: 12 }),
       stopSandboxLease: async () => { stopping = true; stopped.push('lease'); return { ...lease, status: 'stopping' as const } },
       updateSandboxLease: async (args: Record<string, unknown>) => {
@@ -306,7 +334,7 @@ test('meterLeases kills a lease when remaining balance falls under the floor', a
     create: async () => { throw new Error('unreachable') },
     reconnect: async () => ({
       status: async () => 'stopped' as const,
-      usage: async () => ({ wallTimeMs: 30_000 }),
+      usage: async () => boatUsage(30_000, false),
       delete: async () => undefined,
     }) as SandboxInstance,
     restore: async () => { throw new Error('unreachable') },
@@ -320,6 +348,7 @@ test('meterLeases kills a lease when remaining balance falls under the floor', a
       patchSandboxLeaseUsage: async () => null,
       environmentHasActiveRuns: async () => false,
       listSandboxLeases: async (args: { statuses: string[] }) => args.statuses.includes('running') ? [lease] : [],
+      getSandboxLease: async () => lease,
       meterSandboxLease: async () => ({ applied: true as const, meterVersion: 1, remainingCents: 42 }),
       stopSandboxLease: async (args: { reason: string }) => { stopReasons.push(args.reason); return { ...lease, status: 'stopping' as const } },
       updateSandboxLease: async () => lease,
@@ -340,7 +369,7 @@ test('cleanup requires stopped-state proof before final metering and deletion', 
     provider: 'box', capabilities: {} as never,
     create: async () => { throw new Error('unreachable') },
     reconnect: async () => ({
-      usage: async () => ({ wallTimeMs: 60_000 }),
+      usage: async () => boatUsage(60_000, false),
       delete: async () => { deletes.push('sandbox-reference') },
     }) as SandboxInstance,
     restore: async () => { throw new Error('unreachable') },
@@ -353,6 +382,7 @@ test('cleanup requires stopped-state proof before final metering and deletion', 
       patchSandboxLeaseUsage: async () => null,
       environmentHasActiveRuns: async () => false,
       listSandboxLeases: async (args: { statuses: string[] }) => args.statuses.includes('stopping') ? [lease] : [],
+      getSandboxLease: async () => lease,
       meterSandboxLease: async () => ({ applied: true as const, meterVersion: 2 }),
       updateSandboxLease: async (args: Record<string, unknown>) => {
         updates.push(args)
@@ -386,7 +416,7 @@ test('meterLeases reaps a running lease past its reserved window even when the s
     reconnect: async () => ({
       status: async () => 'stopped' as const,
       stop: async () => { events.push('stop') },
-      usage: async () => ({ wallTimeMs: 90_000 }),
+      usage: async () => boatUsage(90_000, false),
       delete: async () => { events.push('delete') },
     }) as SandboxInstance,
     restore: async () => { throw new Error('unreachable') },
@@ -399,6 +429,7 @@ test('meterLeases reaps a running lease past its reserved window even when the s
       patchSandboxLeaseUsage: async () => null,
       environmentHasActiveRuns: async () => false,
       listSandboxLeases: async (args: { statuses: string[] }) => args.statuses.includes('running') ? [lease] : [],
+      getSandboxLease: async () => lease,
       meterSandboxLease: async () => ({ applied: true as const, meterVersion: 2 }),
       stopSandboxLease: async () => ({ ...lease, status: 'stopping' as const }),
       updateSandboxLease: async (args: Record<string, unknown>) => ({ ...lease, status: args.status }),
@@ -434,6 +465,7 @@ test('meterLeases reaps stopping leases and retries provider cleanup', async () 
       environmentHasActiveRuns: async () => false,
       listSandboxLeases: async (args: { statuses: string[]; cleanupBefore?: number }) =>
         args.statuses.includes('stopping') ? [stoppingLease] : [],
+      getSandboxLease: async () => stoppingLease,
       meterSandboxLease: async () => { throw new Error('unmeterable') },
       updateSandboxLease: async (args: Record<string, unknown>) => { updates.push(args); return stoppingLease },
     } as never,
@@ -531,7 +563,7 @@ test('legacy settle follows a repointed lease and seeds the meter cursor', async
     reconnect: async (reference: string) => {
       reconnects.push(reference)
       if (reference === 'destroyed-sandbox') throw new Error('404 Named sandbox not found')
-      return { usage: async () => ({ wallTimeMs: 60_000, activeCpuTimeMs: 30_000 }) } as SandboxInstance
+      return { usage: async () => boatUsage(60_000) } as SandboxInstance
     },
     restore: async () => { throw new Error('unreachable') },
     deleteSnapshot: async () => undefined,
@@ -583,18 +615,22 @@ test('legacy settle follows a repointed lease and seeds the meter cursor', async
   // reserve marks the turn as activity; settle seeds the meter cursor and ends it.
   assert.equal(patches[0]?.lastActiveAt, 5_000)
   assert.equal(patches.at(-1)?.activeUntil, 0)
-  assert.deepEqual(patches.at(-1)?.meteredUsage, { wallTimeMs: 60_000, activeCpuTimeMs: 30_000 })
+  const settledUsage = patches.at(-1)?.meteredUsage as Record<string, unknown>
+  assert.equal(settledUsage.wallTimeMs, 60_000)
+  assert.equal((settledUsage.providerMetrics as { authoritativeCounter: boolean }).authoritativeCounter, true)
   assert.equal(patches.at(-1)?.meteredProviderReference, 'recreated-sandbox')
 })
 
-test('meterLease bills elapsed wall-clock when provider counters are stalled mid-session', async () => {
-  // Vercel reports zeroed cumulative counters while a session runs — the tick
-  // must bill the elapsed window and advance a virtual cursor so the real
-  // post-stop total nets out instead of double-charging.
+test('meterLease stops a lease whose authoritative provider counter is stalled', async () => {
+  const stoppedLeases: Array<Record<string, unknown>> = []
   const meterCalls: Array<Record<string, unknown>> = []
   const lease = leaseFixture({
     usage: {
-      meteredUsage: { wallTimeMs: 60_000 },
+      meteredUsage: {
+        wallTimeMs: 60_000,
+        providerMetrics: { ...boatUsage(60_000).providerMetrics, reportedUsd: 0.0006 },
+        boatCursor: boatCursor(60, 0.0006, 60_000),
+      },
       meteredProviderReference: 'sandbox-reference',
       meteredAt: 60_000,
       meterVersion: 3,
@@ -607,10 +643,10 @@ test('meterLease bills elapsed wall-clock when provider counters are stalled mid
     create: async () => { throw new Error('unreachable') },
     reconnect: async (_reference: string, options?: { resume?: boolean }) => {
       reconnectOptions.push(options)
-      // Provider hides running counters: wall stays at the last reported 60s.
+      // Provider counters have not advanced within the stale-counter window.
       return {
         status: async () => 'running' as const,
-        usage: async () => ({ wallTimeMs: 60_000, activeCpuTimeMs: 30_000 }),
+        usage: async () => boatUsage(60_000, true, 0.0006),
       } as SandboxInstance
     },
     restore: async () => { throw new Error('unreachable') },
@@ -626,26 +662,33 @@ test('meterLease bills elapsed wall-clock when provider counters are stalled mid
         meterCalls.push(args)
         return { applied: true as const, meterVersion: 4, remainingCents: 500 }
       },
+      stopSandboxLease: async (args: Record<string, unknown>) => {
+        stoppedLeases.push(args)
+        return { ...lease, status: 'stopping' as const }
+      },
     } as never,
     runtime: () => runtime,
   })
   const result = await service.meterLease(lease)
-  assert.equal(result.applied, true)
+  assert.deepEqual(result, { applied: false, reason: 'provider_usage_stalled' })
   // Meter reads must never resume a stopped session.
   assert.deepEqual(reconnectOptions, [{ resume: false }])
   const call = meterCalls[0]!
-  // Stalled counter on a running instance → elapsed window (190s-60s) billed.
-  assert.equal((call.charge as { durationSeconds: number }).durationSeconds, 130)
-  // Cursor advances past the virtual-billed wall time so the post-stop real
-  // total (e.g. 190s) nets to ~zero residual rather than double-charging.
-  assert.equal((call.meteredUsage as { wallTimeMs: number }).wallTimeMs, 190_000)
+  assert.equal(call.charge, undefined)
+  assert.ok(Number(call.runtimeHoldCents) > 0)
+  assert.equal((call.meteredUsage as { wallTimeMs: number }).wallTimeMs, 60_000)
+  assert.equal(stoppedLeases[0]?.reason, 'provider_usage_stalled')
 })
 
 test('meterLease bills real counter totals on a stopped instance without elapsed fallback', async () => {
   const meterCalls: Array<Record<string, unknown>> = []
   const lease = leaseFixture({
     usage: {
-      meteredUsage: { wallTimeMs: 120_000 },
+      meteredUsage: {
+        wallTimeMs: 120_000,
+        providerMetrics: { ...boatUsage(120_000).providerMetrics, reportedUsd: 0.008 },
+        boatCursor: boatCursor(120, 0.008, 60_000),
+      },
       meteredProviderReference: 'sandbox-reference',
       meteredAt: 60_000,
       meterVersion: 3,
@@ -657,7 +700,7 @@ test('meterLease bills real counter totals on a stopped instance without elapsed
     create: async () => { throw new Error('unreachable') },
     reconnect: async () => ({
       status: async () => 'stopped' as const,
-      usage: async () => ({ wallTimeMs: 150_000, egressBytes: 1_000_000 }),
+      usage: async () => ({ ...boatUsage(150_000, false, 0.01), egressBytes: 1_000_000 }),
     }) as SandboxInstance,
     restore: async () => { throw new Error('unreachable') },
     deleteSnapshot: async () => undefined,
@@ -705,7 +748,7 @@ test('meterLease idle-stops a running sandbox whose lease shows no recent activi
     reconnect: async () => ({
       status: async () => 'running' as const,
       stop: async () => { events.push('stop') },
-      usage: async () => ({ wallTimeMs: 60_000 }),
+      usage: async () => boatUsage(60_000),
     }) as SandboxInstance,
     restore: async () => { throw new Error('unreachable') },
     deleteSnapshot: async () => undefined,
@@ -745,7 +788,7 @@ test('meterLease leaves a recently-active sandbox running', async () => {
     reconnect: async () => ({
       status: async () => 'running' as const,
       stop: async () => { events.push('stop') },
-      usage: async () => ({ wallTimeMs: 60_000 }),
+      usage: async () => boatUsage(60_000),
     }) as SandboxInstance,
     restore: async () => { throw new Error('unreachable') },
     deleteSnapshot: async () => undefined,
@@ -785,7 +828,7 @@ test('meterLease does not idle-stop a sandbox while a run is still going', async
     reconnect: async () => ({
       status: async () => 'running' as const,
       stop: async () => { events.push('stop') },
-      usage: async () => ({ wallTimeMs: 60_000 }),
+      usage: async () => boatUsage(60_000),
     }) as SandboxInstance,
     restore: async () => { throw new Error('unreachable') },
     deleteSnapshot: async () => undefined,
@@ -814,7 +857,7 @@ test('reaped leases stop the sandbox before the final usage read and delete', as
     reconnect: async () => ({
       status: async () => running ? 'running' as const : 'stopped' as const,
       stop: async () => { running = false; events.push('stop') },
-      usage: async () => ({ wallTimeMs: 300_000 }),
+      usage: async () => boatUsage(300_000, false),
       delete: async () => { events.push('delete') },
     }) as SandboxInstance,
     restore: async () => { throw new Error('unreachable') },
@@ -829,6 +872,8 @@ test('reaped leases stop the sandbox before the final usage read and delete', as
       environmentHasActiveRuns: async () => false,
       listSandboxLeases: async (args: { statuses: string[]; cleanupBefore?: number }) =>
         args.statuses.includes('stopping') ? [stoppingLease] : [],
+      getSandboxLease: async () => stoppingLease,
+      getSandboxLease: async () => stoppingLease,
       meterSandboxLease: async (args: Record<string, unknown>) => {
         meterCalls.push(args)
         events.push('meter')
@@ -886,7 +931,10 @@ test('meterLease bills the provider-reported dollar delta on a box lease', async
   const meterCalls: Array<Record<string, unknown>> = []
   const usage = {
     wallTimeMs: 3_700_000,
-    providerMetrics: { reportedUsd: 0.037, running: true },
+    providerMetrics: {
+      authoritativeCounter: true, reportedUsd: 0.037, secondsPerDollar: 100_000,
+      billingMultiplier: 1, running: true,
+    },
   }
   const lease = leaseFixture({
     provider: 'box',
@@ -894,7 +942,11 @@ test('meterLease bills the provider-reported dollar delta on a box lease', async
       resources: { vcpus: 2, memoryGiB: 4, diskGiB: 20 },
       meteredUsage: {
         wallTimeMs: 3_600_000,
-        providerMetrics: { reportedUsd: 0.036, running: true },
+        providerMetrics: {
+          authoritativeCounter: true, reportedUsd: 0.036, secondsPerDollar: 100_000,
+          billingMultiplier: 1, running: true,
+        },
+        boatCursor: boatCursor(3_600, 0.036, 60_000),
       },
       meteredProviderReference: 'sandbox-reference',
       meteredAt: 60_000,
@@ -933,12 +985,41 @@ function leaseFixture(overrides: Partial<AgentSandboxLease>): AgentSandboxLease 
   }
 }
 
-function runtimeWithUsage(read: () => { wallTimeMs: number; activeCpuTimeMs?: number }): SandboxRuntime {
-  const instance = { usage: async () => read() } as SandboxInstance
+function runtimeWithUsage(read: () => { wallTimeMs: number; activeCpuTimeMs?: number; providerMetrics?: SandboxUsage['providerMetrics'] }): SandboxRuntime {
+  const instance = {
+    usage: async () => {
+      const usage = read()
+      return {
+        ...usage,
+        providerMetrics: { ...boatUsage(usage.wallTimeMs).providerMetrics, ...usage.providerMetrics },
+      }
+    },
+  } as SandboxInstance
   return {
     provider: 'box', capabilities: {} as never,
     create: async () => instance, reconnect: async () => instance,
     restore: async () => instance, deleteSnapshot: async () => undefined,
+  }
+}
+
+function boatUsage(wallTimeMs: number, running = true, reportedUsd = 0) {
+  return {
+    wallTimeMs,
+    providerMetrics: {
+      authoritativeCounter: true,
+      reportedUsd,
+      secondsPerDollar: 100_000,
+      billingMultiplier: 1,
+      running,
+    },
+  }
+}
+
+function boatCursor(billableSeconds: number, dollars: number, advancedAt: number) {
+  return {
+    billableSeconds, dollars, advancedAt,
+    price: { secondsPerDollar: 100_000, billingMultiplier: 1 },
+    running: true, pendingBillingMultiplier: 1,
   }
 }
 
@@ -970,7 +1051,7 @@ function idleHarness(options: {
     reconnect: async () => ({
       status: async () => 'running' as const,
       stop: async () => { events.push('stop') },
-      usage: async () => ({ wallTimeMs: 60_000 }),
+      usage: async () => boatUsage(60_000),
     }) as SandboxInstance,
     restore: async () => { throw new Error('unreachable') },
     deleteSnapshot: async () => undefined,
@@ -1058,7 +1139,7 @@ test('by default the idle fallback runs only in the first 90 seconds of each 10-
     const runtime: SandboxRuntime = {
       provider: 'box', capabilities: {} as never,
       create: async () => { throw new Error('unreachable') },
-      reconnect: async () => ({ status: async () => 'running' as const, stop: async () => { events.push('stop') }, usage: async () => ({ wallTimeMs: 60_000 }) }) as SandboxInstance,
+      reconnect: async () => ({ status: async () => 'running' as const, stop: async () => { events.push('stop') }, usage: async () => boatUsage(60_000) }) as SandboxInstance,
       restore: async () => { throw new Error('unreachable') },
       deleteSnapshot: async () => undefined,
     }

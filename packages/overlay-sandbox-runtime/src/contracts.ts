@@ -44,6 +44,10 @@ export type SandboxResources = {
 
 export type SandboxCreateRequest = {
   name: string
+  /** Persist before allocation. Retries must use the same key and request body. */
+  allocationKey?: string
+  /** Persist the provider reference before readiness checks or other fallible setup. */
+  onAllocated?: (reference: string) => Promise<void>
   image?: string
   snapshotId?: string
   persistent: boolean

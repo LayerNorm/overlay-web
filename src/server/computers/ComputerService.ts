@@ -13,6 +13,7 @@ import type {
   ComputerSize,
 } from '@overlay/workspace-contracts'
 import type { ComputerRepository } from './ComputerRepository'
+import type { ComputerLifecycleService } from './ComputerLifecycleService'
 
 export type { Computer, ComputerOwnerType, ComputerSize, ComputerStatus } from '@overlay/workspace-contracts'
 export type { ComputerRepository } from './ComputerRepository'
@@ -80,6 +81,7 @@ export class ComputerService {
     now?: () => number
     newId?: () => string
     sleep?: (ms: number) => Promise<void>
+    lifecycle?: ComputerLifecycleService
   }) {}
 
   /**
@@ -104,12 +106,13 @@ export class ComputerService {
     if (existing) {
       const staleProvisioning = existing.status === 'provisioning'
         && existing.updatedAt <= this.now() - PROVISIONING_STALE_MS
-      // Healthy or in-flight rows satisfy the provision call. Dead rows —
-      // `error`, or `provisioning` left behind by a crashed create — are
-      // reclaimed so the retry below starts clean instead of producing a
-      // second bound row (or tripping the unique binding).
-      if (existing.status !== 'error' && !staleProvisioning) return existing
-      await this.deleteRowAndMachine(existing)
+      // A durable coordinator owns recovery. Never delete and recreate a row
+      // here: an ambiguous provider create must retain its stable idempotency
+      // key and provider reference.
+      if (!this.dependencies.lifecycle) {
+        if (existing.status !== 'error' && !staleProvisioning) return existing
+        await this.deleteRowAndMachine(existing)
+      }
     }
 
     const limitsOption = this.dependencies.limits
@@ -121,14 +124,25 @@ export class ComputerService {
       throw new ComputerServiceError('size_not_allowed', `Computer size ${size} is not allowed`, 403)
     }
     const computers = await this.dependencies.repository.listByWorkspace(args.workspaceId)
-    if (limits?.maxPerWorkspace !== undefined && computers.length >= limits.maxPerWorkspace) {
+    if (!existing && limits?.maxPerWorkspace !== undefined && computers.length >= limits.maxPerWorkspace) {
       throw new ComputerServiceError('quota_exceeded', 'This workspace has reached its computer limit', 429)
     }
-    if (args.ownerType === 'user' && limits?.maxPersonalPerUser !== undefined) {
+    if (!existing && args.ownerType === 'user' && limits?.maxPersonalPerUser !== undefined) {
       const personal = computers.filter((computer) => computer.ownerType === 'user' && computer.ownerId === args.ownerId)
       if (personal.length >= limits.maxPersonalPerUser) {
         throw new ComputerServiceError('quota_exceeded', 'You already have a computer', 429)
       }
+    }
+
+    if (this.dependencies.lifecycle) {
+      return await this.dependencies.lifecycle.provision({
+        actorUserId: args.actor.userId,
+        workspaceId: args.workspaceId,
+        ownerType: args.ownerType,
+        ownerId: args.ownerId,
+        size,
+        name: args.name,
+      })
     }
 
     const runtime = this.runtimeFor('box')
@@ -198,6 +212,11 @@ export class ComputerService {
     computerId: string
     mode?: 'webrtc' | 'vnc'
   }): Promise<DesktopStreamTicket> {
+    if (this.dependencies.lifecycle) {
+      const computer = await this.getForActor({ actor: args.actor, computerId: args.computerId })
+      await this.admit(args.actor, computer.workspaceId, computer.ownerType, computer.ownerId)
+      return await this.dependencies.lifecycle.openDesktop(computer, args.actor.userId, args.mode)
+    }
     const { computer, instance } = await this.accessibleInstance(args.actor, args.computerId)
     await this.admit(args.actor, computer.workspaceId, computer.ownerType, computer.ownerId)
     if (!isDesktopSandboxInstance(instance)) {
@@ -222,12 +241,28 @@ export class ComputerService {
   }
 
   async stop(args: { actor: ComputerActor; computerId: string }): Promise<Computer> {
+    if (this.dependencies.lifecycle) {
+      const computer = await this.getForActor({ actor: args.actor, computerId: args.computerId })
+      await this.dependencies.lifecycle.stop(computer, args.actor.userId)
+      return await this.dependencies.repository.get(computer.id) ?? computer
+    }
     const { computer, instance } = await this.accessibleInstance(args.actor, args.computerId)
     await instance.stop()
     return this.dependencies.repository.update(computer.id, { status: 'stopped', updatedAt: this.now() })
   }
 
   async start(args: { actor: ComputerActor; computerId: string }): Promise<Computer> {
+    if (this.dependencies.lifecycle) {
+      const computer = await this.getForActor({ actor: args.actor, computerId: args.computerId })
+      await this.admit(args.actor, computer.workspaceId, computer.ownerType, computer.ownerId)
+      await this.dependencies.lifecycle.withOwnerOperation({
+        actorUserId: args.actor.userId, workspaceId: computer.workspaceId,
+        ownerType: computer.ownerType, ownerId: computer.ownerId, operation: async () => undefined,
+      })
+      return await this.dependencies.repository.update(computer.id, {
+        status: 'ready', lastActiveAt: this.now(), updatedAt: this.now(),
+      })
+    }
     const { computer, instance } = await this.accessibleInstance(args.actor, args.computerId)
     await this.admit(args.actor, computer.workspaceId, computer.ownerType, computer.ownerId)
     await instance.resume()
@@ -235,6 +270,11 @@ export class ComputerService {
   }
 
   async destroy(args: { actor: ComputerActor; computerId: string }): Promise<void> {
+    if (this.dependencies.lifecycle) {
+      const computer = await this.getForActor({ actor: args.actor, computerId: args.computerId })
+      await this.dependencies.lifecycle.stop(computer, args.actor.userId, true)
+      return
+    }
     const computer = await this.dependencies.repository.get(args.computerId)
     if (!computer) throw new ComputerServiceError('not_found', 'Computer not found', 404)
     this.assertWorkspace(args.actor, computer.workspaceId)
@@ -285,6 +325,9 @@ export class ComputerService {
     ownerType: ComputerOwnerType
     ownerId: string
   }): Promise<{ computer: Computer; instance: SandboxInstance }> {
+    if (this.dependencies.lifecycle) {
+      throw new ComputerServiceError('provider_error', 'Computer operations must run through the lifecycle coordinator', 503)
+    }
     this.assertWorkspace(args.actor, args.workspaceId)
     const computer = await this.dependencies.repository.findByOwner(
       args.workspaceId,
@@ -308,6 +351,46 @@ export class ComputerService {
     }
     await this.touch(computer)
     return { computer, instance }
+  }
+
+  async getForOwner(args: {
+    actor: ComputerActor
+    workspaceId: string
+    ownerType: ComputerOwnerType
+    ownerId: string
+  }): Promise<Computer> {
+    this.assertWorkspace(args.actor, args.workspaceId)
+    const computer = await this.dependencies.repository.findByOwner(args.workspaceId, args.ownerType, args.ownerId)
+    if (!computer) throw new ComputerServiceError('not_found', 'No computer is bound to this owner', 404)
+    const ownerAccess = await this.ownerAccess(computer.workspaceId, computer.ownerType, computer.ownerId)
+    if (!this.canAccess(args.actor, computer.ownerType, computer.ownerId, ownerAccess)) {
+      throw new ComputerServiceError('forbidden', 'You cannot use this computer', 403)
+    }
+    if (!computer.providerRef || computer.status === 'error') {
+      throw new ComputerServiceError('provider_error', 'The computer is still provisioning or failed to provision', 409)
+    }
+    return computer
+  }
+
+  async withOwnerOperation<T>(args: {
+    actor: ComputerActor
+    workspaceId: string
+    ownerType: ComputerOwnerType
+    ownerId: string
+    actionDeadlineMs?: number
+    operation: (computer: Computer, instance: SandboxInstance) => Promise<T>
+  }): Promise<T> {
+    const computer = await this.getForOwner(args)
+    await this.admit(args.actor, computer.workspaceId, computer.ownerType, computer.ownerId)
+    if (this.dependencies.lifecycle) {
+      return await this.dependencies.lifecycle.withOwnerOperation({
+        actorUserId: args.actor.userId, workspaceId: args.workspaceId,
+        ownerType: args.ownerType, ownerId: args.ownerId, actionDeadlineMs: args.actionDeadlineMs,
+        operation: args.operation,
+      })
+    }
+    const { instance } = await this.instanceForOwner(args)
+    return await args.operation(computer, instance)
   }
 
   /** Read one computer for an authorized actor — no provider reconnect. */

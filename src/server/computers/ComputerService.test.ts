@@ -13,7 +13,7 @@ import {
   ComputerService,
   ComputerServiceError,
 } from './ComputerService'
-import type { ComputerRepository } from './ComputerRepository'
+import type { ComputerLeaseSeed, ComputerRepository } from './ComputerRepository'
 
 const member = { workspaceId: 'ws-1', userId: 'user-1', principalId: 'principal-1', workspaceRole: 'member' as const }
 const otherMember = { workspaceId: 'ws-1', userId: 'user-2', principalId: 'principal-2', workspaceRole: 'member' as const }
@@ -21,11 +21,25 @@ const owner = { workspaceId: 'ws-1', userId: 'user-9', principalId: 'principal-9
 
 class MemoryRepository implements ComputerRepository {
   rows = new Map<string, Computer>()
+  leases = new Map<string, ComputerLeaseSeed>()
   async create(row: Computer) {
     const existing = [...this.rows.values()].find((candidate) => candidate.workspaceId === row.workspaceId && candidate.ownerType === row.ownerType && candidate.ownerId === row.ownerId)
     if (existing) return existing
     this.rows.set(row.id, { ...row })
     return row
+  }
+  async createWithLease(row: Computer, lease: ComputerLeaseSeed) {
+    const existing = await this.findByOwner(row.workspaceId, row.ownerType, row.ownerId)
+    const computer = existing ?? await this.create(row)
+    if (!this.leases.has(lease.id)) this.leases.set(lease.id, { ...lease, computerId: computer.id })
+    return { computer, created: !existing }
+  }
+  async bindProviderReference(args: { computerId: string; reference: string }) {
+    const computer = this.rows.get(args.computerId)
+    if (!computer) return null
+    const updated = { ...computer, providerRef: args.reference }
+    this.rows.set(computer.id, updated)
+    return updated
   }
   async get(id: string) { return this.rows.get(id) ?? null }
   async findByOwner(workspaceId: string, ownerType: string, ownerId: string) {

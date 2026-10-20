@@ -34,7 +34,9 @@ To look at a person's holds in production: `CONVEX_DEPLOYMENT=prod:colorful-chic
 
 ## Machines and credit
 
-Persistent Computers enforce admission in `ComputerService`, including desktop and tool-driven wakes. `ComputerAdmission` requires a payer whose scope and ID match the workspace, then checks that wallet's paid plan and the same minimum start credit as managed machines. Personal paid credit cannot unlock a free workspace. Stop and delete remain available after downgrade or credit exhaustion. This admission check is not a reservation or ongoing metering: persistent Computer accounting and idle supervision remain required before the cumulative sandbox changes are released.
+Persistent Computers enforce admission in `ComputerService`, including desktop and tool-driven wakes. `ComputerAdmission` requires a payer whose scope and ID match the workspace, then checks that wallet's paid plan and the same minimum start credit as managed machines. Personal paid credit cannot unlock a free workspace. Stop and delete remain available after downgrade or credit exhaustion. Each Computer has a deterministic `computer:<id>` lease created atomically with its owner claim; the member who starts a session and the `agent:<ownerId>` subject for agent Computers are reserved together before allocation or wake. Boat's weighted counters remain authoritative. Idle, budget, and session-expiry stops pause the provider and retain its disk and Computer row; only explicit deletion removes them, after confirmed stop and final settlement.
+
+The Computer integration is one cumulative Phase 2 substep, not completion of Phase 2. The schema changes are additive optional lease fields and indexes. No shared Convex deployment or migration was performed by this code change. Do not roll back lifecycle code or remove its fields while runtime holds, activity tokens, maintenance intents, or cleanup evidence remain unresolved: reconcile and settle them first. Provider allocation retries must use the saved exact recipe and key within Boat's idempotency-retention window; an older ambiguous allocation requires operator reconciliation.
 
 - **Floor.** The meter stops and deletes any machine whose payer is at or below `OVERLAY_SANDBOX_LOW_BALANCE_CUTOFF_CENTS` (default 100, $1.00) of remaining credit. A deleted machine takes its disk with it.
 - **Start check.** Creating a cloud agent now needs more than the floor (`minimumBudgetToStartMachineCents`, floor + 1¢) and answers `402 insufficient_credit` otherwise; before this, a machine started under the floor was deleted about a minute later (`stopReason: budget_exhausted` on its lease).
@@ -82,7 +84,7 @@ Canceled-plan funding also shrinks when holds are released or settled below thei
 
 ### Provider execution accounting
 
-E2B create and resume use a four-minute pause-on-timeout safety fence. Only a successful runtime meter transaction renews it, bounded by the lease deadline. A five-minute credit headroom covers the next four minutes plus meter latency; a failed scheduler, provider read or ledger commit does not extend runtime. This requires the existing minute-level meter cron. Unmetered persistent Computers will pause at the fence until their shared-lease integration is complete.
+E2B managed-sandbox create and resume use a four-minute pause-on-timeout safety fence. Only a successful runtime meter transaction renews it, bounded by the lease deadline. A five-minute credit headroom covers the next four minutes plus meter latency; a failed scheduler, provider read or ledger commit does not extend runtime. This requires the existing minute-level meter cron. Computers currently use Boat, not E2B; their lifecycle and accounting use the shared lease meter and Boat-specific counter policy, not the E2B timeout fence.
 
 E2B lifecycle events supply completed execution duration and actual CPU/RAM allocation. The meter keys each generation by sandbox reference and execution start time, persists a frozen compute rate card, and settles completed generations exactly once with the lease meter version. Live wall-clock observations are estimates, not final charges: a durable workspace and spend-subject hold covers observed pending compute plus five minutes of actual-allocation headroom. Each tick atomically replaces that lease's hold without borrowing another operation's reservation. The payer remains bound until the hold settles. Final event duration may be shorter than a live estimate without requiring a credit refund.
 
@@ -90,7 +92,7 @@ Provider observations survive a rejected debit; the billed cursor does not advan
 
 Boat seconds are already size-weighted billable seconds, not ordinary wall-clock seconds. Its authoritative counters must not be replaced by elapsed-time estimates. E2B paused compute is not charged; Boat includes stopped compute and automatic snapshot retention for 14 days. These compute entries do not invent a storage fee. Snapshot retention and any separately purchased storage must remain distinct from runtime accounting.
 
-This accounting checkpoint does not yet complete persistent Computer lease supervision, provider inventory reconciliation or stalled-counter safety. Those remain required before enabling the expanded Computer harness.
+This accounting checkpoint does not complete Phase 2. Scoped provider inventory reconciliation and alerts, storage accounting, legacy `CloudAgentMachineService` pre-enrollment allocation recovery, and Phase 3 harness/preview QA remain follow-up work. Host viewer activity is not supervised by this Computer action-token integration.
 
 V2 remote tasks bind reservations to the logical run through `remoteRunId`.
 Expired/stale-hold policy preserves a task's hold while execution or terminal

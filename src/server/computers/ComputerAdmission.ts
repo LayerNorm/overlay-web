@@ -16,7 +16,7 @@ export class ComputerAdmission {
     const payer = await this.dependencies.payerResolver.resolve({
       workspaceId: input.workspaceId,
       userId: input.userId,
-      ...(input.agentId ? { programmaticSubjectId: input.agentId } : {}),
+      ...(input.agentId ? { programmaticSubjectId: `agent:${input.agentId}` } : {}),
     })
     if (payer.scope !== 'workspace' || payer.workspaceId !== input.workspaceId) {
       throw new ComputerServiceError('paid_plan_required', 'Computers require a paid workspace.', 403)
