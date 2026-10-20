@@ -166,6 +166,10 @@ Desktop and Chrome can use the React DOM packages directly where practical. Mobi
 
 Persistent chat context and hybrid retrieval both resolve memories by `workspaceId`, so memories created by one member or agent are available as shared context to other members of that workspace. Files remain owner-scoped during hybrid retrieval. Provider repositories must preserve the distinction: `workspaceId` owns memory context, while the legacy-named `userId` field stores an opaque human-or-agent owner for attribution and mutation ownership. PostgreSQL therefore must not foreign-key memory or memory-index ownership to the human `users` table; application cleanup plus the `users_cleanup_human_memory_owner` compatibility trigger preserve human account deletion across rolling upgrades and rollback.
 
+## Account workspace entry
+
+`GET` and `POST /api/v1/account/workspaces` use an account-scoped BFF context and require a signed browser session. Listing never creates a Personal workspace: with no memberships it returns an empty `workspaces` array, an empty-string `activeWorkspaceId`, and invitations queried only for the email in the signed session. The Convex query returns pending, unexpired invitations for active workspaces, capped at the directory limit, and exposes only invitation/workspace summaries. Creation reuses the existing workspace validation and free-workspace limit, activates the created workspace, and sets the active-workspace cookie. Invitation acceptance is also account-scoped so accepting an invitation does not bootstrap Personal. `/api/v1/settings` is account-scoped without a session-only restriction to preserve its existing API authentication methods.
+
 ## Collaboration message contracts
 
 - Personal and organization workspaces expose the same collaboration routes.

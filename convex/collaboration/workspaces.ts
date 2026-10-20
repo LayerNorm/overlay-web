@@ -93,6 +93,14 @@ const invitationValidator = v.object({
   updatedAt: v.number(),
 })
 
+const receivedInvitationValidator = v.object({
+  id: v.string(),
+  workspaceId: v.string(),
+  workspaceName: v.string(),
+  role: invitationRole,
+  expiresAt: v.number(),
+})
+
 const teamValidator = v.object({
   teamId: v.string(),
   workspaceId: v.string(),
@@ -871,6 +879,38 @@ export const listInvitationsByServer = query({
     return invitations
       .map((row) => invitationValueWithExpiry(row))
       .filter((row) => !args.status || row.status === args.status)
+  },
+})
+
+export const listReceivedInvitationsByServer = query({
+  args: {
+    serverSecret: v.string(),
+    email: v.string(),
+    now: v.number(),
+  },
+  returns: v.array(receivedInvitationValidator),
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const email = requiredEmail(args.email)
+    const invitations = await ctx.db
+      .query('workspaceInvitations')
+      .withIndex('by_email_status', (q) =>
+        q.eq('email', email).eq('status', 'pending'))
+      .take(MAX_DIRECTORY_ROWS)
+    const summaries = await Promise.all(invitations
+      .filter((invitation) => invitation.expiresAt > args.now)
+      .map(async (invitation) => {
+        const workspace = await getWorkspace(ctx, invitation.workspaceId)
+        if (!workspace || workspace.status !== 'active') return null
+        return {
+          id: invitation.invitationId,
+          workspaceId: workspace.workspaceId,
+          workspaceName: workspace.name,
+          role: invitation.role,
+          expiresAt: invitation.expiresAt,
+        }
+      }))
+    return summaries.filter((summary): summary is NonNullable<typeof summary> => summary !== null)
   },
 })
 

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import type { WorkspaceInvitationAcceptResponse } from '@overlay/workspace-contracts'
-import type { AppApiRouteContext } from '@/server/app-api/bff-context'
+import type { AccountAppApiRouteContext } from '@/server/app-api/bff-context'
 import { getOverlaySession } from '@/server/auth/session'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { WorkspaceServiceError } from '@/server/workspaces/WorkspaceService'
@@ -9,7 +9,7 @@ import { workspaceErrorResponse } from '@/server/app-api/v1/workspaces/route'
 import { requiredWorkspaceParam, validation } from '@/server/app-api/v1/workspaces/inputs'
 import { toWorkspaceSummary } from '@/server/app-api/v1/workspaces/presentation'
 
-export async function POST(request: Request, context: AppApiRouteContext) {
+export async function POST(request: Request, context: AccountAppApiRouteContext) {
   try {
     if (context.auth.authType !== 'session') {
       throw new WorkspaceServiceError(

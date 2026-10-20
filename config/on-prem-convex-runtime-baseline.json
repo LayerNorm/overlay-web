@@ -41,6 +41,7 @@
     "src/app/api/topups/checkout/route.ts",
     "src/app/api/topups/history/route.ts",
     "src/app/api/topups/verify/route.ts",
+    "src/app/api/v1/account/workspaces/route.ts",
     "src/app/api/v1/agent-asks/route.ts",
     "src/app/api/v1/agent-bindings/route.ts",
     "src/app/api/v1/agent-environments/[environmentId]/approve/route.ts",

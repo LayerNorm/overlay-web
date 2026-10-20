@@ -2,6 +2,7 @@ import 'server-only'
 
 import { randomUUID } from 'node:crypto'
 import type {
+  AccountWorkspaceInvitation,
   Workspace,
   WorkspaceAccess,
   WorkspaceInvitation,
@@ -377,6 +378,12 @@ export class ConvexWorkspaceRepository implements WorkspaceRepository {
   async listInvitations(args: Parameters<WorkspaceRepository['listInvitations']>[0]) {
     const rows = await query<ConvexInvitation[]>('listInvitationsByServer', args) ?? []
     return rows.map(invitation)
+  }
+
+  async listReceivedInvitations(
+    args: Parameters<WorkspaceRepository['listReceivedInvitations']>[0],
+  ): Promise<AccountWorkspaceInvitation[]> {
+    return await query<AccountWorkspaceInvitation[]>('listReceivedInvitationsByServer', args) ?? []
   }
 
   async acceptInvitation(

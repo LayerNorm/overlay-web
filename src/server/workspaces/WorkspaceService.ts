@@ -8,6 +8,7 @@ import {
   canManageWorkspace,
   DEFAULT_WORKSPACE_POLICY,
   WORKSPACE_ROLLOUT_STAGES,
+  type AccountWorkspaceInvitation,
   type WorkspaceAccess,
   type WorkspaceInvitation,
   type WorkspaceMembership,
@@ -91,6 +92,13 @@ export class WorkspaceService {
 
   async listForUser(userId: string): Promise<WorkspaceAccess[]> {
     return await this.repository.listForUser(required(userId, 'userId'))
+  }
+
+  async listReceivedInvitations(args: { email: string; now: number }): Promise<AccountWorkspaceInvitation[]> {
+    return await this.repository.listReceivedInvitations({
+      email: normalizeEmail(args.email),
+      now: args.now,
+    })
   }
 
   /** Read-only principal lookup for lifecycle event attribution. */
