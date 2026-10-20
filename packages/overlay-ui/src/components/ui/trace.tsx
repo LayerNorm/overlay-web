@@ -33,7 +33,7 @@ function TraceLine({
       data-slot="trace-line"
       data-status={status}
       className={cn(
-        "flex w-fit max-w-full min-w-0 items-center gap-2 text-sm text-(--muted) transition-colors in-[a,button]:cursor-pointer in-[a:hover,button:hover]:text-(--foreground) data-[status=error]:text-(--danger) data-[status=error]:in-[a:hover,button:hover]:text-(--danger) data-[status=pending]:opacity-60",
+        "flex w-fit max-w-full min-w-0 items-center gap-[0.4em] text-[13px] leading-5 font-normal text-(--muted) transition-colors in-[a,button]:cursor-pointer in-[a:hover,button:hover]:text-(--foreground) data-[status=error]:text-(--danger) data-[status=error]:in-[a:hover,button:hover]:text-(--danger) data-[status=pending]:opacity-60",
         className
       )}
       {...props}

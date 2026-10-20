@@ -1,12 +1,13 @@
 'use client'
 
-import type { ReactNode } from 'react'
+import { useState, type ReactNode, type CSSProperties } from 'react'
+import { cn } from '@overlay/ui'
 import {
   Sidebar,
   SidebarFooter,
   SidebarHeader,
   SidebarProvider,
-  SidebarRail,
+  PanelResizeHandle,
   SidebarResourceSection,
   type SidebarResourceAction,
   type SidebarResourceSearch,
@@ -111,12 +112,14 @@ export function AppSidebarSecondaryPanel({
   open?: boolean
   onOpenChange?: (open: boolean) => void
 } & SecondaryPanelContentProps) {
+  const [width, setWidth] = useState(264)
+  const [resizing, setResizing] = useState(false)
   return (
     <SidebarProvider open={open} onOpenChange={onOpenChange}>
-      <Sidebar className={className} aria-label={title}>
+      <Sidebar className={cn(className, resizing && 'transition-none')} aria-label={title} style={{ '--secondary-sidebar-width': `${width}px` } as CSSProperties}>
         <SecondaryPanelHeader title={title} action={headerAction} />
         <SecondaryPanelContent {...content} />
-        {onOpenChange ? <SidebarRail /> : null}
+        {open ? <PanelResizeHandle edge="right" width={width} onResize={setWidth} onResizingChange={setResizing} minWidth={220} maxWidth={420} label="Resize secondary sidebar" /> : null}
       </Sidebar>
     </SidebarProvider>
   )

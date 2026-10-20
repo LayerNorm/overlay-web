@@ -178,6 +178,7 @@ export default function AppSidebar({
         <UnifiedSidebar
           brand={brandLink}
           keyboardShortcut
+          resizable
           collapsed={s.sidebarCollapsed}
           onCollapsedChange={(collapsed) => {
             s.setAccountMenuOpen(false)
@@ -228,7 +229,7 @@ export default function AppSidebar({
         className={`hidden h-full transition-[width,opacity,border-color] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] md:flex ${
           s.hideTemporaryChatChrome
             ? 'w-0 border-transparent opacity-0 pointer-events-none'
-            : `${railExpanded ? 'w-56' : 'w-[72px]'} opacity-100`
+            : `${railExpanded ? 'w-(--primary-sidebar-width)' : 'w-[72px]'} opacity-100`
         }`}
       />
 
@@ -246,7 +247,7 @@ export default function AppSidebar({
           className={`hidden h-full transition-[width,opacity,border-color] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] md:flex ${
             s.sidebarCollapsed || s.hideTemporaryChatChrome
               ? 'w-0 border-transparent opacity-0 pointer-events-none invisible'
-              : 'w-60 opacity-100'
+              : 'w-(--secondary-sidebar-width) opacity-100'
           }`}
         >
           {panelChildren}

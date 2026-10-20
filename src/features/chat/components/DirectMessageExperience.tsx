@@ -178,7 +178,7 @@ export function DirectMessageExperience({
         rightPanelWidth={panels.shellRightPanel ? panels.shellRightPanelWidth : externalRightPanel ? 'lg' : 380}
         rightPanelMode={panels.shellRightPanel ? panels.shellRightPanelMode : (externalRightPanelMode ?? 'docked')}
         onRightPanelClose={rightPanelClose}
-        onRightPanelResize={panels.shellRightPanelResize}
+        onRightPanelResize={panels.shellRightPanel ? panels.shellRightPanelResize : undefined}
         rightPanelOverlayLabel={externalRightPanel ? externalRightPanelLabel : undefined}
       >
         <div

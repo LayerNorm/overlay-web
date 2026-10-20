@@ -1,5 +1,5 @@
 'use client'
-import { Button } from '@overlay/ui/primitives'
+import { Button, PanelResizeHandle } from '@overlay/ui/primitives'
 import { unstyledButton } from '@overlay/ui/control-reset'
 import type { CSSProperties, HTMLAttributes, ReactNode } from 'react'
 import { useEffect, useRef, useState } from 'react'
@@ -22,8 +22,7 @@ export interface AppScreenShellProps extends HTMLAttributes<HTMLDivElement> {
   rightPanelMode?: 'docked' | 'floating'
   onRightPanelClose?: () => void
   /**
-   * Enables the drag handle on the panel's inner edge. Receives the width in
-   * pixels while dragging; the caller owns clamping to its own bounds.
+   * Controls the width externally. Without a callback the shell owns resize state.
    */
   onRightPanelResize?: (width: number) => void
   rightPanelOverlayLabel?: string
@@ -147,7 +146,7 @@ function ScreenRightPanel({
           resizing ? 'transition-none' : null,
           floating
             ? 'inset-y-2 right-2 max-w-[calc(100vw-1rem)] rounded-xl border border-(--border) bg-(--sidebar-surface) shadow-xl lg:max-w-none'
-            : 'inset-y-0 shadow-2xl lg:static lg:z-auto lg:max-w-none lg:shadow-none',
+            : 'inset-y-0 shadow-2xl lg:relative lg:z-auto lg:max-w-none lg:shadow-none',
           rightPanelVisibilityClasses(visible, floating, widthClassName),
         )}
         style={widthStyle}
@@ -156,6 +155,7 @@ function ScreenRightPanel({
       >
         {onResize && visible ? (
           <PanelResizeHandle
+            className="hidden lg:block"
             width={typeof width === 'number' ? width : 0}
             onResize={onResize}
             onResizingChange={onResizingChange}
@@ -192,6 +192,9 @@ export function AppScreenShell({
   ...props
 }: AppScreenShellProps) {
   const rightPanelState = useRightPanelState(rightPanel, rightPanelOpen)
+  const [resizedWidth, setResizedWidth] = useState<number | null>(null)
+  const panelWidth = onRightPanelResize ? rightPanelWidth : resizedWidth ?? rightPanelWidth
+  const numericWidth = typeof panelWidth === 'number' ? panelWidth : { sm: 320, md: 384, lg: 448 }[panelWidth]
 
   return (
     <div
@@ -222,67 +225,16 @@ export function AppScreenShell({
             visible={rightPanelState.visible}
             floating={rightPanelMode === 'floating'}
             resizing={rightPanelState.resizing}
-            width={rightPanelWidth}
+            width={numericWidth}
             overlayLabel={rightPanelOverlayLabel}
             onClose={onRightPanelClose}
-            onResize={onRightPanelResize}
+            onResize={onRightPanelResize ?? setResizedWidth}
             onResizingChange={rightPanelState.setResizing}
           >
             {rightPanelState.content}
           </ScreenRightPanel>
         ) : null}
       </div>
-    </div>
-  )
-}
-
-/**
- * Drag handle on the panel's inner edge. Dragging left widens the panel, so the
- * delta is inverted. Pointer capture keeps the drag alive over the iframe or any
- * other content the cursor crosses, which a plain mousemove listener loses.
- */
-function PanelResizeHandle({
-  width,
-  onResize,
-  onResizingChange,
-}: {
-  width: number
-  onResize: (width: number) => void
-  onResizingChange: (resizing: boolean) => void
-}) {
-  const dragRef = useRef<{ startX: number; startWidth: number } | null>(null)
-
-  return (
-    <div
-      role="separator"
-      aria-orientation="vertical"
-      aria-label="Resize side panel"
-      className="group/resize absolute inset-y-0 left-0 z-40 hidden w-2 -translate-x-1 cursor-col-resize touch-none select-none lg:block"
-      onPointerDown={(event) => {
-        if (event.button !== 0) return
-        event.preventDefault()
-        // Fall back to the measured column when the caller uses a preset width.
-        const startWidth = width || event.currentTarget.parentElement?.clientWidth || 0
-        dragRef.current = { startX: event.clientX, startWidth }
-        event.currentTarget.setPointerCapture(event.pointerId)
-        onResizingChange(true)
-      }}
-      onPointerMove={(event) => {
-        const drag = dragRef.current
-        if (!drag) return
-        onResize(drag.startWidth + (drag.startX - event.clientX))
-      }}
-      onPointerUp={(event) => {
-        dragRef.current = null
-        event.currentTarget.releasePointerCapture(event.pointerId)
-        onResizingChange(false)
-      }}
-      onPointerCancel={() => {
-        dragRef.current = null
-        onResizingChange(false)
-      }}
-    >
-      <span className="pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-transparent transition-colors group-hover/resize:bg-(--muted-light)" />
     </div>
   )
 }
