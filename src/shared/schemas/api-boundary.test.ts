@@ -25,8 +25,8 @@ test('automation run boundary rejects missing run IDs', () => {
   )
 })
 
-test('agent accounts and cloud machines accept every agent provider', () => {
-  for (const provider of ['claude-code', 'codex', 'opencode', 'hermes', 'cursor']) {
+test('agent accounts and cloud machines accept supported providers only', () => {
+  for (const provider of ['claude-code', 'codex']) {
     assert.doesNotThrow(() => {
       validateApiClientBoundary({
         path: '/api/v1/provider-accounts',
@@ -39,5 +39,18 @@ test('agent accounts and cloud machines accept every agent provider', () => {
         body: { agentId: 'a1', adapterId: provider, providerAccountId: 'acc1' },
       })
     }, provider)
+  }
+
+  for (const provider of ['opencode', 'hermes', 'cursor']) {
+    assert.throws(() => validateApiClientBoundary({
+      path: '/api/v1/provider-accounts',
+      method: 'POST',
+      body: { provider, method: 'api_key', secret: 'sk-test-secret-value' },
+    }), /Invalid POST \/api\/v1\/provider-accounts body: Invalid enum value/)
+    assert.throws(() => validateApiClientBoundary({
+      path: '/api/v1/agent-environments/cloud',
+      method: 'POST',
+      body: { agentId: 'a1', adapterId: provider, providerAccountId: 'acc1' },
+    }), /Invalid POST \/api\/v1\/agent-environments\/cloud body: Invalid enum value/)
   }
 })
