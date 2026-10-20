@@ -249,9 +249,8 @@ export class CloudAgentMachineService {
         outcome: 'success',
         resourceType: 'agent_environment',
         ...(claimed.environmentId ? { resourceId: claimed.environmentId } : {}),
-        workspaceId: claimed.workspaceId,
         metadata: { workspaceId: claimed.workspaceId, agentId: claimed.agentId, provider },
-      } as never).catch((_error) => undefined)
+      }).catch((_error) => undefined)
       return 'reclaimed'
     } catch (error) {
       logger.warn('[cloud-agent] abandoned machine reclaim failed', {

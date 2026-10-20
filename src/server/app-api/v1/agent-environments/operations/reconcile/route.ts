@@ -20,12 +20,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ idleCheck: result }, { headers: { 'Cache-Control': 'no-store' } })
     }
     const controlPlane = server.connectedAgentControlPlane
-    const cloudReclaim = createCloudAgentMachineService().reclaimAbandonedProvisions().catch((error) => {
-      logger.warn('[operations-reconcile] cloud agent allocation reclaim failed', {
-        error: error instanceof Error ? error.name : 'UnknownError',
+    const cloudReclaim = Promise.resolve()
+      .then(() => createCloudAgentMachineService().reclaimAbandonedProvisions())
+      .catch((error) => {
+        logger.warn('[operations-reconcile] cloud agent allocation reclaim failed', {
+          error: error instanceof Error ? error.name : 'UnknownError',
+        })
+        return { reclaimed: 0, skipped: 0, failed: 1 }
       })
-      return { reclaimed: 0, skipped: 0, failed: 1 }
-    })
     const [supervised, reconciliation, meter, lifecycle, cloudReclaimResult] = await Promise.all([
       controlPlane.sweepRemoteRuns(),
       controlPlane.reconcileSandboxSettlements(100),
