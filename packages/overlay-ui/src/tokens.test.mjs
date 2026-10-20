@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { readFileSync } from 'node:fs'
-import { getPresetCssVars } from '../../overlay-app-core/src/theme/presets.ts'
-import { lightColorTheme, darkColorTheme } from '../../overlay-app-core/src/theme/base.ts'
+import { tsImport } from 'tsx/esm/api'
 
 const { overlayDesignTokens, overlayTailwindTheme } = await import('./tokens.ts')
+const { getPresetCssVars } = await tsImport('../../overlay-app-core/src/theme/presets.ts', import.meta.url)
+const { lightColorTheme, darkColorTheme } = await tsImport('../../overlay-app-core/src/theme/base.ts', import.meta.url)
 
 test('overlay ui exposes design tokens and a Tailwind-compatible theme', () => {
   assert.equal(overlayDesignTokens.colors.background, 'var(--background)')
