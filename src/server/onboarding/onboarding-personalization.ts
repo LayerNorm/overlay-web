@@ -1,19 +1,8 @@
 import { z } from 'zod'
 import type { OnboardingProfile, OnboardingReply, OnboardingStep } from '@/shared/onboarding/session'
+import { OVERLAY_FREE_MODEL_ID } from '@/shared/ai/gateway/overlay-free-policy'
 
-export const ONBOARDING_MODEL = 'minimax/minimax-m3.1-flash' as const
-
-export function hasVerifiedFreePricing(value: unknown): boolean {
-  if (!value || typeof value !== 'object') return false
-  const model = value as Record<string, unknown>
-  if (model.id !== ONBOARDING_MODEL || !model.pricing || typeof model.pricing !== 'object' || Array.isArray(model.pricing)) return false
-  const pricing = model.pricing as Record<string, unknown>
-  if (pricing.input === undefined || pricing.output === undefined) return false
-  return Object.entries(pricing).every(([key, amount]) => {
-    if (key === 'varies_by_provider') return amount === false
-    return (typeof amount === 'number' || (typeof amount === 'string' && amount.trim().length > 0)) && Number(amount) === 0
-  })
-}
+export const ONBOARDING_MODEL = OVERLAY_FREE_MODEL_ID
 
 const text = (length: number) => z.string().trim().min(1).max(length)
 export const onboardingReplySchemas = {

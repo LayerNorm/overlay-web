@@ -1,5 +1,12 @@
 # Overlay Free model routing
 
+Conversational onboarding uses this shared router after explicit personalization
+consent. Only the name, work description, and daily tasks enter its prompt, never
+imported memories or invitation addresses. Model allowlists, hosted-provider access,
+and zero-data-retention preferences remain enforced. Unavailable routes, unsafe
+receipts, and invalid structured output fall back to prepared replies, not a paid
+model. Onboarding no longer maintains its own MiniMax pricing check.
+
 Overlay Free uses the configured AI Gateway and OpenRouter credentials from the
 web runtime. The private hourly refresh callback requires `OVERLAY_BFF_URL` and
 the existing `INTERNAL_API_SECRET`. Missing configuration or Convex safety

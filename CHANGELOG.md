@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Use the shared Overlay Free router for onboarding personalization, with prepared replies when routing is unavailable or privacy settings require zero data retention.
+
 - Keep onboarding tour controls inside the mobile navigation drawer, with visible navigation targets and automatic drawer cleanup when the tour ends.
 
 - Make conversational onboarding sessions reset-safe with run-scoped transcript recovery and durable summaries of validated user choices.

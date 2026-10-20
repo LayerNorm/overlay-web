@@ -1,14 +1,9 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { cleanOnboardingReply, hasVerifiedFreePricing, ONBOARDING_MODEL, onboardingPrompt } from './onboarding-personalization'
+import { cleanOnboardingReply, ONBOARDING_MODEL, onboardingPrompt } from './onboarding-personalization'
 
-test('only explicit zero prices on the exact MiniMax model permit personalization', () => {
-  const model = (pricing: unknown, id = ONBOARDING_MODEL) => ({ id, pricing })
-  assert.equal(hasVerifiedFreePricing(model({ input: '0', output: 0, cached_input: '0', varies_by_provider: false })), true)
-  for (const pricing of [{ input: '0' }, { input: null, output: '0' }, { input: '', output: '0' }, { input: false, output: '0' }, { input: '0', output: '.001' }, { input: '0', output: '0', request: '.01' }, { input: '0', output: '0', varies_by_provider: true }, { input: '0', output: '0', unknown: {} }]) {
-    assert.equal(hasVerifiedFreePricing(model(pricing)), false)
-  }
-  assert.equal(hasVerifiedFreePricing({ id: 'another/model', pricing: { input: 0, output: 0 } }), false)
+test('personalization uses the shared free router rather than a pinned provider model', () => {
+  assert.equal(ONBOARDING_MODEL, 'overlay-free')
 })
 
 test('prompt includes only the three allowed profile fields', () => {
