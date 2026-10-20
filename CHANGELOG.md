@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Preserve the live transcript when a new chat receives its saved conversation ID after completion, while still resetting scroll state when navigating between chats.
+
 - Widen the model picker, separate personal Favorites from Recommended, expose the full provider catalog, and move capabilities to right-side details. Free accounts can browse the same catalog metadata without gaining permission to generate with paid models. Remove the catalog enable/disable settings while retaining provider-key authorization and billing/ZDR safeguards. Keep streamed Markdown on the same block renderer through chat and agent completion without a completion label or automatic work collapse moving the live answer.
 
 - Stop the app half-loading after bursts of throttled reads: Work list, Work context, subscription and workspace policy reads get their own per-user rate-limit buckets instead of sharing the default pool. Workspace bootstrap and policy requests now recover an expired session like other app requests. App pages without their own error boundary keep the shell, and both error screens show the error reference.
