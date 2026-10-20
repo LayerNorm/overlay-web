@@ -404,6 +404,7 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
   },
   // Called by the Convex ingestion runner with the internal API secret.
   { path: '/api/v1/files/ingest-jobs/process', methods: { POST: internal() } },
+  { path: '/api/v1/models/overlay-free/refresh', methods: { POST: internal() } },
   { path: '/api/v1/files/presign', methods: { GET: capability('files.upload') } },
   { path: '/api/v1/files/search-text', methods: { POST: capability('files.read') } },
   {

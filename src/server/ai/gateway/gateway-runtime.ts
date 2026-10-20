@@ -69,6 +69,9 @@ const DEFAULT_GATEWAY_TOOL_PROXY_MODEL_ID = 'deepseek/deepseek-v4-flash'
 
 export function resolveGatewayProviderToolProxyModelId(chatModelId?: string): string {
   if (!chatModelId) return DEFAULT_GATEWAY_TOOL_PROXY_MODEL_ID
+  if (chatModelId === 'overlay-free' || chatModelId === 'openrouter/free') {
+    throw new Error('Provider tools are not supported by free router models.')
+  }
   const model = getModel(chatModelId)
   if (!model) return DEFAULT_GATEWAY_TOOL_PROXY_MODEL_ID
   if (['openrouter', 'nvidia'].includes(model.provider)) {

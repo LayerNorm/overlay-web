@@ -13991,6 +13991,9 @@
                       "token",
                       "chunk"
                     ]
+                  },
+                  "useSecondarySidebar": {
+                    "type": "boolean"
                   }
                 },
                 "additionalProperties": true

@@ -20,7 +20,8 @@ test('Overlay provider discovery includes gateway catalog models and free models
   }])
 
   assert.ok(models.some((model) => model.id === 'openai/gpt-5.4' && model.name === 'GPT 5.4'))
-  assert.ok(models.some((model) => model.id === 'openrouter/free' && model.name === 'Free Router'))
+  assert.ok(models.some((model) => model.id === 'overlay-free' && model.name === 'Auto'))
+  assert.ok(models.some((model) => model.id === 'openrouter/free' && model.name === 'OpenRouter Free'))
 })
 
 test('Overlay provider discovery dedupes free models already present in gateway catalog', () => {

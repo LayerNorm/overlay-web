@@ -932,6 +932,7 @@ export const webApiExcludedRouteDefinitions = [
   { routePath: '/api/v1/agent-environments/[environmentId]/artifacts/[artifactId]/complete', reason: 'Connected-agent artifact completion; boundary definition pending. Protected by device-key authentication.' },
   { routePath: '/api/v1/agent-environments/artifacts/cleanup', reason: 'Internal artifact cleanup cron trigger; not part of the public web API reference.' },
   { routePath: '/api/v1/agent-environments/operations/reconcile', reason: 'Internal reconciliation cron trigger; not part of the public web API reference.' },
+  { routePath: '/api/v1/models/overlay-free/refresh', reason: 'Private refresh callback requires the internal API secret and is excluded from the public web API reference.' },
   // Slack surfaces: a third-party install flow, a signed webhook, and binding management.
   { routePath: '/api/v1/surfaces/slack/connect', reason: 'Starts the Slack app install OAuth redirect; a browser flow, not a public API call.' },
   { routePath: '/api/v1/surfaces/slack/callback', reason: 'Slack OAuth redirect target, protected by single-use state rather than the public API authentication scheme.' },

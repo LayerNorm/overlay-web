@@ -2,7 +2,7 @@ import 'server-only'
 
 import { logger } from '@/server/observability/logger'
 import type { StepResult, ToolSet } from 'ai'
-import { FREE_TIER_AUTO_MODEL_ID } from '@/shared/ai/gateway/model-types'
+import { isFreeTierChatModelId } from '@/shared/ai/gateway/model-types'
 import {
   buildAssistantPersistenceFromSteps,
   compactAssistantPersistenceForConvex,
@@ -201,7 +201,7 @@ export class ActMessagePersistenceService {
         args.event.steps,
         args.event.text,
       )
-      if (args.attemptModelId === FREE_TIER_AUTO_MODEL_ID) {
+      if (isFreeTierChatModelId(args.attemptModelId)) {
         const repaired = await maybeRepairFreeTierLeakedPerplexityText({
           modelId: args.attemptModelId,
           steps: args.event.steps,
@@ -301,7 +301,7 @@ export class ActMessagePersistenceService {
       normalizedPersistParts = compactedPersistence.parts
 
       const routedModelId =
-        args.attemptModelId === FREE_TIER_AUTO_MODEL_ID
+        isFreeTierChatModelId(args.attemptModelId)
           ? (args.routedModelId || args.event.steps.at(-1)?.response.modelId)
           : undefined
       const finalParts = (
