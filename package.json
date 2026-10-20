@@ -337,7 +337,7 @@
   "overrides": {
     "axios": "1.20.0",
     "devalue": "5.9.4",
-    "follow-redirects": "1.16.0",
+    "follow-redirects": "1.16.1",
     "postcss": "8.5.26",
     "protobufjs": "8.6.6",
     "sharp": "0.35.5",
