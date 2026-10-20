@@ -1,12 +1,12 @@
 import type { OnboardingSession } from '@/shared/onboarding/session'
 
-function key(session: OnboardingSession, userId: string) {
-  return `overlay:onboarding-draft:v1:${userId}:${session.workspaceId}:${session.runId}:${session.step}`
+function key(session: OnboardingSession) {
+  return `overlay:onboarding-draft:v1:${session.workspaceId}:${session.runId}:${session.step}`
 }
 
-export function readOnboardingDraft(session: OnboardingSession, userId: string, initialName: string): string {
+export function readOnboardingDraft(session: OnboardingSession, initialName: string): string {
   try {
-    const saved = window.sessionStorage.getItem(key(session, userId))
+    const saved = window.sessionStorage.getItem(key(session))
     if (saved !== null && saved.length <= 3000) return saved
   } catch { /* Drafts remain usable when browser storage is unavailable. */ }
   const profile = session.profile
@@ -15,6 +15,6 @@ export function readOnboardingDraft(session: OnboardingSession, userId: string, 
   return ''
 }
 
-export function writeOnboardingDraft(session: OnboardingSession, userId: string, value: string) {
-  try { window.sessionStorage.setItem(key(session, userId), value.slice(0, 3000)) } catch { /* Storage is optional. */ }
+export function writeOnboardingDraft(session: OnboardingSession, value: string) {
+  try { window.sessionStorage.setItem(key(session), value.slice(0, 3000)) } catch { /* Storage is optional. */ }
 }
