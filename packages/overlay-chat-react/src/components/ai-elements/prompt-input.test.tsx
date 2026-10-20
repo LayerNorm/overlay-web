@@ -6,12 +6,13 @@ import { PromptInput, PromptInputBody, PromptInputFooter, PromptInputSubmit } fr
 
 ;(globalThis as typeof globalThis & { React: typeof React }).React = React
 
-test('the composer shell is flat: a fill and no border', () => {
+test('the composer shell has a subtle theme-aware outline, including while dragging', () => {
   const html = renderToStaticMarkup(
     <PromptInput dragging><PromptInputBody><PromptInputFooter /></PromptInputBody></PromptInput>,
   )
   assert.match(html, /data-slot="prompt-input" data-dragging="true"/)
-  assert.doesNotMatch(html, /\bborder\b/)
+  assert.match(html, /rounded-2xl border border-\(--border\)/)
+  assert.match(renderToStaticMarkup(<PromptInput />), /rounded-2xl border border-\(--border\)/)
 })
 
 test('submit shows send, spinner, or stop by status', () => {
