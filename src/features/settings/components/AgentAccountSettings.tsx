@@ -8,7 +8,7 @@ import type { ProviderAccountResource } from '@overlay/api-client'
 import { Button } from '@overlay/ui/primitives'
 import { ConfirmDialog } from '@overlay/ui/overlays'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
-import { AGENT_PROVIDERS, type AgentProviderAuthMethod } from '@/shared/agents/provider-accounts'
+import { AGENT_PROVIDERS, isSupportedAgentProviderId, type AgentProviderAuthMethod } from '@/shared/agents/provider-accounts'
 import { AccountDialog } from '@/components/agents/AgentAccountDialog'
 
 const METHOD_LABEL: Record<AgentProviderAuthMethod, string> = { subscription: 'Subscription', api_key: 'API key' }
@@ -106,13 +106,15 @@ export function AgentAccountSettings() {
               </p>
             </div>
             <div className="flex shrink-0 items-center gap-1.5">
-              <Button
-                variant={account.status === 'needs_reauth' ? 'primary' : 'secondary'}
-                size="sm"
-                onClick={() => setDialog({ mode: 'reconnect', account })}
-              >
-                Reconnect
-              </Button>
+              {isSupportedAgentProviderId(account.provider) ? (
+                <Button
+                  variant={account.status === 'needs_reauth' ? 'primary' : 'secondary'}
+                  size="sm"
+                  onClick={() => setDialog({ mode: 'reconnect', account })}
+                >
+                  Reconnect
+                </Button>
+              ) : null}
               <Button variant="ghost"
                 type="button"
                 aria-label={`Remove ${account.label}`}

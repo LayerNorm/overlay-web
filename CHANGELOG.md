@@ -4,6 +4,11 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Limit selectable BYO providers to Claude Code and Codex while preserving retired account and
+  workspace-agent records for history and removal. Prepare Agent Host/protocol `0.4.3`, Claude
+  ACP `0.93.0`, Codex ACP `2.2.2`, and agent image v10; publishing and idle machine upgrades are
+  not part of this source change.
+
 - Recover browser API requests from an expired session without a page reload: share one locked session refresh with the auth provider, then retry once with the original mutation idempotency key. Signed-out users, permission denials, and failed refreshes remain failures.
 
 - Match the app shell mockup: Geist as the app font, 14px chat text, a borderless symmetric user bubble, and sidebar rows at 14px with 16px icons and 12px section titles. Native `title` tooltips are replaced app-wide by one shadcn-style tooltip (`NativeTitleTooltips`).

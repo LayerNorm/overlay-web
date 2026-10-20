@@ -6,7 +6,7 @@ import { Button } from '@overlay/ui/primitives'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { CLOUD_AGENT_STATE_LABEL, isCloudAgentStarting, type CloudAgentAction } from '@/shared/agents/cloud-agent'
-import { AGENT_PROVIDER_IDS, type AgentProviderId } from '@/shared/agents/provider-accounts'
+import { isSupportedAgentProviderId, type SupportedAgentProviderId } from '@/shared/agents/provider-accounts'
 import { AccountDialog } from '@/components/agents/AgentAccountDialog'
 import { CloudAgentConfig } from './CloudAgentConfig'
 import { useEditorLoad } from './EditorLoadGate'
@@ -91,6 +91,25 @@ function MachineActions({ state, busy, onRun, onRetry, onControl }: {
   )
 }
 
+function ReconnectNotice({ state, supported, label, onReconnect }: {
+  state: CloudAgentStatusResource['state']
+  supported: boolean
+  label: string
+  onReconnect(): void
+}) {
+  if (state !== 'needs_sign_in') return null
+  return supported ? (
+    <div className="mt-3 flex items-center justify-between gap-3 rounded-lg bg-(--surface-subtle) px-3 py-2">
+      <p className="text-xs text-(--foreground)">{label} could not sign in. Reconnect the account to continue.</p>
+      <Button variant="primary" size="sm" onClick={onReconnect}>Reconnect</Button>
+    </div>
+  ) : (
+    <p className="mt-3 rounded-lg bg-(--surface-subtle) px-3 py-2 text-xs text-(--foreground)">
+      This agent is no longer supported. Remove its account in Settings → Agent accounts.
+    </p>
+  )
+}
+
 /**
  * The agent's Overlay Cloud machine on its page: whether it is ready, the
  * account it signs in with, and pause / resume / restart. Deleting the machine
@@ -120,14 +139,16 @@ export function CloudAgentPanel({ agentId }: { agentId: string }) {
   const retry = async () => {
     const adapterId = status?.machine?.adapterId ?? status?.adapterId
     if (!workspaceId || busy) return
-    if (!status?.account || !adapterId || !(AGENT_PROVIDER_IDS as readonly string[]).includes(adapterId)) {
-      setActionError('Reconnect this agent’s account before starting a new machine.')
+    if (!status?.account || !adapterId || !isSupportedAgentProviderId(adapterId)) {
+      setActionError(adapterId && !isSupportedAgentProviderId(adapterId)
+        ? 'This agent is no longer supported and cannot start a new machine.'
+        : 'Reconnect this agent’s account before starting a new machine.')
       return
     }
     setBusy('retry')
     setActionError(null)
     try {
-      await overlayAppClient.cloudAgents.provision(workspaceId, { agentId, adapterId: adapterId as AgentProviderId, providerAccountId: status.account.id, size: 'small' })
+      await overlayAppClient.cloudAgents.provision(workspaceId, { agentId, adapterId: adapterId as SupportedAgentProviderId, providerAccountId: status.account.id, size: 'small' })
       refresh()
     } catch (retryError) {
       setActionError(retryError instanceof Error ? retryError.message : 'Could not start the machine.')
@@ -160,6 +181,11 @@ export function CloudAgentPanel({ agentId }: { agentId: string }) {
   }
 
   const openReconnect = async () => {
+    const adapterId = status?.machine?.adapterId ?? status?.adapterId
+    if (!adapterId || !isSupportedAgentProviderId(adapterId)) {
+      setActionError('This agent is no longer supported and cannot be reconnected.')
+      return
+    }
     // Only the account's owner can reconnect it; for anyone else the list will not contain it.
     const accounts = await overlayAppClient.providerAccounts.list({ cache: 'no-store' }).catch(() => null)
     const account = accounts?.data.find((candidate) => candidate.id === status?.account?.id)
@@ -174,7 +200,10 @@ export function CloudAgentPanel({ agentId }: { agentId: string }) {
   }
 
   const phase = status.provision?.phase
-  const adapterLabel = (status.machine?.adapterId ?? status.adapterId) === 'codex' ? OTHER_AGENT_LABEL.codex : OTHER_AGENT_LABEL['claude-code']
+  const adapterLabel = status.machine?.adapterId ?? status.adapterId
+    ? OTHER_AGENT_LABEL[(status.machine?.adapterId ?? status.adapterId) as keyof typeof OTHER_AGENT_LABEL]
+    : OTHER_AGENT_LABEL['claude-code']
+  const reconnectSupported = isSupportedAgentProviderId(status.account?.provider ?? status.machine?.adapterId ?? status.adapterId)
 
   return (
     <div className="space-y-3">
@@ -207,12 +236,7 @@ export function CloudAgentPanel({ agentId }: { agentId: string }) {
             {status.account ? <div className="flex justify-between gap-3"><dt>Account</dt><dd className="truncate text-(--foreground)">{status.account.label}</dd></div> : null}
           </dl>
 
-          {status.state === 'needs_sign_in' ? (
-            <div className="mt-3 flex items-center justify-between gap-3 rounded-lg bg-(--surface-subtle) px-3 py-2">
-              <p className="text-xs text-(--foreground)">{adapterLabel} could not sign in. Reconnect the account to continue.</p>
-              <Button variant="primary" size="sm" onClick={() => void openReconnect()}>Reconnect</Button>
-            </div>
-          ) : null}
+          <ReconnectNotice state={status.state} supported={reconnectSupported} label={adapterLabel} onReconnect={() => void openReconnect()} />
 
           <MachineActions state={status.state} busy={busy} onRun={(action) => void run(action)} onRetry={() => void retry()} onControl={() => void control()} />
           {actionError ? <p role="alert" className="mt-2 text-xs text-red-500">{actionError}</p> : null}

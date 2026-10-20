@@ -19,7 +19,6 @@ import {
   type AgentEnvironmentCredentialMethod,
   type AgentFilesystemGrant,
   type AgentSandboxLease,
-  type ManagedHarnessId,
 } from '@overlay/workspace-contracts'
 import type { ObjectStore } from '@overlay/app-core'
 import {
@@ -50,7 +49,7 @@ import { describeFailure } from '@/server/observability/failure-classification'
 import { logger } from '@/server/observability/logger'
 import { mintAgentMcpToken, verifyAgentMcpToken } from './agent-mcp-token'
 import { AgentProviderAccountError, type AgentProviderAccountService } from './provider-accounts/AgentProviderAccountService'
-import { AGENT_AUTH_FAILURE_CODE, isAgentProviderId, type AgentProviderId } from '@/shared/agents/provider-accounts'
+import { AGENT_AUTH_FAILURE_CODE, isSupportedAgentProviderId, type AgentProviderId } from '@/shared/agents/provider-accounts'
 
 const ENROLLMENT_TTL_MS = 10 * 60_000
 /** Convex refusals that mean the batch itself was unusable, not that the run or policy refused it. */
@@ -358,6 +357,9 @@ export class ConnectedAgentControlPlaneService {
       !args.workingDirectory.trim() || args.workingDirectory.length > 4_096) {
       throw controlPlaneError('Agent binding fields are invalid', 400, 'binding_invalid')
     }
+    if (!isSupportedAgentProviderId(args.adapterId)) {
+      throw controlPlaneError('The selected agent adapter is not supported', 409, 'adapter_unavailable')
+    }
     const environment = await this.dependencies.repository.getEnvironment({
       workspaceId: args.workspaceId,
       environmentId: args.environmentId,
@@ -376,7 +378,7 @@ export class ConnectedAgentControlPlaneService {
     const adapterConfig: Record<string, unknown> = { adapterId: args.adapterId, workingDirectory: args.workingDirectory }
     if (args.providerAccountId) {
       const accounts = this.dependencies.agentProviderAccounts
-      if (!accounts || !isAgentProviderId(args.adapterId)) {
+      if (!accounts || !isSupportedAgentProviderId(args.adapterId)) {
         throw controlPlaneError('This agent cannot run on a provider account', 400, 'provider_account_unsupported')
       }
       try {
@@ -795,7 +797,7 @@ export class ConnectedAgentControlPlaneService {
     const accountId = typeof binding?.adapterConfig.providerAccountId === 'string' ? binding.adapterConfig.providerAccountId : ''
     const ownerUserId = typeof binding?.adapterConfig.providerAccountOwnerUserId === 'string' ? binding.adapterConfig.providerAccountOwnerUserId : ''
     const adapterId = binding?.adapterConfig.adapterId
-    if (!binding || !accountId || !ownerUserId || !isAgentProviderId(adapterId)) {
+    if (!binding || !accountId || !ownerUserId || !isSupportedAgentProviderId(adapterId)) {
       throw controlPlaneError('This agent has no provider account', 409, 'provider_account_missing')
     }
     try {
@@ -821,7 +823,7 @@ export class ConnectedAgentControlPlaneService {
     const adapters = auth.environment.capabilities.adapters
     const offered = Array.isArray(adapters) && adapters.some((adapter: unknown) =>
       typeof adapter === 'object' && adapter !== null && 'id' in adapter && adapter.id === adapterId)
-    if (!isAgentProviderId(adapterId) || !offered)
+    if (!isSupportedAgentProviderId(adapterId) || !offered)
       throw controlPlaneError('This adapter is unavailable', 409, 'provider_account_missing')
     const bindings = await this.dependencies.repository.listBindings({ workspaceId: auth.credential.workspaceId })
     const matches = bindings.filter(binding => binding.enabled && binding.environmentId === auth.environment.id && binding.adapterConfig.adapterId === adapterId)

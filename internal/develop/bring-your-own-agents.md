@@ -19,6 +19,16 @@ Sandbox and Daytona were removed. Overlay Cloud agents use the same Agent Host
 `OVERLAY_FEATURE_OVERLAY_CLOUD_ENVIRONMENTS`, paid entitlements and provider configuration. The
 connected (on-your-machine) path described here is unaffected.
 
+Product BYO choices are Claude Code and Codex. Historical OpenCode, Hermes, and Cursor records
+remain readable, and existing accounts remain visible for removal, but these providers cannot be
+selected, reconnected, bound to new agents, or sent credentials for runs. Generic custom ACP
+adapters remain available to self-hosted Agent Host configurations.
+
+The prepared source release pins Claude ACP `0.93.0`, Codex ACP `2.2.2`, Agent Host/protocol
+`0.4.3`, and agent image v10. This change prepares code only: packages and images are not
+published or rolled out. Existing machines need a later idle upgrade before they receive the
+retired-launcher removal and updated adapter pins.
+
 The release includes `@mention` invocation, durable runs and commands, streamed transcript
 projection, approval/elicitation, cancellation, reconnect/resume, artifacts, audit, policy,
 and billing. It explicitly excludes remote desktop, unrestricted terminals, general file
@@ -159,13 +169,11 @@ BYO branch selects the harness first, filters approved environments by advertise
 records an explicitly granted default working directory. Creating an environment stays inside the same editor
 and returns directly to the binding step after phrase and root approval. A failed
 binding retry edits the already-durable agent identity rather than creating a duplicate. The host
-ships data-only manifests for Codex (`@agentclientprotocol/codex-acp@1.7.0`) and Claude Code
-(`@agentclientprotocol/claude-agent-acp@0.70.0`). Hermes 0.20.6 or newer is a third built-in target
-through the official `hermes acp` stdio server. It uses the unchanged ACP lifecycle for session
-creation/loading, streamed message and tool updates, permissions, cancellation, and authentication;
-the host does not translate Hermes through a private protocol. Adding another ACP target extends the
-manifest and conformance fixtures, not conversation orchestration. The built-in user-owned adapter
-IDs live in
+ships data-only manifests for Codex (`@agentclientprotocol/codex-acp@2.2.2`) and Claude Code
+(`@agentclientprotocol/claude-agent-acp@0.93.0`). These are the only product-supported built-in
+targets. Generic custom ACP commands remain configurable for self-hosted hosts. Adding another
+product target requires an explicit support decision and conformance fixtures, not a product
+binding inferred from an environment advertisement. The built-in user-owned adapter IDs live in
 `@overlay/workspace-contracts`; they are deliberately separate from the managed-sandbox adapter
 allowlist so enabling a local or VPS adapter never makes Overlay Cloud eligible.
 PostgreSQL migration 0066 repairs older databases whose recorded migration history omitted the
@@ -231,8 +239,8 @@ Claude, or equivalent authentication directory into a managed sandbox.
 Phase 7 makes `@layernorm/overlay-agent-host` and `@layernorm/overlay-agent-bridge-protocol` publishable packages and
 requires Node.js 24. The first production package line is `0.1.0`; Hermes support was released in
 the lockstep `0.2.0` package line under the shorter legacy names. The product-qualified public
-package names begin with lockstep `0.3.0`; the current PATH-safe release line is lockstep `0.3.5`. The application copies an exact
-`npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.3.10 overlay-agent-host ...`
+package names begin with lockstep `0.3.0`; the prepared release line is lockstep `0.4.3`. The application copies an exact
+`npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.4.3 overlay-agent-host ...`
 command rather than following npm `latest` or inheriting an unsupported system Node runtime. The host and
 protocol packages release together, the host depends on the exact protocol version, and the npm
 release workflow publishes compiled ESM plus declarations for both packages with provenance after
@@ -261,8 +269,8 @@ be publicly reachable. Eve connection
 authorization (`authorization.required`) is not bridged by the current host contract, so the
 adapter fails that run closed instead of leaving an OAuth pause unobservable. Use static or
 app-scoped Eve connection auth until a dedicated authorization capability is added.
-Hermes uses its official ACP server. OpenClaw and other native adapters remain ineligible unless ACP
-is unavailable and the unchanged host conformance suite passes.
+OpenClaw and other native adapters remain ineligible unless ACP is unavailable and the unchanged
+host conformance suite passes.
 
 Phase 8 uses one entitlement-derived policy for both persistence providers. Environment redemption
 rechecks the enrollment-time environment ceiling atomically; remote dispatch atomically enforces
@@ -706,7 +714,7 @@ flowchart LR
     Overlay["Overlay control plane<br/>identity, runs, approvals, transcript"]
     Host["Overlay Agent Host<br/>on an execution environment"]
     Adapter["ACP adapter"]
-    Agent["Codex, Claude Code, or Hermes"]
+    Agent["Codex or Claude Code"]
     Files["Approved project roots"]
 
     User <--> Overlay
@@ -785,7 +793,7 @@ flowchart LR
     Bridge["Agent Bridge Protocol v1<br/>enrollment, commands, events,<br/>acknowledgements, artifacts"]
     Host["Agent Host<br/>CLI or daemon"]
     ACP["ACP<br/>sessions, prompts, streaming,<br/>permissions, cancellation"]
-    Harness["Codex, Claude Code,<br/>or Hermes"]
+    Harness["Codex or Claude Code"]
     MCP["MCP<br/>optional tools and resources"]
     Tools["APIs, databases, browsers,<br/>and other tools"]
 
@@ -848,7 +856,7 @@ Overlay generates one harness-specific command. For a local Codex environment, t
 this shape:
 
 ```sh
-npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.3.3 \
+npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.4.3 \
   overlay-agent-host connect <enrollment-code> \
   --server https://getoverlay.io \
   --kind local \
@@ -856,8 +864,7 @@ npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.3.3 \
   --run
 ```
 
-For Hermes on a VPS, use `--kind vps --adapter hermes`. The package requires Node.js 24 or newer.
-The generated command installs and launches both the pinned Node 24 runtime and host package, so a
+The package requires Node.js 24 or newer. The generated command installs and launches both the pinned Node 24 runtime and host package, so a
 machine-wide Node 22 installation does not silently run unsupported code. `connect` enrolls the
 environment, saves a mode-0600 restart config beside the private connection state, and `--run`
 keeps the host in the foreground after approval.
@@ -906,15 +913,12 @@ flowchart LR
     Host["Agent Host"]
     Codex["Codex manifest"]
     Claude["Claude Code manifest"]
-    Hermes["Hermes manifest"]
     CodexProcess["npx -y<br/>@agentclientprotocol/codex-acp@2.2.2"]
-    ClaudeProcess["npx -y<br/>@agentclientprotocol/claude-agent-acp@0.91.0"]
-    HermesProcess["hermes acp<br/>Hermes 0.20.6 or newer"]
+    ClaudeProcess["npx -y<br/>@agentclientprotocol/claude-agent-acp@0.93.0"]
     Session["ACP session over stdio"]
 
     Host --> Codex --> CodexProcess --> Session
     Host --> Claude --> ClaudeProcess --> Session
-    Host --> Hermes --> HermesProcess --> Session
 ```
 
 For each run, the ACP adapter spawns the process in the validated working directory, initializes
@@ -1030,10 +1034,9 @@ creating a draft PR. Existing version branches are preserved. It never publishes
 Drafts still need ordinary required CI and subscription-provider Preview QA; the workflow token
 does not trigger normal PR workflows, so review must dispatch checks or trigger a trusted PR event.
 
-Hermes uses its official `hermes acp` server. Overlay does not translate Hermes through a private
-protocol. OpenClaw and other native adapters require the unchanged host conformance suite when ACP
-is unavailable. A custom ACP command can be described through explicit adapter configuration, but
-the product-supported built-in manifests remain Codex, Claude Code, and Hermes.
+OpenClaw and other native adapters require the unchanged host conformance suite when ACP
+is unavailable. A custom ACP command can be described through explicit adapter configuration; it
+does not become a product BYO choice or binding.
 
 ### An agent mention becomes one durable remote run
 
@@ -1151,7 +1154,7 @@ continue using `@overlay/*`.
 | `@layernorm/overlay-agent-bridge-protocol` | Public versioned schemas, request proofs, limits, commands, events, and acknowledgements. It does not start agents. |
 | `@layernorm/overlay-agent-host` | Public CLI and daemon that runs on a local computer, VPS, container, or managed sandbox. |
 | ACP adapter inside the Agent Host | Starts and communicates with the selected local agent process. |
-| Codex, Claude Code, or Hermes | Performs the actual coding and tool work. |
+| Codex or Claude Code | Performs the actual coding and tool work. |
 | `@overlay/agent-runtime` | Internal server-side helpers for Overlay-hosted turns. It is not the BYOA CLI. |
 | `@overlay/workspace-contracts` | Internal adapter identifiers and connected-agent domain contracts. |
 | `@overlay/sandbox-runtime` | Provider-neutral lifecycle for managed sandboxes (Boat/Box and E2B). |
@@ -1175,7 +1178,7 @@ private chain of thought.
 
 ### Current rollout boundary
 
-The local and VPS host architecture and the Codex, Claude Code, and Hermes ACP manifests are
+The local and VPS host architecture and the Codex and Claude Code ACP manifests are
 implemented. Managed sandboxes use the same host image and protocol and appear only when their
 cloud, run and control-plane flags and workspace rollout eligibility all pass. Broad availability
 still requires image, conformance, credential, egress, billing, cleanup, security-review and stability

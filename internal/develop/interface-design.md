@@ -53,12 +53,15 @@ in isolated Chromium. Use the Playwright browser or set
 Non-deletion confirmations pass a task-specific `busyLabel` (for example, “Saving…”).
 
 Connected-agent settings use the bound environment's advertised model, effort and permission
-choices. Each control saves for the next turn. Known permission modes use compact labels
-Manual, Edits, Plan, Auto and Bypass; local Bypass requires the shared confirmation dialog.
+choices. Each control saves for the next turn. Permissions use readable runtime labels,
+including Manual, Accept edits, Plan, Auto, Do not ask, and Bypass permissions when advertised.
 An identity edit must not overwrite choices saved through these independent controls.
 Older combined model/effort ids resolve to separate live controls only when both choices
 are advertised. Show the effective effort, preserve it when changing models, and leave
-unsupported choices visibly marked; never replace them with discovery defaults.
+saved but unavailable values visible instead of silently replacing them. Runtime catalogs are
+authoritative: discovery defaults do not imply settings applied to an active run. Keep loading
+and discovery errors explicit, and offer permission defaults only when the host advertises them.
+Full-access permission modes require explicit confirmation on both cloud and local agents.
 
 Connected-agent drive status sits below the answer without modifying provider Markdown. Saving
 and unsaved states use a quiet status line. Saved file/folder counts expand to at most 32 authorized

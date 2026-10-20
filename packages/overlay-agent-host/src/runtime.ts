@@ -172,7 +172,7 @@ export class AgentHostRuntime {
     if (this.options.controlPlane.updateCapabilities) {
       const capabilities = buildHostCapabilities(await this.discoverCapabilities(), {
         durableLifecycle: this.options.durableLifecycle === true, drive: Boolean(this.options.drive),
-        hostVersion: '0.4.2', filesystem: this.options.filesystem, maxConcurrentRuns: this.adapters.size,
+        hostVersion: '0.4.3', filesystem: this.options.filesystem, maxConcurrentRuns: this.adapters.size,
       })
       await updateHostCapabilities(this.options.controlPlane, capabilities)
     }

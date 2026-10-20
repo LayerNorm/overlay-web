@@ -64,7 +64,7 @@ export function OtherAgentFields({ other, size, onChange, onSizeChange, onOpenMa
   return (
     <>
       <div>
-        <FieldLabel info="The agent that does the work. Claude Code and Codex are fully supported; OpenCode and Cursor are experimental and run with your own key.">Agent</FieldLabel>
+        <FieldLabel info="The agent that does the work.">Agent</FieldLabel>
         <SegmentedControl
           ariaLabel="Agent"
           layout="stretch"
@@ -72,11 +72,6 @@ export function OtherAgentFields({ other, size, onChange, onSizeChange, onOpenMa
           options={SELECTABLE_AGENT_PROVIDER_IDS.map((id) => ({ value: id, label: OTHER_AGENT_LABEL[id] }))}
           onChange={(adapterId) => onChange({ adapterId, providerAccountId: '', model: '' })}
         />
-        {AGENT_PROVIDERS[other.adapterId].experimental ? (
-          <p className="mt-1.5 text-[11px] leading-4 text-(--muted)">
-            Experimental: {AGENT_PROVIDERS[other.adapterId].label} runs with your own key and has not been proven with as many accounts as Claude Code and Codex.
-          </p>
-        ) : null}
       </div>
       <div>
         <FieldLabel info="Overlay Cloud runs it on a machine Overlay manages (paid plans). Your machine runs it on a computer you connect.">Runs on</FieldLabel>
