@@ -13,6 +13,7 @@ import {
   TOP_UP_MAX_AMOUNT_CENTS,
   TOP_UP_MIN_AMOUNT_CENTS,
 } from '@/shared/billing/billing-pricing'
+import { formatBytes } from '@/shared/storage/storage-limits'
 import { DollarAmountInput } from './DollarAmountInput'
 import { WorkspaceAutoTopUpCard } from './WorkspaceAutoTopUpCard'
 import { WorkspaceUsagePanel } from './WorkspaceUsagePanel'
@@ -159,6 +160,15 @@ function WorkspaceBillingLoaded({
 
   return (
     <div data-testid="workspace-billing" className="space-y-4 p-5">
+      {summary.storage ? (
+        <dl className="flex items-center justify-between gap-4 rounded-xl border border-(--border) px-4 py-3 text-sm">
+          <div className="flex w-full items-center justify-between gap-4">
+            <dt className="font-medium text-(--foreground)">Storage</dt>
+            <dd className="text-(--muted)">{formatBytes(summary.storage.usedBytes)} of {formatBytes(summary.storage.limitBytes)}</dd>
+            <dd className="text-(--muted-light)">Included</dd>
+          </div>
+        </dl>
+      ) : null}
       {!summary.initialized ? (
         <WalletSetupCard
           canManage={summary.canManage}

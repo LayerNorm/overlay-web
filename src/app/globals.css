@@ -436,14 +436,7 @@ html {
   overflow: hidden;
   flex-shrink: 0;
   box-sizing: border-box;
-  background: linear-gradient(
-    135deg,
-    #efe8f4 0%,
-    #e6dcf2 28%,
-    #ddd0ea 52%,
-    #e8dff6 78%,
-    #f0e9f8 100%
-  );
+  background: var(--surface-muted);
   min-height: 4rem;
 }
 
@@ -457,35 +450,13 @@ html {
   background: linear-gradient(
     105deg,
     transparent 0%,
-    rgba(255, 255, 255, 0.08) 38%,
-    rgba(255, 255, 255, 0.65) 50%,
-    rgba(255, 255, 255, 0.08) 62%,
+    color-mix(in srgb, var(--skeleton-sheen) 13%, transparent) 38%,
+    var(--skeleton-sheen) 50%,
+    color-mix(in srgb, var(--skeleton-sheen) 13%, transparent) 62%,
     transparent 100%
   );
   filter: blur(0.5px);
   animation: ui-skeleton-shimmer-slide 1.65s ease-in-out infinite;
-}
-
-[data-theme='dark'] .ui-skeleton-mesh {
-  background: linear-gradient(
-    135deg,
-    #2a2630 0%,
-    #252028 35%,
-    #1f1c24 55%,
-    #2c2733 78%,
-    #322c38 100%
-  );
-}
-
-[data-theme='dark'] .ui-skeleton-mesh::after {
-  background: linear-gradient(
-    105deg,
-    transparent 0%,
-    rgba(255, 255, 255, 0.04) 38%,
-    rgba(255, 255, 255, 0.22) 50%,
-    rgba(255, 255, 255, 0.04) 62%,
-    transparent 100%
-  );
 }
 
 /* Text row skeleton (sidebar lists, settings) */
