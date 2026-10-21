@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Keep the model you pick in an existing chat after sending. The composer and saved chat model no longer revert to the chat's earlier model once the reply starts.
+
 - Keep earlier messages visible after a reply finishes in a chat reopened from history. Restored chats now load the full transcript into the active chat runtime instead of only the current mode's turns.
 
 - Remove multi-model selection and compare responses across text, image, and video chats. Existing saved model preferences and conversations continue with one primary model response.

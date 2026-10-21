@@ -5,7 +5,8 @@ import {
   getMessageText,
   messageHasVisibleAssistantActivity,
 } from '@overlay/chat-core'
-import type { ConversationRuntime } from '../chat-interface/types'
+import { normalizeChatModelSelection } from '@/shared/chat/chat-model-prefs'
+import type { ConversationRuntime, ConversationUiState } from '../chat-interface/types'
 
 /**
  * Value-equality for two assistant messages as far as the live-sync effect cares.
@@ -146,4 +147,24 @@ export function removeTurnFromConversationRuntime(
   }
 
   return { removedExchangeIndex }
+}
+
+/**
+ * The picker writes the model choice to view state only, so a runtime snapshot
+ * can lag behind it. Carry the visible choice into the snapshot before applying
+ * it back to the view, or the composer reverts to the chat's earlier model.
+ */
+export function withViewModelSelection(
+  ui: ConversationUiState,
+  view: { selectedModels: string[]; selectedActModel: string },
+): ConversationUiState {
+  const normalized = normalizeChatModelSelection({
+    askModelIds: view.selectedModels,
+    actModelId: view.selectedActModel,
+  })
+  return {
+    ...ui,
+    selectedModels: [...normalized.askModelIds],
+    selectedActModel: normalized.actModelId,
+  }
 }

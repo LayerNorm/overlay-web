@@ -2,6 +2,8 @@
 
 import {
   useCallback,
+  useLayoutEffect,
+  useRef,
   useState,
   type Dispatch,
   type MutableRefObject,
@@ -13,6 +15,7 @@ import {
   createConversationUiState,
 } from '@overlay/chat-core'
 import { normalizeChatModelSelection } from '@/shared/chat/chat-model-prefs'
+import { withViewModelSelection } from './chat-runtime-helpers'
 import type {
   ConversationRuntime,
   ConversationUiState,
@@ -120,6 +123,11 @@ export function useConversationUiState({
     selectedModels,
   ])
 
+  const viewModelSelectionRef = useRef({ selectedModels, selectedActModel })
+  useLayoutEffect(() => {
+    viewModelSelectionRef.current = { selectedModels, selectedActModel }
+  }, [selectedModels, selectedActModel])
+
   const persistActiveRuntimeUiState = useCallback(() => {
     if (!activeChatId) return
     const runtime = ensureConversationRuntime(activeChatId)
@@ -132,8 +140,10 @@ export function useConversationUiState({
     updater: (prev: ConversationUiState) => ConversationUiState,
   ) => {
     const runtime = ensureConversationRuntime(chatId)
-    runtime.ui = updater(cloneConversationUiState(runtime.ui))
-    if (activeChatIdRef.current === chatId) {
+    const isActive = activeChatIdRef.current === chatId
+    const base = cloneConversationUiState(runtime.ui)
+    runtime.ui = updater(isActive ? withViewModelSelection(base, viewModelSelectionRef.current) : base)
+    if (isActive) {
       applyUiStateToView(runtime.ui)
     }
   }, [activeChatIdRef, applyUiStateToView, ensureConversationRuntime])
