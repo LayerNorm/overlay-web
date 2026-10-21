@@ -69,8 +69,8 @@ export function MarketingFooter() {
   return (
     <footer className="border-t border-(--border) px-6 py-12 md:px-10 md:py-16">
       <div className="mx-auto max-w-7xl">
-        <div className="grid gap-10 md:grid-cols-[1.4fr_repeat(4,1fr)]">
-          <div>
+        <div className="grid grid-cols-2 gap-x-6 gap-y-10 sm:grid-cols-4 md:grid-cols-[1.4fr_repeat(4,1fr)]">
+          <div className="col-span-2 sm:col-span-4 md:col-span-1">
             <Link href="/home" className="inline-flex text-(--foreground)">
               <BrandLockup style={{ fontSize: 18 }} />
             </Link>

@@ -10,6 +10,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Show loading branding immediately, keep onboarding answers in the normal message style and anchor the workspace tour beside navigation. Open one-to-one AI employee conversations in Agents instead of Chats.
 
+- Make the `/home` app still look like the real workspace: the live sidebar (Personal/Workspace, Work, Agents, Chats, Automations, More, Needs you / Assigned to me / Everything), no header rules, an Operations agent planning a team offsite with the orb "Worked for" tool row, and its computer streaming a browser that fills in a venue form. The FAQ now uses a new shadcn `Accordion` in `@overlay/ui/primitives`, and the marketing footer keeps two or four link columns on narrow screens instead of one long column.
+
 - Redesign onboarding as a scripted conversation with no model calls: the same answers always give the same questions, employee suggestions and starter tasks. Controls sit directly under Overlay's question, single-choice chips answer in one tap, and "You can call me Divyansh" is saved as "Divyansh". App and Claude Code/Codex connections share one step with brand logos and are hidden or skipped when unavailable. Remove the website question and personalization consent, phrase the user's replies naturally, hide message actions during setup, and add Skip setup.
 
 - Keep onboarding tour controls inside the mobile navigation drawer, with visible navigation targets and automatic drawer cleanup when the tour ends.
