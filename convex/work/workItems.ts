@@ -5,6 +5,7 @@ import { validateServerSecret } from '../lib/auth'
 import { assertCanCreateInScope, getReadableRow, listScopedRows, loadScopeContext, scopeContextLoader } from '../lib/resourceScope'
 import { scopeMutations } from '../lib/scopeMutations'
 import {
+  agentAssignability,
   assertAssignable,
   assertDateOrder,
   assertReviewer,
@@ -89,12 +90,30 @@ async function tidyLinksAfterMove(ctx: MutationCtx, args: { movedIds: string[]; 
     if (args.to === 'personal') {
       const ownPrincipalId = await principalIdForUser(ctx, task.workspaceId, task.userId)
       if (task.assigneePrincipalId !== undefined && task.assigneePrincipalId !== ownPrincipalId) {
-        patch.assigneePrincipalId = undefined
-        await logWorkEvent(ctx, { workItemId: task._id, workspaceId: task.workspaceId, actorPrincipalId: args.actorPrincipalId, kind: 'assignee', data: { from: task.assigneePrincipalId, to: null } })
+        const principal = await ctx.db.query('workspacePrincipals')
+          .withIndex('by_principalId', (q) => q.eq('principalId', task.assigneePrincipalId as string))
+          .unique()
+        const agent = principal ? await agentAssignability(ctx, { workspaceId: task.workspaceId, principal }) : null
+        const canKeep = agent !== null && (agent.visibility === 'workspace' || agent.createdByPrincipalId === ownPrincipalId)
+        if (!canKeep) {
+          patch.assigneePrincipalId = undefined
+          await logWorkEvent(ctx, { workItemId: task._id, workspaceId: task.workspaceId, actorPrincipalId: args.actorPrincipalId, kind: 'assignee', data: { from: task.assigneePrincipalId, to: null } })
+        }
       }
       if (task.reviewerUserId !== undefined && task.reviewerUserId !== task.userId) {
         patch.reviewerUserId = undefined
         await logWorkEvent(ctx, { workItemId: task._id, workspaceId: task.workspaceId, actorPrincipalId: args.actorPrincipalId, kind: 'reviewer', data: { from: task.reviewerUserId, to: null } })
+      }
+    } else if (task.assigneePrincipalId !== undefined) {
+      const principal = await ctx.db.query('workspacePrincipals')
+        .withIndex('by_principalId', (q) => q.eq('principalId', task.assigneePrincipalId as string))
+        .unique()
+      if (principal?.type === 'agent') {
+        const agent = await agentAssignability(ctx, { workspaceId: task.workspaceId, principal })
+        if (!agent || agent.visibility !== 'workspace') {
+          patch.assigneePrincipalId = undefined
+          await logWorkEvent(ctx, { workItemId: task._id, workspaceId: task.workspaceId, actorPrincipalId: args.actorPrincipalId, kind: 'assignee', data: { from: task.assigneePrincipalId, to: null } })
+        }
       }
     }
     if (task.parentId !== undefined && !moved.has(String(task.parentId)) && (await scopeOf(task.parentId)) !== args.to) patch.parentId = undefined
@@ -170,9 +189,15 @@ export const context = query({
     const principals = await ctx.db.query('workspacePrincipals').withIndex('by_workspaceId', (q) => q.eq('workspaceId', workspaceId)).collect()
     const memberships = await ctx.db.query('workspaceMemberships').withIndex('by_workspaceId', (q) => q.eq('workspaceId', workspaceId)).collect()
     const roleByPrincipal = new Map(memberships.filter((m) => m.status === 'active').map((m) => [m.principalId, m.role]))
-    const assignees = principals
-      .filter((p) => p.archivedAt === undefined && p.type !== 'service' && (p.type === 'agent' || (roleByPrincipal.has(p.principalId) && roleByPrincipal.get(p.principalId) !== 'guest')))
-      .map((p) => ({ principalId: p.principalId, type: p.type, userId: p.userId ?? null, displayName: p.displayName }))
+    const eligible = principals.filter((p) => p.archivedAt === undefined && (p.type === 'agent' || (p.type === 'human' && roleByPrincipal.has(p.principalId) && roleByPrincipal.get(p.principalId) !== 'guest')))
+    const assignees = (await Promise.all(eligible.map(async (p) => {
+      if (p.type === 'agent') {
+        const agent = await agentAssignability(ctx, { workspaceId, principal: p })
+        if (!agent || (agent.visibility === 'creator' && agent.createdByPrincipalId !== viewer.principalId)) return null
+        return { principalId: p.principalId, type: p.type, userId: null, displayName: p.displayName, agentVisibility: agent.visibility }
+      }
+      return { principalId: p.principalId, type: p.type, userId: p.userId ?? null, displayName: p.displayName }
+    }))).filter((person) => person !== null)
       .sort((a, b) => (a.type === b.type ? a.displayName.localeCompare(b.displayName) : a.type === 'human' ? -1 : 1))
     return { principalId: viewer.principalId, role: viewer.viewer.role, canCreateInWorkspace: await canCreateWorkspaceTask(ctx, workspaceId, userId), assignees }
   },
