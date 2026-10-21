@@ -2,7 +2,7 @@
 
 import type { ReactNode } from 'react'
 import { PanelRight } from 'lucide-react'
-import { Button, Tabs, TabsContent, TabsList, TabsTrigger } from '@overlay/ui/primitives'
+import { Button, Tabs, TabsContent, TabsTrigger, TabsTriggerList } from '@overlay/ui/primitives'
 
 export type RightSidebarTab = {
   id: string
@@ -51,7 +51,7 @@ export function RightSidebar({
           }}
           className="flex min-h-0 flex-1 flex-col gap-0"
         >
-          <TabsList className="mx-auto mb-3 h-auto shrink-0 gap-1 rounded-full bg-transparent p-0">
+          <TabsTriggerList className="mx-auto mb-3 h-auto shrink-0 gap-1 rounded-full bg-transparent p-0">
             {tabs.map((tab) => (
               <TabsTrigger
                 key={tab.id}
@@ -61,7 +61,7 @@ export function RightSidebar({
                 {tab.label}
               </TabsTrigger>
             ))}
-          </TabsList>
+          </TabsTriggerList>
           {tabs.map((tab) => (
             <TabsContent
               key={tab.id}
