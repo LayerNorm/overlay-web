@@ -9,6 +9,7 @@ import {
   ComputerDesktopDriverError,
   openUrl as openComputerUrl,
   runBrowserAction as runComputerBrowserAction,
+  runComputerDriverCommand,
   run as runComputerDesktopCommand,
 } from '@/server/computers/ComputerDesktopDriver'
 import {
@@ -907,6 +908,7 @@ const COMPUTER_EXEC_MAX_OUTPUT_CHARS = 40_000
 const COMPUTER_READ_MAX_BYTES = 256 * 1024
 const COMPUTER_EXEC_TIMEOUT_DEFAULT_MS = 60_000
 const COMPUTER_EXEC_TIMEOUT_MAX_MS = 300_000
+const COMPUTER_TERMINAL_ENV_TTL_MS = 30 * 60 * 1000
 
 function truncateOutput(value: string): { text: string; truncated: boolean } {
   if (value.length <= COMPUTER_EXEC_MAX_OUTPUT_CHARS) {
@@ -1195,6 +1197,12 @@ export type ComputerBrowserAction =
   | { action: 'switch_tab'; index: number }
   | { action: 'new_tab'; url: string }
 
+export type ComputerTerminalAction =
+  | { action: 'start'; command: string; cwd?: string }
+  | { action: 'read'; id: string; offset?: number; maxBytes?: number }
+  | { action: 'cancel'; id: string; signal?: 'INT' | 'TERM' | 'KILL' }
+  | { action: 'list' }
+
 const COMPUTER_ACTION_APPROVAL_MESSAGE =
   'Typing and key presses on the Computer need your approval. Switch this chat to Work mode, or ask the user to do it in Open desktop.'
 
@@ -1260,6 +1268,37 @@ export async function executeComputerInput(
     return { success: true as const, acknowledgement: `${action.replace('_', ' ')} completed.` }
   } catch (err) {
     return computerErrorResult(err, 'Computer input failed')
+  }
+}
+
+export async function executeComputerTerminal(
+  options: OverlayToolsOptions,
+  input: ComputerTerminalAction,
+) {
+  const resolved = await computerInstanceFor(options)
+  if (!resolved.ok) return { success: false as const, error: resolved.error }
+  const { action, ...args } = input
+  const environment = action === 'start'
+    ? agentGatewayExecEnv({
+        workspaceId: options.workspaceId!,
+        userId: options.userId,
+        agentId: options.agentId,
+        ttlMs: COMPUTER_TERMINAL_ENV_TTL_MS,
+      })
+    : undefined
+  try {
+    const result = await resolved.operate(
+      (instance) => runComputerDriverCommand(
+        instance,
+        `terminal_${action}`,
+        args,
+        { requireDesktop: false, environment },
+      ),
+      45_000,
+    )
+    return { success: true as const, action, ...result, computerId: resolved.computer.id }
+  } catch (err) {
+    return computerErrorResult(err, 'Terminal session action failed')
   }
 }
 

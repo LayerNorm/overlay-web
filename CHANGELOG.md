@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Add persistent, cancellable terminal sessions for Computer commands.
+
 - Require Work-mode approval for typing and key presses on Computers, and fail closed in regular chats.
 
 - Add persistent browser controls for agents, including snapshots and ref-based actions.

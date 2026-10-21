@@ -20,12 +20,14 @@ import {
   executeComputerExec,
   executeComputerBrowser,
   executeComputerInput,
+  executeComputerTerminal,
   executeComputerListFiles,
   executeComputerOpenUrl,
   executeComputerReadFile,
   executeComputerScreenshot,
   executeComputerWriteFile,
   executeComputerActionWithApproval,
+  type ComputerTerminalAction,
   executeCreateAutomation,
   executeDeleteAutomation,
   executeDraftAutomationFromChat,
@@ -169,6 +171,40 @@ const computerBrowserSchema = z.object({
   index: z.number().int().min(0).max(49).optional(),
 }).strict().superRefine((input, ctx) => {
   const parsed = computerBrowserVariants.safeParse(input)
+  if (!parsed.success) {
+    for (const issue of parsed.error.issues) ctx.addIssue(issue)
+  }
+})
+const computerTerminalIdSchema = z.string().regex(/^t-[0-9a-f]{12}$/)
+const computerTerminalVariants = z.discriminatedUnion('action', [
+  z.object({
+    action: z.literal('start'),
+    command: z.string().min(1).max(100000),
+    cwd: z.string().max(4096).optional(),
+  }).strict(),
+  z.object({
+    action: z.literal('read'),
+    id: computerTerminalIdSchema,
+    offset: z.number().int().min(0).optional(),
+    maxBytes: z.number().int().min(1).max(65536).optional(),
+  }).strict(),
+  z.object({
+    action: z.literal('cancel'),
+    id: computerTerminalIdSchema,
+    signal: z.enum(['INT', 'TERM', 'KILL']).optional(),
+  }).strict(),
+  z.object({ action: z.literal('list') }).strict(),
+])
+const computerTerminalSchema = z.object({
+  action: z.enum(['start', 'read', 'cancel', 'list']),
+  command: z.string().min(1).max(100000).optional(),
+  cwd: z.string().max(4096).optional(),
+  id: computerTerminalIdSchema.optional(),
+  offset: z.number().int().min(0).optional(),
+  maxBytes: z.number().int().min(1).max(65536).optional(),
+  signal: z.enum(['INT', 'TERM', 'KILL']).optional(),
+}).strict().superRefine((input, ctx) => {
+  const parsed = computerTerminalVariants.safeParse(input)
   if (!parsed.success) {
     for (const issue of parsed.error.issues) ctx.addIssue(issue)
   }
@@ -1040,6 +1076,20 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
           type: 'text',
           value: output.success ? output.text : ('message' in output ? output.message : output.error),
         }),
+      })
+    }
+
+    if (shouldExposeTool('computer_terminal')) {
+      tools.computer_terminal = tool({
+        description:
+          'Run long-running or non-interactive commands on the bound Overlay Computer, such as builds, servers, or watchers. ' +
+          'Start a session, poll its output with read, and cancel it when done. The Computer may idle-stop if the agent stops making tool calls, which ends its sessions.',
+        inputSchema: computerTerminalSchema,
+        execute: async (input) => {
+          assertToolAllowed('computer_terminal')
+          const parsed = computerTerminalVariants.parse(input) as ComputerTerminalAction
+          return executeComputerTerminal(options, parsed)
+        },
       })
     }
 

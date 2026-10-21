@@ -10,10 +10,11 @@ const pythonCheck = spawnSync('python3', ['--version'], { encoding: 'utf8' })
 const pythonPath = pythonCheck.status === 0
   ? execFileSync('which', ['python3'], { encoding: 'utf8' }).trim()
   : undefined
+const shellCheck = spawnSync('sh', ['-c', 'true'], { encoding: 'utf8' })
 
-if (!pythonPath) {
-  test('computer driver tests require Python 3', (t) => {
-    t.skip('Python 3 is unavailable; install python3 to run the desktop driver tests.')
+if (!pythonPath || shellCheck.status !== 0) {
+  test('computer driver tests require Python 3 and sh', (t) => {
+    t.skip('Python 3 or sh is unavailable; install both to run the computer driver tests.')
   })
 } else {
   test('driver scales clicks and repeats scroll buttons', (t) => {
@@ -69,6 +70,45 @@ if (!pythonPath) {
     assert.equal(result.status, 1)
     assert.equal(result.payload.error?.code, 'desktop_busy')
   })
+
+  test('terminal sessions start, return output and exit status, and cancel process groups', async (t) => {
+    const harness = createHarness(t)
+    const completed = harness.run('terminal_start', { terminalCommand: "printf 'terminal output'" })
+    assert.equal(completed.status, 0)
+    const completedId = completed.payload.id
+    assert.match(completedId ?? '', /^t-[0-9a-f]{12}$/)
+    t.after(() => rmSync(join('/tmp/overlay-computer/terminals', completedId!), { recursive: true, force: true }))
+
+    let read = harness.run('terminal_read', { id: completedId })
+    const deadline = Date.now() + 3000
+    while (read.payload.exitCode === null && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 25))
+      read = harness.run('terminal_read', { id: completedId })
+    }
+    assert.equal(read.status, 0)
+    assert.equal(read.payload.running, false)
+    assert.equal(read.payload.exitCode, 0)
+    assert.equal(read.payload.output, 'terminal output')
+
+    const running = harness.run('terminal_start', { terminalCommand: 'sleep 30' })
+    assert.equal(running.status, 0)
+    const runningId = running.payload.id
+    assert.match(runningId ?? '', /^t-[0-9a-f]{12}$/)
+    t.after(() => rmSync(join('/tmp/overlay-computer/terminals', runningId!), { recursive: true, force: true }))
+
+    const cancelled = harness.run('terminal_cancel', { id: runningId })
+    assert.equal(cancelled.status, 0)
+    assert.equal(cancelled.payload.running, false)
+    assert.equal(typeof cancelled.payload.exitCode, 'number')
+    assert.notEqual(cancelled.payload.exitCode, 0)
+  })
+
+  test('terminal sessions reject invalid ids before resolving paths', (t) => {
+    const harness = createHarness(t)
+    const result = harness.run('terminal_read', { id: '../x' })
+    assert.equal(result.status, 1)
+    assert.equal(result.payload.error?.code, 'invalid_input')
+  })
 }
 
 function createHarness(t: { after(callback: () => void): void }) {
@@ -119,6 +159,10 @@ function createHarness(t: { after(callback: () => void): void }) {
           error?: { code?: string; missing?: string[] }
           width?: number
           height?: number
+          id?: string
+          running?: boolean
+          exitCode?: number | null
+          output?: string
         },
       }
     },

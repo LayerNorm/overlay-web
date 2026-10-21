@@ -1,6 +1,7 @@
 import { COMPUTER_BROWSER_DRIVER_SOURCE } from './browser-driver'
+import { COMPUTER_TERMINAL_DRIVER_SOURCE } from './terminal-driver'
 
-export const DRIVER_VERSION = '2'
+export const DRIVER_VERSION = '3'
 
 export const COMPUTER_DRIVER_SOURCE = String.raw`#!/usr/bin/env python3
 import base64
@@ -21,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2"
+VERSION = "3"
 DEFAULT_MAX_WIDTH = 1280
 LOCK_PATH = "/tmp/overlay-computer/input.lock"
 SHOT_PATH = "/tmp/overlay-computer/shot.png"
@@ -352,12 +353,21 @@ def run_input(request):
     return {"success": True}
 
 
+${COMPUTER_TERMINAL_DRIVER_SOURCE}
 ${COMPUTER_BROWSER_DRIVER_SOURCE}
 
 def dispatch(request):
     if not isinstance(request, dict):
         raise DriverError("invalid_input", "The request must be a JSON object.")
     command = request.get("command")
+    if command == "terminal_start":
+        return terminal_start(request)
+    if command == "terminal_read":
+        return terminal_read(request)
+    if command == "terminal_cancel":
+        return terminal_cancel(request)
+    if command == "terminal_list":
+        return terminal_list()
     if command == "capabilities":
         return capabilities()
     if command == "screenshot":

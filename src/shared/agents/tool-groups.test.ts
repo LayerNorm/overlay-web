@@ -84,6 +84,7 @@ test('the computer group maps to all computer tool ids', () => {
     'computer_open_url',
     'computer_read_file',
     'computer_screenshot',
+    'computer_terminal',
     'computer_write_file',
   ])
   assert.deepEqual(
@@ -138,6 +139,7 @@ test('grants saved before a group grew still hold the tools that joined it', () 
   assert.ok(normalizeAgentToolGrant(savedComputerGrant).includes('computer_screenshot'))
   assert.ok(normalizeAgentToolGrant(savedComputerGrant).includes('computer_input'))
   assert.ok(normalizeAgentToolGrant(savedComputerGrant).includes('computer_browser'))
+  assert.ok(normalizeAgentToolGrant(savedComputerGrant).includes('computer_terminal'))
 })
 
 test('tool presets never include computer and are recognised from their groups', () => {

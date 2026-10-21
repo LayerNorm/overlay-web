@@ -67,6 +67,7 @@ async function runCommand(
   instance: SandboxInstance,
   request: Record<string, unknown>,
   timeoutMs: number,
+  environment?: Record<string, string>,
 ): Promise<SandboxCommandResult | null> {
   try {
     const handle = await instance.runCommand({
@@ -78,6 +79,7 @@ async function runCommand(
         DRIVER_PATH,
         JSON.stringify(request),
       ],
+      environment,
       timeoutMs,
     })
     return await handle.wait()
@@ -118,8 +120,11 @@ function missingTools(capabilities: DriverCapabilities): string[] {
   ])]
 }
 
-export async function ensureDriver(instance: SandboxInstance): Promise<DriverCapabilities> {
-  if (!instance.capabilities.desktop) {
+export async function ensureDriver(
+  instance: SandboxInstance,
+  requireDesktop = true,
+): Promise<DriverCapabilities> {
+  if (requireDesktop && !instance.capabilities.desktop) {
     throw new ComputerDesktopDriverError(
       'desktop_unsupported',
       'This computer does not have a desktop.',
@@ -151,7 +156,7 @@ export async function ensureDriver(instance: SandboxInstance): Promise<DriverCap
     )
   }
 
-  if (missingTools(capabilities).length > 0) {
+  if (requireDesktop && missingTools(capabilities).length > 0) {
     if (!await prepareMissingTools(instance)) {
       const missing = missingTools(capabilities)
       throw new ComputerDesktopDriverError(
@@ -162,7 +167,7 @@ export async function ensureDriver(instance: SandboxInstance): Promise<DriverCap
     }
     capabilities = await probe(instance) ?? capabilities
   }
-  const missing = missingTools(capabilities)
+  const missing = requireDesktop ? missingTools(capabilities) : []
   if (missing.length > 0) {
     throw new ComputerDesktopDriverError(
       'desktop_unsupported',
@@ -198,14 +203,21 @@ function responseFromResult(result: SandboxCommandResult | null): Record<string,
   return response
 }
 
-export async function run(
+export async function runComputerDriverCommand(
   instance: SandboxInstance,
   command: string,
   args: Record<string, unknown> = {},
+  options: {
+    requireDesktop?: boolean
+    environment?: Record<string, string>
+  } = {},
 ): Promise<Record<string, unknown>> {
-  await ensureDriver(instance)
-  const request = { ...args, command }
-  let result = await runCommand(instance, request, DRIVER_ACTION_TIMEOUT_MS)
+  const requireDesktop = options.requireDesktop !== false
+  await ensureDriver(instance, requireDesktop)
+  const request = command === 'terminal_start'
+    ? { ...args, terminalCommand: args.command, command }
+    : { ...args, command }
+  let result = await runCommand(instance, request, DRIVER_ACTION_TIMEOUT_MS, options.environment)
   let response: Record<string, unknown>
   try {
     response = responseFromResult(result)
@@ -213,10 +225,15 @@ export async function run(
     const missingChromium = error instanceof ComputerDesktopDriverError
       && error.code === 'desktop_unsupported'
       && error.missing.includes('chromium')
-    if (command !== 'browser_ensure' || !missingChromium || !await prepareMissingTools(instance)) {
+    if (
+      command !== 'browser_ensure'
+      || !requireDesktop
+      || !missingChromium
+      || !await prepareMissingTools(instance)
+    ) {
       throw error
     }
-    result = await runCommand(instance, request, DRIVER_ACTION_TIMEOUT_MS)
+    result = await runCommand(instance, request, DRIVER_ACTION_TIMEOUT_MS, options.environment)
     response = responseFromResult(result)
   }
 
@@ -233,6 +250,14 @@ export async function run(
     return { ...response, image }
   }
   return response
+}
+
+export async function run(
+  instance: SandboxInstance,
+  command: string,
+  args: Record<string, unknown> = {},
+): Promise<Record<string, unknown>> {
+  return await runComputerDriverCommand(instance, command, args)
 }
 
 export async function openUrl(

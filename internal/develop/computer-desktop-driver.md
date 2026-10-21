@@ -19,3 +19,9 @@ Browser-writing actions share the desktop input lock. Snapshot and tab listing a
 Typing and key presses through `computer_input`, and typing or pressing keys through `computer_browser`, require approval in Work mode. The existing agent-run approval flow stores the request and displays its tool name. Ordinary Act calls fail closed with `approval_required` before accessing the computer because they have no approval UI. Unattended automations deny approval-required calls and never execute them.
 
 Screenshots, navigation, scrolling, and clicks remain unapproved. Clicks are not yet approval-gated so reading and scrolling feeds stay fluid.
+
+## Terminal sessions
+
+`computer_terminal` runs shell commands as machine-owned sessions and does not require desktop capability, so each tool call can start, read, cancel, or list a session without retaining a server process handle. The command is passed as an argument to `sh -c`, not interpolated into the wrapper. Sessions use ids matching `t-` followed by 12 lowercase hexadecimal characters and store `out.log`, `pid`, `exit`, `started_at`, and `command` under `/tmp/overlay-computer/terminals/<id>/`. At most eight sessions may be running at once. Output reads default to 32 KiB and are capped at 64 KiB. Cancellation signals the process group and escalates from INT to TERM to KILL when needed.
+
+Use terminal sessions for long-running or non-interactive commands such as builds, servers, and watchers. Poll with `read` and cancel when done. The Computer may idle-stop if the agent stops making tool calls, which ends its sessions. Session output is stored under `/tmp` and does not survive a machine stop. The gateway environment for a started command is inherited by its process and is never written to session files.

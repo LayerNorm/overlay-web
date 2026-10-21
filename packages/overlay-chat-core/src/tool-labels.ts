@@ -230,6 +230,7 @@ export function getDescriptiveToolLabel(
     computer_screenshot: 'Taking a screenshot of the computer',
     computer_input: 'Interacting with the computer',
     computer_browser: 'Controlling the browser on the computer',
+    computer_terminal: 'Managing a terminal session on the computer',
   }
   if (map[toolName]) return map[toolName]!
 

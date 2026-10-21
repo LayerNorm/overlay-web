@@ -5,6 +5,7 @@ import {
   ComputerDesktopDriverError,
   openUrl,
   run,
+  runComputerDriverCommand,
   runBrowserAction,
 } from './ComputerDesktopDriver'
 
@@ -15,7 +16,7 @@ test('driver script is written only after its marker check fails', async () => {
   await run(computer.instance, 'wait', { ms: 1 })
   await run(computer.instance, 'wait', { ms: 1 })
   assert.equal(computer.writes.length, 1)
-  assert.match(computer.writes[0]!.path, /driver-2\.py$/)
+  assert.match(computer.writes[0]!.path, /driver-3\.py$/)
 })
 
 test('screenshot reads image bytes from the sandbox file', async () => {
@@ -33,6 +34,29 @@ test('non-desktop instances return desktop_unsupported', async () => {
       && error.code === 'desktop_unsupported',
   )
   assert.equal(computer.commands.length, 0)
+})
+
+test('terminal start works without desktop capability and passes its environment', async () => {
+  const computer = fakeComputer(false)
+  const environment = { OVERLAY_GATEWAY_TOKEN: 'test-gateway-token' }
+  const result = await runComputerDriverCommand(
+    computer.instance,
+    'terminal_start',
+    { command: 'sleep 30' },
+    { requireDesktop: false, environment },
+  )
+
+  assert.deepEqual(result, { id: 't-000000000001', pid: 1234 })
+  const terminalRequest = computer.commands.find((request) => {
+    const payload = request.args?.[4]
+    return typeof payload === 'string'
+      && (JSON.parse(payload) as { command?: string }).command === 'terminal_start'
+  })
+  assert.deepEqual(terminalRequest?.environment, environment)
+  assert.equal(
+    computer.commands.some((request) => request.args?.some((argument) => argument.includes('apt-get'))),
+    false,
+  )
 })
 
 test('computer_open_url ensures and navigates the persistent browser', async () => {
@@ -90,7 +114,7 @@ function fakeComputer(desktop = true, browserUnsupported = false) {
         ? JSON.parse(request.args[4]) as Record<string, unknown>
         : {}
       if (typeof payload.command === 'string') requests.push(payload)
-      const installed = writes.some((file) => file.path.endsWith('/driver-2.py'))
+      const installed = writes.some((file) => file.path.endsWith('/driver-3.py'))
       const isPrepare = request.command === 'sh' && request.args?.[0] === '-c'
       const unsupportedBrowser = browserUnsupported && payload.command === 'browser_ensure'
       const stdout = !installed
@@ -105,7 +129,7 @@ function fakeComputer(desktop = true, browserUnsupported = false) {
             })
           : JSON.stringify(payload.command === 'capabilities'
             ? {
-                version: '2',
+                version: '3',
                 display: ':0',
                 screen: { width: 1280, height: 720 },
                 input: true,
@@ -114,8 +138,10 @@ function fakeComputer(desktop = true, browserUnsupported = false) {
               }
             : payload.command === 'screenshot'
               ? { width: 1280, height: 720 }
-              : payload.command === 'browser_ensure'
+            : payload.command === 'browser_ensure'
                 ? { success: true, browser: 'chromium' }
+                : payload.command === 'terminal_start'
+                  ? { id: 't-000000000001', pid: 1234 }
                 : payload.command === 'browser' && payload.action === 'snapshot'
                   ? {
                       url: 'https://example.test/',
