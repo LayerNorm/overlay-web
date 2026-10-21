@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Added MiniMax M3.1 Flash (free, vision) to the model list.
+
 - Keep the model you pick in an existing chat after sending. The composer and saved chat model no longer revert to the chat's earlier model once the reply starts.
 
 - Keep earlier messages visible after a reply finishes in a chat reopened from history. Restored chats now load the full transcript into the active chat runtime instead of only the current mode's turns.

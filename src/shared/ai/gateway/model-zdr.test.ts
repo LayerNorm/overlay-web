@@ -17,6 +17,7 @@ test('non-ZDR and non-Gateway models report no support', () => {
   assert.equal(modelSupportsZeroDataRetention('z-ai/glm-5.1'), false)
   assert.equal(modelSupportsZeroDataRetention('qwen/qwen3.6-plus'), false)
   assert.equal(modelSupportsZeroDataRetention('minimax/minimax-m2.7'), false)
+  assert.equal(modelSupportsZeroDataRetention('minimax/minimax-m3.1-flash'), false)
   assert.equal(modelSupportsZeroDataRetention('missing/model'), false)
 })
 
