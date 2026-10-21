@@ -108,6 +108,21 @@ export function ComputerSettings() {
     }
   }
 
+  async function controlComputer(computer: Computer) {
+    if (!activeWorkspaceId) return
+    const action = computer.controlledByUserId ? 'release' : 'take'
+    setBusy(computer.id)
+    try {
+      await overlayAppClient.computers.control(activeWorkspaceId, computer.id, action)
+      await refresh()
+      toast.success(action === 'take' ? 'You have control of the computer.' : 'Control handed back to the agent.')
+    } catch (value) {
+      toast.error(value instanceof Error ? value.message : 'Could not change computer control.')
+    } finally {
+      setBusy(null)
+    }
+  }
+
   async function openEnvironmentDesktop(environmentId: string) {
     if (!activeWorkspaceId) return
     setBusy(environmentId)
@@ -211,43 +226,77 @@ export function ComputerSettings() {
           </div>
         ))}
         {computers.map((computer) => (
-          <div key={computer.id} className="rounded-xl border border-(--border) bg-(--surface-elevated) p-4">
-            <div className="flex items-start gap-3">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center self-start rounded-xl bg-(--surface-subtle) text-(--muted)"><Monitor size={17} /></div>
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="text-sm font-medium text-(--foreground)">{computer.name ?? 'Computer'}</h3>
-                  <span className="rounded-full border border-(--border) px-2 py-0.5 text-[10px] uppercase tracking-wide text-(--muted)">{computer.status}</span>
-                </div>
-                <p className="mt-1 truncate text-xs text-(--muted)">
-                  {ownerLabel(computer, agentNames)} · {computer.size}
-                  {computer.lastActiveAt ? ` · ${lastActiveLabel(computer.lastActiveAt)}` : ''}
-                </p>
-                {computer.status === 'error' ? (
-                  <p className="mt-1 text-xs text-red-500">Provisioning failed — delete this computer and create a new one.</p>
-                ) : null}
-              </div>
-              <div className="flex shrink-0 items-center gap-1">
-                {computer.status === 'ready' || computer.status === 'stopped' ? (
-                  <Button variant="secondary" size="sm"
-                    type="button"
-                    disabled={busy !== null}
-                    onClick={() => void openDesktop(computer.id)}
-                  >
-                    Open
-                  </Button>
-                ) : null}
-                {computer.status === 'ready' ? (
-                  <Button variant="ghost" type="button" aria-label="Stop computer" disabled={busy !== null} onClick={() => void setRunning(computer, false)} className={unstyledButton(`rounded-lg p-2 text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground) disabled:opacity-50`)}><Square size={15} /></Button>
-                ) : null}
-                {computer.status === 'stopped' ? (
-                  <Button variant="ghost" type="button" aria-label="Start computer" disabled={busy !== null} onClick={() => void setRunning(computer, true)} className={unstyledButton(`rounded-lg p-2 text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground) disabled:opacity-50`)}><Play size={15} /></Button>
-                ) : null}
-                <Button variant="ghost" type="button" aria-label="Delete computer" disabled={busy !== null} onClick={() => void destroy(computer)} className={unstyledButton(`rounded-lg p-2 text-(--muted) hover:bg-red-500/10 hover:text-red-500 disabled:opacity-50`)}><Trash2 size={15} /></Button>
-              </div>
-            </div>
-          </div>
+          <ComputerSettingsCard
+            key={computer.id}
+            computer={computer}
+            agentNames={agentNames}
+            userId={user?.id}
+            busy={busy !== null}
+            controlBusy={busy === computer.id}
+            onControl={() => void controlComputer(computer)}
+            onOpenDesktop={() => void openDesktop(computer.id)}
+            onSetRunning={(running) => void setRunning(computer, running)}
+            onDelete={() => void destroy(computer)}
+          />
         ))}
+      </div>
+    </div>
+  )
+}
+
+export function ComputerSettingsCard({ computer, agentNames, userId, busy, controlBusy, onControl, onOpenDesktop, onSetRunning, onDelete }: {
+  computer: Computer
+  agentNames: Record<string, string>
+  userId?: string
+  busy: boolean
+  controlBusy: boolean
+  onControl(): void
+  onOpenDesktop(): void
+  onSetRunning(running: boolean): void
+  onDelete(): void
+}) {
+  const controlStatus = computerControlStatus(computer, agentNames, userId)
+  return (
+    <div className="rounded-xl border border-(--border) bg-(--surface-elevated) p-4">
+      <div className="flex items-start gap-3">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center self-start rounded-xl bg-(--surface-subtle) text-(--muted)"><Monitor size={17} /></div>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-sm font-medium text-(--foreground)">{computer.name ?? 'Computer'}</h3>
+            <span className="rounded-full border border-(--border) px-2 py-0.5 text-[10px] uppercase tracking-wide text-(--muted)">{computer.status}</span>
+          </div>
+          {controlStatus ? (
+            <p className="mt-1 flex items-center gap-1.5 truncate text-xs text-(--muted)">
+              <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${controlStatus.color}`} />
+              {controlStatus.text}
+            </p>
+          ) : (
+            <p className="mt-1 truncate text-xs text-(--muted)">
+              {ownerLabel(computer, agentNames)} · {computer.size}
+              {computer.lastActiveAt ? ` · ${lastActiveLabel(computer.lastActiveAt)}` : ''}
+            </p>
+          )}
+          {computer.status === 'error' ? (
+            <p className="mt-1 text-xs text-red-500">Provisioning failed. Delete this computer and create a new one.</p>
+          ) : null}
+        </div>
+        <div className="flex shrink-0 items-center gap-1">
+          {(computer.controlledByUserId || computer.status === 'ready') ? (
+            <Button variant="secondary" size="sm" type="button" disabled={busy} onClick={onControl}>
+              {controlBusy ? (computer.controlledByUserId ? 'Handing back…' : 'Taking control…') : computer.controlledByUserId ? 'Hand back' : 'Take control'}
+            </Button>
+          ) : null}
+          {computer.status === 'ready' || computer.status === 'stopped' ? (
+            <Button variant="secondary" size="sm" type="button" disabled={busy} onClick={onOpenDesktop}>Open</Button>
+          ) : null}
+          {computer.status === 'ready' ? (
+            <Button variant="ghost" type="button" aria-label="Stop computer" disabled={busy} onClick={() => onSetRunning(false)} className={unstyledButton(`rounded-lg p-2 text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground) disabled:opacity-50`)}><Square size={15} /></Button>
+          ) : null}
+          {computer.status === 'stopped' ? (
+            <Button variant="ghost" type="button" aria-label="Start computer" disabled={busy} onClick={() => onSetRunning(true)} className={unstyledButton(`rounded-lg p-2 text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground) disabled:opacity-50`)}><Play size={15} /></Button>
+          ) : null}
+          <Button variant="ghost" type="button" aria-label="Delete computer" disabled={busy} onClick={onDelete} className={unstyledButton(`rounded-lg p-2 text-(--muted) hover:bg-red-500/10 hover:text-red-500 disabled:opacity-50`)}><Trash2 size={15} /></Button>
+        </div>
       </div>
     </div>
   )
@@ -256,6 +305,23 @@ export function ComputerSettings() {
 function ownerLabel(computer: Computer, agentNames: Record<string, string>): string {
   if (computer.ownerType === 'user') return 'Personal'
   return agentNames[computer.ownerId] ?? 'Agent'
+}
+
+function computerControlStatus(computer: Computer, agentNames: Record<string, string>, userId?: string) {
+  if (computer.controlledByUserId) {
+    if (computer.controlledByUserId === userId) {
+      const agentName = computer.ownerType === 'agent' ? agentNames[computer.ownerId] ?? 'Agent' : null
+      return {
+        text: agentName ? `You have control. ${agentName} is paused.` : 'You have control.',
+        color: 'bg-blue-500',
+      }
+    }
+    return { text: 'Someone else has control', color: 'bg-blue-500' }
+  }
+  if (computer.ownerType === 'agent' && computer.lastActiveAt && Date.now() - computer.lastActiveAt < 120_000) {
+    return { text: `${agentNames[computer.ownerId] ?? 'Agent'} is using it`, color: 'bg-green-500' }
+  }
+  return null
 }
 
 function lastActiveLabel(lastActiveAt: number) {

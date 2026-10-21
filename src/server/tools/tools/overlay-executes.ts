@@ -937,8 +937,11 @@ async function computerInstanceFor(
 ): Promise<
   | {
       ok: true
-      computer: Pick<Computer, 'id' | 'name'>
-      operate<T>(operation: (instance: SandboxInstance) => Promise<T>, actionDeadlineMs?: number): Promise<T>
+      computer: Pick<Computer, 'id' | 'name' | 'controlledByUserId'>
+      operate<T>(
+        operation: (instance: SandboxInstance, computer: Pick<Computer, 'controlledByUserId'>) => Promise<T>,
+        actionDeadlineMs?: number,
+      ): Promise<T>
     }
   | { ok: false; error: string }
 > {
@@ -972,7 +975,7 @@ async function computerInstanceFor(
       operate: (operation, actionDeadlineMs) => computerService.withOwnerOperation({
         actor, workspaceId: options.workspaceId!, ownerType, ownerId,
         actionDeadlineMs,
-        operation: (_current, instance) => operation(instance),
+        operation: (current, instance) => operation(instance, current),
       }),
     }
   } catch (err) {
@@ -989,7 +992,7 @@ async function computerInstanceFor(
         return {
           ok: true,
           computer: { id: `env:${machine.environment.id}`, name: machine.environment.name },
-          operate: async (operation) => await operation(machine.instance),
+          operate: async (operation) => await operation(machine.instance, { controlledByUserId: undefined }),
         }
       }
     }
@@ -1127,10 +1130,21 @@ export async function executeComputerOpenUrl(
   const resolved = await computerInstanceFor(options)
   if (!resolved.ok) return { success: false, error: resolved.error }
   try {
-    const result = await resolved.operate(
-      (instance) => openComputerUrl(instance, input.url),
-      120_000,
+    const result = await executeComputerActionWithTakeover(
+      resolved.computer.controlledByUserId,
+      'computer_open_url',
+      input,
+      () => resolved.operate(
+        (instance, current) => executeComputerActionWithTakeover(
+          current.controlledByUserId,
+          'computer_open_url',
+          input,
+          () => openComputerUrl(instance, input.url),
+        ),
+        120_000,
+      ),
     )
+    if (isComputerUserInControlResult(result)) return result
     return {
       success: true,
       opened: input.url,
@@ -1149,10 +1163,16 @@ export async function executeComputerScreenshot(options: OverlayToolsOptions) {
   const resolved = await computerInstanceFor(options)
   if (!resolved.ok) return { success: false as const, error: resolved.error }
   try {
-    const result = await resolved.operate(
-      (instance) => runComputerDesktopCommand(instance, 'screenshot'),
-      120_000,
+    const result = await executeComputerActionWithTakeover(
+      resolved.computer.controlledByUserId,
+      'computer_screenshot',
+      {},
+      () => resolved.operate(
+        (instance) => runComputerDesktopCommand(instance, 'screenshot'),
+        120_000,
+      ),
     )
+    if (isComputerUserInControlResult(result)) return result
     if (
       typeof result.width !== 'number'
       || typeof result.height !== 'number'
@@ -1189,7 +1209,7 @@ export type ComputerBrowserAction =
   | { action: 'forward' }
   | { action: 'reload' }
   | { action: 'snapshot' }
-  | { action: 'click'; ref: string }
+  | { action: 'click'; ref: string; confirm?: boolean }
   | { action: 'type'; ref: string; text: string; submit?: boolean }
   | { action: 'scroll'; direction: 'up' | 'down' | 'left' | 'right'; amount: number }
   | { action: 'press'; keys: 'Enter' | 'Tab' | 'Escape' | 'ArrowUp' | 'ArrowDown' | 'ArrowLeft' | 'ArrowRight' | 'PageDown' }
@@ -1205,6 +1225,57 @@ export type ComputerTerminalAction =
 
 const COMPUTER_ACTION_APPROVAL_MESSAGE =
   'Typing and key presses on the Computer need your approval. Switch this chat to Work mode, or ask the user to do it in Open desktop.'
+
+const COMPUTER_USER_IN_CONTROL_RESULT = {
+  success: false as const,
+  error: 'user_in_control' as const,
+  message: 'The user has taken control of this Computer. Wait for them to hand it back, then take a new screenshot or snapshot before continuing.',
+}
+
+type ComputerControlTool = 'computer_input' | 'computer_browser' | 'computer_open_url' | 'computer_screenshot'
+
+function computerActionBlockedByTakeover(toolName: ComputerControlTool, input: unknown): boolean {
+  if (toolName === 'computer_open_url') return true
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return false
+  const action = (input as { action?: unknown }).action
+  if (toolName === 'computer_input') return action !== 'wait'
+  if (toolName === 'computer_browser') return action !== 'snapshot' && action !== 'tabs'
+  return false
+}
+
+export async function executeComputerActionWithTakeover<T>(
+  controlledByUserId: string | undefined,
+  toolName: ComputerControlTool,
+  input: unknown,
+  operate: () => Promise<T>,
+): Promise<T | typeof COMPUTER_USER_IN_CONTROL_RESULT> {
+  if (controlledByUserId && computerActionBlockedByTakeover(toolName, input)) {
+    return COMPUTER_USER_IN_CONTROL_RESULT
+  }
+  return await operate()
+}
+
+export async function executeComputerActionAfterTakeoverCheck<T>(
+  options: OverlayToolsOptions,
+  toolName: 'computer_input' | 'computer_browser',
+  input: unknown,
+  operate: () => Promise<T>,
+): Promise<T | typeof COMPUTER_USER_IN_CONTROL_RESULT> {
+  const resolved = await computerInstanceFor(options)
+  if (!resolved.ok) return await operate()
+  return await executeComputerActionWithTakeover(
+    resolved.computer.controlledByUserId,
+    toolName,
+    input,
+    operate,
+  )
+}
+
+function isComputerUserInControlResult(
+  value: unknown,
+): value is typeof COMPUTER_USER_IN_CONTROL_RESULT {
+  return typeof value === 'object' && value !== null && 'error' in value && value.error === 'user_in_control'
+}
 
 export async function executeComputerActionWithApproval<T>(
   options: Pick<OverlayToolsOptions, 'computerApprovalContext'>,
@@ -1233,10 +1304,22 @@ export async function executeComputerBrowser(
   if (!resolved.ok) return { success: false as const, error: resolved.error }
   const { action, ...args } = input
   try {
-    const output = await resolved.operate(
-      (instance) => runComputerBrowserAction(instance, action, args),
-      120_000,
+    const output = await executeComputerActionWithTakeover(
+      resolved.computer.controlledByUserId,
+      'computer_browser',
+      input,
+      () => resolved.operate(
+        (instance, current) => executeComputerActionWithTakeover(
+          current.controlledByUserId,
+          'computer_browser',
+          input,
+          () => runComputerBrowserAction(instance, action, args),
+        ),
+        120_000,
+      ),
     )
+    if (isComputerUserInControlResult(output)) return output
+    if (output.result.success === false) return output.result
     return {
       success: true as const,
       action,
@@ -1261,10 +1344,21 @@ export async function executeComputerInput(
   if (action === 'double_click') args.count = 2
   if (action === 'right_click') args.button = 'right'
   try {
-    await resolved.operate(
-      (instance) => runComputerDesktopCommand(instance, command, args),
-      120_000,
+    const result = await executeComputerActionWithTakeover(
+      resolved.computer.controlledByUserId,
+      'computer_input',
+      input,
+      () => resolved.operate(
+        (instance, current) => executeComputerActionWithTakeover(
+          current.controlledByUserId,
+          'computer_input',
+          input,
+          () => runComputerDesktopCommand(instance, command, args),
+        ),
+        120_000,
+      ),
     )
+    if (isComputerUserInControlResult(result)) return result
     return { success: true as const, acknowledgement: `${action.replace('_', ' ')} completed.` }
   } catch (err) {
     return computerErrorResult(err, 'Computer input failed')

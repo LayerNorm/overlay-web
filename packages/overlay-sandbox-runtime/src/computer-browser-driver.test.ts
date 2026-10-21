@@ -20,7 +20,7 @@ const pythonPath = pythonCheck.status === 0
   ? execFileSync('which', ['python3'], { encoding: 'utf8' }).trim()
   : undefined
 
-test('browser driver uses loopback CDP, snapshots refs, and clicks by ref', async (t) => {
+test('browser driver inspects risky click refs and requires confirmation', async (t) => {
   if (!pythonPath) {
     t.skip('Python 3 is unavailable; install python3 to run the browser driver tests.')
     return
@@ -39,6 +39,7 @@ test('browser driver uses loopback CDP, snapshots refs, and clicks by ref', asyn
   ].join('\n'), { mode: 0o700 })
 
   const received: Array<{ id?: number; method?: string; params?: { expression?: string } }> = []
+  let clicks = 0
   const sockets = new Set<Duplex>()
   const server = createServer((request, response) => {
     response.setHeader('content-type', 'application/json')
@@ -118,23 +119,33 @@ test('browser driver uses loopback CDP, snapshots refs, and clicks by ref', asyn
           params?: { expression?: string }
         }
         received.push(message)
-        const value = message.method === 'Runtime.evaluate'
-          && message.params?.expression?.includes('querySelectorAll')
+        const expression = message.params?.expression ?? ''
+        const value = message.method === 'Runtime.evaluate' && expression.includes('querySelectorAll')
           ? {
               type: 'object',
               value: {
                 url: 'https://example.test/',
                 title: 'Example',
                 text: 'Visible page text',
-                elements: [{
-                  ref: 'overlay-1',
-                  role: 'button',
-                  name: 'Continue',
-                  bbox: { x: 10, y: 20, width: 80, height: 30 },
-                }],
+                elements: [
+                  { ref: 'overlay-1', role: 'button', name: 'Post', bbox: { x: 10, y: 20, width: 80, height: 30 } },
+                  { ref: 'overlay-2', role: 'link', name: 'Home', bbox: { x: 100, y: 20, width: 80, height: 30 } },
+                ],
               },
             }
-          : { type: 'boolean', value: true }
+          : message.method === 'Runtime.evaluate' && expression.includes('isSubmit:')
+            ? {
+                type: 'object',
+                value: {
+                  role: expression.includes('overlay-1') ? 'button' : 'link',
+                  tag: expression.includes('overlay-1') ? 'button' : 'a',
+                  type: expression.includes('overlay-1') ? 'submit' : '',
+                  name: expression.includes('overlay-1') ? 'Post' : 'Home',
+                  isSubmit: expression.includes('overlay-1'),
+                },
+              }
+            : { type: 'boolean', value: true }
+        if (message.method === 'Runtime.evaluate' && expression.includes('element.click()')) clicks += 1
         const response = Buffer.from(JSON.stringify({
           id: message.id,
           result: { result: value },
@@ -177,6 +188,7 @@ test('browser driver uses loopback CDP, snapshots refs, and clicks by ref', asyn
     ...process.env,
     HOME: directory,
     PATH: `${bin}:${process.env.PATH ?? ''}`,
+    OVERLAY_COMPUTER_INPUT_LOCK_PATH: join(directory, 'input.lock'),
     OVERLAY_CHROMIUM_LAUNCH_LOG: launchLog,
   }
   const run = async (command: string, args: Record<string, unknown> = {}) => {
@@ -217,6 +229,8 @@ test('browser driver uses loopback CDP, snapshots refs, and clicks by ref', asyn
     assert.equal(result.error, undefined, result.error?.message)
     const payload = JSON.parse(result.stdout.trim()) as {
       error?: { code?: string; missing?: string[] }
+      label?: string
+      message?: string
       url?: string
       title?: string
       text?: string
@@ -240,11 +254,34 @@ test('browser driver uses loopback CDP, snapshots refs, and clicks by ref', asyn
   assert.equal(snapshot.payload.url, 'https://example.test/')
   assert.equal(snapshot.payload.elements?.[0]?.ref, 'overlay-1')
 
-  const clicked = await run('browser', { action: 'click', ref: 'overlay-1' })
-  assert.equal(clicked.result.status, 0)
+  const blockedClick = await run('browser', { action: 'click', ref: 'overlay-1' })
+  assert.equal(blockedClick.result.status, 0)
+  assert.deepEqual(blockedClick.payload, {
+    success: false,
+    error: 'approval_required',
+    label: 'Post',
+    message: 'This click may post, send, buy, or delete something. Call computer_browser click again with confirm: true to ask the user for approval.',
+  })
+  assert.equal(clicks, 0)
+
+  const confirmedClick = await run('browser', { action: 'click', ref: 'overlay-1', confirm: true })
+  assert.equal(confirmedClick.result.status, 0, confirmedClick.result.stdout + confirmedClick.result.stderr)
+  assert.deepEqual(confirmedClick.payload, { success: true })
+  assert.equal(clicks, 1)
+
+  const homeClick = await run('browser', { action: 'click', ref: 'overlay-2' })
+  assert.equal(homeClick.result.status, 0)
+  assert.deepEqual(homeClick.payload, { success: true })
+  assert.equal(clicks, 2)
+
   const evaluations = received.filter((message) => message.method === 'Runtime.evaluate')
-  assert.equal(evaluations.length, 2)
-  assert.match(evaluations[1]?.params?.expression ?? '', /data-overlay-ref/)
-  assert.match(evaluations[1]?.params?.expression ?? '', /overlay-1/)
+  const refExpressions = evaluations
+    .map((message) => message.params?.expression ?? '')
+    .filter((expression) => expression.includes('document.querySelector('))
+  assert.equal(refExpressions.length, 5)
+  assert.equal(refExpressions.filter((expression) => expression.includes('element.click()')).length, 2)
+  assert.ok(refExpressions.every((expression) => expression.includes('data-overlay-ref')))
+  assert.ok(refExpressions.some((expression) => expression.includes('overlay-1') && expression.includes('element.click()')))
+  assert.ok(refExpressions.some((expression) => expression.includes('overlay-2') && expression.includes('element.click()')))
   assert.equal(received.every((message) => message.method !== 'Target.createTarget'), true)
 })

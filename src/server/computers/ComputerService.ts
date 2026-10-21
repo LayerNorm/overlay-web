@@ -44,7 +44,7 @@ export type ComputerOwnerAccess =
 
 export class ComputerServiceError extends Error {
   constructor(
-    readonly code: 'not_found' | 'forbidden' | 'paid_plan_required' | 'insufficient_credit' | 'quota_exceeded' | 'size_not_allowed' | 'provider_unavailable' | 'provider_error',
+    readonly code: 'not_found' | 'forbidden' | 'not_ready' | 'paid_plan_required' | 'insufficient_credit' | 'quota_exceeded' | 'size_not_allowed' | 'provider_unavailable' | 'provider_error',
     message: string,
     readonly status: number,
     options?: { cause?: unknown },
@@ -122,6 +122,37 @@ export class ComputerService {
     const computer = await this.getForActor({ actor: args.actor, computerId: args.computerId })
     await this.admit(args.actor, computer.workspaceId, computer.ownerType, computer.ownerId)
     return await this.dependencies.lifecycle.openDesktop(computer, args.actor.userId, args.mode)
+  }
+
+  async takeControl(args: {
+    actor: ComputerActor
+    workspaceId: string
+    computerId: string
+  }): Promise<Computer> {
+    this.assertWorkspace(args.actor, args.workspaceId)
+    const computer = await this.getForActor({ actor: args.actor, computerId: args.computerId })
+    if (computer.status !== 'ready') {
+      throw new ComputerServiceError('not_ready', 'Only ready computers can be taken over', 409)
+    }
+    const updated = await this.dependencies.repository.takeControl(
+      computer.id,
+      args.actor.userId,
+      Date.now(),
+    )
+    if (!updated) {
+      throw new ComputerServiceError('not_ready', 'Only ready computers can be taken over', 409)
+    }
+    return updated
+  }
+
+  async releaseControl(args: {
+    actor: ComputerActor
+    workspaceId: string
+    computerId: string
+  }): Promise<Computer> {
+    this.assertWorkspace(args.actor, args.workspaceId)
+    const computer = await this.getForActor({ actor: args.actor, computerId: args.computerId })
+    return await this.dependencies.repository.releaseControl(computer.id, Date.now()) ?? computer
   }
 
   async stop(args: { actor: ComputerActor; computerId: string }): Promise<Computer> {

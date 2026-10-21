@@ -3,7 +3,7 @@ import test from 'node:test'
 import { asSchema, type ToolSet } from 'ai'
 import { buildOverlayToolSet } from './build'
 import { createFreeTierGatedStubTools } from './free-tier-gated-stub-tools'
-import { executeComputerActionWithApproval } from './overlay-executes'
+import { executeComputerActionWithApproval, executeComputerActionWithTakeover } from './overlay-executes'
 
 function buildTestTools() {
   return buildOverlayToolSet({
@@ -168,6 +168,35 @@ test('computer input fails closed before operate for typing while scroll still o
   )
   assert.deepEqual(scrolling, { success: true })
   assert.equal(operateCalls, 1)
+})
+
+test('computer takeover blocks input but keeps screenshot and browser snapshot available', async () => {
+  let operateCalls = 0
+  const operate = async () => {
+    operateCalls += 1
+    return { success: true }
+  }
+
+  const click = await executeComputerActionWithTakeover(
+    'user-1',
+    'computer_input',
+    { action: 'click', x: 5, y: 5 },
+    operate,
+  )
+  assert.deepEqual(click, {
+    success: false,
+    error: 'user_in_control',
+    message: 'The user has taken control of this Computer. Wait for them to hand it back, then take a new screenshot or snapshot before continuing.',
+  })
+  assert.equal(operateCalls, 0)
+
+  assert.deepEqual(await executeComputerActionWithTakeover('user-1', 'computer_screenshot', {}, operate), { success: true })
+  assert.equal(operateCalls, 1)
+  assert.deepEqual(
+    await executeComputerActionWithTakeover('user-1', 'computer_browser', { action: 'snapshot' }, operate),
+    { success: true },
+  )
+  assert.equal(operateCalls, 2)
 })
 
 test('Overlay tools expose Gateway-compatible input schemas', async () => {

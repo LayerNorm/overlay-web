@@ -1,7 +1,7 @@
 import { COMPUTER_BROWSER_DRIVER_SOURCE } from './browser-driver'
 import { COMPUTER_TERMINAL_DRIVER_SOURCE } from './terminal-driver'
 
-export const DRIVER_VERSION = '3'
+export const DRIVER_VERSION = '4'
 
 export const COMPUTER_DRIVER_SOURCE = String.raw`#!/usr/bin/env python3
 import base64
@@ -22,9 +22,9 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "3"
+VERSION = "4"
 DEFAULT_MAX_WIDTH = 1280
-LOCK_PATH = "/tmp/overlay-computer/input.lock"
+LOCK_PATH = os.environ.get("OVERLAY_COMPUTER_INPUT_LOCK_PATH", "/tmp/overlay-computer/input.lock")
 SHOT_PATH = "/tmp/overlay-computer/shot.png"
 LOCK_WAIT_SECONDS = 0.5
 SCREENSHOT_TOOLS = (("imagemagick", "import"), ("scrot", "scrot"), ("ffmpeg", "ffmpeg"))
@@ -35,6 +35,10 @@ BROWSER_START_TIMEOUT_SECONDS = 20
 BROWSER_PROFILE = os.path.expanduser("~/.config/overlay-browser")
 WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 MAX_CDP_MESSAGE_BYTES = 4_000_000
+RISKY_CLICK_NAME = re.compile(
+    r"\b(post|tweet|reply|repost|send|publish|share|buy|pay|purchase|order|checkout|delete|remove|confirm|submit|subscribe|unsubscribe|follow|unfollow|transfer)\b",
+    re.IGNORECASE,
+)
 
 
 class DriverError(Exception):

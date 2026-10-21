@@ -242,6 +242,47 @@ export const update = mutation({
   },
 })
 
+export const takeControl = mutation({
+  args: {
+    id: v.string(),
+    serverSecret: v.string(),
+    userId: v.string(),
+    controlTakenAt: v.number(),
+  },
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const doc = await ctx.db
+      .query('computers')
+      .withIndex('by_entityId', (q) => q.eq('id', args.id))
+      .unique()
+    if (!doc || doc.status !== 'ready') return null
+    await ctx.db.patch(doc._id, {
+      controlledByUserId: args.userId,
+      controlTakenAt: args.controlTakenAt,
+      updatedAt: args.controlTakenAt,
+    })
+    return doc.id
+  },
+})
+
+export const releaseControl = mutation({
+  args: { id: v.string(), serverSecret: v.string(), now: v.number() },
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const doc = await ctx.db
+      .query('computers')
+      .withIndex('by_entityId', (q) => q.eq('id', args.id))
+      .unique()
+    if (!doc) return null
+    await ctx.db.patch(doc._id, {
+      controlledByUserId: undefined,
+      controlTakenAt: undefined,
+      updatedAt: args.now,
+    })
+    return doc.id
+  },
+})
+
 export const remove = mutation({
   args: { id: v.string(), serverSecret: v.string() },
   handler: async (ctx, { id, serverSecret }) => {

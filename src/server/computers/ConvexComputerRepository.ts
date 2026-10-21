@@ -127,6 +127,25 @@ export class ConvexComputerRepository implements ComputerRepository {
     return computer
   }
 
+  async takeControl(id: string, userId: string, controlTakenAt: number): Promise<Computer | null> {
+    const updatedId = await convex.mutation<string | null>('computers/computers:takeControl', {
+      id,
+      serverSecret: this.serverSecret,
+      userId,
+      controlTakenAt,
+    }, { throwOnError: true })
+    return updatedId ? await this.get(updatedId) : null
+  }
+
+  async releaseControl(id: string, now: number): Promise<Computer | null> {
+    const updatedId = await convex.mutation<string | null>('computers/computers:releaseControl', {
+      id,
+      serverSecret: this.serverSecret,
+      now,
+    }, { throwOnError: true })
+    return updatedId ? await this.get(updatedId) : null
+  }
+
   async delete(id: string): Promise<void> {
     await convex.mutation('computers/computers:remove', {
       id,
@@ -166,5 +185,7 @@ function mapComputerDoc(doc: ComputerDoc): Computer {
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
     lastActiveAt: doc.lastActiveAt ?? null,
+    controlledByUserId: doc.controlledByUserId,
+    controlTakenAt: doc.controlTakenAt,
   }
 }

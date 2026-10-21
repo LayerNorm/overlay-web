@@ -89,6 +89,36 @@ describe('Convex computers repository surface', () => {
     await convex.mutation(mutationRef('remove'), { id: 'computer_1', serverSecret: secret })
   })
 
+  test('takes and releases control only for ready computers', async () => {
+    const convex = convexTest(schema, modules)
+    await convex.mutation(mutationRef('create'), {
+      ...baseRow, id: 'computer_control', status: 'ready', serverSecret: secret,
+    })
+    await convex.mutation(mutationRef('create'), {
+      ...baseRow, id: 'computer_not_ready', serverSecret: secret,
+    })
+
+    expect(await convex.mutation(mutationRef('takeControl'), {
+      id: 'computer_not_ready', userId: 'user_1', controlTakenAt: 2_000, serverSecret: secret,
+    })).toBeNull()
+    expect(await convex.mutation(mutationRef('takeControl'), {
+      id: 'computer_control', userId: 'user_1', controlTakenAt: 3_000, serverSecret: secret,
+    })).toBe('computer_control')
+    expect(await convex.query(queryRef('get'), {
+      id: 'computer_control', serverSecret: secret,
+    })).toMatchObject({ controlledByUserId: 'user_1', controlTakenAt: 3_000 })
+
+    expect(await convex.mutation(mutationRef('releaseControl'), {
+      id: 'computer_control', now: 4_000, serverSecret: secret,
+    })).toBe('computer_control')
+    expect(await convex.query(queryRef('get'), {
+      id: 'computer_control', serverSecret: secret,
+    })).not.toHaveProperty('controlledByUserId')
+    expect(await convex.query(queryRef('get'), {
+      id: 'computer_control', serverSecret: secret,
+    })).not.toHaveProperty('controlTakenAt')
+  })
+
   test('atomically claims a deterministic Computer lease and binds one allocation reference', async () => {
     const convex = convexTest(schema, modules)
     const claim = (id: string, now: number) => convex.mutation(mutationRef('createWithLease'), {
@@ -280,6 +310,24 @@ describe('Convex computers repository surface', () => {
       workspaceId: 'ws_1', leaseId: 'computer:computer_activity', token: 'stale-token',
       now: 720_000, serverSecret: secret,
     })).toBe(false)
+
+    await convex.mutation(mutationRef('takeControl'), {
+      id: 'computer_activity', userId: 'user_1', controlTakenAt: 721_000, serverSecret: secret,
+    })
+    expect(await convex.mutation(agentMutationRef('claimComputerMaintenanceByServer'), {
+      ...idleArgs, kind: 'stop', token: 'stop-1', now: 722_000, expiresAt: 1_082_000, force: true,
+    })).toMatchObject({ token: 'stop-1' })
+    expect(await convex.mutation(agentMutationRef('transitionComputerLifecycleByServer'), {
+      workspaceId: 'ws_1', computerId: 'computer_activity', leaseId: 'computer:computer_activity',
+      token: 'stop-1', transition: 'paused', expectedProviderReference: 'box-activity',
+      now: 723_000, serverSecret: secret,
+    })).toBe(true)
+    expect(await convex.query(queryRef('get'), {
+      id: 'computer_activity', serverSecret: secret,
+    })).toMatchObject({ status: 'stopped' })
+    const stopped = await convex.query(queryRef('get'), { id: 'computer_activity', serverSecret: secret })
+    expect(stopped).not.toHaveProperty('controlledByUserId')
+    expect(stopped).not.toHaveProperty('controlTakenAt')
   })
 
   test('live native and remote agent runs block an atomic idle claim', async () => {

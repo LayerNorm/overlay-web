@@ -2069,7 +2069,12 @@ export const transitionComputerLifecycleByServer = mutation({
       updatedAt: args.now,
     })
     if (args.transition === 'deleted') await ctx.db.delete(computer._id)
-    else await ctx.db.patch(computer._id, { status: 'stopped', updatedAt: args.now })
+    else await ctx.db.patch(computer._id, {
+      status: 'stopped',
+      controlledByUserId: undefined,
+      controlTakenAt: undefined,
+      updatedAt: args.now,
+    })
     return true
   },
 })

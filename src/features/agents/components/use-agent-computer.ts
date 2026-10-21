@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 import type { Computer, ComputerSize, WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
+import { useAuth } from '@/contexts/AuthContext'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { COMPUTER_TOOL_IDS, enabledAgentToolGroupIds } from '@/shared/agents/tool-groups'
 import { toast } from '@overlay/ui/primitives'
@@ -28,11 +29,12 @@ export function useAgentComputer({
   markDirty(): void
 }) {
   const [agentComputer, setAgentComputer] = useState<Computer | null>(null)
+  const { user } = useAuth()
   const [computerSize, setComputerSize] = useState<ComputerSize>('default')
   const [computerLoadError, setComputerLoadError] = useState<string | null>(null)
   const [computerProvisionFailure, setComputerProvisionFailure] = useState<{ agentId: string; message: string } | null>(null)
   const [computerOpenBusy, setComputerOpenBusy] = useState(false)
-  const [computerLifecycleBusy, setComputerLifecycleBusy] = useState<'start' | 'stop' | 'delete' | null>(null)
+  const [computerLifecycleBusy, setComputerLifecycleBusy] = useState<'start' | 'stop' | 'delete' | 'control' | null>(null)
   // Which agent's computer has been read once (derived, so the first render already knows it is loading).
   const [loadedFor, setLoadedFor] = useState<string | null>(null)
   const initialLoading = Boolean(
@@ -143,9 +145,25 @@ export function useAgentComputer({
     }
   }
 
+  const controlAgentComputer = async () => {
+    if (!activeWorkspaceId || !agentComputer || computerLifecycleBusy) return
+    const action = agentComputer.controlledByUserId ? 'release' : 'take'
+    setComputerLifecycleBusy('control')
+    try {
+      const result = await overlayAppClient.computers.control(activeWorkspaceId, agentComputer.id, action)
+      setAgentComputer(result.computer)
+      toast.success(action === 'take' ? 'You have control of the computer.' : 'Control handed back to the agent.')
+    } catch (controlError) {
+      toast.error(controlError instanceof Error ? controlError.message : 'Could not change computer control.')
+    } finally {
+      setComputerLifecycleBusy(null)
+    }
+  }
+
   return {
     initialLoading,
     agentComputer,
+    currentUserId: user?.id,
     setAgentComputer,
     computerSize,
     setComputerSize,
@@ -158,5 +176,6 @@ export function useAgentComputer({
     openAgentComputer,
     toggleAgentComputerPower,
     deleteAgentComputer,
+    controlAgentComputer,
   }
 }

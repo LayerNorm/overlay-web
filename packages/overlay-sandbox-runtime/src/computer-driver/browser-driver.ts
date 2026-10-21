@@ -382,9 +382,36 @@ def run_browser_action(request, action):
             raise DriverError("desktop_driver_failed", "The browser snapshot was invalid.")
         return value
     if action == "click":
-        expression = browser_ref_expression(request.get("ref"), "element.click(); return true;")
+        inspect = (
+            "const tag = element.tagName.toLowerCase(); "
+            "const type = String(element.getAttribute('type') || (tag === 'button' ? element.type : '') || '').trim().toLowerCase(); "
+            "const accessibleName = element.getAttribute('aria-label') "
+            "|| [...(element.labels || [])].map(label => label.innerText || '').join(' ').trim() "
+            "|| element.innerText || element.textContent || element.getAttribute('value') || element.value || ''; "
+            "return { role: element.getAttribute('role') || tag, tag, type, "
+            "name: String(accessibleName).trim(), "
+            "isSubmit: (tag === 'button' || tag === 'input') && type === 'submit' && Boolean(element.closest('form')) };"
+        )
+        expression = browser_ref_expression(request.get("ref"), inspect)
         with target_connection() as connection:
-            evaluate(connection, expression)
+            info = evaluate(connection, expression)
+            if not isinstance(info, dict):
+                raise DriverError("desktop_driver_failed", "The browser click target could not be inspected.")
+            name = str(info.get("name") or "").strip()
+            if request.get("confirm") is not True and (
+                info.get("isSubmit") is True or RISKY_CLICK_NAME.search(name) is not None
+            ):
+                return {
+                    "success": False,
+                    "error": "approval_required",
+                    "label": name[:80],
+                    "message": (
+                        "This click may post, send, buy, or delete something. Call computer_browser click again "
+                        "with confirm: true to ask the user for approval."
+                    ),
+                }
+            click_expression = browser_ref_expression(request.get("ref"), "element.click(); return true;")
+            evaluate(connection, click_expression)
         return {"success": True}
     if action == "type":
         text = request.get("text")

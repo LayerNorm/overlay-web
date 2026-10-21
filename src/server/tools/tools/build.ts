@@ -27,6 +27,7 @@ import {
   executeComputerScreenshot,
   executeComputerWriteFile,
   executeComputerActionWithApproval,
+  executeComputerActionAfterTakeoverCheck,
   type ComputerTerminalAction,
   executeCreateAutomation,
   executeDeleteAutomation,
@@ -136,7 +137,11 @@ const computerBrowserVariants = z.discriminatedUnion('action', [
   z.object({ action: z.literal('forward') }).strict(),
   z.object({ action: z.literal('reload') }).strict(),
   z.object({ action: z.literal('snapshot') }).strict(),
-  z.object({ action: z.literal('click'), ref: z.string().min(1).max(64) }).strict(),
+  z.object({
+    action: z.literal('click'),
+    ref: z.string().min(1).max(64),
+    confirm: z.boolean().optional(),
+  }).strict(),
   z.object({
     action: z.literal('type'),
     ref: z.string().min(1).max(64),
@@ -163,6 +168,7 @@ const computerBrowserSchema = z.object({
   ]),
   url: computerBrowserUrlSchema.optional(),
   ref: z.string().min(1).max(64).optional(),
+  confirm: z.boolean().optional(),
   text: z.string().max(10000).optional(),
   submit: z.boolean().optional(),
   direction: z.enum(['up', 'down', 'left', 'right']).optional(),
@@ -1043,11 +1049,16 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
         execute: async (input) => {
           assertToolAllowed('computer_input')
           const parsed = computerInputVariants.parse(input)
-          return await executeComputerActionWithApproval(
+          return await executeComputerActionAfterTakeoverCheck(
             options,
             'computer_input',
             parsed,
-            () => executeComputerInput(options, parsed),
+            () => executeComputerActionWithApproval(
+              options,
+              'computer_input',
+              parsed,
+              () => executeComputerInput(options, parsed),
+            ),
           )
         },
       })
@@ -1057,6 +1068,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
       tools.computer_browser = tool({
         description:
           'Control the signed-in browser visible on this computer. Prefer this tool for websites: take a snapshot, then act using its element refs. ' +
+          'For a potentially consequential click, call click with confirm: true so the user can approve it. ' +
           'Use computer_screenshot and computer_input for non-browser apps or when snapshot refs fail. The user sees the same browser in Open desktop.',
         inputSchema: computerBrowserSchema,
         ...(options.computerApprovalContext !== undefined
@@ -1065,16 +1077,25 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
         execute: async (input) => {
           assertToolAllowed('computer_browser')
           const parsed = computerBrowserVariants.parse(input)
-          return await executeComputerActionWithApproval(
+          return await executeComputerActionAfterTakeoverCheck(
             options,
             'computer_browser',
             parsed,
-            () => executeComputerBrowser(options, parsed),
+            () => executeComputerActionWithApproval(
+              options,
+              'computer_browser',
+              parsed,
+              () => executeComputerBrowser(options, parsed),
+            ),
           )
         },
         toModelOutput: ({ output }) => ({
           type: 'text',
-          value: output.success ? output.text : ('message' in output ? output.message : output.error),
+          value: 'text' in output && typeof output.text === 'string'
+            ? output.text
+            : 'message' in output && typeof output.message === 'string'
+              ? output.message
+              : 'error' in output ? String(output.error) : 'Browser action failed.',
         }),
       })
     }

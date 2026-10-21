@@ -10,6 +10,8 @@ test('computer approval policy requires approval only for consequential input ac
     ['computer_browser', { action: 'type', ref: 'r1', text: 'hello', submit: true }, true],
     ['computer_browser', { action: 'type', ref: 'r1', text: 'hello', submit: false }, true],
     ['computer_browser', { action: 'press', keys: 'Enter' }, true],
+    ['computer_browser', { action: 'click', ref: 'r1', confirm: true }, true],
+    ['computer_browser', { action: 'click', ref: 'r1' }, false],
     ...['click', 'double_click', 'right_click', 'move', 'drag', 'scroll', 'wait']
       .map((action) => ['computer_input', { action }, false] as [string, unknown, boolean]),
     ...['snapshot', 'tabs', 'navigate', 'back', 'forward', 'reload', 'scroll', 'click', 'switch_tab', 'new_tab']

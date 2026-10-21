@@ -742,6 +742,8 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
     lastActiveAt: v.optional(v.number()),
+    controlledByUserId: v.optional(v.string()),
+    controlTakenAt: v.optional(v.number()),
   })
     .index('by_entityId', ['id'])
     .index('by_workspaceId', ['workspaceId'])

@@ -36,6 +36,19 @@ class MemoryRepository implements ComputerRepository {
     this.rows.set(id, row)
     return row
   }
+  async takeControl(id: string, userId: string, controlTakenAt: number) {
+    const row = this.rows.get(id)
+    if (!row || row.status !== 'ready') return null
+    return await this.update(id, { controlledByUserId: userId, controlTakenAt })
+  }
+  async releaseControl(id: string, now: number) {
+    if (!this.rows.has(id)) return null
+    return await this.update(id, {
+      controlledByUserId: undefined,
+      controlTakenAt: undefined,
+      updatedAt: now,
+    })
+  }
   async delete(id: string) { this.rows.delete(id) }
 }
 
@@ -99,6 +112,53 @@ test('start and desktop operations use lifecycle delegation', async () => {
   const ticket = await svc.openDesktop({ actor: member, computerId: computer.id, mode: 'vnc' })
   assert.equal(ticket.ready, true)
   assert.deepEqual(calls, ['provision', 'operation:user-1:user-1', `openDesktop:${computer.id}:user-1:vnc`])
+})
+
+test('computer control can be taken and released by an authorized workspace member', async () => {
+  const { svc, repository } = service({
+    agents: { agent_1: { visibility: 'workspace', createdByPrincipalId: 'principal-1' } },
+  })
+  const computer = await repository.create({
+    id: 'control-computer', workspaceId: 'ws-1', ownerType: 'agent', ownerId: 'agent_1', provider: 'box',
+    providerRef: 'provider-ref', size: 'default', status: 'ready', name: null, createdBy: 'user-1',
+    createdAt: 1, updatedAt: 1, lastActiveAt: 1,
+  })
+  const taken = await svc.takeControl({ actor: member, workspaceId: 'ws-1', computerId: computer.id })
+  assert.equal(taken.controlledByUserId, member.userId)
+  assert.equal(typeof taken.controlTakenAt, 'number')
+  const released = await svc.releaseControl({ actor: otherMember, workspaceId: 'ws-1', computerId: computer.id })
+  assert.equal(released.controlledByUserId, undefined)
+  assert.equal(released.controlTakenAt, undefined)
+})
+
+test('computer control can only be taken while ready', async () => {
+  const { svc, repository } = service()
+  const computer = await repository.create({
+    id: 'stopped-computer', workspaceId: 'ws-1', ownerType: 'user', ownerId: 'user-1', provider: 'box',
+    providerRef: 'provider-ref', size: 'default', status: 'stopped', name: null, createdBy: 'user-1',
+    createdAt: 1, updatedAt: 1, lastActiveAt: 1,
+  })
+  await assert.rejects(
+    svc.takeControl({ actor: member, workspaceId: 'ws-1', computerId: computer.id }),
+    (error) => error instanceof ComputerServiceError && error.code === 'not_ready',
+  )
+})
+
+test('computer control cannot be taken from another workspace', async () => {
+  const { svc, repository } = service()
+  const computer = await repository.create({
+    id: 'other-workspace-computer', workspaceId: 'ws-1', ownerType: 'user', ownerId: 'user-1', provider: 'box',
+    providerRef: 'provider-ref', size: 'default', status: 'ready', name: null, createdBy: 'user-1',
+    createdAt: 1, updatedAt: 1, lastActiveAt: 1,
+  })
+  await assert.rejects(
+    svc.takeControl({
+      actor: { ...member, workspaceId: 'ws-2' },
+      workspaceId: 'ws-2',
+      computerId: computer.id,
+    }),
+    (error) => error instanceof ComputerServiceError && error.code === 'forbidden',
+  )
 })
 
 test('stop and destroy delegate cleanup without requiring paid admission', async () => {

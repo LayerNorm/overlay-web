@@ -12,6 +12,8 @@ export interface ComputerRepository {
   findByOwner(workspaceId: string, ownerType: ComputerOwnerType, ownerId: string): Promise<Computer | null>
   listByWorkspace(workspaceId: string): Promise<Computer[]>
   update(id: string, patch: Partial<Computer>): Promise<Computer>
+  takeControl(id: string, userId: string, controlTakenAt: number): Promise<Computer | null>
+  releaseControl(id: string, now: number): Promise<Computer | null>
   delete(id: string): Promise<void>
   bindProviderReference(args: {
     computerId: string
