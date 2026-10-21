@@ -267,6 +267,14 @@ Creation dialogs carry no hint lines. Labels are one or two words; anything
 that needs explaining gets an `InfoTip` (Lucide `Info`, `DelayedTooltip`) after
 the label, via `FieldLabel` in `src/features/agents/components/InfoTip.tsx`.
 
+## Agents are creatures, never orbs
+
+Every surface that identifies an agent — rosters, chat headers, message
+authors, marketing app shots and HTML mockups — renders its creature
+(`AgentCreature`: `avatarShape` body, `avatarColor` fill, eyes). Do not use the
+`Orb` glow variant or any colored sphere as an agent identity; the metal orb is
+the Overlay brand mark and system marker only.
+
 ## Avatars are edited in place
 
 The agent avatar is a button: hover shows a pencil, click opens
@@ -440,7 +448,7 @@ Run `node scripts/qa/tabs-interactions.mjs` for real-browser regressions; it acc
 
 ## Marketing FAQ and page metadata
 
-The landing FAQ uses native details/summary disclosures after the scroll story.
+The landing FAQ uses native details/summary disclosures near the end of the static home page.
 Its visible answers and FAQ structured data share one source; describe available
 capabilities only. Public marketing pages define their own canonical paths so
 they do not inherit the root homepage canonical.

@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { ScrollLanding } from '@/features/marketing/landing/ScrollLanding'
+import { StaticLanding } from '@/features/marketing/landing/StaticLanding'
 
 export const metadata: Metadata = {
   title: { absolute: 'Overlay: The control plane for AI employees' },
@@ -15,5 +15,5 @@ export const metadata: Metadata = {
 }
 
 export default function HomePage() {
-  return <ScrollLanding />
+  return <StaticLanding />
 }
