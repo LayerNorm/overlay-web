@@ -109,12 +109,50 @@ test('any workspace, including a first one, can be set up for a plan; until then
   const noWallet = fixture({
     role: 'owner',
     kind: 'personal',
-    repository: repository({ async getWorkspaceBillingAccountByWorkspaceIdByServer() { return null } }),
+    repository: repository({
+      async getWorkspaceBillingAccountByWorkspaceIdByServer() { return null },
+      async getEntitlementsByServer() {
+        return { overlayStorageBytesUsed: 512, overlayStorageBytesLimit: 10_000_000 } as never
+      },
+    }),
   })
   const free = await noWallet.summary({ actorUserId: 'owner_1', workspaceId: 'workspace_1' })
   assert.equal(free.initialized, false)
   assert.equal(free.canManage, true)
   assert.equal(free.subscription.planKind, 'free')
+  assert.deepEqual(free.storage, { usedBytes: 512, limitBytes: 10_000_000 })
+
+  const paid = await fixture({
+    role: 'owner',
+    repository: repository({
+      async getEntitlementsByServer() {
+        return { overlayStorageBytesUsed: 2048, overlayStorageBytesLimit: 50_000_000 } as never
+      },
+      async getBillingAccountEntitlementsByServer() {
+        return {
+          billingAccountId: 'ba_workspace',
+          tier: 'pro',
+          planKind: 'paid',
+          planAmountCents: 800,
+          budgetUsedCents: 0,
+          budgetTotalCents: 800,
+          budgetRemainingCents: 800,
+          autoTopUpEnabled: false,
+          autoTopUpAmountCents: 0,
+          autoTopUpConsentGranted: false,
+          creditsUsed: 0,
+          creditsTotal: 8,
+        }
+      },
+      async getBillingAccountSubscriptionByServer() {
+        return { planKind: 'paid', planAmountCents: 800 } as never
+      },
+      async getBillingAccountUsageTotalsByServer() {
+        return { totals: [], truncated: false }
+      },
+    }),
+  }).summary({ actorUserId: 'owner_1', workspaceId: 'workspace_1' })
+  assert.deepEqual(paid.storage, { usedBytes: 2048, limitBytes: 50_000_000 })
 
   const initialized = await fixture({ role: 'owner', kind: 'personal' }).initialize({ actorUserId: 'owner_1', workspaceId: 'workspace_1' })
   assert.equal(initialized.initialized, true)
@@ -167,6 +205,7 @@ function repository(overrides: Partial<BillingRepository> = {}): BillingReposito
     async getWorkspaceBillingAccountByWorkspaceIdByServer() { return account() },
     async getBillingAccountEntitlementsByServer() { return null },
     async getBillingAccountSubscriptionByServer() { return null },
+    async getEntitlementsByServer() { return null },
     async upsertBillingAccountSubscription() { return null },
     async recordBillingAccountTopUp() { return null },
     ...overrides,

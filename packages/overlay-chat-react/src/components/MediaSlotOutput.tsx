@@ -159,7 +159,7 @@ export function MediaSlotOutput({
 
       {!result || result.status === 'generating' ? (
         <div
-          className={`media-gen-mesh box-border shrink-0 overflow-hidden rounded-xl border border-[#e4e4e7] ${isMulti ? multiFrameClass : ''}`}
+          className={`media-gen-mesh box-border shrink-0 overflow-hidden rounded-xl border border-(--border) ${isMulti ? multiFrameClass : ''}`}
           style={singleBoxStyle}
           aria-hidden
         />

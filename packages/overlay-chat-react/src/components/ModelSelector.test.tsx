@@ -50,6 +50,8 @@ test('Recommended opens by default with a Favorites then grid rail and no inline
   assert.ok(html.indexOf('aria-label="Favorites"') < html.indexOf('aria-label="Recommended"'))
   assert.match(html, /lucide-layout-grid/)
   assert.match(html, /data-provider="openai"/)
+  assert.match(html, /overflow-x-hidden overflow-y-auto \[scrollbar-width:none\]/)
+  assert.match(html, /\[&amp;::-webkit-scrollbar\]:hidden/)
   assert.doesNotMatch(html, /lucide-brain-circuit|lucide-image/)
 })
 

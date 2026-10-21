@@ -93,6 +93,9 @@ test('chat sections each list their own items and headers only open or close', (
   assert.doesNotMatch(html, /data-active="true"(?:(?!data-active).)*<span>Direct messages/s)
   assert.match(html, /aria-expanded="true"[^>]*>(?:(?!<\/button>).)*<span[^>]*>Channels/s)
   assert.match(html, /aria-label="New channel"/)
+  const newChannelAction = html.match(/<button(?=[^>]*aria-label="New channel")[^>]*>/)?.[0]
+  assert.ok(newChannelAction)
+  assert.doesNotMatch(newChannelAction, /opacity-0|group-hover\/section/)
 })
 
 test('collapsed shows icons only, with labels as titles', () => {

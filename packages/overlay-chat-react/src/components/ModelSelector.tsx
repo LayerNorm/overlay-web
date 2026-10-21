@@ -193,7 +193,7 @@ export function ModelSelector<T extends ModelSelectorItem>({
         />
       </label>
       <div className="flex min-h-0 gap-1">
-          <div role="tablist" aria-label="Providers" aria-orientation="vertical" className="flex max-h-80 w-10 shrink-0 flex-col items-center gap-1 overflow-y-auto border-r border-(--border) pr-1">
+          <div role="tablist" aria-label="Providers" aria-orientation="vertical" className="flex max-h-80 w-10 shrink-0 flex-col items-center gap-1 overflow-x-hidden overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden border-r border-(--border) pr-1">
             {sections.map((section) => (
               <Button
                 key={section.id}
@@ -220,7 +220,7 @@ export function ModelSelector<T extends ModelSelectorItem>({
               </Button>
             ))}
           </div>
-        <div ref={setListRef} className="relative h-80 min-w-0 flex-1 overflow-y-auto">
+        <div ref={setListRef} className="relative h-80 min-w-0 flex-1 overflow-x-hidden overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {beforeList}
           {searching ? (
             results.length ? (
