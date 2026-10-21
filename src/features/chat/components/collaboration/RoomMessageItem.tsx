@@ -99,6 +99,8 @@ export type RoomMessageView = {
 
 export type RoomMessageItemProps = {
   remoteStatus?: ReactNode
+  /** Hides reactions, edit, pin and the other message actions (guided onboarding). */
+  hideToolbar?: boolean
   message: RoomMessageView
   reactions: RoomMessageReaction[]
   replyCount: number
@@ -291,6 +293,7 @@ export function RoomMessageItem({
   grouped = false,
   personalChatStyle = false,
   remoteStatus,
+  hideToolbar = false,
 }: RoomMessageItemProps) {
   const { mine } = message
   const isAgent =
@@ -319,7 +322,7 @@ export function RoomMessageItem({
     ? () => onControlRemoteQueue(activeRemoteRun.runId, 'cancel')
     : message.streaming ? onStopResponse : undefined
 
-  const toolbar = (
+  const toolbar = hideToolbar ? null : (
     <RoomMessageToolbar
       alignEnd={mine}
       floating={!personalChatStyle}

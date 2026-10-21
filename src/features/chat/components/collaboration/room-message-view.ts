@@ -118,6 +118,10 @@ export type RoomMessageRecord = {
   status?: 'generating' | 'completed' | 'error'
 }
 
+export function isRoomAgentResponding(messages: readonly Pick<RoomMessageRecord, 'authorKind' | 'status'>[], pendingAgent: string | null): boolean {
+  return Boolean(pendingAgent) || messages.some((message) => message.authorKind === 'agent' && message.status === 'generating')
+}
+
 /** Stable ordering and optimistic reconciliation for room messages. */
 export function compareRoomMessageRecords(left: Pick<RoomMessageRecord, 'id' | 'createdAt'>, right: Pick<RoomMessageRecord, 'id' | 'createdAt'>): number {
   return left.createdAt - right.createdAt || left.id.localeCompare(right.id)

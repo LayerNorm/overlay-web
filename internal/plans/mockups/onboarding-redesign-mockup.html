@@ -1,0 +1,726 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Overlay onboarding redesign</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Libre+Baskerville&display=swap" rel="stylesheet">
+<style>
+/* Tokens mirror packages/overlay-ui/src/styles.css */
+:root {
+  --bg: #fafafa; --fg: #0a0a0a; --muted: #71717a; --muted-light: #a1a1aa; --border: #e4e4e7;
+  --surface: #ffffff; --surface-muted: #f5f5f5; --surface-subtle: #f0f0f0;
+  --primary: #dcdce1; --primary-hover: #ccccd3; --primary-text: #27272a;
+  --chip-hover: #f4f4f5; --chip-on: #ececef; --chip-on-border: #c7c7cd;
+  --creature: #64748b; --creature-eye: #ffffff; --focus: #a1a1aa;
+}
+:root[data-theme="dark"] {
+  --bg: #09090b; --fg: #f5f5f5; --muted: #a1a1aa; --muted-light: #71717a; --border: #27272a;
+  --surface: #111113; --surface-muted: #151518; --surface-subtle: #1c1c20;
+  --primary: #3b3b42; --primary-hover: #484850; --primary-text: #ededf0;
+  --chip-hover: #18181b; --chip-on: #232328; --chip-on-border: #3f3f46;
+  --creature: #64748b; --creature-eye: #f5f5f5; --focus: #71717a;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { background: var(--bg); color: var(--fg); font: 14px/1.55 Geist, ui-sans-serif, system-ui, sans-serif; -webkit-font-smoothing: antialiased; transition: background 200ms ease, color 200ms ease; }
+button, input, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+svg.i { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+
+/* Brand lockup: OverlayMark at 0.5em on the baseline, 0.4em gap, serif wordmark */
+.lockup { display: inline-flex; align-items: baseline; gap: .4em; font: 400 20px/1 'Libre Baskerville', serif; letter-spacing: -.01em; }
+.orb { width: .5em; height: .5em; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #f4f4f5 0%, #a1a1aa 38%, #3f3f46 78%, #18181b 100%); box-shadow: inset 0 0 1px rgba(0,0,0,.4); }
+
+/* Shell */
+.app { display: flex; flex-direction: column; height: 100dvh; }
+header.top { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; height: 56px; padding: 0 20px; }
+.link { background: none; border: 0; padding: 6px 8px; margin-right: -8px; border-radius: 8px; font-size: 13px; color: var(--muted); }
+.link:hover { color: var(--fg); background: var(--surface-subtle); }
+.scroll { flex: 1 1 auto; overflow-y: auto; scrollbar-width: none; }
+.scroll::-webkit-scrollbar { display: none; }
+.column { width: 100%; max-width: 680px; margin: 0 auto; padding: 24px 20px 32px; min-height: 100%; display: flex; flex-direction: column; justify-content: flex-end; }
+
+/* Messages */
+.group { display: grid; grid-template-columns: 28px 1fr; column-gap: 12px; margin-top: 22px; animation: rise 260ms cubic-bezier(.2,.8,.2,1) both; }
+.group:first-child { margin-top: 0; }
+.avatar { width: 28px; height: 28px; }
+.who { font-size: 13px; font-weight: 600; line-height: 28px; height: 28px; }
+.who time { margin-left: 6px; font-weight: 400; font-size: 11px; color: var(--muted-light); }
+.body { grid-column: 2; min-width: 0; }
+.body p { margin: 0 0 8px; }
+.body p:last-child { margin-bottom: 0; }
+.para { animation: rise 260ms cubic-bezier(.2,.8,.2,1) both; }
+.user { display: flex; justify-content: flex-end; margin-top: 22px; animation: rise 220ms cubic-bezier(.2,.8,.2,1) both; }
+.bubble { max-width: min(80%, 420px); background: var(--surface-subtle); border-radius: 18px; padding: 8px 14px; overflow-wrap: anywhere; }
+.typing { display: flex; gap: 4px; align-items: center; height: 22px; color: var(--muted-light); }
+.typing span { width: 5px; height: 5px; border-radius: 50%; background: currentColor; animation: dot 1s ease-in-out infinite; }
+.typing span:nth-child(2) { animation-delay: 140ms; }
+.typing span:nth-child(3) { animation-delay: 280ms; }
+
+/* Reply area: sits in the message text column, right under the question */
+.reply { margin-top: 14px; animation: rise 260ms 60ms cubic-bezier(.2,.8,.2,1) both; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 13px; border-radius: 999px; border: 1px solid var(--border); background: transparent; font-size: 13px; color: var(--fg); transition: background 120ms ease, border-color 120ms ease, transform 120ms ease; }
+.chip:hover { background: var(--chip-hover); }
+.chip:active { transform: scale(.97); }
+.chip[aria-pressed="true"] { background: var(--chip-on); border-color: var(--chip-on-border); }
+.chip .i { width: 13px; height: 13px; }
+.hint { margin-top: 10px; font-size: 12px; color: var(--muted); }
+.actions { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 8px; border: 0; font-size: 13px; font-weight: 500; transition: background 120ms ease, opacity 120ms ease; }
+.btn.primary { background: var(--primary); color: var(--primary-text); }
+.btn.primary:hover { background: var(--primary-hover); }
+.btn.ghost { background: transparent; color: var(--muted); }
+.btn.ghost:hover { background: var(--surface-subtle); color: var(--fg); }
+.btn.small { height: 28px; padding: 0 10px; font-size: 12px; }
+.btn.secondary { background: var(--surface-subtle); color: var(--fg); }
+.btn.secondary:hover { background: var(--chip-on); }
+.btn:disabled { opacity: .45; pointer-events: none; }
+
+/* Cards */
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; }
+.employees { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.employee { position: relative; padding: 14px; text-align: left; cursor: pointer; transition: border-color 120ms ease, opacity 160ms ease; }
+.employee[aria-checked="false"] { opacity: .55; }
+.employee[aria-checked="true"] { border-color: var(--chip-on-border); }
+.employee .head { display: flex; align-items: center; gap: 10px; }
+.employee .name { font-weight: 500; }
+.employee .role { margin-top: 8px; font-size: 13px; color: var(--muted); line-height: 1.5; }
+.check { position: absolute; top: 14px; right: 14px; width: 18px; height: 18px; border-radius: 50%; border: 1px solid var(--border); display: grid; place-items: center; background: var(--surface); }
+.employee[aria-checked="true"] .check { background: var(--primary); border-color: var(--primary); color: var(--primary-text); }
+.check .i { width: 11px; height: 11px; stroke-width: 2.5; }
+.edit { margin-top: 10px; background: none; border: 0; padding: 0; font-size: 12px; color: var(--muted); }
+.edit:hover { color: var(--fg); }
+.field { width: 100%; border: 1px solid var(--border); background: var(--bg); border-radius: 8px; padding: 6px 9px; font-size: 13px; outline: none; }
+.field:focus { border-color: var(--chip-on-border); }
+textarea.field { resize: none; line-height: 1.5; }
+
+.rows { overflow: hidden; }
+.row { display: flex; align-items: center; gap: 12px; padding: 11px 14px; }
+.row + .row { border-top: 1px solid var(--border); }
+.tile { width: 28px; height: 28px; border-radius: 8px; background: #ffffff; border: 1px solid var(--border); display: grid; place-items: center; flex-shrink: 0; }
+:root[data-theme="dark"] .tile { border-color: transparent; }
+.row .text { flex: 1; min-width: 0; }
+.row .title { font-size: 13px; font-weight: 500; }
+.row .sub { font-size: 12px; color: var(--muted); }
+.done { display: inline-flex; align-items: center; gap: 5px; height: 28px; font-size: 12px; color: var(--muted); }
+.section-label { font-size: 11px; font-weight: 500; color: var(--muted); margin: 14px 0 6px; }
+.section-label:first-child { margin-top: 0; }
+
+.steps { padding: 14px; }
+.step { display: grid; grid-template-columns: 20px 1fr; gap: 10px; }
+.step + .step { margin-top: 14px; }
+.num { width: 20px; height: 20px; border-radius: 50%; background: var(--surface-subtle); font-size: 11px; font-weight: 500; display: grid; place-items: center; color: var(--muted); }
+.prompt { margin-top: 8px; padding: 10px 12px; border-radius: 8px; background: var(--surface-muted); font-size: 12px; line-height: 18px; color: var(--muted); }
+.prompt span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; max-height: 36px; }
+.note { display: flex; align-items: center; gap: 6px; margin-top: 10px; font-size: 12px; color: var(--muted); }
+
+.tokens { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px; min-height: 42px; cursor: text; }
+.token { display: inline-flex; align-items: center; gap: 4px; height: 26px; padding: 0 6px 0 10px; border-radius: 999px; background: var(--surface-subtle); font-size: 12px; }
+.token button { display: grid; place-items: center; width: 18px; height: 18px; border: 0; background: none; border-radius: 50%; color: var(--muted); padding: 0; }
+.token button:hover { background: var(--chip-on); color: var(--fg); }
+.tokens input { flex: 1; min-width: 160px; border: 0; outline: none; background: transparent; font-size: 13px; padding: 4px 6px; }
+.error { margin-top: 8px; font-size: 12px; color: #dc2626; }
+
+.task { padding: 14px; }
+.task .label { font-size: 11px; font-weight: 500; color: var(--muted); }
+.task .title { margin-top: 4px; font-weight: 500; }
+.task .meta { margin-top: 6px; font-size: 12px; color: var(--muted); }
+
+/* Composer: same shape as the app's chat composer */
+.dock { flex: 0 0 auto; padding: 0 20px 20px; }
+.composer { max-width: 680px; margin: 0 auto; background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 12px 12px 12px 16px; display: flex; align-items: flex-end; gap: 10px; transition: opacity 160ms ease, border-color 160ms ease; }
+.composer:focus-within { border-color: var(--chip-on-border); }
+.composer[data-off="true"] { opacity: .5; }
+.composer textarea { flex: 1; border: 0; outline: none; background: transparent; resize: none; height: 24px; max-height: 140px; padding: 2px 0; line-height: 20px; }
+.composer textarea::placeholder { color: var(--muted-light); }
+.send { width: 32px; height: 32px; border-radius: 8px; border: 0; background: var(--primary); color: var(--primary-text); display: grid; place-items: center; transition: background 120ms ease, opacity 120ms ease; }
+.send:hover { background: var(--primary-hover); }
+.send:disabled { opacity: .4; pointer-events: none; }
+
+/* Intro */
+.intro { position: fixed; inset: 0; z-index: 30; background: var(--bg); display: grid; place-items: center; transition: opacity 500ms ease; }
+.intro[data-out="true"] { opacity: 0; pointer-events: none; }
+.intro .center { text-align: center; }
+.intro .lockup { font-size: 40px; animation: rise 700ms cubic-bezier(.2,.8,.2,1) both; }
+.intro p { margin: 18px 0 0; color: var(--muted); animation: rise 700ms 350ms cubic-bezier(.2,.8,.2,1) both; }
+
+/* Reveal: the real app shell fades in after setup */
+.reveal { position: fixed; inset: 0; z-index: 20; display: flex; background: var(--bg); opacity: 0; pointer-events: none; transition: opacity 500ms ease; }
+.reveal[data-on="true"] { opacity: 1; pointer-events: auto; }
+.side { width: 240px; padding: 16px 10px; background: var(--surface-muted); border-right: 1px solid var(--border); display: flex; flex-direction: column; gap: 2px; transform: translateX(-16px); transition: transform 600ms cubic-bezier(.2,.8,.2,1); }
+.reveal[data-on="true"] .side { transform: none; }
+.side .lockup { padding: 4px 8px 18px; }
+.nav { display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px; border-radius: 8px; color: var(--fg); font-size: 13px; }
+.nav.on { background: var(--surface-subtle); }
+.nav .i { color: var(--muted); }
+.nav-label { margin: 14px 8px 4px; font-size: 11px; color: var(--muted); }
+.page { flex: 1; padding: 28px 40px; min-width: 0; }
+.page h2 { margin: 0 0 18px; font-size: 18px; font-weight: 500; }
+.work-row { display: flex; align-items: center; gap: 12px; padding: 12px 14px; }
+.work-row .ring { width: 14px; height: 14px; border-radius: 50%; border: 1.5px dashed var(--muted-light); }
+.pill { margin-left: auto; font-size: 11px; color: var(--muted); background: var(--surface-subtle); padding: 2px 8px; border-radius: 999px; }
+.reveal .welcome { margin-top: 16px; font-size: 13px; color: var(--muted); }
+
+/* Mockup controls, not part of the design */
+.mock { position: fixed; left: 50%; transform: translateX(-50%); top: 14px; z-index: 50; font-size: 12px; }
+.mock > button { height: 28px; padding: 0 10px; border-radius: 999px; border: 1px dashed var(--muted-light); background: var(--bg); color: var(--muted); }
+.mock .panel { display: none; position: absolute; top: 36px; left: 50%; transform: translateX(-50%); width: 230px; padding: 10px; border-radius: 10px; background: var(--surface); border: 1px solid var(--border); box-shadow: 0 8px 30px rgba(0,0,0,.08); }
+.mock[data-open="true"] .panel { display: block; }
+.mock label { display: flex; align-items: center; gap: 8px; padding: 4px 2px; color: var(--muted); }
+.mock .panel button { width: 100%; margin-top: 6px; height: 28px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface-muted); font-size: 12px; }
+.mock select { width: 100%; margin-top: 6px; height: 28px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface-muted); font-size: 12px; color: var(--fg); }
+
+@keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes dot { 0%, 70%, 100% { opacity: .35; transform: none; } 35% { opacity: 1; transform: translateY(-2px); } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+@media (max-width: 600px) {
+  header.top { padding: 0 16px; }
+  .column { padding: 16px 16px 24px; }
+  .dock { padding: 0 12px 12px; }
+  .employees { grid-template-columns: 1fr; }
+  .group { grid-template-columns: 24px 1fr; column-gap: 10px; }
+  .avatar, .avatar svg { width: 24px; height: 24px; }
+  .who { line-height: 24px; height: 24px; }
+  .side { display: none; }
+  .page { padding: 20px 16px; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <span class="lockup" aria-label="Overlay"><span class="orb"></span>overlay</span>
+    <button class="link" id="skipSetup">Finish later</button>
+  </header>
+  <main class="scroll" id="scroll"><div class="column" id="log" aria-live="polite"></div></main>
+  <div class="dock">
+    <div class="composer" id="composer">
+      <textarea id="input" rows="1" aria-label="Your answer" placeholder=""></textarea>
+      <button class="send" id="send" aria-label="Send" disabled><svg class="i" viewBox="0 0 24 24"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></svg></button>
+    </div>
+  </div>
+</div>
+
+<div class="intro" id="intro">
+  <div class="center">
+    <div class="lockup"><span class="orb"></span>overlay</div>
+    <p>Your AI chief of staff.</p>
+  </div>
+</div>
+
+<div class="reveal" id="reveal">
+  <aside class="side">
+    <span class="lockup"><span class="orb"></span>overlay</span>
+    <div class="nav"><svg class="i" viewBox="0 0 24 24"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg>Chats</div>
+    <div class="nav on"><svg class="i" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="m9 12 2 2 4-4"/></svg>Work</div>
+    <div class="nav"><svg class="i" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></svg>Files</div>
+    <div class="nav"><svg class="i" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.4 3.6a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z"/></svg>Notes</div>
+    <div class="nav-label">Agents</div>
+    <div id="revealAgents"></div>
+  </aside>
+  <section class="page">
+    <h2>Work</h2>
+    <div class="card"><div class="work-row"><span class="ring"></span><span id="revealTask"></span><span class="pill">Personal</span></div></div>
+    <p class="welcome">Assign it to an employee when you're ready to start.</p>
+  </section>
+</div>
+
+<div class="mock" id="mock">
+  <button id="mockToggle">Mockup controls</button>
+  <div class="panel">
+    <label><input type="checkbox" id="optDark"> Dark mode</label>
+    <label><input type="checkbox" id="optApps" checked> App connections available</label>
+    <label><input type="checkbox" id="optAgents" checked> Coding agents available</label>
+    <label><input type="checkbox" id="optIntro" checked> Play intro</label>
+    <select id="jump" aria-label="Jump to step">
+      <option value="">Jump to step…</option>
+      <option value="name">Name</option><option value="role">Role</option><option value="team">Team</option>
+      <option value="help">Help with</option><option value="employees">Employees</option><option value="tools">Tools</option>
+      <option value="context">Context</option><option value="invites">Invites</option><option value="task">First task</option>
+    </select>
+    <button id="restart">Restart</button>
+  </div>
+</div>
+
+<script>
+const ACCOUNT = { fullName: 'Divyansh Lalwani' }
+const icon = {
+  check: '<svg class="i" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>',
+  x: '<svg class="i" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>',
+  copy: '<svg class="i" viewBox="0 0 24 24"><rect x="8" y="8" width="14" height="14" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>',
+  lock: '<svg class="i" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>',
+  arrow: '<svg class="i" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>',
+  terminal: '<svg class="i" viewBox="0 0 24 24"><path d="m4 17 6-6-6-6"/><path d="M12 19h8"/></svg>',
+}
+const creature = (color) => `<svg viewBox="0 0 100 100" width="28" height="28" aria-hidden="true"><circle cx="50" cy="53" r="40" fill="${color}"/><g fill="var(--creature-eye)"><rect x="36" y="45" width="9.5" height="17" rx="4.75"/><rect x="54.5" y="45" width="9.5" height="17" rx="4.75"/></g></svg>`
+
+/* Deterministic content. No model calls: the same answers always give the same flow. */
+const ROLES = ['Founder or exec', 'Engineering', 'Product', 'Design', 'Marketing & sales', 'Operations']
+const TEAMS = ['Just me', 'A small team', 'A larger company']
+const HELP = {
+  'Research & summaries': { name: 'Scout', color: '#7a8b88', role: 'Researches questions and turns long reads into short, sourced briefs.', task: 'Research my top three competitors and write a one-page brief' },
+  'Email & follow-ups': { name: 'Relay', color: '#8b7a9b', role: 'Drafts replies for your review and keeps track of follow-ups.', task: 'Draft a reusable reply to a question I get every week' },
+  'Planning & coordination': { name: 'Atlas', color: '#7a879b', role: 'Turns goals into weekly plans and keeps projects on schedule.', task: 'Make a prioritized plan for my week' },
+  'Writing & content': { name: 'Quill', color: '#9b8a7a', role: 'Drafts docs, posts, and updates in your voice for review.', task: 'Draft an update on what I am working on' },
+  'Coding & reviews': { name: 'Spec', color: '#6f8796', role: 'Writes specs, reviews pull requests, and keeps docs current.', task: 'Write a spec for the next feature I am building' },
+  'Reporting & analysis': { name: 'Ledger', color: '#8a8f74', role: 'Pulls numbers together into a clear weekly report.', task: 'Outline a weekly report for the numbers I track' },
+}
+const ROLE_DEFAULT_HELP = { 'Engineering': ['Coding & reviews', 'Research & summaries'], 'Product': ['Planning & coordination', 'Research & summaries'], 'Design': ['Research & summaries', 'Writing & content'], 'Marketing & sales': ['Writing & content', 'Email & follow-ups'], 'Operations': ['Planning & coordination', 'Reporting & analysis'] }
+const APPS = [
+  { id: 'gmail', name: 'Gmail', sub: 'Email and follow-ups' },
+  { id: 'gcal', name: 'Google Calendar', sub: 'Meetings and availability' },
+  { id: 'slack', name: 'Slack', sub: 'Team conversations' },
+  { id: 'notion', name: 'Notion', sub: 'Docs and projects' },
+  { id: 'github', name: 'GitHub', sub: 'Code and issues', technical: true },
+]
+const AGENTS = [
+  { id: 'claude', name: 'Claude Code', sub: 'Runs on your machine' },
+  { id: 'codex', name: 'Codex', sub: 'Runs on your machine' },
+]
+/* Brand marks: Simple Icons (CC0) and the OpenAI mark already in provider-logo.tsx. The app uses each integration's catalog logo. */
+const LOGOS = {"gmail": {"color": "#EA4335", "d": "M24 5.457v13.909c0 .904-.732 1.636-1.636 1.636h-3.819V11.73L12 16.64l-6.545-4.91v9.273H1.636A1.636 1.636 0 0 1 0 19.366V5.457c0-2.023 2.309-3.178 3.927-1.964L5.455 4.64 12 9.548l6.545-4.91 1.528-1.145C21.69 2.28 24 3.434 24 5.457z"}, "gcal": {"color": "#4285F4", "d": "M18.316 5.684H24v12.632h-5.684V5.684zM5.684 24h12.632v-5.684H5.684V24zM18.316 5.684V0H1.895A1.894 1.894 0 0 0 0 1.895v16.421h5.684V5.684h12.632zm-7.207 6.25v-.065c.272-.144.5-.349.687-.617s.279-.595.279-.982c0-.379-.099-.72-.3-1.025a2.05 2.05 0 0 0-.832-.714 2.703 2.703 0 0 0-1.197-.257c-.6 0-1.094.156-1.481.467-.386.311-.65.671-.793 1.078l1.085.452c.086-.249.224-.461.413-.633.189-.172.445-.257.767-.257.33 0 .602.088.816.264a.86.86 0 0 1 .322.703c0 .33-.12.589-.36.778-.24.19-.535.284-.886.284h-.567v1.085h.633c.407 0 .748.109 1.02.327.272.218.407.499.407.843 0 .336-.129.614-.387.832s-.565.327-.924.327c-.351 0-.651-.103-.897-.311-.248-.208-.422-.502-.521-.881l-1.096.452c.178.616.505 1.082.977 1.401.472.319.984.478 1.538.477a2.84 2.84 0 0 0 1.293-.291c.382-.193.684-.458.902-.794.218-.336.327-.72.327-1.149 0-.429-.115-.797-.344-1.105a2.067 2.067 0 0 0-.881-.689zm2.093-1.931l.602.913L15 10.045v5.744h1.187V8.446h-.827l-2.158 1.557zM22.105 0h-3.289v5.184H24V1.895A1.894 1.894 0 0 0 22.105 0zm-3.289 23.5l4.684-4.684h-4.684V23.5zM0 22.105C0 23.152.848 24 1.895 24h3.289v-5.184H0v3.289z"}, "slack": {"color": "#4A154B", "d": "M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zM6.313 15.165a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zM8.834 6.313a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312zM18.956 8.834a2.528 2.528 0 0 1 2.522-2.521A2.528 2.528 0 0 1 24 8.834a2.528 2.528 0 0 1-2.522 2.521h-2.522V8.834zM17.688 8.834a2.528 2.528 0 0 1-2.523 2.521 2.527 2.527 0 0 1-2.52-2.521V2.522A2.527 2.527 0 0 1 15.165 0a2.528 2.528 0 0 1 2.523 2.522v6.312zM15.165 18.956a2.528 2.528 0 0 1 2.523 2.522A2.528 2.528 0 0 1 15.165 24a2.527 2.527 0 0 1-2.52-2.522v-2.522h2.52zM15.165 17.688a2.527 2.527 0 0 1-2.52-2.523 2.526 2.526 0 0 1 2.52-2.52h6.313A2.527 2.527 0 0 1 24 15.165a2.528 2.528 0 0 1-2.522 2.523h-6.313z"}, "notion": {"color": "#000000", "d": "M4.459 4.208c.746.606 1.026.56 2.428.466l13.215-.793c.28 0 .047-.28-.046-.326L17.86 1.968c-.42-.326-.981-.7-2.055-.607L3.01 2.295c-.466.046-.56.28-.374.466zm.793 3.08v13.904c0 .747.373 1.027 1.214.98l14.523-.84c.841-.046.935-.56.935-1.167V6.354c0-.606-.233-.933-.748-.887l-15.177.887c-.56.047-.747.327-.747.933zm14.337.745c.093.42 0 .84-.42.888l-.7.14v10.264c-.608.327-1.168.514-1.635.514-.748 0-.935-.234-1.495-.933l-4.577-7.186v6.952L12.21 19s0 .84-1.168.84l-3.222.186c-.093-.186 0-.653.327-.746l.84-.233V9.854L7.822 9.76c-.094-.42.14-1.026.793-1.073l3.456-.233 4.764 7.279v-6.44l-1.215-.139c-.093-.514.28-.887.747-.933zM1.936 1.035l13.31-.98c1.634-.14 2.055-.047 3.082.7l4.249 2.986c.7.513.934.653.934 1.213v16.378c0 1.026-.373 1.634-1.68 1.726l-15.458.934c-.98.047-1.448-.093-1.962-.747l-3.129-4.06c-.56-.747-.793-1.306-.793-1.96V2.667c0-.839.374-1.54 1.447-1.632z"}, "github": {"color": "#181717", "d": "M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"}, "claude": {"color": "#D97757", "d": "m4.7144 15.9555 4.7174-2.6471.079-.2307-.079-.1275h-.2307l-.7893-.0486-2.6956-.0729-2.3375-.0971-2.2646-.1214-.5707-.1215-.5343-.7042.0546-.3522.4797-.3218.686.0608 1.5179.1032 2.2767.1578 1.6514.0972 2.4468.255h.3886l.0546-.1579-.1336-.0971-.1032-.0972L6.973 9.8356l-2.55-1.6879-1.3356-.9714-.7225-.4918-.3643-.4614-.1578-1.0078.6557-.7225.8803.0607.2246.0607.8925.686 1.9064 1.4754 2.4893 1.8336.3643.3035.1457-.1032.0182-.0728-.164-.2733-1.3539-2.4467-1.445-2.4893-.6435-1.032-.17-.6194c-.0607-.255-.1032-.4674-.1032-.7285L6.287.1335 6.6997 0l.9957.1336.419.3642.6192 1.4147 1.0018 2.2282 1.5543 3.0296.4553.8985.2429.8318.091.255h.1579v-.1457l.1275-1.706.2368-2.0947.2307-2.6957.0789-.7589.3764-.9107.7468-.4918.5828.2793.4797.686-.0668.4433-.2853 1.8517-.5586 2.9021-.3643 1.9429h.2125l.2429-.2429.9835-1.3053 1.6514-2.0643.7286-.8196.85-.9046.5464-.4311h1.0321l.759 1.1293-.34 1.1657-1.0625 1.3478-.8804 1.1414-1.2628 1.7-.7893 1.36.0729.1093.1882-.0183 2.8535-.607 1.5421-.2794 1.8396-.3157.8318.3886.091.3946-.3278.8075-1.967.4857-2.3072.4614-3.4364.8136-.0425.0304.0486.0607 1.5482.1457.6618.0364h1.621l3.0175.2247.7892.522.4736.6376-.079.4857-1.2142.6193-1.6393-.3886-3.825-.9107-1.3113-.3279h-.1822v.1093l1.0929 1.0686 2.0035 1.8092 2.5075 2.3314.1275.5768-.3218.4554-.34-.0486-2.2039-1.6575-.85-.7468-1.9246-1.621h-.1275v.17l.4432.6496 2.3436 3.5214.1214 1.0807-.17.3521-.6071.2125-.6679-.1214-1.3721-1.9246L14.38 17.959l-1.1414-1.9428-.1397.079-.674 7.2552-.3156.3703-.7286.2793-.6071-.4614-.3218-.7468.3218-1.4753.3886-1.9246.3157-1.53.2853-1.9004.17-.6314-.0121-.0425-.1397.0182-1.4328 1.9672-2.1796 2.9446-1.7243 1.8456-.4128.164-.7164-.3704.0667-.6618.4008-.5889 2.386-3.0357 1.4389-1.882.929-1.0868-.0062-.1579h-.0546l-6.3385 4.1164-1.1293.1457-.4857-.4554.0608-.7467.2307-.2429 1.9064-1.3114Z"}, "codex": {"color": "#000000", "d": "M9.205 8.658v-2.26c0-.19.072-.333.238-.428l4.543-2.616c.619-.357 1.356-.523 2.117-.523 2.854 0 4.662 2.212 4.662 4.566 0 .167 0 .357-.024.547l-4.71-2.759a.797.797 0 00-.856 0l-5.97 3.473zm10.609 8.8V12.06c0-.333-.143-.57-.429-.737l-5.97-3.473 1.95-1.118a.433.433 0 01.476 0l4.543 2.617c1.309.76 2.189 2.378 2.189 3.948 0 1.808-1.07 3.473-2.76 4.163zM7.802 12.703l-1.95-1.142c-.167-.095-.239-.238-.239-.428V5.899c0-2.545 1.95-4.472 4.591-4.472 1 0 1.927.333 2.712.928L8.23 5.067c-.285.166-.428.404-.428.737v6.898zM12 15.128l-2.795-1.57v-3.33L12 8.658l2.795 1.57v3.33L12 15.128zm1.796 7.23c-1 0-1.927-.332-2.712-.927l4.686-2.712c.285-.166.428-.404.428-.737v-6.898l1.974 1.142c.167.095.238.238.238.428v5.233c0 2.545-1.974 4.472-4.614 4.472zm-5.637-5.303l-4.544-2.617c-1.308-.761-2.188-2.378-2.188-3.948A4.482 4.482 0 014.21 6.327v5.423c0 .333.143.571.428.738l5.947 3.449-1.95 1.118a.432.432 0 01-.476 0zm-.262 3.9c-2.688 0-4.662-2.021-4.662-4.519 0-.19.024-.38.047-.57l4.686 2.71c.286.167.571.167.856 0l5.97-3.448v2.26c0 .19-.07.333-.237.428l-4.543 2.616c-.619.357-1.356.523-2.117.523zm5.899 2.83a5.947 5.947 0 005.827-4.756C22.287 18.339 24 15.84 24 13.296c0-1.665-.713-3.282-1.998-4.448.119-.5.19-.999.19-1.498 0-3.401-2.759-5.947-5.946-5.947-.642 0-1.26.095-1.88.31A5.962 5.962 0 0010.205 0a5.947 5.947 0 00-5.827 4.757C1.713 5.447 0 7.945 0 10.49c0 1.666.713 3.283 1.998 4.448-.119.5-.19 1-.19 1.499 0 3.401 2.759 5.946 5.946 5.946.642 0 1.26-.095 1.88-.309a5.96 5.96 0 004.162 1.713z"}}
+const logo = (id) => `<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="${LOGOS[id].color}" d="${LOGOS[id].d}"/></svg>`
+const CONTEXT_PROMPT = 'Help me prepare a context brief for a new work assistant. Summarize my role, current projects, goals, working preferences, and recurring tasks. Separate facts I told you from your inferences. Leave out passwords, keys, financial or health details, and private information about other people.'
+
+/** "You can call me Divyansh." -> "Divyansh". Pure and deterministic; ported to the server in the real build. */
+function extractName(raw) {
+  let s = raw.trim().replace(/\s+/g, ' ')
+  s = s.replace(/^(?:hi|hey|hello|yo)\b[\s,!.]*(?:there\b[\s,!.]*)?/i, '')
+  const lead = /^(?:you\s+can\s+call\s+me|you\s+may\s+call\s+me|just\s+call\s+me|call\s+me|please\s+call\s+me|i\s*'?\s*m|i\s+am|im|my\s+name\s+is|my\s+name'?s|name'?s|it'?s|this\s+is|i\s+go\s+by)\s+/i
+  s = s.replace(lead, '')
+  s = s.replace(/\s*(?:,|\bbut\b|\band\b|\bthough\b).*$/i, '')
+  s = s.replace(/\s+(?:please|thanks|thank\s+you)$/i, '').replace(/[.!?;:"'`]+$/g, '').replace(/^["'`]+/, '')
+  const words = s.split(' ').filter(Boolean).slice(0, 3)
+  if (!words.length) return ''
+  return words.map((w) => (w === w.toLowerCase() ? w[0].toUpperCase() + w.slice(1) : w)).join(' ').slice(0, 60)
+}
+
+const opts = { apps: true, agents: true, intro: true }
+let state, current, typingEl, run = 0
+
+function reset() {
+  run++
+  state = { name: '', role: '', team: '', help: [], employees: [], connected: new Set(), context: '', invites: [], task: '' }
+  current = null
+  document.getElementById('log').innerHTML = ''
+  document.getElementById('reveal').dataset.on = 'false'
+  setComposer(null)
+}
+
+/* ---------- transcript ---------- */
+const log = document.getElementById('log')
+const scroll = document.getElementById('scroll')
+const now = () => new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+const esc = (s) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
+const toBottom = () => requestAnimationFrame(() => scroll.scrollTo({ top: scroll.scrollHeight, behavior: 'smooth' }))
+
+function lastOverlayBody() {
+  const last = log.lastElementChild
+  return last && last.classList.contains('group') ? last.querySelector('.body') : null
+}
+function say(lines) {
+  let body = lastOverlayBody()
+  if (!body) {
+    const g = document.createElement('div')
+    g.className = 'group'
+    g.innerHTML = `<div class="avatar">${creature('var(--creature)')}</div><div class="who">Overlay<time>${now()}</time></div><div class="body"></div>`
+    log.appendChild(g)
+    body = g.querySelector('.body')
+  }
+  for (const line of [].concat(lines)) {
+    const p = document.createElement('p')
+    p.className = 'para'
+    p.textContent = line
+    body.appendChild(p)
+  }
+  toBottom()
+  return body
+}
+function userSays(text) {
+  clearReply()
+  const d = document.createElement('div')
+  d.className = 'user'
+  d.innerHTML = `<div class="bubble">${esc(text)}</div>`
+  log.appendChild(d)
+  toBottom()
+}
+function showTyping() {
+  const d = document.createElement('div')
+  d.className = 'group'
+  d.innerHTML = `<div class="avatar">${creature('var(--creature)')}</div><div class="who">Overlay<time>${now()}</time></div><div class="body"><div class="typing" role="status" aria-label="Overlay is typing"><span></span><span></span><span></span></div></div>`
+  log.appendChild(d)
+  typingEl = d
+  toBottom()
+}
+function clearReply() { log.querySelectorAll('.reply').forEach((r) => r.remove()) }
+function reply(html) {
+  const body = lastOverlayBody()
+  const r = document.createElement('div')
+  r.className = 'reply'
+  r.innerHTML = html
+  body.appendChild(r)
+  toBottom()
+  return r
+}
+const wait = (ms) => new Promise((r) => setTimeout(r, ms))
+async function next(step) {
+  const mine = run
+  setComposer(null)
+  showTyping()
+  await wait(650)
+  if (mine !== run) return
+  typingEl.remove()
+  STEPS[step]()
+}
+function and(list) { return list.length < 2 ? list.join('') : `${list.slice(0, -1).join(', ')} and ${list.at(-1)}` }
+
+/* ---------- composer ---------- */
+const input = document.getElementById('input')
+const send = document.getElementById('send')
+const composerEl = document.getElementById('composer')
+let onSubmit = null
+function setComposer(config) {
+  onSubmit = config ? config.submit : null
+  input.disabled = !config
+  input.placeholder = config ? config.placeholder : 'Choose above to continue'
+  composerEl.dataset.off = String(!config)
+  input.value = ''
+  autosize()
+  if (config && matchMedia('(hover: hover)').matches) input.focus()
+}
+function autosize() {
+  input.style.height = '24px'
+  input.style.height = Math.min(input.scrollHeight, 140) + 'px'
+  send.disabled = !onSubmit || !input.value.trim()
+}
+input.addEventListener('input', autosize)
+input.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); submit() }
+})
+send.addEventListener('click', submit)
+function submit() {
+  const v = input.value.trim()
+  if (!v || !onSubmit) return
+  onSubmit(v)
+}
+
+/* ---------- reusable reply widgets ---------- */
+function singleChoice(choices, onPick) {
+  const r = reply(`<div class="chips">${choices.map((c, i) => `<button class="chip" data-i="${i}">${esc(c)}</button>`).join('')}</div>`)
+  r.querySelectorAll('.chip').forEach((b) => b.addEventListener('click', () => onPick(choices[+b.dataset.i])))
+}
+function multiChoice(choices, onDone) {
+  const picked = new Set()
+  const r = reply(`<div class="chips">${choices.map((c, i) => `<button class="chip" aria-pressed="false" data-i="${i}">${esc(c)}</button>`).join('')}</div>
+    <div class="actions"><button class="btn primary" id="mcContinue" disabled>Continue</button></div>`)
+  const cont = r.querySelector('#mcContinue')
+  r.querySelectorAll('.chip').forEach((b) => b.addEventListener('click', () => {
+    const c = choices[+b.dataset.i]
+    picked.has(c) ? picked.delete(c) : picked.add(c)
+    b.setAttribute('aria-pressed', String(picked.has(c)))
+    b.innerHTML = esc(c) + (picked.has(c) ? icon.check : '')
+    cont.disabled = picked.size === 0
+  }))
+  cont.addEventListener('click', () => onDone([...picked], ''))
+  return (typed) => onDone([...picked], typed)
+}
+
+/* ---------- steps ---------- */
+const STEPS = {
+  name() {
+    current = 'name'
+    say(["Hi, I'm Overlay, your chief of staff. I'll run your AI employees and keep your work moving.", 'What should I call you?'])
+    const first = ACCOUNT.fullName.split(' ')[0]
+    const answer = (text) => {
+      const name = extractName(text)
+      if (!name) return
+      state.name = name
+      userSays(text)
+      next('role')
+    }
+    singleChoice([first], answer)
+    setComposer({ placeholder: 'Your name', submit: answer })
+  },
+  role() {
+    current = 'role'
+    say([`Nice to meet you, ${state.name}.`, 'What kind of work do you do?'])
+    const answer = (text) => { state.role = text; userSays(text); next('team') }
+    singleChoice(ROLES, answer)
+    setComposer({ placeholder: 'Or describe it in your own words', submit: answer })
+  },
+  team() {
+    current = 'team'
+    say('Who do you work with?')
+    const answer = (text) => { state.team = text; userSays(text); next('help') }
+    singleChoice(TEAMS, answer)
+    setComposer({ placeholder: 'Or tell me about your team', submit: answer })
+  },
+  help() {
+    current = 'help'
+    say('What would you like help with? Pick as many as you like.')
+    const done = (picked, typed) => {
+      state.help = picked
+      const parts = [...picked, ...(typed ? [typed] : [])]
+      if (!parts.length) return
+      userSays(parts.join(', '))
+      next('employees')
+    }
+    const withTyped = multiChoice(Object.keys(HELP), done)
+    setComposer({ placeholder: 'Or describe what takes up your time', submit: withTyped })
+  },
+  employees() {
+    current = 'employees'
+    const keys = [...state.help, ...(ROLE_DEFAULT_HELP[state.role] || []), 'Research & summaries', 'Planning & coordination']
+    const unique = [...new Set(keys)].slice(0, 2)
+    state.employees = unique.map((k) => ({ ...HELP[k], on: true }))
+    say("Based on that, I'd start you with two AI employees. You can change them anytime.")
+    const r = reply(`<div class="employees">${state.employees.map((e, i) => employeeCard(e, i)).join('')}</div>
+      <div class="actions"><button class="btn primary" id="hire"></button><button class="btn ghost" id="noHire">Not now</button></div>`)
+    const hire = r.querySelector('#hire')
+    const sync = () => {
+      const on = state.employees.filter((e) => e.on)
+      hire.textContent = on.length === 2 ? 'Add both' : on.length === 1 ? `Add ${on[0].name}` : 'Add employees'
+      hire.disabled = on.length === 0
+    }
+    bindEmployees(sync)
+    hire.addEventListener('click', () => {
+      const names = state.employees.filter((e) => e.on).map((e) => e.name)
+      userSays(`Add ${and(names)}.`)
+      next('employeesDone')
+    })
+    r.querySelector('#noHire').addEventListener('click', () => { state.employees.forEach((e) => { e.on = false }); userSays("I'll set up employees later."); next('tools') })
+  },
+  async employeesDone() {
+    const names = state.employees.filter((e) => e.on).map((e) => e.name)
+    say(`${and(names)} ${names.length > 1 ? 'are' : 'is'} on your team.`)
+    await wait(500)
+    STEPS.tools()
+  },
+  tools() {
+    current = 'tools'
+    const technical = /engineer/i.test(state.role) || state.help.includes('Coding & reviews')
+    const apps = opts.apps ? APPS.filter((a) => !a.technical || technical) : []
+    const agents = opts.agents ? AGENTS : []
+    if (!apps.length && !agents.length) return STEPS.context()
+    say('Want to connect the tools you already use? Your employees work better with context.')
+    const rows = (list, kind) => `<div class="card rows">${list.map((t) => `
+      <div class="row" data-id="${t.id}">
+        <span class="tile">${logo(t.id)}</span>
+        <span class="text"><div class="title">${esc(t.name)}</div><div class="sub">${esc(t.sub)}</div></span>
+        <button class="btn secondary small" data-connect="${t.id}">Connect</button>
+      </div>`).join('')}</div>`
+    const r = reply(`${apps.length ? `${agents.length ? '<div class="section-label">Apps</div>' : ''}${rows(apps, 'app')}` : ''}
+      ${agents.length ? `<div class="section-label">Coding agents you already use</div>${rows(agents, 'agent')}` : ''}
+      <div class="actions"><button class="btn ghost" id="toolsNext">Not now</button></div>`)
+    const nextBtn = r.querySelector('#toolsNext')
+    r.querySelectorAll('[data-connect]').forEach((b) => b.addEventListener('click', async () => {
+      b.disabled = true
+      b.textContent = 'Opening…'
+      await wait(900) // stands in for the OAuth tab / connect command
+      state.connected.add(b.closest('.row').querySelector('.title').textContent)
+      b.outerHTML = `<span class="done">${icon.check}Connected</span>`
+      nextBtn.className = 'btn primary'
+      nextBtn.textContent = 'Continue'
+    }))
+    nextBtn.addEventListener('click', () => {
+      userSays(state.connected.size ? `Connected ${and([...state.connected])}.` : "I'll connect tools later.")
+      next('context')
+    })
+  },
+  context() {
+    current = 'context'
+    say('Do you use another AI assistant? I can pick up what it already knows about your work.')
+    const r = reply(`<div class="card steps">
+        <div class="step"><span class="num">1</span><div><div>Ask ChatGPT, Claude, or Gemini this</div>
+          <div class="prompt"><span>${esc(CONTEXT_PROMPT)}</span></div>
+          <div class="actions" style="margin-top:8px"><button class="btn secondary small" id="copy">${icon.copy}Copy prompt</button></div></div></div>
+        <div class="step"><span class="num">2</span><div><div>Paste its reply</div>
+          <textarea class="field" id="ctx" rows="4" style="margin-top:8px" placeholder="Review it before saving. You can remove anything."></textarea></div></div>
+      </div>
+      <div class="note">${icon.lock}Saved as Personal memories. Only you can see them.</div>
+      <div class="actions"><button class="btn primary" id="saveCtx" disabled>Save context</button><button class="btn ghost" id="noCtx">Not now</button></div>`)
+    const ctx = r.querySelector('#ctx'), save = r.querySelector('#saveCtx'), copy = r.querySelector('#copy')
+    ctx.addEventListener('input', () => { save.disabled = !ctx.value.trim() })
+    copy.addEventListener('click', () => {
+      navigator.clipboard?.writeText(CONTEXT_PROMPT).catch(() => {})
+      copy.innerHTML = `${icon.check}Copied`
+      setTimeout(() => { copy.innerHTML = `${icon.copy}Copy prompt` }, 1600)
+    })
+    const after = () => next(state.team === 'Just me' ? 'task' : 'invites')
+    save.addEventListener('click', () => { state.context = ctx.value.trim(); userSays('Here is some context from my other assistant.'); after() })
+    r.querySelector('#noCtx').addEventListener('click', () => { userSays('Not right now.'); after() })
+  },
+  invites() {
+    current = 'invites'
+    say("Want to bring in anyone you work with? They'll join this workspace and can bring their own agents.")
+    const r = reply(`<div class="card tokens" id="tok"><input id="email" type="email" placeholder="name@company.com" aria-label="Teammate email"></div>
+      <div class="error" id="emailErr" hidden></div>
+      <div class="actions"><button class="btn primary" id="sendInv" disabled>Send invites</button><button class="btn ghost" id="noInv">Not now</button></div>`)
+    const tok = r.querySelector('#tok'), email = r.querySelector('#email'), err = r.querySelector('#emailErr'), sendInv = r.querySelector('#sendInv')
+    const valid = (v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)
+    const render = () => {
+      tok.querySelectorAll('.token').forEach((t) => t.remove())
+      state.invites.forEach((v, i) => {
+        const t = document.createElement('span')
+        t.className = 'token'
+        t.innerHTML = `${esc(v)}<button aria-label="Remove ${esc(v)}">${icon.x}</button>`
+        t.querySelector('button').addEventListener('click', () => { state.invites.splice(i, 1); render() })
+        tok.insertBefore(t, email)
+      })
+      sendInv.disabled = state.invites.length === 0
+      email.placeholder = state.invites.length ? '' : 'name@company.com'
+    }
+    const commit = () => {
+      const parts = email.value.split(/[,;\s]+/).map((v) => v.trim().toLowerCase()).filter(Boolean)
+      if (!parts.length) return true
+      const bad = parts.filter((v) => !valid(v))
+      for (const v of parts.filter(valid)) if (!state.invites.includes(v) && state.invites.length < 5) state.invites.push(v)
+      email.value = bad.join(' ')
+      err.hidden = !bad.length
+      err.textContent = bad.length ? `Check ${bad[0]}` : ''
+      render()
+      return !bad.length
+    }
+    tok.addEventListener('click', () => email.focus())
+    email.addEventListener('keydown', (e) => {
+      if (['Enter', ',', ' ', 'Tab'].includes(e.key) && email.value.trim()) { e.preventDefault(); commit() }
+      if (e.key === 'Backspace' && !email.value && state.invites.length) { state.invites.pop(); render() }
+    })
+    email.addEventListener('input', () => { err.hidden = true; sendInv.disabled = !state.invites.length && !valid(email.value.trim()) })
+    email.addEventListener('blur', commit)
+    sendInv.addEventListener('click', () => {
+      if (!commit() || !state.invites.length) return
+      userSays(`Invite ${and(state.invites)}.`)
+      next('invitesDone')
+    })
+    r.querySelector('#noInv').addEventListener('click', () => { state.invites = []; userSays('Not right now.'); next('task') })
+  },
+  async invitesDone() {
+    say(`Invites sent. They'll get an email to join.`)
+    await wait(500)
+    STEPS.task()
+  },
+  task() {
+    current = 'task'
+    say("Last thing. What's one task we can start on?")
+    const fromHelp = state.help.map((h) => HELP[h].task)
+    const suggestions = [...new Set([...fromHelp, 'Make a prioritized plan for my week', 'Research my top three competitors and write a one-page brief'])].slice(0, 3)
+    const choose = (text) => preview(text)
+    singleChoice(suggestions, choose)
+    setComposer({ placeholder: 'Or describe a task', submit: choose })
+    function preview(text) {
+      state.task = text
+      clearReply()
+      setComposer(null)
+      const r = reply(`<div class="card task"><div class="label">New task</div><div class="title">${esc(text)}</div>
+          <div class="meta">Personal · Unassigned · Won't start until you assign it</div></div>
+        <div class="actions"><button class="btn primary" id="create">Create task</button><button class="btn ghost" id="change">Change</button></div>`)
+      r.querySelector('#create').addEventListener('click', () => { userSays(text); next('complete') })
+      r.querySelector('#change').addEventListener('click', () => { clearReply(); singleChoice(suggestions, choose); setComposer({ placeholder: 'Or describe a task', submit: choose }); input.value = text; autosize() })
+    }
+  },
+  complete() {
+    current = 'complete'
+    say(["You're all set. Your first task is waiting in Work.", 'Happy working.'])
+    const r = reply(`<div class="actions" style="margin-top:0"><button class="btn primary" id="open">Open Work ${icon.arrow}</button></div>`)
+    r.querySelector('#open').addEventListener('click', openWorkspace)
+  },
+}
+
+function employeeCard(e, i) {
+  return `<div class="card employee" role="checkbox" tabindex="0" aria-checked="true" data-i="${i}">
+    <span class="check">${icon.check}</span>
+    <div class="head">${creature(e.color)}<span class="name">${esc(e.name)}</span></div>
+    <div class="role">${esc(e.role)}</div>
+    <button class="edit">Edit</button>
+  </div>`
+}
+function editEmployee(card, i, sync) {
+  const e = state.employees[i]
+  card.querySelector('.role').outerHTML = `<div class="editing" style="margin-top:10px;display:grid;gap:6px">
+    <input class="field" value="${esc(e.name)}" maxlength="60" aria-label="Name">
+    <textarea class="field" rows="3" maxlength="240" aria-label="Responsibilities">${esc(e.role)}</textarea></div>`
+  const [nameF, roleF] = card.querySelectorAll('.field')
+  const btn = card.querySelector('.edit')
+  btn.textContent = 'Done'
+  nameF.focus()
+  btn.onclick = (ev) => {
+    ev.stopPropagation()
+    if (!nameF.value.trim() || !roleF.value.trim()) return
+    e.name = nameF.value.trim(); e.role = roleF.value.trim()
+    card.outerHTML = employeeCard(e, i)
+    bindEmployees(sync)
+  }
+}
+function bindEmployees(sync) {
+  log.querySelector('.reply').querySelectorAll('.employee').forEach((card) => {
+    const i = +card.dataset.i
+    card.setAttribute('aria-checked', String(state.employees[i].on))
+    card.onclick = (ev) => {
+      if (ev.target.closest('.edit, .field, .editing')) return
+      state.employees[i].on = !state.employees[i].on
+      card.setAttribute('aria-checked', String(state.employees[i].on))
+      sync()
+    }
+    card.onkeydown = (ev) => { if ((ev.key === ' ' || ev.key === 'Enter') && ev.target === card) { ev.preventDefault(); card.click() } }
+    card.querySelector('.edit').onclick = (ev) => { ev.stopPropagation(); editEmployee(card, i, sync) }
+  })
+  sync()
+}
+
+function openWorkspace() {
+  document.getElementById('revealTask').textContent = state.task
+  document.getElementById('revealAgents').innerHTML = [{ name: 'Overlay', color: 'var(--creature)' }, ...state.employees.filter((e) => e.on)]
+    .map((a) => `<div class="nav">${creature(a.color).replace('width="28" height="28"', 'width="18" height="18"')}${esc(a.name)}</div>`).join('')
+  document.getElementById('reveal').dataset.on = 'true'
+}
+
+/* ---------- jump helpers: fill earlier answers with sample data ---------- */
+const ORDER = ['name', 'role', 'team', 'help', 'employees', 'tools', 'context', 'invites', 'task']
+function jump(step) {
+  reset()
+  const idx = ORDER.indexOf(step)
+  if (idx > 0) { state.name = 'Divyansh' }
+  if (idx > 1) { state.role = 'Engineering' }
+  if (idx > 2) { state.team = 'A small team' }
+  if (idx > 3) { state.help = ['Coding & reviews', 'Research & summaries'] }
+  if (idx > 4) { state.employees = state.help.map((k) => ({ ...HELP[k], on: true })) }
+  STEPS[step]()
+}
+
+async function start() {
+  reset()
+  const mine = run
+  const intro = document.getElementById('intro')
+  if (opts.intro && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    intro.dataset.out = 'false'
+    await wait(1700)
+  }
+  if (mine !== run) return
+  intro.dataset.out = 'true'
+  await wait(250)
+  if (mine !== run) return
+  STEPS.name()
+}
+
+/* ---------- mockup controls ---------- */
+const mock = document.getElementById('mock')
+document.getElementById('mockToggle').onclick = () => { mock.dataset.open = String(mock.dataset.open !== 'true') }
+document.getElementById('optDark').onchange = (e) => { document.documentElement.dataset.theme = e.target.checked ? 'dark' : 'light' }
+document.getElementById('optApps').onchange = (e) => { opts.apps = e.target.checked }
+document.getElementById('optAgents').onchange = (e) => { opts.agents = e.target.checked }
+document.getElementById('optIntro').onchange = (e) => { opts.intro = e.target.checked }
+document.getElementById('restart').onclick = () => { mock.dataset.open = 'false'; start() }
+document.getElementById('jump').onchange = (e) => { if (e.target.value) { document.getElementById('intro').dataset.out = 'true'; jump(e.target.value) } e.target.value = '' ; mock.dataset.open = 'false' }
+document.getElementById('skipSetup').onclick = () => { if (!state.task) state.task = 'Make a prioritized plan for my week'; openWorkspace() }
+if (matchMedia('(prefers-color-scheme: dark)').matches) { document.documentElement.dataset.theme = 'dark'; document.getElementById('optDark').checked = true }
+
+start()
+</script>
+</body>
+</html>

@@ -3,18 +3,33 @@
 import { Button } from '@overlay/ui/primitives'
 
 import { useEffect, useState, type ReactNode } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { usePathname, useSearchParams } from 'next/navigation'
 import { CircleAlert } from 'lucide-react'
-import type { WorkspaceClient } from '@/shared/workspaces/types'
+import type { WorkspaceClient, WorkspaceLifecycleStatus } from '@/shared/workspaces/types'
 import { workspaceClient } from '../lib/workspace-client'
 import { useAuth } from '@/contexts/AuthContext'
 import { WorkspaceProvider, useWorkspace } from '@/contexts/WorkspaceContext'
 import { AppBootLoader } from '@/components/layout/AppBootLoader'
 import { bootAppShown } from '@/components/layout/boot-loader-pulse'
+import { WorkspaceDirectory } from './WorkspaceDirectory'
+import { AcceptWorkspaceInvitation } from './invitations/AcceptWorkspaceInvitation'
 
-function WorkspaceHydrationBoundary({ children }: { children: ReactNode }) {
-  const { status, error, refresh } = useWorkspace()
+function isWorkspaceStatusUndecided(
+  status: WorkspaceLifecycleStatus,
+  authLoading: boolean,
+  hasUser: boolean,
+) {
+  return status === 'loading' || (status === 'idle' && (authLoading || hasUser))
+}
+
+function WorkspaceHydrationBoundary({ children, publicShowcase }: { children: ReactNode; publicShowcase: boolean }) {
+  const { status, error, refresh, workspaces } = useWorkspace()
+  const pathname = usePathname()
   const { isLoading: authLoading, user } = useAuth()
+  const [directoryOpen, setDirectoryOpen] = useState(false)
+  const invitationRoute = pathname?.startsWith('/app/invitations/')
+  const emptyAccount = status === 'ready' && workspaces.length === 0 && !publicShowcase && Boolean(user) && !invitationRoute
+  if (emptyAccount && !directoryOpen) setDirectoryOpen(true)
   const [hasShownApp, setHasShownApp] = useState(status === 'ready' || bootAppShown.wasShown())
   if (status === 'ready' && !hasShownApp) {
     setHasShownApp(true)
@@ -23,8 +38,7 @@ function WorkspaceHydrationBoundary({ children }: { children: ReactNode }) {
   // paint renders this layout before the client finds the session cookie, so
   // children must stay gated until status is genuinely 'ready' (guests settle
   // at 'idle' with auth done and no user, which still falls through below).
-  const undecided =
-    status === 'loading' || (status === 'idle' && (authLoading || Boolean(user)))
+  const undecided = isWorkspaceStatusUndecided(status, authLoading, Boolean(user))
   const gating = undecided && !hasShownApp
   useEffect(() => {
     // Once real app content has painted anywhere this boot, the flag keeps
@@ -57,6 +71,12 @@ function WorkspaceHydrationBoundary({ children }: { children: ReactNode }) {
       </div>
     )
   }
+  if (!publicShowcase && invitationRoute && pathname) {
+    return <AcceptWorkspaceInvitation invitationId={pathname.split('/').at(-1) ?? ''} />
+  }
+  if (!publicShowcase && user && (emptyAccount || directoryOpen || pathname === '/app/workspaces')) {
+    return <WorkspaceDirectory onOpen={() => setDirectoryOpen(false)} />
+  }
   return children
 }
 
@@ -84,7 +104,7 @@ export function WorkspaceAppBoundary({
       enabled={enabled}
       client={publicShowcase && showcaseClient ? showcaseClient : workspaceClient}
     >
-      <WorkspaceHydrationBoundary>{children}</WorkspaceHydrationBoundary>
+      <WorkspaceHydrationBoundary publicShowcase={publicShowcase}>{children}</WorkspaceHydrationBoundary>
     </WorkspaceProvider>
   )
 }

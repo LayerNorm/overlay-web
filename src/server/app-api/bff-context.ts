@@ -18,6 +18,8 @@ export type AppApiRouteContext = {
   authorization?: AuthorizationService
 }
 
+export type AccountAppApiRouteContext = Omit<AppApiRouteContext, 'workspace'>
+
 /**
  * Returns the user id that owns the resource being mutated. Until workspace
  * sharing is fully wired, this is the authenticated user's own id.

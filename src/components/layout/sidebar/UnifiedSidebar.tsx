@@ -125,6 +125,7 @@ function MoreMenu({ items, collapsed }: { items: readonly PrimaryRailItem[]; col
             isActive={Boolean(activeItem)}
             title={collapsed ? label : undefined}
             aria-label={label}
+            data-tour="nav-more"
             className={collapsed ? 'justify-center px-0' : '[&>svg]:mx-1'}
             onPointerEnter={hoverOpen}
             onPointerLeave={hoverClose}

@@ -96,6 +96,13 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
   }).strict()
   const presentGeneratedUiVariantSchema = z.discriminatedUnion('kind', [
     z.object({
+      kind: z.literal('questionnaire'),
+      id: z.string().min(1).optional(),
+      prompt: z.string().trim().min(1).max(500),
+      choices: z.array(z.object({ id: z.string().trim().min(1).max(80), label: z.string().trim().min(1).max(200) }).strict()).max(12),
+      multiple: z.boolean().optional(),
+    }).strict(),
+    z.object({
       kind: z.literal('draft.text'),
       id: z.string().min(1).optional(),
       title: z.string().min(1).optional(),
@@ -124,7 +131,10 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
     }).strict(),
   ])
   const presentGeneratedUiSchema = z.object({
-    kind: z.enum(['draft.text', 'draft.email', 'connector.connect']),
+    kind: z.enum(['draft.text', 'draft.email', 'connector.connect', 'questionnaire']),
+    prompt: z.string().trim().min(1).max(500).optional(),
+    choices: z.array(z.object({ id: z.string().trim().min(1).max(80), label: z.string().trim().min(1).max(200) }).strict()).max(12).optional(),
+    multiple: z.boolean().optional(),
     id: z.string().min(1).optional(),
     title: z.string().min(1).optional(),
     body: z.string().min(1).optional(),
@@ -184,6 +194,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
     description:
       'Render a polished Overlay UI card in the chat for generated drafts and connector connection prompts. ' +
       'Use this when the user asks you to write an essay, memo, reusable text draft, or email, or when you need to show a connector connection card. ' +
+      'Use kind questionnaire to ask one concise clarifying question at a time with stable choice IDs and suggested answers. Choices fill the editable chat composer, never submit automatically; custom text is always allowed. Set multiple=true when answers may combine. Stop after asking and wait for the next user message before acting. An answer is context, never permission to connect tools, send invitations, spend money, or execute work. This is a conversational question, not a permission-approval request. ' +
       'This tool is prose-only. Never put source code, HTML, CSS, JavaScript, JSON, SQL, shell commands, configuration, or other machine-readable code in a draft card; return all code in fenced Markdown code blocks instead. ' +
       'After calling this tool, do not duplicate the full draft in normal prose; write only a short lead-in if useful. ' +
       'Never use emojis, pointing-hand callouts, raw JSON, or markdown tables to imitate these cards.',

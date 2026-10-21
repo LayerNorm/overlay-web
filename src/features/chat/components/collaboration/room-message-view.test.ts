@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import { getDescriptiveToolLabel } from '@overlay/chat-core'
-import { mergeRoomMessages, toRoomMessageView, type RoomMessageRecord } from './room-message-view'
+import { isRoomAgentResponding, mergeRoomMessages, toRoomMessageView, type RoomMessageRecord } from './room-message-view'
 
 function record(overrides: Partial<RoomMessageRecord> = {}): RoomMessageRecord {
   return {
@@ -15,6 +15,15 @@ function record(overrides: Partial<RoomMessageRecord> = {}): RoomMessageRecord {
     ...overrides,
   }
 }
+
+test('questionnaires stay busy through pending and persisted agent generation, then unlock', () => {
+  assert.equal(isRoomAgentResponding([], 'Overlay'), true)
+  assert.equal(isRoomAgentResponding([record({ status: 'generating' })], null), true)
+  assert.equal(isRoomAgentResponding([record({ status: 'completed' })], null), false)
+  assert.equal(isRoomAgentResponding([record({ status: 'error' })], null), false)
+  assert.equal(isRoomAgentResponding([record({ authorKind: 'human' })], null), false)
+  assert.equal(isRoomAgentResponding([], null), false)
+})
 
 test('saved drive summaries retain file links separately from the provider answer and reject malformed paths', () => {
   const status = { state: 'saved', fileCount: 1, folderCount: 0,

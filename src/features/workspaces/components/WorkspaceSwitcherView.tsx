@@ -4,6 +4,7 @@ import { unstyledButton } from '@overlay/ui/control-reset'
 
 import { workspaceMemberLabel } from '@/shared/workspaces/solo-workspace'
 import { type ReactNode, type RefObject } from 'react'
+import Link from 'next/link'
 import { Check, ChevronDown, Loader2, Plus, RefreshCw } from 'lucide-react'
 import { CollapsibleSection, MenuItem, Popover, PopoverContent, PopoverTrigger, Button } from '@overlay/ui/primitives'
 import { CreateWorkspaceDialog } from './CreateWorkspaceDialog'
@@ -101,6 +102,7 @@ function WorkspaceList({
         <Plus size={14} />
         Create workspace
       </MenuItem>
+      <Button variant="ghost" className="w-full justify-start text-xs" asChild><Link href="/app/workspaces">All workspaces</Link></Button>
     </>
   )
 }

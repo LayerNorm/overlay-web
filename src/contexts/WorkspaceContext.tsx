@@ -11,6 +11,7 @@ import {
   type ReactNode,
 } from 'react'
 import { usePathname } from 'next/navigation'
+import type { AccountWorkspaceInvitation } from '@overlay/workspace-contracts'
 import { setActiveChatListWorkspace } from '@/shared/chat/chat-list-cache'
 import { dispatchWorkspaceChanged } from '@/shared/workspaces/events'
 import { readWorkspaceIdFromPath } from '@/shared/workspaces/routing'
@@ -24,16 +25,25 @@ import type {
 export type WorkspaceContextValue = {
   status: WorkspaceLifecycleStatus
   workspaces: readonly WorkspaceSummary[]
+  invitations?: readonly AccountWorkspaceInvitation[]
   activeWorkspace: WorkspaceSummary | null
   activeWorkspaceId: string | null
   error: string | null
   switchingWorkspaceId: string | null
   refresh(): Promise<void>
-  createWorkspace(input: WorkspaceCreateInput): Promise<WorkspaceSummary>
+  createWorkspace(input: WorkspaceCreateInput, options?: { idempotencyKey: string }): Promise<WorkspaceSummary>
   switchWorkspace(workspaceId: string): Promise<WorkspaceSummary>
 }
 
 const WorkspaceContext = createContext<WorkspaceContextValue | null>(null)
+
+function shouldSoftReload(
+  options: { force?: boolean } | undefined,
+  status: WorkspaceLifecycleStatus,
+  workspaces: readonly WorkspaceSummary[],
+) {
+  return !options?.force && status === 'ready' && workspaces.length > 0
+}
 
 export function WorkspaceProvider({
   children,
@@ -47,6 +57,7 @@ export function WorkspaceProvider({
   const pathname = usePathname() ?? ''
   const [status, setStatus] = useState<WorkspaceLifecycleStatus>(enabled ? 'loading' : 'idle')
   const [workspaces, setWorkspaces] = useState<WorkspaceSummary[]>([])
+  const [invitations, setInvitations] = useState<AccountWorkspaceInvitation[]>([])
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [switchingWorkspaceId, setSwitchingWorkspaceId] = useState<string | null>(null)
@@ -63,6 +74,7 @@ export function WorkspaceProvider({
     if (!enabled) {
       setStatus('idle')
       setWorkspaces([])
+      setInvitations([])
       setActiveWorkspaceId(null)
       setActiveChatListWorkspace(null)
       return
@@ -71,22 +83,21 @@ export function WorkspaceProvider({
     // Soft path changes (chat ↔ files within the same workspace, or query-only
     // chat switches that still change Next's pathname) must not unmount the
     // entire app shell with the "Opening workspace…" gate.
-    const softReload = !options?.force
-      && statusRef.current === 'ready'
-      && workspacesRef.current.length > 0
+    const softReload = shouldSoftReload(options, statusRef.current, workspacesRef.current)
     if (!softReload) {
       setStatus('loading')
     }
     setError(null)
     try {
-      const response = softReload
+      const response: Awaited<ReturnType<WorkspaceClient['list']>> = softReload
         ? {
             workspaces: workspacesRef.current,
-            activeWorkspaceId: activeWorkspaceIdRef.current,
+            activeWorkspaceId: activeWorkspaceIdRef.current ?? '',
           }
         : await client.list(signal)
       if (signal?.aborted) return
       const desiredWorkspaceId = readWorkspaceIdFromPath(pathname)
+      if (!softReload) setInvitations(response.invitations ?? [])
       const desiredWorkspace = desiredWorkspaceId
         ? response.workspaces.find((workspace) => workspace.id === desiredWorkspaceId)
         : null
@@ -95,6 +106,7 @@ export function WorkspaceProvider({
         if (softReload) {
           const fresh = await client.list(signal)
           if (signal?.aborted) return
+          setInvitations(fresh.invitations ?? [])
           const found = fresh.workspaces.find((workspace) => workspace.id === desiredWorkspaceId)
           if (!found) {
             setWorkspaces([])
@@ -160,8 +172,8 @@ export function WorkspaceProvider({
     await load(undefined, { force: true })
   }, [load])
 
-  const createWorkspace = useCallback(async (input: WorkspaceCreateInput) => {
-    const response = await client.create(input)
+  const createWorkspace = useCallback(async (input: WorkspaceCreateInput, options?: { idempotencyKey: string }) => {
+    const response = await client.create(input, options)
     setWorkspaces((current) => {
       const withoutCreated = current.filter((workspace) => workspace.id !== response.workspace.id)
       return [...withoutCreated, response.workspace]
@@ -209,6 +221,7 @@ export function WorkspaceProvider({
   const value = useMemo<WorkspaceContextValue>(() => ({
     status,
     workspaces,
+    invitations,
     activeWorkspace,
     activeWorkspaceId,
     error,
@@ -226,6 +239,7 @@ export function WorkspaceProvider({
     switchWorkspace,
     switchingWorkspaceId,
     workspaces,
+    invitations,
   ])
 
   return (

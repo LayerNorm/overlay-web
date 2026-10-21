@@ -25,6 +25,7 @@ export function useByoConnection(args: {
   agent: WorkspaceAgentDirectoryItem | null
   agentType: AgentType
   connectedAgentsEnabled: boolean
+  initialAdapterId?: 'claude-code' | 'codex'
   setAgentType(value: AgentType): void
   /** Edit mode: a `protocol:'harness'` binding belongs to a hosted runtime that was removed — the page shows the agent read-only. */
   onLegacyHostedBinding?(): void
@@ -36,7 +37,7 @@ export function useByoConnection(args: {
   const [environments, setEnvironments] = useState<AgentEnvironmentResource[]>([])
   const [environmentsLoading, setEnvironmentsLoading] = useState(false)
   const [environmentId, setEnvironmentId] = useState('')
-  const [adapterId, setAdapterId] = useState('codex')
+  const [adapterId, setAdapterId] = useState<string>(args.initialAdapterId ?? 'codex')
   const [workingDirectory, setWorkingDirectory] = useState('')
   const [environmentBusy, setEnvironmentBusy] = useState<string | null>(null)
   const [environmentError, setEnvironmentError] = useState<string | null>(null)
@@ -241,4 +242,3 @@ export function useByoConnection(args: {
     copyCommand,
   }
 }
-
