@@ -65,7 +65,7 @@ export const MCP_GROUP_COVERAGE: {
     memory: { exposed: true }, knowledge: { exposed: true }, files: { exposed: true }, web_search: { exposed: true },
     integrations: { exposed: true }, mcp: { exposed: true }, notes: { exposed: true }, skills: { exposed: true },
     automations: { exposed: true }, image: { exposed: true }, video: { exposed: true }, browser: { exposed: true },
-    agents: { exposed: true }, agent_chat: { exposed: true },
+    agents: { exposed: true }, agent_chat: { exposed: true }, tasks: { exposed: true },
     computer: { exposed: false, reason: 'The agent already runs on a machine of its own; a second computer would only duplicate it.' },
   },
   externalApps: {
@@ -74,6 +74,7 @@ export const MCP_GROUP_COVERAGE: {
     automations: { exposed: true }, image: { exposed: true }, video: { exposed: true }, browser: { exposed: true },
     agents: { exposed: false, reason: 'Editing agents would let an outside app rewrite what Overlay\'s own agents may do.' },
     agent_chat: { exposed: true },
+    tasks: { exposed: true },
     computer: { exposed: false, reason: 'A paid desktop that belongs to the person\'s agents, not something an outside app should start.' },
   },
 }
