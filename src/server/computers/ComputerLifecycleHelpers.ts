@@ -1,5 +1,6 @@
 import type { Computer } from '@overlay/workspace-contracts'
 import type { AgentSandboxLease, ComputerOwnerType } from '@overlay/workspace-contracts'
+import type { SandboxInstance, SandboxRuntime } from '@overlay/sandbox-runtime'
 import type { ConnectedAgentRepository } from '@/server/agents/ConnectedAgentRepository'
 import type { ComputerBilling } from './ComputerBilling'
 import type { ComputerRepository } from './ComputerRepository'
@@ -54,6 +55,68 @@ export function errorMessage(error: unknown): string {
 export function isMissingSandboxError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error)
   return /404|not found|does not exist|gone/i.test(message)
+}
+
+type LegacyComputerAdoptionDependencies = {
+  leases: Pick<ConnectedAgentRepository, 'claimComputerMaintenance' | 'transitionComputerLifecycle'>
+  billing: Pick<ComputerBilling, 'meter'>
+  maintenanceMs: number
+  newId(): string
+  now(): number
+  cleanupRetryAt(attempts: number): number
+  requireRuntime(provider: string): SandboxRuntime
+}
+
+export async function adoptLegacyComputer(
+  computer: Computer,
+  lease: AgentSandboxLease,
+  dependencies: LegacyComputerAdoptionDependencies,
+): Promise<void> {
+  const lifecycle = lease.usage.computerLifecycle as { adoptionPending?: boolean } | undefined
+  if (lifecycle?.adoptionPending !== true) return
+  const token = dependencies.newId()
+  const claim = await dependencies.leases.claimComputerMaintenance?.({
+    workspaceId: computer.workspaceId, leaseId: lease.id, kind: 'stop', token,
+    now: dependencies.now(), expiresAt: dependencies.now() + dependencies.maintenanceMs, force: true,
+    expectedProviderReference: computer.providerRef,
+  })
+  if (!claim) throw new Error('COMPUTER_MAINTENANCE_IN_PROGRESS')
+  try {
+    if (computer.providerRef) {
+      let instance: SandboxInstance | null = null
+      try {
+        instance = await dependencies.requireRuntime(computer.provider).reconnect(computer.providerRef, { resume: false })
+      } catch (error) {
+        if (!isMissingSandboxError(error)) throw error
+      }
+      if (instance) {
+        const status = await instance.status()
+        if (!['stopped', 'archived', 'deleted'].includes(status)) {
+          await instance.stop()
+          const stoppedStatus = await instance.status()
+          if (!['stopped', 'archived', 'deleted'].includes(stoppedStatus)) {
+            throw new Error('COMPUTER_STOP_NOT_CONFIRMED')
+          }
+        }
+      } else if (!hasMatchingStoppedEvidence(computer, lease.usage, lease.providerReference)) {
+        throw new Error('COMPUTER_STOP_EVIDENCE_MISSING')
+      }
+      await dependencies.billing.meter(computer, true)
+    }
+    const completed = await dependencies.leases.transitionComputerLifecycle?.({
+      workspaceId: computer.workspaceId, computerId: computer.id, leaseId: lease.id, token,
+      transition: 'paused', expectedProviderReference: computer.providerRef, now: dependencies.now(),
+    })
+    if (!completed) throw new Error('COMPUTER_ADOPTION_COMPLETION_STALE')
+  } catch (error) {
+    await dependencies.leases.transitionComputerLifecycle?.({
+      workspaceId: computer.workspaceId, computerId: computer.id, leaseId: lease.id, token,
+      transition: 'failed', expectedProviderReference: computer.providerRef,
+      cleanupAfter: dependencies.cleanupRetryAt(lease.cleanupAttempts + 1),
+      cleanupAttempts: lease.cleanupAttempts + 1, now: dependencies.now(),
+    })
+    throw error
+  }
 }
 
 type ComputerLeaseHandlerDependencies = {

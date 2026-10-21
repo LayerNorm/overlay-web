@@ -45,6 +45,8 @@ import type { ChatToolRequestId } from '@/shared/chat/tool-requests'
 import type { Entitlements } from '@/shared/app/app-contracts'
 import { COMPUTER_TOOL_IDS } from '@/shared/agents/tool-groups'
 import { withoutSharedRoomWithheldTools, workspaceToolsOnly } from '@/server/tools/shared-room-policy'
+import { withPersonalComputerToolIds } from './personal-computer-tooling'
+export { withPersonalComputerToolIds }
 
 type ActMode = 'chat' | 'automate'
 type MediaToolIntent = 'image' | 'video' | null
@@ -342,43 +344,6 @@ export function withAgentGrantToolIds(
 ): string[] {
   if (!isAgentTurn || accountAllowedToolIds === undefined) return [...intentToolIds]
   return [...new Set([...intentToolIds, ...accountAllowedToolIds])]
-}
-
-export async function withPersonalComputerToolIds(
-  toolIds: readonly string[],
-  params: {
-    userId: string
-    workspaceId?: string
-    agentId?: string
-    computerApprovalContext?: 'work' | 'automation'
-    automationExecution?: boolean
-    automationMode?: boolean
-    mode?: ActMode
-    findPersonalComputer: (workspaceId: string, userId: string) => Promise<unknown | null>
-  },
-): Promise<string[]> {
-  if (
-    !params.workspaceId
-    || params.agentId !== undefined
-    || params.computerApprovalContext !== 'work'
-    || params.automationExecution
-    || params.automationMode
-    || params.mode === 'automate'
-  ) {
-    return [...toolIds]
-  }
-  try {
-    const computer = await params.findPersonalComputer(params.workspaceId, params.userId)
-    return computer
-      ? [...new Set([...toolIds, ...COMPUTER_TOOL_IDS])]
-      : [...toolIds]
-  } catch (error) {
-    logger.warn(
-      '[conversations/act] personal Computer lookup failed:',
-      summarizeErrorForLog(error),
-    )
-    return [...toolIds]
-  }
 }
 
 export function applyAccountToolPolicy(

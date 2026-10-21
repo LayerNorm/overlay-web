@@ -10,12 +10,14 @@ import type { Computer, ComputerOwnerType } from '@overlay/workspace-contracts'
 import type { AgentSandboxLease } from '@overlay/workspace-contracts'
 import type { ConnectedAgentRepository } from '@/server/agents/ConnectedAgentRepository'
 import {
+  adoptLegacyComputer,
   createComputerRecipe,
   handleComputerLease,
   hasMatchingStoppedEvidence,
   isMissingSandboxError,
 } from './ComputerLifecycleHelpers'
 import { ComputerBilling } from './ComputerBilling'
+import { claimComputerMaintenanceWithRetry } from './ComputerMaintenanceClaim'
 import type { ComputerLeaseSeed, ComputerRepository } from './ComputerRepository'
 
 const SESSION_MS = 2 * 60 * 60_000
@@ -241,51 +243,15 @@ export class ComputerLifecycleService {
   }
 
   private async adoptLegacy(computer: Computer, lease: AgentSandboxLease): Promise<void> {
-    const lifecycle = lease.usage.computerLifecycle as { adoptionPending?: boolean } | undefined
-    if (lifecycle?.adoptionPending !== true) return
-    const token = this.newId()
-    const claim = await this.dependencies.leases.claimComputerMaintenance?.({
-      workspaceId: computer.workspaceId, leaseId: lease.id, kind: 'stop', token,
-      now: this.now(), expiresAt: this.now() + MAINTENANCE_MS, force: true,
-      expectedProviderReference: computer.providerRef,
+    await adoptLegacyComputer(computer, lease, {
+      leases: this.dependencies.leases,
+      billing: this.dependencies.billing,
+      maintenanceMs: MAINTENANCE_MS,
+      newId: () => this.newId(),
+      now: () => this.now(),
+      cleanupRetryAt: (attempts) => this.cleanupRetryAt(attempts),
+      requireRuntime: (provider) => this.requireRuntime(provider),
     })
-    if (!claim) throw new Error('COMPUTER_MAINTENANCE_IN_PROGRESS')
-    try {
-      if (computer.providerRef) {
-        let instance: SandboxInstance | null = null
-        try {
-          instance = await this.requireRuntime(computer.provider).reconnect(computer.providerRef, { resume: false })
-        } catch (error) {
-          if (!isMissingSandboxError(error)) throw error
-        }
-        if (instance) {
-          const status = await instance.status()
-          if (!['stopped', 'archived', 'deleted'].includes(status)) {
-            await instance.stop()
-            const stoppedStatus = await instance.status()
-            if (!['stopped', 'archived', 'deleted'].includes(stoppedStatus)) {
-              throw new Error('COMPUTER_STOP_NOT_CONFIRMED')
-            }
-          }
-        } else if (!hasMatchingStoppedEvidence(computer, lease.usage, lease.providerReference)) {
-          throw new Error('COMPUTER_STOP_EVIDENCE_MISSING')
-        }
-        await this.dependencies.billing.meter(computer, true)
-      }
-      const completed = await this.dependencies.leases.transitionComputerLifecycle?.({
-        workspaceId: computer.workspaceId, computerId: computer.id, leaseId: lease.id, token,
-        transition: 'paused', expectedProviderReference: computer.providerRef, now: this.now(),
-      })
-      if (!completed) throw new Error('COMPUTER_ADOPTION_COMPLETION_STALE')
-    } catch (error) {
-      await this.dependencies.leases.transitionComputerLifecycle?.({
-        workspaceId: computer.workspaceId, computerId: computer.id, leaseId: lease.id, token,
-        transition: 'failed', expectedProviderReference: computer.providerRef,
-        cleanupAfter: this.cleanupRetryAt(lease.cleanupAttempts + 1),
-        cleanupAttempts: lease.cleanupAttempts + 1, now: this.now(),
-      })
-      throw error
-    }
   }
 
   async withOwnerOperation<T>(args: {
@@ -499,25 +465,23 @@ export class ComputerLifecycleService {
     if (existing?.token && (existing.expiresAt ?? 0) <= this.now() && !canReconcile) {
       throw new Error('COMPUTER_MAINTENANCE_REQUIRES_RECONCILIATION')
     }
-    const deadline = this.now() + 20_000
-    let delayMs = 250
-    let waitedMs = 0
-    while (true) {
-      const claim = await this.dependencies.leases.claimComputerMaintenance?.({
+    if (!this.dependencies.leases.claimComputerMaintenance) {
+      throw new Error('COMPUTER_MAINTENANCE_IN_PROGRESS')
+    }
+    await claimComputerMaintenanceWithRetry(
+      () => this.dependencies.leases.claimComputerMaintenance!({
         workspaceId: computer.workspaceId, leaseId: lease.id, kind, token,
         now: this.now(), expiresAt: this.now() + MAINTENANCE_MS, force,
         actorUserId, expectedProviderReference: computer.providerRef,
         ...(canReconcile && existing?.token ? { reconcileToken: existing.token } : {}),
-      })
-      if (claim) return token
-      if (!retryUnavailable) throw new Error('COMPUTER_MAINTENANCE_IN_PROGRESS')
-      const remainingMs = Math.min(20_000 - waitedMs, deadline - this.now())
-      if (remainingMs <= 0) throw new Error('COMPUTER_MAINTENANCE_IN_PROGRESS')
-      const sleepMs = Math.min(delayMs, remainingMs)
-      await this.sleep(sleepMs)
-      waitedMs += sleepMs
-      delayMs = Math.min(delayMs * 2, 2_000)
-    }
+      }),
+      {
+        retryUnavailable,
+        now: () => this.now(),
+        sleep: (ms) => this.sleep(ms),
+      },
+    )
+    return token
   }
 
   private requireRuntime(provider: string): SandboxRuntime {
