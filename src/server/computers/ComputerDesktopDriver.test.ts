@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import type { SandboxCommandRequest, SandboxInstance } from '@overlay/sandbox-runtime'
+import {
+  DRIVER_VERSION,
+  type SandboxCommandRequest,
+  type SandboxInstance,
+} from '@overlay/sandbox-runtime'
 import {
   ComputerDesktopDriverError,
   openUrl,
@@ -16,7 +20,7 @@ test('driver script is written only after its marker check fails', async () => {
   await run(computer.instance, 'wait', { ms: 1 })
   await run(computer.instance, 'wait', { ms: 1 })
   assert.equal(computer.writes.length, 1)
-  assert.match(computer.writes[0]!.path, /driver-3\.py$/)
+  assert.ok(computer.writes[0]!.path.endsWith(`/driver-${DRIVER_VERSION}.py`))
 })
 
 test('screenshot reads image bytes from the sandbox file', async () => {
@@ -114,7 +118,7 @@ function fakeComputer(desktop = true, browserUnsupported = false) {
         ? JSON.parse(request.args[4]) as Record<string, unknown>
         : {}
       if (typeof payload.command === 'string') requests.push(payload)
-      const installed = writes.some((file) => file.path.endsWith('/driver-3.py'))
+      const installed = writes.some((file) => file.path.endsWith(`/driver-${DRIVER_VERSION}.py`))
       const isPrepare = request.command === 'sh' && request.args?.[0] === '-c'
       const unsupportedBrowser = browserUnsupported && payload.command === 'browser_ensure'
       const stdout = !installed
@@ -129,7 +133,7 @@ function fakeComputer(desktop = true, browserUnsupported = false) {
             })
           : JSON.stringify(payload.command === 'capabilities'
             ? {
-                version: '3',
+                version: DRIVER_VERSION,
                 display: ':0',
                 screen: { width: 1280, height: 720 },
                 input: true,

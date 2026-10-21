@@ -91,6 +91,7 @@
     "src/app/api/v1/browser-task/route.ts",
     "src/app/api/v1/capabilities/route.ts",
     "src/app/api/v1/chat-suggestions/route.ts",
+    "src/app/api/v1/computers/[computerId]/control/route.ts",
     "src/app/api/v1/computers/[computerId]/desktop/route.ts",
     "src/app/api/v1/computers/[computerId]/route.ts",
     "src/app/api/v1/computers/[computerId]/start/route.ts",
