@@ -16,6 +16,15 @@ test('read grants only tools that read, and no capabilities', () => {
   for (const id of WRITE_TOOLS) assert.equal(grant.includes(id), false, id)
   assert.equal(grant.some((id) => id.startsWith('capability:')), false)
   assert.ok(grant.includes('get_note') && grant.includes('search_memory') && grant.includes('read_file'))
+  assert.ok(grant.includes('list_tasks') && grant.includes('get_task'))
+  assert.equal(grant.includes('create_task'), false)
+})
+
+test('write access adds the complete task tool group', () => {
+  const grant = new Set(mcpToolGrantFor('write'))
+  for (const id of ['list_tasks', 'get_task', 'create_task', 'update_task', 'comment_on_task', 'archive_task', 'restore_task']) {
+    assert.ok(grant.has(id), `${id} missing from write access`)
+  }
 })
 
 test('levels only widen, and no level grants a computer', () => {

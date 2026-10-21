@@ -18,8 +18,8 @@ export const MCP_ACCESS_LABEL: Record<McpAccessLevel, string> = {
 }
 
 export const MCP_ACCESS_DESCRIPTION: Record<McpAccessLevel, string> = {
-  read: 'Search and read your memory, knowledge, files, and notes. Nothing is changed or spent.',
-  write: 'Read, plus create and edit notes, files, memory, and skills, and search the web.',
+  read: 'Search and read your memory, knowledge, files, notes, and tasks. Nothing is changed or spent.',
+  write: 'Read, plus create and edit tasks, notes, files, memory, and skills, and search the web.',
   full: 'Write, plus automations, connected apps, your MCP servers, image and video generation, and the browser. Never agents or computers.',
 }
 
@@ -30,9 +30,10 @@ const READ_TOOL_IDS = [
   'list_notes', 'get_note',
   'list_skills',
   'list_automations',
+  'list_tasks', 'get_task',
 ] as const
 
-const WRITE_GROUP_IDS = ['memory', 'knowledge', 'files', 'notes', 'skills', 'web_search'] as const
+const WRITE_GROUP_IDS = ['memory', 'knowledge', 'files', 'notes', 'skills', 'web_search', 'tasks'] as const
 
 /** Never offered to an outside app: it has its own machine, and these need an Overlay conversation to act on. */
 export const MCP_EXTERNAL_WITHHELD_TOOL_IDS: readonly string[] = [

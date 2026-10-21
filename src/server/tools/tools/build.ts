@@ -15,6 +15,18 @@ import {
   executeUpdateNote,
 } from './notes-executes'
 import { executeBrowserRunTask } from './browser-executes'
+import {
+  executeArchiveTask,
+  executeCommentOnTask,
+  executeCreateTask,
+  executeGetTask,
+  executeListTasks,
+  executeRestoreTask,
+  executeUpdateTask,
+  TASK_CONTEXT_TYPES,
+  TASK_DATE_PATTERN,
+  TASK_STATUS_VALUES,
+} from './work-executes'
 import { executeListChats, executeReadChat } from './chats-executes'
 import {
   executeComputerExec,
@@ -966,6 +978,109 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
       },
     })
     }
+
+  const taskIdSchema = z.string().min(1).describe('Task id from list_tasks or get_task')
+  const taskStatusSchema = z.enum(TASK_STATUS_VALUES)
+  const taskPrioritySchema = z.enum(['low', 'medium', 'high'])
+  const taskDateSchema = z.string().regex(TASK_DATE_PATTERN, 'Use YYYY-MM-DD')
+  const taskContextSchema = z.array(z.object({
+    type: z.enum(TASK_CONTEXT_TYPES),
+    id: z.string(),
+    label: z.string(),
+  }).strict()).max(50)
+  const taskDoneWhenSchema = z.array(z.object({
+    text: z.string(),
+    checked: z.boolean(),
+  }).strict()).max(50)
+
+  if (shouldExposeTool('list_tasks')) {
+    tools.list_tasks = tool({
+      description: 'List tasks in Work. Filter by scope, status, assignee, title text, and completion.',
+      inputSchema: z.object({
+        scope: z.enum(['personal', 'workspace']).optional(),
+        status: z.union([taskStatusSchema, z.array(taskStatusSchema).min(1)]).optional(),
+        assignee: z.string().optional(),
+        query: z.string().optional(),
+        includeDone: z.boolean().optional(),
+        limit: z.number().int().min(1).max(200).optional(),
+      }).strict(),
+      execute: async (input) => { assertToolAllowed('list_tasks'); return executeListTasks(options, input) },
+    })
+  }
+  if (shouldExposeTool('get_task')) {
+    tools.get_task = tool({
+      description: 'Get a task and its latest activity from Work.',
+      inputSchema: z.object({ taskId: taskIdSchema }).strict(),
+      execute: async (input) => { assertToolAllowed('get_task'); return executeGetTask(options, input) },
+    })
+  }
+  if (shouldExposeTool('create_task')) {
+    tools.create_task = tool({
+      description: 'Create a task in Work. Assigning an agent does not start it.',
+      inputSchema: z.object({
+        title: z.string().min(1),
+        scope: z.enum(['personal', 'workspace']).optional(),
+        description: z.string().optional(),
+        status: taskStatusSchema.optional(),
+        priority: taskPrioritySchema.optional(),
+        assignee: z.string().optional(),
+        reviewer: z.string().optional(),
+        startDate: taskDateSchema.nullable().optional(),
+        dueDate: taskDateSchema.nullable().optional(),
+        parentId: z.string().optional(),
+        blockedBy: z.array(z.string()).max(50).optional(),
+        doneWhen: taskDoneWhenSchema.optional(),
+        context: taskContextSchema.optional(),
+        blocked: z.boolean().optional(),
+      }).strict(),
+      execute: async (input) => { assertToolAllowed('create_task'); return executeCreateTask(options, input) },
+    })
+  }
+  if (shouldExposeTool('update_task')) {
+    tools.update_task = tool({
+      description: 'Update task fields in Work. Include the revision from get_task to avoid overwriting newer changes.',
+      inputSchema: z.object({
+        taskId: taskIdSchema,
+        revision: z.string().optional(),
+        scope: z.enum(['personal', 'workspace']).optional(),
+        title: z.string().optional(),
+        description: z.string().nullable().optional(),
+        status: taskStatusSchema.optional(),
+        blocked: z.boolean().optional(),
+        priority: taskPrioritySchema.optional(),
+        assignee: z.string().nullable().optional(),
+        reviewer: z.string().nullable().optional(),
+        startDate: taskDateSchema.nullable().optional(),
+        dueDate: taskDateSchema.nullable().optional(),
+        parentId: z.string().nullable().optional(),
+        blockedBy: z.array(z.string()).max(50).optional(),
+        doneWhen: taskDoneWhenSchema.optional(),
+        context: taskContextSchema.optional(),
+      }).strict(),
+      execute: async (input) => { assertToolAllowed('update_task'); return executeUpdateTask(options, input) },
+    })
+  }
+  if (shouldExposeTool('comment_on_task')) {
+    tools.comment_on_task = tool({
+      description: 'Add a comment to a task in Work.',
+      inputSchema: z.object({ taskId: taskIdSchema, body: z.string().min(1) }).strict(),
+      execute: async (input) => { assertToolAllowed('comment_on_task'); return executeCommentOnTask(options, input) },
+    })
+  }
+  if (shouldExposeTool('archive_task')) {
+    tools.archive_task = tool({
+      description: 'Archive a task in Work.',
+      inputSchema: z.object({ taskId: taskIdSchema }).strict(),
+      execute: async (input) => { assertToolAllowed('archive_task'); return executeArchiveTask(options, input) },
+    })
+  }
+  if (shouldExposeTool('restore_task')) {
+    tools.restore_task = tool({
+      description: 'Restore an archived task in Work.',
+      inputSchema: z.object({ taskId: taskIdSchema }).strict(),
+      execute: async (input) => { assertToolAllowed('restore_task'); return executeRestoreTask(options, input) },
+    })
+  }
 
   // ── Image & Video generation tools ─────────────────────────────────────────
 

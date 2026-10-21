@@ -68,6 +68,9 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       userId: context.auth.userId,
       workspaceId: context.workspace.workspace.id,
       serverSecret: getInternalApiSecret(),
+      ...(resource === 'work' && context.auth.authType === 'service' && typeof body.actingAgentPrincipalId === 'string'
+        ? { actingAgentPrincipalId: body.actingAgentPrincipalId }
+        : {}),
       ...(action === 'move' ? { to } : {}),
     }, { throwOnError: true })
     if (!outcome) return NextResponse.json({ error: 'Failed to update' }, { status: 500 })

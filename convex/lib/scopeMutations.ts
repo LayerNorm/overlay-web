@@ -42,7 +42,7 @@ export function scopeMutations(
     /** Ids of the rows that belong under this one (a folder's contents), moved, archived, and restored with it. */
     descendants?: (db: unknown, id: string) => Promise<string[]>
     /** Runs after a move, archive, or restore was written (an activity log, for example). */
-    afterApply?: (ctx: unknown, change: { action: 'scope' | 'archived' | 'restored'; id: string; row: ScopedDoc; userId: string; to?: 'personal' | 'workspace'; moved?: string[] }) => Promise<void>
+    afterApply?: (ctx: unknown, change: { action: 'scope' | 'archived' | 'restored'; id: string; row: ScopedDoc; userId: string; actingAgentPrincipalId?: string; to?: 'personal' | 'workspace'; moved?: string[] }) => Promise<void>
   },
 ) {
   const common = {
@@ -51,6 +51,7 @@ export function scopeMutations(
     workspaceId: v.optional(v.string()),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
+    actingAgentPrincipalId: v.optional(v.string()),
   }
 
   /** The row, only if it exists, is in the workspace being asked about, and the caller can read it. */
@@ -77,7 +78,7 @@ export function scopeMutations(
         const child = await db.get(childId)
         if (child && !child.archivedAt && child.userId === row?.userId) { await db.patch(childId, plan.patch); moved.push(childId) }
       }
-      if (row) await options?.afterApply?.(ctx, { action: 'scope', id, row, userId: args.userId, to: args.to, moved })
+      if (row) await options?.afterApply?.(ctx, { action: 'scope', id, row, userId: args.userId, actingAgentPrincipalId: args.actingAgentPrincipalId, to: args.to, moved })
       return { ok: true }
     },
   })
@@ -96,7 +97,7 @@ export function scopeMutations(
           await db.patch(childId, { archivedAt: plan.patch.archivedAt, archivedBy: plan.patch.archivedBy, archivedFromScope: rowScopeOf(child), ...(options?.onArchive ?? {}) })
         }
       }
-      if (row) await options?.afterApply?.(ctx, { action: 'archived', id, row, userId: args.userId })
+      if (row) await options?.afterApply?.(ctx, { action: 'archived', id, row, userId: args.userId, actingAgentPrincipalId: args.actingAgentPrincipalId })
       return { ok: true }
     },
   })
@@ -117,7 +118,7 @@ export function scopeMutations(
           await db.patch(childId, { scope: child.archivedFromScope ?? child.scope ?? 'personal', archivedAt: undefined, archivedBy: undefined, archivedFromScope: undefined })
         }
       }
-      if (row) await options?.afterApply?.(ctx, { action: 'restored', id, row, userId: args.userId })
+      if (row) await options?.afterApply?.(ctx, { action: 'restored', id, row, userId: args.userId, actingAgentPrincipalId: args.actingAgentPrincipalId })
       return { ok: true }
     },
   })

@@ -28,9 +28,9 @@ function request(path: string, init: { method?: string; body?: unknown } = {}) {
   })
 }
 
-function context(params: Record<string, string> = {}, parsedJson: Record<string, unknown> = {}): AppApiRouteContext {
+function context(params: Record<string, string> = {}, parsedJson: Record<string, unknown> = {}, authType: 'session' | 'service' = 'session'): AppApiRouteContext {
   return {
-    auth: { userId: 'user_1', accessToken: 'token', authType: 'session' },
+    auth: { userId: 'user_1', accessToken: 'token', authType },
     capabilities: deriveOverlayCapabilities(),
     params: Promise.resolve(params),
     parsedFormData: null,
@@ -74,6 +74,19 @@ function mockConvex(t: test.TestContext, handlers: Record<string, (args: Record<
   t.mock.method(convex, 'mutation', run)
   return calls
 }
+
+test('acting agent attribution is accepted only from service-authenticated calls', async (t) => {
+  const body = { title: 'Task', actingAgentPrincipalId: 'p-agent' }
+  const calls = mockConvex(t, { 'work/workItems:create': () => doc })
+  const route = await import('./route')
+  const browser = await route.POST(request('/api/v1/work', { method: 'POST', body }), context({}, body))
+  assert.equal(browser.status, 201)
+  assert.equal('actingAgentPrincipalId' in calls[0]!.args, false)
+
+  const service = await route.POST(request('/api/v1/work', { method: 'POST', body }), context({}, body, 'service'))
+  assert.equal(service.status, 201)
+  assert.equal(calls[1]!.args.actingAgentPrincipalId, 'p-agent')
+})
 
 test('GET /api/v1/work lists tasks as clean JSON for the active workspace and view', async (t) => {
   const calls = mockConvex(t, { 'work/workItems:list': () => [doc, { ...doc, _id: 'item_2', archivedAt: 5, archivedFromScope: 'personal', scope: 'workspace', description: '# Hi', blockedBy: ['item_1'] }] })

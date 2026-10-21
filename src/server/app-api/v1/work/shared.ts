@@ -21,6 +21,12 @@ export function actorOf(context: AppApiRouteContext) {
   return { userId: context.auth.userId, workspaceId: context.workspace.workspace.id }
 }
 
+export function actingAgentPrincipalIdFrom(context: AppApiRouteContext, body: unknown): string | undefined {
+  if (context.auth.authType !== 'service' || typeof body !== 'object' || body === null || Array.isArray(body)) return undefined
+  const value = (body as Record<string, unknown>).actingAgentPrincipalId
+  return typeof value === 'string' ? value : undefined
+}
+
 export async function workIdFrom(context: AppApiRouteContext): Promise<string> {
   const value = (await context.params).id
   const id = typeof value === 'string' ? value.trim() : ''

@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Add task tools for listing, reading, creating, updating, commenting on, archiving, and restoring Work tasks, with agent activity attribution.
+
 - Let people who left sign-up before verifying finish from sign-in. Signing in with the right password for an unverified account now opens the code screen with Resend, then signs in once the code is accepted, instead of linking to a missing `/auth/verify-email` page. Sign-in and sign-up also show a plain fallback message instead of crashing when an error response is not text.
 
 - Add account-level workspace discovery, freeform workspace creation and invitation entry before onboarding. Suggested answers fill an editable composer in main chat and agent conversations without submitting automatically. New owners get a team question; invited members get a shorter setup. Restore profile drafts on refresh and remove the tour target border.
