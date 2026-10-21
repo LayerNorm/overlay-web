@@ -198,6 +198,7 @@ export type WorkspaceBillingSummaryResponse = {
     topUpBalance: number
   }
   subscription: WorkspaceBillingSubscription
+  storage?: { usedBytes: number; limitBytes: number }
   /**
    * What happens when the workspace's credit runs out: a hard stop (`enabled: false`, the default) or an automatic
    * top-up of `amountCents`, at most `monthlyLimitCents` per billing period.

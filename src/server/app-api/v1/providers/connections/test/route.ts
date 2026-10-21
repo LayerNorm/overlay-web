@@ -1,10 +1,12 @@
+import { randomUUID } from 'node:crypto'
+import { generateText } from 'ai'
 import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { createByokProviderFetch } from '@/server/ai/gateway/byok-provider-fetch'
 import { getGatewayLanguageCatalog } from '@/server/ai/gateway/gateway-catalog'
 import { validatePublicNetworkUrl } from '@/server/security/ssrf'
-import { getByokPreset } from '@overlay/llm-gateway'
+import { ByokGateway, getByokPreset } from '@overlay/llm-gateway'
 import {
   byokEndpointMatchesPreset,
   resolveByokEndpointForCreate,
@@ -13,6 +15,10 @@ import {
 import { overlayProviderDiscoveryModels } from '@/server/ai/gateway/overlay-provider-models'
 import { logger } from '@/server/observability/logger'
 import { summarizeErrorForLog } from '@/shared/security/safe-log'
+import {
+  sanitizeOpenCodeGoProbeError,
+  selectOpenCodeGoProbeModel,
+} from '@/server/ai/gateway/opencode-go-probe'
 
 const MAX_API_KEY_LENGTH = 16_384
 const MAX_DISCOVERY_BYTES = 1_000_000
@@ -204,7 +210,49 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         { status: 502 },
       )
     }
-    return NextResponse.json({ ok: true, models: normalizeDiscoveredModels(payload) })
+    const models = normalizeDiscoveredModels(payload)
+    if (preset.id === 'opencode-go') {
+      const probeModel = selectOpenCodeGoProbeModel(models)
+      if (!probeModel) {
+        return NextResponse.json(
+          {
+            ok: false,
+            models: [],
+            error: 'OpenCode Go did not return a chat-compatible model to test.',
+          },
+          { status: 502 },
+        )
+      }
+
+      try {
+        const gateway = new ByokGateway({
+          connection: { providerId: resolvedProviderId, endpoint: resolvedEndpoint },
+          apiKey: resolvedApiKey,
+          fetch: providerFetch,
+        })
+        const languageModel = await gateway.createLanguageModel(probeModel.id, {
+          sessionId: randomUUID(),
+        })
+        await generateText({
+          model: languageModel.implementation as never,
+          prompt: 'Reply with exactly OK.',
+          maxOutputTokens: 8,
+          maxRetries: 0,
+          abortSignal: AbortSignal.timeout(15_000),
+        })
+      } catch (error) {
+        const sanitizedError = sanitizeOpenCodeGoProbeError(error, resolvedApiKey)
+        logger.warn('[BYOK] OpenCode Go inference probe failed', {
+          providerId: resolvedProviderId,
+          error: sanitizedError,
+        })
+        return NextResponse.json(
+          { ok: false, models: [], error: sanitizedError },
+          { status: 502 },
+        )
+      }
+    }
+    return NextResponse.json({ ok: true, models })
   } catch (error) {
     logger.warn('[BYOK] Provider connection test failed', summarizeErrorForLog(error))
     return NextResponse.json(

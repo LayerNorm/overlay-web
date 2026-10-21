@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { X } from 'lucide-react'
 import { Toaster, toast, Button, IconButton } from '@overlay/ui/primitives'
 import { ARCHIVE_TOAST_EVENT, ARCHIVED_SETTINGS_HREF, type ArchiveToastDetail } from '@/shared/app/archive-toast'
+import { useAppSettings } from '@/components/providers/AppSettingsProvider'
 
 const VISIBLE_MS = 8000
 const ARCHIVE_TOAST_ID = 'archive-toast'
@@ -58,6 +59,8 @@ export function ArchiveToastContent({ detail, dismiss }: { detail: ArchiveToastD
  * Archived items no longer have a row in every sidebar, so this is how a person finds them again straight away.
  */
 export function ArchiveToastHost() {
+  const { settings } = useAppSettings()
+
   useEffect(() => {
     function onToast(event: Event) {
       const detail = (event as CustomEvent<ArchiveToastDetail>).detail
@@ -71,5 +74,5 @@ export function ArchiveToastHost() {
     return () => window.removeEventListener(ARCHIVE_TOAST_EVENT, onToast)
   }, [])
 
-  return <Toaster visibleToasts={3} />
+  return <Toaster theme={settings.theme} visibleToasts={3} />
 }

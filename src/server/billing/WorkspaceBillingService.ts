@@ -42,12 +42,19 @@ export class WorkspaceBillingService {
 
   async summary(args: { actorUserId: string; workspaceId: string }): Promise<WorkspaceBillingSummaryResponse> {
     const access = await this.deps.workspaces.resolveActiveWorkspace(args.actorUserId, args.workspaceId)
-    const account = await this.deps.repository.getWorkspaceBillingAccountByWorkspaceIdByServer({
-      workspaceId: access.workspace.id,
-    })
+    const [account, actorEntitlements] = await Promise.all([
+      this.deps.repository.getWorkspaceBillingAccountByWorkspaceIdByServer({
+        workspaceId: access.workspace.id,
+      }),
+      this.deps.repository.getEntitlementsByServer({ userId: args.actorUserId }),
+    ])
     const canManage = canManageWorkspace(access.membership.role)
     const canTopUp = await this.memberMayTopUp(access, args.actorUserId)
-    if (!account) return emptySummary(access.workspace.id, canManage, canTopUp)
+    const storage = {
+      usedBytes: actorEntitlements?.overlayStorageBytesUsed ?? 0,
+      limitBytes: actorEntitlements?.overlayStorageBytesLimit ?? 0,
+    }
+    if (!account) return emptySummary(access.workspace.id, canManage, canTopUp, storage)
     const [entitlements, subscription] = await Promise.all([
       this.deps.repository.getBillingAccountEntitlementsByServer({ billingAccountId: account.billingAccountId }),
       this.deps.repository.getBillingAccountSubscriptionByServer({ billingAccountId: account.billingAccountId }),
@@ -74,6 +81,7 @@ export class WorkspaceBillingService {
         ...(subscription?.status ? { status: subscription.status } : {}),
         ...(subscription?.currentPeriodEnd ? { currentPeriodEnd: subscription.currentPeriodEnd } : {}),
       },
+      storage,
       ...(subscription?.planKind === 'paid'
         ? {
             autoTopUp: autoTopUpSummary(subscription),
@@ -318,6 +326,7 @@ function emptySummary(
   workspaceId: string,
   canManage: boolean,
   canTopUp: boolean,
+  storage: { usedBytes: number; limitBytes: number },
 ): WorkspaceBillingSummaryResponse {
   return {
     workspaceId,
@@ -333,5 +342,6 @@ function emptySummary(
       topUpBalance: 0,
     },
     subscription: { planKind: 'free', planAmountCents: 0 },
+    storage,
   }
 }
