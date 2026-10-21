@@ -14,7 +14,7 @@ export type OrbVariant = 'metal' | 'glow'
 
 export type OrbProps = {
   variant?: OrbVariant
-  /** Base hex color for the `glow` variant (e.g. an agent's avatarColor). */
+  /** Base hex color for the `glow` variant. Not an agent identity: agents render as creatures (`AgentCreature`). */
   color?: string
   /** Diameter in px. The SVG scales losslessly. */
   size?: number

@@ -22,10 +22,10 @@ const FOOTER_COLUMNS: Array<{ title: string; links: FootLink[] }> = [
   {
     title: "Product",
     links: [
-      { label: "Agents", href: "/home#agents" },
-      { label: "Platforms", href: "/home#platforms" },
-      { label: "Computers", href: "/home#computers" },
-      { label: "Automations", href: "/home#automations" },
+      { label: "Agents", href: "/home#control-plane" },
+      { label: "Platforms", href: "/home#get-overlay" },
+      { label: "Computers", href: "/home#ai-employees" },
+      { label: "Automations", href: "/home#deploy" },
       { label: "Download", href: "/download" },
       { label: "Pricing", href: "/pricing" },
     ],
