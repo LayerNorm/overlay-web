@@ -7172,14 +7172,6 @@
                       "additionalProperties": false
                     }
                   },
-                  "multiModelSlotIndex": {
-                    "type": "integer",
-                    "minimum": 0
-                  },
-                  "multiModelTotal": {
-                    "type": "integer",
-                    "minimum": 1
-                  },
                   "reasoning": {
                     "type": "string",
                     "enum": [
@@ -7394,14 +7386,6 @@
                       ],
                       "additionalProperties": false
                     }
-                  },
-                  "multiModelSlotIndex": {
-                    "type": "integer",
-                    "minimum": 0
-                  },
-                  "multiModelTotal": {
-                    "type": "integer",
-                    "minimum": 1
                   },
                   "reasoning": {
                     "type": "string",

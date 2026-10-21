@@ -146,14 +146,7 @@ function WebTextFixture({
           assistantBlocks: scenario.assistantBlocks,
         },
       ];
-  const [requestedSelectedTab, setSelectedTab] = useState(
-    scenario.selectedResponseIndex ?? 0,
-  );
-  const selectedTab = Math.min(
-    requestedSelectedTab,
-    responseVariants.length - 1,
-  );
-  const selectedResponse = responseVariants[selectedTab]!;
+  const selectedResponse = responseVariants[0]!;
 
   return (
     <ChatExchange
@@ -172,10 +165,6 @@ function WebTextFixture({
       isStreaming={scenario.isStreaming}
       isTextStreaming={scenario.isTextStreaming}
       errorMessage={scenario.errorMessage}
-      exchModelList={responseVariants.map((response) => response.modelId)}
-      selectedTab={selectedTab}
-      onTabSelect={setSelectedTab}
-      isLoadingTabs={false}
       responseInProgress={scenario.responseInProgress}
       status={scenario.errorMessage
         ? 'error'
@@ -202,10 +191,6 @@ function WebTextFixture({
       onOpenFilePreview={() => undefined}
       onOpenAttachmentPreview={() => undefined}
       onContinue={scenario.interrupted ? () => undefined : undefined}
-      getModelDisplayName={(modelId) =>
-        responseVariants.find((response) => response.modelId === modelId)
-          ?.modelName ?? modelId
-      }
       generatedUiConnectorActions={{
         openEmailDraft: () => undefined,
         openExternalUrl: () => undefined,

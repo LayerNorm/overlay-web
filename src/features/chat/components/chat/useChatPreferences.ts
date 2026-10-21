@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import type { AskModelSelectionMode } from '../chat-interface/types'
 import type { GenerationMode, VideoSubMode } from '@/shared/ai/gateway/model-types'
 import type { ReasoningLevel } from '@overlay/chat-core'
 import type { PersonalChatMode } from '@overlay/ui/chat'
@@ -12,29 +11,28 @@ import {
 } from '@/shared/ai/gateway/model-types'
 import { IMAGE_MODELS, VIDEO_MODELS } from '@/shared/ai/gateway/model-data'
 import {
+  normalizeChatModelSelection,
   readStoredReasoningLevel,
   writeStoredReasoningLevel,
 } from '@/shared/chat/chat-model-prefs'
-import { safeSetLocalStorage } from './model-selection-utils'
+import { normalizeStoredModelId, safeSetLocalStorage } from './model-selection-utils'
 import {
   CHAT_MODEL_KEY,
   ACT_MODEL_KEY,
-  CHAT_ASK_MODEL_SELECTION_MODE_KEY,
 } from '@/shared/chat/chat-model-prefs'
 import {
   CHAT_GEN_MODE_KEY,
-  IMAGE_MODEL_SELECTION_MODE_KEY,
-  SELECTED_IMAGE_MODELS_KEY,
-  SELECTED_VIDEO_MODELS_KEY,
+  IMAGE_MODEL_KEY,
+  VIDEO_MODEL_KEY,
+  LEGACY_SELECTED_IMAGE_MODELS_KEY,
+  LEGACY_SELECTED_VIDEO_MODELS_KEY,
   PERSONAL_CHAT_MODE_KEY,
-  VIDEO_MODEL_SELECTION_MODE_KEY,
   VIDEO_SUB_MODE_KEY,
 } from '../chat-interface/constants'
 
 export function useChatPreferences() {
   const [selectedActModel, setSelectedActModel] = useState<string>(DEFAULT_MODEL_ID)
   const [selectedModels, setSelectedModels] = useState<string[]>([DEFAULT_MODEL_ID])
-  const [askModelSelectionMode, setAskModelSelectionMode] = useState<AskModelSelectionMode>('single')
   const [chatPrefsHydrated, setChatPrefsHydrated] = useState(false)
   const [hasStoredTextModelSelection, setHasStoredTextModelSelection] = useState(false)
   const [generationMode, setGenerationMode] = useState<GenerationMode>('text')
@@ -42,8 +40,6 @@ export function useChatPreferences() {
   const [generationChip, setGenerationChip] = useState<'image' | 'video' | null>(null)
   const [selectedImageModels, setSelectedImageModels] = useState<string[]>([DEFAULT_IMAGE_MODEL_ID])
   const [selectedVideoModels, setSelectedVideoModels] = useState<string[]>([DEFAULT_VIDEO_MODEL_ID])
-  const [imageModelSelectionMode, setImageModelSelectionMode] = useState<AskModelSelectionMode>('single')
-  const [videoModelSelectionMode, setVideoModelSelectionMode] = useState<AskModelSelectionMode>('single')
   const [reasoning, setReasoning] = useState<ReasoningLevel | undefined>(undefined)
   const [videoSubMode, setVideoSubMode] = useState<VideoSubMode>('text-to-video')
   const lastGeneratedImageUrlRef = useRef<string | null>(null)
@@ -63,21 +59,17 @@ export function useChatPreferences() {
 
       // Restore last text chat model selection if present
       try {
-        const savedAskMode = localStorage.getItem(CHAT_ASK_MODEL_SELECTION_MODE_KEY)
-        if (savedAskMode === 'single' || savedAskMode === 'multiple') {
-          setAskModelSelectionMode(savedAskMode)
-        }
         const savedModelsRaw = localStorage.getItem(CHAT_MODEL_KEY)
         const savedAct = localStorage.getItem(ACT_MODEL_KEY)
         if (savedModelsRaw) {
-          const parsed = JSON.parse(savedModelsRaw) as unknown
-          if (Array.isArray(parsed) && parsed.length > 0 && parsed.every((id): id is string => typeof id === 'string')) {
-            setSelectedModels(parsed.slice(0, 4))
-            if (savedAct && typeof savedAct === 'string') {
-              setSelectedActModel(savedAct)
-            } else {
-              setSelectedActModel(parsed[0]!)
-            }
+          const parsed = parseStoredModelIds(savedModelsRaw)
+          if (parsed.length > 0) {
+            const normalized = normalizeChatModelSelection({
+              askModelIds: parsed,
+              actModelId: savedAct ?? undefined,
+            })
+            setSelectedModels(normalized.askModelIds)
+            setSelectedActModel(normalized.actModelId)
             setHasStoredTextModelSelection(true)
           }
         } else if (savedAct && typeof savedAct === 'string') {
@@ -89,43 +81,25 @@ export function useChatPreferences() {
         /* keep default */
       }
 
-      const imgMode = localStorage.getItem(IMAGE_MODEL_SELECTION_MODE_KEY)
-      if (imgMode === 'single' || imgMode === 'multiple') {
-        setImageModelSelectionMode(imgMode)
-      }
-      const vidMode = localStorage.getItem(VIDEO_MODEL_SELECTION_MODE_KEY)
-      if (vidMode === 'single' || vidMode === 'multiple') {
-        setVideoModelSelectionMode(vidMode)
-      }
       try {
-        const rawImg = localStorage.getItem(SELECTED_IMAGE_MODELS_KEY)
+        const rawImg = localStorage.getItem(IMAGE_MODEL_KEY) ?? localStorage.getItem(LEGACY_SELECTED_IMAGE_MODELS_KEY)
         if (rawImg) {
-          const parsed = JSON.parse(rawImg) as unknown
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            const allowed = new Set(IMAGE_MODELS.map((m) => m.id))
-            const next = parsed
-              .filter(
-                (id): id is string => typeof id === 'string' && allowed.has(id),
-              )
-              .slice(0, 4)
-            if (next.length > 0) setSelectedImageModels(next)
+          const parsed = normalizeStoredModelId(rawImg, IMAGE_MODELS.map((model) => model.id))
+          if (parsed) {
+            setSelectedImageModels([parsed])
+            safeSetLocalStorage(IMAGE_MODEL_KEY, parsed)
           }
         }
       } catch {
         /* keep default */
       }
       try {
-        const rawVid = localStorage.getItem(SELECTED_VIDEO_MODELS_KEY)
+        const rawVid = localStorage.getItem(VIDEO_MODEL_KEY) ?? localStorage.getItem(LEGACY_SELECTED_VIDEO_MODELS_KEY)
         if (rawVid) {
-          const parsed = JSON.parse(rawVid) as unknown
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            const allowed = new Set(VIDEO_MODELS.map((m) => m.id))
-            const next = parsed
-              .filter(
-                (id): id is string => typeof id === 'string' && allowed.has(id),
-              )
-              .slice(0, 4)
-            if (next.length > 0) setSelectedVideoModels(next)
+          const parsed = normalizeStoredModelId(rawVid, VIDEO_MODELS.map((model) => model.id))
+          if (parsed) {
+            setSelectedVideoModels([parsed])
+            safeSetLocalStorage(VIDEO_MODEL_KEY, parsed)
           }
         }
       } catch {
@@ -154,22 +128,19 @@ export function useChatPreferences() {
   // navigation and app restarts for the new/personal chat surface.
   useEffect(() => {
     try {
-      safeSetLocalStorage(CHAT_MODEL_KEY, JSON.stringify(selectedModels))
+      safeSetLocalStorage(CHAT_MODEL_KEY, selectedModels[0] ?? DEFAULT_MODEL_ID)
       safeSetLocalStorage(ACT_MODEL_KEY, selectedActModel)
-      safeSetLocalStorage(CHAT_ASK_MODEL_SELECTION_MODE_KEY, askModelSelectionMode)
       setHasStoredTextModelSelection(true)
     } catch {
       /* private browsing / blocked storage — ignore */
     }
-  }, [selectedModels, selectedActModel, askModelSelectionMode])
+  }, [selectedModels, selectedActModel])
 
   return {
     selectedActModel,
     setSelectedActModel,
     selectedModels,
     setSelectedModels,
-    askModelSelectionMode,
-    setAskModelSelectionMode,
     chatPrefsHydrated,
     hasStoredTextModelSelection,
     generationMode,
@@ -182,14 +153,21 @@ export function useChatPreferences() {
     setSelectedImageModels,
     selectedVideoModels,
     setSelectedVideoModels,
-    imageModelSelectionMode,
-    setImageModelSelectionMode,
-    videoModelSelectionMode,
-    setVideoModelSelectionMode,
     videoSubMode,
     setVideoSubMode,
     lastGeneratedImageUrlRef,
     reasoning,
     setReasoning: handleSetReasoning,
   }
+}
+
+function parseStoredModelIds(raw: string): string[] {
+  try {
+    const parsed = JSON.parse(raw) as unknown
+    if (typeof parsed === 'string') return [parsed]
+    if (Array.isArray(parsed)) return parsed.filter((value): value is string => typeof value === 'string')
+  } catch {
+    return [raw]
+  }
+  return []
 }

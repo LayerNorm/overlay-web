@@ -29,7 +29,6 @@ function buildInstructions(overrides: Partial<Parameters<typeof buildActAgentIns
     exposedMediaTools: [],
     hasPreloadedDocContext: false,
     indexedNote: '\nINDEXED_NOTE',
-    isMultiModelFollowUpSlot: false,
     memoryContext: '\nMEMORY_CONTEXT',
     mentionsContext: '\nMENTIONS_CONTEXT',
     paid: true,
@@ -58,18 +57,12 @@ test('buildActAgentInstructions preserves paid tool and context note composition
   assert.match(instructions, /MATH_RULES\n\nTABLE_RULES$/)
 })
 
-test('buildActAgentInstructions preserves execution, compare-slot, and free-tier branches', () => {
+test('buildActAgentInstructions preserves execution and free-tier branches', () => {
   const automationExecution = buildInstructions({
     automationExecution: true,
   })
   assert.match(automationExecution, /You are executing an existing saved automation\./)
   assert.doesNotMatch(automationExecution, /You are in Automate mode\./)
-
-  const compareSlot = buildInstructions({
-    isMultiModelFollowUpSlot: true,
-  })
-  assert.match(compareSlot, /^You are Overlay’s assistant in a parallel model-comparison run\./)
-  assert.match(compareSlot, /Composio and other third-party account action tools are not in your tool set/)
 
   const freeWithDocContext = buildInstructions({
     availableToolIds: ['save_memory', 'search_knowledge'],

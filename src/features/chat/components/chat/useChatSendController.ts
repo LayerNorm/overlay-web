@@ -19,7 +19,6 @@ import {
 } from '@/shared/chat/ttft-client-debug'
 import type { MentionInputHandle } from '../chat-interface/MentionInput'
 import type {
-  AskModelSelectionMode,
   AttachedImage,
   Conversation,
   ConversationRuntime,
@@ -55,7 +54,6 @@ export function useChatSendController({
   activeChatIdRef,
   activeChatTitle,
   applyUiStateToView,
-  askModelSelectionMode,
   attachedImages,
   authUser,
   automationIdParam,
@@ -124,7 +122,6 @@ export function useChatSendController({
   activeChatIdRef: MutableRefObject<string | null>
   activeChatTitle: string | null
   applyUiStateToView: (ui: ConversationUiState) => void
-  askModelSelectionMode: AskModelSelectionMode
   attachedImages: AttachedImage[]
   authUser: unknown
   automationIdParam: string | null
@@ -244,7 +241,6 @@ export function useChatSendController({
     return createNewChatForSend({
       activeChatIdRef,
       applyUiStateToView,
-      askModelSelectionMode,
       clearTransientComposerState,
           emptyRuntime: emptyRuntimeRef.current,
       ensureConversationRuntime,
@@ -271,7 +267,6 @@ export function useChatSendController({
   }, [
     activeChatIdRef,
     applyUiStateToView,
-    askModelSelectionMode,
     clearTransientComposerState,
       emptyRuntimeRef,
     ensureConversationRuntime,
@@ -320,7 +315,6 @@ export function useChatSendController({
     }
     const replyCtxSnapshot = replyContext
     const snapshot = buildSubmittedComposerSnapshot({
-      askModelSelectionMode,
       selectedModels,
       selectedActModel,
       activeChatTitle,
@@ -453,7 +447,6 @@ export function useChatSendController({
     activeChatIdRef,
     activeChatTitle,
     applyUiStateToView,
-    askModelSelectionMode,
     attachedImages,
     authUser,
     automationIdParam,

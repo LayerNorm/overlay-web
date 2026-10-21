@@ -26,9 +26,6 @@ export function useChatStopController({
   activeChatIdRef,
   actChat,
   chat0,
-  chat1,
-  chat2,
-  chat3,
   forceLiveSyncRender,
   getActiveRuntime,
   isActiveLoading,
@@ -44,9 +41,6 @@ export function useChatStopController({
   activeChatIdRef: MutableRefObject<string | null>
   actChat: ChatView
   chat0: ChatView
-  chat1: ChatView
-  chat2: ChatView
-  chat3: ChatView
   forceLiveSyncRender: () => void
   getActiveRuntime: () => ConversationRuntime
   isActiveLoading: boolean
@@ -85,9 +79,6 @@ export function useChatStopController({
     }
 
     chat0.setMessages([...runtime.askChats[0].messages] as UIMessage[])
-    if (activeAskChats[1]) chat1.setMessages([...runtime.askChats[1].messages] as UIMessage[])
-    if (activeAskChats[2]) chat2.setMessages([...runtime.askChats[2].messages] as UIMessage[])
-    if (activeAskChats[3]) chat3.setMessages([...runtime.askChats[3].messages] as UIMessage[])
     actChat.setMessages([...runtime.actChat.messages] as UIMessage[])
 
     if (idx >= 0) setInterruptedExchangeIdx(idx)
@@ -98,14 +89,15 @@ export function useChatStopController({
       const runtime = runtimesRef.current.get(chatId)
       if (!runtime) return
       const stillLoading =
-        runtime.askChats.some((chat) => chat.status === 'streaming' || chat.status === 'submitted') ||
+        runtime.askChats[0].status === 'streaming' ||
+        runtime.askChats[0].status === 'submitted' ||
         runtime.actChat.status === 'streaming' ||
         runtime.actChat.status === 'submitted'
       if (stillLoading) {
         const uiSnapshot = { ...runtime.ui }
-        const oldAskMessages = runtime.askChats.map((chat) => [...chat.messages])
+        const oldAskMessages = [[...runtime.askChats[0].messages]] as UIMessage[][]
         const oldActMessages = [...runtime.actChat.messages]
-        replaceConversationRuntime(chatId, uiSnapshot, oldAskMessages as UIMessage[][], oldActMessages as UIMessage[])
+        replaceConversationRuntime(chatId, uiSnapshot, oldAskMessages, oldActMessages as UIMessage[])
         forceLiveSyncRender()
       }
     }, 400)
@@ -115,9 +107,6 @@ export function useChatStopController({
     activeChatIdRef,
     actChat,
     chat0,
-    chat1,
-    chat2,
-    chat3,
     forceLiveSyncRender,
     getActiveRuntime,
     isActiveLoading,

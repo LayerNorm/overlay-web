@@ -105,7 +105,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
           contentType,
           parts: normalizedParts,
           modelId,
-          variantIndex: body.variantIndex,
+          variantIndex: 0,
           ...(body.replyToTurnId?.trim()
             ? { replyToTurnId: body.replyToTurnId.trim(), replySnippet: body.replySnippet?.trim() }
             : {}),

@@ -7,7 +7,6 @@ import { dispatchChatCreated } from '@/shared/chat/chat-title'
 import { upsertCachedChat } from '@/shared/chat/chat-list-cache'
 import { DEFAULT_CHAT_TITLE } from '../chat-interface/constants'
 import type {
-  AskModelSelectionMode,
   Conversation,
   ConversationRuntime,
   ConversationUiState,
@@ -25,14 +24,12 @@ export type CreateNewChatOptions = {
     runtime: ConversationRuntime
     selectedModels: string[]
     selectedActModel: string
-    askModelSelectionMode: AskModelSelectionMode
   }) => void
 }
 
 export async function createNewChatForSend({
   activeChatIdRef,
   applyUiStateToView,
-  askModelSelectionMode,
   clearTransientComposerState,
   emptyRuntime,
   ensureConversationRuntime,
@@ -58,7 +55,6 @@ export async function createNewChatForSend({
 }: {
   activeChatIdRef: MutableRefObject<string | null>
   applyUiStateToView: (ui: ConversationUiState) => void
-  askModelSelectionMode: AskModelSelectionMode
   clearTransientComposerState: () => void
   emptyRuntime: ConversationRuntime
   ensureConversationRuntime: EnsureConversationRuntime
@@ -88,11 +84,10 @@ export async function createNewChatForSend({
   resetComposerToolIds(false)
   const initialTitle = options.title ?? (mode === 'automate' ? 'New automation' : DEFAULT_CHAT_TITLE)
   const normalizedInitialSelection = normalizeChatModelSelection({
-    askModelIds: askModelSelectionMode === 'single' ? [selectedActModel] : selectedModels.slice(0, 4),
+    askModelIds: selectedModels.slice(0, 1),
     actModelId: selectedActModel,
   })
   const initialSelectedModels = normalizedInitialSelection.askModelIds
-  const initialAskModelSelectionMode: AskModelSelectionMode = initialSelectedModels.length > 1 ? 'multiple' : 'single'
   const trimmedClientId = options.clientId?.trim()
   const res = await overlayAppClient.conversations.createResponse(
     {
@@ -138,14 +133,12 @@ export async function createNewChatForSend({
   const runtime = ensureConversationRuntime(data.id, {
     selectedActModel: normalizedInitialSelection.actModelId,
     selectedModels: initialSelectedModels,
-    askModelSelectionMode: initialAskModelSelectionMode,
     activeChatTitle: initialTitle,
     isFirstMessage: true,
   })
   resetRuntimeState(runtime, {
     selectedActModel: normalizedInitialSelection.actModelId,
     selectedModels: initialSelectedModels,
-    askModelSelectionMode: initialAskModelSelectionMode,
     activeChatTitle: initialTitle,
     isFirstMessage: true,
   })
@@ -154,7 +147,6 @@ export async function createNewChatForSend({
     runtime,
     selectedModels: initialSelectedModels,
     selectedActModel: normalizedInitialSelection.actModelId,
-    askModelSelectionMode: initialAskModelSelectionMode,
   })
   runtime.hydrated = true
   if (pendingScrollTurnIdRef.current && !pendingScrollChatIdRef.current) {

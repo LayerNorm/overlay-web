@@ -55,8 +55,9 @@ export function MediaExchange({
   onOpenAttachmentPreview,
   actionVisibility = 'hover',
 }: MediaExchangeProps) {
-  const isMulti = modelIds.length > 1
-  const stillGenerating = results.some((result) => !result || result.status === 'generating')
+  const modelId = modelIds[0] ?? ''
+  const result = results[0]
+  const stillGenerating = !result || result.status === 'generating'
 
   return (
     <div
@@ -78,25 +79,13 @@ export function MediaExchange({
         onOpenAttachmentPreview={onOpenAttachmentPreview}
       />
       <div
-        className={`min-w-0 w-full ${isMulti ? 'grid grid-cols-1 gap-2 sm:grid-cols-2' : 'flex flex-col gap-1.5 items-start'} ${
-          stillGenerating && !isMulti ? (kind === 'video' ? 'min-h-40' : 'min-h-52') : ''
-        }`}
+        className={`flex min-w-0 flex-col items-start gap-1.5 ${stillGenerating ? (kind === 'video' ? 'min-h-40' : 'min-h-52') : ''}`}
       >
-        {modelIds.map((modelId, index) => (
-          // Index disambiguates duplicate modelIds in a multi-generation run.
-          // react-doctor-disable-next-line react-doctor/no-array-index-as-key
-          <div
-            key={`${modelId}-${index}`}
-            className={`min-w-0 ${isMulti ? 'w-full' : 'flex flex-col gap-1.5 self-start'}`}
-          >
-            <MediaSlotOutput
-              genType={kind}
-              isMulti={isMulti}
-              modelName={getModelDisplayName(modelId)}
-              result={results[index]}
-            />
-          </div>
-        ))}
+        <MediaSlotOutput
+          genType={kind}
+          modelName={getModelDisplayName(modelId)}
+          result={result}
+        />
       </div>
       {!stillGenerating && (
         <div className={`${actionVisibility === 'always' ? 'message-appear' : ''} flex items-center gap-1 px-1 pt-0.5 ${
@@ -123,7 +112,7 @@ export function MediaExchange({
           >
             <Reply size={14} strokeWidth={1.75} />
           </TranscriptIconAction>
-          {results.some((result) => result.status === 'failed') && onRetry ? (
+          {result?.status === 'failed' && onRetry ? (
             <TranscriptIconAction label="Retry generation" disabled={isExiting} onClick={onRetry}>
               <RotateCw size={14} strokeWidth={1.75} />
             </TranscriptIconAction>
