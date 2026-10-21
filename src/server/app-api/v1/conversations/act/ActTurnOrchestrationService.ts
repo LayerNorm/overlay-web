@@ -1271,6 +1271,7 @@ export async function executeActTurn(
         // remaining paid entries are deliberate last resorts, so they must
         // reach the gateway rather than being swapped back to a free model.
         allowLowBalanceFallback: !gatewayCreditLow,
+        sessionId: cid ?? undefined,
       })
     }
 

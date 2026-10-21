@@ -38,7 +38,10 @@ export async function getLanguageModel(
   modelId: string,
   accessToken?: string,
   userId?: string,
-  options?: { allowLowBalanceFallback?: boolean },
+  options?: {
+    allowLowBalanceFallback?: boolean
+    sessionId?: string
+  },
 ): Promise<LanguageModel> {
   const parsed = parseByokModelId(modelId)
   if (isByokModelId(modelId) && !parsed) throw new Error('Invalid BYOK model id.')
@@ -57,7 +60,10 @@ export async function getLanguageModel(
       apiKey,
       fetch: createByokProviderFetch(connection.endpoint),
     })
-    const model = await gateway.createLanguageModel(rawModelId, { accessToken })
+    const model = await gateway.createLanguageModel(rawModelId, {
+      accessToken,
+      sessionId: options?.sessionId,
+    })
     return model.implementation as LanguageModel
   }
 
