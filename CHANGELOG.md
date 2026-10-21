@@ -7,6 +7,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 - Align Work quick-add with the sidebar scope, keep workspace storage quotas visible, and make sidebar create actions permanent with neutral placeholders, toasts, and centered loading marks.
 - Announce stopped and failed Work runs only when their status transitions live to a terminal state.
 
+- Add OpenCode Go to Settings > Providers. Chat, Responses, and Messages model protocols use the OpenCode Go subscription endpoint with stable conversation sessions.
+
 - Match file and automation sidebar rows to chats with shared 32px rows, 14px text and 16px icons, reduce agent names to the conversation text size, and give every shared chat composer a subtle theme-aware outline.
 
 - Pin `follow-redirects` to 1.16.1 to clear two high-severity advisories (GHSA-q3jh-wrc6-jgq8, GHSA-8r9p-f939-6h3c) that block the production dependency audit.

@@ -104,6 +104,7 @@ async function callModelStep(args: {
   modelId: string
   providerOptions?: Record<string, Record<string, unknown>>
   toolDefinitions: AutomationAgentTurnPlan['toolDefinitions']
+  conversationId: string
   userId: string
 }): Promise<AutomationModelCallResult> {
   'use step'
@@ -210,6 +211,7 @@ export async function runDurableAgentTurn(
         modelId: resolvedPlan.effectiveModelId,
         providerOptions: resolvedPlan.providerOptions,
         toolDefinitions: resolvedPlan.toolDefinitions,
+        conversationId: resolvedPlan.conversationId,
         userId: input.userId,
       })
 
