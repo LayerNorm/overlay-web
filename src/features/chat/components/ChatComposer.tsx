@@ -25,7 +25,7 @@ import { AgentSlashMenu } from './chat-interface/AgentSlashMenu'
 import { useAgentSlashMenu } from './chat-interface/useAgentSlashMenu'
 import { ReplyContextBar } from './chat-interface/ReplyContextBar'
 import { ChatEmptyHero, ChatEmptyState } from './ChatEmptyState'
-import { AttachmentPreviewTray, ComposerAlerts } from './ChatComposerAttachments'
+import { AttachmentPreviewTray, useComposerAlertToasts } from './ChatComposerAttachments'
 import type { ChatToolRequestId } from '@/shared/chat/tool-requests'
 import { toComposerViewProps, type ChatComposerProps, type ComposerViewProps } from './ChatComposerTypes'
 
@@ -97,6 +97,7 @@ const TOOL_REQUEST_BY_ID = new Map(TOOL_REQUEST_OPTIONS.map((tool) => [tool.id, 
 
 export function ChatComposer(props: ChatComposerProps) {
   const viewProps = toComposerViewProps(props)
+  useComposerAlertToasts(viewProps.composerNotice ?? null, viewProps.attachmentError ?? null)
   const disabledSend =
     !viewProps.hasComposerText &&
     viewProps.attachedImages.length === 0 &&
@@ -116,7 +117,6 @@ export function ChatComposer(props: ChatComposerProps) {
           }`}
         >
           {viewProps.mode === 'chat' && !viewProps.showCenteredEmptyChat ? null : null}
-          <ComposerAlerts attachmentError={null} composerNotice={viewProps.composerNotice} />
           {viewProps.beforeComposerContent}
           {viewProps.billingPromptContent}
           {viewProps.isSendBlocked && !viewProps.isActiveLoading && viewProps.blockedComposerContent ? (
@@ -168,7 +168,6 @@ function ComposerInputCard(props: ComposerViewProps & { disabledSend: boolean })
           />
         ) : null}
         <AttachmentPreviewTray {...props} />
-        <ComposerAlerts attachmentError={props.attachmentError} composerNotice={null} />
         {/* eslint-disable-next-line no-restricted-syntax -- overlay:raw-control: Native file picker exposes the browser FileList. */}
         <input ref={props.fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={(event) => event.target.files && props.onAddImages(event.target.files)} />
         {/* eslint-disable-next-line no-restricted-syntax -- overlay:raw-control: Native file picker exposes the browser FileList. */}

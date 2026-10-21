@@ -122,7 +122,7 @@ export function PageSections({
                     type="button"
                     aria-label={sectionAction.label}
                     onClick={runAction}
-                    className="size-7 shrink-0 rounded-md text-(--muted) opacity-0 hover:bg-(--surface-subtle) hover:text-(--foreground) focus-visible:opacity-100 group-hover/section:opacity-100"
+                    className="size-7 shrink-0 rounded-md text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)"
                   >
                     <Plus size={14} aria-hidden />
                   </Button>

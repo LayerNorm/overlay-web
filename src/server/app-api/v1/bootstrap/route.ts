@@ -63,10 +63,17 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
       workspaceId: context.workspace.workspace.id,
     })
     const entitlementsPromise: Promise<Entitlements | null> = billingPayer.scope === 'workspace'
-      ? serverContext.appData.repositories.billing.getBillingAccountEntitlementsByServer({
-          billingAccountId: billingPayer.billingAccountId,
-        }).then((value) => value
-          ? toAppEntitlements(value)
+      ? Promise.all([
+          serverContext.appData.repositories.billing.getBillingAccountEntitlementsByServer({
+            billingAccountId: billingPayer.billingAccountId,
+          }),
+          serverContext.appData.repositories.billing.getEntitlementsByServer({ userId: auth.userId }),
+        ]).then(([accountEntitlements, userEntitlements]) => accountEntitlements
+          ? toAppEntitlements({
+              ...accountEntitlements,
+              overlayStorageBytesUsed: userEntitlements?.overlayStorageBytesUsed ?? accountEntitlements.overlayStorageBytesUsed,
+              overlayStorageBytesLimit: userEntitlements?.overlayStorageBytesLimit ?? accountEntitlements.overlayStorageBytesLimit,
+            })
           : null)
       : convex.query<Entitlements | null>('platform/usage:getEntitlementsByServer', {
           userId: auth.userId,

@@ -29,7 +29,7 @@ export const WorkQuickAdd = forwardRef<WorkQuickAddHandle, { disabled?: boolean 
   }
 
   return (
-    <label className="mx-6 mb-1 mt-3.5 flex h-10 shrink-0 items-center gap-3 rounded-[10px] border border-dashed border-(--border) px-3.5 text-(--muted-light) transition-colors focus-within:border-solid focus-within:border-(--muted-light) focus-within:bg-(--surface-elevated) focus-within:text-(--foreground)">
+    <label className="mx-6 mb-1 mt-0 flex h-8 shrink-0 items-center gap-3 rounded-[10px] border border-dashed border-(--border) px-3.5 text-(--muted-light) transition-colors focus-within:border-solid focus-within:border-(--muted-light) focus-within:bg-(--surface-elevated) focus-within:text-(--foreground)">
       <Plus size={15} strokeWidth={1.75} className="shrink-0" aria-hidden />
       <Input
         ref={input}

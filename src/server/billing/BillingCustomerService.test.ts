@@ -99,7 +99,11 @@ test('BillingCustomerService.getAppSubscription reads a workspace billing accoun
       }
     },
     async getEntitlementsByServer() {
-      throw new Error('personal entitlements must not be read for a workspace payer')
+      return {
+        ...paidEntitlements,
+        overlayStorageBytesUsed: 420,
+        overlayStorageBytesLimit: 25_000_000,
+      }
     },
   })
   const service = new BillingCustomerService({ repository })
@@ -113,6 +117,8 @@ test('BillingCustomerService.getAppSubscription reads a workspace billing accoun
   assert.equal(response.planKind, 'paid')
   assert.equal(response.planAmountCents, 800)
   assert.equal(response.budgetRemainingCents, 300)
+  assert.equal(response.overlayStorageBytesUsed, 420)
+  assert.equal(response.overlayStorageBytesLimit, 25_000_000)
 })
 
 test('BillingCustomerService.getBillingSettings: an account has no plan or automatic top-ups', () => {
