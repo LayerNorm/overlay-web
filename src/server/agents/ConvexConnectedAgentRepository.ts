@@ -174,7 +174,7 @@ export class ConvexConnectedAgentRepository implements ConnectedAgentRepository 
     return mutation<boolean>('finishSandboxLeaseClaimByServer', input)
   }
   claimComputerMaintenance(input: Parameters<NonNullable<ConnectedAgentRepository['claimComputerMaintenance']>>[0]) {
-    return mutation<ComputerMaintenanceClaim | null>('claimComputerMaintenanceByServer', input)
+    return mutationNullable<ComputerMaintenanceClaim | null>('claimComputerMaintenanceByServer', input)
   }
   transitionComputerLifecycle(input: Parameters<NonNullable<ConnectedAgentRepository['transitionComputerLifecycle']>>[0]) {
     return mutation<boolean>('transitionComputerLifecycleByServer', input)

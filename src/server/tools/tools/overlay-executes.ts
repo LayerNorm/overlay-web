@@ -921,6 +921,13 @@ function computerErrorResult(err: unknown, fallback: string) {
   if (err instanceof ComputerServiceError) {
     return { success: false as const, error: err.message, code: err.code }
   }
+  if (err instanceof Error && err.message === 'COMPUTER_MAINTENANCE_IN_PROGRESS') {
+    return {
+      success: false as const,
+      error: 'computer_busy',
+      message: 'The Computer is busy with another action. Wait a moment and try again.',
+    }
+  }
   if (err instanceof ComputerDesktopDriverError) {
     return {
       success: false as const,
@@ -1224,7 +1231,7 @@ export type ComputerTerminalAction =
   | { action: 'list' }
 
 const COMPUTER_ACTION_APPROVAL_MESSAGE =
-  'Typing and key presses on the Computer need your approval. Switch this chat to Work mode, or ask the user to do it in Open desktop.'
+  'This Computer action needs your approval. Switch this chat to Work mode, or ask the user to do it in Open desktop.'
 
 const COMPUTER_USER_IN_CONTROL_RESULT = {
   success: false as const,

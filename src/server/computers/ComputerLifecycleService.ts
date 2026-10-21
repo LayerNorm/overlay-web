@@ -303,7 +303,7 @@ export class ComputerLifecycleService {
     computer = await this.dependencies.repository.get(computer.id) ?? computer
     lease = await this.dependencies.billing.lease(computer)
     if (!computer.providerRef) throw new Error('COMPUTER_UNAVAILABLE')
-    const wakeToken = await this.requireMaintenance(computer, 'wake', this.newId(), false, args.actorUserId)
+    const wakeToken = await this.requireMaintenance(computer, 'wake', this.newId(), false, args.actorUserId, true)
     const runtime = this.requireRuntime(computer.provider)
     const instance = await runtime.reconnect(computer.providerRef, { resume: false })
     const activityToken = this.newId()
@@ -484,7 +484,14 @@ export class ComputerLifecycleService {
   }
 
 
-  private async requireMaintenance(computer: Computer, kind: 'provision' | 'wake', token: string, force: boolean, actorUserId?: string): Promise<string> {
+  private async requireMaintenance(
+    computer: Computer,
+    kind: 'provision' | 'wake',
+    token: string,
+    force: boolean,
+    actorUserId?: string,
+    retryUnavailable = false,
+  ): Promise<string> {
     const lease = await this.dependencies.billing.lease(computer)
     const existing = (lease.usage.computerLifecycle as { maintenance?: { kind?: string; token?: string; expiresAt?: number } } | undefined)?.maintenance
     const canReconcile = kind === 'provision' && existing?.kind === 'provision'
@@ -492,14 +499,25 @@ export class ComputerLifecycleService {
     if (existing?.token && (existing.expiresAt ?? 0) <= this.now() && !canReconcile) {
       throw new Error('COMPUTER_MAINTENANCE_REQUIRES_RECONCILIATION')
     }
-    const claim = await this.dependencies.leases.claimComputerMaintenance?.({
-      workspaceId: computer.workspaceId, leaseId: lease.id, kind, token,
-      now: this.now(), expiresAt: this.now() + MAINTENANCE_MS, force,
-      actorUserId, expectedProviderReference: computer.providerRef,
-      ...(canReconcile && existing?.token ? { reconcileToken: existing.token } : {}),
-    })
-    if (!claim) throw new Error('COMPUTER_MAINTENANCE_IN_PROGRESS')
-    return token
+    const deadline = this.now() + 20_000
+    let delayMs = 250
+    let waitedMs = 0
+    while (true) {
+      const claim = await this.dependencies.leases.claimComputerMaintenance?.({
+        workspaceId: computer.workspaceId, leaseId: lease.id, kind, token,
+        now: this.now(), expiresAt: this.now() + MAINTENANCE_MS, force,
+        actorUserId, expectedProviderReference: computer.providerRef,
+        ...(canReconcile && existing?.token ? { reconcileToken: existing.token } : {}),
+      })
+      if (claim) return token
+      if (!retryUnavailable) throw new Error('COMPUTER_MAINTENANCE_IN_PROGRESS')
+      const remainingMs = Math.min(20_000 - waitedMs, deadline - this.now())
+      if (remainingMs <= 0) throw new Error('COMPUTER_MAINTENANCE_IN_PROGRESS')
+      const sleepMs = Math.min(delayMs, remainingMs)
+      await this.sleep(sleepMs)
+      waitedMs += sleepMs
+      delayMs = Math.min(delayMs * 2, 2_000)
+    }
   }
 
   private requireRuntime(provider: string): SandboxRuntime {

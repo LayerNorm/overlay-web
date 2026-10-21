@@ -1,8 +1,14 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { ToolSet } from '@/server/ai/sdk'
-import { applyRuntimeToolGates, buildActTooling, withAgentGrantToolIds } from './tooling'
+import {
+  applyRuntimeToolGates,
+  buildActTooling,
+  withAgentGrantToolIds,
+  withPersonalComputerToolIds,
+} from './tooling'
 import { DEFAULT_OVERLAY_CAPABILITIES } from '@overlay/app-core'
+import { COMPUTER_TOOL_IDS } from '@/shared/agents/tool-groups'
 
 const toolSet = (tools: Record<string, object>): ToolSet => tools as unknown as ToolSet
 
@@ -108,4 +114,41 @@ test('computer tools are withheld when the deployment capability is off', () => 
   assert.equal(off.includes('computer_exec'), false)
   assert.equal(off.includes('computer_read_file'), false)
   assert.equal(off.includes('save_memory'), true)
+})
+
+test('personal Computers enable Computer tools only in eligible Work chats', async () => {
+  const baseToolIds = ['search_knowledge']
+  const workParams = {
+    userId: 'user-1',
+    workspaceId: 'ws-1',
+    computerApprovalContext: 'work' as const,
+    findPersonalComputer: async () => ({ id: 'computer-1' }),
+  }
+
+  const workToolIds = await withPersonalComputerToolIds(baseToolIds, workParams)
+  for (const toolId of COMPUTER_TOOL_IDS) assert.equal(workToolIds.includes(toolId), true)
+
+  const noComputerToolIds = await withPersonalComputerToolIds(baseToolIds, {
+    ...workParams,
+    findPersonalComputer: async () => null,
+  })
+  assert.deepEqual(noComputerToolIds, baseToolIds)
+
+  const capabilityOffToolIds = applyRuntimeToolGates(
+    workToolIds,
+    { ...DEFAULT_OVERLAY_CAPABILITIES, computers: false },
+  )
+  for (const toolId of COMPUTER_TOOL_IDS) assert.equal(capabilityOffToolIds.includes(toolId), false)
+
+  let lookupCalled = false
+  const nonWorkToolIds = await withPersonalComputerToolIds(baseToolIds, {
+    ...workParams,
+    computerApprovalContext: undefined,
+    findPersonalComputer: async () => {
+      lookupCalled = true
+      return { id: 'computer-1' }
+    },
+  })
+  assert.deepEqual(nonWorkToolIds, baseToolIds)
+  assert.equal(lookupCalled, false)
 })

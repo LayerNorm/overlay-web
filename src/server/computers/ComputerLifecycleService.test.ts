@@ -157,6 +157,35 @@ test('wake credit rejection never resumes or exposes the Computer', async () => 
   assert.equal(fixture.reserveCalls[0]?.computer.id, computer.id)
 })
 
+test('owner operations retry a temporarily unavailable wake claim', async () => {
+  const fixture = lifecycleFixture({ nullWakeClaims: 1 })
+  fixture.seedComputer('box-ref-1', 'running')
+  let operationCalled = false
+
+  await fixture.service.withOwnerOperation({
+    actorUserId: 'user-1', workspaceId: 'ws-1', ownerType: 'user', ownerId: 'user-1',
+    operation: async () => { operationCalled = true },
+  })
+
+  assert.equal(operationCalled, true)
+  assert.deepEqual(fixture.sleepCalls, [250])
+})
+
+test('owner operations stop retrying wake claims after the bounded wait budget', async () => {
+  const fixture = lifecycleFixture({ nullWakeClaims: Number.POSITIVE_INFINITY })
+  fixture.seedComputer('box-ref-1', 'running')
+  let operationCalled = false
+
+  await assert.rejects(fixture.service.withOwnerOperation({
+    actorUserId: 'user-1', workspaceId: 'ws-1', ownerType: 'user', ownerId: 'user-1',
+    operation: async () => { operationCalled = true },
+  }), /COMPUTER_MAINTENANCE_IN_PROGRESS/)
+
+  assert.equal(operationCalled, false)
+  assert.equal(fixture.sleepCalls.reduce((total, ms) => total + ms, 0), 20_000)
+  assert.ok(fixture.sleepCalls.every((ms) => ms <= 2_000))
+})
+
 test('wake final-meters the stopped session and invalidates old evidence before resuming', async () => {
   const fixture = lifecycleFixture()
   const computer = fixture.seedComputer('box-ref-1', 'stopped')
@@ -237,6 +266,7 @@ function lifecycleFixture(options: {
   failBeforeRequest?: boolean
   failBeforeAllocationOnce?: boolean
   loseDeleteResponseAfterSuccess?: boolean
+  nullWakeClaims?: number
   now?: number
 } = {}) {
   let currentNow = options.now ?? now
@@ -249,10 +279,12 @@ function lifecycleFixture(options: {
   const reserveCalls: Array<{ computer: Computer; actorUserId: string }> = []
   const admissionCalls: Array<{ workspaceId: string; userId: string; agentId?: string }> = []
   const releaseReservationCalls: string[] = []
+  const sleepCalls: number[] = []
   const settledFinalSamples = new Set<string>()
   let stoppedMeterCalls = 0
   let finalSettlementCount = 0
   let lostLeaseCreateResponse = false
+  let nullWakeClaims = options.nullWakeClaims ?? 0
   const repository: ComputerRepository = {
     async create(row) { computers.set(row.id, row); return row },
     async createWithLease(row, seed) {
@@ -341,6 +373,10 @@ function lifecycleFixture(options: {
       token: string; now: number; expiresAt: number; force?: boolean; reconcileToken?: string
       actorUserId?: string; expectedProviderReference?: string | null
     }) {
+      if (args.kind === 'wake' && nullWakeClaims > 0) {
+        if (Number.isFinite(nullWakeClaims)) nullWakeClaims -= 1
+        return null
+      }
       const lease = leaseRows.get(args.leaseId)
       if (!lease || lease.workspaceId !== args.workspaceId || !lease.computerId
         || (args.expectedProviderReference !== undefined && (lease.providerReference ?? null) !== args.expectedProviderReference)) return null
@@ -543,7 +579,8 @@ function lifecycleFixture(options: {
   const service = new ComputerLifecycleService({
     repository, leases, billing: billing as never, runtimeFor: () => runtime,
     assertCanRun: async (input) => { admissionCalls.push(input) },
-    now: () => currentNow, newId: () => `token-${++nextId}`, sleep: async () => undefined,
+    now: () => currentNow, newId: () => `token-${++nextId}`,
+    sleep: async (ms) => { sleepCalls.push(ms); currentNow += ms },
   })
   const seedComputer = (providerRef: string, state: string) => {
     const computer: Computer = {
@@ -565,7 +602,7 @@ function lifecycleFixture(options: {
     return computer
   }
   return {
-    service, repository, leases, createCalls, reserveCalls, releaseReservationCalls, instances, sequence,
+    service, repository, leases, createCalls, reserveCalls, releaseReservationCalls, instances, sequence, sleepCalls,
     seedComputer, leaseRows, meteredUsageAtCall, admissionCalls, setNow: (value: number) => { currentNow = value },
     get stoppedMeterCalls() { return stoppedMeterCalls },
     get finalSettlementCount() { return finalSettlementCount },

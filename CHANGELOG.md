@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Retry concurrent Computer actions, expose personal Computers in Work chats, and clarify busy and approval errors.
+
 - Add human takeover controls for Computers and require approval for risky browser clicks.
 
 - Add persistent, cancellable terminal sessions for Computer commands.

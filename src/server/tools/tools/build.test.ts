@@ -140,7 +140,7 @@ test('computer input fails closed before operate for typing while scroll still o
   assert.deepEqual(await computerInput.execute({ action: 'type', text: 'hello' }, {}), {
     success: false,
     error: 'approval_required',
-    message: 'Typing and key presses on the Computer need your approval. Switch this chat to Work mode, or ask the user to do it in Open desktop.',
+    message: 'This Computer action needs your approval. Switch this chat to Work mode, or ask the user to do it in Open desktop.',
   })
 
   let operateCalls = 0
@@ -158,7 +158,7 @@ test('computer input fails closed before operate for typing while scroll still o
   assert.deepEqual(typing, {
     success: false,
     error: 'approval_required',
-    message: 'Typing and key presses on the Computer need your approval. Switch this chat to Work mode, or ask the user to do it in Open desktop.',
+    message: 'This Computer action needs your approval. Switch this chat to Work mode, or ask the user to do it in Open desktop.',
   })
   assert.equal(operateCalls, 0)
 
@@ -170,6 +170,57 @@ test('computer input fails closed before operate for typing while scroll still o
   )
   assert.deepEqual(scrolling, { success: true })
   assert.equal(operateCalls, 1)
+})
+
+test('Computer maintenance conflicts return a clear busy tool error', async () => {
+  const previousNextPhase = process.env.NEXT_PHASE
+  process.env.NEXT_PHASE = 'phase-production-build'
+  let context: ReturnType<typeof getOverlayServerContext>
+  try {
+    context = getOverlayServerContext()
+  } finally {
+    if (previousNextPhase === undefined) delete process.env.NEXT_PHASE
+    else process.env.NEXT_PHASE = previousNextPhase
+  }
+  const originalComputerService = context.computerService
+  const originalWorkspaceService = context.workspaceService
+  const computer = { id: 'computer-1', name: 'Computer', controlledByUserId: undefined }
+  context.workspaceService = {
+    ...originalWorkspaceService,
+    listForUser: async () => [{
+      workspace: { id: 'ws-1' },
+      principal: { id: 'principal-1' },
+      membership: { role: 'member' },
+    }],
+  } as unknown as typeof context.workspaceService
+  context.computerService = {
+    ...originalComputerService,
+    getForOwner: async () => computer,
+    withOwnerOperation: async () => {
+      throw new Error('COMPUTER_MAINTENANCE_IN_PROGRESS')
+    },
+  } as unknown as typeof context.computerService
+
+  try {
+    const tools = buildOverlayToolSet({
+      userId: 'user-test',
+      workspaceId: 'ws-1',
+      baseUrl: 'http://localhost:3000',
+      allowedToolIds: ['computer_input'],
+    })
+    const computerInput = tools.computer_input as unknown as {
+      execute: (input: unknown, options: unknown) => Promise<unknown>
+    }
+
+    assert.deepEqual(await computerInput.execute({ action: 'click', x: 10, y: 20 }, {}), {
+      success: false,
+      error: 'computer_busy',
+      message: 'The Computer is busy with another action. Wait a moment and try again.',
+    })
+  } finally {
+    context.computerService = originalComputerService
+    context.workspaceService = originalWorkspaceService
+  }
 })
 
 test('computer takeover blocks input but keeps screenshot and browser snapshot available', async () => {

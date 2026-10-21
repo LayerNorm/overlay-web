@@ -4,6 +4,7 @@ import {
   getOverlayRuntimeConfig,
   getOverlayRuntimeConfigSync,
 } from '@/server/config'
+import { getOverlayServerContext } from '@/server/bootstrap'
 import {
   deriveOverlayCapabilities,
   normalizeIntegrationProviderKey,
@@ -133,6 +134,7 @@ export async function prepareActTooling(params: {
   automationMode?: boolean
   automationId?: string
   computerApprovalContext?: 'work' | 'automation'
+  findPersonalComputer?: (workspaceId: string, userId: string) => Promise<unknown | null>
   baseUrl: string
   conversationId?: string
   entitlements: Entitlements
@@ -188,10 +190,23 @@ export async function prepareActTooling(params: {
     params.requestedToolIds ?? [],
     memoryEnabled,
   )
-  const baseToolIds = withAgentGrantToolIds(
-    intentToolIds,
-    params.accountAllowedToolIds,
-    params.agentId !== undefined || params.grantedToolSurface === true,
+  const baseToolIds = await withPersonalComputerToolIds(
+    withAgentGrantToolIds(
+      intentToolIds,
+      params.accountAllowedToolIds,
+      params.agentId !== undefined || params.grantedToolSurface === true,
+    ),
+    {
+      userId: params.userId,
+      workspaceId: params.workspaceId,
+      agentId: params.agentId,
+      computerApprovalContext: params.computerApprovalContext,
+      automationExecution: params.automationExecution,
+      automationMode: params.automationMode,
+      mode: params.mode,
+      findPersonalComputer: params.findPersonalComputer ?? ((workspaceId, userId) =>
+        getOverlayServerContext().appData.repositories.computers.findByOwner(workspaceId, 'user', userId)),
+    },
   )
   const policyToolIds = applyAccountToolPolicy(applyRuntimeToolGates(
     baseToolIds,
@@ -327,6 +342,43 @@ export function withAgentGrantToolIds(
 ): string[] {
   if (!isAgentTurn || accountAllowedToolIds === undefined) return [...intentToolIds]
   return [...new Set([...intentToolIds, ...accountAllowedToolIds])]
+}
+
+export async function withPersonalComputerToolIds(
+  toolIds: readonly string[],
+  params: {
+    userId: string
+    workspaceId?: string
+    agentId?: string
+    computerApprovalContext?: 'work' | 'automation'
+    automationExecution?: boolean
+    automationMode?: boolean
+    mode?: ActMode
+    findPersonalComputer: (workspaceId: string, userId: string) => Promise<unknown | null>
+  },
+): Promise<string[]> {
+  if (
+    !params.workspaceId
+    || params.agentId !== undefined
+    || params.computerApprovalContext !== 'work'
+    || params.automationExecution
+    || params.automationMode
+    || params.mode === 'automate'
+  ) {
+    return [...toolIds]
+  }
+  try {
+    const computer = await params.findPersonalComputer(params.workspaceId, params.userId)
+    return computer
+      ? [...new Set([...toolIds, ...COMPUTER_TOOL_IDS])]
+      : [...toolIds]
+  } catch (error) {
+    logger.warn(
+      '[conversations/act] personal Computer lookup failed:',
+      summarizeErrorForLog(error),
+    )
+    return [...toolIds]
+  }
 }
 
 export function applyAccountToolPolicy(
