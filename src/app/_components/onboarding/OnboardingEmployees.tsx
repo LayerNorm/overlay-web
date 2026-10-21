@@ -25,7 +25,15 @@ export function OnboardingEmployees({ suggested, disabled, onConfirm, onSkip }: 
     <div>
       <div className="grid gap-2.5 sm:grid-cols-2">
         {employees.map((employee, index) => (
-          <div key={index} className={`relative rounded-xl border bg-(--surface-elevated) p-3.5 transition-[opacity,border-color] ${included[index] ? 'border-(--muted-light)' : 'border-(--border) opacity-55'}`}>
+          // The whole card toggles for pointer users; the corner checkbox stays the keyboard and screen-reader control.
+          <div
+            key={index}
+            onClick={(event) => {
+              if (disabled || editing === index || (event.target as HTMLElement).closest('button, input, textarea')) return
+              toggle(index)
+            }}
+            className={`relative rounded-xl border bg-(--surface-elevated) p-3.5 transition-[opacity,border-color] ${editing === index ? '' : 'cursor-pointer'} ${included[index] ? 'border-(--muted-light)' : 'border-(--border) opacity-55 hover:opacity-80'}`}
+          >
             <Button
               variant="outline"
               size="icon-xs"

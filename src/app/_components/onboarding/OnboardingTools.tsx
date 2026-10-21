@@ -71,6 +71,7 @@ export function OnboardingTools({ session, disabled, onContinue }: {
   const visibleApps = APPS.filter((app) => !app.technical || technical)
   const connectedApps = apps instanceof Set ? visibleApps.filter((app) => apps.has(app.slug)).map((app) => app.slug) : []
   const anyConnected = connectedApps.length > 0 || Object.keys(agentIds).length > 0
+  const nothingAvailable = !(apps instanceof Set) && !agents
   const connect = async (slug: ToolSlug) => {
     const tab = window.open('about:blank', '_blank')
     if (tab) tab.opener = null
@@ -93,7 +94,7 @@ export function OnboardingTools({ session, disabled, onContinue }: {
   if (apps === null || agents === null) return <p className="text-[13px] text-muted-foreground">Checking what you can connect…</p>
   return (
     <div>
-      {apps === false && !agents ? <p className="text-[13px] text-muted-foreground">Connections aren&apos;t available right now. You can add them later from Settings.</p> : null}
+      {nothingAvailable ? <p className="text-[13px] text-muted-foreground">Connections aren&apos;t available right now. You can add them later from Settings.</p> : null}
       {apps instanceof Set ? <>
         {agents ? <p className="mb-1.5 text-[11px] font-medium text-muted-foreground">Apps</p> : null}
         <ToolRows rows={visibleApps.map((app) => ({ id: app.slug, name: ONBOARDING_TOOL_LABELS[app.slug], detail: app.detail, connected: apps.has(app.slug), busy: connecting === app.slug, onConnect: () => { void connect(app.slug) } }))} disabled={disabled || Boolean(connecting)} />
@@ -103,8 +104,8 @@ export function OnboardingTools({ session, disabled, onContinue }: {
         <ToolRows rows={AGENTS.map((agent) => ({ id: agent.harness, name: agent.name, detail: 'Runs on your machine', connected: Boolean(agentIds[agent.harness]), busy: false, onConnect: () => setHarness(agent.harness) }))} disabled={disabled} />
       </> : null}
       {error ? <p role="alert" className="mt-2 text-xs text-destructive">{error}</p> : null}
-      <Button variant={anyConnected ? 'primary' : 'ghost'} size="sm" className="mt-3.5" disabled={disabled} onClick={() => onContinue({ tools: connectedApps, agentIds: Object.values(agentIds) })}>
-        {anyConnected ? 'Continue' : 'Not now'}
+      <Button variant={anyConnected || nothingAvailable ? 'primary' : 'ghost'} size="sm" className="mt-3.5" disabled={disabled} onClick={() => onContinue({ tools: connectedApps, agentIds: Object.values(agentIds) })}>
+        {anyConnected || nothingAvailable ? 'Continue' : 'Not now'}
       </Button>
       {harness ? <ExternalAgentConnection key={harness} session={session} harness={harness} onClose={() => setHarness(null)} onSaved={(id) => { setAgentIds((current) => ({ ...current, [harness]: id })); setHarness(null) }} /> : null}
     </div>

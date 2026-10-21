@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState, type ReactNode } from 'react'
+import { useCallback, useRef, useState, type ReactNode } from 'react'
 import { ArrowRight } from 'lucide-react'
 import { Button } from '@overlay/ui/primitives'
 import { DirectMessageExperience } from '@/features/chat/components/DirectMessageExperience'
@@ -45,6 +45,13 @@ export function OnboardingConversation({ session, onChange, onShowWork, onSkip }
   const working = useRef(false)
   const [error, setError] = useState<string | null>(null)
   const [pendingAnswer, setPendingAnswer] = useState<{ text: string; clientNonce: string } | null>(null)
+  // Controls can grow after they mount (availability checks, inline edits); keep them in view.
+  const replyRef = useCallback((node: HTMLDivElement | null) => {
+    if (!node || typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(() => node.scrollIntoView({ block: 'nearest', behavior: 'smooth' }))
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [])
   if (previousStep !== session.step) {
     setPreviousStep(session.step); setInput(readOnboardingDraft(session)); setInputRevision((current) => current + 1)
     setPicked(new Set()); setTaskDraft(null); setPendingAnswer(null)
@@ -150,7 +157,7 @@ export function OnboardingConversation({ session, onChange, onShowWork, onSkip }
   }
   // Controls sit in the message text column, directly under Overlay's question.
   const footer = (
-    <div className={styles.reply}>
+    <div ref={replyRef} className={styles.reply}>
       {busy ? <OnboardingDots /> : <div key={`${session.step}:${session.revision}`} className={styles.appear}>{controls()}</div>}
       {error && !busy ? <p role="alert" className="mt-3 text-xs text-destructive">{error}</p> : null}
     </div>
