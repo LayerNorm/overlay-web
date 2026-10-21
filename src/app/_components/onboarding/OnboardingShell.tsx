@@ -10,7 +10,7 @@ import { buildWorkspaceHref } from '@/shared/workspaces/routing'
 import { OnboardingConversation, OnboardingDots } from './OnboardingConversation'
 import { OnboardingIntro } from './OnboardingIntro'
 import { OnboardingTour } from './OnboardingTour'
-import { requestOnboarding } from './onboarding-client'
+import { requestOnboarding, skipOnboarding } from './onboarding-client'
 import styles from './onboarding.module.css'
 
 type ShellProps = { sidebar: ReactNode; children: ReactNode; publicShowcase: boolean }
@@ -35,6 +35,10 @@ function AuthenticatedOnboardingShell({ sidebar, children, workspaceId }: ShellP
   const [tour, setTour] = useState(false)
   const conversation = useRef<HTMLDivElement>(null)
   const dismissIntro = useCallback(() => setIntro(false), [])
+  const skip = useCallback(() => {
+    // If saving fails, still open the workspace for this visit; setup resumes next time.
+    void skipOnboarding(workspaceId).then(() => { setActive(false); setTour(false) }, () => setBypass(true))
+  }, [workspaceId])
   useEffect(() => {
     const abort = new AbortController()
     void (async () => {
@@ -66,9 +70,9 @@ function AuthenticatedOnboardingShell({ sidebar, children, workspaceId }: ShellP
     <div className={styles.chrome} data-hidden={locked} inert={locked} aria-hidden={locked}>{sidebar}</div>
     <main className={`app-main ${styles.main} ${locked ? '' : 'pt-14 md:pt-0'}`}>
       {!bypass && !result ? <div className="flex h-full items-center justify-center px-6"><div className="max-w-sm space-y-4 text-center">{error ? <><p role="alert" className="text-sm text-muted-foreground">{error}</p><div className="flex justify-center gap-2"><Button variant="outline" onClick={() => setRetry((value) => value + 1)}>Retry</Button><Button variant="ghost" onClick={() => setBypass(true)}>Open workspace</Button></div></> : <OnboardingDots />}</div></div> : showConversation && result?.session ? <div ref={conversation} className={styles.conversation} data-hidden={intro} inert={intro}>
-        <OnboardingConversation session={result.session} onChange={setResult} onShowWork={openWork} />
+        <OnboardingConversation session={result.session} onChange={setResult} onShowWork={openWork} onSkip={skip} />
       </div> : children}
-      {intro ? <OnboardingIntro target={conversation} onDone={dismissIntro} /> : null}
+      {intro ? <OnboardingIntro onDone={dismissIntro} /> : null}
       {tour && atWork && result?.session?.taskId ? <OnboardingTour workspaceId={workspaceId} taskId={result.session.taskId} onClose={() => { setTour(false); setActive(false) }} /> : null}
     </main>
   </>

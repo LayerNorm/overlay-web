@@ -6,13 +6,12 @@ import { getWorkService } from '@/server/work'
 import { OnboardingActionSchema } from '@/shared/onboarding/session'
 import { ConvexOnboardingStateRepository, ConversationalOnboardingService, OnboardingServiceError } from '@/server/onboarding'
 import { ONBOARDING_SEEN_COOKIE } from '@/features/auth/lib/onboarding-cookie'
-import { createOnboardingReplyGenerator } from '@/server/onboarding/OnboardingReplyGenerator'
 
 function service(context: AppApiRouteContext) {
   const server = getOverlayServerContext()
   return new ConversationalOnboardingService({
     repository: new ConvexOnboardingStateRepository(),
-    reply: createOnboardingReplyGenerator(context),
+    toolsAvailable: context.capabilities.integrations || context.capabilities.connectedAgents,
     effects: {
       agents: server.workspaceAgentService,
       collaboration: server.appData.repositories.conversationCollaboration,

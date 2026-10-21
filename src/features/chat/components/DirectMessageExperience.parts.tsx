@@ -466,11 +466,13 @@ export function RoomMessage({
   ctx,
   inThread,
   grouped,
+  hideToolbar,
 }: {
   message: OptimisticMessage
   ctx: RoomMessageContext
   inThread?: boolean
   grouped?: boolean
+  hideToolbar?: boolean
 }) {
   const author = ctx.participants.find((participant) => participant.principalId === message.authorPrincipalId)
   const authorAgent = message.authorPrincipalId
@@ -501,7 +503,7 @@ export function RoomMessage({
     teaserMessage,
     teaserAuthor,
   })
-  return <RoomMessageItem {...itemProps} remoteStatus={view.streaming && view.remoteRun
+  return <RoomMessageItem {...itemProps} hideToolbar={hideToolbar} remoteStatus={view.streaming && view.remoteRun
     ? <RemoteRunLiveness key={view.remoteRun.runId} conversationId={ctx.conversationId} runId={view.remoteRun.runId}
         workspaceId={ctx.participants.find(participant => participant.principalId === ctx.currentPrincipalId)?.workspaceId} />
     : null} />
@@ -542,6 +544,7 @@ export function RoomTranscript({
   ctx,
   footer,
   hideScrollbar,
+  guided,
 }: {
   transcript: ReturnType<typeof useRoomTranscript>
   readMarkers: ReturnType<typeof useReadMarkers>
@@ -553,6 +556,8 @@ export function RoomTranscript({
   ctx: RoomMessageContext
   footer?: ReactNode
   hideScrollbar?: boolean
+  /** Guided onboarding: plain messages without action toolbars. */
+  guided?: boolean
 }) {
   const {
     listRef,
@@ -642,6 +647,7 @@ export function RoomTranscript({
                     message={message}
                     ctx={ctx}
                     grouped={grouped}
+                    hideToolbar={guided}
                   />
                 </div>
               )
@@ -776,6 +782,8 @@ export type GuidedRoomComposer = {
   disabled: boolean
   revision: number
   focusRevision?: number
+  /** Shown but not typable, for steps answered with the controls above it. */
+  locked?: boolean
 }
 
 export function RoomComposer({
@@ -808,7 +816,9 @@ export function RoomComposer({
   useEffect(() => {
     if (guided?.focusRevision) composer.composerRef.current?.focus()
   }, [guided?.focusRevision, composer.composerRef])
+  const locked = Boolean(guided?.locked)
   return (
+    <div inert={locked} aria-disabled={locked || undefined} className={locked ? 'pointer-events-none opacity-50 transition-opacity' : 'transition-opacity'}>
     <ChatComposer
       mode="chat"
       surface={{
@@ -878,6 +888,7 @@ export function RoomComposer({
         onSend: guided ? () => { if (!guided.disabled) guided.onSubmit() } : () => void composer.handleSend(),
       }}
     />
+    </div>
   )
 }
 

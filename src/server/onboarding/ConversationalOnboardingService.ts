@@ -3,7 +3,10 @@ import 'server-only'
 import { randomUUID } from 'node:crypto'
 import {
   ONBOARDING_INTRO,
+  ONBOARDING_TOOL_LABELS,
   OnboardingRunIdSchema,
+  extractOnboardingName,
+  onboardingList,
   preparedOnboardingReply,
   onboardingProfileSteps,
   onboardingSteps,
@@ -43,6 +46,8 @@ export type OnboardingServiceDependencies = {
   effects: OnboardingEffects
   reply?: OnboardingReplyFactory
   createRunId?: () => string
+  /** False when this deployment has neither app integrations nor connected agents, so the tools step is skipped. */
+  toolsAvailable?: boolean
 }
 export type OnboardingSessionResponse = { completed: boolean; session: OnboardingSession | null }
 
@@ -97,7 +102,7 @@ export class ConversationalOnboardingService {
     const runId = this.deps.createRunId?.() ?? randomUUID()
     if (!OnboardingRunIdSchema.safeParse(runId).success) throw new OnboardingServiceError('Onboarding run is invalid', 500, 'run_invalid')
     const session: OnboardingSession = {
-      version: 1, flowVersion: 2, member: options.member ?? false, runId, revision: 1, workspaceId, conversationId: thread.conversationId,
+      version: 1, flowVersion: 3, member: options.member ?? false, runId, revision: 1, workspaceId, conversationId: thread.conversationId,
       agentId: overlay.id, agentPrincipalId: overlay.principalId, step: 'name', profile,
       aiEnabled: false, reply, employees: [], suggestions: [], createdAgentIds: [],
     }
@@ -137,15 +142,10 @@ export class ConversationalOnboardingService {
   }
 
   private async reduce(state: StoredState, userId: string, action: Exclude<OnboardingAction, { action: 'start' }>) {
-    if (action.action === 'consent') return this.reduceConsent(state, action)
     if (action.action === 'answer') return this.reduceAnswer(state, userId, action)
     if (action.action === 'back') return this.reduceBack(state, userId)
     if (action.action === 'advance') return this.reduceAdvance(state, userId, action)
     return this.reduceFinish(state, userId, action)
-  }
-
-  private reduceConsent(state: StoredState, action: Extract<OnboardingAction, { action: 'consent' }>) {
-    return { completed: false, state: { ...state, session: { ...state.session, revision: state.session.revision + 1, aiEnabled: action.enabled } } }
   }
 
   private async reduceAnswer(state: StoredState, userId: string, action: Extract<OnboardingAction, { action: 'answer' }>) {
@@ -157,7 +157,10 @@ export class ConversationalOnboardingService {
     if (current.step === 'name' && value.length > 200) {
       throw new OnboardingServiceError('Name is too long', 400, 'invalid_profile')
     }
-    const profile = { ...current.profile, [current.step]: value } as OnboardingProfile
+    // The transcript keeps what the user typed; the profile keeps just the name.
+    const stored = current.step === 'name' && current.flowVersion === 3 ? extractOnboardingName(value) : value
+    if (!stored) throw new OnboardingServiceError('Tell me what to call you', 400, 'invalid_profile')
+    const profile = { ...current.profile, [current.step]: stored } as OnboardingProfile
     if (current.flowVersion === 2 && current.step === 'about') {
       if (!profile.team && /\b(?:just me|work(?:ing)? (?:alone|solo|on my own)|solo founder)\b/i.test(value)) profile.team = 'Just me'
       if (!profile.team && /\b(?:team of \d+|\d+[- ]person (?:team|agency|company))\b/i.test(value)) profile.team = 'A small team'
@@ -167,7 +170,7 @@ export class ConversationalOnboardingService {
     const steps = onboardingProfileSteps(current)
     let nextIndex = steps.indexOf(current.step) + 1
     while ((steps[nextIndex] === 'team' && profile.team) || (steps[nextIndex] === 'website' && profile.website)) nextIndex++
-    const step: OnboardingStep = steps[nextIndex] ?? (current.member ? 'connections' : 'employees')
+    const step: OnboardingStep = steps[nextIndex] ?? (current.member ? this.toolsStep(current) : 'employees')
     const reply = await this.makeReply(step, profile, current.aiEnabled, {})
     const revision = current.revision + 1
     return {
@@ -194,47 +197,70 @@ export class ConversationalOnboardingService {
     if (!['employees', 'connections', 'external', 'memories', 'teammates'].includes(current.step)) {
       throw new OnboardingServiceError('This step cannot be advanced', 409, 'invalid_step')
     }
-    let createdAgentIds = current.createdAgentIds
-    if (action.agentIds?.length) {
-      if (current.step !== 'employees' && current.step !== 'external') throw new OnboardingServiceError('Agent ids are not valid at this step', 400, 'invalid_action')
-      const list = await this.deps.effects.agents.list({ actorUserId: userId, workspaceId: current.workspaceId })
-      const visible = new Map(list.agents.map((agent) => [agent.id, agent]))
-      for (const id of action.agentIds) {
-        const agent = visible.get(id)
-        if (!agent || agent.createdByPrincipalId !== list.viewerPrincipalId) {
-          throw new OnboardingServiceError('One or more agents are not available to you', 403, 'agent_forbidden')
-        }
-      }
-      createdAgentIds = [...new Set([...createdAgentIds, ...action.agentIds])]
-    }
-    if (action.memoryIds?.length) {
-      if (current.step !== 'memories') throw new OnboardingServiceError('Memory ids are not valid at this step', 400, 'invalid_action')
-      await Promise.all(action.memoryIds.map(async (memoryId) => {
-        const memory = await this.deps.effects.memories.get({ memoryId, userId, workspaceId: current.workspaceId })
-        if (!memory || memory.userId !== userId || memory.visibility === 'workspace') {
-          throw new OnboardingServiceError('One or more memories are not personal memories', 403, 'memory_forbidden')
-        }
-      }))
-    }
-    if (action.invitationIds?.length) {
-      if (current.step !== 'teammates') throw new OnboardingServiceError('Invitation ids are not valid at this step', 400, 'invalid_action')
-      const invitations = await this.deps.effects.workspaces.listInvitations({ actorUserId: userId, workspaceId: current.workspaceId })
-      const ids = new Set(invitations.filter((invitation) => invitation.status === 'pending').map((invitation) => invitation.id))
-      if (action.invitationIds.some((id) => !ids.has(id))) {
-        throw new OnboardingServiceError('One or more invitations are unavailable', 403, 'invitation_forbidden')
-      }
-    }
-    const solo = /^(just me|solo|on my own|by myself)[.!]?$/i.test(current.profile.team?.trim() ?? '')
-    const step: OnboardingStep = current.step === 'employees' ? 'connections'
-      : current.step === 'connections' ? (current.flowVersion === 2 ? 'external' : 'memories')
-        : current.step === 'external' ? 'memories'
-          : current.step === 'memories' && !current.member && !solo ? 'teammates' : 'task'
-    const reply = await this.makeReply(step, current.profile, current.aiEnabled, {})
+    if (action.connectedTools?.length && current.step !== 'connections') throw new OnboardingServiceError('Tools are not valid at this step', 400, 'invalid_action')
+    const agentNames = await this.verifyAgents(current, userId, action.agentIds ?? [])
+    await this.verifyMemories(current, userId, action.memoryIds ?? [])
+    const invitedEmails = await this.verifyInvitations(current, userId, action.invitationIds ?? [])
+    const createdAgentIds = [...new Set([...current.createdAgentIds, ...(action.agentIds ?? [])])]
+    const step = this.stepAfter(current)
+    const prepared = await this.makeReply(step, current.profile, current.aiEnabled, {})
     const revision = current.revision + 1
-    const summary = onboardingAdvanceSummary(current.step, action)
+    const summary = current.flowVersion === 3
+      ? onboardingAdvanceReply(current.step, { agentNames, invitedEmails, tools: (action.connectedTools ?? []).map((tool) => ONBOARDING_TOOL_LABELS[tool]), memories: Boolean(action.memoryIds?.length) })
+      : onboardingAdvanceSummary(current.step, action)
+    const confirmation = current.flowVersion === 3 ? onboardingConfirmation(current.step, agentNames, invitedEmails) : ''
+    const reply = confirmation ? { ...prepared, message: `${confirmation}\n\n${prepared.message}` } : prepared
     return { completed: false, state: { ...state, session: { ...current, revision, step, reply, employees: reply.employees ?? [], suggestions: reply.suggestions ?? [], createdAgentIds },
       outbox: [{ clientNonce: this.nonce(userId, current.runId, revision, 'user'), content: summary, kind: 'user' as const },
         { clientNonce: this.nonce(userId, current.runId, revision, 'assistant'), content: reply.message, kind: 'assistant' as const }] } }
+  }
+
+  /** Returns the names of the agents, which must be the user's own. */
+  private async verifyAgents(current: OnboardingSession, userId: string, agentIds: string[]): Promise<string[]> {
+    if (!agentIds.length) return []
+    const agentStep = current.step === 'employees' || current.step === 'external' || (current.flowVersion === 3 && current.step === 'connections')
+    if (!agentStep) throw new OnboardingServiceError('Agent ids are not valid at this step', 400, 'invalid_action')
+    const list = await this.deps.effects.agents.list({ actorUserId: userId, workspaceId: current.workspaceId })
+    const visible = new Map(list.agents.map((agent) => [agent.id, agent]))
+    return agentIds.map((id) => {
+      const agent = visible.get(id)
+      if (!agent || agent.createdByPrincipalId !== list.viewerPrincipalId) {
+        throw new OnboardingServiceError('One or more agents are not available to you', 403, 'agent_forbidden')
+      }
+      return agent.name
+    })
+  }
+
+  private async verifyMemories(current: OnboardingSession, userId: string, memoryIds: string[]) {
+    if (!memoryIds.length) return
+    if (current.step !== 'memories') throw new OnboardingServiceError('Memory ids are not valid at this step', 400, 'invalid_action')
+    await Promise.all(memoryIds.map(async (memoryId) => {
+      const memory = await this.deps.effects.memories.get({ memoryId, userId, workspaceId: current.workspaceId })
+      if (!memory || memory.userId !== userId || memory.visibility === 'workspace') {
+        throw new OnboardingServiceError('One or more memories are not personal memories', 403, 'memory_forbidden')
+      }
+    }))
+  }
+
+  /** Returns the invited addresses, which must be pending invitations in this workspace. */
+  private async verifyInvitations(current: OnboardingSession, userId: string, invitationIds: string[]): Promise<string[]> {
+    if (!invitationIds.length) return []
+    if (current.step !== 'teammates') throw new OnboardingServiceError('Invitation ids are not valid at this step', 400, 'invalid_action')
+    const invitations = await this.deps.effects.workspaces.listInvitations({ actorUserId: userId, workspaceId: current.workspaceId })
+    const pending = new Map(invitations.filter((invitation) => invitation.status === 'pending').map((invitation) => [invitation.id, invitation.email]))
+    return invitationIds.map((id) => {
+      const email = pending.get(id)
+      if (!email) throw new OnboardingServiceError('One or more invitations are unavailable', 403, 'invitation_forbidden')
+      return email
+    })
+  }
+
+  private stepAfter(current: OnboardingSession): OnboardingStep {
+    const solo = /^(just me|solo|on my own|by myself)[.!]?$/i.test(current.profile.team?.trim() ?? '')
+    if (current.step === 'employees') return this.toolsStep(current)
+    if (current.step === 'connections') return current.flowVersion === 2 ? 'external' : 'memories'
+    if (current.step === 'external') return 'memories'
+    return current.step === 'memories' && !current.member && !solo ? 'teammates' : 'task'
   }
 
   private async reduceFinish(state: StoredState, userId: string, action: Extract<OnboardingAction, { action: 'finish' }>) {
@@ -332,6 +358,9 @@ export class ConversationalOnboardingService {
   private assertWorkspace(session: OnboardingSession, workspaceId: string) {
     if (session.workspaceId !== workspaceId) throw new OnboardingServiceError('Onboarding is already in progress in another workspace', 409, 'workspace_mismatch')
   }
+  private toolsStep(session: OnboardingSession): OnboardingStep {
+    return session.flowVersion === 3 && this.deps.toolsAvailable === false ? 'memories' : 'connections'
+  }
   private nonce(userId: string, runId: string, revision: number, kind: string) { return `onboarding:${userId}:${runId}:${revision}:${kind}` }
 }
 
@@ -350,7 +379,7 @@ function isValidOnboardingSession(value: unknown): value is OnboardingSession {
   const sessionKeys = ['version', 'runId', 'revision', 'workspaceId', 'conversationId', 'agentId', 'agentPrincipalId', 'step', 'profile', 'aiEnabled', 'reply', 'employees', 'suggestions', 'createdAgentIds', 'taskId']
   const optionalKeys = ['flowVersion', 'member'].filter((key) => Object.hasOwn(session, key))
   if (!isExactKeys(value, [...(session.taskId === undefined ? sessionKeys.slice(0, -1) : sessionKeys), ...optionalKeys])) return false
-  if (session.flowVersion !== undefined && session.flowVersion !== 2) return false
+  if (session.flowVersion !== undefined && ![2, 3].includes(session.flowVersion as number)) return false
   if (session.member !== undefined && typeof session.member !== 'boolean') return false
   if (session.version !== 1
     || !OnboardingRunIdSchema.safeParse(session.runId).success
@@ -421,6 +450,28 @@ function onboardingAdvanceSummary(
   if (step === 'memories') return action.memoryIds?.length ? `Imported ${action.memoryIds.length} Personal context item${action.memoryIds.length === 1 ? '' : 's'}.` : 'Skipped importing Personal context.'
   if (step === 'teammates') return action.invitationIds?.length ? `Invited ${action.invitationIds.length} teammate${action.invitationIds.length === 1 ? '' : 's'}.` : 'Skipped inviting teammates.'
   return 'Finished reviewing optional tool connections.'
+}
+
+/** The user's side of the transcript for a v3 step, phrased the way they would say it. */
+function onboardingAdvanceReply(
+  step: OnboardingStep,
+  done: { agentNames: string[]; invitedEmails: string[]; tools: string[]; memories: boolean },
+): string {
+  if (step === 'employees') return done.agentNames.length ? `Add ${onboardingList(done.agentNames)}.` : "I'll set up employees later."
+  if (step === 'connections') {
+    const connected = [...done.tools, ...done.agentNames]
+    return connected.length ? `Connected ${onboardingList(connected)}.` : "I'll connect tools later."
+  }
+  if (step === 'memories') return done.memories ? 'Here is some context from my other assistant.' : 'Not right now.'
+  if (step === 'teammates') return done.invitedEmails.length ? `Invite ${onboardingList(done.invitedEmails)}.` : 'Not right now.'
+  return 'Not right now.'
+}
+
+/** Overlay's acknowledgement before its next question, when the step created something. */
+function onboardingConfirmation(step: OnboardingStep, agentNames: string[], invitedEmails: string[]): string {
+  if (step === 'employees' && agentNames.length) return `${onboardingList(agentNames)} ${agentNames.length === 1 ? 'is' : 'are'} on your team.`
+  if (step === 'teammates' && invitedEmails.length) return "Invites sent. They'll get an email to join."
+  return ''
 }
 
 function isValidReply(value: unknown): value is OnboardingReply {

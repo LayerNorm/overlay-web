@@ -12,7 +12,7 @@ export type OnboardingReply = {
 }
 export type OnboardingSession = {
   version: 1
-  flowVersion?: 2
+  flowVersion?: 2 | 3
   member?: boolean
   runId: string
   revision: number
@@ -36,51 +36,103 @@ export const OnboardingRunIdSchema = z.string().uuid()
 const ids = z.array(z.string().trim().min(1).max(200)).max(20)
 export const OnboardingActionSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('start') }).strict(),
-  z.object({ action: z.literal('consent'), runId: OnboardingRunIdSchema, revision, enabled: z.boolean() }).strict(),
   z.object({ action: z.literal('answer'), runId: OnboardingRunIdSchema, revision, value: z.string().trim().min(1).max(3000) }).strict(),
   z.object({ action: z.literal('back'), runId: OnboardingRunIdSchema, revision }).strict(),
-  z.object({ action: z.literal('advance'), runId: OnboardingRunIdSchema, revision, agentIds: ids.optional(), memoryIds: ids.optional(), invitationIds: ids.optional() }).strict(),
+  z.object({ action: z.literal('advance'), runId: OnboardingRunIdSchema, revision, agentIds: ids.optional(), memoryIds: ids.optional(), invitationIds: ids.optional(), connectedTools: z.array(z.enum(['gmail', 'googlecalendar', 'slack', 'notion', 'github'])).max(5).optional() }).strict(),
   z.object({ action: z.literal('finish'), runId: OnboardingRunIdSchema, revision, taskId: z.string().trim().min(1).max(200) }).strict(),
 ])
 export type OnboardingAction = z.infer<typeof OnboardingActionSchema>
 
-export const ONBOARDING_INTRO = "I'm Overlay, your new chief of staff. I'm responsible for getting your work done and managing your fleet of AI employees to help you achieve your goals."
+export const ONBOARDING_INTRO = "Hi, I'm Overlay, your chief of staff. I'll run your AI employees and keep your work moving."
+
+export const ONBOARDING_ROLES = ['Founder or exec', 'Engineering', 'Product', 'Design', 'Marketing & sales', 'Operations'] as const
+export const ONBOARDING_TEAMS = ['Just me', 'A small team', 'A larger company'] as const
+/** Each help area maps to one suggested employee and one starter task, so the same answers always give the same setup. */
+export const ONBOARDING_HELP_AREAS = {
+  'Research & summaries': { employee: { name: 'Scout', role: 'Researches questions and turns long reads into short, sourced briefs.' }, task: 'Research my top three competitors and write a one-page brief' },
+  'Email & follow-ups': { employee: { name: 'Relay', role: 'Drafts replies for your review and keeps track of follow-ups.' }, task: 'Draft a reusable reply to a question I get every week' },
+  'Planning & coordination': { employee: { name: 'Atlas', role: 'Turns goals into weekly plans and keeps projects on schedule.' }, task: 'Make a prioritized plan for my week' },
+  'Writing & content': { employee: { name: 'Quill', role: 'Drafts docs, posts, and updates in your voice for review.' }, task: 'Draft an update on what I am working on' },
+  'Coding & reviews': { employee: { name: 'Spec', role: 'Writes specs, reviews pull requests, and keeps docs current.' }, task: 'Write a spec for the next feature I am building' },
+  'Reporting & analysis': { employee: { name: 'Ledger', role: 'Pulls numbers together into a clear weekly report.' }, task: 'Outline a weekly report for the numbers I track' },
+} as const satisfies Record<string, { employee: OnboardingEmployee; task: string }>
+type HelpArea = keyof typeof ONBOARDING_HELP_AREAS
+const ROLE_HELP_DEFAULTS: Record<string, HelpArea[]> = {
+  engineering: ['Coding & reviews', 'Research & summaries'],
+  product: ['Planning & coordination', 'Research & summaries'],
+  design: ['Research & summaries', 'Writing & content'],
+  marketing: ['Writing & content', 'Email & follow-ups'],
+  operations: ['Planning & coordination', 'Reporting & analysis'],
+}
+/** Tools the connections step can report as connected in the transcript. */
+export const ONBOARDING_TOOL_LABELS = { gmail: 'Gmail', googlecalendar: 'Google Calendar', slack: 'Slack', notion: 'Notion', github: 'GitHub' } as const
+
+function onboardingHelpAreas(profile: OnboardingProfile): HelpArea[] {
+  const daily = profile.daily.toLowerCase()
+  const picked = (Object.keys(ONBOARDING_HELP_AREAS) as HelpArea[]).filter((area) => daily.includes(area.toLowerCase()))
+  const role = Object.entries(ROLE_HELP_DEFAULTS).find(([key]) => profile.about.toLowerCase().includes(key))?.[1] ?? []
+  return [...new Set([...picked, ...role, 'Research & summaries', 'Planning & coordination'] as HelpArea[])]
+}
+
+export function onboardingEmployeesFor(profile: OnboardingProfile): OnboardingEmployee[] {
+  return onboardingHelpAreas(profile).slice(0, 2).map((area) => ({ ...ONBOARDING_HELP_AREAS[area].employee }))
+}
+
+export function onboardingTasksFor(profile: OnboardingProfile): string[] {
+  return [...new Set(onboardingHelpAreas(profile).map((area) => ONBOARDING_HELP_AREAS[area].task))].slice(0, 3)
+}
+
+/** Joins names the way a person would: "A", "A and B", "A, B and C". */
+export function onboardingList(items: readonly string[]): string {
+  return items.length < 2 ? items.join('') : `${items.slice(0, -1).join(', ')} and ${items.at(-1)}`
+}
+
+const NAME_LEAD = /^(?:you\s+can\s+call\s+me|you\s+may\s+call\s+me|just\s+call\s+me|please\s+call\s+me|call\s+me|i\s*'?\s*m|i\s+am|im|my\s+name\s+is|my\s+name'?s|name'?s|it'?s|this\s+is|i\s+go\s+by)\s+/i
+
+/** Turns a conversational answer into a name: "You can call me Divyansh." becomes "Divyansh". */
+export function extractOnboardingName(raw: string): string {
+  let value = raw.trim().replace(/\s+/g, ' ')
+  value = value.replace(/^(?:hi|hey|hello|yo)\b[\s,!.]*(?:there\b[\s,!.]*)?/i, '')
+  value = value.replace(NAME_LEAD, '')
+  value = value.replace(/\s*(?:,|\bbut\b|\band\b|\bthough\b).*$/i, '')
+  value = value.replace(/\s+(?:please|thanks|thank\s+you)$/i, '').replace(/[.!?;:"'`]+$/g, '').replace(/^["'`]+/, '')
+  const words = value.split(' ').filter(Boolean).slice(0, 3)
+  return words.map((word) => (word === word.toLowerCase() ? word[0]!.toUpperCase() + word.slice(1) : word)).join(' ').slice(0, 60)
+}
 
 export function preparedOnboardingReply(step: OnboardingStep, profile: OnboardingProfile): OnboardingReply {
-  const technical = /code|software|engineer|develop|build/i.test(profile.about + ' ' + profile.daily)
-  const employees = technical
-    ? [{ name: 'Spec', role: 'Turn product ideas into clear specs, review changes, and keep documentation up to date.' }, { name: 'Scout', role: 'Research decisions, prepare briefs, and organize follow-ups.' }]
-    : [{ name: 'Scout', role: 'Research decisions and prepare concise briefs grounded in your work.' }, { name: 'Flow', role: 'Draft replies, organize recurring work, and prepare follow-ups for review.' }]
-  const suggestions = technical
-    ? ['Draft a clear specification for my next product improvement.', 'Prepare a prioritized plan for my recurring work this week.']
-    : ['Draft a reusable reply for a question I answer every day.', 'Prepare a prioritized plan for my recurring work this week.']
   const messages: Record<OnboardingStep, string> = {
-    name: 'What shall I call you?',
-    about: `Nice to meet you, ${profile.name}. Tell me a bit about yourself. What do you do, and what are you working on?`,
-    team: 'Who are you working with?',
+    name: 'What should I call you?',
+    about: `Nice to meet you, ${profile.name}.\n\nWhat kind of work do you do?`,
+    team: 'Who do you work with?',
     website: 'Is there a website I should know about? Optional context only. I will not fetch it during setup.',
-    daily: "What tasks take up your time each day that you'd like AI employees to help with?",
-    employees: "Based on what you've told me, I'd suggest starting with these two AI employees.",
-    connections: 'Your AI employees are most useful with the right context. Which tools would you like to connect?',
+    daily: 'What would you like help with? Pick as many as you like.',
+    employees: "Based on that, I'd start you with two AI employees. You can change them anytime.",
+    connections: 'Want to connect the tools you already use? Your employees work better with context.',
     external: 'Bring an agent you already use? Native Overlay employees do not need an external connection.',
-    memories: 'How about some more context? You can bring over what another AI assistant already knows about your work.',
-    teammates: 'Would you like anyone else to work with you and your AI employees here? They can bring their own agents, too.',
-    task: "What's one task we can get started with that would move your work forward?",
-    complete: 'Your first task is ready in Work. Happy working.',
+    memories: 'Do you use another AI assistant? I can pick up what it already knows about your work.',
+    teammates: "Want to bring in anyone you work with? They'll join this workspace and can bring their own agents.",
+    task: "Last thing. What's one task we can start on?",
+    complete: "You're all set. Your first task is waiting in Work.\n\nHappy working.",
   }
-  return { message: messages[step], mode: 'prepared', ...(step === 'employees' ? { employees } : {}), ...(step === 'task' ? { suggestions } : {}) }
+  return {
+    message: messages[step], mode: 'prepared',
+    ...(step === 'employees' ? { employees: onboardingEmployeesFor(profile) } : {}),
+    ...(step === 'task' ? { suggestions: onboardingTasksFor(profile) } : {}),
+  }
 }
 
 export function onboardingProfileSteps(session: Pick<OnboardingSession, 'flowVersion' | 'member'>): OnboardingStep[] {
+  if (session.flowVersion === 3) return session.member ? ['name', 'about', 'daily'] : ['name', 'about', 'team', 'daily']
   return session.flowVersion === 2 && !session.member ? ['name', 'about', 'team', 'website', 'daily'] : ['name', 'about', 'daily']
 }
 
 export function onboardingChoices(session: Pick<OnboardingSession, 'step' | 'suggestions'>): { id: string; label: string }[] {
   const choices: Partial<Record<OnboardingStep, readonly string[]>> = {
-    about: ['Leadership', 'Engineering', 'Product', 'Design', 'Marketing', 'Operations'],
-    team: ['Just me', 'A small team', 'Several teams'],
+    about: ONBOARDING_ROLES,
+    team: ONBOARDING_TEAMS,
     website: ["I'll add it later", "I don't have one"],
-    daily: ['Research & summaries', 'Email & follow-ups', 'Planning & coordination', 'Writing & content', 'Coding & reviews', 'Reporting & analysis'],
+    daily: Object.keys(ONBOARDING_HELP_AREAS),
     task: session.suggestions,
   }
   return (choices[session.step] ?? []).map((label, index) => ({ id: `${session.step}:${index}`, label }))

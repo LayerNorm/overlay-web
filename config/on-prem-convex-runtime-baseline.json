@@ -439,7 +439,6 @@
     "src/server/memory/ConvexMemoryRepository.ts",
     "src/server/notes/ConvexNoteRepository.ts",
     "src/server/notes/index.ts",
-    "src/server/onboarding/OnboardingReplyGenerator.ts",
     "src/server/onboarding/OnboardingStateRepository.ts",
     "src/server/shared/providers/convex-rate-limiter.ts",
     "src/server/shared/providers/index.ts",

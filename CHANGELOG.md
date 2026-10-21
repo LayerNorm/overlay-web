@@ -4,11 +4,11 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
-- Add account-level workspace discovery, freeform workspace creation and invitation entry before onboarding. Suggested answers fill an editable composer in onboarding, main chat and agent conversations without submitting automatically. New owners get team and optional website context; invited members get a shorter setup. Keep work-tool and external-agent connections separate, restore profile drafts on Back and refresh, and remove the tour target border.
+- Add account-level workspace discovery, freeform workspace creation and invitation entry before onboarding. Suggested answers fill an editable composer in main chat and agent conversations without submitting automatically. New owners get a team question; invited members get a shorter setup. Restore profile drafts on refresh and remove the tour target border.
 
-- Show loading branding immediately, keep onboarding answers in the normal message style, center guided panels, and anchor the workspace tour beside navigation. Open one-to-one AI employee conversations in Agents instead of Chats.
+- Show loading branding immediately, keep onboarding answers in the normal message style and anchor the workspace tour beside navigation. Open one-to-one AI employee conversations in Agents instead of Chats.
 
-- Use the shared Overlay Free router for onboarding personalization, with prepared replies when routing is unavailable or privacy settings require zero data retention.
+- Redesign onboarding as a scripted conversation with no model calls: the same answers always give the same questions, employee suggestions and starter tasks. Controls sit directly under Overlay's question, single-choice chips answer in one tap, and "You can call me Divyansh" is saved as "Divyansh". App and Claude Code/Codex connections share one step with brand logos and are hidden or skipped when unavailable. Remove the website question and personalization consent, phrase the user's replies naturally, hide message actions during setup, and add Skip setup.
 
 - Keep onboarding tour controls inside the mobile navigation drawer, with visible navigation targets and automatic drawer cleanup when the tour ends.
 

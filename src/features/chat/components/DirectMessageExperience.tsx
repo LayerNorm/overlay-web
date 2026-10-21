@@ -286,6 +286,7 @@ export function DirectMessageExperience({
                 {guided?.footer}
               </>}
               hideScrollbar={Boolean(guided)}
+              guided={Boolean(guided)}
             />
             {guided && !guided.composer ? null : transcript.surfacePlatform ? (
               <SurfaceReadOnlyComposer surfacePlatform={transcript.surfacePlatform} />
