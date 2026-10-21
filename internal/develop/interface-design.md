@@ -448,7 +448,7 @@ Run `node scripts/qa/tabs-interactions.mjs` for real-browser regressions; it acc
 
 ## Marketing FAQ and page metadata
 
-The landing FAQ uses native details/summary disclosures near the end of the static home page.
+The landing FAQ uses the shadcn `Accordion` (`@overlay/ui/primitives`, single open item, collapsible) near the end of the static home page.
 Its visible answers and FAQ structured data share one source; describe available
 capabilities only. Public marketing pages define their own canonical paths so
 they do not inherit the root homepage canonical.

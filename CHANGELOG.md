@@ -6,6 +6,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Replace the `/home` scroll story with a static landing page in one framed column (approved mockup `internal/plans/mockups/landing-static-mockup-v2.html`): a one-color headline whose five underlined phrases jump to their sections, a still of the app with the live sidebar (Work, Chats, Files, Automations) and agents drawn as their creatures, then superpowers, the create/manage/deploy/bring-your-own steps, teams, controls, where to get Overlay and the FAQ. The footer's Product links now point at `#control-plane`, `#get-overlay`, `#ai-employees` and `#deploy`. The scroll engine, scene graphics and interactive demo are removed.
 
+- Make the `/home` app still look like the real workspace: the live sidebar (Personal/Workspace, Work, Agents, Chats, Automations, More, Needs you / Assigned to me / Everything), no header rules, an Operations agent planning a team offsite with the orb "Worked for" tool row, and its computer streaming a browser that fills in a venue form. The FAQ now uses a new shadcn `Accordion` in `@overlay/ui/primitives`, and the marketing footer keeps two or four link columns on narrow screens instead of one long column.
+
 - Keep the model you pick in an existing chat after sending. The composer and saved chat model no longer revert to the chat's earlier model once the reply starts.
 
 - Keep earlier messages visible after a reply finishes in a chat reopened from history. Restored chats now load the full transcript into the active chat runtime instead of only the current mode's turns.
