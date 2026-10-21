@@ -1,6 +1,12 @@
+import { createAnthropic } from '@ai-sdk/anthropic'
+import { createOpenAI } from '@ai-sdk/openai'
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import type { LanguageModel, LLMGateway, ModelInfo, ModelOptions, PricingInfo } from '../contracts'
-import { getByokPreset, type ByokProviderPreset } from './byok-presets'
+import {
+  getByokModelProtocol,
+  getByokPreset,
+  type ByokProviderPreset,
+} from './byok-presets'
 
 /**
  * Minimal view of a user provider connection record, as needed by the gateway
@@ -68,18 +74,49 @@ export class ByokGateway implements LLMGateway {
 
   async createLanguageModel(
     modelId: string,
-    _modelOptions: ModelOptions = {},
+    modelOptions: ModelOptions = {},
   ): Promise<LanguageModel> {
-    void _modelOptions
-    const provider = createOpenAICompatible({
-      name: this.options.connection.providerId,
+    const headers = this.preset.sessionHeader
+      ? {
+          ...(this.preset.headers ?? {}),
+          [this.preset.sessionHeader]: modelOptions.sessionId ?? globalThis.crypto.randomUUID(),
+        }
+      : this.preset.headers
+    const providerFetch = this.options.fetch && this.preset.sessionHeader
+      ? this.createSessionFetch(headers ?? {})
+      : this.options.fetch
+    const protocol = getByokModelProtocol(this.preset, modelId)
+    const providerOptions = {
       baseURL: this.options.connection.endpoint,
       ...(this.options.apiKey ? { apiKey: this.options.apiKey } : {}),
-      // Do not merge caller-supplied headers here. In openai-compatible,
-      // explicit headers override the generated Authorization header; allowing
-      // that would let a future caller replace the user-owned Vault key.
-      headers: this.preset.headers,
-      ...(this.options.fetch ? { fetch: this.options.fetch } : {}),
+      // Do not merge caller-supplied headers here. Explicit headers override
+      // the generated Authorization header in the OpenAI-compatible provider.
+      // Allowing that would let a caller replace the user-owned Vault key.
+      headers,
+      ...(providerFetch ? { fetch: providerFetch } : {}),
+    }
+
+    if (protocol === 'responses') {
+      const provider = createOpenAI(providerOptions)
+      return {
+        id: modelId,
+        provider: this.options.connection.providerId,
+        implementation: provider.responses(modelId),
+      }
+    }
+
+    if (protocol === 'messages') {
+      const provider = createAnthropic(providerOptions)
+      return {
+        id: modelId,
+        provider: this.options.connection.providerId,
+        implementation: provider.messages(modelId),
+      }
+    }
+
+    const provider = createOpenAICompatible({
+      name: this.options.connection.providerId,
+      ...providerOptions,
     })
 
     return {
@@ -102,6 +139,29 @@ export class ByokGateway implements LLMGateway {
       pricingSource: 'byok',
       pricingType: 'language',
       isFree: false,
+    }
+  }
+
+  private createSessionFetch(headers: Record<string, string>): typeof fetch {
+    const guardedFetch = this.options.fetch
+    if (!guardedFetch) {
+      throw new Error('A guarded fetch implementation is required for session-based providers.')
+    }
+    return async (input, init) => {
+      const request = new Request(input, init)
+      for (const [name, value] of Object.entries(headers)) {
+        request.headers.set(name, value)
+      }
+      const requestInit: RequestInit & { duplex?: 'half' } = {
+        ...(init ?? {}),
+        method: request.method,
+        headers: request.headers,
+      }
+      if (request.body && init?.body === undefined) {
+        requestInit.body = request.body
+        requestInit.duplex = 'half'
+      }
+      return guardedFetch(request.url, requestInit)
     }
   }
 }

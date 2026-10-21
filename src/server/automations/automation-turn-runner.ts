@@ -214,9 +214,12 @@ export async function callDurableAutomationModel(args: {
   providerOptions?: Record<string, Record<string, unknown>>
   reasoning?: 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
   toolDefinitions: PersonalChatWorkToolDefinition[]
+  conversationId: string
   userId: string
 }): Promise<AutomationModelCallResult> {
-  const model = await getLanguageModel(args.modelId, undefined, args.userId)
+  const model = await getLanguageModel(args.modelId, undefined, args.userId, {
+    sessionId: args.conversationId,
+  })
   const tools = Object.fromEntries(args.toolDefinitions.map((definition) => [
     definition.name,
     tool({

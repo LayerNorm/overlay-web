@@ -6,6 +6,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Remove multi-model selection and compare responses across text, image, and video chats. Existing saved model preferences and conversations continue with one primary model response.
 
+- Add OpenCode Go to Settings > Providers. Chat, Responses, and Messages model protocols use the OpenCode Go subscription endpoint with stable conversation sessions.
+
 - Match file and automation sidebar rows to chats with shared 32px rows, 14px text and 16px icons, reduce agent names to the conversation text size, and give every shared chat composer a subtle theme-aware outline.
 
 - Pin `follow-redirects` to 1.16.1 to clear two high-severity advisories (GHSA-q3jh-wrc6-jgq8, GHSA-8r9p-f939-6h3c) that block the production dependency audit.
