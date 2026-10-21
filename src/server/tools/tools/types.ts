@@ -15,6 +15,8 @@ export interface OverlayToolsOptions {
   conversationId?: string
   turnId?: string
   automationId?: string
+  /** Approval-capable durable execution context for consequential computer actions. */
+  computerApprovalContext?: 'work' | 'automation'
   workspaceId?: string
   baseUrl?: string
   allowedToolIds?: readonly string[]

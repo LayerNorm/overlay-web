@@ -18,6 +18,7 @@ import {
 import type { Computer, ComputerOwnerType } from '@overlay/workspace-contracts/computers'
 import { callInternalApi, callInternalApiGet, toolAuthBody } from './internal-api'
 import type { OverlayToolsOptions } from './types'
+import { computerActionRequiresApproval } from '@overlay/tools-core/policy'
 
 /**
  * Memory writes carry an explicit owner when an agent is driving the turn, so
@@ -1193,6 +1194,28 @@ export type ComputerBrowserAction =
   | { action: 'tabs' }
   | { action: 'switch_tab'; index: number }
   | { action: 'new_tab'; url: string }
+
+const COMPUTER_ACTION_APPROVAL_MESSAGE =
+  'Typing and key presses on the Computer need your approval. Switch this chat to Work mode, or ask the user to do it in Open desktop.'
+
+export async function executeComputerActionWithApproval<T>(
+  options: Pick<OverlayToolsOptions, 'computerApprovalContext'>,
+  toolName: 'computer_input' | 'computer_browser',
+  input: unknown,
+  operate: () => Promise<T>,
+): Promise<T | { success: false; error: 'approval_required'; message: string }> {
+  if (
+    options.computerApprovalContext !== 'work'
+    && computerActionRequiresApproval(toolName, input)
+  ) {
+    return {
+      success: false,
+      error: 'approval_required',
+      message: COMPUTER_ACTION_APPROVAL_MESSAGE,
+    }
+  }
+  return await operate()
+}
 
 export async function executeComputerBrowser(
   options: OverlayToolsOptions,

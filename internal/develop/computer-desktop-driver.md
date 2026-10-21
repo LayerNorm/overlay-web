@@ -13,3 +13,9 @@ Desktop input actions serialize inside the sandbox with `flock` on `/tmp/overlay
 The driver uses a Python standard-library WebSocket client for CDP. `computer_browser` supports HTTP and HTTPS navigation, back/forward/reload, text snapshots, ref-based click and type, bounded scrolling, Enter/Tab/Escape/arrows/PageDown, tab listing/switching, and new tabs. A snapshot includes the URL, title, visible text bounded to 20,000 characters, and up to 200 visible interactive elements with `data-overlay-ref` ids and viewport bounds. Actions resolve refs from the page DOM; take a fresh snapshot when a ref is missing or stale.
 
 Browser-writing actions share the desktop input lock. Snapshot and tab listing are read-only and do not lock. If Chromium is missing, the bounded best-effort preparation step also attempts to install `chromium`; `computer_open_url` falls back to `xdg-open` only when browser setup reports `desktop_unsupported`.
+
+## Approvals
+
+Typing and key presses through `computer_input`, and typing or pressing keys through `computer_browser`, require approval in Work mode. The existing agent-run approval flow stores the request and displays its tool name. Ordinary Act calls fail closed with `approval_required` before accessing the computer because they have no approval UI. Unattended automations deny approval-required calls and never execute them.
+
+Screenshots, navigation, scrolling, and clicks remain unapproved. Clicks are not yet approval-gated so reading and scrolling feeds stay fluid.

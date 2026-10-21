@@ -53,6 +53,7 @@ async function reconstructTooling(
     accessToken: undefined,
     automationExecution: context.automationExecution === true,
     automationId: context.automationId,
+    computerApprovalContext: context.automationExecution === true ? 'automation' : 'work',
     automationMode: false,
     forwardCookie: undefined,
     idempotencyKey,

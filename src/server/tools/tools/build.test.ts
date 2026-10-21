@@ -3,6 +3,7 @@ import test from 'node:test'
 import { asSchema, type ToolSet } from 'ai'
 import { buildOverlayToolSet } from './build'
 import { createFreeTierGatedStubTools } from './free-tier-gated-stub-tools'
+import { executeComputerActionWithApproval } from './overlay-executes'
 
 function buildTestTools() {
   return buildOverlayToolSet({
@@ -101,6 +102,72 @@ test('computer screenshot returns image content and computer input validates act
     type: 'text',
     value: 'URL: https://example.test/\nTitle: Example',
   })
+})
+
+test('computer_browser typing is marked for Work-mode approval', async () => {
+  const tools = buildOverlayToolSet({
+    userId: 'user-test',
+    baseUrl: 'http://localhost:3000',
+    allowedToolIds: ['computer_browser'],
+    computerApprovalContext: 'work',
+  })
+  const browser = tools.computer_browser as unknown as {
+    needsApproval?: (input: unknown, options: unknown) => boolean | Promise<boolean>
+  }
+
+  assert.equal(typeof browser.needsApproval, 'function')
+  assert.equal(await browser.needsApproval?.({
+    action: 'type',
+    ref: 'ref-1',
+    text: 'hello',
+    submit: true,
+  }, {}), true)
+})
+
+test('computer input fails closed before operate for typing while scroll still operates', async () => {
+  const tools = buildOverlayToolSet({
+    userId: 'user-test',
+    baseUrl: 'http://localhost:3000',
+    allowedToolIds: ['computer_input'],
+  })
+  const computerInput = tools.computer_input as unknown as {
+    execute: (input: unknown, options: unknown) => Promise<unknown>
+    needsApproval?: unknown
+  }
+  assert.equal(computerInput.needsApproval, undefined)
+  assert.deepEqual(await computerInput.execute({ action: 'type', text: 'hello' }, {}), {
+    success: false,
+    error: 'approval_required',
+    message: 'Typing and key presses on the Computer need your approval. Switch this chat to Work mode, or ask the user to do it in Open desktop.',
+  })
+
+  let operateCalls = 0
+  const operate = async () => {
+    operateCalls += 1
+    return { success: true }
+  }
+
+  const typing = await executeComputerActionWithApproval(
+    {},
+    'computer_input',
+    { action: 'type', text: 'hello' },
+    operate,
+  )
+  assert.deepEqual(typing, {
+    success: false,
+    error: 'approval_required',
+    message: 'Typing and key presses on the Computer need your approval. Switch this chat to Work mode, or ask the user to do it in Open desktop.',
+  })
+  assert.equal(operateCalls, 0)
+
+  const scrolling = await executeComputerActionWithApproval(
+    {},
+    'computer_input',
+    { action: 'scroll', direction: 'down', amount: 2 },
+    operate,
+  )
+  assert.deepEqual(scrolling, { success: true })
+  assert.equal(operateCalls, 1)
 })
 
 test('Overlay tools expose Gateway-compatible input schemas', async () => {

@@ -650,6 +650,7 @@ export async function prepareAutomationAgentTurn(
     agentPrincipalId: surface?.agentPrincipalId,
     automationExecution: true,
     automationId: input.automationId,
+    computerApprovalContext: 'automation',
     baseUrl,
     conversationId: cid,
     entitlements: runtimeEntitlements,

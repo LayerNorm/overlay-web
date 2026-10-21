@@ -25,6 +25,7 @@ import {
   executeComputerReadFile,
   executeComputerScreenshot,
   executeComputerWriteFile,
+  executeComputerActionWithApproval,
   executeCreateAutomation,
   executeDeleteAutomation,
   executeDraftAutomationFromChat,
@@ -52,6 +53,7 @@ import {
   executeUpdateMemory,
 } from './overlay-executes'
 import { assertOverlayToolAllowed } from './policy'
+import { computerActionRequiresApproval } from '@overlay/tools-core/policy'
 import {
   executeCreateFolder,
   executeListFiles,
@@ -999,9 +1001,18 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
           'type requires text; key requires keys; scroll requires direction and amount with optional x and y; ' +
           'wait requires ms. computer_open_url opens pages in this same visible browser.',
         inputSchema: computerInputSchema,
+        ...(options.computerApprovalContext !== undefined
+          ? { needsApproval: (input) => computerActionRequiresApproval('computer_input', input) }
+          : {}),
         execute: async (input) => {
           assertToolAllowed('computer_input')
-          return executeComputerInput(options, computerInputVariants.parse(input))
+          const parsed = computerInputVariants.parse(input)
+          return await executeComputerActionWithApproval(
+            options,
+            'computer_input',
+            parsed,
+            () => executeComputerInput(options, parsed),
+          )
         },
       })
     }
@@ -1012,13 +1023,22 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
           'Control the signed-in browser visible on this computer. Prefer this tool for websites: take a snapshot, then act using its element refs. ' +
           'Use computer_screenshot and computer_input for non-browser apps or when snapshot refs fail. The user sees the same browser in Open desktop.',
         inputSchema: computerBrowserSchema,
+        ...(options.computerApprovalContext !== undefined
+          ? { needsApproval: (input) => computerActionRequiresApproval('computer_browser', input) }
+          : {}),
         execute: async (input) => {
           assertToolAllowed('computer_browser')
-          return executeComputerBrowser(options, computerBrowserVariants.parse(input))
+          const parsed = computerBrowserVariants.parse(input)
+          return await executeComputerActionWithApproval(
+            options,
+            'computer_browser',
+            parsed,
+            () => executeComputerBrowser(options, parsed),
+          )
         },
         toModelOutput: ({ output }) => ({
           type: 'text',
-          value: output.success ? output.text : output.error,
+          value: output.success ? output.text : ('message' in output ? output.message : output.error),
         }),
       })
     }

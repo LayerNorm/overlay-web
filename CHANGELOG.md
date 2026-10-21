@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Require Work-mode approval for typing and key presses on Computers, and fail closed in regular chats.
+
 - Add persistent browser controls for agents, including snapshots and ref-based actions.
 
 - Add provider-neutral desktop screenshots and input controls for Overlay agents.

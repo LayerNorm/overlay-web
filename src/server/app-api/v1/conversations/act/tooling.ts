@@ -132,6 +132,7 @@ export async function prepareActTooling(params: {
   automationExecution?: boolean
   automationMode?: boolean
   automationId?: string
+  computerApprovalContext?: 'work' | 'automation'
   baseUrl: string
   conversationId?: string
   entitlements: Entitlements
@@ -225,6 +226,7 @@ export async function prepareActTooling(params: {
         conversationId: params.conversationId,
         turnId: params.turnId,
         automationId: params.automationId,
+        computerApprovalContext: params.computerApprovalContext,
         baseUrl: params.baseUrl,
         allowedToolIds: allowedOverlayToolIds,
         forwardCookie: params.forwardCookie ?? undefined,
