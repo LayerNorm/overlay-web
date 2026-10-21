@@ -1255,22 +1255,6 @@ export async function executeComputerActionWithTakeover<T>(
   return await operate()
 }
 
-export async function executeComputerActionAfterTakeoverCheck<T>(
-  options: OverlayToolsOptions,
-  toolName: 'computer_input' | 'computer_browser',
-  input: unknown,
-  operate: () => Promise<T>,
-): Promise<T | typeof COMPUTER_USER_IN_CONTROL_RESULT> {
-  const resolved = await computerInstanceFor(options)
-  if (!resolved.ok) return await operate()
-  return await executeComputerActionWithTakeover(
-    resolved.computer.controlledByUserId,
-    toolName,
-    input,
-    operate,
-  )
-}
-
 function isComputerUserInControlResult(
   value: unknown,
 ): value is typeof COMPUTER_USER_IN_CONTROL_RESULT {

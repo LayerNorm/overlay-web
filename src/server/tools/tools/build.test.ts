@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { asSchema, type ToolSet } from 'ai'
+import { DRIVER_VERSION, type SandboxInstance } from '@overlay/sandbox-runtime'
+import { getOverlayServerContext } from '@/server/bootstrap'
 import { buildOverlayToolSet } from './build'
 import { createFreeTierGatedStubTools } from './free-tier-gated-stub-tools'
 import { executeComputerActionWithApproval, executeComputerActionWithTakeover } from './overlay-executes'
@@ -197,6 +199,87 @@ test('computer takeover blocks input but keeps screenshot and browser snapshot a
     { success: true },
   )
   assert.equal(operateCalls, 2)
+})
+
+test('computer_input click resolves its computer once', async () => {
+  const previousNextPhase = process.env.NEXT_PHASE
+  process.env.NEXT_PHASE = 'phase-production-build'
+  let context: ReturnType<typeof getOverlayServerContext>
+  try {
+    context = getOverlayServerContext()
+  } finally {
+    if (previousNextPhase === undefined) delete process.env.NEXT_PHASE
+    else process.env.NEXT_PHASE = previousNextPhase
+  }
+  const originalComputerService = context.computerService
+  const originalWorkspaceService = context.workspaceService
+  let getForOwnerCalls = 0
+  const computer = { id: 'computer-1', name: 'Computer', controlledByUserId: undefined }
+  const instance = {
+    capabilities: { desktop: true },
+    runCommand: async (request: { args?: string[] }) => {
+      const driverRequest = JSON.parse(request.args?.at(-1) ?? '{}') as { command?: string }
+      const stdout = driverRequest.command === 'capabilities'
+        ? JSON.stringify({
+            version: DRIVER_VERSION,
+            display: ':0',
+            screen: { width: 1280, height: 720 },
+            input: true,
+            screenshot: true,
+            missing: [],
+          })
+        : JSON.stringify({ success: true })
+      return {
+        wait: async () => ({
+          commandId: 'command-1',
+          exitCode: 0,
+          stdout,
+          stderr: '',
+          startedAt: 0,
+          endedAt: 1,
+        }),
+      }
+    },
+  } as unknown as SandboxInstance
+  context.workspaceService = {
+    ...originalWorkspaceService,
+    listForUser: async () => [{
+      workspace: { id: 'ws-1' },
+      principal: { id: 'principal-1' },
+      membership: { role: 'member' },
+    }],
+  } as unknown as typeof context.workspaceService
+  context.computerService = {
+    ...originalComputerService,
+    getForOwner: async () => {
+      getForOwnerCalls += 1
+      return computer
+    },
+    withOwnerOperation: async ({ operation }: {
+      operation: (current: typeof computer, sandbox: SandboxInstance) => Promise<unknown>
+    }) => await operation(computer, instance),
+  } as unknown as typeof context.computerService
+
+  try {
+    const tools = buildOverlayToolSet({
+      userId: 'user-test',
+      workspaceId: 'ws-1',
+      baseUrl: 'http://localhost:3000',
+      allowedToolIds: ['computer_input'],
+    })
+    const computerInput = tools.computer_input as unknown as {
+      execute: (input: unknown, options: unknown) => Promise<unknown>
+    }
+
+    assert.deepEqual(await computerInput.execute({ action: 'click', x: 10, y: 20 }, {}), {
+      success: true,
+      acknowledgement: 'click completed.',
+    })
+    assert.equal(getForOwnerCalls, 1)
+  } finally {
+    context.computerService = originalComputerService
+    context.workspaceService = originalWorkspaceService
+  }
 })
 
 test('Overlay tools expose Gateway-compatible input schemas', async () => {

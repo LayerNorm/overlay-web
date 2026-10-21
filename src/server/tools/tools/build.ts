@@ -27,7 +27,6 @@ import {
   executeComputerScreenshot,
   executeComputerWriteFile,
   executeComputerActionWithApproval,
-  executeComputerActionAfterTakeoverCheck,
   type ComputerTerminalAction,
   executeCreateAutomation,
   executeDeleteAutomation,
@@ -1049,16 +1048,11 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
         execute: async (input) => {
           assertToolAllowed('computer_input')
           const parsed = computerInputVariants.parse(input)
-          return await executeComputerActionAfterTakeoverCheck(
+          return await executeComputerActionWithApproval(
             options,
             'computer_input',
             parsed,
-            () => executeComputerActionWithApproval(
-              options,
-              'computer_input',
-              parsed,
-              () => executeComputerInput(options, parsed),
-            ),
+            () => executeComputerInput(options, parsed),
           )
         },
       })
@@ -1077,16 +1071,11 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
         execute: async (input) => {
           assertToolAllowed('computer_browser')
           const parsed = computerBrowserVariants.parse(input)
-          return await executeComputerActionAfterTakeoverCheck(
+          return await executeComputerActionWithApproval(
             options,
             'computer_browser',
             parsed,
-            () => executeComputerActionWithApproval(
-              options,
-              'computer_browser',
-              parsed,
-              () => executeComputerBrowser(options, parsed),
-            ),
+            () => executeComputerBrowser(options, parsed),
           )
         },
         toModelOutput: ({ output }) => ({
