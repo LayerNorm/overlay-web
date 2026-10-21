@@ -1,9 +1,8 @@
 import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
-import type { AppApiRouteContext } from '@/server/app-api/bff-context'
+import type { AccountAppApiRouteContext } from '@/server/app-api/bff-context'
 import type { AppSettings, ChatModePreference, ThemePresetId } from '@overlay/app-core'
 import { lazyConvex as convex } from '@/server/database/lazy-convex'
-import { getOverlayServerContext } from '@/server/bootstrap'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { isThemePresetId } from '@/shared/app/themes'
 import type { AppSettingsPatch } from '@/server/settings'
@@ -35,7 +34,7 @@ function publicSettingsPayload(settings: AppSettings) {
   return { ...settings, useSecondarySidebar: settings.useSecondarySidebar === true, chatStreamingMode: 'token' as const }
 }
 
-export async function GET(request: NextRequest, context: AppApiRouteContext) {
+export async function GET(request: NextRequest, context: AccountAppApiRouteContext) {
   try {
     const { auth } = context
     const settings = await convex.query<AppSettings>(
@@ -54,7 +53,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
   }
 }
 
-export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
+export async function PATCH(request: NextRequest, context: AccountAppApiRouteContext) {
   try {
     const rawBody = await request.json().catch((_error) => null)
     if (!isPlainObject(rawBody)) {

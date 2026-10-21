@@ -6,6 +6,7 @@ export const LANDING_AGENTS = {
   support: { name: 'Customer support', avatarShape: 'blob', avatarColor: '#db2777' },
   fundraising: { name: 'Fundraising', avatarShape: 'cloud', avatarColor: '#7c3aed' },
   docs: { name: 'Docs agent', avatarShape: 'droplet', avatarColor: '#2563eb' },
+  operations: { name: 'Operations', avatarShape: 'squircle', avatarColor: '#ea580c' },
   codex: { name: 'Codex agent', avatarShape: 'circle', avatarColor: '#64748b' },
 } as const
 

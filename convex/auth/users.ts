@@ -166,7 +166,7 @@ export const markOnboardingComplete = mutation({
       .withIndex('by_userId', (q) => q.eq('userId', userId))
       .first()
     if (sub) {
-      await ctx.db.patch(sub._id, { hasSeenOnboarding: true })
+      await ctx.db.patch(sub._id, { hasSeenOnboarding: true, onboardingSession: undefined })
       return { ok: true as const }
     }
     // Subscription row is normally created by syncUserProfile; if missing, bootstrap
@@ -194,7 +194,7 @@ export const resetOnboarding = mutation({
       .withIndex('by_userId', (q) => q.eq('userId', userId))
       .first()
     if (!sub) return { ok: false as const }
-    await ctx.db.patch(sub._id, { hasSeenOnboarding: false })
+    await ctx.db.patch(sub._id, { hasSeenOnboarding: false, onboardingSession: undefined })
     return { ok: true as const }
   },
 })

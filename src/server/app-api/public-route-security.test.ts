@@ -83,7 +83,7 @@ function exportedMethods(source: string): string[] {
 test('every public v1 route uses the security BFF or declares complete replacement controls', () => {
   for (const file of routeFiles(v1Root)) {
     const source = readFileSync(file, 'utf8')
-    if (/handleBffRoute\s*\(/.test(source)) continue
+    if (/handle(?:Account)?BffRoute\s*\(/.test(source)) continue
 
     const path = routePath(file)
     const exception = PUBLIC_V1_ROUTE_SECURITY_EXCEPTIONS[

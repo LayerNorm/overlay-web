@@ -1410,6 +1410,7 @@ export function useRoomComposer({
     inputRef,
     inputRevision,
     setInput,
+    subscribeToInput,
   } = useComposerTextState()
   const {
     attachedImages,
@@ -1565,6 +1566,7 @@ export function useRoomComposer({
     inputRevision,
     setInput,
     attachedImages,
+    subscribeToInput,
     setAttachedImages,
     pendingChatDocuments,
     setPendingChatDocuments,

@@ -322,6 +322,7 @@ export default defineSchema({
     chatStarterDay: v.optional(v.string()),
     // Onboarding tour state
     hasSeenOnboarding: v.optional(v.boolean()),
+    onboardingSession: v.optional(v.string()),
     overlayStorageBytesUsed: v.optional(v.number()),
     fileBandwidthBytesUsed: v.optional(v.number()),
     fileBandwidthPeriodStart: v.optional(v.number()),
@@ -1371,6 +1372,16 @@ export default defineSchema({
                 connectUrl: v.optional(v.string()),
                 connected: v.optional(v.boolean()),
               }),
+              v.object({
+                version: v.literal(1),
+                kind: v.literal('questionnaire'),
+                prompt: v.string(),
+                choices: v.array(v.object({
+                  id: v.string(),
+                  label: v.string(),
+                })),
+                multiple: v.boolean(),
+              }),
             ),
             transient: v.optional(v.boolean()),
           }),
@@ -2093,6 +2104,7 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index('by_invitationId', ['invitationId'])
+    .index('by_email_status', ['email', 'status', 'expiresAt'])
     .index('by_workspaceId_createdAt', ['workspaceId', 'createdAt'])
     .index('by_workspaceId_email_status', ['workspaceId', 'email', 'status'])
     .index('by_workspaceId_status_expiresAt', ['workspaceId', 'status', 'expiresAt'])

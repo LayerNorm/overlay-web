@@ -223,6 +223,7 @@ export function useChatExperienceController({
     inputRef,
     inputRevision,
     setInput,
+    subscribeToInput,
   } = useComposerTextState()
 
   // Restore guest draft after hydration so server/client initial renders match
@@ -1069,6 +1070,8 @@ export function useChatExperienceController({
     handleComposerInputChange,
     hasComposerText,
     textareaRef,
+    setQuestionnaireDraft: (value: string) => { setInput(value); textareaRef.current?.focus() },
+    subscribeToInput,
     replyContext,
     setReplyContext,
     composerNotice,

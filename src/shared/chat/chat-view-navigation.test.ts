@@ -1,6 +1,15 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { resolveSoftChatRoute, selectConversationForView } from './chat-view-navigation'
+import { agentConversationRedirect, resolveSoftChatRoute, selectConversationForView } from './chat-view-navigation'
+
+test('one-to-one agent conversations move from Chats to their agent thread without losing history', () => {
+  const args = { pathname: '/app/w/workspace-1/chat', workspaceId: 'workspace-1', agentId: 'overlay', conversationId: 'existing-thread', guided: false, showcase: false }
+  assert.equal(agentConversationRedirect(args), '/app/w/workspace-1/agents?agent=overlay&id=existing-thread')
+  assert.equal(agentConversationRedirect({ ...args, pathname: '/app/w/workspace-1/agents' }), null)
+  assert.equal(agentConversationRedirect({ ...args, agentId: undefined }), null)
+  assert.equal(agentConversationRedirect({ ...args, guided: true }), null)
+  assert.equal(agentConversationRedirect({ ...args, showcase: true }), null)
+})
 
 const chats = [
   { _id: 'newest', title: 'Newest', lastModified: 20, conversationType: 'channel' as const },

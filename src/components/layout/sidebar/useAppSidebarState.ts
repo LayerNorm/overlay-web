@@ -1,7 +1,8 @@
 'use client'
 
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { useState, useCallback, useMemo, useRef, useSyncExternalStore, type Dispatch, type SetStateAction } from 'react'
+import { useEffect, useState, useCallback, useMemo, useRef, useSyncExternalStore, type Dispatch, type SetStateAction } from 'react'
+import { TOUR_NAVIGATION_EVENT } from './tour-navigation'
 import { MessageSquare } from 'lucide-react'
 import {
   resolveOverlayAppShellConfig,
@@ -765,6 +766,14 @@ export function useAppSidebarState({
   const [accountMenuOpen, setAccountMenuOpen] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [mobileView, setMobileView] = useState<'nav' | 'panel'>('nav')
+  useEffect(() => {
+    const onTourNavigation = (event: Event) => {
+      setMobileView('nav')
+      setMobileMenuOpen((event as CustomEvent<{ open: boolean }>).detail.open)
+    }
+    window.addEventListener(TOUR_NAVIGATION_EVENT, onTourNavigation)
+    return () => window.removeEventListener(TOUR_NAVIGATION_EVENT, onTourNavigation)
+  }, [])
   const [mobileAccountOpen, setMobileAccountOpen] = useState(false)
   const storedSidebarCollapsed = useSyncExternalStore(
     subscribeToSidebarCollapsed,

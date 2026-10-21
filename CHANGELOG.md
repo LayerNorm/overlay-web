@@ -6,10 +6,21 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Let people who left sign-up before verifying finish from sign-in. Signing in with the right password for an unverified account now opens the code screen with Resend, then signs in once the code is accepted, instead of linking to a missing `/auth/verify-email` page. Sign-in and sign-up also show a plain fallback message instead of crashing when an error response is not text.
 
+- Add account-level workspace discovery, freeform workspace creation and invitation entry before onboarding. Suggested answers fill an editable composer in main chat and agent conversations without submitting automatically. New owners get a team question; invited members get a shorter setup. Restore profile drafts on refresh and remove the tour target border.
+
 - Replace the `/home` scroll story with a static landing page in one framed column (approved mockup `internal/plans/mockups/landing-static-mockup-v2.html`): a one-color headline whose five underlined phrases jump to their sections, a still of the app with the live sidebar (Work, Chats, Files, Automations) and agents drawn as their creatures, then superpowers, the create/manage/deploy/bring-your-own steps, teams, controls, where to get Overlay and the FAQ. The footer's Product links now point at `#control-plane`, `#get-overlay`, `#ai-employees` and `#deploy`. The scroll engine, scene graphics and interactive demo are removed.
 
-- Keep the model you pick in an existing chat after sending. The composer and saved chat model no longer revert to the chat's earlier model once the reply starts.
+- Show loading branding immediately, keep onboarding answers in the normal message style and anchor the workspace tour beside navigation. Open one-to-one AI employee conversations in Agents instead of Chats.
 
+- Make the `/home` app still look like the real workspace: the live sidebar (Personal/Workspace, Work, Agents, Chats, Automations, More, Needs you / Assigned to me / Everything), no header rules, an Operations agent planning a team offsite with the orb "Worked for" tool row, and its computer streaming a browser that fills in a venue form. The FAQ now uses a new shadcn `Accordion` in `@overlay/ui/primitives`, and the marketing footer keeps two or four link columns on narrow screens instead of one long column.
+
+- Redesign onboarding as a scripted conversation with no model calls: the same answers always give the same questions, employee suggestions and starter tasks. Controls sit directly under Overlay's question, single-choice chips answer in one tap, and "You can call me Divyansh" is saved as "Divyansh". App and Claude Code/Codex connections share one step with brand logos and are hidden or skipped when unavailable. Remove the website question and personalization consent, phrase the user's replies naturally, hide message actions during setup, and add Skip setup.
+
+- Keep onboarding tour controls inside the mobile navigation drawer, with visible navigation targets and automatic drawer cleanup when the tour ends.
+
+- Make conversational onboarding sessions reset-safe with run-scoped transcript recovery and durable summaries of validated user choices.
+
+- Keep the model you pick in an existing chat after sending. The composer and saved chat model no longer revert to the chat's earlier model once the reply starts.
 - Keep earlier messages visible after a reply finishes in a chat reopened from history. Restored chats now load the full transcript into the active chat runtime instead of only the current mode's turns.
 
 - Remove multi-model selection and compare responses across text, image, and video chats. Existing saved model preferences and conversations continue with one primary model response.

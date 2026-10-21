@@ -24,6 +24,8 @@ export {
   type DirectMessageSummary,
   type Workspace,
   type WorkspaceAccess,
+  type AccountWorkspaceDirectoryResponse,
+  type AccountWorkspaceInvitation,
   type WorkspaceActivateResponse,
   type WorkspaceArchiveResponse,
   type WorkspaceCreateInput,

@@ -63,6 +63,7 @@ import {
   NoteListQuery,
   NotebookAgentRequest,
   OnboardingMutationRequest,
+  OnboardingActionRequest,
   OnboardingStatusQuery,
   OutputContentQuery,
   OutputListQuery,
@@ -295,6 +296,22 @@ export const webApiBoundaryDefinitions = [
     schema: { query: ConversationEventsQuery },
     summary: 'Wait for durable conversation changes after a cursor',
     tag: 'Conversations',
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/onboarding/session',
+    schema: { query: OnboardingStatusQuery, response: UnknownResponse },
+    summary: 'Read conversational onboarding session',
+    tag: 'Onboarding',
+    publicReference: false,
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/onboarding/session',
+    schema: { json: OnboardingActionRequest, response: UnknownResponse },
+    summary: 'Advance conversational onboarding',
+    tag: 'Onboarding',
+    publicReference: false,
   },
   {
     method: 'POST',
@@ -964,6 +981,7 @@ export const webApiExcludedRouteDefinitions = [
   { routePath: '/api/v1/shares/impact', reason: 'Share impact analysis; boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/shares/shared-with-me', reason: 'Shared-with-me listing; boundary definition pending. Protected by workspace authorization.' },
   // Workspace routes pending full boundary definitions.
+  { routePath: '/api/v1/account/workspaces', reason: 'Account workspace directory and creation; signed-browser-session only with validation and workspace creation rules enforced by the server service.' },
   { routePath: '/api/v1/workspace-invitations/[invitationId]/accept', reason: 'Workspace invitation acceptance; boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/workspaces', reason: 'Workspace management; boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/workspaces/[workspaceId]/audit-export', reason: 'Workspace audit export; boundary definition pending. Protected by workspace authorization.' },

@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { AuthFields, EmptyQuery, EmptyRequest, FormDataBoundary, PaginationQuery, UnknownResponse } from './common'
+import { OnboardingActionSchema } from '@/shared/onboarding/session'
 
 export const BootstrapQuery = EmptyQuery
 export const SubscriptionQuery = EmptyQuery
@@ -8,6 +9,7 @@ export const OnboardingStatusQuery = EmptyQuery
 export const OnboardingMutationRequest = z.object({
   ...AuthFields,
 }).passthrough()
+export const OnboardingActionRequest = OnboardingActionSchema
 
 export const BrowserTaskRequest = z.object({
   ...AuthFields,

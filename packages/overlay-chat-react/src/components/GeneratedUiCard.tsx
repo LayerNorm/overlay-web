@@ -27,6 +27,7 @@ import type {
 } from '@overlay/chat-core/generated-ui'
 import { generatedUiDataToPlainText } from '@overlay/chat-core/generated-ui'
 import { FileMarkdown } from '@overlay/modules-react/file-viewer'
+import { ConversationQuestionnaire } from './Questionnaire'
 
 export type GeneratedUiConnectorActions = {
   getLogoUrl?: (serviceName: string, slug?: string) => string | null
@@ -68,6 +69,7 @@ function formatCsv(value?: string[]): string {
 }
 
 function contentFilename(data: GeneratedUiData): string {
+  if (data.kind === 'questionnaire') return 'questionnaire.txt'
   if (data.kind === 'draft.email') return 'email-draft.txt'
   if (data.kind === 'connector.connect') return `${data.serviceName.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'connector'}.txt`
   return `${(data.title || 'draft').toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'draft'}.txt`
@@ -323,6 +325,8 @@ export function GeneratedUiCard({
     window.setTimeout(() => setCopied(false), 900)
   }
 
+  if (data.kind === 'questionnaire') return <ConversationQuestionnaire requestId={part.id} data={data} readOnly={readOnly || streaming} />
+
   return (
     <div className="message-appear w-full max-w-[min(100%,46rem)] px-1 py-1" aria-busy={streaming}>
       <div className="overflow-hidden rounded-xl border border-(--border) bg-(--surface-elevated) shadow-xs">
@@ -400,6 +404,7 @@ function GeneratedUiHeader({
   connectorActions?: GeneratedUiConnectorActions
   streaming: boolean
 }) {
+  if (data.kind === 'questionnaire') return <p>{data.prompt}</p>
   if (data.kind === 'connector.connect') {
     const logoUrl = connectorActions?.getLogoUrl?.(data.serviceName, data.slug)
     return (
