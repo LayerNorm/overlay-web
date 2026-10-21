@@ -19,9 +19,8 @@ interface MediaGenerationBaseParams {
   exchIdx: number
   promptForModel: string
   userPromptText: string
-  activeModels: string[]
+  modelId: string
   targetRuntime: ConversationRuntime
-  mediaSlotCount: number
   isChatActive: (chatId: string) => boolean
   updateRuntimeUiState: UpdateRuntimeUiState
   completeSession: CompleteSession
@@ -42,7 +41,6 @@ export interface ScheduleMediaUpgradeFailureParams {
   chatId: string
   exchIdx: number
   kind: MediaKind
-  activeModels: string[]
   isChatActive: (chatId: string) => boolean
   updateRuntimeUiState: UpdateRuntimeUiState
   completeSession: CompleteSession
@@ -66,30 +64,21 @@ export function buildImageGenerationRequestBody(params: {
   }
 }
 
-function generatingResults(kind: MediaKind, activeModels: string[]): GenerationResult[] {
-  return activeModels.map(() => ({ type: kind, status: 'generating' as const }))
-}
-
 function updateMediaSlot(params: {
   chatId: string
   exchIdx: number
   kind: MediaKind
-  activeModels: string[]
-  slotIndex: number
   result: GenerationResult
   updateRuntimeUiState: UpdateRuntimeUiState
 }) {
   params.updateRuntimeUiState(params.chatId, (prev) => {
     const next = cloneGenerationResultsMap(prev.generationResults)
-    const arr = [...(next.get(params.exchIdx) ?? generatingResults(params.kind, params.activeModels))]
-    arr[params.slotIndex] = params.result
-    next.set(params.exchIdx, arr)
+    next.set(params.exchIdx, [params.result])
     return {
       ...prev,
       generationResults: next,
       lastGeneratedImageUrl:
         params.kind === 'image' &&
-        params.slotIndex === 0 &&
         params.result.status === 'completed' &&
         params.result.url
           ? params.result.url
@@ -106,9 +95,8 @@ function appendMediaSummary(
     | 'temporaryChat'
     | 'turnId'
     | 'userPromptText'
-    | 'activeModels'
+    | 'modelId'
     | 'targetRuntime'
-    | 'mediaSlotCount'
     | 'isChatActive'
     | 'completeSession'
     | 'loadChats'
@@ -120,7 +108,7 @@ function appendMediaSummary(
   const summary = buildMediaSummary(
     kind,
     params.userPromptText,
-    params.activeModels,
+    [params.modelId],
     completed.length,
     results.length - completed.length,
   )
@@ -129,12 +117,10 @@ function appendMediaSummary(
     role: 'assistant',
     parts: [{ type: 'text', text: summary }],
   }
-  params.targetRuntime.askChats.slice(0, params.mediaSlotCount).forEach((chat) => {
-    chat.messages = [
-      ...chat.messages,
-      assistantMessage as never,
-    ]
-  })
+  params.targetRuntime.askChats[0].messages = [
+    ...params.targetRuntime.askChats[0].messages,
+    assistantMessage as never,
+  ]
   if (!params.temporaryChat) {
     void overlayAppClient.conversations.addMessageResponse(
       {
@@ -142,6 +128,7 @@ function appendMediaSummary(
         turnId: params.turnId,
         mode: 'act',
         role: 'assistant',
+        variantIndex: 0,
         content: summary,
         contentType: 'text',
         parts: [{ type: 'text', text: summary }],
@@ -163,11 +150,11 @@ export function scheduleMediaGenerationUpgradeFailure({
       const next = cloneGenerationResultsMap(prev.generationResults)
       next.set(
         params.exchIdx,
-        params.activeModels.map(() => ({
+        [{
           type: params.kind,
           status: 'failed' as const,
           upgradeRequired: true,
-        })),
+        }],
       )
       return { ...prev, generationResults: next }
     })
@@ -176,28 +163,25 @@ export function scheduleMediaGenerationUpgradeFailure({
 }
 
 export function runImageGenerationBatch(params: RunImageGenerationBatchParams) {
-  const generationTasks = params.activeModels.map((modelId, slotIndex) =>
-    overlayAppClient.chat.generateImageResponse(buildImageGenerationRequestBody({ ...params, modelId }))
-      .then(async (res) => {
+  void overlayAppClient.chat.generateImageResponse(buildImageGenerationRequestBody(params))
+    .then(async (res) => {
         if (!res.ok) {
           const err = await res.json().catch(() => ({ message: 'Generation failed' }))
           updateMediaSlot({
             ...params,
             kind: 'image',
-            slotIndex,
             result: {
               type: 'image',
               status: 'failed',
               error: (err as { message?: string }).message,
             },
           })
-          return { ok: false as const, modelId }
+          return { ok: false as const, modelId: params.modelId }
         }
         const data = await res.json() as { url?: string; modelUsed?: string; outputId?: string }
         updateMediaSlot({
           ...params,
           kind: 'image',
-          slotIndex,
           result: {
             type: 'image',
             status: 'completed',
@@ -206,49 +190,43 @@ export function runImageGenerationBatch(params: RunImageGenerationBatchParams) {
             outputId: data.outputId,
           },
         })
-        return { ok: true as const, modelId: data.modelUsed ?? modelId }
-      })
-      .catch((error) => {
+        return { ok: true as const, modelId: data.modelUsed ?? params.modelId }
+    })
+    .catch((error) => {
         updateMediaSlot({
           ...params,
           kind: 'image',
-          slotIndex,
           result: { type: 'image', status: 'failed', error: String(error) },
         })
-        return { ok: false as const, modelId }
-      })
-  )
-
-  void Promise.all(generationTasks)
-    .then((results) => appendMediaSummary('image', params, results))
+        return { ok: false as const, modelId: params.modelId }
+    })
+    .then((result) => appendMediaSummary('image', params, [result]))
     .catch((error) => {
-      console.error('[ChatInterface] Image generation batch failed', error)
+      console.error('[ChatInterface] Image generation failed', error)
       params.completeSession(params.chatId, params.isChatActive(params.chatId))
     })
 }
 
 export function runVideoGenerationBatch(params: RunVideoGenerationBatchParams) {
-  const generationTasks = params.activeModels.map((modelId, slotIndex) =>
-    overlayAppClient.chat.generateVideoResponse({
-      prompt: params.promptForModel,
-      modelId,
-      ...(params.temporaryChat ? { temporaryChat: true } : { conversationId: params.chatId }),
-      turnId: params.turnId,
-      videoSubMode: params.videoSubMode,
-      imageUrl: params.imageUrl,
-    })
-      .then(async (res) => {
+  void overlayAppClient.chat.generateVideoResponse({
+    prompt: params.promptForModel,
+    modelId: params.modelId,
+    ...(params.temporaryChat ? { temporaryChat: true } : { conversationId: params.chatId }),
+    turnId: params.turnId,
+    videoSubMode: params.videoSubMode,
+    imageUrl: params.imageUrl,
+  })
+    .then(async (res) => {
         if (!res.ok) {
           updateMediaSlot({
             ...params,
             kind: 'video',
-            slotIndex,
             result: { type: 'video', status: 'failed', error: 'Request failed' },
           })
-          return { ok: false as const, modelId }
+          return { ok: false as const, modelId: params.modelId }
         }
         const reader = res.body?.getReader()
-        if (!reader) return { ok: false as const, modelId }
+        if (!reader) return { ok: false as const, modelId: params.modelId }
         const decoder = new TextDecoder()
         let buf = ''
         while (true) {
@@ -271,7 +249,6 @@ export function runVideoGenerationBatch(params: RunVideoGenerationBatchParams) {
                 updateMediaSlot({
                   ...params,
                   kind: 'video',
-                  slotIndex,
                   result: {
                     type: 'video',
                     status: 'completed',
@@ -280,39 +257,34 @@ export function runVideoGenerationBatch(params: RunVideoGenerationBatchParams) {
                     outputId: evt.outputId,
                   },
                 })
-                return { ok: true as const, modelId: evt.modelUsed ?? modelId }
+                return { ok: true as const, modelId: evt.modelUsed ?? params.modelId }
               }
               if (evt.type === 'failed') {
                 updateMediaSlot({
                   ...params,
                   kind: 'video',
-                  slotIndex,
                   result: { type: 'video', status: 'failed', error: evt.error },
                 })
-                return { ok: false as const, modelId }
+                return { ok: false as const, modelId: params.modelId }
               }
             } catch {
               /* ignore malformed SSE chunks */
             }
           }
         }
-        return { ok: false as const, modelId }
-      })
-      .catch((error) => {
+        return { ok: false as const, modelId: params.modelId }
+    })
+    .catch((error) => {
         updateMediaSlot({
           ...params,
           kind: 'video',
-          slotIndex,
           result: { type: 'video', status: 'failed', error: String(error) },
         })
-        return { ok: false as const, modelId }
-      })
-  )
-
-  void Promise.all(generationTasks)
-    .then((results) => appendMediaSummary('video', params, results))
+        return { ok: false as const, modelId: params.modelId }
+    })
+    .then((result) => appendMediaSummary('video', params, [result]))
     .catch((error) => {
-      console.error('[ChatInterface] Video generation batch failed', error)
+      console.error('[ChatInterface] Video generation failed', error)
       params.completeSession(params.chatId, params.isChatActive(params.chatId))
     })
 }

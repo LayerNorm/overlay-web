@@ -45,7 +45,6 @@ function budgetRemainingCentsFor(entitlements: Entitlements): number {
 type ComposerNoticeSetter = (value: string | null | ((current: string | null) => string | null)) => void
 
 type ModelSelectionControls = {
-  setAskModelSelectionMode: (mode: 'single' | 'multiple') => void
   setSelectedActModel: (modelId: string) => void
   setSelectedModels: (modelIds: string[]) => void
 }
@@ -55,7 +54,6 @@ function useByokModelFallback({
   modelCatalogReady,
   selectableTextModels,
   selectedActModel,
-  setAskModelSelectionMode,
   setSelectedActModel,
   setSelectedModels,
 }: {
@@ -72,13 +70,11 @@ function useByokModelFallback({
     setSelectedModels([fallbackModelId])
     // react-doctor-disable-next-line react-doctor/no-pass-live-state-to-parent, react-doctor/no-pass-data-to-parent
     setSelectedActModel(fallbackModelId)
-    setAskModelSelectionMode('single')
   }, [
     chatPrefsHydrated,
     modelCatalogReady,
     selectableTextModels,
     selectedActModel,
-    setAskModelSelectionMode,
     setSelectedActModel,
     setSelectedModels,
   ])
@@ -89,7 +85,6 @@ function useFreeTierModelSelection({
   chatPrefsHydrated,
   isModelAccessRestricted,
   selectedActModel,
-  setAskModelSelectionMode,
   setSelectedActModel,
   setSelectedModels,
 }: {
@@ -105,7 +100,6 @@ function useFreeTierModelSelection({
 
     // react-doctor-disable-next-line react-doctor/no-pass-live-state-to-parent, react-doctor/no-pass-data-to-parent
     setSelectedModels([FREE_TIER_AUTO_MODEL_ID])
-    setAskModelSelectionMode('single')
     // react-doctor-disable-next-line react-doctor/no-pass-live-state-to-parent, react-doctor/no-pass-data-to-parent
     setSelectedActModel(FREE_TIER_AUTO_MODEL_ID)
   }, [
@@ -113,7 +107,6 @@ function useFreeTierModelSelection({
     chatPrefsHydrated,
     isModelAccessRestricted,
     selectedActModel,
-    setAskModelSelectionMode,
     setSelectedActModel,
     setSelectedModels,
   ])
@@ -126,7 +119,6 @@ function useZdrModelSelection({
   selectableTextModels,
   selectedActModel,
   selectedModels,
-  setAskModelSelectionMode,
   setSelectedActModel,
   setSelectedModels,
 }: {
@@ -140,7 +132,7 @@ function useZdrModelSelection({
   useEffect(() => {
     if (!chatPrefsHydrated || !effectiveOnlyAllowZdrModels) return
     const fallback = selectableTextModels[0]?.id ?? DEFAULT_MODEL_ID
-    const nextSelected = selectedModels.filter((id) => modelSupportsZeroDataRetention(id)).slice(0, 4)
+    const nextSelected = selectedModels.filter((id) => modelSupportsZeroDataRetention(id)).slice(0, 1)
     const resolvedSelected = nextSelected.length > 0 ? nextSelected : [fallback]
     const nextActModel = modelSupportsZeroDataRetention(selectedActModel) ? selectedActModel : resolvedSelected[0]!
     const changed =
@@ -152,7 +144,6 @@ function useZdrModelSelection({
     setSelectedModels(resolvedSelected)
     // react-doctor-disable-next-line react-doctor/no-pass-live-state-to-parent, react-doctor/no-pass-data-to-parent
     setSelectedActModel(nextActModel)
-    if (resolvedSelected.length === 1) setAskModelSelectionMode('single')
   }, [
     activeChatId,
     chatPrefsHydrated,
@@ -160,7 +151,6 @@ function useZdrModelSelection({
     selectableTextModels,
     selectedActModel,
     selectedModels,
-    setAskModelSelectionMode,
     setSelectedActModel,
     setSelectedModels,
   ])
@@ -250,7 +240,6 @@ export function useChatBillingControls({
   onlyAllowZdrModels,
   selectedActModel,
   selectedModels,
-  setAskModelSelectionMode,
   setComposerNotice,
   setSelectedActModel,
   setSelectedModels,
@@ -269,7 +258,6 @@ export function useChatBillingControls({
   searchParams: ChatSearchParams
   selectedActModel: string
   selectedModels: string[]
-  setAskModelSelectionMode: (mode: 'single' | 'multiple') => void
   setComposerNotice: ComposerNoticeSetter
   setSelectedActModel: (modelId: string) => void
   setSelectedModels: (modelIds: string[]) => void
@@ -312,7 +300,6 @@ export function useChatBillingControls({
     modelCatalogReady,
     selectableTextModels,
     selectedActModel,
-    setAskModelSelectionMode,
     setSelectedActModel,
     setSelectedModels,
   })
@@ -322,7 +309,6 @@ export function useChatBillingControls({
     chatPrefsHydrated,
     isModelAccessRestricted,
     selectedActModel,
-    setAskModelSelectionMode,
     setSelectedActModel,
     setSelectedModels,
   })
@@ -334,7 +320,6 @@ export function useChatBillingControls({
     selectableTextModels,
     selectedActModel,
     selectedModels,
-    setAskModelSelectionMode,
     setSelectedActModel,
     setSelectedModels,
   })

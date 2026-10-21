@@ -2,13 +2,11 @@
 
 import { useCallback, useRef } from 'react'
 import type { MutableRefObject } from 'react'
-import type { UIMessage } from '@/shared/chat/ai-ui-message'
 import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import { normalizeChatModelSelection } from '@/shared/chat/chat-model-prefs'
 import { consumeNewEmptyChat, removeCachedChat } from '@/shared/chat/chat-list-cache'
 import {
   buildRestoredMessageExchanges,
-  cloneUiMessageThread,
   createConversationUiState,
   groupOutputsIntoExchanges,
   restoreGenerationStateForExchanges,
@@ -19,7 +17,7 @@ import {
   normalizeReplyMetadata,
   type RawConversationMessage,
 } from './chatTransport'
-import { clearRuntimeMessages, resetRuntimeState } from './conversation-runtime-utils'
+import { buildRestoredRuntimeMessages, clearRuntimeMessages, resetRuntimeState } from './conversation-runtime-utils'
 import type { Conversation, ConversationRuntime, ConversationUiState } from '../chat-interface/types'
 
 export interface UseChatConversationLoaderParams {
@@ -116,12 +114,11 @@ export function useChatConversationLoader({
 
     if (newEmptyChat) {
       const selection = normalizeChatModelSelection({
-        askModelIds: newEmptyChat.askModelIds?.slice(0, 4) ?? selectedModels,
+        askModelIds: newEmptyChat.askModelIds?.slice(0, 1) ?? selectedModels.slice(0, 1),
         actModelId: newEmptyChat.actModelId ?? selectedActModel,
       })
       runtime.ui = createConversationUiState({
         activeChatTitle: newEmptyChat.title,
-        askModelSelectionMode: selection.askModelIds.length > 1 ? 'multiple' : 'single',
         isFirstMessage: true,
         selectedActModel: selection.actModelId,
         selectedModels: selection.askModelIds,
@@ -134,7 +131,7 @@ export function useChatConversationLoader({
 
     const runtimeHasLoadedHistory =
       runtime.actChat.messages.some((message) => message.role === 'user') ||
-      runtime.askChats.some((chat) => chat.messages.some((message) => message.role === 'user')) ||
+      runtime.askChats[0].messages.some((message) => message.role === 'user') ||
       runtime.ui.generationResults.size > 0
     if (runtime.hydrated && runtimeHasLoadedHistory) {
       shouldScrollRef.current = true
@@ -203,8 +200,8 @@ export function useChatConversationLoader({
           })
         }
       }
-      let resolvedSelectedModels = restoredTextSelection.askModelIds
-      let resolvedActModel = restoredTextSelection.actModelId
+      const resolvedSelectedModels = restoredTextSelection.askModelIds
+      const resolvedActModel = restoredTextSelection.actModelId
 
       if (requestId !== loadChatRequestRef.current) return
 
@@ -214,64 +211,14 @@ export function useChatConversationLoader({
       })
 
       const exchangeModesFromServer = exchanges.map((e) => e.mode)
-      const uniqueModels: string[] = []
-      const seenModels = new Set<string>()
-      for (const ex of exchanges) {
-        for (const { model } of ex.responses) {
-          if (!seenModels.has(model)) {
-            seenModels.add(model)
-            uniqueModels.push(model)
-          }
-        }
-      }
-
       if (requestId !== loadChatRequestRef.current) return
 
       clearRuntimeMessages(runtime)
-      const restoredModelThreads = new Map<string, UIMessage[]>()
-
-      if (uniqueModels.length === 0) {
-        const linear: RawConversationMessage[] = []
-        for (const ex of exchanges) {
-          linear.push(ex.userMsg)
-          for (const r of ex.responses) linear.push(r.msg)
-        }
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        runtime.askChats[0].messages = linear as any
-      } else {
-        const slotModels = uniqueModels.slice(0, 4)
-        const normalizedSlotSelection = normalizeChatModelSelection({
-          askModelIds: slotModels,
-          actModelId: resolvedActModel,
-        })
-        resolvedSelectedModels = normalizedSlotSelection.askModelIds
-        resolvedActModel = normalizedSlotSelection.actModelId
-
-        uniqueModels.forEach((modelId) => {
-          const msgs: RawConversationMessage[] = []
-          for (const ex of exchanges) {
-            msgs.push(ex.userMsg)
-            const r = ex.responses.find((x) => x.model === modelId)
-            if (r) msgs.push(r.msg)
-          }
-          restoredModelThreads.set(modelId, cloneUiMessageThread(msgs as unknown as UIMessage[]))
-        })
-
-        slotModels.forEach((modelId, slotIdx) => {
-          const msgs = restoredModelThreads.get(modelId) ?? []
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          runtime.askChats[slotIdx].messages = msgs as any
-        })
-      }
-
-      const actLinear: RawConversationMessage[] = []
-      for (const ex of exchanges) {
-        if (ex.mode !== 'act') continue
-        actLinear.push(ex.userMsg)
-        if (ex.responses[0]) actLinear.push(ex.responses[0].msg)
-      }
+      const linear = buildRestoredRuntimeMessages(exchanges)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      runtime.actChat.messages = actLinear as any
+      runtime.askChats[0].messages = [...linear] as any
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      runtime.actChat.messages = [...linear] as any
 
       const {
         exchangeGenTypes: restoredGenTypes,
@@ -280,22 +227,19 @@ export function useChatConversationLoader({
       } = restoreGenerationStateForExchanges(exchanges, outputGroups)
 
       const exchangeModels = restoredExchangeModels.map((models, idx) => {
-        const actualModels = exchanges[idx]?.responses.map((r) => r.model) ?? []
-        return actualModels.length > 0 ? actualModels : models
+        const actualModel = exchanges[idx]?.responses[0]?.model
+        return actualModel ? [actualModel] : models.slice(0, 1)
       })
 
       runtime.ui = createConversationUiState({
         selectedActModel: resolvedActModel,
         selectedModels: resolvedSelectedModels,
-        askModelSelectionMode: resolvedSelectedModels.length > 1 ? 'multiple' : 'single',
         exchangeModes: exchangeModesFromServer,
         exchangeModels,
-        selectedTabPerExchange: exchanges.map(() => 0),
         activeChatTitle: resolvedTitle,
         generationResults: restoredResults,
         exchangeGenTypes: restoredGenTypes,
         isFirstMessage: !hasUserMessages,
-        orphanModelThreads: restoredModelThreads,
       })
       if (requestId !== loadChatRequestRef.current) return
       runtime.hydrated = true

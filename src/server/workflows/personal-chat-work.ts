@@ -49,8 +49,6 @@ export type PersonalChatWorkWorkflowInput = {
   instructions: string
   messages: ModelMessage[]
   modelId: string
-  multiModelSlotIndex?: number
-  multiModelTotal?: number
   paid: boolean
   providerOptions?: Record<string, Record<string, unknown>>
   reasoning?: 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
@@ -523,8 +521,6 @@ export async function personalChatWorkWorkflow(input: PersonalChatWorkWorkflowIn
             usage: aggregatePersonalChatWorkUsage(allSteps),
           },
           modelId: input.modelId,
-          multiModelSlotIndex: input.multiModelSlotIndex,
-          multiModelTotal: input.multiModelTotal,
           paid: input.paid,
           reservationId: input.reservationId,
           resourceUserId: input.resourceUserId,

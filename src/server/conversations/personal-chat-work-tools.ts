@@ -102,7 +102,6 @@ async function reconstructTooling(
     automationMode: false,
     forwardCookie: undefined,
     idempotencyKey,
-    isMultiModelFollowUpSlot: false,
     mediaToolIntent: context.mediaToolIntent ?? null,
     mode: context.mode ?? 'chat',
     preloadTasks: preloadActExternalToolTasks({
