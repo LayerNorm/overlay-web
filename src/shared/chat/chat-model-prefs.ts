@@ -7,7 +7,6 @@ import { parseByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
 /** Persisted chat model selection — shared with ChatInterface and sidebar "new chat" actions. */
 export const CHAT_MODEL_KEY = 'overlay_chat_model'
 export const ACT_MODEL_KEY = 'overlay_act_model'
-export const CHAT_ASK_MODEL_SELECTION_MODE_KEY = 'overlay_chat_ask_model_selection_mode'
 export const REASONING_KEY = 'overlay_reasoning_level'
 
 const VALID_REASONING_LEVELS: readonly ReasoningLevel[] = [
@@ -22,7 +21,7 @@ function normalizeAskIds(raw: string[]): string[] {
     if (!resolvedId || seen.has(resolvedId)) continue
     seen.add(resolvedId)
     out.push(resolvedId)
-    if (out.length >= 4) break
+    break
   }
   return out
 }
@@ -46,7 +45,7 @@ export function normalizeChatModelSelection({
   let ask = normalizeAskIds([...(askModelIds ?? [])])
 
   if (resolvedAct && !ask.includes(resolvedAct)) {
-    ask = [resolvedAct, ...ask].slice(0, 4)
+    ask = [resolvedAct]
   }
   if (ask.length === 0) ask = [resolvedAct ?? fallback]
 
@@ -68,11 +67,13 @@ export function readStoredAskModelIds(): string[] {
     if (!saved) return [DEFAULT_MODEL_ID]
     try {
       const parsed = JSON.parse(saved) as unknown
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        const ids = parsed.filter((id): id is string => typeof id === 'string')
-        const norm = normalizeChatModelSelection({ askModelIds: ids }).askModelIds
-        if (norm.length > 0) return norm
-      }
+      const ids = typeof parsed === 'string'
+        ? [parsed]
+        : Array.isArray(parsed)
+          ? parsed.filter((id): id is string => typeof id === 'string')
+          : []
+      const norm = normalizeChatModelSelection({ askModelIds: ids }).askModelIds
+      if (norm.length > 0) return norm
     } catch {
       const norm = normalizeChatModelSelection({ askModelIds: [saved] }).askModelIds
       if (norm.length > 0) return norm

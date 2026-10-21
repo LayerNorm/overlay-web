@@ -21,46 +21,21 @@ export function cloneGenerationResultsMap(source: Map<number, GenerationResult[]
   )
 }
 
-export function cloneOrphanModelThreadsMap<TMessage>(
-  source: Map<string, TMessage[]>,
-  cloneMessage: (message: TMessage) => TMessage = cloneStructured,
-): Map<string, TMessage[]> {
-  return new Map(
-    Array.from(source.entries()).map(([modelId, thread]) => [
-      modelId,
-      thread.map((message) => cloneMessage(message)),
-    ]),
-  )
-}
-
 export function cloneConversationUiState<TMessage>(
   state: ConversationUiState<TMessage>,
   cloneMessage?: (message: TMessage) => TMessage,
 ): ConversationUiState<TMessage> {
   return {
     selectedActModel: state.selectedActModel,
-    selectedModels: [...state.selectedModels],
-    askModelSelectionMode: state.askModelSelectionMode,
+    selectedModels: state.selectedModels.slice(0, 1),
     exchangeModes: [...state.exchangeModes],
-    exchangeModels: state.exchangeModels.map((models) => [...models]),
-    selectedTabPerExchange: [...state.selectedTabPerExchange],
+    exchangeModels: state.exchangeModels.map((models) => models.slice(0, 1)),
     activeChatTitle: state.activeChatTitle,
     generationResults: cloneGenerationResultsMap(state.generationResults),
     exchangeGenTypes: [...state.exchangeGenTypes],
     isFirstMessage: state.isFirstMessage,
-    orphanModelThreads: cloneOrphanModelThreadsMap(state.orphanModelThreads, cloneMessage),
     lastGeneratedImageUrl: state.lastGeneratedImageUrl,
   }
-}
-
-export function sameModelSet(a: string[], b: string[]): boolean {
-  if (a.length !== b.length) return false
-  const bSet = new Set(b)
-  return a.every((modelId) => bSet.has(modelId))
-}
-
-export function sameModelOrder(a: string[], b: string[]): boolean {
-  return a.length === b.length && a.every((modelId, index) => modelId === b[index])
 }
 
 export function latestTextExchangeIndex(ui: ConversationUiState<unknown>): number {
@@ -68,17 +43,6 @@ export function latestTextExchangeIndex(ui: ConversationUiState<unknown>): numbe
     if ((ui.exchangeGenTypes[i] ?? 'text') === 'text') return i
   }
   return -1
-}
-
-export function selectedModelForExchange(ui: ConversationUiState<unknown>, exchangeIndex: number): string | null {
-  if (exchangeIndex < 0) return null
-  const models = ui.exchangeModels[exchangeIndex] ?? []
-  if (models.length === 0) return null
-  const selectedTab = Math.min(
-    Math.max(ui.selectedTabPerExchange[exchangeIndex] ?? 0, 0),
-    models.length - 1,
-  )
-  return models[selectedTab] ?? models[0] ?? null
 }
 
 export function cloneUiMessageThread<TMessage>(
@@ -95,20 +59,15 @@ export function createConversationUiState<TMessage = unknown>(
 ): ConversationUiState<TMessage> {
   return {
     selectedActModel: overrides.selectedActModel ?? defaultModelId,
-    selectedModels: [...(overrides.selectedModels ?? [defaultModelId])],
-    askModelSelectionMode: overrides.askModelSelectionMode ?? 'single',
+    selectedModels: (overrides.selectedModels ?? [defaultModelId]).slice(0, 1),
     exchangeModes: [...(overrides.exchangeModes ?? [])],
-    exchangeModels: (overrides.exchangeModels ?? []).map((models) => [...models]),
-    selectedTabPerExchange: [...(overrides.selectedTabPerExchange ?? [])],
+    exchangeModels: (overrides.exchangeModels ?? []).map((models) => models.slice(0, 1)),
     activeChatTitle: overrides.activeChatTitle ?? null,
     generationResults: overrides.generationResults
       ? cloneGenerationResultsMap(overrides.generationResults)
       : new Map(),
     exchangeGenTypes: [...(overrides.exchangeGenTypes ?? [])],
     isFirstMessage: overrides.isFirstMessage ?? true,
-    orphanModelThreads: overrides.orphanModelThreads
-      ? cloneOrphanModelThreadsMap(overrides.orphanModelThreads, cloneMessage)
-      : new Map(),
     lastGeneratedImageUrl: overrides.lastGeneratedImageUrl ?? null,
   }
 }

@@ -8,7 +8,6 @@ import {
   getUserReplyThreadMeta,
   getUserTurnId,
   normalizeTranscriptAssistantParts,
-  selectTranscriptResponse,
   splitUserDisplayText,
   transcriptResponseId,
 } from '@overlay/chat-core'
@@ -35,7 +34,6 @@ export interface WebChatTranscriptAdapterInput {
   primaryMessages: readonly UIMessage[]
   exchangeModes: readonly ChatMode[]
   exchangeModels: readonly (readonly string[])[]
-  selectedTabPerExchange: readonly number[]
   selectedModels: readonly string[]
   exchangeGenTypes?: readonly GenerationMode[]
   generationResults?: ReadonlyMap<number, readonly GenerationResult[]>
@@ -43,11 +41,7 @@ export interface WebChatTranscriptAdapterInput {
   isActiveLoading?: boolean
   isOptimisticLoading?: boolean
   interruptedExchangeIdx?: number | null
-  getResponseForExchangeForModel: (
-    modelId: string,
-    exchangeIndex: number,
-    slotOrder?: string[],
-  ) => UIMessage | null
+  getResponseForExchange: (exchangeIndex: number) => UIMessage | null
   getResponseRuntime?: (
     modelId: string,
     exchangeIndex: number,
@@ -96,20 +90,13 @@ export function createWebChatTranscriptAdapter() {
       const mode = input.exchangeModes[exchangeIndex] ?? 'ask'
       const generationMode = input.exchangeGenTypes?.[exchangeIndex] ?? 'text'
       const modelIds = input.exchangeModels[exchangeIndex]?.length
-        ? [...input.exchangeModels[exchangeIndex]!]
+        ? [...input.exchangeModels[exchangeIndex]!.slice(0, 1)]
         : input.selectedModels[0]
           ? [input.selectedModels[0]]
           : []
-      const selectedTab = input.selectedTabPerExchange[exchangeIndex] ?? 0
-      const selectedModelId = modelIds[selectedTab] ?? modelIds[0] ?? null
-      const responseSources = modelIds.map((modelId) =>
-        input.getResponseForExchangeForModel(
-          modelId,
-          exchangeIndex,
-          mode === 'act' && modelIds.length > 1 ? modelIds : undefined,
-        ),
-      )
-      const mediaResults = input.generationResults?.get(exchangeIndex)
+      const selectedModelId = modelIds[0] ?? null
+      const responseSources = [input.getResponseForExchange(exchangeIndex)]
+      const mediaResults = input.generationResults?.get(exchangeIndex)?.slice(0, 1)
       const isLatest = exchangeIndex === input.latestExchangeIndex
       const interrupted = input.interruptedExchangeIdx === exchangeIndex
       const fallbackRuntimeStatus: WebRuntimeStatus | undefined = isLatest
@@ -135,7 +122,7 @@ export function createWebChatTranscriptAdapter() {
           error: runtime?.error,
         })
       })
-      const selectedStatus = responseStatuses[selectedTab] ?? responseStatuses[0]
+      const selectedStatus = responseStatuses[0]
       const exchangeStatus = generationMode === 'text'
         ? selectedStatus ?? deriveChatExchangeStatus({
             runtimeStatus: runtimeStatusForCore(fallbackRuntimeStatus),
@@ -147,7 +134,6 @@ export function createWebChatTranscriptAdapter() {
         mode,
         generationMode,
         modelIds,
-        selectedTab,
         selectedModelId,
         responseStatuses,
         exchangeStatus,
@@ -207,7 +193,7 @@ export function createWebChatTranscriptAdapter() {
           errorMessage: errorMessage(responseError),
         }]
       })
-      const selected = selectTranscriptResponse(responses, { selectedModelId, selectedIndex: selectedTab })
+      const selectedResponse = responses[0]
       const exchange: ChatTranscriptExchangeView = {
         id: turnId,
         turnId,
@@ -225,8 +211,8 @@ export function createWebChatTranscriptAdapter() {
           createdAt: typeof createdAt === 'number' ? createdAt : undefined,
         },
         responses,
-        selectedResponseIndex: selected.index,
-        selectedModelId: selected.response?.modelId ?? selectedModelId,
+        selectedResponseIndex: selectedResponse ? 0 : -1,
+        selectedModelId: selectedResponse?.modelId ?? selectedModelId,
         status: exchangeStatus,
         media: generationMode === 'image' || generationMode === 'video'
           ? { kind: generationMode, results: mediaResults ? [...mediaResults] : [] }

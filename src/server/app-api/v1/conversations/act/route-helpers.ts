@@ -5,7 +5,6 @@ import {
   FREE_TIER_DEFAULT_MODEL_ID,
   isLegacyFreeTierDefaultModelId,
 } from '@/shared/ai/gateway/model-types'
-import { parseActStreamIdempotencyKey } from '@/shared/api/act-idempotency'
 
 export const DEFAULT_ACT_ABORT_TIMEOUT_MS = 290_000
 export const AUTOMATION_ACT_ABORT_TIMEOUT_MS = 720_000
@@ -24,12 +23,6 @@ export type ActModelAttemptFailure = {
 export type ActAttemptReservationResult<TResponse> =
   | { ok: true }
   | { ok: false; reason: ActModelAttemptFailureReason; response: TResponse }
-
-export interface ActMultiModelState {
-  isMultiModelFollowUpSlot: boolean
-  multiModelSlotIndex: number
-  multiModelTotal: number
-}
 
 export function estimateToolLoopReservationTokens(args: {
   estimatedInputTokens: number
@@ -171,35 +164,6 @@ export function resolveEffectiveActModelId(modelId?: string): string {
   return isLegacyFreeTierDefaultModelId(requestedModelId)
     ? FREE_TIER_DEFAULT_MODEL_ID
     : requestedModelId
-}
-
-export function resolveActMultiModelState(params: {
-  rawMultiModelSlotIndex?: number
-  rawMultiModelTotal?: number
-  idempotencyKey?: string | null
-}): ActMultiModelState {
-  const parsedKey = params.idempotencyKey
-    ? parseActStreamIdempotencyKey(params.idempotencyKey)
-    : null
-  const slotFromBody =
-    typeof params.rawMultiModelSlotIndex === 'number' && params.rawMultiModelSlotIndex >= 0
-      ? Math.min(3, Math.floor(params.rawMultiModelSlotIndex))
-      : undefined
-  const slotFromKey = parsedKey && Number.isFinite(parsedKey.slotIndex)
-    ? Math.min(3, parsedKey.slotIndex)
-    : undefined
-  const multiModelSlotIndex = slotFromBody ?? slotFromKey ?? 0
-  const totalFromBody =
-    typeof params.rawMultiModelTotal === 'number' && params.rawMultiModelTotal > 0
-      ? Math.min(4, Math.floor(params.rawMultiModelTotal))
-      : undefined
-  const multiModelTotal = Math.min(4, Math.max(totalFromBody ?? 1, multiModelSlotIndex + 1))
-
-  return {
-    multiModelTotal,
-    multiModelSlotIndex,
-    isMultiModelFollowUpSlot: multiModelTotal > 1 && multiModelSlotIndex > 0,
-  }
 }
 
 export function resolveActTurnId(turnId: string | undefined, now = Date.now()): string {

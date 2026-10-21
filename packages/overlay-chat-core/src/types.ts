@@ -2,7 +2,6 @@ import type { GeneratedUiPart } from './generated-ui'
 
 export type ChatMode = 'ask' | 'act'
 export type GenerationMode = 'text' | 'image' | 'video'
-export type AskModelSelectionMode = 'single' | 'multiple'
 export type VideoSubMode =
   | 'text-to-video'
   | 'image-to-video'
@@ -224,15 +223,12 @@ export interface GenerationResult {
 export interface ConversationUiState<TMessage = unknown> {
   selectedActModel: string
   selectedModels: string[]
-  askModelSelectionMode: AskModelSelectionMode
   exchangeModes: ChatMode[]
   exchangeModels: string[][]
-  selectedTabPerExchange: number[]
   activeChatTitle: string | null
   generationResults: Map<number, GenerationResult[]>
   exchangeGenTypes: GenerationMode[]
   isFirstMessage: boolean
-  orphanModelThreads: Map<string, TMessage[]>
   lastGeneratedImageUrl: string | null
 }
 

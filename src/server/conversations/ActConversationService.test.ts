@@ -320,8 +320,6 @@ test('act assistant persistence writes one final message and emits completion', 
       usage: { inputTokens: 3, outputTokens: 4 },
     } as ActAssistantFinishEvent,
     finishedToolCallIds: new Set(),
-    multiModelSlotIndex: 0,
-    multiModelTotal: 1,
     sourceCitations: {
       '1': { kind: 'memory', sourceId: 'memory_1' },
     },

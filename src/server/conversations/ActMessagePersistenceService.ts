@@ -180,8 +180,6 @@ export class ActMessagePersistenceService {
     agentRunId?: string
     agentRunMetrics?: Partial<AgentRunMetrics>
     importedAuthorName?: string
-    multiModelSlotIndex: number
-    multiModelTotal: number
     routedModelId?: string
     sourceCitations?: SourceCitationMap
     timedOut: boolean
@@ -334,7 +332,7 @@ export class ActMessagePersistenceService {
           modelId: args.attemptModelId,
           routedModelId,
           tokens: { input: totalInputTokens, output: totalOutputTokens },
-          variantIndex: args.multiModelSlotIndex,
+          variantIndex: 0,
           importedAuthorName: args.importedAuthorName,
         })
       }

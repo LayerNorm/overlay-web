@@ -657,7 +657,6 @@ export async function prepareAutomationAgentTurn(
     conversationId: cid,
     entitlements: runtimeEntitlements,
     effectiveModelId,
-    isMultiModelFollowUpSlot: false,
     latestUserText: userText,
     memoryEnabled,
     // The agent remembers as itself on surface turns, so what it learns from
@@ -700,7 +699,6 @@ export async function prepareAutomationAgentTurn(
     exposedMediaTools: actTooling.exposedMediaTools,
     hasPreloadedDocContext,
     indexedNote,
-    isMultiModelFollowUpSlot: false,
     memoryContext,
     memoryEnabled,
     mentionsContext,
@@ -854,8 +852,6 @@ export async function finalizeAutomationAgentTurn(args: {
       ...summarizeAgentToolMetrics(args.steps),
       ...workflowMetrics,
     },
-    multiModelSlotIndex: 0,
-    multiModelTotal: 1,
     importedAuthorName: input.name,
     sourceCitations: plan.sourceCitations,
     timedOut: false,
@@ -924,8 +920,6 @@ export async function failAutomationAgentTurn(args: {
             .map((result) => result.toolCallId)
             .filter(Boolean)),
         ),
-        multiModelSlotIndex: 0,
-        multiModelTotal: 1,
         importedAuthorName: input.name,
         timedOut: false,
         timeoutMs: 0,

@@ -144,11 +144,7 @@ function streamLogFields(body: ChatBody): Record<string, unknown> {
     turnId: typeof record?.turnId === 'string' ? record.turnId : undefined,
     mode: typeof record?.mode === 'string' ? record.mode : undefined,
     automationMode: typeof record?.automationMode === 'boolean' ? record.automationMode : undefined,
-    variantIndex: typeof record?.multiModelSlotIndex === 'number'
-      ? record.multiModelSlotIndex
-      : typeof record?.variantIndex === 'number'
-        ? record.variantIndex
-        : undefined,
+    variantIndex: 0,
   }
 }
 
