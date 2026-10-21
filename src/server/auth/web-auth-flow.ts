@@ -33,11 +33,10 @@ type PasswordAuthResult = {
   user?: AuthUser
   error?: string
   pendingEmailVerification?: boolean
-}
-
-type SignUpResult = PasswordAuthResult & {
   verificationTicket?: string
 }
+
+type SignUpResult = PasswordAuthResult
 
 type EmailVerificationTicket = ReturnType<typeof workosAuth.readEmailVerificationTicket>
 
