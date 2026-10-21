@@ -1,13 +1,13 @@
 const STORAGE_KEY = 'overlay:agent-right-sidebar'
 
-export type AgentRightSidebarTab = 'details' | 'library'
+export type AgentRightSidebarTab = 'details' | 'library' | 'computer'
 
 export type AgentRightSidebarPreferences = {
   open: boolean
   tab: AgentRightSidebarTab
 }
 
-const TABS: readonly AgentRightSidebarTab[] = ['details', 'library']
+const TABS: readonly AgentRightSidebarTab[] = ['details', 'library', 'computer']
 
 export function getAgentRightSidebarPreferences(): AgentRightSidebarPreferences {
   if (typeof window === 'undefined') return { open: false, tab: 'details' }

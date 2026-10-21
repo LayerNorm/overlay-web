@@ -29,6 +29,7 @@ import {
 import { NEW_AGENT_EVENT } from '@/shared/workspace/sidebar-events'
 import { AgentEditorPage } from './AgentEditorPage'
 import { AgentRightSidebar } from './AgentRightSidebar'
+import { AgentComputerControlOverlay } from './AgentComputerTab.parts'
 import { buildAgentsDirectoryHref, sendAgentGreeting, startAgentChat } from '../lib/agent-chat'
 import { NewAgentDialog } from './NewAgentDialog'
 
@@ -202,6 +203,20 @@ export function AgentConversationWorkspace({ showcase = false }: { showcase?: bo
   const [error, setError] = useState<string | null>(null)
   const [resolving, setResolving] = useState(false)
   const [retryCount, setRetryCount] = useState(0)
+  const [computerControlState, setComputerControlState] = useState<{
+    conversationId: string | null
+    control: { ticketUrl: string; computerName: string; refreshTicket: () => void } | null
+  }>({ conversationId: null, control: null })
+  const computerControl = computerControlState.conversationId === conversationId
+    ? computerControlState.control
+    : null
+  const updateComputerControl = useCallback((control: {
+    ticketUrl: string
+    computerName: string
+    refreshTicket: () => void
+  } | null) => {
+    setComputerControlState({ conversationId, control })
+  }, [conversationId])
 
   const [createOpen, setCreateOpen] = useState(false)
   useEffect(() => {
@@ -217,7 +232,7 @@ export function AgentConversationWorkspace({ showcase = false }: { showcase?: bo
   }, [])
 
   const updateSidebarTab = useCallback((id: string) => {
-    if (id !== 'details' && id !== 'library') return
+    if (id !== 'details' && id !== 'library' && id !== 'computer') return
     setSidebarPreferences((current) => ({ ...current, tab: id }))
   }, [])
 
@@ -322,6 +337,11 @@ export function AgentConversationWorkspace({ showcase = false }: { showcase?: bo
         onTabChange={updateSidebarTab}
         onClose={closeRightSidebar}
         onArchived={handleArchived}
+        showcase={showcase}
+        controlled={Boolean(computerControl)}
+        onTakeControl={(ticketUrl, computerName, refreshTicket) => {
+          updateComputerControl({ ticketUrl, computerName, refreshTicket })
+        }}
       />
     ) : null
     return (
@@ -340,6 +360,16 @@ export function AgentConversationWorkspace({ showcase = false }: { showcase?: bo
           externalRightPanelMode="docked"
           externalRightPanelWidth={400}
           onExternalRightPanelClose={closeRightSidebar}
+          bodyOverlay={computerControl ? (
+            <AgentComputerControlOverlay
+              ticketUrl={computerControl.ticketUrl}
+              computerName={computerControl.computerName}
+              onClose={() => {
+                if (sidebarPreferences.open) computerControl.refreshTicket()
+                updateComputerControl(null)
+              }}
+            />
+          ) : null}
         />
         {dialogEditor}
         {createDialog}

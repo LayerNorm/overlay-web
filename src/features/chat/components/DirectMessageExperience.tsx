@@ -178,6 +178,7 @@ export function DirectMessageExperience({
   externalRightPanelMode,
   externalRightPanelWidth,
   onExternalRightPanelClose,
+  bodyOverlay,
   guided,
 }: {
   conversationId: string;
@@ -191,6 +192,7 @@ export function DirectMessageExperience({
   externalRightPanelMode?: "docked" | "floating";
   externalRightPanelWidth?: number;
   onExternalRightPanelClose?: () => void;
+  bodyOverlay?: ReactNode;
   guided?: { footer: ReactNode; composer: GuidedRoomComposer | null; revision: number; headerActions?: ReactNode; pendingMessage?: { text: string; clientNonce: string } | null };
 }) {
   const { activeWorkspace, activeWorkspaceId } = useWorkspace()
@@ -349,6 +351,11 @@ export function DirectMessageExperience({
               />
             )}
           </AppScreenBody>
+          {bodyOverlay ? (
+            <div className="absolute inset-0 z-30 min-h-0 bg-(--background)">
+              {bodyOverlay}
+            </div>
+          ) : null}
         </div>
       </AppScreenShell>
 
