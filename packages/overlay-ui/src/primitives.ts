@@ -35,7 +35,7 @@ export * from './components/ui/sonner'
 export * from './components/ui/skeleton'
 export * from './components/ui/switch'
 export * from './components/ui/sidebar'
-export { Tabs, TabsContent, TabsTrigger } from './components/ui/tabs'
+export { Tabs, TabsContent, TabsList, TabsTrigger } from './components/ui/tabs'
 
 export * from './components/ui/command'
 export * from './components/ui/dropdown-menu'

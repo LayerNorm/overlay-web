@@ -4,6 +4,7 @@ import { Button } from '@overlay/ui/primitives'
 import { BookOpen, GitBranch, Reply, RotateCw, Trash2 } from 'lucide-react'
 import type { WebSourceItem } from '../../lib/web-sources'
 import { FlashCopyIconButton } from '../DraftReviewModal'
+import { messageActionVisibilityClass } from './message-action-visibility'
 
 export interface ExchangeActionsProps {
   copyPlainText: string
@@ -46,7 +47,7 @@ export function ExchangeActions({
   showModelLabel = true,
 }: ExchangeActionsProps) {
   const visibilityClass = actionVisibility === 'hover'
-    ? 'chat-exchange-actions--hover opacity-0 transition-opacity group-hover/exchange:opacity-100 focus-within:opacity-100'
+    ? `chat-exchange-actions--hover ${messageActionVisibilityClass()}`
     : ''
   return (
     <MessageFooter className={`gap-0.5 px-0 ${visibilityClass}`}>

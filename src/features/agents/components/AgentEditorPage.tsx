@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import type { WorkspaceAgentCreateInput, WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
 import {
@@ -9,6 +9,9 @@ import {
 } from '@/shared/ai/gateway/model-data'
 import { useGatewayModelCatalog } from '@/components/providers/useGatewayModelCatalog'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
+import { useAppSettings } from '@/components/providers/AppSettingsProvider'
+import { useWorkspaceTextModelAccess, buildSelectableTextModels } from '@/components/providers/useWorkspaceTextModelAccess'
+import { useAuth } from '@/contexts/AuthContext'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { parseByoModelId } from '@/shared/agents/agent-model'
 import { buildWorkspaceAgentInput, isAgentEditorValid, isDefaultMasterAgent } from '../lib/agent-editor-input'
@@ -28,6 +31,7 @@ export function AgentEditorPage({
   agentId,
   showcase = false,
   presentation = 'page',
+  embedded = false,
   panelMode,
   onTogglePanelMode,
   onClose,
@@ -39,6 +43,7 @@ export function AgentEditorPage({
   agentId?: string
   showcase?: boolean
   presentation?: 'page' | 'panel'
+  embedded?: boolean
   panelMode?: 'dialog' | 'side'
   onTogglePanelMode?: () => void
   onClose?: () => void
@@ -51,8 +56,20 @@ export function AgentEditorPage({
   const showHello = searchParams?.get('hello') === '1'
   const { activeWorkspaceId } = useWorkspace()
   const { capabilities } = useOverlayCapabilities()
+  const { settings } = useAppSettings()
+  const { user: authUser } = useAuth()
   const computersAvailable = capabilities.computers === true
   const { revision } = useGatewayModelCatalog({ enabled: true })
+  const modelAccess = useWorkspaceTextModelAccess({
+    activeWorkspaceId,
+    billingEnabled: capabilities.billing === true,
+    catalogRevision: revision,
+    onlyAllowZdrModels: settings.onlyAllowZdrModels,
+  })
+  const { loadSubscription } = modelAccess
+  useEffect(() => {
+    void loadSubscription()
+  }, [loadSubscription])
 
   const showcaseAgent = getShowcaseAgent(showcase, mode, agentId)
   // One initializer keeps per-field fallbacks out of the component body.
@@ -83,13 +100,38 @@ export function AgentEditorPage({
     markDirty: form.markDirty,
   })
 
-  const modelOptions = useMemo(() => {
+  const allTextModels = useMemo(() => {
     void revision
     void getGatewayCatalogRevision()
     return getModelsByIntelligence(false)
       .filter((model) => model.id !== 'nvidia/nemotron-nano-9b-v2')
-      .map((model) => ({ value: model.id, label: model.name }))
   }, [revision])
+  const modelField = useMemo(() => {
+    const accessUnresolved = capabilities.billing === true && !modelAccess.entitlements
+    const selectableTextModels = modelAccess.loading || accessUnresolved
+      ? buildSelectableTextModels({
+          isModelAccessRestricted: true,
+          effectiveOnlyAllowZdrModels: false,
+        })
+      : modelAccess.selectableTextModels
+    return {
+      favoriteScope: authUser?.id ?? null,
+      isFreeTier: modelAccess.isFreeTier || modelAccess.loading || accessUnresolved,
+      isFreeTierWorkspace: modelAccess.isFreeTier,
+      modelPickerLabel: allTextModels.find((model) => model.id === form.modelId)?.name ?? form.modelId,
+      selectableTextModels,
+      textModelsLoading: false,
+    }
+  }, [
+    allTextModels,
+    authUser?.id,
+    capabilities.billing,
+    form.modelId,
+    modelAccess.entitlements,
+    modelAccess.isFreeTier,
+    modelAccess.loading,
+    modelAccess.selectableTextModels,
+  ])
 
   const isDefaultMaster = isDefaultMasterAgent(agent)
   const valid = isAgentEditorValid({
@@ -173,6 +215,7 @@ export function AgentEditorPage({
   return (
     <AgentEditorView
       presentation={presentation}
+      embedded={embedded}
       panelMode={panelMode}
       onTogglePanelMode={onTogglePanelMode}
       title={title}
@@ -190,7 +233,7 @@ export function AgentEditorPage({
       computersAvailable={computersAvailable}
       connectedAgentsEnabled={connectedAgentsEnabled}
       connectedAgentsChecked={connectedAgentsChecked}
-      modelOptions={modelOptions}
+      modelField={modelField}
       form={form}
       runtime={runtime}
       byo={byo}

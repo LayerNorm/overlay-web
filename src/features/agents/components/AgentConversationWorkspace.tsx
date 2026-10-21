@@ -10,6 +10,7 @@ import { Button } from '@overlay/ui/primitives'
 import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
 import { DirectMessageExperience } from '@/features/chat/components/DirectMessageExperience'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
+import { RightSidebarToggle } from '@overlay/modules-react/shell'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import {
   clearAgentOpened,
@@ -20,8 +21,14 @@ import {
   getAgentEditorPanelMode,
   setAgentEditorPanelMode,
 } from '@/shared/agents/agent-editor-presentation'
+import {
+  getAgentRightSidebarPreferences,
+  setAgentRightSidebarPreferences,
+  type AgentRightSidebarPreferences,
+} from '@/shared/agents/agent-right-sidebar-preferences'
 import { NEW_AGENT_EVENT } from '@/shared/workspace/sidebar-events'
 import { AgentEditorPage } from './AgentEditorPage'
+import { AgentRightSidebar } from './AgentRightSidebar'
 import { buildAgentsDirectoryHref, sendAgentGreeting, startAgentChat } from '../lib/agent-chat'
 import { NewAgentDialog } from './NewAgentDialog'
 
@@ -183,6 +190,9 @@ export function AgentConversationWorkspace({ showcase = false }: { showcase?: bo
   const { activeWorkspaceId } = useWorkspace()
   const agentId = searchParams?.get('agent') ?? searchParams?.get('agentId') ?? null
   const conversationId = searchParams?.get('id') ?? null
+  const [sidebarPreferences, setSidebarPreferences] = useState<AgentRightSidebarPreferences>(
+    () => getAgentRightSidebarPreferences(),
+  )
   const [editorMode, setEditorMode] = useState<EditorMode>(null)
   const [panelMode, setPanelModeState] = useState<'dialog' | 'side'>(() => getAgentEditorPanelMode())
   const setPanelMode = useCallback((next: 'dialog' | 'side') => {
@@ -194,6 +204,22 @@ export function AgentConversationWorkspace({ showcase = false }: { showcase?: bo
   const [retryCount, setRetryCount] = useState(0)
 
   const [createOpen, setCreateOpen] = useState(false)
+  useEffect(() => {
+    setAgentRightSidebarPreferences(sidebarPreferences)
+  }, [sidebarPreferences])
+
+  const closeRightSidebar = useCallback(() => {
+    setSidebarPreferences((current) => ({ ...current, open: false }))
+  }, [])
+
+  const updateSidebarOpen = useCallback((open: boolean) => {
+    setSidebarPreferences((current) => ({ ...current, open }))
+  }, [])
+
+  const updateSidebarTab = useCallback((id: string) => {
+    if (id !== 'details' && id !== 'library') return
+    setSidebarPreferences((current) => ({ ...current, tab: id }))
+  }, [])
 
   // "New agent" opens the creation dialog; nothing is created until the
   // person confirms. The logged-out showcase keeps the static editor form.
@@ -273,9 +299,9 @@ export function AgentConversationWorkspace({ showcase = false }: { showcase?: bo
 
   const settingsButton = (
     <AgentSettingsButton
-      hasAgent={Boolean(agentId)}
+      hasAgent={false}
       active={Boolean(editorMode)}
-      onClick={() => (agentId ? setEditorMode('edit') : openCreate())}
+      onClick={openCreate}
     />
   )
 
@@ -287,16 +313,33 @@ export function AgentConversationWorkspace({ showcase = false }: { showcase?: bo
   }
 
   if (conversationId) {
+    const agentSidebar = agentId && sidebarPreferences.open ? (
+      <AgentRightSidebar
+        agentId={agentId}
+        activeWorkspaceId={activeWorkspaceId}
+        conversationId={conversationId}
+        activeTab={sidebarPreferences.tab}
+        onTabChange={updateSidebarTab}
+        onClose={closeRightSidebar}
+        onArchived={handleArchived}
+      />
+    ) : null
     return (
       <>
         <DirectMessageExperience
           key={conversationId}
           conversationId={conversationId}
-          headerActions={settingsButton}
-          externalRightPanel={sideEditor}
-          externalRightPanelLabel="Agent settings"
+          headerActions={agentId ? (
+            <RightSidebarToggle
+              open={sidebarPreferences.open}
+              onToggle={() => updateSidebarOpen(!sidebarPreferences.open)}
+            />
+          ) : undefined}
+          externalRightPanel={agentSidebar}
+          externalRightPanelLabel="Agent sidebar"
           externalRightPanelMode="docked"
-          onExternalRightPanelClose={closeEditor}
+          externalRightPanelWidth={400}
+          onExternalRightPanelClose={closeRightSidebar}
         />
         {dialogEditor}
         {createDialog}

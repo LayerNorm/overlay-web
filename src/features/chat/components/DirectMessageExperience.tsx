@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, type ReactNode } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
 import { MarkdownMessage, UserMessageBubble } from '@overlay/chat-react'
 import { QuestionnaireComposerProvider } from '@overlay/chat-react/questionnaire'
 import { usePathname, useRouter } from 'next/navigation'
@@ -114,6 +114,39 @@ function roomHeaderTitle(guided: boolean, title: string) {
   return guided ? 'Overlay' : title
 }
 
+function roomPanelIsOpen(roomPanel: string | null, hasThreadRoot: boolean) {
+  return roomPanel === 'people' || roomPanel === 'pinned'
+    || (roomPanel === 'thread' && hasThreadRoot)
+}
+
+function useExclusiveRightPanels({
+  externalPanelOpen,
+  roomPanelOpen,
+  onExternalRightPanelClose,
+  setRoomPanel,
+  setThreadRootId,
+}: {
+  externalPanelOpen: boolean
+  roomPanelOpen: boolean
+  onExternalRightPanelClose?: () => void
+  setRoomPanel(value: 'people' | 'pinned' | 'thread' | null): void
+  setThreadRootId(value: string | null): void
+}) {
+  const previousPanelState = useRef({ externalPanelOpen: false, roomPanelOpen: false })
+  useEffect(() => {
+    const previous = previousPanelState.current
+    if (externalPanelOpen && roomPanelOpen) {
+      if (!previous.externalPanelOpen) {
+        setRoomPanel(null)
+        setThreadRootId(null)
+      } else if (!previous.roomPanelOpen) {
+        onExternalRightPanelClose?.()
+      }
+    }
+    previousPanelState.current = { externalPanelOpen, roomPanelOpen }
+  }, [externalPanelOpen, onExternalRightPanelClose, roomPanelOpen, setRoomPanel, setThreadRootId])
+}
+
 function GuidedPendingMessage({
   pending,
   messages,
@@ -143,6 +176,7 @@ export function DirectMessageExperience({
   externalRightPanel,
   externalRightPanelLabel,
   externalRightPanelMode,
+  externalRightPanelWidth,
   onExternalRightPanelClose,
   guided,
 }: {
@@ -155,6 +189,7 @@ export function DirectMessageExperience({
   externalRightPanel?: ReactNode;
   externalRightPanelLabel?: string;
   externalRightPanelMode?: "docked" | "floating";
+  externalRightPanelWidth?: number;
   onExternalRightPanelClose?: () => void;
   guided?: { footer: ReactNode; composer: GuidedRoomComposer | null; revision: number; headerActions?: ReactNode; pendingMessage?: { text: string; clientNonce: string } | null };
 }) {
@@ -182,7 +217,6 @@ export function DirectMessageExperience({
     activeWorkspaceId,
     convexRoomSubscriptionEnabled,
     refreshNotifications,
-    computersEnabled: capabilities.computers,
     onOpenAttachmentPreview: panels.openAttachmentPreview,
   })
   const { vm, roster, collab, thread, transcript, composer, roomActions, messageCtx } = room
@@ -208,7 +242,16 @@ export function DirectMessageExperience({
     conversationType,
     showcase,
     messageCtx,
-  })
+      })
+      const externalPanelOpen = Boolean(externalRightPanel)
+      const roomPanelOpen = roomPanelIsOpen(room.roomPanel, Boolean(vm.threadRoot))
+      useExclusiveRightPanels({
+        externalPanelOpen,
+        roomPanelOpen,
+        onExternalRightPanelClose,
+        setRoomPanel: room.setRoomPanel,
+        setThreadRootId: thread.setThreadRootId,
+      })
 
   return (
     <QuestionnaireComposerProvider value={composer.input} readDraft={() => composer.inputRef.current} subscribe={composer.subscribeToInput} disabled={shouldDisableQuestionnaireSuggestions(showcase, Boolean(guided), Boolean(transcript.surfacePlatform), isRoomAgentResponding(transcript.messages, room.agentResponding))} onChange={(value) => { composer.setInput(value); composer.onComposerInput(value); composer.composerRef.current?.focus() }}>
@@ -230,7 +273,7 @@ export function DirectMessageExperience({
         contentClassName="flex min-h-0"
         rightPanel={rightPanel}
         rightPanelOpen={Boolean(rightPanel)}
-        rightPanelWidth={panels.shellRightPanel ? panels.shellRightPanelWidth : externalRightPanel ? 'lg' : 380}
+        rightPanelWidth={panels.shellRightPanel ? panels.shellRightPanelWidth : externalRightPanel ? (externalRightPanelWidth ?? 'lg') : 380}
         rightPanelMode={panels.shellRightPanel ? panels.shellRightPanelMode : (externalRightPanelMode ?? 'docked')}
         onRightPanelClose={rightPanelClose}
         onRightPanelResize={panels.shellRightPanel ? panels.shellRightPanelResize : undefined}
@@ -255,7 +298,6 @@ export function DirectMessageExperience({
             )}
             actions={guided ? guided.headerActions : (
               <RoomHeaderActions
-                desktop={room.desktop}
                 vm={vm}
                 roster={roster}
                 collab={collab}
