@@ -17,7 +17,7 @@ import {
   normalizeReplyMetadata,
   type RawConversationMessage,
 } from './chatTransport'
-import { clearRuntimeMessages, resetRuntimeState } from './conversation-runtime-utils'
+import { buildRestoredRuntimeMessages, clearRuntimeMessages, resetRuntimeState } from './conversation-runtime-utils'
 import type { Conversation, ConversationRuntime, ConversationUiState } from '../chat-interface/types'
 
 export interface UseChatConversationLoaderParams {
@@ -214,23 +214,11 @@ export function useChatConversationLoader({
       if (requestId !== loadChatRequestRef.current) return
 
       clearRuntimeMessages(runtime)
-      const askLinear: RawConversationMessage[] = []
-      for (const ex of exchanges) {
-        if (ex.mode !== 'ask') continue
-        askLinear.push(ex.userMsg)
-        if (ex.responses[0]) askLinear.push(ex.responses[0].msg)
-      }
+      const linear = buildRestoredRuntimeMessages(exchanges)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      runtime.askChats[0].messages = askLinear as any
-
-      const actLinear: RawConversationMessage[] = []
-      for (const ex of exchanges) {
-        if (ex.mode !== 'act') continue
-        actLinear.push(ex.userMsg)
-        if (ex.responses[0]) actLinear.push(ex.responses[0].msg)
-      }
+      runtime.askChats[0].messages = [...linear] as any
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      runtime.actChat.messages = actLinear as any
+      runtime.actChat.messages = [...linear] as any
 
       const {
         exchangeGenTypes: restoredGenTypes,
