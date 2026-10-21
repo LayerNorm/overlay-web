@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Run Computer commands with injected environments across compound shell bodies, expose bounded input diagnostics, and ensure browser pages and windows are visible.
+
 - Preserve Work screenshot model output and approval cards, and recover Chromium profile locks.
 
 - Retry concurrent Computer actions, expose personal Computers in Work chats, and clarify busy and approval errors.

@@ -265,11 +265,13 @@ test('computer_input click resolves its computer once', async () => {
   const originalComputerService = context.computerService
   const originalWorkspaceService = context.workspaceService
   let getForOwnerCalls = 0
+  let failInput = false
   const computer = { id: 'computer-1', name: 'Computer', controlledByUserId: undefined }
   const instance = {
     capabilities: { desktop: true },
     runCommand: async (request: { args?: string[] }) => {
       const driverRequest = JSON.parse(request.args?.at(-1) ?? '{}') as { command?: string }
+      const inputFailed = failInput && driverRequest.command === 'click'
       const stdout = driverRequest.command === 'capabilities'
         ? JSON.stringify({
             version: DRIVER_VERSION,
@@ -279,11 +281,23 @@ test('computer_input click resolves its computer once', async () => {
             screenshot: true,
             missing: [],
           })
-        : JSON.stringify({ success: true })
+        : inputFailed
+          ? JSON.stringify({
+              error: {
+                code: 'desktop_driver_failed',
+                message: 'The desktop input command failed.',
+                detail: {
+                  exit: 7,
+                  subcommand: 'click',
+                  stderr: 'input device unavailable',
+                },
+              },
+            })
+          : JSON.stringify({ success: true })
       return {
         wait: async () => ({
           commandId: 'command-1',
-          exitCode: 0,
+          exitCode: inputFailed ? 1 : 0,
           stdout,
           stderr: '',
           startedAt: 0,
@@ -327,6 +341,19 @@ test('computer_input click resolves its computer once', async () => {
       acknowledgement: 'click completed.',
     })
     assert.equal(getForOwnerCalls, 1)
+
+    failInput = true
+    assert.deepEqual(await computerInput.execute({ action: 'click', x: 10, y: 20 }, {}), {
+      success: false,
+      error: 'The desktop input command failed.',
+      code: 'desktop_driver_failed',
+      detail: {
+        exit: 7,
+        subcommand: 'click',
+        stderr: 'input device unavailable',
+      },
+    })
+    assert.equal(getForOwnerCalls, 2)
   } finally {
     context.computerService = originalComputerService
     context.workspaceService = originalWorkspaceService

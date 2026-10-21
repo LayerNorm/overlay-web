@@ -934,6 +934,7 @@ function computerErrorResult(err: unknown, fallback: string) {
       error: err.message,
       code: err.code,
       ...(err.missing.length ? { missing: err.missing } : {}),
+      ...(err.detail ? { detail: err.detail } : {}),
     }
   }
   return { success: false as const, error: err instanceof Error ? err.message : fallback }

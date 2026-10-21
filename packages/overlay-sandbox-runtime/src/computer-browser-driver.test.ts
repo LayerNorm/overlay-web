@@ -59,9 +59,35 @@ test('browser driver inspects risky click refs and requires confirmation', async
     ': > "$OVERLAY_CHROMIUM_READY_PATH"',
     'exec sleep 60',
   ].join('\n'), { mode: 0o700 })
+  writeFileSync(join(bin, 'xdotool'), [
+    '#!/bin/sh',
+    'if [ "$1" = search ] && [ "$2" = --onlyvisible ] && [ "$3" = --class ] && [ "$4" = chrom ]; then',
+    '  if [ "$OVERLAY_CHROMIUM_WINDOW_VISIBLE" = false ]; then exit 1; fi',
+    '  printf "123\\n"',
+    '  exit 0',
+    'fi',
+    'exit 1',
+    '',
+  ].join('\n'), { mode: 0o700 })
 
   const received: Array<{ id?: number; method?: string; params?: { expression?: string } }> = []
   let clicks = 0
+  type BrowserTarget = {
+    id: string
+    type: string
+    url: string
+    title: string
+    webSocketDebuggerUrl: string
+  }
+  const browserTargets: BrowserTarget[] = [{
+    id: 'page-test',
+    type: 'page',
+    url: 'https://example.test/',
+    title: 'Example',
+    webSocketDebuggerUrl: 'ws://127.0.0.1:9222/devtools/page/test',
+  }]
+  const createdTargetIds: string[] = []
+  const activatedTargets: string[] = []
   const sockets = new Set<Duplex>()
   const server = createServer((request, response) => {
     response.setHeader('content-type', 'application/json')
@@ -77,14 +103,29 @@ test('browser driver inspects risky click refs and requires confirmation', async
       }))
       return
     }
-    if (request.url === '/json') {
-      response.end(JSON.stringify([{
-        id: 'page-test',
+    if (request.url === '/json/list' || request.url === '/json') {
+      response.end(JSON.stringify(browserTargets))
+      return
+    }
+    if (request.method === 'PUT' && request.url === '/json/new?about:blank') {
+      const id = `page-created-${createdTargetIds.length + 1}`
+      const target = {
+        id,
         type: 'page',
-        url: 'https://example.test/',
-        title: 'Example',
+        url: 'about:blank',
+        title: '',
         webSocketDebuggerUrl: 'ws://127.0.0.1:9222/devtools/page/test',
-      }]))
+      }
+      createdTargetIds.push(id)
+      browserTargets.push(target)
+      response.end(JSON.stringify(target))
+      return
+    }
+    const activateMatch = request.url?.match(/^\/json\/activate\/([^/?]+)$/)
+    if (activateMatch) {
+      activatedTargets.push(decodeURIComponent(activateMatch[1]!))
+      response.setHeader('content-type', 'text/plain')
+      response.end('Target activated')
       return
     }
     response.statusCode = 404
@@ -223,6 +264,7 @@ test('browser driver inspects risky click refs and requires confirmation', async
     OVERLAY_CHROMIUM_PID_FILE: launchPidFile,
     OVERLAY_CHROMIUM_READY_PATH: readySignal,
     OVERLAY_COMPUTER_BROWSER_LOG_PATH: browserLog,
+    OVERLAY_CHROMIUM_WINDOW_VISIBLE: 'true',
   }
   const run = async (
     command: string,
@@ -281,6 +323,45 @@ test('browser driver inspects risky click refs and requires confirmation', async
   assert.equal(ensured.result.status, 0)
   assert.deepEqual(ensured.payload, { success: true, browser: 'chromium' })
   assert.equal(existsSync(launchLog), false)
+
+  const originalTargets = browserTargets.splice(0)
+  const createdForEmptyBrowser = await run('browser_ensure')
+  assert.equal(createdForEmptyBrowser.result.status, 0)
+  assert.equal(createdTargetIds.at(-1), 'page-created-1')
+  assert.equal(activatedTargets.at(-1), 'page-created-1')
+  browserTargets.splice(0, browserTargets.length, ...originalTargets)
+
+  const createdForHiddenWindow = await run(
+    'browser_ensure',
+    {},
+    { OVERLAY_CHROMIUM_WINDOW_VISIBLE: 'false' },
+  )
+  assert.equal(createdForHiddenWindow.result.status, 0)
+  assert.equal(createdTargetIds.at(-1), 'page-created-2')
+  assert.equal(activatedTargets.at(-1), 'page-created-2')
+
+  const noXdotoolPath = join(directory, 'no-xdotool')
+  mkdirSync(noXdotoolPath)
+  const bestEffortVisibilityCheck = await run('browser_ensure', {}, { PATH: noXdotoolPath })
+  assert.equal(bestEffortVisibilityCheck.result.status, 0)
+  assert.equal(createdTargetIds.length, 2)
+
+  const navigate = await run('browser', { action: 'navigate', url: 'https://example.test/next' })
+  assert.equal(navigate.result.status, 0)
+  assert.equal(activatedTargets.at(-1), 'page-test')
+
+  const targetsBeforeTabSwitch = browserTargets.slice()
+  const firstTarget = browserTargets.find((target) => target.id === 'page-test')!
+  const secondTarget = {
+    ...firstTarget,
+    id: 'page-second',
+    url: 'https://second.example.test/',
+  }
+  browserTargets.splice(0, browserTargets.length, firstTarget, secondTarget)
+  const switchedTab = await run('browser', { action: 'switch_tab', index: 1 })
+  assert.equal(switchedTab.result.status, 0)
+  assert.equal(activatedTargets.at(-1), 'page-second')
+  browserTargets.splice(0, browserTargets.length, ...targetsBeforeTabSwitch)
 
   const rejected = await run('browser', { action: 'navigate', url: 'file:///etc/passwd' })
   assert.equal(rejected.result.status, 1)

@@ -51,6 +51,58 @@ if (!pythonPath || shellCheck.status !== 0) {
     assert.deepEqual(result.payload.error?.missing, ['xdotool'])
   })
 
+  test('xdotool errors include bounded diagnostics and redact typed text', (t) => {
+    const harness = createHarness(t)
+    const typedText = 'private typed phrase'
+    const stderr = `xdotool rejected ${typedText} ${'x'.repeat(400)}`
+    const result = harness.run(
+      'type',
+      { text: typedText },
+      {
+        OVERLAY_XDOTOOL_FAIL_SUBCOMMAND: 'type',
+        OVERLAY_XDOTOOL_STDERR: stderr,
+        OVERLAY_XDOTOOL_EXIT_CODE: '7',
+      },
+    )
+
+    assert.equal(result.status, 1)
+    assert.equal(result.payload.error?.code, 'desktop_driver_failed')
+    assert.equal(result.payload.error?.message, 'The desktop input command failed.')
+    assert.deepEqual(result.payload.error?.detail, {
+      exit: 7,
+      subcommand: 'type',
+      stderr: `xdotool rejected [redacted] ${'x'.repeat(400)}`.slice(0, 300),
+    })
+    assert.equal(result.payload.error?.detail?.stderr.length, 300)
+    assert.equal(JSON.stringify(result.payload.error?.detail).includes(typedText), false)
+  })
+
+  test('xdotool spawn failures identify the subcommand without stderr', (t) => {
+    const harness = createHarness(t)
+    const brokenBin = join(harness.directory, 'broken-bin')
+    mkdirSync(brokenBin)
+    writeFileSync(join(brokenBin, 'xdotool'), [
+      '#!/bin/sh',
+      'if [ "$1" = getdisplaygeometry ]; then',
+      '  printf "2560 1440\\n"',
+      '  rm "$0"',
+      '  exit 0',
+      'fi',
+      'exit 0',
+      '',
+    ].join('\n'), { mode: 0o700 })
+    const result = harness.run('click', { x: 10, y: 10 }, {
+      PATH: `${brokenBin}:${process.env.PATH ?? ''}`,
+    })
+
+    assert.equal(result.status, 1)
+    assert.deepEqual(result.payload.error?.detail, {
+      exit: 'spawn_failed',
+      subcommand: 'mousemove',
+      stderr: '',
+    })
+  })
+
   test('a held input lock reports desktop_busy', async (t) => {
     const harness = createHarness(t)
     const lockPath = '/tmp/overlay-computer/input.lock'
@@ -122,6 +174,10 @@ function createHarness(t: { after(callback: () => void): void }) {
   writeFileSync(join(bin, 'xdotool'), [
     '#!/bin/sh',
     'printf "%s\\n" "$*" >> "$OVERLAY_XDOTOOL_LOG"',
+    'if [ "$1" = "$OVERLAY_XDOTOOL_FAIL_SUBCOMMAND" ]; then',
+    '  printf "%s" "$OVERLAY_XDOTOOL_STDERR" >&2',
+    '  exit "${OVERLAY_XDOTOOL_EXIT_CODE:-1}"',
+    'fi',
     'if [ "$1" = getdisplaygeometry ]; then printf "2560 1440\\n"; fi',
     'if [ "$1" = getmouselocation ]; then printf "X=0\\nY=0\\n"; fi',
     '',
@@ -156,7 +212,12 @@ function createHarness(t: { after(callback: () => void): void }) {
       return {
         ...result,
         payload: JSON.parse(result.stdout.trim()) as {
-          error?: { code?: string; missing?: string[] }
+          error?: {
+            code?: string
+            message?: string
+            missing?: string[]
+            detail?: { exit?: number | string; subcommand?: string; stderr: string }
+          }
           width?: number
           height?: number
           id?: string

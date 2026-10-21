@@ -38,6 +38,7 @@ export class ComputerDesktopDriverError extends Error {
     readonly code: string,
     message: string,
     readonly missing: string[] = [],
+    readonly detail?: Record<string, unknown>,
   ) {
     super(message)
     this.name = 'ComputerDesktopDriverError'
@@ -195,6 +196,7 @@ function responseFromResult(result: SandboxCommandResult | null): Record<string,
       typeof error.code === 'string' ? error.code : 'desktop_driver_failed',
       typeof error.message === 'string' ? error.message : 'The desktop command failed.',
       Array.isArray(error.missing) ? error.missing.filter((value): value is string => typeof value === 'string') : [],
+      isRecord(error.detail) ? error.detail : undefined,
     )
   }
   if (result.exitCode !== 0 || !isRecord(response)) {

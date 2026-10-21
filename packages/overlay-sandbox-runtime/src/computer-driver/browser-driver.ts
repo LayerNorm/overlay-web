@@ -1,21 +1,56 @@
 import { COMPUTER_BROWSER_PROFILE_RECOVERY_SOURCE } from './browser-profile-recovery'
 
 export const COMPUTER_BROWSER_DRIVER_SOURCE = String.raw`
-def browser_json(path, timeout=2):
+def browser_response(path, timeout=2, method=None):
     request = urllib.request.Request(
         BROWSER_BASE_URL + path,
         headers={"Accept": "application/json"},
+        method=method,
     )
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
-            return json.loads(response.read().decode("utf-8"))
+            return response.read().decode("utf-8")
     except (OSError, ValueError, urllib.error.URLError, TimeoutError):
+        return None
+
+
+def browser_json(path, timeout=2, method=None):
+    response = browser_response(path, timeout=timeout, method=method)
+    if response is None:
+        return None
+    try:
+        return json.loads(response)
+    except ValueError:
         return None
 
 
 def browser_version(timeout=1):
     value = browser_json("/json/version", timeout=timeout)
     return value if isinstance(value, dict) else None
+
+
+def browser_new_page():
+    target = browser_json("/json/new?about:blank", timeout=2, method="PUT")
+    if (
+        not isinstance(target, dict)
+        or target.get("type") != "page"
+        or not isinstance(target.get("id"), str)
+        or not isinstance(target.get("webSocketDebuggerUrl"), str)
+    ):
+        raise DriverError("desktop_driver_failed", "A Chromium page could not be created.")
+    return target
+
+
+def browser_activate(target):
+    target_id = target.get("id") if isinstance(target, dict) else None
+    if not isinstance(target_id, str):
+        raise DriverError("desktop_driver_failed", "The Chromium page could not be activated.")
+    response = browser_response(
+        "/json/activate/" + urllib.parse.quote(target_id, safe=""),
+        timeout=2,
+    )
+    if response is None:
+        raise DriverError("desktop_driver_failed", "The Chromium page could not be activated.")
 
 
 ${COMPUTER_BROWSER_PROFILE_RECOVERY_SOURCE}
@@ -28,12 +63,39 @@ def browser_binary():
     return None
 
 
+def visible_chromium_window():
+    try:
+        result = subprocess.run(
+            ["xdotool", "search", "--onlyvisible", "--class", "chrom"],
+            capture_output=True,
+            text=True,
+            env=command_environment(),
+            timeout=2,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return True
+    return result.returncode == 0 and bool(result.stdout.strip())
+
+
+def ensure_browser_window():
+    pages = page_targets()
+    if not pages or not visible_chromium_window():
+        target = browser_new_page()
+        browser_activate(target)
+
+
+def browser_ready():
+    ensure_browser_window()
+    return {"success": True, "browser": "chromium"}
+
+
 def ensure_browser():
     if browser_version():
-        return {"success": True, "browser": "chromium"}
+        return browser_ready()
     with input_lock():
         if browser_version():
-            return {"success": True, "browser": "chromium"}
+            return browser_ready()
 
         binary = browser_binary()
         if not binary:
@@ -67,7 +129,7 @@ def ensure_browser():
         while time.monotonic() < deadline:
             remaining = deadline - time.monotonic()
             if browser_version(timeout=min(1, remaining)):
-                return {"success": True, "browser": "chromium"}
+                return browser_ready()
             if child.poll() is not None:
                 raise browser_start_error(binary, child)
             time.sleep(min(0.25, max(0, deadline - time.monotonic())))
@@ -240,13 +302,14 @@ class CDPConnection:
 
 
 def page_targets():
-    targets = browser_json("/json", timeout=2)
+    targets = browser_json("/json/list", timeout=2)
     if not isinstance(targets, list):
         raise DriverError("desktop_unsupported", "The Chromium browser is unavailable.", ["chromium"])
     pages = [
         target for target in targets
         if isinstance(target, dict)
         and target.get("type") == "page"
+        and isinstance(target.get("id"), str)
         and isinstance(target.get("webSocketDebuggerUrl"), str)
     ]
     return pages
@@ -255,7 +318,7 @@ def page_targets():
 def active_page_target():
     pages = page_targets()
     if not pages:
-        raise DriverError("desktop_unsupported", "The Chromium browser has no active page.", ["chromium"])
+        return browser_new_page()
     return pages[0]
 
 
@@ -367,7 +430,9 @@ def run_browser(request):
 def run_browser_action(request, action):
     if action == "navigate":
         url = validate_browser_url(request.get("url"))
-        with target_connection() as connection:
+        target = active_page_target()
+        browser_activate(target)
+        with target_connection(target) as connection:
             connection.call("Page.navigate", {"url": url})
         return {"success": True}
     if action in ("back", "forward"):
@@ -470,8 +535,7 @@ def run_browser_action(request, action):
         pages = page_targets()
         if index >= len(pages):
             raise DriverError("invalid_input", "index does not identify an open browser tab.")
-        with target_connection(pages[index]) as connection:
-            connection.call("Page.bringToFront")
+        browser_activate(pages[index])
         return {"success": True, "index": index}
     if action == "new_tab":
         url = validate_browser_url(request.get("url"))
@@ -483,6 +547,7 @@ def run_browser_action(request, action):
         target_id = created.get("targetId")
         if not isinstance(target_id, str):
             raise DriverError("desktop_driver_failed", "The browser tab could not be created.")
+        browser_activate({"id": target_id})
         return {"success": True, "targetId": target_id}
     raise DriverError("invalid_input", "Unsupported browser action.")
 

@@ -765,7 +765,7 @@ function shellJoin(command: string, args: string[] | undefined, environment: Rec
   const env = Object.entries(environment)
   if (env.length === 0) return argv
   const prefix = env.map(([key, value]) => `${key}=${shellQuote(value)}`).join(' ')
-  return `env ${prefix} ${argv}`
+  return `env ${prefix} sh -c ${shellQuote(argv)}`
 }
 
 function signalNumber(signal: string): number {

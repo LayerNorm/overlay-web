@@ -302,8 +302,40 @@ test('emulated environment prefixes every subsequent command', async () => {
   await (await instance.runCommand({ command: 'env', timeoutMs: 5_000 })).wait()
   const command = (calls.find((call) => call.url.endsWith('/commands'))?.body as { command: string }).command
   assert.match(command, /^timeout --signal=TERM --kill-after=5s 5s sh -c /)
-  assert.match(command, /OVERLAY_TOKEN=.*env/)
+  assert.match(command, /env OVERLAY_TOKEN=.* sh -c .*env/)
   assert.doesNotMatch(command, /STALE/)
+})
+
+test('command environments wrap compound shell commands and preserve argument quoting', async () => {
+  const { calls, fetch } = recorder((call) => call.url.endsWith('/commands')
+    ? ok({ processId: 7, pid: 70 })
+    : ok({ sandbox: { id: 'bx_1', state: 'ready' } }))
+  const instance = await runtime(fetch).reconnect('bx_1')
+
+  await instance.runCommand({
+    command: 'for d in a b; do printf "%s:%s\\n" "$d" "$LOOP_VALUE"; done',
+    environment: { LOOP_VALUE: 'visible' },
+    timeoutMs: 0,
+  })
+  const loopCommand = (calls.find((call) => call.url.endsWith('/commands'))?.body as { command: string }).command
+  assert.match(loopCommand, /^env LOOP_VALUE='visible' sh -c 'for d in a b; do /)
+  assert.equal(
+    execFileSync('/bin/sh', ['-c', loopCommand], { encoding: 'utf8' }),
+    'a:visible\nb:visible\n',
+  )
+
+  await instance.runCommand({
+    command: 'printf',
+    args: ['%s\\n', 'two words'],
+    environment: { ARG_VALUE: 'quoted' },
+    timeoutMs: 0,
+  })
+  const argsCommand = (calls.filter((call) => call.url.endsWith('/commands'))[1]?.body as { command: string }).command
+  assert.match(argsCommand, /^env ARG_VALUE='quoted' sh -c 'printf /)
+  assert.equal(
+    execFileSync('/bin/sh', ['-c', argsCommand], { encoding: 'utf8' }),
+    'two words\n',
+  )
 })
 
 test('files write base64, read base64, and missing files read as null', async () => {
@@ -579,5 +611,5 @@ test('a command environment is applied on top of the machine environment', async
   await instance.runCommand({ command: 'printenv', environment: { OVERRIDE: 'command', ONLY: 'command' }, timeoutMs: 1_000 })
   const command = (calls.find((call) => call.url.endsWith('/commands'))?.body as { command: string }).command
   assert.match(command, /^timeout --signal=TERM --kill-after=5s 1s sh -c /)
-  assert.match(command, /SHARED=.*OVERRIDE=.*ONLY=.*printenv/)
+  assert.match(command, /env SHARED=.*OVERRIDE=.*ONLY=.* sh -c .*printenv/)
 })

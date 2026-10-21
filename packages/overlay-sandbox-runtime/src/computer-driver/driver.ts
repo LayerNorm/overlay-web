@@ -1,7 +1,7 @@
 import { COMPUTER_BROWSER_DRIVER_SOURCE } from './browser-driver'
 import { COMPUTER_TERMINAL_DRIVER_SOURCE } from './terminal-driver'
 
-export const DRIVER_VERSION = '5'
+export const DRIVER_VERSION = '6'
 
 export const COMPUTER_DRIVER_SOURCE = String.raw`#!/usr/bin/env python3
 import base64
@@ -23,7 +23,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "5"
+VERSION = "6"
 DEFAULT_MAX_WIDTH = 1280
 LOCK_PATH = os.environ.get("OVERLAY_COMPUTER_INPUT_LOCK_PATH", "/tmp/overlay-computer/input.lock")
 SHOT_PATH = "/tmp/overlay-computer/shot.png"
@@ -47,11 +47,12 @@ RISKY_CLICK_NAME = re.compile(
 
 
 class DriverError(Exception):
-    def __init__(self, code, message, missing=None):
+    def __init__(self, code, message, missing=None, detail=None):
         super().__init__(message)
         self.code = code
         self.message = message
         self.missing = missing or []
+        self.detail = detail
 
 
 def display_name():
@@ -145,6 +146,26 @@ def input_lock():
         handle.close()
 
 
+def xdotool_error_detail(arguments, exit_value, stderr):
+    if isinstance(stderr, bytes):
+        stderr = stderr.decode("utf-8", errors="replace")
+    elif not isinstance(stderr, str):
+        stderr = ""
+    argument_strings = [str(argument) for argument in arguments]
+    typed_text = None
+    if argument_strings and argument_strings[0] == "type" and "--" in argument_strings:
+        delimiter = argument_strings.index("--")
+        if delimiter + 1 < len(argument_strings):
+            typed_text = argument_strings[delimiter + 1]
+    if typed_text:
+        stderr = stderr.replace(typed_text, "[redacted]")
+    return {
+        "exit": exit_value,
+        "subcommand": argument_strings[0] if argument_strings else "",
+        "stderr": stderr[:300],
+    }
+
+
 def run_xdotool(xdotool, *arguments):
     try:
         result = subprocess.run(
@@ -155,10 +176,15 @@ def run_xdotool(xdotool, *arguments):
             timeout=10,
             check=False,
         )
-    except (OSError, subprocess.TimeoutExpired):
-        raise DriverError("desktop_driver_failed", "The desktop input command failed.")
+    except subprocess.TimeoutExpired as error:
+        detail = xdotool_error_detail(arguments, "timeout", error.stderr)
+        raise DriverError("desktop_driver_failed", "The desktop input command failed.", detail=detail)
+    except OSError:
+        detail = xdotool_error_detail(arguments, "spawn_failed", "")
+        raise DriverError("desktop_driver_failed", "The desktop input command failed.", detail=detail)
     if result.returncode != 0:
-        raise DriverError("desktop_driver_failed", "The desktop input command failed.")
+        detail = xdotool_error_detail(arguments, result.returncode, result.stderr)
+        raise DriverError("desktop_driver_failed", "The desktop input command failed.", detail=detail)
     return result.stdout
 
 
@@ -398,6 +424,8 @@ def emit_error(error):
     payload = {"code": error.code, "message": error.message}
     if error.missing:
         payload["missing"] = error.missing
+    if error.detail is not None:
+        payload["detail"] = error.detail
     sys.stdout.write(json.dumps({"error": payload}, separators=(",", ":")) + "\n")
 
 
