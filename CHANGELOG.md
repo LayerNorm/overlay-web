@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Let people who left sign-up before verifying finish from sign-in. Signing in with the right password for an unverified account now opens the code screen with Resend, then signs in once the code is accepted, instead of linking to a missing `/auth/verify-email` page. Sign-in and sign-up also show a plain fallback message instead of crashing when an error response is not text.
+
 - Add account-level workspace discovery, freeform workspace creation and invitation entry before onboarding. Suggested answers fill an editable composer in main chat and agent conversations without submitting automatically. New owners get a team question; invited members get a shorter setup. Restore profile drafts on refresh and remove the tour target border.
 
 - Replace the `/home` scroll story with a static landing page in one framed column (approved mockup `internal/plans/mockups/landing-static-mockup-v2.html`): a one-color headline whose five underlined phrases jump to their sections, a still of the app with the live sidebar (Work, Chats, Files, Automations) and agents drawn as their creatures, then superpowers, the create/manage/deploy/bring-your-own steps, teams, controls, where to get Overlay and the FAQ. The footer's Product links now point at `#control-plane`, `#get-overlay`, `#ai-employees` and `#deploy`. The scroll engine, scene graphics and interactive demo are removed.
