@@ -1,7 +1,7 @@
 import { COMPUTER_BROWSER_DRIVER_SOURCE } from './browser-driver'
 import { COMPUTER_TERMINAL_DRIVER_SOURCE } from './terminal-driver'
 
-export const DRIVER_VERSION = '4'
+export const DRIVER_VERSION = '5'
 
 export const COMPUTER_DRIVER_SOURCE = String.raw`#!/usr/bin/env python3
 import base64
@@ -12,6 +12,7 @@ import hashlib
 import json
 import os
 import re
+import signal
 import shutil
 import socket
 import struct
@@ -22,7 +23,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "4"
+VERSION = "5"
 DEFAULT_MAX_WIDTH = 1280
 LOCK_PATH = os.environ.get("OVERLAY_COMPUTER_INPUT_LOCK_PATH", "/tmp/overlay-computer/input.lock")
 SHOT_PATH = "/tmp/overlay-computer/shot.png"
@@ -31,8 +32,12 @@ SCREENSHOT_TOOLS = (("imagemagick", "import"), ("scrot", "scrot"), ("ffmpeg", "f
 BROWSER_HOST = "127.0.0.1"
 BROWSER_PORT = 9222
 BROWSER_BASE_URL = "http://127.0.0.1:9222"
-BROWSER_START_TIMEOUT_SECONDS = 20
+BROWSER_START_TIMEOUT_SECONDS = 30
 BROWSER_PROFILE = os.path.expanduser("~/.config/overlay-browser")
+BROWSER_LOG_PATH = os.environ.get(
+    "OVERLAY_COMPUTER_BROWSER_LOG_PATH",
+    "/tmp/overlay-computer/browser.log",
+)
 WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 MAX_CDP_MESSAGE_BYTES = 4_000_000
 RISKY_CLICK_NAME = re.compile(

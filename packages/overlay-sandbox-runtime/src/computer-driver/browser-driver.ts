@@ -1,3 +1,5 @@
+import { COMPUTER_BROWSER_PROFILE_RECOVERY_SOURCE } from './browser-profile-recovery'
+
 export const COMPUTER_BROWSER_DRIVER_SOURCE = String.raw`
 def browser_json(path, timeout=2):
     request = urllib.request.Request(
@@ -11,10 +13,12 @@ def browser_json(path, timeout=2):
         return None
 
 
-def browser_version():
-    value = browser_json("/json/version", timeout=1)
+def browser_version(timeout=1):
+    value = browser_json("/json/version", timeout=timeout)
     return value if isinstance(value, dict) else None
 
+
+${COMPUTER_BROWSER_PROFILE_RECOVERY_SOURCE}
 
 def browser_binary():
     for name in ("google-chrome", "google-chrome-stable", "chromium", "chromium-browser"):
@@ -37,31 +41,37 @@ def ensure_browser():
 
         try:
             os.makedirs(BROWSER_PROFILE, exist_ok=True)
-            subprocess.Popen(
-                [
-                    binary,
-                    "--remote-debugging-address=127.0.0.1",
-                    "--remote-debugging-port=9222",
-                    "--user-data-dir=" + BROWSER_PROFILE,
-                    "--no-first-run",
-                    "--no-default-browser-check",
-                ],
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                env=command_environment(),
-                start_new_session=True,
-                close_fds=True,
-            )
+            recover_profile_lock()
+            os.makedirs(os.path.dirname(BROWSER_LOG_PATH), exist_ok=True)
+            with open(BROWSER_LOG_PATH, "ab", buffering=0) as browser_log:
+                child = subprocess.Popen(
+                    [
+                        binary,
+                        "--remote-debugging-address=127.0.0.1",
+                        "--remote-debugging-port=9222",
+                        "--user-data-dir=" + BROWSER_PROFILE,
+                        "--no-first-run",
+                        "--no-default-browser-check",
+                    ],
+                    stdin=subprocess.DEVNULL,
+                    stdout=browser_log,
+                    stderr=browser_log,
+                    env=command_environment(),
+                    start_new_session=True,
+                    close_fds=True,
+                )
         except OSError:
             raise DriverError("desktop_driver_failed", "Chromium could not be started.")
 
         deadline = time.monotonic() + BROWSER_START_TIMEOUT_SECONDS
         while time.monotonic() < deadline:
-            if browser_version():
+            remaining = deadline - time.monotonic()
+            if browser_version(timeout=min(1, remaining)):
                 return {"success": True, "browser": "chromium"}
-            time.sleep(0.25)
-        raise DriverError("desktop_driver_failed", "Chromium did not start in time.")
+            if child.poll() is not None:
+                raise browser_start_error(binary, child)
+            time.sleep(min(0.25, max(0, deadline - time.monotonic())))
+        raise browser_start_error(binary, child)
 
 
 def validate_browser_url(value):

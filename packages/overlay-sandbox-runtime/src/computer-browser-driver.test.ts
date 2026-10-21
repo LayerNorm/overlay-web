@@ -4,9 +4,12 @@ import { execFileSync, spawn, spawnSync } from 'node:child_process'
 import { createServer } from 'node:http'
 import {
   existsSync,
+  lstatSync,
   mkdtempSync,
   mkdirSync,
+  readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -20,6 +23,14 @@ const pythonPath = pythonCheck.status === 0
   ? execFileSync('which', ['python3'], { encoding: 'utf8' }).trim()
   : undefined
 
+function terminateManagedGroup(pid: number) {
+  try {
+    process.kill(-pid, 'SIGKILL')
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error
+  }
+}
+
 test('browser driver inspects risky click refs and requires confirmation', async (t) => {
   if (!pythonPath) {
     t.skip('Python 3 is unavailable; install python3 to run the browser driver tests.')
@@ -30,12 +41,23 @@ test('browser driver inspects risky click refs and requires confirmation', async
   const bin = join(directory, 'bin')
   const scriptPath = join(directory, 'driver.py')
   const launchLog = join(directory, 'chromium-launch.log')
+  const launchPidFile = join(directory, 'chromium-pids.log')
+  const readySignal = join(directory, 'chromium-ready')
+  const browserLog = join(directory, 'browser.log')
+  const managedProcessGroups = new Set<number>()
   mkdirSync(bin)
+  writeFileSync(readySignal, 'ready')
   writeFileSync(scriptPath, COMPUTER_DRIVER_SOURCE, { mode: 0o700 })
-  writeFileSync(join(bin, 'chromium'), [
+  writeFileSync(join(bin, 'google-chrome'), [
     '#!/bin/sh',
     'printf "%s\\n" "$*" >> "$OVERLAY_CHROMIUM_LAUNCH_LOG"',
-    '',
+    'printf "%s\\n" "$$" >> "$OVERLAY_CHROMIUM_PID_FILE"',
+    'if [ "$OVERLAY_CHROMIUM_BEHAVIOR" = "early-exit" ]; then',
+    '  printf "chromium early exit diagnostic\\n" >&2',
+    '  exit 23',
+    'fi',
+    ': > "$OVERLAY_CHROMIUM_READY_PATH"',
+    'exec sleep 60',
   ].join('\n'), { mode: 0o700 })
 
   const received: Array<{ id?: number; method?: string; params?: { expression?: string } }> = []
@@ -44,6 +66,11 @@ test('browser driver inspects risky click refs and requires confirmation', async
   const server = createServer((request, response) => {
     response.setHeader('content-type', 'application/json')
     if (request.url === '/json/version') {
+      if (!existsSync(readySignal)) {
+        response.statusCode = 503
+        response.end('{}')
+        return
+      }
       response.end(JSON.stringify({
         Browser: 'Chrome/123.0.0.0',
         webSocketDebuggerUrl: 'ws://127.0.0.1:9222/devtools/browser/test',
@@ -179,6 +206,9 @@ test('browser driver inspects risky click refs and requires confirmation', async
   }
 
   t.after(async () => {
+    for (const pid of managedProcessGroups) {
+      terminateManagedGroup(pid)
+    }
     for (const socket of sockets) socket.destroy()
     await new Promise<void>((resolve) => server.close(() => resolve()))
     rmSync(directory, { recursive: true, force: true })
@@ -190,8 +220,15 @@ test('browser driver inspects risky click refs and requires confirmation', async
     PATH: `${bin}:${process.env.PATH ?? ''}`,
     OVERLAY_COMPUTER_INPUT_LOCK_PATH: join(directory, 'input.lock'),
     OVERLAY_CHROMIUM_LAUNCH_LOG: launchLog,
+    OVERLAY_CHROMIUM_PID_FILE: launchPidFile,
+    OVERLAY_CHROMIUM_READY_PATH: readySignal,
+    OVERLAY_COMPUTER_BROWSER_LOG_PATH: browserLog,
   }
-  const run = async (command: string, args: Record<string, unknown> = {}) => {
+  const run = async (
+    command: string,
+    args: Record<string, unknown> = {},
+    overrides: NodeJS.ProcessEnv = {},
+  ) => {
     const result = await new Promise<{
       status: number | null
       stdout: string
@@ -199,7 +236,7 @@ test('browser driver inspects risky click refs and requires confirmation', async
       error?: Error
     }>((resolve) => {
       const child = spawn(pythonPath!, [scriptPath, JSON.stringify({ command, ...args })], {
-        env: environment,
+        env: { ...environment, ...overrides },
         stdio: ['ignore', 'pipe', 'pipe'],
       })
       let stdout = ''
@@ -228,7 +265,7 @@ test('browser driver inspects risky click refs and requires confirmation', async
     })
     assert.equal(result.error, undefined, result.error?.message)
     const payload = JSON.parse(result.stdout.trim()) as {
-      error?: { code?: string; missing?: string[] }
+      error?: { code?: string; message?: string; missing?: string[] }
       label?: string
       message?: string
       url?: string
@@ -284,4 +321,93 @@ test('browser driver inspects risky click refs and requires confirmation', async
   assert.ok(refExpressions.some((expression) => expression.includes('overlay-1') && expression.includes('element.click()')))
   assert.ok(refExpressions.some((expression) => expression.includes('overlay-2') && expression.includes('element.click()')))
   assert.equal(received.every((message) => message.method !== 'Target.createTarget'), true)
+
+  const profile = join(directory, '.config', 'overlay-browser')
+  mkdirSync(profile, { recursive: true })
+  const singletonLock = join(profile, 'SingletonLock')
+  const singletonSocket = join(profile, 'SingletonSocket')
+  const singletonCookie = join(profile, 'SingletonCookie')
+  const hasPath = (path: string) => {
+    try {
+      lstatSync(path)
+      return true
+    } catch {
+      return false
+    }
+  }
+  const writeSingletons = (pid: number) => {
+    symlinkSync(`fake-host-${pid}`, singletonLock)
+    writeFileSync(singletonSocket, 'socket')
+    writeFileSync(singletonCookie, 'cookie')
+  }
+  const launchPids = () => {
+    const lines = readFileSync(launchPidFile, 'utf8').trim().split(/\r?\n/)
+    return lines.map((line) => Number(line))
+  }
+  const stopLatestBrowser = () => {
+    const pid = launchPids().at(-1)
+    assert.ok(pid && Number.isInteger(pid))
+    managedProcessGroups.add(pid)
+    terminateManagedGroup(pid)
+    rmSync(readySignal, { force: true })
+  }
+
+  rmSync(readySignal, { force: true })
+  writeSingletons(99999999)
+  const staleLock = await run('browser_ensure')
+  assert.equal(staleLock.result.status, 0, staleLock.result.stdout + staleLock.result.stderr)
+  assert.deepEqual(staleLock.payload, { success: true, browser: 'chromium' })
+  assert.equal(hasPath(singletonLock), false)
+  assert.equal(existsSync(singletonSocket), false)
+  assert.equal(existsSync(singletonCookie), false)
+  stopLatestBrowser()
+
+  const owner = spawn(
+    pythonPath!,
+    ['-c', 'import time; time.sleep(60)', `--user-data-dir=${profile}`],
+    { detached: true, stdio: 'ignore' },
+  )
+  const ownerStarted = new Promise<void>((resolve, reject) => {
+    owner.once('spawn', () => resolve())
+    owner.once('error', reject)
+  })
+  await ownerStarted
+  assert.ok(owner.pid)
+  managedProcessGroups.add(owner.pid)
+  const ownerClosed = new Promise<NodeJS.Signals | null>((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error('Browser profile owner did not exit.')), 2000)
+    owner.once('close', (_code, signal) => {
+      clearTimeout(timeout)
+      resolve(signal)
+    })
+  })
+  writeSingletons(owner.pid)
+  rmSync(readySignal, { force: true })
+  const liveOwner = await run('browser_ensure')
+  assert.equal(liveOwner.result.status, 0, liveOwner.result.stdout + liveOwner.result.stderr)
+  assert.deepEqual(liveOwner.payload, { success: true, browser: 'chromium' })
+  assert.equal(await ownerClosed, 'SIGTERM')
+  assert.equal(hasPath(singletonLock), false)
+  assert.equal(existsSync(singletonSocket), false)
+  assert.equal(existsSync(singletonCookie), false)
+  stopLatestBrowser()
+
+  writeSingletons(process.pid)
+  rmSync(readySignal, { force: true })
+  const foreignProcess = await run('browser_ensure')
+  assert.equal(foreignProcess.result.status, 0)
+  assert.deepEqual(foreignProcess.payload, { success: true, browser: 'chromium' })
+  assert.doesNotThrow(() => process.kill(process.pid, 0))
+  assert.equal(hasPath(singletonLock), true)
+  assert.equal(existsSync(singletonSocket), true)
+  assert.equal(existsSync(singletonCookie), true)
+  stopLatestBrowser()
+
+  const earlyExit = await run('browser_ensure', {}, { OVERLAY_CHROMIUM_BEHAVIOR: 'early-exit' })
+  assert.equal(earlyExit.result.status, 1)
+  assert.equal(earlyExit.payload.error?.code, 'desktop_driver_failed')
+  assert.match(
+    earlyExit.payload.error?.message ?? '',
+    /\(google-chrome; exit 23; .*chromium early exit diagnostic\)/,
+  )
 })

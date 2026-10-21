@@ -34,6 +34,7 @@ type ConvexAgentRunDoc = {
   updatedAt: number
   createdAt: number
   terminalError?: { code: string; message: string; retryable: boolean }
+  approval?: AgentRunResource['approval']
   metrics?: {
     browserDisconnectedAt?: number
     browserReconnectedAt?: number
@@ -75,13 +76,14 @@ function ConvexAgentRunSubscription({
 
 // The Convex doc has fewer fields than AgentRunResource.  We only use
 // id, conversationId, status, terminalError, and metrics in this hook, so we cast.
-function toAgentRunResource(doc: ConvexAgentRunDoc): AgentRunResource | null {
+export function toAgentRunResource(doc: ConvexAgentRunDoc): AgentRunResource | null {
   if (!doc) return null
   return {
     id: doc._id,
     conversationId: doc.conversationId,
     status: doc.status as AgentRunResource['status'],
     terminalError: doc.terminalError,
+    approval: doc.approval,
     metrics: doc.metrics as AgentRunResource['metrics'],
   } as unknown as AgentRunResource
 }
