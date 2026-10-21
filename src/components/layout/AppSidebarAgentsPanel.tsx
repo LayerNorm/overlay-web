@@ -470,7 +470,7 @@ function AgentListRow({
           aria-label={`New thread with ${agent.name}`}
           title="New thread"
           disabled={creatingThread}
-          className="right-7 top-[9px] md:opacity-0 group-hover/agent-row:opacity-100 group-focus-within/agent-row:opacity-100"
+          className="right-7 top-[9px]"
           onClick={(event) => {
             event.stopPropagation()
             if (!isExpanded) onToggleExpanded(agent.id)

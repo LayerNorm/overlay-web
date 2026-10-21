@@ -6,6 +6,9 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Remove multi-model selection and compare responses across text, image, and video chats. Existing saved model preferences and conversations continue with one primary model response.
 
+- Align Work quick-add with the sidebar scope, keep workspace storage quotas visible, and make sidebar create actions permanent with neutral placeholders, toasts, and centered loading marks.
+- Announce stopped and failed Work runs only when their status transitions live to a terminal state.
+
 - Add OpenCode Go to Settings > Providers. Chat, Responses, and Messages model protocols use the OpenCode Go subscription endpoint with stable conversation sessions.
 
 - Match file and automation sidebar rows to chats with shared 32px rows, 14px text and 16px icons, reduce agent names to the conversation text size, and give every shared chat composer a subtle theme-aware outline.

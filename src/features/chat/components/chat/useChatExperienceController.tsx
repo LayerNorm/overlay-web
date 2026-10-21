@@ -27,6 +27,7 @@ import { useChatStopController } from './useChatStopController'
 import { useChatTitleController } from './useChatTitleController'
 import { useLiveConversationSync } from './useLiveConversationSync'
 import { useAgentRunLifecycle } from './useAgentRunLifecycle'
+import { resolveAgentRunNotice, type AgentRunNoticePrevious } from './agent-run-notice'
 import { useChatRuntimes } from './useChatRuntimes'
 import { useComposerTextState } from './useComposerTextState'
 import {
@@ -238,6 +239,7 @@ export function useChatExperienceController({
 
   const [isOptimisticLoading, setIsOptimisticLoading] = useState(false)
   const [composerNotice, setComposerNotice] = useState<string | null>(null)
+  const previousAgentRunRef = useRef<AgentRunNoticePrevious | null>(null)
   const {
     attachedImages,
     setAttachedImages,
@@ -492,14 +494,11 @@ export function useChatExperienceController({
   }, [activeChatId])
 
   useEffect(() => {
-    const failedNotice = agentRunLifecycle.run?.status === 'failed'
-      ? `Work failed: ${agentRunLifecycle.run.terminalError?.message ?? 'The run could not be completed.'}`
-      : null
-    const cancelledNotice = agentRunLifecycle.run?.status === 'cancelled'
-      ? 'Work stopped.'
-      : null
-    if (failedNotice || cancelledNotice) {
-      setComposerNotice(failedNotice ?? cancelledNotice)
+    const run = agentRunLifecycle.run
+    const { announce, notice } = resolveAgentRunNotice(previousAgentRunRef.current, run)
+    previousAgentRunRef.current = run ? { id: run.id, status: run.status } : null
+    if (announce && notice) {
+      setComposerNotice(notice)
       return
     }
     setComposerNotice((current) => (
