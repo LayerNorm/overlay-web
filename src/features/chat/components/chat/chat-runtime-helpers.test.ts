@@ -8,6 +8,7 @@ import {
   readableModelId,
   removeTurnFromConversationRuntime,
   sameAssistantSnapshot,
+  withViewModelSelection,
 } from './chat-runtime-helpers'
 
 function message(id: string, role: 'user' | 'assistant', text = id): UIMessage {
@@ -46,4 +47,22 @@ test('uses one primary response and removes the selected turn from both runtimes
   assert.equal(removeTurnFromConversationRuntime(runtime, 'turn-1').removedExchangeIndex, 0)
   assert.equal(runtime.askChats[0].messages.length, 0)
   assert.equal(runtime.actChat.messages.length, 0)
+})
+
+test('withViewModelSelection carries the picked model into a stale runtime snapshot', () => {
+  const stale = createConversationUiState({
+    selectedModels: ['openai/gpt-5.4-mini'],
+    selectedActModel: 'openai/gpt-5.4-mini',
+    exchangeModels: [['openai/gpt-5.4-mini']],
+  })
+
+  const next = withViewModelSelection(stale, {
+    selectedModels: ['openrouter/free'],
+    selectedActModel: 'openrouter/free',
+  })
+
+  assert.deepEqual(next.selectedModels, ['openrouter/free'])
+  assert.equal(next.selectedActModel, 'openrouter/free')
+  assert.deepEqual(next.exchangeModels, [['openai/gpt-5.4-mini']])
+  assert.deepEqual(stale.selectedModels, ['openai/gpt-5.4-mini'])
 })

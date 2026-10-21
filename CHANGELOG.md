@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Keep the model you pick in an existing chat after sending. The composer and saved chat model no longer revert to the chat's earlier model once the reply starts.
+
 - Remove multi-model selection and compare responses across text, image, and video chats. Existing saved model preferences and conversations continue with one primary model response.
 
 - Align Work quick-add with the sidebar scope, keep workspace storage quotas visible, and make sidebar create actions permanent with neutral placeholders, toasts, and centered loading marks.
