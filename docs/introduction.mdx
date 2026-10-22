@@ -1,48 +1,36 @@
 ---
 title: "Overlay"
-description: "Documentation for Overlay across web, desktop, and self-hosted deployments."
+description: "Documentation for Overlay: using the web app, self-hosting, and building on the API."
 ---
 
-Overlay is a private workspace for models, knowledge, tools, and agents. These
-docs cover the **web app / Overlay Server**, **Overlay Desktop** on macOS, and
-self-hosting.
+Overlay is a private workspace where your team and its agents work together on
+models, knowledge, tools, and files. These docs cover using the **web app**,
+running your own **self-hosted** instance, and **building** on the Overlay API
+and MCP server.
 
 <CardGroup cols={2}>
-  <Card title="Web / server source" icon="github" href="https://github.com/LayerNorm/overlay-web">
-    Next.js app, APIs, and self-hosting surface.
+  <Card title="Help Center" icon="life-buoy" href="/help/index">
+    Everyday guides for chats, agents, files, automations, and settings.
   </Card>
-  <Card title="Overlay Desktop source" icon="laptop" href="https://github.com/LayerNorm/overlay-desktop">
-    macOS Apple Silicon client (public source; signed downloads after Gate B).
+  <Card title="Self-hosting" icon="server" href="/deploy-operate/self-hosting">
+    Run Overlay on your own infrastructure with a self-hosted Convex backend.
   </Card>
-  <Card title="Desktop download" icon="download" href="https://getoverlay.io/download">
-    Official macOS builds when Gate B is open.
+  <Card title="API reference" icon="braces" href="/api-reference/overview">
+    Call the `/api/v1` web API from your own code.
   </Card>
-  <Card title="Desktop docs" icon="book-open" href="/desktop/overview">
-    Install, permissions, security model, and troubleshooting.
+  <Card title="Source" icon="github" href="https://github.com/LayerNorm/overlay-web">
+    The Next.js app, APIs, and self-hosting surface.
   </Card>
 </CardGroup>
 
 ## Scope
 
-**Web / server**
+- The web app under `src/app` and the `/api/v1` contracts behind it.
+- The Convex backend that stores app data.
+- Self-hosting and operations.
 
-- Next.js app under `src/app`
-- `/api/v1` contracts and server orchestration
-- Convex / Postgres workflows that affect the product
-- Self-hosting and operations
-
-**Desktop**
-
-- Electron macOS client (Apple Silicon)
-- Local vs cloud data flows and chat permissions
-- Build-from-source and (after Gate B) signed releases
-
-**Excluded**
-
-- Mobile and Chrome extension deep internals
-- Internal audit reports and private security notes
+Overlay is available on the web. Desktop and mobile apps are not available yet.
 
 ## Source of truth
 
 The web API reference is generated from `src/shared/schemas/api-boundary.ts`.
-Desktop release notes live in the desktop repository changelog and GitHub Releases.

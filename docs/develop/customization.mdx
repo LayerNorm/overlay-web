@@ -123,7 +123,7 @@ lifecycle anchors.
 
 All ordinary full-page product destinations use the shared app shell. This includes
 account settings, sign-in, sign-up, password recovery, mobile authentication
-completion, desktop downloads, and legal pages. `/account` is a compatibility URL
+completion, the desktop download page (redirected to `/home` while `OVERLAY_DESKTOP_DOWNLOADS_ENABLED` is off), and legal pages. `/account` is a compatibility URL
 that redirects to `/app/settings?section=account` so the client receives the
 canonical settings section instead of falling back to General.
 
@@ -132,7 +132,7 @@ pages, and visual fixtures remain standalone. Their minimal surfaces are part of
 the handoff, popup, recipient, or test contract and must not gain workspace
 navigation.
 
-The account panel contains identity, desktop handoff, and deployment-supported billing controls. Do not expose account-level API-key controls unless the deployment intentionally enables and tests the API-key service; a non-working credential control is worse than no control.
+The account panel contains identity and deployment-supported billing controls. It has no Desktop app panel while desktop builds are unavailable; the post-checkout banner still offers the desktop handoff to sessions that started in an existing desktop build. Do not expose account-level API-key controls unless the deployment intentionally enables and tests the API-key service; a non-working credential control is worse than no control.
 
 Plans belong to workspaces, and workspace billing is always on wherever Overlay billing is (there is no rollout flag). A workspace with an active wallet on a paid plan pays for everything done in it; without one it is on the free allowance, counted per workspace. An account is never free or paid. A suspended paid wallet fails closed and never spends anything of the person's.
 

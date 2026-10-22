@@ -2,7 +2,7 @@
   "$schema": "https://mintlify.com/docs.json",
   "theme": "mint",
   "name": "Overlay",
-  "description": "Documentation for Overlay across web, desktop, and self-hosted deployments.",
+  "description": "Documentation for Overlay: using the web app, self-hosting, and building on the API.",
   "colors": {
     "primary": "#0a0a0a",
     "light": "#f5f5f5",
@@ -79,44 +79,6 @@
           "introduction",
           "start/quickstart",
           "start/repository-map"
-        ]
-      },
-      {
-        "group": "Desktop",
-        "pages": [
-          "desktop/overview",
-          {
-            "group": "Get started",
-            "pages": [
-              "desktop/download-install",
-              "desktop/system-requirements",
-              "desktop/sign-in",
-              "desktop/self-hosted-server",
-              "desktop/build-from-source"
-            ]
-          },
-          {
-            "group": "Using the app",
-            "pages": [
-              "desktop/local-vs-cloud",
-              "desktop/chat-permissions",
-              "desktop/macos-permissions",
-              "desktop/browser-security",
-              "desktop/transcription"
-            ]
-          },
-          {
-            "group": "Maintenance and security",
-            "pages": [
-              "desktop/updates",
-              "desktop/uninstall",
-              "desktop/privacy-diagnostics",
-              "desktop/security-reporting",
-              "desktop/troubleshooting",
-              "desktop/release-verification",
-              "desktop/changelog"
-            ]
-          }
         ]
       },
       {
@@ -274,5 +236,83 @@
         ]
       }
     ]
-  }
+  },
+  "redirects": [
+    {
+      "source": "/desktop",
+      "destination": "/help/index"
+    },
+    {
+      "source": "/desktop/browser-security",
+      "destination": "/help/index"
+    },
+    {
+      "source": "/desktop/build-from-source",
+      "destination": "/help/index"
+    },
+    {
+      "source": "/desktop/changelog",
+      "destination": "/help/index"
+    },
+    {
+      "source": "/desktop/chat-permissions",
+      "destination": "/help/index"
+    },
+    {
+      "source": "/desktop/download-install",
+      "destination": "/help/index"
+    },
+    {
+      "source": "/desktop/local-vs-cloud",
+      "destination": "/help/index"
+    },
+    {
+      "source": "/desktop/macos-permissions",
+      "destination": "/help/index"
+    },
+    {
+      "source": "/desktop/overview",
+      "destination": "/help/index"
+    },
+    {
+      "source": "/desktop/privacy-diagnostics",
+      "destination": "/help/index"
+    },
+    {
+      "source": "/desktop/release-verification",
+      "destination": "/help/index"
+    },
+    {
+      "source": "/desktop/security-reporting",
+      "destination": "/help/index"
+    },
+    {
+      "source": "/desktop/self-hosted-server",
+      "destination": "/help/index"
+    },
+    {
+      "source": "/desktop/sign-in",
+      "destination": "/help/index"
+    },
+    {
+      "source": "/desktop/system-requirements",
+      "destination": "/help/index"
+    },
+    {
+      "source": "/desktop/transcription",
+      "destination": "/help/index"
+    },
+    {
+      "source": "/desktop/troubleshooting",
+      "destination": "/help/index"
+    },
+    {
+      "source": "/desktop/uninstall",
+      "destination": "/help/index"
+    },
+    {
+      "source": "/desktop/updates",
+      "destination": "/help/index"
+    }
+  ]
 }

@@ -43,7 +43,7 @@ function DownloadState({ downloadsEnabled, release, releaseError }: DesktopDownl
         </p>
         <div className="actions">
           <ExternalButton href={DESKTOP_REPO_URL} primary><GithubMark /> View source</ExternalButton>
-          <ExternalButton href="https://getoverlay.io/docs/desktop/overview"><BookOpen className="i" /> Desktop docs</ExternalButton>
+          <ExternalButton href={`${DESKTOP_REPO_URL}#readme`}><BookOpen className="i" /> Read me</ExternalButton>
         </div>
       </>
     )
@@ -116,7 +116,7 @@ export function DesktopDownloadPage({ downloadsEnabled, release, releaseError, l
               <p className="lead">Check the requirements, read how your data is handled, or build it yourself.</p>
             </div>
             <div className="pcol">
-              <DetailRow href="https://getoverlay.io/docs/desktop/system-requirements" icon={<Cpu className="i" />} label="System requirements" />
+              <DetailRow href={`${DESKTOP_REPO_URL}#readme`} icon={<Cpu className="i" />} label="System requirements" />
               <DetailRow href="/privacy" icon={<Shield className="i" />} label="Privacy policy" />
               <DetailRow href={DESKTOP_REPO_URL} icon={<GithubMark />} label="Source repository" />
               {canDownload ? (
