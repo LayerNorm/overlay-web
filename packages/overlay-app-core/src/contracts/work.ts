@@ -78,12 +78,14 @@ export interface CreateWorkItemRequest {
   scope?: ResourceScope
   description?: string
   status?: WorkStatus
+  blocked?: boolean
   priority?: WorkPriority
   assigneePrincipalId?: string
   reviewerUserId?: string
   startDate?: string
   dueDate?: string
   parentId?: string
+  blockedBy?: string[]
   doneWhen?: WorkDoneWhen[]
   context?: WorkContextRef[]
 }

@@ -28,7 +28,9 @@ async function seed(convex: Convex, policy?: Record<string, unknown>) {
       await ctx.db.insert('workspaceMemberships', { membershipId: `m-${userId}`, workspaceId, principalId: `p-${userId}`, role, status: 'active', joinedAt: now, updatedAt: now })
     }
     await ctx.db.insert('workspacePrincipals', { principalId: 'p-agent', workspaceId, type: 'agent', agentId: 'agent-1', displayName: 'Researcher', createdAt: now, updatedAt: now })
+    await ctx.db.insert('workspacePrincipals', { principalId: 'p-archived-agent', workspaceId, type: 'agent', agentId: 'agent-archived', displayName: 'Archived agent', archivedAt: now, createdAt: now, updatedAt: now })
     await ctx.db.insert('workspacePrincipals', { principalId: 'p-outsider', workspaceId: otherWorkspaceId, type: 'human', userId: 'outsider', displayName: 'outsider', createdAt: now, updatedAt: now })
+    await ctx.db.insert('workspacePrincipals', { principalId: 'p-agent-other', workspaceId: otherWorkspaceId, type: 'agent', agentId: 'agent-other', displayName: 'Other agent', createdAt: now, updatedAt: now })
     await ctx.db.insert('workspaceMemberships', { membershipId: 'm-outsider', workspaceId: otherWorkspaceId, principalId: 'p-outsider', role: 'owner', status: 'active', joinedAt: now, updatedAt: now })
     if (policy) await ctx.db.insert('workspaceSharingPolicies', { workspaceId, publicLinksEnabled: true, createdAt: now, updatedAt: now, ...policy })
   })
@@ -112,6 +114,24 @@ describe('personal and workspace visibility', () => {
     await expect(work.update('alice', adminTask._id, { status: 'progress' })).rejects.toThrow(/Unauthorized/)
     expect((await work.update('bob', adminTask._id, { status: 'progress' })).status).toBe('progress')
   })
+})
+
+test('acting agent attribution is validated and applied to Work activity only', async () => {
+  const convex = convexTest(schema, modules)
+  await seed(convex)
+  const task = await api(convex).create('alice', { actingAgentPrincipalId: 'p-agent' })
+  await convex.mutation(m('work/workItems:update'), { ...auth('alice'), id: task._id, title: 'Updated', actingAgentPrincipalId: 'p-agent' })
+  await convex.mutation(m('work/workItems:move'), { ...auth('alice'), id: task._id, status: 'progress', actingAgentPrincipalId: 'p-agent' })
+  await convex.mutation(m('work/workItemEvents:addComment'), { ...auth('alice'), workItemId: task._id, body: 'Review this', actingAgentPrincipalId: 'p-agent' })
+  await convex.mutation(m('work/workItems:archive'), { ...auth('alice'), id: task._id, actingAgentPrincipalId: 'p-agent' })
+  await convex.mutation(m('work/workItems:restore'), { ...auth('alice'), id: task._id, actingAgentPrincipalId: 'p-agent' })
+  const events = await api(convex).events('alice', task._id)
+  expect(events.length).toBeGreaterThanOrEqual(5)
+  expect(events.every((event) => event.actorPrincipalId === 'p-agent')).toBe(true)
+
+  for (const actingAgentPrincipalId of ['p-alice', 'p-archived-agent', 'p-agent-other']) {
+    await expect(api(convex).create('alice', { actingAgentPrincipalId })).rejects.toThrow('WORK_INVALID:acting_agent')
+  }
 })
 
 describe('move, archive and restore', () => {

@@ -101,6 +101,7 @@ export function overlayMcpInstructions(toolNames: readonly string[], resumable =
     'Overlay workspace tools',
     'Besides your own shell and files, you also have tools that act on the Overlay workspace this conversation belongs to: ' +
       'its notes, files, memory, knowledge search, automations, connected apps, and MCP servers. ' +
+      (toolNames.includes('list_tasks') ? 'Manage Work tasks with the task tools. Assigning an agent does not start it. ' : '') +
       'Your own disk is scratch space; anything the team should see belongs in Overlay, written with these tools. ' +
       'Notes are Markdown — read one with get_note and change it with edit_note, replace_note_section, or append_to_note rather than rewriting it. ' +
       (resumable

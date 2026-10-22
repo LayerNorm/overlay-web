@@ -2,7 +2,7 @@ import { v } from 'convex/values'
 import { mutation, query } from '../_generated/server'
 import { validateServerSecret } from '../lib/auth'
 import { getReadableRow } from '../lib/resourceScope'
-import { canWork, loadWorkItem, loadWorkViewer, logWorkEvent } from '../lib/workItems'
+import { canWork, loadWorkItem, loadWorkViewer, logWorkEvent, workEventActorPrincipalId } from '../lib/workItems'
 import { WORK_LIMITS } from '../../src/shared/work/status'
 
 const auth = {
@@ -10,6 +10,7 @@ const auth = {
   workspaceId: v.string(),
   accessToken: v.optional(v.string()),
   serverSecret: v.optional(v.string()),
+  actingAgentPrincipalId: v.optional(v.string()),
 }
 
 /** Trusted server calls only: see `authorize` in `workItems.ts`. */
@@ -44,7 +45,12 @@ export const addComment = mutation({
     // Anyone who can work on a task can comment on it.
     if (!item || !canWork(item, viewer)) throw new Error('Unauthorized')
     if (item.archivedAt !== undefined) throw new Error('WORK_INVALID:archived')
-    await logWorkEvent(ctx, { workItemId: item._id, workspaceId: item.workspaceId, actorPrincipalId: viewer.principalId, kind: 'comment', data: { body } })
+    const actorPrincipalId = await workEventActorPrincipalId(ctx, {
+      workspaceId: item.workspaceId,
+      principalId: viewer.principalId,
+      actingAgentPrincipalId: args.actingAgentPrincipalId,
+    })
+    await logWorkEvent(ctx, { workItemId: item._id, workspaceId: item.workspaceId, actorPrincipalId, kind: 'comment', data: { body } })
     await ctx.db.patch(item._id, { updatedAt: Date.now() })
   },
 })

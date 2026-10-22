@@ -27,6 +27,13 @@ describe('@overlay/tools-core', () => {
     assert.equal(ids.includes('interactive_browser_session'), false)
   })
 
+  it('exposes the task tools for explicit Work requests', () => {
+    const ids = allowedOverlayToolIdsForTurn({ latestUserText: 'Create a task and assign it to the research agent' })
+    for (const id of ['list_tasks', 'get_task', 'create_task', 'update_task', 'comment_on_task', 'archive_task', 'restore_task']) {
+      assert.ok(ids.includes(id), `${id} missing from explicit task request`)
+    }
+  })
+
   it('authorizes only globally registered and exposed tools', () => {
     assert.doesNotThrow(() => assertOverlayToolAllowed('search_knowledge', ['search_knowledge']))
     assert.throws(() => assertOverlayToolAllowed('search_knowledge', ['list_notes']), /not exposed/)
