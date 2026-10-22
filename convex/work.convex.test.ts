@@ -41,7 +41,17 @@ async function seed(convex: Convex, policy?: Record<string, unknown>) {
 
 async function addAgent(
   convex: Convex,
-  args: { principalId: string; agentId: string; creatorPrincipalId: string; visibility: 'workspace' | 'creator'; archivedPrincipal?: boolean; archivedDefinition?: boolean; deletedDefinition?: boolean },
+  args: {
+    principalId: string
+    agentId: string
+    creatorPrincipalId: string
+    visibility: 'workspace' | 'creator'
+    archivedPrincipal?: boolean
+    archivedDefinition?: boolean
+    deletedDefinition?: boolean
+    avatarColor?: string
+    avatarShape?: string
+  },
 ) {
   await convex.run(async (ctx) => {
     await ctx.db.insert('workspacePrincipals', {
@@ -52,6 +62,8 @@ async function addAgent(
       principalId: args.principalId, agentId: args.agentId, workspaceId, name: args.principalId, instructions: 'Test agent.',
       harness: 'overlay', modelId: 'test-model', allowedToolIds: [], invocationPolicy: 'mention',
       visibility: args.visibility, createdByPrincipalId: args.creatorPrincipalId, createdAt: now, updatedAt: now,
+      ...(args.avatarColor !== undefined ? { avatarColor: args.avatarColor } : {}),
+      ...(args.avatarShape !== undefined ? { avatarShape: args.avatarShape } : {}),
       ...(args.archivedDefinition ? { archivedAt: now } : {}),
       ...(args.deletedDefinition ? { deletedAt: now } : {}),
     })
@@ -357,14 +369,30 @@ describe('fields, assignees and validation', () => {
   test('the picker context lists people and visible agents only', async () => {
     const convex = convexTest(schema, modules)
     await seed(convex)
-    await addAgent(convex, { principalId: 'p-alice-agent', agentId: 'agent-alice', creatorPrincipalId: 'p-alice', visibility: 'creator' })
+    await addAgent(convex, {
+      principalId: 'p-alice-agent',
+      agentId: 'agent-alice',
+      creatorPrincipalId: 'p-alice',
+      visibility: 'creator',
+      avatarColor: '#b45309',
+      avatarShape: 'hexagon',
+    })
     await addAgent(convex, { principalId: 'p-bob-agent', agentId: 'agent-bob', creatorPrincipalId: 'p-bob', visibility: 'creator' })
-    const ctxResult = await convex.query(q('work/workItems:context'), auth('alice')) as { principalId: string; role: string; canCreateInWorkspace: boolean; assignees: Array<{ principalId: string; agentVisibility?: string }> }
+    const ctxResult = await convex.query(q('work/workItems:context'), auth('alice')) as {
+      principalId: string
+      role: string
+      canCreateInWorkspace: boolean
+      assignees: Array<{ principalId: string; agentVisibility?: string; avatarColor?: string; avatarShape?: string }>
+    }
     expect(ctxResult.principalId).toBe('p-alice')
     expect(ctxResult.canCreateInWorkspace).toBe(true)
     expect(ctxResult.assignees.map((a) => a.principalId)).toEqual(['p-admin', 'p-alice', 'p-bob', 'p-owner', 'p-alice-agent', 'p-agent'])
     expect(ctxResult.assignees.find((a) => a.principalId === 'p-agent')?.agentVisibility).toBe('workspace')
     expect(ctxResult.assignees.find((a) => a.principalId === 'p-alice-agent')?.agentVisibility).toBe('creator')
+    expect(ctxResult.assignees.find((a) => a.principalId === 'p-alice-agent')).toMatchObject({
+      avatarColor: '#b45309',
+      avatarShape: 'hexagon',
+    })
     expect(ctxResult.assignees.some((a) => a.principalId === 'p-bob-agent')).toBe(false)
     expect(await convex.query(q('work/workItems:context'), auth('gus'))).toBeNull()
     expect(await convex.query(q('work/workItems:context'), auth('outsider'))).toBeNull()

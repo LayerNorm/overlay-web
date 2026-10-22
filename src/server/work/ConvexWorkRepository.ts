@@ -20,7 +20,15 @@ type ContextResult = {
   principalId: string
   role: WorkContext['role']
   canCreateInWorkspace: boolean
-  assignees: Array<{ principalId: string; type: 'human' | 'agent' | 'service'; userId: string | null; displayName: string; agentVisibility?: 'workspace' | 'creator' }>
+  assignees: Array<{
+    principalId: string
+    type: 'human' | 'agent' | 'service'
+    userId: string | null
+    displayName: string
+    agentVisibility?: 'workspace' | 'creator'
+    avatarColor?: string
+    avatarShape?: string
+  }>
 }
 
 export function mapWorkItemDoc(doc: WorkItemDoc): WorkItem {

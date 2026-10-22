@@ -56,7 +56,12 @@ export async function logWorkEvent(
 export async function agentAssignability(
   ctx: Ctx,
   args: { workspaceId: string; principal: Doc<'workspacePrincipals'> },
-): Promise<{ visibility: 'workspace' | 'creator'; createdByPrincipalId: string } | null> {
+): Promise<{
+  visibility: 'workspace' | 'creator'
+  createdByPrincipalId: string
+  avatarColor?: string
+  avatarShape?: string
+} | null> {
   const principal = args.principal
   if (principal.type !== 'agent' || principal.workspaceId !== args.workspaceId || principal.archivedAt !== undefined || !principal.agentId) return null
   const definition = await ctx.db
@@ -64,7 +69,12 @@ export async function agentAssignability(
     .withIndex('by_agentId', (q) => q.eq('agentId', principal.agentId as string))
     .unique()
   if (!definition || definition.workspaceId !== args.workspaceId || definition.principalId !== principal.principalId || definition.archivedAt !== undefined || definition.deletedAt !== undefined) return null
-  return { visibility: definition.visibility ?? 'workspace', createdByPrincipalId: definition.createdByPrincipalId }
+  return {
+    visibility: definition.visibility ?? 'workspace',
+    createdByPrincipalId: definition.createdByPrincipalId,
+    ...(definition.avatarColor !== undefined ? { avatarColor: definition.avatarColor } : {}),
+    ...(definition.avatarShape !== undefined ? { avatarShape: definition.avatarShape } : {}),
+  }
 }
 
 /** Whether a principal can be assigned a task in its current scope. */

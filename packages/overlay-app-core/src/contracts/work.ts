@@ -59,6 +59,8 @@ export interface WorkPerson {
   userId: string | null
   displayName: string
   agentVisibility?: 'workspace' | 'creator'
+  avatarColor?: string
+  avatarShape?: string
 }
 
 /** Who is asking and who a task can go to. */

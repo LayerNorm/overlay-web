@@ -194,7 +194,15 @@ export const context = query({
       if (p.type === 'agent') {
         const agent = await agentAssignability(ctx, { workspaceId, principal: p })
         if (!agent || (agent.visibility === 'creator' && agent.createdByPrincipalId !== viewer.principalId)) return null
-        return { principalId: p.principalId, type: p.type, userId: null, displayName: p.displayName, agentVisibility: agent.visibility }
+        return {
+          principalId: p.principalId,
+          type: p.type,
+          userId: null,
+          displayName: p.displayName,
+          agentVisibility: agent.visibility,
+          ...(agent.avatarColor !== undefined ? { avatarColor: agent.avatarColor } : {}),
+          ...(agent.avatarShape !== undefined ? { avatarShape: agent.avatarShape } : {}),
+        }
       }
       return { principalId: p.principalId, type: p.type, userId: p.userId ?? null, displayName: p.displayName }
     }))).filter((person) => person !== null)
