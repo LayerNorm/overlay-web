@@ -9,7 +9,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 - Require confirmation for risky coordinate clicks on browser controls.
 - Show Computer control progress only for control actions, not start, stop or delete.
 - Alert on delayed sandbox metering and failed stop or cleanup operations.
-
+- Bring every other marketing page onto the home page design: pricing, download, manifesto, the blog/changelog/self-hosting placeholders and all nine legal pages now share one `StaticMarketingShell` (landing nav, framed column, footer) with a common page head. Legal pages get a sticky table of contents, pricing's FAQ uses the shared accordion, and `/download` regains its nav and footer. The old marketing navbar, button, reveal animation and serif layout helper are removed.
 - Let people who left sign-up before verifying finish from sign-in. Signing in with the right password for an unverified account now opens the code screen with Resend, then signs in once the code is accepted, instead of linking to a missing `/auth/verify-email` page. Sign-in and sign-up also show a plain fallback message instead of crashing when an error response is not text.
 
 - Add account-level workspace discovery, freeform workspace creation and invitation entry before onboarding. Suggested answers fill an editable composer in main chat and agent conversations without submitting automatically. New owners get a team question; invited members get a shorter setup. Restore profile drafts on refresh and remove the tour target border.

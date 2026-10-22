@@ -1,9 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { LandingThemeProvider } from "@/contexts/LandingThemeContext";
-import { MarketingFooter } from "@/features/marketing/components/MarketingFooter";
-import { StaticMarketingShell } from "@/features/marketing/components/StaticMarketingShell";
+import { MarketingPageHead, StaticMarketingShell } from "@/features/marketing/components/StaticMarketingShell";
 
 export type LegalSection = {
   title: string;
@@ -14,16 +12,15 @@ function slugFor(title: string) {
   return title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
 }
 
-function LegalPageInner({
+/** Every legal page: a page head, then sticky contents beside hairline-separated sections. */
+export function LegalPageTemplate({
   label,
   title,
   updated,
   intro,
   sections,
   crossLink,
-  embedded = false,
 }: {
-  embedded?: boolean;
   label: string;
   title: string;
   updated: string;
@@ -31,82 +28,44 @@ function LegalPageInner({
   sections: LegalSection[];
   crossLink: { href: string; label: string };
 }) {
-  const content = (
-      <main className="min-h-full px-5 py-16 md:px-8 md:py-24">
-        <div className="mx-auto grid max-w-6xl gap-10 lg:grid-cols-[220px_minmax(0,760px)]">
-          <aside className="hidden lg:block">
-            <div className="sticky top-24">
-              <p className="text-xs font-medium uppercase tracking-[0.24em] text-(--muted-light)">{label}</p>
-              <nav className="mt-6 grid gap-2 text-sm text-(--muted)">
-                {sections.map((section) => (
-                  <a key={section.title} href={`#${slugFor(section.title)}`} className="transition-colors hover:text-(--foreground)">
-                    {section.title}
-                  </a>
-                ))}
-              </nav>
-            </div>
-          </aside>
+  return (
+    <StaticMarketingShell>
+      <main>
+        <MarketingPageHead label={label} title={title} lead={intro}>
+          <p className="meta-line">Last updated: {updated}</p>
+          <p className="note-card">
+            Counsel-review draft. LayerNorm is preparing these terms for launch; a qualified lawyer must approve the final version before LayerNorm relies on it as a mature commercial agreement.
+          </p>
+        </MarketingPageHead>
 
-          <article>
-            <p className="text-xs font-medium uppercase tracking-[0.24em] text-(--muted-light) lg:hidden">{label}</p>
-            <h1 className="mt-4 text-4xl tracking-tight md:text-6xl">{title}</h1>
-            <p className="mt-4 text-sm text-(--muted-light)">Last updated: {updated}</p>
-            <p className="mt-8 max-w-2xl text-lg leading-8 text-(--muted)">{intro}</p>
-            <div className="mt-6 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm leading-6 text-(--muted)">
-              Counsel-review draft. LayerNorm is preparing these terms for launch; a qualified lawyer must approve the final version before LayerNorm relies on it as a mature commercial agreement.
-            </div>
-
-            <div className="mt-12 divide-y divide-(--border) border-y border-(--border)">
+        <section className="sec">
+          <div className="doc">
+            <nav className="toc" aria-label="On this page">
               {sections.map((section) => (
-                <section id={slugFor(section.title)} key={section.title} className="py-8">
-                  <h2 className="text-2xl tracking-tight">{section.title}</h2>
-                  <div className="mt-4 space-y-4 text-base leading-8 text-(--muted)">
+                <a key={section.title} href={`#${slugFor(section.title)}`}>
+                  {section.title}
+                </a>
+              ))}
+            </nav>
+            <article>
+              <div className="doc-body">
+                {sections.map((section) => (
+                  <section id={slugFor(section.title)} key={section.title} className="doc-sec">
+                    <h2>{section.title}</h2>
                     {(Array.isArray(section.body) ? section.body : [section.body]).map((paragraph) => (
                       <p key={paragraph}>{paragraph}</p>
                     ))}
-                  </div>
-                </section>
-              ))}
-            </div>
-
-            <p className="mt-10 text-sm leading-6 text-(--muted)">
-              Questions? Email{" "}
-              <a href="mailto:divyansh@layernorm.co" className="underline underline-offset-4">
-                divyansh@layernorm.co
-              </a>
-              . See also the{" "}
-              <Link href={crossLink.href} className="underline underline-offset-4">
-                {crossLink.label}
-              </Link>
-              .
-            </p>
-          </article>
-        </div>
+                  </section>
+                ))}
+              </div>
+              <p className="doc-foot">
+                Questions? Email <a href="mailto:divyansh@layernorm.co">divyansh@layernorm.co</a>. See also the{" "}
+                <Link href={crossLink.href}>{crossLink.label}</Link>.
+              </p>
+            </article>
+          </div>
+        </section>
       </main>
-  );
-
-  if (embedded) return content;
-
-  return (
-    <StaticMarketingShell>
-      {content}
-      <MarketingFooter />
     </StaticMarketingShell>
-  );
-}
-
-export function LegalPageTemplate(props: {
-  embedded?: boolean;
-  label: string;
-  title: string;
-  updated: string;
-  intro: string;
-  sections: LegalSection[];
-  crossLink: { href: string; label: string };
-}) {
-  return (
-    <LandingThemeProvider>
-      <LegalPageInner {...props} />
-    </LandingThemeProvider>
   );
 }
