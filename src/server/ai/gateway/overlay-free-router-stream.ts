@@ -204,11 +204,13 @@ export async function doOverlayFreeStream({
   let responseModelId: string | undefined
   let semantic = false
   let prelude: LanguageModelV4StreamPart[] = []
+  const preludeParts = new Set<string>()
   let preludeSize = 0
 
   const resetPrelude = () => {
     responseModelId = undefined
     prelude = []
+    preludeParts.clear()
     preludeSize = 0
   }
 
@@ -309,11 +311,14 @@ export async function doOverlayFreeStream({
       if (part.type === 'response-metadata' && typeof part.modelId === 'string') {
         responseModelId = part.modelId
       }
-      preludeSize += JSON.stringify(part).length
-      if (preludeSize > 64 * 1024 || prelude.length >= 32) {
-        throw new Error('overlay_free_stream_prelude_too_large')
-      }
       if (!semantic) {
+        const encoded = JSON.stringify(part)
+        if (preludeParts.has(encoded)) return 'continue'
+        preludeSize += encoded.length
+        if (preludeSize > 64 * 1024 || prelude.length >= 32) {
+          throw new Error('overlay_free_stream_prelude_too_large')
+        }
+        preludeParts.add(encoded)
         prelude.push(part)
         return 'continue'
       }
@@ -323,6 +328,7 @@ export async function doOverlayFreeStream({
       semantic = true
       for (const buffered of prelude) controller.enqueue(buffered)
       prelude = []
+      preludeParts.clear()
       preludeSize = 0
     }
     controller.enqueue(part)
