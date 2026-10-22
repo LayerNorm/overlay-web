@@ -89,23 +89,40 @@
             "group": "Get started",
             "pages": [
               "introduction",
-              "help/index",
-              "help/faq"
+              "help/index"
             ]
           },
           {
-            "group": "Using Overlay",
+            "group": "Work and agents",
+            "pages": [
+              "help/work",
+              "help/agents",
+              "help/other-agents"
+            ]
+          },
+          {
+            "group": "Chats and files",
             "pages": [
               "help/chat",
-              "help/agents",
-              "help/other-agents",
-              "help/automations",
               "help/files",
-              "help/memory",
-              "help/projects",
+              "help/memory"
+            ]
+          },
+          {
+            "group": "Extensions and automations",
+            "pages": [
+              "help/extensions",
               "help/tools",
-              "help/connect-other-apps",
-              "help/settings"
+              "help/automations",
+              "help/connect-other-apps"
+            ]
+          },
+          {
+            "group": "Account",
+            "pages": [
+              "help/billing",
+              "help/settings",
+              "help/faq"
             ]
           }
         ]
@@ -190,7 +207,14 @@
           {
             "group": "Overview",
             "pages": [
-              "developer/index"
+              "developer/index",
+              "developer/authentication"
+            ]
+          },
+          {
+            "group": "MCP",
+            "pages": [
+              "developer/mcp"
             ]
           },
           {
@@ -205,8 +229,7 @@
                   "developer/api/guides/files",
                   "developer/api/guides/memory",
                   "developer/api/guides/automations",
-                  "developer/api/guides/billing",
-                  "developer/api/guides/admin"
+                  "developer/api/guides/billing"
                 ]
               },
               {
@@ -216,6 +239,12 @@
                   "directory": "developer/api/reference"
                 }
               }
+            ]
+          },
+          {
+            "group": "Webhooks",
+            "pages": [
+              "developer/webhooks"
             ]
           },
           {
@@ -464,7 +493,7 @@
     },
     {
       "source": "/api-reference/workflows/admin",
-      "destination": "/developer/api/guides/admin"
+      "destination": "/developer/api/overview"
     },
     {
       "source": "/start/quickstart",
@@ -545,6 +574,14 @@
     {
       "source": "/configure",
       "destination": "/self-hosting/configure/runtime-config"
+    },
+    {
+      "source": "/help/projects",
+      "destination": "/help/files"
+    },
+    {
+      "source": "/developer/api/guides/admin",
+      "destination": "/developer/api/overview"
     }
   ]
 }

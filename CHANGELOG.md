@@ -8,6 +8,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Update `@sentry/nextjs` to 10.75.3 and `dompurify` to 3.4.17 to fix the Sentry tunnel middleware bypass (GHSA-mchm-gjx6-7h55) and two DOMPurify sanitizer advisories (GHSA-cg2g-xh64-v4q7, GHSA-mrv2-3pqr-j5jr) that fail the production dependency audit.
 
+- Write the Developer docs: an MCP server page (endpoint, OAuth 2.1 and personal tokens, access levels, approvals, limits), Authentication, and Webhooks (events, payloads, signature verification, retries). The REST API overview is rewritten, the generated reference drops 42 internal routes (onboarding, the Agent Host protocol, UI helpers and the retired subscription settings) via `publicReference: false`, the stale admin guide is removed, and the billing guide's maintainer notes move to `internal/develop/workspace-billing.md`.
+
 - Rewrite the Help docs against the current app: new Get started, Work, Extensions and Plans and credit pages; Chats, Files and notes, Memories, Automations, Settings and FAQ now describe Personal/Workspace scopes, workspace billing, Settings → Memories and Settings → Archived. The Projects page is removed and redirects to Files and notes.
 
 - Retheme the docs to match the landing page: Geist at weight 500 with tight tracking instead of serif headings, neutral `#171717` ink with a `#111111` dark background, mono eyebrows and sidebar group titles, hairline cards and code blocks, a pill "Open app" button and GitHub/Discord footer links. The docs home is now a short page with Help, Self-hosting and Developer cards.

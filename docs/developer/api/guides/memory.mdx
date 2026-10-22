@@ -1,5 +1,5 @@
 ---
-title: "Memory & Knowledge Workflow"
+title: "Memory and knowledge"
 description: "Store durable user memory and search saved knowledge."
 ---
 
@@ -18,6 +18,6 @@ Knowledge search uses:
 POST /api/v1/knowledge/search
 ```
 
-Knowledge search may combine uploaded files, memory, notes, projects, and indexed document content depending on active capabilities and user state.
+Knowledge search may combine uploaded files, memory, notes and indexed document content, depending on active capabilities and the caller's scope.
 
 When vector search is disabled, route behavior should remain deterministic and avoid crashing the app shell.
