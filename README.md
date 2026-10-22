@@ -21,8 +21,8 @@ The workspace is the shared layer between people and agents. Conversations, note
 ## Documentation
 
 - [Developer & self-hosting docs](docs/introduction.mdx) — local setup, runtime config, deployment, API reference.
-- [Quickstart](docs/start/quickstart.mdx) — get the web app running locally.
-- [API Reference](docs/api-reference/overview.mdx) — generated from `src/shared/schemas/api-boundary.ts`.
+- [Quickstart](docs/developer/contribute/run-locally.mdx) — get the web app running locally.
+- [API Reference](docs/developer/api/overview.mdx) — generated from `src/shared/schemas/api-boundary.ts`.
 - [Security policy](SECURITY.md) — reporting, launch controls, and secret handling.
 
 Run `npm run docs:check` before publishing docs changes.
@@ -175,7 +175,7 @@ cp .env.example .env.local
 npm run dev
 ```
 
-For complete environment setup, see [`docs/start/quickstart.mdx`](docs/start/quickstart.mdx) and [`docs/configure/environment.mdx`](docs/configure/environment.mdx).
+For complete environment setup, see [`docs/developer/contribute/run-locally.mdx`](docs/developer/contribute/run-locally.mdx) and [`docs/self-hosting/configure/environment.mdx`](docs/self-hosting/configure/environment.mdx).
 
 ### Convex Workflow
 
@@ -215,7 +215,7 @@ Overlay is under active development. The hosted product and the open-source repo
 All first-party material stored directly in this repository is licensed under `AGPL-3.0-only`. Paid commercial licenses are available separately from LayerNorm Inc. Third-party material and separate submodules retain their own licenses.
 - Overlay branding is governed by the trademark policy.
 
-See [`LICENSE`](LICENSE), [`docs/legal/licensing.mdx`](docs/legal/licensing.mdx), and [`TRADEMARKS.md`](TRADEMARKS.md).
+See [`LICENSE`](LICENSE), [`docs/self-hosting/licensing/license.mdx`](docs/self-hosting/licensing/license.mdx), and [`TRADEMARKS.md`](TRADEMARKS.md).
 
 ---
 

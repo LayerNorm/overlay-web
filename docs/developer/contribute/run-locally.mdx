@@ -1,0 +1,66 @@
+---
+title: "Quickstart"
+description: "Clone Overlay Web and run the hosted-development profile locally."
+---
+
+## Prerequisites
+
+- Git.
+- Node.js 22 or newer.
+- npm 11 or newer.
+- Access to the development Convex deployment.
+- WorkOS credentials for sign-in flows.
+- Stripe test credentials when testing billing.
+
+## What This Runs
+
+The local web app starts the Next.js browser shell, `/api/v1` route wrappers, server-side provider adapters, and Convex-backed app state. External processors such as browser automation, sandboxes, web search, analytics, and error reporting are controlled by runtime config and can be disabled for private deployments.
+
+## Install
+
+```bash
+git clone https://github.com/LayerNorm/overlay-web.git
+cd overlay-web
+npm ci
+cp .env.example .env.local
+```
+
+This quickstart follows the current development branch and the hosted Convex
+profile. For a reproducible self-hosted deployment, use a versioned
+[GitHub release](https://github.com/LayerNorm/overlay-web/releases) and follow
+[Docker on EC2](/self-hosting/install/docker) or the
+[full AWS guide](/self-hosting/install/aws).
+
+Fill in the required web environment variables before starting the app. For local web work against the development backend, prefer:
+
+```bash
+npm run dev:with-convex
+```
+
+This pushes the development Convex deployment first, then starts `next dev`.
+
+## First successful boot
+
+A healthy local boot should show:
+
+- Next.js serving the app on `localhost:3000`.
+- No runtime config error page.
+- Sign-in redirects using the configured WorkOS app.
+- `/api/v1/capabilities` returning capability metadata.
+- `/api/v1/bootstrap` returning signed-in app state after authentication.
+
+## Verify changes
+
+Use the smallest check that covers the change:
+
+```bash
+npm run typecheck
+npm run lint
+npm run build
+```
+
+For docs changes:
+
+```bash
+npm run docs:check
+```

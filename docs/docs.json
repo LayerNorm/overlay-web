@@ -72,167 +72,171 @@
     }
   },
   "navigation": {
-    "groups": [
+    "tabs": [
       {
-        "group": "Start",
-        "pages": [
-          "introduction",
-          "start/quickstart",
-          "start/repository-map"
-        ]
-      },
-      {
-        "group": "Configure",
-        "pages": [
-          "configure/environment",
-          "configure/runtime-config",
-          "configure/providers",
-          "configure/knowledge-bases",
+        "tab": "Help",
+        "icon": "life-buoy",
+        "groups": [
           {
-            "group": "Authentication",
+            "group": "Get started",
             "pages": [
-              "configure/authentication/index",
-              {
-                "group": "Backends",
-                "pages": [
-                  "configure/authentication/backends"
-                ]
-              },
-              {
-                "group": "Protocol",
-                "pages": [
-                  "configure/authentication/oidc"
-                ]
-              },
-              {
-                "group": "Provider recipes",
-                "pages": [
-                  "configure/authentication/recipes/google-workspace",
-                  "configure/authentication/recipes/auth0",
-                  "configure/authentication/recipes/generic-oidc"
-                ]
-              }
-            ]
-          }
-        ]
-      },
-      {
-        "group": "Develop",
-        "pages": [
-          "develop/architecture",
-          {
-            "group": "Workflow",
-            "pages": [
-              "develop/release-workflow",
-              "develop/agentic-development",
-              "develop/worktree-staging-qa",
-              "develop/convex-workflow",
-              "develop/local-integrations",
-              "develop/customization",
-              "develop/feature-modules"
+              "introduction",
+              "help/index",
+              "help/faq"
             ]
           },
           {
-            "group": "API",
+            "group": "Using Overlay",
             "pages": [
-              "develop/api-source-of-truth",
-              "develop/api-route-catalog",
-              "develop/compact-api-route-catalog"
+              "help/chat",
+              "help/agents",
+              "help/other-agents",
+              "help/automations",
+              "help/files",
+              "help/memory",
+              "help/projects",
+              "help/tools",
+              "help/connect-other-apps",
+              "help/settings"
             ]
           }
         ]
       },
       {
-        "group": "Deploy & Operate",
-        "pages": [
-          "deploy-operate/self-hosting",
+        "tab": "Self-hosting",
+        "icon": "server",
+        "groups": [
           {
-            "group": "Self-hosting",
+            "group": "Overview",
             "pages": [
-              "deploy-operate/one-command-install",
-              "deploy-operate/self-hosted-convex",
-              "deploy-operate/docker-ec2",
-              "deploy-operate/aws",
-              "deploy-operate/cloud-managed",
-              "deploy-operate/enterprise-source-install"
+              "self-hosting/overview"
+            ]
+          },
+          {
+            "group": "Install",
+            "pages": [
+              "self-hosting/install/one-command",
+              "self-hosting/install/docker",
+              "self-hosting/install/aws",
+              "self-hosting/install/self-hosted-convex",
+              "self-hosting/install/from-source"
+            ]
+          },
+          {
+            "group": "Configure",
+            "pages": [
+              "self-hosting/configure/runtime-config",
+              "self-hosting/configure/environment",
+              "self-hosting/configure/providers",
+              "self-hosting/configure/search-and-embeddings",
+              {
+                "group": "Authentication",
+                "pages": [
+                  "self-hosting/configure/authentication/index",
+                  "self-hosting/configure/authentication/backends",
+                  "self-hosting/configure/authentication/oidc",
+                  {
+                    "group": "Provider recipes",
+                    "pages": [
+                      "self-hosting/configure/authentication/recipes/google-workspace",
+                      "self-hosting/configure/authentication/recipes/auth0",
+                      "self-hosting/configure/authentication/recipes/generic-oidc"
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "group": "Operate",
+            "pages": [
+              "self-hosting/operate/release-verification",
+              "self-hosting/operate/security",
+              "self-hosting/operate/security-checklist",
+              "self-hosting/operate/better-auth-runbook",
+              "self-hosting/operate/executor-integrations"
             ]
           },
           {
             "group": "Enterprise",
             "pages": [
-              "deploy-operate/enterprise-admin-onboarding",
-              "deploy-operate/enterprise-security-launch-checklist",
-              "deploy-operate/compliance",
-              "deploy-operate/security",
-              "deploy-operate/tenancy",
-              "deploy-operate/executor-integrations",
-              "deploy-operate/better-auth-onprem-runbook"
+              "self-hosting/enterprise/managed",
+              "self-hosting/enterprise/tenancy",
+              "self-hosting/enterprise/compliance",
+              "self-hosting/enterprise/admin-onboarding"
             ]
           },
           {
-            "group": "Operations",
+            "group": "Licensing",
             "pages": [
-              "deploy-operate/release-gates",
-              "deploy-operate/overlay-free",
-              "deploy-operate/docs-hosting"
+              "self-hosting/licensing/license",
+              "self-hosting/licensing/obligations"
             ]
           }
         ]
       },
       {
-        "group": "API Reference",
-        "pages": [
-          "api-reference/overview",
+        "tab": "Developer",
+        "icon": "code",
+        "groups": [
           {
-            "group": "Generated endpoints",
-            "openapi": {
-              "source": "openapi/overlay-web.openapi.json",
-              "directory": "api-reference/endpoints"
-            }
+            "group": "Overview",
+            "pages": [
+              "developer/index"
+            ]
           },
           {
-            "group": "Workflows",
+            "group": "REST API",
             "pages": [
-              "api-reference/workflows/bootstrap",
-              "api-reference/workflows/conversations",
-              "api-reference/workflows/files",
-              "api-reference/workflows/memory-knowledge",
-              "api-reference/workflows/automations",
-              "api-reference/workflows/billing",
-              "api-reference/workflows/admin"
+              "developer/api/overview",
+              {
+                "group": "Guides",
+                "pages": [
+                  "developer/api/guides/bootstrap",
+                  "developer/api/guides/conversations",
+                  "developer/api/guides/files",
+                  "developer/api/guides/memory",
+                  "developer/api/guides/automations",
+                  "developer/api/guides/billing",
+                  "developer/api/guides/admin"
+                ]
+              },
+              {
+                "group": "Reference",
+                "openapi": {
+                  "source": "openapi/overlay-web.openapi.json",
+                  "directory": "developer/api/reference"
+                }
+              }
+            ]
+          },
+          {
+            "group": "Contribute",
+            "pages": [
+              "developer/contribute/run-locally",
+              "developer/contribute/repository-map",
+              "developer/contribute/architecture",
+              "developer/contribute/local-integrations"
+            ]
+          },
+          {
+            "group": "Security",
+            "pages": [
+              "developer/security"
             ]
           }
         ]
       },
       {
-        "group": "Help",
-        "pages": [
-          "help/index",
-          "help/chat",
-          "help/memory",
-          "help/files",
-          "help/projects",
-          "help/automations",
-          "help/tools",
-          "help/connect-other-apps",
-          "help/other-agents",
-          "help/agents",
-          "help/settings",
-          "help/faq"
-        ]
-      },
-      {
-        "group": "Legal",
-        "pages": [
-          "legal/licensing",
-          "legal/self-hosting-obligations",
-          "legal/security-reporting"
-        ]
-      },
-      {
-        "group": "Changelog",
-        "pages": [
-          "changelog"
+        "tab": "Changelog",
+        "icon": "history",
+        "groups": [
+          {
+            "group": "Changelog",
+            "pages": [
+              "changelog"
+            ]
+          }
         ]
       }
     ]
@@ -313,6 +317,226 @@
     {
       "source": "/desktop/updates",
       "destination": "/help/index"
+    },
+    {
+      "source": "/deploy-operate/self-hosting",
+      "destination": "/self-hosting/overview"
+    },
+    {
+      "source": "/deploy-operate/one-command-install",
+      "destination": "/self-hosting/install/one-command"
+    },
+    {
+      "source": "/deploy-operate/docker-ec2",
+      "destination": "/self-hosting/install/docker"
+    },
+    {
+      "source": "/deploy-operate/aws",
+      "destination": "/self-hosting/install/aws"
+    },
+    {
+      "source": "/deploy-operate/self-hosted-convex",
+      "destination": "/self-hosting/install/self-hosted-convex"
+    },
+    {
+      "source": "/deploy-operate/enterprise-source-install",
+      "destination": "/self-hosting/install/from-source"
+    },
+    {
+      "source": "/configure/environment",
+      "destination": "/self-hosting/configure/environment"
+    },
+    {
+      "source": "/configure/runtime-config",
+      "destination": "/self-hosting/configure/runtime-config"
+    },
+    {
+      "source": "/configure/providers",
+      "destination": "/self-hosting/configure/providers"
+    },
+    {
+      "source": "/configure/knowledge-bases",
+      "destination": "/self-hosting/configure/search-and-embeddings"
+    },
+    {
+      "source": "/configure/authentication/index",
+      "destination": "/self-hosting/configure/authentication/index"
+    },
+    {
+      "source": "/configure/authentication/backends",
+      "destination": "/self-hosting/configure/authentication/backends"
+    },
+    {
+      "source": "/configure/authentication/oidc",
+      "destination": "/self-hosting/configure/authentication/oidc"
+    },
+    {
+      "source": "/configure/authentication/recipes/auth0",
+      "destination": "/self-hosting/configure/authentication/recipes/auth0"
+    },
+    {
+      "source": "/configure/authentication/recipes/generic-oidc",
+      "destination": "/self-hosting/configure/authentication/recipes/generic-oidc"
+    },
+    {
+      "source": "/configure/authentication/recipes/google-workspace",
+      "destination": "/self-hosting/configure/authentication/recipes/google-workspace"
+    },
+    {
+      "source": "/deploy-operate/release-gates",
+      "destination": "/self-hosting/operate/release-verification"
+    },
+    {
+      "source": "/deploy-operate/security",
+      "destination": "/self-hosting/operate/security"
+    },
+    {
+      "source": "/deploy-operate/enterprise-security-launch-checklist",
+      "destination": "/self-hosting/operate/security-checklist"
+    },
+    {
+      "source": "/deploy-operate/better-auth-onprem-runbook",
+      "destination": "/self-hosting/operate/better-auth-runbook"
+    },
+    {
+      "source": "/deploy-operate/executor-integrations",
+      "destination": "/self-hosting/operate/executor-integrations"
+    },
+    {
+      "source": "/deploy-operate/cloud-managed",
+      "destination": "/self-hosting/enterprise/managed"
+    },
+    {
+      "source": "/deploy-operate/tenancy",
+      "destination": "/self-hosting/enterprise/tenancy"
+    },
+    {
+      "source": "/deploy-operate/compliance",
+      "destination": "/self-hosting/enterprise/compliance"
+    },
+    {
+      "source": "/deploy-operate/enterprise-admin-onboarding",
+      "destination": "/self-hosting/enterprise/admin-onboarding"
+    },
+    {
+      "source": "/legal/licensing",
+      "destination": "/self-hosting/licensing/license"
+    },
+    {
+      "source": "/legal/self-hosting-obligations",
+      "destination": "/self-hosting/licensing/obligations"
+    },
+    {
+      "source": "/api-reference/overview",
+      "destination": "/developer/api/overview"
+    },
+    {
+      "source": "/api-reference/workflows/bootstrap",
+      "destination": "/developer/api/guides/bootstrap"
+    },
+    {
+      "source": "/api-reference/workflows/conversations",
+      "destination": "/developer/api/guides/conversations"
+    },
+    {
+      "source": "/api-reference/workflows/files",
+      "destination": "/developer/api/guides/files"
+    },
+    {
+      "source": "/api-reference/workflows/memory-knowledge",
+      "destination": "/developer/api/guides/memory"
+    },
+    {
+      "source": "/api-reference/workflows/automations",
+      "destination": "/developer/api/guides/automations"
+    },
+    {
+      "source": "/api-reference/workflows/billing",
+      "destination": "/developer/api/guides/billing"
+    },
+    {
+      "source": "/api-reference/workflows/admin",
+      "destination": "/developer/api/guides/admin"
+    },
+    {
+      "source": "/start/quickstart",
+      "destination": "/developer/contribute/run-locally"
+    },
+    {
+      "source": "/start/repository-map",
+      "destination": "/developer/contribute/repository-map"
+    },
+    {
+      "source": "/develop/architecture",
+      "destination": "/developer/contribute/architecture"
+    },
+    {
+      "source": "/develop/local-integrations",
+      "destination": "/developer/contribute/local-integrations"
+    },
+    {
+      "source": "/legal/security-reporting",
+      "destination": "/developer/security"
+    },
+    {
+      "source": "/develop/release-workflow",
+      "destination": "/developer/index"
+    },
+    {
+      "source": "/develop/agentic-development",
+      "destination": "/developer/index"
+    },
+    {
+      "source": "/develop/worktree-staging-qa",
+      "destination": "/developer/index"
+    },
+    {
+      "source": "/develop/convex-workflow",
+      "destination": "/developer/index"
+    },
+    {
+      "source": "/develop/admin-console",
+      "destination": "/developer/index"
+    },
+    {
+      "source": "/develop/api-source-of-truth",
+      "destination": "/developer/index"
+    },
+    {
+      "source": "/develop/customization",
+      "destination": "/developer/index"
+    },
+    {
+      "source": "/develop/feature-modules",
+      "destination": "/developer/index"
+    },
+    {
+      "source": "/develop/api-route-catalog",
+      "destination": "/developer/index"
+    },
+    {
+      "source": "/develop/compact-api-route-catalog",
+      "destination": "/developer/index"
+    },
+    {
+      "source": "/deploy-operate/overlay-free",
+      "destination": "/developer/index"
+    },
+    {
+      "source": "/deploy-operate/docs-hosting",
+      "destination": "/developer/index"
+    },
+    {
+      "source": "/api-reference/endpoints/:slug*",
+      "destination": "/developer/api/reference/:slug*"
+    },
+    {
+      "source": "/deploy-operate",
+      "destination": "/self-hosting/overview"
+    },
+    {
+      "source": "/configure",
+      "destination": "/self-hosting/configure/runtime-config"
     }
   ]
 }

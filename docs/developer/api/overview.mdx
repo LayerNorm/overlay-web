@@ -1,0 +1,51 @@
+---
+title: "API Overview"
+description: "How to call the Overlay Web API and how the generated reference is maintained."
+---
+
+The public web API lives under `/api/v1`. The generated endpoint reference is built from `src/shared/schemas/api-boundary.ts`, which is also used by route boundary validation.
+
+## Base URLs
+
+| Environment | URL |
+| --- | --- |
+| Hosted | `https://getoverlay.io` |
+| Local | `http://localhost:3000` |
+
+## Authentication
+
+Browser callers authenticate with the signed httpOnly `overlay_session` cookie. Native and service callers may use bearer tokens on routes that support them.
+
+## Request shapes
+
+The generated reference includes:
+
+- Query parameters.
+- JSON request bodies.
+- Multipart form-data request bodies.
+- Path parameters for dynamic content routes.
+
+Stable response schemas are documented in workflow pages when available. Some routes return provider-specific or streaming data and intentionally use route-specific response shapes.
+
+## Error shape
+
+Most JSON errors include at least:
+
+```json
+{
+  "error": "Human-readable message",
+  "code": "machine_readable_code"
+}
+```
+
+Routes may include additional fields.
+
+## API keys and extensions
+
+`/api/v1/api-keys` lists and manages API keys owned by the authenticated user. `POST` creates a key, `PATCH` rotates one, and `DELETE` revokes one; administrative scopes require separate administrator authority.
+
+`/api/v1/extensions/[extensionId]/[...path]` is an extension proxy route and is intentionally excluded from the stable public API reference.
+
+## Administration
+
+Operator administration lives in the standalone `apps/admin` console at `admin.getoverlay.io`, not in this app. The console serves its own `/api/v1/admin/*` routes for audit, principal management, and usage/budget control; see the [Admin workflow](/developer/api/guides/admin) for request shapes.

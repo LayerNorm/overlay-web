@@ -1,6 +1,6 @@
 # Docs restructure: User help, Self-hosting, Developer
 
-Status: phase 1 (disable desktop and mobile) implemented 2026-10-22; phases 2–6 proposed.
+Status: phases 1 (disable desktop and mobile) and 2 (restructure into tabs) implemented 2026-10-22; phases 3–6 in progress.
 
 ## Why
 

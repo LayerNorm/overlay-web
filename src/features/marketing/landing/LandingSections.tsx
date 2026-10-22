@@ -9,9 +9,9 @@ import { GithubMark } from './GithubMark'
 import { LANDING_AGENTS, LandingAgent, type LandingAgentId } from './LandingAgent'
 import { LandingLogo, type LogoName } from './LandingLogo'
 
-const API_DOCS = `${MARKETING_DOCS_URL}/api-reference/overview`
+const API_DOCS = `${MARKETING_DOCS_URL}/developer/api/overview`
 const MCP_DOCS = `${MARKETING_DOCS_URL}/help/connect-other-apps`
-const SELF_HOSTING_DOCS = `${MARKETING_DOCS_URL}/deploy-operate/self-hosting`
+const SELF_HOSTING_DOCS = `${MARKETING_DOCS_URL}/self-hosting/overview`
 
 /** Internal routes use `Link`; docs and other sites open in a new tab. */
 function SmartLink({ href, className, children }: { href: string; className?: string; children: ReactNode }) {

@@ -18,8 +18,8 @@ import { Button } from '@overlay/ui'
 
 ## Documentation
 
-- [Feature Modules](../../docs/develop/feature-modules.mdx)
-- [Customization](../../docs/develop/customization.mdx)
+- [Feature Modules](../../internal/develop/feature-modules.md)
+- [Customization](../../internal/develop/customization.md)
 
 ## License
 

@@ -33,8 +33,8 @@ const openApiFile = path.join(docsDir, 'openapi/overlay-web.openapi.json')
 const packageJsonFile = path.join(root, 'package.json')
 const appApiDir = path.join(root, 'src/app/api')
 const apiRouteCatalogFiles = [
-  path.join(docsDir, 'develop/api-route-catalog.mdx'),
-  path.join(docsDir, 'develop/compact-api-route-catalog.mdx'),
+  path.join(root, 'internal/develop/api-route-catalog.md'),
+  path.join(root, 'internal/develop/compact-api-route-catalog.md'),
 ] as const
 const publicRepositoryUrl = 'https://github.com/LayerNorm/overlay-web'
 const exportedHttpMethods = ['DELETE', 'GET', 'HEAD', 'OPTIONS', 'PATCH', 'POST', 'PUT'] as const
@@ -45,16 +45,12 @@ const allowedDocsEntries = new Set([
   'assets',
   'changelog.mdx',
   'config',
-  'configure',
-  'deploy-operate',
-  'develop',
   'docs.json',
+  'developer',
   'help',
   'introduction.mdx',
-  'legal',
   'openapi',
-  'snippets',
-  'start',
+  'self-hosting',
   'style.css',
 ])
 
@@ -92,6 +88,7 @@ const stalePublicPatterns = [
 type DocsJsonNavigation = {
   navigation?: {
     groups?: unknown[]
+    tabs?: unknown[]
   }
 }
 
@@ -136,7 +133,7 @@ async function checkDocsTopLevelShape(failures: string[]) {
 async function checkNavigationTargets(failures: string[]) {
   const config = JSON.parse(await readFile(path.join(docsDir, 'docs.json'), 'utf8')) as DocsJsonNavigation
   const pages = new Set<string>()
-  collectNavPages(config.navigation?.groups ?? [], pages)
+  collectNavPages([config.navigation?.groups ?? [], config.navigation?.tabs ?? []], pages)
 
   for (const page of pages) {
     if (page.endsWith('/*')) continue
@@ -165,6 +162,7 @@ function collectNavPages(value: unknown, pages: Set<string>) {
 
   const record = value as Record<string, unknown>
   collectNavPages(record.pages, pages)
+  collectNavPages(record.groups, pages)
   const openapi = record.openapi
   if (openapi && typeof openapi === 'object') {
     const directory = (openapi as Record<string, unknown>).directory
@@ -298,9 +296,9 @@ async function checkPublicationReadiness(failures: string[]) {
 
   const requiredSourcePages = [
     'introduction.mdx',
-    'start/quickstart.mdx',
-    'deploy-operate/docker-ec2.mdx',
-    'deploy-operate/aws.mdx',
+    'developer/contribute/run-locally.mdx',
+    'self-hosting/install/docker.mdx',
+    'self-hosting/install/aws.mdx',
   ]
   for (const page of requiredSourcePages) {
     const file = path.join(docsDir, page)
@@ -310,12 +308,12 @@ async function checkPublicationReadiness(failures: string[]) {
     }
   }
 
-  const quickstart = await readFile(path.join(docsDir, 'start/quickstart.mdx'), 'utf8')
+  const quickstart = await readFile(path.join(docsDir, 'developer/contribute/run-locally.mdx'), 'utf8')
   if (!/Node\.js 22 or newer/i.test(quickstart)) {
-    failures.push('docs/start/quickstart.mdx must require Node.js 22 or newer')
+    failures.push('docs/developer/contribute/run-locally.mdx must require Node.js 22 or newer')
   }
   if (!/npm 11 or newer/i.test(quickstart)) {
-    failures.push('docs/start/quickstart.mdx must require npm 11 or newer')
+    failures.push('docs/developer/contribute/run-locally.mdx must require npm 11 or newer')
   }
 
   const forbiddenCommandFragments = [
@@ -519,9 +517,9 @@ function parseApiRouteCatalog(text: string, file: string, failures: string[]) {
 
 async function checkProviderDocs(failures: string[]) {
   const providerDocs = [
-    await readFile(path.join(docsDir, 'configure/providers.mdx'), 'utf8'),
-    await readFile(path.join(docsDir, 'configure/runtime-config.mdx'), 'utf8'),
-    await readFile(path.join(docsDir, 'deploy-operate/self-hosting.mdx'), 'utf8'),
+    await readFile(path.join(docsDir, 'self-hosting/configure/providers.mdx'), 'utf8'),
+    await readFile(path.join(docsDir, 'self-hosting/configure/runtime-config.mdx'), 'utf8'),
+    await readFile(path.join(docsDir, 'self-hosting/overview.mdx'), 'utf8'),
   ].join('\n')
 
   const providerSets = [
