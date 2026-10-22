@@ -3,7 +3,15 @@ import { safeHttpUrl } from './sources'
 export const GENERATED_UI_DATA_TYPE = 'overlay.generated_ui' as const
 export const GENERATED_UI_VERSION = 1 as const
 
-export type GeneratedUiKind = 'draft.text' | 'draft.email' | 'connector.connect'
+export type GeneratedUiKind = 'draft.text' | 'draft.email' | 'connector.connect' | 'questionnaire'
+
+export type GeneratedQuestionnaireData = {
+  version: typeof GENERATED_UI_VERSION
+  kind: 'questionnaire'
+  prompt: string
+  choices: Array<{ id: string; label: string }>
+  multiple: boolean
+}
 
 export type GeneratedUiVariant = {
   id: string
@@ -46,6 +54,7 @@ export type GeneratedUiData =
   | GeneratedTextDraftData
   | GeneratedEmailDraftData
   | GeneratedConnectorData
+  | GeneratedQuestionnaireData
 
 export type GeneratedUiPart = {
   type: 'data'
@@ -110,53 +119,76 @@ function normalizeVariants(value: unknown): GeneratedUiVariant[] | undefined {
   return variants.length ? variants : undefined
 }
 
+function normalizeQuestionnaire(record: Record<string, unknown>): GeneratedQuestionnaireData | null {
+  const prompt = nonEmptyString(record.prompt)
+  if (!prompt || prompt.length > 500 || !Array.isArray(record.choices) || record.choices.length > 12) return null
+  const choices: GeneratedQuestionnaireData['choices'] = []
+  for (const candidate of record.choices) {
+    const choice = asRecord(candidate)
+    const id = nonEmptyString(choice?.id)
+    const label = nonEmptyString(choice?.label)
+    if (!id || id.length > 80 || !label || label.length > 200 || choices.some((entry) => entry.id === id || entry.label === label)) return null
+    choices.push({ id, label })
+  }
+  return { version: GENERATED_UI_VERSION, kind: 'questionnaire', prompt, choices, multiple: record.multiple === true }
+}
+
+function normalizeTextDraft(record: Record<string, unknown>): GeneratedTextDraftData | null {
+  const body = nonEmptyString(record.body)
+  if (!body) return null
+  const format = record.format === 'markdown' ? 'markdown' : record.format === 'plain' ? 'plain' : undefined
+  return {
+    version: GENERATED_UI_VERSION,
+    kind: 'draft.text',
+    ...(optionalString(record.title) ? { title: optionalString(record.title) } : {}),
+    body,
+    ...(format ? { format } : {}),
+  }
+}
+
+function normalizeEmailDraft(record: Record<string, unknown>): GeneratedEmailDraftData | null {
+  const subject = nonEmptyString(record.subject)
+  const body = nonEmptyString(record.body)
+  if (!subject || !body) return null
+  const provider = record.provider === 'gmail' ? 'gmail' : undefined
+  const variants = normalizeVariants(record.variants)
+  return {
+    version: GENERATED_UI_VERSION,
+    kind: 'draft.email',
+    subject,
+    body,
+    ...(optionalStringArray(record.to) ? { to: optionalStringArray(record.to) } : {}),
+    ...(optionalStringArray(record.cc) ? { cc: optionalStringArray(record.cc) } : {}),
+    ...(optionalStringArray(record.bcc) ? { bcc: optionalStringArray(record.bcc) } : {}),
+    ...(provider ? { provider } : {}),
+    ...(variants ? { variants } : {}),
+  }
+}
+
+function normalizeConnector(record: Record<string, unknown>): GeneratedConnectorData | null {
+  const serviceName = nonEmptyString(record.serviceName)
+  if (!serviceName) return null
+  return {
+    version: GENERATED_UI_VERSION,
+    kind: 'connector.connect',
+    serviceName,
+    ...(optionalString(record.slug) ? { slug: optionalString(record.slug) } : {}),
+    ...(optionalString(record.description) ? { description: optionalString(record.description) } : {}),
+    ...(optionalHttpUrl(record.connectUrl) ? { connectUrl: optionalHttpUrl(record.connectUrl) } : {}),
+    ...(typeof record.connected === 'boolean' ? { connected: record.connected } : {}),
+  }
+}
+
 export function normalizeGeneratedUiData(value: unknown): GeneratedUiData | null {
   const record = asRecord(value)
   if (!record || record.version !== GENERATED_UI_VERSION) return null
-  if (record.kind === 'draft.text') {
-    const body = nonEmptyString(record.body)
-    if (!body) return null
-    const format = record.format === 'markdown' ? 'markdown' : record.format === 'plain' ? 'plain' : undefined
-    return {
-      version: GENERATED_UI_VERSION,
-      kind: 'draft.text',
-      ...(optionalString(record.title) ? { title: optionalString(record.title) } : {}),
-      body,
-      ...(format ? { format } : {}),
-    }
+  switch (record.kind) {
+    case 'questionnaire': return normalizeQuestionnaire(record)
+    case 'draft.text': return normalizeTextDraft(record)
+    case 'draft.email': return normalizeEmailDraft(record)
+    case 'connector.connect': return normalizeConnector(record)
+    default: return null
   }
-  if (record.kind === 'draft.email') {
-    const subject = nonEmptyString(record.subject)
-    const body = nonEmptyString(record.body)
-    if (!subject || !body) return null
-    const provider = record.provider === 'gmail' ? 'gmail' : undefined
-    const variants = normalizeVariants(record.variants)
-    return {
-      version: GENERATED_UI_VERSION,
-      kind: 'draft.email',
-      subject,
-      body,
-      ...(optionalStringArray(record.to) ? { to: optionalStringArray(record.to) } : {}),
-      ...(optionalStringArray(record.cc) ? { cc: optionalStringArray(record.cc) } : {}),
-      ...(optionalStringArray(record.bcc) ? { bcc: optionalStringArray(record.bcc) } : {}),
-      ...(provider ? { provider } : {}),
-      ...(variants ? { variants } : {}),
-    }
-  }
-  if (record.kind === 'connector.connect') {
-    const serviceName = nonEmptyString(record.serviceName)
-    if (!serviceName) return null
-    return {
-      version: GENERATED_UI_VERSION,
-      kind: 'connector.connect',
-      serviceName,
-      ...(optionalString(record.slug) ? { slug: optionalString(record.slug) } : {}),
-      ...(optionalString(record.description) ? { description: optionalString(record.description) } : {}),
-      ...(optionalHttpUrl(record.connectUrl) ? { connectUrl: optionalHttpUrl(record.connectUrl) } : {}),
-      ...(typeof record.connected === 'boolean' ? { connected: record.connected } : {}),
-    }
-  }
-  return null
 }
 
 export function isGeneratedUiData(value: unknown): value is GeneratedUiData {
@@ -272,6 +304,7 @@ export function isGeneratedUiPart(value: unknown): value is GeneratedUiPart {
 }
 
 export function generatedUiDataToPlainText(data: GeneratedUiData): string {
+  if (data.kind === 'questionnaire') return [data.prompt, ...data.choices.map((choice) => choice.label)].join('\n')
   if (data.kind === 'draft.text') {
     return [data.title, data.body].filter(Boolean).join('\n\n')
   }

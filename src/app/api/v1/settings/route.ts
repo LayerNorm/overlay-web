@@ -1,11 +1,11 @@
 import type { NextRequest } from 'next/server'
-import { handleBffRoute, type BffDomainService } from '../_utils/bff'
+import { handleAccountBffRoute, type AccountBffDomainService } from '../_utils/bff'
 import * as domainService from '@/server/app-api/v1/settings/route'
 
 export async function GET(request: NextRequest) {
-  return handleBffRoute(request, {}, domainService.GET as BffDomainService)
+  return handleAccountBffRoute(request, {}, domainService.GET as AccountBffDomainService)
 }
 
 export async function PATCH(request: NextRequest) {
-  return handleBffRoute(request, {}, domainService.PATCH as BffDomainService)
+  return handleAccountBffRoute(request, {}, domainService.PATCH as AccountBffDomainService)
 }

@@ -1,10 +1,12 @@
 import type {
+  AccountWorkspaceDirectoryResponse,
+} from '@overlay/workspace-contracts'
+import type {
   WorkspaceOperationalMetrics,
   WorkspaceActivateResponse,
   WorkspaceClient,
   WorkspaceCreateInput,
   WorkspaceCreateResponse,
-  WorkspaceListResponse,
   WorkspaceManagementClient,
   WorkspaceManagementLoader,
 } from '@/shared/workspaces/types'
@@ -31,18 +33,18 @@ async function readJson<T>(response: Response): Promise<T> {
 
 export const workspaceClient: WorkspaceClient = {
   async list(signal) {
-    return await readJson<WorkspaceListResponse>(await fetchWithSessionRecovery('/api/v1/workspaces', {
+    return await readJson<AccountWorkspaceDirectoryResponse>(await fetchWithSessionRecovery('/api/v1/account/workspaces', {
       cache: 'no-store',
       credentials: 'same-origin',
       signal,
     }))
   },
 
-  async create(input: WorkspaceCreateInput) {
-    return await readJson<WorkspaceCreateResponse>(await fetchWithSessionRecovery('/api/v1/workspaces', {
+  async create(input: WorkspaceCreateInput, options?: { idempotencyKey: string }) {
+    return await readJson<WorkspaceCreateResponse>(await fetchWithSessionRecovery('/api/v1/account/workspaces', {
       method: 'POST',
       credentials: 'same-origin',
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', 'idempotency-key': options?.idempotencyKey ?? crypto.randomUUID() },
       body: JSON.stringify(input),
     }))
   },

@@ -1,5 +1,6 @@
 import type {
   TeamMemberPrincipalType,
+  AccountWorkspaceInvitation,
   Workspace,
   WorkspaceAccess,
   WorkspaceInvitation,
@@ -200,6 +201,7 @@ export interface WorkspaceRepository {
     workspaceId: string
     status?: WorkspaceInvitation['status']
   }): Promise<WorkspaceInvitation[]>
+  listReceivedInvitations(args: { email: string; now: number }): Promise<AccountWorkspaceInvitation[]>
   acceptInvitation(input: AcceptWorkspaceInvitationInput): Promise<InvitationAcceptanceResult>
   cancelInvitation(args: {
     invitationId: string

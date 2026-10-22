@@ -490,6 +490,7 @@ export function MobileAccountFooter({
 }
 
 export function MobileNavRow({
+  dataTour,
   icon,
   label,
   disabled,
@@ -499,6 +500,7 @@ export function MobileNavRow({
   opensPanel,
   onSelect,
 }: {
+  dataTour?: string
   icon: LucideIcon
   label: string
   disabled?: boolean
@@ -517,6 +519,7 @@ export function MobileNavRow({
       title={disabled ? 'Coming soon' : label}
       aria-label={disabled ? `${label} (coming soon)` : label}
       aria-current={active ? 'page' : undefined}
+      data-tour={dataTour}
       className={unstyledButton(`group flex h-9 w-full items-center gap-2.5 rounded-md px-3 text-sm transition-colors ${
         disabled
           ? 'cursor-not-allowed text-(--muted-light)'
@@ -609,6 +612,7 @@ export function MobileNavStep({
           {navItems.map((item) => (
             <MobileNavRow
               key={item.id}
+              dataTour={`nav-${item.id}`}
               icon={item.icon}
               label={item.label}
               disabled={item.disabled}
@@ -819,7 +823,8 @@ export function MobileDrawer({
         aria-describedby={undefined}
       >
         <SheetTitle className="sr-only">App navigation</SheetTitle>
-        <SidebarShell className="h-full">{children}</SidebarShell>
+        <SidebarShell className="min-h-0 flex-1">{children}</SidebarShell>
+        <div data-mobile-tour-host />
       </SheetContent>
     </Sheet>
   )

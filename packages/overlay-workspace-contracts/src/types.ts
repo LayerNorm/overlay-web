@@ -159,9 +159,21 @@ export type WorkspaceSummary = {
   humanMemberCount?: number
 }
 
+export type AccountWorkspaceInvitation = {
+  id: string
+  workspaceId: string
+  workspaceName: string
+  role: Exclude<WorkspaceMembershipRole, 'owner'>
+  expiresAt: number
+}
+
 export type WorkspaceListResponse = {
   workspaces: WorkspaceSummary[]
   activeWorkspaceId: string
+}
+
+export interface AccountWorkspaceDirectoryResponse extends WorkspaceListResponse {
+  invitations: AccountWorkspaceInvitation[]
 }
 
 export type WorkspaceBillingSubscription = {

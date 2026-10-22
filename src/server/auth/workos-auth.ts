@@ -439,7 +439,7 @@ export async function authenticateNativeWithCode(
 export async function authenticateWithPassword(
   email: string,
   password: string
-): Promise<{ success: boolean; user?: AuthUser; error?: string; pendingEmailVerification?: boolean }> {
+): Promise<{ success: boolean; user?: AuthUser; error?: string; pendingEmailVerification?: boolean; verificationTicket?: string }> {
   try {
     const workos = getWorkOS(true)
     const response = await workos.userManagement.authenticateWithPassword({
@@ -460,11 +460,39 @@ export async function authenticateWithPassword(
 
     return { success: true, user }
   } catch (error: unknown) {
-    const err = error as { code?: string; message?: string }
-    if (err.code === 'email_verification_required') {
-      return { success: false, pendingEmailVerification: true, error: 'Please verify your email before signing in.' }
+    const err = error as { code?: string; message?: string; rawData?: Record<string, unknown> }
+    if ((err.code ?? err.rawData?.code) === 'email_verification_required') {
+      const verificationTicket = await createPendingSignInVerificationTicket(email, err.rawData)
+      return {
+        success: false,
+        pendingEmailVerification: true,
+        error: 'Please verify your email before signing in.',
+        ...(verificationTicket ? { verificationTicket } : {}),
+      }
     }
     return { success: false, error: err.message || 'Authentication failed' }
+  }
+}
+
+// The password was already accepted, so the caller may finish verifying this
+// account. WorkOS sends the code itself when it returns this error.
+async function createPendingSignInVerificationTicket(
+  email: string,
+  rawData: Record<string, unknown> | undefined,
+): Promise<string | undefined> {
+  try {
+    const workos = getWorkOS(true)
+    const verificationId = typeof rawData?.email_verification_id === 'string' ? rawData.email_verification_id : ''
+    const userId = verificationId
+      ? (await workos.userManagement.getEmailVerification(verificationId)).userId
+      : (await workos.userManagement.listUsers({ email, limit: 1 })).data[0]?.id
+    if (!userId) return undefined
+    return createEmailVerificationTicket({ email, userId })
+  } catch (error) {
+    logAuthDebug('createPendingSignInVerificationTicket failed', {
+      message: error instanceof Error ? error.message : String(error),
+    })
+    return undefined
   }
 }
 

@@ -756,3 +756,26 @@ test('workspaces on a paid plan do not count toward the free-workspace limit', a
   await roomy.createOrganization({ actorUserId: 'user_1', name: 'Fifth' })
   assert.deepEqual(created, ['Fifth'])
 })
+
+test('received invitations normalize the trusted recipient and pass the expiry cutoff', async () => {
+  let received: { email: string; now: number } | undefined
+  const invitations = [{
+    id: 'invite_1',
+    workspaceId: 'workspace_org',
+    workspaceName: 'Acme',
+    role: 'member' as const,
+    expiresAt: 500,
+  }]
+  const service = new WorkspaceService(repository({
+    async listReceivedInvitations(args) {
+      received = args
+      return invitations
+    },
+  }))
+
+  assert.deepEqual(
+    await service.listReceivedInvitations({ email: ' Member@Example.test ', now: 123 }),
+    invitations,
+  )
+  assert.deepEqual(received, { email: 'member@example.test', now: 123 })
+})

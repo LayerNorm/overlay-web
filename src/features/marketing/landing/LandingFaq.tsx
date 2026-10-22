@@ -1,4 +1,4 @@
-import { Plus } from 'lucide-react'
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@overlay/ui/primitives'
 
 const FAQ_ITEMS: { q: string; a: string }[] = [
   {
@@ -42,14 +42,14 @@ export function LandingFaq() {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(faqStructuredData) }}
       />
       <div className="head center"><h2 className="h2">Questions, answered</h2></div>
-      <div className="faq">
+      <Accordion type="single" collapsible className="faq">
         {FAQ_ITEMS.map((item) => (
-          <details key={item.q}>
-            <summary>{item.q}<Plus className="i" /></summary>
-            <p className="body">{item.a}</p>
-          </details>
+          <AccordionItem key={item.q} value={item.q} className="last:border-b">
+            <AccordionTrigger className="faq-q">{item.q}</AccordionTrigger>
+            <AccordionContent className="body faq-a">{item.a}</AccordionContent>
+          </AccordionItem>
         ))}
-      </div>
+      </Accordion>
     </section>
   )
 }

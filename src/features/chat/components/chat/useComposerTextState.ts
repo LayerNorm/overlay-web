@@ -19,10 +19,16 @@ export function useComposerTextState() {
   const [inputRevision, setInputRevision] = useState(0)
   const [hasComposerText, setHasComposerText] = useState(false)
   const inputRef = useRef(input)
+  const inputListeners = useRef(new Set<() => void>())
+  const subscribeToInput = useCallback((listener: () => void) => {
+    inputListeners.current.add(listener)
+    return () => { inputListeners.current.delete(listener) }
+  }, [])
 
   const setInput = useCallback((next: string | ((previous: string) => string)) => {
     const resolved = typeof next === 'function' ? next(inputRef.current) : next
     inputRef.current = resolved
+    inputListeners.current.forEach((listener) => listener())
     setInputState(resolved)
     setHasComposerText(resolved.trim().length > 0)
     setInputRevision((value) => value + 1)
@@ -31,6 +37,7 @@ export function useComposerTextState() {
   const handleComposerInputChange = useCallback((text: string) => {
     const previous = inputRef.current
     inputRef.current = text
+    inputListeners.current.forEach((listener) => listener())
     const hasText = text.trim().length > 0
     setHasComposerText((state) => (state === hasText ? state : hasText))
     if (shouldSyncSlashInput(text, previous)) {
@@ -46,5 +53,6 @@ export function useComposerTextState() {
     inputRef,
     inputRevision,
     setInput,
+    subscribeToInput,
   }
 }

@@ -59,7 +59,7 @@ export async function POST(_request: Request, context: AppApiRouteContext) {
   }
 }
 
-function parseCreateInput(value: Record<string, unknown>): WorkspaceCreateInput {
+export function parseCreateInput(value: Record<string, unknown>): WorkspaceCreateInput {
   const name = typeof value.name === 'string' ? value.name.trim() : ''
   const slug = typeof value.slug === 'string' ? value.slug.trim() : undefined
   if (!name || name.length > 80) {
