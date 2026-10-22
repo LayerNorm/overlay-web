@@ -17,6 +17,24 @@ function secret(t: TestContext) {
   })
 }
 
+test('createNote forwards only a provided conversation id to files/files:create', async t => {
+  secret(t)
+  const createArgs: Array<Record<string, unknown>> = []
+  t.mock.method(lazyConvex, 'mutation', async (path, args) => {
+    assert.equal(path, 'files/files:create')
+    createArgs.push(args)
+    return `note_created_${createArgs.length}`
+  })
+  t.mock.method(lazyConvex, 'query', async () => note)
+
+  const repository = new ConvexNoteRepository()
+  await repository.createNote({ userId: note.userId, title: 'Linked', content: 'body', conversationId: 'conv_1' })
+  await repository.createNote({ userId: note.userId, title: 'Unlinked', content: 'body' })
+
+  assert.equal(createArgs[0]?.conversationId, 'conv_1')
+  assert.equal('conversationId' in (createArgs[1] ?? {}), false)
+})
+
 test('a rejected Convex revision becomes a note conflict instead of unchanged success', async t => {
   secret(t)
   t.mock.method(lazyConvex, 'query', async () => note)

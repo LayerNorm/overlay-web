@@ -4,7 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
-- Reveal chat copy actions on hover or keyboard focus, and add an agent-conversation sidebar for Details, conversation-linked Library files, and a computer preview with control mode. Room panels and the agent sidebar now share the same right-hand slot. Agent settings use the shared chat model picker with free-tier and zero-data-retention access rules.
+- Reveal chat copy actions on hover or keyboard focus, and add an agent-conversation sidebar for Details, conversation-linked Library files, and a computer preview with control mode. Files and notes created by an agent are linked to its conversation and appear in the Library. Room panels and the agent sidebar now share the same right-hand slot. Agent settings use the shared chat model picker with free-tier and zero-data-retention access rules.
 
 - Let people who left sign-up before verifying finish from sign-in. Signing in with the right password for an unverified account now opens the code screen with Resend, then signs in once the code is accepted, instead of linking to a missing `/auth/verify-email` page. Sign-in and sign-up also show a plain fallback message instead of crashing when an error response is not text.
 
