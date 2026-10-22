@@ -106,6 +106,7 @@ test('activates pending first send once real chat and stream completion are both
   let activeViewer: string | null = null
   let activeChat: string | null = null
   let routeChat: string | null = null
+  const pendingRunConversationIds: Array<string | null> = []
   const appliedUi: ConversationUiState[] = []
   let hydrationBumps = 0
   const activeChatIdRef = { current: null as string | null }
@@ -122,6 +123,7 @@ test('activates pending first send once real chat and stream completion are both
     },
     setActiveChatId: (chatId) => { activeChat = chatId },
     setActiveViewer: (chatId) => { activeViewer = chatId },
+    setPendingRunConversationId: (chatId) => { pendingRunConversationIds.push(chatId) },
     setRuntimeHydrationVersion: (updater) => {
       hydrationBumps = typeof updater === 'function' ? updater(hydrationBumps) : updater
     },
@@ -139,6 +141,7 @@ test('activates pending first send once real chat and stream completion are both
   assert.equal(activeChatIdRef.current, 'chat-real')
   assert.equal(activeViewer, 'chat-real')
   assert.equal(activeChat, 'chat-real')
+  assert.deepEqual(pendingRunConversationIds, [null])
   assert.equal(routeChat, 'chat-real')
   assert.equal(appliedUi[0]?.activeChatTitle, 'Preview')
   assert.equal(emptyRuntime.askChats[0].messages.length, 0)
