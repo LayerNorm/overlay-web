@@ -725,74 +725,94 @@ export class ManagedAgentSandboxBilling {
 
   private async tickLease(lease: AgentSandboxLease): Promise<ManagedSandboxMeterTick> {
     try {
-      if (lease.computerId) {
-        const handler = this.dependencies.computerLeaseHandler
-        if (!handler) {
-          return { leaseId: lease.id, outcome: 'cleanup_failed', reason: 'computer_lifecycle_unavailable' }
-        }
-        const lifecycleResult = await handler(lease, 'idle_check')
-        if (!['computer_not_idle', 'computer_has_live_run', 'computer_active'].includes(lifecycleResult.reason ?? '')) {
-          return lifecycleResult
-        }
-      }
-      // A running lease past its reserved window has hit the hard runtime
-      // limit — reap it (the reap path captures final usage before delete).
-      if (lease.status === 'running'
-        && typeof lease.reservedUntil === 'number'
-        && this.now() > lease.reservedUntil) {
-        if (lease.computerId) return await this.killLease(lease, 'lease_expired')
-        await this.killLease(lease, 'lease_expired')
-        return { leaseId: lease.id, outcome: 'killed', reason: 'lease_expired' }
-      }
-      const result = await this.meterLease(lease)
-      if (!result.applied) {
-        if (['insufficient_budget', 'paid_plan_required'].includes(result.reason)) {
-          const reason = result.reason === 'paid_plan_required' ? result.reason : 'budget_exhausted'
-          if (lease.computerId) return await this.killLease(lease, reason)
-          await this.killLease(lease, reason)
-          return { leaseId: lease.id, outcome: 'killed', reason, remainingCents: result.remainingCents }
-        }
-        return {
-          leaseId: lease.id,
-          outcome: result.reason === 'lease_conflict' ? 'conflict' : 'skipped',
-          reason: result.reason,
-        }
-      }
-      if (result.remainingCents !== undefined && result.remainingCents < sandboxLowBalanceCutoffCents()) {
-        if (lease.computerId) return await this.killLease(lease, 'low_balance')
-        await this.killLease(lease, 'low_balance')
-        return { leaseId: lease.id, outcome: 'killed', reason: 'low_balance', remainingCents: result.remainingCents }
+      const lifecycleTick = await this.computerLifecycleTick(lease)
+      if (lifecycleTick) return lifecycleTick
+      const expiredTick = await this.expiredLeaseTick(lease)
+      if (expiredTick) return expiredTick
+      return await this.resolveMeterTick(lease, await this.meterLease(lease))
+    } catch (error) {
+      return await this.handleMeterTickError(lease, error)
+    }
+  }
+
+  private async computerLifecycleTick(lease: AgentSandboxLease): Promise<ManagedSandboxMeterTick | undefined> {
+    if (!lease.computerId) return undefined
+    const handler = this.dependencies.computerLeaseHandler
+    if (!handler) {
+      return { leaseId: lease.id, outcome: 'cleanup_failed', reason: 'computer_lifecycle_unavailable' }
+    }
+    const result = await handler(lease, 'idle_check')
+    return ['computer_not_idle', 'computer_has_live_run', 'computer_active'].includes(result.reason ?? '')
+      ? undefined
+      : result
+  }
+
+  private async expiredLeaseTick(lease: AgentSandboxLease): Promise<ManagedSandboxMeterTick | undefined> {
+    if (
+      lease.status !== 'running'
+      || typeof lease.reservedUntil !== 'number'
+      || this.now() <= lease.reservedUntil
+    ) return undefined
+    const tick = await this.killLease(lease, 'lease_expired')
+    return lease.computerId
+      ? tick
+      : { leaseId: lease.id, outcome: 'killed', reason: 'lease_expired' }
+  }
+
+  private async resolveMeterTick(
+    lease: AgentSandboxLease,
+    result: ManagedSandboxMeterResult,
+  ): Promise<ManagedSandboxMeterTick> {
+    if (!result.applied) {
+      if (['insufficient_budget', 'paid_plan_required'].includes(result.reason)) {
+        const reason = result.reason === 'paid_plan_required' ? result.reason : 'budget_exhausted'
+        const tick = await this.killLease(lease, reason)
+        return lease.computerId
+          ? tick
+          : { leaseId: lease.id, outcome: 'killed', reason, remainingCents: result.remainingCents }
       }
       return {
         leaseId: lease.id,
-        outcome: result.chargedCents ? 'metered' : 'adopted',
-        ...(result.chargedCents === undefined ? {} : { chargedCents: result.chargedCents }),
-        ...(result.remainingCents === undefined ? {} : { remainingCents: result.remainingCents }),
+        outcome: result.reason === 'lease_conflict' ? 'conflict' : 'skipped',
+        reason: result.reason,
       }
-    } catch (error) {
-      if (isBillingAccountUnavailableError(error)) {
-        // If the payer's wallet can't be debited at all (suspended/missing),
-        // stop the lease rather than let unmetered usage accumulate.
-        if (lease.computerId) {
-          return await this.killLease(lease, 'billing_unavailable')
-            .catch((cleanupError) => ({ leaseId: lease.id, outcome: 'cleanup_failed' as const,
-              reason: cleanupError instanceof Error ? cleanupError.message : String(cleanupError) }))
-        }
-        await this.killLease(lease, 'billing_unavailable').catch((_error) => undefined)
-        return { leaseId: lease.id, outcome: 'killed', reason: 'billing_unavailable' }
-      }
-      logger.warn('Managed sandbox meter tick failed', {
-        environmentId: lease.environmentId,
-        error: error instanceof Error ? error.message : String(error),
-        leaseId: lease.id,
-        workspaceId: lease.workspaceId,
-      })
-      this.reportSandboxAlert(
-        'meter_tick_failed',
-        sandboxAlertContext(lease, error instanceof Error ? error.message : String(error)),
-      )
-      return { leaseId: lease.id, outcome: 'error', reason: error instanceof Error ? error.message : String(error) }
     }
+    if (result.remainingCents !== undefined && result.remainingCents < sandboxLowBalanceCutoffCents()) {
+      const tick = await this.killLease(lease, 'low_balance')
+      return lease.computerId
+        ? tick
+        : { leaseId: lease.id, outcome: 'killed', reason: 'low_balance', remainingCents: result.remainingCents }
+    }
+    return {
+      leaseId: lease.id,
+      outcome: result.chargedCents ? 'metered' : 'adopted',
+      ...(result.chargedCents === undefined ? {} : { chargedCents: result.chargedCents }),
+      ...(result.remainingCents === undefined ? {} : { remainingCents: result.remainingCents }),
+    }
+  }
+
+  private async handleMeterTickError(lease: AgentSandboxLease, error: unknown): Promise<ManagedSandboxMeterTick> {
+    if (isBillingAccountUnavailableError(error)) {
+      if (lease.computerId) {
+        return await this.killLease(lease, 'billing_unavailable')
+          .catch((cleanupError) => ({
+            leaseId: lease.id,
+            outcome: 'cleanup_failed' as const,
+            reason: cleanupError instanceof Error ? cleanupError.message : String(cleanupError),
+          }))
+      }
+      await this.killLease(lease, 'billing_unavailable').catch((_error) => undefined)
+      return { leaseId: lease.id, outcome: 'killed', reason: 'billing_unavailable' }
+    }
+    const message = error instanceof Error ? error.message : String(error)
+    logger.warn('Managed sandbox meter tick failed', {
+      environmentId: lease.environmentId,
+      error: message,
+      leaseId: lease.id,
+      workspaceId: lease.workspaceId,
+    })
+    this.reportSandboxAlert('meter_tick_failed', sandboxAlertContext(lease, message))
+    return { leaseId: lease.id, outcome: 'error', reason: message }
   }
 
   private async killLease(lease: AgentSandboxLease, reason: string): Promise<ManagedSandboxMeterTick> {
