@@ -1,12 +1,16 @@
 'use client'
 
 import { ArrowLeft, ExternalLink, MousePointer2 } from 'lucide-react'
-import type { Computer } from '@overlay/workspace-contracts'
+import type { Computer, WorkspaceAgentCreatureShape } from '@overlay/workspace-contracts'
 import { Button } from '@overlay/ui/primitives'
 import { unstyledButton } from '@overlay/ui/control-reset'
+import { AgentCreature } from '@/components/orb/Creature'
 
 export function AgentComputerTabView({
   agentName,
+  agentColor,
+  agentShape,
+  unavailable = false,
   computer,
   computerLoading,
   computerError,
@@ -20,6 +24,9 @@ export function AgentComputerTabView({
   onTakeControl,
 }: {
   agentName: string
+  agentColor?: string
+  agentShape?: WorkspaceAgentCreatureShape
+  unavailable?: boolean
   computer: Computer | null
   computerLoading: boolean
   computerError: string | null
@@ -32,7 +39,27 @@ export function AgentComputerTabView({
   onRetry(): void
   onTakeControl(ticketUrl: string, computerName: string): void
 }) {
-  if (computerLoading) return <ConnectingState />
+  if (unavailable) {
+    return (
+      <div className="space-y-2">
+        <div className="relative flex aspect-[16/10] flex-col items-center justify-center gap-2 overflow-hidden rounded-xl bg-(--surface-subtle) text-center text-xs text-(--muted)">
+          <AgentCreature
+            agent={{ name: agentName, avatarColor: agentColor, avatarShape: agentShape }}
+            size={44}
+          />
+          Computer unavailable
+        </div>
+      </div>
+    )
+  }
+  if (computerLoading) {
+    return (
+      <div className="space-y-2">
+        <ConnectingState />
+        <p className="text-center text-xs text-(--muted)">Connecting</p>
+      </div>
+    )
+  }
   if (computerError) {
     return (
       <div className="space-y-2 py-2">
@@ -44,16 +71,36 @@ export function AgentComputerTabView({
   if (!computer) return <p className="py-2 text-xs text-(--muted)">No computer</p>
   if (computer.status === 'stopped') {
     return (
-      <div className="flex items-center justify-between gap-3 py-2">
-        <p className="text-xs text-(--muted)">Computer is asleep</p>
-        <Button variant="secondary" size="sm" disabled={waking} onClick={onWake}>
-          {waking ? 'Waking...' : 'Wake'}
-        </Button>
+      <div className="space-y-2">
+        <div className="flex aspect-[16/10] flex-col items-center justify-center gap-2 rounded-xl bg-(--surface-subtle) text-xs text-(--muted)">
+          <AgentCreature
+            agent={{ name: agentName, avatarColor: agentColor, avatarShape: agentShape }}
+            size={44}
+          />
+          <span>Computer is asleep</span>
+          <Button variant="secondary" size="sm" disabled={waking} onClick={onWake}>
+            {waking ? 'Waking...' : 'Wake'}
+          </Button>
+        </div>
+        <p className="text-center text-xs text-(--muted)">{agentName}&apos;s computer</p>
       </div>
     )
   }
-  if (computer.status === 'provisioning' || (computer.status as string) === 'starting') {
-    return <ConnectingState />
+  if (computer.status === 'provisioning') {
+    return (
+      <div className="space-y-2">
+        <ConnectingState />
+        <p className="text-center text-xs text-(--muted)">Waking up</p>
+      </div>
+    )
+  }
+  if ((computer.status as string) === 'starting') {
+    return (
+      <div className="space-y-2">
+        <ConnectingState />
+        <p className="text-center text-xs text-(--muted)">Connecting</p>
+      </div>
+    )
   }
   if (computer.status !== 'ready') {
     return <p className="py-2 text-xs text-(--muted)">Computer is unavailable</p>
@@ -66,7 +113,14 @@ export function AgentComputerTabView({
       </div>
     )
   }
-  if (ticketLoading || !ticketUrl) return <ConnectingState />
+  if (ticketLoading || !ticketUrl) {
+    return (
+      <div className="space-y-2">
+        <ConnectingState />
+        <p className="text-center text-xs text-(--muted)">Connecting</p>
+      </div>
+    )
+  }
 
   const computerName = computer.name ?? agentName
   if (controlled) {
@@ -116,7 +170,7 @@ export function AgentComputerTabView({
 
 function ConnectingState() {
   return (
-    <div className="flex items-center gap-2 py-2 text-xs text-(--muted)" role="status">
+    <div className="flex aspect-[16/10] flex-col items-center justify-center gap-3 rounded-xl bg-(--surface-subtle) text-xs text-(--muted)" role="status">
       <span className="flex items-center gap-1" aria-hidden="true">
         <span className="size-1.5 animate-pulse rounded-full bg-current motion-reduce:animate-none" />
         <span className="size-1.5 animate-pulse rounded-full bg-current [animation-delay:150ms] motion-reduce:animate-none" />

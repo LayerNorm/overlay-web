@@ -38,6 +38,11 @@ Use `PanelResizeHandle` from `@overlay/ui` for adjustable sidebar and side-panel
 widths. It exposes a vertical separator with pointer resizing, arrow-key steps,
 and Home/End bounds; the owning shell supplies and stores the width.
 
+The agent conversation sidebar uses the app sidebar surface and one scroll
+container below its fixed hero and tabs. Its editable fields autosave after an
+800ms debounce and flush on blur; saves serialize so newer edits cannot be
+overwritten by an older response.
+
 ## Shared modal dialogs
 
 `DialogFrame` and `ConfirmDialog` keep their existing controlled APIs on top of

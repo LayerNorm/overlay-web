@@ -358,7 +358,7 @@ export function AgentConversationWorkspace({ showcase = false }: { showcase?: bo
           externalRightPanel={agentSidebar}
           externalRightPanelLabel="Agent sidebar"
           externalRightPanelMode="docked"
-          externalRightPanelWidth={400}
+          externalRightPanelWidth={380}
           onExternalRightPanelClose={closeRightSidebar}
           bodyOverlay={computerControl ? (
             <AgentComputerControlOverlay

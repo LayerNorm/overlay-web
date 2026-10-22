@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import type { ComponentProps } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import type { WorkspaceAgentCreateInput, WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
 import {
@@ -26,19 +27,7 @@ import { useAgentComputer } from './use-agent-computer'
 import { useAgentEditorActions } from './use-agent-editor-actions'
 import { AgentEditorView } from './AgentEditorPage.parts'
 
-export function AgentEditorPage({
-  mode,
-  agentId,
-  showcase = false,
-  presentation = 'page',
-  embedded = false,
-  panelMode,
-  onTogglePanelMode,
-  onClose,
-  onCreated,
-  onArchived,
-  onSaved,
-}: {
+export type AgentEditorPageProps = {
   mode: 'new' | 'edit'
   agentId?: string
   showcase?: boolean
@@ -50,7 +39,32 @@ export function AgentEditorPage({
   onCreated?: (agent: WorkspaceAgentDirectoryItem) => void
   onArchived?: () => void
   onSaved?: () => void
-}) {
+  keepOpenOnSave?: boolean
+}
+
+export function AgentEditorPage(props: AgentEditorPageProps) {
+  const { viewProps } = useAgentEditorController(props)
+  return createAgentEditorPageView(viewProps)
+}
+
+export function createAgentEditorPageView(viewProps: ComponentProps<typeof AgentEditorView>) {
+  return <AgentEditorView {...viewProps} />
+}
+
+export function useAgentEditorController({
+  mode,
+  agentId,
+  showcase = false,
+  presentation = 'page',
+  embedded = false,
+  panelMode,
+  onTogglePanelMode,
+  onClose,
+  onCreated,
+  onArchived,
+  onSaved,
+  keepOpenOnSave = false,
+}: AgentEditorPageProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const showHello = searchParams?.get('hello') === '1'
@@ -198,6 +212,7 @@ export function AgentEditorPage({
     onCreated,
     onArchived,
     onSaved,
+    keepOpenOnSave,
   })
 
   const title = useMemo(() => {
@@ -212,39 +227,60 @@ export function AgentEditorPage({
   // painting a second, darker background inside the panel frame.
   const inPanel = presentation === 'panel'
 
-  return (
-    <AgentEditorView
-      presentation={presentation}
-      embedded={embedded}
-      panelMode={panelMode}
-      onTogglePanelMode={onTogglePanelMode}
-      title={title}
-      inPanel={inPanel}
-      showHello={showHello}
-      mode={mode}
-      agent={agent}
-      loading={loading}
-      loadFailed={loadFailed}
-      canCreate={canCreate}
-      isDefaultMaster={isDefaultMaster}
-      valid={valid}
-      busy={busy}
-      showcase={showcase}
-      computersAvailable={computersAvailable}
-      connectedAgentsEnabled={connectedAgentsEnabled}
-      connectedAgentsChecked={connectedAgentsChecked}
-      modelField={modelField}
-      form={form}
-      runtime={runtime}
-      byo={byo}
-      computer={computer}
-      surfaces={surfaces}
-      closeEditor={closeEditor}
-      sayHello={sayHello}
-      persistNew={persistNew}
-      saveEdit={saveEdit}
-      cancelEdit={cancelEdit}
-      archiveAgent={archiveAgent}
-    />
-  )
+  const viewProps: ComponentProps<typeof AgentEditorView> = {
+    presentation,
+    embedded,
+    panelMode,
+    onTogglePanelMode,
+    title,
+    inPanel,
+    showHello,
+    mode,
+    agent,
+    loading,
+    loadFailed,
+    canCreate,
+    isDefaultMaster,
+    valid,
+    busy,
+    showcase,
+    computersAvailable,
+    connectedAgentsEnabled,
+    connectedAgentsChecked,
+    modelField,
+    form,
+    runtime,
+    byo,
+    computer,
+    surfaces,
+    closeEditor,
+    sayHello,
+    persistNew,
+    saveEdit,
+    cancelEdit,
+    archiveAgent,
+  }
+
+  return {
+    viewProps,
+    mode,
+    agent,
+    loading,
+    loadFailed,
+    connectedAgentsChecked,
+    isDefaultMaster,
+    valid,
+    busy,
+    showcase,
+    computersAvailable,
+    connectedAgentsEnabled,
+    modelField,
+    form,
+    runtime,
+    byo,
+    computer,
+    surfaces,
+    saveEdit,
+    archiveAgent,
+  }
 }

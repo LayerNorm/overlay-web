@@ -26,6 +26,8 @@ const computer: Computer = {
 function renderComputerTab(state: {
   computer: Computer | null
   ticketUrl?: string | null
+  ticketLoading?: boolean
+  controlled?: boolean
 }) {
   return renderToStaticMarkup(
     <AgentComputerTabView
@@ -35,8 +37,8 @@ function renderComputerTab(state: {
       computerError={null}
       ticketUrl={state.ticketUrl ?? null}
       ticketError={null}
-      ticketLoading={false}
-      controlled={false}
+      ticketLoading={state.ticketLoading ?? false}
+      controlled={state.controlled ?? false}
       waking={false}
       onWake={() => {}}
       onRetry={() => {}}
@@ -53,10 +55,56 @@ test('computer tab renders unbound, asleep, connecting, and ready states', () =>
   assert.match(asleep, /Computer is asleep/)
   assert.match(asleep, />Wake</)
 
-  const connecting = renderComputerTab({ computer: { ...computer, status: 'provisioning' } })
-  assert.match(connecting, /Connecting/)
+  const provisioning = renderComputerTab({ computer: { ...computer, status: 'provisioning' } })
+  assert.match(provisioning, /Waking up/)
+  const starting = renderComputerTab({ computer: { ...computer, status: 'starting' } })
+  assert.match(starting, /Connecting/)
 
   const ready = renderComputerTab({ computer, ticketUrl: 'https://computer.example/ticket' })
   assert.match(ready, /Take control/)
   assert.match(ready, /Research is working/)
+  assert.match(ready, /bg-emerald-500/)
+})
+
+test('computer captions show Connecting until the stream is ready and You have control when controlled', () => {
+  const loadingTicket = renderComputerTab({ computer, ticketLoading: true })
+  assert.match(loadingTicket, /Connecting/)
+  assert.doesNotMatch(loadingTicket, /Research is working/)
+
+  const missingTicket = renderComputerTab({ computer })
+  assert.match(missingTicket, /Connecting/)
+  assert.doesNotMatch(missingTicket, /Research is working/)
+
+  const controlled = renderComputerTab({
+    computer,
+    ticketUrl: 'https://computer.example/ticket',
+    controlled: true,
+  })
+  assert.match(controlled, /You have control/)
+  assert.match(controlled, /bg-emerald-500/)
+  assert.doesNotMatch(controlled, /Research is working/)
+})
+
+test('computer unavailable state does not render a preview or invoke computer actions', () => {
+  const calls: string[] = []
+  const markup = renderToStaticMarkup(
+    <AgentComputerTabView
+      agentName="Research"
+      unavailable
+      computer={null}
+      computerLoading
+      computerError={null}
+      ticketUrl={null}
+      ticketError={null}
+      ticketLoading={false}
+      controlled={false}
+      waking={false}
+      onWake={() => calls.push('wake')}
+      onRetry={() => calls.push('retry')}
+      onTakeControl={() => calls.push('take-control')}
+    />,
+  )
+  assert.match(markup, /Computer unavailable/)
+  assert.doesNotMatch(markup, /Take control|iframe/)
+  assert.deepEqual(calls, [])
 })

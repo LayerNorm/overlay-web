@@ -32,10 +32,16 @@ export function AgentLibraryTab({ conversationId }: { conversationId: string }) 
   if (currentState?.failed) return <p className="py-2 text-xs text-(--muted)">Could not load files.</p>
   if (!currentState?.files) return <p className="py-2 text-xs text-(--muted)">Loading files...</p>
   const threadFiles = currentState.files.filter((file) => file.kind !== 'folder')
-  if (threadFiles.length === 0) return <p className="py-2 text-xs text-(--muted)">No files yet</p>
+  if (threadFiles.length === 0) {
+    return (
+      <div className="flex min-h-full items-center justify-center text-center">
+        <p className="text-xs text-(--muted)">No files yet</p>
+      </div>
+    )
+  }
 
   return (
-    <div className="flex flex-col">
+    <div className="flex min-h-full flex-col gap-1">
       {threadFiles.map((file) => {
         const Icon = file.mimeType?.startsWith('image/')
           ? Image
@@ -48,12 +54,14 @@ export function AgentLibraryTab({ conversationId }: { conversationId: string }) 
             variant="ghost"
             type="button"
             onClick={() => router.push(`/app/files?file=${encodeURIComponent(file._id)}`)}
-            className="h-auto min-h-12 justify-start gap-3 rounded-lg px-2 py-2 text-left hover:bg-(--surface-subtle)"
+            className="group/file h-auto min-h-12 w-full justify-start gap-2.5 rounded-lg px-2 py-2 text-left hover:bg-(--surface-subtle)"
           >
-            <Icon size={16} className="shrink-0 text-(--muted)" />
+            <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-(--surface-subtle) text-(--muted) group-hover/file:bg-(--surface-elevated)">
+              <Icon size={15} />
+            </span>
             <span className="min-w-0 flex-1">
               <span className="block truncate text-xs font-medium text-(--foreground)">{file.name}</span>
-              <span className="mt-0.5 block text-[11px] text-(--muted)">
+              <span className="mt-0.5 block text-xs text-(--muted)">
                 Created {formatRelativeTime(file.createdAt)}
               </span>
             </span>

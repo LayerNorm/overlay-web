@@ -120,7 +120,7 @@ export function AgentTypeSelector({ value, onChange, hidden }: {
           onSelect={() => onChange('overlay')}
           icon={<Bot size={15} />}
           label="Create your own agent"
-          description="Runs on Overlay Cloud — pick a runtime below. No machines to connect."
+          description="Runs on Overlay Cloud. Pick a runtime below. No machines to connect."
         />
         <OptionRow
           checked={value === 'byo'}
@@ -150,7 +150,13 @@ const MEMORY_PREVIEW_COUNT = 5
  * Edit mode only; rows delete through the same endpoint as the Memories page,
  * and "view all" deep-links into that page pre-filtered to this agent.
  */
-export function AgentMemoriesSection({ agentPrincipalId }: { agentPrincipalId: string }) {
+export function AgentMemoriesSection({
+  agentPrincipalId,
+  sidebarCompact = false,
+}: {
+  agentPrincipalId: string
+  sidebarCompact?: boolean
+}) {
   const [rows, setRows] = useState<AgentMemoryRow[] | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   useEditorLoad(rows === null)
@@ -192,13 +198,15 @@ export function AgentMemoriesSection({ agentPrincipalId }: { agentPrincipalId: s
   const preview = rows.slice(0, MEMORY_PREVIEW_COUNT)
   return (
     <div>
-      <p className='text-xs font-medium'>
+      <p className={`text-xs font-medium ${sidebarCompact ? 'text-(--muted)' : ''}`}>
         Memories{' '}
         <span className='font-normal text-(--muted-light)'>
           {rows.length}
         </span>
       </p>
-      <div className="mt-1.5 overflow-hidden rounded-xl border border-(--border)">
+      <div className={`mt-1.5 overflow-hidden rounded-[10px] ${
+        sidebarCompact ? 'bg-(--surface-elevated)' : 'border border-(--border)'
+      }`}>
         {preview.map((row) => (
           <div
             key={row.memoryId}
@@ -244,17 +252,21 @@ export function AgentMemoriesSection({ agentPrincipalId }: { agentPrincipalId: s
   )
 }
 
-export function DangerZone({ mode, hasAgent, isDefaultMaster, busy, agentName, onArchive }: {
+export function DangerZone({ mode, hasAgent, isDefaultMaster, busy, agentName, onArchive, sidebarCompact = false }: {
   mode: 'new' | 'edit'
   hasAgent: boolean
   isDefaultMaster: boolean
   busy: boolean
   agentName: string
   onArchive(): void
+  sidebarCompact?: boolean
 }) {
   if (mode !== 'edit' || !hasAgent || isDefaultMaster) return null
   return (
-    <section className="rounded-xl border border-red-500/25 p-4">
+    <section className={sidebarCompact
+      ? 'rounded-[10px] bg-(--surface-subtle) p-3'
+      : 'rounded-xl border border-red-500/25 p-4'
+    }>
       <p className='text-xs font-medium text-(--foreground)'>
         Danger zone
       </p>
@@ -301,7 +313,7 @@ export function AccessSelector({ value, onChange }: { value: WorkspaceAgentVisib
       </div>
       <p className='mt-1.5 text-[11px] leading-4 text-(--muted)'>
         {value === 'creator'
-          ? 'Hidden from everyone else — reported as not found.'
+          ? 'Hidden from everyone else, reported as not found.'
           : 'Everyone in this workspace can see, chat with, or @-mention this agent.'}
       </p>
     </div>
@@ -528,7 +540,7 @@ export function AgentSurfacesSection({
                   <p className="text-xs font-medium text-(--foreground)">Slack · {connection.externalTeamName ?? 'Slack workspace'}</p>
                   {connection.status !== 'active' ? (
                     <p className="mt-0.5 text-[11px] leading-4 text-amber-600 dark:text-amber-400">
-                      {connection.status === 'degraded' ? 'Connection degraded — reconnect Slack to resume.' : 'Uninstalled from Slack — reconnect to resume.'}
+                      {connection.status === 'degraded' ? 'Connection degraded. Reconnect Slack to resume.' : 'Uninstalled from Slack. Reconnect to resume.'}
                     </p>
                   ) : null}
                 </div>
@@ -591,7 +603,7 @@ export function AgentSurfacesSection({
                         disabled={busyId !== null}
                       />
                       <p className="mt-1.5 text-[11px] leading-4 text-(--muted)">
-                        The bot only answers in channels it has joined — invite it with /invite @Overlay.
+                        The bot only answers in channels it has joined. Invite it with /invite @Overlay.
                       </p>
                     </>
                   )}
@@ -990,8 +1002,8 @@ function SetupPromptPane({ setupPrompt, copiedPrompt, onCopyPrompt }: {
 }) {
   return (
     <div className="space-y-2">
-      <p className="text-[11px] leading-4 text-(--muted)">Paste this into a chat with the agent on this machine — it runs the connection command for you and keeps it alive.</p>
-      <div className="rounded-lg border border-(--border) bg-(--background) p-2.5"><pre className="max-h-44 overflow-y-auto whitespace-pre-wrap wrap-break-word px-0.5 font-mono text-[11px] leading-4 text-(--foreground)">{setupPrompt}</pre></div>
+      <p className="text-[11px] leading-4 text-(--muted)">Paste this into a chat with the agent on this machine. It runs the connection command for you and keeps it alive.</p>
+      <div className="rounded-lg border border-(--border) bg-(--background) p-2.5"><pre className="whitespace-pre-wrap wrap-break-word px-0.5 font-mono text-[11px] leading-4 text-(--foreground)">{setupPrompt}</pre></div>
       <Button variant="secondary" size="sm" onClick={onCopyPrompt} className="gap-1.5">{copiedPrompt ? <><Check size={13} /> Copied</> : <><Copy size={13} /> Copy prompt</>}</Button>
     </div>
   )

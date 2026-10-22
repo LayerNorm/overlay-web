@@ -1,15 +1,17 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
 import { RightSidebar } from '@overlay/modules-react/shell'
-import { AgentCreature } from '@/components/orb/Creature'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
-import { overlayAppClient } from '@/shared/app/overlay-app-client'
-import { AgentEditorPage } from './AgentEditorPage'
+import { useAgentEditorController } from './AgentEditorPage'
 import { AgentComputerTabView } from './AgentComputerTab.parts'
+import { AgentSidebarDetails } from './AgentSidebarDetails'
 import { AgentLibraryTab } from './AgentRightSidebar.parts'
+import { AgentSidebarHero } from './AgentSidebarHero.parts'
 import { useAgentSidebarComputer } from './use-agent-sidebar-computer'
+import { createAgentAutosaveScheduler } from '../lib/agent-autosave-scheduler'
+import { isAgentEditSaveFailure } from '../lib/agent-edit-save-result'
 
 export function AgentRightSidebar({
   agentId,
@@ -36,53 +38,62 @@ export function AgentRightSidebar({
 }) {
   const { capabilities } = useOverlayCapabilities()
   const computersEnabled = capabilities.computers === true && !showcase
-  const selectedTab = activeTab === 'computer' && !computersEnabled ? 'details' : activeTab
-  const [agentState, setAgentState] = useState<{
-    workspaceId: string | null
-    agentId: string
-    agent: WorkspaceAgentDirectoryItem | null
-  }>({ workspaceId: null, agentId: '', agent: null })
+  const editor = useAgentEditorController({
+    mode: 'edit',
+    agentId,
+    showcase,
+    presentation: 'panel',
+    keepOpenOnSave: true,
+    onClose,
+    onArchived,
+  })
+  const selectedTab = activeTab
   const computerAccess = useAgentSidebarComputer({
     activeWorkspaceId,
     agentId,
     enabled: computersEnabled,
     visible: selectedTab === 'computer',
   })
+  const [saveFailed, setSaveFailed] = useState(false)
+  const schedulerRef = useRef<ReturnType<typeof createAgentAutosaveScheduler> | null>(null)
 
+  const saveRef = useRef(editor.saveEdit)
+  saveRef.current = editor.saveEdit
+  const validRef = useRef(editor.valid && editor.form.dirty)
+  validRef.current = editor.valid && editor.form.dirty
+  const saveNow = useCallback(async () => {
+    setSaveFailed(false)
+    const result = await saveRef.current({ silent: true, ignoreBusy: true })
+    setSaveFailed(isAgentEditSaveFailure(result))
+  }, [])
   useEffect(() => {
-    if (!activeWorkspaceId) return
-    let cancelled = false
-    void overlayAppClient.agents.list(activeWorkspaceId).then((result) => {
-      if (!cancelled) {
-        setAgentState({
-          workspaceId: activeWorkspaceId,
-          agentId,
-          agent: result.agents.find((item) => item.id === agentId) ?? null,
-        })
-      }
-    }).catch(() => {
-      if (!cancelled) setAgentState({ workspaceId: activeWorkspaceId, agentId, agent: null })
-    })
-    return () => { cancelled = true }
-  }, [activeWorkspaceId, agentId])
+    const scheduler = createAgentAutosaveScheduler()
+    schedulerRef.current = scheduler
+    return () => {
+      scheduler.cancel()
+      if (schedulerRef.current === scheduler) schedulerRef.current = null
+    }
+  }, [])
+  useEffect(() => {
+    schedulerRef.current?.schedule(saveNow, editor.valid && editor.form.dirty)
+  }, [editor.form.dirty, editor.form.version, editor.valid, saveNow])
+  const flushSave = useCallback(() => {
+    schedulerRef.current?.flush(saveNow, validRef.current)
+  }, [saveNow])
 
-  const agent = agentState.workspaceId === activeWorkspaceId && agentState.agentId === agentId
-    ? agentState.agent
-    : null
-  const agentName = agent?.name ?? 'Agent'
-  const subtitle = agent?.description?.trim() || undefined
+  const agent = editor.agent as WorkspaceAgentDirectoryItem | null
+  const agentName = editor.form.name.trim() || agent?.name || 'Agent'
+  const hero = AgentSidebarHero({ editor, onBlurSave: flushSave })
   const tabs = [
     {
       id: 'details',
       label: 'Details',
       content: selectedTab === 'details' ? (
-        <AgentEditorPage
-          mode="edit"
-          agentId={agentId}
-          presentation="panel"
-          embedded
-          onClose={onClose}
-          onArchived={onArchived}
+        <AgentSidebarDetails
+          editor={editor}
+          saveFailed={saveFailed}
+          onRetry={flushSave}
+          onBlurSave={flushSave}
         />
       ) : null,
     },
@@ -91,12 +102,15 @@ export function AgentRightSidebar({
       label: 'Library',
       content: selectedTab === 'library' ? <AgentLibraryTab conversationId={conversationId} /> : null,
     },
-    ...(computersEnabled ? [{
+    {
       id: 'computer',
       label: 'Computer',
       content: selectedTab === 'computer' ? (
         <AgentComputerTabView
           agentName={agentName}
+          agentColor={agent?.avatarColor}
+          agentShape={agent?.avatarShape}
+          unavailable={!computersEnabled}
           computer={computerAccess.computer}
           computerLoading={computerAccess.computerLoading}
           computerError={computerAccess.computerError}
@@ -114,16 +128,17 @@ export function AgentRightSidebar({
           }}
         />
       ) : null,
-    }] : []),
+    },
   ]
 
   return (
     <RightSidebar
       ariaLabel="Agent sidebar"
       hero={{
-        avatar: <AgentCreature agent={{ name: agentName, avatarColor: agent?.avatarColor, avatarShape: agent?.avatarShape }} size={72} />,
-        title: agentName,
-        subtitle,
+        avatar: hero.avatar,
+        title: hero.title,
+        titleText: hero.titleText,
+        subtitle: hero.subtitle,
       }}
       tabs={tabs}
       activeTab={selectedTab}
