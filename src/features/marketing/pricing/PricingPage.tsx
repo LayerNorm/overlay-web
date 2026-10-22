@@ -2,8 +2,7 @@
 
 import Link from 'next/link'
 import { useAuth } from '@/contexts/AuthContext'
-import { MarketingFooter } from '@/features/marketing/components/MarketingFooter'
-import { StaticMarketingShell } from '@/features/marketing/components/StaticMarketingShell'
+import { MarketingPageHead, StaticMarketingShell } from '@/features/marketing/components/StaticMarketingShell'
 import { getMarketingAppHref } from '@/shared/marketing/marketing'
 import { PricingBill } from './PricingBill'
 import { PricingEnd, PricingFaq, PricingHero, PricingKinds, PricingTrust } from './PricingSections'
@@ -19,25 +18,29 @@ export function PricingPage({ billingEnabled }: { billingEnabled: boolean }) {
   const appHref = getMarketingAppHref(isAuthenticated)
   return (
     <StaticMarketingShell>
-      <main className={s.root}>
-        {billingEnabled ? (
-          <>
-            <PricingHero appHref={appHref} />
+      {billingEnabled ? (
+        <main>
+          <PricingHero appHref={appHref} />
+          <div className={s.root}>
             <PricingKinds />
             <PricingBill />
             <PricingTrust />
             <PricingFaq />
-            <PricingEnd appHref={appHref} />
-          </>
-        ) : (
-          <div className={s.hero}>
-            <h1>Billing unavailable.</h1>
-            <p>This deployment does not use Overlay-managed billing. Workspace access is controlled by the deployment administrator.</p>
-            <div className={s.go}><Link className={s.btn} href="/app/chat">Open app</Link></div>
           </div>
-        )}
-      </main>
-      <MarketingFooter />
+          <PricingEnd appHref={appHref} />
+        </main>
+      ) : (
+        <main>
+          <MarketingPageHead
+            label="Pricing"
+            title="Billing unavailable"
+            lead="This deployment does not use Overlay-managed billing. Workspace access is controlled by the deployment administrator."
+            tall
+          >
+            <div className="actions"><Link className="btn primary" href="/app/chat">Open app</Link></div>
+          </MarketingPageHead>
+        </main>
+      )}
     </StaticMarketingShell>
   )
 }

@@ -453,6 +453,7 @@ Run `node scripts/qa/tabs-interactions.mjs` for real-browser regressions; it acc
 
 ## Marketing FAQ and page metadata
 
+Every public marketing page renders inside `StaticMarketingShell` (landing nav, hairline-framed column, footer) and opens with `MarketingPageHead`; page blocks come from `landing.css` (`.sec`, `.h1`, `.lead`, `.btn`), so new pages match the home page without their own theme.
 The landing FAQ uses the shadcn `Accordion` (`@overlay/ui/primitives`, single open item, collapsible) near the end of the static home page.
 Its visible answers and FAQ structured data share one source; describe available
 capabilities only. Public marketing pages define their own canonical paths so
