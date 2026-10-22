@@ -2,7 +2,12 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { AgentSandboxLease } from '@overlay/workspace-contracts'
 import type { SandboxInstance, SandboxRuntime, SandboxUsage } from '@overlay/sandbox-runtime'
-import { ManagedAgentSandboxBilling, sandboxCostUsd } from './ManagedAgentSandboxBilling'
+import {
+  ManagedAgentSandboxBilling,
+  SANDBOX_METER_DELAY_ALERT_MS,
+  sandboxCostUsd,
+} from './ManagedAgentSandboxBilling'
+import type { SandboxAlertContext, SandboxAlertType } from '@/server/observability/sandbox-alerts'
 import { E2B_COMPUTE_PRICE } from './sandbox-execution-accounting'
 
 test('execution metering settles completed E2B time and reserves resumed time with actual resources', async () => {
@@ -635,13 +640,14 @@ test('meterLeases reaps a running lease past its reserved window even when the s
 
 test('meterLeases reaps stopping leases and retries provider cleanup', async () => {
   const updates: Array<Record<string, unknown>> = []
+  const alerts: Array<{ type: SandboxAlertType; context: SandboxAlertContext }> = []
   const stoppingLease = leaseFixture({ status: 'stopping', cleanupAfter: 100_000 })
   const runtime: SandboxRuntime = {
     provider: 'box', capabilities: {} as never,
     create: async () => { throw new Error('unreachable') },
     reconnect: async () => ({
       status: async () => 'stopped' as const,
-      usage: async () => { throw new Error('gone') },
+      usage: async () => boatUsage(60_000, false),
       delete: async () => { throw new Error('provider 500') },
     }) as SandboxInstance,
     restore: async () => { throw new Error('unreachable') },
@@ -656,16 +662,145 @@ test('meterLeases reaps stopping leases and retries provider cleanup', async () 
       listSandboxLeases: async (args: { statuses: string[]; cleanupBefore?: number }) =>
         args.statuses.includes('stopping') ? [stoppingLease] : [],
       getSandboxLease: async () => stoppingLease,
-      meterSandboxLease: async () => { throw new Error('unmeterable') },
+      meterSandboxLease: async () => ({ applied: true as const, meterVersion: 2 }),
       updateSandboxLease: async (args: Record<string, unknown>) => { updates.push(args); return stoppingLease },
     } as never,
     runtime: () => runtime,
+    reportSandboxAlert: (type, context) => { alerts.push({ type, context }) },
   })
   const { ticks } = await service.meterLeases()
   assert.equal(ticks[0]?.outcome, 'cleanup_failed')
   assert.equal(updates[0]?.status, 'cleanup_failed')
   assert.equal(typeof updates[0]?.cleanupAfter, 'number')
   assert.equal((updates[0]?.cleanupAfter as number) > 190_000, true)
+  assert.deepEqual(alerts.map(({ type }) => type), ['cleanup_failed', 'cleanup_failed'])
+  assert.equal(alerts[0]?.context.leaseId, stoppingLease.id)
+  assert.equal('providerReference' in (alerts[0]?.context ?? {}), false)
+})
+
+test('meterLeases alerts for a delayed running lease using runtime start as the fallback meter time', async () => {
+  const alerts: Array<{ type: SandboxAlertType; context: SandboxAlertContext }> = []
+  const lease = leaseFixture({
+    provider: 'e2b',
+    computerId: 'computer-1',
+    runtimeStartedAt: 1_000,
+    status: 'running',
+    usage: { resources: { vcpus: 2, memoryGiB: 4, diskGiB: 20 } },
+  })
+  const service = new ManagedAgentSandboxBilling({
+    now: () => 1_000 + SANDBOX_METER_DELAY_ALERT_MS + 1,
+    policy: {} as never,
+    computerLeaseHandler: async () => ({
+      leaseId: lease.id,
+      outcome: 'skipped',
+      reason: 'test',
+    }),
+    repository: {
+      listSandboxLeases: async (args: { statuses: string[] }) =>
+        args.statuses.includes('running') ? [lease] : [],
+      getSandboxLease: async () => lease,
+    } as never,
+    reportSandboxAlert: (type, context) => { alerts.push({ type, context }) },
+  })
+  await service.meterLeases()
+  assert.deepEqual(alerts.map(({ type }) => type), ['metering_delayed'])
+  assert.equal(alerts[0]?.context.reason, 'last_metered_more_than_15_minutes_ago')
+})
+
+test('meter tick failures emit a metering alert alongside the existing warning', async () => {
+  const alerts: Array<{ type: SandboxAlertType; context: SandboxAlertContext }> = []
+  const lease = leaseFixture({
+    provider: 'e2b',
+    status: 'running',
+    runtimeStartedAt: 1_000,
+    usage: {
+      meteredAt: 1_000,
+      meteredUsage: {},
+      meterVersion: 1,
+      meteredProviderReference: 'sandbox-reference',
+    },
+  })
+  const runtime: SandboxRuntime = {
+    provider: 'e2b',
+    capabilities: {} as never,
+    create: async () => { throw new Error('unreachable') },
+    reconnect: async () => { throw new Error('meter request failed') },
+    restore: async () => { throw new Error('unreachable') },
+    deleteSnapshot: async () => undefined,
+  }
+  const service = new ManagedAgentSandboxBilling({
+    now: () => 2_000,
+    policy: {} as never,
+    runtime: () => runtime,
+    repository: {
+      listSandboxLeases: async (args: { statuses: string[] }) =>
+        args.statuses.includes('running') ? [lease] : [],
+      getSandboxLease: async () => lease,
+    } as never,
+    reportSandboxAlert: (type, context) => { alerts.push({ type, context }) },
+  })
+  const { ticks } = await service.meterLeases()
+  assert.equal(ticks[0]?.outcome, 'error')
+  assert.deepEqual(alerts.map(({ type }) => type), ['meter_tick_failed'])
+  assert.equal(alerts[0]?.context.leaseId, lease.id)
+})
+
+test('pre-delete stop failures alert as stop failures and cleanup failures', async () => {
+  const alerts: Array<{ type: SandboxAlertType; context: SandboxAlertContext }> = []
+  const stoppingLease = leaseFixture({ provider: 'e2b', status: 'stopping', cleanupAfter: 100_000 })
+  const runtime: SandboxRuntime = {
+    provider: 'e2b',
+    capabilities: {} as never,
+    create: async () => { throw new Error('unreachable') },
+    reconnect: async () => ({
+      status: async () => 'running' as const,
+      stop: async () => { throw new Error('stop request failed') },
+    }) as SandboxInstance,
+    restore: async () => { throw new Error('unreachable') },
+    deleteSnapshot: async () => undefined,
+  }
+  const service = new ManagedAgentSandboxBilling({
+    now: () => 190_000,
+    policy: {} as never,
+    runtime: () => runtime,
+    repository: {
+      listSandboxLeases: async (args: { statuses: string[] }) =>
+        args.statuses.includes('stopping') ? [stoppingLease] : [],
+      getSandboxLease: async () => stoppingLease,
+      updateSandboxLease: async () => stoppingLease,
+    } as never,
+    reportSandboxAlert: (type, context) => { alerts.push({ type, context }) },
+  })
+  const { ticks } = await service.meterLeases()
+  assert.equal(ticks[0]?.outcome, 'cleanup_failed')
+  assert.deepEqual(alerts.map(({ type }) => type), ['stop_failed', 'cleanup_failed'])
+})
+
+test('Computer cleanup failures from killLease emit cleanup alerts', async () => {
+  const alerts: Array<{ type: SandboxAlertType; context: SandboxAlertContext }> = []
+  const lease = leaseFixture({
+    provider: 'e2b',
+    computerId: 'computer-1',
+    status: 'running',
+    reservedUntil: 1_000,
+  })
+  const service = new ManagedAgentSandboxBilling({
+    now: () => 2_000,
+    policy: {} as never,
+    computerLeaseHandler: async (_lease, reason) => reason === 'idle_check'
+      ? { leaseId: lease.id, outcome: 'skipped', reason: 'computer_active' }
+      : { leaseId: lease.id, outcome: 'cleanup_failed', reason: 'computer_stop_failed' },
+    repository: {
+      listSandboxLeases: async (args: { statuses: string[] }) =>
+        args.statuses.includes('running') ? [lease] : [],
+      getSandboxLease: async () => lease,
+    } as never,
+    reportSandboxAlert: (type, context) => { alerts.push({ type, context }) },
+  })
+  const { ticks } = await service.meterLeases()
+  assert.equal(ticks[0]?.outcome, 'cleanup_failed')
+  assert.deepEqual(alerts.map(({ type }) => type), ['cleanup_failed'])
+  assert.equal(alerts[0]?.context.computerId, 'computer-1')
 })
 
 test('metered settle runs a final tick, releases the bootstrap hold, and tolerates a missing marker', async () => {
@@ -1219,9 +1354,11 @@ function idleHarness(options: {
   activeRuns?: boolean
   status?: string
   fallbackDue?: boolean
+  stopFails?: boolean
 }) {
   const events: string[] = []
   const patches: Array<{ patch: Record<string, unknown>; idleCheckInMs?: number }> = []
+  const alerts: Array<{ type: SandboxAlertType; context: SandboxAlertContext }> = []
   const lease = leaseFixture({
     status: options.status ?? 'running',
     usage: {
@@ -1239,7 +1376,10 @@ function idleHarness(options: {
     create: async () => { throw new Error('unreachable') },
     reconnect: async () => ({
       status: async () => 'running' as const,
-      stop: async () => { events.push('stop') },
+      stop: async () => {
+        events.push('stop')
+        if (options.stopFails) throw new Error('SANDBOX_STOP_NOT_CONFIRMED')
+      },
       usage: async () => boatUsage(60_000),
     }) as SandboxInstance,
     restore: async () => { throw new Error('unreachable') },
@@ -1257,8 +1397,9 @@ function idleHarness(options: {
       meterSandboxLease: async () => ({ applied: true as const, meterVersion: 4, remainingCents: 500 }),
     } as never,
     runtime: () => runtime,
+    reportSandboxAlert: (type, context) => { alerts.push({ type, context }) },
   })
-  return { service, lease, events, patches }
+  return { service, lease, events, patches, alerts }
 }
 
 test('idleCheck ignores a timer whose token was replaced', async () => {
@@ -1305,6 +1446,18 @@ test('the sweep stops a machine whose timer was lost, once past the grace period
   const { service, lease, events } = idleHarness({ now: 1_000_000, usage: { lastActiveAt: 100_000, idleToken: 'lost', idleCheckAt: 700_000 } })
   await service.meterLease(lease)
   assert.deepEqual(events, ['stop'])
+})
+
+test('idle stop failures emit an alert and retain the normal meter flow', async () => {
+  const { service, lease, events, alerts } = idleHarness({
+    now: 1_000_000,
+    usage: { lastActiveAt: 100_000, idleToken: 'lost', idleCheckAt: 700_000 },
+    stopFails: true,
+  })
+  const result = await service.meterLease(lease)
+  assert.deepEqual(events, ['stop'])
+  assert.equal(result.applied, true)
+  assert.deepEqual(alerts.map(({ type }) => type), ['idle_stop_failed'])
 })
 
 test('the sweep leaves a machine with a live timer to its timer', async () => {

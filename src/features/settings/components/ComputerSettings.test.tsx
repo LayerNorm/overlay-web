@@ -49,3 +49,29 @@ test('Settings computer card renders take control and hand back states', () => {
   assert.match(controlled, /Hand back/)
   assert.match(controlled, /You have control\./)
 })
+
+test('non-control operations keep the card disabled without showing control progress', () => {
+  const busy = renderToStaticMarkup(
+    <ComputerSettingsCard computer={computer} {...props} busy />,
+  )
+  assert.match(busy, /Take control/)
+  assert.doesNotMatch(busy, /Taking control…/)
+  assert.match(busy, /disabled/)
+})
+
+test('control operations show the matching progress label', () => {
+  const takingControl = renderToStaticMarkup(
+    <ComputerSettingsCard computer={computer} {...props} busy controlBusy />,
+  )
+  assert.match(takingControl, /Taking control…/)
+
+  const handingBack = renderToStaticMarkup(
+    <ComputerSettingsCard
+      computer={{ ...computer, controlledByUserId: 'user_1', controlTakenAt: 2 }}
+      {...props}
+      busy
+      controlBusy
+    />,
+  )
+  assert.match(handingBack, /Handing back…/)
+})

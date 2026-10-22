@@ -10,7 +10,7 @@ Workspace members with access to a Computer can take control while it is ready. 
 
 ## Risky browser clicks
 
-The browser driver inspects a referenced element before clicking. Submit controls and names that look like posting, sending, purchasing, deleting, or other consequential actions require a second call with `confirm: true`. Work mode asks for approval through the existing agent-run flow. Regular chats fail closed. Pixel clicks through `computer_input` are not approval-gated yet.
+The browser driver inspects referenced elements and pixel-click targets before clicking. Submit controls and names that look like posting, sending, purchasing, deleting, or other consequential actions require a second call with `confirm: true`. Work mode asks for approval through the existing agent-run flow. Regular chats fail closed. Pixel clicks outside the browser or on non-browser windows proceed normally because they cannot be inspected as page controls.
 
 Screenshots default to 1280 pixels wide. Input coordinates are expressed in the latest screenshot's space and are scaled against the display geometry reported by `xdotool`, using the same maximum width. This keeps coordinate conversion deterministic without server-side display state.
 
@@ -26,9 +26,9 @@ Browser-writing actions share the desktop input lock. Snapshot and tab listing a
 
 ## Approvals
 
-Typing and key presses through `computer_input`, and typing or pressing keys through `computer_browser`, require approval in Work mode. The existing agent-run approval flow stores the request and displays its tool name. Ordinary Act calls fail closed with `approval_required` before accessing the computer because they have no approval UI. Unattended automations deny approval-required calls and never execute them.
+Typing and key presses through `computer_input`, and typing or pressing keys through `computer_browser`, require approval in Work mode. Confirmed clicks on risky browser controls also require approval in Work mode. The existing agent-run approval flow stores the request and displays its tool name. Ordinary Act calls fail closed with `approval_required` before accessing the computer because they have no approval UI. Unattended automations deny approval-required calls and never execute them.
 
-Screenshots, navigation, scrolling, and clicks remain unapproved. Clicks are not yet approval-gated so reading and scrolling feeds stay fluid.
+Screenshots, navigation, scrolling, and ordinary clicks remain unapproved. Risky browser controls are inspected before a coordinate click, so reading and scrolling feeds stay fluid.
 
 ## Terminal sessions
 

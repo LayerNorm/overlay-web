@@ -89,6 +89,9 @@ test('computer screenshot returns image content and computer input validates act
     safeParse(input: unknown): { success: boolean }
   }
   assert.equal(inputSchema.safeParse({ action: 'click', x: 10, y: 20 }).success, true)
+  assert.equal(inputSchema.safeParse({ action: 'click', x: 10, y: 20, confirm: true }).success, true)
+  assert.equal(inputSchema.safeParse({ action: 'double_click', x: 10, y: 20, confirm: true }).success, true)
+  assert.equal(inputSchema.safeParse({ action: 'right_click', x: 10, y: 20, confirm: true }).success, true)
   assert.equal(inputSchema.safeParse({ action: 'type' }).success, false)
 
   const browser = tools.computer_browser as unknown as {
@@ -266,12 +269,14 @@ test('computer_input click resolves its computer once', async () => {
   const originalWorkspaceService = context.workspaceService
   let getForOwnerCalls = 0
   let failInput = false
+  let requireClickApproval = false
   const computer = { id: 'computer-1', name: 'Computer', controlledByUserId: undefined }
   const instance = {
     capabilities: { desktop: true },
     runCommand: async (request: { args?: string[] }) => {
       const driverRequest = JSON.parse(request.args?.at(-1) ?? '{}') as { command?: string }
       const inputFailed = failInput && driverRequest.command === 'click'
+      const clickApprovalRequired = requireClickApproval && driverRequest.command === 'click'
       const stdout = driverRequest.command === 'capabilities'
         ? JSON.stringify({
             version: DRIVER_VERSION,
@@ -293,6 +298,13 @@ test('computer_input click resolves its computer once', async () => {
                 },
               },
             })
+          : clickApprovalRequired
+            ? JSON.stringify({
+                success: false,
+                error: 'approval_required',
+                label: 'Post',
+                message: 'This click may post, send, buy, or delete something. Call computer_input click again with confirm: true to ask the user for approval.',
+              })
           : JSON.stringify({ success: true })
       return {
         wait: async () => ({
@@ -342,6 +354,16 @@ test('computer_input click resolves its computer once', async () => {
     })
     assert.equal(getForOwnerCalls, 1)
 
+    requireClickApproval = true
+    assert.deepEqual(await computerInput.execute({ action: 'click', x: 10, y: 20 }, {}), {
+      success: false,
+      error: 'approval_required',
+      label: 'Post',
+      message: 'This click may post, send, buy, or delete something. Call computer_input click again with confirm: true to ask the user for approval.',
+    })
+    assert.equal(getForOwnerCalls, 2)
+
+    requireClickApproval = false
     failInput = true
     assert.deepEqual(await computerInput.execute({ action: 'click', x: 10, y: 20 }, {}), {
       success: false,
@@ -353,7 +375,7 @@ test('computer_input click resolves its computer once', async () => {
         stderr: 'input device unavailable',
       },
     })
-    assert.equal(getForOwnerCalls, 2)
+    assert.equal(getForOwnerCalls, 3)
   } finally {
     context.computerService = originalComputerService
     context.workspaceService = originalWorkspaceService

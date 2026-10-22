@@ -29,6 +29,7 @@ export function ComputerSettings() {
   const [environmentMachines, setEnvironmentMachines] = useState<EnvironmentMachineRow[]>([])
   const [agentNames, setAgentNames] = useState<Record<string, string>>({})
   const [busy, setBusy] = useState<string | null>(null)
+  const [controlBusyId, setControlBusyId] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
 
@@ -112,6 +113,7 @@ export function ComputerSettings() {
     if (!activeWorkspaceId) return
     const action = computer.controlledByUserId ? 'release' : 'take'
     setBusy(computer.id)
+    setControlBusyId(computer.id)
     try {
       await overlayAppClient.computers.control(activeWorkspaceId, computer.id, action)
       await refresh()
@@ -120,6 +122,7 @@ export function ComputerSettings() {
       toast.error(value instanceof Error ? value.message : 'Could not change computer control.')
     } finally {
       setBusy(null)
+      setControlBusyId(null)
     }
   }
 
@@ -232,7 +235,7 @@ export function ComputerSettings() {
             agentNames={agentNames}
             userId={user?.id}
             busy={busy !== null}
-            controlBusy={busy === computer.id}
+            controlBusy={controlBusyId === computer.id}
             onControl={() => void controlComputer(computer)}
             onOpenDesktop={() => void openDesktop(computer.id)}
             onSetRunning={(running) => void setRunning(computer, running)}

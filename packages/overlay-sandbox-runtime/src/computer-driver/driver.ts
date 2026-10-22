@@ -1,7 +1,7 @@
 import { COMPUTER_BROWSER_DRIVER_SOURCE } from './browser-driver'
 import { COMPUTER_TERMINAL_DRIVER_SOURCE } from './terminal-driver'
 
-export const DRIVER_VERSION = '6'
+export const DRIVER_VERSION = '7'
 
 export const COMPUTER_DRIVER_SOURCE = String.raw`#!/usr/bin/env python3
 import base64
@@ -23,7 +23,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "6"
+VERSION = "7"
 DEFAULT_MAX_WIDTH = 1280
 LOCK_PATH = os.environ.get("OVERLAY_COMPUTER_INPUT_LOCK_PATH", "/tmp/overlay-computer/input.lock")
 SHOT_PATH = "/tmp/overlay-computer/shot.png"
@@ -336,6 +336,10 @@ def run_input(request):
 
         if action == "click":
             x, y = map_point(request.get("x"), request.get("y"), width, height, max_width)
+            if request.get("confirm") is not True:
+                approval = coordinate_click_approval(xdotool, x, y)
+                if approval is not None:
+                    return approval
             count = required_integer(request.get("count", 1), "count", 1, 25)
             button = button_number(request.get("button"))
             run_xdotool(xdotool, "mousemove", "--sync", x, y)

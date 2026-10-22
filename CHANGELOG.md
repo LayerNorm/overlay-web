@@ -6,6 +6,9 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Work approval prompts now appear even if the live update connection stalls.
 - Work approval prompts now appear during the first turn of a new chat.
+- Require confirmation for risky coordinate clicks on browser controls.
+- Show Computer control progress only for control actions, not start, stop or delete.
+- Alert on delayed sandbox metering and failed stop or cleanup operations.
 
 - Let people who left sign-up before verifying finish from sign-in. Signing in with the right password for an unverified account now opens the code screen with Resend, then signs in once the code is accepted, instead of linking to a missing `/auth/verify-email` page. Sign-in and sign-up also show a plain fallback message instead of crashing when an error response is not text.
 

@@ -1200,10 +1200,14 @@ export async function executeComputerScreenshot(options: OverlayToolsOptions) {
   }
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
 export type ComputerInputAction =
-  | { action: 'click'; x: number; y: number; button?: 'left' | 'middle' | 'right'; count?: number }
-  | { action: 'double_click'; x: number; y: number }
-  | { action: 'right_click'; x: number; y: number }
+  | { action: 'click'; x: number; y: number; button?: 'left' | 'middle' | 'right'; count?: number; confirm?: boolean }
+  | { action: 'double_click'; x: number; y: number; confirm?: boolean }
+  | { action: 'right_click'; x: number; y: number; confirm?: boolean }
   | { action: 'move'; x: number; y: number }
   | { action: 'drag'; from: { x: number; y: number }; to: { x: number; y: number } }
   | { action: 'type'; text: string }
@@ -1351,6 +1355,10 @@ export async function executeComputerInput(
       ),
     )
     if (isComputerUserInControlResult(result)) return result
+    if (isRecord(result) && result.success === false) return result
+    if (isRecord(result) && isRecord(result.result) && result.result.success === false) {
+      return result.result
+    }
     return { success: true as const, acknowledgement: `${action.replace('_', ' ')} completed.` }
   } catch (err) {
     return computerErrorResult(err, 'Computer input failed')

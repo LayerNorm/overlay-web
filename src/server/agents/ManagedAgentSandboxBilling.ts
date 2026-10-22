@@ -8,6 +8,11 @@ import type { GenerationUsagePolicy } from '@/server/outputs/GenerationUsagePoli
 import { billableBudgetCentsFromProviderUsd, resolveBillingPayer } from '@/server/billing/billing-runtime'
 import { getMarkupBasisPoints } from '@/shared/billing/billing-pricing'
 import { logger } from '@/server/observability/logger'
+import {
+  reportSandboxAlert as reportSandboxAlertDefault,
+  type SandboxAlertContext,
+  type SandboxAlertType,
+} from '@/server/observability/sandbox-alerts'
 import type {
   ConnectedAgentRepository,
   ConnectedAgentSandboxBilling,
@@ -25,6 +30,7 @@ const DEFAULT_BOOTSTRAP_EGRESS_BYTES = 1 << 30
 const DEFAULT_METER_LEASE_LIMIT = 100
 const CLEANUP_RETRY_BASE_MS = 60_000
 const CLEANUP_RETRY_MAX_MS = 30 * 60_000
+export const SANDBOX_METER_DELAY_ALERT_MS = 15 * 60_000
 const MARKUP_MULTIPLIER = 1 + getMarkupBasisPoints() / 10_000
 /** How long past its idle window a machine may run before the sweep (the fallback) stops it itself. */
 const IDLE_FALLBACK_GRACE_MS = 2 * 60_000
@@ -36,6 +42,17 @@ const IDLE_FALLBACK_INTERVAL_MS = 10 * 60_000
 const IDLE_FALLBACK_TICK_WINDOW_MS = 90_000
 const ACTIVE_STATUSES = ['reserved', 'provisioning', 'running'] as const
 const REAPABLE_STATUSES = ['stopping', 'cleanup_failed'] as const
+
+function sandboxAlertContext(lease: AgentSandboxLease, reason?: string): SandboxAlertContext {
+  return {
+    leaseId: lease.id,
+    ...(lease.environmentId ? { environmentId: lease.environmentId } : {}),
+    ...(lease.computerId ? { computerId: lease.computerId } : {}),
+    workspaceId: lease.workspaceId,
+    provider: lease.provider,
+    ...(reason ? { reason } : {}),
+  }
+}
 
 export type ManagedSandboxMeterTick = {
   leaseId: string
@@ -64,9 +81,14 @@ export class ManagedAgentSandboxBilling {
     runtime?: (provider: string) => SandboxRuntime
     computerLeaseHandler?: (lease: AgentSandboxLease, reason?: string) => Promise<ManagedSandboxMeterTick>
     now?: () => number
+    reportSandboxAlert?: typeof reportSandboxAlertDefault
     /** Whether this sweep tick is one that runs the idle fallback (default: once every 10 minutes). */
     idleFallbackDue?: (now: number) => boolean
   }) {}
+
+  private reportSandboxAlert(type: SandboxAlertType, context: SandboxAlertContext) {
+    (this.dependencies.reportSandboxAlert ?? reportSandboxAlertDefault)(type, context)
+  }
 
   // A turn's upfront hold is only a bootstrap: enough to cover the low-balance
   // floor plus a short worst-case coverage window. Real usage is debited by
@@ -182,6 +204,7 @@ export class ManagedAgentSandboxBilling {
     const ticks: ManagedSandboxMeterTick[] = []
     const wallStartedAt = Date.now()
     const visitedLeaseIds = new Set<string>()
+    const delayedAlertedLeaseIds = new Set<string>()
     while (ticks.length < limit && Date.now() - wallStartedAt < 30_000) {
       const now = this.now()
       const batchLimit = Math.min(20, limit - ticks.length)
@@ -197,7 +220,24 @@ export class ManagedAgentSandboxBilling {
           deferred: false,
         }
       const claimed = claim.leases.filter((lease) => !visitedLeaseIds.has(lease.id))
-      for (const lease of claimed) visitedLeaseIds.add(lease.id)
+      for (const lease of claimed) {
+        visitedLeaseIds.add(lease.id)
+        const lastMeteredAt = typeof lease.usage?.meteredAt === 'number'
+          ? lease.usage.meteredAt
+          : lease.runtimeStartedAt
+        if (
+          lease.status === 'running'
+          && typeof lastMeteredAt === 'number'
+          && now - lastMeteredAt > SANDBOX_METER_DELAY_ALERT_MS
+          && !delayedAlertedLeaseIds.has(lease.id)
+        ) {
+          delayedAlertedLeaseIds.add(lease.id)
+          this.reportSandboxAlert(
+            'metering_delayed',
+            sandboxAlertContext(lease, 'last_metered_more_than_15_minutes_ago'),
+          )
+        }
+      }
       if (!claimed.length) {
         if (claim.deferred && Date.now() - wallStartedAt < 30_000) continue
         break
@@ -206,6 +246,9 @@ export class ManagedAgentSandboxBilling {
         const tick = REAPABLE_STATUSES.some((status) => status === lease.status)
           ? await this.reapLease(lease)
           : await this.tickLease(lease)
+        if (tick.outcome === 'cleanup_failed') {
+          this.reportSandboxAlert('cleanup_failed', sandboxAlertContext(lease, tick.reason))
+        }
         const completedAt = this.now()
         const current = await this.dependencies.repository.getSandboxLease({
           workspaceId: lease.workspaceId, leaseId: lease.id,
@@ -372,6 +415,10 @@ export class ManagedAgentSandboxBilling {
           error: error instanceof Error ? error.message : String(error),
           leaseId: effectiveLease.id,
         })
+        this.reportSandboxAlert(
+          'idle_stop_failed',
+          sandboxAlertContext(effectiveLease, error instanceof Error ? error.message : String(error)),
+        )
       })
       if (idleStoppedNow) probe.usage = await probe.instance.usage().catch((_error) => null)
     }
@@ -740,6 +787,10 @@ export class ManagedAgentSandboxBilling {
         leaseId: lease.id,
         workspaceId: lease.workspaceId,
       })
+      this.reportSandboxAlert(
+        'meter_tick_failed',
+        sandboxAlertContext(lease, error instanceof Error ? error.message : String(error)),
+      )
       return { leaseId: lease.id, outcome: 'error', reason: error instanceof Error ? error.message : String(error) }
     }
   }
@@ -805,6 +856,10 @@ export class ManagedAgentSandboxBilling {
           leaseId: lease.id,
           providerReference: reference,
         })
+        this.reportSandboxAlert(
+          'stop_failed',
+          sandboxAlertContext(lease, error instanceof Error ? error.message : String(error)),
+        )
         return await finish('cleanup_failed', cleanupAttempts, now + cleanupRetryDelayMs(cleanupAttempts))
       }
       // Sandbox already gone — fall through to the final tick and release.
@@ -830,6 +885,10 @@ export class ManagedAgentSandboxBilling {
         leaseId: lease.id,
         providerReference: reference,
       })
+      this.reportSandboxAlert(
+        'cleanup_failed',
+        sandboxAlertContext(lease, error instanceof Error ? error.message : String(error)),
+      )
       return await finish('cleanup_failed', cleanupAttempts, now + cleanupRetryDelayMs(cleanupAttempts))
     }
   }

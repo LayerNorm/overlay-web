@@ -81,16 +81,19 @@ const computerInputVariants = z.discriminatedUnion('action', [
     y: z.number().int().min(0).max(8192),
     button: z.enum(['left', 'middle', 'right']).optional(),
     count: z.number().int().min(1).max(25).optional(),
+    confirm: z.boolean().optional(),
   }).strict(),
   z.object({
     action: z.literal('double_click'),
     x: z.number().int().min(0).max(8192),
     y: z.number().int().min(0).max(8192),
+    confirm: z.boolean().optional(),
   }).strict(),
   z.object({
     action: z.literal('right_click'),
     x: z.number().int().min(0).max(8192),
     y: z.number().int().min(0).max(8192),
+    confirm: z.boolean().optional(),
   }).strict(),
   z.object({
     action: z.literal('move'),
@@ -117,6 +120,7 @@ const computerInputSchema = z.object({
   y: z.number().int().min(0).max(8192).optional(),
   button: z.enum(['left', 'middle', 'right']).optional(),
   count: z.number().int().min(1).max(25).optional(),
+  confirm: z.boolean().optional(),
   from: computerPointSchema.optional(),
   to: computerPointSchema.optional(),
   text: z.string().max(10000).optional(),
@@ -1049,6 +1053,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
         description:
           'Interact with the visible desktop using coordinates from the latest computer_screenshot. ' +
           'Take a screenshot before choosing coordinates and after each action to verify the result. ' +
+          'Risky browser controls require a second click with confirm: true after approval. ' +
           'click, double_click, right_click, and move require x and y; drag requires from and to; ' +
           'type requires text; key requires keys; scroll requires direction and amount with optional x and y; ' +
           'wait requires ms. computer_open_url opens pages in this same visible browser.',

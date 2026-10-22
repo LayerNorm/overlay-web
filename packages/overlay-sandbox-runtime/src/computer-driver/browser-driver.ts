@@ -400,6 +400,85 @@ def browser_ref_expression(ref, action):
     )
 
 
+def click_inspection_body():
+    return (
+        "const tag = element.tagName.toLowerCase(); "
+        "const type = String(element.getAttribute('type') || (tag === 'button' ? element.type : '') || '').trim().toLowerCase(); "
+        "const accessibleName = element.getAttribute('aria-label') "
+        "|| [...(element.labels || [])].map(label => label.innerText || '').join(' ').trim() "
+        "|| element.innerText || element.textContent || element.getAttribute('value') || element.value || ''; "
+        "return { role: element.getAttribute('role') || tag, tag, type, "
+        "name: String(accessibleName).trim(), "
+        "isSubmit: (tag === 'button' || tag === 'input') && type === 'submit' && Boolean(element.closest('form')) };"
+    )
+
+
+def coordinate_click_expression(x, y):
+    return (
+        "(() => { const scale = window.devicePixelRatio || 1; "
+        "const sideBorder = (window.outerWidth - window.innerWidth) / 2; "
+        "const topChrome = window.outerHeight - window.innerHeight - sideBorder; "
+        "const clientX = " + str(x) + " / scale - window.screenX - sideBorder; "
+        "const clientY = " + str(y) + " / scale - window.screenY - topChrome; "
+        "if (clientX < 0 || clientY < 0 || clientX >= window.innerWidth || clientY >= window.innerHeight) "
+        "return { outsideViewport: true }; "
+        "const hit = document.elementFromPoint(clientX, clientY); "
+        "if (!hit) return { outsideViewport: true }; "
+        "if (hit.tagName.toLowerCase() === 'iframe') return { uninspectable: true, label: 'iframe' }; "
+        "const element = hit.closest('button,a,input,[role=button],[role=link],[role=menuitem]'); "
+        "if (!element) return { interactive: false }; "
+        + click_inspection_body()
+        + " })()"
+    )
+
+
+def coordinate_click_approval_result(label):
+    return {
+        "success": False,
+        "error": "approval_required",
+        "label": str(label or "")[:80],
+        "message": (
+            "This click may post, send, buy, or delete something. Call computer_input click again "
+            "with confirm: true to ask the user for approval."
+        ),
+    }
+
+
+def coordinate_click_approval(xdotool, x, y):
+    try:
+        active_class = run_xdotool(xdotool, "getactivewindow", "getwindowclassname")
+    except Exception:
+        try:
+            if browser_version() is None:
+                return None
+        except Exception:
+            return None
+        return coordinate_click_approval_result("Unknown browser control")
+    if "chrom" not in active_class.strip().lower():
+        return None
+    try:
+        if browser_version() is None:
+            return None
+    except Exception:
+        return None
+    try:
+        target = active_page_target()
+        with target_connection(target) as connection:
+            info = evaluate(connection, coordinate_click_expression(x, y))
+        if not isinstance(info, dict):
+            raise DriverError("desktop_driver_failed", "The browser click target could not be inspected.")
+        if info.get("outsideViewport") is True or info.get("interactive") is False:
+            return None
+        if info.get("uninspectable") is True:
+            return coordinate_click_approval_result(info.get("label") or "iframe")
+        name = str(info.get("name") or "").strip()
+        if info.get("isSubmit") is True or RISKY_CLICK_NAME.search(name) is not None:
+            return coordinate_click_approval_result(name)
+        return None
+    except Exception:
+        return coordinate_click_approval_result("Unknown browser control")
+
+
 def dispatch_browser_key(connection, key):
     key_codes = {
         "Enter": ("Enter", 13),
@@ -457,17 +536,7 @@ def run_browser_action(request, action):
             raise DriverError("desktop_driver_failed", "The browser snapshot was invalid.")
         return value
     if action == "click":
-        inspect = (
-            "const tag = element.tagName.toLowerCase(); "
-            "const type = String(element.getAttribute('type') || (tag === 'button' ? element.type : '') || '').trim().toLowerCase(); "
-            "const accessibleName = element.getAttribute('aria-label') "
-            "|| [...(element.labels || [])].map(label => label.innerText || '').join(' ').trim() "
-            "|| element.innerText || element.textContent || element.getAttribute('value') || element.value || ''; "
-            "return { role: element.getAttribute('role') || tag, tag, type, "
-            "name: String(accessibleName).trim(), "
-            "isSubmit: (tag === 'button' || tag === 'input') && type === 'submit' && Boolean(element.closest('form')) };"
-        )
-        expression = browser_ref_expression(request.get("ref"), inspect)
+        expression = browser_ref_expression(request.get("ref"), click_inspection_body())
         with target_connection() as connection:
             info = evaluate(connection, expression)
             if not isinstance(info, dict):

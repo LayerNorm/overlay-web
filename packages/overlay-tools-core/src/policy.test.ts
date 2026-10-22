@@ -6,6 +6,10 @@ test('computer approval policy requires approval only for consequential input ac
   const cases: Array<[string, unknown, boolean]> = [
     ['computer_input', { action: 'type', text: 'hello' }, true],
     ['computer_input', { action: 'key', keys: 'ctrl+l' }, true],
+    ...['click', 'double_click', 'right_click']
+      .map((action) => ['computer_input', { action, confirm: true }, true] as [string, unknown, boolean]),
+    ...['click', 'double_click', 'right_click']
+      .map((action) => ['computer_input', { action, confirm: false }, false] as [string, unknown, boolean]),
     ['computer_browser', { action: 'type', ref: 'r1', text: 'hello' }, true],
     ['computer_browser', { action: 'type', ref: 'r1', text: 'hello', submit: true }, true],
     ['computer_browser', { action: 'type', ref: 'r1', text: 'hello', submit: false }, true],

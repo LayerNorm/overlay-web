@@ -44,6 +44,7 @@ test('browser driver inspects risky click refs and requires confirmation', async
   const launchPidFile = join(directory, 'chromium-pids.log')
   const readySignal = join(directory, 'chromium-ready')
   const browserLog = join(directory, 'browser.log')
+  const xdotoolLog = join(directory, 'xdotool.log')
   const managedProcessGroups = new Set<number>()
   mkdirSync(bin)
   writeFileSync(readySignal, 'ready')
@@ -61,12 +62,19 @@ test('browser driver inspects risky click refs and requires confirmation', async
   ].join('\n'), { mode: 0o700 })
   writeFileSync(join(bin, 'xdotool'), [
     '#!/bin/sh',
+    'printf "%s\\n" "$*" >> "$OVERLAY_XDOTOOL_LOG"',
+    'if [ "$1" = getactivewindow ] && [ "$2" = getwindowclassname ]; then',
+    '  if [ "$OVERLAY_XDOTOOL_ACTIVE_CLASS" = failure ]; then exit 1; fi',
+    '  printf "%s\\n" "${OVERLAY_XDOTOOL_ACTIVE_CLASS:-Chromium}"',
+    '  exit 0',
+    'fi',
+    'if [ "$1" = getdisplaygeometry ]; then printf "1280 720\\n"; exit 0; fi',
     'if [ "$1" = search ] && [ "$2" = --onlyvisible ] && [ "$3" = --class ] && [ "$4" = chrom ]; then',
     '  if [ "$OVERLAY_CHROMIUM_WINDOW_VISIBLE" = false ]; then exit 1; fi',
     '  printf "123\\n"',
     '  exit 0',
     'fi',
-    'exit 1',
+    'exit 0',
     '',
   ].join('\n'), { mode: 0o700 })
 
@@ -188,35 +196,55 @@ test('browser driver inspects risky click refs and requires confirmation', async
         }
         received.push(message)
         const expression = message.params?.expression ?? ''
-        const value = message.method === 'Runtime.evaluate' && expression.includes('querySelectorAll')
-          ? {
-              type: 'object',
-              value: {
-                url: 'https://example.test/',
-                title: 'Example',
-                text: 'Visible page text',
-                elements: [
-                  { ref: 'overlay-1', role: 'button', name: 'Post', bbox: { x: 10, y: 20, width: 80, height: 30 } },
-                  { ref: 'overlay-2', role: 'link', name: 'Home', bbox: { x: 100, y: 20, width: 80, height: 30 } },
-                ],
-              },
-            }
-          : message.method === 'Runtime.evaluate' && expression.includes('isSubmit:')
+        const coordinateInspectionError = message.method === 'Runtime.evaluate'
+          && expression.includes('elementFromPoint')
+          && expression.includes('const clientX = 404')
+        const value = message.method === 'Runtime.evaluate' && expression.includes('elementFromPoint')
+          ? expression.includes('const clientX = 505')
+            ? { type: 'object', value: { uninspectable: true, label: 'iframe' } }
+            : expression.includes('const clientX = 777')
+              ? { type: 'object', value: { outsideViewport: true } }
+              : {
+                  type: 'object',
+                  value: {
+                    role: 'button',
+                    tag: 'button',
+                    type: '',
+                    name: 'Post',
+                    isSubmit: false,
+                  },
+                }
+          : message.method === 'Runtime.evaluate' && expression.includes('querySelectorAll')
             ? {
                 type: 'object',
                 value: {
-                  role: expression.includes('overlay-1') ? 'button' : 'link',
-                  tag: expression.includes('overlay-1') ? 'button' : 'a',
-                  type: expression.includes('overlay-1') ? 'submit' : '',
-                  name: expression.includes('overlay-1') ? 'Post' : 'Home',
-                  isSubmit: expression.includes('overlay-1'),
+                  url: 'https://example.test/',
+                  title: 'Example',
+                  text: 'Visible page text',
+                  elements: [
+                    { ref: 'overlay-1', role: 'button', name: 'Post', bbox: { x: 10, y: 20, width: 80, height: 30 } },
+                    { ref: 'overlay-2', role: 'link', name: 'Home', bbox: { x: 100, y: 20, width: 80, height: 30 } },
+                  ],
                 },
               }
-            : { type: 'boolean', value: true }
+            : message.method === 'Runtime.evaluate' && expression.includes('isSubmit:')
+              ? {
+                  type: 'object',
+                  value: {
+                    role: expression.includes('overlay-1') ? 'button' : 'link',
+                    tag: expression.includes('overlay-1') ? 'button' : 'a',
+                    type: expression.includes('overlay-1') ? 'submit' : '',
+                    name: expression.includes('overlay-1') ? 'Post' : 'Home',
+                    isSubmit: expression.includes('overlay-1'),
+                  },
+                }
+              : { type: 'boolean', value: true }
         if (message.method === 'Runtime.evaluate' && expression.includes('element.click()')) clicks += 1
         const response = Buffer.from(JSON.stringify({
           id: message.id,
-          result: { result: value },
+          result: coordinateInspectionError
+            ? { exceptionDetails: { text: 'inspection error' }, result: { type: 'undefined' } }
+            : { result: value },
         }))
         if (response.length < 126) {
           socket.write(Buffer.concat([Buffer.from([0x81, response.length]), response]))
@@ -264,6 +292,7 @@ test('browser driver inspects risky click refs and requires confirmation', async
     OVERLAY_CHROMIUM_PID_FILE: launchPidFile,
     OVERLAY_CHROMIUM_READY_PATH: readySignal,
     OVERLAY_COMPUTER_BROWSER_LOG_PATH: browserLog,
+    OVERLAY_XDOTOOL_LOG: xdotoolLog,
     OVERLAY_CHROMIUM_WINDOW_VISIBLE: 'true',
   }
   const run = async (
@@ -391,6 +420,86 @@ test('browser driver inspects risky click refs and requires confirmation', async
   assert.equal(homeClick.result.status, 0)
   assert.deepEqual(homeClick.payload, { success: true })
   assert.equal(clicks, 2)
+
+  const coordinateRiskyClick = await run('click', { x: 10, y: 20 })
+  assert.equal(coordinateRiskyClick.result.status, 0)
+  assert.deepEqual(coordinateRiskyClick.payload, {
+    success: false,
+    error: 'approval_required',
+    label: 'Post',
+    message: 'This click may post, send, buy, or delete something. Call computer_input click again with confirm: true to ask the user for approval.',
+  })
+  const physicalClickCount = () => readFileSync(xdotoolLog, 'utf8')
+    .split(/\r?\n/)
+    .filter((line) => line.startsWith('click '))
+    .length
+  assert.equal(physicalClickCount(), 0)
+  const coordinateExpression = received
+    .map((message) => message.params?.expression ?? '')
+    .find((expression) => expression.includes('elementFromPoint')) ?? ''
+  assert.ok(coordinateExpression.includes('window.screenX'))
+  assert.ok(coordinateExpression.includes('window.screenY'))
+  assert.ok(coordinateExpression.includes('window.outerWidth - window.innerWidth'))
+  assert.ok(coordinateExpression.includes('window.outerHeight - window.innerHeight'))
+  assert.ok(coordinateExpression.includes('window.devicePixelRatio'))
+
+  const confirmedCoordinateClick = await run('click', { x: 10, y: 20, confirm: true })
+  assert.equal(confirmedCoordinateClick.result.status, 0)
+  assert.deepEqual(confirmedCoordinateClick.payload, { success: true })
+  assert.equal(physicalClickCount(), 1)
+
+  const evaluationsBeforeNonChromiumClick = received.filter((message) => message.method === 'Runtime.evaluate').length
+  const nonChromiumClick = await run(
+    'click',
+    { x: 10, y: 20 },
+    { OVERLAY_XDOTOOL_ACTIVE_CLASS: 'Firefox' },
+  )
+  assert.equal(nonChromiumClick.result.status, 0)
+  assert.deepEqual(nonChromiumClick.payload, { success: true })
+  assert.equal(physicalClickCount(), 2)
+  assert.equal(
+    received.filter((message) => message.method === 'Runtime.evaluate').length,
+    evaluationsBeforeNonChromiumClick,
+  )
+
+  const iframeClick = await run('click', { x: 505, y: 20 })
+  assert.equal(iframeClick.result.status, 0)
+  assert.deepEqual(iframeClick.payload, {
+    success: false,
+    error: 'approval_required',
+    label: 'iframe',
+    message: 'This click may post, send, buy, or delete something. Call computer_input click again with confirm: true to ask the user for approval.',
+  })
+  assert.equal(physicalClickCount(), 2)
+
+  const outsideViewportClick = await run('click', { x: 777, y: 20 })
+  assert.equal(outsideViewportClick.result.status, 0)
+  assert.deepEqual(outsideViewportClick.payload, { success: true })
+  assert.equal(physicalClickCount(), 3)
+
+  const inspectionErrorClick = await run('click', { x: 404, y: 20 })
+  assert.equal(inspectionErrorClick.result.status, 0)
+  assert.deepEqual(inspectionErrorClick.payload, {
+    success: false,
+    error: 'approval_required',
+    label: 'Unknown browser control',
+    message: 'This click may post, send, buy, or delete something. Call computer_input click again with confirm: true to ask the user for approval.',
+  })
+  assert.equal(physicalClickCount(), 3)
+
+  const activeWindowInspectionError = await run(
+    'click',
+    { x: 10, y: 20 },
+    { OVERLAY_XDOTOOL_ACTIVE_CLASS: 'failure' },
+  )
+  assert.equal(activeWindowInspectionError.result.status, 0)
+  assert.deepEqual(activeWindowInspectionError.payload, {
+    success: false,
+    error: 'approval_required',
+    label: 'Unknown browser control',
+    message: 'This click may post, send, buy, or delete something. Call computer_input click again with confirm: true to ask the user for approval.',
+  })
+  assert.equal(physicalClickCount(), 3)
 
   const evaluations = received.filter((message) => message.method === 'Runtime.evaluate')
   const refExpressions = evaluations

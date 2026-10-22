@@ -100,7 +100,9 @@ Provider observations survive a rejected debit; the billed cursor does not advan
 
 Boat seconds are already size-weighted billable seconds, not ordinary wall-clock seconds. Its authoritative counters must not be replaced by elapsed-time estimates. E2B paused compute is not charged; Boat stopped runtime is unbilled. Boat snapshot retention (including automatic retention for 14 days) is separate from runtime accounting, as is any separately purchased storage.
 
-This accounting checkpoint does not complete Phase 2. Scoped provider inventory reconciliation and alerts, storage accounting, recovery of legacy unrecorded Cloud Agent allocations, and Phase 3 harness/preview QA remain follow-up work. Host viewer activity is not supervised by this Computer action-token integration.
+This accounting checkpoint does not complete Phase 2. Scoped provider inventory reconciliation and inventory alerts, storage accounting, recovery of legacy unrecorded Cloud Agent allocations, and Phase 3 harness/preview QA remain follow-up work. Host viewer activity is not supervised by this Computer action-token integration.
+
+Metering alerts are emitted once per sweep for each running lease whose last meter time is older than 15 minutes. Meter tick, idle-stop, pre-delete stop, and cleanup failures also emit alerts. Alert context is restricted to lease, environment, Computer, workspace, provider, and redacted reason fields; Sentry extras contain only identifiers.
 
 ### Isolated Computer preview QA
 
