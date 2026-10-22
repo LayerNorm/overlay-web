@@ -34,14 +34,14 @@ export function AgentLibraryTab({ conversationId }: { conversationId: string }) 
   const threadFiles = currentState.files.filter((file) => file.kind !== 'folder')
   if (threadFiles.length === 0) {
     return (
-      <div className="flex min-h-full items-center justify-center text-center">
+      <div className="flex flex-1 items-center justify-center text-center">
         <p className="text-xs text-(--muted)">No files yet</p>
       </div>
     )
   }
 
   return (
-    <div className="flex min-h-full flex-col gap-1">
+    <div className="flex flex-col gap-1">
       {threadFiles.map((file) => {
         const Icon = file.mimeType?.startsWith('image/')
           ? Image

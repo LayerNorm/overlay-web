@@ -64,12 +64,12 @@ export function RightSidebar({
             </TabsTrigger>
           ))}
         </TabsTriggerList>
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-6">
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 pb-6">
           {tabs.map((tab) => (
             <TabsContent
               key={tab.id}
               value={tab.id}
-              className="mt-0 min-h-full"
+              className="mt-0 flex flex-1 flex-col"
             >
               {tab.content}
             </TabsContent>
