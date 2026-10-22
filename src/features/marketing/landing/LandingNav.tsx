@@ -2,7 +2,8 @@
 import { Button } from '@overlay/ui/primitives'
 import { unstyledButton } from '@overlay/ui/control-reset'
 import Link from 'next/link'
-import { Github, MoonStar, SunMedium } from 'lucide-react'
+import { MoonStar, SunMedium } from 'lucide-react'
+import { GithubMark } from './GithubMark'
 import { useLandingTheme } from '@/contexts/LandingThemeContext'
 import { MARKETING_DISCORD_URL, MARKETING_DOCS_URL, MARKETING_GITHUB_URL } from '@/shared/marketing/marketing'
 import { BrandLockup } from '@/components/brand/BrandLockup'
@@ -39,7 +40,7 @@ export function LandingNav({ appHref }: { appHref: string }) {
             <DiscordMark />
           </a>
           <a className="icon-btn hide-sm" href={MARKETING_GITHUB_URL} target="_blank" rel="noopener noreferrer" aria-label="GitHub">
-            <Github className="i" />
+            <GithubMark />
           </a>
           <Link className="login" href="/auth/sign-in">Sign in</Link>
           <Link className="btn primary sm" href={appHref}>Get started</Link>

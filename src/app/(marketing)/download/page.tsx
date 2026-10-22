@@ -6,7 +6,6 @@ import {
   fetchLatestReleaseInfo,
   type LatestReleaseInfo,
 } from '@/shared/web/latest-release'
-import { LandingThemeProvider } from '@/contexts/LandingThemeContext'
 
 export const instant = false
 
@@ -18,13 +17,7 @@ export const metadata: Metadata = {
 }
 
 function DownloadFallback() {
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-background text-foreground">
-      <p role="status" className="text-sm text-(--muted)">
-        Loading download…
-      </p>
-    </div>
-  )
+  return <DesktopDownloadPage downloadsEnabled={false} release={null} releaseError={null} loading />
 }
 
 async function DownloadContent() {
@@ -44,7 +37,6 @@ async function DownloadContent() {
   return (
     <DesktopDownloadPage
       downloadsEnabled={downloadsEnabled}
-      embedded
       release={release}
       releaseError={releaseError}
     />
@@ -53,10 +45,8 @@ async function DownloadContent() {
 
 export default function DownloadRoutePage() {
   return (
-    <LandingThemeProvider>
-      <Suspense fallback={<DownloadFallback />}>
-        <DownloadContent />
-      </Suspense>
-    </LandingThemeProvider>
+    <Suspense fallback={<DownloadFallback />}>
+      <DownloadContent />
+    </Suspense>
   )
 }
