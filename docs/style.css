@@ -1,23 +1,143 @@
-/* Overlay docs theme — aligns Mintlify chrome with the landing page's
-   hairline-and-paper design language. Theme tokens (colors, fonts,
-   backgrounds) live in docs.json; this file only carries the small overrides
-   config cannot express. Mintlify element ids are documented but may evolve. */
+/* Overlay docs theme — matches the landing page (src/features/marketing/landing/
+   landing.css): Geist at weight 500 with tight tracking, neutral #171717 ink,
+   hairlines instead of shadows, mono eyebrows. Colors, fonts and backgrounds
+   live in docs.json; this file carries what config cannot express. Mintlify
+   element ids and classes are documented but may evolve. */
 
-/* Flat, translucent top bar with a hairline seam instead of a filled band. */
+:root {
+  --ov-panel: #f7f7f7;
+  --ov-panel-2: #f1f1f1;
+  --ov-line: #ebebeb;
+  --ov-line-2: #e2e2e2;
+  --ov-text: #171717;
+  --ov-muted: #737373;
+  --ov-faint: #a3a3a3;
+  --ov-btn: #171717;
+  --ov-btn-text: #ffffff;
+  --ov-btn-border: transparent;
+  --ov-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
+}
+html.dark {
+  --ov-panel: #171717;
+  --ov-panel-2: #1d1d1d;
+  --ov-line: #232323;
+  --ov-line-2: #2c2c2c;
+  --ov-text: #ededed;
+  --ov-muted: #8f8f8f;
+  --ov-faint: #5f5f5f;
+  --ov-btn: #2a2a2a;
+  --ov-btn-text: #f5f5f5;
+  --ov-btn-border: #3a3a3a;
+}
+
+/* Top bar: translucent, one hairline seam. */
 #navbar {
-  border-bottom: 1px solid rgb(127 127 135 / 0.2);
+  border-bottom: 1px solid var(--ov-line);
   box-shadow: none;
-  backdrop-filter: blur(10px);
+}
+#navbar .nav-tabs-item {
+  font-weight: 400;
+  text-shadow: none;
+  color: var(--ov-muted);
+}
+#navbar .nav-tabs-item:hover,
+#navbar .nav-tabs-item[data-active='true'],
+#navbar .nav-tabs-item.text-gray-800 {
+  color: var(--ov-text);
 }
 
-/* Serif group titles in the sidebar, matching the landing nav's display face. */
-#sidebar .sidebar-group-title,
+/* "Open app": the landing's pill button. */
+#topbar-cta-button a {
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 999px;
+  background: var(--ov-btn);
+  color: var(--ov-btn-text);
+  border: 1px solid var(--ov-btn-border);
+  font-weight: 500;
+  font-size: 13px;
+}
+#topbar-cta-button a > span:first-child {
+  display: none;
+}
+#topbar-cta-button a:hover {
+  opacity: 0.88;
+}
+#topbar-cta-button a * {
+  color: var(--ov-btn-text);
+}
+
+/* Type: weight 500 with tight tracking, never semibold or serif. */
+#page-title,
+#content-area h1,
+#content-area h2,
+#content-area h3,
+#content-area h4 {
+  font-weight: 500;
+  letter-spacing: -0.025em;
+}
+#page-title {
+  letter-spacing: -0.03em;
+}
+#content-area .eyebrow,
+#sidebar .sidebar-group-header,
 #sidebar .sidebar-title {
-  font-family: 'Libre Baskerville', Georgia, serif;
+  font-family: var(--ov-mono);
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ov-faint);
 }
 
-/* Cards and callouts read as hairline panels, not filled boxes. */
-#content-area .card,
-#content-area .card-group .card {
+/* Sidebar: the active page gets a soft panel fill, not a tinted bold row. */
+#sidebar a {
+  text-shadow: none;
+}
+#sidebar a[aria-current='page'],
+#sidebar a.bg-primary\/10 {
+  background: var(--ov-panel-2);
+  color: var(--ov-text);
+  font-weight: 500;
+}
+
+/* Inline links: underlined ink, like the landing hero. */
+#content-area .prose a:not(.card) {
+  color: inherit;
+  font-weight: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--ov-faint);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.18em;
+  border-bottom: 0;
+}
+#content-area .prose a:not(.card):hover {
+  text-decoration-color: currentColor;
+}
+
+/* Cards, callouts, code and accordions are hairline panels with no shadow. */
+#content-area .card {
+  border-radius: 14px;
+  border-color: var(--ov-line-2);
   box-shadow: none;
+}
+#content-area .card:hover {
+  background: var(--ov-panel);
+}
+#content-area .callout,
+#content-area .code-block,
+#content-area .code-group,
+#content-area .accordion,
+#content-area .accordion-group {
+  border-radius: 12px;
+  box-shadow: none;
+}
+
+/* Tables: hairline rows only. */
+#content-area table th {
+  font-weight: 500;
+}
+#content-area table th,
+#content-area table td {
+  border-color: var(--ov-line);
 }

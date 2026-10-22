@@ -1,36 +1,22 @@
 ---
-title: "Overlay"
-description: "Documentation for Overlay: using the web app, self-hosting, and building on the API."
+title: "Overlay docs"
+sidebarTitle: "Overview"
+mode: "wide"
+description: "Use Overlay, run it yourself, or build on it."
 ---
 
-Overlay is a private workspace where your team and its agents work together on
-models, knowledge, tools, and files. These docs cover using the **web app**,
-running your own **self-hosted** instance, and **building** on the Overlay API
-and MCP server.
+Overlay is a workspace where your team and its agents work together. It runs on the web and connects to Slack, ChatGPT, Claude, Cursor and any MCP app.
 
-<CardGroup cols={2}>
-  <Card title="Help Center" icon="life-buoy" href="/help/index">
-    Everyday guides for chats, agents, files, automations, and settings.
+<CardGroup cols={3}>
+  <Card title="Help" icon="life-buoy" href="/help/index">
+    Chats, agents, files, automations and your account.
   </Card>
   <Card title="Self-hosting" icon="server" href="/self-hosting/overview">
-    Run Overlay on your own infrastructure with a self-hosted Convex backend.
+    Run Overlay on your own infrastructure.
   </Card>
-  <Card title="API reference" icon="braces" href="/developer/api/overview">
-    Call the `/api/v1` web API from your own code.
-  </Card>
-  <Card title="Source" icon="github" href="https://github.com/LayerNorm/overlay-web">
-    The Next.js app, APIs, and self-hosting surface.
+  <Card title="Developer" icon="code" href="/developer/index">
+    MCP, the REST API and bringing your own agent.
   </Card>
 </CardGroup>
 
-## Scope
-
-- The web app under `src/app` and the `/api/v1` contracts behind it.
-- The Convex backend that stores app data.
-- Self-hosting and operations.
-
-Overlay is available on the web. Desktop and mobile apps are not available yet.
-
-## Source of truth
-
-The web API reference is generated from `src/shared/schemas/api-boundary.ts`.
+Overlay is open source under AGPL-3.0. The code lives at [github.com/LayerNorm/overlay-web](https://github.com/LayerNorm/overlay-web).

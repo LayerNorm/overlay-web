@@ -4,9 +4,9 @@
   "name": "Overlay",
   "description": "Documentation for Overlay: using the web app, self-hosting, and building on the API.",
   "colors": {
-    "primary": "#0a0a0a",
-    "light": "#f5f5f5",
-    "dark": "#27272a"
+    "primary": "#171717",
+    "light": "#ededed",
+    "dark": "#171717"
   },
   "logo": {
     "light": "/assets/overlay-lockup-light.svg",
@@ -19,31 +19,39 @@
   },
   "background": {
     "color": {
-      "light": "#fafafa",
-      "dark": "#09090b"
+      "light": "#ffffff",
+      "dark": "#111111"
     }
   },
   "fonts": {
+    "family": "Geist",
+    "weight": 400,
     "heading": {
-      "family": "Libre Baskerville",
-      "weight": 400
+      "family": "Geist",
+      "weight": 500
     }
   },
   "navbar": {
     "links": [
       {
-        "label": "Blog",
-        "href": "https://getoverlay.io/blog"
-      },
-      {
         "label": "Pricing",
         "href": "https://getoverlay.io/pricing"
+      },
+      {
+        "label": "Blog",
+        "href": "https://getoverlay.io/blog"
       }
     ],
     "primary": {
       "type": "button",
-      "label": "Get Started",
-      "href": "https://getoverlay.io/auth/sign-in"
+      "label": "Open app",
+      "href": "https://getoverlay.io/app"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/LayerNorm/overlay-web",
+      "discord": "https://discord.gg/cag4HPkU6Z"
     }
   },
   "icons": {
