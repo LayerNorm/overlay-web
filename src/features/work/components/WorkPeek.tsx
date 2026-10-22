@@ -121,7 +121,7 @@ function PeekProperties({ item, editable, save }: { item: WorkItem; editable: bo
           assignee={assignee}
           people={people}
           myPrincipalId={viewer?.principalId ?? null}
-          personalOnly={item.scope === 'personal'}
+          scope={item.scope}
           disabled={!editable}
           onChange={(assigneePrincipalId) => save({ assigneePrincipalId })}
           className="flex h-[30px] items-center gap-2 px-2"
