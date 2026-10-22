@@ -1,0 +1,72 @@
+---
+title: "Upgrades"
+description: "Move to a new Overlay release safely, and roll back if you need to."
+---
+
+An Overlay release has two parts that move together: the web app image and the Convex functions in `convex/`. Upgrade both from the same release tag.
+
+## Before you start
+
+1. Read the release notes in `CHANGELOG.md` for the tag you are moving to.
+2. [Back up](/self-hosting/operate/backups) the Convex backend with `npx convex export`.
+3. Pin versions. Never run a floating `latest` tag in production, for the app or the Convex backend.
+
+## Upgrade
+
+<Steps>
+  <Step title="Check out the release">
+    ```bash
+    git fetch --tags
+    git checkout v<version>
+    ```
+  </Step>
+  <Step title="Deploy the Convex functions">
+    From the checkout, against your backend:
+
+    ```bash
+    npx convex deploy --env-file convex.env.local
+    ```
+
+    Deploy the functions and update the app one right after the other: until both are on the new release, some requests can fail.
+  </Step>
+  <Step title="Update the web app">
+    With the installer:
+
+    ```bash
+    overlayctl update <version>
+    ```
+
+    With Docker Compose, set `OVERLAY_WEB_IMAGE` to the new tag, then:
+
+    ```bash
+    docker compose pull
+    docker compose up -d
+    ```
+  </Step>
+  <Step title="Verify">
+    Sign in, open a chat and send a message, upload a file, and open Settings. Check `/api/v1/capabilities` and the app and backend logs.
+  </Step>
+</Steps>
+
+## Upgrading the Convex backend itself
+
+The `convex-backend` image has its own version, separate from Overlay's.
+
+1. Export first: `npx convex export --env-file convex.env.local`.
+2. Change `CONVEX_BACKEND_IMAGE` in `convex.env` to the new pinned tag, then `docker compose -f docker-compose.convex.yml --env-file convex.env up -d`.
+3. Watch the backend logs for `Executing Migration n/m` and then `MigrationComplete`.
+
+## Roll back
+
+- **Web app and functions:** set the previous image tag and restart, then check out the previous tag and run `npx convex deploy` again, so both sides match.
+- **Data:** if a release changed data in a way you need to undo, restore the export you took first: `npx convex import --replace-all <export.zip>`. This needs downtime; take a final export after traffic stops.
+
+## Customized forks
+
+If you changed the source, merge the new release into your fork, run your checks, and build your own image:
+
+```bash
+git fetch upstream --tags
+git merge v<version>
+docker compose -f docker/docker-compose.yml -f docker/docker-compose.build.yml up --build -d
+```

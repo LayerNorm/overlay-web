@@ -1,5 +1,5 @@
 ---
-title: "Enterprise Security Launch Checklist"
+title: "Security launch checklist"
 description: "Cloud-side controls required before launching Overlay for an enterprise deployment or managed-cloud tenant."
 ---
 
@@ -16,8 +16,8 @@ This checklist covers the required cloud-side controls for an enterprise or mana
 
 ## Infrastructure
 
-- [ ] Vercel preview deployments cannot access production secrets or production data.
-- [ ] Convex production deployment is targeted by `convex:push:prod` without passing `.env.local`.
+- [ ] Preview and staging deployments cannot reach production secrets or production data.
+- [ ] Production Convex deploys use the production backend's own env file, never a development one.
 - [ ] Convex auth, authorization, billing, usage, and storage functions are pushed and smoke-tested.
 - [ ] Convex application data is deployed to the selected deployment, `INTERNAL_API_SECRET` and `INTERNAL_SERVICE_AUTH_SECRET` are distinct secrets, and the Convex revision is current.
 - [ ] Redis rate-limit endpoint is reachable and partitioned by IP, user, and API key.

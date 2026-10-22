@@ -141,10 +141,11 @@
             "group": "Install",
             "pages": [
               "self-hosting/install/one-command",
+              "self-hosting/install/self-hosted-convex",
               "self-hosting/install/docker",
               "self-hosting/install/aws",
-              "self-hosting/install/self-hosted-convex",
-              "self-hosting/install/from-source"
+              "self-hosting/install/from-source",
+              "self-hosting/install/node"
             ]
           },
           {
@@ -175,9 +176,12 @@
           {
             "group": "Operate",
             "pages": [
-              "self-hosting/operate/release-verification",
+              "self-hosting/enterprise/admin-onboarding",
+              "self-hosting/operate/upgrades",
+              "self-hosting/operate/backups",
               "self-hosting/operate/security",
               "self-hosting/operate/security-checklist",
+              "self-hosting/operate/release-verification",
               "self-hosting/operate/better-auth-runbook",
               "self-hosting/operate/executor-integrations"
             ]
@@ -187,8 +191,7 @@
             "pages": [
               "self-hosting/enterprise/managed",
               "self-hosting/enterprise/tenancy",
-              "self-hosting/enterprise/compliance",
-              "self-hosting/enterprise/admin-onboarding"
+              "self-hosting/enterprise/compliance"
             ]
           },
           {

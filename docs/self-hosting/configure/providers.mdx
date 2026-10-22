@@ -31,6 +31,7 @@ Use `none` plus the matching feature flag when a provider family must be disable
 | Error reporting | `sentry`, `none` | Error events and sanitized stack/request metadata | `sentry` and `none` are supported. Set feature and provider to disabled values to avoid initialization. |
 | Secrets | `env`, `workos-vault`, `aws-secrets-manager`, `vault`, `none` | Provider credentials | `env` is the general runtime path. `workos-vault` supports hosted BYOK flows. `aws-secrets-manager` supports BYOK provider keys for private deployments; Convex stores only the opaque secret ARN. Vault remains declared but unsupported. |
 | Rate limit | `convex`, `memory`, `redis`, `none` | Rate-limit counters | All declared providers are supported. Multi-instance production/on-prem deployments should use Redis with fail-closed behavior; memory is development-only. |
+| Transactional email | `resend`, `ses`, `smtp`, `none` | Recipient address and account email content | All are supported; the default is `none`. SMTP requires TLS in production. Delivery uses a durable outbox with suppression checks and audit records. |
 
 ## Disable External Processors
 
@@ -78,3 +79,24 @@ OVERLAY_EMBEDDING_MODEL_VERSION=text-embedding-3-small-v1
 VECTOR_SEARCH_ENABLED=true
 OVERLAY_FEATURE_VECTOR_SEARCH=true
 ```
+
+## MCP server credentials
+
+People can add their own MCP servers. Their tokens are encrypted with a key you provide. Generate it once:
+
+```bash
+openssl rand -hex 32
+```
+
+Store it as `MCP_CREDENTIAL_ENCRYPTION_KEY` on the web runtime. During
+rotation, place the old value in `MCP_CREDENTIAL_ENCRYPTION_KEY_PREVIOUS`, deploy
+the new primary key, rewrite saved credentials through the management API, then
+remove the previous key. MCP responses expose only `hasAuth`; bearer tokens and
+custom header values are AES-256-GCM encrypted at rest and are never returned by
+list APIs. Production MCP URLs must use HTTPS and pass Overlay's SSRF validation.
+
+Each server has a default execution policy of `allow`, `approval_required`, or
+`deny`, plus optional per-tool overrides. Use `approval_required` as the enterprise
+default when a server contains write-capable tools. Tool name, argument hash,
+policy decision, result status, duration, and request context are persisted for
+audit without storing raw tool arguments.

@@ -1,5 +1,5 @@
 ---
-title: "Security Model"
+title: "Security model"
 description: "Auth, route validation, object access, and logging expectations for Overlay Web."
 ---
 For vulnerability reporting policy, see [Security Reporting](/developer/security).
@@ -26,12 +26,12 @@ Before production or enterprise-facing releases:
 - R2 object keys must be validated against the authenticated owner.
 - Sensitive `/api/v1/*` routes must use centralized route boundary validation and must not rely on browser-detection headers.
 
-## Convex Security Workflow
+## Convex deploys
 
-If `convex/` auth, authorization, billing, usage, or storage logic changes:
+Whenever `convex/` changes, including auth, authorization, billing, usage or storage logic, deploy it to each backend from the matching release:
 
 ```bash
-npm run convex:push:all
+npx convex deploy --env-file convex.env.local
 ```
 
-Use `convex:push:prod` for production and `convex:push:dev` for the dev backend. Do not pass `.env.local` to production Convex deploy commands.
+Keep a separate env file per backend, and never deploy production with a development env file.

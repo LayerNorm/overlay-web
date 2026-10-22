@@ -1,5 +1,5 @@
 ---
-title: "Runtime Config"
+title: "Runtime config"
 description: "Configure Overlay Web with overlay.config.json, feature gates, and environment overrides."
 ---
 
@@ -50,6 +50,20 @@ This uses the prebuilt `ghcr.io/layernorm/overlay-web` image by default while ke
 | `onprem-minimal` | Shell/config smoke tests with risky providers disabled. |
 | `enterprise-private` | OIDC, S3-compatible storage, direct model provider, no billing, no telemetry by default. |
 | `dpdp-strict` | Minor-mode metadata, external processors disabled by default, and explicit allowlists for approved processors. |
+
+## Example profiles
+
+Validated examples live under `docs/config`. `npm run docs:health` checks that each one parses.
+
+| Profile | File | Use case |
+| --- | --- | --- |
+| SaaS staging | [saas-staging.example.json](/config/saas-staging.example.json) | WorkOS, Stripe test mode, R2, OpenRouter, API key infrastructure enabled. |
+| On-prem minimal | [onprem-minimal.example.json](/config/onprem-minimal.example.json) | No WorkOS, no Stripe, S3-compatible storage, no external LLM key. Good for shell and config smoke tests. |
+| On-prem S3/OIDC/OpenAI | [onprem-s3-oidc-openai.example.json](/config/onprem-s3-oidc-openai.example.json) | Enterprise OIDC, S3-compatible storage, no billing, OpenAI model gateway. |
+| Enterprise private | [enterprise-private.example.json](/config/enterprise-private.example.json) | OIDC, S3, direct OpenAI model provider, no billing, no browser/sandbox/integrations/search/telemetry. |
+| DPDP strict | [dpdp-strict.example.json](/config/dpdp-strict.example.json) | Minor mode metadata, external processors disabled by default, no model routing/search/tools/telemetry. |
+
+The examples contain placeholders only. Replace every `placeholder` or `replace_with` value before a real deployment.
 
 ## Feature Gates
 

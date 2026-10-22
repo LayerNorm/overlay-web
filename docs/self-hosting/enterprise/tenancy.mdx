@@ -1,5 +1,5 @@
 ---
-title: "Tenancy And Role Model"
+title: "Tenancy and roles"
 description: "Single-customer deployment boundary, role model, and multi-tenant roadmap."
 ---
 Overlay currently uses a **single-customer deployment** model.
@@ -107,7 +107,7 @@ These user-owned tables intentionally do **not** have `tenantId` today because t
 | `authorizationUserRoles` | `userId` | Deployment boundary | Add `tenantId`; role assignment queries must enforce tenant context. |
 | `conversationEvents` | `userId` | Deployment boundary | Add `tenantId`; event stream and presence queries must be tenant-scoped. |
 | `workspacePrincipals` | `userId` | Deployment boundary | Add `tenantId`; principal identity and directory queries must enforce tenant context. |
-| `workspaceConnectors` | `userId` | Deployment boundary; Convex-only until Postgres connector parity | Add `tenantId`; connector mappings, provider keys, and account ownership must be tenant-scoped. |
+| `workspaceConnectors` | `userId` | Deployment boundary; Deployment-wide | Add `tenantId`; connector mappings, provider keys, and account ownership must be tenant-scoped. |
 | `workspaceUserPreferences` | `userId` | Deployment boundary | Add `tenantId`; per-user workspace preferences must be tenant-scoped. |
 | `billingAccounts` | `userId`; optional `workspaceId` | Personal accounts remain user-owned; workspace accounts are bound to the exact workspace | Require a deployment tenant identifier in addition to the current account subject, and keep every Stripe identifier unique within that tenant. |
 | `conversationAgentRuns` | `userId` and `workspaceId` | Every collaborative run is authorized through its conversation and workspace; personal runs remain user-owned | Require tenant-scoped run, conversation, initiator, agent, reservation, and idempotency indexes. |
