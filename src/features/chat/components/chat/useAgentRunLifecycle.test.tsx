@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { toAgentRunResource } from './useAgentRunLifecycle'
+import { shouldApplyRunSnapshot, toAgentRunResource } from './useAgentRunLifecycle'
 import { useWorkApproval } from './useWorkApproval'
 
 const approval = {
@@ -28,6 +28,21 @@ const waitingRunDoc = {
 
 test('Convex run projection preserves approval metadata', () => {
   assert.deepEqual(toAgentRunResource(waitingRunDoc)?.approval, approval)
+  assert.equal(toAgentRunResource(waitingRunDoc)?.updatedAt, 100)
+})
+
+test('run snapshot merge applies newer and different runs but ignores stale same-id runs', () => {
+  const current = { id: 'run_1', status: 'running' as const, updatedAt: 200 }
+  assert.equal(shouldApplyRunSnapshot(current, { ...current, updatedAt: 201 }), true)
+  assert.equal(shouldApplyRunSnapshot(current, { ...current, updatedAt: 199 }), false)
+  assert.equal(shouldApplyRunSnapshot(current, { ...current, updatedAt: undefined }), false)
+  assert.equal(shouldApplyRunSnapshot(current, { ...current, id: 'run_2', updatedAt: 1 }), true)
+})
+
+test('run snapshot merge preserves active runs when a null snapshot arrives', () => {
+  assert.equal(shouldApplyRunSnapshot({ id: 'run_1', status: 'waiting_for_approval', updatedAt: 100 }, null), false)
+  assert.equal(shouldApplyRunSnapshot({ id: 'run_1', status: 'completed', updatedAt: 100 }, null), true)
+  assert.equal(shouldApplyRunSnapshot(null, null), true)
 })
 
 test('Work approval card renders Approve and Deny for a projected waiting run', () => {

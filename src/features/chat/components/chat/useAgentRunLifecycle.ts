@@ -18,6 +18,7 @@ import type { Id } from '../../../../../convex/_generated/dataModel'
 
 const ACTIVE_STATUSES = new Set(['queued', 'running', 'waiting_for_approval'])
 const TERMINAL_SYNC_GRACE_MS = 10_000
+const CONVEX_SAFETY_POLL_MS = 5_000
 
 // Adaptive polling fallback intervals (only used when Convex subscription is unavailable).
 const RECOVERY_POLL_SHORT_MS = 2_000
@@ -44,6 +45,18 @@ type ConvexAgentRunDoc = {
 type ConvexAgentRunQueryState = {
   conversationId: string | null
   run: ConvexAgentRunDoc | undefined
+}
+
+type RunSnapshotVersion = Pick<AgentRunResource, 'id' | 'status' | 'updatedAt'>
+
+export function shouldApplyRunSnapshot(
+  current: RunSnapshotVersion | null,
+  next: RunSnapshotVersion | null,
+): boolean {
+  if (!next) return !current || !ACTIVE_STATUSES.has(current.status)
+  if (!current || current.id !== next.id) return true
+  if (current.updatedAt === undefined) return true
+  return next.updatedAt !== undefined && next.updatedAt >= current.updatedAt
 }
 
 function ConvexAgentRunSubscription({
@@ -74,14 +87,14 @@ function ConvexAgentRunSubscription({
   return null
 }
 
-// The Convex doc has fewer fields than AgentRunResource.  We only use
-// id, conversationId, status, terminalError, and metrics in this hook, so we cast.
+// The Convex doc has fewer fields than AgentRunResource, so we cast its projection.
 export function toAgentRunResource(doc: ConvexAgentRunDoc): AgentRunResource | null {
   if (!doc) return null
   return {
     id: doc._id,
     conversationId: doc.conversationId,
     status: doc.status as AgentRunResource['status'],
+    updatedAt: doc.updatedAt,
     terminalError: doc.terminalError,
     approval: doc.approval,
     metrics: doc.metrics as AgentRunResource['metrics'],
@@ -151,6 +164,7 @@ export function useAgentRunLifecycle({
     const nextRun = toAgentRunResource(convexRunDoc)
     const current = snapshotRef.current
     const currentRun = current.conversationId === conversationId ? current.run : null
+    if (!shouldApplyRunSnapshot(currentRun, nextRun)) return
     const wasActive = Boolean(currentRun && ACTIVE_STATUSES.has(currentRun.status))
     const isActive = Boolean(nextRun && ACTIVE_STATUSES.has(nextRun.status))
     if (wasActive && !isActive) {
@@ -214,6 +228,7 @@ export function useAgentRunLifecycle({
       })
       const current = snapshotRef.current
       const currentRun = current.conversationId === conversationId ? current.run : null
+      if (!shouldApplyRunSnapshot(currentRun, next.run)) return currentRun
       const wasActive = Boolean(currentRun && ACTIVE_STATUSES.has(currentRun.status))
       const isActive = Boolean(next.run && ACTIVE_STATUSES.has(next.run.status))
       if (wasActive && !isActive) {
@@ -315,6 +330,12 @@ export function useAgentRunLifecycle({
     scheduleNext()
     return () => window.clearTimeout(intervalId)
   }, [active, conversationId, enabled, localStreamActive, refresh, usePolling])
+
+  useEffect(() => {
+    if (!useConvexSubscription || !enabled || !conversationId || (!localStreamActive && !active)) return
+    const intervalId = window.setInterval(() => void refresh(), CONVEX_SAFETY_POLL_MS)
+    return () => window.clearInterval(intervalId)
+  }, [active, conversationId, enabled, localStreamActive, refresh, useConvexSubscription])
 
   useEffect(() => {
     if (terminalSyncUntil <= Date.now()) return

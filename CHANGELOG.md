@@ -4,6 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Work approval prompts now appear even if the live update connection stalls.
 - Replace the `/home` scroll story with a static landing page in one framed column (approved mockup `internal/plans/mockups/landing-static-mockup-v2.html`): a one-color headline whose five underlined phrases jump to their sections, a still of the app with the live sidebar (Work, Chats, Files, Automations) and agents drawn as their creatures, then superpowers, the create/manage/deploy/bring-your-own steps, teams, controls, where to get Overlay and the FAQ. The footer's Product links now point at `#control-plane`, `#get-overlay`, `#ai-employees` and `#deploy`. The scroll engine, scene graphics and interactive demo are removed.
 - Added MiniMax M3.1 Flash (free, vision) to the model list.
 - Keep the model you pick in an existing chat after sending. The composer and saved chat model no longer revert to the chat's earlier model once the reply starts.
