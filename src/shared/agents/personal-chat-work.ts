@@ -7,6 +7,23 @@ export type PersonalChatWorkToolDefinition = {
   needsApproval: boolean
 }
 
+export type PersonalChatWorkToolOutputEnvelope = {
+  overlayModelOutput: unknown
+  display: unknown
+}
+
+export function isPersonalChatWorkToolOutputEnvelope(
+  value: unknown,
+): value is PersonalChatWorkToolOutputEnvelope {
+  return Boolean(
+    value
+      && typeof value === 'object'
+      && !Array.isArray(value)
+      && Object.prototype.hasOwnProperty.call(value, 'overlayModelOutput')
+      && Object.prototype.hasOwnProperty.call(value, 'display'),
+  )
+}
+
 /**
  * Serializable tooling context for durable agent turns. Shared by the
  * personal-chat Work workflow and the automation agent workflow — the extra

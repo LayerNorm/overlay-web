@@ -1,6 +1,8 @@
 import 'server-only'
 
 import overlayAppConfig from '@/overlay.config'
+import type { Entitlements } from '@/shared/app/app-contracts'
+import { ComputerAdmission } from '@/server/computers/ComputerAdmission'
 import { NoOpLLMGateway, OpenAILLMGateway, OpenRouterGateway } from '@/server/ai/providers'
 import { ApiKeyService } from '@/server/auth/api-keys'
 import { resolveBetterAuthConnectionSet } from '@/server/auth/connections'
@@ -67,6 +69,8 @@ import { AgentProfileService } from '@/server/agents/profiles/AgentProfileServic
 import { McpAccessService } from '@/server/mcp/McpAccessService'
 import { AgentProviderAccountService } from '@/server/agents/provider-accounts/AgentProviderAccountService'
 import { ComputerService, type ComputerLimits } from '@/server/computers/ComputerService'
+import { ComputerBilling } from '@/server/computers/ComputerBilling'
+import { ComputerLifecycleService } from '@/server/computers/ComputerLifecycleService'
 import { SurfaceService } from '@/server/surfaces/SurfaceService'
 import { listSlackChannels } from '@/server/surfaces/slack-directory'
 import type { SlackAdapter } from '@chat-adapter/slack'
@@ -230,8 +234,40 @@ export function createOverlayServerContext(
 
   const workspaceAgentRepository = new ConvexWorkspaceAgentRepository()
   const workspaceAgentService = new WorkspaceAgentService(workspaceAgentRepository, workspaceService)
-  // v1 static quotas — entitlement-derived limits arrive with the quota +
-  // metering phase of the computers plan.
+  const computerLifecycleRef: { current?: ComputerLifecycleService } = {}
+  const managedAgentSandboxBilling = new ManagedAgentSandboxBilling({
+    policy: generationUsagePolicy,
+    repository: appData.repositories.connectedAgents,
+    computerLeaseHandler: (lease, reason) => {
+      const lifecycle = computerLifecycleRef.current
+      if (!lifecycle) throw new Error('COMPUTER_LIFECYCLE_NOT_INITIALIZED')
+      return lifecycle.handleLease(lease, reason)
+    },
+  })
+  const computerBilling = new ComputerBilling({
+    repository: appData.repositories.connectedAgents,
+    payerResolver: billingPayerResolver,
+    meter: managedAgentSandboxBilling,
+  })
+  const computerAdmissionRef: { current?: ComputerAdmission } = {}
+  const computerLifecycle = new ComputerLifecycleService({
+    repository: appData.repositories.computers,
+    leases: appData.repositories.connectedAgents,
+    billing: computerBilling,
+    runtimeFor: computerRuntimeForProvider,
+    assertCanRun: (input) => {
+      const admission = computerAdmissionRef.current
+      if (!admission) throw new Error('COMPUTER_ADMISSION_NOT_INITIALIZED')
+      return admission.assertCanRun(input)
+    },
+  })
+  computerLifecycleRef.current = computerLifecycle
+  const computerAdmission = new ComputerAdmission({
+    payerResolver: billingPayerResolver,
+    getEntitlements: async (billingAccountId) =>
+      await appData.repositories.billing.getBillingAccountEntitlementsByServer({ billingAccountId }) as Entitlements | null,
+  })
+  computerAdmissionRef.current = computerAdmission
   const computerLimits: ComputerLimits = {
     maxPerWorkspace: 25,
     maxPersonalPerUser: 1,
@@ -239,7 +275,7 @@ export function createOverlayServerContext(
   }
   const computerService = new ComputerService({
     repository: appData.repositories.computers,
-    runtimeFor: computerRuntimeForProvider,
+    assertCanRun: (input) => computerAdmission.assertCanRun(input),
     agentOwner: async (workspaceId, agentId) => {
       const agent = await workspaceAgentRepository.get({ agentId, workspaceId })
       return agent
@@ -247,6 +283,7 @@ export function createOverlayServerContext(
         : null
     },
     limits: computerLimits,
+    lifecycle: computerLifecycle,
   })
   const surfaceService = new SurfaceService({
     repository: appData.repositories.surfaces,
@@ -254,10 +291,6 @@ export function createOverlayServerContext(
     channelLister: (connection, adapter) =>
       listSlackChannels(connection, adapter as SlackAdapter),
     resolvePrincipal: (principalId) => workspaceService.resolvePrincipal(principalId),
-  })
-  const managedAgentSandboxBilling = new ManagedAgentSandboxBilling({
-    policy: generationUsagePolicy,
-    repository: appData.repositories.connectedAgents,
   })
   const agentProviderAccounts = new AgentProviderAccountService({
     repository: appData.repositories.agentProviderAccounts,
@@ -310,6 +343,10 @@ export function createOverlayServerContext(
     wakeMachine: async (args) => {
       const { createCloudAgentMachineService } = await import('@/server/agents/cloud/create-cloud-agent-machine-service')
       return createCloudAgentMachineService().wake(args)
+    },
+    admitMachine: async (args) => {
+      const { createCloudAgentMachineService } = await import('@/server/agents/cloud/create-cloud-agent-machine-service')
+      await createCloudAgentMachineService().admit(args)
     },
     agentSecretEnv: (agentId) => agentProfiles.envForAgent({ agentId }),
     // Imported lazily: the machine service reads this context, so importing it here would be circular.

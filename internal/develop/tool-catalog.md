@@ -15,7 +15,7 @@ Every surface builds its tools through one pipeline (`prepareActTooling`, `src/s
 | Image | `generate_image` |
 | Video | `generate_video`, `generate_video_with_reference`, `animate_image`, `apply_motion_control`, `edit_video` |
 | Browser (paid) | `interactive_browser_session` |
-| Computer (paid, opt-in) | `computer_exec`, `computer_read_file`, `computer_write_file`, `computer_list_files`, `computer_open_url` |
+| Computer (paid, opt-in) | `computer_exec`, `computer_read_file`, `computer_write_file`, `computer_list_files`, `computer_open_url`, `computer_screenshot`, `computer_input`, `computer_browser`, `computer_terminal` |
 | Agents (editing) | `create_agent`, `update_agent` |
 | Ask other agents | `list_agents`, `ask_agent`, `read_agent_reply`, `post_message` (see `agent-to-agent.md`) |
 | Chat only | `present_generated_ui` (renders a draft or connect card in the chat) |

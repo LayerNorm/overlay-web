@@ -21,9 +21,10 @@
 import { jsonSchema, streamText, tool, type ModelMessage, type StepResult, type ToolSet } from 'ai'
 import type { ModelCallStreamPart } from '@ai-sdk/workflow'
 import { createHook, FatalError, getWorkflowMetadata, getWritable } from 'workflow'
-import type {
-  PersonalChatWorkToolDefinition,
-  PersonalChatWorkToolingContext,
+import {
+  isPersonalChatWorkToolOutputEnvelope,
+  type PersonalChatWorkToolDefinition,
+  type PersonalChatWorkToolingContext,
 } from '@/shared/agents/personal-chat-work'
 import type { SourceCitationMap } from '@/shared/knowledge/ask-knowledge-types'
 import { getLanguageModel } from '@/server/ai/model-runtime'
@@ -235,6 +236,7 @@ async function failWorkStream(error: unknown) {
 
 type WorkToolOutcome = {
   output: Record<string, unknown>
+  streamOutput?: unknown
   transcript: Record<string, unknown>
 }
 
@@ -248,6 +250,29 @@ function workToolErrorOutcome(toolCall: { toolCallId: string; toolName: string; 
       input: toolCall.input,
       error: reason,
       output: { error: reason },
+    },
+  }
+}
+
+export function workToolSuccessOutcome(
+  toolCall: { toolCallId: string; toolName: string; input: unknown },
+  result: unknown,
+): WorkToolOutcome {
+  const isEnvelope = isPersonalChatWorkToolOutputEnvelope(result)
+  const display = isEnvelope ? result.display : result
+  return {
+    output: (isEnvelope
+      ? result.overlayModelOutput
+      : typeof result === 'string'
+        ? { type: 'text', value: result }
+        : { type: 'json', value: result as never }) as Record<string, unknown>,
+    streamOutput: isEnvelope ? display : result,
+    transcript: {
+      type: 'tool-result',
+      toolCallId: toolCall.toolCallId,
+      toolName: toolCall.toolName,
+      input: toolCall.input,
+      output: display,
     },
   }
 }
@@ -361,24 +386,14 @@ export async function personalChatWorkWorkflow(input: PersonalChatWorkWorkflowIn
               messages,
               toolCallId: toolCall.toolCallId,
             })
-            outcomes.set(toolCall.toolCallId, {
-              output: typeof output === 'string'
-                ? { type: 'text', value: output }
-                : { type: 'json', value: output as never },
-              transcript: {
-                type: 'tool-result',
-                toolCallId: toolCall.toolCallId,
-                toolName: toolCall.toolName,
-                input: toolCall.input,
-                output,
-              },
-            })
+            const outcome = workToolSuccessOutcome(toolCall, output)
+            outcomes.set(toolCall.toolCallId, outcome)
             return {
               type: 'tool-result',
               toolCallId: toolCall.toolCallId,
               toolName: toolCall.toolName,
               input: toolCall.input,
-              output,
+              output: outcome.streamOutput,
             } as Record<string, unknown>
           } catch (toolError) {
             // A failed tool is fed back to the model (streamText parity) —
@@ -438,24 +453,14 @@ export async function personalChatWorkWorkflow(input: PersonalChatWorkWorkflowIn
                 messages,
                 toolCallId: toolCall.toolCallId,
               })
-              outcomes.set(toolCall.toolCallId, {
-                output: typeof output === 'string'
-                  ? { type: 'text', value: output }
-                  : { type: 'json', value: output as never },
-                transcript: {
-                  type: 'tool-result',
-                  toolCallId: toolCall.toolCallId,
-                  toolName: toolCall.toolName,
-                  input: toolCall.input,
-                  output,
-                },
-              })
+              const outcome = workToolSuccessOutcome(toolCall, output)
+              outcomes.set(toolCall.toolCallId, outcome)
               return {
                 type: 'tool-result',
                 toolCallId: toolCall.toolCallId,
                 toolName: toolCall.toolName,
                 input: toolCall.input,
-                output,
+                output: outcome.streamOutput,
               } as Record<string, unknown>
             } catch (toolError) {
               const reason = toolError instanceof Error ? toolError.message : 'Tool execution failed'

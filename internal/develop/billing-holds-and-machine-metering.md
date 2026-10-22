@@ -5,7 +5,7 @@ How the credit a person sees relates to what Overlay enforces, and how Overlay C
 ## Two separate accounts
 
 - **Boat** (the machine provider) is Overlay's own account. A person's Boat dashboard, if they have one, says nothing about Overlay billing. Overlay pays Boat for machine time.
-- **Overlay credit** is the person's allowance (for example $20/month on Pro) plus any top-ups. Machine compute is charged to it by the lease meter (`ManagedAgentSandboxBilling`) at provider cost plus Overlay's markup, per running minute. Paused machines cost storage only.
+- **Overlay credit** is the person's allowance (for example $20/month on Pro) plus any top-ups. Machine compute is charged to it by the lease meter (`ManagedAgentSandboxBilling`) at provider cost plus Overlay's markup, per running minute. Boat stopped runtime is unbilled; provider snapshot retention is separate from runtime accounting.
 
 Everything below is about Overlay credit.
 
@@ -34,7 +34,19 @@ To look at a person's holds in production: `CONVEX_DEPLOYMENT=prod:colorful-chic
 
 ## Machines and credit
 
-- **Floor.** The meter stops and deletes any machine whose payer is at or below `OVERLAY_SANDBOX_LOW_BALANCE_CUTOFF_CENTS` (default 100, $1.00) of remaining credit. A deleted machine takes its disk with it.
+Persistent Computers enforce admission in `ComputerService`, including desktop and tool-driven wakes. `ComputerAdmission` requires a payer whose scope and ID match the workspace, then checks that wallet's paid plan and the same minimum start credit as managed machines. Personal paid credit cannot unlock a free workspace. Stop and delete remain available after downgrade or credit exhaustion. Each Computer has a deterministic `computer:<id>` lease created atomically with its owner claim; the member who starts a session and the `agent:<ownerId>` subject for agent Computers are reserved together before allocation or wake. Boat's weighted counters remain authoritative. Idle, budget, and session-expiry stops pause the provider and retain its disk and Computer row; only explicit deletion removes them, after confirmed stop and final settlement.
+
+Cloud-agent machine allocation, explicit resume/restart controls, workflow wakes, and stopped-execution recovery recheck paid-workspace and finite-credit admission using the authenticated actor or the remote run's stored actor and agent. Pause, status, stop, and teardown remain available after downgrade. Missing actor or agent identity on a remote run fails closed before machine or recovery work. Remote resume, retry and start-fresh controls on Overlay Cloud check admission before recording the control, so a refused workspace does not queue work. Every machine meter tick also rechecks the workspace plan in the ledger mutation: once a workspace is no longer paid, ticks that would keep a running machine alive, add a hold, or charge without confirmed-stopped provider evidence return \`paid_plan_required\`, and the scheduler stops the machine (Computers keep their disk). Final settlement of confirmed-stopped usage and release of an unused hold remain allowed. This admission recheck is not a pre-allocation cloud hold.
+
+Cloud Agent provisioning stores its allocation key before provider creation and durably binds the provider reference from the allocation callback. The operations reconcile route reclaims stale setup attempts without a matching active lease, retaining retry state when deletion fails. This route-driven sweep is not a Convex cron; Preview has no Convex crons. It recovers allocations recorded by this flow, not older unrecorded machines or provider-wide orphan inventory, and does not unify Cloud Agent lifecycle paths.
+
+## Provider inventory reconciliation
+
+The operations reconcile route scans at most two pages of Boat or E2B inventory every 15 minutes; its connected-agent settlement caller runs every minute outside Preview, which has no Convex crons. It reports old live machines without a matching lease, Cloud Agent provision, or Computer record. This is report-only: an environment match alone is not strong ownership evidence, especially for Boat, and automatically stopping or deleting a machine could destroy a customer's disk. Alert on `[sandbox-inventory] unowned provider machines`.
+
+The Computer integration is one cumulative Phase 2 substep, not completion of Phase 2. The schema changes are additive optional lease fields and indexes. No shared Convex deployment or migration was performed by this code change. Do not roll back lifecycle code or remove its fields while runtime holds, activity tokens, maintenance intents, or cleanup evidence remain unresolved: reconcile and settle them first. Provider allocation retries must use the saved exact recipe and key within Boat's idempotency-retention window; an older ambiguous allocation requires operator reconciliation.
+
+- **Floor.** The meter stops and deletes disposable environment machines whose payer is at or below `OVERLAY_SANDBOX_LOW_BALANCE_CUTOFF_CENTS` (default 100, $1.00) of remaining credit. Persistent Computers pause and retain their disk and row at the same boundary; only explicit deletion removes the provider resource after final settlement.
 - **Start check.** Creating a cloud agent now needs more than the floor (`minimumBudgetToStartMachineCents`, floor + 1¢) and answers `402 insufficient_credit` otherwise; before this, a machine started under the floor was deleted about a minute later (`stopReason: budget_exhausted` on its lease).
 - **What the person sees.** The agent page says "Machine stopped" with an explanation when the machine is gone. There is no automatic top-up for machines; the person adds credit and recreates the agent.
 - Leases live in `agentSandboxLeases`; `usage.stopReason` records why one ended.
@@ -57,7 +69,7 @@ Flags (all set on production): `OVERLAY_FEATURE_CONNECTED_AGENT_CONTROL_PLANE`, 
 
 ## A machine deleted for lack of credit
 
-When the meter kills a lease (`budget_exhausted`, `low_balance`) the Boat machine and lease are deleted but the agent keeps its environment and a `ready` provision record. The agent page derives `unavailable` (`deriveCloudAgentState`: provision `ready`, no machine) and offers **Start a new machine**, which POSTs `/api/v1/agent-environments/cloud` again; `CloudAgentMachineService.reviveIfMachineGone` then revokes the old environment and clears the record so the normal provisioning runs (it still needs the $1 floor). A message to such an agent fails with the `machine_gone` start-failure message.
+When the meter kills a disposable environment lease (`budget_exhausted`, `low_balance`), the Boat machine and lease are deleted while the environment remains. A persistent Computer instead pauses on budget or idle stops and retains its disk and Computer row; only explicit deletion removes it after final settlement.
 
 ## Cancellation after spending plan credit
 
@@ -77,6 +89,38 @@ and balance, in addition to webhook receipt; an event row alone is insufficient.
 Canceled-plan funding also shrinks when holds are released or settled below their estimate. The ledger retains only consumed spend and remaining reservations; a finished hold cannot restore unused paid credit. Active paid accounts retain their normal allowance.
 
 ## Durable remote tasks
+
+### Provider execution accounting
+
+E2B managed-sandbox create and resume use a four-minute pause-on-timeout safety fence. Only a successful runtime meter transaction renews it, bounded by the lease deadline. A five-minute credit headroom covers the next four minutes plus meter latency; a failed scheduler, provider read or ledger commit does not extend runtime. This requires the existing minute-level meter cron. Computers currently use Boat, not E2B; their lifecycle and accounting use the shared lease meter and Boat-specific counter policy, not the E2B timeout fence.
+
+E2B lifecycle events supply completed execution duration and actual CPU/RAM allocation. The meter keys each generation by sandbox reference and execution start time, persists a frozen compute rate card, and settles completed generations exactly once with the lease meter version. Live wall-clock observations are estimates, not final charges: a durable workspace and spend-subject hold covers observed pending compute plus five minutes of actual-allocation headroom. Each tick atomically replaces that lease's hold without borrowing another operation's reservation. The payer remains bound until the hold settles. Final event duration may be shorter than a live estimate without requiring a credit refund.
+
+Provider observations survive a rejected debit; the billed cursor does not advance. Cleanup must confirm stop and complete final settlement before deleting the provider resource. A stopped final observation can be replayed after a resource disappears. Missing or inconsistent evidence keeps the lease in retryable cleanup rather than releasing it as if no usage occurred. Usage operations retain compute cost, pricing and allocation evidence for audit. Settled executions absent beyond the provider's event retention window can leave the cursor only with a persisted retirement watermark; reappearing old evidence fails closed rather than being charged again.
+
+Boat seconds are already size-weighted billable seconds, not ordinary wall-clock seconds. Its authoritative counters must not be replaced by elapsed-time estimates. E2B paused compute is not charged; Boat stopped runtime is unbilled. Boat snapshot retention (including automatic retention for 14 days) is separate from runtime accounting, as is any separately purchased storage.
+
+This accounting checkpoint does not complete Phase 2. Scoped provider inventory reconciliation and inventory alerts, storage accounting, recovery of legacy unrecorded Cloud Agent allocations, and Phase 3 harness/preview QA remain follow-up work. Host viewer activity is not supervised by this Computer action-token integration.
+
+Metering alerts are emitted once per sweep for each running lease whose last meter time is older than 15 minutes. Meter tick, idle-stop, pre-delete stop, and cleanup failures also emit alerts. Alert context is restricted to lease, environment, Computer, workspace, provider, and redacted reason fields; Sentry extras contain only identifiers.
+
+### Isolated Computer preview QA
+
+The internal Preview seed retains the free Personal workspace and adds a separate
+`Computer QA` workspace for the configured sandbox identity. Its workspace account
+has $5 of synthetic included credit, no Stripe customer/subscription, and no
+automatic top-ups. Re-seeding never restores spent credit or changes an existing
+fixture's plan, balance, holds or membership. The seed refuses non-Preview backends.
+This is test ledger credit, not a payment or free provider compute.
+
+Enable `OVERLAY_FEATURE_COMPUTERS=1` only on the feature's Preview branch, reusing
+the shared Preview Boat credential. Keep production and other Preview branches
+unchanged. Test free admission in Personal and funded lifecycle in Computer QA;
+allocate at most one small disposable Computer, then stop and delete that resource.
+Record its ID, provider reference and operation timestamps for cost reconciliation.
+Preview registers no Convex crons: the four-minute provider fence is not proof of
+Overlay's ten-minute idle supervisor. Scheduled metering/idle acceptance requires
+separate controlled supervision; do not claim it from a successful desktop open.
 
 V2 remote tasks bind reservations to the logical run through `remoteRunId`.
 Expired/stale-hold policy preserves a task's hold while execution or terminal

@@ -99,9 +99,12 @@ const agentComputer: Computer = {
 const computerSectionProps = {
   size: 'default' as const,
   onSizeChange: () => undefined,
+  currentUserId: 'user_1',
+  agentName: 'Scout',
   openBusy: false,
   lifecycleBusy: null,
   onOpenDesktop: () => undefined,
+  onControl: () => undefined,
   onTogglePower: () => undefined,
   onDelete: () => undefined,
 }
@@ -129,7 +132,20 @@ test('computer section shows the provisioned desktop and locks the size', () => 
   assert.match(markup, /Scout computer/)
   assert.match(markup, /ready · large/)
   assert.match(markup, /Open desktop/)
+  assert.match(markup, /Take control/)
   assert.doesNotMatch(markup, /aria-label="Computer size"/)
+})
+
+test('computer section shows hand back and takeover status for the current user', () => {
+  const markup = renderToStaticMarkup(
+    <AgentComputerSection
+      enabled
+      computer={{ ...agentComputer, controlledByUserId: 'user_1', controlTakenAt: 2 }}
+      {...computerSectionProps}
+    />,
+  )
+  assert.match(markup, /Hand back/)
+  assert.match(markup, /You have control\. Scout is paused\./)
 })
 
 test('computer section warns that disabling a provisioned computer deletes it', () => {

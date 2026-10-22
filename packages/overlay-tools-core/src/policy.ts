@@ -21,6 +21,10 @@ export const COMPUTER_TOOL_IDS = [
   'computer_write_file',
   'computer_list_files',
   'computer_open_url',
+  'computer_screenshot',
+  'computer_input',
+  'computer_browser',
+  'computer_terminal',
 ] as const
 
 export const OVERLAY_TOOL_IDS = [
@@ -68,6 +72,21 @@ export const OVERLAY_TOOL_IDS = [
 ] as const
 
 const OVERLAY_TOOL_ID_SET = new Set<string>(OVERLAY_TOOL_IDS)
+
+export function computerActionRequiresApproval(toolName: string, input: unknown): boolean {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return false
+  const action = (input as { action?: unknown }).action
+  if (toolName === 'computer_input') {
+    return action === 'type' || action === 'key'
+      || (['click', 'double_click', 'right_click'].includes(String(action))
+        && (input as { confirm?: unknown }).confirm === true)
+  }
+  if (toolName === 'computer_browser') {
+    return action === 'type' || action === 'press'
+      || (action === 'click' && (input as { confirm?: unknown }).confirm === true)
+  }
+  return false
+}
 
 export function overlayToolIdSet(): ReadonlySet<string> {
   return OVERLAY_TOOL_ID_SET

@@ -331,7 +331,7 @@ function ComputerCardActions({ status, canTogglePower, canDeleteComputer, powerL
   canDeleteComputer: boolean
   powerLabel: string
   openBusy: boolean
-  lifecycleBusy: 'start' | 'stop' | 'delete' | null
+  lifecycleBusy: 'start' | 'stop' | 'delete' | 'control' | null
   onOpenDesktop(): void
   onTogglePower(): void
   onDelete(): void
@@ -358,24 +358,42 @@ function ComputerCardActions({ status, canTogglePower, canDeleteComputer, powerL
   )
 }
 
-function ProvisionedComputerCard({ computer, openBusy, lifecycleBusy, onOpenDesktop, onTogglePower, onDelete }: {
+function ProvisionedComputerCard({ computer, currentUserId, agentName, openBusy, lifecycleBusy, onOpenDesktop, onControl, onTogglePower, onDelete }: {
   computer: Computer
+  currentUserId?: string
+  agentName: string
   openBusy: boolean
-  lifecycleBusy: 'start' | 'stop' | 'delete' | null
+  lifecycleBusy: 'start' | 'stop' | 'delete' | 'control' | null
   onOpenDesktop(): void
+  onControl(): void
   onTogglePower(): void
   onDelete(): void
 }) {
   const canTogglePower = computer.status === 'ready' || computer.status === 'stopped'
   const canDeleteComputer = canTogglePower || computer.status === 'error'
   const powerLabel = lifecycleBusy === 'stop' ? 'Stopping…' : lifecycleBusy === 'start' ? 'Starting…' : computer.status === 'ready' ? 'Stop' : 'Start'
+  const controlledByCurrentUser = Boolean(computer.controlledByUserId && computer.controlledByUserId === currentUserId)
+  const statusLine = computer.controlledByUserId
+    ? controlledByCurrentUser
+      ? `You have control. ${agentName} is paused.`
+      : 'Someone else has control'
+    : isComputerRecentlyActive(computer.lastActiveAt)
+      ? `${agentName} is using it`
+      : null
   return (
     <div className="flex items-center justify-between gap-3 rounded-xl border border-(--border) p-3">
       <div className="min-w-0">
         <p className="flex items-center gap-1.5 text-xs font-medium text-(--foreground)"><Monitor size={13} className="shrink-0 text-(--muted)" />{computer.name ?? 'Computer'}</p>
-        <p className="mt-0.5 text-[11px] leading-4 text-(--muted)">{computer.status} · {computer.size} · size is fixed once provisioned</p>
+        <p className="mt-0.5 flex items-center gap-1.5 text-[11px] leading-4 text-(--muted)">
+          {statusLine ? <><span className={`h-1.5 w-1.5 rounded-full ${computer.controlledByUserId ? 'bg-blue-500' : 'bg-green-500'}`} />{statusLine}</> : `${computer.status} · ${computer.size} · size is fixed once provisioned`}
+        </p>
       </div>
       <div className="flex shrink-0 items-center gap-1.5">
+        {(computer.controlledByUserId || computer.status === 'ready') ? (
+          <Button variant="secondary" size="sm" onClick={onControl} disabled={lifecycleBusy !== null || openBusy}>
+            {lifecycleBusy === 'control' ? (computer.controlledByUserId ? 'Handing back…' : 'Taking control…') : computer.controlledByUserId ? 'Hand back' : 'Take control'}
+          </Button>
+        ) : null}
         <ComputerCardActions
           status={computer.status}
           canTogglePower={canTogglePower}
@@ -392,23 +410,30 @@ function ProvisionedComputerCard({ computer, openBusy, lifecycleBusy, onOpenDesk
   )
 }
 
+function isComputerRecentlyActive(lastActiveAt: number | null): boolean {
+  return lastActiveAt !== null && Date.now() - lastActiveAt < 120_000
+}
+
 /**
  * Accessory rendered under the Computer tool-group row: the size picker while
  * unprovisioned, the provisioned machine card with lifecycle controls, and the
  * destructive-save warning. The group's own ToggleRow is the on/off control —
  * enabled means "this agent gets a computer".
  */
-export function AgentComputerSection({ enabled, size, onSizeChange, computer, openBusy, lifecycleBusy, onOpenDesktop, onTogglePower, onDelete, loadError, provisionError, onRetryLoad, disabled }: {
+export function AgentComputerSection({ enabled, size, onSizeChange, computer, currentUserId, agentName, openBusy, lifecycleBusy, onOpenDesktop, onControl, onTogglePower, onDelete, loadError, provisionError, onRetryLoad, disabled }: {
   enabled: boolean
   size: ComputerSize
   onSizeChange(next: ComputerSize): void
   computer: Computer | null
+  currentUserId?: string
+  agentName: string
   loadError: string | null
   provisionError: string | null
   onRetryLoad(): void
   openBusy: boolean
-  lifecycleBusy: 'start' | 'stop' | 'delete' | null
+  lifecycleBusy: 'start' | 'stop' | 'delete' | 'control' | null
   onOpenDesktop(): void
+  onControl(): void
   onTogglePower(): void
   onDelete(): void
   disabled?: boolean
@@ -420,9 +445,12 @@ export function AgentComputerSection({ enabled, size, onSizeChange, computer, op
       {enabled && computer ? (
         <ProvisionedComputerCard
           computer={computer}
+          currentUserId={currentUserId}
+          agentName={agentName}
           openBusy={openBusy}
           lifecycleBusy={lifecycleBusy}
           onOpenDesktop={onOpenDesktop}
+          onControl={onControl}
           onTogglePower={onTogglePower}
           onDelete={onDelete}
         />

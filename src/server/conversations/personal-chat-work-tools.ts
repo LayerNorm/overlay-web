@@ -9,6 +9,51 @@ import type {
 import { prepareActTooling, preloadActExternalToolTasks } from '@/server/app-api/v1/conversations/act/tooling'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 
+type PersonalChatWorkToolOutputMapper = (args: {
+  toolCallId: string
+  input: unknown
+  output: unknown
+}) => unknown | Promise<unknown>
+
+function mapOutputBytes(value: unknown, mapBytes: (bytes: Uint8Array) => unknown): unknown {
+  if (value instanceof Uint8Array) return mapBytes(value)
+  if (Array.isArray(value)) return value.map((entry) => mapOutputBytes(entry, mapBytes))
+  if (!value || typeof value !== 'object') return value
+  const prototype = Object.getPrototypeOf(value)
+  if (prototype !== Object.prototype && prototype !== null) return value
+  return Object.fromEntries(
+    Object.entries(value).map(([key, entry]) => [key, mapOutputBytes(entry, mapBytes)]),
+  )
+}
+
+function toBase64(bytes: Uint8Array): string {
+  return Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).toString('base64')
+}
+
+export async function executePersonalChatWorkToolResult(options: {
+  execute: () => Promise<unknown>
+  input: unknown
+  toolCallId: string
+  toModelOutput?: PersonalChatWorkToolOutputMapper
+}): Promise<unknown> {
+  const output = await options.execute()
+  if (!options.toModelOutput) return output
+
+  const overlayModelOutput = await options.toModelOutput({
+    toolCallId: options.toolCallId,
+    input: options.input,
+    output,
+  })
+
+  return {
+    overlayModelOutput: mapOutputBytes(overlayModelOutput, toBase64),
+    display: mapOutputBytes(output, (bytes) => ({
+      omitted: 'image',
+      bytes: bytes.byteLength,
+    })),
+  }
+}
+
 /**
  * JSON Schema keywords the AI Gateway's strict tool-schema validation rejects.
  * `format` is the observed failure: several overlay/MCP tool schemas annotate
@@ -53,6 +98,7 @@ async function reconstructTooling(
     accessToken: undefined,
     automationExecution: context.automationExecution === true,
     automationId: context.automationId,
+    computerApprovalContext: context.automationExecution === true ? 'automation' : 'work',
     automationMode: false,
     forwardCookie: undefined,
     idempotencyKey,
@@ -92,7 +138,7 @@ export async function executePersonalChatWorkTool(
   if (!definition || typeof definition.execute !== 'function') {
     throw new Error(`Tool ${toolName} is no longer available for this durable run.`)
   }
-  return await definition.execute(input as never, {
+  const executionOptions = {
     toolCallId: options.toolCallId,
     messages: options.messages,
     context: tooling.toolsContext?.[toolName],
@@ -100,7 +146,19 @@ export async function executePersonalChatWorkTool(
     automationRunId,
     logicalStepId,
     idempotencyKey,
-  } as never)
+  }
+  return await executePersonalChatWorkToolResult({
+    execute: () => definition.execute!(input as never, executionOptions as never),
+    input,
+    toolCallId: options.toolCallId,
+    toModelOutput: typeof definition.toModelOutput === 'function'
+      ? async ({ toolCallId, input: toolInput, output }) => await definition.toModelOutput!({
+          toolCallId,
+          input: toolInput as never,
+          output: output as never,
+        } as never)
+      : undefined,
+  })
 }
 
 export async function personalChatWorkToolNeedsApproval(

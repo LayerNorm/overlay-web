@@ -750,7 +750,10 @@ export async function startRemoteWorkspaceAgentTurn(args: {
     // still read online for a heartbeat window. wake() is a no-op when the
     // machine is running with a live host.
     if (started.lifecycleVersion !== 2 && args.invocation.remoteTarget.environmentKind === 'overlay_cloud') {
-      wakeCloudAgentAfterResponse({ workspaceId: args.workspaceId, environmentId: args.invocation.remoteTarget.environmentId })
+      wakeCloudAgentAfterResponse({
+        actorUserId: args.actorUserId, workspaceId: args.workspaceId, agentId: args.invocation.agentId,
+        environmentId: args.invocation.remoteTarget.environmentId,
+      })
     }
     return started
   } catch (error) {

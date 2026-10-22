@@ -9,7 +9,7 @@ import { createCloudAgentMachineService } from './create-cloud-agent-machine-ser
  * response is sent. The queued turn waits for the host, which claims it on its
  * first poll. A failed wake leaves the turn to the normal queue expiry.
  */
-export function wakeCloudAgentAfterResponse(args: { workspaceId: string; environmentId: string }) {
+export function wakeCloudAgentAfterResponse(args: { actorUserId: string; workspaceId: string; agentId: string; environmentId: string }) {
   const wake = async () => {
     const service = createCloudAgentMachineService()
     const outcome = await service.wake(args)

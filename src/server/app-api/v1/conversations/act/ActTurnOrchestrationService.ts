@@ -576,6 +576,7 @@ export async function executeActTurn(
 	        automationExecution: automationExecution === true,
 	        automationMode: automationMode === true,
 	        automationId,
+	        computerApprovalContext: useWorkRunner ? 'work' : undefined,
 	        baseUrl: getInternalApiBaseUrl(request),
 	        conversationId: cid,
         entitlements: runtimeEntitlements,

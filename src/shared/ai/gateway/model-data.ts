@@ -83,6 +83,7 @@ const CURATED_FALLBACK_CHAT_MODELS: ChatModel[] = [
   { id: 'deepseek/deepseek-v4-pro', name: 'DeepSeek V4 Pro', provider: 'deepseek', intelligence: 0, cost: 2, speedTier: 2, supportsVision: false, supportsReasoning: true, reasoningLevels: REASONING_DEEPSEEK, supportsSearch: false, supportsZeroDataRetention: false },
   { id: 'deepseek/deepseek-v4-flash-0731', name: 'DeepSeek V4 Flash', provider: 'deepseek', intelligence: 0, cost: 1, speedTier: 3, supportsVision: false, supportsReasoning: true, reasoningLevels: REASONING_DEEPSEEK, supportsSearch: false, supportsZeroDataRetention: false },
   { id: 'minimax/minimax-m2.7', name: 'MiniMax M2.7', provider: 'minimax', intelligence: 0, cost: 1, speedTier: 2, supportsVision: false, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false },
+  { id: 'minimax/minimax-m3.1-flash', name: 'MiniMax M3.1 Flash', provider: 'minimax', intelligence: 0, cost: 0, speedTier: 3, supportsVision: true, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false },
   { id: 'moonshotai/kimi-k3', name: 'Kimi K3', provider: 'moonshotai', intelligence: 0, cost: 3, speedTier: 1, supportsVision: true, supportsReasoning: true, reasoningLevels: REASONING_KIMI_K3, supportsSearch: false, supportsZeroDataRetention: false },
   { id: 'moonshotai/kimi-k2.6', name: 'Kimi K2.6', provider: 'moonshotai', intelligence: 0, cost: 1, speedTier: 2, supportsVision: false, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false },
   { id: 'z-ai/glm-5.1', name: 'GLM 5.1', provider: 'z-ai', intelligence: 0, cost: 1, speedTier: 2, supportsVision: false, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false },
@@ -105,6 +106,7 @@ export const DEFAULT_CURATED_CHAT_MODEL_IDS = [
   'deepseek/deepseek-v4-pro',
   'deepseek/deepseek-v4-flash-0731',
   'minimax/minimax-m2.7',
+  'minimax/minimax-m3.1-flash',
   'moonshotai/kimi-k3',
   'moonshotai/kimi-k2.6',
   'z-ai/glm-5.1',
@@ -153,6 +155,7 @@ export function registerGatewayCatalogModels(models: readonly GatewayCatalogMode
     if (curated) {
       chatModel.supportsVision = chatModel.supportsVision || curated.supportsVision
       chatModel.supportsReasoning = chatModel.supportsReasoning || curated.supportsReasoning
+      chatModel.speedTier = curated.speedTier
       chatModel.reasoningLevels = curated.reasoningLevels
       chatModel.supportsSearch = chatModel.supportsSearch || curated.supportsSearch
       if (chatModel.cost === 1 && curated.cost !== 1) chatModel.cost = curated.cost
@@ -209,11 +212,7 @@ function rebuildAvailableModels(
   gatewayCatalogRevision += 1
 }
 
-/**
- * Highest quality first — used when picking a default Act model from a multi-model
- * selection and when synthesizing a shared prior thread for newly added chat models.
- */
-export const CHAT_MODEL_QUALITY_PRIORITY: string[] = [
+const ACT_MODEL_FALLBACK_PRIORITY: string[] = [
   'anthropic/claude-opus-4.7',
   'gemini-3.1-pro-preview',
   'gpt-5.4',
@@ -237,10 +236,20 @@ export const CHAT_MODEL_QUALITY_PRIORITY: string[] = [
   FREE_TIER_AUTO_MODEL_ID,
 ]
 
+/**
+ * Highest quality first — used for model sorting and synthesizing a shared prior
+ * thread for newly added chat models.
+ */
+export const CHAT_MODEL_QUALITY_PRIORITY: string[] = [
+  ...ACT_MODEL_FALLBACK_PRIORITY.slice(0, -1),
+  'minimax/minimax-m3.1-flash',
+  FREE_TIER_AUTO_MODEL_ID,
+]
+
 export function pickBestModelForAct(selectedAskModelIds: string[]): string {
   if (selectedAskModelIds.length === 1) return selectedAskModelIds[0]
   const sel = new Set(selectedAskModelIds)
-  for (const id of CHAT_MODEL_QUALITY_PRIORITY) {
+  for (const id of ACT_MODEL_FALLBACK_PRIORITY) {
     if (sel.has(id)) return id
   }
   const first = selectedAskModelIds.find((id) => AVAILABLE_MODELS.some((m) => m.id === id))
