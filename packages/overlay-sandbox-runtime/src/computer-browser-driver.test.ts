@@ -199,21 +199,26 @@ test('browser driver inspects risky click refs and requires confirmation', async
         const coordinateInspectionError = message.method === 'Runtime.evaluate'
           && expression.includes('elementFromPoint')
           && expression.includes('const clientX = 404')
+        const coordinateInspectionValue = () => {
+          if (expression.includes('const clientX = 505')) return { uninspectable: true, label: 'iframe' }
+          if (expression.includes('const clientX = 777')) return { outsideViewport: true }
+          if (expression.includes('const clientX = 303')) return { interactive: false }
+          if (expression.includes('const clientX = 111')) {
+            return { role: 'textbox', tag: 'input', type: 'text', name: 'Customer name', isSubmit: false }
+          }
+          if (expression.includes('const clientX = 202')) {
+            return { role: 'button', tag: 'button', type: 'submit', name: 'Submit', isSubmit: true }
+          }
+          if (
+            expression.includes('const clientX = 606')
+            && expression.includes("document.visibilityState === 'hidden'")
+          ) {
+            return { outsideViewport: true }
+          }
+          return { role: 'button', tag: 'button', type: '', name: 'Post', isSubmit: false }
+        }
         const value = message.method === 'Runtime.evaluate' && expression.includes('elementFromPoint')
-          ? expression.includes('const clientX = 505')
-            ? { type: 'object', value: { uninspectable: true, label: 'iframe' } }
-            : expression.includes('const clientX = 777')
-              ? { type: 'object', value: { outsideViewport: true } }
-              : {
-                  type: 'object',
-                  value: {
-                    role: 'button',
-                    tag: 'button',
-                    type: '',
-                    name: 'Post',
-                    isSubmit: false,
-                  },
-                }
+          ? { type: 'object', value: coordinateInspectionValue() }
           : message.method === 'Runtime.evaluate' && expression.includes('querySelectorAll')
             ? {
                 type: 'object',
@@ -339,6 +344,7 @@ test('browser driver inspects risky click refs and requires confirmation', async
       error?: { code?: string; message?: string; missing?: string[] }
       label?: string
       message?: string
+      reason?: string
       url?: string
       title?: string
       text?: string
@@ -448,19 +454,37 @@ test('browser driver inspects risky click refs and requires confirmation', async
   assert.deepEqual(confirmedCoordinateClick.payload, { success: true })
   assert.equal(physicalClickCount(), 1)
 
-  const evaluationsBeforeNonChromiumClick = received.filter((message) => message.method === 'Runtime.evaluate').length
-  const nonChromiumClick = await run(
-    'click',
-    { x: 10, y: 20 },
-    { OVERLAY_XDOTOOL_ACTIVE_CLASS: 'Firefox' },
-  )
-  assert.equal(nonChromiumClick.result.status, 0)
-  assert.deepEqual(nonChromiumClick.payload, { success: true })
+  const evaluationsBeforeNoBrowserClick = received.filter((message) => message.method === 'Runtime.evaluate').length
+  rmSync(readySignal)
+  const noBrowserClick = await run('click', { x: 10, y: 20 })
+  assert.equal(noBrowserClick.result.status, 0)
+  assert.deepEqual(noBrowserClick.payload, { success: true })
   assert.equal(physicalClickCount(), 2)
+  writeFileSync(readySignal, 'ready')
   assert.equal(
     received.filter((message) => message.method === 'Runtime.evaluate').length,
-    evaluationsBeforeNonChromiumClick,
+    evaluationsBeforeNoBrowserClick,
   )
+
+  const nonInteractiveClick = await run('click', { x: 303, y: 20 })
+  assert.equal(nonInteractiveClick.result.status, 0)
+  assert.deepEqual(nonInteractiveClick.payload, { success: true })
+  assert.equal(physicalClickCount(), 3)
+
+  const textFieldClick = await run('click', { x: 111, y: 20 })
+  assert.equal(textFieldClick.result.status, 0)
+  assert.deepEqual(textFieldClick.payload, { success: true })
+  assert.equal(physicalClickCount(), 4)
+
+  const submitClick = await run('click', { x: 202, y: 20 })
+  assert.equal(submitClick.result.status, 0)
+  assert.deepEqual(submitClick.payload, {
+    success: false,
+    error: 'approval_required',
+    label: 'Submit',
+    message: 'This click may post, send, buy, or delete something. Call computer_input click again with confirm: true to ask the user for approval.',
+  })
+  assert.equal(physicalClickCount(), 4)
 
   const iframeClick = await run('click', { x: 505, y: 20 })
   assert.equal(iframeClick.result.status, 0)
@@ -470,12 +494,21 @@ test('browser driver inspects risky click refs and requires confirmation', async
     label: 'iframe',
     message: 'This click may post, send, buy, or delete something. Call computer_input click again with confirm: true to ask the user for approval.',
   })
-  assert.equal(physicalClickCount(), 2)
+  assert.equal(physicalClickCount(), 4)
 
   const outsideViewportClick = await run('click', { x: 777, y: 20 })
   assert.equal(outsideViewportClick.result.status, 0)
   assert.deepEqual(outsideViewportClick.payload, { success: true })
-  assert.equal(physicalClickCount(), 3)
+  assert.equal(physicalClickCount(), 5)
+
+  const hiddenDocumentClick = await run('click', { x: 606, y: 20 })
+  assert.equal(hiddenDocumentClick.result.status, 0)
+  assert.deepEqual(hiddenDocumentClick.payload, { success: true })
+  assert.equal(physicalClickCount(), 6)
+  const hiddenDocumentExpression = received
+    .map((message) => message.params?.expression ?? '')
+    .find((expression) => expression.includes('const clientX = 606')) ?? ''
+  assert.ok(hiddenDocumentExpression.includes("document.visibilityState === 'hidden'"))
 
   const inspectionErrorClick = await run('click', { x: 404, y: 20 })
   assert.equal(inspectionErrorClick.result.status, 0)
@@ -484,22 +517,10 @@ test('browser driver inspects risky click refs and requires confirmation', async
     error: 'approval_required',
     label: 'Unknown browser control',
     message: 'This click may post, send, buy, or delete something. Call computer_input click again with confirm: true to ask the user for approval.',
+    reason: 'desktop_driver_failed',
   })
-  assert.equal(physicalClickCount(), 3)
-
-  const activeWindowInspectionError = await run(
-    'click',
-    { x: 10, y: 20 },
-    { OVERLAY_XDOTOOL_ACTIVE_CLASS: 'failure' },
-  )
-  assert.equal(activeWindowInspectionError.result.status, 0)
-  assert.deepEqual(activeWindowInspectionError.payload, {
-    success: false,
-    error: 'approval_required',
-    label: 'Unknown browser control',
-    message: 'This click may post, send, buy, or delete something. Call computer_input click again with confirm: true to ask the user for approval.',
-  })
-  assert.equal(physicalClickCount(), 3)
+  assert.equal(physicalClickCount(), 6)
+  assert.doesNotMatch(JSON.stringify(inspectionErrorClick.payload), /https?:\/\/|ws:\/\//)
 
   const evaluations = received.filter((message) => message.method === 'Runtime.evaluate')
   const refExpressions = evaluations
@@ -511,6 +532,7 @@ test('browser driver inspects risky click refs and requires confirmation', async
   assert.ok(refExpressions.some((expression) => expression.includes('overlay-1') && expression.includes('element.click()')))
   assert.ok(refExpressions.some((expression) => expression.includes('overlay-2') && expression.includes('element.click()')))
   assert.equal(received.every((message) => message.method !== 'Target.createTarget'), true)
+  assert.doesNotMatch(readFileSync(xdotoolLog, 'utf8'), /getwindowclassname/)
 
   const profile = join(directory, '.config', 'overlay-browser')
   mkdirSync(profile, { recursive: true })

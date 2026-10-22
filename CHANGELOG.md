@@ -7,6 +7,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 - Work approval prompts now appear even if the live update connection stalls.
 - Work approval prompts now appear during the first turn of a new chat.
 - Require confirmation for risky coordinate clicks on browser controls.
+- Fix ordinary clicks in the browser being asked for approval.
 - Show Computer control progress only for control actions, not start, stop or delete.
 - Alert on delayed sandbox metering and failed stop or cleanup operations.
 - Bring every other marketing page onto the home page design: pricing, download, manifesto, the blog/changelog/self-hosting placeholders and all nine legal pages now share one `StaticMarketingShell` (landing nav, framed column, footer) with a common page head. Legal pages get a sticky table of contents, pricing's FAQ uses the shared accordion, and `/download` regains its nav and footer. The old marketing navbar, button, reveal animation and serif layout helper are removed.

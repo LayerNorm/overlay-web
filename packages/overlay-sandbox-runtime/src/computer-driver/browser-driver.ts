@@ -271,6 +271,7 @@ def coordinate_click_expression(x, y):
         "(() => { const scale = window.devicePixelRatio || 1; "
         "const sideBorder = (window.outerWidth - window.innerWidth) / 2; "
         "const topChrome = window.outerHeight - window.innerHeight - sideBorder; "
+        "if (document.visibilityState === 'hidden') return { outsideViewport: true }; "
         "const clientX = " + str(x) + " / scale - window.screenX - sideBorder; "
         "const clientY = " + str(y) + " / scale - window.screenY - topChrome; "
         "if (clientX < 0 || clientY < 0 || clientX >= window.innerWidth || clientY >= window.innerHeight) "
@@ -285,8 +286,8 @@ def coordinate_click_expression(x, y):
     )
 
 
-def coordinate_click_approval_result(label):
-    return {
+def coordinate_click_approval_result(label, reason=None):
+    result = {
         "success": False,
         "error": "approval_required",
         "label": str(label or "")[:80],
@@ -295,24 +296,17 @@ def coordinate_click_approval_result(label):
             "with confirm: true to ask the user for approval."
         ),
     }
+    if reason is not None:
+        result["reason"] = reason
+    return result
 
 
-def coordinate_click_approval(xdotool, x, y):
+def coordinate_click_approval(x, y):
     try:
-        active_class = run_xdotool(xdotool, "getactivewindow", "getwindowclassname")
+        version = browser_version()
     except Exception:
-        try:
-            if browser_version() is None:
-                return None
-        except Exception:
-            return None
-        return coordinate_click_approval_result("Unknown browser control")
-    if "chrom" not in active_class.strip().lower():
         return None
-    try:
-        if browser_version() is None:
-            return None
-    except Exception:
+    if version is None:
         return None
     try:
         target = active_page_target()
@@ -328,8 +322,9 @@ def coordinate_click_approval(xdotool, x, y):
         if info.get("isSubmit") is True or RISKY_CLICK_NAME.search(name) is not None:
             return coordinate_click_approval_result(name)
         return None
-    except Exception:
-        return coordinate_click_approval_result("Unknown browser control")
+    except Exception as error:
+        reason = error.code if isinstance(error, DriverError) else type(error).__name__
+        return coordinate_click_approval_result("Unknown browser control", reason)
 
 
 def dispatch_browser_key(connection, key):
