@@ -114,6 +114,24 @@ function roomHeaderTitle(guided: boolean, title: string) {
   return guided ? 'Overlay' : title
 }
 
+function roomHeaderPresentation({
+  guided,
+  headerAgent,
+  title,
+  conversationTitle,
+}: {
+  guided: boolean
+  headerAgent: ReturnType<typeof useDirectMessageRoom>['vm']['headerAgent']
+  title: string
+  conversationTitle: string | null | undefined
+}) {
+  const activeTitle = headerAgent ? conversationTitle || title : title
+  return {
+    title: roomHeaderTitle(guided, activeTitle),
+    breadcrumbs: headerAgent ? [{ label: headerAgent.name }] : undefined,
+  }
+}
+
 function roomPanelIsOpen(roomPanel: string | null, hasThreadRoot: boolean) {
   return roomPanel === 'people' || roomPanel === 'pinned'
     || (roomPanel === 'thread' && hasThreadRoot)
@@ -255,6 +273,13 @@ export function DirectMessageExperience({
         setThreadRootId: thread.setThreadRootId,
       })
 
+  const header = roomHeaderPresentation({
+    guided: Boolean(guided),
+    headerAgent: vm.headerAgent,
+    title: vm.title,
+    conversationTitle: transcript.conversationTitle,
+  })
+
   return (
     <QuestionnaireComposerProvider value={composer.input} readDraft={() => composer.inputRef.current} subscribe={composer.subscribeToInput} disabled={shouldDisableQuestionnaireSuggestions(showcase, Boolean(guided), Boolean(transcript.surfacePlatform), isRoomAgentResponding(transcript.messages, room.agentResponding))} onChange={(value) => { composer.setInput(value); composer.onComposerInput(value); composer.composerRef.current?.focus() }}>
       <LinkOpenInterceptor
@@ -287,8 +312,8 @@ export function DirectMessageExperience({
         >
           {composer.isDragging && <ChatDropOverlay />}
           <AppScreenHeader
-            title={roomHeaderTitle(Boolean(guided), vm.headerAgent ? transcript.conversationTitle || vm.title : vm.title)}
-            breadcrumbs={vm.headerAgent ? [{ label: vm.headerAgent.name }] : undefined}
+            title={header.title}
+            breadcrumbs={header.breadcrumbs}
             subtitle={guided ? 'Your chief of staff' : roster.participants.length > 2 ? `${roster.participants.length} people` : vm.online > 0 ? 'Online' : undefined}
             leading={(
               <RoomHeaderLeading
