@@ -1,4 +1,4 @@
-import { createHook } from 'workflow'
+import { requestWorkspaceAgentApproval, type WorkspaceAgentApprovalInput } from '../../src/server/workflows/workspace-agent-approval'
 import {
   runWorkspaceAgentTurnLoop,
   type WorkspaceAgentTurnLoopDependencies,
@@ -57,6 +57,21 @@ export async function finalize(args: Parameters<Dependencies['finalize']>[0]) {
   return { completed: true }
 }
 
+export async function publishApproval(prepared: Prepared, input: WorkspaceAgentApprovalInput) {
+  'use step'
+  await audit(prepared, 'approval:published')
+  return {
+    status: 'waiting_for_approval' as const,
+    approval: { token: input.token, requestedAt: Date.now(), requests: input.requests },
+  }
+}
+
+export async function resumeApproval(prepared: Prepared) {
+  'use step'
+  await audit(prepared, 'approval:resumed')
+  return { status: 'running' as const }
+}
+
 export async function nativeAgentLoopFixture(input: { id: string; auditPath: string; mode: 'ask' | 'auto' }) {
   'use workflow'
   const prepared = {
@@ -80,11 +95,20 @@ export async function nativeAgentLoopFixture(input: { id: string; auditPath: str
       executeTool: execute,
       persistProgress: persist,
       finalize,
-      requestApproval: async () => {
-        using hook = createHook<{ approved: boolean }>({ token: `native-loop:${input.id}` })
-        if (await hook.getConflict()) throw new Error('Duplicate test hook')
-        return await hook
-      },
+      requestApproval: async ({ toolCall }) => await requestWorkspaceAgentApproval({
+        actorUserId: 'fixture-actor',
+        runId: input.id,
+        token: `native-loop:${input.id}`,
+        requests: [{
+          approvalId: `${input.id}:${toolCall.toolCallId}`,
+          toolCallId: toolCall.toolCallId,
+          toolName: toolCall.toolName,
+          input: toolCall.input,
+        }],
+      }, {
+        publish: async args => await publishApproval(prepared, args),
+        resume: async () => await resumeApproval(prepared),
+      }),
     },
   })
   return { content: result.content, usage }

@@ -1,10 +1,9 @@
-import { createHook, FatalError, getWorkflowMetadata, sleep } from 'workflow'
+import { FatalError, getWorkflowMetadata } from 'workflow'
 import {
   attachWorkspaceAgentRun,
   beginWorkspaceAgentModelCall,
   callWorkspaceAgentModel,
   completeWorkspaceAgentRun,
-  denyExpiredWorkspaceAgentApproval,
   executeWorkspaceAgentTool,
   failWorkspaceAgentRun,
   finalizeWorkspaceAgentTurn,
@@ -16,6 +15,7 @@ import {
   waitForWorkspaceAgentApproval,
 } from '@/server/agents/workspace-agent-turn-lifecycle'
 import { runWorkspaceAgentTurnLoop, type WorkspaceAgentLoopUsage } from '@/server/agents/workspace-agent-turn-loop'
+import { requestWorkspaceAgentApproval } from './workspace-agent-approval'
 
 /**
  * Reason code and retryability for a failed turn.
@@ -110,51 +110,17 @@ export async function workspaceAgentTurnWorkflow(input: WorkspaceAgentTurnInput)
         finalize: finalizeWorkspaceAgentTurn,
         requestApproval: async ({ toolCall, cycle }) => {
           const token = `native-agent-approval:${input.runId}:${cycle}`
-          const hook = createHook<{ approved: boolean; reason?: string }>({ token })
-          try {
-            if (await hook.getConflict()) throw new FatalError('Approval token is already in use.')
-            const registration = await Promise.race([
-              hook.then(() => ({ resumedEarly: true as const })),
-              sleep('1s').then(() => ({ registered: true as const })),
-            ])
-            if ('resumedEarly' in registration) {
-              throw new FatalError('Approval arrived before the request was published.')
-            }
-            const pending = await waitForWorkspaceAgentApproval({
-              actorUserId: input.actorUserId,
-              runId: input.runId,
-              token,
-              requests: [{
-                approvalId: `${input.runId}:${toolCall.toolCallId}`,
-                toolCallId: toolCall.toolCallId,
-                toolName: toolCall.toolName,
-                input: toolCall.input,
-              }],
-            })
-            if (pending?.status !== 'waiting_for_approval' || pending.approval?.token !== token) {
-              throw new FatalError('The approval request could not be published.')
-            }
-            const outcome = await Promise.race([
-              hook.then(value => ({ value })),
-              sleep('15m').then(() => ({ timedOut: true as const })),
-            ])
-            const decision = 'timedOut' in outcome
-              ? (await denyExpiredWorkspaceAgentApproval({ token }), await hook)
-              : outcome.value
-            if (!decision || typeof decision.approved !== 'boolean') {
-              throw new FatalError('Approval response was malformed.')
-            }
-            const resumed = await resumeWorkspaceAgentAfterApproval({
-              actorUserId: input.actorUserId,
-              runId: input.runId,
-            })
-            if (resumed?.status !== 'running') {
-              throw new FatalError('The agent run could not resume after approval.')
-            }
-            return decision
-          } finally {
-            hook.dispose()
-          }
+          return await requestWorkspaceAgentApproval({
+            actorUserId: input.actorUserId,
+            runId: input.runId,
+            token,
+            requests: [{
+              approvalId: `${input.runId}:${toolCall.toolCallId}`,
+              toolCallId: toolCall.toolCallId,
+              toolName: toolCall.toolName,
+              input: toolCall.input,
+            }],
+          }, { publish: waitForWorkspaceAgentApproval, resume: resumeWorkspaceAgentAfterApproval })
         },
       },
     })

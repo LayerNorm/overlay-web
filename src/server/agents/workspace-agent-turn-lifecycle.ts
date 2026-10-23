@@ -18,7 +18,6 @@ import {
   releaseWorkspaceAgentReservation as releaseReservation,
 } from './workspace-agent-usage'
 import type { AgentRunApprovalRequest } from '@/shared/agents/agent-run'
-import { resumeHook } from 'workflow/api'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { agentRunService } from '@/server/conversations/http'
 
@@ -92,11 +91,6 @@ export async function waitForWorkspaceAgentApproval(input: {
     leaseExpiresAt: Date.now() + 30 * 60_000,
     approval: { token: input.token, requestedAt: Date.now(), requests: input.requests, title: 'Approval required' },
   })
-}
-
-export async function denyExpiredWorkspaceAgentApproval(input: { token: string }) {
-  'use step'
-  await resumeHook(input.token, { approved: false, reason: 'Approval timed out.' })
 }
 
 export async function resumeWorkspaceAgentAfterApproval(input: { actorUserId: string; runId: string }) {
