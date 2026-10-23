@@ -208,6 +208,7 @@ describe('native agent approval projection', () => {
       approval: {
         token: 'approval-token-a',
         requestedAt: Date.now(),
+        title: 'Approval required',
         requests: [{ approvalId: 'run-a:tool-1', toolCallId: 'tool-1', toolName: 'computer_input', input: { action: 'type' } }],
       },
       runId: seeded.runA,
@@ -243,8 +244,10 @@ describe('native agent approval projection', () => {
     })
     expect(exactA?._id).toBe(seeded.runA)
     expect(exactA?.approval?.token).toBe('approval-token-a')
+    expect(exactA?.approval?.title).toBe('Approval required')
     expect(exactB?._id).toBe(seeded.runB)
     expect(exactB?.approval?.token).toBe('approval-token-b')
+    expect(exactB?.approval?.title).toBeUndefined()
     expect(await convex.query(api.chat.conversations.getLatestAgentRun, {
       conversationId: seeded.otherConversationId,
       agentRunId: seeded.runA,
