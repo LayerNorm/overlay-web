@@ -284,7 +284,7 @@ test('a non-manager cannot archive a creator-only agent they cannot see', async 
 test('adapter-owned permission and effort ids persist on create and update, with bounded nonempty values', async () => {
   const fixture = serviceFor(CREATOR_PRINCIPAL_ID, 'member')
   const created = await fixture.service.create({ actorUserId: 'user-1', workspaceId: WORKSPACE_ID,
-    input: { name: 'Runtime settings', instructions: 'Do the work', modelId: 'byo/claude-code', permissionMode: ' auto ', effort: ' high ' } })
+    input: { name: 'Runtime settings', instructions: 'Do the work', harness: 'claude-code', modelId: 'byo/claude-code', permissionMode: ' auto ', effort: ' high ' } })
   assert.equal(created.permissionMode, 'auto')
   assert.equal(created.effort, 'high')
   const updated = await fixture.service.update({ actorUserId: 'user-1', workspaceId: WORKSPACE_ID, agentId: created.id,
@@ -295,6 +295,40 @@ test('adapter-owned permission and effort ids persist on create and update, with
     input: { permissionMode: ' ' } }), /Permission mode/)
   await assert.rejects(fixture.service.update({ actorUserId: 'user-1', workspaceId: WORKSPACE_ID, agentId: created.id,
     input: { effort: 'x'.repeat(201) } }), /Effort/)
+})
+
+test('Overlay permission mode accepts Ask and Auto and rejects connected-harness values', async () => {
+  const fixture = serviceFor(CREATOR_PRINCIPAL_ID, 'member')
+  const ask = await fixture.service.create({
+    actorUserId: 'user-1',
+    workspaceId: WORKSPACE_ID,
+    input: { name: 'Ask agent', instructions: 'Do the work', modelId: 'test-model', permissionMode: 'ask' },
+  })
+  assert.equal(ask.permissionMode, 'ask')
+  const auto = await fixture.service.create({
+    actorUserId: 'user-1',
+    workspaceId: WORKSPACE_ID,
+    input: { name: 'Auto agent', instructions: 'Do the work', modelId: 'test-model', permissionMode: 'auto' },
+  })
+  assert.equal(auto.permissionMode, 'auto')
+  await assert.rejects(fixture.service.create({
+    actorUserId: 'user-1',
+    workspaceId: WORKSPACE_ID,
+    input: { name: 'Invalid agent', instructions: 'Do the work', modelId: 'test-model', permissionMode: 'bypassPermissions' },
+  }), /Overlay permission mode/)
+  await assert.rejects(fixture.service.update({
+    actorUserId: 'user-1',
+    workspaceId: WORKSPACE_ID,
+    agentId: ask.id,
+    input: { permissionMode: 'acceptEdits' },
+  }), /Overlay permission mode/)
+  const updated = await fixture.service.update({
+    actorUserId: 'user-1',
+    workspaceId: WORKSPACE_ID,
+    agentId: ask.id,
+    input: { permissionMode: 'auto' },
+  })
+  assert.equal(updated.permissionMode, 'auto')
 })
 
 test('create defaults to workspace visibility and passes creator visibility through', async () => {

@@ -9,6 +9,7 @@ import {
   AgentAvatar,
   AgentBehaviorFields,
   AgentMemoriesSection,
+  OverlayAgentPermissionsField,
   AgentTypeSelector,
 
   DangerZone,
@@ -86,6 +87,7 @@ function AgentEditorFormSection({
     avatarColor,
     avatarShape,
     visibility,
+    permissionMode,
     enabledToolGroups,
     advanced,
     dirty,
@@ -98,6 +100,7 @@ function AgentEditorFormSection({
     setAvatarColor,
     setAvatarShape,
     setVisibility,
+    setPermissionMode,
     setAdvanced,
   } = form
   const {
@@ -225,6 +228,13 @@ function AgentEditorFormSection({
               disabled: showcase,
             } : undefined}
           />}
+
+          {agentType === 'overlay' ? (
+            <OverlayAgentPermissionsField
+              value={permissionMode}
+              onChange={(value) => { setPermissionMode(value); markDirty() }}
+            />
+          ) : null}
 
           {agentType === 'overlay' ? (
             <AgentSurfacesField agentName={name} hasAgent={Boolean(agent)} surfaces={surfaces} />

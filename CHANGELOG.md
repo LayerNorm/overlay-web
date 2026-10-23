@@ -4,6 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Add Ask and Auto permission modes for Overlay agents.
 - Work approval prompts now appear even if the live update connection stalls.
 - Work approval prompts now appear during the first turn of a new chat.
 - Require confirmation for risky coordinate clicks on browser controls.

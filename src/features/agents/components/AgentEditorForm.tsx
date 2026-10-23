@@ -5,7 +5,8 @@ import { unstyledButton, unstyledTextarea } from '@overlay/ui/control-reset'
 import { Fragment, useEffect, useMemo, useState, type ComponentProps, type ReactNode } from 'react'
 import Link from 'next/link'
 import { Bot, Check, ChevronDown, Copy, Hash, Laptop, Loader2, Lock, Monitor, Plus, Server, ShieldCheck, Sparkles, Terminal, Trash2, Users } from 'lucide-react'
-import { Button, Input, ListboxSelect, Textarea, Toggle } from '@overlay/ui/primitives'
+import { Button, Input, ListboxSelect, SegmentedControl, Textarea, Toggle } from '@overlay/ui/primitives'
+import { ConfirmDialog } from '@overlay/ui/overlays'
 import type { Computer, ComputerSize, SurfaceBinding, SurfaceChannelOption, SurfaceConnection, WorkspaceAgentCreatureShape } from '@overlay/workspace-contracts'
 import type { AgentEnvironmentResource } from '@overlay/api-client'
 import type { WorkspaceAgentVisibility } from '@overlay/workspace-contracts'
@@ -296,6 +297,60 @@ export function AccessSelector({ value, onChange }: { value: WorkspaceAgentVisib
       </p>
     </div>
   )
+}
+
+export function OverlayAgentPermissionsField({
+  value,
+  onChange,
+}: {
+  value: 'ask' | 'auto'
+  onChange(value: 'ask' | 'auto'): void
+}) {
+  const [confirmAuto, setConfirmAuto] = useState(false)
+  return (
+    <div>
+      <FieldLabel info="Choose whether this agent asks before taking actions or runs them without approval.">Permissions</FieldLabel>
+      <SegmentedControl
+        ariaLabel="Permissions"
+        layout="stretch"
+        value={value}
+        options={[{ value: 'ask', label: 'Ask' }, { value: 'auto', label: 'Auto' }]}
+        onChange={(next) => {
+          const selected = next === 'auto' ? 'auto' : 'ask'
+          const selection = resolveOverlayPermissionModeSelection(value, selected, false)
+          if (selection.confirmationRequired) setConfirmAuto(true)
+          else onChange(selection.mode)
+        }}
+      />
+      <p className="mt-1.5 text-[11px] leading-4 text-(--muted)">
+        {value === 'ask'
+          ? 'Asks before typing, terminal commands, risky clicks and app actions.'
+          : 'Runs everything without asking, including in automations.'}
+      </p>
+      <ConfirmDialog
+        isOpen={confirmAuto}
+        title="Let this agent act without asking?"
+        description="It will type, run commands, click and use apps without your approval, including in automations."
+        confirmLabel="Use Auto"
+        onCancel={() => setConfirmAuto(false)}
+        onConfirm={() => {
+          onChange(resolveOverlayPermissionModeSelection(value, 'auto', true).mode)
+          setConfirmAuto(false)
+        }}
+      />
+    </div>
+  )
+}
+
+export function resolveOverlayPermissionModeSelection(
+  current: 'ask' | 'auto',
+  selected: 'ask' | 'auto',
+  confirmedAuto: boolean,
+): { mode: 'ask' | 'auto'; confirmationRequired: boolean } {
+  if (selected === 'auto' && current !== 'auto' && !confirmedAuto) {
+    return { mode: current, confirmationRequired: true }
+  }
+  return { mode: selected, confirmationRequired: false }
 }
 
 const COMPUTER_SIZE_OPTIONS = [

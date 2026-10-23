@@ -51,6 +51,13 @@ export function shouldPrepareConnectedAgentDrive(input: {
     && z.object({ drive: z.object({ version: z.literal(1) }) }).safeParse(input.capabilities).success
 }
 
+export function permissionModeForConnectedHarness(
+  harness: string,
+  permissionMode?: string,
+): string | undefined {
+  return harness === 'overlay' ? undefined : permissionMode
+}
+
 /**
  * Step budgets.
  *
@@ -442,7 +449,7 @@ export async function resolveWorkspaceAgentInvocations(args: {
       instructions: agent.instructions,
       invocationNonce: `agent:${args.messageId}:${agent.id}`,
       modelId: agent.modelId,
-      permissionMode: agent.permissionMode,
+      permissionMode: permissionModeForConnectedHarness(agent.harness, agent.permissionMode),
       effort: agent.effort,
       toolGrant: {
         allowedToolIds: [...agent.allowedToolIds],
@@ -957,6 +964,9 @@ export async function runWorkspaceAgentTurn(args: {
             allowedToolIds: agent.allowedToolIds,
             isDefaultMaster,
           },
+          ...(agent.harness === 'overlay'
+            ? { approvalMode: agent.permissionMode === 'auto' ? 'auto' as const : 'ask' as const }
+            : {}),
           idempotencyKey: invocationNonce,
           latestUserText,
           memoryEnabled,

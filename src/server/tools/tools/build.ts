@@ -55,7 +55,7 @@ import {
   executeUpdateMemory,
 } from './overlay-executes'
 import { assertOverlayToolAllowed } from './policy'
-import { computerActionRequiresApproval } from '@overlay/tools-core/policy'
+import { toolRequiresApproval } from '@overlay/tools-core/policy'
 import {
   executeCreateFolder,
   executeListFiles,
@@ -955,9 +955,17 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
           .optional()
           .describe('Max run time in ms (default 60s, max 5m)'),
       }),
+      ...(options.computerApprovalContext !== undefined
+        ? { needsApproval: () => toolRequiresApproval('computer_exec', {}, { approvalMode: options.approvalMode }) }
+        : {}),
       execute: async (input) => {
         assertToolAllowed('computer_exec')
-        return executeComputerExec(options, input)
+        return await executeComputerActionWithApproval(
+          options,
+          'computer_exec',
+          input,
+          () => executeComputerExec(options, input),
+        )
       },
     })
     }
@@ -1053,13 +1061,13 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
         description:
           'Interact with the visible desktop using coordinates from the latest computer_screenshot. ' +
           'Take a screenshot before choosing coordinates and after each action to verify the result. ' +
-          'Risky browser controls require a second click with confirm: true after approval. ' +
+          'Risky coordinate clicks require confirm: true after approval. ' +
           'click, double_click, right_click, and move require x and y; drag requires from and to; ' +
           'type requires text; key requires keys; scroll requires direction and amount with optional x and y; ' +
           'wait requires ms. computer_open_url opens pages in this same visible browser.',
         inputSchema: computerInputSchema,
         ...(options.computerApprovalContext !== undefined
-          ? { needsApproval: (input) => computerActionRequiresApproval('computer_input', input) }
+          ? { needsApproval: (input) => toolRequiresApproval('computer_input', input, { approvalMode: options.approvalMode }) }
           : {}),
         execute: async (input) => {
           assertToolAllowed('computer_input')
@@ -1082,7 +1090,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
           'Use computer_screenshot and computer_input for non-browser apps or when snapshot refs fail. The user sees the same browser in Open desktop.',
         inputSchema: computerBrowserSchema,
         ...(options.computerApprovalContext !== undefined
-          ? { needsApproval: (input) => computerActionRequiresApproval('computer_browser', input) }
+          ? { needsApproval: (input) => toolRequiresApproval('computer_browser', input, { approvalMode: options.approvalMode }) }
           : {}),
         execute: async (input) => {
           assertToolAllowed('computer_browser')
@@ -1109,12 +1117,20 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
       tools.computer_terminal = tool({
         description:
           'Run long-running or non-interactive commands on the bound Overlay Computer, such as builds, servers, or watchers. ' +
-          'Start a session, poll its output with read, and cancel it when done. The Computer may idle-stop if the agent stops making tool calls, which ends its sessions.',
+          'Start a session, poll its output with read, and cancel it when done. Starting a command may require approval. The Computer may idle-stop if the agent stops making tool calls, which ends its sessions.',
         inputSchema: computerTerminalSchema,
+        ...(options.computerApprovalContext !== undefined
+          ? { needsApproval: (input) => toolRequiresApproval('computer_terminal', input, { approvalMode: options.approvalMode }) }
+          : {}),
         execute: async (input) => {
           assertToolAllowed('computer_terminal')
           const parsed = computerTerminalVariants.parse(input) as ComputerTerminalAction
-          return executeComputerTerminal(options, parsed)
+          return await executeComputerActionWithApproval(
+            options,
+            'computer_terminal',
+            parsed,
+            () => executeComputerTerminal(options, parsed),
+          )
         },
       })
     }

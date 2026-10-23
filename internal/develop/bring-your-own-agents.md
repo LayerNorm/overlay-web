@@ -1661,6 +1661,8 @@ credential, current Files revision/source, scope and live authorization before r
 cache keys bind the exact execution grant and signed content identity. Cache pressure
 returns a retryable unavailable response rather than exceeding the bound.
 
+Native Overlay agents store `ask` or `auto` in the workspace agent's existing permission-mode field. Unset values mean Ask. These values configure Overlay tool approvals and are never sent to connected harnesses, whose advertised permission values remain unchanged. Auto does not override an MCP server's `deny` policy.
+
 Long-horizon provider smoke defaults come from `infra/agent-image/versions.json`;
 `--adapter-version` is an explicit override for investigating a different candidate.
 Shared room run-status reads require active workspace membership and conversation

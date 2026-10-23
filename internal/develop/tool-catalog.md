@@ -65,6 +65,10 @@ purpose, but there is no per-message opt-in yet.
 | **Claude Code / Codex on Overlay Cloud, or on your machine** | The same tools through the Overlay MCP server (`/api/agent-mcp`), limited by the agent's grant, minus `computer_*` (it has its own machine) and `present_generated_ui`. Tools that need approval show an approval card. |
 | **Outside AI apps** (ChatGPT, Claude, Cursor…) | The same tools through `/api/mcp` at the access level the person chose (below), minus agent editing, the `draft_*_from_chat` tools, `present_generated_ui`, computer tools, and `post_message`. |
 
+## Native agent permissions
+
+Overlay agents use Ask by default. Ask requires approval for typing, consequential clicks, computer commands, command starts, selected connected-app actions and MCP tools whose server policy requires approval. In contexts without an approval UI, those actions return `approval_required`. Auto skips those approval gates for the agent, including automations; MCP tools denied by server policy remain denied. Personal chats without an agent always use Ask. Connected-agent permission values remain owned by the connected harness.
+
 Connected-agent MCP calls revalidate the current session and execution generation before running,
 including after a human approval wait. Start-command credentials keep their original scope, grant
 and absolute expiry when rebound to a replacement attempt. Stale attempts cannot create approvals

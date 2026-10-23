@@ -175,6 +175,55 @@ test('computer input fails closed before operate for typing while scroll still o
   assert.equal(operateCalls, 1)
 })
 
+test('Auto automation runs computer typing and exec without approval_required', async () => {
+  const options = {
+    approvalMode: 'auto' as const,
+    computerApprovalContext: 'automation' as const,
+  }
+  const calls: string[] = []
+  const computerType = await executeComputerActionWithApproval(
+    options,
+    'computer_input',
+    { action: 'type', text: 'hello' },
+    async () => {
+      calls.push('computer_input')
+      return { success: true }
+    },
+  )
+  const computerExec = await executeComputerActionWithApproval(
+    options,
+    'computer_exec',
+    { command: 'printf hello' },
+    async () => {
+      calls.push('computer_exec')
+      return { success: true }
+    },
+  )
+  assert.deepEqual(computerType, { success: true })
+  assert.deepEqual(computerExec, { success: true })
+  assert.deepEqual(calls, ['computer_input', 'computer_exec'])
+})
+
+test('computer input preserves a driver approval_required result for the model', async () => {
+  const result = await executeComputerActionWithApproval(
+    { computerApprovalContext: 'work' },
+    'computer_input',
+    { action: 'click', confirm: true },
+    async () => ({
+      success: false,
+      error: 'approval_required',
+      label: 'Delete account',
+      message: 'This click may post, send, buy, or delete something.',
+    }),
+  )
+  assert.deepEqual(result, {
+    success: false,
+    error: 'approval_required',
+    label: 'Delete account',
+    message: 'This click may post, send, buy, or delete something.',
+  })
+})
+
 test('Computer maintenance conflicts return a clear busy tool error', async () => {
   const previousNextPhase = process.env.NEXT_PHASE
   process.env.NEXT_PHASE = 'phase-production-build'

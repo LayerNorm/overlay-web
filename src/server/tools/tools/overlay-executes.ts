@@ -19,7 +19,7 @@ import {
 import type { Computer, ComputerOwnerType } from '@overlay/workspace-contracts/computers'
 import { callInternalApi, callInternalApiGet, toolAuthBody } from './internal-api'
 import type { OverlayToolsOptions } from './types'
-import { computerActionRequiresApproval } from '@overlay/tools-core/policy'
+import { toolRequiresApproval } from '@overlay/tools-core/policy'
 
 /**
  * Memory writes carry an explicit owner when an agent is driving the turn, so
@@ -1274,14 +1274,14 @@ function isComputerUserInControlResult(
 }
 
 export async function executeComputerActionWithApproval<T>(
-  options: Pick<OverlayToolsOptions, 'computerApprovalContext'>,
-  toolName: 'computer_input' | 'computer_browser',
+  options: Pick<OverlayToolsOptions, 'approvalMode' | 'computerApprovalContext'>,
+  toolName: 'computer_input' | 'computer_browser' | 'computer_exec' | 'computer_terminal',
   input: unknown,
   operate: () => Promise<T>,
 ): Promise<T | { success: false; error: 'approval_required'; message: string }> {
   if (
     options.computerApprovalContext !== 'work'
-    && computerActionRequiresApproval(toolName, input)
+    && toolRequiresApproval(toolName, input, { approvalMode: options.approvalMode })
   ) {
     return {
       success: false,

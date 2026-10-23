@@ -20,6 +20,7 @@ export function buildWorkspaceAgentInput(args: {
   avatarShape: WorkspaceAgentCreatureShape
   enabledToolGroups: ReadonlySet<string>
   visibility: WorkspaceAgentVisibility
+  permissionMode?: 'ask' | 'auto'
   /** The Overlay tools a connected agent may use over MCP (Overlay Cloud agents); other connected agents hold none. */
   mcpToolIds?: readonly string[]
   /** A connected agent's chosen model (its own model id); empty means the agent's default. */
@@ -38,6 +39,7 @@ export function buildWorkspaceAgentInput(args: {
     // tool-group grants apply to the native agent only.
     allowedToolIds: byo ? [...(args.mcpToolIds ?? [])] : toolIdsForEnabledGroups(args.enabledToolGroups),
     visibility: args.visibility,
+    ...(byo ? {} : { permissionMode: args.permissionMode ?? 'ask' }),
   }
 }
 

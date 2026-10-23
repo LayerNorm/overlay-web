@@ -339,6 +339,7 @@ export async function executeActTurn(
       accessToken,
       serverSecret,
       workspaceId: context.workspace.workspace.id,
+      computerApprovalContext: personalChatMode === 'work' ? 'work' : undefined,
     })
     const accountAllowedToolIdsTask = filterCatalogResources({
       authorization: authorizationService,

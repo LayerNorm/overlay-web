@@ -78,6 +78,7 @@ export function sanitizeWorkflowToolSchemaValue(value: unknown): unknown {
 export async function describePersonalChatWorkTools(
   tools: ToolSet,
   hasDynamicApproval: boolean,
+  approvalMode?: 'ask' | 'auto',
 ): Promise<PersonalChatWorkToolDefinition[]> {
   return await Promise.all(Object.entries(tools).map(async ([name, definition]) => ({
     name,
@@ -85,7 +86,7 @@ export async function describePersonalChatWorkTools(
     inputSchema: sanitizeWorkflowToolSchemaValue(
       await asSchema(definition.inputSchema).jsonSchema,
     ) as Record<string, unknown>,
-    needsApproval: Boolean(definition.needsApproval) || (hasDynamicApproval && name === 'call_mcp_tool'),
+    needsApproval: approvalMode !== 'auto' && (Boolean(definition.needsApproval) || (hasDynamicApproval && name === 'call_mcp_tool')),
   })))
 }
 
@@ -99,6 +100,7 @@ async function reconstructTooling(
     automationExecution: context.automationExecution === true,
     automationId: context.automationId,
     computerApprovalContext: context.automationExecution === true ? 'automation' : 'work',
+    approvalMode: context.approvalMode,
     automationMode: false,
     forwardCookie: undefined,
     idempotencyKey,
@@ -107,6 +109,8 @@ async function reconstructTooling(
     preloadTasks: preloadActExternalToolTasks({
       userId: context.userId,
       serverSecret: getInternalApiSecret(),
+      approvalMode: context.approvalMode,
+      computerApprovalContext: context.automationExecution === true ? 'automation' : 'work',
     }),
     requestedToolIds: context.requestedToolIds as never,
     serverSecret: getInternalApiSecret(),

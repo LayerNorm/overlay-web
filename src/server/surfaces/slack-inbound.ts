@@ -147,6 +147,7 @@ async function handleInboundSlackMessage(args: {
       agentInstructions: agent.instructions,
       agentPrincipalId: agent.principalId,
       agentAllowedToolIds: agent.allowedToolIds,
+      agentPermissionMode: agent.harness === 'overlay' && agent.permissionMode === 'auto' ? 'auto' : 'ask',
       agentIsDefault: agent.isDefault === true,
       creatorPrincipalId,
       authorExternalId: message.author.userId,

@@ -5,6 +5,7 @@ import type { IntegrationProviderCapabilities, IntegrationSummary } from '@overl
 import { tool, type ToolSet } from 'ai'
 import { z } from 'zod'
 import { getOverlayServerContext } from '@/server/bootstrap'
+import { toolRequiresApproval } from '@overlay/tools-core/policy'
 import type {
   IntegrationExecutionRequest,
   IntegrationExecutionResult,
@@ -112,6 +113,7 @@ export class ExecutorIntegrationProvider implements IntegrationProvider {
   private readonly owner: 'org' | 'user'
   private readonly timeoutMs: number
   private readonly fetcher: typeof fetch
+  private readonly requiresApprovalByAddress = new Map<string, boolean>()
 
   constructor(options: ExecutorIntegrationProviderOptions) {
     this.apiBaseUrl = normalizeBaseUrl(options.apiBaseUrl)
@@ -270,6 +272,11 @@ export class ExecutorIntegrationProvider implements IntegrationProvider {
   }
 
   async createToolSet(args: Parameters<IntegrationProvider['createToolSet']>[0]): Promise<ToolSet> {
+    const approvalRequiredResult = {
+      success: false,
+      error: 'approval_required',
+      message: 'This action needs your approval. Switch this chat to Work mode, or ask the user to approve it in Open desktop.',
+    } as const
     return {
       EXECUTOR_SEARCH_TOOLS: tool({
         description: 'Search connected Executor integrations for tools. Use the exact returned address with EXECUTOR_EXECUTE_TOOL.',
@@ -282,8 +289,12 @@ export class ExecutorIntegrationProvider implements IntegrationProvider {
           const params = new URLSearchParams({ query, includeAnnotations: 'true' })
           if (integration) params.set('integration', integration)
           const tools = await this.request<ExecutorTool[]>(`/tools?${params}`)
+          const returnedTools = tools.slice(0, limit)
+          for (const item of returnedTools) {
+            this.requiresApprovalByAddress.set(item.address, item.requiresApproval === true)
+          }
           return JSON.stringify({
-            tools: tools.slice(0, limit).map((item) => ({
+            tools: returnedTools.map((item) => ({
               address: item.address,
               integration: item.integration,
               name: item.name,
@@ -299,13 +310,36 @@ export class ExecutorIntegrationProvider implements IntegrationProvider {
           toolAddress: z.string().min(1),
           arguments: z.record(z.string(), z.unknown()).optional(),
         }),
-        execute: async ({ toolAddress, arguments: toolArgs }) => await this.execute({
-          userId: args.userId,
-          conversationId: args.conversationId,
-          turnId: args.turnId,
-          toolId: toolAddress,
-          args: toolArgs ?? {},
-        }),
+        ...(args.computerApprovalContext !== undefined
+          ? {
+              needsApproval: ({ toolAddress }) => toolRequiresApproval(
+                'EXECUTOR_EXECUTE_TOOL',
+                { toolAddress },
+                {
+                  approvalMode: args.approvalMode,
+                  executorRequiresApproval: this.requiresApprovalByAddress.get(toolAddress),
+                },
+              ),
+            }
+          : {}),
+        execute: async ({ toolAddress, arguments: toolArgs }) => {
+          if (
+            args.computerApprovalContext !== 'work' &&
+            toolRequiresApproval('EXECUTOR_EXECUTE_TOOL', { toolAddress }, {
+              approvalMode: args.approvalMode,
+              executorRequiresApproval: this.requiresApprovalByAddress.get(toolAddress),
+            })
+          ) {
+            return approvalRequiredResult
+          }
+          return await this.execute({
+            userId: args.userId,
+            conversationId: args.conversationId,
+            turnId: args.turnId,
+            toolId: toolAddress,
+            args: toolArgs ?? {},
+          })
+        },
       }),
     }
   }

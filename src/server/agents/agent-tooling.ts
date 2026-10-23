@@ -110,6 +110,7 @@ export async function buildExternalAppTooling(args: {
   requestFingerprint: string
   turnId: string
   workspaceId: string
+  approvalMode?: 'ask' | 'auto'
 }): Promise<WorkspaceAgentToolingResult> {
   const { capabilities, overlayToolIds } = resolveAgentGrant({ agentId: '', allowedToolIds: args.grantToolIds, isDefaultMaster: false })
   const tooling = await prepareActTooling({
@@ -163,6 +164,7 @@ export async function buildExternalAppTooling(args: {
  */
 export async function buildWorkspaceAgentTooling(args: {
   accessToken?: string
+  approvalMode?: 'ask' | 'auto'
   actorUserId: string
   agentPrincipalId: string
   conversationId: string
@@ -195,6 +197,7 @@ export async function buildWorkspaceAgentTooling(args: {
     agentPrincipalId: args.agentPrincipalId,
     baseUrl: getInternalApiBaseUrl(),
     conversationId: args.conversationId,
+    approvalMode: args.approvalMode ?? 'ask',
     effectiveModelId: args.effectiveModelId,
     entitlements: args.entitlements,
     idempotencyKey: args.idempotencyKey,
@@ -211,6 +214,7 @@ export async function buildWorkspaceAgentTooling(args: {
       accessToken: args.accessToken,
       serverSecret: getInternalApiSecret(),
       workspaceId: args.workspaceId,
+      approvalMode: args.approvalMode ?? 'ask',
     }),
     requestFingerprint: args.requestFingerprint,
     serverSecret: getInternalApiSecret(),

@@ -88,6 +88,40 @@ export function computerActionRequiresApproval(toolName: string, input: unknown)
   return false
 }
 
+export function toolRequiresApproval(
+  toolName: string,
+  input: unknown,
+  options: {
+    approvalMode?: 'ask' | 'auto'
+    executorRequiresApproval?: boolean
+    mcpPolicy?: 'allow' | 'approval_required' | 'deny'
+  } = {},
+): boolean {
+  if (options.approvalMode === 'auto') return false
+  if (computerActionRequiresApproval(toolName, input)) return true
+  if (toolName === 'computer_exec') return true
+  if (toolName === 'computer_terminal') {
+    return Boolean(input && typeof input === 'object' && !Array.isArray(input)
+      && (input as { action?: unknown }).action === 'start')
+  }
+  if (toolName === 'EXECUTOR_EXECUTE_TOOL') return options.executorRequiresApproval !== false
+  if (toolName === 'call_mcp_tool') return options.mcpPolicy === 'approval_required'
+  return false
+}
+
+export function resolveMcpExecutionPolicy(
+  policy: 'allow' | 'approval_required' | 'deny',
+  options: { approvalMode?: 'ask' | 'auto'; approvalContext?: 'work' | 'automation' },
+): 'allow' | 'approval_required' | 'deny' {
+  if (policy === 'deny') return 'deny'
+  if (options.approvalContext !== 'work' && toolRequiresApproval(
+    'call_mcp_tool',
+    {},
+    { approvalMode: options.approvalMode, mcpPolicy: policy },
+  )) return 'approval_required'
+  return 'allow'
+}
+
 export function overlayToolIdSet(): ReadonlySet<string> {
   return OVERLAY_TOOL_ID_SET
 }

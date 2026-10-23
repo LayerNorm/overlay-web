@@ -3,11 +3,19 @@ import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 import {
   buildRemoteAgentPrompt,
+  permissionModeForConnectedHarness,
   reconcileUnverifiedAgentActionClaims,
   shouldPrepareConnectedAgentDrive,
 } from './workspace-agent-invocation'
 
 const root = process.cwd()
+
+test('native permission modes are not forwarded, while connected harness values are preserved', () => {
+  assert.equal(permissionModeForConnectedHarness('overlay', 'ask'), undefined)
+  assert.equal(permissionModeForConnectedHarness('overlay', 'auto'), undefined)
+  assert.equal(permissionModeForConnectedHarness('claude-code', 'auto'), 'auto')
+  assert.equal(permissionModeForConnectedHarness('claude-code', 'acceptEdits'), 'acceptEdits')
+})
 
 test('drive starts require the rollout flag, current host capability and local opt-in', () => {
   const cloud = { enabled: true, environmentKind: 'overlay_cloud', optedIn: false, capabilities: { drive: { version: 1 } } }

@@ -52,4 +52,5 @@ export type PersonalChatWorkToolingContext = {
   /** Marks the turn as an automation execution (withholds automation tools). */
   automationExecution?: boolean
   automationId?: string
+  approvalMode?: 'ask' | 'auto'
 }

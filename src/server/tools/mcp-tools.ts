@@ -27,6 +27,7 @@ import type {
   McpToolPolicyMode,
 } from "@/server/extensions";
 import { resolveMcpToolPolicy } from "@/server/extensions";
+import { resolveMcpExecutionPolicy, toolRequiresApproval } from "@overlay/tools-core/policy";
 
 // Dynamic import of MCP SDK (ESM)
 type McpClientModule =
@@ -466,6 +467,8 @@ export async function createMcpLazyMetaTools(args: {
   conversationId?: string;
   turnId?: string;
   modelId?: string;
+  approvalMode?: "ask" | "auto";
+  computerApprovalContext?: "work" | "automation";
   /** In a room others can read: only the workspace's shared servers, never the person's own. */
   workspaceOnly?: boolean;
 }): Promise<{
@@ -608,7 +611,11 @@ export async function createMcpLazyMetaTools(args: {
       }
 
       const policyDecision = resolveMcpToolPolicy(config, toolName);
-      if (policyDecision === "deny") {
+      const executionPolicy = resolveMcpExecutionPolicy(policyDecision, {
+        approvalMode: args.approvalMode,
+        approvalContext: args.computerApprovalContext,
+      });
+      if (executionPolicy === "deny") {
         await recordMcpExecution({
           args,
           config,
@@ -620,6 +627,14 @@ export async function createMcpLazyMetaTools(args: {
         throw new Error(
           `Tool "${toolName}" is denied by this MCP server's policy`,
         );
+      }
+
+      if (executionPolicy === "approval_required") {
+        return {
+          success: false,
+          error: "approval_required",
+          message: "This action needs your approval. Switch this chat to Work mode, or ask the user to approve it in Open desktop.",
+        };
       }
 
       const toolId = safeToolId(config.name, toolName);
@@ -680,6 +695,7 @@ export async function createMcpLazyMetaTools(args: {
   // depends on the tool's input (serverId/toolName), so we use a function that
   // resolves the MCP server's policy at call time.
   const toolApproval: McpToolApprovalFn = ({ toolCall }) => {
+    if (args.approvalMode === "auto") return undefined;
     if (toolCall.toolName !== "call_mcp_tool") return undefined;
     const { serverId, toolName } = toolCall.input as {
       serverId?: string;
@@ -687,8 +703,11 @@ export async function createMcpLazyMetaTools(args: {
     };
     if (!serverId || !toolName) return undefined;
     const config = configById.get(serverId);
-    return config &&
-      resolveMcpToolPolicy(config, toolName) === "approval_required"
+    return args.computerApprovalContext === "work" && config &&
+      toolRequiresApproval("call_mcp_tool", toolCall.input, {
+        approvalMode: args.approvalMode,
+        mcpPolicy: resolveMcpToolPolicy(config, toolName),
+      })
       ? "user-approval"
       : undefined;
   };

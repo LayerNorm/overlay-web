@@ -115,6 +115,7 @@ export type SurfaceTurnContext = {
   /** The agent's tool grant — narrows the turn's tool surface. */
   agentAllowedToolIds?: string[]
   agentIsDefault?: boolean
+  agentPermissionMode?: 'ask' | 'auto'
   /** Creator's human principal — owns the surface conversation rows. */
   creatorPrincipalId?: string
   authorExternalId?: string
@@ -616,7 +617,29 @@ export async function prepareAutomationAgentTurn(
     userId,
   })
 
-  const toolPreloadTasks = preloadActExternalToolTasks({ userId, serverSecret, workspaceId: billingWorkspaceId })
+  let approvalMode: 'ask' | 'auto' = surface?.agentPermissionMode ?? 'ask'
+  if (!surface && input.automationId) {
+    const automation = await automationService.getAutomationForExecution({
+      automationId: input.automationId,
+      userId,
+    })
+    const agentId = (automation as { agentId?: string } | null)?.agentId
+    if (agentId) {
+      const agent = await overlayContext.workspaceAgentService.get({
+        actorUserId: userId,
+        workspaceId: billingWorkspaceId,
+        agentId,
+      })
+      if (agent.harness === 'overlay' && agent.permissionMode === 'auto') approvalMode = 'auto'
+    }
+  }
+  const toolPreloadTasks = preloadActExternalToolTasks({
+    userId,
+    serverSecret,
+    workspaceId: billingWorkspaceId,
+    approvalMode,
+    computerApprovalContext: 'automation',
+  })
   const accountAllowedToolIdsTask = filterCatalogResources({
     authorization: overlayContext.authorizationService,
     capability: 'tools.use',
@@ -654,6 +677,7 @@ export async function prepareAutomationAgentTurn(
     automationExecution: true,
     automationId: input.automationId,
     computerApprovalContext: 'automation',
+    approvalMode,
     baseUrl,
     conversationId: cid,
     entitlements: runtimeEntitlements,
@@ -750,6 +774,7 @@ export async function prepareAutomationAgentTurn(
   const toolDefinitions = await describePersonalChatWorkTools(
     actTooling.tools,
     Boolean(actTooling.toolApproval),
+    approvalMode,
   )
 
   const toolingContext: PersonalChatWorkToolingContext = {
@@ -771,6 +796,7 @@ export async function prepareAutomationAgentTurn(
     workspaceId: billingWorkspaceId,
     automationExecution: true,
     automationId: input.automationId,
+    approvalMode,
   }
 
   return {

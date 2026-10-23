@@ -9,6 +9,8 @@ import {
   AgentComputerSection,
   AgentTypeSelector,
   ByoAgentFields,
+  OverlayAgentPermissionsField,
+  resolveOverlayPermissionModeSelection,
   OverlayAgentFields,
 } from './AgentEditorForm'
 
@@ -29,6 +31,29 @@ test('agent type selector offers create-your-own and bring-your-own', () => {
   const markup = renderToStaticMarkup(<AgentTypeSelector value="overlay" onChange={() => undefined} />)
   assert.match(markup, /Create your own agent/)
   assert.match(markup, /Bring your own agent/)
+})
+
+test('Overlay agent permissions default to Ask and explain both modes', () => {
+  const ask = renderToStaticMarkup(<OverlayAgentPermissionsField value="ask" onChange={() => undefined} />)
+  assert.match(ask, /Permissions/)
+  assert.match(ask, /Asks before typing, terminal commands, risky clicks and app actions\./)
+  const auto = renderToStaticMarkup(<OverlayAgentPermissionsField value="auto" onChange={() => undefined} />)
+  assert.match(auto, /Runs everything without asking, including in automations\./)
+})
+
+test('Auto permission selection requires confirmation and cancel keeps Ask', () => {
+  const pending = resolveOverlayPermissionModeSelection('ask', 'auto', false)
+  assert.deepEqual(pending, { mode: 'ask', confirmationRequired: true })
+  const cancelled = pending.mode
+  assert.equal(cancelled, 'ask')
+  assert.deepEqual(resolveOverlayPermissionModeSelection('ask', 'auto', true), {
+    mode: 'auto',
+    confirmationRequired: false,
+  })
+  assert.deepEqual(resolveOverlayPermissionModeSelection('auto', 'auto', false), {
+    mode: 'auto',
+    confirmationRequired: false,
+  })
 })
 
 test('overlay fields render instructions, tools, and the mention-first note', () => {
