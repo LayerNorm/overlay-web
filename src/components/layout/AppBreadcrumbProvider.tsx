@@ -6,8 +6,9 @@ import type { ReactNode } from 'react'
 import { AppBreadcrumbContext } from '@overlay/modules-react/shell'
 import { usePanelScope } from '@/hooks/use-panel-scope'
 import { useIsSoloWorkspace } from '@/hooks/use-solo-workspace'
-import { resolvePanelScopeFromParams } from '@/shared/workspaces/panel-scope'
+import { resolvePanelScope, resolvePanelScopeFromParams } from '@/shared/workspaces/panel-scope'
 import { resolveWorkspaceSurface, readWorkspaceIdFromPath, buildWorkspaceHref } from '@/shared/workspaces/routing'
+import { chatScopeForView } from './sidebar/appSidebarNav'
 
 const PAGE_LABELS: Record<string, string> = {
   work: 'Work', agents: 'Agents', chat: 'Chats', files: 'Files', automations: 'Automations',
@@ -21,10 +22,14 @@ export function AppBreadcrumbProvider({ children }: { children: ReactNode }) {
   const searchParams = useSearchParams()
   const solo = useIsSoloWorkspace()
   const page = resolveWorkspaceSurface(pathname)
-  const scope = page === 'agents' ? resolvePanelScopeFromParams(searchParams, savedScope, solo) : savedScope
+  const scope = page === 'chat' || page === 'activity'
+    ? resolvePanelScope({ param: chatScopeForView(page === 'activity' ? 'activity' : searchParams?.get('view') ?? 'personal'), solo })
+    : page === 'agents' ? resolvePanelScopeFromParams(searchParams, savedScope, solo) : savedScope
   const workspaceId = readWorkspaceIdFromPath(pathname)
   const base = workspaceId ? buildWorkspaceHref(workspaceId, `/app/${page}`) : `/app/${page}`
-  const href = `${base}?scope=${scope}`
+  const params = new URLSearchParams({ scope })
+  if (page === 'chat') params.set('view', scope === 'workspace' ? 'workspace-chats' : 'personal')
+  const href = `${base}?${params}`
   return (
     <AppBreadcrumbContext.Provider value={{
       items: [
