@@ -8,7 +8,7 @@ import { Button } from '@overlay/ui/primitives'
 import { useState, Suspense, type ReactNode } from 'react'
 import Link from 'next/link'
 import { redirect, useRouter, useSearchParams } from 'next/navigation'
-import { Download, MonitorDown, RefreshCw, ArrowRight } from 'lucide-react'
+import { RefreshCw, ArrowRight } from 'lucide-react'
 import { DeleteAccountSection } from '@/features/account/components/DeleteAccountSection'
 import { useAccountBillingState } from '@/features/account/hooks/useAccountBillingState'
 import { useAuth } from '@/contexts/AuthContext'
@@ -37,50 +37,9 @@ function AccountIntro() {
         Your Overlay control center.
       </h1>
       <p className={`mt-5 max-w-xl ${minimalBody()}`}>
-        Manage plan status, usage, top-ups, desktop handoff, and account access.
+        Manage plan status, usage, top-ups, and account access.
       </p>
     </div>
-  )
-}
-
-function DesktopAppSection({
-  panelClass,
-  mutedClass,
-  opening,
-  onOpenInApp,
-}: {
-  panelClass: string
-  mutedClass: string
-  opening: boolean
-  onOpenInApp: () => void
-}) {
-  return (
-    <section className={`${panelClass} flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between`}>
-      <div>
-        <div className="flex items-center gap-2 text-sm font-medium text-(--foreground)">
-          <MonitorDown size={16} strokeWidth={1.8} />
-          Desktop app
-        </div>
-        <p className={`mt-1 text-sm ${mutedClass}`}>Open your existing desktop session, or download the macOS app.</p>
-      </div>
-      <div className="flex shrink-0 flex-wrap gap-2">
-        <Button variant="ghost"
-          onClick={onOpenInApp}
-          disabled={opening}
-          className={unstyledButton(`inline-flex items-center justify-center gap-2 rounded-lg border border-(--button-secondary-border) bg-(--button-secondary-bg) px-3 py-2 text-sm font-medium text-(--button-secondary-text) transition-colors hover:bg-(--surface-muted) disabled:opacity-50`)}
-        >
-          {opening ? <RefreshCw className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
-          {opening ? 'Opening…' : 'Open app'}
-        </Button>
-        <Link
-          href="/download"
-          className="inline-flex items-center justify-center gap-2 rounded-lg border border-(--button-secondary-border) bg-(--button-secondary-bg) px-3 py-2 text-sm font-medium text-(--button-secondary-text) transition-colors hover:bg-(--surface-muted)"
-        >
-          <Download className="h-4 w-4" />
-          Download
-        </Link>
-      </div>
-    </section>
   )
 }
 
@@ -93,8 +52,6 @@ function AuthenticatedAccountPanels({
   email,
   signingOut,
   onSignOut,
-  openingApp,
-  onOpenInApp,
   billing,
 }: {
   panelClass: string
@@ -105,8 +62,6 @@ function AuthenticatedAccountPanels({
   email?: string | null
   signingOut: boolean
   onSignOut: () => void
-  openingApp: boolean
-  onOpenInApp: () => void
   billing: AccountBillingState
 }) {
   return (
@@ -132,13 +87,6 @@ function AuthenticatedAccountPanels({
             </Suspense>
           </div>
         }
-      />
-
-      <DesktopAppSection
-        panelClass={panelClass}
-        mutedClass={mutedClass}
-        opening={openingApp}
-        onOpenInApp={onOpenInApp}
       />
 
       {billing.billingEnabled ? (
@@ -246,8 +194,6 @@ export function AccountPageContent({ embedded = false }: { embedded?: boolean })
               email={user?.email}
               signingOut={signingOut}
               onSignOut={handleSignOut}
-              openingApp={billing.actionLoading === 'openApp'}
-              onOpenInApp={handleOpenInApp}
               billing={billing}
             />
           }

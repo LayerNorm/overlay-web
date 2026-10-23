@@ -1,0 +1,76 @@
+---
+title: "Self-hosting overview"
+sidebarTitle: "Overview"
+description: "What you run when you host Overlay yourself, and where to start."
+---
+
+Overlay is open source (`AGPL-3.0-only`) and runs on your own infrastructure. Source: [github.com/LayerNorm/overlay-web](https://github.com/LayerNorm/overlay-web).
+
+## What you run
+
+| Part | What it is |
+| --- | --- |
+| **Web app** | The Next.js app and its `/api/v1` API, shipped as the `ghcr.io/layernorm/overlay-web` image. Stateless: run one or more containers behind your load balancer. |
+| **Convex backend** | The official open-source `convex-backend`. It holds all app data and runs scheduled work (automations, memory extraction, search indexing, retention, webhooks), persisting to Postgres (or SQLite for a pilot) and S3-compatible storage. See [Self-hosted Convex](/self-hosting/install/self-hosted-convex). |
+| **Sign-in** | WorkOS, Better Auth with your SSO, or a generic OIDC provider. Better Auth keeps its own small Postgres database, separate from app data. See [Authentication](/self-hosting/configure/authentication/index). |
+| **Object storage** | S3 or an S3-compatible store for uploads and generated files. |
+| **Model provider** | OpenRouter, Vercel AI Gateway, OpenAI, Anthropic or Groq, or none for a deployment without generation. |
+| **Optional** | Redis for rate limits across instances, email (Resend, SES or SMTP), web search, browser automation, analytics and error reporting. Each can be turned off. See [Providers](/self-hosting/configure/providers). |
+
+There is no separate worker or queue to run: background work runs inside the Convex backend.
+
+## Deployment models
+
+| Model | Who operates it | Best for |
+| --- | --- | --- |
+| **Hosted** at getoverlay.io | LayerNorm | Teams that want no infrastructure work. |
+| **Managed single-tenant** | LayerNorm, in a dedicated deployment | Isolation without running it yourself. See [Managed deployments](/self-hosting/enterprise/managed). |
+| **Self-hosted** | You | Full control of data, network and source. |
+
+Every self-hosted or managed deployment serves one customer. Departments, classes and teams are workspaces and roles inside it, not separate tenants. See [Tenancy](/self-hosting/enterprise/tenancy).
+
+## Requirements
+
+- A Linux host or container platform that runs Docker images.
+- For a pilot: one 2-vCPU host with 8 GB of memory (such as an EC2 `t3.large`) and at least 20 GB of disk runs the app and the Convex backend together. Building from source needs 4 vCPU and 40 GB.
+- For production: managed Postgres for Convex persistence, S3-compatible storage, Redis, and TLS in front of both the app and the Convex backend.
+- An identity provider if you want SSO, and at least one model provider key if you want AI features.
+- Node.js 22 or newer on the operator machine, to deploy the Convex functions.
+
+## Install
+
+<CardGroup cols={2}>
+  <Card title="One-command install" icon="terminal" href="/self-hosting/install/one-command">
+    The fastest pilot: one script sets up the app with `overlayctl`.
+  </Card>
+  <Card title="Docker on one host" icon="container" href="/self-hosting/install/docker">
+    App, Convex and Redis on a single EC2 instance with RDS.
+  </Card>
+  <Card title="AWS reference" icon="cloud" href="/self-hosting/install/aws">
+    ECS, RDS, ElastiCache and S3 for production.
+  </Card>
+  <Card title="From source" icon="git-branch" href="/self-hosting/install/from-source">
+    Keep the source checkout for audits and customization.
+  </Card>
+</CardGroup>
+
+Every path needs the [Convex backend](/self-hosting/install/self-hosted-convex). To run the web app with plain Node.js instead of Docker, see [Node.js without Docker](/self-hosting/install/node).
+
+## Configure
+
+Configuration comes from three layers, highest first: environment variables, `overlay.config.json` (`OVERLAY_CONFIG_FILE`), then built-in defaults. Keep secrets in environment variables and the deployment's shape (providers, features, compliance) in the JSON file.
+
+- [Runtime config](/self-hosting/configure/runtime-config): the JSON file, presets and validated example profiles.
+- [Environment variables](/self-hosting/configure/environment): every variable and which side (app or Convex) it belongs on.
+- [Providers](/self-hosting/configure/providers): what each provider family does and what is supported.
+
+## Operate
+
+- [Administration](/self-hosting/enterprise/admin-onboarding): your first administrator, roles and audit.
+- [Upgrades](/self-hosting/operate/upgrades) and [Backups](/self-hosting/operate/backups).
+- [Security](/self-hosting/operate/security) and the [launch checklist](/self-hosting/operate/security-checklist).
+- [Release verification](/self-hosting/operate/release-verification) before each rollout.
+
+## Licensing
+
+First-party code is `AGPL-3.0-only`; submodules and third-party code keep their own licenses. If you modify Overlay and offer it to others over a network, you must offer them your source, and a modified distribution needs its own branding unless LayerNorm gives written permission. See [License](/self-hosting/licensing/license) and [Self-hosting obligations](/self-hosting/licensing/obligations).
