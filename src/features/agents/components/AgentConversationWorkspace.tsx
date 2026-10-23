@@ -36,6 +36,7 @@ import { AgentRightSidebar } from './AgentRightSidebar'
 import { AgentComputerControlOverlay } from './AgentComputerTab.parts'
 import { buildAgentsDirectoryHref, sendAgentGreeting, startAgentChat } from '../lib/agent-chat'
 import { NewAgentDialog } from './NewAgentDialog'
+import { useAgentThreadScope } from '../lib/use-agent-thread-scope'
 
 type EditorMode = 'new' | 'edit' | null
 
@@ -291,6 +292,9 @@ function AgentConversationWorkspaceContent({ scope, showcase }: { scope: PanelSc
   // genuinely has no agents. The sidebar no longer auto-opens, so exactly
   // one DM creation runs per landing.
   const { directory, loadError } = useAgentDirectory(activeWorkspaceId, scope, solo)
+  const threadScope = useAgentThreadScope({
+    workspaceId: activeWorkspaceId, agentId, conversationId, directory, retryCount,
+  })
 
   useAgentAutoOpen({
     conversationId,
@@ -349,7 +353,7 @@ function AgentConversationWorkspaceContent({ scope, showcase }: { scope: PanelSc
     return <DirectMessageExperience conversationId="showcase-agent-welcome" showcase />
   }
 
-  if (conversationId) {
+  if (conversationId && threadScope.allowed) {
     const agentSidebar = agentId && sidebarPreferences.open ? (
       <AgentRightSidebar
         agentId={agentId}
@@ -407,9 +411,9 @@ function AgentConversationWorkspaceContent({ scope, showcase }: { scope: PanelSc
         onRightPanelClose={closeEditor}
         activeWorkspaceId={activeWorkspaceId}
         agentId={agentId}
-        directory={directory}
+        directory={threadScope.pending ? null : directory}
         resolving={resolving}
-        error={error}
+        error={error ?? threadScope.error}
         loadError={loadError}
         onRetry={retryOpen}
         onCreate={openCreate}

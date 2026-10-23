@@ -6,6 +6,7 @@ import { InlineNavChildren } from '@/components/layout/AppSidebarInlinePanels'
 import { buildScopedPanelNav } from './scopedPanelNav'
 import { chatScopeForView, resolveSidebarRouteState, scopePanelAction, type PanelCreateRules } from './appSidebarNav'
 import { workInlineItems } from './workPanelNav'
+import { resolveSecondaryPanelNav } from './appSidebarPanelNav'
 
 ;(globalThis as typeof globalThis & { React: typeof React }).React = React
 
@@ -13,6 +14,25 @@ const FILE_ROWS = [
   { id: 'all', label: 'All' },
   { id: 'notes', label: 'Notes' },
 ]
+
+test('switching agent scope drops the selected agent and thread in either direction', () => {
+  for (const scope of ['personal', 'workspace'] as const) {
+    let href = ''
+    const next = scope === 'personal' ? 'workspace' : 'personal'
+    const built = resolveSecondaryPanelNav({
+      panelKind: 'agents', publicShowcase: false,
+      routeState: { scope, chatsView: 'personal', filesView: 'all', toolsView: 'all', workView: 'list', notesOpen: false, canonicalWorkspaceRoute: true, settingsSection: 'profile' },
+      effectivePendingSecondaryNavId: null, totalUnread: 0,
+      collaborationUnread: { dms: 0, channels: 0, total: 0 }, shouldLoadCollaborationUnread: false,
+      router: { push: (url) => { href = url } }, activeWorkspaceId: 'team',
+      buildWorkspaceHref: (id, path) => path.replace('/app/', `/app/w/${id}/`),
+      currentSearchParams: new URLSearchParams({ scope, agent: 'personal', agentId: 'legacy', id: 'thread', view: scope }),
+      toolsItems: [], settingsSections: [], closeMobileDrawer() {}, beginSecondaryNavigation() {}, solo: false,
+    })
+    built!.onSelect(next)
+    assert.equal(href, `/app/w/team/agents?scope=${next}`)
+  }
+})
 
 function nav(scope: 'personal' | 'workspace', sub: string | null, onSelect = () => undefined) {
   return buildScopedPanelNav({
