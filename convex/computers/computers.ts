@@ -13,6 +13,27 @@ const status = v.union(
   v.literal('stopped'),
   v.literal('error'),
 )
+const lease = v.object({
+  leaseId: v.string(),
+  workspaceId: v.string(),
+  environmentId: v.optional(v.string()),
+  computerId: v.optional(v.string()),
+  runId: v.optional(v.string()),
+  provider: v.string(),
+  providerReference: v.optional(v.string()),
+  status: v.string(),
+  reservationId: v.optional(v.string()),
+  reservedUntil: v.number(),
+  runtimeStartedAt: v.optional(v.number()),
+  runtimeEndedAt: v.optional(v.number()),
+  usage: v.any(),
+  cleanupAttempts: v.number(),
+  cleanupAfter: v.optional(v.number()),
+  nextMeterAt: v.optional(v.number()),
+  meterClaimToken: v.optional(v.string()),
+  meterClaimUntil: v.optional(v.number()),
+  now: v.number(),
+})
 
 export const create = mutation({
   args: {
@@ -59,6 +80,92 @@ export const create = mutation({
       lastActiveAt: args.lastActiveAt,
     })
     return args.id
+  },
+})
+
+export const createWithLease = mutation({
+  args: {
+    id: v.string(), serverSecret: v.string(), workspaceId: v.string(), ownerType, ownerId: v.string(),
+    provider: v.string(), providerRef: v.optional(v.string()), size, status, name: v.optional(v.string()),
+    createdBy: v.string(), createdAt: v.number(), updatedAt: v.number(), lastActiveAt: v.optional(v.number()),
+    lease,
+  },
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    if (args.lease.workspaceId !== args.workspaceId
+      || args.lease.computerId !== args.id
+      || args.lease.environmentId !== undefined
+      || args.lease.leaseId !== `computer:${args.id}`) {
+      throw new Error('COMPUTER_LEASE_ASSOCIATION_INVALID')
+    }
+    const existing = await ctx.db.query('computers')
+      .withIndex('by_workspaceId_owner', (q) => q.eq('workspaceId', args.workspaceId)
+        .eq('ownerType', args.ownerType).eq('ownerId', args.ownerId)).unique()
+    if (existing) {
+      const existingLease = await ctx.db.query('agentSandboxLeases')
+        .withIndex('by_leaseId', (q) => q.eq('leaseId', `computer:${existing.id}`)).unique()
+      if (!existingLease) {
+        const { now, leaseId, ...leaseValue } = args.lease
+        await ctx.db.insert('agentSandboxLeases', {
+          ...leaseValue,
+          computerId: existing.id,
+          providerReference: existing.providerRef ?? undefined,
+          status: existing.providerRef ? 'paused' : 'reserved',
+          usage: existing.providerRef ? { computerLifecycle: { adoptionPending: true } } : leaseValue.usage,
+          leaseId: `computer:${existing.id}`,
+          createdAt: now,
+          updatedAt: now,
+        })
+      } else if (existingLease.workspaceId !== args.workspaceId
+        || existingLease.computerId !== existing.id) {
+        throw new Error('COMPUTER_LEASE_ASSOCIATION_CONFLICT')
+      }
+      return { id: existing.id, created: false }
+    }
+    await ctx.db.insert('computers', {
+      id: args.id, workspaceId: args.workspaceId, ownerType: args.ownerType, ownerId: args.ownerId,
+      provider: args.provider, providerRef: args.providerRef, size: args.size, status: args.status,
+      name: args.name, createdBy: args.createdBy, createdAt: args.createdAt, updatedAt: args.updatedAt,
+      lastActiveAt: args.lastActiveAt,
+    })
+    const { serverSecret, lease: leaseValue, ..._computer } = args
+    void serverSecret
+    void _computer
+    const { now, leaseId, ...leaseFields } = leaseValue
+    await ctx.db.insert('agentSandboxLeases', { ...leaseFields, leaseId, createdAt: now, updatedAt: now })
+    return { id: args.id, created: true }
+  },
+})
+
+export const bindProviderReference = mutation({
+  args: {
+    computerId: v.string(), workspaceId: v.string(), leaseId: v.string(), reference: v.string(),
+    allocationKey: v.string(), maintenanceToken: v.string(), serverSecret: v.string(),
+  },
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const computer = await ctx.db.query('computers').withIndex('by_entityId', (q) => q.eq('id', args.computerId)).unique()
+    const leaseRow = await ctx.db.query('agentSandboxLeases').withIndex('by_leaseId', (q) => q.eq('leaseId', args.leaseId)).unique()
+    if (!computer || args.leaseId !== `computer:${computer.id}`
+      || args.allocationKey !== `computer:${computer.id}` || computer.workspaceId !== args.workspaceId || !leaseRow
+      || leaseRow.workspaceId !== args.workspaceId || leaseRow.computerId !== computer.id) return null
+    const usage = (leaseRow.usage ?? {}) as Record<string, unknown>
+    const storedKey = typeof usage.allocationKey === 'string' ? usage.allocationKey : undefined
+    if (storedKey !== args.allocationKey) throw new Error('COMPUTER_ALLOCATION_KEY_MISMATCH')
+    if ((computer.providerRef && computer.providerRef !== args.reference)
+      || (leaseRow.providerReference && leaseRow.providerReference !== args.reference)) {
+      throw new Error('COMPUTER_PROVIDER_REFERENCE_CHANGED')
+    }
+    const lifecycle = usage.computerLifecycle && typeof usage.computerLifecycle === 'object'
+      ? usage.computerLifecycle as Record<string, unknown>
+      : {}
+    const maintenance = lifecycle.maintenance as { token?: string; kind?: string } | null | undefined
+    const canContinue = maintenance?.token === args.maintenanceToken && maintenance.kind === 'provision'
+      && ['reserved', 'provisioning'].includes(leaseRow.status)
+    const nextUsage = { ...usage, meteredProviderReference: args.reference }
+    await ctx.db.patch(computer._id, { providerRef: args.reference, updatedAt: Date.now() })
+    await ctx.db.patch(leaseRow._id, { providerReference: args.reference, usage: nextUsage, updatedAt: Date.now() })
+    return { id: computer.id, canContinue }
   },
 })
 

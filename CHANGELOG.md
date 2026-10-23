@@ -38,6 +38,24 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Pin `follow-redirects` to 1.16.1 to clear two high-severity advisories (GHSA-q3jh-wrc6-jgq8, GHSA-8r9p-f939-6h3c) that block the production dependency audit.
 
+- Report unowned Boat and E2B machines from bounded inventory scans without stopping or deleting them.
+
+- Record cloud agent allocations before setup and reclaim machines whose setup was interrupted instead of leaving them running unbilled.
+
+- Correct Computer Start and Stop notifications to match the completed action.
+
+- Add an isolated, synthetic funded Computer QA workspace to Preview fixtures while retaining the free Personal workspace. Re-seeding preserves spent credit, holds and plan changes; no Stripe payment or automatic top-up is created.
+
+- Enroll persistent Computers in the shared sandbox lease ledger before provider allocation or wake. Meter Boat's weighted counters, reserve both the runtime member and agent spend subject, preserve disks on idle/budget stops, and retain durable cleanup and allocation references for retries. Computer deletion settles usage before removing the provider resource; this is a scoped lifecycle/accounting substep, not completion of Phase 2.
+
+- Stop running machines and Computers at the next meter tick after a workspace leaves its paid plan, while still settling confirmed-stopped usage and releasing unused holds.
+
+- Recheck paid workspace and finite-credit admission for cloud-agent machine allocation, explicit resume/restart controls, workflow wakes and stopped-execution recovery under the authenticated actor or the remote run's stored actor. Remote resume, retry and start-fresh are refused before any control is recorded. Pause and cleanup remain available after downgrade.
+
+- Settle E2B compute from completed provider executions and actual allocation, reserve credit while executions run, and retain final usage for retry if billing fails. Enforce workspace and subject limits on machine metering; preserve Boat's weighted counters instead of substituting elapsed time.
+
+- Bind Computer access to the authorized workspace and require paid workspace credit before provisioning, starting, desktop access or tool execution. Concurrent owner claims allocate only one machine; failed deletion retains the provider reference for retry, and lifecycle reads never implicitly resume a machine.
+
 - Make both sidebar edges resizable, keep native agent text visible between tool calls while it streams, preserve its generation order after completion and reload, and match the approved agent hierarchy with regular-weight names, aligned icons and flush-left threads. Scale tool Orbs to the wordmark ratio and center them beside wrapped labels. Use the shared avatar popover for outside-click and Escape dismissal.
 
 - Preserve the live transcript when a new chat receives its saved conversation ID after completion, while still resetting scroll state when navigating between chats.

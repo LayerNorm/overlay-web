@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-15T19:16:29.528Z",
+  "generatedAt": "2026-10-20T19:59:20.711Z",
   "budgets": {
     "maxProductionFileLoc": 500,
     "maxFunctionComplexity": 25,
@@ -31,8 +31,8 @@
   "largeProductionFiles": [
     {
       "file": "packages/overlay-agent-bridge-protocol/src/index.ts",
-      "loc": 673,
-      "complexity": 143,
+      "loc": 759,
+      "complexity": 145,
       "recordedAt": "2026-10-12T14:08:57.759Z"
     },
     {
@@ -67,25 +67,25 @@
     },
     {
       "file": "packages/overlay-chat-core/src/messages.ts",
-      "loc": 630,
-      "complexity": 211,
+      "loc": 649,
+      "complexity": 220,
       "recordedAt": "2026-09-11T05:17:27.991Z"
     },
     {
       "file": "packages/overlay-chat-react/src/components/ChatExperienceHeader.tsx",
-      "loc": 1080,
-      "complexity": 81,
+      "loc": 1052,
+      "complexity": 82,
       "recordedAt": "2026-09-11T05:17:27.991Z"
     },
     {
       "file": "packages/overlay-chat-react/src/components/GeneratedUiCard.tsx",
-      "loc": 715,
+      "loc": 717,
       "complexity": 93,
       "recordedAt": "2026-09-11T05:17:27.991Z"
     },
     {
       "file": "packages/overlay-chat-react/src/components/transcript/ChatExchange.tsx",
-      "loc": 606,
+      "loc": 610,
       "complexity": 57,
       "recordedAt": "2026-09-27T13:09:07.924Z"
     },
@@ -96,56 +96,50 @@
       "recordedAt": "2026-09-11T05:17:27.991Z"
     },
     {
-      "file": "packages/overlay-chat-react/src/styles/chat-surface.css",
-      "loc": 666,
-      "complexity": 0,
-      "recordedAt": "2026-09-11T05:17:27.991Z"
-    },
-    {
       "file": "packages/overlay-modules-react/src/automations/reactflow-canvas.tsx",
-      "loc": 945,
+      "loc": 947,
       "complexity": 80,
       "recordedAt": "2026-09-11T05:17:27.991Z"
     },
     {
       "file": "packages/overlay-modules-react/src/extensions/mcp.tsx",
-      "loc": 597,
+      "loc": 598,
       "complexity": 88,
       "recordedAt": "2026-09-27T13:09:07.924Z"
     },
     {
       "file": "packages/overlay-modules-react/src/knowledge/file-viewer.tsx",
-      "loc": 614,
-      "complexity": 86,
+      "loc": 624,
+      "complexity": 88,
       "recordedAt": "2026-09-11T05:17:27.991Z"
     },
     {
       "file": "packages/overlay-modules-react/src/knowledge/surface-state.ts",
-      "loc": 918,
-      "complexity": 172,
+      "loc": 996,
+      "complexity": 198,
       "recordedAt": "2026-09-27T13:09:07.924Z"
     },
     {
       "file": "packages/overlay-modules-react/src/knowledge/surface.tsx",
-      "loc": 531,
-      "complexity": 40,
+      "loc": 504,
+      "complexity": 38,
       "recordedAt": "2026-09-11T05:17:27.991Z"
     },
     {
       "file": "packages/overlay-modules-react/src/knowledge/view-header.tsx",
-      "loc": 751,
-      "complexity": 46,
+      "loc": 755,
+      "complexity": 47,
       "recordedAt": "2026-09-11T05:17:27.991Z"
     },
     {
       "file": "packages/overlay-modules-react/src/notes/editor-state.ts",
-      "loc": 828,
+      "loc": 832,
       "complexity": 108,
       "recordedAt": "2026-09-27T13:09:07.924Z"
     },
     {
       "file": "packages/overlay-modules-react/src/notes/editor.tsx",
-      "loc": 730,
+      "loc": 732,
       "complexity": 43,
       "recordedAt": "2026-09-11T05:17:27.991Z"
     },
@@ -157,92 +151,80 @@
     },
     {
       "file": "packages/overlay-sandbox-runtime/src/box.ts",
-      "loc": 587,
-      "complexity": 114,
+      "loc": 620,
+      "complexity": 140,
       "recordedAt": "2026-09-19T00:40:49.060Z"
     },
     {
       "file": "packages/overlay-workspace-contracts/src/types.ts",
-      "loc": 684,
+      "loc": 688,
       "complexity": 6,
       "recordedAt": "2026-09-11T05:17:27.991Z"
     },
     {
-      "file": "src/app/app/account/page.tsx",
-      "loc": 591,
-      "complexity": 65,
-      "recordedAt": "2026-09-27T13:09:07.924Z"
-    },
-    {
-      "file": "src/app/app/settings/page.tsx",
-      "loc": 502,
-      "complexity": 53,
-      "recordedAt": "2026-10-12T14:08:57.759Z"
-    },
-    {
       "file": "src/app/auth/(shell)/sign-up/SignUpClient.tsx",
-      "loc": 582,
+      "loc": 584,
       "complexity": 40,
       "recordedAt": "2026-09-27T13:09:07.924Z"
     },
     {
       "file": "src/app/globals.css",
-      "loc": 508,
+      "loc": 527,
       "complexity": 0,
       "recordedAt": "2026-10-15T19:16:29.528Z"
     },
     {
       "file": "src/components/layout/AppSidebarAgentsPanel.tsx",
-      "loc": 610,
+      "loc": 606,
       "complexity": 109,
       "recordedAt": "2026-09-27T13:09:07.924Z"
     },
     {
       "file": "src/components/layout/sidebar/AppSidebarChrome.tsx",
-      "loc": 798,
-      "complexity": 44,
+      "loc": 803,
+      "complexity": 45,
       "recordedAt": "2026-09-27T13:09:07.924Z"
     },
     {
       "file": "src/components/layout/sidebar/appSidebarNav.ts",
-      "loc": 581,
-      "complexity": 120,
+      "loc": 600,
+      "complexity": 124,
       "recordedAt": "2026-09-27T13:09:07.924Z"
     },
     {
       "file": "src/components/layout/sidebar/useAppSidebarState.ts",
-      "loc": 838,
-      "complexity": 58,
+      "loc": 876,
+      "complexity": 62,
       "recordedAt": "2026-09-27T13:09:07.924Z"
     },
     {
       "file": "src/components/share/ShareDialog.tsx",
-      "loc": 697,
+      "loc": 694,
       "complexity": 88,
       "recordedAt": "2026-09-11T05:17:27.991Z"
     },
     {
       "file": "src/features/agents/components/AgentEditorForm.tsx",
-      "loc": 1006,
+      "loc": 1012,
       "complexity": 116,
       "recordedAt": "2026-09-19T00:40:49.060Z"
     },
     {
       "file": "src/features/chat/components/ChatInlinePanel.tsx",
-      "loc": 997,
-      "complexity": 130,
+      "loc": 1038,
+      "complexity": 148,
       "recordedAt": "2026-09-11T05:17:27.991Z"
     },
     {
       "file": "src/features/chat/components/DirectMessageExperience.hooks.ts",
-      "loc": 2209,
-      "complexity": 255,
+      "loc": 2220,
+      "complexity": 263,
       "recordedAt": "2026-09-27T13:09:07.924Z"
     },
     {
       "file": "src/features/chat/components/DirectMessageExperience.parts.tsx",
-      "loc": 954,
-      "complexity": 98,
+      "loc": 949,
+      "complexity": 99,
       "recordedAt": "2026-09-27T13:09:07.924Z"
     },
     {
@@ -259,80 +241,86 @@
     },
     {
       "file": "src/features/chat/components/chat/useChatExperienceController.tsx",
-      "loc": 1184,
+      "loc": 1177,
       "complexity": 77,
       "recordedAt": "2026-09-27T13:09:07.924Z"
     },
     {
       "file": "src/features/chat/components/chat/useChatModelSelectionController.ts",
-      "loc": 714,
-      "complexity": 82,
+      "loc": 732,
+      "complexity": 85,
       "recordedAt": "2026-09-11T05:17:27.991Z"
     },
     {
       "file": "src/features/chat/components/chat/useChatSendController.ts",
-      "loc": 504,
+      "loc": 503,
       "complexity": 17,
       "recordedAt": "2026-09-11T05:17:27.991Z"
     },
     {
       "file": "src/features/chat/components/collaboration/RoomMessageItem.tsx",
-      "loc": 1219,
-      "complexity": 130,
+      "loc": 1284,
+      "complexity": 148,
       "recordedAt": "2026-09-11T05:17:27.991Z"
     },
     {
       "file": "src/features/knowledge/components/MemoriesView.tsx",
-      "loc": 814,
-      "complexity": 81,
+      "loc": 831,
+      "complexity": 89,
       "recordedAt": "2026-09-11T05:17:27.991Z"
     },
     {
       "file": "src/features/settings/components/ProviderConnectionRow.tsx",
-      "loc": 567,
+      "loc": 568,
       "complexity": 57,
       "recordedAt": "2026-09-27T13:09:07.924Z"
     },
     {
       "file": "src/features/settings/components/ProviderDialog.tsx",
       "loc": 665,
-      "complexity": 80,
+      "complexity": 83,
       "recordedAt": "2026-09-27T13:09:07.924Z"
     },
     {
       "file": "src/features/workspaces/components/SlackImportPanel.tsx",
-      "loc": 1292,
-      "complexity": 199,
+      "loc": 1283,
+      "complexity": 198,
       "recordedAt": "2026-09-11T05:17:27.991Z"
     },
     {
       "file": "src/features/workspaces/components/WorkspaceSettingsPanel.tsx",
-      "loc": 1303,
+      "loc": 1302,
       "complexity": 139,
       "recordedAt": "2026-09-11T05:17:27.991Z"
     },
     {
       "file": "src/server/agents/ConnectedAgentControlPlaneService.ts",
-      "loc": 1109,
-      "complexity": 215,
+      "loc": 1285,
+      "complexity": 299,
       "recordedAt": "2026-09-11T05:17:27.991Z"
     },
     {
       "file": "src/server/agents/ManagedAgentSandboxBilling.ts",
-      "loc": 831,
-      "complexity": 233,
+      "loc": 1000,
+      "complexity": 327,
       "recordedAt": "2026-09-19T00:40:49.060Z"
     },
     {
+      "file": "src/server/agents/cloud/CloudAgentMachineService.ts",
+      "loc": 682,
+      "complexity": 163,
+      "recordedAt": "2026-10-20T19:59:20.711Z"
+    },
+    {
       "file": "src/server/agents/workspace-agent-invocation.ts",
-      "loc": 1051,
-      "complexity": 119,
+      "loc": 1094,
+      "complexity": 134,
       "recordedAt": "2026-09-11T05:17:27.991Z"
     },
     {
       "file": "src/server/app-api/v1/conversations/act/ActTurnOrchestrationService.ts",
-      "loc": 1342,
-      "complexity": 195,
+      "loc": 1362,
+      "complexity": 202,
       "recordedAt": "2026-09-11T05:17:27.991Z"
     },
     {
@@ -355,7 +343,7 @@
     },
     {
       "file": "src/server/authorization/authorization-route-policy.ts",
-      "loc": 606,
+      "loc": 607,
       "complexity": 11,
       "recordedAt": "2026-09-11T05:17:27.991Z"
     },
@@ -373,13 +361,13 @@
     },
     {
       "file": "src/server/bootstrap.ts",
-      "loc": 730,
-      "complexity": 145,
+      "loc": 775,
+      "complexity": 148,
       "recordedAt": "2026-09-11T05:17:27.991Z"
     },
     {
       "file": "src/server/config/env-overrides.ts",
-      "loc": 625,
+      "loc": 626,
       "complexity": 183,
       "recordedAt": "2026-09-11T05:17:27.991Z"
     },
@@ -409,8 +397,8 @@
     },
     {
       "file": "src/server/tools/tools/overlay-executes.ts",
-      "loc": 1077,
-      "complexity": 170,
+      "loc": 1090,
+      "complexity": 171,
       "recordedAt": "2026-09-11T05:17:27.991Z"
     },
     {
@@ -427,36 +415,36 @@
     },
     {
       "file": "src/shared/config/overlayConfigSchema.ts",
-      "loc": 1121,
+      "loc": 1122,
       "complexity": 165,
       "recordedAt": "2026-09-11T05:17:27.991Z"
     },
     {
       "file": "src/shared/schemas/api-boundary.ts",
-      "loc": 1022,
+      "loc": 1031,
       "complexity": 16,
       "recordedAt": "2026-09-11T05:17:27.991Z"
     }
   ],
   "complexFunctionCounts": {
+    "src/server/agents/ManagedAgentSandboxBilling.ts#meterLease": 1,
     "src/shared/config/overlayConfigSchema.ts#callback": 1,
     "src/server/app-api/v1/conversations/act/ActTurnOrchestrationService.ts#executeActTurn": 1,
     "src/server/app-api/v1/settings/route.ts#PATCH": 1,
     "packages/overlay-chat-core/src/visual-sequence.ts#buildAssistantVisualSequence": 1,
     "src/components/providers/AppSettingsProvider.tsx#isAppSettingsPayload": 1,
-    "src/server/agents/ManagedAgentSandboxBilling.ts#meterLease": 1,
     "src/server/app-api/v1/generate-video/route.ts#start": 1,
+    "src/shared/chat/persist-assistant-turn.ts#buildAssistantPersistenceFromSteps": 1,
     "src/shared/tools/output-types.ts#classifyOutputType": 1,
     "src/server/bootstrap.ts#assertSelectedProviderConfig": 1,
     "packages/overlay-tools-core/src/mcp-schema-to-zod.ts#jsonSchemaToZod": 1,
-    "src/shared/chat/persist-assistant-turn.ts#buildAssistantPersistenceFromSteps": 1,
     "src/server/tools/tools/build.ts#buildOverlayToolSet": 1,
+    "src/shared/agents/remote-agent-transcript.ts#projectRemoteAgentEvents": 1,
     "packages/overlay-app-core/src/automations/run-status.ts#applyEvent": 1,
     "src/server/app-api/v1/providers/connections/route.ts#PATCH": 1,
     "src/features/chat/components/chat/useChatConversationLoader.ts#callback": 1,
     "packages/overlay-chat-core/src/agent-assistant-text.ts#isNimLeakedNarrationLine": 1,
     "src/server/app-api/v1/generate-image/route.ts#POST": 1,
-    "src/shared/agents/remote-agent-transcript.ts#projectRemoteAgentEvents": 1,
     "src/server/app-api/v1/conversations/route.ts#GET": 1,
     "packages/overlay-chat-react/src/components/MarkdownMessage.tsx#a": 1,
     "packages/overlay-modules-react/src/notes/inline-diff-extension.ts#parseMarkdownLine": 1,
@@ -474,18 +462,18 @@
     "src/features/chat/components/chat/toChatTranscriptView.ts#callback": 1,
     "packages/overlay-chat-react/src/components/SourcesPanel.tsx#callback": 1,
     "src/server/automations/AutomationService.ts#buildAutomationUpdateNote": 1,
+    "src/server/database/convex.ts#callConvex": 1,
     "src/server/knowledge/mention-resolver.ts#resolveOne": 1,
     "src/shared/agents/elicitation-schema.ts#matchesPropertySchema": 1,
     "packages/overlay-billing/src/adapters/stripe-billing-provider.ts#verifyPaidPlanCheckoutSession": 1,
+    "packages/overlay-chat-core/src/messages.ts#errorLabel": 1,
     "packages/overlay-chat-react/src/components/MediaSlotOutput.tsx#MediaSlotOutput": 1,
     "src/server/app-api/v1/conversations/act/turn-authorization.ts#authorizeActRequest": 1,
-    "src/server/database/convex.ts#callConvex": 1,
     "src/server/app-api/v1/conversations/message/route.ts#POST": 1,
     "packages/overlay-chat-core/src/tool-labels.ts#describeComposioIntegrationTool": 1,
     "src/features/chat/components/chat/chat-send-media.ts#sendMediaTurn": 1,
     "src/features/chat/components/chat/useChatTurnActions.ts#handleBranchConversationAtTurn": 1,
     "src/server/app-api/v1/conversations/act/extension-plan/route.ts#POST": 1,
-    "packages/overlay-chat-core/src/messages.ts#errorLabel": 1,
     "packages/overlay-chat-core/src/tool-labels.ts#getDescriptiveToolLabel": 1,
     "src/components/agents/AgentAccountDialog.tsx#AccountDialog": 1,
     "src/server/tools/mcp-tools.ts#execute": 1
@@ -511,8 +499,8 @@
     },
     {
       "file": "src/server/app-api/v1/conversations/route.ts",
-      "loc": 451,
-      "complexity": 133,
+      "loc": 447,
+      "complexity": 130,
       "recordedAt": "2026-09-11T05:17:27.991Z"
     },
     {
@@ -559,8 +547,8 @@
     },
     {
       "file": "src/server/app-api/v1/settings/route.ts",
-      "loc": 320,
-      "complexity": 89,
+      "loc": 327,
+      "complexity": 92,
       "recordedAt": "2026-09-11T05:17:27.991Z"
     }
   ],
@@ -776,6 +764,13 @@
       "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
     },
     {
+      "file": "src/app/api/agent-drive/route.ts",
+      "layer": "src/app/api other",
+      "loc": 8,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
       "file": "src/app/api/agent-gateway/[provider]/[...path]/route.ts",
       "layer": "src/app/api other",
       "loc": 13,
@@ -785,7 +780,7 @@
     {
       "file": "src/app/api/agent-mcp/route.ts",
       "layer": "src/app/api other",
-      "loc": 12,
+      "loc": 13,
       "classification": "keep",
       "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
     },
@@ -1059,6 +1054,13 @@
       "file": "src/app/api/v1/agent-environments/[environmentId]/desktop/route.ts",
       "layer": "src/app/api/v1 wrappers",
       "loc": 8,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/v1/agent-environments/[environmentId]/drive-credentials/route.ts",
+      "layer": "src/app/api/v1 wrappers",
+      "loc": 5,
       "classification": "keep",
       "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
     },
@@ -2120,6 +2122,13 @@
       "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
     },
     {
+      "file": "src/app/app/account/page.tsx",
+      "layer": "src/app routes",
+      "loc": 1,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
       "file": "src/app/app/activity/page.tsx",
       "layer": "src/app routes",
       "loc": 22,
@@ -2186,6 +2195,13 @@
       "file": "src/app/app/chat/page.tsx",
       "layer": "src/app routes",
       "loc": 50,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/app/error.tsx",
+      "layer": "src/app routes",
+      "loc": 11,
       "classification": "keep",
       "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
     },
@@ -2339,7 +2355,7 @@
     {
       "file": "src/app/app/settings/page.tsx",
       "layer": "src/app routes",
-      "loc": 502,
+      "loc": 490,
       "classification": "keep",
       "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
     },
@@ -2388,7 +2404,7 @@
     {
       "file": "src/app/auth/(shell)/forgot-password/page.tsx",
       "layer": "src/app routes",
-      "loc": 122,
+      "loc": 124,
       "classification": "keep",
       "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
     },
@@ -2409,7 +2425,7 @@
     {
       "file": "src/app/auth/(shell)/reset-password/page.tsx",
       "layer": "src/app routes",
-      "loc": 178,
+      "loc": 180,
       "classification": "keep",
       "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
     },
@@ -2437,7 +2453,7 @@
     {
       "file": "src/app/auth/composio/callback/page.tsx",
       "layer": "src/app routes",
-      "loc": 81,
+      "loc": 83,
       "classification": "keep",
       "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
     },
@@ -2472,7 +2488,7 @@
     {
       "file": "src/app/error.tsx",
       "layer": "src/app routes",
-      "loc": 24,
+      "loc": 29,
       "classification": "keep",
       "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
     },
@@ -2486,14 +2502,14 @@
     {
       "file": "src/app/global-error.tsx",
       "layer": "src/app routes",
-      "loc": 55,
+      "loc": 57,
       "classification": "keep",
       "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
     },
     {
       "file": "src/app/layout.tsx",
       "layer": "src/app routes",
-      "loc": 93,
+      "loc": 106,
       "classification": "keep",
       "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
     },
@@ -2561,6 +2577,48 @@
       "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
     },
     {
+      "file": "packages/overlay-agent-bridge-protocol/src/drive-recovery.ts",
+      "layer": "packages/overlay-agent-bridge-protocol",
+      "loc": 14,
+      "classification": "review",
+      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
+    },
+    {
+      "file": "packages/overlay-agent-bridge-protocol/src/drive.ts",
+      "layer": "packages/overlay-agent-bridge-protocol",
+      "loc": 77,
+      "classification": "review",
+      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
+    },
+    {
+      "file": "packages/overlay-agent-host/src/acp-settings.ts",
+      "layer": "packages/overlay-agent-host",
+      "loc": 49,
+      "classification": "review",
+      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
+    },
+    {
+      "file": "packages/overlay-agent-host/src/acpx-session-identity.ts",
+      "layer": "packages/overlay-agent-host",
+      "loc": 54,
+      "classification": "review",
+      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
+    },
+    {
+      "file": "packages/overlay-agent-host/src/action-title.ts",
+      "layer": "packages/overlay-agent-host",
+      "loc": 7,
+      "classification": "review",
+      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
+    },
+    {
+      "file": "packages/overlay-agent-host/src/agent-options.ts",
+      "layer": "packages/overlay-agent-host",
+      "loc": 42,
+      "classification": "review",
+      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
+    },
+    {
       "file": "packages/overlay-agent-host/src/cli.mjs",
       "layer": "packages/overlay-agent-host",
       "loc": 8,
@@ -2570,7 +2628,21 @@
     {
       "file": "packages/overlay-agent-host/src/config.ts",
       "layer": "packages/overlay-agent-host",
-      "loc": 69,
+      "loc": 84,
+      "classification": "review",
+      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
+    },
+    {
+      "file": "packages/overlay-agent-host/src/host-capabilities.ts",
+      "layer": "packages/overlay-agent-host",
+      "loc": 54,
+      "classification": "review",
+      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
+    },
+    {
+      "file": "packages/overlay-agent-host/src/host-heartbeat.ts",
+      "layer": "packages/overlay-agent-host",
+      "loc": 31,
       "classification": "review",
       "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
     },
@@ -2582,9 +2654,107 @@
       "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
     },
     {
+      "file": "packages/overlay-agent-host/src/native-restoration.ts",
+      "layer": "packages/overlay-agent-host",
+      "loc": 22,
+      "classification": "review",
+      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
+    },
+    {
+      "file": "packages/overlay-agent-host/src/native-start-barrier.ts",
+      "layer": "packages/overlay-agent-host",
+      "loc": 31,
+      "classification": "review",
+      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
+    },
+    {
+      "file": "packages/overlay-agent-host/src/ordered-acp-updates.ts",
+      "layer": "packages/overlay-agent-host",
+      "loc": 30,
+      "classification": "review",
+      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
+    },
+    {
+      "file": "packages/overlay-agent-host/src/outbox-packing.ts",
+      "layer": "packages/overlay-agent-host",
+      "loc": 39,
+      "classification": "review",
+      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
+    },
+    {
+      "file": "packages/overlay-agent-host/src/preview-hosting-access.ts",
+      "layer": "packages/overlay-agent-host",
+      "loc": 35,
+      "classification": "review",
+      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
+    },
+    {
+      "file": "packages/overlay-agent-host/src/preview-hosting.ts",
+      "layer": "packages/overlay-agent-host",
+      "loc": 16,
+      "classification": "review",
+      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
+    },
+    {
+      "file": "packages/overlay-agent-host/src/preview-mcp-relay.ts",
+      "layer": "packages/overlay-agent-host",
+      "loc": 89,
+      "classification": "review",
+      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
+    },
+    {
+      "file": "packages/overlay-agent-host/src/process-group.ts",
+      "layer": "packages/overlay-agent-host",
+      "loc": 26,
+      "classification": "review",
+      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
+    },
+    {
+      "file": "packages/overlay-agent-host/src/run-preparation.ts",
+      "layer": "packages/overlay-agent-host",
+      "loc": 18,
+      "classification": "review",
+      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
+    },
+    {
+      "file": "packages/overlay-agent-host/src/runtime-drive-controller.ts",
+      "layer": "packages/overlay-agent-host",
+      "loc": 97,
+      "classification": "review",
+      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
+    },
+    {
+      "file": "packages/overlay-agent-host/src/runtime-session-admission.ts",
+      "layer": "packages/overlay-agent-host",
+      "loc": 43,
+      "classification": "review",
+      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
+    },
+    {
+      "file": "packages/overlay-agent-host/src/runtime-shutdown.ts",
+      "layer": "packages/overlay-agent-host",
+      "loc": 25,
+      "classification": "review",
+      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
+    },
+    {
+      "file": "packages/overlay-agent-host/src/runtime-terminal-boundary.ts",
+      "layer": "packages/overlay-agent-host",
+      "loc": 40,
+      "classification": "review",
+      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
+    },
+    {
       "file": "packages/overlay-agent-host/src/runtime-version.ts",
       "layer": "packages/overlay-agent-host",
       "loc": 9,
+      "classification": "review",
+      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
+    },
+    {
+      "file": "packages/overlay-agent-host/src/text-coalescer.ts",
+      "layer": "packages/overlay-agent-host",
+      "loc": 45,
       "classification": "review",
       "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
     },
@@ -2596,6 +2766,20 @@
       "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
     },
     {
+      "file": "packages/overlay-chat-react/src/context/chat-settings.ts",
+      "layer": "packages/overlay-chat-react",
+      "loc": 1,
+      "classification": "review",
+      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
+    },
+    {
+      "file": "packages/overlay-chat-react/src/lib/shim-incomplete-markdown.ts",
+      "layer": "packages/overlay-chat-react",
+      "loc": 1,
+      "classification": "review",
+      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
+    },
+    {
       "file": "src/components/useVisibleReconciliation.ts",
       "layer": "src/components",
       "loc": 34,
@@ -2603,9 +2787,16 @@
       "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
     },
     {
+      "file": "src/features/account/components/OnboardingConnectorLogos.tsx",
+      "layer": "src/features",
+      "loc": 204,
+      "classification": "review",
+      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
+    },
+    {
       "file": "src/features/files/components/FileShareMenu.tsx",
       "layer": "src/features",
-      "loc": 116,
+      "loc": 119,
       "classification": "review",
       "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
     },
@@ -2682,7 +2873,7 @@
     {
       "file": "src/shared/agents/connected-agent-repository-contract.ts",
       "layer": "src/shared",
-      "loc": 453,
+      "loc": 454,
       "classification": "review",
       "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
     },
@@ -2709,12 +2900,12 @@
     }
   ],
   "totals": {
-    "files": 2269,
-    "code": 244444,
-    "total": 278433,
-    "productionFiles": 1853,
-    "productionCode": 205252,
-    "testFiles": 416,
-    "testCode": 39192
+    "files": 2518,
+    "code": 265047,
+    "total": 300862,
+    "productionFiles": 1993,
+    "productionCode": 216081,
+    "testFiles": 525,
+    "testCode": 48966
   }
 }

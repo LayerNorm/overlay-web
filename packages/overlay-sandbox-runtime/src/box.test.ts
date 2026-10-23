@@ -43,7 +43,7 @@ function request(name = 'overlay-box'): SandboxCreateRequest {
   }
 }
 
-test('create always provisions no-env, maps size and ttl, and sets the name via PATCH', async () => {
+test('create always provisions no-env, maps size and bounded ttl, and sets the name via PATCH', async () => {
   const { calls, fetch } = recorder(() => ({ ok: true, type: 'sandbox.created', sandbox: { id: 'bx_new', state: 'ready' } }))
   const instance = await runtime(fetch).create(request('computer-1'))
 
@@ -52,7 +52,7 @@ test('create always provisions no-env, maps size and ttl, and sets the name via 
   assert.match(create.url, /\/sandboxes$/)
   assert.deepEqual(create.body, {
     type: 'small',
-    ttlSeconds: 600,
+    ttlSeconds: 240,
     env: { OVERLAY_WORKSPACE_ID: 'ws-1' },
     noEnv: true,
   })
@@ -72,16 +72,62 @@ test('a scoped Boat environment stays attached without injecting account credent
   const rt = new BoxSandboxRuntime({ apiKey: 'preview-key', environment: 'overlay-preview', fetch })
   await rt.create(request())
   assert.deepEqual(calls[0].body, {
-    type: 'small', ttlSeconds: 600, env: { OVERLAY_WORKSPACE_ID: 'ws-1' },
+    type: 'small', ttlSeconds: 240, env: { OVERLAY_WORKSPACE_ID: 'ws-1' },
     noEnv: true, environment: 'overlay-preview',
   })
 })
 
-test('create maps default/large sizes and infinite ttl, and restore uses from', async () => {
+test('inventory requests bounded live states and cost, filters environment, and returns only safe fields', async () => {
+  const { calls, fetch } = recorder(() => ok({
+    sandboxes: [
+      {
+        id: 'bx_preview', state: 'ready', environment: 'overlay-preview',
+        createdAt: '2026-10-01T00:00:00.000Z', cost: { dollars: 1.23 },
+        url: 'https://machine.invalid', ip: '192.0.2.1', sshEndpoint: 'machine.invalid:22',
+        desktopUrl: 'https://secret.invalid',
+      },
+      { id: 'bx_other', state: 'running', environment: 'production', createdAt: '2026-10-01T00:00:00.000Z' },
+    ],
+    pageInfo: { nextCursor: 'cursor-next', hasMore: true, limit: 17 },
+  }))
+  const rt = new BoxSandboxRuntime({ apiKey: 'preview-key', environment: 'overlay-preview', fetch })
+
+  const inventory = await rt.listInventory({ cursor: 'cursor-current', limit: 17 })
+  const url = new URL(calls[0]!.url)
+  assert.equal(calls[0]!.method, 'GET')
+  assert.equal(url.pathname, '/api/v1/sandboxes')
+  assert.equal(url.searchParams.get('limit'), '17')
+  assert.equal(url.searchParams.get('cursor'), 'cursor-current')
+  assert.equal(url.searchParams.get('state'), 'init,provisioning,provisioned,cloning,ready,idle,running,archiving')
+  assert.equal(url.searchParams.get('include'), 'cost')
+  assert.equal(inventory.nextCursor, 'cursor-next')
+  assert.deepEqual(inventory.items, [{
+    reference: 'bx_preview',
+    state: 'ready',
+    createdAt: Date.parse('2026-10-01T00:00:00.000Z'),
+    monthCostCents: 123,
+  }])
+  for (const key of ['url', 'ip', 'sshEndpoint', 'desktopUrl']) {
+    assert.equal(Object.hasOwn(inventory.items[0]!, key), false)
+  }
+})
+
+test('inventory includes all environments when no Boat environment is configured', async () => {
+  const { fetch } = recorder(() => ok({
+    sandboxes: [
+      { id: 'bx_one', state: 'ready', environment: 'one' },
+      { id: 'bx_two', state: 'idle', environment: 'two' },
+    ],
+  }))
+  const inventory = await runtime(fetch).listInventory({ limit: 200 })
+  assert.deepEqual(inventory.items.map((item) => item.reference), ['bx_one', 'bx_two'])
+})
+
+test('create maps default/large sizes and bounded ttl, and restore uses from', async () => {
   const { calls, fetch } = recorder(() => ({ ok: true, sandbox: { id: 'bx_1', state: 'ready' } }))
   const rt = runtime(fetch)
   await rt.create({ ...request(), hardTimeoutMs: 0, resources: { vcpus: 4 } })
-  assert.deepEqual(calls[0].body, { type: 'default', ttlSeconds: null, env: { OVERLAY_WORKSPACE_ID: 'ws-1' }, noEnv: true })
+  assert.deepEqual(calls[0].body, { type: 'default', ttlSeconds: 240, env: { OVERLAY_WORKSPACE_ID: 'ws-1' }, noEnv: true })
 
   await rt.restore('golden-image', { ...request(), resources: { vcpus: 8 } })
   const restoreCreate = calls.filter((call) => call.method === 'POST' && call.url.endsWith('/sandboxes')).at(-1)!
@@ -100,6 +146,43 @@ test('create refuses network policies and credential bindings the provider lacks
     rt.create({ ...request(), credentials: [{ brokerRef: 'b', environmentVariable: 'E', allowedDomains: [] }] }),
     (error) => error instanceof BoxApiError && error.code === 'unsupported',
   )
+})
+
+test('allocation is persisted before readiness and failures neither delete nor retry the provider', async () => {
+  const events: string[] = []
+  const { calls, fetch } = recorder((call) => {
+    events.push(call.method)
+    return ok({ sandbox: { id: 'bx_claimed', state: 'error' } })
+  })
+  await assert.rejects(runtime(fetch).create({
+    ...request(), allocationKey: 'durable-allocation-1',
+    onAllocated: async (reference) => { assert.equal(reference, 'bx_claimed'); events.push('persisted') },
+  }), /entered error state/)
+  assert.deepEqual(events.slice(0, 2), ['POST', 'persisted'])
+  assert.equal(calls.filter((call) => call.method === 'POST').length, 1)
+  assert.equal(calls.some((call) => call.method === 'DELETE'), false)
+  assert.equal(calls[0].headers['Idempotency-Key'], 'durable-allocation-1')
+})
+
+test('failed allocation persistence stops setup and stable retries preserve the exact provider request', async () => {
+  const { calls, fetch } = recorder(() => ok({ sandbox: { id: 'bx_claimed', state: 'ready' } }))
+  const rt = runtime(fetch)
+  const args = { ...request(), allocationKey: 'durable-allocation-1' }
+  await assert.rejects(rt.create({ ...args, onAllocated: async () => { throw new Error('database unavailable') } }), /database unavailable/)
+  assert.equal(calls.length, 1)
+  await rt.create(args)
+  const creates = calls.filter((call) => call.method === 'POST')
+  assert.equal(creates.length, 2)
+  assert.deepEqual(creates[0].body, creates[1].body)
+  assert.equal(creates[0].headers['Idempotency-Key'], creates[1].headers['Idempotency-Key'])
+})
+
+test('runtime renewal never disables or extends the four minute provider fence', async () => {
+  const { calls, fetch } = recorder(() => ok({ sandbox: { id: 'bx_fenced', state: 'ready' } }))
+  const instance = await runtime(fetch).reconnect('bx_fenced', { resume: false })
+  await instance.renewRuntime!(60 * 60_000)
+  assert.deepEqual(calls.at(-1)?.body, { ttlSeconds: 240 })
+  await assert.rejects(instance.renewRuntime!(Number.NaN), /must be positive/)
 })
 
 test('base URL cleanup removes a long trailing slash suffix before provider requests', async () => {
@@ -176,7 +259,8 @@ test('commands run detached, stream log deltas, and resolve with exit code', asy
 
   const commandCall = calls.find((call) => call.url.endsWith('/commands') && call.method === 'POST')!
   assert.equal((commandCall.body as Record<string, unknown>).detached, true)
-  assert.match((commandCall.body as Record<string, unknown>).command as string, /echo 'hello world'/)
+  assert.match((commandCall.body as Record<string, unknown>).command as string, /^timeout --signal=TERM --kill-after=5s 10s sh -c /)
+  assert.match((commandCall.body as Record<string, unknown>).command as string, /hello world/)
 
   let streamed = ''
   const consume = (async () => { for await (const event of handle.events()) streamed += event.data })()
@@ -217,7 +301,8 @@ test('emulated environment prefixes every subsequent command', async () => {
   await instance.updateEnvironment({ OVERLAY_TOKEN: "it's" }, ['STALE'])
   await (await instance.runCommand({ command: 'env', timeoutMs: 5_000 })).wait()
   const command = (calls.find((call) => call.url.endsWith('/commands'))?.body as { command: string }).command
-  assert.match(command, /^env OVERLAY_TOKEN='it'\\''s' env$/)
+  assert.match(command, /^timeout --signal=TERM --kill-after=5s 5s sh -c /)
+  assert.match(command, /OVERLAY_TOKEN=.*env/)
   assert.doesNotMatch(command, /STALE/)
 })
 
@@ -377,7 +462,7 @@ test('port returns a token-gated private url', async () => {
   assert.match(port.url, /_token=/)
 })
 
-test('create retries once when a box lands in error during provisioning', async () => {
+test('create does not retry or delete when a box enters error during provisioning', async () => {
   let creates = 0
   const { calls, fetch } = recorder((call) => {
     if (call.method === 'POST' && call.url.endsWith('/sandboxes')) {
@@ -388,10 +473,10 @@ test('create retries once when a box lands in error during provisioning', async 
     if (call.url.includes('bx_bad')) return ok({ sandbox: { id: 'bx_bad', state: 'error' } })
     return ok({ sandbox: { id: 'bx_good', state: 'ready' } })
   })
-  const instance = await runtime(fetch).create(request('retry'))
-  assert.equal(creates, 2)
-  assert.equal(instance.reference, 'bx_good')
-  assert.ok(calls.some((call) => call.method === 'DELETE' && call.url.includes('bx_bad')))
+  await assert.rejects(runtime(fetch).create(request('retry')), (error: unknown) =>
+    error instanceof BoxApiError && error.code === 'box_error')
+  assert.equal(creates, 1)
+  assert.equal(calls.some((call) => call.method === 'DELETE' && call.url.includes('bx_bad')), false)
 })
 
 test('usage reports billable machine seconds as wallTime plus provider dollars', async () => {
@@ -418,15 +503,16 @@ test('usage reports billable machine seconds as wallTime plus provider dollars',
   assert.match(calls.find((call) => call.url.includes('/usage'))!.url, /\/sandboxes\/bx_1\/usage$/)
 })
 
-test('usage omits reportedUsd when the API predates dollar reporting', async () => {
+test('usage rejects counters missing provider dollars', async () => {
   const { fetch } = recorder((call) => {
-    if (call.url.endsWith('/usage')) return ok({ seconds: 120, running: true })
+    if (call.url.endsWith('/usage')) return ok({
+      seconds: 120, secondsPerDollar: 100_000, billingMultiplier: 1, running: true,
+    })
     return ok({ sandbox: { id: 'bx_1', state: 'ready' } })
   })
-  const usage = await runtime(fetch).reconnect('bx_1').then((instance) => instance.usage())
-  assert.equal(usage.wallTimeMs, 120_000)
-  assert.equal(usage.providerMetrics?.reportedUsd, undefined)
-  assert.equal(usage.providerMetrics?.running, true)
+  const instance = await runtime(fetch).reconnect('bx_1')
+  await assert.rejects(instance.usage(), (error: unknown) =>
+    error instanceof BoxApiError && error.code === 'invalid_usage_response')
 })
 
 test('limits reads account capacity and balance', async () => {
@@ -492,5 +578,6 @@ test('a command environment is applied on top of the machine environment', async
   await instance.updateEnvironment({ SHARED: 'machine', OVERRIDE: 'machine' })
   await instance.runCommand({ command: 'printenv', environment: { OVERRIDE: 'command', ONLY: 'command' }, timeoutMs: 1_000 })
   const command = (calls.find((call) => call.url.endsWith('/commands'))?.body as { command: string }).command
-  assert.equal(command, "env SHARED='machine' OVERRIDE='command' ONLY='command' printenv")
+  assert.match(command, /^timeout --signal=TERM --kill-after=5s 1s sh -c /)
+  assert.match(command, /SHARED=.*OVERRIDE=.*ONLY=.*printenv/)
 })

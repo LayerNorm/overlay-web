@@ -12,6 +12,7 @@ import type {
   SandboxFileEntry,
   SandboxInstance,
   SandboxLifecycleState,
+  SandboxInventoryItem,
   SandboxPort,
   SandboxResources,
   SandboxRuntime,
@@ -65,8 +66,9 @@ export function boatApiKeyFromEnv(env: Record<string, string | undefined> = proc
 const WORK_DIR = '/home/user'
 const POLL_INTERVAL_MS = 750
 const PROVISION_TIMEOUT_MS = 5 * 60_000
-const STOP_TIMEOUT_MS = 10 * 60_000
+const STOP_TIMEOUT_MS = 2 * 60_000
 const SNAPSHOT_TIMEOUT_MS = 15 * 60_000
+const RUNTIME_FENCE_MS = 4 * 60_000
 
 export class BoxApiError extends Error {
   constructor(
@@ -93,7 +95,22 @@ type BoxInfo = {
   url?: string | null
   snapshotAvailable?: boolean
   desktopAvailable?: boolean
+  vcpu?: number
+  memoryGB?: number
 }
+
+type BoxInventoryResponse = {
+  sandboxes?: Array<{
+    id?: string
+    state?: string
+    createdAt?: string | null
+    environment?: string | null
+    cost?: { dollars?: number | null }
+  }>
+  pageInfo?: { nextCursor?: string | null }
+}
+
+const INVENTORY_STATES = 'init,provisioning,provisioned,cloning,ready,idle,running,archiving'
 
 export type BoxFetch = (
   input: string,
@@ -134,7 +151,7 @@ export class BoxSandboxRuntime implements SandboxRuntime {
     this.environment = options.environment?.trim() || process.env.BOAT_ENVIRONMENT?.trim() || undefined
     this.fetch = options.fetch ?? (async (input, init) => {
       // react-doctor-disable-next-line react-doctor/no-fetch-response-used-without-status-check
-      const response = await fetch(input, init)
+      const response = await fetch(input, { ...init, signal: AbortSignal.timeout(15_000), redirect: 'error' })
       return { status: response.status, json: () => response.json() }
     })
   }
@@ -182,10 +199,10 @@ export class BoxSandboxRuntime implements SandboxRuntime {
       throw new BoxApiError(400, 'unsupported', 'box does not support network policies')
     }
     const response = await this.request<SandboxEnvelope>('POST', '/sandboxes', {
-      headers: { 'Idempotency-Key': randomUUID() },
+      headers: { 'Idempotency-Key': request.allocationKey ?? randomUUID() },
       body: {
         type: boxSize(request.resources),
-        ttlSeconds: request.hardTimeoutMs > 0 ? Math.ceil(request.hardTimeoutMs / 1000) : null,
+        ttlSeconds: Math.ceil(Math.min(request.hardTimeoutMs > 0 ? request.hardTimeoutMs : RUNTIME_FENCE_MS, RUNTIME_FENCE_MS) / 1_000),
         env: request.environment,
         noEnv: true,
         ...(this.environment ? { environment: this.environment } : {}),
@@ -194,20 +211,12 @@ export class BoxSandboxRuntime implements SandboxRuntime {
     })
     const id = sandboxFromEnvelope(response)?.id
     if (!id) throw new BoxApiError(500, 'invalid_json_response', 'create returned no box id')
+    await request.onAllocated?.(id)
     if (request.name) {
       await this.request('PATCH', `/sandboxes/${id}`, { body: { name: request.name } }).catch(() => undefined)
     }
     const instance = new BoxSandboxInstance(this, id, request.environment)
-    try {
-      await instance.waitUntil(['ready', 'idle', 'running'], PROVISION_TIMEOUT_MS)
-    } catch (error) {
-      // Occasional provider-side provisioning flakes land in `error`; delete
-      // the dead box and retry the create once rather than surfacing it.
-      const isBoxError = error instanceof BoxApiError && error.code === 'box_error'
-      await instance.delete().catch(() => undefined)
-      if (!isBoxError) throw error
-      return this.create(request)
-    }
+    await instance.waitUntil(['ready', 'idle', 'running'], PROVISION_TIMEOUT_MS)
     return instance
   }
 
@@ -216,6 +225,43 @@ export class BoxSandboxRuntime implements SandboxRuntime {
     const state = (await instance.info()).state
     if (state === 'archived' && options?.resume !== false) await instance.resume()
     return instance
+  }
+
+  /** When scoped to a Boat environment, only matching inventory entries are returned. */
+  async listInventory(args: { cursor?: string; limit: number }): Promise<{
+    items: SandboxInventoryItem[]
+    nextCursor?: string
+  }> {
+    const response = await this.request<BoxInventoryResponse>('GET', '/sandboxes', {
+      query: {
+        limit: String(args.limit),
+        ...(args.cursor ? { cursor: args.cursor } : {}),
+        state: INVENTORY_STATES,
+        include: 'cost',
+      },
+    })
+    const items = (response.sandboxes ?? [])
+      .filter((sandbox) => typeof sandbox.id === 'string'
+        && typeof sandbox.state === 'string'
+        && (!this.environment || sandbox.environment === this.environment))
+      .map((sandbox): SandboxInventoryItem => {
+        const createdAt = sandbox.createdAt ? Date.parse(sandbox.createdAt) : NaN
+        const dollars = sandbox.cost?.dollars
+        const monthCostCents = typeof dollars === 'number' && Number.isFinite(dollars)
+          ? Math.round(dollars * 100)
+          : undefined
+        return {
+          reference: sandbox.id!,
+          state: sandbox.state!,
+          ...(Number.isFinite(createdAt) ? { createdAt } : {}),
+          ...(monthCostCents !== undefined ? { monthCostCents } : {}),
+        }
+      })
+    const nextCursor = response.pageInfo?.nextCursor
+    return {
+      items,
+      ...(typeof nextCursor === 'string' && nextCursor ? { nextCursor } : {}),
+    }
   }
 
   restore(snapshotId: string, request: Omit<SandboxCreateRequest, 'snapshotId'>) {
@@ -331,8 +377,17 @@ class BoxSandboxInstance implements DesktopSandboxInstance {
   }
 
   async resume(): Promise<void> {
-    await this.runtime.request('POST', `/sandboxes/${this.reference}/resume`, { body: {} })
+    await this.runtime.request('POST', `/sandboxes/${this.reference}/resume`, {
+      body: { ttlSeconds: RUNTIME_FENCE_MS / 1_000, noEnv: true },
+    })
     await this.waitUntil(['ready', 'idle', 'running'], PROVISION_TIMEOUT_MS)
+  }
+
+  async renewRuntime(timeoutMs: number): Promise<void> {
+    if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) throw new BoxApiError(400, 'invalid_timeout', 'Runtime timeout must be positive')
+    await this.runtime.request('PATCH', `/sandboxes/${this.reference}`, {
+      body: { ttlSeconds: Math.ceil(Math.min(timeoutMs, RUNTIME_FENCE_MS) / 1_000) },
+    })
   }
 
   async stop(): Promise<void> {
@@ -399,7 +454,11 @@ class BoxSandboxInstance implements DesktopSandboxInstance {
   }
 
   async runCommand(request: SandboxCommandRequest): Promise<SandboxCommandHandle> {
-    const command = shellJoin(request.command, request.args, { ...this.environment, ...request.environment })
+    if (!Number.isFinite(request.timeoutMs) || request.timeoutMs < 0) throw new BoxApiError(400, 'invalid_timeout', 'Command timeout must be nonnegative')
+    const joined = shellJoin(request.command, request.args, { ...this.environment, ...request.environment })
+    const command = request.timeoutMs > 0
+      ? `timeout --signal=TERM --kill-after=5s ${Math.ceil(request.timeoutMs / 1_000)}s sh -c ${shellQuote(joined)}`
+      : joined
     const response = await this.runtime.request<{
       processId?: number
       pid?: number
@@ -519,18 +578,26 @@ class BoxSandboxInstance implements DesktopSandboxInstance {
       billingMultiplier?: number
       running?: boolean
     }>('GET', `/sandboxes/${this.reference}/usage`)
+    if (typeof response.seconds !== 'number' || !Number.isFinite(response.seconds) || response.seconds < 0
+      || typeof response.dollars !== 'number' || !Number.isFinite(response.dollars) || response.dollars < 0
+      || typeof response.secondsPerDollar !== 'number' || !Number.isFinite(response.secondsPerDollar) || response.secondsPerDollar <= 0
+      || typeof response.billingMultiplier !== 'number' || !Number.isFinite(response.billingMultiplier) || response.billingMultiplier <= 0
+      || typeof response.running !== 'boolean') {
+      throw new BoxApiError(502, 'invalid_usage_response', 'Provider usage counters are invalid')
+    }
+    const info = await this.info()
     const seconds = finite(response.seconds)
     return {
       wallTimeMs: Math.max(0, seconds) * 1_000,
       providerMetrics: {
-        // Absent (not zero) when the API predates dollar reporting — the
-        // cost path falls back to the seconds rate card only then.
-        ...(typeof response.dollars === 'number' && Number.isFinite(response.dollars)
-          ? { reportedUsd: Math.max(0, response.dollars) }
-          : {}),
-        running: response.running === true,
-        ...(response.secondsPerDollar !== undefined ? { secondsPerDollar: response.secondsPerDollar } : {}),
-        ...(response.billingMultiplier !== undefined ? { billingMultiplier: response.billingMultiplier } : {}),
+        authoritativeCounter: true,
+        reportedUsd: response.dollars,
+        running: response.running,
+        secondsPerDollar: response.secondsPerDollar,
+        billingMultiplier: response.billingMultiplier,
+        ...(info.type ? { machineType: info.type } : {}),
+        ...(info.vcpu === undefined ? {} : { vcpus: info.vcpu }),
+        ...(info.memoryGB === undefined ? {} : { memoryGB: info.memoryGB }),
       },
     }
   }
