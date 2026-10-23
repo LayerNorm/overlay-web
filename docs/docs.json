@@ -13,7 +13,7 @@
     "dark": "/assets/overlay-lockup-dark.svg",
     "href": "https://getoverlay.io"
   },
-  "favicon": "/assets/overlay-mark.svg",
+  "favicon": "/assets/favicon.png",
   "appearance": {
     "default": "system"
   },
