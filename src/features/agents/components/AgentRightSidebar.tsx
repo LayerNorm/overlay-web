@@ -9,13 +9,12 @@ import { AgentComputerTabView } from './AgentComputerTab.parts'
 import { AgentSidebarDetails } from './AgentSidebarDetails'
 import { AgentLibraryTab } from './AgentRightSidebar.parts'
 import { AgentSidebarHero } from './AgentSidebarHero.parts'
-import { useAgentSidebarComputer } from './use-agent-sidebar-computer'
+import type { useAgentSidebarComputer } from './use-agent-sidebar-computer'
 import { createAgentAutosaveScheduler } from '../lib/agent-autosave-scheduler'
 import { isAgentEditSaveFailure } from '../lib/agent-edit-save-result'
 
 export function AgentRightSidebar({
   agentId,
-  activeWorkspaceId,
   conversationId,
   activeTab,
   onTabChange,
@@ -23,10 +22,10 @@ export function AgentRightSidebar({
   onArchived,
   showcase = false,
   controlled,
+  computerAccess,
   onTakeControl,
 }: {
   agentId: string
-  activeWorkspaceId: string | null
   conversationId: string
   activeTab: string
   onTabChange(id: string): void
@@ -34,7 +33,8 @@ export function AgentRightSidebar({
   onArchived(): void
   showcase?: boolean
   controlled: boolean
-  onTakeControl(ticketUrl: string, computerName: string, refreshTicket: () => void): void
+  computerAccess: ReturnType<typeof useAgentSidebarComputer>
+  onTakeControl(ticketUrl: string, computerName: string): void
 }) {
   const { capabilities } = useOverlayCapabilities()
   const computersEnabled = capabilities.computers === true && !showcase
@@ -48,12 +48,6 @@ export function AgentRightSidebar({
     onArchived,
   })
   const selectedTab = activeTab
-  const computerAccess = useAgentSidebarComputer({
-    activeWorkspaceId,
-    agentId,
-    enabled: computersEnabled,
-    visible: selectedTab === 'computer',
-  })
   const [saveFailed, setSaveFailed] = useState(false)
   const schedulerRef = useRef<ReturnType<typeof createAgentAutosaveScheduler> | null>(null)
 
@@ -118,14 +112,13 @@ export function AgentRightSidebar({
           ticketError={computerAccess.ticketError}
           ticketLoading={computerAccess.ticketLoading}
           controlled={controlled}
+          controlBusy={computerAccess.controlBusy}
           waking={computerAccess.waking}
           onWake={() => void computerAccess.wake()}
           onRetry={() => void (computerAccess.computerError
             ? computerAccess.loadComputer()
             : computerAccess.retryTicket())}
-          onTakeControl={(ticketUrl, computerName) => {
-            onTakeControl(ticketUrl, computerName, computerAccess.retryTicket)
-          }}
+          onTakeControl={onTakeControl}
         />
       ) : null,
     },

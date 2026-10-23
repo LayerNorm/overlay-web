@@ -3,7 +3,7 @@ import test from 'node:test'
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import type { Computer } from '@overlay/workspace-contracts'
-import { AgentComputerTabView } from './AgentComputerTab.parts'
+import { AgentComputerControlOverlay, AgentComputerTabView } from './AgentComputerTab.parts'
 
 ;(globalThis as typeof globalThis & { React: typeof React }).React = React
 
@@ -28,6 +28,7 @@ function renderComputerTab(state: {
   ticketUrl?: string | null
   ticketLoading?: boolean
   controlled?: boolean
+  controlBusy?: boolean
 }) {
   return renderToStaticMarkup(
     <AgentComputerTabView
@@ -39,6 +40,7 @@ function renderComputerTab(state: {
       ticketError={null}
       ticketLoading={state.ticketLoading ?? false}
       controlled={state.controlled ?? false}
+      controlBusy={state.controlBusy}
       waking={false}
       onWake={() => {}}
       onRetry={() => {}}
@@ -107,4 +109,25 @@ test('computer unavailable state does not render a preview or invoke computer ac
   assert.match(markup, /Computer unavailable/)
   assert.doesNotMatch(markup, /Take control|iframe/)
   assert.deepEqual(calls, [])
+})
+
+test('persisted takeover shows the agent paused even without an open viewer', () => {
+  const markup = renderComputerTab({
+    computer: { ...computer, controlledByUserId: 'user-1' },
+    ticketUrl: 'https://computer.example/ticket',
+  })
+  assert.match(markup, /Research is paused/)
+  assert.doesNotMatch(markup, /Research is working/)
+  assert.match(markup, /Take control/)
+})
+
+test('control actions are disabled while server confirmation is pending', () => {
+  const markup = renderComputerTab({ computer, ticketUrl: 'https://computer.example/ticket', controlBusy: true })
+  assert.match(markup, /aria-label="Take control"[^>]*disabled/)
+  assert.match(markup, /Taking control/)
+  const overlay = renderToStaticMarkup(<AgentComputerControlOverlay
+    computerName="Research" ticketUrl="https://computer.example/ticket" controlBusy onClose={() => {}}
+  />)
+  assert.match(overlay, /aria-label="Back to conversation"[^>]*disabled/)
+  assert.match(overlay, /disabled[^>]*>Releasing control/)
 })
