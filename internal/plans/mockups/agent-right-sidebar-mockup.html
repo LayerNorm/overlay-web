@@ -1,0 +1,388 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Overlay · Right sidebar mockup</title>
+<script>
+  (function () {
+    var t = null
+    try { t = localStorage.getItem('overlay-mockup-theme') } catch (e) {}
+    if (t !== 'light' && t !== 'dark') t = 'dark'
+    document.documentElement.dataset.theme = t
+  })()
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --background: #ffffff;
+    --foreground: #0a0a0a;
+    --muted: #71717a;
+    --muted-light: #a1a1aa;
+    --sidebar: #f7f7f7;
+    --panel: #f5f5f5;
+    --fill: #ededed;
+    --fill-2: #e4e4e4;
+    --bubble: #f0f0f0;
+    --popover: #ffffff;
+    --outline: #e4e4e7;
+    --shadow-pop: 0 18px 50px -18px rgba(0,0,0,.28), 0 2px 8px rgba(0,0,0,.06);
+    --agent: #3b82f6;
+    --live: #16a34a;
+    --danger: #dc2626;
+    --ease: cubic-bezier(0.23, 1, 0.32, 1);
+  }
+  :root[data-theme="dark"] {
+    --background: #0d0d0d;
+    --foreground: #f2f2f2;
+    --muted: #a1a1aa;
+    --muted-light: #71717a;
+    --sidebar: #121212;
+    --panel: #151515;
+    --fill: #1f1f1f;
+    --fill-2: #282828;
+    --bubble: #1f1f1f;
+    --popover: #1c1c1c;
+    --outline: #2a2a2a;
+    --shadow-pop: 0 18px 50px -18px rgba(0,0,0,.85), 0 2px 8px rgba(0,0,0,.4);
+    --live: #4ade80;
+    --danger: #f87171;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { background: var(--background); color: var(--foreground); font: 14px/1.5 'Geist', system-ui, sans-serif; -webkit-font-smoothing: antialiased; overflow: hidden; }
+  button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+  textarea, input { font: inherit; color: inherit; }
+  svg.i { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+
+  .app { display: flex; height: 100vh; }
+
+  /* left app sidebar (context only) */
+  .nav { width: 240px; flex: none; background: var(--sidebar); padding: 12px 8px; display: flex; flex-direction: column; gap: 2px; }
+  .nav .ws { display: flex; align-items: center; gap: 8px; padding: 6px 8px 14px; font-weight: 500; }
+  .nav .ws .sq { width: 24px; height: 24px; border-radius: 6px; background: var(--fill-2); display: grid; place-items: center; font-size: 11px; }
+  .nav a { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 8px; border-radius: 6px; color: var(--foreground); text-decoration: none; }
+  .nav a:hover { background: var(--fill); }
+  .nav a.on { background: var(--fill); }
+  .nav .lbl { color: var(--muted); font-size: 12px; padding: 14px 8px 4px; }
+  .nav .cr { width: 18px; height: 18px; flex: none; }
+
+  /* main page */
+  .main { flex: 1; min-width: 0; display: flex; flex-direction: column; position: relative; }
+  .head { height: 52px; flex: none; display: flex; align-items: center; gap: 10px; padding: 0 12px 0 20px; }
+  .head .title { display: flex; align-items: center; gap: 10px; font-weight: 500; min-width: 0; }
+  .head .title .cr { width: 24px; height: 24px; }
+  .head .sp { flex: 1; }
+  .hbtn { height: 32px; min-width: 32px; padding: 0 8px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; color: var(--muted); font-size: 13px; }
+  .hbtn:hover { background: var(--fill); color: var(--foreground); }
+  .hbtn.on { background: var(--fill); color: var(--foreground); }
+  .hbtn .i { width: 16px; height: 16px; }
+
+  .scroll { flex: 1; overflow-y: auto; }
+  .thread { max-width: 760px; margin: 0 auto; padding: 24px 28px 40px; }
+  .day { display: flex; align-items: center; gap: 12px; color: var(--muted-light); font-size: 11px; letter-spacing: .06em; margin: 8px 0 22px; }
+  .day::before, .day::after { content: ''; flex: 1; height: 1px; background: var(--fill); }
+
+  /* shared user message primitive */
+  .umsg { display: flex; flex-direction: column; align-items: flex-end; margin: 0 0 26px; }
+  .bubble { background: var(--bubble); border-radius: 18px; padding: 9px 15px; max-width: 75%; }
+  .bar { display: flex; gap: 2px; margin-top: 4px; height: 30px; opacity: 0; transform: translateY(-2px); transition: opacity .15s var(--ease), transform .15s var(--ease); pointer-events: none; }
+  .umsg:hover .bar, .umsg:focus-within .bar { opacity: 1; transform: none; pointer-events: auto; }
+  .bar button { width: 30px; height: 30px; border-radius: 7px; display: grid; place-items: center; color: var(--muted); }
+  .bar button:hover { background: var(--fill); color: var(--foreground); }
+  .bar .i { width: 15px; height: 15px; }
+
+  .amsg { display: flex; gap: 12px; margin: 0 0 30px; }
+  .amsg .cr { width: 28px; height: 28px; flex: none; margin-top: 2px; }
+  .amsg .who { font-weight: 500; }
+  .amsg .who span { color: var(--muted-light); font-weight: 400; font-size: 12px; margin-left: 6px; }
+  .amsg p { margin: 6px 0 0; }
+  .amsg ol { margin: 8px 0 0; padding-left: 20px; }
+  .amsg li { margin: 4px 0; }
+  .trace { display: inline-flex; align-items: center; gap: .4em; color: var(--muted); font-size: 13px; margin-top: 2px; }
+  .orb { width: .5em; height: .5em; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #fff, #a1a1aa 55%, #52525b); display: inline-block; }
+  .trace .i { width: 13px; height: 13px; }
+
+  .dock { flex: none; padding: 0 28px 14px; }
+  .composer { max-width: 760px; margin: 0 auto; border: 1px solid var(--outline); border-radius: 14px; padding: 12px 12px 10px; background: var(--background); }
+  .composer .ph { color: var(--muted-light); padding: 2px 4px 14px; }
+  .composer .row { display: flex; align-items: center; gap: 4px; }
+  .composer .row .sp { flex: 1; }
+  .send { width: 32px; height: 32px; border-radius: 8px; background: var(--fill-2); display: grid; place-items: center; color: var(--muted); }
+  .note { text-align: center; color: var(--muted-light); font-size: 11px; margin-top: 8px; }
+
+  /* dropdown */
+  .menu { position: absolute; top: 46px; z-index: 20; min-width: 200px; background: var(--popover); border-radius: 10px; padding: 4px; box-shadow: var(--shadow-pop); }
+  .menu button { width: 100%; height: 32px; display: flex; align-items: center; gap: 10px; padding: 0 10px; border-radius: 6px; text-align: left; }
+  .menu button:hover { background: var(--fill); }
+  .menu .sep { height: 1px; background: var(--fill); margin: 4px 6px; }
+  .menu .danger { color: var(--danger); }
+
+  /* right sidebar primitive */
+  .rpanel { width: 0; flex: none; overflow: hidden; transition: width .28s var(--ease); }
+  .rpanel.open { width: 392px; }
+  .rpanel .card { width: 380px; height: calc(100vh - 16px); margin: 8px 12px 8px 0; background: var(--panel); border-radius: 16px; display: flex; flex-direction: column; overflow: hidden; }
+  .hero { display: flex; flex-direction: column; align-items: center; padding: 36px 20px 16px; }
+  .hero .cr { width: 72px; height: 72px; }
+  .hero h2 { margin: 14px 0 2px; font-size: 18px; font-weight: 500; }
+  .hero .label { color: var(--muted-light); font-size: 13px; padding: 2px 8px; border-radius: 6px; }
+  .hero .label:hover { background: var(--fill); color: var(--muted); }
+  .tabs { display: flex; justify-content: center; gap: 4px; padding: 4px 20px 16px; }
+  .tabs button { height: 32px; padding: 0 14px; border-radius: 999px; color: var(--muted); }
+  .tabs button:hover { color: var(--foreground); }
+  .tabs button.on { background: var(--fill); color: var(--foreground); }
+  .tabbody { flex: 1; overflow-y: auto; padding: 0 20px 24px; }
+
+  .sec { margin-bottom: 22px; }
+  .sec h3 { margin: 0 0 8px; font-size: 12px; font-weight: 500; color: var(--muted); }
+  .field { background: var(--fill); border-radius: 10px; padding: 10px 12px; }
+  textarea.field { width: 100%; min-height: 96px; border: 0; resize: none; outline: none; line-height: 1.5; display: block; }
+  .select { width: 100%; height: 38px; display: flex; align-items: center; gap: 8px; text-align: left; }
+  .li > span:first-child { display: flex; }
+  .select .sp { flex: 1; }
+  .list { background: var(--fill); border-radius: 10px; padding: 4px; }
+  .li { display: flex; align-items: center; gap: 10px; height: 38px; padding: 0 8px; border-radius: 7px; }
+  .li .sp { flex: 1; min-width: 0; }
+  .li .meta { color: var(--muted-light); font-size: 12px; }
+  .toggle { width: 30px; height: 18px; border-radius: 999px; background: var(--fill-2); position: relative; transition: background .15s; }
+  .toggle::after { content: ''; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: var(--muted); transition: transform .15s var(--ease), background .15s; }
+  .toggle.on { background: var(--foreground); }
+  .toggle.on::after { transform: translateX(12px); background: var(--background); }
+
+  .file { display: flex; align-items: center; gap: 10px; padding: 8px; border-radius: 8px; }
+  .file:hover { background: var(--fill); }
+  .file .ic { width: 32px; height: 32px; border-radius: 8px; background: var(--fill); display: grid; place-items: center; color: var(--muted); flex: none; }
+  .file:hover .ic { background: var(--fill-2); }
+  .file .sp { flex: 1; min-width: 0; }
+  .file .nm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .file .meta { color: var(--muted-light); font-size: 12px; }
+  .file .diff { font-size: 12px; font-variant-numeric: tabular-nums; color: var(--muted-light); }
+  .file .diff b { font-weight: 400; color: var(--live); }
+
+  /* computer */
+  .screen { position: relative; aspect-ratio: 16 / 10; border-radius: 12px; background: var(--fill); overflow: hidden; }
+  .screen .take { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(0,0,0,.55); opacity: 0; transition: opacity .18s var(--ease); cursor: pointer; }
+  .screen:hover .take { opacity: 1; }
+  .take .pill { display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 14px; border-radius: 999px; background: #fff; color: #0a0a0a; font-weight: 500; box-shadow: 0 4px 16px rgba(0,0,0,.3); }
+  .caption { text-align: center; color: var(--muted-light); font-size: 12px; margin-top: 10px; }
+  .status { display: inline-flex; align-items: center; gap: 6px; }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--live); }
+  .asleep, .connecting { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: var(--muted); }
+  .asleep .cr { width: 44px; height: 44px; opacity: .45; filter: grayscale(1); }
+  .connecting .bars { display: flex; gap: 5px; }
+  .connecting .bars span { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); animation: pulse 1.2s infinite ease-in-out; }
+  .connecting .bars span:nth-child(2) { animation-delay: .15s; }
+  .connecting .bars span:nth-child(3) { animation-delay: .3s; }
+  @keyframes pulse { 0%, 100% { opacity: .2 } 50% { opacity: 1 } }
+  @media (prefers-reduced-motion: reduce) { .connecting .bars span { animation: none; opacity: .6; } .rpanel { transition: none; } }
+  .wake { height: 30px; padding: 0 12px; border-radius: 8px; background: var(--fill-2); color: var(--foreground); font-size: 13px; }
+
+  /* fake desktop inside the stream */
+  .desk { position: absolute; inset: 0; background: #2b2d31; padding: 7%; }
+  .win { width: 100%; height: 100%; background: #fafafa; border-radius: 6px; overflow: hidden; display: flex; flex-direction: column; }
+  .win .tb { height: 9%; background: #e9ecf1; display: flex; align-items: center; gap: 4%; padding: 0 3%; }
+  .win .tb i { width: 4%; height: 40%; border-radius: 2px; background: #cfd3da; display: block; }
+  .win .url { flex: 1; height: 50%; background: #fff; border-radius: 99px; }
+  .win .body { flex: 1; display: flex; }
+  .win .side { width: 24%; background: #f2f2f2; padding: 4%; display: flex; flex-direction: column; gap: 6%; }
+  .win .side i, .win .content i { display: block; height: 5px; border-radius: 3px; background: #dcdcdc; }
+  .win .content { flex: 1; padding: 5%; display: flex; flex-direction: column; gap: 5%; }
+  .win .content i.h { width: 40%; height: 8px; background: #c4c4c4; }
+  .cursor { position: absolute; left: 58%; top: 62%; width: 14px; height: 14px; color: #111; }
+
+  /* stream view (after Take control) */
+  .stream { position: absolute; inset: 0; background: var(--background); z-index: 15; display: flex; flex-direction: column; }
+  .stream .big { flex: 1; display: grid; place-items: center; padding: 8px 24px 24px; }
+  .stream .screen { width: 100%; max-width: 1100px; border-radius: 12px; }
+  .stream .screen .take { display: none; }
+  .release { height: 32px; padding: 0 12px; border-radius: 8px; background: var(--fill); color: var(--foreground); font-size: 13px; }
+
+  /* mockup-only controls */
+  .mock { position: fixed; left: 12px; bottom: 12px; z-index: 50; display: flex; flex-direction: column; gap: 6px; background: var(--popover); box-shadow: var(--shadow-pop); padding: 8px; border-radius: 10px; font-size: 12px; }
+  .mock .r { display: flex; align-items: center; gap: 4px; }
+  .mock .r span { color: var(--muted-light); width: 64px; }
+  .mock button { height: 24px; padding: 0 8px; border-radius: 6px; color: var(--muted); }
+  .mock button.on { background: var(--fill); color: var(--foreground); }
+</style>
+</head>
+<body>
+<div class="app" id="app"></div>
+
+<script>
+const I = {
+  more: '<circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/>',
+  users: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
+  panel: '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M15 3v18"/>',
+  copy: '<rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
+  react: '<path d="M22 11v1a10 10 0 1 1-9-10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" x2="9.01" y1="9" y2="9"/><line x1="15" x2="15.01" y1="9" y2="9"/><path d="M16 5h6"/><path d="M19 2v6"/>',
+  reply: '<polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/>',
+  link: '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
+  pin: '<path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/>',
+  bookmark: '<path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/>',
+  edit: '<path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/>',
+  trash: '<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>',
+  file: '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/>',
+  code: '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="m10 13-2 2 2 2"/><path d="m14 17 2-2-2-2"/>',
+  image: '<rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>',
+  pointer: '<path d="M4.037 4.688a.495.495 0 0 1 .651-.651l16 6.5a.5.5 0 0 1-.063.947l-6.124 1.58a2 2 0 0 0-1.438 1.435l-1.579 6.126a.5.5 0 0 1-.947.063z"/>',
+  archive: '<rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/>',
+  mute: '<path d="M8.7 3A6 6 0 0 1 18 8a21.3 21.3 0 0 0 .6 5"/><path d="M17 17H3s3-2 3-9a4.67 4.67 0 0 1 .3-1.7"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/><path d="m2 2 20 20"/>',
+  up: '<path d="m5 12 7-7 7 7"/><path d="M12 19V5"/>',
+  plus: '<path d="M5 12h14"/><path d="M12 5v14"/>',
+  at: '<circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8"/>',
+  down: '<path d="m6 9 6 6 6-6"/>',
+  right: '<path d="m9 18 6-6-6-6"/>',
+  back: '<path d="m12 19-7-7 7-7"/><path d="M19 12H5"/>',
+  globe: '<circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/>',
+  github: '<path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/>',
+  folder: '<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>',
+  monitor: '<rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/>',
+  work: '<path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>',
+  chat: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
+  bot: '<path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/>',
+  zap: '<path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/>',
+}
+const ic = (n, cls = '') => `<svg class="i ${cls}" viewBox="0 0 24 24">${I[n]}</svg>`
+const creature = (c = 'var(--agent)') => `<svg class="cr" viewBox="0 0 100 100" aria-hidden="true"><path d="M50 8c16 0 24 9 27 18 12 2 19 12 17 25-1 12-10 20-20 21-5 12-15 18-26 18-13 0-23-8-26-19C10 69 4 59 6 47c2-12 11-19 21-20C31 15 38 8 50 8z" fill="${c}"/><rect x="36" y="34" width="9" height="20" rx="4.5" fill="#111" transform="rotate(-12 40 44)"/><rect x="56" y="34" width="9" height="20" rx="4.5" fill="#111" transform="rotate(-12 60 44)"/></svg>`
+const overlayCreature = () => `<svg class="cr" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="45" fill="#64748b"/><rect x="35" y="39" width="10" height="22" rx="5" fill="#fff"/><rect x="55" y="39" width="10" height="22" rx="5" fill="#fff"/></svg>`
+
+const S = { surface: 'agent', panel: true, tab: 'details', computer: 'live', stream: false, menu: false, theme: document.documentElement.dataset.theme }
+
+/* One user-message primitive for chats and agent threads: actions only on hover/focus. */
+function userMessage(text) {
+  const actions = [['copy', 'Copy'], ['react', 'React'], ['reply', 'Reply'], ['link', 'Copy link'], ['pin', 'Pin'], ['bookmark', 'Save'], ['edit', 'Edit'], ['trash', 'Delete']]
+  return `<div class="umsg" tabindex="-1"><div class="bubble">${text}</div><div class="bar">${actions.map(([n, l]) => `<button aria-label="${l}" title="${l}">${ic(n)}</button>`).join('')}</div></div>`
+}
+
+function agentThread() {
+  return `<div class="day">TUE, OCT 20</div>
+  ${userMessage('Can you fix sign in on the PR preview and check it in the browser?')}
+  <div class="amsg">${creature()}<div><div class="who">Coding bot<span>11:31 AM</span></div>
+    <div class="trace"><span class="orb"></span>Worked for 4m 48s, called 6 tools ${ic('right')}</div>
+    <p>Fixed. The callback was reading the wrong redirect host on preview domains. I signed in on the preview, reloaded, and the session held.</p>
+    <p>Two files changed, and I saved the QA notes to the thread.</p></div></div>
+  <div class="day">WED, OCT 21</div>
+  ${userMessage('Nice. Can you also run it against the merge queue build?')}
+  <div class="amsg">${creature()}<div><div class="who">Coding bot<span>9:04 AM</span></div>
+    <div class="trace"><span class="orb"></span>Working ${ic('right')}</div>
+    <p>On it. Opening the build on my computer now.</p></div></div>`
+}
+
+function chatThread() {
+  return `<div class="day">MON, SEP 7</div>
+  ${userMessage('what is the human development index')}
+  <div class="amsg" style="display:block"><div class="trace"><span class="orb"></span>Worked for 35s, called 1 tool ${ic('right')}</div>
+    <p>The <b>Human Development Index (HDI)</b> is a summary measure from the UNDP that scores a country on three dimensions:</p>
+    <ol><li><b>A long and healthy life</b>, measured by life expectancy at birth</li><li><b>Knowledge</b>, measured by years of schooling</li><li><b>A decent standard of living</b>, measured by GNI per capita</li></ol></div>
+  ${userMessage('how is it calculated?')}`
+}
+
+function header() {
+  const agent = S.surface === 'agent'
+  return `<header class="head">
+    <div class="title">${agent ? creature() : ''}<span>${agent ? 'Coding bot' : 'Human development index'}</span></div>
+    <div class="sp"></div>
+    <button class="hbtn ${S.menu ? 'on' : ''}" data-a="menu" aria-label="More">${ic('more')}</button>
+    ${agent ? `<button class="hbtn" aria-label="Members">${ic('users')}2</button>` : ''}
+    <button class="hbtn ${S.panel ? 'on' : ''}" data-a="panel" aria-label="${S.panel ? 'Close' : 'Open'} sidebar" aria-pressed="${S.panel}">${ic('panel')}</button>
+  </header>
+  ${S.menu ? `<div class="menu" style="right:${agent ? 92 : 52}px">
+    <button>${ic('mute')}Mute</button><button>${ic('link')}Copy link</button><button>${ic('archive')}Archive</button>
+    <div class="sep"></div><button class="danger">${ic('trash')}Delete</button></div>` : ''}`
+}
+
+function screen(big) {
+  if (S.computer === 'asleep') return `<div class="screen"><div class="asleep">${creature()}<span>Computer is asleep</span>${big ? '' : '<button class="wake" data-a="wake">Wake</button>'}</div></div>`
+  if (S.computer === 'connecting') return `<div class="screen"><div class="connecting"><div class="bars"><span></span><span></span><span></span></div><span>Connecting</span></div></div>`
+  return `<div class="screen"><div class="desk"><div class="win"><div class="tb"><i></i><i></i><div class="url"></div></div><div class="body"><div class="side"><i></i><i style="width:70%"></i><i style="width:80%"></i><i style="width:60%"></i></div><div class="content"><i class="h"></i><i></i><i style="width:85%"></i><i style="width:70%"></i><i style="width:90%"></i></div></div></div></div><svg class="cursor" viewBox="0 0 24 24"><path d="M4.037 4.688a.495.495 0 0 1 .651-.651l16 6.5a.5.5 0 0 1-.063.947l-6.124 1.58a2 2 0 0 0-1.438 1.435l-1.579 6.126a.5.5 0 0 1-.947.063z" fill="#111" stroke="#fff" stroke-width="1.5"/></svg>
+    <div class="take" data-a="take"><span class="pill">${ic('pointer')}Take control</span></div></div>`
+}
+
+function details() {
+  const tools = [['globe', 'Web search', true], ['folder', 'Files and notes', true], ['github', 'GitHub', true], ['monitor', 'Computer', true], ['zap', 'Automations', false]]
+  return `<div class="sec"><h3>Instructions</h3><textarea class="field">You maintain overlay-web. Open small PRs, test them on the preview, and ask before merging.</textarea></div>
+  <div class="sec"><h3>Model</h3><button class="field select"><span class="sp">Claude Sonnet 4.5</span><span style="color:var(--muted)">${ic('down')}</span></button></div>
+  <div class="sec"><h3>Tools</h3><div class="list">${tools.map(([n, l, on]) => `<div class="li"><span style="color:var(--muted)">${ic(n)}</span><span class="sp">${l}</span><button class="toggle ${on ? 'on' : ''}" data-a="toggle" aria-label="${l}"></button></div>`).join('')}</div></div>`
+}
+
+function library() {
+  const files = [['code', 'auth/callback.ts', 'Edited', '+18 -6'], ['code', 'preview-host.ts', 'Edited', '+4 -1'], ['file', 'Preview QA notes', 'Created', ''], ['image', 'signin-check.png', 'Created', ''], ['file', 'CHANGELOG.md', 'Edited', '+2']]
+  return files.map(([i, n, k, d]) => `<div class="file"><span class="ic">${ic(i)}</span><span class="sp"><div class="nm">${n}</div><div class="meta">${k} in this thread</div></span>${d ? `<span class="diff"><b>${d.split(' ')[0]}</b> ${d.split(' ')[1] || ''}</span>` : ''}</div>`).join('')
+}
+
+function computer() {
+  const cap = S.computer === 'live' ? (S.stream ? '<span class="status"><span class="dot"></span>You have control</span>' : '<span class="status"><span class="dot"></span>Coding bot is working</span>') : S.computer === 'asleep' ? 'Coding bot\u2019s computer' : 'Waking up'
+  return `${screen(false)}<div class="caption">${cap}</div>`
+}
+
+function sources() {
+  const src = [['ourworldindata.org', 'Human Development Index'], ['hdr.undp.org', 'HDI technical notes']]
+  return src.map(([d, t]) => `<div class="file"><span class="ic">${ic('globe')}</span><span class="sp"><div class="nm">${t}</div><div class="meta">${d}</div></span></div>`).join('')
+}
+
+function panel() {
+  const agent = S.surface === 'agent'
+  const tabs = agent ? [['details', 'Details'], ['library', 'Library'], ['computer', 'Computer']] : [['sources', 'Sources'], ['library', 'Library']]
+  if (!tabs.some(t => t[0] === S.tab)) S.tab = tabs[0][0]
+  const body = { details, library, computer, sources }[S.tab]()
+  return `<aside class="rpanel ${S.panel ? 'open' : ''}" aria-label="Sidebar"><div class="card">
+    <div class="hero">${agent ? creature() : overlayCreature()}<h2>${agent ? 'Coding bot' : 'Human development index'}</h2>${agent ? '<button class="label">Add a label</button>' : '<span class="label">Chat</span>'}</div>
+    <div class="tabs" role="tablist">${tabs.map(([k, l]) => `<button role="tab" class="${S.tab === k ? 'on' : ''}" data-tab="${k}">${l}</button>`).join('')}</div>
+    <div class="tabbody">${body}</div></div></aside>`
+}
+
+function stream() {
+  return `<div class="stream"><header class="head"><button class="hbtn" data-a="release" aria-label="Back">${ic('back')}</button><div class="title">Computer<span class="status" style="color:var(--muted);font-weight:400;font-size:13px"><span class="dot"></span>You have control</span></div><div class="sp"></div><button class="release" data-a="release">Release control</button></header><div class="big">${screen(true)}</div></div>`
+}
+
+function nav() {
+  return `<nav class="nav"><div class="ws"><span class="sq">MW</span>My workspace</div>
+    <a href="#">${ic('work')}Work</a><a href="#">${ic('bot')}Agents</a><a href="#">${ic('chat')}Chats</a><a href="#">${ic('folder')}Files</a><a href="#">${ic('zap')}Automations</a>
+    <div class="lbl">Agents</div><a href="#" class="${S.surface === 'agent' ? 'on' : ''}" data-s="agent">${creature()}Coding bot</a><a href="#">${overlayCreature()}Overlay</a>
+    <div class="lbl">Chats</div><a href="#" class="${S.surface === 'chat' ? 'on' : ''}" data-s="chat">Human development index</a></nav>`
+}
+
+function mock() {
+  const seg = (k, opts) => opts.map(([v, l]) => `<button class="${S[k] === v ? 'on' : ''}" data-m="${k}" data-v="${v}">${l}</button>`).join('')
+  return `<div class="mock"><div class="r"><span>Surface</span>${seg('surface', [['agent', 'Agent'], ['chat', 'Chat']])}</div>
+    <div class="r"><span>Computer</span>${seg('computer', [['live', 'Live'], ['connecting', 'Connecting'], ['asleep', 'Asleep']])}</div>
+    <div class="r"><span>Theme</span>${seg('theme', [['dark', 'Dark'], ['light', 'Light']])}</div></div>`
+}
+
+function render() {
+  const agent = S.surface === 'agent'
+  document.getElementById('app').innerHTML = `${nav()}<main class="main">${header()}
+    <div class="scroll"><div class="thread">${agent ? agentThread() : chatThread()}</div></div>
+    <div class="dock"><div class="composer"><div class="ph">${agent ? 'Message Coding bot, use @ to notify someone...' : 'Message Overlay'}</div><div class="row"><button class="hbtn">${ic('plus')}</button><button class="hbtn">${ic('at')}</button><span class="sp"></span><button class="send">${ic('up')}</button></div></div><div class="note">Overlay can make mistakes. Check important info.</div></div>
+    ${S.stream ? stream() : ''}</main>${panel()}${mock()}`
+}
+
+document.addEventListener('click', e => {
+  const t = e.target.closest('[data-a],[data-tab],[data-m],[data-s]')
+  if (!t) { if (S.menu) { S.menu = false; render() } return }
+  e.preventDefault()
+  const a = t.dataset.a
+  if (a !== 'menu') S.menu = false
+  if (a === 'menu') S.menu = !S.menu
+  else if (a === 'panel') S.panel = !S.panel
+  else if (a === 'take') S.stream = true
+  else if (a === 'release') S.stream = false
+  else if (a === 'wake') { S.computer = 'connecting'; render(); setTimeout(() => { if (S.computer === 'connecting') { S.computer = 'live'; render() } }, 1400); return }
+  else if (a === 'toggle') { t.classList.toggle('on'); return }
+  else if (t.dataset.tab) S.tab = t.dataset.tab
+  else if (t.dataset.s) { S.surface = t.dataset.s; S.stream = false }
+  else if (t.dataset.m) {
+    S[t.dataset.m] = t.dataset.v
+    if (t.dataset.m === 'theme') { document.documentElement.dataset.theme = S.theme; try { localStorage.setItem('overlay-mockup-theme', S.theme) } catch (_) {} }
+    if (t.dataset.m === 'surface') S.stream = false
+    if (t.dataset.m === 'computer' && S.computer !== 'live') S.stream = false
+  }
+  render()
+})
+render()
+</script>
+</body>
+</html>

@@ -68,11 +68,14 @@ test('ChatTranscript renders normalized exchanges in contract order without wrap
   assert.equal(markup, '<span data-turn="turn-1">One</span><span data-turn="turn-2">Two</span>')
 })
 
-test('sent-message copy actions sit in an always-visible Message footer', () => {
+test('sent-message copy actions reveal on hover and focus', () => {
   const markup = renderToStaticMarkup(<UserMessageActions markdown="Hello **world**" />)
 
   assert.match(markup, /data-slot="message-footer"/)
-  assert.doesNotMatch(markup, /chat-exchange-actions--hover/)
+  assert.match(markup, /chat-exchange-actions--hover/)
+  assert.match(markup, /opacity-0/)
+  assert.match(markup, /group-hover\/exchange:opacity-100/)
+  assert.match(markup, /focus-within:opacity-100/)
   assert.match(markup, /aria-label="Copy sent message as Markdown"/)
 })
 

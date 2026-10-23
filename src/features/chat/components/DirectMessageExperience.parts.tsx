@@ -9,7 +9,6 @@ import {
   Bell,
   BellOff,
   Hash,
-  Monitor,
   MoreHorizontal,
   Pin,
   Share2,
@@ -51,7 +50,6 @@ import {
 import type {
   OptimisticMessage,
   RoomMessageContext,
-  useAgentDesktop,
   useMessageActions,
   useMessageNavigation,
   useReadMarkers,
@@ -214,33 +212,7 @@ export function RoomHeaderLeading({
   )
 }
 
-function AgentDesktopButton({ desktop }: { desktop: ReturnType<typeof useAgentDesktop> }) {
-  const { agentComputer, desktopOpenBusy, openAgentDesktop } = desktop
-  if (!agentComputer || (agentComputer.status !== 'ready' && agentComputer.status !== 'stopped')) return null
-  return (
-    <Button
-      variant="ghost"
-      type="button"
-      onClick={openAgentDesktop}
-      disabled={desktopOpenBusy}
-      title={agentComputer.status === 'stopped' ? 'View desktop — resumes the machine' : 'View desktop'}
-      className="h-8 gap-1.5 rounded-md px-2 text-xs font-normal text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground) disabled:opacity-60"
-    >
-      <span className="relative">
-        <Monitor size={14} />
-        <span
-          className={`absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full ${
-            agentComputer.status === 'ready' ? 'bg-emerald-500' : 'bg-amber-500'
-          }`}
-        />
-      </span>
-      <span className="hidden sm:inline">{desktopOpenBusy ? 'Opening…' : 'Desktop'}</span>
-    </Button>
-  )
-}
-
 export function RoomHeaderActions({
-  desktop,
   vm,
   roster,
   collab,
@@ -254,7 +226,6 @@ export function RoomHeaderActions({
   menuTriggerRef,
   onShare,
 }: {
-  desktop: ReturnType<typeof useAgentDesktop>
   vm: ReturnType<typeof useRoomViewModels>
   roster: ReturnType<typeof useRoomRoster>
   collab: ReturnType<typeof useRoomCollaboration>
@@ -272,36 +243,6 @@ export function RoomHeaderActions({
   const { updateState: onUpdateState, archiveMenuAction: onArchive } = roomActions
   return (
     <div className="relative flex items-center gap-1">
-      <AgentDesktopButton desktop={desktop} />
-      {headerActions}
-      {collab.pins.length > 0 ? (
-        <Button
-          variant="ghost"
-          type="button"
-          onClick={() => setRoomPanel((current) => (current === 'pinned' ? null : 'pinned'))}
-          aria-pressed={roomPanel === 'pinned'}
-          title="Pinned messages"
-          className={`h-8 gap-1 rounded-md px-2 text-xs font-normal transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground) ${
-            roomPanel === 'pinned' ? 'bg-(--surface-subtle) text-(--foreground)' : 'text-(--muted)'
-          }`}
-        >
-          <Pin size={13} />
-          {collab.pins.length}
-        </Button>
-      ) : null}
-      <Button
-        variant="ghost"
-        type="button"
-        onClick={() => setRoomPanel((current) => (current === 'people' ? null : 'people'))}
-        aria-pressed={roomPanel === 'people'}
-        title="People in this room"
-        className={`h-8 gap-1.5 rounded-md px-2 text-xs font-normal transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground) ${
-          roomPanel === 'people' ? 'bg-(--surface-subtle) text-(--foreground)' : 'text-(--muted)'
-        }`}
-      >
-        <UsersRound size={14} />
-        {roster.participants.length}
-      </Button>
       <FloatingMenu
         kind="menu"
         trigger={
@@ -329,6 +270,16 @@ export function RoomHeaderActions({
             onClick={() => {
               setMenuOpen(false)
               onShare()
+            }}
+          />
+        ) : null}
+        {collab.pins.length > 0 ? (
+          <MenuButton
+            icon={Pin}
+            label="Pinned messages"
+            onClick={() => {
+              setMenuOpen(false)
+              setRoomPanel((current) => (current === 'pinned' ? null : 'pinned'))
             }}
           />
         ) : null}
@@ -362,6 +313,20 @@ export function RoomHeaderActions({
           onClick={onArchive}
         />
       </FloatingMenu>
+      <Button
+        variant="ghost"
+        type="button"
+        onClick={() => setRoomPanel((current) => (current === 'people' ? null : 'people'))}
+        aria-pressed={roomPanel === 'people'}
+        title="People in this room"
+        className={`h-8 gap-1.5 rounded-md px-2 text-xs font-normal transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground) ${
+          roomPanel === 'people' ? 'bg-(--surface-subtle) text-(--foreground)' : 'text-(--muted)'
+        }`}
+      >
+        <UsersRound size={14} />
+        {roster.participants.length}
+      </Button>
+      {headerActions}
     </div>
   )
 }

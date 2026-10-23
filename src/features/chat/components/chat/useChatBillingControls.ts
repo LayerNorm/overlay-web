@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   DEFAULT_MODEL_ID,
   FREE_TIER_AUTO_MODEL_ID,
@@ -8,15 +8,14 @@ import {
   isLegacyFreeTierDefaultModelId,
   type ChatModel,
 } from '@/shared/ai/gateway/model-types'
-import {
-  getModelsByIntelligence,
-  modelSupportsZeroDataRetention,
-} from '@/shared/ai/gateway/model-data'
+import { modelSupportsZeroDataRetention } from '@/shared/ai/gateway/model-data'
 import { useRouter } from 'next/navigation'
-import { overlayAppClient } from '@/shared/app/overlay-app-client'
-import { ACTIVE_WORKSPACE_HEADER } from '@/shared/workspaces/constants'
 import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
 import type { Entitlements } from '../chat-interface/types'
+import {
+  budgetRemainingCentsFor,
+  useWorkspaceTextModelAccess,
+} from '@/components/providers/useWorkspaceTextModelAccess'
 
 type ChatRouter = {
   replace: (href: string) => void
@@ -29,18 +28,6 @@ type ChatSearchParams = {
 
 const BUDGET_EXHAUSTED_NOTICE =
   'This workspace’s credit is used up. Add credit in Workspace → Billing to keep using paid models, or switch to Auto for free chat.'
-
-function budgetTotalCentsFor(entitlements: Entitlements): number {
-  return entitlements.budgetTotalCents ?? Math.max(0, Math.round((entitlements.creditsTotal ?? 0) * 100))
-}
-
-function budgetUsedCentsFor(entitlements: Entitlements): number {
-  return entitlements.budgetUsedCents ?? Math.max(0, Math.round(entitlements.creditsUsed ?? 0))
-}
-
-function budgetRemainingCentsFor(entitlements: Entitlements): number {
-  return entitlements.budgetRemainingCents ?? Math.max(0, budgetTotalCentsFor(entitlements) - budgetUsedCentsFor(entitlements))
-}
 
 type ComposerNoticeSetter = (value: string | null | ((current: string | null) => string | null)) => void
 
@@ -162,17 +149,14 @@ function applyFetchedEntitlements(
     announcedBudgetExhaustedRef,
     setAutoTopUpEnabledDraft,
     setComposerNotice,
-    setEntitlements,
     setTopUpAmountDraftCents,
   }: {
     announcedBudgetExhaustedRef: { current: boolean }
     setAutoTopUpEnabledDraft: (value: boolean) => void
     setComposerNotice: ComposerNoticeSetter
-    setEntitlements: (value: Entitlements | null) => void
     setTopUpAmountDraftCents: (value: number) => void
   },
 ) {
-  setEntitlements(data)
   setTopUpAmountDraftCents(data.topUpAmountCents ?? data.autoTopUpAmountCents ?? 800)
   setAutoTopUpEnabledDraft(Boolean(data.autoTopUpEnabled))
   const planKind = data.planKind ?? (data.tier === 'free' ? 'free' : 'paid')
@@ -199,34 +183,6 @@ function useTopUpActions() {
     router.push(WORKSPACE_BILLING_PATH)
   }, [router])
   return { handleStartTopUp: openWorkspaceBilling, handleSaveTopUpPreference: openWorkspaceBilling }
-}
-
-function resolveEntitlementDerived(
-  entitlements: Entitlements | null,
-  billingEnabled: boolean,
-  onlyAllowZdrModels: boolean,
-) {
-  const resolvedPlanKind = entitlements
-    ? (entitlements.planKind ?? (entitlements.tier === 'free' ? 'free' : 'paid'))
-    : null
-  const isPaidSubscription = !billingEnabled || resolvedPlanKind === 'paid'
-  const budgetTotalCents = entitlements ? budgetTotalCentsFor(entitlements) : 0
-  const budgetUsedCents = entitlements ? budgetUsedCentsFor(entitlements) : 0
-  const budgetRemainingCents = entitlements ? budgetRemainingCentsFor(entitlements) : 0
-  const isBudgetExhaustedPaid = billingEnabled && Boolean(entitlements) && isPaidSubscription && budgetRemainingCents <= 0
-  const isFreeTier = billingEnabled && Boolean(entitlements) && (!isPaidSubscription || isBudgetExhaustedPaid)
-  const isModelAccessRestricted = isFreeTier
-  const effectiveOnlyAllowZdrModels = isPaidSubscription && !isBudgetExhaustedPaid && onlyAllowZdrModels
-  return {
-    isPaidSubscription,
-    budgetTotalCents,
-    budgetUsedCents,
-    budgetRemainingCents,
-    isBudgetExhaustedPaid,
-    isFreeTier,
-    isModelAccessRestricted,
-    effectiveOnlyAllowZdrModels,
-  }
 }
 
 export function useChatBillingControls({
@@ -265,9 +221,24 @@ export function useChatBillingControls({
   const [topUpAmountDraftCents, setTopUpAmountDraftCents] = useState(800)
   const [autoTopUpEnabledDraft, setAutoTopUpEnabledDraft] = useState(false)
   const [billingActionLoading] = useState<'checkout' | 'save' | null>(null)
-  const [entitlements, setEntitlements] = useState<Entitlements | null>(null)
   const announcedBudgetExhaustedRef = useRef(false)
 
+  const handleEntitlementsFetched = useCallback((data: Entitlements) => {
+    applyFetchedEntitlements(data, {
+      announcedBudgetExhaustedRef,
+      setAutoTopUpEnabledDraft,
+      setComposerNotice,
+      setTopUpAmountDraftCents,
+    })
+  }, [setComposerNotice])
+  const modelAccess = useWorkspaceTextModelAccess<Entitlements>({
+    activeWorkspaceId,
+    billingEnabled,
+    catalogRevision,
+    modelCatalogVersion,
+    onlyAllowZdrModels,
+    onEntitlementsFetched: handleEntitlementsFetched,
+  })
   const {
     isPaidSubscription,
     budgetTotalCents,
@@ -277,18 +248,10 @@ export function useChatBillingControls({
     isFreeTier,
     isModelAccessRestricted,
     effectiveOnlyAllowZdrModels,
-  } = resolveEntitlementDerived(entitlements, billingEnabled, onlyAllowZdrModels)
-  // catalogRevision is required: getModelsByIntelligence reads module-level AVAILABLE_MODELS
-  // which mutates when the gateway catalog registers.
-  const selectableTextModels = useMemo(() => {
-    void catalogRevision
-    void modelCatalogVersion
-    const availableTextModels = getModelsByIntelligence(isModelAccessRestricted)
-      .filter((model) => model.id !== 'nvidia/nemotron-nano-9b-v2')
-    return effectiveOnlyAllowZdrModels
-      ? availableTextModels.filter((model) => model.supportsZeroDataRetention)
-      : availableTextModels
-  }, [catalogRevision, effectiveOnlyAllowZdrModels, isModelAccessRestricted, modelCatalogVersion])
+    entitlements,
+    loadSubscription,
+    selectableTextModels,
+  } = modelAccess
   const premiumModelBlocked =
     isModelAccessRestricted &&
     !isByokModelId(selectedActModel) &&
@@ -323,33 +286,6 @@ export function useChatBillingControls({
     setSelectedActModel,
     setSelectedModels,
   })
-
-  const loadSubscription = useCallback(async () => {
-    if (!billingEnabled) {
-      setEntitlements(null)
-      return null
-    }
-    try {
-      const res = await overlayAppClient.subscription.getResponse({
-        cache: 'no-store',
-        ...(activeWorkspaceId
-          ? { headers: { [ACTIVE_WORKSPACE_HEADER]: activeWorkspaceId } }
-          : {}),
-      })
-      if (res.ok) {
-        const data = await res.json() as Entitlements
-        applyFetchedEntitlements(data, {
-          announcedBudgetExhaustedRef,
-          setAutoTopUpEnabledDraft,
-          setComposerNotice,
-          setEntitlements,
-          setTopUpAmountDraftCents,
-        })
-        return data
-      }
-    } catch { /* ignore */ }
-    return null
-  }, [activeWorkspaceId, billingEnabled, setComposerNotice])
 
   const { handleStartTopUp, handleSaveTopUpPreference } = useTopUpActions()
 

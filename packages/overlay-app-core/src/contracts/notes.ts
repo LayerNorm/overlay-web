@@ -26,6 +26,7 @@ export interface CreateNoteRequest {
   content?: string
   tags?: string[]
   clientId?: string
+  conversationId?: string
   accessToken?: string
   userId?: string
   workspaceId?: string
