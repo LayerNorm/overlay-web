@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { isLegacyArchivedScope, listViewForScope, parsePanelScope, resolvePanelScope, scopeForNewItem, withPanelScope } from './panel-scope'
+import { isLegacyArchivedScope, listViewForScope, parsePanelScope, resolvePanelScope, resolvePanelScopeFromParams, scopeForNewItem, withPanelScope } from './panel-scope'
 
 test('the URL wins over the remembered scope, which wins over Personal', () => {
   assert.equal(resolvePanelScope({ param: 'workspace', saved: 'personal' }), 'workspace')
@@ -19,6 +19,15 @@ test('only the two scopes parse', () => {
   assert.equal(parsePanelScope('archived'), null)
   assert.equal(isLegacyArchivedScope('archived'), true)
   assert.equal(isLegacyArchivedScope('workspace'), false)
+})
+
+test('agent scope links prefer explicit scope and accept only legacy personal/workspace views', () => {
+  assert.equal(resolvePanelScopeFromParams(new URLSearchParams('scope=personal&view=workspace'), 'workspace'), 'personal')
+  assert.equal(resolvePanelScopeFromParams(new URLSearchParams('view=workspace'), 'personal'), 'workspace')
+  assert.equal(resolvePanelScopeFromParams(new URLSearchParams('view=personal'), 'workspace'), 'personal')
+  assert.equal(resolvePanelScopeFromParams(new URLSearchParams('view=dms'), 'workspace'), 'workspace')
+  assert.equal(resolvePanelScopeFromParams(new URLSearchParams('view=notes'), null), 'personal')
+  assert.equal(resolvePanelScopeFromParams(new URLSearchParams('view=workspace'), 'workspace', true), 'personal')
 })
 
 test('a new item defaults to the scope being viewed', () => {

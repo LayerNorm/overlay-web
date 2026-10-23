@@ -287,7 +287,8 @@ export function DirectMessageExperience({
         >
           {composer.isDragging && <ChatDropOverlay />}
           <AppScreenHeader
-            title={roomHeaderTitle(Boolean(guided), vm.title)}
+            title={roomHeaderTitle(Boolean(guided), vm.headerAgent ? transcript.conversationTitle || vm.title : vm.title)}
+            breadcrumbs={vm.headerAgent ? [{ label: vm.headerAgent.name }] : undefined}
             subtitle={guided ? 'Your chief of staff' : roster.participants.length > 2 ? `${roster.participants.length} people` : vm.online > 0 ? 'Online' : undefined}
             leading={(
               <RoomHeaderLeading

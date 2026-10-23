@@ -11,6 +11,7 @@ export async function startAgentChat(args: {
   agentPrincipalId: string
   showcase?: boolean
   surface?: 'agents' | 'chat'
+  scope?: 'personal' | 'workspace'
   push(href: string): void
 }): Promise<string | null> {
   const surface = args.surface ?? 'chat'
@@ -47,6 +48,7 @@ export async function startAgentChat(args: {
   })
   const basePath = buildWorkspaceHref(args.workspaceId, surface === 'agents' ? '/app/agents' : '/app/chat')
   const params = new URLSearchParams({ id: conversationId })
+  if (args.scope) params.set('scope', args.scope)
   if (surface === 'agents') {
     if (args.agentId) params.set('agent', args.agentId)
   } else {

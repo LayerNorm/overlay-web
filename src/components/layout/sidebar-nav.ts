@@ -18,9 +18,8 @@ function agentViewParams(init: Record<string, string>, view?: AgentsPanelView) {
   // `scope` is the panel's scope (personal|workspace; it replaced the
   // agents-only `?view=` tab, which is still read from old links) — never the
   // chats `view` vocabulary, where a 'dms' marker would hide workspace agents.
-  // Personal stays param-free.
   const params = new URLSearchParams(init)
-  if (view === 'workspace') params.set('scope', view)
+  if (view) params.set('scope', view)
   return params
 }
 

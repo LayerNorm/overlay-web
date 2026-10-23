@@ -1,5 +1,7 @@
 'use client'
+import { rememberPanelScope } from '@/hooks/use-panel-scope'
 import { useIsSoloWorkspace } from '@/hooks/use-solo-workspace'
+import { agentsInScope } from '@/shared/agents/agent-scope'
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import {
@@ -497,10 +499,8 @@ function AgentListRow({
           bundle={bundle}
           activeConversationId={activeConversationId}
           onOpenThread={onOpenThread}
-          onCreateThread={onCreateThread}
           onArchiveThread={onArchiveThread}
           onDeleteThread={onDeleteThread}
-          creatingThread={creatingThread}
         />
       ) : null}
     </SidebarMenuItem>
@@ -549,13 +549,7 @@ export function AgentsInlinePanel({
   // Live agents split into Personal (created by me) and Workspace (the rest). Archived agents and threads live in
   // Settings → Archived, not here.
   const tabAgents = useMemo(
-    () => previewedAgents.filter((agent) => {
-      if (agent.archivedAt) return false
-      if (solo) return true
-      return view === 'personal'
-        ? agent.createdByPrincipalId === viewerPrincipalId
-        : agent.createdByPrincipalId !== viewerPrincipalId
-    }),
+    () => agentsInScope(previewedAgents, viewerPrincipalId, view, solo),
     [previewedAgents, view, viewerPrincipalId, solo],
   )
 
@@ -614,6 +608,7 @@ export function AgentsInlinePanel({
     const correctView: AgentsPanelView = solo || active.createdByPrincipalId === viewerPrincipalId
         ? 'personal'
         : 'workspace'
+    rememberPanelScope(correctView)
     const wanted = correctView === 'personal' ? null : correctView
     if (viewParam === wanted) return
     const params = new URLSearchParams(searchParams.toString())

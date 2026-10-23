@@ -5,6 +5,9 @@ import type { CSSProperties, HTMLAttributes, ReactNode } from 'react'
 import { useEffect, useRef, useState } from 'react'
 import { X } from 'lucide-react'
 import { cn, usePresence } from '@overlay/ui'
+import { AppBreadcrumbs, type AppBreadcrumbItem } from './components/AppBreadcrumbs'
+export { AppBreadcrumbs, AppBreadcrumbContext } from './components/AppBreadcrumbs'
+export type { AppBreadcrumbItem } from './components/AppBreadcrumbs'
 export { RightSidebar, RightSidebarToggle } from './components/RightSidebar'
 export type { RightSidebarTab } from './components/RightSidebar'
 
@@ -243,6 +246,7 @@ export function AppScreenShell({
 
 export interface AppScreenHeaderProps extends Omit<HTMLAttributes<HTMLDivElement>, 'title'> {
   title?: ReactNode
+  breadcrumbs?: AppBreadcrumbItem[]
   subtitle?: ReactNode
   description?: ReactNode
   leading?: ReactNode
@@ -256,23 +260,19 @@ export interface AppScreenHeaderProps extends Omit<HTMLAttributes<HTMLDivElement
 
 function AppScreenHeaderTitle({
   title,
+  breadcrumbs,
   subtitle,
   description,
   leading,
   metadata,
-}: Pick<AppScreenHeaderProps, 'title' | 'subtitle' | 'description' | 'leading' | 'metadata'>) {
+}: Pick<AppScreenHeaderProps, 'title' | 'breadcrumbs' | 'subtitle' | 'description' | 'leading' | 'metadata'>) {
   return (
     <div className="flex min-w-0 flex-1 items-center">
       {leading ? <div className="mr-2 shrink-0">{leading}</div> : null}
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 items-baseline">
-          {title ? <h1 className="truncate text-sm font-medium leading-5 text-(--foreground)">{title}</h1> : null}
-          {subtitle ? (
-            <>
-              <span className="mx-2 shrink-0 text-(--muted-light)">·</span>
-              <span className="truncate text-sm text-(--muted)">{subtitle}</span>
-            </>
-          ) : null}
+          <AppBreadcrumbs title={title} items={breadcrumbs} />
+          {subtitle ? <span className="ml-2 truncate text-sm text-(--muted)">{subtitle}</span> : null}
           {metadata ? <span className="ml-2 shrink-0 text-xs leading-5 text-(--muted)">{metadata}</span> : null}
         </div>
         {description ? (
@@ -284,7 +284,7 @@ function AppScreenHeaderTitle({
 }
 
 export function AppScreenHeader({
-  title, subtitle, description, leading, metadata,
+  title, breadcrumbs, subtitle, description, leading, metadata,
   tabs, search, actions, menu,
   border = false,
   className,
@@ -307,6 +307,7 @@ export function AppScreenHeader({
           <div className="flex min-w-0 items-center gap-3">
             <AppScreenHeaderTitle
               title={title}
+              breadcrumbs={breadcrumbs}
               subtitle={subtitle}
               description={description}
               leading={leading}
