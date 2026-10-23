@@ -307,7 +307,7 @@
     "undici": "7.29.1",
     "viem": "^2.57.7",
     "workflow": "4.8.9",
-    "zod": "^3.25.76"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@edge-runtime/vm": "^5.0.0",
@@ -331,8 +331,7 @@
     "tailwindcss": "^4.3.3",
     "typescript": "^5",
     "vitest": "^4.1.11",
-    "yaml": "2.9.0",
-    "zod-to-json-schema": "^3.25.2"
+    "yaml": "2.9.0"
   },
   "overrides": {
     "axios": "1.20.0",
@@ -357,11 +356,42 @@
     "nanoid@>=4 <6": "5.1.16",
     "socket.io-parser": "4.2.7",
     "ws@>=7.0.0 <7.5.11": "7.5.11",
+    "body-parser@>=2.0.0 <2.4.0": "2.4.0",
+    "zod@>=4.0.0 <4.6.6": "4.6.7",
+    "@vercel/cli-auth": {
+      "zod": "4.6.7"
+    },
+    "@vercel/cli-config": {
+      "zod": "4.6.7"
+    },
+    "@workflow/cli": {
+      "zod": "4.6.7"
+    },
+    "@workflow/core": {
+      "zod": "4.6.7"
+    },
+    "@workflow/vitest": {
+      "zod": "4.6.7"
+    },
     "@workflow/world-local": {
+      "zod": "4.6.7",
       "undici": "7.29.1"
     },
+    "@workflow/world-postgres": {
+      "zod": "4.6.7"
+    },
     "@workflow/world-vercel": {
+      "zod": "4.6.7",
       "undici": "7.29.1"
+    },
+    "@workflow/world": {
+      "zod": "4.6.7"
+    },
+    "acpx": {
+      "zod": "4.6.7"
+    },
+    "browser-use-sdk": {
+      "zod": "4.6.7"
     },
     "glob@13.0.6": {
       "brace-expansion": "5.0.12"

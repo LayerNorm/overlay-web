@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import test from 'node:test'
-import { validateApiClientBoundary } from './api-boundary'
+import { validateApiClientBoundary, webApiBoundaryDefinitions } from './api-boundary'
 
 test('automation run boundary accepts Convex scheduled runner payloads', () => {
   assert.doesNotThrow(() => {
@@ -21,8 +22,24 @@ test('automation run boundary rejects missing run IDs', () => {
         body: {},
       })
     },
-    /Invalid POST \/api\/v1\/automations\/run body: Required/,
+    /Invalid POST \/api\/v1\/automations\/run body:/,
   )
+})
+
+test('automation run OpenAPI schema preserves required request properties', () => {
+  const spec = JSON.parse(readFileSync(new URL('../../../docs/openapi/overlay-web.openapi.json', import.meta.url), 'utf8')) as {
+    paths?: Record<string, { post?: { requestBody?: { content?: { 'application/json'?: { schema?: unknown } } } } }>
+  }
+  const definition = webApiBoundaryDefinitions.find(
+    (candidate) => candidate.path === '/api/v1/automations/run' && candidate.method === 'POST',
+  )
+  assert.ok(definition?.schema.json)
+  const schema = spec.paths?.['/api/v1/automations/run']?.post?.requestBody?.content?.['application/json']?.schema
+  assert.ok(schema && typeof schema === 'object' && !Array.isArray(schema))
+  const record = schema as { type?: unknown; properties?: Record<string, unknown>; required?: unknown[] }
+  assert.equal(record.type, 'object')
+  assert.ok(record.properties?.runId)
+  assert.ok(record.required?.includes('runId'))
 })
 
 test('agent accounts and cloud machines accept every agent provider', () => {

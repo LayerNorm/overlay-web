@@ -103,6 +103,23 @@ test('OverlayRuntimeConfigSchema validates minimal SaaS config', () => {
   assert.equal(parsed.capabilities.apiKeys, true)
 })
 
+test('OverlayRuntimeConfigSchema populates nested defaults when parent objects are omitted', () => {
+  const parsed = OverlayRuntimeConfigSchema.parse(minimalSaasConfig)
+
+  assert.deepEqual(parsed.compliance.dataResidency, {
+    required: false,
+    allowedRegions: [],
+  })
+  assert.deepEqual(parsed.auth.betterAuth.accessPolicy, {
+    requireVerifiedEmail: true,
+    allowedEmailDomains: [],
+  })
+  assert.equal(parsed.billing.stripe.mode, 'test')
+  assert.equal(parsed.integrations.executor.connectionOwner, 'org')
+  assert.equal(parsed.integrations.executor.requestTimeoutMs, 30_000)
+  assert.equal(parsed.rateLimit.redis.failureMode, 'deny')
+})
+
 test('OverlayRuntimeConfigSchema validates the initial Better Auth connection presets', () => {
   const parsed = OverlayRuntimeConfigSchema.parse(betterAuthConfig([
     {
@@ -475,7 +492,7 @@ test('OverlayRuntimeConfigSchema rejects MinIO as a named storage provider', () 
           provider: 'minio',
         },
       }),
-    /Invalid enum value[\s\S]*minio/,
+    (error: unknown) => error instanceof Error && error.name === 'ZodError',
   )
 })
 

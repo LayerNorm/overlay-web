@@ -59,7 +59,7 @@ export const StopConversationRequest = z.object({
   conversationId: z.string().min(1),
   messageId: z.string().min(1).optional(),
   partialContent: z.string().optional(),
-  partialParts: z.array(z.record(z.unknown())).optional(),
+  partialParts: z.array(z.record(z.string(), z.unknown())).optional(),
 }).passthrough()
 
 export const AgentRunApprovalRequest = z.object({

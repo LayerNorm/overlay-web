@@ -109,7 +109,7 @@ const OverlayComplianceSchema = z
         required: z.boolean().default(false),
         allowedRegions: z.array(z.string().trim().min(1)).default([]),
       })
-      .default({}),
+      .prefault({}),
     retention: z
       .object({
         chatDays: z.number().int().positive().optional(),
@@ -119,7 +119,7 @@ const OverlayComplianceSchema = z
         sandboxArtifactDays: z.number().int().positive().optional(),
         deletedUserPurgeDays: z.number().int().positive().optional(),
       })
-      .default({}),
+      .prefault({}),
   })
   .strict()
 
@@ -273,14 +273,14 @@ export const OverlayRuntimeConfigSchema = z
   .object({
     configVersion: z.literal(2).default(2),
     preset: OverlayConfigPresetSchema.default('saas-default'),
-    compliance: OverlayComplianceSchema.default({}),
+    compliance: OverlayComplianceSchema.prefault({}),
     features: OverlayFeatureFlagsSchema.default({}),
     providers: OverlayProvidersSchema.default({}),
     app: z.object({
       baseUrl: z.string().trim().url(),
       deploymentEnvironment: OverlayDeploymentEnvironmentSchema,
       cspConnectSrc: z.array(z.string().trim().min(1)).default([]),
-      publicEnv: z.record(z.string()).default({}),
+      publicEnv: z.record(z.string(), z.string()).default({}),
     }),
     auth: z.object({
       provider: OverlayAuthProviderSchema,
@@ -319,9 +319,9 @@ export const OverlayRuntimeConfigSchema = z
           jwtAudience: OptionalStringSchema,
           jwksUrl: OptionalUrlSchema,
           connections: z.array(OverlayBetterAuthConnectionSchema).default([]),
-          accessPolicy: OverlayBetterAuthAccessPolicySchema.default({}),
+          accessPolicy: OverlayBetterAuthAccessPolicySchema.prefault({}),
         })
-        .default({}),
+        .prefault({}),
     }),
     billing: z.object({
       provider: OverlayBillingProviderSchema,
@@ -334,7 +334,7 @@ export const OverlayRuntimeConfigSchema = z
           topupUnitPriceId: OptionalStringSchema,
           portalConfigurationId: OptionalStringSchema,
         })
-        .default({}),
+        .prefault({}),
     }),
     email: z
       .object({
@@ -363,7 +363,7 @@ export const OverlayRuntimeConfigSchema = z
             username: OptionalStringSchema,
             password: OptionalStringSchema,
           })
-          .default({}),
+          .prefault({}),
       })
       .strict()
       .optional(),
@@ -380,7 +380,7 @@ export const OverlayRuntimeConfigSchema = z
           globalBudgetBytes: z.number().int().positive().optional(),
           presignTtlSeconds: z.number().int().positive().optional(),
         })
-        .default({}),
+        .prefault({}),
       s3: z
         .object({
           bucketName: OptionalStringSchema,
@@ -411,9 +411,9 @@ export const OverlayRuntimeConfigSchema = z
             connectionOwner: z.enum(['org', 'user']).default('org'),
             requestTimeoutMs: z.number().int().positive().max(120_000).default(30_000),
           })
-          .default({}),
+          .prefault({}),
       })
-      .default({}),
+      .prefault({}),
     database: z.object({
       provider: OverlayDatabaseProviderSchema.default('convex'),
       convexUrl: OptionalUrlSchema,
@@ -432,9 +432,9 @@ export const OverlayRuntimeConfigSchema = z
             keyPrefix: OptionalStringSchema,
             failureMode: OverlayRateLimitFailureModeSchema.default('deny'),
           })
-          .default({}),
+          .prefault({}),
       })
-      .default({}),
+      .prefault({}),
     capabilities: z.object({
       billing: z.boolean().default(true),
       sso: z.boolean().default(true),

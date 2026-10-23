@@ -154,7 +154,11 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
     const parsed = presentGeneratedUiVariantSchema.safeParse(input)
     if (!parsed.success) {
       for (const issue of parsed.error.issues) {
-        ctx.addIssue(issue)
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: issue.path,
+          message: issue.message,
+        })
       }
       return
     }

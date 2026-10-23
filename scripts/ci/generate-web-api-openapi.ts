@@ -1,8 +1,7 @@
 import { readFile, readdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { zodToJsonSchema } from 'zod-to-json-schema'
-import type { ZodTypeAny } from 'zod'
+import { z, type ZodTypeAny } from 'zod'
 import {
   webApiBoundaryDefinitions,
   webApiExcludedRouteDefinitions,
@@ -101,7 +100,7 @@ function buildOperation(definition: WebApiBoundaryDefinition): JsonObject {
 
   const parameters = [
     ...pathParameters(definition.path),
-    ...queryParameters(definition.schema.query, schemaName(definition, 'Query')),
+    ...queryParameters(definition.schema.query),
   ]
   if (parameters.length > 0) operation.parameters = parameters
 
@@ -110,7 +109,7 @@ function buildOperation(definition: WebApiBoundaryDefinition): JsonObject {
       required: true,
       content: {
         'application/json': {
-          schema: schemaFromZod(definition.schema.json, schemaName(definition, 'Request')),
+          schema: schemaFromZod(definition.schema.json),
         },
       },
     }
@@ -187,10 +186,10 @@ function pathParameters(openApiPath: string) {
   return parameters
 }
 
-function queryParameters(schema: ZodTypeAny | undefined, name: string) {
+function queryParameters(schema: ZodTypeAny | undefined) {
   if (!schema) return []
 
-  const objectSchema = schemaFromZod(schema, name)
+  const objectSchema = schemaFromZod(schema)
   const properties = isObject(objectSchema.properties) ? objectSchema.properties : {}
   const required = new Set(Array.isArray(objectSchema.required) ? objectSchema.required : [])
 
@@ -202,19 +201,13 @@ function queryParameters(schema: ZodTypeAny | undefined, name: string) {
   }))
 }
 
-function schemaFromZod(schema: ZodTypeAny, name: string): JsonObject {
-  const jsonSchema = zodToJsonSchema(schema, {
-    name,
-    target: 'openApi3',
-    $refStrategy: 'none',
-  }) as JsonObject
-
-  const definitions = isObject(jsonSchema.definitions) ? jsonSchema.definitions : undefined
-  const namedDefinition = definitions && isObject(definitions[name]) ? definitions[name] : undefined
-  const result = namedDefinition ? { ...namedDefinition } : { ...jsonSchema }
+function schemaFromZod(schema: ZodTypeAny): JsonObject {
+  const result = { ...z.toJSONSchema(schema, { target: 'openapi-3.0', io: 'input' }) } as JsonObject
 
   delete result.$schema
-  delete result.definitions
+  if (Object.keys(result).length === 0) {
+    throw new Error('OpenAPI schema conversion produced an empty schema')
+  }
   return result
 }
 
@@ -305,10 +298,6 @@ function operationIdFor(definition: WebApiBoundaryDefinition) {
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join('')
   return `${definition.method.toLowerCase()}${suffix || 'Root'}`
-}
-
-function schemaName(definition: WebApiBoundaryDefinition, suffix: string) {
-  return `${operationIdFor(definition)}${suffix}`
 }
 
 function isObject(value: unknown): value is JsonObject {

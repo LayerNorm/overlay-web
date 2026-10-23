@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "@overlay/workspace-contracts": "file:../overlay-workspace-contracts",
-    "zod": "^3.25.76"
+    "zod": "^4.6.7"
   },
   "peerDependencies": {
     "@overlay/app-core": "0.0.1"
