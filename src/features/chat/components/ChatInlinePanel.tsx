@@ -1123,7 +1123,7 @@ function ChatListDialogs({
           onCreated={({ id, title }) => {
             router.push(buildHref(
               workspaceId ?? null,
-              `/app/chat?${new URLSearchParams({ view: 'channels', id, draft: '1', title }).toString()}`,
+              `/app/chat?${new URLSearchParams({ view: 'channels', id, title }).toString()}`,
               'workspace',
             ))
             onNavigate?.()

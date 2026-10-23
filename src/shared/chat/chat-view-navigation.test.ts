@@ -2,12 +2,20 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   agentConversationRedirect,
+  isTransientConversationDraft,
   resolveSoftChatRoute,
   scopeForConversationDetail,
   selectConversationForView,
   shouldSkipChatHistoryPrefetch,
 } from './chat-view-navigation'
 import { buildWorkspaceHandleHref } from '../workspaces/routing'
+
+test('empty channels are durable even when opened through a legacy draft link', () => {
+  assert.equal(isTransientConversationDraft('channel', true), false)
+  assert.equal(isTransientConversationDraft('channel', false), false)
+  assert.equal(isTransientConversationDraft('dm', true), true)
+  assert.equal(isTransientConversationDraft('dm', false), false)
+})
 
 test('one-to-one agent conversations move from Chats to their agent thread without losing history', () => {
   const args = { pathname: '/app/w/workspace-1/chat', workspaceId: 'workspace-1', agentId: 'overlay', conversationId: 'existing-thread', guided: false, showcase: false }

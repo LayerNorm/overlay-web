@@ -949,7 +949,7 @@ export function RoomDialogs({
             const view = conversationType === 'channel' ? 'channels' : 'dms'
             router.push(buildWorkspaceHref(
               activeWorkspaceId ?? null,
-              `/app/chat?${new URLSearchParams({ view, id, draft: '1', title: createdTitle }).toString()}`,
+              `/app/chat?${new URLSearchParams({ view, id, ...(conversationType === 'dm' ? { draft: '1' } : {}), title: createdTitle }).toString()}`,
               'workspace',
             ))
           }}

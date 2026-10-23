@@ -27,6 +27,7 @@ import type { MentionCategory, MentionItem } from '@/shared/knowledge/mention-ty
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { resolveMentionedPrincipalIds } from '@/shared/mentions/principal-mentions'
 import { clearDraft, readDraft, writeDraft } from '@/shared/chat/conversation-drafts'
+import { isTransientConversationDraft } from '@/shared/chat/chat-view-navigation'
 import { dispatchChatArchived, dispatchChatCreated, dispatchChatModified, dispatchChatTitleUpdated, sanitizeChatTitle } from '@/shared/chat/chat-title'
 import { announceArchived } from '@/shared/app/archive-toast'
 import {
@@ -1044,7 +1045,7 @@ export function useRoomViewModels({
 export function useDraftConversation({
   conversationId,
   conversationType,
-  draft,
+  draft: requestedDraft,
   showcase,
   title,
   messages,
@@ -1058,6 +1059,7 @@ export function useDraftConversation({
   messages: OptimisticMessage[]
   messagesRef: RefObject<OptimisticMessage[]>
 }) {
+  const draft = isTransientConversationDraft(conversationType, requestedDraft)
   const draftCommittedRef = useRef(!draft)
 
   const commitDraftConversation = useCallback(() => {

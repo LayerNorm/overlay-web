@@ -8,6 +8,11 @@ export function agentConversationRedirect(args: { pathname: string; workspaceId:
 
 export type CollaborationChatView = 'dms' | 'channels'
 
+export function isTransientConversationDraft(conversationType: 'dm' | 'channel', draft: boolean): boolean {
+  // Channels are durable as soon as they are created, even without messages.
+  return conversationType === 'dm' && draft
+}
+
 export function scopeForConversationDetail(conversation: {
   conversationType?: 'personal' | 'dm' | 'channel'
   scope?: 'personal' | 'workspace'
