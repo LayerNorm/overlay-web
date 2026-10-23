@@ -71,6 +71,9 @@ Older combined model/effort ids resolve to separate live controls only when both
 are advertised. Show the effective effort, preserve it when changing models, and leave
 unsupported choices visibly marked; never replace them with discovery defaults.
 
+Native Overlay agent Permissions use the editor's ordinary dirty and Save flow. Ask is the default.
+Choosing Auto requires confirmation and cancellation leaves Ask selected.
+
 Connected-agent drive status sits below the answer without modifying provider Markdown. Saving
 and unsaved states use a quiet status line. Saved file/folder counts expand to at most 32 authorized
 Files links, with a link to Files for larger results. Folders navigate by folder id; files open by

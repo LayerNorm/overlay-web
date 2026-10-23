@@ -222,9 +222,11 @@ export function AgentSidebarMoreSettings({ editor }: { editor: Controller }) {
                       size={computer.computerSize}
                       onSizeChange={(size) => { computer.setComputerSize(size); form.markDirty() }}
                       computer={computer.agentComputer}
+                      agentName={form.name}
                       openBusy={computer.computerOpenBusy}
                       lifecycleBusy={computer.computerLifecycleBusy}
                       onOpenDesktop={() => void computer.openAgentComputer()}
+                      onControl={() => void computer.controlAgentComputer()}
                       onTogglePower={() => void computer.toggleAgentComputerPower()}
                       onDelete={() => void computer.deleteAgentComputer()}
                       loadError={computer.computerLoadError}

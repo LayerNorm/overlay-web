@@ -3,11 +3,19 @@ import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 import {
   buildRemoteAgentPrompt,
+  permissionModeForConnectedHarness,
   reconcileUnverifiedAgentActionClaims,
   shouldPrepareConnectedAgentDrive,
 } from './workspace-agent-invocation'
 
 const root = process.cwd()
+
+test('native permission modes are not forwarded, while connected harness values are preserved', () => {
+  assert.equal(permissionModeForConnectedHarness('overlay', 'ask'), undefined)
+  assert.equal(permissionModeForConnectedHarness('overlay', 'auto'), undefined)
+  assert.equal(permissionModeForConnectedHarness('claude-code', 'auto'), 'auto')
+  assert.equal(permissionModeForConnectedHarness('claude-code', 'acceptEdits'), 'acceptEdits')
+})
 
 test('drive starts require the rollout flag, current host capability and local opt-in', () => {
   const cloud = { enabled: true, environmentKind: 'overlay_cloud', optedIn: false, capabilities: { drive: { version: 1 } } }
@@ -67,9 +75,13 @@ test('workspace agents use participant-scoped room history and persistence', asy
 })
 
 test('a room agent turn is owned by a durable run, not by an HTTP request', async () => {
-  const [workflow, lifecycle, messageRoute, policy, service] = await Promise.all([
+  const [workflow, lifecycle, durable, usage, loop, approval, messageRoute, policy, service] = await Promise.all([
     readFile(`${root}/src/server/workflows/workspace-agent-turn.ts`, 'utf8'),
     readFile(`${root}/src/server/agents/workspace-agent-turn-lifecycle.ts`, 'utf8'),
+    readFile(`${root}/src/server/agents/workspace-agent-durable.ts`, 'utf8'),
+    readFile(`${root}/src/server/agents/workspace-agent-usage.ts`, 'utf8'),
+    readFile(`${root}/src/server/agents/workspace-agent-turn-loop.ts`, 'utf8'),
+    readFile(`${root}/src/server/workflows/workspace-agent-approval.ts`, 'utf8'),
     Promise.all([
       readFile(`${root}/src/server/app-api/v1/conversations/message/route.ts`, 'utf8'),
       // The route hands the turn to this module, which opens the durable run.
@@ -96,15 +108,46 @@ test('a room agent turn is owned by a durable run, not by an HTTP request', asyn
   assert.match(workflow, /'use workflow'/)
   for (const step of [
     'attachWorkspaceAgentRun',
-    'executeWorkspaceAgentTurn',
+    'prepareWorkspaceAgentTurn',
+    'callWorkspaceAgentModel',
+    'inspectWorkspaceAgentTool',
+    'executeWorkspaceAgentTool',
+    'persistWorkspaceAgentToolProgress',
+    'finalizeWorkspaceAgentTurn',
     'completeWorkspaceAgentRun',
     'failWorkspaceAgentRun',
   ]) {
     assert.match(workflow, new RegExp(step), `workflow is missing ${step}`)
-    assert.match(lifecycle, new RegExp(`export async function ${step}`), `lifecycle is missing ${step}`)
+    assert.match(lifecycle, new RegExp(step), `lifecycle is missing ${step}`)
   }
-  // Every lifecycle hop is a step, or replay cannot resume the turn.
-  assert.equal(lifecycle.match(/'use step'/g)?.length, 5)
+  for (const step of [
+    'prepareWorkspaceAgentTurn',
+    'callWorkspaceAgentModel',
+    'inspectWorkspaceAgentTool',
+    'executeWorkspaceAgentTool',
+    'persistWorkspaceAgentToolProgress',
+    'finalizeWorkspaceAgentTurn',
+  ]) {
+    assert.match(durable, new RegExp(`export async function ${step}[\\s\\S]*?'use step'`), `${step} must be durable`)
+  }
+  for (const step of ['settleWorkspaceAgentUsage', 'releaseWorkspaceAgentReservation']) {
+    assert.match(usage, new RegExp(`export async function ${step}[\\s\\S]*?'use step'`), `${step} must be durable`)
+    assert.match(lifecycle, new RegExp(`export const ${step}`), `${step} must be registered in the lifecycle`)
+  }
+  assert.match(approval, /hook\.getConflict\(\)/)
+  assert.match(approval, /sleep\('15m'\)/)
+  assert.match(workflow, /resumeWorkspaceAgentAfterApproval/)
+  assert.match(workflow, /runWorkspaceAgentTurnLoop/)
+  assert.match(workflow, /callModel: callWorkspaceAgentModel/)
+  assert.match(workflow, /inspectTool: inspectWorkspaceAgentTool/)
+  assert.match(workflow, /executeTool: executeWorkspaceAgentTool/)
+  assert.match(loop, /if \(!decision\.approved\)/)
+  assert.match(durable, /refusedAmbiguousWorkspaceAgentToolRetry\(getStepMetadata\(\)\.attempt\)/)
+  assert.match(durable, /idempotencyKey: `\$\{input\.prepared\.runId\}:\$\{input\.toolCall\.toolCallId\}`/)
+  assert.equal(workflow.match(/callModel: callWorkspaceAgentModel/g)?.length, 1)
+  assert.equal(workflow.match(/executeTool: executeWorkspaceAgentTool/g)?.length, 1)
+  assert.match(loop, /for \(const toolCall of call\.toolCalls\)/)
+  assert.doesNotMatch(workflow, /executeWorkspaceAgentTurn\(/)
 
   // A durable turn outlives the request that triggered it, so it must not
   // depend on that request's credential.
@@ -120,22 +163,20 @@ test('a room agent turn is owned by a durable run, not by an HTTP request', asyn
   // makes every durable turn skip itself and reply to nothing.
   assert.match(service, /priorReply\._id !== args\.existingMessageId/)
 
-  // Anything a workflow body imports that is not a `"use step"` function gets
-  // bundled for the workflow runtime, where Node built-ins do not exist. One
-  // plain helper imported from the server pulled `node:crypto` in behind it and
-  // failed the build with a hundred errors, so the workflow's only server
-  // imports must be steps, and its plain helpers must live in its own module.
+  // The workflow sandbox cannot use Node built-ins. Keep server imports as
+  // steps, except for the pure loop helper that only orchestrates those steps.
   const serverImports = [...workflow.matchAll(/import\s*\{([^}]*)\}\s*from\s*'@\/server[^']*'/g)]
-    .flatMap((match) => match[1]!.split(',').map((name) => name.trim()))
-    .filter((name) => name && !name.startsWith('type '))
+    .flatMap((match) => match[1]!.split(',').map((name) => name.trim().split(/\s+as\s+/)[0]!))
+    .filter((name) => name && !name.startsWith('type ') && name !== 'runWorkspaceAgentTurnLoop')
   assert.ok(serverImports.length > 0)
   for (const imported of serverImports) {
     assert.match(
-      lifecycle,
+      `${lifecycle}\n${durable}\n${usage}`,
       new RegExp(`export async function ${imported}\\b[\\s\\S]*?'use step'`),
       `${imported} is imported into the workflow but is not a step`,
     )
   }
+  assert.doesNotMatch(`${loop}\n${await readFile(`${root}/src/server/agents/workspace-agent-turn-utils.ts`, 'utf8')}`, /from ['"]node:|require\(|process\./)
   assert.match(workflow, /function describeWorkspaceAgentFailure/)
 })
 

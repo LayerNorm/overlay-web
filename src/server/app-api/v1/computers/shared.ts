@@ -33,6 +33,7 @@ export async function computerIdFrom(context: { params: Promise<Record<string, s
 export function actorFrom(context: AppApiRouteContext): ComputerActor {
   return {
     userId: context.auth.userId,
+    workspaceId: context.workspace.workspace.id,
     principalId: context.workspace.principal.id,
     workspaceRole: context.workspace.membership.role === 'owner' ? 'owner' : 'member',
   }

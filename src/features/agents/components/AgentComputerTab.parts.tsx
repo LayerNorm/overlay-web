@@ -18,6 +18,7 @@ export function AgentComputerTabView({
   ticketError,
   ticketLoading,
   controlled,
+  controlBusy = false,
   waking,
   onWake,
   onRetry,
@@ -34,6 +35,7 @@ export function AgentComputerTabView({
   ticketError: string | null
   ticketLoading: boolean
   controlled: boolean
+  controlBusy?: boolean
   waking: boolean
   onWake(): void
   onRetry(): void
@@ -150,19 +152,20 @@ export function AgentComputerTabView({
           variant="ghost"
           type="button"
           aria-label="Take control"
+          disabled={controlBusy}
           onClick={() => onTakeControl(ticketUrl, computerName)}
           className={unstyledButton('absolute inset-0 flex items-center justify-center rounded-xl focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--ring)')}
         >
           <span className="absolute inset-0 bg-black/40 opacity-0 transition-opacity group-hover/preview:opacity-100 group-focus-within/preview:opacity-100" />
           <span className="relative inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-xs font-medium text-gray-900 opacity-0 shadow transition-opacity group-hover/preview:opacity-100 group-focus-within/preview:opacity-100">
             <MousePointer2 size={14} />
-            Take control
+            {controlBusy ? 'Taking control...' : 'Take control'}
           </span>
         </Button>
       </div>
       <p className="flex items-center gap-2 text-xs text-(--muted)">
         <span className="size-1.5 rounded-full bg-emerald-500" />
-        {controlled ? 'You have control' : `${agentName} is working`}
+        {computer.controlledByUserId ? `${agentName} is paused` : `${agentName} is working`}
       </p>
     </div>
   )
@@ -185,10 +188,12 @@ export function AgentComputerControlOverlay({
   computerName,
   ticketUrl,
   onClose,
+  controlBusy = false,
 }: {
   computerName: string
   ticketUrl: string
   onClose(): void
+  controlBusy?: boolean
 }) {
   const openInNewTab = () => {
     window.open(ticketUrl, '_blank', 'noopener,noreferrer')
@@ -197,7 +202,7 @@ export function AgentComputerControlOverlay({
     <section className="flex h-full min-h-0 flex-col bg-(--background)" aria-label="Computer control">
       <header className="flex min-h-12 items-center justify-between gap-3 border-b border-(--border) px-3">
         <div className="flex min-w-0 items-center gap-2">
-          <Button variant="ghost" size="icon-sm" aria-label="Back to conversation" onClick={onClose}>
+          <Button variant="ghost" size="icon-sm" aria-label="Back to conversation" disabled={controlBusy} onClick={onClose}>
             <ArrowLeft size={16} />
           </Button>
           <span className="text-sm font-medium text-(--foreground)">Computer</span>
@@ -210,7 +215,9 @@ export function AgentComputerControlOverlay({
           <Button variant="ghost" size="icon-sm" aria-label="Open in new tab" title="Open in new tab" onClick={openInNewTab}>
             <ExternalLink size={15} />
           </Button>
-          <Button variant="secondary" size="sm" onClick={onClose}>Release control</Button>
+          <Button variant="secondary" size="sm" disabled={controlBusy} onClick={onClose}>
+            {controlBusy ? 'Releasing control...' : 'Release control'}
+          </Button>
         </div>
       </header>
       <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto p-4">

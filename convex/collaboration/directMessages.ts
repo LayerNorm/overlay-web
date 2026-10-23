@@ -895,9 +895,16 @@ export const appendAgentMessageDelta = mutation({
     await requireConversationAccess(ctx, args)
     const message = await loadGeneratingAgentMessage(ctx, args)
     if (!message) return
+    const currentApprovalPart = (message.parts ?? []).find((part) => part.type === 'data-native-agent-approval')
+    const nextParts = args.parts
+      ? [
+          ...args.parts.filter((part) => part.type !== 'data-native-agent-approval'),
+          ...(currentApprovalPart ? [currentApprovalPart] : []),
+        ]
+      : undefined
     await ctx.db.patch(args.messageId, {
       content: `${message.content}${args.contentDelta}`,
-      ...(args.parts ? { parts: args.parts } : {}),
+      ...(nextParts ? { parts: nextParts } : {}),
       updatedAt: Date.now(),
     })
     if (!args.emitEvent) return

@@ -1124,6 +1124,7 @@ export async function finalizeWorkspaceLedger(
     balance: Doc<'billingAccountBalances'>
     limit: Doc<'billingAccountSpendLimits'> | null
     reservedMicros: number
+    reserveMicros?: number
   },
 ): Promise<void> {
   const allowanceRemaining = Math.max(
@@ -1134,7 +1135,7 @@ export async function finalizeWorkspaceLedger(
   const topUpCharge = Math.max(0, args.actualMicros - allowanceCharge)
   if (topUpCharge > args.balance.topUpBalanceMicros) throw new Error('workspace_billing_allocation_invalid')
   const now = Date.now()
-  const reservedMicros = Math.max(0, args.balance.reservedMicros - args.reservedMicros)
+  const reservedMicros = Math.max(0, args.balance.reservedMicros - args.reservedMicros) + (args.reserveMicros ?? 0)
   const usedMicros = args.balance.usedMicros + args.actualMicros
   await ctx.db.patch(args.balance._id, {
     ...await canceledPlanCreditPatch(ctx, args.balance, usedMicros, reservedMicros),
@@ -1147,7 +1148,7 @@ export async function finalizeWorkspaceLedger(
   })
   if (args.limit) {
     await ctx.db.patch(args.limit._id, {
-      reservedMicros: Math.max(0, args.limit.reservedMicros - args.reservedMicros),
+      reservedMicros: Math.max(0, args.limit.reservedMicros - args.reservedMicros) + (args.reserveMicros ?? 0),
       updatedAt: now,
       usedMicros: args.limit.usedMicros + args.actualMicros,
       version: args.limit.version + 1,

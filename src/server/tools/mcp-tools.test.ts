@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   buildMcpToolsContext,
+  createMcpToolApproval,
   rankMcpCatalogEntries,
   stripReservedSchemaKeys,
 } from './mcp-tools'
@@ -26,6 +27,22 @@ const entries = [
     description: 'Fetch weather forecast for a city',
   },
 ]
+
+test('MCP tool approval is requested in Ask without a computer context and bypassed in Auto', () => {
+  const configById = new Map([
+    ['s1', {
+      defaultToolPolicy: 'approval_required' as const,
+      toolPolicies: {},
+    }],
+  ])
+  const toolCall = {
+    toolName: 'call_mcp_tool',
+    input: { serverId: 's1', toolName: 'create_issue' },
+  }
+
+  assert.equal(createMcpToolApproval({ configById })({ toolCall }), 'user-approval')
+  assert.equal(createMcpToolApproval({ configById, approvalMode: 'auto' })({ toolCall }), undefined)
+})
 
 test('rankMcpCatalogEntries returns prefix of catalog for empty query', () => {
   const ranked = rankMcpCatalogEntries(entries, '', 2)

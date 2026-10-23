@@ -654,6 +654,60 @@ test('legacy web-first controls omit the new argument until lifecycle v2 is enab
   }
 })
 
+test('remote control wake forwards the authenticated actor and the run agent, not the environment approver', async () => {
+  const f = fixture({ kind: 'overlay_cloud', approvedByUserId: 'approver-user' })
+  const session: AgentRemoteSession = {
+    id: 'session-1', workspaceId: f.environment.workspaceId, environmentId: f.environment.id,
+    bindingId: 'binding-1', runId: 'run-1', status: 'running', commandCursor: 0, eventCursor: 0,
+    capabilitySnapshot: { billing: { agentId: 'run-agent', userId: 'run-owner' } },
+    createdAt: NOW - 1_000, updatedAt: NOW - 1_000,
+  }
+  f.repository.controlRemoteAgentTurn = async () => ({ applied: true })
+  f.repository.listEnvironments = async () => [f.environment]
+  f.repository.getRemoteSessionForRun = async () => session
+  const wakes: Array<{ actorUserId: string; workspaceId: string; agentId: string; environmentId: string }> = []
+  const service = new ConnectedAgentControlPlaneService({
+    repository: f.repository, audit: { async record() {} } as unknown as AuditService,
+    workspaces: {} as WorkspaceService, now: () => NOW, isEnabled: () => true,
+    wakeMachine: async input => { wakes.push(input); return 'running' },
+  })
+  await service.controlRemoteTurn({
+    actorUserId: 'authenticated-actor', workspaceId: f.environment.workspaceId,
+    conversationId: 'conversation-1', runId: 'run-1', action: 'resume',
+  })
+  assert.deepEqual(wakes, [{
+    actorUserId: 'authenticated-actor', workspaceId: f.environment.workspaceId,
+    agentId: 'run-agent', environmentId: f.environment.id,
+  }])
+})
+
+test('remote control admission refusal precedes the control mutation and wake', async () => {
+  const f = fixture({ kind: 'overlay_cloud' })
+  const session: AgentRemoteSession = {
+    id: 'session-1', workspaceId: f.environment.workspaceId, environmentId: f.environment.id,
+    bindingId: 'binding-1', runId: 'run-1', status: 'paused', commandCursor: 0, eventCursor: 0,
+    capabilitySnapshot: { billing: { agentId: 'run-agent' } },
+    createdAt: NOW - 1_000, updatedAt: NOW - 1_000,
+  }
+  let mutations = 0
+  const wakes: unknown[] = []
+  f.repository.controlRemoteAgentTurn = async () => { mutations += 1; return { applied: true } }
+  f.repository.listEnvironments = async () => [f.environment]
+  f.repository.getRemoteSessionForRun = async () => session
+  const service = new ConnectedAgentControlPlaneService({
+    repository: f.repository, audit: { async record() {} } as unknown as AuditService,
+    workspaces: {} as WorkspaceService, now: () => NOW, isEnabled: () => true,
+    wakeMachine: async input => { wakes.push(input); return 'running' },
+    admitMachine: async () => { throw new Error('paid_plan_required') },
+  })
+  await assert.rejects(service.controlRemoteTurn({
+    actorUserId: 'free-actor', workspaceId: f.environment.workspaceId,
+    conversationId: 'conversation-1', runId: 'run-1', action: 'resume',
+  }), /paid_plan_required/)
+  assert.equal(mutations, 0)
+  assert.deepEqual(wakes, [])
+})
+
 test('every delivered start binds MCP scope to its execution without extending expiry', async () => {
   const { mintAgentMcpToken, verifyAgentMcpToken } = await import('./agent-mcp-token')
   const previous = process.env.OVERLAY_AGENT_MCP_SECRET

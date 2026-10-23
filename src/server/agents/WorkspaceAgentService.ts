@@ -29,6 +29,17 @@ export class WorkspaceAgentServiceError extends Error {
   }
 }
 
+function assertValidOverlayPermissionMode(harness: string, permissionMode?: string): void {
+  if (
+    harness === 'overlay'
+    && permissionMode !== undefined
+    && permissionMode !== 'ask'
+    && permissionMode !== 'auto'
+  ) {
+    throw new WorkspaceAgentServiceError('validation', 'Overlay permission mode must be ask or auto')
+  }
+}
+
 export class WorkspaceAgentService {
   constructor(
     private readonly repository: WorkspaceAgentRepository,
@@ -151,6 +162,7 @@ export class WorkspaceAgentService {
     if (!(WORKSPACE_AGENT_HARNESSES as readonly string[]).includes(harness)) {
       throw new WorkspaceAgentServiceError('validation', 'Unsupported agent harness')
     }
+    assertValidOverlayPermissionMode(harness, args.input.permissionMode)
     await this.workspaces.assertAgentHarnessAllowed({
       actorUserId: args.actorUserId,
       workspaceId: access.workspace.id,
@@ -212,6 +224,9 @@ export class WorkspaceAgentService {
         harness: args.input.harness,
       })
     }
+    const effectiveHarness = args.input.harness ?? agent.harness ?? 'overlay'
+    const effectivePermissionMode = args.input.permissionMode ?? agent.permissionMode
+    assertValidOverlayPermissionMode(effectiveHarness, effectivePermissionMode)
     let teamIds: string[] | undefined
     if (args.input.teamIds !== undefined) {
       teamIds = unique(args.input.teamIds)

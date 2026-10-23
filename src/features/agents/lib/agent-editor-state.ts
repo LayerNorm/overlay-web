@@ -29,5 +29,6 @@ export function getInitialEditorState(args: {
     avatarColor: agent?.avatarColor ?? AVATAR_FALLBACK_COLOR,
     avatarShape: agent?.avatarShape ?? 'circle',
     visibility: agent?.visibility ?? 'workspace',
+    permissionMode: agent?.permissionMode === 'auto' ? 'auto' : 'ask',
   }
 }

@@ -32,6 +32,8 @@ import { AgentRightSidebar } from './AgentRightSidebar'
 import { AgentComputerControlOverlay } from './AgentComputerTab.parts'
 import { buildAgentsDirectoryHref, sendAgentGreeting, startAgentChat } from '../lib/agent-chat'
 import { NewAgentDialog } from './NewAgentDialog'
+import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
+import { useAgentSidebarComputer } from './use-agent-sidebar-computer'
 
 type EditorMode = 'new' | 'edit' | null
 
@@ -186,6 +188,7 @@ function useAgentAutoOpen(args: {
 }
 
 export function AgentConversationWorkspace({ showcase = false }: { showcase?: boolean }) {
+  const { capabilities } = useOverlayCapabilities()
   const router = useRouter()
   const searchParams = useSearchParams()
   const { activeWorkspaceId } = useWorkspace()
@@ -205,15 +208,25 @@ export function AgentConversationWorkspace({ showcase = false }: { showcase?: bo
   const [retryCount, setRetryCount] = useState(0)
   const [computerControlState, setComputerControlState] = useState<{
     conversationId: string | null
-    control: { ticketUrl: string; computerName: string; refreshTicket: () => void } | null
+    control: { ticketUrl: string; computerName: string; computerId: string } | null
   }>({ conversationId: null, control: null })
+  const computerAccess = useAgentSidebarComputer({
+    activeWorkspaceId,
+    agentId: agentId ?? '',
+    enabled: capabilities.computers === true && !showcase && Boolean(agentId),
+    visible: (sidebarPreferences.open && sidebarPreferences.tab === 'computer')
+      || (computerControlState.conversationId === conversationId && Boolean(computerControlState.control)),
+  })
   const computerControl = computerControlState.conversationId === conversationId
+    && Boolean(computerAccess.currentUserId)
+    && computerControlState.control?.computerId === computerAccess.computer?.id
+    && computerAccess.computer?.controlledByUserId === computerAccess.currentUserId
     ? computerControlState.control
     : null
   const updateComputerControl = useCallback((control: {
     ticketUrl: string
     computerName: string
-    refreshTicket: () => void
+    computerId: string
   } | null) => {
     setComputerControlState({ conversationId, control })
   }, [conversationId])
@@ -331,7 +344,6 @@ export function AgentConversationWorkspace({ showcase = false }: { showcase?: bo
     const agentSidebar = agentId && sidebarPreferences.open ? (
       <AgentRightSidebar
         agentId={agentId}
-        activeWorkspaceId={activeWorkspaceId}
         conversationId={conversationId}
         activeTab={sidebarPreferences.tab}
         onTabChange={updateSidebarTab}
@@ -339,8 +351,13 @@ export function AgentConversationWorkspace({ showcase = false }: { showcase?: bo
         onArchived={handleArchived}
         showcase={showcase}
         controlled={Boolean(computerControl)}
-        onTakeControl={(ticketUrl, computerName, refreshTicket) => {
-          updateComputerControl({ ticketUrl, computerName, refreshTicket })
+        computerAccess={computerAccess}
+        onTakeControl={(ticketUrl, computerName) => {
+          const computerId = computerAccess.computer?.id
+          if (!computerId) return
+          void computerAccess.changeControl('take').then((confirmed) => {
+            if (confirmed) updateComputerControl({ ticketUrl, computerName, computerId })
+          })
         }}
       />
     ) : null
@@ -364,9 +381,13 @@ export function AgentConversationWorkspace({ showcase = false }: { showcase?: bo
             <AgentComputerControlOverlay
               ticketUrl={computerControl.ticketUrl}
               computerName={computerControl.computerName}
+              controlBusy={computerAccess.controlBusy}
               onClose={() => {
-                if (sidebarPreferences.open) computerControl.refreshTicket()
-                updateComputerControl(null)
+                void computerAccess.changeControl('release').then((confirmed) => {
+                  if (!confirmed) return
+                  if (sidebarPreferences.open) computerAccess.retryTicket()
+                  updateComputerControl(null)
+                })
               }}
             />
           ) : null}

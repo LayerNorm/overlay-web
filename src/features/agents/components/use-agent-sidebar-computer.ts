@@ -3,6 +3,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Computer } from '@overlay/workspace-contracts'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { useAuth } from '@/contexts/AuthContext'
+import { toast } from '@overlay/ui/primitives'
+import { changeAgentComputerControl } from '../lib/agent-computer-control'
 
 export function useAgentSidebarComputer({
   activeWorkspaceId,
@@ -15,7 +18,13 @@ export function useAgentSidebarComputer({
   enabled: boolean
   visible: boolean
 }) {
-  const [computer, setComputer] = useState<Computer | null>(null)
+  const { user } = useAuth()
+  const [storedComputer, setComputer] = useState<Computer | null>(null)
+  const computer = enabled && storedComputer?.workspaceId === activeWorkspaceId
+    && storedComputer.ownerType === 'agent' && storedComputer.ownerId === agentId ? storedComputer : null
+  const [controlBusy, setControlBusy] = useState(false)
+  const controlPending = useRef(false)
+  const computerRequestId = useRef(0)
   const [computerLoading, setComputerLoading] = useState(true)
   const [computerError, setComputerError] = useState<string | null>(null)
   const [ticketUrl, setTicketUrl] = useState<string | null>(null)
@@ -25,38 +34,43 @@ export function useAgentSidebarComputer({
   const [waking, setWaking] = useState(false)
   const requestId = useRef(0)
 
-  const loadComputer = useCallback(async () => {
+  const loadComputer = useCallback(async (showLoading = true) => {
     if (!activeWorkspaceId || !enabled) {
       setComputerLoading(false)
       return
     }
-    setComputerLoading(true)
+    if (controlPending.current) return
+    const currentRequest = ++computerRequestId.current
+    if (showLoading) setComputerLoading(true)
     try {
       const result = await overlayAppClient.computers.list(activeWorkspaceId)
+      if (currentRequest !== computerRequestId.current) return
       setComputer(result.computers.find((item) => item.ownerType === 'agent' && item.ownerId === agentId) ?? null)
       setComputerError(null)
     } catch {
-      setComputerError('Could not load the computer.')
+      if (currentRequest === computerRequestId.current) setComputerError('Could not load the computer.')
     } finally {
-      setComputerLoading(false)
+      if (currentRequest === computerRequestId.current) setComputerLoading(false)
     }
   }, [activeWorkspaceId, agentId, enabled])
 
   useEffect(() => {
     if (!enabled || !activeWorkspaceId) {
+      ++computerRequestId.current
       setComputer(null)
       setComputerError(null)
       setComputerLoading(false)
       return
     }
-    void loadComputer()
-  }, [activeWorkspaceId, enabled, loadComputer])
+    if (!controlBusy) void loadComputer(false)
+    return () => { ++computerRequestId.current }
+  }, [activeWorkspaceId, controlBusy, enabled, loadComputer])
 
   const shouldPoll = Boolean(enabled && activeWorkspaceId && computer
-    && (computer.status === 'provisioning' || (computer.status as string) === 'starting'))
+    && (visible || computer.status === 'provisioning' || (computer.status as string) === 'starting'))
   useEffect(() => {
     if (!shouldPoll || !activeWorkspaceId) return
-    const timer = window.setInterval(() => { void loadComputer() }, 10_000)
+    const timer = window.setInterval(() => { void loadComputer(false) }, 5_000)
     return () => window.clearInterval(timer)
   }, [activeWorkspaceId, loadComputer, shouldPoll])
 
@@ -101,8 +115,34 @@ export function useAgentSidebarComputer({
     setTicketAttempt((attempt) => attempt + 1)
   }, [])
 
+  const changeControl = useCallback(async (action: 'take' | 'release') => {
+    if (!computer || !user?.id || controlPending.current) return false
+    controlPending.current = true
+    ++computerRequestId.current
+    setComputerLoading(false)
+    setControlBusy(true)
+    try {
+      const updated = await changeAgentComputerControl({
+        computer, userId: user.id, action,
+        request: (workspaceId, computerId, nextAction) => overlayAppClient.computers.control(workspaceId, computerId, nextAction),
+      })
+      setComputer(updated)
+      setComputerError(null)
+      return true
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not change computer control.')
+      return false
+    } finally {
+      controlPending.current = false
+      setControlBusy(false)
+    }
+  }, [computer, user?.id])
+
   return {
     computer,
+    currentUserId: user?.id,
+    controlBusy,
+    changeControl,
     computerLoading,
     computerError,
     ticketUrl,

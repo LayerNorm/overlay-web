@@ -126,6 +126,7 @@ export class AgentRunService {
 
   async waitForApproval(args: {
     approval: AgentRunApproval
+    leaseExpiresAt?: number
     runId: string
     userId: string
   }): Promise<AgentRun | undefined> {

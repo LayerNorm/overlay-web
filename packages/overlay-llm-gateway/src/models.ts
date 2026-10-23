@@ -24,6 +24,7 @@ type MinimalModelDefinition = readonly [
   provider: string,
   supportsVision?: boolean,
   supportsReasoning?: boolean,
+  speedTier?: ModelSpeedTier,
 ]
 
 // Runtime Gateway metadata and pricing come from /v1/models. These definitions only
@@ -42,6 +43,7 @@ const MODEL_DEFINITIONS: readonly MinimalModelDefinition[] = [
   ['deepseek/deepseek-v4-pro', 'DeepSeek V4 Pro', 'deepseek', false, true],
   ['deepseek/deepseek-v4-flash', 'DeepSeek V4 Flash', 'deepseek', false, true],
   ['minimax/minimax-m2.7', 'MiniMax M2.7', 'minimax', false, true],
+  ['minimax/minimax-m3.1-flash', 'MiniMax M3.1 Flash', 'minimax', true, true, 3],
   ['moonshotai/kimi-k3', 'Kimi K3', 'moonshotai', true, true],
   ['moonshotai/kimi-k2.6', 'Kimi K2.6', 'moonshotai', true, true],
   ['z-ai/glm-5.1', 'GLM 5.1', 'zai', false, true],
@@ -52,9 +54,10 @@ const MODEL_DEFINITIONS: readonly MinimalModelDefinition[] = [
   [OPENROUTER_FREE_MODEL_ID, 'OpenRouter Free', 'openrouter', true, true],
 ]
 
-const FREE_MODEL_IDS = new Set([
+const ZERO_COST_MODEL_IDS = new Set([
   FREE_TIER_AUTO_MODEL_ID,
   OPENROUTER_FREE_MODEL_ID,
+  'minimax/minimax-m3.1-flash',
 ])
 
 const ZDR_MODEL_IDS = new Set([
@@ -73,13 +76,14 @@ export const BUILT_IN_MODELS: OverlayModelInfo[] = MODEL_DEFINITIONS.map(([
   provider,
   supportsVision = false,
   supportsReasoning = false,
+  speedTier = 2,
 ]) => ({
   id,
   name,
   provider,
   intelligence: 0,
-  cost: FREE_MODEL_IDS.has(id) ? 0 : 1,
-  speedTier: 2,
+  cost: ZERO_COST_MODEL_IDS.has(id) ? 0 : 1,
+  speedTier,
   supportsVision,
   supportsReasoning,
   supportsSearch: false,

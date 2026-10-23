@@ -41,6 +41,9 @@ export function useAgentEditorForm({
   const [avatarColor, setAvatarColor] = useState(initial.avatarColor)
   const [avatarShape, setAvatarShape] = useState<WorkspaceAgentCreatureShape>(initial.avatarShape)
   const [visibility, setVisibility] = useState<WorkspaceAgentVisibility>(initial.visibility)
+  const [permissionMode, setPermissionMode] = useState<'ask' | 'auto'>(
+    initial.permissionMode === 'auto' ? 'auto' : 'ask',
+  )
   const [enabledToolGroups, setEnabledToolGroups] = useState<Set<string>>(() => (showcaseAgent
     ? enabledAgentToolGroupIds(showcaseAgent.allowedToolIds)
     : new Set(DEFAULT_AGENT_TOOL_GROUP_IDS)))
@@ -78,6 +81,7 @@ export function useAgentEditorForm({
       setAvatarColor(agent.avatarColor ?? AVATAR_FALLBACK_COLOR)
       setAvatarShape(agent.avatarShape ?? 'circle')
       setVisibility(agent.visibility)
+      setPermissionMode(agent.permissionMode === 'auto' ? 'auto' : 'ask')
       setEnabledToolGroups(enabledAgentToolGroupIds(agent.allowedToolIds))
       // The agent record marks a removed hosted runtime via `harness`.
       setLegacyHostedRuntime(workspaceAgentUsesManagedHarness(agent))
@@ -130,6 +134,8 @@ export function useAgentEditorForm({
     setAvatarShape,
     visibility,
     setVisibility,
+    permissionMode,
+    setPermissionMode,
     enabledToolGroups,
     setEnabledToolGroups,
     advanced,

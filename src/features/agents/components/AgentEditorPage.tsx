@@ -172,6 +172,7 @@ export function useAgentEditorController({
         avatarShape: form.avatarShape,
         enabledToolGroups: form.enabledToolGroups,
         visibility: form.visibility,
+        permissionMode: form.permissionMode,
       }),
       teamIds: agent?.teamIds ?? [],
     }
@@ -190,6 +191,7 @@ export function useAgentEditorController({
   }, [runtime.cloudAgent, byo.selectedHarness, byo.adapterId, form.name, form.description, form.instructions,
     runtime.agentType,
     form.modelId, form.avatarColor, form.avatarShape, form.enabledToolGroups, form.visibility,
+    form.permissionMode,
     agent])
 
   const { persistNew, saveEdit, cancelEdit, archiveAgent, sayHello } = useAgentEditorActions({
