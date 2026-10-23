@@ -1236,7 +1236,7 @@ export type ComputerTerminalAction =
   | { action: 'list' }
 
 const COMPUTER_ACTION_APPROVAL_MESSAGE =
-  'This Computer action needs your approval. Switch this chat to Work mode, or ask the user to do it in Open desktop.'
+  "This action needs approval. Use Work mode, or set this agent's Permissions to Auto."
 
 const COMPUTER_USER_IN_CONTROL_RESULT = {
   success: false as const,

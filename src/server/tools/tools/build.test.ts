@@ -143,7 +143,7 @@ test('computer input fails closed before operate for typing while scroll still o
   assert.deepEqual(await computerInput.execute({ action: 'type', text: 'hello' }, {}), {
     success: false,
     error: 'approval_required',
-    message: 'This Computer action needs your approval. Switch this chat to Work mode, or ask the user to do it in Open desktop.',
+    message: "This action needs approval. Use Work mode, or set this agent's Permissions to Auto.",
   })
 
   let operateCalls = 0
@@ -161,7 +161,7 @@ test('computer input fails closed before operate for typing while scroll still o
   assert.deepEqual(typing, {
     success: false,
     error: 'approval_required',
-    message: 'This Computer action needs your approval. Switch this chat to Work mode, or ask the user to do it in Open desktop.',
+    message: "This action needs approval. Use Work mode, or set this agent's Permissions to Auto.",
   })
   assert.equal(operateCalls, 0)
 

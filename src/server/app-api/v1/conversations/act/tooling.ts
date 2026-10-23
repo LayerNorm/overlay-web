@@ -235,7 +235,6 @@ export async function prepareActTooling(params: {
           modelId: params.effectiveModelId,
           workspaceOnly: params.sharedRoom,
           approvalMode: params.approvalMode,
-          computerApprovalContext: params.computerApprovalContext,
         })
   const [integrationRawAll, mcpToolsResult, webToolSet, webSearchTool, deepSearchTool, webFetchTool] = await Promise.all([
     capabilities.integrations ? params.preloadTasks.integrationToolsTask : Promise.resolve({} as ToolSet),

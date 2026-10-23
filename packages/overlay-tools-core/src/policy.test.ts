@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { computerActionRequiresApproval, resolveMcpExecutionPolicy, toolRequiresApproval } from './policy'
+import { computerActionRequiresApproval, toolRequiresApproval } from './policy'
 
 test('computer approval policy requires approval only for consequential input actions', () => {
   const cases: Array<[string, unknown, boolean]> = [
@@ -44,8 +44,6 @@ test('Ask requires approval for command starts and Executor actions that are ris
     ['EXECUTOR_EXECUTE_TOOL', { toolAddress: 'mail.send' }, { executorRequiresApproval: true }, true],
     ['EXECUTOR_EXECUTE_TOOL', { toolAddress: 'mail.list' }, { executorRequiresApproval: false }, false],
     ['EXECUTOR_EXECUTE_TOOL', { toolAddress: 'unknown.address' }, {}, true],
-    ['call_mcp_tool', { serverId: 's1', toolName: 'create_issue' }, { mcpPolicy: 'approval_required' }, true],
-    ['call_mcp_tool', { serverId: 's1', toolName: 'list_repos' }, { mcpPolicy: 'allow' }, false],
   ]
 
   for (const [toolName, input, options, expected] of cases) {
@@ -53,20 +51,15 @@ test('Ask requires approval for command starts and Executor actions that are ris
   }
 })
 
-test('Auto does not require approval for native actions, while MCP deny remains a separate execution policy', () => {
+test('Auto does not require approval for native actions or Executor calls', () => {
   const cases: Array<[string, unknown, Parameters<typeof toolRequiresApproval>[2]]> = [
     ['computer_input', { action: 'type', text: 'hello' }, {}],
     ['computer_exec', { command: 'rm file' }, {}],
     ['computer_terminal', { action: 'start', command: 'make' }, {}],
     ['EXECUTOR_EXECUTE_TOOL', { toolAddress: 'unknown.address' }, {}],
-    ['call_mcp_tool', { serverId: 's1', toolName: 'write' }, { mcpPolicy: 'approval_required' }],
-    ['call_mcp_tool', { serverId: 's1', toolName: 'write' }, { mcpPolicy: 'deny' }],
   ]
 
   for (const [toolName, input, options] of cases) {
     assert.equal(toolRequiresApproval(toolName, input, { ...options, approvalMode: 'auto' }), false, toolName)
   }
-  assert.equal(resolveMcpExecutionPolicy('deny', { approvalMode: 'auto' }), 'deny')
-  assert.equal(resolveMcpExecutionPolicy('approval_required', { approvalMode: 'auto' }), 'allow')
-  assert.equal(resolveMcpExecutionPolicy('approval_required', { approvalMode: 'ask', approvalContext: 'automation' }), 'approval_required')
 })
