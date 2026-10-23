@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Launch with native Overlay agents and their computers while keeping external cloud and own-machine runtimes behind a default-off release gate. Hide unavailable external setup, reject direct creation and execution bypasses, and retain authorized history, cancellation, cleanup and settlement. Add `FEATURES.md` with feature switches, provider support and re-enablement steps.
+
 - Reveal chat copy actions on hover or keyboard focus, and add an agent-conversation sidebar as a full-height panel with one editable hero, autosaving Details, conversation-linked Library files and an always-visible Computer tab with control mode. Files and notes created by an agent are linked to its conversation and appear in the Library. Room panels and the agent sidebar now share the same right-hand slot. Agent settings use the shared chat model picker with free-tier and zero-data-retention access rules.
 
 - Update `@sentry/nextjs` to 10.75.3 and `dompurify` to 3.4.17 to fix the Sentry tunnel middleware bypass (GHSA-mchm-gjx6-7h55) and two DOMPurify sanitizer advisories (GHSA-cg2g-xh64-v4q7, GHSA-mrv2-3pqr-j5jr) that fail the production dependency audit.

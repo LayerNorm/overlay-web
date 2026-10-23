@@ -51,6 +51,7 @@ import { logger } from '@/server/observability/logger'
 import { mintAgentMcpToken, verifyAgentMcpToken } from './agent-mcp-token'
 import { AgentProviderAccountError, type AgentProviderAccountService } from './provider-accounts/AgentProviderAccountService'
 import { AGENT_AUTH_FAILURE_CODE, isAgentProviderId, type AgentProviderId } from '@/shared/agents/provider-accounts'
+import { externalAgentLaunchEnabled } from './external-agent-policy'
 
 const ENROLLMENT_TTL_MS = 10 * 60_000
 /** Convex refusals that mean the batch itself was unusable, not that the run or policy refused it. */
@@ -111,7 +112,7 @@ export class ConnectedAgentControlPlaneService {
     wakeMachine?: (args: { workspaceId: string; environmentId: string }) => Promise<'running' | 'resumed' | 'unavailable'>
     now?: () => number
     isEnabled?: (workspaceId?: string) => boolean | Promise<boolean>
-    launchEnabled?: (workspaceId: string) => boolean | Promise<boolean>
+    launchEnabled?: (workspaceId?: string) => boolean | Promise<boolean>
     artifactsEnabled?: () => boolean | Promise<boolean>
     driveEnabled?: () => boolean | Promise<boolean>
     /** Only the canonical billing-backed policy may consume the backend projection. */
@@ -877,16 +878,16 @@ export class ConnectedAgentControlPlaneService {
   }
 
   async pollCommands(auth: HostAuthentication, limit: number) {
-    const [commands, resolvedThroughSequence] = await Promise.all([
+    const launchEnabled = this.dependencies.launchEnabled
+      ? await this.dependencies.launchEnabled(auth.credential.workspaceId)
+      : await externalAgentLaunchEnabled(auth.credential.workspaceId)
+    const [claimedCommands, resolvedThroughSequence] = await Promise.all([
       this.dependencies.repository.claimCommands({
         workspaceId: auth.credential.workspaceId,
         environmentId: auth.credential.environmentId,
         now: this.now(),
         leaseMs: 30_000,
         limit: Math.max(1, Math.min(limit, 50)),
-        allowNewWork: this.dependencies.launchEnabled
-          ? await this.dependencies.launchEnabled(auth.credential.workspaceId)
-          : true,
       }),
       auth.environment.capabilities.remoteLifecycleVersion === 2
         ? this.dependencies.repository.commandResolutionFloor({
@@ -894,6 +895,15 @@ export class ConnectedAgentControlPlaneService {
           environmentId: auth.credential.environmentId,
         }) : Promise.resolve(undefined),
     ])
+    const commands = launchEnabled
+      ? claimedCommands
+      : claimedCommands.map((command) => ['cancel', 'shutdown', 'observe'].includes(command.type)
+        ? command
+        : {
+            ...command,
+            type: 'shutdown' as const,
+            payload: { reason: 'External agent runtimes are disabled.' },
+          })
     const parsedCommands = commands.map((command) => {
       if (new TextEncoder().encode(JSON.stringify(command)).byteLength > MAX_COMMAND_BYTES) {
         throw controlPlaneError('Queued command exceeds the bridge protocol byte limit', 413, 'command_too_large')
@@ -1124,25 +1134,16 @@ export class ConnectedAgentControlPlaneService {
   }
 
   private async assertEnabled(workspaceId?: string) {
-    if (this.dependencies.isEnabled) {
-      if (!await this.dependencies.isEnabled(workspaceId)) {
-        throw controlPlaneError('Connected agent control plane is disabled', 404, 'feature_disabled')
-      }
-      if (workspaceId && this.dependencies.launchEnabled
-        && !await this.dependencies.launchEnabled(workspaceId)) {
-        throw controlPlaneError('External agent runtimes are disabled', 404, 'feature_disabled')
-      }
-      return
-    }
-    const runtime = await getOverlayRuntimeConfig()
-    if (runtime.features.connectedAgentControlPlane !== true) {
+    const controlPlaneEnabled = this.dependencies.isEnabled
+      ? await this.dependencies.isEnabled(workspaceId)
+      : (await getOverlayRuntimeConfig()).features.connectedAgentControlPlane === true
+    if (!controlPlaneEnabled) {
       throw controlPlaneError('Connected agent control plane is disabled', 404, 'feature_disabled')
     }
-    if (runtime.features.externalAgents !== true || runtime.features.remoteAgentRuns !== true) {
-      throw controlPlaneError('External agent runtimes are disabled', 404, 'feature_disabled')
-    }
-    if (workspaceId && this.dependencies.launchEnabled
-      && !await this.dependencies.launchEnabled(workspaceId)) {
+    const launchEnabled = this.dependencies.launchEnabled
+      ? await this.dependencies.launchEnabled(workspaceId)
+      : await externalAgentLaunchEnabled(workspaceId)
+    if (!launchEnabled) {
       throw controlPlaneError('External agent runtimes are disabled', 404, 'feature_disabled')
     }
   }

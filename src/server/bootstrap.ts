@@ -792,12 +792,13 @@ function transactionalEmailEnabled(config: OverlayRuntimeConfig | null): config 
 }
 
 function runtimeCapabilities(config: OverlayRuntimeConfig): CapabilityCheck {
+  const externalAgentsEnabled = config.features.externalAgents === true
+    && config.features.connectedAgentControlPlane === true
+    && config.features.remoteAgentRuns === true
   return {
     ...resolveOverlayCapabilities(config),
-    connectedAgents: config.features.connectedAgentControlPlane === true,
-    externalAgents: config.features.externalAgents === true
-      && config.features.connectedAgentControlPlane === true
-      && config.features.remoteAgentRuns === true,
+    connectedAgents: externalAgentsEnabled,
+    externalAgents: externalAgentsEnabled,
   }
 }
 

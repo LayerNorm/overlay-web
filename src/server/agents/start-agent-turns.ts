@@ -12,18 +12,7 @@ import {
   type WorkspaceAgentInvocation,
 } from '@/server/agents/workspace-agent-invocation'
 
-/**
- * Opens a durable run per agent that owes a reply, and starts the workflow that
- * writes it.
- *
- * This is the only thing that invokes a room agent. Triggering server-side is
- * what makes a turn asynchronous: the sender's request returns as soon as the
- * runs exist, and the turns continue whether or not anyone is still watching.
- * Failures here are logged rather than raised — the human message is already
- * saved, and failing the send because an agent could not be started would be
- * the worse outcome.
- */
-export async function startWorkspaceAgentTurns(args: {
+type WorkspaceAgentTurnsArgs = {
   actorUserId: string
   conversationId: string
   messageId: string
@@ -36,9 +25,33 @@ export async function startWorkspaceAgentTurns(args: {
   workspaceId: string
   /** False when the message was written by an agent, not a person, so there is no person's message to learn from. */
   extractHumanMemory?: boolean
-}): Promise<WorkspaceAgentInvocation[]> {
-  const collaboration = getOverlayServerContext().appData.repositories.conversationCollaboration
-  const invocations = await resolveWorkspaceAgentInvocations(args)
+}
+
+export type WorkspaceAgentTurnDispatcherDependencies = {
+  resolveInvocations?: typeof resolveWorkspaceAgentInvocations
+  startRemote?: typeof startRemoteWorkspaceAgentTurn
+  getCollaboration?: () => ReturnType<typeof getOverlayServerContext>['appData']['repositories']['conversationCollaboration']
+  startWorkflow?: typeof start
+}
+
+/**
+ * Opens a durable run per agent that owes a reply, and starts the workflow that
+ * writes it.
+ *
+ * This is the only thing that invokes a room agent. Triggering server-side is
+ * what makes a turn asynchronous: the sender's request returns as soon as the
+ * runs exist, and the turns continue whether or not anyone is still watching.
+ * Failures here are logged rather than raised — the human message is already
+ * saved, and failing the send because an agent could not be started would be
+ * the worse outcome.
+ */
+export async function startWorkspaceAgentTurns(
+  args: WorkspaceAgentTurnsArgs,
+  dependencies: WorkspaceAgentTurnDispatcherDependencies = {},
+): Promise<WorkspaceAgentInvocation[]> {
+  const collaboration = dependencies.getCollaboration?.()
+    ?? getOverlayServerContext().appData.repositories.conversationCollaboration
+  const invocations = await (dependencies.resolveInvocations ?? resolveWorkspaceAgentInvocations)(args)
   if (args.memoryEnabled && args.extractHumanMemory !== false && invocations.length > 0) {
     await collaboration.enqueueMemoryExtraction({
       actorUserId: args.actorUserId,
@@ -54,16 +67,16 @@ export async function startWorkspaceAgentTurns(args: {
   }
   await Promise.all(invocations.map(async (invocation) => {
     try {
-      if (invocation.externalAgent) {
-        throw new WorkspaceAgentInvocationError('not_entitled', 'This external agent runtime is disabled.')
-      }
       if (invocation.remoteTarget?.protocolAdapter === 'harness') {
         // Managed harness runtimes were removed; the room gets the failure
         // message rather than a silent switch to a different runtime.
         throw new WorkspaceAgentInvocationError('not_entitled', 'This external agent runtime is no longer available.')
       }
+      if (invocation.externalAgent && !invocation.remoteTarget) {
+        throw new WorkspaceAgentInvocationError('not_entitled', 'This external agent runtime is disabled.')
+      }
       if (invocation.remoteTarget) {
-        await startRemoteWorkspaceAgentTurn({
+        await (dependencies.startRemote ?? startRemoteWorkspaceAgentTurn)({
           actorUserId: args.actorUserId,
           conversationId: args.conversationId,
           initiatorPrincipalId: args.initiatorPrincipalId,
@@ -92,7 +105,7 @@ export async function startWorkspaceAgentTurns(args: {
       // or a retried send. Starting a second workflow against the same reply
       // row would bill the turn twice.
       if (turn.resumed) return
-      await start(workspaceAgentTurnWorkflow, [{
+      const workflowArgs: Parameters<typeof workspaceAgentTurnWorkflow> = [{
         actorUserId: args.actorUserId,
         agentId: invocation.agentId,
         conversationId: args.conversationId,
@@ -102,7 +115,12 @@ export async function startWorkspaceAgentTurns(args: {
         ...(args.threadRootMessageId ? { threadRootMessageId: args.threadRootMessageId } : {}),
         turnMessageId: turn.messageId,
         workspaceId: args.workspaceId,
-      }])
+      }]
+      if (dependencies.startWorkflow) {
+        await dependencies.startWorkflow(workspaceAgentTurnWorkflow, workflowArgs)
+      } else {
+        await start(workspaceAgentTurnWorkflow, workflowArgs)
+      }
     } catch (error) {
       const turnErrorCode = error instanceof WorkspaceAgentInvocationError ? error.reasonCode : 'unexpected'
       const turnErrorDetail = error instanceof Error ? error.message.slice(0, 300) : String(error).slice(0, 300)

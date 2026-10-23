@@ -57,6 +57,8 @@ Run `npm run docs:check` before publishing docs changes.
 
 ## Features
 
+See [FEATURES.md](FEATURES.md) for release status, feature flags, provider support and how to re-enable deferred features.
+
 ### Core Capabilities
 
 - **Provider-neutral Chat** — Use the model providers enabled for your deployment from one workspace

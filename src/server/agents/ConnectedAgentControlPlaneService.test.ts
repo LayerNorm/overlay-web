@@ -8,6 +8,7 @@ import { AGENT_ENVIRONMENT_CREDENTIAL_METHODS } from '@overlay/workspace-contrac
 import type { ObjectStore } from '@overlay/app-core'
 import type { AgentArtifact, AgentEnvironment, AgentEnvironmentCredential, AgentRemoteSession } from '@overlay/workspace-contracts'
 import { AuditService } from '@/server/admin'
+import { clearOverlayRuntimeConfigCache } from '@/server/config'
 import type { AuditEventRecord } from '@/server/admin/AuditRepository'
 import type { WorkspaceService } from '@/server/workspaces/WorkspaceService'
 import type { ConnectedAgentRepository } from './ConnectedAgentRepository'
@@ -29,6 +30,7 @@ function fixture(overrides: Partial<AgentEnvironment> = {}, credentialOverrides:
   policyLimits?: ConstructorParameters<typeof ConnectedAgentControlPlaneService>[0]['policyLimits']
   policyProjectionEnabled?: boolean
   launchEnabled?: boolean
+  omitLaunchEnabled?: boolean
   settleUsage?: (settlement: Parameters<ConnectedAgentControlPlaneService['finalizeRemoteRunUsage']>[0]) => Promise<void>
 } = { driveEnabled: false }) {
   const environment: AgentEnvironment = {
@@ -45,6 +47,8 @@ function fixture(overrides: Partial<AgentEnvironment> = {}, credentialOverrides:
     expiresAt: NOW + 60_000, createdAt: NOW - 1_000, ...credentialOverrides,
   }
   const consumed = new Set<string>()
+  let enrollmentRedemptions = 0
+  const launchWorkspaceIds: Array<string | undefined> = []
   const scopeUpdates: Array<Parameters<ConnectedAgentRepository['updateEnvironmentFilesystemGrant']>[0]> = []
   const audits: AuditEventRecord[] = []
   const repository = {
@@ -67,6 +71,10 @@ function fixture(overrides: Partial<AgentEnvironment> = {}, credentialOverrides:
     },
     async disableBindingsForAgent() { return true },
     async claimCommands() { return [] },
+    async redeemEnrollmentSession() {
+      enrollmentRedemptions += 1
+      throw Error('unexpected enrollment redemption')
+    },
     async updateEnvironmentFilesystemGrant(args: Parameters<ConnectedAgentRepository['updateEnvironmentFilesystemGrant']>[0]) {
       if (args.workspaceId !== environment.workspaceId || args.environmentId !== environment.id) return null
       scopeUpdates.push(args)
@@ -80,7 +88,7 @@ function fixture(overrides: Partial<AgentEnvironment> = {}, credentialOverrides:
       return true
     },
   } as unknown as ConnectedAgentRepository
-  const service = new ConnectedAgentControlPlaneService({
+  const dependencies = {
     repository,
     audit: new AuditService({ async append(input) {
       const entry = { ...input, id: input.id ?? `audit-${audits.length}`, createdAt: input.createdAt ?? NOW }
@@ -93,13 +101,53 @@ function fixture(overrides: Partial<AgentEnvironment> = {}, credentialOverrides:
     } as unknown as WorkspaceService,
     now: () => NOW,
     isEnabled: () => true,
-    launchEnabled: () => options.launchEnabled !== false,
+    ...(options.omitLaunchEnabled ? {} : {
+      launchEnabled: (workspaceId?: string) => {
+        launchWorkspaceIds.push(workspaceId)
+        return options.launchEnabled !== false
+      },
+    }),
     driveEnabled: () => options.driveEnabled,
     settleUsage: options.settleUsage,
     policyLimits: options.policyLimits,
     policyProjectionEnabled: options.policyProjectionEnabled,
-  })
-  return { service, environment, repository, credential, scopeUpdates, audits }
+  }
+  const service = new ConnectedAgentControlPlaneService(dependencies)
+  return {
+    service, environment, repository, credential, scopeUpdates, audits, launchWorkspaceIds,
+    get enrollmentRedemptions() { return enrollmentRedemptions },
+  }
+}
+
+function queuedCommands(): Awaited<ReturnType<ConnectedAgentRepository['claimCommands']>> {
+  const common = {
+    workspaceId: 'workspace-1',
+    environmentId: 'environment-1',
+    runId: 'run-1',
+    status: 'claimed' as const,
+    createdAt: NOW,
+    updatedAt: NOW,
+  }
+  return [
+    {
+      ...common,
+      id: 'start-command',
+      sequence: 1,
+      type: 'start',
+      payload: {
+        bindingId: 'binding-1',
+        adapterId: 'codex',
+        workingDirectory: '/workspace/project',
+        prompt: 'start this run',
+        metadata: { overlayMcp: { url: 'https://overlay.example/api/agent-mcp', token: 'private-mcp-token' } },
+      },
+    },
+    { ...common, id: 'resume-command', sequence: 2, type: 'reconnect', payload: { remoteSessionId: 'session-1' } },
+    { ...common, id: 'steer-command', sequence: 3, type: 'prompt', payload: { prompt: 'continue the run' } },
+    { ...common, id: 'cancel-command', sequence: 4, type: 'cancel', payload: { reason: 'stop the run' } },
+    { ...common, id: 'observe-command', sequence: 5, type: 'observe', payload: {} },
+    { ...common, id: 'shutdown-command', sequence: 6, type: 'shutdown', payload: { reason: 'retired run' } },
+  ] as Awaited<ReturnType<ConnectedAgentRepository['claimCommands']>>
 }
 
 test('launch-off preserves authorized host/read and cleanup paths while rejecting setup', async () => {
@@ -153,6 +201,67 @@ test('launch-off preserves authorized host/read and cleanup paths while rejectin
     workspaceId: f.environment.workspaceId,
   })
   assert.equal(settled, 1)
+})
+
+test('workspace-less enrollment redemption checks launch policy before repository mutation', async () => {
+  const f = fixture({}, {}, { driveEnabled: false, launchEnabled: false })
+  const request = {
+    code: 'enrollment-code-123456',
+    name: 'Test host',
+    publicKey: publicKeyPem,
+    hostVersion: '1.0.0',
+    platform: 'test',
+    capabilities: {},
+  }
+
+  await assertControlPlaneError(
+    () => f.service.redeemEnrollment(request as Parameters<typeof f.service.redeemEnrollment>[0]),
+    'feature_disabled',
+  )
+  assert.deepEqual(f.launchWorkspaceIds, [undefined])
+  assert.equal(f.enrollmentRedemptions, 0)
+})
+
+test('launch-off polling neutralizes start, resume, and steer while preserving cancel, observe, shutdown, and sequence', async () => {
+  const f = fixture({}, {}, { driveEnabled: false, launchEnabled: false })
+  f.repository.claimCommands = async () => queuedCommands()
+  const response = await f.service.pollCommands({ environment: f.environment, credential: f.credential }, 10)
+
+  assert.deepEqual(response.commands.map(({ type, sequence }) => [type, sequence]), [
+    ['shutdown', 1],
+    ['shutdown', 2],
+    ['shutdown', 3],
+    ['cancel', 4],
+    ['observe', 5],
+    ['shutdown', 6],
+  ])
+  assert.deepEqual(
+    response.commands.filter((command) => command.type === 'shutdown').slice(0, 3).map((command) => command.payload),
+    Array.from({ length: 3 }, () => ({ reason: 'External agent runtimes are disabled.' })),
+  )
+  assert.equal(JSON.stringify(response).includes('private-mcp-token'), false)
+})
+
+test('polling without an injected launch policy uses the runtime release policy', async () => {
+  const previousNodeEnv = process.env.NODE_ENV
+  const previousExternalAgents = process.env.OVERLAY_FEATURE_EXTERNAL_AGENTS
+  process.env.NODE_ENV = 'test'
+  process.env.OVERLAY_FEATURE_EXTERNAL_AGENTS = 'false'
+  clearOverlayRuntimeConfigCache()
+  try {
+    const f = fixture({}, {}, { driveEnabled: false, omitLaunchEnabled: true })
+    f.repository.claimCommands = async () => queuedCommands()
+    const response = await f.service.pollCommands({ environment: f.environment, credential: f.credential }, 10)
+
+    assert.equal(response.commands[0]?.type, 'shutdown')
+    assert.equal(JSON.stringify(response).includes('private-mcp-token'), false)
+  } finally {
+    if (previousExternalAgents === undefined) delete process.env.OVERLAY_FEATURE_EXTERNAL_AGENTS
+    else process.env.OVERLAY_FEATURE_EXTERNAL_AGENTS = previousExternalAgents
+    if (previousNodeEnv === undefined) delete process.env.NODE_ENV
+    else process.env.NODE_ENV = previousNodeEnv
+    clearOverlayRuntimeConfigCache()
+  }
 })
 
 test('drive activation persists only the managed Cloud root and is idempotent', async () => {
@@ -443,6 +552,7 @@ test('hosted harness adapters can no longer be bound', async () => {
     } as unknown as WorkspaceService,
     now: () => NOW,
     isEnabled: () => true,
+    launchEnabled: () => true,
   })
   await assertControlPlaneError(
     () => service.upsertBinding({
@@ -514,6 +624,7 @@ function providerAccountHarness(options: {
     ...(options.deliver === 'none' ? {} : { deliverMachineFiles: async (args: unknown) => { if (options.deliver === 'fail') throw new Error('machine down'); delivered.push(args) } }),
     now: () => NOW,
     isEnabled: () => true,
+    launchEnabled: () => true,
   })
   const auth = {
     environment,
@@ -574,7 +685,7 @@ test('only Overlay Cloud credentials carry the run-credentials method, so older 
         },
       } as unknown as ConnectedAgentRepository,
       audit: { record: async () => {} } as unknown as AuditService,
-      workspaces: {} as WorkspaceService, now: () => NOW, isEnabled: () => true,
+      workspaces: {} as WorkspaceService, now: () => NOW, isEnabled: () => true, launchEnabled: () => true,
     })
     const signature = sign(null, Buffer.from(canonicalEnrollmentProof(environment.id, 'challenge')), privateKey).toString('base64url')
     await service.issueInitialCredential({ environmentId: environment.id, proofChallenge: 'challenge', signature })
@@ -655,7 +766,7 @@ function artifactFixture(bytes: Uint8Array, artifactsEnabled = true) {
   }
   const service = new ConnectedAgentControlPlaneService({ repository, objectStore,
     audit: {} as AuditService, workspaces: {} as WorkspaceService, now: () => NOW,
-    isEnabled: () => true, artifactsEnabled: () => artifactsEnabled })
+    isEnabled: () => true, launchEnabled: () => true, artifactsEnabled: () => artifactsEnabled })
   return { service, auth, session, artifacts, deletedKeys, get constraints() { return constraints } }
 }
 
@@ -714,7 +825,7 @@ test('legacy web-first controls omit the new argument until lifecycle v2 is enab
       }
       const service = new ConnectedAgentControlPlaneService({ repository: f.repository,
         audit: { async record() {} } as unknown as AuditService, workspaces: {} as WorkspaceService,
-        now: () => NOW, isEnabled: () => true })
+        now: () => NOW, isEnabled: () => true, launchEnabled: () => true })
       await service.controlRemoteTurn({ actorUserId: 'user-1', workspaceId: 'workspace-1',
         conversationId: 'conversation-1', runId: 'run-1', action: 'cancel', controlRequestId: 'control-1' })
       assert.equal(received[0]?.controlRequestId, enabled ? 'control-1' : undefined)

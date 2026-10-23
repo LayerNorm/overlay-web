@@ -13,7 +13,10 @@ const verifiedDownloads = new AgentDriveDownloadCache()
 
 export function connectedAgentDriveEnabled(): boolean {
   const features = getOverlayRuntimeConfigSync().features
-  return features.connectedAgentControlPlane === true && features.connectedAgentDrive === true
+  return features.externalAgents === true
+    && features.connectedAgentControlPlane === true
+    && features.remoteAgentRuns === true
+    && features.connectedAgentDrive === true
 }
 
 export function createAgentDriveService(): AgentDriveManifestService {
