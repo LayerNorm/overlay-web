@@ -271,13 +271,26 @@ export const createOrganizationByServer = mutation({
       requireUnusedId(ctx, 'membership', args.membershipId),
     ])
     const now = args.now
-    const base = workspaceHandleBaseFromName(args.name) ?? 'workspace'
-    const requestedSlug = normalizeWorkspaceHandleInput(args.slug ?? base)
+    const base = workspaceHandleBaseFromName(args.name)
     const automatic = args.handleExplicit === false
-      || (args.handleExplicit === undefined && requestedSlug === slugify(args.name))
+      || (args.handleExplicit === undefined && args.slug === undefined)
+    const requestedBase = base
+      && isWorkspaceHandleSyntaxValid(base)
+      && !isReservedWorkspaceHandle(base)
+      ? base
+      : buildWorkspaceHandleCandidate(null, args.handleSuffixes?.[0] ?? crypto.randomUUID())
+    let requestedSlug = normalizeWorkspaceHandleInput(args.slug ?? requestedBase)
+    if (automatic && (
+      !isWorkspaceHandleSyntaxValid(requestedSlug)
+      || isReservedWorkspaceHandle(requestedSlug)
+    )) {
+      requestedSlug = requestedBase
+    }
+    const explicit = args.handleExplicit === true
+      || (args.handleExplicit === undefined && args.slug !== undefined)
     if (
       !isWorkspaceHandleSyntaxValid(requestedSlug)
-      || (args.handleExplicit === true && isReservedWorkspaceHandle(requestedSlug))
+      || (explicit && isReservedWorkspaceHandle(requestedSlug))
     ) {
       throw new Error('WORKSPACE_HANDLE_INVALID')
     }

@@ -28,6 +28,8 @@ import {
 } from '@overlay/workspace-contracts'
 import {
   buildWorkspaceHandleCandidate,
+  isReservedWorkspaceHandle,
+  isWorkspaceHandleSyntaxValid,
   normalizeWorkspaceHandleInput,
   validateWorkspaceHandleAddress,
   validateWorkspaceHandleInput,
@@ -230,10 +232,17 @@ export class WorkspaceService {
     if (planned.filter((hasPlan) => !hasPlan).length >= MAX_FREE_WORKSPACES_PER_OWNER) throw freeWorkspaceLimit()
     const handleWritesEnabled = this.areWorkspaceHandleWritesEnabled()
     const explicitHandle = args.slug === undefined ? undefined : this.normalizeHandle(args.slug)
+    const base = workspaceHandleBaseFromName(name)
+    const automaticBase = base
+      && isWorkspaceHandleSyntaxValid(base)
+      && !isReservedWorkspaceHandle(base)
+      ? base
+      : buildWorkspaceHandleCandidate(null, this.handleSuffix())
     const slug = handleWritesEnabled
-      ? explicitHandle ?? workspaceHandleBaseFromName(name) ?? buildWorkspaceHandleCandidate(null, this.handleSuffix())
+      ? explicitHandle ?? automaticBase
       : normalizeOptionalSlug(args.slug) ?? slugify(name)
-    return await this.repository.createOrganization({
+    try {
+      return await this.repository.createOrganization({
       workspaceId: this.id(),
       ownerPrincipalId: this.id(),
       actorUserId,
@@ -241,14 +250,16 @@ export class WorkspaceService {
       ownerEmail: normalizeOptionalEmail(args.email),
       name,
       slug,
-      ...(handleWritesEnabled
-        ? {
-            handleExplicit: explicitHandle !== undefined,
-            handleSuffixes: Array.from({ length: 4 }, () => this.handleSuffix()),
-          }
-        : {}),
+      handleExplicit: explicitHandle !== undefined,
+      handleSuffixes: Array.from({ length: 4 }, () => this.handleSuffix()),
       now: this.now(),
-    })
+      })
+    } catch (error) {
+      if (hasWorkspaceHandleConflict(error) && explicitHandle !== undefined) {
+        throw new WorkspaceServiceError('That workspace address is already in use', 409, 'handle_conflict')
+      }
+      throw error
+    }
   }
 
   async resolveWorkspaceHandle(args: {
@@ -276,7 +287,7 @@ export class WorkspaceService {
     if (!result.ok) {
       throw validation(result.reason === 'reserved'
         ? 'That workspace address is reserved'
-        : 'Workspace addresses must be 3–63 lowercase letters or numbers separated by single hyphens')
+        : 'Workspace addresses must be 3 to 63 lowercase letters or numbers separated by single hyphens')
     }
     const ready = await this.repository.isWorkspaceHandleRegistryReady?.() ?? false
     if (!ready || !this.repository.updateWorkspaceHandle) {
@@ -1165,7 +1176,7 @@ export class WorkspaceService {
     if (!result.ok) {
       throw validation(result.reason === 'reserved'
         ? 'That workspace address is reserved'
-        : 'Workspace addresses must be 3–63 letters or numbers separated by single hyphens')
+        : 'Workspace addresses must be 3 to 63 letters or numbers separated by single hyphens')
     }
     return normalizeWorkspaceHandleInput(result.handle)
   }

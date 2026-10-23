@@ -4,7 +4,6 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
-- Add indexed workspace handles with permanent aliases, authenticated resolution, owner-only changes, and a resumable dry-run-capable backfill. Workspace IDs and existing ID-based links remain supported.
 - Add indexed workspace handles with permanent aliases, authenticated resolution, owner-only changes, and a resumable dry-run-capable backfill. Existing workspace IDs and ID-based links remain supported.
 - Reveal chat copy actions on hover or keyboard focus, and add an agent-conversation sidebar as a full-height panel with one editable hero, autosaving Details, conversation-linked Library files and an always-visible Computer tab with control mode. Files and notes created by an agent are linked to its conversation and appear in the Library. Room panels and the agent sidebar now share the same right-hand slot. Agent settings use the shared chat model picker with free-tier and zero-data-retention access rules.
 

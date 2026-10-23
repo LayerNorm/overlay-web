@@ -3,6 +3,7 @@ import type { NextRequest } from 'next/server'
 import { getServiceAuthHeaderName, verifyServiceAuthToken } from '@/server/auth/service-auth'
 import { hasValidSessionCookieSignature } from '@/server/auth/session-cookie-signature'
 import { previewHostnameAllowed } from '@/shared/web/preview-host'
+import { isSupportedWorkspaceRoute } from '@/shared/workspaces/routing'
 
 const SESSION_COOKIE_NAME = 'overlay_session'
 const BETTER_AUTH_SESSION_COOKIE_NAME = 'better-auth.session_token'
@@ -226,6 +227,14 @@ function applyBrowserSecurityHeaders(
   return response
 }
 
+function applyWorkspaceRouteHeaders(response: NextResponse, pathname: string): NextResponse {
+  if (pathname.startsWith('/w/')) {
+    response.headers.set('Cache-Control', 'private, no-store')
+    response.headers.set('X-Robots-Tag', 'noindex, nofollow')
+  }
+  return response
+}
+
 function getCanonicalWorkspaceRewrite(request: NextRequest): URL | null {
   const handleRoute = request.nextUrl.pathname.match(/^\/w\/([^/]+)(?:\/(.*))?$/)
   const idRoute = request.nextUrl.pathname.match(/^\/app\/w\/([^/]+)(?:\/(.*))?$/)
@@ -234,7 +243,8 @@ function getCanonicalWorkspaceRewrite(request: NextRequest): URL | null {
 
   let target = ''
   try {
-    target = decodeURIComponent(match[1] ?? '').trim().toLowerCase()
+    target = decodeURIComponent(match[1] ?? '').trim()
+    if (handleRoute) target = target.toLowerCase()
   } catch {
     return null
   }
@@ -243,19 +253,21 @@ function getCanonicalWorkspaceRewrite(request: NextRequest): URL | null {
     return null
   }
 
-  const nested = match[2]?.trim().replace(/^\/+|\/+$/g, '') || 'chat'
-  const nestedParts = nested.split('/')
-  if (nestedParts.some((part) => {
+  const nested = match[2]?.trim().replace(/^\/+|\/+$/g, '')
+    || (handleRoute ? 'work' : 'chat')
+  const nestedParts: string[] = []
+  for (const part of nested.split('/')) {
     try {
-      const decoded = decodeURIComponent(part)
-      return decoded === '.' || decoded === '..' || decoded.includes('\\') || decoded.includes('/')
+      nestedParts.push(decodeURIComponent(part))
     } catch {
-      return true
+      return null
     }
-  })) return null
-  const requestedSurface = nestedParts[0]
-  const allowed = new Set(['activity', 'admin', 'archived', 'agents', 'automations', 'chat', 'files', 'memories', 'notes', 'outputs', 'settings', 'tools', 'work'])
-  const surface = allowed.has(requestedSurface) ? requestedSurface : 'chat'
+  }
+  if (nestedParts.some((part) =>
+    !part || part === '.' || part === '..' || part.includes('\\') || part.includes('/'))) return null
+  const requestedSurface = nestedParts[0] ?? ''
+  const surface = requestedSurface
+  if (!isSupportedWorkspaceRoute(surface, nestedParts.slice(1))) return null
   const rewriteUrl = request.nextUrl.clone()
   rewriteUrl.pathname = `/app/${surface === requestedSurface ? nested : 'chat'}`
   if (handleRoute) {
@@ -296,7 +308,7 @@ export async function proxy(request: NextRequest) {
   if (cspNonce) requestHeaders.set('x-nonce', cspNonce)
 
   const nextResponse = () =>
-    applyBrowserSecurityHeaders(
+    applyWorkspaceRouteHeaders(applyBrowserSecurityHeaders(
       NextResponse.next({
         request: {
           headers: requestHeaders,
@@ -304,7 +316,7 @@ export async function proxy(request: NextRequest) {
       }),
       cspHeaderName,
       cspPolicy,
-    )
+    ), pathname)
 
   // /app/account is a legacy implementation route; account settings are canonical under /app/settings.
   if (pathname === '/app/account') {
@@ -324,11 +336,11 @@ export async function proxy(request: NextRequest) {
     if (!hasSession) {
       const signIn = new URL('/auth/sign-in', request.url)
       signIn.searchParams.set('redirect', request.nextUrl.pathname + request.nextUrl.search)
-      return applyBrowserSecurityHeaders(
+      return applyWorkspaceRouteHeaders(applyBrowserSecurityHeaders(
         NextResponse.redirect(signIn),
         cspHeaderName,
         cspPolicy,
-      )
+      ), pathname)
     }
   }
 
@@ -342,6 +354,8 @@ export async function proxy(request: NextRequest) {
         'x-overlay-workspace-handle',
         workspaceRewrite.searchParams.get('workspaceHandle') ?? '',
       )
+      requestHeaders.set('x-overlay-workspace-original-path', pathname)
+      requestHeaders.set('x-overlay-workspace-original-search', request.nextUrl.search)
     } else {
       requestHeaders.delete('x-overlay-workspace-handle')
       requestHeaders.set(
@@ -349,7 +363,7 @@ export async function proxy(request: NextRequest) {
         workspaceRewrite.searchParams.get('workspaceId') ?? '',
       )
     }
-    return applyBrowserSecurityHeaders(
+    return applyWorkspaceRouteHeaders(applyBrowserSecurityHeaders(
       NextResponse.rewrite(workspaceRewrite, {
         request: {
           headers: requestHeaders,
@@ -357,7 +371,7 @@ export async function proxy(request: NextRequest) {
       }),
       cspHeaderName,
       cspPolicy,
-    )
+    ), pathname)
   }
 
   if (isPublicRoute(pathname)) {

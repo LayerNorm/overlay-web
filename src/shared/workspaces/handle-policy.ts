@@ -88,7 +88,11 @@ export function workspaceHandleBaseFromName(name: string): string | null {
 export function buildWorkspaceHandleCandidate(base: string | null, suffix: string): string {
   const safeSuffix = suffix.toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 16)
   const resolvedSuffix = safeSuffix.length >= 2 ? safeSuffix : 'workspace'
-  const prefix = base && !isReservedWorkspaceHandle(base) ? base : 'workspace'
+  const prefix = base
+    && isWorkspaceHandleSyntaxValid(base)
+    && !isReservedWorkspaceHandle(base)
+    ? base
+    : 'workspace'
   const availablePrefixLength = WORKSPACE_HANDLE_MAX_LENGTH - resolvedSuffix.length - 1
   return `${prefix.slice(0, availablePrefixLength).replace(/-+$/g, '')}-${resolvedSuffix}`
 }

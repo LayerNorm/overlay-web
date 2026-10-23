@@ -75,3 +75,32 @@ test('signed-out handle routes preserve a local return path and query', async ()
   assert.equal(location.pathname, '/auth/sign-in')
   assert.equal(location.searchParams.get('redirect'), '/w/acme-labs/agents/agent_1?tab=activity')
 })
+
+test('authenticated handle roots use Work and discard conflicting workspace selectors', async () => {
+  process.env.AUTH_PROVIDER = 'workos'
+  const payload = 'synthetic-workspace-session'
+  const signature = createHmac('sha256', secret).update(payload).digest('hex')
+  const response = await proxy(new NextRequest(origin + '/w/acme?workspaceId=other&tab=activity', {
+    headers: { cookie: `overlay_session=${payload}.${signature}` },
+  }))
+  const rewrite = new URL(response.headers.get('x-middleware-rewrite')!)
+  assert.equal(rewrite.pathname, '/app/work')
+  assert.equal(rewrite.searchParams.get('workspaceHandle'), 'acme')
+  assert.equal(rewrite.searchParams.get('workspaceId'), null)
+  assert.equal(rewrite.searchParams.get('tab'), 'activity')
+  assert.equal(response.headers.get('cache-control'), 'private, no-store')
+  assert.equal(response.headers.get('x-robots-tag'), 'noindex, nofollow')
+})
+
+test('legacy workspace rewrites preserve ID casing and reject unsupported nested paths', async () => {
+  process.env.AUTH_PROVIDER = 'workos'
+  const payload = 'synthetic-legacy-session'
+  const signature = createHmac('sha256', secret).update(payload).digest('hex')
+  const cookie = `overlay_session=${payload}.${signature}`
+  const valid = await proxy(new NextRequest(origin + '/app/w/Legacy_ID/agents/Agent_X', { headers: { cookie } }))
+  assert.equal(new URL(valid.headers.get('x-middleware-rewrite')!).searchParams.get('workspaceId'), 'Legacy_ID')
+  const invalid = await proxy(new NextRequest(origin + '/w/acme/agents/agent_1/chat', { headers: { cookie } }))
+  assert.equal(invalid.headers.get('x-middleware-rewrite'), null)
+  const separator = await proxy(new NextRequest(origin + '/w/acme%2Fother', { headers: { cookie } }))
+  assert.equal(separator.headers.get('x-middleware-rewrite'), null)
+})

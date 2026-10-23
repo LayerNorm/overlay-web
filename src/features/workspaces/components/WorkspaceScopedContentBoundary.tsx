@@ -6,7 +6,9 @@ import { WORKSPACE_CHANGED_EVENT, type WorkspaceChangedEventDetail } from '@/sha
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import {
   isWorkspaceNavigationPending,
+  isWorkspaceRouteTargetPending,
   readWorkspaceIdFromPath,
+  readWorkspaceRouteTarget,
 } from '@/shared/workspaces/routing'
 
 /**
@@ -25,9 +27,10 @@ export function WorkspaceScopedContentBoundary({
   fallback: ReactNode
 }) {
   const pathname = usePathname() ?? ''
-  const { activeWorkspaceId, switchingWorkspaceId } = useWorkspace()
+  const { activeWorkspaceId, switchingWorkspaceId, status, resolvedRouteTargetKey } = useWorkspace()
   const [pendingWorkspaceId, setPendingWorkspaceId] = useState<string | null>(null)
   const routeWorkspaceId = readWorkspaceIdFromPath(pathname)
+  const routeTarget = readWorkspaceRouteTarget(pathname)
 
   useEffect(() => {
     function handleWorkspaceChanged(event: Event) {
@@ -43,7 +46,12 @@ export function WorkspaceScopedContentBoundary({
     pendingWorkspaceId,
     routeWorkspaceId,
   })
-  if (switchingWorkspaceId || waitingForNavigation) return fallback
+  if (
+    switchingWorkspaceId
+    || waitingForNavigation
+    || (routeTarget?.kind === 'handle' && status !== 'ready')
+    || isWorkspaceRouteTargetPending(routeTarget, resolvedRouteTargetKey)
+  ) return fallback
 
   const scopeKey = routeWorkspaceId ?? activeWorkspaceId ?? 'workspace-unavailable'
   return <Fragment key={scopeKey}>{children}</Fragment>

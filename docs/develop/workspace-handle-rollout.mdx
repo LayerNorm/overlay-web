@@ -1,0 +1,29 @@
+# Workspace handle rollout
+
+The workspace handle registry is an additive expansion: `workspaceId` remains the authorization identity, `slug` remains the current canonical handle, and `workspaceHandles` permanently reserves canonical and historical names. Never delete registry claims during rollback.
+
+## Expand and backfill
+
+1. Deploy the additive Convex schema, resolver, and migration functions with handle writes disabled (`OVERLAY_WORKSPACE_HANDLE_WRITES_ENABLED=false`).
+2. Preview the complete scan in bounded pages. Keep each returned cursor for the next preview call and confirm there are no conflicts, that personal proposals use opaque `personal-*` values, and that organization legacy slugs are retained when safe:
+
+   ```sh
+   npx convex run migrations/workspaceHandles:previewWorkspaceHandlesBatchByServer \
+     "{\"serverSecret\":\"$INTERNAL_API_SECRET\",\"paginationOpts\":{\"numItems\":50,\"cursor\":null}}"
+   ```
+
+3. Run a read-only migration dry run with `numItems` between 1 and 100. Review each batch and continue with the returned cursor. A personal handle proposal is random and may differ when the write batch allocates its final value:
+
+   ```sh
+   npx convex run migrations/workspaceHandles:migrateWorkspaceHandlesBatchByServer \
+     "{\"serverSecret\":\"$INTERNAL_API_SECRET\",\"dryRun\":true,\"paginationOpts\":{\"numItems\":50,\"cursor\":null}}"
+   ```
+
+4. Apply batches without supplying a cursor; Convex's persisted migration cursor is authoritative. Repeat until the result reports `ready: true`. A supplied cursor that differs from persisted progress is rejected. Do not enable writes when any conflicts remain.
+5. Verify readiness with a fresh preview from `cursor:null`: every workspace must have a matching `canonical` / `public` registry claim and the current `slug`; old personal slugs must be `alias` / `private`. Re-run a dry run and confirm no row would change.
+
+## Enable and rollback
+
+Deploy the web resolver/routing before enabling `OVERLAY_WORKSPACE_HANDLE_WRITES_ENABLED=true`. New web code works with the additive backend while the flag remains false; old web code continues using workspace IDs and ordinary workspace APIs. Enable the environment flag only after the full scan is ready and verified.
+
+On rollback, disable handle writes in the web environment, but keep the additive schema, resolver, and all registry claims. Do not release aliases or revert the registry migration: already-shared `/w/:handle` links must continue resolving safely. No production migration or deployment is part of this change.

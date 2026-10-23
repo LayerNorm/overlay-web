@@ -122,6 +122,39 @@ test('recovery never refreshes permission errors, non-browser or non-cookie requ
   assert.equal(calls, 1 + cases.length + 4)
 })
 
+test('workspace fetches carry their tab route on initial and retry requests', async (t) => {
+  browser(t)
+  const location = (window as unknown as { location: URL }).location
+  location.pathname = '/w/team-a/work'
+  const targets: Array<string | null> = []
+  let attempts = 0
+  t.mock.method(globalThis, 'fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
+    if (String(input) === '/api/auth/session') return authenticated()
+    targets.push(new Headers(init?.headers).get('x-overlay-route-workspace'))
+    return new Response(null, { status: attempts++ === 0 ? 401 : 200 })
+  })
+  await fetchWithSessionRecovery('/api/v1/files', {
+    headers: { 'x-overlay-workspace-id': 'persisted-team-b' },
+  })
+  assert.deepEqual(targets, ['handle:team-a', 'handle:team-a'])
+})
+
+test('account, resolver, explicit-management, cross-origin, and bearer requests are not route-scoped', async (t) => {
+  browser(t)
+  ;(window as unknown as { location: URL }).location.pathname = '/w/team-a/work'
+  const targets: Array<string | null> = []
+  t.mock.method(globalThis, 'fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
+    targets.push(new Headers(init?.headers).get('x-overlay-route-workspace'))
+    return Response.json({})
+  })
+  await fetchWithSessionRecovery('/api/v1/account/workspaces')
+  await fetchWithSessionRecovery('/api/v1/workspace-handles/team-a')
+  await fetchWithSessionRecovery('/api/v1/workspaces/workspace-a/handle')
+  await fetchWithSessionRecovery('https://other.example/api/v1/files')
+  await fetchWithSessionRecovery('/api/v1/files', { headers: { Authorization: 'Bearer native' } })
+  assert.deepEqual(targets, [null, null, null, null, null])
+})
+
 test('aborting one caller during shared refresh never replays its mutation', async (t) => {
   browser(t)
   const controller = new AbortController()

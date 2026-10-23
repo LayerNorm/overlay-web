@@ -832,3 +832,44 @@ test('workspace handle updates require an owner, registry readiness, and map con
       && error.statusCode === 409,
   )
 })
+
+test('automatic handles fall back for short, reserved, and non-Latin names', async () => {
+  const received: Array<{ name: string; slug: string; handleExplicit?: boolean }> = []
+  const service = new WorkspaceService(repository({
+    async listForUser() { return [] },
+    async createOrganization(input) {
+      received.push(input)
+      return access({ workspaceId: `workspace_${received.length}` })
+    },
+  }), {
+    workspaceHandleWritesEnabled: () => true,
+    createHandleSuffix: () => 'random9',
+    now: () => 42,
+  })
+
+  for (const name of ['A', 'API', '日本語']) {
+    await service.createOrganization({ actorUserId: 'user_1', name })
+  }
+  assert.deepEqual(received.map(({ slug, handleExplicit }) => ({ slug, handleExplicit })), [
+    { slug: 'workspace-random9', handleExplicit: false },
+    { slug: 'workspace-random9', handleExplicit: false },
+    { slug: 'workspace-random9', handleExplicit: false },
+  ])
+})
+
+test('explicit creation conflicts map to a stable handle conflict', async () => {
+  const service = new WorkspaceService(repository({
+    async listForUser() { return [] },
+    async createOrganization() { throw new Error('WORKSPACE_HANDLE_ALREADY_EXISTS') },
+  }), { workspaceHandleWritesEnabled: () => true })
+  await assert.rejects(
+    () => service.createOrganization({
+      actorUserId: 'user_1',
+      name: 'Acme',
+      slug: 'acme-taken',
+    }),
+    (error) => error instanceof WorkspaceServiceError
+      && error.code === 'handle_conflict'
+      && error.statusCode === 409,
+  )
+})

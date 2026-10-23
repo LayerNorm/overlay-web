@@ -4,6 +4,8 @@ import {
   buildWorkspaceHref,
   buildWorkspaceHandleHref,
   isWorkspaceNavigationPending,
+  isWorkspaceRouteTargetPending,
+  buildCanonicalWorkspaceRedirectLocation,
   isSameChatSurface,
   readWorkspaceIdFromPath,
   readWorkspaceRouteTarget,
@@ -54,6 +56,23 @@ test('chat base path preserves the canonical workspace route', () => {
   assert.equal(resolveChatBasePath('/app/automations'), '/app/automations')
   assert.equal(isSameChatSurface('/app/w/ws_1/chat', '/app/w/ws_1/chat'), true)
   assert.equal(isSameChatSurface('/app/w/ws_1/chat', '/app/chat'), false)
+})
+
+test('handle targets gate scoped content until resolution and redirect aliases safely', () => {
+  const target = readWorkspaceRouteTarget('/w/team-b/agents/agent_1')
+  assert.equal(isWorkspaceRouteTargetPending(target, 'handle:team-a'), true)
+  assert.equal(isWorkspaceRouteTargetPending(target, null), true)
+  assert.equal(isWorkspaceRouteTargetPending(target, 'handle:team-b'), false)
+  assert.equal(
+    isWorkspaceRouteTargetPending(readWorkspaceRouteTarget('/w/team-b/chat'), 'handle:team-b'),
+    false,
+  )
+  assert.equal(buildCanonicalWorkspaceRedirectLocation(
+    '/w/old-team/agents/agent_1',
+    '?tab=activity&x=1',
+    'new-team',
+  ), '/w/new-team/agents/agent_1?tab=activity&x=1')
+  assert.equal(buildCanonicalWorkspaceRedirectLocation('/w/old-team/agents/id/chat', '', 'new-team'), null)
 })
 
 test('workspace navigation resolves compatibility routes from active workspace state', () => {

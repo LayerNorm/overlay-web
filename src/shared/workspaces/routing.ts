@@ -1,5 +1,7 @@
+import { validateWorkspaceHandleAddress } from './handle-policy'
+
 const FALLBACK_SURFACE = 'chat'
-const APP_SURFACES = new Set([
+export const APP_SURFACES = new Set([
   'activity',
   'admin',
   // Missing here, buildWorkspaceHref falls back to 'chat', so selecting Archived
@@ -21,7 +23,8 @@ export function readWorkspaceIdFromPath(pathname: string): string | null {
   const match = /^\/app\/w\/([^/]+)(?:\/|$)/.exec(pathname)
   if (!match?.[1]) return null
   try {
-    return decodeURIComponent(match[1]).trim() || null
+    const workspaceId = decodeURIComponent(match[1]).trim()
+    return workspaceId && !/[\/\\?#]/.test(workspaceId) ? workspaceId : null
   } catch {
     return null
   }
@@ -30,6 +33,39 @@ export function readWorkspaceIdFromPath(pathname: string): string | null {
 export type WorkspaceRouteTarget =
   | { kind: 'id'; value: string }
   | { kind: 'handle'; value: string }
+
+export function workspaceRouteTargetKey(target: WorkspaceRouteTarget | null): string | null {
+  return target ? `${target.kind}:${target.value}` : null
+}
+
+export function isWorkspaceRouteTargetPending(
+  target: WorkspaceRouteTarget | null,
+  resolvedTargetKey: string | null,
+): boolean {
+  const key = workspaceRouteTargetKey(target)
+  return key !== null && key !== resolvedTargetKey
+}
+
+export function buildCanonicalWorkspaceRedirectLocation(
+  pathname: string,
+  search: string,
+  canonicalHandle: string,
+): string | null {
+  const validation = validateWorkspaceHandleAddress(canonicalHandle)
+  const routeTarget = readWorkspaceRouteTarget(pathname)
+  const prefix = /^\/w\/[^/]+/.exec(pathname)?.[0]
+  if (validation.ok === false || routeTarget?.kind !== 'handle' || !prefix) return null
+  const suffix = pathname.slice(prefix.length)
+  const parts = suffix.split('/').filter(Boolean).map((part) => {
+    try { return decodeURIComponent(part) } catch { return '' }
+  })
+  const surface = parts[0] ?? 'work'
+  if (parts.some((part) => !part || part === '.' || part === '..' || part.includes('/') || part.includes('\\'))) {
+    return null
+  }
+  if (!isSupportedWorkspaceRoute(surface, parts.slice(1))) return null
+  return `/w/${encodeURIComponent(validation.handle)}${suffix}${search.startsWith('?') ? search : ''}`
+}
 
 export function readWorkspaceRouteTarget(pathname: string): WorkspaceRouteTarget | null {
   const id = readWorkspaceIdFromPath(pathname)
@@ -62,15 +98,21 @@ export function isWorkspaceNavigationPending(args: {
     : args.activeWorkspaceId !== args.pendingWorkspaceId
 }
 
+export function isSupportedWorkspaceRoute(surface: string, suffix: readonly string[]): boolean {
+  if (!APP_SURFACES.has(surface)) return false
+  const maxSuffixParts = new Set(['agents', 'automations', 'files', 'notes', 'outputs']).has(surface) ? 1 : 0
+  return suffix.length <= maxSuffixParts
+}
+
 export function resolveWorkspaceSurface(pathname: string): string {
   const segments = pathname.split('/').filter(Boolean)
   if (segments[0] === 'w') {
     const candidate = segments[2]
-    return candidate && APP_SURFACES.has(candidate) ? candidate : FALLBACK_SURFACE
+    return candidate ? APP_SURFACES.has(candidate) ? candidate : FALLBACK_SURFACE : 'work'
   }
   if (segments[0] !== 'app') return FALLBACK_SURFACE
   const candidate = segments[1] === 'w' ? segments[3] : segments[1]
-  return candidate && APP_SURFACES.has(candidate) ? candidate : FALLBACK_SURFACE
+  return candidate ? APP_SURFACES.has(candidate) ? candidate : FALLBACK_SURFACE : FALLBACK_SURFACE
 }
 
 export function buildWorkspaceHref(workspaceId: string, pathname: string): string {

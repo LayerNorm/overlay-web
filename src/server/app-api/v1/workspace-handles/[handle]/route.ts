@@ -1,10 +1,19 @@
 import { NextResponse } from 'next/server'
 import type { AccountAppApiRouteContext } from '@/server/app-api/bff-context'
 import { getOverlayServerContext } from '@/server/bootstrap'
+import type { WorkspaceService } from '@/server/workspaces/WorkspaceService'
 
 export async function GET(_request: Request, context: AccountAppApiRouteContext) {
-  const handle = context.params.handle
-  const resolution = await getOverlayServerContext().workspaceService.resolveWorkspaceHandle({
+  return await handleWorkspaceHandleGet(context, getOverlayServerContext().workspaceService)
+}
+
+export async function handleWorkspaceHandleGet(
+  context: AccountAppApiRouteContext,
+  service: Pick<WorkspaceService, 'resolveWorkspaceHandle'>,
+) {
+  const params = await context.params
+  const handle = typeof params.handle === 'string' ? params.handle : ''
+  const resolution = await service.resolveWorkspaceHandle({
     userId: context.auth.userId,
     handle,
   })

@@ -51,6 +51,12 @@ import type {
   WorkspaceTeamCreateResponse,
 } from '@overlay/workspace-contracts'
 
+import type {
+  WorkspaceHandleResolutionResponse,
+  WorkspaceHandleUpdateInput,
+  WorkspaceHandleUpdateResponse,
+} from '@overlay/workspace-contracts'
+
 export interface WorkspaceClient {
   list(signal?: AbortSignal): Promise<WorkspaceListResponse & { invitations?: AccountWorkspaceInvitation[] }>
   create(input: WorkspaceCreateInput, options?: { idempotencyKey: string }): Promise<WorkspaceCreateResponse>

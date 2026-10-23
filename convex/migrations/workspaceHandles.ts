@@ -31,13 +31,8 @@ async function state(ctx: QueryCtx) {
     .unique()
 }
 
-function stableSuffix(value: string): string {
-  let hash = 2166136261
-  for (let index = 0; index < value.length; index++) {
-    hash ^= value.charCodeAt(index)
-    hash = Math.imul(hash, 16777619)
-  }
-  return (hash >>> 0).toString(36).padStart(7, '0')
+function randomPersonalHandle(): string {
+  return `personal-${crypto.randomUUID().replace(/-/g, '').slice(0, 24)}`
 }
 
 async function preferredHandle(
@@ -50,14 +45,11 @@ async function preferredHandle(
     && await isWorkspaceHandleAvailable(ctx, workspace.slug, workspace.workspaceId)) {
     return workspace.slug
   }
-  const base = workspace.kind === 'personal'
-    ? `personal-${stableSuffix(workspace.workspaceId)}`
-    : workspaceHandleBaseFromName(workspace.name) ?? 'workspace'
+  const base = workspaceHandleBaseFromName(workspace.name) ?? 'workspace'
   for (let attempt = 0; attempt < 100; attempt++) {
-    const suffix = attempt === 0 ? stableSuffix(workspace.workspaceId) : `${stableSuffix(workspace.workspaceId)}${attempt.toString(36)}`
     const candidate = workspace.kind === 'personal'
-      ? `personal-${suffix}`.slice(0, 63)
-      : buildWorkspaceHandleCandidate(base, suffix)
+      ? randomPersonalHandle()
+      : buildWorkspaceHandleCandidate(base, crypto.randomUUID())
     if (isWorkspaceHandleSyntaxValid(candidate)
       && await isWorkspaceHandleAvailable(ctx, candidate, workspace.workspaceId)) return candidate
   }
@@ -69,9 +61,10 @@ async function previewWorkspace(
   workspace: Doc<'workspaces'>,
 ): Promise<PreviewRow> {
   const registry = await getWorkspaceHandle(ctx, workspace.slug)
+  const expectedVisibility = workspace.kind === 'personal' ? 'private' : 'public'
   const ready = registry?.workspaceId === workspace.workspaceId
     && registry.kind === 'canonical'
-    && registry.visibility === 'public'
+    && registry.visibility === expectedVisibility
   const canonicalHandle = ready
     ? workspace.slug
     : await preferredHandle(ctx, workspace)
@@ -122,7 +115,17 @@ export const migrateWorkspaceHandlesBatchByServer = mutation({
       return { rows: 0, migrated: 0, conflicts: 0, continueCursor: '', isDone: true, ready: true }
     }
     const batchSize = Math.min(args.paginationOpts?.numItems ?? 50, MAX_BATCH_SIZE)
-    const cursor = args.paginationOpts?.cursor ?? (args.dryRun ? null : existingState?.cursor ?? null)
+    const persistedCursor = existingState?.cursor ?? null
+    if (
+      !args.dryRun
+      && args.paginationOpts?.cursor !== undefined
+      && args.paginationOpts.cursor !== persistedCursor
+    ) {
+      throw new Error('WORKSPACE_HANDLE_MIGRATION_CURSOR_MISMATCH')
+    }
+    const cursor = args.dryRun
+      ? args.paginationOpts?.cursor ?? null
+      : persistedCursor
     const page = await ctx.db.query('workspaces').paginate({ cursor, numItems: batchSize })
     let migrated = 0
     let conflicts = 0
@@ -132,7 +135,14 @@ export const migrateWorkspaceHandlesBatchByServer = mutation({
         conflicts++
         continue
       }
-      if (args.dryRun || (!plan.changed && (await getWorkspaceHandle(ctx, plan.canonicalHandle))?.workspaceId === workspace.workspaceId)) {
+      const currentClaim = await getWorkspaceHandle(ctx, plan.canonicalHandle)
+      const expectedVisibility = workspace.kind === 'personal' ? 'private' : 'public'
+      if (args.dryRun || (
+        !plan.changed
+        && currentClaim?.workspaceId === workspace.workspaceId
+        && currentClaim.kind === 'canonical'
+        && currentClaim.visibility === expectedVisibility
+      )) {
         continue
       }
       try {
@@ -164,14 +174,22 @@ export const migrateWorkspaceHandlesBatchByServer = mutation({
             allowReserved: true,
           })
         }
-        await claimWorkspaceHandle(ctx, {
-          handle: plan.canonicalHandle,
-          workspaceId: workspace.workspaceId,
-          kind: 'canonical',
-          visibility: 'public',
-          now: Date.now(),
-          allowReserved: workspace.kind === 'personal',
-        })
+        if (currentClaim?.workspaceId === workspace.workspaceId) {
+          await ctx.db.patch(currentClaim._id, {
+            kind: 'canonical',
+            visibility: expectedVisibility,
+            updatedAt: Date.now(),
+          })
+        } else {
+          await claimWorkspaceHandle(ctx, {
+            handle: plan.canonicalHandle,
+            workspaceId: workspace.workspaceId,
+            kind: 'canonical',
+            visibility: expectedVisibility,
+            now: Date.now(),
+            allowReserved: workspace.kind === 'personal',
+          })
+        }
         await ctx.db.patch(workspace._id, {
           slug: plan.canonicalHandle,
           updatedAt: Date.now(),
