@@ -4,6 +4,10 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Upgrade first-party Zod consumers to patched Zod 4 while preserving configuration and API validation contracts.
+
+- Pin the MCP SDK's transitive `body-parser` 2.x dependency to `2.4.0` to address GHSA-27r3-jxmh-p828 without changing Express's major version.
+
 - Reveal chat copy actions on hover or keyboard focus, and add an agent-conversation sidebar as a full-height panel with one editable hero, autosaving Details, conversation-linked Library files and an always-visible Computer tab with control mode. Files and notes created by an agent are linked to its conversation and appear in the Library. Room panels and the agent sidebar now share the same right-hand slot. Agent settings use the shared chat model picker with free-tier and zero-data-retention access rules.
 
 - Update `@sentry/nextjs` to 10.75.3 and `dompurify` to 3.4.17 to fix the Sentry tunnel middleware bypass (GHSA-mchm-gjx6-7h55) and two DOMPurify sanitizer advisories (GHSA-cg2g-xh64-v4q7, GHSA-mrv2-3pqr-j5jr) that fail the production dependency audit.

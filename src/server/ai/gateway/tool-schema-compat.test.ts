@@ -2,8 +2,9 @@ import 'server-only'
 
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { jsonSchema, tool, type ToolSet } from 'ai'
+import { asSchema, jsonSchema, tool, type ToolSet } from 'ai'
 import { z } from 'zod'
+import { jsonSchemaToZod } from '@overlay/tools-core/mcp-schema-to-zod'
 import {
   analyzeToolSetForGatewayCompatibility,
   filterGatewayCompatibleToolSet,
@@ -68,6 +69,22 @@ test('Gateway tool quarantine drops invalid root-union schemas without dropping 
 
   assert.deepEqual(Object.keys(filtered.tools), ['good'])
   assert.deepEqual(filtered.dropped, [
-    { toolName: 'bad', reason: 'root_anyOf_not_supported' },
+    { toolName: 'bad', reason: 'root_oneOf_not_supported' },
   ])
+})
+
+test('MCP schema conversion gives the AI SDK a nonempty tool schema', async () => {
+  const converted = jsonSchemaToZod({
+    type: 'object',
+    properties: { query: { type: 'string', minLength: 1 } },
+    required: ['query'],
+    additionalProperties: false,
+  })
+  const convertedTool = noopTool(converted)
+  const serialized = await asSchema(convertedTool.inputSchema).jsonSchema
+
+  assert.equal(serialized.type, 'object')
+  assert.ok(serialized.properties && typeof serialized.properties === 'object')
+  assert.ok('query' in serialized.properties)
+  assert.deepEqual(await analyzeToolSetForGatewayCompatibility({ converted: convertedTool }), [])
 })

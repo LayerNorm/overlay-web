@@ -18,7 +18,7 @@ const bodySchema = z.discriminatedUnion('action', [
   driveUploadBodySchema,
   driveCommitBodySchema,
   driveRecoveryRequestSchema,
-  z.object({ action: z.literal('download'), entry: z.record(z.unknown()), downloadMac: z.string().regex(/^[A-Za-z0-9_-]{43}$/),
+  z.object({ action: z.literal('download'), entry: z.record(z.string(), z.unknown()), downloadMac: z.string().regex(/^[A-Za-z0-9_-]{43}$/),
     offset: z.number().int().nonnegative().max(16 * 1024 * 1024), length: z.number().int().positive().max(MAX_RANGE_BYTES) }).strict(),
 ])
 const headers = { 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff', Vary: 'Authorization' }

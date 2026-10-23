@@ -158,7 +158,7 @@
                 "required": [
                   "action"
                 ],
-                "additionalProperties": true
+                "additionalProperties": {}
               }
             }
           }
@@ -270,8 +270,7 @@
                     "type": "string",
                     "minLength": 1
                   }
-                },
-                "additionalProperties": false
+                }
               }
             }
           }
@@ -347,10 +346,10 @@
             "in": "query",
             "required": false,
             "schema": {
+              "default": 20,
               "type": "integer",
               "minimum": 1,
-              "maximum": 100,
-              "default": 20
+              "maximum": 100
             }
           },
           {
@@ -358,13 +357,13 @@
             "in": "query",
             "required": false,
             "schema": {
+              "default": "updatedAt",
               "type": "string",
               "enum": [
                 "createdAt",
                 "updatedAt",
                 "name"
-              ],
-              "default": "updatedAt"
+              ]
             }
           },
           {
@@ -372,12 +371,12 @@
             "in": "query",
             "required": false,
             "schema": {
+              "default": "desc",
               "type": "string",
               "enum": [
                 "asc",
                 "desc"
-              ],
-              "default": "desc"
+              ]
             }
           },
           {
@@ -396,10 +395,10 @@
             "schema": {
               "type": "string",
               "enum": [
-                "true",
-                "false",
+                "0",
                 "1",
-                "0"
+                "true",
+                "false"
               ]
             }
           },
@@ -410,10 +409,10 @@
             "schema": {
               "type": "string",
               "enum": [
-                "true",
-                "false",
+                "0",
                 "1",
-                "0"
+                "true",
+                "false"
               ]
             }
           },
@@ -520,7 +519,7 @@
                 "required": [
                   "automationId"
                 ],
-                "additionalProperties": true
+                "additionalProperties": {}
               }
             }
           }
@@ -607,7 +606,7 @@
                   },
                   "schedule": {}
                 },
-                "additionalProperties": true
+                "additionalProperties": {}
               }
             }
           }
@@ -694,7 +693,7 @@
                 "required": [
                   "runId"
                 ],
-                "additionalProperties": true
+                "additionalProperties": {}
               }
             }
           }
@@ -780,7 +779,7 @@
                     "type": "string"
                   }
                 },
-                "additionalProperties": true
+                "additionalProperties": {}
               }
             }
           }
@@ -922,7 +921,7 @@
                     "type": "string"
                   }
                 },
-                "additionalProperties": true
+                "additionalProperties": {}
               }
             }
           }
@@ -1128,7 +1127,7 @@
                   "ownerType",
                   "ownerId"
                 ],
-                "additionalProperties": true
+                "additionalProperties": {}
               }
             }
           }
@@ -1354,7 +1353,7 @@
                     "minLength": 1
                   }
                 },
-                "additionalProperties": true
+                "additionalProperties": {}
               }
             }
           }
@@ -1444,7 +1443,7 @@
                     "minLength": 1
                   }
                 },
-                "additionalProperties": true
+                "additionalProperties": {}
               }
             }
           }
@@ -1534,7 +1533,7 @@
                     "minLength": 1
                   }
                 },
-                "additionalProperties": true
+                "additionalProperties": {}
               }
             }
           }
@@ -1646,8 +1645,7 @@
                     "type": "string",
                     "minLength": 1
                   }
-                },
-                "additionalProperties": false
+                }
               }
             }
           }
@@ -1723,10 +1721,10 @@
             "in": "query",
             "required": false,
             "schema": {
+              "default": 20,
               "type": "integer",
               "minimum": 1,
-              "maximum": 100,
-              "default": 20
+              "maximum": 100
             }
           },
           {
@@ -1734,13 +1732,13 @@
             "in": "query",
             "required": false,
             "schema": {
+              "default": "updatedAt",
               "type": "string",
               "enum": [
                 "createdAt",
                 "updatedAt",
                 "name"
-              ],
-              "default": "updatedAt"
+              ]
             }
           },
           {
@@ -1748,12 +1746,12 @@
             "in": "query",
             "required": false,
             "schema": {
+              "default": "desc",
               "type": "string",
               "enum": [
                 "asc",
                 "desc"
-              ],
-              "default": "desc"
+              ]
             }
           },
           {
@@ -1772,10 +1770,10 @@
             "schema": {
               "type": "string",
               "enum": [
-                "true",
-                "false",
+                "0",
                 "1",
-                "0"
+                "true",
+                "false"
               ]
             }
           },
@@ -1795,10 +1793,10 @@
             "schema": {
               "type": "string",
               "enum": [
-                "true",
-                "false",
+                "0",
                 "1",
-                "0"
+                "true",
+                "false"
               ]
             }
           },
@@ -1818,10 +1816,10 @@
             "schema": {
               "type": "string",
               "enum": [
-                "true",
-                "false",
+                "0",
                 "1",
-                "0"
+                "true",
+                "false"
               ]
             }
           }
@@ -1904,13 +1902,13 @@
                     "maxLength": 200
                   },
                   "askModelIds": {
+                    "maxItems": 4,
                     "type": "array",
                     "items": {
                       "type": "string",
                       "minLength": 1,
                       "maxLength": 160
-                    },
-                    "maxItems": 4
+                    }
                   },
                   "actModelId": {
                     "type": "string"
@@ -1932,8 +1930,7 @@
                 },
                 "required": [
                   "conversationId"
-                ],
-                "additionalProperties": false
+                ]
               }
             }
           }
@@ -2016,13 +2013,13 @@
                     "maxLength": 200
                   },
                   "askModelIds": {
+                    "maxItems": 4,
                     "type": "array",
                     "items": {
                       "type": "string",
                       "minLength": 1,
                       "maxLength": 160
-                    },
-                    "maxItems": 4
+                    }
                   },
                   "actModelId": {
                     "type": "string"
@@ -2037,8 +2034,7 @@
                   "clientId": {
                     "type": "string"
                   }
-                },
-                "additionalProperties": false
+                }
               }
             }
           }
@@ -2195,12 +2191,12 @@
                     "maxLength": 200
                   },
                   "mediaToolIntent": {
+                    "nullable": true,
                     "type": "string",
                     "enum": [
                       "image",
                       "video"
-                    ],
-                    "nullable": true
+                    ]
                   },
                   "requestedToolIds": {},
                   "memoryEnabled": {
@@ -2208,8 +2204,8 @@
                   },
                   "actAbortTimeoutMs": {
                     "type": "number",
-                    "exclusiveMinimum": true,
-                    "minimum": 0
+                    "minimum": 0,
+                    "exclusiveMinimum": true
                   },
                   "mentions": {
                     "type": "array",
@@ -2236,8 +2232,7 @@
                         "type",
                         "id",
                         "name"
-                      ],
-                      "additionalProperties": false
+                      ]
                     }
                   },
                   "reasoning": {
@@ -2253,7 +2248,7 @@
                     ]
                   }
                 },
-                "additionalProperties": true
+                "additionalProperties": {}
               }
             }
           }
@@ -2418,7 +2413,7 @@
                 "required": [
                   "conversationId"
                 ],
-                "additionalProperties": true
+                "additionalProperties": {}
               }
             }
           }
@@ -2510,7 +2505,7 @@
                 "required": [
                   "conversationId"
                 ],
-                "additionalProperties": true
+                "additionalProperties": {}
               }
             }
           }
@@ -2676,8 +2671,7 @@
                   "agentRunId",
                   "token",
                   "approved"
-                ],
-                "additionalProperties": false
+                ]
               }
             }
           }
@@ -2771,7 +2765,7 @@
                 "required": [
                   "conversationId"
                 ],
-                "additionalProperties": true
+                "additionalProperties": {}
               }
             }
           }
@@ -2872,7 +2866,7 @@
                 "required": [
                   "conversationId"
                 ],
-                "additionalProperties": true
+                "additionalProperties": {}
               }
             }
           }
@@ -2984,8 +2978,7 @@
                     "type": "string",
                     "minLength": 1
                   }
-                },
-                "additionalProperties": false
+                }
               }
             }
           }
@@ -3061,10 +3054,10 @@
             "in": "query",
             "required": false,
             "schema": {
+              "default": 20,
               "type": "integer",
               "minimum": 1,
-              "maximum": 100,
-              "default": 20
+              "maximum": 100
             }
           },
           {
@@ -3072,13 +3065,13 @@
             "in": "query",
             "required": false,
             "schema": {
+              "default": "updatedAt",
               "type": "string",
               "enum": [
                 "createdAt",
                 "updatedAt",
                 "name"
-              ],
-              "default": "updatedAt"
+              ]
             }
           },
           {
@@ -3086,12 +3079,12 @@
             "in": "query",
             "required": false,
             "schema": {
+              "default": "desc",
               "type": "string",
               "enum": [
                 "asc",
                 "desc"
-              ],
-              "default": "desc"
+              ]
             }
           },
           {
@@ -3152,10 +3145,10 @@
             "schema": {
               "type": "string",
               "enum": [
-                "true",
-                "false",
+                "0",
                 "1",
-                "0"
+                "true",
+                "false"
               ]
             }
           },
@@ -3257,8 +3250,8 @@
                     "minimum": 0
                   },
                   "parentId": {
-                    "type": "string",
-                    "nullable": true
+                    "nullable": true,
+                    "type": "string"
                   },
                   "conversationId": {
                     "type": "string"
@@ -3274,7 +3267,7 @@
                 "required": [
                   "fileId"
                 ],
-                "additionalProperties": true
+                "additionalProperties": {}
               }
             }
           }
@@ -3363,8 +3356,8 @@
                     "minimum": 0
                   },
                   "parentId": {
-                    "type": "string",
-                    "nullable": true
+                    "nullable": true,
+                    "type": "string"
                   },
                   "conversationId": {
                     "type": "string"
@@ -3373,7 +3366,7 @@
                     "type": "string"
                   }
                 },
-                "additionalProperties": true
+                "additionalProperties": {}
               }
             }
           }
@@ -3687,7 +3680,7 @@
                     "type": "string"
                   }
                 },
-                "additionalProperties": true
+                "additionalProperties": {}
               }
             }
           }
@@ -3781,7 +3774,7 @@
                 "required": [
                   "fileId"
                 ],
-                "additionalProperties": true
+                "additionalProperties": {}
               }
             }
           }
@@ -3877,8 +3870,7 @@
                   "sizeBytes",
                   "name",
                   "mimeType"
-                ],
-                "additionalProperties": false
+                ]
               }
             }
           }
@@ -3986,7 +3978,7 @@
                     "type": "boolean"
                   }
                 },
-                "additionalProperties": true
+                "additionalProperties": {}
               }
             }
           }
@@ -4087,17 +4079,17 @@
                     "minLength": 1
                   },
                   "imageUrl": {
+                    "nullable": true,
                     "type": "string",
-                    "minLength": 1,
-                    "nullable": true
+                    "minLength": 1
                   },
                   "temporaryChat": {
                     "type": "boolean"
                   },
                   "duration": {
                     "type": "number",
-                    "exclusiveMinimum": true,
-                    "minimum": 0
+                    "minimum": 0,
+                    "exclusiveMinimum": true
                   },
                   "videoSubMode": {
                     "type": "string",
@@ -4110,7 +4102,7 @@
                     ]
                   }
                 },
-                "additionalProperties": true
+                "additionalProperties": {}
               }
             }
           }
@@ -4188,10 +4180,10 @@
             "in": "query",
             "required": false,
             "schema": {
+              "default": 20,
               "type": "integer",
               "minimum": 1,
-              "maximum": 100,
-              "default": 20
+              "maximum": 100
             }
           },
           {
@@ -4199,13 +4191,13 @@
             "in": "query",
             "required": false,
             "schema": {
+              "default": "updatedAt",
               "type": "string",
               "enum": [
                 "createdAt",
                 "updatedAt",
                 "name"
-              ],
-              "default": "updatedAt"
+              ]
             }
           },
           {
@@ -4213,12 +4205,12 @@
             "in": "query",
             "required": false,
             "schema": {
+              "default": "desc",
               "type": "string",
               "enum": [
                 "asc",
                 "desc"
-              ],
-              "default": "desc"
+              ]
             }
           },
           {
@@ -4324,7 +4316,7 @@
                     "format": "uri"
                   }
                 },
-                "additionalProperties": true
+                "additionalProperties": {}
               }
             }
           }
@@ -4409,11 +4401,12 @@
                   },
                   "limit": {
                     "type": "integer",
+                    "minimum": 0,
                     "exclusiveMinimum": true,
-                    "minimum": 0
+                    "maximum": 9007199254740991
                   }
                 },
-                "additionalProperties": true
+                "additionalProperties": {}
               }
             }
           }
@@ -4534,8 +4527,7 @@
                   "mcpServerId": {
                     "type": "string"
                   }
-                },
-                "additionalProperties": false
+                }
               }
             }
           }
@@ -4611,10 +4603,10 @@
             "in": "query",
             "required": false,
             "schema": {
+              "default": 20,
               "type": "integer",
               "minimum": 1,
-              "maximum": 100,
-              "default": 20
+              "maximum": 100
             }
           },
           {
@@ -4622,13 +4614,13 @@
             "in": "query",
             "required": false,
             "schema": {
+              "default": "updatedAt",
               "type": "string",
               "enum": [
                 "createdAt",
                 "updatedAt",
                 "name"
-              ],
-              "default": "updatedAt"
+              ]
             }
           },
           {
@@ -4636,12 +4628,12 @@
             "in": "query",
             "required": false,
             "schema": {
+              "default": "desc",
               "type": "string",
               "enum": [
                 "asc",
                 "desc"
-              ],
-              "default": "desc"
+              ]
             }
           },
           {
@@ -4750,7 +4742,7 @@
                     "type": "string"
                   }
                 },
-                "additionalProperties": true
+                "additionalProperties": {}
               }
             }
           }
@@ -4831,7 +4823,7 @@
                     "type": "string"
                   }
                 },
-                "additionalProperties": true
+                "additionalProperties": {}
               }
             }
           }
@@ -4991,7 +4983,7 @@
                 "required": [
                   "mcpServerId"
                 ],
-                "additionalProperties": true
+                "additionalProperties": {}
               }
             }
           }
@@ -5074,7 +5066,7 @@
                     "type": "string"
                   }
                 },
-                "additionalProperties": true
+                "additionalProperties": {}
               }
             }
           }
@@ -5186,8 +5178,7 @@
                     "type": "string",
                     "minLength": 1
                   }
-                },
-                "additionalProperties": false
+                }
               }
             }
           }
@@ -5263,10 +5254,10 @@
             "in": "query",
             "required": false,
             "schema": {
+              "default": 20,
               "type": "integer",
               "minimum": 1,
-              "maximum": 100,
-              "default": 20
+              "maximum": 100
             }
           },
           {
@@ -5274,13 +5265,13 @@
             "in": "query",
             "required": false,
             "schema": {
+              "default": "updatedAt",
               "type": "string",
               "enum": [
                 "createdAt",
                 "updatedAt",
                 "name"
-              ],
-              "default": "updatedAt"
+              ]
             }
           },
           {
@@ -5288,12 +5279,12 @@
             "in": "query",
             "required": false,
             "schema": {
+              "default": "desc",
               "type": "string",
               "enum": [
                 "asc",
                 "desc"
-              ],
-              "default": "desc"
+              ]
             }
           },
           {
@@ -5312,10 +5303,10 @@
             "schema": {
               "type": "string",
               "enum": [
-                "true",
-                "false",
+                "0",
                 "1",
-                "0"
+                "true",
+                "false"
               ]
             }
           },
@@ -5335,10 +5326,10 @@
             "schema": {
               "type": "string",
               "enum": [
-                "true",
-                "false",
+                "0",
                 "1",
-                "0"
+                "true",
+                "false"
               ]
             }
           },
@@ -5449,7 +5440,7 @@
                 "required": [
                   "memoryId"
                 ],
-                "additionalProperties": true
+                "additionalProperties": {}
               }
             }
           }
@@ -5535,7 +5526,7 @@
                   },
                   "source": {}
                 },
-                "additionalProperties": true
+                "additionalProperties": {}
               }
             }
           }
@@ -5720,8 +5711,7 @@
                     "type": "string",
                     "minLength": 1
                   }
-                },
-                "additionalProperties": false
+                }
               }
             }
           }
@@ -5797,10 +5787,10 @@
             "in": "query",
             "required": false,
             "schema": {
+              "default": 20,
               "type": "integer",
               "minimum": 1,
-              "maximum": 100,
-              "default": 20
+              "maximum": 100
             }
           },
           {
@@ -5808,13 +5798,13 @@
             "in": "query",
             "required": false,
             "schema": {
+              "default": "updatedAt",
               "type": "string",
               "enum": [
                 "createdAt",
                 "updatedAt",
                 "name"
-              ],
-              "default": "updatedAt"
+              ]
             }
           },
           {
@@ -5822,12 +5812,12 @@
             "in": "query",
             "required": false,
             "schema": {
+              "default": "desc",
               "type": "string",
               "enum": [
                 "asc",
                 "desc"
-              ],
-              "default": "desc"
+              ]
             }
           },
           {
@@ -5846,10 +5836,10 @@
             "schema": {
               "type": "string",
               "enum": [
-                "true",
-                "false",
+                "0",
                 "1",
-                "0"
+                "true",
+                "false"
               ]
             }
           },
@@ -5960,8 +5950,7 @@
                 },
                 "required": [
                   "noteId"
-                ],
-                "additionalProperties": false
+                ]
               }
             }
           }
@@ -6052,8 +6041,7 @@
                       "workspace"
                     ]
                   }
-                },
-                "additionalProperties": false
+                }
               }
             }
           }
@@ -6165,8 +6153,7 @@
                     "type": "string",
                     "minLength": 1
                   }
-                },
-                "additionalProperties": false
+                }
               }
             }
           }
@@ -6242,10 +6229,10 @@
             "in": "query",
             "required": false,
             "schema": {
+              "default": 20,
               "type": "integer",
               "minimum": 1,
-              "maximum": 100,
-              "default": 20
+              "maximum": 100
             }
           },
           {
@@ -6253,13 +6240,13 @@
             "in": "query",
             "required": false,
             "schema": {
+              "default": "updatedAt",
               "type": "string",
               "enum": [
                 "createdAt",
                 "updatedAt",
                 "name"
-              ],
-              "default": "updatedAt"
+              ]
             }
           },
           {
@@ -6267,12 +6254,12 @@
             "in": "query",
             "required": false,
             "schema": {
+              "default": "desc",
               "type": "string",
               "enum": [
                 "asc",
                 "desc"
-              ],
-              "default": "desc"
+              ]
             }
           },
           {
@@ -6899,7 +6886,7 @@
                     ]
                   }
                 },
-                "additionalProperties": true
+                "additionalProperties": {}
               }
             }
           }
@@ -6999,7 +6986,7 @@
                     ]
                   }
                 },
-                "additionalProperties": true
+                "additionalProperties": {}
               }
             }
           }
@@ -7083,8 +7070,7 @@
                   "apiKey": {
                     "type": "string"
                   }
-                },
-                "additionalProperties": false
+                }
               }
             }
           }
@@ -7311,7 +7297,7 @@
                     "type": "boolean"
                   }
                 },
-                "additionalProperties": true
+                "additionalProperties": {}
               }
             }
           }
@@ -7432,8 +7418,7 @@
                   "mcpServerId": {
                     "type": "string"
                   }
-                },
-                "additionalProperties": false
+                }
               }
             }
           }
@@ -7509,10 +7494,10 @@
             "in": "query",
             "required": false,
             "schema": {
+              "default": 20,
               "type": "integer",
               "minimum": 1,
-              "maximum": 100,
-              "default": 20
+              "maximum": 100
             }
           },
           {
@@ -7520,13 +7505,13 @@
             "in": "query",
             "required": false,
             "schema": {
+              "default": "updatedAt",
               "type": "string",
               "enum": [
                 "createdAt",
                 "updatedAt",
                 "name"
-              ],
-              "default": "updatedAt"
+              ]
             }
           },
           {
@@ -7534,12 +7519,12 @@
             "in": "query",
             "required": false,
             "schema": {
+              "default": "desc",
               "type": "string",
               "enum": [
                 "asc",
                 "desc"
-              ],
-              "default": "desc"
+              ]
             }
           },
           {
@@ -7648,7 +7633,7 @@
                     "type": "string"
                   }
                 },
-                "additionalProperties": true
+                "additionalProperties": {}
               }
             }
           }
@@ -7729,7 +7714,7 @@
                     "type": "string"
                   }
                 },
-                "additionalProperties": true
+                "additionalProperties": {}
               }
             }
           }
@@ -7974,8 +7959,7 @@
                 },
                 "required": [
                   "subscriptionId"
-                ],
-                "additionalProperties": false
+                ]
               }
             }
           }
@@ -8138,6 +8122,7 @@
                     "format": "uri"
                   },
                   "events": {
+                    "minItems": 1,
                     "type": "array",
                     "items": {
                       "type": "string",
@@ -8147,8 +8132,7 @@
                         "automation.finished",
                         "automation.failed"
                       ]
-                    },
-                    "minItems": 1
+                    }
                   },
                   "description": {
                     "type": "string",
@@ -8161,7 +8145,7 @@
                 "required": [
                   "subscriptionId"
                 ],
-                "additionalProperties": true
+                "additionalProperties": {}
               }
             }
           }
@@ -8235,6 +8219,7 @@
                     "format": "uri"
                   },
                   "events": {
+                    "minItems": 1,
                     "type": "array",
                     "items": {
                       "type": "string",
@@ -8244,16 +8229,15 @@
                         "automation.finished",
                         "automation.failed"
                       ]
-                    },
-                    "minItems": 1
+                    }
                   },
                   "description": {
                     "type": "string",
                     "maxLength": 500
                   },
                   "enabled": {
-                    "type": "boolean",
-                    "default": true
+                    "default": true,
+                    "type": "boolean"
                   },
                   "accessToken": {
                     "type": "string",
@@ -8268,7 +8252,7 @@
                   "url",
                   "events"
                 ],
-                "additionalProperties": true
+                "additionalProperties": {}
               }
             }
           }
