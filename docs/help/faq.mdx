@@ -1,30 +1,42 @@
 ---
 title: "FAQ"
-description: "Frequently asked questions for Overlay users."
+description: "Answers to common questions about Overlay, your data and your account."
 ---
 
-## How is my data used?
+## Is there a desktop or mobile app?
 
-Your messages, memories, knowledge, and files are scoped to your account and project. Overlay does not use your data to train models. Provider-specific controls are configured by your admin.
+Not yet. Overlay runs in the browser at [getoverlay.io](https://getoverlay.io), and you can use your workspace from ChatGPT, Claude, Cursor and other apps through [MCP](/help/connect-other-apps).
 
-## Why did the model not use my knowledge?
+## Who can see my chats, files and notes?
 
-- Make sure the file is indexed. Large files may take a few moments.
-- Ask a specific question and reference the file or memory.
-- Check that the project is selected.
+Anything in **Personal** is only yours. Anything in **Workspace** is visible to the people in that workspace. Direct messages are visible to the people in them. Agents act with the access of the person talking to them, and in shared channels they use only what the workspace shares.
+
+## Does Overlay train models on my data?
+
+Overlay does not train models on your content. Your messages go to the model provider you pick, and each provider has its own retention settings; the [privacy policy](https://getoverlay.io/privacy) has the details.
+
+## Why didn't the AI find my file?
+
+- Large documents take a moment to be read after upload.
+- Check the scope: in a shared channel, agents see only Workspace items, not your Personal ones.
+- Name the file in your question ("in the Q3 plan, what is…").
 
 ## How do I delete a memory?
 
-Open the **Memory** panel, click the memory, and select **Delete**.
+**Settings → Memories**, open the memory and choose **Delete**. Or tell a chat to forget it. See [Memories](/help/memory).
 
-## Can I export my data?
+## How do I get something back that I archived?
 
-Contact your admin or support for data export. Self-hosted deployments can use the backend export tools.
+**Settings → Archived**. Choose **Restore** to put it back where it came from.
 
-## Why is a feature missing?
+## Why is a feature missing or locked?
 
-Your deployment may have disabled the feature through capabilities. Contact your admin for features such as billing, webhooks, API keys, or vector search.
+Some features need a paid workspace (web search, the browser, computers, Overlay Cloud agents, scheduled automations). Some depend on your role, or on settings an owner or admin controls. Self-hosted Overlay can also turn features off.
 
-## Who can see my files?
+## How do I delete my account?
 
-Files are visible to you and members of the project they belong to. Storage is scoped to your workspace.
+On your account page (**Settings → Account**), choose **Delete account** and type `DELETE` to confirm. This permanently deletes your account and your chats, notes, files, memories, automations and connected apps. It cannot be undone.
+
+## Something is broken
+
+Use **Settings → Contact**, or email [support@getoverlay.io](mailto:support@getoverlay.io). To report a security problem, see [Reporting a vulnerability](/developer/security).

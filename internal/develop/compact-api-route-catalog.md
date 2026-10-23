@@ -1,0 +1,257 @@
+# Compact web API route catalog
+
+A one-line-per-route summary derived from a filesystem audit of every `src/app/api/**/route.ts`. It contains the same 208 routes as the full `api-route-catalog.mdx` but omits the per-route descriptions and implementation file lists.
+
+- **Total routes:** 208
+- **Non-versioned routes:** 40
+- **`/api/v1` routes:** 168
+- **Verification status:** 0 missing, 0 stale, 0 HTTP-method mismatches against the route filesystem.
+
+For a description of what each route does and its associated implementation files, see the [full web API route catalog](./api-route-catalog.md).
+
+## Authentication, sessions, account
+
+- `POST /api/auth/preview-login`
+- `POST /api/account/delete`
+- `DELETE, GET, POST /api/agent-mcp`
+- `POST /api/agent-drive`
+- `GET, POST /api/agent-gateway/[provider]/[...path]`
+- `GET /api/auth/callback`
+- `GET /api/auth/convex-token`
+- `GET, POST /api/auth/desktop-link`
+- `POST /api/auth/forgot-password`
+- `POST /api/auth/native/authorize`
+- `POST /api/auth/native/exchange`
+- `POST /api/auth/native/refresh`
+- `GET /api/auth/native/subscription`
+- `GET /api/auth/options`
+- `POST /api/auth/reset-password`
+- `GET /api/auth/session`
+- `POST /api/auth/sign-in`
+- `POST /api/auth/sign-out`
+- `POST /api/auth/sign-up`
+- `GET /api/auth/sso/[provider]`
+- `POST /api/auth/sync-profile`
+- `POST /api/auth/verify-email`
+- `DELETE, GET, PATCH, POST, PUT /api/better-auth/[...all]`
+
+## Billing, subscriptions, releases, webhooks
+
+- `POST /api/checkout`
+- `POST /api/checkout/verify`
+- `POST /api/convex/[type]`
+- `GET /api/entitlements`
+- `GET /api/latest-release/download`
+- `DELETE, GET, OPTIONS, POST /api/mcp`
+- `GET, OPTIONS, POST /api/oauth/register`
+- `GET, OPTIONS, POST /api/oauth/token`
+- `GET /api/latest-release`
+- `POST /api/portal`
+- `POST /api/security/csp-report`
+- `GET /api/share/file/[token]`
+- `GET /api/subscription`
+- `GET, POST /api/subscription/settings`
+- `POST /api/topups/checkout`
+- `GET /api/topups/history`
+- `POST /api/topups/verify`
+
+## Deployment, bootstrap, capabilities, transport
+
+- `DELETE, GET, PUT /api/v1/agent-bindings`
+- `GET /api/v1/capabilities`
+- `GET /api/v1/chat-suggestions`
+- `GET /api/v1/bootstrap`
+- `POST /api/v1/browser-task`
+- `GET /api/v1/discovery`
+- `GET /api/v1/model-catalog`
+- `POST /api/v1/models/overlay-free/refresh`
+- `GET /api/v1/mention-search`
+- `POST /api/v1/knowledge/search`
+- `DELETE, GET, PATCH, POST /api/v1/webhooks`
+- `GET, PATCH /api/v1/settings`
+
+## Connected agents and environments
+
+- `POST /api/v1/agent-environments/[environmentId]/approve`
+- `POST /api/v1/agent-environments/[environmentId]/artifacts/[artifactId]/complete`
+- `POST /api/v1/agent-environments/[environmentId]/artifacts`
+- `PUT /api/v1/agent-environments/[environmentId]/capabilities`
+- `POST /api/v1/agent-environments/[environmentId]/commands/[commandId]/ack`
+- `GET /api/v1/agent-environments/[environmentId]/commands`
+- `POST /api/v1/agent-environments/[environmentId]/credentials/refresh`
+- `POST /api/v1/agent-environments/[environmentId]/credentials`
+- `POST /api/v1/agent-environments/[environmentId]/desktop`
+- `POST /api/v1/agent-environments/[environmentId]/events`
+- `POST /api/v1/agent-environments/[environmentId]/heartbeat`
+- `POST /api/v1/agent-environments/[environmentId]/revoke`
+- `PATCH /api/v1/agent-environments/[environmentId]/roots`
+- `POST /api/v1/agent-environments/artifacts/cleanup`
+- `POST /api/v1/agent-environments/enroll`
+- `POST /api/v1/agent-asks`
+- `POST /api/v1/provider-accounts/codex-sign-in`
+- `POST /api/v1/agent-profiles/upload`
+- `POST /api/v1/agent-environments/enrollment-sessions`
+- `POST /api/v1/agent-environments/cloud`
+- `POST /api/v1/agent-environments/[environmentId]/run-credentials`
+- `POST /api/v1/agent-environments/[environmentId]/drive-credentials`
+- `POST /api/v1/agent-environments/operations/reconcile`
+- `GET /api/v1/agent-environments`
+- `DELETE, GET, PATCH /api/v1/agents/[agentId]`
+- `GET /api/v1/agents/[agentId]/automations`
+- `GET /api/v1/agents/[agentId]/bundle`
+- `DELETE, GET, POST /api/v1/agents/[agentId]/machine`
+- `GET, POST /api/v1/agents/[agentId]/profile`
+- `POST /api/v1/agents/[agentId]/restore`
+- `DELETE /api/v1/agents/[agentId]/permanent`
+- `GET, POST /api/v1/agents/[agentId]/threads`
+- `DELETE, PATCH /api/v1/agents/[agentId]/threads/[threadId]`
+- `POST /api/v1/agents/[agentId]/threads/resolve`
+- `GET, POST /api/v1/agents`
+- `DELETE, GET, PATCH, POST /api/v1/api-keys`
+- `GET, POST /api/v1/computers`
+- `DELETE, GET /api/v1/computers/[computerId]`
+- `POST /api/v1/computers/[computerId]/desktop`
+- `POST /api/v1/computers/[computerId]/control`
+- `POST /api/v1/computers/[computerId]/start`
+- `POST /api/v1/computers/[computerId]/stop`
+
+## Surfaces (Slack)
+
+- `GET /api/v1/surfaces/slack/connect`
+- `GET /api/v1/surfaces/slack/callback`
+- `GET /api/v1/surfaces/connections`
+- `GET /api/v1/surfaces/connections/[connectionId]/channels`
+- `GET, POST /api/v1/surfaces/bindings`
+- `DELETE /api/v1/surfaces/bindings/[bindingId]`
+- `POST /api/v1/webhooks/slack`
+
+## Automations
+
+- `POST /api/v1/automations/[id]/approve`
+- `POST /api/v1/automations/[id]/cancel-scheduler`
+- `GET /api/v1/automations/[id]/events`
+- `POST /api/v1/automations/[id]/run`
+- `POST /api/v1/automations/[id]/start-scheduler`
+- `GET /api/v1/automations/[id]/stream`
+- `PATCH, POST /api/v1/automations/execute`
+- `DELETE, GET, PATCH, POST /api/v1/automations`
+- `POST /api/v1/automations/run`
+- `POST /api/v1/automations/test`
+
+## Conversations and AgentRun lifecycle
+
+- `DELETE, PATCH /api/v1/conversations/[conversationId]/messages/[messageId]`
+- `DELETE, GET, POST /api/v1/conversations/[conversationId]/participants`
+- `GET, PATCH /api/v1/conversations/[conversationId]/pins`
+- `GET, PATCH /api/v1/conversations/[conversationId]/presence`
+- `GET, PATCH /api/v1/conversations/[conversationId]/reactions`
+- `POST /api/v1/conversations/[conversationId]/reports`
+- `PATCH /api/v1/conversations/[conversationId]/state`
+- `GET, PATCH /api/v1/conversations/[conversationId]/threads/[threadRootMessageId]/follow`
+- `POST /api/v1/conversations/act/extension-plan`
+- `POST /api/v1/conversations/act`
+- `GET, POST /api/v1/conversations/channels`
+- `POST /api/v1/conversations/direct-messages`
+- `GET /api/v1/conversations/events`
+- `DELETE, POST /api/v1/conversations/message`
+- `POST /api/v1/conversations/agent-greeting`
+- `GET, PATCH /api/v1/conversations/notification-preferences`
+- `GET, PATCH /api/v1/conversations/notifications`
+- `DELETE, GET, PATCH, POST /api/v1/conversations`
+- `POST /api/v1/conversations/run/approval`
+- `POST /api/v1/conversations/run/metrics-event`
+- `GET /api/v1/conversations/run/metrics`
+- `GET /api/v1/conversations/run/remote/artifacts/[artifactId]`
+- `POST /api/v1/conversations/run/remote/request`
+- `POST /api/v1/conversations/run/remote` — idempotent control requests, typed state/recovery errors, cloud wake, and pending cancellation.
+- `GET /api/v1/conversations/run`
+- `GET, PATCH /api/v1/conversations/saved-messages`
+- `GET /api/v1/conversations/search`
+- `PATCH /api/v1/conversations/share`
+- `POST /api/v1/conversations/stop`
+
+## Generators, sandbox, files, outputs
+
+- `GET /api/v1/files/[fileId]/content`
+- `POST /api/v1/files/ingest-document`
+- `POST /api/v1/files/ingest-jobs/process`
+- `GET, POST /api/v1/files/ingest-jobs`
+- `GET /api/v1/files/presign`
+- `DELETE, GET, PATCH, POST /api/v1/files`
+- `POST /api/v1/files/search-text`
+- `PATCH /api/v1/files/share`
+- `POST /api/v1/files/upload-url`
+- `POST /api/v1/generate-image`
+- `POST /api/v1/generate-tab-group-label`
+- `POST /api/v1/generate-title`
+- `POST /api/v1/generate-video`
+- `GET /api/v1/outputs/[outputId]/content`
+- `DELETE, GET /api/v1/outputs`
+
+## Extensions, imports, integrations, MCPs, memory
+
+- `DELETE, GET, PATCH, POST, PUT /api/v1/extensions/[extensionId]/[...path]`
+- `POST /api/v1/imports/slack/process`
+- `GET, POST /api/v1/imports/slack`
+- `GET, POST /api/v1/integrations`
+- `POST /api/v1/mcp/authorize`
+- `GET /api/v1/mcp/client`
+- `DELETE, GET, POST /api/v1/mcp/connections`
+- `GET, POST /api/v1/mcps/oauth/callback`
+- `DELETE, POST /api/v1/mcps/oauth`
+- `DELETE, GET, PATCH, POST /api/v1/mcps`
+- `POST /api/v1/mcps/test`
+- `DELETE, GET, PATCH, POST /api/v1/memory`
+
+## Notes, skills, and knowledge search
+
+- `GET /api/v1/link-preview`
+- `POST /api/v1/notebook-agent`
+- `DELETE, GET, PATCH, POST /api/v1/notes`
+- `GET /api/v1/search`
+- `DELETE, GET, PATCH, POST /api/v1/skills`
+- `POST /api/v1/scope`
+- `GET, POST /api/v1/work`
+- `GET /api/v1/work/context`
+- `DELETE, GET, PATCH /api/v1/work/[id]`
+- `GET, POST /api/v1/work/[id]/events`
+- `POST /api/v1/work/[id]/move`
+
+## Onboarding, providers, shares, subscription
+
+- `POST /api/v1/onboarding/complete`
+- `POST /api/v1/onboarding/reset`
+- `GET /api/v1/onboarding/status`
+- `GET, POST /api/v1/onboarding/session`
+- `DELETE, GET, PATCH, POST /api/v1/provider-accounts`
+- `DELETE, GET, PATCH, POST /api/v1/providers/connections`
+- `POST /api/v1/providers/connections/test`
+- `GET /api/v1/shares/impact`
+- `DELETE, GET, POST /api/v1/shares`
+- `GET /api/v1/shares/shared-with-me`
+- `GET /api/v1/subscription`
+- `GET, POST /api/v1/subscription/settings`
+- `POST /api/v1/transcribe`
+
+## Workspaces and invitations
+
+- `GET, POST /api/v1/account/workspaces`
+- `POST /api/v1/workspace-invitations/[invitationId]/accept`
+- `GET /api/v1/workspaces/[workspaceId]/audit-export`
+- `POST /api/v1/workspaces/[workspaceId]/billing/checkout`
+- `POST /api/v1/workspaces/[workspaceId]/billing/auto-top-up`
+- `POST /api/v1/workspaces/[workspaceId]/billing/portal`
+- `GET, POST /api/v1/workspaces/[workspaceId]/billing`
+- `POST /api/v1/workspaces/[workspaceId]/billing/top-ups`
+- `POST /api/v1/workspaces/[workspaceId]/billing/verify`
+- `GET, POST /api/v1/workspaces/[workspaceId]/governance`
+- `DELETE, POST /api/v1/workspaces/[workspaceId]/invitations/[invitationId]`
+- `GET, POST /api/v1/workspaces/[workspaceId]/invitations`
+- `DELETE, PATCH /api/v1/workspaces/[workspaceId]/lifecycle`
+- `GET /api/v1/workspaces/[workspaceId]/management`
+- `DELETE, PATCH /api/v1/workspaces/[workspaceId]/members`
+- `GET, PATCH /api/v1/workspaces/[workspaceId]/policies`
+- `DELETE, POST /api/v1/workspaces/[workspaceId]/teams/[teamId]/members`
+- `DELETE, POST /api/v1/workspaces/[workspaceId]/teams`
+- `POST /api/v1/workspaces/active`
+- `GET, POST /api/v1/workspaces`
