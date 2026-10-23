@@ -132,7 +132,36 @@ describe('native agent approval projection', () => {
         mode: 'act',
         content: 'Second agent.',
         contentType: 'text',
-        parts: [{ type: 'text', text: 'Second agent.' }],
+        parts: [
+          { type: 'text', text: 'Second agent.' },
+          { type: 'tool-invocation', toolInvocation: { toolCallId: 'tool-2', toolName: 'computer_input', state: 'input-available' } },
+        ],
+        status: 'generating',
+        createdAt: now,
+        updatedAt: now,
+      })
+      const userMessageC = await ctx.db.insert('conversationMessages', {
+        conversationId: otherConversationId,
+        userId: initiatorUserId,
+        turnId: 'approval-user-turn-c',
+        role: 'user',
+        mode: 'act',
+        content: 'Cancel this run.',
+        contentType: 'text',
+        createdAt: now,
+        updatedAt: now,
+      })
+      const assistantMessageC = await ctx.db.insert('conversationMessages', {
+        conversationId: otherConversationId,
+        userId: initiatorUserId,
+        authorKind: 'agent',
+        authorPrincipalId: 'agent-principal-c',
+        turnId: 'approval-agent-turn-c',
+        role: 'assistant',
+        mode: 'act',
+        content: 'Waiting to be cancelled.',
+        contentType: 'text',
+        parts: [{ type: 'text', text: 'Waiting to be cancelled.' }],
         status: 'generating',
         createdAt: now,
         updatedAt: now,
@@ -161,7 +190,19 @@ describe('native agent approval projection', () => {
         createdAt: now,
         updatedAt: now,
       })
-      return { conversationId, otherConversationId, assistantMessageA, runA, runB }
+      const runC = await ctx.db.insert('conversationAgentRuns', {
+        conversationId: otherConversationId,
+        turnId: 'approval-agent-turn-c',
+        userId: initiatorUserId,
+        userMessageId: userMessageC,
+        assistantMessageId: assistantMessageC,
+        mode: 'room',
+        runner: 'workflow',
+        status: 'running',
+        createdAt: now,
+        updatedAt: now,
+      })
+      return { conversationId, otherConversationId, assistantMessageA, assistantMessageB, assistantMessageC, runA, runB, runC }
     })
     const requestA = {
       approval: {
@@ -240,6 +281,7 @@ describe('native agent approval projection', () => {
     })
     const progress = await convex.run(ctx => ctx.db.get(seeded.assistantMessageA))
     expect(progress?.parts?.filter(part => part.type === 'data-native-agent-approval')).toHaveLength(1)
+    expect(progress?.parts?.some(part => part.type === 'tool-invocation')).toBe(true)
 
     await convex.mutation(api.chat.conversations.transitionAgentRun, {
       runId: seeded.runA,
@@ -265,7 +307,30 @@ describe('native agent approval projection', () => {
     await convex.mutation(api.chat.conversations.transitionAgentRun, {
       runId: seeded.runA,
       serverSecret,
-      status: 'completed',
+      status: 'waiting_for_approval',
+      approval: {
+        token: 'approval-token-complete',
+        requestedAt: Date.now(),
+        requests: [{ approvalId: 'complete:tool-1', toolCallId: 'tool-1', toolName: 'computer_input', input: { action: 'type' } }],
+      },
+      userId: initiatorUserId,
+    })
+    await convex.mutation(api.chat.conversations.transitionAgentRun, {
+      runId: seeded.runA,
+      serverSecret,
+      status: 'running',
+      userId: initiatorUserId,
+    })
+    await convex.mutation(api.chat.conversations.completeAgentRun, {
+      content: 'Complete while keeping tool history.',
+      parts: [
+        { type: 'text', text: 'Complete while keeping tool history.' },
+        { type: 'tool-invocation', toolInvocation: { toolCallId: 'tool-1', toolName: 'computer_input', state: 'output-available', toolOutput: { ok: true } } },
+        { type: 'data-native-agent-approval', data: { runId: seeded.runA, conversationId: seeded.conversationId, userId: initiatorUserId, token: 'approval-token-complete', requestedAt: Date.now(), requests: [] } },
+      ],
+      runId: seeded.runA,
+      serverSecret,
+      tokens: { input: 10, output: 5 },
       userId: initiatorUserId,
     })
     const terminal = await convex.query(api.chat.conversations.getLatestAgentRun, {
@@ -279,5 +344,69 @@ describe('native agent approval projection', () => {
     expect((await convex.run(ctx => ctx.db.get(seeded.assistantMessageA)))?.parts?.some(
       part => part.type === 'data-native-agent-approval',
     )).toBe(false)
+    expect((await convex.run(ctx => ctx.db.get(seeded.assistantMessageA)))?.parts?.some(
+      part => part.type === 'tool-invocation',
+    )).toBe(true)
+
+    await convex.mutation(api.collaboration.directMessages.failAgentMessage, {
+      actorUserId: initiatorUserId,
+      content: 'Partial failure output.',
+      conversationId: seeded.conversationId,
+      messageId: seeded.assistantMessageB,
+      parts: [
+        { type: 'text', text: 'Partial failure output.' },
+        { type: 'tool-invocation', toolInvocation: { toolCallId: 'tool-2', toolName: 'computer_input', state: 'output-error', toolOutput: { error: 'failed' } } },
+        { type: 'data-native-agent-approval', data: { runId: seeded.runB, conversationId: seeded.conversationId, userId: initiatorUserId, token: 'approval-token-b', requestedAt: Date.now(), requests: [] } },
+      ],
+      workspaceId,
+      serverSecret,
+    })
+    await convex.mutation(api.chat.conversations.failAgentRun, {
+      error: { code: 'model_failed', message: 'The agent turn failed.', retryable: false },
+      errorText: 'The agent turn failed.',
+      runId: seeded.runB,
+      serverSecret,
+      userId: initiatorUserId,
+    })
+    const failedRun = await convex.query(api.chat.conversations.getLatestAgentRun, {
+      conversationId: seeded.conversationId,
+      agentRunId: seeded.runB,
+      userId: initiatorUserId,
+      serverSecret,
+    })
+    const failedMessage = await convex.run(ctx => ctx.db.get(seeded.assistantMessageB))
+    expect(failedRun?.status).toBe('failed')
+    expect(failedRun?.approval).toBeUndefined()
+    expect(failedMessage?.content).toBe('Partial failure output.')
+    expect(failedMessage?.parts?.some(part => part.type === 'data-native-agent-approval')).toBe(false)
+    expect(failedMessage?.parts?.some(part => part.type === 'tool-invocation')).toBe(true)
+
+    await convex.mutation(api.chat.conversations.transitionAgentRun, {
+      runId: seeded.runC,
+      serverSecret,
+      status: 'waiting_for_approval',
+      approval: {
+        token: 'approval-token-cancel',
+        requestedAt: Date.now(),
+        requests: [{ approvalId: 'cancel:tool-3', toolCallId: 'tool-3', toolName: 'computer_input', input: { action: 'type' } }],
+      },
+      userId: initiatorUserId,
+    })
+    await convex.mutation(api.chat.conversations.cancelAgentRuns, {
+      conversationId: seeded.otherConversationId,
+      userId: initiatorUserId,
+      serverSecret,
+      partialContent: 'This run was interrupted.',
+    })
+    const cancelledRun = await convex.query(api.chat.conversations.getLatestAgentRun, {
+      conversationId: seeded.otherConversationId,
+      agentRunId: seeded.runC,
+      userId: initiatorUserId,
+      serverSecret,
+    })
+    const cancelledMessage = await convex.run(ctx => ctx.db.get(seeded.assistantMessageC))
+    expect(cancelledRun?.status).toBe('cancelled')
+    expect(cancelledRun?.approval).toBeUndefined()
+    expect(cancelledMessage?.parts?.some(part => part.type === 'data-native-agent-approval')).toBe(false)
   })
 })

@@ -1,6 +1,7 @@
 import { createHook, FatalError, getWorkflowMetadata, sleep } from 'workflow'
 import {
   attachWorkspaceAgentRun,
+  beginWorkspaceAgentModelCall,
   callWorkspaceAgentModel,
   completeWorkspaceAgentRun,
   denyExpiredWorkspaceAgentApproval,
@@ -10,10 +11,11 @@ import {
   inspectWorkspaceAgentTool,
   persistWorkspaceAgentToolProgress,
   prepareWorkspaceAgentTurn,
-  releaseWorkspaceAgentReservation,
   resumeWorkspaceAgentAfterApproval,
+  settleWorkspaceAgentUsage,
   waitForWorkspaceAgentApproval,
 } from '@/server/agents/workspace-agent-turn-lifecycle'
+import { runWorkspaceAgentTurnLoop, type WorkspaceAgentLoopUsage } from '@/server/agents/workspace-agent-turn-loop'
 
 /**
  * Reason code and retryability for a failed turn.
@@ -32,12 +34,14 @@ function describeWorkspaceAgentFailure(error: unknown): {
   const reasonCode = error instanceof Error && error.name === 'WorkspaceAgentInvocationError'
     ? String((error as { reasonCode?: unknown }).reasonCode ?? 'model_failed')
     : 'model_failed'
+  const isFatal = error instanceof Error && error.name === 'FatalError'
   return {
     errorMessage: error instanceof Error ? error.message : 'The agent turn failed.',
     reasonCode,
     // An entitlement or usage refusal will refuse again; retrying it only burns
     // the run. Everything else is worth another attempt.
-    retryable: reasonCode !== 'not_entitled'
+    retryable: !isFatal
+      && reasonCode !== 'not_entitled'
       && reasonCode !== 'usage_limited'
       && reasonCode !== 'room_access_denied'
       && reasonCode !== 'not_a_collaboration_room',
@@ -81,77 +85,117 @@ export async function workspaceAgentTurnWorkflow(input: WorkspaceAgentTurnInput)
   })
 
   let prepared: Awaited<ReturnType<typeof prepareWorkspaceAgentTurn>> | undefined
+  const usage: WorkspaceAgentLoopUsage = {
+    inputTokens: 0,
+    outputTokens: 0,
+    usageKnown: true,
+    providerCallStarted: false,
+    providerOutcomeAmbiguous: false,
+  }
+  let usageSettlementAttempted = false
   try {
     prepared = await prepareWorkspaceAgentTurn({ ...input, memoryEnabled: input.memoryEnabled !== false })
-    let messages = prepared.messages
-    let content = ''
-    let transcriptParts: Array<Record<string, unknown>> = []
-    let inTokens = 0
-    let outTokens = 0
-    const steps: Array<Record<string, unknown>> = []
-    let approvalCycles = 0
-    for (let modelStep = 0; modelStep < prepared.maxSteps; modelStep += 1) {
-      const call = await callWorkspaceAgentModel({ prepared, messages, baseParts: transcriptParts })
-      transcriptParts = call.transcriptParts
-      content += call.text
-      inTokens += call.usage.inputTokens ?? 0
-      outTokens += call.usage.outputTokens ?? 0
-      const toolResults: Array<Record<string, unknown>> = []
-      const toolMessageContent: Array<Record<string, unknown>> = []
-      steps.push({ content: call.parts, text: call.text, toolCalls: call.toolCalls, toolResults, response: { messages: call.responseMessages }, usage: call.usage, finishReason: call.finishReason })
-      if (!call.toolCalls.length) {
-        const result = await finalizeWorkspaceAgentTurn({ prepared, steps, content, inputTokens: inTokens, outputTokens: outTokens })
-        await completeWorkspaceAgentRun({ actorUserId: input.actorUserId, result, runId: input.runId })
-        return { completed: true, runId: input.runId }
-      }
-      for (const toolCall of call.toolCalls) {
-        const inspection = await inspectWorkspaceAgentTool({ prepared, toolCall })
-        if (!inspection.available) {
-          const output = { error: 'This action is no longer authorized.' }
-          toolResults.push({ type: 'tool-error', toolCallId: toolCall.toolCallId, toolName: toolCall.toolName, input: toolCall.input, output })
-          toolMessageContent.push({ type: 'tool-result', toolCallId: toolCall.toolCallId, toolName: toolCall.toolName, output })
-          transcriptParts.push({ type: 'tool-invocation', toolInvocation: { toolCallId: toolCall.toolCallId, toolName: toolCall.toolName, state: 'output-error', toolInput: toolCall.input, toolOutput: output } })
-          await persistWorkspaceAgentToolProgress({ prepared, parts: transcriptParts })
-          continue
-        }
-        let approved = false
-        if (inspection.needsApproval) {
-          approvalCycles += 1
-          if (approvalCycles > prepared.maxSteps) throw new FatalError('Agent turn exceeded its approval cycle limit.')
-          const token = `native-agent-approval:${input.runId}:${approvalCycles}`
+    const loop = await runWorkspaceAgentTurnLoop({
+      prepared,
+      usage,
+      dependencies: {
+        beginFirstModelCall: async () => await beginWorkspaceAgentModelCall({
+          actorUserId: input.actorUserId,
+          prepared: prepared!,
+        }),
+        callModel: callWorkspaceAgentModel,
+        inspectTool: inspectWorkspaceAgentTool,
+        executeTool: executeWorkspaceAgentTool,
+        persistProgress: persistWorkspaceAgentToolProgress,
+        finalize: finalizeWorkspaceAgentTurn,
+        requestApproval: async ({ toolCall, cycle }) => {
+          const token = `native-agent-approval:${input.runId}:${cycle}`
           const hook = createHook<{ approved: boolean; reason?: string }>({ token })
-          let decision: { approved: boolean; reason?: string } | undefined
           try {
             if (await hook.getConflict()) throw new FatalError('Approval token is already in use.')
-            await waitForWorkspaceAgentApproval({ actorUserId: input.actorUserId, runId: input.runId, token, requests: [{ approvalId: `${input.runId}:${toolCall.toolCallId}`, toolCallId: toolCall.toolCallId, toolName: toolCall.toolName, input: toolCall.input }] })
-            const outcome = await Promise.race([hook.then(value => ({ value })), sleep('15m').then(() => ({ timedOut: true as const }))])
-            decision = 'timedOut' in outcome ? (await denyExpiredWorkspaceAgentApproval({ token }), await hook) : outcome.value
+            const registration = await Promise.race([
+              hook.then(() => ({ resumedEarly: true as const })),
+              sleep('1s').then(() => ({ registered: true as const })),
+            ])
+            if ('resumedEarly' in registration) {
+              throw new FatalError('Approval arrived before the request was published.')
+            }
+            const pending = await waitForWorkspaceAgentApproval({
+              actorUserId: input.actorUserId,
+              runId: input.runId,
+              token,
+              requests: [{
+                approvalId: `${input.runId}:${toolCall.toolCallId}`,
+                toolCallId: toolCall.toolCallId,
+                toolName: toolCall.toolName,
+                input: toolCall.input,
+              }],
+            })
+            if (pending?.status !== 'waiting_for_approval' || pending.approval?.token !== token) {
+              throw new FatalError('The approval request could not be published.')
+            }
+            const outcome = await Promise.race([
+              hook.then(value => ({ value })),
+              sleep('15m').then(() => ({ timedOut: true as const })),
+            ])
+            const decision = 'timedOut' in outcome
+              ? (await denyExpiredWorkspaceAgentApproval({ token }), await hook)
+              : outcome.value
+            if (!decision || typeof decision.approved !== 'boolean') {
+              throw new FatalError('Approval response was malformed.')
+            }
+            const resumed = await resumeWorkspaceAgentAfterApproval({
+              actorUserId: input.actorUserId,
+              runId: input.runId,
+            })
+            if (resumed?.status !== 'running') {
+              throw new FatalError('The agent run could not resume after approval.')
+            }
+            return decision
           } finally {
             hook.dispose()
           }
-          if (!decision || typeof decision.approved !== 'boolean') throw new FatalError('Approval response was malformed.')
-          approved = decision.approved
-          await resumeWorkspaceAgentAfterApproval({ actorUserId: input.actorUserId, runId: input.runId })
-          if (!approved) {
-            const output = { error: 'reason' in decision ? decision.reason ?? 'The action was not approved.' : 'Approval timed out.' }
-            toolResults.push({ type: 'tool-error', toolCallId: toolCall.toolCallId, toolName: toolCall.toolName, input: toolCall.input, output })
-            toolMessageContent.push({ type: 'tool-result', toolCallId: toolCall.toolCallId, toolName: toolCall.toolName, output })
-            transcriptParts.push({ type: 'tool-invocation', toolInvocation: { toolCallId: toolCall.toolCallId, toolName: toolCall.toolName, state: 'output-error', toolInput: toolCall.input, toolOutput: output } })
-            await persistWorkspaceAgentToolProgress({ prepared, parts: transcriptParts })
-            continue
-          }
-        }
-        const result = await executeWorkspaceAgentTool({ prepared, toolCall, approved })
-        toolResults.push({ type: result.error || result.refusedApproval ? 'tool-error' : 'tool-result', toolCallId: toolCall.toolCallId, toolName: toolCall.toolName, input: toolCall.input, output: result.display })
-        toolMessageContent.push({ type: 'tool-result', toolCallId: toolCall.toolCallId, toolName: toolCall.toolName, output: result.output })
-        transcriptParts.push({ type: 'tool-invocation', toolInvocation: { toolCallId: toolCall.toolCallId, toolName: toolCall.toolName, state: result.error || result.refusedApproval ? 'output-error' : 'output-available', toolInput: toolCall.input, toolOutput: result.display } })
-        await persistWorkspaceAgentToolProgress({ prepared, parts: transcriptParts })
-      }
-      messages = [...messages, ...call.responseMessages, { role: 'tool', content: toolMessageContent as never }]
+        },
+      },
+    })
+    const result = loop.result as Awaited<ReturnType<typeof finalizeWorkspaceAgentTurn>>
+    const settlement = await settleWorkspaceAgentUsage({
+      actorUserId: input.actorUserId,
+      prepared,
+      inputTokens: usage.inputTokens,
+      outputTokens: usage.outputTokens,
+      usageKnown: usage.usageKnown,
+      providerCallStarted: usage.providerCallStarted,
+      providerOutcomeAmbiguous: usage.providerOutcomeAmbiguous,
+    })
+    if (!settlement.settled && !settlement.reconciled) {
+      throw new Error('Native agent usage could not be settled.')
     }
-    throw new FatalError('Agent turn exceeded its model step limit.')
+    usageSettlementAttempted = true
+    const completed = await completeWorkspaceAgentRun({ actorUserId: input.actorUserId, result, runId: input.runId })
+    if (completed?.status !== 'completed') throw new FatalError('The agent run did not complete.')
+    return { completed: true, runId: input.runId }
   } catch (error) {
-    if (prepared) await releaseWorkspaceAgentReservation({ actorUserId: input.actorUserId, prepared }).catch((_error) => undefined)
+    let settlementError: unknown
+    if (prepared && !usageSettlementAttempted) {
+      try {
+        const settlement = await settleWorkspaceAgentUsage({
+          actorUserId: input.actorUserId,
+          prepared,
+          inputTokens: usage.inputTokens,
+          outputTokens: usage.outputTokens,
+          usageKnown: usage.usageKnown,
+          providerCallStarted: usage.providerCallStarted,
+          providerOutcomeAmbiguous: usage.providerOutcomeAmbiguous,
+        })
+        if (!settlement.settled && !settlement.reconciled) {
+          throw new Error('Native agent usage could not be settled.')
+        }
+        usageSettlementAttempted = true
+      } catch (settlementFailure) {
+        settlementError = settlementFailure
+      }
+    }
     const failure = describeWorkspaceAgentFailure(error)
     await failWorkspaceAgentRun({
       actorUserId: input.actorUserId,
@@ -163,6 +207,7 @@ export async function workspaceAgentTurnWorkflow(input: WorkspaceAgentTurnInput)
       turnMessageId: input.turnMessageId,
       workspaceId: input.workspaceId,
     })
+    if (settlementError) throw settlementError
     throw error
   }
 }

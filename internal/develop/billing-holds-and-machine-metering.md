@@ -15,6 +15,8 @@ Everything below is about Overlay credit.
 
 A **hold** (a `budgetReservations` row in `reserved` or `reconcile_required`) is credit set aside before a model or provider call and settled afterwards. The sidebar bar and `allowancePercentUsed` show spend only, so while holds exist the bar reads lower than the credit that is actually left. `GET /api/v1/subscription` returns both `budgetUsedCents` and `budgetRemainingCents`; if `total − used ≠ remaining`, holds are outstanding.
 
+Native workspace-agent turns keep one reservation across durable model steps and aggregate the provider-reported token usage. Known, unambiguous usage is settled idempotently on both success and failure; an ambiguous provider outcome or failed settlement keeps the reservation for reconciliation with the observed token totals. A reservation is released only when the provider was not called or confirmed no usage. Transcript finalization is a separate workflow step.
+
 ## Stuck holds (fixed 2026-10-02)
 
 A call that failed, or finished costing more than was held, used to leave its reservation in `reconcile_required`, waiting for "provider evidence" that nothing supplied, and it counted as held forever. One account had 356 of them, $11.66 of a $20 allowance.

@@ -1,10 +1,18 @@
 import 'server-only'
 import { getStepMetadata } from 'workflow'
 
-import { asSchema, jsonSchema, streamText, tool, type ModelMessage } from 'ai'
+import {
+  asSchema,
+  jsonSchema,
+  streamText,
+  tool,
+  type ModelMessage,
+} from 'ai'
+import { FatalError } from 'workflow'
+import { agentRunService } from '@/server/conversations/http'
 import { getLanguageModel } from '@/server/ai/model-runtime'
 import { getOverlayServerContext } from '@/server/bootstrap'
-import { ActEntitlementService } from '@/server/conversations/ActEntitlementService'
+import { ActConversationServiceError, ActEntitlementService } from '@/server/conversations/ActEntitlementService'
 import {
   executePersonalChatWorkToolResult,
   sanitizeWorkflowToolSchemaValue,
@@ -21,6 +29,11 @@ import { buildAgentTurnContext } from './agent-turn-context'
 import { createAgentMessageStream, appendAgentTextPart } from './agent-message-stream'
 import { hashOperationalIdentifier } from '@/server/security/operational-key-hash'
 import { agentMemoryOwnerId } from '@/shared/agents/agent-memory'
+import {
+  refusedAmbiguousWorkspaceAgentToolRetry,
+  workspaceAgentToolResultFromOutput,
+  type WorkspaceAgentToolResult,
+} from './workspace-agent-turn-utils'
 import {
   buildAssistantPersistenceFromSteps,
   compactAssistantPersistenceForConvex,
@@ -71,12 +84,7 @@ export type WorkspaceAgentModelCall = {
   transcriptParts: Array<Record<string, unknown>>
 }
 
-export type WorkspaceAgentToolResult = {
-  output: unknown
-  display: unknown
-  error?: string
-  refusedApproval?: boolean
-}
+export { refusedAmbiguousWorkspaceAgentToolRetry, workspaceAgentToolResultOutput } from './workspace-agent-turn-utils'
 
 export async function prepareWorkspaceAgentTurn(input: {
   actorUserId: string
@@ -173,7 +181,7 @@ export async function prepareWorkspaceAgentTurn(input: {
     conversationId: input.conversationId, messageId: input.messageId, turnMessageId: input.turnMessageId,
     ...(input.threadRootMessageId ? { threadRootMessageId: input.threadRootMessageId } : {}),
     workspaceId: input.workspaceId, runId: input.runId, memoryEnabled: input.memoryEnabled, modelId, paid: gate.paid,
-    maxSteps: context.conversationType === 'dm' ? 20 : 8,
+    maxSteps: context.maxToolSteps,
     runtimeEntitlements: gate.runtimeEntitlements as unknown as Record<string, unknown>, reservationId: reservation.reservationId,
     requestFingerprint, invocationNonce, turnId: `agent_${input.messageId}_${agent.id}`,
     contextBlock: turnContext.contextBlock, messages: turnContext.messages, toolDefinitions,
@@ -186,12 +194,21 @@ export async function callWorkspaceAgentModel(input: {
   baseParts?: Array<Record<string, unknown>>
 }): Promise<WorkspaceAgentModelCall> {
   'use step'
+  const current = await freshWorkspaceAgentContext(input.prepared)
+  if (!current) throw new FatalError('The agent run is no longer active or authorized.')
+  if (current.run.status !== 'running') throw new FatalError('The agent run is not running.')
+  await renewWorkspaceAgentLease(input.prepared)
+  const latest = await freshWorkspaceAgentContext(input.prepared)
+  if (!latest || latest.run.status !== 'running') {
+    throw new FatalError('The agent run is no longer active or authorized.')
+  }
   const model = await getLanguageModel(input.prepared.modelId, undefined, input.prepared.actorUserId, { sessionId: input.prepared.conversationId })
   const tools = Object.fromEntries(input.prepared.toolDefinitions.map(definition => [
     definition.name, tool({ description: definition.description, inputSchema: jsonSchema(definition.inputSchema) }),
   ]))
   const result = streamText({
     model, maxOutputTokens: MAX_OUTPUT_TOKENS_AGENT, maxRetries: 0, temperature: 0.4,
+    abortSignal: AbortSignal.timeout(300_000),
     system: buildAgentSystemPrompt({
       agentName: input.prepared.agentName, contextBlock: input.prepared.contextBlock,
       exposedToolIds: input.prepared.toolDefinitions.map(definition => definition.name),
@@ -211,22 +228,36 @@ export async function callWorkspaceAgentModel(input: {
     turnId: input.prepared.turnId, workspaceId: input.prepared.workspaceId,
   })
   let text = ''
-  for await (const event of result.fullStream) {
-    if (event.type === 'text-delta') {
-      text += event.text
-      appendAgentTextPart(parts, event.text)
-      appendAgentTextPart(transcriptParts, event.text)
-      stream.pushText(event.text, transcriptParts)
+  try {
+    for await (const event of result.fullStream) {
+      if (event.type === 'error') throw event.error
+      if (event.type === 'text-delta') {
+        text += event.text
+        appendAgentTextPart(parts, event.text)
+        appendAgentTextPart(transcriptParts, event.text)
+        stream.pushText(event.text, transcriptParts)
+      }
+      if (event.type === 'tool-call') {
+        const part = { type: 'tool-invocation', toolInvocation: { toolCallId: event.toolCallId, toolName: event.toolName, state: 'input-available', toolInput: event.input } }
+        parts.push(part)
+        transcriptParts.push(part)
+        stream.pushParts(transcriptParts)
+      }
     }
-    if (event.type === 'tool-call') {
-      const part = { type: 'tool-invocation', toolInvocation: { toolCallId: event.toolCallId, toolName: event.toolName, state: 'input-available', toolInput: event.input } }
-      parts.push(part)
-      transcriptParts.push(part)
-      stream.pushParts(transcriptParts)
-    }
+  } catch (_error) {
+    throw new FatalError('Native agent provider call failed; usage requires reconciliation.')
   }
-  const [response, toolCalls, usage, finishReason] = await Promise.all([result.response, result.toolCalls, result.usage, result.finishReason])
-  await stream.flush()
+  const [response, toolCalls, usage, finishReason] = await Promise.all([
+    result.response,
+    result.toolCalls,
+    result.usage,
+    result.finishReason,
+  ]).catch((_error) => {
+    throw new FatalError('Native agent provider call failed; usage requires reconciliation.')
+  })
+  await stream.flush().catch((_error) => {
+    throw new FatalError('Native agent provider output could not be persisted.')
+  })
   return {
     text, parts, transcriptParts, finishReason,
     responseMessages: response.messages,
@@ -235,22 +266,62 @@ export async function callWorkspaceAgentModel(input: {
   }
 }
 
-async function freshWorkspaceTooling(prepared: WorkspaceAgentPreparedContext, toolCallId: string) {
+async function freshWorkspaceAgentContext(prepared: WorkspaceAgentPreparedContext) {
   const context = await loadRoomTurnContext({
-    actorUserId: prepared.actorUserId, conversationId: prepared.conversationId,
+    actorUserId: prepared.actorUserId,
+    conversationId: prepared.conversationId,
     messageId: prepared.messageId,
     workspaceId: prepared.workspaceId,
   })
   const agent = context.directory.agents.find(candidate => candidate.id === prepared.agentId)
   if (!agent || agent.archivedAt) return null
-  const run = await (getOverlayServerContext().appData.repositories.conversations as import('@/server/conversations/ActConversationRepository').ActConversationRepository).getLatestAgentRun({
-    agentRunId: prepared.runId, conversationId: prepared.conversationId as never, userId: prepared.actorUserId,
+  const server = getOverlayServerContext()
+  const run = await server.appData.repositories.conversations.getLatestAgentRun({
+    agentRunId: prepared.runId,
+    conversationId: prepared.conversationId as never,
+    userId: prepared.actorUserId,
   })
-  if (!run || run.id !== prepared.runId || run.conversationId !== prepared.conversationId || !['running', 'waiting_for_approval'].includes(run.status)) return null
-  const gate = await new ActEntitlementService({
-    repository: getOverlayServerContext().appData.repositories.conversations,
-    usagePolicy: getOverlayServerContext().chatUsagePolicy,
-  }).gateModelAccess({ effectiveModelId: prepared.modelId, programmaticSubjectId: `agent:${agent.id}`, userId: prepared.actorUserId, workspaceId: prepared.workspaceId })
+  if (
+    !run
+    || run.id !== prepared.runId
+    || run.conversationId !== prepared.conversationId
+    || run.status !== 'running'
+  ) return null
+  try {
+    const gate = await new ActEntitlementService({
+      repository: server.appData.repositories.conversations,
+      usagePolicy: server.chatUsagePolicy,
+    }).gateModelAccess({
+      effectiveModelId: prepared.modelId,
+      programmaticSubjectId: `agent:${agent.id}`,
+      userId: prepared.actorUserId,
+      workspaceId: prepared.workspaceId,
+    })
+    return { context, agent, run, gate }
+  } catch (error) {
+    if (error instanceof ActConversationServiceError && error.statusCode < 500) {
+      throw new FatalError(error.message)
+    }
+    throw error
+  }
+}
+
+async function renewWorkspaceAgentLease(prepared: WorkspaceAgentPreparedContext): Promise<void> {
+  const renewed = await agentRunService.markRunning({
+    leaseExpiresAt: Date.now() + 30 * 60_000,
+    runId: prepared.runId,
+    userId: prepared.actorUserId,
+  })
+  if (!renewed || renewed.status !== 'running') {
+    throw new FatalError('The agent run is no longer active.')
+  }
+}
+
+async function freshWorkspaceTooling(prepared: WorkspaceAgentPreparedContext, toolCallId: string) {
+  const current = await freshWorkspaceAgentContext(prepared)
+  if (!current) throw new FatalError('The agent run is no longer active or authorized.')
+  await renewWorkspaceAgentLease(prepared)
+  const { context, agent, gate } = current
   return await buildWorkspaceAgentTooling({
     actorUserId: prepared.actorUserId, agentPrincipalId: agent.principalId, conversationId: prepared.conversationId,
     effectiveModelId: prepared.modelId, entitlements: gate.runtimeEntitlements,
@@ -280,38 +351,81 @@ export async function executeWorkspaceAgentTool(input: { prepared: WorkspaceAgen
   'use step'
   const tooling = await freshWorkspaceTooling(input.prepared, input.toolCall.toolCallId)
   const definition = tooling?.tools[input.toolCall.toolName]
-  if (!definition || typeof definition.execute !== 'function') return { output: { error: 'This action is no longer authorized.' }, display: { error: 'This action is no longer authorized.' }, error: 'This action is no longer authorized.' }
+  if (!definition || typeof definition.execute !== 'function') {
+    const output = { error: 'This action is no longer authorized.' }
+    return workspaceAgentToolResultFromOutput({ output, display: output, error: output.error })
+  }
   const dynamicApproval = typeof definition.needsApproval === 'function'
     ? await definition.needsApproval(input.toolCall.input as never, { toolCallId: input.toolCall.toolCallId, context: tooling?.toolsContext?.[input.toolCall.toolName] } as never)
     : definition.needsApproval === true
   const nowNeedsApproval = dynamicApproval || tooling?.toolApproval?.({
       toolCall: { toolName: input.toolCall.toolName, input: (input.toolCall.input ?? {}) as Record<string, unknown> },
     }) === 'user-approval'
-  if (nowNeedsApproval && !input.approved) return { output: { error: 'This action became approval-required before execution.' }, display: { error: 'This action became approval-required before execution.' }, refusedApproval: true }
-  if (getStepMetadata().attempt > 1) {
-    const output = { error: 'The action outcome is uncertain. This call was not retried.' }
-    return { output, display: output, error: output.error }
+  if (nowNeedsApproval && !input.approved) {
+    const output = { error: 'This action became approval-required before execution.' }
+    return workspaceAgentToolResultFromOutput({ output, display: output, refusedApproval: true })
+  }
+  const retryRefusal = refusedAmbiguousWorkspaceAgentToolRetry(getStepMetadata().attempt)
+  if (retryRefusal) return retryRefusal
+  const latestTooling = await freshWorkspaceTooling(input.prepared, input.toolCall.toolCallId)
+  const latestDefinition = latestTooling?.tools[input.toolCall.toolName]
+  if (!latestDefinition || typeof latestDefinition.execute !== 'function') {
+    const output = { error: 'This action is no longer authorized.' }
+    return workspaceAgentToolResultFromOutput({ output, display: output, error: output.error })
+  }
+  const latestDynamicApproval = typeof latestDefinition.needsApproval === 'function'
+    ? await latestDefinition.needsApproval(input.toolCall.input as never, {
+        toolCallId: input.toolCall.toolCallId,
+        context: latestTooling?.toolsContext?.[input.toolCall.toolName],
+      } as never)
+    : latestDefinition.needsApproval === true
+  const latestNeedsApproval = latestDynamicApproval || latestTooling?.toolApproval?.({
+    toolCall: { toolName: input.toolCall.toolName, input: (input.toolCall.input ?? {}) as Record<string, unknown> },
+  }) === 'user-approval'
+  if (latestNeedsApproval && !input.approved) {
+    const output = { error: 'This action became approval-required before execution.' }
+    return workspaceAgentToolResultFromOutput({ output, display: output, refusedApproval: true })
   }
   let result: unknown
   try {
     result = await executePersonalChatWorkToolResult({
-      execute: () => definition.execute!(input.toolCall.input as never, {
-        toolCallId: input.toolCall.toolCallId, messages: [], context: tooling?.toolsContext?.[input.toolCall.toolName],
+      execute: () => latestDefinition.execute!(input.toolCall.input as never, {
+        toolCallId: input.toolCall.toolCallId, messages: [], context: latestTooling?.toolsContext?.[input.toolCall.toolName],
         agentRunId: input.prepared.runId, idempotencyKey: `${input.prepared.runId}:${input.toolCall.toolCallId}`,
       } as never),
       input: input.toolCall.input, toolCallId: input.toolCall.toolCallId,
-      toModelOutput: typeof definition.toModelOutput === 'function'
-        ? async ({ toolCallId, input: toolInput, output }) => await definition.toModelOutput!({ toolCallId, input: toolInput as never, output: output as never } as never)
+      toModelOutput: typeof latestDefinition.toModelOutput === 'function'
+        ? async ({ toolCallId, input: toolInput, output }) => await latestDefinition.toModelOutput!({ toolCallId, input: toolInput as never, output: output as never } as never)
         : undefined,
     })
   } catch (error) {
     const output = { error: error instanceof Error ? error.message : 'Tool execution failed.' }
-    return { output, display: output, error: output.error }
+    return workspaceAgentToolResultFromOutput({ output, display: output, error: output.error })
   }
   const envelope = result && typeof result === 'object' && 'overlayModelOutput' in result
     ? result as { overlayModelOutput: unknown; display?: unknown }
     : undefined
-  return { output: envelope?.overlayModelOutput ?? result, display: envelope?.display ?? result }
+  return workspaceAgentToolResultFromOutput({
+    output: envelope ? envelope.overlayModelOutput : result,
+    display: envelope?.display ?? result,
+    outputIsMapped: Boolean(envelope),
+  })
+}
+
+export async function beginWorkspaceAgentModelCall(input: {
+  actorUserId: string
+  prepared: WorkspaceAgentPreparedContext
+}) {
+  'use step'
+  const current = await freshWorkspaceAgentContext(input.prepared)
+  if (!current || current.run.status !== 'running') {
+    throw new FatalError('The agent run is no longer active or authorized.')
+  }
+  await renewWorkspaceAgentLease(input.prepared)
+  await getOverlayServerContext().chatUsagePolicy.markReservationStarted({
+    reservationId: input.prepared.reservationId,
+    userId: input.actorUserId,
+  })
 }
 
 export async function persistWorkspaceAgentToolProgress(input: {
@@ -351,17 +465,5 @@ export async function finalizeWorkspaceAgentTurn(input: {
   if (input.prepared.memoryEnabled) {
     await collaboration.enqueueMemoryExtraction({ actorUserId: input.prepared.actorUserId, conversationId: input.prepared.conversationId, memoryOwnerId: agentMemoryOwnerId(input.prepared.agentId), messageId: input.prepared.turnMessageId, targetActor: 'agent', turnId: input.prepared.turnId, workspaceId: input.prepared.workspaceId }).catch((_error) => undefined)
   }
-  await getOverlayServerContext().chatUsagePolicy.recordFinishedUsage({ forceFreeTierLimits: !input.prepared.paid, inputTokens: input.inputTokens, modelId: input.prepared.modelId, outputTokens: input.outputTokens, reservationId: input.prepared.reservationId, userId: input.prepared.actorUserId })
   return { content: persistence.content, parts: persistence.parts, modelId: input.prepared.modelId, tokens: { input: input.inputTokens, output: input.outputTokens } }
-}
-
-export async function releaseWorkspaceAgentReservation(input: {
-  actorUserId: string
-  prepared: WorkspaceAgentPreparedContext
-}) {
-  'use step'
-  await getOverlayServerContext().chatUsagePolicy.releaseReservation({
-    reservationId: input.prepared.reservationId,
-    userId: input.actorUserId,
-  })
 }

@@ -6,13 +6,17 @@ import {
 } from '@/server/agents/workspace-agent-invocation'
 import {
   prepareWorkspaceAgentTurn as prepare,
+  beginWorkspaceAgentModelCall as beginModelCall,
   callWorkspaceAgentModel as model,
   inspectWorkspaceAgentTool as inspect,
   executeWorkspaceAgentTool as execute,
   finalizeWorkspaceAgentTurn as finalize,
   persistWorkspaceAgentToolProgress as persistToolProgress,
-  releaseWorkspaceAgentReservation as releaseReservation,
 } from './workspace-agent-durable'
+import {
+  settleWorkspaceAgentUsage as settleUsage,
+  releaseWorkspaceAgentReservation as releaseReservation,
+} from './workspace-agent-usage'
 import type { AgentRunApprovalRequest } from '@/shared/agents/agent-run'
 import { resumeHook } from 'workflow/api'
 import { getOverlayServerContext } from '@/server/bootstrap'
@@ -66,11 +70,13 @@ export async function executeWorkspaceAgentTurn(input: {
 }
 
 export const prepareWorkspaceAgentTurn = prepare
+export const beginWorkspaceAgentModelCall = beginModelCall
 export const callWorkspaceAgentModel = model
 export const inspectWorkspaceAgentTool = inspect
 export const executeWorkspaceAgentTool = execute
 export const persistWorkspaceAgentToolProgress = persistToolProgress
 export const finalizeWorkspaceAgentTurn = finalize
+export const settleWorkspaceAgentUsage = settleUsage
 export const releaseWorkspaceAgentReservation = releaseReservation
 
 export async function waitForWorkspaceAgentApproval(input: {

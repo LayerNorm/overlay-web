@@ -138,7 +138,7 @@ const agentRunMetrics = v.object({
 const ACTIVE_AGENT_RUN_STATUSES = new Set(['queued', 'running', 'waiting_for_approval'])
 const AGENT_RUN_TRANSITIONS: Record<string, ReadonlySet<string>> = {
   queued: new Set(['running', 'failed', 'cancelled']),
-  running: new Set(['waiting_for_approval', 'completed', 'failed', 'cancelled']),
+  running: new Set(['running', 'waiting_for_approval', 'completed', 'failed', 'cancelled']),
   waiting_for_approval: new Set(['running', 'failed', 'cancelled']),
   completed: new Set(),
   failed: new Set(),
@@ -983,7 +983,7 @@ export const completeAgentRun = mutation({
     if (message) {
       await ctx.db.patch(message._id, {
         content: args.content,
-        parts: args.parts,
+        parts: args.parts.filter((part) => part.type !== 'data-native-agent-approval'),
         routedModelId: args.routedModelId,
         tokens: args.tokens,
         status: 'completed',
@@ -994,6 +994,7 @@ export const completeAgentRun = mutation({
       status: 'completed',
       completedAt: now,
       leaseExpiresAt: undefined,
+      approval: undefined,
       metrics: { ...run.metrics, ...args.metrics },
       updatedAt: now,
     })
@@ -1023,11 +1024,17 @@ export const failAgentRun = mutation({
     assertAgentRunTransition(run.status, 'failed')
     const now = Date.now()
     const message = await ctx.db.get(run.assistantMessageId)
-    if (message?.status === 'generating') {
+    if (message) {
+      const parts = (message.parts ?? []).filter((part) => part.type !== 'data-native-agent-approval')
+      const hasContentPart = parts.some((part) => part.type === 'text')
       await ctx.db.patch(message._id, {
-        content: args.errorText,
-        parts: [{ type: 'text', text: args.errorText }],
-        status: 'error',
+        ...(message.status === 'generating'
+          ? {
+              content: message.content || args.errorText,
+              parts: hasContentPart ? parts : [...parts, { type: 'text', text: message.content || args.errorText }],
+              status: 'error' as const,
+            }
+          : { parts }),
         updatedAt: now,
       })
     }
@@ -1035,6 +1042,7 @@ export const failAgentRun = mutation({
       status: 'failed',
       failedAt: now,
       leaseExpiresAt: undefined,
+      approval: undefined,
       terminalError: args.error,
       metrics: { ...run.metrics, ...args.metrics },
       updatedAt: now,
@@ -1119,11 +1127,13 @@ export const recordAgentRunProgress = mutation({
     const message = await ctx.db.get(run.assistantMessageId)
     if (message?.status !== 'generating') return
     if (message.content === args.content) return
+    const existingParts = message.parts ?? []
     await ctx.db.patch(message._id, {
       content: args.content,
       parts: [
         { type: 'text', text: args.content },
-        ...(message.parts ?? []).filter((part) => part.type === 'data-native-agent-approval'),
+        ...existingParts.filter((part) => part.type !== 'text' && part.type !== 'data-native-agent-approval'),
+        ...existingParts.filter((part) => part.type === 'data-native-agent-approval'),
       ],
       updatedAt: Date.now(),
     })
@@ -1219,11 +1229,17 @@ export const cancelAgentRuns = mutation({
           status: 'completed',
           updatedAt: now,
         }))
+      } else if (message?.parts?.some((part) => part.type === 'data-native-agent-approval')) {
+        writes.push(ctx.db.patch(message._id, {
+          parts: message.parts.filter((part) => part.type !== 'data-native-agent-approval'),
+          updatedAt: now,
+        }))
       }
       writes.push(ctx.db.patch(run._id, {
         status: 'cancelled',
         cancelledAt: now,
         leaseExpiresAt: undefined,
+        approval: undefined,
         terminalError: {
           code: 'cancelled_by_user',
           message: 'The run was cancelled by the user.',
