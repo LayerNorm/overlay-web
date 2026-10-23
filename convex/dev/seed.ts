@@ -2,6 +2,7 @@ import { v } from 'convex/values'
 import { internalMutation, type MutationCtx } from '../_generated/server'
 import { requireStagingSeedEnvironment } from '../lib/staging'
 import { requirePreviewDeployment } from '../lib/preview'
+import { seedPreviewWorkspace } from './previewWorkspace'
 
 /** Internal, idempotent fixtures. Identity comes from the sandbox account configuration. */
 export const init = internalMutation({
@@ -13,6 +14,20 @@ export const init = internalMutation({
     const email = process.env.PREVIEW_LOGIN_EMAIL?.trim()
     if (!userId?.startsWith('user_') || !email) throw new Error('Configure the sandbox preview login identity before seeding')
     return seedFixtures(ctx, { userId, email, lane: 'preview' })
+  },
+})
+
+/** Opt-in paid, multi-member fixtures; never part of ordinary deployment seeding. */
+export const initQa = internalMutation({
+  args: {},
+  returns: v.object({ userId: v.string(), workspaceId: v.string() }),
+  handler: async (ctx) => {
+    requirePreviewDeployment()
+    const userId = process.env.PREVIEW_LOGIN_USER_ID?.trim()
+    const email = process.env.PREVIEW_LOGIN_EMAIL?.trim()
+    if (!userId?.startsWith('user_') || !email) throw new Error('Configure the sandbox preview login identity before seeding')
+    await seedFixtures(ctx, { userId, email, lane: 'preview' })
+    return seedPreviewWorkspace(ctx, { userId, email })
   },
 })
 

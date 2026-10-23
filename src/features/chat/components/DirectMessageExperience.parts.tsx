@@ -789,7 +789,7 @@ export function RoomComposer({
       surface={{
         hideModeMenu: true,
         hideGenerationModes: true,
-        placeholder: guided?.placeholder ?? `Message ${title}, use @ to notify someone…`,
+        placeholder: guided?.placeholder ?? 'What do you want to get done?',
         mentionCategories: guided ? [] : mentionCategories,
         agentCommands: guided ? [] : agentCommands,
         textOnly: Boolean(guided),

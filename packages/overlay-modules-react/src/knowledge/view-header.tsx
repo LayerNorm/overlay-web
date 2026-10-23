@@ -3,7 +3,6 @@ import { unstyledButton, unstyledInput } from '@overlay/ui/control-reset'
 import React, { createContext, useContext, type ReactNode } from 'react'
 import {
   ArrowLeft,
-  ChevronRight,
   FolderInput,
   FolderOpen,
   LayoutGrid,
@@ -18,7 +17,7 @@ import type {
   KnowledgeOutputFilter as OutputFilter,
   KnowledgeTab as Tab,
 } from '@overlay/app-core'
-import { AppScreenHeader } from '@overlay/modules-react/shell'
+import { AppBreadcrumbs, AppScreenHeader } from '@overlay/modules-react/shell'
 import { HeaderSearch, Button, Input } from '@overlay/ui/primitives'
 import { KnowledgeRowActionsContext } from './file-views'
 import { FilesCreateUploadControls, OutputFilterMenu } from './toolbar-menus'
@@ -56,15 +55,14 @@ function SelectedFileHeader({
       >
         <ArrowLeft size={17} />
       </Button>
-      <Input
+      <AppBreadcrumbs title={<Input
         type="text"
         aria-label="File title"
         value={fileTitle}
         onChange={(e) => onTitleChange(e.target.value)}
         placeholder="File title..."
-        className={unstyledInput("min-w-0 flex-1 bg-transparent font-medium text-xl text-(--foreground) outline-hidden placeholder:text-(--muted)")}
-        style={{ fontFamily: 'var(--font-serif)' }}
-      />
+        className={unstyledInput("min-w-0 w-full bg-transparent text-sm font-medium text-(--foreground) outline-hidden placeholder:text-(--muted)")}
+      />} />
       {isSavingFile ? (
         <span className="shrink-0 text-[11px] text-(--muted-light)">Saving...</span>
       ) : null}
@@ -110,31 +108,14 @@ function FolderHeader({
         <ArrowLeft size={17} />
       </Button>
       <FolderOpen size={18} className="shrink-0 text-(--muted-light)" />
-      <nav aria-label="Folder breadcrumbs" className="flex min-w-0 items-center gap-1 truncate text-sm">
-        <Button variant="ghost"
-          type="button"
-          onClick={() => navigateToFolder(null)}
-          className={unstyledButton("shrink-0 text-(--muted) transition-colors hover:text-(--foreground)")}
-        >
-          Files
-        </Button>
-        {folderBreadcrumb.map((node, i) => (
-          <span key={node._id} className="flex min-w-0 items-center gap-1">
-            <ChevronRight size={12} className="shrink-0 text-(--muted-light)" />
-            {i === folderBreadcrumb.length - 1 ? (
-              <span aria-current="page" className="truncate font-medium text-(--foreground)">{node.name}</span>
-            ) : (
-              <Button variant="ghost"
-                type="button"
-                onClick={() => navigateToFolder(node._id)}
-                className={unstyledButton("truncate text-(--muted) transition-colors hover:text-(--foreground)")}
-              >
-                {node.name}
-              </Button>
-            )}
-          </span>
-        ))}
-      </nav>
+      <AppBreadcrumbs aria-label="Folder breadcrumbs" items={folderBreadcrumb.map((node, i) => ({
+        label: i === folderBreadcrumb.length - 1 ? node.name : (
+          <Button variant="ghost" type="button" onClick={() => navigateToFolder(node._id)}
+            className={unstyledButton('block max-w-full truncate text-(--muted) hover:text-(--foreground)')}>
+            {node.name}
+          </Button>
+        ),
+      }))} />
       {!memorySearchOpen && (
         <span className="shrink-0 text-xs text-(--muted-light)">{itemCount} items</span>
       )}
@@ -166,10 +147,8 @@ function HeaderTitle({
           ? 'Outputs'
           : 'Files'
   return (
-    <div className="flex min-w-0 shrink-0 items-baseline gap-3">
-      <h1 className="text-sm font-medium leading-5 text-(--foreground)">
-        {mode === 'files' ? filesTitle : activeTab === 'memories' ? 'Memories' : activeTab === 'files' ? 'Files' : 'Outputs'}
-      </h1>
+    <div className="flex min-w-0 items-baseline gap-3">
+      <AppBreadcrumbs title={mode === 'files' ? filesTitle : activeTab === 'memories' ? 'Memories' : activeTab === 'files' ? 'Files' : 'Outputs'} />
       {activeTab !== 'outputs' && !memorySearchOpen && (
         <span className="text-xs leading-5 text-(--muted-light)">
           {activeTab === 'memories' ? memoryCount : fileCount} items

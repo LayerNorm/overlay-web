@@ -110,12 +110,11 @@ function buildAgentsPanelNav({
       const params = withPanelScope(currentSearchParams, next)
       // The tab used to be `?view=`; the scope replaces it.
       params.delete('view')
+      params.delete('agent')
+      params.delete('agentId')
+      params.delete('id')
       if (publicShowcase) params.set('showcase', '1')
-      // With an agent open, Personal must stay explicit in the URL — the
-      // panel auto-corrects bare `?agent=` links to the agent's own tab, so
-      // a missing `scope` would read as an uncorrected link and fight the
-      // deliberate switch.
-      if (next === 'personal' && params.has('agent')) params.set('scope', 'personal')
+      params.set('scope', next)
       const query = params.toString()
       const agentsHref = canonicalWorkspaceRoute && activeWorkspaceId
         ? buildWorkspaceHref(activeWorkspaceId, '/app/agents')

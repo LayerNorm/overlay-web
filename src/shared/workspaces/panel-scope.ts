@@ -42,6 +42,16 @@ export function resolvePanelScope(args: {
   return soloPanelScope(parsePanelScope(args.param) ?? parsePanelScope(args.saved) ?? DEFAULT_PANEL_SCOPE, Boolean(args.solo))
 }
 
+/** Resolves current scope links and older agents-page `?view=` links without treating other views as scopes. */
+export function resolvePanelScopeFromParams(
+  params: { get(name: string): string | null } | null,
+  saved?: string | null,
+  solo?: boolean,
+): PanelScope {
+  const param = parsePanelScope(params?.get(PANEL_SCOPE_PARAM)) ?? parsePanelScope(params?.get('view'))
+  return resolvePanelScope({ param, saved, solo })
+}
+
 /**
  * The `view` to ask a list for. A workspace of one person has a single list, so it asks for everything active (no view):
  * what the person made and anything shared into the workspace, such as the default agent.

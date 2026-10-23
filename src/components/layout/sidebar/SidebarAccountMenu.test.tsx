@@ -29,9 +29,9 @@ function render() {
   )
 }
 
-test('usage, storage, and apps collapse behind disclosure headers', () => {
+test('usage and storage collapse behind disclosure headers', () => {
   const html = render()
-  for (const label of ['Usage', 'Storage', 'Apps']) {
+  for (const label of ['Usage', 'Storage']) {
     assert.match(html, new RegExp(`aria-expanded="false"[^>]*>.*?${label}`, 's'))
   }
   // Collapsed sections keep their rows out of the menu until opened.

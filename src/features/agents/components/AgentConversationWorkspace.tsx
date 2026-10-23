@@ -2,7 +2,7 @@
 
 import { unstyledButton } from '@overlay/ui/control-reset'
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Bot, Settings } from 'lucide-react'
 import type { WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
@@ -10,6 +10,10 @@ import { Button } from '@overlay/ui/primitives'
 import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
 import { DirectMessageExperience } from '@/features/chat/components/DirectMessageExperience'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
+import { usePanelScope } from '@/hooks/use-panel-scope'
+import { useIsSoloWorkspace } from '@/hooks/use-solo-workspace'
+import { agentsInScope } from '@/shared/agents/agent-scope'
+import { resolvePanelScopeFromParams, type PanelScope } from '@/shared/workspaces/panel-scope'
 import { RightSidebarToggle } from '@overlay/modules-react/shell'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import {
@@ -32,6 +36,7 @@ import { AgentRightSidebar } from './AgentRightSidebar'
 import { AgentComputerControlOverlay } from './AgentComputerTab.parts'
 import { buildAgentsDirectoryHref, sendAgentGreeting, startAgentChat } from '../lib/agent-chat'
 import { NewAgentDialog } from './NewAgentDialog'
+import { useAgentThreadScope } from '../lib/use-agent-thread-scope'
 
 type EditorMode = 'new' | 'edit' | null
 
@@ -107,20 +112,22 @@ function useAgentWorkspaceActions(args: {
 type AgentDirectoryState = {
   workspaceId: string | null
   agents: WorkspaceAgentDirectoryItem[] | null
+  viewerPrincipalId?: string | null
   error: string | null
 }
 
 /** Loads the roster once per landing. Own budget, kept out of the component. */
 function useAgentDirectory(
   activeWorkspaceId: string | null,
-  conversationId: string | null,
+  scope: PanelScope,
+  solo: boolean,
 ): { directory: WorkspaceAgentDirectoryItem[] | null; loadError: string | null } {
   const [state, setState] = useState<AgentDirectoryState>({ workspaceId: null, agents: null, error: null })
   useEffect(() => {
-    if (conversationId || !activeWorkspaceId) return
+    if (!activeWorkspaceId) return
     let cancelled = false
     overlayAppClient.agents.list(activeWorkspaceId).then((response) => {
-      if (!cancelled) setState({ workspaceId: activeWorkspaceId, agents: response.agents, error: null })
+      if (!cancelled) setState({ workspaceId: activeWorkspaceId, agents: response.agents, viewerPrincipalId: response.viewerPrincipalId ?? null, error: null })
     }).catch(() => {
       if (!cancelled) {
         setState({
@@ -133,9 +140,11 @@ function useAgentDirectory(
     return () => {
       cancelled = true
     }
-  }, [conversationId, activeWorkspaceId])
-  if (state.workspaceId !== activeWorkspaceId) return { directory: null, loadError: null }
-  return { directory: state.agents, loadError: state.error }
+  }, [activeWorkspaceId])
+  const directory = useMemo(() => state.workspaceId === activeWorkspaceId && state.agents
+    ? agentsInScope(state.agents, state.viewerPrincipalId ?? null, scope, solo) : null,
+  [state, activeWorkspaceId, scope, solo])
+  return { directory, loadError: state.workspaceId === activeWorkspaceId ? state.error : null }
 }
 
 /** Opens the picked agent's conversation. Own budget, kept out of the component. */
@@ -143,6 +152,7 @@ function useAgentAutoOpen(args: {
   conversationId: string | null
   activeWorkspaceId: string | null
   agentId: string | null
+  scope: PanelScope
   directory: WorkspaceAgentDirectoryItem[] | null
   retryCount: number
   router: { replace(href: string): void }
@@ -150,23 +160,24 @@ function useAgentAutoOpen(args: {
   onError(message: string | null): void
 }) {
   const {
-    conversationId, activeWorkspaceId, agentId, directory, retryCount, router,
+    conversationId, activeWorkspaceId, agentId, scope, directory, retryCount, router,
     onResolvingChange, onError,
   } = args
   const attemptedAgentRef = useRef<string | null>(null)
 
   useEffect(() => {
     attemptedAgentRef.current = null
-  }, [activeWorkspaceId, conversationId])
+  }, [activeWorkspaceId, conversationId, scope, retryCount])
 
   useEffect(() => {
     if (conversationId || !activeWorkspaceId || !directory || directory.length === 0) return
-    const target = pickAgentToOpen(directory, activeWorkspaceId, agentId)
+    const target = agentId ? directory.find((agent) => agent.id === agentId) : pickAgentToOpen(directory, activeWorkspaceId)
     if (!target || attemptedAgentRef.current === target.id) return
     attemptedAgentRef.current = target.id
     rememberAgentOpened(activeWorkspaceId, target.id)
     onResolvingChange(true)
     onError(null)
+    let cancelled = false
     void (async () => {
       try {
         await startAgentChat({
@@ -174,21 +185,32 @@ function useAgentAutoOpen(args: {
           agentId: target.id,
           agentPrincipalId: target.principalId,
           surface: 'agents',
-          push: (href) => router.replace(href),
+          scope,
+          push: (href) => { if (!cancelled) router.replace(href) },
         })
       } catch (chatError) {
-        onError(chatError instanceof Error ? chatError.message : 'Could not open the agent conversation.')
+        if (!cancelled) onError(chatError instanceof Error ? chatError.message : 'Could not open the agent conversation.')
       } finally {
-        onResolvingChange(false)
+        if (!cancelled) onResolvingChange(false)
       }
     })()
-  }, [conversationId, activeWorkspaceId, agentId, directory, retryCount, router, onResolvingChange, onError])
+    return () => { cancelled = true; attemptedAgentRef.current = null }
+  }, [conversationId, activeWorkspaceId, agentId, scope, directory, retryCount, router, onResolvingChange, onError])
 }
 
 export function AgentConversationWorkspace({ showcase = false }: { showcase?: boolean }) {
+  const searchParams = useSearchParams()
+  const savedScope = usePanelScope()
+  const solo = useIsSoloWorkspace()
+  const scope = resolvePanelScopeFromParams(searchParams, savedScope, solo)
+  return <AgentConversationWorkspaceContent key={scope} scope={scope} showcase={showcase} />
+}
+
+function AgentConversationWorkspaceContent({ scope, showcase }: { scope: PanelScope; showcase: boolean }) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { activeWorkspaceId } = useWorkspace()
+  const solo = useIsSoloWorkspace()
   const agentId = searchParams?.get('agent') ?? searchParams?.get('agentId') ?? null
   const conversationId = searchParams?.get('id') ?? null
   const [sidebarPreferences, setSidebarPreferences] = useState<AgentRightSidebarPreferences>(
@@ -269,12 +291,16 @@ export function AgentConversationWorkspace({ showcase = false }: { showcase?: bo
   // agent directly. The blank page only ever appears when the workspace
   // genuinely has no agents. The sidebar no longer auto-opens, so exactly
   // one DM creation runs per landing.
-  const { directory, loadError } = useAgentDirectory(activeWorkspaceId, conversationId)
+  const { directory, loadError } = useAgentDirectory(activeWorkspaceId, scope, solo)
+  const threadScope = useAgentThreadScope({
+    workspaceId: activeWorkspaceId, agentId, conversationId, directory, retryCount,
+  })
 
   useAgentAutoOpen({
     conversationId,
     activeWorkspaceId,
     agentId,
+    scope,
     directory,
     retryCount,
     router,
@@ -327,7 +353,7 @@ export function AgentConversationWorkspace({ showcase = false }: { showcase?: bo
     return <DirectMessageExperience conversationId="showcase-agent-welcome" showcase />
   }
 
-  if (conversationId) {
+  if (conversationId && threadScope.allowed) {
     const agentSidebar = agentId && sidebarPreferences.open ? (
       <AgentRightSidebar
         agentId={agentId}
@@ -384,9 +410,10 @@ export function AgentConversationWorkspace({ showcase = false }: { showcase?: bo
         sideEditor={sideEditor}
         onRightPanelClose={closeEditor}
         activeWorkspaceId={activeWorkspaceId}
-        directory={directory}
+        agentId={agentId}
+        directory={threadScope.pending ? null : directory}
         resolving={resolving}
-        error={error}
+        error={error ?? threadScope.error}
         loadError={loadError}
         onRetry={retryOpen}
         onCreate={openCreate}
@@ -433,6 +460,7 @@ function AgentDirectoryScreen({
   sideEditor,
   onRightPanelClose,
   activeWorkspaceId,
+  agentId,
   directory,
   resolving,
   error,
@@ -444,6 +472,7 @@ function AgentDirectoryScreen({
   sideEditor: ReactNode
   onRightPanelClose(): void
   activeWorkspaceId: string | null
+  agentId: string | null
   directory: WorkspaceAgentDirectoryItem[] | null
   resolving: boolean
   error: string | null
@@ -455,7 +484,8 @@ function AgentDirectoryScreen({
   // roster arrival and the resolve effect firing, and the DM creation itself.
   // The empty state therefore only ever renders for genuinely agent-less
   // workspaces — never as a flash while a conversation is about to open.
-  const displayError = error ?? loadError
+  const displayError = error ?? loadError ?? (agentId && directory && !directory.some((agent) => agent.id === agentId)
+    ? 'This agent is not available in this scope.' : null)
   const resolvingConversation = directory !== null && directory.length > 0 && !displayError
   const loading = activeWorkspaceId !== null && (directory === null || resolving || resolvingConversation)
   const empty = directory !== null && directory.length === 0 && !displayError
