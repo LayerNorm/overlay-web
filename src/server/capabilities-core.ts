@@ -22,6 +22,7 @@ export const CAPABILITY_LABELS: Record<OverlayCapability, string> = {
   automations: 'Automation scheduling',
   multiTenant: 'Multi-tenant support',
   connectedAgents: 'Connected agents',
+  externalAgents: 'External agents',
   computers: 'Computers',
   cloudAgents: 'Agents on Overlay Cloud',
   work: 'Work',
@@ -46,8 +47,8 @@ export function getRequiredCapabilityForRoute(
   method: string,
   pathname: string,
 ): OverlayCapability | null {
-  void method
   const normalizedPath = normalizePath(pathname)
+  const normalizedMethod = method.toUpperCase()
 
   if (startsWithRoute(normalizedPath, '/api/v1/subscription')) return 'billing'
   if (startsWithRoute(normalizedPath, '/api/v1/webhooks')) return 'webhooks'
@@ -55,9 +56,28 @@ export function getRequiredCapabilityForRoute(
   if (startsWithRoute(normalizedPath, '/api/v1/automations')) return 'automations'
   if (startsWithRoute(normalizedPath, '/api/v1/computers')) return 'computers'
   if (startsWithRoute(normalizedPath, '/api/v1/work')) return 'work'
-  if (startsWithRoute(normalizedPath, '/api/v1/agent-environments')) return 'connectedAgents'
-  if (startsWithRoute(normalizedPath, '/api/v1/agent-bindings')) return 'connectedAgents'
-  if (startsWithRoute(normalizedPath, '/api/v1/provider-accounts')) return 'connectedAgents'
+  if (startsWithRoute(normalizedPath, '/api/v1/agent-environments')) {
+    if (normalizedPath === '/api/v1/agent-environments' && normalizedMethod === 'GET') return null
+    if (normalizedPath.endsWith('/commands') && normalizedMethod === 'GET') return null
+    if (
+      /^\/api\/v1\/agent-environments\/[^/]+\/commands\/[^/]+\/ack$/.test(normalizedPath)
+      || normalizedPath.endsWith('/events')
+      || normalizedPath.endsWith('/heartbeat')
+      || normalizedPath.endsWith('/capabilities')
+      || normalizedPath === '/api/v1/agent-environments/operations/reconcile'
+      || normalizedPath.endsWith('/artifacts/cleanup')
+      || normalizedPath.endsWith('/revoke')
+      || normalizedPath.endsWith('/credentials/refresh')
+      || normalizedPath === '/api/v1/agent-environments/artifacts/cleanup'
+    ) return null
+    return 'externalAgents'
+  }
+  if (startsWithRoute(normalizedPath, '/api/v1/agent-bindings')) {
+    return normalizedMethod === 'GET' || normalizedMethod === 'DELETE' ? null : 'externalAgents'
+  }
+  if (startsWithRoute(normalizedPath, '/api/v1/provider-accounts')) {
+    return normalizedMethod === 'GET' || normalizedMethod === 'DELETE' ? null : 'externalAgents'
+  }
   if (startsWithRoute(normalizedPath, '/api/v1/integrations')) return 'integrations'
   if (startsWithRoute(normalizedPath, '/api/v1/skills')) return 'skills'
   if (startsWithRoute(normalizedPath, '/api/v1/mcps')) return 'mcpServers'

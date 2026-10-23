@@ -3,6 +3,7 @@ import 'server-only'
 
 import { randomUUID } from 'node:crypto'
 import { parseByoModelId } from '@/shared/agents/agent-model'
+import { externalAgentLaunchEnabled, isExternalAgentInvocation, isPersistedExternalAgent } from './external-agent-policy'
 import { streamText, type ModelMessage } from 'ai'
 import { start } from 'workflow/api'
 import { isStepCount, type ToolApprovalConfiguration } from '@/server/ai/sdk'
@@ -33,10 +34,6 @@ import { resolveMentionFirstInvocations, resolveInvocableAgents } from './mentio
 import { agentMemoryOwnerId } from '@/shared/agents/agent-memory'
 import { connectedAgentPolicyFor } from './ConnectedAgentPolicy'
 import { ManagedAgentSandboxBilling, ManagedAgentSandboxBudgetError } from './ManagedAgentSandboxBilling'
-import {
-  connectedAgentRolloutConfigFromEnv,
-  resolveConnectedAgentRollout,
-} from '@/shared/agents/connected-agent-rollout'
 import type { AgentProtocolAdapter } from '@overlay/workspace-contracts'
 import type { AgentMcpToolGrant } from '@/server/agents/agent-mcp-tools'
 import { AGENT_MCP_TOKEN_SLACK_MS, mintAgentMcpToken } from '@/server/agents/agent-mcp-token'
@@ -225,6 +222,8 @@ export type WorkspaceAgentInvocation = {
   effort?: string
   /** The agent's tool grant — connected agents get their Overlay tools from it. */
   toolGrant?: AgentMcpToolGrant
+  /** Persisted identity of an external runtime, independent of feature flags or target resolution. */
+  externalAgent: boolean
   remoteTarget?: {
     adapterId: string
     bindingId: string
@@ -412,25 +411,24 @@ export async function resolveWorkspaceAgentInvocations(args: {
     })
   }
   const runtime = await getOverlayRuntimeConfig()
-  const connectedAgentRollout = resolveConnectedAgentRollout(
-    connectedAgentRolloutConfigFromEnv(process.env),
-    args.workspaceId,
-  )
-  const remoteRunsEnabled = runtime.features.connectedAgentControlPlane === true
-    && runtime.features.remoteAgentRuns === true
-    && connectedAgentRollout.eligible
-  const targets = await Promise.all(invocableAgents.map((agent) =>
-    remoteRunsEnabled
-      ? server.appData.repositories.connectedAgents.findInvocationTarget({
-          workspaceId: args.workspaceId,
-          agentId: agent.id,
-          now: Date.now(),
-          onlineWithinMs: CONNECTED_AGENT_ONLINE_WITHIN_MS,
-        })
-      : null))
+  const [targets, bindings] = await Promise.all([
+    Promise.all(invocableAgents.map((agent) =>
+      server.appData.repositories.connectedAgents.findInvocationTarget({
+        workspaceId: args.workspaceId,
+        agentId: agent.id,
+        now: Date.now(),
+        onlineWithinMs: CONNECTED_AGENT_ONLINE_WITHIN_MS,
+      }))),
+    Promise.all(invocableAgents.map((agent) =>
+      server.appData.repositories.connectedAgents.listBindings({
+        workspaceId: args.workspaceId,
+        agentId: agent.id,
+      }))),
+  ])
   const invocations: WorkspaceAgentInvocation[] = []
   for (const [agentIndex, agent] of invocableAgents.entries()) {
     const target = targets[agentIndex]
+    const externalAgent = isExternalAgentInvocation(agent, bindings[agentIndex]!.length > 0, target !== null)
     const configuredAdapterId = target?.binding.adapterConfig.adapterId ?? target?.binding.adapterConfig.harnessId
     const adapterId = target && typeof configuredAdapterId === 'string' ? configuredAdapterId.trim() : ''
     const workingDirectory = target && typeof target.binding.adapterConfig.workingDirectory === 'string'
@@ -448,6 +446,7 @@ export async function resolveWorkspaceAgentInvocations(args: {
         allowedToolIds: [...agent.allowedToolIds],
         isDefaultMaster: Boolean(agent.isDefault || agent.name.toLowerCase() === 'overlay'),
       },
+      externalAgent,
       ...(target && adapterId && workingDirectory ? {
         remoteTarget: {
           adapterId,
@@ -575,6 +574,9 @@ export async function startRemoteWorkspaceAgentTurn(args: {
   workspaceId: string
 }) {
   const server = getOverlayServerContext()
+  if (!await externalAgentLaunchEnabled(args.workspaceId)) {
+    throw new WorkspaceAgentInvocationError('not_entitled')
+  }
   // Managed HarnessAgent turns run through `managedHarnessAgentTurnWorkflow`
   // (see `startManagedHarnessTurn`), not the ACP command queue — fail loudly
   // rather than enqueue commands nothing will claim.
@@ -840,6 +842,13 @@ export async function runWorkspaceAgentTurn(args: {
       workspaceId: args.workspaceId,
     })
     throw new WorkspaceAgentInvocationError('no_agent_participant')
+  }
+  const boundExternal = await server.appData.repositories.connectedAgents.listBindings({
+    workspaceId: args.workspaceId,
+    agentId: agent.id,
+  })
+  if (isPersistedExternalAgent(agent) || boundExternal.length > 0) {
+    throw new WorkspaceAgentInvocationError('not_entitled')
   }
   // A durable turn opens its own row up front, carrying this very nonce, so
   // "already replied" means a row that is not the one this turn is writing.

@@ -18,6 +18,8 @@ import {
 import type { AgentProfileBundle } from '@layernorm/overlay-agent-bridge-protocol'
 import { CLAUDE_JSON_PATH, planProfileApply, PROFILE_HARNESS_HOME, PROFILE_MANAGED_PATH, type ManagedProfile } from '../profiles/agent-profile-apply'
 import { MANAGED_SANDBOX_IDLE_TIMEOUT_MS, managedSandboxRuntimeFromEnv } from '../managed-sandbox-runtime'
+import { externalAgentLaunchEnabled } from '../external-agent-policy'
+import { getOverlayRuntimeConfig } from '@/server/config'
 import {
   CLOUD_AGENT_RESOURCES,
   CLOUD_AGENT_WORKSPACE,
@@ -71,6 +73,7 @@ export class CloudAgentMachineService {
     image?: string
     sleep?: (ms: number) => Promise<void>
     now?: () => number
+    launchEnabled?: (workspaceId: string) => boolean | Promise<boolean>
   }) {}
 
   async provision(args: {
@@ -82,6 +85,7 @@ export class CloudAgentMachineService {
     size: ComputerSize
     serverUrl: string
   }) {
+    await this.assertLaunchEnabled(args.workspaceId)
     const phase = (next: CloudAgentPhase, extra: { error?: string; environmentId?: string } = {}) =>
       this.dependencies.provisions.setPhase({ workspaceId: args.workspaceId, agentId: args.agentId, phase: next, now: this.now(), ...extra })
         .catch((error) => logger.warn('[cloud-agent] could not record the provisioning phase', {
@@ -209,6 +213,9 @@ export class CloudAgentMachineService {
 
   /** Pause, resume, or restart an agent's machine. */
   async control(args: { workspaceId: string; agentId: string; action: CloudAgentAction }): Promise<void> {
+    if (args.action === 'resume' || args.action === 'restart') {
+      await this.assertLaunchEnabled(args.workspaceId)
+    }
     const bindings = await this.dependencies.repository.listBindings({ workspaceId: args.workspaceId, agentId: args.agentId })
     const found = await this.cloudBinding(args.workspaceId, bindings)
     if (!found) throw new CloudAgentMachineError('This agent has no Overlay Cloud machine', 404, 'cloud_agent_missing')
@@ -395,6 +402,7 @@ export class CloudAgentMachineService {
    * stops idle machines, and a stopped machine has no host process.
    */
   async wake(args: { workspaceId: string; environmentId: string }): Promise<'running' | 'resumed' | 'unavailable'> {
+    await this.assertLaunchEnabled(args.workspaceId)
     const lease = await this.dependencies.repository.getActiveSandboxLease(args)
     if (!lease?.providerReference || lease.status !== 'running') return 'unavailable'
     const runtime = this.runtime(lease.provider)
@@ -415,6 +423,7 @@ export class CloudAgentMachineService {
   async resumeStoppedExecution(args: {workspaceId: string; environmentId: string;
     authorize: (proof: {leaseId: string; providerReference: string; observedAt: number}) => Promise<boolean>
   }): Promise<'resumed' | 'unavailable'> {
+    await this.assertLaunchEnabled(args.workspaceId)
     const scope = {workspaceId: args.workspaceId, environmentId: args.environmentId}
     const lease = await this.dependencies.repository.getActiveSandboxLease(scope)
     // Only Boat's disk-only stop/resume contract proves that the previous OS processes cannot return.
@@ -427,6 +436,16 @@ export class CloudAgentMachineService {
     if (!await this.ownsRecoveryMachine(scope, lease)) return 'unavailable'
     await this.restartManagedHost(machine, lease, scope)
     return 'resumed'
+  }
+
+  private async assertLaunchEnabled(workspaceId: string) {
+    const enabled = this.dependencies.launchEnabled
+      ? await this.dependencies.launchEnabled(workspaceId)
+      : await externalAgentLaunchEnabled(workspaceId)
+        && (await getOverlayRuntimeConfig()).features.overlayCloudEnvironments === true
+    if (!enabled) {
+      throw new CloudAgentMachineError('External agent runtimes are disabled for this deployment.', 404, 'feature_disabled')
+    }
   }
 
   private async ownsRecoveryMachine(args: {workspaceId: string; environmentId: string}, expected: AgentSandboxLease) {

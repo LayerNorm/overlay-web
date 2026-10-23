@@ -201,18 +201,19 @@ function ComputerSection({ draft, onChange }: {
 }
 
 /** The dialog's fields. Presentational: all state lives in `draft`. */
-export function NewAgentFields({ draft, onChange, modelOptions, computersAvailable, otherAgentsAvailable = false, otherAgentsNote = 'Coming soon', onOpenMachineSetup }: {
+export function NewAgentFields({ draft, onChange, modelOptions, computersAvailable, otherAgentsAvailable = false, otherAgentsEnabled = otherAgentsAvailable, otherAgentsNote = 'Paid plans', onOpenMachineSetup }: {
   draft: NewAgentDraft
   onChange(patch: Partial<NewAgentDraft>): void
   modelOptions: ModelOption[]
   computersAvailable: boolean
   /** Overlay Cloud agents are offered only where the deployment supports them. */
   otherAgentsAvailable?: boolean
+  otherAgentsEnabled?: boolean
   /** Why Other agent is unavailable ("Coming soon", or "Paid plans" on a free plan). */
   otherAgentsNote?: string
   onOpenMachineSetup?(): void
 }) {
-  const other = draft.kind === 'other'
+  const other = otherAgentsAvailable && draft.kind === 'other'
   const patchOther = useCallback((patch: Partial<OtherAgentDraft>) => onChange({ other: { ...draft.other, ...patch } }), [draft.other, onChange])
   return (
     <div className="space-y-3.5">
@@ -245,7 +246,7 @@ export function NewAgentFields({ draft, onChange, modelOptions, computersAvailab
           className="min-h-20 resize-none!"
         />
       </div>
-      <div>
+      {otherAgentsEnabled ? <div>
         <FieldLabel info="Overlay agents are built into Overlay. Other agents (Claude Code, Codex) bring their own tools and run on a machine.">Type</FieldLabel>
         <SegmentedControl
           ariaLabel="Agent type"
@@ -254,7 +255,7 @@ export function NewAgentFields({ draft, onChange, modelOptions, computersAvailab
           options={otherAgentsAvailable ? TYPE_OPTIONS : TYPE_OPTIONS.map((option) => (option.value === 'other' ? { ...option, description: otherAgentsNote, disabled: true } : option))}
           onChange={(kind) => onChange({ kind })}
         />
-      </div>
+      </div> : null}
       {other ? (
         <OtherAgentFields
           other={draft.other}
@@ -346,7 +347,7 @@ export function NewAgentDialog({ open, workspaceId, onClose, onCreated, onOpenMa
   const otherAgentsNote = freePlan ? 'Paid plans' : 'Coming soon'
   const modelOptions = useModelOptions()
   const [rawDraft, setDraft] = useState(initialNewAgentDraft)
-  const draft = { ...rawDraft, modelId: resolveDraftModelId(rawDraft.modelId, modelOptions) }
+  const draft = { ...rawDraft, kind: otherAgentsAvailable ? rawDraft.kind : 'overlay' as const, modelId: resolveDraftModelId(rawDraft.modelId, modelOptions) }
   const [busy, setBusy] = useState(false)
   const update = useCallback((patch: Partial<NewAgentDraft>) => setDraft((current) => ({ ...current, ...patch })), [])
   const cloud = useCloudAgentCreate({
@@ -430,6 +431,7 @@ export function NewAgentDialog({ open, workspaceId, onClose, onCreated, onOpenMa
             modelOptions={modelOptions}
             computersAvailable={computersAvailable}
             otherAgentsAvailable={otherAgentsAvailable}
+            otherAgentsEnabled={capabilities.cloudAgents === true}
             otherAgentsNote={otherAgentsNote}
             {...(onOpenMachineSetup ? { onOpenMachineSetup } : {})}
           />

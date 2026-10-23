@@ -2238,7 +2238,7 @@ export const deleteHarnessSessionsForBindingByServer = mutation({
 })
 
 export const claimCommandsByServer = mutation({
-  args: { serverSecret: v.string(), workspaceId: v.string(), environmentId: v.string(), now: v.number(), leaseMs: v.number(), limit: v.number() },
+  args: { serverSecret: v.string(), workspaceId: v.string(), environmentId: v.string(), now: v.number(), leaseMs: v.number(), limit: v.number(), allowNewWork: v.optional(v.boolean()) },
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
     const environment = await ctx.db
@@ -2270,7 +2270,7 @@ export const claimCommandsByServer = mutation({
         .withIndex('by_environmentId_status_sequence', (q) =>
           q.eq('environmentId', args.environmentId).eq('status', 'pending'),
         )
-        .take(args.limit),
+        .take(args.allowNewWork === false ? MAX_COMMANDS_PER_POLL * 4 : args.limit),
       ctx.db
         .query('agentRunCommands')
         .withIndex('by_environmentId_status_claimExpiresAt', (q) =>
@@ -2298,6 +2298,9 @@ export const claimCommandsByServer = mutation({
       const row = candidates[i]!
       const run = candidateRuns[i]
       if (blocked && row.sequence > blocked.sequence) break
+      if (args.allowNewWork === false && !['cancel', 'shutdown', 'observe'].includes(row.type)) {
+        neutralized.add(row.commandId)
+      }
       if (run?.remoteLifecycle && (environment.capabilities as { remoteLifecycleVersion?: number }).remoteLifecycleVersion !== 2) {
         await applyRemoteFact(ctx, run, { type: 'health', process: 'unknown' }, args.now)
         neutralized.add(row.commandId)

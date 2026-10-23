@@ -87,6 +87,7 @@ const OverlayFeatureFlagsSchema = z
     sso: z.boolean().optional(),
     multiTenant: z.boolean().optional(),
     connectedAgentControlPlane: z.boolean().optional(),
+    externalAgents: z.boolean().optional(),
     remoteAgentRuns: z.boolean().optional(),
     connectedAgentArtifacts: z.boolean().optional(),
     connectedAgentDrive: z.boolean().optional(),

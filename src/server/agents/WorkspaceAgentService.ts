@@ -16,8 +16,10 @@ import {
   WORKSPACE_AGENT_HARNESSES,
 } from '@overlay/workspace-contracts'
 import { DEFAULT_MODEL_ID, FREE_TIER_AUTO_MODEL_ID } from '@/shared/ai/gateway/model-types'
+import { parseByoModelId } from '@/shared/agents/agent-model'
 import type { WorkspaceService } from '@/server/workspaces/WorkspaceService'
 import type { WorkspaceAgentRepository } from './WorkspaceAgentRepository'
+import type { ExternalAgentPolicyDecision, ExternalAgentPolicyRecord } from './external-agent-policy'
 
 export class WorkspaceAgentServiceError extends Error {
   constructor(
@@ -35,6 +37,14 @@ export class WorkspaceAgentService {
     private readonly workspaces: WorkspaceService,
     private readonly id: () => string = randomUUID,
     private readonly now: () => number = Date.now,
+    private readonly externalAgentPolicy: (args: {
+      workspaceId: string
+      record: ExternalAgentPolicyRecord
+    }) => Promise<ExternalAgentPolicyDecision> = async ({ record }) => ({
+      external: record.harness !== undefined && record.harness !== 'overlay'
+        || parseByoModelId(record.modelId) !== null,
+      allowed: false,
+    }),
   ) {}
 
   async list(args: { actorUserId: string; workspaceId: string; includeArchived?: boolean }) {
@@ -166,6 +176,12 @@ export class WorkspaceAgentService {
       throw new WorkspaceAgentServiceError('validation', 'One or more teams do not exist in this workspace')
     }
     const agentId = this.id()
+    await this.assertExternalAgentAllowed({
+      id: agentId,
+      workspaceId: access.workspace.id,
+      harness,
+      modelId,
+    })
     try {
       return await this.repository.create({
         agentId,
@@ -212,6 +228,19 @@ export class WorkspaceAgentService {
         harness: args.input.harness,
       })
     }
+    const merged = {
+      id: agent.id,
+      workspaceId: access.workspace.id,
+      harness: args.input.harness ?? agent.harness,
+      modelId: args.input.modelId ?? agent.modelId,
+    }
+    await this.assertExternalAgentAllowed(merged)
+    await this.assertExternalAgentAllowed({
+      id: agent.id,
+      workspaceId: access.workspace.id,
+      harness: agent.harness,
+      modelId: agent.modelId,
+    })
     let teamIds: string[] | undefined
     if (args.input.teamIds !== undefined) {
       teamIds = unique(args.input.teamIds)
@@ -246,6 +275,16 @@ export class WorkspaceAgentService {
     })
     if (!updated) throw new WorkspaceAgentServiceError('not_found', 'Agent not found')
     return updated
+  }
+
+  private async assertExternalAgentAllowed(record: ExternalAgentPolicyRecord): Promise<void> {
+    const decision = await this.externalAgentPolicy({
+      workspaceId: record.workspaceId,
+      record,
+    })
+    if (decision.external && !decision.allowed) {
+      throw new WorkspaceAgentServiceError('forbidden', 'External agent runtimes are disabled for this deployment')
+    }
   }
 
   async archive(args: { actorUserId: string; workspaceId: string; agentId: string }) {

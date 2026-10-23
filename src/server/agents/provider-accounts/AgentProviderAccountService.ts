@@ -58,10 +58,17 @@ export class AgentProviderAccountService {
     codexFetch?: CodexFetch
     sleep?: (ms: number) => Promise<void>
     now?: () => number
+    launchEnabled?: (workspaceId?: string) => boolean | Promise<boolean>
   }) {}
 
   /** Identifies this server in the refresh lock, so only the holder releases it. */
   private readonly lockOwner = `${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`
+
+  private async assertLaunchEnabled() {
+    if (this.dependencies.launchEnabled && !await this.dependencies.launchEnabled()) {
+      throw new AgentProviderAccountError('External agent runtimes are disabled for this deployment.', 404, 'feature_disabled')
+    }
+  }
 
   async list(userId: string): Promise<AgentProviderAccount[]> {
     return await this.dependencies.repository.listPublic({ userId })
@@ -74,6 +81,7 @@ export class AgentProviderAccountService {
     label?: string
     secret: unknown
   }): Promise<AgentProviderAccount> {
+    await this.assertLaunchEnabled()
     if (args.provider === 'codex' && args.method === 'subscription') {
       throw new AgentProviderAccountError('Sign in with ChatGPT instead of pasting a credential.', 400, 'use_sign_in')
     }
@@ -107,6 +115,7 @@ export class AgentProviderAccountService {
 
   /** Replaces the credential on an existing account (for example after it expired) and clears its error. */
   async reconnect(args: { userId: string; accountId: string; secret: unknown }): Promise<AgentProviderAccount> {
+    await this.assertLaunchEnabled()
     const account = await this.requireOwned(args.userId, args.accountId)
     if (account.provider === 'codex' && account.method === 'subscription') {
       throw new AgentProviderAccountError('Sign in with ChatGPT again to reconnect this account.', 400, 'use_sign_in')
@@ -190,6 +199,7 @@ export class AgentProviderAccountService {
 
   /** Starts signing in to Codex with ChatGPT: a one-time code the person enters at OpenAI. */
   async startCodexSignIn(): Promise<CodexDeviceCode> {
+    await this.assertLaunchEnabled()
     return await this.codex(() => requestCodexDeviceCode({ fetch: this.dependencies.codexFetch, now: () => this.now() }))
   }
 
@@ -204,6 +214,7 @@ export class AgentProviderAccountService {
     label?: string
     accountId?: string
   }): Promise<{ status: 'pending' } | { status: 'connected'; account: AgentProviderAccount }> {
+    await this.assertLaunchEnabled()
     let tokens: CodexTokenSet
     try {
       tokens = await pollCodexDeviceCode({ deviceAuthId: args.deviceAuthId, userCode: args.userCode }, { fetch: this.dependencies.codexFetch, now: () => this.now() })

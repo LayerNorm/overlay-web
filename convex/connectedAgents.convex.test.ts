@@ -11,6 +11,35 @@ const secret = 'connected-agent-contract-secret'
 beforeAll(() => { process.env.INTERNAL_API_SECRET = secret })
 
 describe('Convex connected-agent provider contract', () => {
+  test('launch-off polling neutralizes queued starts but still delivers cancellation', async () => {
+    const convex = convexTest(schema, modules)
+    const call = async <T>(operation: string, args: Record<string, unknown>): Promise<T> => {
+      return await convex.mutation(reference(operation), { ...args, serverSecret: secret }) as T
+    }
+    const workspaceId = 'launch_off_workspace'
+    const environmentId = 'launch_off_environment'
+    await call('createEnvironmentByServer', {
+      id: environmentId, workspaceId, kind: 'local', name: 'Host', status: 'online',
+      capabilities: {}, now: 1,
+    })
+    await call('enqueueCommandByServer', {
+      id: 'launch_off_start', workspaceId, environmentId, runId: 'launch_off_run',
+      type: 'start', payload: { prompt: 'must not run' }, now: 2,
+    })
+    await call('enqueueCommandByServer', {
+      id: 'launch_off_cancel', workspaceId, environmentId, runId: 'launch_off_run',
+      type: 'cancel', payload: {}, now: 3,
+    })
+
+    const commands = await call<Array<{ id: string; type: string }>>('claimCommandsByServer', {
+      workspaceId, environmentId, now: 4, leaseMs: 5_000, limit: 10, allowNewWork: false,
+    })
+    expect(commands.map(({ id, type }) => [id, type])).toEqual([
+      ['launch_off_start', 'shutdown'],
+      ['launch_off_cancel', 'cancel'],
+    ])
+  })
+
   test('rejects a missing server capability before reading tenant state', async () => {
     const convex = convexTest(schema, modules)
     await expect(convex.mutation(reference('createEnvironmentByServer'), {

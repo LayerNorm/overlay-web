@@ -54,10 +54,13 @@ export async function startWorkspaceAgentTurns(args: {
   }
   await Promise.all(invocations.map(async (invocation) => {
     try {
+      if (invocation.externalAgent) {
+        throw new WorkspaceAgentInvocationError('not_entitled', 'This external agent runtime is disabled.')
+      }
       if (invocation.remoteTarget?.protocolAdapter === 'harness') {
         // Managed harness runtimes were removed; the room gets the failure
         // message rather than a silent switch to a different runtime.
-        throw new WorkspaceAgentInvocationError('not_entitled', 'This agent’s hosted runtime is no longer available. Recreate it as an Overlay agent or connect your own machine.')
+        throw new WorkspaceAgentInvocationError('not_entitled', 'This external agent runtime is no longer available.')
       }
       if (invocation.remoteTarget) {
         await startRemoteWorkspaceAgentTurn({

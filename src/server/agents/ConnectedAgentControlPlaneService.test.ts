@@ -28,6 +28,8 @@ function fixture(overrides: Partial<AgentEnvironment> = {}, credentialOverrides:
   driveEnabled: boolean
   policyLimits?: ConstructorParameters<typeof ConnectedAgentControlPlaneService>[0]['policyLimits']
   policyProjectionEnabled?: boolean
+  launchEnabled?: boolean
+  settleUsage?: (settlement: Parameters<ConnectedAgentControlPlaneService['finalizeRemoteRunUsage']>[0]) => Promise<void>
 } = { driveEnabled: false }) {
   const environment: AgentEnvironment = {
     id: 'environment-1', workspaceId: 'workspace-1', kind: 'local', name: 'Test host',
@@ -54,6 +56,17 @@ function fixture(overrides: Partial<AgentEnvironment> = {}, credentialOverrides:
         ? environment
         : null
     },
+    async listEnvironments(args: { workspaceId: string }) {
+      return args.workspaceId === environment.workspaceId ? [environment] : []
+    },
+    async listBindings(args: { workspaceId: string }) {
+      return args.workspaceId === environment.workspaceId ? [] : []
+    },
+    async revokeEnvironment(args: { workspaceId: string; environmentId: string }) {
+      return args.workspaceId === environment.workspaceId && args.environmentId === environment.id
+    },
+    async disableBindingsForAgent() { return true },
+    async claimCommands() { return [] },
     async updateEnvironmentFilesystemGrant(args: Parameters<ConnectedAgentRepository['updateEnvironmentFilesystemGrant']>[0]) {
       if (args.workspaceId !== environment.workspaceId || args.environmentId !== environment.id) return null
       scopeUpdates.push(args)
@@ -73,15 +86,74 @@ function fixture(overrides: Partial<AgentEnvironment> = {}, credentialOverrides:
       const entry = { ...input, id: input.id ?? `audit-${audits.length}`, createdAt: input.createdAt ?? NOW }
       audits.push(entry); return entry
     }, async list() { return audits } }),
-    workspaces: {} as WorkspaceService,
+    workspaces: {
+      async resolveActiveWorkspace() {
+        return { workspace: { id: environment.workspaceId }, membership: { role: 'owner' } }
+      },
+    } as unknown as WorkspaceService,
     now: () => NOW,
     isEnabled: () => true,
+    launchEnabled: () => options.launchEnabled !== false,
     driveEnabled: () => options.driveEnabled,
+    settleUsage: options.settleUsage,
     policyLimits: options.policyLimits,
     policyProjectionEnabled: options.policyProjectionEnabled,
   })
   return { service, environment, repository, credential, scopeUpdates, audits }
 }
+
+test('launch-off preserves authorized host/read and cleanup paths while rejecting setup', async () => {
+  let settled = 0
+  const f = fixture({}, {}, {
+    driveEnabled: false,
+    launchEnabled: false,
+    settleUsage: async () => { settled += 1 },
+  })
+  await assertControlPlaneError(
+    () => f.service.createEnrollmentSession({ actorUserId: 'user-1', workspaceId: f.environment.workspaceId }),
+    'feature_disabled',
+  )
+  assert.equal((await f.service.listEnvironments({
+    actorUserId: 'user-1',
+    workspaceId: f.environment.workspaceId,
+  })).length, 1)
+  await f.service.revokeEnvironment({
+    actorUserId: 'user-1',
+    workspaceId: f.environment.workspaceId,
+    environmentId: f.environment.id,
+  })
+  await f.service.disableBindings({
+    actorUserId: 'user-1',
+    workspaceId: f.environment.workspaceId,
+    agentId: 'agent-1',
+  })
+  const host = await f.service.authenticateHostRequest(signedRequest({
+    target: '/api/v1/agent-environments/environment-1/events',
+  }))
+  assert.equal(host.environment.id, f.environment.id)
+  await f.service.pollCommands(host, 10)
+  await f.service.finalizeRemoteRunUsage({
+    agentId: 'agent-1',
+    conversationId: 'conversation-1',
+    environmentId: f.environment.id,
+    forceFreeTierLimits: false,
+    inputTokens: 1,
+    modelId: 'test-model',
+    modelUsageBilling: 'overlay',
+    memoryEnabled: false,
+    messageId: 'message-1',
+    operationId: 'operation-1',
+    outputTokens: 1,
+    outcome: 'completed',
+    reservationId: null,
+    runId: 'run-1',
+    sandboxBilling: null,
+    userId: 'user-1',
+    turnId: 'turn-1',
+    workspaceId: f.environment.workspaceId,
+  })
+  assert.equal(settled, 1)
+})
 
 test('drive activation persists only the managed Cloud root and is idempotent', async () => {
   const f = fixture({ kind: 'overlay_cloud', capabilities: { drive: { version: 1 } },

@@ -286,6 +286,7 @@ export interface ConnectedAgentRepository {
     now: number
     leaseMs: number
     limit: number
+    allowNewWork?: boolean
   }): Promise<AgentRunCommand[]>
   /** Highest command sequence the host may skip: everything below the first still-open command. */
   commandResolutionFloor(args: { workspaceId: string; environmentId: string }): Promise<number>

@@ -71,11 +71,15 @@ export function withObservabilityProviderCapabilities(
     analytics: capabilities.analytics && analyticsProvider === 'posthog',
     errorReporting: capabilities.errorReporting && errorReportingProvider === 'sentry',
     connectedAgents: runtimeConfig.features?.connectedAgentControlPlane === true,
+    externalAgents: runtimeConfig.features?.externalAgents === true
+      && runtimeConfig.features?.connectedAgentControlPlane === true
+      && runtimeConfig.features?.remoteAgentRuns === true,
     // Flag = hosted rollout control; a resolvable provider runtime = the
     // deployment actually has computer credentials (BOAT_API_KEY, or legacy BOX_API_KEY, for `box`).
     // Both are required, so self-host deployments without keys report the
     // capability absent instead of surfacing 503s in the UI.
-    cloudAgents: runtimeConfig.features?.connectedAgentControlPlane === true
+    cloudAgents: runtimeConfig.features?.externalAgents === true
+      && runtimeConfig.features?.connectedAgentControlPlane === true
       && runtimeConfig.features?.overlayCloudEnvironments === true
       && runtimeConfig.features?.remoteAgentRuns === true,
     computers: runtimeConfig.features?.computers === true

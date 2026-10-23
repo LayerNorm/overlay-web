@@ -6,6 +6,7 @@ import {
   reconcileUnverifiedAgentActionClaims,
   shouldPrepareConnectedAgentDrive,
 } from './workspace-agent-invocation'
+import { isExternalAgentInvocation } from './external-agent-policy'
 
 const root = process.cwd()
 
@@ -19,6 +20,21 @@ test('drive starts require the rollout flag, current host capability and local o
     assert.equal(shouldPrepareConnectedAgentDrive({ ...cloud, environmentKind }), false)
     assert.equal(shouldPrepareConnectedAgentDrive({ ...cloud, environmentKind, optedIn: true }), true)
   }
+})
+
+test('a legacy external agent with no usable target cannot be classified as native', () => {
+  assert.equal(isExternalAgentInvocation({
+    id: 'agent-legacy',
+    workspaceId: 'workspace-1',
+    harness: 'overlay',
+    modelId: 'openai/gpt-4.1',
+  }, true, false), true)
+  assert.equal(isExternalAgentInvocation({
+    id: 'agent-native',
+    workspaceId: 'workspace-1',
+    harness: 'overlay',
+    modelId: 'openai/gpt-4.1',
+  }, false, false), false)
 })
 
 test('agent external-action claims require a successful tool result', () => {
