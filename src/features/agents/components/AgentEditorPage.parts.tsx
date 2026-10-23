@@ -8,6 +8,7 @@ import {
   AccessSelector,
   AgentAvatar,
   AgentBehaviorFields,
+  type AgentModelFieldProps,
   AgentMemoriesSection,
   OverlayAgentPermissionsField,
   AgentTypeSelector,
@@ -39,7 +40,7 @@ type AgentEditorFormSectionProps = {
   computersAvailable: boolean
   connectedAgentsEnabled: boolean
   connectedAgentsChecked: boolean
-  modelOptions: { value: string; label: string }[]
+  modelField: AgentModelFieldProps
   valid: boolean
   busy: boolean
   form: ReturnType<typeof useAgentEditorForm>
@@ -62,7 +63,7 @@ function AgentEditorFormSection({
   computersAvailable,
   connectedAgentsEnabled,
   connectedAgentsChecked,
-  modelOptions,
+  modelField,
   valid,
   busy,
   form,
@@ -182,7 +183,7 @@ function AgentEditorFormSection({
             onInstructionsChange={(value) => { setInstructions(value); markDirty() }}
             modelId={modelId}
             onModelChange={(value) => { setModelId(value); markDirty() }}
-            modelOptions={modelOptions}
+            modelField={modelField}
             enabledToolGroups={enabledToolGroups}
             onToggleToolGroup={toggleToolGroup}
             advanced={advanced}
@@ -317,6 +318,7 @@ function AgentEditorFormFooter({
 
 export function AgentEditorView({
   presentation,
+  embedded,
   panelMode,
   onTogglePanelMode,
   title,
@@ -334,7 +336,7 @@ export function AgentEditorView({
   computersAvailable,
   connectedAgentsEnabled,
   connectedAgentsChecked,
-  modelOptions,
+  modelField,
   form,
   runtime,
   byo,
@@ -348,6 +350,7 @@ export function AgentEditorView({
   archiveAgent,
 }: {
   presentation: 'page' | 'panel'
+  embedded: boolean
   panelMode?: 'dialog' | 'side'
   onTogglePanelMode?: () => void
   title: string
@@ -365,7 +368,7 @@ export function AgentEditorView({
   computersAvailable: boolean
   connectedAgentsEnabled: boolean
   connectedAgentsChecked: boolean
-  modelOptions: { value: string; label: string }[]
+  modelField: AgentModelFieldProps
   form: ReturnType<typeof useAgentEditorForm>
   runtime: ReturnType<typeof useAgentRuntime>
   byo: ReturnType<typeof useByoConnection>
@@ -401,7 +404,12 @@ export function AgentEditorView({
         />
       ) : undefined}
     >
-      <AppScreenBody padding="lg" maxWidth="xl" className={inPanel ? 'min-h-full pb-4 sm:pb-4' : 'min-h-full'} style={inPanel ? { background: 'transparent' } : undefined}>
+      <AppScreenBody
+        padding={embedded ? 'none' : 'lg'}
+        maxWidth={embedded ? 'none' : 'xl'}
+        className={inPanel ? 'min-h-full pb-4 sm:pb-4' : 'min-h-full'}
+        style={inPanel ? { background: 'transparent' } : undefined}
+      >
         {loading ? (
           <AgentEditorSkeleton />
         ) : loadFailed || (mode === 'edit' && !agent) ? (
@@ -426,7 +434,7 @@ export function AgentEditorView({
             computersAvailable={computersAvailable}
             connectedAgentsEnabled={connectedAgentsEnabled}
             connectedAgentsChecked={connectedAgentsChecked}
-            modelOptions={modelOptions}
+            modelField={modelField}
             valid={valid}
             busy={busy}
             form={form}
@@ -445,6 +453,8 @@ export function AgentEditorView({
       </AppScreenBody>
     </AppScreenShell>
   )
+
+  if (embedded) return editor
 
   if (presentation === 'panel') {
     if (panelMode === 'side') {

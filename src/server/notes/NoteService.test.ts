@@ -66,6 +66,23 @@ test('NoteService.createNote checks billing write quota before creating', async 
   assert.equal(createCalls, 0)
 })
 
+test('NoteService.createNote forwards a conversation id only when provided', async () => {
+  const createArgs: Array<Parameters<NoteRepository['createNote']>[0]> = []
+  const repository = createNoteRepository()
+  const originalCreate = repository.createNote.bind(repository)
+  repository.createNote = async (args) => {
+    createArgs.push(args)
+    return originalCreate(args)
+  }
+  const service = new NoteService({ noteRepository: repository })
+
+  await service.createNote({ userId: 'user_1', title: 'Thread note', content: 'body', conversationId: 'conv_1' })
+  await service.createNote({ userId: 'user_1', title: 'Personal note', content: 'body' })
+
+  assert.equal(createArgs[0]?.conversationId, 'conv_1')
+  assert.equal('conversationId' in createArgs[1]!, false)
+})
+
 test('NoteService.updateNote forwards the expected revision to the repository', async () => {
   let expectedRevision: number | undefined
   const repository = createNoteRepository()

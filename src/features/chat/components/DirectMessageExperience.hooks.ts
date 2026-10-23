@@ -15,7 +15,6 @@ import {
 import type { useRouter } from 'next/navigation'
 import type {
   ChannelSummary,
-  Computer,
   ConversationParticipant,
   ConversationPin,
   ConversationPresence,
@@ -836,48 +835,6 @@ export function useAgentDirectory({
     }
   }, [activeWorkspaceId, showcase, conversationId, isAgentShowcase])
   return directoryAgentsByPrincipal
-}
-
-export function useAgentDesktop({
-  showcase,
-  computersEnabled,
-  activeWorkspaceId,
-  headerAgentId,
-}: {
-  showcase: boolean
-  computersEnabled: boolean | undefined
-  activeWorkspaceId: string | null | undefined
-  headerAgentId: string | undefined
-}) {
-  // The bound computer behind a one-to-one agent DM — surfaced as a subtle
-  // "Desktop" affordance in the header (Grokbot-style) when one is usable.
-  const [agentComputer, setAgentComputer] = useState<Computer | null>(null)
-  const [desktopOpenBusy, setDesktopOpenBusy] = useState(false)
-  useEffect(() => {
-    if (showcase || !computersEnabled || !activeWorkspaceId || !headerAgentId) {
-      queueMicrotask(() => setAgentComputer(null))
-      return
-    }
-    let cancelled = false
-    void overlayAppClient.computers.list(activeWorkspaceId).then((result) => {
-      if (cancelled) return
-      setAgentComputer(result.computers.find(
-        (computer) => computer.ownerType === 'agent' && computer.ownerId === headerAgentId,
-      ) ?? null)
-    }, () => undefined)
-    return () => { cancelled = true }
-  }, [showcase, computersEnabled, activeWorkspaceId, headerAgentId])
-  const openAgentDesktop = useCallback(() => {
-    if (!activeWorkspaceId || !agentComputer || desktopOpenBusy) return
-    setDesktopOpenBusy(true)
-    void overlayAppClient.computers.openDesktop(activeWorkspaceId, agentComputer.id)
-      .then((ticket) => {
-        if (ticket.url) window.open(ticket.url, '_blank', 'noopener')
-      })
-      .catch(() => undefined)
-      .finally(() => setDesktopOpenBusy(false))
-  }, [activeWorkspaceId, agentComputer, desktopOpenBusy])
-  return { agentComputer, desktopOpenBusy, openAgentDesktop }
 }
 
 function resolveRoomIdentity({
@@ -2185,7 +2142,6 @@ export function useDirectMessageRoom({
   activeWorkspaceId,
   convexRoomSubscriptionEnabled,
   refreshNotifications,
-  computersEnabled,
   onOpenAttachmentPreview,
 }: {
   conversationId: string
@@ -2197,7 +2153,6 @@ export function useDirectMessageRoom({
   activeWorkspaceId: string | null | undefined
   convexRoomSubscriptionEnabled: boolean
   refreshNotifications: () => void
-  computersEnabled: boolean
   onOpenAttachmentPreview: RoomMessageContext['onOpenAttachmentPreview']
 }) {
   const isAgentShowcase = showcase && conversationId === SHOWCASE_AGENT_CONVERSATION_ID
@@ -2259,12 +2214,6 @@ export function useDirectMessageRoom({
     directoryAgentsByPrincipal,
     pins: collab.pins,
     threadRootId: thread.threadRootId,
-  })
-  const desktop = useAgentDesktop({
-    showcase,
-    computersEnabled,
-    activeWorkspaceId,
-    headerAgentId: vm.headerAgent?.id,
   })
   const commitDraftConversation = useDraftConversation({
     conversationId,
@@ -2384,7 +2333,6 @@ export function useDirectMessageRoom({
     thread,
     transcript,
     vm,
-    desktop,
     sendMessage,
     composer,
     remoteControls,

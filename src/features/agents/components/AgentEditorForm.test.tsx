@@ -18,6 +18,15 @@ import {
 // tsconfig, so they resolve React from the global.
 ;(globalThis as typeof globalThis & { React: typeof React }).React = React
 
+const modelField = {
+  favoriteScope: 'test-user',
+  isFreeTier: false,
+  isFreeTierWorkspace: false,
+  modelPickerLabel: 'Agent model',
+  selectableTextModels: [],
+  textModelsLoading: false,
+}
+
 test('access selector marks the active mode and explains its effect', () => {
   const everyone = renderToStaticMarkup(<AccessSelector value="workspace" onChange={() => undefined} />)
   assert.match(everyone, /Everyone/)
@@ -63,7 +72,7 @@ test('overlay fields render instructions, tools, and the mention-first note', ()
       onInstructionsChange={() => undefined}
       modelId="test-model"
       onModelChange={() => undefined}
-      modelOptions={[{ value: 'test-model', label: 'Test model' }]}
+      modelField={modelField}
       enabledToolGroups={new Set()}
       onToggleToolGroup={() => undefined}
       advanced
@@ -187,7 +196,7 @@ const behaviorBase = {
   onInstructionsChange: () => undefined,
   modelId: 'test-model',
   onModelChange: () => undefined,
-  modelOptions: [{ value: 'test-model', label: 'Test model' }],
+  modelField,
   enabledToolGroups: new Set<string>(),
   onToggleToolGroup: () => undefined,
   advanced: false,
@@ -239,7 +248,7 @@ test('overlay fields render the computer accessory under its tool row', () => {
       onInstructionsChange={() => undefined}
       modelId="test-model"
       onModelChange={() => undefined}
-      modelOptions={[{ value: 'test-model', label: 'Test model' }]}
+      modelField={modelField}
       enabledToolGroups={new Set(['computer'])}
       onToggleToolGroup={() => undefined}
       advanced={false}

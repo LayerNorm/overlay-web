@@ -10,7 +10,10 @@ import { ConfirmDialog } from '@overlay/ui/overlays'
 import type { Computer, ComputerSize, SurfaceBinding, SurfaceChannelOption, SurfaceConnection, WorkspaceAgentCreatureShape } from '@overlay/workspace-contracts'
 import type { AgentEnvironmentResource } from '@overlay/api-client'
 import type { WorkspaceAgentVisibility } from '@overlay/workspace-contracts'
+import { ChatModelPicker, type ChatModelPickerProps } from '@overlay/chat-react'
 import { AGENT_TOOL_GROUPS } from '@/shared/agents/tool-groups'
+import { MODEL_RECOMMENDATIONS } from '@/shared/ai/gateway/model-data'
+import { isFreeTierChatModelId } from '@/shared/ai/gateway/model-types'
 import { generatedAgentSetupPrompt } from '../lib/byo-agent-setup'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { unwrapPaginatedData } from '@/shared/api/pagination'
@@ -22,6 +25,13 @@ import type { SurfaceChannelPicker } from './use-agent-surfaces'
 
 export type AgentType = 'overlay' | 'byo'
 export type EnvironmentChoice = 'existing' | 'connect'
+export type AgentModelFieldProps = Pick<
+  ChatModelPickerProps,
+  'favoriteScope' | 'isFreeTier' | 'selectableTextModels' | 'textModelsLoading'
+> & {
+  isFreeTierWorkspace: boolean
+  modelPickerLabel: string
+}
 
 /**
  * Single-column stacked option row (radio behavior). One control per row,
@@ -111,7 +121,7 @@ export function AgentTypeSelector({ value, onChange, hidden }: {
           onSelect={() => onChange('overlay')}
           icon={<Bot size={15} />}
           label="Create your own agent"
-          description="Runs on Overlay Cloud — pick a runtime below. No machines to connect."
+          description="Runs on Overlay Cloud. Pick a runtime below. No machines to connect."
         />
         <OptionRow
           checked={value === 'byo'}
@@ -141,7 +151,13 @@ const MEMORY_PREVIEW_COUNT = 5
  * Edit mode only; rows delete through the same endpoint as the Memories page,
  * and "view all" deep-links into that page pre-filtered to this agent.
  */
-export function AgentMemoriesSection({ agentPrincipalId }: { agentPrincipalId: string }) {
+export function AgentMemoriesSection({
+  agentPrincipalId,
+  sidebarCompact = false,
+}: {
+  agentPrincipalId: string
+  sidebarCompact?: boolean
+}) {
   const [rows, setRows] = useState<AgentMemoryRow[] | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   useEditorLoad(rows === null)
@@ -183,13 +199,15 @@ export function AgentMemoriesSection({ agentPrincipalId }: { agentPrincipalId: s
   const preview = rows.slice(0, MEMORY_PREVIEW_COUNT)
   return (
     <div>
-      <p className='text-xs font-medium'>
+      <p className={`text-xs font-medium ${sidebarCompact ? 'text-(--muted)' : ''}`}>
         Memories{' '}
         <span className='font-normal text-(--muted-light)'>
           {rows.length}
         </span>
       </p>
-      <div className="mt-1.5 overflow-hidden rounded-xl border border-(--border)">
+      <div className={`mt-1.5 overflow-hidden rounded-[10px] ${
+        sidebarCompact ? 'bg-(--surface-elevated)' : 'border border-(--border)'
+      }`}>
         {preview.map((row) => (
           <div
             key={row.memoryId}
@@ -235,17 +253,21 @@ export function AgentMemoriesSection({ agentPrincipalId }: { agentPrincipalId: s
   )
 }
 
-export function DangerZone({ mode, hasAgent, isDefaultMaster, busy, agentName, onArchive }: {
+export function DangerZone({ mode, hasAgent, isDefaultMaster, busy, agentName, onArchive, sidebarCompact = false }: {
   mode: 'new' | 'edit'
   hasAgent: boolean
   isDefaultMaster: boolean
   busy: boolean
   agentName: string
   onArchive(): void
+  sidebarCompact?: boolean
 }) {
   if (mode !== 'edit' || !hasAgent || isDefaultMaster) return null
   return (
-    <section className="rounded-xl border border-red-500/25 p-4">
+    <section className={sidebarCompact
+      ? 'rounded-[10px] bg-(--surface-subtle) p-3'
+      : 'rounded-xl border border-red-500/25 p-4'
+    }>
       <p className='text-xs font-medium text-(--foreground)'>
         Danger zone
       </p>
@@ -292,7 +314,7 @@ export function AccessSelector({ value, onChange }: { value: WorkspaceAgentVisib
       </div>
       <p className='mt-1.5 text-[11px] leading-4 text-(--muted)'>
         {value === 'creator'
-          ? 'Hidden from everyone else — reported as not found.'
+          ? 'Hidden from everyone else, reported as not found.'
           : 'Everyone in this workspace can see, chat with, or @-mention this agent.'}
       </p>
     </div>
@@ -601,7 +623,7 @@ export function AgentSurfacesSection({
                   <p className="text-xs font-medium text-(--foreground)">Slack · {connection.externalTeamName ?? 'Slack workspace'}</p>
                   {connection.status !== 'active' ? (
                     <p className="mt-0.5 text-[11px] leading-4 text-amber-600 dark:text-amber-400">
-                      {connection.status === 'degraded' ? 'Connection degraded — reconnect Slack to resume.' : 'Uninstalled from Slack — reconnect to resume.'}
+                      {connection.status === 'degraded' ? 'Connection degraded. Reconnect Slack to resume.' : 'Uninstalled from Slack. Reconnect to resume.'}
                     </p>
                   ) : null}
                 </div>
@@ -664,7 +686,7 @@ export function AgentSurfacesSection({
                         disabled={busyId !== null}
                       />
                       <p className="mt-1.5 text-[11px] leading-4 text-(--muted)">
-                        The bot only answers in channels it has joined — invite it with /invite @Overlay.
+                        The bot only answers in channels it has joined. Invite it with /invite @Overlay.
                       </p>
                     </>
                   )}
@@ -746,7 +768,7 @@ export function MasterAgentNotice() {
   )
 }
 
-export function AgentBehaviorFields({ agentType, connectedAgentsEnabled, computersAvailable, computer, instructions, onInstructionsChange, modelId, onModelChange, modelOptions, enabledToolGroups, onToggleToolGroup, advanced, onAdvancedChange, legacyHostedRuntime, adapterId, harnessOptions, onHarnessChange, environmentChoice, onEnvironmentChoiceChange, compatibleEnvironments, environmentsLoading, environmentId, onEnvironmentChange, workingDirectory, onWorkingDirectoryChange, selectedHarnessConnectable, environmentBusy, environmentError, command, copied, onCopyCommand, onBeginConnection, setupEnvironment, setupRoots, onSetupRootsChange, onApproveSetup }: {
+export function AgentBehaviorFields({ agentType, connectedAgentsEnabled, computersAvailable, computer, instructions, onInstructionsChange, modelId, onModelChange, modelField, enabledToolGroups, onToggleToolGroup, advanced, onAdvancedChange, legacyHostedRuntime, adapterId, harnessOptions, onHarnessChange, environmentChoice, onEnvironmentChoiceChange, compatibleEnvironments, environmentsLoading, environmentId, onEnvironmentChange, workingDirectory, onWorkingDirectoryChange, selectedHarnessConnectable, environmentBusy, environmentError, command, copied, onCopyCommand, onBeginConnection, setupEnvironment, setupRoots, onSetupRootsChange, onApproveSetup }: {
   agentType: AgentType
   connectedAgentsEnabled: boolean
   computersAvailable: boolean
@@ -755,7 +777,7 @@ export function AgentBehaviorFields({ agentType, connectedAgentsEnabled, compute
   onInstructionsChange(value: string): void
   modelId: string
   onModelChange(value: string): void
-  modelOptions: Array<{ value: string; label: string }>
+  modelField: AgentModelFieldProps
   enabledToolGroups: Set<string>
   onToggleToolGroup(groupId: string): void
   advanced: boolean
@@ -802,7 +824,7 @@ export function AgentBehaviorFields({ agentType, connectedAgentsEnabled, compute
         onInstructionsChange={onInstructionsChange}
         modelId={modelId}
         onModelChange={onModelChange}
-        modelOptions={modelOptions}
+        modelField={modelField}
         enabledToolGroups={enabledToolGroups}
         onToggleToolGroup={onToggleToolGroup}
         advanced={advanced}
@@ -847,7 +869,7 @@ export function AgentBehaviorFields({ agentType, connectedAgentsEnabled, compute
   )
 }
 
-export function OverlayAgentFields({ instructions, onInstructionsChange, modelId, onModelChange, modelOptions, enabledToolGroups, onToggleToolGroup, advanced, onAdvancedChange, computersAvailable = true, computer }: { instructions: string; onInstructionsChange(value: string): void; modelId: string; onModelChange(value: string): void; modelOptions: Array<{ value: string; label: string }>; enabledToolGroups: Set<string>; onToggleToolGroup(groupId: string): void; advanced: boolean; onAdvancedChange(value: boolean): void; computersAvailable?: boolean; computer?: Omit<ComponentProps<typeof AgentComputerSection>, 'enabled'> }) {
+export function OverlayAgentFields({ instructions, onInstructionsChange, modelId, onModelChange, modelField, enabledToolGroups, onToggleToolGroup, advanced, onAdvancedChange, computersAvailable = true, computer }: { instructions: string; onInstructionsChange(value: string): void; modelId: string; onModelChange(value: string): void; modelField: AgentModelFieldProps; enabledToolGroups: Set<string>; onToggleToolGroup(groupId: string): void; advanced: boolean; onAdvancedChange(value: boolean): void; computersAvailable?: boolean; computer?: Omit<ComponentProps<typeof AgentComputerSection>, 'enabled'> }) {
   const toolGroups = computersAvailable ? AGENT_TOOL_GROUPS : AGENT_TOOL_GROUPS.filter((group) => group.id !== 'computer')
   return (
     <>
@@ -860,26 +882,30 @@ export function OverlayAgentFields({ instructions, onInstructionsChange, modelId
           className={unstyledTextarea(`mt-1.5 min-h-36 w-full resize-y rounded-lg border border-(--border) bg-(--background) px-3 py-2.5 text-sm leading-5 outline-hidden focus:border-(--muted)`)}
         />
       </label>
-      <label className='block text-xs font-medium'>
-        Model
-        <ListboxSelect
-          className='mt-1.5'
-          aria-label='Agent model'
-          value={
-            modelOptions.some((option) => option.value === modelId)
-              ? modelId
-              : (modelOptions[0]?.value ?? modelId)
-          }
-          options={
-            modelOptions.length > 0
-              ? modelOptions
-              : [{ value: modelId, label: modelId }]
-          }
-          onChange={onModelChange}
-          portal
-          buttonClassName='h-9 rounded-lg border border-(--border) bg-(--background) px-3 py-2 text-sm text-(--foreground)'
-        />
-      </label>
+      <div>
+        <p className='text-xs font-medium'>Model</p>
+        <div className='mt-1.5'>
+          <ChatModelPicker
+            placement='field'
+            modelPickerLabel={modelField.modelPickerLabel}
+            selectableTextModels={modelField.selectableTextModels}
+            selectedActModel={modelId}
+            onToggleTextModel={onModelChange}
+            isFreeTier={modelField.isFreeTier}
+            isFreeTierChatModelId={isFreeTierChatModelId}
+            favoriteScope={modelField.favoriteScope}
+            modelRecommendations={MODEL_RECOMMENDATIONS}
+            textModelsLoading={modelField.textModelsLoading}
+            generationMode='text'
+            lockedGenerationMode='text'
+          />
+        </div>
+        {modelField.isFreeTierWorkspace && !isFreeTierChatModelId(modelId) ? (
+          <p className='mt-1.5 text-[11px] leading-4 text-(--muted)'>
+            Free workspaces use free models. This agent will use Auto.
+          </p>
+        ) : null}
+      </div>
       <div>
         <p className="text-xs font-medium">Tools</p>
         <p className='mt-1 text-[11px] leading-4 text-(--muted)'>
@@ -1059,8 +1085,8 @@ function SetupPromptPane({ setupPrompt, copiedPrompt, onCopyPrompt }: {
 }) {
   return (
     <div className="space-y-2">
-      <p className="text-[11px] leading-4 text-(--muted)">Paste this into a chat with the agent on this machine — it runs the connection command for you and keeps it alive.</p>
-      <div className="rounded-lg border border-(--border) bg-(--background) p-2.5"><pre className="max-h-44 overflow-y-auto whitespace-pre-wrap wrap-break-word px-0.5 font-mono text-[11px] leading-4 text-(--foreground)">{setupPrompt}</pre></div>
+      <p className="text-[11px] leading-4 text-(--muted)">Paste this into a chat with the agent on this machine. It runs the connection command for you and keeps it alive.</p>
+      <div className="rounded-lg border border-(--border) bg-(--background) p-2.5"><pre className="whitespace-pre-wrap wrap-break-word px-0.5 font-mono text-[11px] leading-4 text-(--foreground)">{setupPrompt}</pre></div>
       <Button variant="secondary" size="sm" onClick={onCopyPrompt} className="gap-1.5">{copiedPrompt ? <><Check size={13} /> Copied</> : <><Copy size={13} /> Copy prompt</>}</Button>
     </div>
   )

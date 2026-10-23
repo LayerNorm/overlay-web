@@ -90,6 +90,9 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       content: body.content,
       tags: body.tags,
       clientId: body.clientId,
+      ...(typeof body.conversationId === 'string' && body.conversationId.trim()
+        ? { conversationId: body.conversationId.trim() }
+        : {}),
       userId: auth.userId,
       workspaceId: context.workspace.workspace.id,
       scope: parseResourceScope((body as { scope?: unknown }).scope),
