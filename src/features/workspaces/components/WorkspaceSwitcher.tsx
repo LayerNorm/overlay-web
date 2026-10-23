@@ -4,7 +4,9 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { toast } from '@overlay/ui/primitives'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
-import { buildWorkspaceHref } from '@/shared/workspaces/routing'
+import { usePanelScope } from '@/hooks/use-panel-scope'
+import { useWorkspaceHref } from '@/hooks/use-workspace-href'
+import { buildWorkspaceHandleHref, buildWorkspaceSwitchHref } from '@/shared/workspaces/routing'
 import { WorkspaceSwitcherView } from './WorkspaceSwitcherView'
 
 export function WorkspaceSwitcher({
@@ -26,6 +28,8 @@ export function WorkspaceSwitcher({
   const pathname = usePathname() ?? '/app/chat'
   const router = useRouter()
   const searchParams = useSearchParams()
+  const currentScope = usePanelScope()
+  const buildWorkspaceHref = useWorkspaceHref()
   const {
     status,
     workspaces,
@@ -56,13 +60,17 @@ export function WorkspaceSwitcher({
       await switchWorkspace(workspaceId)
       setOpen(false)
       onNavigate?.()
-      const params = new URLSearchParams(searchParams?.toString() ?? '')
-      // Resource selectors belong to the previous workspace and must never
-      // cross the isolation boundary during navigation.
-      params.delete('id')
-      if (showcase) params.set('showcase', '1')
-      const query = params.toString()
-      router.push(`${buildWorkspaceHref(workspaceId, pathname)}${query ? `?${query}` : ''}`)
+      const destination = workspaces.find((workspace) => workspace.id === workspaceId)
+      const search = new URLSearchParams(searchParams?.toString() ?? '')
+      if (showcase) search.set('showcase', '1')
+      const href = buildWorkspaceSwitchHref({
+        workspaceId,
+        handle: destination?.slug,
+        pathname,
+        search: search.toString(),
+        currentScope,
+      })
+      router.push(href)
     } catch (switchError) {
       toast.error(switchError instanceof Error ? switchError.message : 'Could not switch workspaces.')
     }
@@ -78,8 +86,11 @@ export function WorkspaceSwitcher({
       onNavigate?.()
       const params = new URLSearchParams({ section: 'workspace' })
       if (showcase) params.set('showcase', '1')
+      const settings = `/app/settings?${params.toString()}`
       router.push(
-        `${buildWorkspaceHref(workspace.id, '/app/settings')}?${params.toString()}`,
+        workspace.slug
+          ? buildWorkspaceHandleHref(workspace.slug, settings)
+          : buildWorkspaceHref(workspace.id, settings),
       )
     } catch (createError) {
       toast.error(createError instanceof Error ? createError.message : 'Could not create the workspace.')

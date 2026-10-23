@@ -1,5 +1,7 @@
 'use client'
 import { useIsSoloWorkspace } from '@/hooks/use-solo-workspace'
+import { useWorkspaceHref } from '@/hooks/use-workspace-href'
+import { readWorkspacePathScope } from '@/shared/workspaces/routing'
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import {
@@ -523,9 +525,9 @@ export function AgentsInlinePanel({
   const searchParams = useSearchParams()
   const activeAgentId = searchParams?.get('agent') ?? searchParams?.get('agentId') ?? null
   const activeConversationId = searchParams?.get('id') ?? null
-  // With one person there is no Personal/Workspace split: every live agent is listed (the default Overlay agent is
-  // created by the system, so it would otherwise sit under a Workspace tab nobody opens).
+  // Member count is independent of the creator-relative Personal/Workspace views.
   const solo = useIsSoloWorkspace()
+  const buildWorkspaceHref = useWorkspaceHref()
 
   const { bundles, setBundles, loadBundle } = useAgentBundles(workspaceId)
   const { expanded, toggleExpanded } = useExpandedAgents({ activeAgentId, bundles, loadBundle })
@@ -551,12 +553,11 @@ export function AgentsInlinePanel({
   const tabAgents = useMemo(
     () => previewedAgents.filter((agent) => {
       if (agent.archivedAt) return false
-      if (solo) return true
       return view === 'personal'
         ? agent.createdByPrincipalId === viewerPrincipalId
         : agent.createdByPrincipalId !== viewerPrincipalId
     }),
-    [previewedAgents, view, viewerPrincipalId, solo],
+    [previewedAgents, view, viewerPrincipalId],
   )
 
   // Most recently used first; agents with no recorded use stay alphabetical.
@@ -598,7 +599,7 @@ export function AgentsInlinePanel({
     }
   }, [activeAgentId, sortedAgents, workspaceId])
 
-  // Thread links arrive with a missing or foreign `view` (bare `?agent=`
+  // Thread links arrive with a missing or foreign scope (bare `?agent=`
   // deep links, legacy `?view=dms` URLs). The Personal/Workspace bucket is
   // viewer-relative anyway — the same link can belong under different tabs
   // for the creator vs a teammate — so rewrite the URL to the tab that
@@ -608,20 +609,19 @@ export function AgentsInlinePanel({
     if (loading || !activeAgentId || !searchParams || viewerPrincipalId == null) return
     // `?view=` is how the tab was spelled before scopes.
     const viewParam = searchParams.get('scope') ?? searchParams.get('view')
-    if (viewParam === 'personal' || viewParam === 'workspace') return
     const active = agents.find((agent) => agent.id === activeAgentId)
     if (!active || active.archivedAt) return
-    const correctView: AgentsPanelView = solo || active.createdByPrincipalId === viewerPrincipalId
+    const correctView: AgentsPanelView = active.createdByPrincipalId === viewerPrincipalId
         ? 'personal'
         : 'workspace'
-    const wanted = correctView === 'personal' ? null : correctView
-    if (viewParam === wanted) return
+    const pathScope = readWorkspacePathScope(pathname)
+    if (pathScope === correctView || (!pathScope && viewParam === correctView)) return
     const params = new URLSearchParams(searchParams.toString())
     params.delete('view')
-    if (wanted) params.set('scope', wanted)
-    else params.delete('scope')
-    router.replace(`${pathname}?${params.toString()}`)
-  }, [loading, activeAgentId, agents, viewerPrincipalId, searchParams, router, pathname, solo])
+    params.delete('scope')
+    const route = buildWorkspaceHref(workspaceId, pathname, correctView)
+    router.replace(`${route}${params.size ? `?${params.toString()}` : ''}`)
+  }, [loading, activeAgentId, agents, viewerPrincipalId, searchParams, router, pathname, buildWorkspaceHref, workspaceId])
 
   return (
     <SidebarMenu>

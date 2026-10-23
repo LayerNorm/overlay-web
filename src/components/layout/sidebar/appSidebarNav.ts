@@ -34,6 +34,7 @@ import { ROOT_APP_DESTINATION } from '@/shared/auth/root-entry'
 import { resolveFilesCategory, type FilesCategory } from '@/components/layout/FilesCategorySidebar'
 import type { AgentsPanelView } from '@/components/layout/sidebar-nav'
 import { PANEL_SCOPE_PARAM, resolvePanelScope, type PanelScope } from '@/shared/workspaces/panel-scope'
+import { readWorkspacePathScope, readWorkspaceRouteTarget } from '@/shared/workspaces/routing'
 import type { PrimaryRailItem } from './AppSidebarPrimaryRail'
 import { resolveWorkView, type WorkView } from '@/shared/work/views'
 
@@ -87,6 +88,7 @@ export type SidebarNavItem = Omit<OverlayNavigationItem, 'icon'> & { icon: Lucid
 export interface SidebarRouteState {
   workspaceSurface: string | null
   canonicalWorkspaceRoute: boolean
+  pathScope: PanelScope | null
   notesOpen: boolean
   filesOpen: boolean
   filesSectionOpen: boolean
@@ -131,11 +133,15 @@ export function chatScopeForView(chatsView: string): PanelScope {
 function resolveChatsView({
   activityOpen,
   chatViewParam,
+  pathScope,
 }: {
   activityOpen: boolean
   chatViewParam: string | null
+  pathScope?: PanelScope | null
 }): string {
   if (activityOpen) return 'activity'
+  if (pathScope === 'personal') return 'personal'
+  if (pathScope === 'workspace' && !chatViewParam) return 'workspace-chats'
   if (chatViewParam === 'workspace-chats') return 'workspace-chats'
   if (chatViewParam === 'dms') return 'dms'
   if (chatViewParam === 'channels') return 'channels'
@@ -161,7 +167,8 @@ export function resolveSidebarRouteState({
   solo?: boolean
 }): SidebarRouteState {
   const workspaceSurface = resolveWorkspaceSurface(pathname)
-  const canonicalWorkspaceRoute = pathname.startsWith('/app/w/')
+  const canonicalWorkspaceRoute = pathname.startsWith('/app/w/') || readWorkspaceRouteTarget(pathname)?.kind === 'handle'
+  const pathScope = readWorkspacePathScope(pathname)
   const notesOpen = pathname.startsWith('/app/notes') || (canonicalWorkspaceRoute && workspaceSurface === 'notes')
   const filesOpen = pathname.startsWith('/app/files') || (canonicalWorkspaceRoute && workspaceSurface === 'files')
   const filesSectionOpen = filesOpen || notesOpen
@@ -183,10 +190,10 @@ export function resolveSidebarRouteState({
   const toolsView = resolveToolsView(chatViewParam)
   const workView = resolveWorkView(chatViewParam)
   const filesView = resolveFilesCategory(chatViewParam)
-  const chatsView = resolveChatsView({ activityOpen, chatViewParam })
+  const chatsView = resolveChatsView({ activityOpen, chatViewParam, pathScope })
   // Agent links from before scopes carried the tab as `?view=`.
   const scopeParam = searchParams.get(PANEL_SCOPE_PARAM) ?? (agentsOpen ? chatViewParam : null)
-  const scope = chatOpen ? chatScopeForView(chatsView) : resolvePanelScope({ param: scopeParam, saved: savedScope, solo })
+  const scope = pathScope ?? (chatOpen ? chatScopeForView(chatsView) : resolvePanelScope({ param: scopeParam, saved: savedScope, solo }))
   const agentsView = scope
   const panelKind: SecondaryPanelKind | null = chatOpen
     ? 'chat'
@@ -208,6 +215,7 @@ export function resolveSidebarRouteState({
   return {
     workspaceSurface,
     canonicalWorkspaceRoute,
+    pathScope,
     notesOpen,
     filesOpen,
     filesSectionOpen,

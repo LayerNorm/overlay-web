@@ -1,6 +1,6 @@
 import { ChartGantt, List, SquareKanban } from 'lucide-react'
 import type { InlineNavItem } from '@/components/layout/AppSidebarInlinePanels'
-import { withPanelScope, type PanelScope } from '@/shared/workspaces/panel-scope'
+import { type PanelScope } from '@/shared/workspaces/panel-scope'
 import { WORK_VIEWS, WORK_VIEW_LABELS, WORK_VIEW_PARAM, parseWorkView, type WorkView } from '@/shared/work/views'
 import type { SecondaryPanelNav } from './AppSidebarSecondaryPanel'
 import { buildScopedPanelNav } from './scopedPanelNav'
@@ -37,7 +37,7 @@ export function buildWorkPanelNav({
   currentSearchParams: URLSearchParams
   canonicalWorkspaceRoute: boolean
   activeWorkspaceId: string | null
-  buildWorkspaceHref: (workspaceId: string, href: string) => string
+  buildWorkspaceHref: (workspaceId: string, href: string, scope?: PanelScope) => string
   router: SidebarRouter
   closeMobileDrawer: () => void
   beginSecondaryNavigation: (id: string) => void
@@ -54,14 +54,18 @@ export function buildWorkPanelNav({
       const nextView = parseWorkView(nextSub) ?? workView
       if (nextScope === scope && nextView === workView) return
       beginSecondaryNavigation(nextSub ? `${nextScope}:${nextSub}` : nextScope)
-      const params = withPanelScope(new URLSearchParams(currentSearchParams.toString()), nextScope)
+      const params = new URLSearchParams(currentSearchParams.toString())
+      params.delete('scope')
       // An open task may not exist in the scope being switched to.
       params.delete('task')
       params.set(WORK_VIEW_PARAM, nextView)
-      const href = canonicalWorkspaceRoute && activeWorkspaceId
-        ? buildWorkspaceHref(activeWorkspaceId, '/app/work')
-        : '/app/work'
-      router.push(`${href}?${params.toString()}`)
+      const route = `/app/work?${params.toString()}`
+      if (canonicalWorkspaceRoute && activeWorkspaceId) {
+        router.push(buildWorkspaceHref(activeWorkspaceId, route, nextScope))
+      } else {
+        params.set('scope', nextScope)
+        router.push(`/app/work?${params.toString()}`)
+      }
     },
   })
 }

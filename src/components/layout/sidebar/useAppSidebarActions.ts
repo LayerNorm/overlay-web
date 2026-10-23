@@ -12,6 +12,7 @@ import { createIdempotencyKey, toRequestInit } from '@overlay/api-client'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import type { GateReason } from '@/components/providers/GuestGateProvider'
 import { usePanelScope } from '@/hooks/use-panel-scope'
+import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import { newItemScope, withPanelScope } from '@/shared/workspaces/panel-scope'
 
 const nextSidebarActionMutation = createKnowledgeMutationPublisher(
@@ -52,8 +53,8 @@ export function useAppSidebarActions({
   onChatCreated,
 }: UseAppSidebarActionsOptions) {
   const router = useRouter()
-  // New notes land in the scope being viewed.
   const scope = usePanelScope()
+  const buildWorkspaceHref = useWorkspaceHref()
   const createChat = useCallback(async () => {
     if (!user) {
       requireAuth('send')
@@ -61,11 +62,12 @@ export function useAppSidebarActions({
     }
     onChatCreated()
     onCloseMobileMenu()
-    const href = '/app/chat'
-    if (pathname === '/app/chat') {
-      window.history.pushState(null, '', href)
+    const view = scope === 'workspace' ? 'workspace-chats' : 'personal'
+    const href = buildWorkspaceHref(null, `/app/chat?view=${view}`, scope)
+    if (pathname.endsWith('/chat')) {
+      router.push(href)
       window.dispatchEvent(new CustomEvent('overlay:chat-route-selected', {
-        detail: { chatId: null, view: 'personal' },
+        detail: { chatId: null, view },
       }))
     } else {
       router.push(href)
@@ -75,8 +77,10 @@ export function useAppSidebarActions({
     onChatCreated,
     onCloseMobileMenu,
     pathname,
+    buildWorkspaceHref,
     requireAuth,
     router,
+    scope,
     user,
   ])
 
@@ -86,9 +90,9 @@ export function useAppSidebarActions({
       return false
     }
     onCloseMobileMenu()
-    router.push('/app/automations')
+    router.push(buildWorkspaceHref(null, '/app/automations', scope))
     return true
-  }, [onCloseMobileMenu, requireAuth, router, user])
+  }, [buildWorkspaceHref, onCloseMobileMenu, requireAuth, router, scope, user])
 
   const createNote = useCallback(async () => {
     if (!user) {

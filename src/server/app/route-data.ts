@@ -27,7 +27,8 @@ import * as notesService from '@/server/app-api/v1/notes/route'
 import * as memoryService from '@/server/app-api/v1/memory/route'
 import * as bootstrapService from '@/server/app-api/v1/bootstrap/route'
 import * as integrationsService from '@/server/app-api/v1/integrations/route'
-import { ACTIVE_WORKSPACE_HEADER } from '@/shared/workspaces/constants'
+import { ACTIVE_WORKSPACE_HEADER, ROUTE_WORKSPACE_SCOPE_HEADER } from '@/shared/workspaces/constants'
+import { parsePanelScope } from '@/shared/workspaces/panel-scope'
 import * as workspaceHandleService from '@/server/app-api/v1/workspace-handles/[handle]/route'
 
 const INITIAL_CHAT_LIST_LIMIT = 24
@@ -101,22 +102,28 @@ async function callAppApi<T>(path: string, service: BffDomainService, fallback: 
 }
 
 export function getInitialChatHistory(): Promise<PaginatedEnvelope<CachedConversation> | null> {
-  return callAppApi<PaginatedEnvelope<CachedConversation> | null>(
-    `/api/v1/conversations?limit=${INITIAL_CHAT_LIST_LIMIT}`,
-    conversationsService.GET as BffDomainService,
-    null,
-  )
+  return (async () => {
+    const headerList = await headers()
+    const scope = parsePanelScope(headerList.get(ROUTE_WORKSPACE_SCOPE_HEADER)) ?? 'personal'
+    return callAppApi<PaginatedEnvelope<CachedConversation> | null>(
+      `/api/v1/conversations?limit=${INITIAL_CHAT_LIST_LIMIT}&view=personal&scope=${scope}`,
+      conversationsService.GET as BffDomainService,
+      null,
+    )
+  })()
 }
 
 export async function getInitialKnowledgeFiles(): Promise<KnowledgeFileNode[]> {
+  const headerList = await headers()
+  const scope = parsePanelScope(headerList.get(ROUTE_WORKSPACE_SCOPE_HEADER)) ?? 'personal'
   const [files, notes] = await Promise.all([
     callAppApi<KnowledgeFileNode[]>(
-      '/api/v1/files?limit=100&summary=true&view=personal',
+      `/api/v1/files?limit=100&summary=true&view=${scope}`,
       filesService.GET as BffDomainService,
       [],
     ),
     callAppApi<NoteDoc[]>(
-      '/api/v1/notes?limit=100&view=personal',
+      `/api/v1/notes?limit=100&view=${scope}`,
       notesService.GET as BffDomainService,
       [],
     ),

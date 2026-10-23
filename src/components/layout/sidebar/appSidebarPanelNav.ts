@@ -33,7 +33,7 @@ function buildFilesPanelNav({
   publicShowcase: boolean
   canonicalWorkspaceRoute: boolean
   activeWorkspaceId: string | null
-  buildWorkspaceHref: (workspaceId: string, href: string) => string
+  buildWorkspaceHref: (workspaceId: string, href: string, scope?: PanelScope) => string
   router: SidebarRouter
   closeMobileDrawer: () => void
   beginSecondaryNavigation: (id: string) => void
@@ -62,11 +62,17 @@ function buildFilesPanelNav({
       params.delete('folder')
       params.delete('id')
       params.delete('memory')
+      params.delete('scope')
       const query = params.toString()
       const filesHref = canonicalWorkspaceRoute && activeWorkspaceId
-        ? buildWorkspaceHref(activeWorkspaceId, '/app/files')
+        ? buildWorkspaceHref(activeWorkspaceId, '/app/files', nextScope)
         : '/app/files'
-      router.push(query ? `${filesHref}?${query}` : filesHref)
+      if (canonicalWorkspaceRoute && activeWorkspaceId) {
+        router.push(query ? `${filesHref}?${query}` : filesHref)
+      } else {
+        params.set('scope', nextScope)
+        router.push(query ? `${'/app/files'}?${params.toString()}` : `/app/files?scope=${nextScope}`)
+      }
     },
   })
 }
@@ -90,7 +96,7 @@ function buildAgentsPanelNav({
   publicShowcase: boolean
   canonicalWorkspaceRoute: boolean
   activeWorkspaceId: string | null
-  buildWorkspaceHref: (workspaceId: string, href: string) => string
+  buildWorkspaceHref: (workspaceId: string, href: string, scope?: PanelScope) => string
   router: SidebarRouter
   closeMobileDrawer: () => void
   beginSecondaryNavigation: (id: string) => void
@@ -116,11 +122,19 @@ function buildAgentsPanelNav({
       // a missing `scope` would read as an uncorrected link and fight the
       // deliberate switch.
       if (next === 'personal' && params.has('agent')) params.set('scope', 'personal')
+      params.delete('scope')
       const query = params.toString()
+      const route = query ? `/app/agents?${query}` : '/app/agents'
       const agentsHref = canonicalWorkspaceRoute && activeWorkspaceId
-        ? buildWorkspaceHref(activeWorkspaceId, '/app/agents')
-        : '/app/agents'
-      router.push(query ? `${agentsHref}?${query}` : agentsHref)
+        ? buildWorkspaceHref(activeWorkspaceId, route, next)
+        : route
+      if (!(canonicalWorkspaceRoute && activeWorkspaceId)) {
+        const legacyParams = new URLSearchParams(route.split('?')[1] ?? '')
+        legacyParams.set('scope', next)
+        router.push(`/app/agents?${legacyParams.toString()}`)
+      } else {
+        router.push(agentsHref)
+      }
     },
   })
 }
@@ -186,7 +200,7 @@ function buildAutomationsPanelNav({
   publicShowcase: boolean
   canonicalWorkspaceRoute: boolean
   activeWorkspaceId: string | null
-  buildWorkspaceHref: (workspaceId: string, href: string) => string
+  buildWorkspaceHref: (workspaceId: string, href: string, scope?: PanelScope) => string
   router: SidebarRouter
   closeMobileDrawer: () => void
   beginSecondaryNavigation: (id: string) => void
@@ -207,12 +221,19 @@ function buildAutomationsPanelNav({
       // Leave an open automation behind: it may not exist in the scope being switched to.
       params.delete('id')
       params.delete('automation')
+      params.delete('automationId')
+      params.delete('scope')
       if (publicShowcase) params.set('showcase', '1')
       const query = params.toString()
       const href = canonicalWorkspaceRoute && activeWorkspaceId
-        ? buildWorkspaceHref(activeWorkspaceId, '/app/automations')
+        ? buildWorkspaceHref(activeWorkspaceId, '/app/automations', next)
         : '/app/automations'
-      router.push(query ? `${href}?${query}` : href)
+      if (canonicalWorkspaceRoute && activeWorkspaceId) {
+        router.push(query ? `${href}?${query}` : href)
+      } else {
+        params.set('scope', next)
+        router.push(`${href}?${params.toString()}`)
+      }
     },
   })
 }
@@ -273,7 +294,7 @@ export function resolveSecondaryPanelNav({
   shouldLoadCollaborationUnread: boolean
   router: SidebarRouter
   activeWorkspaceId: string | null
-  buildWorkspaceHref: (workspaceId: string, href: string) => string
+  buildWorkspaceHref: (workspaceId: string, href: string, scope?: PanelScope) => string
   currentSearchParams: URLSearchParams
   toolsItems: ReadonlyArray<InlineNavItem>
   settingsSections: readonly OverlaySettingsSection[]

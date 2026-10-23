@@ -2,7 +2,8 @@
 
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import posthog from 'posthog-js'
-import { newItemScope, type PanelScope } from '@/shared/workspaces/panel-scope'
+import { newItemScope, parsePanelScope, type PanelScope } from '@/shared/workspaces/panel-scope'
+import { buildWorkspaceHandleHref, buildWorkspaceHref, readWorkspacePathScope, readWorkspaceRouteTarget } from '@/shared/workspaces/routing'
 import {
   KNOWLEDGE_ENTITY_MUTATION_EVENT,
   KNOWLEDGE_RECONCILE_EVENT,
@@ -331,10 +332,26 @@ export function createWebKnowledgeSurfaceAdapters(options: {
   capture?: (event: string, properties?: Record<string, unknown>) => void
   eventTarget?: KnowledgeEventTarget | null
   origin?: string
+  currentUrl?: () => URL
   getScope?: () => PanelScope
   getListView?: () => PanelScope | undefined
 } = {}): KnowledgeSurfaceAdapters {
   const navigate = options.navigate ?? ((url) => window.location.assign(url))
+  const currentUrl = options.currentUrl ?? (() => (
+    typeof window === 'undefined'
+      ? new URL('https://workspace.invalid/app/files')
+      : new URL(window.location.href)
+  ))
+  const scopedHref = (path: string) => {
+    const current = currentUrl()
+    const route = readWorkspaceRouteTarget(current.pathname)
+    const scope = readWorkspacePathScope(current.pathname)
+      ?? parsePanelScope(current.searchParams.get('scope'))
+      ?? options.getScope?.()
+    if (route?.kind === 'handle') return buildWorkspaceHandleHref(route.value, path, scope)
+    if (route?.kind === 'id') return buildWorkspaceHref(route.value, path)
+    return path
+  }
   const navigation: FileNavigationAdapter = {
     open(node, navigationOptions) {
       // KnowledgeSurfaceNode declares both `id` and `_id`, but the rows the API
@@ -343,8 +360,8 @@ export function createWebKnowledgeSurfaceAdapters(options: {
       // could not catch it because the interface promises both fields and the
       // surface casts on the way in. Every other caller keys off `_id`.
       const nodeId = node._id ?? node.id
-      if (opensInDocumentEditor(node)) navigate(`/app/notes?id=${encodeURIComponent(nodeId)}`, navigationOptions)
-      else navigate(`/app/files?file=${encodeURIComponent(nodeId)}`, navigationOptions)
+      if (opensInDocumentEditor(node)) navigate(scopedHref(`/app/notes?id=${encodeURIComponent(nodeId)}`), navigationOptions)
+      else navigate(scopedHref(`/app/files?file=${encodeURIComponent(nodeId)}`), navigationOptions)
     },
   }
   const analytics: KnowledgeAnalyticsAdapter = {

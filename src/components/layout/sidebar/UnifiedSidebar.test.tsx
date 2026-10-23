@@ -64,14 +64,14 @@ test('main pages render as links and Files and Extensions move under More', () =
   assert.match(html, />3</)
 })
 
-test('the scope toggle marks the selected scope and locks Workspace for a solo workspace', () => {
+test('the scope toggle remains available to solo workspaces', () => {
   const html = render()
   assert.match(html, /aria-pressed="true"[^>]*>Workspace</)
   assert.match(html, /aria-pressed="false"[^>]*>Personal</)
   const solo = render({ solo: true })
   assert.match(solo, /aria-label="Scope"/)
-  assert.match(solo, /aria-pressed="true"[^>]*>Personal</)
-  assert.match(solo, /aria-disabled="true"[^>]*>Workspace</)
+  assert.match(solo, /aria-pressed="true"[^>]*>Workspace</)
+  assert.doesNotMatch(solo, /aria-disabled="true"[^>]*>Workspace</)
 })
 
 test('chat destinations for the selected scope render as sidebar rows', () => {

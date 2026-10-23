@@ -3,10 +3,12 @@ import test from 'node:test'
 import {
   buildWorkspaceHref,
   buildWorkspaceHandleHref,
+  buildWorkspaceSwitchHref,
   isWorkspaceNavigationPending,
   isWorkspaceRouteTargetPending,
   buildCanonicalWorkspaceRedirectLocation,
   isSameChatSurface,
+  parseWorkspaceHandleRoute,
   readWorkspaceIdFromPath,
   readWorkspaceRouteTarget,
   resolveChatBasePath,
@@ -41,13 +43,58 @@ test('shared route parser distinguishes legacy immutable ids from readable handl
   assert.deepEqual(readWorkspaceRouteTarget('/app/w/ws_1/agents/agent-1'), { kind: 'id', value: 'ws_1' })
   assert.deepEqual(readWorkspaceRouteTarget('/w/acme-labs/agents/agent-1'), { kind: 'handle', value: 'acme-labs' })
   assert.equal(resolveWorkspaceSurface('/w/acme-labs/agents/agent-1'), 'agents')
-  assert.equal(buildWorkspaceHandleHref('acme-labs', '/w/acme-labs/agents/agent-1'), '/w/acme-labs/agents')
-  assert.equal(resolveChatBasePath('/w/acme-labs/chat?id=chat_1'), '/w/acme-labs/chat')
+  assert.equal(
+    buildWorkspaceHandleHref('acme-labs', '/w/acme-labs/workspace/agents/agent-1?tab=threads#recent'),
+    '/w/acme-labs/workspace/agents/agent-1?tab=threads#recent',
+  )
+  assert.equal(
+    buildWorkspaceHandleHref('acme-labs', '/w/acme-labs/personal/work?task=task-1#item', 'workspace'),
+    '/w/acme-labs/workspace/work?task=task-1#item',
+  )
+  assert.equal(
+    buildWorkspaceHandleHref('acme-labs', '/app/chat?id=chat-1', 'workspace'),
+    '/w/acme-labs/workspace/chat?id=chat-1',
+  )
+  assert.equal(resolveChatBasePath('/w/acme-labs/workspace/chat?id=chat_1'), '/w/acme-labs/workspace/chat')
   assert.deepEqual(readWorkspaceRouteTarget('/w/personal-random/chat?id=chat_1'), { kind: 'handle', value: 'personal-random' })
   assert.equal(readWorkspaceRouteTarget('/w/acme--labs'), null)
   assert.equal(readWorkspaceRouteTarget('/w/acme%2Flabs'), null)
   assert.equal(readWorkspaceRouteTarget('/w/a'), null)
   assert.equal(readWorkspaceRouteTarget('/w/acme%252flabs'), null)
+})
+
+test('scoped handle paths default roots to Work and canonicalize legacy routes without losing safe URL state', () => {
+  assert.equal(parseWorkspaceHandleRoute('/w/layernorm')?.canonicalPath, '/w/layernorm/personal/work')
+  assert.equal(parseWorkspaceHandleRoute('/w/layernorm/workspace')?.canonicalPath, '/w/layernorm/workspace/work')
+  assert.equal(
+    buildCanonicalWorkspaceRedirectLocation('/w/old-name/agents/agent-1', '?view=workspace&scope=personal&tab=threads', 'new-name'),
+    '/w/new-name/workspace/agents/agent-1?tab=threads',
+  )
+  assert.equal(
+    buildCanonicalWorkspaceRedirectLocation('/w/old-name/chat', '?view=channels&scope=personal', 'new-name'),
+    '/w/new-name/workspace/chat?view=channels',
+  )
+  assert.equal(
+    buildWorkspaceHandleHref('layernorm', '/w/layernorm/personal/work?scope=workspace&task=task-1#item'),
+    '/w/layernorm/personal/work?task=task-1#item',
+  )
+  assert.equal(parseWorkspaceHandleRoute('/w/layernorm/personal/activity'), null)
+  assert.equal(parseWorkspaceHandleRoute('/w/layernorm/chat/extra'), null)
+  assert.equal(parseWorkspaceHandleRoute('/w/layernorm/unknown'), null)
+  assert.equal(parseWorkspaceHandleRoute('/w/layernorm/files%2Fother'), null)
+})
+
+test('switching workspaces keeps the scoped surface and drops previous-workspace selectors and details', () => {
+  assert.equal(
+    buildWorkspaceSwitchHref({
+      workspaceId: 'workspace-b',
+      handle: 'team-b',
+      pathname: '/w/team-a/personal/files/old-file',
+      search: '?file=old-file&folder=old-folder&note=old-note&scope=workspace&sort=name',
+      currentScope: 'workspace',
+    }),
+    '/w/team-b/personal/files?sort=name',
+  )
 })
 
 test('chat base path preserves the canonical workspace route', () => {
@@ -71,7 +118,7 @@ test('handle targets gate scoped content until resolution and redirect aliases s
     '/w/old-team/agents/agent_1',
     '?tab=activity&x=1',
     'new-team',
-  ), '/w/new-team/agents/agent_1?tab=activity&x=1')
+  ), '/w/new-team/personal/agents/agent_1?tab=activity&x=1')
   assert.equal(buildCanonicalWorkspaceRedirectLocation('/w/old-team/agents/id/chat', '', 'new-team'), null)
 })
 

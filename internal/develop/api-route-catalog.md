@@ -222,8 +222,8 @@ This is the route-entry-point inventory for the web app. It is intended as a wor
 
 ### Workspace handles
 
-- `GET /api/v1/workspace-handles/:handle` — Resolves a canonical or historical handle for an authenticated active member to the immutable workspace ID. Unknown, inaccessible, suspended, and archived workspaces share a non-cacheable denial. Files: `src/app/api/v1/workspace-handles/[handle]/route.ts`; `src/server/app-api/v1/workspace-handles/[handle]/route.ts`; `src/server/workspaces/WorkspaceService.ts`.
-- `PATCH /api/v1/workspaces/:workspaceId/handle` — Changes an active workspace's canonical handle for its owner while retaining historical aliases on the same workspace ID. Files: `src/app/api/v1/workspaces/[workspaceId]/handle/route.ts`; `src/server/app-api/v1/workspaces/[workspaceId]/handle/route.ts`; `convex/collaboration/workspaces.ts`.
+- `GET /api/v1/workspace-handles/[handle]` — Resolves a canonical or historical handle for an authenticated active member to the immutable workspace ID. Unknown, inaccessible, suspended, and archived workspaces share a non-cacheable denial. Files: `src/app/api/v1/workspace-handles/[handle]/route.ts`; `src/server/app-api/v1/workspace-handles/[handle]/route.ts`; `src/server/workspaces/WorkspaceService.ts`.
+- `PATCH /api/v1/workspaces/[workspaceId]/handle` — Changes an active workspace's canonical handle for its owner while retaining historical aliases on the same workspace ID. Files: `src/app/api/v1/workspaces/[workspaceId]/handle/route.ts`; `src/server/app-api/v1/workspaces/[workspaceId]/handle/route.ts`; `convex/collaboration/workspaces.ts`.
 
 ## 11. Workspace billing and entitlement operations
 

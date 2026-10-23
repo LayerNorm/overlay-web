@@ -4,7 +4,8 @@ import { useEffect, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import type { WorkItem } from '@overlay/app-core'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
-import { withPanelScope } from '@/shared/workspaces/panel-scope'
+import { isResourceInPanelScope } from '@/shared/workspaces/panel-scope'
+import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import { useWorkData } from '../components/WorkDataProvider'
 import { useWorkRoute } from './use-work-route'
 
@@ -35,13 +36,18 @@ export function useScopeFollowsTask(item: WorkItem | undefined) {
   const router = useRouter()
   const pathname = usePathname() ?? '/app/work'
   const params = useSearchParams()
-  const { scope, solo } = useWorkRoute()
+  const { scope } = useWorkRoute()
+  const buildWorkspaceHref = useWorkspaceHref()
+  const scopeMatches = !item || isResourceInPanelScope(item.scope, scope, item.archivedAt !== null)
   useEffect(() => {
-    if (!item || item.archivedAt !== null || solo || item.scope === scope) return
-    const next = withPanelScope(new URLSearchParams(params?.toString() ?? ''), item.scope)
-    if (item.scope === 'personal') next.set('scope', 'personal')
-    router.replace(`${pathname}?${next.toString()}`, { scroll: false })
-  }, [item, params, pathname, router, scope, solo])
+    if (!item || item.archivedAt !== null || item.scope === scope) return
+    const next = new URLSearchParams(params?.toString() ?? '')
+    next.delete('scope')
+    const query = next.toString()
+    const route = buildWorkspaceHref(null, pathname, item.scope)
+    router.replace(`${route}${query ? `?${query}` : ''}`, { scroll: false })
+  }, [buildWorkspaceHref, item, params, pathname, router, scope])
+  return scopeMatches
 }
 
 /** Escape closes the panel, unless a text field or an open picker has it first. */

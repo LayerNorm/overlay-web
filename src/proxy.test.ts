@@ -76,20 +76,46 @@ test('signed-out handle routes preserve a local return path and query', async ()
   assert.equal(location.searchParams.get('redirect'), '/w/acme-labs/agents/agent_1?tab=activity')
 })
 
-test('authenticated handle roots use Work and discard conflicting workspace selectors', async () => {
+test('authenticated handle roots redirect to canonical Personal Work without leaking selectors', async () => {
   process.env.AUTH_PROVIDER = 'workos'
   const payload = 'synthetic-workspace-session'
   const signature = createHmac('sha256', secret).update(payload).digest('hex')
   const response = await proxy(new NextRequest(origin + '/w/acme?workspaceId=other&tab=activity', {
     headers: { cookie: `overlay_session=${payload}.${signature}` },
   }))
-  const rewrite = new URL(response.headers.get('x-middleware-rewrite')!)
-  assert.equal(rewrite.pathname, '/app/work')
-  assert.equal(rewrite.searchParams.get('workspaceHandle'), 'acme')
-  assert.equal(rewrite.searchParams.get('workspaceId'), null)
-  assert.equal(rewrite.searchParams.get('tab'), 'activity')
+  const location = new URL(response.headers.get('location')!)
+  assert.equal(response.status, 307)
+  assert.equal(location.pathname, '/w/acme/personal/work')
+  assert.equal(location.searchParams.get('workspaceId'), null)
+  assert.equal(location.searchParams.get('tab'), 'activity')
   assert.equal(response.headers.get('cache-control'), 'private, no-store')
   assert.equal(response.headers.get('x-robots-tag'), 'noindex, nofollow')
+})
+
+test('scoped canonical handle rewrites trust path scope over query and forged metadata', async () => {
+  process.env.AUTH_PROVIDER = 'workos'
+  const payload = 'synthetic-scoped-workspace-session'
+  const signature = createHmac('sha256', secret).update(payload).digest('hex')
+  const cookie = `overlay_session=${payload}.${signature}`
+  const conflict = await proxy(new NextRequest(origin + '/w/acme/workspace/chat?scope=personal', {
+    headers: { cookie },
+  }))
+  assert.equal(conflict.status, 307)
+  assert.equal(new URL(conflict.headers.get('location')!).search, '')
+  const response = await proxy(new NextRequest(origin + '/w/acme/workspace/chat', {
+    headers: {
+      cookie,
+      'x-overlay-workspace-scope': 'personal',
+      'x-overlay-workspace-original-path': '/w/forged/personal/files',
+    },
+  }))
+  const rewrite = new URL(response.headers.get('x-middleware-rewrite')!)
+  assert.equal(rewrite.pathname, '/app/chat')
+  assert.equal(rewrite.searchParams.get('scope'), 'workspace')
+  assert.equal(rewrite.searchParams.get('workspaceHandle'), 'acme')
+  assert.equal(rewrite.searchParams.get('workspaceId'), null)
+  assert.equal(response.headers.get('x-middleware-request-x-overlay-workspace-scope'), 'workspace')
+  assert.equal(response.headers.get('x-middleware-request-x-overlay-workspace-original-path'), '/w/acme/workspace/chat')
 })
 
 test('legacy workspace rewrites preserve ID casing and reject unsupported nested paths', async () => {
@@ -101,6 +127,12 @@ test('legacy workspace rewrites preserve ID casing and reject unsupported nested
   assert.equal(new URL(valid.headers.get('x-middleware-rewrite')!).searchParams.get('workspaceId'), 'Legacy_ID')
   const invalid = await proxy(new NextRequest(origin + '/w/acme/agents/agent_1/chat', { headers: { cookie } }))
   assert.equal(invalid.headers.get('x-middleware-rewrite'), null)
+  const invalidSurface = await proxy(new NextRequest(origin + '/w/acme/does-not-exist', { headers: { cookie } }))
+  assert.equal(invalidSurface.headers.get('x-middleware-rewrite'), null)
+  const invalidScope = await proxy(new NextRequest(origin + '/w/acme/team/work', { headers: { cookie } }))
+  assert.equal(invalidScope.headers.get('x-middleware-rewrite'), null)
+  const malformedChat = await proxy(new NextRequest(origin + '/w/acme/personal/chat/dms', { headers: { cookie } }))
+  assert.equal(malformedChat.headers.get('x-middleware-rewrite'), null)
   const separator = await proxy(new NextRequest(origin + '/w/acme%2Fother', { headers: { cookie } }))
   assert.equal(separator.headers.get('x-middleware-rewrite'), null)
 })

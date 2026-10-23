@@ -14,7 +14,11 @@ import { usePathname, useRouter } from 'next/navigation'
 import type { AccountWorkspaceInvitation } from '@overlay/workspace-contracts'
 import { setActiveChatListWorkspace } from '@/shared/chat/chat-list-cache'
 import { dispatchWorkspaceChanged } from '@/shared/workspaces/events'
-import { readWorkspaceRouteTarget, workspaceRouteTargetKey } from '@/shared/workspaces/routing'
+import {
+  readWorkspaceRouteTarget,
+  workspaceRouteTargetKey,
+  type WorkspaceRouteTarget,
+} from '@/shared/workspaces/routing'
 import type {
   WorkspaceClient,
   WorkspaceCreateInput,
@@ -44,6 +48,79 @@ function shouldSoftReload(
   workspaces: readonly WorkspaceSummary[],
 ) {
   return !options?.force && status === 'ready' && workspaces.length > 0
+}
+
+type WorkspaceListResult = Awaited<ReturnType<WorkspaceClient['list']>>
+
+async function resolveRouteWorkspace(
+  routeTarget: WorkspaceRouteTarget | null,
+  workspaces: readonly WorkspaceSummary[],
+  client: WorkspaceClient,
+  signal?: AbortSignal,
+): Promise<{ workspaceId: string | null; canonicalHandle: string | null; unavailable: boolean }> {
+  if (routeTarget?.kind === 'id') {
+    return { workspaceId: routeTarget.value, canonicalHandle: null, unavailable: false }
+  }
+  if (routeTarget?.kind !== 'handle') {
+    return { workspaceId: null, canonicalHandle: null, unavailable: false }
+  }
+
+  if (!client.resolveHandle) {
+    const workspaceId = workspaces.find((workspace) => workspace.slug === routeTarget.value)?.id ?? null
+    return { workspaceId, canonicalHandle: null, unavailable: !workspaceId }
+  }
+
+  try {
+    const resolution = await client.resolveHandle(routeTarget.value, signal)
+    return {
+      workspaceId: resolution.workspaceId,
+      canonicalHandle: resolution.canonical ? null : resolution.canonicalHandle,
+      unavailable: false,
+    }
+  } catch {
+    return { workspaceId: null, canonicalHandle: null, unavailable: true }
+  }
+}
+
+async function findRouteWorkspace(
+  workspaceId: string | null,
+  response: WorkspaceListResult,
+  softReload: boolean,
+  client: WorkspaceClient,
+  signal?: AbortSignal,
+  initiallyUnavailable = false,
+): Promise<{ response: WorkspaceListResult; workspace: WorkspaceSummary | null; unavailable: boolean }> {
+  if (initiallyUnavailable) return { response, workspace: null, unavailable: true }
+
+  let currentResponse = response
+  let workspace = workspaceId
+    ? currentResponse.workspaces.find((item) => item.id === workspaceId) ?? null
+    : null
+
+  if (workspaceId && !workspace && softReload) {
+    currentResponse = await client.list(signal)
+    workspace = currentResponse.workspaces.find((item) => item.id === workspaceId) ?? null
+  }
+
+  return {
+    response: currentResponse,
+    workspace,
+    unavailable: Boolean(workspaceId && !workspace),
+  }
+}
+
+function routeTargetMatchesCurrentWorkspace(
+  routeTarget: WorkspaceRouteTarget | null,
+  activeWorkspaceId: string | null,
+  currentWorkspace: WorkspaceSummary | undefined,
+  resolvedRouteTargetKey: string | null,
+): boolean {
+  if (routeTarget?.kind === 'id') return routeTarget.value === activeWorkspaceId
+  if (routeTarget?.kind === 'handle') {
+    return routeTarget.value === currentWorkspace?.slug
+      || resolvedRouteTargetKey === workspaceRouteTargetKey(routeTarget)
+  }
+  return true
 }
 
 export function WorkspaceProvider({
@@ -89,12 +166,12 @@ export function WorkspaceProvider({
     // entire app shell with the "Opening workspace…" gate.
     const routeTarget = readWorkspaceRouteTarget(pathname)
     const currentWorkspace = workspacesRef.current.find((workspace) => workspace.id === activeWorkspaceIdRef.current)
-    const targetMatchesCurrent = routeTarget?.kind === 'id'
-      ? routeTarget.value === activeWorkspaceIdRef.current
-      : routeTarget?.kind === 'handle'
-        ? routeTarget.value === currentWorkspace?.slug
-          || resolvedRouteTargetKey === workspaceRouteTargetKey(routeTarget)
-        : true
+    const targetMatchesCurrent = routeTargetMatchesCurrentWorkspace(
+      routeTarget,
+      activeWorkspaceIdRef.current,
+      currentWorkspace,
+      resolvedRouteTargetKey,
+    )
     const softReload = shouldSoftReload(options, statusRef.current, workspacesRef.current)
       && targetMatchesCurrent
     if (!softReload) {
@@ -109,36 +186,10 @@ export function WorkspaceProvider({
           }
         : await client.list(signal)
       if (signal?.aborted) return
-      let desiredWorkspaceId = routeTarget?.kind === 'id' ? routeTarget.value : null
-      let canonicalHandle: string | null = null
-      let handleResolutionFailed = false
-      if (routeTarget?.kind === 'handle') {
-        if (client.resolveHandle) {
-          try {
-            const resolution = await client.resolveHandle(routeTarget.value, signal)
-            if (signal?.aborted) return
-            desiredWorkspaceId = resolution.workspaceId
-            if (!resolution.canonical) canonicalHandle = resolution.canonicalHandle
-          } catch {
-            if (signal?.aborted) return
-            desiredWorkspaceId = null
-            handleResolutionFailed = true
-          }
-        } else {
-          desiredWorkspaceId = response.workspaces.find((workspace) => workspace.slug === routeTarget.value)?.id ?? null
-          handleResolutionFailed = !desiredWorkspaceId
-        }
-      }
-      if (handleResolutionFailed) {
-        setWorkspaces([])
-        setActiveWorkspaceId(null)
-        setActiveChatListWorkspace(null)
-        setError('Workspace not found or you no longer have access.')
-        setStatus('error')
-        return
-      }
-      if (canonicalHandle) {
-        const canonicalPath = pathname.replace(/^\/w\/[^/]+/, `/w/${encodeURIComponent(canonicalHandle)}`)
+      const routeResolution = await resolveRouteWorkspace(routeTarget, response.workspaces, client, signal)
+      if (signal?.aborted) return
+      if (routeResolution.canonicalHandle) {
+        const canonicalPath = pathname.replace(/^\/w\/[^/]+/, `/w/${encodeURIComponent(routeResolution.canonicalHandle)}`)
         if (canonicalPath !== pathname) {
           const locationSuffix = typeof window === 'undefined'
             ? ''
@@ -146,32 +197,16 @@ export function WorkspaceProvider({
           router.replace(`${canonicalPath}${locationSuffix}`, { scroll: false })
         }
       }
-      if (!softReload) setInvitations(response.invitations ?? [])
-      const desiredWorkspace = desiredWorkspaceId
-        ? response.workspaces.find((workspace) => workspace.id === desiredWorkspaceId)
-        : null
-      if (desiredWorkspaceId && !desiredWorkspace) {
-        // Path named a workspace we do not have — re-list hard before failing.
-        if (softReload) {
-          const fresh = await client.list(signal)
-          if (signal?.aborted) return
-          setInvitations(fresh.invitations ?? [])
-          const found = fresh.workspaces.find((workspace) => workspace.id === desiredWorkspaceId)
-          if (!found) {
-            setWorkspaces([])
-            setActiveWorkspaceId(null)
-            setActiveChatListWorkspace(null)
-            setError('Workspace not found or you no longer have access.')
-            setStatus('error')
-            return
-          }
-          setWorkspaces(fresh.workspaces)
-          setActiveWorkspaceId(found.id)
-          setActiveChatListWorkspace(found.id)
-          setResolvedRouteTargetKey(workspaceRouteTargetKey(routeTarget))
-          setStatus('ready')
-          return
-        }
+      const locatedWorkspace = await findRouteWorkspace(
+        routeResolution.workspaceId,
+        response,
+        softReload,
+        client,
+        signal,
+        routeResolution.unavailable,
+      )
+      if (signal?.aborted) return
+      if (locatedWorkspace.unavailable) {
         setWorkspaces([])
         setActiveWorkspaceId(null)
         setActiveChatListWorkspace(null)
@@ -179,11 +214,14 @@ export function WorkspaceProvider({
         setStatus('error')
         return
       }
+      if (!softReload || locatedWorkspace.response !== response) {
+        setInvitations(locatedWorkspace.response.invitations ?? [])
+      }
 
-      const nextWorkspaces = [...response.workspaces]
-      const nextActiveWorkspaceId = desiredWorkspace?.id
-        ?? response.activeWorkspaceId
-        ?? response.workspaces[0]?.id
+      const nextWorkspaces = [...locatedWorkspace.response.workspaces]
+      const nextActiveWorkspaceId = locatedWorkspace.workspace?.id
+        ?? locatedWorkspace.response.activeWorkspaceId
+        ?? locatedWorkspace.response.workspaces[0]?.id
         ?? null
 
       setWorkspaces(nextWorkspaces)

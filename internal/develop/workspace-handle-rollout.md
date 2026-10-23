@@ -2,6 +2,8 @@
 
 The workspace handle registry is an additive expansion: `workspaceId` remains the authorization identity, `slug` remains the current canonical handle, and `workspaceHandles` permanently reserves canonical and historical names. Never delete registry claims during rollback.
 
+Scoped features use `/w/<handle>/<personal|workspace>/<feature>`, for example `/w/layernorm/personal/work` and `/w/layernorm/workspace/chat`. Solo workspaces retain both view scopes. Scope is a feature view, not an access grant; workspace membership and resource authorization remain authoritative. Activity is workspace-only.
+
 ## Expand and backfill
 
 1. Keep handle writes disabled (`OVERLAY_WORKSPACE_HANDLE_WRITES_ENABLED=false`). Follow the release policy: merge the reviewed change, wait for matching native Git web production to be live, then deploy additive Convex from clean current canonical `main`. The new web readers tolerate a backend without the resolver; do not enable writes during that compatibility window. Feature worktrees may deploy only to their explicitly isolated PR backend, never shared development or customer production.
