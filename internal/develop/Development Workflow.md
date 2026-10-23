@@ -177,7 +177,25 @@ runtime secret store. Follow the [cloud browser protection recipe](browser-testi
 Keep protection enabled. GitHub/Vercel secrets do not automatically populate a
 cloud Builder VM. Overlay sandbox login is separate.
 
-Sign in using the configured sandbox QA identity or the [preview login recipe](browser-testing-with-agent-browser.md). Exercise the feature as a user would:
+When Devin is the coding agent, use the existing Pro demo credentials from the
+Devin secret store to perform authenticated QA on the canonical PR preview URL.
+Reuse credentials already available to the session instead of asking the owner
+to provide them again. Never copy credential values into source, documentation,
+logs, screenshots or PR comments. Use these credentials for QA only on
+`https://pr-<number>.preview.getoverlay.io`, not on production.
+
+Verify the signed-in identity and effective plan in the isolated preview before
+testing paid features. A Pro account in another environment does not automatically
+give the preview Pro entitlements: its backend has independent billing and
+workspace fixtures. If the preview reports Free or lacks a multi-member workspace,
+report that specific fixture gap rather than requesting the same credentials
+again or claiming paid/scope-isolation acceptance. Provision approved synthetic
+fixtures only on the PR's isolated backend; never change production billing or
+invite real people to make a test pass.
+
+Other Builders can use the configured sandbox QA identity or the
+[preview login recipe](browser-testing-with-agent-browser.md). Exercise the
+feature as a user would:
 
 - Complete its main interaction from start to finish.
 - Test the changed journey in the deployed app, including sign-in and navigation
