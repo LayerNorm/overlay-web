@@ -65,7 +65,7 @@ export function WorkspaceSwitcher({
       if (showcase) search.set('showcase', '1')
       const href = buildWorkspaceSwitchHref({
         workspaceId,
-        handle: destination?.slug,
+        handle: destination?.routingHandle,
         pathname,
         search: search.toString(),
         currentScope,
@@ -88,8 +88,8 @@ export function WorkspaceSwitcher({
       if (showcase) params.set('showcase', '1')
       const settings = `/app/settings?${params.toString()}`
       router.push(
-        workspace.slug
-          ? buildWorkspaceHandleHref(workspace.slug, settings)
+        workspace.routingHandle
+          ? buildWorkspaceHandleHref(workspace.routingHandle, settings)
           : buildWorkspaceHref(workspace.id, settings),
       )
     } catch (createError) {

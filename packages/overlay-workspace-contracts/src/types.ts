@@ -150,6 +150,7 @@ export type WorkspaceSummary = {
   id: string
   name: string
   slug: string
+  routingHandle?: string
   kind: WorkspaceKind
   status: WorkspaceStatus
   role: WorkspaceMembershipRole

@@ -833,7 +833,7 @@ test('workspace handle updates require an owner, registry readiness, and map con
   )
 })
 
-test('automatic handles fall back for short, reserved, and non-Latin names', async () => {
+test('automatic handles fall back safely when handle writes are disabled', async () => {
   const received: Array<{ name: string; slug: string; handleExplicit?: boolean }> = []
   const service = new WorkspaceService(repository({
     async listForUser() { return [] },
@@ -842,7 +842,7 @@ test('automatic handles fall back for short, reserved, and non-Latin names', asy
       return access({ workspaceId: `workspace_${received.length}` })
     },
   }), {
-    workspaceHandleWritesEnabled: () => true,
+    workspaceHandleWritesEnabled: () => false,
     createHandleSuffix: () => 'random9',
     now: () => 42,
   })

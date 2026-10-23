@@ -66,7 +66,8 @@ async function resolveRouteWorkspace(
   }
 
   if (!client.resolveHandle) {
-    const workspaceId = workspaces.find((workspace) => workspace.slug === routeTarget.value)?.id ?? null
+    const workspaceId = workspaces.find((workspace) =>
+      workspace.kind === 'organization' && workspace.slug === routeTarget.value)?.id ?? null
     return { workspaceId, canonicalHandle: null, unavailable: !workspaceId }
   }
 

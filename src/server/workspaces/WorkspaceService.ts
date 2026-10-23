@@ -230,7 +230,6 @@ export class WorkspaceService {
       && access.workspace.status === 'active')
     const planned = await Promise.all(owned.map((access) => this.options.hasWorkspacePlan?.(access.workspace.id) ?? false))
     if (planned.filter((hasPlan) => !hasPlan).length >= MAX_FREE_WORKSPACES_PER_OWNER) throw freeWorkspaceLimit()
-    const handleWritesEnabled = this.areWorkspaceHandleWritesEnabled()
     const explicitHandle = args.slug === undefined ? undefined : this.normalizeHandle(args.slug)
     const base = workspaceHandleBaseFromName(name)
     const automaticBase = base
@@ -238,9 +237,7 @@ export class WorkspaceService {
       && !isReservedWorkspaceHandle(base)
       ? base
       : buildWorkspaceHandleCandidate(null, this.handleSuffix())
-    const slug = handleWritesEnabled
-      ? explicitHandle ?? automaticBase
-      : normalizeOptionalSlug(args.slug) ?? slugify(name)
+    const slug = explicitHandle ?? automaticBase
     try {
       return await this.repository.createOrganization({
       workspaceId: this.id(),
@@ -1260,25 +1257,6 @@ function normalizeEmail(value: string): string {
 
 function normalizeOptionalEmail(value: string | undefined): string | undefined {
   return value === undefined ? undefined : normalizeEmail(value)
-}
-
-function normalizeOptionalSlug(value: string | undefined): string | undefined {
-  const slug = optional(value)?.toLowerCase()
-  if (!slug) return undefined
-  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
-    throw validation('slug must contain lowercase letters, numbers, and single hyphens')
-  }
-  return slug
-}
-
-function slugify(value: string): string {
-  const slug = value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 63)
-  return slug || 'workspace'
 }
 
 function validation(message: string): WorkspaceServiceError {

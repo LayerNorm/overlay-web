@@ -30,10 +30,10 @@ function legacyScopedDestination(args: {
   descriptor: NonNullable<ReturnType<typeof readWorkspaceRouteDescriptor>>
   pathname: string
   search: string
-  slug: string
+  routingHandle: string
   currentScope: ReturnType<typeof usePanelScope>
 }): string | null {
-  const { descriptor, pathname, search, slug, currentScope } = args
+  const { descriptor, pathname, search, routingHandle, currentScope } = args
   if (!SCOPED_WORKSPACE_SURFACES.has(descriptor.surface)
     || !isSupportedWorkspaceRoute(descriptor.surface, descriptor.suffix)) return null
   const params = new URLSearchParams(search)
@@ -48,7 +48,7 @@ function legacyScopedDestination(args: {
     ?? parsePanelScope(params.get('scope'))
     ?? legacyViewScope
     ?? currentScope
-  return buildWorkspaceHandleHref(slug, `${pathname}${search ? `?${search}` : ''}`, scope)
+  return buildWorkspaceHandleHref(routingHandle, `${pathname}${search ? `?${search}` : ''}`, scope)
 }
 
 function shouldWaitForWorkspaceContent(args: {
@@ -87,19 +87,20 @@ function canonicalRouteDestination(args: {
   hash: string
   routeTargetKind: 'id' | 'handle' | undefined
   descriptor: ReturnType<typeof readWorkspaceRouteDescriptor>
-  currentWorkspaceSlug: string | undefined
+  currentWorkspaceRoutingHandle: string | undefined
   currentScope: ReturnType<typeof usePanelScope>
   showcase: boolean
 }): string | null {
-  const { pathname, search, hash, routeTargetKind, descriptor, currentWorkspaceSlug, currentScope, showcase } = args
+  const { pathname, search, hash, routeTargetKind, descriptor, currentWorkspaceRoutingHandle, currentScope, showcase } = args
   if (showcase || new URLSearchParams(search).get('section') === 'account') return null
   if (routeTargetKind === 'handle') return canonicalHandleDestination(pathname, search, hash)
-  if (!descriptor || !currentWorkspaceSlug || !validateWorkspaceHandleAddress(currentWorkspaceSlug).ok) return null
+  if (!descriptor || !currentWorkspaceRoutingHandle
+    || !validateWorkspaceHandleAddress(currentWorkspaceRoutingHandle).ok) return null
   const destination = legacyScopedDestination({
     descriptor,
     pathname,
     search,
-    slug: currentWorkspaceSlug,
+    routingHandle: currentWorkspaceRoutingHandle,
     currentScope,
   })
   return destination ? `${destination}${hash}` : null
@@ -125,7 +126,7 @@ function shouldBlockScopedContent(args: {
     hash: '',
     routeTargetKind: routeTarget?.kind,
     descriptor,
-    currentWorkspaceSlug: currentWorkspace?.slug,
+    currentWorkspaceRoutingHandle: currentWorkspace?.routingHandle,
     currentScope,
     showcase,
   })
@@ -233,12 +234,12 @@ export function WorkspaceScopedContentBoundary({
       hash,
       routeTargetKind: routeTarget?.kind,
       descriptor,
-      currentWorkspaceSlug: currentWorkspace?.slug,
+      currentWorkspaceRoutingHandle: currentWorkspace?.routingHandle,
       currentScope,
       showcase: searchParams?.get('showcase') === '1',
     })
     if (destination && current !== destination) router.replace(destination, { scroll: false })
-  }, [currentScope, currentWorkspace?.slug, descriptor, pathname, router, routeTarget?.kind, routeTarget?.value, searchParams])
+  }, [currentScope, currentWorkspace?.routingHandle, descriptor, pathname, router, routeTarget?.kind, routeTarget?.value, searchParams])
 
   useEffect(() => {
     function handleWorkspaceChanged(event: Event) {

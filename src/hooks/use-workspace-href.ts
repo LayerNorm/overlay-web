@@ -45,7 +45,7 @@ function isAddressableWorkspaceHref(
     && source.searchParams.get('section') !== 'account'
 }
 
-function buildWorkspaceHrefForContext({
+export function buildWorkspaceHrefForContext({
   workspaceId,
   href,
   scope,
@@ -73,15 +73,15 @@ function buildWorkspaceHrefForContext({
     workspaces,
     activeWorkspace,
   })
-  const slug = current?.slug
-  if (slug && validateWorkspaceHandleAddress(slug).ok) {
-    return buildWorkspaceHandleHref(slug, href, effectiveScope)
+  const routingHandle = current?.routingHandle
+  if (routingHandle && validateWorkspaceHandleAddress(routingHandle).ok) {
+    return buildWorkspaceHandleHref(routingHandle, href, effectiveScope)
   }
+  if (!workspaceId && target?.kind === 'handle') return buildWorkspaceHandleHref(target.value, href, effectiveScope)
   if (id) {
     if (SCOPED_WORKSPACE_SURFACES.has(descriptor.surface)) source.searchParams.set('scope', effectiveScope)
     return buildWorkspaceHref(id, `${source.pathname}${source.search}${source.hash}`)
   }
-  if (!workspaceId && target?.kind === 'handle') return buildWorkspaceHandleHref(target.value, href, effectiveScope)
   return href
 }
 
