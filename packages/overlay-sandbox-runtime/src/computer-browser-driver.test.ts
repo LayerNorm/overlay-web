@@ -17,6 +17,7 @@ import { join } from 'node:path'
 import type { Duplex } from 'node:stream'
 import test from 'node:test'
 import { COMPUTER_DRIVER_SOURCE } from './computer-driver/driver'
+import { COMPUTER_BROWSER_PROFILE_RECOVERY_SOURCE } from './computer-driver/browser-profile-recovery'
 
 const pythonCheck = spawnSync('python3', ['--version'], { encoding: 'utf8' })
 const pythonPath = pythonCheck.status === 0
@@ -576,7 +577,7 @@ test('browser driver inspects risky click refs and requires confirmation', async
 
   const owner = spawn(
     pythonPath!,
-    ['-c', 'import time; time.sleep(60)', `--user-data-dir=${profile}`],
+    ['-c', 'import time; time.sleep(60)', '--user-data-dir', profile],
     { detached: true, stdio: 'ignore' },
   )
   const ownerStarted = new Promise<void>((resolve, reject) => {
@@ -610,9 +611,9 @@ test('browser driver inspects risky click refs and requires confirmation', async
   assert.equal(foreignProcess.result.status, 0)
   assert.deepEqual(foreignProcess.payload, { success: true, browser: 'chromium' })
   assert.doesNotThrow(() => process.kill(process.pid, 0))
-  assert.equal(hasPath(singletonLock), true)
-  assert.equal(existsSync(singletonSocket), true)
-  assert.equal(existsSync(singletonCookie), true)
+  assert.equal(hasPath(singletonLock), false)
+  assert.equal(existsSync(singletonSocket), false)
+  assert.equal(existsSync(singletonCookie), false)
   stopLatestBrowser()
 
   const earlyExit = await run('browser_ensure', {}, { OVERLAY_CHROMIUM_BEHAVIOR: 'early-exit' })
@@ -622,4 +623,53 @@ test('browser driver inspects risky click refs and requires confirmation', async
     earlyExit.payload.error?.message ?? '',
     /\(google-chrome; exit 23; .*chromium early exit diagnostic\)/,
   )
+})
+
+test('profile recovery preserves locks when any owner or inspection uncertainty remains', (t) => {
+  if (!pythonPath) {
+    t.skip('Python 3 is unavailable; install python3 to run the browser driver tests.')
+    return
+  }
+  const result = spawnSync(pythonPath, ['-c', `
+import os
+from unittest.mock import patch
+BROWSER_PROFILE = "/overlay-browser-test"
+${COMPUTER_BROWSER_PROFILE_RECOVERY_SOURCE}
+with patch.object(os, "listdir", return_value=["101", "202", "self"]):
+    with patch.dict(globals(), process_is_alive=lambda pid: True,
+                    process_uses_browser_profile=lambda pid: pid == 202):
+        assert browser_profile_may_be_in_use() is True
+        with patch.object(os, "readlink", return_value="old-host-101"), patch.object(os, "unlink") as unlink:
+            recover_profile_lock()
+            unlink.assert_not_called()
+    with patch.dict(globals(), process_is_alive=lambda pid: True,
+                    process_uses_browser_profile=lambda pid: False if pid == 101 else None):
+        with patch.object(os, "readlink", return_value="old-host-101"), patch.object(os, "unlink") as unlink:
+            recover_profile_lock()
+            unlink.assert_not_called()
+    with patch.dict(globals(), process_is_alive=lambda pid: True,
+                    process_uses_browser_profile=lambda pid: None):
+        assert browser_profile_may_be_in_use() is True
+    with patch.dict(globals(), process_is_alive=lambda pid: False):
+        assert browser_profile_may_be_in_use() is False
+with patch.object(os, "listdir", side_effect=PermissionError):
+    assert browser_profile_may_be_in_use() is True
+with patch.object(os, "listdir", return_value=["202"]):
+    with patch.dict(globals(), process_is_alive=lambda pid: True):
+        with patch("builtins.open", side_effect=PermissionError):
+            assert process_uses_browser_profile(202) is None
+            assert browser_profile_may_be_in_use() is True
+with patch.object(os, "readlink", return_value="new-host-202"), patch.object(os, "unlink") as unlink:
+    remove_profile_singleton_files("old-host-101")
+    unlink.assert_not_called()
+with patch.object(os, "listdir", return_value=["101", "202"]):
+    with patch.dict(globals(), process_is_alive=lambda pid: True,
+                    process_uses_browser_profile=lambda pid: pid == 202,
+                    wait_for_process_exit=lambda pid, timeout: False):
+        with patch.object(os, "readlink", side_effect=["old-host-101", "new-host-202"]):
+            with patch.object(os, "getpgid", side_effect=lambda pid: pid), patch.object(os, "killpg") as killpg:
+                recover_profile_lock()
+                killpg.assert_not_called()
+`], { encoding: 'utf8' })
+  assert.equal(result.status, 0, result.stdout + result.stderr)
 })

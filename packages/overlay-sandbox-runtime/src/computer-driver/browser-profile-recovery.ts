@@ -1,10 +1,8 @@
 export const COMPUTER_BROWSER_PROFILE_RECOVERY_SOURCE = String.raw`
-def profile_lock_pid():
-    lock_path = os.path.join(BROWSER_PROFILE, "SingletonLock")
+def profile_lock_pid(target):
     try:
-        target = os.readlink(lock_path)
         pid = int(target.rsplit("-", 1)[1])
-    except (OSError, ValueError, IndexError):
+    except (ValueError, IndexError):
         return None
     return pid if pid > 0 else None
 
@@ -30,16 +28,33 @@ def process_uses_browser_profile(pid):
     try:
         with open("/proc/" + str(pid) + "/cmdline", "rb") as command_line:
             arguments = command_line.read().split(b"\0")
-    except OSError:
+    except FileNotFoundError:
         return False
+    except OSError:
+        return None
     expected_profile = os.path.normcase(os.path.abspath(BROWSER_PROFILE))
     prefix = b"--user-data-dir="
-    for argument in arguments:
-        if not argument.startswith(prefix):
+    for index, argument in enumerate(arguments):
+        if argument == b"--user-data-dir" and index + 1 < len(arguments):
+            profile = os.fsdecode(arguments[index + 1])
+        elif argument.startswith(prefix):
+            profile = os.fsdecode(argument[len(prefix):])
+        else:
             continue
-        profile = os.fsdecode(argument[len(prefix):])
         if os.path.normcase(os.path.abspath(profile)) == expected_profile:
             return True
+    return False
+
+
+def browser_profile_may_be_in_use():
+    try:
+        processes = os.listdir("/proc")
+    except OSError:
+        return True
+    for entry in processes:
+        if entry.isdigit() and process_is_alive(int(entry)):
+            if process_uses_browser_profile(int(entry)) is not False:
+                return True
     return False
 
 
@@ -50,7 +65,12 @@ def wait_for_process_exit(pid, timeout):
     return not process_is_alive(pid)
 
 
-def remove_profile_singleton_files():
+def remove_profile_singleton_files(expected_lock):
+    try:
+        if os.readlink(os.path.join(BROWSER_PROFILE, "SingletonLock")) != expected_lock:
+            return
+    except OSError:
+        return
     for name in ("SingletonLock", "SingletonSocket", "SingletonCookie"):
         try:
             os.unlink(os.path.join(BROWSER_PROFILE, name))
@@ -59,13 +79,21 @@ def remove_profile_singleton_files():
 
 
 def recover_profile_lock():
-    pid = profile_lock_pid()
+    try:
+        expected_lock = os.readlink(os.path.join(BROWSER_PROFILE, "SingletonLock"))
+    except OSError:
+        return
+    pid = profile_lock_pid(expected_lock)
     if pid is None:
         return
-    if not process_is_alive(pid):
-        remove_profile_singleton_files()
+    owner_alive = process_is_alive(pid)
+    owns_profile = process_uses_browser_profile(pid) if owner_alive else False
+    if not owner_alive or owns_profile is False:
+        # A resumed VM can reuse the old host's PID for an unrelated process.
+        if not browser_profile_may_be_in_use():
+            remove_profile_singleton_files(expected_lock)
         return
-    if not process_uses_browser_profile(pid):
+    if owns_profile is not True:
         return
     try:
         process_group = os.getpgid(pid)
@@ -86,7 +114,7 @@ def recover_profile_lock():
             return
         if not wait_for_process_exit(pid, 1):
             return
-    remove_profile_singleton_files()
+    remove_profile_singleton_files(expected_lock)
 
 
 def browser_log_excerpt():

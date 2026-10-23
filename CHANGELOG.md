@@ -4,6 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Harden Computer browser profile lock recovery around stale or reused PIDs while protecting live profile owners.
 - Add durable Ask approvals for native agents in direct messages and rooms, with pending calls resuming without replaying prior tool calls. Release QA remains required.
 - Add Ask and Auto permission modes for Overlay agents.
 - Work approval prompts now appear even if the live update connection stalls.
