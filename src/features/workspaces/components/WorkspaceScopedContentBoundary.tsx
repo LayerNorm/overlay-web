@@ -92,7 +92,7 @@ function canonicalRouteDestination(args: {
   showcase: boolean
 }): string | null {
   const { pathname, search, hash, routeTargetKind, descriptor, currentWorkspaceSlug, currentScope, showcase } = args
-  if (showcase) return null
+  if (showcase || new URLSearchParams(search).get('section') === 'account') return null
   if (routeTargetKind === 'handle') return canonicalHandleDestination(pathname, search, hash)
   if (!descriptor || !currentWorkspaceSlug || !validateWorkspaceHandleAddress(currentWorkspaceSlug).ok) return null
   const destination = legacyScopedDestination({
@@ -112,23 +112,88 @@ function shouldBlockScopedContent(args: {
   currentWorkspace: ReturnType<typeof useWorkspace>['activeWorkspace']
   pathname: string
   routeSearch: string
+  currentScope: ReturnType<typeof usePanelScope>
   showcase: boolean
 }): boolean {
-  const { descriptor, routeTarget, status, currentWorkspace, pathname, routeSearch, showcase } = args
+  const { descriptor, routeTarget, status, currentWorkspace, pathname, routeSearch, currentScope, showcase } = args
   const scopedSurface = Boolean(descriptor && SCOPED_WORKSPACE_SURFACES.has(descriptor.surface))
   const metadataPending = scopedSurface && routeTarget?.kind === 'id' && status !== 'ready'
-  const needsHandleCanonicalization = scopedSurface
-    && routeTarget?.kind !== 'handle'
-    && Boolean(currentWorkspace?.slug && validateWorkspaceHandleAddress(currentWorkspace.slug).ok)
-  const parsedHandleRoute = routeTarget?.kind === 'handle'
-    ? parseWorkspaceHandleRoute(pathname, routeSearch)
-    : null
-  const handleDestination = parsedHandleRoute
-    ? `${parsedHandleRoute.canonicalPath}${parsedHandleRoute.canonicalSearch ? `?${parsedHandleRoute.canonicalSearch}` : ''}`
-    : null
   const currentLocation = `${pathname}${routeSearch ? `?${routeSearch}` : ''}`
-  const needsRouteCanonicalization = !showcase && Boolean(handleDestination && handleDestination !== currentLocation)
-  return Boolean(metadataPending || needsHandleCanonicalization || needsRouteCanonicalization)
+  const destination = canonicalRouteDestination({
+    pathname,
+    search: routeSearch,
+    hash: '',
+    routeTargetKind: routeTarget?.kind,
+    descriptor,
+    currentWorkspaceSlug: currentWorkspace?.slug,
+    currentScope,
+    showcase,
+  })
+  return Boolean(metadataPending || (destination && destination !== currentLocation))
+}
+
+type WorkspaceScopedContentGateState = {
+  switchingWorkspaceId: string | null
+  waitingForNavigation: boolean
+  routeTarget: ReturnType<typeof readWorkspaceRouteTarget>
+  status: ReturnType<typeof useWorkspace>['status']
+  currentWorkspace: ReturnType<typeof useWorkspace>['activeWorkspace']
+  resolvedRouteTargetKey: string | null
+  descriptor: ReturnType<typeof readWorkspaceRouteDescriptor>
+  routeWorkspaceId: string | null
+  activeWorkspaceId: string | null
+  pathname: string
+  routeSearch: string
+  currentScope: ReturnType<typeof usePanelScope>
+  showcase: boolean
+}
+
+export function WorkspaceScopedContentGate({
+  children,
+  fallback,
+  state,
+}: {
+  children: ReactNode
+  fallback: ReactNode
+  state: WorkspaceScopedContentGateState
+}) {
+  const {
+    switchingWorkspaceId,
+    waitingForNavigation,
+    routeTarget,
+    status,
+    currentWorkspace,
+    resolvedRouteTargetKey,
+    descriptor,
+    routeWorkspaceId,
+    activeWorkspaceId,
+    pathname,
+    routeSearch,
+    currentScope,
+    showcase,
+  } = state
+  if (shouldWaitForWorkspaceContent({
+    switchingWorkspaceId,
+    waitingForNavigation,
+    routeTarget,
+    status,
+    currentWorkspace,
+    resolvedRouteTargetKey,
+    descriptor,
+  })) return fallback
+
+  const scopeKey = `${routeWorkspaceId ?? currentWorkspace?.id ?? activeWorkspaceId ?? 'workspace-unavailable'}:${descriptor?.scope ?? currentScope}`
+  if (shouldBlockScopedContent({
+    descriptor,
+    routeTarget,
+    status,
+    currentWorkspace,
+    pathname,
+    routeSearch,
+    currentScope,
+    showcase,
+  })) return fallback
+  return <Fragment key={scopeKey}>{children}</Fragment>
 }
 
 /**
@@ -189,25 +254,26 @@ export function WorkspaceScopedContentBoundary({
     pendingWorkspaceId,
     routeWorkspaceId,
   })
-  if (shouldWaitForWorkspaceContent({
-    switchingWorkspaceId,
-    waitingForNavigation,
-    routeTarget,
-    status,
-    currentWorkspace,
-    resolvedRouteTargetKey,
-    descriptor,
-  })) return fallback
-
-  const scopeKey = `${routeWorkspaceId ?? currentWorkspace?.id ?? activeWorkspaceId ?? 'workspace-unavailable'}:${descriptor?.scope ?? currentScope}`
-  if (shouldBlockScopedContent({
-    descriptor,
-    routeTarget,
-    status,
-    currentWorkspace,
-    pathname,
-    routeSearch,
-    showcase: searchParams?.get('showcase') === '1',
-  })) return fallback
-  return <Fragment key={scopeKey}>{children}</Fragment>
+  return (
+    <WorkspaceScopedContentGate
+      fallback={fallback}
+      state={{
+        switchingWorkspaceId,
+        waitingForNavigation,
+        routeTarget,
+        status,
+        currentWorkspace,
+        resolvedRouteTargetKey,
+        descriptor,
+        routeWorkspaceId,
+        activeWorkspaceId,
+        pathname,
+        routeSearch,
+        currentScope,
+        showcase: searchParams?.get('showcase') === '1',
+      }}
+    >
+      {children}
+    </WorkspaceScopedContentGate>
+  )
 }

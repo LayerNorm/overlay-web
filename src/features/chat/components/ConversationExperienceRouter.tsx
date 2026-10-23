@@ -1,19 +1,26 @@
 'use client'
 
 import { Hash, Mail } from 'lucide-react'
-import { useEffect, useRef, useState, type ComponentProps } from 'react'
+import { useEffect, useState, type ComponentProps, type ReactNode } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import ChatExperience from './ChatExperience'
 import { ChatSurfaceEmptyState } from './ChatSurfaceEmptyState'
 import { DirectMessageExperience } from './DirectMessageExperience'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
-import { resolveSoftChatRoute, scopeForConversationDetail, type SoftChatRoute } from '@/shared/chat/chat-view-navigation'
+import { resolveSoftChatRoute, type SoftChatRoute } from '@/shared/chat/chat-view-navigation'
 import {
   legacyWorkspaceScopeForRoute,
   normalizeChatViewForScope,
   readWorkspacePathScope,
 } from '@/shared/workspaces/routing'
 import { useWorkspaceHref } from '@/hooks/use-workspace-href'
+import {
+  ConversationDetailScopeGate,
+  conversationDetailRouteKey,
+  startConversationDetailScopeProbe,
+  type ConversationDetailScopeStatus,
+  type ConversationScopeDetail,
+} from './conversationScopeVerification'
 
 /**
  * Soft chat switches use `history.pushState` (see ChatInlinePanel) so the app
@@ -64,10 +71,7 @@ export function ConversationExperienceRouter(props: ComponentProps<typeof ChatEx
   const conversationId = route.conversationId
   // Bumped only from browser soft-nav / popstate so we re-read window.location.
   const [browserRouteVersion, setBrowserRouteVersion] = useState(0)
-  const [scopeRouteStatus, setScopeRouteStatus] = useState<{
-    routeKey: string
-    status: 'verified' | 'unavailable'
-  } | null>(null)
+  const [scopeRouteStatus, setScopeRouteStatus] = useState<ConversationDetailScopeStatus | null>(null)
 
   useEffect(() => {
     function bumpBrowserRoute() {
@@ -81,54 +85,29 @@ export function ConversationExperienceRouter(props: ComponentProps<typeof ChatEx
     }
   }, [])
 
-  const resourceRouteKey = pathScope && conversationId ? `${pathScope}:${conversationId}` : null
-  const probedRouteKey = useRef<string | null>(null)
+  const resourceRouteKey = conversationDetailRouteKey({
+    pathScope,
+    conversationId,
+    publicShowcaseSnapshots: Boolean(props.publicShowcaseSnapshots),
+  })
   useEffect(() => {
-    if (!resourceRouteKey || props.publicShowcaseSnapshots || draft) return
-    if (probedRouteKey.current === resourceRouteKey) return
-    probedRouteKey.current = resourceRouteKey
-    void (async () => {
-      try {
-        const id = conversationId
-        if (!id || !pathScope) return
-        const detail = await overlayAppClient.conversations.get<{
-          conversationType?: 'personal' | 'dm' | 'channel'
-          scope?: 'personal' | 'workspace'
-        }>({ conversationId: id })
-        const actualScope = scopeForConversationDetail(detail)
-        const actualView = actualScope === 'personal'
-          ? 'personal'
-          : detail.conversationType === 'dm'
-            ? 'dms'
-            : detail.conversationType === 'channel'
-              ? 'channels'
-              : 'workspace-chats'
-        const params = new URLSearchParams(window.location.search)
-        if (params.get('id') !== id) return
-        if (params.get('view') !== actualView) params.set('view', actualView)
-        if (actualScope !== pathScope) {
-          const route = buildWorkspaceHref(null, `${pathname}?${params.toString()}`, actualScope)
-          router.replace(route)
-          return
-        }
-        if (params.get('scope')) {
-          router.replace(buildWorkspaceHref(null, `${pathname}?${params.toString()}`, actualScope))
-          setScopeRouteStatus({ routeKey: resourceRouteKey, status: 'verified' })
-          return
-        }
-        const current = `${pathname}${window.location.search}`
-        const normalized = buildWorkspaceHref(null, `${pathname}?${params.toString()}`, actualScope)
-        if (normalized !== current) {
-          router.replace(normalized)
-          setScopeRouteStatus({ routeKey: resourceRouteKey, status: 'verified' })
-          return
-        }
-        setScopeRouteStatus({ routeKey: resourceRouteKey, status: 'verified' })
-      } catch {
-        setScopeRouteStatus({ routeKey: resourceRouteKey, status: 'unavailable' })
-      }
-    })()
-  }, [browserRouteVersion, conversationId, searchView, props.publicShowcaseSnapshots, pathScope, resourceRouteKey, buildWorkspaceHref, pathname, router, draft])
+    if (!resourceRouteKey || !conversationId || !pathScope) return
+    return startConversationDetailScopeProbe({
+      routeKey: resourceRouteKey,
+      conversationId,
+      pathScope,
+      pathname,
+      getConversation: (id) => overlayAppClient.conversations.get<ConversationScopeDetail>({ conversationId: id }),
+      getLocation: () => ({
+        pathname: window.location.pathname,
+        search: window.location.search,
+        hash: window.location.hash,
+      }),
+      buildWorkspaceHref,
+      replace: (destination) => router.replace(destination),
+      setStatus: setScopeRouteStatus,
+    })
+  }, [browserRouteVersion, conversationId, searchView, pathScope, resourceRouteKey, buildWorkspaceHref, pathname, router])
 
   void browserRouteVersion
   const selectedScope = pathScope ?? legacyWorkspaceScopeForRoute(
@@ -137,19 +116,9 @@ export function ConversationExperienceRouter(props: ComponentProps<typeof ChatEx
   )
   const view = selectedScope ? normalizeChatViewForScope(selectedScope, route.view) : route.view
 
-  if (resourceRouteKey && scopeRouteStatus?.routeKey === resourceRouteKey && scopeRouteStatus.status === 'unavailable') {
-    return (
-      <ChatSurfaceEmptyState
-        icon={Mail}
-        title="Conversation unavailable"
-        description="This conversation could not be opened."
-      />
-    )
-  }
-  if (resourceRouteKey && scopeRouteStatus?.routeKey !== resourceRouteKey) return null
-
+  let content: ReactNode
   if (view === 'dms' && conversationId) {
-    return (
+    content = (
       <DirectMessageExperience
         key={`dm:${conversationId}`}
         conversationId={conversationId}
@@ -158,9 +127,8 @@ export function ConversationExperienceRouter(props: ComponentProps<typeof ChatEx
         showcase={Boolean(props.publicShowcaseSnapshots)}
       />
     )
-  }
-  if (view === 'channels' && conversationId) {
-    return (
+  } else if (view === 'channels' && conversationId) {
+    content = (
       <DirectMessageExperience
         key={`channel:${conversationId}`}
         conversationId={conversationId}
@@ -170,9 +138,24 @@ export function ConversationExperienceRouter(props: ComponentProps<typeof ChatEx
         showcase={Boolean(props.publicShowcaseSnapshots)}
       />
     )
+  } else if (view === 'dms' || view === 'channels') {
+    content = <CollaborationViewEmptyState view={view} />
+  } else {
+    content = <ChatExperience {...props} />
   }
-  if (view === 'dms' || view === 'channels') {
-    return <CollaborationViewEmptyState view={view} />
-  }
-  return <ChatExperience {...props} />
+  return (
+    <ConversationDetailScopeGate
+      routeKey={resourceRouteKey}
+      status={scopeRouteStatus}
+      fallback={(
+        <ChatSurfaceEmptyState
+          icon={Mail}
+          title="Conversation unavailable"
+          description="This conversation could not be opened."
+        />
+      )}
+    >
+      {content}
+    </ConversationDetailScopeGate>
+  )
 }
