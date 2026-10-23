@@ -40,6 +40,8 @@ import { roomMessageDomId } from './room-message-view'
 import type { DriveSyncStatus } from '@layernorm/overlay-agent-bridge-protocol'
 import { RemoteDriveStatus, useSavedDriveLinkResolver } from './RemoteDriveStatus'
 import { RemoteRunTrace } from './RemoteRunTrace'
+import { NativeAgentApprovalCard } from './NativeAgentApprovalCard'
+import type { NativeAgentApproval } from '@/shared/agents/native-agent-approval'
 
 export type RoomMessageReaction = {
   emoji: string
@@ -88,6 +90,7 @@ export type RoomMessageView = {
   streaming?: boolean
   /** Set when this message is one agent's question to another, on a person's behalf: who asked, and how far down the chain it is. */
   askedBy?: { name: string; hop: number; parentConversationId?: string }
+  nativeApproval?: NativeAgentApproval
   remoteQueue?: { runId: string; environmentName: string; queueExpiresAt: number }
   remoteRequest?: { pendingDelivery?: boolean; expiresAt?: number; machineCostContinues?: boolean; runId: string; requestKey: string; kind: 'permission' | 'elicitation'; prompt: string;
     options: Array<{ id: string; label: string }>; requestedSchema?: Record<string, unknown> }
@@ -768,6 +771,7 @@ function AgentMessageBody({ message, onOpenAttachmentPreview, onControlRemoteQue
           {message.remoteRun?.state !== 'finalizing' ? remoteStatus : null}
         </div>
       ) : null}
+      {message.nativeApproval ? <NativeAgentApprovalCard key={message.nativeApproval.token} approval={message.nativeApproval} /> : null}
       {message.remoteQueue && onControlRemoteQueue ? (
         <RemoteQueueControls queue={message.remoteQueue} onControl={onControlRemoteQueue} />
       ) : null}

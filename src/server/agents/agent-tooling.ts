@@ -165,6 +165,7 @@ export async function buildExternalAppTooling(args: {
 export async function buildWorkspaceAgentTooling(args: {
   accessToken?: string
   approvalMode?: 'ask' | 'auto'
+  computerApprovalContext?: 'work' | 'automation'
   actorUserId: string
   agentPrincipalId: string
   conversationId: string
@@ -198,6 +199,7 @@ export async function buildWorkspaceAgentTooling(args: {
     baseUrl: getInternalApiBaseUrl(),
     conversationId: args.conversationId,
     approvalMode: args.approvalMode ?? 'ask',
+    computerApprovalContext: args.computerApprovalContext,
     effectiveModelId: args.effectiveModelId,
     entitlements: args.entitlements,
     idempotencyKey: args.idempotencyKey,
@@ -215,6 +217,7 @@ export async function buildWorkspaceAgentTooling(args: {
       serverSecret: getInternalApiSecret(),
       workspaceId: args.workspaceId,
       approvalMode: args.approvalMode ?? 'ask',
+      computerApprovalContext: args.computerApprovalContext,
     }),
     requestFingerprint: args.requestFingerprint,
     serverSecret: getInternalApiSecret(),

@@ -3,6 +3,7 @@
 const Module = require('node:module')
 
 const originalLoad = Module._load
+require.extensions['.css'] = () => {}
 
 Module._load = function loadWithServerOnlyNoop(request, parent, isMain) {
   if (request === 'server-only') {

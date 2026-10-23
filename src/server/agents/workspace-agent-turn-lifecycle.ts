@@ -4,6 +4,17 @@ import {
   runWorkspaceAgentTurn,
   type WorkspaceAgentTurnResult,
 } from '@/server/agents/workspace-agent-invocation'
+import {
+  prepareWorkspaceAgentTurn as prepare,
+  callWorkspaceAgentModel as model,
+  inspectWorkspaceAgentTool as inspect,
+  executeWorkspaceAgentTool as execute,
+  finalizeWorkspaceAgentTurn as finalize,
+  persistWorkspaceAgentToolProgress as persistToolProgress,
+  releaseWorkspaceAgentReservation as releaseReservation,
+} from './workspace-agent-durable'
+import type { AgentRunApprovalRequest } from '@/shared/agents/agent-run'
+import { resumeHook } from 'workflow/api'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { agentRunService } from '@/server/conversations/http'
 
@@ -52,6 +63,39 @@ export async function executeWorkspaceAgentTurn(input: {
     threadRootMessageId: input.threadRootMessageId,
     workspaceId: input.workspaceId,
   })
+}
+
+export const prepareWorkspaceAgentTurn = prepare
+export const callWorkspaceAgentModel = model
+export const inspectWorkspaceAgentTool = inspect
+export const executeWorkspaceAgentTool = execute
+export const persistWorkspaceAgentToolProgress = persistToolProgress
+export const finalizeWorkspaceAgentTurn = finalize
+export const releaseWorkspaceAgentReservation = releaseReservation
+
+export async function waitForWorkspaceAgentApproval(input: {
+  actorUserId: string
+  runId: string
+  token: string
+  requests: AgentRunApprovalRequest[]
+}) {
+  'use step'
+  return await agentRunService.waitForApproval({
+    runId: input.runId,
+    userId: input.actorUserId,
+    leaseExpiresAt: Date.now() + 30 * 60_000,
+    approval: { token: input.token, requestedAt: Date.now(), requests: input.requests, title: 'Approval required' },
+  })
+}
+
+export async function denyExpiredWorkspaceAgentApproval(input: { token: string }) {
+  'use step'
+  await resumeHook(input.token, { approved: false, reason: 'Approval timed out.' })
+}
+
+export async function resumeWorkspaceAgentAfterApproval(input: { actorUserId: string; runId: string }) {
+  'use step'
+  return await agentRunService.resumeAfterApproval({ runId: input.runId, userId: input.actorUserId })
 }
 
 export async function completeWorkspaceAgentRun(input: {

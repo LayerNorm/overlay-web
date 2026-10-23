@@ -258,7 +258,7 @@ export const CONNECTED_AGENT_INTERACTIVE_QUEUE_MS = 2 * 60_000
  * than threaded through from the request that triggered it: a durable turn can
  * start long after that request is gone, and the room may have moved on.
  */
-async function loadRoomTurnContext(args: {
+export async function loadRoomTurnContext(args: {
   actorUserId: string
   conversationId: string
   messageId: string
@@ -967,6 +967,7 @@ export async function runWorkspaceAgentTurn(args: {
           ...(agent.harness === 'overlay'
             ? { approvalMode: agent.permissionMode === 'auto' ? 'auto' as const : 'ask' as const }
             : {}),
+          computerApprovalContext: 'work',
           idempotencyKey: invocationNonce,
           latestUserText,
           memoryEnabled,

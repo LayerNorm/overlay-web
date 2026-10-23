@@ -352,6 +352,15 @@ complete.
 
 ## Overlay workspace tools for connected agents
 
+Native Overlay agent turns in direct messages and rooms run as durable
+prepare/model/tool/finalize steps. Ask approvals suspend the exact pending tool
+call for up to 15 minutes and resume from saved model state; they do not replay
+completed model or tool work. Only the original run initiator can resolve a
+room approval. Auto skips approval prompts but does not bypass authorization,
+tool grants, entitlements, takeover protection, or deny policy. Release QA must
+cover approval denial and approval resumption, cancellation and revoked grants,
+and exact-run authorization before rollout.
+
 A connected agent gets the same Overlay workspace tools a native agent with the same grant gets —
 notes (including the patch-style `edit_note`, `replace_note_section`, and `append_to_note`), files
 (`list_files`, `read_file`, `write_file`, `create_folder`, `move_file`), memory, knowledge search,
@@ -1670,3 +1679,17 @@ participation; personal conversations remain owner-only. During web-first deploy
 only the previous validator's explicit extra-`remoteRunId` rejection retries the legacy
 read with the same actor and conversation. Its result must match the requested run;
 authorization and unrelated errors never trigger a fallback.
+
+### Native Overlay agent approvals
+
+Native agent tool calls in direct messages and rooms run through separate durable
+preparation, model, tool, and finalization steps. Ask approvals attach to the exact
+active run and resume at the pending tool call. Only the initiating user can approve a
+room run. An unanswered request is denied after 15 minutes. Auto skips approval only;
+authorization, plan, entitlement, billing, takeover, and MCP deny checks still apply.
+
+Tool calls receive a stable run and tool-call idempotency key. A completed durable step
+is not replayed; if an interrupted tool step is retried before its result is recorded,
+the call fails closed rather than repeating a potentially ambiguous external action.
+Tools that do not deduplicate external side effects may still have an uncertain outcome.
+Hosted release QA remains necessary for approval, cancellation, and timeout behavior.

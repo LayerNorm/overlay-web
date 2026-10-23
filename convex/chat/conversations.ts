@@ -68,6 +68,22 @@ const messagePart = v.union(
     transient: v.optional(v.boolean()),
   }),
   v.object({
+    type: v.literal('data-native-agent-approval'),
+    data: v.object({
+      runId: v.string(),
+      conversationId: v.string(),
+      userId: v.string(),
+      token: v.string(),
+      requestedAt: v.number(),
+      requests: v.array(v.object({
+        approvalId: v.string(),
+        toolCallId: v.string(),
+        toolName: v.string(),
+        input: v.any(),
+      })),
+    }),
+  }),
+  v.object({
     type: v.literal('tool-invocation'),
     toolInvocation: v.object({
       toolCallId: v.optional(v.string()),
@@ -897,6 +913,24 @@ export const transitionAgentRun = mutation({
       approval: args.status === 'waiting_for_approval' ? args.approval : undefined,
       updatedAt: now,
     })
+    const message = await ctx.db.get(run.assistantMessageId)
+    if (message && run.mode === 'room') {
+      const parts = (message.parts ?? []).filter((part) => part.type !== 'data-native-agent-approval')
+      if (args.status === 'waiting_for_approval' && args.approval) {
+        parts.push({
+          type: 'data-native-agent-approval',
+          data: {
+            runId: run._id,
+            conversationId: run.conversationId,
+            userId: run.userId,
+            token: args.approval.token,
+            requestedAt: args.approval.requestedAt,
+            requests: args.approval.requests,
+          },
+        })
+      }
+      await ctx.db.patch(message._id, { parts, updatedAt: now })
+    }
     return await ctx.db.get(run._id)
   },
 })
@@ -1013,6 +1047,7 @@ export const failAgentRun = mutation({
 export const getLatestAgentRun = query({
   args: {
     conversationId: v.id('conversations'),
+    agentRunId: v.optional(v.id('conversationAgentRuns')),
     remoteRunId: v.optional(v.string()),
     serverSecret: v.string(),
     userId: v.string(),
@@ -1030,6 +1065,10 @@ export const getLatestAgentRun = query({
     }
     if (args.remoteRunId) {
       const run = await ctx.db.query('conversationAgentRuns').withIndex('by_externalRunId', q => q.eq('externalRunId', args.remoteRunId)).unique()
+      return run?.conversationId === args.conversationId ? run : null
+    }
+    if (args.agentRunId) {
+      const run = await ctx.db.get(args.agentRunId)
       return run?.conversationId === args.conversationId ? run : null
     }
     const active: Doc<'conversationAgentRuns'>[] = []
@@ -1082,7 +1121,10 @@ export const recordAgentRunProgress = mutation({
     if (message.content === args.content) return
     await ctx.db.patch(message._id, {
       content: args.content,
-      parts: [{ type: 'text', text: args.content }],
+      parts: [
+        { type: 'text', text: args.content },
+        ...(message.parts ?? []).filter((part) => part.type === 'data-native-agent-approval'),
+      ],
       updatedAt: Date.now(),
     })
   },
@@ -1173,7 +1215,7 @@ export const cancelAgentRuns = mutation({
           : message.parts ?? [{ type: 'text', text: baseContent }]
         writes.push(ctx.db.patch(message._id, {
           content: `${baseContent.trimEnd()}${sentinel}`,
-          parts: [...baseParts, { type: 'text', text: sentinel }],
+          parts: [...baseParts.filter((part) => part.type !== 'data-native-agent-approval'), { type: 'text', text: sentinel }],
           status: 'completed',
           updatedAt: now,
         }))

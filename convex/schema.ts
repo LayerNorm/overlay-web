@@ -1429,6 +1429,22 @@ export default defineSchema({
             data: v.any(),
           }),
           v.object({
+            type: v.literal('data-native-agent-approval'),
+            data: v.object({
+              runId: v.string(),
+              conversationId: v.string(),
+              userId: v.string(),
+              token: v.string(),
+              requestedAt: v.number(),
+              requests: v.array(v.object({
+                approvalId: v.string(),
+                toolCallId: v.string(),
+                toolName: v.string(),
+                input: v.any(),
+              })),
+            }),
+          }),
+          v.object({
             type: v.literal('tool-invocation'),
             toolInvocation: v.object({
               toolCallId: v.optional(v.string()),

@@ -7,6 +7,7 @@ import { getOverlayServerContext } from '@/server/bootstrap'
 import { readValidatedJson } from '@/server/app-api/validated-input'
 import { AgentRunApprovalRequest } from '@/shared/schemas/chat'
 import { asConversationId } from '@/server/conversations/ActConversationRepository'
+import { agentRunApprovalAccess } from '@/server/agents/agent-approval-authority'
 
 export async function POST(request: NextRequest, context: AppApiRouteContext) {
   try {
@@ -14,15 +15,20 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     if (!body.ok) return body.response
     const run = await getOverlayServerContext().appData.repositories.conversations.getLatestAgentRun({
       conversationId: asConversationId(body.data.conversationId),
+      agentRunId: body.data.agentRunId,
       userId: getAuthorizedResourceUserId(context),
     })
-    if (
-      !run ||
-      run.id !== body.data.agentRunId ||
-      run.status !== 'waiting_for_approval' ||
-      run.approval?.token !== body.data.token
-    ) {
+    const access = agentRunApprovalAccess(run, {
+      actorUserId: getAuthorizedResourceUserId(context),
+      agentRunId: body.data.agentRunId,
+      conversationId: body.data.conversationId,
+      token: body.data.token,
+    })
+    if (access === 'inactive') {
       return NextResponse.json({ error: 'This approval request is no longer active.' }, { status: 409 })
+    }
+    if (access === 'initiator-only') {
+      return NextResponse.json({ error: 'Only the initiating user can approve this run.' }, { status: 403 })
     }
     await resumeHook(body.data.token, {
       approved: body.data.approved,

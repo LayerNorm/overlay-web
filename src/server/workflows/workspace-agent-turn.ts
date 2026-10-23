@@ -1,10 +1,18 @@
-import { getWorkflowMetadata } from 'workflow'
+import { createHook, FatalError, getWorkflowMetadata, sleep } from 'workflow'
 import {
-  abandonWorkspaceAgentRun,
   attachWorkspaceAgentRun,
+  callWorkspaceAgentModel,
   completeWorkspaceAgentRun,
-  executeWorkspaceAgentTurn,
+  denyExpiredWorkspaceAgentApproval,
+  executeWorkspaceAgentTool,
   failWorkspaceAgentRun,
+  finalizeWorkspaceAgentTurn,
+  inspectWorkspaceAgentTool,
+  persistWorkspaceAgentToolProgress,
+  prepareWorkspaceAgentTurn,
+  releaseWorkspaceAgentReservation,
+  resumeWorkspaceAgentAfterApproval,
+  waitForWorkspaceAgentApproval,
 } from '@/server/agents/workspace-agent-turn-lifecycle'
 
 /**
@@ -59,14 +67,8 @@ export type WorkspaceAgentTurnInput = {
  * the transcript before this starts, so wherever the reader goes, they come
  * back to it.
  *
- * This deliberately runs the existing model turn as a single step rather than
- * as a `WorkflowAgent` loop. Replay granularity is therefore the whole turn:
- * a crash re-runs it from the top instead of resuming at the last tool call.
- * That trade buys token-level streaming, which a `WorkflowAgent` cannot give a
- * transcript row — it streams into the workflow's own output stream, which
- * only the single holder of the run id can read. Rooms need every participant
- * to see the reply, so the row wins. See internal/develop/bring-your-own-agents.md, "Durable agent
- * runs", for the follow-up that revisits this.
+ * Model calls and tool calls are separate durable steps. In particular, an
+ * approval suspension never replays a completed provider request or tool.
  */
 export async function workspaceAgentTurnWorkflow(input: WorkspaceAgentTurnInput) {
   'use workflow'
@@ -78,35 +80,78 @@ export async function workspaceAgentTurnWorkflow(input: WorkspaceAgentTurnInput)
     workflowRunId,
   })
 
+  let prepared: Awaited<ReturnType<typeof prepareWorkspaceAgentTurn>> | undefined
   try {
-    const result = await executeWorkspaceAgentTurn({
-      actorUserId: input.actorUserId,
-      agentId: input.agentId,
-      conversationId: input.conversationId,
-      messageId: input.messageId,
-      memoryEnabled: input.memoryEnabled !== false,
-      threadRootMessageId: input.threadRootMessageId,
-      turnMessageId: input.turnMessageId,
-      workspaceId: input.workspaceId,
-    })
-    if (!result) {
-      // The turn ran and produced nothing — an empty completion, or a reply
-      // this agent had already posted. Either way there is nothing to record,
-      // and the run must not stay active.
-      await abandonWorkspaceAgentRun({
-        actorUserId: input.actorUserId,
-        reasonCode: 'empty_response',
-        runId: input.runId,
-      })
-      return { completed: false, runId: input.runId }
+    prepared = await prepareWorkspaceAgentTurn({ ...input, memoryEnabled: input.memoryEnabled !== false })
+    let messages = prepared.messages
+    let content = ''
+    let transcriptParts: Array<Record<string, unknown>> = []
+    let inTokens = 0
+    let outTokens = 0
+    const steps: Array<Record<string, unknown>> = []
+    let approvalCycles = 0
+    for (let modelStep = 0; modelStep < prepared.maxSteps; modelStep += 1) {
+      const call = await callWorkspaceAgentModel({ prepared, messages, baseParts: transcriptParts })
+      transcriptParts = call.transcriptParts
+      content += call.text
+      inTokens += call.usage.inputTokens ?? 0
+      outTokens += call.usage.outputTokens ?? 0
+      const toolResults: Array<Record<string, unknown>> = []
+      const toolMessageContent: Array<Record<string, unknown>> = []
+      steps.push({ content: call.parts, text: call.text, toolCalls: call.toolCalls, toolResults, response: { messages: call.responseMessages }, usage: call.usage, finishReason: call.finishReason })
+      if (!call.toolCalls.length) {
+        const result = await finalizeWorkspaceAgentTurn({ prepared, steps, content, inputTokens: inTokens, outputTokens: outTokens })
+        await completeWorkspaceAgentRun({ actorUserId: input.actorUserId, result, runId: input.runId })
+        return { completed: true, runId: input.runId }
+      }
+      for (const toolCall of call.toolCalls) {
+        const inspection = await inspectWorkspaceAgentTool({ prepared, toolCall })
+        if (!inspection.available) {
+          const output = { error: 'This action is no longer authorized.' }
+          toolResults.push({ type: 'tool-error', toolCallId: toolCall.toolCallId, toolName: toolCall.toolName, input: toolCall.input, output })
+          toolMessageContent.push({ type: 'tool-result', toolCallId: toolCall.toolCallId, toolName: toolCall.toolName, output })
+          transcriptParts.push({ type: 'tool-invocation', toolInvocation: { toolCallId: toolCall.toolCallId, toolName: toolCall.toolName, state: 'output-error', toolInput: toolCall.input, toolOutput: output } })
+          await persistWorkspaceAgentToolProgress({ prepared, parts: transcriptParts })
+          continue
+        }
+        let approved = false
+        if (inspection.needsApproval) {
+          approvalCycles += 1
+          if (approvalCycles > prepared.maxSteps) throw new FatalError('Agent turn exceeded its approval cycle limit.')
+          const token = `native-agent-approval:${input.runId}:${approvalCycles}`
+          const hook = createHook<{ approved: boolean; reason?: string }>({ token })
+          let decision: { approved: boolean; reason?: string } | undefined
+          try {
+            if (await hook.getConflict()) throw new FatalError('Approval token is already in use.')
+            await waitForWorkspaceAgentApproval({ actorUserId: input.actorUserId, runId: input.runId, token, requests: [{ approvalId: `${input.runId}:${toolCall.toolCallId}`, toolCallId: toolCall.toolCallId, toolName: toolCall.toolName, input: toolCall.input }] })
+            const outcome = await Promise.race([hook.then(value => ({ value })), sleep('15m').then(() => ({ timedOut: true as const }))])
+            decision = 'timedOut' in outcome ? (await denyExpiredWorkspaceAgentApproval({ token }), await hook) : outcome.value
+          } finally {
+            hook.dispose()
+          }
+          if (!decision || typeof decision.approved !== 'boolean') throw new FatalError('Approval response was malformed.')
+          approved = decision.approved
+          await resumeWorkspaceAgentAfterApproval({ actorUserId: input.actorUserId, runId: input.runId })
+          if (!approved) {
+            const output = { error: 'reason' in decision ? decision.reason ?? 'The action was not approved.' : 'Approval timed out.' }
+            toolResults.push({ type: 'tool-error', toolCallId: toolCall.toolCallId, toolName: toolCall.toolName, input: toolCall.input, output })
+            toolMessageContent.push({ type: 'tool-result', toolCallId: toolCall.toolCallId, toolName: toolCall.toolName, output })
+            transcriptParts.push({ type: 'tool-invocation', toolInvocation: { toolCallId: toolCall.toolCallId, toolName: toolCall.toolName, state: 'output-error', toolInput: toolCall.input, toolOutput: output } })
+            await persistWorkspaceAgentToolProgress({ prepared, parts: transcriptParts })
+            continue
+          }
+        }
+        const result = await executeWorkspaceAgentTool({ prepared, toolCall, approved })
+        toolResults.push({ type: result.error || result.refusedApproval ? 'tool-error' : 'tool-result', toolCallId: toolCall.toolCallId, toolName: toolCall.toolName, input: toolCall.input, output: result.display })
+        toolMessageContent.push({ type: 'tool-result', toolCallId: toolCall.toolCallId, toolName: toolCall.toolName, output: result.output })
+        transcriptParts.push({ type: 'tool-invocation', toolInvocation: { toolCallId: toolCall.toolCallId, toolName: toolCall.toolName, state: result.error || result.refusedApproval ? 'output-error' : 'output-available', toolInput: toolCall.input, toolOutput: result.display } })
+        await persistWorkspaceAgentToolProgress({ prepared, parts: transcriptParts })
+      }
+      messages = [...messages, ...call.responseMessages, { role: 'tool', content: toolMessageContent as never }]
     }
-    await completeWorkspaceAgentRun({
-      actorUserId: input.actorUserId,
-      result,
-      runId: input.runId,
-    })
-    return { completed: true, runId: input.runId }
+    throw new FatalError('Agent turn exceeded its model step limit.')
   } catch (error) {
+    if (prepared) await releaseWorkspaceAgentReservation({ actorUserId: input.actorUserId, prepared }).catch((_error) => undefined)
     const failure = describeWorkspaceAgentFailure(error)
     await failWorkspaceAgentRun({
       actorUserId: input.actorUserId,

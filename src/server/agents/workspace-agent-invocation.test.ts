@@ -75,9 +75,10 @@ test('workspace agents use participant-scoped room history and persistence', asy
 })
 
 test('a room agent turn is owned by a durable run, not by an HTTP request', async () => {
-  const [workflow, lifecycle, messageRoute, policy, service] = await Promise.all([
+  const [workflow, lifecycle, durable, messageRoute, policy, service] = await Promise.all([
     readFile(`${root}/src/server/workflows/workspace-agent-turn.ts`, 'utf8'),
     readFile(`${root}/src/server/agents/workspace-agent-turn-lifecycle.ts`, 'utf8'),
+    readFile(`${root}/src/server/agents/workspace-agent-durable.ts`, 'utf8'),
     Promise.all([
       readFile(`${root}/src/server/app-api/v1/conversations/message/route.ts`, 'utf8'),
       // The route hands the turn to this module, which opens the durable run.
@@ -104,15 +105,39 @@ test('a room agent turn is owned by a durable run, not by an HTTP request', asyn
   assert.match(workflow, /'use workflow'/)
   for (const step of [
     'attachWorkspaceAgentRun',
-    'executeWorkspaceAgentTurn',
+    'prepareWorkspaceAgentTurn',
+    'callWorkspaceAgentModel',
+    'inspectWorkspaceAgentTool',
+    'executeWorkspaceAgentTool',
+    'persistWorkspaceAgentToolProgress',
+    'finalizeWorkspaceAgentTurn',
     'completeWorkspaceAgentRun',
     'failWorkspaceAgentRun',
   ]) {
     assert.match(workflow, new RegExp(step), `workflow is missing ${step}`)
-    assert.match(lifecycle, new RegExp(`export async function ${step}`), `lifecycle is missing ${step}`)
+    assert.match(lifecycle, new RegExp(step), `lifecycle is missing ${step}`)
   }
-  // Every lifecycle hop is a step, or replay cannot resume the turn.
-  assert.equal(lifecycle.match(/'use step'/g)?.length, 5)
+  for (const step of [
+    'prepareWorkspaceAgentTurn',
+    'callWorkspaceAgentModel',
+    'inspectWorkspaceAgentTool',
+    'executeWorkspaceAgentTool',
+    'persistWorkspaceAgentToolProgress',
+    'finalizeWorkspaceAgentTurn',
+    'releaseWorkspaceAgentReservation',
+  ]) {
+    assert.match(durable, new RegExp(`export async function ${step}[\\s\\S]*?'use step'`), `${step} must be durable`)
+  }
+  assert.match(workflow, /hook\.getConflict\(\)/)
+  assert.match(workflow, /sleep\('15m'\)/)
+  assert.match(workflow, /resumeWorkspaceAgentAfterApproval/)
+  assert.match(workflow, /if \(!approved\)[\s\S]*?continue/)
+  assert.match(durable, /getStepMetadata\(\)\.attempt > 1/)
+  assert.match(durable, /idempotencyKey: `\$\{input\.prepared\.runId\}:\$\{input\.toolCall\.toolCallId\}`/)
+  assert.equal(workflow.match(/await callWorkspaceAgentModel\(/g)?.length, 1)
+  assert.equal(workflow.match(/await executeWorkspaceAgentTool\(/g)?.length, 1)
+  assert.match(workflow, /for \(const toolCall of call\.toolCalls\)/)
+  assert.doesNotMatch(workflow, /executeWorkspaceAgentTurn\(/)
 
   // A durable turn outlives the request that triggered it, so it must not
   // depend on that request's credential.
@@ -139,7 +164,7 @@ test('a room agent turn is owned by a durable run, not by an HTTP request', asyn
   assert.ok(serverImports.length > 0)
   for (const imported of serverImports) {
     assert.match(
-      lifecycle,
+      `${lifecycle}\n${durable}`,
       new RegExp(`export async function ${imported}\\b[\\s\\S]*?'use step'`),
       `${imported} is imported into the workflow but is not a step`,
     )
