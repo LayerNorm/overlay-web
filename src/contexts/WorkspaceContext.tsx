@@ -10,11 +10,11 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import type { AccountWorkspaceInvitation } from '@overlay/workspace-contracts'
 import { setActiveChatListWorkspace } from '@/shared/chat/chat-list-cache'
 import { dispatchWorkspaceChanged } from '@/shared/workspaces/events'
-import { readWorkspaceIdFromPath } from '@/shared/workspaces/routing'
+import { readWorkspaceRouteTarget } from '@/shared/workspaces/routing'
 import type {
   WorkspaceClient,
   WorkspaceCreateInput,
@@ -55,6 +55,7 @@ export function WorkspaceProvider({
   client: WorkspaceClient
 }) {
   const pathname = usePathname() ?? ''
+  const router = useRouter()
   const [status, setStatus] = useState<WorkspaceLifecycleStatus>(enabled ? 'loading' : 'idle')
   const [workspaces, setWorkspaces] = useState<WorkspaceSummary[]>([])
   const [invitations, setInvitations] = useState<AccountWorkspaceInvitation[]>([])
@@ -96,7 +97,31 @@ export function WorkspaceProvider({
           }
         : await client.list(signal)
       if (signal?.aborted) return
-      const desiredWorkspaceId = readWorkspaceIdFromPath(pathname)
+      const routeTarget = readWorkspaceRouteTarget(pathname)
+      let desiredWorkspaceId = routeTarget?.kind === 'id' ? routeTarget.value : null
+      let canonicalHandle: string | null = null
+      if (routeTarget?.kind === 'handle') {
+        if (client.resolveHandle) {
+          try {
+            const resolution = await client.resolveHandle(routeTarget.value, signal)
+            desiredWorkspaceId = resolution.workspaceId
+            if (!resolution.canonical) canonicalHandle = resolution.canonicalHandle
+          } catch {
+            desiredWorkspaceId = null
+          }
+        } else {
+          desiredWorkspaceId = response.workspaces.find((workspace) => workspace.slug === routeTarget.value)?.id ?? null
+        }
+      }
+      if (canonicalHandle) {
+        const canonicalPath = pathname.replace(/^\/w\/[^/]+/, `/w/${encodeURIComponent(canonicalHandle)}`)
+        if (canonicalPath !== pathname) {
+          const locationSuffix = typeof window === 'undefined'
+            ? ''
+            : `${window.location.search}${window.location.hash}`
+          router.replace(`${canonicalPath}${locationSuffix}`, { scroll: false })
+        }
+      }
       if (!softReload) setInvitations(response.invitations ?? [])
       const desiredWorkspace = desiredWorkspaceId
         ? response.workspaces.find((workspace) => workspace.id === desiredWorkspaceId)
@@ -117,18 +142,8 @@ export function WorkspaceProvider({
             return
           }
           setWorkspaces(fresh.workspaces)
-          if (found.id !== fresh.activeWorkspaceId) {
-            const activated = await client.activate(found.id)
-            if (signal?.aborted) return
-            setActiveWorkspaceId(activated.activeWorkspaceId)
-            setActiveChatListWorkspace(activated.activeWorkspaceId)
-            setWorkspaces((current) => current.map((workspace) => (
-              workspace.id === activated.workspace.id ? activated.workspace : workspace
-            )))
-          } else {
-            setActiveWorkspaceId(found.id)
-            setActiveChatListWorkspace(found.id)
-          }
+          setActiveWorkspaceId(found.id)
+          setActiveChatListWorkspace(found.id)
           setStatus('ready')
           return
         }
@@ -140,16 +155,11 @@ export function WorkspaceProvider({
         return
       }
 
-      let nextWorkspaces = [...response.workspaces]
-      let nextActiveWorkspaceId = response.activeWorkspaceId ?? response.workspaces[0]?.id ?? null
-      if (desiredWorkspace && desiredWorkspace.id !== nextActiveWorkspaceId) {
-        const activated = await client.activate(desiredWorkspace.id)
-        if (signal?.aborted) return
-        nextActiveWorkspaceId = activated.activeWorkspaceId
-        nextWorkspaces = nextWorkspaces.map((workspace) => (
-          workspace.id === activated.workspace.id ? activated.workspace : workspace
-        ))
-      }
+      const nextWorkspaces = [...response.workspaces]
+      const nextActiveWorkspaceId = desiredWorkspace?.id
+        ?? response.activeWorkspaceId
+        ?? response.workspaces[0]?.id
+        ?? null
 
       setWorkspaces(nextWorkspaces)
       setActiveWorkspaceId(nextActiveWorkspaceId)
@@ -160,7 +170,7 @@ export function WorkspaceProvider({
       setError(loadError instanceof Error ? loadError.message : 'Could not load workspaces.')
       setStatus('error')
     }
-  }, [client, enabled, pathname])
+  }, [client, enabled, pathname, router])
 
   useEffect(() => {
     const controller = new AbortController()

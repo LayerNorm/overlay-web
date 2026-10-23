@@ -27,6 +27,26 @@ export function readWorkspaceIdFromPath(pathname: string): string | null {
   }
 }
 
+export type WorkspaceRouteTarget =
+  | { kind: 'id'; value: string }
+  | { kind: 'handle'; value: string }
+
+export function readWorkspaceRouteTarget(pathname: string): WorkspaceRouteTarget | null {
+  const id = readWorkspaceIdFromPath(pathname)
+  if (id) return { kind: 'id', value: id }
+  const match = /^\/w\/([^/]+)(?:\/|$)/.exec(pathname)
+  if (!match?.[1]) return null
+  try {
+    const handle = decodeURIComponent(match[1]).trim().toLowerCase()
+    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(handle) || handle.length < 3 || handle.length > 63) {
+      return null
+    }
+    return { kind: 'handle', value: handle }
+  } catch {
+    return null
+  }
+}
+
 export function isWorkspaceNavigationPending(args: {
   activeWorkspaceId: string | null
   pendingWorkspaceId: string | null
@@ -44,6 +64,10 @@ export function isWorkspaceNavigationPending(args: {
 
 export function resolveWorkspaceSurface(pathname: string): string {
   const segments = pathname.split('/').filter(Boolean)
+  if (segments[0] === 'w') {
+    const candidate = segments[2]
+    return candidate && APP_SURFACES.has(candidate) ? candidate : FALLBACK_SURFACE
+  }
   if (segments[0] !== 'app') return FALLBACK_SURFACE
   const candidate = segments[1] === 'w' ? segments[3] : segments[1]
   return candidate && APP_SURFACES.has(candidate) ? candidate : FALLBACK_SURFACE
@@ -53,6 +77,10 @@ export function buildWorkspaceHref(workspaceId: string, pathname: string): strin
   return `/app/w/${encodeURIComponent(workspaceId)}/${resolveWorkspaceSurface(pathname)}`
 }
 
+export function buildWorkspaceHandleHref(handle: string, pathname: string): string {
+  return `/w/${encodeURIComponent(handle)}/${resolveWorkspaceSurface(pathname)}`
+}
+
 /**
  * Base path for chat query updates (`?id=`).
  * Prefer the browser/workspace path so soft navigations stay on
@@ -60,6 +88,8 @@ export function buildWorkspaceHref(workspaceId: string, pathname: string): strin
  */
 export function resolveChatBasePath(pathname: string | null | undefined): string {
   if (!pathname) return '/app/chat'
+  const routeTarget = readWorkspaceRouteTarget(pathname)
+  if (routeTarget?.kind === 'handle') return buildWorkspaceHandleHref(routeTarget.value, '/chat')
   const workspaceId = readWorkspaceIdFromPath(pathname)
   if (workspaceId) return buildWorkspaceHref(workspaceId, '/app/chat')
   if (pathname === '/app/chat' || pathname.startsWith('/app/chat/')) return '/app/chat'

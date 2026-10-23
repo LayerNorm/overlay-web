@@ -2,9 +2,11 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   buildWorkspaceHref,
+  buildWorkspaceHandleHref,
   isWorkspaceNavigationPending,
   isSameChatSurface,
   readWorkspaceIdFromPath,
+  readWorkspaceRouteTarget,
   resolveChatBasePath,
   resolveWorkspaceSurface,
 } from './routing'
@@ -31,6 +33,19 @@ test('workspace routing reads and safely decodes canonical workspace ids', () =>
   assert.equal(readWorkspaceIdFromPath('/app/w/acme%20labs/chat'), 'acme labs')
   assert.equal(readWorkspaceIdFromPath('/app/chat'), null)
   assert.equal(readWorkspaceIdFromPath('/app/w/%E0%A4%A/chat'), null)
+})
+
+test('shared route parser distinguishes legacy immutable ids from readable handles', () => {
+  assert.deepEqual(readWorkspaceRouteTarget('/app/w/ws_1/agents/agent-1'), { kind: 'id', value: 'ws_1' })
+  assert.deepEqual(readWorkspaceRouteTarget('/w/acme-labs/agents/agent-1'), { kind: 'handle', value: 'acme-labs' })
+  assert.equal(resolveWorkspaceSurface('/w/acme-labs/agents/agent-1'), 'agents')
+  assert.equal(buildWorkspaceHandleHref('acme-labs', '/w/acme-labs/agents/agent-1'), '/w/acme-labs/agents')
+  assert.equal(resolveChatBasePath('/w/acme-labs/chat?id=chat_1'), '/w/acme-labs/chat')
+  assert.deepEqual(readWorkspaceRouteTarget('/w/personal-random/chat?id=chat_1'), { kind: 'handle', value: 'personal-random' })
+  assert.equal(readWorkspaceRouteTarget('/w/acme--labs'), null)
+  assert.equal(readWorkspaceRouteTarget('/w/acme%2Flabs'), null)
+  assert.equal(readWorkspaceRouteTarget('/w/a'), null)
+  assert.equal(readWorkspaceRouteTarget('/w/acme%252flabs'), null)
 })
 
 test('chat base path preserves the canonical workspace route', () => {

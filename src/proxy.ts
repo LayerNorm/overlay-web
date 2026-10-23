@@ -128,7 +128,7 @@ function getCspHeaderName(): 'Content-Security-Policy' | 'Content-Security-Polic
 // Routes that always render per-request. Only these can carry a nonce: a
 // statically prerendered page is served from cache, so its baked-in nonce would
 // never match the per-request header and every Next script would be blocked.
-const NONCE_ELIGIBLE_PREFIXES = ['/app/', '/auth/', '/share/']
+const NONCE_ELIGIBLE_PREFIXES = ['/app/', '/auth/', '/share/', '/w/']
 const NONCE_ELIGIBLE_EXACT = ['/app', '/auth', '/share']
 
 // Marketing pages are prerendered even though they live under /app.
@@ -227,21 +227,43 @@ function applyBrowserSecurityHeaders(
 }
 
 function getCanonicalWorkspaceRewrite(request: NextRequest): URL | null {
-  const match = request.nextUrl.pathname.match(/^\/app\/w\/([^/]+)(?:\/(.*))?$/)
+  const handleRoute = request.nextUrl.pathname.match(/^\/w\/([^/]+)(?:\/(.*))?$/)
+  const idRoute = request.nextUrl.pathname.match(/^\/app\/w\/([^/]+)(?:\/(.*))?$/)
+  const match = handleRoute ?? idRoute
   if (!match) return null
 
-  let workspaceId = ''
+  let target = ''
   try {
-    workspaceId = decodeURIComponent(match[1] ?? '').trim()
+    target = decodeURIComponent(match[1] ?? '').trim().toLowerCase()
   } catch {
     return null
   }
-  if (!workspaceId) return null
+  if (!target || target.includes('/') || target.includes('\\')) return null
+  if (handleRoute && (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(target) || target.length < 3 || target.length > 63)) {
+    return null
+  }
 
-  const surface = match[2]?.trim().replace(/^\/+|\/+$/g, '') || 'chat'
+  const nested = match[2]?.trim().replace(/^\/+|\/+$/g, '') || 'chat'
+  const nestedParts = nested.split('/')
+  if (nestedParts.some((part) => {
+    try {
+      const decoded = decodeURIComponent(part)
+      return decoded === '.' || decoded === '..' || decoded.includes('\\') || decoded.includes('/')
+    } catch {
+      return true
+    }
+  })) return null
+  const requestedSurface = nestedParts[0]
+  const allowed = new Set(['activity', 'admin', 'archived', 'agents', 'automations', 'chat', 'files', 'memories', 'notes', 'outputs', 'settings', 'tools', 'work'])
+  const surface = allowed.has(requestedSurface) ? requestedSurface : 'chat'
   const rewriteUrl = request.nextUrl.clone()
-  rewriteUrl.pathname = `/app/${surface}`
-  rewriteUrl.searchParams.set('workspaceId', workspaceId)
+  rewriteUrl.pathname = `/app/${surface === requestedSurface ? nested : 'chat'}`
+  if (handleRoute) {
+    rewriteUrl.searchParams.delete('workspaceId')
+    rewriteUrl.searchParams.set('workspaceHandle', target)
+  } else {
+    rewriteUrl.searchParams.set('workspaceId', target)
+  }
   return rewriteUrl
 }
 
@@ -268,6 +290,7 @@ export async function proxy(request: NextRequest) {
   const cspNonce = isNonceEligiblePath(pathname) ? createCspNonce() : undefined
   const cspPolicy = buildCspPolicy(cspNonce)
   const requestHeaders = new Headers(request.headers)
+  requestHeaders.delete('x-overlay-workspace-handle')
   requestHeaders.set(cspHeaderName, cspPolicy)
   // Next reads this to stamp the nonce onto the scripts it renders.
   if (cspNonce) requestHeaders.set('x-nonce', cspNonce)
@@ -294,14 +317,38 @@ export async function proxy(request: NextRequest) {
     )
   }
 
+  if (pathname.startsWith('/w/')) {
+    const hasSession = isBetterAuthSelected()
+      ? hasBetterAuthSessionCookie(request)
+      : await hasValidSessionCookieSignature(request.cookies.get(SESSION_COOKIE_NAME)?.value ?? '')
+    if (!hasSession) {
+      const signIn = new URL('/auth/sign-in', request.url)
+      signIn.searchParams.set('redirect', request.nextUrl.pathname + request.nextUrl.search)
+      return applyBrowserSecurityHeaders(
+        NextResponse.redirect(signIn),
+        cspHeaderName,
+        cspPolicy,
+      )
+    }
+  }
+
   // Canonical workspace routes rewrite last: the checks above own specific
   // paths, while this one claims the /app/w/:workspaceId space.
   const workspaceRewrite = getCanonicalWorkspaceRewrite(request)
   if (workspaceRewrite) {
-    requestHeaders.set(
-      'x-overlay-workspace-id',
-      workspaceRewrite.searchParams.get('workspaceId') ?? '',
-    )
+    if (pathname.startsWith('/w/')) {
+      requestHeaders.delete('x-overlay-workspace-id')
+      requestHeaders.set(
+        'x-overlay-workspace-handle',
+        workspaceRewrite.searchParams.get('workspaceHandle') ?? '',
+      )
+    } else {
+      requestHeaders.delete('x-overlay-workspace-handle')
+      requestHeaders.set(
+        'x-overlay-workspace-id',
+        workspaceRewrite.searchParams.get('workspaceId') ?? '',
+      )
+    }
     return applyBrowserSecurityHeaders(
       NextResponse.rewrite(workspaceRewrite, {
         request: {

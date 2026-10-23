@@ -66,3 +66,12 @@ test('a query containing an external URL stays inside the local return path', as
   assert.equal(location.origin, origin)
   assert.equal(location.searchParams.get('redirect'), destination)
 })
+
+test('signed-out handle routes preserve a local return path and query', async () => {
+  process.env.AUTH_PROVIDER = 'workos'
+  const response = await proxy(new NextRequest(origin + '/w/acme-labs/agents/agent_1?tab=activity'))
+  assert.equal(response.status, 307)
+  const location = new URL(response.headers.get('location')!)
+  assert.equal(location.pathname, '/auth/sign-in')
+  assert.equal(location.searchParams.get('redirect'), '/w/acme-labs/agents/agent_1?tab=activity')
+})

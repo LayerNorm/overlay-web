@@ -280,6 +280,20 @@ export type WorkspaceCreateResponse = {
   workspace: WorkspaceSummary
 }
 
+export type WorkspaceHandleResolutionResponse = {
+  workspaceId: string
+  canonicalHandle: string
+  canonical: boolean
+}
+
+export type WorkspaceHandleUpdateInput = {
+  slug: string
+}
+
+export type WorkspaceHandleUpdateResponse = {
+  workspace: Workspace
+}
+
 export type WorkspaceActivateResponse = {
   activeWorkspaceId: string
   workspace: WorkspaceSummary
