@@ -54,7 +54,14 @@ function messageOf(value: unknown): string {
   return ''
 }
 
+function isZodError(value: unknown): value is { name: 'ZodError'; issues: unknown[] } {
+  if (typeof value !== 'object' || value === null) return false
+  const candidate = value as { name?: unknown; issues?: unknown }
+  return candidate.name === 'ZodError' && Array.isArray(candidate.issues)
+}
+
 function typeOf(value: unknown): string {
+  if (isZodError(value)) return 'ZodError'
   if (value instanceof Error) {
     const ctor = value.constructor?.name
     return (ctor && ctor !== 'Object' ? ctor : value.name || 'Error').slice(0, 64)
