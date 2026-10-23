@@ -18,7 +18,8 @@ and conversation query, and remain absent from Production.
 
 ## App screen breadcrumbs
 
-`AppScreenHeader` and custom module headers use the shared `AppBreadcrumbs` component.
+`AppScreenHeader` and custom module headers use the shared `AppBreadcrumbs` component,
+composed from the shadcn Radix Breadcrumb primitives in `@overlay/ui/primitives`.
 `AppBreadcrumbContext` supplies the active Personal/Workspace scope and page; callers add
 subpages or selected records through `breadcrumbs` and the final title. Preserve scope in
 breadcrumb destinations and expose only the final item as the current page.

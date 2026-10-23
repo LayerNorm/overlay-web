@@ -1,7 +1,7 @@
 'use client'
 
-import { createContext, useContext, type ReactNode } from 'react'
-import { ChevronRight } from 'lucide-react'
+import { Fragment, createContext, useContext, type ReactNode } from 'react'
+import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from '@overlay/ui/primitives'
 
 export interface AppBreadcrumbItem {
   label: ReactNode
@@ -29,24 +29,30 @@ export function AppBreadcrumbs({ title, items = [], 'aria-label': ariaLabel = 'B
   if (title && title !== trail.at(-1)?.label) trail.push({ label: title })
   if (!trail.length) return null
   return (
-    <nav aria-label={ariaLabel} className="min-w-0 flex-1 text-sm leading-5">
-      <ol className="flex min-w-0 items-center gap-1.5">
+    <Breadcrumb aria-label={ariaLabel} className="min-w-0 flex-1">
+      <BreadcrumbList className="min-w-0 flex-nowrap">
         {trail.map((item, index) => {
           const current = index === trail.length - 1
-          const labelClass = 'block min-w-0 truncate rounded-sm outline-offset-2 hover:text-(--foreground)'
-          const currentLabel = <span className="block min-w-0 truncate" aria-current={current ? 'page' : undefined}>{item.label}</span>
+          const labelClass = 'block min-w-0 truncate rounded-sm outline-offset-2'
+          const currentLabel = <BreadcrumbPage className="block min-w-0 truncate">{item.label}</BreadcrumbPage>
           return (
-            <li key={index} className={`flex min-w-0 items-center gap-1.5 ${current ? 'flex-1 text-(--foreground) font-medium' : 'shrink text-(--muted)'}`}>
-              {index > 0 ? <ChevronRight size={13} className="shrink-0 text-(--muted-light)" aria-hidden /> : null}
-              {!current && item.href && context.renderLink
-                ? context.renderLink(item, labelClass)
-                : current && asHeading
-                  ? <h1 className="m-0 min-w-0 truncate text-sm font-medium leading-5 text-(--foreground)">{currentLabel}</h1>
-                  : currentLabel}
-            </li>
+            <Fragment key={index}>
+              {index > 0 ? <BreadcrumbSeparator className="shrink-0" /> : null}
+              <BreadcrumbItem className={`min-w-0 ${current ? 'flex-1' : ''}`}>
+                {current
+                  ? asHeading
+                    ? <h1 className="m-0 min-w-0 truncate text-sm leading-5">{currentLabel}</h1>
+                    : currentLabel
+                  : item.href
+                    ? context.renderLink
+                      ? <BreadcrumbLink asChild>{context.renderLink(item, labelClass)}</BreadcrumbLink>
+                      : <BreadcrumbLink href={item.href} className={labelClass}>{item.label}</BreadcrumbLink>
+                    : <span className="block min-w-0 truncate">{item.label}</span>}
+              </BreadcrumbItem>
+            </Fragment>
           )
         })}
-      </ol>
-    </nav>
+      </BreadcrumbList>
+    </Breadcrumb>
   )
 }
