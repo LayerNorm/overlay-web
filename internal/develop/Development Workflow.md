@@ -198,7 +198,11 @@ creates a synthetic **Preview QA Team**, two human principals (one is the config
 QA identity), separate Personal/Workspace agents, and a paid fixture with a one-time
 $1 allowance. It does not charge Stripe, enable automatic top-ups, or send invitations.
 It refuses non-Preview deployments and ordinary preview seeding does not invoke it.
-After confirming the current PR deployment and its isolated backend, run it with
+For hosted seeding without exporting credentials, set
+`OVERLAY_PREVIEW_QA_FIXTURES=paid-workspace` on **only the approved PR branch's**
+Vercel Preview environment. Its next successful build invokes the fixture on that
+PR backend with the existing Preview deploy key. Do not set this flag globally.
+Alternatively, after confirming the current PR deployment and its isolated backend, run it with
 the project-scoped Preview deploy key in a private key-only environment file:
 
 ```sh
