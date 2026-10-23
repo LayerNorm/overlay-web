@@ -1,7 +1,7 @@
 import 'server-only'
 
 import type { Entitlements } from '@/shared/app/app-contracts'
-import { z } from 'zod'
+import { z } from 'zod/v3'
 
 export const connectedAgentPolicyEntitlementsSchema = z.discriminatedUnion('planKind', [
   z.object({planKind: z.literal('free'), tier: z.literal('free')}).strict(),

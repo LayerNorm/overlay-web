@@ -1,4 +1,4 @@
-import { z } from 'zod'
+import { z } from 'zod/v3'
 
 const bridgeSchema = z.object({ callId: z.string().uuid(), requestKey: z.string().regex(/^mcp_call:[a-f0-9-]{36}$/) }).strict()
 const formSchema = z.object({ properties: z.object({ overlay_request: z.object({ enum: z.tuple([z.string().max(1024)]) }) }) })

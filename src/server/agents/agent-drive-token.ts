@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { createHmac, timingSafeEqual } from 'node:crypto'
-import { z } from 'zod'
+import { z } from 'zod/v3'
 
 const id = z.string().min(1).max(200)
 const scopeSchema = z.discriminatedUnion('kind', [

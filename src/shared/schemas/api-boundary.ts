@@ -1,4 +1,4 @@
-import { z, type ZodTypeAny } from 'zod'
+import { z, type ZodTypeAny } from 'zod/v3'
 import {
   commandAcknowledgementSchema,
   enrollmentRequestSchema,

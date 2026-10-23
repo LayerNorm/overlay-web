@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { createHmac, timingSafeEqual } from 'node:crypto'
-import { z } from 'zod'
+import { z } from 'zod/v3'
 
 /**
  * Bearer token a connected agent's Agent Host hands to its ACP runtime as the

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { ZodError } from 'zod'
+import { ZodError } from 'zod/v3'
 import { ConnectedAgentControlPlaneError } from '@/server/agents'
 import { reportAgentFailure } from '@/server/observability/agent-failure'
 

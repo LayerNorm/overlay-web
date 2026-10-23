@@ -1,4 +1,4 @@
-import {z} from 'zod'
+import {z} from 'zod/v3'
 import {DriveRequestError} from './drive-client.js'
 import {ControlPlaneRequestError} from './transport.js'
 import {DriveSnapshotChangedError} from './drive-cache.js'

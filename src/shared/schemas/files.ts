@@ -1,4 +1,4 @@
-import { z } from 'zod'
+import { z } from 'zod/v3'
 import { ResourceViewQuery } from './misc'
 import { AuthFields, BooleanQueryValue, FormDataBoundary, IdQuery, IntegerQueryValue, PaginationQuery, UnknownResponse } from './common'
 

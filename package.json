@@ -307,7 +307,7 @@
     "undici": "7.29.1",
     "viem": "^2.57.7",
     "workflow": "4.8.9",
-    "zod": "^3.25.76"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@edge-runtime/vm": "^5.0.0",
@@ -356,6 +356,7 @@
     "nanoid@<4": "3.3.18",
     "nanoid@>=4 <6": "5.1.16",
     "socket.io-parser": "4.2.7",
+    "zod@>=4": "$zod",
     "ws@>=7.0.0 <7.5.11": "7.5.11",
     "@workflow/world-local": {
       "undici": "7.29.1"

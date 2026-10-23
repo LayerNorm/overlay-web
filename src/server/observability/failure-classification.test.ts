@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { ConvexError } from 'convex/values'
-import { ZodError } from 'zod'
+import { ZodError } from 'zod/v3'
 import { describeFailure, recordConvexCallFailure } from './failure-classification'
 
 test('a Convex failure names its function, class, codes and request id without its message', () => {
