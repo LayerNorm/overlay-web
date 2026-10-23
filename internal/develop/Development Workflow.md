@@ -193,6 +193,23 @@ again or claiming paid/scope-isolation acceptance. Provision approved synthetic
 fixtures only on the PR's isolated backend; never change production billing or
 invite real people to make a test pass.
 
+For approved paid/workspace QA, the opt-in internal `dev/seed:initQa` mutation
+creates a synthetic **Preview QA Team**, two human principals (one is the configured
+QA identity), separate Personal/Workspace agents, and a paid fixture with a one-time
+$1 allowance. It does not charge Stripe, enable automatic top-ups, or send invitations.
+It refuses non-Preview deployments and ordinary preview seeding does not invoke it.
+After confirming the current PR deployment and its isolated backend, run it with
+the project-scoped Preview deploy key in a private key-only environment file:
+
+```sh
+npx convex run dev/seed:initQa '{}' --deployment preview/pr-<number> --env-file <preview-key-only-file>
+```
+
+Never use `.env.local`, a Production key, or a shared development backend for this
+command. Reruns preserve existing fixtures and do not replenish spent allowance.
+Select **Preview QA Team** in the app before verifying Pro entitlement and scope
+isolation; the original Personal workspace and its billing remain unchanged.
+
 Other Builders can use the configured sandbox QA identity or the
 [preview login recipe](browser-testing-with-agent-browser.md). Exercise the
 feature as a user would:
