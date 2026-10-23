@@ -75,12 +75,13 @@ test('workspace agents use participant-scoped room history and persistence', asy
 })
 
 test('a room agent turn is owned by a durable run, not by an HTTP request', async () => {
-  const [workflow, lifecycle, durable, usage, loop, messageRoute, policy, service] = await Promise.all([
+  const [workflow, lifecycle, durable, usage, loop, approval, messageRoute, policy, service] = await Promise.all([
     readFile(`${root}/src/server/workflows/workspace-agent-turn.ts`, 'utf8'),
     readFile(`${root}/src/server/agents/workspace-agent-turn-lifecycle.ts`, 'utf8'),
     readFile(`${root}/src/server/agents/workspace-agent-durable.ts`, 'utf8'),
     readFile(`${root}/src/server/agents/workspace-agent-usage.ts`, 'utf8'),
     readFile(`${root}/src/server/agents/workspace-agent-turn-loop.ts`, 'utf8'),
+    readFile(`${root}/src/server/workflows/workspace-agent-approval.ts`, 'utf8'),
     Promise.all([
       readFile(`${root}/src/server/app-api/v1/conversations/message/route.ts`, 'utf8'),
       // The route hands the turn to this module, which opens the durable run.
@@ -133,8 +134,8 @@ test('a room agent turn is owned by a durable run, not by an HTTP request', asyn
     assert.match(usage, new RegExp(`export async function ${step}[\\s\\S]*?'use step'`), `${step} must be durable`)
     assert.match(lifecycle, new RegExp(`export const ${step}`), `${step} must be registered in the lifecycle`)
   }
-  assert.match(workflow, /hook\.getConflict\(\)/)
-  assert.match(workflow, /sleep\('15m'\)/)
+  assert.match(approval, /hook\.getConflict\(\)/)
+  assert.match(approval, /sleep\('15m'\)/)
   assert.match(workflow, /resumeWorkspaceAgentAfterApproval/)
   assert.match(workflow, /runWorkspaceAgentTurnLoop/)
   assert.match(workflow, /callModel: callWorkspaceAgentModel/)
