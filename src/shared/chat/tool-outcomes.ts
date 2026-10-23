@@ -63,14 +63,21 @@ function readApprovalCall(value: unknown): ToolRecord | null {
   return toolCall ? toolCall : null
 }
 
+function hasMeaningfulError(value: unknown): boolean {
+  if (value == null) return false
+  if (typeof value === 'string') return value.trim().length > 0
+  if (value instanceof Error) return value.message.trim().length > 0
+  return true
+}
+
 function isFailureOutput(output: unknown): boolean {
   const record = asRecord(output)
   return Boolean(
     record
     && (
       record.success === false
-      || (hasOwn(record, 'error') && record.error !== undefined)
-      || (hasOwn(record, 'errorMessage') && record.errorMessage !== undefined)
+      || (hasOwn(record, 'error') && hasMeaningfulError(record.error))
+      || (hasOwn(record, 'errorMessage') && hasMeaningfulError(record.errorMessage))
     ),
   )
 }
@@ -78,8 +85,8 @@ function isFailureOutput(output: unknown): boolean {
 function readOutputError(output: unknown): string | undefined {
   const record = asRecord(output)
   if (!record) return undefined
-  if (record.error !== undefined) return boundedToolError(record.error)
-  if (record.errorMessage !== undefined) return boundedToolError(record.errorMessage)
+  if (hasOwn(record, 'error') && hasMeaningfulError(record.error)) return boundedToolError(record.error)
+  if (hasOwn(record, 'errorMessage') && hasMeaningfulError(record.errorMessage)) return boundedToolError(record.errorMessage)
   if (record.success === false) return 'The tool returned success:false.'
   return undefined
 }
@@ -138,11 +145,20 @@ export function resolveToolOutcomes(
         ? result.result
         : result
     const failed = isFailureOutput(output)
+    const error = failed ? readOutputError(output) ?? 'The tool returned success:false.' : undefined
+    const normalizedOutput = failed
+      ? (() => {
+          const outputRecord = asRecord(output)
+          return outputRecord
+            ? { ...outputRecord, success: false, error }
+            : toolFailureOutput(error)
+        })()
+      : output
     outcomes.set(result.toolCallId, mergeOutcome(outcomes.get(result.toolCallId), {
       state: failed ? 'output-error' : 'output-available',
       hasOutput: true,
-      output: failed ? toolFailureOutput(readOutputError(output)) : output,
-      ...(failed ? { error: readOutputError(output) } : {}),
+      output: normalizedOutput,
+      ...(failed ? { error } : {}),
       ...(result.providerExecuted === true ? { providerExecuted: true } : {}),
     }))
   }

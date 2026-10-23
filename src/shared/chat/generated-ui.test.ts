@@ -180,6 +180,106 @@ test('present_generated_ui tool results persist as generated UI data parts', () 
   })
 })
 
+test('ordered generated UI calls render once and failed calls retain their invocation', () => {
+  const completedInput = {
+    kind: 'draft.text',
+    title: 'Launch note',
+    body: 'The complete note.',
+  }
+  const failedInput = {
+    kind: 'draft.text',
+    title: 'Failed note',
+    body: 'This was not saved.',
+  }
+  const persistence = buildAssistantPersistenceFromSteps(
+    [
+      {
+        text: '',
+        toolCalls: [{
+          toolCallId: 'completed-ui',
+          toolName: 'present_generated_ui',
+          input: completedInput,
+        }],
+        toolResults: [{
+          toolCallId: 'completed-ui',
+          output: {
+            success: true,
+            id: 'completed-ui-result',
+            generatedUi: {
+              version: 1,
+              ...completedInput,
+            },
+          },
+        }],
+        content: [
+          {
+            type: 'tool-call',
+            toolCallId: 'completed-ui',
+            toolName: 'present_generated_ui',
+            input: completedInput,
+          },
+          {
+            type: 'tool-result',
+            toolCallId: 'completed-ui',
+            toolName: 'present_generated_ui',
+            output: {
+              success: true,
+              id: 'completed-ui-result',
+              generatedUi: {
+                version: 1,
+                ...completedInput,
+              },
+            },
+          },
+        ],
+      },
+      {
+        text: '',
+        toolCalls: [{
+          toolCallId: 'failed-ui',
+          toolName: 'present_generated_ui',
+          input: failedInput,
+        }],
+        toolResults: [],
+        content: [
+          {
+            type: 'tool-call',
+            toolCallId: 'failed-ui',
+            toolName: 'present_generated_ui',
+            input: failedInput,
+          },
+          {
+            type: 'tool-error',
+            toolCallId: 'failed-ui',
+            toolName: 'present_generated_ui',
+            error: new Error('UI renderer unavailable'),
+          },
+        ],
+      },
+    ] as never,
+    '',
+  )
+
+  assert.deepEqual(persistence.parts.slice(0, 2).map((part) => part.type), ['data', 'tool-invocation'])
+  assert.equal(persistence.parts.filter((part) => part.type === 'data').length, 1)
+  assert.deepEqual(persistence.parts[0], {
+    type: 'data',
+    id: 'completed-ui-result',
+    dataType: GENERATED_UI_DATA_TYPE,
+    data: {
+      version: 1,
+      ...completedInput,
+    },
+  })
+  assert.deepEqual(persistence.parts[1]?.toolInvocation, {
+    toolCallId: 'failed-ui',
+    toolName: 'present_generated_ui',
+    state: 'output-error',
+    toolInput: failedInput,
+    toolOutput: { success: false, error: 'UI renderer unavailable' },
+  })
+})
+
 test('compactAssistantPersistenceForConvex preserves only valid generated UI parts', () => {
   const validPart = buildGeneratedUiPart('ui-2', {
     version: 1,

@@ -27,6 +27,12 @@ export function summarizeToolResultForTranscript(params: {
   const toolName = params.toolName?.trim() || 'tool'
   const output = asRecord(params.toolOutput)
   const input = asRecord(params.toolInput)
+  if (params.state === 'input-available' || params.state === 'pending') return null
+  if (params.state === 'output-denied') {
+    return readString(output?.error)
+      || readString(output?.errorMessage)
+      || `The ${toolName} tool was denied.`
+  }
   if (output?._overlayGatedFeature === true) {
     return readString(output.message) || 'This capability requires a paid plan.'
   }

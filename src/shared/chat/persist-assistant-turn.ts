@@ -254,6 +254,19 @@ function persistedToolCall(value: unknown): PersistedToolCall | null {
   }
 }
 
+function mergePersistedToolCall(
+  current: PersistedToolCall | undefined,
+  next: PersistedToolCall,
+): PersistedToolCall {
+  if (!current) return next
+  return {
+    ...current,
+    ...next,
+    ...(next.input === undefined && current.input !== undefined ? { input: current.input } : {}),
+    ...(current.providerExecuted || next.providerExecuted ? { providerExecuted: true } : {}),
+  }
+}
+
 function toolCallFromPart(value: unknown): PersistedToolCall | null {
   const record = asRecord(value)
   if (!record) return null
@@ -277,6 +290,26 @@ function toolCallsForStep(step: StepResult<ToolSet>): PersistedToolCall[] {
     seen.add(call.toolCallId)
     return true
   })
+}
+
+function orderedContentForStep<TOOLS extends ToolSet>(
+  step: StepResult<TOOLS>,
+): readonly Record<string, unknown>[] {
+  let reasoningText = ''
+  if (step.reasoningText?.trim()) {
+    reasoningText = step.reasoningText.trim()
+  } else if (step.reasoning?.length) {
+    reasoningText = step.reasoning
+      .map((r) => (r && typeof r === 'object' && 'text' in r ? String((r as { text?: string }).text ?? '') : ''))
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .join('\n\n')
+  }
+  return step.content?.length ? step.content as readonly Record<string, unknown>[] : [
+    ...(reasoningText ? [{ type: 'reasoning' as const, text: reasoningText }] : []),
+    ...(step.toolCalls ?? []).map((call) => ({ ...call, type: 'tool-call' as const })),
+    ...(step.text?.trim() ? [{ type: 'text' as const, text: step.text }] : []),
+  ]
 }
 
 function toolOutputForOutcome(outcome: ResolvedToolOutcome | undefined): unknown {
@@ -318,6 +351,17 @@ export function buildAssistantPersistenceFromSteps<TOOLS extends ToolSet>(
   const synthesizedToolSegments: string[] = []
   const generatedUiTextSegments: string[] = []
   const toolOutcomes = resolveToolOutcomes(list)
+  const canonicalToolCalls = new Map<string, PersistedToolCall>()
+  for (const step of list) {
+    for (const part of orderedContentForStep(step)) {
+      const call = toolCallFromPart(part)
+      if (!call) continue
+      canonicalToolCalls.set(
+        call.toolCallId,
+        mergePersistedToolCall(canonicalToolCalls.get(call.toolCallId), call),
+      )
+    }
+  }
 
   for (const step of list) {
     const trimmedText = step.text?.trim()
@@ -351,23 +395,8 @@ export function buildAssistantPersistenceFromSteps<TOOLS extends ToolSet>(
   const parts: Array<Record<string, unknown>> = []
   const renderedToolCallIds = new Map<string, number>()
   for (const step of list) {
-    let reasoningText = ''
-    if (step.reasoningText?.trim()) {
-      reasoningText = step.reasoningText.trim()
-    } else if (step.reasoning?.length) {
-      reasoningText = step.reasoning
-        .map((r) => (r && typeof r === 'object' && 'text' in r ? String((r as { text?: string }).text ?? '') : ''))
-        .map((s) => s.trim())
-        .filter(Boolean)
-        .join('\n\n')
-    }
     // SDK content preserves generation order; the convenience fields group by type.
-    const orderedContent: readonly Record<string, unknown>[] = step.content?.length ? step.content as readonly Record<string, unknown>[] : [
-      ...(reasoningText ? [{ type: 'reasoning' as const, text: reasoningText }] : []),
-      ...(step.toolCalls ?? []).map((call) => ({ ...call, type: 'tool-call' as const })),
-      ...(step.text?.trim() ? [{ type: 'text' as const, text: step.text }] : []),
-    ]
-    for (const tc of orderedContent) {
+    for (const tc of orderedContentForStep(step)) {
       if (tc.type === 'text' || tc.type === 'reasoning') {
         if (typeof tc.text === 'string' && tc.text.trim()) {
           parts.push({
@@ -378,11 +407,13 @@ export function buildAssistantPersistenceFromSteps<TOOLS extends ToolSet>(
         }
         continue
       }
-      const call = toolCallFromPart(tc)
-      if (!call) continue
+      const sourceCall = toolCallFromPart(tc)
+      if (!sourceCall) continue
+      const call = canonicalToolCalls.get(sourceCall.toolCallId) ?? sourceCall
       const outcome = toolOutcomes.get(call.toolCallId)
       const toolOutput = toolOutputForOutcome(outcome)
-      if (tc.toolName === 'present_generated_ui') {
+      const existingIndex = renderedToolCallIds.get(call.toolCallId)
+      if (call.toolName === 'present_generated_ui') {
         const output = toolOutput && typeof toolOutput === 'object'
           ? toolOutput as Record<string, unknown>
           : null
@@ -392,14 +423,20 @@ export function buildAssistantPersistenceFromSteps<TOOLS extends ToolSet>(
               output.generatedUi,
             )
           : null
-        if (part) parts.push(part)
-        continue
+        if (part) {
+          if (existingIndex === undefined) {
+            renderedToolCallIds.set(call.toolCallId, parts.length)
+            parts.push(part)
+          } else {
+            parts[existingIndex] = part
+          }
+          continue
+        }
       }
       const toolPart = {
         type: 'tool-invocation',
         toolInvocation: toolInvocationForPersistence(call, outcome),
       }
-      const existingIndex = renderedToolCallIds.get(call.toolCallId)
       if (existingIndex === undefined) {
         renderedToolCallIds.set(call.toolCallId, parts.length)
         parts.push(toolPart)

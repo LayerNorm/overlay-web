@@ -149,6 +149,66 @@ test('falsey tool outputs remain successful terminal results', () => {
   assert.equal((invocations[1] as Record<string, unknown>).toolOutput, false)
 })
 
+test('null error metadata stays successful and structured failures retain their fields', () => {
+  const saved = buildAssistantPersistenceFromSteps([
+    {
+      text: '',
+      toolCalls: [
+        { toolCallId: 'success', toolName: 'computer_exec', input: { command: 'printf ok' } },
+        { toolCallId: 'failure', toolName: 'computer_exec', input: { command: 'false' } },
+      ],
+      toolResults: [
+        {
+          toolCallId: 'success',
+          output: {
+            success: true,
+            error: null,
+            stdout: 'ok',
+            stderr: '',
+            exitCode: 0,
+          },
+        },
+        {
+          toolCallId: 'failure',
+          output: {
+            success: false,
+            error: null,
+            exitCode: 1,
+            stdout: '',
+            stderr: 'command failed',
+            details: { signal: null },
+          },
+        },
+      ],
+      content: [
+        { type: 'tool-call', toolCallId: 'success', toolName: 'computer_exec', input: { command: 'printf ok' } },
+        { type: 'tool-call', toolCallId: 'failure', toolName: 'computer_exec', input: { command: 'false' } },
+      ],
+    },
+  ] as unknown as StepResult<ToolSet>[], '')
+  const invocations = saved.parts
+    .filter((part) => part.type === 'tool-invocation')
+    .map((part) => part.toolInvocation as Record<string, unknown>)
+
+  assert.equal(invocations[0]?.state, 'output-available')
+  assert.deepEqual(invocations[0]?.toolOutput, {
+    success: true,
+    error: null,
+    stdout: 'ok',
+    stderr: '',
+    exitCode: 0,
+  })
+  assert.equal(invocations[1]?.state, 'output-error')
+  assert.deepEqual(invocations[1]?.toolOutput, {
+    success: false,
+    error: 'The tool returned success:false.',
+    exitCode: 1,
+    stdout: '',
+    stderr: 'command failed',
+    details: { signal: null },
+  })
+})
+
 test('failure summaries win over success-specific web prose', () => {
   assert.equal(
     summarizeToolResultForTranscript({
@@ -158,6 +218,34 @@ test('failure summaries win over success-specific web prose', () => {
       state: 'output-available',
     }),
     'search backend unavailable',
+  )
+})
+
+test('pending web requests do not claim search completion and denied calls stay denied', () => {
+  assert.equal(
+    summarizeToolResultForTranscript({
+      toolName: 'web_search',
+      toolInput: { query: 'Overlay' },
+      toolOutput: { provider: 'search-provider' },
+      state: 'pending',
+    }),
+    null,
+  )
+  assert.equal(
+    summarizeToolResultForTranscript({
+      toolName: 'web_search',
+      toolInput: { query: 'Overlay' },
+      state: 'input-available',
+    }),
+    null,
+  )
+  assert.equal(
+    summarizeToolResultForTranscript({
+      toolName: 'web_search',
+      toolInput: { query: 'Overlay' },
+      state: 'output-denied',
+    }),
+    'The web_search tool was denied.',
   )
 })
 
