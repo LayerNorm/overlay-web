@@ -1,31 +1,35 @@
 ---
 title: "Settings"
-description: "How to manage account, billing, integrations, and preferences in Overlay."
+description: "A tour of the settings pages and what each one controls."
 ---
 
-## Account
+Open **Settings** from the menu at the bottom of the sidebar. Search at the top finds a page or a single setting by name. **Back to app** returns to where you were.
 
-- Update your name, email, and profile picture.
-- Sign out from all devices if needed.
+| Page | What it controls |
+| --- | --- |
+| **General** | Theme (light, dark or system) and everyday preferences. |
+| **Account** | Your name, email, sign-in methods and deleting your account. |
+| **Workspace** | The workspace name, People, Teams, Guests, Roles & permissions, Sharing & links, Billing and Import. Most of this is for owners and admins. |
+| **Customization** | How the app looks, including the sidebar layout. |
+| **Shortcuts** | Every keyboard shortcut. `⌘K` (`Ctrl+K`) opens search from anywhere. |
+| **Memories** | What Overlay remembers. See [Memories](/help/memory). |
+| **Providers** | Your own model provider keys, if your workspace allows them. |
+| **Webhooks** | Send Overlay events to your own systems. |
+| **Environments** and **Agents** | The computers and accounts behind Claude Code and Codex agents. See [Claude Code and Codex agents](/help/other-agents). |
+| **Connected apps** | ChatGPT, Claude and other apps using your workspace, and personal tokens. See [Connect other apps](/help/connect-other-apps). |
+| **Computers** | Cloud computers you and your agents use: open, stop or start them. |
+| **Archived** | Everything you archived. Restore it, or delete it for good. |
+| **Contact** | Reach the Overlay team. |
 
-## Billing
+Some pages appear only when your workspace has the feature, or when your role can change it.
 
-- View your subscription and usage.
-- Update payment methods and auto top-up settings.
-- Download invoices.
+## Workspace roles
 
-## Integrations
+| Role | Can |
+| --- | --- |
+| **Owner** | Everything, including billing and deleting the workspace. |
+| **Admin** | Manage people, settings and billing. |
+| **Member** | Use the workspace and share into it, within the workspace's sharing settings. |
+| **Guest** | See only the chats and items shared with them. |
 
-- Connect apps such as Gmail, Calendar, Notion, GitHub, Slack, and more.
-- Each integration is scoped to your account.
-
-## Preferences
-
-- **Theme** — light, dark, or system.
-- **Default model** — choose the model for Ask and Act modes.
-- **Send with Enter** — toggle enter-to-send behavior.
-- **Attach files to knowledge** — choose whether uploaded files are added to knowledge by default.
-
-## SSO
-
-If your workspace uses SSO, sign in through your organization. Contact your admin for access issues.
+Owners and admins decide what members may do, such as inviting people, creating agents or sharing into the workspace, in **Workspace → Sharing & links**.

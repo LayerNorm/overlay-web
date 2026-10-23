@@ -1,14 +1,17 @@
 import type { CSSProperties, ReactNode } from 'react'
 import Link from 'next/link'
 import {
-  ArrowRight, Braces, ChevronRight, CircleCheck, Database, FileText, Gauge, Globe, History, Laptop,
-  Lock, LogIn, Monitor, Plug, ShieldCheck, Smartphone, Terminal, Users, Zap,
+  ArrowRight, Braces, ChevronRight, CircleCheck, Database, FileText, Gauge, Globe, History,
+  Lock, LogIn, Monitor, Plug, Server, ShieldCheck, Terminal, Users, Zap,
 } from 'lucide-react'
-import { MARKETING_DOCS_URL, MARKETING_SALES_URL } from '@/shared/marketing/marketing'
+import { MARKETING_DOCS_URL, MARKETING_GITHUB_URL, MARKETING_SALES_URL } from '@/shared/marketing/marketing'
+import { GithubMark } from './GithubMark'
 import { LANDING_AGENTS, LandingAgent, type LandingAgentId } from './LandingAgent'
 import { LandingLogo, type LogoName } from './LandingLogo'
 
-const API_DOCS = `${MARKETING_DOCS_URL}/api-reference/overview`
+const API_DOCS = `${MARKETING_DOCS_URL}/developer/api/overview`
+const MCP_DOCS = `${MARKETING_DOCS_URL}/help/connect-other-apps`
+const SELF_HOSTING_DOCS = `${MARKETING_DOCS_URL}/self-hosting/overview`
 
 /** Internal routes use `Link`; docs and other sites open in a new tab. */
 function SmartLink({ href, className, children }: { href: string; className?: string; children: ReactNode }) {
@@ -177,15 +180,15 @@ export function TeamsSection() {
           <div className="art">
             <div className="plats">
               <span className="tool"><Globe className="i sm" />Web</span>
-              <span className="tool"><LandingLogo name="apple" className="logo" />macOS</span>
-              <span className="tool"><LandingLogo name="windows" className="logo" />Windows</span>
-              <span className="tool"><LandingLogo name="apple" className="logo" />iOS</span>
-              <span className="tool"><LandingLogo name="android" className="logo" />Android</span>
               <span className="tool"><LandingLogo name="slack" className="logo" />Slack</span>
+              <span className="tool"><LandingLogo name="openai" className="logo" />ChatGPT</span>
+              <span className="tool"><LandingLogo name="claude" className="logo" />Claude</span>
+              <span className="tool"><LandingLogo name="cursor" className="logo" />Cursor</span>
+              <span className="tool"><LandingLogo name="mcp" className="logo" />Any MCP app</span>
             </div>
           </div>
           <h3 className="h3">Accessible from anywhere, literally</h3>
-          <p className="body">Web, desktop, mobile and the chat apps you already use. Agents keep working while your laptop is closed.</p>
+          <p className="body">The web, Slack, and the AI apps you already use. Agents keep working while your laptop is closed.</p>
         </div>
         <div className="cell" id="multiplayer">
           <div className="art">
@@ -243,16 +246,16 @@ export function GetOverlaySection({ appHref }: { appHref: string }) {
       { name: 'Get started', href: appHref, icon: <Globe className="i" /> },
       { name: 'Sign in', href: '/auth/sign-in', icon: <LogIn className="i" /> },
     ] },
-    { title: 'Desktop', rows: [
-      { name: 'macOS', href: '/download', icon: <Laptop className="i" /> },
-      { name: 'Windows', href: '/download', icon: <Laptop className="i" /> },
+    { title: 'Your AI apps', rows: [
+      { name: 'ChatGPT', href: MCP_DOCS, icon: <LandingLogo name="openai" className="logo" /> },
+      { name: 'Claude', href: MCP_DOCS, icon: <LandingLogo name="claude" className="logo" /> },
     ] },
-    { title: 'Mobile', rows: [
-      { name: 'iOS', href: '/download', icon: <Smartphone className="i" /> },
-      { name: 'Android', href: '/download', icon: <Smartphone className="i" /> },
+    { title: 'Self-host', rows: [
+      { name: 'Self-hosting guide', href: SELF_HOSTING_DOCS, icon: <Server className="i" /> },
+      { name: 'Source', href: MARKETING_GITHUB_URL, icon: <GithubMark /> },
     ] },
     { title: 'Developer', rows: [
-      { name: 'MCP', href: API_DOCS, icon: <Plug className="i" /> },
+      { name: 'MCP', href: MCP_DOCS, icon: <Plug className="i" /> },
       { name: 'API', href: API_DOCS, icon: <Braces className="i" /> },
     ] },
   ]

@@ -1,0 +1,28 @@
+---
+title: "Authentication"
+description: "Which credential to use for MCP, the REST API and webhooks."
+---
+
+| You are building | Use |
+| --- | --- |
+| An app or agent that reads and writes a person's workspace | [MCP](/developer/mcp) with OAuth, or a personal token |
+| A script that calls the REST API as a signed-in person | The session cookie from the browser, or a personal token through MCP instead |
+| A service that reacts to things happening in Overlay | [Webhooks](/developer/webhooks), verified with the signing secret |
+
+## Personal tokens
+
+Created by the person in **Settings → Connected apps**, bound to one workspace and one access level, shown once and valid for up to 365 days. Send them as `Authorization: Bearer ovmcu_p_…` to the MCP endpoint. They are the simplest way to give a local tool access to Overlay.
+
+Treat a personal token like a password: store it in a secret manager or an environment variable, never in a repository. Revoke it from the same settings page when it is no longer needed.
+
+## OAuth
+
+MCP clients that can open a browser should use OAuth 2.1 with dynamic registration and PKCE instead of asking people to paste tokens. The full flow is on the [MCP page](/developer/mcp#sign-in).
+
+## REST API keys
+
+The REST API accepts `Authorization: Bearer ovl_sk_…` keys with scopes, but creating them is not open to customers yet: the key endpoints answer `501`. Until they are, build integrations on MCP, which covers the same notes, files, memory and automation operations. Calls made from the web app use its signed session cookie.
+
+## Webhook signatures
+
+Outgoing webhooks are signed with a per-subscription secret instead of carrying a token. See [Webhooks](/developer/webhooks#verify-a-delivery).
