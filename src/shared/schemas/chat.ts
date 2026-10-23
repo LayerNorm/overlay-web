@@ -92,6 +92,7 @@ export const ActConversationRequest = z.object({
   ...AuthFields,
   conversationId: z.string().optional(),
   conversationClientId: z.string().min(1).optional(),
+  scope: z.enum(['personal', 'workspace']).optional(),
   askModelIds: z.array(z.string()).optional(),
   messages: z.array(z.unknown()).optional(),
   prompt: z.string().optional(),

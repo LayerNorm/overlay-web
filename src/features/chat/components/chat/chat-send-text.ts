@@ -27,7 +27,7 @@ import {
   type UpdateRuntimeUiState,
 } from './chat-send-body-builders'
 import type { PendingFirstSendState } from './chat-send-pending-first'
-import type { CreateNewChatOptions } from './chat-send-create'
+import { workspaceChatsViewActive, type CreateNewChatOptions } from './chat-send-create'
 
 export function sendTextTurn({
   activeChatId,
@@ -220,6 +220,7 @@ export function sendTextTurn({
   setIsFirstMessage(false)
 
   const commonActBody = buildCommonActBody({
+    scope: workspaceChatsViewActive() ? 'workspace' : 'personal',
     chatId,
     pendingConversationClientId:
       chatId === PENDING_FIRST_CHAT_ID
