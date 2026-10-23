@@ -43,6 +43,26 @@ function startsWithRoute(pathname: string, route: string): boolean {
   return pathname === route || pathname.startsWith(`${route}/`)
 }
 
+function getAgentEnvironmentRequiredCapability(
+  method: string,
+  pathname: string,
+): OverlayCapability | null {
+  if (pathname === '/api/v1/agent-environments' && method === 'GET') return null
+  if (pathname.endsWith('/commands') && method === 'GET') return null
+  if (
+    /^\/api\/v1\/agent-environments\/[^/]+\/commands\/[^/]+\/ack$/.test(pathname)
+    || pathname.endsWith('/events')
+    || pathname.endsWith('/heartbeat')
+    || pathname.endsWith('/capabilities')
+    || pathname === '/api/v1/agent-environments/operations/reconcile'
+    || pathname.endsWith('/artifacts/cleanup')
+    || pathname.endsWith('/revoke')
+    || pathname.endsWith('/credentials/refresh')
+    || pathname === '/api/v1/agent-environments/artifacts/cleanup'
+  ) return null
+  return 'externalAgents'
+}
+
 export function getRequiredCapabilityForRoute(
   method: string,
   pathname: string,
@@ -57,20 +77,7 @@ export function getRequiredCapabilityForRoute(
   if (startsWithRoute(normalizedPath, '/api/v1/computers')) return 'computers'
   if (startsWithRoute(normalizedPath, '/api/v1/work')) return 'work'
   if (startsWithRoute(normalizedPath, '/api/v1/agent-environments')) {
-    if (normalizedPath === '/api/v1/agent-environments' && normalizedMethod === 'GET') return null
-    if (normalizedPath.endsWith('/commands') && normalizedMethod === 'GET') return null
-    if (
-      /^\/api\/v1\/agent-environments\/[^/]+\/commands\/[^/]+\/ack$/.test(normalizedPath)
-      || normalizedPath.endsWith('/events')
-      || normalizedPath.endsWith('/heartbeat')
-      || normalizedPath.endsWith('/capabilities')
-      || normalizedPath === '/api/v1/agent-environments/operations/reconcile'
-      || normalizedPath.endsWith('/artifacts/cleanup')
-      || normalizedPath.endsWith('/revoke')
-      || normalizedPath.endsWith('/credentials/refresh')
-      || normalizedPath === '/api/v1/agent-environments/artifacts/cleanup'
-    ) return null
-    return 'externalAgents'
+    return getAgentEnvironmentRequiredCapability(normalizedMethod, normalizedPath)
   }
   if (startsWithRoute(normalizedPath, '/api/v1/agent-bindings')) {
     return normalizedMethod === 'GET' || normalizedMethod === 'DELETE' ? null : 'externalAgents'

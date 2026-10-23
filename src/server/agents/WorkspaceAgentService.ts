@@ -19,7 +19,7 @@ import { DEFAULT_MODEL_ID, FREE_TIER_AUTO_MODEL_ID } from '@/shared/ai/gateway/m
 import { parseByoModelId } from '@/shared/agents/agent-model'
 import type { WorkspaceService } from '@/server/workspaces/WorkspaceService'
 import type { WorkspaceAgentRepository } from './WorkspaceAgentRepository'
-import type { ExternalAgentPolicyDecision, ExternalAgentPolicyRecord } from './external-agent-policy'
+import { externalAgentPolicyAllowsRecord, type ExternalAgentPolicyDecision, type ExternalAgentPolicyRecord } from './external-agent-policy'
 
 export class WorkspaceAgentServiceError extends Error {
   constructor(
@@ -278,11 +278,7 @@ export class WorkspaceAgentService {
   }
 
   private async assertExternalAgentAllowed(record: ExternalAgentPolicyRecord): Promise<void> {
-    const decision = await this.externalAgentPolicy({
-      workspaceId: record.workspaceId,
-      record,
-    })
-    if (decision.external && !decision.allowed) {
+    if (!await externalAgentPolicyAllowsRecord(this.externalAgentPolicy, record)) {
       throw new WorkspaceAgentServiceError('forbidden', 'External agent runtimes are disabled for this deployment')
     }
   }

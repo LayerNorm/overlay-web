@@ -562,6 +562,12 @@ function overlayMcpMetadata(args: {
   return token ? { overlayMcp: { url: `${getAgentFacingBaseUrl()}/api/agent-mcp`, token } } : {}
 }
 
+async function assertRemoteAgentLaunchEnabled(workspaceId: string): Promise<void> {
+  if (!await externalAgentLaunchEnabled(workspaceId)) {
+    throw new WorkspaceAgentInvocationError('not_entitled')
+  }
+}
+
 export async function startRemoteWorkspaceAgentTurn(args: {
   actorUserId: string
   conversationId: string
@@ -574,9 +580,7 @@ export async function startRemoteWorkspaceAgentTurn(args: {
   workspaceId: string
 }) {
   const server = getOverlayServerContext()
-  if (!await externalAgentLaunchEnabled(args.workspaceId)) {
-    throw new WorkspaceAgentInvocationError('not_entitled')
-  }
+  await assertRemoteAgentLaunchEnabled(args.workspaceId)
   // Managed HarnessAgent turns run through `managedHarnessAgentTurnWorkflow`
   // (see `startManagedHarnessTurn`), not the ACP command queue — fail loudly
   // rather than enqueue commands nothing will claim.

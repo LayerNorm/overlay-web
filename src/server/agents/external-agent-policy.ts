@@ -16,6 +16,17 @@ export type ExternalAgentPolicyDecision = {
   allowed: boolean
 }
 
+export async function externalAgentPolicyAllowsRecord(
+  policy: (args: {
+    workspaceId: string
+    record: ExternalAgentPolicyRecord
+  }) => Promise<ExternalAgentPolicyDecision>,
+  record: ExternalAgentPolicyRecord,
+): Promise<boolean> {
+  const decision = await policy({ workspaceId: record.workspaceId, record })
+  return !decision.external || decision.allowed
+}
+
 export function isPersistedExternalAgent(record: ExternalAgentPolicyRecord): boolean {
   return record.harness !== undefined && record.harness !== 'overlay'
     || parseByoModelId(record.modelId) !== null
