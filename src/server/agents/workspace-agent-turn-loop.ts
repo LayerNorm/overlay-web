@@ -80,13 +80,14 @@ async function executeToolCall(args: {
   approvalCycles: number
 }): Promise<{ outcome: WorkspaceAgentToolResult; approvalCycles: number }> {
   const { prepared, dependencies, toolCall } = args
-  const inspection = await dependencies.inspectTool({ prepared, toolCall })
+  const { inspectTool, executeTool, requestApproval } = dependencies
+  const inspection = await inspectTool({ prepared, toolCall })
   if (!inspection.available) {
     return { outcome: errorToolResult('This action is no longer authorized.'), approvalCycles: args.approvalCycles }
   }
   if (!inspection.needsApproval) {
     return {
-      outcome: await dependencies.executeTool({ prepared, toolCall, approved: false }),
+      outcome: await executeTool({ prepared, toolCall, approved: false }),
       approvalCycles: args.approvalCycles,
     }
   }
@@ -95,7 +96,7 @@ async function executeToolCall(args: {
   if (approvalCycles > prepared.maxSteps) {
     throw new FatalError('Agent turn exceeded its approval cycle limit.')
   }
-  const decision = await dependencies.requestApproval({ prepared, toolCall, cycle: approvalCycles })
+  const decision = await requestApproval({ prepared, toolCall, cycle: approvalCycles })
   if (!decision || typeof decision.approved !== 'boolean') {
     throw new FatalError('Approval response was malformed.')
   }
@@ -106,7 +107,7 @@ async function executeToolCall(args: {
     }
   }
   return {
-    outcome: await dependencies.executeTool({ prepared, toolCall, approved: true }),
+    outcome: await executeTool({ prepared, toolCall, approved: true }),
     approvalCycles,
   }
 }
@@ -117,6 +118,8 @@ export async function runWorkspaceAgentTurnLoop(args: {
   usage: WorkspaceAgentLoopUsage
 }) {
   const { prepared, dependencies, usage } = args
+  // Workflow serializes method receivers; never bind steps to the callback collection.
+  const { beginFirstModelCall, callModel, finalize, persistProgress } = dependencies
   let messages = prepared.messages
   let content = ''
   let transcriptParts: Array<Record<string, unknown>> = []
@@ -125,12 +128,12 @@ export async function runWorkspaceAgentTurnLoop(args: {
 
   for (let modelStep = 0; modelStep < prepared.maxSteps; modelStep += 1) {
     if (modelStep === 0) {
-      await dependencies.beginFirstModelCall()
+      await beginFirstModelCall()
       usage.providerCallStarted = true
     }
     let call: WorkspaceAgentModelCall
     try {
-      call = await dependencies.callModel({ prepared, messages, baseParts: transcriptParts, modelStep })
+      call = await callModel({ prepared, messages, baseParts: transcriptParts, modelStep })
     } catch (error) {
       usage.providerOutcomeAmbiguous = error instanceof Error
         && error.message.includes('Native agent provider')
@@ -156,7 +159,7 @@ export async function runWorkspaceAgentTurnLoop(args: {
     })
     if (!call.toolCalls.length) {
       if (!call.text.trim()) throw new FatalError('The agent returned an empty response.')
-      const result = await dependencies.finalize({
+      const result = await finalize({
         prepared,
         steps,
         content,
@@ -188,7 +191,7 @@ export async function runWorkspaceAgentTurnLoop(args: {
           toolOutput: outcome.display,
         },
       })
-      await dependencies.persistProgress({ prepared, parts: transcriptParts })
+      await persistProgress({ prepared, parts: transcriptParts })
     }
     messages = [
       ...messages,
