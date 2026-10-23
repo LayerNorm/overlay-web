@@ -17,6 +17,7 @@ const RESERVED_WORKSPACE_HANDLES = new Set([
   'login',
   'logout',
   'oauth',
+  'overlay',
   'pricing',
   'robots',
   'settings',

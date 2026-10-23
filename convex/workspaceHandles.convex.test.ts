@@ -144,3 +144,89 @@ test('backfill is dry-run safe, resumable, idempotent, and hides legacy personal
   expect(workspace?.slug).not.toBe('personal-user-123')
   expect((await convex.mutation(migrate, { serverSecret: secret }) as { ready: boolean }).ready).toBe(true)
 })
+
+test('multi-batch migration cannot skip rows and stays consistent with concurrent creation', async () => {
+  const convex = convexTest(schema, modules)
+  await convex.run(async (ctx) => {
+    for (const [workspaceId, slug, kind] of [
+      ['org-first', 'duplicate', 'organization'],
+      ['org-second', 'duplicate', 'organization'],
+      ['personal-identity-derived-id', 'personal-old-user', 'personal'],
+    ] as const) {
+      await ctx.db.insert('workspaces', {
+        workspaceId, slug, kind, name: 'Duplicate', status: 'active', createdAt: now, updatedAt: now,
+      })
+    }
+  })
+  const previewPage = await convex.query(preview, {
+    serverSecret: secret, paginationOpts: { numItems: 1, cursor: null },
+  }) as { continueCursor: string }
+  await expect(convex.mutation(migrate, {
+    serverSecret: secret, paginationOpts: { numItems: 1, cursor: previewPage.continueCursor },
+  })).rejects.toThrow('WORKSPACE_HANDLE_MIGRATION_CURSOR_MISMATCH')
+  const [first] = await Promise.all([
+    convex.mutation(migrate, { serverSecret: secret, paginationOpts: { numItems: 1, cursor: null } }),
+    convex.mutation(create, {
+      serverSecret: secret, workspaceId: 'org-concurrent', principalId: 'principal-concurrent',
+      membershipId: 'member-concurrent', creatorUserId: 'creator-concurrent',
+      creatorDisplayName: 'Creator', name: 'Duplicate', slug: 'duplicate', handleExplicit: false,
+      handleSuffixes: ['uniqueconcurrent'], now,
+    }),
+  ]) as [{ ready: boolean; continueCursor: string }, unknown]
+  expect(first.ready).toBe(false)
+  let ready = false
+  let cursor = first.continueCursor
+  for (let page = 0; page < 10 && !ready; page++) {
+    const result = await convex.mutation(migrate, {
+      serverSecret: secret, paginationOpts: { numItems: 1, cursor },
+    }) as { ready: boolean; continueCursor: string }
+    ready = result.ready
+    cursor = result.continueCursor
+  }
+  expect(ready).toBe(true)
+  const snapshot = () => convex.run(async (ctx) => ({
+    workspaces: await ctx.db.query('workspaces').collect(),
+    claims: await ctx.db.query('workspaceHandles').collect(),
+  }))
+  const before = await snapshot()
+  expect(before.workspaces).toHaveLength(4)
+  expect(new Set(before.claims.map((claim) => claim.handle)).size).toBe(before.claims.length)
+  for (const workspace of before.workspaces) {
+    expect(before.claims.find((claim) => claim.handle === workspace.slug)).toMatchObject({
+      workspaceId: workspace.workspaceId, kind: 'canonical', visibility: 'public',
+    })
+  }
+  const personal = before.workspaces.find((workspace) => workspace.kind === 'personal')!
+  expect(personal.slug).toMatch(/^personal-[a-f0-9]{24}$/)
+  expect(before.claims.find((claim) => claim.handle === 'personal-old-user')).toMatchObject({
+    workspaceId: personal.workspaceId, kind: 'alias', visibility: 'private',
+  })
+  await convex.mutation(migrate, { serverSecret: secret })
+  expect(await snapshot()).toEqual(before)
+})
+
+test('migrated personal handles resolve for their owner but legacy identity aliases never resolve', async () => {
+  const convex = convexTest(schema, modules)
+  await convex.run(async (ctx) => {
+    await ctx.db.insert('workspaces', {
+      workspaceId: 'personal-one', kind: 'personal', name: 'Personal', slug: 'personal-old-user',
+      status: 'active', personalOwnerUserId: 'owner-user', createdAt: now, updatedAt: now,
+    })
+    await ctx.db.insert('workspacePrincipals', {
+      principalId: 'owner-principal', workspaceId: 'personal-one', type: 'human',
+      userId: 'owner-user', displayName: 'Owner', createdAt: now, updatedAt: now,
+    })
+    await ctx.db.insert('workspaceMemberships', {
+      membershipId: 'owner-member', workspaceId: 'personal-one', principalId: 'owner-principal',
+      role: 'owner', status: 'active', joinedAt: now, updatedAt: now,
+    })
+  })
+  await convex.mutation(migrate, { serverSecret: secret })
+  const workspace = await convex.run(async (ctx) => await ctx.db.query('workspaces').first())
+  expect(await convex.query(resolve, {
+    serverSecret: secret, handle: workspace!.slug, userId: 'owner-user',
+  })).toMatchObject({ workspaceId: 'personal-one', canonical: true })
+  for (const [handle, userId] of [[workspace!.slug, 'stranger'], ['personal-old-user', 'owner-user']]) {
+    expect(await convex.query(resolve, { serverSecret: secret, handle, userId })).toBeNull()
+  }
+})

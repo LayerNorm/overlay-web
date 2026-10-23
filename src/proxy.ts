@@ -303,6 +303,8 @@ export async function proxy(request: NextRequest) {
   const cspPolicy = buildCspPolicy(cspNonce)
   const requestHeaders = new Headers(request.headers)
   requestHeaders.delete('x-overlay-workspace-handle')
+  requestHeaders.delete('x-overlay-workspace-original-path')
+  requestHeaders.delete('x-overlay-workspace-original-search')
   requestHeaders.set(cspHeaderName, cspPolicy)
   // Next reads this to stamp the nonce onto the scripts it renders.
   if (cspNonce) requestHeaders.set('x-nonce', cspNonce)

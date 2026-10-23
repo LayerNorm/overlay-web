@@ -13,6 +13,7 @@ test('explicit handles normalize case and whitespace and reject malformed or res
     assert.equal(validateWorkspaceHandleInput(handle).ok, false, handle)
   }
   assert.deepEqual(validateWorkspaceHandleInput('admin'), { ok: false, reason: 'reserved' })
+  assert.deepEqual(validateWorkspaceHandleInput('overlay'), { ok: false, reason: 'reserved' })
   assert.deepEqual(validateWorkspaceHandleInput('personal-random'), { ok: false, reason: 'reserved' })
 })
 

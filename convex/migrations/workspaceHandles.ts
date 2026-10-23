@@ -61,7 +61,7 @@ async function previewWorkspace(
   workspace: Doc<'workspaces'>,
 ): Promise<PreviewRow> {
   const registry = await getWorkspaceHandle(ctx, workspace.slug)
-  const expectedVisibility = workspace.kind === 'personal' ? 'private' : 'public'
+  const expectedVisibility = 'public'
   const ready = registry?.workspaceId === workspace.workspaceId
     && registry.kind === 'canonical'
     && registry.visibility === expectedVisibility
@@ -136,7 +136,7 @@ export const migrateWorkspaceHandlesBatchByServer = mutation({
         continue
       }
       const currentClaim = await getWorkspaceHandle(ctx, plan.canonicalHandle)
-      const expectedVisibility = workspace.kind === 'personal' ? 'private' : 'public'
+      const expectedVisibility = 'public'
       if (args.dryRun || (
         !plan.changed
         && currentClaim?.workspaceId === workspace.workspaceId

@@ -61,6 +61,7 @@ export async function resolveWorkspaceRequestScope(
 }
 
 function explicitWorkspacePathTarget(pathname: string): string | null {
+  if (pathname === '/api/v1/workspaces/active') return null
   const match = /^\/api\/v1\/workspaces\/([^/]+)(?:\/|$)/.exec(pathname)
   if (!match) return null
   try {

@@ -102,6 +102,17 @@ test('explicit workspace management paths require membership to their path targe
   assert.deepEqual(state.ids, ['path-workspace'])
 })
 
+test('the legacy active-workspace action is not mistaken for an immutable ID', async () => {
+  const state = harness()
+  const request = new NextRequest('https://app.example/api/v1/workspaces/active', {
+    method: 'POST',
+    headers: { [ACTIVE_WORKSPACE_HEADER]: 'workspace-a' },
+    body: JSON.stringify({ workspaceId: 'workspace-b' }),
+  })
+  await resolveWorkspaceRequestScope(request, session(), state.service)
+  assert.deepEqual(state.ids, ['workspace-a'])
+})
+
 test('same-origin Referer is a browser-only fallback; native callers retain legacy scope', async () => {
   const state = harness()
   const browserRequest = new NextRequest('https://app.example/api/v1/files', {

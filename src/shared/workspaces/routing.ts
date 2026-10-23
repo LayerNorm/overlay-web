@@ -100,7 +100,7 @@ export function isWorkspaceNavigationPending(args: {
 
 export function isSupportedWorkspaceRoute(surface: string, suffix: readonly string[]): boolean {
   if (!APP_SURFACES.has(surface)) return false
-  const maxSuffixParts = new Set(['agents', 'automations', 'files', 'notes', 'outputs']).has(surface) ? 1 : 0
+  const maxSuffixParts = surface === 'agents' ? 1 : 0
   return suffix.length <= maxSuffixParts
 }
 
