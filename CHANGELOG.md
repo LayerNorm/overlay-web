@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Update `@sentry/nextjs` to 10.75.3 and `dompurify` to 3.4.17 to fix the Sentry tunnel middleware bypass (GHSA-mchm-gjx6-7h55) and two DOMPurify sanitizer advisories (GHSA-cg2g-xh64-v4q7, GHSA-mrv2-3pqr-j5jr) that fail the production dependency audit.
+
 - Bring every other marketing page onto the home page design: pricing, download, manifesto, the blog/changelog/self-hosting placeholders and all nine legal pages now share one `StaticMarketingShell` (landing nav, framed column, footer) with a common page head. Legal pages get a sticky table of contents, pricing's FAQ uses the shared accordion, and `/download` regains its nav and footer. The old marketing navbar, button, reveal animation and serif layout helper are removed.
 
 - Let people who left sign-up before verifying finish from sign-in. Signing in with the right password for an unverified account now opens the code screen with Resend, then signs in once the code is accepted, instead of linking to a missing `/auth/verify-email` page. Sign-in and sign-up also show a plain fallback message instead of crashing when an error response is not text.
