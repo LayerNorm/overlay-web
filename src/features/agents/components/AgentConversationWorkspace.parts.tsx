@@ -6,6 +6,8 @@ import type { WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
 import { Button } from '@overlay/ui/primitives'
 import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
 import { AgentEditorPage } from './AgentEditorPage'
+import { agentsForCreatorScope } from '@/shared/agents/last-agent-by-workspace'
+import type { PanelScope } from '@/shared/workspaces/panel-scope'
 
 export function AgentEditorPanel({
   mode,
@@ -44,6 +46,8 @@ export function AgentDirectoryScreen({
   onRightPanelClose,
   activeWorkspaceId,
   directory,
+  viewerPrincipalId,
+  scope,
   resolving,
   error,
   loadError,
@@ -55,6 +59,8 @@ export function AgentDirectoryScreen({
   onRightPanelClose(): void
   activeWorkspaceId: string | null
   directory: WorkspaceAgentDirectoryItem[] | null
+  viewerPrincipalId: string | null
+  scope: PanelScope
   resolving: boolean
   error: string | null
   loadError: string | null
@@ -62,9 +68,10 @@ export function AgentDirectoryScreen({
   onCreate(): void
 }) {
   const displayError = error ?? loadError
-  const resolvingConversation = directory !== null && directory.length > 0 && !displayError
+  const scopedDirectory = directory === null ? null : agentsForCreatorScope(directory, viewerPrincipalId, scope)
+  const resolvingConversation = scopedDirectory !== null && scopedDirectory.length > 0 && !displayError
   const loading = activeWorkspaceId !== null && (directory === null || resolving || resolvingConversation)
-  const empty = directory !== null && directory.length === 0 && !displayError
+  const empty = scopedDirectory !== null && scopedDirectory.length === 0 && !displayError
 
   return (
     <AppScreenShell

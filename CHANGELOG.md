@@ -8,6 +8,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 - Give scoped workspace features canonical `/w/<handle>/<personal|workspace>/<feature>` addresses, including Work, Agents, Chats, Files, Notes, Outputs, Tools and Automations. Solo workspaces retain both views.
 - Keep newly created empty channels joined when navigating away, including through older draft links.
 - Preserve the selected workspace and personal/workspace scope when the first chat stream creates a conversation before the parallel metadata request.
+- Show the Agents empty state when the selected creator scope has no agents, even if the opposite scope is populated.
 - Patch vulnerable Zod v4 installs at 4.6.7, including transitive production dependencies, while preserving existing v3 schemas through explicit compatibility imports.
 - Reveal chat copy actions on hover or keyboard focus, and add an agent-conversation sidebar as a full-height panel with one editable hero, autosaving Details, conversation-linked Library files and an always-visible Computer tab with control mode. Files and notes created by an agent are linked to its conversation and appear in the Library. Room panels and the agent sidebar now share the same right-hand slot. Agent settings use the shared chat model picker with free-tier and zero-data-retention access rules.
 
