@@ -16,19 +16,32 @@ import { useWorkRoute } from './use-work-route'
 export function useWorkTask(taskId: string): { item: WorkItem | undefined; missing: boolean } {
   const { byId, state, adoptTask } = useWorkData()
   const [missingId, setMissingId] = useState<string | null>(null)
+  const [resolved, setResolved] = useState<{ id: string; item: WorkItem } | null>(null)
+  const { scope } = useWorkRoute()
   const item = byId.get(taskId)
-  const held = item !== undefined
+  const resolvedItem = resolved?.id === taskId ? resolved.item : undefined
+  const held = item !== undefined || resolvedItem !== undefined
 
   useEffect(() => {
     if (held || state !== 'ready') return
     let cancelled = false
     overlayAppClient.work.get(taskId)
-      .then(({ item: found }) => { if (!cancelled) adoptTask(found) })
+      .then(({ item: found }) => {
+        if (cancelled) return
+        setResolved({ id: taskId, item: found })
+        if (isResourceInPanelScope(found.scope, scope, found.archivedAt !== null)) adoptTask(found)
+      })
       .catch(() => { if (!cancelled) setMissingId(taskId) })
     return () => { cancelled = true }
-  }, [adoptTask, held, state, taskId])
+  }, [adoptTask, held, scope, state, taskId])
 
-  return { item, missing: state === 'ready' && !held && missingId === taskId }
+  useEffect(() => {
+    if (resolvedItem && isResourceInPanelScope(resolvedItem.scope, scope, resolvedItem.archivedAt !== null)) {
+      adoptTask(resolvedItem)
+    }
+  }, [adoptTask, resolvedItem, scope])
+
+  return { item: item ?? resolvedItem, missing: state === 'ready' && !held && missingId === taskId }
 }
 
 /** A task opens in the scope it lives in, so the list behind the panel agrees with it. */

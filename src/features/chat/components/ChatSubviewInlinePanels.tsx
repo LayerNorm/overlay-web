@@ -7,10 +7,8 @@ import { SidebarMenuSub, SidebarMenuSubButton, SidebarMenuSubItem } from '@overl
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { dispatchCollaborationNotificationsChanged } from '@/shared/chat/collaboration-events'
 import { conversationActivityLabel } from '@/shared/chat/conversation-activity-state'
-import {
-  buildWorkspaceHref,
-  readWorkspaceIdFromPath,
-} from '@/shared/workspaces/routing'
+import { mergeHrefSearchParams, readWorkspaceIdFromPath } from '@/shared/workspaces/routing'
+import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import type { WorkspaceNotification } from '@overlay/workspace-contracts'
 import { useCollaborationRealtime } from './collaboration/CollaborationRealtimeProvider'
 
@@ -45,6 +43,7 @@ function viewForConversationType(conversationType?: string): 'personal' | 'dms' 
 export function ActivityInlinePanel({ onNavigate }: { onNavigate?: () => void }) {
   const router = useRouter()
   const pathname = usePathname() ?? ''
+  const buildWorkspaceHref = useWorkspaceHref()
   const { notifications, notificationsReady } = useCollaborationRealtime()
   const [locallyRead, setLocallyRead] = useState<Map<string, number>>(() => new Map())
   const items: ActivityNotification[] = notifications.slice(0, 50).map((item) => (
@@ -99,7 +98,12 @@ export function ActivityInlinePanel({ onNavigate }: { onNavigate?: () => void })
     }
     const query = new URLSearchParams({ view, id: item.conversationId })
     if (item.messageId) query.set('message', item.messageId)
-    router.push(`/app/chat?${query.toString()}`)
+    const chatBase = buildWorkspaceHref(
+      readWorkspaceIdFromPath(pathname),
+      '/app/chat',
+      view === 'personal' ? 'personal' : 'workspace',
+    )
+    router.push(mergeHrefSearchParams(chatBase, query))
   }
 
   if (!notificationsReady) {

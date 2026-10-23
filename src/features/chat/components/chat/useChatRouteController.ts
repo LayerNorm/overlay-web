@@ -101,17 +101,15 @@ export function useChatRouteController({
       )
       if (tab !== 'chat') params.set('tab', tab)
       const query = params.toString()
-      const basePath = buildWorkspaceHref(null, '/app/automations', routeScope)
-      replaceUrl(`${basePath}${query ? `?${query}` : ''}`)
+      replaceUrl(buildWorkspaceHref(null, `/app/automations${query ? `?${query}` : ''}`, routeScope))
       return
     }
-    const basePath = buildWorkspaceHref(null, '/app/chat', routeScope)
     const params = new URLSearchParams()
     if (searchParams?.get('showcase') === '1') params.set('showcase', '1')
     if (viewParam && ['personal', 'workspace-chats', 'dms', 'channels'].includes(viewParam)) params.set('view', viewParam)
     if (chatId) params.set('id', chatId)
     const query = params.toString()
-    replaceUrl(query ? `${basePath}?${query}` : basePath)
+    replaceUrl(buildWorkspaceHref(null, `/app/chat${query ? `?${query}` : ''}`, routeScope))
   }, [automationIdParam, buildWorkspaceHref, hideSidebar, mode, routeScope, routerReplace, searchParams, viewParam])
 
   const resetToBlankChatSurface = useCallback((options: { temporary: boolean }) => {

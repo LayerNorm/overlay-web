@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { isLegacyArchivedScope, isResourceInPanelScope, listViewForScope, parsePanelScope, resolvePanelScope, scopeForNewItem, withPanelScope } from './panel-scope'
+import { isLegacyArchivedScope, isResourceInPanelScope, listViewForScope, newItemScope, parsePanelScope, resolvePanelScope, scopeForNewItem, withPanelScope } from './panel-scope'
 
 test('the URL wins over the remembered scope, which wins over Personal', () => {
   assert.equal(resolvePanelScope({ param: 'workspace', saved: 'personal' }), 'workspace')
@@ -33,6 +33,11 @@ test('only the two scopes parse', () => {
 test('a new item defaults to the scope being viewed', () => {
   assert.equal(scopeForNewItem('workspace'), 'workspace')
   assert.equal(scopeForNewItem('personal'), 'personal')
+})
+
+test('creation keeps the selected scope in a one-person workspace', () => {
+  assert.equal(newItemScope('workspace'), 'workspace')
+  assert.equal(newItemScope('personal'), undefined)
 })
 
 test('the scope parameter keeps other parameters and omits the default', () => {

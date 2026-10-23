@@ -8,6 +8,24 @@ export function agentConversationRedirect(args: { pathname: string; workspaceId:
 
 export type CollaborationChatView = 'dms' | 'channels'
 
+export function scopeForConversationDetail(conversation: {
+  conversationType?: 'personal' | 'dm' | 'channel'
+  scope?: 'personal' | 'workspace'
+}): 'personal' | 'workspace' {
+  if (conversation.conversationType === 'dm' || conversation.conversationType === 'channel') {
+    return 'workspace'
+  }
+  return conversation.scope === 'workspace' ? 'workspace' : 'personal'
+}
+
+export function shouldSkipChatHistoryPrefetch(args: {
+  pathScope: string | null
+  hasScopeQuery: boolean
+  hasViewQuery: boolean
+}): boolean {
+  return args.pathScope === 'personal' || args.pathScope === 'workspace' || args.hasScopeQuery || args.hasViewQuery
+}
+
 export type SoftChatRoute = {
   conversationId: string | null
   view: string | null

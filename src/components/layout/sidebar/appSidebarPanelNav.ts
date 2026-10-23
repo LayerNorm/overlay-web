@@ -17,13 +17,11 @@ function buildFilesPanelNav({
   notesOpen,
   currentSearchParams,
   publicShowcase,
-  canonicalWorkspaceRoute,
   activeWorkspaceId,
   buildWorkspaceHref,
   router,
   closeMobileDrawer,
   beginSecondaryNavigation,
-  solo,
 }: {
   filesView: string
   scope: PanelScope
@@ -31,17 +29,14 @@ function buildFilesPanelNav({
   notesOpen: boolean
   currentSearchParams: URLSearchParams
   publicShowcase: boolean
-  canonicalWorkspaceRoute: boolean
   activeWorkspaceId: string | null
   buildWorkspaceHref: (workspaceId: string, href: string, scope?: PanelScope) => string
   router: SidebarRouter
   closeMobileDrawer: () => void
   beginSecondaryNavigation: (id: string) => void
-  solo: boolean
 }): SecondaryPanelNav {
   return buildScopedPanelNav({
     scope,
-    solo,
     sub: filesView,
     subItems: { personal: filesInlineItems, workspace: filesInlineItems },
     pendingId: effectivePendingSecondaryNavId,
@@ -64,11 +59,12 @@ function buildFilesPanelNav({
       params.delete('memory')
       params.delete('scope')
       const query = params.toString()
-      const filesHref = canonicalWorkspaceRoute && activeWorkspaceId
-        ? buildWorkspaceHref(activeWorkspaceId, '/app/files', nextScope)
-        : '/app/files'
-      if (canonicalWorkspaceRoute && activeWorkspaceId) {
-        router.push(query ? `${filesHref}?${query}` : filesHref)
+      if (activeWorkspaceId) {
+        router.push(buildWorkspaceHref(
+          activeWorkspaceId,
+          `/app/files${query ? `?${query}` : ''}`,
+          nextScope,
+        ))
       } else {
         params.set('scope', nextScope)
         router.push(query ? `${'/app/files'}?${params.toString()}` : `/app/files?scope=${nextScope}`)
@@ -82,30 +78,24 @@ function buildAgentsPanelNav({
   effectivePendingSecondaryNavId,
   currentSearchParams,
   publicShowcase,
-  canonicalWorkspaceRoute,
   activeWorkspaceId,
   buildWorkspaceHref,
   router,
   closeMobileDrawer,
   beginSecondaryNavigation,
-  solo,
 }: {
   scope: PanelScope
   effectivePendingSecondaryNavId: string | null
   currentSearchParams: URLSearchParams
   publicShowcase: boolean
-  canonicalWorkspaceRoute: boolean
   activeWorkspaceId: string | null
   buildWorkspaceHref: (workspaceId: string, href: string, scope?: PanelScope) => string
   router: SidebarRouter
   closeMobileDrawer: () => void
   beginSecondaryNavigation: (id: string) => void
-  solo: boolean
 }): SecondaryPanelNav {
   return buildScopedPanelNav({
     scope,
-    solo,
-    soloLabel: 'Agents',
     sub: null,
     subItems: {},
     pendingId: effectivePendingSecondaryNavId,
@@ -117,18 +107,16 @@ function buildAgentsPanelNav({
       // The tab used to be `?view=`; the scope replaces it.
       params.delete('view')
       if (publicShowcase) params.set('showcase', '1')
-      // With an agent open, Personal must stay explicit in the URL — the
-      // panel auto-corrects bare `?agent=` links to the agent's own tab, so
-      // a missing `scope` would read as an uncorrected link and fight the
-      // deliberate switch.
-      if (next === 'personal' && params.has('agent')) params.set('scope', 'personal')
+      for (const selector of ['agent', 'agentId', 'id', 'thread', 'threadId', 'conversationId']) {
+        params.delete(selector)
+      }
       params.delete('scope')
       const query = params.toString()
       const route = query ? `/app/agents?${query}` : '/app/agents'
-      const agentsHref = canonicalWorkspaceRoute && activeWorkspaceId
+      const agentsHref = activeWorkspaceId
         ? buildWorkspaceHref(activeWorkspaceId, route, next)
         : route
-      if (!(canonicalWorkspaceRoute && activeWorkspaceId)) {
+      if (!activeWorkspaceId) {
         const legacyParams = new URLSearchParams(route.split('?')[1] ?? '')
         legacyParams.set('scope', next)
         router.push(`/app/agents?${legacyParams.toString()}`)
@@ -146,10 +134,11 @@ function buildToolsPanelNav({
   toolsItems,
   currentSearchParams,
   publicShowcase,
+  activeWorkspaceId,
+  buildWorkspaceHref,
   router,
   closeMobileDrawer,
   beginSecondaryNavigation,
-  solo,
 }: {
   toolsView: string
   scope: PanelScope
@@ -157,14 +146,14 @@ function buildToolsPanelNav({
   toolsItems: ReadonlyArray<InlineNavItem>
   currentSearchParams: URLSearchParams
   publicShowcase: boolean
+  activeWorkspaceId: string | null
+  buildWorkspaceHref: (workspaceId: string, href: string, scope?: PanelScope) => string
   router: SidebarRouter
   closeMobileDrawer: () => void
   beginSecondaryNavigation: (id: string) => void
-  solo: boolean
 }): SecondaryPanelNav {
   return buildScopedPanelNav({
     scope,
-    solo,
     sub: toolsView,
     subItems: { personal: toolsItems, workspace: toolsItems },
     pendingId: effectivePendingSecondaryNavId,
@@ -176,7 +165,12 @@ function buildToolsPanelNav({
       const params = withPanelScope(new URLSearchParams(currentSearchParams.toString()), nextScope)
       if (publicShowcase) params.set('showcase', '1')
       params.set('view', nextView)
-      router.push(`/app/tools?${params.toString()}`)
+      params.delete('scope')
+      const legacyHref = `/app/tools?${params.toString()}`
+      const scopedHref = activeWorkspaceId
+        ? buildWorkspaceHref(activeWorkspaceId, legacyHref, nextScope)
+        : `${legacyHref}${legacyHref.includes('?') ? '&' : '?'}scope=${nextScope}`
+      router.push(scopedHref)
     },
   })
 }
@@ -186,30 +180,24 @@ function buildAutomationsPanelNav({
   effectivePendingSecondaryNavId,
   currentSearchParams,
   publicShowcase,
-  canonicalWorkspaceRoute,
   activeWorkspaceId,
   buildWorkspaceHref,
   router,
   closeMobileDrawer,
   beginSecondaryNavigation,
-  solo,
 }: {
   scope: PanelScope
   effectivePendingSecondaryNavId: string | null
   currentSearchParams: URLSearchParams
   publicShowcase: boolean
-  canonicalWorkspaceRoute: boolean
   activeWorkspaceId: string | null
   buildWorkspaceHref: (workspaceId: string, href: string, scope?: PanelScope) => string
   router: SidebarRouter
   closeMobileDrawer: () => void
   beginSecondaryNavigation: (id: string) => void
-  solo: boolean
 }): SecondaryPanelNav {
   return buildScopedPanelNav({
     scope,
-    solo,
-    soloLabel: 'Automations',
     sub: null,
     subItems: {},
     pendingId: effectivePendingSecondaryNavId,
@@ -225,14 +213,15 @@ function buildAutomationsPanelNav({
       params.delete('scope')
       if (publicShowcase) params.set('showcase', '1')
       const query = params.toString()
-      const href = canonicalWorkspaceRoute && activeWorkspaceId
-        ? buildWorkspaceHref(activeWorkspaceId, '/app/automations', next)
-        : '/app/automations'
-      if (canonicalWorkspaceRoute && activeWorkspaceId) {
-        router.push(query ? `${href}?${query}` : href)
+      if (activeWorkspaceId) {
+        router.push(buildWorkspaceHref(
+          activeWorkspaceId,
+          `/app/automations${query ? `?${query}` : ''}`,
+          next,
+        ))
       } else {
         params.set('scope', next)
-        router.push(`${href}?${params.toString()}`)
+        router.push(`/app/automations?${params.toString()}`)
       }
     },
   })
@@ -287,7 +276,7 @@ export function resolveSecondaryPanelNav({
 }: {
   panelKind: SidebarRouteState['panelKind']
   publicShowcase: boolean
-  routeState: Pick<SidebarRouteState, 'chatsView' | 'filesView' | 'scope' | 'toolsView' | 'workView' | 'notesOpen' | 'canonicalWorkspaceRoute' | 'settingsSection'>
+  routeState: Pick<SidebarRouteState, 'chatsView' | 'filesView' | 'scope' | 'toolsView' | 'workView' | 'notesOpen' | 'settingsSection'>
   effectivePendingSecondaryNavId: string | null
   totalUnread: number
   collaborationUnread: { dms: number; channels: number; total: number }
@@ -332,13 +321,11 @@ export function resolveSecondaryPanelNav({
       notesOpen: routeState.notesOpen,
       currentSearchParams,
       publicShowcase,
-      canonicalWorkspaceRoute: routeState.canonicalWorkspaceRoute,
       activeWorkspaceId,
       buildWorkspaceHref,
       router,
       closeMobileDrawer,
       beginSecondaryNavigation,
-      solo,
     })
   }
   if (panelKind === 'agents') {
@@ -347,13 +334,11 @@ export function resolveSecondaryPanelNav({
       effectivePendingSecondaryNavId,
       currentSearchParams,
       publicShowcase,
-      canonicalWorkspaceRoute: routeState.canonicalWorkspaceRoute,
       activeWorkspaceId,
       buildWorkspaceHref,
       router,
       closeMobileDrawer,
       beginSecondaryNavigation,
-      solo,
     })
   }
   if (panelKind === 'automations') {
@@ -362,13 +347,11 @@ export function resolveSecondaryPanelNav({
       effectivePendingSecondaryNavId,
       currentSearchParams,
       publicShowcase,
-      canonicalWorkspaceRoute: routeState.canonicalWorkspaceRoute,
       activeWorkspaceId,
       buildWorkspaceHref,
       router,
       closeMobileDrawer,
       beginSecondaryNavigation,
-      solo,
     })
   }
   if (panelKind === 'tools') {
@@ -379,10 +362,11 @@ export function resolveSecondaryPanelNav({
       effectivePendingSecondaryNavId,
       toolsItems,
       publicShowcase,
+      activeWorkspaceId,
+      buildWorkspaceHref,
       router,
       closeMobileDrawer,
       beginSecondaryNavigation,
-      solo,
     })
   }
   if (panelKind === 'work') {
@@ -391,13 +375,11 @@ export function resolveSecondaryPanelNav({
       workView: routeState.workView,
       effectivePendingSecondaryNavId,
       currentSearchParams,
-      canonicalWorkspaceRoute: routeState.canonicalWorkspaceRoute,
       activeWorkspaceId,
       buildWorkspaceHref,
       router,
       closeMobileDrawer,
       beginSecondaryNavigation,
-      solo,
     })
   }
   if (panelKind === 'settings') {

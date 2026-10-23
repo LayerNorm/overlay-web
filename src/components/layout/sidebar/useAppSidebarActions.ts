@@ -13,7 +13,7 @@ import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import type { GateReason } from '@/components/providers/GuestGateProvider'
 import { usePanelScope } from '@/hooks/use-panel-scope'
 import { useWorkspaceHref } from '@/hooks/use-workspace-href'
-import { newItemScope, withPanelScope } from '@/shared/workspaces/panel-scope'
+import { newItemScope } from '@/shared/workspaces/panel-scope'
 
 const nextSidebarActionMutation = createKnowledgeMutationPublisher(
   `web-sidebar-action:${globalThis.crypto?.randomUUID?.() ?? Date.now()}`,
@@ -124,9 +124,9 @@ export function useAppSidebarActions({
     if (!noteId) return false
     publishCreatedNote(noteId)
     onCloseMobileMenu()
-    router.push(`/app/notes?${withPanelScope(new URLSearchParams({ id: noteId }), scope)}`)
+    router.push(buildWorkspaceHref(null, `/app/notes?id=${encodeURIComponent(noteId)}`, scope))
     return true
-  }, [onCloseMobileMenu, requireAuth, router, scope, user])
+  }, [buildWorkspaceHref, onCloseMobileMenu, requireAuth, router, scope, user])
 
   const runSidebarAction = useCallback(async (action: OverlaySidebarAction | null | undefined) => {
     if (!action) return false

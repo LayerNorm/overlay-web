@@ -47,7 +47,6 @@ function render(overrides: Partial<UnifiedSidebarProps> = {}) {
       panelNav={chatNav}
       onSearch={noop}
       scope="workspace"
-      solo={false}
       account={<span>Account</span>}
       {...overrides}
     />,
@@ -68,10 +67,13 @@ test('the scope toggle remains available to solo workspaces', () => {
   const html = render()
   assert.match(html, /aria-pressed="true"[^>]*>Workspace</)
   assert.match(html, /aria-pressed="false"[^>]*>Personal</)
-  const solo = render({ solo: true })
-  assert.match(solo, /aria-label="Scope"/)
-  assert.match(solo, /aria-pressed="true"[^>]*>Workspace</)
-  assert.doesNotMatch(solo, /aria-disabled="true"[^>]*>Workspace</)
+  assert.match(html, /aria-label="Scope"/)
+})
+
+test('Personal scope does not show Workspace Chat subviews', () => {
+  const html = render({ scope: 'personal' })
+  assert.match(html, /aria-label="Scope"/)
+  assert.doesNotMatch(html, /Direct messages|Channels|Activity/)
 })
 
 test('chat destinations for the selected scope render as sidebar rows', () => {

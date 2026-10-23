@@ -33,6 +33,7 @@ import type { Id } from '../../../../convex/_generated/dataModel'
 import { ChatComposer } from './ChatComposer'
 import { ConversationScopeActionDialog } from './collaboration/ConversationScopeActionDialog'
 import { ConvexRoomMessageSubscription } from './collaboration/ConvexRoomMessageSubscription'
+import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import { NewDirectMessageDialog } from './NewDirectMessageDialog'
 import { ShareDialog } from '@/components/share/ShareDialog'
 import { RoomMessageItem } from './collaboration/RoomMessageItem'
@@ -892,6 +893,7 @@ export function RoomDialogs({
   router: ReturnType<typeof useRouter>
   onParticipantsAdded: () => void
 }) {
+  const buildWorkspaceHref = useWorkspaceHref()
   const {
     attachmentPreview,
     attachmentPreviewMode,
@@ -941,11 +943,15 @@ export function RoomDialogs({
           onOpenChange={onAddPeopleOpenChange}
           onCreated={({ id, title: createdTitle, agentId }) => {
             if (agentId) {
-              router.push(agentThreadHref('/app/agents', agentId, id))
+              router.push(agentThreadHref(buildWorkspaceHref(activeWorkspaceId ?? null, '/app/agents'), agentId, id))
               return
             }
             const view = conversationType === 'channel' ? 'channels' : 'dms'
-            router.push(`/app/chat?${new URLSearchParams({ view, id, draft: '1', title: createdTitle }).toString()}`)
+            router.push(buildWorkspaceHref(
+              activeWorkspaceId ?? null,
+              `/app/chat?${new URLSearchParams({ view, id, draft: '1', title: createdTitle }).toString()}`,
+              'workspace',
+            ))
           }}
           onParticipantsAdded={onParticipantsAdded}
         />

@@ -33,8 +33,8 @@ import { MARKETING_DOCS_URL } from '@/shared/marketing/marketing'
 import { ROOT_APP_DESTINATION } from '@/shared/auth/root-entry'
 import { resolveFilesCategory, type FilesCategory } from '@/components/layout/FilesCategorySidebar'
 import type { AgentsPanelView } from '@/components/layout/sidebar-nav'
-import { PANEL_SCOPE_PARAM, resolvePanelScope, type PanelScope } from '@/shared/workspaces/panel-scope'
-import { readWorkspacePathScope, readWorkspaceRouteTarget } from '@/shared/workspaces/routing'
+import { PANEL_SCOPE_PARAM, parsePanelScope, resolvePanelScope, type PanelScope } from '@/shared/workspaces/panel-scope'
+import { normalizeChatViewForScope, readWorkspacePathScope, readWorkspaceRouteTarget } from '@/shared/workspaces/routing'
 import type { PrimaryRailItem } from './AppSidebarPrimaryRail'
 import { resolveWorkView, type WorkView } from '@/shared/work/views'
 
@@ -134,18 +134,24 @@ function resolveChatsView({
   activityOpen,
   chatViewParam,
   pathScope,
+  queryScope,
+  savedScope,
 }: {
   activityOpen: boolean
   chatViewParam: string | null
   pathScope?: PanelScope | null
+  queryScope: string | null
+  savedScope: PanelScope | null
 }): string {
   if (activityOpen) return 'activity'
-  if (pathScope === 'personal') return 'personal'
-  if (pathScope === 'workspace' && !chatViewParam) return 'workspace-chats'
-  if (chatViewParam === 'workspace-chats') return 'workspace-chats'
-  if (chatViewParam === 'dms') return 'dms'
-  if (chatViewParam === 'channels') return 'channels'
+  if (pathScope) return normalizeChatViewForScope(pathScope, chatViewParam)
+  const requestedScope = parsePanelScope(queryScope)
+  if (requestedScope) return normalizeChatViewForScope(requestedScope, chatViewParam)
+  if (chatViewParam === 'personal' || chatViewParam === 'workspace-chats' || chatViewParam === 'dms' || chatViewParam === 'channels') {
+    return chatViewParam
+  }
   if (chatViewParam === 'all') return 'all'
+  if (savedScope) return normalizeChatViewForScope(savedScope, null)
   return 'personal'
 }
 
@@ -190,7 +196,13 @@ export function resolveSidebarRouteState({
   const toolsView = resolveToolsView(chatViewParam)
   const workView = resolveWorkView(chatViewParam)
   const filesView = resolveFilesCategory(chatViewParam)
-  const chatsView = resolveChatsView({ activityOpen, chatViewParam, pathScope })
+  const chatsView = resolveChatsView({
+    activityOpen,
+    chatViewParam,
+    pathScope,
+    queryScope: searchParams.get(PANEL_SCOPE_PARAM),
+    savedScope,
+  })
   // Agent links from before scopes carried the tab as `?view=`.
   const scopeParam = searchParams.get(PANEL_SCOPE_PARAM) ?? (agentsOpen ? chatViewParam : null)
   const scope = pathScope ?? (chatOpen ? chatScopeForView(chatsView) : resolvePanelScope({ param: scopeParam, saved: savedScope, solo }))

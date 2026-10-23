@@ -23,29 +23,24 @@ export function buildWorkPanelNav({
   workView,
   effectivePendingSecondaryNavId,
   currentSearchParams,
-  canonicalWorkspaceRoute,
   activeWorkspaceId,
   buildWorkspaceHref,
   router,
   closeMobileDrawer,
   beginSecondaryNavigation,
-  solo,
 }: {
   scope: PanelScope
   workView: WorkView
   effectivePendingSecondaryNavId: string | null
   currentSearchParams: URLSearchParams
-  canonicalWorkspaceRoute: boolean
   activeWorkspaceId: string | null
   buildWorkspaceHref: (workspaceId: string, href: string, scope?: PanelScope) => string
   router: SidebarRouter
   closeMobileDrawer: () => void
   beginSecondaryNavigation: (id: string) => void
-  solo: boolean
 }): SecondaryPanelNav {
   return buildScopedPanelNav({
     scope,
-    solo,
     sub: workView,
     subItems: { personal: workInlineItems, workspace: workInlineItems },
     pendingId: effectivePendingSecondaryNavId,
@@ -60,7 +55,7 @@ export function buildWorkPanelNav({
       params.delete('task')
       params.set(WORK_VIEW_PARAM, nextView)
       const route = `/app/work?${params.toString()}`
-      if (canonicalWorkspaceRoute && activeWorkspaceId) {
+      if (activeWorkspaceId) {
         router.push(buildWorkspaceHref(activeWorkspaceId, route, nextScope))
       } else {
         params.set('scope', nextScope)

@@ -8,6 +8,7 @@ import {
 import type { CachedConversation } from '@/shared/chat/chat-list-cache'
 import { chatsInlineItems } from '@/components/layout/sidebar-nav'
 import type { SecondaryPanelNav } from './AppSidebarSecondaryPanel'
+import { mergeHrefSearchParams } from '@/shared/workspaces/routing'
 import { chatScopeForView } from './appSidebarNav'
 import { buildScopedPanelNav } from './scopedPanelNav'
 import type { PanelScope } from '@/shared/workspaces/panel-scope'
@@ -58,7 +59,7 @@ export async function resolveRecentChatHref(baseHref: string, scope: 'personal' 
     const recent = page.data.find((chat) => (chat.scope ?? 'personal') === scope)
     if (!recent) return baseHref
     const view = scope === 'workspace' ? 'workspace-chats' : 'personal'
-    return `${baseHref}?${new URLSearchParams({ view, id: recent._id }).toString()}`
+    return mergeHrefSearchParams(baseHref, new URLSearchParams({ view, id: recent._id }))
   } catch {
     return baseHref
   }
@@ -124,11 +125,11 @@ export function buildChatPanelNav({
         if (result.stale) return
         conversationId = result.conversationId
       }
-      router.push(`${baseHref}?${new URLSearchParams({
-        ...(publicShowcase ? { showcase: '1' } : {}),
-        view: next,
-        ...(conversationId ? { id: conversationId } : {}),
-      }).toString()}`)
+      const params = new URLSearchParams()
+      if (publicShowcase) params.set('showcase', '1')
+      params.set('view', next)
+      if (conversationId) params.set('id', conversationId)
+      router.push(mergeHrefSearchParams(baseHref, params))
     },
   }
 

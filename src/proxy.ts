@@ -291,6 +291,7 @@ export async function proxy(request: NextRequest) {
     return new NextResponse('Preview unavailable', { status: 404, headers: { 'cache-control': 'no-store' } })
   }
   const { pathname } = request.nextUrl
+  const workspaceAddressPath = pathname === '/app/w' || pathname.startsWith('/app/w/') || pathname.startsWith('/w/')
 
   if (isDocsProxyRoute(pathname)) {
     return NextResponse.next()
@@ -299,7 +300,7 @@ export async function proxy(request: NextRequest) {
   if (
     pathname.startsWith('/_next') ||
     pathname.startsWith('/favicon') ||
-    pathname.includes('.')
+    (pathname.includes('.') && !workspaceAddressPath)
   ) {
     return NextResponse.next()
   }
@@ -325,6 +326,13 @@ export async function proxy(request: NextRequest) {
   const workspaceRewrite = getCanonicalWorkspaceRewrite(request)
   if (workspaceRewrite) {
     return rewriteWorkspaceRoute(request, workspaceRewrite, security)
+  }
+  if (workspaceAddressPath) {
+    return applyWorkspaceRouteHeaders(applyBrowserSecurityHeaders(
+      new NextResponse(null, { status: 404 }),
+      security.cspHeaderName,
+      security.cspPolicy,
+    ), pathname)
   }
 
   if (isPublicRoute(pathname)) {
@@ -365,7 +373,7 @@ function createProxySecurityContext(request: NextRequest, pathname: string): Pro
   requestHeaders.delete('x-overlay-workspace-handle')
   requestHeaders.delete('x-overlay-workspace-original-path')
   requestHeaders.delete('x-overlay-workspace-original-search')
-  requestHeaders.delete('x-overlay-workspace-id')
+  if (!pathname.startsWith('/api/')) requestHeaders.delete('x-overlay-workspace-id')
   requestHeaders.delete(ROUTE_WORKSPACE_SCOPE_HEADER)
   requestHeaders.set(cspHeaderName, cspPolicy)
   if (cspNonce) requestHeaders.set('x-nonce', cspNonce)

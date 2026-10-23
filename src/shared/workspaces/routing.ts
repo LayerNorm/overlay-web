@@ -60,16 +60,31 @@ function decodeRouteSegments(rawSegments: readonly string[]): string[] | null {
   return decoded
 }
 
-function legacyScopeFromSearch(surface: string, params: URLSearchParams): PanelScope | null {
+export function legacyWorkspaceScopeForRoute(surface: string, params: URLSearchParams): PanelScope | null {
+  const scope = parsePanelScope(params.get('scope'))
+  if (scope) return scope
   const view = params.get('view')
   if (surface === 'agents' && (view === 'personal' || view === 'workspace')) return view
   if (surface === 'chat' && (view === 'dms' || view === 'channels' || view === 'workspace-chats')) {
     return 'workspace'
   }
   if (surface === 'chat' && view === 'personal') return 'personal'
-  const direct = params.get('scope')
-  if (direct === 'personal' || direct === 'workspace') return direct
   return null
+}
+
+const legacyScopeFromSearch = legacyWorkspaceScopeForRoute
+
+export type ChatRouteView = 'personal' | 'workspace-chats' | 'dms' | 'channels'
+
+export function normalizeChatViewForScope(scope: PanelScope, view: string | null | undefined): ChatRouteView {
+  if (scope === 'personal') return 'personal'
+  return view === 'dms' || view === 'channels' ? view : 'workspace-chats'
+}
+
+export function mergeHrefSearchParams(href: string, params: URLSearchParams): string {
+  const destination = new URL(href, 'https://workspace.invalid')
+  params.forEach((value, key) => destination.searchParams.set(key, value))
+  return `${destination.pathname}${destination.search}${destination.hash}`
 }
 
 function canonicalHandlePath(
@@ -142,7 +157,7 @@ function isValidHandleRouteShape(route: HandleRouteShape): boolean {
     && route.suffix.length === 0
 }
 
-function canonicalHandleSearch(params: URLSearchParams, surface: string): string {
+function canonicalHandleSearch(params: URLSearchParams, surface: string, scope: PanelScope | null): string {
   const canonicalParams = new URLSearchParams(params)
   canonicalParams.delete('scope')
   canonicalParams.delete('workspaceId')
@@ -150,6 +165,9 @@ function canonicalHandleSearch(params: URLSearchParams, surface: string): string
   canonicalParams.delete('handle')
   if (surface === 'agents' && (canonicalParams.get('view') === 'personal' || canonicalParams.get('view') === 'workspace')) {
     canonicalParams.delete('view')
+  }
+  if (surface === 'chat' && scope) {
+    canonicalParams.set('view', normalizeChatViewForScope(scope, canonicalParams.get('view')))
   }
   return canonicalParams.toString()
 }
@@ -173,7 +191,7 @@ export function parseWorkspaceHandleRoute(
   const params = new URLSearchParams(search.startsWith('?') ? search.slice(1) : search)
   const route = parseHandleRouteShape(remaining, params)
   if (!isValidHandleRouteShape(route)) return null
-  const canonicalSearch = canonicalHandleSearch(params, route.surface)
+  const canonicalSearch = canonicalHandleSearch(params, route.surface, route.scope)
   return {
     handle,
     scope: route.scope,
@@ -298,6 +316,67 @@ function routePartsFromPath(pathname: string): {
   return { scope: null, surface: parts[0]!, suffix: parts.slice(1) }
 }
 
+export type WorkspaceRouteDescriptor = {
+  workspaceId: string | null
+  handle: string | null
+  scope: PanelScope | null
+  surface: string
+  suffix: string[]
+}
+
+export function workspaceMetadataForHref<T extends { id: string; slug?: string | null }>(args: {
+  workspaceId?: string | null
+  routeTarget: { kind: 'id' | 'handle'; value: string } | null
+  workspaces: readonly T[]
+  activeWorkspace: T | null
+}): T | null {
+  if (args.workspaceId) return args.workspaces.find((workspace) => workspace.id === args.workspaceId) ?? null
+  if (args.routeTarget?.kind === 'handle') {
+    return args.workspaces.find((workspace) => workspace.slug === args.routeTarget?.value) ?? null
+  }
+  if (args.routeTarget?.kind === 'id') {
+    return args.workspaces.find((workspace) => workspace.id === args.routeTarget?.value) ?? null
+  }
+  return args.activeWorkspace
+}
+
+export function isWorkspaceManagementSettingsRoute(
+  descriptor: WorkspaceRouteDescriptor | null,
+  params: URLSearchParams,
+): boolean {
+  return descriptor?.surface === 'settings'
+    && (params.get('section') === 'workspace' || Boolean(descriptor.handle))
+}
+
+export function readWorkspaceRouteDescriptor(pathname: string): WorkspaceRouteDescriptor | null {
+  const handleRoute = parseWorkspaceHandleRoute(pathname)
+  if (handleRoute) {
+    return {
+      workspaceId: null,
+      handle: handleRoute.handle,
+      scope: handleRoute.scope,
+      surface: handleRoute.surface,
+      suffix: [...handleRoute.suffix],
+    }
+  }
+
+  const route = routePartsFromPath(pathname)
+  if (!route) return null
+  const knownSurface = SCOPED_WORKSPACE_SURFACES.has(route.surface)
+    ? isSupportedWorkspaceRoute(route.surface, route.suffix)
+    : route.surface === 'activity' || ['settings', 'archived', 'memories'].includes(route.surface)
+      ? route.suffix.length === 0
+      : false
+  if (!knownSurface) return null
+  return {
+    workspaceId: readWorkspaceIdFromPath(pathname),
+    handle: null,
+    scope: route.scope,
+    surface: route.surface,
+    suffix: route.suffix,
+  }
+}
+
 export function resolveWorkspaceSurface(pathname: string): string {
   const route = routePartsFromPath(pathname)
   return route && APP_SURFACES.has(route.surface) ? route.surface : FALLBACK_SURFACE
@@ -322,6 +401,9 @@ export function buildWorkspaceHandleHref(
   const source = new URL(pathname, 'https://workspace.invalid')
   const parsed = parseWorkspaceHandleRoute(source.pathname, source.search)
   const route = routePartsFromPath(source.pathname)
+  if (!route
+    || !isSupportedLegacyWorkspaceRoute(route.surface, route.suffix)
+    || (route.surface === 'settings' && source.searchParams.get('section') === 'account')) return pathname
   const surface = route && APP_SURFACES.has(route.surface) ? route.surface : 'work'
   const suffix = route?.suffix ?? []
   const routeScope = parsed?.scope ?? route?.scope
@@ -344,6 +426,9 @@ export function buildWorkspaceHandleHref(
   params.delete('handle')
   if (surface === 'agents' && (params.get('view') === 'personal' || params.get('view') === 'workspace')) {
     params.delete('view')
+  }
+  if (surface === 'chat' && scopedSurface) {
+    params.set('view', normalizeChatViewForScope(scope, params.get('view')))
   }
   const search = params.toString()
   return `${location}${search ? `?${search}` : ''}${source.hash}`
@@ -398,7 +483,7 @@ function workspaceSwitchParams(search: string, surface: string, scope: PanelScop
   for (const key of [
     'id', 'agent', 'agentId', 'agent_id', 'task', 'taskId', 'file', 'fileId',
     'folder', 'folderId', 'note', 'noteId', 'automation', 'automationId',
-    'outputId', 'toolId', 'memory', 'conversationId', 'chatId', 'scope',
+    'outputId', 'toolId', 'memory', 'conversationId', 'chatId', 'thread', 'threadId', 'scope',
   ]) params.delete(key)
   return params
 }
@@ -410,10 +495,15 @@ export function buildWorkspaceSwitchHref(args: {
   search?: string
   currentScope?: PanelScope
 }): string {
+  const search = args.search ?? ''
+  if (args.pathname.startsWith('/app/settings') && new URLSearchParams(search).get('section') === 'account') {
+    return `${args.pathname}${search ? `?${search.replace(/^\?/, '')}` : ''}`
+  }
   const surface = workspaceSwitchSurface(args.pathname)
   const target = workspaceSwitchTarget(args.pathname, surface)
-  const scope = workspaceSwitchScope(args.pathname, args.search ?? '', args.currentScope)
-  const params = workspaceSwitchParams(args.search ?? '', surface, scope)
+  const scope = workspaceSwitchScope(args.pathname, search, args.currentScope)
+  const params = workspaceSwitchParams(search, surface, scope)
+  if (SCOPED_WORKSPACE_SURFACES.has(surface)) params.set('scope', scope)
   const query = params.toString()
   const destination = `${target}${query ? `?${query}` : ''}`
   if (args.handle && (SCOPED_WORKSPACE_SURFACES.has(surface) || ['activity', 'settings', 'archived', 'memories'].includes(surface))) {

@@ -13,6 +13,12 @@ import {
   readWorkspaceRouteTarget,
   resolveChatBasePath,
   resolveWorkspaceSurface,
+  normalizeChatViewForScope,
+  mergeHrefSearchParams,
+  readWorkspaceRouteDescriptor,
+  workspaceMetadataForHref,
+  isWorkspaceManagementSettingsRoute,
+  legacyWorkspaceScopeForRoute,
 } from './routing'
 
 test('workspace routing preserves the current canonical surface', () => {
@@ -53,9 +59,12 @@ test('shared route parser distinguishes legacy immutable ids from readable handl
   )
   assert.equal(
     buildWorkspaceHandleHref('acme-labs', '/app/chat?id=chat-1', 'workspace'),
-    '/w/acme-labs/workspace/chat?id=chat-1',
+    '/w/acme-labs/workspace/chat?id=chat-1&view=workspace-chats',
   )
-  assert.equal(resolveChatBasePath('/w/acme-labs/workspace/chat?id=chat_1'), '/w/acme-labs/workspace/chat')
+  assert.equal(
+    resolveChatBasePath('/w/acme-labs/workspace/chat?id=chat_1'),
+    '/w/acme-labs/workspace/chat?view=workspace-chats',
+  )
   assert.deepEqual(readWorkspaceRouteTarget('/w/personal-random/chat?id=chat_1'), { kind: 'handle', value: 'personal-random' })
   assert.equal(readWorkspaceRouteTarget('/w/acme--labs'), null)
   assert.equal(readWorkspaceRouteTarget('/w/acme%2Flabs'), null)
@@ -68,11 +77,11 @@ test('scoped handle paths default roots to Work and canonicalize legacy routes w
   assert.equal(parseWorkspaceHandleRoute('/w/layernorm/workspace')?.canonicalPath, '/w/layernorm/workspace/work')
   assert.equal(
     buildCanonicalWorkspaceRedirectLocation('/w/old-name/agents/agent-1', '?view=workspace&scope=personal&tab=threads', 'new-name'),
-    '/w/new-name/workspace/agents/agent-1?tab=threads',
+    '/w/new-name/personal/agents/agent-1?tab=threads',
   )
   assert.equal(
     buildCanonicalWorkspaceRedirectLocation('/w/old-name/chat', '?view=channels&scope=personal', 'new-name'),
-    '/w/new-name/workspace/chat?view=channels',
+    '/w/new-name/personal/chat?view=personal',
   )
   assert.equal(
     buildWorkspaceHandleHref('layernorm', '/w/layernorm/personal/work?scope=workspace&task=task-1#item'),
@@ -84,17 +93,83 @@ test('scoped handle paths default roots to Work and canonicalize legacy routes w
   assert.equal(parseWorkspaceHandleRoute('/w/layernorm/files%2Fother'), null)
 })
 
+test('chat path scope canonicalizes conflicting views and only known workspace routes resolve', () => {
+  assert.equal(legacyWorkspaceScopeForRoute('chat', new URLSearchParams('scope=personal&view=dms')), 'personal')
+  assert.equal(legacyWorkspaceScopeForRoute('chat', new URLSearchParams('view=dms')), 'workspace')
+  assert.equal(legacyWorkspaceScopeForRoute('agents', new URLSearchParams('view=workspace')), 'workspace')
+  assert.equal(normalizeChatViewForScope('personal', 'dms'), 'personal')
+  assert.equal(normalizeChatViewForScope('workspace', 'personal'), 'workspace-chats')
+  assert.equal(normalizeChatViewForScope('workspace', 'channels'), 'channels')
+  assert.equal(
+    parseWorkspaceHandleRoute('/w/layernorm/personal/chat', '?view=dms')?.canonicalSearch,
+    'view=personal',
+  )
+  assert.equal(
+    parseWorkspaceHandleRoute('/w/layernorm/workspace/chat', '?view=personal')?.canonicalSearch,
+    'view=workspace-chats',
+  )
+  assert.equal(readWorkspaceRouteDescriptor('/app/w/Workspace_ID/personal/work')?.workspaceId, 'Workspace_ID')
+  assert.equal(readWorkspaceRouteDescriptor('/app/settings')?.surface, 'settings')
+  assert.equal(readWorkspaceRouteDescriptor('/app/profile'), null)
+  assert.equal(readWorkspaceRouteDescriptor('/pricing'), null)
+})
+
+test('explicit workspace destinations override the current route and account settings stay global', () => {
+  const workspaces = [
+    { id: 'workspace-a', slug: 'team-a' },
+    { id: 'workspace-b', slug: 'team-b' },
+  ]
+  assert.equal(workspaceMetadataForHref({
+    workspaceId: 'workspace-a',
+    routeTarget: { kind: 'handle', value: 'team-b' },
+    workspaces,
+    activeWorkspace: workspaces[1]!,
+  })?.slug, 'team-a')
+  const settings = readWorkspaceRouteDescriptor('/app/settings')
+  assert.equal(isWorkspaceManagementSettingsRoute(settings, new URLSearchParams()), false)
+  assert.equal(isWorkspaceManagementSettingsRoute(settings, new URLSearchParams('section=account')), false)
+  assert.equal(isWorkspaceManagementSettingsRoute(settings, new URLSearchParams('section=workspace')), true)
+})
+
 test('switching workspaces keeps the scoped surface and drops previous-workspace selectors and details', () => {
   assert.equal(
     buildWorkspaceSwitchHref({
       workspaceId: 'workspace-b',
       handle: 'team-b',
-      pathname: '/w/team-a/personal/files/old-file',
-      search: '?file=old-file&folder=old-folder&note=old-note&scope=workspace&sort=name',
+      pathname: '/w/team-a/personal/agents/old-agent',
+      search: '?agent=old-agent&agentId=old-agent&id=old-chat&threadId=old-thread&conversationId=old-chat&file=old-file&folder=old-folder&note=old-note&automationId=old-automation&taskId=old-task&outputId=old-output&toolId=old-tool&scope=workspace&sort=name',
       currentScope: 'workspace',
     }),
-    '/w/team-b/personal/files?sort=name',
+    '/w/team-b/personal/agents?sort=name',
   )
+})
+
+test('switching workspaces does not turn account settings into a workspace route', () => {
+  assert.equal(
+    buildWorkspaceSwitchHref({
+      workspaceId: 'workspace-b',
+      handle: null,
+      pathname: '/app/settings',
+      search: '?section=account&tab=security',
+    }),
+    '/app/settings?section=account&tab=security',
+  )
+})
+
+test('workspace switching keeps the strict scope on a legacy-ID destination', () => {
+  assert.equal(
+    buildWorkspaceSwitchHref({
+      workspaceId: 'workspace-b',
+      pathname: '/w/team-a/workspace/agents/old-agent',
+      search: '?agent=old-agent&sort=name',
+    }),
+    '/app/w/workspace-b/agents?sort=name&scope=workspace',
+  )
+})
+
+test('workspace handle builders leave unknown and account-global routes unchanged', () => {
+  assert.equal(buildWorkspaceHandleHref('team-a', '/app/unknown?view=all'), '/app/unknown?view=all')
+  assert.equal(buildWorkspaceHandleHref('team-a', '/app/settings?section=account'), '/app/settings?section=account')
 })
 
 test('chat base path preserves the canonical workspace route', () => {
@@ -103,6 +178,16 @@ test('chat base path preserves the canonical workspace route', () => {
   assert.equal(resolveChatBasePath('/app/automations'), '/app/automations')
   assert.equal(isSameChatSurface('/app/w/ws_1/chat', '/app/w/ws_1/chat'), true)
   assert.equal(isSameChatSurface('/app/w/ws_1/chat', '/app/chat'), false)
+})
+
+test('merging route query parameters keeps one query and preserves the fragment', () => {
+  assert.equal(
+    mergeHrefSearchParams(
+      '/w/team-a/workspace/chat?view=workspace-chats#latest',
+      new URLSearchParams({ view: 'dms', id: 'conversation-1' }),
+    ),
+    '/w/team-a/workspace/chat?view=dms&id=conversation-1#latest',
+  )
 })
 
 test('handle targets gate scoped content until resolution and redirect aliases safely', () => {

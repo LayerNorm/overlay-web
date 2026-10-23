@@ -10,7 +10,7 @@ import {
 import { AutomationsInlinePanel } from '@/features/automations/components/AutomationsInlinePanel'
 import { useEffect } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { useSavedPanelScope } from '@/hooks/use-panel-scope'
+import { usePanelScope, useSavedPanelScope } from '@/hooks/use-panel-scope'
 import { useIsSoloWorkspace } from '@/hooks/use-solo-workspace'
 import { ARCHIVED_SETTINGS_PATH, isLegacyArchivedScope, resolvePanelScope } from '@/shared/workspaces/panel-scope'
 import { SHOWCASE_CHAT_SUMMARIES } from '@/features/showcase/showcase-data'
@@ -42,10 +42,7 @@ export function AppShellSidebar({ publicShowcase: forcedPublicShowcase = false }
   const buildWorkspaceHref = useWorkspaceHref()
   const { notifications: collaborationNotifications } = useCollaborationRealtime()
   const savedScope = useSavedPanelScope()
-  const currentScope = readWorkspacePathScope(pathname) ?? resolvePanelScope({
-    param: searchParams?.get('scope') ?? searchParams?.get('view'),
-    saved: savedScope,
-  })
+  const currentScope = usePanelScope()
   const chatBaseHref = activeWorkspaceId
     ? buildWorkspaceHref(activeWorkspaceId, '/app/chat', currentScope)
     : '/app/chat'
@@ -106,7 +103,7 @@ export function AppShellSidebar({ publicShowcase: forcedPublicShowcase = false }
           : (
             <AgentsInlinePanel
               workspaceId={activeWorkspaceId}
-        baseHref={activeWorkspaceId ? buildWorkspaceHref(activeWorkspaceId, '/app/agents', agentsView) : undefined}
+              baseHref={activeWorkspaceId ? buildWorkspaceHref(activeWorkspaceId, '/app/agents', agentsView) : undefined}
               view={agentsView}
               onNavigate={onNavigate}
             />

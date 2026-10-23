@@ -22,6 +22,7 @@ import {
   type AgentDraftPreviewPatch,
 } from '@/shared/workspace/sidebar-events'
 import {
+  agentsForCreatorScope,
   getAgentOpenedAt,
   getLastOpenedAgentId,
   rememberAgentOpened,
@@ -528,6 +529,7 @@ export function AgentsInlinePanel({
   // Member count is independent of the creator-relative Personal/Workspace views.
   const solo = useIsSoloWorkspace()
   const buildWorkspaceHref = useWorkspaceHref()
+  const scopedBaseHref = buildWorkspaceHref(workspaceId, baseHref, view)
 
   const { bundles, setBundles, loadBundle } = useAgentBundles(workspaceId)
   const { expanded, toggleExpanded } = useExpandedAgents({ activeAgentId, bundles, loadBundle })
@@ -551,12 +553,11 @@ export function AgentsInlinePanel({
   // Live agents split into Personal (created by me) and Workspace (the rest). Archived agents and threads live in
   // Settings → Archived, not here.
   const tabAgents = useMemo(
-    () => previewedAgents.filter((agent) => {
-      if (agent.archivedAt) return false
-      return view === 'personal'
-        ? agent.createdByPrincipalId === viewerPrincipalId
-        : agent.createdByPrincipalId !== viewerPrincipalId
-    }),
+    () => agentsForCreatorScope(
+      previewedAgents.filter((agent) => !agent.archivedAt),
+      viewerPrincipalId,
+      view,
+    ),
     [previewedAgents, view, viewerPrincipalId],
   )
 
@@ -578,7 +579,7 @@ export function AgentsInlinePanel({
     retryOpen,
   } = useAgentActions({
     workspaceId,
-    baseHref,
+    baseHref: scopedBaseHref,
     view,
     onNavigate,
     bundles,

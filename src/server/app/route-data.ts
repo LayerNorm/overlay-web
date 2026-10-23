@@ -29,6 +29,7 @@ import * as bootstrapService from '@/server/app-api/v1/bootstrap/route'
 import * as integrationsService from '@/server/app-api/v1/integrations/route'
 import { ACTIVE_WORKSPACE_HEADER, ROUTE_WORKSPACE_SCOPE_HEADER } from '@/shared/workspaces/constants'
 import { parsePanelScope } from '@/shared/workspaces/panel-scope'
+import { shouldSkipChatHistoryPrefetch } from '@/shared/chat/chat-view-navigation'
 import * as workspaceHandleService from '@/server/app-api/v1/workspace-handles/[handle]/route'
 
 const INITIAL_CHAT_LIST_LIMIT = 24
@@ -101,12 +102,17 @@ async function callAppApi<T>(path: string, service: BffDomainService, fallback: 
   return value as T
 }
 
-export function getInitialChatHistory(): Promise<PaginatedEnvelope<CachedConversation> | null> {
+export function getInitialChatHistory(legacyScopedView = false): Promise<PaginatedEnvelope<CachedConversation> | null> {
   return (async () => {
     const headerList = await headers()
-    const scope = parsePanelScope(headerList.get(ROUTE_WORKSPACE_SCOPE_HEADER)) ?? 'personal'
+    const routeScope = headerList.get(ROUTE_WORKSPACE_SCOPE_HEADER)
+    if (shouldSkipChatHistoryPrefetch({
+      pathScope: routeScope,
+      hasScopeQuery: legacyScopedView,
+      hasViewQuery: legacyScopedView,
+    }) || parsePanelScope(routeScope)) return null
     return callAppApi<PaginatedEnvelope<CachedConversation> | null>(
-      `/api/v1/conversations?limit=${INITIAL_CHAT_LIST_LIMIT}&view=personal&scope=${scope}`,
+      `/api/v1/conversations?limit=${INITIAL_CHAT_LIST_LIMIT}&view=personal`,
       conversationsService.GET as BffDomainService,
       null,
     )

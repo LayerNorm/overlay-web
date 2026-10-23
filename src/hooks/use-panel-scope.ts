@@ -11,7 +11,12 @@ import {
   resolvePanelScope,
   type PanelScope,
 } from '@/shared/workspaces/panel-scope'
-import { readWorkspacePathScope } from '@/shared/workspaces/routing'
+import {
+  legacyWorkspaceScopeForRoute,
+  readWorkspacePathScope,
+  readWorkspaceRouteDescriptor,
+  SCOPED_WORKSPACE_SURFACES,
+} from '@/shared/workspaces/routing'
 
 const CHANGED_EVENT = 'overlay:panel-scope-changed'
 
@@ -67,7 +72,12 @@ export function usePanelScope(): PanelScope {
   const saved = useSavedPanelScope()
   const pathScope = readWorkspacePathScope(pathname)
   const scopeLessHandleRoot = /^\/w\/[^/]+\/?$/.test(pathname)
-  const param = parsePanelScope(params?.get(PANEL_SCOPE_PARAM))
+  const queryParams = new URLSearchParams(params?.toString() ?? '')
+  const routeSurface = readWorkspaceRouteDescriptor(pathname)?.surface
+  const legacyScope = routeSurface && SCOPED_WORKSPACE_SURFACES.has(routeSurface)
+    ? legacyWorkspaceScopeForRoute(routeSurface, queryParams)
+    : null
+  const param = parsePanelScope(params?.get(PANEL_SCOPE_PARAM)) ?? legacyScope
   // A scope arriving in the URL (a shared link, a deep link) becomes the remembered one, so links inside the page that
   // carry no `scope` keep showing it.
   useEffect(() => {

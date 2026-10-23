@@ -101,8 +101,9 @@ test('scoped canonical handle rewrites trust path scope over query and forged me
     headers: { cookie },
   }))
   assert.equal(conflict.status, 307)
-  assert.equal(new URL(conflict.headers.get('location')!).search, '')
-  const response = await proxy(new NextRequest(origin + '/w/acme/workspace/chat', {
+  assert.equal(new URL(conflict.headers.get('location')!).searchParams.get('scope'), null)
+  assert.equal(new URL(conflict.headers.get('location')!).searchParams.get('view'), 'workspace-chats')
+  const response = await proxy(new NextRequest(origin + '/w/acme/workspace/chat?view=workspace-chats', {
     headers: {
       cookie,
       'x-overlay-workspace-scope': 'personal',
@@ -116,6 +117,24 @@ test('scoped canonical handle rewrites trust path scope over query and forged me
   assert.equal(rewrite.searchParams.get('workspaceId'), null)
   assert.equal(response.headers.get('x-middleware-request-x-overlay-workspace-scope'), 'workspace')
   assert.equal(response.headers.get('x-middleware-request-x-overlay-workspace-original-path'), '/w/acme/workspace/chat')
+  assert.equal(response.headers.get('x-middleware-request-x-overlay-workspace-id'), null)
+})
+
+test('authenticated API workspace selection survives proxy page-metadata stripping', async () => {
+  process.env.AUTH_PROVIDER = 'workos'
+  const payload = 'synthetic-api-workspace-session'
+  const signature = createHmac('sha256', secret).update(payload).digest('hex')
+  const response = await proxy(new NextRequest(origin + '/api/v1/work', {
+    headers: {
+      cookie: `overlay_session=${payload}.${signature}`,
+      'x-overlay-workspace-id': 'native-workspace-id',
+      'x-overlay-workspace-handle': 'forged',
+      'x-overlay-workspace-scope': 'forged',
+    },
+  }))
+  assert.equal(response.headers.get('x-middleware-request-x-overlay-workspace-id'), 'native-workspace-id')
+  assert.equal(response.headers.get('x-middleware-request-x-overlay-workspace-handle'), null)
+  assert.equal(response.headers.get('x-middleware-request-x-overlay-workspace-scope'), null)
 })
 
 test('legacy workspace rewrites preserve ID casing and reject unsupported nested paths', async () => {
@@ -129,10 +148,19 @@ test('legacy workspace rewrites preserve ID casing and reject unsupported nested
   assert.equal(invalid.headers.get('x-middleware-rewrite'), null)
   const invalidSurface = await proxy(new NextRequest(origin + '/w/acme/does-not-exist', { headers: { cookie } }))
   assert.equal(invalidSurface.headers.get('x-middleware-rewrite'), null)
+  assert.equal(invalidSurface.status, 404)
+  assert.equal(invalidSurface.headers.get('cache-control'), 'private, no-store')
+  assert.equal(invalidSurface.headers.get('x-robots-tag'), 'noindex, nofollow')
   const invalidScope = await proxy(new NextRequest(origin + '/w/acme/team/work', { headers: { cookie } }))
   assert.equal(invalidScope.headers.get('x-middleware-rewrite'), null)
+  assert.equal(invalidScope.status, 404)
   const malformedChat = await proxy(new NextRequest(origin + '/w/acme/personal/chat/dms', { headers: { cookie } }))
   assert.equal(malformedChat.headers.get('x-middleware-rewrite'), null)
+  assert.equal(malformedChat.status, 404)
   const separator = await proxy(new NextRequest(origin + '/w/acme%2Fother', { headers: { cookie } }))
   assert.equal(separator.headers.get('x-middleware-rewrite'), null)
+  assert.equal(separator.status, 404)
+  const dottedHandle = await proxy(new NextRequest(origin + '/w/acme.test/personal/work', { headers: { cookie } }))
+  assert.equal(dottedHandle.status, 404)
+  assert.equal(dottedHandle.headers.get('cache-control'), 'private, no-store')
 })
