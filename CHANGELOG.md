@@ -10,6 +10,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 - Preserve the selected workspace and personal/workspace scope when the first chat stream creates a conversation before the parallel metadata request.
 - Show the Agents empty state when the selected creator scope has no agents, even if the opposite scope is populated.
 - Patch vulnerable Zod v4 installs at 4.6.7, including transitive production dependencies, while preserving existing v3 schemas through explicit compatibility imports.
+- Patch production body-parser to 2.4.0 and Mintlify's nested copy to 1.20.9 for GHSA-27r3-jxmh-p828.
 - Reveal chat copy actions on hover or keyboard focus, and add an agent-conversation sidebar as a full-height panel with one editable hero, autosaving Details, conversation-linked Library files and an always-visible Computer tab with control mode. Files and notes created by an agent are linked to its conversation and appear in the Library. Room panels and the agent sidebar now share the same right-hand slot. Agent settings use the shared chat model picker with free-tier and zero-data-retention access rules.
 
 - Update `@sentry/nextjs` to 10.75.3 and `dompurify` to 3.4.17 to fix the Sentry tunnel middleware bypass (GHSA-mchm-gjx6-7h55) and two DOMPurify sanitizer advisories (GHSA-cg2g-xh64-v4q7, GHSA-mrv2-3pqr-j5jr) that fail the production dependency audit.
