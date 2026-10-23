@@ -32,6 +32,12 @@ export function summarizeToolResultForTranscript(params: {
   }
   const toolMessage = readString(output?.message)
   const toolError = readString(output?.error) || readString(output?.errorMessage)
+  const failed = params.state === 'output-error'
+    || output?.success === false
+    || Boolean(toolError)
+  if (failed) {
+    return toolError || toolMessage || `The ${toolName} tool failed.`
+  }
 
   if (toolName === 'generate_image') {
     if (output?.success === true) {
@@ -75,6 +81,6 @@ export function summarizeToolResultForTranscript(params: {
 
   if (toolMessage) return toolMessage
   if (output?.success === true) return `The ${toolName} tool completed successfully.`
-  if (toolError) return toolError
+  if (params.state === 'output-available') return `The ${toolName} tool completed successfully.`
   return null
 }

@@ -209,7 +209,9 @@ test('agent turns carry role-tagged messages and loaded context, not a flattened
   const invocation = await readFile(`${root}/src/server/agents/workspace-agent-invocation.ts`, 'utf8')
 
   assert.match(invocation, /messages: turnContext\.messages/)
-  assert.match(invocation, /system: buildAgentSystemPrompt/)
+  assert.match(invocation, /const systemPrompt = buildAgentSystemPrompt/)
+  assert.match(invocation, /system: systemPrompt/)
+  assert.match(invocation, /prepareAgentToolRecoveryStep/)
   assert.match(invocation, /Never claim to have used a tool or changed a resource unless the tool call actually ran and returned success/)
   // A single `prompt:` string is the shape that dropped roles, attachments, and
   // every retrieved source on the floor.

@@ -16,6 +16,8 @@ Living inventory of product surfaces, release switches and providers. Update thi
 
 Native Overlay agents and their computers stay available. Only external agent runtimes are withheld, whether on Overlay Cloud or a user's machine. Choosing a Claude/OpenAI model inside an Overlay agent is **not** an external runtime. Work, chats, files, automations, integrations and collaboration are unchanged. Onboarding stays horizontal.
 
+Native tool calls persist successful output and terminal failures across streamed steps. Invalid tool names or malformed inputs are recorded as errors instead of remaining in progress, and recovery guidance names only tools exposed in the current turn.
+
 | Feature / surface | Default status | Runtime key / env suffix | Provider and dependencies |
 | --- | --- | --- | --- |
 | Native Overlay agents | Enabled | UI `agents`; no external-runtime dependency | Overlay agent runtime, configured model gateway, Convex |

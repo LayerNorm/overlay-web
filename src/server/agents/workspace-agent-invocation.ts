@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto'
 import { parseByoModelId } from '@/shared/agents/agent-model'
 import { externalAgentLaunchEnabled, isExternalAgentInvocation, isPersistedExternalAgent } from './external-agent-policy'
 import { streamText, type ModelMessage } from 'ai'
+import { GENERATED_UI_DATA_TYPE } from '@overlay/chat-core/generated-ui'
 import { start } from 'workflow/api'
 import { isStepCount, type ToolApprovalConfiguration } from '@/server/ai/sdk'
 import { getLanguageModel } from '@/server/ai/model-runtime'
@@ -22,12 +23,14 @@ import {
   compactAssistantPersistenceForConvex,
   replaceAssistantTextForPersistence,
 } from '@/shared/chat/persist-assistant-turn'
+import { toolFailureOutput } from '@/shared/chat/tool-outcomes'
 import { FREE_TIER_AUTO_MODEL_ID, isFreeTierChatModelId } from '@/shared/ai/gateway/model-types'
 import {
   createAgentMessageStream,
   appendAgentTextPart,
   type AgentMessageStream,
 } from './agent-message-stream'
+import { prepareAgentToolRecoveryStep } from './agent-tool-recovery'
 import { buildWorkspaceAgentTooling } from './agent-tooling'
 import { buildAgentTurnContext } from './agent-turn-context'
 import { resolveMentionFirstInvocations, resolveInvocableAgents } from './mention-policy'
@@ -978,6 +981,14 @@ export async function runWorkspaceAgentTurn(args: {
       ])
 
       const hasTools = Object.keys(tooling.tools).length > 0
+      const systemPrompt = buildAgentSystemPrompt({
+        agentName: agent.name,
+        contextBlock: turnContext.contextBlock,
+        exposedToolIds: tooling.exposedToolIds,
+        hasTools,
+        instructions: agent.instructions,
+        isDefaultMaster,
+      })
       const result = streamText({
         model,
         maxOutputTokens: MAX_OUTPUT_TOKENS_AGENT,
@@ -1003,14 +1014,12 @@ export async function runWorkspaceAgentTurn(args: {
         abortSignal: args.signal
           ? AbortSignal.any([args.signal, AbortSignal.timeout(AGENT_TURN_TIMEOUT_MS)])
           : AbortSignal.timeout(AGENT_TURN_TIMEOUT_MS),
-        system: buildAgentSystemPrompt({
-          agentName: agent.name,
-          contextBlock: turnContext.contextBlock,
-          exposedToolIds: tooling.exposedToolIds,
-          hasTools,
-          instructions: agent.instructions,
-          isDefaultMaster,
-        }),
+        prepareStep: ({ steps }) => prepareAgentToolRecoveryStep(
+          steps,
+          tooling.exposedToolIds,
+          systemPrompt,
+        ),
+        system: systemPrompt,
         messages: turnContext.messages,
       })
       let streamed = ''
@@ -1046,6 +1055,7 @@ export async function runWorkspaceAgentTurn(args: {
         const invocation = current.toolInvocation && typeof current.toolInvocation === 'object'
           ? current.toolInvocation as Record<string, unknown>
           : {}
+        if (invocation.state === 'output-error' && patch.state !== 'output-error') return
         const next = {
           ...current,
           toolInvocation: { ...invocation, ...patch },
@@ -1075,13 +1085,16 @@ export async function runWorkspaceAgentTurn(args: {
             continue
           }
           if (event.type === 'tool-call') {
+            const invalid = 'invalid' in event && event.invalid === true
             const part = {
               type: 'tool-invocation',
               toolInvocation: {
                 toolCallId: event.toolCallId,
                 toolName: event.toolName,
-                state: 'input-available',
+                state: invalid ? 'output-error' : 'input-available',
                 toolInput: event.input,
+                ...(invalid ? { toolOutput: toolFailureOutput(event.error, 'The model produced an invalid tool call.') } : {}),
+                ...(event.providerExecuted ? { providerExecuted: true } : {}),
               },
             }
             liveParts.push(part)
@@ -1098,7 +1111,29 @@ export async function runWorkspaceAgentTurn(args: {
           if (event.type === 'tool-error') {
             updateToolPart(event.toolCallId, {
               state: 'output-error',
-              toolOutput: { error: event.error instanceof Error ? event.error.message : String(event.error) },
+              toolOutput: toolFailureOutput(event.error),
+            })
+            continue
+          }
+          if (event.type === 'tool-approval-request' || event.type === 'tool-approval-response') {
+            const approval = event as unknown as Record<string, unknown>
+            const call = approval.toolCall && typeof approval.toolCall === 'object'
+              ? approval.toolCall as Record<string, unknown>
+              : null
+            if (!call || typeof call.toolCallId !== 'string' || typeof call.toolName !== 'string') continue
+            const approved = approval.type === 'tool-approval-response'
+              ? approval.approved === true
+              : undefined
+            updateToolPart(call.toolCallId, {
+              state: approved === false ? 'output-denied' : 'input-available',
+              toolName: call.toolName,
+              toolInput: call.input,
+              approvalId: approval.approvalId,
+              approvalStatus: approval.type === 'tool-approval-request'
+                ? 'requested'
+                : approved ? 'approved' : 'denied',
+              ...(typeof approval.reason === 'string' ? { approvalReason: approval.reason } : {}),
+              ...(approved === false ? { toolOutput: toolFailureOutput(approval.reason, 'Tool approval was denied.') } : {}),
             })
             continue
           }
@@ -1124,7 +1159,22 @@ export async function runWorkspaceAgentTurn(args: {
       }
       const usage = await Promise.resolve(result.usage).catch((_error) => undefined)
       const content = streamed.trim()
-      if (!content) {
+      let assistantPersistence = buildAssistantPersistenceFromSteps(
+        await Promise.resolve(result.steps).catch((_error) => undefined),
+        content,
+      )
+      assistantPersistence = reconcileUnverifiedAgentActionClaims(assistantPersistence)
+      // The same bounded representation is safe for both providers and keeps
+      // Convex's nested-document limits from turning a successful agent turn
+      // into a persistence failure.
+      assistantPersistence = compactAssistantPersistenceForConvex(assistantPersistence)
+      const hasTerminalToolOutcome = assistantPersistence.parts.some((part) => {
+        if (part.type === 'data' && part.dataType === GENERATED_UI_DATA_TYPE) return true
+        if (part.type !== 'tool-invocation' || !part.toolInvocation || typeof part.toolInvocation !== 'object') return false
+        const state = (part.toolInvocation as Record<string, unknown>).state
+        return state === 'output-available' || state === 'output-error' || state === 'output-denied'
+      })
+      if (!content && !hasTerminalToolOutcome) {
         failureReason = streamFailed ? 'model_failed' : 'empty_response'
         // Whitespace-only output can still have opened a row; close it as
         // failed rather than leaving an empty bubble generating forever.
@@ -1142,15 +1192,6 @@ export async function runWorkspaceAgentTurn(args: {
         reservationId = null
         return null
       }
-      let assistantPersistence = buildAssistantPersistenceFromSteps(
-        await Promise.resolve(result.steps).catch((_error) => undefined),
-        content,
-      )
-      assistantPersistence = reconcileUnverifiedAgentActionClaims(assistantPersistence)
-      // The same bounded representation is safe for both providers and keeps
-      // Convex's nested-document limits from turning a successful agent turn
-      // into a persistence failure.
-      assistantPersistence = compactAssistantPersistenceForConvex(assistantPersistence)
       // Closing the streamed row is the normal path. `addAgentMessage` remains
       // the fallback for a turn whose durable row could not be opened — the
       // reply still lands, just without having streamed. Both are idempotent on
@@ -1261,6 +1302,10 @@ export function buildAgentSystemPrompt(args: {
     args.hasTools
       ? [
           'Use your available tools when they genuinely help, and prefer checking over guessing.',
+          `The exact tool names available in this turn are: ${JSON.stringify(args.exposedToolIds)}. Use only these names and their declared input schemas, never invented aliases.`,
+          args.exposedToolIds.includes('computer_exec')
+            ? 'To run a shell command on your Computer, call computer_exec with a command argument. Report execution only after its result confirms success; never substitute a calculated or guessed result for actual output.'
+            : '',
           canRecall
             ? 'Before answering a question about the user, the workspace, or past work, call search_memory rather than assuming you know nothing.' +
               (args.exposedToolIds.includes('search_messages')
