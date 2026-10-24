@@ -76,6 +76,27 @@ test('a preview cannot deploy with a production key, shared origin, or missing P
   ]) assert.throws(() => buildPlan({ ...preview, ...patch }))
 })
 
+test('paid QA fixtures require explicit preview opt-in and retain isolated targeting', () => {
+  assert.equal(buildPlan(preview).after.length, 1)
+  const env = { ...preview, OVERLAY_PREVIEW_QA_FIXTURES: 'paid-workspace' }
+  const plan = buildPlan(env)
+  assert.deepEqual(plan.after[1].args, ['run', 'dev/seed:initQa', '{}', '--deployment', 'preview/pr-123'])
+  assert.equal(buildPlan({ VERCEL_ENV: 'production', OVERLAY_PREVIEW_QA_FIXTURES: 'paid-workspace' }).command, 'npm')
+  const calls = []
+  assert.equal(runBuild(env, (command, args) => {
+    calls.push([...args])
+    assert.ok(args.includes('--env-file'))
+    return { status: 0 }
+  }), 0)
+  assert.equal(calls.length, 3)
+  const failedCalls = []
+  assert.equal(runBuild(env, (command, args) => {
+    failedCalls.push([...args])
+    return { status: 1 }
+  }), 1)
+  assert.equal(failedCalls.length, 1)
+})
+
 test('retired staging builds cannot deploy a shared backend', () => {
   assert.throws(() => buildPlan({ OVERLAY_RELEASE_LANE: 'staging', VERCEL_ENV: 'production',
     OVERLAY_DEPLOYMENT_ENV: 'staging', CONVEX_DEPLOY_KEY: 'prod:doting-cuttlefish-819|fixture' }), /Unsupported preview/)

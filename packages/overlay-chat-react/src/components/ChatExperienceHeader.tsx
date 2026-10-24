@@ -11,7 +11,6 @@ import {
   Pencil,
   SlidersHorizontal,
 } from 'lucide-react'
-import { CrossfadeText } from './CrossfadeText'
 import type {
   ChatModel,
   GenerationMode,
@@ -28,7 +27,7 @@ import {
 } from '@overlay/ui/chat'
 import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger, Button, Input } from '@overlay/ui/primitives'
 import { DelayedTooltip } from '@overlay/ui/overlays'
-import { AppScreenHeader } from '@overlay/modules-react/shell'
+import { AppBreadcrumbs, AppScreenHeader } from '@overlay/modules-react/shell'
 import type { ChatModelIndicatorModel } from './ModelIndicators'
 import { ModelQualitiesPanel } from './ModelQualitiesPanel'
 import { ModelSelector } from './ModelSelector'
@@ -232,12 +231,7 @@ function HeaderTitleSection({
         />
       ) : (
         <div className="flex min-w-0 flex-1 items-center gap-1">
-          <h2
-            className="min-w-0 flex-1 text-sm font-medium leading-snug text-(--foreground) md:max-w-[20rem] md:truncate lg:max-w-[24rem]"
-            title={titleLabel}
-          >
-            <CrossfadeText text={titleLabel} className="line-clamp-2 md:line-clamp-1 md:truncate" />
-          </h2>
+          <AppBreadcrumbs title={titleLabel} />
           {showRenameButton ? (
             <Button variant="ghost"
               type="button"

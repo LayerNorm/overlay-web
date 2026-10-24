@@ -122,7 +122,8 @@ function WorkScreen() {
   useHotkeys(requireShortcutHotkey('work.new'), () => quickAdd.current?.focus(), { preventDefault: true })
 
   const visible = useMemo(() => filterWork(items, { filter: 'all', query, viewer }), [items, query, viewer])
-  const title = solo ? WORK_VIEW_LABELS[view] : `${scope === 'workspace' ? 'Workspace' : 'Personal'} / ${WORK_VIEW_LABELS[view]}`
+  const title = WORK_VIEW_LABELS[view]
+  const selectedTask = items.find((item) => item.id === taskId)
   const loaded = state === 'ready'
   // The List scrolls the page; the Board and Timeline scroll inside their own area.
   const pageScrolls = view === 'list' || !loaded || visible.length === 0
@@ -136,7 +137,8 @@ function WorkScreen() {
       rightPanelOverlayLabel="Close task"
       header={(
         <AppScreenHeader
-          title={title}
+          title={selectedTask?.title ?? title}
+          breadcrumbs={selectedTask ? [{ label: title }] : undefined}
           tabs={<PageSubviewTabs />}
           metadata={loaded ? <span className="text-xs text-(--muted-light)">{countOpen(items)} open</span> : undefined}
           search={<HeaderSearch value={query} onChange={setQuery} label="Search tasks" placeholder="Search tasks" />}
