@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import type { CapabilityCheck } from '@overlay/app-core'
-import type { AppApiRouteContext } from '@/server/app-api/bff-context'
+import type {
+  AccountAppApiRouteContext,
+  AppApiRouteContext,
+} from '@/server/app-api/bff-context'
 import {
   resolveAuthenticatedAppUser,
   type AuthenticatedAppUser,
@@ -10,6 +13,7 @@ import {
   getClientIp,
   markRateLimitsSatisfied,
 } from '@/server/security/rate-limit'
+import { recordBffMutationAuditIfNeeded } from '@/server/app-api/bff-audit'
 import { getEndpointRateLimitSpecs } from '@/server/security/rate-limit-specs'
 import {
   fingerprintApiRequest,
@@ -37,6 +41,10 @@ import { captureBffRequestMetric } from '@/server/observability/metrics'
 import { flushPostHog } from '@/server/observability/posthog-server'
 import { rejectCrossSiteBrowserMutation } from '@/server/security/browser-mutation-origin'
 import { ACTIVE_WORKSPACE_HEADER } from '@/shared/workspaces/constants'
+import {
+  resolveWorkspaceRequestScope,
+  UnavailableWorkspaceRouteError,
+} from '@/server/app-api/workspace-route-scope'
 
 const API_KEY_CANDIDATE_RATE_LIMITS = [
   { bucket: 'api-key-auth:candidate:ip', limit: 60, windowMs: 60_000 },
@@ -67,16 +75,83 @@ export type BffDomainService = (
   context: AppApiRouteContext,
 ) => Response | Promise<Response>
 
+export function isBffSessionSatisfied(
+  authType: AuthenticatedAppUser['authType'],
+  requireSession: boolean | undefined,
+): boolean {
+  return !requireSession || authType === 'session'
+}
+
+export type AccountBffDomainService = (
+  request: NextRequest,
+  context: AccountAppApiRouteContext,
+) => Response | Promise<Response>
+
 export type BffRouteOptions = {
   /** Never persist the response body in the idempotency store (for one-time secrets). */
   sensitiveResponse?: boolean
 }
+
+export type AccountBffRouteOptions = BffRouteOptions & {
+  requireSession?: boolean
+}
+
+type BffRouteConfiguration =
+  | {
+    scope: 'workspace'
+    service: BffDomainService
+    options: BffRouteOptions
+  }
+  | {
+    scope: 'account'
+    service: AccountBffDomainService
+    options: AccountBffRouteOptions
+  }
+
+type BffServiceInvocation =
+  | {
+    scope: 'workspace'
+    service: BffDomainService
+    context: AppApiRouteContext
+    workspaceId: string
+  }
+  | {
+    scope: 'account'
+    service: AccountBffDomainService
+    context: AccountAppApiRouteContext
+    workspaceId?: undefined
+  }
 
 export async function handleBffRoute(
   request: NextRequest,
   context: unknown,
   service: BffDomainService,
   options: BffRouteOptions = {},
+): Promise<Response> {
+  return await handleScopedBffRoute(request, context, {
+    scope: 'workspace',
+    service,
+    options,
+  })
+}
+
+export async function handleAccountBffRoute(
+  request: NextRequest,
+  context: unknown,
+  service: AccountBffDomainService,
+  options: AccountBffRouteOptions = {},
+): Promise<Response> {
+  return await handleScopedBffRoute(request, context, {
+    scope: 'account',
+    service,
+    options,
+  })
+}
+
+async function handleScopedBffRoute(
+  request: NextRequest,
+  context: unknown,
+  configuration: BffRouteConfiguration,
 ): Promise<Response> {
   const startTime = performance.now()
   const route = request.nextUrl.pathname
@@ -212,29 +287,20 @@ export async function handleBffRoute(
     return rateLimitResponse
   }
 
-  // Resolve the active workspace for this request. The client may pass an
-  // explicit workspace ID via the x-overlay-workspace-id header; otherwise the
-  // user's stored preference is used. Every user has a personal workspace, so
-  // this always succeeds (ensurePersonalWorkspace creates one if needed).
-  const requestedWorkspaceId = request.headers.get(ACTIVE_WORKSPACE_HEADER)?.trim() || undefined
-  let workspace
-  try {
-    workspace = await serverContext.workspaceService.resolveActiveWorkspace(
-      auth.userId,
-      requestedWorkspaceId,
+  if (
+    configuration.scope === 'account'
+    && !isBffSessionSatisfied(auth.authType, configuration.options.requireSession)
+  ) {
+    const response = NextResponse.json(
+      { error: 'This endpoint requires a signed-in browser session', code: 'forbidden' },
+      { status: 403 },
     )
-  } catch (error) {
-    if (isOverlayConfigError(error)) {
-      const response = runtimeConfigErrorResponse(error)
-      await emitMetric(response, auth.authType)
-      return response
-    }
-    throw error
+    await emitMetric(response, auth.authType)
+    return response
   }
 
-  const serviceContext = {
-    params: Promise.resolve({}),
-    ...(context && typeof context === 'object' ? context as object : {}),
+  const baseContext: AccountAppApiRouteContext = {
+    params: routeParams(context),
     auth,
     parsedQuery: parsedInput.parsedQuery,
     parsedJson: parsedInput.parsedJson,
@@ -243,17 +309,55 @@ export async function handleBffRoute(
     appDataCapabilities,
     requestFingerprint: await fingerprintApiRequest(request),
     requestIdempotencyKey: request.headers.get('idempotency-key')?.trim() || null,
-    workspace,
-  } as AppApiRouteContext
+  }
+
+  let invocation: BffServiceInvocation
+  if (configuration.scope === 'workspace') {
+    let workspace: Awaited<ReturnType<typeof resolveWorkspaceRequestScope>>
+    try {
+      workspace = await resolveWorkspaceRequestScope(request, auth, serverContext.workspaceService)
+    } catch (error) {
+      if (error instanceof UnavailableWorkspaceRouteError) {
+        const response = unavailableRouteWorkspaceResponse()
+        await emitMetric(response, auth.authType)
+        return response
+      }
+      if (isOverlayConfigError(error)) {
+        const response = runtimeConfigErrorResponse(error)
+        await emitMetric(response, auth.authType)
+        return response
+      }
+      throw error
+    }
+
+    const serviceContext: AppApiRouteContext = { ...baseContext, workspace }
+    invocation = {
+      scope: 'workspace',
+      service: configuration.service,
+      context: serviceContext,
+      workspaceId: workspace.workspace.id,
+    }
+  } else {
+    invocation = {
+      scope: 'account',
+      service: configuration.service,
+      context: baseContext,
+    }
+  }
 
   const invokeService = async () => await withObservabilityContext(
       contextForRequest(request, {
         provider: appDataCapabilities.provider,
         tenantId: auth.organizationId,
       }),
-      async () => await service(request, serviceContext),
+      async () => {
+        if (invocation.scope === 'workspace') {
+          return await invocation.service(request, invocation.context)
+        }
+        return await invocation.service(request, invocation.context)
+      },
     )
-  const response = options.sensitiveResponse
+  const response = configuration.options.sensitiveResponse
     ? await invokeService()
     : await handleIdempotentMutation(
         request,
@@ -265,13 +369,31 @@ export async function handleBffRoute(
   await recordBffMutationAuditIfNeeded({
     auth,
     clientIp,
-    enabled: bffSafety.mutationAuditEnabled,
+    enabled: shouldRecordMutationAudit(bffSafety.mutationAuditEnabled, request),
     request,
     response: standardizedResponse,
     serverContext,
   })
-  await emitMetric(standardizedResponse, auth.authType, workspace?.workspace.id)
+  await emitMetric(standardizedResponse, auth.authType, invocation.workspaceId)
   return standardizedResponse
+}
+
+function routeParams(context: unknown): BffRouteContext['params'] {
+  if (context && typeof context === 'object' && 'params' in context) {
+    return Promise.resolve((context as { params: BffRouteContext['params'] }).params)
+  }
+  return Promise.resolve({})
+}
+
+function unavailableRouteWorkspaceResponse(): NextResponse {
+  return NextResponse.json(
+    { error: 'Workspace not found or you no longer have access.', code: 'workspace_not_found' },
+    { status: 404, headers: { 'Cache-Control': 'private, no-store' } },
+  )
+}
+
+function shouldRecordMutationAudit(enabled: boolean, request: NextRequest): boolean {
+  return enabled && !SAFE_METHODS.has(request.method.toUpperCase())
 }
 
 function parseRetryAfterMs(value: string): number | undefined {
@@ -397,58 +519,6 @@ async function enforceBffRouteRateLimits(
   } catch (error) {
     if (isOverlayConfigError(error)) return runtimeConfigErrorResponse(error)
     throw error
-  }
-}
-
-async function recordBffMutationAuditIfNeeded(args: {
-  auth: NonNullable<Awaited<ReturnType<typeof resolveAuthenticatedAppUser>>>
-  clientIp: string
-  enabled: boolean
-  request: NextRequest
-  response: Response
-  serverContext: ReturnType<typeof getOverlayServerContext>
-}): Promise<void> {
-  if (!args.enabled || SAFE_METHODS.has(args.request.method.toUpperCase())) return
-  await recordBffMutationAudit(args)
-}
-
-async function recordBffMutationAudit(args: {
-  auth: NonNullable<Awaited<ReturnType<typeof resolveAuthenticatedAppUser>>>
-  clientIp: string
-  request: NextRequest
-  response: Response
-  serverContext: ReturnType<typeof getOverlayServerContext>
-}): Promise<void> {
-  const actorType = args.auth.authType === 'api-key'
-    ? 'api_key'
-    : args.auth.authType === 'service'
-      ? 'service'
-      : 'user'
-  try {
-    await args.serverContext.auditService.record({
-      action: 'api.mutation.completed',
-      actorType,
-      actorUserId: args.auth.userId,
-      ...(actorType === 'api_key' ? { actorApiKeyId: args.auth.apiKeyId } : {}),
-      ipAddress: args.clientIp,
-      metadata: {
-        method: args.request.method.toUpperCase(),
-        path: args.request.nextUrl.pathname,
-        statusCode: args.response.status,
-      },
-      outcome: args.response.ok ? 'success' : 'failure',
-      resourceId: args.request.nextUrl.pathname,
-      resourceType: 'api_route',
-    })
-  } catch (_error) {
-    // Audit infrastructure must not turn a completed customer mutation into a second,
-    // externally visible failure. The security event preserves an actionable signal.
-    logSecurityEvent('api_mutation_audit_failed', {
-      authType: args.auth.authType,
-      method: args.request.method.toUpperCase(),
-      path: args.request.nextUrl.pathname,
-      userHash: hashOperationalIdentifier('security-user:v1', args.auth.userId),
-    })
   }
 }
 

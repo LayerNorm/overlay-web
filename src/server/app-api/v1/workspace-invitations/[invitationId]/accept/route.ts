@@ -1,15 +1,15 @@
 import { NextResponse } from 'next/server'
 import type { WorkspaceInvitationAcceptResponse } from '@overlay/workspace-contracts'
-import type { AppApiRouteContext } from '@/server/app-api/bff-context'
+import type { AccountAppApiRouteContext } from '@/server/app-api/bff-context'
 import { getOverlaySession } from '@/server/auth/session'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { WorkspaceServiceError } from '@/server/workspaces/WorkspaceService'
 import { ACTIVE_WORKSPACE_COOKIE } from '@/shared/workspaces/constants'
 import { workspaceErrorResponse } from '@/server/app-api/v1/workspaces/route'
 import { requiredWorkspaceParam, validation } from '@/server/app-api/v1/workspaces/inputs'
-import { toWorkspaceSummary } from '@/server/app-api/v1/workspaces/presentation'
+import { toWorkspaceSummaryWithRoutingHandle } from '@/server/app-api/v1/workspaces/presentation'
 
-export async function POST(request: Request, context: AppApiRouteContext) {
+export async function POST(request: Request, context: AccountAppApiRouteContext) {
   try {
     if (context.auth.authType !== 'session') {
       throw new WorkspaceServiceError(
@@ -31,7 +31,7 @@ export async function POST(request: Request, context: AppApiRouteContext) {
     await service.setActiveWorkspace(context.auth.userId, access.workspace.id)
     const response: WorkspaceInvitationAcceptResponse = {
       activeWorkspaceId: access.workspace.id,
-      workspace: toWorkspaceSummary(access),
+      workspace: await toWorkspaceSummaryWithRoutingHandle(service, context.auth.userId, access),
     }
     const result = NextResponse.json(response)
     result.cookies.set(ACTIVE_WORKSPACE_COOKIE, access.workspace.id, {

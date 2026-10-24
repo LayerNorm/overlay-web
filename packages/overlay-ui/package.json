@@ -5,19 +5,23 @@
   "license": "AGPL-3.0-only",
   "type": "module",
   "sideEffects": [
-    "./src/styles.css"
+    "./src/styles.css",
+    "./src/typeset.css"
   ],
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
+    "./control-reset": "./src/control-reset.ts",
     "./styles.css": "./src/styles.css",
+    "./typeset.css": "./src/typeset.css",
     "./tokens": "./src/tokens.ts",
     "./primitives": "./src/primitives.ts",
     "./hooks": "./src/hooks.ts",
     "./feedback": "./src/feedback.ts",
     "./overlays": "./src/overlays.ts",
-    "./chat": "./src/chat.ts"
+    "./chat": "./src/chat.ts",
+    "./ai": "./src/ai.ts"
   },
   "peerDependencies": {
     "lucide-react": "^0.575.0",
@@ -32,14 +36,16 @@
   },
   "devDependencies": {
     "@storybook/react-vite": "^10.4.0",
-    "storybook": "^10.4.0"
+    "storybook": "^10.6.2"
   },
   "dependencies": {
+    "@shadcn/react": "^0.3.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "radix-ui": "^1.8.1",
-    "tailwind-merge": "^3.7.0",
     "cmdk": "^1.1.1",
-    "sonner": "^2.0.8"
+    "radix-ui": "^1.8.1",
+    "shiki": "^4.4.3",
+    "sonner": "^2.0.8",
+    "tailwind-merge": "^3.7.0"
   }
 }

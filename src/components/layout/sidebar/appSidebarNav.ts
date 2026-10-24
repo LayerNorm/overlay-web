@@ -33,7 +33,8 @@ import { MARKETING_DOCS_URL } from '@/shared/marketing/marketing'
 import { ROOT_APP_DESTINATION } from '@/shared/auth/root-entry'
 import { resolveFilesCategory, type FilesCategory } from '@/components/layout/FilesCategorySidebar'
 import type { AgentsPanelView } from '@/components/layout/sidebar-nav'
-import { PANEL_SCOPE_PARAM, resolvePanelScope, type PanelScope } from '@/shared/workspaces/panel-scope'
+import { PANEL_SCOPE_PARAM, parsePanelScope, resolvePanelScope, type PanelScope } from '@/shared/workspaces/panel-scope'
+import { normalizeChatViewForScope, readWorkspacePathScope, readWorkspaceRouteTarget } from '@/shared/workspaces/routing'
 import type { PrimaryRailItem } from './AppSidebarPrimaryRail'
 import { resolveWorkView, type WorkView } from '@/shared/work/views'
 
@@ -87,6 +88,7 @@ export type SidebarNavItem = Omit<OverlayNavigationItem, 'icon'> & { icon: Lucid
 export interface SidebarRouteState {
   workspaceSurface: string | null
   canonicalWorkspaceRoute: boolean
+  pathScope: PanelScope | null
   notesOpen: boolean
   filesOpen: boolean
   filesSectionOpen: boolean
@@ -122,23 +124,34 @@ function resolveToolsView(current: string | null): string {
   return 'connectors'
 }
 
-/** Chats keep their own routes: direct messages, channels, and activity are the Workspace scope. */
+/** Chats keep their own routes: Workspace AI chats, direct messages, channels, and activity are the Workspace scope. */
 export function chatScopeForView(chatsView: string): PanelScope {
-  if (chatsView === 'dms' || chatsView === 'channels' || chatsView === 'activity') return 'workspace'
+  if (chatsView === 'workspace-chats' || chatsView === 'dms' || chatsView === 'channels' || chatsView === 'activity') return 'workspace'
   return 'personal'
 }
 
 function resolveChatsView({
   activityOpen,
   chatViewParam,
+  pathScope,
+  queryScope,
+  savedScope,
 }: {
   activityOpen: boolean
   chatViewParam: string | null
+  pathScope?: PanelScope | null
+  queryScope: string | null
+  savedScope: PanelScope | null
 }): string {
   if (activityOpen) return 'activity'
-  if (chatViewParam === 'dms') return 'dms'
-  if (chatViewParam === 'channels') return 'channels'
+  if (pathScope) return normalizeChatViewForScope(pathScope, chatViewParam)
+  const requestedScope = parsePanelScope(queryScope)
+  if (requestedScope) return normalizeChatViewForScope(requestedScope, chatViewParam)
+  if (chatViewParam === 'personal' || chatViewParam === 'workspace-chats' || chatViewParam === 'dms' || chatViewParam === 'channels') {
+    return chatViewParam
+  }
   if (chatViewParam === 'all') return 'all'
+  if (savedScope) return normalizeChatViewForScope(savedScope, null)
   return 'personal'
 }
 
@@ -160,7 +173,8 @@ export function resolveSidebarRouteState({
   solo?: boolean
 }): SidebarRouteState {
   const workspaceSurface = resolveWorkspaceSurface(pathname)
-  const canonicalWorkspaceRoute = pathname.startsWith('/app/w/')
+  const canonicalWorkspaceRoute = pathname.startsWith('/app/w/') || readWorkspaceRouteTarget(pathname)?.kind === 'handle'
+  const pathScope = readWorkspacePathScope(pathname)
   const notesOpen = pathname.startsWith('/app/notes') || (canonicalWorkspaceRoute && workspaceSurface === 'notes')
   const filesOpen = pathname.startsWith('/app/files') || (canonicalWorkspaceRoute && workspaceSurface === 'files')
   const filesSectionOpen = filesOpen || notesOpen
@@ -182,10 +196,16 @@ export function resolveSidebarRouteState({
   const toolsView = resolveToolsView(chatViewParam)
   const workView = resolveWorkView(chatViewParam)
   const filesView = resolveFilesCategory(chatViewParam)
-  const chatsView = resolveChatsView({ activityOpen, chatViewParam })
+  const chatsView = resolveChatsView({
+    activityOpen,
+    chatViewParam,
+    pathScope,
+    queryScope: searchParams.get(PANEL_SCOPE_PARAM),
+    savedScope,
+  })
   // Agent links from before scopes carried the tab as `?view=`.
   const scopeParam = searchParams.get(PANEL_SCOPE_PARAM) ?? (agentsOpen ? chatViewParam : null)
-  const scope = chatOpen ? chatScopeForView(chatsView) : resolvePanelScope({ param: scopeParam, saved: savedScope, solo })
+  const scope = pathScope ?? (chatOpen ? chatScopeForView(chatsView) : resolvePanelScope({ param: scopeParam, saved: savedScope, solo }))
   const agentsView = scope
   const panelKind: SecondaryPanelKind | null = chatOpen
     ? 'chat'
@@ -207,6 +227,7 @@ export function resolveSidebarRouteState({
   return {
     workspaceSurface,
     canonicalWorkspaceRoute,
+    pathScope,
     notesOpen,
     filesOpen,
     filesSectionOpen,
@@ -352,6 +373,7 @@ export function selectSidebarNavItem(
     panelKind: SecondaryPanelKind | null
     sidebarCollapsed: boolean
     setSidebarCollapsed: (next: boolean) => void
+    recentChatHref?: (baseHref: string) => Promise<string>
   },
 ) {
   if (gateSidebarNavItem(item, ctx) !== 'ok' || !item.href) return
@@ -360,8 +382,25 @@ export function selectSidebarNavItem(
     if (ctx.panelKind && ctx.sidebarCollapsed) ctx.setSidebarCollapsed(false)
     return
   }
-  const destination = ctx.destination(item.href)
+  pushNavDestination(item.href, ctx)
+}
+
+function pushNavDestination(
+  href: string,
+  ctx: {
+    destination: (href: string) => string
+    pathname: string
+    router: { push: (href: string) => void }
+    setPendingNav: (nav: { href: string; fromPath: string }) => void
+    recentChatHref?: (baseHref: string) => Promise<string>
+  },
+) {
+  const destination = ctx.destination(href)
   ctx.setPendingNav({ href: destination, fromPath: ctx.pathname })
+  if (href === '/app/chat' && ctx.recentChatHref) {
+    void ctx.recentChatHref(destination).then((target) => ctx.router.push(target))
+    return
+  }
   ctx.router.push(destination)
 }
 
@@ -381,14 +420,11 @@ export function selectMobileNavItem(
     automationsEnabled: boolean
     openPanel: () => void
     closeDrawer: () => void
+    recentChatHref?: (baseHref: string) => Promise<string>
   },
 ) {
   if (gateSidebarNavItem(item, ctx) !== 'ok' || !item.href) return
-  if (!ctx.isActive(item)) {
-    const destination = ctx.destination(item.href)
-    ctx.setPendingNav({ href: destination, fromPath: ctx.pathname })
-    ctx.router.push(destination)
-  }
+  if (!ctx.isActive(item)) pushNavDestination(item.href, ctx)
   // Two-step drawer: destinations with a contextual panel drill into it;
   // everything else navigates and closes.
   if (panelKindForNavItem(item, ctx.automationsEnabled)) ctx.openPanel()
@@ -521,6 +557,7 @@ export function buildPrimaryRailItems({
   navItemDestination,
   navItemActive,
   onSelectItem,
+  recentChatHref,
 }: {
   effectivePendingHref: string | null
   navItems: SidebarNavItem[]
@@ -535,6 +572,7 @@ export function buildPrimaryRailItems({
   navItemDestination: (href: string) => string
   navItemActive: (item: SidebarNavItem) => boolean
   onSelectItem: (item: SidebarNavItem) => void
+  recentChatHref?: (baseHref: string) => Promise<string>
 }): PrimaryRailItem[] {
   const railItems: PrimaryRailItem[] = []
   navItems.forEach((item, navIdx) => {
@@ -552,7 +590,13 @@ export function buildPrimaryRailItems({
       href: canOpenDestinationInNewTab && item.href ? navItemDestination(item.href) : undefined,
       badgeCount: item.href === '/app/chat' ? cumulativeChatUnread : 0,
       title: shortcut ? `${item.label} · ⌥${shortcut}` : item.label,
-      dataTour: item.href === '/app/chat'
+      dataTour: item.href === '/app/work'
+        ? 'nav-work'
+        : item.href === '/app/agents'
+          ? 'nav-agents'
+          : item.href === '/app/automations'
+            ? 'nav-automations'
+            : item.href === '/app/chat'
         ? 'nav-chat'
         : item.href === '/app/files'
           ? 'nav-knowledge'
@@ -566,17 +610,19 @@ export function buildPrimaryRailItems({
   if (settingsPathActive && !publicShowcase) {
     // Settings has no entry in the primary rail, so surface its return action
     // after the regular navigation items while it is open.
-    const chatDestination = navItemDestination('/app/chat')
     railItems.push({
       id: 'settings-close',
       label: 'Settings',
       icon: X,
       active: true,
       title: 'Settings',
-      onSelect: () => {
-        setPendingNav({ href: '/app/chat', fromPath: pathname })
-        router.push(chatDestination)
-      },
+      onSelect: () => pushNavDestination('/app/chat', {
+        destination: navItemDestination,
+        pathname,
+        router,
+        setPendingNav,
+        recentChatHref,
+      }),
     })
   }
 

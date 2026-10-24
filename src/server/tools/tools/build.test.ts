@@ -68,6 +68,16 @@ test('Overlay tools expose Gateway-compatible input schemas', async () => {
   }))
 })
 
+test('present_generated_ui accepts a bounded conversational questionnaire without permission fields', () => {
+  const inputSchema = buildTestTools().present_generated_ui.inputSchema as {
+    safeParse(input: unknown): { success: boolean }
+  }
+  const question = { kind: 'questionnaire', prompt: 'Which focus?', choices: [{ id: 'research', label: 'Research' }], multiple: true }
+  assert.equal(inputSchema.safeParse(question).success, true)
+  assert.equal(inputSchema.safeParse({ ...question, prompt: '' }).success, false)
+  assert.equal(inputSchema.safeParse({ ...question, approveExecution: true }).success, false)
+})
+
 test('free-tier stub tools expose Gateway-compatible input schemas', async () => {
   await assertGatewayCompatibleToolSet(createFreeTierGatedStubTools(true))
 })

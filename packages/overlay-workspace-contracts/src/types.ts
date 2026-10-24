@@ -150,6 +150,7 @@ export type WorkspaceSummary = {
   id: string
   name: string
   slug: string
+  routingHandle?: string
   kind: WorkspaceKind
   status: WorkspaceStatus
   role: WorkspaceMembershipRole
@@ -159,9 +160,21 @@ export type WorkspaceSummary = {
   humanMemberCount?: number
 }
 
+export type AccountWorkspaceInvitation = {
+  id: string
+  workspaceId: string
+  workspaceName: string
+  role: Exclude<WorkspaceMembershipRole, 'owner'>
+  expiresAt: number
+}
+
 export type WorkspaceListResponse = {
   workspaces: WorkspaceSummary[]
   activeWorkspaceId: string
+}
+
+export interface AccountWorkspaceDirectoryResponse extends WorkspaceListResponse {
+  invitations: AccountWorkspaceInvitation[]
 }
 
 export type WorkspaceBillingSubscription = {
@@ -186,6 +199,7 @@ export type WorkspaceBillingSummaryResponse = {
     topUpBalance: number
   }
   subscription: WorkspaceBillingSubscription
+  storage?: { usedBytes: number; limitBytes: number }
   /**
    * What happens when the workspace's credit runs out: a hard stop (`enabled: false`, the default) or an automatic
    * top-up of `amountCents`, at most `monthlyLimitCents` per billing period.
@@ -265,6 +279,20 @@ export type WorkspaceCreateInput = {
 
 export type WorkspaceCreateResponse = {
   workspace: WorkspaceSummary
+}
+
+export type WorkspaceHandleResolutionResponse = {
+  workspaceId: string
+  canonicalHandle: string
+  canonical: boolean
+}
+
+export type WorkspaceHandleUpdateInput = {
+  slug: string
+}
+
+export type WorkspaceHandleUpdateResponse = {
+  workspace: Workspace
 }
 
 export type WorkspaceActivateResponse = {
@@ -566,6 +594,9 @@ export type WorkspaceAgentDefinition = {
   instructions: string
   harness: WorkspaceAgentHarness
   modelId: string
+  /** Adapter-owned permission and effort ids; omitted uses the deployment default. */
+  permissionMode?: string
+  effort?: string
   avatarColor?: string
   /** Creature body shape for anthropomorphic agent avatars; absent means circle. */
   avatarShape?: WorkspaceAgentCreatureShape
@@ -585,6 +616,9 @@ export type WorkspaceAgentCreateInput = {
   instructions: string
   harness?: WorkspaceAgentHarness
   modelId: string
+  /** Adapter-owned permission and effort ids; omitted uses the deployment default. */
+  permissionMode?: string
+  effort?: string
   avatarColor?: string
   avatarShape?: WorkspaceAgentCreatureShape
   allowedToolIds?: string[]

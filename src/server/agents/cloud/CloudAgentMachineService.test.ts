@@ -2,8 +2,10 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { SandboxCreateRequest, SandboxInstance, SandboxRuntime } from '@overlay/sandbox-runtime'
 import type { AgentEnvironment, AgentSandboxLease } from '@overlay/workspace-contracts'
+import {ConnectedAgentControlPlaneError} from '../ConnectedAgentControlPlaneService'
 import { CloudAgentMachineService } from './CloudAgentMachineService'
 import { CLOUD_AGENT_WORKSPACE, cloudAgentConnectCommand, cloudAgentRunCommand, cloudAgentStopHostCommand } from './cloud-agent-machine'
+import { CLOUD_AGENT_PREVIEW_ACCESS_PATH } from './cloud-agent-preview-access'
 
 function fakeMachine(status: 'running' | 'stopped' = 'running', files: Record<string, string> = {}) {
   const written: string[] = []
@@ -43,7 +45,7 @@ const environment = (overrides: Partial<AgentEnvironment> = {}): AgentEnvironmen
   capabilities: {}, createdAt: 0, updatedAt: 0, ...overrides,
 })
 
-function deps(machine: SandboxInstance, options: { enrolled?: boolean; lease?: AgentSandboxLease | null; env?: AgentEnvironment; bound?: boolean; activeExecution?: boolean } = {}) {
+function deps(machine: SandboxInstance, options: { enrolled?: boolean; lease?: AgentSandboxLease | null; env?: AgentEnvironment; bound?: boolean; disabled?: boolean; activeExecution?: boolean; enrollmentError?: Error; externalAgentsEnabled?: boolean } = {}) {
   const log: Array<[string, unknown]> = []
   const phases: Array<{ phase: string; error?: string }> = []
   let removed = false
@@ -51,6 +53,10 @@ function deps(machine: SandboxInstance, options: { enrolled?: boolean; lease?: A
   const service = new CloudAgentMachineService({
     audit: { record: async () => undefined } as never,
     image: 'overlay-agent-v5',
+    accountSummary: async (userId, accountId) => {
+      log.push(['account-read', {userId, accountId}])
+      return {id: accountId, label: 'Existing subscription', provider: 'claude-code', method: 'subscription', status: 'active'}
+    },
     provisions: {
       get: async () => null,
       begin: async () => ({ started: true, phase: 'queued' }),
@@ -60,8 +66,9 @@ function deps(machine: SandboxInstance, options: { enrolled?: boolean; lease?: A
     runtime,
     sleep: async () => undefined,
     now: () => 1_000,
+    launchEnabled: () => options.externalAgentsEnabled !== false,
     controlPlane: {
-      createEnrollmentSession: async () => ({ code: 'one-time-code', expiresAt: 0, enrollmentSessionId: 'abcdef12-0000' }),
+      createEnrollmentSession: async () => {if (options.enrollmentError) throw options.enrollmentError; return {code: 'one-time-code', expiresAt: 0, enrollmentSessionId: 'abcdef12-0000'}},
       approveEnvironment: async (args: unknown) => { log.push(['approve', args]); return {} as never },
       upsertBinding: async (args: unknown) => { log.push(['bind', args]); return { id: 'binding-1' } as never },
       revokeEnvironment: async (args: unknown) => { log.push(['revoke', args]) },
@@ -72,12 +79,15 @@ function deps(machine: SandboxInstance, options: { enrolled?: boolean; lease?: A
       listEnvironments: async () => (options.enrolled === false ? [] : [environment()]),
       getEnvironment: async () => options.env ?? environment({ status: 'online', lastSeenAt: 999 }),
       createSandboxLease: async (input: unknown) => { log.push(['lease', input]); return { id: 'lease-1', status: 'running' } as never },
-      getActiveSandboxLease: async () => (options.lease === undefined
-        ? { id: 'lease-1', status: 'running', provider: 'box', providerReference: 'bx_agent' } as AgentSandboxLease
-        : options.lease),
+      getActiveSandboxLease: async (args) => {
+        log.push(['lease-read', args])
+        return options.lease === undefined
+          ? { id: 'lease-1', status: 'running', provider: 'box', providerReference: 'bx_agent' } as AgentSandboxLease
+          : options.lease
+      },
       patchSandboxLeaseUsage: async (args: unknown) => { log.push(['patch', args]); return null },
       listBindings: async () => (options.bound === false ? [] : [{
-        id: 'binding-1', workspaceId: 'ws', agentId: 'agent-1', environmentId: 'env-1', adapterId: 'claude-code', enabled: true,
+        id: 'binding-1', workspaceId: 'ws', agentId: 'agent-1', environmentId: 'env-1', adapterId: 'claude-code', enabled: !options.disabled,
         adapterConfig: { providerAccountId: 'account-1', providerAccountOwnerUserId: 'user' },
       } as never]),
     },
@@ -89,6 +99,15 @@ const provisionArgs = {
   actorUserId: 'user', workspaceId: 'ws', agentId: 'agent-1', adapterId: 'claude-code' as const,
   providerAccountId: 'account-1', size: 'default' as const, serverUrl: 'https://www.getoverlay.io',
 }
+
+test('disabled external launch rejects cloud provisioning before machine or billing work', async () => {
+  const { machine } = fakeMachine()
+  const f = deps(machine, { externalAgentsEnabled: false })
+  await assert.rejects(f.service.provision(provisionArgs), /External agent runtimes are disabled/)
+  assert.equal(f.created.length, 0)
+  assert.deepEqual(f.phases, [])
+  assert.equal(f.log.some(([event]) => event === 'account-read'), false)
+})
 
 test('provision boots the image, redeems the code with acpx, approves the workspace root, leases, and binds', async () => {
   const { machine, commands } = fakeMachine()
@@ -121,6 +140,46 @@ test('a machine that never enrolls is deleted', async () => {
   assert.deepEqual(calls, ['delete'])
 })
 
+test('Preview provision, resume and explicit restart prepare private access before launching the host, without putting its secret in commands', async () => {
+  const preview = {VERCEL_ENV: 'preview', OVERLAY_DEPLOYMENT_ENV: 'preview', NEXT_PUBLIC_APP_URL: 'https://pr-247.preview.getoverlay.io',
+    VERCEL_GIT_PULL_REQUEST_ID: '247', VERCEL_AUTOMATION_BYPASS_SECRET: 'preview-private-fixture-secret'}
+  const previous = new Map(Object.keys(preview).map(key => [key, process.env[key]]))
+  Object.assign(process.env, preview)
+  try {
+    for (const mode of ['provision', 'resume', 'legacy-resume', 'restart', 'legacy-restart', 'already-online']) {
+      const resuming = mode === 'resume' || mode === 'legacy-resume'
+      const f = fakeMachine(resuming ? 'stopped' : 'running'), order: string[] = []
+      const write = f.machine.writeFiles.bind(f.machine), run = f.machine.runCommand.bind(f.machine)
+      f.machine.writeFiles = async files => {order.push('private-access'); assert.equal(files[0].mode, 0o600); await write(files)}
+      f.machine.runCommand = async request => {
+        order.push(request.args?.[1]?.startsWith('mkdir -p -m 700') ? 'private-directory' : 'command')
+        return run(request)
+      }
+      const lease: AgentSandboxLease = {id: 'lease-1', workspaceId: 'ws', environmentId: 'env-1', status: 'running',
+        provider: 'box', providerReference: 'bx_agent', reservedUntil: 10000, cleanupAttempts: 0, createdAt: 0, updatedAt: 0,
+        usage: mode === 'resume' || mode === 'restart' ? {previewHostingAccessVersion: 1} : {}}
+      const {service, log} = deps(f.machine, mode === 'provision' || mode === 'already-online' ? {} : {env: environment({status: resuming ? 'offline' : 'online'}), lease})
+      if (mode === 'provision') await service.provision({...provisionArgs, serverUrl: preview.NEXT_PUBLIC_APP_URL})
+      else if (mode === 'restart' || mode === 'legacy-restart') await service.control({workspaceId: 'ws', agentId: 'agent-1', action: 'restart'})
+      else await service.wake({workspaceId: 'ws', environmentId: 'env-1'})
+      if (mode === 'already-online') {assert.deepEqual(order, []); continue}
+      if (mode === 'legacy-resume' || mode === 'legacy-restart') {
+        assert.deepEqual(f.written, [])
+        assert.ok(f.commands.every(command => !command.includes('--hosting-auth-file')))
+        continue
+      }
+      if (mode === 'provision') {
+        const created = log.find(([kind]) => kind === 'lease')?.[1]
+        assert.partialDeepStrictEqual(created, {usage: {previewHostingAccessVersion: 1}})
+      }
+      assert.deepEqual(order.slice(0, 2), ['private-directory', 'private-access'])
+      assert.deepEqual(f.written, [CLOUD_AGENT_PREVIEW_ACCESS_PATH])
+      assert.ok(f.commands.some(command => command.includes(`--hosting-auth-file '${CLOUD_AGENT_PREVIEW_ACCESS_PATH}'`)))
+      assert.ok(f.commands.every(command => !command.includes(preview.VERCEL_AUTOMATION_BYPASS_SECRET)))
+    }
+  } finally {for (const [key, value] of previous) {if (value === undefined) delete process.env[key]; else process.env[key] = value}}
+})
+
 test('wake resumes a stopped machine and restarts its host', async () => {
   const { machine, commands, calls } = fakeMachine('stopped')
   const { service, log } = deps(machine, { env: environment({ status: 'offline' }) })
@@ -129,6 +188,72 @@ test('wake resumes a stopped machine and restarts its host', async () => {
   assert.equal(commands[0], cloudAgentStopHostCommand())
   assert.match(commands[1]!, /overlay-agent-host run --config/)
   assert.ok(log.some(([kind]) => kind === 'patch'))
+})
+
+test('recovery records the exact stopped machine before resume and starts only its managed host', async () => {
+  const {machine, commands, calls} = fakeMachine('stopped')
+  const {service, log} = deps(machine, {activeExecution: true})
+  const result = await service.resumeStoppedExecution({workspaceId: 'ws', environmentId: 'env-1', authorize: async proof => {
+    assert.deepEqual(proof, {leaseId: 'lease-1', providerReference: 'bx_agent', observedAt: 1000})
+    assert.deepEqual(calls, [])
+    assert.deepEqual(commands, [])
+    return true
+  }})
+  assert.equal(result, 'resumed')
+  assert.deepEqual(calls, ['resume'])
+  assert.equal(commands[0], cloudAgentStopHostCommand())
+  assert.match(commands[1]!, /overlay-agent-host run --config/)
+  assert.ok(log.some(([kind]) => kind === 'patch'))
+  for (const [, scope] of log.filter(([kind]) => kind === 'lease-read'))
+    assert.deepEqual(scope, {workspaceId: 'ws', environmentId: 'env-1'}, 'only serializable machine scope crosses the repository boundary')
+})
+
+test('recovery never stops live work and never resumes a rejected authorization', async () => {
+  for (const status of ['running', 'stopped'] as const) {
+    const {machine, commands, calls} = fakeMachine(status)
+    const {service} = deps(machine, {activeExecution: true})
+    let requested = false
+    assert.equal(await service.resumeStoppedExecution({workspaceId: 'ws', environmentId: 'env-1', authorize: async () => {
+      requested = true; return false
+    }}), 'unavailable')
+    assert.equal(requested, status === 'stopped')
+    assert.deepEqual(calls, [])
+    assert.deepEqual(commands, [])
+  }
+})
+
+test('recovery refuses a lease replacement before or during provider resume', async () => {
+  const lease: AgentSandboxLease = {id: 'lease-1', workspaceId: 'ws', environmentId: 'env-1', provider: 'box',
+    providerReference: 'bx_agent', status: 'running', reservedUntil: 10000, cleanupAttempts: 0, createdAt: 0, updatedAt: 0}
+  for (const when of ['authorize', 'resume']) {
+    const {machine, commands, calls} = fakeMachine('stopped')
+    const options = {lease}
+    const {service} = deps(machine, options)
+    const replace = () => {options.lease = {...lease, id: 'replacement', providerReference: 'bx_other'}}
+    if (when === 'resume') machine.resume = async () => {calls.push('resume'); replace()}
+    assert.equal(await service.resumeStoppedExecution({workspaceId: 'ws', environmentId: 'env-1', authorize: async () => {
+      if (when === 'authorize') replace()
+      return true
+    }}), 'unavailable')
+    assert.deepEqual(calls, when === 'resume' ? ['resume'] : [])
+    assert.deepEqual(commands, [])
+  }
+})
+
+test('recovery leaves a concurrently resumed machine alone and rejects providers without disk-only isolation', async () => {
+  const {machine, calls, commands} = fakeMachine('stopped')
+  const {service} = deps(machine)
+  assert.equal(await service.resumeStoppedExecution({workspaceId: 'ws', environmentId: 'env-1', authorize: async () => {
+    machine.status = async () => 'running'
+    return true
+  }}), 'unavailable')
+  assert.deepEqual(calls, [])
+  assert.deepEqual(commands, [])
+  const unsupported = deps(machine, {lease: {id: 'lease-1', workspaceId: 'ws', environmentId: 'env-1', provider: 'e2b',
+    providerReference: 'other', status: 'running', reservedUntil: 10000, cleanupAttempts: 0, createdAt: 0, updatedAt: 0}})
+  assert.equal(await unsupported.service.resumeStoppedExecution({workspaceId: 'ws', environmentId: 'env-1', authorize: async () => {
+    assert.fail('Unsupported provider must not request a stop receipt')
+  }}), 'unavailable')
 })
 
 test('wake leaves a running machine with a live host alone, and skips machines without a lease', async () => {
@@ -197,6 +322,20 @@ test('teardown revokes the environment, deletes the machine, and clears the prov
   assert.equal(wasRemoved(), true)
 })
 
+test('pause and teardown remain available while external launches are disabled', async () => {
+  const paused = fakeMachine()
+  await deps(paused.machine, { externalAgentsEnabled: false }).service.control({
+    workspaceId: 'ws', agentId: 'agent-1', action: 'pause',
+  })
+  assert.deepEqual(paused.calls, ['stop'])
+
+  const removed = fakeMachine()
+  const teardown = deps(removed.machine, { externalAgentsEnabled: false })
+  await teardown.service.teardown({ actorUserId: 'user', workspaceId: 'ws', agentId: 'agent-1' })
+  assert.deepEqual(removed.calls, ['delete'])
+  assert.ok(teardown.log.some(([name]) => name === 'revoke'))
+})
+
 test('applying a profile removes what the earlier version wrote, prunes the folders it empties, and records what it owns', async () => {
   const previous = JSON.stringify({ version: 1, harness: 'claude-code', files: ['skills/old/SKILL.md', 'commands/old.md', 'CLAUDE.md'], mcpServers: [] })
   const { machine, commands, written } = fakeMachine('running', { '/home/user/.overlay/profile-managed.json': previous })
@@ -249,6 +388,30 @@ test('reviving never touches an agent whose machine exists', async () => {
   assert.equal(wasRemoved(), false)
 })
 
+test('a deleted cloud machine retains its prior account and adapter as setup, without restoring execution authority', async () => {
+  const {machine, calls} = fakeMachine()
+  const {service, log} = deps(machine, {disabled: true, env: environment({status: 'revoked'}), lease: null})
+  const status = await service.status({workspaceId: 'ws', agentId: 'agent-1'})
+  assert.equal(status.state, 'unavailable')
+  assert.equal(status.environment, null)
+  assert.equal(status.machine, null)
+  assert.equal(status.adapterId, 'claude-code')
+  assert.deepEqual(status.account, {id: 'account-1', label: 'Existing subscription', provider: 'claude-code', method: 'subscription', status: 'active'})
+  await assert.rejects(service.control({workspaceId: 'ws', agentId: 'agent-1', action: 'resume'}), /no Overlay Cloud machine/)
+  assert.equal(log.some(([name]) => name === 'lease-read'), false)
+  assert.deepEqual(calls, [])
+})
+
+test('prior machine setup ignores local and foreign-workspace environments', async () => {
+  for (const env of [environment({kind: 'local'}), environment({workspaceId: 'another-workspace'})]) {
+    const {service, log} = deps(fakeMachine().machine, {disabled: true, env, lease: null})
+    const status = await service.status({workspaceId: 'ws', agentId: 'agent-1'})
+    assert.equal(status.account, null)
+    assert.equal(status.adapterId, undefined)
+    assert.equal(log.some(([name]) => name === 'account-read'), false)
+  }
+})
+
 test('wake never replaces a stale bridge while an observed execution may still own external writes', async () => {
   const { machine, commands } = fakeMachine('running')
   const { service } = deps(machine, { activeExecution: true, env: environment({ status: 'offline', lastSeenAt: 0 }) })
@@ -279,4 +442,40 @@ test('managed startup propagates lifecycle v2 only after explicit enablement', (
     assert.equal(cloudAgentConnectCommand(input, env).includes('OVERLAY_REMOTE_RUN_LIFECYCLE_VERSION=2'), value === '2')
     assert.equal(cloudAgentRunCommand(env).includes('OVERLAY_REMOTE_RUN_LIFECYCLE_VERSION=2'), value === '2')
   }
+})
+
+test('managed startup forwards fenced recovery only with lifecycle v2 and forwards explicit rollback', () => {
+  const input = {enrollmentCode: 'fixture-code', serverUrl: 'https://preview.example.test', name: 'fixture', adapterId: 'codex' as const}
+  for (const lifecycle of [undefined, '2']) for (const rollout of [undefined, '0', '1', '1; unsafe']) {
+    const env = {OVERLAY_REMOTE_RUN_LIFECYCLE_VERSION: lifecycle, OVERLAY_REMOTE_RUN_FENCED_RESTORATION: rollout}
+    const expected = rollout === '0' || (rollout === '1' && lifecycle === '2')
+    for (const command of [cloudAgentConnectCommand(input, env), cloudAgentRunCommand(env)]) {
+      assert.equal(command.includes('OVERLAY_REMOTE_RUN_FENCED_RESTORATION='), expected)
+      assert.ok(!command.includes('unsafe'))
+    }
+  }
+})
+
+
+test('an enrollment setup failure records a terminal failed phase before any machine is allocated', async () => {
+  const machine = fakeMachine(), failure = Error('Enrollment setup unavailable: private diagnostic')
+  const f = deps(machine.machine, {enrollmentError: failure})
+  await assert.rejects(f.service.provision(provisionArgs), error => error === failure)
+  assert.deepEqual(f.phases.map(row => row.phase), ['allocating', 'failed'])
+  assert.ok(f.phases.at(-1)?.error)
+  assert.doesNotMatch(f.phases.at(-1)?.error ?? '', /private diagnostic/)
+  assert.deepEqual(f.created, [])
+  assert.deepEqual(machine.calls, [])
+  assert.deepEqual(f.log.filter(([kind]) => kind === 'bind' || kind === 'lease' || kind === 'revoke'), [])
+})
+
+
+test('workspace enrollment limits are shown as workspace limits and allocate no provider machine', async () => {
+  const machine = fakeMachine(), failure = new ConnectedAgentControlPlaneError('private diagnostic', 429, 'environment_limit_reached')
+  const f = deps(machine.machine, {enrollmentError: failure})
+  await assert.rejects(f.service.provision(provisionArgs), error => error === failure)
+  assert.deepEqual(f.phases, [{phase: 'allocating'}, {phase: 'failed',
+    error: 'This workspace has reached its connected-environment limit. Remove an unused connection and try again.'}])
+  assert.deepEqual(f.created, [])
+  assert.deepEqual(machine.calls, [])
 })

@@ -1,0 +1,30 @@
+# Overlay Free model routing
+
+Onboarding does not call this router. Its questions, employee suggestions, and
+starter tasks are scripted, so every user gets the same flow for the same answers.
+
+Overlay Free uses the configured AI Gateway and OpenRouter credentials from the
+web runtime. The private hourly refresh callback requires `OVERLAY_BFF_URL` and
+the existing `INTERNAL_API_SECRET`. Missing configuration or Convex safety
+storage makes routing unavailable; it does not authorize stale catalog state.
+Preview deployments do not schedule probes, but can initialize route state
+through an authenticated refresh or first use.
+
+Refresh reads current provider catalogs, verifies explicit zero pricing and
+capabilities, and probes a bounded set of Gateway endpoints. Gateway routes
+remain unavailable until a successful zero-cost canary. OpenRouter Free is a
+separate selectable model and does not use the Gateway transport. A route is
+claimed atomically for one request at a time; busy routes are skipped. A request
+lease lasts up to three minutes, and an unresolved expired lease permanently
+quarantines that route.
+
+Before semantic output, the stream buffers at most 32 distinct metadata/start
+parts and 64 KiB; identical parts count once. After output begins, metadata passes
+through without consuming that prelude budget. Fallback resets the buffer and
+deduplication state. Receipt validation and quarantine remain unchanged.
+
+The safety checks reduce risk but cannot guarantee zero spend. Providers may
+change pricing between preflight and execution, and the first request can be
+charged before its receipt is checked. Unsafe or missing receipts quarantine
+the route. Quarantine recovery is a trusted-operator action after reviewing
+current provider pricing and receipts; there is no public reset endpoint.

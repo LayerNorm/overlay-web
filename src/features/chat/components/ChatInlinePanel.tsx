@@ -2,6 +2,8 @@
 
 import { useState, useCallback, useEffect, useEffectEvent, useRef, type Dispatch, type MouseEvent, type SetStateAction } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import { useWorkspaceHref } from '@/hooks/use-workspace-href'
+import { usePanelScope } from '@/hooks/use-panel-scope'
 import { Archive, Bot, Check, Hash, MessageSquare, Pencil, Slack, UserRound, UsersRound } from 'lucide-react'
 import { SidebarListSkeleton } from '@overlay/ui/feedback'
 import { useAsyncSessions } from '@/components/providers/async-sessions-store'
@@ -35,11 +37,26 @@ import {
 import { clearLastChatForView, rememberLastChatForView } from '@/shared/chat/last-chat-by-view'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { announceArchived } from '@/shared/app/archive-toast'
-import { SidebarResourceList, SidebarResourceRow } from '@overlay/ui/primitives'
+import {
+  Button,
+  Input,
+  SidebarMenuAction,
+  SidebarMenuBadge,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
+} from '@overlay/ui/primitives'
+import { cn } from '@overlay/ui'
 import { useAuth, type AuthUser } from '@/contexts/AuthContext'
 import { NewDirectMessageDialog } from './NewDirectMessageDialog'
 import { NewChannelDialog } from './NewChannelDialog'
-import { buildWorkspaceHref, isSameChatSurface } from '@/shared/workspaces/routing'
+import {
+  isSameChatSurface,
+  legacyWorkspaceScopeForRoute,
+  mergeHrefSearchParams,
+  normalizeChatViewForScope,
+  readWorkspacePathScope,
+} from '@/shared/workspaces/routing'
 import { agentThreadHref } from '@/components/layout/sidebar-nav'
 import { useWorkspaceChanged } from '@/hooks/use-workspace-changed'
 import { useCollaborationRealtime } from './collaboration/CollaborationRealtimeProvider'
@@ -53,11 +70,29 @@ type Conversation = {
   title: string
   lastModified: number
   conversationType?: 'personal' | 'dm' | 'channel'
+  scope?: 'personal' | 'workspace'
   otherParticipantTypes?: Array<'human' | 'agent'>
   externalPlatform?: string
 }
 
-type ChatView = 'personal' | 'dms' | 'channels' | 'all'
+/** `workspace-chats` lists the AI chats filed under Workspace; `personal` lists the rest. */
+export type ChatView = 'personal' | 'workspace-chats' | 'dms' | 'channels' | 'all'
+
+function isAiChatInView(chat: Pick<Conversation, 'conversationType' | 'scope'>, view: 'personal' | 'workspace-chats'): boolean {
+  if ((chat.conversationType ?? 'personal') !== 'personal') return false
+  return (chat.scope ?? 'personal') === (view === 'workspace-chats' ? 'workspace' : 'personal')
+}
+
+export function sectionChatView(view: string): ChatView | undefined {
+  return view === 'personal' || view === 'workspace-chats' || view === 'dms' || view === 'channels' ? view : undefined
+}
+
+function chatInView(chat: Pick<Conversation, 'conversationType' | 'scope'>, view: ChatView): boolean {
+  if (view === 'personal' || view === 'workspace-chats') return isAiChatInView(chat, view)
+  if (view === 'dms') return chat.conversationType === 'dm'
+  if (view === 'channels') return chat.conversationType === 'channel'
+  return true
+}
 
 function DirectMessageIcon({
   participantTypes,
@@ -436,9 +471,10 @@ function useChatListEvents({
       removeActiveChat(archivedChatId)
       clearLastChatForView(workspaceId, chatView, archivedChatId)
       if (activeId !== archivedChatId) return
+      if (!chatInView(detail.chat, chatView)) return
       const nextChat = (getCachedChatList() ?? []).find((candidate) => {
         if (candidate._id === archivedChatId) return false
-        if (chatView === 'personal') return (candidate.conversationType ?? 'personal') === 'personal'
+        if (chatView === 'personal' || chatView === 'workspace-chats') return isAiChatInView(candidate, chatView)
         if (chatView === 'dms') return candidate.conversationType === 'dm'
         if (chatView === 'channels') return candidate.conversationType === 'channel'
         return true
@@ -447,7 +483,7 @@ function useChatListEvents({
         openChat(nextChat)
         return
       }
-      const emptyHref = `${baseHref}?${new URLSearchParams({ view: chatView }).toString()}`
+      const emptyHref = mergeHrefSearchParams(baseHref, new URLSearchParams({ view: chatView }))
       if (isSameChatSurface(pathname, baseHref)) {
         window.history.pushState(null, '', emptyHref)
         window.dispatchEvent(new CustomEvent('overlay:chat-route-selected', {
@@ -620,84 +656,92 @@ function ChatListRow({
   onSaveRename: (chatId: string) => void
   onCancelRename: () => void
 }) {
+  const canRename = chat.conversationType !== 'dm' && chat.conversationType !== 'channel'
+  const hoverAction = 'top-1.5 md:opacity-0 group-hover/menu-sub-item:opacity-100 group-focus-within/menu-sub-item:opacity-100'
   return (
-    <SidebarResourceRow
-      active={active}
-      onClick={() => {
-        if (isDeleting || isEditing) return
-        onOpenChat(chat)
-      }}
-      className={`cursor-pointer overflow-hidden transition-all duration-200 ${
-        isDeleting ? 'max-h-0 -translate-y-1 opacity-0' : 'max-h-7 opacity-100'
-      }`}
-    >
-      <ChatConversationIcon chat={chat} size={12} className="shrink-0" />
-      {!isPublicShowcase && isEditing ? (
-        <input
-          aria-label="Conversation title"
-          ref={(el) => { el?.focus() }}
-          value={editingTitle}
-          onChange={(event) => onEditingTitleChange(event.target.value)}
-          onClick={(event) => event.stopPropagation()}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter') {
-              event.preventDefault()
-              onSaveRename(chat._id)
-            } else if (event.key === 'Escape') {
-              event.preventDefault()
-              onCancelRename()
-            }
-          }}
-          onBlur={() => onSaveRename(chat._id)}
-          className="min-w-0 flex-1 rounded-md border border-(--border) bg-(--surface-elevated) px-2 py-1 text-[11px] text-(--foreground) outline-hidden"
-        />
-      ) : (
-        <span className="min-w-0 flex-1 truncate">{chat.title}</span>
+    <SidebarMenuSubItem
+      className={cn(
+        'overflow-hidden transition-all duration-200',
+        isDeleting ? 'max-h-0 -translate-y-1 opacity-0' : 'max-h-8 opacity-100',
       )}
-      {isStreaming && !unread ? (
-        <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-(--muted)" />
-      ) : null}
-      {unread > 0 ? (
-        <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-(--surface-muted) text-[9px] font-medium text-(--foreground)">
-          {unread > 9 ? '9+' : unread}
-        </span>
-      ) : null}
-      {isPublicShowcase ? null : isEditing ? (
-        <button
-          type="button"
-          onMouseDown={(event) => {
-            event.preventDefault()
-            event.stopPropagation()
-            onSaveRename(chat._id)
-          }}
-          className="ml-1 shrink-0 rounded-sm p-0.5 text-(--foreground) hover:bg-(--border)"
-          aria-label="Save chat name"
-        >
-          <Check size={11} />
-        </button>
+    >
+      {!isPublicShowcase && isEditing ? (
+        <div className="flex h-7 min-w-0 items-center gap-2 px-2 text-xs text-(--muted)">
+          <ChatConversationIcon chat={chat} size={12} className="shrink-0" />
+          <Input
+            aria-label="Conversation title"
+            ref={(el) => { el?.focus() }}
+            value={editingTitle}
+            onChange={(event) => onEditingTitleChange(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault()
+                onSaveRename(chat._id)
+              } else if (event.key === 'Escape') {
+                event.preventDefault()
+                onCancelRename()
+              }
+            }}
+            onBlur={() => onSaveRename(chat._id)}
+            className="h-auto min-w-0 flex-1 rounded-md border border-(--border) bg-(--surface-elevated) px-2 py-1 text-[11px] text-(--foreground) outline-hidden"
+          />
+          <Button
+            variant="ghost"
+            size="icon"
+            type="button"
+            onMouseDown={(event) => {
+              event.preventDefault()
+              event.stopPropagation()
+              onSaveRename(chat._id)
+            }}
+            className="h-auto w-auto shrink-0 rounded-sm p-0.5 text-(--foreground) hover:bg-(--border)"
+            aria-label="Save chat name"
+          >
+            <Check size={11} />
+          </Button>
+        </div>
       ) : (
         <>
-          {chat.conversationType === 'dm' || chat.conversationType === 'channel' ? null : (
-            <button
-              type="button"
-              onClick={(event) => onBeginRename(chat, event)}
-              className="ml-1 shrink-0 rounded-sm p-0.5 opacity-0 transition-opacity hover:bg-(--border) group-hover:opacity-100"
-              aria-label="Rename chat"
-            >
-              <Pencil size={11} />
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={(event) => onRequestArchive(chat, event)}
-            className="ml-1 shrink-0 rounded-sm p-0.5 opacity-0 transition-opacity hover:bg-(--border) group-hover:opacity-100"
-            aria-label="Archive chat"
+          <SidebarMenuSubButton
+            isActive={active}
+            aria-current={active ? 'page' : undefined}
+            onClick={() => { if (!isDeleting) onOpenChat(chat) }}
+            className={cn('h-8 gap-2.5 text-sm', isPublicShowcase ? undefined : canRename ? 'pr-14' : 'pr-8')}
           >
-            <Archive size={11} />
-          </button>
+            <ChatConversationIcon chat={chat} size={12} className="shrink-0" />
+            <span className="flex-1 truncate">{chat.title}</span>
+            {isStreaming && !unread ? (
+              <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-(--muted)" />
+            ) : null}
+          </SidebarMenuSubButton>
+          {unread > 0 ? (
+            <SidebarMenuBadge className="top-1.5 group-hover/menu-sub-item:hidden group-focus-within/menu-sub-item:hidden">
+              {unread > 9 ? '9+' : unread}
+            </SidebarMenuBadge>
+          ) : null}
+          {isPublicShowcase ? null : (
+            <>
+              {canRename ? (
+                <SidebarMenuAction
+                  aria-label="Rename chat"
+                  className={cn('right-7', hoverAction)}
+                  onClick={(event) => onBeginRename(chat, event)}
+                >
+                  <Pencil aria-hidden />
+                </SidebarMenuAction>
+              ) : null}
+              <SidebarMenuAction
+                aria-label="Archive chat"
+                className={cn('right-1', hoverAction)}
+                onClick={(event) => onRequestArchive(chat, event)}
+              >
+                <Archive aria-hidden />
+              </SidebarMenuAction>
+            </>
+          )}
         </>
       )}
-    </SidebarResourceRow>
+    </SidebarMenuSubItem>
   )
 }
 
@@ -746,8 +790,8 @@ function ChatListBody({
   saveRename: ReturnType<typeof useChatRename>['saveRename']
   cancelRename: ReturnType<typeof useChatRename>['cancelRename']
 }) {
-  const viewChats = chatView === 'personal'
-    ? chats.filter((chat) => (chat.conversationType ?? 'personal') === 'personal')
+  const viewChats = chatView === 'personal' || chatView === 'workspace-chats'
+    ? chats.filter((chat) => isAiChatInView(chat, chatView))
     : chatView === 'dms'
       ? chats.filter((chat) => chat.conversationType === 'dm')
       : chatView === 'channels'
@@ -758,29 +802,33 @@ function ChatListBody({
     : viewChats
   const emptyLabel = {
     personal: 'No personal chats yet',
+    'workspace-chats': 'No workspace chats yet',
     dms: 'No direct messages yet',
     channels: 'No channels yet',
     all: 'No chats yet',
   }[chatView]
   const deletingChatIdSet = new Set(deletingChatIds)
+  const listClassName = 'ml-0 border-l-0 pl-0'
   if (loading) {
     return (
-      <SidebarResourceList>
+      <SidebarMenuSub className={listClassName}>
         <SidebarListSkeleton rows={6} />
-      </SidebarResourceList>
+      </SidebarMenuSub>
     )
   }
   if (filteredChats.length === 0) {
     return (
-      <SidebarResourceList>
-        <p className="px-2.5 py-2 text-xs text-(--muted-light)">
-          {viewChats.length === 0 ? emptyLabel : 'No results'}
-        </p>
-      </SidebarResourceList>
+      <SidebarMenuSub className={listClassName}>
+        <SidebarMenuSubItem>
+          <p className="px-2 py-1.5 text-xs text-(--muted-light)">
+            {viewChats.length === 0 ? emptyLabel : 'No results'}
+          </p>
+        </SidebarMenuSubItem>
+      </SidebarMenuSub>
     )
   }
   return (
-    <SidebarResourceList>
+    <SidebarMenuSub className={listClassName}>
       <>
           {filteredChats.map((chat) => (
             <ChatListRow
@@ -802,17 +850,20 @@ function ChatListBody({
             />
           ))}
           {hasMore ? (
-            <button
+            <SidebarMenuSubItem>
+            <Button
+              variant="ghost"
               type="button"
               disabled={loadingMore}
               onClick={() => void loadMoreChats()}
-              className="h-7 w-full rounded-md px-2.5 text-left text-xs text-(--muted-light) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground) disabled:cursor-wait disabled:opacity-60"
+              className="h-7 w-full justify-start rounded-md px-2.5 text-left text-xs font-normal text-(--muted-light) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground) disabled:cursor-wait disabled:opacity-60"
             >
               {loadingMore ? 'Loading...' : 'Load more'}
-            </button>
+            </Button>
+            </SidebarMenuSubItem>
           ) : null}
         </>
-    </SidebarResourceList>
+    </SidebarMenuSub>
   )
 }
 
@@ -823,6 +874,7 @@ export function ChatInlinePanel({
   baseHref = '/app/chat',
   workspaceId,
   seededChats,
+  view: sectionView,
 }: {
   refreshKey: number
   searchQuery?: string
@@ -830,11 +882,15 @@ export function ChatInlinePanel({
   baseHref?: string
   workspaceId?: string | null
   seededChats?: Conversation[]
+  /** Pins the list to one view (a sidebar section) instead of following the route. */
+  view?: ChatView
 }) {
   const router = useRouter()
+  const buildWorkspaceHref = useWorkspaceHref()
   const { activeWorkspace } = useWorkspace()
   const pathname = usePathname() ?? ''
   const searchParams = useSearchParams()
+  const rememberedScope = usePanelScope()
   const { sessions, getUnread } = useAsyncSessions()
   const { user, isLoading: authLoading } = useAuth()
   const {
@@ -848,27 +904,41 @@ export function ChatInlinePanel({
     ? null
     : new URLSearchParams(window.location.search).get('id')
   const activeId = browserActiveId ?? searchActiveId
-  const chatView: ChatView = (() => {
-    const value = searchParams?.get('view')
-    if (value === 'dms' || value === 'channels' || value === 'all') return value
-    return 'personal'
-  })()
-  setActiveChatListView(chatView)
+  const requestedView = searchParams?.get('view') ?? null
+  const legacyScope = legacyWorkspaceScopeForRoute(
+    'chat',
+    new URLSearchParams(searchParams?.toString() ?? ''),
+  )
+  const routeScope = readWorkspacePathScope(pathname) ?? legacyScope ?? rememberedScope
+  const chatView: ChatView = sectionView ?? (
+    requestedView === 'all' && !readWorkspacePathScope(pathname) && !legacyScope
+      ? 'all'
+      : normalizeChatViewForScope(routeScope, requestedView)
+  )
+  const viewScope = chatView === 'dms' || chatView === 'channels' || chatView === 'workspace-chats'
+    ? 'workspace'
+    : 'personal'
+  const scopedBaseHref = buildWorkspaceHref(workspaceId ?? null, baseHref, viewScope)
+  // Both AI chat views share the personal list; the scope filter runs here.
+  // Sections share one list of every conversation and each filters its own view.
+  setActiveChatListView(sectionView ? 'all' : chatView === 'workspace-chats' ? 'personal' : chatView)
 
   const openChat = useCallback((chat: Conversation) => {
     const targetView = chat.conversationType === 'channel'
       ? 'channels'
       : chat.conversationType === 'dm'
         ? 'dms'
-        : chatView === 'all'
-          ? 'personal'
-          : chatView
+        : chat.scope === 'workspace' ? 'workspace-chats' : 'personal'
+    const targetScope = targetView === 'dms' || targetView === 'channels' || targetView === 'workspace-chats'
+      ? 'workspace'
+      : 'personal'
+    const targetBaseHref = buildWorkspaceHref(workspaceId ?? null, baseHref, targetScope)
     rememberLastChatForView(workspaceId, targetView, chat._id)
-    const href = `${baseHref}?${new URLSearchParams({
+    const href = mergeHrefSearchParams(targetBaseHref, new URLSearchParams({
       ...(isPublicShowcase ? { showcase: '1' } : {}),
       view: targetView,
       id: chat._id,
-    }).toString()}`
+    }))
     // Soft-navigate on the same chat surface so Next does not remount the app
     // shell (and WorkspaceProvider) on every switch.
     if (isSameChatSurface(pathname, baseHref)) {
@@ -880,7 +950,7 @@ export function ChatInlinePanel({
       router.push(href)
     }
     onNavigate?.()
-  }, [baseHref, chatView, isPublicShowcase, onNavigate, pathname, router, workspaceId])
+  }, [baseHref, buildWorkspaceHref, isPublicShowcase, onNavigate, pathname, router, workspaceId])
 
   const {
     newDirectMessageOpen,
@@ -914,7 +984,7 @@ export function ChatInlinePanel({
   })
   const deletingChatIds = useChatListEvents({
     activeId,
-    baseHref,
+    baseHref: scopedBaseHref,
     chatView,
     isPublicShowcase,
     openChat,
@@ -970,7 +1040,7 @@ export function ChatInlinePanel({
     />
     <ChatListDialogs
       workspaceId={workspaceId}
-      baseHref={baseHref}
+      buildHref={buildWorkspaceHref}
       isPublicShowcase={isPublicShowcase}
       router={router}
       onNavigate={onNavigate}
@@ -991,7 +1061,7 @@ export function ChatInlinePanel({
 
 function ChatListDialogs({
   workspaceId,
-  baseHref,
+  buildHref,
   isPublicShowcase,
   router,
   onNavigate,
@@ -1007,7 +1077,7 @@ function ChatListDialogs({
   archiveChat,
 }: {
   workspaceId?: string | null
-  baseHref: string
+  buildHref: ReturnType<typeof useWorkspaceHref>
   isPublicShowcase: boolean
   router: ReturnType<typeof useRouter>
   onNavigate?: () => void
@@ -1033,8 +1103,12 @@ function ChatListDialogs({
             // Agent DMs are threads under the agent — they open on the agents
             // surface and never appear in the chat list.
             const href = agentId
-              ? agentThreadHref(buildWorkspaceHref(workspaceId, '/app/agents'), agentId, id)
-              : `${baseHref}?${new URLSearchParams({ view: 'dms', id, draft: '1', title }).toString()}`
+              ? agentThreadHref(buildHref(workspaceId, '/app/agents'), agentId, id)
+              : buildHref(
+                workspaceId,
+                `/app/chat?${new URLSearchParams({ view: 'dms', id, draft: '1', title }).toString()}`,
+                'workspace',
+              )
             router.push(href)
             onNavigate?.()
           }}
@@ -1047,7 +1121,11 @@ function ChatListDialogs({
           showcase={isPublicShowcase}
           onOpenChange={setNewChannelOpen}
           onCreated={({ id, title }) => {
-            router.push(`${baseHref}?${new URLSearchParams({ view: 'channels', id, draft: '1', title }).toString()}`)
+            router.push(buildHref(
+              workspaceId ?? null,
+              `/app/chat?${new URLSearchParams({ view: 'channels', id, title }).toString()}`,
+              'workspace',
+            ))
             onNavigate?.()
           }}
         />

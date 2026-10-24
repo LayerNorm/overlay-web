@@ -1,4 +1,6 @@
 import 'server-only'
+import type {NativeStartAdmission} from '@layernorm/overlay-agent-bridge-protocol'
+import type { ConnectedAgentPolicyEntitlements } from './ConnectedAgentPolicy'
 
 import type {
   AgentApprovalRequest, AgentApprovalResolution, AgentArtifact, AgentBinding, AgentEnrollmentSession,
@@ -8,6 +10,10 @@ import type {
 } from '@overlay/workspace-contracts'
 
 export type ConnectedAgentCreateEnvironment = Omit<AgentEnvironment, 'createdAt' | 'updatedAt'> & { now: number }
+/** Older backends omit the snapshot; null means the credential has no matching environment. */
+export type AgentEnvironmentCredentialLookup = AgentEnvironmentCredential & { environment?: AgentEnvironment | null }
+/** Missing projections retain the legacy resolver; null is a current policy refusal. */
+export type AgentRemoteSessionLookup = AgentRemoteSession & { policyEntitlements?: ConnectedAgentPolicyEntitlements | null }
 export type ConnectedAgentCreateBinding = Omit<AgentBinding, 'createdAt' | 'updatedAt'> & { now: number }
 export type ConnectedAgentCreateSession = Omit<AgentRemoteSession, 'createdAt' | 'updatedAt'> & { now: number }
 export type ConnectedAgentEnqueueCommand = Omit<AgentRunCommand,
@@ -27,6 +33,7 @@ export type ApplyRemoteEventsResult =
       accepted: true
       acknowledgedSequence: number
       duplicate: boolean
+      nativeStartAdmission?: NativeStartAdmission
       stale?: 'stale_attempt' | 'stale_execution' | 'stale_terminal'
       terminal?: {
         agentId: string
@@ -219,7 +226,7 @@ export interface ConnectedAgentRepository {
     credential: AgentEnvironmentCredential
     now: number
   }): Promise<AgentEnvironmentCredential | null>
-  findEnvironmentCredential(args: { tokenHash: string }): Promise<AgentEnvironmentCredential | null>
+  findEnvironmentCredential(args: { tokenHash: string }): Promise<AgentEnvironmentCredentialLookup | null>
   consumeEnvironmentProofNonce(args: {
     credentialId: string
     nonceHash: string
@@ -271,7 +278,7 @@ export interface ConnectedAgentRepository {
     workspaceId: string
     environmentId: string
     runId: string
-  }): Promise<AgentRemoteSession | null>
+  }): Promise<AgentRemoteSessionLookup | null>
   enqueueCommand(input: ConnectedAgentEnqueueCommand): Promise<AgentRunCommand>
   claimCommands(args: {
     workspaceId: string
@@ -298,6 +305,10 @@ export interface ConnectedAgentRepository {
     workspaceId: string
     environmentId: string
     runId: string
+    sessionId?: string
+    execution?: { attemptId: string; generation: number }
+    expiresAt?: number
+    bridge?: boolean
     requestKey: string
     prompt: string
     now: number
@@ -409,6 +420,8 @@ export interface ConnectedAgentRepository {
     maxEventsPerMinute?: number
     now: number
   }): Promise<ApplyRemoteEventsResult>
+  /** Counts a batch refused before it was applied; best effort, for transport diagnostics. */
+  recordRejectedEventBatch?(args: { workspaceId: string; environmentId: string; runId: string }): Promise<boolean>
   revokeEnvironment(args: { workspaceId: string; environmentId: string; now: number }): Promise<boolean>
   deleteWorkspaceData(args: { workspaceId: string }): Promise<void>
 }

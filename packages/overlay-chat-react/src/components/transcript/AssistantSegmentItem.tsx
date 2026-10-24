@@ -1,5 +1,7 @@
 /* eslint-disable @next/next/no-img-element -- shared renderer must stay platform-neutral */
-import { lazy, Suspense, type ReactNode } from 'react'
+import { unstyledButton } from '@overlay/ui/control-reset'
+import { Button } from '@overlay/ui/primitives'
+import { lazy, Suspense, type ComponentProps, type ReactNode } from 'react'
 import type {
   AssistantVisualSegment,
   DraftModalState,
@@ -59,6 +61,7 @@ export interface AssistantSegmentRenderContext {
   sourceCitations?: SourceCitationMap
   webSources?: WebSourceItem[]
   suppressTypingIndicator?: boolean
+  resolveFileHref?: ComponentProps<typeof MarkdownMessage>['resolveFileHref']
   onOpenDraft: (state: DraftModalState) => void
   onCreateAutomationDraft: (state: AutomationDraftModalState) => void | Promise<void>
   onOpenAttachmentPreview?: (
@@ -239,14 +242,14 @@ function FilePreviewButton({
   children: ReactNode
 }) {
   return (
-    <button
+    <Button variant="ghost"
       type="button"
       onClick={onOpen}
-      className="rounded-xl outline-hidden transition-transform hover:scale-[1.005] focus-visible:ring-2 focus-visible:ring-(--foreground) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background)"
+      className={unstyledButton(`rounded-xl outline-hidden transition-transform hover:scale-[1.005] focus-visible:ring-2 focus-visible:ring-(--foreground) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background)`)}
       title="Open attachment"
     >
       {children}
-    </button>
+    </Button>
   )
 }
 
@@ -311,6 +314,7 @@ function TextSegmentItem({ seg, ctx }: SegmentItemProps<'text'>) {
         sourceCitations={isLastText ? ctx.sourceCitations : undefined}
         webSources={isLastText && ctx.webSources && ctx.webSources.length > 0 ? ctx.webSources : undefined}
         suppressTypingIndicator={ctx.suppressTypingIndicator}
+        resolveFileHref={ctx.resolveFileHref}
         onOpenAttachmentPreview={ctx.onOpenAttachmentPreview}
       />
     </div>

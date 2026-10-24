@@ -22,6 +22,7 @@ export function ConfirmDialog({
   cancelLabel = 'Cancel',
   destructive = true,
   busy = false,
+  busyLabel = 'Deleting…',
   onConfirm,
   onCancel,
 }: {
@@ -32,6 +33,7 @@ export function ConfirmDialog({
   cancelLabel?: string
   destructive?: boolean
   busy?: boolean
+  busyLabel?: string
   onConfirm: () => void
   onCancel: () => void
 }) {
@@ -78,7 +80,7 @@ export function ConfirmDialog({
             event.preventDefault()
             if (!busy) onConfirm()
           }} disabled={busy} className={cn(confirmClass)}>
-            {busy ? 'Deleting…' : confirmLabel}
+            {busy ? busyLabel : confirmLabel}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

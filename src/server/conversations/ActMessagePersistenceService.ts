@@ -2,7 +2,7 @@ import 'server-only'
 
 import { logger } from '@/server/observability/logger'
 import type { StepResult, ToolSet } from 'ai'
-import { FREE_TIER_AUTO_MODEL_ID } from '@/shared/ai/gateway/model-types'
+import { isFreeTierChatModelId } from '@/shared/ai/gateway/model-types'
 import {
   buildAssistantPersistenceFromSteps,
   compactAssistantPersistenceForConvex,
@@ -180,8 +180,6 @@ export class ActMessagePersistenceService {
     agentRunId?: string
     agentRunMetrics?: Partial<AgentRunMetrics>
     importedAuthorName?: string
-    multiModelSlotIndex: number
-    multiModelTotal: number
     routedModelId?: string
     sourceCitations?: SourceCitationMap
     timedOut: boolean
@@ -201,7 +199,7 @@ export class ActMessagePersistenceService {
         args.event.steps,
         args.event.text,
       )
-      if (args.attemptModelId === FREE_TIER_AUTO_MODEL_ID) {
+      if (isFreeTierChatModelId(args.attemptModelId)) {
         const repaired = await maybeRepairFreeTierLeakedPerplexityText({
           modelId: args.attemptModelId,
           steps: args.event.steps,
@@ -301,7 +299,7 @@ export class ActMessagePersistenceService {
       normalizedPersistParts = compactedPersistence.parts
 
       const routedModelId =
-        args.attemptModelId === FREE_TIER_AUTO_MODEL_ID
+        isFreeTierChatModelId(args.attemptModelId)
           ? (args.routedModelId || args.event.steps.at(-1)?.response.modelId)
           : undefined
       const finalParts = (
@@ -334,7 +332,7 @@ export class ActMessagePersistenceService {
           modelId: args.attemptModelId,
           routedModelId,
           tokens: { input: totalInputTokens, output: totalOutputTokens },
-          variantIndex: args.multiModelSlotIndex,
+          variantIndex: 0,
           importedAuthorName: args.importedAuthorName,
         })
       }

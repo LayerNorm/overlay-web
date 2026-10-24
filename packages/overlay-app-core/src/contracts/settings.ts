@@ -73,6 +73,8 @@ export interface AppSettings {
   enabledChatModelIds: string[]
   /** Explicit model-picker order. Models not listed are appended in their normal order. */
   modelOrder: string[]
+  /** Classic layout: a primary rail plus a secondary panel instead of the single sidebar. */
+  useSecondarySidebar: boolean
 }
 
 export const DEFAULT_APP_SETTINGS: AppSettings = {
@@ -98,6 +100,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   dismissedZdrWarningModelIds: [],
   enabledChatModelIds: [],
   modelOrder: [],
+  useSecondarySidebar: false,
 }
 
 export interface ChatModel {

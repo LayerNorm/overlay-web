@@ -130,6 +130,7 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
   { path: '/api/v1/agent-environments/:environmentId/credentials', methods: { POST: publicPolicy() } },
   { path: '/api/v1/agent-environments/:environmentId/credentials/refresh', methods: { POST: publicPolicy() } },
   { path: '/api/v1/agent-environments/:environmentId/run-credentials', methods: { POST: publicPolicy() } },
+  { path: '/api/v1/agent-environments/:environmentId/drive-credentials', methods: { POST: publicPolicy() } },
   { path: '/api/v1/agent-environments/:environmentId/heartbeat', methods: { POST: publicPolicy() } },
   { path: '/api/v1/agent-environments/:environmentId/capabilities', methods: { PUT: publicPolicy() } },
   { path: '/api/v1/agent-environments/:environmentId/commands', methods: { GET: publicPolicy() } },
@@ -157,6 +158,11 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
   },
   { path: '/api/v1/mention-search', methods: { GET: authenticated() } },
   {
+    path: '/api/v1/account/workspaces',
+    methods: { GET: authenticated(), POST: authenticated() },
+  },
+  { path: '/api/v1/workspace-handles/:handle', methods: { GET: authenticated() } },
+  {
     path: '/api/v1/workspaces',
     methods: { GET: authenticated(), POST: authenticated() },
   },
@@ -164,6 +170,7 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
     path: '/api/v1/workspaces/active',
     methods: { POST: authenticated() },
   },
+  { path: '/api/v1/workspaces/:workspaceId/handle', methods: { PATCH: authenticated() } },
   {
     path: '/api/v1/workspaces/:workspaceId/management',
     methods: { GET: authenticated() },
@@ -213,6 +220,7 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
   { path: '/api/v1/onboarding/status', methods: { GET: authenticated() } },
   { path: '/api/v1/onboarding/complete', methods: { POST: authenticated() } },
   { path: '/api/v1/onboarding/reset', methods: { POST: authenticated() } },
+  { path: '/api/v1/onboarding/session', methods: { GET: authenticated(), POST: authenticated() } },
   { path: '/api/v1/subscription', methods: { GET: authenticated() } },
   // Workspace billing: WorkspaceBillingService requires an owner/admin
   // billing manager for every operation.
@@ -402,6 +410,7 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
   },
   // Called by the Convex ingestion runner with the internal API secret.
   { path: '/api/v1/files/ingest-jobs/process', methods: { POST: internal() } },
+  { path: '/api/v1/models/overlay-free/refresh', methods: { POST: internal() } },
   { path: '/api/v1/files/presign', methods: { GET: capability('files.upload') } },
   { path: '/api/v1/files/search-text', methods: { POST: capability('files.read') } },
   {

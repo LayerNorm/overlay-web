@@ -33,7 +33,11 @@ export async function POST(request: NextRequest) {
 
     if (result.pendingEmailVerification) {
       return NextResponse.json(
-        { error: result.error, pendingEmailVerification: true },
+        {
+          error: result.error,
+          pendingEmailVerification: true,
+          ...(result.verificationTicket ? { verificationTicket: result.verificationTicket } : {}),
+        },
         { status: 403 }
       )
     }

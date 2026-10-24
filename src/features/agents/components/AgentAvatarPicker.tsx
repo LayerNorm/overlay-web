@@ -1,6 +1,9 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { unstyledButton } from '@overlay/ui/control-reset'
+import { Button, Popover, PopoverContent, PopoverTrigger } from '@overlay/ui/primitives'
+
+import { useState } from 'react'
 import { Pencil } from 'lucide-react'
 import type { WorkspaceAgentCreatureShape } from '@overlay/workspace-contracts'
 import { Creature, CREATURE_SHAPES } from '@/components/orb/Creature'
@@ -25,103 +28,81 @@ export function AgentAvatarPicker({ shape, color, onShapeChange, onColorChange, 
   // Whether the custom color editor is showing under the swatches. 
   const isCustomColor = !(AVATAR_COLORS as readonly string[]).includes(color.toLowerCase())
   const [customOpen, setCustomOpen] = useState(false)
-  const rootRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!open) return undefined
-    const onPointerDown = (event: PointerEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false)
-    }
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return
-      // Close the popover without also closing the dialog around it.
-      event.stopPropagation()
-      setOpen(false)
-    }
-    document.addEventListener('pointerdown', onPointerDown)
-    document.addEventListener('keydown', onKeyDown, true)
-    return () => {
-      document.removeEventListener('pointerdown', onPointerDown)
-      document.removeEventListener('keydown', onKeyDown, true)
-    }
-  }, [open])
 
   return (
-    <div ref={rootRef} className="relative flex justify-center">
-      <button
-        type="button"
-        aria-label="Edit avatar"
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        onClick={() => {
-          // Opening shows the custom color editor straight away when the agent already has a custom color.
-          if (!open) setCustomOpen(isCustomColor)
-          setOpen((current) => !current)
-        }}
-        className="group relative rounded-2xl outline-hidden focus-visible:ring-1 focus-visible:ring-(--foreground)"
-      >
-        <Creature shape={shape} color={color} size={size} label="Agent avatar" />
-        <span className="absolute inset-[14%] flex items-center justify-center rounded-full bg-black/40 text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
-          <Pencil size={18} strokeWidth={1.75} />
-        </span>
-      </button>
-      {open ? (
-        // Centred by a flex wrapper: the pop-in animation owns `transform`.
-        <div className={`absolute top-full z-30 mt-1.5 flex ${align === 'center' ? 'inset-x-0 justify-center' : 'left-0'}`}>
-          <div
-            role="dialog"
-            aria-label="Avatar"
-            className="overlay-pop-in w-[296px] rounded-2xl border border-(--border) bg-(--surface-elevated) p-3.5 shadow-xl"
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        if (next) setCustomOpen(isCustomColor)
+        setOpen(next)
+      }}
+    >
+      <div className="flex justify-center">
+        <PopoverTrigger asChild>
+          <Button
+            variant="ghost"
+            type="button"
+            aria-label="Edit avatar"
+            className={unstyledButton(`group relative rounded-2xl outline-hidden focus-visible:ring-1 focus-visible:ring-(--foreground)`)}
           >
-            <div className="grid grid-cols-4 gap-1.5" role="radiogroup" aria-label="Avatar shape">
-              {CREATURE_SHAPES.map((option) => (
-                <button
-                  key={option}
-                  type="button"
-                  role="radio"
-                  aria-checked={shape === option}
-                  aria-label={`${option} shape`}
-                  onClick={() => onShapeChange(option)}
-                  className={`flex aspect-square items-center justify-center rounded-xl border transition-colors ${shape === option ? 'border-(--border) bg-(--surface-subtle)' : 'border-transparent hover:bg-(--surface-subtle)'}`}
-                >
-                  <Creature shape={option} color={color} size={40} animated={false} label="" />
-                </button>
-              ))}
-            </div>
-            <div
-              className="mt-3 grid grid-cols-6 justify-items-center gap-2 border-t border-(--border) pt-3"
-              role="radiogroup"
-              aria-label="Avatar color"
+            <Creature shape={shape} color={color} size={size} label="Agent avatar" />
+            <span className="absolute inset-[14%] flex items-center justify-center rounded-full bg-black/40 text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+              <Pencil size={18} strokeWidth={1.75} />
+            </span>
+          </Button>
+        </PopoverTrigger>
+      </div>
+      <PopoverContent align={align} aria-label="Avatar" className="w-[296px] rounded-xl p-3.5">
+        <div className="grid grid-cols-4 gap-1.5" role="radiogroup" aria-label="Avatar shape">
+          {CREATURE_SHAPES.map((option) => (
+            <Button
+              variant="ghost"
+              key={option}
+              type="button"
+              role="radio"
+              aria-checked={shape === option}
+              aria-label={`${option} shape`}
+              onClick={() => onShapeChange(option)}
+              className={unstyledButton(`flex aspect-square items-center justify-center rounded-xl border transition-colors ${shape === option ? 'border-(--border) bg-(--surface-subtle)' : 'border-transparent hover:bg-(--surface-subtle)'}`)}
             >
-              {AVATAR_COLORS.map((option) => (
-                <button
-                  key={option}
-                  type="button"
-                  role="radio"
-                  aria-checked={color === option}
-                  aria-label={`Color ${option}`}
-                  onClick={() => onColorChange(option)}
-                  style={{ backgroundColor: option }}
-                  className={`h-[26px] w-[26px] rounded-full shadow-[inset_0_0_0_1px_rgba(0,0,0,0.08)] ${color === option ? 'ring-[1.5px] ring-(--muted) ring-offset-2 ring-offset-(--surface-elevated)' : ''}`}
-                />
-              ))}
-              <button
-                type="button"
-                role="radio"
-                aria-checked={isCustomColor}
-                aria-label="Custom color"
-                title="Custom color"
-                onClick={() => setCustomOpen((current) => !current)}
-                style={isCustomColor
-                  ? { backgroundColor: color }
-                  : { backgroundImage: 'conic-gradient(#f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00)' }}
-                className={`h-[26px] w-[26px] rounded-full shadow-[inset_0_0_0_1px_rgba(0,0,0,0.08)] ${isCustomColor ? 'ring-[1.5px] ring-(--muted) ring-offset-2 ring-offset-(--surface-elevated)' : ''}`}
-              />
-            </div>
-            {customOpen ? <AvatarColorPicker color={color} onChange={onColorChange} /> : null}
-          </div>
+              <Creature shape={option} color={color} size={40} animated={false} label="" />
+            </Button>
+          ))}
         </div>
-      ) : null}
-    </div>
+        <div
+          className="mt-3 grid grid-cols-6 justify-items-center gap-2 border-t border-(--border) pt-3"
+          role="radiogroup"
+          aria-label="Avatar color"
+        >
+          {AVATAR_COLORS.map((option) => (
+            <Button
+              variant="ghost"
+              key={option}
+              type="button"
+              role="radio"
+              aria-checked={color === option}
+              aria-label={`Color ${option}`}
+              onClick={() => onColorChange(option)}
+              style={{ backgroundColor: option }}
+              className={unstyledButton(`h-[26px] w-[26px] rounded-full shadow-[inset_0_0_0_1px_rgba(0,0,0,0.08)] ${color === option ? 'ring-[1.5px] ring-(--muted) ring-offset-2 ring-offset-(--surface-elevated)' : ''}`)}
+            />
+          ))}
+          <Button
+            variant="ghost"
+            type="button"
+            role="radio"
+            aria-checked={isCustomColor}
+            aria-label="Custom color"
+            title="Custom color"
+            onClick={() => setCustomOpen((current) => !current)}
+            style={isCustomColor
+              ? { backgroundColor: color }
+              : { backgroundImage: 'conic-gradient(#f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00)' }}
+            className={unstyledButton(`h-[26px] w-[26px] rounded-full shadow-[inset_0_0_0_1px_rgba(0,0,0,0.08)] ${isCustomColor ? 'ring-[1.5px] ring-(--muted) ring-offset-2 ring-offset-(--surface-elevated)' : ''}`)}
+          />
+        </div>
+        {customOpen ? <AvatarColorPicker color={color} onChange={onColorChange} /> : null}
+      </PopoverContent>
+    </Popover>
   )
 }

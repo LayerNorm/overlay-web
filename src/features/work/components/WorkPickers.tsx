@@ -1,8 +1,9 @@
 'use client'
+import { unstyledButton } from '@overlay/ui/control-reset'
 
 import { useRef, useState, type ReactNode } from 'react'
 import { Check } from 'lucide-react'
-import { FloatingMenu, MenuItem } from '@overlay/ui/primitives'
+import { FloatingMenu, MenuItem, Button } from '@overlay/ui/primitives'
 import type { WorkPerson, WorkStatus } from '@overlay/app-core'
 import { WORK_STATUSES, WORK_STATUS_LABELS } from '@/shared/work/status'
 import { WORK_PRIORITIES, WORK_PRIORITY_LABELS } from '@/shared/work/status'
@@ -29,7 +30,7 @@ export function Picker({
   const [open, setOpen] = useState(false)
   return (
     <>
-      <button
+      <Button variant="ghost"
         ref={anchor}
         type="button"
         aria-label={label}
@@ -40,10 +41,10 @@ export function Picker({
           event.stopPropagation()
           setOpen((current) => !current)
         }}
-        className={`rounded-md transition-colors enabled:hover:bg-(--surface-subtle) disabled:cursor-default ${className}`}
+        className={unstyledButton(`rounded-md transition-colors enabled:hover:bg-(--surface-subtle) disabled:cursor-default ${className}`)}
       >
         {trigger(open)}
-      </button>
+      </Button>
       <FloatingMenu anchorRef={anchor} open={open} onOpenChange={setOpen} className="min-w-52 max-h-80 overflow-y-auto" role="menu" aria-label={label} data-work-menu>
         {children(() => setOpen(false))}
       </FloatingMenu>
@@ -69,7 +70,7 @@ export function StatusPicker({
     <Picker
       label={`Status: ${WORK_STATUS_LABELS[status]}`}
       disabled={disabled}
-      className={className || 'grid h-6 w-6 place-items-center'}
+      className={className || 'flex h-6 w-6 shrink-0 items-center justify-center'}
       trigger={() => children ?? <StatusIcon status={status} />}
     >
       {(close) => (
@@ -102,7 +103,7 @@ export function OwnerPicker({
   assignee,
   people,
   myPrincipalId,
-  personalOnly,
+  scope,
   onChange,
   disabled,
   children,
@@ -112,21 +113,20 @@ export function OwnerPicker({
   assignee: WorkPerson | null
   people: readonly WorkPerson[]
   myPrincipalId: string | null
-  /** A personal task can only be yours. */
-  personalOnly?: boolean
+  scope: 'personal' | 'workspace'
   onChange: (principalId: string | null) => void
   disabled?: boolean
   children?: ReactNode
   className?: string
   label?: string
 }) {
-  const humans = people.filter((person) => person.type === 'human' && (!personalOnly || person.principalId === myPrincipalId))
-  const agents = personalOnly ? [] : people.filter((person) => person.type === 'agent')
+  const humans = people.filter((person) => person.type === 'human' && (scope !== 'personal' || person.principalId === myPrincipalId))
+  const agents = people.filter((person) => person.type === 'agent' && (scope !== 'workspace' || person.agentVisibility !== 'creator'))
   return (
     <Picker
       label={`${label}: ${assignee?.displayName ?? 'Unassigned'}`}
       disabled={disabled}
-      className={className || 'grid place-items-center'}
+      className={className || 'flex shrink-0 items-center justify-center'}
       trigger={() => children ?? <Avatar person={assignee} />}
     >
       {(close) => {

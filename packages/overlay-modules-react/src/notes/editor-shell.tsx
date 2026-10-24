@@ -1,5 +1,5 @@
 'use client'
-
+import { unstyledButton } from '@overlay/ui/control-reset'
 import type { ReactNode } from 'react'
 import type { NoteDoc } from '@overlay/app-core'
 import { Button, EmptyState, Input, Textarea, cn } from '@overlay/ui'
@@ -70,16 +70,16 @@ export function NotesEditorShell({
             <EmptyState className="h-full px-4" title="No notes yet" />
           ) : (
             notes.map((note) => (
-              <button
+              <Button variant="ghost"
                 key={note._id}
                 type="button"
                 onClick={() => onSelectNote?.(note)}
-                className={cn(
+                className={unstyledButton(cn(
                   'group/row flex w-full items-start gap-2 px-3 py-2 text-left transition-colors',
                   selectedNoteId === note._id
                     ? 'bg-(--surface-subtle) text-(--foreground)'
                     : 'text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)',
-                )}
+                ))}
               >
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm font-medium">{note.title || 'Untitled'}</span>
@@ -107,7 +107,7 @@ export function NotesEditorShell({
                     Delete
                   </span>
                 ) : null}
-              </button>
+              </Button>
             ))
           )}
         </div>

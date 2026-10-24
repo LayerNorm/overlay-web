@@ -53,17 +53,37 @@ export async function logWorkEvent(
   })
 }
 
-/**
- * Whether `principalId` can be assigned a task in `scope`. A personal task is only ever the creator's own; a workspace
- * task may go to any active person (not a guest) or agent of the workspace.
- */
+export async function agentAssignability(
+  ctx: Ctx,
+  args: { workspaceId: string; principal: Doc<'workspacePrincipals'> },
+): Promise<{
+  visibility: 'workspace' | 'creator'
+  createdByPrincipalId: string
+  avatarColor?: string
+  avatarShape?: string
+} | null> {
+  const principal = args.principal
+  if (principal.type !== 'agent' || principal.workspaceId !== args.workspaceId || principal.archivedAt !== undefined || !principal.agentId) return null
+  const definition = await ctx.db
+    .query('workspaceAgentDefinitions')
+    .withIndex('by_agentId', (q) => q.eq('agentId', principal.agentId as string))
+    .unique()
+  if (!definition || definition.workspaceId !== args.workspaceId || definition.principalId !== principal.principalId || definition.archivedAt !== undefined || definition.deletedAt !== undefined) return null
+  return {
+    visibility: definition.visibility ?? 'workspace',
+    createdByPrincipalId: definition.createdByPrincipalId,
+    ...(definition.avatarColor !== undefined ? { avatarColor: definition.avatarColor } : {}),
+    ...(definition.avatarShape !== undefined ? { avatarShape: definition.avatarShape } : {}),
+  }
+}
+
+/** Whether a principal can be assigned a task in its current scope. */
 export async function assertAssignable(
   ctx: Ctx,
   args: { workspaceId: string; scope: 'personal' | 'workspace'; creatorPrincipalId: string; principalId: string },
 ) {
   if (args.scope === 'personal') {
-    if (args.principalId !== args.creatorPrincipalId) throw new Error('WORK_INVALID:personal_assignee')
-    return
+    if (args.principalId === args.creatorPrincipalId) return
   }
   const principal = await ctx.db
     .query('workspacePrincipals')
@@ -71,12 +91,17 @@ export async function assertAssignable(
     .unique()
   if (!principal || principal.workspaceId !== args.workspaceId || principal.archivedAt !== undefined) throw new Error('WORK_INVALID:assignee')
   if (principal.type === 'human') {
+    if (args.scope === 'personal') throw new Error('WORK_INVALID:personal_assignee')
     const membership = await ctx.db
       .query('workspaceMemberships')
       .withIndex('by_workspaceId_principalId', (q) => q.eq('workspaceId', args.workspaceId).eq('principalId', args.principalId))
       .unique()
     if (membership?.status !== 'active' || membership.role === 'guest') throw new Error('WORK_INVALID:assignee')
+    return
   }
+  const agent = await agentAssignability(ctx, { workspaceId: args.workspaceId, principal })
+  if (!agent || (args.scope === 'workspace' && agent.visibility !== 'workspace')) throw new Error(args.scope === 'personal' ? 'WORK_INVALID:personal_assignee' : 'WORK_INVALID:assignee')
+  if (args.scope === 'personal' && agent.visibility === 'creator' && agent.createdByPrincipalId !== args.creatorPrincipalId) throw new Error('WORK_INVALID:personal_assignee')
 }
 
 /** A reviewer is a person who can read the task: the creator for a personal one, any active non-guest member otherwise. */

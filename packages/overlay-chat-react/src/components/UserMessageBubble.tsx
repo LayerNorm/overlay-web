@@ -1,5 +1,9 @@
 'use client'
 
+import { Bubble, BubbleContent } from '@overlay/ui/ai'
+import { unstyledButton } from '@overlay/ui/control-reset'
+import { Button } from '@overlay/ui/primitives'
+
 import { ChevronDown } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 
@@ -53,15 +57,15 @@ export function UserMessageBubble({
   const clamped = collapsible && !expanded
 
   return (
-    <div
-      className={cx(
-        'chat-user-bubble min-w-0 wrap-break-word select-text rounded-2xl border px-3 py-2.5 text-sm leading-relaxed sm:px-4',
-        tone === 'room-self'
-          ? 'room-message-self-bubble rounded-br-sm border-transparent bg-(--room-message-self-bg) text-(--room-message-self-text)'
-          : 'rounded-br-sm border-(--border) bg-(--surface-subtle) text-(--foreground)',
-        className,
-      )}
-    >
+    <Bubble variant="muted" align="end" className={className}>
+      <BubbleContent
+        className={cx(
+          'chat-user-bubble select-text rounded-[18px] px-3.5 py-2.5 leading-normal',
+          tone === 'room-self'
+            ? 'room-message-self-bubble bg-(--room-message-self-bg)! text-(--room-message-self-text)'
+            : 'text-(--foreground)',
+        )}
+      >
       <div className="relative">
         <div
           ref={contentRef}
@@ -82,10 +86,10 @@ export function UserMessageBubble({
         ) : null}
       </div>
       {collapsible ? (
-        <button
+        <Button variant="ghost"
           type="button"
           onClick={() => setExpanded((open) => !open)}
-          className="ml-auto mt-1 flex h-6 w-6 items-center justify-center rounded-md text-(--muted) transition-colors hover:bg-(--border) hover:text-(--foreground)"
+          className={unstyledButton(`ml-auto mt-1 flex h-6 w-6 items-center justify-center rounded-md text-(--muted) transition-colors hover:bg-(--border) hover:text-(--foreground)`)}
           aria-label={expanded ? 'Collapse message' : 'Expand message'}
           title={expanded ? 'Collapse message' : 'Expand message'}
         >
@@ -94,8 +98,9 @@ export function UserMessageBubble({
             strokeWidth={1.75}
             className={cx('transition-transform duration-200', expanded && 'rotate-180')}
           />
-        </button>
+        </Button>
       ) : null}
-    </div>
+      </BubbleContent>
+    </Bubble>
   )
 }

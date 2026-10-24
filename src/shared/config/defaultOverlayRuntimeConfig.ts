@@ -45,18 +45,19 @@ export const DEFAULT_OVERLAY_RUNTIME_CONFIG = {
     sso: true,
     multiTenant: false,
     // Connected agents launch behind independent server-side kill switches.
-    // Keep all three disabled until their respective release gates pass.
+    // Keep these disabled until their respective release gates pass.
     connectedAgentControlPlane: false,
+    externalAgents: false,
     remoteAgentRuns: false,
     connectedAgentArtifacts: false,
+    connectedAgentDrive: false,
     overlayCloudEnvironments: false,
-    // Managed HarnessAgents (Overlay Cloud coding runtimes) additionally need
-    // a sandbox provider configured + their own rollout stage.
+    // Legacy managed harnesses remain disabled for config compatibility; connected
+    // cloud agents use overlayCloudEnvironments.
     managedHarnessAgents: false,
-    // Persistent cloud desktops ship dark: the capability also requires a
-    // configured computer provider (BOX_API_KEY for the default `box`
-    // provider), so self-host deployments without credentials report it off.
-    computers: false,
+    // Computer access defaults on, but capability derivation also requires a
+    // configured provider (BOX_API_KEY for the default `box` provider).
+    computers: true,
     // Work (tasks, board, timeline). On; OVERLAY_FEATURE_WORK=0 is the kill switch that hides the page and refuses its API.
     work: true,
   },

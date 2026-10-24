@@ -8,6 +8,14 @@ description: "Product UI decisions every surface follows: toggles-only controls,
 Product UI decisions that every surface follows. When a new control is needed,
 check here first — the answer is usually "use the existing pattern".
 
+Connected-agent output uses formatted chunks and one bottom loading indicator. Streaming
+Markdown may close an actual unfinished emphasis span, but identifiers and inline-code
+filenames keep their literal underscores; completion must not remove synthetic visible text.
+Preview-only timing diagnostics use a Lucide download control through the shared Button primitive
+and style reset in the existing message toolbar,
+with recording/stopped/error in its accessible label. They require both the branch build opt-in
+and conversation query, and remain absent from Production.
+
 ## Tailwind CSS v4 configuration
 
 `postcss.config.mjs` loads `@tailwindcss/postcss`. The app imports `tailwindcss`
@@ -31,6 +39,21 @@ add inline timeout explanations, Cancel buttons, or preemptive Retry buttons. Re
 failures expose a Retry icon in the same toolbar; retries in progress hide it. Preserve
 failure output and the explicit safety confirmation for runs that need inspection.
 
+## Resizable panels
+
+Use `PanelResizeHandle` from `@overlay/ui` for adjustable sidebar and side-panel
+widths. It exposes a vertical separator with pointer resizing, arrow-key steps,
+and Home/End bounds; the owning shell supplies and stores the width.
+
+The agent conversation sidebar uses the app sidebar surface and one scroll
+container below its fixed hero and tabs. Its editable fields autosave after an
+800ms debounce and flush on blur; saves serialize so newer edits cannot be
+overwritten by an older response.
+
+Details and Computer tabs share the editor's computer state. Start, Stop, Wake,
+provisioning and deletion update both views; the preview only owns its connection
+ticket, not a second cached machine record.
+
 ## Shared modal dialogs
 
 `DialogFrame` and `ConfirmDialog` keep their existing controlled APIs on top of
@@ -49,6 +72,36 @@ closure is prevented. While `busy`, confirmation, cancellation and Escape are
 blocked. Run `node scripts/qa/dialog-interactions.mjs` to verify the real wrappers
 in isolated Chromium. Use the Playwright browser or set
 `OVERLAY_QA_BROWSER_EXECUTABLE` to an installed compatible Chrome executable.
+Non-deletion confirmations pass a task-specific `busyLabel` (for example, “Saving…”).
+
+Connected-agent settings use the bound environment's advertised model, effort and permission
+choices. Each control saves for the next turn. Known permission modes use compact labels
+Manual, Edits, Plan, Auto and Bypass; local Bypass requires the shared confirmation dialog.
+An identity edit must not overwrite choices saved through these independent controls.
+Older combined model/effort ids resolve to separate live controls only when both choices
+are advertised. Show the effective effort, preserve it when changing models, and leave
+unsupported choices visibly marked; never replace them with discovery defaults.
+
+Connected-agent drive status sits below the answer without modifying provider Markdown. Saving
+and unsaved states use a quiet status line. Saved file/folder counts expand to at most 32 authorized
+Files links, with a link to Files for larger results. Folders navigate by folder id; files open by
+file id using the current workspace route. Successful turn completion waits for the final save.
+Markdown deliverable viewers resolve sibling and descendant file links under the current file's
+parent using authenticated metadata in the same scope. Unknown or ambiguous targets remain
+unavailable rather than navigating to a guessed app path. The source Markdown stays unchanged.
+
+Provider Markdown links resolve relative or Cloud Drive paths only when they exactly match
+one saved entry. Render the canonical Files URL without rewriting provider text; preserve
+ordinary external links, and leave unknown, ambiguous or traversing paths unresolved.
+Only canonical `kind: note` records open in the Notes editor. Text/Markdown uploads
+retain their file identity and open in the file viewer; MIME type and extension do
+not turn them into notes. The file detail adapter requests `fullText: true` so the
+viewer and any edit start from the complete object-store content, not its searchable prefix.
+
+Lifecycle-v2 agent messages show the canonical task deadline below live progress, including
+while queued, recovering or needing attention. Use an absolute UTC time, independent of the
+viewer's control permissions; terminal messages hide the active deadline. Request cards retain
+their separate approval expiry, including owner-required MCP tool cards. Cloud approval cards show that machine time continues to be billed while waiting. Displaying a deadline does not attest that a process has stopped.
 
 ## Command palette
 
@@ -131,6 +184,29 @@ with the compatibility `Select`. Trigger dimensions, option rows, Overlay CSS
 variables and portalled `z-10090` remain unchanged. `portal=false` stays inline
 at `z-50`, with Radix collision handling in both modes.
 
+## Design tokens and button variants
+
+`@overlay/ui/styles.css` defines the palette once and aliases the shadcn token names to it (`--primary`, `--secondary`, `--muted-foreground`, `--destructive`, `--card`, `--popover`, `--input`, `--ring`, `--radius`), so theme presets carry through and shadcn components drop in unchanged. `globals.css` maps them to Tailwind colors (`bg-primary`, `text-muted-foreground`, ...). Pick a `Button` variant instead of restyling one:
+
+- `primary` (solid): at most one per page, the page's main create action.
+- `secondary` (bordered gray) or `outline` (bordered, transparent): other header actions.
+- `ghost`: icon buttons, row actions, menus. Use `size="icon-sm"` / `"icon-xs"` for square icon buttons.
+- `link`: inline text actions.
+- `danger`: destructive confirmations only.
+
+`className` on a `Button` sets size and layout, not color, border or background. `npm run check:raw-controls` enforces this: it fails on an `unstyledButton()` string that rebuilds a variant's look and on color classes passed to a non-ghost variant. Real exceptions (checkboxes, segmented toggles, selectable cards) carry a `// overlay:button-style: <reason>` comment above the class line. Shadows: none on in-page surfaces, `shadow-md` for menus, popovers and tooltips, `shadow-lg` for dialogs and sheets. Motion: 150ms for hover and color, 200ms for menus and panels.
+
+## Prose (Typeset)
+
+Rendered Markdown and rich text use shadcn Typeset from `@overlay/ui/typeset.css`, our own copy of the upstream file. Add the `typeset` class to the element that wraps rendered prose (chat messages via `MarkdownMessage`, notes via the editor's `app-note-editor` root) and tune it with the `--typeset-*` variables rather than per-element overrides. Typeset skips `[data-slot]` components and anything under `.not-typeset`, so buttons, chips and cards inside prose keep their own styles. It is not for app chrome.
+
+## Primitive style resets
+
+When migrating a control while preserving its existing visual contract, import
+`unstyledButton`, `unstyledInput`, or `unstyledTextarea` from
+`@overlay/ui/control-reset`. Apply the helper at the existing control so local
+classes and native semantics remain explicit.
+
 Radix forbids empty item values; the adapter uses private index IDs and translates
 back to original public values. Empty options remain selectable (sharing, replay,
 agent defaults/accounts); an unmatched controlled value retains its display text
@@ -168,6 +244,7 @@ The Work page (`src/features/work/`) follows the existing patterns and adds a fe
   text field has it first.
 - **Pickers are small floating menus** (`FloatingMenu`) with a section label, the options, and a check on the current
   one. Status, owner, reviewer, priority and parent all use the same `Picker` in `WorkPickers.tsx`.
+- Owner pickers include usable agents on Personal tasks and hide creator-only agents on Workspace tasks. Agent owners use their creature appearance; assigning an owner never starts a run.
 - **The done-when checklist is the one place a box is ticked.** Each condition is a `button role="checkbox"`, not an
   `<input type="checkbox">`: it is part of a task's content (a list the person writes), not an on/off setting, so the
   Toggle rule does not apply to it. Boolean settings on a task (Blocked) are Toggles.
@@ -207,6 +284,14 @@ Creation dialogs carry no hint lines. Labels are one or two words; anything
 that needs explaining gets an `InfoTip` (Lucide `Info`, `DelayedTooltip`) after
 the label, via `FieldLabel` in `src/features/agents/components/InfoTip.tsx`.
 
+## Agents are creatures, never orbs
+
+Every surface that identifies an agent — rosters, chat headers, message
+authors, marketing app shots and HTML mockups — renders its creature
+(`AgentCreature`: `avatarShape` body, `avatarColor` fill, eyes). Do not use the
+`Orb` glow variant or any colored sphere as an agent identity; the metal orb is
+the Overlay brand mark and system marker only.
+
 ## Avatars are edited in place
 
 The agent avatar is a button: hover shows a pencil, click opens
@@ -236,6 +321,18 @@ between the docked side panel and a centered dialog from a single icon in its
 title row (`PanelRight` to dock, `AppWindow` to float). The two presentations
 share the same body, border, and chrome; only the frame differs, so switching
 never remounts form state.
+
+## The single sidebar (default)
+
+The default shell is one shadcn sidebar (`src/components/layout/sidebar/UnifiedSidebar.tsx`): the brand, search and
+collapse controls, the Personal/Workspace toggle (hidden for a solo workspace), the main pages with Files and
+Extensions under an Explore menu that opens on hover (click, Enter and touch also open it), then the current page's own
+rows and items, then the account. It reuses `useAppSidebarState`, so routes, scope persistence, badges and pending states
+match the classic layout. Subviews that are different views of one page (Work's List/Board/Timeline, Files categories,
+Extensions' Skills/MCPs/Connectors/Apps) are published through `pageSubviewStore` and rendered as header tabs by
+`PageSubviewTabs`; chat destinations (DMs, Channels, Activity) stay in the sidebar. There are no divider lines between
+sidebar, header and body: `AppScreenHeader` defaults to `border={false}`. The classic primary rail plus secondary panel
+below is the Settings > Customization "Rail and panel" option (`useSecondarySidebar`).
 
 ## The secondary panel: Personal, Workspace
 
@@ -331,8 +428,27 @@ settle immediately, with the workspace status text remaining visible.
 Pulse instances share their first document-timeline start time, applied before
 paint, so replacing a loading boundary preserves opacity and never restarts the
 800 ms pulse delay. Keep this clock shared by animated and settled instances.
+The brand entrance (mark fade + word reveal) is likewise claimed once per boot:
+the first loader to mount plays it and records it played, so every later gate
+renders the settled screen and the word never re-reveals. The loader is also
+always the first paint: `WorkspaceHydrationBoundary` only treats 'idle' as
+decided once the auth check has resolved (guests settle there; a session user
+enables workspaces after first paint), so children stay gated until status is
+'ready' and the app can never paint before the loader. The wordmark paints
+only in Libre Baskerville: the Regular face is preloaded in the root layout
+and the loader keeps the word hidden (`app-brand-loader--fontwait`) until
+`document.fonts` reports it loaded (1.5s cap). The loader is boot-only:
+once the app has rendered real content, `bootAppShown` is marked
+module-wide, so `WorkspaceHydrationBoundary` remounts (workspace switches)
+can never re-gate and `InitialAppLoading`/`AppShellLoadingFallback` swap to
+the work-route skeleton. Post-boot navigation must never show the brand
+screen again.
 
-App startup renders a single loading screen wherever the shell is still resolving: `AppBootLoader` (`src/components/layout/AppBootLoader.tsx`) behind `InitialAppLoading`/`AppShellLoadingFallback`, the `/` entry fallback, and the workspace-hydration gate (`WorkspaceAppBoundary`, which renders it `settled` so the handoff shows no second splash). The mark fades in, the word reveals from behind it, then the whole lockup breathes with the same opacity-only pulse as the chat stream marker (`appBrandLoaderPulse` in `globals.css`), with the "Opening workspace…" line beneath on the same screen. The orb rests on the wordmark's text baseline (`margin-top: -1px` on `.app-brand-loader-logo`); landing lockups do the same via `align-items: baseline` on `.lp .lockup`.
+## Brand lockup
+
+`BrandLockup` (`src/components/brand/BrandLockup.tsx`) is the canonical orb + serif "overlay" wordmark. Its geometry is `em`-scaled: the orb is `0.5em` resting on the wordmark's text baseline with a `0.4em` gap (`align-items: baseline` on `.brand-lockup` in `globals.css`), the same configuration the landing `.lp .lockup` defines. Size it with `font-size` on the component or an ancestor. The word sits inside `.brand-lockup-mask`, an `overflow: hidden` window, so reveals can slide it out from behind the orb. Use it wherever the logo and wordmark appear together (loader, auth pages, marketing nav/footer, skeletons) rather than composing `OverlayMark` plus text ad hoc.
+
+App startup renders a single loading screen wherever the shell is still resolving: `AppBootLoader` (`src/components/layout/AppBootLoader.tsx`) behind `InitialAppLoading`/`AppShellLoadingFallback`, the `/` entry fallback, and the workspace-hydration gate (`WorkspaceAppBoundary`, which renders it `settled` so the handoff shows no second splash). It renders `BrandLockup` at `24px`; the mark fades in, the word reveals from behind it, then the whole lockup breathes with the same opacity-only pulse as the chat stream marker (`appBrandLoaderPulse` in `globals.css`), with the "Opening workspace…" line beneath on the same screen.
 
 ## Avatar colors
 
@@ -349,7 +465,44 @@ Run `node scripts/qa/tabs-interactions.mjs` for real-browser regressions; it acc
 
 ## Marketing FAQ and page metadata
 
-The landing FAQ uses native details/summary disclosures after the scroll story.
+Every public marketing page renders inside `StaticMarketingShell` (landing nav, hairline-framed column, footer) and opens with `MarketingPageHead`; page blocks come from `landing.css` (`.sec`, `.h1`, `.lead`, `.btn`), so new pages match the home page without their own theme.
+The landing FAQ uses the shadcn `Accordion` (`@overlay/ui/primitives`, single open item, collapsible) near the end of the static home page.
 Its visible answers and FAQ structured data share one source; describe available
 capabilities only. Public marketing pages define their own canonical paths so
 they do not inherit the root homepage canonical.
+
+
+## Chat AI primitives (`@overlay/ui/ai`)
+
+Chat surfaces build on shadcn AI Elements primitives copied into `packages/overlay-ui/src/components/ui` and exported from `@overlay/ui/ai` (kept out of the main barrel so Shiki only loads where chat renders): `Message`, `Bubble`, `Trace`, `CodeBlock` (+ `useHighlightedCode`, Shiki JS engine, GitHub light/dark themes that presets never tint), `MessageScroller` (`@shadcn/react`), `Item`, `InputGroup`, `Attachment`, `HoverCard`, `Collapsible`, `Spinner`. Upstream semantic classes are rewritten to Overlay variables (`bg-(--surface-subtle)`, `text-(--muted)`, `text-(--danger)`); `--muted` is a text color here, so never add a `--color-muted` theme alias. Every Trace step uses the Orb in `TraceIcon`; a running step's title shimmers (CSS in `styles.css`, off under reduced motion).
+
+Visual rules for these and every new component:
+
+1. **Flat surfaces.** No resting borders or rings on cards, code blocks, chips, buttons, approval items, popovers or sidebars. Surfaces differ by fill only (page, sidebar, subtle, elevated). The shared composer is the exception: a subtle 1px `--border` outline separates its elevated fill from the page in both themes. Floating layers keep a soft shadow. Focus rings stay for keyboard focus; destructive states tint the fill.
+2. **Solid headers, no blur.** Page and sidebar headers use the same fill as the surface below them, with no divider and no backdrop blur.
+3. **One model selector.** Model menus render `ModelSelector` from `@overlay/chat-react`: Text / Image / Video at the top, a filled search field, then a provider rail (Favorites star, then one `ProviderLogo` per provider) beside the list grouped by provider. Rows read logo, name, favorite star, selected check, capability chips. Search collapses to one flat list. Free-tier Auto stays pinned on top. Favorites are per browser (`overlay:favorite-models`) and survive blocked storage in memory.
+4. **One Prompt Input.** Every chat composer is built from `PromptInput` parts in `@overlay/chat-react` (`PromptInputBody`, `PromptInputFooter`, `PromptInputTools`, `PromptInputButton`, `PromptInputSubmit`). Footer order: +, @, optional /, tool chips, model controls, submit (ArrowUp, spinner while submitted, stop while streaming). In web chat the model button lives in the composer, not the header.
+
+## Streamed agent replies
+
+Markdown table cells wrap long identifiers and hashes without changing their text.
+Keep horizontal scrolling for genuinely wide tables with many columns; a single
+unbroken value must not force an otherwise narrow table beyond the chat pane.
+
+Render streamed text as complete formatted chunks. Markdown defaults to paragraph
+blocks plus a shimmed in-flight tail, with no per-character pacing or character
+spans. Room/agent transcripts suppress inline markers and keep one loading-dots
+row at the bottom throughout the run, including while tools are working.
+
+Keep the message action rail visible whenever it offers Stop. An active reply's
+Stop control must not require hovering the message; completed messages retain
+the usual hover/focus behavior.
+
+Cancelled and failed/recoverable remote replies keep their earlier narrative visible. Only tool details fold; stopping must not make the written answer appear to disappear behind the work summary.
+Cancelled remote replies show a small status label even when no text was produced
+and the viewer cannot control the run. History serialization retains status and other metadata alongside legacy text fallback, so reload preserves this label and any partial answer.
+
+A native terminal detail shares its command's call key. Both live tool groups and the completed Worked summary count that action once, even across separate timeline groups, while retaining both the command and terminal output, with distinct React row keys. Single-action labels stay singular for failed and cancelled actions too. Mixed groups show the total unique calls and the number actually running, even when an earlier action failed or was interrupted. Completed calls never inflate the running count.
+
+While a turn continues, an attached terminal detail follows its command's resolved state even if the retained attachment still says running. Match by call key regardless of part order; unrelated running commands and standalone terminal details remain live.
+The liveness status uses only the first command line, capped at 96 Unicode code points. Full command bodies remain in collapsed tool details so a long script cannot crowd out the answer, deadline or recovery state.

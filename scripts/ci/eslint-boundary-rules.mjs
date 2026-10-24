@@ -78,11 +78,9 @@ const SERVER_INFRA_DOMAINS = ['config', 'database', 'env', 'idempotency', 'obser
 const LEGACY_COMPONENT_BOUNDARY_DEBT_FILES = [
   'src/components/layout/PageNavbar.tsx',
   'src/components/providers/GuestGateProvider.tsx',
-  'src/components/providers/OnboardingProvider.tsx',
 ]
 
 const LEGACY_FEATURE_BOUNDARY_DEBT_FILES_BY_DOMAIN = {
-  account: ['src/features/account/components/OnboardingTour.tsx'],
   agents: ['src/features/agents/components/AgentConversationWorkspace.tsx'],
   chat: [
     'src/features/chat/components/ChatExperience.tsx',

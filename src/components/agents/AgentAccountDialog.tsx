@@ -1,9 +1,9 @@
 'use client'
-
+import { unstyledButton } from '@overlay/ui/control-reset'
 import { useEffect, useRef, useState } from 'react'
 import { Check, Copy } from 'lucide-react'
 import type { ProviderAccountResource } from '@overlay/api-client'
-import { Button, DialogFrame, Input, SegmentedControl } from '@overlay/ui/primitives'
+import { Button, DialogFrame, Input, SegmentedControl, toast } from '@overlay/ui/primitives'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import {
   AGENT_PROVIDERS,
@@ -20,7 +20,7 @@ function CopyCommand({ command }: { command: string }) {
   return (
     <span className="inline-flex items-center gap-1 rounded-md border border-(--border) bg-(--surface-subtle) px-1.5 py-0.5 align-middle">
       <code className="text-[11px] text-(--foreground)">{command}</code>
-      <button
+      <Button variant="ghost"
         type="button"
         aria-label={`Copy ${command}`}
         onClick={() => {
@@ -29,10 +29,10 @@ function CopyCommand({ command }: { command: string }) {
             window.setTimeout(() => setCopied(false), 1_500)
           }).catch(() => undefined)
         }}
-        className="text-(--muted) hover:text-(--foreground)"
+        className={unstyledButton("text-(--muted) hover:text-(--foreground)")}
       >
         {copied ? <Check size={11} /> : <Copy size={11} />}
-      </button>
+      </Button>
     </span>
   )
 }
@@ -110,14 +110,14 @@ function CodexSignIn({ accountId, label, onConnected, onError }: {
       <div className="flex items-center gap-2 text-xs text-(--foreground)">
         <span>2. Enter this code:</span>
         <code className="rounded-md border border-(--border) px-2 py-0.5 text-sm font-medium tracking-widest">{code.userCode}</code>
-        <button
+        <Button variant="ghost"
           type="button"
           aria-label="Copy code"
-          className="text-(--muted) hover:text-(--foreground)"
+          className={unstyledButton("text-(--muted) hover:text-(--foreground)")}
           onClick={() => { void navigator.clipboard?.writeText(code.userCode).then(() => { setCopied(true); window.setTimeout(() => setCopied(false), 1_500) }).catch(() => undefined) }}
         >
           {copied ? <Check size={12} /> : <Copy size={12} />}
-        </button>
+        </Button>
       </div>
       <p className="text-[11px] text-(--muted)" role="status">Waiting for you to approve it on OpenAI&rsquo;s site (the code expires in 15 minutes). Only enter it if you started this here.</p>
     </div>
@@ -162,9 +162,10 @@ export function AccountDialog({ target, initialProvider, onClose, onSaved }: {
       else saved = (await overlayAppClient.providerAccounts.connect({ provider, method, secret: check.secret, ...(label.trim() ? { label: label.trim() } : {}) })).account
       // The credential leaves this component the moment it is saved.
       setSecret('')
+      toast.success(reconnecting ? 'Account reconnected.' : 'Account connected.')
       onSaved(saved)
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : 'Could not save the account.')
+      toast.error(saveError instanceof Error ? saveError.message : 'Could not save the account.')
     } finally {
       setBusy(false)
     }

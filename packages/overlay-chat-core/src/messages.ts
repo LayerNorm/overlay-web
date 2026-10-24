@@ -171,7 +171,7 @@ export function planAssistantWorkCollapse(
   collapsedToolCallCount: number
 } {
   const collapsedIndexes: number[] = []
-  let collapsedToolCallCount = 0
+  const collapsedToolCallKeys = new Set<string>()
   for (let i = 0; i < segments.length; i++) {
     const seg = segments[i]!
     if (seg.kind === 'reasoning' || seg.kind === 'browser') {
@@ -191,7 +191,7 @@ export function planAssistantWorkCollapse(
         }
       }
       collapsedIndexes.push(i)
-      collapsedToolCallCount += seg.items.filter((item) => item.kind === 'tool').length
+      for (const item of seg.items) if (item.kind === 'tool') collapsedToolCallKeys.add(item.key)
       continue
     }
   }
@@ -207,7 +207,7 @@ export function planAssistantWorkCollapse(
       collapsedIndexes.sort((left, right) => left - right)
     }
   }
-  return { collapsedIndexes, collapsedToolCallCount }
+  return { collapsedIndexes, collapsedToolCallCount: collapsedToolCallKeys.size }
 }
 
 function isToolChainSegment(segment: AssistantVisualSegment): boolean {
@@ -339,13 +339,24 @@ export function getUserMessageDocNames(msg: unknown): string[] {
 }
 
 export function splitUserDisplayText(fullText: string): { bodyText: string; docNames: string[] } {
-  const re = /\[Indexed documents:\s*([^\]]+)\]/g
+  const marker = '[Indexed documents:'
   const docNames: string[] = []
-  let match: RegExpExecArray | null
-  while ((match = re.exec(fullText)) !== null) {
-    docNames.push(...match[1]!.split(',').map((item) => item.trim()).filter(Boolean))
+  const body: string[] = []
+  let cursor = 0, retainedFrom = 0
+  while (cursor < fullText.length) {
+    const start = fullText.indexOf(marker, cursor)
+    if (start < 0) break
+    const namesStart = start + marker.length, end = fullText.indexOf(']', namesStart)
+    if (end < 0) break
+    if (end > namesStart) {
+      docNames.push(...fullText.slice(namesStart, end).split(',').map(item => item.trim()).filter(Boolean))
+      body.push(fullText.slice(retainedFrom, start))
+      retainedFrom = end + 1
+    }
+    cursor = end + 1
   }
-  const bodyText = fullText.replace(re, '').replace(/\n{3,}/g, '\n\n').trim()
+  body.push(fullText.slice(retainedFrom))
+  const bodyText = body.join('').replace(/\n{3,}/g, '\n\n').trim()
   return { bodyText, docNames }
 }
 
@@ -583,6 +594,13 @@ export function isUsageExhaustedError(text: string | null | undefined): boolean 
   )
 }
 
+function hasOrderedErrorTerms(message: string, prefix: string, suffixes: readonly string[]): boolean {
+  return message.toLowerCase().split(/[\r\n\u2028\u2029]/).some(line => {
+    const start = line.indexOf(prefix)
+    return start >= 0 && suffixes.some(suffix => line.indexOf(suffix, start + prefix.length) >= 0)
+  })
+}
+
 export function errorLabel(err: Error | null | undefined): string | null {
   if (!err) return null
   const message = err.message || ''
@@ -599,7 +617,8 @@ export function errorLabel(err: Error | null | undefined): string | null {
   ) {
     return message
   }
-  if (/gateway.*(auth|key|billing|quota|limit)|provider.*(blocked|billing|quota|limit)/i.test(message)) return message
+  if (hasOrderedErrorTerms(message, 'gateway', ['auth', 'key', 'billing', 'quota', 'limit'])
+    || hasOrderedErrorTerms(message, 'provider', ['blocked', 'billing', 'quota', 'limit'])) return message
   if (message.includes('weekly_limit')) return 'Weekly limit reached - upgrade to a paid plan for unlimited messages.'
   if (message.includes('premium_model')) return 'This model requires a paid plan.'
   if (message.includes('generation_not_allowed')) return 'This action requires a paid plan.'
@@ -622,7 +641,8 @@ export function errorLabel(err: Error | null | undefined): string | null {
   if (message.includes('supported image formats') || message.includes('does not represent a valid image')) {
     return 'Unsupported image format. Use JPEG, PNG, GIF, or WebP.'
   }
-  if (/model.*not found|not found.*model|model_not_found/i.test(message)) {
+  if (hasOrderedErrorTerms(message, 'model', ['not found']) || hasOrderedErrorTerms(message, 'not found', ['model'])
+    || message.toLowerCase().includes('model_not_found')) {
     return 'That model is not available from the provider right now. Try another model.'
   }
   return 'Something went wrong. Please try again.'

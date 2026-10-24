@@ -60,12 +60,41 @@ deployment SHA matches the current PR head. The preview-only
 `POST /api/auth/preview-login` route accepts an `x-overlay-preview-secret` header
 from the agent secret store and creates a normal sandbox session. Do not send
 the secret in a URL, write it into the PR, or save cookies/auth state in tracked
-files. Validate the session and `/api/auth/convex-token`, then use a real browser
+files. Long-running API smoke clients refresh cookies through `GET /api/auth/session`
+and retry a rejected unauthenticated request once, matching normal browser session
+refresh. Validate the session and `/api/auth/convex-token`, then use a real browser
 to check the rendered workspace, sample conversation, note, and text file.
+
+The long-horizon API smoke polls every five seconds to leave history-read capacity for
+concurrent browser QA. Honor 429 cooldowns without resending the task; rate-limited gaps
+do not prove a visible stall or uninterrupted streaming. Record the gap and fail smoke acceptance
+even if the task later completes. An observation deadline is not a run deadline: keep the
+created agent and machine until terminal state is confirmed, and retain their identifiers
+in the private report. Cleanup must check successful responses before claiming deletion.
 
 The server chooses the seeded QA identity; callers cannot supply an arbitrary
 user ID. This route returns 404 outside Preview. Real human OAuth uses
 the same canonical preview origin with the WorkOS sandbox wildcard callback.
+
+For long connected-agent timing checks, the Preview-only branch build setting
+`OVERLAY_AGENT_UI_TRACE=1` and conversation query `agentUiTrace=1` enable a local
+recorder. Hover the assistant toolbar and use **Export timing trace** to download its
+JSONL through the actual QA browser. The recorder continues across automation tool-turn
+interruptions; reload starts a new segment. It stores text hashes and DOM/layout timing,
+not chat text or credentials, and never uploads the trace. Start before native output,
+retain every source checkpoint, validate hashes against canonical rendered text, include
+clock intervals/gaps and require final coverage before accepting a latency result.
+An incomplete Markdown link can change a whole-frame hash while earlier prose is already
+visible. The smoke helper `scripts/smoke/cloud-agent-long-horizon/markdown-frame-index.mts`
+renders verified source prefixes with the actual Markdown component. Match the entire
+recorded frame hash and length, then credit only its unchanged canonical text prefix.
+Unknown frames receive no credit; preserve the original analysis and every source point.
+This text check does not replace recorded visibility, clipping or clock bounds.
+For an in-app browser whose tabs can become hidden, measure one foreground conversation
+at a time. Inspecting a tab may activate it: sequential visibility spot checks cannot
+establish continuous visibility. Preserve hidden samples in the final analysis.
+An error icon, hidden tab or missing segment is incomplete measurement, not a passing
+result. Export before clearing site storage; Production builds disable the recorder.
 
 ### Deployment protection
 
@@ -141,6 +170,18 @@ files. The Vercel automation secret is project-scoped, not PR-scoped; restrict
 its distribution to trusted repository agents. It bypasses Vercel's hosting
 gate only; Overlay sandbox login and exact-head/backend verification still apply.
 
+Server-side workspace-tool calls into the same isolated Preview also need hosting
+authentication. The internal tool transport reuses Vercel's runtime
+`VERCEL_AUTOMATION_BYPASS_SECRET` only for `/api/` requests to the verified canonical
+PR origin, retains Overlay's bearer/service authentication, and refuses redirects.
+Never forward that header to another origin, another PR or Production.
+
+An owned Cloud QA machine may use a private loopback MCP relay when a provider cannot
+attach the hosting header. Bind it only to loopback, accept only the exact MCP path,
+preserve the original run bearer, and forward only to the verified PR origin through
+the host's private transport. Keep the hosting secret out of provider child environments
+and record this QA intervention separately from unattended Cloud/image acceptance.
+
 For unattended Agent Host acceptance on a protected Preview, use a disposable
 QA image with a transport wrapper that attaches an existing access cookie only
 to that exact PR origin. Keep the cookie in a mode-0600 file under the machine's
@@ -149,6 +190,23 @@ global request headers. Boat clears `/tmp` during stop/resume, so a temporary
 access file cannot establish unattended wake acceptance. Keep the signed host
 authentication intact, record the wrapper as a QA fixture, and delete the owned
 machine after settlement; this is not the production image bootstrap.
+
+For candidate-host regression QA, `scripts/smoke/cloud-agent-long-horizon/byo-host-box.mts`
+can pack the current checkout and enroll it into the PR's backend. Require the
+existing scoped Preview Boat key with `BOAT_ENVIRONMENT=overlay-preview`; never
+substitute the production key. This is a disposable VPS-style fixture, so record
+cloud-provisioning acceptance separately. The host-only preload removes its
+`NODE_OPTIONS` before provider launch. It does not authenticate the provider's MCP
+traffic through Vercel protection; record that limitation when testing app tools.
+
+Native managed-Cloud QA may bootstrap an owned disposable machine during its pending
+provisioning attempt. Verify its provider identity and expected enrollment name, confirm that
+no original host/provider task is running, install checksum-verified candidate packages and
+exact adapter pins, then enroll with that same expected name. Let the existing provisioner
+approve the environment, create its lease and bind the provider account. Use the exact-origin
+private transport for both initial enrollment and later host wake; keep its preload out of
+provider children. Record this manual intervention separately from unattended image/startup
+acceptance. A successful shell-only provider probe does not prove protected Overlay MCP tools.
 
 See [Vercel's automation bypass documentation](https://vercel.com/docs/deployment-protection/methods-to-bypass-deployment-protection/protection-bypass-automation).
 See also [Vercel MCP access tools](https://vercel.com/docs/agent-resources/vercel-mcp/tools).
@@ -169,7 +227,7 @@ deployment-protection bypass URLs.
 
 ```bash
 # Open a page
-agent-browser open "https://pr-123.preview.getoverlay.io/app/w/<workspace-id>/chat?view=channels"
+agent-browser open "https://pr-123.preview.getoverlay.io/w/<workspace-handle>/workspace/chat?view=channels"
 
 # Wait for it to load
 agent-browser wait --load networkidle
@@ -196,12 +254,12 @@ Use `--session` to run isolated browser sessions for different accounts:
 
 ```bash
 # Owner session
-agent-browser --session owner --state ~/.config/devin/agent-browser-overlay-auth.json open "https://pr-123.preview.getoverlay.io/app/w/<id>/chat?view=channels"
+agent-browser --session owner --state ~/.config/devin/agent-browser-overlay-auth.json open "https://pr-123.preview.getoverlay.io/w/<workspace-handle>/workspace/chat?view=channels"
 agent-browser --session owner wait --load networkidle
 agent-browser --session owner get text "body"
 
 # Member session
-agent-browser --session member --state ~/.config/devin/agent-browser-overlay-member-auth.json open "https://pr-123.preview.getoverlay.io/app/w/<id>/chat?view=channels"
+agent-browser --session member --state ~/.config/devin/agent-browser-overlay-member-auth.json open "https://pr-123.preview.getoverlay.io/w/<workspace-handle>/workspace/chat?view=channels"
 agent-browser --session member wait --load networkidle
 agent-browser --session member get text "body"
 

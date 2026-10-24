@@ -18,6 +18,7 @@ import type {
   ConversationMessageRow,
 } from '@/server/conversations/ActConversationRepository'
 import { asConversationId } from '@/server/conversations/ActConversationRepository'
+import {conversationMessageParts} from './message-parts'
 
 function clampFreeTierAskModels(modelIds: string[] | undefined): string[] {
   const requested =
@@ -206,13 +207,18 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
       .sort((left, right) => right.lastModified - left.lastModified)
 
     const view = searchParams.get('view')
+    const scopeParam = searchParams.get('scope')
+    const chatScope = scopeParam === 'personal' || scopeParam === 'workspace' ? scopeParam : null
     const filtered = view === 'dms'
       ? list.filter((conversation) => conversation.conversationType === 'dm')
       : view === 'channels'
         ? list.filter((conversation) => conversation.conversationType === 'channel')
         : view === 'all'
           ? list
-          : list.filter((conversation) => (conversation.conversationType ?? 'personal') === 'personal')
+          : list.filter((conversation) => (
+            (conversation.conversationType ?? 'personal') === 'personal'
+            && (chatScope === null || (conversation.scope ?? 'personal') === chatScope)
+          ))
 
     // Client list cache expects a paginated envelope. Filtering by view before
     // pagination keeps "Load more" truthful for DMs/channels (client-side type
@@ -245,6 +251,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       actModelId?: string
       lastMode?: 'ask' | 'act'
       clientId?: string
+      scope?: 'personal' | 'workspace'
       accessToken?: string
       userId?: string
     }
@@ -267,6 +274,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       askModelIds: isFreeTier ? freeAskModelIds : paidModels.askModelIds,
       actModelId: isFreeTier ? freeActModelId : paidModels.actModelId,
       lastMode: body.lastMode,
+      ...(body.scope === 'workspace' ? { scope: 'workspace' as const } : {}),
     })
     const conversation = await repository.getConversationById({
       conversationId: id,
@@ -410,22 +418,8 @@ export async function DELETE(request: NextRequest, context: AppApiRouteContext) 
   }
 }
 
-function partsHaveVisibleAssistantContent(parts: Array<Record<string, unknown>> | undefined): boolean {
-  if (!parts?.length) return false
-  return parts.some((part) => {
-    const type = typeof part.type === 'string' ? part.type : ''
-    if (type === 'text' || type === 'output-text' || type === 'reasoning') {
-      return typeof part.text === 'string' && part.text.trim().length > 0
-    }
-    if (type === 'tool-invocation' || type === 'file' || type === 'data') return true
-    return type.startsWith('tool-')
-  })
-}
-
 function serializeConversationMessage(message: ConversationMessageRow) {
-  const visibleParts = partsHaveVisibleAssistantContent(message.parts)
-    ? message.parts!.map(serializeConversationMessagePart)
-    : [{ type: 'text' as const, text: message.content }]
+  const visibleParts = conversationMessageParts({content: message.content, parts: message.parts}).map(serializeConversationMessagePart)
   return {
     id: message._id,
     turnId: message.turnId,
@@ -434,6 +428,7 @@ function serializeConversationMessage(message: ConversationMessageRow) {
     variantIndex: message.variantIndex,
     createdAt: message.createdAt,
     ...(message.updatedAt ? { updatedAt: message.updatedAt } : {}),
+    ...(message.eventSequence !== undefined ? { eventSequence: message.eventSequence } : {}),
     role: message.role,
     parts: visibleParts,
     model: message.modelId,

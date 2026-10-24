@@ -1,9 +1,9 @@
 'use client'
 
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { CircleAlert, CreditCard, Loader2, RefreshCw, WalletCards } from 'lucide-react'
-import { Button, EmptyState, Toggle } from '@overlay/ui/primitives'
+import { Button, EmptyState, Toggle, toast } from '@overlay/ui/primitives'
 import type { WorkspaceBillingSummaryResponse, WorkspaceSummary } from '@overlay/workspace-contracts'
 import { currentLegalAcceptancePayload } from '@/shared/legal/legal-documents'
 import type { WorkspaceManagementClient } from '@/shared/workspaces/types'
@@ -13,6 +13,7 @@ import {
   TOP_UP_MAX_AMOUNT_CENTS,
   TOP_UP_MIN_AMOUNT_CENTS,
 } from '@/shared/billing/billing-pricing'
+import { formatBytes } from '@/shared/storage/storage-limits'
 import { DollarAmountInput } from './DollarAmountInput'
 import { WorkspaceAutoTopUpCard } from './WorkspaceAutoTopUpCard'
 import { WorkspaceUsagePanel } from './WorkspaceUsagePanel'
@@ -58,7 +59,7 @@ function useWorkspaceBilling(client: WorkspaceManagementClient, workspace: Works
   const searchParams = useSearchParams()
   const [state, setState] = useState<BillingState>({ status: 'loading' })
   const [busy, setBusy] = useState<string | null>(null)
-  const [message, setMessage] = useState<string | null>(null)
+  const handledCheckoutRef = useRef<string | null>(null)
   const [planAmountCents, setPlanAmountCents] = useState(800)
   const [topUpAmountCents, setTopUpAmountCents] = useState(800)
   const [refreshKey, setRefreshKey] = useState(0)
@@ -92,14 +93,17 @@ function useWorkspaceBilling(client: WorkspaceManagementClient, workspace: Works
         ? 'budget_topup'
         : null
     if (!sessionId || !kind) return
+    const checkoutKey = sessionId && kind ? `${kind}:${sessionId}` : null
+    if (!checkoutKey || handledCheckoutRef.current === checkoutKey) return
+    handledCheckoutRef.current = checkoutKey
     setBusy('verify')
     void client
       .verifyBillingCheckout(workspace.id, { kind, sessionId })
       .then(() => {
-        setMessage(kind === 'paid_plan' ? 'Workspace subscription activated.' : 'Workspace credits added.')
+        toast.success(kind === 'paid_plan' ? 'Workspace subscription activated.' : 'Workspace credits added.')
         setRefreshKey((value) => value + 1)
       })
-      .catch((error) => setMessage(error instanceof Error ? error.message : 'Checkout verification failed.'))
+      .catch((error) => toast.error(error instanceof Error ? error.message : 'Checkout verification failed.'))
       .finally(() => {
         setBusy(null)
         window.history.replaceState(
@@ -112,16 +116,16 @@ function useWorkspaceBilling(client: WorkspaceManagementClient, workspace: Works
 
   const run = async (key: string, operation: () => Promise<{ url: string | null } | WorkspaceBillingSummaryResponse>) => {
     setBusy(key)
-    setMessage(null)
     try {
       const result = await operation()
       if ('url' in result && result.url) {
         window.location.assign(result.url)
         return
       }
+      toast.success('Billing settings updated.')
       setRefreshKey((value) => value + 1)
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Workspace billing action failed.')
+      toast.error(error instanceof Error ? error.message : 'Workspace billing action failed.')
     } finally {
       setBusy(null)
     }
@@ -130,7 +134,6 @@ function useWorkspaceBilling(client: WorkspaceManagementClient, workspace: Works
   return {
     state,
     busy,
-    message,
     planAmountCents,
     setPlanAmountCents,
     topUpAmountCents,
@@ -153,19 +156,19 @@ function WorkspaceBillingLoaded({
   summary: WorkspaceBillingSummaryResponse
   billing: WorkspaceBilling
 }) {
-  const { busy, message, run } = billing
+  const { busy, run } = billing
 
   return (
     <div data-testid="workspace-billing" className="space-y-4 p-5">
-      {message ? (
-        <div
-          role='status'
-          className='rounded-xl border border-(--border) bg-(--surface-subtle) px-4 py-3 text-sm text-(--foreground)'
-        >
-          {message}
-        </div>
+      {summary.storage ? (
+        <dl className="flex items-center justify-between gap-4 rounded-xl border border-(--border) px-4 py-3 text-sm">
+          <div className="flex w-full items-center justify-between gap-4">
+            <dt className="font-medium text-(--foreground)">Storage</dt>
+            <dd className="text-(--muted)">{formatBytes(summary.storage.usedBytes)} of {formatBytes(summary.storage.limitBytes)}</dd>
+            <dd className="text-(--muted-light)">Included</dd>
+          </div>
+        </dl>
       ) : null}
-
       {!summary.initialized ? (
         <WalletSetupCard
           canManage={summary.canManage}

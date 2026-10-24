@@ -1,4 +1,6 @@
 'use client'
+import { unstyledButton, unstyledInput } from '@overlay/ui/control-reset'
+import { Button, Input } from '@overlay/ui/primitives'
 
 import { useState, useEffect, useRef } from 'react'
 import { useSearchParams } from 'next/navigation'
@@ -16,6 +18,7 @@ import {
   marketingSubmitButton,
 } from '@/features/landing/lib/landingPageStyles'
 import { SsoProviderIcon } from '../../_components/useAuthUiOptions'
+import { CheckEmailScreen, postVerifyEmail, readAuthErrorMessage } from '../../_components/EmailVerification'
 import type { ClientAuthUiOptions } from '../../_components/useAuthUiOptions'
 import {
   currentLegalAcceptancePayload,
@@ -51,34 +54,12 @@ async function submitSignUpRequest({
     const data = await response.json()
 
     if (!response.ok) {
-      return { error: data.error || 'Sign up failed' }
+      return { error: readAuthErrorMessage(data, 'Sign up failed') }
     }
 
     // Store userId for verification and show verification UI
     if (typeof data.verificationTicket === 'string' && data.verificationTicket.trim()) {
       return { verificationTicket: data.verificationTicket }
-    }
-    return {}
-  } catch {
-    return { error: 'An unexpected error occurred' }
-  }
-}
-
-async function postVerifyEmail(
-  body: Record<string, string>,
-  fallbackError: string,
-): Promise<{ error?: string }> {
-  try {
-    const response = await fetch('/api/auth/verify-email', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    })
-
-    const data = await response.json()
-
-    if (!response.ok) {
-      return { error: data.error || fallbackError }
     }
     return {}
   } catch {
@@ -130,112 +111,6 @@ function VerifiedScreen({
   )
 }
 
-function CheckEmailScreen({
-  email,
-  verificationCode,
-  error,
-  verifying,
-  resending,
-  fieldClass,
-  labelClass,
-  mutedClass,
-  submitClass,
-  onCodeChange,
-  onVerify,
-  onResend,
-}: {
-  email: string
-  verificationCode: string
-  error: string | null
-  verifying: boolean
-  resending: boolean
-  fieldClass: string
-  labelClass: string
-  mutedClass: string
-  submitClass: string
-  onCodeChange: (code: string) => void
-  onVerify: (e: React.FormEvent) => void
-  onResend: () => void
-}) {
-  const codeInputRef = useRef<HTMLInputElement>(null)
-  useEffect(() => {
-    codeInputRef.current?.focus()
-  }, [])
-  return (
-    <LandingAuthPageChrome>
-      <div>
-        <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mb-6">
-          <svg
-            className="w-8 h-8 text-blue-600"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={2}
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
-            />
-          </svg>
-        </div>
-        <h1 className={`text-2xl font-serif mb-2 ${labelClass}`}>Check your email</h1>
-        <p className={`mb-8 text-sm ${mutedClass}`}>
-          We&apos;ve sent a verification code to{' '}
-          <strong className={labelClass}>{email}</strong>.
-          Enter the code below to verify your account.
-        </p>
-
-        {error && (
-          <div className="mb-4 p-3 rounded-xl border border-red-500/20 bg-red-500/10 text-red-600 dark:text-red-400 text-sm">
-            {error}
-          </div>
-        )}
-
-        <form onSubmit={onVerify} className="space-y-4">
-          <input
-            type="text"
-            aria-label="Verification code"
-            value={verificationCode}
-            onChange={(e) => onCodeChange(e.target.value)}
-            placeholder="Enter 6-digit code"
-            maxLength={6}
-            className={`${fieldClass} text-center text-lg font-mono tracking-widest`}
-            ref={codeInputRef}
-          />
-          <button
-            type="submit"
-            disabled={verifying || verificationCode.length < 6}
-            className={submitClass}
-          >
-            {verifying ? 'Verifying...' : 'Verify email'}
-          </button>
-        </form>
-
-        <div className="mt-4 flex items-center justify-center gap-2 text-sm text-(--muted)">
-          <span>Didn&apos;t receive the code?</span>
-          <button
-            onClick={onResend}
-            disabled={resending}
-            className="text-(--foreground) hover:underline font-medium disabled:opacity-50"
-          >
-            {resending ? 'Sending...' : 'Resend'}
-          </button>
-        </div>
-
-        <div className="mt-6 pt-4 border-t border-(--border) text-center">
-          <Link
-            href="/auth/sign-in"
-            className="text-sm text-(--muted) hover:text-(--foreground)"
-          >
-            Back to sign in
-          </Link>
-        </div>
-      </div>
-    </LandingAuthPageChrome>
-  )
-}
-
 function SsoProviderButtons({
   providers,
   ssoLoading,
@@ -250,16 +125,16 @@ function SsoProviderButtons({
   return (
     <div className="space-y-3 mb-6">
       {providers.map((provider) => (
-        <button
+        <Button variant="ghost"
           key={provider.id}
           type="button"
           onClick={() => onSelect(provider.id)}
           disabled={ssoLoading !== null}
-          className={ssoClass}
+          className={unstyledButton(ssoClass)}
         >
           <SsoProviderIcon icon={provider.icon} />
           {ssoLoading === provider.id ? 'Redirecting...' : provider.label}
-        </button>
+        </Button>
       ))}
     </div>
   )
@@ -307,12 +182,12 @@ function EmailPasswordSignUpForm({
           <label htmlFor="firstName" className={`block text-sm font-medium mb-2 ${labelClass}`}>
             First name
           </label>
-          <input
+          <Input
             id="firstName"
             type="text"
             value={firstName}
             onChange={(e) => onFirstNameChange(e.target.value)}
-            className={fieldClass}
+            className={unstyledInput(fieldClass)}
             placeholder="John"
           />
         </div>
@@ -320,12 +195,12 @@ function EmailPasswordSignUpForm({
           <label htmlFor="lastName" className={`block text-sm font-medium mb-2 ${labelClass}`}>
             Last name
           </label>
-          <input
+          <Input
             id="lastName"
             type="text"
             value={lastName}
             onChange={(e) => onLastNameChange(e.target.value)}
-            className={fieldClass}
+            className={unstyledInput(fieldClass)}
             placeholder="Doe"
           />
         </div>
@@ -335,13 +210,13 @@ function EmailPasswordSignUpForm({
         <label htmlFor="email" className={`block text-sm font-medium mb-2 ${labelClass}`}>
           Email
         </label>
-        <input
+        <Input
           id="email"
           type="email"
           value={email}
           onChange={(e) => onEmailChange(e.target.value)}
           required
-          className={fieldClass}
+          className={unstyledInput(fieldClass)}
           placeholder="you@example.com"
         />
       </div>
@@ -350,13 +225,13 @@ function EmailPasswordSignUpForm({
         <label htmlFor="password" className={`block text-sm font-medium mb-2 ${labelClass}`}>
           Password
         </label>
-        <input
+        <Input
           id="password"
           type="password"
           value={password}
           onChange={(e) => onPasswordChange(e.target.value)}
           required
-          className={fieldClass}
+          className={unstyledInput(fieldClass)}
           placeholder="••••••••"
         />
         <p className={`mt-1.5 text-xs ${mutedClass}`}>Must be at least 8 characters</p>
@@ -366,20 +241,20 @@ function EmailPasswordSignUpForm({
         <label htmlFor="confirmPassword" className={`block text-sm font-medium mb-2 ${labelClass}`}>
           Confirm password
         </label>
-        <input
+        <Input
           id="confirmPassword"
           type="password"
           value={confirmPassword}
           onChange={(e) => onConfirmPasswordChange(e.target.value)}
           required
-          className={fieldClass}
+          className={unstyledInput(fieldClass)}
           placeholder="••••••••"
         />
       </div>
 
-      <button type="submit" disabled={loading} className={submitClass}>
+      <Button variant="ghost" type="submit" disabled={loading} className={unstyledButton(submitClass)}>
         {loading ? 'Creating account...' : 'Create account'}
-      </button>
+      </Button>
     </form>
   )
 }

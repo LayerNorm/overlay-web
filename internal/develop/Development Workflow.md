@@ -15,10 +15,18 @@ Production follows **merge to main → automatic Vercel Git production deploymen
 | --- | --- |
 | Customer-web Vercel project | Use `overlay-landing` for both Preview and Production. The separate staging project, branch and subdomain are retired. |
 | Build source | Main deploys automatically through Git. Root `git.deploymentEnabled` sets `"*": false, "main": true`. The trusted controller creates Preview deployments only for `needs-preview` PRs; Preview allows REST API only, also blocking automatic builds from older branches. |
-| Build machine | Keep **Basic**. Let slow builds finish; inspect concrete failures before changing configuration. |
+| Build machine | Keep the owner-selected **Enhanced** machine (8 vCPUs, 16 GB memory). Let running builds finish; inspect concrete failures before changing configuration. |
 | Build concurrency | Keep on-demand concurrency enabled with **Run up to one build per branch** (`WAIT_FOR_NAMESPACE_QUEUE`). Different PRs build in parallel; revisions sharing one branch/backend build sequentially. |
 | Preview URL and backend | Use `https://pr-<number>.preview.getoverlay.io` and that PR's isolated Convex backend. A READY build must match the current PR head before browser QA. |
 | Test settings | Shared Preview credentials inherit once per environment and have no scheduled expiry. Keep Preview and Production variable scopes separate. |
+
+For a diagnosed build stall, `OVERLAY_BUILD_DIAGNOSTICS=1` enables build-only Node
+resource samples (heap limit/usage, RSS, CPU and GC totals) on stderr in the hosted web command.
+Machine-readable subprocess stdout, including TypeScript `--showConfig`, stays clean.
+Keep it scoped to the affected Preview branch, then remove it after investigation.
+The sampler reports no environment values, arguments or heap contents and does not skip checks.
+`OVERLAY_SKIP_BUILD_TYPECHECK` is honored only in the non-hosted GitHub compilation lane;
+Preview and Production always retain Next TypeScript validation, regardless of inherited flags.
 
 The trusted `PR Preview` workflow uses the existing `VERCEL_PREVIEW_TOKEN` in
 GitHub's `release-control` environment for ordinary custom URL assignment and
@@ -27,6 +35,15 @@ The token creates requested Preview builds from exact Git SHAs and manages URL
 and backend resources. Production stays on native Git. Reuse credentials across PRs. Builders do not create tokens or copy
 shared settings for each feature. No Production deployment token or purchased
 Preview Deployment Suffix is needed.
+
+`PR Preview Request` handles ordinary `pull_request` events without checkout or
+deployment secrets. For internal PRs it dispatches `PR Preview` on `main` with
+only the PR number. The controller accepts dispatches only on `main`, checks out
+`main`, and keeps the `release-control` environment restricted to that branch.
+Fork requests are skipped. Dependabot events have a read-only token and are
+also skipped; label the PR as a maintainer or dispatch the controller on `main`.
+PRs with merge conflicts may not emit request runs, so manual dispatch and the
+six-hour reconciliation remain the fallback for builds and cleanup.
 
 Labeled open PR backends renew within Convex's retention limits. Closing a PR or
 removing `needs-preview` settles running builds, removes its owned URL and branch
@@ -55,7 +72,7 @@ that integration check.
 
 For admin QA, bind both backend URL settings on the exact feature branch to that PR's isolated Convex backend, reuse the shared Preview admin credentials and provision the matching secret/test operator on that backend, register the test callback, then request an exact-SHA admin Preview through the connected Vercel tools. The existing customer-web preview controller does not configure or clean resources in the admin project. Shared admin Preview backend URLs are blank so unbound builds fail closed. Record the binding and clear branch backend URLs when QA ends; never point an admin PR at shared development or customer production.
 
-Deploy backend changes from clean current canonical main after matching customer web is live. For endpoint retirement, first ship and verify replacement callers; verify authenticated standalone admin acceptance before removing the old web admin. Keep ordinary member initialization and append-only operational audit separate from operator powers. See [Admin Console](../../docs/develop/admin-console.md).
+Deploy backend changes from clean current canonical main after matching customer web is live. For endpoint retirement, first ship and verify replacement callers; verify authenticated standalone admin acceptance before removing the old web admin. Keep ordinary member initialization and append-only operational audit separate from operator powers. See [Admin Console](../../internal/develop/admin-console.md).
 
 ## Local laptop owner path
 
@@ -120,6 +137,8 @@ If the feature depends on another PR, declare the dependency. Land shared founda
 ### 2. Implement and run local smoke QA
 
 Build the requested behavior and update affected living documentation and root `CHANGELOG.md` under Unreleased in the same change.
+
+Package render tests preload the shared Node stylesheet and JSX shims, matching ordinary CI rendering; run the package's own test command when adding render coverage.
 
 Run the smallest checks that cover the change. Use `npm run dev` for local web work with your engineer-owned dev backend. Run a smoke check of the affected route or behavior before pushing. Record the actual commands and results. Required repository CI remains mandatory.
 
@@ -259,9 +278,15 @@ Main changes automatically deploy to production through Vercel’s Git integrati
 ### Required CI checks
 
 `Security Checks` runs lint/types, production compilation and two complete test
-shards in parallel. `next typegen` generates current route validators before the
+shards in parallel. Both ordinary-test shards use Node 24, matching the Agent Host
+CLI's minimum runtime so built-CLI contracts run without skipping or weakening the
+version guard. `next typegen` generates current route validators before the
 required standalone typecheck; only the CI compilation job skips the duplicate
-Next TypeScript pass. Ordinary Vercel builds retain their existing type checks.
+Next TypeScript pass. Ordinary Vercel builds retain their existing type checks. Customer-web production
+compilation uses `next build --webpack` with `webpackBuildWorker` and
+`webpackMemoryOptimizations` enabled; the `.js` extension alias resolves NodeNext
+workspace imports to their TypeScript source; local development keeps the default dev engine.
+Keep reusable components outside route entry-point exports so generated route validators pass.
 Configuration and Convex boundary checks that depend on generated Workflow routes
 stay after compilation. Gateway tests retain their react-server condition in a
 dedicated discovered group; route and gateway suites run once through the shards.

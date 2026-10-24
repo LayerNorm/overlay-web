@@ -1,4 +1,4 @@
-import { z, type ZodTypeAny } from 'zod'
+import { z, type ZodTypeAny } from 'zod/v3'
 import {
   commandAcknowledgementSchema,
   enrollmentRequestSchema,
@@ -6,6 +6,9 @@ import {
   filesystemGrantSchema,
   hostCapabilitiesSchema,
   initialCredentialRequestSchema,
+  driveCredentialsRequestSchema,
+  driveCredentialsResponseSchema,
+  providerCredentialsRequestSchema,
 } from '@layernorm/overlay-agent-bridge-protocol'
 import {
   CreateWebhookSubscriptionRequest,
@@ -60,6 +63,7 @@ import {
   NoteListQuery,
   NotebookAgentRequest,
   OnboardingMutationRequest,
+  OnboardingActionRequest,
   OnboardingStatusQuery,
   OutputContentQuery,
   OutputListQuery,
@@ -144,10 +148,12 @@ export const webApiBoundaryDefinitions = [
   {
     method: 'GET', path: '/api/v1/agent-environments', schema: { query: EmptyQuery, response: UnknownResponse },
     summary: 'List connected agent environments in the active workspace', tag: 'Agent environments',
+    publicReference: false,
   },
   {
     method: 'POST', path: '/api/v1/agent-environments/enrollment-sessions', schema: { json: EmptyRequest, response: UnknownResponse },
     summary: 'Create a short-lived single-use environment enrollment code', tag: 'Agent environments',
+    publicReference: false,
   },
   {
     method: 'POST', path: '/api/v1/agent-environments/cloud',
@@ -161,76 +167,89 @@ export const webApiBoundaryDefinitions = [
       response: UnknownResponse,
     },
     summary: 'Provision an Overlay Cloud machine for an agent (Claude Code or Codex)', tag: 'Agent environments',
+    publicReference: false,
   },
   {
     method: 'POST', path: '/api/v1/agent-environments/enroll', schema: { json: enrollmentRequestSchema, response: UnknownResponse },
     summary: 'Redeem an enrollment code and register a device public key', tag: 'Agent environments',
+    publicReference: false,
   },
   {
     method: 'POST', path: '/api/v1/agent-environments/{environmentId}/approve', routePath: '/api/v1/agent-environments/[environmentId]/approve',
     pattern: /^\/api\/v1\/agent-environments\/[^/]+\/approve$/,
     schema: { json: z.object({ filesystemGrant: filesystemGrantSchema }).strict(), response: UnknownResponse },
     summary: 'Approve a pending environment with explicit filesystem roots', tag: 'Agent environments',
+    publicReference: false,
   },
   {
     method: 'PATCH', path: '/api/v1/agent-environments/{environmentId}/roots', routePath: '/api/v1/agent-environments/[environmentId]/roots',
     pattern: /^\/api\/v1\/agent-environments\/[^/]+\/roots$/,
     schema: { json: z.object({ filesystemGrant: filesystemGrantSchema }).strict(), response: UnknownResponse },
     summary: 'Change an environment filesystem grant', tag: 'Agent environments',
+    publicReference: false,
   },
   {
     method: 'POST', path: '/api/v1/agent-environments/{environmentId}/revoke', routePath: '/api/v1/agent-environments/[environmentId]/revoke',
     pattern: /^\/api\/v1\/agent-environments\/[^/]+\/revoke$/,
     schema: { json: EmptyRequest, response: UnknownResponse },
     summary: 'Revoke an environment and its credentials', tag: 'Agent environments',
+    publicReference: false,
   },
   {
     method: 'POST', path: '/api/v1/agent-environments/{environmentId}/credentials', routePath: '/api/v1/agent-environments/[environmentId]/credentials',
     pattern: /^\/api\/v1\/agent-environments\/[^/]+\/credentials$/,
     schema: { json: initialCredentialRequestSchema, response: UnknownResponse },
     summary: 'Issue an initial short-lived environment credential after device proof', tag: 'Agent environments',
+    publicReference: false,
   },
   {
     method: 'POST', path: '/api/v1/agent-environments/{environmentId}/credentials/refresh', routePath: '/api/v1/agent-environments/[environmentId]/credentials/refresh',
     pattern: /^\/api\/v1\/agent-environments\/[^/]+\/credentials\/refresh$/,
     schema: { json: EmptyRequest, response: UnknownResponse },
     summary: 'Rotate a signed environment credential', tag: 'Agent environments',
+    publicReference: false,
   },
   {
     method: 'POST', path: '/api/v1/agent-environments/{environmentId}/heartbeat', routePath: '/api/v1/agent-environments/[environmentId]/heartbeat',
     pattern: /^\/api\/v1\/agent-environments\/[^/]+\/heartbeat$/,
     schema: { json: EmptyRequest, response: UnknownResponse },
     summary: 'Record an authenticated environment heartbeat', tag: 'Agent environments',
+    publicReference: false,
   },
   {
     method: 'PUT', path: '/api/v1/agent-environments/{environmentId}/capabilities', routePath: '/api/v1/agent-environments/[environmentId]/capabilities',
     pattern: /^\/api\/v1\/agent-environments\/[^/]+\/capabilities$/,
     schema: { json: hostCapabilitiesSchema, response: UnknownResponse },
     summary: 'Refresh authenticated host capabilities', tag: 'Agent environments',
+    publicReference: false,
   },
   {
     method: 'GET', path: '/api/v1/agent-environments/{environmentId}/commands', routePath: '/api/v1/agent-environments/[environmentId]/commands',
     pattern: /^\/api\/v1\/agent-environments\/[^/]+\/commands$/,
     schema: { query: z.object({ limit: z.coerce.number().int().min(1).max(50).optional(), waitMs: z.coerce.number().int().min(0).max(30_000).optional() }), response: UnknownResponse },
     summary: 'Poll durable commands for an authenticated environment', tag: 'Agent environments',
+    publicReference: false,
   },
   {
     method: 'POST', path: '/api/v1/agent-environments/{environmentId}/commands/{commandId}/ack', routePath: '/api/v1/agent-environments/[environmentId]/commands/[commandId]/ack',
     pattern: /^\/api\/v1\/agent-environments\/[^/]+\/commands\/[^/]+\/ack$/,
     schema: { json: commandAcknowledgementSchema, response: UnknownResponse },
     summary: 'Acknowledge or reject a claimed environment command', tag: 'Agent environments',
+    publicReference: false,
   },
   {
     method: 'POST', path: '/api/v1/agent-environments/{environmentId}/events', routePath: '/api/v1/agent-environments/[environmentId]/events',
     pattern: /^\/api\/v1\/agent-environments\/[^/]+\/events$/,
     schema: { json: eventBatchSchema, response: UnknownResponse },
     summary: 'Upload a validated contiguous batch of remote agent events', tag: 'Agent environments',
+    publicReference: false,
   },
   {
     method: 'POST', path: '/api/v1/agent-environments/{environmentId}/desktop', routePath: '/api/v1/agent-environments/[environmentId]/desktop',
     pattern: /^\/api\/v1\/agent-environments\/[^/]+\/desktop$/,
     schema: { json: z.object({ mode: z.enum(['vnc', 'webrtc']).optional() }).passthrough(), response: UnknownResponse },
     summary: 'Issue a short-lived desktop stream ticket for the environment machine', tag: 'Agent environments',
+    publicReference: false,
   },
   {
     method: 'GET', path: '/api/v1/computers', schema: { query: EmptyQuery, response: UnknownResponse },
@@ -294,6 +313,22 @@ export const webApiBoundaryDefinitions = [
     tag: 'Conversations',
   },
   {
+    method: 'GET',
+    path: '/api/v1/onboarding/session',
+    schema: { query: OnboardingStatusQuery, response: UnknownResponse },
+    summary: 'Read conversational onboarding session',
+    tag: 'Onboarding',
+    publicReference: false,
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/onboarding/session',
+    schema: { json: OnboardingActionRequest, response: UnknownResponse },
+    summary: 'Advance conversational onboarding',
+    tag: 'Onboarding',
+    publicReference: false,
+  },
+  {
     method: 'POST',
     path: '/api/v1/automations',
     schema: { json: CreateAutomationRequest },
@@ -348,6 +383,7 @@ export const webApiBoundaryDefinitions = [
     schema: { query: ChatSuggestionQuery },
     summary: 'List chat starter suggestions',
     tag: 'Chat',
+    publicReference: false,
   },
   {
     method: 'GET',
@@ -357,6 +393,7 @@ export const webApiBoundaryDefinitions = [
     description:
       'Unauthenticated desktop/server discovery: API versions, capabilities, native auth paths, and minimum desktop version. No secrets.',
     tag: 'Discovery',
+    publicReference: false,
   },
   {
     method: 'GET',
@@ -399,6 +436,7 @@ export const webApiBoundaryDefinitions = [
     schema: { json: ActConversationRequest },
     summary: 'Plan extension actions for an Act turn',
     tag: 'Conversations',
+    publicReference: false,
   },
   {
     method: 'POST',
@@ -406,6 +444,7 @@ export const webApiBoundaryDefinitions = [
     schema: { json: AgentGreetingRequest },
     summary: 'Post the new-agent greeting as the agent itself',
     tag: 'Conversations',
+    publicReference: false,
   },
   {
     method: 'POST',
@@ -455,6 +494,7 @@ export const webApiBoundaryDefinitions = [
     schema: { query: AgentRunMetricsQuery },
     summary: 'Read empirical AgentRun metrics grouped by runner',
     tag: 'Conversations',
+    publicReference: false,
   },
   {
     method: 'POST',
@@ -462,6 +502,7 @@ export const webApiBoundaryDefinitions = [
     schema: { json: AgentRunMetricEventRequest },
     summary: 'Record a browser lifecycle observation for an AgentRun',
     tag: 'Conversations',
+    publicReference: false,
   },
   { method: 'GET', path: '/api/v1/files', schema: { query: FileListQuery }, summary: 'List or read files', tag: 'Files' },
   { method: 'POST', path: '/api/v1/files', schema: { json: CreateFileRequest }, summary: 'Create a file', tag: 'Files' },
@@ -524,6 +565,7 @@ export const webApiBoundaryDefinitions = [
     schema: { json: GenerateTabGroupLabelRequest },
     summary: 'Generate a tab group label',
     tag: 'Tools',
+    publicReference: false,
   },
   {
     method: 'GET',
@@ -531,6 +573,7 @@ export const webApiBoundaryDefinitions = [
     schema: { query: LinkPreviewQuery, response: UnknownResponse },
     summary: 'Check whether a URL can be framed in the link preview panel',
     tag: 'Chat',
+    publicReference: false,
   },
   {
     method: 'POST',
@@ -538,6 +581,7 @@ export const webApiBoundaryDefinitions = [
     schema: { json: GenerateTitleRequest },
     summary: 'Generate a conversation title',
     tag: 'Chat',
+    publicReference: false,
   },
   {
     method: 'POST',
@@ -596,7 +640,7 @@ export const webApiBoundaryDefinitions = [
   { method: 'POST', path: '/api/v1/providers/connections', schema: { json: ProviderConnectionMutationRequest }, summary: 'Create a model provider connection', tag: 'Model Providers' },
   { method: 'PATCH', path: '/api/v1/providers/connections', schema: { json: ProviderConnectionMutationRequest }, summary: 'Update a model provider connection', tag: 'Model Providers' },
   { method: 'DELETE', path: '/api/v1/providers/connections', schema: { query: ProviderConnectionDeleteQuery }, summary: 'Delete a model provider connection', tag: 'Model Providers' },
-  { method: 'GET', path: '/api/v1/agents/{agentId}/profile', routePath: '/api/v1/agents/[agentId]/profile', pattern: /^\/api\/v1\/agents\/[^/]+\/profile$/, schema: { query: EmptyQuery, response: UnknownResponse }, summary: 'An Overlay Cloud agent\'s imported config: versions, what each needs, and the values it lacks', tag: 'Agents' },
+  { method: 'GET', path: '/api/v1/agents/{agentId}/profile', routePath: '/api/v1/agents/[agentId]/profile', pattern: /^\/api\/v1\/agents\/[^/]+\/profile$/, schema: { query: EmptyQuery, response: UnknownResponse }, summary: 'An Overlay Cloud agent\'s imported config: versions, what each needs, and the values it lacks', tag: 'Agents', publicReference: false },
   {
     method: 'POST', path: '/api/v1/agents/{agentId}/profile', routePath: '/api/v1/agents/[agentId]/profile', pattern: /^\/api\/v1\/agents\/[^/]+\/profile$/,
     schema: {
@@ -608,6 +652,7 @@ export const webApiBoundaryDefinitions = [
       response: UnknownResponse,
     },
     summary: 'Create an import code, apply or discard a config version, turn imported hooks on or off, or set a needed value', tag: 'Agents',
+    publicReference: false,
   },
   {
     method: 'POST', path: '/api/v1/agent-asks',
@@ -618,6 +663,7 @@ export const webApiBoundaryDefinitions = [
     method: 'POST', path: '/api/v1/agent-profiles/upload',
     schema: { json: z.object({}).passthrough(), response: UnknownResponse },
     summary: 'Upload a cleaned agent config (gzip) with a one-time import code', tag: 'Agents',
+    publicReference: false,
   },
   {
     method: 'POST', path: '/api/v1/mcp/authorize',
@@ -630,9 +676,10 @@ export const webApiBoundaryDefinitions = [
       response: UnknownResponse,
     },
     summary: 'Approve or deny another AI app\'s request to connect to Overlay over MCP', tag: 'MCP access',
+    publicReference: false,
   },
-  { method: 'GET', path: '/api/v1/mcp/client', schema: { query: z.object({ clientId: z.string().min(1), redirectUri: z.string().min(1) }), response: UnknownResponse }, summary: 'Describe the AI app asking to connect', tag: 'MCP access' },
-  { method: 'GET', path: '/api/v1/mcp/connections', schema: { query: EmptyQuery, response: UnknownResponse }, summary: 'List the AI apps and tokens connected to Overlay over MCP', tag: 'MCP access' },
+  { method: 'GET', path: '/api/v1/mcp/client', schema: { query: z.object({ clientId: z.string().min(1), redirectUri: z.string().min(1) }), response: UnknownResponse }, summary: 'Describe the AI app asking to connect', tag: 'MCP access', publicReference: false },
+  { method: 'GET', path: '/api/v1/mcp/connections', schema: { query: EmptyQuery, response: UnknownResponse }, summary: 'List the AI apps and tokens connected to Overlay over MCP', tag: 'MCP access', publicReference: false },
   {
     method: 'POST', path: '/api/v1/mcp/connections',
     schema: {
@@ -640,8 +687,9 @@ export const webApiBoundaryDefinitions = [
       response: UnknownResponse,
     },
     summary: 'Create a personal MCP token for a local agent (returned once)', tag: 'MCP access',
+    publicReference: false,
   },
-  { method: 'DELETE', path: '/api/v1/mcp/connections', schema: { query: z.object({ id: z.string().min(1) }), response: UnknownResponse }, summary: 'Disconnect an AI app or revoke a token', tag: 'MCP access' },
+  { method: 'DELETE', path: '/api/v1/mcp/connections', schema: { query: z.object({ id: z.string().min(1) }), response: UnknownResponse }, summary: 'Disconnect an AI app or revoke a token', tag: 'MCP access', publicReference: false },
   { method: 'GET', path: '/api/v1/provider-accounts', schema: { query: EmptyQuery, response: UnknownResponse }, summary: 'List the Claude Code and Codex accounts agents run on', tag: 'Provider accounts' },
   {
     method: 'POST', path: '/api/v1/provider-accounts',
@@ -669,6 +717,7 @@ export const webApiBoundaryDefinitions = [
       response: UnknownResponse,
     },
     summary: 'Sign in to Codex with ChatGPT (device code): start, then poll until approved', tag: 'Provider accounts',
+    publicReference: false,
   },
   {
     method: 'PATCH', path: '/api/v1/provider-accounts',
@@ -690,8 +739,16 @@ export const webApiBoundaryDefinitions = [
   {
     method: 'POST', path: '/api/v1/agent-environments/{environmentId}/run-credentials', routePath: '/api/v1/agent-environments/[environmentId]/run-credentials',
     pattern: /^\/api\/v1\/agent-environments\/[^/]+\/run-credentials$/,
-    schema: { json: z.object({ protocolVersion: z.literal(1), runId: z.string().min(1) }).strict(), response: UnknownResponse },
-    summary: 'Release the provider credentials for one active run to an Overlay Cloud host', tag: 'Agent environments',
+    schema: { json: providerCredentialsRequestSchema, response: UnknownResponse },
+    summary: 'Release provider credentials for an active run or idle bound-adapter discovery to an Overlay Cloud host', tag: 'Agent environments',
+    publicReference: false,
+  },
+  {
+    method: 'POST', path: '/api/v1/agent-environments/{environmentId}/drive-credentials', routePath: '/api/v1/agent-environments/[environmentId]/drive-credentials',
+    pattern: /^\/api\/v1\/agent-environments\/[^/]+\/drive-credentials$/,
+    schema: { json: driveCredentialsRequestSchema, response: driveCredentialsResponseSchema },
+    summary: 'Issue or renew execution-scoped drive credentials for a device-signed host request', tag: 'Agent environments',
+    publicReference: false,
   },
   { method: 'POST', path: '/api/v1/providers/connections/test', schema: { json: ProviderConnectionTestRequest }, summary: 'Test a model provider connection and discover models', tag: 'Model Providers' },
   { method: 'GET', path: '/api/v1/memory', schema: { query: MemoryListQuery }, summary: 'List memories', tag: 'Memory' },
@@ -710,6 +767,7 @@ export const webApiBoundaryDefinitions = [
     schema: { json: NotebookAgentRequest },
     summary: 'Run the notebook agent',
     tag: 'Notes',
+    publicReference: false,
   },
   { method: 'GET', path: '/api/v1/notes', schema: { query: NoteListQuery }, summary: 'List notes', tag: 'Notes' },
   { method: 'POST', path: '/api/v1/notes', schema: { json: CreateNoteRequest }, summary: 'Create a note', tag: 'Notes' },
@@ -727,6 +785,7 @@ export const webApiBoundaryDefinitions = [
     schema: { json: OnboardingMutationRequest },
     summary: 'Complete onboarding',
     tag: 'Onboarding',
+    publicReference: false,
   },
   {
     method: 'POST',
@@ -734,6 +793,7 @@ export const webApiBoundaryDefinitions = [
     schema: { json: OnboardingMutationRequest },
     summary: 'Reset onboarding',
     tag: 'Onboarding',
+    publicReference: false,
   },
   {
     method: 'GET',
@@ -741,6 +801,7 @@ export const webApiBoundaryDefinitions = [
     schema: { query: OnboardingStatusQuery },
     summary: 'Read onboarding status',
     tag: 'Onboarding',
+    publicReference: false,
   },
   { method: 'GET', path: '/api/v1/outputs', schema: { query: OutputListQuery }, summary: 'List outputs', tag: 'Outputs' },
   {
@@ -767,6 +828,7 @@ export const webApiBoundaryDefinitions = [
     schema: { json: ScopeActionRequest },
     summary: 'Move a resource between Personal and Workspace, archive it, or restore it',
     tag: 'Workspaces',
+    publicReference: false,
   },
   { method: 'GET', path: '/api/v1/skills', schema: { query: EntityListQuery }, summary: 'List skills', tag: 'Skills' },
   { method: 'POST', path: '/api/v1/skills', schema: { json: EntityMutationRequest }, summary: 'Create a skill', tag: 'Skills' },
@@ -791,6 +853,7 @@ export const webApiBoundaryDefinitions = [
     schema: { query: BillingSettingsQuery },
     summary: 'Read billing settings',
     tag: 'Billing',
+    publicReference: false,
   },
   {
     method: 'POST',
@@ -798,6 +861,7 @@ export const webApiBoundaryDefinitions = [
     schema: { json: UpdateBillingSettingsRequest },
     summary: 'Update billing settings',
     tag: 'Billing',
+    publicReference: false,
   },
   { method: 'POST', path: '/api/v1/transcribe', schema: { formData: TranscribeRequest }, summary: 'Transcribe audio', tag: 'Media' },
   {
@@ -906,6 +970,7 @@ export const webApiExcludedRouteDefinitions = [
   { routePath: '/api/v1/agent-environments/[environmentId]/artifacts/[artifactId]/complete', reason: 'Connected-agent artifact completion; boundary definition pending. Protected by device-key authentication.' },
   { routePath: '/api/v1/agent-environments/artifacts/cleanup', reason: 'Internal artifact cleanup cron trigger; not part of the public web API reference.' },
   { routePath: '/api/v1/agent-environments/operations/reconcile', reason: 'Internal reconciliation cron trigger; not part of the public web API reference.' },
+  { routePath: '/api/v1/models/overlay-free/refresh', reason: 'Private refresh callback requires the internal API secret and is excluded from the public web API reference.' },
   // Slack surfaces: a third-party install flow, a signed webhook, and binding management.
   { routePath: '/api/v1/surfaces/slack/connect', reason: 'Starts the Slack app install OAuth redirect; a browser flow, not a public API call.' },
   { routePath: '/api/v1/surfaces/slack/callback', reason: 'Slack OAuth redirect target, protected by single-use state rather than the public API authentication scheme.' },
@@ -954,6 +1019,9 @@ export const webApiExcludedRouteDefinitions = [
   { routePath: '/api/v1/shares/impact', reason: 'Share impact analysis; boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/shares/shared-with-me', reason: 'Shared-with-me listing; boundary definition pending. Protected by workspace authorization.' },
   // Workspace routes pending full boundary definitions.
+  { routePath: '/api/v1/account/workspaces', reason: 'Account workspace directory and creation; signed-browser-session only with validation and workspace creation rules enforced by the server service.' },
+  { routePath: '/api/v1/workspace-handles/[handle]', reason: 'Authenticated, membership-gated workspace handle resolution. Returns a generic denial for unknown, inaccessible, suspended, or archived workspaces.' },
+  { routePath: '/api/v1/workspaces/[workspaceId]/handle', reason: 'Owner-only workspace handle update. Workspace ID remains immutable; handle changes retain historical aliases.' },
   { routePath: '/api/v1/workspace-invitations/[invitationId]/accept', reason: 'Workspace invitation acceptance; boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/workspaces', reason: 'Workspace management; boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/workspaces/[workspaceId]/audit-export', reason: 'Workspace audit export; boundary definition pending. Protected by workspace authorization.' },

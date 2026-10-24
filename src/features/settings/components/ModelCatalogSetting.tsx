@@ -1,5 +1,8 @@
 'use client'
 
+import { unstyledButton, unstyledInput } from '@overlay/ui/control-reset'
+import { Button, Input } from '@overlay/ui/primitives'
+
 import { useMemo, useState } from 'react'
 import { Check, ChevronDown, ChevronUp, ImageIcon, KeyRound, MessageSquare, RefreshCw, Search, Sparkles, ScanEye, Video } from 'lucide-react'
 import { SettingsToggle } from '@overlay/modules-react/settings'
@@ -71,15 +74,16 @@ function ModelCatalogControls({
 }) {
   if (!language) {
     return (
-      <button
+      <Button variant="ghost"
         type="button"
         disabled={disabled || !hasUsagePricing}
         onClick={() => onChange(model.type === 'image' ? { defaultImageModelId: model.id } : { defaultVideoModelId: model.id })}
-        className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border px-2.5 text-xs font-medium transition-colors disabled:opacity-50 ${mediaDefault ? 'border-(--foreground) bg-(--foreground) text-(--background)' : 'border-(--border) bg-(--surface-subtle) text-(--muted) hover:text-(--foreground)'}`}
+        // overlay:button-style: Toggle with a selected state.
+        className={unstyledButton(`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border px-2.5 text-xs font-medium transition-colors disabled:opacity-50 ${mediaDefault ? 'border-(--foreground) bg-(--foreground) text-(--background)' : 'border-(--border) bg-(--surface-subtle) text-(--muted) hover:text-(--foreground)'}`)}
       >
         {mediaDefault ? <Check size={12} /> : null}
         {mediaDefault ? 'Default' : 'Set default'}
-      </button>
+      </Button>
     )
   }
 
@@ -88,12 +92,12 @@ function ModelCatalogControls({
     <>
       {isEnabled ? (
         <div className="flex items-center gap-1">
-          <button type="button" aria-label={`Move ${model.name} up`} disabled={disabled} onClick={() => onMove(model.id, -1)} className="flex h-7 w-7 items-center justify-center rounded-md text-(--muted) hover:bg-(--surface-subtle) disabled:opacity-40">
+          <Button variant="ghost" type="button" aria-label={`Move ${model.name} up`} disabled={disabled} onClick={() => onMove(model.id, -1)} className={unstyledButton(`flex h-7 w-7 items-center justify-center rounded-md text-(--muted) hover:bg-(--surface-subtle) disabled:opacity-40`)}>
             <ChevronUp size={14} />
-          </button>
-          <button type="button" aria-label={`Move ${model.name} down`} disabled={disabled} onClick={() => onMove(model.id, 1)} className="flex h-7 w-7 items-center justify-center rounded-md text-(--muted) hover:bg-(--surface-subtle) disabled:opacity-40">
+          </Button>
+          <Button variant="ghost" type="button" aria-label={`Move ${model.name} down`} disabled={disabled} onClick={() => onMove(model.id, 1)} className={unstyledButton(`flex h-7 w-7 items-center justify-center rounded-md text-(--muted) hover:bg-(--surface-subtle) disabled:opacity-40`)}>
             <ChevronDown size={14} />
-          </button>
+          </Button>
         </div>
       ) : null}
       <SettingsToggle
@@ -343,54 +347,52 @@ export function ModelCatalogSetting({
             ['image', 'Image', ImageIcon],
             ['video', 'Video', Video],
           ] as const).map(([value, label, Icon]) => (
-            <button
+            <Button variant="ghost"
               key={value}
               type="button"
               aria-pressed={catalogType === value}
               onClick={() => setCatalogType(value)}
-              className={`inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-xs font-medium transition-colors ${
+              className={unstyledButton(`inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-xs font-medium transition-colors ${
                 catalogType === value
                   ? 'bg-(--surface-muted) text-(--foreground)'
                   : 'text-(--muted) hover:text-(--foreground)'
-              }`}
+              }`)}
             >
               <Icon size={13} strokeWidth={1.75} />
               {label}
-            </button>
+            </Button>
           ))}
         </div>
         <div className="flex items-center gap-2 border-b border-(--border) p-3">
           <div className="relative flex-1">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-(--muted-light)" />
-            <input
+            <Input
               aria-label="Search models or providers"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Search models or providers"
-              className="h-10 w-full rounded-lg border border-(--border) bg-(--surface-subtle) pl-9 pr-3 text-sm text-(--foreground) outline-hidden focus:border-(--muted)"
+              className={unstyledInput(`h-10 w-full rounded-lg border border-(--border) bg-(--surface-subtle) pl-9 pr-3 text-sm text-(--foreground) outline-hidden focus:border-(--muted)`)}
             />
           </div>
           {catalogType === 'language' ? <>
-            <button
+            <Button variant="secondary" size="icon"
               type="button"
               aria-label="Refresh models"
               disabled={isLoading}
               onClick={() => { void refresh(); void refreshByok() }}
-              className="flex h-10 w-10 items-center justify-center rounded-lg border border-(--border) bg-(--surface-subtle) text-(--muted) hover:text-(--foreground) disabled:opacity-50"
             >
               <RefreshCw size={16} className={isLoading ? 'animate-spin' : ''} />
-            </button>
-            <button
+            </Button>
+            <Button variant="secondary" size="sm" className="hidden sm:inline-flex"
               type="button"
               disabled={disabled}
               onClick={() => onChange({
                 enabledChatModelIds: [...DEFAULT_CURATED_CHAT_MODEL_IDS],
                 modelOrder: [],
               })}
-              className="hidden h-10 rounded-lg border border-(--border) bg-(--surface-subtle) px-3 text-xs text-(--foreground) sm:block"
             >
               Reset defaults
-            </button>
+            </Button>
           </> : null}
         </div>
         <div className="border-b border-(--border) px-4 py-2 text-xs text-(--muted)">

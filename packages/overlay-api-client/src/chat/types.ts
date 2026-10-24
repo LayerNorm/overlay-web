@@ -1,3 +1,4 @@
+import type { RemoteRunLiveness } from '@overlay/workspace-contracts'
 import type { ConversationMessage, ConversationSummary } from '@overlay/app-core'
 import type { PaginationQuery } from '../shared/types'
 
@@ -32,6 +33,8 @@ export interface CreateConversationRequest {
   actModelId?: string
   lastMode?: 'ask' | 'act'
   clientId?: string
+  /** Sidebar scope for AI chats; missing means personal. */
+  scope?: 'personal' | 'workspace'
 }
 
 export interface CreateConversationResponse {
@@ -80,8 +83,9 @@ export type AgentRunResource = {
   userId: string
   userMessageId: string
   assistantMessageId: string
-  mode: 'chat' | 'work'
-  runner: 'tool_loop' | 'workflow'
+  mode: 'chat' | 'work' | 'room'
+  runner: 'tool_loop' | 'workflow' | 'remote'
+  liveness?: RemoteRunLiveness
   status: 'queued' | 'running' | 'waiting_for_approval' | 'completed' | 'failed' | 'cancelled'
   variantIndex?: number
   workflowRunId?: string

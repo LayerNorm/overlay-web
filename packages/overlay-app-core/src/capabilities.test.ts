@@ -7,6 +7,7 @@ import {
 } from './index'
 
 test('deriveOverlayCapabilities fills defaults from partial runtime config', () => {
+  assert.equal(DEFAULT_OVERLAY_CAPABILITIES.externalAgents, false)
   assert.deepEqual(deriveOverlayCapabilities({ billing: false, automations: false }), {
     ...DEFAULT_OVERLAY_CAPABILITIES,
     billing: false,
@@ -16,6 +17,7 @@ test('deriveOverlayCapabilities fills defaults from partial runtime config', () 
     ...DEFAULT_OVERLAY_CAPABILITIES,
     webhooks: true,
   })
+  assert.equal(deriveOverlayCapabilities({ features: { computers: false } }).computers, false)
 })
 
 test('resolveOverlayAppShellConfig hides capability-gated registries', () => {
@@ -122,7 +124,7 @@ test('redacted capability bootstrap payload exposes capabilities without secrets
       canUseExtensions: true,
     },
     navigation: ['chat', 'files', 'extensions'],
-    settingsSections: ['general', 'account', 'workspace', 'customization', 'shortcuts', 'memories', 'providers', 'models', 'connected-apps', 'archived', 'contact'],
+    settingsSections: ['general', 'account', 'workspace', 'customization', 'shortcuts', 'memories', 'providers', 'connected-apps', 'archived', 'contact'],
   })
   assert.equal(JSON.stringify(payload).includes('secret'), false)
 })

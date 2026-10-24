@@ -2,14 +2,11 @@
 
 import { useRouter, useSearchParams } from 'next/navigation'
 import { File, Workflow } from 'lucide-react'
-import { SidebarResourceList } from '@overlay/ui/primitives'
+import { SidebarResourceList, SidebarMenuSubButton } from '@overlay/ui/primitives'
 import {
   SHOWCASE_AUTOMATIONS,
   SHOWCASE_KNOWLEDGE_NODES,
 } from './showcase-data'
-
-const rowClass =
-  'flex h-7 w-full items-center gap-2 rounded-md px-2.5 text-left text-xs text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)'
 
 export function PublicShowcaseFilesInlinePanel({ onNavigate }: { onNavigate?: () => void }) {
   const router = useRouter()
@@ -19,18 +16,19 @@ export function PublicShowcaseFilesInlinePanel({ onNavigate }: { onNavigate?: ()
   return (
     <SidebarResourceList>
       {SHOWCASE_KNOWLEDGE_NODES.map((file) => (
-        <button
+        <SidebarMenuSubButton
           key={file._id}
           type="button"
-          className={`${rowClass} ${activeId === file._id ? 'bg-(--surface-subtle) text-(--foreground)' : ''}`}
+          isActive={activeId === file._id}
+          aria-current={activeId === file._id ? 'page' : undefined}
           onClick={() => {
             router.push(`/app/files?${new URLSearchParams({ showcase: '1', file: file._id }).toString()}`)
             onNavigate?.()
           }}
         >
-          <File size={12} className="shrink-0" />
+          <File aria-hidden />
           <span className="truncate">{file.name}</span>
-        </button>
+        </SidebarMenuSubButton>
       ))}
     </SidebarResourceList>
   )
@@ -46,18 +44,19 @@ export function PublicShowcaseAutomationsInlinePanel({ onNavigate }: { onNavigat
       {SHOWCASE_AUTOMATIONS.map((automation) => {
         const id = `showcase-${automation.id}`
         return (
-          <button
+          <SidebarMenuSubButton
             key={id}
             type="button"
-            className={`${rowClass} ${activeId === id ? 'bg-(--surface-subtle) text-(--foreground)' : ''}`}
+            isActive={activeId === id}
+            aria-current={activeId === id ? 'page' : undefined}
             onClick={() => {
               router.push(`/app/automations?${new URLSearchParams({ showcase: '1', automationId: id }).toString()}`)
               onNavigate?.()
             }}
           >
-            <Workflow size={12} className="shrink-0" />
+            <Workflow aria-hidden />
             <span className="truncate">{automation.name}</span>
-          </button>
+          </SidebarMenuSubButton>
         )
       })}
     </SidebarResourceList>

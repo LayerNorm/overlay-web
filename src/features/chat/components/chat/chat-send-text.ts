@@ -3,13 +3,13 @@ import type { UIMessage } from '@/shared/chat/ai-ui-message'
 import { AUTOMATIONS_UPDATED_EVENT } from '@overlay/app-core/automations'
 import { createConversationUiState } from '@overlay/chat-core'
 import type { ReasoningLevel } from '@overlay/chat-core'
+import { toast } from '@overlay/ui/primitives'
 import { markTtftClientMilestone, setTtftClientTurnId } from '@/shared/chat/ttft-client-debug'
 import type {
   ConversationRuntime,
   ConversationUiState,
 } from '../chat-interface/types'
 import { resetRuntimeState } from './conversation-runtime-utils'
-import { prepareAskModelThreadsForTextTurn } from './chat-runtime-helpers'
 import {
   reportTextStreamError,
   startActTextStream,
@@ -27,7 +27,7 @@ import {
   type UpdateRuntimeUiState,
 } from './chat-send-body-builders'
 import type { PendingFirstSendState } from './chat-send-pending-first'
-import type { CreateNewChatOptions } from './chat-send-create'
+import { workspaceChatsViewActive, type CreateNewChatOptions } from './chat-send-create'
 
 export function sendTextTurn({
   activeChatId,
@@ -51,7 +51,6 @@ export function sendTextTurn({
   refreshSelectedAutomation,
   replyContext,
   selectedActModelSnapshot,
-  setComposerNotice,
   setIsFirstMessage,
   setRuntimeHydrationVersion,
   snapshot,
@@ -80,7 +79,6 @@ export function sendTextTurn({
   selectedActModelSnapshot: string
   reasoning?: ReasoningLevel
   personalChatMode: 'chat' | 'work'
-  setComposerNotice: Dispatch<SetStateAction<string | null>>
   setIsFirstMessage: (isFirstMessage: boolean) => void
   setRuntimeHydrationVersion: Dispatch<SetStateAction<number>>
   snapshot: SubmittedComposerSnapshot
@@ -99,40 +97,27 @@ export function sendTextTurn({
     turnId: textTurnId,
   })
 
-  const effectiveTextModelsForTurn = snapshot.textModelsForTurn
-  const multiText = effectiveTextModelsForTurn.length > 1
-  const textSlotCount = Math.min(4, effectiveTextModelsForTurn.length)
+  const effectiveTextModelsForTurn = [snapshot.textModelsForTurn[0] ?? selectedActModelSnapshot]
   let msgCountBeforeSend = 0
   let preparedFirstSendRuntime = false
-  let textHistoryBaseModelId: string | undefined
-
   const prepareTextRuntime = (runtime: ConversationRuntime) => {
-    textHistoryBaseModelId = prepareAskModelThreadsForTextTurn(
-      runtime,
-      effectiveTextModelsForTurn,
-    ).historyBaseModelId
     msgCountBeforeSend = runtime.askChats[0].messages.length
     const ui = runtime.ui
     runtime.ui = createConversationUiState({
       ...ui,
       exchangeModes: [...ui.exchangeModes, 'act'],
       exchangeModels: [...ui.exchangeModels, [...effectiveTextModelsForTurn]],
-      selectedTabPerExchange: [...ui.selectedTabPerExchange, 0],
       exchangeGenTypes: [...ui.exchangeGenTypes, 'text'],
       isFirstMessage: false,
     })
-    for (let slot = 0; slot < textSlotCount; slot += 1) {
-      runtime.askChats[slot]!.messages = [
-        ...runtime.askChats[slot]!.messages,
-        payload.userUIMessage as UIMessage,
-      ]
-    }
-    if (!multiText) {
-      runtime.actChat.messages = [
-        ...runtime.actChat.messages,
-        payload.userUIMessage as UIMessage,
-      ]
-    }
+    runtime.askChats[0].messages = [
+      ...runtime.askChats[0].messages,
+      payload.userUIMessage as UIMessage,
+    ]
+    runtime.actChat.messages = [
+      ...runtime.actChat.messages,
+      payload.userUIMessage as UIMessage,
+    ]
   }
 
   const existingChatId = snapshot.temporaryChatSnapshot
@@ -154,7 +139,6 @@ export function sendTextTurn({
     resetRuntimeState(previewRuntime, {
       selectedActModel: selectedActModelSnapshot,
       selectedModels: effectiveTextModelsForTurn,
-      askModelSelectionMode: effectiveTextModelsForTurn.length > 1 ? 'multiple' : 'single',
       activeChatTitle: snapshot.activeChatTitleSnapshot ?? null,
       isFirstMessage: false,
     })
@@ -183,8 +167,7 @@ export function sendTextTurn({
       clientId: conversationClientId,
       deferActivation: true,
     }).catch(() => {
-      setComposerNotice('Could not create chat. Your reply may still stream.')
-      window.setTimeout(() => setComposerNotice(null), 4000)
+      toast.error('Could not create chat. Your reply may still stream.')
     })
     markTtftClientMilestone('create_started', { conversationClientId })
   } else {
@@ -209,32 +192,23 @@ export function sendTextTurn({
   }
 
   if (!snapshot.temporaryChatSnapshot && !preparedFirstSendRuntime) {
-    textHistoryBaseModelId = prepareAskModelThreadsForTextTurn(
-      targetRuntime,
-      effectiveTextModelsForTurn,
-    ).historyBaseModelId
     msgCountBeforeSend = targetRuntime.askChats[0].messages.length
     updateRuntimeUiState(chatId, (prev) => ({
       ...prev,
       exchangeModes: [...prev.exchangeModes, 'act'],
       exchangeModels: [...prev.exchangeModels, [...effectiveTextModelsForTurn]],
-      selectedTabPerExchange: [...prev.selectedTabPerExchange, 0],
       exchangeGenTypes: [...prev.exchangeGenTypes, 'text'],
       isFirstMessage: false,
     }))
 
-    for (let slot = 0; slot < textSlotCount; slot += 1) {
-      targetRuntime.askChats[slot]!.messages = [
-        ...targetRuntime.askChats[slot]!.messages,
-        payload.userUIMessage as UIMessage,
-      ]
-    }
-    if (!multiText) {
-      targetRuntime.actChat.messages = [
-        ...targetRuntime.actChat.messages,
-        payload.userUIMessage as UIMessage,
-      ]
-    }
+    targetRuntime.askChats[0].messages = [
+      ...targetRuntime.askChats[0].messages,
+      payload.userUIMessage as UIMessage,
+    ]
+    targetRuntime.actChat.messages = [
+      ...targetRuntime.actChat.messages,
+      payload.userUIMessage as UIMessage,
+    ]
   }
 
   startSession(
@@ -246,6 +220,7 @@ export function sendTextTurn({
   setIsFirstMessage(false)
 
   const commonActBody = buildCommonActBody({
+    scope: workspaceChatsViewActive() ? 'workspace' : 'personal',
     chatId,
     pendingConversationClientId:
       chatId === PENDING_FIRST_CHAT_ID
@@ -260,7 +235,6 @@ export function sendTextTurn({
     indexedAttachments: payload.indexedAttachments,
     replyContext,
     userMeta: payload.userMeta,
-    textHistoryBaseModelId,
     selectedToolIdsSnapshot: snapshot.selectedToolIdsSnapshot,
     memoryEnabledSnapshot: snapshot.memoryEnabledSnapshot,
     reasoning,
@@ -281,7 +255,6 @@ export function sendTextTurn({
     chatId,
     targetRuntime,
     textModelsForTurn: effectiveTextModelsForTurn,
-    textSlotCount,
     selectedActModel: selectedActModelSnapshot,
     turnId: textTurnId,
     partsForModel: payload.partsForModel,
@@ -291,7 +264,7 @@ export function sendTextTurn({
     completeSession: completeSessionForStream,
     loadChats: snapshot.temporaryChatSnapshot ? (() => {}) : loadChats,
     loadSubscription: refreshAfterActTextTurn,
-    onError: (error, fallbackMessage) => reportTextStreamError(setComposerNotice, error, fallbackMessage),
-    logPrefix: multiText ? 'Act multi' : 'Act',
+    onError: (error, fallbackMessage) => reportTextStreamError(error, fallbackMessage),
+    logPrefix: 'Act',
   })
 }

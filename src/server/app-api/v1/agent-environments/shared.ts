@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
-import { ZodError } from 'zod'
+import { ZodError } from 'zod/v3'
 import { ConnectedAgentControlPlaneError } from '@/server/agents'
-import { logger } from '@/server/observability/logger'
+import { reportAgentFailure } from '@/server/observability/agent-failure'
 
 export function agentEnvironmentErrorResponse(error: unknown) {
   if (error instanceof ConnectedAgentControlPlaneError) {
@@ -16,10 +16,10 @@ export function agentEnvironmentErrorResponse(error: unknown) {
       headers: { 'Cache-Control': 'no-store' },
     })
   }
-  logger.error('[agent-environments] request failed', error)
+  const diagnosticId = reportAgentFailure(error)
   return NextResponse.json({ error: 'Agent environment request failed', code: 'internal_error' }, {
     status: 500,
-    headers: { 'Cache-Control': 'no-store' },
+    headers: { 'Cache-Control': 'no-store', 'x-overlay-diagnostic-id': diagnosticId },
   })
 }
 

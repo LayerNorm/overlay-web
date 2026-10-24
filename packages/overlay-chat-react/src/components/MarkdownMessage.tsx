@@ -1,25 +1,23 @@
 import 'katex/dist/katex.min.css'
 import { Orb } from '@overlay/ui'
-import { type ReactNode, memo, useMemo } from 'react'
+import { type ReactNode, memo, useMemo, useState } from 'react'
 import { AtSign, BookOpen, Bot, FileText, Hash, Plug, Server, Sparkles } from 'lucide-react'
-import ReactMarkdown from 'react-markdown'
+import { Streamdown } from 'streamdown'
+import type { Pluggable } from 'unified'
 import type { SourceCitationMap } from '../lib/source-citations'
 import { knowledgeChipLabel, knowledgeSourcesFromCitations } from '../lib/knowledge-sources'
 import { webSourceDisplayKey, type WebSourceItem } from '../lib/web-sources'
-import { shimIncompleteMarkdown } from '../lib/shim-incomplete-markdown'
-import type { ChatStreamingMode } from '../context/chat-settings'
 import { WebSourceTooltip } from './WebSourceTooltip'
 import type {
   AttachmentPreview,
   AttachmentPreviewOpenOptions,
 } from './AttachmentPreviewShell'
-import { appendStreamMarker, normalizeGeneratedMarkdown } from './markdown/normalization'
-import { markdownRehypePlugins, markdownRehypePluginsStreaming, markdownRemarkPlugins } from './markdown/plugins'
+import { normalizeGeneratedMarkdown } from './markdown/normalization'
+import { streamdownMath, streamdownRehypePlugins, streamdownRemarkPlugins } from './markdown/plugins'
 import { createBaseMdComponents, extractLinkText } from './markdown/renderers'
-import { splitStreamingMarkdown, useSmoothStreamedText } from './markdown/streaming'
 import { recordRender, timeSync } from '../lib/perf-debug'
 import {
-  createMentionRemarkPlugin,
+  remarkOverlayMentions,
   isMentionHref,
   mentionChipClass,
   type ChatMessageMention,
@@ -44,17 +42,8 @@ interface Props {
   mentions?: ChatMessageMention[]
   /** Optional avatar renderer for mention chips (e.g. agent creatures). Falls back to the type icon. */
   renderMentionAvatar?: (mention: ChatMessageMention) => ReactNode
-  /**
-   * 'token' (default): render the full normalized text through one ReactMarkdown pass
-   *   every update, with a shim that closes open structures so partial markdown still
-   *   renders styled. Shows a pulsing Overlay logo at the tail of the most recent token
-   *   (or standalone before any tokens arrive); each new block element fades in as it
-   *   enters the DOM.
-   * 'chunk': split into completed paragraph blocks + a separate tail block, with the
-   *   pulsing Overlay logo as the trailing indicator. Steadier but content appears
-   *   in jumps.
-  */
-  streamingMode?: ChatStreamingMode
+  /** Host-authorized saved paths can open their canonical Files records. */
+  resolveFileHref?: (href: string) => string | undefined
   onOpenAttachmentPreview?: (
     preview: AttachmentPreview,
     options?: AttachmentPreviewOpenOptions,
@@ -67,7 +56,7 @@ function MarkdownMessageImpl({
   sourceCitations,
   webSources,
   suppressTypingIndicator = false,
-  streamingMode = 'token',
+  resolveFileHref,
   appBaseUrl = null,
   mentions,
   renderMentionAvatar,
@@ -82,21 +71,27 @@ function MarkdownMessageImpl({
         normalizeGeneratedMarkdown(text, {
           sourceCitations,
           appBaseUrl,
-          linkifyCitations: !isStreaming && hasCitationMap,
+          linkifyCitations: hasCitationMap,
           webSources,
           // Linkify web citations even while streaming so inline chips render with the text,
           // instead of appearing only after completion.
           linkifyWebCitations: hasWebSources,
         }),
       ),
-    [text, sourceCitations, isStreaming, hasCitationMap, webSources, hasWebSources, appBaseUrl],
+    [text, sourceCitations, hasCitationMap, webSources, hasWebSources, appBaseUrl],
   )
 
   // Ordered the same way the chip hrefs are numbered, so `#overlay-knowcite-2`
   // is the second citation in the map.
+  // Parents pass new citation/source arrays on every render. Keeping the
+  // markdown components stable lets Streamdown reuse finished blocks (and their KaTeX)
+  // while a reply streams instead of re-rendering the whole message per token.
+  const stableSourceCitations = useValueStable(sourceCitations, sameCitations)
+  const stableWebSources = useValueStable(webSources, sameWebSources)
+
   const knowledgeSources = useMemo(
-    () => knowledgeSourcesFromCitations(sourceCitations, appBaseUrl),
-    [sourceCitations, appBaseUrl],
+    () => knowledgeSourcesFromCitations(stableSourceCitations, appBaseUrl),
+    [stableSourceCitations, appBaseUrl],
   )
 
   const mdRenderComponents = useMemo(
@@ -124,9 +119,14 @@ function MarkdownMessageImpl({
 
       return {
         ...baseComponents,
+        // Keep semantic emphasis; Streamdown's defaults render styled spans.
+        strong: ({ children }: { children?: ReactNode }) => <strong>{children}</strong>,
+        em: ({ children }: { children?: ReactNode }) => <em>{children}</em>,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         a(props: any) {
           const href = props.href
+          const savedHref = typeof href === 'string' ? resolveFileHref?.(href) : undefined
+          if (savedHref) return <a href={savedHref}>{props.children}</a>
           const linkText = extractLinkText(props.children as ReactNode).trim()
 
           if (isMentionHref(href)) {
@@ -148,7 +148,7 @@ function MarkdownMessageImpl({
           if (typeof href === 'string' && href.startsWith('#overlay-knowcite-')) {
             const n = parseInt(href.slice('#overlay-knowcite-'.length), 10)
             const source = knowledgeSources[n - 1]
-            const citation = sourceCitations?.[String(n)]
+            const citation = stableSourceCitations?.[String(n)]
             if (source?.internalHref) {
               const label = linkText || (citation ? knowledgeChipLabel(citation) : source.title)
               return renderInternalChip(source.internalHref, label, [source])
@@ -162,8 +162,8 @@ function MarkdownMessageImpl({
             const indices = raw
               .split('-')
               .map((s) => parseInt(s, 10))
-              .filter((n) => Number.isFinite(n) && n >= 1 && n <= (webSources?.length ?? 0))
-            const picked = indices.map((i) => webSources![i - 1]!).filter(Boolean)
+              .filter((n) => Number.isFinite(n) && n >= 1 && n <= (stableWebSources?.length ?? 0))
+            const picked = indices.map((i) => stableWebSources![i - 1]!).filter(Boolean)
             if (picked.length > 0) {
               // Multi-chip opens the first source on click; tooltip surfaces the rest.
               return renderChip(picked[0]!.url, linkText || webSourceDisplayKey(picked[0]!.url), picked)
@@ -175,7 +175,7 @@ function MarkdownMessageImpl({
           if (typeof href === 'string' && href.startsWith('#overlay-webcite-')) {
             const raw = href.slice('#overlay-webcite-'.length)
             const n = parseInt(raw, 10)
-            const src = webSources?.[n - 1]
+            const src = stableWebSources?.[n - 1]
             if (src) {
               return renderChip(src.url, linkText || webSourceDisplayKey(src.url), [src])
             }
@@ -189,8 +189,8 @@ function MarkdownMessageImpl({
             /^https?:\/\//i.test(href) &&
             !/^connect\s+/i.test(linkText)
           ) {
-            // Prefer metadata from `webSources` when this URL was one of the collected sources.
-            const matched = webSources?.find((s) => s.url === href)
+            // Prefer metadata from `stableWebSources` when this URL was one of the collected sources.
+            const matched = stableWebSources?.find((s) => s.url === href)
             const fallback: WebSourceItem = matched ?? {
               url: href,
               title: '',
@@ -231,109 +231,35 @@ function MarkdownMessageImpl({
         },
       }
     },
-    [knowledgeSources, sourceCitations, webSources, appBaseUrl, mentions, renderMentionAvatar, onOpenAttachmentPreview],
+    [knowledgeSources, stableSourceCitations, stableWebSources, appBaseUrl, mentions, renderMentionAvatar, onOpenAttachmentPreview, resolveFileHref],
   )
   const activeRemarkPlugins = useMemo(
-    () => [...markdownRemarkPlugins, createMentionRemarkPlugin(mentions)],
+    (): Pluggable[] => [...streamdownRemarkPlugins, [remarkOverlayMentions, { mentions: mentions ?? [] }]],
     [mentions],
   )
-  // Smooth pacer: while streaming in token mode, reveal the normalized text one
-  // character at a time at a steady rate. When not streaming (or in chunk mode),
-  // this returns `normalizedDisplay` immediately so historical renders are untouched.
-  const pacedDisplay = useSmoothStreamedText(
-    normalizedDisplay,
-    isStreaming,
-    streamingMode === 'token',
-  )
-
-  // Token mode: render the entire shimmed document in one pass so React can reconcile
-  // stable nodes and only the tail paragraph/row/code-line actually re-renders.
-  // Append the streaming marker inline so the Overlay logo sits at the right side
-  // of the most recent token (and pulses while generation continues).
-  const tokenDisplay = useMemo(() => {
-    if (!(isStreaming && streamingMode === 'token')) return normalizedDisplay
-    const shimmed = shimIncompleteMarkdown(pacedDisplay)
-    return appendStreamMarker(shimmed)
-  }, [normalizedDisplay, pacedDisplay, isStreaming, streamingMode])
-
-  // Activate the per-character wrap plugin only while streaming in token mode.
-  // Outside streaming, the plain rehype pipeline runs so the final DOM is clean
-  // plain text (no span-per-character overhead in chat history).
-  const activeRehypePlugins = useMemo(() => {
-    if (isStreaming && streamingMode === 'token') return markdownRehypePluginsStreaming
-    return markdownRehypePlugins
-  }, [isStreaming, streamingMode])
-
-  // Chunk mode only: paragraph split + trailing pulsing marker. Token mode always
-  // uses the single-pass render below (both during and after streaming) so React
-  // reconciles the existing DOM when streaming ends instead of unmounting the whole
-  // subtree and re-animating every block — which previously caused a one-shot
-  // "whole answer blinks" flash at the moment the response finished.
-  const { completedBlocks, streamTail } = useMemo(
-    () => splitStreamingMarkdown(normalizedDisplay),
-    [normalizedDisplay],
-  )
-  const trailingBlock = !isStreaming && streamTail.trim() ? streamTail.trim() : ''
-  const inChunkMode = streamingMode === 'chunk'
-  const showInlineTypingDots = isStreaming && !suppressTypingIndicator && inChunkMode
+  const showInlineMarker = isStreaming && !suppressTypingIndicator
 
   if (!normalizedDisplay.trim() && !isStreaming) {
     return null
   }
 
-  if (!inChunkMode) {
-    // Token mode — single ReactMarkdown pass over the (optionally shimmed + marker)
-    // text. While streaming, the `markdown-content--streaming` class plays a gentle
-    // opacity/translate fade-in each time a new block (paragraph, list item, table
-    // row, heading, pre, blockquote) enters the DOM; within a given block, continued
-    // token updates just extend the existing text so the pulsing
-    // `.overlay-stream-marker` at the tail carries the "still generating" cue. When
-    // no tokens have arrived yet, the marker stands alone and scales up via CSS to
-    // act as a large "thinking" indicator. When streaming ends, the class is dropped
-    // and the marker disappears, but the underlying ReactMarkdown tree stays mounted
-    // so the transition is seamless (no remount, no re-animation).
-    return (
-      <div className={`markdown-content${isStreaming ? ' markdown-content--streaming' : ''}`}>
-        <ReactMarkdown
-          remarkPlugins={activeRemarkPlugins}
-          rehypePlugins={activeRehypePlugins}
-          components={mdRenderComponents}
-        >
-          {tokenDisplay}
-        </ReactMarkdown>
-      </div>
-    )
-  }
-
+  // Keep Streamdown's block tree through completion; switching to static mode
+  // replaces the rendered blocks when the final chunk settles.
   return (
-    <div className="markdown-content">
-      {completedBlocks.map((block, index) => (
-        // Parsed blocks have no id; index is the stable identity for append-only output.
-        // react-doctor-disable-next-line react-doctor/no-array-index-as-key
-        <div key={`md-block-${index}`} className="md-block-appear">
-          <ReactMarkdown
-            remarkPlugins={activeRemarkPlugins}
-            rehypePlugins={markdownRehypePlugins}
-            components={mdRenderComponents}
-          >
-            {block}
-          </ReactMarkdown>
-        </div>
-      ))}
-
-      {trailingBlock ? (
-        <div key={`md-block-${completedBlocks.length}`} className="md-block-appear">
-          <ReactMarkdown
-            remarkPlugins={activeRemarkPlugins}
-            rehypePlugins={markdownRehypePlugins}
-            components={mdRenderComponents}
-          >
-            {trailingBlock}
-          </ReactMarkdown>
-        </div>
-      ) : null}
-
-      {showInlineTypingDots ? (
+    <div className="typeset markdown-content">
+      <Streamdown
+        mode="streaming"
+        isAnimating={isStreaming}
+        parseIncompleteMarkdown
+        controls={false}
+        remarkPlugins={activeRemarkPlugins}
+        rehypePlugins={streamdownRehypePlugins}
+        plugins={STREAMDOWN_PLUGINS}
+        components={mdRenderComponents}
+      >
+        {normalizedDisplay}
+      </Streamdown>
+      {showInlineMarker ? (
         <span className="overlay-stream-marker" aria-hidden>
           <Orb variant="metal" size={14} animated={false} label="" />
         </span>
@@ -341,6 +267,8 @@ function MarkdownMessageImpl({
     </div>
   )
 }
+
+const STREAMDOWN_PLUGINS = { math: streamdownMath }
 
 function sameWebSources(a?: WebSourceItem[], b?: WebSourceItem[]): boolean {
   if (a === b) return true
@@ -371,11 +299,18 @@ function sameCitations(a?: SourceCitationMap, b?: SourceCitationMap): boolean {
  * intentionally ignored since its behavior is stable. While a message is actively
  * streaming, `text` changes each (throttled) update so it still re-renders normally.
  */
+function useValueStable<T>(value: T, same: (a: T, b: T) => boolean): T {
+  const [stable, setStable] = useState(value)
+  const isSame = stable === value || same(stable, value)
+  if (!isSame) setStable(value)
+  return isSame ? stable : value
+}
+
 export const MarkdownMessage = memo(MarkdownMessageImpl, (prev, next) => {
   return (
     prev.text === next.text &&
     prev.isStreaming === next.isStreaming &&
-    prev.streamingMode === next.streamingMode &&
+    prev.resolveFileHref === next.resolveFileHref &&
     prev.suppressTypingIndicator === next.suppressTypingIndicator &&
     prev.appBaseUrl === next.appBaseUrl &&
     prev.mentions === next.mentions &&

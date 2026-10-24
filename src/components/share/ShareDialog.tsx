@@ -1,5 +1,5 @@
 'use client'
-
+import { unstyledButton, unstyledInput } from '@overlay/ui/control-reset'
 import React, { useEffect, useMemo, useState } from 'react'
 import {
   Bot,
@@ -31,7 +31,7 @@ import {
   SHARE_RESOURCE_LABELS,
 } from '@/shared/share/share-access-policy'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
-import { Select } from '@overlay/ui/primitives'
+import { Select, Button, Input } from '@overlay/ui/primitives'
 
 /** A grant or revocation waiting on explicit confirmation of its disclosure. */
 type PendingShareChange =
@@ -243,9 +243,9 @@ export function ShareDialog({
             </h2>
             <p className="mt-1 text-xs text-(--muted)">People, agents, teams, and rooms inherit access dynamically.</p>
           </div>
-          <button type="button" onClick={onClose} aria-label="Close" className="rounded-md p-1.5 text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)">
+          <Button variant="ghost" type="button" onClick={onClose} aria-label="Close" className={unstyledButton("rounded-md p-1.5 text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)")}>
             <X size={17} />
-          </button>
+          </Button>
         </header>
 
         <ShareDialogContent
@@ -452,14 +452,13 @@ function ShareTargetForm({
         >
           {roleOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
         </Select>
-        <button
+        <Button variant="primary" size="md"
           type="button"
           disabled={!target || busy}
           onClick={onRequestGrant}
-          className="h-10 rounded-lg bg-(--foreground) px-4 text-sm font-medium text-(--background) disabled:opacity-40"
         >
           Add
-        </button>
+        </Button>
       </div>
       <p className="mt-2 text-[11px] text-(--muted)">
         {roleOptions.find((option) => option.value === role)?.description}
@@ -519,22 +518,20 @@ function PendingShareConfirmation({
         </p>
       ) : null}
       <div className="mt-4 flex gap-2">
-        <button
+        <Button variant="primary" size="sm"
           type="button"
           disabled={busy}
           onClick={onConfirm}
-          className="h-9 rounded-lg bg-(--foreground) px-3 text-xs font-medium text-(--background) disabled:opacity-40"
         >
           {pending.kind === 'grant' ? 'Share with everyone listed' : 'Remove access'}
-        </button>
-        <button
+        </Button>
+        <Button variant="outline" size="sm"
           type="button"
           disabled={busy}
           onClick={onCancel}
-          className="h-9 rounded-lg border border-(--border) px-3 text-xs font-medium text-(--foreground) hover:bg-(--surface-subtle) disabled:opacity-40"
         >
           Cancel
-        </button>
+        </Button>
       </div>
     </section>
   )
@@ -589,15 +586,15 @@ function ShareAccessList({
               >
                 {roleOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
               </Select>
-              <button
+              <Button variant="ghost"
                 type="button"
                 disabled={busy}
                 onClick={() => onRequestRevoke(grant)}
                 aria-label={`Remove access for ${entry?.name ?? targetLabel(grant.targetType)}`}
-                className="rounded-md p-1.5 text-(--muted) hover:bg-(--surface-subtle) hover:text-red-500"
+                className={unstyledButton("rounded-md p-1.5 text-(--muted) hover:bg-(--surface-subtle) hover:text-red-500")}
               >
                 <Trash2 size={14} />
-              </button>
+              </Button>
             </div>
           )
         })}
@@ -621,22 +618,21 @@ function ShareInviteSection({
     <section className="mt-5 rounded-xl border border-(--border) p-4">
       <div className="flex items-center gap-2 text-sm font-medium text-(--foreground)"><MailPlus size={15} /> Invite someone to the workspace</div>
       <div className="mt-3 flex gap-2">
-        <input
+        <Input
           type="email"
           value={inviteEmail}
           aria-label="Guest email"
           onChange={(event) => onInviteEmailChange(event.target.value)}
           placeholder="name@company.com"
-          className="h-9 min-w-0 flex-1 rounded-lg border border-(--border) bg-(--background) px-3 text-sm"
+          className={unstyledInput("h-9 min-w-0 flex-1 rounded-lg border border-(--border) bg-(--background) px-3 text-sm")}
         />
-        <button
+        <Button variant="outline" size="sm"
           type="button"
           disabled={busy || !inviteEmail.trim()}
           onClick={onInvite}
-          className="rounded-lg border border-(--border) px-3 text-xs font-medium hover:bg-(--surface-subtle) disabled:opacity-40"
         >
           Invite as guest
-        </button>
+        </Button>
       </div>
     </section>
   )
@@ -678,9 +674,9 @@ function GeneralAccessSection({
           </p>
         </div>
         {publicLinksEnabled && publicUrl ? (
-          <button type="button" onClick={onCopyLink} className="inline-flex h-8 items-center gap-1.5 rounded-md border border-(--border) px-2.5 text-xs hover:bg-(--surface-subtle)">
+          <Button variant="outline" size="sm" type="button" onClick={onCopyLink}>
             {copied ? <Check size={13} /> : <Copy size={13} />} {copied ? 'Copied' : 'Copy link'}
-          </button>
+          </Button>
         ) : null}
       </div>
     </section>

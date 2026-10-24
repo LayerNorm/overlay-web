@@ -1,6 +1,7 @@
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { unwrapPaginatedData } from '@/shared/api/pagination'
 import { trackChatOpenLatency } from '@/shared/observability/client-metrics'
+import { toast } from '@overlay/ui/primitives'
 import type { ChatMessageMetadata, ChatOutput, ConversationRuntime } from '../chat-interface/types'
 
 export type RawConversationMessage = {
@@ -163,7 +164,6 @@ export interface StartActTextStreamParams {
   chatId: string
   targetRuntime: ConversationRuntime
   textModelsForTurn: string[]
-  textSlotCount: number
   selectedActModel: string
   turnId: string
   partsForModel: Array<{ type: string; text?: string; url?: string; mediaType?: string; fileName?: string }>
@@ -198,40 +198,7 @@ function failTextTurn(
 }
 
 export function startActTextStream(params: StartActTextStreamParams) {
-  const modelsToSend = params.textModelsForTurn.slice(0, params.textSlotCount)
-  const multiText = modelsToSend.length > 1
-
   /* eslint-disable @typescript-eslint/no-explicit-any -- AI SDK UIMessage payload */
-  if (multiText) {
-    const sends = modelsToSend.map((modelId, slotIdx) =>
-      params.targetRuntime.askChats[slotIdx]!.sendMessage(
-        {
-          role: 'user',
-          parts: params.partsForModel as any,
-          messageId: params.turnId,
-          ...(params.userMetadata ? { metadata: params.userMetadata } : {}),
-        } as any,
-        {
-          body: {
-            ...params.commonBody,
-            modelId,
-            multiModelSlotIndex: slotIdx,
-            multiModelTotal: params.textSlotCount,
-          },
-        },
-      ),
-    )
-    void Promise.all(sends)
-      .then(() => {
-        params.targetRuntime.actChat.messages = [...params.targetRuntime.askChats[0]!.messages]
-        finishTextTurn(params)
-      })
-      .catch((error) => {
-        failTextTurn(params, error, 'Could not complete Act request. Try again.')
-      })
-    return
-  }
-
   void params.targetRuntime.actChat
     .sendMessage(
       {
@@ -257,43 +224,7 @@ export function startActTextStream(params: StartActTextStreamParams) {
 }
 
 export function startActRetryStream(params: StartActTextStreamParams) {
-  const retrySlots = params.textSlotCount
-  const modelsToSend = params.textModelsForTurn.slice(0, retrySlots)
-  const multiRetry = modelsToSend.length > 1
-
   /* eslint-disable @typescript-eslint/no-explicit-any -- AI SDK UIMessage payload */
-  if (multiRetry) {
-    const sends = modelsToSend.map((modelId, slotIdx) =>
-      params.targetRuntime.askChats[slotIdx]!.sendMessage(
-        {
-          role: 'user',
-          parts: params.partsForModel as any,
-          messageId: params.turnId,
-          ...(params.userMetadata && Object.keys(params.userMetadata).length > 0
-            ? { metadata: params.userMetadata }
-            : {}),
-        } as any,
-        {
-          body: {
-            ...params.commonBody,
-            modelId,
-            multiModelSlotIndex: slotIdx,
-            multiModelTotal: retrySlots,
-          },
-        },
-      ),
-    )
-    void Promise.all(sends)
-      .then(() => {
-        params.targetRuntime.actChat.messages = [...params.targetRuntime.askChats[0]!.messages]
-        finishTextTurn(params)
-      })
-      .catch((error) => {
-        failTextTurn(params, error, 'Could not retry. Try again.')
-      })
-    return
-  }
-
   void params.targetRuntime.actChat
     .sendMessage(
       {
@@ -320,11 +251,6 @@ export function startActRetryStream(params: StartActTextStreamParams) {
   /* eslint-enable @typescript-eslint/no-explicit-any */
 }
 
-export function reportTextStreamError(
-  setComposerNotice: (notice: string | null | ((current: string | null) => string | null)) => void,
-  error: unknown,
-  fallbackMessage: string,
-) {
-  setComposerNotice(error instanceof Error ? error.message : fallbackMessage)
-  window.setTimeout(() => setComposerNotice(null), 8000)
+export function reportTextStreamError(error: unknown, fallbackMessage: string) {
+  toast.error(error instanceof Error ? error.message : fallbackMessage)
 }

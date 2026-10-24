@@ -4,6 +4,7 @@ import type { MutationCtx } from '../_generated/server'
 import { mutation, query } from '../_generated/server'
 import type { Doc } from '../_generated/dataModel'
 import { requireServerSecret } from '../lib/auth'
+import { claimWorkspaceHandle } from '../lib/workspaceHandles'
 
 export const auditBatchByServer = query({
   args: {
@@ -156,11 +157,20 @@ async function ensureLegacyPersonalScope(ctx: MutationCtx, userId: string) {
   const token = stableToken(userId)
   const workspaceId = `personal-${token}`
   const principalId = `human-${token}`
+  const slug = `personal-${crypto.randomUUID().replace(/-/g, '').slice(0, 16)}`
+  await claimWorkspaceHandle(ctx, {
+    handle: slug,
+    workspaceId,
+    kind: 'canonical',
+    visibility: 'public',
+    now,
+    allowReserved: true,
+  })
   await ctx.db.insert('workspaces', {
     workspaceId,
     kind: 'personal',
     name: 'Personal',
-    slug: `personal-${token}`,
+    slug,
     status: 'active',
     createdByPrincipalId: principalId,
     personalOwnerUserId: userId,

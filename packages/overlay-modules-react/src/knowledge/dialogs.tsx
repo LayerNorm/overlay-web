@@ -1,5 +1,6 @@
 'use client'
-
+import { Button, Input, Textarea } from '@overlay/ui/primitives'
+import { unstyledButton, unstyledInput, unstyledTextarea } from '@overlay/ui/control-reset'
 import type { MemoryRow } from '@overlay/app-core'
 import { IMPORT_MEMORY_PROMPT } from '@overlay/app-core'
 import { Dialog, DialogContent } from '@overlay/ui'
@@ -77,13 +78,13 @@ export function KnowledgeEmptyState({
       <Icon size={32} strokeWidth={1} className="opacity-40" />
       <p className="text-sm">{message}</p>
       {actionLabel ? (
-        <button
+        <Button variant="ghost"
           type="button"
           onClick={onAction}
-          className="text-xs text-(--foreground) underline underline-offset-2"
+          className={unstyledButton("text-xs text-(--foreground) underline underline-offset-2")}
         >
           {actionLabel}
-        </button>
+        </Button>
       ) : null}
     </div>
   )
@@ -92,14 +93,12 @@ export function KnowledgeEmptyState({
 export function AddMemoryDialog({
   value,
   saving,
-  error,
   onChange,
   onClose,
   onSave,
 }: {
   value: string
   saving: boolean
-  error?: string | null
   onChange: (value: string) => void
   onClose: () => void
   onSave: () => void
@@ -112,15 +111,15 @@ export function AddMemoryDialog({
     >
         <div className="mb-4 flex items-center justify-between">
           <h3 id="add-memory-dialog-title" className="text-sm font-medium text-(--foreground)">Add memory</h3>
-          <button
+          <Button variant="ghost" type="submit"
             aria-label="Close"
             onClick={onClose}
-            className="rounded-sm p-1 text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
+            className={unstyledButton("rounded-sm p-1 text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)")}
           >
             <X size={14} />
-          </button>
+          </Button>
         </div>
-        <textarea
+        <Textarea
           aria-label="Memory content"
           value={value}
           onChange={(event) => onChange(event.target.value)}
@@ -128,27 +127,22 @@ export function AddMemoryDialog({
           data-autofocus
           rows={5}
           onKeyDown={(event) => { if (event.key === 'Enter' && event.metaKey) onSave() }}
-          className="w-full resize-none rounded-lg border border-(--border) bg-(--surface-elevated) px-3 py-2.5 text-sm text-(--foreground) outline-hidden transition-colors placeholder:text-(--muted-light) focus:border-(--muted)"
+          className={unstyledTextarea("w-full resize-none rounded-lg border border-(--border) bg-(--surface-elevated) px-3 py-2.5 text-sm text-(--foreground) outline-hidden transition-colors placeholder:text-(--muted-light) focus:border-(--muted)")}
         />
         <p className="mt-2 text-[11px] leading-snug text-(--muted)">
           Long memories stay as one saved item; the list shows short previews so you can scan them quickly.
         </p>
-        {error ? (
-          <p className='mt-3 text-xs text-red-400' role='alert'>
-            {error}
-          </p>
-        ) : null}
         <div className="mt-3 flex justify-end gap-2">
-          <button onClick={onClose} className={DIALOG_ACTION_BUTTON_CLASS}>
+          <Button variant="ghost" type="submit" onClick={onClose} className={unstyledButton(DIALOG_ACTION_BUTTON_CLASS)}>
             Cancel
-          </button>
-          <button
+          </Button>
+          <Button variant="ghost" type="submit"
             onClick={onSave}
             disabled={!value.trim() || saving}
-            className={`${DIALOG_ACTION_BUTTON_CLASS} disabled:opacity-40`}
+            className={unstyledButton(`${DIALOG_ACTION_BUTTON_CLASS} disabled:opacity-40`)}
           >
             {saving ? 'Saving...' : 'Save'}
-          </button>
+          </Button>
         </div>
     </DialogShell>
   )
@@ -157,7 +151,6 @@ export function AddMemoryDialog({
 export function ImportMemoryDialog({
   value,
   saving,
-  error,
   promptCopied,
   onChange,
   onClose,
@@ -166,7 +159,6 @@ export function ImportMemoryDialog({
 }: {
   value: string
   saving: boolean
-  error?: string | null
   promptCopied: boolean
   onChange: (value: string) => void
   onClose: () => void
@@ -181,13 +173,13 @@ export function ImportMemoryDialog({
     >
         <div className="mb-6 flex items-center justify-between">
           <h3 id="import-memory-dialog-title" className="text-sm font-medium text-(--foreground)">Import memory</h3>
-          <button
+          <Button variant="ghost" type="submit"
             aria-label="Close"
             onClick={onClose}
-            className="rounded-sm p-1 text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
+            className={unstyledButton("rounded-sm p-1 text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)")}
           >
             <X size={14} />
-          </button>
+          </Button>
         </div>
         <div className="mb-5 flex gap-3">
           <span className='flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-(--foreground) text-[10px] font-semibold text-(--background)'>
@@ -201,14 +193,14 @@ export function ImportMemoryDialog({
               <p className='text-xs leading-relaxed text-(--foreground)'>
                 {IMPORT_MEMORY_PROMPT}
               </p>
-              <button
+              <Button variant="ghost"
                 type="button"
                 onClick={onCopyPrompt}
-                className="absolute bottom-2 right-2 flex items-center gap-1.5 rounded-md border border-(--border) bg-(--surface-elevated) px-2 py-1 text-[11px] text-(--foreground) transition-colors hover:bg-(--surface-subtle)"
+                className={unstyledButton("absolute bottom-2 right-2 flex items-center gap-1.5 rounded-md border border-(--border) bg-(--surface-elevated) px-2 py-1 text-[11px] text-(--foreground) transition-colors hover:bg-(--surface-subtle)")}
               >
                 {promptCopied ? <Check size={11} /> : <Copy size={11} />}
                 {promptCopied ? 'Copied!' : 'Copy'}
-              </button>
+              </Button>
             </div>
           </div>
         </div>
@@ -218,32 +210,27 @@ export function ImportMemoryDialog({
           </span>
           <div className="min-w-0 flex-1">
             <p className="mb-2 text-xs font-medium text-(--foreground)" id="import-memory-paste-label">Paste results below to add to your memory</p>
-            <textarea
+            <Textarea
               aria-labelledby="import-memory-paste-label"
               value={value}
               onChange={(event) => onChange(event.target.value)}
               placeholder="Paste your memory details here"
               rows={6}
-              className="w-full resize-none rounded-lg border border-(--border) bg-(--surface-muted) px-3 py-2.5 text-xs text-(--foreground) outline-hidden transition-colors placeholder:text-(--muted-light) focus:border-(--muted)"
+              className={unstyledTextarea("w-full resize-none rounded-lg border border-(--border) bg-(--surface-muted) px-3 py-2.5 text-xs text-(--foreground) outline-hidden transition-colors placeholder:text-(--muted-light) focus:border-(--muted)")}
             />
           </div>
         </div>
-        {error ? (
-          <p className='mb-3 text-xs text-red-400' role='alert'>
-            {error}
-          </p>
-        ) : null}
         <div className="flex justify-end gap-2">
-          <button onClick={onClose} className={DIALOG_ACTION_BUTTON_CLASS}>
+          <Button variant="ghost" type="submit" onClick={onClose} className={unstyledButton(DIALOG_ACTION_BUTTON_CLASS)}>
             Cancel
-          </button>
-          <button
+          </Button>
+          <Button variant="ghost" type="submit"
             onClick={onSave}
             disabled={!value.trim() || saving}
-            className={`${DIALOG_ACTION_BUTTON_CLASS} disabled:opacity-40`}
+            className={unstyledButton(`${DIALOG_ACTION_BUTTON_CLASS} disabled:opacity-40`)}
           >
             {saving ? 'Saving…' : 'Add to memory'}
-          </button>
+          </Button>
         </div>
     </DialogShell>
   )
@@ -274,30 +261,30 @@ export function CreateKnowledgeItemDialog({
           <h3 id="new-file-dialog-title" className="text-sm font-medium text-(--foreground)">
             New {type === 'folder' ? 'folder' : 'file'}
           </h3>
-          <button aria-label="Close" onClick={onClose} className="rounded-sm p-1 text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)">
+          <Button variant="ghost" type="submit" aria-label="Close" onClick={onClose} className={unstyledButton("rounded-sm p-1 text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)")}>
             <X size={14} />
-          </button>
+          </Button>
         </div>
-        <input
+        <Input
           aria-label={type === 'folder' ? 'Folder name' : 'File name'}
           value={value}
           onChange={(event) => onChange(event.target.value)}
           placeholder={type === 'folder' ? 'Folder name' : 'filename.txt'}
           data-autofocus
           onKeyDown={(event) => { if (event.key === 'Enter') onCreate() }}
-          className="w-full rounded-lg border border-(--border) bg-(--surface-elevated) px-3 py-2.5 text-sm text-(--foreground) outline-hidden transition-colors placeholder:text-(--muted-light) focus:border-(--muted)"
+          className={unstyledInput("w-full rounded-lg border border-(--border) bg-(--surface-elevated) px-3 py-2.5 text-sm text-(--foreground) outline-hidden transition-colors placeholder:text-(--muted-light) focus:border-(--muted)")}
         />
         <div className="mt-3 flex justify-end gap-2">
-          <button onClick={onClose} className={DIALOG_ACTION_BUTTON_CLASS}>
+          <Button variant="ghost" type="submit" onClick={onClose} className={unstyledButton(DIALOG_ACTION_BUTTON_CLASS)}>
             Cancel
-          </button>
-          <button
+          </Button>
+          <Button variant="ghost" type="submit"
             onClick={onCreate}
             disabled={!value.trim() || creating}
-            className={`${DIALOG_ACTION_BUTTON_CLASS} disabled:opacity-40`}
+            className={unstyledButton(`${DIALOG_ACTION_BUTTON_CLASS} disabled:opacity-40`)}
           >
             {creating ? 'Creating...' : 'Create'}
-          </button>
+          </Button>
         </div>
     </DialogShell>
   )
@@ -333,22 +320,22 @@ export function MemoryDetailDialog({
                 })
               }
             </span>
-            <button
+            <Button variant="ghost"
               type="button"
               aria-label="Delete memory"
               onClick={() => onDelete(memory.memoryId)}
-              className="rounded-md p-1.5 text-(--muted-light) transition-colors hover:bg-red-500/10 hover:text-red-400"
+              className={unstyledButton("rounded-md p-1.5 text-(--muted-light) transition-colors hover:bg-red-500/10 hover:text-red-400")}
             >
               <Trash2 size={13} />
-            </button>
-            <button
+            </Button>
+            <Button variant="ghost"
               type="button"
               aria-label="Close"
               onClick={onClose}
-              className="rounded-md p-1.5 text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
+              className={unstyledButton("rounded-md p-1.5 text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)")}
             >
               <X size={14} />
-            </button>
+            </Button>
           </div>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">

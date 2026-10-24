@@ -6,6 +6,127 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Move agent reconnect controls into the message hover toolbar: Stop cancels connection attempts, Retry appears only after recoverable failure, and inline waiting text and buttons are removed.
 
+
+- Overlay Free no longer cuts off longer OpenRouter Free replies with overlay_free_stream_prelude_too_large.
+- Let workspace-visible and personally owned agents take Personal tasks, keep creator-only agents private from other members, and preserve assignment eligibility when tasks change scope.
+
+- Keep agent Details and Computer tabs synchronized after starting, stopping, waking or deleting the attached computer.
+
+- Refresh the agent conversation roster after agent creation, edits and archive so newly created agents open without a page reload. Ignore stale requests and unrelated workspace changes.
+
+- Launch with native Overlay agents and their computers while keeping external cloud and own-machine runtimes behind a default-off release gate. Hide unavailable external setup, reject direct creation and execution bypasses, and retain authorized history, cancellation, cleanup and settlement. Add `FEATURES.md` with feature switches, provider support and re-enablement steps.
+
+- Persist tool failures and invalid calls as terminal error states, retain successful tool output across streamed steps, and give native agents exact recovery guidance for the tools exposed in the current turn.
+
+- Keep sidebar data isolated while switching workspaces by publishing the workspace after navigation, resetting sidebar state, and binding chat-list requests to their cache workspace.
+- Patch undici v7 and v8 dependency copies to 7.30.1 and 8.12.2 for GHSA-xjj6-f33q-929c without changing supported major versions or security gates.
+- Recover expired sessions on protected pages before redirecting to sign-in, preserving the requested workspace page instead of unexpectedly opening Chats.
+- Keep workspace navigation on immutable IDs until member-scoped resolution confirms a routable handle; existing accounts remain usable without migration or backfill.
+- Add indexed workspace handles with permanent aliases, authenticated resolution, owner-only changes, and a resumable dry-run-capable backfill. Existing workspace IDs and ID-based links remain supported.
+- Give scoped workspace features canonical `/w/<handle>/<personal|workspace>/<feature>` addresses, including Work, Agents, Chats, Files, Notes, Outputs, Tools and Automations. Solo workspaces retain both views.
+- Keep newly created empty channels joined when navigating away, including through older draft links.
+- Preserve the selected workspace and personal/workspace scope when the first chat stream creates a conversation before the parallel metadata request.
+- Show the Agents empty state when the selected creator scope has no agents, even if the opposite scope is populated.
+- Patch vulnerable Zod v4 installs at 4.6.7, including transitive production dependencies, while preserving existing v3 schemas through explicit compatibility imports.
+- Patch production body-parser to 2.4.0 and Mintlify's nested copy to 1.20.9 for GHSA-27r3-jxmh-p828.
+- Reveal chat copy actions on hover or keyboard focus, and add an agent-conversation sidebar as a full-height panel with one editable hero, autosaving Details, conversation-linked Library files and an always-visible Computer tab with control mode. Files and notes created by an agent are linked to its conversation and appear in the Library. Room panels and the agent sidebar now share the same right-hand slot. Agent settings use the shared chat model picker with free-tier and zero-data-retention access rules.
+
+- Update `@sentry/nextjs` to 10.75.3 and `dompurify` to 3.4.17 to fix the Sentry tunnel middleware bypass (GHSA-mchm-gjx6-7h55) and two DOMPurify sanitizer advisories (GHSA-cg2g-xh64-v4q7, GHSA-mrv2-3pqr-j5jr) that fail the production dependency audit.
+
+- Make the docs logo and favicon match the web app: the lockup SVGs follow `BrandLockup` (orb 0.5em on the baseline, 0.4em gap, Libre Baskerville Medium at -0.025em, drawn as outlines so no font fallback) at the landing nav's 22px, and the favicon is the app's own icon instead of a full-bleed orb.
+
+- Clean up the Self-hosting docs: a short overview of what you run replaces the 554-line page, whose sections move to new Node.js install, Upgrades and Backups pages and to Environment variables (a where-each-secret-goes table that fixes `INTERNAL_SERVICE_AUTH_SECRET` belonging on both the app and Convex), Providers (transactional email and MCP credential encryption) and Runtime config (example profiles). The removed Postgres app-data mode, LayerNorm's internal deploy scripts and the retired budget API are gone, the admin page now describes the standalone admin console and break-glass first admin, and page titles use sentence case. This completes the docs restructure; its plan is deleted.
+
+- Write the Developer docs: an MCP server page (endpoint, OAuth 2.1 and personal tokens, access levels, approvals, limits), Authentication, and Webhooks (events, payloads, signature verification, retries). The REST API overview is rewritten, the generated reference drops 42 internal routes (onboarding, the Agent Host protocol, UI helpers and the retired subscription settings) via `publicReference: false`, the stale admin guide is removed, and the billing guide's maintainer notes move to `internal/develop/workspace-billing.md`.
+
+- Rewrite the Help docs against the current app: new Get started, Work, Extensions and Plans and credit pages; Chats, Files and notes, Memories, Automations, Settings and FAQ now describe Personal/Workspace scopes, workspace billing, Settings → Memories and Settings → Archived. The Projects page is removed and redirects to Files and notes.
+
+- Retheme the docs to match the landing page: Geist at weight 500 with tight tracking instead of serif headings, neutral `#171717` ink with a `#111111` dark background, mono eyebrows and sidebar group titles, hairline cards and code blocks, a pill "Open app" button and GitHub/Discord footer links. The docs home is now a short page with Help, Self-hosting and Developer cards.
+
+- Split the public docs into Help, Self-hosting and Developer tabs (plus Changelog). Configure, Deploy & Operate and licensing pages move under `docs/self-hosting/`; the API reference, contributor guides and security reporting move under `docs/developer/`, with a new Developer overview. Maintainer-only pages (release and agentic workflow, preview QA, Convex workflow, admin console, API source of truth and route catalogs, customization, feature modules, Overlay Free, docs hosting) move to `internal/develop/`. Every old URL redirects. `docs:health`, the licensing and tenancy checks, AGENTS.md and the READMEs follow the new paths.
+
+- Stop offering the desktop and mobile apps, which are not available. `/download` now redirects to `/home` unless `OVERLAY_DESKTOP_DOWNLOADS_ENABLED=1` (the page and release plumbing stay for later), and it leaves the sitemap and footer. The landing page lists the web, Slack, ChatGPT, Claude, Cursor and MCP apps instead of macOS, Windows, iOS and Android, and its "Get Overlay" card offers Web, your AI apps, self-hosting and developer links. The account page's Desktop app panel and the profile menu's "Soon" app items are removed. The 18 Desktop docs pages are deleted and redirect to the Help Center. Desktop sign-in handoff, mobile auth completion and the account-deletion deep link are unchanged.
+
+- Bring every other marketing page onto the home page design: pricing, download, manifesto, the blog/changelog/self-hosting placeholders and all nine legal pages now share one `StaticMarketingShell` (landing nav, framed column, footer) with a common page head. Legal pages get a sticky table of contents, pricing's FAQ uses the shared accordion, and `/download` regains its nav and footer. The old marketing navbar, button, reveal animation and serif layout helper are removed.
+
+- Let people who left sign-up before verifying finish from sign-in. Signing in with the right password for an unverified account now opens the code screen with Resend, then signs in once the code is accepted, instead of linking to a missing `/auth/verify-email` page. Sign-in and sign-up also show a plain fallback message instead of crashing when an error response is not text.
+
+- Add account-level workspace discovery, freeform workspace creation and invitation entry before onboarding. Suggested answers fill an editable composer in main chat and agent conversations without submitting automatically. New owners get a team question; invited members get a shorter setup. Restore profile drafts on refresh and remove the tour target border.
+
+- Replace the `/home` scroll story with a static landing page in one framed column (approved mockup `internal/plans/mockups/landing-static-mockup-v2.html`): a one-color headline whose five underlined phrases jump to their sections, a still of the app with the live sidebar (Work, Chats, Files, Automations) and agents drawn as their creatures, then superpowers, the create/manage/deploy/bring-your-own steps, teams, controls, where to get Overlay and the FAQ. The footer's Product links now point at `#control-plane`, `#get-overlay`, `#ai-employees` and `#deploy`. The scroll engine, scene graphics and interactive demo are removed.
+
+- Show loading branding immediately, keep onboarding answers in the normal message style and anchor the workspace tour beside navigation. Open one-to-one AI employee conversations in Agents instead of Chats.
+
+- Make the `/home` app still look like the real workspace: the live sidebar (Personal/Workspace, Work, Agents, Chats, Automations, More, Needs you / Assigned to me / Everything), no header rules, an Operations agent planning a team offsite with the orb "Worked for" tool row, and its computer streaming a browser that fills in a venue form. The FAQ now uses a new shadcn `Accordion` in `@overlay/ui/primitives`, and the marketing footer keeps two or four link columns on narrow screens instead of one long column.
+
+- Redesign onboarding as a scripted conversation with no model calls: the same answers always give the same questions, employee suggestions and starter tasks. Controls sit directly under Overlay's question, single-choice chips answer in one tap, and "You can call me Divyansh" is saved as "Divyansh". App and Claude Code/Codex connections share one step with brand logos and are hidden or skipped when unavailable. Remove the website question and personalization consent, phrase the user's replies naturally, hide message actions during setup, and add Skip setup.
+
+- Keep onboarding tour controls inside the mobile navigation drawer, with visible navigation targets and automatic drawer cleanup when the tour ends.
+
+- Make conversational onboarding sessions reset-safe with run-scoped transcript recovery and durable summaries of validated user choices.
+
+- Keep the model you pick in an existing chat after sending. The composer and saved chat model no longer revert to the chat's earlier model once the reply starts.
+- Keep earlier messages visible after a reply finishes in a chat reopened from history. Restored chats now load the full transcript into the active chat runtime instead of only the current mode's turns.
+
+- Remove multi-model selection and compare responses across text, image, and video chats. Existing saved model preferences and conversations continue with one primary model response.
+
+- Align Work quick-add with the sidebar scope, keep workspace storage quotas visible, and make sidebar create actions permanent with neutral placeholders, toasts, and centered loading marks.
+- Announce stopped and failed Work runs only when their status transitions live to a terminal state.
+
+- Add OpenCode Go to Settings > Providers. Chat, Responses, and Messages model protocols use the OpenCode Go subscription endpoint with stable conversation sessions.
+
+- Match file and automation sidebar rows to chats with shared 32px rows, 14px text and 16px icons, reduce agent names to the conversation text size, and give every shared chat composer a subtle theme-aware outline.
+
+- Pin `follow-redirects` to 1.16.1 to clear two high-severity advisories (GHSA-q3jh-wrc6-jgq8, GHSA-8r9p-f939-6h3c) that block the production dependency audit.
+
+- Make both sidebar edges resizable, keep native agent text visible between tool calls while it streams, preserve its generation order after completion and reload, and match the approved agent hierarchy with regular-weight names, aligned icons and flush-left threads. Scale tool Orbs to the wordmark ratio and center them beside wrapped labels. Use the shared avatar popover for outside-click and Escape dismissal.
+
+- Preserve the live transcript when a new chat receives its saved conversation ID after completion, while still resetting scroll state when navigating between chats.
+
+- Widen the model picker, separate personal Favorites from Recommended, expose the full provider catalog, and move capabilities to right-side details. Free accounts can browse the same catalog metadata without gaining permission to generate with paid models. Remove the catalog enable/disable settings while retaining provider-key authorization and billing/ZDR safeguards. Keep streamed Markdown on the same block renderer through chat and agent completion without a completion label or automatic work collapse moving the live answer.
+
+- Stop the app half-loading after bursts of throttled reads: Work list, Work context, subscription and workspace policy reads get their own per-user rate-limit buckets instead of sharing the default pool. Workspace bootstrap and policy requests now recover an expired session like other app requests. App pages without their own error boundary keep the shell, and both error screens show the error reference.
+
+- Standardize shared controls on the approved gray palette, align Work rows and headers, and move transient action feedback to bottom-right Sonner notifications. Keep upload updates under stable operation ids and preserve Undo, inline validation, and durable recovery states.
+
+- Recover browser API requests from an expired session without a page reload: share one locked session refresh with the auth provider, then retry once with the original mutation idempotency key. Signed-out users, permission denials, and failed refreshes remain failures.
+
+- Match the app shell mockup: Geist as the app font, 14px chat text, a borderless symmetric user bubble, and sidebar rows at 14px with 16px icons and 12px section titles. Native `title` tooltips are replaced app-wide by one shadcn-style tooltip (`NativeTitleTooltips`).
+
+- Adopt shadcn Typeset (`@overlay/ui/typeset.css`, an owned copy) as the shared prose layer for chat messages and notes, so rendered Markdown gets one set of rules for paragraphs, lists, quotes, code, tables and rules. Existing chat-specific Markdown rules still take precedence.
+
+- Replace hand-styled buttons that copied the solid, gray or outlined look with the shared Button variants across chat, settings, sharing, notes and files, and extend `check:raw-controls` to fail on `unstyledButton()` strings that rebuild a variant or color classes passed to a non-ghost Button (exceptions carry an `overlay:button-style:` reason).
+
+- Give each page one solid create action (New skill, Add server, New note) and switch other hand-styled header, dialog and empty-state buttons on Skills, MCPs, Connectors, Notes and Automations to the shared `primary` and `secondary` Button variants.
+
+- Alias the shadcn design tokens (`--primary`, `--secondary`, `--muted-foreground`, `--destructive`, `--card`, `--popover`, `--input`, `--ring`, `--radius`) to the Overlay palette, and add `outline` and `link` Button variants plus `xs`, `icon-sm` and `icon-xs` sizes. No visual change.
+
+- Make a single shadcn sidebar the default app shell: Personal/Workspace toggle under the brand, Files and Extensions under a hover More menu, page subviews as tabs on the header row, and no divider lines between sidebar, header and body. The rail and panel layout remains under Settings > Customization. Add Workspace AI chats: chats started from Workspace > Chats are filed under that scope (stored as an optional conversation `scope`; existing chats stay Personal). The Personal/Workspace toggle always shows; in a one-person workspace Workspace is disabled with a hint to invite members. Settings swaps the sidebar for a settings sidebar: Back to app, a settings search (matches page names and the settings on each page), then the settings pages in groups. The onboarding tour, its Replay tour setting, and the first-run workspace naming step are removed. Work's Needs you, Assigned to me and Everything filters move from chips under the header into collapsible sidebar sections that list their open tasks. Page headers read title and count, then search, actions, tabs, and the options menu last, so page tabs sit at the far right. The agent conversation's Share action moves into its options menu.
+
+- Keep the onboarding tour's first tooltip anchored next to the model picker, and render the "Connect your tools" logos inline so they appear on first paint.
+- Standardize the orb + wordmark on `BrandLockup` across the loader, landing, auth, and marketing surfaces, and play the loader's word reveal only once so it keeps blinking until the app appears. Once the app has rendered real content the loader can never reappear: boundary remounts and route fallbacks show plain skeletons instead.
+- Make first-run onboarding deterministic: it starts only on the post-signup redirect or an explicit replay, waits for the workspace to load before the name step, mounts the tour only on the chat surface where its targets render, holds the model picker open through the tour's early steps, and no longer refires on refresh or pops up mid-session.
+
+- Fix connected-agent Drive recovery after remote edits, release leases after confirmed startup failure, and retain fencing for uncertain writers. Authorize shared-room run status correctly, bound repeated Drive reads, and derive QA adapter defaults from image pins.
+
+- Make caught agent failures traceable across response, server logs and Sentry with diagnostic ids, preserved backend request ids, safe cause signatures and bounded source locations. Keep unknown causes explicit and raw exception content private.
+- Keep connected-agent output streaming during uploads with coalesced text, byte-bounded batches, durable retry boundaries and negotiated incremental text. Preserve partial answers and tool history through cancellation, failure and reconnects.
+- Render live replies as formatted Markdown with bottom loading dots, compact tool groups, accurate tool ages and task deadlines. Preserve literal identifiers and wrap long hashes in tables.
+- Discover model, effort and permission choices from the bound agent account before the first task; persist and apply the selected settings across native recovery.
+- Add execution-fenced workspace-tool calls and resumable approval delivery with one decision card, signed expiry and current-access checks. Show approval expiry and ongoing machine costs.
+- Add guarded Drive synchronization with exact revisions, immutable upload receipts, full-byte verification, bounded hydration and conflict preservation. Save incrementally and wait for final file settlement before reporting completion.
+- Open saved agent deliverables in Files by verified file ids, including relative links in answers and scoped sibling/descendant links inside Markdown deliverables, and load text uploads with their complete stored content.
+- Add opt-in same-conversation recovery for lifecycle-v2 Claude Code and Codex hosts. Fence replacement execution, reconcile interrupted writes before hydration, preserve selected settings and reject uncertain starts or unresolved approvals.
+- Confirm native termination before releasing ownership; drain buffered output and active writes during shutdown. Keep Stop available during startup and final saving, and settle interrupted action timers after recovery.
+- Report enrollment failures and connection limits accurately, retain account setup after machine deletion, and keep fresh-machine hydration authorized without claiming provider liveness prematurely.
+- Reduce repeated authorization and billing reads on agent uploads while retaining current access, wallet, revocation and legacy-backend checks. Read Drive sources with bounded parallelism and deterministic cache limits.
+- Add request ids, safe failure classifications and per-run stream counters to connected-agent diagnostics. Extend the cloud smoke to run through Overlay, and add opt-in Preview timing exports with bounded storage and visible capacity.
+- Harden oversized tool titles, Unicode limits, untrusted text parsing and storage download boundaries. Keep protected Preview access in host-only state and retain hosted TypeScript validation in memory-optimized builds.
+- Keep Turbopack route bootstraps external so the optimized app hydrates under nonce-based Content Security Policy after the Next.js upgrade.
+
+- Preserve protected-route query parameters through sign-in and stale-session reauthentication so desktop login handoffs retain their PKCE challenge.
+
+- Patch Next.js to 16.4.1 in both web apps and Better Auth/SSO to 1.7.7. Replace the privileged PR preview trigger with a secret-free PR request that dispatches the protected main controller.
 - Retry cloud cancellation stop-proof checks from the durable coordinator timer after the notification has been consumed, preventing stuck cancelling runs and retained holds.
 
 - Scope Boat Preview machine creation to its isolated named environment while keeping account credentials excluded; document the approved one-year Preview key renewal requirement.
@@ -32,6 +153,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 - The app boots on one loading screen: the orb and wordmark animate in once, breathe like the chat stream marker, and the "Opening workspace…" line sits beneath them, instead of logo screen to workspace text back to logo. The landing hero gains Get Started and GitHub buttons under the subtitle, and landing logo marks rest on the wordmark's baseline. Reduced motion disables the pulse and workspace spinner; shared pulse timing prevents flashes across loading-boundary handoffs.
 
 - **Sidebar sub-rows share the agent tree's guide-line indent.** Scope sub-rows in the secondary panel (Personal/Workspace's pages such as List/Board/Timeline, All/Notes/Files/Outputs, Connectors/Skills/MCPs, and chat subviews) and folders in the Files tree now nest inside the same `SidebarMenuSub` vertical-line list as an agent's threads, instead of sitting flush or using per-row padding. Behavior and routes are unchanged.
+
 - Upgrade the Redis client to 6.3 and add real TCP regression cases for concurrent rate-limit enforcement and window expiry.
 
 - Require current-head PR QA comments for Builder handoffs, with Vercel MCP browser access, end-to-end results and explicit Integration review/release evidence.

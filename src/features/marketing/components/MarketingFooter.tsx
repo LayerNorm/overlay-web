@@ -1,13 +1,10 @@
 "use client";
-
+import { Button } from '@overlay/ui/primitives'
+import { unstyledButton } from '@overlay/ui/control-reset'
 import { MoonStar, SunMedium } from "lucide-react";
-import { OverlayMark } from "@/components/orb/Orb";
+import { BrandLockup } from "@/components/brand/BrandLockup";
 import Link from "next/link";
 import { useLandingThemeOptional } from "@/contexts/LandingThemeContext";
-import {
-  MARKETING_LOGO_SIZE,
-  marketingSerifStyle,
-} from "@/features/marketing/lib/marketingLayout";
 import {
   MARKETING_DOCS_URL,
   MARKETING_GITHUB_URL,
@@ -15,7 +12,7 @@ import {
 } from "@/shared/marketing/marketing";
 
 const linkClass =
-  "block py-1 text-[13px] text-(--muted) hover:text-(--foreground) transition-colors";
+  "py-1 text-[13px] text-(--muted) hover:text-(--foreground) transition-colors";
 
 const colClass = "mb-3.5 text-xs font-semibold text-(--foreground)";
 
@@ -25,11 +22,10 @@ const FOOTER_COLUMNS: Array<{ title: string; links: FootLink[] }> = [
   {
     title: "Product",
     links: [
-      { label: "Agents", href: "/home#agents" },
-      { label: "Platforms", href: "/home#platforms" },
-      { label: "Computers", href: "/home#computers" },
-      { label: "Automations", href: "/home#automations" },
-      { label: "Download", href: "/download" },
+      { label: "Agents", href: "/home#control-plane" },
+      { label: "Platforms", href: "/home#get-overlay" },
+      { label: "Computers", href: "/home#ai-employees" },
+      { label: "Automations", href: "/home#deploy" },
       { label: "Pricing", href: "/pricing" },
     ],
   },
@@ -72,16 +68,10 @@ export function MarketingFooter() {
   return (
     <footer className="border-t border-(--border) px-6 py-12 md:px-10 md:py-16">
       <div className="mx-auto max-w-7xl">
-        <div className="grid gap-10 md:grid-cols-[1.4fr_repeat(4,1fr)]">
-          <div>
-            <Link href="/home" className="flex items-center gap-2">
-              <OverlayMark size={MARKETING_LOGO_SIZE} label="Overlay" />
-              <span
-                className="text-lg font-medium tracking-tight text-(--foreground)"
-                style={marketingSerifStyle()}
-              >
-                overlay
-              </span>
+        <div className="grid grid-cols-2 gap-x-6 gap-y-10 sm:grid-cols-4 md:grid-cols-[1.4fr_repeat(4,1fr)]">
+          <div className="col-span-2 sm:col-span-4 md:col-span-1">
+            <Link href="/home" className="inline-flex text-(--foreground)">
+              <BrandLockup style={{ fontSize: 18 }} />
             </Link>
             <p className="mt-3 text-xs leading-5 text-(--muted)">
               The control plane for AI employees.
@@ -99,12 +89,12 @@ export function MarketingFooter() {
                     href={link.href}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className={linkClass}
+                    className={`block ${linkClass}`}
                   >
                     {link.label}
                   </a>
                 ) : (
-                  <Link key={link.label} href={link.href} className={linkClass}>
+                  <Link key={link.label} href={link.href} className={`block ${linkClass}`}>
                     {link.label}
                   </Link>
                 ),
@@ -118,10 +108,10 @@ export function MarketingFooter() {
           <div className="flex items-center gap-4">
             <span>Built for the agent era.</span>
             {landing ? (
-              <button
+              <Button variant="ghost"
                 type="button"
                 onClick={landing.toggleLandingTheme}
-                className={`inline-flex items-center gap-2 ${linkClass} py-0!`}
+                className={unstyledButton(`inline-flex items-center gap-2 ${linkClass} py-0!`)}
               >
                 {landing.landingTheme === "light" ? (
                   <MoonStar className="h-4 w-4" />
@@ -131,7 +121,7 @@ export function MarketingFooter() {
                 <span>
                   {landing.landingTheme === "light" ? "Dark" : "Light"}
                 </span>
-              </button>
+              </Button>
             ) : null}
           </div>
         </div>

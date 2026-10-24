@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, readFile, readdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import test from 'node:test'
 import { AcpAgentAdapter, overlayMcpServers } from './acp-adapter'
 import type { NormalizedAgentEvent } from './adapter'
+import { createRunStream } from './run-stream'
 
 test('official ACP SDK adapter streams supervised updates and bridges approval and elicitation', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'overlay-acp-'))
@@ -31,6 +32,9 @@ test('official ACP SDK adapter streams supervised updates and bridges approval a
     assert.ok(elicitation?.payload.requestKey)
     await session.elicit(String(elicitation.payload.requestKey), 'accept', { label: 'approved fixture' })
     await prompt
+    const tailIndex = events.findIndex(event => event.type === 'text_checkpoint' && event.payload.text.endsWith('FINAL_NOTIFICATION_TAIL\n'))
+    assert.ok(tailIndex >= 0, 'final notification must be consumed before prompt completion')
+    assert.ok(tailIndex < events.findIndex(event => event.type === 'completed'), 'terminal must follow the final notification')
     assert.ok(events.some((event) => event.type === 'text_checkpoint' && event.payload.text === 'ACP fixture output'))
     assert.ok(events.some((event) => event.type === 'action' && event.payload.status === 'completed'))
     assert.ok(events.some((event) => event.type === 'plan'))
@@ -64,6 +68,94 @@ test('ACP adapter discovery enforces its readiness verifier', async () => {
   await assert.rejects(unavailable.discover(), /adapter is not ready/)
 })
 
+test('loading an ACP session consumes replayed history without duplicating its answer or tools', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'overlay-acp-history-'))
+  const fixture = join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'acp-load-history-agent.mjs')
+  const adapter = new AcpAgentAdapter({id: 'history', displayName: 'History fixture', command: process.execPath, args: [fixture]})
+  const events: NormalizedAgentEvent[] = []
+  let session: Awaited<ReturnType<typeof adapter.start>> | undefined
+  try {
+    session = await adapter.start({runId: 'history', workingDirectory: directory, additionalDirectories: [],
+      remoteSessionId: 'original-session', prompt: '', metadata: {},
+    }, async event => {events.push(event)})
+    assert.equal(session.remoteSessionId, 'original-session')
+    await session.prompt('Continue after interruption')
+    assert.ok(events.some(event => event.type === 'commands_update' && event.payload.commands.some(command => command.name === 'continue-loaded')), 'retain the current catalog while admitting the prompt immediately after loading')
+    assert.deepEqual(events.filter(event => event.type === 'text_checkpoint').map(event => event.payload.text), ['NEW_OUTPUT'])
+    assert.equal(events.some(event => event.type === 'action'), false)
+    assert.equal(events.at(-1)?.type, 'completed')
+  } finally {
+    await session?.stop()
+    await rm(directory, {recursive: true, force: true, maxRetries: 10, retryDelay: 100})
+  }
+})
+
+test('a buffered wire response cannot overtake the final text notification in either streaming mode', async () => {
+  for (const streaming of [false, true]) {
+    const directory = await mkdtemp(join(tmpdir(), 'overlay-acp-tail-'))
+    const fixture = join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'acp-tail-agent.mjs')
+    const adapter = new AcpAgentAdapter({ id: 'tail-fixture', displayName: 'Tail fixture', command: process.execPath, args: [fixture] })
+    const events: NormalizedAgentEvent[] = []
+    const stream = createRunStream(async event => { events.push(event) }, { streaming: () => streaming, observe: async () => 'live', onError: error => { throw error } })
+    let session: Awaited<ReturnType<typeof adapter.start>> | undefined
+    try {
+      session = await adapter.start({ runId: 'tail-run', workingDirectory: directory, additionalDirectories: [], prompt: '', metadata: {} }, stream.emit)
+      await session.prompt('buffered response')
+      const tail = events.filter(event => event.type === 'text_checkpoint' || event.type === 'text_delta').at(-1)
+      assert.ok(tail?.payload.text.endsWith('FINAL_NOTIFICATION_TAIL\n'), 'tail must reach the durable stream before completion')
+      assert.equal(events.at(-1)?.type, 'completed')
+    } finally { stream.stop(); await session?.stop(); await rm(directory, { recursive: true, force: true }) }
+  }
+})
+
+test('direct ACP applies live model, effort and permission choices before every prompt and reports vendor rejection', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'overlay-acp-options-'))
+  const log = join(directory, 'choices.jsonl')
+  const fixture = join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'acp-options-agent.ts')
+  const adapter = new AcpAgentAdapter({ id: 'options-fixture', displayName: 'Options fixture', command: process.execPath,
+    args: ['--import', import.meta.resolve('tsx'), fixture] })
+  let session: Awaited<ReturnType<typeof adapter.start>> | undefined
+  try {
+    session = await adapter.start({ runId: 'options-run', workingDirectory: directory, additionalDirectories: [], prompt: '',
+      metadata: { model: 'future-model', effort: 'high', permissionMode: 'auto' }, credentials: { FIXTURE_OPTIONS_LOG: log } }, async () => {})
+    assert.equal(adapter.capability.options?.model?.values[1]?.label, 'Future model')
+    await session.prompt('first')
+    await session.prompt('second')
+    const records = (await readFile(log, 'utf8')).trim().split('\n').map(line => JSON.parse(line))
+    assert.deepEqual(records.slice(0, 3).map(record => [record.id, record.value]),
+      [['provider-model', 'future-model'], ['provider-effort', 'high'], ['permissions', 'auto']])
+    assert.equal(records[3].kind, 'prompt')
+    assert.deepEqual(records.slice(4, 7).map(record => record.kind), ['selection', 'selection', 'selection'])
+    assert.equal(records[7].kind, 'prompt')
+    await session.stop()
+    session = await adapter.start({ runId: 'invalid-options-run', workingDirectory: directory, additionalDirectories: [], prompt: '',
+      metadata: { model: 'not-offered' }, credentials: { FIXTURE_OPTIONS_LOG: log } }, async () => {})
+    await assert.rejects(session.prompt('must not dispatch'), /Fixture agent does not offer/)
+    assert.equal((await readFile(log, 'utf8')).trim().split('\n').length, 8)
+  } finally {
+    await session?.stop()
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test('discovery reads options without a prompt and cleans its private scratch directory, including timeout fallback', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'overlay-acp-discovery-'))
+  const log = join(directory, 'must-not-prompt.jsonl')
+  const fixture = join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'acp-options-agent.ts')
+  try {
+    const adapter = new AcpAgentAdapter({ id: 'discovery-fixture', displayName: 'Discovery fixture', command: process.execPath,
+      args: ['--import', import.meta.resolve('tsx'), fixture] })
+    const capability = await adapter.discover({ workingDirectory: directory, credentials: { FIXTURE_OPTIONS_LOG: log } })
+    assert.equal(capability.options?.model?.values[1]?.id, 'future-model')
+    assert.deepEqual(await readdir(directory), [])
+    assert.equal((await adapter.discover({ workingDirectory: directory })).options?.discoveredAt, capability.options?.discoveredAt)
+    const hung = new AcpAgentAdapter({ id: 'hung', displayName: 'Hung fixture', command: process.execPath,
+      args: ['-e', 'setInterval(() => {}, 10000)'], startupTimeoutMs: 50 })
+    assert.equal((await hung.discover({ workingDirectory: directory })).options, undefined)
+    assert.deepEqual(await readdir(directory), [])
+  } finally { await rm(directory, { recursive: true, force: true }) }
+})
+
 async function waitFor(predicate: () => boolean): Promise<void> {
   for (let attempt = 0; attempt < 200; attempt += 1) {
     if (predicate()) return
@@ -84,4 +176,16 @@ test('the Overlay MCP server is offered only to HTTP-capable agents over a safe 
   assert.deepEqual(overlayMcpServers({}, true), [])
   assert.deepEqual(overlayMcpServers({ overlayMcp: { url: 'http://evil.example/mcp', token: 't' } }, true), [])
   assert.equal(overlayMcpServers({ overlayMcp: { url: 'http://localhost:3000/api/agent-mcp', token: 't' } }, true).length, 1)
+})
+
+
+test('direct ACP advertises fenced restoration only for an explicitly opted-in adapter', async () => {
+  for (const enabled of [undefined, false, true]) {
+    const adapter = new AcpAgentAdapter({id: 'native', displayName: 'Native', command: process.execPath,
+      ...(enabled === undefined ? {} : {fencedSessionRestoration: enabled})})
+    const capability = await adapter.discover()
+    assert.equal(capability.recovery?.fencedSessionRestoration, enabled === true ? true : undefined)
+    assert.equal(capability.recovery?.interruptedTurnContinuation, false)
+    assert.equal(capability.recovery?.approvalRestoration, false)
+  }
 })

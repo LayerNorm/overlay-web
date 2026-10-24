@@ -3,15 +3,16 @@
 import Link from 'next/link'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useHotkeys } from 'react-hotkeys-hook'
-import { AlertCircle, ListChecks, Plus, X } from 'lucide-react'
+import { ListChecks, Plus } from 'lucide-react'
 import type { WorkItem } from '@overlay/app-core'
 import type { PanelScope } from '@/shared/workspaces/panel-scope'
 import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
-import { Alert, Button, HeaderSearch } from '@overlay/ui/primitives'
+import { WorkRefreshErrorNotice } from './WorkRefreshErrorNotice'
+import { Button, HeaderSearch } from '@overlay/ui/primitives'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 import { requireShortcutHotkey } from '@/shared/shortcuts/shortcut-registry'
 import { toWorkDate } from '@/shared/work/dates'
-import { countOpen, filterWork, needsViewer } from '@/shared/work/query'
+import { countOpen, filterWork } from '@/shared/work/query'
 import { WORK_LIMITS } from '@/shared/work/status'
 import { WORK_VIEW_LABELS, type WorkView } from '@/shared/work/views'
 import { trackWork } from '../lib/work-analytics'
@@ -23,7 +24,7 @@ import { WorkList } from './WorkList'
 import { WorkPeek } from './WorkPeek'
 import { WorkQuickAdd, type WorkQuickAddHandle } from './WorkQuickAdd'
 import { WorkTimeline } from './WorkTimeline'
-import { WorkToolbar } from './WorkToolbar'
+import { PageSubviewTabs } from '@/components/layout/PageSubviewTabs'
 
 function ListSkeleton() {
   return (
@@ -48,18 +49,6 @@ function EmptyState({ title, description, action }: { title: string; description
         {action ? <div className="mt-4 flex justify-center">{action}</div> : null}
       </div>
     </div>
-  )
-}
-
-function ErrorBanner({ message, onDismiss }: { message: string; onDismiss: () => void }) {
-  return (
-    <Alert variant="destructive" className="mx-6 mt-3 flex shrink-0 items-start gap-2 px-3 py-2 text-[13px]">
-      <AlertCircle size={15} className="mt-0.5 shrink-0" aria-hidden />
-      <span className="flex-1">{message}</span>
-      <button type="button" onClick={onDismiss} aria-label="Dismiss" className="shrink-0 rounded p-0.5 hover:bg-red-100 dark:hover:bg-red-900/40">
-        <X size={14} />
-      </button>
-    </Alert>
   )
 }
 
@@ -102,7 +91,7 @@ function WorkBody({
       />
     )
   }
-  if (visible.length === 0) return filtering ? <EmptyState title="Nothing matches" description="Try another filter or search." /> : null
+  if (visible.length === 0) return filtering ? <EmptyState title="Nothing matches" description="Try another search." /> : null
   if (view === 'board') {
     return (
       <div className="min-h-0 flex-1 overflow-x-auto overflow-y-hidden">
@@ -122,8 +111,8 @@ function WorkBody({
 
 function WorkScreen() {
   const { scope, view, solo } = useWorkRoute()
-  const { filter, taskId, setFilter, openTask, closeTask } = useWorkUrlState()
-  const { state, items, viewer, error, dismissError, truncated } = useWorkData()
+  const { taskId, openTask, closeTask } = useWorkUrlState()
+  const { state, items, viewer, error, refresh, truncated } = useWorkData()
   const [query, setQuery] = useState('')
   const quickAdd = useRef<WorkQuickAddHandle>(null)
   const today = useMemo(() => toWorkDate(new Date()), [])
@@ -132,8 +121,7 @@ function WorkScreen() {
   // C starts a new task from anywhere on the page (typing in a field is left alone).
   useHotkeys(requireShortcutHotkey('work.new'), () => quickAdd.current?.focus(), { preventDefault: true })
 
-  const visible = useMemo(() => filterWork(items, { filter, query, viewer }), [filter, items, query, viewer])
-  const needsYouCount = useMemo(() => (viewer ? items.filter((item) => needsViewer(item, viewer)).length : 0), [items, viewer])
+  const visible = useMemo(() => filterWork(items, { filter: 'all', query, viewer }), [items, query, viewer])
   const title = solo ? WORK_VIEW_LABELS[view] : `${scope === 'workspace' ? 'Workspace' : 'Personal'} / ${WORK_VIEW_LABELS[view]}`
   const loaded = state === 'ready'
   // The List scrolls the page; the Board and Timeline scroll inside their own area.
@@ -149,6 +137,7 @@ function WorkScreen() {
       header={(
         <AppScreenHeader
           title={title}
+          tabs={<PageSubviewTabs />}
           metadata={loaded ? <span className="text-xs text-(--muted-light)">{countOpen(items)} open</span> : undefined}
           search={<HeaderSearch value={query} onChange={setQuery} label="Search tasks" placeholder="Search tasks" />}
           actions={(
@@ -161,9 +150,8 @@ function WorkScreen() {
       )}
     >
       <AppScreenBody padding="none" maxWidth="none" scroll="hidden" className="flex h-full min-h-0 flex-col" data-testid="work-page">
-        <WorkToolbar filter={filter} onChange={setFilter} needsYouCount={needsYouCount} />
-        {error && state !== 'error' ? <ErrorBanner message={error} onDismiss={dismissError} /> : null}
         {truncated ? <p className="mx-6 mt-3 shrink-0 text-xs text-(--muted)" role="note">Showing the first {WORK_LIMITS.listCap.toLocaleString('en-US')} tasks. Archive finished work to see the rest.</p> : null}
+        {state !== 'error' ? <WorkRefreshErrorNotice error={error} onRetry={() => void refresh()} /> : null}
         <WorkQuickAdd ref={quickAdd} disabled={!loaded} />
         <div className={`flex min-h-0 flex-1 flex-col ${pageScrolls ? 'overflow-auto' : 'overflow-hidden'}`}>
           <WorkBody
@@ -171,7 +159,7 @@ function WorkScreen() {
             scope={scope}
             solo={solo}
             visible={visible}
-            filtering={filter !== 'all' || query.trim() !== ''}
+            filtering={query.trim() !== ''}
             today={today}
             selectedId={taskId}
             onOpen={openTask}

@@ -1,6 +1,6 @@
 {
   "name": "@layernorm/overlay-agent-bridge-protocol",
-  "version": "0.3.11",
+  "version": "0.4.2",
   "description": "Versioned command and event contracts for Overlay Agent Host.",
   "license": "AGPL-3.0-only",
   "repository": {
@@ -37,7 +37,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "zod": "^3.25.76"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "tsx": "^4.8.1",

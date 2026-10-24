@@ -12,6 +12,7 @@ export const PUBLIC_V1_ROUTE_SECURITY_EXCEPTIONS = {
   '/api/v1/agent-environments/[environmentId]/credentials': agentHostException(['POST'], 'One-time challenge and Ed25519 proof-of-possession credential issuance.'),
   '/api/v1/agent-environments/[environmentId]/credentials/refresh': agentHostException(['POST'], 'Signed environment credential rotation.'),
   '/api/v1/agent-environments/[environmentId]/run-credentials': agentHostException(['POST'], 'Signed release of provider credentials for one active Overlay Cloud run.'),
+  '/api/v1/agent-environments/[environmentId]/drive-credentials': agentHostException(['POST'], 'Device-signed issuance or renewal of drive credentials bound to the current run, session, execution and persisted scope.'),
   '/api/v1/agent-environments/[environmentId]/heartbeat': agentHostException(['POST'], 'Signed environment heartbeat.'),
   '/api/v1/agent-environments/[environmentId]/capabilities': agentHostException(['PUT'], 'Signed environment capability refresh.'),
   '/api/v1/agent-environments/[environmentId]/commands': agentHostException(['GET'], 'Signed, environment-scoped command polling.'),
@@ -35,6 +36,7 @@ export const PUBLIC_V1_ROUTE_SECURITY_EXCEPTIONS = {
   '/api/v1/agent-environments/operations/reconcile': internalServiceException(['POST'], 'Internal-secret authenticated remote-run supervision and settlement reconciliation.'),
   '/api/v1/files/ingest-jobs/process': internalServiceException(['POST'], 'Internal-secret authenticated Convex file-ingestion worker bridge.'),
   '/api/v1/imports/slack/process': internalServiceException(['POST'], 'Internal-secret authenticated Slack import worker bridge.'),
+  '/api/v1/models/overlay-free/refresh': internalServiceException(['POST'], 'Internal-secret authenticated overlay-free catalog refresh worker bridge.'),
   '/api/v1/surfaces/slack/connect': {
     methods: ['GET'],
     reason: 'Browser navigation that must end in a redirect to Slack consent, not a JSON envelope.',

@@ -1,5 +1,6 @@
 'use client'
-
+import { Button } from '@overlay/ui/primitives'
+import { unstyledButton } from '@overlay/ui/control-reset'
 import type { MemoryRow } from '@overlay/app-core'
 import { Trash2 } from 'lucide-react'
 import { type MouseEvent } from 'react'
@@ -49,14 +50,14 @@ export function KnowledgeMemoryList({
               <p className="min-w-0 flex-1 text-sm leading-relaxed text-(--foreground)">{memory.content}</p>
             </div>
             {!selectMode ? (
-              <button
+              <Button variant="ghost"
                 type="button"
                 aria-label="Delete memory"
                 onClick={(event) => onDelete(memory.memoryId, event)}
-                className="shrink-0 rounded-sm p-1 text-(--muted-light) opacity-0 transition-opacity hover:bg-(--surface-subtle) hover:text-red-500 group-hover:opacity-100"
+                className={unstyledButton("shrink-0 rounded-sm p-1 text-(--muted-light) opacity-0 transition-opacity hover:bg-(--surface-subtle) hover:text-red-500 group-hover:opacity-100")}
               >
                 <Trash2 size={12} />
-              </button>
+              </Button>
             ) : null}
           </div>
         )
@@ -83,15 +84,15 @@ export function KnowledgeMemoryCards({
       {memories.map((memory) => {
         const bulkSel = selectedIds.has(memory.memoryId)
         return (
-          <button
+          <Button variant="ghost"
             key={memory.key}
             type="button"
             onClick={() =>
               selectMode ? onToggleSelect(memory.memoryId) : onOpen(memory)
             }
-            className={`group relative mb-4 block w-full break-inside-avoid rounded-xl border bg-(--surface-elevated) p-4 text-left transition-shadow hover:shadow-md ${
+            className={unstyledButton(`group relative mb-4 block w-full break-inside-avoid rounded-xl border bg-(--surface-elevated) p-4 text-left transition-shadow hover:shadow-md ${
               bulkSel ? 'border-(--foreground) ring-1 ring-(--foreground)/20' : 'border-(--border)'
-            }`}
+            }`)}
             style={{ breakInside: 'avoid' }}
           >
             {selectMode ? (
@@ -112,7 +113,7 @@ export function KnowledgeMemoryCards({
                 new Date(memory.createdAt).toLocaleDateString('en-US')
               }
             </p>
-          </button>
+          </Button>
         )
       })}
     </div>

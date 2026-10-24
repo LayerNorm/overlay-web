@@ -1,16 +1,13 @@
 'use client'
 
 import { useCallback, useState } from 'react'
+import { toast } from '@overlay/ui/primitives'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import type { DraftModalState } from '../chat-interface/types'
 
 type SkillDraftSummary = Extract<DraftModalState, { kind: 'skill' }>['draft']
 
-export function useDraftReviewActions({
-  setComposerNotice,
-}: {
-  setComposerNotice: (value: string | null | ((current: string | null) => string | null)) => void
-}) {
+export function useDraftReviewActions() {
   const [draftModalState, setDraftModalState] = useState<DraftModalState | null>(null)
   const [isDraftSaving, setIsDraftSaving] = useState(false)
 
@@ -28,15 +25,13 @@ export function useDraftReviewActions({
         throw new Error(payload.error || 'Failed to save skill draft')
       }
       setDraftModalState(null)
-      setComposerNotice('Skill saved. It will now be available in chat.')
-      window.setTimeout(() => setComposerNotice(null), 5000)
+      toast.success('Skill saved. It will now be available in chat.')
     } catch (error) {
-      setComposerNotice(error instanceof Error ? error.message : 'Failed to save skill.')
-      window.setTimeout(() => setComposerNotice(null), 6000)
+      toast.error(error instanceof Error ? error.message : 'Failed to save skill.')
     } finally {
       setIsDraftSaving(false)
     }
-  }, [setComposerNotice])
+  }, [])
 
   return {
     draftModalState,

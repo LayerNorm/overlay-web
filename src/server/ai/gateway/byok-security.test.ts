@@ -52,6 +52,23 @@ test('create allows Vercel AI Gateway BYOK at the locked Vercel endpoint', () =>
   assert.deepEqual(result, { ok: true, endpoint: 'https://ai-gateway.vercel.sh/v1' })
 })
 
+test('OpenCode Go locks its subscription endpoint', () => {
+  assert.deepEqual(
+    resolveByokEndpointForCreate('opencode-go', undefined),
+    { ok: true, endpoint: 'https://opencode.ai/zen/go/v1' },
+  )
+  assert.equal(
+    byokEndpointMatchesPreset('opencode-go', 'https://opencode.ai/zen/go/v1/'),
+    true,
+  )
+  const result = resolveByokEndpointForPatch('opencode-go', 'https://attacker.example/v1')
+  assert.equal(result.ok, false)
+  if (!result.ok) {
+    assert.equal(result.status, 403)
+    assert.match(result.error, /endpoint cannot be changed/)
+  }
+})
+
 test('create rejects custom endpoints for Vercel AI Gateway BYOK', () => {
   const result = resolveByokEndpointForCreate('user-vercel-ai-gateway', 'https://attacker.example/v1')
   assert.equal(result.ok, false)

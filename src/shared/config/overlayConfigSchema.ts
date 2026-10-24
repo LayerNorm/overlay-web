@@ -1,4 +1,4 @@
-import { z } from 'zod'
+import { z } from 'zod/v3'
 
 export const OverlayDeploymentEnvironmentSchema = z.enum([
   'development',
@@ -87,8 +87,10 @@ const OverlayFeatureFlagsSchema = z
     sso: z.boolean().optional(),
     multiTenant: z.boolean().optional(),
     connectedAgentControlPlane: z.boolean().optional(),
+    externalAgents: z.boolean().optional(),
     remoteAgentRuns: z.boolean().optional(),
     connectedAgentArtifacts: z.boolean().optional(),
+    connectedAgentDrive: z.boolean().optional(),
     overlayCloudEnvironments: z.boolean().optional(),
     // Inert: managed harness agents were removed. Kept so existing configs still validate.
     managedHarnessAgents: z.boolean().optional(),

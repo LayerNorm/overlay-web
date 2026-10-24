@@ -4,6 +4,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   executeAppendToNote,
+  executeCreateNote,
   executeEditNote,
   executeGetNote,
   executeListNotes,
@@ -55,6 +56,26 @@ test('get_note returns Markdown, a revision, and the outline-solid', async () =>
     })
   } finally {
     api.restore()
+  }
+})
+
+test('create_note links new notes to its conversation only when available', async () => {
+  const bodies: Array<Record<string, unknown>> = []
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = (async (input, init) => {
+    assert.equal(new URL(String(input)).pathname, '/api/v1/notes')
+    assert.equal(init?.method, 'POST')
+    bodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>)
+    return Response.json({ id: 'note_created', note: null })
+  }) as typeof fetch
+  try {
+    await executeCreateNote({ ...options, conversationId: 'conv_1' }, { title: 'Plan', content: '# Plan' })
+    await executeCreateNote(options, { title: 'Personal', content: '# Personal' })
+
+    assert.equal(bodies[0]?.conversationId, 'conv_1')
+    assert.equal('conversationId' in (bodies[1] ?? {}), false)
+  } finally {
+    globalThis.fetch = originalFetch
   }
 })
 

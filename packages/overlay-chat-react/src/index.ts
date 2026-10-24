@@ -3,7 +3,18 @@ export * from './components/AttachmentPreviewShell'
 export * from './components/AttachmentTray'
 export * from './components/BudgetTopUpComposerPrompt'
 export * from './components/UsageExhaustedNotice'
-export * from './components/ChatExperienceHeader'
+export {
+  ChatExperienceHeader,
+  ChatModelControls,
+  ChatModelPicker,
+  type AutomationDetailTabId,
+  type ChatExperienceHeaderProps,
+  type ChatModelPickerProps,
+  type ModelQualitiesPosition,
+} from './components/ChatExperienceHeader'
+export * from './components/ai-elements/prompt-input'
+export * from './components/ai-elements/confirmation'
+export * from './components/ai-elements/context-meter'
 export * from './components/ChatComposer'
 export * from './components/ComprehensiveModelPicker'
 export { ComprehensiveModelPicker as ModelPicker } from './components/ComprehensiveModelPicker'

@@ -1,5 +1,8 @@
 'use client'
 
+import { unstyledButton, unstyledInput } from '@overlay/ui/control-reset'
+import { Button, Input } from '@overlay/ui/primitives'
+
 import { useCallback, useMemo, useState } from 'react'
 import {
   AlertCircle,
@@ -136,10 +139,6 @@ function useProviderConnectionActions({
       nextSettingsSet.add(model.appModelId)
     }
     const nextEnabledSettingsIds = Array.from(nextSettingsSet)
-    if (nextEnabledSettingsIds.length === 0) {
-      setRowError('At least one model must remain enabled.')
-      return
-    }
 
     const rawSet = new Set(connection.enabledModelIds)
     if (!defaultGateway) {
@@ -265,10 +264,12 @@ export function ProviderConnectionRow({
     [connection, gatewayModels],
   )
   const effectiveSettingsIds = useMemo(
-    () => new Set(getEffectiveSettingsModelIds(settingsEnabledModelIds)),
-    [settingsEnabledModelIds],
+    () => new Set(allModels
+      .filter((model) => defaultGateway || connection.enabledModelIds.includes(model.rawId))
+      .map((model) => model.appModelId)),
+    [allModels, connection.enabledModelIds, defaultGateway],
   )
-  const enabledCount = allModels.filter((model) => effectiveSettingsIds.has(model.appModelId)).length
+  const enabledCount = defaultGateway ? allModels.length : allModels.filter((model) => effectiveSettingsIds.has(model.appModelId)).length
   const displayModelCount = defaultGateway && allModels.length > 0 ? allModels.length : discoveredCount
   const providerLabel = preset?.allowsCustomEndpoint && endpointHost
     ? `${preset.label} · ${endpointHost}`
@@ -314,6 +315,7 @@ export function ProviderConnectionRow({
       />
       {expanded ? (
         <ProviderModelsPanel
+          catalogOnly={defaultGateway}
           connectionDisplayName={connection.displayName}
           query={query}
           onQueryChange={setQuery}
@@ -387,7 +389,7 @@ function ProviderConnectionHeader({
           <span className="truncate">{providerLabel}</span>
           <span>·</span>
           <span className="shrink-0">
-            {enabledCount} enabled
+            {isDefaultGatewayConnection(connection) ? `${enabledCount} available` : `${enabledCount} authorized`}
             {displayModelCount > 0 ? ` · ${displayModelCount} model${displayModelCount !== 1 ? 's' : ''}` : ' · 0 models'}
           </span>
           {connection.lastTestedAt ? (
@@ -407,19 +409,19 @@ function ProviderConnectionHeader({
 
       {/* Actions */}
       <div className="flex shrink-0 items-center gap-1">
-        <button
+        <Button variant="ghost"
           type="button"
           onClick={onDiscover}
           disabled={discoverDisabled}
-          className="flex h-8 w-8 items-center justify-center rounded-lg text-(--muted) hover:bg-(--surface-muted) hover:text-(--foreground) disabled:opacity-50"
+          className={unstyledButton(`flex h-8 w-8 items-center justify-center rounded-lg text-(--muted) hover:bg-(--surface-muted) hover:text-(--foreground) disabled:opacity-50`)}
           aria-label="Search provider models"
         >
           {discovering ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} strokeWidth={1.8} />}
-        </button>
-        <button
+        </Button>
+        <Button variant="ghost"
           type="button"
           onClick={onToggleExpanded}
-          className="flex h-8 w-8 items-center justify-center rounded-lg text-(--muted) hover:bg-(--surface-muted) hover:text-(--foreground)"
+          className={unstyledButton(`flex h-8 w-8 items-center justify-center rounded-lg text-(--muted) hover:bg-(--surface-muted) hover:text-(--foreground)`)}
           aria-label={expanded ? 'Hide provider models' : 'Show provider models'}
         >
           <ChevronRight
@@ -427,24 +429,24 @@ function ProviderConnectionHeader({
             strokeWidth={1.8}
             className={`transition-transform ${expanded ? 'rotate-90' : ''}`}
           />
-        </button>
-        <button
+        </Button>
+        <Button variant="ghost"
           type="button"
           onClick={onEdit}
-          className="flex h-8 w-8 items-center justify-center rounded-lg text-(--muted) hover:bg-(--surface-muted) hover:text-(--foreground)"
+          className={unstyledButton(`flex h-8 w-8 items-center justify-center rounded-lg text-(--muted) hover:bg-(--surface-muted) hover:text-(--foreground)`)}
           aria-label="Edit provider"
         >
           <Pencil size={14} strokeWidth={1.8} />
-        </button>
+        </Button>
         {connection.isDeletable ? (
-          <button
+          <Button variant="ghost"
             type="button"
             onClick={onDelete}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-(--muted) hover:bg-(--surface-muted) hover:text-red-500"
+            className={unstyledButton(`flex h-8 w-8 items-center justify-center rounded-lg text-(--muted) hover:bg-(--surface-muted) hover:text-red-500`)}
             aria-label="Delete provider"
           >
             <Trash2 size={14} strokeWidth={1.8} />
-          </button>
+          </Button>
         ) : null}
       </div>
     </div>
@@ -452,6 +454,7 @@ function ProviderConnectionHeader({
 }
 
 function ProviderModelsPanel({
+  catalogOnly,
   connectionDisplayName,
   query,
   onQueryChange,
@@ -465,6 +468,7 @@ function ProviderModelsPanel({
   settingsDisabled,
   onToggleModel,
 }: {
+  catalogOnly: boolean
   connectionDisplayName: string
   query: string
   onQueryChange: (query: string) => void
@@ -483,22 +487,21 @@ function ProviderModelsPanel({
       <div className="flex items-center gap-2">
         <div className="relative flex-1">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-(--muted-light)" />
-          <input
+          <Input
             value={query}
             onChange={(event) => onQueryChange(event.target.value)}
             placeholder={`Search ${connectionDisplayName} models`}
-            className="h-9 w-full rounded-lg border border-(--border) bg-(--surface-subtle) pl-9 pr-3 text-sm text-(--foreground) outline-hidden focus:border-(--muted)"
+            className={unstyledInput(`h-9 w-full rounded-lg border border-(--border) bg-(--surface-subtle) pl-9 pr-3 text-sm text-(--foreground) outline-hidden focus:border-(--muted)`)}
           />
         </div>
-        <button
+        <Button variant="secondary" size="sm" className="shrink-0"
           type="button"
           onClick={onDiscover}
           disabled={discoverDisabled}
-          className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-(--border) bg-(--surface-subtle) px-3 text-xs font-medium text-(--foreground) hover:bg-(--surface-elevated) disabled:opacity-50"
         >
           {discovering ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
           Search
-        </button>
+        </Button>
       </div>
 
       {rowError ? (
@@ -515,6 +518,7 @@ function ProviderModelsPanel({
               <ProviderModelRow
                 key={model.appModelId}
                 model={model}
+                catalogOnly={catalogOnly}
                 checked={effectiveSettingsIds.has(model.appModelId)}
                 saving={savingModelId === model.rawId}
                 settingsDisabled={settingsDisabled}
@@ -536,6 +540,7 @@ function ProviderModelsPanel({
 }
 
 function ProviderModelRow({
+  catalogOnly,
   model,
   checked,
   saving,
@@ -543,6 +548,7 @@ function ProviderModelRow({
   connectionDisplayName,
   onToggle,
 }: {
+  catalogOnly: boolean
   model: ProviderModelOption
   checked: boolean
   saving: boolean
@@ -581,11 +587,11 @@ function ProviderModelRow({
           {model.isDefault ? <><span>·</span><span>Default</span></> : null}
         </div>
       </div>
-      <SettingsToggle
+      {!catalogOnly ? <SettingsToggle
         checked={checked}
         disabled={settingsDisabled || saving}
         onChange={() => { onToggle(model) }}
-      />
+      /> : null}
     </div>
   )
 }

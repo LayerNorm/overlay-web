@@ -1,10 +1,12 @@
 'use client'
 
+import { unstyledButton } from '@overlay/ui/control-reset'
+
 import { useCallback, useEffect, useState } from 'react'
 import { Plug, Plus, Trash2 } from 'lucide-react'
 import type { McpConnectionResource } from '@overlay/api-client'
 import type { WorkspaceSummary } from '@overlay/workspace-contracts'
-import { Button } from '@overlay/ui/primitives'
+import { Button, toast } from '@overlay/ui/primitives'
 import { ConfirmDialog } from '@overlay/ui/overlays'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { MCP_ACCESS_LABEL } from '@/shared/mcp/access'
@@ -25,7 +27,7 @@ export function ConnectedAppsSettings() {
   const [endpoint, setEndpoint] = useState('')
   const [connections, setConnections] = useState<McpConnectionResource[] | null>(null)
   const [workspaces, setWorkspaces] = useState<WorkspaceSummary[]>([])
-  const [error, setError] = useState<string | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [tokenOpen, setTokenOpen] = useState(false)
   const [removing, setRemoving] = useState<McpConnectionResource | null>(null)
   const [busy, setBusy] = useState(false)
@@ -39,11 +41,11 @@ export function ConnectedAppsSettings() {
         setEndpoint(result.endpoint)
         setConnections(result.data)
         if (list) setWorkspaces(list.workspaces)
-        setError(null)
+        setLoadError(null)
       },
       (loadError: unknown) => {
         if (cancelled) return
-        setError(loadError instanceof Error ? loadError.message : 'Could not load your connections.')
+        setLoadError(loadError instanceof Error ? loadError.message : 'Could not load your connections.')
         setConnections((current) => current ?? [])
       },
     )
@@ -57,9 +59,10 @@ export function ConnectedAppsSettings() {
     try {
       await overlayAppClient.mcpAccess.revoke(removing.id)
       setRemoving(null)
+      toast.success('App disconnected.')
       refresh()
     } catch (removeError) {
-      setError(removeError instanceof Error ? removeError.message : 'Could not disconnect.')
+      toast.error(removeError instanceof Error ? removeError.message : 'Could not disconnect.')
     } finally {
       setBusy(false)
     }
@@ -77,7 +80,7 @@ export function ConnectedAppsSettings() {
         {endpoint ? <div className="mt-4"><ConnectAppGuide endpoint={endpoint} /></div> : null}
       </div>
 
-      {error ? <p role="alert" className="text-sm text-red-500">{error}</p> : null}
+      {loadError ? <p role="alert" className="text-sm text-red-500">{loadError}</p> : null}
 
       <div className="flex items-center justify-between gap-3">
         <h3 className="text-xs font-medium uppercase tracking-wide text-(--muted)">Connected</h3>
@@ -101,14 +104,14 @@ export function ConnectedAppsSettings() {
                 {workspaceName(connection.workspaceId)} · {MCP_ACCESS_LABEL[connection.access]} · {connection.kind === 'token' ? 'Token' : 'Signed in'} · Last used {formatWhen(connection.lastUsedAt, 'never')}
               </p>
             </div>
-            <button
+            <Button variant="ghost"
               type="button"
               aria-label={`Disconnect ${connection.name}`}
               onClick={() => setRemoving(connection)}
-              className="rounded-lg p-2 text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-red-400"
+              className={unstyledButton(`rounded-lg p-2 text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-red-400`)}
             >
               <Trash2 size={14} />
-            </button>
+            </Button>
           </div>
         ))}
       </div>

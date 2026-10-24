@@ -1,5 +1,5 @@
 'use client'
-
+import { Button } from '@overlay/ui/primitives'
 import type { ReactNode } from 'react'
 import type { NotebookAgentUiItem } from '@overlay/app-core'
 import { Orb } from '@overlay/ui'
@@ -44,7 +44,7 @@ export function NotebookAgentPanel({
             return (
               // react-doctor-disable-next-line react-doctor/no-array-index-as-key
               <div key={idx} className="flex justify-end">
-                <div className="chat-user-bubble min-w-0 max-w-[min(92%,36rem)] wrap-break-word select-text rounded-2xl rounded-br-sm border border-(--border) bg-(--surface-subtle) px-3 py-2.5 text-sm leading-relaxed text-(--foreground) sm:max-w-[75%]">
+                <div className="chat-user-bubble min-w-0 max-w-[min(92%,36rem)] wrap-break-word select-text rounded-2xl rounded-br-sm bg-(--surface-subtle) px-3 py-2.5 text-sm leading-relaxed text-(--foreground) sm:max-w-[75%]">
                   <span className="whitespace-pre-wrap">{item.text}</span>
                 </div>
               </div>
@@ -111,7 +111,7 @@ export function NotebookAgentPanel({
             // react-doctor-disable-next-line react-doctor/no-array-index-as-key
             <div
               key={idx}
-              className='rounded-md border border-red-500/30 bg-red-500/10 px-2 py-1.5 text-xs text-red-700 dark:text-red-300'
+              className='rounded-md bg-red-500/10 px-2 py-1.5 text-xs text-red-700 dark:text-red-300'
             >
               {item.text}
             </div>
@@ -139,29 +139,27 @@ export function NotebookAgentComposer({
   onStop,
 }: NotebookAgentComposerProps) {
   return (
-    <div className="overflow-visible rounded-2xl border border-(--border) bg-(--surface) shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+    <div className="overflow-visible rounded-2xl bg-(--surface-elevated)">
       <div className="p-2.5">
         {input}
         <div className="mt-2 flex min-h-9 items-center justify-end gap-2">
           {running ? (
-            <button
+            <Button variant="primary" size="icon" className="shrink-0"
               type="button"
               onClick={onStop}
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-(--foreground) text-(--background) transition-colors hover:opacity-80"
               aria-label="Stop"
             >
               <div className="h-3.5 w-3.5 rounded-xs bg-(--background)" />
-            </button>
+            </Button>
           ) : (
-            <button
+            <Button variant="primary" size="icon" className="shrink-0"
               type="button"
               onClick={onSend}
               disabled={!canSend}
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-(--foreground) text-(--background) transition-colors hover:opacity-80 disabled:opacity-40"
               aria-label="Send"
             >
               <Send size={17} strokeWidth={1.75} />
-            </button>
+            </Button>
           )}
         </div>
       </div>

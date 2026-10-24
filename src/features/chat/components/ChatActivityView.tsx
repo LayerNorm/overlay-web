@@ -7,7 +7,7 @@ import type {
   WorkspaceNotification,
   WorkspaceNotificationFilter,
 } from '@overlay/workspace-contracts'
-import { SegmentedControl } from '@overlay/ui'
+import { Button, SegmentedControl } from '@overlay/ui/primitives'
 import { AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
 import { SidebarListSkeleton } from '@overlay/ui/feedback'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
@@ -17,8 +17,10 @@ import { useCollaborationRealtime } from './collaboration/CollaborationRealtimeP
 import { ChatSurfaceEmptyState } from './ChatSurfaceEmptyState'
 import {
   buildWorkspaceHref,
+  mergeHrefSearchParams,
   readWorkspaceIdFromPath,
 } from '@/shared/workspaces/routing'
+import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 
 const FILTERS: Array<{ value: WorkspaceNotificationFilter; label: string; icon: typeof Bell }> = [
   { value: 'all', label: 'All', icon: Inbox },
@@ -53,6 +55,7 @@ function notificationIcon(type: WorkspaceNotification['type']) {
 export function ChatActivityView({ baseHref = '/app/chat' }: { baseHref?: string }) {
   const router = useRouter()
   const pathname = usePathname() ?? ''
+  const buildScopedHref = useWorkspaceHref()
   const [filter, setFilter] = useState<WorkspaceNotificationFilter>('all')
   const { notifications: sourceNotifications, notificationsReady } = useCollaborationRealtime()
   const [locallyRead, setLocallyRead] = useState<Map<string, number>>(() => new Map())
@@ -124,7 +127,12 @@ export function ChatActivityView({ baseHref = '/app/chat' }: { baseHref?: string
         : 'personal'
     const query = new URLSearchParams({ view, id: notification.conversationId })
     if (notification.messageId) query.set('message', notification.messageId)
-    router.push(`${baseHref}?${query.toString()}`)
+    const chatBase = buildScopedHref(
+      readWorkspaceIdFromPath(pathname),
+      baseHref,
+      view === 'personal' ? 'personal' : 'workspace',
+    )
+    router.push(mergeHrefSearchParams(chatBase, query))
   }
 
   async function markAllRead() {
@@ -177,22 +185,24 @@ export function ChatActivityView({ baseHref = '/app/chat' }: { baseHref?: string
           <div className="mx-auto w-full max-w-3xl px-4 py-4 sm:px-6">
             {unreadCount > 0 ? (
               <div className="mb-2 flex justify-end">
-                <button
+                <Button
+                  variant="ghost"
                   type="button"
                   onClick={() => void markAllRead()}
-                  className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
+                  className="h-auto gap-1.5 rounded-md px-2 py-1 text-xs font-normal text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
                 >
                   <BellOff size={13} /> Mark all read
-                </button>
+                </Button>
               </div>
             ) : null}
             <ul className="space-y-0.5">
               {notifications.map((notification) => (
                 <li key={notification.id}>
-                  <button
+                  <Button
+                    variant="ghost"
                     type="button"
                     onClick={() => void openNotification(notification)}
-                    className={`flex w-full items-start gap-3 rounded-lg px-3 py-3 text-left transition-colors hover:bg-(--surface-subtle) ${notification.readAt ? 'opacity-70' : ''}`}
+                    className={`flex h-auto w-full items-start justify-start gap-3 rounded-lg px-3 py-3 text-left font-normal transition-colors hover:bg-(--surface-subtle) hover:text-current ${notification.readAt ? 'opacity-70' : ''}`}
                   >
                     <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-(--surface-muted) text-(--muted)">
                       {notificationIcon(notification.type)}
@@ -233,7 +243,7 @@ export function ChatActivityView({ baseHref = '/app/chat' }: { baseHref?: string
                         aria-label='Unread'
                       />
                     )}
-                  </button>
+                  </Button>
                 </li>
               ))}
             </ul>

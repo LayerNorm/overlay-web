@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { ACTIVE_WORKSPACE_HEADER } from '@/shared/workspaces/constants'
+import { fetchWithSessionRecovery } from '@/shared/auth/session-fetch'
 import {
   DEFAULT_RESOURCE_SCOPE_POLICY,
   canCreateInScope,
@@ -31,7 +32,7 @@ const cache = new Map<string, WorkspaceCreateAccess>()
 const inflight = new Set<string>()
 
 async function fetchSharingPolicy(workspaceId: string): Promise<WorkspaceSharingPolicyResponse> {
-  const response = await fetch(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/policies`, {
+  const response = await fetchWithSessionRecovery(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/policies`, {
     cache: 'no-store',
     credentials: 'same-origin',
     headers: { [ACTIVE_WORKSPACE_HEADER]: workspaceId },

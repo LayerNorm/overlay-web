@@ -1,11 +1,10 @@
 import type { ToolVisualBlock } from '@overlay/chat-core'
 import { ASSISTANT_COLLAPSIBLE_BODY_CLASS,isOverlayGatedToolOutput } from '@overlay/chat-core'
-import { ChevronDown } from 'lucide-react'
 import { useEffect,useRef,useState,type RefObject } from 'react'
 import { getDescriptiveToolLabel } from '../../lib/tool-labels'
 import { MarkdownMessage } from '../MarkdownMessage'
 import { GatedPaidFeatureCallout } from './tool-call-rows'
-import { ToolLogoColumn } from './tool-rail'
+import { TraceStep } from './trace-step'
 
 type BrowserToolDetailsState = {
   isDone: boolean
@@ -38,107 +37,32 @@ function getBrowserToolDetails(block: ToolVisualBlock): BrowserToolDetailsState 
   }
 }
 
-function BrowserToolErrorRow({
-  label,
-  connectTop,
-  connectBottom,
-}: {
-  label: string
-  connectTop: boolean
-  connectBottom: boolean
-}) {
-  return (
-    <div className="w-full px-1 py-0.5">
-      <div className="flex max-w-[min(100%,36rem)] items-stretch gap-2.5 py-1 text-[13px] leading-snug">
-        <ToolLogoColumn connectTop={connectTop} connectBottom={connectBottom} />
-        <span className="min-w-0 flex-1 text-red-600">{label} — couldn’t complete</span>
-      </div>
-    </div>
-  )
-}
-
-function BrowserToolHeader({
-  details,
-  userExpanded,
-  onExpandedChange,
-  connectTop,
-  connectBottom,
-}: {
-  details: BrowserToolDetailsState
-  userExpanded: boolean
-  onExpandedChange: (expanded: boolean) => void
-  connectTop: boolean
-  connectBottom: boolean
-}) {
-  return (
-    <div className="flex items-stretch gap-2.5 text-[13px] leading-snug">
-      <ToolLogoColumn connectTop={connectTop} connectBottom={connectBottom} />
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <span className={details.running ? 'tool-line-shimmer' : 'text-(--tool-line-label)'}>
-            {details.label}
-          </span>
-          {details.hasDetails && details.isDone ? (
-            <button
-              type="button"
-              onClick={() => onExpandedChange(!userExpanded)}
-              className="inline-flex h-5 w-5 items-center justify-center rounded-md text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
-              aria-label={userExpanded ? 'Collapse browser tool details' : 'Expand browser tool details'}
-            >
-              <ChevronDown
-                size={14}
-                strokeWidth={1.75}
-                className={`transition-transform duration-200 ${userExpanded ? 'rotate-180' : ''}`}
-              />
-            </button>
-          ) : null}
-        </div>
-      </div>
-    </div>
-  )
-}
-
 function BrowserToolDetailsPanel({
   details,
-  showDetails,
-  userExpanded,
   scrollRef,
 }: {
   details: BrowserToolDetailsState
-  showDetails: boolean
-  userExpanded: boolean
   scrollRef: RefObject<HTMLDivElement | null>
 }) {
-  if (!details.hasDetails) return null
-
   return (
     <div
-      className={`ml-[26px] overflow-hidden transition-[max-height] duration-300 ${
-        showDetails ? 'max-h-[min(42vh,304px)] pt-2' : 'max-h-0'
+      ref={scrollRef}
+      className={`max-h-[min(42vh,304px)] space-y-3 pb-1 ${ASSISTANT_COLLAPSIBLE_BODY_CLASS} ${
+        details.running ? 'scrollbar-none' : 'scrollbar-thin'
       }`}
     >
-      {showDetails ? (
-        <div
-          ref={scrollRef}
-          key={userExpanded ? 'open' : details.running ? 'streaming' : 'closed'}
-          className={`space-y-3 message-appear ${ASSISTANT_COLLAPSIBLE_BODY_CLASS} ${
-            details.running ? 'scrollbar-none' : 'scrollbar-thin'
-          }`}
-        >
-          {details.task ? (
-            <div className="reasoning-markdown text-[12px] leading-relaxed text-(--muted)">
-              <MarkdownMessage text={details.task} isStreaming={details.running} suppressTypingIndicator />
-            </div>
-          ) : null}
-          {details.liveUrl && details.isDone ? (
-            <iframe
-              src={details.liveUrl}
-              title="Browser Use live browser"
-              sandbox="allow-scripts"
-              className="h-[280px] w-full rounded-xl border border-(--border) bg-(--background)"
-            />
-          ) : null}
+      {details.task ? (
+        <div className="reasoning-markdown text-[12px] leading-relaxed text-(--muted)">
+          <MarkdownMessage text={details.task} isStreaming={details.running} suppressTypingIndicator />
         </div>
+      ) : null}
+      {details.liveUrl && details.isDone ? (
+        <iframe
+          src={details.liveUrl}
+          title="Browser Use live browser"
+          sandbox="allow-scripts"
+          className="h-[280px] w-full rounded-xl bg-(--surface-subtle)"
+        />
       ) : null}
     </div>
   )
@@ -146,17 +70,14 @@ function BrowserToolDetailsPanel({
 
 export function BrowserToolBlock({
   block,
-  connectTop,
-  connectBottom,
 }: {
   block: ToolVisualBlock
-  connectTop: boolean
-  connectBottom: boolean
+  connectTop?: boolean
+  connectBottom?: boolean
 }) {
   const details = getBrowserToolDetails(block)
   const [userExpanded, setUserExpanded] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
-  const showDetails = (details.running && Boolean(details.task)) || (details.isDone && userExpanded && details.hasDetails)
 
   useEffect(() => {
     if (details.running && scrollRef.current) {
@@ -165,30 +86,24 @@ export function BrowserToolBlock({
   }, [details.task, details.running])
 
   if (isOverlayGatedToolOutput(block.toolOutput)) {
-    return <GatedPaidFeatureCallout block={block} connectTop={connectTop} connectBottom={connectBottom} />
+    return <GatedPaidFeatureCallout block={block} />
   }
 
   if (details.isError) {
-    return <BrowserToolErrorRow label={details.label} connectTop={connectTop} connectBottom={connectBottom} />
+    return <TraceStep label={`${details.label}, couldn’t complete`} running={false} error />
   }
 
   return (
-    <div className="w-full px-1 py-0.5">
-      <div className="max-w-[min(100%,36rem)]">
-        <BrowserToolHeader
-          details={details}
-          userExpanded={userExpanded}
-          onExpandedChange={setUserExpanded}
-          connectTop={connectTop}
-          connectBottom={connectBottom}
-        />
-        <BrowserToolDetailsPanel
-          details={details}
-          showDetails={showDetails}
-          userExpanded={userExpanded}
-          scrollRef={scrollRef}
-        />
-      </div>
-    </div>
+    <TraceStep
+      label={details.label}
+      running={details.running}
+      open={(details.running && Boolean(details.task)) || (details.isDone && userExpanded)}
+      onOpenChange={(open) => {
+        if (!details.running) setUserExpanded(open)
+      }}
+      expandLabel={details.running ? undefined : userExpanded ? 'Collapse browser tool details' : 'Expand browser tool details'}
+    >
+      {details.hasDetails ? <BrowserToolDetailsPanel details={details} scrollRef={scrollRef} /> : null}
+    </TraceStep>
   )
 }

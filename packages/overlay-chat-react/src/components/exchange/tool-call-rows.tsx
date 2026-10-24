@@ -1,20 +1,25 @@
+import {
+  Trace,
+  TraceCollapsible,
+  TraceCollapsibleContent,
+  TraceCollapsibleTrigger,
+  TraceLine,
+  TraceTitle,
+} from '@overlay/ui/ai'
 import type { ToolGroupItem, ToolVisualBlock } from '@overlay/chat-core'
 import {
 TOOL_UI_DONE_STATES,
 isOverlayGatedToolOutput
 } from '@overlay/chat-core'
-import { ChevronDown } from 'lucide-react'
 import { useState } from 'react'
 import { getDescriptiveToolLabel } from '../../lib/tool-labels'
 
 import { ReasoningBlock } from './reasoning-block'
-import { ToolLogoColumn } from './tool-rail'
+import { TraceOrb } from './tool-rail'
 
 export function ToolCallRowWithReasoning({
   block,
   variant = 'default',
-  connectTop = false,
-  connectBottom = false,
 }: {
   block: ToolVisualBlock
   variant?: 'default' | 'nested'
@@ -36,22 +41,15 @@ export function ToolCallRowWithReasoning({
           : 'running',
   )
 
-  const pad = variant === 'nested' ? 'py-0.5' : 'py-1'
-
   return (
     <div className="w-full max-w-[min(100%,36rem)]">
-      <div
-        className={`flex items-stretch gap-2.5 ${pad} text-[13px] leading-snug`}
+      <TraceLine
+        status={running ? 'running' : err ? 'error' : undefined}
+        className={`${variant === 'nested' ? 'py-0.5' : 'py-1'} text-[13px] leading-5`}
       >
-        <ToolLogoColumn connectTop={connectTop} connectBottom={connectBottom} />
-        <span
-          className={`min-w-0 ${
-            running && !err ? 'tool-line-shimmer' : err ? 'text-red-600' : 'text-(--tool-line-label)'
-          }`}
-        >
-          {label}
-        </span>
-      </div>
+        <TraceOrb running={running} />
+        <TraceTitle className="whitespace-normal">{label}</TraceTitle>
+      </TraceLine>
     </div>
   )
 }
@@ -69,21 +67,19 @@ const upgradeLink = (
 
 export function GatedPaidFeatureCallout({
   block,
-  connectTop,
-  connectBottom,
 }: {
   block: ToolVisualBlock
-  connectTop: boolean
-  connectBottom: boolean
+  connectTop?: boolean
+  connectBottom?: boolean
 }) {
   const out = block.toolOutput as { message?: unknown }
   const line =
     typeof out.message === 'string' && out.message.trim() ? out.message.trim() : 'This requires a paid plan.'
   return (
     <div className="w-full px-1 py-0.5">
-      <div className="flex w-full max-w-full items-start justify-start gap-2.5">
-        <ToolLogoColumn connectTop={connectTop} connectBottom={connectBottom} />
-        <p className="w-fit max-w-[min(100%,22rem)] rounded-lg border border-(--border) bg-(--surface-subtle) px-2.5 py-1.5 text-[11px] leading-relaxed text-(--muted)">
+      <div className="flex w-full max-w-full items-center justify-start gap-[0.4em] text-[11px]">
+        <TraceOrb />
+        <p className="w-fit max-w-[min(100%,22rem)] rounded-lg bg-(--surface-subtle) px-2.5 py-1.5 text-[11px] leading-relaxed text-(--muted)">
           {line} {upgradeLink}
         </p>
       </div>
@@ -93,102 +89,72 @@ export function GatedPaidFeatureCallout({
 
 export function SingleToolCallRow({
   block,
-  connectTop,
-  connectBottom,
 }: {
   block: ToolVisualBlock
-  connectTop: boolean
-  connectBottom: boolean
+  connectTop?: boolean
+  connectBottom?: boolean
 }) {
   return (
     <div className="w-full px-1 py-0.5">
-      <ToolCallRowWithReasoning block={block} connectTop={connectTop} connectBottom={connectBottom} />
+      <ToolCallRowWithReasoning block={block} />
     </div>
   )
 }
 
 export function ToolCallsCollapsedGroup({
   items,
-  connectTop,
-  connectBottom,
 }: {
   items: ToolGroupItem[]
-  connectTop: boolean
-  connectBottom: boolean
+  connectTop?: boolean
+  connectBottom?: boolean
 }) {
   const [open, setOpen] = useState(false)
   const tools = items.filter((it): it is ToolVisualBlock => it.kind === 'tool')
-  const n = tools.length
+  // Terminal details and their action share a call key; count the action once.
+  const n = new Set(tools.map(tool => tool.key)).size
+  const running = new Set(tools.filter(tool => !TOOL_UI_DONE_STATES.has(tool.state)).map(tool => tool.key)).size
   const anyRunning =
-    tools.some((t) => !TOOL_UI_DONE_STATES.has(t.state)) ||
+    running > 0 ||
     items.some((it) => it.kind === 'reasoning' && it.state !== 'done')
   const anyErr = tools.some(
     (t) => t.state === 'input-error' || t.state === 'output-error' || t.state === 'output-denied',
   )
   const summary =
-    anyErr
-      ? `${n} tools called`
-      : anyRunning
-        ? n === 1 ? '1 tool in progress' : `${n} tools in progress`
-        : n === 1 ? '1 tool called' : `${n} tools called`
+    running > 0
+      ? running < n ? `${n} tools · ${running} running`
+        : n === 1 ? '1 tool in progress' : `${n} tools in progress`
+      : n === 0 && anyRunning ? 'Working' : n === 1 ? '1 tool called' : `${n} tools called`
 
   return (
-    <div className="w-full px-1 py-0.5">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="inline-flex h-auto w-fit max-w-full items-stretch gap-2.5 rounded-md px-0 py-1 text-left text-[13px] leading-snug text-(--tool-line-label) hover:bg-transparent"
-      >
-        <ToolLogoColumn connectTop={connectTop} connectBottom={connectBottom} />
-        <span className="inline-flex min-w-0 items-center gap-1">
-          <span
-            className={`min-w-0 ${anyRunning && !anyErr ? 'tool-line-shimmer' : ''}`}
-          >
-            {summary}
-          </span>
-          <ChevronDown
-            size={14}
-            strokeWidth={1.75}
-            className={`shrink-0 text-(--tool-line-chevron) transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
-            aria-hidden
-          />
-        </span>
-      </button>
-      {open && (
-        <div className="mt-2 space-y-2">
-          {items.map((it, idx) => {
-            const top = idx > 0
-            const bot = idx < items.length - 1
-            if (it.kind === 'reasoning') {
-              return (
-                <ReasoningBlock
-                  key={`r-${it.key}`}
-                  text={it.text}
-                  streaming={it.state === 'streaming'}
-                  connectTop={top}
-                  connectBottom={bot}
-                />
+    <Trace className="px-1 py-0.5">
+      <TraceCollapsible open={open} onOpenChange={setOpen}>
+        <TraceCollapsibleTrigger className="py-1 text-[13px] leading-5">
+          <TraceLine status={anyErr ? 'error' : anyRunning ? 'running' : undefined}>
+            <TraceOrb running={anyRunning && !anyErr} />
+            <TraceTitle>{summary}</TraceTitle>
+          </TraceLine>
+        </TraceCollapsibleTrigger>
+        <TraceCollapsibleContent className="ml-0 pl-0">
+          <Trace className="gap-1">
+            {items.map((it) => {
+              if (it.kind === 'reasoning') {
+                return (
+                  <ReasoningBlock
+                    key={`r-${it.key}`}
+                    text={it.text}
+                    streaming={it.state === 'streaming'}
+                  />
+                )
+              }
+              return isOverlayGatedToolOutput(it.toolOutput) ? (
+                <GatedPaidFeatureCallout key={`${it.name}:${it.key}`} block={it} />
+              ) : (
+                <ToolCallRowWithReasoning key={`${it.name}:${it.key}`} block={it} variant="nested" />
               )
-            }
-            return isOverlayGatedToolOutput(it.toolOutput) ? (
-              <GatedPaidFeatureCallout
-                key={it.key}
-                block={it}
-                connectTop={top}
-                connectBottom={bot}
-              />
-            ) : (
-              <ToolCallRowWithReasoning
-                key={it.key}
-                block={it}
-                variant="nested"
-                connectTop={top}
-                connectBottom={bot}
-              />
-            )
-          })}
-        </div>
-      )}
-    </div>
+            })}
+          </Trace>
+        </TraceCollapsibleContent>
+      </TraceCollapsible>
+    </Trace>
   )
 }

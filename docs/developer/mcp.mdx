@@ -1,0 +1,90 @@
+---
+title: "MCP server"
+description: "Connect any MCP client to an Overlay workspace: address, sign-in, access levels, tools and limits."
+---
+
+Overlay is an MCP server for a person's own workspace. Any client that speaks MCP over Streamable HTTP can search and read notes, files, memory and knowledge, and, at higher access levels, write to them and use the person's connected apps and agents.
+
+People connect their own apps from **Settings → Connected apps**; the user-facing steps are in [Connect ChatGPT, Claude, and other apps](/help/connect-other-apps). This page is for building or configuring a client.
+
+## Endpoint
+
+```text
+https://www.getoverlay.io/api/mcp
+```
+
+Use the `www` host. The bare domain redirects, and strict OAuth clients compare the resource they were given with the address they called. A self-hosted instance serves the same path on its own host.
+
+The server is stateless and answers with JSON:
+
+| Method | Supported |
+| --- | --- |
+| `initialize`, `tools/list`, `tools/call` | Yes |
+| `prompts/list`, `prompts/get` | Yes. The person's enabled skills are offered as prompts. |
+| Resources | No |
+| `GET` / `DELETE` on the endpoint | `405` (no server-sent stream or session to close) |
+
+## Sign-in
+
+### OAuth 2.1 (hosted and desktop apps)
+
+Clients discover everything from a `401`:
+
+1. An unauthenticated call returns `401` with `WWW-Authenticate: Bearer resource_metadata="…"`.
+2. Protected-resource metadata (RFC 9728) is at `/.well-known/oauth-protected-resource/api/mcp`.
+3. Authorization-server metadata (RFC 8414) is at `/.well-known/oauth-authorization-server` (also `/.well-known/openid-configuration`).
+4. Register dynamically (RFC 7591) at `/api/oauth/register`. Clients are public; there is no client secret.
+5. Send the person to `/oauth/authorize` with PKCE (`S256` is required). They choose a workspace and an access level and approve.
+6. Exchange the code at `/api/oauth/token`.
+
+| Credential | Lifetime |
+| --- | --- |
+| Authorization code | 60 seconds, single use |
+| Access token | 1 hour |
+| Refresh token | 30 days, rotated on every use |
+
+Reusing an old refresh token or redeeming a code twice revokes the whole grant. Redirect URIs must exactly match one registered for the client: `https`, `http` on `localhost`, or an app scheme.
+
+### Personal tokens (local tools and scripts)
+
+For a client that cannot open a browser, the person creates a token in **Settings → Connected apps**, choosing the workspace and access level. Tokens start with `ovmcu_p_`, last up to 365 days, and are shown once.
+
+```http
+POST /api/mcp HTTP/1.1
+Host: www.getoverlay.io
+Authorization: Bearer ovmcu_p_…
+Content-Type: application/json
+Accept: application/json, text/event-stream
+
+{"jsonrpc":"2.0","id":1,"method":"tools/list"}
+```
+
+Every token is checked on each request against its grant and the person's current membership, so revoking a connection, removing someone from the workspace or deleting the account stops it at once.
+
+## Access levels
+
+A connection is one person, one workspace and one access level. The level can only narrow what that workspace already allows the person.
+
+| Level | Tools |
+| --- | --- |
+| **Read only** | Search and read memory, knowledge, files, notes, skills and automations. Nothing is changed or spent. |
+| **Read and write** | Read only, plus creating and editing notes, files, memory and skills, and web search. |
+| **Everything** | Read and write, plus automations, the person's connected apps and MCP servers, image and video generation, the browser, and asking the person's agents. |
+
+Never offered at any level: computer tools, creating or editing agents, and tools that only make sense inside an Overlay conversation.
+
+Calls act as the person who connected. Everything is attributed to them and billed to the workspace they chose.
+
+## Approvals
+
+Some tools require approval in Overlay, for example a tool on an MCP server the person added with approval turned on. An outside client cannot show Overlay's approval card, so those calls return an error explaining that the tool needs approval and should be run from an Overlay chat.
+
+## Asking agents
+
+At **Everything**, a client can list the person's agents and ask one a question. The question is posted in that agent's chat as the person's own message, labelled as coming from an outside app, so the person sees the exchange. Limits: 30 questions an hour and 100 a day per person.
+
+## Limits
+
+- Requests are rate-limited per connection. A `429` includes `Retry-After`.
+- Registration and token exchange have per-IP limits as a backstop.
+- Tool calls count against the workspace's plan like any other usage. See [Plans and credit](/help/billing).

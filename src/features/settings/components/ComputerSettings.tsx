@@ -1,5 +1,8 @@
 'use client'
 
+import { unstyledButton } from '@overlay/ui/control-reset'
+import { Button, toast } from '@overlay/ui/primitives'
+
 import { useCallback, useEffect, useState } from 'react'
 import { Monitor, Plus, RefreshCw, Square, Play, Trash2 } from 'lucide-react'
 import type { AgentEnvironmentResource } from '@overlay/api-client'
@@ -27,7 +30,7 @@ export function ComputerSettings() {
   const [agentNames, setAgentNames] = useState<Record<string, string>>({})
   const [busy, setBusy] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   const refresh = useCallback(async () => {
     if (!activeWorkspaceId) return
@@ -58,9 +61,9 @@ export function ComputerSettings() {
             return { environment, agentName: agentId ? names[agentId] ?? null : null }
           }),
       )
-      setError(null)
+      setLoadError(null)
     } catch (value) {
-      setError(value instanceof Error ? value.message : 'Failed to load computers')
+      setLoadError(value instanceof Error ? value.message : 'Failed to load computers')
     }
   }, [activeWorkspaceId])
 
@@ -77,15 +80,15 @@ export function ComputerSettings() {
   async function provision() {
     if (!activeWorkspaceId || !user) return
     setCreating(true)
-    setError(null)
     try {
       await overlayAppClient.computers.provision(activeWorkspaceId, {
         ownerType: 'user',
         ownerId: user.id,
       })
       await refresh()
+      toast.success('Computer creation started.')
     } catch (value) {
-      setError(value instanceof Error ? value.message : 'Could not create the computer')
+      toast.error(value instanceof Error ? value.message : 'Could not create the computer')
     } finally {
       setCreating(false)
     }
@@ -94,13 +97,12 @@ export function ComputerSettings() {
   async function openDesktop(computerId: string) {
     if (!activeWorkspaceId) return
     setBusy(computerId)
-    setError(null)
     try {
       const ticket = await overlayAppClient.computers.openDesktop(activeWorkspaceId, computerId)
       window.open(ticket.url, '_blank', 'noopener,noreferrer')
       await refresh()
     } catch (value) {
-      setError(value instanceof Error ? value.message : 'Could not open the desktop')
+      toast.error(value instanceof Error ? value.message : 'Could not open the desktop')
     } finally {
       setBusy(null)
     }
@@ -109,12 +111,11 @@ export function ComputerSettings() {
   async function openEnvironmentDesktop(environmentId: string) {
     if (!activeWorkspaceId) return
     setBusy(environmentId)
-    setError(null)
     try {
       const ticket = await overlayAppClient.agentEnvironments.openDesktop(activeWorkspaceId, environmentId)
       window.open(ticket.url, '_blank', 'noopener,noreferrer')
     } catch (value) {
-      setError(value instanceof Error ? value.message : 'Could not open the desktop')
+      toast.error(value instanceof Error ? value.message : 'Could not open the desktop')
     } finally {
       setBusy(null)
     }
@@ -123,7 +124,6 @@ export function ComputerSettings() {
   async function setRunning(computer: Computer, running: boolean) {
     if (!activeWorkspaceId) return
     setBusy(computer.id)
-    setError(null)
     try {
       if (running) {
         await overlayAppClient.computers.start(activeWorkspaceId, computer.id)
@@ -131,8 +131,9 @@ export function ComputerSettings() {
         await overlayAppClient.computers.stop(activeWorkspaceId, computer.id)
       }
       await refresh()
+      toast.success(running ? 'Computer stopped.' : 'Computer started.')
     } catch (value) {
-      setError(value instanceof Error ? value.message : running ? 'Could not start the computer' : 'Could not stop the computer')
+      toast.error(value instanceof Error ? value.message : running ? 'Could not start the computer' : 'Could not stop the computer')
     } finally {
       setBusy(null)
     }
@@ -142,12 +143,12 @@ export function ComputerSettings() {
     if (!activeWorkspaceId) return
     if (!window.confirm(`Delete ${ownerLabel(computer, agentNames)}? Its disk state is destroyed permanently.`)) return
     setBusy(computer.id)
-    setError(null)
     try {
       await overlayAppClient.computers.destroy(activeWorkspaceId, computer.id)
       await refresh()
+      toast.success('Computer deleted.')
     } catch (value) {
-      setError(value instanceof Error ? value.message : 'Could not delete the computer')
+      toast.error(value instanceof Error ? value.message : 'Could not delete the computer')
     } finally {
       setBusy(null)
     }
@@ -164,23 +165,22 @@ export function ComputerSettings() {
         <p className="mt-1 text-sm text-(--muted)">Persistent cloud desktops for you and your agents. Open one to watch or drive the live screen; stopped computers keep their disk.</p>
       </div>
 
-      {error ? <p role="alert" className="text-sm text-red-500">{error}</p> : null}
+      {loadError ? <p role="alert" className="text-sm text-red-500">{loadError}</p> : null}
 
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold text-(--foreground)">Workspace computers</h2>
           <div className="flex items-center gap-1">
             {!hasPersonal ? (
-              <button
+              <Button variant="secondary" size="sm"
                 type="button"
                 disabled={creating || busy !== null}
                 onClick={() => void provision()}
-                className="flex items-center gap-1.5 rounded-full border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-xs font-medium text-(--foreground) transition-colors hover:bg-(--surface-elevated) disabled:opacity-50"
               >
                 <Plus size={13} /> New computer
-              </button>
+              </Button>
             ) : null}
-            <button type="button" aria-label="Refresh computers" onClick={() => void refresh()} className="rounded-lg p-2 text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)"><RefreshCw size={15} /></button>
+            <Button variant="ghost" type="button" aria-label="Refresh computers" onClick={() => void refresh()} className={unstyledButton(`rounded-lg p-2 text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)`)}><RefreshCw size={15} /></Button>
           </div>
         </div>
         {computers.length === 0 && environmentMachines.length === 0 ? <p className="rounded-xl border border-dashed border-(--border) p-8 text-center text-sm text-(--muted)">No computers yet. Create one to give yourself a persistent cloud desktop.</p> : null}
@@ -199,14 +199,13 @@ export function ComputerSettings() {
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-1">
-                <button
+                <Button variant="secondary" size="sm"
                   type="button"
                   disabled={busy !== null}
                   onClick={() => void openEnvironmentDesktop(environment.id)}
-                  className="rounded-full border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-xs font-medium text-(--foreground) transition-colors hover:bg-(--surface-elevated) disabled:opacity-50"
                 >
                   Open
-                </button>
+                </Button>
               </div>
             </div>
           </div>
@@ -230,22 +229,21 @@ export function ComputerSettings() {
               </div>
               <div className="flex shrink-0 items-center gap-1">
                 {computer.status === 'ready' || computer.status === 'stopped' ? (
-                  <button
+                  <Button variant="secondary" size="sm"
                     type="button"
                     disabled={busy !== null}
                     onClick={() => void openDesktop(computer.id)}
-                    className="rounded-full border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-xs font-medium text-(--foreground) transition-colors hover:bg-(--surface-elevated) disabled:opacity-50"
                   >
                     Open
-                  </button>
+                  </Button>
                 ) : null}
                 {computer.status === 'ready' ? (
-                  <button type="button" aria-label="Stop computer" disabled={busy !== null} onClick={() => void setRunning(computer, false)} className="rounded-lg p-2 text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground) disabled:opacity-50"><Square size={15} /></button>
+                  <Button variant="ghost" type="button" aria-label="Stop computer" disabled={busy !== null} onClick={() => void setRunning(computer, false)} className={unstyledButton(`rounded-lg p-2 text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground) disabled:opacity-50`)}><Square size={15} /></Button>
                 ) : null}
                 {computer.status === 'stopped' ? (
-                  <button type="button" aria-label="Start computer" disabled={busy !== null} onClick={() => void setRunning(computer, true)} className="rounded-lg p-2 text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground) disabled:opacity-50"><Play size={15} /></button>
+                  <Button variant="ghost" type="button" aria-label="Start computer" disabled={busy !== null} onClick={() => void setRunning(computer, true)} className={unstyledButton(`rounded-lg p-2 text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground) disabled:opacity-50`)}><Play size={15} /></Button>
                 ) : null}
-                <button type="button" aria-label="Delete computer" disabled={busy !== null} onClick={() => void destroy(computer)} className="rounded-lg p-2 text-(--muted) hover:bg-red-500/10 hover:text-red-500 disabled:opacity-50"><Trash2 size={15} /></button>
+                <Button variant="ghost" type="button" aria-label="Delete computer" disabled={busy !== null} onClick={() => void destroy(computer)} className={unstyledButton(`rounded-lg p-2 text-(--muted) hover:bg-red-500/10 hover:text-red-500 disabled:opacity-50`)}><Trash2 size={15} /></Button>
               </div>
             </div>
           </div>

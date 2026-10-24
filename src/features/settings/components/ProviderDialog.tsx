@@ -1,17 +1,18 @@
 'use client'
 
+import { unstyledButton, unstyledInput } from '@overlay/ui/control-reset'
+
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   AlertCircle,
   Check,
-  ChevronDown,
   ExternalLink,
   KeyRound,
   Loader2,
   RefreshCw,
   X,
 } from 'lucide-react'
-import { DialogFrame, Toggle } from '@overlay/ui/primitives'
+import { DialogFrame, Toggle, Button, Input, Select, toast } from '@overlay/ui/primitives'
 import {
   BYOK_PROVIDER_PRESETS,
   getByokPreset,
@@ -175,7 +176,8 @@ async function saveProviderConnection({
         testResult,
       })),
     })
-    if (res.ok) onSaved()
+    if (!res.ok) throw new Error('Could not save provider connection.')
+    onSaved()
     return
   }
 
@@ -194,7 +196,7 @@ async function saveProviderConnection({
       enabledModelIds,
     }),
   })
-  if (!res.ok) return
+  if (!res.ok) throw new Error('Could not save provider connection.')
   // After creation, update with test results if available
   const data = await res.json() as { id: string }
   if (testResult?.ok && data.id) {
@@ -227,19 +229,16 @@ function ProviderPresetSelect({
   return (
     <div>
       <label htmlFor="provider-id" className="mb-1.5 block text-xs font-medium text-(--muted)">Provider</label>
-      <div className="relative">
-        <select
-          id="provider-id"
-          value={providerId}
-          onChange={(e) => onSelect(e.target.value)}
-          className="h-10 w-full appearance-none rounded-lg border border-(--border) bg-(--surface-subtle) px-3 pr-8 text-sm text-(--foreground) outline-hidden focus:border-(--muted)"
-        >
-          {presets.map((p) => (
-            <option key={p.id} value={p.id}>{p.label}</option>
-          ))}
-        </select>
-        <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-(--muted)" />
-      </div>
+      <Select
+        id="provider-id"
+        value={providerId}
+        onChange={(e) => onSelect(e.target.value)}
+        className="h-10 w-full appearance-none rounded-lg border border-(--border) bg-(--surface-subtle) px-3 pr-8 text-sm text-(--foreground) outline-hidden focus:border-(--muted) focus-visible:ring-0 enabled:hover:bg-(--surface-subtle)"
+      >
+        {presets.map((p) => (
+          <option key={p.id} value={p.id}>{p.label}</option>
+        ))}
+      </Select>
       {docsURL ? (
         <a
           href={docsURL}
@@ -267,7 +266,7 @@ function ProviderEndpointField({
       <label htmlFor="provider-endpoint" className="mb-1.5 block text-xs font-medium text-(--muted)">
         API base URL
       </label>
-      <input
+      <Input
         id="provider-endpoint"
         type="url"
         value={endpoint}
@@ -275,7 +274,7 @@ function ProviderEndpointField({
         autoComplete="url"
         spellCheck={false}
         placeholder="https://api.example.com/v1"
-        className="h-10 w-full rounded-lg border border-(--border) bg-(--surface-subtle) px-3 text-sm text-(--foreground) outline-hidden focus:border-(--muted)"
+        className={unstyledInput(`h-10 w-full rounded-lg border border-(--border) bg-(--surface-subtle) px-3 text-sm text-(--foreground) outline-hidden focus:border-(--muted)`)}
       />
       <p className="mt-1.5 text-[11px] leading-4 text-(--muted-light)">
         Use an HTTPS OpenAI-compatible base URL. Overlay blocks redirects and private-network addresses before sending your key.
@@ -306,7 +305,7 @@ function ProviderApiKeyField({
         {isEdit ? ' (leave blank to keep existing)' : ''}
       </label>
       <div className="relative">
-        <input
+        <Input
           id="provider-api-key"
           type={showApiKey ? 'text' : 'password'}
           value={apiKey}
@@ -314,16 +313,16 @@ function ProviderApiKeyField({
           autoComplete="off"
           spellCheck={false}
           placeholder={isEdit ? '••••••••' : 'Enter your API key'}
-          className="h-10 w-full rounded-lg border border-(--border) bg-(--surface-subtle) px-3 pr-10 text-sm text-(--foreground) outline-hidden focus:border-(--muted)"
+          className={unstyledInput(`h-10 w-full rounded-lg border border-(--border) bg-(--surface-subtle) px-3 pr-10 text-sm text-(--foreground) outline-hidden focus:border-(--muted)`)}
         />
-        <button
+        <Button variant="ghost"
           type="button"
           aria-label={showApiKey ? 'Hide API key' : 'Show API key'}
           onClick={onToggleShow}
-          className="absolute right-2 top-1/2 -translate-y-1/2 text-(--muted-light) hover:text-(--muted)"
+          className={unstyledButton(`absolute right-2 top-1/2 -translate-y-1/2 text-(--muted-light) hover:text-(--muted)`)}
         >
           {showApiKey ? <X size={14} /> : <KeyRound size={14} />}
-        </button>
+        </Button>
       </div>
     </div>
   )
@@ -443,32 +442,31 @@ function ProviderDialogFooter({
 }) {
   return (
     <>
-      <button
+      <Button variant="ghost"
         type="button"
         onClick={onTest}
         disabled={testing || busy || !canTest}
-        className="mr-auto inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium text-(--foreground) transition-opacity hover:opacity-80 disabled:opacity-50"
+        className={unstyledButton(`mr-auto inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium text-(--foreground) transition-opacity hover:opacity-80 disabled:opacity-50`)}
       >
         {testing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
         Test connection
-      </button>
-      <button
+      </Button>
+      <Button variant="ghost"
         type="button"
         onClick={onCancel}
         disabled={busy}
-        className="rounded-lg px-3 py-2 text-xs font-medium text-(--muted) hover:text-(--foreground) disabled:opacity-50"
+        className={unstyledButton(`rounded-lg px-3 py-2 text-xs font-medium text-(--muted) hover:text-(--foreground) disabled:opacity-50`)}
       >
         Cancel
-      </button>
-      <button
+      </Button>
+      <Button variant="primary" size="sm"
         type="button"
         onClick={onSave}
         disabled={busy || !canSave}
-        className="inline-flex items-center gap-1.5 rounded-lg bg-(--foreground) px-4 py-2 text-xs font-medium text-(--background) transition-opacity hover:opacity-90 disabled:opacity-50"
       >
         {busy ? <Loader2 size={14} className="animate-spin" /> : null}
         {isEdit ? 'Save changes' : 'Add provider'}
-      </button>
+      </Button>
     </>
   )
 }
@@ -569,6 +567,9 @@ function useProviderForm({ state, isEdit, onBusyChange, onSaved }: {
         providerId,
         onSaved,
       })
+      toast.success(isEdit ? 'Provider connection updated.' : 'Provider connected.')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not save provider connection.')
     } finally {
       onBusyChange(false)
     }
@@ -668,14 +669,14 @@ export function ProviderDialog({ state, busy, onBusyChange, onClose, onSaved }: 
 
         <div>
           <label htmlFor="provider-name" className="mb-1.5 block text-xs font-medium text-(--muted)">Provider name</label>
-          <input
+          <Input
             id="provider-name"
             type="text"
             value={displayName}
             onChange={(event) => setDisplayName(event.target.value)}
             maxLength={80}
             placeholder={preset?.allowsCustomEndpoint ? 'e.g. OpenCode Zen' : 'e.g. Personal OpenRouter key'}
-            className="h-10 w-full rounded-lg border border-(--border) bg-(--surface-subtle) px-3 text-sm text-(--foreground) outline-hidden focus:border-(--muted)"
+            className={unstyledInput(`h-10 w-full rounded-lg border border-(--border) bg-(--surface-subtle) px-3 text-sm text-(--foreground) outline-hidden focus:border-(--muted)`)}
           />
         </div>
 

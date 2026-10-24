@@ -1,14 +1,16 @@
 'use client'
-
+import { unstyledButton } from '@overlay/ui/control-reset'
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { Toaster, toast } from '@overlay/ui/primitives'
+import { X } from 'lucide-react'
+import { Toaster, toast, Button, IconButton } from '@overlay/ui/primitives'
 import { ARCHIVE_TOAST_EVENT, ARCHIVED_SETTINGS_HREF, type ArchiveToastDetail } from '@/shared/app/archive-toast'
+import { useAppSettings } from '@/components/providers/AppSettingsProvider'
 
 const VISIBLE_MS = 8000
 const ARCHIVE_TOAST_ID = 'archive-toast'
 
-function ArchiveToastContent({ detail, dismiss }: { detail: ArchiveToastDetail; dismiss: () => void }) {
+export function ArchiveToastContent({ detail, dismiss }: { detail: ArchiveToastDetail; dismiss: () => void }) {
   const [busy, setBusy] = useState(false)
   const [failed, setFailed] = useState(false)
 
@@ -27,19 +29,28 @@ function ArchiveToastContent({ detail, dismiss }: { detail: ArchiveToastDetail; 
   }
 
   return (
-    <span role="status" className="contents">
-      <span className="min-w-0 flex-1 truncate">
+    <div role="status" className="flex w-full flex-wrap items-center gap-2">
+      <span className="min-w-0 flex-1 break-words">
         {failed ? 'Could not undo that.' : (detail.summary ?? `Archived “${detail.name}”`)}
       </span>
       {detail.undo && !failed ? (
-        <button type="button" disabled={busy} onClick={() => void undo()} className="shrink-0 font-medium underline-offset-2 hover:underline disabled:opacity-50">
+        <Button variant="ghost" type="button" disabled={busy} onClick={() => void undo()} className={unstyledButton("shrink-0 font-medium underline-offset-2 hover:underline disabled:opacity-50")}>
           Undo
-        </button>
+        </Button>
       ) : null}
       <Link href={ARCHIVED_SETTINGS_HREF} onClick={dismiss} className="shrink-0 text-(--muted) underline-offset-2 hover:text-(--foreground) hover:underline">
         View archived
       </Link>
-    </span>
+      <IconButton
+        aria-label="Dismiss archive notification"
+        title="Dismiss notification"
+        size="sm"
+        onClick={dismiss}
+        className="shrink-0"
+      >
+        <X size={14} aria-hidden="true" />
+      </IconButton>
+    </div>
   )
 }
 
@@ -48,18 +59,20 @@ function ArchiveToastContent({ detail, dismiss }: { detail: ArchiveToastDetail; 
  * Archived items no longer have a row in every sidebar, so this is how a person finds them again straight away.
  */
 export function ArchiveToastHost() {
+  const { settings } = useAppSettings()
+
   useEffect(() => {
     function onToast(event: Event) {
       const detail = (event as CustomEvent<ArchiveToastDetail>).detail
       if (!detail) return
       toast.custom(
         (id) => <ArchiveToastContent detail={detail} dismiss={() => toast.dismiss(id)} />,
-        { id: ARCHIVE_TOAST_ID, duration: VISIBLE_MS, position: 'bottom-center' },
+        { id: ARCHIVE_TOAST_ID, duration: VISIBLE_MS },
       )
     }
     window.addEventListener(ARCHIVE_TOAST_EVENT, onToast)
     return () => window.removeEventListener(ARCHIVE_TOAST_EVENT, onToast)
   }, [])
 
-  return <Toaster position="bottom-center" offset={16} visibleToasts={1} />
+  return <Toaster theme={settings.theme} visibleToasts={3} />
 }

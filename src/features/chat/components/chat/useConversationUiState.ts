@@ -2,6 +2,8 @@
 
 import {
   useCallback,
+  useLayoutEffect,
+  useRef,
   useState,
   type Dispatch,
   type MutableRefObject,
@@ -13,6 +15,7 @@ import {
   createConversationUiState,
 } from '@overlay/chat-core'
 import { normalizeChatModelSelection } from '@/shared/chat/chat-model-prefs'
+import { withViewModelSelection } from './chat-runtime-helpers'
 import type {
   ConversationRuntime,
   ConversationUiState,
@@ -36,7 +39,6 @@ export type UseConversationUiStateParams = {
   selectedModels: string[]
   setActiveChatId: Dispatch<SetStateAction<string | null>>
   setActiveViewer: (chatId: string | null) => void
-  setAskModelSelectionMode: (mode: 'single' | 'multiple') => void
   setInterruptedExchangeIdx: Dispatch<SetStateAction<number | null>>
   setIsTemporaryChat: Dispatch<SetStateAction<boolean>>
   setSelectedActModel: (modelId: string) => void
@@ -59,7 +61,6 @@ export function useConversationUiState({
   selectedModels,
   setActiveChatId,
   setActiveViewer,
-  setAskModelSelectionMode,
   setInterruptedExchangeIdx,
   setIsTemporaryChat,
   setSelectedActModel,
@@ -68,7 +69,6 @@ export function useConversationUiState({
 }: UseConversationUiStateParams) {
   const [exchangeModes, setExchangeModes] = useState<('ask' | 'act')[]>([])
   const [exchangeModels, setExchangeModels] = useState<string[][]>([])
-  const [selectedTabPerExchange, setSelectedTabPerExchange] = useState<number[]>([])
   const [activeChatTitle, setActiveChatTitle] = useState<string | null>(null)
   const [generationResults, setGenerationResults] = useState<Map<number, GenerationResult[]>>(new Map())
   const [exchangeGenTypes, setExchangeGenTypes] = useState<('text' | 'image' | 'video')[]>([])
@@ -81,10 +81,8 @@ export function useConversationUiState({
     })
     setSelectedActModel(normalizedTextModels.actModelId)
     setSelectedModels([...normalizedTextModels.askModelIds])
-    setAskModelSelectionMode(normalizedTextModels.askModelIds.length > 1 ? 'multiple' : 'single')
     setExchangeModes([...ui.exchangeModes])
-    setExchangeModels(ui.exchangeModels.map((models) => [...models]))
-    setSelectedTabPerExchange([...ui.selectedTabPerExchange])
+    setExchangeModels(ui.exchangeModels.map((models) => models.slice(0, 1)))
     setActiveChatTitle(ui.activeChatTitle)
     setGenerationResults(cloneGenerationResultsMap(ui.generationResults))
     setExchangeGenTypes([...ui.exchangeGenTypes])
@@ -92,13 +90,11 @@ export function useConversationUiState({
     lastGeneratedImageUrlRef.current = ui.lastGeneratedImageUrl
   }, [
     lastGeneratedImageUrlRef,
-    setAskModelSelectionMode,
     setSelectedActModel,
     setSelectedModels,
   ])
 
   const buildActiveUiStateSnapshot = useCallback((): ConversationUiState => {
-    const activeRuntime = activeChatId ? ensureConversationRuntime(activeChatId) : null
     const normalizedTextModels = normalizeChatModelSelection({
       askModelIds: selectedModels,
       actModelId: selectedActModel,
@@ -106,21 +102,17 @@ export function useConversationUiState({
     return createConversationUiState({
       selectedActModel: normalizedTextModels.actModelId,
       selectedModels: normalizedTextModels.askModelIds,
-      askModelSelectionMode: normalizedTextModels.askModelIds.length > 1 ? 'multiple' : 'single',
       exchangeModes,
       exchangeModels,
-      selectedTabPerExchange,
       activeChatTitle,
       generationResults,
       exchangeGenTypes,
       isFirstMessage,
-      orphanModelThreads: activeRuntime?.ui.orphanModelThreads,
       lastGeneratedImageUrl: lastGeneratedImageUrlRef.current,
     })
   }, [
     activeChatId,
     activeChatTitle,
-    ensureConversationRuntime,
     exchangeGenTypes,
     exchangeModels,
     exchangeModes,
@@ -129,8 +121,12 @@ export function useConversationUiState({
     lastGeneratedImageUrlRef,
     selectedActModel,
     selectedModels,
-    selectedTabPerExchange,
   ])
+
+  const viewModelSelectionRef = useRef({ selectedModels, selectedActModel })
+  useLayoutEffect(() => {
+    viewModelSelectionRef.current = { selectedModels, selectedActModel }
+  }, [selectedModels, selectedActModel])
 
   const persistActiveRuntimeUiState = useCallback(() => {
     if (!activeChatId) return
@@ -144,8 +140,10 @@ export function useConversationUiState({
     updater: (prev: ConversationUiState) => ConversationUiState,
   ) => {
     const runtime = ensureConversationRuntime(chatId)
-    runtime.ui = updater(cloneConversationUiState(runtime.ui))
-    if (activeChatIdRef.current === chatId) {
+    const isActive = activeChatIdRef.current === chatId
+    const base = cloneConversationUiState(runtime.ui)
+    runtime.ui = updater(isActive ? withViewModelSelection(base, viewModelSelectionRef.current) : base)
+    if (isActive) {
       applyUiStateToView(runtime.ui)
     }
   }, [activeChatIdRef, applyUiStateToView, ensureConversationRuntime])
@@ -196,14 +194,12 @@ export function useConversationUiState({
     isFirstMessage,
     persistActiveRuntimeUiState,
     resetActiveChatAfterDelete,
-    selectedTabPerExchange,
     setActiveChatTitle,
     setExchangeGenTypes,
     setExchangeModels,
     setExchangeModes,
     setGenerationResults,
     setIsFirstMessage,
-    setSelectedTabPerExchange,
     updateRuntimeUiState,
   }
 }

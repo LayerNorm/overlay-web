@@ -24,6 +24,7 @@ import Underline from '@tiptap/extension-underline'
 import Youtube from '@tiptap/extension-youtube'
 import Emoji from '@tiptap/extension-emoji'
 import { common, createLowlight } from 'lowlight'
+import { toast } from '@overlay/ui/primitives'
 import {
   NOTEBOOK_INLINE_MATH_MIGRATION_REGEX,
   NotebookEditorController,
@@ -115,7 +116,10 @@ export function useEditorLifecycle({
           content,
           expectedUpdatedAt: request.baseRevision ? Number(request.baseRevision) : undefined,
         })
-        if (result.conflict) return { conflict: result.conflict }
+        if (result.conflict) {
+          toast.error(result.conflict.message)
+          return { conflict: result.conflict }
+        }
         const persisted = result.note
           ? noteDocToNotebookNote(result.note)
           : {
@@ -353,7 +357,7 @@ export function useNotebookEditor({
     },
     editorProps: {
       attributes: {
-        class: 'app-note-editor',
+        class: 'typeset app-note-editor',
       },
       handlePaste(view, event) {
         const file = Array.from(event.clipboardData?.files ?? []).find((item) => item.type.startsWith('image/'))

@@ -8,6 +8,7 @@ import {
   Server,
   Sparkles,
 } from 'lucide-react'
+import { buildWorkspaceHandleHref, mergeHrefSearchParams, readWorkspaceRouteDescriptor } from '@/shared/workspaces/routing'
 
 export const resourceRowClass =
   'flex h-8 w-full items-center gap-2 rounded-md px-2.5 text-left text-xs text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)'
@@ -18,15 +19,23 @@ function agentViewParams(init: Record<string, string>, view?: AgentsPanelView) {
   // `scope` is the panel's scope (personal|workspace; it replaced the
   // agents-only `?view=` tab, which is still read from old links) — never the
   // chats `view` vocabulary, where a 'dms' marker would hide workspace agents.
-  // Personal stays param-free.
   const params = new URLSearchParams(init)
-  if (view === 'workspace') params.set('scope', view)
+  if (view) params.set('scope', view)
   return params
+}
+
+function agentDestination(baseHref: string, params: URLSearchParams, view?: AgentsPanelView): string {
+  const merged = mergeHrefSearchParams(baseHref, params)
+  const source = new URL(baseHref, 'https://workspace.invalid')
+  const descriptor = readWorkspaceRouteDescriptor(source.pathname)
+  return descriptor?.handle
+    ? buildWorkspaceHandleHref(descriptor.handle, merged, view ?? descriptor.scope ?? undefined)
+    : merged
 }
 
 export function agentHref(baseHref: string, agentId: string, view?: AgentsPanelView) {
   const params = agentViewParams({ agent: agentId }, view)
-  return `${baseHref}?${params.toString()}`
+  return agentDestination(baseHref, params, view)
 }
 
 export function agentThreadHref(
@@ -36,7 +45,7 @@ export function agentThreadHref(
   view?: AgentsPanelView,
 ) {
   const params = agentViewParams({ agent: agentId, id: conversationId }, view)
-  return `${baseHref}?${params.toString()}`
+  return agentDestination(baseHref, params, view)
 }
 
 export const arrayOrEmpty = <T,>(value: unknown): T[] => Array.isArray(value) ? value : []

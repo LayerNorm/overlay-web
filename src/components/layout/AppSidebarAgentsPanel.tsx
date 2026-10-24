@@ -1,6 +1,7 @@
 'use client'
-
 import { useIsSoloWorkspace } from '@/hooks/use-solo-workspace'
+import { useWorkspaceHref } from '@/hooks/use-workspace-href'
+import { readWorkspacePathScope } from '@/shared/workspaces/routing'
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import {
@@ -9,13 +10,7 @@ import {
   Plus,
 } from 'lucide-react'
 import type { WorkspaceAgentBundle, WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
-import {
-  SidebarMenu,
-  SidebarMenuAction,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  SidebarMenuSkeleton,
-} from '@overlay/ui/primitives'
+import { SidebarMenu, SidebarMenuAction, SidebarMenuButton, SidebarMenuItem, SidebarMenuSkeleton, Button } from '@overlay/ui/primitives'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { announceArchived } from '@/shared/app/archive-toast'
 import { AgentCreature } from '@/components/orb/Creature'
@@ -27,6 +22,7 @@ import {
   type AgentDraftPreviewPatch,
 } from '@/shared/workspace/sidebar-events'
 import {
+  agentsForCreatorScope,
   getAgentOpenedAt,
   getLastOpenedAgentId,
   rememberAgentOpened,
@@ -460,22 +456,24 @@ function AgentListRow({
           isActive={isActive}
           disabled={anyOpening}
           // Reserve both actions on touch too; they are always visible below md.
-          className="group-has-data-[sidebar=menu-action]/menu-item:pr-14"
+          className="h-[38px] text-sm font-normal data-[active=true]:font-normal group-has-data-[sidebar=menu-action]/menu-item:pr-14"
           onClick={() => {
             if (!isExpanded) onToggleExpanded(agent.id)
             onOpenAgent(agent)
           }}
         >
-          {isOpening
-            ? <Loader2 size={13} className="shrink-0 animate-spin" />
-            : <AgentCreature agent={agent} size={16} />}
+          <span className="flex size-6 shrink-0 items-center justify-center">
+            {isOpening
+              ? <Loader2 size={16} className="animate-spin" />
+              : <AgentCreature agent={agent} size={24} />}
+          </span>
           <span className="truncate">{agent.name}</span>
         </SidebarMenuButton>
         <SidebarMenuAction
           aria-label={`New thread with ${agent.name}`}
           title="New thread"
           disabled={creatingThread}
-          className="right-7 md:opacity-0 group-hover/agent-row:opacity-100 group-focus-within/agent-row:opacity-100"
+          className="right-7 top-[9px]"
           onClick={(event) => {
             event.stopPropagation()
             if (!isExpanded) onToggleExpanded(agent.id)
@@ -485,6 +483,7 @@ function AgentListRow({
           {creatingThread ? <Loader2 className="animate-spin" aria-hidden /> : <Plus aria-hidden />}
         </SidebarMenuAction>
         <SidebarMenuAction
+          className="top-[9px]"
           aria-label={isExpanded ? `Collapse ${agent.name}` : `Expand ${agent.name}`}
           aria-expanded={isExpanded}
           onClick={(event) => {
@@ -527,9 +526,10 @@ export function AgentsInlinePanel({
   const searchParams = useSearchParams()
   const activeAgentId = searchParams?.get('agent') ?? searchParams?.get('agentId') ?? null
   const activeConversationId = searchParams?.get('id') ?? null
-  // With one person there is no Personal/Workspace split: every live agent is listed (the default Overlay agent is
-  // created by the system, so it would otherwise sit under a Workspace tab nobody opens).
+  // Member count is independent of the creator-relative Personal/Workspace views.
   const solo = useIsSoloWorkspace()
+  const buildWorkspaceHref = useWorkspaceHref()
+  const scopedBaseHref = buildWorkspaceHref(workspaceId, baseHref, view)
 
   const { bundles, setBundles, loadBundle } = useAgentBundles(workspaceId)
   const { expanded, toggleExpanded } = useExpandedAgents({ activeAgentId, bundles, loadBundle })
@@ -553,14 +553,12 @@ export function AgentsInlinePanel({
   // Live agents split into Personal (created by me) and Workspace (the rest). Archived agents and threads live in
   // Settings → Archived, not here.
   const tabAgents = useMemo(
-    () => previewedAgents.filter((agent) => {
-      if (agent.archivedAt) return false
-      if (solo) return true
-      return view === 'personal'
-        ? agent.createdByPrincipalId === viewerPrincipalId
-        : agent.createdByPrincipalId !== viewerPrincipalId
-    }),
-    [previewedAgents, view, viewerPrincipalId, solo],
+    () => agentsForCreatorScope(
+      previewedAgents.filter((agent) => !agent.archivedAt),
+      viewerPrincipalId,
+      view,
+    ),
+    [previewedAgents, view, viewerPrincipalId],
   )
 
   // Most recently used first; agents with no recorded use stay alphabetical.
@@ -581,7 +579,7 @@ export function AgentsInlinePanel({
     retryOpen,
   } = useAgentActions({
     workspaceId,
-    baseHref,
+    baseHref: scopedBaseHref,
     view,
     onNavigate,
     bundles,
@@ -602,7 +600,7 @@ export function AgentsInlinePanel({
     }
   }, [activeAgentId, sortedAgents, workspaceId])
 
-  // Thread links arrive with a missing or foreign `view` (bare `?agent=`
+  // Thread links arrive with a missing or foreign scope (bare `?agent=`
   // deep links, legacy `?view=dms` URLs). The Personal/Workspace bucket is
   // viewer-relative anyway — the same link can belong under different tabs
   // for the creator vs a teammate — so rewrite the URL to the tab that
@@ -612,20 +610,19 @@ export function AgentsInlinePanel({
     if (loading || !activeAgentId || !searchParams || viewerPrincipalId == null) return
     // `?view=` is how the tab was spelled before scopes.
     const viewParam = searchParams.get('scope') ?? searchParams.get('view')
-    if (viewParam === 'personal' || viewParam === 'workspace') return
     const active = agents.find((agent) => agent.id === activeAgentId)
     if (!active || active.archivedAt) return
-    const correctView: AgentsPanelView = solo || active.createdByPrincipalId === viewerPrincipalId
+    const correctView: AgentsPanelView = active.createdByPrincipalId === viewerPrincipalId
         ? 'personal'
         : 'workspace'
-    const wanted = correctView === 'personal' ? null : correctView
-    if (viewParam === wanted) return
+    const pathScope = readWorkspacePathScope(pathname)
+    if (pathScope === correctView || (!pathScope && viewParam === correctView)) return
     const params = new URLSearchParams(searchParams.toString())
     params.delete('view')
-    if (wanted) params.set('scope', wanted)
-    else params.delete('scope')
-    router.replace(`${pathname}?${params.toString()}`)
-  }, [loading, activeAgentId, agents, viewerPrincipalId, searchParams, router, pathname, solo])
+    params.delete('scope')
+    const route = buildWorkspaceHref(workspaceId, pathname, correctView)
+    router.replace(`${route}${params.size ? `?${params.toString()}` : ''}`)
+  }, [loading, activeAgentId, agents, viewerPrincipalId, searchParams, router, pathname, buildWorkspaceHref, workspaceId])
 
   return (
     <SidebarMenu>
@@ -672,13 +669,12 @@ export function AgentsInlinePanel({
         <SidebarMenuItem>
           <div className="px-2.5 py-2">
             <p role="alert" className="text-xs leading-4 text-red-500">{openError}</p>
-            <button
+            <Button variant="outline" size="sm" className="mt-1.5"
               type="button"
               onClick={retryOpen}
-              className="mt-1.5 rounded-md border border-(--border) px-2 py-1 text-xs text-(--foreground) hover:bg-(--surface-subtle)"
             >
               Retry
-            </button>
+            </Button>
           </div>
         </SidebarMenuItem>
       ) : null}

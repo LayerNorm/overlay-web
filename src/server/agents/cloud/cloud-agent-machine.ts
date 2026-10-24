@@ -11,6 +11,7 @@ import type { SandboxCreateRequest } from '@overlay/sandbox-runtime'
  */
 export const CLOUD_AGENT_HOME = '/home/user'
 export const CLOUD_AGENT_WORKSPACE = `${CLOUD_AGENT_HOME}/workspace`
+export const CLOUD_AGENT_DRIVE = `${CLOUD_AGENT_HOME}/drive`
 export const CLOUD_AGENT_STATE_DIR = `${CLOUD_AGENT_HOME}/.overlay/agent-host`
 export const CLOUD_AGENT_CONFIG_PATH = `${CLOUD_AGENT_STATE_DIR}/config.json`
 export const CLOUD_AGENT_LOG_PATH = `${CLOUD_AGENT_HOME}/.overlay/agent-host.log`
@@ -43,6 +44,8 @@ function detached(command: string, env: Record<string, string | undefined>): str
   return `mkdir -p ${shellQuote(CLOUD_AGENT_WORKSPACE)} ${shellQuote(CLOUD_AGENT_STATE_DIR)} && `
     // acpx ignores ~/.claude (skills, commands, subagents, settings) unless told to; an imported profile lives there.
     + (env.OVERLAY_REMOTE_RUN_LIFECYCLE_VERSION === '2' ? 'OVERLAY_REMOTE_RUN_LIFECYCLE_VERSION=2 ' : '')
+    + (env.OVERLAY_REMOTE_RUN_FENCED_RESTORATION === '0' || (env.OVERLAY_REMOTE_RUN_FENCED_RESTORATION === '1' && env.OVERLAY_REMOTE_RUN_LIFECYCLE_VERSION === '2')
+      ? `OVERLAY_REMOTE_RUN_FENCED_RESTORATION=${env.OVERLAY_REMOTE_RUN_FENCED_RESTORATION} ` : '')
     + `ACPX_CLAUDE_INCLUDE_USER_SETTINGS=1 nohup ${command} >> ${shellQuote(CLOUD_AGENT_LOG_PATH)} 2>&1 < /dev/null &`
 }
 
@@ -52,6 +55,7 @@ export function cloudAgentConnectCommand(args: {
   serverUrl: string
   name: string
   adapterId: CloudAgentAdapterId
+  hostingAuthFile?: string
 }, env: Record<string, string | undefined> = process.env): string {
   return detached([
     'overlay-agent-host connect', shellQuote(args.enrollmentCode),
@@ -60,6 +64,7 @@ export function cloudAgentConnectCommand(args: {
     '--adapter', shellQuote(args.adapterId),
     '--name', shellQuote(args.name),
     '--state-dir', shellQuote(CLOUD_AGENT_STATE_DIR),
+    ...(args.hostingAuthFile ? ['--hosting-auth-file', shellQuote(args.hostingAuthFile)] : []),
     '--run',
   ].join(' '), env)
 }
@@ -73,6 +78,7 @@ export function cloudAgentStopHostCommand(): string {
 }
 
 /** After a resume the host process is gone (the machine stopped). Restart it from saved state. */
-export function cloudAgentRunCommand(env: Record<string, string | undefined> = process.env): string {
-  return detached(`overlay-agent-host run --config ${shellQuote(CLOUD_AGENT_CONFIG_PATH)}`, env)
+export function cloudAgentRunCommand(env: Record<string, string | undefined> = process.env, hostingAuthFile?: string): string {
+  return detached(`overlay-agent-host run --config ${shellQuote(CLOUD_AGENT_CONFIG_PATH)}`
+    + (hostingAuthFile ? ` --hosting-auth-file ${shellQuote(hostingAuthFile)}` : ''), env)
 }

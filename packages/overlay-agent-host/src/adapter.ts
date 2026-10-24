@@ -13,12 +13,22 @@ export type StartAdapterSessionInput = {
   metadata: Record<string, unknown>
   adapterState?: Record<string, unknown>
   persistAdapterState?: (state: Record<string, unknown>) => void
+  /** A native result is known; suppress health probes while verified process cleanup finishes. Not a completion receipt. */
+  onNativeTurnEnded?: () => void
   /**
    * Environment variables for this run's agent process only (a person's
    * provider credentials on Overlay Cloud). Held in memory; never written to
    * the host's state or logs.
    */
   credentials?: Record<string, string>
+}
+
+/** A rejected start may release prepared resources only with native termination proof. */
+export class AdapterStartError extends Error {
+  constructor(message: string, readonly termination: 'confirmed' | 'unknown', options?: ErrorOptions) {
+    super(message, options)
+    this.name = 'AdapterStartError'
+  }
 }
 
 export interface AgentAdapterSession {
@@ -37,6 +47,6 @@ export interface AgentAdapterSession {
 
 export interface AgentAdapter {
   readonly capability: AdapterCapability
-  discover(): Promise<AdapterCapability>
+  discover(input?: { workingDirectory: string; credentials?: Record<string, string> }): Promise<AdapterCapability>
   start(input: StartAdapterSessionInput, emit: EmitAgentEvent): Promise<AgentAdapterSession>
 }

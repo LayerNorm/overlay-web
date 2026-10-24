@@ -1,4 +1,7 @@
-import { z } from 'zod'
+import { z } from 'zod/v3'
+import { driveSyncStatusSchema } from './drive.js'
+export * from './drive.js'
+export * from './drive-recovery.js'
 
 export const OVERLAY_AGENT_PROTOCOL_VERSION = 1 as const
 export const MAX_COMMANDS_PER_POLL = 50
@@ -28,7 +31,20 @@ export const executionFenceSchema = z.object({
 export const recoveryCapabilitiesSchema = z.object({
   liveReattachment: z.boolean(), sessionLoading: z.boolean(), interruptedTurnContinuation: z.boolean(),
   approvalRestoration: z.boolean(), providerCheckpoints: z.boolean(),
+  fencedSessionRestoration: z.boolean().optional(),
 }).strict()
+
+export const adapterSelectOptionSchema = z.object({
+  id: identifier, label: z.string().trim().min(1).max(200), description: z.string().max(2000).optional(),
+}).strict()
+export const adapterSelectSchema = z.object({
+  configId: identifier.optional(), currentValue: identifier.optional(), values: z.array(adapterSelectOptionSchema).min(1).max(200),
+}).strict()
+export const adapterOptionsSchema = z.object({
+  model: adapterSelectSchema.optional(), mode: adapterSelectSchema.optional(), effort: adapterSelectSchema.optional(),
+  discoveredAt: z.number().int().nonnegative(),
+}).strict()
+export type AdapterOptions = z.infer<typeof adapterOptionsSchema>
 
 export const adapterCapabilitySchema = z.object({
   id: identifier,
@@ -36,6 +52,7 @@ export const adapterCapabilitySchema = z.object({
   protocol: z.enum(['fake', 'acp', 'eve', 'native']),
   version: z.string().trim().min(1).max(100).optional(),
   recovery: recoveryCapabilitiesSchema.optional(),
+  options: adapterOptionsSchema.optional(),
   supports: z.object({
     prompt: z.boolean(),
     approval: z.boolean(),
@@ -45,9 +62,14 @@ export const adapterCapabilitySchema = z.object({
 }).strict()
 export type AdapterCapability = z.infer<typeof adapterCapabilitySchema>
 
+export const streamingCapabilitiesSchema = z.object({ textDeltas: z.literal(true), heartbeats: z.literal(true) }).strict()
+
 export const hostCapabilitiesSchema = z.object({
   protocolVersion: z.literal(OVERLAY_AGENT_PROTOCOL_VERSION),
   remoteLifecycleVersion: z.literal(2).optional(),
+  streaming: streamingCapabilitiesSchema.optional(),
+  mcp: z.object({ approvalBridge: z.literal(true) }).strict().optional(),
+  drive: z.object({ version: z.literal(1) }).strict().optional(),
   hostVersion: z.string().trim().min(1).max(100),
   platform: z.string().trim().min(1).max(200),
   adapters: z.array(adapterCapabilitySchema).max(100),
@@ -63,9 +85,32 @@ export const runCredentialsRequestSchema = z.object({
 }).strict()
 export type RunCredentialsRequest = z.infer<typeof runCredentialsRequestSchema>
 
+/** A Cloud host discovers options using its sole enabled binding for this adapter. */
+export const providerDiscoveryCredentialsRequestSchema = z.object({
+  protocolVersion: z.literal(OVERLAY_AGENT_PROTOCOL_VERSION),
+  adapterId: identifier,
+}).strict()
+export const providerCredentialsRequestSchema = z.union([runCredentialsRequestSchema, providerDiscoveryCredentialsRequestSchema])
+
+export const driveCredentialsRequestSchema = z.object({
+  protocolVersion: z.literal(OVERLAY_AGENT_PROTOCOL_VERSION), runId: identifier, sessionId: identifier,
+  execution: executionFenceSchema.omit({ hostBootId: true }).optional(),
+}).strict()
+export type DriveCredentialsRequest = z.infer<typeof driveCredentialsRequestSchema>
+export const driveCredentialsResponseSchema = z.object({
+  protocolVersion: z.literal(OVERLAY_AGENT_PROTOCOL_VERSION),
+  token: z.string().min(32).max(8192).regex(/^ovdrive_[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/),
+  expiresAt: z.number().int().positive(),
+  scope: z.discriminatedUnion('kind', [
+    z.object({ kind: z.literal('personal'), workspaceId: identifier, ownerUserId: identifier }).strict(),
+    z.object({ kind: z.literal('workspace'), workspaceId: identifier }).strict(),
+  ]),
+}).strict()
+export type DriveCredentialsResponse = z.infer<typeof driveCredentialsResponseSchema>
+
 export const runCredentialsResponseSchema = z.object({
   protocolVersion: z.literal(OVERLAY_AGENT_PROTOCOL_VERSION),
-  /** Environment variables for the agent process of this run only. */
+  /** Provider environment for the run or isolated option probe, never stored in commands or capabilities. */
   env: z.record(z.string().min(1).max(128), z.string().min(1).max(8_192)),
 }).strict()
 export type RunCredentialsResponse = z.infer<typeof runCredentialsResponseSchema>
@@ -112,6 +157,7 @@ export const environmentCredentialResponseSchema = z.object({
     'agent:artifacts:write',
     'agent:credentials:refresh',
     'agent:run-credentials',
+    'agent:drive-credentials',
   ])).min(1),
   token: z.string().trim().min(32).max(512),
   expiresAt: z.number().int().positive(),
@@ -166,10 +212,22 @@ const sessionCommand = {
   workingDirectory: z.string().trim().min(1),
 }
 
+export const nativeRestorationSchema = z.object({
+  previousExecution: executionFenceSchema,
+  providerStop: z.object({provider: z.literal('box'), leaseId: identifier, providerReference: identifier,
+    observedAt: z.number().int().nonnegative()}).strict(),
+}).strict()
+
+export const startAdapterPayloadSchema = z.object({...sessionCommand, prompt: z.string(), sessionId: identifier.optional(),
+  fresh: z.boolean().optional(), restore: nativeRestorationSchema.optional(), metadata: jsonObject.default({}),
+}).strict().refine(payload => !payload.restore || (payload.fresh !== true && Boolean(payload.sessionId)), {
+  message: 'Native restoration requires the original session and cannot start fresh',
+})
+
 export const agentHostCommandSchema = z.discriminatedUnion('type', [
   commandBase.extend({
     type: z.literal('start'),
-    payload: z.object({ ...sessionCommand, prompt: z.string(), sessionId: identifier.optional(), fresh: z.boolean().optional(), metadata: jsonObject.default({}) }).strict(),
+    payload: startAdapterPayloadSchema,
   }).strict(),
   commandBase.extend({
     type: z.literal('prompt'),
@@ -191,6 +249,7 @@ export const agentHostCommandSchema = z.discriminatedUnion('type', [
 export type AgentHostCommand = z.infer<typeof agentHostCommandSchema>
 
 export const commandPollResponseSchema = z.object({
+  streaming: streamingCapabilitiesSchema.optional(),
   protocolVersion: z.literal(OVERLAY_AGENT_PROTOCOL_VERSION),
   commands: z.array(agentHostCommandSchema).max(MAX_COMMANDS_PER_POLL),
   retryAfterMs: z.number().int().min(100).max(60_000).optional(),
@@ -225,10 +284,28 @@ const eventBase = z.object({
   occurredAt: z.number().int().nonnegative(),
 })
 
+export const agentHeartbeatPayloadSchema = z.object({ quietMs: z.number().int().nonnegative(),
+  openTools: z.array(z.object({ actionId: identifier, title: z.string().max(2000), runningMs: z.number().int().nonnegative() }).strict()).max(20),
+  stalled: z.boolean().optional(), process: z.enum(['live', 'lost', 'unknown']).optional(),
+}).strict()
+
+export const nativeStartRequestSchema = z.object({commandId: identifier, remoteSessionId: identifier, adapterId: identifier,
+  sourceEventCursor: z.number().int().nonnegative().safe()}).strict()
+export const nativeStartAdmissionSchema = z.object({commandId: identifier, attemptId: identifier,
+  generation: z.number().int().positive().safe(), hostBootId: identifier,
+  sourceEventCursor: z.number().int().nonnegative().safe(), canonicalTextOffset: z.number().int().nonnegative().safe(),
+  hardDeadlineAt: z.number().int().positive().safe()}).strict()
+export type NativeStartAdmission = z.infer<typeof nativeStartAdmissionSchema>
+
 export const agentHostEventSchema = z.discriminatedUnion('type', [
+  eventBase.extend({ type: z.literal('session_preparing'), payload: z.object({}).strict() }).strict(),
+  eventBase.extend({ type: z.literal('native_start_requested'), payload: nativeStartRequestSchema }).strict(),
   eventBase.extend({ type: z.literal('process_observation'), payload: z.object({ process: z.enum(['live', 'lost', 'unknown']), recoveryOutcome: z.enum(['attached_live', 'restored', 'requires_new_attempt', 'unavailable']).optional() }).strict() }).strict(),
-  eventBase.extend({ type: z.literal('session_started'), payload: z.object({ remoteSessionId: identifier, adapterId: identifier }).strict() }).strict(),
-  eventBase.extend({ type: z.literal('text_checkpoint'), payload: z.object({ text: z.string(), final: z.boolean().optional() }).strict() }).strict(),
+  eventBase.extend({ type: z.literal('session_started'), payload: z.object({ remoteSessionId: identifier, adapterId: identifier,
+    restorationCommandId: identifier.optional() }).strict() }).strict(),
+  eventBase.extend({ type: z.literal('text_checkpoint'), payload: z.object({ text: z.string(), final: z.boolean().optional(), offset: z.number().int().nonnegative().optional() }).strict() }).strict(),
+  eventBase.extend({ type: z.literal('text_delta'), payload: z.object({ offset: z.number().int().nonnegative(), text: z.string().min(1).max(64 * 1024) }).strict() }).strict(),
+  eventBase.extend({ type: z.literal('heartbeat'), payload: agentHeartbeatPayloadSchema }).strict(),
   eventBase.extend({ type: z.literal('action'), payload: z.object({ actionId: identifier, title: z.string().max(2_000), status: z.enum(['started', 'updated', 'completed', 'failed']), detail: z.string().max(20_000).optional() }).strict() }).strict(),
   eventBase.extend({ type: z.literal('approval_requested'), payload: z.object({ requestKey: identifier, prompt: z.string().max(20_000), options: z.array(z.object({ id: identifier, label: z.string().max(500) }).strict()).min(1).max(20), context: jsonObject.default({}) }).strict() }).strict(),
   eventBase.extend({ type: z.literal('elicitation_requested'), payload: z.object({ requestKey: identifier, prompt: z.string().max(20_000), requestedSchema: jsonObject, context: jsonObject.default({}) }).strict() }).strict(),
@@ -241,6 +318,7 @@ export const agentHostEventSchema = z.discriminatedUnion('type', [
   eventBase.extend({ type: z.literal('diff'), payload: z.object({ diffId: identifier, title: z.string().max(2_000), patch: z.string().max(200_000), language: z.string().max(100).optional() }).strict() }).strict(),
   eventBase.extend({ type: z.literal('terminal'), payload: z.object({ terminalId: identifier, title: z.string().max(2_000), summary: z.string().max(20_000), exitCode: z.number().int().optional(), status: z.enum(['running', 'completed', 'failed']) }).strict() }).strict(),
   eventBase.extend({ type: z.literal('artifact'), payload: z.object({ name: z.string().min(1).max(500), mediaType: z.string().min(1).max(200), size: z.number().int().nonnegative(), sha256: z.string().regex(/^[a-f0-9]{64}$/), uploadReference: identifier }).strict() }).strict(),
+  eventBase.extend({ type: z.literal('drive_sync'), payload: driveSyncStatusSchema }).strict(),
   eventBase.extend({ type: z.literal('completed'), payload: z.object({ summary: z.string().max(20_000).optional(), usage: jsonObject.default({}) }).strict() }).strict(),
   eventBase.extend({ type: z.literal('failed'), payload: z.object({ code: identifier, message: z.string().max(20_000), retryable: z.boolean() }).strict() }).strict(),
   eventBase.extend({ type: z.literal('cancelled'), payload: z.object({ reason: z.string().max(2_000).optional() }).strict() }).strict(),
@@ -294,7 +372,8 @@ export const eventBatchSchema = z.object({
 export type EventBatch = z.infer<typeof eventBatchSchema>
 
 export const eventAcknowledgementSchema = z.discriminatedUnion('accepted', [
-  z.object({ protocolVersion: z.literal(OVERLAY_AGENT_PROTOCOL_VERSION), accepted: z.literal(true), acknowledgedSequence: z.number().int().nonnegative() }).strict(),
+  z.object({ protocolVersion: z.literal(OVERLAY_AGENT_PROTOCOL_VERSION), accepted: z.literal(true), acknowledgedSequence: z.number().int().nonnegative(),
+    nativeStartAdmission: nativeStartAdmissionSchema.optional() }).strict(),
   z.object({ protocolVersion: z.literal(OVERLAY_AGENT_PROTOCOL_VERSION), accepted: z.literal(false), expectedSequence: z.number().int().positive() }).strict(),
 ])
 export type EventAcknowledgement = z.infer<typeof eventAcknowledgementSchema>
@@ -795,3 +874,5 @@ export const AGENT_PROFILE_TOP_LEVEL: Record<AgentProfileHarness, readonly strin
   'claude-code': ['CLAUDE.md', 'settings.json', 'agents', 'commands', 'skills', 'output-styles'],
   codex: ['AGENTS.md', 'config.toml', 'prompts', 'skills'],
 }
+export { drivePathSegments, portableDrivePathKey } from './drive-path.js'
+export { createMcpApprovalBridge, verifyMcpApprovalBridge } from './mcp-approval-bridge.js'

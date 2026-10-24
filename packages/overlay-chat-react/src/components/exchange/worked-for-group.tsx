@@ -1,6 +1,9 @@
-import { ChevronDown } from 'lucide-react'
+import { unstyledButton } from '@overlay/ui/control-reset'
+import { Button } from '@overlay/ui/primitives'
+import { Trace, TraceIcon, TraceLine, TraceTitle } from '@overlay/ui/ai'
+import { ChevronRight } from 'lucide-react'
 
-import { ToolLogoColumn } from './tool-rail'
+import { TraceOrb } from './tool-rail'
 
 /** "Worked for 12s" / "Worked for 1m 5s" — the settled-turn label. */
 export function formatWorkDuration(ms: number): string {
@@ -13,11 +16,9 @@ export function formatWorkDuration(ms: number): string {
 }
 
 /**
- * The row a settled assistant turn shows at the top when it did any work —
- * tool calls, reasoning beats, browser sessions all fold behind it so the
- * collapsed reply is just the text. It is a mode toggle, not a container:
- * expanding switches the whole message to the raw timeline with every work
- * segment back at its true position, and the row stays as the way back.
+ * The row a settled assistant turn shows at the top when it did any work.
+ * It is a mode toggle, not a container: expanding switches the whole message
+ * to the raw timeline with every work segment back at its true position.
  */
 export function WorkedForGroup({
   durationMs,
@@ -27,7 +28,6 @@ export function WorkedForGroup({
 }: {
   /** Measured turn time; absent on reloaded messages, which read "Worked". */
   durationMs?: number | null
-  /** Collapsed tool-call count — appended as "— N tool calls" when nonzero. */
   toolCallCount?: number
   expanded: boolean
   onToggle: () => void
@@ -37,24 +37,21 @@ export function WorkedForGroup({
     (toolCallCount > 0 ? `, called ${toolCallCount} tool${toolCallCount === 1 ? '' : 's'}` : '')
 
   return (
-    <div className="w-full px-1 py-0.5">
-      <button
-        type="button"
+    <Trace className="px-1 py-0.5">
+      <Button
+        variant="ghost"
         onClick={onToggle}
         aria-expanded={expanded}
-        className="inline-flex h-auto w-fit max-w-full items-stretch gap-2.5 rounded-md px-0 py-1 text-left text-[13px] leading-snug text-(--tool-line-label) hover:bg-transparent"
+        className={unstyledButton('h-auto w-fit max-w-full rounded-lg p-0 py-1 text-[13px] leading-snug hover:bg-transparent')}
       >
-        <ToolLogoColumn connectTop={false} connectBottom={false} />
-        <span className="inline-flex min-w-0 items-center gap-1">
-          <span className="min-w-0">{label}</span>
-          <ChevronDown
-            size={14}
-            strokeWidth={1.75}
-            className={`shrink-0 text-(--tool-line-chevron) transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}
-            aria-hidden
-          />
-        </span>
-      </button>
-    </div>
+        <TraceLine>
+          <TraceOrb />
+          <TraceTitle>{label}</TraceTitle>
+          <TraceIcon className={`transition-transform duration-200 ${expanded ? 'rotate-90' : ''}`}>
+            <ChevronRight />
+          </TraceIcon>
+        </TraceLine>
+      </Button>
+    </Trace>
   )
 }

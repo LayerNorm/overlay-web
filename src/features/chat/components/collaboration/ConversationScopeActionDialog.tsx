@@ -40,11 +40,12 @@ export function ConversationScopeActionDialog({
       className="max-w-md"
     >
       <div className="mt-4 space-y-2">
-        <button
+        <Button
+          variant="ghost"
           type="button"
           disabled={busy}
           onClick={() => void onSelect('self')}
-          className="flex w-full items-start gap-3 rounded-xl border border-(--border) p-3 text-left transition-colors hover:bg-(--surface-subtle) disabled:opacity-50"
+          className="h-auto w-full items-start justify-start gap-3 rounded-xl border border-(--border) p-3 text-left font-normal text-(--foreground) transition-colors hover:bg-(--surface-subtle) disabled:opacity-50"
         >
           <UserRound size={16} className="mt-0.5 shrink-0 text-(--muted)" />
           <span>
@@ -53,12 +54,13 @@ export function ConversationScopeActionDialog({
               {destructive ? 'Remove it from your workspace view without deleting it for teammates.' : 'Hide it from your workspace view while teammates keep it.'}
             </span>
           </span>
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="ghost"
           type="button"
           disabled={busy || !canApplyToEveryone}
           onClick={() => void onSelect('everyone')}
-          className={`flex w-full items-start gap-3 rounded-xl border p-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${
+          className={`h-auto w-full items-start justify-start gap-3 rounded-xl border p-3 text-left font-normal text-(--foreground) transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${
             destructive
               ? 'border-red-500/30 hover:bg-red-500/5'
               : 'border-(--border) hover:bg-(--surface-subtle)'
@@ -77,7 +79,7 @@ export function ConversationScopeActionDialog({
                 : 'Only the workspace owner can apply this action to everyone.'}
             </span>
           </span>
-        </button>
+        </Button>
         {error ? <p role="alert" className="pt-1 text-xs text-red-500">{error}</p> : null}
       </div>
     </DialogFrame>

@@ -109,10 +109,26 @@ test('web adapters satisfy the platform-neutral knowledge contract', async () =>
   assert.deepEqual(analytics, ['knowledge_contract_exercised'])
 })
 
+test('saved text uploads open as complete files while actual notes retain the note editor', async () => {
+  const client = createClient(), opened: string[] = []
+  const fullText = 'Full saved upload ✓\n' + '0123456789abcdef'.repeat(17000) + '\nEND_SAVED_UPLOAD'
+  client.files.getResponse = async ({ fileId, fullText: includeFullText }) => Response.json({
+    _id: fileId, name: 'payload.txt', type: 'file', kind: 'upload', mimeType: 'text/plain',
+    createdAt: 1, updatedAt: 1, content: includeFullText ? fullText : fullText.slice(0, 128 * 1024),
+  })
+  const adapters = createWebKnowledgeSurfaceAdapters({ client, navigate: url => opened.push(url) })
+  const file = await adapters.repository.get('saved-upload')
+  assert.ok(file)
+  assert.ok(file.content === fullText, 'Opening a file must load its full content rather than its searchable prefix')
+  await adapters.navigation.open(file)
+  assert.deepEqual(opened, ['/app/files?file=saved-upload'])
+})
+
 test('web navigation preserves note editor compatibility', () => {
   const opened: string[] = []
   const adapters = createWebKnowledgeSurfaceAdapters({
     client: createClient(),
+    currentUrl: () => new URL('https://getoverlay.io/w/team/workspace/files'),
     route: createWebKnowledgeRouteAdapter({
       currentUrl: () => new URL('https://getoverlay.io/app/files'),
       navigate() {},
@@ -125,7 +141,7 @@ test('web navigation preserves note editor compatibility', () => {
   adapters.navigation.open(normalizeKnowledgeSurfaceNode({
     _id: 'note', name: 'Note', type: 'note', kind: 'note', parentId: null, createdAt: 1, updatedAt: 1,
   }))
-  assert.deepEqual(opened, ['/app/notes?id=note'])
+  assert.deepEqual(opened, ['/w/team/workspace/notes?id=note'])
 })
 
 test('opening 100 web files causes zero list refetches', async () => {

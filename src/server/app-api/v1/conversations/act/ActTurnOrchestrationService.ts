@@ -16,8 +16,8 @@ import {
   assertUserCanUseByokModel,
   getLanguageModel,
   getGatewayModelId,
-  getOpenRouterLanguageModelCapturingRoutedModel,
 } from '@/server/ai/model-runtime'
+import { createRuntimeOverlayFreeLanguageModel } from '@/server/ai/gateway/overlay-free-router'
 import { modelSupportsZeroDataRetention, modelUsesAiGatewayTransport } from '@/shared/ai/gateway/model-data'
 import { isKimiK3ModelId } from '@/shared/ai/gateway/model-types'
 import {
@@ -25,12 +25,14 @@ import {
   getLowCreditFallbackAttemptModelIds,
 } from '@/shared/ai/gateway/model-fallbacks'
 import { isGatewayCreditLow } from '@/server/ai/gateway/gateway-credits'
+import { resolveModelContextWindow } from '@/server/chat/context-compaction'
 import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
 import { userFacingOpenRouterError } from '@/server/ai/model-runtime'
 import { uploadFilePartsForModel } from '@/server/ai/file-upload'
 import {
-  FREE_TIER_AUTO_MODEL_ID,
   FREE_TIER_DEFAULT_MODEL_ID,
+  isFreeTierChatModelId,
+  OPENROUTER_FREE_MODEL_ID,
 } from '@/shared/ai/gateway/model-types'
 import { normalizeChatToolRequestIds } from '@/shared/chat/tool-requests'
 import { MAX_TOOL_STEPS_ACT } from '@/server/tools/tools/policy'
@@ -75,7 +77,6 @@ import {
   observeFirstTextToken,
   prefixFallbackNoticeAfterStart,
   resolveActAbortTimeoutMs,
-  resolveActMultiModelState,
   resolveActTurnId,
   resolveEffectiveActModelId,
   runActModelAttempts,
@@ -167,6 +168,7 @@ export async function executeActTurn(
       systemPrompt,
       conversationId,
       conversationClientId,
+      scope,
       askModelIds,
       turnId,
       modelId,
@@ -186,9 +188,6 @@ export async function executeActTurn(
       memoryEnabled: rawMemoryEnabled,
       actAbortTimeoutMs,
       mentions: rawMentions,
-      /** Parallel multi-model: slot 0 = primary (full tools including Composio). Slots 1+ are compare-only. */
-      multiModelSlotIndex: rawMultiModelSlotIndex,
-      multiModelTotal: rawMultiModelTotal,
       reasoning: rawReasoning,
     } = bodyResult.data
     if (!Array.isArray(messages) || messages.length === 0) {
@@ -228,7 +227,7 @@ export async function executeActTurn(
       automationExecution: automationExecution === true,
       conversationId,
       turnId,
-      variantIndex: rawMultiModelSlotIndex,
+      variantIndex: 0,
     })
     const effectiveModelId = resolveEffectiveActModelId(modelId)
     requestModelId = effectiveModelId
@@ -311,6 +310,7 @@ export async function executeActTurn(
         userId: conversationUserId,
         repository: actConversationRepository,
         conversationClientId: trimmedClientId,
+        scope,
         entitlements: runtimeEntitlements,
         askModelIds,
         actModelId: effectiveModelId,
@@ -333,17 +333,6 @@ export async function executeActTurn(
       })
     }
     const tid = resolveActTurnId(turnId)
-
-    const {
-      isMultiModelFollowUpSlot,
-      multiModelSlotIndex,
-      multiModelTotal,
-    } = resolveActMultiModelState({
-      rawMultiModelSlotIndex,
-      rawMultiModelTotal,
-      idempotencyKey: context.requestIdempotencyKey,
-    })
-    /** User message is persisted once (slot 0). Third-party (Composio) actions only on primary slot. */
 
     // P3.3: hoist Composio to Wave 1 — start before any await so it overlaps all prep work.
     // Cache in composio-tools.ts makes this ~0ms on repeat requests within 10 minutes.
@@ -389,7 +378,7 @@ export async function executeActTurn(
         : undefined,
       billingSpendSubjectId: resolvedBillingPayer.subject.id,
       billingSpendSubjectKind: resolvedBillingPayer.subject.kind,
-      skip: isMultiModelFollowUpSlot,
+      skip: false,
     }).catch((error): undefined => {
       // History loading remains the authoritative preparation failure. A
       // transient user-message write must not mask a later fatal context error
@@ -422,7 +411,7 @@ export async function executeActTurn(
 
     const structuredMediaToolIntent = normalizeStructuredMediaToolIntent(mediaToolIntent)
     const mediaIntentTask: Promise<MediaToolIntent> = (() => {
-      if (isMultiModelFollowUpSlot || !paid) return Promise.resolve(null)
+      if (!paid) return Promise.resolve(null)
       if (structuredMediaToolIntent != null) return Promise.resolve(structuredMediaToolIntent)
       if (!mayNeedMediaGenerationTools(latestUserText)) return Promise.resolve(null)
       return classifyMediaToolIntentForTurn({
@@ -548,7 +537,6 @@ export async function executeActTurn(
 
     const mediaHeuristicSkipped =
       paid &&
-      !isMultiModelFollowUpSlot &&
       structuredMediaToolIntent == null &&
       !mayNeedMediaGenerationTools(latestUserText) &&
       resolvedMediaToolIntent == null
@@ -571,7 +559,6 @@ export async function executeActTurn(
               turnId: tid,
               userId: conversationUserId,
               userMessageId,
-              variantIndex: multiModelSlotIndex,
             })
           : agentRunService.startChat({
               conversationId: cid,
@@ -580,7 +567,6 @@ export async function executeActTurn(
               turnId: tid,
               userId: conversationUserId,
               userMessageId,
-              variantIndex: multiModelSlotIndex,
             }))
       : Promise.resolve(undefined)
 	    const [agentRun, actTooling] = await Promise.all([
@@ -597,7 +583,6 @@ export async function executeActTurn(
         entitlements: runtimeEntitlements,
 	        effectiveModelId,
 	        forwardCookie: request.headers.get('cookie'),
-	        isMultiModelFollowUpSlot,
 	        latestUserText,
 	        memoryEnabled,
 	        mediaToolIntent: resolvedMediaToolIntent,
@@ -646,7 +631,6 @@ export async function executeActTurn(
       exposedMediaTools: actTooling.exposedMediaTools,
       hasPreloadedDocContext,
       indexedNote,
-      isMultiModelFollowUpSlot,
       memoryContext,
       memoryEnabled,
       mentionsContext,
@@ -727,8 +711,6 @@ export async function executeActTurn(
         instructions: actInstructions,
         messages: workMessages,
         modelId: effectiveModelId,
-        multiModelSlotIndex,
-        multiModelTotal,
         paid,
         ...(modelSupportsZeroDataRetention(effectiveModelId)
           ? { providerOptions: { gateway: { zeroDataRetention: true } } }
@@ -806,6 +788,14 @@ export async function executeActTurn(
     }) => {
     const attemptModelId = params.modelId
     const attemptModelSupportsZdr = modelSupportsZeroDataRetention(attemptModelId)
+    // Resolved in the background so the catalog lookup never delays the first token.
+    let attemptContextWindow: number | undefined
+    let lastStepUsage: { inputTokens?: number; outputTokens?: number } | undefined
+    void resolveModelContextWindow(attemptModelId)
+      .then((contextWindow) => {
+        attemptContextWindow = contextWindow
+      })
+      .catch((_error: unknown) => undefined)
     // Kimi K3 always reasons and the AI SDK provider only exposes max effort.
     // Do not send a stale persisted `none` value that the provider cannot honor.
     const effectiveReasoning = isKimiK3ModelId(attemptModelId) && rawReasoning && rawReasoning !== 'provider-default'
@@ -953,7 +943,7 @@ export async function executeActTurn(
         const totalInputTokens = usage?.inputTokens ?? 0
         const totalOutputTokens = usage?.outputTokens ?? 0
         // Fallback: if the fetch-interceptor did not capture the model yet, try the step response.
-        if (attemptModelId === FREE_TIER_AUTO_MODEL_ID && !streamedRoutedModelId) {
+        if (isFreeTierChatModelId(attemptModelId) && !streamedRoutedModelId) {
           const rid = event.steps.at(-1)?.response.modelId
           if (typeof rid === 'string' && rid) streamedRoutedModelId = rid
         }
@@ -1002,8 +992,6 @@ export async function executeActTurn(
             automationExecution === true && auth.authType === 'service'
               ? automationName?.trim() || undefined
               : undefined,
-          multiModelSlotIndex,
-          multiModelTotal,
           routedModelId: streamedRoutedModelId,
           sourceCitations: sourceCitationMap,
           timedOut: wasAbortedByTimeout,
@@ -1049,11 +1037,25 @@ export async function executeActTurn(
           metadata.sourceCitations = sourceCitationMap
         }
         if (
-          attemptModelId === FREE_TIER_AUTO_MODEL_ID &&
+          isFreeTierChatModelId(attemptModelId) &&
           part.type === 'finish' &&
           streamedRoutedModelId
         ) {
           metadata.routedModelId = streamedRoutedModelId
+        }
+        if (part.type === 'finish-step') lastStepUsage = part.usage
+        // Context left for the next turn is the last step's prompt plus its reply;
+        // totalUsage sums every tool step and overstates it.
+        const contextUsage = part.type === 'finish' ? lastStepUsage ?? part.totalUsage : undefined
+        if (contextUsage) {
+          const inputTokens = contextUsage.inputTokens
+          const outputTokens = contextUsage.outputTokens
+          metadata.usage = {
+            inputTokens,
+            outputTokens,
+            totalTokens: (inputTokens ?? 0) + (outputTokens ?? 0),
+          }
+          if (attemptContextWindow) metadata.contextWindow = attemptContextWindow
         }
         return Object.keys(metadata).length > 0 ? metadata : undefined
       },
@@ -1232,12 +1234,12 @@ export async function executeActTurn(
     }
 
     const languageModelForAttempt = async (attemptModelId: string): Promise<LanguageModel> => {
-      if (attemptModelId === FREE_TIER_AUTO_MODEL_ID) {
-        return getOpenRouterLanguageModelCapturingRoutedModel(
-          FREE_TIER_AUTO_MODEL_ID,
-          accessToken,
-          (m) => { streamedRoutedModelId = m },
-        )
+      if (isFreeTierChatModelId(attemptModelId)) {
+        return createRuntimeOverlayFreeLanguageModel({
+          modelId: attemptModelId,
+          fallbackOnly: attemptModelId === OPENROUTER_FREE_MODEL_ID,
+          onModelCaptured: (m) => { streamedRoutedModelId = m },
+        })
       }
 
       return getLanguageModel(attemptModelId, accessToken, userId, {
@@ -1245,6 +1247,7 @@ export async function executeActTurn(
         // remaining paid entries are deliberate last resorts, so they must
         // reach the gateway rather than being swapped back to a free model.
         allowLowBalanceFallback: !gatewayCreditLow,
+        sessionId: cid ?? undefined,
       })
     }
 
@@ -1419,4 +1422,3 @@ function safeGatewayModelId(modelId: string): string | null {
     return null
   }
 }
-

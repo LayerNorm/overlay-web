@@ -1,14 +1,20 @@
 import type {
+  AccountWorkspaceDirectoryResponse,
+} from '@overlay/workspace-contracts'
+import type {
   WorkspaceOperationalMetrics,
   WorkspaceActivateResponse,
   WorkspaceClient,
   WorkspaceCreateInput,
   WorkspaceCreateResponse,
-  WorkspaceListResponse,
+  WorkspaceHandleResolutionResponse,
+  WorkspaceHandleUpdateInput,
+  WorkspaceHandleUpdateResponse,
   WorkspaceManagementClient,
   WorkspaceManagementLoader,
 } from '@/shared/workspaces/types'
 import { ACTIVE_WORKSPACE_HEADER } from '@/shared/workspaces/constants'
+import { fetchWithSessionRecovery } from '@/shared/auth/session-fetch'
 
 async function readJson<T>(response: Response): Promise<T> {
   if (!response.ok) {
@@ -30,24 +36,40 @@ async function readJson<T>(response: Response): Promise<T> {
 
 export const workspaceClient: WorkspaceClient = {
   async list(signal) {
-    return await readJson<WorkspaceListResponse>(await fetch('/api/v1/workspaces', {
+    return await readJson<AccountWorkspaceDirectoryResponse>(await fetchWithSessionRecovery('/api/v1/account/workspaces', {
       cache: 'no-store',
       credentials: 'same-origin',
       signal,
     }))
   },
 
-  async create(input: WorkspaceCreateInput) {
-    return await readJson<WorkspaceCreateResponse>(await fetch('/api/v1/workspaces', {
+  async create(input: WorkspaceCreateInput, options?: { idempotencyKey: string }) {
+    return await readJson<WorkspaceCreateResponse>(await fetchWithSessionRecovery('/api/v1/account/workspaces', {
       method: 'POST',
       credentials: 'same-origin',
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', 'idempotency-key': options?.idempotencyKey ?? crypto.randomUUID() },
       body: JSON.stringify(input),
     }))
   },
 
+  async resolveHandle(handle: string, signal?: AbortSignal) {
+    return await readJson<WorkspaceHandleResolutionResponse>(await fetchWithSessionRecovery(
+      `/api/v1/workspace-handles/${encodeURIComponent(handle)}`,
+      { cache: 'no-store', credentials: 'same-origin', signal },
+    ))
+  },
+
+  async updateHandle(workspaceId: string, input: WorkspaceHandleUpdateInput) {
+    return await workspaceMutation<WorkspaceHandleUpdateResponse>(
+      workspaceId,
+      `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/handle`,
+      'PATCH',
+      input,
+    )
+  },
+
   async activate(workspaceId: string) {
-    return await readJson<WorkspaceActivateResponse>(await fetch('/api/v1/workspaces/active', {
+    return await readJson<WorkspaceActivateResponse>(await fetchWithSessionRecovery('/api/v1/workspaces/active', {
       method: 'POST',
       credentials: 'same-origin',
       headers: { 'content-type': 'application/json' },
@@ -60,7 +82,7 @@ export const workspaceManagementLoader: WorkspaceManagementLoader = {
   async load(workspaceId, tab, signal) {
     if (tab === 'billing') throw new Error('Billing uses the dedicated workspace billing endpoint')
     const query = new URLSearchParams({ view: tab })
-    return await readJson(await fetch(
+    return await readJson(await fetchWithSessionRecovery(
       `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/management?${query.toString()}`,
       {
         cache: 'no-store',
@@ -78,7 +100,7 @@ async function workspaceMutation<T>(
   method: 'DELETE' | 'PATCH' | 'POST',
   body?: unknown,
 ): Promise<T> {
-  return await readJson<T>(await fetch(path, {
+  return await readJson<T>(await fetchWithSessionRecovery(path, {
     method,
     credentials: 'same-origin',
     headers: {
@@ -93,7 +115,7 @@ export const workspaceManagementClient: WorkspaceManagementClient = {
   ...workspaceManagementLoader,
 
   async billing(workspaceId, signal) {
-    return await readJson(await fetch(
+    return await readJson(await fetchWithSessionRecovery(
       `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/billing`,
       {
         cache: 'no-store',
@@ -157,7 +179,7 @@ export const workspaceManagementClient: WorkspaceManagementClient = {
   },
 
   async sharingPolicy(workspaceId, signal) {
-    return await readJson(await fetch(
+    return await readJson(await fetchWithSessionRecovery(
       `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/policies`,
       {
         cache: 'no-store',
@@ -179,7 +201,7 @@ export const workspaceManagementClient: WorkspaceManagementClient = {
 
   async operationalMetrics(workspaceId, signal) {
     const response = await readJson<{ metrics: WorkspaceOperationalMetrics }>(
-      await fetch(
+      await fetchWithSessionRecovery(
         `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/governance?view=metrics`,
         {
           cache: 'no-store',

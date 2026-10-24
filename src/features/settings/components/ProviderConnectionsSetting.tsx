@@ -1,5 +1,7 @@
 'use client'
 
+import { Button } from '@overlay/ui/primitives'
+
 import { useCallback, useState } from 'react'
 import { AlertCircle, KeyRound, Loader2, Plus } from 'lucide-react'
 import { ConfirmDialog } from '@overlay/ui/overlays'
@@ -64,18 +66,17 @@ export function ProviderConnectionsSetting() {
       <div className="flex items-center justify-between gap-3">
         <div>
           <p className="text-sm text-(--muted)">
-            Connect your own AI provider keys. Expand a provider to choose which models appear in your model dropdown.
+            Connect your own AI provider keys and manage which models may use them. Overlay catalog models are available directly in the picker.
           </p>
         </div>
-        <button
+        <Button variant="secondary" size="sm" className="shrink-0"
           type="button"
           onClick={() => setDialog({ mode: 'add' })}
           disabled={isLoading}
-          className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-(--border) bg-(--surface-subtle) px-3 py-2 text-xs font-medium text-(--foreground) transition-colors hover:bg-(--surface-elevated) disabled:opacity-50"
         >
           <Plus size={14} strokeWidth={2} />
           Add provider
-        </button>
+        </Button>
       </div>
 
       {/* Loading state */}

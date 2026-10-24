@@ -18,6 +18,12 @@
  */
 
 export type ByokDiscoveryShape = 'openai' | 'none'
+export type ByokModelProtocol = 'chat' | 'responses' | 'messages'
+
+export type ByokModelProtocolRule = {
+  prefix: string
+  protocol: ByokModelProtocol
+}
 
 export interface ByokProviderPreset {
   /** Unique preset id, stored on the user connection record. */
@@ -40,6 +46,10 @@ export interface ByokProviderPreset {
   isDeletable: boolean
   /** Provider-specific headers to send with every request. */
   headers?: Record<string, string>
+  /** Header used for a provider session identifier, when required. */
+  sessionHeader?: string
+  /** Model-id prefixes that use a protocol other than chat completions. */
+  modelProtocols?: readonly ByokModelProtocolRule[]
   /** Link to provider docs, shown in the UI. */
   docsURL: string
 }
@@ -149,6 +159,26 @@ export const BYOK_PROVIDER_PRESETS: readonly ByokProviderPreset[] = [
     docsURL: 'https://docs.x.ai',
   },
   {
+    id: 'opencode-go',
+    label: 'OpenCode Go',
+    defaultBaseURL: 'https://opencode.ai/zen/go/v1',
+    discoveryPath: '/models',
+    discoveryShape: 'openai',
+    requiresApiKey: true,
+    isDefault: false,
+    isDeletable: true,
+    headers: {
+      'User-Agent': 'overlay/1.0',
+    },
+    sessionHeader: 'x-opencode-session',
+    modelProtocols: [
+      { prefix: 'grok-', protocol: 'responses' },
+      { prefix: 'gpt-', protocol: 'responses' },
+      { prefix: 'claude-', protocol: 'messages' },
+    ],
+    docsURL: 'https://opencode.ai/docs/go/',
+  },
+  {
     id: 'mistral',
     label: 'Mistral',
     defaultBaseURL: 'https://api.mistral.ai/v1',
@@ -203,6 +233,17 @@ const PRESET_BY_ID = new Map<string, ByokProviderPreset>(
 
 export function getByokPreset(providerId: string): ByokProviderPreset | undefined {
   return PRESET_BY_ID.get(providerId)
+}
+
+export function getByokModelProtocol(
+  presetOrProviderId: ByokProviderPreset | string,
+  modelId: string,
+): ByokModelProtocol {
+  const preset = typeof presetOrProviderId === 'string'
+    ? getByokPreset(presetOrProviderId)
+    : presetOrProviderId
+  const rule = preset?.modelProtocols?.find(({ prefix }) => modelId.startsWith(prefix))
+  return rule?.protocol ?? 'chat'
 }
 
 export function isDefaultByokPreset(providerId: string): boolean {

@@ -34,6 +34,7 @@ export interface AssistantVisualBlocksProps {
   sourceCitations?: SourceCitationMap
   /** Hide the trailing caret while a separate loading row already signals progress. */
   suppressTypingIndicator?: boolean
+  resolveFileHref?: AssistantSegmentRenderContext['resolveFileHref']
   /** Persisted turn duration when the host has one; the live-measured value otherwise. */
   workedDurationMs?: number | null
   /** Agent replies: the collapsed view is the final answer only (earlier text folds with the work). */
@@ -53,8 +54,8 @@ export interface AssistantVisualBlocksProps {
  * text, generated files, and generated UI. Shared by the single-model chat
  * transcript and multi-participant rooms so both surfaces read identically.
  *
- * While streaming, every segment renders live in original order. Once the turn
- * settles, all work — tool calls, reasoning, browser sessions — folds behind a
+ * Live turns retain every segment in original order through completion. On loading
+ * history, all work — tool calls, reasoning, browser sessions — folds behind a
  * single expandable "Worked for N" row at the top so the reply reads as plain
  * text; expanding the row switches the message to the raw timeline with every
  * work segment back at its true position. Deliverables (draft cards, gated
@@ -68,6 +69,7 @@ export function AssistantVisualBlocks({
   isTextStreaming,
   sourceCitations,
   suppressTypingIndicator = false,
+  resolveFileHref,
   workedDurationMs,
   foldWorkIntoSummary = false,
   onOpenDraft,
@@ -102,11 +104,14 @@ export function AssistantVisualBlocks({
   }, [isStreaming, measuredWorkMs])
   const workedMs = workedDurationMs ?? measuredWorkMs
 
+  // Collapse history on load, not underneath an answer the user just watched stream.
+  const [hasStreamed, setHasStreamed] = useState(isStreaming)
+  if (isStreaming && !hasStreamed) setHasStreamed(true)
   const collapsePlan = useMemo(
-    () => isStreaming
+    () => isStreaming || hasStreamed
       ? { collapsedIndexes: [] as number[], collapsedToolCallCount: 0 }
       : planAssistantWorkCollapse(segments, { foldTextBeforeLastWork: foldWorkIntoSummary }),
-    [segments, isStreaming, foldWorkIntoSummary],
+    [segments, isStreaming, hasStreamed, foldWorkIntoSummary],
   )
   const collapsedSet = useMemo(
     () => new Set(collapsePlan.collapsedIndexes),
@@ -124,6 +129,7 @@ export function AssistantVisualBlocks({
     sourceCitations,
     webSources,
     suppressTypingIndicator,
+    resolveFileHref,
     onOpenDraft,
     onCreateAutomationDraft,
     onOpenAttachmentPreview,
@@ -132,7 +138,7 @@ export function AssistantVisualBlocks({
   }), [
     blockKeyPrefix, markdownKeyPrefix, blocks.length, lastTextBlockIndex,
     isStreaming, isTextStreaming, sourceCitations, webSources,
-    suppressTypingIndicator, onOpenDraft, onCreateAutomationDraft,
+    suppressTypingIndicator, resolveFileHref, onOpenDraft, onCreateAutomationDraft,
     onOpenAttachmentPreview, generatedUiConnectorActions, onGeneratedUiChange,
   ])
 

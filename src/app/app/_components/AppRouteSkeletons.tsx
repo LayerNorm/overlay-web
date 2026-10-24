@@ -1,4 +1,7 @@
+'use client'
+
 import { AppBootLoader } from '@/components/layout/AppBootLoader'
+import { bootAppShown } from '@/components/layout/boot-loader-pulse'
 
 function SkeletonBlock({ className = '' }: { className?: string }) {
   return <div className={`ui-skeleton-line rounded-md ${className}`} aria-hidden />
@@ -19,7 +22,7 @@ function SidebarRows({ rows = 7 }: { rows?: number }) {
 
 function PageHeaderSkeleton({ actions = 2 }: { actions?: number }) {
   return (
-    <div className="flex h-16 shrink-0 items-center justify-between border-b border-(--border) px-4">
+    <div className="flex h-16 shrink-0 items-center justify-between px-4">
       <div className="space-y-2">
         <SkeletonBlock className="h-4 w-32" />
         <SkeletonBlock className="h-3 w-48" />
@@ -38,6 +41,11 @@ export function AppShellLoadingFallback() {
 }
 
 export function InitialAppLoading() {
+  // The brand loader is a boot screen: once the app has rendered real content,
+  // route fallbacks show a plain skeleton instead of re-flashing the lockup.
+  if (bootAppShown.wasShown()) {
+    return <WorkRouteSkeleton />
+  }
   return <AppBootLoader />
 }
 
@@ -99,7 +107,7 @@ export type FilesRouteSkeletonLayout = 'list' | 'cards'
 
 function FilesHeaderSkeleton({ layout }: { layout: FilesRouteSkeletonLayout }) {
   return (
-    <div className="flex h-16 shrink-0 items-center justify-between border-b border-(--border) px-6">
+    <div className="flex h-16 shrink-0 items-center justify-between px-6">
       <div className="flex items-center gap-3">
         <SkeletonBlock className="h-4 w-12" />
         <SkeletonBlock className="h-3 w-14" />

@@ -137,3 +137,21 @@ test('a reply with no work keeps all its text, and one that ends on work keeps i
   const plan = planAssistantWorkCollapse(endsOnWork, { foldTextBeforeLastWork: true })
   assert.deepEqual(plan.collapsedIndexes, [0, 1, 3], 'the last text before the final tool stays visible')
 })
+
+
+test('the settled work summary counts terminal details once across separate timeline groups', () => {
+  const blocks: AssistantVisualBlock[] = [
+    {kind: 'tool', key: 'exec-1', name: 'remote_action', state: 'output-available'},
+    text('The foreground action is running.'),
+    {kind: 'tool', key: 'exec-1', name: 'remote_terminal', state: 'output-available'},
+    {kind: 'tool', key: 'exec-2', name: 'remote_action', state: 'output-available'},
+    {kind: 'tool', key: 'exec-2', name: 'remote_terminal', state: 'output-available'},
+    text('Finished.'),
+  ]
+  const segments = buildAssistantVisualSegments(blocks)
+  const plan = planAssistantWorkCollapse(segments)
+  assert.deepEqual(plan.collapsedIndexes, [0, 2])
+  assert.equal(plan.collapsedToolCallCount, 2)
+  assert.equal(segments.filter(segment => segment.kind === 'tools').flatMap(segment => segment.items).length, 4,
+    'both commands and both terminal details remain available when expanded')
+})

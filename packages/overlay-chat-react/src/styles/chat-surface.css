@@ -21,149 +21,6 @@
   animation: overlayChatMdBlockAppear 0.3s ease-out forwards;
 }
 
-:where(.overlay-chat-surface) .md-block-streaming {
-  opacity: 0.55;
-  transition: opacity 0.1s ease;
-}
-
-@keyframes overlayChatToolChipSoftBlink {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.68;
-  }
-}
-
-:where(.overlay-chat-surface) .tool-chip-running,
-:where(.overlay-chat-surface) .overlay-tool-chip-running {
-  animation: overlayChatToolChipSoftBlink 1.4s ease-in-out infinite;
-}
-
-:where(.overlay-chat-surface) .code-block-wrapper {
-  margin: 0 0 1em;
-  border-radius: 10px;
-  border: 1px solid var(--border);
-  overflow: hidden;
-}
-
-:where(.overlay-chat-surface) .code-block-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  padding: 0.45rem 0.9rem;
-  background: var(--surface-subtle);
-  border-bottom: 1px solid var(--border);
-}
-
-:where(.overlay-chat-surface) .code-block-lang {
-  font-size: 0.75rem;
-  color: var(--muted);
-  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
-}
-
-:where(.overlay-chat-surface) .code-block-copy {
-  font-size: 0.72rem;
-  color: var(--muted);
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 0;
-}
-
-:where(.overlay-chat-surface) .code-block-copy:hover {
-  color: var(--foreground);
-}
-
-:where(.overlay-chat-surface) .code-block-actions {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.2rem;
-}
-
-:where(.overlay-chat-surface) .code-block-action {
-  display: inline-flex;
-  width: 1.75rem;
-  height: 1.75rem;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid transparent;
-  border-radius: 7px;
-  background: transparent;
-  color: var(--muted);
-  cursor: pointer;
-  transition:
-    background-color 0.16s ease,
-    border-color 0.16s ease,
-    color 0.16s ease;
-}
-
-:where(.overlay-chat-surface) .code-block-action:hover:not(:disabled),
-:where(.overlay-chat-surface) .code-block-action[data-active="true"] {
-  border-color: var(--border);
-  background: var(--surface-elevated);
-  color: var(--foreground);
-}
-
-:where(.overlay-chat-surface) .code-block-action:disabled {
-  cursor: not-allowed;
-  opacity: 0.38;
-}
-
-:where(.overlay-chat-surface) .code-block-render {
-  min-height: 320px;
-  background: #fff;
-}
-
-:where(.overlay-chat-surface) .code-block-render-frame {
-  display: block;
-  width: 100%;
-  height: clamp(320px, 58vh, 560px);
-  border: 0;
-  background: #fff;
-}
-
-@media (max-width: 640px) {
-  :where(.overlay-chat-surface) .code-block-render {
-    min-height: 260px;
-  }
-
-  :where(.overlay-chat-surface) .code-block-render-frame {
-    height: clamp(260px, 55vh, 460px);
-  }
-}
-
-[data-theme="dark"]
-  :where(.overlay-chat-surface)
-  .code-block-wrapper
-  .react-syntax-highlighter,
-:where(.overlay-chat-surface[data-theme="dark"])
-  .code-block-wrapper
-  .react-syntax-highlighter {
-  background: var(--surface-subtle) !important;
-}
-
-[data-theme="dark"] :where(.overlay-chat-surface) .code-block-wrapper pre,
-[data-theme="dark"] :where(.overlay-chat-surface) .code-block-wrapper code,
-:where(.overlay-chat-surface[data-theme="dark"]) .code-block-wrapper pre,
-:where(.overlay-chat-surface[data-theme="dark"]) .code-block-wrapper code {
-  background: transparent !important;
-}
-
-[data-theme="dark"]
-  :where(.overlay-chat-surface)
-  .code-block-wrapper
-  .react-syntax-highlighter
-  code[class*="language-"],
-:where(.overlay-chat-surface[data-theme="dark"])
-  .code-block-wrapper
-  .react-syntax-highlighter
-  code[class*="language-"] {
-  text-shadow: none;
-}
-
 :where(.overlay-chat-surface) .table-wrapper {
   overflow-x: auto;
   margin: 0 0 1em;
@@ -190,7 +47,7 @@
   min-width: 7rem;
   white-space: normal;
   word-break: normal;
-  overflow-wrap: normal;
+  overflow-wrap: anywhere;
 }
 
 :where(.overlay-chat-surface) .markdown-content td {
@@ -200,7 +57,7 @@
   min-width: 7rem;
   white-space: normal;
   word-break: normal;
-  overflow-wrap: normal;
+  overflow-wrap: anywhere;
 }
 
 :where(.overlay-chat-surface) .markdown-content td ul,
@@ -219,14 +76,9 @@
 
 :where(.overlay-chat-surface) .markdown-content {
   color: var(--foreground);
-  font-family:
-    system-ui,
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    sans-serif;
-  font-size: 0.95rem;
-  line-height: 1.7;
+  font-family: var(--font-sans);
+  font-size: 0.875rem;
+  line-height: 1.65;
   min-width: 0;
   overflow-wrap: anywhere;
   word-break: break-word;
@@ -269,7 +121,7 @@
 }
 
 :where(.overlay-chat-surface) .markdown-content p {
-  margin: 0 0 0.8em;
+  margin: 0 0 0.7em;
 }
 
 /*
@@ -279,20 +131,30 @@
  * bubble so assistant message spacing (which relies on the flex gap to its
  * actions) is unchanged.
  */
-:where(.overlay-chat-surface) .chat-user-bubble .markdown-content > :last-child {
+:where(.overlay-chat-surface) .chat-user-bubble .markdown-content :last-child {
   margin-bottom: 0;
+}
+
+/* The bubble wrapper is pre-wrap, which renders the newline after the last block as an empty line. */
+:where(.overlay-chat-surface) .chat-user-bubble .markdown-content {
+  line-height: 1.5;
+  white-space: normal;
+}
+
+:where(.overlay-chat-surface) .chat-user-bubble .markdown-content :where(p, li) {
+  white-space: pre-wrap;
 }
 
 :where(.overlay-chat-surface) .markdown-content h1 {
   margin: 0 0 0.45em;
-  font-size: 2rem;
+  font-size: 1.5rem;
   line-height: 1.15;
   font-weight: 600;
 }
 
 :where(.overlay-chat-surface) .markdown-content h2 {
   margin: 0.4em 0 0.45em;
-  font-size: 1.45rem;
+  font-size: 1.25rem;
   line-height: 1.2;
   font-weight: 600;
 }
@@ -356,7 +218,7 @@
      box; the scroll container would otherwise clip it mid-glyph. */
   padding: 0.35em 0 0.9em;
   overflow-x: auto;
-  overflow-y: auto;
+  overflow-y: hidden;
   text-align: center;
   font-size: 1.12em;
 }
@@ -370,7 +232,7 @@
   border-bottom: 1px dotted color-mix(in srgb, currentColor 35%, transparent);
 }
 
-:where(.overlay-chat-surface) .markdown-content pre {
+:where(.overlay-chat-surface) .markdown-content pre:not([data-slot]) {
   margin: 0 0 1em;
   overflow-x: auto;
   border-radius: 12px;
@@ -380,7 +242,7 @@
   line-height: 1.6;
 }
 
-:where(.overlay-chat-surface) .markdown-content code {
+:where(.overlay-chat-surface) .markdown-content code:not([data-slot]) {
   border-radius: 6px;
   background: #f5f5f5;
   padding: 0.1rem 0.35rem;
@@ -409,11 +271,9 @@
   0%,
   100% {
     opacity: 0.5;
-    transform: scale(0.82);
   }
   50% {
     opacity: 1;
-    transform: scale(1.04);
   }
 }
 
@@ -468,9 +328,8 @@
 
 :where(.overlay-chat-surface) .overlay-loading-tool-logo {
   display: inline-flex;
-  width: 0.5rem;
-  flex: 0 0 0.5rem;
-  transform-origin: 50% 0.5625rem;
+  align-items: center;
+  flex: none;
   animation: overlayChatStreamMarkerPulse 1.3s ease-in-out infinite;
 }
 
@@ -488,14 +347,7 @@
   min-height: 14px;
 }
 
-:where(.overlay-chat-surface) .overlay-stream-marker--standalone,
-:where(.overlay-chat-surface)
-  .markdown-content--streaming
-  p:first-child
-  > .overlay-stream-marker:only-child,
-:where(.overlay-chat-surface)
-  .markdown-content--streaming
-  > .overlay-stream-marker:only-child {
+:where(.overlay-chat-surface) .overlay-stream-marker--standalone {
   margin-left: 0;
   width: 1.25rem;
   height: 1.25rem;
@@ -532,39 +384,6 @@
   :where(.overlay-chat-surface) .chat-exchange-actions--hover {
     opacity: 1 !important;
   }
-}
-
-@keyframes overlayChatStreamBlockSoften {
-  from {
-    opacity: 0.4;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-:where(.overlay-chat-surface) .markdown-content--streaming p,
-:where(.overlay-chat-surface) .markdown-content--streaming li,
-:where(.overlay-chat-surface) .markdown-content--streaming td,
-:where(.overlay-chat-surface) .markdown-content--streaming th,
-:where(.overlay-chat-surface) .markdown-content--streaming h1,
-:where(.overlay-chat-surface) .markdown-content--streaming h2,
-:where(.overlay-chat-surface) .markdown-content--streaming h3,
-:where(.overlay-chat-surface) .markdown-content--streaming h4,
-:where(.overlay-chat-surface) .markdown-content--streaming h5,
-:where(.overlay-chat-surface) .markdown-content--streaming h6,
-:where(.overlay-chat-surface) .markdown-content--streaming blockquote,
-:where(.overlay-chat-surface) .markdown-content--streaming pre,
-:where(.overlay-chat-surface) .markdown-content--streaming .code-block-wrapper {
-  animation: overlayChatStreamBlockSoften 260ms ease-out both;
-  will-change: opacity;
-}
-
-:where(.overlay-chat-surface)
-  .markdown-content--streaming
-  .overlay-stream-marker {
-  animation: overlayChatStreamMarkerPulse 1.3s ease-in-out infinite;
-  opacity: 1;
 }
 
 @keyframes overlayChatMessageAppear {
@@ -628,47 +447,12 @@
   }
 }
 
-:where(.overlay-chat-surface) .media-gen-shimmer {
-  position: relative;
-  overflow: hidden;
-  background-color: #d4d4d4;
-  min-height: 8rem;
-  min-width: 8rem;
-  flex-shrink: 0;
-  box-sizing: border-box;
-}
-
-:where(.overlay-chat-surface) .media-gen-shimmer::after {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: -55%;
-  width: 55%;
-  height: 100%;
-  background: linear-gradient(
-    105deg,
-    transparent 0%,
-    rgba(255, 255, 255, 0.12) 32%,
-    rgba(255, 255, 255, 0.85) 50%,
-    rgba(255, 255, 255, 0.12) 68%,
-    transparent 100%
-  );
-  animation: overlayChatMediaShimmerSlide 1.25s ease-in-out infinite;
-}
-
 :where(.overlay-chat-surface) .media-gen-mesh {
   position: relative;
   overflow: hidden;
   flex-shrink: 0;
   box-sizing: border-box;
-  background: linear-gradient(
-    135deg,
-    #efe8f4 0%,
-    #e6dcf2 28%,
-    #ddd0ea 52%,
-    #e8dff6 78%,
-    #f0e9f8 100%
-  );
+  background: var(--surface-muted);
   min-width: 8rem;
   min-height: 8rem;
 }
@@ -683,9 +467,9 @@
   background: linear-gradient(
     105deg,
     transparent 0%,
-    rgba(255, 255, 255, 0.08) 38%,
-    rgba(255, 255, 255, 0.65) 50%,
-    rgba(255, 255, 255, 0.08) 62%,
+    color-mix(in srgb, var(--skeleton-sheen) 13%, transparent) 38%,
+    var(--skeleton-sheen) 50%,
+    color-mix(in srgb, var(--skeleton-sheen) 13%, transparent) 62%,
     transparent 100%
   );
   filter: blur(0.5px);
@@ -714,10 +498,10 @@
   color: inherit !important;
 }
 
-[data-theme="dark"] :where(.overlay-chat-surface) .markdown-content pre,
-[data-theme="dark"] :where(.overlay-chat-surface) .markdown-content code,
-:where(.overlay-chat-surface[data-theme="dark"]) .markdown-content pre,
-:where(.overlay-chat-surface[data-theme="dark"]) .markdown-content code {
+[data-theme="dark"] :where(.overlay-chat-surface) .markdown-content pre:not([data-slot]),
+[data-theme="dark"] :where(.overlay-chat-surface) .markdown-content code:not([data-slot]),
+:where(.overlay-chat-surface[data-theme="dark"]) .markdown-content pre:not([data-slot]),
+:where(.overlay-chat-surface[data-theme="dark"]) .markdown-content code:not([data-slot]) {
   background: var(--surface-subtle);
   color: var(--foreground);
 }
@@ -751,29 +535,10 @@
   }
 
   :where(.overlay-chat-surface) .overlay-stream-marker,
-  :where(.overlay-chat-surface) .overlay-loading-tool-logo,
-  :where(.overlay-chat-surface)
-    .markdown-content--streaming
-    .overlay-stream-marker {
+  :where(.overlay-chat-surface) .overlay-loading-tool-logo {
     animation: overlayChatStreamMarkerReducedPulse 1.8s ease-in-out infinite;
     transform: none;
   }
 
-  :where(.overlay-chat-surface) .markdown-content--streaming p,
-  :where(.overlay-chat-surface) .markdown-content--streaming li,
-  :where(.overlay-chat-surface) .markdown-content--streaming td,
-  :where(.overlay-chat-surface) .markdown-content--streaming th,
-  :where(.overlay-chat-surface) .markdown-content--streaming h1,
-  :where(.overlay-chat-surface) .markdown-content--streaming h2,
-  :where(.overlay-chat-surface) .markdown-content--streaming h3,
-  :where(.overlay-chat-surface) .markdown-content--streaming h4,
-  :where(.overlay-chat-surface) .markdown-content--streaming h5,
-  :where(.overlay-chat-surface) .markdown-content--streaming h6,
-  :where(.overlay-chat-surface) .markdown-content--streaming blockquote,
-  :where(.overlay-chat-surface) .markdown-content--streaming pre,
-  :where(.overlay-chat-surface)
-    .markdown-content--streaming
-    .code-block-wrapper {
-    animation: none;
-  }
+  
 }

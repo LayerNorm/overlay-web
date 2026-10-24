@@ -61,7 +61,7 @@ export async function authenticateNativeWithCode(
 export async function authenticateWithPassword(
   email: string,
   password: string,
-): Promise<{ success: boolean; user?: AuthUser; error?: string; pendingEmailVerification?: boolean }> {
+): Promise<{ success: boolean; user?: AuthUser; error?: string; pendingEmailVerification?: boolean; verificationTicket?: string }> {
   return getWebAuthFlowProvider().signInWithPassword(email, password)
 }
 

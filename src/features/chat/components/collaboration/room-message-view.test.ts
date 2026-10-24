@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import { getDescriptiveToolLabel } from '@overlay/chat-core'
-import { mergeRoomMessages, toRoomMessageView, type RoomMessageRecord } from './room-message-view'
+import { isRoomAgentResponding, mergeRoomMessages, toRoomMessageView, type RoomMessageRecord } from './room-message-view'
 
 function record(overrides: Partial<RoomMessageRecord> = {}): RoomMessageRecord {
   return {
@@ -15,6 +15,28 @@ function record(overrides: Partial<RoomMessageRecord> = {}): RoomMessageRecord {
     ...overrides,
   }
 }
+
+test('questionnaires stay busy through pending and persisted agent generation, then unlock', () => {
+  assert.equal(isRoomAgentResponding([], 'Overlay'), true)
+  assert.equal(isRoomAgentResponding([record({ status: 'generating' })], null), true)
+  assert.equal(isRoomAgentResponding([record({ status: 'completed' })], null), false)
+  assert.equal(isRoomAgentResponding([record({ status: 'error' })], null), false)
+  assert.equal(isRoomAgentResponding([record({ authorKind: 'human' })], null), false)
+  assert.equal(isRoomAgentResponding([], null), false)
+})
+
+test('saved drive summaries retain file links separately from the provider answer and reject malformed paths', () => {
+  const status = { state: 'saved', fileCount: 1, folderCount: 0,
+    entries: [{ fileId: 'report', path: 'reports/result.md', kind: 'file' }] }
+  const view = (data: Record<string, unknown>) => toRoomMessageView({ message: record({
+    content: '# Result', parts: [{ type: 'text', text: '# Result' }, { type: 'data-remote-agent-drive', data }],
+  }), currentPrincipalId: 'me', authorName: 'Agent' })
+  const saved = view({ ...status, key: 'drive' })
+  assert.deepEqual(saved.remoteDrive, status)
+  assert.equal(saved.text, '# Result')
+  assert.deepEqual(saved.blocks, [{ kind: 'text', text: '# Result' }])
+  assert.equal(view({ ...status, entries: [{ fileId: 'report', path: '../private', kind: 'file' }] }).remoteDrive, undefined)
+})
 
 test('agent messages derive workedDurationMs from createdAt→updatedAt', () => {
   const view = toRoomMessageView({
@@ -146,4 +168,23 @@ test('same-millisecond reconnect snapshots cannot regress a terminal row to gene
   const snapshot = { ...base, content: 'Working', status: 'generating' as const }
   const committed = { ...base, content: 'Done', status: 'completed' as const }
   assert.equal(mergeRoomMessages([snapshot], [committed])[0]?.status, 'completed')
+})
+
+
+test('generating native agent messages show text around tool parts exactly once', () => {
+  const view = toRoomMessageView({
+    message: record({
+      status: 'generating',
+      content: 'Before toolAfter tool',
+      parts: [
+        { type: 'text', text: 'Before tool' },
+        { type: 'tool-invocation', toolInvocation: { toolCallId: 'one', toolName: 'search', state: 'output-available', toolOutput: {} } },
+        { type: 'text', text: 'After tool' },
+      ],
+    }),
+    currentPrincipalId: 'me', authorName: 'Agent',
+  })
+  assert.equal(view.streaming, true)
+  assert.deepEqual(view.blocks.map((block) => block.kind), ['text', 'tool', 'text'])
+  assert.deepEqual(view.blocks.filter((block) => block.kind === 'text').map((block) => block.text), ['Before tool', 'After tool'])
 })

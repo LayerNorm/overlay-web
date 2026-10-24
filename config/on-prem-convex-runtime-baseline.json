@@ -2,6 +2,7 @@
   "version": 2,
   "apiRouteFiles": [
     "src/app/api/account/delete/route.ts",
+    "src/app/api/agent-drive/route.ts",
     "src/app/api/agent-gateway/[provider]/[...path]/route.ts",
     "src/app/api/agent-mcp/route.ts",
     "src/app/api/auth/callback/route.ts",
@@ -40,6 +41,7 @@
     "src/app/api/topups/checkout/route.ts",
     "src/app/api/topups/history/route.ts",
     "src/app/api/topups/verify/route.ts",
+    "src/app/api/v1/account/workspaces/route.ts",
     "src/app/api/v1/agent-asks/route.ts",
     "src/app/api/v1/agent-bindings/route.ts",
     "src/app/api/v1/agent-environments/[environmentId]/approve/route.ts",
@@ -51,6 +53,7 @@
     "src/app/api/v1/agent-environments/[environmentId]/credentials/refresh/route.ts",
     "src/app/api/v1/agent-environments/[environmentId]/credentials/route.ts",
     "src/app/api/v1/agent-environments/[environmentId]/desktop/route.ts",
+    "src/app/api/v1/agent-environments/[environmentId]/drive-credentials/route.ts",
     "src/app/api/v1/agent-environments/[environmentId]/events/route.ts",
     "src/app/api/v1/agent-environments/[environmentId]/heartbeat/route.ts",
     "src/app/api/v1/agent-environments/[environmentId]/revoke/route.ts",
@@ -153,10 +156,12 @@
     "src/app/api/v1/memory/route.ts",
     "src/app/api/v1/mention-search/route.ts",
     "src/app/api/v1/model-catalog/route.ts",
+    "src/app/api/v1/models/overlay-free/refresh/route.ts",
     "src/app/api/v1/notebook-agent/route.ts",
     "src/app/api/v1/notes/route.ts",
     "src/app/api/v1/onboarding/complete/route.ts",
     "src/app/api/v1/onboarding/reset/route.ts",
+    "src/app/api/v1/onboarding/session/route.ts",
     "src/app/api/v1/onboarding/status/route.ts",
     "src/app/api/v1/outputs/[outputId]/content/route.ts",
     "src/app/api/v1/outputs/route.ts",
@@ -187,6 +192,7 @@
     "src/app/api/v1/work/[id]/route.ts",
     "src/app/api/v1/work/context/route.ts",
     "src/app/api/v1/work/route.ts",
+    "src/app/api/v1/workspace-handles/[handle]/route.ts",
     "src/app/api/v1/workspace-invitations/[invitationId]/accept/route.ts",
     "src/app/api/v1/workspaces/[workspaceId]/audit-export/route.ts",
     "src/app/api/v1/workspaces/[workspaceId]/billing/auto-top-up/route.ts",
@@ -196,6 +202,7 @@
     "src/app/api/v1/workspaces/[workspaceId]/billing/top-ups/route.ts",
     "src/app/api/v1/workspaces/[workspaceId]/billing/verify/route.ts",
     "src/app/api/v1/workspaces/[workspaceId]/governance/route.ts",
+    "src/app/api/v1/workspaces/[workspaceId]/handle/route.ts",
     "src/app/api/v1/workspaces/[workspaceId]/invitations/[invitationId]/route.ts",
     "src/app/api/v1/workspaces/[workspaceId]/invitations/route.ts",
     "src/app/api/v1/workspaces/[workspaceId]/lifecycle/route.ts",
@@ -262,6 +269,11 @@
       "target": "internal.chat.conversations.runEmptyConversationCleanup"
     },
     {
+      "cadence": "{ hours: 1 }",
+      "name": "expired connected-agent MCP results",
+      "target": "internal.agents.mcpCalls.cleanupExpired"
+    },
+    {
       "cadence": "{ hours: 6 }",
       "name": "function metrics cleanup",
       "target": "(internal as any).platform.metrics.cleanupOldMetricsInternal"
@@ -275,6 +287,11 @@
       "cadence": "{ minutes: 1 }",
       "name": "outbound webhook delivery",
       "target": "internal.webhooks.deliveryRunner.runMinuteTick"
+    },
+    {
+      "cadence": "{ minuteUTC: 0 }",
+      "name": "overlay-free catalog refresh",
+      "target": "internal.platform.overlayFreeRefresh.runTick"
     },
     {
       "cadence": "{ minutes: 5 }",
@@ -349,17 +366,27 @@
     "src/server/account/AccountDeletionService.ts",
     "src/server/admin/ConvexAuditRepository.ts",
     "src/server/admin/index.ts",
+    "src/server/agents/AgentDriveManifestRepository.ts",
+    "src/server/agents/AgentDriveStorageReader.ts",
     "src/server/agents/ConvexConnectedAgentRepository.ts",
     "src/server/agents/ConvexWorkspaceAgentRepository.ts",
+    "src/server/agents/McpCallJournal.ts",
+    "src/server/agents/agent-drive-http.ts",
     "src/server/agents/cloud/ConvexCloudAgentProvisionRepository.ts",
+    "src/server/agents/create-agent-drive-content-service.ts",
+    "src/server/agents/create-agent-drive-credential-service.ts",
+    "src/server/agents/create-agent-drive-recovery-service.ts",
     "src/server/agents/index.ts",
     "src/server/agents/profiles/ConvexAgentProfileRepository.ts",
     "src/server/agents/provider-accounts/ConvexAgentProviderAccountRepository.ts",
     "src/server/agents/provider-accounts/index.ts",
     "src/server/agents/remote-agent-run-dispatcher.ts",
     "src/server/agents/remote-agent-run-lifecycle.ts",
+    "src/server/agents/run-agent-drive-version-cleanup.ts",
     "src/server/ai/catalog/ConvexModelCatalogRepository.ts",
     "src/server/ai/catalog/index.ts",
+    "src/server/ai/gateway/overlay-free-refresh.ts",
+    "src/server/ai/gateway/overlay-free-router.ts",
     "src/server/ai/provider-connections/ConvexProviderConnectionRepository.ts",
     "src/server/ai/provider-connections/index.ts",
     "src/server/app-api/v1/bootstrap/route.ts",
@@ -414,6 +441,7 @@
     "src/server/memory/ConvexMemoryRepository.ts",
     "src/server/notes/ConvexNoteRepository.ts",
     "src/server/notes/index.ts",
+    "src/server/onboarding/OnboardingStateRepository.ts",
     "src/server/shared/providers/convex-rate-limiter.ts",
     "src/server/shared/providers/index.ts",
     "src/server/sharing/ConvexWorkspaceSharingRepository.ts",
@@ -441,7 +469,9 @@
     "src/server/workspaces/ConvexWorkspaceRepository.ts"
   ],
   "convexScheduledCallFiles": [
+    "convex/agents/agentDriveUploads.ts",
     "convex/agents/connectedAgents.ts",
+    "convex/agents/mcpCalls.ts",
     "convex/automations/automationRunner.ts",
     "convex/automations/automations.ts",
     "convex/chat/conversations.ts",
@@ -453,6 +483,7 @@
     "convex/knowledge/knowledge.ts",
     "convex/knowledge/memories.ts",
     "convex/knowledge/memoryExtractorNode.ts",
+    "convex/lib/agentDriveFiles.ts",
     "convex/platform/usage.ts",
     "convex/webhooks/deliveryRunner.ts"
   ]

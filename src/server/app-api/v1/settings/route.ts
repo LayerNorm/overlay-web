@@ -1,9 +1,8 @@
 import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
-import type { AppApiRouteContext } from '@/server/app-api/bff-context'
+import type { AccountAppApiRouteContext } from '@/server/app-api/bff-context'
 import type { AppSettings, ChatModePreference, ThemePresetId } from '@overlay/app-core'
 import { lazyConvex as convex } from '@/server/database/lazy-convex'
-import { getOverlayServerContext } from '@/server/bootstrap'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { isThemePresetId } from '@/shared/app/themes'
 import type { AppSettingsPatch } from '@/server/settings'
@@ -31,13 +30,11 @@ function isSafeAspectRatio(value: unknown): value is string {
   return typeof value === 'string' && value.length <= 5 && ASPECT_RATIO_PATTERN.test(value)
 }
 
-function publicSettingsPayload(settings: AppSettings & { useSecondarySidebar?: boolean }) {
-  const publicSettings = { ...settings }
-  delete publicSettings.useSecondarySidebar
-  return { ...publicSettings, chatStreamingMode: 'token' as const }
+function publicSettingsPayload(settings: AppSettings) {
+  return { ...settings, useSecondarySidebar: settings.useSecondarySidebar === true, chatStreamingMode: 'token' as const }
 }
 
-export async function GET(request: NextRequest, context: AppApiRouteContext) {
+export async function GET(request: NextRequest, context: AccountAppApiRouteContext) {
   try {
     const { auth } = context
     const settings = await convex.query<AppSettings>(
@@ -56,7 +53,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
   }
 }
 
-export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
+export async function PATCH(request: NextRequest, context: AccountAppApiRouteContext) {
   try {
     const rawBody = await request.json().catch((_error) => null)
     if (!isPlainObject(rawBody)) {
@@ -78,6 +75,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       defaultImageAspectRatio?: string
       defaultVideoAspectRatio?: string
       sendWithEnter?: boolean
+      useSecondarySidebar?: boolean
       attachFilesToKnowledgeByDefault?: boolean
       onlyAllowZdrModels?: boolean
       dismissedZdrWarningGlobally?: boolean
@@ -148,6 +146,9 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       if (body[key] !== undefined && !isSafeAspectRatio(body[key])) {
         return NextResponse.json({ error: `Invalid ${key}` }, { status: 400 })
       }
+    }
+    if (body.useSecondarySidebar !== undefined && typeof body.useSecondarySidebar !== 'boolean') {
+      return NextResponse.json({ error: 'Invalid useSecondarySidebar' }, { status: 400 })
     }
     if (body.sendWithEnter !== undefined && typeof body.sendWithEnter !== 'boolean') {
       return NextResponse.json({ error: 'Invalid sendWithEnter' }, { status: 400 })
@@ -220,6 +221,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       defaultImageAspectRatio?: string
       defaultVideoAspectRatio?: string
       sendWithEnter?: boolean
+      useSecondarySidebar?: boolean
       attachFilesToKnowledgeByDefault?: boolean
       onlyAllowZdrModels?: boolean
       dismissedZdrWarningGlobally?: boolean
@@ -286,6 +288,10 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
     if (body.defaultVideoAspectRatio !== undefined) {
       mutationArgs.defaultVideoAspectRatio = body.defaultVideoAspectRatio.trim()
       settingsPatch.defaultVideoAspectRatio = mutationArgs.defaultVideoAspectRatio
+    }
+    if (body.useSecondarySidebar !== undefined) {
+      mutationArgs.useSecondarySidebar = body.useSecondarySidebar
+      settingsPatch.useSecondarySidebar = body.useSecondarySidebar
     }
     if (body.sendWithEnter !== undefined) {
       mutationArgs.sendWithEnter = body.sendWithEnter

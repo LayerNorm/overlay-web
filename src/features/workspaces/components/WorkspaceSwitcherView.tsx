@@ -1,15 +1,12 @@
 'use client'
 
+import { unstyledButton } from '@overlay/ui/control-reset'
+
 import { workspaceMemberLabel } from '@/shared/workspaces/solo-workspace'
 import { type ReactNode, type RefObject } from 'react'
+import Link from 'next/link'
 import { Check, ChevronDown, Loader2, Plus, RefreshCw } from 'lucide-react'
-import {
-  CollapsibleSection,
-  MenuItem,
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@overlay/ui/primitives'
+import { CollapsibleSection, MenuItem, Popover, PopoverContent, PopoverTrigger, Button } from '@overlay/ui/primitives'
 import { CreateWorkspaceDialog } from './CreateWorkspaceDialog'
 import { WorkspaceAvatar } from './WorkspaceAvatar'
 import type { WorkspaceLifecycleStatus, WorkspaceSummary } from '@/shared/workspaces/types'
@@ -51,14 +48,14 @@ function WorkspaceList({
       {status === 'error' ? (
         <div className="px-2 py-3 text-xs text-(--muted)">
           <p>{error ?? 'Could not load workspaces.'}</p>
-          <button
+          <Button variant="ghost"
             type="button"
-            className="mt-2 inline-flex items-center gap-1.5 font-medium text-(--foreground)"
+            className={unstyledButton(`mt-2 inline-flex items-center gap-1.5 font-medium text-(--foreground)`)}
             onClick={onRetry}
           >
             <RefreshCw size={12} />
             Try again
-          </button>
+          </Button>
         </div>
       ) : null}
 
@@ -105,6 +102,7 @@ function WorkspaceList({
         <Plus size={14} />
         Create workspace
       </MenuItem>
+      <Button variant="ghost" className="w-full justify-start text-xs" asChild><Link href="/app/workspaces">All workspaces</Link></Button>
     </>
   )
 }
@@ -240,11 +238,11 @@ function WorkspaceSwitcherTrigger({
 }: WorkspaceSwitcherTriggerProps) {
   return (
     <PopoverTrigger asChild>
-      <button
+      <Button variant="ghost"
         type="button"
         aria-label={isFooter ? 'Workspace and account menu' : 'Switch workspace'}
         aria-expanded={open}
-        className={`group flex min-w-0 items-center rounded-lg text-left transition-colors hover:bg-(--surface-subtle) ${triggerButtonClassName(isFooter, compact)}`}
+        className={unstyledButton(`group flex min-w-0 items-center rounded-lg text-left transition-colors hover:bg-(--surface-subtle) ${triggerButtonClassName(isFooter, compact)}`)}
       >
         <WorkspaceSwitcherTriggerAvatar
           compact={compact}
@@ -264,7 +262,7 @@ function WorkspaceSwitcherTrigger({
             className={`shrink-0 text-(--muted-light) transition-transform ${open ? 'rotate-180' : ''}`}
           />
         ) : null}
-      </button>
+      </Button>
     </PopoverTrigger>
   )
 }

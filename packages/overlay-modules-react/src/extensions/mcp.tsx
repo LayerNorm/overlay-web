@@ -1,5 +1,5 @@
 'use client'
-
+import { unstyledButton, unstyledInput } from '@overlay/ui/control-reset'
 import type {
 McpAuthType,
 McpMutationResult,
@@ -25,7 +25,7 @@ X,
 Zap
 } from 'lucide-react'
 import { useState,type MouseEvent,type ReactNode } from 'react'
-import { ListboxSelect, Tile, TileIcon, TileGrid } from '@overlay/ui/primitives'
+import { ListboxSelect, Tile, TileIcon, TileGrid, Button, Input } from '@overlay/ui/primitives'
 import { Dialog, DialogContent } from '@overlay/ui'
 
 import { EnabledToggle, Field } from './shared'
@@ -215,21 +215,21 @@ function McpServerFormFields({ values, update }: { values: McpServerFormValues; 
   return (
     <>
       <Field label="Name">
-        <input aria-label="Name" value={values.name} onChange={(event) => update('name', event.target.value)} placeholder="e.g. My API Server" className="w-full rounded-lg border border-(--border) bg-(--surface-muted) px-3 py-2 text-sm text-(--foreground) outline-hidden transition-colors placeholder:text-(--muted-light) focus:border-(--muted) focus:bg-(--surface-elevated)" />
+        <Input aria-label="Name" value={values.name} onChange={(event) => update('name', event.target.value)} placeholder="e.g. My API Server" className={unstyledInput("w-full rounded-lg border border-(--border) bg-(--surface-muted) px-3 py-2 text-sm text-(--foreground) outline-hidden transition-colors placeholder:text-(--muted-light) focus:border-(--muted) focus:bg-(--surface-elevated)")} />
       </Field>
       <Field label="Description">
-        <input aria-label="Description" value={values.description} onChange={(event) => update('description', event.target.value)} placeholder="Optional description" className="w-full rounded-lg border border-(--border) bg-(--surface-muted) px-3 py-2 text-sm text-(--foreground) outline-hidden transition-colors placeholder:text-(--muted-light) focus:border-(--muted) focus:bg-(--surface-elevated)" />
+        <Input aria-label="Description" value={values.description} onChange={(event) => update('description', event.target.value)} placeholder="Optional description" className={unstyledInput("w-full rounded-lg border border-(--border) bg-(--surface-muted) px-3 py-2 text-sm text-(--foreground) outline-hidden transition-colors placeholder:text-(--muted-light) focus:border-(--muted) focus:bg-(--surface-elevated)")} />
       </Field>
       <div className="grid grid-cols-2 gap-3">
         <Field label="Transport">
           <ListboxSelect aria-label="Transport" value={values.transport} onChange={(value) => update('transport', value as McpTransport)} className="w-full" buttonClassName="min-h-10 bg-(--surface-muted)" options={[{ value: 'streamable-http', label: 'Streamable HTTP' }, { value: 'sse', label: 'SSE' }]} />
         </Field>
         <Field label="Timeout (ms)">
-          <input type="number" aria-label="Timeout (ms)" value={values.timeoutMs} onChange={(event) => update('timeoutMs', event.target.value === '' ? '' : Number(event.target.value))} placeholder="30000" className="w-full rounded-lg border border-(--border) bg-(--surface-muted) px-3 py-2 text-sm text-(--foreground) outline-hidden transition-colors placeholder:text-(--muted-light) focus:border-(--muted) focus:bg-(--surface-elevated)" />
+          <Input type="number" aria-label="Timeout (ms)" value={values.timeoutMs} onChange={(event) => update('timeoutMs', event.target.value === '' ? '' : Number(event.target.value))} placeholder="30000" className={unstyledInput("w-full rounded-lg border border-(--border) bg-(--surface-muted) px-3 py-2 text-sm text-(--foreground) outline-hidden transition-colors placeholder:text-(--muted-light) focus:border-(--muted) focus:bg-(--surface-elevated)")} />
         </Field>
       </div>
       <Field label="URL">
-        <input aria-label="URL" value={values.url} onChange={(event) => update('url', event.target.value)} placeholder="https://example.com/mcp or http://localhost:3000/mcp" className="w-full rounded-lg border border-(--border) bg-(--surface-muted) px-3 py-2 text-sm text-(--foreground) outline-hidden transition-colors placeholder:text-(--muted-light) focus:border-(--muted) focus:bg-(--surface-elevated)" />
+        <Input aria-label="URL" value={values.url} onChange={(event) => update('url', event.target.value)} placeholder="https://example.com/mcp or http://localhost:3000/mcp" className={unstyledInput("w-full rounded-lg border border-(--border) bg-(--surface-muted) px-3 py-2 text-sm text-(--foreground) outline-hidden transition-colors placeholder:text-(--muted-light) focus:border-(--muted) focus:bg-(--surface-elevated)")} />
         <p className="text-[10px] text-(--muted-light)">HTTPS required in production. HTTP allowed for localhost only.</p>
       </Field>
       <Field label="Authentication">
@@ -278,14 +278,14 @@ function McpOAuthSection({
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {canDisconnect ? (
-            <button type="button" onClick={onDisconnect} disabled={connecting} className="rounded-md border border-(--border) px-3 py-1.5 text-xs text-(--muted) transition-colors hover:text-(--foreground) disabled:opacity-50">
+            <Button variant="ghost" type="button" onClick={onDisconnect} disabled={connecting} className={unstyledButton("rounded-md border border-(--border) px-3 py-1.5 text-xs text-(--muted) transition-colors hover:text-(--foreground) disabled:opacity-50")}>
               Disconnect
-            </button>
+            </Button>
           ) : null}
-          <button type="button" onClick={onConnect} disabled={connecting || !canConnect} className="flex items-center gap-1.5 rounded-md border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-xs text-(--foreground) transition-colors hover:bg-(--border) disabled:opacity-50">
+          <Button variant="secondary" size="sm" type="button" onClick={onConnect} disabled={connecting || !canConnect}>
             {connecting ? <Loader2 size={12} className="animate-spin" /> : <Link2 size={12} />}
             {connecting ? 'Opening…' : oauthStatus === 'connected' ? 'Reconnect' : 'Connect'}
-          </button>
+          </Button>
         </div>
       </div>
       {oauthError ? (
@@ -300,16 +300,16 @@ function McpAuthSecretFields({ values, update }: { values: McpServerFormValues; 
     <>
       {values.authType === 'bearer' ? (
         <Field label="Bearer Token">
-          <input type="password" aria-label="Bearer token" value={values.bearerToken} onChange={(event) => update('bearerToken', event.target.value)} placeholder="Bearer token" className="w-full rounded-lg border border-(--border) bg-(--surface-muted) px-3 py-2 text-sm text-(--foreground) outline-hidden transition-colors placeholder:text-(--muted-light) focus:border-(--muted) focus:bg-(--surface-elevated)" />
+          <Input type="password" aria-label="Bearer token" value={values.bearerToken} onChange={(event) => update('bearerToken', event.target.value)} placeholder="Bearer token" className={unstyledInput("w-full rounded-lg border border-(--border) bg-(--surface-muted) px-3 py-2 text-sm text-(--foreground) outline-hidden transition-colors placeholder:text-(--muted-light) focus:border-(--muted) focus:bg-(--surface-elevated)")} />
         </Field>
       ) : null}
       {values.authType === 'header' ? (
         <div className="grid grid-cols-2 gap-3">
           <Field label="Header Name">
-            <input aria-label="Header name" value={values.headerName} onChange={(event) => update('headerName', event.target.value)} placeholder="X-Api-Key" className="w-full rounded-lg border border-(--border) bg-(--surface-muted) px-3 py-2 text-sm text-(--foreground) outline-hidden transition-colors placeholder:text-(--muted-light) focus:border-(--muted) focus:bg-(--surface-elevated)" />
+            <Input aria-label="Header name" value={values.headerName} onChange={(event) => update('headerName', event.target.value)} placeholder="X-Api-Key" className={unstyledInput("w-full rounded-lg border border-(--border) bg-(--surface-muted) px-3 py-2 text-sm text-(--foreground) outline-hidden transition-colors placeholder:text-(--muted-light) focus:border-(--muted) focus:bg-(--surface-elevated)")} />
           </Field>
           <Field label="Header Value">
-            <input type="password" aria-label="Header value" value={values.headerValue} onChange={(event) => update('headerValue', event.target.value)} placeholder="Secret value" className="w-full rounded-lg border border-(--border) bg-(--surface-muted) px-3 py-2 text-sm text-(--foreground) outline-hidden transition-colors placeholder:text-(--muted-light) focus:border-(--muted) focus:bg-(--surface-elevated)" />
+            <Input type="password" aria-label="Header value" value={values.headerValue} onChange={(event) => update('headerValue', event.target.value)} placeholder="Secret value" className={unstyledInput("w-full rounded-lg border border-(--border) bg-(--surface-muted) px-3 py-2 text-sm text-(--foreground) outline-hidden transition-colors placeholder:text-(--muted-light) focus:border-(--muted) focus:bg-(--surface-elevated)")} />
           </Field>
         </div>
       ) : null}
@@ -336,9 +336,9 @@ function McpDialogBanners({
           <span>
             {testResult.message}
             {testResult.requiresAuth && !isOAuth ? (
-              <button type="button" onClick={onSwitchToOAuth} className="ml-1 underline underline-offset-2">
+              <Button variant="ghost" type="button" onClick={onSwitchToOAuth} className={unstyledButton("ml-1 underline underline-offset-2")}>
                 Switch to OAuth
-              </button>
+              </Button>
             ) : null}
           </span>
         </div>
@@ -387,21 +387,21 @@ function McpServerDialogFooter({
       <div className="flex items-center gap-3">
         <EnabledToggle enabled={enabled} onChange={onToggleEnabled} />
         {showDelete ? (
-          <button type="button" onClick={onDelete} disabled={deleting} className="flex items-center gap-1 text-xs text-(--muted) transition-colors hover:text-red-400 disabled:opacity-50">
+          <Button variant="ghost" type="button" onClick={onDelete} disabled={deleting} className={unstyledButton("flex items-center gap-1 text-xs text-(--muted) transition-colors hover:text-red-400 disabled:opacity-50")}>
             {deleting ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
             Delete
-          </button>
+          </Button>
         ) : null}
       </div>
       <div className="flex items-center gap-2">
-        <button type="button" onClick={onTest} disabled={!canTest} className="flex items-center gap-1.5 rounded-md border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-xs text-(--foreground) transition-colors hover:bg-(--border) disabled:opacity-50">
+        <Button variant="secondary" size="sm" type="button" onClick={onTest} disabled={!canTest}>
           {testing ? <Loader2 size={12} className="animate-spin" /> : <Zap size={12} />}
           {testing ? 'Testing…' : 'Test Connection'}
-        </button>
-        <button type="button" onClick={onSave} disabled={!canSave} className="flex items-center gap-1.5 rounded-md border border-(--border) bg-(--surface-subtle) px-4 py-1.5 text-xs text-(--foreground) transition-colors hover:bg-(--border) disabled:opacity-50">
+        </Button>
+        <Button variant="primary" size="sm" type="button" onClick={onSave} disabled={!canSave}>
           {saving ? <Loader2 size={12} className="animate-spin" /> : saved ? <Check size={12} /> : null}
           {saving ? 'Saving…' : saved ? 'Saved' : isEdit ? 'Save' : 'Add Server'}
-        </button>
+        </Button>
       </div>
     </div>
   )
@@ -453,7 +453,7 @@ export function McpServerDialog({
       >
         <div className="flex shrink-0 items-center justify-between border-b border-(--border) px-5 py-4">
           <h3 id="mcp-server-dialog-title" className="text-sm font-medium text-(--foreground)">{isEdit ? 'Edit MCP Server' : 'Add MCP Server'}</h3>
-          <button type="button" aria-label="Close" onClick={onClose} className="rounded-sm p-1 text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"><X size={16} /></button>
+          <Button variant="ghost" type="button" aria-label="Close" onClick={onClose} className={unstyledButton("rounded-sm p-1 text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)")}><X size={16} /></Button>
         </div>
         {isEdit && scopeActions ? (
           <div className="flex shrink-0 items-center justify-between gap-3 border-b border-(--border) px-5 py-3">
@@ -529,7 +529,7 @@ export function McpServersPanel({ loading, servers, filteredServers, onCreate, o
           <p className="text-sm font-medium text-(--foreground)">No MCP servers configured</p>
           <p className="text-xs text-(--muted-light)">Add remote MCP servers to extend the AI agent with custom tools</p>
         </div>
-        {onCreate ? <button onClick={onCreate} className="flex items-center gap-1.5 rounded-md border border-(--border) bg-(--surface-subtle) px-4 py-2 text-sm text-(--foreground) transition-colors hover:bg-(--border)"><Plus size={14} />Add Server</button> : null}
+        {onCreate ? <Button variant="secondary" size="md" type="submit" onClick={onCreate}><Plus size={14} />Add Server</Button> : null}
       </AppScreenBody>
     )
   }
@@ -581,8 +581,8 @@ function McpServerCardActions({
 }) {
   return (
     <div className="hidden items-center gap-1 group-hover:flex">
-      <button type="button" onClick={(event) => onToggle(server, event)} className="rounded-sm p-1 text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)" title={server.enabled ? 'Disable' : 'Enable'}>{server.enabled ? <ToggleRight size={14} /> : <ToggleLeft size={14} />}</button>
-      <button type="button" onClick={(event) => { event.stopPropagation(); onEdit(server) }} className="rounded-sm p-1 text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)" title="Edit"><Pencil size={13} /></button>
+      <Button variant="ghost" type="button" onClick={(event) => onToggle(server, event)} className={unstyledButton("rounded-sm p-1 text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)")} title={server.enabled ? 'Disable' : 'Enable'}>{server.enabled ? <ToggleRight size={14} /> : <ToggleLeft size={14} />}</Button>
+      <Button variant="ghost" type="button" onClick={(event) => { event.stopPropagation(); onEdit(server) }} className={unstyledButton("rounded-sm p-1 text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)")} title="Edit"><Pencil size={13} /></Button>
     </div>
   )
 }

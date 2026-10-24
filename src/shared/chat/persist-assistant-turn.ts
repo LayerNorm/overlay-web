@@ -1,5 +1,6 @@
 import type { StepResult, ToolSet } from 'ai'
 import { normalizeAgentAssistantText } from '@/shared/chat/agent-assistant-text'
+import { resolveToolOutcomes, type ResolvedToolOutcome } from './tool-outcomes'
 import { summarizeToolResultForTranscript } from '@/shared/tools/tool-result-summary'
 import {
   GENERATED_UI_DATA_TYPE,
@@ -231,6 +232,112 @@ export function compactAssistantPersistenceForConvex(input: {
   }
 }
 
+type PersistedToolCall = {
+  toolCallId: string
+  toolName: string
+  input?: unknown
+  providerExecuted?: boolean
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === 'object' ? value as Record<string, unknown> : null
+}
+
+function persistedToolCall(value: unknown): PersistedToolCall | null {
+  const record = asRecord(value)
+  if (!record || typeof record.toolCallId !== 'string' || typeof record.toolName !== 'string') return null
+  return {
+    toolCallId: record.toolCallId,
+    toolName: record.toolName,
+    ...(Object.prototype.hasOwnProperty.call(record, 'input') ? { input: record.input } : {}),
+    ...(record.providerExecuted === true ? { providerExecuted: true } : {}),
+  }
+}
+
+function mergePersistedToolCall(
+  current: PersistedToolCall | undefined,
+  next: PersistedToolCall,
+): PersistedToolCall {
+  if (!current) return next
+  return {
+    ...current,
+    ...next,
+    ...(next.input === undefined && current.input !== undefined ? { input: current.input } : {}),
+    ...(current.providerExecuted || next.providerExecuted ? { providerExecuted: true } : {}),
+  }
+}
+
+function toolCallFromPart(value: unknown): PersistedToolCall | null {
+  const record = asRecord(value)
+  if (!record) return null
+  if (record.type === 'tool-approval-request' || record.type === 'tool-approval-response') {
+    return persistedToolCall(record.toolCall)
+  }
+  if (record.type === 'tool-call' || record.type === 'tool-error' || record.type === 'tool-result') {
+    return persistedToolCall(record)
+  }
+  return null
+}
+
+function toolCallsForStep(step: StepResult<ToolSet>): PersistedToolCall[] {
+  const content = step.content ?? []
+  const calls = content.length
+    ? content.map(toolCallFromPart).filter((call): call is PersistedToolCall => Boolean(call))
+    : (step.toolCalls ?? []).map(persistedToolCall).filter((call): call is PersistedToolCall => Boolean(call))
+  const seen = new Set<string>()
+  return calls.filter((call) => {
+    if (seen.has(call.toolCallId)) return false
+    seen.add(call.toolCallId)
+    return true
+  })
+}
+
+function orderedContentForStep<TOOLS extends ToolSet>(
+  step: StepResult<TOOLS>,
+): readonly Record<string, unknown>[] {
+  let reasoningText = ''
+  if (step.reasoningText?.trim()) {
+    reasoningText = step.reasoningText.trim()
+  } else if (step.reasoning?.length) {
+    reasoningText = step.reasoning
+      .map((r) => (r && typeof r === 'object' && 'text' in r ? String((r as { text?: string }).text ?? '') : ''))
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .join('\n\n')
+  }
+  return step.content?.length ? step.content as readonly Record<string, unknown>[] : [
+    ...(reasoningText ? [{ type: 'reasoning' as const, text: reasoningText }] : []),
+    ...(step.toolCalls ?? []).map((call) => ({ ...call, type: 'tool-call' as const })),
+    ...(step.text?.trim() ? [{ type: 'text' as const, text: step.text }] : []),
+  ]
+}
+
+function toolOutputForOutcome(outcome: ResolvedToolOutcome | undefined): unknown {
+  return outcome?.hasOutput ? outcome.output : undefined
+}
+
+function toolInvocationForPersistence(
+  call: PersistedToolCall,
+  outcome: ResolvedToolOutcome | undefined,
+): Record<string, unknown> {
+  const state = outcome?.state === 'output-available'
+    || outcome?.state === 'output-error'
+    || outcome?.state === 'output-denied'
+    ? outcome.state
+    : 'input-available'
+  return {
+    toolCallId: call.toolCallId,
+    toolName: call.toolName,
+    state,
+    toolInput: clampNestingDepth(call.input),
+    toolOutput: clampNestingDepth(toolOutputForOutcome(outcome)),
+    ...(call.providerExecuted ? { providerExecuted: true } : {}),
+    ...(outcome?.approvalId ? { approvalId: outcome.approvalId } : {}),
+    ...(outcome?.approvalStatus ? { approvalStatus: outcome.approvalStatus } : {}),
+    ...(outcome?.approvalReason ? { approvalReason: outcome.approvalReason } : {}),
+  }
+}
+
 /**
  * Persist multi-step assistant turns: `onFinish`'s top-level `text` is only the **last** step,
  * so we merge every step's text and synthesize legacy `tool-invocation` parts for the transcript UI.
@@ -243,21 +350,16 @@ export function buildAssistantPersistenceFromSteps<TOOLS extends ToolSet>(
   const textSegments: string[] = []
   const synthesizedToolSegments: string[] = []
   const generatedUiTextSegments: string[] = []
-
-  // Collect all tool results across all steps in the multi-step run.
-  // In AI SDK, step N contains toolCalls while step N+1 contains toolResults.
-  const allToolResultsById = new Map<
-    string,
-    { toolCallId: string; output?: unknown; result?: unknown }
-  >()
+  const toolOutcomes = resolveToolOutcomes(list)
+  const canonicalToolCalls = new Map<string, PersistedToolCall>()
   for (const step of list) {
-    for (const result of step.toolResults ?? []) {
-      if (result && typeof result === 'object' && 'toolCallId' in result && typeof result.toolCallId === 'string') {
-        allToolResultsById.set(
-          result.toolCallId,
-          result as { toolCallId: string; output?: unknown; result?: unknown },
-        )
-      }
+    for (const part of orderedContentForStep(step)) {
+      const call = toolCallFromPart(part)
+      if (!call) continue
+      canonicalToolCalls.set(
+        call.toolCallId,
+        mergePersistedToolCall(canonicalToolCalls.get(call.toolCallId), call),
+      )
     }
   }
 
@@ -266,15 +368,9 @@ export function buildAssistantPersistenceFromSteps<TOOLS extends ToolSet>(
     if (trimmedText) {
       textSegments.push(normalizeAgentAssistantText(trimmedText))
     }
-    for (const tc of step.toolCalls ?? []) {
-      const result = allToolResultsById.get(tc.toolCallId)
-      const toolOutput = result
-        ? 'output' in result
-          ? result.output
-          : 'result' in result
-            ? result.result
-            : result
-        : undefined
+    for (const tc of toolCallsForStep(step)) {
+      const outcome = toolOutcomes.get(tc.toolCallId)
+      const toolOutput = toolOutputForOutcome(outcome)
       if (tc.toolName === 'present_generated_ui') {
         const output = toolOutput && typeof toolOutput === 'object'
           ? toolOutput as Record<string, unknown>
@@ -287,7 +383,7 @@ export function buildAssistantPersistenceFromSteps<TOOLS extends ToolSet>(
         toolName: tc.toolName,
         toolInput: tc.input,
         toolOutput,
-        state: result ? 'output-available' : 'input-available',
+        state: outcome?.state ?? 'input-available',
       })
       if (summary) synthesizedToolSegments.push(summary)
     }
@@ -297,61 +393,56 @@ export function buildAssistantPersistenceFromSteps<TOOLS extends ToolSet>(
   content = ensureAssistantPersistContent(content)
 
   const parts: Array<Record<string, unknown>> = []
+  const renderedToolCallIds = new Map<string, number>()
   for (const step of list) {
-    let reasoningText = ''
-    if (step.reasoningText?.trim()) {
-      reasoningText = step.reasoningText.trim()
-    } else if (step.reasoning?.length) {
-      reasoningText = step.reasoning
-        .map((r) => (r && typeof r === 'object' && 'text' in r ? String((r as { text?: string }).text ?? '') : ''))
-        .map((s) => s.trim())
-        .filter(Boolean)
-        .join('\n\n')
-    }
-    if (reasoningText) {
-      parts.push({
-        type: 'reasoning',
-        text: normalizeAgentAssistantText(reasoningText),
-        state: 'done',
-      })
-    }
-
-    const calls = step.toolCalls ?? []
-    for (const tc of calls) {
-      const result = allToolResultsById.get(tc.toolCallId)
-      const toolOutput = result
-        ? 'output' in result
-          ? result.output
-          : 'result' in result
-            ? result.result
-            : result
-        : undefined
-      if (tc.toolName === 'present_generated_ui') {
+    // SDK content preserves generation order; the convenience fields group by type.
+    for (const tc of orderedContentForStep(step)) {
+      if (tc.type === 'text' || tc.type === 'reasoning') {
+        if (typeof tc.text === 'string' && tc.text.trim()) {
+          parts.push({
+            type: tc.type,
+            text: normalizeAgentAssistantText(tc.text.trim()),
+            ...(tc.type === 'reasoning' ? { state: 'done' } : {}),
+          })
+        }
+        continue
+      }
+      const sourceCall = toolCallFromPart(tc)
+      if (!sourceCall) continue
+      const call = canonicalToolCalls.get(sourceCall.toolCallId) ?? sourceCall
+      const outcome = toolOutcomes.get(call.toolCallId)
+      const toolOutput = toolOutputForOutcome(outcome)
+      const existingIndex = renderedToolCallIds.get(call.toolCallId)
+      if (call.toolName === 'present_generated_ui') {
         const output = toolOutput && typeof toolOutput === 'object'
           ? toolOutput as Record<string, unknown>
           : null
-        const part = output?.success === true
+        const part = outcome?.state === 'output-available' && output?.success === true
           ? buildGeneratedUiPart(
-              (typeof output.id === 'string' && output.id.trim()) || tc.toolCallId,
+              (typeof output.id === 'string' && output.id.trim()) || call.toolCallId,
               output.generatedUi,
             )
           : null
-        if (part) parts.push(part)
-        continue
+        if (part) {
+          if (existingIndex === undefined) {
+            renderedToolCallIds.set(call.toolCallId, parts.length)
+            parts.push(part)
+          } else {
+            parts[existingIndex] = part
+          }
+          continue
+        }
       }
-      parts.push({
+      const toolPart = {
         type: 'tool-invocation',
-        toolInvocation: {
-          toolCallId: tc.toolCallId,
-          toolName: tc.toolName,
-          state: result ? 'output-available' : 'input-available',
-          toolInput: clampNestingDepth(tc.input),
-          toolOutput: clampNestingDepth(toolOutput),
-        },
-      })
-    }
-    if (step.text?.trim()) {
-      parts.push({ type: 'text', text: normalizeAgentAssistantText(step.text.trim()) })
+        toolInvocation: toolInvocationForPersistence(call, outcome),
+      }
+      if (existingIndex === undefined) {
+        renderedToolCallIds.set(call.toolCallId, parts.length)
+        parts.push(toolPart)
+      } else {
+        parts[existingIndex] = toolPart
+      }
     }
   }
   if (!parts.some((part) => part.type === 'text') && content) {

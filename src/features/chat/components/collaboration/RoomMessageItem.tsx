@@ -26,16 +26,21 @@ import {
   X,
 } from 'lucide-react'
 import type { AssistantVisualBlock } from '@overlay/chat-core'
+import { RemoteRunDeadline } from './RemoteRunDeadline'
 import { FlashCopyIconButton } from '@overlay/chat-react/draft-review-modal'
 import { UserMessageBubble } from '@overlay/chat-react/user-message-bubble'
-import { AssistantVisualBlocks } from '@overlay/chat-react/transcript'
+import { AssistantVisualBlocks, messageActionVisibilityClass } from '@overlay/chat-react/transcript'
 import type { AttachmentPreview, ChatMessageMention } from '@overlay/chat-react'
-import { Textarea, Toggle } from '@overlay/ui/primitives'
+import { Button, Input, Select, Textarea, Toggle } from '@overlay/ui/primitives'
 import { MarkdownMessage } from '@overlay/chat-react'
 import { AgentCreature } from '@/components/orb/Creature'
 import { MAX_AGENT_HOPS } from '@/shared/agents/agent-lineage'
 import { useOptionalAppSettings } from '@/components/providers/AppSettingsProvider'
+import { unstyledButton } from '@overlay/ui/control-reset'
 import { roomMessageDomId } from './room-message-view'
+import type { DriveSyncStatus } from '@layernorm/overlay-agent-bridge-protocol'
+import { RemoteDriveStatus, useSavedDriveLinkResolver } from './RemoteDriveStatus'
+import { RemoteRunTrace } from './RemoteRunTrace'
 
 export type RoomMessageReaction = {
   emoji: string
@@ -87,12 +92,16 @@ export type RoomMessageView = {
   remoteQueue?: { runId: string; environmentName: string; queueExpiresAt: number }
   remoteRequest?: { pendingDelivery?: boolean; expiresAt?: number; machineCostContinues?: boolean; runId: string; requestKey: string; kind: 'permission' | 'elicitation'; prompt: string;
     options: Array<{ id: string; label: string }>; requestedSchema?: Record<string, unknown> }
-  remoteRun?: { runId: string; state: string; retryable: boolean; retryClass?: string }
+  remoteRun?: { runId: string; state: string; retryable: boolean; retryClass?: string; hardDeadlineAt?: number; recovered?: boolean }
+  remoteDrive?: DriveSyncStatus
   /** Persisted turn time for agent messages (assistant row createdAt→updatedAt). */
   workedDurationMs?: number
 }
 
 export type RoomMessageItemProps = {
+  remoteStatus?: ReactNode
+  /** Hides reactions, edit, pin and the other message actions (guided onboarding). */
+  hideToolbar?: boolean
   message: RoomMessageView
   reactions: RoomMessageReaction[]
   replyCount: number
@@ -201,22 +210,23 @@ function AuthorIdentityPopover({
 
   return (
     <span ref={ref} className="relative inline-flex isolate">
-      <button
+      <Button
+        variant="ghost"
         type="button"
         onClick={() => setOpen((value) => !value)}
-        className={`text-left outline-hidden focus-visible:ring-2 focus-visible:ring-(--foreground) ${triggerClassName ?? ''}`}
+        className={`h-auto p-0 text-left font-normal text-inherit outline-hidden hover:bg-transparent hover:text-current focus-visible:ring-2 focus-visible:ring-(--foreground) ${triggerClassName ?? ''}`}
         aria-haspopup="dialog"
         aria-expanded={open}
       >
         {children}
-      </button>
+      </Button>
       {open ? (
         // Anchored author popover — a native <dialog> cannot anchor below the trigger.
         // react-doctor-disable-next-line react-doctor/prefer-html-dialog
         <div
           role="dialog"
           aria-label={name ? `${name} profile` : 'Message author'}
-          className="absolute left-0 top-[calc(100%+6px)] z-50 w-60 rounded-xl border border-(--border) bg-(--surface-elevated) p-3 shadow-xl"
+          className="absolute left-0 top-[calc(100%+6px)] z-50 w-60 rounded-xl bg-(--surface-elevated) p-3 shadow-xl"
         >
           <div className="flex items-center gap-2.5">
             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-(--surface-muted) text-[13px] font-semibold text-(--foreground)">
@@ -232,7 +242,7 @@ function AuthorIdentityPopover({
             </span>
           </div>
           {statusMeta ? (
-            <div className="mt-2.5 flex items-center justify-between border-t border-(--border) pt-2.5">
+            <div className="mt-2.5 flex items-center justify-between pt-2.5">
               <span className="text-[11px] text-(--muted)">Workspace</span>
               <span
                 className={`rounded-sm px-1.5 py-0.5 text-[10px] font-medium ${statusMeta.className}`}
@@ -283,6 +293,8 @@ export function RoomMessageItem({
   highlighted = false,
   grouped = false,
   personalChatStyle = false,
+  remoteStatus,
+  hideToolbar = false,
 }: RoomMessageItemProps) {
   const { mine } = message
   const isAgent =
@@ -317,7 +329,7 @@ export function RoomMessageItem({
     ? () => onControlRemoteQueue(retryableRun.runId, 'retry')
     : undefined
 
-  const toolbar = (
+  const toolbar = hideToolbar ? null : (
     <RoomMessageToolbar
       alignEnd={mine}
       floating={!personalChatStyle}
@@ -338,10 +350,12 @@ export function RoomMessageItem({
       onTogglePinned={onTogglePinned}
       onToggleSaved={onToggleSaved}
       onCopyPermalink={onCopyPermalink}
+      diagnostics={message.remoteRun ? <RemoteRunTrace runId={message.remoteRun.runId} messageId={message.id} state={message.remoteRun.state} /> : undefined}
     />
   )
 
   const content: RoomMessageContentProps = {
+    remoteStatus,
     message,
     reactions,
     replyCount,
@@ -407,6 +421,7 @@ type RoomMessageRootProps = {
 
 /** Props shared by the sent and received message rows. */
 type RoomMessageContentProps = {
+  remoteStatus?: ReactNode
   message: RoomMessageView
   reactions: RoomMessageReaction[]
   replyCount: number
@@ -516,7 +531,8 @@ function RoomMessageAttachments({ message, onOpenAttachmentPreview }: {
       {message.images.length > 0 ? (
         <div className={`flex w-full flex-wrap gap-1.5 ${message.mine ? 'justify-end' : ''}`}>
           {message.images.map((attachment) => (
-            <button
+            <Button
+              variant="ghost"
               key={attachment.url}
               type="button"
               onClick={() => onOpenAttachmentPreview({
@@ -524,15 +540,15 @@ function RoomMessageAttachments({ message, onOpenAttachmentPreview }: {
                 content: attachment.url,
                 url: attachment.url,
               })}
-              className="group rounded-xl outline-hidden transition-transform hover:scale-[1.01] focus-visible:ring-2 focus-visible:ring-(--foreground)"
+              className="group h-auto rounded-xl p-0 outline-hidden transition-transform hover:bg-transparent hover:text-current hover:scale-[1.01] focus-visible:ring-2 focus-visible:ring-(--foreground)"
               title="Open attachment"
             >
               <img
                 src={attachment.url}
                 alt={attachment.name}
-                className="max-h-[200px] max-w-[200px] rounded-xl border border-transparent object-cover transition-colors group-hover:border-(--border)"
+                className="max-h-[200px] max-w-[200px] rounded-xl object-cover transition-opacity group-hover:opacity-90"
               />
-            </button>
+            </Button>
           ))}
         </div>
       ) : null}
@@ -541,7 +557,7 @@ function RoomMessageAttachments({ message, onOpenAttachmentPreview }: {
           {message.documentNames.map((name) => (
             <div
               key={name}
-              className="flex max-w-[220px] items-center gap-1.5 rounded-xl border border-(--border) bg-(--surface-elevated) px-2.5 py-1.5 text-xs text-(--muted) shadow-xs"
+              className="flex max-w-[220px] items-center gap-1.5 rounded-xl bg-(--surface-elevated) px-2.5 py-1.5 text-xs text-(--muted)"
             >
               <FileText size={13} className="shrink-0 text-(--muted)" />
               <span className='truncate font-medium text-(--foreground)'>
@@ -577,22 +593,26 @@ function RoomMessageEditor({ editingContent, onEditingContentChange, onSaveEdit,
         }}
         className="min-h-20 flex-1 resize-y"
       />
-      <button
+      <Button
+        variant="primary"
+        size="icon"
         type="button"
         onClick={onSaveEdit}
         aria-label="Save edit"
-        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-(--foreground) text-(--background)"
+        className="shrink-0"
       >
         <Check size={14} />
-      </button>
-      <button
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon"
         type="button"
         onClick={onCancelEdit}
         aria-label="Cancel edit"
-        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-(--muted) hover:bg-(--surface-subtle)"
+        className="h-9 w-9 shrink-0 rounded-lg p-0 text-(--muted) hover:bg-(--surface-subtle)"
       >
         <X size={14} />
-      </button>
+      </Button>
     </div>
   )
 }
@@ -606,19 +626,20 @@ function RoomReactionRow({ reactions, alignEnd, onToggleReaction }: {
   return (
     <div className={`flex flex-wrap items-center gap-1 ${alignEnd ? 'justify-end' : ''}`}>
       {reactions.map((reaction) => (
-        <button
+        <Button
+          variant="ghost"
           key={reaction.emoji}
           type="button"
           onClick={() => onToggleReaction(reaction.emoji)}
-          className={`inline-flex h-6 items-center gap-1 rounded-full border px-2 text-[11px] transition-colors ${
+          className={`h-6 gap-1 rounded-full px-2 text-[11px] font-normal text-inherit transition-colors ${
             reaction.reactedByCurrentPrincipal
-              ? 'border-(--foreground) bg-(--surface-subtle)'
-              : 'border-(--border) hover:bg-(--surface-subtle)'
+              ? 'bg-(--surface-muted) text-(--foreground)'
+              : 'bg-(--surface-subtle) hover:bg-(--surface-muted)'
           }`}
         >
           <span>{reaction.emoji}</span>
           <span>{reaction.count}</span>
-        </button>
+        </Button>
       ))}
     </div>
   )
@@ -632,11 +653,12 @@ function RoomThreadEntry({ mine, replyCount, threadTeaser, onOpenThread }: {
 }) {
   if (!mine && replyCount > 0) {
     return (
-      <button
+      <Button
+        variant="ghost"
         type="button"
         onClick={onOpenThread}
         data-testid="thread-teaser"
-        className="group/thread mt-0.5 flex max-w-xl items-start gap-2 rounded-md px-1 py-1 text-left transition-colors hover:bg-(--surface-subtle)"
+        className="group/thread mt-0.5 h-auto max-w-xl items-start justify-start gap-2 rounded-md px-1 py-1 text-left font-normal text-(--foreground) transition-colors hover:bg-(--surface-subtle)"
       >
         <MessageSquareReply size={14} strokeWidth={1.75} className="mt-0.5 shrink-0 text-(--muted)" />
         <span className="min-w-0 flex-1">
@@ -651,20 +673,21 @@ function RoomThreadEntry({ mine, replyCount, threadTeaser, onOpenThread }: {
             </span>
           ) : null}
         </span>
-      </button>
+      </Button>
     )
   }
   if (replyCount > 0) {
     return (
-      <button
+      <Button
+        variant="ghost"
         type="button"
         onClick={onOpenThread}
         data-testid="thread-teaser"
-        className={`inline-flex items-center gap-1 text-[11px] font-medium text-(--muted) transition-colors hover:text-(--foreground) ${mine ? 'self-end' : ''}`}
+        className={`h-auto w-auto gap-1 p-0 text-[11px] font-medium text-(--muted) transition-colors hover:bg-transparent hover:text-(--foreground) ${mine ? 'self-end' : ''}`}
       >
         <MessageSquareReply size={12} strokeWidth={1.75} />
         {replyCount} {replyCount === 1 ? 'reply' : 'replies'}
-      </button>
+      </Button>
     )
   }
   return null
@@ -699,13 +722,15 @@ function RoomMessageMetaRow({ message, timeLabel, grouped, pinned }: {
   )
 }
 
-function AgentMessageBody({ message, onOpenAttachmentPreview, onControlRemoteQueue, onResolveRemoteRequest }: {
+function AgentMessageBody({ message, onOpenAttachmentPreview, onControlRemoteQueue, onResolveRemoteRequest, remoteStatus }: {
+  remoteStatus?: ReactNode
   message: RoomMessageView
   onOpenAttachmentPreview: RoomMessageItemProps['onOpenAttachmentPreview']
   onControlRemoteQueue: RoomMessageItemProps['onControlRemoteQueue']
   onResolveRemoteRequest: RoomMessageItemProps['onResolveRemoteRequest']
 }) {
   const collapseAgentWork = useOptionalAppSettings()?.settings.collapseAgentWork !== false
+  const resolveFileHref = useSavedDriveLinkResolver(message.remoteDrive)
   return (
     <>
       {message.askedBy ? (
@@ -729,14 +754,17 @@ function AgentMessageBody({ message, onOpenAttachmentPreview, onControlRemoteQue
         blockKeyPrefix={message.id}
         markdownKeyPrefix={message.id}
         workedDurationMs={message.workedDurationMs}
-        foldWorkIntoSummary={collapseAgentWork}
+        foldWorkIntoSummary={collapseAgentWork && !['cancelled', 'failed', 'recoverable'].includes(message.remoteRun?.state ?? '')}
         isStreaming={Boolean(message.streaming)}
         isTextStreaming={Boolean(message.streaming)}
+        suppressTypingIndicator
+        resolveFileHref={resolveFileHref}
         onOpenDraft={NOOP_DRAFT}
         onCreateAutomationDraft={NOOP_DRAFT}
         onOpenAttachmentPreview={onOpenAttachmentPreview}
       />
-      {message.streaming && message.blocks.length === 0 ? (
+      {message.remoteDrive ? <RemoteDriveStatus status={message.remoteDrive} /> : null}
+      {message.streaming ? (
         <div className="flex items-center gap-1 py-1" aria-label={`${message.authorName} is responding`}>
           {[0, 1, 2].map((dot) => (
             <span
@@ -745,8 +773,12 @@ function AgentMessageBody({ message, onOpenAttachmentPreview, onControlRemoteQue
               style={{ animationDelay: `${dot * 120}ms` }}
             />
           ))}
+          {message.remoteRun?.state !== 'finalizing' ? remoteStatus : null}
         </div>
       ) : null}
+      {message.remoteRun ? <RemoteRunDeadline deadlineAt={message.remoteRun.hardDeadlineAt} state={message.remoteRun.state} /> : null}
+      {message.remoteRun?.recovered ? <p className="mt-1 text-xs text-(--muted)" role="status">Recovered</p> : null}
+      {message.remoteRun?.state === 'cancelled' ? <p className='mt-2 text-xs text-(--muted)' role='status'>Cancelled</p> : null}
       {message.remoteRequest && onResolveRemoteRequest ? (
         <RemoteRequestControls key={message.remoteRequest.requestKey} request={message.remoteRequest} onResolve={onResolveRemoteRequest} />
       ) : null}
@@ -784,9 +816,9 @@ function SentRoomMessage({ rootProps, highlightClass, toolbar, content, onRetryS
           <SentMessageContent message={message} />
         )}
         {message.delivery === 'failed' ? (
-          <button type="button" className="text-[11px] font-medium text-red-500 hover:underline" onClick={onRetrySend}>
+          <Button variant="ghost" type="button" className="h-auto p-0 text-[11px] font-medium text-red-500 hover:bg-transparent hover:text-red-500 hover:underline" onClick={onRetrySend}>
             Failed to send · Retry
-          </button>
+          </Button>
         ) : null}
         <RoomReactionRow reactions={content.reactions} alignEnd onToggleReaction={content.onToggleReaction} />
         <RoomThreadEntry mine replyCount={content.replyCount} threadTeaser={content.threadTeaser} onOpenThread={content.onOpenThread} />
@@ -828,6 +860,7 @@ function ReceivedRoomMessage({ rootProps, highlightClass, toolbar, content, isAg
           />
         ) : isAgent ? (
           <AgentMessageBody
+            remoteStatus={content.remoteStatus}
             message={message}
             onOpenAttachmentPreview={content.onOpenAttachmentPreview}
             onControlRemoteQueue={onControlRemoteQueue}
@@ -876,7 +909,7 @@ function RemoteRequestControls({ request, onResolve }: {
     initialElicitationValues(properties, required),
   )
   return (
-    <div className="mt-3 max-w-xl rounded-lg border border-(--border) bg-(--surface-subtle) p-3">
+    <div className="mt-3 max-w-xl rounded-lg bg-(--surface-subtle) p-3">
       <p className='text-xs font-medium text-(--foreground)'>
         {request.pendingDelivery ? 'Decision pending delivery' : request.kind === 'permission'
           ? 'Permission requested'
@@ -912,7 +945,7 @@ function RemoteRequestControls({ request, onResolve }: {
           <label key={key} className="mt-2 block text-[11px] text-(--muted)">
             <span>{property.title ?? key}{requiredSet.has(key) ? ' *' : ''}</span>
             {elicitationOptions(property).length > 0 ? (
-              <select
+              <Select
                 aria-label={key}
                 value={String(values[key] ?? '')}
                 onChange={(event) =>
@@ -921,7 +954,7 @@ function RemoteRequestControls({ request, onResolve }: {
                     [key]: elicitationFieldValue(property.type, event.target.value),
                   }))
                 }
-                className="mt-1 h-8 w-full rounded-md border border-(--border) bg-(--surface) px-2 text-xs text-(--foreground)"
+                className="mt-1 h-8 w-full rounded-md bg-(--surface) px-2 text-xs text-(--foreground)"
               >
                 <option value="">Select…</option>
                 {elicitationOptions(property).map((option) => (
@@ -929,13 +962,13 @@ function RemoteRequestControls({ request, onResolve }: {
                     {option.label}
                   </option>
                 ))}
-              </select>
+              </Select>
             ) : (
-              <input type={property.type === 'number' || property.type === 'integer' ? 'number' : 'text'}
+              <Input type={property.type === 'number' || property.type === 'integer' ? 'number' : 'text'}
                 aria-label={key}
                 value={String(values[key] ?? '')}
                 onChange={(event) => setValues((current) => ({ ...current, [key]: elicitationFieldValue(property.type, event.target.value) }))}
-                className="mt-1 h-8 w-full rounded-md border border-(--border) bg-(--surface) px-2 text-xs text-(--foreground)" />
+                className="mt-1 h-8 w-full rounded-md bg-(--surface) px-2 text-xs text-(--foreground)" />
             )}
           </label>
         ),
@@ -944,31 +977,34 @@ function RemoteRequestControls({ request, onResolve }: {
       <div className="mt-3 flex flex-wrap gap-2">
         {request.pendingDelivery ? null : request.kind === 'permission' ? (
           request.options.map((option) => (
-            <button
+            <Button
+              variant="ghost"
               key={option.id}
               type='button'
               onClick={() => onResolve(request, option.id)}
-              className='rounded-md border border-(--border) px-2 py-1 text-xs text-(--foreground) hover:bg-(--surface)'
+              className='h-auto rounded-md bg-(--surface) px-2 py-1 text-xs font-normal text-(--foreground) hover:bg-(--surface-muted)'
             >
               {option.label}
-            </button>
+            </Button>
           ))
         ) : (
           <>
-            <button
+            <Button
+              variant="ghost"
               type='button'
               onClick={() => onResolve(request, 'accept', values)}
-              className='rounded-md border border-(--border) px-2 py-1 text-xs text-(--foreground) hover:bg-(--surface)'
+              className='h-auto rounded-md bg-(--surface) px-2 py-1 text-xs font-normal text-(--foreground) hover:bg-(--surface-muted)'
             >
               Submit
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="ghost"
               type='button'
               onClick={() => onResolve(request, 'decline')}
-              className='rounded-md px-2 py-1 text-xs text-(--muted) hover:bg-(--surface)'
+              className='h-auto rounded-md px-2 py-1 text-xs font-normal text-(--muted) hover:bg-(--surface)'
             >
               Decline
-            </button>
+            </Button>
           </>
         )}
       </div>
@@ -1010,11 +1046,11 @@ function RemoteRunControls({ run, onControl }: {
   if (run.state === 'needs_attention') return (
     <div className="mt-2 flex items-center gap-2 text-xs text-(--muted)">
       <p role="status">Execution needs attention. Stop or isolate the original process before starting fresh.</p>
-      <button type="button" className="shrink-0 rounded-md border border-(--border) px-2 py-1 text-(--foreground)"
+      <Button variant="ghost" type="button" className={unstyledButton("shrink-0 rounded-md bg-(--surface-subtle) px-2 py-1 text-(--foreground) hover:bg-(--surface-muted)")}
         onClick={() => {
           if (window.confirm('Confirm that you inspected and stopped or isolated the original process. Starting fresh creates a new attempt and does not resume the old process.'))
             onControl(run.runId, 'start_fresh')
-        }}>Start fresh</button>
+        }}>Start fresh</Button>
     </div>
   )
   // Cancelling an active run is the Stop button in the message toolbar.
@@ -1029,12 +1065,8 @@ const QUICK_REACTIONS = [
 
 function toolbarRailClass(floating: boolean, pickerOpen: boolean, alignEnd: boolean) {
   return floating
-    ? `absolute -top-3 right-0 z-20 flex items-center gap-0.5 rounded-lg border border-(--border) bg-(--surface-elevated) p-0.5 shadow-md transition-opacity focus-within:opacity-100 group-hover/exchange:opacity-100 ${
-        pickerOpen ? 'opacity-100' : 'opacity-0'
-      }`
-    : `chat-exchange-actions--hover flex items-center gap-1 px-1 pt-0.5 transition-opacity focus-within:opacity-100 group-hover/exchange:opacity-100 ${
-        pickerOpen ? 'opacity-100' : 'opacity-0'
-      } ${alignEnd ? 'justify-end' : ''}`
+    ? `absolute -top-3 right-0 z-20 flex items-center gap-0.5 rounded-lg bg-(--surface-elevated) p-0.5 shadow-md ${messageActionVisibilityClass(pickerOpen)}`
+    : `chat-exchange-actions--hover flex items-center gap-1 px-1 pt-0.5 ${messageActionVisibilityClass(pickerOpen)} ${alignEnd ? 'justify-end' : ''}`
 }
 
 function ToolbarIconButton({ buttonClass, onClick, disabled, ariaLabel, title, children }: {
@@ -1046,9 +1078,9 @@ function ToolbarIconButton({ buttonClass, onClick, disabled, ariaLabel, title, c
   children: ReactNode
 }) {
   return (
-    <button type="button" onClick={onClick} disabled={disabled} className={buttonClass} aria-label={ariaLabel} title={title}>
+    <Button variant="ghost" size="icon" type="button" onClick={onClick} disabled={disabled} className={`h-auto w-auto ${buttonClass}`} aria-label={ariaLabel} title={title}>
       {children}
-    </button>
+    </Button>
   )
 }
 
@@ -1059,16 +1091,18 @@ function PinMessageButton({ buttonClass, pinned, disabled, onTogglePinned }: {
   onTogglePinned: () => void
 }) {
   return (
-    <button
+    <Button
+      variant="ghost"
+      size="icon"
       type="button"
       onClick={onTogglePinned}
       disabled={disabled}
-      className={`${buttonClass} ${pinned ? 'bg-(--surface-subtle) text-(--foreground)' : ''}`}
+      className={`h-auto w-auto ${buttonClass} ${pinned ? 'bg-(--surface-subtle)' : ''}`}
       aria-label={pinned ? 'Unpin message' : 'Pin message'}
       aria-pressed={pinned}
     >
       <Pin size={14} strokeWidth={1.75} className={pinned ? 'fill-current' : undefined} />
-    </button>
+    </Button>
   )
 }
 
@@ -1079,16 +1113,18 @@ function SaveMessageButton({ buttonClass, saved, disabled, onToggleSaved }: {
   onToggleSaved: () => void
 }) {
   return (
-    <button
+    <Button
+      variant="ghost"
+      size="icon"
       type="button"
       onClick={onToggleSaved}
       disabled={disabled}
-      className={`${buttonClass} ${saved ? 'bg-(--surface-subtle) text-(--foreground)' : ''}`}
+      className={`h-auto w-auto ${buttonClass} ${saved ? 'bg-(--surface-subtle)' : ''}`}
       aria-label={saved ? 'Remove from saved' : 'Save message'}
       aria-pressed={saved}
     >
       <Bookmark size={14} strokeWidth={1.75} className={saved ? 'fill-current' : undefined} />
-    </button>
+    </Button>
   )
 }
 
@@ -1103,20 +1139,23 @@ function EditDeleteButtons({ buttonClass, disabled, onStartEdit, onDelete }: {
       <ToolbarIconButton buttonClass={buttonClass} onClick={onStartEdit} disabled={disabled} ariaLabel="Edit message">
         <Pencil size={14} strokeWidth={1.75} />
       </ToolbarIconButton>
-      <button
+      <Button
+        variant="ghost"
+        size="icon"
         type="button"
         onClick={onDelete}
         disabled={disabled}
-        className={`${buttonClass} hover:text-red-500`}
+        className={`h-auto w-auto ${buttonClass.replace('hover:text-(--foreground)', 'hover:text-red-500')}`}
         aria-label="Delete message"
       >
         <Trash2 size={14} strokeWidth={1.75} />
-      </button>
+      </Button>
     </>
   )
 }
 
 function RoomMessageToolbar({
+  diagnostics,
   alignEnd,
   floating,
   copyText,
@@ -1137,6 +1176,7 @@ function RoomMessageToolbar({
   onToggleSaved,
   onCopyPermalink,
 }: {
+  diagnostics?: ReactNode
   alignEnd: boolean
   floating: boolean
   copyText: string
@@ -1161,10 +1201,11 @@ function RoomMessageToolbar({
   const buttonClass =
     'rounded-md p-1.5 text-(--muted) transition-[color,background-color,transform] hover:bg-(--surface-subtle) hover:text-(--foreground) active:scale-90 active:bg-(--border) disabled:cursor-not-allowed disabled:opacity-30'
 
-  const railClass = toolbarRailClass(floating, pickerOpen, alignEnd)
+  const railClass = toolbarRailClass(floating, pickerOpen || Boolean(onStop), alignEnd)
 
   return (
     <div className={railClass}>
+      {diagnostics}
       {onStop ? (
         <ToolbarIconButton buttonClass={buttonClass} onClick={onStop} disabled={disabled} ariaLabel="Stop response" title="Stop response">
           <Square size={13} strokeWidth={1.75} className="fill-current" />
@@ -1244,41 +1285,45 @@ function EmojiPickerButton({
 
   return (
     <div ref={rootRef} className="relative">
-      <button
+      <Button
+        variant="ghost"
+        size="icon"
         type="button"
         onClick={() => setOpen(!open)}
         disabled={disabled}
-        className={`${buttonClass} ${open ? 'bg-(--surface-subtle) text-(--foreground)' : ''}`}
+        className={`h-auto w-auto ${buttonClass} ${open ? 'bg-(--surface-subtle)' : ''}`}
         aria-label="Add reaction"
         aria-expanded={open}
         aria-haspopup="dialog"
       >
         <SmilePlus size={14} strokeWidth={1.75} />
-      </button>
+      </Button>
       {open ? (
         // Anchored reaction picker — a native <dialog> cannot anchor above the trigger.
         // react-doctor-disable-next-line react-doctor/prefer-html-dialog
         <div
           role="dialog"
           aria-label="Pick a reaction"
-          className={`overlay-pop-in absolute bottom-full z-30 mb-1.5 w-64 rounded-xl border border-(--border) bg-(--surface-elevated) p-2 shadow-lg ${
+          className={`overlay-pop-in absolute bottom-full z-30 mb-1.5 w-64 rounded-xl bg-(--surface-elevated) p-2 shadow-lg ${
             alignEnd ? 'right-0' : 'left-0'
           }`}
         >
           <div className="grid grid-cols-8 gap-0.5">
             {QUICK_REACTIONS.map((emoji) => (
-              <button
+              <Button
+                variant="ghost"
+                size="icon"
                 key={emoji}
                 type="button"
                 onClick={() => {
                   onSelect(emoji)
                   setOpen(false)
                 }}
-                className="flex h-7 w-7 items-center justify-center rounded-md text-base transition-colors hover:bg-(--surface-muted)"
+                className="h-7 w-7 rounded-md p-0 text-base hover:bg-(--surface-muted)"
                 aria-label={`React with ${emoji}`}
               >
                 {emoji}
-              </button>
+              </Button>
             ))}
           </div>
         </div>

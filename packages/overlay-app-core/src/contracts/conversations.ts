@@ -10,6 +10,8 @@ export interface ConversationSummary {
   actModelId: string
   clientId?: string
   conversationType?: 'personal' | 'dm' | 'channel'
+  /** Sidebar scope for AI chats; missing means personal. */
+  scope?: 'personal' | 'workspace'
   /** Set on conversations mapped to an external surface thread (e.g. Slack). */
   externalPlatform?: string
   externalChannelId?: string
@@ -51,6 +53,13 @@ export type ConversationMessagePart =
             description?: string
             connectUrl?: string
             connected?: boolean
+          }
+        | {
+            version: 1
+            kind: 'questionnaire'
+            prompt: string
+            choices: Array<{ id: string; label: string }>
+            multiple: boolean
           }
       transient?: boolean
     }

@@ -37,10 +37,12 @@ const bundle = {
   ],
 } as unknown as WorkspaceAgentBundle
 
-test('an agent\'s threads are an indented tree with a guide line, ending in New thread', () => {
+test('an agent\'s threads share the icon column without indentation, ending in New thread', () => {
   const html = render(bundle)
-  assert.match(html, /data-slot="sidebar-menu-sub"/)
-  assert.match(html, /border-l border-\(--muted-light\)\/40/)
+  assert.match(html, /data-slot="sidebar-menu"/)
+  assert.doesNotMatch(html, /data-slot="sidebar-menu-sub"/)
+  assert.doesNotMatch(html, /border-l|ml-3\.5|pl-2/)
+  assert.match(html, /\[&amp;&gt;svg\]:mx-1/)
   for (const label of ['Overlay', 'Q4 launch plan', 'Daily digest', 'PR sweep', 'New thread']) assert.match(html, new RegExp(label))
   // Archived threads belong to Settings → Archived.
   assert.doesNotMatch(html, /Old thread/)

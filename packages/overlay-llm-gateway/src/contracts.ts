@@ -3,6 +3,8 @@ export interface ModelOptions {
   apiKey?: string
   provider?: string
   headers?: Record<string, string>
+  /** Stable provider session identifier for conversation-scoped requests. */
+  sessionId?: string
   metadata?: Record<string, unknown>
   /**
    * When false, a low `AI_GATEWAY_API_KEY` credit balance does not silently swap

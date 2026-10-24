@@ -1,5 +1,7 @@
 'use client'
 
+import { unstyledButton } from '@overlay/ui/control-reset'
+
 import type { ReactNode } from 'react'
 import { AppWindow, MessageSquare, PanelRight } from 'lucide-react'
 import { Button, DialogFrame } from '@overlay/ui/primitives'
@@ -16,10 +18,8 @@ export function SayHelloButton({ mode, hasAgent, highlight, showcase, onSayHello
   return <Button variant="secondary" size="sm" onClick={onSayHello}><MessageSquare size={13} /> Say hello</Button>
 }
 
-export function AgentEditorSidePanel({ title, mode, savedFlash, onTogglePanelMode, onClose, children }: {
+export function AgentEditorSidePanel({ title, onTogglePanelMode, onClose, children }: {
   title: string
-  mode: 'new' | 'edit'
-  savedFlash: boolean
   onTogglePanelMode?: () => void
   onClose(): void
   children: ReactNode
@@ -29,19 +29,16 @@ export function AgentEditorSidePanel({ title, mode, savedFlash, onTogglePanelMod
       title={title}
       actions={(
         <>
-          {savedFlash && mode === 'edit'
-            ? <span role="status" className="text-[11px] text-(--muted)">Saved</span>
-            : null}
           {onTogglePanelMode ? (
-            <button
+            <Button variant="ghost"
               type="button"
               onClick={onTogglePanelMode}
               title="Show as dialog"
               aria-label="Show as dialog"
-              className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
+              className={unstyledButton(`inline-flex h-8 w-8 items-center justify-center rounded-lg text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)`)}
             >
               <AppWindow size={15} />
-            </button>
+            </Button>
           ) : null}
         </>
       )}
@@ -66,15 +63,15 @@ export function AgentEditorDialog({ title, onTogglePanelMode, onClose, children 
       onOpenChange={(next) => { if (!next) onClose() }}
       title={title}
       actions={onTogglePanelMode ? (
-        <button
+        <Button variant="ghost"
           type="button"
           onClick={onTogglePanelMode}
           title="Dock panel to the side"
           aria-label="Dock panel to the side"
-          className="inline-flex h-7 w-7 items-center justify-center rounded-md text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
+          className={unstyledButton(`inline-flex h-7 w-7 items-center justify-center rounded-md text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)`)}
         >
           <PanelRight size={14} />
-        </button>
+        </Button>
       ) : undefined}
       className="max-h-[88vh] w-[min(560px,94vw)] overflow-y-auto border-transparent shadow-2xl"
     >

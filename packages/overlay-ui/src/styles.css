@@ -6,14 +6,19 @@
   --border: #e4e4e7;
   --surface-elevated: #ffffff;
   --surface-muted: #f5f5f5;
+  --skeleton-sheen: rgba(255, 255, 255, 0.6);
   --surface-subtle: #f0f0f0;
   --sidebar-surface: #f5f5f5;
   --overlay-scrim: rgba(0, 0, 0, 0.4);
-  --button-primary-bg: #0a0a0a;
-  --button-primary-text: #ffffff;
-  --button-secondary-bg: #ffffff;
+  --button-primary-bg: #dcdce1;
+  --button-primary-hover: #ccccd3;
+  --button-primary-text: #27272a;
+  --button-secondary-bg: #eaeaed;
+  --button-secondary-hover: #dedee4;
   --button-secondary-border: #e4e4e7;
-  --button-secondary-text: #0a0a0a;
+  --button-secondary-text: #27272a;
+  --toast-background: #f1f1f3;
+  --toast-border: #d3d3da;
   --input-background: #ffffff;
   --input-border: #e4e4e7;
   --input-text: #0a0a0a;
@@ -36,7 +41,7 @@
   --overlay-radius-lg: 0.75rem;
   --overlay-radius-xl: 1rem;
   --overlay-radius-full: 9999px;
-  --font-sans: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-sans: var(--font-geist, ui-sans-serif), system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
   --font-serif: var(--font-sans);
   --overlay-text-xs: 0.75rem;
@@ -51,6 +56,23 @@
   --overlay-duration-fast: 150ms;
   --overlay-duration: 220ms;
   --overlay-duration-panel: 300ms;
+
+  /* shadcn token names, aliased to the palette above so presets carry through. */
+  --primary: var(--button-primary-bg);
+  --primary-foreground: var(--button-primary-text);
+  --secondary: var(--button-secondary-bg);
+  --secondary-foreground: var(--button-secondary-text);
+  --muted-foreground: var(--muted);
+  --accent-foreground: var(--foreground);
+  --destructive: var(--danger);
+  --destructive-foreground: #ffffff;
+  --card: var(--surface-elevated);
+  --card-foreground: var(--foreground);
+  --popover: var(--surface-elevated);
+  --popover-foreground: var(--foreground);
+  --input: var(--input-border);
+  --ring: var(--muted-light);
+  --radius: 0.5rem;
 }
 
 [data-theme='dark'] {
@@ -61,14 +83,19 @@
   --border: #27272a;
   --surface-elevated: #111113;
   --surface-muted: #151518;
+  --skeleton-sheen: rgba(255, 255, 255, 0.06);
   --surface-subtle: #1c1c20;
   --sidebar-surface: #111113;
   --overlay-scrim: rgba(0, 0, 0, 0.58);
-  --button-primary-bg: #f5f5f5;
-  --button-primary-text: #09090b;
-  --button-secondary-bg: #111113;
+  --button-primary-bg: #3b3b42;
+  --button-primary-hover: #484850;
+  --button-primary-text: #ededf0;
+  --button-secondary-bg: #252529;
+  --button-secondary-hover: #303036;
   --button-secondary-border: #27272a;
-  --button-secondary-text: #f5f5f5;
+  --button-secondary-text: #ededf0;
+  --toast-background: #1c1c20;
+  --toast-border: #38383f;
   --input-background: #111113;
   --input-border: #27272a;
   --input-text: #f5f5f5;
@@ -92,14 +119,7 @@
   overflow: hidden;
   flex-shrink: 0;
   box-sizing: border-box;
-  background: linear-gradient(
-    135deg,
-    #efe8f4 0%,
-    #e6dcf2 28%,
-    #ddd0ea 52%,
-    #e8dff6 78%,
-    #f0e9f8 100%
-  );
+  background: var(--surface-muted);
   min-height: 4rem;
 }
 
@@ -113,35 +133,13 @@
   background: linear-gradient(
     105deg,
     transparent 0%,
-    rgba(255, 255, 255, 0.08) 38%,
-    rgba(255, 255, 255, 0.65) 50%,
-    rgba(255, 255, 255, 0.08) 62%,
+    color-mix(in srgb, var(--skeleton-sheen) 13%, transparent) 38%,
+    var(--skeleton-sheen) 50%,
+    color-mix(in srgb, var(--skeleton-sheen) 13%, transparent) 62%,
     transparent 100%
   );
   filter: blur(0.5px);
   animation: media-shimmer-slide 1.65s ease-in-out infinite;
-}
-
-[data-theme='dark'] .ui-skeleton-mesh {
-  background: linear-gradient(
-    135deg,
-    #2a2630 0%,
-    #252028 35%,
-    #1f1c24 55%,
-    #2c2733 78%,
-    #322c38 100%
-  );
-}
-
-[data-theme='dark'] .ui-skeleton-mesh::after {
-  background: linear-gradient(
-    105deg,
-    transparent 0%,
-    rgba(255, 255, 255, 0.04) 38%,
-    rgba(255, 255, 255, 0.22) 50%,
-    rgba(255, 255, 255, 0.04) 62%,
-    transparent 100%
-  );
 }
 
 .ui-skeleton-line {
@@ -306,10 +304,10 @@
 @keyframes ovorb-breathe {
   0%,
   100% {
-    transform: scale(1);
+    opacity: 0.6;
   }
   50% {
-    transform: scale(1.035);
+    opacity: 1;
   }
 }
 
@@ -323,4 +321,17 @@
   .ovorb-breathe {
     animation: none;
   }
+}
+
+/* Trace: a running step's title shimmers. */
+@keyframes overlay-trace-shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+[data-slot='trace-line'][data-status='running'] > [data-slot='trace-title'] {
+  background: linear-gradient(90deg, var(--muted) 35%, var(--foreground) 50%, var(--muted) 65%) 0 0 / 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: overlay-trace-shimmer 1.8s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-slot='trace-line'][data-status='running'] > [data-slot='trace-title'] { animation: none; background: none; color: inherit; }
 }

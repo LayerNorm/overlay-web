@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import type { WorkspaceNotification } from '@overlay/workspace-contracts'
+import type { PanelScope } from '@/shared/workspaces/panel-scope'
 
 export interface AppSidebarNavigateContext {
   onNavigate: () => void
@@ -13,12 +14,14 @@ export interface AppSidebarChatPanelContext extends AppSidebarNavigateContext {
    * which nav item was chosen.
    */
   view: string
+  /** Rendered as one of several sidebar sections, pinned to `view`. */
+  section?: boolean
 }
 
 export interface AppSidebarWorkspaceAdapter {
   activeWorkspaceId: string | null
   resolveSurface?: (path: string) => string | null
-  buildHref?: (workspaceId: string, href: string) => string
+  buildHref?: (workspaceId: string, href: string, scope?: PanelScope) => string
   renderSwitcher?: (props: {
     compact: boolean
     onNavigate: () => void
@@ -38,6 +41,8 @@ export interface AppSidebarProps {
   renderAutomationsPanel?: (context: AppSidebarNavigateContext) => ReactNode
   renderFilesPanel?: (context: AppSidebarNavigateContext) => ReactNode
   renderAgentsPanel?: (context: AppSidebarNavigateContext) => ReactNode
+  /** One Work sidebar section (`needs-you`, `mine`, `all`) and its tasks. */
+  renderWorkSection?: (context: AppSidebarNavigateContext & { filter: string }) => ReactNode
   workspace?: AppSidebarWorkspaceAdapter
 }
 

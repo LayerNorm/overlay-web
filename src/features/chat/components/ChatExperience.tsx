@@ -5,6 +5,7 @@ import dynamic from 'next/dynamic'
 import { buildSharePageUrl } from '@/features/share/lib/share-url'
 import { ShareDialog } from '@/features/share/components/ShareDialog'
 import { ChatExperienceView } from './ChatExperienceView'
+import { QuestionnaireComposerProvider } from '@overlay/chat-react/questionnaire'
 import { LinkOpenInterceptor } from './LinkOpenInterceptor'
 import { useChatShellPanels } from './chat/useChatShellPanels'
 import type { AttachmentPreview } from './chat/useChatPanels'
@@ -124,6 +125,7 @@ export default function ChatExperience(props: ChatExperienceProps) {
         preference={c.settings.linkOpenPreference}
         onOpenInOverlay={c.openLinkPreview}
       />
+      <QuestionnaireComposerProvider value={c.input} readDraft={() => c.inputRef.current} subscribe={c.subscribeToInput} onChange={c.setQuestionnaireDraft} disabled={c.isPublicShowcase || c.isActiveLoading}>
       <ChatExperienceView
         {...buildChatExperienceViewProps(
           c,
@@ -139,6 +141,7 @@ export default function ChatExperience(props: ChatExperienceProps) {
           },
         )}
       />
+      </QuestionnaireComposerProvider>
     </>
   );
 }

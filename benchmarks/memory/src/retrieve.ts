@@ -3,7 +3,7 @@ import type { HybridSearchChunk } from '../../../src/shared/knowledge/hybrid-sea
 import { hybridSearch, type HybridChunk } from './convex-client'
 import { config } from './config'
 import { benchObject } from './gateway'
-import { z } from 'zod'
+import { z } from 'zod/v3'
 
 /**
  * Retrieval exactly as a chat turn sees it: real hybridSearch over memory +

@@ -1,4 +1,5 @@
 'use client'
+import { Button } from '@overlay/ui/primitives'
 
 // Compatibility wrapper: skill contracts/controllers live in @overlay/app-core;
 // shared React presentation lives in @overlay/modules-react.
@@ -26,6 +27,7 @@ import { usePanelListView, usePanelScope } from '@/hooks/use-panel-scope'
 import { ScopeItemActions } from '@/components/layout/ScopeItemActions'
 import { useWorkspaceCreateAccess } from '@/hooks/use-workspace-create-access'
 import { newItemScope, scopeForNewItem } from '@/shared/workspaces/panel-scope'
+import { PageSubviewTabs } from '@/components/layout/PageSubviewTabs'
 
 interface DialogState {
   mode: 'create' | 'edit'
@@ -114,17 +116,17 @@ export default function SkillsView({ userId: _userId }: { userId: string; select
       header={
         <ExtensionPageHeader
           title="Skills"
+          tabs={<PageSubviewTabs />}
           searchQuery={searchQuery}
           searchPlaceholder="Search skills…"
           searchTitle="Search skills"
           action={canAdd ? (
-            <button
+            <Button variant="primary" size="sm"
               onClick={() => setDialog({ mode: 'create' })}
-              className="flex items-center gap-1.5 rounded-md border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-xs text-(--foreground) transition-colors hover:bg-(--border)"
             >
               <Plus size={12} />
               New Skill
-            </button>
+            </Button>
           ) : undefined}
           onSearchQueryChange={setSearchQuery}
         />

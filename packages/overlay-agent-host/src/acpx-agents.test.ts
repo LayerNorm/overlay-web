@@ -73,3 +73,12 @@ test('a model the agent does not offer still fails, and one without a level is n
   await assert.rejects(applyRequestedModel(runtime as never, {} as never, 'gpt-x[low]'), /nope/)
   assert.deepEqual(calls, ['gpt-x[low]', 'gpt-x'])
 })
+
+test('a rejected legacy reasoning effort cannot silently use the default', async () => {
+  const { applyRequestedModel } = await import('./acpx-adapter.js')
+  const runtime = {
+    setModel: async ({ model }: { model: string }) => { if (model.includes('[')) throw Error('plain model required') },
+    setConfigOption: async () => { throw Error('provider rejected effort') },
+  }
+  await assert.rejects(applyRequestedModel(runtime as never, {} as never, 'gpt-x[high]'), /provider rejected effort/)
+})

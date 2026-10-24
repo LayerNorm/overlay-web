@@ -1,5 +1,7 @@
 'use client'
 
+import { Button } from '@overlay/ui/primitives'
+
 import { ArrowUp } from 'lucide-react'
 
 export function BudgetTopUpComposerPrompt({
@@ -28,14 +30,13 @@ export function BudgetTopUpComposerPrompt({
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <button
+          <Button variant="primary" size="sm"
             type="button"
             onClick={onStartTopUp}
             disabled={checkoutLoading}
-            className="inline-flex h-8 items-center justify-center rounded-lg bg-(--foreground) px-3 text-xs font-medium text-(--background) transition-opacity hover:opacity-90 disabled:opacity-60"
           >
             {checkoutLoading ? 'Opening...' : `Add $${(amountCents / 100).toFixed(0)}`}
-          </button>
+          </Button>
           <a
             href={accountHref}
             className="inline-flex h-8 items-center justify-center rounded-lg border border-(--border) bg-(--surface-subtle) px-3 text-xs font-medium text-(--foreground) transition-colors hover:bg-(--surface-muted)"

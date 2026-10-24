@@ -4,9 +4,38 @@ import test from 'node:test'
 import {
   buildRemoteAgentPrompt,
   reconcileUnverifiedAgentActionClaims,
+  shouldPrepareConnectedAgentDrive,
 } from './workspace-agent-invocation'
+import { isExternalAgentInvocation } from './external-agent-policy'
 
 const root = process.cwd()
+
+test('drive starts require the rollout flag, current host capability and local opt-in', () => {
+  const cloud = { enabled: true, environmentKind: 'overlay_cloud', optedIn: false, capabilities: { drive: { version: 1 } } }
+  assert.equal(shouldPrepareConnectedAgentDrive(cloud), true)
+  assert.equal(shouldPrepareConnectedAgentDrive({ ...cloud, enabled: false }), false)
+  assert.equal(shouldPrepareConnectedAgentDrive({ ...cloud, capabilities: {} }), false)
+  assert.equal(shouldPrepareConnectedAgentDrive({ ...cloud, capabilities: { drive: { version: 2 } } }), false)
+  for (const environmentKind of ['local', 'vps', 'external']) {
+    assert.equal(shouldPrepareConnectedAgentDrive({ ...cloud, environmentKind }), false)
+    assert.equal(shouldPrepareConnectedAgentDrive({ ...cloud, environmentKind, optedIn: true }), true)
+  }
+})
+
+test('a legacy external agent with no usable target cannot be classified as native', () => {
+  assert.equal(isExternalAgentInvocation({
+    id: 'agent-legacy',
+    workspaceId: 'workspace-1',
+    harness: 'overlay',
+    modelId: 'openai/gpt-4.1',
+  }, true, false), true)
+  assert.equal(isExternalAgentInvocation({
+    id: 'agent-native',
+    workspaceId: 'workspace-1',
+    harness: 'overlay',
+    modelId: 'openai/gpt-4.1',
+  }, false, false), false)
+})
 
 test('agent external-action claims require a successful tool result', () => {
   const corrected = reconcileUnverifiedAgentActionClaims({
@@ -136,7 +165,7 @@ test('an agent reply is persisted as it is generated, not only when it finishes'
   // The turn writes into a `generating` row rather than holding the reply in
   // the response stream, which is what lets it survive the sender's tab.
   assert.match(service, /createAgentMessageStream/)
-  assert.match(service, /turnStream\.pushText\(event\.text\)/)
+  assert.match(service, /turnStream\.pushText\(event\.text,\s*liveParts\.map/)
   assert.match(service, /turnStream\.finalize\(/)
   // A turn that dies partway must not leave a row generating forever.
   assert.match(service, /await agentStream\?\.fail\(\)/)
@@ -180,7 +209,9 @@ test('agent turns carry role-tagged messages and loaded context, not a flattened
   const invocation = await readFile(`${root}/src/server/agents/workspace-agent-invocation.ts`, 'utf8')
 
   assert.match(invocation, /messages: turnContext\.messages/)
-  assert.match(invocation, /system: buildAgentSystemPrompt/)
+  assert.match(invocation, /const systemPrompt = buildAgentSystemPrompt/)
+  assert.match(invocation, /system: systemPrompt/)
+  assert.match(invocation, /prepareAgentToolRecoveryStep/)
   assert.match(invocation, /Never claim to have used a tool or changed a resource unless the tool call actually ran and returned success/)
   // A single `prompt:` string is the shape that dropped roles, attachments, and
   // every retrieved source on the floor.
@@ -250,4 +281,28 @@ test('room memory ingestion is owner-scoped and gated by the message toggle', as
   assert.match(convexExtractor, /targetActor === "agent" \? AGENT_MEMORY_EXTRACTION_SYSTEM_PROMPT/)
   assert.match(convexExtractor, /memoryOwnerId/)
   assert.match(convexMemoryQuery, /hasSameMemoryExtractionAuthor\(message, validTarget\)/)
+})
+
+// Convex rejects malformed Unicode before the command mutation handler runs.
+test('remote history truncation cannot break the next turn after an emoji reply', () => {
+  const prompt = buildRemoteAgentPrompt({
+    contextBlock: '',
+    messages: [{ role: 'assistant', content: 'a'.repeat(1999) + '🙂' + 'tail'.repeat(300000) }],
+    prompt: 'Continue the task',
+  })
+  assert.equal(prompt.isWellFormed(), true)
+  assert.ok(prompt.includes('a'.repeat(1999)))
+  assert.ok(prompt.includes('CURRENT_USER_MESSAGE_BEGIN\nContinue the task\nCURRENT_USER_MESSAGE_END'))
+})
+
+test('the total remote context limit preserves complete Unicode characters', () => {
+  const empty = buildRemoteAgentPrompt({ contextBlock: '', messages: [], prompt: 'Continue' })
+  const prefixLength = empty.indexOf('OVERLAY_CONTEXT_END')
+  // The nonempty block replaces the end marker after the same envelope prefix.
+  const contextStart = prefixLength
+  const contextBlock = 'a'.repeat(79999 - contextStart) + '🙂' + 'b'.repeat(100)
+  const prompt = buildRemoteAgentPrompt({ contextBlock, messages: [], prompt: 'Continue' })
+  assert.equal(prompt.isWellFormed(), true)
+  assert.match(prompt, /Overlay context truncated/)
+  assert.match(prompt, /CURRENT_USER_MESSAGE_BEGIN\nContinue\nCURRENT_USER_MESSAGE_END/)
 })

@@ -1,10 +1,11 @@
 "use client";
+import { unstyledButton, unstyledTextarea } from '@overlay/ui/control-reset'
 
 // Compatibility wrapper: memory contracts/controllers are shared through @overlay/app-core,
 // with typed transport in @overlay/api-client.
 import { useState, useEffect, useCallback, useMemo, useRef, type ReactNode } from 'react'
 import { Brain, CheckSquare, Copy, Loader2, Plus, Square, Trash2, UserRound, X } from 'lucide-react'
-import { ListboxSelect } from '@overlay/ui/primitives'
+import { ListboxSelect, Button, Textarea, toast } from '@overlay/ui/primitives'
 import { Dialog, DialogContent } from '@overlay/ui'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { unwrapPaginatedData } from '@/shared/api/pagination'
@@ -234,7 +235,6 @@ export default function MemoriesView({ userId: _userId, onHeaderStateChange }: M
   const [addType, setAddType] = useState<Memory['type']>('fact')
   const [addImportance, setAddImportance] = useState('3')
   const [isSaving, setIsSaving] = useState(false)
-  const [saveError, setSaveError] = useState<string | null>(null)
   const [pendingSavePreview, setPendingSavePreview] = useState<string | null>(null)
   const actionButtonClass =
     'flex items-center gap-1.5 rounded-md border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-xs text-(--foreground) transition-colors hover:bg-(--border)'
@@ -303,7 +303,6 @@ export default function MemoriesView({ userId: _userId, onHeaderStateChange }: M
     const text = addText.trim();
     if (!text || isSaving) return;
     setIsSaving(true);
-    setSaveError(null);
     const preview = text.length > 160 ? `${text.slice(0, 160)}…` : text;
     setPendingSavePreview(preview);
     try {
@@ -318,7 +317,7 @@ export default function MemoriesView({ userId: _userId, onHeaderStateChange }: M
         error?: string;
       } | null;
       if (!res.ok) {
-        setSaveError(
+        toast.error(
           typeof data?.error === "string"
             ? data.error
             : "Could not save memory",
@@ -329,7 +328,10 @@ export default function MemoriesView({ userId: _userId, onHeaderStateChange }: M
       setAddType("fact");
       setAddImportance("3");
       setShowAdd(false);
+      toast.success('Memory saved.')
       await loadMemories(selectedMemberPrincipalId);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not save memory')
     } finally {
       setPendingSavePreview(null);
       setIsSaving(false);
@@ -337,24 +339,49 @@ export default function MemoriesView({ userId: _userId, onHeaderStateChange }: M
   }
 
   async function handleDelete(memoryId: string) {
-    await overlayAppClient.memory.deleteResponse({ memoryId });
-    setMemories((prev) =>
-      prev.filter((memory) => memory.memoryId !== memoryId),
-    );
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      next.delete(memoryId);
-      return next;
-    });
+    try {
+      const response = await overlayAppClient.memory.deleteResponse({ memoryId })
+      if (!response.ok) {
+        toast.error('Could not delete memory.')
+        return
+      }
+      setMemories((prev) => prev.filter((memory) => memory.memoryId !== memoryId))
+      setSelectedIds((prev) => {
+        const next = new Set(prev)
+        next.delete(memoryId)
+        return next
+      })
+      toast.success('Memory deleted.')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not delete memory.')
+    }
   }
 
   const handleBulkDelete = useCallback(async () => {
     const ids = Array.from(selectedIds)
     if (ids.length === 0) return
-    await Promise.all(ids.map((id) => overlayAppClient.memory.deleteResponse({ memoryId: id })))
-    setMemories((prev) => prev.filter((memory) => !selectedIds.has(memory.memoryId)))
-    setSelectedIds(new Set())
-    setSelectionMode(false)
+    const results = await Promise.all(ids.map(async (id) => {
+      try {
+        const response = await overlayAppClient.memory.deleteResponse({ memoryId: id })
+        return { id, deleted: response.ok }
+      } catch {
+        return { id, deleted: false }
+      }
+    }))
+    const deletedIds = new Set(results.filter((result) => result.deleted).map((result) => result.id))
+    const failedIds = results.filter((result) => !result.deleted).map((result) => result.id)
+    setMemories((prev) => prev.filter((memory) => !deletedIds.has(memory.memoryId)))
+    setSelectedIds(new Set(failedIds))
+    if (failedIds.length > 0) {
+      toast.error(
+        deletedIds.size === 0
+          ? 'Could not delete memories.'
+          : `Deleted ${deletedIds.size} of ${ids.length} memories. ${failedIds.length} could not be deleted.`,
+      )
+    } else {
+      setSelectionMode(false)
+      toast.success(ids.length === 1 ? 'Memory deleted.' : `${ids.length} memories deleted.`)
+    }
   }, [selectedIds, setSelectedIds, setSelectionMode])
 
   async function handleCopy(memory: Memory) {
@@ -385,12 +412,10 @@ export default function MemoriesView({ userId: _userId, onHeaderStateChange }: M
 
   const handleAddMemory = useCallback(() => {
     setShowAdd(true)
-    setSaveError(null)
   }, [])
 
   const handleCloseAddDialog = useCallback(() => {
     setShowAdd(false)
-    setSaveError(null)
   }, [])
 
   const handleDismissAddDialog = useCallback(() => {
@@ -460,7 +485,6 @@ export default function MemoriesView({ userId: _userId, onHeaderStateChange }: M
           addImportance={addImportance}
           onAddImportanceChange={setAddImportance}
           isSaving={isSaving}
-          saveError={saveError}
           onDismiss={handleDismissAddDialog}
           onClose={handleCloseAddDialog}
           onSave={handleAdd}
@@ -565,33 +589,34 @@ function MemoriesHeaderActions({
         className="w-40"
         buttonClassName="min-h-8 rounded-md py-1 text-xs"
       />
-      <button
+      <Button variant="ghost"
         onClick={onToggleSelectionMode}
-        className={`flex items-center gap-1.5 rounded-md border border-(--border) px-3 py-1.5 text-xs transition-colors ${
+        // overlay:button-style: Toggle with a selected state.
+        className={unstyledButton(`flex items-center gap-1.5 rounded-md border border-(--border) px-3 py-1.5 text-xs transition-colors ${
           selectionMode
             ? 'bg-(--surface-subtle) text-(--foreground)'
             : 'bg-(--surface-elevated) text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)'
-        }`}
+        }`)}
       >
         <CheckSquare size={12} />
         {selectionMode ? 'Done' : 'Select'}
-      </button>
+      </Button>
       {selectionMode && selectedCount > 0 && (
-        <button
+        <Button variant="ghost"
           onClick={() => void onBulkDelete()}
-          className="flex items-center gap-1.5 rounded-md border border-red-500/20 bg-red-500/10 px-3 py-1.5 text-xs text-red-400 transition-colors hover:bg-red-500/15"
+          className={unstyledButton(`flex items-center gap-1.5 rounded-md border border-red-500/20 bg-red-500/10 px-3 py-1.5 text-xs text-red-400 transition-colors hover:bg-red-500/15`)}
         >
           <Trash2 size={12} />
           Delete {selectedCount}
-        </button>
+        </Button>
       )}
-      <button
+      <Button variant="ghost"
         onClick={onAddMemory}
-        className={actionButtonClass}
+        className={unstyledButton(actionButtonClass)}
       >
         <Plus size={12} />
         Add memory
-      </button>
+      </Button>
     </>
   )
 }
@@ -604,7 +629,6 @@ function AddMemoryDialog({
   addImportance,
   onAddImportanceChange,
   isSaving,
-  saveError,
   onDismiss,
   onClose,
   onSave,
@@ -617,7 +641,6 @@ function AddMemoryDialog({
   addImportance: string
   onAddImportanceChange: (value: string) => void
   isSaving: boolean
-  saveError: string | null
   onDismiss: () => void
   onClose: () => void
   onSave: () => Promise<void>
@@ -633,15 +656,15 @@ function AddMemoryDialog({
       >
         <div className="mb-4 flex items-center justify-between">
           <h3 id="add-memory-title" className="text-sm font-medium text-(--foreground)">Add memory</h3>
-          <button
+          <Button variant="ghost"
             aria-label="Close"
             onClick={onClose}
-            className="rounded-sm p-1 text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
+            className={unstyledButton(`rounded-sm p-1 text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)`)}
           >
             <X size={14} />
-          </button>
+          </Button>
         </div>
-        <textarea
+        <Textarea
           aria-label="Memory content"
           value={addText}
           onChange={(event) => onAddTextChange(event.target.value)}
@@ -651,7 +674,7 @@ function AddMemoryDialog({
           onKeyDown={(event) => {
             if (event.key === 'Enter' && event.metaKey) void onSave()
           }}
-          className="w-full resize-none rounded-lg border border-(--border) bg-(--surface-elevated) px-3 py-2.5 text-sm text-(--foreground) outline-hidden transition-colors placeholder:text-(--muted-light) focus:border-(--muted)"
+          className={unstyledTextarea(`w-full resize-none rounded-lg border border-(--border) bg-(--surface-elevated) px-3 py-2.5 text-sm text-(--foreground) outline-hidden transition-colors placeholder:text-(--muted-light) focus:border-(--muted)`)}
         />
         <div className="mt-3 grid grid-cols-2 gap-3">
           <label className="text-xs text-(--muted)">
@@ -683,25 +706,20 @@ function AddMemoryDialog({
           Saved memories stay as a single record, but the knowledge sidebar can still preview
           them in short segments for easier scanning.
         </p>
-        {saveError ? (
-          <p className="mt-3 text-xs text-red-400" role="alert">
-            {saveError}
-          </p>
-        ) : null}
         <div className="mt-4 flex justify-end gap-2">
-          <button
+          <Button variant="ghost"
             onClick={onClose}
-            className={dialogButtonClass}
+            className={unstyledButton(dialogButtonClass)}
           >
             Cancel
-          </button>
-          <button
+          </Button>
+          <Button variant="ghost"
             onClick={() => void onSave()}
             disabled={!addText.trim() || isSaving}
-            className={`${dialogButtonClass} disabled:opacity-40`}
+            className={unstyledButton(`${dialogButtonClass} disabled:opacity-40`)}
           >
             {isSaving ? 'Saving...' : 'Save'}
-          </button>
+          </Button>
         </div>
       </DialogContent>
     </Dialog>
@@ -725,12 +743,12 @@ function MemoriesEmptyState({
           ? 'No memories yet'
           : `No memories from ${members.find((member) => member.principalId === selectedMemberPrincipalId)?.name ?? 'this owner'}`}
       </p>
-      <button
+      <Button variant="ghost"
         onClick={onAddMemory}
-        className="text-xs text-(--foreground) underline underline-offset-2 transition-colors"
+        className={unstyledButton(`text-xs text-(--foreground) underline underline-offset-2 transition-colors`)}
       >
         Add your first memory
-      </button>
+      </Button>
     </div>
   )
 }
@@ -805,14 +823,14 @@ function MemoryCard({
     >
       <div className="flex items-start gap-3">
         {selectionMode && memory.canDelete && (
-          <button
+          <Button variant="ghost"
             type="button"
             aria-label={isSelected ? 'Deselect memory' : 'Select memory'}
             onClick={() => onToggleSelected(memory.memoryId)}
-            className="mt-0.5 shrink-0 text-(--muted)"
+            className={unstyledButton(`mt-0.5 shrink-0 text-(--muted)`)}
           >
             {isSelected ? <CheckSquare size={16} /> : <Square size={16} />}
-          </button>
+          </Button>
         )}
         <div className="min-w-0 flex-1">
           <p className="whitespace-pre-wrap text-sm leading-relaxed text-(--foreground)">
@@ -839,21 +857,21 @@ function MemoryCard({
         </div>
         {!selectionMode && (
           <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-            <button
+            <Button variant="ghost"
               onClick={() => void onCopy(memory)}
-              className="rounded-sm p-1 transition-colors hover:bg-(--surface-subtle)"
+              className={unstyledButton(`rounded-sm p-1 transition-colors hover:bg-(--surface-subtle)`)}
               title="Copy memory"
             >
               <Copy size={13} className="text-(--muted)" />
-            </button>
+            </Button>
             {memory.canDelete ? (
-              <button
+              <Button variant="ghost"
                 onClick={() => void onDelete(memory.memoryId)}
-                className="rounded-sm p-1 transition-colors hover:bg-red-500/10"
+                className={unstyledButton(`rounded-sm p-1 transition-colors hover:bg-red-500/10`)}
                 title="Delete memory"
               >
                 <Trash2 size={13} className="text-red-400" />
-              </button>
+              </Button>
             ) : null}
           </div>
         )}

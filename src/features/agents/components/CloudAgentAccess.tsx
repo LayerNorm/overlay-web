@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useState } from 'react'
-import { SegmentedControl } from '@overlay/ui/primitives'
+import { SegmentedControl, toast } from '@overlay/ui/primitives'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import {
@@ -31,25 +31,24 @@ export function CloudAgentAccess({ agentId, allowedToolIds }: { agentId: string;
   const { activeWorkspaceId } = useWorkspace()
   // The agent was already loaded by the page, so this starts with its grant rather than fetching it again.
   const [grant, setGrant] = useState<readonly string[] | null>(allowedToolIds)
-  const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
   const choose = useCallback(async (choice: Choice) => {
     if (!activeWorkspaceId || busy) return
     const next = choice === 'none' ? [] : mcpToolGrantFor(choice)
     setBusy(true)
-    setError(null)
     try {
       const result = await overlayAppClient.agents.update(activeWorkspaceId, agentId, { allowedToolIds: next })
       setGrant(result.agent.allowedToolIds)
+      toast.success('Overlay access updated.')
     } catch (updateError) {
-      setError(updateError instanceof Error ? updateError.message : 'Could not change access.')
+      toast.error(updateError instanceof Error ? updateError.message : 'Could not change access.')
     } finally {
       setBusy(false)
     }
   }, [activeWorkspaceId, agentId, busy])
 
-  if (grant === null) return error ? <p role="alert" className="text-xs text-red-500">{error}</p> : null
+  if (grant === null) return null
   const current = mcpAccessForGrant(grant)
   return (
     <div>
@@ -66,7 +65,6 @@ export function CloudAgentAccess({ agentId, allowedToolIds }: { agentId: string;
       <p className="mt-1.5 text-[11px] leading-4 text-(--muted)">
         {current === 'custom' ? 'A custom set of tools. Choose a level to replace it.' : current === 'none' ? NONE_DESCRIPTION : MCP_ACCESS_DESCRIPTION[current]}
       </p>
-      {error ? <p role="alert" className="mt-1.5 text-xs text-red-500">{error}</p> : null}
     </div>
   )
 }

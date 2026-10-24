@@ -58,7 +58,7 @@ export class AgentEnvironmentsClient {
 
   listBindings(workspaceId: string, agentId?: string, init?: RequestInit) {
     const query = agentId ? `?agentId=${encodeURIComponent(agentId)}` : ''
-    return this.http.json<{ bindings: AgentBinding[] }>(
+    return this.http.json<{ bindings: AgentBinding[]; launchEnabled: boolean }>(
       `/api/v1/agent-bindings${query}`, workspaceInit(workspaceId, init),
     )
   }

@@ -31,6 +31,8 @@ import { ACT_MODEL_KEY, readStoredActModelId } from '@/shared/chat/chat-model-pr
 import { getModelsByIntelligence } from '@/shared/ai/gateway/model-data'
 import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
 import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
+import { useWorkspaceHref } from '@/hooks/use-workspace-href'
+import { usePanelScope } from '@/hooks/use-panel-scope'
 
 const MarkdownMessage = dynamic(() =>
   import('@overlay/chat-react').then((module) => ({ default: module.MarkdownMessage })),
@@ -61,6 +63,8 @@ export default function NotebookEditor({
   void _userId
   const router = useRouter()
   const searchParams = useSearchParams()
+  const buildWorkspaceHref = useWorkspaceHref()
+  const scope = usePanelScope()
   const models = useMemo(
     () => getModelsByIntelligence(false)
       .filter(({ id }) => !isByokModelId(id))
@@ -140,8 +144,8 @@ export default function NotebookEditor({
       onModelChange={(modelId) => {
         try { localStorage.setItem(ACT_MODEL_KEY, modelId) } catch { /* storage may be unavailable */ }
       }}
-      onNavigateNote={(noteId) => router.replace(`/app/notes?id=${encodeURIComponent(noteId)}`)}
-      onBackToFiles={() => router.push('/app/files')}
+      onNavigateNote={(noteId) => router.replace(buildWorkspaceHref(null, `/app/notes?id=${encodeURIComponent(noteId)}`, scope))}
+      onBackToFiles={() => router.push(buildWorkspaceHref(null, '/app/files', scope))}
       renderExportMenu={({ note, title, content }) => (
         <>
         <ScopeItemActions
@@ -151,7 +155,7 @@ export default function NotebookEditor({
           onChanged={() => {
             // The note left this scope (or was archived): back to the list it belongs to.
             publishNotebookMutation(note._id, 'deleted')
-            router.push('/app/files')
+            router.push(buildWorkspaceHref(null, '/app/files', scope))
           }}
         />
         <ExportMenu

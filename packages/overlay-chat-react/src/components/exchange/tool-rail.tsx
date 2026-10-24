@@ -1,53 +1,19 @@
 import { Orb } from '@overlay/ui'
+import { TraceIcon } from '@overlay/ui/ai'
 import React from 'react'
 
-export function ToolLineLogo() {
+/** The Orb sits in every Trace step's icon slot; it breathes while the step runs. */
+export function TraceOrb({ running = false }: { running?: boolean }) {
   return (
-    <Orb
-      variant="metal"
-      size={8}
-      animated={false}
-      label=""
-      className="mt-[5px] select-none"
-    />
+    <TraceIcon className="size-[0.5em]">
+      <Orb variant="metal" size={6.5} animated={running} label="" className="size-[0.5em]! select-none [&_svg]:size-full!" />
+    </TraceIcon>
   )
 }
 
-/** Vertical connector between consecutive tool rows (logo stays top-aligned; line in logo column). */
-export function ToolLogoColumn({
-  connectTop,
-  connectBottom
-}: {
-  connectTop: boolean
-  connectBottom: boolean
-}) {
-  const showLine = connectTop || connectBottom
-  const logoBottom = 'calc(0.3125rem + 0.5rem)' /* mt-[5px] + size-2 */
-  return (
-    <div className="relative flex w-2 shrink-0 flex-col items-center self-stretch">
-      {showLine && (
-        <div
-          className="absolute left-1/2 z-0 w-px -translate-x-1/2 bg-(--surface-subtle)"
-          aria-hidden
-          style={
-            connectTop && connectBottom
-              ? { top: 0, bottom: 0 }
-              : connectTop
-                ? { top: 0, height: logoBottom }
-                : { top: logoBottom, bottom: 0 }
-          }
-        />
-      )}
-      <div className="relative z-1 shrink-0 rounded-full bg-(--background)">
-        <ToolLineLogo />
-      </div>
-      <div className="min-h-0 flex-1" />
-    </div>
-  )
-}
+export const ToolLineLogo = TraceOrb
 
-/**
- * Standalone reasoning block: while the reasoning part is actively streaming we auto-expand
- * and render the text through `MarkdownMessage` (same formatting as the main assistant reply).
- * Once the reasoning finishes we collapse to a single row with a chevron the user can toggle.
- */
+/** Legacy rail slot: Trace steps stack without connectors, so the connect flags are ignored. */
+export function ToolLogoColumn(props: { connectTop: boolean; connectBottom: boolean; running?: boolean }) {
+  return <TraceOrb running={props.running} />
+}

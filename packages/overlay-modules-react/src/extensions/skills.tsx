@@ -1,5 +1,5 @@
 'use client'
-
+import { unstyledButton, unstyledInput, unstyledTextarea } from '@overlay/ui/control-reset'
 import type {
 SkillFormValues,
 SkillSummary
@@ -17,7 +17,7 @@ Trash2,
 X
 } from 'lucide-react'
 import { useEffect,useRef,useState,type MouseEvent,type ReactNode } from 'react'
-import { Tile, TileIcon, TileGrid } from '@overlay/ui/primitives'
+import { Tile, TileIcon, TileGrid, Button, Input, Textarea } from '@overlay/ui/primitives'
 import { Dialog, DialogContent } from '@overlay/ui'
 
 import { EnabledToggle, Field } from './shared'
@@ -90,9 +90,9 @@ export function SkillDialog({ state, onClose, onSave, onDelete, scopeActions }: 
       >
         <div className="flex shrink-0 items-center justify-between border-b border-(--border) px-5 py-4">
           <h3 id="skill-dialog-title" className="text-sm font-medium text-(--foreground)">{isEdit ? 'Edit Skill' : 'New Skill'}</h3>
-          <button type="button" aria-label="Close" onClick={onClose} className="rounded-sm p-1 text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)">
+          <Button variant="ghost" type="button" aria-label="Close" onClick={onClose} className={unstyledButton("rounded-sm p-1 text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)")}>
             <X size={16} />
-          </button>
+          </Button>
         </div>
         {isEdit && scopeActions ? (
           <div className="flex shrink-0 items-center justify-between gap-3 border-b border-(--border) px-5 py-3">
@@ -103,23 +103,23 @@ export function SkillDialog({ state, onClose, onSave, onDelete, scopeActions }: 
 
         <div className="flex-1 space-y-4 overflow-y-auto px-5 py-5">
           <Field label="Name">
-            <input
+            <Input
               ref={nameRef}
               aria-label="Name"
               value={values.name}
               onChange={(event) => update('name', event.target.value)}
               placeholder="e.g. Concise Responder"
-              className="w-full rounded-lg border border-(--border) bg-(--surface-muted) px-3 py-2 text-sm text-(--foreground) outline-hidden transition-colors placeholder:text-(--muted-light) focus:border-(--muted) focus:bg-(--surface-elevated)"
+              className={unstyledInput("w-full rounded-lg border border-(--border) bg-(--surface-muted) px-3 py-2 text-sm text-(--foreground) outline-hidden transition-colors placeholder:text-(--muted-light) focus:border-(--muted) focus:bg-(--surface-elevated)")}
             />
           </Field>
 
           <Field label="Description">
-            <input
+            <Input
               aria-label="Description"
               value={values.description}
               onChange={(event) => update('description', event.target.value)}
               placeholder="Brief description of what this skill does"
-              className="w-full rounded-lg border border-(--border) bg-(--surface-muted) px-3 py-2 text-sm text-(--foreground) outline-hidden transition-colors placeholder:text-(--muted-light) focus:border-(--muted) focus:bg-(--surface-elevated)"
+              className={unstyledInput("w-full rounded-lg border border-(--border) bg-(--surface-muted) px-3 py-2 text-sm text-(--foreground) outline-hidden transition-colors placeholder:text-(--muted-light) focus:border-(--muted) focus:bg-(--surface-elevated)")}
             />
           </Field>
 
@@ -128,13 +128,13 @@ export function SkillDialog({ state, onClose, onSave, onDelete, scopeActions }: 
               <label htmlFor="skill-instructions" className="text-[11px] font-medium uppercase tracking-[0.12em] text-(--muted-light)">Instructions</label>
               <span className="text-[10px] text-(--muted-light)">Markdown supported</span>
             </div>
-            <textarea
+            <Textarea
               id="skill-instructions"
               value={values.instructions}
               onChange={(event) => update('instructions', event.target.value)}
               placeholder={'Describe what the AI should do differently when this skill is active.\n\nExample:\n- Always respond in bullet points\n- Keep answers under 3 sentences\n- Use a formal tone'}
               rows={12}
-              className="w-full resize-none rounded-lg border border-(--border) bg-(--surface-muted) px-3 py-2.5 font-mono text-xs leading-relaxed text-(--foreground) outline-hidden transition-colors placeholder:text-(--muted-light) focus:border-(--muted) focus:bg-(--surface-elevated)"
+              className={unstyledTextarea("w-full resize-none rounded-lg border border-(--border) bg-(--surface-muted) px-3 py-2.5 font-mono text-xs leading-relaxed text-(--foreground) outline-hidden transition-colors placeholder:text-(--muted-light) focus:border-(--muted) focus:bg-(--surface-elevated)")}
             />
           </div>
         </div>
@@ -143,26 +143,25 @@ export function SkillDialog({ state, onClose, onSave, onDelete, scopeActions }: 
           <div className="flex items-center gap-3">
             <EnabledToggle enabled={values.enabled} onChange={() => update('enabled', !values.enabled)} />
             {isEdit && initial ? (
-              <button
+              <Button variant="ghost"
                 type="button"
                 onClick={() => void handleDelete()}
                 disabled={deleting}
-                className="flex items-center gap-1 text-xs text-(--muted) transition-colors hover:text-red-400 disabled:opacity-50"
+                className={unstyledButton("flex items-center gap-1 text-xs text-(--muted) transition-colors hover:text-red-400 disabled:opacity-50")}
               >
                 {deleting ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
                 Delete
-              </button>
+              </Button>
             ) : null}
           </div>
-          <button
+          <Button variant="primary" size="sm"
             type="button"
             onClick={() => void handleSave()}
             disabled={saving}
-            className="flex items-center gap-1.5 rounded-md border border-(--border) bg-(--surface-subtle) px-4 py-1.5 text-xs text-(--foreground) transition-colors hover:bg-(--border) disabled:opacity-50"
           >
             {saving ? <Loader2 size={12} className="animate-spin" /> : saved ? <Check size={12} /> : null}
             {saving ? 'Saving…' : saved ? 'Saved' : isEdit ? 'Save' : 'Create'}
-          </button>
+          </Button>
         </div>
       </DialogContent>
     </Dialog>
@@ -197,13 +196,12 @@ export function SkillsPanel({ loading, skills, filteredSkills, onCreate, onEdit,
           <p className="text-xs text-(--muted-light)">Create reusable instructions that are automatically injected into every conversation</p>
         </div>
         {onCreate ? (
-          <button
+          <Button variant="secondary" size="md" type="submit"
             onClick={onCreate}
-            className="flex items-center gap-1.5 rounded-md border border-(--border) bg-(--surface-subtle) px-4 py-2 text-sm text-(--foreground) transition-colors hover:bg-(--border)"
           >
             <Plus size={14} />
             New Skill
-          </button>
+          </Button>
         ) : null}
       </AppScreenBody>
     )
@@ -248,25 +246,25 @@ function SkillCard({
       ) : undefined}
     >
       <div className="absolute bottom-3 right-3 hidden items-center gap-1 group-hover:flex">
-        <button
+        <Button variant="ghost"
           type="button"
           onClick={(event) => onToggle(skill, event)}
-          className="rounded-sm p-1 text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
+          className={unstyledButton("rounded-sm p-1 text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)")}
           title={skill.enabled !== false ? 'Disable' : 'Enable'}
         >
           {skill.enabled !== false ? <ToggleRight size={14} /> : <ToggleLeft size={14} />}
-        </button>
-        <button
+        </Button>
+        <Button variant="ghost"
           type="button"
           onClick={(event) => {
             event.stopPropagation()
             onEdit(skill)
           }}
-          className="rounded-sm p-1 text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
+          className={unstyledButton("rounded-sm p-1 text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)")}
           title="Edit"
         >
           <Pencil size={13} />
-        </button>
+        </Button>
       </div>
     </Tile>
   )

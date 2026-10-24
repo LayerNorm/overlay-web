@@ -1,4 +1,6 @@
 'use client'
+import { unstyledButton, unstyledInput } from '@overlay/ui/control-reset'
+import { Button, Input, toast } from '@overlay/ui/primitives'
 
 import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
@@ -68,24 +70,24 @@ export function DeleteAccountSection({ isLandingDark }: { isLandingDark: boolean
       window.location.href = '/?account_deleted=1'
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : 'Could not delete your account.'
-      setError(message)
+      toast.error(message)
       setSubmitting(false)
     }
   }
 
   return (
     <>
-      <button
+      <Button variant="ghost"
         type="button"
         onClick={() => setOpen(true)}
-        className={`rounded-md px-2 py-1.5 text-xs font-medium transition-colors ${
+        className={unstyledButton(`rounded-md px-2 py-1.5 text-xs font-medium transition-colors ${
           isLandingDark
             ? 'text-red-400 hover:bg-red-950/40 hover:text-red-300'
             : 'text-red-600 hover:bg-red-50 hover:text-red-700'
-        }`}
+        }`)}
       >
         Delete account
-      </button>
+      </Button>
 
       <DeleteAccountDialog
         open={open}
@@ -146,17 +148,17 @@ function DeleteAccountDialog({
               Delete your Overlay account?
             </h2>
           </div>
-          <button
+          <Button variant="ghost"
             type="button"
             onClick={onClose}
             aria-label="Close"
             disabled={submitting}
-            className={`rounded-md p-1 transition-colors disabled:opacity-50 ${
+            className={unstyledButton(`rounded-md p-1 transition-colors disabled:opacity-50 ${
               isLandingDark ? 'hover:bg-zinc-800' : 'hover:bg-zinc-100'
-            }`}
+            }`)}
           >
             <X className="h-4 w-4" />
-          </button>
+          </Button>
         </div>
 
         <p className={`mb-3 text-sm leading-relaxed ${isLandingDark ? 'text-zinc-300' : 'text-zinc-700'}`}>
@@ -173,7 +175,7 @@ function DeleteAccountDialog({
         }`}>
           Type DELETE to confirm
         </label>
-        <input
+        <Input
           id="delete-account-confirm"
           type="text"
           value={confirmInput}
@@ -182,11 +184,11 @@ function DeleteAccountDialog({
           autoComplete="off"
           disabled={submitting}
           placeholder="DELETE"
-          className={`w-full rounded-lg border px-3 py-2 text-sm outline-hidden transition-colors disabled:opacity-50 ${
+          className={unstyledInput(`w-full rounded-lg border px-3 py-2 text-sm outline-hidden transition-colors disabled:opacity-50 ${
             isLandingDark
               ? 'border-zinc-700 bg-zinc-900 text-zinc-100 placeholder-zinc-500 focus:border-zinc-500'
               : 'border-zinc-300 bg-white text-zinc-900 placeholder-zinc-400 focus:border-zinc-500'
-          }`}
+          }`)}
         />
 
         {error ? (
@@ -194,26 +196,26 @@ function DeleteAccountDialog({
         ) : null}
 
         <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-end">
-          <button
+          <Button variant="ghost"
             type="button"
             onClick={onClose}
             disabled={submitting}
-            className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50 ${
+            className={unstyledButton(`rounded-lg px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50 ${
               isLandingDark
                 ? 'border border-zinc-700 text-zinc-200 hover:bg-zinc-800'
                 : 'border border-zinc-300 text-zinc-700 hover:bg-zinc-50'
-            }`}
+            }`)}
           >
             Cancel
-          </button>
-          <button
+          </Button>
+          <Button variant="ghost"
             type="button"
             onClick={onConfirm}
             disabled={submitting || confirmInput.trim().toLowerCase() !== 'delete'}
-            className="inline-flex items-center justify-center rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+            className={unstyledButton(`inline-flex items-center justify-center rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50`)}
           >
             {submitting ? 'Deleting…' : 'Delete account'}
-          </button>
+          </Button>
         </div>
       </DialogContent>
     </Dialog>

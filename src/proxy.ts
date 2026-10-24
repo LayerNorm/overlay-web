@@ -3,6 +3,11 @@ import type { NextRequest } from 'next/server'
 import { getServiceAuthHeaderName, verifyServiceAuthToken } from '@/server/auth/service-auth'
 import { hasValidSessionCookieSignature } from '@/server/auth/session-cookie-signature'
 import { previewHostnameAllowed } from '@/shared/web/preview-host'
+import {
+  isSupportedLegacyWorkspaceRoute,
+  parseWorkspaceHandleRoute,
+} from '@/shared/workspaces/routing'
+import { ROUTE_WORKSPACE_SCOPE_HEADER } from '@/shared/workspaces/constants'
 
 const SESSION_COOKIE_NAME = 'overlay_session'
 const BETTER_AUTH_SESSION_COOKIE_NAME = 'better-auth.session_token'
@@ -128,7 +133,7 @@ function getCspHeaderName(): 'Content-Security-Policy' | 'Content-Security-Polic
 // Routes that always render per-request. Only these can carry a nonce: a
 // statically prerendered page is served from cache, so its baked-in nonce would
 // never match the per-request header and every Next script would be blocked.
-const NONCE_ELIGIBLE_PREFIXES = ['/app/', '/auth/', '/share/']
+const NONCE_ELIGIBLE_PREFIXES = ['/app/', '/auth/', '/share/', '/w/']
 const NONCE_ELIGIBLE_EXACT = ['/app', '/auth', '/share']
 
 // Marketing pages are prerendered even though they live under /app.
@@ -226,22 +231,57 @@ function applyBrowserSecurityHeaders(
   return response
 }
 
-function getCanonicalWorkspaceRewrite(request: NextRequest): URL | null {
-  const match = request.nextUrl.pathname.match(/^\/app\/w\/([^/]+)(?:\/(.*))?$/)
-  if (!match) return null
+function applyWorkspaceRouteHeaders(response: NextResponse, pathname: string): NextResponse {
+  if (pathname.startsWith('/w/')) {
+    response.headers.set('Cache-Control', 'private, no-store')
+    response.headers.set('X-Robots-Tag', 'noindex, nofollow')
+  }
+  return response
+}
 
-  let workspaceId = ''
+function getCanonicalWorkspaceRewrite(request: NextRequest): URL | null {
+  const handleRoute = request.nextUrl.pathname.match(/^\/w\/([^/]+)(?:\/(.*))?$/)
+  const idRoute = request.nextUrl.pathname.match(/^\/app\/w\/([^/]+)(?:\/(.*))?$/)
+  const rewriteUrl = request.nextUrl.clone()
+  if (handleRoute) {
+    const parsed = parseWorkspaceHandleRoute(request.nextUrl.pathname, request.nextUrl.search)
+    if (
+      !parsed
+      || parsed.canonicalPath !== request.nextUrl.pathname
+      || parsed.canonicalSearch !== request.nextUrl.searchParams.toString()
+    ) return null
+    const suffix = parsed.suffix.map(encodeURIComponent).join('/')
+    rewriteUrl.pathname = `/app/${parsed.surface}${suffix ? `/${suffix}` : ''}`
+    rewriteUrl.searchParams.delete('scope')
+    if (parsed.scope) rewriteUrl.searchParams.set('scope', parsed.scope)
+    rewriteUrl.searchParams.delete('workspaceId')
+    rewriteUrl.searchParams.set('workspaceHandle', parsed.handle)
+    return rewriteUrl
+  }
+
+  if (!idRoute) return null
+  let id = ''
   try {
-    workspaceId = decodeURIComponent(match[1] ?? '').trim()
+    id = decodeURIComponent(idRoute[1] ?? '').trim()
   } catch {
     return null
   }
-  if (!workspaceId) return null
-
-  const surface = match[2]?.trim().replace(/^\/+|\/+$/g, '') || 'chat'
-  const rewriteUrl = request.nextUrl.clone()
-  rewriteUrl.pathname = `/app/${surface}`
-  rewriteUrl.searchParams.set('workspaceId', workspaceId)
+  if (!id || /[\/\\?#]/.test(id)) return null
+  const nestedParts: string[] = []
+  for (const part of (idRoute[2] ?? 'chat').split('/').filter(Boolean)) {
+    if (/%(?:2f|5c)/i.test(part)) return null
+    try {
+      const decoded = decodeURIComponent(part)
+      if (!decoded || decoded === '.' || decoded === '..' || /[\/\\]/.test(decoded)) return null
+      nestedParts.push(decoded)
+    } catch {
+      return null
+    }
+  }
+  const surface = nestedParts[0] ?? 'chat'
+  if (!isSupportedLegacyWorkspaceRoute(surface, nestedParts.slice(1))) return null
+  rewriteUrl.pathname = `/app/${nestedParts.map(encodeURIComponent).join('/') || 'chat'}`
+  rewriteUrl.searchParams.set('workspaceId', id)
   return rewriteUrl
 }
 
@@ -251,6 +291,7 @@ export async function proxy(request: NextRequest) {
     return new NextResponse('Preview unavailable', { status: 404, headers: { 'cache-control': 'no-store' } })
   }
   const { pathname } = request.nextUrl
+  const workspaceAddressPath = pathname === '/app/w' || pathname.startsWith('/app/w/') || pathname.startsWith('/w/')
 
   if (isDocsProxyRoute(pathname)) {
     return NextResponse.next()
@@ -259,29 +300,12 @@ export async function proxy(request: NextRequest) {
   if (
     pathname.startsWith('/_next') ||
     pathname.startsWith('/favicon') ||
-    pathname.includes('.')
+    (pathname.includes('.') && !workspaceAddressPath)
   ) {
     return NextResponse.next()
   }
 
-  const cspHeaderName = getCspHeaderName()
-  const cspNonce = isNonceEligiblePath(pathname) ? createCspNonce() : undefined
-  const cspPolicy = buildCspPolicy(cspNonce)
-  const requestHeaders = new Headers(request.headers)
-  requestHeaders.set(cspHeaderName, cspPolicy)
-  // Next reads this to stamp the nonce onto the scripts it renders.
-  if (cspNonce) requestHeaders.set('x-nonce', cspNonce)
-
-  const nextResponse = () =>
-    applyBrowserSecurityHeaders(
-      NextResponse.next({
-        request: {
-          headers: requestHeaders,
-        },
-      }),
-      cspHeaderName,
-      cspPolicy,
-    )
+  const security = createProxySecurityContext(request, pathname)
 
   // /app/account is a legacy implementation route; account settings are canonical under /app/settings.
   if (pathname === '/app/account') {
@@ -289,114 +313,34 @@ export async function proxy(request: NextRequest) {
     destination.searchParams.set('section', 'account')
     return applyBrowserSecurityHeaders(
       NextResponse.redirect(destination),
-      cspHeaderName,
-      cspPolicy,
+      security.cspHeaderName,
+      security.cspPolicy,
     )
   }
+
+  const handleRouteResponse = await resolveWorkspaceHandleRoute(request, security)
+  if (handleRouteResponse) return handleRouteResponse
 
   // Canonical workspace routes rewrite last: the checks above own specific
   // paths, while this one claims the /app/w/:workspaceId space.
   const workspaceRewrite = getCanonicalWorkspaceRewrite(request)
   if (workspaceRewrite) {
-    requestHeaders.set(
-      'x-overlay-workspace-id',
-      workspaceRewrite.searchParams.get('workspaceId') ?? '',
-    )
-    return applyBrowserSecurityHeaders(
-      NextResponse.rewrite(workspaceRewrite, {
-        request: {
-          headers: requestHeaders,
-        },
-      }),
-      cspHeaderName,
-      cspPolicy,
-    )
+    return rewriteWorkspaceRoute(request, workspaceRewrite, security)
+  }
+  if (workspaceAddressPath) {
+    return applyWorkspaceRouteHeaders(applyBrowserSecurityHeaders(
+      new NextResponse(null, { status: 404 }),
+      security.cspHeaderName,
+      security.cspPolicy,
+    ), pathname)
   }
 
   if (isPublicRoute(pathname)) {
-    return nextResponse()
+    return security.nextResponse()
   }
 
-  if (isProtectedRoute(pathname)) {
-    if (pathname.startsWith('/api/')) {
-      const serviceAuth = await verifyServiceAuthToken(
-        request.headers.get(getServiceAuthHeaderName()),
-        {
-          method: request.method,
-          path: pathname,
-          consumeReplay: false,
-        },
-      )
-      if (serviceAuth) {
-        return nextResponse()
-      }
-    }
-
-    if (isBetterAuthSelected()) {
-      if (hasBetterAuthSessionCookie(request)) {
-        return nextResponse()
-      }
-
-      if (pathname.startsWith('/api/')) {
-        return applyBrowserSecurityHeaders(
-          NextResponse.json(
-            { error: 'Authentication required' },
-            { status: 401 }
-          ),
-          cspHeaderName,
-          cspPolicy,
-        )
-      }
-      const signInUrl = new URL('/auth/sign-in', request.url)
-      signInUrl.searchParams.set('redirect', pathname)
-      return applyBrowserSecurityHeaders(
-        NextResponse.redirect(signInUrl),
-        cspHeaderName,
-        cspPolicy,
-      )
-    }
-
-    const sessionCookie = request.cookies.get(SESSION_COOKIE_NAME)
-
-    if (!sessionCookie?.value) {
-      if (pathname.startsWith('/api/')) {
-        return applyBrowserSecurityHeaders(
-          NextResponse.json(
-            { error: 'Authentication required' },
-            { status: 401 }
-          ),
-          cspHeaderName,
-          cspPolicy,
-        )
-      }
-      const signInUrl = new URL('/auth/sign-in', request.url)
-      signInUrl.searchParams.set('redirect', pathname)
-      return applyBrowserSecurityHeaders(
-        NextResponse.redirect(signInUrl),
-        cspHeaderName,
-        cspPolicy,
-      )
-    }
-
-    if (!(await hasValidSessionCookieSignature(sessionCookie.value))) {
-      if (pathname.startsWith('/api/')) {
-        return applyBrowserSecurityHeaders(
-          NextResponse.json(
-            { error: 'Invalid session' },
-            { status: 401 }
-          ),
-          cspHeaderName,
-          cspPolicy,
-        )
-      }
-      const signInUrl = new URL('/auth/sign-in', request.url)
-      return applyBrowserSecurityHeaders(
-        NextResponse.redirect(signInUrl),
-        cspHeaderName,
-        cspPolicy,
-      )
-    }
-  }
+  const protectedResponse = await handleProtectedRoute(request, security)
+  if (protectedResponse) return protectedResponse
 
   // Preserve /account as a compatibility alias while making the canonical
   // settings query visible to client navigation. Internal rewrite query params
@@ -406,12 +350,143 @@ export async function proxy(request: NextRequest) {
     destination.searchParams.set('section', 'account')
     return applyBrowserSecurityHeaders(
       NextResponse.redirect(destination),
+      security.cspHeaderName,
+      security.cspPolicy,
+    )
+  }
+
+  return security.nextResponse()
+}
+
+type ProxySecurityContext = {
+  cspHeaderName: ReturnType<typeof getCspHeaderName>
+  cspPolicy: string
+  requestHeaders: Headers
+  nextResponse: () => NextResponse
+}
+
+function createProxySecurityContext(request: NextRequest, pathname: string): ProxySecurityContext {
+  const cspHeaderName = getCspHeaderName()
+  const cspNonce = isNonceEligiblePath(pathname) ? createCspNonce() : undefined
+  const cspPolicy = buildCspPolicy(cspNonce)
+  const requestHeaders = new Headers(request.headers)
+  requestHeaders.delete('x-overlay-workspace-handle')
+  requestHeaders.delete('x-overlay-workspace-original-path')
+  requestHeaders.delete('x-overlay-workspace-original-search')
+  if (!pathname.startsWith('/api/')) requestHeaders.delete('x-overlay-workspace-id')
+  requestHeaders.delete(ROUTE_WORKSPACE_SCOPE_HEADER)
+  requestHeaders.set(cspHeaderName, cspPolicy)
+  if (cspNonce) requestHeaders.set('x-nonce', cspNonce)
+  const nextResponse = () =>
+    applyWorkspaceRouteHeaders(applyBrowserSecurityHeaders(
+      NextResponse.next({ request: { headers: requestHeaders } }),
+      cspHeaderName,
+      cspPolicy,
+    ), pathname)
+
+  return { cspHeaderName, cspPolicy, requestHeaders, nextResponse }
+}
+
+async function resolveWorkspaceHandleRoute(
+  request: NextRequest,
+  security: ProxySecurityContext,
+): Promise<NextResponse | null> {
+  const pathname = request.nextUrl.pathname
+  if (!pathname.startsWith('/w/')) return null
+
+  const hasSession = isBetterAuthSelected()
+    ? hasBetterAuthSessionCookie(request)
+    : await hasValidSessionCookieSignature(request.cookies.get(SESSION_COOKIE_NAME)?.value ?? '')
+  if (!hasSession) {
+    const signIn = new URL('/auth/sign-in', request.url)
+    signIn.searchParams.set('redirect', request.nextUrl.pathname + request.nextUrl.search)
+    return applyWorkspaceRouteHeaders(applyBrowserSecurityHeaders(
+      NextResponse.redirect(signIn),
+      security.cspHeaderName,
+      security.cspPolicy,
+    ), pathname)
+  }
+
+  const parsed = parseWorkspaceHandleRoute(pathname, request.nextUrl.search)
+  if (!parsed) return null
+  const search = parsed.canonicalSearch ? `?${parsed.canonicalSearch}` : ''
+  if (parsed.canonicalPath === pathname && search === request.nextUrl.search) return null
+
+  const destination = new URL(`${parsed.canonicalPath}${search}`, request.url)
+  return applyWorkspaceRouteHeaders(applyBrowserSecurityHeaders(
+    NextResponse.redirect(destination, 307),
+    security.cspHeaderName,
+    security.cspPolicy,
+  ), pathname)
+}
+
+function rewriteWorkspaceRoute(
+  request: NextRequest,
+  workspaceRewrite: URL,
+  security: ProxySecurityContext,
+): NextResponse {
+  const pathname = request.nextUrl.pathname
+  const { requestHeaders } = security
+  if (pathname.startsWith('/w/')) {
+    requestHeaders.delete('x-overlay-workspace-id')
+    requestHeaders.set('x-overlay-workspace-handle', workspaceRewrite.searchParams.get('workspaceHandle') ?? '')
+    requestHeaders.set(ROUTE_WORKSPACE_SCOPE_HEADER, workspaceRewrite.searchParams.get('scope') ?? '')
+    requestHeaders.set('x-overlay-workspace-original-path', pathname)
+    requestHeaders.set('x-overlay-workspace-original-search', request.nextUrl.search)
+  } else {
+    requestHeaders.delete('x-overlay-workspace-handle')
+    requestHeaders.set('x-overlay-workspace-id', workspaceRewrite.searchParams.get('workspaceId') ?? '')
+    const routeScope = request.nextUrl.searchParams.get('scope')
+    requestHeaders.set(ROUTE_WORKSPACE_SCOPE_HEADER, routeScope === 'workspace' ? 'workspace' : 'personal')
+  }
+
+  return applyWorkspaceRouteHeaders(applyBrowserSecurityHeaders(
+    NextResponse.rewrite(workspaceRewrite, { request: { headers: requestHeaders } }),
+    security.cspHeaderName,
+    security.cspPolicy,
+  ), pathname)
+}
+
+async function handleProtectedRoute(
+  request: NextRequest,
+  security: ProxySecurityContext,
+): Promise<NextResponse | null> {
+  const { cspHeaderName, cspPolicy, nextResponse } = security
+  const pathname = request.nextUrl.pathname
+  if (!isProtectedRoute(pathname)) return null
+
+  if (pathname.startsWith('/api/')) {
+    const serviceAuth = await verifyServiceAuthToken(
+      request.headers.get(getServiceAuthHeaderName()),
+      { method: request.method, path: pathname, consumeReplay: false },
+    )
+    if (serviceAuth) return nextResponse()
+  }
+
+  if (isBetterAuthSelected() && hasBetterAuthSessionCookie(request)) return nextResponse()
+
+  const sessionCookie = request.cookies.get(SESSION_COOKIE_NAME)
+  const hasSession = isBetterAuthSelected()
+    ? false
+    : Boolean(sessionCookie?.value && await hasValidSessionCookieSignature(sessionCookie.value))
+  if (hasSession) return null
+
+  const error = sessionCookie?.value && !isBetterAuthSelected() ? 'Invalid session' : 'Authentication required'
+  if (pathname.startsWith('/api/')) {
+    return applyBrowserSecurityHeaders(
+      NextResponse.json({ error }, { status: 401 }),
       cspHeaderName,
       cspPolicy,
     )
   }
 
-  return nextResponse()
+  const signInUrl = new URL('/auth/sign-in', request.url)
+  signInUrl.searchParams.set('redirect', pathname + request.nextUrl.search)
+  return applyBrowserSecurityHeaders(
+    NextResponse.redirect(signInUrl),
+    cspHeaderName,
+    cspPolicy,
+  )
 }
 
 export const config = {

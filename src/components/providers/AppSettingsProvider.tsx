@@ -98,6 +98,7 @@ function isAppSettingsPayload(value: unknown): value is Partial<AppSettings> {
     if (candidate[key] !== undefined && !isSafeAspectRatio(candidate[key])) return false
   }
   if (candidate.sendWithEnter !== undefined && typeof candidate.sendWithEnter !== 'boolean') return false
+  if (candidate.useSecondarySidebar !== undefined && typeof candidate.useSecondarySidebar !== 'boolean') return false
   if (
     candidate.attachFilesToKnowledgeByDefault !== undefined &&
     typeof candidate.attachFilesToKnowledgeByDefault !== 'boolean'
@@ -166,10 +167,8 @@ function coerceChatStreamingMode(settings: AppSettings): AppSettings {
   return { ...settings, chatStreamingMode: 'token' }
 }
 
-function normalizeSettingsPayload(settings: Partial<AppSettings> & { useSecondarySidebar?: unknown }): AppSettings {
-  const publicSettings = { ...settings }
-  delete publicSettings.useSecondarySidebar
-  return coerceChatStreamingMode({ ...DEFAULT_APP_SETTINGS, ...publicSettings } as AppSettings)
+function normalizeSettingsPayload(settings: Partial<AppSettings>): AppSettings {
+  return coerceChatStreamingMode({ ...DEFAULT_APP_SETTINGS, ...settings } as AppSettings)
 }
 
 function readStoredSettings(): AppSettings | null {
@@ -218,7 +217,7 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
     try {
       const res = await overlayAppClient.settings.getResponse({ cache: 'no-store' })
       if (res.ok) {
-        const next = normalizeSettingsPayload(await res.json() as Partial<AppSettings> & { useSecondarySidebar?: unknown })
+        const next = normalizeSettingsPayload(await res.json() as Partial<AppSettings>)
         setSettings(next)
         persistSettings(next)
       } else if (res.status === 401) {
@@ -279,7 +278,7 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
         console.warn('Failed to save settings to server; using local state')
         return optimistic
       }
-      const saved = normalizeSettingsPayload(await res.json() as Partial<AppSettings> & { useSecondarySidebar?: unknown })
+      const saved = normalizeSettingsPayload(await res.json() as Partial<AppSettings>)
       setSettings(saved)
       persistSettings(saved)
       return saved

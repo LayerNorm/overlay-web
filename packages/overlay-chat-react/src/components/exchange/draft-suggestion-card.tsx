@@ -1,3 +1,4 @@
+import { Button } from '@overlay/ui/primitives'
 
 export function DraftSuggestionCard({
   title,
@@ -32,21 +33,19 @@ export function DraftSuggestionCard({
           </div>
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          <button
+          <Button variant="primary" size="sm"
             type="button"
             onClick={onPrimary}
-            className="inline-flex items-center rounded-md border border-(--border) bg-(--foreground) px-3 py-1.5 text-[12px] font-medium text-(--background) transition-colors hover:opacity-85"
           >
             {primaryLabel}
-          </button>
+          </Button>
           {secondaryLabel && onSecondary ? (
-            <button
+            <Button variant="secondary" size="sm"
               type="button"
               onClick={onSecondary}
-              className="inline-flex items-center rounded-md border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-[12px] font-medium text-(--foreground) transition-colors hover:bg-(--border)"
             >
               {secondaryLabel}
-            </button>
+            </Button>
           ) : null}
         </div>
       </div>

@@ -3,7 +3,7 @@ import 'server-only'
 import { createHash } from 'node:crypto'
 import type { IntegrationProviderCapabilities, IntegrationSummary } from '@overlay/app-core'
 import { tool, type ToolSet } from 'ai'
-import { z } from 'zod'
+import { z } from 'zod/v3'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import type {
   IntegrationExecutionRequest,

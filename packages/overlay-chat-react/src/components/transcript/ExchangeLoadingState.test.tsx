@@ -49,8 +49,8 @@ test('standalone loading reuses the tool-row mark and rotating thinking vocabula
   )
 
   assert.match(markup, /overlay-loading-tool-logo/)
-  assert.match(markup, /width="8"/)
-  assert.match(markup, /height="8"/)
+  assert.match(markup, /width="6\.5"/)
+  assert.match(markup, /height="6\.5"/)
   assert.match(markup, /overlay-loading-word-track/)
   assert.match(markup, /overlay-loading-word tool-line-shimmer/)
   for (const label of EXCHANGE_LOADING_LABELS) assert.ok(markup.includes(label))

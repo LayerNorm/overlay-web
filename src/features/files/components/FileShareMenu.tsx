@@ -1,8 +1,9 @@
 'use client'
+import { Button, FloatingMenu, MenuItem } from '@overlay/ui/primitives'
 
 import type { ReactNode } from 'react'
-import { useEffect, useRef, useState } from 'react'
-import { Check, Globe, Loader2, Lock, MoreVertical, Share2 } from 'lucide-react'
+import { useRef, useState } from 'react'
+import { MoreHorizontal, Share2 } from 'lucide-react'
 import { buildSharePageUrl } from '@/shared/share/share-page-url'
 import { ShareVisibilitySubmenu } from './ShareVisibilitySubmenu'
 import type { ShareDialogRenderProps } from '@/shared/share/share-dialog-resource'
@@ -34,18 +35,12 @@ export function FileShareMenu({
   const [shareUrl, setShareUrl] = useState<string | null>(initialShareUrl ?? null)
   const [shareBusy, setShareBusy] = useState(false)
   const [shareDialogOpen, setShareDialogOpen] = useState(false)
-  const menuRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
 
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        setShowMenu(false)
-        setShowShareSubmenu(false)
-      }
-    }
-    if (showMenu) document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [showMenu])
+  const changeMenuOpen = (open: boolean) => {
+    setShowMenu(open)
+    if (!open) setShowShareSubmenu(false)
+  }
 
   async function updateShareVisibility(next: 'private' | 'public') {
     if (shareBusy) return
@@ -74,43 +69,50 @@ export function FileShareMenu({
   }
 
   return (
-    <div ref={menuRef} className={`relative ${className}`}>
-      <button
-        type="button"
-        onClick={() => setShowMenu((v) => !v)}
-        className="rounded-md p-1.5 text-(--muted) transition-[color,background-color,transform] duration-200 hover:bg-(--surface-subtle) hover:text-(--foreground) active:scale-90"
-        aria-label="More options"
-      >
-        <MoreVertical size={16} strokeWidth={1.75} />
-      </button>
-
-      {showMenu && (
-        <div className="overlay-pop-in absolute right-0 top-full z-50 mt-1 w-56 rounded-xl border border-(--border) bg-(--surface-elevated) py-1 shadow-lg">
-          <button
+    <div className={className}>
+      <FloatingMenu
+        anchorRef={triggerRef}
+        open={showMenu}
+        onOpenChange={changeMenuOpen}
+        align="end"
+        className="w-48 p-1"
+        trigger={
+          <Button
+            ref={triggerRef}
+            variant="ghost"
+            size="icon"
             type="button"
-            onClick={() => setShowShareSubmenu((v) => !v)}
-            className="flex w-full items-center gap-2 px-3 py-2 text-xs text-(--foreground) hover:bg-(--surface-muted) transition-colors"
+            aria-label="More options"
+            className="h-8 w-8 rounded-md text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)"
           >
-            <Share2 size={14} />
-            <span>Share</span>
-            {shareVisibility === 'public' && (
-              <span className="ml-auto text-[10px] font-medium text-emerald-500">On</span>
-            )}
-          </button>
-          {showShareSubmenu && (
-            <ShareVisibilitySubmenu
-              shareVisibility={shareVisibility}
-              shareBusy={shareBusy}
-              onUpdateVisibility={(next) => void updateShareVisibility(next)}
-              onOpenShareDialog={() => {
-                setShareDialogOpen(true)
-                setShowMenu(false)
-                setShowShareSubmenu(false)
-              }}
-            />
+            <MoreHorizontal size={15} />
+          </Button>
+        }
+      >
+        <MenuItem
+          type="button"
+          onClick={() => setShowShareSubmenu((v) => !v)}
+          className="rounded-md"
+        >
+          <Share2 size={14} />
+          <span>Share</span>
+          {shareVisibility === 'public' && (
+            <span className="ml-auto text-[10px] font-medium text-emerald-500">On</span>
           )}
-        </div>
-      )}
+        </MenuItem>
+        {showShareSubmenu && (
+          <ShareVisibilitySubmenu
+            shareVisibility={shareVisibility}
+            shareBusy={shareBusy}
+            onUpdateVisibility={(next) => void updateShareVisibility(next)}
+            onOpenShareDialog={() => {
+              setShareDialogOpen(true)
+              setShowMenu(false)
+              setShowShareSubmenu(false)
+            }}
+          />
+        )}
+      </FloatingMenu>
 
       {renderShareDialog({
         isOpen: shareDialogOpen,

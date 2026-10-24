@@ -1,5 +1,5 @@
 'use client'
-
+import { unstyledButton } from '@overlay/ui/control-reset'
 import type { KnowledgeFile,MemoryRow,OutputSummary } from '@overlay/app-core'
 import type { TreeNode } from '@overlay/app-core/modules'
 import { Badge,Button,EmptyState,TabButton,TabsList,cn } from '@overlay/ui'
@@ -115,14 +115,14 @@ function KnowledgeFileTreeRow({
         )}
         style={{ paddingLeft: 12 + node.depth * 16 }}
       >
-        <button
+        <Button variant="ghost"
           type="button"
-          className="min-w-0 flex-1 truncate text-left"
+          className={unstyledButton("min-w-0 flex-1 truncate text-left")}
           onClick={() => onSelectFile?.(file)}
         >
           <span className="mr-2 text-[10px] text-(--muted-light)">{isFolder ? 'Folder' : 'File'}</span>
           {file.name}
-        </button>
+        </Button>
         {renderActions ? (
           <div className="hidden shrink-0 items-center gap-1 group-hover/row:flex">{renderActions(file)}</div>
         ) : null}
@@ -195,21 +195,21 @@ export function MemoryList({ memories, loading, selectedIds, onToggleMemory }: M
   return (
     <div className="divide-y divide-(--border)">
       {memories.map((memory) => (
-        <button
+        <Button variant="ghost"
           key={memory.key}
           type="button"
           onClick={() => onToggleMemory?.(memory)}
-          className={cn(
+          className={unstyledButton(cn(
             'block w-full px-4 py-3 text-left transition-colors hover:bg-(--surface-subtle)',
             selectedIds?.has(memory.memoryId) ? 'bg-(--surface-subtle)' : '',
-          )}
+          ))}
         >
           <p className="text-sm leading-6 text-(--foreground)">{memory.content}</p>
           <div className="mt-2 flex items-center gap-2">
             <Badge variant="muted">{memory.source}</Badge>
             {memory.status ? <Badge variant="muted">{memory.status}</Badge> : null}
           </div>
-        </button>
+        </Button>
       ))}
     </div>
   )

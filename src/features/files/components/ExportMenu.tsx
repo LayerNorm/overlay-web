@@ -1,9 +1,10 @@
 'use client'
+import { Button, FloatingMenu, MenuItem } from '@overlay/ui/primitives'
 
 import type { ReactNode } from 'react'
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef } from 'react'
 import {
-  MoreVertical,
+  MoreHorizontal,
   Copy,
   FileDown,
   FileText,
@@ -11,9 +12,6 @@ import {
   FileJson,
   Check,
   Share2,
-  Lock,
-  Globe,
-  Loader2,
 } from 'lucide-react'
 import { useExport, type ExportFormat } from '@/features/files/hooks/useExport'
 import type {
@@ -159,11 +157,11 @@ function ExportMenuDropdown({
   onOpenShareDialog,
 }: ExportMenuDropdownProps) {
   return (
-    <div className="overlay-pop-in absolute right-0 top-full z-50 mt-1 w-48 rounded-xl border border-(--border) bg-(--surface-elevated) py-1 shadow-lg">
-      <button
+    <>
+      <MenuItem
         type="button"
         onClick={onCopy}
-        className="flex w-full items-center gap-2 px-3 py-2 text-xs text-(--foreground) hover:bg-(--surface-muted) transition-colors"
+        className="rounded-md"
       >
         {copied ? (
           <>
@@ -176,50 +174,47 @@ function ExportMenuDropdown({
             <span>Copy as Markdown</span>
           </>
         )}
-      </button>
+      </MenuItem>
 
-      <div className="my-1 border-t border-(--border)" />
-
-      <button
+      <MenuItem
         type="button"
         onClick={onToggleExportSubmenu}
-        className="flex w-full items-center gap-2 px-3 py-2 text-xs text-(--foreground) hover:bg-(--surface-muted) transition-colors"
+        className="rounded-md"
       >
         <FileDown size={14} />
         <span>Export as...</span>
-      </button>
+      </MenuItem>
 
       {showExportSubmenu && (
-        <div className="border-t border-(--border) bg-(--surface-subtle) py-1">
+        <div className="pl-4">
           {EXPORT_OPTIONS.map(({ format, label, icon: Icon }) => (
-            <button
+            <MenuItem
               key={format}
               type="button"
               onClick={() => onExport(format)}
               disabled={isExporting}
-              className="flex w-full items-center gap-2 px-3 py-2 text-xs text-(--foreground) hover:bg-(--surface-muted) transition-colors disabled:opacity-50"
+              className="rounded-md"
             >
               <Icon size={14} />
               <span>{label}</span>
-            </button>
+            </MenuItem>
           ))}
         </div>
       )}
 
       {canShare && (
         <>
-          <div className="my-1 border-t border-(--border)" />
-          <button
+          <MenuItem
             type="button"
             onClick={onToggleShareSubmenu}
-            className="flex w-full items-center gap-2 px-3 py-2 text-xs text-(--foreground) hover:bg-(--surface-muted) transition-colors"
+            className="rounded-md"
           >
             <Share2 size={14} />
             <span>Share</span>
             {shareVisibility === 'public' && (
               <span className="ml-auto text-[10px] font-medium text-emerald-500">On</span>
             )}
-          </button>
+          </MenuItem>
           {showShareSubmenu && (
             <ShareVisibilitySubmenu
               shareVisibility={shareVisibility}
@@ -230,7 +225,7 @@ function ExportMenuDropdown({
           )}
         </>
       )}
-    </div>
+    </>
   )
 }
 
@@ -249,7 +244,7 @@ export function ExportMenu({
   const [showExportSubmenu, setShowExportSubmenu] = useState(false)
   const [showShareSubmenu, setShowShareSubmenu] = useState(false)
   const [copied, setCopied] = useState(false)
-  const menuRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
   const { copyToClipboard, exportAs, isExporting } = useExport({
     type,
     title,
@@ -271,23 +266,12 @@ export function ExportMenu({
     initialShareUrl,
   })
 
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        setShowMenu(false)
-        setShowExportSubmenu(false)
-        setShowShareSubmenu(false)
-      }
-    }
-
-    if (showMenu) {
-      document.addEventListener('mousedown', handleClickOutside)
-    }
-
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside)
-    }
-  }, [showMenu])
+  const changeMenuOpen = (open: boolean) => {
+    setShowMenu(open)
+    if (open) return
+    setShowExportSubmenu(false)
+    setShowShareSubmenu(false)
+  }
 
   const canShare = Boolean(resourceId)
 
@@ -312,21 +296,27 @@ export function ExportMenu({
   }
 
   return (
-    <div ref={menuRef} className={`relative ${className}`}>
-      <button
-        type="button"
-        onClick={() => setShowMenu(!showMenu)}
-        disabled={isExporting}
-        // Rests transparent like the sibling header actions (delete, assistant) and
-        // only fills on hover. A resting background made this one button read as
-        // selected next to them.
-        className="inline-flex h-8 min-h-8 w-8 items-center justify-center rounded-md text-(--muted) transition-[color,background-color,transform] duration-200 hover:bg-(--surface-subtle) hover:text-(--foreground) active:scale-90 disabled:cursor-not-allowed disabled:opacity-30"
-        aria-label="Export options"
+    <div className={className}>
+      <FloatingMenu
+        anchorRef={triggerRef}
+        open={showMenu}
+        onOpenChange={changeMenuOpen}
+        align="end"
+        className="w-48 p-1"
+        trigger={
+          <Button
+            ref={triggerRef}
+            variant="ghost"
+            size="icon"
+            type="button"
+            disabled={isExporting}
+            aria-label="Export options"
+            className="h-8 w-8 rounded-md text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)"
+          >
+            <MoreHorizontal size={15} />
+          </Button>
+        }
       >
-        <MoreVertical size={16} strokeWidth={1.75} />
-      </button>
-
-      {showMenu && (
         <ExportMenuDropdown
           copied={copied}
           onCopy={handleCopy}
@@ -345,7 +335,7 @@ export function ExportMenu({
             closeShareMenus()
           }}
         />
-      )}
+      </FloatingMenu>
       {renderShareDialog({
         isOpen: shareDialogOpen,
         onClose: () => setShareDialogOpen(false),

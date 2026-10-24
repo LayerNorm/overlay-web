@@ -12,9 +12,6 @@ export function useConversationBottomVisibility({
   activeChatId,
   actChat,
   chat0,
-  chat1,
-  chat2,
-  chat3,
   isActiveLoading,
   isOptimisticLoading,
   runtimeHydrationVersion,
@@ -26,9 +23,6 @@ export function useConversationBottomVisibility({
   activeChatId: string | null
   actChat: Runtimes['actChat']
   chat0: Runtimes['chat0']
-  chat1: Runtimes['chat1']
-  chat2: Runtimes['chat2']
-  chat3: Runtimes['chat3']
   isActiveLoading: boolean
   isOptimisticLoading: boolean
   runtimeHydrationVersion: number
@@ -91,9 +85,6 @@ export function useConversationBottomVisibility({
   }, [
     actChat.messages.length,
     chat0.messages.length,
-    chat1.messages.length,
-    chat2.messages.length,
-    chat3.messages.length,
     isActiveLoading,
     isOptimisticLoading,
     runtimeHydrationVersion,

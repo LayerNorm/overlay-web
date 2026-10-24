@@ -32,8 +32,6 @@ export function buildScopedPanelNav({
   subItems,
   pendingId,
   badges,
-  solo = false,
-  soloLabel = 'All',
   onSelect,
 }: {
   scope: PanelScope
@@ -43,16 +41,8 @@ export function buildScopedPanelNav({
   pendingId: string | null
   /** Unread counts shown on a scope row, which matter while its sub-rows are collapsed. */
   badges?: Partial<Record<PanelScope, number>>
-  /**
-   * A workspace of one person has nothing to split between Personal and Workspace, so the page's rows stand on their own.
-   * Without sub-rows the page gets a single row named `soloLabel`. Selections still report the
-   * Personal scope, so everything beneath keeps working unchanged.
-   */
-  solo?: boolean
-  soloLabel?: string
   onSelect: (scope: PanelScope, sub: string | null) => void
 }): SecondaryPanelNav {
-  if (solo) return buildSoloPanelNav({ sub, subItems, pendingId, badges, soloLabel, onSelect })
   const items: InlineNavItem[] = SCOPE_ROWS.map((row) => {
     const kids = subItems[row.id] ?? []
     const expanded = row.id === scope && kids.length > 0
@@ -73,39 +63,6 @@ export function buildScopedPanelNav({
     onSelect: (id) => {
       const child = parseChildId(id)
       const next = child ? child.scope : (id as PanelScope)
-      rememberPanelScope(next)
-      onSelect(next, child ? child.sub : null)
-    },
-  }
-}
-
-function buildSoloPanelNav({
-  sub,
-  subItems,
-  pendingId,
-  badges,
-  soloLabel,
-  onSelect,
-}: {
-  sub: string | null
-  subItems: ScopedSubItems
-  pendingId: string | null
-  badges?: Partial<Record<PanelScope, number>>
-  soloLabel: string
-  onSelect: (scope: PanelScope, sub: string | null) => void
-}): SecondaryPanelNav {
-  const kids = subItems.personal ?? []
-  const rows: InlineNavItem[] = kids.length > 0
-    ? kids.map((kid) => ({ ...kid, id: childId('personal', kid.id) }))
-    : [{ id: 'personal', label: soloLabel, icon: User, badgeCount: badges?.personal || undefined }]
-  const activeId = kids.length > 0 ? childId('personal', sub ?? kids[0]!.id) : 'personal'
-  return {
-    items: rows,
-    activeId,
-    pendingId,
-    onSelect: (id) => {
-      const child = parseChildId(id)
-      const next: PanelScope = child ? child.scope : (id as PanelScope)
       rememberPanelScope(next)
       onSelect(next, child ? child.sub : null)
     },

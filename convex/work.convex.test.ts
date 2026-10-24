@@ -28,9 +28,45 @@ async function seed(convex: Convex, policy?: Record<string, unknown>) {
       await ctx.db.insert('workspaceMemberships', { membershipId: `m-${userId}`, workspaceId, principalId: `p-${userId}`, role, status: 'active', joinedAt: now, updatedAt: now })
     }
     await ctx.db.insert('workspacePrincipals', { principalId: 'p-agent', workspaceId, type: 'agent', agentId: 'agent-1', displayName: 'Researcher', createdAt: now, updatedAt: now })
+    await ctx.db.insert('workspaceAgentDefinitions', {
+      principalId: 'p-agent', agentId: 'agent-1', workspaceId, name: 'Researcher', instructions: 'Research.',
+      harness: 'overlay', modelId: 'test-model', allowedToolIds: [], invocationPolicy: 'mention',
+      visibility: 'workspace', createdByPrincipalId: 'p-owner', createdAt: now, updatedAt: now,
+    })
     await ctx.db.insert('workspacePrincipals', { principalId: 'p-outsider', workspaceId: otherWorkspaceId, type: 'human', userId: 'outsider', displayName: 'outsider', createdAt: now, updatedAt: now })
     await ctx.db.insert('workspaceMemberships', { membershipId: 'm-outsider', workspaceId: otherWorkspaceId, principalId: 'p-outsider', role: 'owner', status: 'active', joinedAt: now, updatedAt: now })
     if (policy) await ctx.db.insert('workspaceSharingPolicies', { workspaceId, publicLinksEnabled: true, createdAt: now, updatedAt: now, ...policy })
+  })
+}
+
+async function addAgent(
+  convex: Convex,
+  args: {
+    principalId: string
+    agentId: string
+    creatorPrincipalId: string
+    visibility: 'workspace' | 'creator'
+    archivedPrincipal?: boolean
+    archivedDefinition?: boolean
+    deletedDefinition?: boolean
+    avatarColor?: string
+    avatarShape?: string
+  },
+) {
+  await convex.run(async (ctx) => {
+    await ctx.db.insert('workspacePrincipals', {
+      principalId: args.principalId, workspaceId, type: 'agent', agentId: args.agentId, displayName: args.principalId,
+      createdAt: now, updatedAt: now, ...(args.archivedPrincipal ? { archivedAt: now } : {}),
+    })
+    await ctx.db.insert('workspaceAgentDefinitions', {
+      principalId: args.principalId, agentId: args.agentId, workspaceId, name: args.principalId, instructions: 'Test agent.',
+      harness: 'overlay', modelId: 'test-model', allowedToolIds: [], invocationPolicy: 'mention',
+      visibility: args.visibility, createdByPrincipalId: args.creatorPrincipalId, createdAt: now, updatedAt: now,
+      ...(args.avatarColor !== undefined ? { avatarColor: args.avatarColor } : {}),
+      ...(args.avatarShape !== undefined ? { avatarShape: args.avatarShape } : {}),
+      ...(args.archivedDefinition ? { archivedAt: now } : {}),
+      ...(args.deletedDefinition ? { deletedAt: now } : {}),
+    })
   })
 }
 
@@ -295,16 +331,32 @@ describe('fields, assignees and validation', () => {
     await expect(work.update('alice', task._id, { context: [{ type: 'link', id: '', label: 'x' }] })).rejects.toThrow(/context/)
   })
 
-  test('assignees must be active workspace principals; personal tasks are only for the creator', async () => {
+  test('agents are assignable according to visibility and creator, and unavailable agents are rejected', async () => {
     const convex = convexTest(schema, modules)
     await seed(convex)
+    await addAgent(convex, { principalId: 'p-alice-agent', agentId: 'agent-alice', creatorPrincipalId: 'p-alice', visibility: 'creator' })
+    await addAgent(convex, { principalId: 'p-bob-agent', agentId: 'agent-bob', creatorPrincipalId: 'p-bob', visibility: 'creator' })
+    await addAgent(convex, { principalId: 'p-archived-agent', agentId: 'agent-archived', creatorPrincipalId: 'p-alice', visibility: 'workspace', archivedPrincipal: true })
+    await addAgent(convex, { principalId: 'p-archived-definition', agentId: 'agent-archived-definition', creatorPrincipalId: 'p-alice', visibility: 'workspace', archivedDefinition: true })
+    await addAgent(convex, { principalId: 'p-deleted-agent', agentId: 'agent-deleted', creatorPrincipalId: 'p-alice', visibility: 'workspace', deletedDefinition: true })
     const work = api(convex)
+    const personalWithWorkspaceAgent = await work.create('alice', { title: 'Personal with workspace agent', assigneePrincipalId: 'p-agent' })
+    expect(personalWithWorkspaceAgent.assigneePrincipalId).toBe('p-agent')
+    const personalWithOwnAgent = await work.create('alice', { title: 'Personal with own agent', assigneePrincipalId: 'p-alice-agent' })
+    expect(personalWithOwnAgent.assigneePrincipalId).toBe('p-alice-agent')
+    await expect(work.create('alice', { title: 'Personal with another creator agent', assigneePrincipalId: 'p-bob-agent' })).rejects.toThrow(/personal_assignee/)
+
     const shared = await work.create('alice', { title: 'Shared', scope: 'workspace', assigneePrincipalId: 'p-bob' })
     expect(shared.assigneePrincipalId).toBe('p-bob')
     expect((await work.update('alice', shared._id, { assigneePrincipalId: 'p-agent' })).assigneePrincipalId).toBe('p-agent')
+    await expect(work.update('alice', shared._id, { assigneePrincipalId: 'p-alice-agent' })).rejects.toThrow(/assignee/)
     await expect(work.update('alice', shared._id, { assigneePrincipalId: 'p-gus' })).rejects.toThrow(/assignee/)
     await expect(work.update('alice', shared._id, { assigneePrincipalId: 'p-outsider' })).rejects.toThrow(/assignee/)
     await expect(work.update('alice', shared._id, { assigneePrincipalId: 'nobody' })).rejects.toThrow(/assignee/)
+    for (const principalId of ['p-archived-agent', 'p-archived-definition', 'p-deleted-agent']) {
+      await expect(work.create('alice', { title: `Unavailable ${principalId}`, assigneePrincipalId: principalId })).rejects.toThrow(/assignee|personal_assignee/)
+      await expect(work.update('alice', shared._id, { assigneePrincipalId: principalId })).rejects.toThrow(/assignee/)
+    }
     expect((await work.update('alice', shared._id, { assigneePrincipalId: null })).assigneePrincipalId).toBeUndefined()
 
     const mine = await work.create('alice', { title: 'Mine' })
@@ -314,15 +366,53 @@ describe('fields, assignees and validation', () => {
     expect(await work.update('alice', shared._id, { reviewerUserId: 'owner' })).toMatchObject({ reviewerUserId: 'owner' })
   })
 
-  test('the picker context lists people and agents but not guests or other workspaces', async () => {
+  test('the picker context lists people and visible agents only', async () => {
     const convex = convexTest(schema, modules)
     await seed(convex)
-    const ctxResult = await convex.query(q('work/workItems:context'), auth('alice')) as { principalId: string; role: string; canCreateInWorkspace: boolean; assignees: Array<{ principalId: string }> }
+    await addAgent(convex, {
+      principalId: 'p-alice-agent',
+      agentId: 'agent-alice',
+      creatorPrincipalId: 'p-alice',
+      visibility: 'creator',
+      avatarColor: '#b45309',
+      avatarShape: 'hexagon',
+    })
+    await addAgent(convex, { principalId: 'p-bob-agent', agentId: 'agent-bob', creatorPrincipalId: 'p-bob', visibility: 'creator' })
+    const ctxResult = await convex.query(q('work/workItems:context'), auth('alice')) as {
+      principalId: string
+      role: string
+      canCreateInWorkspace: boolean
+      assignees: Array<{ principalId: string; agentVisibility?: string; avatarColor?: string; avatarShape?: string }>
+    }
     expect(ctxResult.principalId).toBe('p-alice')
     expect(ctxResult.canCreateInWorkspace).toBe(true)
-    expect(ctxResult.assignees.map((a) => a.principalId)).toEqual(['p-admin', 'p-alice', 'p-bob', 'p-owner', 'p-agent'])
+    expect(ctxResult.assignees.map((a) => a.principalId)).toEqual(['p-admin', 'p-alice', 'p-bob', 'p-owner', 'p-alice-agent', 'p-agent'])
+    expect(ctxResult.assignees.find((a) => a.principalId === 'p-agent')?.agentVisibility).toBe('workspace')
+    expect(ctxResult.assignees.find((a) => a.principalId === 'p-alice-agent')?.agentVisibility).toBe('creator')
+    expect(ctxResult.assignees.find((a) => a.principalId === 'p-alice-agent')).toMatchObject({
+      avatarColor: '#b45309',
+      avatarShape: 'hexagon',
+    })
+    expect(ctxResult.assignees.some((a) => a.principalId === 'p-bob-agent')).toBe(false)
     expect(await convex.query(q('work/workItems:context'), auth('gus'))).toBeNull()
     expect(await convex.query(q('work/workItems:context'), auth('outsider'))).toBeNull()
+  })
+
+  test('moving personal tasks to workspace clears creator-only agents and keeps workspace agents', async () => {
+    const convex = convexTest(schema, modules)
+    await seed(convex)
+    await addAgent(convex, { principalId: 'p-alice-agent', agentId: 'agent-alice', creatorPrincipalId: 'p-alice', visibility: 'creator' })
+    const work = api(convex)
+    const creatorAgentTask = await work.create('alice', { title: 'Creator agent', assigneePrincipalId: 'p-alice-agent' })
+    const workspaceAgentTask = await work.create('alice', { title: 'Workspace agent', assigneePrincipalId: 'p-agent' })
+    await work.setScope('alice', creatorAgentTask._id, 'workspace')
+    await work.setScope('alice', workspaceAgentTask._id, 'workspace')
+
+    expect((await work.get('alice', creatorAgentTask._id))?.assigneePrincipalId).toBeUndefined()
+    expect((await work.get('alice', workspaceAgentTask._id))?.assigneePrincipalId).toBe('p-agent')
+    expect(await work.events('alice', creatorAgentTask._id)).toContainEqual(expect.objectContaining({
+      kind: 'assignee', actorPrincipalId: 'p-alice', data: { from: 'p-alice-agent', to: null },
+    }))
   })
 
   test('status changes, assignments and comments are logged with the actor', async () => {

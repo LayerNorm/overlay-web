@@ -55,7 +55,7 @@ export function ExchangeLoadingState({
   const compact = presentation.marker === 'compact'
   return (
     <div
-      className={`flex px-1 ${compact ? 'min-h-5 items-center py-1' : 'items-stretch gap-2.5 py-1 text-[13px] leading-snug'}`}
+      className={`flex px-1 ${compact ? 'min-h-5 items-center py-1' : 'items-center gap-[0.4em] py-1 text-[13px] leading-snug'}`}
       aria-live="polite"
       aria-busy="true"
       aria-label={compact ? 'Response still generating' : 'Thinking'}

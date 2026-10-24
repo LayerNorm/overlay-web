@@ -1,5 +1,7 @@
 'use client'
 
+import { unstyledButton, unstyledTextarea } from '@overlay/ui/control-reset'
+
 import { Fragment, useEffect, useMemo, useState, type ComponentProps, type ReactNode } from 'react'
 import Link from 'next/link'
 import { Bot, Check, ChevronDown, Copy, Hash, Laptop, Loader2, Lock, Monitor, Plus, Server, ShieldCheck, Sparkles, Terminal, Trash2, Users } from 'lucide-react'
@@ -7,17 +9,28 @@ import { Button, Input, ListboxSelect, Textarea, Toggle } from '@overlay/ui/prim
 import type { Computer, ComputerSize, SurfaceBinding, SurfaceChannelOption, SurfaceConnection, WorkspaceAgentCreatureShape } from '@overlay/workspace-contracts'
 import type { AgentEnvironmentResource } from '@overlay/api-client'
 import type { WorkspaceAgentVisibility } from '@overlay/workspace-contracts'
+import { ChatModelPicker, type ChatModelPickerProps } from '@overlay/chat-react'
 import { AGENT_TOOL_GROUPS } from '@/shared/agents/tool-groups'
+import { MODEL_RECOMMENDATIONS } from '@/shared/ai/gateway/model-data'
+import { isFreeTierChatModelId } from '@/shared/ai/gateway/model-types'
 import { generatedAgentSetupPrompt } from '../lib/byo-agent-setup'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { unwrapPaginatedData } from '@/shared/api/pagination'
 import { AgentAvatarPicker } from './AgentAvatarPicker'
+import { AgentComputerRecoveryNotice } from './AgentComputerRecoveryNotice'
 import { FieldLabel } from './InfoTip'
 import { useEditorLoad } from './EditorLoadGate'
 import type { SurfaceChannelPicker } from './use-agent-surfaces'
 
 export type AgentType = 'overlay' | 'byo'
 export type EnvironmentChoice = 'existing' | 'connect'
+export type AgentModelFieldProps = Pick<
+  ChatModelPickerProps,
+  'favoriteScope' | 'isFreeTier' | 'selectableTextModels' | 'textModelsLoading'
+> & {
+  isFreeTierWorkspace: boolean
+  modelPickerLabel: string
+}
 
 /**
  * Single-column stacked option row (radio behavior). One control per row,
@@ -33,14 +46,14 @@ export function OptionRow({ checked, onSelect, label, description, icon, labelle
   disabled?: boolean
 }) {
   return (
-    <button
+    <Button variant="ghost"
       type="button"
       role="radio"
       aria-checked={checked}
       aria-label={labelledBy ?? label}
       disabled={disabled}
       onClick={onSelect}
-      className={`flex w-full items-start gap-2.5 rounded-xl border p-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${checked ? 'border-(--muted) bg-(--surface-subtle)' : 'border-(--border) hover:bg-(--surface-subtle)'}`}
+      className={unstyledButton(`flex w-full items-start gap-2.5 rounded-xl border p-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${checked ? 'border-(--muted) bg-(--surface-subtle)' : 'border-(--border) hover:bg-(--surface-subtle)'}`)}
     >
       <span
         className={`relative mt-0.5 h-4 w-4 shrink-0 rounded-full border ${checked ? 'border-(--foreground)' : 'border-(--muted-light)'}`}
@@ -62,7 +75,7 @@ export function OptionRow({ checked, onSelect, label, description, icon, labelle
           </span>
         ) : null}
       </span>
-    </button>
+    </Button>
   )
 }
 
@@ -107,7 +120,7 @@ export function AgentTypeSelector({ value, onChange, hidden }: {
           onSelect={() => onChange('overlay')}
           icon={<Bot size={15} />}
           label="Create your own agent"
-          description="Runs on Overlay Cloud — pick a runtime below. No machines to connect."
+          description="Runs on Overlay Cloud. Pick a runtime below. No machines to connect."
         />
         <OptionRow
           checked={value === 'byo'}
@@ -137,7 +150,13 @@ const MEMORY_PREVIEW_COUNT = 5
  * Edit mode only; rows delete through the same endpoint as the Memories page,
  * and "view all" deep-links into that page pre-filtered to this agent.
  */
-export function AgentMemoriesSection({ agentPrincipalId }: { agentPrincipalId: string }) {
+export function AgentMemoriesSection({
+  agentPrincipalId,
+  sidebarCompact = false,
+}: {
+  agentPrincipalId: string
+  sidebarCompact?: boolean
+}) {
   const [rows, setRows] = useState<AgentMemoryRow[] | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   useEditorLoad(rows === null)
@@ -179,13 +198,15 @@ export function AgentMemoriesSection({ agentPrincipalId }: { agentPrincipalId: s
   const preview = rows.slice(0, MEMORY_PREVIEW_COUNT)
   return (
     <div>
-      <p className='text-xs font-medium'>
+      <p className={`text-xs font-medium ${sidebarCompact ? 'text-(--muted)' : ''}`}>
         Memories{' '}
         <span className='font-normal text-(--muted-light)'>
           {rows.length}
         </span>
       </p>
-      <div className="mt-1.5 overflow-hidden rounded-xl border border-(--border)">
+      <div className={`mt-1.5 overflow-hidden rounded-[10px] ${
+        sidebarCompact ? 'bg-(--surface-elevated)' : 'border border-(--border)'
+      }`}>
         {preview.map((row) => (
           <div
             key={row.memoryId}
@@ -204,19 +225,19 @@ export function AgentMemoriesSection({ agentPrincipalId }: { agentPrincipalId: s
               </p>
             </div>
             {row.canDelete && (
-              <button
+              <Button variant="ghost"
                 type="button"
                 onClick={() => void remove(row.memoryId)}
                 disabled={deletingId === row.memoryId}
                 aria-label="Delete memory"
-                className="shrink-0 text-(--muted-light) opacity-0 transition-opacity hover:text-red-400 group-hover:opacity-100 disabled:opacity-40"
+                className={unstyledButton(`shrink-0 text-(--muted-light) opacity-0 transition-opacity hover:text-red-400 group-hover:opacity-100 disabled:opacity-40`)}
               >
                 {deletingId === row.memoryId ? (
                   <Loader2 size={13} className='animate-spin' />
                 ) : (
                   <Trash2 size={13} />
                 )}
-              </button>
+              </Button>
             )}
           </div>
         ))}
@@ -231,17 +252,21 @@ export function AgentMemoriesSection({ agentPrincipalId }: { agentPrincipalId: s
   )
 }
 
-export function DangerZone({ mode, hasAgent, isDefaultMaster, busy, agentName, onArchive }: {
+export function DangerZone({ mode, hasAgent, isDefaultMaster, busy, agentName, onArchive, sidebarCompact = false }: {
   mode: 'new' | 'edit'
   hasAgent: boolean
   isDefaultMaster: boolean
   busy: boolean
   agentName: string
   onArchive(): void
+  sidebarCompact?: boolean
 }) {
   if (mode !== 'edit' || !hasAgent || isDefaultMaster) return null
   return (
-    <section className="rounded-xl border border-red-500/25 p-4">
+    <section className={sidebarCompact
+      ? 'rounded-[10px] bg-(--surface-subtle) p-3'
+      : 'rounded-xl border border-red-500/25 p-4'
+    }>
       <p className='text-xs font-medium text-(--foreground)'>
         Danger zone
       </p>
@@ -288,7 +313,7 @@ export function AccessSelector({ value, onChange }: { value: WorkspaceAgentVisib
       </div>
       <p className='mt-1.5 text-[11px] leading-4 text-(--muted)'>
         {value === 'creator'
-          ? 'Hidden from everyone else — reported as not found.'
+          ? 'Hidden from everyone else, reported as not found.'
           : 'Everyone in this workspace can see, chat with, or @-mention this agent.'}
       </p>
     </div>
@@ -395,11 +420,14 @@ function ProvisionedComputerCard({ computer, openBusy, lifecycleBusy, onOpenDesk
  * destructive-save warning. The group's own ToggleRow is the on/off control —
  * enabled means "this agent gets a computer".
  */
-export function AgentComputerSection({ enabled, size, onSizeChange, computer, openBusy, lifecycleBusy, onOpenDesktop, onTogglePower, onDelete, disabled }: {
+export function AgentComputerSection({ enabled, size, onSizeChange, computer, openBusy, lifecycleBusy, onOpenDesktop, onTogglePower, onDelete, loadError, provisionError, onRetryLoad, disabled }: {
   enabled: boolean
   size: ComputerSize
   onSizeChange(next: ComputerSize): void
   computer: Computer | null
+  loadError: string | null
+  provisionError: string | null
+  onRetryLoad(): void
   openBusy: boolean
   lifecycleBusy: 'start' | 'stop' | 'delete' | null
   onOpenDesktop(): void
@@ -407,7 +435,7 @@ export function AgentComputerSection({ enabled, size, onSizeChange, computer, op
   onDelete(): void
   disabled?: boolean
 }) {
-  if (!enabled && !computer) return null
+  if (!enabled && !computer && !loadError && !provisionError) return null
   return (
     <div className="space-y-3 border-b border-(--border) pb-3 pt-1 last:border-b-0">
       {enabled && !computer ? <ComputerSizePicker size={size} onSizeChange={onSizeChange} disabled={disabled} /> : null}
@@ -431,6 +459,11 @@ export function AgentComputerSection({ enabled, size, onSizeChange, computer, op
           Saving deletes this computer and its disk permanently.
         </p>
       ) : null}
+      <AgentComputerRecoveryNotice
+        loadError={loadError}
+        provisionError={provisionError}
+        onRetryLoad={onRetryLoad}
+      />
     </div>
   )
 }
@@ -442,7 +475,7 @@ export function AgentComputerSection({ enabled, size, onSizeChange, computer, op
  * every connect/bind control for guests and non-creators of personal agents.
  */
 export function AgentSurfacesSection({
-  agentName, hasAgent, loading, connections, bindings, canBind, canBindResolved, channelPicker, busyId, error, notice,
+  agentName, hasAgent, loading, connections, bindings, canBind, canBindResolved, channelPicker, busyId, error,
   onConnectSlack, onToggleChannelPicker, onSelectChannel, onRemoveBinding,
 }: {
   agentName: string
@@ -456,7 +489,6 @@ export function AgentSurfacesSection({
   channelPicker: SurfaceChannelPicker | null
   busyId: string | null
   error: string | null
-  notice: { kind: 'success' | 'error'; message: string } | null
   onConnectSlack(): void
   onToggleChannelPicker(connectionId: string): void
   onSelectChannel(connectionId: string, channel: SurfaceChannelOption): void
@@ -472,9 +504,6 @@ export function AgentSurfacesSection({
         Reachable on
         {loading ? <Loader2 size={12} className="animate-spin text-(--muted)" /> : null}
       </p>
-      {notice ? (
-        <p className={`mt-1 text-[11px] leading-4 ${notice.kind === 'error' ? 'text-red-500' : 'text-(--muted)'}`}>{notice.message}</p>
-      ) : null}
       <div className="mt-1.5">
         <div className="flex items-center gap-3 border-b border-(--border) py-2.5 last:border-b-0">
           <div className="min-w-0 flex-1">
@@ -511,19 +540,19 @@ export function AgentSurfacesSection({
                   <p className="text-xs font-medium text-(--foreground)">Slack · {connection.externalTeamName ?? 'Slack workspace'}</p>
                   {connection.status !== 'active' ? (
                     <p className="mt-0.5 text-[11px] leading-4 text-amber-600 dark:text-amber-400">
-                      {connection.status === 'degraded' ? 'Connection degraded — reconnect Slack to resume.' : 'Uninstalled from Slack — reconnect to resume.'}
+                      {connection.status === 'degraded' ? 'Connection degraded. Reconnect Slack to resume.' : 'Uninstalled from Slack. Reconnect to resume.'}
                     </p>
                   ) : null}
                 </div>
                 {canBind ? (
-                  <button
+                  <Button variant="ghost"
                     type="button"
                     onClick={() => onToggleChannelPicker(connection.id)}
                     disabled={!hasAgent || connection.status !== 'active'}
-                    className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-(--muted) transition-colors hover:text-(--foreground) disabled:cursor-not-allowed disabled:opacity-50"
+                    className={unstyledButton(`flex shrink-0 items-center gap-1 text-[11px] font-medium text-(--muted) transition-colors hover:text-(--foreground) disabled:cursor-not-allowed disabled:opacity-50`)}
                   >
                     <Plus size={11} />Add channel
-                  </button>
+                  </Button>
                 ) : null}
               </div>
 
@@ -538,14 +567,14 @@ export function AgentSurfacesSection({
                     </p>
                   </div>
                   {canBind ? (
-                    <button
+                    <Button variant="ghost"
                       type="button"
                       onClick={() => onRemoveBinding(binding.id)}
                       disabled={busyId !== null}
-                      className="shrink-0 text-[11px] text-(--muted) transition-colors hover:text-(--foreground) disabled:opacity-50"
+                      className={unstyledButton(`shrink-0 text-[11px] text-(--muted) transition-colors hover:text-(--foreground) disabled:opacity-50`)}
                     >
                       {busyId === binding.id ? 'Removing…' : 'Remove'}
-                    </button>
+                    </Button>
                   ) : null}
                 </div>
               ))}
@@ -574,7 +603,7 @@ export function AgentSurfacesSection({
                         disabled={busyId !== null}
                       />
                       <p className="mt-1.5 text-[11px] leading-4 text-(--muted)">
-                        The bot only answers in channels it has joined — invite it with /invite @Overlay.
+                        The bot only answers in channels it has joined. Invite it with /invite @Overlay.
                       </p>
                     </>
                   )}
@@ -586,14 +615,14 @@ export function AgentSurfacesSection({
 
         {canBind && slackConnections.length > 0 ? (
           <div className="border-b border-(--border) py-2.5 last:border-b-0">
-            <button
+            <Button variant="ghost"
               type="button"
               onClick={onConnectSlack}
               disabled={!hasAgent}
-              className="text-[11px] text-(--muted) transition-colors hover:text-(--foreground) disabled:opacity-50"
+              className={unstyledButton(`text-[11px] text-(--muted) transition-colors hover:text-(--foreground) disabled:opacity-50`)}
             >
               Connect another Slack workspace
-            </button>
+            </Button>
           </div>
         ) : null}
 
@@ -656,7 +685,7 @@ export function MasterAgentNotice() {
   )
 }
 
-export function AgentBehaviorFields({ agentType, connectedAgentsEnabled, computersAvailable, computer, instructions, onInstructionsChange, modelId, onModelChange, modelOptions, enabledToolGroups, onToggleToolGroup, advanced, onAdvancedChange, legacyHostedRuntime, adapterId, harnessOptions, onHarnessChange, environmentChoice, onEnvironmentChoiceChange, compatibleEnvironments, environmentsLoading, environmentId, onEnvironmentChange, workingDirectory, onWorkingDirectoryChange, selectedHarnessConnectable, environmentBusy, environmentError, command, copied, onCopyCommand, onBeginConnection, setupEnvironment, setupRoots, onSetupRootsChange, onApproveSetup }: {
+export function AgentBehaviorFields({ agentType, connectedAgentsEnabled, computersAvailable, computer, instructions, onInstructionsChange, modelId, onModelChange, modelField, enabledToolGroups, onToggleToolGroup, advanced, onAdvancedChange, legacyHostedRuntime, adapterId, harnessOptions, onHarnessChange, environmentChoice, onEnvironmentChoiceChange, compatibleEnvironments, environmentsLoading, environmentId, onEnvironmentChange, workingDirectory, onWorkingDirectoryChange, selectedHarnessConnectable, environmentBusy, environmentError, command, copied, onCopyCommand, onBeginConnection, setupEnvironment, setupRoots, onSetupRootsChange, onApproveSetup }: {
   agentType: AgentType
   connectedAgentsEnabled: boolean
   computersAvailable: boolean
@@ -665,7 +694,7 @@ export function AgentBehaviorFields({ agentType, connectedAgentsEnabled, compute
   onInstructionsChange(value: string): void
   modelId: string
   onModelChange(value: string): void
-  modelOptions: Array<{ value: string; label: string }>
+  modelField: AgentModelFieldProps
   enabledToolGroups: Set<string>
   onToggleToolGroup(groupId: string): void
   advanced: boolean
@@ -712,7 +741,7 @@ export function AgentBehaviorFields({ agentType, connectedAgentsEnabled, compute
         onInstructionsChange={onInstructionsChange}
         modelId={modelId}
         onModelChange={onModelChange}
-        modelOptions={modelOptions}
+        modelField={modelField}
         enabledToolGroups={enabledToolGroups}
         onToggleToolGroup={onToggleToolGroup}
         advanced={advanced}
@@ -757,39 +786,43 @@ export function AgentBehaviorFields({ agentType, connectedAgentsEnabled, compute
   )
 }
 
-export function OverlayAgentFields({ instructions, onInstructionsChange, modelId, onModelChange, modelOptions, enabledToolGroups, onToggleToolGroup, advanced, onAdvancedChange, computersAvailable = true, computer }: { instructions: string; onInstructionsChange(value: string): void; modelId: string; onModelChange(value: string): void; modelOptions: Array<{ value: string; label: string }>; enabledToolGroups: Set<string>; onToggleToolGroup(groupId: string): void; advanced: boolean; onAdvancedChange(value: boolean): void; computersAvailable?: boolean; computer?: Omit<ComponentProps<typeof AgentComputerSection>, 'enabled'> }) {
+export function OverlayAgentFields({ instructions, onInstructionsChange, modelId, onModelChange, modelField, enabledToolGroups, onToggleToolGroup, advanced, onAdvancedChange, computersAvailable = true, computer }: { instructions: string; onInstructionsChange(value: string): void; modelId: string; onModelChange(value: string): void; modelField: AgentModelFieldProps; enabledToolGroups: Set<string>; onToggleToolGroup(groupId: string): void; advanced: boolean; onAdvancedChange(value: boolean): void; computersAvailable?: boolean; computer?: Omit<ComponentProps<typeof AgentComputerSection>, 'enabled'> }) {
   const toolGroups = computersAvailable ? AGENT_TOOL_GROUPS : AGENT_TOOL_GROUPS.filter((group) => group.id !== 'computer')
   return (
     <>
       <label className='block text-xs font-medium'>
         Agent instructions
-        <textarea
+        <Textarea
           value={instructions}
           onChange={(event) => onInstructionsChange(event.target.value)}
           placeholder='Describe what this agent should do, how it should respond, and when it should stop.'
-          className='mt-1.5 min-h-36 w-full resize-y rounded-lg border border-(--border) bg-(--background) px-3 py-2.5 text-sm leading-5 outline-hidden focus:border-(--muted)'
+          className={unstyledTextarea(`mt-1.5 min-h-36 w-full resize-y rounded-lg border border-(--border) bg-(--background) px-3 py-2.5 text-sm leading-5 outline-hidden focus:border-(--muted)`)}
         />
       </label>
-      <label className='block text-xs font-medium'>
-        Model
-        <ListboxSelect
-          className='mt-1.5'
-          aria-label='Agent model'
-          value={
-            modelOptions.some((option) => option.value === modelId)
-              ? modelId
-              : (modelOptions[0]?.value ?? modelId)
-          }
-          options={
-            modelOptions.length > 0
-              ? modelOptions
-              : [{ value: modelId, label: modelId }]
-          }
-          onChange={onModelChange}
-          portal
-          buttonClassName='h-9 rounded-lg border border-(--border) bg-(--background) px-3 py-2 text-sm text-(--foreground)'
-        />
-      </label>
+      <div>
+        <p className='text-xs font-medium'>Model</p>
+        <div className='mt-1.5'>
+          <ChatModelPicker
+            placement='field'
+            modelPickerLabel={modelField.modelPickerLabel}
+            selectableTextModels={modelField.selectableTextModels}
+            selectedActModel={modelId}
+            onToggleTextModel={onModelChange}
+            isFreeTier={modelField.isFreeTier}
+            isFreeTierChatModelId={isFreeTierChatModelId}
+            favoriteScope={modelField.favoriteScope}
+            modelRecommendations={MODEL_RECOMMENDATIONS}
+            textModelsLoading={modelField.textModelsLoading}
+            generationMode='text'
+            lockedGenerationMode='text'
+          />
+        </div>
+        {modelField.isFreeTierWorkspace && !isFreeTierChatModelId(modelId) ? (
+          <p className='mt-1.5 text-[11px] leading-4 text-(--muted)'>
+            Free workspaces use free models. This agent will use Auto.
+          </p>
+        ) : null}
+      </div>
       <div>
         <p className="text-xs font-medium">Tools</p>
         <p className='mt-1 text-[11px] leading-4 text-(--muted)'>
@@ -812,14 +845,14 @@ export function OverlayAgentFields({ instructions, onInstructionsChange, modelId
           ))}
         </div>
       </div>
-      <button
+      <Button variant="ghost"
         type='button'
         onClick={() => onAdvancedChange(!advanced)}
-        className='flex items-center gap-1.5 text-xs font-medium text-(--muted)'
+        className={unstyledButton(`flex items-center gap-1.5 text-xs font-medium text-(--muted)`)}
       >
         Advanced{' '}
         <ChevronDown size={13} className={advanced ? 'rotate-180' : ''} />
-      </button>
+      </Button>
       {advanced ? (
         <div className='rounded-lg border border-(--border) bg-(--surface-subtle) p-3 text-[11px] leading-4 text-(--muted)'>
           Mention-first is enforced. One-to-one agent DMs invoke implicitly
@@ -969,8 +1002,8 @@ function SetupPromptPane({ setupPrompt, copiedPrompt, onCopyPrompt }: {
 }) {
   return (
     <div className="space-y-2">
-      <p className="text-[11px] leading-4 text-(--muted)">Paste this into a chat with the agent on this machine — it runs the connection command for you and keeps it alive.</p>
-      <div className="rounded-lg border border-(--border) bg-(--background) p-2.5"><pre className="max-h-44 overflow-y-auto whitespace-pre-wrap wrap-break-word px-0.5 font-mono text-[11px] leading-4 text-(--foreground)">{setupPrompt}</pre></div>
+      <p className="text-[11px] leading-4 text-(--muted)">Paste this into a chat with the agent on this machine. It runs the connection command for you and keeps it alive.</p>
+      <div className="rounded-lg border border-(--border) bg-(--background) p-2.5"><pre className="whitespace-pre-wrap wrap-break-word px-0.5 font-mono text-[11px] leading-4 text-(--foreground)">{setupPrompt}</pre></div>
       <Button variant="secondary" size="sm" onClick={onCopyPrompt} className="gap-1.5">{copiedPrompt ? <><Check size={13} /> Copied</> : <><Copy size={13} /> Copy prompt</>}</Button>
     </div>
   )
@@ -1000,13 +1033,13 @@ function ConnectMachineFields({ command, environmentBusy, onBeginConnection, set
       ) : (
         <div className="space-y-2.5">
           <div className="grid grid-cols-2 gap-1 rounded-lg bg-(--surface-subtle) p-1" role="radiogroup" aria-label="Setup mode">
-            <button type="button" role="radio" aria-checked={setupMode === 'paste'} onClick={() => onSetupModeChange('paste')} className={`flex items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] font-medium transition-colors ${setupMode === 'paste' ? 'bg-(--surface-elevated) text-(--foreground) shadow-xs' : 'text-(--muted) hover:text-(--foreground)'}`}><Sparkles size={12} /> Automatic setup</button>
-            <button type="button" role="radio" aria-checked={setupMode === 'manual'} onClick={() => onSetupModeChange('manual')} className={`flex items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] font-medium transition-colors ${setupMode === 'manual' ? 'bg-(--surface-elevated) text-(--foreground) shadow-xs' : 'text-(--muted) hover:text-(--foreground)'}`}><Terminal size={12} /> Manual setup</button>
+            <Button variant="ghost" type="button" role="radio" aria-checked={setupMode === 'paste'} onClick={() => onSetupModeChange('paste')} className={unstyledButton(`flex items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] font-medium transition-colors ${setupMode === 'paste' ? 'bg-(--surface-elevated) text-(--foreground) shadow-xs' : 'text-(--muted) hover:text-(--foreground)'}`)}><Sparkles size={12} /> Automatic setup</Button>
+            <Button variant="ghost" type="button" role="radio" aria-checked={setupMode === 'manual'} onClick={() => onSetupModeChange('manual')} className={unstyledButton(`flex items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] font-medium transition-colors ${setupMode === 'manual' ? 'bg-(--surface-elevated) text-(--foreground) shadow-xs' : 'text-(--muted) hover:text-(--foreground)'}`)}><Terminal size={12} /> Manual setup</Button>
           </div>
           {setupMode === 'paste' ? (
             <SetupPromptPane setupPrompt={setupPrompt} copiedPrompt={copiedPrompt} onCopyPrompt={onCopyPrompt} />
           ) : (
-            <div className="flex items-center gap-2 rounded-lg border border-(--border) bg-(--background) p-2"><code className="min-w-0 flex-1 overflow-x-auto px-1 text-[11px] text-(--foreground)">{command}</code><button type="button" aria-label="Copy connection command" onClick={onCopyCommand} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)">{copied ? <Check size={14} /> : <Copy size={14} />}</button></div>
+            <div className="flex items-center gap-2 rounded-lg border border-(--border) bg-(--background) p-2"><code className="min-w-0 flex-1 overflow-x-auto px-1 text-[11px] text-(--foreground)">{command}</code><Button variant="ghost" type="button" aria-label="Copy connection command" onClick={onCopyCommand} className={unstyledButton(`flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)`)}>{copied ? <Check size={14} /> : <Copy size={14} />}</Button></div>
           )}
         </div>
       )}
@@ -1049,7 +1082,7 @@ export function EnvironmentApprovalPanel({
       </div>
       <label className='block text-xs font-medium'>
         Approved project roots
-        <textarea
+        <Textarea
           value={roots}
           onChange={(event) => onRootsChange(event.target.value)}
           placeholder={
@@ -1057,7 +1090,7 @@ export function EnvironmentApprovalPanel({
               ? '/workspace'
               : '/Users/you/Projects'
           }
-          className='mt-1.5 min-h-20 w-full resize-y rounded-lg border border-(--border) bg-(--background) px-3 py-2 text-sm text-(--foreground) outline-hidden focus:border-(--muted)'
+          className={unstyledTextarea(`mt-1.5 min-h-20 w-full resize-y rounded-lg border border-(--border) bg-(--background) px-3 py-2 text-sm text-(--foreground) outline-hidden focus:border-(--muted)`)}
         />
       </label>
       <p className='text-[11px] leading-4 text-(--muted)'>
@@ -1075,4 +1108,3 @@ export function EnvironmentApprovalPanel({
     </div>
   )
 }
-

@@ -1,9 +1,12 @@
 'use client'
-
+import { Button, PanelResizeHandle } from '@overlay/ui/primitives'
+import { unstyledButton } from '@overlay/ui/control-reset'
 import type { CSSProperties, HTMLAttributes, ReactNode } from 'react'
 import { useEffect, useRef, useState } from 'react'
 import { X } from 'lucide-react'
 import { cn, usePresence } from '@overlay/ui'
+export { RightSidebar, RightSidebarToggle } from './components/RightSidebar'
+export type { RightSidebarTab } from './components/RightSidebar'
 
 export type AppScreenBodyPadding = 'none' | 'sm' | 'md' | 'lg'
 export type AppScreenBodyMaxWidth = 'none' | 'sm' | 'md' | 'lg' | 'xl'
@@ -21,8 +24,7 @@ export interface AppScreenShellProps extends HTMLAttributes<HTMLDivElement> {
   rightPanelMode?: 'docked' | 'floating'
   onRightPanelClose?: () => void
   /**
-   * Enables the drag handle on the panel's inner edge. Receives the width in
-   * pixels while dragging; the caller owns clamping to its own bounds.
+   * Controls the width externally. Without a callback the shell owns resize state.
    */
   onRightPanelResize?: (width: number) => void
   rightPanelOverlayLabel?: string
@@ -87,10 +89,10 @@ function RightPanelOverlay({
     visible ? 'opacity-100' : 'pointer-events-none opacity-0',
   )
   return onClose ? (
-    <button
+    <Button variant="ghost"
       type="button"
       aria-label="Close side panel"
-      className={className}
+      className={unstyledButton(className)}
       onClick={onClose}
     />
   ) : (
@@ -142,11 +144,11 @@ function ScreenRightPanel({
       <RightPanelOverlay visible={visible} onClose={onClose} />
       <aside
         className={cn(
-          'absolute right-0 z-30 flex min-h-0 w-full max-w-[min(24rem,100vw)] shrink-0 overflow-hidden bg-(--surface-elevated) transition-[transform,width,opacity] duration-300 ease-(--overlay-ease)',
+          'absolute right-0 z-30 flex min-h-0 w-full max-w-[min(24rem,100vw)] shrink-0 overflow-hidden bg-(--sidebar-surface) transition-[transform,width,opacity] duration-300 ease-(--overlay-ease)',
           resizing ? 'transition-none' : null,
           floating
             ? 'inset-y-2 right-2 max-w-[calc(100vw-1rem)] rounded-xl border border-(--border) bg-(--sidebar-surface) shadow-xl lg:max-w-none'
-            : 'inset-y-0 border-l border-(--border) shadow-2xl lg:static lg:z-auto lg:max-w-none lg:shadow-none',
+            : 'inset-y-0 shadow-2xl lg:relative lg:z-auto lg:max-w-none lg:shadow-none',
           rightPanelVisibilityClasses(visible, floating, widthClassName),
         )}
         style={widthStyle}
@@ -155,6 +157,7 @@ function ScreenRightPanel({
       >
         {onResize && visible ? (
           <PanelResizeHandle
+            className="hidden lg:block"
             width={typeof width === 'number' ? width : 0}
             onResize={onResize}
             onResizingChange={onResizingChange}
@@ -191,6 +194,9 @@ export function AppScreenShell({
   ...props
 }: AppScreenShellProps) {
   const rightPanelState = useRightPanelState(rightPanel, rightPanelOpen)
+  const [resizedWidth, setResizedWidth] = useState<number | null>(null)
+  const panelWidth = onRightPanelResize ? rightPanelWidth : resizedWidth ?? rightPanelWidth
+  const numericWidth = typeof panelWidth === 'number' ? panelWidth : { sm: 320, md: 384, lg: 448 }[panelWidth]
 
   return (
     <div
@@ -221,67 +227,16 @@ export function AppScreenShell({
             visible={rightPanelState.visible}
             floating={rightPanelMode === 'floating'}
             resizing={rightPanelState.resizing}
-            width={rightPanelWidth}
+            width={numericWidth}
             overlayLabel={rightPanelOverlayLabel}
             onClose={onRightPanelClose}
-            onResize={onRightPanelResize}
+            onResize={onRightPanelResize ?? setResizedWidth}
             onResizingChange={rightPanelState.setResizing}
           >
             {rightPanelState.content}
           </ScreenRightPanel>
         ) : null}
       </div>
-    </div>
-  )
-}
-
-/**
- * Drag handle on the panel's inner edge. Dragging left widens the panel, so the
- * delta is inverted. Pointer capture keeps the drag alive over the iframe or any
- * other content the cursor crosses, which a plain mousemove listener loses.
- */
-function PanelResizeHandle({
-  width,
-  onResize,
-  onResizingChange,
-}: {
-  width: number
-  onResize: (width: number) => void
-  onResizingChange: (resizing: boolean) => void
-}) {
-  const dragRef = useRef<{ startX: number; startWidth: number } | null>(null)
-
-  return (
-    <div
-      role="separator"
-      aria-orientation="vertical"
-      aria-label="Resize side panel"
-      className="group/resize absolute inset-y-0 left-0 z-40 hidden w-2 -translate-x-1 cursor-col-resize touch-none select-none lg:block"
-      onPointerDown={(event) => {
-        if (event.button !== 0) return
-        event.preventDefault()
-        // Fall back to the measured column when the caller uses a preset width.
-        const startWidth = width || event.currentTarget.parentElement?.clientWidth || 0
-        dragRef.current = { startX: event.clientX, startWidth }
-        event.currentTarget.setPointerCapture(event.pointerId)
-        onResizingChange(true)
-      }}
-      onPointerMove={(event) => {
-        const drag = dragRef.current
-        if (!drag) return
-        onResize(drag.startWidth + (drag.startX - event.clientX))
-      }}
-      onPointerUp={(event) => {
-        dragRef.current = null
-        event.currentTarget.releasePointerCapture(event.pointerId)
-        onResizingChange(false)
-      }}
-      onPointerCancel={() => {
-        dragRef.current = null
-        onResizingChange(false)
-      }}
-    >
-      <span className="pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-transparent transition-colors group-hover/resize:bg-(--muted-light)" />
     </div>
   )
 }
@@ -295,6 +250,7 @@ export interface AppScreenHeaderProps extends Omit<HTMLAttributes<HTMLDivElement
   tabs?: ReactNode
   search?: ReactNode
   actions?: ReactNode
+  menu?: ReactNode
   border?: boolean
 }
 
@@ -309,15 +265,15 @@ function AppScreenHeaderTitle({
     <div className="flex min-w-0 flex-1 items-center">
       {leading ? <div className="mr-2 shrink-0">{leading}</div> : null}
       <div className="min-w-0 flex-1">
-        <div className="flex min-w-0 items-center">
-          {title ? <h1 className="truncate text-sm font-medium text-(--foreground)">{title}</h1> : null}
+        <div className="flex min-w-0 items-baseline">
+          {title ? <h1 className="truncate text-sm font-medium leading-5 text-(--foreground)">{title}</h1> : null}
           {subtitle ? (
             <>
               <span className="mx-2 shrink-0 text-(--muted-light)">·</span>
               <span className="truncate text-sm text-(--muted)">{subtitle}</span>
             </>
           ) : null}
-          {metadata ? <span className="ml-2 shrink-0">{metadata}</span> : null}
+          {metadata ? <span className="ml-2 shrink-0 text-xs leading-5 text-(--muted)">{metadata}</span> : null}
         </div>
         {description ? (
           <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-(--muted)">{description}</p>
@@ -328,15 +284,9 @@ function AppScreenHeaderTitle({
 }
 
 export function AppScreenHeader({
-  title,
-  subtitle,
-  description,
-  leading,
-  metadata,
-  tabs,
-  search,
-  actions,
-  border = true,
+  title, subtitle, description, leading, metadata,
+  tabs, search, actions, menu,
+  border = false,
   className,
   children,
   ...props
@@ -354,22 +304,26 @@ export function AppScreenHeader({
         children
       ) : (
         <div className="flex min-w-0 flex-wrap items-center justify-between gap-2 md:flex-nowrap md:gap-4">
-          <AppScreenHeaderTitle
-            title={title}
-            subtitle={subtitle}
-            description={description}
-            leading={leading}
-            metadata={metadata}
-          />
-          {(search || actions) ? (
+          <div className="flex min-w-0 items-center gap-3">
+            <AppScreenHeaderTitle
+              title={title}
+              subtitle={subtitle}
+              description={description}
+              leading={leading}
+              metadata={metadata}
+            />
+          </div>
+          {(search || actions || tabs || menu) ? (
             <div className="flex max-w-full min-w-0 shrink-0 items-center gap-2 overflow-x-auto scrollbar-none md:overflow-visible [&::-webkit-scrollbar]:hidden">
               {search}
+              {tabs ? <div className="min-w-0 shrink overflow-x-auto scrollbar-none [&::-webkit-scrollbar]:hidden">{tabs}</div> : null}
               {actions}
+              {menu}
             </div>
           ) : null}
         </div>
       )}
-      {tabs ? <div className="min-w-0 overflow-x-auto">{tabs}</div> : null}
+      {children && tabs ? <div className="min-w-0 overflow-x-auto">{tabs}</div> : null}
     </header>
   )
 }
@@ -425,7 +379,7 @@ export function AppScreenBody({
 }
 
 export interface AppScreenSidePanelProps extends Omit<HTMLAttributes<HTMLElement>, 'title'> {
-  /** Optional fully composed header. Use AppScreenSidePanelHeader for parity with page headers. */
+  /** Optional composed header built from AppScreenSidePanelHeader, Title, Actions and Close. */
   header?: ReactNode
   title?: ReactNode
   description?: ReactNode
@@ -452,37 +406,15 @@ function AppScreenSidePanelDefaultHeader({
   compact: boolean
 }) {
   return (
-    <div
-      className={cn(
-        'flex shrink-0 items-center justify-between gap-3 border-b border-(--border)',
-        // Non-compact matches AppScreenHeader's height so the two borders
-        // read as one continuous divider across the screen and the panel.
-        compact ? 'h-11 min-h-11 px-3' : 'min-h-14 px-4 md:min-h-16',
-      )}
-    >
-      <div className="min-w-0">
-        {title ? <h2 className="truncate text-sm font-medium text-(--foreground)">{title}</h2> : null}
-        {description ? <p className="truncate text-xs text-(--muted)">{description}</p> : null}
-      </div>
+    <AppScreenSidePanelHeader compact={compact}>
+      <AppScreenSidePanelTitle title={title} description={description} />
       {(actions || onClose) ? (
-        <div className="flex shrink-0 items-center gap-1.5">
+        <AppScreenSidePanelActions>
           {actions}
-          {onClose ? (
-            <button
-              type="button"
-              aria-label={closeLabel}
-              className={cn(
-                'inline-flex items-center justify-center text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)',
-                compact ? 'h-7 w-7 rounded-md' : 'h-8 w-8 rounded-lg',
-              )}
-              onClick={onClose}
-            >
-              <X size={compact ? 14 : 16} strokeWidth={1.8} />
-            </button>
-          ) : null}
-        </div>
+          {onClose ? <AppScreenSidePanelClose label={closeLabel} onClose={onClose} /> : null}
+        </AppScreenSidePanelActions>
       ) : null}
-    </div>
+    </AppScreenSidePanelHeader>
   )
 }
 
@@ -502,7 +434,7 @@ export function AppScreenSidePanel({
   return (
     <section
       className={cn(
-        'flex h-full min-h-0 w-full flex-col bg-(--surface-elevated) text-(--foreground)',
+        'flex h-full min-h-0 w-full flex-col bg-(--sidebar-surface) text-(--foreground)',
         className,
       )}
       {...props}
@@ -523,21 +455,53 @@ export function AppScreenSidePanel({
 }
 
 /**
- * Header slot for right sidebars. Its vertical rhythm intentionally matches
- * AppScreenHeader so the divider remains continuous when a panel is docked.
+ * Right sidebar parts, composed like shadcn's sidebar: Header, Title, Actions and Close.
+ * The header has no divider and matches AppScreenHeader's height so titles line up across the screen.
  */
-export type AppScreenSidePanelHeaderProps = HTMLAttributes<HTMLElement>
+export interface AppScreenSidePanelHeaderProps extends HTMLAttributes<HTMLElement> {
+  compact?: boolean
+}
 
-export function AppScreenSidePanelHeader({ className, children, ...props }: AppScreenSidePanelHeaderProps) {
+export function AppScreenSidePanelHeader({ compact = false, className, children, ...props }: AppScreenSidePanelHeaderProps) {
   return (
     <header
+      data-slot="side-panel-header"
       className={cn(
-        'flex min-h-14 shrink-0 items-center justify-between gap-3 border-b border-(--border) px-3 py-2.5 md:min-h-16 md:py-3',
+        'flex shrink-0 items-center justify-between gap-3',
+        compact ? 'h-11 min-h-11 px-3' : 'min-h-14 px-3 py-2.5 md:min-h-16 md:py-3',
         className,
       )}
       {...props}
     >
       {children}
     </header>
+  )
+}
+
+export function AppScreenSidePanelTitle({ title, description }: { title?: ReactNode; description?: ReactNode }) {
+  return (
+    <div data-slot="side-panel-title" className="min-w-0">
+      {title ? <h2 className="truncate text-sm font-medium text-(--foreground)">{title}</h2> : null}
+      {description ? <p className="truncate text-xs text-(--muted)">{description}</p> : null}
+    </div>
+  )
+}
+
+export function AppScreenSidePanelActions({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
+  return <div data-slot="side-panel-actions" className={cn('flex shrink-0 items-center gap-1', className)} {...props} />
+}
+
+export function AppScreenSidePanelClose({ label, onClose }: { label: string; onClose: () => void }) {
+  return (
+    <Button
+      variant="ghost"
+      size="icon"
+      type="button"
+      aria-label={label}
+      onClick={onClose}
+      className="size-7 rounded-md text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)"
+    >
+      <X size={14} strokeWidth={1.8} />
+    </Button>
   )
 }

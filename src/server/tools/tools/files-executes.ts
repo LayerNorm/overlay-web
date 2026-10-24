@@ -202,6 +202,7 @@ export async function executeWriteFile(
       kind: 'upload',
       mimeType: mimeTypeFor(name),
       textContent: input.content,
+      ...(options.conversationId ? { conversationId: options.conversationId } : {}),
       ...(input.folderId ? { parentId: input.folderId } : {}),
     })
     if (!res.ok) return { success: false, error: await errorMessage(res, 'Failed to create file') }

@@ -1,14 +1,16 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react'
 import {
-  cloneOrphanModelThreadsMap,
-  cloneUiMessageThread,
-  createConversationUiState,
-  sameModelOrder,
-} from '@overlay/chat-core'
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type Dispatch,
+  type MutableRefObject,
+  type SetStateAction,
+} from 'react'
 import type { ReasoningLevel } from '@overlay/chat-core'
-import type { UIMessage } from '@/shared/chat/ai-ui-message'
 import {
   isFreeTierChatModelId,
   type GenerationMode,
@@ -23,20 +25,15 @@ import {
   getVideoModelsBySubMode,
 } from '@/shared/ai/gateway/model-data'
 import { normalizeChatModelSelection } from '@/shared/chat/chat-model-prefs'
+import { subscribeTourModelPicker } from '@/shared/onboarding/tour-model-picker'
 import { readableModelId } from './chat-runtime-helpers'
-import { safeSetLocalStorage, toggleModelSelection } from './model-selection-utils'
+import { safeSetLocalStorage } from './model-selection-utils'
 import {
   CHAT_GEN_MODE_KEY,
-  IMAGE_MODEL_SELECTION_MODE_KEY,
-  SELECTED_IMAGE_MODELS_KEY,
-  SELECTED_VIDEO_MODELS_KEY,
-  VIDEO_MODEL_SELECTION_MODE_KEY,
+  IMAGE_MODEL_KEY,
+  VIDEO_MODEL_KEY,
   VIDEO_SUB_MODE_KEY,
 } from '../chat-interface/constants'
-import type {
-  AskModelSelectionMode,
-  ConversationRuntime,
-} from '../chat-interface/types'
 
 type GatewayModel = {
   id: string
@@ -45,17 +42,42 @@ type GatewayModel = {
 }
 
 function useModelPickerState() {
-  const [showModelPicker, setShowModelPicker] = useState(false)
+  const [showModelPicker, setShowModelPickerState] = useState(false)
   const [showVideoSubModePicker, setShowVideoSubModePicker] = useState(false)
   const [hoveredModelId, setHoveredModelId] = useState<string | null>(null)
   const [modelQualitiesPos, setModelQualitiesPos] = useState<{ x: number; y: number } | null>(null)
   const modelPickerRef = useRef<HTMLDivElement>(null)
   const videoSubModePickerRef = useRef<HTMLDivElement>(null)
   const modelPickerListScrollRef = useRef<HTMLDivElement>(null)
+  const tourPickerWantedRef = useRef(false)
 
   useEffect(() => {
     if (showModelPicker) void import('@overlay/chat-react/model-qualities-panel')
   }, [showModelPicker])
+
+  // While the onboarding tour holds the picker open, closes are ignored — the
+  // tour's own Next click is an outside pointer-down on the popover and would
+  // otherwise dismiss it between steps.
+  const setShowModelPicker = useCallback<Dispatch<SetStateAction<boolean>>>(
+    (value) => {
+      setShowModelPickerState((prev) => {
+        const next = typeof value === 'function' ? value(prev) : value
+        return !next && tourPickerWantedRef.current ? prev : next
+      })
+    },
+    [],
+  )
+
+  // The onboarding tour keeps the picker open while its steps anchor to
+  // elements inside the open panel (e.g. the generation-mode toggle).
+  useEffect(
+    () =>
+      subscribeTourModelPicker((open) => {
+        tourPickerWantedRef.current = open
+        setShowModelPickerState(open)
+      }),
+    [],
+  )
 
   useEffect(() => {
     if (!showModelPicker) {
@@ -64,17 +86,6 @@ function useModelPickerState() {
       return
     }
   }, [showModelPicker])
-
-  useEffect(() => {
-    function openPicker() { setShowModelPicker(true) }
-    function closePicker() { setShowModelPicker(false) }
-    window.addEventListener('overlay:tour:open-model-picker', openPicker)
-    window.addEventListener('overlay:tour:close-model-picker', closePicker)
-    return () => {
-      window.removeEventListener('overlay:tour:open-model-picker', openPicker)
-      window.removeEventListener('overlay:tour:close-model-picker', closePicker)
-    }
-  }, [])
 
   useEffect(() => {
     if (!showVideoSubModePicker) return
@@ -114,76 +125,20 @@ function useModelPickerState() {
 }
 
 function useMediaModelSelection({
-  generationMode,
-  imageModelSelectionMode,
   isActiveLoading,
-  isFreeTier,
-  selectedImageModels,
   selectedVideoModels,
-  setImageModelSelectionMode,
   setSelectedImageModels,
   setSelectedVideoModels,
   setShowModelPicker,
-  setVideoModelSelectionMode,
   setVideoSubMode,
-  videoModelSelectionMode,
 }: {
-  generationMode: GenerationMode
-  imageModelSelectionMode: AskModelSelectionMode
   isActiveLoading: boolean
-  isFreeTier: boolean
-  selectedImageModels: string[]
   selectedVideoModels: string[]
-  setImageModelSelectionMode: (mode: AskModelSelectionMode) => void
   setSelectedImageModels: (modelIds: string[]) => void
   setSelectedVideoModels: (modelIds: string[]) => void
   setShowModelPicker: (value: boolean) => void
-  setVideoModelSelectionMode: (mode: AskModelSelectionMode) => void
   setVideoSubMode: (mode: VideoSubMode) => void
-  videoModelSelectionMode: AskModelSelectionMode
 }) {
-  const handleImageModelSelectionModeChange = useCallback((next: AskModelSelectionMode) => {
-    if (isActiveLoading || generationMode !== 'image') return
-    if (next === imageModelSelectionMode) return
-    if (isFreeTier && next === 'multiple') return
-    safeSetLocalStorage(IMAGE_MODEL_SELECTION_MODE_KEY, next)
-    setImageModelSelectionMode(next)
-    if (next === 'single' && selectedImageModels.length > 1) {
-      const one = [selectedImageModels[0]!]
-      setSelectedImageModels(one)
-      safeSetLocalStorage(SELECTED_IMAGE_MODELS_KEY, JSON.stringify(one))
-    }
-  }, [
-    generationMode,
-    imageModelSelectionMode,
-    isActiveLoading,
-    isFreeTier,
-    selectedImageModels,
-    setImageModelSelectionMode,
-    setSelectedImageModels,
-  ])
-
-  const handleVideoModelSelectionModeChange = useCallback((next: AskModelSelectionMode) => {
-    if (isActiveLoading || generationMode !== 'video') return
-    if (next === videoModelSelectionMode) return
-    if (isFreeTier && next === 'multiple') return
-    safeSetLocalStorage(VIDEO_MODEL_SELECTION_MODE_KEY, next)
-    setVideoModelSelectionMode(next)
-    if (next === 'single' && selectedVideoModels.length > 1) {
-      const one = [selectedVideoModels[0]!]
-      setSelectedVideoModels(one)
-      safeSetLocalStorage(SELECTED_VIDEO_MODELS_KEY, JSON.stringify(one))
-    }
-  }, [
-    generationMode,
-    isActiveLoading,
-    isFreeTier,
-    selectedVideoModels,
-    setSelectedVideoModels,
-    setVideoModelSelectionMode,
-    videoModelSelectionMode,
-  ])
-
   const handleVideoSubModeChange = useCallback((subMode: VideoSubMode) => {
     if (isActiveLoading) return
     setVideoSubMode(subMode)
@@ -193,299 +148,131 @@ function useMediaModelSelection({
     const selectedVideoModelSet = new Set(selectedVideoModels)
     if (first && !models.some((model) => selectedVideoModelSet.has(model.id))) {
       setSelectedVideoModels([first])
-      safeSetLocalStorage(SELECTED_VIDEO_MODELS_KEY, JSON.stringify([first]))
+      safeSetLocalStorage(VIDEO_MODEL_KEY, first)
     }
   }, [isActiveLoading, selectedVideoModels, setSelectedVideoModels, setVideoSubMode])
 
-  const toggleImageModelInPicker = useCallback((modelId: string) => {
+  const selectImageModelInPicker = useCallback((modelId: string) => {
     if (isActiveLoading) return
-    const next = toggleModelSelection(selectedImageModels, modelId, imageModelSelectionMode)
-    if (sameModelOrder(next, selectedImageModels)) return
+    const next = [modelId]
     setSelectedImageModels(next)
-    safeSetLocalStorage(SELECTED_IMAGE_MODELS_KEY, JSON.stringify(next))
-    if (imageModelSelectionMode === 'single') setShowModelPicker(false)
-  }, [
-    imageModelSelectionMode,
-    isActiveLoading,
-    selectedImageModels,
-    setSelectedImageModels,
-    setShowModelPicker,
-  ])
+    safeSetLocalStorage(IMAGE_MODEL_KEY, next[0] ?? '')
+    setShowModelPicker(false)
+  }, [isActiveLoading, setSelectedImageModels, setShowModelPicker])
 
-  const toggleVideoModelInPicker = useCallback((modelId: string) => {
+  const selectVideoModelInPicker = useCallback((modelId: string) => {
     if (isActiveLoading) return
-    const next = toggleModelSelection(selectedVideoModels, modelId, videoModelSelectionMode)
-    if (sameModelOrder(next, selectedVideoModels)) return
+    const next = [modelId]
     setSelectedVideoModels(next)
-    safeSetLocalStorage(SELECTED_VIDEO_MODELS_KEY, JSON.stringify(next))
-    if (videoModelSelectionMode === 'single') setShowModelPicker(false)
-  }, [
-    isActiveLoading,
-    selectedVideoModels,
-    setSelectedVideoModels,
-    setShowModelPicker,
-    videoModelSelectionMode,
-  ])
+    safeSetLocalStorage(VIDEO_MODEL_KEY, next[0] ?? '')
+    setShowModelPicker(false)
+  }, [isActiveLoading, setSelectedVideoModels, setShowModelPicker])
 
   return {
-    handleImageModelSelectionModeChange,
-    handleVideoModelSelectionModeChange,
     handleVideoSubModeChange,
-    toggleImageModelInPicker,
-    toggleVideoModelInPicker,
+    selectImageModelInPicker,
+    selectVideoModelInPicker,
   }
 }
 
 function useTextModelSelection({
   activeChatId,
-  askModelSelectionMode,
   chatPrefsHydrated,
-  generationMode,
-  hasAutomationContext,
-  isFreeTier,
   isTemporaryChat,
   selectedActModel,
   selectedModels,
-  setAskModelSelectionMode,
   setSelectedActModel,
   setSelectedModels,
   setShowModelPicker,
-  snapshotCurrentAskThreadsForModelPicker,
   updateSettings,
   userAskModelOverrideRef,
 }: {
   activeChatId: string | null
-  askModelSelectionMode: AskModelSelectionMode
   chatPrefsHydrated: boolean
-  generationMode: GenerationMode
-  hasAutomationContext: boolean
-  isFreeTier: boolean
   isTemporaryChat: boolean
   selectedActModel: string
   selectedModels: string[]
-  setAskModelSelectionMode: (mode: AskModelSelectionMode) => void
   setSelectedActModel: (modelId: string) => void
   setSelectedModels: (modelIds: string[]) => void
   setShowModelPicker: (value: boolean) => void
-  snapshotCurrentAskThreadsForModelPicker: () => void
   updateSettings: (settings: { defaultAskModelIds: string[]; defaultActModelId: string }) => void
   userAskModelOverrideRef: MutableRefObject<boolean>
 }) {
   const isOnNewChatSurface = !activeChatId && !isTemporaryChat
-  const persistNewChatAskModels = useCallback((ids: string[]) => {
+  const persistNewChatModel = useCallback((id: string) => {
     if (!isOnNewChatSurface) return
-    const normalized = normalizeChatModelSelection({ askModelIds: ids })
+    const normalized = normalizeChatModelSelection({ askModelIds: [id], actModelId: id })
     void updateSettings({
       defaultAskModelIds: normalized.askModelIds,
       defaultActModelId: normalized.actModelId,
     })
   }, [isOnNewChatSurface, updateSettings])
 
-  const persistNewChatActModel = useCallback((id: string) => {
-    if (!isOnNewChatSurface) return
-    const normalized = normalizeChatModelSelection({ askModelIds: selectedModels, actModelId: id })
-    void updateSettings({
-      defaultAskModelIds: normalized.askModelIds,
-      defaultActModelId: normalized.actModelId,
-    })
-  }, [isOnNewChatSurface, selectedModels, updateSettings])
-
   useEffect(() => {
     if (!chatPrefsHydrated) return
-    if (
-      userAskModelOverrideRef.current &&
-      askModelSelectionMode === 'single' &&
-      selectedModels.length === 1 &&
-      selectedModels[0] === selectedActModel
-    ) {
-      return
-    }
+    const selectedModel = selectedModels[0] ?? selectedActModel
     const normalized = normalizeChatModelSelection({
-      askModelIds:
-        askModelSelectionMode === 'single'
-          ? [selectedActModel]
-          : selectedModels,
+      askModelIds: [selectedModel],
       actModelId: selectedActModel,
     })
-    const resolvedAskIds =
-      askModelSelectionMode === 'single'
-        ? [normalized.actModelId]
-        : normalized.askModelIds
     const selectionChanged =
       normalized.actModelId !== selectedActModel ||
-      !sameModelOrder(resolvedAskIds, selectedModels)
+      normalized.askModelIds.length !== selectedModels.length ||
+      normalized.askModelIds[0] !== selectedModels[0]
 
     if (selectionChanged) {
-      // Selection defaults propagate upward by design (single source of truth).
-      // react-doctor-disable-next-line react-doctor/no-pass-live-state-to-parent, react-doctor/no-pass-data-to-parent
-      setSelectedModels(resolvedAskIds)
-      // react-doctor-disable-next-line react-doctor/no-pass-live-state-to-parent, react-doctor/no-pass-data-to-parent
+      setSelectedModels(normalized.askModelIds)
       setSelectedActModel(normalized.actModelId)
-      // react-doctor-disable-next-line react-doctor/no-pass-live-state-to-parent, react-doctor/no-pass-data-to-parent
-      if (askModelSelectionMode === 'multiple') {
-        // react-doctor-disable-next-line react-doctor/no-pass-live-state-to-parent, react-doctor/no-pass-data-to-parent
-        setAskModelSelectionMode(
-          resolvedAskIds.length > 1 ? 'multiple' : 'single',
-        )
-      }
     }
   }, [
-    askModelSelectionMode,
     chatPrefsHydrated,
     selectedActModel,
     selectedModels,
-    setAskModelSelectionMode,
     setSelectedActModel,
     setSelectedModels,
-    userAskModelOverrideRef,
-  ])
-
-  const handleTextModelSelectionModeChange = useCallback((next: AskModelSelectionMode) => {
-    if (generationMode !== 'text') return
-    if (next === askModelSelectionMode) return
-    if (isFreeTier && next === 'multiple') return
-    if (hasAutomationContext && next === 'multiple') return
-    userAskModelOverrideRef.current = true
-    snapshotCurrentAskThreadsForModelPicker()
-    setAskModelSelectionMode(next)
-    if (next === 'single' && selectedModels.length > 1) {
-      const one = [selectedModels[0]!]
-      setSelectedModels(one)
-      setSelectedActModel(one[0]!)
-      persistNewChatAskModels(one)
-      persistNewChatActModel(one[0]!)
-    } else if (next === 'multiple' && selectedModels.length > 0) {
-      setSelectedActModel(selectedModels[0]!)
-      persistNewChatActModel(selectedModels[0]!)
-    }
-  }, [
-    askModelSelectionMode,
-    generationMode,
-    hasAutomationContext,
-    isFreeTier,
-    persistNewChatActModel,
-    persistNewChatAskModels,
-    selectedModels,
-    setAskModelSelectionMode,
-    setSelectedActModel,
-    setSelectedModels,
-    snapshotCurrentAskThreadsForModelPicker,
     userAskModelOverrideRef,
   ])
 
   const toggleTextModelInPicker = useCallback((modelId: string) => {
-    if (isOnNewChatSurface) {
-      userAskModelOverrideRef.current = true
-    }
-    snapshotCurrentAskThreadsForModelPicker()
-    if (askModelSelectionMode === 'single') {
-      const next = toggleModelSelection(selectedModels, modelId, askModelSelectionMode)
-      if (sameModelOrder(next, selectedModels) && selectedActModel === modelId) return
-      setSelectedActModel(modelId)
-      setSelectedModels(next)
-      persistNewChatActModel(modelId)
-      persistNewChatAskModels(next)
-      setShowModelPicker(false)
-      return
-    }
-    const next = toggleModelSelection(selectedModels, modelId, askModelSelectionMode)
-    if (sameModelOrder(next, selectedModels)) return
-    setSelectedModels(next)
-    if (!next.includes(selectedActModel)) {
-      setSelectedActModel(next[0]!)
-      persistNewChatActModel(next[0]!)
-    } else if (next.length === 1) {
-      setSelectedActModel(modelId)
-      persistNewChatActModel(modelId)
-    }
-    persistNewChatAskModels(next)
+    userAskModelOverrideRef.current = isOnNewChatSurface
+    setSelectedActModel(modelId)
+    setSelectedModels([modelId])
+    persistNewChatModel(modelId)
+    setShowModelPicker(false)
   }, [
-    askModelSelectionMode,
     isOnNewChatSurface,
-    persistNewChatActModel,
-    persistNewChatAskModels,
-    selectedActModel,
-    selectedModels,
+    persistNewChatModel,
     setSelectedActModel,
     setSelectedModels,
     setShowModelPicker,
-    snapshotCurrentAskThreadsForModelPicker,
     userAskModelOverrideRef,
   ])
 
   return {
-    handleTextModelSelectionModeChange,
     toggleTextModelInPicker,
   }
 }
 
-function snapshotAskThreadsForModelPicker({
-  activeChatIdRef,
-  activeRuntime,
-  exchangeGenTypes,
-  exchangeModels,
-  isTemporaryChat,
-  selectedModels,
-}: {
-  activeChatIdRef: MutableRefObject<string | null>
-  activeRuntime: ConversationRuntime
-  exchangeGenTypes: ('text' | 'image' | 'video')[]
-  exchangeModels: string[][]
-  isTemporaryChat: boolean
-  selectedModels: string[]
-}) {
-  if (!activeChatIdRef.current && !isTemporaryChat) return
-  const latestTextIdx = (() => {
-    for (let index = exchangeModels.length - 1; index >= 0; index -= 1) {
-      if ((exchangeGenTypes[index] ?? 'text') === 'text') return index
-    }
-    return -1
-  })()
-  const threadModelOrder =
-    latestTextIdx >= 0 && exchangeModels[latestTextIdx]?.length
-      ? exchangeModels[latestTextIdx]!
-      : selectedModels
-  const nextOrphans = cloneOrphanModelThreadsMap(activeRuntime.ui.orphanModelThreads)
-  threadModelOrder.slice(0, 4).forEach((modelId, slotIdx) => {
-    const messages = activeRuntime.askChats[slotIdx]?.messages as UIMessage[] | undefined
-    if (messages?.length) {
-      nextOrphans.set(modelId, cloneUiMessageThread(messages))
-    }
-  })
-  activeRuntime.ui = createConversationUiState({
-    ...activeRuntime.ui,
-    orphanModelThreads: nextOrphans,
-  })
-}
-
 function resolveModelPickerLabel({
-  askModelSelectionMode,
   gatewayCatalogModels,
   gatewayModelsLoading,
   generationMode,
   selectedActModel,
   selectedImageModels,
-  selectedModels,
   selectedVideoModels,
 }: {
-  askModelSelectionMode: AskModelSelectionMode
   gatewayCatalogModels: GatewayModel[]
   gatewayModelsLoading: boolean
   generationMode: GenerationMode
   selectedActModel: string
   selectedImageModels: string[]
-  selectedModels: string[]
   selectedVideoModels: string[]
 }): string {
   if (generationMode === 'image') {
-    return selectedImageModels.length === 1
-      ? (IMAGE_MODELS.find((model) => model.id === selectedImageModels[0])?.name ?? 'Select model')
-      : `${selectedImageModels.length} models`
+    return IMAGE_MODELS.find((model) => model.id === selectedImageModels[0])?.name ?? 'Select model'
   }
   if (generationMode === 'video') {
-    return selectedVideoModels.length === 1
-      ? (VIDEO_MODELS.find((model) => model.id === selectedVideoModels[0])?.name ?? 'Select model')
-      : `${selectedVideoModels.length} models`
+    return VIDEO_MODELS.find((model) => model.id === selectedVideoModels[0])?.name ?? 'Select model'
   }
   const selectedGatewayModelName = gatewayCatalogModels.find(
     (model) => model.id === selectedActModel || model.gatewayId === selectedActModel,
@@ -494,23 +281,15 @@ function resolveModelPickerLabel({
   const selectedTextModelName =
     selectedGatewayModelName ||
     (registeredModelName !== selectedActModel ? registeredModelName : readableModelId(selectedActModel))
-  return askModelSelectionMode === 'multiple' && selectedModels.length > 1
-    ? `${selectedModels.length} models`
-    : (selectedTextModelName || (gatewayModelsLoading ? 'Loading models...' : 'Select model'))
+  return selectedTextModelName || (gatewayModelsLoading ? 'Loading models...' : 'Select model')
 }
 
 export function useChatModelSelectionController({
   activeChatId,
-  activeChatIdRef,
-  activeRuntime,
-  askModelSelectionMode,
   chatPrefsHydrated,
-  exchangeGenTypes,
-  exchangeModels,
   gatewayCatalogModels,
   gatewayModelsLoading,
   generationMode,
-  hasAutomationContext,
   isActiveLoading,
   isFreeTier,
   isTemporaryChat,
@@ -521,33 +300,22 @@ export function useChatModelSelectionController({
   selectedImageModels,
   selectedModels,
   selectedVideoModels,
-  setAskModelSelectionMode,
   setGenerationChip,
   setGenerationMode,
-  setImageModelSelectionMode,
   setSelectedActModel,
   setSelectedImageModels,
   setSelectedModels,
   setSelectedVideoModels,
-  setVideoModelSelectionMode,
   setVideoSubMode,
   updateSettings,
   userAskModelOverrideRef,
-  videoModelSelectionMode,
   videoSubMode,
-  imageModelSelectionMode,
 }: {
   activeChatId: string | null
-  activeChatIdRef: MutableRefObject<string | null>
-  activeRuntime: ConversationRuntime
-  askModelSelectionMode: AskModelSelectionMode
   chatPrefsHydrated: boolean
-  exchangeGenTypes: ('text' | 'image' | 'video')[]
-  exchangeModels: string[][]
   gatewayCatalogModels: GatewayModel[]
   gatewayModelsLoading: boolean
   generationMode: GenerationMode
-  hasAutomationContext: boolean
   isActiveLoading: boolean
   isFreeTier: boolean
   isTemporaryChat: boolean
@@ -558,21 +326,16 @@ export function useChatModelSelectionController({
   selectedImageModels: string[]
   selectedModels: string[]
   selectedVideoModels: string[]
-  setAskModelSelectionMode: (mode: AskModelSelectionMode) => void
   setGenerationChip: (mode: 'image' | 'video' | null) => void
   setGenerationMode: (mode: GenerationMode | ((prev: GenerationMode) => GenerationMode)) => void
-  setImageModelSelectionMode: (mode: AskModelSelectionMode) => void
   setSelectedActModel: (modelId: string) => void
   setSelectedImageModels: (modelIds: string[]) => void
   setSelectedModels: (modelIds: string[]) => void
   setSelectedVideoModels: (modelIds: string[]) => void
-  setVideoModelSelectionMode: (mode: AskModelSelectionMode) => void
   setVideoSubMode: (mode: VideoSubMode) => void
   updateSettings: (settings: { defaultAskModelIds: string[]; defaultActModelId: string }) => void
   userAskModelOverrideRef: MutableRefObject<boolean>
-  videoModelSelectionMode: AskModelSelectionMode
   videoSubMode: VideoSubMode
-  imageModelSelectionMode: AskModelSelectionMode
 }) {
   const {
     hoveredModelId,
@@ -594,84 +357,43 @@ export function useChatModelSelectionController({
   }, [setGenerationChip, setGenerationMode])
 
   const {
-    handleImageModelSelectionModeChange,
-    handleVideoModelSelectionModeChange,
     handleVideoSubModeChange,
-    toggleImageModelInPicker,
-    toggleVideoModelInPicker,
+    selectImageModelInPicker,
+    selectVideoModelInPicker,
   } = useMediaModelSelection({
-    generationMode,
-    imageModelSelectionMode,
     isActiveLoading,
-    isFreeTier,
-    selectedImageModels,
     selectedVideoModels,
-    setImageModelSelectionMode,
     setSelectedImageModels,
     setSelectedVideoModels,
     setShowModelPicker,
-    setVideoModelSelectionMode,
     setVideoSubMode,
-    videoModelSelectionMode,
   })
 
-  const snapshotCurrentAskThreadsForModelPicker = useCallback(() => {
-    snapshotAskThreadsForModelPicker({
-      activeChatIdRef,
-      activeRuntime,
-      exchangeGenTypes,
-      exchangeModels,
-      isTemporaryChat,
-      selectedModels,
-    })
-  }, [
-    activeChatIdRef,
-    activeRuntime,
-    exchangeGenTypes,
-    exchangeModels,
-    isTemporaryChat,
-    selectedModels,
-  ])
-
-  const {
-    handleTextModelSelectionModeChange,
-    toggleTextModelInPicker,
-  } = useTextModelSelection({
+  const { toggleTextModelInPicker } = useTextModelSelection({
     activeChatId,
-    askModelSelectionMode,
     chatPrefsHydrated,
-    generationMode,
-    hasAutomationContext,
-    isFreeTier,
     isTemporaryChat,
     selectedActModel,
     selectedModels,
-    setAskModelSelectionMode,
     setSelectedActModel,
     setSelectedModels,
     setShowModelPicker,
-    snapshotCurrentAskThreadsForModelPicker,
     updateSettings,
     userAskModelOverrideRef,
   })
 
   const modelPickerLabel = resolveModelPickerLabel({
-    askModelSelectionMode,
     gatewayCatalogModels,
     gatewayModelsLoading,
     generationMode,
     selectedActModel,
     selectedImageModels,
-    selectedModels,
     selectedVideoModels,
   })
 
   const headerModelProps = useMemo(() => ({
-    askModelSelectionMode,
     getChatModelDisplayName,
-    hasAutomationContext,
     hoveredModelId,
-    imageModelSelectionMode,
     imageModels: IMAGE_MODELS,
     isFreeTier,
     isFreeTierChatModelId,
@@ -682,16 +404,13 @@ export function useChatModelSelectionController({
     reasoning,
     onHoveredModelChange,
     onReasoningChange,
-    onImageModelSelectionModeChange: handleImageModelSelectionModeChange,
     onSetShowModelPicker: setShowModelPicker,
     onSetShowVideoSubModePicker: setShowVideoSubModePicker,
-    onTextModelSelectionModeChange: handleTextModelSelectionModeChange,
-    onToggleImageModel: toggleImageModelInPicker,
+    onSelectImageModel: selectImageModelInPicker,
     onToggleModelPicker: () => setShowModelPicker((value) => !value),
     onToggleTextModel: toggleTextModelInPicker,
-    onToggleVideoModel: toggleVideoModelInPicker,
+    onSelectVideoModel: selectVideoModelInPicker,
     onToggleVideoSubModePicker: () => setShowVideoSubModePicker((value) => !value),
-    onVideoModelSelectionModeChange: handleVideoModelSelectionModeChange,
     onVideoSubModeChange: handleVideoSubModeChange,
     resolveModel: getModel,
     selectableTextModels,
@@ -702,20 +421,13 @@ export function useChatModelSelectionController({
     showModelPicker,
     showVideoSubModePicker,
     textModelsLoading: gatewayModelsLoading,
-    videoModelSelectionMode,
     videoModels: getVideoModelsBySubMode(videoSubMode),
     videoSubMode,
     videoSubModePickerRef,
   }), [
-    askModelSelectionMode,
     gatewayModelsLoading,
-    handleImageModelSelectionModeChange,
-    handleTextModelSelectionModeChange,
-    handleVideoModelSelectionModeChange,
     handleVideoSubModeChange,
-    hasAutomationContext,
     hoveredModelId,
-    imageModelSelectionMode,
     isFreeTier,
     modelPickerLabel,
     modelQualitiesPos,
@@ -733,10 +445,9 @@ export function useChatModelSelectionController({
     setShowVideoSubModePicker,
     showModelPicker,
     showVideoSubModePicker,
-    toggleImageModelInPicker,
+    selectImageModelInPicker,
     toggleTextModelInPicker,
-    toggleVideoModelInPicker,
-    videoModelSelectionMode,
+    selectVideoModelInPicker,
     videoSubMode,
     videoSubModePickerRef,
   ])
@@ -744,7 +455,6 @@ export function useChatModelSelectionController({
   return {
     handleModeChange,
     headerModelProps,
-    snapshotCurrentAskThreadsForModelPicker,
     setGenerationMode,
     setShowModelPicker,
   }

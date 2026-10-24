@@ -1,4 +1,6 @@
 'use client'
+import { unstyledButton, unstyledInput } from '@overlay/ui/control-reset'
+import { Button, Input } from '@overlay/ui/primitives'
 
 import { useState } from 'react'
 import {
@@ -63,16 +65,16 @@ export function SignInForm({ redirectTo, onClose, ssoEnabled = true }: SignInFor
       {showSso ? (
         <>
           {ssoProviders.map((provider) => (
-            <button
+            <Button variant="ghost"
               key={provider.id}
               type="button"
               onClick={() => handleSSO(provider.id)}
               disabled={ssoLoading !== null}
-              className={ssoBtn}
+              className={unstyledButton(ssoBtn)}
             >
               <SsoProviderIcon icon={provider.icon} />
               {ssoLoading === provider.id ? 'Redirecting…' : provider.label}
-            </button>
+            </Button>
           ))}
 
           {showEmail ? (
@@ -90,34 +92,34 @@ export function SignInForm({ redirectTo, onClose, ssoEnabled = true }: SignInFor
 
       {showEmail ? (
       <div className="flex gap-2">
-        <input
+        <Input
           type="email"
           aria-label="Email address"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') handleEmailContinue() }}
           placeholder="Enter your email"
-          className="min-w-0 flex-1 rounded-xl border border-(--border) bg-(--surface-elevated) px-3 py-2.5 text-sm text-(--foreground) placeholder:text-(--muted) outline-hidden focus:border-(--muted) transition-colors"
+          className={unstyledInput(`min-w-0 flex-1 rounded-xl border border-(--border) bg-(--surface-elevated) px-3 py-2.5 text-sm text-(--foreground) placeholder:text-(--muted) outline-hidden focus:border-(--muted) transition-colors`)}
         />
-        <button
+        <Button variant="secondary" size="lg"
           type="button"
           onClick={handleEmailContinue}
-          className="rounded-xl border border-(--border) bg-(--surface-subtle) px-3 py-2.5 text-sm font-medium text-(--foreground) transition-colors hover:bg-(--surface-elevated) whitespace-nowrap"
+ className="whitespace-nowrap"
         >
           Continue
-        </button>
+        </Button>
       </div>
       ) : null}
 
       {onClose && (
         <div className="pt-1 text-center">
-          <button
+          <Button variant="ghost"
             type="button"
             onClick={onClose}
-            className="text-xs text-(--muted) hover:text-(--foreground) transition-colors"
+            className={unstyledButton(`text-xs text-(--muted) hover:text-(--foreground) transition-colors`)}
           >
             Close
-          </button>
+          </Button>
         </div>
       )}
     </div>

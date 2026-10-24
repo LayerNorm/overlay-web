@@ -6,27 +6,34 @@ import {
   eventBatchSchema,
   OVERLAY_AGENT_PROTOCOL_VERSION,
   runCredentialsResponseSchema,
-  type AgentHostCommand,
+  driveCredentialsRequestSchema,
+  driveCredentialsResponseSchema,
+  type DriveCredentialsRequest,
+  type DriveCredentialsResponse,
   type CommandAcknowledgement,
   type EventAcknowledgement,
   type EventBatch,
   type HostCapabilities,
+  type CommandPollResponse,
   type ArtifactUploadRequest,
   type ArtifactUploadResponse,
+  type EnvironmentCredentialResponse,
+  type FilesystemGrant,
   artifactUploadResponseSchema,
 } from '@layernorm/overlay-agent-bridge-protocol'
 import { createHash, randomBytes, sign } from 'node:crypto'
 
 /** A control-plane request that failed; `code` is the server's stable error code when it sent one. */
 export class ControlPlaneRequestError extends Error {
-  constructor(readonly status: number, readonly code?: string) {
-    super(`control plane request failed with ${status}`)
+  constructor(readonly status: number, readonly code?: string, readonly requestId?: string) {
+    // The request id matches this failure to Overlay's own log line for the same request.
+    super(`control plane request failed with ${status}${code ? ` (${code})` : ''}${requestId ? ` [request ${requestId}]` : ''}`)
     this.name = 'ControlPlaneRequestError'
   }
 }
 
 export interface AgentControlPlaneClient {
-  pollCommands(args: { waitMs: number; signal?: AbortSignal }): Promise<{ commands: AgentHostCommand[]; retryAfterMs?: number; resolvedThroughSequence?: number }>
+  pollCommands(args: { waitMs: number; signal?: AbortSignal }): Promise<Omit<CommandPollResponse, 'protocolVersion'>>
   acknowledgeCommand(acknowledgement: CommandAcknowledgement): Promise<void>
   uploadEvents(batch: EventBatch): Promise<EventAcknowledgement>
   heartbeat?(): Promise<void>
@@ -36,6 +43,11 @@ export interface AgentControlPlaneClient {
   completeArtifactUpload?(artifactId: string): Promise<void>
   /** Overlay Cloud only: the provider credentials for one of this host's runs. */
   fetchRunCredentials?(runId: string): Promise<Record<string, string>>
+  /** Overlay Cloud only: account delivery for an idle adapter's option probe. */
+  fetchDiscoveryCredentials?(adapterId: string): Promise<Record<string, string>>
+  fetchDriveCredentials?(input: Omit<DriveCredentialsRequest, 'protocolVersion'>): Promise<DriveCredentialsResponse>
+  /** Refresh the approved policy through the existing device-signed credential rotation. */
+  refreshFilesystemGrant?(): Promise<FilesystemGrant>
 }
 
 export type HttpControlPlaneClientOptions = {
@@ -47,7 +59,8 @@ export type HttpControlPlaneClientOptions = {
   onCredentialRotated?: (credential: {
     token: string
     expiresAt: number
-    filesystemGrant: import('@layernorm/overlay-agent-bridge-protocol').FilesystemGrant
+    filesystemGrant: FilesystemGrant
+    methods: EnvironmentCredentialResponse['methods']
   }) => Promise<void> | void
   fetch?: typeof globalThis.fetch
   requestTimeoutMs?: number
@@ -58,6 +71,7 @@ export class HttpAgentControlPlaneClient implements AgentControlPlaneClient {
   private readonly requestTimeoutMs: number
   private credential: string
   private credentialExpiresAt?: number
+  private refreshing?: Promise<EnvironmentCredentialResponse>
 
   constructor(private readonly options: HttpControlPlaneClientOptions) {
     this.fetch = options.fetch ?? globalThis.fetch
@@ -66,7 +80,7 @@ export class HttpAgentControlPlaneClient implements AgentControlPlaneClient {
     this.credentialExpiresAt = options.credentialExpiresAt
   }
 
-  async pollCommands(args: { waitMs: number; signal?: AbortSignal }): Promise<{ commands: AgentHostCommand[]; retryAfterMs?: number; resolvedThroughSequence?: number }> {
+  async pollCommands(args: { waitMs: number; signal?: AbortSignal }): Promise<Omit<CommandPollResponse, 'protocolVersion'>> {
     const url = new URL('commands', withSlash(this.options.baseUrl))
     url.searchParams.set('environmentId', this.options.environmentId)
     url.searchParams.set('waitMs', String(Math.min(Math.max(args.waitMs, 0), 30_000)))
@@ -74,6 +88,7 @@ export class HttpAgentControlPlaneClient implements AgentControlPlaneClient {
     const parsed = commandPollResponseSchema.parse(await response.json())
     return {
       commands: parsed.commands,
+      ...(parsed.streaming ? { streaming: parsed.streaming } : {}),
       ...(parsed.retryAfterMs === undefined ? {} : { retryAfterMs: parsed.retryAfterMs }),
       ...(parsed.resolvedThroughSequence === undefined ? {} : { resolvedThroughSequence: parsed.resolvedThroughSequence }),
     }
@@ -134,6 +149,26 @@ export class HttpAgentControlPlaneClient implements AgentControlPlaneClient {
     return runCredentialsResponseSchema.parse(await response.json()).env
   }
 
+  async fetchDiscoveryCredentials(adapterId: string): Promise<Record<string, string>> {
+    const response = await this.request(new URL('run-credentials', withSlash(this.options.baseUrl)), {
+      method: 'POST', body: JSON.stringify({ protocolVersion: OVERLAY_AGENT_PROTOCOL_VERSION, adapterId }),
+      headers: { 'content-type': 'application/json' },
+    })
+    return runCredentialsResponseSchema.parse(await response.json()).env
+  }
+
+  async fetchDriveCredentials(input: Omit<DriveCredentialsRequest, 'protocolVersion'>): Promise<DriveCredentialsResponse> {
+    const body = driveCredentialsRequestSchema.parse({ ...input, protocolVersion: OVERLAY_AGENT_PROTOCOL_VERSION })
+    const response = await this.request(new URL('drive-credentials', withSlash(this.options.baseUrl)), {
+      method: 'POST', body: JSON.stringify(body), headers: { 'content-type': 'application/json' },
+    })
+    return driveCredentialsResponseSchema.parse(await response.json())
+  }
+
+  async refreshFilesystemGrant(): Promise<FilesystemGrant> {
+    return (await this.refreshCredential()).filesystemGrant
+  }
+
   private async request(url: URL, init: RequestInit): Promise<Response> {
     if (this.options.privateKey && this.credentialExpiresAt &&
       this.credentialExpiresAt - Date.now() < 60_000 && !url.pathname.endsWith('/credentials/refresh')) {
@@ -167,22 +202,33 @@ export class HttpAgentControlPlaneClient implements AgentControlPlaneClient {
     })
     if (!response.ok) {
       const body = await response.json().catch(() => null) as { code?: unknown } | null
-      throw new ControlPlaneRequestError(response.status, typeof body?.code === 'string' ? body.code : undefined)
+      const requestId = response.headers?.get?.('x-overlay-request-id') ?? undefined
+      throw new ControlPlaneRequestError(response.status, typeof body?.code === 'string' ? body.code : undefined,
+        requestId && /^[A-Za-z0-9_.:-]{1,128}$/.test(requestId) ? requestId : undefined)
     }
     return response
   }
 
-  private async refreshCredential(): Promise<void> {
+  private async refreshCredential(): Promise<EnvironmentCredentialResponse> {
+    if (!this.refreshing) this.refreshing = this.rotateCredential()
+    const pending = this.refreshing
+    try { return await pending } finally { if (this.refreshing === pending) this.refreshing = undefined }
+  }
+
+  private async rotateCredential(): Promise<EnvironmentCredentialResponse> {
     const url = new URL('credentials/refresh', withSlash(this.options.baseUrl))
     const response = await this.request(url, { method: 'POST', body: '' })
     const rotated = environmentCredentialResponseSchema.parse(await response.json())
+    if (rotated.environmentId !== this.options.environmentId) throw Error('Credential refresh scope does not match this host')
     this.credential = rotated.token
     this.credentialExpiresAt = rotated.expiresAt
     await this.options.onCredentialRotated?.({
       token: rotated.token,
       expiresAt: rotated.expiresAt,
       filesystemGrant: rotated.filesystemGrant,
+      methods: rotated.methods,
     })
+    return rotated
   }
 }
 

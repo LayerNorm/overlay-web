@@ -1,4 +1,4 @@
-import { z } from 'zod'
+import { z } from 'zod/v3'
 import { AuthFields, PaginationQuery, UnknownResponse } from './common'
 
 export const IntegrationListQuery = PaginationQuery.extend({

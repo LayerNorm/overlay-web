@@ -1,6 +1,6 @@
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import { generateObject, generateText, type FlexibleSchema, type LanguageModel } from 'ai'
-import { z } from 'zod'
+import { z } from 'zod/v3'
 import { config } from './config'
 
 /** OpenAI-compatible client pointed at the Vercel AI Gateway. */

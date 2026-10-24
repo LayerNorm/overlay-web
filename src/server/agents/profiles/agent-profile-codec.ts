@@ -2,7 +2,7 @@ import 'server-only'
 
 import { createHash } from 'node:crypto'
 import { gunzipSync, gzipSync } from 'node:zlib'
-import { z } from 'zod'
+import { z } from 'zod/v3'
 import {
   AGENT_PROFILE_HARNESSES,
   analyzeAgentProfileUpload,

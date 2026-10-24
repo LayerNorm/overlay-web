@@ -1,4 +1,6 @@
 "use client";
+import { unstyledButton, unstyledInput } from '@overlay/ui/control-reset'
+import { Button, Input } from '@overlay/ui/primitives'
 
 import { useState, useEffect } from "react";
 import { redirect, useRouter, useSearchParams } from 'next/navigation'
@@ -17,6 +19,7 @@ import {
   marketingSubmitButton,
 } from "@/features/landing/lib/landingPageStyles";
 import { SsoProviderIcon } from "../../_components/useAuthUiOptions";
+import { CheckEmailScreen, postVerifyEmail, readAuthErrorMessage } from "../../_components/EmailVerification";
 import type { ClientAuthUiOptions } from "../../_components/useAuthUiOptions";
 import { shouldReuseExistingWebSession } from "@/shared/auth/desktop-auth-handoff";
 
@@ -79,43 +82,52 @@ function useEmailPasswordSignIn({
   const { refreshSession } = useAuth();
   const router = useRouter();
   const [loading, setLoading] = useState(false);
-  const [pendingVerification, setPendingVerification] = useState(false);
+  const [verificationTicket, setVerificationTicket] = useState<string | null>(null);
+  const [verificationCode, setVerificationCode] = useState("");
+  const [verifying, setVerifying] = useState(false);
+  const [resending, setResending] = useState(false);
+
+  const signIn = async () => {
+    // react-doctor-disable-next-line react-doctor/no-fetch-response-used-without-status-check
+    const response = await fetch("/api/auth/sign-in", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+
+    const data = await response.json().catch(() => null);
+
+    if (data?.pendingEmailVerification) {
+      const ticket = typeof data.verificationTicket === "string" ? data.verificationTicket : "";
+      if (ticket) {
+        setVerificationTicket(ticket);
+      } else {
+        setError(readAuthErrorMessage(data, "Please verify your email before signing in."));
+      }
+      return;
+    }
+
+    if (!response.ok) {
+      setError(readAuthErrorMessage(data, "Sign in failed"));
+      return;
+    }
+
+    await refreshSession();
+    router.refresh();
+
+    if (redirectUrl.startsWith("overlay://")) {
+      window.location.href = redirectUrl;
+    } else {
+      router.replace(redirectUrl);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
-    setPendingVerification(false);
-
     try {
-      // react-doctor-disable-next-line react-doctor/no-fetch-response-used-without-status-check
-      const response = await fetch("/api/auth/sign-in", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
-      });
-
-      const data = await response.json();
-
-      if (data.pendingEmailVerification) {
-        setPendingVerification(true);
-        setError(data.error);
-        return;
-      }
-
-      if (!response.ok) {
-        setError(data.error || "Sign in failed");
-        return;
-      }
-
-      await refreshSession();
-      router.refresh();
-
-      if (redirectUrl.startsWith("overlay://")) {
-        window.location.href = redirectUrl;
-      } else {
-        router.replace(redirectUrl);
-      }
+      await signIn();
     } catch {
       setError("An unexpected error occurred");
     } finally {
@@ -123,7 +135,56 @@ function useEmailPasswordSignIn({
     }
   };
 
-  return { handleSubmit, loading, pendingVerification };
+  const handleVerifyCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!verificationTicket) return;
+    setVerifying(true);
+    setError(null);
+    try {
+      const result = await postVerifyEmail(
+        { ticket: verificationTicket, code: verificationCode },
+        "Verification failed",
+      );
+      if (result.error) {
+        setError(result.error);
+        return;
+      }
+      setVerificationTicket(null);
+      setVerificationCode("");
+      await signIn();
+    } catch {
+      setError("An unexpected error occurred");
+    } finally {
+      setVerifying(false);
+    }
+  };
+
+  const handleResendCode = async () => {
+    if (!verificationTicket) return;
+    setResending(true);
+    setError(null);
+    const result = await postVerifyEmail(
+      { ticket: verificationTicket, action: "resend" },
+      "Failed to resend code",
+    );
+    if (result.error) setError(result.error);
+    setResending(false);
+  };
+
+  return {
+    handleSubmit,
+    loading,
+    verification: verificationTicket
+      ? {
+          code: verificationCode,
+          verifying,
+          resending,
+          onCodeChange: setVerificationCode,
+          onVerify: handleVerifyCode,
+          onResend: handleResendCode,
+        }
+      : null,
+  };
 }
 
 function useSsoSignIn({
@@ -156,27 +217,11 @@ function useSsoSignIn({
   return { ssoLoading, handleSSO };
 }
 
-function SignInErrorAlert({
-  error,
-  pendingVerification,
-  email,
-}: {
-  error: string | null;
-  pendingVerification: boolean;
-  email: string;
-}) {
+function SignInErrorAlert({ error }: { error: string | null }) {
   if (!error) return null;
   return (
     <div className="mb-6 rounded-xl border border-red-500/20 bg-red-500/10 p-4 text-sm text-red-600 dark:text-red-400">
       {error}
-      {pendingVerification && (
-        <Link
-          href={`/auth/verify-email?email=${encodeURIComponent(email)}`}
-          className="mt-2 block text-red-600 underline hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
-        >
-          Resend verification email
-        </Link>
-      )}
     </div>
   );
 }
@@ -195,16 +240,16 @@ function SsoProviderButtons({
   return (
     <div className="space-y-3 mb-6">
       {providers.map((provider) => (
-        <button
+        <Button variant="ghost"
           key={provider.id}
           type="button"
           onClick={() => onSelect(provider.id)}
           disabled={ssoLoading !== null}
-          className={className}
+          className={unstyledButton(className)}
         >
           <SsoProviderIcon icon={provider.icon} />
           {ssoLoading === provider.id ? "Redirecting..." : provider.label}
-        </button>
+        </Button>
       ))}
     </div>
   );
@@ -250,13 +295,13 @@ function EmailPasswordForm({
         <label htmlFor="email" className={`block text-sm font-medium mb-2 ${styles.labelText}`}>
           Email
         </label>
-        <input
+        <Input
           id="email"
           type="email"
           value={email}
           onChange={(e) => onEmailChange(e.target.value)}
           required
-          className={styles.field}
+          className={unstyledInput(styles.field)}
           placeholder="you@example.com"
         />
       </div>
@@ -272,20 +317,20 @@ function EmailPasswordForm({
           </Link>
           ) : null}
         </div>
-        <input
+        <Input
           id="password"
           type="password"
           value={password}
           onChange={(e) => onPasswordChange(e.target.value)}
           required
-          className={styles.field}
+          className={unstyledInput(styles.field)}
           placeholder="••••••••"
         />
       </div>
 
-      <button type="submit" disabled={loading} className={styles.submit}>
+      <Button variant="ghost" type="submit" disabled={loading} className={unstyledButton(styles.submit)}>
         {loading ? "Signing in..." : "Sign in"}
-      </button>
+      </Button>
     </form>
   );
 }
@@ -362,7 +407,7 @@ export function SignInClient({
     isDesktopAuth,
     redirectUrl,
   });
-  const { handleSubmit, loading, pendingVerification } = useEmailPasswordSignIn({
+  const { handleSubmit, loading, verification } = useEmailPasswordSignIn({
     email,
     password,
     redirectUrl,
@@ -400,6 +445,25 @@ export function SignInClient({
     );
   }
 
+  if (verification) {
+    return (
+      <CheckEmailScreen
+        email={email}
+        verificationCode={verification.code}
+        error={error}
+        verifying={verification.verifying}
+        resending={verification.resending}
+        fieldClass={field}
+        labelClass={labelText}
+        mutedClass={muted}
+        submitClass={submit}
+        onCodeChange={verification.onCodeChange}
+        onVerify={verification.onVerify}
+        onResend={verification.onResend}
+      />
+    );
+  }
+
   return (
     <LandingAuthPageChrome>
       <div>
@@ -410,7 +474,7 @@ export function SignInClient({
           Sign in to your overlay account
         </p>
 
-          <SignInErrorAlert error={error} pendingVerification={pendingVerification} email={email} />
+          <SignInErrorAlert error={error} />
 
           {showSso ? (
             <SsoProviderButtons

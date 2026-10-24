@@ -49,3 +49,16 @@ test('S3 can use the AWS default credential chain without static keys', () => {
   assert.equal(store.providerConfigSummary.hasAccessKeyId, false)
   assert.equal(store.providerConfigSummary.hasSecretAccessKey, false)
 })
+
+test('S3 upload constraints sign an empty body, its hexadecimal digest and the requested short lifetime', async () => {
+  const store = new S3CompatibleObjectStore({ accessKeyId: 'AKIATESTKEY', secretAccessKey: 'test-secret-access-key',
+    bucketName: 'overlay-private', endpointUrl: 'https://s3.example.test', region: 'us-east-1' })
+  const sha256 = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
+  const url = new URL((await store.getUploadUrl('users/user/files/staging/empty', 'application/octet-stream',
+    { contentLength: 0, checksumSha256: sha256, expiresIn: 120 })).url)
+  assert.equal(url.searchParams.get('X-Amz-Expires'), '120')
+  assert.equal(url.searchParams.has('x-amz-checksum-sha256'), false)
+  const signed = (url.searchParams.get('X-Amz-SignedHeaders') ?? '').split(';')
+  assert.ok(signed.includes('content-length'))
+  assert.ok(signed.includes('x-amz-checksum-sha256'))
+})

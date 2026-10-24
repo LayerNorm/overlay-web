@@ -170,14 +170,52 @@ function shimIncompleteInlineSpans(text: string): string {
     closers += '*'
     considered += '*'
   }
-  if (
-    countUnescaped(considered, '_') % 2 === 1 &&
-    !lastDelimiterWrapsInlineMath(considered, '_')
-  ) {
-    closers += '_'
-  }
+  const underscoreClosers = openUnderscoreClosers(considered)
+  if (underscoreClosers && !lastDelimiterWrapsInlineMath(considered, '_')) closers += underscoreClosers
 
   return closers ? text + closers : text
+}
+
+/** Literal identifiers and code spans must not acquire synthetic visible underscores. */
+function openUnderscoreClosers(text: string): string {
+  let pending = 0, codeTicks = 0
+  for (let index = 0; index < text.length;) {
+    const character = text[index]
+    if (!codeTicks && character === '\\') { index += 2; continue }
+    if (character === '`') {
+      let length = 1
+      while (text[index + length] === '`') length++
+      if (!codeTicks) codeTicks = length
+      else if (codeTicks === length) codeTicks = 0
+      index += length
+      continue
+    }
+    if (codeTicks || character !== '_') { index++; continue }
+    let length = 1
+    while (text[index + length] === '_') length++
+    const {canOpen, canClose} = underscoreFlanks(text, index, length)
+    let remaining = length
+    if (canClose) {
+      const consumed = Math.min(pending, remaining)
+      pending -= consumed
+      remaining -= consumed
+    }
+    if (canOpen) pending += remaining
+    index += length
+  }
+  return '_'.repeat(pending)
+}
+
+function underscoreFlanks(text: string, index: number, length: number) {
+  const before = Array.from(text.slice(Math.max(0, index - 2), index)).at(-1) ?? ''
+  const after = String.fromCodePoint(text.codePointAt(index + length) ?? 32)
+  const whitespace = /[\p{Zs}\t\n\f\r]/u
+  const beforeSpace = !before || whitespace.test(before), afterSpace = whitespace.test(after)
+  const beforePunctuation = /[\p{P}\p{S}]/u.test(before), afterPunctuation = /[\p{P}\p{S}]/u.test(after)
+  const leftFlanking = !afterSpace && (!afterPunctuation || beforeSpace || beforePunctuation)
+  const rightFlanking = !beforeSpace && (!beforePunctuation || afterSpace || afterPunctuation)
+  return {canOpen: leftFlanking && (!rightFlanking || beforePunctuation),
+    canClose: rightFlanking && (!leftFlanking || afterPunctuation)}
 }
 
 function countUnescaped(s: string, ch: string): number {

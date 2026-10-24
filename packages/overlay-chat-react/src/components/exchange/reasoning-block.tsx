@@ -1,81 +1,29 @@
+import { ASSISTANT_COLLAPSIBLE_BODY_CLASS } from '@overlay/chat-core'
 import {
-ASSISTANT_COLLAPSIBLE_BODY_CLASS
-} from '@overlay/chat-core'
-import { ChevronDown } from 'lucide-react'
-import { useEffect,useRef,useState } from 'react'
+  Trace,
+  TraceCollapsible,
+  TraceCollapsibleContent,
+  TraceCollapsibleTrigger,
+  TraceLine,
+  TraceTitle,
+} from '@overlay/ui/ai'
+import { useEffect, useRef, useState } from 'react'
 import { MarkdownMessage } from '../MarkdownMessage'
 
-import { ToolLogoColumn } from './tool-rail'
+import { TraceOrb } from './tool-rail'
 
-function ReasoningExpandButton({
-  expanded,
-  onToggle,
-}: {
-  expanded: boolean
-  onToggle: () => void
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onToggle}
-      className="inline-flex h-5 w-5 items-center justify-center rounded-md text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
-      aria-label={expanded ? 'Collapse reasoning' : 'Expand reasoning'}
-    >
-      <ChevronDown
-        size={14}
-        strokeWidth={1.75}
-        className={`transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}
-      />
-    </button>
-  )
-}
-
-function ReasoningDetails({
-  hasContent,
-  show,
-  streaming,
-  text,
-  scrollRef,
-}: {
-  hasContent: boolean
-  show: boolean
-  streaming: boolean
-  text: string
-  scrollRef: React.RefObject<HTMLDivElement | null>
-}) {
-  if (!hasContent) return null
-  return (
-    <div
-      className={`ml-[26px] overflow-hidden transition-[max-height] duration-300 ${
-        show ? 'max-h-[min(42vh,304px)] pt-1 pb-2' : 'max-h-0'
-      }`}
-    >
-      {show ? (
-        <div
-          ref={scrollRef}
-          className={`message-appear reasoning-markdown text-[12px] leading-relaxed text-(--muted) ${ASSISTANT_COLLAPSIBLE_BODY_CLASS} ${streaming ? 'scrollbar-none' : 'scrollbar-thin'}`}
-        >
-          <MarkdownMessage
-            text={text}
-            isStreaming={streaming}
-            suppressTypingIndicator
-          />
-        </div>
-      ) : null}
-    </div>
-  )
-}
-
+/**
+ * Reasoning as a Trace step: open while the reasoning streams (rendered through
+ * `MarkdownMessage`, like the reply), then collapsed to "Thought" with a chevron.
+ */
 export function ReasoningBlock({
   text,
   streaming,
-  connectTop,
-  connectBottom,
 }: {
   text: string
   streaming: boolean
-  connectTop: boolean
-  connectBottom: boolean
+  connectTop?: boolean
+  connectBottom?: boolean
 }) {
   const [userExpanded, setUserExpanded] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -85,42 +33,40 @@ export function ReasoningBlock({
     }
   }, [text, streaming])
   const hasContent = text.trim().length > 0
-  const label = streaming ? 'Thinking' : 'Thought'
-  const showDetails = streaming ? hasContent : userExpanded && hasContent
+  const line = (
+    <TraceLine status={streaming ? 'running' : undefined}>
+      <TraceOrb running={streaming} />
+      <TraceTitle>{streaming ? 'Thinking' : 'Thought'}</TraceTitle>
+    </TraceLine>
+  )
+
+  if (!hasContent) {
+    return <Trace className="px-1 py-1 text-[13px] leading-snug">{line}</Trace>
+  }
 
   return (
-    <div className="w-full px-1 py-0.5">
-      <div className="max-w-[min(100%,36rem)]">
-        <div className="flex items-stretch gap-2.5 py-1 text-[13px] leading-snug">
-          <ToolLogoColumn connectTop={connectTop} connectBottom={connectBottom} />
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-              <span className={streaming ? 'tool-line-shimmer' : 'text-(--tool-line-label)'}>
-                {label}
-              </span>
-              {!streaming && hasContent ? (
-                <ReasoningExpandButton
-                  expanded={userExpanded}
-                  onToggle={() => setUserExpanded((open) => !open)}
-                />
-              ) : null}
-            </div>
+    <Trace className="px-1 py-0.5">
+      <TraceCollapsible
+        open={streaming || userExpanded}
+        onOpenChange={(open) => {
+          if (!streaming) setUserExpanded(open)
+        }}
+      >
+        <TraceCollapsibleTrigger
+          className="py-1 text-[13px] leading-snug"
+          aria-label={streaming ? undefined : userExpanded ? 'Collapse reasoning' : 'Expand reasoning'}
+        >
+          {line}
+        </TraceCollapsibleTrigger>
+        <TraceCollapsibleContent className="max-w-[min(100%,36rem)]">
+          <div
+            ref={scrollRef}
+            className={`reasoning-markdown max-h-[min(42vh,304px)] overflow-y-auto text-[12px] leading-relaxed text-(--muted) ${ASSISTANT_COLLAPSIBLE_BODY_CLASS} ${streaming ? 'scrollbar-none' : 'scrollbar-thin'}`}
+          >
+            <MarkdownMessage text={text} isStreaming={streaming} suppressTypingIndicator />
           </div>
-        </div>
-        <ReasoningDetails
-          hasContent={hasContent}
-          show={showDetails}
-          streaming={streaming}
-          text={text}
-          scrollRef={scrollRef}
-        />
-      </div>
-    </div>
+        </TraceCollapsibleContent>
+      </TraceCollapsible>
+    </Trace>
   )
 }
-
-/**
- * Web search tool: shows the query and the top sources in a compact list (favicon + title + host),
- * inspired by Perplexity/ChatGPT search previews. While the tool runs we auto-expand the details;
- * once it finishes we collapse to a single row and the user can click the chevron to re-open.
- */

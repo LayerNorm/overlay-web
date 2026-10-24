@@ -1,7 +1,8 @@
 'use client'
 
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { useState, useCallback, useMemo, useRef, useSyncExternalStore, type Dispatch, type SetStateAction } from 'react'
+import { useEffect, useState, useCallback, useMemo, useRef, useSyncExternalStore, type Dispatch, type SetStateAction } from 'react'
+import { TOUR_NAVIGATION_EVENT } from './tour-navigation'
 import { MessageSquare } from 'lucide-react'
 import {
   resolveOverlayAppShellConfig,
@@ -44,7 +45,9 @@ import {
   type SidebarNavItem,
 } from './appSidebarNav'
 import { resolveSecondaryPanelNav } from './appSidebarPanelNav'
+import { resolveRecentChatHref } from './chatPanelNav'
 import { useIsSoloWorkspace } from '@/hooks/use-solo-workspace'
+import type { PanelScope } from '@/shared/workspaces/panel-scope'
 import {
   useBodyScrollLock,
   useCollaborationUnread,
@@ -63,6 +66,8 @@ type SidebarNavConfigArgs = {
   publicShowcase: boolean
   user: ReturnType<typeof useAuth>['user']
 }
+
+const CHAT_SECTION_VIEWS = ['personal', 'workspace-chats', 'dms', 'channels'] as const
 
 function useSidebarNavConfig({ appShell, capabilities, allows, publicShowcase, user }: SidebarNavConfigArgs) {
   const availableToolsInlineItems = useMemo(
@@ -124,7 +129,7 @@ function useSidebarNavInteractions(args: {
   requireAuth: ReturnType<typeof useGuestGate>['requireAuth']
   publicShowcase: boolean
   activeWorkspaceId: string | null
-  buildWorkspaceHref: (workspaceId: string, href: string) => string
+  buildWorkspaceHref: (workspaceId: string, href: string, scope?: PanelScope) => string
   primaryNavActionByItemId: ReturnType<typeof useSidebarActions>['primaryNavActionByItemId']
   runSidebarAction: ReturnType<typeof useAppSidebarActions>['runSidebarAction']
   router: ReturnType<typeof useRouter>
@@ -179,6 +184,9 @@ function useSidebarNavInteractions(args: {
     activeWorkspaceId,
     buildWorkspaceHref,
   })
+  const recentChatHref = publicShowcase
+    ? undefined
+    : (baseHref: string) => resolveRecentChatHref(baseHref, routeState.scope)
   const onSelectNavItem = (item: SidebarNavItem) => selectSidebarNavItem(item, {
     isGuestConfirmed,
     publicShowcase,
@@ -193,6 +201,7 @@ function useSidebarNavInteractions(args: {
     panelKind: routeState.panelKind,
     sidebarCollapsed,
     setSidebarCollapsed,
+    recentChatHref,
   })
   const onSelectMobileNavItem = (item: SidebarNavItem) => selectMobileNavItem(item, {
     isGuestConfirmed,
@@ -208,6 +217,7 @@ function useSidebarNavInteractions(args: {
     automationsEnabled,
     openPanel: () => setMobileView('panel'),
     closeDrawer: closeMobileDrawer,
+    recentChatHref,
   })
   const beginSecondaryNavigation = (id: string) => {
     setPendingSecondaryNav({ id, fromRouteKey: currentRouteKey })
@@ -243,7 +253,7 @@ function useSidebarPanelChrome(args: {
   collaborationUnread: ReturnType<typeof useCollaborationUnread>
   totalUnread: number
   router: ReturnType<typeof useRouter>
-  buildWorkspaceHref: (workspaceId: string, href: string) => string
+  buildWorkspaceHref: (workspaceId: string, href: string, scope?: PanelScope) => string
   currentSearchParams: URLSearchParams
   availableToolsInlineItems: ReturnType<typeof useSidebarNavConfig>['availableToolsInlineItems']
   settingsSections: ReturnType<typeof useSidebarNavConfig>['settingsSections']
@@ -340,20 +350,39 @@ function useSidebarPanelChrome(args: {
   })
 
   const { access: createAccess, viewer: createViewer, canCreate } = useWorkspaceCreateAccess()
+  const createRules = {
+    canCreate,
+    isManager: createViewer?.role === 'owner' || createViewer?.role === 'admin',
+    memberCanCreateChannels: createAccess.memberCanCreateChannels,
+    memberCanCreateAgents: createAccess.memberCanCreateAgents,
+  }
   const panelAction = routeState.hasResourcePanel
     ? scopePanelAction({
       action: resourceAction,
       panelKind: routeState.panelKind,
       scope: routeState.scope,
       chatsView: routeState.chatsView,
-      rules: {
-        canCreate,
-        isManager: createViewer?.role === 'owner' || createViewer?.role === 'admin',
-        memberCanCreateChannels: createAccess.memberCanCreateChannels,
-        memberCanCreateAgents: createAccess.memberCanCreateAgents,
-      },
+      rules: createRules,
     })
     : null
+  // Chat sections are all on screen at once, so each one gets the New action for its own view.
+  const panelSectionActions: Record<string, ReturnType<typeof scopePanelAction>> = routeState.hasResourcePanel && routeState.panelKind === 'chat'
+    ? Object.fromEntries(CHAT_SECTION_VIEWS.map((view) => [view, scopePanelAction({
+      action: resolveResourceAction({
+        chatOpen: routeState.chatOpen,
+        chatsView: view,
+        contextualAction,
+        panelKind: routeState.panelKind,
+        publicShowcase,
+        requireAuth,
+        runSidebarAction,
+      }),
+      panelKind: routeState.panelKind,
+      scope: routeState.scope,
+      chatsView: view,
+      rules: createRules,
+    })]))
+    : {}
   const panelSearch = routeState.hasResourcePanel && contextualSearchCategory
     ? {
       title: contextualSearchCategory === 'chat' ? 'Search chats (⌘K)' : 'Search files (⌘K)',
@@ -376,6 +405,9 @@ function useSidebarPanelChrome(args: {
     navItemDestination,
     navItemActive: isNavItemActive,
     onSelectItem: onSelectNavItem,
+    recentChatHref: publicShowcase
+      ? undefined
+      : (baseHref: string) => resolveRecentChatHref(baseHref, routeState.scope),
   })
   const railFooterItems = buildShowcaseRailFooterItems(showcasePrimaryLinks, router)
   const mobileNavItems = resolveMobileNavItems(navItems, {
@@ -391,9 +423,11 @@ function useSidebarPanelChrome(args: {
     globalSearchOpen,
     globalSearchInitialCategory,
     closeGlobalSearch,
+    openGlobalSearch,
     shouldLoadCollaborationUnread,
     panelNav,
     panelAction,
+    panelSectionActions,
     panelSearch,
     showcasePrimaryLinks,
     railItems,
@@ -426,7 +460,7 @@ function useSidebarDerivedPanels(args: {
   sidebarActions: ReturnType<typeof useSidebarActions>['sidebarActions']
   primaryNavActionByItemId: ReturnType<typeof useSidebarActions>['primaryNavActionByItemId']
   router: ReturnType<typeof useRouter>
-  buildWorkspaceHref: (workspaceId: string, href: string) => string
+  buildWorkspaceHref: (workspaceId: string, href: string, scope?: PanelScope) => string
   pendingNav: { href: string; fromPath: string } | null
   pendingSecondaryNav: { id: string; fromRouteKey: string } | null
   currentRouteKey: string
@@ -607,9 +641,11 @@ function useSidebarDerivedPanels(args: {
     globalSearchOpen,
     globalSearchInitialCategory,
     closeGlobalSearch,
+    openGlobalSearch,
     panelTitle,
     panelNav,
     panelAction,
+    panelSectionActions,
     panelSearch,
     showcasePrimaryLinks,
     railItems,
@@ -662,12 +698,14 @@ function useSidebarDerivedPanels(args: {
     globalSearchOpen,
     globalSearchInitialCategory,
     closeGlobalSearch,
+    openGlobalSearch,
     effectivePendingSecondaryNavId,
     cumulativeChatUnread,
     onSelectNavItem,
     onSelectMobileNavItem,
     panelNav,
     panelAction,
+    panelSectionActions,
     panelSearch,
     showcasePrimaryLinks,
     mobileNavItems,
@@ -719,7 +757,8 @@ export function useAppSidebarState({
     [resolveSurfaceAdapter],
   )
   const buildWorkspaceHref = useCallback(
-    (workspaceId: string, href: string) => buildHrefAdapter?.(workspaceId, href) ?? href,
+    (workspaceId: string, href: string, scope?: PanelScope) =>
+      buildHrefAdapter?.(workspaceId, href, scope) ?? href,
     [buildHrefAdapter],
   )
 
@@ -729,6 +768,14 @@ export function useAppSidebarState({
   const [accountMenuOpen, setAccountMenuOpen] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [mobileView, setMobileView] = useState<'nav' | 'panel'>('nav')
+  useEffect(() => {
+    const onTourNavigation = (event: Event) => {
+      setMobileView('nav')
+      setMobileMenuOpen((event as CustomEvent<{ open: boolean }>).detail.open)
+    }
+    window.addEventListener(TOUR_NAVIGATION_EVENT, onTourNavigation)
+    return () => window.removeEventListener(TOUR_NAVIGATION_EVENT, onTourNavigation)
+  }, [])
   const [mobileAccountOpen, setMobileAccountOpen] = useState(false)
   const storedSidebarCollapsed = useSyncExternalStore(
     subscribeToSidebarCollapsed,
@@ -763,12 +810,14 @@ export function useAppSidebarState({
     globalSearchOpen,
     globalSearchInitialCategory,
     closeGlobalSearch,
+    openGlobalSearch,
     effectivePendingSecondaryNavId,
     cumulativeChatUnread,
     onSelectNavItem,
     onSelectMobileNavItem,
     panelNav,
     panelAction,
+    panelSectionActions,
     panelSearch,
     showcasePrimaryLinks,
     mobileNavItems,
@@ -850,12 +899,14 @@ export function useAppSidebarState({
     globalSearchOpen,
     globalSearchInitialCategory,
     closeGlobalSearch,
+    openGlobalSearch,
     effectivePendingSecondaryNavId,
     cumulativeChatUnread,
     onSelectNavItem,
     onSelectMobileNavItem,
     panelNav,
     panelAction,
+    panelSectionActions,
     panelSearch,
     showcasePrimaryLinks,
     mobileNavItems,

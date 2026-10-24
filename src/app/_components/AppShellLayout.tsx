@@ -1,5 +1,6 @@
 import { ensureDefaultUserRole } from '@/server/authorization/ensure-default-user-role'
 import { Suspense } from 'react'
+import { OnboardingShell } from './onboarding/OnboardingShell'
 import { Loader2 } from 'lucide-react'
 import { getOverlaySession } from '@/server/auth/session'
 import { AppShellSidebar } from '@/app/app/_components/AppShellSidebar'
@@ -7,11 +8,10 @@ import { AsyncSessionsProvider } from '@/components/providers/async-sessions-sto
 import BackgroundPollManager from '@/components/providers/BackgroundPollManager'
 import { NavigationProgressProvider, NavigationProgressBar } from '@/components/providers/navigation-progress'
 import { GuestGateProvider } from '@/components/providers/GuestGateProvider'
-import { OnboardingProvider } from '@/components/providers/OnboardingProvider'
 import { CapabilitiesProvider } from '@/components/providers/CapabilitiesProvider'
 import { AuthorizationProvider } from '@/components/providers/AuthorizationProvider'
 import { AuthorizationRouteGuard } from '@/components/providers/AuthorizationRouteGuard'
-import { AppClientProviders } from '@/components/providers/AppClientProviders'
+import { AppClientProviders, GatewayModelCatalogPrefetch } from '@/components/providers/AppClientProviders'
 import type { AppAuthorizationState } from '@overlay/app-core'
 import { getAppDataCapabilitiesSync, getOverlayCapabilitiesSync } from '@/server/capabilities'
 import { getOverlayServerContext } from '@/server/bootstrap'
@@ -74,13 +74,13 @@ async function AppShellContent({
   return (
     <AppClientProviders
       initialUser={user}
-      publicShowcase={publicShowcase}
       requiresConvexClient={appDataCapabilities.requiresConvexClient}
     >
       <WorkspaceAppBoundaryWithShowcase
         hasAuthenticatedUser={Boolean(user)}
         publicShowcase={publicShowcase}
       >
+        <GatewayModelCatalogPrefetch publicShowcase={publicShowcase} />
         <div className="flex h-screen overflow-hidden bg-background text-foreground">
           <AsyncSessionsProvider>
             <NavigationProgressProvider>
@@ -94,16 +94,13 @@ async function AppShellContent({
                   <AuthorizationProvider authorization={authorization}>
                     <BackgroundPollManager />
                     <GuestGateProvider suppressPrompts={suppressGuestPrompts}>
-                      <OnboardingProvider>
-                        <AppShellSidebar publicShowcase={publicShowcase} />
-                        <main className="app-main flex-1 overflow-hidden pt-14 transition-[padding] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] md:pt-0">
+                        <OnboardingShell publicShowcase={publicShowcase} sidebar={<AppShellSidebar publicShowcase={publicShowcase} />}>
                           <Suspense fallback={<AppMainFallback />}>
                             <WorkspaceScopedContentBoundary fallback={<WorkspaceSwitchFallback />}>
                               <AuthorizationRouteGuard>{children}</AuthorizationRouteGuard>
                             </WorkspaceScopedContentBoundary>
                           </Suspense>
-                        </main>
-                      </OnboardingProvider>
+                        </OnboardingShell>
                     </GuestGateProvider>
                   </AuthorizationProvider>
                 </CollaborationRealtimeProvider>

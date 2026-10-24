@@ -1,5 +1,6 @@
 'use client'
-
+import { Button, toast } from '@overlay/ui/primitives'
+import { unstyledButton } from '@overlay/ui/control-reset'
 import { useState } from 'react'
 import { Archive, RotateCcw, User, Users } from 'lucide-react'
 import type { ScopedResourceKind } from '@overlay/app-core'
@@ -13,7 +14,7 @@ export type ScopeChange =
   | { action: 'restore' }
 
 const ICON_BUTTON =
-  'shrink-0 rounded-sm p-1 text-(--muted-light) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground) disabled:opacity-50'
+  'shrink-0 rounded-sm p-1 transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground) disabled:opacity-50'
 const TEXT_BUTTON =
   'inline-flex items-center gap-1.5 rounded-md border border-(--border) px-3 py-1.5 text-xs text-(--foreground) transition-colors hover:bg-(--surface-subtle) disabled:opacity-50'
 
@@ -41,15 +42,13 @@ export function ScopeItemActions({
 }) {
   const actions = useScopeItemActions(kind, resource)
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const options = actions.optionsFor(item)
   if (!options.moveTo && !options.canArchive && !options.canRestore) return null
 
-  async function run(change: ScopeChange, request: Promise<unknown>) {
+  async function run(change: ScopeChange, request: () => Promise<unknown>) {
     setBusy(true)
-    setError(null)
     try {
-      await request
+      await request()
       onChanged?.(change)
       if (change.action === 'archive') {
         const named = item as ScopedItem & { name?: string; title?: string }
@@ -60,7 +59,7 @@ export function ScopeItemActions({
         })
       }
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'That did not work.')
+      toast.error(caught instanceof Error ? caught.message : 'That did not work.')
     } finally {
       setBusy(false)
     }
@@ -73,46 +72,45 @@ export function ScopeItemActions({
       key: 'move',
       label: to === 'workspace' ? 'Move to Workspace' : 'Move to Personal',
       icon: to === 'workspace' ? Users : User,
-      onClick: () => void run({ action: 'move', to }, actions.move(item._id, to)),
+      onClick: () => void run({ action: 'move', to }, () => actions.move(item._id, to)),
     })
   }
   if (options.canArchive) {
-    items.push({ key: 'archive', label: 'Archive', icon: Archive, onClick: () => void run({ action: 'archive' }, actions.archive(item._id)) })
+    items.push({ key: 'archive', label: 'Archive', icon: Archive, onClick: () => void run({ action: 'archive' }, () => actions.archive(item._id)) })
   }
   if (options.canRestore) {
-    items.push({ key: 'restore', label: 'Restore', icon: RotateCcw, onClick: () => void run({ action: 'restore' }, actions.restore(item._id)) })
+    items.push({ key: 'restore', label: 'Restore', icon: RotateCcw, onClick: () => void run({ action: 'restore' }, () => actions.restore(item._id)) })
   }
 
   if (variant === 'buttons') {
     return (
       <div className="flex flex-wrap items-center gap-2">
         {items.map(({ key, label, icon: Icon, onClick }) => (
-          <button key={key} type="button" disabled={busy} onClick={onClick} className={TEXT_BUTTON}>
+          <Button variant="ghost" key={key} type="button" disabled={busy} onClick={onClick} className={unstyledButton(TEXT_BUTTON)}>
             <Icon size={13} />
             {label}
-          </button>
+          </Button>
         ))}
-        {error ? <span role="alert" className="text-xs text-red-500">{error}</span> : null}
       </div>
     )
   }
   return (
     <>
       {items.map(({ key, label, icon: Icon, onClick }) => (
-        <button
+        <Button variant="ghost"
           key={key}
           type="button"
-          title={error ?? label}
+          title={label}
           aria-label={label}
           disabled={busy}
           onClick={(event) => {
             event.stopPropagation()
             onClick()
           }}
-          className={`${ICON_BUTTON}${error ? ' text-red-500' : ''}`}
+          className={unstyledButton(`${ICON_BUTTON} text-(--muted-light)`)}
         >
           <Icon size={12} />
-        </button>
+        </Button>
       ))}
     </>
   )

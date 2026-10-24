@@ -1,19 +1,22 @@
 'use client'
 
+import type { ComponentProps } from 'react'
 import { Loader2, MessageSquare, Plus, Archive, Trash2, Workflow } from 'lucide-react'
 import type { WorkspaceAgentBundle, WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
 import {
   SidebarMenuAction,
+  SidebarMenuBadge,
   SidebarMenuSkeleton,
-  SidebarMenuSub,
+  SidebarMenu,
   SidebarMenuSubButton,
   SidebarMenuSubItem,
 } from '@overlay/ui/primitives'
 
-/**
- * An agent's threads, automations and "New thread", as the indented tree under its row (shadcn's `SidebarMenuSub`,
- * with the vertical guide line). Archived threads live in Settings → Archived, not here.
- */
+function ThreadButton({ children, className, ...props }: ComponentProps<typeof SidebarMenuSubButton>) {
+  return <SidebarMenuSubButton className={`font-normal data-[active=true]:font-normal [&>svg]:mx-1 ${className ?? ''}`} {...props}>{children}</SidebarMenuSubButton>
+}
+
+/** Threads share the agent's icon column without a guide line or extra indentation. */
 export function AgentThreadRows({
   agent,
   bundle,
@@ -35,33 +38,33 @@ export function AgentThreadRows({
 }) {
   if (bundle === 'loading') {
     return (
-      <SidebarMenuSub aria-label={`Loading ${agent.name} threads`}>
+      <SidebarMenu className="mb-2.5" aria-label={`Loading ${agent.name} threads`}>
         {[0, 1, 2].map((index) => (
           <SidebarMenuSubItem key={index}>
             <SidebarMenuSkeleton index={index} className="h-7 px-2" />
           </SidebarMenuSubItem>
         ))}
-      </SidebarMenuSub>
+      </SidebarMenu>
     )
   }
   if (bundle === 'error') {
     return (
-      <SidebarMenuSub>
+      <SidebarMenu className="mb-2.5">
         <SidebarMenuSubItem>
           <p className="px-2 py-1.5 text-xs text-(--muted-light)">Could not load threads</p>
         </SidebarMenuSubItem>
-      </SidebarMenuSub>
+      </SidebarMenu>
     )
   }
   const threads = bundle.threads.filter((thread) => !thread.archivedAt)
   const automations = bundle.automations
   return (
-    <SidebarMenuSub aria-label={`${agent.name} threads`}>
+    <SidebarMenu className="mb-2.5" aria-label={`${agent.name} threads`}>
       {threads.map((thread) => {
         const active = activeConversationId === thread.conversationId
         return (
           <SidebarMenuSubItem key={thread.conversationId}>
-            <SidebarMenuSubButton
+            <ThreadButton
               isActive={active}
               aria-current={active ? 'page' : undefined}
               onClick={() => onOpenThread(agent, thread.conversationId)}
@@ -69,10 +72,12 @@ export function AgentThreadRows({
             >
               <MessageSquare aria-hidden />
               <span className="flex-1 truncate">{thread.title}</span>
-              {thread.isMain ? (
-                <span className="text-[10px] text-(--muted-light) group-hover/menu-sub-item:hidden group-focus-within/menu-sub-item:hidden">Main</span>
-              ) : null}
-            </SidebarMenuSubButton>
+            </ThreadButton>
+            {thread.isMain ? (
+              <SidebarMenuBadge className="top-1 text-[10px] font-normal text-(--muted-light) group-hover/menu-sub-item:hidden group-focus-within/menu-sub-item:hidden">
+                Main
+              </SidebarMenuBadge>
+            ) : null}
             <SidebarMenuAction
               aria-label="Archive thread"
               title="Archive thread"
@@ -104,7 +109,7 @@ export function AgentThreadRows({
         const active = target != null && activeConversationId === target
         return (
           <SidebarMenuSubItem key={automation.automationId}>
-            <SidebarMenuSubButton
+            <ThreadButton
               isActive={active}
               disabled={!target}
               onClick={() => { if (target) onOpenThread(agent, target) }}
@@ -113,22 +118,22 @@ export function AgentThreadRows({
               <Workflow aria-hidden />
               <span className="flex-1 truncate">{automation.name}</span>
               {!automation.enabled ? <span className="text-[10px] text-(--muted-light)">Paused</span> : null}
-            </SidebarMenuSubButton>
+            </ThreadButton>
           </SidebarMenuSubItem>
         )
       })}
       {!agent.archivedAt ? (
         <SidebarMenuSubItem>
-          <SidebarMenuSubButton
+          <ThreadButton
             disabled={creatingThread}
             onClick={() => onCreateThread(agent)}
             className="text-(--muted-light)"
           >
             {creatingThread ? <Loader2 className="animate-spin" aria-hidden /> : <Plus aria-hidden />}
             <span className="truncate">New thread</span>
-          </SidebarMenuSubButton>
+          </ThreadButton>
         </SidebarMenuSubItem>
       ) : null}
-    </SidebarMenuSub>
+    </SidebarMenu>
   )
 }

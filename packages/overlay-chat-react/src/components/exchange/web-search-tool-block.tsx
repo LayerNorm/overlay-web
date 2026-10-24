@@ -5,22 +5,21 @@ collectWebSourcesFromSingleBlock,
 faviconUrl,
 hostFromUrl
 } from '@overlay/chat-core'
-import { ChevronDown,Search } from 'lucide-react'
+import { Search } from 'lucide-react'
 import { useMemo,useState } from 'react'
 import { safeHttpUrl } from '../../lib/safe-url'
 import { getDescriptiveToolLabel,pickFirstStringFromInput } from '../../lib/tool-labels'
 import { webSourceDisplayKey } from '../../lib/web-sources'
 
-import { ToolLogoColumn } from './tool-rail'
+import { TraceStep } from './trace-step'
 
+/** Web search as a Trace step: open with the query and top sources while it runs, then collapsed. */
 export function WebSearchToolBlock({
   block,
-  connectTop,
-  connectBottom,
 }: {
   block: ToolVisualBlock
-  connectTop: boolean
-  connectBottom: boolean
+  connectTop?: boolean
+  connectBottom?: boolean
 }) {
   const isDone = block.state === 'output-available'
   const isError = block.state === 'output-error' || block.state === 'output-denied'
@@ -31,116 +30,49 @@ export function WebSearchToolBlock({
   const label = getDescriptiveToolLabel(block.name, block.toolInput)
   const [userExpanded, setUserExpanded] = useState(false)
   const sources = useMemo(() => collectWebSourcesFromSingleBlock(block), [block])
-  const hasDetails = query.length > 0 || sources.length > 0
-  const showDetails =
-    (running && hasDetails) || (isDone && userExpanded && hasDetails)
-
-  if (isError) {
-    return (
-      <WebSearchToolError
-        label={label}
-        connectTop={connectTop}
-        connectBottom={connectBottom}
-      />
-    )
-  }
-
+  const hasDetails = !isError && (query.length > 0 || sources.length > 0)
   return (
-    <div className="w-full px-1 py-0.5">
-      <div className="max-w-[min(100%,36rem)]">
-        <div className="flex items-stretch gap-2.5 py-0.5 text-[13px] leading-snug">
-          <ToolLogoColumn connectTop={connectTop} connectBottom={connectBottom} />
-          <div className="min-w-0 flex-1">
-            <div className="flex min-h-4 flex-wrap items-center gap-x-2 gap-y-1">
-              <span className={running ? 'tool-line-shimmer' : 'text-(--tool-line-label)'}>
-                {label}
-              </span>
-              {hasDetails && isDone ? (
-                <WebSearchExpandToggle expanded={userExpanded} onToggle={() => setUserExpanded((open) => !open)} />
-              ) : null}
-            </div>
-          </div>
-        </div>
-        {hasDetails ? (
-          <WebSearchToolDetails query={query} sources={sources} showDetails={showDetails} />
-        ) : null}
-      </div>
-    </div>
-  )
-}
-
-function WebSearchExpandToggle({ expanded, onToggle }: { expanded: boolean; onToggle: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onToggle}
-      className="inline-flex h-5 w-5 items-center justify-center rounded-md text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
-      aria-label={expanded ? 'Collapse web search details' : 'Expand web search details'}
+    <TraceStep
+      label={isError ? `${label}, couldn’t complete` : label}
+      running={running}
+      error={isError}
+      open={running || userExpanded}
+      onOpenChange={(open) => {
+        if (!running) setUserExpanded(open)
+      }}
+      expandLabel={running ? undefined : userExpanded ? 'Collapse web search details' : 'Expand web search details'}
     >
-      <ChevronDown
-        size={14}
-        strokeWidth={1.75}
-        className={`transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}
-      />
-    </button>
-  )
-}
-
-function WebSearchToolError({
-  label,
-  connectTop,
-  connectBottom,
-}: {
-  label: string
-  connectTop: boolean
-  connectBottom: boolean
-}) {
-  return (
-    <div className="w-full px-1 py-0.5">
-      <div className="flex max-w-[min(100%,36rem)] items-stretch gap-2.5 py-0.5 text-[13px] leading-snug">
-        <ToolLogoColumn connectTop={connectTop} connectBottom={connectBottom} />
-        <span className="min-w-0 flex-1 text-red-600">{label} — couldn’t complete</span>
-      </div>
-    </div>
+      {hasDetails ? <WebSearchToolDetails query={query} sources={sources} /> : null}
+    </TraceStep>
   )
 }
 
 function WebSearchToolDetails({
   query,
   sources,
-  showDetails,
 }: {
   query: string
   sources: WebSourceItem[]
-  showDetails: boolean
 }) {
   const visibleSources = sources.slice(0, 3)
   const extraCount = Math.max(0, sources.length - visibleSources.length)
   return (
-    <div
-      className={`ml-[26px] overflow-hidden transition-[max-height] duration-300 ${
-        showDetails ? 'max-h-[min(42vh,304px)] pt-1 pb-2' : 'max-h-0'
-      }`}
-    >
-      {showDetails ? (
-        <div className={`message-appear flex flex-col gap-1.5 ${ASSISTANT_COLLAPSIBLE_BODY_CLASS} scrollbar-thin`}>
-          {query ? (
-            <div className="flex min-w-0 items-center gap-2 text-[12px] leading-snug text-(--muted)">
-              <Search size={12} strokeWidth={1.75} className="shrink-0 opacity-70" aria-hidden />
-              <span className="min-w-0 truncate">{query}</span>
-            </div>
-          ) : null}
-          {visibleSources.length > 0 ? (
-            <ul className="flex flex-col">
-              {visibleSources.map((source) => (
-                <WebSearchSourceRow key={source.url} source={source} />
-              ))}
-            </ul>
-          ) : null}
-          {extraCount > 0 ? (
-            <div className="text-[12px] text-(--muted) opacity-70">+{extraCount} more</div>
-          ) : null}
+    <div className={`flex max-h-[min(42vh,304px)] flex-col gap-1.5 pb-1 ${ASSISTANT_COLLAPSIBLE_BODY_CLASS} scrollbar-thin`}>
+      {query ? (
+        <div className="flex min-w-0 items-center gap-2 text-[12px] leading-snug text-(--muted)">
+          <Search size={12} strokeWidth={1.75} className="shrink-0 opacity-70" aria-hidden />
+          <span className="min-w-0 truncate">{query}</span>
         </div>
+      ) : null}
+      {visibleSources.length > 0 ? (
+        <ul className="flex flex-col">
+          {visibleSources.map((source) => (
+            <WebSearchSourceRow key={source.url} source={source} />
+          ))}
+        </ul>
+      ) : null}
+      {extraCount > 0 ? (
+        <div className="text-[12px] text-(--muted) opacity-70">+{extraCount} more</div>
       ) : null}
     </div>
   )
@@ -166,7 +98,7 @@ function WebSearchSourceRow({ source }: { source: WebSourceItem }) {
         rel="noopener noreferrer"
         className="group flex min-w-0 items-center gap-2 rounded-md py-0.5 text-[12px] leading-snug transition-colors hover:text-(--foreground)"
       >
-        <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center overflow-hidden rounded-full bg-(--surface-elevated) ring-1 ring-(--border)">
+        <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center overflow-hidden rounded-full bg-(--surface-subtle)">
           {fav ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={fav} alt="" className="h-3 w-3" width={12} height={12} />

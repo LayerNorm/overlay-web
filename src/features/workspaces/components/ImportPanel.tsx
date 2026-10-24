@@ -1,5 +1,8 @@
 'use client'
 
+import { unstyledButton } from '@overlay/ui/control-reset'
+import { Button } from '@overlay/ui/primitives'
+
 import { useState } from 'react'
 import { ArrowRight } from 'lucide-react'
 import { SlackImportPanel } from './SlackImportPanel'
@@ -93,14 +96,15 @@ export function ImportPanel() {
           }
 
           return (
-            <button
+            <Button variant="ghost"
               key={item.key}
               type="button"
               onClick={() => setService(item.key)}
-              className="flex items-center gap-3 rounded-xl border border-(--border) p-3 text-left transition-colors hover:border-(--foreground)/30 hover:bg-(--surface-subtle) focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-(--foreground)"
+              // overlay:button-style: Selectable import source card.
+              className={unstyledButton(`flex items-center gap-3 rounded-xl border border-(--border) p-3 text-left transition-colors hover:border-(--foreground)/30 hover:bg-(--surface-subtle) focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-(--foreground)`)}
             >
               {cardBody}
-            </button>
+            </Button>
           )
         })}
       </div>

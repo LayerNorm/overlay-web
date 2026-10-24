@@ -1,5 +1,7 @@
 'use client'
 
+import { unstyledButton } from '@overlay/ui/control-reset'
+
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 import {
   AlertCircle,
@@ -14,10 +16,11 @@ import {
   Users,
   X,
 } from 'lucide-react'
-import { Button, EmptyState, Toggle } from '@overlay/ui/primitives'
+import { Button, EmptyState, Toggle, toast } from '@overlay/ui/primitives'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useAuth } from '@/contexts/AuthContext'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
+import { createOAuthCompletionGuard } from './oauth-completion-guard'
 
 interface SlackChannel {
   id: string
@@ -125,7 +128,6 @@ function useSlackImportPanel() {
   const [jobs, setJobs] = useState<SlackImportJob[]>([])
   const [starting, setStarting] = useState(false)
   const [cancelling, setCancelling] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const [view, setView] = useState<'people' | 'picker' | 'progress' | 'done'>('people')
   const [users, setUsers] = useState<SlackUser[]>([])
   const [usersLoaded, setUsersLoaded] = useState(false)
@@ -363,7 +365,7 @@ function useSlackImportPanel() {
 
   // ─── OAuth connect + poll for connection ──────────────────────────────────
   const handleConnect = useCallback(async () => {
-    setError(null)
+    const consumeCompletion = createOAuthCompletionGuard()
     setOauthPolling(true)
     const oauthTab = window.open('about:blank', '_blank')
     try {
@@ -374,7 +376,7 @@ function useSlackImportPanel() {
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
         oauthTab?.close()
-        setError(data.error || 'Failed to connect to Slack')
+        toast.error(data.error || 'Failed to connect to Slack')
         setOauthPolling(false)
       } else if (data.redirectUrl) {
         if (oauthTab) oauthTab.location.href = data.redirectUrl
@@ -394,7 +396,8 @@ function useSlackImportPanel() {
             return
           }
           const connected = await checkConnection()
-          if (connected && mountedRef.current) {
+          if (connected && mountedRef.current && consumeCompletion()) {
+            toast.success('Slack connected.')
             if (oauthPollRef.current) {
               clearInterval(oauthPollRef.current)
               oauthPollRef.current = null
@@ -404,12 +407,12 @@ function useSlackImportPanel() {
         }, 3000)
       } else {
         oauthTab?.close()
-        setError('No connection URL was returned')
+        toast.error('No connection URL was returned')
         setOauthPolling(false)
       }
     } catch (err) {
       oauthTab?.close()
-      setError(err instanceof Error ? err.message : 'Failed to connect to Slack')
+      toast.error(err instanceof Error ? err.message : 'Failed to connect to Slack')
       setOauthPolling(false)
     }
   }, [checkConnection])
@@ -423,7 +426,6 @@ function useSlackImportPanel() {
       return
     }
     setInviting(true)
-    setError(null)
     let failed = 0
     try {
       await Promise.all(
@@ -437,13 +439,15 @@ function useSlackImportPanel() {
         ),
       )
       if (failed > 0) {
-        setError(`Failed to invite ${failed} user(s). You can continue and import channels for people already in the workspace.`)
+        toast.error(`Failed to invite ${failed} user(s). You can continue and import channels for people already in the workspace.`)
+      } else {
+        toast.success('Invitations sent.')
       }
       // Refresh user list so newly-invited users appear as 'invited'
       void loadUsers(true)
       setView('picker')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to send invitations')
+      toast.error(err instanceof Error ? err.message : 'Failed to send invitations')
     } finally {
       setInviting(false)
     }
@@ -453,7 +457,6 @@ function useSlackImportPanel() {
   const handleStartImport = useCallback(async () => {
     if (selectedChannelIds.size === 0) return
     setStarting(true)
-    setError(null)
     try {
       const { ok, data } = await fetchWithRetry('/api/v1/imports/slack', {
         method: 'POST',
@@ -486,7 +489,7 @@ function useSlackImportPanel() {
       })
       setView('progress')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to start import')
+      toast.error(err instanceof Error ? err.message : 'Failed to start import')
     } finally {
       setStarting(false)
     }
@@ -567,10 +570,10 @@ function useSlackImportPanel() {
   return {
     activeWorkspace, user, workspaceId, currentUserEmail,
     connectionState, channels, channelsLoaded, channelsLoading, channelsError,
-    selectedChannelIds, activeJob, jobs, starting, cancelling, error, view,
+    selectedChannelIds, activeJob, jobs, starting, cancelling, view,
     users, usersLoaded, usersLoading, usersError, selectedUserIds, inviting,
     oauthPolling,
-    setError, setView, loadJobs, checkConnection, loadChannels, loadUsers,
+    setView, loadJobs, checkConnection, loadChannels, loadUsers,
     handleConnect, handleInviteUsers, handleStartImport, handleCancel,
     handleRefreshChannels, toggleChannel, selectAllPublic, clearSelection,
     toggleUser, showActiveJob, backToPicker,
@@ -580,10 +583,10 @@ function useSlackImportPanel() {
 export function SlackImportPanel({ onBack }: { onBack?: () => void } = {}) {
   const {
     connectionState, channels, channelsLoading, channelsError,
-    selectedChannelIds, activeJob, jobs, starting, cancelling, error, view,
+    selectedChannelIds, activeJob, jobs, starting, cancelling, view,
     users, usersLoading, usersError, selectedUserIds, inviting,
     oauthPolling,
-    setError, setView, loadUsers,
+    setView, loadUsers,
     handleConnect, handleInviteUsers, handleStartImport, handleCancel,
     handleRefreshChannels, toggleChannel, selectAllPublic, clearSelection,
     toggleUser, showActiveJob, backToPicker,
@@ -611,7 +614,7 @@ export function SlackImportPanel({ onBack }: { onBack?: () => void } = {}) {
           title="Connect Slack"
           description="Connect your Slack workspace to import channel history into Overlay conversations. Messages, threads, and files are imported deterministically — no AI processing."
           action={
-            <Button size="sm" onClick={() => void handleConnect()} disabled={oauthPolling}>
+            <Button variant="ghost" size="sm" onClick={() => void handleConnect()} disabled={oauthPolling}>
               {oauthPolling ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
               {oauthPolling ? 'Waiting for connection…' : 'Connect Slack'}
             </Button>
@@ -653,8 +656,6 @@ export function SlackImportPanel({ onBack }: { onBack?: () => void } = {}) {
     return (
       <ImportFlow serviceLabel="Slack" step={1} onBack={onBack}>
       <SlackPeopleStep
-        error={error}
-        onDismissError={() => setError(null)}
         usersLoading={usersLoading}
         usersError={usersError}
         onRetryUsers={() => void loadUsers(true)}
@@ -685,8 +686,6 @@ export function SlackImportPanel({ onBack }: { onBack?: () => void } = {}) {
       onClearSelection={clearSelection}
       starting={starting}
       onStartImport={() => void handleStartImport()}
-      error={error}
-      onDismissError={() => setError(null)}
     />
     </ImportFlow>
   )
@@ -700,9 +699,9 @@ function ImportErrorBanner({ error, onDismiss }: { error: string; onDismiss?: ()
       <AlertCircle size={14} className="mt-0.5 shrink-0" />
       <span>{error}</span>
       {onDismiss ? (
-        <button type="button" aria-label="Dismiss error" className="ml-auto shrink-0" onClick={onDismiss}>
+        <Button variant="ghost" type="button" aria-label="Dismiss error" className={unstyledButton(`ml-auto shrink-0`)} onClick={onDismiss}>
           <X size={12} />
-        </button>
+        </Button>
       ) : null}
     </div>
   )
@@ -785,7 +784,7 @@ function SlackUserListContent({ usersLoading, usersError, onRetryUsers, users, s
         title="Could not load Slack users"
         description={usersError}
         action={
-          <Button size="sm" onClick={onRetryUsers}>
+          <Button variant="ghost" size="sm" onClick={onRetryUsers}>
             <RefreshCw size={12} />
             Try again
           </Button>
@@ -828,9 +827,7 @@ function SlackUserListContent({ usersLoading, usersError, onRetryUsers, users, s
   )
 }
 
-function SlackPeopleStep({ error, onDismissError, usersLoading, usersError, onRetryUsers, users, selectedUserIds, onToggleUser, inviting, onSkip, onInvite }: {
-  error: string | null
-  onDismissError: () => void
+function SlackPeopleStep({ usersLoading, usersError, onRetryUsers, users, selectedUserIds, onToggleUser, inviting, onSkip, onInvite }: {
   usersLoading: boolean
   usersError: string | null
   onRetryUsers: () => void
@@ -853,8 +850,6 @@ function SlackPeopleStep({ error, onDismissError, usersLoading, usersError, onRe
         </div>
       </div>
 
-      {error ? <ImportErrorBanner error={error} onDismiss={onDismissError} /> : null}
-
       <SlackUserListContent
         usersLoading={usersLoading}
         usersError={usersError}
@@ -874,7 +869,7 @@ function SlackPeopleStep({ error, onDismissError, usersLoading, usersError, onRe
           >
             Skip
           </Button>
-          <Button
+          <Button variant="ghost"
             size="sm"
             onClick={onInvite}
             disabled={selectedUserIds.size === 0 || inviting}
@@ -901,13 +896,13 @@ function JobsSummaryBar({ jobs, onShowActiveJob }: {
         <CheckCircle2 size={12} />
         {jobs.filter((j) => j.status === 'completed').length} completed import(s).
         {jobs.some((j) => ACTIVE_JOB_STATUSES.has(j.status)) && (
-          <button
+          <Button variant="ghost"
             type="button"
-            className="text-(--foreground) underline"
+            className={unstyledButton(`text-(--foreground) underline`)}
             onClick={onShowActiveJob}
           >
             View active job
-          </button>
+          </Button>
         )}
       </div>
     </div>
@@ -955,22 +950,22 @@ function ChannelSelectionControls({ selectedCount, onSelectAllPublic, onClearSel
 }) {
   return (
     <div className="mb-3 flex items-center gap-2 text-xs">
-      <button
+      <Button variant="ghost"
         type="button"
-        className="text-(--foreground) underline"
+        className={unstyledButton(`text-(--foreground) underline`)}
         onClick={onSelectAllPublic}
       >
         Select all public
-      </button>
+      </Button>
       <span className="text-(--muted-light)">·</span>
-      <button
+      <Button variant="ghost"
         type="button"
-        className="text-(--muted) underline"
+        className={unstyledButton(`text-(--muted) underline`)}
         onClick={onClearSelection}
         disabled={selectedCount === 0}
       >
         Clear
-      </button>
+      </Button>
       <span className="ml-auto text-(--muted)">
         {selectedCount} selected
       </span>
@@ -1008,7 +1003,7 @@ function ChannelListContent({ channelsLoading, channelsError, onRefreshChannels,
         title="Could not load channels"
         description={channelsError}
         action={
-          <Button size="sm" onClick={onRefreshChannels}>
+          <Button variant="ghost" size="sm" onClick={onRefreshChannels}>
             <RefreshCw size={12} />
             Try again
           </Button>
@@ -1047,7 +1042,7 @@ function ChannelListContent({ channelsLoading, channelsError, onRefreshChannels,
   )
 }
 
-function SlackChannelsStep({ jobs, onShowActiveJob, channelsLoading, channelsError, onRefreshChannels, channels, selectedChannelIds, onToggleChannel, onSelectAllPublic, onClearSelection, starting, onStartImport, error, onDismissError }: {
+function SlackChannelsStep({ jobs, onShowActiveJob, channelsLoading, channelsError, onRefreshChannels, channels, selectedChannelIds, onToggleChannel, onSelectAllPublic, onClearSelection, starting, onStartImport }: {
   jobs: SlackImportJob[]
   onShowActiveJob: () => void
   channelsLoading: boolean
@@ -1060,8 +1055,6 @@ function SlackChannelsStep({ jobs, onShowActiveJob, channelsLoading, channelsErr
   onClearSelection: () => void
   starting: boolean
   onStartImport: () => void
-  error: string | null
-  onDismissError: () => void
 }) {
   const hasChannels = !channelsLoading && !channelsError && channels.length > 0
   return (
@@ -1085,9 +1078,6 @@ function SlackChannelsStep({ jobs, onShowActiveJob, channelsLoading, channelsErr
       {/* Recent jobs summary */}
       <JobsSummaryBar jobs={jobs} onShowActiveJob={onShowActiveJob} />
 
-      {/* Error */}
-      {error ? <ImportErrorBanner error={error} onDismiss={onDismissError} /> : null}
-
       {/* Channels loading / error / empty / list */}
       <ChannelListContent
         channelsLoading={channelsLoading}
@@ -1103,7 +1093,7 @@ function SlackChannelsStep({ jobs, onShowActiveJob, channelsLoading, channelsErr
       {/* Start import button */}
       {hasChannels ? (
         <div className="mt-4 flex items-center justify-end gap-2 border-t border-(--border) pt-4">
-          <Button
+          <Button variant="ghost"
             size="sm"
             onClick={onStartImport}
             disabled={selectedChannelIds.size === 0 || starting}
@@ -1141,14 +1131,14 @@ function ImportFlow({
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-(--border) px-5 pb-3 pt-4">
         <div className="flex items-center gap-2">
           {onBack ? (
-            <button
+            <Button variant="ghost"
               type="button"
               onClick={onBack}
-              className="inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-xs text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
+              className={unstyledButton(`inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-xs text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)`)}
             >
               <ArrowLeft size={13} />
               All services
-            </button>
+            </Button>
           ) : null}
           <span className="text-sm font-semibold text-(--foreground)">Import from {serviceLabel}</span>
         </div>
@@ -1202,14 +1192,14 @@ function JobProgressHeader({ job, isActive, totalChats, cancelling, onCancel, on
   const isCancelled = job.status === 'cancelled'
   return (
     <div className="mb-4 flex items-center gap-3">
-      <button
+      <Button variant="ghost"
         type="button"
         aria-label="Back to channel picker"
         onClick={onBackToPicker}
-        className="inline-flex h-7 w-7 items-center justify-center rounded-md text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)"
+        className={unstyledButton(`inline-flex h-7 w-7 items-center justify-center rounded-md text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)`)}
       >
         <ArrowLeft size={14} />
-      </button>
+      </Button>
       <div className="min-w-0 flex-1">
         <h3 className="text-sm font-semibold text-(--foreground)">
           {isCompleted ? 'Import complete' : isFailed ? 'Import failed' : isCancelled ? 'Import cancelled' : 'Importing…'}
@@ -1329,7 +1319,7 @@ function JobProgressView({
       {/* Back to picker */}
       {!isActive ? (
         <div className="mt-4 border-t border-(--border) pt-4">
-          <Button size="sm" onClick={onBackToPicker}>
+          <Button variant="ghost" size="sm" onClick={onBackToPicker}>
             <Download size={13} />
             Import more channels
           </Button>
@@ -1389,14 +1379,14 @@ function JobDoneView({
   return (
     <div className="px-5 py-4">
       <div className="mb-4 flex items-center gap-3">
-        <button
+        <Button variant="ghost"
           type="button"
           aria-label="Back to channel picker"
           onClick={onBackToPicker}
-          className="inline-flex h-7 w-7 items-center justify-center rounded-md text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)"
+          className={unstyledButton(`inline-flex h-7 w-7 items-center justify-center rounded-md text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)`)}
         >
           <ArrowLeft size={14} />
-        </button>
+        </Button>
         <div className="min-w-0 flex-1">
           <h3 className="text-sm font-semibold text-(--foreground)">
             {isCompleted ? 'Import complete' : isFailed ? 'Import failed' : isCancelled ? 'Import cancelled' : 'Import finished'}
@@ -1423,7 +1413,7 @@ function JobDoneView({
       ) : null}
 
       <div className="mt-4 flex items-center gap-2 border-t border-(--border) pt-4">
-        <Button size="sm" onClick={onBackToPicker}>
+        <Button variant="ghost" size="sm" onClick={onBackToPicker}>
           <Download size={13} />
           Import more channels
         </Button>

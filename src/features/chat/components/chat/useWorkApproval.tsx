@@ -1,18 +1,17 @@
 'use client'
 
 import { useCallback, useState } from 'react'
-import type { Dispatch, SetStateAction } from 'react'
+import { Confirmation, ConfirmationAction, ConfirmationActions, ConfirmationBody, ConfirmationIcon, ConfirmationRequest, ConfirmationTitle } from '@overlay/chat-react'
+import { toast } from '@overlay/ui/primitives'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import type { useAgentRunLifecycle } from './useAgentRunLifecycle'
 
 export function useWorkApproval({
   agentRunLifecycle,
   activeChatId,
-  setComposerNotice,
 }: {
   agentRunLifecycle: ReturnType<typeof useAgentRunLifecycle>
   activeChatId: string | null
-  setComposerNotice: Dispatch<SetStateAction<string | null>>
 }) {
   const [approvalSubmitting, setApprovalSubmitting] = useState(false)
 
@@ -29,38 +28,31 @@ export function useWorkApproval({
       })
       await agentRunLifecycle.refresh()
     } catch (error) {
-      setComposerNotice(error instanceof Error ? error.message : 'Could not submit approval.')
+      toast.error(error instanceof Error ? error.message : 'Could not submit approval.')
     } finally {
       setApprovalSubmitting(false)
     }
-  }, [activeChatId, agentRunLifecycle, setComposerNotice])
+  }, [activeChatId, agentRunLifecycle])
 
   const workApprovalContent = agentRunLifecycle.run?.status === 'waiting_for_approval' && agentRunLifecycle.run.approval
     ? (
-        <div className="mb-2 rounded-2xl border border-(--border) bg-(--surface-elevated) px-4 py-3 shadow-xs">
-          <p className="text-sm font-medium text-(--foreground)">{agentRunLifecycle.run.approval.title ?? 'Work needs your approval'}</p>
-          <p className="mt-1 text-xs text-(--muted)">
-            {agentRunLifecycle.run.approval.requests.map((request) => request.toolName).join(', ')}
-          </p>
-          <div className="mt-3 flex items-center gap-2">
-            <button
-              type="button"
-              disabled={approvalSubmitting}
-              onClick={() => void submitWorkApproval(true)}
-              className="rounded-lg bg-(--foreground) px-3 py-1.5 text-xs font-medium text-(--background) disabled:opacity-50"
-            >
-              Approve
-            </button>
-            <button
-              type="button"
-              disabled={approvalSubmitting}
-              onClick={() => void submitWorkApproval(false)}
-              className="rounded-lg border border-(--border) px-3 py-1.5 text-xs font-medium text-(--foreground) disabled:opacity-50"
-            >
-              Deny
-            </button>
-          </div>
-        </div>
+        <Confirmation className="mb-2">
+          <ConfirmationIcon running={approvalSubmitting} />
+          <ConfirmationBody>
+            <ConfirmationTitle>{agentRunLifecycle.run.approval.title ?? 'Work needs your approval'}</ConfirmationTitle>
+            <ConfirmationRequest>
+              {agentRunLifecycle.run.approval.requests.map((request) => request.toolName).join(', ')}
+            </ConfirmationRequest>
+            <ConfirmationActions>
+              <ConfirmationAction tone="primary" disabled={approvalSubmitting} onClick={() => void submitWorkApproval(true)}>
+                Approve
+              </ConfirmationAction>
+              <ConfirmationAction disabled={approvalSubmitting} onClick={() => void submitWorkApproval(false)}>
+                Deny
+              </ConfirmationAction>
+            </ConfirmationActions>
+          </ConfirmationBody>
+        </Confirmation>
       )
     : undefined
 

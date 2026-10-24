@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import type { UIMessage } from '@/shared/chat/ai-ui-message'
+import { toast } from '@overlay/ui/primitives'
 import type { GeneratedUiData } from '@overlay/chat-core/generated-ui'
 import type { AutomationDetail } from '@overlay/app-core'
 import { usePathname, useSearchParams, useRouter } from 'next/navigation'
@@ -26,6 +27,7 @@ import { useChatStopController } from './useChatStopController'
 import { useChatTitleController } from './useChatTitleController'
 import { useLiveConversationSync } from './useLiveConversationSync'
 import { useAgentRunLifecycle } from './useAgentRunLifecycle'
+import { resolveAgentRunNotice, type AgentRunNoticePrevious } from './agent-run-notice'
 import { useChatRuntimes } from './useChatRuntimes'
 import { useComposerTextState } from './useComposerTextState'
 import {
@@ -47,6 +49,7 @@ import { useConvexAuthToken } from '@/components/providers/ConvexAuthProvider'
 import { useGeneratedUiConnectorActions } from './useGeneratedUiConnectorActions'
 import { useChatMentions } from '../use-chat-mentions'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
+import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import { recordRender } from '@overlay/chat-react/lib/perf-debug'
 import type { Conversation } from '../chat-interface/types'
 import type { MentionInputHandle } from '../chat-interface/MentionInput'
@@ -90,6 +93,7 @@ export function useChatExperienceController({
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
+  const buildWorkspaceHref = useWorkspaceHref()
   const isPublicShowcase = Boolean(publicShowcaseSnapshots)
   const { settings, updateSettings } = useAppSettings()
   const { user: authUser, isLoading: authLoading } = useAuth()
@@ -157,14 +161,8 @@ export function useChatExperienceController({
     replaceConversationRuntime,
     activeRuntime,
     chat0,
-    chat1,
-    chat2,
-    chat3,
     actChat,
     chat0Ref,
-    chat1Ref,
-    chat2Ref,
-    chat3Ref,
     actChatRef,
     chatInstances,
   } = useChatRuntimes(activeChatId)
@@ -192,15 +190,12 @@ export function useChatExperienceController({
 
   /** Exchange index where the user pressed Stop; cleared on chat switch / new chat. */
   const [interruptedExchangeIdx, setInterruptedExchangeIdx] = useState<number | null>(null)
-  /** When true, account default-model sync must not overwrite single/multi picker mode. */
   const userAskModelOverrideRef = useRef(false)
   const {
     selectedActModel,
     setSelectedActModel,
     selectedModels,
     setSelectedModels,
-    askModelSelectionMode,
-    setAskModelSelectionMode,
     chatPrefsHydrated,
     hasStoredTextModelSelection,
     generationMode,
@@ -213,20 +208,12 @@ export function useChatExperienceController({
     setSelectedImageModels,
     selectedVideoModels,
     setSelectedVideoModels,
-    imageModelSelectionMode,
-    setImageModelSelectionMode,
-    videoModelSelectionMode,
-    setVideoModelSelectionMode,
     videoSubMode,
     setVideoSubMode,
     lastGeneratedImageUrlRef,
     reasoning,
     setReasoning,
   } = useChatPreferences()
-  const askModelSelectionModeRef = useRef(askModelSelectionMode)
-  useEffect(() => {
-    askModelSelectionModeRef.current = askModelSelectionMode
-  }, [askModelSelectionMode])
   const [, setIsSwitchingChat] = useState(false)
   const generatedUiConnectorActions = useGeneratedUiConnectorActions({ enabled: !isPublicShowcase })
 
@@ -238,6 +225,7 @@ export function useChatExperienceController({
     inputRef,
     inputRevision,
     setInput,
+    subscribeToInput,
   } = useComposerTextState()
 
   // Restore guest draft after hydration so server/client initial renders match
@@ -254,6 +242,7 @@ export function useChatExperienceController({
 
   const [isOptimisticLoading, setIsOptimisticLoading] = useState(false)
   const [composerNotice, setComposerNotice] = useState<string | null>(null)
+  const previousAgentRunRef = useRef<AgentRunNoticePrevious | null>(null)
   const {
     attachedImages,
     setAttachedImages,
@@ -269,7 +258,7 @@ export function useChatExperienceController({
     addDocumentsFromPicker,
     addImages,
     handlePaste,
-  } = useChatAttachments({ setComposerNotice })
+  } = useChatAttachments()
 
   const {
     showAttachMenu,
@@ -308,14 +297,11 @@ export function useChatExperienceController({
     modelCatalogReady: !byokModelsLoading,
     chatPrefsHydrated,
     onlyAllowZdrModels: settings.onlyAllowZdrModels,
-    enabledModelIds: settings.enabledChatModelIds,
-    modelOrder: settings.modelOrder,
     pathname,
     router,
     searchParams,
     selectedActModel,
     selectedModels,
-    setAskModelSelectionMode,
     setComposerNotice,
     setSelectedActModel,
     setSelectedModels,
@@ -331,9 +317,7 @@ export function useChatExperienceController({
     selectedModels,
     setSelectedActModel,
     setSelectedModels,
-    setAskModelSelectionMode,
     userAskModelOverrideRef,
-    askModelSelectionModeRef,
     chatPrefsHydrated,
     activeChatId,
     isTemporaryChat,
@@ -349,9 +333,7 @@ export function useChatExperienceController({
     isDraftSaving,
     saveSkillDraft,
     setDraftModalState,
-  } = useDraftReviewActions({
-    setComposerNotice,
-  })
+  } = useDraftReviewActions()
 
   useEffect(() => {
     setExitingTurnIds([])
@@ -382,8 +364,14 @@ export function useChatExperienceController({
   const wasStreamingRef = useRef(false)
 
   const replaceActiveChatRoute = useCallback(() => {
-    if (!hideSidebar) router.replace('/app/chat')
-  }, [hideSidebar, router])
+    if (hideSidebar) return
+    const params = new URLSearchParams()
+    const view = searchParams.get('view')
+    if (view && ['personal', 'workspace-chats', 'dms', 'channels'].includes(view)) params.set('view', view)
+    if (searchParams.get('showcase') === '1') params.set('showcase', '1')
+    const query = params.toString()
+    router.replace(buildWorkspaceHref(activeWorkspaceId, `/app/chat${query ? `?${query}` : ''}`))
+  }, [activeWorkspaceId, buildWorkspaceHref, hideSidebar, router, searchParams])
 
   const {
     activeChatTitle,
@@ -395,10 +383,8 @@ export function useChatExperienceController({
     isFirstMessage,
     persistActiveRuntimeUiState,
     resetActiveChatAfterDelete,
-    selectedTabPerExchange,
     setActiveChatTitle,
     setIsFirstMessage,
-    setSelectedTabPerExchange,
     updateRuntimeUiState,
   } = useConversationUiState({
     activeChatId,
@@ -415,7 +401,6 @@ export function useChatExperienceController({
     selectedModels,
     setActiveChatId,
     setActiveViewer,
-    setAskModelSelectionMode,
     setInterruptedExchangeIdx,
     setIsTemporaryChat,
     setSelectedActModel,
@@ -518,14 +503,11 @@ export function useChatExperienceController({
   }, [activeChatId])
 
   useEffect(() => {
-    const failedNotice = agentRunLifecycle.run?.status === 'failed'
-      ? `Work failed: ${agentRunLifecycle.run.terminalError?.message ?? 'The run could not be completed.'}`
-      : null
-    const cancelledNotice = agentRunLifecycle.run?.status === 'cancelled'
-      ? 'Work stopped.'
-      : null
-    if (failedNotice || cancelledNotice) {
-      setComposerNotice(failedNotice ?? cancelledNotice)
+    const run = agentRunLifecycle.run
+    const { announce, notice } = resolveAgentRunNotice(previousAgentRunRef.current, run)
+    previousAgentRunRef.current = run ? { id: run.id, status: run.status } : null
+    if (announce && notice) {
+      setComposerNotice(notice)
       return
     }
     setComposerNotice((current) => (
@@ -545,19 +527,10 @@ export function useChatExperienceController({
     if (chat0Ref.current.messages !== runtime.askChats[0].messages) {
       chat0Ref.current.setMessages([...runtime.askChats[0].messages] as UIMessage[])
     }
-    if (chat1Ref.current.messages !== runtime.askChats[1].messages) {
-      chat1Ref.current.setMessages([...runtime.askChats[1].messages] as UIMessage[])
-    }
-    if (chat2Ref.current.messages !== runtime.askChats[2].messages) {
-      chat2Ref.current.setMessages([...runtime.askChats[2].messages] as UIMessage[])
-    }
-    if (chat3Ref.current.messages !== runtime.askChats[3].messages) {
-      chat3Ref.current.setMessages([...runtime.askChats[3].messages] as UIMessage[])
-    }
     if (actChatRef.current.messages !== runtime.actChat.messages) {
       actChatRef.current.setMessages([...runtime.actChat.messages] as UIMessage[])
     }
-  }, [activeChatId, actChatRef, chat0Ref, chat1Ref, chat2Ref, chat3Ref, isPublicShowcase, runtimeHydrationVersion, runtimesRef])
+  }, [activeChatId, actChatRef, chat0Ref, isPublicShowcase, runtimeHydrationVersion, runtimesRef])
 
   const {
     beginHeaderChatRename,
@@ -622,20 +595,15 @@ export function useChatExperienceController({
       runtime.actChat.messages = actPatch.messages as never
       changed = true
     }
-    runtime.askChats.forEach((chat) => {
-      const patch = patchMessages(chat.messages as UIMessage[])
-      if (patch.changed) {
-        chat.messages = patch.messages as never
-        changed = true
-      }
-    })
+    const askPatch = patchMessages(runtime.askChats[0].messages as UIMessage[])
+    if (askPatch.changed) {
+      runtime.askChats[0].messages = askPatch.messages as never
+      changed = true
+    }
     if (changed) {
       if (isTemporaryChatRef.current || (targetChatId && activeChatIdRef.current === targetChatId)) {
         actChatRef.current.setMessages([...runtime.actChat.messages] as UIMessage[])
         chat0Ref.current.setMessages([...runtime.askChats[0]!.messages] as UIMessage[])
-        chat1Ref.current.setMessages([...runtime.askChats[1]!.messages] as UIMessage[])
-        chat2Ref.current.setMessages([...runtime.askChats[2]!.messages] as UIMessage[])
-        chat3Ref.current.setMessages([...runtime.askChats[3]!.messages] as UIMessage[])
       }
       forceLiveSyncRender((value) => value + 1)
     }
@@ -648,13 +616,11 @@ export function useChatExperienceController({
       data,
     }).then((res) => {
       if (res.ok) return
-      setComposerNotice('Could not save draft edits.')
-      window.setTimeout(() => setComposerNotice(null), 4000)
+      toast.error('Could not save draft edits.')
     }).catch(() => {
-      setComposerNotice('Could not save draft edits.')
-      window.setTimeout(() => setComposerNotice(null), 4000)
+      toast.error('Could not save draft edits.')
     })
-  }, [actChatRef, chat0Ref, chat1Ref, chat2Ref, chat3Ref, emptyRuntimeRef, forceLiveSyncRender, isPublicShowcase, isTemporaryChatRef, runtimesRef])
+  }, [actChatRef, chat0Ref, emptyRuntimeRef, forceLiveSyncRender, isPublicShowcase, isTemporaryChatRef, runtimesRef])
 
   /** Hide header rename until `loadChat` has applied messages/meta (`runtime.hydrated`). */
   const activeChatHydrated = Boolean(
@@ -702,11 +668,7 @@ export function useChatExperienceController({
     setSelectedAutomationLoading,
     selectedActModel,
     setSelectedActModel,
-    selectedModels,
     setSelectedModels,
-    askModelSelectionMode,
-    setAskModelSelectionMode,
-    setComposerNotice,
     userAskModelOverrideRef,
   })
 
@@ -749,7 +711,6 @@ export function useChatExperienceController({
 
   useEffect(() => {
     if (wasStreamingRef.current && !isActiveLoading && chat0.messages.length > 0) {
-      snapshotCurrentAskThreadsForModelPicker()
       loadSubscription()
     }
     wasStreamingRef.current = isActiveLoading
@@ -779,9 +740,6 @@ export function useChatExperienceController({
     activeChatId,
     actChat,
     chat0,
-    chat1,
-    chat2,
-    chat3,
     isActiveLoading,
     isOptimisticLoading,
     runtimeHydrationVersion,
@@ -807,21 +765,13 @@ export function useChatExperienceController({
   const {
     handleModeChange,
     headerModelProps,
-    snapshotCurrentAskThreadsForModelPicker,
     setShowModelPicker,
   } = useChatModelSelectionController({
     activeChatId,
-    activeChatIdRef,
-    activeRuntime,
-    askModelSelectionMode,
     chatPrefsHydrated,
-    exchangeGenTypes,
-    exchangeModels,
     gatewayCatalogModels,
     gatewayModelsLoading,
     generationMode,
-    hasAutomationContext,
-    imageModelSelectionMode,
     isActiveLoading,
     isFreeTier,
     isTemporaryChat,
@@ -832,19 +782,15 @@ export function useChatExperienceController({
     selectedImageModels,
     selectedModels,
     selectedVideoModels,
-    setAskModelSelectionMode,
     setGenerationChip,
     setGenerationMode,
-    setImageModelSelectionMode,
     setSelectedActModel,
     setSelectedImageModels,
     setSelectedModels,
     setSelectedVideoModels,
-    setVideoModelSelectionMode,
     setVideoSubMode,
     updateSettings,
     userAskModelOverrideRef,
-    videoModelSelectionMode,
     videoSubMode,
   })
 
@@ -860,7 +806,6 @@ export function useChatExperienceController({
     loadSubscription,
     mode,
     selectedActModel,
-    setComposerNotice,
     shouldScrollRef,
     startSession,
   })
@@ -877,7 +822,6 @@ export function useChatExperienceController({
     activeChatIdRef,
     activeChatTitle,
     applyUiStateToView,
-    askModelSelectionMode,
     attachedImages,
     authUser,
     automationIdParam,
@@ -944,8 +888,7 @@ export function useChatExperienceController({
   })
 
   const {
-    getResponseForExchangeForModel,
-    handleTabSelect,
+    getResponseForExchange,
     beginReplyToAssistantText,
     beginReplyToMediaPrompt,
     jumpToReplyTarget,
@@ -953,11 +896,8 @@ export function useChatExperienceController({
     handleBranchConversationAtTurn,
     handleDeleteTurnById,
   } = useChatTurnActions({
-    selectedModels,
     activeRuntime,
-    activeAskChats,
     isActiveLoading,
-    setSelectedTabPerExchange,
     setReplyContext,
     textareaRef,
     ensureConversationRuntime,
@@ -969,7 +909,6 @@ export function useChatExperienceController({
     resetToBlankChatSurface,
     isTemporaryChat,
     activeChatId,
-    setComposerNotice,
     setIsSwitchingChat,
     createNewChat,
     loadChat,
@@ -981,7 +920,6 @@ export function useChatExperienceController({
   const { workApprovalContent } = useWorkApproval({
     agentRunLifecycle,
     activeChatId,
-    setComposerNotice,
   })
 
   const {
@@ -1059,9 +997,6 @@ export function useChatExperienceController({
     activeChatIdRef,
     actChat,
     chat0,
-    chat1,
-    chat2,
-    chat3,
     forceLiveSyncRender: onRuntimeMessagesChanged,
     getActiveRuntime: getActiveRuntimeForStop,
     isActiveLoading,
@@ -1075,6 +1010,7 @@ export function useChatExperienceController({
 
   return {
     chats,
+    favoriteScope: authUser?.id ?? userId,
     activeChatId,
     activeChatHydrated,
     idParam,
@@ -1108,7 +1044,6 @@ export function useChatExperienceController({
     exchangeModels,
     exchangeModes,
     generationResults,
-    selectedTabPerExchange,
     activeChatTitle,
     editingChatId,
     editingChatTitle,
@@ -1143,6 +1078,8 @@ export function useChatExperienceController({
     handleComposerInputChange,
     hasComposerText,
     textareaRef,
+    setQuestionnaireDraft: (value: string) => { setInput(value); textareaRef.current?.focus() },
+    subscribeToInput,
     replyContext,
     setReplyContext,
     composerNotice,
@@ -1192,8 +1129,7 @@ export function useChatExperienceController({
     handleEmptySuggestion,
     handleAutomateSuggestion,
     handleCreateAutomationDraftViaChat,
-    getResponseForExchangeForModel,
-    handleTabSelect,
+    getResponseForExchange,
     jumpToReplyTarget,
     beginReplyToMediaPrompt,
     beginReplyToAssistantText,

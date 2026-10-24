@@ -1,7 +1,9 @@
 'use client'
 
 import Image from 'next/image'
-import { AlertCircle, FileText, X } from 'lucide-react'
+import { FileText, X } from 'lucide-react'
+import { Button, toast } from '@overlay/ui/primitives'
+import { useEffect } from 'react'
 import type { ChatComposerAttachmentState } from './ChatComposerTypes'
 
 function fileTypeLabel(name: string): string {
@@ -64,10 +66,11 @@ export function AttachmentPreviewTray({
           key={img.dataUrl}
           className="group relative flex min-w-0 max-w-full items-center gap-2 rounded-xl border border-(--border) bg-(--surface-subtle) py-1.5 pl-1.5 pr-2 sm:max-w-[min(100%,240px)]"
         >
-          <button
+          <Button
+            variant="ghost"
             type="button"
             onClick={() => onOpenAttachmentPreview({ name: img.name, content: img.dataUrl, url: img.dataUrl })}
-            className="flex min-w-0 flex-1 items-center gap-2 text-left outline-hidden transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-(--foreground) focus-visible:ring-offset-2 focus-visible:ring-offset-(--surface-elevated)"
+            className="h-auto min-w-0 flex-1 justify-start gap-2 p-0 text-left font-normal outline-hidden transition-opacity hover:bg-transparent hover:text-current hover:opacity-90 focus-visible:ring-2 focus-visible:ring-(--foreground) focus-visible:ring-offset-2 focus-visible:ring-offset-(--surface-elevated)"
             title="Open attachment"
           >
             <Image
@@ -82,15 +85,17 @@ export function AttachmentPreviewTray({
               <p className="truncate text-xs font-medium text-(--foreground)">{img.name}</p>
               <p className="text-[10px] text-(--muted-light)">Image</p>
             </div>
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
             type="button"
             onClick={() => setAttachedImages((prev) => prev.filter((_, itemIndex) => itemIndex !== index))}
-            className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-(--border) bg-(--surface-elevated) text-(--muted) transition-colors hover:bg-(--surface-muted) hover:text-(--foreground)"
+            className="h-5 w-5 shrink-0 rounded-full border border-(--border) bg-(--surface-elevated) p-0 text-(--muted) transition-colors hover:bg-(--surface-muted) hover:text-(--foreground)"
             aria-label={`Remove ${img.name}`}
           >
             <X size={10} strokeWidth={2} />
-          </button>
+          </Button>
         </div>
       ))}
       {pendingChatDocuments.map((doc) => (
@@ -98,11 +103,12 @@ export function AttachmentPreviewTray({
           key={doc.clientId}
           className="group relative flex min-w-0 max-w-full items-center gap-2 rounded-xl border border-(--border) bg-(--surface-subtle) py-1.5 pl-2 pr-2 sm:max-w-[min(100%,260px)]"
         >
-          <button
+          <Button
+            variant="ghost"
             type="button"
             disabled={doc.status !== 'ready' || doc.fileIds.length === 0}
             onClick={() => void onOpenFilePreview(doc.name, doc.fileIds)}
-            className="flex min-w-0 flex-1 items-center gap-2.5 text-left disabled:cursor-default"
+            className="h-auto min-w-0 flex-1 justify-start gap-2.5 p-0 text-left font-normal hover:bg-transparent hover:text-current disabled:cursor-default"
             title={doc.status === 'ready' && doc.fileIds.length > 0 ? 'Open attachment' : undefined}
           >
             {doc.status === 'uploading' ? (
@@ -122,42 +128,34 @@ export function AttachmentPreviewTray({
                 <p className="text-[10px] text-(--muted-light)">{fileTypeLabel(doc.name)}</p>
               )}
             </div>
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
             type="button"
             onClick={() => removePendingDocument(doc.clientId)}
-            className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-(--border) bg-(--surface-elevated) text-(--muted) transition-colors hover:bg-(--surface-muted) hover:text-(--foreground)"
+            className="h-5 w-5 shrink-0 rounded-full border border-(--border) bg-(--surface-elevated) p-0 text-(--muted) transition-colors hover:bg-(--surface-muted) hover:text-(--foreground)"
             aria-label={`Remove ${doc.name}`}
           >
             <X size={10} strokeWidth={2} />
-          </button>
+          </Button>
         </div>
       ))}
     </div>
   )
 }
 
-export function ComposerAlerts({
-  attachmentError,
-  composerNotice,
-}: {
-  attachmentError: string | null
-  composerNotice: string | null
-}) {
-  const alert = attachmentError ?? composerNotice
-  if (!alert) return null
-  const error = Boolean(attachmentError)
-  return (
-    <div
-      className="mb-2 flex items-center gap-2 rounded-2xl border px-4 py-3 text-xs"
-      style={{
-        background: error ? 'var(--chat-alert-error-bg)' : 'var(--chat-alert-warn-bg)',
-        borderColor: error ? 'var(--chat-alert-error-border)' : 'var(--chat-alert-warn-border)',
-        color: error ? 'var(--chat-alert-error-text)' : 'var(--chat-alert-warn-text)',
-      }}
-    >
-      <AlertCircle size={13} className="shrink-0 opacity-80" />
-      {alert}
-    </div>
-  )
+export function useComposerAlertToasts(
+  composerNotice: string | null,
+  attachmentError: string | null,
+) {
+  useEffect(() => {
+    if (composerNotice) toast.warning(composerNotice, { id: 'composer-notice' })
+    else toast.dismiss('composer-notice')
+  }, [composerNotice])
+
+  useEffect(() => {
+    if (attachmentError) toast.error(attachmentError, { id: 'composer-attachment-error' })
+    else toast.dismiss('composer-attachment-error')
+  }, [attachmentError])
 }

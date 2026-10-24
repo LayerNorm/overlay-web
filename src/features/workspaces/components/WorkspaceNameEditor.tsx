@@ -1,5 +1,8 @@
 'use client'
 
+import { unstyledButton, unstyledInput } from '@overlay/ui/control-reset'
+import { Button, Input, toast } from '@overlay/ui/primitives'
+
 import { useState } from 'react'
 import { Check, Loader2, Pencil, X } from 'lucide-react'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
@@ -20,7 +23,6 @@ export function WorkspaceNameEditor({
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(workspace.name)
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
 
   if (!canRename) {
     return <h2 className="truncate text-sm font-semibold text-(--foreground)">{workspace.name}</h2>
@@ -33,13 +35,13 @@ export function WorkspaceNameEditor({
       return
     }
     setBusy(true)
-    setError(null)
     try {
       await client.renameWorkspace(workspace.id, name)
       await refresh()
       setEditing(false)
+      toast.success('Workspace renamed.')
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Could not rename the workspace.')
+      toast.error(caught instanceof Error ? caught.message : 'Could not rename the workspace.')
     } finally {
       setBusy(false)
     }
@@ -47,45 +49,43 @@ export function WorkspaceNameEditor({
 
   if (!editing) {
     return (
-      <button
+      <Button variant="ghost"
         type="button"
         onClick={() => {
           setDraft(workspace.name)
           setEditing(true)
         }}
         title="Rename workspace"
-        className="group -mx-1 inline-flex max-w-full items-center gap-1.5 rounded-sm px-1 text-left"
+        className={unstyledButton(`group -mx-1 inline-flex max-w-full items-center gap-1.5 rounded-sm px-1 text-left`)}
       >
         <h2 className="truncate text-sm font-semibold text-(--foreground)">{workspace.name}</h2>
         <Pencil size={11} className="shrink-0 text-(--muted-light) opacity-0 transition-opacity group-hover:opacity-100" />
-      </button>
+      </Button>
     )
   }
   return (
     <div>
       <div className="flex items-center gap-1.5">
-        <input
+        <Input
           aria-label="Workspace name"
           value={draft}
           maxLength={80}
           disabled={busy}
-          // eslint-disable-next-line jsx-a11y/no-autofocus -- the person just asked to rename; focus belongs in the field
           autoFocus
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === 'Enter') void save()
             if (event.key === 'Escape') setEditing(false)
           }}
-          className="min-w-0 flex-1 rounded-md border border-(--border) bg-(--surface-subtle) px-2 py-1 text-sm font-semibold text-(--foreground) outline-hidden"
+          className={unstyledInput(`min-w-0 flex-1 rounded-md border border-(--border) bg-(--surface-subtle) px-2 py-1 text-sm font-semibold text-(--foreground) outline-hidden`)}
         />
-        <button type="button" aria-label="Save name" disabled={busy} onClick={() => void save()} className="rounded-sm p-1 text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)">
+        <Button variant="ghost" type="button" aria-label="Save name" disabled={busy} onClick={() => void save()} className={unstyledButton(`rounded-sm p-1 text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)`)}>
           {busy ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
-        </button>
-        <button type="button" aria-label="Cancel" disabled={busy} onClick={() => setEditing(false)} className="rounded-sm p-1 text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)">
+        </Button>
+        <Button variant="ghost" type="button" aria-label="Cancel" disabled={busy} onClick={() => setEditing(false)} className={unstyledButton(`rounded-sm p-1 text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)`)}>
           <X size={13} />
-        </button>
+        </Button>
       </div>
-      {error ? <p role="alert" className="mt-1 text-xs text-red-500">{error}</p> : null}
     </div>
   )
 }

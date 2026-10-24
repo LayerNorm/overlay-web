@@ -2,7 +2,9 @@ import 'server-only'
 
 import { randomUUID } from 'node:crypto'
 import type {
+  AccountWorkspaceInvitation,
   Workspace,
+  WorkspaceHandleResolutionResponse,
   WorkspaceAccess,
   WorkspaceInvitation,
   WorkspaceMembership,
@@ -54,6 +56,9 @@ export class ConvexWorkspaceRepository implements WorkspaceRepository {
       displayName: input.displayName,
       email: input.email,
       workspaceName: input.workspaceName,
+      ...(process.env.OVERLAY_WORKSPACE_HANDLE_WRITES_ENABLED === 'true'
+        ? { slug: input.slug }
+        : {}),
       now: input.now,
     }))
   }
@@ -68,8 +73,46 @@ export class ConvexWorkspaceRepository implements WorkspaceRepository {
       creatorEmail: input.ownerEmail,
       name: input.name,
       slug: input.slug,
+      ...(process.env.OVERLAY_WORKSPACE_HANDLE_WRITES_ENABLED === 'true'
+        ? {
+            handleExplicit: input.handleExplicit,
+            handleSuffixes: input.handleSuffixes,
+          }
+        : {}),
       now: input.now,
     }))
+  }
+
+  async resolveWorkspaceHandle(args: { userId: string; handle: string }): Promise<WorkspaceHandleResolutionResponse | null> {
+    try {
+      return await query<WorkspaceHandleResolutionResponse | null>('resolveWorkspaceHandleByServer', args)
+    } catch (error) {
+      if (!isMissingWorkspaceHandleFunction(error)) throw error
+      const legacy = (await this.listForUser(args.userId)).find((access) =>
+        access.workspace.kind === 'organization' && access.workspace.slug === args.handle)
+      return legacy
+        ? { workspaceId: legacy.workspace.id, canonicalHandle: legacy.workspace.slug, canonical: true }
+        : null
+    }
+  }
+
+  async isWorkspaceHandleRegistryReady(): Promise<boolean> {
+    try {
+      return await query<boolean>('workspaceHandleRegistryReadyByServer', {}) ?? false
+    } catch (error) {
+      if (isMissingWorkspaceHandleFunction(error)) return false
+      throw error
+    }
+  }
+
+  async updateWorkspaceHandle(input: Parameters<NonNullable<WorkspaceRepository['updateWorkspaceHandle']>>[0]) {
+    try {
+      const row = await requiredMutation<ConvexWorkspace>('updateWorkspaceHandleByServer', input)
+      return workspace(row)
+    } catch (error) {
+      if (hasCode(error, 'WORKSPACE_NOT_FOUND')) return null
+      throw error
+    }
   }
 
   async getWorkspace(workspaceId: string) {
@@ -379,6 +422,12 @@ export class ConvexWorkspaceRepository implements WorkspaceRepository {
     return rows.map(invitation)
   }
 
+  async listReceivedInvitations(
+    args: Parameters<WorkspaceRepository['listReceivedInvitations']>[0],
+  ): Promise<AccountWorkspaceInvitation[]> {
+    return await query<AccountWorkspaceInvitation[]>('listReceivedInvitationsByServer', args) ?? []
+  }
+
   async acceptInvitation(
     input: Parameters<WorkspaceRepository['acceptInvitation']>[0],
   ): Promise<InvitationAcceptanceResult> {
@@ -657,4 +706,10 @@ function stripUndefined(value: Record<string, unknown>): Record<string, unknown>
 
 function hasCode(error: unknown, code: string): boolean {
   return error instanceof Error ? error.message.includes(code) : String(error).includes(code)
+}
+
+function isMissingWorkspaceHandleFunction(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error)
+  return message.includes('Could not find public function')
+    || message.includes('Could not find function')
 }

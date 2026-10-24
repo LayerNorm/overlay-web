@@ -73,6 +73,8 @@ export type ConversationListRow = {
   shareToken?: string | null
   isAutomation?: boolean
   conversationType?: 'personal' | 'dm' | 'channel'
+  /** Sidebar scope for AI chats; missing means personal. */
+  scope?: 'personal' | 'workspace'
   /** Active participant types other than the current actor, for DM presentation. */
   otherParticipantTypes?: Array<'human' | 'agent'>
   workspaceId?: string
@@ -97,6 +99,7 @@ export type ConversationMessageRow = {
   variantIndex?: number
   createdAt: number
   updatedAt?: number
+  eventSequence?: number
   replyToTurnId?: string
   replySnippet?: string
   routedModelId?: string
@@ -169,6 +172,7 @@ export interface ActConversationRepository {
     isAutomation?: boolean
     workspaceId?: string
     conversationType?: 'personal' | 'dm' | 'channel'
+    scope?: 'personal' | 'workspace'
     createdByPrincipalId?: string
     externalPlatform?: string
     externalChannelId?: string
@@ -355,6 +359,7 @@ export interface ActConversationRepository {
     stoppedCount: number
   }>
   getLatestAgentRun(args: {
+    remoteRunId?: string
     conversationId: ConversationId
     userId: string
   }): Promise<AgentRun | null>

@@ -3,6 +3,7 @@
 @import '@overlay/modules-react/file-viewer.css' layer(base);
 @import '@overlay/modules-react/notebook-editor.css' layer(base);
 @import 'sonner/dist/styles.css' layer(components);
+@import '@overlay/ui/typeset.css';
 
 @import 'tailwindcss';
 @import 'tw-animate-css';
@@ -15,6 +16,7 @@
 @source '../../../packages/overlay-ui/src/**/*.{ts,tsx,mdx}';
 @source '../../../packages/overlay-chat-react/src/**/*.{ts,tsx,mdx}';
 @source '../../../packages/overlay-modules-react/src/**/*.{ts,tsx,mdx}';
+@source '../../node_modules/streamdown/dist/*.js';
 
 /* `dark:` follows the app's [data-theme] attribute (set by
    AppSettingsProvider), not the OS color scheme. */
@@ -23,6 +25,19 @@
 @theme {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
 
   --font-sans: var(--font-sans);
   --font-mono: var(--font-mono);
@@ -146,6 +161,45 @@ body {
   overflow-x: hidden;
 }
 
+/* Canonical Overlay lockup: the orb resting on the wordmark's text baseline.
+   Everything scales off font-size — the orb is 0.5em, the gap 0.4em — so the
+   lockup's size is set by font-size on .brand-lockup or an ancestor. */
+.brand-lockup {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.4em;
+  font-family: var(--font-serif);
+  font-weight: 500;
+  letter-spacing: -0.025em;
+  line-height: 1;
+}
+
+.brand-lockup-orb {
+  display: inline-flex;
+  flex: none;
+  width: 0.5em;
+  height: 0.5em;
+}
+
+/* !important beats OverlayMark's inline width/height (same as .lp .orb). */
+.brand-lockup-orb > span,
+.brand-lockup-orb svg {
+  width: 100% !important;
+  height: 100% !important;
+  display: block;
+}
+
+.brand-lockup-mask {
+  display: inline-flex;
+  overflow: hidden;
+  padding: 0.2em 0;
+  margin: -0.2em 0;
+}
+
+.brand-lockup-word {
+  display: inline-block;
+}
+
 @keyframes appBrandLogoFade {
   from {
     opacity: 0;
@@ -203,21 +257,28 @@ body {
   animation: appBrandWslineFade 420ms ease-out 560ms forwards;
 }
 
-.app-brand-loader-logo {
-  /* rests the orb's bottom on the wordmark's text baseline so the mark reads
-     on the same line as the letters, not centered on the taller line box */
-  margin-top: -1px;
+/* The loader's lockup matches the canonical lockup geometry: at 24px the orb
+   is 12px and sits on the text baseline. The orb carries the surface color and
+   a z-index so the word slides out from behind it through the mask. */
+.app-brand-loader-lockup {
+  font-size: 24px;
+}
+
+.app-brand-loader-lockup .brand-lockup-orb {
+  position: relative;
+  z-index: 1;
+  background: var(--background);
   animation: appBrandLogoFade 360ms ease-out both;
 }
 
-.app-brand-loader-word {
-  animation: appBrandWordReveal 620ms cubic-bezier(0.16, 1, 0.3, 1) 180ms both;
+.app-brand-loader-lockup .brand-lockup-word {
+  opacity: 1;
 }
 
-/* Settled variant: the identical screen with the entrance already played. The
-   workspace-hydration gate swaps to it without a visible re-flash. */
-.app-brand-loader--steady .app-brand-loader-logo,
-.app-brand-loader--steady .app-brand-loader-word,
+/* Settled variant: the identical screen with the entrance already played. Every
+   gate after the first uses it so the word never re-reveals. */
+.app-brand-loader--steady .brand-lockup-orb,
+.app-brand-loader--steady .brand-lockup-word,
 .app-brand-loader--steady .app-brand-loader-wsline {
   animation: none;
 }
@@ -232,8 +293,8 @@ body {
     animation: none;
   }
 
-  .app-brand-loader-logo,
-  .app-brand-loader-word,
+  .app-brand-loader-lockup .brand-lockup-orb,
+  .app-brand-loader-lockup .brand-lockup-word,
   .app-brand-loader-wsline {
     animation-duration: 1ms;
     animation-delay: 0ms;
@@ -368,14 +429,7 @@ html {
   overflow: hidden;
   flex-shrink: 0;
   box-sizing: border-box;
-  background: linear-gradient(
-    135deg,
-    #efe8f4 0%,
-    #e6dcf2 28%,
-    #ddd0ea 52%,
-    #e8dff6 78%,
-    #f0e9f8 100%
-  );
+  background: var(--surface-muted);
   min-height: 4rem;
 }
 
@@ -389,35 +443,13 @@ html {
   background: linear-gradient(
     105deg,
     transparent 0%,
-    rgba(255, 255, 255, 0.08) 38%,
-    rgba(255, 255, 255, 0.65) 50%,
-    rgba(255, 255, 255, 0.08) 62%,
+    color-mix(in srgb, var(--skeleton-sheen) 13%, transparent) 38%,
+    var(--skeleton-sheen) 50%,
+    color-mix(in srgb, var(--skeleton-sheen) 13%, transparent) 62%,
     transparent 100%
   );
   filter: blur(0.5px);
   animation: ui-skeleton-shimmer-slide 1.65s ease-in-out infinite;
-}
-
-[data-theme='dark'] .ui-skeleton-mesh {
-  background: linear-gradient(
-    135deg,
-    #2a2630 0%,
-    #252028 35%,
-    #1f1c24 55%,
-    #2c2733 78%,
-    #322c38 100%
-  );
-}
-
-[data-theme='dark'] .ui-skeleton-mesh::after {
-  background: linear-gradient(
-    105deg,
-    transparent 0%,
-    rgba(255, 255, 255, 0.04) 38%,
-    rgba(255, 255, 255, 0.22) 50%,
-    rgba(255, 255, 255, 0.04) 62%,
-    transparent 100%
-  );
 }
 
 /* Text row skeleton (sidebar lists, settings) */

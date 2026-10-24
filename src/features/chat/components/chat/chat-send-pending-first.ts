@@ -1,5 +1,6 @@
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react'
 import type { UIMessage } from '@/shared/chat/ai-ui-message'
+import { toast } from '@overlay/ui/primitives'
 import { cloneConversationUiState } from '@overlay/chat-core'
 import type {
   ConversationRuntime,
@@ -92,7 +93,7 @@ export function activatePendingFirstSend({
   replaceConversationRuntime(
     realId,
     cloneConversationUiState(preview.ui),
-    preview.askChats.map((chat) => [...chat.messages]),
+    [[...preview.askChats[0].messages]],
     [...preview.actChat.messages],
   )
   markChatModified(realId, pending.activeChatTitleSnapshot)
@@ -129,9 +130,6 @@ export function completeSessionForPendingFirstSend({
   tryActivatePendingFirstSend()
 }
 
-export function showPendingFirstSendSaveFailure(
-  setComposerNotice: Dispatch<SetStateAction<string | null>>,
-) {
-  setComposerNotice('Could not save chat. Your reply may still have streamed.')
-  window.setTimeout(() => setComposerNotice(null), 4000)
+export function showPendingFirstSendSaveFailure() {
+  toast.error('Could not save chat. Your reply may still have streamed.')
 }

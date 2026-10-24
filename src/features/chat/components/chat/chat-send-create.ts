@@ -6,8 +6,8 @@ import { normalizeChatModelSelection } from '@/shared/chat/chat-model-prefs'
 import { dispatchChatCreated } from '@/shared/chat/chat-title'
 import { upsertCachedChat } from '@/shared/chat/chat-list-cache'
 import { DEFAULT_CHAT_TITLE } from '../chat-interface/constants'
+import { legacyWorkspaceScopeForRoute, readWorkspacePathScope } from '@/shared/workspaces/routing'
 import type {
-  AskModelSelectionMode,
   Conversation,
   ConversationRuntime,
   ConversationUiState,
@@ -25,14 +25,12 @@ export type CreateNewChatOptions = {
     runtime: ConversationRuntime
     selectedModels: string[]
     selectedActModel: string
-    askModelSelectionMode: AskModelSelectionMode
   }) => void
 }
 
 export async function createNewChatForSend({
   activeChatIdRef,
   applyUiStateToView,
-  askModelSelectionMode,
   clearTransientComposerState,
   emptyRuntime,
   ensureConversationRuntime,
@@ -58,7 +56,6 @@ export async function createNewChatForSend({
 }: {
   activeChatIdRef: MutableRefObject<string | null>
   applyUiStateToView: (ui: ConversationUiState) => void
-  askModelSelectionMode: AskModelSelectionMode
   clearTransientComposerState: () => void
   emptyRuntime: ConversationRuntime
   ensureConversationRuntime: EnsureConversationRuntime
@@ -88,11 +85,10 @@ export async function createNewChatForSend({
   resetComposerToolIds(false)
   const initialTitle = options.title ?? (mode === 'automate' ? 'New automation' : DEFAULT_CHAT_TITLE)
   const normalizedInitialSelection = normalizeChatModelSelection({
-    askModelIds: askModelSelectionMode === 'single' ? [selectedActModel] : selectedModels.slice(0, 4),
+    askModelIds: selectedModels.slice(0, 1),
     actModelId: selectedActModel,
   })
   const initialSelectedModels = normalizedInitialSelection.askModelIds
-  const initialAskModelSelectionMode: AskModelSelectionMode = initialSelectedModels.length > 1 ? 'multiple' : 'single'
   const trimmedClientId = options.clientId?.trim()
   const res = await overlayAppClient.conversations.createResponse(
     {
@@ -101,6 +97,7 @@ export async function createNewChatForSend({
       actModelId: normalizedInitialSelection.actModelId,
       lastMode: 'act',
       ...(trimmedClientId ? { clientId: trimmedClientId } : {}),
+      ...(workspaceChatsViewActive() ? { scope: 'workspace' as const } : {}),
     },
     { idempotencyKey: trimmedClientId ?? createIdempotencyKey() },
   )
@@ -137,14 +134,12 @@ export async function createNewChatForSend({
   const runtime = ensureConversationRuntime(data.id, {
     selectedActModel: normalizedInitialSelection.actModelId,
     selectedModels: initialSelectedModels,
-    askModelSelectionMode: initialAskModelSelectionMode,
     activeChatTitle: initialTitle,
     isFirstMessage: true,
   })
   resetRuntimeState(runtime, {
     selectedActModel: normalizedInitialSelection.actModelId,
     selectedModels: initialSelectedModels,
-    askModelSelectionMode: initialAskModelSelectionMode,
     activeChatTitle: initialTitle,
     isFirstMessage: true,
   })
@@ -153,7 +148,6 @@ export async function createNewChatForSend({
     runtime,
     selectedModels: initialSelectedModels,
     selectedActModel: normalizedInitialSelection.actModelId,
-    askModelSelectionMode: initialAskModelSelectionMode,
   })
   runtime.hydrated = true
   if (pendingScrollTurnIdRef.current && !pendingScrollChatIdRef.current) {
@@ -168,4 +162,15 @@ export async function createNewChatForSend({
   resetRuntimeState(emptyRuntime)
   clearTransientComposerState()
   return data.id
+}
+
+/** A chat started from the Workspace "Chats" list belongs to the Workspace scope. */
+export function workspaceChatsViewActive(): boolean {
+  if (typeof window === 'undefined') return false
+  const pathScope = readWorkspacePathScope(window.location.pathname)
+  if (pathScope) return pathScope === 'workspace'
+  return legacyWorkspaceScopeForRoute(
+    'chat',
+    new URLSearchParams(window.location.search),
+  ) === 'workspace'
 }

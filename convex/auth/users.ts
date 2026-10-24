@@ -1,3 +1,4 @@
+import { deleteRemoteMessageText } from '../lib/remoteMessageText'
 import { v } from 'convex/values'
 import { mutation, query } from '../_generated/server'
 import type { Id, TableNames } from '../_generated/dataModel'
@@ -165,7 +166,7 @@ export const markOnboardingComplete = mutation({
       .withIndex('by_userId', (q) => q.eq('userId', userId))
       .first()
     if (sub) {
-      await ctx.db.patch(sub._id, { hasSeenOnboarding: true })
+      await ctx.db.patch(sub._id, { hasSeenOnboarding: true, onboardingSession: undefined })
       return { ok: true as const }
     }
     // Subscription row is normally created by syncUserProfile; if missing, bootstrap
@@ -193,7 +194,7 @@ export const resetOnboarding = mutation({
       .withIndex('by_userId', (q) => q.eq('userId', userId))
       .first()
     if (!sub) return { ok: false as const }
-    await ctx.db.patch(sub._id, { hasSeenOnboarding: false })
+    await ctx.db.patch(sub._id, { hasSeenOnboarding: false, onboardingSession: undefined })
     return { ok: true as const }
   },
 })
@@ -395,12 +396,12 @@ export const deleteUserAccountByServer = mutation({
         .withIndex('by_userId', (q) => q.eq('userId', userId))
         .collect(),
     )
-    await deleteIndexed(() =>
-      ctx.db
-        .query('conversationMessages')
-        .withIndex('by_userId', (q) => q.eq('userId', userId))
-        .collect(),
-    )
+    await deleteIndexed(async () => {
+      const messages = await ctx.db.query('conversationMessages')
+        .withIndex('by_userId', q => q.eq('userId', userId)).collect()
+      await Promise.all(messages.map(message => deleteRemoteMessageText(ctx, message)))
+      return messages
+    })
     await deleteIndexed(() =>
       ctx.db
         .query('memories')

@@ -2,9 +2,7 @@
 
 import {
   useCallback,
-  type Dispatch,
   type MutableRefObject,
-  type SetStateAction,
 } from 'react'
 import posthog from 'posthog-js'
 import type { UIMessage } from '@/shared/chat/ai-ui-message'
@@ -34,7 +32,6 @@ export function useChatRetryController({
   loadSubscription,
   mode,
   selectedActModel,
-  setComposerNotice,
   shouldScrollRef,
   startSession,
 }: {
@@ -49,7 +46,6 @@ export function useChatRetryController({
   loadSubscription: () => Promise<unknown>
   mode: 'chat' | 'automate'
   selectedActModel: string
-  setComposerNotice: Dispatch<SetStateAction<string | null>>
   shouldScrollRef: MutableRefObject<boolean>
   startSession: (
     chatId: string,
@@ -63,7 +59,7 @@ export function useChatRetryController({
       userMsg: UIMessage,
       exchIdx: number,
       isActExch: boolean,
-      exchModelList: string[],
+      exchangeModelId: string,
     ) => {
       const chatId = activeChatIdRef.current ?? activeChatId
       if (!chatId || isActiveLoading) return
@@ -79,7 +75,7 @@ export function useChatRetryController({
       const runtime = ensureConversationRuntime(chatId)
       shouldScrollRef.current = true
 
-      runtime.askChats.forEach((chat) => chat.stop())
+      runtime.askChats[0].stop()
       runtime.actChat.stop()
 
       const meta = userMsg.metadata as ChatMessageMetadata | undefined
@@ -92,26 +88,12 @@ export function useChatRetryController({
           ? String(meta.replySnippet).slice(0, 16000)
           : undefined
 
-      const normalizedRetrySelection = normalizeChatModelSelection({
-        askModelIds: exchModelList.length > 0 ? exchModelList : [selectedActModel],
-        actModelId: exchModelList[0] ?? selectedActModel,
-      })
-      const retryModelIds = normalizedRetrySelection.askModelIds
-      const multiRetry = retryModelIds.length > 1
-      const retrySlots = Math.min(4, retryModelIds.length)
-      if (multiRetry) {
-        for (let slot = 0; slot < retrySlots; slot += 1) {
-          runtime.askChats[slot].messages = stripAssistantAfterUserTurn(
-            runtime.askChats[slot].messages,
-            turnId,
-          )
-        }
-        runtime.actChat.messages = stripAssistantAfterUserTurn(runtime.actChat.messages, turnId)
-      } else {
-        runtime.actChat.messages = stripAssistantAfterUserTurn(runtime.actChat.messages, turnId)
-        runtime.askChats[0].messages = stripAssistantAfterUserTurn(runtime.askChats[0].messages, turnId)
-      }
-      const modelId = normalizedRetrySelection.actModelId
+      runtime.actChat.messages = stripAssistantAfterUserTurn(runtime.actChat.messages, turnId)
+      runtime.askChats[0].messages = stripAssistantAfterUserTurn(runtime.askChats[0].messages, turnId)
+      const modelId = normalizeChatModelSelection({
+        askModelIds: [exchangeModelId || selectedActModel],
+        actModelId: exchangeModelId || selectedActModel,
+      }).actModelId
       const msgCountBeforeSend = runtime.askChats[0].messages.length
       startSession(chatId, 'act', activeChatTitle ?? '', msgCountBeforeSend)
 
@@ -128,8 +110,7 @@ export function useChatRetryController({
       startActRetryStream({
         chatId,
         targetRuntime: runtime,
-        textModelsForTurn: multiRetry ? retryModelIds.slice(0, retrySlots) : [modelId],
-        textSlotCount: retrySlots,
+        textModelsForTurn: [modelId],
         selectedActModel: modelId,
         turnId,
         partsForModel: partsForModel as Array<{ type: string; text?: string; url?: string; mediaType?: string; fileName?: string }>,
@@ -139,8 +120,8 @@ export function useChatRetryController({
         completeSession,
         loadChats,
         loadSubscription,
-        onError: (error, fallbackMessage) => reportTextStreamError(setComposerNotice, error, fallbackMessage),
-        logPrefix: multiRetry ? 'Act multi retry' : 'Act retry',
+        onError: (error, fallbackMessage) => reportTextStreamError(error, fallbackMessage),
+        logPrefix: 'Act retry',
       })
     },
     [
@@ -155,7 +136,6 @@ export function useChatRetryController({
       loadSubscription,
       mode,
       selectedActModel,
-      setComposerNotice,
       shouldScrollRef,
       startSession,
     ],
