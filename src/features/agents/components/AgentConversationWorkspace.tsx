@@ -11,7 +11,6 @@ import { DirectMessageExperience } from '@/features/chat/components/DirectMessag
 import { ChatSurfaceEmptyState } from '@/features/chat/components/ChatSurfaceEmptyState'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { RightSidebarToggle } from '@overlay/modules-react/shell'
-import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import {
   agentBelongsToCreatorScope,
   agentsForCreatorScope,
@@ -37,6 +36,7 @@ import { usePanelScope } from '@/hooks/use-panel-scope'
 import type { PanelScope } from '@/shared/workspaces/panel-scope'
 import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import { AgentDirectoryScreen, AgentEditorPanel } from './AgentConversationWorkspace.parts'
+import { subscribeAgentDirectory, type AgentDirectoryState } from '../lib/agent-directory'
 
 type EditorMode = 'new' | 'edit' | null
 
@@ -112,51 +112,28 @@ function useAgentWorkspaceActions(args: {
   return { openCreatedAgent, handleArchived, retryOpen }
 }
 
-type AgentDirectoryState = {
-  workspaceId: string | null
-  agents: WorkspaceAgentDirectoryItem[] | null
-  viewerPrincipalId: string | null
-  error: string | null
-}
-
-/** Loads the roster once per landing. Own budget, kept out of the component. */
 function useAgentDirectory(
   activeWorkspaceId: string | null,
-): { directory: WorkspaceAgentDirectoryItem[] | null; viewerPrincipalId: string | null; loadError: string | null } {
-  const [state, setState] = useState<AgentDirectoryState>({
+): { directory: WorkspaceAgentDirectoryItem[] | null; viewerPrincipalId: string | null; loadError: string | null; refreshing: boolean } {
+  const [state, setState] = useState<AgentDirectoryState & { refreshing: boolean }>({
     workspaceId: null,
     agents: null,
     viewerPrincipalId: null,
     error: null,
+    refreshing: false,
   })
   useEffect(() => {
     if (!activeWorkspaceId) return
-    let cancelled = false
-    overlayAppClient.agents.list(activeWorkspaceId).then((response) => {
-      if (!cancelled) setState({
-        workspaceId: activeWorkspaceId,
-        agents: response.agents,
-        viewerPrincipalId: response.viewerPrincipalId ?? null,
-        error: null,
-      })
-    }).catch(() => {
-      if (!cancelled) {
-        setState({
-          workspaceId: activeWorkspaceId,
-          agents: [],
-          viewerPrincipalId: null,
-          error: 'Could not load your agents. Check your connection and retry.',
-        })
-      }
-    })
-    return () => {
-      cancelled = true
-    }
+    return subscribeAgentDirectory(activeWorkspaceId, (next) => {
+      setState((current) => next.agents === null && current.workspaceId === next.workspaceId
+        ? { ...current, error: null, refreshing: true }
+        : { ...next, refreshing: next.agents === null })
+    }, window)
   }, [activeWorkspaceId])
   if (state.workspaceId !== activeWorkspaceId) {
-    return { directory: null, viewerPrincipalId: null, loadError: null }
+    return { directory: null, viewerPrincipalId: null, loadError: null, refreshing: true }
   }
-  return { directory: state.agents, viewerPrincipalId: state.viewerPrincipalId, loadError: state.error }
+  return { directory: state.agents, viewerPrincipalId: state.viewerPrincipalId, loadError: state.error, refreshing: state.refreshing }
 }
 
 /** Opens the picked agent's conversation. Own budget, kept out of the component. */
@@ -246,13 +223,14 @@ function agentDetailRouteState(args: {
   loadError: string | null
   directory: WorkspaceAgentDirectoryItem[] | null
   requestedAgent: WorkspaceAgentDirectoryItem | null
+  directoryRefreshing: boolean
   viewerPrincipalId: string | null
   requestedScope: PanelScope | null
   scope: PanelScope
 }): 'none' | 'unavailable' | 'pending' | 'ready' {
   if (!args.conversationId || !args.agentId) return 'none'
   if (!args.activeWorkspaceId || args.loadError) return 'unavailable'
-  if (!args.directory) return 'pending'
+  if (!args.directory || (!args.requestedAgent && args.directoryRefreshing)) return 'pending'
   if (!args.requestedAgent || !args.viewerPrincipalId || args.requestedAgent.archivedAt) return 'unavailable'
   if (args.requestedScope !== args.scope) return 'pending'
   return 'ready'
@@ -345,7 +323,7 @@ export function AgentConversationWorkspace({ showcase = false }: { showcase?: bo
   // agent directly. The blank page only ever appears when the workspace
   // genuinely has no agents. The sidebar no longer auto-opens, so exactly
   // one DM creation runs per landing.
-  const { directory, viewerPrincipalId, loadError } = useAgentDirectory(activeWorkspaceId)
+  const { directory, viewerPrincipalId, loadError, refreshing: directoryRefreshing } = useAgentDirectory(activeWorkspaceId)
   const scope = usePanelScope()
   const requestedAgent = directory?.find((agent) => agent.id === agentId) ?? null
   const requestedScope = requestedAgentScope(requestedAgent, viewerPrincipalId)
@@ -427,6 +405,7 @@ export function AgentConversationWorkspace({ showcase = false }: { showcase?: bo
     loadError,
     directory,
     requestedAgent,
+    directoryRefreshing,
     viewerPrincipalId,
     requestedScope,
     scope,

@@ -20,6 +20,8 @@ export interface CapabilityCheck {
   automations: boolean
   multiTenant: boolean
   connectedAgents: boolean
+  /** External agent runtimes (Claude Code, Codex, etc.). */
+  externalAgents: boolean
   computers: boolean
   /** Agents (Claude Code, Codex) on Overlay Cloud machines. */
   cloudAgents: boolean
@@ -51,6 +53,7 @@ export const DEFAULT_OVERLAY_CAPABILITIES: CapabilityCheck = {
   automations: true,
   multiTenant: false,
   connectedAgents: false,
+  externalAgents: false,
   computers: false,
   cloudAgents: false,
   work: false,

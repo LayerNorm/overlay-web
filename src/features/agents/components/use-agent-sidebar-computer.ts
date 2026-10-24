@@ -1,23 +1,30 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { Computer } from '@overlay/workspace-contracts'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import type { useAgentComputer } from './use-agent-computer'
 
 export function useAgentSidebarComputer({
   activeWorkspaceId,
   agentId,
   enabled,
   visible,
+  state,
 }: {
   activeWorkspaceId: string | null
   agentId: string
   enabled: boolean
   visible: boolean
+  state: ReturnType<typeof useAgentComputer>
 }) {
-  const [computer, setComputer] = useState<Computer | null>(null)
-  const [computerLoading, setComputerLoading] = useState(true)
-  const [computerError, setComputerError] = useState<string | null>(null)
+  const {
+    agentComputer: computer,
+    setAgentComputer: setComputer,
+    initialLoading: computerLoading,
+    computerLoadError,
+    retryComputerLoad: loadComputer,
+  } = state
+  const [wakeError, setWakeError] = useState<string | null>(null)
   const [ticketUrl, setTicketUrl] = useState<string | null>(null)
   const [ticketError, setTicketError] = useState<string | null>(null)
   const [ticketLoading, setTicketLoading] = useState(false)
@@ -25,32 +32,9 @@ export function useAgentSidebarComputer({
   const [waking, setWaking] = useState(false)
   const requestId = useRef(0)
 
-  const loadComputer = useCallback(async () => {
-    if (!activeWorkspaceId || !enabled) {
-      setComputerLoading(false)
-      return
-    }
-    setComputerLoading(true)
-    try {
-      const result = await overlayAppClient.computers.list(activeWorkspaceId)
-      setComputer(result.computers.find((item) => item.ownerType === 'agent' && item.ownerId === agentId) ?? null)
-      setComputerError(null)
-    } catch {
-      setComputerError('Could not load the computer.')
-    } finally {
-      setComputerLoading(false)
-    }
-  }, [activeWorkspaceId, agentId, enabled])
-
   useEffect(() => {
-    if (!enabled || !activeWorkspaceId) {
-      setComputer(null)
-      setComputerError(null)
-      setComputerLoading(false)
-      return
-    }
-    void loadComputer()
-  }, [activeWorkspaceId, enabled, loadComputer])
+    setWakeError(null)
+  }, [activeWorkspaceId, agentId, computer?.status])
 
   const shouldPoll = Boolean(enabled && activeWorkspaceId && computer
     && (computer.status === 'provisioning' || (computer.status as string) === 'starting'))
@@ -61,7 +45,7 @@ export function useAgentSidebarComputer({
   }, [activeWorkspaceId, loadComputer, shouldPoll])
 
   useEffect(() => {
-    if (!visible || !enabled || !activeWorkspaceId || computer?.status !== 'ready') {
+    if (!visible || !enabled || !activeWorkspaceId || computerLoading || computer?.status !== 'ready') {
       setTicketUrl(null)
       setTicketError(null)
       setTicketLoading(false)
@@ -80,7 +64,7 @@ export function useAgentSidebarComputer({
       if (!cancelled && requestId.current === currentRequest) setTicketLoading(false)
     })
     return () => { cancelled = true }
-  }, [activeWorkspaceId, computer?.id, computer?.status, enabled, ticketAttempt, visible])
+  }, [activeWorkspaceId, computer?.id, computer?.status, computerLoading, enabled, ticketAttempt, visible])
 
   const wake = useCallback(async () => {
     if (!activeWorkspaceId || !computer || waking) return
@@ -88,29 +72,34 @@ export function useAgentSidebarComputer({
     try {
       const result = await overlayAppClient.computers.start(activeWorkspaceId, computer.id)
       setComputer(result.computer)
-      setComputerError(null)
+      setWakeError(null)
     } catch {
-      setComputerError('Could not wake the computer.')
+      setWakeError('Could not wake the computer.')
     } finally {
       setWaking(false)
     }
-  }, [activeWorkspaceId, computer, waking])
+  }, [activeWorkspaceId, computer, setComputer, waking])
 
   const retryTicket = useCallback(() => {
     setTicketUrl(null)
     setTicketAttempt((attempt) => attempt + 1)
   }, [])
 
+  const refreshComputer = useCallback(() => {
+    setWakeError(null)
+    loadComputer()
+  }, [loadComputer])
+
   return {
     computer,
     computerLoading,
-    computerError,
+    computerError: computerLoadError ?? wakeError,
     ticketUrl,
     ticketError,
     ticketLoading,
     wake,
     waking,
     retryTicket,
-    loadComputer,
+    loadComputer: refreshComputer,
   }
 }

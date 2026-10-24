@@ -6,6 +6,7 @@ import { getOverlayRuntimeConfig } from '@/server/config'
 import { CLOUD_AGENT_ADAPTER_IDS } from '@/server/agents/cloud/cloud-agent-machine'
 import { CloudAgentMachineError } from '@/server/agents/cloud/CloudAgentMachineService'
 import { createCloudAgentMachineService } from '@/server/agents/cloud/create-cloud-agent-machine-service'
+import { externalAgentLaunchEnabled } from '@/server/agents/external-agent-policy'
 import { getBillingProgrammaticSubjectId, getTrustedAutomationBillingSubjectId } from '@/server/app-api/bff-context'
 import { getBudgetTotals, isPaidPlan } from '@/server/billing/billing-runtime'
 import { minimumBudgetToStartMachineCents } from '@/server/agents/ManagedAgentSandboxBilling'
@@ -30,6 +31,9 @@ export const cloudAgentMachineRequestSchema = z.object({
 export async function POST(_request: Request, context: AppApiRouteContext) {
   try {
     const config = await getOverlayRuntimeConfig()
+    if (!await externalAgentLaunchEnabled(context.workspace.workspace.id)) {
+      return NextResponse.json({ error: 'External agent runtimes are disabled for this deployment.', code: 'feature_disabled' }, { status: 404 })
+    }
     if (config.features.overlayCloudEnvironments !== true) {
       return NextResponse.json({ error: 'Overlay Cloud agents are disabled', code: 'capability_disabled' }, { status: 404 })
     }

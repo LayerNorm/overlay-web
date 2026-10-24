@@ -43,6 +43,10 @@ container below its fixed hero and tabs. Its editable fields autosave after an
 800ms debounce and flush on blur; saves serialize so newer edits cannot be
 overwritten by an older response.
 
+Details and Computer tabs share the editor's computer state. Start, Stop, Wake,
+provisioning and deletion update both views; the preview only owns its connection
+ticket, not a second cached machine record.
+
 ## Shared modal dialogs
 
 `DialogFrame` and `ConfirmDialog` keep their existing controlled APIs on top of

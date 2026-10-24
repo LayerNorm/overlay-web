@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getOverlayServerContext } from '@/server/bootstrap'
+import { externalAgentLaunchEnabled } from '@/server/agents/external-agent-policy'
 import { agentEnvironmentErrorResponse } from '../agent-environments/shared'
 
 export async function GET(request: Request, context: AppApiRouteContext) {
@@ -11,7 +12,8 @@ export async function GET(request: Request, context: AppApiRouteContext) {
       workspaceId: context.workspace.workspace.id,
       ...(agentId ? { agentId } : {}),
     })
-    return NextResponse.json({ bindings }, { headers: { 'Cache-Control': 'no-store' } })
+    const launchEnabled = await externalAgentLaunchEnabled(context.workspace.workspace.id)
+    return NextResponse.json({ bindings, launchEnabled }, { headers: { 'Cache-Control': 'no-store' } })
   } catch (error) {
     return agentEnvironmentErrorResponse(error)
   }

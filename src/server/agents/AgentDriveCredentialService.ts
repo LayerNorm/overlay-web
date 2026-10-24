@@ -13,13 +13,16 @@ export class AgentDriveCredentialService {
   private readonly tokens: ReturnType<typeof createAgentDriveTokens>
   constructor(private readonly dependencies: {
     enabled(): boolean
+    launchEnabled(workspaceId: string): boolean | Promise<boolean>
     secret: string
     lookup(input: Request & { workspaceId: string; environmentId: string }): Promise<unknown>
     now?: () => number
   }) { this.tokens = createAgentDriveTokens(dependencies) }
 
   async issue(host: { workspaceId: string; environmentId: string }, input: Request) {
-    if (!this.dependencies.enabled()) throw Error('DRIVE_DISABLED')
+    if (!this.dependencies.enabled() || !await this.dependencies.launchEnabled(host.workspaceId)) {
+      throw Error('DRIVE_DISABLED')
+    }
     const request = driveCredentialRequestSchema.parse(input)
     const { claims, hardDeadlineAt } = authoritySchema.parse(await this.dependencies.lookup({ ...request, ...host }))
     if (claims.scope.workspaceId !== host.workspaceId || claims.environmentId !== host.environmentId

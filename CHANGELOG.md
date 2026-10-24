@@ -4,6 +4,14 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Keep agent Details and Computer tabs synchronized after starting, stopping, waking or deleting the attached computer.
+
+- Refresh the agent conversation roster after agent creation, edits and archive so newly created agents open without a page reload. Ignore stale requests and unrelated workspace changes.
+
+- Launch with native Overlay agents and their computers while keeping external cloud and own-machine runtimes behind a default-off release gate. Hide unavailable external setup, reject direct creation and execution bypasses, and retain authorized history, cancellation, cleanup and settlement. Add `FEATURES.md` with feature switches, provider support and re-enablement steps.
+
+- Persist tool failures and invalid calls as terminal error states, retain successful tool output across streamed steps, and give native agents exact recovery guidance for the tools exposed in the current turn.
+
 - Keep sidebar data isolated while switching workspaces by publishing the workspace after navigation, resetting sidebar state, and binding chat-list requests to their cache workspace.
 - Patch undici v7 and v8 dependency copies to 7.30.1 and 8.12.2 for GHSA-xjj6-f33q-929c without changing supported major versions or security gates.
 - Recover expired sessions on protected pages before redirecting to sign-in, preserving the requested workspace page instead of unexpectedly opening Chats.
