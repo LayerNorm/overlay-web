@@ -1,5 +1,5 @@
 import {driveStartDescriptorSchema, startAdapterPayloadSchema, nativeRestorationSchema, type executionFenceSchema} from '@layernorm/overlay-agent-bridge-protocol'
-import {z} from 'zod'
+import {z} from 'zod/v3'
 import type {RemoteRunState} from '../../src/shared/agents/remote-run'
 
 export const nativeRecoverySnapshotSchema = z.object({

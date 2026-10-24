@@ -6,9 +6,43 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Standardize workspace headers on shadcn breadcrumbs, keep Workspace agent selection separate from remembered Personal threads, simplify agent thread controls, shorten composer prompts, and correct response hover controls and direct-message dialog sizing. Returning through the Files breadcrumb clears the selected editor and ignores stale file loads.
 
+
+- Keep agent Details and Computer tabs synchronized after starting, stopping, waking or deleting the attached computer.
+
+- Refresh the agent conversation roster after agent creation, edits and archive so newly created agents open without a page reload. Ignore stale requests and unrelated workspace changes.
+
+- Launch with native Overlay agents and their computers while keeping external cloud and own-machine runtimes behind a default-off release gate. Hide unavailable external setup, reject direct creation and execution bypasses, and retain authorized history, cancellation, cleanup and settlement. Add `FEATURES.md` with feature switches, provider support and re-enablement steps.
+
+- Persist tool failures and invalid calls as terminal error states, retain successful tool output across streamed steps, and give native agents exact recovery guidance for the tools exposed in the current turn.
+
+- Keep sidebar data isolated while switching workspaces by publishing the workspace after navigation, resetting sidebar state, and binding chat-list requests to their cache workspace.
+- Patch undici v7 and v8 dependency copies to 7.30.1 and 8.12.2 for GHSA-xjj6-f33q-929c without changing supported major versions or security gates.
+- Recover expired sessions on protected pages before redirecting to sign-in, preserving the requested workspace page instead of unexpectedly opening Chats.
+- Keep workspace navigation on immutable IDs until member-scoped resolution confirms a routable handle; existing accounts remain usable without migration or backfill.
+- Add indexed workspace handles with permanent aliases, authenticated resolution, owner-only changes, and a resumable dry-run-capable backfill. Existing workspace IDs and ID-based links remain supported.
+- Give scoped workspace features canonical `/w/<handle>/<personal|workspace>/<feature>` addresses, including Work, Agents, Chats, Files, Notes, Outputs, Tools and Automations. Solo workspaces retain both views.
+- Keep newly created empty channels joined when navigating away, including through older draft links.
+- Preserve the selected workspace and personal/workspace scope when the first chat stream creates a conversation before the parallel metadata request.
+- Show the Agents empty state when the selected creator scope has no agents, even if the opposite scope is populated.
+- Patch vulnerable Zod v4 installs at 4.6.7, including transitive production dependencies, while preserving existing v3 schemas through explicit compatibility imports.
+- Patch production body-parser to 2.4.0 and Mintlify's nested copy to 1.20.9 for GHSA-27r3-jxmh-p828.
 - Reveal chat copy actions on hover or keyboard focus, and add an agent-conversation sidebar as a full-height panel with one editable hero, autosaving Details, conversation-linked Library files and an always-visible Computer tab with control mode. Files and notes created by an agent are linked to its conversation and appear in the Library. Room panels and the agent sidebar now share the same right-hand slot. Agent settings use the shared chat model picker with free-tier and zero-data-retention access rules.
 
 - Update `@sentry/nextjs` to 10.75.3 and `dompurify` to 3.4.17 to fix the Sentry tunnel middleware bypass (GHSA-mchm-gjx6-7h55) and two DOMPurify sanitizer advisories (GHSA-cg2g-xh64-v4q7, GHSA-mrv2-3pqr-j5jr) that fail the production dependency audit.
+
+- Make the docs logo and favicon match the web app: the lockup SVGs follow `BrandLockup` (orb 0.5em on the baseline, 0.4em gap, Libre Baskerville Medium at -0.025em, drawn as outlines so no font fallback) at the landing nav's 22px, and the favicon is the app's own icon instead of a full-bleed orb.
+
+- Clean up the Self-hosting docs: a short overview of what you run replaces the 554-line page, whose sections move to new Node.js install, Upgrades and Backups pages and to Environment variables (a where-each-secret-goes table that fixes `INTERNAL_SERVICE_AUTH_SECRET` belonging on both the app and Convex), Providers (transactional email and MCP credential encryption) and Runtime config (example profiles). The removed Postgres app-data mode, LayerNorm's internal deploy scripts and the retired budget API are gone, the admin page now describes the standalone admin console and break-glass first admin, and page titles use sentence case. This completes the docs restructure; its plan is deleted.
+
+- Write the Developer docs: an MCP server page (endpoint, OAuth 2.1 and personal tokens, access levels, approvals, limits), Authentication, and Webhooks (events, payloads, signature verification, retries). The REST API overview is rewritten, the generated reference drops 42 internal routes (onboarding, the Agent Host protocol, UI helpers and the retired subscription settings) via `publicReference: false`, the stale admin guide is removed, and the billing guide's maintainer notes move to `internal/develop/workspace-billing.md`.
+
+- Rewrite the Help docs against the current app: new Get started, Work, Extensions and Plans and credit pages; Chats, Files and notes, Memories, Automations, Settings and FAQ now describe Personal/Workspace scopes, workspace billing, Settings → Memories and Settings → Archived. The Projects page is removed and redirects to Files and notes.
+
+- Retheme the docs to match the landing page: Geist at weight 500 with tight tracking instead of serif headings, neutral `#171717` ink with a `#111111` dark background, mono eyebrows and sidebar group titles, hairline cards and code blocks, a pill "Open app" button and GitHub/Discord footer links. The docs home is now a short page with Help, Self-hosting and Developer cards.
+
+- Split the public docs into Help, Self-hosting and Developer tabs (plus Changelog). Configure, Deploy & Operate and licensing pages move under `docs/self-hosting/`; the API reference, contributor guides and security reporting move under `docs/developer/`, with a new Developer overview. Maintainer-only pages (release and agentic workflow, preview QA, Convex workflow, admin console, API source of truth and route catalogs, customization, feature modules, Overlay Free, docs hosting) move to `internal/develop/`. Every old URL redirects. `docs:health`, the licensing and tenancy checks, AGENTS.md and the READMEs follow the new paths.
+
+- Stop offering the desktop and mobile apps, which are not available. `/download` now redirects to `/home` unless `OVERLAY_DESKTOP_DOWNLOADS_ENABLED=1` (the page and release plumbing stay for later), and it leaves the sitemap and footer. The landing page lists the web, Slack, ChatGPT, Claude, Cursor and MCP apps instead of macOS, Windows, iOS and Android, and its "Get Overlay" card offers Web, your AI apps, self-hosting and developer links. The account page's Desktop app panel and the profile menu's "Soon" app items are removed. The 18 Desktop docs pages are deleted and redirect to the Help Center. Desktop sign-in handoff, mobile auth completion and the account-deletion deep link are unchanged.
 
 - Bring every other marketing page onto the home page design: pricing, download, manifesto, the blog/changelog/self-hosting placeholders and all nine legal pages now share one `StaticMarketingShell` (landing nav, framed column, footer) with a common page head. Legal pages get a sticky table of contents, pricing's FAQ uses the shared accordion, and `/download` regains its nav and footer. The old marketing navbar, button, reveal animation and serif layout helper are removed.
 

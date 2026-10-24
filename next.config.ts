@@ -77,11 +77,18 @@ const nextConfig: NextConfig = {
     },
   },
   async redirects() {
-    if (!mintlifyDocsOrigin) return [];
+    // Desktop builds are not public yet; the page and its release plumbing stay
+    // behind OVERLAY_DESKTOP_DOWNLOADS_ENABLED for when they are.
+    const downloadRedirects =
+      process.env.OVERLAY_DESKTOP_DOWNLOADS_ENABLED?.trim() === "1"
+        ? []
+        : [{ source: "/download", destination: "/home", permanent: false }];
+    if (!mintlifyDocsOrigin) return downloadRedirects;
 
     const docsHost = [{ type: "host" as const, value: "docs.getoverlay.io" }];
 
     return [
+      ...downloadRedirects,
       {
         source: "/docs",
         has: docsHost,

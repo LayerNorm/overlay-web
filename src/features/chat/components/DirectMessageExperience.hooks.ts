@@ -27,6 +27,7 @@ import type { MentionCategory, MentionItem } from '@/shared/knowledge/mention-ty
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { resolveMentionedPrincipalIds } from '@/shared/mentions/principal-mentions'
 import { clearDraft, readDraft, writeDraft } from '@/shared/chat/conversation-drafts'
+import { isTransientConversationDraft } from '@/shared/chat/chat-view-navigation'
 import { dispatchChatArchived, dispatchChatCreated, dispatchChatModified, dispatchChatTitleUpdated, sanitizeChatTitle } from '@/shared/chat/chat-title'
 import { announceArchived } from '@/shared/app/archive-toast'
 import {
@@ -46,7 +47,7 @@ import {
   type RoomMessageRecord,
 } from './collaboration/room-message-view'
 import type { RoomPanelKind } from './collaboration/RoomSidePanels'
-import { buildWorkspaceHref } from '@/shared/workspaces/routing'
+import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import { useChatPanels } from './chat/useChatPanels'
 import { useChatShellPanels } from './chat/useChatShellPanels'
 import { useChatAttachments } from './useChatAttachments'
@@ -1044,7 +1045,7 @@ export function useRoomViewModels({
 export function useDraftConversation({
   conversationId,
   conversationType,
-  draft,
+  draft: requestedDraft,
   showcase,
   title,
   messages,
@@ -1058,6 +1059,7 @@ export function useDraftConversation({
   messages: OptimisticMessage[]
   messagesRef: RefObject<OptimisticMessage[]>
 }) {
+  const draft = isTransientConversationDraft(conversationType, requestedDraft)
   const draftCommittedRef = useRef(!draft)
 
   const commitDraftConversation = useCallback(() => {
@@ -1844,6 +1846,7 @@ export function useRoomActions({
   loadParticipants: () => Promise<void>
   setMenuOpen: Dispatch<SetStateAction<boolean>>
 }) {
+  const buildWorkspaceHref = useWorkspaceHref()
   const [pendingArchiveScope, setPendingArchiveScope] = useState(false)
   const [scopeDialogBusy, setScopeDialogBusy] = useState(false)
   const [scopeDialogError, setScopeDialogError] = useState<string | null>(null)
@@ -1915,10 +1918,11 @@ export function useRoomActions({
       void updateState({ archived: false }, 'Conversation restored').then((updated) => {
         if (!updated) return
         const view = conversationType === 'channel' ? 'channels' : 'dms'
-        const chatBase = activeWorkspaceId
-          ? buildWorkspaceHref(activeWorkspaceId, '/app/chat')
-          : '/app/chat'
-        router.push(`${chatBase}?${new URLSearchParams({ view, id: conversationId }).toString()}`)
+        router.push(buildWorkspaceHref(
+          activeWorkspaceId ?? null,
+          `/app/chat?${new URLSearchParams({ view, id: conversationId }).toString()}`,
+          'workspace',
+        ))
       }).catch(() => undefined)
       return
     }
@@ -1952,10 +1956,11 @@ export function useRoomActions({
       })
       setPendingDeleteScope(false)
       const view = conversationType === 'channel' ? 'channels' : 'dms'
-      const chatBase = activeWorkspaceId
-        ? buildWorkspaceHref(activeWorkspaceId, '/app/chat')
-        : '/app/chat'
-      router.push(`${chatBase}?${new URLSearchParams({ view }).toString()}`)
+      router.push(buildWorkspaceHref(
+        activeWorkspaceId ?? null,
+        `/app/chat?${new URLSearchParams({ view }).toString()}`,
+        'workspace',
+      ))
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Conversation could not be deleted'
       setScopeDialogError(message)

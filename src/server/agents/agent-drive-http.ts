@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { z } from 'zod'
+import { z } from 'zod/v3'
 import { ConvexError } from 'convex/values'
 import { readBoundedStorageBody } from '@/server/storage/read-bounded-storage-body'
 import type { AgentDriveManifestService, AgentDriveHostManifestEntry } from './AgentDriveManifestService'

@@ -1,0 +1,31 @@
+---
+title: "Repository map"
+description: "Where the web app code lives and which directories own each boundary."
+---
+
+## Core web directories
+
+| Path | Owns |
+| --- | --- |
+| `src/app` | Next.js pages, layouts, route handlers, and the browser app shell. |
+| `src/app/api/v1` | Thin BFF wrappers for the public web API surface. |
+| `src/server/app-api/v1` | Route orchestration behind the BFF wrappers. |
+| `src/server` | Server-only auth, billing, storage, AI, tools, config, and provider adapters. |
+| `src/shared` | Browser-safe contracts, schemas, helpers, and route boundary definitions. |
+| `src/features` | Web feature containers and feature-local UI/helpers. |
+| `src/components` | Shared UI primitives, layout, and providers. |
+| `convex` | Durable state, domain mutations, scheduled work, and Stripe webhook handling. |
+| `packages` | Shared contracts, API clients, UI packages, and cross-surface runtime packages. |
+
+## Contract packages
+
+Use `@overlay/app-core` for shared contracts and app shell metadata. Use `@overlay/api-client` for typed wrappers around `/api/v1` routes.
+
+New web client code should not copy fetch logic from route components. Add or update a typed client method in `@overlay/api-client` when a route becomes part of the reusable API surface.
+
+## Layering rules
+
+- `src/server` can use Node-only and server-only modules.
+- `src/shared` must stay isomorphic and browser-safe.
+- `convex` can import `src/shared`, but must not import `src/server`.
+- Sensitive provider calls stay behind server routes.

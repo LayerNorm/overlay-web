@@ -52,7 +52,7 @@ export async function POST(_request: Request, context: AppApiRouteContext) {
     )
   } catch (error) {
     if (error instanceof EnvironmentMachineError) {
-      const status = error.code === 'not_found' ? 404 : error.code === 'desktop_preparing' ? 409 : 400
+      const status = error.code === 'not_found' || error.code === 'feature_disabled' ? 404 : error.code === 'desktop_preparing' ? 409 : 400
       return NextResponse.json({ error: error.message, code: error.code }, {
         status,
         headers: { 'Cache-Control': 'no-store' },

@@ -44,7 +44,7 @@ const structuredData = {
       name: 'Overlay',
       url: 'https://getoverlay.io',
       applicationCategory: 'BusinessApplication',
-      operatingSystem: 'Web, macOS',
+      operatingSystem: 'Web',
       description:
         "Overlay is the control plane for AI employees: one workspace to create, deploy, and manage AI agents. Bring your own agents (Codex, Claude Code, Hermes) or run Overlay's, and put them to work in chat, Slack, Telegram, iMessage, and the web. Open source under AGPL-3.0, with hosted and self-hosted options.",
       offers: {

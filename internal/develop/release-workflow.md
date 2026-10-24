@@ -1,0 +1,159 @@
+---
+title: "Release Workflow"
+description: "PR previews on overlay-landing, main integration, and automatic production."
+---
+
+## Operating contract
+
+| Environment | Source | Data and providers |
+| --- | --- | --- |
+| Local | Working tree | Engineer-owned dev backend and test credentials |
+| PR preview | Current internal main PR head on `overlay-landing` Preview | Per-PR Convex, Sandbox identity, shared test credentials |
+| Customer production | Automatically deployed current main SHA | `colorful-chickadee-419`, production identity/providers |
+| Operator console | Native main deployment of `apps/admin` to `overlay-admin` | Same production backend; separate admin secret/session, explicit operator allowlist |
+
+Cloud Builder verifies a focused main PR on its isolated preview and stops when ready.
+Integration reviews it, resolves findings and enters the main merge queue once
+required checks and proportionate QA pass. Queue workflows verify the combined
+candidate against current main and earlier queued changes. Keep approving reviews
+at zero while the sole maintainer cannot approve his own PR; retain history
+protection. Local laptop agents under DevelopedByDev have standing authorization
+for validated fast-forward direct main pushes using the existing owner bypass,
+without a PR/queue or repeated permission request. Other bypass use requires
+explicit authorization. Follow the local owner path in Development Workflow.
+
+[Development Workflow](./Development%20Workflow.md) is authoritative. Main changes
+trigger Vercel’s native Git production deployment. Integration verifies the live
+SHA, synchronizes Convex only for backend changes after matching web is live,
+and runs proportionate production smoke. There is no mandatory staging step.
+
+The PR preview is also the acceptance environment for sensitive changes. The
+legacy staging branch and project are retired. The owner enabled Git as a production deployment source
+for `overlay-landing`, production branch `main`, on 2026-10-14. Keep root
+`git.deploymentEnabled.main=true`. The custom production workflow, promotion
+script and deployment token are retired. Native Git deploys web only; backend
+synchronization and application smoke remain Integration responsibilities.
+Never pass `.env.local` or feature-worktree source to production commands.
+
+Shared Preview test credentials are configured once in `overlay-landing` Preview, with no
+scheduled expiry. Model budgets remain bounded; exhausting a budget still stops
+calls. Convex's five-day preview retention is renewed while PRs are open and is
+independent of credential lifetime. Closure or label removal deletes the owned
+backend and synthetic data after settling builds, with confirmed absence.
+Ordinary `pr-<number>.preview.getoverlay.io` custom aliases require no paid native
+Preview Deployment Suffix.
+
+Main deploys through native Git. Root `vercel.json` disables automatic non-main
+deployments with `"*": false, "main": true`. PR Preview is opt-in through
+`needs-preview`. The trusted main controller uses the existing scoped
+`VERCEL_PREVIEW_TOKEN` to provision branch URLs, create exact-SHA Preview builds
+through REST API, and assign custom aliases after READY/backend verification.
+Preview allows REST API only, blocking automatic Git builds even for older PR
+branches that lack the new repository rule. Production stays Git-only.
+
+Ordinary `pull_request` events run a secret-free request workflow, which dispatches
+the preview controller on `main` with only the internal PR number. The controller
+runs only on `main` and retains the main-only `release-control` environment;
+neither `pull_request_target` nor `workflow_run` is used. Forks and read-only
+Dependabot events do not dispatch previews. A maintainer can label or manually
+dispatch those internal PRs on `main`. Merge conflicts can prevent PR event runs;
+manual dispatch and scheduled reconciliation remain available for cleanup.
+
+Builders request previews for browser interactions, sensitive auth/billing/data
+flows, isolated backend QA, environment/build changes or uncertainty CI cannot
+resolve. Well-tested patch/minor dependency upgrades, docs, tests, CI metadata,
+formatting/comments and type-only changes ordinarily need CI alone. Record the
+decision; see Development Workflow for the full criteria.
+
+While labeled, new commits replace the preview. Removing the label or closing
+the PR settles builds, removes owned URL resources and deletes its isolated
+Convex backend and synthetic data. Six-hour reconciliation discovers retained
+backends for closed/unlabeled PRs and retries cleanup; production/dev/cross-project
+backends cannot pass the ownership checks.
+Unlabeled PRs pass “Preview not requested”; normal CI remains required. Manual
+dispatch reconciles the label policy. Healthy current builds are reused; missing,
+failed/canceled builds or missing/expired backends require a fresh build.
+The wrapper resolves missing PR metadata by exact public branch/SHA lookup.
+Keep project on-demand concurrency enabled in `WAIT_FOR_NAMESPACE_QUEUE` mode
+(**Run up to one build per branch**). Different PRs build in parallel; pushes
+sharing one per-PR backend remain sequential. Concurrency does not supply PR identity. Preview and Production variable targets are separate.
+The `codex/preview-unassigned` wildcard branch has no deployment alias, so
+unknown or closed PR hosts return HTTPS 404.
+
+The migration evidence below records the former staging lane historically; it
+is not an instruction to deploy staging or gate production on a candidate.
+
+## Operator console
+
+`admin.getoverlay.io` has its own Vercel project rooted at `apps/admin`, with outside-root workspace sources enabled and Node 24. Production deploys through native Git from main. Admin Preview builds require explicit branch binding to an isolated PR backend and matching test credentials; the customer-web preview controller does not manage this second project. See [Admin Console](./admin-console.md) for provisioning and cleanup. It adds no staging requirement to ordinary releases.
+
+## Activation checkpoint
+
+Migration acceptance passed on 2026-10-13. Candidate workflow `38413217001` verified exact main `bee84a33a2d4b101bf85d3b179cd30984b556045` before and after staging publication. Production `dpl_8PQvmTsqT9PSHXSswyZDi2H6KfMg` was verified web-first, then customer Convex and full authenticated smoke passed. Deliberate web rollback, compatibility checks, restoration and full final smoke passed; the accepted release is live. Automatic test Stripe checkout/cancellation and actual browser storage acceptance passed. See `internal/plans/release-workflow-evidence/` for exact proof. Subsequent releases require fresh evidence.
+
+Commands and guards are in [Staging and Production Promotion](./worktree-staging-qa.md) and [Convex Workflow](./convex-workflow.md).
+
+### Verified workspace and queue protections
+
+CI runs static checks, production compilation and two exhaustive test shards in
+parallel, retaining all nine required contexts. The required quality aggregate
+fails on failed, cancelled, absent or unexpectedly skipped lanes. Gateway contract
+results come from the test lane in `Security Checks`; Docs remains a separate
+required workflow. Current route types are generated before standalone typechecking,
+so the CI compilation job omits only its redundant TypeScript pass. Hosted builds
+keep their existing checks; inherited skip flags are ignored outside the non-hosted GitHub
+compilation lane. Customer-web compilation uses Webpack with an isolated
+build worker and memory optimizations, plus `.js` aliases for NodeNext workspace
+TypeScript sources; local development retains its default engine.
+Reusable components live outside route entry-point exports. See Development Workflow for the complete CI contract.
+
+Release smoke resolves and activates the synthetic account's actual personal
+workspace through the authenticated app API. It uses that ID for chat, Files and
+realtime checks, including when seeding reuses an app-created workspace. It creates
+a fresh Auto-model smoke conversation, verifies its real reply and reload, then
+cleans that conversation; seed examples are not model-response evidence.
+
+Main protection is consolidated in ruleset `21959970`: PRs, conversation
+resolution, nine required GitHub Actions checks and the native merge queue.
+The duplicate classic owner-only push protection was retired; queue publication
+is governed by these rules. History ruleset `16007495` separately blocks force
+pushes and deletion for main with no bypass. The staging freeze ruleset was
+removed when the retired branch was deleted; its history is preserved at
+`archive/staging-retired-20261014`. The authorized local owner path and zero
+sole-author approvals remain.
+Queue interaction probes #196/#197 passed individually but their combined tree
+was marked UNMERGEABLE; both closed without merging and the temporary check was
+removed. PR #195 merged through the native queue at
+`6bb3e0d8294a955030e3c6b2f7ba7d353f6475d7`, with all nine combined checks
+passing and no automatic staging or customer deployment.
+
+### Chat smoke readiness
+
+Candidate and production smoke create a fresh Auto conversation, await its initial
+transcript response, matching `data-overlay-chat-id` with
+`data-overlay-chat-hydrated="true"`, and requested heading, then explicitly select Chat before
+sending. A visible composer alone does not prove route hydration is complete.
+Live diagnostics reproduced an early send using default model/runtime state;
+waiting for the transcript fixed immediate reply rendering and reload persistence.
+Both suites clean their own synthetic conversations after success or failure.
+
+### Checkout cancellation acceptance
+
+Fresh test-only acceptance passed at canonical staging: Stripe checkout completed/paid, both checkout and creation webhooks processed, and the app showed the $20 active paid plan. A real Auto chat consumed 100 micros. Natural cancellation processed its deleted event and the app became Free/canceled; used and included micros both remained 100, reserved micros were zero, and unused paid funding was removed. No manual replay was used for this fresh event. The earlier synthetic cancellation that failed before the fix was repaired separately after its accepted staging deployment. The Chrome return reached canonical staging with an expired/guest browser session; billing and ownership were verified using the existing normally authenticated synthetic Sandbox session.
+
+Cancellation also removes unused paid funding as pre-existing holds release or settle below their estimate. Both release smoke suites await actual transcript hydration and clean their exact synthetic chats on success or failure.
+
+### First complete candidate acceptance
+
+The first complete candidate was `f863915508795c695d9778f33476eaaf4d14436e`, workflow `38394669549`. Its recorded evidence remains historical. The final current-main candidate and production/rollback acceptance are recorded in the activation checkpoint above and `internal/plans/release-workflow-evidence/`.
+
+### Historical production CLI output and readiness
+
+The custom promotion command described below is retired. Native Vercel Git
+deployment is the current release mechanism.
+
+Vercel CLI 63 non-interactive deployment JSON is parsed explicitly, including native-hostname inspection output. The command polls the owned exact-SHA deployment until READY, rejecting changed provenance, terminal errors and a bounded timeout. Web publication/live verification precedes production Convex and authenticated smoke. Earlier remote-build capture attempts left unpublished READY builds and preserved the customer alias. Structured CLI parsing/readiness merged through PR #203; asynchronous submission and bounded command capture merged through PR #204. The complete corrected command, production smoke and rollback/restoration passed on the release recorded above.
+
+### Historical asynchronous production build submission
+
+Production uses `vercel deploy --prod --skip-domain --no-wait` and the owned exact-SHA READY poll. Other release commands retain a bounded 16 MiB capture. The earlier synchronous attempt stopped at local ENOBUFS while its remote build continued, preserving the customer alias and backend. The corrected complete command passed on the release recorded above; both unpublished earlier builds remain historical.

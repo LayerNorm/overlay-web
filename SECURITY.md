@@ -44,7 +44,7 @@ High-priority areas for this repository include:
 ## Enterprise Launch Controls
 
 Enterprise launch readiness is blocked on the checklist in
-[`docs/deploy-operate/enterprise-security-launch-checklist.mdx`](docs/deploy-operate/enterprise-security-launch-checklist.mdx).
+[`docs/self-hosting/operate/security-checklist.mdx`](docs/self-hosting/operate/security-checklist.mdx).
 That checklist covers the required cloud-side controls for Vercel, Cloudflare R2, Box,
 Convex, WorkOS, Stripe, and security telemetry.
 

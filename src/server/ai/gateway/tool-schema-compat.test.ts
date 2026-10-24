@@ -3,7 +3,7 @@ import 'server-only'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { jsonSchema, tool, type ToolSet } from 'ai'
-import { z } from 'zod'
+import { z } from 'zod/v3'
 import {
   analyzeToolSetForGatewayCompatibility,
   filterGatewayCompatibleToolSet,

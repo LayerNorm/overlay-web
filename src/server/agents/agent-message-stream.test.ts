@@ -192,6 +192,58 @@ test('failing an opened row keeps the partial text visible', async () => {
   assert.equal(failed.args.content, 'partial')
 })
 
+test('failure retains the latest parts and terminalizes unfinished work', async () => {
+  const { calls, store } = recordingStore()
+  const stream = streamFor(store, () => 0)
+
+  stream.pushParts([
+    { type: 'reasoning', state: 'streaming', text: 'checking' },
+    {
+      type: 'tool-invocation',
+      toolInvocation: {
+        toolCallId: 'done',
+        toolName: 'computer_exec',
+        state: 'output-available',
+        toolOutput: { stdout: 'ok' },
+      },
+    },
+    {
+      type: 'tool-invocation',
+      toolInvocation: {
+        toolCallId: 'pending',
+        toolName: 'computer_exec',
+        state: 'input-available',
+        toolInput: { command: 'pwd' },
+      },
+    },
+    {
+      type: 'tool-invocation',
+      toolInvocation: {
+        toolCallId: 'approval',
+        toolName: 'send_message',
+        state: 'input-available',
+        approvalId: 'approval-1',
+        approvalStatus: 'requested',
+      },
+    },
+  ])
+  await stream.fail()
+
+  const failed = calls.find((call) => call.method === 'fail')
+  assert.ok(failed)
+  const parts = failed.args.parts as Array<Record<string, unknown>>
+  assert.equal(parts[0]!.state, 'done')
+  assert.deepEqual((parts[1]!.toolInvocation as Record<string, unknown>).toolOutput, { stdout: 'ok' })
+  assert.equal((parts[2]!.toolInvocation as Record<string, unknown>).state, 'output-error')
+  assert.deepEqual((parts[2]!.toolInvocation as Record<string, unknown>).toolOutput, {
+    success: false,
+    error: 'The agent turn ended before the tool returned an execution result.',
+  })
+  assert.equal((parts[3]!.toolInvocation as Record<string, unknown>).approvalId, 'approval-1')
+  assert.equal((parts[3]!.toolInvocation as Record<string, unknown>).approvalStatus, 'requested')
+  assert.equal((parts[3]!.toolInvocation as Record<string, unknown>).state, 'input-available')
+})
+
 
 test('text and ordered parts stream atomically without writing every token', async () => {
   let clock = 0

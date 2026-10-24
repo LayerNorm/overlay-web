@@ -9,8 +9,8 @@ import {
 } from '@/features/chat/components/ChatSubviewInlinePanels'
 import { AutomationsInlinePanel } from '@/features/automations/components/AutomationsInlinePanel'
 import { useEffect } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
-import { useSavedPanelScope } from '@/hooks/use-panel-scope'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import { usePanelScope, useSavedPanelScope } from '@/hooks/use-panel-scope'
 import { useIsSoloWorkspace } from '@/hooks/use-solo-workspace'
 import { ARCHIVED_SETTINGS_PATH, isLegacyArchivedScope, resolvePanelScope } from '@/shared/workspaces/panel-scope'
 import { SHOWCASE_CHAT_SUMMARIES } from '@/features/showcase/showcase-data'
@@ -20,14 +20,16 @@ import {
 } from '@/features/showcase/PublicShowcaseSidebarPanels'
 import { WorkspaceSwitcher } from '@/features/workspaces/components/WorkspaceSwitcher'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
+import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import {
-  buildWorkspaceHref,
+  readWorkspacePathScope,
   resolveWorkspaceSurface,
 } from '@/shared/workspaces/routing'
 import { useCollaborationRealtime } from '@/features/chat/components/collaboration/CollaborationRealtimeProvider'
 
 export function AppShellSidebar({ publicShowcase: forcedPublicShowcase = false }: { publicShowcase?: boolean }) {
   const searchParams = useSearchParams()
+  const pathname = usePathname() ?? ''
   const router = useRouter()
   // Archived used to be a scope (`?scope=archived`, or `?view=archived` on agents); old links and bookmarks now open
   // Settings → Archived, where everything archived lives.
@@ -37,19 +39,24 @@ export function AppShellSidebar({ publicShowcase: forcedPublicShowcase = false }
   }, [legacyArchived, router])
   const publicShowcase = forcedPublicShowcase || searchParams?.get('showcase') === '1'
   const { activeWorkspaceId } = useWorkspace()
+  const buildWorkspaceHref = useWorkspaceHref()
   const { notifications: collaborationNotifications } = useCollaborationRealtime()
+  const savedScope = useSavedPanelScope()
+  const currentScope = usePanelScope()
   const chatBaseHref = activeWorkspaceId
-    ? buildWorkspaceHref(activeWorkspaceId, '/app/chat')
+    ? buildWorkspaceHref(activeWorkspaceId, '/app/chat', currentScope)
     : '/app/chat'
   // `?view=` is the pre-scope spelling of the agents tab.
   const agentsView = resolvePanelScope({
+    pathScope: readWorkspacePathScope(pathname),
     param: searchParams?.get('scope') ?? searchParams?.get('view'),
-    saved: useSavedPanelScope(),
+    saved: savedScope,
     solo: useIsSoloWorkspace(),
   })
 
   return (
     <AppSidebar
+      key={activeWorkspaceId ?? 'no-workspace'}
       collaborationNotifications={collaborationNotifications}
       publicShowcase={publicShowcase}
       workspace={{
@@ -97,7 +104,7 @@ export function AppShellSidebar({ publicShowcase: forcedPublicShowcase = false }
           : (
             <AgentsInlinePanel
               workspaceId={activeWorkspaceId}
-              baseHref={activeWorkspaceId ? buildWorkspaceHref(activeWorkspaceId, '/app/agents') : undefined}
+              baseHref={activeWorkspaceId ? buildWorkspaceHref(activeWorkspaceId, '/app/agents', agentsView) : undefined}
               view={agentsView}
               onNavigate={onNavigate}
             />

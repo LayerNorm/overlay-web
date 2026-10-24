@@ -31,6 +31,8 @@ import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvi
 import { useAuthorization } from '@/components/providers/AuthorizationProvider'
 import { hrefForTask } from '@/shared/work/context-links'
 import { WORK_STATUS_LABELS } from '@/shared/work/status'
+import { useWorkspaceHref } from '@/hooks/use-workspace-href'
+import { usePanelScope } from '@/hooks/use-panel-scope'
 
 /** Mention categories plus the search-only categories that have no mention type. */
 type SearchType = MentionType | 'agent' | 'work'
@@ -119,6 +121,8 @@ export function GlobalSearchDialog({
   workspaceId = null,
 }: GlobalSearchDialogProps) {
   const router = useRouter()
+  const buildWorkspaceHref = useWorkspaceHref()
+  const currentScope = usePanelScope()
   const [query, setQuery] = useState('')
   const [selectedCategory, setSelectedCategory] = useState<SearchType | null>(initialCategory)
   const [categories, setCategories] = useState<MentionCategory[]>([])
@@ -319,11 +323,14 @@ export function GlobalSearchDialog({
         (candidate) => candidate.kind === 'item' && `${candidate.categoryType}-${candidate.item.id}` === row.id,
       )
       if (source?.kind === 'item') {
-        router.push(hrefForItem(source.item))
+        const itemScope = source.item.meta?.scope === 'workspace' || source.item.meta?.scope === 'personal'
+          ? source.item.meta.scope
+          : currentScope
+        router.push(buildWorkspaceHref(workspaceId, hrefForItem(source.item), itemScope))
         onClose()
       }
     },
-    [onClose, onNewChat, router, rowSources],
+    [buildWorkspaceHref, currentScope, onClose, onNewChat, router, rowSources, workspaceId],
   )
 
   const handleBreadcrumbBack = useCallback(() => {

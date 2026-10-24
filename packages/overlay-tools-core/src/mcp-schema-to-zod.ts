@@ -1,4 +1,4 @@
-import { z, type ZodTypeAny } from 'zod'
+import { z, type ZodTypeAny } from 'zod/v3'
 
 /**
  * Convert a JSON Schema subset to a Zod schema for AI SDK tool definitions.

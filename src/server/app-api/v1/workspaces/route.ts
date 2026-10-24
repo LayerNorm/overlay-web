@@ -7,7 +7,7 @@ import type {
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { WorkspaceServiceError } from '@/server/workspaces/WorkspaceService'
-import { toWorkspaceSummary } from './presentation'
+import { toWorkspaceSummaryWithRoutingHandle } from './presentation'
 
 export async function GET(_request: Request, context: AppApiRouteContext) {
   try {
@@ -26,7 +26,7 @@ export async function GET(_request: Request, context: AppApiRouteContext) {
         actorUserId: context.auth.userId,
         workspaceId: access.workspace.id,
       })
-      return toWorkspaceSummary(access, counts)
+      return toWorkspaceSummaryWithRoutingHandle(service, context.auth.userId, access, counts)
     }))
     const response: WorkspaceListResponse = {
       workspaces,
@@ -51,7 +51,12 @@ export async function POST(_request: Request, context: AppApiRouteContext) {
     })
     await service.setActiveWorkspace(context.auth.userId, access.workspace.id)
     const response: WorkspaceCreateResponse = {
-      workspace: toWorkspaceSummary(access, { memberCount: 1, humanMemberCount: 1 }),
+      workspace: await toWorkspaceSummaryWithRoutingHandle(
+        service,
+        context.auth.userId,
+        access,
+        { memberCount: 1, humanMemberCount: 1 },
+      ),
     }
     return NextResponse.json(response, { status: 201 })
   } catch (error) {

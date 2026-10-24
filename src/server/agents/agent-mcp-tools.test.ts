@@ -3,7 +3,7 @@ import 'server-only'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { tool } from 'ai'
-import { z } from 'zod'
+import { z } from 'zod/v3'
 import { adaptToolsForMcp, overlayMcpInstructions, MCP_APPROVAL_REFUSAL } from './agent-mcp-tools'
 
 type Execute = (input: unknown, options: { toolCallId?: string; context?: unknown }) => Promise<unknown>

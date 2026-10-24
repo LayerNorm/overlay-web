@@ -3,6 +3,7 @@
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { dispatchChatCreated } from '@/shared/chat/chat-title'
 import { buildWorkspaceHref } from '@/shared/workspaces/routing'
+import type { PanelScope } from '@/shared/workspaces/panel-scope'
 
 /** Opens (or creates) the agent's main thread, then navigates to it. Resolves the conversation id (null when it cannot be determined). */
 export async function startAgentChat(args: {
@@ -11,7 +12,8 @@ export async function startAgentChat(args: {
   agentPrincipalId: string
   showcase?: boolean
   surface?: 'agents' | 'chat'
-  scope?: 'personal' | 'workspace'
+  scope?: PanelScope
+  buildHref?: (workspaceId: string | null, href: string, scope?: PanelScope) => string
   push(href: string): void
 }): Promise<string | null> {
   const surface = args.surface ?? 'chat'
@@ -46,15 +48,19 @@ export async function startAgentChat(args: {
       conversationType: 'dm',
     },
   })
-  const basePath = buildWorkspaceHref(args.workspaceId, surface === 'agents' ? '/app/agents' : '/app/chat')
+  const destination = surface === 'agents' ? '/app/agents' : '/app/chat'
+  const routeScope = surface === 'agents' ? args.scope ?? 'personal' : 'workspace'
   const params = new URLSearchParams({ id: conversationId })
-  if (args.scope) params.set('scope', args.scope)
+  params.set('scope', routeScope)
   if (surface === 'agents') {
     if (args.agentId) params.set('agent', args.agentId)
   } else {
     params.set('view', 'dms')
   }
-  args.push(`${basePath}?${params.toString()}`)
+  const destinationWithQuery = `${destination}?${params.toString()}`
+  args.push(args.buildHref
+    ? args.buildHref(args.workspaceId, destinationWithQuery, routeScope)
+    : buildWorkspaceHref(args.workspaceId, destinationWithQuery))
   return conversationId
 }
 

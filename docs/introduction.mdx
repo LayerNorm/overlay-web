@@ -1,48 +1,22 @@
 ---
-title: "Overlay"
-description: "Documentation for Overlay across web, desktop, and self-hosted deployments."
+title: "Overlay docs"
+sidebarTitle: "Overview"
+mode: "wide"
+description: "Use Overlay, run it yourself, or build on it."
 ---
 
-Overlay is a private workspace for models, knowledge, tools, and agents. These
-docs cover the **web app / Overlay Server**, **Overlay Desktop** on macOS, and
-self-hosting.
+Overlay is a workspace where your team and its agents work together. It runs on the web and connects to Slack, ChatGPT, Claude, Cursor and any MCP app.
 
-<CardGroup cols={2}>
-  <Card title="Web / server source" icon="github" href="https://github.com/LayerNorm/overlay-web">
-    Next.js app, APIs, and self-hosting surface.
+<CardGroup cols={3}>
+  <Card title="Help" icon="life-buoy" href="/help/index">
+    Chats, agents, files, automations and your account.
   </Card>
-  <Card title="Overlay Desktop source" icon="laptop" href="https://github.com/LayerNorm/overlay-desktop">
-    macOS Apple Silicon client (public source; signed downloads after Gate B).
+  <Card title="Self-hosting" icon="server" href="/self-hosting/overview">
+    Run Overlay on your own infrastructure.
   </Card>
-  <Card title="Desktop download" icon="download" href="https://getoverlay.io/download">
-    Official macOS builds when Gate B is open.
-  </Card>
-  <Card title="Desktop docs" icon="book-open" href="/desktop/overview">
-    Install, permissions, security model, and troubleshooting.
+  <Card title="Developer" icon="code" href="/developer/index">
+    MCP, the REST API and bringing your own agent.
   </Card>
 </CardGroup>
 
-## Scope
-
-**Web / server**
-
-- Next.js app under `src/app`
-- `/api/v1` contracts and server orchestration
-- Convex / Postgres workflows that affect the product
-- Self-hosting and operations
-
-**Desktop**
-
-- Electron macOS client (Apple Silicon)
-- Local vs cloud data flows and chat permissions
-- Build-from-source and (after Gate B) signed releases
-
-**Excluded**
-
-- Mobile and Chrome extension deep internals
-- Internal audit reports and private security notes
-
-## Source of truth
-
-The web API reference is generated from `src/shared/schemas/api-boundary.ts`.
-Desktop release notes live in the desktop repository changelog and GitHub Releases.
+Overlay is open source under AGPL-3.0. The code lives at [github.com/LayerNorm/overlay-web](https://github.com/LayerNorm/overlay-web).

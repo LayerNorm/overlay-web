@@ -14,9 +14,9 @@ import { useAppSettings } from '@/components/providers/AppSettingsProvider'
 import { useWorkspaceTextModelAccess, buildSelectableTextModels } from '@/components/providers/useWorkspaceTextModelAccess'
 import { useAuth } from '@/contexts/AuthContext'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
+import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import { parseByoModelId } from '@/shared/agents/agent-model'
 import { buildWorkspaceAgentInput, isAgentEditorValid, isDefaultMasterAgent } from '../lib/agent-editor-input'
-import { buildAgentsDirectoryHref } from '../lib/agent-chat'
 import { getInitialEditorState, getShowcaseAgent } from '../lib/agent-editor-state'
 import { useByoConnection } from './use-byo-connection'
 import { useAgentSurfaces } from './use-agent-surfaces'
@@ -69,6 +69,7 @@ export function useAgentEditorController({
   const searchParams = useSearchParams()
   const showHello = searchParams?.get('hello') === '1'
   const { activeWorkspaceId } = useWorkspace()
+  const buildWorkspaceHref = useWorkspaceHref()
   const { capabilities } = useOverlayCapabilities()
   const { settings } = useAppSettings()
   const { user: authUser } = useAuth()
@@ -154,7 +155,9 @@ export function useAgentEditorController({
     bindingValid: byo.bindingValid || runtime.cloudAgent,
   })
 
-  const directoryHref = buildAgentsDirectoryHref(activeWorkspaceId, showcase)
+  const directoryHref = showcase
+    ? '/app/agents?showcase=1'
+    : buildWorkspaceHref(activeWorkspaceId, '/app/agents', 'personal')
   const closeEditor = () => onClose ? onClose() : router.push(directoryHref)
 
   const buildInput = useCallback((): WorkspaceAgentCreateInput => {

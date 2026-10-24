@@ -6,6 +6,7 @@ import { normalizeChatModelSelection } from '@/shared/chat/chat-model-prefs'
 import { dispatchChatCreated } from '@/shared/chat/chat-title'
 import { upsertCachedChat } from '@/shared/chat/chat-list-cache'
 import { DEFAULT_CHAT_TITLE } from '../chat-interface/constants'
+import { legacyWorkspaceScopeForRoute, readWorkspacePathScope } from '@/shared/workspaces/routing'
 import type {
   Conversation,
   ConversationRuntime,
@@ -164,7 +165,12 @@ export async function createNewChatForSend({
 }
 
 /** A chat started from the Workspace "Chats" list belongs to the Workspace scope. */
-function workspaceChatsViewActive(): boolean {
+export function workspaceChatsViewActive(): boolean {
   if (typeof window === 'undefined') return false
-  return new URLSearchParams(window.location.search).get('view') === 'workspace-chats'
+  const pathScope = readWorkspacePathScope(window.location.pathname)
+  if (pathScope) return pathScope === 'workspace'
+  return legacyWorkspaceScopeForRoute(
+    'chat',
+    new URLSearchParams(window.location.search),
+  ) === 'workspace'
 }

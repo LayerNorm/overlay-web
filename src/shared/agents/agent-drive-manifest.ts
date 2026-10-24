@@ -1,4 +1,4 @@
-import { z } from 'zod'
+import { z } from 'zod/v3'
 import { drivePathSegments, portableDrivePathKey } from '@layernorm/overlay-agent-bridge-protocol'
 import { canReadResource, rowScope, type ResourceViewer } from '@/shared/workspaces/resource-scope'
 import { isOwnedFileR2Key, isOwnedOutputR2Key } from '@/shared/storage/storage-keys'

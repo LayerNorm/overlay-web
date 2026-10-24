@@ -1,0 +1,69 @@
+---
+title: "REST API"
+description: "The /api/v1 web API: base URL, authentication, request shapes and errors."
+---
+
+The Overlay web app is built on a JSON API under `/api/v1`. The [reference](#reference) lists the routes that are meant to be called from outside the app. Routes the app uses only for its own screens (onboarding, the Agent Host protocol, title generation and similar) are left out and may change without notice.
+
+<Note>
+For most integrations, [MCP](/developer/mcp) is the better starting point: it has self-serve sign-in and covers notes, files, memory, skills and automations. REST API keys are not open to customers yet. See [Authentication](/developer/authentication#rest-api-keys).
+</Note>
+
+## Base URL
+
+| Where | URL |
+| --- | --- |
+| Overlay | `https://www.getoverlay.io/api/v1` |
+| Self-hosted | `https://<your host>/api/v1` |
+| Local | `http://localhost:3000/api/v1` |
+
+## Authentication
+
+Requests from the web app carry its signed, httpOnly session cookie. Programmatic callers send `Authorization: Bearer ovl_sk_…` with an API key whose scopes cover the route. A request without valid credentials gets `401` and a `WWW-Authenticate: Bearer` header.
+
+Calls that spend credit on someone else's behalf, such as generation in a paid workspace, may require an `Idempotency-Key` header so a retried request is not charged twice.
+
+## Requests
+
+- `GET` and `DELETE` take query parameters. `POST`, `PATCH` and `PUT` take JSON bodies.
+- Uploads use a two-step flow: ask for an upload URL, `PUT` the file to it, then register the file. See the [files guide](/developer/api/guides/files).
+- Streaming routes (chat replies, run events) answer with server-sent events.
+
+Every request is validated against the same schemas the reference is generated from, so a malformed body is rejected with `400` before it reaches the handler.
+
+## Errors
+
+JSON errors share one shape:
+
+```json
+{
+  "error": "Human-readable message",
+  "code": "machine_readable_code"
+}
+```
+
+Some routes add fields, such as the limit that was hit. Common statuses:
+
+| Status | Meaning |
+| --- | --- |
+| `400` | The request did not match the route's schema. |
+| `401` | Missing or invalid credentials. |
+| `403` | Signed in, but not allowed: the role, the workspace's settings or the plan does not permit it. |
+| `404` | The item does not exist or you cannot see it. |
+| `409` | The item changed since you read it (for example, a note edited by someone else). |
+| `429` | Rate limited. Wait for the number of seconds in `Retry-After`. |
+
+## Guides
+
+<CardGroup cols={2}>
+  <Card title="Bootstrap" icon="rocket" href="/developer/api/guides/bootstrap">Load the signed-in person, workspace and capabilities.</Card>
+  <Card title="Conversations" icon="message-square" href="/developer/api/guides/conversations">Start chats and stream replies.</Card>
+  <Card title="Files" icon="file-text" href="/developer/api/guides/files">Upload, list and read files.</Card>
+  <Card title="Memory" icon="brain" href="/developer/api/guides/memory">Search and manage memories.</Card>
+  <Card title="Automations" icon="workflow" href="/developer/api/guides/automations">Create, test and run automations.</Card>
+  <Card title="Billing" icon="wallet" href="/developer/api/guides/billing">Read the plan and usage.</Card>
+</CardGroup>
+
+## Reference
+
+The endpoint reference in the sidebar is generated from the API's own schemas on every docs build, so it always matches the deployed routes.

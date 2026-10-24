@@ -59,6 +59,7 @@ import {
 import { WorkspaceService } from '@/server/workspaces/WorkspaceService'
 import { ConvexWorkspaceRepository } from '@/server/workspaces/ConvexWorkspaceRepository'
 import { WorkspaceAgentService } from '@/server/agents/WorkspaceAgentService'
+import { externalAgentLaunchEnabled, isPersistedExternalAgent } from '@/server/agents/external-agent-policy'
 import { ConnectedAgentControlPlaneService } from '@/server/agents/ConnectedAgentControlPlaneService'
 import { lazyConvex } from '@/server/database/lazy-convex'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
@@ -229,7 +230,22 @@ export function createOverlayServerContext(
   const conversationCollaboration: ConversationCollaborationRepository = new ConvexConversationCollaborationRepository()
 
   const workspaceAgentRepository = new ConvexWorkspaceAgentRepository()
-  const workspaceAgentService = new WorkspaceAgentService(workspaceAgentRepository, workspaceService)
+  const workspaceAgentService = new WorkspaceAgentService(
+    workspaceAgentRepository,
+    workspaceService,
+    undefined,
+    undefined,
+    async ({ workspaceId, record }) => {
+      const bindings = await appData.repositories.connectedAgents.listBindings({
+        workspaceId,
+        agentId: record.id,
+      })
+      return {
+        external: isPersistedExternalAgent(record) || bindings.length > 0,
+        allowed: await externalAgentLaunchEnabled(workspaceId),
+      }
+    },
+  )
   // v1 static quotas — entitlement-derived limits arrive with the quota +
   // metering phase of the computers plan.
   const computerLimits: ComputerLimits = {
@@ -263,6 +279,7 @@ export function createOverlayServerContext(
     repository: appData.repositories.agentProviderAccounts,
     store: byokCredentialStore,
     audit: auditService,
+    launchEnabled: (workspaceId) => externalAgentLaunchEnabled(workspaceId),
   })
   const mcpAccess = new McpAccessService({
     grants: appData.repositories.mcpGrants,
@@ -329,6 +346,7 @@ export function createOverlayServerContext(
         ? resolveConnectedAgentRollout(rollout, workspaceId).eligible
         : connectedAgentRolloutEnabled(rollout)
     },
+    launchEnabled: (workspaceId) => externalAgentLaunchEnabled(workspaceId),
     artifactsEnabled: () => runtimeConfig?.features.connectedAgentArtifacts === true,
     driveEnabled: () => runtimeConfig?.features.connectedAgentDrive === true,
     policyProjectionEnabled: chatUsagePolicy instanceof BillingBackedActUsagePolicy,
@@ -774,9 +792,13 @@ function transactionalEmailEnabled(config: OverlayRuntimeConfig | null): config 
 }
 
 function runtimeCapabilities(config: OverlayRuntimeConfig): CapabilityCheck {
+  const externalAgentsEnabled = config.features.externalAgents === true
+    && config.features.connectedAgentControlPlane === true
+    && config.features.remoteAgentRuns === true
   return {
     ...resolveOverlayCapabilities(config),
-    connectedAgents: config.features.connectedAgentControlPlane === true,
+    connectedAgents: externalAgentsEnabled,
+    externalAgents: externalAgentsEnabled,
   }
 }
 

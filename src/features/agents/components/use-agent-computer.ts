@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 import type { Computer, ComputerSize, WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
@@ -73,10 +73,10 @@ export function useAgentComputer({
     return () => { cancelled = true }
   }, [showcase, computersAvailable, activeWorkspaceId, agent, agentType, loadedFor, markDirty, setEnabledToolGroups])
 
-  const retryComputerLoad = () => {
+  const retryComputerLoad = useCallback(() => {
     setComputerLoadError(null)
     setLoadedFor(null)
-  }
+  }, [])
   const computerProvisionError = computerProvisionFailure?.agentId === agent?.id
     ? computerProvisionFailure?.message ?? null
     : null

@@ -78,7 +78,7 @@ function messageOf(error: unknown, fallback: string): string {
  * the old view are ignored, so they never land in the new one.
  */
 export function WorkDataProvider({ children }: { children: ReactNode }) {
-  const { listView, scope, solo } = useWorkRoute()
+  const { listView, scope } = useWorkRoute()
   const { user } = useAuth()
   const { access, viewer: accessViewer } = useWorkspaceCreateAccess()
   const [items, setItems] = useState<WorkItem[]>([])
@@ -210,7 +210,7 @@ export function WorkDataProvider({ children }: { children: ReactNode }) {
   }, [applyToTask, findTask, settle])
 
   const createTask = useCallback<WorkData['createTask']>(async (input) => {
-    const scopeToSend = newItemScope(solo ? 'personal' : scope)
+    const scopeToSend = newItemScope(scope)
     const startedIn = view.current
     pending.current += 1
     try {
@@ -224,7 +224,7 @@ export function WorkDataProvider({ children }: { children: ReactNode }) {
     } finally {
       settle(startedIn)
     }
-  }, [scope, settle, solo])
+  }, [scope, settle])
 
   const updateTask = useCallback<WorkData['updateTask']>((id, patch) => {
     const target = findTask(id)

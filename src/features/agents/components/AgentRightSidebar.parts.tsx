@@ -6,9 +6,11 @@ import type { KnowledgeFile } from '@overlay/app-core'
 import { Button } from '@overlay/ui/primitives'
 import { useRouter } from 'next/navigation'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 
 export function AgentLibraryTab({ conversationId }: { conversationId: string }) {
   const router = useRouter()
+  const buildWorkspaceHref = useWorkspaceHref()
   const [libraryState, setLibraryState] = useState<{
     conversationId: string
     files: KnowledgeFile[] | null
@@ -53,7 +55,11 @@ export function AgentLibraryTab({ conversationId }: { conversationId: string }) 
             key={file._id}
             variant="ghost"
             type="button"
-            onClick={() => router.push(`/app/files?file=${encodeURIComponent(file._id)}`)}
+            onClick={() => router.push(buildWorkspaceHref(
+              null,
+              `/app/files?file=${encodeURIComponent(file._id)}`,
+              file.scope ?? 'personal',
+            ))}
             className="group/file h-auto min-h-12 w-full justify-start gap-2.5 rounded-lg px-2 py-2 text-left hover:bg-(--surface-subtle)"
           >
             <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-(--surface-subtle) text-(--muted) group-hover/file:bg-(--surface-elevated)">

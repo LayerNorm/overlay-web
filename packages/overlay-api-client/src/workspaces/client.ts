@@ -20,6 +20,9 @@ import type {
   WorkspaceMemberMutationInput,
   WorkspaceMemberMutationResponse,
   WorkspaceSharingPolicyResponse,
+  WorkspaceHandleResolutionResponse,
+  WorkspaceHandleUpdateInput,
+  WorkspaceHandleUpdateResponse,
   WorkspaceTeamCreateInput,
   WorkspaceTeamCreateResponse,
   WorkspaceTeamMemberMutationInput,
@@ -50,6 +53,20 @@ export class WorkspacesClient {
     return this.http.json<WorkspaceCreateResponse>(
       '/api/v1/workspaces',
       this.http.jsonRequest(body, { ...init, method: 'POST' }),
+    )
+  }
+
+  resolveHandle(handle: string, init?: RequestInit) {
+    return this.http.json<WorkspaceHandleResolutionResponse>(
+      `/api/v1/workspace-handles/${encodeURIComponent(handle)}`,
+      { ...init, cache: 'no-store' },
+    )
+  }
+
+  updateHandle(workspaceId: string, body: WorkspaceHandleUpdateInput, init?: RequestInit) {
+    return this.http.json<WorkspaceHandleUpdateResponse>(
+      `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/handle`,
+      this.http.jsonRequest(body, { ...workspaceInit(workspaceId, init), method: 'PATCH' }),
     )
   }
 

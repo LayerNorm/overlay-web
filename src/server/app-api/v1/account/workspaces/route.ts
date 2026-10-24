@@ -8,7 +8,7 @@ import { getOverlaySession } from '@/server/auth/session'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { ACTIVE_WORKSPACE_COOKIE } from '@/shared/workspaces/constants'
 import { parseCreateInput, workspaceErrorResponse } from '@/server/app-api/v1/workspaces/route'
-import { toWorkspaceSummary } from '@/server/app-api/v1/workspaces/presentation'
+import { toWorkspaceSummaryWithRoutingHandle } from '@/server/app-api/v1/workspaces/presentation'
 import type { WorkspaceService } from '@/server/workspaces/WorkspaceService'
 
 export async function GET(request: Request, context: AccountAppApiRouteContext) {
@@ -27,7 +27,7 @@ export async function GET(request: Request, context: AccountAppApiRouteContext) 
 }
 
 export async function buildAccountWorkspaceDirectory(args: {
-  service: Pick<WorkspaceService, 'listForUser' | 'resolveActiveWorkspace' | 'listReceivedInvitations' | 'countMemberKinds'>
+  service: Pick<WorkspaceService, 'listForUser' | 'resolveActiveWorkspace' | 'listReceivedInvitations' | 'countMemberKinds' | 'resolveWorkspaceHandle'>
   userId: string
   email?: string
   now: number
@@ -42,7 +42,7 @@ export async function buildAccountWorkspaceDirectory(args: {
       actorUserId: args.userId,
       workspaceId: access.workspace.id,
     })
-    return toWorkspaceSummary(access, counts)
+    return toWorkspaceSummaryWithRoutingHandle(args.service, args.userId, access, counts)
   }))
   return {
     workspaces,
@@ -64,7 +64,12 @@ export async function POST(_request: Request, context: AccountAppApiRouteContext
     })
     await service.setActiveWorkspace(context.auth.userId, access.workspace.id)
     const response: WorkspaceCreateResponse = {
-      workspace: toWorkspaceSummary(access, { memberCount: 1, humanMemberCount: 1 }),
+      workspace: await toWorkspaceSummaryWithRoutingHandle(
+        service,
+        context.auth.userId,
+        access,
+        { memberCount: 1, humanMemberCount: 1 },
+      ),
     }
     const result = NextResponse.json(response, { status: 201 })
     result.cookies.set(ACTIVE_WORKSPACE_COOKIE, access.workspace.id, {

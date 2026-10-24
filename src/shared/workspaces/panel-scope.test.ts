@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { isLegacyArchivedScope, listViewForScope, parsePanelScope, resolvePanelScope, resolvePanelScopeFromParams, scopeForNewItem, withPanelScope } from './panel-scope'
+import { isLegacyArchivedScope, isResourceInPanelScope, listViewForScope, newItemScope, parsePanelScope, resolvePanelScope, scopeForNewItem, withPanelScope } from './panel-scope'
 
 test('the URL wins over the remembered scope, which wins over Personal', () => {
   assert.equal(resolvePanelScope({ param: 'workspace', saved: 'personal' }), 'workspace')
@@ -12,6 +12,15 @@ test('the URL wins over the remembered scope, which wins over Personal', () => {
   assert.equal(resolvePanelScope({ param: null }), 'personal')
 })
 
+test('a route scope wins over conflicting query and saved scope even for a solo workspace', () => {
+  assert.equal(resolvePanelScope({
+    pathScope: 'workspace',
+    param: 'personal',
+    saved: 'personal',
+    solo: true,
+  }), 'workspace')
+})
+
 test('only the two scopes parse', () => {
   assert.equal(parsePanelScope('personal'), 'personal')
   assert.equal(parsePanelScope('Workspace'), null)
@@ -21,18 +30,14 @@ test('only the two scopes parse', () => {
   assert.equal(isLegacyArchivedScope('workspace'), false)
 })
 
-test('agent scope links prefer explicit scope and accept only legacy personal/workspace views', () => {
-  assert.equal(resolvePanelScopeFromParams(new URLSearchParams('scope=personal&view=workspace'), 'workspace'), 'personal')
-  assert.equal(resolvePanelScopeFromParams(new URLSearchParams('view=workspace'), 'personal'), 'workspace')
-  assert.equal(resolvePanelScopeFromParams(new URLSearchParams('view=personal'), 'workspace'), 'personal')
-  assert.equal(resolvePanelScopeFromParams(new URLSearchParams('view=dms'), 'workspace'), 'workspace')
-  assert.equal(resolvePanelScopeFromParams(new URLSearchParams('view=notes'), null), 'personal')
-  assert.equal(resolvePanelScopeFromParams(new URLSearchParams('view=workspace'), 'workspace', true), 'personal')
-})
-
 test('a new item defaults to the scope being viewed', () => {
   assert.equal(scopeForNewItem('workspace'), 'workspace')
   assert.equal(scopeForNewItem('personal'), 'personal')
+})
+
+test('creation keeps the selected scope in a one-person workspace', () => {
+  assert.equal(newItemScope('workspace'), 'workspace')
+  assert.equal(newItemScope('personal'), undefined)
 })
 
 test('the scope parameter keeps other parameters and omits the default', () => {
@@ -42,11 +47,18 @@ test('the scope parameter keeps other parameters and omits the default', () => {
   assert.equal(base.toString(), 'view=notes&file=abc', 'the input is not changed')
 })
 
-test('a workspace of one person has no Workspace scope, and its lists ask for everything active', () => {
-  assert.equal(resolvePanelScope({ param: 'workspace', solo: true }), 'personal')
-  assert.equal(resolvePanelScope({ param: null, saved: 'workspace', solo: true }), 'personal')
+test('a workspace of one person retains both selected scopes and its lists stay scope-filtered', () => {
+  assert.equal(resolvePanelScope({ param: 'workspace', solo: true }), 'workspace')
+  assert.equal(resolvePanelScope({ param: null, saved: 'workspace', solo: true }), 'workspace')
   assert.equal(resolvePanelScope({ param: 'workspace' }), 'workspace')
-  assert.equal(listViewForScope('personal', true), undefined)
+  assert.equal(listViewForScope('personal', true), 'personal')
+  assert.equal(listViewForScope('workspace', true), 'workspace')
   assert.equal(listViewForScope('personal', false), 'personal')
   assert.equal(listViewForScope('workspace', false), 'workspace')
+})
+
+test('an authorized resource is not rendered in the wrong selected scope', () => {
+  assert.equal(isResourceInPanelScope('workspace', 'personal'), false)
+  assert.equal(isResourceInPanelScope('workspace', 'workspace'), true)
+  assert.equal(isResourceInPanelScope('personal', 'workspace', true), true)
 })

@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import { chmodSync, closeSync, existsSync, lstatSync, mkdirSync, openSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
-import { z } from 'zod'
+import { z } from 'zod/v3'
 import { driveCredentialsResponseSchema, driveUploadBodySchema, driveMetadataBodySchema,
   driveContentResultSchema, driveMetadataResultSchema, type DriveUploadRequest, type DriveMetadataRequest,
   type DriveContentResult, type DriveMetadataResult } from '@layernorm/overlay-agent-bridge-protocol'

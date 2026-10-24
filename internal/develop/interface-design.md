@@ -23,6 +23,8 @@ composed from the shadcn Radix Breadcrumb primitives in `@overlay/ui/primitives`
 `AppBreadcrumbContext` supplies the active Personal/Workspace scope and page; callers add
 subpages or selected records through `breadcrumbs` and the final title. Preserve scope in
 breadcrumb destinations and expose only the final item as the current page.
+Resolve scope with `usePanelScope` and destinations with `useWorkspaceHref` so
+handle routes, legacy links and solo workspaces retain the same scope as navigation.
 
 ## Tailwind CSS v4 configuration
 
@@ -50,6 +52,10 @@ The agent conversation sidebar uses the app sidebar surface and one scroll
 container below its fixed hero and tabs. Its editable fields autosave after an
 800ms debounce and flush on blur; saves serialize so newer edits cannot be
 overwritten by an older response.
+
+Details and Computer tabs share the editor's computer state. Start, Stop, Wake,
+provisioning and deletion update both views; the preview only owns its connection
+ticket, not a second cached machine record.
 
 ## Shared modal dialogs
 

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { z } from 'zod'
+import { z } from 'zod/v3'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getOverlayRuntimeConfig } from '@/server/config'
 import { getOverlayServerContext } from '@/server/bootstrap'
@@ -12,9 +12,9 @@ import { agentErrorResponse } from '../../shared'
 const NO_STORE = { 'Cache-Control': 'no-store' }
 const actionSchema = z.object({ action: z.enum(CLOUD_AGENT_ACTIONS) }).strict()
 
-async function gate(context: AppApiRouteContext) {
+async function gate(context: AppApiRouteContext, allowWhenCloudDisabled = false) {
   const config = await getOverlayRuntimeConfig()
-  if (config.features.overlayCloudEnvironments !== true) {
+  if (!allowWhenCloudDisabled && config.features.overlayCloudEnvironments !== true) {
     return NextResponse.json({ error: 'Overlay Cloud agents are disabled', code: 'capability_disabled' }, { status: 404 })
   }
   const params = await context.params
@@ -40,7 +40,7 @@ function failure(error: unknown) {
 /** The agent's Overlay Cloud machine: startup progress, running state, account. */
 export async function GET(_request: Request, context: AppApiRouteContext) {
   try {
-    const agentId = await gate(context)
+    const agentId = await gate(context, true)
     if (typeof agentId !== 'string') return agentId
     const status = await createCloudAgentMachineService().status({ workspaceId: context.workspace.workspace.id, agentId })
     return NextResponse.json(status, { headers: NO_STORE })
@@ -52,7 +52,7 @@ export async function GET(_request: Request, context: AppApiRouteContext) {
 /** Pause, resume, or restart the machine. */
 export async function POST(_request: Request, context: AppApiRouteContext) {
   try {
-    const agentId = await gate(context)
+    const agentId = await gate(context, true)
     if (typeof agentId !== 'string') return agentId
     const { action } = actionSchema.parse(context.parsedJson)
     await createCloudAgentMachineService().control({ workspaceId: context.workspace.workspace.id, agentId, action })
@@ -65,7 +65,7 @@ export async function POST(_request: Request, context: AppApiRouteContext) {
 /** Delete the machine and everything on it. */
 export async function DELETE(_request: Request, context: AppApiRouteContext) {
   try {
-    const agentId = await gate(context)
+    const agentId = await gate(context, true)
     if (typeof agentId !== 'string') return agentId
     await createCloudAgentMachineService().teardown({
       actorUserId: context.auth.userId, workspaceId: context.workspace.workspace.id, agentId,

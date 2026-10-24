@@ -1,4 +1,4 @@
-import {z} from 'zod'
+import {z} from 'zod/v3'
 import type {MutationCtx, QueryCtx} from '../_generated/server'
 import {currentRemoteAttempt} from '../agents/remoteRunModel'
 

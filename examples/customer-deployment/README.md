@@ -30,7 +30,7 @@ For a self-hosted deployment that customizes Overlay without editing package int
 
 ## Self-hosted Convex backend
 
-Enterprise customers who own the backend end-to-end (data sovereignty, no Convex Cloud dependency) run `docker-compose.convex.yml` alongside the app compose. It brings up the official open-source Convex backend with PostgreSQL persistence and S3-compatible storage — full feature parity with Convex Cloud. See `docs/deploy-operate/self-hosted-convex.mdx` for the operations runbook.
+Enterprise customers who own the backend end-to-end (data sovereignty, no Convex Cloud dependency) run `docker-compose.convex.yml` alongside the app compose. It brings up the official open-source Convex backend with PostgreSQL persistence and S3-compatible storage — full feature parity with Convex Cloud. See `docs/self-hosting/install/self-hosted-convex.mdx` for the operations runbook.
 
 ## Optional: SQL read mirror
 
@@ -44,7 +44,7 @@ docker compose \
   up -d mirror
 ```
 
-Details and the table schema live in `mirror/README.md`; operations guidance is in `docs/deploy-operate/self-hosted-convex.mdx`. Never query the backend's internal `documents`/`indexes` persistence tables directly — the mirror is the supported SQL surface.
+Details and the table schema live in `mirror/README.md`; operations guidance is in `docs/self-hosting/install/self-hosted-convex.mdx`. Never query the backend's internal `documents`/`indexes` persistence tables directly — the mirror is the supported SQL surface.
 
 ## Update Model
 

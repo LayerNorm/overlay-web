@@ -17,8 +17,10 @@ import { useCollaborationRealtime } from './collaboration/CollaborationRealtimeP
 import { ChatSurfaceEmptyState } from './ChatSurfaceEmptyState'
 import {
   buildWorkspaceHref,
+  mergeHrefSearchParams,
   readWorkspaceIdFromPath,
 } from '@/shared/workspaces/routing'
+import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 
 const FILTERS: Array<{ value: WorkspaceNotificationFilter; label: string; icon: typeof Bell }> = [
   { value: 'all', label: 'All', icon: Inbox },
@@ -53,6 +55,7 @@ function notificationIcon(type: WorkspaceNotification['type']) {
 export function ChatActivityView({ baseHref = '/app/chat' }: { baseHref?: string }) {
   const router = useRouter()
   const pathname = usePathname() ?? ''
+  const buildScopedHref = useWorkspaceHref()
   const [filter, setFilter] = useState<WorkspaceNotificationFilter>('all')
   const { notifications: sourceNotifications, notificationsReady } = useCollaborationRealtime()
   const [locallyRead, setLocallyRead] = useState<Map<string, number>>(() => new Map())
@@ -124,7 +127,12 @@ export function ChatActivityView({ baseHref = '/app/chat' }: { baseHref?: string
         : 'personal'
     const query = new URLSearchParams({ view, id: notification.conversationId })
     if (notification.messageId) query.set('message', notification.messageId)
-    router.push(`${baseHref}?${query.toString()}`)
+    const chatBase = buildScopedHref(
+      readWorkspaceIdFromPath(pathname),
+      baseHref,
+      view === 'personal' ? 'personal' : 'workspace',
+    )
+    router.push(mergeHrefSearchParams(chatBase, query))
   }
 
   async function markAllRead() {

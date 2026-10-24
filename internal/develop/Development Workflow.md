@@ -72,7 +72,7 @@ that integration check.
 
 For admin QA, bind both backend URL settings on the exact feature branch to that PR's isolated Convex backend, reuse the shared Preview admin credentials and provision the matching secret/test operator on that backend, register the test callback, then request an exact-SHA admin Preview through the connected Vercel tools. The existing customer-web preview controller does not configure or clean resources in the admin project. Shared admin Preview backend URLs are blank so unbound builds fail closed. Record the binding and clear branch backend URLs when QA ends; never point an admin PR at shared development or customer production.
 
-Deploy backend changes from clean current canonical main after matching customer web is live. For endpoint retirement, first ship and verify replacement callers; verify authenticated standalone admin acceptance before removing the old web admin. Keep ordinary member initialization and append-only operational audit separate from operator powers. See [Admin Console](../../docs/develop/admin-console.md).
+Deploy backend changes from clean current canonical main after matching customer web is live. For endpoint retirement, first ship and verify replacement callers; verify authenticated standalone admin acceptance before removing the old web admin. Keep ordinary member initialization and append-only operational audit separate from operator powers. See [Admin Console](../../internal/develop/admin-console.md).
 
 ## Local laptop owner path
 

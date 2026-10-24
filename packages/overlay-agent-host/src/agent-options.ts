@@ -1,4 +1,4 @@
-import { z } from 'zod'
+import { z } from 'zod/v3'
 import { adapterOptionsSchema, type AdapterOptions } from '@layernorm/overlay-agent-bridge-protocol'
 
 const namedValue = z.object({ value: z.string(), name: z.string(), description: z.string().nullish() })

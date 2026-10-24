@@ -1,6 +1,6 @@
 import {resolve} from 'node:path'
 import type {AcpRuntime, AcpRuntimeHandle} from 'acpx/runtime'
-import {z} from 'zod'
+import {z} from 'zod/v3'
 
 const id = z.string().min(1).max(2000)
 const identitySchema = z.object({version: z.literal(1), sessionKey: id, agent: id,
