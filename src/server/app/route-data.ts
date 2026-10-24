@@ -15,14 +15,22 @@ import type { CachedConversation } from '@/shared/chat/chat-list-cache'
 import type { PaginatedEnvelope } from '@/shared/api/pagination'
 import { unwrapPaginatedData } from '@/shared/api/pagination'
 import { getBaseUrl } from '@/server/web/app-url'
-import { handleBffRoute, type BffDomainService } from '@/app/api/v1/_utils/bff'
+import {
+  handleAccountBffRoute,
+  handleBffRoute,
+  type AccountBffDomainService,
+  type BffDomainService,
+} from '@/app/api/v1/_utils/bff'
 import * as conversationsService from '@/server/app-api/v1/conversations/route'
 import * as filesService from '@/server/app-api/v1/files/route'
 import * as notesService from '@/server/app-api/v1/notes/route'
 import * as memoryService from '@/server/app-api/v1/memory/route'
 import * as bootstrapService from '@/server/app-api/v1/bootstrap/route'
 import * as integrationsService from '@/server/app-api/v1/integrations/route'
-import { ACTIVE_WORKSPACE_HEADER } from '@/shared/workspaces/constants'
+import { ACTIVE_WORKSPACE_HEADER, ROUTE_WORKSPACE_SCOPE_HEADER } from '@/shared/workspaces/constants'
+import { parsePanelScope } from '@/shared/workspaces/panel-scope'
+import { shouldSkipChatHistoryPrefetch } from '@/shared/chat/chat-view-navigation'
+import * as workspaceHandleService from '@/server/app-api/v1/workspace-handles/[handle]/route'
 
 const INITIAL_CHAT_LIST_LIMIT = 24
 
@@ -57,7 +65,27 @@ async function callAppApi<T>(path: string, service: BffDomainService, fallback: 
   await connection()
   const headerList = await headers()
   const cookie = headerList.get('cookie')
-  const workspaceId = headerList.get(ACTIVE_WORKSPACE_HEADER)?.trim()
+  let workspaceId = headerList.get(ACTIVE_WORKSPACE_HEADER)?.trim()
+  const workspaceHandle = headerList.get('x-overlay-workspace-handle')?.trim()
+  if (workspaceHandle) {
+    const resolverUrl = new URL(
+      `/api/v1/workspace-handles/${encodeURIComponent(workspaceHandle)}`,
+      originFromHeaders(headerList),
+    )
+    const resolverRequest = new NextRequest(resolverUrl, {
+      headers: { ...(cookie ? { cookie } : {}) },
+    })
+    const resolution = await handleAccountBffRoute(
+      resolverRequest,
+      { params: Promise.resolve({ handle: workspaceHandle }) },
+      workspaceHandleService.GET as AccountBffDomainService,
+      { requireSession: true },
+    )
+    if (!resolution.ok) return fallback
+    const resolved = await resolution.json().catch((_error) => null) as { workspaceId?: unknown } | null
+    if (typeof resolved?.workspaceId !== 'string' || !resolved.workspaceId) return fallback
+    workspaceId = resolved.workspaceId
+  }
   const url = new URL(path, originFromHeaders(headerList))
   const request = new NextRequest(url, {
     headers: {
@@ -74,23 +102,34 @@ async function callAppApi<T>(path: string, service: BffDomainService, fallback: 
   return value as T
 }
 
-export function getInitialChatHistory(): Promise<PaginatedEnvelope<CachedConversation> | null> {
-  return callAppApi<PaginatedEnvelope<CachedConversation> | null>(
-    `/api/v1/conversations?limit=${INITIAL_CHAT_LIST_LIMIT}`,
-    conversationsService.GET as BffDomainService,
-    null,
-  )
+export function getInitialChatHistory(legacyScopedView = false): Promise<PaginatedEnvelope<CachedConversation> | null> {
+  return (async () => {
+    const headerList = await headers()
+    const routeScope = headerList.get(ROUTE_WORKSPACE_SCOPE_HEADER)
+    if (shouldSkipChatHistoryPrefetch({
+      pathScope: routeScope,
+      hasScopeQuery: legacyScopedView,
+      hasViewQuery: legacyScopedView,
+    }) || parsePanelScope(routeScope)) return null
+    return callAppApi<PaginatedEnvelope<CachedConversation> | null>(
+      `/api/v1/conversations?limit=${INITIAL_CHAT_LIST_LIMIT}&view=personal`,
+      conversationsService.GET as BffDomainService,
+      null,
+    )
+  })()
 }
 
 export async function getInitialKnowledgeFiles(): Promise<KnowledgeFileNode[]> {
+  const headerList = await headers()
+  const scope = parsePanelScope(headerList.get(ROUTE_WORKSPACE_SCOPE_HEADER)) ?? 'personal'
   const [files, notes] = await Promise.all([
     callAppApi<KnowledgeFileNode[]>(
-      '/api/v1/files?limit=100&summary=true&view=personal',
+      `/api/v1/files?limit=100&summary=true&view=${scope}`,
       filesService.GET as BffDomainService,
       [],
     ),
     callAppApi<NoteDoc[]>(
-      '/api/v1/notes?limit=100&view=personal',
+      `/api/v1/notes?limit=100&view=${scope}`,
       notesService.GET as BffDomainService,
       [],
     ),

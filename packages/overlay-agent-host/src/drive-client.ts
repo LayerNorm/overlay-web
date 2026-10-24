@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { z } from 'zod'
+import { z } from 'zod/v3'
 import {
   driveCredentialsResponseSchema, driveManifestFrameSchema, drivePathSegments, portableDrivePathKey,
   driveUploadBodySchema, driveUploadResponseSchema, driveContentResultSchema, driveCommitBodySchema,

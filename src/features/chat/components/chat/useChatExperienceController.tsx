@@ -49,6 +49,7 @@ import { useConvexAuthToken } from '@/components/providers/ConvexAuthProvider'
 import { useGeneratedUiConnectorActions } from './useGeneratedUiConnectorActions'
 import { useChatMentions } from '../use-chat-mentions'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
+import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import { recordRender } from '@overlay/chat-react/lib/perf-debug'
 import type { Conversation } from '../chat-interface/types'
 import type { MentionInputHandle } from '../chat-interface/MentionInput'
@@ -93,6 +94,7 @@ export function useChatExperienceController({
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
+  const buildWorkspaceHref = useWorkspaceHref()
   const isPublicShowcase = Boolean(publicShowcaseSnapshots)
   const { settings, updateSettings } = useAppSettings()
   const { user: authUser, isLoading: authLoading } = useAuth()
@@ -365,8 +367,14 @@ export function useChatExperienceController({
   const wasStreamingRef = useRef(false)
 
   const replaceActiveChatRoute = useCallback(() => {
-    if (!hideSidebar) router.replace('/app/chat')
-  }, [hideSidebar, router])
+    if (hideSidebar) return
+    const params = new URLSearchParams()
+    const view = searchParams.get('view')
+    if (view && ['personal', 'workspace-chats', 'dms', 'channels'].includes(view)) params.set('view', view)
+    if (searchParams.get('showcase') === '1') params.set('showcase', '1')
+    const query = params.toString()
+    router.replace(buildWorkspaceHref(activeWorkspaceId, `/app/chat${query ? `?${query}` : ''}`))
+  }, [activeWorkspaceId, buildWorkspaceHref, hideSidebar, router, searchParams])
 
   const {
     activeChatTitle,

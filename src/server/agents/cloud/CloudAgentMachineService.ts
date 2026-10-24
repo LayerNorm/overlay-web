@@ -9,6 +9,8 @@ import { ConnectedAgentControlPlaneError, type ConnectedAgentControlPlaneService
 import type { ConnectedAgentRepository } from '../ConnectedAgentRepository'
 import type { CloudAgentProvisionRecord, CloudAgentProvisionRepository } from './CloudAgentProvisionRepository'
 import { prepareCloudAgentPreviewAccess } from './cloud-agent-preview-access'
+import { assertCloudAgentLaunchEnabled } from './assert-cloud-agent-launch-enabled'
+import { CloudAgentMachineError } from './CloudAgentMachineError'
 import {
   deriveCloudAgentState,
   type CloudAgentAction,
@@ -33,12 +35,7 @@ const ENROLLMENT_WAIT_ATTEMPTS = 180
 const ENROLLMENT_POLL_MS = 1_000
 const COMMAND_TIMEOUT_MS = 60_000
 
-export class CloudAgentMachineError extends Error {
-  constructor(message: string, readonly statusCode: number, readonly code: string) {
-    super(message)
-    this.name = 'CloudAgentMachineError'
-  }
-}
+export { CloudAgentMachineError }
 
 type ControlPlane = Pick<ConnectedAgentControlPlaneService,
   'createEnrollmentSession' | 'approveEnvironment' | 'upsertBinding' | 'revokeEnvironment' | 'sweepRemoteRuns'>
@@ -73,6 +70,7 @@ export class CloudAgentMachineService {
     image?: string
     sleep?: (ms: number) => Promise<void>
     now?: () => number
+    launchEnabled?: (workspaceId: string) => boolean | Promise<boolean>
   }) {}
 
   async provision(args: {
@@ -84,6 +82,7 @@ export class CloudAgentMachineService {
     size: ComputerSize
     serverUrl: string
   }) {
+    await assertCloudAgentLaunchEnabled(args.workspaceId, this.dependencies.launchEnabled)
     const allocationKey = `cloud-agent:${args.workspaceId}:${args.agentId}:${randomUUID()}`
     const phase = async (next: CloudAgentPhase, extra: { error?: string; environmentId?: string } = {}) => {
       const recorded = await this.dependencies.provisions.setPhase({
@@ -191,16 +190,7 @@ export class CloudAgentMachineService {
           }
         }
       }
-      await this.dependencies.provisions.setPhase({
-        workspaceId: args.workspaceId,
-        agentId: args.agentId,
-        phase: 'failed',
-        allocationKey,
-        error: provisionFailureMessage(error),
-        now: this.now(),
-      }).catch((phaseError) => logger.warn('[cloud-agent] could not record the failed provisioning phase', {
-        error: phaseError instanceof Error ? phaseError.name : 'UnknownError',
-      }))
+      await phase('failed', { error: provisionFailureMessage(error) })
       throw error
     }
   }
@@ -369,7 +359,10 @@ export class CloudAgentMachineService {
 
   /** Pause, resume, or restart an agent's machine. */
   async control(args: { actorUserId: string; workspaceId: string; agentId: string; action: CloudAgentAction }): Promise<void> {
-    if (args.action !== 'pause') await this.admit(args)
+    if (args.action !== 'pause') {
+      await assertCloudAgentLaunchEnabled(args.workspaceId, this.dependencies.launchEnabled)
+      await this.admit(args)
+    }
     const bindings = await this.dependencies.repository.listBindings({ workspaceId: args.workspaceId, agentId: args.agentId })
     const found = await this.cloudBinding(args.workspaceId, bindings)
     if (!found) throw new CloudAgentMachineError('This agent has no Overlay Cloud machine', 404, 'cloud_agent_missing')
@@ -556,6 +549,7 @@ export class CloudAgentMachineService {
    * stops idle machines, and a stopped machine has no host process.
    */
   async wake(args: { actorUserId: string; workspaceId: string; agentId: string; environmentId: string }): Promise<'running' | 'resumed' | 'unavailable'> {
+    await assertCloudAgentLaunchEnabled(args.workspaceId, this.dependencies.launchEnabled)
     await this.admit(args)
     const scope = { workspaceId: args.workspaceId, environmentId: args.environmentId }
     const lease = await this.dependencies.repository.getActiveSandboxLease(scope)
@@ -578,6 +572,7 @@ export class CloudAgentMachineService {
   async resumeStoppedExecution(args: {actorUserId: string; workspaceId: string; agentId: string; environmentId: string;
     authorize: (proof: {leaseId: string; providerReference: string; observedAt: number}) => Promise<boolean>
   }): Promise<'resumed' | 'unavailable'> {
+    await assertCloudAgentLaunchEnabled(args.workspaceId, this.dependencies.launchEnabled)
     await this.admit(args)
     const scope = {workspaceId: args.workspaceId, environmentId: args.environmentId}
     const lease = await this.dependencies.repository.getActiveSandboxLease(scope)

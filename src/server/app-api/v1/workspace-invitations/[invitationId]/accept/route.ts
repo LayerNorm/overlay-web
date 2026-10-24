@@ -7,7 +7,7 @@ import { WorkspaceServiceError } from '@/server/workspaces/WorkspaceService'
 import { ACTIVE_WORKSPACE_COOKIE } from '@/shared/workspaces/constants'
 import { workspaceErrorResponse } from '@/server/app-api/v1/workspaces/route'
 import { requiredWorkspaceParam, validation } from '@/server/app-api/v1/workspaces/inputs'
-import { toWorkspaceSummary } from '@/server/app-api/v1/workspaces/presentation'
+import { toWorkspaceSummaryWithRoutingHandle } from '@/server/app-api/v1/workspaces/presentation'
 
 export async function POST(request: Request, context: AccountAppApiRouteContext) {
   try {
@@ -31,7 +31,7 @@ export async function POST(request: Request, context: AccountAppApiRouteContext)
     await service.setActiveWorkspace(context.auth.userId, access.workspace.id)
     const response: WorkspaceInvitationAcceptResponse = {
       activeWorkspaceId: access.workspace.id,
-      workspace: toWorkspaceSummary(access),
+      workspace: await toWorkspaceSummaryWithRoutingHandle(service, context.auth.userId, access),
     }
     const result = NextResponse.json(response)
     result.cookies.set(ACTIVE_WORKSPACE_COOKIE, access.workspace.id, {

@@ -1,4 +1,4 @@
-import { z } from 'zod'
+import { z } from 'zod/v3'
 import { formatAutoRetrievalBundle } from '../../../src/shared/knowledge/auto-retrieval-format'
 import { plainTextSnippet } from '@overlay/chat-core/sources'
 import { answerQuestion } from './answer'

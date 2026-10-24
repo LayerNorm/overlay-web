@@ -15,6 +15,25 @@ This file records user-visible and operational changes that reach `main`. Pull r
 - Show Computer control progress only for control actions, not start, stop or delete.
 - Alert on delayed sandbox metering and failed stop or cleanup operations.
 
+- Keep agent Details and Computer tabs synchronized after starting, stopping, waking or deleting the attached computer.
+
+- Refresh the agent conversation roster after agent creation, edits and archive so newly created agents open without a page reload. Ignore stale requests and unrelated workspace changes.
+
+- Launch with native Overlay agents and their computers while keeping external cloud and own-machine runtimes behind a default-off release gate. Hide unavailable external setup, reject direct creation and execution bypasses, and retain authorized history, cancellation, cleanup and settlement. Add `FEATURES.md` with feature switches, provider support and re-enablement steps.
+
+- Persist tool failures and invalid calls as terminal error states, retain successful tool output across streamed steps, and give native agents exact recovery guidance for the tools exposed in the current turn.
+
+- Keep sidebar data isolated while switching workspaces by publishing the workspace after navigation, resetting sidebar state, and binding chat-list requests to their cache workspace.
+- Patch undici v7 and v8 dependency copies to 7.30.1 and 8.12.2 for GHSA-xjj6-f33q-929c without changing supported major versions or security gates.
+- Recover expired sessions on protected pages before redirecting to sign-in, preserving the requested workspace page instead of unexpectedly opening Chats.
+- Keep workspace navigation on immutable IDs until member-scoped resolution confirms a routable handle; existing accounts remain usable without migration or backfill.
+- Add indexed workspace handles with permanent aliases, authenticated resolution, owner-only changes, and a resumable dry-run-capable backfill. Existing workspace IDs and ID-based links remain supported.
+- Give scoped workspace features canonical `/w/<handle>/<personal|workspace>/<feature>` addresses, including Work, Agents, Chats, Files, Notes, Outputs, Tools and Automations. Solo workspaces retain both views.
+- Keep newly created empty channels joined when navigating away, including through older draft links.
+- Preserve the selected workspace and personal/workspace scope when the first chat stream creates a conversation before the parallel metadata request.
+- Show the Agents empty state when the selected creator scope has no agents, even if the opposite scope is populated.
+- Patch vulnerable Zod v4 installs at 4.6.7, including transitive production dependencies, while preserving existing v3 schemas through explicit compatibility imports.
+- Patch production body-parser to 2.4.0 and Mintlify's nested copy to 1.20.9 for GHSA-27r3-jxmh-p828.
 - Reveal chat copy actions on hover or keyboard focus, and add an agent-conversation sidebar as a full-height panel with one editable hero, autosaving Details, conversation-linked Library files and an always-visible Computer tab with control mode. Files and notes created by an agent are linked to its conversation and appear in the Library. Room panels and the agent sidebar now share the same right-hand slot. Agent settings use the shared chat model picker with free-tier and zero-data-retention access rules.
 
 - Update `@sentry/nextjs` to 10.75.3 and `dompurify` to 3.4.17 to fix the Sentry tunnel middleware bypass (GHSA-mchm-gjx6-7h55) and two DOMPurify sanitizer advisories (GHSA-cg2g-xh64-v4q7, GHSA-mrv2-3pqr-j5jr) that fail the production dependency audit.

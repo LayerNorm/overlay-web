@@ -236,6 +236,8 @@ For a description of what each route does and its associated implementation file
 ## Workspaces and invitations
 
 - `GET, POST /api/v1/account/workspaces`
+- `GET /api/v1/workspace-handles/[handle]`
+- `PATCH /api/v1/workspaces/[workspaceId]/handle`
 - `POST /api/v1/workspace-invitations/[invitationId]/accept`
 - `GET /api/v1/workspaces/[workspaceId]/audit-export`
 - `POST /api/v1/workspaces/[workspaceId]/billing/checkout`

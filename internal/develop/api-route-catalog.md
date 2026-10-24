@@ -4,6 +4,8 @@ This is the route-entry-point inventory for the web app. It is intended as a wor
 
 ## Scope and reading guide
 
+- External-agent setup and new execution require `OVERLAY_FEATURE_EXTERNAL_AGENTS` plus the existing control-plane, remote-run/cloud and workspace rollout gates. The master gate defaults off for the native-Overlay-only launch. Authorized history, cancellation, revocation, machine teardown and host settlement paths remain available without authorizing new starts. Native `/api/v1/computers` uses its own independent capability. See `FEATURES.md` at the repository root and the living Bring Your Own Agents guide for re-enablement.
+
 - Source of truth for route existence: every `src/app/api/**/route.ts` file. The inventory contains 208 route entry points: 40 non-versioned routes and 168 `/api/v1` routes. Test files are not endpoints.
 - Next.js dynamic segments are shown in the same notation as the source: `[id]` and `[...path]`.
 - Most user-facing `/api/v1` requests pass through `src/app/api/v1/_utils/bff.ts`, which authenticates the caller, parses the request, resolves workspace context, applies route policy/idempotency/rate-limit behavior, and delegates to the server implementation. Direct routes and internal callbacks are marked below; the per-route file list names the transport entry point and the implementation or direct service files.
@@ -220,6 +222,11 @@ This is the route-entry-point inventory for the web app. It is intended as a wor
 - `GET, PATCH /api/v1/workspaces/[workspaceId]/policies` — Reads or updates workspace policy/configuration after manager authorization. Files: `src/app/api/v1/workspaces/[workspaceId]/policies/route.ts`; `src/server/app-api/v1/workspaces/[workspaceId]/policies/route.ts`; `src/server/workspaces/WorkspaceService.ts`; `src/server/authorization/AuthorizationService.ts`.
 - `GET, POST /api/v1/workspaces/[workspaceId]/governance` — Reads governance views (directory, exports, retention, metrics) or links/deprovisions directory identities. Files: `src/app/api/v1/workspaces/[workspaceId]/governance/route.ts`; `src/server/app-api/v1/workspaces/[workspaceId]/governance/route.ts`; `src/server/governance/WorkspaceGovernanceService.ts`; `src/server/workspaces/WorkspaceService.ts`.
 - `GET /api/v1/workspaces/[workspaceId]/audit-export` — Exports workspace audit evidence for an authorized manager/auditor. Files: `src/app/api/v1/workspaces/[workspaceId]/audit-export/route.ts`; `src/server/app-api/v1/workspaces/[workspaceId]/audit-export/route.ts`; `src/server/admin/AuditService.ts`; `src/server/authorization/AuthorizationService.ts`.
+
+### Workspace handles
+
+- `GET /api/v1/workspace-handles/[handle]` — Resolves a canonical or historical handle for an authenticated active member to the immutable workspace ID. Unknown, inaccessible, suspended, and archived workspaces share a non-cacheable denial. Files: `src/app/api/v1/workspace-handles/[handle]/route.ts`; `src/server/app-api/v1/workspace-handles/[handle]/route.ts`; `src/server/workspaces/WorkspaceService.ts`.
+- `PATCH /api/v1/workspaces/[workspaceId]/handle` — Changes an active workspace's canonical handle for its owner while retaining historical aliases on the same workspace ID. Files: `src/app/api/v1/workspaces/[workspaceId]/handle/route.ts`; `src/server/app-api/v1/workspaces/[workspaceId]/handle/route.ts`; `convex/collaboration/workspaces.ts`.
 
 ## 11. Workspace billing and entitlement operations
 

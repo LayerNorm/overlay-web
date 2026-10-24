@@ -1,8 +1,4 @@
-/**
- * Whether a workspace has only one person in it. The interface follows this: a workspace that is just you has no
- * Personal/Workspace split, no person-to-person messages and no activity feed, and those appear when a second person
- * joins. It is derived, not a setting.
- */
+/** Whether a workspace has only one person in it. This is a headcount fact, not a scope rule. */
 import type { PanelScope } from './panel-scope'
 
 export type WorkspaceHeadcount = {
@@ -32,10 +28,7 @@ export function workspaceMemberLabel(workspace: WorkspaceHeadcount | null | unde
   return people === undefined ? null : `${people} ${people === 1 ? 'member' : 'members'}`
 }
 
-/**
- * The scope to show. With nobody to share with there is no Workspace scope: a link or a remembered choice that says
- * `workspace` shows the person's one list (the Personal scope).
- */
-export function soloPanelScope(scope: PanelScope, solo: boolean): PanelScope {
-  return solo && scope === 'workspace' ? 'personal' : scope
+/** Retained for compatibility; scope selection is independent of workspace headcount. */
+export function soloPanelScope(scope: PanelScope, _solo: boolean): PanelScope {
+  return scope
 }

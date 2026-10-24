@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { createHash, randomUUID } from 'node:crypto'
-import { z } from 'zod'
+import { z } from 'zod/v3'
 import type { AgentDriveTokenClaims } from './agent-drive-token'
 import { driveUploadBodySchema, driveCommitBodySchema, driveContentResultSchema } from '@layernorm/overlay-agent-bridge-protocol'
 export { driveUploadBodySchema, driveCommitBodySchema, driveContentResultSchema }

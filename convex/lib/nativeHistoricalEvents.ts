@@ -2,7 +2,7 @@ import type {Doc} from '../_generated/dataModel'
 import type {MutationCtx} from '../_generated/server'
 import {nativeRestorationSnapshotSchema} from './nativeRecoveryPayload'
 import {recoveryMachineBinding} from './remoteRecoveryMachine'
-import {z} from 'zod'
+import {z} from 'zod/v3'
 
 const sourceAdapterSchema = z.object({startPayload: z.object({adapterId: z.string()})})
 

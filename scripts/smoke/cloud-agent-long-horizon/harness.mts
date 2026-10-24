@@ -20,7 +20,7 @@
  *   R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME
  */
 import { createHash } from 'node:crypto'
-import { z } from 'zod'
+import { z } from 'zod/v3'
 import { Resolver } from 'node:dns/promises'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'

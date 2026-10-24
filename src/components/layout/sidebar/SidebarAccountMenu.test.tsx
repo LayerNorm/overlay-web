@@ -37,6 +37,7 @@ test('usage and storage collapse behind disclosure headers', () => {
   assert.doesNotMatch(html, /Apps/)
   // Collapsed sections keep their rows out of the menu until opened.
   assert.doesNotMatch(html, /Chrome Extension/)
+  assert.doesNotMatch(html, />Apps</)
   assert.doesNotMatch(html, /available/)
 })
 

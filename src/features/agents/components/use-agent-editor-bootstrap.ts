@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import type { WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 import type { getInitialEditorState } from '../lib/agent-editor-state'
 
 export function useAgentEditorBootstrap({
@@ -18,6 +19,7 @@ export function useAgentEditorBootstrap({
   activeWorkspaceId: string | null
   initial: ReturnType<typeof getInitialEditorState>
 }) {
+  const { capabilities } = useOverlayCapabilities()
   const [agent, setAgent] = useState<WorkspaceAgentDirectoryItem | null>(initial.agent)
   const [loading, setLoading] = useState(initial.loading)
   const [loadFailed, setLoadFailed] = useState(false)
@@ -64,10 +66,13 @@ export function useAgentEditorBootstrap({
     if (showcase || !activeWorkspaceId) return
     let cancelled = false
     void overlayAppClient.agentEnvironments.listBindings(activeWorkspaceId)
-      .then(() => { if (!cancelled) { setConnectedAgentsEnabled(true); setConnectedAgentsChecked(true) } })
+      .then((result) => { if (!cancelled) {
+        setConnectedAgentsEnabled(capabilities.externalAgents === true && result.launchEnabled === true)
+        setConnectedAgentsChecked(true)
+      } })
       .catch(() => { if (!cancelled) { setConnectedAgentsEnabled(false); setConnectedAgentsChecked(true) } })
     return () => { cancelled = true }
-  }, [activeWorkspaceId, showcase])
+  }, [activeWorkspaceId, capabilities.externalAgents, showcase])
 
   return { agent, setAgent, loading, loadFailed, canCreate, connectedAgentsEnabled, connectedAgentsChecked }
 }

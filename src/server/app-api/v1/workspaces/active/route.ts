@@ -3,7 +3,7 @@ import type { WorkspaceActivateResponse } from '@overlay/workspace-contracts'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { ACTIVE_WORKSPACE_COOKIE } from '@/shared/workspaces/constants'
-import { toWorkspaceSummary } from '../presentation'
+import { toWorkspaceSummaryWithRoutingHandle } from '../presentation'
 import { workspaceErrorResponse } from '../route'
 
 export async function POST(_request: Request, context: AppApiRouteContext) {
@@ -29,7 +29,7 @@ export async function POST(_request: Request, context: AppApiRouteContext) {
     })
     const response: WorkspaceActivateResponse = {
       activeWorkspaceId: access.workspace.id,
-      workspace: toWorkspaceSummary(access, counts),
+      workspace: await toWorkspaceSummaryWithRoutingHandle(service, context.auth.userId, access, counts),
     }
     const result = NextResponse.json(response)
     result.cookies.set(ACTIVE_WORKSPACE_COOKIE, access.workspace.id, {

@@ -162,6 +162,7 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
     path: '/api/v1/account/workspaces',
     methods: { GET: authenticated(), POST: authenticated() },
   },
+  { path: '/api/v1/workspace-handles/:handle', methods: { GET: authenticated() } },
   {
     path: '/api/v1/workspaces',
     methods: { GET: authenticated(), POST: authenticated() },
@@ -170,6 +171,7 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
     path: '/api/v1/workspaces/active',
     methods: { POST: authenticated() },
   },
+  { path: '/api/v1/workspaces/:workspaceId/handle', methods: { PATCH: authenticated() } },
   {
     path: '/api/v1/workspaces/:workspaceId/management',
     methods: { GET: authenticated() },

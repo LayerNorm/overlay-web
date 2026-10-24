@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
 import { RightSidebar } from '@overlay/modules-react/shell'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
-import { useAgentEditorController } from './AgentEditorPage'
+import type { useAgentEditorController } from './AgentEditorPage'
 import { AgentComputerTabView } from './AgentComputerTab.parts'
 import { AgentSidebarDetails } from './AgentSidebarDetails'
 import { AgentLibraryTab } from './AgentRightSidebar.parts'
@@ -14,39 +14,26 @@ import { createAgentAutosaveScheduler } from '../lib/agent-autosave-scheduler'
 import { isAgentEditSaveFailure } from '../lib/agent-edit-save-result'
 
 export function AgentRightSidebar({
-  agentId,
   conversationId,
   activeTab,
   onTabChange,
-  onClose,
-  onArchived,
   showcase = false,
+  editor,
   controlled,
   computerAccess,
   onTakeControl,
 }: {
-  agentId: string
   conversationId: string
   activeTab: string
   onTabChange(id: string): void
-  onClose(): void
-  onArchived(): void
   showcase?: boolean
+  editor: ReturnType<typeof useAgentEditorController>
   controlled: boolean
   computerAccess: ReturnType<typeof useAgentSidebarComputer>
   onTakeControl(ticketUrl: string, computerName: string): void
 }) {
   const { capabilities } = useOverlayCapabilities()
   const computersEnabled = capabilities.computers === true && !showcase
-  const editor = useAgentEditorController({
-    mode: 'edit',
-    agentId,
-    showcase,
-    presentation: 'panel',
-    keepOpenOnSave: true,
-    onClose,
-    onArchived,
-  })
   const selectedTab = activeTab
   const [saveFailed, setSaveFailed] = useState(false)
   const schedulerRef = useRef<ReturnType<typeof createAgentAutosaveScheduler> | null>(null)

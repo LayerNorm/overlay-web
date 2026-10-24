@@ -1,3 +1,4 @@
+import { AppRouteSessionRecovery } from '../_components/AppRouteSessionRecovery'
 import { Suspense } from 'react'
 import dynamic from 'next/dynamic'
 import { redirect } from 'next/navigation'
@@ -17,7 +18,7 @@ const ChatArchivedView = dynamic(
  */
 async function ArchivedRouteContent({ searchParams }: { searchParams?: Promise<{ id?: string | string[] }> }) {
   const session = await getOverlaySession()
-  if (!session) redirect('/app/chat?signin=nav')
+  if (!session) return <AppRouteSessionRecovery />
   const params = await searchParams
   if (!params?.id) redirect(ARCHIVED_SETTINGS_PATH)
   return (

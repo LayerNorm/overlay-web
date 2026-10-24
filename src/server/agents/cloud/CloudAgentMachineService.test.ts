@@ -65,6 +65,7 @@ function deps(machine: SandboxInstance, options: {
   admissionError?: Error
   reclaimableRows?: CloudAgentProvisionRecord[]
   now?: number
+  externalAgentsEnabled?: boolean
 } = {}) {
   const log: Array<[string, unknown]> = []
   const phases: Array<{ phase: string; error?: string }> = []
@@ -123,6 +124,7 @@ function deps(machine: SandboxInstance, options: {
     runtime,
     sleep: async () => undefined,
     now: () => options.now ?? 1_000,
+    launchEnabled: () => options.externalAgentsEnabled !== false,
     controlPlane: {
       createEnrollmentSession: async () => {if (options.enrollmentError) throw options.enrollmentError; return {code: 'one-time-code', expiresAt: 0, enrollmentSessionId: 'abcdef12-0000'}},
       approveEnvironment: async (args: unknown) => { log.push(['approve', args]); return {} as never },
@@ -192,6 +194,32 @@ test('pause and teardown remain available after workspace admission is revoked',
     assert.equal(log.some(([kind]) => kind === 'admission'), false)
     assert.ok(calls.includes(action === 'pause' ? 'stop' : 'delete'))
   }
+})
+
+test('disabled external launch rejects cloud provisioning before machine or billing work', async () => {
+  const { machine } = fakeMachine()
+  const f = deps(machine, { externalAgentsEnabled: false })
+  await assert.rejects(f.service.provision(provisionArgs), /External agent runtimes are disabled/)
+  assert.equal(f.created.length, 0)
+  assert.deepEqual(f.phases, [])
+  assert.equal(f.log.some(([event]) => event === 'account-read'), false)
+})
+
+test('launch and paid admission gates both run before cloud allocation', async () => {
+  const disabled = deps(fakeMachine('stopped').machine, { externalAgentsEnabled: false })
+  await assert.rejects(disabled.service.provision(provisionArgs), /External agent runtimes are disabled/)
+  assert.deepEqual(disabled.created, [])
+  assert.deepEqual(disabled.phases, [])
+  assert.equal(disabled.log.some(([event]) => event === 'admission'), false)
+
+  const refused = new Error('paid_workspace_required')
+  const deniedMachine = fakeMachine('stopped')
+  const denied = deps(deniedMachine.machine, { admissionError: refused })
+  await assert.rejects(denied.service.provision(provisionArgs), refused)
+  assert.deepEqual(denied.created, [])
+  assert.deepEqual(deniedMachine.calls, [])
+  assert.deepEqual(denied.phases.map(({ phase }) => phase), ['allocating', 'failed'])
+  assert.deepEqual(denied.log.filter(([event]) => event === 'admission').length, 1)
 })
 
 test('provision boots the image, redeems the code with acpx, approves the workspace root, leases, and binds', async () => {
@@ -461,6 +489,20 @@ test('teardown revokes the environment, deletes the machine, and clears the prov
   assert.ok(log.some(([name]) => name === 'revoke'))
   assert.deepEqual(calls, ['delete'])
   assert.equal(wasRemoved(), true)
+})
+
+test('pause and teardown remain available while external launches are disabled', async () => {
+  const paused = fakeMachine()
+  await deps(paused.machine, { externalAgentsEnabled: false }).service.control({
+    workspaceId: 'ws', agentId: 'agent-1', action: 'pause',
+  })
+  assert.deepEqual(paused.calls, ['stop'])
+
+  const removed = fakeMachine()
+  const teardown = deps(removed.machine, { externalAgentsEnabled: false })
+  await teardown.service.teardown({ actorUserId: 'user', workspaceId: 'ws', agentId: 'agent-1' })
+  assert.deepEqual(removed.calls, ['delete'])
+  assert.ok(teardown.log.some(([name]) => name === 'revoke'))
 })
 
 test('applying a profile removes what the earlier version wrote, prunes the folders it empties, and records what it owns', async () => {

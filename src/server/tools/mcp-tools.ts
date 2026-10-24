@@ -3,7 +3,7 @@ import "server-only";
 import { createHash } from "node:crypto";
 import { logger } from "@/server/observability/logger";
 import { tool, type ToolSet } from "ai";
-import { z } from "zod";
+import { z } from "zod/v3";
 
 /**
  * Tool approval function for MCP tools. Uses the v7 `toolApproval` API

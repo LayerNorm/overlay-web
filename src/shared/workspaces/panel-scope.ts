@@ -4,7 +4,6 @@
  * scope: they all live in Settings → Archived (older links with `?scope=archived` are sent there).
  */
 import type { ResourceScope } from './resource-scope'
-import { soloPanelScope } from './solo-workspace'
 
 export type PanelScope = ResourceScope
 
@@ -34,20 +33,29 @@ export function parsePanelScope(value: unknown): PanelScope | null {
  * then Personal.
  */
 export function resolvePanelScope(args: {
+  pathScope?: string | null
   param: string | null | undefined
   saved?: string | null
-  /** In a workspace of one person there is no Workspace scope; see `soloPanelScope`. */
+  /** Kept for callers migrating from the former solo-workspace scope collapse. */
   solo?: boolean
 }): PanelScope {
-  return soloPanelScope(parsePanelScope(args.param) ?? parsePanelScope(args.saved) ?? DEFAULT_PANEL_SCOPE, Boolean(args.solo))
+  return parsePanelScope(args.pathScope)
+    ?? parsePanelScope(args.param)
+    ?? parsePanelScope(args.saved)
+    ?? DEFAULT_PANEL_SCOPE
 }
 
-/**
- * The `view` to ask a list for. A workspace of one person has a single list, so it asks for everything active (no view):
- * what the person made and anything shared into the workspace, such as the default agent.
- */
-export function listViewForScope(scope: PanelScope, solo: boolean): PanelScope | undefined {
-  return solo ? undefined : scope
+/** The list view always follows the selected feature scope, including solo workspaces. */
+export function listViewForScope(scope: PanelScope, _solo?: boolean): PanelScope {
+  return scope
+}
+
+export function isResourceInPanelScope(
+  resourceScope: unknown,
+  selectedScope: PanelScope,
+  archived = false,
+): boolean {
+  return archived || parsePanelScope(resourceScope) === selectedScope
 }
 
 /** What a creation should default to. */

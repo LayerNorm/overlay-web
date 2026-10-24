@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { z } from 'zod'
+import { z } from 'zod/v3'
 import type { WorkspaceService } from '@/server/workspaces/WorkspaceService'
 import type { ResourceViewer } from '@/shared/workspaces/resource-scope'
 import type { AgentBinding, AgentEnvironment, AgentRemoteSession, WorkspaceAccess, WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
