@@ -1,11 +1,10 @@
 'use client'
 
 import type { ComponentProps } from 'react'
-import { Loader2, MessageSquare, Plus, Archive, Trash2, Workflow } from 'lucide-react'
+import { MessageSquare, Archive, Trash2, Workflow } from 'lucide-react'
 import type { WorkspaceAgentBundle, WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
 import {
   SidebarMenuAction,
-  SidebarMenuBadge,
   SidebarMenuSkeleton,
   SidebarMenu,
   SidebarMenuSubButton,
@@ -22,19 +21,15 @@ export function AgentThreadRows({
   bundle,
   activeConversationId,
   onOpenThread,
-  onCreateThread,
   onArchiveThread,
   onDeleteThread,
-  creatingThread,
 }: {
   agent: WorkspaceAgentDirectoryItem
   bundle: WorkspaceAgentBundle | 'loading' | 'error'
   activeConversationId: string | null
   onOpenThread(agent: WorkspaceAgentDirectoryItem, conversationId: string): void
-  onCreateThread(agent: WorkspaceAgentDirectoryItem): void
   onArchiveThread(agent: WorkspaceAgentDirectoryItem, conversationId: string, archived: boolean): void
   onDeleteThread(agent: WorkspaceAgentDirectoryItem, conversationId: string): void
-  creatingThread: boolean
 }) {
   if (bundle === 'loading') {
     return (
@@ -73,11 +68,6 @@ export function AgentThreadRows({
               <MessageSquare aria-hidden />
               <span className="flex-1 truncate">{thread.title}</span>
             </ThreadButton>
-            {thread.isMain ? (
-              <SidebarMenuBadge className="top-1 text-[10px] font-normal text-(--muted-light) group-hover/menu-sub-item:hidden group-focus-within/menu-sub-item:hidden">
-                Main
-              </SidebarMenuBadge>
-            ) : null}
             <SidebarMenuAction
               aria-label="Archive thread"
               title="Archive thread"
@@ -122,18 +112,6 @@ export function AgentThreadRows({
           </SidebarMenuSubItem>
         )
       })}
-      {!agent.archivedAt ? (
-        <SidebarMenuSubItem>
-          <ThreadButton
-            disabled={creatingThread}
-            onClick={() => onCreateThread(agent)}
-            className="text-(--muted-light)"
-          >
-            {creatingThread ? <Loader2 className="animate-spin" aria-hidden /> : <Plus aria-hidden />}
-            <span className="truncate">New thread</span>
-          </ThreadButton>
-        </SidebarMenuSubItem>
-      ) : null}
     </SidebarMenu>
   )
 }

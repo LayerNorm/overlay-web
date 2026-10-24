@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Music, FileQuestion, Download, ExternalLink, FolderSearch, Loader2, FileType } from 'lucide-react'
-import { AppScreenBody, AppScreenHeader, AppScreenShell } from '../shell'
+import { AppBreadcrumbs, AppScreenBody, AppScreenHeader, AppScreenShell } from '../shell'
 import { FileTypeIcon } from '../shared/file-type-icon'
 
 import {
@@ -573,7 +573,7 @@ export function FileViewerPanel({
           <div className="flex min-w-0 items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-2">
               {headerLeft}
-              <span className="truncate text-sm font-medium text-(--foreground)">{name}</span>
+              <AppBreadcrumbs title={name} />
             </div>
             <div className="flex shrink-0 items-center gap-2">
               {isSaving ? (
@@ -667,7 +667,7 @@ export function OutputViewer({
           <div className="flex min-w-0 items-center gap-2">
             {headerLeft}
             <FileTypeIcon file={{ name, mimeType, extension: name.split('.').pop() }} size={16} />
-            <span className="min-w-0 flex-1 truncate text-sm font-semibold text-(--foreground)">{name || 'Output'}</span>
+            <AppBreadcrumbs title={name || 'Output'} />
             <ViewerOperationButtons name={name || 'output'} url={safeDownloadUrl} operations={operations} />
           </div>
         </AppScreenHeader>

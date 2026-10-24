@@ -9,6 +9,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Keep agent Details and Computer tabs synchronized after starting, stopping, waking or deleting the attached computer.
 
+- Standardize workspace headers on shadcn breadcrumbs, keep Workspace agent selection separate from remembered Personal threads, simplify agent thread controls, shorten composer prompts, and correct response hover controls and direct-message dialog sizing. Returning through the Files breadcrumb clears the selected editor and ignores stale file loads. Editable note titles retain enabled accessibility semantics.
+
 - Refresh the agent conversation roster after agent creation, edits and archive so newly created agents open without a page reload. Ignore stale requests and unrelated workspace changes.
 
 - Launch with native Overlay agents and their computers while keeping external cloud and own-machine runtimes behind a default-off release gate. Hide unavailable external setup, reject direct creation and execution bypasses, and retain authorized history, cancellation, cleanup and settlement. Add `FEATURES.md` with feature switches, provider support and re-enablement steps.
