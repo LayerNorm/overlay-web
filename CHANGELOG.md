@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Workspace Stripe checkout now propagates subscription persistence failures and omits unsupported customer-sync fields. Attaching the first Stripe subscription preserves existing usage, reservations, and top-up credit instead of treating the local allowance as a renewed subscription.
+
 This file records user-visible and operational changes that reach `main`. Pull requests add concise entries under **Unreleased**; the integration agent moves shipped entries into dated sections when cutting a release. Pull requests and Git history remain the detailed implementation record.
 
 ## Unreleased
