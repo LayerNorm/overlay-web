@@ -12,6 +12,7 @@ function withRouteWorkspaceTarget(input: RequestInfo | URL, init?: RequestInit):
     || /^\/api\/v1\/workspaces\/[^/]+(?:\/|$)/.test(url.pathname)
   ) return init
   if (init?.credentials === 'omit' || new Headers(init?.headers).has('Authorization')) return init
+  if (new Headers(init?.headers).has(ROUTE_WORKSPACE_HEADER)) return init
   const target = readWorkspaceRouteTarget(window.location.pathname)
   if (!target) return init
   const headers = new Headers(init?.headers)

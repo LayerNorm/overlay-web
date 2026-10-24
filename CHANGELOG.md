@@ -4,6 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Keep sidebar data isolated while switching workspaces by publishing the workspace after navigation, resetting sidebar state, and binding chat-list requests to their cache workspace.
 - Patch undici v7 and v8 dependency copies to 7.30.1 and 8.12.2 for GHSA-xjj6-f33q-929c without changing supported major versions or security gates.
 - Recover expired sessions on protected pages before redirecting to sign-in, preserving the requested workspace page instead of unexpectedly opening Chats.
 - Keep workspace navigation on immutable IDs until member-scoped resolution confirms a routable handle; existing accounts remain usable without migration or backfill.

@@ -230,6 +230,11 @@ export function WorkspaceProvider({
       setActiveChatListWorkspace(nextActiveWorkspaceId)
       setResolvedRouteTargetKey(workspaceRouteTargetKey(routeTarget))
       setStatus('ready')
+      const previousWorkspaceId = activeWorkspaceIdRef.current
+      activeWorkspaceIdRef.current = nextActiveWorkspaceId
+      if (nextActiveWorkspaceId && previousWorkspaceId && nextActiveWorkspaceId !== previousWorkspaceId) {
+        dispatchWorkspaceChanged({ previousWorkspaceId, workspaceId: nextActiveWorkspaceId })
+      }
     } catch (loadError) {
       if (signal?.aborted) return
       setError(loadError instanceof Error ? loadError.message : 'Could not load workspaces.')
@@ -266,16 +271,11 @@ export function WorkspaceProvider({
     setError(null)
     try {
       const response = await client.activate(workspaceId)
-      const previousWorkspaceId = activeWorkspaceId
       setWorkspaces((current) => current.map((workspace) => (
         workspace.id === response.workspace.id ? response.workspace : workspace
       )))
-      setActiveWorkspaceId(response.activeWorkspaceId)
-      setActiveChatListWorkspace(response.activeWorkspaceId)
-      dispatchWorkspaceChanged({
-        previousWorkspaceId,
-        workspaceId: response.activeWorkspaceId,
-      })
+      // Publish the active workspace only after load() resolves the destination route.
+      // Until navigation commits, route-scoped requests still address the old workspace.
       return response.workspace
     } catch (switchError) {
       const message = switchError instanceof Error

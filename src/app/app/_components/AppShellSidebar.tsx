@@ -56,6 +56,7 @@ export function AppShellSidebar({ publicShowcase: forcedPublicShowcase = false }
 
   return (
     <AppSidebar
+      key={activeWorkspaceId ?? 'no-workspace'}
       collaborationNotifications={collaborationNotifications}
       publicShowcase={publicShowcase}
       workspace={{

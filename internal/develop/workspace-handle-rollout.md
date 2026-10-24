@@ -1,5 +1,7 @@
 # Workspace handle rollout
 
+Workspace activation persists the selection, but browser context and workspace-change invalidations publish only after the destination route resolves. Sidebar state resets on workspace changes, and chat-list fetches explicitly address the workspace whose cache they populate, including pagination and session recovery.
+
 The workspace handle registry is an additive expansion: `workspaceId` remains the authorization identity, `slug` remains the current canonical handle, and `workspaceHandles` permanently reserves canonical and historical names. Never delete registry claims during rollback.
 
 Scoped features use `/w/<handle>/<personal|workspace>/<feature>`, for example `/w/layernorm/personal/work` and `/w/layernorm/workspace/chat`. Summaries expose a routing handle only after member-scoped resolution confirms it belongs to the same immutable workspace. Until then, navigation stays on immutable workspace IDs; existing accounts remain usable without a migration or backfill. Solo workspaces retain both view scopes. Scope is a feature view, not an access grant; workspace membership and resource authorization remain authoritative. Activity is workspace-only.

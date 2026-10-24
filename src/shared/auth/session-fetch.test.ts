@@ -155,6 +155,21 @@ test('account, resolver, explicit-management, cross-origin, and bearer requests 
   assert.deepEqual(targets, [null, null, null, null, null])
 })
 
+test('an explicit cache workspace survives an old browser route and session recovery', async (t) => {
+  browser(t)
+  ;(window as unknown as { location: URL }).location.pathname = '/w/old-org/workspace/chat'
+  const targets: Array<string | null> = []
+  t.mock.method(globalThis, 'fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
+    if (String(input) === '/api/auth/session') return authenticated()
+    targets.push(new Headers(init?.headers).get('x-overlay-route-workspace'))
+    return new Response(null, { status: targets.length === 1 ? 401 : 200 })
+  })
+  await fetchWithSessionRecovery('/api/v1/conversations', {
+    headers: { 'x-overlay-route-workspace': 'id:personal-id' },
+  })
+  assert.deepEqual(targets, ['id:personal-id', 'id:personal-id'])
+})
+
 test('aborting one caller during shared refresh never replays its mutation', async (t) => {
   browser(t)
   const controller = new AbortController()
