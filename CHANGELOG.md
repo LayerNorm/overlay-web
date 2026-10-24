@@ -6,6 +6,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Standardize workspace headers on shadcn breadcrumbs, keep Workspace agent selection separate from remembered Personal threads, simplify agent thread controls, shorten composer prompts, and correct response hover controls and direct-message dialog sizing. Returning through the Files breadcrumb clears the selected editor and ignores stale file loads. Editable note titles retain enabled accessibility semantics.
 
+- Let workspace-visible and personally owned agents take Personal tasks, keep creator-only agents private from other members, and preserve assignment eligibility when tasks change scope.
 
 - Keep agent Details and Computer tabs synchronized after starting, stopping, waking or deleting the attached computer.
 
