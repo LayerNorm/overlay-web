@@ -38,6 +38,7 @@ import type { PanelScope } from '@/shared/workspaces/panel-scope'
 import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import { AgentDirectoryScreen, AgentEditorPanel } from './AgentConversationWorkspace.parts'
 import { subscribeAgentDirectory, type AgentDirectoryState } from '../lib/agent-directory'
+import { openAgentComputerControl } from '../lib/agent-computer-control'
 
 type EditorMode = 'new' | 'edit' | null
 
@@ -286,6 +287,13 @@ function AgentConversationWorkspaceContent() {
       router.replace(buildWorkspaceHref(activeWorkspaceId, '/app/agents', 'personal'))
     },
   })
+  const releaseComputerControl = () => {
+    void computerAccess.changeControl('release').then((confirmed) => {
+      if (!confirmed) return
+      if (sidebarPreferences.open) computerAccess.retryTicket()
+      updateComputerControl(null)
+    })
+  }
 
   const [createOpen, setCreateOpen] = useState(false)
   useEffect(() => {
@@ -432,11 +440,15 @@ function AgentConversationWorkspaceContent() {
         editor={sidebarEditor}
         controlled={Boolean(computerControl)}
         computerAccess={computerAccess}
+        onReleaseControl={releaseComputerControl}
         onTakeControl={(ticketUrl, computerName) => {
-          const computerId = computerAccess.computer?.id
-          if (!computerId) return
-          void computerAccess.changeControl('take').then((confirmed) => {
-            if (confirmed) updateComputerControl({ ticketUrl, computerName, computerId })
+          void openAgentComputerControl({
+            computer: computerAccess.computer,
+            currentUserId: computerAccess.currentUserId,
+            ticketUrl,
+            computerName,
+            changeControl: computerAccess.changeControl,
+            onOpen: updateComputerControl,
           })
         }}
       />
@@ -462,13 +474,7 @@ function AgentConversationWorkspaceContent() {
               ticketUrl={computerControl.ticketUrl}
               computerName={computerControl.computerName}
               controlBusy={computerAccess.controlBusy}
-              onClose={() => {
-                void computerAccess.changeControl('release').then((confirmed) => {
-                  if (!confirmed) return
-                  if (sidebarPreferences.open) computerAccess.retryTicket()
-                  updateComputerControl(null)
-                })
-              }}
+              onClose={releaseComputerControl}
             />
           ) : null}
         />

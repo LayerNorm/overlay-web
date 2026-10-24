@@ -28,6 +28,7 @@ function renderComputerTab(state: {
   ticketUrl?: string | null
   ticketLoading?: boolean
   controlled?: boolean
+  currentUserId?: string
   controlBusy?: boolean
 }) {
   return renderToStaticMarkup(
@@ -40,11 +41,13 @@ function renderComputerTab(state: {
       ticketError={null}
       ticketLoading={state.ticketLoading ?? false}
       controlled={state.controlled ?? false}
+      currentUserId={state.currentUserId ?? 'user-1'}
       controlBusy={state.controlBusy}
       waking={false}
       onWake={() => {}}
       onRetry={() => {}}
       onTakeControl={() => {}}
+      onReleaseControl={() => {}}
     />,
   )
 }
@@ -78,11 +81,12 @@ test('computer captions show Connecting until the stream is ready and You have c
   assert.doesNotMatch(missingTicket, /Research is working/)
 
   const controlled = renderComputerTab({
-    computer,
+    computer: { ...computer, controlledByUserId: 'user-1' },
     ticketUrl: 'https://computer.example/ticket',
     controlled: true,
   })
-  assert.match(controlled, /You have control/)
+  assert.match(controlled, /You have control\. Research is paused\./)
+  assert.match(controlled, /Release control/)
   assert.match(controlled, /bg-emerald-500/)
   assert.doesNotMatch(controlled, /Research is working/)
 })
@@ -104,6 +108,7 @@ test('computer unavailable state does not render a preview or invoke computer ac
       onWake={() => calls.push('wake')}
       onRetry={() => calls.push('retry')}
       onTakeControl={() => calls.push('take-control')}
+      onReleaseControl={() => calls.push('release-control')}
     />,
   )
   assert.match(markup, /Computer unavailable/)
@@ -111,14 +116,26 @@ test('computer unavailable state does not render a preview or invoke computer ac
   assert.deepEqual(calls, [])
 })
 
-test('persisted takeover shows the agent paused even without an open viewer', () => {
+test('persisted self-control can be resumed or released after reload', () => {
   const markup = renderComputerTab({
     computer: { ...computer, controlledByUserId: 'user-1' },
     ticketUrl: 'https://computer.example/ticket',
   })
-  assert.match(markup, /Research is paused/)
+  assert.match(markup, /You have control\. Research is paused\./)
   assert.doesNotMatch(markup, /Research is working/)
-  assert.match(markup, /Take control/)
+  assert.match(markup, /aria-label="Resume control"/)
+  assert.match(markup, /Resume control/)
+  assert.match(markup, /Release control/)
+  assert.doesNotMatch(markup, /Take control/)
+})
+
+test('another member control is reported without a takeover action', () => {
+  const markup = renderComputerTab({
+    computer: { ...computer, controlledByUserId: 'user-2' },
+    ticketUrl: 'https://computer.example/ticket',
+  })
+  assert.match(markup, /Research is paused\. Another member has control\./)
+  assert.doesNotMatch(markup, /Take control|Resume control|Release control/)
 })
 
 test('control actions are disabled while server confirmation is pending', () => {
@@ -130,4 +147,11 @@ test('control actions are disabled while server confirmation is pending', () => 
   />)
   assert.match(overlay, /aria-label="Back to conversation"[^>]*disabled/)
   assert.match(overlay, /disabled[^>]*>Releasing control/)
+
+  const selfControlled = renderComputerTab({
+    computer: { ...computer, controlledByUserId: 'user-1' },
+    ticketUrl: 'https://computer.example/ticket',
+    controlBusy: true,
+  })
+  assert.match(selfControlled, /disabled[^>]*>Releasing control\.\.\./)
 })

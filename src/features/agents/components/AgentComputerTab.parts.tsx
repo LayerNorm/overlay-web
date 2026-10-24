@@ -18,11 +18,13 @@ export function AgentComputerTabView({
   ticketError,
   ticketLoading,
   controlled,
+  currentUserId,
   controlBusy = false,
   waking,
   onWake,
   onRetry,
   onTakeControl,
+  onReleaseControl,
 }: {
   agentName: string
   agentColor?: string
@@ -35,11 +37,13 @@ export function AgentComputerTabView({
   ticketError: string | null
   ticketLoading: boolean
   controlled: boolean
+  currentUserId?: string
   controlBusy?: boolean
   waking: boolean
   onWake(): void
   onRetry(): void
   onTakeControl(ticketUrl: string, computerName: string): void
+  onReleaseControl(): void
 }) {
   if (unavailable) {
     return (
@@ -124,17 +128,57 @@ export function AgentComputerTabView({
     )
   }
 
+  return (
+    <ReadyComputerPreview
+      agentName={agentName}
+      computer={computer}
+      ticketUrl={ticketUrl}
+      controlled={controlled}
+      currentUserId={currentUserId}
+      controlBusy={controlBusy}
+      onTakeControl={onTakeControl}
+      onReleaseControl={onReleaseControl}
+      onRetry={onRetry}
+    />
+  )
+}
+
+function ReadyComputerPreview({
+  agentName,
+  computer,
+  ticketUrl,
+  controlled,
+  currentUserId,
+  controlBusy,
+  onTakeControl,
+  onReleaseControl,
+  onRetry,
+}: {
+  agentName: string
+  computer: Computer
+  ticketUrl: string
+  controlled: boolean
+  currentUserId?: string
+  controlBusy: boolean
+  onTakeControl(ticketUrl: string, computerName: string): void
+  onReleaseControl(): void
+  onRetry(): void
+}) {
   const computerName = computer.name ?? agentName
-  if (controlled) {
+  const controlledByCurrentUser = Boolean(currentUserId && computer.controlledByUserId === currentUserId)
+  const controlledByAnotherUser = Boolean(computer.controlledByUserId && !controlledByCurrentUser)
+  const status = controlledByCurrentUser
+    ? `You have control. ${agentName} is paused.`
+    : controlledByAnotherUser
+      ? `${agentName} is paused. Another member has control.`
+      : `${agentName} is working`
+  if (controlled && controlledByCurrentUser) {
     return (
       <div className="space-y-2">
         <div className="flex aspect-[16/10] items-center justify-center rounded-xl bg-(--surface-subtle) text-xs text-(--muted)">
           You have control
         </div>
-        <p className="flex items-center gap-2 text-xs text-(--muted)">
-          <span className="size-1.5 rounded-full bg-emerald-500" />
-          You have control
-        </p>
+        <ComputerControlStatus status={status} releaseBusy={controlBusy} onReleaseControl={onReleaseControl} />
       </div>
     )
   }
@@ -148,25 +192,53 @@ export function AgentComputerTabView({
           onError={onRetry}
           className="pointer-events-none h-full w-full border-0"
         />
-        <Button
-          variant="ghost"
-          type="button"
-          aria-label="Take control"
-          disabled={controlBusy}
-          onClick={() => onTakeControl(ticketUrl, computerName)}
-          className={unstyledButton('absolute inset-0 flex items-center justify-center rounded-xl focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--ring)')}
-        >
-          <span className="absolute inset-0 bg-black/40 opacity-0 transition-opacity group-hover/preview:opacity-100 group-focus-within/preview:opacity-100" />
-          <span className="relative inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-xs font-medium text-gray-900 opacity-0 shadow transition-opacity group-hover/preview:opacity-100 group-focus-within/preview:opacity-100">
-            <MousePointer2 size={14} />
-            {controlBusy ? 'Taking control...' : 'Take control'}
-          </span>
-        </Button>
+        {!controlledByAnotherUser ? (
+          <Button
+            variant="ghost"
+            type="button"
+            aria-label={controlledByCurrentUser ? 'Resume control' : 'Take control'}
+            disabled={controlBusy}
+            onClick={() => onTakeControl(ticketUrl, computerName)}
+            className={unstyledButton('absolute inset-0 flex items-center justify-center rounded-xl focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--ring)')}
+          >
+            <span className="absolute inset-0 bg-black/40 opacity-0 transition-opacity group-hover/preview:opacity-100 group-focus-within/preview:opacity-100" />
+            <span className="relative inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-xs font-medium text-gray-900 opacity-0 shadow transition-opacity group-hover/preview:opacity-100 group-focus-within/preview:opacity-100">
+              <MousePointer2 size={14} />
+              {controlBusy
+                ? controlledByCurrentUser ? 'Releasing control...' : 'Taking control...'
+                : controlledByCurrentUser ? 'Resume control' : 'Take control'}
+            </span>
+          </Button>
+        ) : null}
       </div>
+      {controlledByCurrentUser
+        ? <ComputerControlStatus status={status} releaseBusy={controlBusy} onReleaseControl={onReleaseControl} />
+        : <p className="flex items-center gap-2 text-xs text-(--muted)">
+            <span className="size-1.5 rounded-full bg-emerald-500" />
+            {status}
+          </p>}
+    </div>
+  )
+}
+
+function ComputerControlStatus({
+  status,
+  releaseBusy,
+  onReleaseControl,
+}: {
+  status: string
+  releaseBusy: boolean
+  onReleaseControl(): void
+}) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2">
       <p className="flex items-center gap-2 text-xs text-(--muted)">
         <span className="size-1.5 rounded-full bg-emerald-500" />
-        {computer.controlledByUserId ? `${agentName} is paused` : `${agentName} is working`}
+        {status}
       </p>
+      <Button variant="secondary" size="sm" disabled={releaseBusy} onClick={onReleaseControl}>
+        {releaseBusy ? 'Releasing control...' : 'Release control'}
+      </Button>
     </div>
   )
 }

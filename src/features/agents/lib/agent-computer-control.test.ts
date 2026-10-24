@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { Computer } from '@overlay/workspace-contracts'
-import { changeAgentComputerControl } from './agent-computer-control'
+import { changeAgentComputerControl, openAgentComputerControl } from './agent-computer-control'
 
 const computer: Computer = {
   id: 'computer-1', workspaceId: 'workspace-1', ownerType: 'agent', ownerId: 'agent-1',
@@ -53,4 +53,26 @@ test('hand-back only succeeds once the server has cleared control', async () => 
     },
   })
   assert.equal(updated.controlledByUserId, undefined)
+})
+
+test('resuming persisted control opens the overlay without another take request', async () => {
+  const requestedActions: string[] = []
+  const openedControls: Array<{ ticketUrl: string; computerName: string; computerId: string }> = []
+  await openAgentComputerControl({
+    computer: { ...computer, controlledByUserId: 'user-1' },
+    currentUserId: 'user-1',
+    ticketUrl: 'https://computer.example/ticket',
+    computerName: 'Research computer',
+    changeControl: async (action) => {
+      requestedActions.push(action)
+      return true
+    },
+    onOpen: (control) => openedControls.push(control),
+  })
+  assert.deepEqual(requestedActions, [])
+  assert.deepEqual(openedControls, [{
+    ticketUrl: 'https://computer.example/ticket',
+    computerName: 'Research computer',
+    computerId: 'computer-1',
+  }])
 })

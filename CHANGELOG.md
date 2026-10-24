@@ -4,6 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Restore Resume and Release control for the controlling user after reloading an agent conversation.
 - Allow native-agent workflow retries to recapture the screen without replaying clicks, typing, commands or unknown tools. Keep fresh authorization and billing checks, and log safe preparation-failure metadata.
 - Overlay Free no longer cuts off longer OpenRouter Free replies with overlay_free_stream_prelude_too_large.
 

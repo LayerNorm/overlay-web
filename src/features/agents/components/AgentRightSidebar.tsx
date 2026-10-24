@@ -22,6 +22,7 @@ export function AgentRightSidebar({
   controlled,
   computerAccess,
   onTakeControl,
+  onReleaseControl,
 }: {
   conversationId: string
   activeTab: string
@@ -31,6 +32,7 @@ export function AgentRightSidebar({
   controlled: boolean
   computerAccess: ReturnType<typeof useAgentSidebarComputer>
   onTakeControl(ticketUrl: string, computerName: string): void
+  onReleaseControl(): void
 }) {
   const { capabilities } = useOverlayCapabilities()
   const computersEnabled = capabilities.computers === true && !showcase
@@ -99,6 +101,7 @@ export function AgentRightSidebar({
           ticketError={computerAccess.ticketError}
           ticketLoading={computerAccess.ticketLoading}
           controlled={controlled}
+          currentUserId={computerAccess.currentUserId}
           controlBusy={computerAccess.controlBusy}
           waking={computerAccess.waking}
           onWake={() => void computerAccess.wake()}
@@ -106,6 +109,7 @@ export function AgentRightSidebar({
             ? computerAccess.loadComputer()
             : computerAccess.retryTicket())}
           onTakeControl={onTakeControl}
+          onReleaseControl={onReleaseControl}
         />
       ) : null,
     },
