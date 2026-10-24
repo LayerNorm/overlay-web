@@ -16,9 +16,7 @@ export const init = internalMutation({
     const userId = process.env.PREVIEW_LOGIN_USER_ID?.trim()
     const email = process.env.PREVIEW_LOGIN_EMAIL?.trim()
     if (!userId?.startsWith('user_') || !email) throw new Error('Configure the sandbox preview login identity before seeding')
-    const personal = await seedFixtures(ctx, { userId, email, lane: 'preview' })
-    await seedComputerWorkspace(ctx, { userId, email })
-    return personal
+    return seedFixtures(ctx, { userId, email, lane: 'preview' })
   },
 })
 
@@ -33,6 +31,21 @@ export const initQa = internalMutation({
     if (!userId?.startsWith('user_') || !email) throw new Error('Configure the sandbox preview login identity before seeding')
     await seedFixtures(ctx, { userId, email, lane: 'preview' })
     return seedPreviewWorkspace(ctx, { userId, email })
+  },
+})
+
+/** Explicit Computer QA fixtures; ordinary previews keep their free Personal workspace. */
+export const initComputerQa = internalMutation({
+  args: {},
+  returns: v.object({ userId: v.string(), workspaceId: v.string() }),
+  handler: async (ctx) => {
+    requirePreviewDeployment()
+    const userId = process.env.PREVIEW_LOGIN_USER_ID?.trim()
+    const email = process.env.PREVIEW_LOGIN_EMAIL?.trim()
+    if (!userId?.startsWith('user_') || !email) throw new Error('Configure the sandbox preview login identity before seeding')
+    await seedFixtures(ctx, { userId, email, lane: 'preview' })
+    await seedComputerWorkspace(ctx, { userId, email })
+    return { userId, workspaceId: 'preview-computer-qa-' + userId }
   },
 })
 

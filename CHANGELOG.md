@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Keep synthetic Computer QA funding behind explicit Preview fixture opt-in while preserving existing test balances.
+
 - Allow native-agent workflow retries to recapture the screen without replaying clicks, typing, commands or unknown tools. Keep fresh authorization and billing checks, and log safe preparation-failure metadata.
 - Overlay Free no longer cuts off longer OpenRouter Free replies with overlay_free_stream_prelude_too_large.
 
