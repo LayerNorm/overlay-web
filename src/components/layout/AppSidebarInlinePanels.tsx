@@ -25,6 +25,7 @@ import { FilesInlineTree } from '@overlay/modules-react'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useWorkspaceChanged } from '@/hooks/use-workspace-changed'
 import { usePanelListView, usePanelScope } from '@/hooks/use-panel-scope'
+import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import { withPanelScope } from '@/shared/workspaces/panel-scope'
 import {
   SidebarMenu,
@@ -59,6 +60,7 @@ export function FilesInlinePanel({
   const activeCanonicalFileId = activeFileId ?? activeNoteId
   const scope = usePanelScope()
   const listView = usePanelListView()
+  const buildWorkspaceHref = useWorkspaceHref()
 
   const fetchItems = useCallback(async (signal?: AbortSignal): Promise<FileTreeEntry[]> => {
     const [fileRows, noteRows] = await Promise.all([
@@ -154,14 +156,14 @@ export function FilesInlinePanel({
 
   function openFile(file: FileTreeEntry) {
     if (file.type === 'folder') {
-      router.push(`/app/files?${withPanelScope(new URLSearchParams({ folder: file._id }), scope)}`)
+      router.push(buildWorkspaceHref(null, `/app/files?${withPanelScope(new URLSearchParams({ folder: file._id }), scope)}`, scope))
       onNavigate?.()
       return
     }
     if (fileTreeRouteView(file) === 'note') {
-      router.push(`/app/notes?${withPanelScope(new URLSearchParams({ id: file._id }), scope)}`)
+      router.push(buildWorkspaceHref(null, `/app/notes?${withPanelScope(new URLSearchParams({ id: file._id }), scope)}`, scope))
     } else {
-      router.push(`/app/files?${withPanelScope(new URLSearchParams({ file: file._id }), scope)}`)
+      router.push(buildWorkspaceHref(null, `/app/files?${withPanelScope(new URLSearchParams({ file: file._id }), scope)}`, scope))
     }
     onNavigate?.()
   }

@@ -2,7 +2,7 @@ import { v } from 'convex/values'
 import { AGENT_ENVIRONMENT_CREDENTIAL_METHODS } from '@overlay/workspace-contracts'
 import { mutation, query, type MutationCtx } from '../_generated/server'
 import { requireServerSecret } from '../lib/auth'
-import { z } from 'zod'
+import { z } from 'zod/v3'
 
 const MAX_ENROLLMENT_LIFETIME_MS = 15 * 60 * 1000
 const MAX_CREDENTIAL_LIFETIME_MS = 15 * 60 * 1000

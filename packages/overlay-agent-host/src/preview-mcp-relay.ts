@@ -1,7 +1,7 @@
 import {createServer} from 'node:http'
 import {Readable} from 'node:stream'
 import {pipeline} from 'node:stream/promises'
-import {z} from 'zod'
+import {z} from 'zod/v3'
 import type {AgentAdapter} from './adapter.js'
 
 const mcpSchema = z.object({url: z.string().url(), token: z.string().regex(/^ovmcp_[A-Za-z0-9_.-]+$/)}).passthrough()

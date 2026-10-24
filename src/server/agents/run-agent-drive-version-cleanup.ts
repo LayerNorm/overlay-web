@@ -1,5 +1,5 @@
 import 'server-only'
-import { z } from 'zod'
+import { z } from 'zod/v3'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { lazyConvex } from '@/server/database/lazy-convex'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'

@@ -1,6 +1,6 @@
 import 'server-only'
 import { randomUUID } from 'node:crypto'
-import { z } from 'zod'
+import { z } from 'zod/v3'
 
 const candidates = z.array(z.object({ id: z.string().min(1), key: z.string().min(1) }).strict()).max(32)
 type Candidate = z.infer<typeof candidates>[number]

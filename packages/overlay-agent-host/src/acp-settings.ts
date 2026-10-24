@@ -1,5 +1,5 @@
 import type { ClientContext } from '@agentclientprotocol/sdk'
-import { z } from 'zod'
+import { z } from 'zod/v3'
 import type { AdapterOptions } from '@layernorm/overlay-agent-bridge-protocol'
 import { parseAgentOptions } from './agent-options.js'
 

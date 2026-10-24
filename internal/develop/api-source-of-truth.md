@@ -352,6 +352,10 @@ New Convex table: `workflowStepEvents` with indexes `by_workflowRunId_createdAt`
 
 The legacy automation scheduler cron (`automation_scheduler_legacy`) has been removed. Durable automations are now always enabled and use the sleep()-based workflow (`workflows/automation-schedule.ts`) for scheduling. The `OVERLAY_FEATURE_DURABLE_AUTOMATIONS` feature flag has been removed.
 
+## Workspace Handles
+
+The workspace `slug` is the canonical handle; `workspaceId` remains the immutable identity and authorization key. `GET /api/v1/workspace-handles/:handle` is browser-session authenticated and membership-gated, returning `{ workspaceId, canonicalHandle, canonical }` with `Cache-Control: private, no-store`. `PATCH /api/v1/workspaces/:workspaceId/handle` accepts `{ slug }`, is owner-only, and returns `{ workspace }`. Canonical and historical aliases are stored in the indexed `workspaceHandles` registry. Backfill is bounded, resumable, idempotent, and supports a read-only preview; handle writes remain gated until registry readiness and the write activation flag are enabled.
+
 ## Workspace Billing
 
 Workspace billing is exposed only through authenticated `/api/v1/workspaces/:workspaceId/billing*` routes. The transport contract lives in `@overlay/workspace-contracts` and `WorkspacesClient` provides summary, initialize, subscription checkout, top-up, portal, and verification methods. Summary responses expose rollout eligibility, credit buckets, subscription status, and manager-only operational data but not the billing-account identifier. Route handlers resolve membership before invoking `WorkspaceBillingService`; only owners/admins can initialize, fund, subscribe, or open the portal. Clients never submit or select a billing-account identifier.

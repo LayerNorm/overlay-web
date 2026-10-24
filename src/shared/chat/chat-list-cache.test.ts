@@ -6,10 +6,48 @@ import {
   clearChatListCache,
   consumeNewEmptyChat,
   fetchChatListResult,
+  fetchNextChatListPage,
+  getCachedChatList,
   markNewEmptyChat,
   setActiveChatListView,
   setActiveChatListWorkspace,
 } from './chat-list-cache'
+
+test('chat cache requests keep their workspace across navigation, late replies and pagination', async (t) => {
+  clearAllChatListCaches()
+  setActiveChatListWorkspace('personal-id')
+  setActiveChatListView('all')
+  const original = Object.getOwnPropertyDescriptor(globalThis, 'window')
+  Object.defineProperty(globalThis, 'window', {
+    configurable: true,
+    value: { location: new URL('https://app.example/w/old-org/workspace/chat') },
+  })
+  t.after(() => {
+    if (original) Object.defineProperty(globalThis, 'window', original)
+    else Reflect.deleteProperty(globalThis, 'window')
+    clearAllChatListCaches()
+    setActiveChatListWorkspace(null)
+    setActiveChatListView('personal')
+  })
+  const first = Promise.withResolvers<Response>()
+  const targets: Array<string | null> = []
+  t.mock.method(globalThis, 'fetch', async (_input: RequestInfo | URL, init?: RequestInit) => {
+    targets.push(new Headers(init?.headers).get('x-overlay-route-workspace'))
+    if (targets.length === 1) return first.promise
+    return Response.json({ data: [{ _id: 'page2', title: 'Personal 2', lastModified: 2 }], hasMore: false })
+  })
+  const pending = fetchChatListResult({ force: true })
+  setActiveChatListWorkspace('old-org-id')
+  first.resolve(Response.json({
+    data: [{ _id: 'page1', title: 'Personal 1', lastModified: 1 }], hasMore: true, nextCursor: 'next',
+  }))
+  assert.equal((await pending).status, 'success')
+  assert.equal(getCachedChatList(), null)
+  setActiveChatListWorkspace('personal-id')
+  assert.equal(getCachedChatList()?.[0]._id, 'page1')
+  assert.deepEqual((await fetchNextChatListPage()).map((chat) => chat._id), ['page2', 'page1'])
+  assert.deepEqual(targets, ['id:personal-id', 'id:personal-id'])
+})
 
 test('new empty chat markers are consumed exactly once', () => {
   clearChatListCache()

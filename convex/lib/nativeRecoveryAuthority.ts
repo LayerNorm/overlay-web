@@ -1,6 +1,6 @@
 import type {MutationCtx} from '../_generated/server'
 import type {Doc} from '../_generated/dataModel'
-import type {z} from 'zod'
+import type {z} from 'zod/v3'
 import type {nativeRecoverySnapshotSchema} from './nativeRecoveryPayload'
 
 export async function nativeRecoveryIsAuthorized(ctx: MutationCtx, run: Doc<'conversationAgentRuns'>,

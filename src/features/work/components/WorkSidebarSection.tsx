@@ -7,6 +7,7 @@ import { SidebarMenuSub, SidebarMenuSubButton, SidebarMenuSubItem } from '@overl
 import { SidebarListSkeleton } from '@overlay/ui/feedback'
 import { useAuth } from '@/contexts/AuthContext'
 import { useWorkspaceChanged } from '@/hooks/use-workspace-changed'
+import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { matchesFilter, parseWorkFilter, sortByRank, type WorkFilter, type WorkViewer } from '@/shared/work/query'
 import { useWorkRoute } from '../lib/use-work-route'
@@ -82,6 +83,8 @@ export function WorkSidebarSection({ filter, onNavigate }: { filter: string; onN
   const router = useRouter()
   const pathname = usePathname() ?? '/app/work'
   const params = useSearchParams()
+  const { scope } = useWorkRoute()
+  const buildWorkspaceHref = useWorkspaceHref()
   const activeId = params?.get(WORK_TASK_PARAM) ?? null
   const resolved = parseWorkFilter(filter)
   const userId = user?.id
@@ -112,7 +115,8 @@ export function WorkSidebarSection({ filter, onNavigate }: { filter: string; onN
   const open = (id: string) => {
     const next = new URLSearchParams(params?.toString() ?? '')
     next.set(WORK_TASK_PARAM, id)
-    router.push(`${pathname}?${next.toString()}`, { scroll: false })
+    const route = buildWorkspaceHref(null, `${pathname}?${next.toString()}`, scope)
+    router.push(route, { scroll: false })
     onNavigate?.()
   }
   return (

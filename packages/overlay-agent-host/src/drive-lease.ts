@@ -2,7 +2,7 @@ import { chmodSync, closeSync, existsSync, lstatSync, mkdirSync, openSync, realp
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { driveCredentialsResponseSchema } from '@layernorm/overlay-agent-bridge-protocol'
-import { z } from 'zod'
+import { z } from 'zod/v3'
 
 type DriveScope = z.infer<typeof driveCredentialsResponseSchema.shape.scope>
 

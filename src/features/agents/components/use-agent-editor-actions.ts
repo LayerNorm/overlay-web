@@ -7,11 +7,12 @@ import type {
   WorkspaceAgentDirectoryItem,
 } from '@overlay/workspace-contracts'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import { enabledAgentToolGroupIds } from '@/shared/agents/tool-groups'
 import { announceArchived } from '@/shared/app/archive-toast'
 import { dispatchAgentDirectoryChanged } from '@/shared/workspace/sidebar-events'
 import { workspaceAgentUsesByo } from '../lib/byo-agent-setup'
-import { buildAgentEditorHref, startAgentChat } from '../lib/agent-chat'
+import { startAgentChat } from '../lib/agent-chat'
 import {
   confirmComputerToolRemoval,
   type AgentEditSaveResult,
@@ -67,6 +68,7 @@ export function useAgentEditorActions({
   onSaved?: () => void
   keepOpenOnSave?: boolean
 }) {
+  const buildWorkspaceHref = useWorkspaceHref()
   const { agentType, cloudAgent } = runtime
   const { environmentId, adapterId, workingDirectory } = byo
   const {
@@ -102,7 +104,7 @@ export function useAgentEditorActions({
             // fails. Land on the edit page so a retry never creates a duplicate.
             setAgent(saved.agent)
             if (presentation === 'page') {
-              router.push(`${buildAgentEditorHref(activeWorkspaceId, saved.agent.id)}?hello=1`)
+              router.push(buildWorkspaceHref(activeWorkspaceId, `/app/agents/${encodeURIComponent(saved.agent.id)}?hello=1`, 'personal'))
             }
             throw bindingError
           })
@@ -123,7 +125,7 @@ export function useAgentEditorActions({
             // land on the edit page so a retry never creates a duplicate agent.
             setAgent(saved.agent)
             if (presentation === 'page') {
-              router.push(`${buildAgentEditorHref(activeWorkspaceId, saved.agent.id)}?hello=1`)
+              router.push(buildWorkspaceHref(activeWorkspaceId, `/app/agents/${encodeURIComponent(saved.agent.id)}?hello=1`, 'personal'))
             }
             throw computerError
           })
@@ -131,7 +133,7 @@ export function useAgentEditorActions({
         dispatchAgentDirectoryChanged(activeWorkspaceId)
         toast.success('Agent created.')
         if (onCreated) onCreated(saved.agent)
-        else router.push(`${buildAgentEditorHref(activeWorkspaceId, saved.agent.id)}?hello=1`)
+        else router.push(buildWorkspaceHref(activeWorkspaceId, `/app/agents/${encodeURIComponent(saved.agent.id)}?hello=1`, 'personal'))
       } catch (saveError) {
         notifyActionError((message) => toast.error(message), saveError, 'Could not save agent.')
       } finally {
@@ -244,6 +246,7 @@ export function useAgentEditorActions({
       workspaceId: activeWorkspaceId,
       agentPrincipalId: agent.principalId,
       showcase,
+      buildHref: buildWorkspaceHref,
       push: (href) => router.push(href),
     }).catch((chatError) => {
       toast.error(chatError instanceof Error ? chatError.message : 'Could not start an agent chat.')

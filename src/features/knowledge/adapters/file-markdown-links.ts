@@ -1,4 +1,4 @@
-import { z } from 'zod'
+import { z } from 'zod/v3'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import type { FileLinkNode } from '@overlay/app-core/file-markdown-links'
 import type { ResourceScope } from '@overlay/app-core'
