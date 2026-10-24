@@ -1,5 +1,6 @@
 import type { WorkPerson, WorkPriority, WorkStatus } from '@overlay/app-core'
 import { Avatar as AvatarRoot, AvatarFallback } from '@overlay/ui/primitives'
+import { AgentCreature } from '@/components/orb/Creature'
 import { WORK_PRIORITY_LABELS } from '@/shared/work/status'
 import { dueTone, formatWorkDate } from '@/shared/work/dates'
 import { initialsOf } from '../lib/work-state'
@@ -40,8 +41,8 @@ export function StatusIcon({ status, size = 16, className = '' }: { status: Work
   )
 }
 
-/** A person is a round badge with initials; an agent is a rounded square. Unassigned is a dashed circle. */
-export function Avatar({ person, size = 22, title }: { person: Pick<WorkPerson, 'displayName' | 'type'> | null; size?: number; title?: string }) {
+/** A person is a round badge with initials; an agent is its creature avatar. Unassigned is a dashed circle. */
+export function Avatar({ person, size = 22, title }: { person: Pick<WorkPerson, 'displayName' | 'type' | 'avatarColor' | 'avatarShape'> | null; size?: number; title?: string }) {
   const dimension = { width: size, height: size, fontSize: Math.max(9, Math.round(size * 0.42)) }
   if (!person) {
     return (
@@ -55,12 +56,26 @@ export function Avatar({ person, size = 22, title }: { person: Pick<WorkPerson, 
       </AvatarRoot>
     )
   }
-  const agent = person.type === 'agent'
+  if (person.type === 'agent') {
+    return (
+      <span
+        className="inline-flex shrink-0 items-center justify-center"
+        style={{ width: size, height: size }}
+        title={title ?? `${person.displayName} (agent)`}
+        aria-label={title ?? person.displayName}
+      >
+        <AgentCreature
+          agent={{ name: person.displayName, avatarColor: person.avatarColor, avatarShape: person.avatarShape }}
+          size={size}
+        />
+      </span>
+    )
+  }
   return (
     <AvatarRoot
-      className={`border font-semibold text-(--foreground) ${agent ? 'rounded-md border-transparent bg-zinc-600 text-white dark:bg-zinc-500' : 'rounded-full border-(--border) bg-(--surface-subtle)'}`}
+      className="rounded-full border border-(--border) bg-(--surface-subtle) font-semibold text-(--foreground)"
       style={dimension}
-      title={title ?? `${person.displayName}${agent ? ' (agent)' : ''}`}
+      title={title ?? person.displayName}
       aria-label={title ?? person.displayName}
     >
       <AvatarFallback className="bg-transparent font-semibold">{initialsOf(person.displayName)}</AvatarFallback>

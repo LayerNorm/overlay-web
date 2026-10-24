@@ -109,7 +109,7 @@ export function WorkRow({
           assignee={assignee}
           people={people}
           myPrincipalId={viewer?.principalId ?? null}
-          personalOnly={item.scope === 'personal'}
+          scope={item.scope}
           disabled={!editable}
           onChange={(assigneePrincipalId) => void updateTask(item.id, { assigneePrincipalId })}
           className="flex items-center justify-center p-0.5"

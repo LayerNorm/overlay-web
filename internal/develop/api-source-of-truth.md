@@ -44,6 +44,12 @@ Workspace, archiving and restoring are not Work routes: use `POST /api/v1/scope`
 (`WorkItem`, `WorkEvent`, `WorkContext`, and the request bodies) live in `@overlay/app-core`; `@overlay/api-client`
 exposes them as `client.work`.
 
+Personal task owners may be the creator, a live workspace-visible agent, or the
+creator's own creator-only agent. Workspace tasks accept only workspace-visible
+agents. Assignment never starts an agent run. Context hides other people's
+creator-only agents and includes creature appearance metadata. Scope moves keep
+only assignees allowed in the destination and record any cleared assignee.
+
 ## Connected-agent drive
 
 The bearer-only `/api/agent-drive` transport is separate from app-session APIs and defaults off.
