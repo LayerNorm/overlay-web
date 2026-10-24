@@ -4,6 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Recover expired sessions on protected pages before redirecting to sign-in, preserving the requested workspace page instead of unexpectedly opening Chats.
 - Keep workspace navigation on immutable IDs until member-scoped resolution confirms a routable handle; existing accounts remain usable without migration or backfill.
 - Add indexed workspace handles with permanent aliases, authenticated resolution, owner-only changes, and a resumable dry-run-capable backfill. Existing workspace IDs and ID-based links remain supported.
 - Give scoped workspace features canonical `/w/<handle>/<personal|workspace>/<feature>` addresses, including Work, Agents, Chats, Files, Notes, Outputs, Tools and Automations. Solo workspaces retain both views.

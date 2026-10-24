@@ -6,6 +6,8 @@ Scoped features use `/w/<handle>/<personal|workspace>/<feature>`, for example `/
 
 ## Expand and backfill
 
+Protected server pages defer sign-in redirects to browser session recovery. A successful refresh reloads server content at the current address, retaining the workspace, scope, query and hash. Only a confirmed signed-out session opens the existing sign-in gate; transient failures use the page error boundary rather than changing the destination.
+
 1. Keep handle writes disabled (`OVERLAY_WORKSPACE_HANDLE_WRITES_ENABLED=false`). Follow the release policy: merge the reviewed change, wait for matching native Git web production to be live, then deploy additive Convex from clean current canonical `main`. The new web readers tolerate a backend without the resolver and existing accounts continue with ID navigation; backfill is required only before enabling handle writes, not for continued account access. Feature worktrees may deploy only to their explicitly isolated PR backend, never shared development or customer production.
 2. Preview the complete scan in bounded pages. Keep each returned cursor for the next preview call and confirm there are no conflicts, that personal proposals use opaque `personal-*` values, and that organization legacy slugs are retained when safe:
 

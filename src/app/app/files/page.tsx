@@ -1,8 +1,8 @@
+import { AppRouteSessionRecovery } from '../_components/AppRouteSessionRecovery'
 import { Suspense } from 'react'
 import dynamic from 'next/dynamic'
 import { getOverlaySession } from '@/server/auth/session'
 import { getInitialKnowledgeFiles } from '@/server/app/route-data'
-import { redirect } from 'next/navigation'
 import { resolveKnowledgeLayout } from '@overlay/app-core'
 import { FilesRouteSkeleton, type FilesRouteSkeletonLayout } from '../_components/AppRouteSkeletons'
 import { FilesRouteLoadingSkeleton } from './FilesRouteLoadingSkeleton'
@@ -64,7 +64,7 @@ export default async function FilesPage({
       </Suspense>
     )
   }
-  if (!session) redirect('/app/chat?signin=nav')
+  if (!session) return <AppRouteSessionRecovery />
   const layout = resolveFilesLayout(params)
   return (
     <Suspense fallback={<FilesRouteSkeleton layout={layout} />}>
