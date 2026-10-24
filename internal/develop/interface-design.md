@@ -240,6 +240,7 @@ The Work page (`src/features/work/`) follows the existing patterns and adds a fe
   text field has it first.
 - **Pickers are small floating menus** (`FloatingMenu`) with a section label, the options, and a check on the current
   one. Status, owner, reviewer, priority and parent all use the same `Picker` in `WorkPickers.tsx`.
+- Owner pickers include usable agents on Personal tasks and hide creator-only agents on Workspace tasks. Agent owners use their creature appearance; assigning an owner never starts a run.
 - **The done-when checklist is the one place a box is ticked.** Each condition is a `button role="checkbox"`, not an
   `<input type="checkbox">`: it is part of a task's content (a list the person writes), not an on/off setting, so the
   Toggle rule does not apply to it. Boolean settings on a task (Blocked) are Toggles.
