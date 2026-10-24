@@ -5,6 +5,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 ## Unreleased
 
 - Allow native-agent workflow retries to recapture the screen without replaying clicks, typing, commands or unknown tools. Keep fresh authorization and billing checks, and log safe preparation-failure metadata.
+- Overlay Free no longer cuts off longer OpenRouter Free replies with overlay_free_stream_prelude_too_large.
 
 - Browser tools now report expired element references as recoverable stale references and direct agents to refresh their snapshot without guessing or clicking a replacement target.
 - Apply Stripe webhook event markers and workspace billing updates atomically so failed writes remain retryable without duplicate credit grants.
