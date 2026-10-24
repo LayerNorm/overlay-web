@@ -86,5 +86,5 @@ Older hosts retain the legacy retry flow until upgraded.
 Task tools use the Work API and its existing permissions. `update_task` sends fields, status and scope in one
 transaction; its optional revision is checked by Convex before any write. Conflicts require another read.
 Task tools never delete tasks or start an agent run. Agent turns supply activity attribution only through
-service-authenticated calls; other callers cannot choose their event actor. Existing full-toolbox grants
+service-authenticated calls, including archive/restore scope requests; other callers cannot choose their event actor. Existing full-toolbox grants
 receive the later-added Tasks group through `LATER_GROUP_MEMBERS`.

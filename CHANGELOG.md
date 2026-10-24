@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Preserve native-agent attribution when task tools archive, restore, or move a task.
+
 - Overlay Free no longer cuts off longer OpenRouter Free replies with overlay_free_stream_prelude_too_large.
 
 - Add task tools for listing, reading, creating, updating, commenting on, archiving, and restoring Work tasks, with agent activity attribution. Updates check revisions inside the mutation and commit fields, status and scope together, preserving concurrent edits and avoiding partial changes.
