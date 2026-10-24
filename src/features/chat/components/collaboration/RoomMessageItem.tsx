@@ -1134,7 +1134,7 @@ const QUICK_REACTIONS = [
 function toolbarRailClass(floating: boolean, pickerOpen: boolean, alignEnd: boolean) {
   return floating
     ? `absolute -top-3 right-0 z-20 flex items-center gap-0.5 rounded-lg bg-(--surface-elevated) p-0.5 shadow-md ${messageActionVisibilityClass(pickerOpen)}`
-    : `chat-exchange-actions--hover flex items-center gap-1 px-1 pt-0.5 ${messageActionVisibilityClass(pickerOpen)} ${alignEnd ? 'justify-end' : ''}`
+    : `chat-exchange-actions--hover flex items-center gap-1 -ml-1.5 pt-0.5 ${messageActionVisibilityClass(pickerOpen)} ${alignEnd ? 'justify-end' : ''}`
 }
 
 function ToolbarIconButton({ buttonClass, onClick, disabled, ariaLabel, title, children }: {
@@ -1267,7 +1267,7 @@ function RoomMessageToolbar({
   const buttonClass =
     'rounded-md p-1.5 text-(--muted) transition-[color,background-color,transform] hover:bg-(--surface-subtle) hover:text-(--foreground) active:scale-90 active:bg-(--border) disabled:cursor-not-allowed disabled:opacity-30'
 
-  const railClass = toolbarRailClass(floating, pickerOpen || Boolean(onStop), alignEnd)
+  const railClass = toolbarRailClass(floating, pickerOpen, alignEnd)
 
   return (
     <div className={railClass}>
