@@ -18,6 +18,11 @@ claimed atomically for one request at a time; busy routes are skipped. A request
 lease lasts up to three minutes, and an unresolved expired lease permanently
 quarantines that route.
 
+Before semantic output, the stream buffers at most 32 distinct metadata/start
+parts and 64 KiB; identical parts count once. After output begins, metadata passes
+through without consuming that prelude budget. Fallback resets the buffer and
+deduplication state. Receipt validation and quarantine remain unchanged.
+
 The safety checks reduce risk but cannot guarantee zero spend. Providers may
 change pricing between preflight and execution, and the first request can be
 charged before its receipt is checked. Unsafe or missing receipts quarantine

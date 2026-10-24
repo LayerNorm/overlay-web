@@ -287,6 +287,115 @@ test('streams fall back after an early error in the same pull', async () => {
   ])
 })
 
+test('streams long OpenRouter Free replies with repeated response metadata', async () => {
+  const routes = [route('openrouter', 'openrouter/free', 'openrouter')]
+  const calls: string[] = []
+  const deps = dependencies(routes, calls)
+  const finish: LanguageModelV4StreamPart = {
+    type: 'finish',
+    finishReason: { unified: 'stop', raw: 'stop' },
+    usage: usage(),
+    providerMetadata: { openrouter: { usage: { cost: '0' } } },
+  }
+  const languageModel = createOverlayFreeLanguageModel({
+    ...deps,
+    providers: {
+      gateway: async () => { throw new Error('unexpected Gateway call') },
+      openrouter: async () => model('openrouter', async () => openRouterReceipt(), () =>
+        new ReadableStream<LanguageModelV4StreamPart>({ start(controller) {
+          for (let index = 0; index < 1_000; index += 1) {
+            controller.enqueue({ type: 'response-metadata', id: 'response-id' })
+            controller.enqueue({ type: 'response-metadata', modelId: 'openrouter/free' })
+            controller.enqueue({ type: 'text-delta', id: 'text', delta: 'x' })
+          }
+          controller.enqueue(finish)
+          controller.close()
+        } })),
+    },
+    now: () => now,
+  })
+  const result = await languageModel.doStream(options())
+  const reader = result.stream.getReader()
+  let text = ''
+  while (true) {
+    const next = await reader.read()
+    if (next.done) break
+    if (next.value.type === 'text-delta') text += next.value.delta
+  }
+
+  assert.equal(text, 'x'.repeat(1_000))
+  assert.deepEqual(calls, ['settle:openrouter:openrouter/free:openrouter:true'])
+})
+
+test('deduplicates repeated response metadata before semantic output', async () => {
+  const routes = [route('openrouter', 'openrouter/free', 'openrouter')]
+  const calls: string[] = []
+  const deps = dependencies(routes, calls)
+  const finish: LanguageModelV4StreamPart = {
+    type: 'finish',
+    finishReason: { unified: 'stop', raw: 'stop' },
+    usage: usage(),
+    providerMetadata: { openrouter: { usage: { cost: '0' } } },
+  }
+  const languageModel = createOverlayFreeLanguageModel({
+    ...deps,
+    providers: {
+      gateway: async () => { throw new Error('unexpected Gateway call') },
+      openrouter: async () => model('openrouter', async () => openRouterReceipt(), () =>
+        new ReadableStream<LanguageModelV4StreamPart>({ start(controller) {
+          for (let index = 0; index < 40; index += 1) {
+            controller.enqueue({ type: 'response-metadata', id: 'response-id' })
+            controller.enqueue({ type: 'response-metadata', modelId: 'openrouter/free' })
+          }
+          controller.enqueue({ type: 'text-delta', id: 'text', delta: 'ok' })
+          controller.enqueue(finish)
+          controller.close()
+        } })),
+    },
+    now: () => now,
+  })
+  const result = await languageModel.doStream(options())
+  const reader = result.stream.getReader()
+  let text = ''
+  while (true) {
+    const next = await reader.read()
+    if (next.done) break
+    if (next.value.type === 'text-delta') text += next.value.delta
+  }
+
+  assert.equal(text, 'ok')
+  assert.deepEqual(calls, ['settle:openrouter:openrouter/free:openrouter:true'])
+})
+
+test('keeps the prelude part limit for distinct response metadata', async () => {
+  const routes = [route('openrouter', 'openrouter/free', 'openrouter')]
+  const calls: string[] = []
+  const deps = dependencies(routes, calls)
+  const languageModel = createOverlayFreeLanguageModel({
+    ...deps,
+    providers: {
+      gateway: async () => { throw new Error('unexpected Gateway call') },
+      openrouter: async () => model('openrouter', async () => openRouterReceipt(), () =>
+        new ReadableStream<LanguageModelV4StreamPart>({ start(controller) {
+          for (let index = 0; index < 33; index += 1) {
+            controller.enqueue({ type: 'response-metadata', id: `response-${index}` })
+          }
+          controller.close()
+        } })),
+    },
+    now: () => now,
+  })
+  const result = await languageModel.doStream(options())
+  const reader = result.stream.getReader()
+
+  await assert.rejects(async () => {
+    while (true) {
+      const next = await reader.read()
+      if (next.done) break
+    }
+  }, /overlay_free_stream_prelude_too_large/)
+})
+
 test('stream errors after semantic output settle unsafe and never retry', async () => {
   const routes = [
     route('gateway', 'first/model', 'first'),
