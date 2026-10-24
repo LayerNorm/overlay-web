@@ -1,5 +1,5 @@
 import { createGateway, generateText, tool } from 'ai'
-import { z } from 'zod'
+import { z } from 'zod/v3'
 import { getGatewayModelId } from '../../src/server/ai/gateway/gateway-runtime'
 import { calculateGatewayLanguageTokenCostOrNull } from '../../src/shared/ai/gateway/model-pricing'
 

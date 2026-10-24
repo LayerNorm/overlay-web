@@ -1,0 +1,23 @@
+---
+title: "Memory and knowledge"
+description: "Store durable user memory and search saved knowledge."
+---
+
+Memory routes manage durable facts and preferences:
+
+```http
+GET /api/v1/memory
+POST /api/v1/memory
+PATCH /api/v1/memory
+DELETE /api/v1/memory
+```
+
+Knowledge search uses:
+
+```http
+POST /api/v1/knowledge/search
+```
+
+Knowledge search may combine uploaded files, memory, notes and indexed document content, depending on active capabilities and the caller's scope.
+
+When vector search is disabled, route behavior should remain deterministic and avoid crashing the app shell.

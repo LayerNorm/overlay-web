@@ -5,6 +5,12 @@ import {
   redactOverlayRuntimeConfig,
   type OverlayRuntimeConfigInput,
 } from './overlayConfigSchema'
+import { DEFAULT_OVERLAY_RUNTIME_CONFIG } from './defaultOverlayRuntimeConfig'
+
+test('external agent launch defaults off while native computer capability defaults on', () => {
+  assert.equal(DEFAULT_OVERLAY_RUNTIME_CONFIG.features.externalAgents, false)
+  assert.equal(DEFAULT_OVERLAY_RUNTIME_CONFIG.features.computers, true)
+})
 
 const minimalSaasConfig = {
   app: {

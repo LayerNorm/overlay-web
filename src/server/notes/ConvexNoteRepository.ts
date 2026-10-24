@@ -72,6 +72,7 @@ export class ConvexNoteRepository implements NoteRepository {
     content: string
     tags?: string[]
     clientId?: string
+    conversationId?: string
     workspaceId?: string
     scope?: 'personal' | 'workspace'
   }): Promise<{ id: string; note: NoteRecord | null }> {
@@ -79,6 +80,7 @@ export class ConvexNoteRepository implements NoteRepository {
       userId: args.userId,
       serverSecret: this.serverSecret,
       clientId: args.clientId,
+      ...(args.conversationId ? { conversationId: args.conversationId } : {}),
       name: args.title,
       ...(args.tags ? { tags: args.tags } : {}),
       kind: 'note',

@@ -1,32 +1,40 @@
 ---
-title: "Chat"
-description: "How to start, manage, and stop chats in Overlay."
+title: "Chats"
+description: "AI chats, direct messages and channels, and how to work with models, attachments and approvals."
 ---
+
+The **Chats** page holds every conversation you are part of. Under **Personal** are your own AI chats. Under **Workspace** are:
+
+- **Direct messages** with a teammate or a small group.
+- **Channels**, open to everyone in the workspace or to the people you add.
+- **Activity**, the latest replies and mentions across your conversations.
+
+Chats with a single agent live under that agent on the **Agents** page instead. See [Agents](/help/agents).
 
 ## Start a chat
 
-1. Open a project or your personal workspace.
-2. Type your message in the input box.
-3. Pick a model from the model selector.
-4. Press `Enter` or click the send button.
+1. Choose **New** on the Chats page.
+2. Type your message. Press `Enter` to send and `Shift+Enter` for a new line.
+3. Pick a model from the model picker below the message box, or keep the one you used last.
 
-## Ask and Act modes
+To bring an agent into a direct message or channel, mention it with `@` and its name. It answers when mentioned.
 
-- **Ask** — Overlay answers questions using memory, knowledge, and files.
-- **Act** — Overlay can use tools such as browser, sandboxes, and integrations.
+## Models
 
-Switch modes from the toolbar next to the input.
+The model picker groups models by provider, with the strongest first. Star a model to keep it under **Favorites**. Small icons show which models can read images and which reason before answering.
 
-## Attach files
+Free workspaces use **Auto**, which picks a free model for you, within a weekly limit. A paid workspace can use every model, charged to its credit. See [Plans and credit](/help/billing).
 
-Drag a file into the input or click the attachment icon. Files are stored in your knowledge and can be referenced in later messages.
+## Attachments
 
-## Stop and retry
+Drag files onto the message box or use the attach button. Images go to models that can read them; documents are read as text. Attached files are saved in **Files**, so you can refer to them later.
 
-- Click **Stop** at any time to stop the model mid-reply.
-- Click **Retry** to regenerate a response.
-- Hover over a message and click the menu to edit, delete, or copy.
+## While the AI works
 
-## Generated UI
+- Tool calls fold into one **Worked for…** row above the answer. Click it to see each step.
+- When a tool needs your permission, an approval card appears. The chat continues once you allow or deny it.
+- Choose **Stop** to end a reply early. Hover a message for copy, retry, edit and delete.
 
-Some replies include cards, tables, or action buttons. These are generated from the model and can be run directly.
+## Find an old chat
+
+Search from the top of the Chats list, or press `⌘K` (`Ctrl+K` on Windows) to search chats, files and notes together. Archived chats are under **Settings → Archived**.

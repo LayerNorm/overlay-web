@@ -1,4 +1,4 @@
-import { z } from 'zod'
+import { z } from 'zod/v3'
 import { driveSyncStatusSchema } from './drive.js'
 export * from './drive.js'
 export * from './drive-recovery.js'

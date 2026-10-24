@@ -1,28 +1,29 @@
 ---
 title: "Automations"
-description: "How to create, test, and run scheduled automations in Overlay."
+description: "Run instructions on a schedule, test them, and read what they did."
 ---
 
-Automations are recurring AI workflows that run on your behalf.
+An automation is a set of instructions Overlay runs for you on a schedule: a Monday summary of open tasks, a daily check of a mailbox, a monthly report.
 
-## Create an automation
+## Create one
 
-1. Open the **Automations** panel.
-2. Click **New automation**.
-3. Give it a name and instructions.
-4. Choose a schedule: interval, daily, weekly, or monthly.
-5. Save.
+1. Open **Automations** and create a new one.
+2. Name it, and under **Instructions** write what it should do, as you would ask in a chat. A [skill](/help/extensions#skills) is a good way to reuse instructions.
+3. Under **Schedule**, choose **Interval**, **Daily**, **Weekly** or **Monthly**, and the time.
+4. Turn on **Enabled**.
 
-## Skills
+**Flow** shows the automation's steps as a diagram you can edit.
 
-Skills are reusable instruction templates. Create a skill for common tasks and use it in multiple automations.
+You can also ask a chat or an agent to set one up ("every Friday, summarize what moved on the board"). An automation drafted inside an agent's chat belongs to that agent and runs with its instructions and tools.
 
-## Test an automation
+## Test it
 
-Before enabling the schedule, click **Run once** to test the automation. The result appears in the run history.
+Under **Test**, choose **Run once** to try it immediately. Each run shows a timeline of what it did, what it produced and any errors.
 
-## Run history
+## Keep track
 
-- View past runs in the automation detail view.
-- Click a run to see outputs and errors.
-- Disable a schedule if the automation is not needed.
+- Past runs stay with the automation, so you can replay what happened.
+- Turn off **Enabled** to pause the schedule without deleting anything.
+- Archive an automation you no longer need; restore it from **Settings → Archived**.
+
+Automations need a paid workspace to run on a schedule, and their usage is charged to the workspace's credit. See [Plans and credit](/help/billing).

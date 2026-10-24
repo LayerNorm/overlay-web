@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { NextRequest, NextResponse } from 'next/server'
-import type { z, ZodTypeAny } from 'zod'
+import type { z, ZodTypeAny } from 'zod/v3'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { queryParamsToObject } from '@/shared/schemas/api-boundary'
 

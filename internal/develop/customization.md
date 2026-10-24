@@ -1,0 +1,145 @@
+---
+title: "Customizing Overlay"
+description: "Brand, theme, navigation, extensions, and feature visibility for enterprise deployments."
+---
+The web app is the canonical surface for enterprise customization. Self-hosters should start in `src/overlay.config.ts`, then use the shared package APIs from `@overlay/app-core`, `@overlay/extension-sdk`, `@overlay/api-client`, `@overlay/ui`, `@overlay/chat-core`, `@overlay/chat-react`, and `@overlay/modules-react`.
+
+## Brand, Theme, And Navigation
+
+`src/overlay.config.ts` is a serializable app registry. It can replace brand metadata, add navigation destinations, hide feature-gated surfaces, register settings panels, and describe custom tools or integrations.
+
+The default brand mark is the `OverlayMark` SVG orb component (`@overlay/ui`, re-exported from
+`src/components/orb/Orb.tsx`), not the `logoSrc` raster: the sidebar renders the orb whenever
+`brand.logoSrc` is the default `/assets/overlay-logo.png`, and only renders the `next/image` raster
+when a custom brand overrides it. The same `Orb` component also renders the small marks inside the
+chat surface — tool-call rails, the reasoning ("Thinking"/"Thought") row, the streaming tail marker,
+the exchange loading state, and the notebook agent panel — so no surface falls back to the PNG.
+The PNG asset stays on disk for lifecycle emails and favicons, which require raster. Agent avatars
+are anthropomorphic creatures (`AgentCreature` in `src/components/orb/Creature.tsx`): a solid-color
+body in one of eight shapes (`avatarShape`: circle, blob, squircle, pill, triangle, hexagon, cloud,
+droplet) with Grokbot-style blinking eyes whose dark/light tone derives from the body luminance.
+Both shape and color (`avatarColor`) persist on the workspace agent record — nullable columns with a
+circle default, so existing agents keep working — and are picked in the agent editor's Identity
+section, which previews shapes and colors as live creatures.
+
+```ts
+import {
+  DEFAULT_OVERLAY_NAVIGATION,
+  defineOverlayAppConfig,
+} from '@overlay/app-core/app-shell'
+
+export const overlayAppShell = defineOverlayAppConfig({
+  brand: {
+    name: 'Acme AI',
+    shortName: 'Acme',
+    logoSrc: '/assets/acme-logo.png',
+    homeHref: '/app/work',
+    supportEmail: 'it@acme.example',
+  },
+  navigation: [
+    ...DEFAULT_OVERLAY_NAVIGATION,
+    {
+      id: 'admin',
+      label: 'Admin',
+      href: 'https://admin.getoverlay.io',
+      icon: 'shield-check',
+      componentKey: 'acme.nav.admin',
+    },
+  ],
+  featureFlags: [
+    { id: 'knowledge', label: 'Knowledge', enabled: true },
+    { id: 'extensions', label: 'Extensions', enabled: false },
+  ],
+})
+```
+
+Registries merge with defaults by `id`. If you provide an item with the same `id`, Overlay replaces that item’s metadata. Unspecified default items remain available.
+
+Work leads the default primary navigation and `/app/work` is the authenticated home (the brand link, the default password/SSO sign-in redirect and `/app` all go there; explicit Account/desktop return destinations remain unchanged; a deployment with `OVERLAY_FEATURE_WORK=0` shows a notice with a link to Agents). The authenticated Agents surface uses the contextual sidebar as its roster; selecting an agent opens that agent's direct conversation. The conversation header's settings control composes the existing agent editor inside `AppScreenSidePanel`, which is docked on desktop and presented as an overlay dialog on smaller screens. The full-page `/app/agents/new` and `/app/agents/:id` routes remain compatibility entry points.
+
+While Settings is open, the primary rail exposes a temporary return item after the normal navigation list. It uses the existing `X` icon and the label `Settings`, and returns the user to Agents; it should not be inserted at the top of the primary navigation.
+
+## Component Keys
+
+Bootstrap returns serializable metadata only. React renderers are local to each surface and are referenced by stable `componentKey` strings. For example, a settings panel can declare `componentKey: 'acme.settings.security'`; the web app maps that key to a local React component, while mobile can map the same key to a React Native renderer or ignore it.
+
+## Build-Time Extensions
+
+Use `@overlay/extension-sdk` for trusted extensions that are bundled at build time:
+
+```ts
+import { defineOverlayExtension } from '@overlay/extension-sdk'
+
+export const studentRevisionExtension = defineOverlayExtension({
+  id: 'student-revision',
+  version: '1.0.0',
+  navigation: [{ id: 'student-revision', label: 'Student Revision', href: '/app/x/student-revision', icon: 'sparkles' }],
+  featureModules: [{
+    id: 'student-revision',
+    label: 'Student Revision',
+    routePatterns: ['/app/x/student-revision'],
+    componentKey: 'student.modules.revisionDashboard',
+  }],
+  apiHandlers: [{
+    method: 'GET',
+    path: '/overview',
+    handler: async () => Response.json({ ok: true }),
+  }],
+})
+```
+
+Register app metadata through `extendOverlayAppConfig`, map React renderers in `src/extensions/registry.tsx`, and keep authenticated API handlers under `/api/v1/extensions/:extensionId/:path`.
+
+## Feature Visibility
+
+Use `featureFlags` for coarse product areas and `policyGates` for enterprise policy. Feature flags remove gated registry entries from bootstrap when disabled. Policy gates let surfaces show disabled states, warnings, or hidden entries without changing backend route behavior.
+
+Capability gates are evaluated per registry entry. Memory management in Settings requires the `memory` capability only; `vectorSearch` controls semantic retrieval and search tooling independently, so disabling vector search must not hide saved-memory management.
+
+The default `agent-environments` settings section is gated by the `agents` feature flag and the
+server-derived `connectedAgents` capability. It is labeled `Environments`, uses a distinct server
+icon in settings navigation, and follows the standard elevated settings-card surface with compact
+subtle icon tiles. New local, VPS, customer-sandbox, and Overlay Cloud environments are created
+inside the Bring Your Own Agent branch of the agent editor. The Settings renderer is the fleet
+administration surface: it shows health and pending verification, collects or changes explicit
+project roots, and exposes revocation. For the production workspace rollout,
+the agent editor offers existing environments or one outbound connection command
+for a user-owned computer, VPS, or sandbox. Overlay Cloud is deliberately absent
+until the managed-environment release gates in `internal/develop/bring-your-own-agents.md` pass. The
+backend additionally requires
+`features.connectedAgentControlPlane`; the capability mirrors that server policy and cannot be
+enabled by a client assertion.
+
+## Workspace Memories
+
+Memories are shared workspace resources with member attribution. Settings > Memories defaults to `All` and uses one dropdown containing `All` plus every active human member; selecting a member reloads only memories attributed to that member. Creator names are shown on memory cards. Members may copy any visible workspace memory, while selection and delete controls appear only on memories they created.
+
+Personal workspace settings expose the same collaboration controls as other
+workspaces. The archive action and ownership-transfer option remain unavailable
+because the Personal workspace and its creating owner are permanent account
+lifecycle anchors.
+
+## Account Settings
+
+All ordinary full-page product destinations use the shared app shell. This includes
+account settings, sign-in, sign-up, password recovery, mobile authentication
+completion, the desktop download page (redirected to `/home` while `OVERLAY_DESKTOP_DOWNLOADS_ENABLED` is off), and legal pages. `/account` is a compatibility URL
+that redirects to `/app/settings?section=account` so the client receives the
+canonical settings section instead of falling back to General.
+
+Protocol-only auth callbacks, auto-closing integration popups, public token share
+pages, and visual fixtures remain standalone. Their minimal surfaces are part of
+the handoff, popup, recipient, or test contract and must not gain workspace
+navigation.
+
+The account panel contains identity and deployment-supported billing controls. It has no Desktop app panel while desktop builds are unavailable; the post-checkout banner still offers the desktop handoff to sessions that started in an existing desktop build. Do not expose account-level API-key controls unless the deployment intentionally enables and tests the API-key service; a non-working credential control is worse than no control.
+
+Plans belong to workspaces, and workspace billing is always on wherever Overlay billing is (there is no rollout flag). A workspace with an active wallet on a paid plan pays for everything done in it; without one it is on the free allowance, counted per workspace. An account is never free or paid. A suspended paid wallet fails closed and never spends anything of the person's.
+
+The workspace Billing tab shows the plan and credit, the itemized usage for the period, what happens when credit runs out (hard stop or automatic top-ups up to a monthly limit), recurring checkout, one-time top-ups, and the Stripe portal. Members are read-only.
+
+## Model Providers
+
+Register model provider metadata in `modelProviders`. Use `modelPolicy` hooks for local model filtering and defaults. Hooks are not serialized to bootstrap; only serializable model provider metadata is returned to other surfaces.
+
+Settings > Providers supports OpenCode Go as a locked OpenCode subscription endpoint. Its chat models use Chat Completions, Grok and GPT Luna models use Responses, and Claude Haiku models use Messages. Requests include a stable conversation session header so one OpenCode Go subscription can be used across chat turns.

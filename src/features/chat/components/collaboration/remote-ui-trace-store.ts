@@ -1,4 +1,4 @@
-import {z} from 'zod'
+import {z} from 'zod/v3'
 
 const finite = z.number().finite()
 const rect = z.object({x: finite, y: finite, width: finite, height: finite})

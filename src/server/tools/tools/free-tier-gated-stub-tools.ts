@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { tool, type ToolSet } from 'ai'
-import { z } from 'zod'
+import { z } from 'zod/v3'
 import {
   deepSearchInputSchema,
   webFetchInputSchema,

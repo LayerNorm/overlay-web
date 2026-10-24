@@ -41,12 +41,20 @@ test('fields render in order with other agents disabled', () => {
   const markup = renderToStaticMarkup(
     <NewAgentFields draft={{ ...initialNewAgentDraft(), modelId: 'test-model' }} onChange={() => undefined} modelOptions={models} computersAvailable />,
   )
-  const order = ['Edit avatar', '>Name<', '>Description<', '>Type<', '>Computer<', '>Access<', '>Advanced<']
+  const order = ['Edit avatar', '>Name<', '>Description<', '>Computer<', '>Access<', '>Advanced<']
   const positions = order.map((needle) => markup.indexOf(needle))
   assert.ok(positions.every((position) => position >= 0), `missing field: ${order[positions.indexOf(-1)]}`)
   assert.deepEqual([...positions].sort((a, b) => a - b), positions)
-  assert.match(markup, /Other agent: Coming soon/)
-  assert.match(markup, /<button[^>]*aria-label="Other agent: Coming soon"[^>]*disabled=""/)
+  assert.doesNotMatch(markup, /Other agent|Coming soon|>Type</)
+})
+
+test('a stale external draft cannot reveal external setup while disabled', () => {
+  const markup = renderToStaticMarkup(
+    <NewAgentFields draft={{ ...initialNewAgentDraft(), kind: 'other' }} onChange={() => undefined} modelOptions={models} computersAvailable />,
+  )
+  assert.doesNotMatch(markup, /Other agent|>Runs on<|>Account<|>Machine</)
+  assert.match(markup, />Computer</)
+  assert.match(markup, />Advanced</)
 })
 
 test('the computer row is hidden when the deployment has no computers', () => {

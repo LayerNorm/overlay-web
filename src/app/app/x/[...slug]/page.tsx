@@ -1,3 +1,4 @@
+import { AppRouteSessionRecovery } from '../../_components/AppRouteSessionRecovery'
 import { getOverlaySession } from '@/server/auth/session'
 import { getOverlayCapabilitiesSync } from '@/server/capabilities'
 import overlayAppConfig from '@/overlay.config'
@@ -6,7 +7,7 @@ import {
   resolveOverlayAppShellConfig,
 } from '@overlay/app-core'
 import { renderExtensionComponent } from '@/extensions/registry'
-import { notFound, redirect } from 'next/navigation'
+import { notFound } from 'next/navigation'
 
 // TODO: Cache Components adoption. Refactor this route so this opt-out can be removed.
 // See: https://nextjs.org/docs/app/guides/migrating-to-cache-components
@@ -26,7 +27,7 @@ export default async function ExtensionPage({
   params: Promise<ExtensionPageParams>
 }) {
   const session = await getOverlaySession()
-  if (!session) redirect('/app/chat?signin=nav')
+  if (!session) return <AppRouteSessionRecovery />
 
   const { slug = [] } = await params
   const pathname = extensionPathname(slug)

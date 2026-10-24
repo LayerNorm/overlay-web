@@ -779,3 +779,97 @@ test('received invitations normalize the trusted recipient and pass the expiry c
   )
   assert.deepEqual(received, { email: 'member@example.test', now: 123 })
 })
+
+test('workspace handle updates require an owner, registry readiness, and map conflicts to 409', async () => {
+  let update: { workspaceId: string; actorUserId: string; slug: string } | undefined
+  const service = new WorkspaceService(repository({
+    async getAccess() { return access({ workspaceId: 'workspace_org' }) },
+    async isWorkspaceHandleRegistryReady() { return true },
+    async updateWorkspaceHandle(input) {
+      update = input
+      return { ...access({ workspaceId: input.workspaceId }).workspace, slug: input.slug }
+    },
+  }), { workspaceHandleWritesEnabled: () => true, now: () => 42 })
+
+  const changed = await service.updateWorkspaceHandle({
+    actorUserId: 'user_1',
+    workspaceId: 'workspace_org',
+    slug: ' Acme-Prime ',
+  })
+  assert.equal(changed.slug, 'acme-prime')
+  assert.deepEqual(update, {
+    workspaceId: 'workspace_org',
+    actorUserId: 'user_1',
+    slug: 'acme-prime',
+    now: 42,
+  })
+
+  const memberService = new WorkspaceService(repository({
+    async getAccess() { return access({ workspaceId: 'workspace_org', role: 'member' }) },
+  }), { workspaceHandleWritesEnabled: () => true })
+  await assert.rejects(
+    () => memberService.updateWorkspaceHandle({
+      actorUserId: 'user_1',
+      workspaceId: 'workspace_org',
+      slug: 'acme-member',
+    }),
+    (error) => assertServiceError(error, 'forbidden'),
+  )
+
+  const conflictService = new WorkspaceService(repository({
+    async getAccess() { return access({ workspaceId: 'workspace_org' }) },
+    async isWorkspaceHandleRegistryReady() { return true },
+    async updateWorkspaceHandle() { throw new Error('WORKSPACE_HANDLE_ALREADY_EXISTS') },
+  }), { workspaceHandleWritesEnabled: () => true })
+  await assert.rejects(
+    () => conflictService.updateWorkspaceHandle({
+      actorUserId: 'user_1',
+      workspaceId: 'workspace_org',
+      slug: 'acme-conflict',
+    }),
+    (error) => error instanceof WorkspaceServiceError
+      && error.code === 'handle_conflict'
+      && error.statusCode === 409,
+  )
+})
+
+test('automatic handles fall back safely when handle writes are disabled', async () => {
+  const received: Array<{ name: string; slug: string; handleExplicit?: boolean }> = []
+  const service = new WorkspaceService(repository({
+    async listForUser() { return [] },
+    async createOrganization(input) {
+      received.push(input)
+      return access({ workspaceId: `workspace_${received.length}` })
+    },
+  }), {
+    workspaceHandleWritesEnabled: () => false,
+    createHandleSuffix: () => 'random9',
+    now: () => 42,
+  })
+
+  for (const name of ['A', 'API', '日本語']) {
+    await service.createOrganization({ actorUserId: 'user_1', name })
+  }
+  assert.deepEqual(received.map(({ slug, handleExplicit }) => ({ slug, handleExplicit })), [
+    { slug: 'workspace-random9', handleExplicit: false },
+    { slug: 'workspace-random9', handleExplicit: false },
+    { slug: 'workspace-random9', handleExplicit: false },
+  ])
+})
+
+test('explicit creation conflicts map to a stable handle conflict', async () => {
+  const service = new WorkspaceService(repository({
+    async listForUser() { return [] },
+    async createOrganization() { throw new Error('WORKSPACE_HANDLE_ALREADY_EXISTS') },
+  }), { workspaceHandleWritesEnabled: () => true })
+  await assert.rejects(
+    () => service.createOrganization({
+      actorUserId: 'user_1',
+      name: 'Acme',
+      slug: 'acme-taken',
+    }),
+    (error) => error instanceof WorkspaceServiceError
+      && error.code === 'handle_conflict'
+      && error.statusCode === 409,
+  )
+})

@@ -25,7 +25,7 @@ function DisabledAutomationsRoute() {
 async function AutomationsRouteContent({
   searchParams,
 }: {
-  searchParams?: Promise<{ showcase?: string | string[] }>
+  searchParams?: Promise<{ showcase?: string | string[]; scope?: string | string[]; view?: string | string[] }>
 }) {
   const session = await getOverlaySession()
   const params = await searchParams
@@ -42,7 +42,7 @@ async function AutomationsRouteContent({
   const userId = session?.user.id ?? null
   const firstName = session?.user.firstName ?? undefined
   const initialChatPage = userId
-    ? await getInitialChatHistory()
+    ? await getInitialChatHistory(params?.scope !== undefined || params?.view !== undefined)
     : { data: [], hasMore: false }
   return (
     <ChatSuspenseBoundary
@@ -61,7 +61,7 @@ async function AutomationsRouteContent({
 export default function AutomationsPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ showcase?: string | string[] }>
+  searchParams?: Promise<{ showcase?: string | string[]; scope?: string | string[]; view?: string | string[] }>
 }) {
   const capabilities = getOverlayCapabilitiesSync()
   if (!capabilities.automations) return <DisabledAutomationsRoute />

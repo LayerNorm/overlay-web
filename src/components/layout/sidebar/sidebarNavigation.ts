@@ -53,12 +53,6 @@ export const ICON_COMPONENTS: Partial<Record<OverlayIconName, LucideIcon>> = {
   workflow: Workflow,
 }
 
-export const PROFILE_APP_LINKS = [
-  { label: 'Desktop App', icon: Monitor },
-  { label: 'Mobile App', icon: Smartphone },
-  { label: 'Chrome Extension', icon: Chrome },
-] as const
-
 export function toMentionCategory(category: OverlaySidebarSearchCategory | undefined): MentionType | null {
   switch (category) {
     case 'file':

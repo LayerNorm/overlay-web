@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 import type {
   WorkspaceAgentCreatureShape,
@@ -46,12 +46,15 @@ export function useAgentEditorForm({
     : new Set(DEFAULT_AGENT_TOOL_GROUP_IDS)))
   const [advanced, setAdvanced] = useState(false)
   const [dirty, setDirty] = useState(false)
+  const [version, setVersion] = useState(0)
+  const versionRef = useRef(0)
 
-  // Explicit save model: every change marks the form dirty; nothing persists
-  // until Save. Cancel discards back to the loaded agent and closes.
   const markDirty = useCallback(() => {
+    versionRef.current += 1
+    setVersion(versionRef.current)
     setDirty(true)
   }, [])
+  const isVersionCurrent = useCallback((candidate: number) => versionRef.current === candidate, [])
 
   const toggleToolGroup = (groupId: string) => {
     markDirty()
@@ -80,8 +83,13 @@ export function useAgentEditorForm({
       setLegacyHostedRuntime(workspaceAgentUsesManagedHarness(agent))
       setAgentType(workspaceAgentUsesByo(agent) ? 'byo' : 'overlay')
       setDirty(false)
+      setVersion(0)
     }
   }
+  useLayoutEffect(() => {
+    if (!agent) return
+    versionRef.current = 0
+  }, [agent])
 
   // Stream unsaved identity drafts so the sidebar roster and the conversation
   // header update while typing; a clean form or an unmounted editor clears the
@@ -129,6 +137,8 @@ export function useAgentEditorForm({
     dirty,
     setDirty,
     markDirty,
+    version,
+    isVersionCurrent,
     toggleToolGroup,
   }
 }

@@ -17,7 +17,6 @@ import {
 import { UnifiedSidebar } from './sidebar/UnifiedSidebar'
 import { signOutToLanding } from './sidebar/appSidebarNav'
 import { useOptionalAppSettings } from '@/components/providers/AppSettingsProvider'
-import { useIsSoloWorkspace } from '@/hooks/use-solo-workspace'
 import { useAppSidebarState } from './sidebar/useAppSidebarState'
 import { EMPTY_COLLABORATION_NOTIFICATIONS, type AppSidebarProps } from './appSidebarTypes'
 import { ROOT_SHOWCASE_DESTINATION } from '@/shared/auth/root-entry'
@@ -50,7 +49,6 @@ export default function AppSidebar({
     workspace,
   })
   const classicLayout = useOptionalAppSettings()?.settings.useSecondarySidebar === true
-  const solo = useIsSoloWorkspace()
   const railExpanded = !s.sidebarCollapsed
   const brandHomeHref = publicShowcase ? ROOT_SHOWCASE_DESTINATION : s.brandConfig.homeHref
   const brandLabel = s.brandConfig.shortName ?? s.brandConfig.name
@@ -194,7 +192,6 @@ export default function AppSidebar({
           sectionRows={sectionRows}
           onSearch={publicShowcase ? () => s.requireAuth('history') : () => s.openGlobalSearch(null)}
           scope={s.routeState.scope}
-          solo={solo}
           account={desktopAccountSlot}
           className={`hidden h-full transition-[width,opacity] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] md:flex ${
             s.hideTemporaryChatChrome ? 'w-0 opacity-0 pointer-events-none' : 'opacity-100'
@@ -300,7 +297,6 @@ export default function AppSidebar({
             sectionRows={sectionRows}
             onSearch={publicShowcase ? () => s.requireAuth('history') : () => { s.closeMobileDrawer(); s.openGlobalSearch(null) }}
             scope={s.routeState.scope}
-            solo={solo}
             account={desktopAccountSlot}
             className="h-full w-full bg-transparent"
           >

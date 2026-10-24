@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { generateText, stepCountIs, tool } from 'ai'
-import { z } from 'zod'
+import { z } from 'zod/v3'
 import { getGatewayLanguageModel } from './ai-gateway'
 import type { LanguageModelV4, LanguageModelV4CallOptions, LanguageModelV4StreamPart } from '@ai-sdk/provider'
 import {

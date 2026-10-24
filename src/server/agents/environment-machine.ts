@@ -7,7 +7,9 @@ import {
 } from '@overlay/sandbox-runtime'
 import type { AgentEnvironment, AgentSandboxLease } from '@overlay/workspace-contracts'
 import { getOverlayServerContext } from '@/server/bootstrap'
+import { getOverlayRuntimeConfig } from '@/server/config'
 import { logger } from '@/server/observability/logger'
+import { externalAgentLaunchEnabled } from './external-agent-policy'
 import { managedSandboxRuntimeFromEnv } from './managed-sandbox-runtime'
 
 /**
@@ -42,7 +44,7 @@ async function machineForLease(
   if (environment.kind !== 'overlay_cloud' || environment.status === 'revoked') return null
   try {
     const runtime = managedSandboxRuntimeFromEnv(lease.provider)
-    const instance = await runtime.reconnect(lease.providerReference, { resume: true })
+    const instance = await runtime.reconnect(lease.providerReference, { resume: false })
     return { environment, lease, instance }
   } catch (error) {
     logger.warn('[environment-machine] reconnect failed', {
@@ -127,6 +129,13 @@ export async function openEnvironmentDesktop(args: {
   environmentId: string
   mode?: 'webrtc' | 'vnc'
 }): Promise<DesktopStreamTicket> {
+  const config = await getOverlayRuntimeConfig()
+  if (
+    config.features.overlayCloudEnvironments !== true
+    || !await externalAgentLaunchEnabled(args.workspaceId)
+  ) {
+    throw new EnvironmentMachineError('External agent runtimes are disabled for this deployment.', 'feature_disabled')
+  }
   const machine = await machineForEnvironment(args)
   if (!machine) {
     throw new EnvironmentMachineError('This environment has no running machine', 'not_found')
@@ -154,7 +163,7 @@ export async function openEnvironmentDesktop(args: {
 export class EnvironmentMachineError extends Error {
   constructor(
     message: string,
-    readonly code: 'not_found' | 'no_desktop' | 'desktop_preparing',
+    readonly code: 'not_found' | 'no_desktop' | 'desktop_preparing' | 'feature_disabled',
   ) {
     super(message)
     this.name = 'EnvironmentMachineError'
