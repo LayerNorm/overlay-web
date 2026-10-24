@@ -90,7 +90,15 @@ export function buildPlan(env) {
       // --preview-run only runs for a newly claimed backend. An interrupted
       // first build can leave it empty, so repair missing fixtures after every push.
       after: [{ command: './node_modules/.bin/convex',
-        args: ['run', 'dev/seed:init', '{}', '--deployment', 'preview/pr-' + pr] }],
+        args: ['run', 'dev/seed:init', '{}', '--deployment', 'preview/pr-' + pr] },
+        ...(env.OVERLAY_PREVIEW_QA_FIXTURES === 'paid-workspace' ? [{
+          command: './node_modules/.bin/convex',
+          args: ['run', 'dev/seed:initQa', '{}', '--deployment', 'preview/pr-' + pr],
+        }] : []),
+        ...(env.OVERLAY_PREVIEW_QA_FIXTURES === 'computer-workspace' ? [{
+          command: './node_modules/.bin/convex',
+          args: ['run', 'dev/seed:initComputerQa', '{}', '--deployment', 'preview/pr-' + pr],
+        }] : [])],
       env: childEnv,
       target: 'preview pr-' + pr,
     }

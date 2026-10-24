@@ -51,7 +51,7 @@ test('preview seed requires sandbox identity and creates fixtures idempotently',
     files: (await ctx.db.query('files').take(5)).length,
     automations: await ctx.db.query('automations').take(5),
   }))
-  expect(counts).toMatchObject({ users: 1, workspaces: 2, members: 2, conversations: 1, files: 2 })
+  expect(counts).toMatchObject({ users: 1, workspaces: 1, members: 1, conversations: 1, files: 2 })
   expect(counts.automations).toHaveLength(1)
   expect(counts.automations[0]).toMatchObject({ enabled: false, status: 'paused' })
 })
@@ -99,9 +99,9 @@ test('preview repair reuses an existing personal workspace and preserves unrelat
   expect((await t.mutation(seed, {})).workspaceId).toBe('existing-personal')
   const rows = await t.run(async ctx => ({ workspaces: await ctx.db.query('workspaces').take(5),
     files: await ctx.db.query('files').take(5), members: await ctx.db.query('workspaceMemberships').take(5) }))
-  expect(rows.workspaces).toHaveLength(2)
+  expect(rows.workspaces).toHaveLength(1)
   expect(rows.workspaces[0].name).toBe('Preserved name')
-  expect(rows.members).toHaveLength(2)
+  expect(rows.members).toHaveLength(1)
   expect(rows.files).toHaveLength(2)
   expect(rows.files.every(f => f.workspaceId === 'existing-personal')).toBe(true)
 })
@@ -111,7 +111,7 @@ test('Computer QA funds only its workspace and never refills or resets it on res
   vi.stubEnv('PREVIEW_LOGIN_USER_ID', 'user_preview_fixture')
   vi.stubEnv('PREVIEW_LOGIN_EMAIL', 'preview@example.test')
   const t = convexTest(schema, modules)
-  await t.mutation(seed, {})
+  await t.mutation(makeFunctionReference<'mutation'>('dev/seed:initComputerQa'), {})
   const account = await t.run(async ctx => {
     const accounts = await ctx.db.query('billingAccounts').collect()
     expect(accounts).toHaveLength(1)
@@ -127,11 +127,18 @@ test('Computer QA funds only its workspace and never refills or resets it on res
     await ctx.db.patch(subscription._id, { planKind: 'free', planAmountCents: 0, status: 'canceled' })
     return accounts[0]
   })
-  await t.mutation(seed, {})
+  await t.mutation(makeFunctionReference<'mutation'>('dev/seed:initComputerQa'), {})
   const rows = await t.run(async ctx => ({
     balance: await ctx.db.query('billingAccountBalances').withIndex('by_billingAccountId', q => q.eq('billingAccountId', account.billingAccountId)).unique(),
     subscription: await ctx.db.query('billingAccountSubscriptions').withIndex('by_billingAccountId', q => q.eq('billingAccountId', account.billingAccountId)).unique(),
   }))
   expect(rows.balance).toMatchObject({ usedMicros: 1_000_000, reservedMicros: 500_000, includedMicros: 1_500_000 })
   expect(rows.subscription).toMatchObject({ planKind: 'free', status: 'canceled', planAmountCents: 0 })
+})
+
+test.each(['production', 'staging', 'development'])('Computer QA seed refuses %s before writing', async (environment) => {
+  vi.stubEnv('OVERLAY_DEPLOYMENT_ENV', environment)
+  const t = convexTest(schema, modules)
+  await expect(t.mutation(makeFunctionReference<'mutation'>('dev/seed:initComputerQa'), {})).rejects.toThrow('Preview seed is unavailable')
+  expect(await t.run(ctx => ctx.db.query('billingAccounts').collect())).toHaveLength(0)
 })

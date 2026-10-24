@@ -500,10 +500,8 @@ function AgentListRow({
           bundle={bundle}
           activeConversationId={activeConversationId}
           onOpenThread={onOpenThread}
-          onCreateThread={onCreateThread}
           onArchiveThread={onArchiveThread}
           onDeleteThread={onDeleteThread}
-          creatingThread={creatingThread}
         />
       ) : null}
     </SidebarMenuItem>

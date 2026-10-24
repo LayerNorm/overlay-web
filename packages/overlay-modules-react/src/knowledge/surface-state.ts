@@ -428,28 +428,51 @@ export function useOpenedFile({
   filePort,
   setFiles,
   openFilesInHost,
+  fileOpenParam,
   updateQuery,
 }: {
   adapters: KnowledgeSurfaceAdapters
   filePort: SharedKnowledgeFilePort
   setFiles: React.Dispatch<React.SetStateAction<FileNode[]>>
   openFilesInHost: boolean
+  fileOpenParam: string | null
   updateQuery: (updates: Record<string, string | null | undefined>) => void
 }) {
   const [selectedFile, setSelectedFile] = useState<FileNode | null>(null)
   const [fileContent, setFileContent] = useState('')
   const [fileTitle, setFileTitle] = useState('')
   const [isSavingFile, setIsSavingFile] = useState(false)
+  const [previousFileOpenParam, setPreviousFileOpenParam] = useState(fileOpenParam)
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const titleSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastFileTriggerRef = useRef<HTMLElement | null>(null)
+  const loadVersionRef = useRef(0)
+
+  const clearOpenedFile = useCallback(() => {
+    loadVersionRef.current += 1
+    setSelectedFile(null)
+    setFileContent('')
+    setFileTitle('')
+  }, [])
+
+  if (previousFileOpenParam !== fileOpenParam) {
+    setPreviousFileOpenParam(fileOpenParam)
+    if (!fileOpenParam) {
+      setSelectedFile(null)
+      setFileContent('')
+      setFileTitle('')
+    }
+  }
+
+  useEffect(() => () => { loadVersionRef.current += 1 }, [fileOpenParam])
 
   const loadFile = useCallback(async (fileId: string) => {
+    const loadVersion = ++loadVersionRef.current
     if (document.activeElement instanceof HTMLElement) {
       lastFileTriggerRef.current = document.activeElement
     }
     const file = await adapters.repository.get(fileId)
-    if (!file) return
+    if (!file || loadVersion !== loadVersionRef.current) return
     if (opensInDocumentEditor(file)) {
       await adapters.navigation.open(file, { replace: true })
       return
@@ -474,9 +497,7 @@ export function useOpenedFile({
   }
 
   function closeFileDialog() {
-    setSelectedFile(null)
-    setFileContent('')
-    setFileTitle('')
+    clearOpenedFile()
     updateQuery({ file: null })
     requestAnimationFrame(() => {
       if (lastFileTriggerRef.current?.isConnected) lastFileTriggerRef.current.focus()

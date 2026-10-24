@@ -366,6 +366,7 @@ export function SharedKnowledgeSurface({
     filePort,
     setFiles,
     openFilesInHost,
+    fileOpenParam,
     updateQuery,
   })
   const { loadFile } = opened

@@ -33,6 +33,7 @@ import { AgentComputerControlOverlay } from './AgentComputerTab.parts'
 import { sendAgentGreeting, startAgentChat } from '../lib/agent-chat'
 import { NewAgentDialog } from './NewAgentDialog'
 import { useAgentConversationComputer } from './use-agent-conversation-computer'
+import { useAgentThreadScope } from '../lib/use-agent-thread-scope'
 import { usePanelScope } from '@/hooks/use-panel-scope'
 import type { PanelScope } from '@/shared/workspaces/panel-scope'
 import { useWorkspaceHref } from '@/hooks/use-workspace-href'
@@ -160,7 +161,7 @@ function useAgentAutoOpen(args: {
 
   useEffect(() => {
     attemptedAgentRef.current = null
-  }, [activeWorkspaceId, conversationId])
+  }, [activeWorkspaceId, conversationId, scope, retryCount])
 
   useEffect(() => {
     if (conversationId || !activeWorkspaceId || !directory || directory.length === 0) return
@@ -172,6 +173,7 @@ function useAgentAutoOpen(args: {
     rememberAgentOpened(activeWorkspaceId, target.id)
     onResolvingChange(true)
     onError(null)
+    let cancelled = false
     void (async () => {
       try {
         await startAgentChat({
@@ -181,14 +183,15 @@ function useAgentAutoOpen(args: {
           surface: 'agents',
           scope,
           buildHref,
-          push: (href) => router.replace(href),
+          push: (href) => { if (!cancelled) router.replace(href) },
         })
       } catch (chatError) {
-        onError(chatError instanceof Error ? chatError.message : 'Could not open the agent conversation.')
+        if (!cancelled) onError(chatError instanceof Error ? chatError.message : 'Could not open the agent conversation.')
       } finally {
-        onResolvingChange(false)
+        if (!cancelled) onResolvingChange(false)
       }
     })()
+    return () => { cancelled = true; attemptedAgentRef.current = null; onResolvingChange(false) }
   }, [conversationId, activeWorkspaceId, agentId, directory, viewerPrincipalId, scope, buildHref, retryCount, router, onResolvingChange, onError])
 }
 
@@ -340,6 +343,9 @@ function AgentConversationWorkspaceContent() {
   // genuinely has no agents. The sidebar no longer auto-opens, so exactly
   // one DM creation runs per landing.
   const { directory, viewerPrincipalId, loadError, refreshing: directoryRefreshing } = useAgentDirectory(activeWorkspaceId)
+  const threadScope = useAgentThreadScope({
+    workspaceId: activeWorkspaceId, agentId, conversationId, directory, retryCount,
+  })
   const scope = usePanelScope()
   const requestedAgent = directory?.find((agent) => agent.id === agentId) ?? null
   const requestedScope = requestedAgentScope(requestedAgent, viewerPrincipalId)
@@ -428,9 +434,9 @@ function AgentConversationWorkspaceContent() {
       />
     )
   }
-  if (detailState === 'pending') return null
+  if (detailState === 'pending' || threadScope.pending) return null
 
-  if (conversationId) {
+  if (conversationId && threadScope.allowed) {
     const agentSidebar = agentId && sidebarPreferences.open ? (
       <AgentRightSidebar
         conversationId={conversationId}
@@ -495,7 +501,7 @@ function AgentConversationWorkspaceContent() {
         viewerPrincipalId={viewerPrincipalId}
         scope={scope}
         resolving={resolving}
-        error={error}
+        error={error ?? threadScope.error}
         loadError={loadError}
         onRetry={retryOpen}
         onCreate={openCreate}

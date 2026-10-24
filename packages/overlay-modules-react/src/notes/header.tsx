@@ -6,6 +6,7 @@ import { ArrowLeft, FolderOpen, Maximize2, MessageCircle, PanelRightOpen, Plus, 
 import type { NotebookNote } from '@overlay/app-core'
 import {
   AppScreenHeader,
+  AppBreadcrumbs,
   AppScreenSidePanelActions,
   AppScreenSidePanelClose,
   AppScreenSidePanelHeader,
@@ -97,7 +98,7 @@ export function NotebookHeader({
             <ArrowLeft size={compact ? 13 : 17} />
           </NotebookHeaderIconButton>
         ) : null}
-        <Input
+        <AppBreadcrumbs title={<Input
           type="text"
           aria-label="Note title"
           value={title}
@@ -105,9 +106,8 @@ export function NotebookHeader({
           onBlur={onTitleBlur}
           onKeyDown={onTitleKeyDown}
           placeholder="Note title..."
-          className={unstyledInput(`flex-1 bg-transparent font-medium text-(--foreground) outline-hidden placeholder:text-(--muted) ${compact ? 'text-[19px]' : 'text-xl'}`)}
-          style={{ fontFamily: 'var(--font-serif)' }}
-        />
+          className={unstyledInput('min-w-0 w-full bg-transparent text-sm font-medium text-(--foreground) outline-hidden placeholder:text-(--muted)')}
+        />} />
         {!hideActions ? (
           <NotebookHeaderActions
             compact={compact}

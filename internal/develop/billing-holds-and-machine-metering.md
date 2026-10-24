@@ -108,7 +108,9 @@ Metering alerts are emitted once per sweep for each running lease whose last met
 
 ### Isolated Computer preview QA
 
-The internal Preview seed retains the free Personal workspace and adds a separate
+Ordinary Preview seeding retains the free Personal workspace. Explicit branch build
+opt-in `OVERLAY_PREVIEW_QA_FIXTURES=computer-workspace` runs the internal Preview-only
+`dev/seed:initComputerQa` and adds a separate
 `Computer QA` workspace for the configured sandbox identity. Its workspace account
 has $5 of synthetic included credit, no Stripe customer/subscription, and no
 automatic top-ups. Re-seeding never restores spent credit or changes an existing

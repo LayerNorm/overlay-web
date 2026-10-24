@@ -5,6 +5,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 ## Unreleased
 
 - Restore Resume and Release control for the controlling user after reloading an agent conversation.
+- Keep synthetic Computer QA funding behind explicit Preview fixture opt-in while preserving existing test balances.
 - Allow native-agent workflow retries to recapture the screen without replaying clicks, typing, commands or unknown tools. Keep fresh authorization and billing checks, and log safe preparation-failure metadata.
 - Overlay Free no longer cuts off longer OpenRouter Free replies with overlay_free_stream_prelude_too_large.
 
@@ -24,6 +25,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Let workspace-visible and personally owned agents take Personal tasks, keep creator-only agents private from other members, and preserve assignment eligibility when tasks change scope.
 - Keep agent Details and Computer tabs synchronized after starting, stopping, waking or deleting the attached computer.
+
+- Standardize workspace headers on shadcn breadcrumbs, keep Workspace agent selection separate from remembered Personal threads, simplify agent thread controls, shorten composer prompts, and correct response hover controls and direct-message dialog sizing. Returning through the Files breadcrumb clears the selected editor and ignores stale file loads. Editable note titles retain enabled accessibility semantics.
 
 - Refresh the agent conversation roster after agent creation, edits and archive so newly created agents open without a page reload. Ignore stale requests and unrelated workspace changes.
 

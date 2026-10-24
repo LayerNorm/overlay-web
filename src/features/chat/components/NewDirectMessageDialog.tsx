@@ -219,7 +219,7 @@ function MemberListItem({
         <span className="block truncate text-sm font-medium text-(--foreground)">{item.name}</span>
         <span className="block truncate text-[11px] text-(--muted-light)">{item.description}</span>
       </span>
-      <span className={`flex h-5 w-5 items-center justify-center rounded-md border ${
+      <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border ${
         checked
           ? 'border-(--foreground) bg-(--foreground) text-(--background)'
           : 'border-(--border)'
@@ -385,6 +385,8 @@ export function NewDirectMessageDialog({
       onOpenChange={onOpenChange}
       title={copy.title}
       description={copy.description}
+      className="max-h-[calc(100dvh-2rem)] grid-cols-[minmax(0,1fr)] overflow-y-auto [&>*]:min-w-0 [&_[data-slot=dialog-description]]:break-words"
+      style={{ width: 'min(32rem, calc(100vw - 2rem))' }}
       footer={(
         <>
           <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={busy}>
@@ -396,7 +398,7 @@ export function NewDirectMessageDialog({
         </>
       )}
     >
-      <div className="mt-5">
+      <div className="mt-1 min-w-0">
         <div className="relative">
           <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-(--muted-light)" />
           <Input

@@ -21,6 +21,7 @@ import { AppShellLoadingFallback, ChatRouteSkeleton } from '@/app/app/_component
 import { getSelectedIntegrationProviderId } from '@/server/integrations'
 import { WorkspaceAppBoundaryWithShowcase } from '@/app/_components/WorkspaceAppBoundaryWithShowcase'
 import { WorkspaceScopedContentBoundary } from '@/features/workspaces/components/WorkspaceScopedContentBoundary'
+import { AppBreadcrumbProvider } from '@/components/layout/AppBreadcrumbProvider'
 import { CollaborationRealtimeProvider } from '@/features/chat/components/collaboration/CollaborationRealtimeProvider'
 
 function AppMainFallback() {
@@ -97,7 +98,7 @@ async function AppShellContent({
                         <OnboardingShell publicShowcase={publicShowcase} sidebar={<AppShellSidebar publicShowcase={publicShowcase} />}>
                           <Suspense fallback={<AppMainFallback />}>
                             <WorkspaceScopedContentBoundary fallback={<WorkspaceSwitchFallback />}>
-                              <AuthorizationRouteGuard>{children}</AuthorizationRouteGuard>
+                              <AppBreadcrumbProvider><AuthorizationRouteGuard>{children}</AuthorizationRouteGuard></AppBreadcrumbProvider>
                             </WorkspaceScopedContentBoundary>
                           </Suspense>
                         </OnboardingShell>

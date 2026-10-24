@@ -307,11 +307,7 @@ function mentionReferenceLabel(props: Pick<ComposerViewProps, 'capabilities' | '
 
 function composerPlaceholder(props: ComposerViewProps): string {
   if (props.placeholder) return props.placeholder
-  if (props.mode === 'automate') {
-    return 'Describe an automation, use @ to reference available context...'
-  }
-  const referenceLabel = mentionReferenceLabel(props)
-  return `Ask anything, use @ to ${referenceLabel.charAt(0).toLowerCase()}${referenceLabel.slice(1)}...`
+  return 'What do you want to get done?'
 }
 
 function AttachMenu(props: ComposerViewProps & { mixedFileInputRef: RefObject<HTMLInputElement | null> }) {

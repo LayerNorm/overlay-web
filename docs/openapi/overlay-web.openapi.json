@@ -2216,6 +2216,13 @@
                     "type": "string",
                     "minLength": 1
                   },
+                  "scope": {
+                    "type": "string",
+                    "enum": [
+                      "personal",
+                      "workspace"
+                    ]
+                  },
                   "askModelIds": {
                     "type": "array",
                     "items": {
