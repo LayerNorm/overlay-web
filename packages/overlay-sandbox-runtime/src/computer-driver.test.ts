@@ -19,7 +19,7 @@ if (!pythonPath || shellCheck.status !== 0) {
 } else {
   test('driver scales clicks and repeats scroll buttons', (t) => {
     const harness = createHarness(t)
-    const click = harness.run('click', { x: 100, y: 50, maxWidth: 1280 })
+    const click = harness.run('click', { x: 100, y: 50, maxWidth: 1280, confirm: true })
     assert.equal(click.status, 0)
     const scrollUp = harness.run('scroll', { direction: 'up', amount: 2, x: 100, y: 50 })
     const scrollDown = harness.run('scroll', { direction: 'down', amount: 3, x: 100, y: 50 })
@@ -105,8 +105,8 @@ if (!pythonPath || shellCheck.status !== 0) {
 
   test('a held input lock reports desktop_busy', async (t) => {
     const harness = createHarness(t)
-    const lockPath = '/tmp/overlay-computer/input.lock'
-    mkdirSync('/tmp/overlay-computer', { recursive: true })
+    const lockPath = join(harness.directory, 'computer', 'input.lock')
+    mkdirSync(join(harness.directory, 'computer'), { recursive: true })
     const holder = spawn(pythonPath!, [
       '-u',
       '-c',
@@ -124,12 +124,16 @@ if (!pythonPath || shellCheck.status !== 0) {
   })
 
   test('terminal sessions start, return output and exit status, and cancel process groups', async (t) => {
+    if (spawnSync('sh', ['-c', 'command -v setsid'], { encoding: 'utf8' }).status !== 0) {
+      t.skip('Terminal process-group tests require the Linux setsid utility.')
+      return
+    }
     const harness = createHarness(t)
     const completed = harness.run('terminal_start', { terminalCommand: "printf 'terminal output'" })
     assert.equal(completed.status, 0)
     const completedId = completed.payload.id
     assert.match(completedId ?? '', /^t-[0-9a-f]{12}$/)
-    t.after(() => rmSync(join('/tmp/overlay-computer/terminals', completedId!), { recursive: true, force: true }))
+    t.after(() => rmSync(join(harness.directory, 'computer', 'terminals', completedId!), { recursive: true, force: true }))
 
     let read = harness.run('terminal_read', { id: completedId })
     const deadline = Date.now() + 3000
@@ -146,7 +150,7 @@ if (!pythonPath || shellCheck.status !== 0) {
     assert.equal(running.status, 0)
     const runningId = running.payload.id
     assert.match(runningId ?? '', /^t-[0-9a-f]{12}$/)
-    t.after(() => rmSync(join('/tmp/overlay-computer/terminals', runningId!), { recursive: true, force: true }))
+    t.after(() => rmSync(join(harness.directory, 'computer', 'terminals', runningId!), { recursive: true, force: true }))
 
     const cancelled = harness.run('terminal_cancel', { id: runningId })
     assert.equal(cancelled.status, 0)
@@ -170,7 +174,7 @@ function createHarness(t: { after(callback: () => void): void }) {
   const xdotoolLog = join(directory, 'xdotool.log')
   const importLog = join(directory, 'import.log')
   mkdirSync(bin)
-  writeFileSync(scriptPath, COMPUTER_DRIVER_SOURCE, { mode: 0o700 })
+  writeFileSync(scriptPath, COMPUTER_DRIVER_SOURCE.replaceAll('/tmp/overlay-computer', join(directory, 'computer')), { mode: 0o700 })
   writeFileSync(join(bin, 'xdotool'), [
     '#!/bin/sh',
     'printf "%s\\n" "$*" >> "$OVERLAY_XDOTOOL_LOG"',
@@ -196,7 +200,6 @@ function createHarness(t: { after(callback: () => void): void }) {
     OVERLAY_IMPORT_LOG: importLog,
   }
   t.after(() => {
-    rmSync('/tmp/overlay-computer/shot.png', { force: true })
     rmSync(directory, { recursive: true, force: true })
   })
   return {

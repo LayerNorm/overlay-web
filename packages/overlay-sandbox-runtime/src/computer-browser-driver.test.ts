@@ -89,12 +89,13 @@ test('browser driver inspects risky click refs and requires confirmation', async
     title: string
     webSocketDebuggerUrl: string
   }
+  let browserPort = 0
   const browserTargets: BrowserTarget[] = [{
     id: 'page-test',
     type: 'page',
     url: 'https://example.test/',
     title: 'Example',
-    webSocketDebuggerUrl: 'ws://127.0.0.1:9222/devtools/page/test',
+    webSocketDebuggerUrl: `ws://127.0.0.1:${browserPort}/devtools/page/test`,
   }]
   const createdTargetIds: string[] = []
   const activatedTargets: string[] = []
@@ -109,7 +110,7 @@ test('browser driver inspects risky click refs and requires confirmation', async
       }
       response.end(JSON.stringify({
         Browser: 'Chrome/123.0.0.0',
-        webSocketDebuggerUrl: 'ws://127.0.0.1:9222/devtools/browser/test',
+        webSocketDebuggerUrl: `ws://127.0.0.1:${browserPort}/devtools/browser/test`,
       }))
       return
     }
@@ -124,7 +125,7 @@ test('browser driver inspects risky click refs and requires confirmation', async
         type: 'page',
         url: 'about:blank',
         title: '',
-        webSocketDebuggerUrl: 'ws://127.0.0.1:9222/devtools/page/test',
+        webSocketDebuggerUrl: `ws://127.0.0.1:${browserPort}/devtools/page/test`,
       }
       createdTargetIds.push(id)
       browserTargets.push(target)
@@ -269,19 +270,15 @@ test('browser driver inspects risky click refs and requires confirmation', async
     if (head.length > 0) socket.emit('data', head)
   })
 
-  try {
-    await new Promise<void>((resolve, reject) => {
-      server.once('error', reject)
-      server.listen(9222, '127.0.0.1', resolve)
-    })
-  } catch (error) {
-    rmSync(directory, { recursive: true, force: true })
-    if ((error as NodeJS.ErrnoException).code === 'EADDRINUSE') {
-      t.skip('The browser driver test requires 127.0.0.1:9222 to be available.')
-      return
-    }
-    throw error
-  }
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject)
+    server.listen(0, '127.0.0.1', resolve)
+  })
+  const address = server.address()
+  assert.ok(address && typeof address !== 'string')
+  browserPort = address.port
+  browserTargets[0]!.webSocketDebuggerUrl = `ws://127.0.0.1:${browserPort}/devtools/page/test`
+  writeFileSync(scriptPath, COMPUTER_DRIVER_SOURCE.replaceAll('9222', String(browserPort)), { mode: 0o700 })
 
   t.after(async () => {
     for (const pid of managedProcessGroups) {
@@ -580,57 +577,60 @@ test('browser driver inspects risky click refs and requires confirmation', async
     rmSync(readySignal, { force: true })
   }
 
-  rmSync(readySignal, { force: true })
-  writeSingletons(99999999)
-  const staleLock = await run('browser_ensure')
-  assert.equal(staleLock.result.status, 0, staleLock.result.stdout + staleLock.result.stderr)
-  assert.deepEqual(staleLock.payload, { success: true, browser: 'chromium' })
-  assert.equal(hasPath(singletonLock), false)
-  assert.equal(existsSync(singletonSocket), false)
-  assert.equal(existsSync(singletonCookie), false)
-  stopLatestBrowser()
+  await t.test('Linux profile ownership recovery uses procfs', { skip: process.platform !== 'linux' }, async () => {
+    rmSync(readySignal, { force: true })
+    writeSingletons(99999999)
+    const staleLock = await run('browser_ensure')
+    assert.equal(staleLock.result.status, 0, staleLock.result.stdout + staleLock.result.stderr)
+    assert.deepEqual(staleLock.payload, { success: true, browser: 'chromium' })
+    assert.equal(hasPath(singletonLock), false)
+    assert.equal(existsSync(singletonSocket), false)
+    assert.equal(existsSync(singletonCookie), false)
+    stopLatestBrowser()
 
-  const owner = spawn(
-    pythonPath!,
-    ['-c', 'import time; time.sleep(60)', '--user-data-dir', profile],
-    { detached: true, stdio: 'ignore' },
-  )
-  const ownerStarted = new Promise<void>((resolve, reject) => {
-    owner.once('spawn', () => resolve())
-    owner.once('error', reject)
-  })
-  await ownerStarted
-  assert.ok(owner.pid)
-  managedProcessGroups.add(owner.pid)
-  const ownerClosed = new Promise<NodeJS.Signals | null>((resolve, reject) => {
-    const timeout = setTimeout(() => reject(new Error('Browser profile owner did not exit.')), 2000)
-    owner.once('close', (_code, signal) => {
-      clearTimeout(timeout)
-      resolve(signal)
+    const owner = spawn(
+      pythonPath!,
+      ['-c', 'import time; time.sleep(60)', '--user-data-dir', profile],
+      { detached: true, stdio: 'ignore' },
+    )
+    const ownerStarted = new Promise<void>((resolve, reject) => {
+      owner.once('spawn', () => resolve())
+      owner.once('error', reject)
     })
+    await ownerStarted
+    assert.ok(owner.pid)
+    managedProcessGroups.add(owner.pid)
+    const ownerClosed = new Promise<NodeJS.Signals | null>((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error('Browser profile owner did not exit.')), 2000)
+      owner.once('close', (_code, signal) => {
+        clearTimeout(timeout)
+        resolve(signal)
+      })
+    })
+    writeSingletons(owner.pid)
+    rmSync(readySignal, { force: true })
+    const liveOwner = await run('browser_ensure')
+    assert.equal(liveOwner.result.status, 0, liveOwner.result.stdout + liveOwner.result.stderr)
+    assert.deepEqual(liveOwner.payload, { success: true, browser: 'chromium' })
+    assert.equal(await ownerClosed, 'SIGTERM')
+    assert.equal(hasPath(singletonLock), false)
+    assert.equal(existsSync(singletonSocket), false)
+    assert.equal(existsSync(singletonCookie), false)
+    stopLatestBrowser()
+
+    writeSingletons(process.pid)
+    rmSync(readySignal, { force: true })
+    const foreignProcess = await run('browser_ensure')
+    assert.equal(foreignProcess.result.status, 0)
+    assert.deepEqual(foreignProcess.payload, { success: true, browser: 'chromium' })
+    assert.doesNotThrow(() => process.kill(process.pid, 0))
+    assert.equal(hasPath(singletonLock), false)
+    assert.equal(existsSync(singletonSocket), false)
+    assert.equal(existsSync(singletonCookie), false)
+    stopLatestBrowser()
   })
-  writeSingletons(owner.pid)
-  rmSync(readySignal, { force: true })
-  const liveOwner = await run('browser_ensure')
-  assert.equal(liveOwner.result.status, 0, liveOwner.result.stdout + liveOwner.result.stderr)
-  assert.deepEqual(liveOwner.payload, { success: true, browser: 'chromium' })
-  assert.equal(await ownerClosed, 'SIGTERM')
-  assert.equal(hasPath(singletonLock), false)
-  assert.equal(existsSync(singletonSocket), false)
-  assert.equal(existsSync(singletonCookie), false)
-  stopLatestBrowser()
 
-  writeSingletons(process.pid)
   rmSync(readySignal, { force: true })
-  const foreignProcess = await run('browser_ensure')
-  assert.equal(foreignProcess.result.status, 0)
-  assert.deepEqual(foreignProcess.payload, { success: true, browser: 'chromium' })
-  assert.doesNotThrow(() => process.kill(process.pid, 0))
-  assert.equal(hasPath(singletonLock), false)
-  assert.equal(existsSync(singletonSocket), false)
-  assert.equal(existsSync(singletonCookie), false)
-  stopLatestBrowser()
-
   const earlyExit = await run('browser_ensure', {}, { OVERLAY_CHROMIUM_BEHAVIOR: 'early-exit' })
   assert.equal(earlyExit.result.status, 1)
   assert.equal(earlyExit.payload.error?.code, 'desktop_driver_failed')
