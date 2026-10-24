@@ -22,7 +22,9 @@ and conversation query, and remain absent from Production.
 composed from the shadcn Radix Breadcrumb primitives in `@overlay/ui/primitives`.
 `AppBreadcrumbContext` supplies the active Personal/Workspace scope and page; callers add
 subpages or selected records through `breadcrumbs` and the final title. Preserve scope in
-breadcrumb destinations and expose only the final item as the current page.
+breadcrumb destinations and expose only the final item as the current page. Current-page
+labels have no disabled-link semantics, so embedded note-title inputs remain accessible
+and editable.
 Resolve scope with `usePanelScope` and destinations with `useWorkspaceHref` so
 handle routes, legacy links and solo workspaces retain the same scope as navigation.
 

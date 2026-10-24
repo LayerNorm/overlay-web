@@ -34,7 +34,7 @@ export function AppBreadcrumbs({ title, items = [], 'aria-label': ariaLabel = 'B
         {trail.map((item, index) => {
           const current = index === trail.length - 1
           const labelClass = 'block min-w-0 truncate rounded-sm outline-offset-2'
-          const currentLabel = <BreadcrumbPage className="block min-w-0 truncate">{item.label}</BreadcrumbPage>
+          const currentLabel = <BreadcrumbPage role={undefined} aria-disabled={undefined} className="block min-w-0 truncate">{item.label}</BreadcrumbPage>
           return (
             <Fragment key={index}>
               {index > 0 ? <BreadcrumbSeparator className="shrink-0" /> : null}

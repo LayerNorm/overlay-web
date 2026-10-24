@@ -3,6 +3,7 @@ import test from 'node:test'
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { AppBreadcrumbContext, AppBreadcrumbs } from './AppBreadcrumbs'
+import { Input } from '@overlay/ui/primitives'
 
 ;(globalThis as typeof globalThis & { React: typeof React }).React = React
 
@@ -15,10 +16,19 @@ test('breadcrumbs preserve scope, page, subpage and selected item with one curre
   assert.match(html, /aria-label="Breadcrumb"/)
   assert.match(html, /data-slot="breadcrumb-list"/)
   assert.equal(html.match(/data-slot="breadcrumb-separator"/g)?.length, 3)
-  assert.match(html, /data-slot="breadcrumb-page" role="link" aria-disabled="true" aria-current="page"/)
+  assert.match(html, /data-slot="breadcrumb-page" aria-current="page"/)
   assert.match(html, /Workspace[\s\S]*Work[\s\S]*Board[\s\S]*Launch plan/)
   assert.equal(html.match(/aria-current="page"/g)?.length, 1)
   assert.match(html, /min-w-0 truncate/)
+})
+
+test('an editable current note title does not inherit disabled link semantics', () => {
+  const html = renderToStaticMarkup(
+    <AppBreadcrumbs title={<Input aria-label="Note title" defaultValue="Weekly report" />} />,
+  )
+  assert.match(html, /aria-current="page"/)
+  assert.match(html, /aria-label="Note title"/)
+  assert.doesNotMatch(html, /aria-disabled=|role="link"| disabled(?:=|\/?\>)/)
 })
 
 test('shadcn links compose with the app router and preserve the page heading', () => {
