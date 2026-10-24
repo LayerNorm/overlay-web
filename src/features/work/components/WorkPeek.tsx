@@ -179,13 +179,23 @@ function PanelMessage({ title, onClose, children }: { title: string; onClose: ()
 export function WorkPeek({ taskId, onClose }: { taskId: string; onClose: () => void }) {
   const { item, missing } = useWorkTask(taskId)
   const { viewer, canWork, updateTask, moveTask, refreshTask, dropLocal } = useWorkData()
-  useScopeFollowsTask(item)
+  const scopeMatches = useScopeFollowsTask(item)
   useEscapeToClose(onClose)
 
   if (missing) {
     return <PanelMessage title="Task" onClose={onClose}><div className="px-6 py-10 text-center text-sm text-(--muted)">This task is not available. It may have been deleted, or it belongs to someone else.</div></PanelMessage>
   }
   if (!item) {
+    return (
+      <PanelMessage title="Task" onClose={onClose}>
+        <div className="px-6 py-10" role="status" aria-label="Loading task">
+          <div className="ui-skeleton-line mb-4 h-6 w-2/3 rounded-md" />
+          <div className="ui-skeleton-line h-3 w-1/2 rounded-md" />
+        </div>
+      </PanelMessage>
+    )
+  }
+  if (!scopeMatches) {
     return (
       <PanelMessage title="Task" onClose={onClose}>
         <div className="px-6 py-10" role="status" aria-label="Loading task">

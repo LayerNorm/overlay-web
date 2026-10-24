@@ -38,6 +38,15 @@ Use `PanelResizeHandle` from `@overlay/ui` for adjustable sidebar and side-panel
 widths. It exposes a vertical separator with pointer resizing, arrow-key steps,
 and Home/End bounds; the owning shell supplies and stores the width.
 
+The agent conversation sidebar uses the app sidebar surface and one scroll
+container below its fixed hero and tabs. Its editable fields autosave after an
+800ms debounce and flush on blur; saves serialize so newer edits cannot be
+overwritten by an older response.
+
+Details and Computer tabs share the editor's computer state. Start, Stop, Wake,
+provisioning and deletion update both views; the preview only owns its connection
+ticket, not a second cached machine record.
+
 ## Shared modal dialogs
 
 `DialogFrame` and `ConfirmDialog` keep their existing controlled APIs on top of
@@ -228,6 +237,7 @@ The Work page (`src/features/work/`) follows the existing patterns and adds a fe
   text field has it first.
 - **Pickers are small floating menus** (`FloatingMenu`) with a section label, the options, and a check on the current
   one. Status, owner, reviewer, priority and parent all use the same `Picker` in `WorkPickers.tsx`.
+- Owner pickers include usable agents on Personal tasks and hide creator-only agents on Workspace tasks. Agent owners use their creature appearance; assigning an owner never starts a run.
 - **The done-when checklist is the one place a box is ticked.** Each condition is a `button role="checkbox"`, not an
   `<input type="checkbox">`: it is part of a task's content (a list the person writes), not an on/off setting, so the
   Toggle rule does not apply to it. Boolean settings on a task (Blocked) are Toggles.
@@ -448,6 +458,7 @@ Run `node scripts/qa/tabs-interactions.mjs` for real-browser regressions; it acc
 
 ## Marketing FAQ and page metadata
 
+Every public marketing page renders inside `StaticMarketingShell` (landing nav, hairline-framed column, footer) and opens with `MarketingPageHead`; page blocks come from `landing.css` (`.sec`, `.h1`, `.lead`, `.btn`), so new pages match the home page without their own theme.
 The landing FAQ uses the shadcn `Accordion` (`@overlay/ui/primitives`, single open item, collapsible) near the end of the static home page.
 Its visible answers and FAQ structured data share one source; describe available
 capabilities only. Public marketing pages define their own canonical paths so

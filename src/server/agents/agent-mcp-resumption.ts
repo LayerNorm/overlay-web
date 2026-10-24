@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto'
-import { z } from 'zod'
+import { z } from 'zod/v3'
 import { createMcpApprovalBridge } from '../../../packages/overlay-agent-bridge-protocol/src/mcp-approval-bridge'
 import { readBoundedStorageBody } from '@/server/storage/read-bounded-storage-body'
 import { McpDeferredCall } from '@/server/mcp/mcp-deferred-call'

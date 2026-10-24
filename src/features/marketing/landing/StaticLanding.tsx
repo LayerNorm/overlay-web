@@ -2,17 +2,15 @@
 
 import type { CSSProperties } from 'react'
 import Link from 'next/link'
-import { ArrowRight, Github } from 'lucide-react'
+import { ArrowRight } from 'lucide-react'
+import { GithubMark } from './GithubMark'
 import { useAuth } from '@/contexts/AuthContext'
-import { MarketingFooter } from '../components/MarketingFooter'
+import { StaticMarketingShell } from '../components/StaticMarketingShell'
 import { getMarketingAppHref, MARKETING_GITHUB_URL } from '@/shared/marketing/marketing'
 import { LandingFaq } from './LandingFaq'
 import { LandingLogo, type LogoName } from './LandingLogo'
-import { LandingNav } from './LandingNav'
 import { LandingProductShot } from './LandingProductShot'
 import { ControlSection, GetOverlaySection, OnePlaceSection, SuperpowersSection, TeamsSection } from './LandingSections'
-
-import './landing.css'
 
 /** Each underlined headline phrase links to the section that explains it. */
 const PHRASES: Record<string, { text: string; href: string; color: string }> = {
@@ -43,38 +41,34 @@ export function StaticLanding() {
   const { isAuthenticated } = useAuth()
   const appHref = getMarketingAppHref(isAuthenticated)
   return (
-    <div className="sl">
-      <LandingNav appHref={appHref} />
-      <div className="frame">
-        <section className="hero">
-          <h1 className="h1">
-            The <Phrase k="oss" /> <Phrase k="multi" /> <Phrase k="cloud" />
-            <span className="br-lg" /> <Phrase k="cp" /> for <Phrase k="ai" />
-          </h1>
-          <p className="lead">Create, deploy and manage AI employees with memory, tools and their own computer. Accessible from anywhere.</p>
-          <div className="actions">
-            <Link className="btn primary" href={appHref}>Get started <ArrowRight className="i go" /></Link>
-            <a className="btn ghost" href={MARKETING_GITHUB_URL} target="_blank" rel="noopener noreferrer"><Github className="i" /> Star on GitHub</a>
-          </div>
-          <div className="byoa">
-            <span>Bring your own agents</span>
-            {BYOA.map((agent) => (
-              <span className="chip" key={agent.name}>
-                {agent.logo ? <LandingLogo name={agent.logo} className="logo" /> : <span className="dot" />}
-                {agent.name}
-              </span>
-            ))}
-          </div>
-          <LandingProductShot />
-        </section>
-        <SuperpowersSection />
-        <OnePlaceSection appHref={appHref} />
-        <TeamsSection />
-        <ControlSection />
-        <GetOverlaySection appHref={appHref} />
-        <LandingFaq />
-        <MarketingFooter />
-      </div>
-    </div>
+    <StaticMarketingShell>
+      <section className="hero">
+        <h1 className="h1">
+          The <Phrase k="oss" /> <Phrase k="multi" /> <Phrase k="cloud" />
+          <span className="br-lg" /> <Phrase k="cp" /> for <Phrase k="ai" />
+        </h1>
+        <p className="lead">Create, deploy and manage AI employees with memory, tools and their own computer. Accessible from anywhere.</p>
+        <div className="actions">
+          <Link className="btn primary" href={appHref}>Get started <ArrowRight className="i go" /></Link>
+          <a className="btn ghost" href={MARKETING_GITHUB_URL} target="_blank" rel="noopener noreferrer"><GithubMark /> Star on GitHub</a>
+        </div>
+        <div className="byoa">
+          <span>Bring your own agents</span>
+          {BYOA.map((agent) => (
+            <span className="chip" key={agent.name}>
+              {agent.logo ? <LandingLogo name={agent.logo} className="logo" /> : <span className="dot" />}
+              {agent.name}
+            </span>
+          ))}
+        </div>
+        <LandingProductShot />
+      </section>
+      <SuperpowersSection />
+      <OnePlaceSection appHref={appHref} />
+      <TeamsSection />
+      <ControlSection />
+      <GetOverlaySection appHref={appHref} />
+      <LandingFaq />
+    </StaticMarketingShell>
   )
 }

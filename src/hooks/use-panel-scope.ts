@@ -1,6 +1,6 @@
 'use client'
 
-import { useSearchParams } from 'next/navigation'
+import { usePathname, useSearchParams } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { useIsSoloWorkspace } from '@/hooks/use-solo-workspace'
 import {
@@ -11,6 +11,12 @@ import {
   resolvePanelScope,
   type PanelScope,
 } from '@/shared/workspaces/panel-scope'
+import {
+  legacyWorkspaceScopeForRoute,
+  readWorkspacePathScope,
+  readWorkspaceRouteDescriptor,
+  SCOPED_WORKSPACE_SURFACES,
+} from '@/shared/workspaces/routing'
 
 const CHANGED_EVENT = 'overlay:panel-scope-changed'
 
@@ -61,20 +67,30 @@ export function useSavedPanelScope(): PanelScope | null {
  * Pages that list resources read it here so they always agree with the secondary panel.
  */
 export function usePanelScope(): PanelScope {
+  const pathname = usePathname() ?? ''
   const params = useSearchParams()
   const saved = useSavedPanelScope()
-  const solo = useIsSoloWorkspace()
-  const param = parsePanelScope(params?.get(PANEL_SCOPE_PARAM))
+  const pathScope = readWorkspacePathScope(pathname)
+  const scopeLessHandleRoot = /^\/w\/[^/]+\/?$/.test(pathname)
+  const queryParams = new URLSearchParams(params?.toString() ?? '')
+  const routeSurface = readWorkspaceRouteDescriptor(pathname)?.surface
+  const legacyScope = routeSurface && SCOPED_WORKSPACE_SURFACES.has(routeSurface)
+    ? legacyWorkspaceScopeForRoute(routeSurface, queryParams)
+    : null
+  const param = parsePanelScope(params?.get(PANEL_SCOPE_PARAM)) ?? legacyScope
   // A scope arriving in the URL (a shared link, a deep link) becomes the remembered one, so links inside the page that
   // carry no `scope` keep showing it.
   useEffect(() => {
-    if (param && param !== saved) rememberPanelScope(param)
-  }, [param, saved])
-  return resolvePanelScope({ param, saved, solo })
+    if (scopeLessHandleRoot) return
+    const requested = pathScope ?? param
+    if (requested && requested !== saved) rememberPanelScope(requested)
+  }, [param, pathScope, saved, scopeLessHandleRoot])
+  if (scopeLessHandleRoot) return 'personal'
+  return resolvePanelScope({ pathScope, param, saved })
 }
 
-/** The `view` for a list request: undefined (everything active) in a workspace of one person, the scope otherwise. */
-export function usePanelListView(): PanelScope | undefined {
+/** The `view` for a list request always follows the selected feature scope. */
+export function usePanelListView(): PanelScope {
   const scope = usePanelScope()
   return listViewForScope(scope, useIsSoloWorkspace())
 }

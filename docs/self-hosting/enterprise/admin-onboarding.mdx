@@ -1,0 +1,74 @@
+---
+title: "Administration"
+description: "Set up the operator console, grant the first administrator, and manage roles and audit."
+---
+
+Operator tasks (granting administrative roles, reading the audit log, looking up people and usage) happen in a separate **admin console**, not in the customer-facing app. Workspace owners and admins manage their own workspaces from **Settings → Workspace** in the app; that is a different, customer-level role.
+
+## Run the admin console
+
+The console is its own Next.js app in `apps/admin`. Deploy it on a separate host name (for example `admin.example.com`) that only operators can reach, and give it:
+
+| Setting | Where | Notes |
+| --- | --- | --- |
+| `ADMIN_ALLOWED_USER_IDS` | Admin console | Comma-separated user ids from your identity provider. Only these people can sign in. |
+| `ADMIN_API_SECRET` | Admin console **and** the Convex backend | A long random value, different from every other secret. The backend refuses admin calls when it is not set. |
+| `ADMIN_SESSION_SECRET` | Admin console | Signs the console's own session cookie. |
+| `ADMIN_CONVEX_URL` (or `NEXT_PUBLIC_CONVEX_URL`) | Admin console | The same Convex backend the web app uses. |
+| `WORKOS_CLIENT_ID`, `WORKOS_API_KEY` | Admin console | Operators sign in to the console with WorkOS. |
+
+Being on the allowlist grants nothing by itself: an operator also needs an administrative role (below). Destructive actions require a sign-in within the last 30 minutes.
+
+## First administrator
+
+When no administrator exists yet, grant one from a machine with deployment access to the Convex backend:
+
+```bash
+npx convex run admin/breakGlass:grantFirstAdmin '{"userId": "user_…"}'
+```
+
+For a self-hosted backend, run it with `--env-file convex.env.local` (written by the Convex bootstrap script). The person must have signed in to the web app once, so their user exists. The grant is recorded in the audit log as a break-glass grant. Use the same command to recover if every administrator is revoked by mistake.
+
+## Roles
+
+| Role | Can |
+| --- | --- |
+| `admin` | Everything in the console, including granting and revoking roles. |
+| `auditor` | Read the audit log and shared authorization data. |
+| `support` | Read the People directory and shared authorization data. |
+| `billing_admin` | The same read access as `support`. |
+
+An administrator cannot revoke their own role.
+
+## Manage roles
+
+Signed in to the console as an `admin`:
+
+```http
+GET    /api/v1/admin/principals
+POST   /api/v1/admin/principals   {"userId": "user_…", "role": "support", "reason": "Support rota"}
+DELETE /api/v1/admin/principals   {"userId": "user_…"}
+```
+
+Granting a role to someone who already has one changes it, and reactivates a revoked principal. Every grant and revocation is audited.
+
+## Audit and usage
+
+```http
+GET /api/v1/admin/audit?limit=20
+GET /api/v1/admin/usage?userId=user_…
+```
+
+Filter the audit log with `action`, `actorUserId`, `resourceType` and `before`. Audit metadata is size-limited, and keys that look like secrets are redacted before they are stored.
+
+## API keys
+
+If you enable `capabilities.apiKeys`, set `API_KEY_HASH_SECRET` on the web app. Key values are shown only when created or rotated; the backend stores an HMAC hash with the key's scopes, expiry and revocation state. Changing `API_KEY_HASH_SECRET` invalidates every existing key, so rotate it only in a planned window.
+
+## Checklist
+
+- [ ] The admin console runs on its own operator-only host.
+- [ ] The first administrator is granted and has signed in to the console.
+- [ ] Other operators are on the allowlist and have the narrowest role that works.
+- [ ] Someone reviews the audit log on a schedule.
+- [ ] The [security launch checklist](/self-hosting/operate/security-checklist) is complete.

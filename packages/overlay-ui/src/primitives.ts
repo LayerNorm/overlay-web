@@ -34,8 +34,12 @@ export * from './components/ui/sheet'
 export * from './components/ui/sonner'
 export * from './components/ui/skeleton'
 export * from './components/ui/switch'
+export * from './components/ui/tooltip'
 export * from './components/ui/sidebar'
 export { Tabs, TabsContent, TabsTrigger } from './components/ui/tabs'
+
+// The plain TabsList export above is the self-contained wrapper.
+export { TabsList as TabsTriggerList } from './components/ui/tabs'
 
 export * from './components/ui/command'
 export * from './components/ui/dropdown-menu'

@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  agentBelongsToCreatorScope,
+  agentsForCreatorScope,
   clearAgentOpened,
   getAgentOpenedAt,
   getLastOpenedAgentId,
@@ -103,4 +105,16 @@ test('picks the requested agent, else the most recent, else the roster head', ()
   rememberAgentOpened('ws-a', 'h', 2000)
   assert.equal(pickAgentToOpen(agents, 'ws-a', null)?.id, 'h')
   assert.equal(pickAgentToOpen(agents, 'ws-a', 'c')?.id, 'c')
+})
+
+test('creator-relative agent selection uses only the requested scope bucket', () => {
+  const directory = [
+    { id: 'mine', createdByPrincipalId: 'viewer' },
+    { id: 'theirs', createdByPrincipalId: 'other' },
+  ]
+  assert.deepEqual(agentsForCreatorScope(directory, 'viewer', 'personal').map((agent) => agent.id), ['mine'])
+  assert.deepEqual(agentsForCreatorScope(directory, 'viewer', 'workspace').map((agent) => agent.id), ['theirs'])
+  assert.equal(agentBelongsToCreatorScope(directory[0]!, null, 'personal'), false)
+  assert.equal(agentBelongsToCreatorScope(directory[0]!, 'viewer', 'personal'), true)
+  assert.equal(agentBelongsToCreatorScope(directory[0]!, 'viewer', 'workspace'), false)
 })

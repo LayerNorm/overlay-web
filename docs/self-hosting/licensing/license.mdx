@@ -1,0 +1,33 @@
+---
+title: "License"
+description: "AGPL and commercial licensing boundaries for Overlay."
+---
+
+All first-party material owned by LayerNorm Inc. and stored directly in this repository is licensed under **GNU AGPL version 3 only** (`AGPL-3.0-only`) unless a file contains a more specific notice. This includes the web application, server, Convex functions, workers, workspace packages, SDKs, contracts, protocol packages, shared UI, tests, and documentation.
+
+The complete license text is in the root `LICENSE`; this page explains the application policy; `COPYRIGHT.md` and `NOTICE.md` record ownership and exclusions.
+
+## Network use and source availability
+
+AGPL section 13 applies when a modified version is used to provide network interaction. Operators must provide users interacting with that modified version an opportunity to receive its Corresponding Source at no charge. Overlay includes a public source-code link in product and marketing footers; modified deployments must point that link to the Corresponding Source for the version they operate.
+
+## Commercial license
+
+LayerNorm Inc. offers separate paid commercial licenses for organizations that need proprietary modification or distribution, private embedding, support, warranties, indemnities, service levels, or other terms outside the AGPL. Commercial rights exist only in a signed written agreement. See the root `COMMERCIAL_LICENSE.md`.
+
+## Exclusions
+
+- Third-party dependencies, fonts, media, vendored code, and examples retain their own copyrights and licenses.
+- Git submodules and linked repositories are separate works. A gitlink does not license public or private submodule content under this repository's AGPL grant.
+- Overlay names, logos, domains, trade dress, and brand assets are governed by `TRADEMARKS.md`.
+- Secrets, customer data, or other accidentally published material are not intentionally licensed.
+
+## Contributions
+
+Outside contributions require acceptance of `CLA.md` so LayerNorm can distribute accepted work under both `AGPL-3.0-only` and separate commercial licenses. Contributors sign by commenting `I have read the CLA Document and I hereby sign the CLA` on the pull request. The `CLA Signatures` workflow records GitHub identity, CLA version, timestamp, repository, and pull request on the `cla-signatures` branch. A checkbox is not a signature. Do not merge an outside contribution while that check is red. The CLA text remains a draft until counsel finalizes governing-law and entity-signing terms.
+
+## Verification
+
+Run `npm run license:check`. The check validates first-party manifests and legal files and audits declared runtime dependency licenses against `scripts/ci/license-allowlist.json`.
+
+This is repository implementation guidance, not legal advice. LayerNorm must have counsel review the final application before public launch.

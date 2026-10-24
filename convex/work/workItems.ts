@@ -178,6 +178,20 @@ function mayAnswerReview(row: WorkItemDoc, viewer: Awaited<ReturnType<typeof loa
 /** The people and agents a task in this workspace can be given to, and who is asking. */
 export const context = query({
   args: { ...auth },
+  returns: v.union(v.null(), v.object({
+    principalId: v.string(),
+    role: v.union(v.literal('owner'), v.literal('admin'), v.literal('member')),
+    canCreateInWorkspace: v.boolean(),
+    assignees: v.array(v.object({
+      principalId: v.string(),
+      type: v.union(v.literal('human'), v.literal('agent')),
+      userId: v.union(v.string(), v.null()),
+      displayName: v.string(),
+      agentVisibility: v.optional(v.union(v.literal('workspace'), v.literal('creator'))),
+      avatarColor: v.optional(v.string()),
+      avatarShape: v.optional(v.string()),
+    })),
+  })),
   handler: async (ctx, { userId, workspaceId, accessToken, serverSecret }) => {
     try {
       await authorize({ userId, accessToken, serverSecret })
@@ -189,7 +203,7 @@ export const context = query({
     const principals = await ctx.db.query('workspacePrincipals').withIndex('by_workspaceId', (q) => q.eq('workspaceId', workspaceId)).collect()
     const memberships = await ctx.db.query('workspaceMemberships').withIndex('by_workspaceId', (q) => q.eq('workspaceId', workspaceId)).collect()
     const roleByPrincipal = new Map(memberships.filter((m) => m.status === 'active').map((m) => [m.principalId, m.role]))
-    const eligible = principals.filter((p) => p.archivedAt === undefined && (p.type === 'agent' || (p.type === 'human' && roleByPrincipal.has(p.principalId) && roleByPrincipal.get(p.principalId) !== 'guest')))
+    const eligible = principals.filter((p) => p.archivedAt === undefined)
     const assignees = (await Promise.all(eligible.map(async (p) => {
       if (p.type === 'agent') {
         const agent = await agentAssignability(ctx, { workspaceId, principal: p })
@@ -204,6 +218,7 @@ export const context = query({
           ...(agent.avatarShape !== undefined ? { avatarShape: agent.avatarShape } : {}),
         }
       }
+      if (p.type !== 'human' || !roleByPrincipal.has(p.principalId) || roleByPrincipal.get(p.principalId) === 'guest') return null
       return { principalId: p.principalId, type: p.type, userId: p.userId ?? null, displayName: p.displayName }
     }))).filter((person) => person !== null)
       .sort((a, b) => (a.type === b.type ? a.displayName.localeCompare(b.displayName) : a.type === 'human' ? -1 : 1))

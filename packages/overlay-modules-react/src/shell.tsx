@@ -5,6 +5,8 @@ import type { CSSProperties, HTMLAttributes, ReactNode } from 'react'
 import { useEffect, useRef, useState } from 'react'
 import { X } from 'lucide-react'
 import { cn, usePresence } from '@overlay/ui'
+export { RightSidebar, RightSidebarToggle } from './components/RightSidebar'
+export type { RightSidebarTab } from './components/RightSidebar'
 
 export type AppScreenBodyPadding = 'none' | 'sm' | 'md' | 'lg'
 export type AppScreenBodyMaxWidth = 'none' | 'sm' | 'md' | 'lg' | 'xl'

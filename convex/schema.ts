@@ -1973,6 +1973,26 @@ export default defineSchema({
     .index('by_slug', ['slug'])
     .index('by_personalOwnerUserId', ['personalOwnerUserId']),
 
+  workspaceHandles: defineTable({
+    handle: v.string(),
+    workspaceId: v.string(),
+    kind: v.union(v.literal('canonical'), v.literal('alias')),
+    visibility: v.union(v.literal('public'), v.literal('private')),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_handle', ['handle'])
+    .index('by_workspaceId', ['workspaceId']),
+
+  workspaceHandleMigrationState: defineTable({
+    key: v.string(),
+    status: v.union(v.literal('pending'), v.literal('ready'), v.literal('blocked')),
+    cursor: v.optional(v.string()),
+    updatedAt: v.number(),
+    conflictCount: v.number(),
+  })
+    .index('by_key', ['key']),
+
   workspacePrincipals: defineTable({
     principalId: v.string(),
     workspaceId: v.string(),

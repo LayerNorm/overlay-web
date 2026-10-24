@@ -1,4 +1,4 @@
-import { z } from 'zod'
+import { z } from 'zod/v3'
 import { AuthFields, UnknownResponse } from './common'
 
 export const SettingsQuery = z.object({})

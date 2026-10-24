@@ -2,6 +2,8 @@
 
 import { useState, useCallback, useEffect, useEffectEvent, useRef, type Dispatch, type MouseEvent, type SetStateAction } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import { useWorkspaceHref } from '@/hooks/use-workspace-href'
+import { usePanelScope } from '@/hooks/use-panel-scope'
 import { Archive, Bot, Check, Hash, MessageSquare, Pencil, Slack, UserRound, UsersRound } from 'lucide-react'
 import { SidebarListSkeleton } from '@overlay/ui/feedback'
 import { useAsyncSessions } from '@/components/providers/async-sessions-store'
@@ -48,7 +50,13 @@ import { cn } from '@overlay/ui'
 import { useAuth, type AuthUser } from '@/contexts/AuthContext'
 import { NewDirectMessageDialog } from './NewDirectMessageDialog'
 import { NewChannelDialog } from './NewChannelDialog'
-import { buildWorkspaceHref, isSameChatSurface } from '@/shared/workspaces/routing'
+import {
+  isSameChatSurface,
+  legacyWorkspaceScopeForRoute,
+  mergeHrefSearchParams,
+  normalizeChatViewForScope,
+  readWorkspacePathScope,
+} from '@/shared/workspaces/routing'
 import { agentThreadHref } from '@/components/layout/sidebar-nav'
 import { useWorkspaceChanged } from '@/hooks/use-workspace-changed'
 import { useCollaborationRealtime } from './collaboration/CollaborationRealtimeProvider'
@@ -475,7 +483,7 @@ function useChatListEvents({
         openChat(nextChat)
         return
       }
-      const emptyHref = `${baseHref}?${new URLSearchParams({ view: chatView }).toString()}`
+      const emptyHref = mergeHrefSearchParams(baseHref, new URLSearchParams({ view: chatView }))
       if (isSameChatSurface(pathname, baseHref)) {
         window.history.pushState(null, '', emptyHref)
         window.dispatchEvent(new CustomEvent('overlay:chat-route-selected', {
@@ -878,9 +886,11 @@ export function ChatInlinePanel({
   view?: ChatView
 }) {
   const router = useRouter()
+  const buildWorkspaceHref = useWorkspaceHref()
   const { activeWorkspace } = useWorkspace()
   const pathname = usePathname() ?? ''
   const searchParams = useSearchParams()
+  const rememberedScope = usePanelScope()
   const { sessions, getUnread } = useAsyncSessions()
   const { user, isLoading: authLoading } = useAuth()
   const {
@@ -894,11 +904,21 @@ export function ChatInlinePanel({
     ? null
     : new URLSearchParams(window.location.search).get('id')
   const activeId = browserActiveId ?? searchActiveId
-  const chatView: ChatView = sectionView ?? (() => {
-    const value = searchParams?.get('view')
-    if (value === 'dms' || value === 'channels' || value === 'all' || value === 'workspace-chats') return value
-    return 'personal'
-  })()
+  const requestedView = searchParams?.get('view') ?? null
+  const legacyScope = legacyWorkspaceScopeForRoute(
+    'chat',
+    new URLSearchParams(searchParams?.toString() ?? ''),
+  )
+  const routeScope = readWorkspacePathScope(pathname) ?? legacyScope ?? rememberedScope
+  const chatView: ChatView = sectionView ?? (
+    requestedView === 'all' && !readWorkspacePathScope(pathname) && !legacyScope
+      ? 'all'
+      : normalizeChatViewForScope(routeScope, requestedView)
+  )
+  const viewScope = chatView === 'dms' || chatView === 'channels' || chatView === 'workspace-chats'
+    ? 'workspace'
+    : 'personal'
+  const scopedBaseHref = buildWorkspaceHref(workspaceId ?? null, baseHref, viewScope)
   // Both AI chat views share the personal list; the scope filter runs here.
   // Sections share one list of every conversation and each filters its own view.
   setActiveChatListView(sectionView ? 'all' : chatView === 'workspace-chats' ? 'personal' : chatView)
@@ -908,15 +928,17 @@ export function ChatInlinePanel({
       ? 'channels'
       : chat.conversationType === 'dm'
         ? 'dms'
-        : chatView === 'all'
-          ? 'personal'
-          : chatView
+        : chat.scope === 'workspace' ? 'workspace-chats' : 'personal'
+    const targetScope = targetView === 'dms' || targetView === 'channels' || targetView === 'workspace-chats'
+      ? 'workspace'
+      : 'personal'
+    const targetBaseHref = buildWorkspaceHref(workspaceId ?? null, baseHref, targetScope)
     rememberLastChatForView(workspaceId, targetView, chat._id)
-    const href = `${baseHref}?${new URLSearchParams({
+    const href = mergeHrefSearchParams(targetBaseHref, new URLSearchParams({
       ...(isPublicShowcase ? { showcase: '1' } : {}),
       view: targetView,
       id: chat._id,
-    }).toString()}`
+    }))
     // Soft-navigate on the same chat surface so Next does not remount the app
     // shell (and WorkspaceProvider) on every switch.
     if (isSameChatSurface(pathname, baseHref)) {
@@ -928,7 +950,7 @@ export function ChatInlinePanel({
       router.push(href)
     }
     onNavigate?.()
-  }, [baseHref, chatView, isPublicShowcase, onNavigate, pathname, router, workspaceId])
+  }, [baseHref, buildWorkspaceHref, isPublicShowcase, onNavigate, pathname, router, workspaceId])
 
   const {
     newDirectMessageOpen,
@@ -962,7 +984,7 @@ export function ChatInlinePanel({
   })
   const deletingChatIds = useChatListEvents({
     activeId,
-    baseHref,
+    baseHref: scopedBaseHref,
     chatView,
     isPublicShowcase,
     openChat,
@@ -1018,7 +1040,7 @@ export function ChatInlinePanel({
     />
     <ChatListDialogs
       workspaceId={workspaceId}
-      baseHref={baseHref}
+      buildHref={buildWorkspaceHref}
       isPublicShowcase={isPublicShowcase}
       router={router}
       onNavigate={onNavigate}
@@ -1039,7 +1061,7 @@ export function ChatInlinePanel({
 
 function ChatListDialogs({
   workspaceId,
-  baseHref,
+  buildHref,
   isPublicShowcase,
   router,
   onNavigate,
@@ -1055,7 +1077,7 @@ function ChatListDialogs({
   archiveChat,
 }: {
   workspaceId?: string | null
-  baseHref: string
+  buildHref: ReturnType<typeof useWorkspaceHref>
   isPublicShowcase: boolean
   router: ReturnType<typeof useRouter>
   onNavigate?: () => void
@@ -1081,8 +1103,12 @@ function ChatListDialogs({
             // Agent DMs are threads under the agent — they open on the agents
             // surface and never appear in the chat list.
             const href = agentId
-              ? agentThreadHref(buildWorkspaceHref(workspaceId, '/app/agents'), agentId, id)
-              : `${baseHref}?${new URLSearchParams({ view: 'dms', id, draft: '1', title }).toString()}`
+              ? agentThreadHref(buildHref(workspaceId, '/app/agents'), agentId, id)
+              : buildHref(
+                workspaceId,
+                `/app/chat?${new URLSearchParams({ view: 'dms', id, draft: '1', title }).toString()}`,
+                'workspace',
+              )
             router.push(href)
             onNavigate?.()
           }}
@@ -1095,7 +1121,11 @@ function ChatListDialogs({
           showcase={isPublicShowcase}
           onOpenChange={setNewChannelOpen}
           onCreated={({ id, title }) => {
-            router.push(`${baseHref}?${new URLSearchParams({ view: 'channels', id, draft: '1', title }).toString()}`)
+            router.push(buildHref(
+              workspaceId ?? null,
+              `/app/chat?${new URLSearchParams({ view: 'channels', id, title }).toString()}`,
+              'workspace',
+            ))
             onNavigate?.()
           }}
         />

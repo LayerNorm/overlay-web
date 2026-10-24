@@ -1,4 +1,4 @@
-import { z } from 'zod'
+import { z } from 'zod/v3'
 
 export const onboardingSteps = ['name', 'about', 'team', 'website', 'daily', 'employees', 'connections', 'external', 'memories', 'teammates', 'task', 'complete'] as const
 export type OnboardingStep = typeof onboardingSteps[number]

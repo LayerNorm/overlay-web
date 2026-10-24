@@ -1,21 +1,10 @@
 "use client";
 
+import Link from "next/link";
 import { ArrowRight } from "lucide-react";
-import { AuthBoundary, useAuth } from "@/contexts/AuthContext";
-import { LandingThemeProvider } from "@/contexts/LandingThemeContext";
-import { MarketingFooter } from "@/features/marketing/components/MarketingFooter";
-import { Reveal } from "@/features/marketing/components/Reveal";
-import { StaticMarketingShell } from "@/features/marketing/components/StaticMarketingShell";
-import {
-  minimalBody,
-  minimalDisplay,
-  minimalLabel,
-  minimalProse,
-  minimalSection,
-  minimalSectionSm,
-  minimalSerif,
-  minimalTextLink,
-} from "@/features/marketing/lib/minimalLayout";
+import { GithubMark } from "@/features/marketing/landing/GithubMark";
+import { useAuth } from "@/contexts/AuthContext";
+import { MarketingPageHead, StaticMarketingShell } from "@/features/marketing/components/StaticMarketingShell";
 import { MARKETING_GITHUB_URL, getMarketingAppHref } from "@/shared/marketing/marketing";
 
 const PRINCIPLES: Array<{ title: string; body: string }> = [
@@ -37,104 +26,46 @@ const PRINCIPLES: Array<{ title: string; body: string }> = [
   },
 ];
 
-function ManifestoContent() {
+export default function ManifestoPage() {
   const { isAuthenticated } = useAuth();
   const appHref = getMarketingAppHref(isAuthenticated);
 
   return (
     <StaticMarketingShell>
       <main>
-        {/* Title block */}
-        <section className={minimalSection()}>
-          <div className={minimalProse()}>
-            <Reveal>
-              <p className={minimalLabel()}>Manifesto</p>
-              <h1
-                className={`mt-6 ${minimalDisplay()}`}
-                style={minimalSerif()}
-              >
-                AI should amplify human potential, not replace it.
-              </h1>
-              <p className={`mt-8 ${minimalBody()}`}>
-                Overlay exists because the best models, tools, files, and
-                workflows should meet in one open interface that people and
-                institutions can actually control.
-              </p>
-            </Reveal>
-          </div>
-        </section>
+        <MarketingPageHead
+          label="Manifesto"
+          title="AI should amplify human potential, not replace it."
+          lead="Overlay exists because the best models, tools, files, and workflows should meet in one open interface that people and institutions can actually control."
+        />
 
-        {/* Principles as numbered prose */}
-        <section className={minimalSection()}>
-          <div className={minimalProse()}>
-            <div className="space-y-20">
-              {PRINCIPLES.map((principle, i) => (
-                <Reveal key={principle.title}>
-                  <div className="flex gap-6">
-                    <span
-                      className="shrink-0 pt-1 text-sm tabular-nums text-(--muted-light)"
-                      style={minimalSerif()}
-                    >
-                      {String(i + 1).padStart(2, "0")}
-                    </span>
-                    <div>
-                      <h2
-                        className="text-2xl tracking-tight md:text-3xl"
-                        style={minimalSerif()}
-                      >
-                        {principle.title}
-                      </h2>
-                      <p className={`mt-4 text-lg leading-9 text-(--muted)`}>
-                        {principle.body}
-                      </p>
-                    </div>
-                  </div>
-                </Reveal>
-              ))}
-            </div>
+        <section className="sec">
+          <div className="head">
+            <h2 className="h2">What we believe</h2>
           </div>
-        </section>
-
-        {/* Sign-off */}
-        <section className={minimalSectionSm()}>
-          <div className={minimalProse()}>
-            <Reveal>
-              <p
-                className="text-lg text-(--foreground)"
-                style={minimalSerif()}
-              >
-                — LayerNorm
-              </p>
-              <div className="mt-8 flex flex-wrap gap-x-8 gap-y-3">
-                <a href={appHref} className={minimalTextLink()}>
-                  Open app
-                  <ArrowRight className="h-4 w-4" strokeWidth={1.6} />
-                </a>
-                <a
-                  href={MARKETING_GITHUB_URL}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={minimalTextLink()}
-                >
-                  View source
-                  <ArrowRight className="h-4 w-4" strokeWidth={1.6} />
-                </a>
+          <div className="grid2">
+            {PRINCIPLES.map((principle, i) => (
+              <div className="cell" key={principle.title}>
+                <span className="num">{String(i + 1).padStart(2, "0")}</span>
+                <h3 className="h3">{principle.title}</h3>
+                <p className="body">{principle.body}</p>
               </div>
-            </Reveal>
+            ))}
+          </div>
+        </section>
+
+        <section className="sec">
+          <p className="sign">— LayerNorm</p>
+          <div className="actions left">
+            <Link className="btn primary" href={appHref}>
+              Open app <ArrowRight className="i go" />
+            </Link>
+            <a className="btn ghost" href={MARKETING_GITHUB_URL} target="_blank" rel="noopener noreferrer">
+              <GithubMark /> View source
+            </a>
           </div>
         </section>
       </main>
-      <MarketingFooter />
     </StaticMarketingShell>
-  );
-}
-
-export default function ManifestoPage() {
-  return (
-    <AuthBoundary>
-      <LandingThemeProvider>
-        <ManifestoContent />
-      </LandingThemeProvider>
-    </AuthBoundary>
   );
 }

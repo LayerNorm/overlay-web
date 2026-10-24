@@ -28,7 +28,7 @@ import type { AssistantVisualBlock } from '@overlay/chat-core'
 import { RemoteRunDeadline } from './RemoteRunDeadline'
 import { FlashCopyIconButton } from '@overlay/chat-react/draft-review-modal'
 import { UserMessageBubble } from '@overlay/chat-react/user-message-bubble'
-import { AssistantVisualBlocks } from '@overlay/chat-react/transcript'
+import { AssistantVisualBlocks, messageActionVisibilityClass } from '@overlay/chat-react/transcript'
 import type { AttachmentPreview, ChatMessageMention } from '@overlay/chat-react'
 import { Button, Input, Select, Textarea, Toggle } from '@overlay/ui/primitives'
 import { MarkdownMessage } from '@overlay/chat-react'
@@ -1129,12 +1129,8 @@ const QUICK_REACTIONS = [
 
 function toolbarRailClass(floating: boolean, pickerOpen: boolean, alignEnd: boolean) {
   return floating
-    ? `absolute -top-3 right-0 z-20 flex items-center gap-0.5 rounded-lg bg-(--surface-elevated) p-0.5 shadow-md transition-opacity focus-within:opacity-100 group-hover/exchange:opacity-100 ${
-        pickerOpen ? 'opacity-100' : 'opacity-0'
-      }`
-    : `chat-exchange-actions--hover flex items-center gap-1 px-1 pt-0.5 transition-opacity focus-within:opacity-100 group-hover/exchange:opacity-100 ${
-        pickerOpen ? 'opacity-100' : 'opacity-0'
-      } ${alignEnd ? 'justify-end' : ''}`
+    ? `absolute -top-3 right-0 z-20 flex items-center gap-0.5 rounded-lg bg-(--surface-elevated) p-0.5 shadow-md ${messageActionVisibilityClass(pickerOpen)}`
+    : `chat-exchange-actions--hover flex items-center gap-1 px-1 pt-0.5 ${messageActionVisibilityClass(pickerOpen)} ${alignEnd ? 'justify-end' : ''}`
 }
 
 function ToolbarIconButton({ buttonClass, onClick, disabled, ariaLabel, title, children }: {

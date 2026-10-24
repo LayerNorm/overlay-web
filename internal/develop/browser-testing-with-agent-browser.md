@@ -227,7 +227,7 @@ deployment-protection bypass URLs.
 
 ```bash
 # Open a page
-agent-browser open "https://pr-123.preview.getoverlay.io/app/w/<workspace-id>/chat?view=channels"
+agent-browser open "https://pr-123.preview.getoverlay.io/w/<workspace-handle>/workspace/chat?view=channels"
 
 # Wait for it to load
 agent-browser wait --load networkidle
@@ -254,12 +254,12 @@ Use `--session` to run isolated browser sessions for different accounts:
 
 ```bash
 # Owner session
-agent-browser --session owner --state ~/.config/devin/agent-browser-overlay-auth.json open "https://pr-123.preview.getoverlay.io/app/w/<id>/chat?view=channels"
+agent-browser --session owner --state ~/.config/devin/agent-browser-overlay-auth.json open "https://pr-123.preview.getoverlay.io/w/<workspace-handle>/workspace/chat?view=channels"
 agent-browser --session owner wait --load networkidle
 agent-browser --session owner get text "body"
 
 # Member session
-agent-browser --session member --state ~/.config/devin/agent-browser-overlay-member-auth.json open "https://pr-123.preview.getoverlay.io/app/w/<id>/chat?view=channels"
+agent-browser --session member --state ~/.config/devin/agent-browser-overlay-member-auth.json open "https://pr-123.preview.getoverlay.io/w/<workspace-handle>/workspace/chat?view=channels"
 agent-browser --session member wait --load networkidle
 agent-browser --session member get text "body"
 

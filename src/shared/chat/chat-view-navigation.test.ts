@@ -1,6 +1,21 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { agentConversationRedirect, resolveSoftChatRoute, selectConversationForView } from './chat-view-navigation'
+import {
+  agentConversationRedirect,
+  isTransientConversationDraft,
+  resolveSoftChatRoute,
+  scopeForConversationDetail,
+  selectConversationForView,
+  shouldSkipChatHistoryPrefetch,
+} from './chat-view-navigation'
+import { buildWorkspaceHandleHref } from '../workspaces/routing'
+
+test('empty channels are durable even when opened through a legacy draft link', () => {
+  assert.equal(isTransientConversationDraft('channel', true), false)
+  assert.equal(isTransientConversationDraft('channel', false), false)
+  assert.equal(isTransientConversationDraft('dm', true), true)
+  assert.equal(isTransientConversationDraft('dm', false), false)
+})
 
 test('one-to-one agent conversations move from Chats to their agent thread without losing history', () => {
   const args = { pathname: '/app/w/workspace-1/chat', workspaceId: 'workspace-1', agentId: 'overlay', conversationId: 'existing-thread', guided: false, showcase: false }
@@ -40,4 +55,39 @@ test('server rendering falls back to the Next route', () => {
     null,
     { conversationId: 'dm-1', view: 'dms' },
   ), { conversationId: 'dm-1', view: 'dms' })
+})
+
+test('authorized chat detail metadata determines its existing scope bucket', () => {
+  assert.equal(scopeForConversationDetail({ conversationType: 'dm' }), 'workspace')
+  assert.equal(scopeForConversationDetail({ conversationType: 'channel' }), 'workspace')
+  assert.equal(scopeForConversationDetail({ conversationType: 'personal' }), 'personal')
+  assert.equal(scopeForConversationDetail({ scope: 'workspace' }), 'workspace')
+  assert.equal(scopeForConversationDetail({}), 'personal')
+})
+
+test('an authorized detail in the wrong scope redirects to its actual scoped route', () => {
+  const actualScope = scopeForConversationDetail({ conversationType: 'dm' })
+  assert.equal(actualScope, 'workspace')
+  assert.equal(
+    buildWorkspaceHandleHref('team-a', '/w/team-a/personal/chat?id=dm-1', actualScope),
+    '/w/team-a/workspace/chat?id=dm-1&view=workspace-chats',
+  )
+})
+
+test('scoped chat routes and legacy view selectors skip untagged server prefetch', () => {
+  assert.equal(shouldSkipChatHistoryPrefetch({
+    pathScope: 'personal',
+    hasScopeQuery: false,
+    hasViewQuery: false,
+  }), true)
+  assert.equal(shouldSkipChatHistoryPrefetch({
+    pathScope: null,
+    hasScopeQuery: false,
+    hasViewQuery: true,
+  }), true)
+  assert.equal(shouldSkipChatHistoryPrefetch({
+    pathScope: null,
+    hasScopeQuery: false,
+    hasViewQuery: false,
+  }), false)
 })

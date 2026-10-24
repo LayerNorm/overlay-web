@@ -1,6 +1,6 @@
+import { AppRouteSessionRecovery } from '../_components/AppRouteSessionRecovery'
 import { Suspense } from 'react'
 import dynamic from 'next/dynamic'
-import { redirect } from 'next/navigation'
 import { getOverlaySession } from '@/server/auth/session'
 import { ChatRouteSkeleton } from '../_components/AppRouteSkeletons'
 
@@ -12,7 +12,7 @@ const ChatActivityView = dynamic(
 
 async function ActivityRouteContent() {
   const session = await getOverlaySession()
-  if (!session) redirect('/app/chat?signin=nav')
+  if (!session) return <AppRouteSessionRecovery />
   return <ChatActivityView />
 }
 

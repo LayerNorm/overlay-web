@@ -5,7 +5,7 @@ import {
   type AppApiRouteContext,
 } from '@/server/app-api/bff-context'
 import { generateObject } from '@/server/ai/sdk'
-import { z } from 'zod'
+import { z } from 'zod/v3'
 import {
   FREE_TIER_DEFAULT_MODEL_ID,
   isFreeTierChatModelId,

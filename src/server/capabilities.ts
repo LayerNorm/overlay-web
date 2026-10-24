@@ -66,20 +66,35 @@ export function withObservabilityProviderCapabilities(
 ): CapabilityCheck {
   const analyticsProvider = runtimeConfig.providers.analytics?.provider ?? 'posthog'
   const errorReportingProvider = runtimeConfig.providers.errorReporting?.provider ?? 'sentry'
+  const externalAgentsEnabled = runtimeConfig.features?.externalAgents === true
+    && runtimeConfig.features?.connectedAgentControlPlane === true
+    && runtimeConfig.features?.remoteAgentRuns === true
   return {
     ...capabilities,
     analytics: capabilities.analytics && analyticsProvider === 'posthog',
     errorReporting: capabilities.errorReporting && errorReportingProvider === 'sentry',
-    connectedAgents: runtimeConfig.features?.connectedAgentControlPlane === true,
+    connectedAgents: externalAgentsEnabled,
+    externalAgents: externalAgentsEnabled,
     // Flag = hosted rollout control; a resolvable provider runtime = the
     // deployment actually has computer credentials (BOAT_API_KEY, or legacy BOX_API_KEY, for `box`).
     // Both are required, so self-host deployments without keys report the
     // capability absent instead of surfacing 503s in the UI.
-    cloudAgents: runtimeConfig.features?.connectedAgentControlPlane === true
-      && runtimeConfig.features?.overlayCloudEnvironments === true
-      && runtimeConfig.features?.remoteAgentRuns === true,
+    cloudAgents: externalAgentsEnabled
+      && runtimeConfig.features?.overlayCloudEnvironments === true,
     computers: runtimeConfig.features?.computers === true
       && computerRuntimeForProvider(computerProviderFromEnv()) !== undefined,
+  }
+}
+
+export function withWorkspaceExternalAgentCapabilities(
+  capabilities: CapabilityCheck,
+  launchEnabled: boolean,
+): CapabilityCheck {
+  return {
+    ...capabilities,
+    connectedAgents: capabilities.connectedAgents && launchEnabled,
+    externalAgents: capabilities.externalAgents && launchEnabled,
+    cloudAgents: capabilities.cloudAgents && launchEnabled,
   }
 }
 

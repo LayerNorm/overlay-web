@@ -3,7 +3,7 @@ import 'server-only'
 import { existsSync, readFileSync } from 'node:fs'
 import { access, readFile } from 'node:fs/promises'
 import path from 'node:path'
-import { ZodError } from 'zod'
+import { ZodError } from 'zod/v3'
 import {
   mergeOverlayRuntimeConfig,
   parseOverlayRuntimeConfig,

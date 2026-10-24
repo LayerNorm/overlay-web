@@ -1,4 +1,4 @@
-import {z} from 'zod'
+import {z} from 'zod/v3'
 import {driveContentResultSchema, driveMetadataResultSchema} from './drive.js'
 
 const previousExecution = z.object({attemptId: z.string().min(1).max(200), generation: z.number().int().positive()}).strict()

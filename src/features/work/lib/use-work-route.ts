@@ -11,9 +11,9 @@ export interface WorkRoute {
   scope: PanelScope
   /** List, Board, or Timeline. */
   view: WorkView
-  /** What to ask the API for: undefined (everything active) in a workspace of one person, the scope otherwise. */
-  listView: PanelScope | undefined
-  /** A workspace of one person has no Personal / Workspace split. */
+  /** The API list view follows the selected scope for every workspace. */
+  listView: PanelScope
+  /** The workspace's member count, independent of selected scope. */
   solo: boolean
 }
 
