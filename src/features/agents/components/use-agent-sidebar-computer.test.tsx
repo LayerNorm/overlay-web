@@ -5,7 +5,6 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import type { Computer } from '@overlay/workspace-contracts'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import type { useAgentComputer } from './use-agent-computer'
-import { isCurrentAgentComputerRequest } from './use-agent-computer'
 import { useAgentSidebarComputer } from './use-agent-sidebar-computer'
 
 ;(globalThis as typeof globalThis & { React: typeof React }).React = React
@@ -60,7 +59,7 @@ test('Computer tab reads the same machine, loading and error state as Details', 
   assert.equal(renderAccess(state).computerError, 'Cannot load')
 })
 
-test('Wake writes its actual response back to the Details computer state', async (t) => {
+test('Wake delegates to the shared explicit start rather than issuing an independent request', async (t) => {
   const ready = computerFixture('ready')
   const updates: unknown[] = []
   let reloads = 0
@@ -70,22 +69,16 @@ test('Wake writes its actual response back to the Details computer state', async
     initialLoading: false,
     computerLoadError: null,
     retryComputerLoad: () => { reloads++ },
-    setAgentComputer: (next: unknown) => updates.push(next),
+    startAgentComputer: async () => {
+      updates.push(ready)
+      return { computer: ready }
+    },
   } as unknown as ReturnType<typeof useAgentComputer>
-  t.mock.method(overlayAppClient.computers, 'start', async (workspaceId: string, computerId: string) => {
-    assert.equal(workspaceId, 'workspace')
-    assert.equal(computerId, 'computer')
-    return { computer: ready }
-  })
+  const directStart = t.mock.method(overlayAppClient.computers, 'start', async () => { throw new Error('must use shared start') })
   const access = renderAccess(state)
   await access.wake()
   assert.deepEqual(updates, [ready])
+  assert.equal(directStart.mock.callCount(), 0)
   access.loadComputer()
   assert.equal(reloads, 1)
-})
-
-test('shared computer updates reject stale workspace and generation responses', () => {
-  assert.equal(isCurrentAgentComputerRequest('workspace:agent-a', 'workspace:agent-a', 4, 4), true)
-  assert.equal(isCurrentAgentComputerRequest('workspace:agent-b', 'workspace:agent-a', 5, 4), false)
-  assert.equal(isCurrentAgentComputerRequest('workspace:agent-a', 'workspace:agent-a', 5, 4), false)
 })

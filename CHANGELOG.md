@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Apply Stripe webhook event markers and workspace billing updates atomically so failed writes remain retryable without duplicate credit grants.
+- Keep agent Computer controls and background refreshes scoped to the current workspace and agent, including wake and takeover responses.
 - Workspace Stripe checkout now propagates subscription persistence failures and omits unsupported customer-sync fields. Attaching the first Stripe subscription preserves existing usage, reservations, and top-up credit instead of treating the local allowance as a renewed subscription.
 - Harden Computer browser profile lock recovery around stale or reused PIDs while protecting live profile owners.
 - Add durable Ask approvals for native agents in direct messages and rooms, with pending calls resuming without replaying prior tool calls. Release QA remains required.

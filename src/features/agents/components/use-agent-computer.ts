@@ -8,16 +8,8 @@ import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { COMPUTER_TOOL_IDS, enabledAgentToolGroupIds } from '@/shared/agents/tool-groups'
 import { toast } from '@overlay/ui/primitives'
 import { changeAgentComputerControl } from '../lib/agent-computer-control'
+import { AgentComputerCoordinator } from './agent-computer-coordinator'
 import type { AgentType } from './AgentEditorForm'
-
-export function isCurrentAgentComputerRequest(
-  currentScope: string | null,
-  requestScope: string | null,
-  currentGeneration: number,
-  requestGeneration: number,
-) {
-  return currentScope === requestScope && currentGeneration === requestGeneration
-}
 
 export function useAgentComputer({
   showcase,
@@ -46,35 +38,41 @@ export function useAgentComputer({
   const [computerOpenBusy, setComputerOpenBusy] = useState(false)
   const [computerLifecycleBusy, setComputerLifecycleBusy] = useState<'start' | 'stop' | 'delete' | 'control' | null>(null)
   const scopeKey = activeWorkspaceId && agent ? `${activeWorkspaceId}:${agent.id}` : null
-  const scopeRef = useRef(scopeKey)
-  const generationRef = useRef(0)
-  if (scopeRef.current !== scopeKey) {
-    scopeRef.current = scopeKey
-    generationRef.current += 1
-  }
-  const inventoryPausedRef = useRef(false)
+  const coordinatorRef = useRef<AgentComputerCoordinator | null>(null)
+  if (!coordinatorRef.current) coordinatorRef.current = new AgentComputerCoordinator()
+  const coordinator = coordinatorRef.current
+  coordinator.setScope(scopeKey)
   // Which workspace/agent computer has been read once (derived, so the first render already knows it is loading).
   const [loadedFor, setLoadedFor] = useState<string | null>(null)
+  const [refreshRevision, setRefreshRevision] = useState(0)
   const initialLoading = Boolean(
     !showcase && computersAvailable && activeWorkspaceId && agent && agentType === 'overlay' && loadedFor !== scopeKey,
   )
   const currentAgentComputer = agentComputer?.workspaceId === activeWorkspaceId
     && agentComputer.ownerType === 'agent' && agentComputer.ownerId === agent?.id ? agentComputer : null
 
+  useEffect(() => {
+    coordinator.setScope(scopeKey)
+    setAgentComputerState(null)
+    setLoadedFor(null)
+    setComputerLoadError(null)
+    setComputerLifecycleBusy(null)
+    return () => coordinator.invalidate()
+  }, [coordinator, scopeKey])
+
   // Load this agent's computer (edit mode, Overlay agents, capability on).
   // A bound machine implies the Computer tool group: force it on so the merged
   // toggle never shows "off" above a live machine.
   useEffect(() => {
-    if (showcase || !computersAvailable || !activeWorkspaceId || !agent || agentType !== 'overlay'
-      || loadedFor === scopeKey || inventoryPausedRef.current) return
+    if (showcase || !computersAvailable || !activeWorkspaceId || !agent || agentType !== 'overlay') return
+    const request = coordinator.beginRefresh()
+    if (!request) return
     let cancelled = false
-    const requestScope = scopeKey
-    const requestGeneration = generationRef.current
     setComputerLoadError(null)
     void overlayAppClient.computers.list(activeWorkspaceId).then(
       (result) => {
-        if (cancelled || !isCurrentAgentComputerRequest(scopeRef.current, requestScope, generationRef.current, requestGeneration)) return
-        setLoadedFor(requestScope)
+        if (cancelled || !coordinator.isCurrent(request)) return
+        setLoadedFor(scopeKey)
         setComputerLoadError(null)
         const existing = result.computers.find(
           (computer) => computer.ownerType === 'agent' && computer.ownerId === agent.id,
@@ -89,31 +87,27 @@ export function useAgentComputer({
         }
       },
       (error: unknown) => {
-        if (cancelled || !isCurrentAgentComputerRequest(scopeRef.current, requestScope, generationRef.current, requestGeneration)) return
+        if (cancelled || !coordinator.isCurrent(request)) return
         setComputerLoadError(error instanceof Error ? error.message : 'Could not load the computer.')
-        setLoadedFor(requestScope)
+        setLoadedFor(scopeKey)
       },
     )
     return () => { cancelled = true }
-  }, [showcase, computersAvailable, activeWorkspaceId, agent, agentType, loadedFor, scopeKey, markDirty, setEnabledToolGroups])
-
-  useEffect(() => {
-    setAgentComputerState(null)
-    setLoadedFor(null)
-    setComputerLoadError(null)
-  }, [scopeKey])
+  }, [showcase, computersAvailable, activeWorkspaceId, agent, agentType, coordinator, refreshRevision, scopeKey, markDirty, setEnabledToolGroups])
 
   const setAgentComputer = useCallback((next: Computer | null) => {
-    if (scopeRef.current !== scopeKey) return
     if (next && (next.workspaceId !== activeWorkspaceId || next.ownerType !== 'agent' || next.ownerId !== agent?.id)) return
+    if (!coordinator.acceptSnapshot(scopeKey)) return
     setAgentComputerState(next)
-  }, [activeWorkspaceId, agent?.id, scopeKey])
+    setLoadedFor(scopeKey)
+  }, [activeWorkspaceId, agent?.id, coordinator, scopeKey])
 
   const retryComputerLoad = useCallback(() => {
-    generationRef.current += 1
+    const refresh = coordinator.beginRefresh()
+    if (!refresh) return
     setComputerLoadError(null)
-    setLoadedFor(null)
-  }, [])
+    setRefreshRevision(refresh.revision)
+  }, [coordinator])
   const computerProvisionError = computerProvisionFailure?.agentId === agent?.id
     ? computerProvisionFailure?.message ?? null
     : null
@@ -138,92 +132,75 @@ export function useAgentComputer({
     }
   }
 
+  const runMutation = async <T,>(kind: 'start' | 'stop' | 'control' | 'delete', work: () => Promise<T>, apply: (value: T) => void) => {
+    return coordinator.mutate(kind, work, {
+      start: () => setComputerLifecycleBusy(kind),
+      apply: (result) => { apply(result); setComputerLoadError(null) },
+      error: (error) => toast.error(error instanceof Error ? error.message : 'Computer request failed.'),
+      finish: (queued) => {
+        setComputerLifecycleBusy(null)
+        if (queued) queueMicrotask(retryComputerLoad)
+      },
+    })
+  }
+
+  const startAgentComputer = async () => {
+    if (!activeWorkspaceId || !currentAgentComputer) return null
+    return runMutation('start', () => overlayAppClient.computers.start(activeWorkspaceId, currentAgentComputer.id),
+      (result) => { setAgentComputerState(result.computer); toast.success('Computer started.') })
+  }
+
   const toggleAgentComputerPower = async () => {
-    if (!activeWorkspaceId || !currentAgentComputer || computerLifecycleBusy) return
-    const requestScope = scopeKey
-    const requestGeneration = ++generationRef.current
-    inventoryPausedRef.current = true
-    const action = currentAgentComputer.status === 'ready' ? 'stop' : 'start'
-    setComputerLifecycleBusy(action)
-    try {
-      const result = action === 'stop'
-        ? await overlayAppClient.computers.stop(activeWorkspaceId, currentAgentComputer.id)
-        : await overlayAppClient.computers.start(activeWorkspaceId, currentAgentComputer.id)
-      if (isCurrentAgentComputerRequest(scopeRef.current, requestScope, generationRef.current, requestGeneration)) {
-        setAgentComputerState(result.computer)
-      }
-      toast.success(action === 'stop' ? 'Computer stopped.' : 'Computer started.')
-    } catch (powerError) {
-      toast.error(powerError instanceof Error ? powerError.message : `Could not ${action} the computer.`)
-    } finally {
-      inventoryPausedRef.current = false
-      setComputerLifecycleBusy(null)
-    }
+    if (!activeWorkspaceId || !currentAgentComputer) return
+    if (currentAgentComputer.status !== 'ready') return startAgentComputer()
+    return runMutation('stop', () => overlayAppClient.computers.stop(activeWorkspaceId, currentAgentComputer.id),
+      (result) => { setAgentComputerState(result.computer); toast.success('Computer stopped.') })
   }
 
   const deleteAgentComputer = async () => {
     if (!activeWorkspaceId || !currentAgentComputer || computerLifecycleBusy || !agent) return
     if (!window.confirm(`Delete ${currentAgentComputer.name ?? "this agent's computer"}? Its disk state is destroyed permanently.`)) return
-    const requestScope = scopeKey
-    const requestGeneration = ++generationRef.current
-    inventoryPausedRef.current = true
-    setComputerLifecycleBusy('delete')
-    try {
+    await runMutation('delete', async () => {
       await overlayAppClient.computers.destroy(activeWorkspaceId, currentAgentComputer.id)
       // The machine is already gone, so persist the merged toggle off right
       // away — otherwise the saved grant would keep offering computer tools
       // the agent can no longer use. Strip computer ids from the *stored*
       // grant so the user's other unsaved edits stay unsaved.
-      const nextGroups = new Set(enabledToolGroups)
-      nextGroups.delete('computer')
-      setEnabledToolGroups(nextGroups)
       await overlayAppClient.agents.update(activeWorkspaceId, agent.id, {
         allowedToolIds: agent.allowedToolIds.filter((id) => !(COMPUTER_TOOL_IDS as readonly string[]).includes(id)),
       })
-      if (isCurrentAgentComputerRequest(scopeRef.current, requestScope, generationRef.current, requestGeneration)) setAgentComputerState(null)
+      return true
+    }, () => {
+      const nextGroups = new Set(enabledToolGroups)
+      nextGroups.delete('computer')
+      setEnabledToolGroups(nextGroups)
+      setAgentComputerState(null)
       toast.success('Computer deleted.')
-    } catch (deleteError) {
-      toast.error(deleteError instanceof Error ? deleteError.message : 'Could not delete the computer.')
-    } finally {
-      inventoryPausedRef.current = false
-      setComputerLifecycleBusy(null)
-    }
+    })
   }
 
   const controlAgentComputer = async () => {
-    if (!activeWorkspaceId || !currentAgentComputer || computerLifecycleBusy) return
+    if (!activeWorkspaceId || !currentAgentComputer) return
     const action = currentAgentComputer.controlledByUserId ? 'release' : 'take'
     try {
-      await updateAgentComputerControl(action)
-      toast.success(action === 'take' ? 'You have control of the computer.' : 'Control handed back to the agent.')
+      const updated = await updateAgentComputerControl(action)
+      if (updated) toast.success(action === 'take' ? 'You have control of the computer.' : 'Control handed back to the agent.')
     } catch (controlError) {
       toast.error(controlError instanceof Error ? controlError.message : 'Could not change computer control.')
     }
   }
 
   const updateAgentComputerControl = async (action: 'take' | 'release') => {
-    if (!activeWorkspaceId || !currentAgentComputer || !user?.id || computerLifecycleBusy) {
-      throw new Error('Could not change computer control.')
+    if (!activeWorkspaceId || !currentAgentComputer || !user?.id) {
+      return null
     }
-    const requestScope = scopeKey
-    const requestGeneration = ++generationRef.current
-    inventoryPausedRef.current = true
-    setComputerLifecycleBusy('control')
-    try {
-      const updated = await changeAgentComputerControl({
+    const updated = await runMutation('control', () => changeAgentComputerControl({
         computer: currentAgentComputer,
         userId: user.id,
         action,
         request: (workspaceId, computerId, nextAction) => overlayAppClient.computers.control(workspaceId, computerId, nextAction),
-      })
-      if (isCurrentAgentComputerRequest(scopeRef.current, requestScope, generationRef.current, requestGeneration)) {
-        setAgentComputerState(updated)
-      }
-      return updated
-    } finally {
-      inventoryPausedRef.current = false
-      setComputerLifecycleBusy(null)
-    }
+      }), setAgentComputerState)
+    return updated
   }
 
   return {
@@ -244,5 +221,6 @@ export function useAgentComputer({
     deleteAgentComputer,
     controlAgentComputer,
     updateAgentComputerControl,
+    startAgentComputer,
   }
 }

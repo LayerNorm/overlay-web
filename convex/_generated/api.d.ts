@@ -40,6 +40,7 @@ import type * as billing_autoTopUpSettlement from "../billing/autoTopUpSettlemen
 import type * as billing_lib_stripeOverlaySubscription from "../billing/lib/stripeOverlaySubscription.js";
 import type * as billing_spendLimits from "../billing/spendLimits.js";
 import type * as billing_subscriptions from "../billing/subscriptions.js";
+import type * as billing_stripeWebhooks from "../billing/stripeWebhooks.js";
 import type * as billing_usageTotals from "../billing/usageTotals.js";
 import type * as billing_workspacePayer from "../billing/workspacePayer.js";
 import type * as chat_conversations from "../chat/conversations.js";
@@ -157,6 +158,7 @@ declare const fullApi: ApiFromModules<{
   "billing/lib/stripeOverlaySubscription": typeof billing_lib_stripeOverlaySubscription;
   "billing/spendLimits": typeof billing_spendLimits;
   "billing/subscriptions": typeof billing_subscriptions;
+  "billing/stripeWebhooks": typeof billing_stripeWebhooks;
   "billing/usageTotals": typeof billing_usageTotals;
   "billing/workspacePayer": typeof billing_workspacePayer;
   "chat/conversations": typeof chat_conversations;
