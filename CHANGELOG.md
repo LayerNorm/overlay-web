@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Let workspace-visible and personally owned agents take Personal tasks, keep creator-only agents private from other members, and preserve assignment eligibility when tasks change scope.
+
 - Keep agent Details and Computer tabs synchronized after starting, stopping, waking or deleting the attached computer.
 
 - Refresh the agent conversation roster after agent creation, edits and archive so newly created agents open without a page reload. Ignore stale requests and unrelated workspace changes.
