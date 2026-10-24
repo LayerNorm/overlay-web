@@ -393,3 +393,45 @@ test('an ambiguous tool retry is returned to the model without a duplicate side 
   assert.equal(result.steps[0]?.toolResults[0]?.type, 'tool-error')
   assert.equal(result.content, 'The result is uncertain.')
 })
+
+test('only screen captures may replay an ambiguous native tool step', () => {
+  assert.equal(refusedAmbiguousWorkspaceAgentToolRetry(1, 'computer_exec'), null)
+  for (const attempt of [2, 3]) {
+    assert.equal(refusedAmbiguousWorkspaceAgentToolRetry(attempt, 'computer_screenshot'), null)
+    for (const toolName of [
+      undefined, 'computer_exec', 'computer_terminal', 'computer_browser', 'computer_input',
+      'computer_open_url', 'computer_write_file', 'call_mcp_tool', 'executor', 'future_tool',
+    ]) {
+      assert.match(refusedAmbiguousWorkspaceAgentToolRetry(attempt, toolName)?.error ?? '', /not retried/)
+    }
+  }
+})
+
+test('a retried screen capture reaches the model as a fresh image result', async () => {
+  let captures = 0
+  let receivedImage: unknown
+  const screenshot = workspaceAgentToolResultFromOutput({
+    output: { type: 'content', value: [{ type: 'image-data', data: 'c2NyZWVuc2hvdA==', mediaType: 'image/png' }] },
+    display: { success: true, width: 1280, height: 720 },
+    outputIsMapped: true,
+  })
+  const dependencies = createDependencies({
+    calls: [modelCall([{ toolName: 'computer_screenshot', toolCallId: 'capture-retry', input: {} }])],
+  })
+  const callModel = dependencies.callModel
+  dependencies.callModel = async (args) => {
+    if (args.modelStep === 0) return callModel(args)
+    receivedImage = args.messages.at(-1)?.content
+    return modelCall([], 'I received the fresh capture.')
+  }
+  dependencies.executeTool = async ({ toolCall: current }) => {
+    const refusal = refusedAmbiguousWorkspaceAgentToolRetry(2, current.toolName)
+    if (refusal) return refusal
+    captures += 1
+    return screenshot
+  }
+  const result = await runWorkspaceAgentTurnLoop({ prepared: prepared(), dependencies, usage: usageState() })
+  assert.equal(captures, 1)
+  assert.equal(result.steps[0]?.toolResults[0]?.type, 'tool-result')
+  assert.deepEqual(receivedImage, [{ type: 'tool-result', toolCallId: 'capture-retry', toolName: 'computer_screenshot', output: screenshot.output }])
+})

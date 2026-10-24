@@ -11,6 +11,7 @@ import {
 import { FatalError } from 'workflow'
 import { agentRunService } from '@/server/conversations/http'
 import { getLanguageModel } from '@/server/ai/model-runtime'
+import { logger } from '@/server/observability/logger'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { ActConversationServiceError, ActEntitlementService } from '@/server/conversations/ActEntitlementService'
 import {
@@ -318,19 +319,28 @@ async function renewWorkspaceAgentLease(prepared: WorkspaceAgentPreparedContext)
 }
 
 async function freshWorkspaceTooling(prepared: WorkspaceAgentPreparedContext, toolCallId: string) {
-  const current = await freshWorkspaceAgentContext(prepared)
-  if (!current) throw new FatalError('The agent run is no longer active or authorized.')
-  await renewWorkspaceAgentLease(prepared)
-  const { context, agent, gate } = current
-  return await buildWorkspaceAgentTooling({
-    actorUserId: prepared.actorUserId, agentPrincipalId: agent.principalId, conversationId: prepared.conversationId,
-    effectiveModelId: prepared.modelId, entitlements: gate.runtimeEntitlements,
-    grant: { agentId: agent.id, allowedToolIds: agent.allowedToolIds, isDefaultMaster: Boolean(agent.isDefault || agent.name.toLowerCase() === 'overlay') },
-    approvalMode: agent.harness === 'overlay' && agent.permissionMode === 'auto' ? 'auto' : 'ask',
-    computerApprovalContext: 'work',
-    idempotencyKey: `${prepared.runId}:${toolCallId}`, latestUserText: context.latestUserText, memoryEnabled: prepared.memoryEnabled,
-    paid: gate.paid, requestFingerprint: prepared.requestFingerprint, turnId: prepared.turnId, workspaceId: prepared.workspaceId,
-  })
+  try {
+    const current = await freshWorkspaceAgentContext(prepared)
+    if (!current) throw new FatalError('The agent run is no longer active or authorized.')
+    await renewWorkspaceAgentLease(prepared)
+    const { context, agent, gate } = current
+    return await buildWorkspaceAgentTooling({
+      actorUserId: prepared.actorUserId, agentPrincipalId: agent.principalId, conversationId: prepared.conversationId,
+      effectiveModelId: prepared.modelId, entitlements: gate.runtimeEntitlements,
+      grant: { agentId: agent.id, allowedToolIds: agent.allowedToolIds, isDefaultMaster: Boolean(agent.isDefault || agent.name.toLowerCase() === 'overlay') },
+      approvalMode: agent.harness === 'overlay' && agent.permissionMode === 'auto' ? 'auto' : 'ask',
+      computerApprovalContext: 'work',
+      idempotencyKey: `${prepared.runId}:${toolCallId}`, latestUserText: context.latestUserText, memoryEnabled: prepared.memoryEnabled,
+      paid: gate.paid, requestFingerprint: prepared.requestFingerprint, turnId: prepared.turnId, workspaceId: prepared.workspaceId,
+    })
+  } catch (failure) {
+    const { attempt, stepId } = getStepMetadata()
+    logger.warn('[workspace-agent] tool preparation failed', {
+      runId: prepared.runId, toolCallId, stepId, attempt,
+      failure: failure instanceof Error ? failure : new Error('Unknown tool preparation failure'),
+    })
+    throw failure
+  }
 }
 
 export async function inspectWorkspaceAgentTool(input: { prepared: WorkspaceAgentPreparedContext; toolCall: { toolCallId: string; toolName: string; input: unknown } }): Promise<{ available: boolean; needsApproval: boolean }> {
@@ -365,7 +375,7 @@ export async function executeWorkspaceAgentTool(input: { prepared: WorkspaceAgen
     const output = { error: 'This action became approval-required before execution.' }
     return workspaceAgentToolResultFromOutput({ output, display: output, refusedApproval: true })
   }
-  const retryRefusal = refusedAmbiguousWorkspaceAgentToolRetry(getStepMetadata().attempt)
+  const retryRefusal = refusedAmbiguousWorkspaceAgentToolRetry(getStepMetadata().attempt, input.toolCall.toolName)
   if (retryRefusal) return retryRefusal
   const latestTooling = await freshWorkspaceTooling(input.prepared, input.toolCall.toolCallId)
   const latestDefinition = latestTooling?.tools[input.toolCall.toolName]

@@ -49,8 +49,9 @@ export function workspaceAgentToolResultOutput(result: WorkspaceAgentToolResult)
   return result.output
 }
 
-export function refusedAmbiguousWorkspaceAgentToolRetry(attempt: number): WorkspaceAgentToolResult | null {
-  if (attempt <= 1) return null
+export function refusedAmbiguousWorkspaceAgentToolRetry(attempt: number, toolName?: string): WorkspaceAgentToolResult | null {
+  // A new screen capture cannot replay a click, keystroke or command.
+  if (attempt <= 1 || toolName === 'computer_screenshot') return null
   const output = { error: 'The action outcome is uncertain. This call was not retried.' }
   return workspaceAgentToolResultFromOutput({ output, display: output, error: output.error })
 }

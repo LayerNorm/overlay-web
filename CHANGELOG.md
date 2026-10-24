@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Allow native-agent workflow retries to recapture the screen without replaying clicks, typing, commands or unknown tools. Keep fresh authorization and billing checks, and log safe preparation-failure metadata.
+
 - Browser tools now report expired element references as recoverable stale references and direct agents to refresh their snapshot without guessing or clicking a replacement target.
 - Apply Stripe webhook event markers and workspace billing updates atomically so failed writes remain retryable without duplicate credit grants.
 - Keep agent Computer controls and background refreshes scoped to the current workspace and agent, including wake and takeover responses.

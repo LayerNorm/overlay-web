@@ -158,7 +158,7 @@ test('a room agent turn is owned by a durable run, not by an HTTP request', asyn
   assert.match(workflow, /inspectTool: inspectWorkspaceAgentTool/)
   assert.match(workflow, /executeTool: executeWorkspaceAgentTool/)
   assert.match(loop, /if \(!decision\.approved\)/)
-  assert.match(durable, /refusedAmbiguousWorkspaceAgentToolRetry\(getStepMetadata\(\)\.attempt\)/)
+  assert.match(durable, /refusedAmbiguousWorkspaceAgentToolRetry\(getStepMetadata\(\)\.attempt, input\.toolCall\.toolName\)/)
   assert.match(durable, /idempotencyKey: `\$\{input\.prepared\.runId\}:\$\{input\.toolCall\.toolCallId\}`/)
   assert.equal(workflow.match(/callModel: callWorkspaceAgentModel/g)?.length, 1)
   assert.equal(workflow.match(/executeTool: executeWorkspaceAgentTool/g)?.length, 1)
