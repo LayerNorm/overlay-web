@@ -17,6 +17,11 @@ provider connections remain independent. The protocol capabilities below describ
 implemented external-agent subsystem, not public availability. See the root
 [feature inventory](../../FEATURES.md) for status, providers and re-enablement steps.
 
+The agent conversation roster listens to workspace-scoped directory-change events after
+creation, editing, archive and restore. Refreshes invalidate older responses and show a
+pending state so client-side navigation cannot mistake a newly created agent for an
+unavailable one. Unmounting or changing workspace cancels publication from the old roster.
+
 The first release supports agent conversations and supervised work through one outbound-only
 Overlay Agent Host. ACP is the primary coding-agent adapter; bounded eve and native adapters
 may normalize into the same protocol. Environments are `local`, `vps`, `overlay_cloud`, or
