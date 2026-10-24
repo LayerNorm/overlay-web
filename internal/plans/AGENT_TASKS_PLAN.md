@@ -1,6 +1,6 @@
 # Agent Tasks Plan
 
-Status: approved. Decisions 2 to 5 accepted as recommended; decision 1 replaced by the explicit Start/Queue button. Phases 1 and 2 in progress.
+Status: approved. Decisions 2 to 5 accepted as recommended; decision 1 replaced by the explicit Start/Queue button. Phase 1 implemented; Phase 2 in review. Later execution phases remain planned.
 
 Goal: a task in Work can be given to an agent the same way it is given to a person. The agent picks it up in its own
 thread, works it, keeps the task up to date, and hands it back for review or asks for input. Any chat (personal chat,
@@ -12,18 +12,16 @@ manage it.
 
 - Tasks: `workItems` in `convex/schema.ts`, mutations in `convex/work/workItems.ts`, HTTP via `/api/v1/work` and
   `WorkService` (`src/server/work`). Fields already cover what agents need: status (backlog, todo, progress, review,
-  done), `blocked`, priority, `assigneePrincipalId` ("a person now, an agent later"), `reviewerUserId`, dates, parent,
+  done), `blocked`, priority, `assigneePrincipalId`, `reviewerUserId`, dates, parent,
   `blockedBy`, `doneWhen` checklist, `context` links (file, note, chat, link). Activity in `workItemEvents`, which
   already has a `comment` kind. Archive is soft; hard delete only from Settings, only for archived tasks.
 - Agents are workspace principals (`workspacePrincipals.type = 'agent'`) with an active `member` membership
   (`convex/collaboration/agents.ts`). `work/workItems:context` already returns agents as assignees, and `OwnerPicker`
   already has an "Agents" section.
-- Why you only see people: on a Personal task, `OwnerPicker` gets `personalOnly` and hides every agent, and
-  `assertAssignable` (`convex/lib/workItems.ts`) refuses any assignee other than the creator. Solo workspaces mostly
-  produce Personal tasks, so agents never appear. Workspace tasks can technically take an agent today, but nothing
-  happens after assignment.
-- Side finding: the `context` query lists every agent principal, including creator-only agents
-  (`visibility: 'creator'`) that other members are not allowed to see. Phase 1 fixes this.
+- Personal tasks accept the creator and usable agents; Workspace tasks accept only workspace-visible agents.
+  Context hides other members' creator-only agents. Agent assignment does not start a run.
+- Phase 2 adds seven task tools through the existing Work API. Updates enforce revisions and combine fields,
+  status and scope in one Convex transaction. Agent activity attribution is service-only; human permissions remain authoritative.
 - Agent threads: `agents/agentThreads:createThreadByServer` creates a fresh thread under an agent. Turns start through
   `startWorkspaceAgentTurns` (`src/server/agents/start-agent-turns.ts`), which handles native Overlay agents (durable
   workflow) and connected agents (Claude Code/Codex via the Agent Host). Runs are tracked in `conversationAgentRuns`

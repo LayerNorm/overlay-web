@@ -31,7 +31,7 @@ function mockApi(handler: (url: URL, init: RequestInit, body: Record<string, unk
     const body = typeof init.body === 'string' ? JSON.parse(init.body) as Record<string, unknown> : null
     requests.push({ path: url.pathname, method, body })
     const result = handler(url, init, body)
-    return Response.json(result)
+    return result instanceof Response ? result : Response.json(result)
   }) as typeof fetch
   return { requests, restore: () => { globalThis.fetch = originalFetch } }
 }
@@ -67,32 +67,44 @@ test('ambiguous names return options without writing', async () => {
 })
 
 test('stale revisions conflict without writes', async () => {
-  const api = mockApi((url) => url.pathname.endsWith('/context') ? contextBody : { item: task })
+  let stored = { ...task, title: 'Newer human edit' }
+  const api = mockApi((url, init, body) => {
+    if (url.pathname.endsWith('/context')) return contextBody
+    if (init.method === 'PATCH') {
+      if (body?.expectedUpdatedAt !== stored.updatedAt) return Response.json({ error: 'Read the task again.', code: 'work_conflict' }, { status: 409 })
+      stored = { ...stored, ...body }
+    }
+    return { item: stored }
+  })
   try {
     const result = await executeUpdateTask(baseOptions, { taskId: 'task1', revision: '9', title: 'Changed' })
     assert.deepEqual(result, { success: false, conflict: true, currentRevision: '10' })
-    assert.equal(api.requests.some((request) => request.method === 'PATCH' || request.method === 'POST'), false)
+    assert.equal(stored.title, 'Newer human edit')
+    assert.equal(api.requests.find((request) => request.method === 'PATCH')?.body?.expectedUpdatedAt, 9)
   } finally {
     api.restore()
   }
 })
 
-test('status updates patch fields before moving and only agent turns send attribution', async () => {
+test('fields, status, scope and agent attribution use one atomic update', async () => {
   const api = mockApi((url, init, body) => {
     if (url.pathname.endsWith('/context')) return contextBody
     if (url.pathname === '/api/v1/work/task1') return { item: { ...task, ...body, updatedAt: 11 } }
-    if (url.pathname.endsWith('/move')) return { item: { ...task, status: 'done', updatedAt: 12 } }
     return { item: { ...task, title: 'Changed', status: 'done', updatedAt: 12 } }
   })
   try {
     const result = await executeUpdateTask({ ...baseOptions, agentPrincipalId: 'p-agent' }, {
-      taskId: 'task1', title: 'Changed', status: 'done',
+      taskId: 'task1', title: 'Changed', status: 'done', scope: 'workspace', revision: '10',
     })
     assert.equal(result.success, true)
     const writes = api.requests.filter((request) => request.method !== 'GET')
-    assert.deepEqual(writes.map((request) => request.path), ['/api/v1/work/task1', '/api/v1/work/task1/move'])
+    assert.deepEqual(writes.map((request) => request.path), ['/api/v1/work/task1'])
     assert.equal(writes[0]?.body?.actingAgentPrincipalId, 'p-agent')
-    assert.equal(writes[1]?.body?.actingAgentPrincipalId, 'p-agent')
+    assert.equal(writes[0]?.body?.status, 'done')
+    assert.equal(writes[0]?.body?.scope, 'workspace')
+    assert.equal(writes[0]?.body?.expectedUpdatedAt, 10)
+    assert.ok(result.success)
+    if (result.success) assert.equal(result.task.status, 'done')
   } finally {
     api.restore()
   }

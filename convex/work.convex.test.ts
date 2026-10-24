@@ -1,7 +1,8 @@
-import { beforeAll, describe, expect, test } from 'vitest'
+import { beforeAll, describe, expect, test, vi } from 'vitest'
 import { convexTest } from 'convex-test'
 import { makeFunctionReference } from 'convex/server'
 import schema from './schema'
+import { parseUpdateWorkItem } from '../src/server/work/work-input'
 
 const modules = import.meta.glob('./**/*.ts')
 const secret = 'work-secret'
@@ -15,7 +16,7 @@ const q = (name: string) => makeFunctionReference<'query'>(name)
 const m = (name: string) => makeFunctionReference<'mutation'>(name)
 
 type Convex = ReturnType<typeof convexTest>
-type Item = { _id: string; title: string; status: string; rank: string; scope: string; parentId?: string; assigneePrincipalId?: string; archivedAt?: number; blocked: boolean }
+type Item = { _id: string; title: string; status: string; rank: string; scope: string; parentId?: string; assigneePrincipalId?: string; archivedAt?: number; blocked: boolean; updatedAt: number }
 
 /** A workspace with an owner, an admin, two members, a guest, and an agent. */
 async function seed(convex: Convex, policy?: Record<string, unknown>) {
@@ -28,7 +29,7 @@ async function seed(convex: Convex, policy?: Record<string, unknown>) {
       await ctx.db.insert('workspaceMemberships', { membershipId: `m-${userId}`, workspaceId, principalId: `p-${userId}`, role, status: 'active', joinedAt: now, updatedAt: now })
     }
     await ctx.db.insert('workspacePrincipals', { principalId: 'p-agent', workspaceId, type: 'agent', agentId: 'agent-1', displayName: 'Researcher', createdAt: now, updatedAt: now })
-    await ctx.db.insert('workspacePrincipals', { principalId: 'p-archived-agent', workspaceId, type: 'agent', agentId: 'agent-archived', displayName: 'Archived agent', archivedAt: now, createdAt: now, updatedAt: now })
+    await ctx.db.insert('workspacePrincipals', { principalId: 'p-archived-actor', workspaceId, type: 'agent', agentId: 'archived-actor', displayName: 'Archived agent', archivedAt: now, createdAt: now, updatedAt: now })
     await ctx.db.insert('workspaceAgentDefinitions', {
       principalId: 'p-agent', agentId: 'agent-1', workspaceId, name: 'Researcher', instructions: 'Research.',
       harness: 'overlay', modelId: 'test-model', allowedToolIds: [], invocationPolicy: 'mention',
@@ -90,6 +91,67 @@ function api(convex: Convex) {
     comment: (userId: string, workItemId: string, body: string) => convex.mutation(m('work/workItemEvents:addComment'), { ...auth(userId), workItemId, body }),
   }
 }
+
+test('a stale API update cannot overwrite a newer task mutation', async () => {
+  const convex = convexTest(schema, modules)
+  await seed(convex)
+  const work = api(convex)
+  const clock = vi.spyOn(Date, 'now').mockReturnValue(now)
+  try {
+    const original = await work.create('alice', { title: 'Original' })
+    clock.mockReturnValue(now + 1)
+    await work.update('alice', original._id, { title: 'Newer human edit' })
+    const stale = parseUpdateWorkItem({ title: 'Stale agent edit', expectedUpdatedAt: original.updatedAt })
+    await expect(work.update('alice', original._id, { ...stale })).rejects.toThrow(/WORK_INVALID:conflict/)
+    expect((await work.get('alice', original._id))?.title).toBe('Newer human edit')
+  } finally {
+    clock.mockRestore()
+  }
+})
+
+test('field, status and scope updates commit together or leave the task and activity unchanged', async () => {
+  const convex = convexTest(schema, modules)
+  await seed(convex)
+  const work = api(convex)
+  const original = await work.create('alice', { title: 'Original', startDate: '2030-01-02' })
+  const before = await work.events('alice', original._id)
+  await expect(work.update('alice', original._id, {
+    ...parseUpdateWorkItem({ title: 'Invalid edit', scope: 'workspace', status: 'done', dueDate: '2030-01-01' }),
+  })).rejects.toThrow(/date_order/)
+  expect(await work.get('alice', original._id)).toMatchObject({ title: 'Original', scope: 'personal', status: 'todo' })
+  expect(await work.events('alice', original._id)).toEqual(before)
+
+  const changed = await work.update('alice', original._id, {
+    ...parseUpdateWorkItem({ title: 'Complete edit', scope: 'workspace', status: 'done', expectedUpdatedAt: original.updatedAt }),
+  })
+  expect(changed).toMatchObject({ title: 'Complete edit', scope: 'workspace', status: 'done' })
+  expect(await work.get('bob', original._id)).toMatchObject({ title: 'Complete edit', scope: 'workspace', status: 'done' })
+})
+
+test('task revisions advance for edits, moves and archive/restore within one clock tick', async () => {
+  const convex = convexTest(schema, modules)
+  await seed(convex)
+  const work = api(convex)
+  const clock = vi.spyOn(Date, 'now').mockReturnValue(now)
+  try {
+    const original = await work.create('alice', { title: 'Original' })
+    let previous = original.updatedAt
+    for (const change of [
+      () => work.update('alice', original._id, { title: 'Changed' }),
+      () => work.move('alice', original._id, { status: 'progress' }),
+      () => work.setScope('alice', original._id, 'workspace'),
+      () => work.archive('alice', original._id),
+      () => work.restore('alice', original._id),
+    ]) {
+      await change()
+      const current = await convex.run((ctx) => ctx.db.get(original._id as import('./_generated/dataModel').Id<'workItems'>))
+      expect(current?.updatedAt).toBeGreaterThan(previous)
+      previous = current!.updatedAt
+    }
+  } finally {
+    clock.mockRestore()
+  }
+})
 
 describe('personal and workspace visibility', () => {
   test('personal tasks are private; workspace tasks are shared with members but not guests or other workspaces', async () => {
@@ -165,7 +227,7 @@ test('acting agent attribution is validated and applied to Work activity only', 
   expect(events.length).toBeGreaterThanOrEqual(5)
   expect(events.every((event) => event.actorPrincipalId === 'p-agent')).toBe(true)
 
-  for (const actingAgentPrincipalId of ['p-alice', 'p-archived-agent', 'p-agent-other']) {
+  for (const actingAgentPrincipalId of ['p-alice', 'p-archived-actor', 'p-agent-other']) {
     await expect(api(convex).create('alice', { actingAgentPrincipalId })).rejects.toThrow('WORK_INVALID:acting_agent')
   }
 })

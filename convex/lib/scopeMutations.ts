@@ -1,5 +1,5 @@
 import { v } from 'convex/values'
-import { mutation } from '../_generated/server'
+import { mutation, type MutationCtx } from '../_generated/server'
 import { requireAccessToken, validateServerSecret } from './auth'
 import {
   planArchive,
@@ -11,6 +11,7 @@ import {
 import type { ResourceKind, ScopedRow } from '../../src/shared/workspaces/resource-scope'
 
 type ScopedDoc = ScopedRow & { workspaceId?: string }
+type ScopeMutationArgs = { id: string; userId: string; workspaceId?: string; accessToken?: string; serverSecret?: string; actingAgentPrincipalId?: string }
 type LooseDb = {
   get(id: unknown): Promise<ScopedDoc | null>
   patch(id: unknown, patch: Record<string, unknown>): Promise<void>
@@ -42,7 +43,7 @@ export function scopeMutations(
     /** Ids of the rows that belong under this one (a folder's contents), moved, archived, and restored with it. */
     descendants?: (db: unknown, id: string) => Promise<string[]>
     /** Runs after a move, archive, or restore was written (an activity log, for example). */
-    afterApply?: (ctx: unknown, change: { action: 'scope' | 'archived' | 'restored'; id: string; row: ScopedDoc; userId: string; actingAgentPrincipalId?: string; to?: 'personal' | 'workspace'; moved?: string[] }) => Promise<void>
+    afterApply?: (ctx: unknown, change: { action: 'scope' | 'archived' | 'restored'; id: string; row: ScopedDoc; userId: string; actingAgentPrincipalId?: string; to?: 'personal' | 'workspace'; affectedIds: string[] }) => Promise<void>
   },
 ) {
   const common = {
@@ -64,23 +65,24 @@ export function scopeMutations(
     return { db, id, row: readable ? row : null }
   }
 
+  async function applyScope(ctx: MutationCtx, args: ScopeMutationArgs & { to: 'personal' | 'workspace' }): Promise<ScopeMutationResult> {
+    await authorize(args)
+    const { db, id, row } = await readableRow(ctx, args)
+    const plan = await planMove(ctx, { kind, row, to: args.to, userId: args.userId })
+    if (!plan.ok || !id) return { ok: false, reason: plan.ok ? 'not_found' : plan.reason }
+    await db.patch(id, plan.patch)
+    const moved = [id]
+    // A folder's contents go with it: only the creator's own, not-archived rows.
+    for (const childId of (await options?.descendants?.(db, id)) ?? []) {
+      const child = await db.get(childId)
+      if (child && !child.archivedAt && child.userId === row?.userId) { await db.patch(childId, plan.patch); moved.push(childId) }
+    }
+    if (row) await options?.afterApply?.(ctx, { action: 'scope', id, row, userId: args.userId, actingAgentPrincipalId: args.actingAgentPrincipalId, to: args.to, affectedIds: moved })
+    return { ok: true }
+  }
   const setScope = mutation({
     args: { ...common, to: scopeValidator },
-    handler: async (ctx, args): Promise<ScopeMutationResult> => {
-      await authorize(args)
-      const { db, id, row } = await readableRow(ctx, args)
-      const plan = await planMove(ctx, { kind, row, to: args.to, userId: args.userId })
-      if (!plan.ok || !id) return { ok: false, reason: plan.ok ? 'not_found' : plan.reason }
-      await db.patch(id, plan.patch)
-      const moved = [id]
-      // A folder's contents go with it: only the creator's own, not-archived rows.
-      for (const childId of (await options?.descendants?.(db, id)) ?? []) {
-        const child = await db.get(childId)
-        if (child && !child.archivedAt && child.userId === row?.userId) { await db.patch(childId, plan.patch); moved.push(childId) }
-      }
-      if (row) await options?.afterApply?.(ctx, { action: 'scope', id, row, userId: args.userId, actingAgentPrincipalId: args.actingAgentPrincipalId, to: args.to, moved })
-      return { ok: true }
-    },
+    handler: applyScope,
   })
 
   const archive = mutation({
@@ -91,13 +93,15 @@ export function scopeMutations(
       const plan = await planArchive(ctx, { row, userId: args.userId, now: Date.now() })
       if (!plan.ok || !id) return { ok: false, reason: plan.ok ? 'not_found' : plan.reason }
       await db.patch(id, { ...plan.patch, ...(options?.onArchive ?? {}) })
+      const affectedIds = [id]
       for (const childId of (await options?.descendants?.(db, id)) ?? []) {
         const child = await db.get(childId)
         if (child && !child.archivedAt && child.userId === row?.userId) {
           await db.patch(childId, { archivedAt: plan.patch.archivedAt, archivedBy: plan.patch.archivedBy, archivedFromScope: rowScopeOf(child), ...(options?.onArchive ?? {}) })
+          affectedIds.push(childId)
         }
       }
-      if (row) await options?.afterApply?.(ctx, { action: 'archived', id, row, userId: args.userId, actingAgentPrincipalId: args.actingAgentPrincipalId })
+      if (row) await options?.afterApply?.(ctx, { action: 'archived', id, row, userId: args.userId, actingAgentPrincipalId: args.actingAgentPrincipalId, affectedIds })
       return { ok: true }
     },
   })
@@ -111,17 +115,19 @@ export function scopeMutations(
       if (!plan.ok || !id) return { ok: false, reason: plan.ok ? 'not_found' : plan.reason }
       const archivedAt = row?.archivedAt
       await db.patch(id, { scope: plan.scope, archivedAt: undefined, archivedBy: undefined, archivedFromScope: undefined })
+      const affectedIds = [id]
       // Only the contents that were archived together with it come back.
       for (const childId of (await options?.descendants?.(db, id)) ?? []) {
         const child = await db.get(childId)
         if (child && child.archivedAt !== undefined && child.archivedAt === archivedAt) {
           await db.patch(childId, { scope: child.archivedFromScope ?? child.scope ?? 'personal', archivedAt: undefined, archivedBy: undefined, archivedFromScope: undefined })
+          affectedIds.push(childId)
         }
       }
-      if (row) await options?.afterApply?.(ctx, { action: 'restored', id, row, userId: args.userId, actingAgentPrincipalId: args.actingAgentPrincipalId })
+      if (row) await options?.afterApply?.(ctx, { action: 'restored', id, row, userId: args.userId, actingAgentPrincipalId: args.actingAgentPrincipalId, affectedIds })
       return { ok: true }
     },
   })
 
-  return { setScope, archive, restore }
+  return { setScope, archive, restore, applyScope }
 }

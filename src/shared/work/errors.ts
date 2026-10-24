@@ -6,7 +6,8 @@
 const PREFIX = 'WORK_INVALID:'
 
 export function parseWorkErrorReason(error: unknown): string | null {
-  const message = error instanceof Error ? error.message : typeof error === 'string' ? error : ''
+  const data = typeof error === 'object' && error !== null && 'data' in error ? error.data : undefined
+  const message = typeof data === 'string' ? data : error instanceof Error ? error.message : typeof error === 'string' ? error : ''
   const index = message.indexOf(PREFIX)
   if (index < 0) return null
   return message.slice(index + PREFIX.length).split(/[\s\n:]/)[0] || null
@@ -14,6 +15,8 @@ export function parseWorkErrorReason(error: unknown): string | null {
 
 export function workErrorMessage(reason: string): string {
   switch (reason) {
+    case 'conflict': return 'This task changed. Read it again before updating it.'
+    case 'scope_forbidden': return 'You do not have access to move this task to that scope.'
     case 'title_required': return 'Give the task a title.'
     case 'title_too_long': return 'That title is too long (200 characters at most).'
     case 'description_too_long': return 'That description is too long.'
@@ -31,7 +34,7 @@ export function workErrorMessage(reason: string): string {
     case 'too_many': return 'A task can be blocked by up to 50 others.'
     case 'blocker': return 'A blocking task is not available.'
     case 'assignee': return 'That person or agent cannot be given this task.'
-    case 'personal_assignee': return 'A personal task can only be assigned to you.'
+    case 'personal_assignee': return 'A personal task can only be assigned to you or an agent you can use.'
     case 'reviewer': return 'That person cannot review this task.'
     case 'personal_reviewer': return 'A personal task can only be reviewed by you.'
     case 'archived': return 'Restore the task first.'
@@ -42,5 +45,6 @@ export function workErrorMessage(reason: string): string {
 }
 
 export function workErrorStatus(reason: string): number {
-  return reason === 'archived' ? 409 : 400
+  if (reason === 'scope_forbidden') return 403
+  return reason === 'archived' || reason === 'conflict' ? 409 : 400
 }

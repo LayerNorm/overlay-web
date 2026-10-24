@@ -11,7 +11,7 @@ const PRIORITY_NUMBER = { low: 1, medium: 2, high: 3 } as const
 const PRIORITY_LABEL = { 1: 'low', 2: 'medium', 3: 'high' } as const
 type PriorityName = keyof typeof PRIORITY_NUMBER
 type Failure = { success: false; error: string; conflict?: true; currentRevision?: string }
-type ApiResult<T> = { ok: true; data: T } | { ok: false; error: string }
+type ApiResult<T> = { ok: true; data: T } | { ok: false; error: string; conflict?: true }
 type TaskContext = Pick<WorkContext, 'principalId' | 'people'>
 
 function attributionBody(options: OverlayToolsOptions): Record<string, string> {
@@ -44,7 +44,10 @@ async function sendJson<T>(
     ...attributionBody(options),
     ...body,
   }, options.accessToken, options.baseUrl, { method, forwardCookie: options.forwardCookie })
-  if (!response.ok) return { ok: false, error: await responseError(response, 'Work request failed') }
+  if (!response.ok) {
+    const error = await response.json().catch((_error) => null) as { error?: string; code?: string } | null
+    return { ok: false, error: error?.error ?? 'Work request failed', ...(response.status === 409 && error?.code === 'work_conflict' ? { conflict: true as const } : {}) }
+  }
   return { ok: true, data: await response.json() as T }
 }
 
@@ -268,14 +271,11 @@ export async function executeUpdateTask(options: OverlayToolsOptions, input: {
   context?: WorkContextRef[]
 }) {
   try {
-    let current: WorkItem | undefined
-    if (input.revision !== undefined || input.scope !== undefined) {
-      const currentResult = await fetchTask(options, input.taskId)
-      if (!currentResult.ok) return { success: false, error: currentResult.error }
-      current = currentResult.data
-      const currentRevision = revisionOf(current)
-      if (input.revision !== undefined && input.revision !== currentRevision) {
-        return { success: false, conflict: true, currentRevision }
+    let expectedUpdatedAt: number | undefined
+    if (input.revision !== undefined) {
+      expectedUpdatedAt = Number(input.revision)
+      if (!input.revision.trim() || !Number.isSafeInteger(expectedUpdatedAt) || expectedUpdatedAt < 0) {
+        return { success: false, error: 'Use the revision returned by get_task.' }
       }
     }
     const contextResult = await taskContext(options)
@@ -285,38 +285,19 @@ export async function executeUpdateTask(options: OverlayToolsOptions, input: {
       startDate: dateValue(input.startDate),
       dueDate: dateValue(input.dueDate),
     }, contextResult.data)
-    delete fields.status
-    const hasFields = Object.keys(fields).length > 0
-    let item = current
-    if (hasFields) {
-      const patched = await sendJson<{ item: WorkItem }>(options, `${WORK_PATH}/${encodeURIComponent(input.taskId.trim())}`, fields, 'PATCH')
-      if (!patched.ok) return { success: false, error: patched.error }
-      item = patched.data.item
+    if (input.scope !== undefined) fields.scope = input.scope
+    if (expectedUpdatedAt !== undefined) fields.expectedUpdatedAt = expectedUpdatedAt
+    const result = Object.keys(fields).length > 0
+      ? await sendJson<{ item: WorkItem }>(options, `${WORK_PATH}/${encodeURIComponent(input.taskId.trim())}`, fields, 'PATCH')
+      : await getJson<{ item: WorkItem }>(options, `${WORK_PATH}/${encodeURIComponent(input.taskId.trim())}`)
+    if (!result.ok) {
+      if (result.conflict) {
+        const current = await fetchTask(options, input.taskId)
+        return { success: false, conflict: true, ...(current.ok ? { currentRevision: revisionOf(current.data) } : {}) }
+      }
+      return { success: false, error: result.error }
     }
-    if (input.scope !== undefined && item?.scope !== input.scope) {
-      const moved = await sendJson<{ success: boolean }>(options, '/api/v1/scope', {
-        resource: 'work',
-        id: input.taskId.trim(),
-        action: 'move',
-        to: input.scope,
-      })
-      if (!moved.ok) return { success: false, error: moved.error }
-    }
-    if (input.status !== undefined) {
-      const moved = await sendJson<{ item: WorkItem }>(options, `${WORK_PATH}/${encodeURIComponent(input.taskId.trim())}/move`, { status: input.status })
-      if (!moved.ok) return { success: false, error: moved.error }
-      item = moved.data.item
-    }
-    if (!item) {
-      const refreshed = await fetchTask(options, input.taskId)
-      if (!refreshed.ok) return { success: false, error: refreshed.error }
-      item = refreshed.data
-    } else if (hasFields || input.scope !== undefined || input.status !== undefined) {
-      const refreshed = await fetchTask(options, input.taskId)
-      if (!refreshed.ok) return { success: false, error: refreshed.error }
-      item = refreshed.data
-    }
-    return { success: true, task: fullTask(item, contextResult.data.people) }
+    return { success: true, task: fullTask(result.data.item, contextResult.data.people) }
   } catch (error) {
     return failure(error, 'Failed to update task')
   }

@@ -95,6 +95,9 @@ export interface CreateWorkItemRequest {
 
 /** `null` clears a field; leaving it out leaves it as is. */
 export interface UpdateWorkItemRequest {
+  /** Refuse the entire update if the task changed since it was read. */
+  expectedUpdatedAt?: number
+  scope?: ResourceScope
   title?: string
   description?: string | null
   status?: WorkStatus
