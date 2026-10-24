@@ -186,7 +186,14 @@ def evaluate(connection, expression):
     remote = result.get("result")
     if not isinstance(remote, dict):
         raise DriverError("desktop_driver_failed", "The browser page returned no result.")
-    return remote.get("value")
+    value = remote.get("value")
+    if isinstance(value, dict) and value.get("__overlayError") == "stale_browser_ref":
+        raise DriverError(
+            "stale_browser_ref",
+            "The page changed and this element reference expired. No action was taken. "
+            "Take a new browser snapshot, then use its current ref. Do not retry the old ref or guess a replacement.",
+        )
+    return value
 
 
 SNAPSHOT_EXPRESSION = r"""(() => {
@@ -247,7 +254,7 @@ def browser_ref_expression(ref, action):
     return (
         "(() => { const element = document.querySelector('[data-overlay-ref=' + "
         "JSON.stringify(" + ref_json + ") + ']'); "
-        "if (!element) throw new Error('ref not found'); "
+        "if (!element) return { __overlayError: 'stale_browser_ref' }; "
         + action +
         " })()"
     )

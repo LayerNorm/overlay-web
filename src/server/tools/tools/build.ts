@@ -1086,8 +1086,10 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
       tools.computer_browser = tool({
         description:
           'Control the signed-in browser visible on this computer. Prefer this tool for websites: take a snapshot, then act using its element refs. ' +
+          'Typing, focus and navigation can replace page elements. Take a fresh snapshot after page changes and before reusing refs. ' +
+          'If stale_browser_ref is returned, no action occurred: take a new snapshot and choose the current target, never retry the expired ref or guess a replacement. ' +
           'For a potentially consequential click, call click with confirm: true so the user can approve it. ' +
-          'Use computer_screenshot and computer_input for non-browser apps or when snapshot refs fail. The user sees the same browser in Open desktop.',
+          'Use computer_screenshot and computer_input for non-browser apps or controls absent from a fresh snapshot. The user sees the same browser in Open desktop.',
         inputSchema: computerBrowserSchema,
         ...(options.computerApprovalContext !== undefined
           ? { needsApproval: (input) => toolRequiresApproval('computer_browser', input, { approvalMode: options.approvalMode }) }

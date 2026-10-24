@@ -95,9 +95,12 @@ test('computer screenshot returns image content and computer input validates act
   assert.equal(inputSchema.safeParse({ action: 'type' }).success, false)
 
   const browser = tools.computer_browser as unknown as {
+    description: string
     inputSchema: { safeParse(input: unknown): { success: boolean } }
     toModelOutput(args: { output: { success: boolean; text?: string; error?: string } }): unknown
   }
+  assert.match(browser.description, /stale_browser_ref.*no action occurred/)
+  assert.match(browser.description, /fresh snapshot after page changes/)
   assert.equal(browser.inputSchema.safeParse({ action: 'navigate', url: 'https://example.test/' }).success, true)
   assert.equal(browser.inputSchema.safeParse({ action: 'navigate', url: 'file:///etc/passwd' }).success, false)
   assert.equal(browser.inputSchema.safeParse({ action: 'click' }).success, false)

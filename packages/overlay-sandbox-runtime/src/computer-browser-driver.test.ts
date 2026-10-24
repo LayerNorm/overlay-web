@@ -15,6 +15,7 @@ import {
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Duplex } from 'node:stream'
+import { runInNewContext } from 'node:vm'
 import test from 'node:test'
 import { COMPUTER_DRIVER_SOURCE } from './computer-driver/driver'
 import { COMPUTER_BROWSER_PROFILE_RECOVERY_SOURCE } from './computer-driver/browser-profile-recovery'
@@ -218,7 +219,9 @@ test('browser driver inspects risky click refs and requires confirmation', async
           }
           return { role: 'button', tag: 'button', type: '', name: 'Post', isSubmit: false }
         }
-        const value = message.method === 'Runtime.evaluate' && expression.includes('elementFromPoint')
+        const value = expression.includes('overlay-999')
+          ? { type: 'object', value: { __overlayError: 'stale_browser_ref' } }
+          : message.method === 'Runtime.evaluate' && expression.includes('elementFromPoint')
           ? { type: 'object', value: coordinateInspectionValue() }
           : message.method === 'Runtime.evaluate' && expression.includes('querySelectorAll')
             ? {
@@ -423,6 +426,15 @@ test('browser driver inspects risky click refs and requires confirmation', async
   assert.deepEqual(confirmedClick.payload, { success: true })
   assert.equal(clicks, 1)
 
+  const staleClick = await run('browser', { action: 'click', ref: 'overlay-999', confirm: true })
+  assert.equal(staleClick.result.status, 1)
+  assert.equal(staleClick.payload.error?.code, 'stale_browser_ref')
+  assert.match(staleClick.payload.error?.message ?? '', /No action was taken.*new browser snapshot/)
+  assert.equal(clicks, 1)
+  const refreshed = await run('browser', { action: 'snapshot' })
+  assert.equal(refreshed.result.status, 0)
+  assert.equal(refreshed.payload.elements?.[1]?.ref, 'overlay-2')
+
   const homeClick = await run('browser', { action: 'click', ref: 'overlay-2' })
   assert.equal(homeClick.result.status, 0)
   assert.deepEqual(homeClick.payload, { success: true })
@@ -527,7 +539,10 @@ test('browser driver inspects risky click refs and requires confirmation', async
   const refExpressions = evaluations
     .map((message) => message.params?.expression ?? '')
     .filter((expression) => expression.includes('document.querySelector('))
-  assert.equal(refExpressions.length, 5)
+  assert.equal(refExpressions.length, 6)
+  const staleExpression = refExpressions.find(expression => expression.includes('overlay-999'))!
+  const staleResult = runInNewContext(staleExpression, { document: { querySelector: () => null } })
+  assert.deepEqual(JSON.parse(JSON.stringify(staleResult)), { __overlayError: 'stale_browser_ref' })
   assert.equal(refExpressions.filter((expression) => expression.includes('element.click()')).length, 2)
   assert.ok(refExpressions.every((expression) => expression.includes('data-overlay-ref')))
   assert.ok(refExpressions.some((expression) => expression.includes('overlay-1') && expression.includes('element.click()')))
