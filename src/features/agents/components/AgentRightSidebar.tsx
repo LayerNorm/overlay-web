@@ -53,6 +53,7 @@ export function AgentRightSidebar({
     agentId,
     enabled: computersEnabled,
     visible: selectedTab === 'computer',
+    state: editor.computer,
   })
   const [saveFailed, setSaveFailed] = useState(false)
   const schedulerRef = useRef<ReturnType<typeof createAgentAutosaveScheduler> | null>(null)
