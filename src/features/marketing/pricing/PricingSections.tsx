@@ -1,5 +1,8 @@
+import type { CSSProperties } from 'react'
 import Link from 'next/link'
-import { Check, Plus } from 'lucide-react'
+import { ArrowRight, Check } from 'lucide-react'
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@overlay/ui/primitives'
+import { MarketingPageHead } from '@/features/marketing/components/StaticMarketingShell'
 import { MARKETING_SALES_URL } from '@/shared/marketing/marketing'
 import s from './pricing.module.css'
 
@@ -31,14 +34,16 @@ const FAQ = [
 
 export function PricingHero({ appHref }: { appHref: string }) {
   return (
-    <div className={s.hero}>
-      <h1>Pay for what your workspace <mark>actually uses</mark>.</h1>
-      <p>Every workspace is free or paid. Paid plans start at $8 a month, which becomes $8 of credit for that month. What you use comes out of it.</p>
-      <div className={s.go}>
-        <Link className={s.btn} href={appHref}>Start free</Link>
-        <a className={`${s.btn} ${s.ghost}`} href="#bill">See an example bill</a>
+    <MarketingPageHead
+      label="Pricing"
+      title={<>Pay for what your workspace <span className="k" style={{ '--k': '#ea580c' } as CSSProperties}>actually uses</span></>}
+      lead="Every workspace is free or paid. Paid plans start at $8 a month, which becomes $8 of credit for that month. What you use comes out of it."
+    >
+      <div className="actions">
+        <Link className="btn primary" href={appHref}>Start free <ArrowRight className="i go" /></Link>
+        <a className="btn ghost" href="#bill">See an example bill</a>
       </div>
-    </div>
+    </MarketingPageHead>
   )
 }
 
@@ -102,26 +107,28 @@ export function PricingFaq() {
   return (
     <section>
       <div className={s.lab}><h2>Questions</h2></div>
-      <div>
+      <Accordion type="single" collapsible className="faq flush">
         {FAQ.map(([question, answer]) => (
-          <details key={question}>
-            <summary>{question}<Plus className={s.i} aria-hidden="true" /></summary>
-            <p>{answer}</p>
-          </details>
+          <AccordionItem key={question} value={question} className="last:border-b">
+            <AccordionTrigger className="faq-q">{question}</AccordionTrigger>
+            <AccordionContent className="body faq-a">{answer}</AccordionContent>
+          </AccordionItem>
         ))}
-      </div>
+      </Accordion>
     </section>
   )
 }
 
 export function PricingEnd({ appHref }: { appHref: string }) {
   return (
-    <div className={s.end}>
-      <h2>Free or paid, one workspace at a time.</h2>
-      <div className={s.go}>
-        <Link className={s.btn} href={appHref}>Start free</Link>
-        <a className={`${s.btn} ${s.ghost}`} href={MARKETING_SALES_URL} target="_blank" rel="noopener noreferrer">Talk to us</a>
+    <section className="sec">
+      <div className="head center">
+        <h2 className="h2">Free or paid, one workspace at a time.</h2>
+        <div className="actions">
+          <Link className="btn primary" href={appHref}>Start free <ArrowRight className="i go" /></Link>
+          <a className="btn ghost" href={MARKETING_SALES_URL} target="_blank" rel="noopener noreferrer">Talk to us</a>
+        </div>
       </div>
-    </div>
+    </section>
   )
 }

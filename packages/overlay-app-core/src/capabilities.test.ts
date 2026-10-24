@@ -7,6 +7,7 @@ import {
 } from './index'
 
 test('deriveOverlayCapabilities fills defaults from partial runtime config', () => {
+  assert.equal(DEFAULT_OVERLAY_CAPABILITIES.externalAgents, false)
   assert.deepEqual(deriveOverlayCapabilities({ billing: false, automations: false }), {
     ...DEFAULT_OVERLAY_CAPABILITIES,
     billing: false,
@@ -16,6 +17,7 @@ test('deriveOverlayCapabilities fills defaults from partial runtime config', () 
     ...DEFAULT_OVERLAY_CAPABILITIES,
     webhooks: true,
   })
+  assert.equal(deriveOverlayCapabilities({ features: { computers: false } }).computers, false)
 })
 
 test('resolveOverlayAppShellConfig hides capability-gated registries', () => {

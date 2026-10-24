@@ -223,11 +223,11 @@ function ScopeToggle({
 }
 
 /** Rows under the selected scope (for Chats: Direct messages, Channels, Activity). */
-function scopeChildren(nav: SecondaryPanelNav | undefined, scope: PanelScope, solo: boolean): ReadonlyArray<InlineNavItem> {
+function scopeChildren(nav: SecondaryPanelNav | undefined, scope: PanelScope): ReadonlyArray<InlineNavItem> {
   if (!nav) return []
   const row = nav.items.find((item) => item.id === scope)
   if (row?.children?.length) return row.children
-  return solo ? nav.items.filter((item) => item.id.includes(':')) : []
+  return []
 }
 
 export interface UnifiedSidebarProps {
@@ -247,7 +247,6 @@ export interface UnifiedSidebarProps {
   sectionRows?: ReadonlyArray<InlineNavItem>
   onSearch?: (() => void) | null
   scope: PanelScope
-  solo: boolean
   account: ReactNode
   /** Toggle collapse with Cmd/Ctrl+B. */
   keyboardShortcut?: boolean
@@ -346,7 +345,6 @@ export function UnifiedSidebar({
   sectionRows,
   onSearch,
   scope,
-  solo,
   account,
   keyboardShortcut = false,
   resizable = false,
@@ -362,7 +360,7 @@ export function UnifiedSidebar({
   const mainItems = items.filter((item) => !MORE_ITEM_IDS.has(item.id))
   const moreItems = items.filter((item) => MORE_ITEM_IDS.has(item.id))
   const scopedNav = panelKind && panelKind !== 'settings' ? panelNav : undefined
-  const rows = scopeChildren(scopedNav, scope, solo)
+  const rows = scopeChildren(scopedNav, scope)
   const tabsPage = Boolean(panelKind && TAB_PANEL_KINDS.has(panelKind))
 
   useCollapseShortcut(keyboardShortcut, collapsed, onCollapsedChange)
@@ -399,7 +397,7 @@ export function UnifiedSidebar({
     >
       {resizable && !collapsed ? <PanelResizeHandle edge="right" width={width} onResize={setWidth} onResizingChange={setResizing} minWidth={220} maxWidth={420} label="Resize left sidebar" /> : null}
       <SidebarHeaderBar brand={brand} collapsed={collapsed} onCollapsedChange={onCollapsedChange} onSearch={settingsNav ? null : onSearch} />
-      {collapsed || settingsNav ? null : <ScopeToggle scope={solo ? 'personal' : scope} workspaceLocked={solo} onChange={changeScope} />}
+      {collapsed || settingsNav ? null : <ScopeToggle scope={scope} workspaceLocked={false} onChange={changeScope} />}
       {settingsNav ? (
         <SidebarContent>
           <SettingsSidebarNav nav={settingsNav} collapsed={collapsed} onBack={settingsBack?.onSelect} />

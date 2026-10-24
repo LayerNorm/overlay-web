@@ -129,7 +129,7 @@ const signInForm = read('src/features/auth/components/SignInForm.tsx')
 if (!signInForm.includes('Loading sign-in options')) violations.push('sign-in prompts must render a loading state while auth options hydrate')
 
 const marketingShell = read('src/features/marketing/components/StaticMarketingShell.tsx')
-if (!marketingShell.includes('MarketingNavbar')) {
+if (!marketingShell.includes('LandingNav')) {
   violations.push('marketing bodies must render the standalone navbar frame')
 }
 if (marketingShell.includes('PublicSiteRail') || marketingShell.includes('embeddedInAppShell')) {

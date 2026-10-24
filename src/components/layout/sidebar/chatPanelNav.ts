@@ -8,9 +8,10 @@ import {
 import type { CachedConversation } from '@/shared/chat/chat-list-cache'
 import { chatsInlineItems } from '@/components/layout/sidebar-nav'
 import type { SecondaryPanelNav } from './AppSidebarSecondaryPanel'
+import { mergeHrefSearchParams } from '@/shared/workspaces/routing'
 import { chatScopeForView } from './appSidebarNav'
 import { buildScopedPanelNav } from './scopedPanelNav'
-import { soloPanelScope } from '@/shared/workspaces/solo-workspace'
+import type { PanelScope } from '@/shared/workspaces/panel-scope'
 
 export interface SidebarRouter {
   push: (href: string) => void
@@ -58,7 +59,7 @@ export async function resolveRecentChatHref(baseHref: string, scope: 'personal' 
     const recent = page.data.find((chat) => (chat.scope ?? 'personal') === scope)
     if (!recent) return baseHref
     const view = scope === 'workspace' ? 'workspace-chats' : 'personal'
-    return `${baseHref}?${new URLSearchParams({ view, id: recent._id }).toString()}`
+    return mergeHrefSearchParams(baseHref, new URLSearchParams({ view, id: recent._id }))
   } catch {
     return baseHref
   }
@@ -85,7 +86,7 @@ export function buildChatPanelNav({
   chatUnreadBadges: Record<string, number>
   router: SidebarRouter
   activeWorkspaceId: string | null
-  buildWorkspaceHref: (workspaceId: string, href: string) => string
+  buildWorkspaceHref: (workspaceId: string, href: string, scope?: PanelScope) => string
   closeMobileDrawer: () => void
   beginSecondaryNavigation: (id: string) => void
   solo: boolean
@@ -101,14 +102,17 @@ export function buildChatPanelNav({
       closeMobileDrawer()
       if (next === chatsView) return
       beginSecondaryNavigation(next)
+      const nextScope: PanelScope = next === 'dms' || next === 'channels' || next === 'activity' || next === 'workspace-chats'
+        ? 'workspace'
+        : 'personal'
       if (next === 'activity') {
         router.push(activeWorkspaceId
-          ? buildWorkspaceHref(activeWorkspaceId, '/app/activity')
+          ? buildWorkspaceHref(activeWorkspaceId, '/app/activity', 'workspace')
           : '/app/activity')
         return
       }
       const baseHref = activeWorkspaceId
-        ? buildWorkspaceHref(activeWorkspaceId, '/app/chat')
+        ? buildWorkspaceHref(activeWorkspaceId, '/app/chat', nextScope)
         : '/app/chat'
       const navigationVersion = ++chatViewNavigationVersion
       let conversationId: string | null = null
@@ -121,35 +125,22 @@ export function buildChatPanelNav({
         if (result.stale) return
         conversationId = result.conversationId
       }
-      router.push(`${baseHref}?${new URLSearchParams({
-        ...(publicShowcase ? { showcase: '1' } : {}),
-        view: next,
-        ...(conversationId ? { id: conversationId } : {}),
-      }).toString()}`)
+      const params = new URLSearchParams()
+      if (publicShowcase) params.set('showcase', '1')
+      params.set('view', next)
+      if (conversationId) params.set('id', conversationId)
+      router.push(mergeHrefSearchParams(baseHref, params))
     },
   }
 
   const chatScope = chatScopeForView(chatsView)
   const unreadOf = (id: string) => chatItems.find((item) => item.id === id)?.badgeCount ?? 0
-  if (solo) {
-    // One person: no direct messages or activity feed, just chats and channels (rooms with agents).
-    const soloRows = chatItems
-      .filter((item) => item.id === 'personal' || item.id === 'channels')
-      .map((item) => (item.id === 'personal' ? { ...item, label: 'AI chats' } : item))
-    return buildScopedPanelNav({
-      scope: soloPanelScope(chatScope, true),
-      sub: chatsView === 'channels' ? 'channels' : chatScope === 'personal' ? 'personal' : null,
-      subItems: { personal: soloRows },
-      pendingId: effectivePendingSecondaryNavId,
-      solo: true,
-      onSelect: (scope, sub) => flat.onSelect(sub ?? scope),
-    })
-  }
+  const workspaceChatItems = chatItems.filter((item) => WORKSPACE_CHAT_IDS.has(item.id) && !(solo && item.id === 'dms'))
   return buildScopedPanelNav({
     scope: chatScope,
     sub: chatScope === 'workspace' ? chatsView : null,
     // Workspace AI chats, direct messages, channels, and activity are the Workspace scope; personal chats have no sub-rows.
-    subItems: { workspace: [...(publicShowcase ? [] : [WORKSPACE_CHATS_ITEM]), ...chatItems.filter((item) => WORKSPACE_CHAT_IDS.has(item.id))] },
+    subItems: { workspace: [...(publicShowcase ? [] : [WORKSPACE_CHATS_ITEM]), ...workspaceChatItems] },
     pendingId: effectivePendingSecondaryNavId,
     badges: { workspace: unreadOf('dms') + unreadOf('channels') },
     onSelect: (scope, sub) => flat.onSelect(sub ?? (scope !== 'workspace' ? scope : chatScope === 'workspace' ? chatsView : publicShowcase ? 'dms' : 'workspace-chats')),

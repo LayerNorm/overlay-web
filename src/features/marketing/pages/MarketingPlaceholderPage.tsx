@@ -8,9 +8,7 @@
 
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import { MarketingFooter } from "@/features/marketing/components/MarketingFooter";
-import { StaticMarketingShell } from "@/features/marketing/components/StaticMarketingShell";
-import { marketingSerifStyle } from "@/features/marketing/lib/marketingLayout";
+import { MarketingPageHead, StaticMarketingShell } from "@/features/marketing/components/StaticMarketingShell";
 
 export function MarketingPlaceholderPage({
   title,
@@ -21,30 +19,17 @@ export function MarketingPlaceholderPage({
 }) {
   return (
     <StaticMarketingShell>
-      <main className="flex-1 px-6 py-28 md:px-10 md:py-40">
-        <div className="mx-auto max-w-2xl">
-          <h1
-            className="text-4xl leading-[1.05] tracking-tight md:text-6xl"
-            style={marketingSerifStyle()}
-          >
-            {title}
-          </h1>
-          <p className="mt-6 text-base leading-8 text-(--muted) md:text-lg">
-            {description}
-          </p>
-          <p className="mt-4 text-sm text-(--muted-light)">
-            Nothing here yet — this page is on its way.
-          </p>
-          <Link
-            href="/home"
-            className="mt-10 inline-flex items-center gap-2 text-sm font-medium text-(--foreground) underline decoration-(--border) underline-offset-4 transition-colors hover:decoration-(--foreground)"
-          >
-            <ArrowLeft className="h-4 w-4" strokeWidth={1.6} />
-            Back to home
-          </Link>
-        </div>
+      <main>
+        <MarketingPageHead label="Coming soon" title={title} lead={description} tall>
+          <p className="meta-line">Nothing here yet. This page is on its way.</p>
+          <div className="actions">
+            <Link className="btn ghost" href="/home">
+              <ArrowLeft className="i" />
+              Back to home
+            </Link>
+          </div>
+        </MarketingPageHead>
       </main>
-      <MarketingFooter />
     </StaticMarketingShell>
   );
 }

@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { tool, type ToolSet } from 'ai'
-import { z } from 'zod'
+import { z } from 'zod/v3'
 import { generatedUiDraftContainsCode } from '@overlay/chat-core/generated-ui'
 import { IMAGE_MODELS, getVideoModelsBySubMode } from '@/shared/ai/gateway/model-data'
 import {

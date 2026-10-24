@@ -8,6 +8,8 @@ import { ActMessagePersistenceService, type ActAssistantFinishEvent } from './Ac
 import { ActUsageBudgetService } from './ActUsageBudgetService'
 import { isFreeTierAllocationExhausted, UnlimitedUsagePolicy } from './ActUsagePolicy'
 import type { Id } from '../../../convex/_generated/dataModel'
+import { asConversationId } from './ActConversationRepository'
+import { ensureActConversationId } from './ensure-act-conversation'
 
 const freeEntitlements = {
   tier: 'free',
@@ -54,6 +56,31 @@ function repository(overrides: Partial<ActConversationRepository> = {}): ActConv
     ...overrides,
   }
 }
+
+test('parallel first-send creation preserves workspace identity and requested scope', async () => {
+  for (const scope of ['personal', 'workspace', undefined] as const) {
+    let created: Parameters<ActConversationRepository['createConversation']>[0] | undefined
+    const id = await ensureActConversationId({
+      userId: 'user_1',
+      workspaceId: 'workspace_1',
+      createdByPrincipalId: 'principal_1',
+      scope,
+      conversationClientId: 'client_1',
+      entitlements: freeEntitlements,
+      repository: repository({
+        createConversation: async (args) => {
+          created = args
+          return asConversationId('conversation_1')
+        },
+      }),
+    })
+    assert.equal(id, 'conversation_1')
+    assert.equal(created?.scope, scope)
+    assert.equal(created?.workspaceId, 'workspace_1')
+    assert.equal(created?.createdByPrincipalId, 'principal_1')
+    assert.equal(created?.clientId, 'client_1')
+  }
+})
 
 test('act entitlement service preserves premium-model free-tier gate shape', async () => {
   const service = new ActEntitlementService({

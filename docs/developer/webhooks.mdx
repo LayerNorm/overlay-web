@@ -1,0 +1,78 @@
+---
+title: "Webhooks"
+description: "Receive Overlay events at your own endpoint, verify them and handle retries."
+---
+
+Webhooks send an HTTP `POST` to your endpoint when something finishes in Overlay. Add and manage them in **Settings → Webhooks**.
+
+## Events
+
+| Event | Sent when | `data` |
+| --- | --- | --- |
+| `chat.completed` | An AI reply finished. | `conversationId`, `turnId`, `modelId` |
+| `chat.failed` | An AI reply failed. | `conversationId`, `turnId`, `error`, `modelId` |
+| `automation.finished` | An automation run finished. | `automationId`, `runId`, `conversationId` |
+| `automation.failed` | An automation run failed. | `automationId`, `runId`, `error`, `conversationId` |
+
+Fields other than the ids that name the event may be missing when they do not apply.
+
+A subscription chooses one or more events.
+
+## The request
+
+```http
+POST /your/endpoint HTTP/1.1
+Content-Type: application/json
+X-Overlay-Event: automation.finished
+X-Overlay-Event-Id: automation.finished:k57d…
+X-Overlay-Delivery-Id: …
+X-Overlay-Timestamp: 1792700000000
+X-Overlay-Signature: sha256=4f1c…
+
+{
+  "id": "automation.finished:k57d…",
+  "type": "automation.finished",
+  "createdAt": 1792700000000,
+  "userId": "user_…",
+  "data": {
+    "automationId": "j97a…",
+    "runId": "k57d…",
+    "conversationId": "m12f…"
+  }
+}
+```
+
+`X-Overlay-Timestamp` and `createdAt` are Unix time in milliseconds.
+
+## Verify a delivery
+
+The signature is an HMAC-SHA256 of `<timestamp>.<raw body>`, keyed with the subscription's signing secret, hex-encoded and prefixed with `sha256=`. The secret is shown when you create the webhook, and you can rotate it from the same page.
+
+```ts
+import { createHmac, timingSafeEqual } from "node:crypto";
+
+export function verifyOverlayWebhook(rawBody: string, headers: Headers, secret: string) {
+  const timestamp = headers.get("x-overlay-timestamp") ?? "";
+  const received = headers.get("x-overlay-signature") ?? "";
+  const expected =
+    "sha256=" + createHmac("sha256", secret).update(`${timestamp}.${rawBody}`).digest("hex");
+
+  const fresh = Math.abs(Date.now() - Number(timestamp)) < 5 * 60 * 1000;
+  return (
+    fresh &&
+    received.length === expected.length &&
+    timingSafeEqual(Buffer.from(received), Buffer.from(expected))
+  );
+}
+```
+
+Verify against the raw request body, before parsing it as JSON. Rejecting old timestamps protects against replayed requests.
+
+## Respond and retry
+
+- Answer with any `2xx` within **30 seconds**. Do slow work after responding.
+- Any other status, a timeout or a connection error counts as a failed attempt.
+- Overlay tries up to **5** times, waiting about 1 minute, 5 minutes, 30 minutes, 2 hours and 12 hours between attempts.
+- The same event can arrive more than once. Use `X-Overlay-Event-Id` to ignore duplicates. A delivery you send again by hand gets a new id ending in `:redrive:<uuid>`.
+
+Recent deliveries and their responses are listed under each webhook in Settings, where a failed delivery can be sent again.

@@ -65,6 +65,26 @@ test('write_file creates with a mime type and reports a stale revision as a conf
   }
 })
 
+test('write_file links only created files to its conversation', async () => {
+  const bodies: Array<Record<string, unknown>> = []
+  const restore = mockFetch((_url, init) => {
+    bodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>)
+    return Response.json({ id: 'f2' })
+  })
+  const conversationOptions = { ...options, conversationId: 'conv_1' }
+  try {
+    await executeWriteFile(conversationOptions, { name: 'thread.md', content: '# Thread' })
+    await executeWriteFile(options, { name: 'standalone.md', content: '# Standalone' })
+    await executeWriteFile(conversationOptions, { fileId: 'f2', content: '# Edited' })
+
+    assert.equal(bodies[0]?.conversationId, 'conv_1')
+    assert.equal('conversationId' in (bodies[1] ?? {}), false)
+    assert.equal('conversationId' in (bodies[2] ?? {}), false)
+  } finally {
+    restore()
+  }
+})
+
 test('list_files pages past the endpoint\'s 100-row cap', async () => {
   const cursors: Array<string | null> = []
   const restore = mockFetch((url) => {

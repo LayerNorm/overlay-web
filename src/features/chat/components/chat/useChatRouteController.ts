@@ -1,9 +1,13 @@
 'use client'
 
 import { useCallback, useEffect, useRef, type Dispatch, type MutableRefObject, type SetStateAction } from 'react'
-import type { ReadonlyURLSearchParams } from 'next/navigation'
+import { usePathname, type ReadonlyURLSearchParams } from 'next/navigation'
 import { normalizeAutomationDetailTab } from '@overlay/app-core/automations'
 import type { AutomationDetail } from '@overlay/app-core'
+import { useWorkspaceHref } from '@/hooks/use-workspace-href'
+import { usePanelScope } from '@/hooks/use-panel-scope'
+import { readWorkspacePathScope } from '@/shared/workspaces/routing'
+import { parsePanelScope } from '@/shared/workspaces/panel-scope'
 import { resetRuntimeState } from './conversation-runtime-utils'
 import type { ConversationRuntime, ConversationUiState } from '../chat-interface/types'
 
@@ -56,6 +60,9 @@ export function useChatRouteController({
   setRuntimeHydrationVersion: Dispatch<SetStateAction<number>>
   setSourcesPanel: (panel: null) => void
 }) {
+  const pathname = usePathname() ?? ''
+  const buildWorkspaceHref = useWorkspaceHref()
+  const rememberedScope = usePanelScope()
   const loadChatRef = useRef<LoadChat | null>(null)
   const invalidateLoadChatRequestRef = useRef<(() => void) | null>(null)
 
@@ -67,11 +74,19 @@ export function useChatRouteController({
   const hasAutomationContext = mode === 'automate' && Boolean(automationIdParam)
   const showAutomationChatTab = !hasAutomationContext || automationDetailTab === 'chat'
   const showAutomationHeaderControls = mode === 'automate'
+  const viewParam = searchParams?.get('view')
+  const viewScope = viewParam === 'dms' || viewParam === 'channels' || viewParam === 'workspace-chats'
+    ? 'workspace'
+    : viewParam === 'personal' ? 'personal' : null
+  const routeScope = readWorkspacePathScope(pathname)
+    ?? parsePanelScope(searchParams?.get('scope'))
+    ?? viewScope
+    ?? rememberedScope
 
   const syncStandaloneChatUrl = useCallback((chatId: string | null, options: { replaceUrl?: boolean } = {}) => {
     if (hideSidebar || options.replaceUrl === false) return
     const replaceUrl = (href: string) => {
-      window.history.replaceState(null, '', href)
+      routerReplace(href)
     }
     if (mode === 'automate') {
       const params = new URLSearchParams()
@@ -86,16 +101,16 @@ export function useChatRouteController({
       )
       if (tab !== 'chat') params.set('tab', tab)
       const query = params.toString()
-      replaceUrl(`/app/automations${query ? `?${query}` : ''}`)
+      replaceUrl(buildWorkspaceHref(null, `/app/automations${query ? `?${query}` : ''}`, routeScope))
       return
     }
-    const basePath = '/app/chat'
     const params = new URLSearchParams()
     if (searchParams?.get('showcase') === '1') params.set('showcase', '1')
+    if (viewParam && ['personal', 'workspace-chats', 'dms', 'channels'].includes(viewParam)) params.set('view', viewParam)
     if (chatId) params.set('id', chatId)
     const query = params.toString()
-    replaceUrl(query ? `${basePath}?${query}` : basePath)
-  }, [automationIdParam, hideSidebar, mode, searchParams])
+    replaceUrl(buildWorkspaceHref(null, `/app/chat${query ? `?${query}` : ''}`, routeScope))
+  }, [automationIdParam, buildWorkspaceHref, hideSidebar, mode, routeScope, routerReplace, searchParams, viewParam])
 
   const resetToBlankChatSurface = useCallback((options: { temporary: boolean }) => {
     invalidateLoadChatRequestRef.current?.()
@@ -228,8 +243,15 @@ export function useChatRouteController({
   ])
 
   const replaceActiveChatRoute = useCallback(() => {
-    if (!hideSidebar) routerReplace('/app/chat')
-  }, [hideSidebar, routerReplace])
+    if (hideSidebar) return
+    const params = new URLSearchParams()
+    const view = searchParams?.get('view')
+    if (view && ['personal', 'workspace-chats', 'dms', 'channels'].includes(view)) params.set('view', view)
+    if (searchParams?.get('showcase') === '1') params.set('showcase', '1')
+    const query = params.toString()
+    const href = buildWorkspaceHref(null, `/app/chat${query ? `?${query}` : ''}`, routeScope)
+    routerReplace(href)
+  }, [buildWorkspaceHref, hideSidebar, routeScope, routerReplace, searchParams])
 
   return {
     automationConversationId,

@@ -128,6 +128,7 @@ test('web navigation preserves note editor compatibility', () => {
   const opened: string[] = []
   const adapters = createWebKnowledgeSurfaceAdapters({
     client: createClient(),
+    currentUrl: () => new URL('https://getoverlay.io/w/team/workspace/files'),
     route: createWebKnowledgeRouteAdapter({
       currentUrl: () => new URL('https://getoverlay.io/app/files'),
       navigate() {},
@@ -140,7 +141,7 @@ test('web navigation preserves note editor compatibility', () => {
   adapters.navigation.open(normalizeKnowledgeSurfaceNode({
     _id: 'note', name: 'Note', type: 'note', kind: 'note', parentId: null, createdAt: 1, updatedAt: 1,
   }))
-  assert.deepEqual(opened, ['/app/notes?id=note'])
+  assert.deepEqual(opened, ['/w/team/workspace/notes?id=note'])
 })
 
 test('opening 100 web files causes zero list refetches', async () => {

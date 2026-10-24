@@ -49,6 +49,7 @@ export interface NoteRepository {
     content: string
     tags?: string[]
     clientId?: string
+    conversationId?: string
     workspaceId?: string
     scope?: 'personal' | 'workspace'
   }): Promise<{ id: string; note: NoteRecord | null }>
@@ -148,6 +149,7 @@ export class NoteService {
       content,
       tags: args.tags,
       clientId: args.clientId,
+      ...(args.conversationId ? { conversationId: args.conversationId } : {}),
       ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
       ...(args.scope ? { scope: args.scope } : {}),
     })

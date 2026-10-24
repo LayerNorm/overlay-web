@@ -31,6 +31,7 @@ export async function ensureActConversationId(params: {
   userId: string
   repository: Pick<ActConversationRepository, 'createConversation'>
   conversationClientId: string
+  scope?: 'personal' | 'workspace'
   entitlements: Entitlements
   title?: string
   askModelIds?: string[]
@@ -54,6 +55,9 @@ export async function ensureActConversationId(params: {
   const id = await params.repository.createConversation({
     userId: params.userId,
     clientId,
+    scope: params.scope,
+    workspaceId: params.workspaceId,
+    createdByPrincipalId: params.createdByPrincipalId,
     title: params.title || 'New Chat',
     askModelIds: isFreeTier ? freeAskModelIds : paidModels.askModelIds,
     actModelId: isFreeTier ? freeActModelId : paidModels.actModelId,

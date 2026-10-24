@@ -3,8 +3,12 @@ import test from 'node:test'
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { InlineNavChildren } from '@/components/layout/AppSidebarInlinePanels'
+import { buildWorkspaceHandleHref } from '@/shared/workspaces/routing'
+import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { resolveSecondaryPanelNav } from './appSidebarPanelNav'
 import { buildScopedPanelNav } from './scopedPanelNav'
 import { chatScopeForView, resolveSidebarRouteState, scopePanelAction, type PanelCreateRules } from './appSidebarNav'
+import { buildChatPanelNav, resolveRecentChatHref } from './chatPanelNav'
 import { workInlineItems } from './workPanelNav'
 
 ;(globalThis as typeof globalThis & { React: typeof React }).React = React
@@ -108,9 +112,11 @@ test('old agent links that carried the tab as ?view= still open the right scope'
   assert.equal(routeState('/app/files', 'view=archived').scope, 'personal')
 })
 
-test('chats take their scope from the subview, not from the remembered scope', () => {
+test('chat scope follows an explicit subview or path before remembered scope', () => {
   assert.equal(routeState('/app/chat', 'view=dms', 'personal').scope, 'workspace')
-  assert.equal(routeState('/app/chat', '', 'workspace').scope, 'personal')
+  assert.equal(routeState('/app/chat', '', 'workspace').scope, 'workspace')
+  assert.equal(routeState('/w/team-a/personal/chat', 'scope=workspace&view=dms', 'workspace').scope, 'personal')
+  assert.equal(routeState('/w/team-a/workspace/chat', 'scope=personal&view=personal', 'personal').scope, 'workspace')
   assert.equal(routeState('/app/activity', '', 'personal').scope, 'workspace')
 })
 
@@ -146,48 +152,144 @@ test('New is hidden in Workspace for a member whose admin restricted it, and sho
   )
 })
 
-test('a workspace of one person lists the page rows on their own, with no scope rows', () => {
+test('a workspace of one person keeps both strict scope rows', () => {
   const built = buildScopedPanelNav({
     scope: 'personal',
     sub: 'notes',
     subItems: { personal: FILE_ROWS, workspace: FILE_ROWS },
     pendingId: null,
-    solo: true,
     onSelect: () => undefined,
   })
-  assert.deepEqual(built.items.map((item) => item.id), ['personal:all', 'personal:notes'])
-  assert.deepEqual(built.items.map((item) => item.label), ['All', 'Notes'])
-  assert.equal(built.activeId, 'personal:notes')
-  assert.ok(built.items.every((item) => !item.children), 'nothing is nested')
+  assert.deepEqual(built.items.map((item) => item.id), ['personal', 'workspace'])
+  assert.equal(built.activeId, 'personal')
+  assert.deepEqual(built.items[0]!.children?.map((item) => item.id), ['personal:all', 'personal:notes'])
 })
 
-test('solo selections still report the Personal scope and the sub-row', () => {
+test('solo users can navigate to Workspace sub-rows without collapsing scope', () => {
   const calls: Array<[string, string | null]> = []
   const built = buildScopedPanelNav({
     scope: 'personal',
     sub: 'all',
-    subItems: { personal: FILE_ROWS },
+    subItems: { personal: FILE_ROWS, workspace: FILE_ROWS },
     pendingId: null,
-    solo: true,
     onSelect: (scope, sub) => { calls.push([scope, sub]) },
   })
-  built.onSelect('personal:notes')
-  built.onSelect('personal')
-  assert.deepEqual(calls, [['personal', 'notes'], ['personal', null]])
+  built.onSelect('workspace:notes')
+  assert.deepEqual(calls, [['workspace', 'notes']])
 })
 
-test('a solo page with no sub-rows gets one row named for the page', () => {
+test('solo Workspace panel clicks build scoped destinations and Agent switches clear selectors', () => {
+  const destinations: string[] = []
+  const common = {
+    publicShowcase: false,
+    effectivePendingSecondaryNavId: null,
+    totalUnread: 0,
+    collaborationUnread: { dms: 0, channels: 0, total: 0 },
+    shouldLoadCollaborationUnread: false,
+    router: { push: (href: string) => destinations.push(href) },
+    activeWorkspaceId: 'workspace-a',
+    buildWorkspaceHref: (_id: string, href: string, scope?: 'personal' | 'workspace') =>
+      buildWorkspaceHandleHref('team-a', href, scope),
+    currentSearchParams: new URLSearchParams(),
+    toolsItems: [],
+    settingsSections: [],
+    closeMobileDrawer: () => undefined,
+    beginSecondaryNavigation: () => undefined,
+    solo: true,
+  }
+  const routeState = {
+    chatsView: 'personal',
+    filesView: 'all',
+    scope: 'personal' as const,
+    toolsView: 'all',
+    workView: 'list' as const,
+    notesOpen: false,
+    settingsSection: 'general',
+  }
+  const workNav = resolveSecondaryPanelNav({
+    ...common,
+    panelKind: 'work',
+    routeState,
+  })
+  workNav?.onSelect('workspace:board')
+  assert.deepEqual(destinations, ['/w/team-a/workspace/work?view=board'])
+
+  const agentsNav = resolveSecondaryPanelNav({
+    ...common,
+    panelKind: 'agents',
+    routeState,
+    currentSearchParams: new URLSearchParams('agent=agent-a&agentId=agent-a&id=chat-a&conversationId=chat-a&threadId=thread-a&tab=threads'),
+  })
+  agentsNav?.onSelect('workspace')
+  assert.equal(destinations[1], '/w/team-a/workspace/agents?tab=threads')
+})
+
+test('a solo page with no sub-rows retains both strict scope rows', () => {
   const built = buildScopedPanelNav({
     scope: 'personal',
     sub: null,
     subItems: {},
     pendingId: null,
-    solo: true,
-    soloLabel: 'Agents',
     onSelect: () => undefined,
   })
-  assert.deepEqual(built.items.map((item) => [item.id, item.label]), [['personal', 'Agents']])
+  assert.deepEqual(built.items.map((item) => [item.id, item.label]), [
+    ['personal', 'Personal'],
+    ['workspace', 'Workspace'],
+  ])
   assert.equal(built.activeId, 'personal')
+})
+
+test('solo Workspace AI chats stay under Workspace scope', async () => {
+  const destinations: string[] = []
+  const nav = buildChatPanelNav({
+    publicShowcase: false,
+    chatsView: 'personal',
+    effectivePendingSecondaryNavId: null,
+    chatUnreadBadges: {},
+    router: { push: (href) => destinations.push(href) },
+    activeWorkspaceId: 'workspace-a',
+    buildWorkspaceHref: (_id, href, scope) => buildWorkspaceHandleHref('team-a', href, scope),
+    closeMobileDrawer: () => undefined,
+    beginSecondaryNavigation: () => undefined,
+    solo: true,
+  })
+
+  const personal = nav.items.find((item) => item.id === 'personal')
+  const workspace = nav.items.find((item) => item.id === 'workspace')
+  assert.equal(personal?.children, undefined)
+  assert.equal(workspace?.children, undefined)
+
+  const workspaceNav = buildChatPanelNav({
+    publicShowcase: false,
+    chatsView: 'workspace-chats',
+    effectivePendingSecondaryNavId: null,
+    chatUnreadBadges: {},
+    router: { push: () => undefined },
+    activeWorkspaceId: 'workspace-a',
+    buildWorkspaceHref: (_id, href, scope) => buildWorkspaceHandleHref('team-a', href, scope),
+    closeMobileDrawer: () => undefined,
+    beginSecondaryNavigation: () => undefined,
+    solo: true,
+  })
+  assert.deepEqual(workspaceNav.items.find((item) => item.id === 'workspace')?.children?.map((item) => item.id), [
+    'workspace:workspace-chats',
+    'workspace:channels',
+    'workspace:activity',
+  ])
+
+  await nav.onSelect('workspace')
+  assert.deepEqual(destinations, ['/w/team-a/workspace/chat?view=workspace-chats'])
+})
+
+test('recent Workspace chats merge with the canonical route query', async (t) => {
+  t.mock.method(overlayAppClient.conversations, 'getPage', async <T,>() => ({
+    data: [{ _id: 'recent-chat', scope: 'workspace' }] as unknown as T[],
+    hasMore: false,
+  }))
+  assert.equal(
+    await resolveRecentChatHref('/w/team-a/workspace/chat?view=workspace-chats', 'workspace'),
+    '/w/team-a/workspace/chat?view=workspace-chats&id=recent-chat',
+  )
 })
 
 test('Work opens a nav-only panel with List, Board, and Timeline under the scope, and reads the view from the URL', () => {
@@ -233,15 +335,15 @@ test('the Work panel shows the three views under the selected scope and reports 
   assert.deepEqual(calls, [['personal', 'timeline']])
 })
 
-test('a workspace of one person sees List, Board, and Timeline directly, with no Personal / Workspace split', () => {
+test('a workspace of one person keeps both Work scope tabs', () => {
   const built = buildScopedPanelNav({
     scope: 'personal',
-    solo: true,
     sub: 'timeline',
     subItems: { personal: workInlineItems, workspace: workInlineItems },
     pendingId: null,
     onSelect: () => undefined,
   })
-  assert.deepEqual(built.items.map((item) => item.id), ['personal:list', 'personal:board', 'personal:timeline'])
-  assert.equal(built.activeId, 'personal:timeline')
+  assert.deepEqual(built.items.map((item) => item.id), ['personal', 'workspace'])
+  assert.equal(built.activeId, 'personal')
+  assert.deepEqual(built.items[0]!.children?.map((item) => item.id), ['personal:list', 'personal:board', 'personal:timeline'])
 })

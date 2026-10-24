@@ -93,6 +93,10 @@ function serviceFor(
     deleteThreadError?: string
     resolveThreadError?: string
     archivedThreadRows?: WorkspaceArchivedAgentThread[]
+    externalAgentPolicy?: (args: {
+      workspaceId: string
+      record: { id: string; workspaceId: string; harness?: string; modelId: string }
+    }) => Promise<{ external: boolean; allowed: boolean }>
   } = {},
 ) {
   const store = new Map(seed.map((agent) => [agent.id, agent]))
@@ -203,6 +207,7 @@ function serviceFor(
     mockWorkspaces(principalId, role, principals),
     () => `generated-${++idCounter}`,
     () => NOW,
+    options.externalAgentPolicy,
   )
   return { service, created, updated, archived, unarchived, deletedThreads, deletedAgents, archivedThreads }
 }
@@ -282,7 +287,12 @@ test('a non-manager cannot archive a creator-only agent they cannot see', async 
 })
 
 test('adapter-owned permission and effort ids persist on create and update, with bounded nonempty values', async () => {
-  const fixture = serviceFor(CREATOR_PRINCIPAL_ID, 'member')
+  const fixture = serviceFor(CREATOR_PRINCIPAL_ID, 'member', [], {}, {
+    externalAgentPolicy: async ({ record }) => ({
+      external: record.modelId.startsWith('byo/'),
+      allowed: true,
+    }),
+  })
   const created = await fixture.service.create({ actorUserId: 'user-1', workspaceId: WORKSPACE_ID,
     input: { name: 'Runtime settings', instructions: 'Do the work', modelId: 'byo/claude-code', permissionMode: ' auto ', effort: ' high ' } })
   assert.equal(created.permissionMode, 'auto')
@@ -295,6 +305,71 @@ test('adapter-owned permission and effort ids persist on create and update, with
     input: { permissionMode: ' ' } }), /Permission mode/)
   await assert.rejects(fixture.service.update({ actorUserId: 'user-1', workspaceId: WORKSPACE_ID, agentId: created.id,
     input: { effort: 'x'.repeat(201) } }), /Effort/)
+})
+
+test('native create and update remain available while external runtimes are disabled', async () => {
+  const seed = [defaultAgentFixture(), agentFixture({ id: 'agent-native' })]
+  const { service } = serviceFor(CREATOR_PRINCIPAL_ID, 'member', seed)
+  const created = await service.create({
+    actorUserId: 'user-creator',
+    workspaceId: WORKSPACE_ID,
+    input: { name: 'Native', instructions: 'Use Overlay tools.', modelId: 'test-model' },
+  })
+  assert.equal(created.harness, 'overlay')
+  const updated = await service.update({
+    actorUserId: 'user-creator',
+    workspaceId: WORKSPACE_ID,
+    agentId: 'agent-native',
+    input: { instructions: 'Use Overlay tools carefully.' },
+  })
+  assert.equal(updated.instructions, 'Use Overlay tools carefully.')
+})
+
+test('external create and update cannot bypass the launch policy', async () => {
+  const seed = [
+    defaultAgentFixture(),
+    agentFixture({ id: 'agent-external', harness: 'claude-code', modelId: 'test-model' }),
+  ]
+  const { service } = serviceFor(CREATOR_PRINCIPAL_ID, 'member', seed)
+  for (const input of [
+    { name: 'Claude', instructions: 'Use the runtime.', modelId: 'test-model', harness: 'claude-code' },
+    { name: 'BYO', instructions: 'Use the runtime.', modelId: 'byo/codex' },
+  ]) {
+    const error = await serviceError(service.create({
+      actorUserId: 'user-creator',
+      workspaceId: WORKSPACE_ID,
+      input,
+    }))
+    assert.equal(error.code, 'forbidden')
+  }
+  for (const input of [{}, { harness: 'overlay' }]) {
+    const error = await serviceError(service.update({
+      actorUserId: 'user-creator',
+      workspaceId: WORKSPACE_ID,
+      agentId: 'agent-external',
+      input,
+    }))
+    assert.equal(error.code, 'forbidden')
+  }
+})
+
+test('injected binding policy rejects legacy overlay-looking records without gating cleanup', async () => {
+  const seed = [agentFixture({ id: 'agent-legacy', harness: 'overlay', modelId: 'test-model' })]
+  const { service, archived } = serviceFor(CREATOR_PRINCIPAL_ID, 'member', seed, {}, {
+    externalAgentPolicy: async ({ record }) => ({
+      external: record.id === 'agent-legacy',
+      allowed: false,
+    }),
+  })
+  const error = await serviceError(service.update({
+    actorUserId: 'user-creator',
+    workspaceId: WORKSPACE_ID,
+    agentId: 'agent-legacy',
+    input: { name: 'Still external' },
+  }))
+  assert.equal(error.code, 'forbidden')
+  await service.archive({ actorUserId: 'user-creator', workspaceId: WORKSPACE_ID, agentId: 'agent-legacy' })
+  assert.deepEqual(archived, [{ agentId: 'agent-legacy', workspaceId: WORKSPACE_ID }])
 })
 
 test('create defaults to workspace visibility and passes creator visibility through', async () => {

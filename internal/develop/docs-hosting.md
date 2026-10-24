@@ -1,0 +1,65 @@
+---
+title: "Docs Hosting"
+description: "Serve the Mintlify docs from getoverlay.io/docs or docs.getoverlay.io."
+---
+
+Overlay docs are authored in `docs/` and hosted by Mintlify. The production web app can proxy those docs through Vercel so customers can use either `getoverlay.io/docs` or `docs.getoverlay.io`.
+
+## Vercel Rewrite
+
+`next.config.ts` reads this build-time environment variable:
+
+```bash
+MINTLIFY_DOCS_URL=https://your-subdomain.mintlify.dev
+```
+
+Do not include a trailing slash or `/docs`; the app adds the required `/docs`
+upstream path.
+
+When `MINTLIFY_DOCS_URL` is set, the app adds these routes:
+
+| Public URL | Upstream |
+| --- | --- |
+| `https://getoverlay.io/docs` | `${MINTLIFY_DOCS_URL}/docs` |
+| `https://getoverlay.io/docs/*` | `${MINTLIFY_DOCS_URL}/docs/*` |
+| `https://getoverlay.io/.well-known/vercel/*` | `${MINTLIFY_DOCS_URL}/.well-known/vercel/*` |
+| `https://docs.getoverlay.io/*` | Redirect to `https://www.getoverlay.io/docs/*` |
+
+## Mintlify Setup
+
+In Mintlify:
+
+1. Connect the Git repository.
+2. Set the docs content directory to `docs/`.
+3. Enable **Host at `/docs`** in Mintlify for `getoverlay.io`.
+4. Use the project's `*.mintlify.dev` URL for `MINTLIFY_DOCS_URL`. The
+   `*.mintlify.app` URL is for root/custom-subpath proxies and will generate
+   incorrect root-relative navigation links in this setup.
+5. Keep only publishable docs in `docs/`; internal reports, authenticated screenshots, and proprietary design references stay in an access-controlled system outside this repository.
+
+## Vercel Setup
+
+In the Overlay Vercel project:
+
+1. Add `MINTLIFY_DOCS_URL` in Project Settings -> Environment Variables for production and preview as needed.
+2. Ensure `getoverlay.io` is attached to the project.
+3. If using `docs.getoverlay.io` through the same Vercel project, add that domain to the project too.
+4. Deploy the app after the env var is set, because Next.js rewrites are generated at build time.
+
+If `docs.getoverlay.io` is pointed directly at Mintlify instead, do not add it to the Vercel project; configure the CNAME and verification records in Mintlify instead.
+
+## Verification
+
+Before deployment:
+
+```bash
+npm run docs:check
+```
+
+After deployment:
+
+- `https://getoverlay.io/docs` loads the docs home.
+- `https://getoverlay.io/docs/developer/contribute/run-locally` loads a nested docs page.
+- `https://getoverlay.io/docs/sitemap.xml` and `https://getoverlay.io/docs/llms.txt` resolve.
+- `https://docs.getoverlay.io` loads the docs home if that subdomain is attached to Vercel.
+- The browser URL remains on the Overlay domain instead of redirecting to Mintlify.

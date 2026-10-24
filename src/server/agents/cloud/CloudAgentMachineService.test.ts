@@ -45,7 +45,7 @@ const environment = (overrides: Partial<AgentEnvironment> = {}): AgentEnvironmen
   capabilities: {}, createdAt: 0, updatedAt: 0, ...overrides,
 })
 
-function deps(machine: SandboxInstance, options: { enrolled?: boolean; lease?: AgentSandboxLease | null; env?: AgentEnvironment; bound?: boolean; disabled?: boolean; activeExecution?: boolean; enrollmentError?: Error } = {}) {
+function deps(machine: SandboxInstance, options: { enrolled?: boolean; lease?: AgentSandboxLease | null; env?: AgentEnvironment; bound?: boolean; disabled?: boolean; activeExecution?: boolean; enrollmentError?: Error; externalAgentsEnabled?: boolean } = {}) {
   const log: Array<[string, unknown]> = []
   const phases: Array<{ phase: string; error?: string }> = []
   let removed = false
@@ -66,6 +66,7 @@ function deps(machine: SandboxInstance, options: { enrolled?: boolean; lease?: A
     runtime,
     sleep: async () => undefined,
     now: () => 1_000,
+    launchEnabled: () => options.externalAgentsEnabled !== false,
     controlPlane: {
       createEnrollmentSession: async () => {if (options.enrollmentError) throw options.enrollmentError; return {code: 'one-time-code', expiresAt: 0, enrollmentSessionId: 'abcdef12-0000'}},
       approveEnvironment: async (args: unknown) => { log.push(['approve', args]); return {} as never },
@@ -98,6 +99,15 @@ const provisionArgs = {
   actorUserId: 'user', workspaceId: 'ws', agentId: 'agent-1', adapterId: 'claude-code' as const,
   providerAccountId: 'account-1', size: 'default' as const, serverUrl: 'https://www.getoverlay.io',
 }
+
+test('disabled external launch rejects cloud provisioning before machine or billing work', async () => {
+  const { machine } = fakeMachine()
+  const f = deps(machine, { externalAgentsEnabled: false })
+  await assert.rejects(f.service.provision(provisionArgs), /External agent runtimes are disabled/)
+  assert.equal(f.created.length, 0)
+  assert.deepEqual(f.phases, [])
+  assert.equal(f.log.some(([event]) => event === 'account-read'), false)
+})
 
 test('provision boots the image, redeems the code with acpx, approves the workspace root, leases, and binds', async () => {
   const { machine, commands } = fakeMachine()
@@ -310,6 +320,20 @@ test('teardown revokes the environment, deletes the machine, and clears the prov
   assert.ok(log.some(([name]) => name === 'revoke'))
   assert.deepEqual(calls, ['delete'])
   assert.equal(wasRemoved(), true)
+})
+
+test('pause and teardown remain available while external launches are disabled', async () => {
+  const paused = fakeMachine()
+  await deps(paused.machine, { externalAgentsEnabled: false }).service.control({
+    workspaceId: 'ws', agentId: 'agent-1', action: 'pause',
+  })
+  assert.deepEqual(paused.calls, ['stop'])
+
+  const removed = fakeMachine()
+  const teardown = deps(removed.machine, { externalAgentsEnabled: false })
+  await teardown.service.teardown({ actorUserId: 'user', workspaceId: 'ws', agentId: 'agent-1' })
+  assert.deepEqual(removed.calls, ['delete'])
+  assert.ok(teardown.log.some(([name]) => name === 'revoke'))
 })
 
 test('applying a profile removes what the earlier version wrote, prunes the folders it empties, and records what it owns', async () => {

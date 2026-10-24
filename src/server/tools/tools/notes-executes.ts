@@ -220,6 +220,7 @@ export async function executeCreateNote(
         title: input.title?.trim() || 'Untitled',
         content: input.content,
         ...(input.tags ? { tags: input.tags } : {}),
+        ...(options.conversationId ? { conversationId: options.conversationId } : {}),
         ...toolAuthBody(options),
       },
       options.accessToken,

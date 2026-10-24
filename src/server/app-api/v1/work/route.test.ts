@@ -236,7 +236,7 @@ test('GET /api/v1/work/context returns the picker context, or 403 outside the wo
   mockConvex(t, {
     'work/workItems:context': () => (allowed ? { principalId: 'principal_1', role: 'member', canCreateInWorkspace: true, assignees: [
       { principalId: 'principal_1', type: 'human', userId: 'user_1', displayName: 'Test' },
-      { principalId: 'p-agent', type: 'agent', userId: null, displayName: 'Researcher' },
+      { principalId: 'p-agent', type: 'agent', userId: null, displayName: 'Researcher', agentVisibility: 'workspace' },
       { principalId: 'p-svc', type: 'service', userId: null, displayName: 'Service' },
     ] } : null),
   })
@@ -246,7 +246,7 @@ test('GET /api/v1/work/context returns the picker context, or 403 outside the wo
     principalId: 'principal_1', role: 'member', canCreateInWorkspace: true,
     people: [
       { principalId: 'principal_1', type: 'human', userId: 'user_1', displayName: 'Test' },
-      { principalId: 'p-agent', type: 'agent', userId: null, displayName: 'Researcher' },
+      { principalId: 'p-agent', type: 'agent', userId: null, displayName: 'Researcher', agentVisibility: 'workspace' },
     ],
   })
   allowed = false

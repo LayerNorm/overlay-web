@@ -396,6 +396,7 @@ function featuresFromEnv(env: EnvSource): OverlayRuntimeConfigLayer {
     sso: readFeatureBool(env, 'SSO'),
     multiTenant: readFeatureBool(env, 'MULTI_TENANT') ?? readBool(env, 'MULTI_TENANT_ENABLED'),
     connectedAgentControlPlane: readFeatureBool(env, 'CONNECTED_AGENT_CONTROL_PLANE'),
+    externalAgents: readFeatureBool(env, 'EXTERNAL_AGENTS'),
     remoteAgentRuns: readFeatureBool(env, 'REMOTE_AGENT_RUNS'),
     connectedAgentArtifacts: readFeatureBool(env, 'CONNECTED_AGENT_ARTIFACTS'),
     connectedAgentDrive: readFeatureBool(env, 'CONNECTED_AGENT_DRIVE'),

@@ -2,7 +2,7 @@ import 'server-only'
 
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { z } from 'zod'
+import { z } from 'zod/v3'
 import { tool } from 'ai'
 import { handleAgentMcpRequest, type AgentMcpDependencies } from './agent-mcp-server'
 import { mintAgentMcpToken, verifyAgentMcpToken, type AgentMcpTokenClaims } from './agent-mcp-token'

@@ -41,6 +41,10 @@ import { captureBffRequestMetric } from '@/server/observability/metrics'
 import { flushPostHog } from '@/server/observability/posthog-server'
 import { rejectCrossSiteBrowserMutation } from '@/server/security/browser-mutation-origin'
 import { ACTIVE_WORKSPACE_HEADER } from '@/shared/workspaces/constants'
+import {
+  resolveWorkspaceRequestScope,
+  UnavailableWorkspaceRouteError,
+} from '@/server/app-api/workspace-route-scope'
 
 const API_KEY_CANDIDATE_RATE_LIMITS = [
   { bucket: 'api-key-auth:candidate:ip', limit: 60, windowMs: 60_000 },
@@ -309,16 +313,15 @@ async function handleScopedBffRoute(
 
   let invocation: BffServiceInvocation
   if (configuration.scope === 'workspace') {
-    // Preserve workspace bootstrap for legacy routes. Account routes never
-    // enter this branch and therefore cannot resolve or create a workspace.
-    const requestedWorkspaceId = request.headers.get(ACTIVE_WORKSPACE_HEADER)?.trim() || undefined
-    let workspace
+    let workspace: Awaited<ReturnType<typeof resolveWorkspaceRequestScope>>
     try {
-      workspace = await serverContext.workspaceService.resolveActiveWorkspace(
-        auth.userId,
-        requestedWorkspaceId,
-      )
+      workspace = await resolveWorkspaceRequestScope(request, auth, serverContext.workspaceService)
     } catch (error) {
+      if (error instanceof UnavailableWorkspaceRouteError) {
+        const response = unavailableRouteWorkspaceResponse()
+        await emitMetric(response, auth.authType)
+        return response
+      }
       if (isOverlayConfigError(error)) {
         const response = runtimeConfigErrorResponse(error)
         await emitMetric(response, auth.authType)
@@ -380,6 +383,13 @@ function routeParams(context: unknown): BffRouteContext['params'] {
     return Promise.resolve((context as { params: BffRouteContext['params'] }).params)
   }
   return Promise.resolve({})
+}
+
+function unavailableRouteWorkspaceResponse(): NextResponse {
+  return NextResponse.json(
+    { error: 'Workspace not found or you no longer have access.', code: 'workspace_not_found' },
+    { status: 404, headers: { 'Cache-Control': 'private, no-store' } },
+  )
 }
 
 function shouldRecordMutationAudit(enabled: boolean, request: NextRequest): boolean {

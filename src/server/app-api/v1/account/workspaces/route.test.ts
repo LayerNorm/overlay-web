@@ -15,6 +15,9 @@ test('empty account directory does not resolve or create a workspace', async () 
         resolveCalls += 1
         throw new Error('must not resolve an empty directory')
       },
+      async resolveWorkspaceHandle() {
+        throw new Error('must not resolve an empty directory')
+      },
       async listReceivedInvitations(args) {
         invitationEmail = args.email
         return []

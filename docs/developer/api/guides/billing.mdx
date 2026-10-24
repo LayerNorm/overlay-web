@@ -1,0 +1,18 @@
+---
+title: "Billing"
+description: "Read a workspace's plan, credit and usage."
+---
+
+Plans and credit belong to workspaces. A person's own account is never charged; see [Plans and credit](/help/billing) for how it works.
+
+Read the plan and limits that apply to the signed-in person in the current workspace:
+
+```http
+GET /api/v1/subscription
+```
+
+The response describes the plan and credit of whoever pays in the current workspace: the workspace's plan when it has one, otherwise the free allowance. Paid-only features (web search, the browser, computers, Overlay Cloud agents, scheduled automations) refuse with an error whose `code` explains why, for example `paid_plan_required`.
+
+Buying a plan, top-ups, automatic top-ups and invoices happen in the app under **Settings → Workspace → Billing**, through Stripe Checkout and the Stripe customer portal. They are not part of the public API.
+
+Self-hosted deployments without billing set `billing.provider` to `none` and `capabilities.billing` to `false`; every workspace then has the features its deployment enables, without credit.

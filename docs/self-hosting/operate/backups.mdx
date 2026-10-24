@@ -1,0 +1,47 @@
+---
+title: "Backups"
+description: "What to back up in a self-hosted Overlay deployment, and how to restore it."
+---
+
+All app data lives in the Convex backend, which keeps it in two places: a database (Postgres, or SQLite for a pilot) and S3-compatible buckets. Back up both, plus your configuration.
+
+| What | Holds | How |
+| --- | --- | --- |
+| **Convex export** | Every table and file, as one portable archive | `npx convex export` on a schedule |
+| **Convex database** | The backend's persistence tables | Your database's snapshots and point-in-time recovery |
+| **Object storage** | Uploaded files, generated outputs and the backend's buckets | Bucket versioning and replication, or your S3 backup tool |
+| **Better Auth database** | Sign-in data, when you use Better Auth | Database snapshots |
+| **Configuration** | `overlay.config.json`, `convex.env` and your secrets | Your secret manager and configuration repository |
+
+## Exports
+
+```bash
+npx convex export --env-file convex.env.local --path backups/overlay-$(date +%F).zip
+```
+
+An export is the portable backup: it restores into any Convex backend, including one on a different database engine. Take one daily and before every [upgrade](/self-hosting/operate/upgrades), and copy it off the host.
+
+## Database snapshots
+
+On managed Postgres (RDS, Aurora, Cloud SQL), turn on automated snapshots and point-in-time recovery. Snapshots restore faster than an export, but only to the same kind of database.
+
+Do not read or edit the backend's tables directly with SQL. Their format is internal to Convex and changes between versions. For reporting, use the read mirror described in [Self-hosted Convex](/self-hosting/install/self-hosted-convex).
+
+## Restore
+
+1. Stop the web app so nothing writes during the restore.
+2. Start a Convex backend: the existing one, or a new one bootstrapped from [Self-hosted Convex](/self-hosting/install/self-hosted-convex).
+3. Import the export:
+
+   ```bash
+   npx convex import --env-file convex.env.local --replace-all backups/overlay-<date>.zip
+   ```
+
+4. Deploy the Convex functions from the same release tag the export came from.
+5. Start the web app and check sign-in, chats and files.
+
+Test a restore into a separate backend at least once a quarter. A backup you have never restored is a guess.
+
+## Secrets
+
+Keep `INSTANCE_SECRET`, `INTERNAL_API_SECRET`, `INTERNAL_SERVICE_AUTH_SECRET`, the session secrets and `API_KEY_HASH_SECRET` in your secret manager. Losing `INSTANCE_SECRET` invalidates the backend's admin keys; losing `API_KEY_HASH_SECRET` invalidates every API key.

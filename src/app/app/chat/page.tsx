@@ -13,7 +13,7 @@ import {
 async function ChatRouteContent({
   searchParams,
 }: {
-  searchParams?: Promise<{ showcase?: string | string[] }>
+  searchParams?: Promise<{ showcase?: string | string[]; scope?: string | string[]; view?: string | string[] }>
 }) {
   const session = await getOverlaySession()
   const params = await searchParams
@@ -26,7 +26,7 @@ async function ChatRouteContent({
   const initialChatPage = publicShowcase
     ? { data: SHOWCASE_CHAT_SUMMARIES, nextCursor: undefined, hasMore: false }
     : userId
-      ? await getInitialChatHistory()
+      ? await getInitialChatHistory(params?.scope !== undefined || params?.view !== undefined)
       : null
   return (
     <ChatSuspenseBoundary
@@ -45,7 +45,7 @@ async function ChatRouteContent({
 export default function ChatPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ showcase?: string | string[] }>
+  searchParams?: Promise<{ showcase?: string | string[]; scope?: string | string[]; view?: string | string[] }>
 }) {
   return (
     <Suspense fallback={<ChatRouteSkeleton />}>
