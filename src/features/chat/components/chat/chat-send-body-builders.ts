@@ -257,6 +257,7 @@ export function buildTextTurnPayload({
 
 export function buildCommonActBody({
   chatId,
+  scope,
   pendingConversationClientId,
   temporaryChatSnapshot,
   textModelsForTurn,
@@ -274,6 +275,7 @@ export function buildCommonActBody({
   personalChatMode,
 }: {
   chatId: string
+  scope?: 'personal' | 'workspace'
   pendingConversationClientId: string | null
   temporaryChatSnapshot: boolean
   textModelsForTurn: string[]
@@ -296,6 +298,7 @@ export function buildCommonActBody({
       : chatId === PENDING_FIRST_CHAT_ID
         ? {
             conversationClientId: pendingConversationClientId,
+            scope,
             askModelIds: textModelsForTurn,
           }
         : { conversationId: chatId }),

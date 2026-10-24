@@ -1,7 +1,7 @@
 import { chmodSync, closeSync, existsSync, lstatSync, mkdirSync, openSync, realpathSync } from 'node:fs'
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
-import { z } from 'zod'
+import { z } from 'zod/v3'
 import { driveCredentialsResponseSchema, driveManifestEntrySchema, driveMetadataBodySchema, driveSavedEntrySchema,
   drivePathSegments, driveUploadBodySchema, portableDrivePathKey } from '@layernorm/overlay-agent-bridge-protocol'
 

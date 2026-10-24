@@ -1,5 +1,5 @@
 import 'server-only'
-import { z } from 'zod'
+import { z } from 'zod/v3'
 import { driveCredentialsRequestSchema } from '@layernorm/overlay-agent-bridge-protocol'
 import { agentDriveTokenInputSchema, createAgentDriveTokens } from './agent-drive-token'
 

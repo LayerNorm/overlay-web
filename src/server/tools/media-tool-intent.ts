@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { z } from 'zod'
+import { z } from 'zod/v3'
 import { generateObject } from '@/server/ai/sdk'
 import { getLanguageModel } from '@/server/ai/model-runtime'
 import type { Entitlements } from '@/shared/app/app-contracts'

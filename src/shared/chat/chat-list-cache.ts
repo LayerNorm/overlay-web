@@ -2,6 +2,7 @@ import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { isPaginatedEnvelope, type PaginatedEnvelope } from '@/shared/api/pagination'
 import { trackCacheState } from '@/shared/observability/client-metrics'
 import { recordRequest } from '@/shared/observability/duplicate-tracker'
+import { ROUTE_WORKSPACE_HEADER } from '@/shared/workspaces/constants'
 
 export type CachedConversation = {
   _id: string
@@ -175,6 +176,7 @@ export function clearAllChatListCaches() {
 
 export async function fetchChatListResult(options: { force?: boolean } = {}): Promise<ChatListFetchOutcome> {
   const requestWorkspaceKey = activeCacheKey()
+  const requestWorkspaceId = getActiveChatListWorkspace()
   const requestView = activeChatView
   const cache = getWorkspaceCache(requestWorkspaceKey)
   const now = Date.now()
@@ -216,7 +218,7 @@ export async function fetchChatListResult(options: { force?: boolean } = {}): Pr
   cache.inFlight = overlayAppClient.conversations.getResponse({
     limit: INITIAL_CHAT_LIST_LIMIT,
     view: requestView,
-  })
+  }, requestWorkspaceId ? { headers: { [ROUTE_WORKSPACE_HEADER]: `id:${requestWorkspaceId}` } } : undefined)
     .then(async (res): Promise<ChatListFetchOutcome> => {
       if (!res.ok) {
         if (res.status === 401 || res.status === 403) return { status: 'unauthenticated' }
@@ -258,6 +260,7 @@ export async function fetchChatList(options: { force?: boolean } = {}): Promise<
 
 export async function fetchNextChatListPage(): Promise<CachedConversation[]> {
   const requestWorkspaceKey = activeCacheKey()
+  const requestWorkspaceId = getActiveChatListWorkspace()
   const requestView = activeChatView
   const cache = getWorkspaceCache(requestWorkspaceKey)
   if (!cache.cachedPageInfo.hasMore || !cache.cachedPageInfo.nextCursor) return cache.cachedChats ?? []
@@ -267,7 +270,7 @@ export async function fetchNextChatListPage(): Promise<CachedConversation[]> {
     cursor: cache.cachedPageInfo.nextCursor,
     limit: INITIAL_CHAT_LIST_LIMIT,
     view: requestView,
-  })
+  }, requestWorkspaceId ? { headers: { [ROUTE_WORKSPACE_HEADER]: `id:${requestWorkspaceId}` } } : undefined)
     .then(async (res) => {
       const requestCache = getWorkspaceCache(requestWorkspaceKey)
       if (!res.ok) return requestCache.cachedChats ?? []

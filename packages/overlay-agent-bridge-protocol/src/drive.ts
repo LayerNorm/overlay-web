@@ -1,4 +1,4 @@
-import { z } from 'zod'
+import { z } from 'zod/v3'
 import { drivePathSegments, portableDrivePathKey } from './drive-path.js'
 
 const id = z.string().min(1).max(200)

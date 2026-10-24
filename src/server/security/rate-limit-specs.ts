@@ -12,6 +12,14 @@ export const CHAT_RATE_LIMITS: RateLimitSpec[] = [
 ]
 
 const ENDPOINT_RATE_LIMITS: Record<string, RateLimitSpec[]> = {
+  'GET /api/v1/workspace-handles/:handle': [
+    { bucket: 'workspace-handles:resolve:ip', limit: 240, windowMs: TEN_MINUTES },
+    { bucket: 'workspace-handles:resolve:user', limit: 120, windowMs: TEN_MINUTES },
+  ],
+  'PATCH /api/v1/workspaces/:workspaceId/handle': [
+    { bucket: 'workspace-handles:update:ip', limit: 20, windowMs: TEN_MINUTES },
+    { bucket: 'workspace-handles:update:user', limit: 10, windowMs: TEN_MINUTES },
+  ],
   // Bootstrap read routes fire on every app-shell load. Without dedicated
   // specs they fall through to the shared `api:default:user` bucket
   // (300/10min), so a burst from one route (e.g. the model-catalog hook's

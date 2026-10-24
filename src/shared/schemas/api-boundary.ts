@@ -1,4 +1,4 @@
-import { z, type ZodTypeAny } from 'zod'
+import { z, type ZodTypeAny } from 'zod/v3'
 import {
   commandAcknowledgementSchema,
   enrollmentRequestSchema,
@@ -1020,6 +1020,8 @@ export const webApiExcludedRouteDefinitions = [
   { routePath: '/api/v1/shares/shared-with-me', reason: 'Shared-with-me listing; boundary definition pending. Protected by workspace authorization.' },
   // Workspace routes pending full boundary definitions.
   { routePath: '/api/v1/account/workspaces', reason: 'Account workspace directory and creation; signed-browser-session only with validation and workspace creation rules enforced by the server service.' },
+  { routePath: '/api/v1/workspace-handles/[handle]', reason: 'Authenticated, membership-gated workspace handle resolution. Returns a generic denial for unknown, inaccessible, suspended, or archived workspaces.' },
+  { routePath: '/api/v1/workspaces/[workspaceId]/handle', reason: 'Owner-only workspace handle update. Workspace ID remains immutable; handle changes retain historical aliases.' },
   { routePath: '/api/v1/workspace-invitations/[invitationId]/accept', reason: 'Workspace invitation acceptance; boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/workspaces', reason: 'Workspace management; boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/workspaces/[workspaceId]/audit-export', reason: 'Workspace audit export; boundary definition pending. Protected by workspace authorization.' },

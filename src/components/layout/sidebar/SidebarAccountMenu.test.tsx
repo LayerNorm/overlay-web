@@ -29,7 +29,7 @@ function render() {
   )
 }
 
-test('usage and storage collapse behind disclosure headers without retired apps', () => {
+test('usage and storage collapse behind disclosure headers without retired app links', () => {
   const html = render()
   for (const label of ['Usage', 'Storage']) {
     assert.match(html, new RegExp(`aria-expanded="false"[^>]*>.*?${label}`, 's'))

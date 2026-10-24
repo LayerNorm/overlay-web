@@ -7,6 +7,9 @@ import type {
   WorkspaceClient,
   WorkspaceCreateInput,
   WorkspaceCreateResponse,
+  WorkspaceHandleResolutionResponse,
+  WorkspaceHandleUpdateInput,
+  WorkspaceHandleUpdateResponse,
   WorkspaceManagementClient,
   WorkspaceManagementLoader,
 } from '@/shared/workspaces/types'
@@ -47,6 +50,22 @@ export const workspaceClient: WorkspaceClient = {
       headers: { 'content-type': 'application/json', 'idempotency-key': options?.idempotencyKey ?? crypto.randomUUID() },
       body: JSON.stringify(input),
     }))
+  },
+
+  async resolveHandle(handle: string, signal?: AbortSignal) {
+    return await readJson<WorkspaceHandleResolutionResponse>(await fetchWithSessionRecovery(
+      `/api/v1/workspace-handles/${encodeURIComponent(handle)}`,
+      { cache: 'no-store', credentials: 'same-origin', signal },
+    ))
+  },
+
+  async updateHandle(workspaceId: string, input: WorkspaceHandleUpdateInput) {
+    return await workspaceMutation<WorkspaceHandleUpdateResponse>(
+      workspaceId,
+      `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/handle`,
+      'PATCH',
+      input,
+    )
   },
 
   async activate(workspaceId: string) {

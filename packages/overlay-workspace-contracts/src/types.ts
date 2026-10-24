@@ -150,6 +150,7 @@ export type WorkspaceSummary = {
   id: string
   name: string
   slug: string
+  routingHandle?: string
   kind: WorkspaceKind
   status: WorkspaceStatus
   role: WorkspaceMembershipRole
@@ -278,6 +279,20 @@ export type WorkspaceCreateInput = {
 
 export type WorkspaceCreateResponse = {
   workspace: WorkspaceSummary
+}
+
+export type WorkspaceHandleResolutionResponse = {
+  workspaceId: string
+  canonicalHandle: string
+  canonical: boolean
+}
+
+export type WorkspaceHandleUpdateInput = {
+  slug: string
+}
+
+export type WorkspaceHandleUpdateResponse = {
+  workspace: Workspace
 }
 
 export type WorkspaceActivateResponse = {

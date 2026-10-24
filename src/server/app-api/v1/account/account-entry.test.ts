@@ -62,6 +62,7 @@ test('account directory, creation, and invitation acceptance skip workspace boot
   const server = getOverlayServerContext()
   const access = workspaceAccess()
   let resolveCalls = 0
+  let summaryResolveCalls = 0
   let ensureCalls = 0
   let createCalls = 0
   let idempotencyReservations = 0
@@ -116,6 +117,10 @@ test('account directory, creation, and invitation acceptance skip workspace boot
     return access
   })
   t.mock.method(server.workspaceService, 'setActiveWorkspace', async () => access)
+  t.mock.method(server.workspaceService, 'resolveWorkspaceHandle', async () => {
+    summaryResolveCalls += 1
+    return { workspaceId: access.workspace.id, canonicalHandle: access.workspace.slug, canonical: true }
+  })
   t.mock.method(server.workspaceService, 'acceptInvitation', async (args) => {
     acceptedEmail = args.email
     return access
@@ -156,6 +161,7 @@ test('account directory, creation, and invitation acceptance skip workspace boot
   assert.match(create.headers.get('set-cookie') ?? '', /overlay_active_workspace=workspace_1/)
   assert.equal(createCalls, 1)
   assert.equal(idempotencyReservations, 1)
+  assert.equal(summaryResolveCalls, 1)
   assert.equal(resolveCalls, 0)
   assert.equal(ensureCalls, 0)
 
@@ -166,6 +172,7 @@ test('account directory, creation, and invitation acceptance skip workspace boot
   assert.equal(accepted.status, 200)
   assert.equal(acceptedEmail, 'member@example.test')
   assert.equal(idempotencyReservations, 2)
+  assert.equal(summaryResolveCalls, 2)
   assert.equal(resolveCalls, 0)
   assert.equal(ensureCalls, 0)
 

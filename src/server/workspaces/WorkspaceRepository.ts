@@ -13,6 +13,7 @@ import type {
   WorkspaceResourceScope,
   WorkspaceAuditExportRecord,
   WorkspaceIdentityMapping,
+  WorkspaceHandleResolutionResponse,
   WorkspaceSharingPolicy,
   WorkspaceSharingPolicyPatch,
   WorkspaceTeam,
@@ -45,6 +46,15 @@ export type CreateOrganizationWorkspaceInput = {
   ownerDisplayName: string
   ownerEmail?: string
   name: string
+  slug: string
+  handleExplicit?: boolean
+  handleSuffixes?: string[]
+  now: number
+}
+
+export type UpdateWorkspaceHandleInput = {
+  workspaceId: string
+  actorUserId: string
   slug: string
   now: number
 }
@@ -122,6 +132,12 @@ export interface WorkspaceRepository {
     now: number
   }): Promise<Workspace | null>
   renameWorkspace(args: { workspaceId: string; name: string; now: number }): Promise<Workspace | null>
+  resolveWorkspaceHandle?(args: {
+    userId: string
+    handle: string
+  }): Promise<WorkspaceHandleResolutionResponse | null>
+  isWorkspaceHandleRegistryReady?(): Promise<boolean>
+  updateWorkspaceHandle?(input: UpdateWorkspaceHandleInput): Promise<Workspace | null>
 
   createPrincipal(input: CreateWorkspacePrincipalInput): Promise<WorkspacePrincipal>
   getPrincipal(principalId: string): Promise<WorkspacePrincipal | null>

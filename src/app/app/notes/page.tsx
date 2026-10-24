@@ -1,7 +1,7 @@
+import { AppRouteSessionRecovery } from '../_components/AppRouteSessionRecovery'
 import { Suspense } from 'react'
 import dynamic from 'next/dynamic'
 import { getOverlaySession } from '@/server/auth/session'
-import { redirect } from 'next/navigation'
 import { ChatRouteSkeleton } from '../_components/AppRouteSkeletons'
 
 const NotebookEditor = dynamic(() => import('@/features/notebook/components/NotebookEditor'), {
@@ -14,7 +14,7 @@ const NotebookEditor = dynamic(() => import('@/features/notebook/components/Note
 
 async function NotesRouteContent() {
   const session = await getOverlaySession()
-  if (!session) redirect('/app/chat?signin=nav')
+  if (!session) return <AppRouteSessionRecovery />
   return <NotebookEditor userId={session.user.id} />
 }
 

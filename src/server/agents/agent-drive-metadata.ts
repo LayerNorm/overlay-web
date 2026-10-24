@@ -1,5 +1,5 @@
 import 'server-only'
-import { z } from 'zod'
+import { z } from 'zod/v3'
 
 import { driveMetadataBodySchema, driveMetadataEntrySchema, driveMetadataResultSchema } from '@layernorm/overlay-agent-bridge-protocol'
 export { driveMetadataBodySchema, driveMetadataEntrySchema, driveMetadataResultSchema }
