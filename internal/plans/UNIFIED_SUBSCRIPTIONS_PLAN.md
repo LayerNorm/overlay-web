@@ -1,7 +1,8 @@
 # Unified request-based subscription connections
 
-Status: Phases 1, 2 and 4 are implemented in the request-based Codex path. Provider expansion,
-live provider acceptance and preview verification remain deferred/unverified.
+Status: Core implementation for phases 1, 2 and 4 is present for Codex; their
+acceptance gates are not complete. Provider expansion and legacy migration remain
+unimplemented. Live provider acceptance and current-head preview QA are pending.
 
 ## Decision
 
@@ -45,6 +46,10 @@ Do not transfer rotating tokens between old and new systems or expose them to ru
   then deletes vault secrets. Retain retryable cleanup metadata if deletion fails.
   Already-dispatched provider work may finish. Do not claim provider-side revocation
   without a supported upstream endpoint.
+- Vault creation and Convex commits are not atomic across services. A crash after
+  a vault write but before its reference is persisted can leave an orphaned secret.
+  Known failed cleanup retains references; rollout still requires reconciliation
+  for the unreferenced-write window. Do not claim crash-proof cleanup.
 - Bound and sanitize failures. Never put raw auth/provider error bodies, credentials,
   or vault references in public JSON, model metadata, logs, prompts or client state.
 

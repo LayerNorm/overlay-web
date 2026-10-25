@@ -221,7 +221,7 @@ export class SubscriptionService {
       const latest = latestSecret ? parseCodexTokens(latestSecret) : null
       if (!latest) throw new Error('Subscription credential is unavailable')
       if (!codexTokensNeedRefresh(latest, Date.now())) {
-        await this.repository.releaseRefresh?.(fenced)
+        await this.repository.releaseRefresh(fenced)
         return { status: 'connected', models: [] }
       }
       const refreshed = await refreshCodexTokens(latest, { fetch: this.codexFetch() })
@@ -330,12 +330,12 @@ export class SubscriptionService {
       let state: Awaited<ReturnType<SubscriptionRepository['get']>>
       try {
         state = await this.repository.get({
-        userId: fenced.userId,
-        connectionId: fenced.connectionId,
+          userId: fenced.userId,
+          connectionId: fenced.connectionId,
         })
       } catch (_error) {
         try {
-          await this.repository.retainCleanupRef?.({
+          await this.repository.retainCleanupRef({
             userId: fenced.userId, connectionId: fenced.connectionId, credentialRef,
           })
         } catch (_retainError) { /* retain the original failure */ }
@@ -344,17 +344,7 @@ export class SubscriptionService {
       if (state?.credentialRef === credentialRef ||
           state?.pendingStateRef === credentialRef ||
           state?.cleanupRefs.includes(credentialRef)) return true
-      if (state) {
-        try {
-          await this.credentials.delete(credentialRef)
-        } catch (_error) {
-          try {
-            await this.repository.retainCleanupRef?.({
-              userId: fenced.userId, connectionId: fenced.connectionId, credentialRef,
-            })
-          } catch (_retainError) { /* retain the original failure */ }
-        }
-      }
+      await this.deleteCandidateIfUncommitted(fenced.userId, fenced.connectionId, credentialRef)
       return false
     }
   }
@@ -369,20 +359,18 @@ export class SubscriptionService {
       state = await this.repository.get({ userId, connectionId })
     } catch (_error) {
       try {
-        await this.repository.retainCleanupRef?.({ userId, connectionId, credentialRef: candidateRef })
+        await this.repository.retainCleanupRef({ userId, connectionId, credentialRef: candidateRef })
       } catch (_retainError) { /* retain the original failure */ }
       return
     }
     if (state?.credentialRef === candidateRef || state?.pendingStateRef === candidateRef) return
     if (state?.cleanupRefs.includes(candidateRef)) return
-    if (state) {
+    try {
+      await this.credentials.delete(candidateRef)
+    } catch (_error) {
       try {
-        await this.credentials.delete(candidateRef)
-      } catch (_error) {
-        try {
-          await this.repository.retainCleanupRef?.({ userId, connectionId, credentialRef: candidateRef })
-        } catch (_retainError) { /* retain the original failure */ }
-      }
+        await this.repository.retainCleanupRef({ userId, connectionId, credentialRef: candidateRef })
+      } catch (_retainError) { /* retain the original failure */ }
     }
   }
 

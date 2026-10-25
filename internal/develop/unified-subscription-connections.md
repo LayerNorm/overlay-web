@@ -31,6 +31,12 @@ immutable vault snapshot is committed before release. Ambiguous expired refresh
 leases require reconnect rather than reusing a potentially consumed token.
 Disconnect revokes the generation and public connection access before cleanup.
 Failed vault deletion leaves retryable cleanup references in Convex.
+Disconnect retains the prior operation deadline as a cleanup barrier before a
+connection or account can be removed. A retry can finish deletion after that
+deadline. Vault creation and Convex reference persistence are separate services:
+a process crash between them can still leave an unreferenced vault object.
+This is not cross-service atomicity; rollout needs vault reconciliation for that
+residual crash window.
 
 Codex model discovery uses the signed-in account's
 `https://chatgpt.com/backend-api/codex/models?client_version=0.154.0` catalog.

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { generateText, streamText } from 'ai'
+import { generateText, jsonSchema, streamText } from 'ai'
 import { boundedStream, completedResponse, createSubscriptionLanguageModel } from './transport'
 
 test('non-stream Responses completion accepts CRLF SSE and returns the completed response', async () => {
@@ -90,6 +90,74 @@ test('AI SDK generateText uses a completed JSON fixture and stateless storage', 
   assert.equal(result.text, 'fixture response')
   assert.equal(requestBody?.stream, true)
   assert.equal(requestBody?.store, false)
+})
+
+test('AI SDK tool continuation sends complete history rather than stored item references', { timeout: 5_000 }, async () => {
+  let requestBody: Record<string, unknown> | undefined
+  const model = modelWithFetch(async (_input, init) => {
+    requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>
+    return new Response(`data: ${JSON.stringify({ type: 'response.completed', response: responseBody })}\n\n`)
+  })
+  await generateText({
+    model, maxRetries: 0,
+    tools: { lookup: { inputSchema: jsonSchema({ type: 'object', properties: {} }) } },
+    messages: [
+      { role: 'user', content: 'Look it up' },
+      { role: 'assistant', content: [
+        { type: 'text', text: 'Checking', providerOptions: { openai: { itemId: 'msg-old' } } },
+        { type: 'tool-call', toolCallId: 'call-1', toolName: 'lookup', input: {},
+          providerOptions: { openai: { itemId: 'fc-old' } } },
+      ] },
+      { role: 'tool', content: [
+        { type: 'tool-result', toolCallId: 'call-1', toolName: 'lookup', output: { type: 'text', value: 'found' } },
+      ] },
+    ],
+  })
+  const input = requestBody?.input as Array<Record<string, unknown>>
+  assert.ok(input.some((item) => item.type === 'function_call' && item.call_id === 'call-1'))
+  assert.ok(input.some((item) => item.type === 'function_call_output' && item.call_id === 'call-1'))
+  assert.equal(input.some((item) => item.type === 'item_reference'), false)
+})
+
+test('AI SDK streaming failures are sanitized and truncated streams fail', { timeout: 5_000 }, async () => {
+  for (const payload of [
+    'data: {"type":"error","error":{"message":"private-provider-detail"}}\n\n',
+    'data: {"type":"response.created","response":{"id":"resp-1","created_at":1,"model":"account-model"}}\n\n',
+    'data: private-provider-detail\n\n',
+  ]) {
+    const model = modelWithFetch(async () => new Response(payload))
+    const result = streamText({ model, prompt: 'hi', maxRetries: 0, onError: () => {} })
+    const events = []
+    for await (const event of result.fullStream) events.push(event)
+    assert.ok(events.some((event) => event.type === 'error'))
+    assert.doesNotMatch(JSON.stringify(events), /private-provider-detail/)
+  }
+})
+
+test('AI SDK abort cancels the active upstream subscription stream', { timeout: 5_000 }, async () => {
+  const abort = new AbortController()
+  let signal: AbortSignal | null | undefined
+  let cancelled = false
+  let started!: () => void
+  const ready = new Promise<void>((resolve) => { started = resolve })
+  const model = modelWithFetch(async (_input, init) => {
+    signal = init?.signal
+    return new Response(new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('data: {"type":"response.created","response":{"id":"resp-1","created_at":1,"model":"account-model"}}\n\n'))
+        signal?.addEventListener('abort', () => { cancelled = true; controller.error(signal?.reason) }, { once: true })
+        started()
+      },
+      cancel() { cancelled = true },
+    }))
+  })
+  const result = streamText({ model, prompt: 'hi', abortSignal: abort.signal, maxRetries: 0, onError: () => {} })
+  const consumed = result.consumeStream()
+  await ready
+  abort.abort()
+  await consumed
+  assert.equal(signal?.aborted, true)
+  assert.equal(cancelled, true)
 })
 
 test('AI SDK streamText preserves Responses SSE mode and requires terminal completion', async () => {

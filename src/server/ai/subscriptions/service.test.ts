@@ -43,6 +43,10 @@ class FakeRepository {
   async forDispatch() { return null }
   async revokeAllByUser() { return [] }
   async removeCleanupRef() { return }
+  async retainCleanupRef(args: { credentialRef: string }) {
+    this.state = { ...this.state, cleanupRefs: [args.credentialRef] }
+  }
+  async releaseRefresh() { return }
   async forgetAllByUser() { return }
   async forgetDisconnected() { return }
   async listByUser() { return [] }
@@ -68,6 +72,40 @@ function createService(repository: FakeRepository, credentials: FakeCredentials,
     fetcher,
   )
 }
+
+test('an ambiguous credential commit never deletes a candidate activated by another instance', async () => {
+  const repository = new FakeRepository()
+  const credentials = new FakeCredentials()
+  const candidate = await credentials.write({ apiKey: 'opaque-test-credential' })
+  repository.commitCredentialForDiscovery = async () => {
+    repository.state = { phase: 'active', credentialRef: candidate, cleanupRefs: [] }
+    throw new Error('acknowledgment lost after concurrent discovery')
+  }
+  const service = createService(repository, credentials, async () => { throw new Error('unused') })
+  const committed = await (service as unknown as {
+    commitCredentialCandidate(args: object, ref: string): Promise<boolean>
+  }).commitCredentialCandidate({
+    userId: 'owner-1', connectionId: 'connection-1', generation: 1, revision: 1, leaseToken: 'lease',
+  }, candidate)
+  assert.equal(committed, true)
+  assert.deepEqual(credentials.deleted, [])
+  assert.equal(credentials.values.has(candidate), true)
+})
+
+test('a rejected candidate is retained for cleanup if vault deletion fails', async () => {
+  const repository = new FakeRepository()
+  repository.state = { phase: 'disconnected', cleanupRefs: [] }
+  const credentials = new FakeCredentials()
+  credentials.delete = async () => { throw new Error('vault unavailable') }
+  const service = createService(repository, credentials, async () => { throw new Error('unused') })
+  const committed = await (service as unknown as {
+    commitCredentialCandidate(args: object, ref: string): Promise<boolean>
+  }).commitCredentialCandidate({
+    userId: 'owner-1', connectionId: 'connection-1', generation: 1, revision: 1, leaseToken: 'lease',
+  }, 'rejected-candidate')
+  assert.equal(committed, false)
+  assert.deepEqual(repository.state?.cleanupRefs, ['rejected-candidate'])
+})
 
 test('Codex authorization reserves a durable generation before requesting and vaulting device material', async (t) => {
   const previous = process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS

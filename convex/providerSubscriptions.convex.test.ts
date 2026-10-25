@@ -12,6 +12,39 @@ const connectionQuery = (name: string) =>
   makeFunctionReference<'query'>(`providers/connections:${name}`)
 const query = (name: string) => makeFunctionReference<'query'>(`providers/subscriptions:${name}`)
 
+for (const revoke of ['disconnect', 'revokeAllByUser']) {
+  test(`${revoke} retains cleanup authority until in-flight work is fenced and drained`, async () => {
+    let now = Date.now()
+    const clock = vi.spyOn(Date, 'now').mockImplementation(() => now)
+    try {
+      const convex = convexTest(schema, modules)
+      const pending = await createPendingAuthorization(convex)
+      now += 3_000
+      const args = { serverSecret: secret, userId: 'owner-1', connectionId: pending.connectionId }
+      const poll = await convex.mutation(mutation('acquirePoll'), { ...args, leaseToken: 'in-flight' })
+      await convex.mutation(mutation(revoke), revoke === 'disconnect'
+        ? args : { serverSecret: secret, userId: 'owner-1' })
+      await convex.mutation(mutation('removeCleanupRef'), { ...args, credentialRef: 'vault-pending-state' })
+      await expect(convex.mutation(mutation('forgetDisconnectedByServer'), args)).rejects.toThrow(/pending/)
+      await expect(convex.mutation(mutation('forgetAllByUser'), {
+        serverSecret: secret, userId: 'owner-1',
+      })).rejects.toThrow(/credentials remain/)
+      await expect(convex.mutation(mutation('commitCredentialForDiscovery'), {
+        ...args, generation: poll.generation!, revision: poll.revision!,
+        leaseToken: 'in-flight', credentialRef: 'late-vault-candidate',
+      })).rejects.toThrow()
+      await convex.mutation(mutation('retainCleanupRef'), { ...args, credentialRef: 'late-vault-candidate' })
+      now += 61_000
+      await expect(convex.mutation(mutation('forgetDisconnectedByServer'), args)).rejects.toThrow(/pending/)
+      await convex.mutation(mutation('removeCleanupRef'), { ...args, credentialRef: 'late-vault-candidate' })
+      await convex.mutation(mutation('forgetDisconnectedByServer'), args)
+      expect(await convex.query(query('getByServer'), args)).toBeNull()
+    } finally {
+      clock.mockRestore()
+    }
+  })
+}
+
 beforeAll(() => { process.env.INTERNAL_API_SECRET = secret })
 
 async function createPendingAuthorization(convex: ReturnType<typeof convexTest>) {
@@ -183,7 +216,7 @@ test('discovery activation is atomic and rediscovery preserves an empty model se
       revision: discovery.revision!,
       leaseToken: 'discovery-lease',
       credentialRef: 'vault-credential',
-      discoveredModelsJson: JSON.stringify(models),
+      discoveredModelsJson: JSON.stringify({ data: models }),
       discoveredModelIds: models.map(({ id }) => id),
     })
     const first = await convex.query(connectionQuery('getByServer'), {
@@ -192,12 +225,22 @@ test('discovery activation is atomic and rediscovery preserves an empty model se
     })
     expect(first?.status).toBe('active')
     expect(first?.enabledModelIds).toEqual(['codex-one', 'codex-two'])
+    const dispatchArgs = {
+      serverSecret: secret, userId: 'owner-1',
+      connectionId: pending.connectionId, modelId: 'codex-one',
+    }
+    expect(await convex.query(query('getForDispatchByServer'), dispatchArgs))
+      .toMatchObject({ credentialRef: 'vault-credential', providerId: 'codex' })
+    expect(await convex.query(query('getForDispatchByServer'), {
+      ...dispatchArgs, userId: 'another-owner',
+    })).toBeNull()
 
     await convex.mutation(connectionMutation('updateByServer'), {
       serverSecret: secret,
       connectionId: pending.connectionId,
       enabledModelIds: [],
     })
+    expect(await convex.query(query('getForDispatchByServer'), dispatchArgs)).toBeNull()
     const rediscovery = await convex.mutation(mutation('acquireDiscovery'), {
       serverSecret: secret,
       userId: 'owner-1',
@@ -212,7 +255,7 @@ test('discovery activation is atomic and rediscovery preserves an empty model se
       revision: rediscovery.revision!,
       leaseToken: 'rediscovery-lease',
       credentialRef: 'vault-credential',
-      discoveredModelsJson: JSON.stringify(models),
+      discoveredModelsJson: JSON.stringify({ data: models }),
       discoveredModelIds: models.map(({ id }) => id),
     })
     const refreshed = await convex.query(connectionQuery('getByServer'), {

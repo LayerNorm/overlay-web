@@ -679,6 +679,8 @@ export const disconnect = mutation({
       generation,
       revision,
       phase: 'disconnected' as const,
+      // Keep cleanup authority while an already-running vault write may finish.
+      leaseUntil: state?.leaseUntil,
       cleanupRefs,
       cleanupStatus: cleanupStatus(cleanupRefs),
       createdAt: state?.createdAt ?? now,
@@ -729,7 +731,6 @@ export const revokeAllByUser = mutation({
         nextPollAt: undefined,
         expiresAt: undefined,
         leaseToken: undefined,
-        leaseUntil: undefined,
         leaseOperation: undefined,
         cleanupRefs: dedupeRefs(...state.cleanupRefs, state.credentialRef, state.pendingStateRef),
         cleanupStatus: cleanupStatus(dedupeRefs(...state.cleanupRefs, state.credentialRef, state.pendingStateRef)),
@@ -804,7 +805,8 @@ export const forgetAllByUser = mutation({
       .withIndex('by_userId', (q) => q.eq('userId', args.userId))
       .collect()
     if (states.some((state) =>
-      state.credentialRef || state.pendingStateRef || state.cleanupRefs.length > 0
+      state.credentialRef || state.pendingStateRef || state.cleanupRefs.length > 0 ||
+      (state.leaseUntil !== undefined && state.leaseUntil > Date.now())
     )) {
       throw new Error('Subscription credentials remain during account deletion')
     }
@@ -824,7 +826,8 @@ export const forgetDisconnectedByServer = mutation({
     requireServerSecret(args.serverSecret)
     const state = await loadState(ctx, args.connectionId)
     if (!state || state.userId !== args.userId || state.phase !== 'disconnected' ||
-        state.credentialRef || state.pendingStateRef || state.cleanupRefs.length > 0) {
+        state.credentialRef || state.pendingStateRef || state.cleanupRefs.length > 0 ||
+        (state.leaseUntil !== undefined && state.leaseUntil > Date.now())) {
       throw new Error('Subscription cleanup is still pending')
     }
     await ctx.db.delete(state._id)
