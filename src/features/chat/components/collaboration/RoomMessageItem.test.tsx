@@ -28,8 +28,8 @@ function record(overrides: Partial<RoomMessageRecord> = {}): RoomMessageRecord {
   }
 }
 
-function render(message: RoomMessageRecord, authorName = 'Maya Chen', grouped = false, streaming = false, canResolve = false, remoteStatus?: React.ReactNode, personalChatStyle = false) {
-  return renderToStaticMarkup(
+function messageElement(message: RoomMessageRecord, authorName = 'Maya Chen', grouped = false, streaming = false, canResolve = false, remoteStatus?: React.ReactNode, personalChatStyle = false) {
+  return (
     <RoomMessageItem
       message={toRoomMessageView({
         message,
@@ -64,9 +64,62 @@ function render(message: RoomMessageRecord, authorName = 'Maya Chen', grouped = 
       remoteStatus={remoteStatus}
       onStopResponse={streaming ? () => undefined : undefined}
       personalChatStyle={personalChatStyle}
-    />,
+    />
   )
 }
+
+function render(message: RoomMessageRecord, authorName = 'Maya Chen', grouped = false, streaming = false, canResolve = false, remoteStatus?: React.ReactNode, personalChatStyle = false) {
+  return renderToStaticMarkup(messageElement(message, authorName, grouped, streaming, canResolve, remoteStatus, personalChatStyle))
+}
+
+function remoteMessage(state: string, retryable = false): RoomMessageRecord {
+  return record({ authorKind: 'agent', authorPrincipalId: 'agent-1', content: 'Waiting for Computer',
+    parts: [
+      { type: 'text', text: 'Waiting for Computer' },
+      { type: 'data-remote-agent-status', data: { runId: 'run-1', environmentName: 'Computer',
+        queueExpiresAt: Date.now() + 120_000, state, retryable } },
+    ],
+  })
+}
+
+test('connecting uses only the hover-toolbar Stop control, which cancels the remote run', () => {
+  const element = messageElement(remoteMessage('waiting'))
+  const controls: unknown[] = []
+  const row = RoomMessageItem({ ...element.props, personalChatStyle: true,
+    onControlRemoteQueue: (runId, action) => controls.push([runId, action]) })
+  const html = renderToStaticMarkup(row)
+  assert.match(html, /Connecting to computer/)
+  assert.match(html, /chat-exchange-actions--hover/)
+  assert.match(html, /aria-label="Stop response"/)
+  assert.doesNotMatch(html, /Waiting up to|waiting window|>Cancel<|Retry connection/)
+  row.props.toolbar.props.onStop()
+  assert.deepEqual(controls, [['run-1', 'cancel']])
+})
+
+test('a failed connection exposes only the hover-toolbar Retry control and retries its run', () => {
+  const element = messageElement(remoteMessage('recoverable', true))
+  const controls: unknown[] = []
+  const row = RoomMessageItem({ ...element.props, personalChatStyle: true,
+    onControlRemoteQueue: (runId, action) => controls.push([runId, action]) })
+  const html = renderToStaticMarkup(row)
+  assert.match(html, /Computer connection failed/)
+  assert.match(html, /aria-label="Retry connection"/)
+  assert.match(html, /chat-exchange-actions--hover/)
+  assert.doesNotMatch(html, /Stop response|Waiting for Computer|>Resume<|>Start fresh<|>Retry</)
+  row.props.toolbar.props.onRetry()
+  assert.deepEqual(controls, [['run-1', 'retry']])
+})
+
+test('Retry is absent during recovery and for terminal or non-retryable runs', () => {
+  for (const state of ['waiting', 'running', 'recovering', 'cancelling', 'completed', 'cancelled', 'failed', 'needs_attention']) {
+    assert.doesNotMatch(render(remoteMessage(state, true)), /aria-label="Retry connection"/, state)
+  }
+  assert.doesNotMatch(render(remoteMessage('recoverable')), /aria-label="Retry connection"/)
+  const recovering = render(remoteMessage('recovering', true))
+  assert.match(recovering, /aria-label="Stop response"/)
+  assert.match(recovering, /Connecting to computer/)
+  assert.doesNotMatch(recovering, /Resuming…/)
+})
 
 test('streaming agent controls stay hidden until their own response is hovered or focused', () => {
   const html = render(record({ authorKind: 'agent', authorPrincipalId: 'agent', content: 'Working' }), 'Agent', false, true, false, undefined, true)
