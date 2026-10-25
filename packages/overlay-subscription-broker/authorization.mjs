@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto'
 import {
+  MAX_WORKERS,
   assertEnabledProvider,
   keyFor,
   now,
@@ -18,6 +19,9 @@ export async function startAuthorization(body) {
   return await withAuthorizationCapacity(identity, () => withLock(identity, async () => {
     if (providerId === 'codex') {
       throw subscriptionError(409, 'Codex authorization must use the Overlay device-code adapter')
+    }
+    if (workers.size >= MAX_WORKERS && !workers.has(identity)) {
+      throw subscriptionError(503, 'Subscription capacity is full')
     }
     const previous = workers.get(identity)
     if (previous) await stopWorker(previous)

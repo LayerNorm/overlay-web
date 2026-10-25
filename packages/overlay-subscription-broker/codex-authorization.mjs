@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { randomBytes } from 'node:crypto'
 import {
+  MAX_WORKERS,
   constantTimeSecret,
   keyFor,
   now,
@@ -166,6 +167,7 @@ export async function importCodex(body) {
       throw subscriptionError(403, 'Codex authorization lease is stale')
     }
     if (!worker) {
+      if (workers.size >= MAX_WORKERS) throw subscriptionError(503, 'Subscription capacity is full')
       worker = await startWorker(createPendingWorkerRecord(body, pending))
       workers.set(identity, worker)
     }
