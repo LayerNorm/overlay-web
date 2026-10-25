@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Retain native-agent tool calls and their real results when durable turns finalize, so completed execution evidence survives reload.
+
 - Restore Resume and Release control for the controlling user after reloading an agent conversation.
 - Keep synthetic Computer QA funding behind explicit Preview fixture opt-in while preserving existing test balances.
 - Allow native-agent workflow retries to recapture the screen without replaying clicks, typing, commands or unknown tools. Keep fresh authorization and billing checks, and log safe preparation-failure metadata.

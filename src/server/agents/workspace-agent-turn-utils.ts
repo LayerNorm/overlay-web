@@ -1,5 +1,25 @@
 import type { ToolResultOutput } from '@ai-sdk/provider-utils'
 
+export function workspaceAgentToolCallParts(call: {
+  toolCallId: string
+  toolName: string
+  input: unknown
+}) {
+  const transcriptPart = {
+    type: 'tool-invocation' as const,
+    toolInvocation: {
+      toolCallId: call.toolCallId,
+      toolName: call.toolName,
+      state: 'input-available' as const,
+      toolInput: call.input,
+    },
+  }
+  return {
+    modelPart: { type: 'tool-call' as const, toolCallId: call.toolCallId, toolName: call.toolName, input: call.input },
+    transcriptPart,
+  }
+}
+
 export type WorkspaceAgentToolResult = {
   output: ToolResultOutput
   display: unknown

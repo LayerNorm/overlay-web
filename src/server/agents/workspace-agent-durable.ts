@@ -32,6 +32,7 @@ import { hashOperationalIdentifier } from '@/server/security/operational-key-has
 import { agentMemoryOwnerId } from '@/shared/agents/agent-memory'
 import {
   refusedAmbiguousWorkspaceAgentToolRetry,
+  workspaceAgentToolCallParts,
   workspaceAgentToolResultFromOutput,
   type WorkspaceAgentToolResult,
 } from './workspace-agent-turn-utils'
@@ -239,9 +240,9 @@ export async function callWorkspaceAgentModel(input: {
         stream.pushText(event.text, transcriptParts)
       }
       if (event.type === 'tool-call') {
-        const part = { type: 'tool-invocation', toolInvocation: { toolCallId: event.toolCallId, toolName: event.toolName, state: 'input-available', toolInput: event.input } }
-        parts.push(part)
-        transcriptParts.push(part)
+        const { modelPart, transcriptPart } = workspaceAgentToolCallParts(event)
+        parts.push(modelPart)
+        transcriptParts.push(transcriptPart)
         stream.pushParts(transcriptParts)
       }
     }

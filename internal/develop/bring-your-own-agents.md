@@ -1707,6 +1707,10 @@ active run and resume at the pending tool call. Only the initiating user can app
 room run. An unanswered request is denied after 15 minutes. Auto skips approval only;
 authorization, plan, entitlement, billing, takeover, and MCP deny checks still apply.
 
+Model-step content keeps SDK `tool-call` parts, while live progress uses UI
+`tool-invocation` parts. Finalization combines the model calls with their recorded
+outcomes so terminal tool rows and execution evidence survive reload.
+
 Tool calls receive a stable run and tool-call idempotency key. A completed durable step
 is not replayed; if an interrupted tool step is retried before its result is recorded,
 the call fails closed rather than repeating a potentially ambiguous external action.
