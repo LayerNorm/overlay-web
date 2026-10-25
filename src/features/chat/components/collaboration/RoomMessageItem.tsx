@@ -783,7 +783,7 @@ function SentRoomMessage({ rootProps, highlightClass, toolbar, content, onRetryS
       {...rootProps}
       className={`group/exchange relative -mx-1 flex scroll-mt-6 justify-end gap-2.5 rounded-lg px-1 py-1 message-appear transition-colors ${personalChatStyle ? '' : 'hover:bg-(--surface-subtle)'} ${highlightClass}`}
     >
-      <div className="relative flex min-w-0 max-w-[min(92%,36rem)] flex-col items-end gap-1 sm:max-w-[75%]">
+      <div className={`relative flex min-w-0 max-w-[min(92%,36rem)] flex-col items-end gap-1 sm:max-w-[75%] ${content.editing ? 'w-full' : ''}`}>
         {!personalChatStyle && toolbar}
         <RoomMessageAttachments message={message} onOpenAttachmentPreview={content.onOpenAttachmentPreview} />
         {content.editing ? (
