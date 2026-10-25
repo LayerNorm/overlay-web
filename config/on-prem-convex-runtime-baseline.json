@@ -392,6 +392,7 @@
     "src/server/ai/gateway/overlay-free-router.ts",
     "src/server/ai/provider-connections/ConvexProviderConnectionRepository.ts",
     "src/server/ai/provider-connections/index.ts",
+    "src/server/ai/subscriptions/repository.ts",
     "src/server/app-api/v1/bootstrap/route.ts",
     "src/server/app-api/v1/imports/slack/route.ts",
     "src/server/app-api/v1/mention-search/route.ts",
