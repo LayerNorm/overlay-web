@@ -28,7 +28,7 @@ function record(overrides: Partial<RoomMessageRecord> = {}): RoomMessageRecord {
   }
 }
 
-function messageElement(message: RoomMessageRecord, authorName = 'Maya Chen', grouped = false, streaming = false, canResolve = false, remoteStatus?: React.ReactNode, personalChatStyle = false) {
+function messageElement(message: RoomMessageRecord, authorName = 'Maya Chen', grouped = false, streaming = false, canResolve = false, remoteStatus?: React.ReactNode, personalChatStyle = false, editing = false) {
   return (
     <RoomMessageItem
       message={toRoomMessageView({
@@ -42,8 +42,8 @@ function messageElement(message: RoomMessageRecord, authorName = 'Maya Chen', gr
       replyCount={1}
       pinned={false}
       saved={false}
-      editing={false}
-      editingContent=""
+      editing={editing}
+      editingContent={editing ? 'Edited message' : ''}
       onEditingContentChange={() => undefined}
       onSaveEdit={() => undefined}
       onCancelEdit={() => undefined}
@@ -68,8 +68,8 @@ function messageElement(message: RoomMessageRecord, authorName = 'Maya Chen', gr
   )
 }
 
-function render(message: RoomMessageRecord, authorName = 'Maya Chen', grouped = false, streaming = false, canResolve = false, remoteStatus?: React.ReactNode, personalChatStyle = false) {
-  return renderToStaticMarkup(messageElement(message, authorName, grouped, streaming, canResolve, remoteStatus, personalChatStyle))
+function render(message: RoomMessageRecord, authorName = 'Maya Chen', grouped = false, streaming = false, canResolve = false, remoteStatus?: React.ReactNode, personalChatStyle = false, editing = false) {
+  return renderToStaticMarkup(messageElement(message, authorName, grouped, streaming, canResolve, remoteStatus, personalChatStyle, editing))
 }
 
 function remoteMessage(state: string, retryable = false): RoomMessageRecord {
@@ -156,6 +156,13 @@ test('a member’s own message is just the personal gray bubble', () => {
   assert.match(html, /aria-label="Delete message"/)
   assert.doesNotMatch(html, /aria-label="Report message"/)
   assert.doesNotMatch(html, /rounded-lg bg-\(--surface-muted\)/)
+})
+
+test('message edits use a full-width textarea with labeled text actions', () => {
+  const html = render(record(), 'Maya Chen', false, false, false, undefined, false, true)
+  assert.match(html, /data-slot="textarea"[^>]*rows="3"/)
+  assert.match(html, /aria-label="Cancel edit"[^>]*>Cancel<\/button>/)
+  assert.match(html, /aria-label="Save edit"[^>]*>Save<\/button>/)
 })
 
 test('another member’s message is flat Slack-style (no bubble) with avatar and hover row', () => {

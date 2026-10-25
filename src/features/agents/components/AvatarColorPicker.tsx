@@ -122,7 +122,7 @@ export function AvatarColorPicker({ color, onChange }: { color: string; onChange
           spellCheck={false}
           autoComplete="off"
           aria-label="Hex color"
-          className={unstyledInput(`h-8 w-22 rounded-lg border border-(--border) bg-(--surface-subtle) px-2 text-center font-mono text-xs uppercase text-(--foreground) outline-hidden focus:ring-1 focus:ring-(--foreground)`)}
+          className={unstyledInput(`h-8 w-22 rounded-lg border border-(--border) bg-(--surface-subtle) px-2 text-center font-mono text-xs uppercase text-(--foreground) outline-hidden transition-[color,box-shadow] focus-visible:border-(--foreground)/30 focus-visible:ring-3 focus-visible:ring-(--foreground)/15`)}
         />
       </div>
     </div>

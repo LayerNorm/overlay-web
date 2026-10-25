@@ -1,11 +1,8 @@
 'use client'
 
-import { useState } from 'react'
 import {
   BookOpen,
   Blocks,
-  ChevronDown,
-  ChevronRight,
   FileImage,
   Folder,
   Globe,
@@ -19,7 +16,7 @@ import {
   Wrench,
   Zap,
 } from 'lucide-react'
-import { Button, Toggle, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@overlay/ui/primitives'
+import { Toggle, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@overlay/ui/primitives'
 import {
   AccessSelector,
   AgentComputerSection,
@@ -27,6 +24,7 @@ import {
   AgentTypeSelector,
   ByoAgentFields,
   DangerZone,
+  OverlayAgentPermissionsField,
 } from './AgentEditorForm'
 import { AgentSurfacesField } from './AgentSurfacesField'
 import { CloudAgentPanel } from './CloudAgentPanel'
@@ -70,13 +68,23 @@ const toolLabels: Record<string, string> = {
   computer: 'Computer',
 }
 
-export function AgentSidebarTools({ editor }: { editor: Controller }) {
-  const toolGroups = editor.computersAvailable
+function visibleToolGroups(computersAvailable: boolean) {
+  return computersAvailable
     ? AGENT_TOOL_GROUPS
     : AGENT_TOOL_GROUPS.filter((group) => group.id !== 'computer')
+}
+
+export function getEnabledToolGroupCount(editor: Controller) {
+  return visibleToolGroups(editor.computersAvailable)
+    .filter((group) => editor.form.enabledToolGroups.has(group.id))
+    .length
+}
+
+export function AgentSidebarTools({ editor }: { editor: Controller }) {
+  const toolGroups = visibleToolGroups(editor.computersAvailable)
 
   return (
-    <div className="mt-2 rounded-[10px] bg-(--surface-subtle) p-1">
+    <div className="rounded-[10px] bg-(--surface-subtle) p-1">
       <TooltipProvider delayDuration={350}>
         {toolGroups.map((group) => {
           const Icon = toolIcons[group.id] ?? Wrench
@@ -105,183 +113,163 @@ export function AgentSidebarTools({ editor }: { editor: Controller }) {
   )
 }
 
-export function AgentSidebarMoreSettings({ editor }: { editor: Controller }) {
-  const [moreOpen, setMoreOpen] = useState(false)
+export function AgentSidebarAdvancedSettings({ editor }: { editor: Controller }) {
   const { form, runtime, agent, computer, surfaces } = editor
   const overlaySettings = runtime.agentType === 'overlay' && !runtime.cloudAgent
 
   return (
-    <section>
-      <Button
-        variant="ghost"
-        type="button"
-        aria-expanded={moreOpen}
-        onClick={() => setMoreOpen((open) => !open)}
-        className="h-8 w-full justify-between rounded-md px-1 text-xs font-medium text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)"
-      >
-        More settings
-        {moreOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-      </Button>
-      {moreOpen ? (
-        <div className="mt-4 space-y-[22px]">
-          {!runtime.cloudAgent ? (
-            <section>
-              <AgentTypeSelector
-                hidden={editor.isDefaultMaster || !editor.connectedAgentsEnabled}
-                value={runtime.agentType}
-                onChange={(value) => {
-                  runtime.setAgentType(value)
-                  form.markDirty()
-                }}
+    <div className="space-y-[22px]">
+      {!runtime.cloudAgent ? (
+        <section>
+          <AgentTypeSelector
+            hidden={editor.isDefaultMaster || !editor.connectedAgentsEnabled}
+            value={runtime.agentType}
+            onChange={(value) => {
+              runtime.setAgentType(value)
+              form.markDirty()
+            }}
+          />
+        </section>
+      ) : null}
+      {runtime.cloudAgent && agent ? (
+        <section>
+          <SectionHeading>Computer</SectionHeading>
+          <div className="mt-2 space-y-3">
+            <CloudAgentPanel agentId={agent.id} />
+            <CloudAgentAccess agentId={agent.id} allowedToolIds={agent.allowedToolIds} />
+            {editor.connectedAgentsEnabled ? (
+              <ConnectedAgentSettings
+                key={agent.id}
+                agentId={agent.id}
+                modelId={agent.modelId}
+                permissionMode={agent.permissionMode}
+                effort={agent.effort}
               />
-            </section>
-          ) : null}
-          {runtime.cloudAgent && agent ? (
+            ) : null}
+          </div>
+        </section>
+      ) : null}
+      {runtime.agentType === 'byo' && !runtime.cloudAgent ? (
+        <section>
+          <SectionHeading>Connected agent</SectionHeading>
+          <div className="mt-2 space-y-3 rounded-[10px] bg-(--surface-subtle) p-3">
+            {agent && editor.connectedAgentsEnabled ? (
+              <ConnectedAgentSettings
+                key={agent.id}
+                agentId={agent.id}
+                modelId={agent.modelId}
+                permissionMode={agent.permissionMode}
+                effort={agent.effort}
+              />
+            ) : null}
+            <ByoAgentFields
+              adapterId={editor.byo.adapterId}
+              harnessOptions={editor.byo.harnessOptions}
+              onHarnessChange={(value) => { editor.byo.chooseHarness(value); form.markDirty() }}
+              choice={editor.byo.environmentChoice}
+              onChoiceChange={(value) => { editor.byo.setEnvironmentChoice(value); form.markDirty() }}
+              compatibleEnvironments={editor.byo.compatibleEnvironments}
+              environmentsLoading={editor.byo.environmentsLoading}
+              environmentId={editor.byo.environmentId}
+              onEnvironmentChange={(value) => { editor.byo.chooseEnvironment(value); form.markDirty() }}
+              workingDirectory={editor.byo.workingDirectory}
+              onWorkingDirectoryChange={(value) => { editor.byo.setWorkingDirectory(value); form.markDirty() }}
+              selectedHarnessConnectable={Boolean(editor.byo.selectedHarness?.connectable)}
+              environmentBusy={editor.byo.environmentBusy}
+              environmentError={editor.byo.environmentError}
+              command={editor.byo.command}
+              copied={editor.byo.copied}
+              onCopyCommand={editor.byo.copyCommand}
+              onBeginConnection={editor.byo.beginConnection}
+              setupEnvironment={editor.byo.setupEnvironment}
+              setupRoots={editor.byo.setupRoots}
+              onSetupRootsChange={(value) => { editor.byo.setSetupRoots(value); form.markDirty() }}
+              onApproveSetup={editor.byo.approveSetupEnvironment}
+            />
+          </div>
+        </section>
+      ) : null}
+      {overlaySettings ? (
+        <>
+          <section>
+            <OverlayAgentPermissionsField
+              value={form.permissionMode}
+              onChange={(value) => { form.setPermissionMode(value); form.markDirty() }}
+            />
+          </section>
+          <section>
+            <SectionHeading>Mentions</SectionHeading>
+            <p className="mt-2 rounded-[10px] bg-(--surface-subtle) p-3 text-xs leading-5 text-(--muted)">
+              Mention-first is enforced. One-to-one agent DMs invoke implicitly. Group DMs require a human mention or reply in the agent&apos;s thread.
+            </p>
+          </section>
+          {editor.computersAvailable ? (
             <section>
-              <SectionHeading>Computer</SectionHeading>
-              <div className="mt-2 space-y-3">
-                <CloudAgentPanel agentId={agent.id} />
-                <CloudAgentAccess agentId={agent.id} allowedToolIds={agent.allowedToolIds} />
-                {editor.connectedAgentsEnabled ? (
-                  <ConnectedAgentSettings
-                    key={agent.id}
-                    agentId={agent.id}
-                    modelId={agent.modelId}
-                    permissionMode={agent.permissionMode}
-                    effort={agent.effort}
-                  />
-                ) : null}
-              </div>
-            </section>
-          ) : null}
-          {runtime.agentType === 'byo' && !runtime.cloudAgent ? (
-            <section>
-              <SectionHeading>Connected agent</SectionHeading>
-              <div className="mt-2 space-y-3 rounded-[10px] bg-(--surface-subtle) p-3">
-                {agent && editor.connectedAgentsEnabled ? (
-                  <ConnectedAgentSettings
-                    key={agent.id}
-                    agentId={agent.id}
-                    modelId={agent.modelId}
-                    permissionMode={agent.permissionMode}
-                    effort={agent.effort}
-                  />
-                ) : null}
-                <ByoAgentFields
-                  adapterId={editor.byo.adapterId}
-                  harnessOptions={editor.byo.harnessOptions}
-                  onHarnessChange={(value) => { editor.byo.chooseHarness(value); form.markDirty() }}
-                  choice={editor.byo.environmentChoice}
-                  onChoiceChange={(value) => { editor.byo.setEnvironmentChoice(value); form.markDirty() }}
-                  compatibleEnvironments={editor.byo.compatibleEnvironments}
-                  environmentsLoading={editor.byo.environmentsLoading}
-                  environmentId={editor.byo.environmentId}
-                  onEnvironmentChange={(value) => { editor.byo.chooseEnvironment(value); form.markDirty() }}
-                  workingDirectory={editor.byo.workingDirectory}
-                  onWorkingDirectoryChange={(value) => { editor.byo.setWorkingDirectory(value); form.markDirty() }}
-                  selectedHarnessConnectable={Boolean(editor.byo.selectedHarness?.connectable)}
-                  environmentBusy={editor.byo.environmentBusy}
-                  environmentError={editor.byo.environmentError}
-                  command={editor.byo.command}
-                  copied={editor.byo.copied}
-                  onCopyCommand={editor.byo.copyCommand}
-                  onBeginConnection={editor.byo.beginConnection}
-                  setupEnvironment={editor.byo.setupEnvironment}
-                  setupRoots={editor.byo.setupRoots}
-                  onSetupRootsChange={(value) => { editor.byo.setSetupRoots(value); form.markDirty() }}
-                  onApproveSetup={editor.byo.approveSetupEnvironment}
+              <SectionHeading>Computer settings</SectionHeading>
+              <div className="mt-2 rounded-[10px] bg-(--surface-subtle) p-3">
+                <AgentComputerSection
+                  enabled={form.enabledToolGroups.has('computer')}
+                  size={computer.computerSize}
+                  onSizeChange={(size) => { computer.setComputerSize(size); form.markDirty() }}
+                  computer={computer.agentComputer}
+                  agentName={form.name}
+                  openBusy={computer.computerOpenBusy}
+                  lifecycleBusy={computer.computerLifecycleBusy}
+                  onOpenDesktop={() => void computer.openAgentComputer()}
+                  onControl={() => void computer.controlAgentComputer()}
+                  onTogglePower={() => void computer.toggleAgentComputerPower()}
+                  onDelete={() => void computer.deleteAgentComputer()}
+                  loadError={computer.computerLoadError}
+                  provisionError={computer.computerProvisionError}
+                  onRetryLoad={computer.retryComputerLoad}
+                  disabled={editor.showcase}
                 />
               </div>
             </section>
           ) : null}
-          {overlaySettings ? (
-            <>
-              <section>
-                <Button
-                  variant="ghost"
-                  type="button"
-                  aria-expanded={form.advanced}
-                  onClick={() => form.setAdvanced(!form.advanced)}
-                  className="h-7 w-full justify-between rounded-md px-1 text-xs font-medium text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)"
-                >
-                  Advanced
-                  {form.advanced ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                </Button>
-                {form.advanced ? (
-                  <p className="mt-2 rounded-[10px] bg-(--surface-subtle) p-3 text-xs leading-5 text-(--muted)">
-                    Mention-first is enforced. One-to-one agent DMs invoke implicitly. Group DMs require a human mention or reply in the agent&apos;s thread.
-                  </p>
-                ) : null}
-              </section>
-              {editor.computersAvailable ? (
-                <section>
-                  <SectionHeading>Computer settings</SectionHeading>
-                  <div className="mt-2 rounded-[10px] bg-(--surface-subtle) p-3">
-                    <AgentComputerSection
-                      enabled={form.enabledToolGroups.has('computer')}
-                      size={computer.computerSize}
-                      onSizeChange={(size) => { computer.setComputerSize(size); form.markDirty() }}
-                      computer={computer.agentComputer}
-                      agentName={form.name}
-                      openBusy={computer.computerOpenBusy}
-                      lifecycleBusy={computer.computerLifecycleBusy}
-                      onOpenDesktop={() => void computer.openAgentComputer()}
-                      onControl={() => void computer.controlAgentComputer()}
-                      onTogglePower={() => void computer.toggleAgentComputerPower()}
-                      onDelete={() => void computer.deleteAgentComputer()}
-                      loadError={computer.computerLoadError}
-                      provisionError={computer.computerProvisionError}
-                      onRetryLoad={computer.retryComputerLoad}
-                      disabled={editor.showcase}
-                    />
-                  </div>
-                </section>
-              ) : null}
-              <section>
-                <div className="mt-2 rounded-[10px] bg-(--surface-subtle) p-3">
-                  <AgentSurfacesField
-                    agentName={form.name}
-                    hasAgent={Boolean(agent)}
-                    surfaces={surfaces}
-                  />
-                </div>
-              </section>
-            </>
-          ) : null}
           <section>
-            <div className="rounded-[10px] bg-(--surface-subtle) p-3">
-              <AccessSelector
-                value={form.visibility}
-                onChange={(value) => { form.setVisibility(value); form.markDirty() }}
+            <div className="mt-2 rounded-[10px] bg-(--surface-subtle) p-3">
+              <AgentSurfacesField
+                agentName={form.name}
+                hasAgent={Boolean(agent)}
+                surfaces={surfaces}
               />
             </div>
           </section>
-          {agent?.principalId ? (
-            <section>
-              <div className="mt-2">
-                <AgentMemoriesSection agentPrincipalId={agent.principalId} sidebarCompact />
-              </div>
-            </section>
-          ) : null}
-          {agent && !editor.isDefaultMaster ? (
-            <section>
-              <SectionHeading>Archive</SectionHeading>
-              <div className="mt-2">
-                <DangerZone
-                  mode="edit"
-                  hasAgent={Boolean(agent)}
-                  isDefaultMaster={editor.isDefaultMaster}
-                  busy={editor.busy}
-                  agentName={agent.name}
-                  onArchive={() => void editor.archiveAgent()}
-                  sidebarCompact
-                />
-              </div>
-            </section>
-          ) : null}
-        </div>
+        </>
       ) : null}
-    </section>
+      <section>
+        <div className="rounded-[10px] bg-(--surface-subtle) p-3">
+          <AccessSelector
+            value={form.visibility}
+            onChange={(value) => { form.setVisibility(value); form.markDirty() }}
+          />
+        </div>
+      </section>
+      {agent?.principalId ? (
+        <section>
+          <div className="mt-2">
+            <AgentMemoriesSection agentPrincipalId={agent.principalId} sidebarCompact />
+          </div>
+        </section>
+      ) : null}
+      {agent && !editor.isDefaultMaster ? (
+        <section>
+          <SectionHeading>Archive</SectionHeading>
+          <div className="mt-2">
+            <DangerZone
+              mode="edit"
+              hasAgent={Boolean(agent)}
+              isDefaultMaster={editor.isDefaultMaster}
+              busy={editor.busy}
+              agentName={agent.name}
+              onArchive={() => void editor.archiveAgent()}
+              sidebarCompact
+            />
+          </div>
+        </section>
+      ) : null}
+    </div>
   )
 }
 

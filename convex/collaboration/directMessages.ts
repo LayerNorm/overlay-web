@@ -1,4 +1,4 @@
-import { hydrateRemoteMessages, hydrateRemoteMessage } from '../lib/remoteMessageText'
+import { hydrateRemoteMessages, hydrateRemoteMessage, prepareRemoteMessageText } from '../lib/remoteMessageText'
 import { v } from 'convex/values'
 import { DEFAULT_MODEL_ID } from '../../src/shared/ai/gateway/model-types'
 import { mutation, query } from '../_generated/server'
@@ -1878,6 +1878,7 @@ export const editMessage = mutation({
     workspaceId: v.string(),
     serverSecret: v.optional(v.string()),
   },
+  returns: v.boolean(),
   handler: async (ctx, args) => {
     const access = await requireConversationAccess(ctx, args)
     const message = await ctx.db.get(args.messageId)
@@ -1890,9 +1891,19 @@ export const editMessage = mutation({
       || message.authorPrincipalId !== access.actor.principalId
       || message.deletedAt
     ) return false
+    const hydrated = await hydrateRemoteMessage(ctx, message)
+    const parts: NonNullable<Doc<'conversationMessages'>['parts']> = [
+      { type: 'text', text: content },
+      ...(hydrated.parts ?? []).filter((part) => part.type !== 'text' && part.type !== 'output-text'),
+    ]
+    const textPatch = message.remoteTextStored
+      ? await prepareRemoteMessageText(ctx, message, { content, parts })
+      : { content, parts }
     const now = Date.now()
     await ctx.db.patch(message._id, {
-      content,
+      content: textPatch.content,
+      parts: textPatch.parts,
+      ...('remoteTextStored' in textPatch ? { remoteTextStored: textPatch.remoteTextStored } : {}),
       editedAt: now,
       editHistory: [
         ...(message.editHistory ?? []),

@@ -10,7 +10,7 @@ function Input({ className, type, ...props }: InputProps) {
       type={type}
       data-slot="input"
       className={cn(
-        'h-9 w-full rounded-lg border border-(--border) bg-(--input-background,var(--surface-elevated)) px-3 text-sm text-(--input-text,var(--foreground)) outline-hidden placeholder:text-(--input-placeholder,var(--muted-light)) focus:ring-1 focus:ring-(--foreground) disabled:cursor-not-allowed disabled:opacity-60',
+        'h-9 w-full rounded-md border border-(--border) bg-(--input-background,var(--surface-elevated)) px-3 text-sm text-(--input-text,var(--foreground)) outline-hidden placeholder:text-(--input-placeholder,var(--muted-light)) transition-[color,box-shadow] focus-visible:border-(--foreground)/30 focus-visible:ring-3 focus-visible:ring-(--foreground)/15 disabled:cursor-not-allowed disabled:opacity-60',
         className,
       )}
       {...props}

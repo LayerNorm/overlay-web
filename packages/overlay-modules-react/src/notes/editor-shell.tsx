@@ -120,7 +120,7 @@ export function NotesEditorShell({
               value={title}
               disabled={!selectedNote}
               onChange={(event) => onTitleChange?.(event.target.value)}
-              className="border-transparent bg-transparent px-0 text-base font-semibold focus:ring-0"
+              className="border-transparent bg-transparent px-0 text-base font-semibold focus-visible:ring-0"
               placeholder="Untitled"
             />
             <div className="ml-auto flex shrink-0 items-center gap-2">
@@ -144,7 +144,7 @@ export function NotesEditorShell({
           <Textarea
             value={content}
             onChange={(event) => onContentChange?.(event.target.value)}
-            className="min-h-0 flex-1 resize-none rounded-none border-0 bg-transparent px-6 py-5 text-sm leading-7 focus:ring-0"
+            className="min-h-0 flex-1 resize-none rounded-none border-0 bg-transparent px-6 py-5 text-sm leading-7 focus-visible:ring-0"
             placeholder="Start writing..."
           />
         ) : (

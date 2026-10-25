@@ -4,6 +4,9 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Saved collaborative message edits now update rendered text and retain attachments instead of showing the original message.
+
+- Use shadcn focus-visible rings for text inputs and textareas, present message editing with text actions, autosize work titles and agent instructions as layouts settle, and group agent Details into collapsed Model, Instructions, Tools and Advanced disclosures.
 - Settings breadcrumbs read Settings > page instead of a Personal or Workspace prefix.
 
 - Return not found for a removed workspace retained in an API client's active-workspace header.
