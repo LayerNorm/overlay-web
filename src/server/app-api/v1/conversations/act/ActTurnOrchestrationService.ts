@@ -19,7 +19,7 @@ import {
 } from '@/server/ai/model-runtime'
 import { createRuntimeOverlayFreeLanguageModel } from '@/server/ai/gateway/overlay-free-router'
 import { modelSupportsZeroDataRetention, modelUsesAiGatewayTransport } from '@/shared/ai/gateway/model-data'
-import { isKimiK3ModelId } from '@/shared/ai/gateway/model-types'
+import { FREE_TIER_DEFAULT_MODEL_ID, isKimiK3ModelId } from '@/shared/ai/gateway/model-types'
 import {
   getChatModelFallbackCandidates,
   getLowCreditFallbackAttemptModelIds,
@@ -463,6 +463,9 @@ export async function executeActTurn(
       historyBaseModelId,
     })
     messagesForModel = cloneMessagesWithIndexedFileHint(messagesForModel, indexedAttachmentList, hasPreloadedDocContext)
+    const summaryModelId = isByokModelId(effectiveModelId)
+      ? effectiveModelId
+      : FREE_TIER_DEFAULT_MODEL_ID
     messagesForModel = await actContextService.prepareExistingMessagesForModel({
       accessToken,
       conversationId: cid,
@@ -473,7 +476,7 @@ export async function executeActTurn(
           estimatedInputTokens,
           idempotencyKey: context.requestIdempotencyKey,
           maxOutputTokens: targetSummaryTokens,
-          modelId: effectiveModelId,
+          modelId: summaryModelId,
           operationId: 'conversation.act.context-summary',
           paid,
           requestFingerprint: context.requestFingerprint,
@@ -491,7 +494,7 @@ export async function executeActTurn(
             userId,
           })
           providerWorkStarted = true
-          const summaryModel = await getLanguageModel(effectiveModelId, accessToken, userId)
+          const summaryModel = await getLanguageModel(summaryModelId, accessToken, userId)
           const summaryResult = await generateText({
             model: summaryModel,
             temperature: 0.1,
@@ -504,7 +507,7 @@ export async function executeActTurn(
           await actUsageBudgetService.recordFinishedUsage({
             forceFreeTierLimits: false,
             inputTokens: summaryUsage?.inputTokens ?? estimatedInputTokens,
-            modelId: effectiveModelId,
+            modelId: summaryModelId,
             outputTokens: summaryUsage?.outputTokens ?? targetSummaryTokens,
             reservationId: summaryReservation.reservationId,
             userId,
@@ -530,6 +533,7 @@ export async function executeActTurn(
       messages: messagesForModel,
       replyContextForModel,
       targetModelId: effectiveModelId,
+      summarizerModelId: summaryModelId,
       userId: conversationUserId,
       modelUserId: userId,
     })

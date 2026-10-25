@@ -22,7 +22,10 @@ import {
   isSubscriptionConnection,
   isSubscriptionProviderId,
 } from '@/shared/ai/gateway/subscription-providers'
-import { createSubscriptionLanguageModel } from '@/server/ai/gateway/subscription-broker'
+import {
+  createSubscriptionLanguageModel,
+  isSubscriptionProviderEnabled,
+} from '@/server/ai/gateway/subscription-broker'
 
 async function getUserByokConnection(
   userId: string,
@@ -42,6 +45,7 @@ export async function assertUserCanUseByokModel(
   if (connection.authKind === 'subscription' || connection.providerId.startsWith('subscription:')) {
     if (!isSubscriptionConnection(connection) ||
         !isSubscriptionProviderId(connection.subscriptionProvider) ||
+        !isSubscriptionProviderEnabled(connection.subscriptionProvider) ||
         connection.endpoint !== '' ||
         connection.status !== 'active' ||
         !connection.enabledModelIds.includes(parsed.rawModelId) ||

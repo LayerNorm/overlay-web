@@ -2,6 +2,8 @@ import 'server-only'
 
 import { logger } from '@/server/observability/logger'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
+import { subscriptionBrokerRequest } from '@/server/ai/gateway/subscription-broker'
+import { isSubscriptionConnection } from '@/shared/ai/gateway/subscription-providers'
 import type { OverlayServerContext } from '@/server/bootstrap'
 import type { AccountDataDeletionVerification } from './AccountDataDeletionRepository'
 import {
@@ -23,6 +25,7 @@ export class AccountDeletionService {
 
   async deleteAccount(args: { userId: string; request?: Request }): Promise<AccountDeletionResult> {
     await this.deleteIntegrationConnectionsBestEffort(args.userId)
+    await this.revokeSubscriptionConnections(args.userId)
     // Ends every other-AI-app connection the person made; their tokens stop working at once.
     await this.ctx.appData.repositories.mcpGrants.deleteAllForUser({ userId: args.userId }).catch((error) => {
       logger.error(`[account/delete] MCP grant cleanup failed for ${args.userId}:`, error instanceof Error ? error.name : 'unknown')
@@ -49,6 +52,23 @@ export class AccountDeletionService {
     })
 
     return convexResult
+  }
+
+  private async revokeSubscriptionConnections(userId: string): Promise<void> {
+    const connections = await this.ctx.appData.repositories.providerConnections.listPublic({ userId })
+    const subscriptions = connections.filter((connection) => isSubscriptionConnection(connection))
+    for (const connection of subscriptions) {
+      try {
+        await subscriptionBrokerRequest('/v1/subscriptions/disconnect', {
+          ownerId: userId,
+          connectionId: connection._id,
+          providerId: connection.subscriptionProvider,
+        })
+      } catch (error) {
+        logger.error(`[account/delete] Subscription revocation failed for ${userId}:`, error instanceof Error ? error.name : 'unknown')
+        throw new Error('Could not revoke subscription connections. Nothing else was deleted; try again.')
+      }
+    }
   }
 
   /**

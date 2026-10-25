@@ -3,6 +3,7 @@ import 'server-only'
 import { createOpenAI } from '@ai-sdk/openai'
 import type { LanguageModel } from '@/server/ai/provider-types'
 import type { SubscriptionProviderId } from '@/shared/ai/gateway/subscription-providers'
+import { SUBSCRIPTION_PROVIDERS } from '@/shared/ai/gateway/subscription-providers'
 
 type BrokerConfig = { baseUrl: URL; key: string }
 
@@ -29,6 +30,45 @@ export function isSubscriptionBrokerConfigured(): boolean {
     return Boolean(readBrokerConfig())
   } catch (_error) {
     return false
+  }
+}
+
+export function enabledSubscriptionProviderIds(): SubscriptionProviderId[] {
+  const configured = new Set((process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS ?? '')
+    .split(',').map((value) => value.trim()))
+  return SUBSCRIPTION_PROVIDERS
+    .filter((provider) => configured.has(provider.id))
+    .map((provider) => provider.id)
+}
+
+export function isSubscriptionProviderEnabled(providerId: unknown): providerId is SubscriptionProviderId {
+  return typeof providerId === 'string' && enabledSubscriptionProviderIds().includes(
+    providerId as SubscriptionProviderId,
+  )
+}
+
+export async function subscriptionBrokerReadiness(signal?: AbortSignal): Promise<{
+  ready: boolean
+  providers: SubscriptionProviderId[]
+}> {
+  const config = readBrokerConfig()
+  if (!config) return { ready: false, providers: [] }
+  try {
+    const response = await fetch(new URL('/healthz', config.baseUrl), {
+      headers: { authorization: `Bearer ${config.key}`, accept: 'application/json' },
+      redirect: 'error', cache: 'no-store', signal: signal ?? AbortSignal.timeout(3_000),
+    })
+    if (!response.ok) return { ready: false, providers: [] }
+    const payload = await response.json()
+    const providers = payload?.capabilities?.providers
+    if (payload?.status !== 'ok' || !Array.isArray(providers)) return { ready: false, providers: [] }
+    return {
+      ready: true,
+      providers: providers.filter((provider: unknown): provider is SubscriptionProviderId =>
+        typeof provider === 'string' && SUBSCRIPTION_PROVIDERS.some((item) => item.id === provider)),
+    }
+  } catch (_error) {
+    return { ready: false, providers: [] }
   }
 }
 

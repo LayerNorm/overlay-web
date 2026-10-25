@@ -325,13 +325,6 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       return NextResponse.json({ error: 'Connection not found' }, { status: 404 })
     }
 
-    if (!existing.isDeletable) {
-      return NextResponse.json(
-        { error: 'This connection cannot be deleted (it is the default provider)' },
-        { status: 403 },
-      )
-    }
-
     if (existing.authKind === 'subscription' || existing.providerId.startsWith('subscription:')) {
       if (!isSubscriptionConnection(existing)) {
         return NextResponse.json({ error: 'Invalid subscription connection metadata' }, { status: 400 })

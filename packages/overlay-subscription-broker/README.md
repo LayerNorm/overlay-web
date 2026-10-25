@@ -29,9 +29,10 @@ openssl rand -base64 32 # set as OVERLAY_SUBSCRIPTION_BROKER_KEY
 openssl rand -base64 32 # set as OVERLAY_SUBSCRIPTION_MASTER_KEY
 docker build -f packages/overlay-subscription-broker/Dockerfile -t overlay-subscription-broker .
 docker run --read-only --cap-drop=ALL --security-opt=no-new-privileges \
-  --tmpfs /run:rw,noexec,nosuid,size=1g \
+  --tmpfs /run:rw,noexec,nosuid,size=1g,uid=1000,gid=1000 \
   -v overlay-subscriptions:/var/lib/overlay-subscription-broker \
   -e OVERLAY_SUBSCRIPTION_BROKER_KEY -e OVERLAY_SUBSCRIPTION_MASTER_KEY \
+  -e OVERLAY_SUBSCRIPTION_BROKER_ENABLED_PROVIDERS=codex,xai \
   --memory=2g --cpus=2 \
   -p 127.0.0.1:8088:8088 overlay-subscription-broker
 ```
@@ -41,7 +42,14 @@ Configure the application separately with
 service key. Use HTTP only for an explicitly local development broker. Set
 `OVERLAY_SUBSCRIPTION_MAX_WORKERS` to a value from 1 to 128 to lower the
 default process cap; container memory and CPU limits remain the outer safety
-boundary.
+boundary. `OVERLAY_SUBSCRIPTION_BROKER_ENABLED_PROVIDERS` is an explicit
+operator rollout allowlist and defaults to empty. This is eligibility
+configuration, not proof that a provider works in production; verify each
+adapter and inference protocol separately before adding it. Run exactly one
+broker replica with an exclusive durable volume. The broker takes a durable
+startup lock and refuses to run alongside another process; investigate a
+stale lock after an unclean host loss and remove it only after confirming no
+broker owns the volume.
 
 Do not expose worker ports or management APIs. Each worker receives a generated
 API key and management key, and subprocess output is discarded because it can
@@ -60,7 +68,9 @@ account has been tested. Devin callback completion accepts only a loopback
 callback URL whose state matches the encrypted authorization session and never
 fetches the URL supplied by the user.
 
-The service supports text streaming only. It rejects tool types known to invoke
-worker-side tools, and no image, audio, video, or zero-data-retention guarantee
-is made. No inference retry, shared account pool, or paid Overlay fallback is
-provided.
+The service supports text streaming only. It accepts Overlay-handled function
+and custom text tools, and rejects provider-hosted tools plus image, audio,
+video, and zero-data-retention requests. No inference retry, shared account
+pool, or paid Overlay fallback is provided. Fixed system/background helpers
+such as tab-group labels and media intent remain on their existing hosted
+models; native-only external cloud consumers are not subscription-supported.

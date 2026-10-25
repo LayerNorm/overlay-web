@@ -385,6 +385,7 @@ export class ActContextService {
     replyContextForModel?: string
     requestMessages: UIMessage[]
     targetModelId: string
+    summarizerModelId?: string
     userId: string
     modelUserId?: string
   }): Promise<UIMessage[]> {
@@ -404,6 +405,7 @@ export class ActContextService {
       messages: messagesForModel,
       replyContextForModel: args.replyContextForModel,
       targetModelId: args.targetModelId,
+      summarizerModelId: args.summarizerModelId,
       userId: args.userId,
       modelUserId: args.modelUserId,
     })
@@ -420,6 +422,7 @@ export class ActContextService {
     messages: UIMessage[]
     replyContextForModel?: string
     targetModelId: string
+    summarizerModelId?: string
     userId: string
     modelUserId?: string
   }): Promise<UIMessage[]> {
@@ -452,6 +455,7 @@ export class ActContextService {
       userId: args.modelUserId ?? args.userId,
       accessToken: args.accessToken,
       previousSummary: previousContextSummary,
+      summarizerModelId: args.summarizerModelId,
       ...(args.generateSummaryText ? { generateSummaryText: args.generateSummaryText } : {}),
     })
     messagesForModel = compaction.messages

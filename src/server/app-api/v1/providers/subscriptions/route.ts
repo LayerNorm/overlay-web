@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import {
+  enabledSubscriptionProviderIds,
   isSubscriptionBrokerConfigured,
+  subscriptionBrokerReadiness,
   subscriptionBrokerRequest,
   type SubscriptionConnectionResult,
 } from '@/server/ai/gateway/subscription-broker'
@@ -114,7 +116,12 @@ async function updateConnectedMetadata(
 }
 
 export async function GET(_request: NextRequest, _context: AppApiRouteContext) {
-  const available = isSubscriptionBrokerConfigured()
+  const configured = new Set(enabledSubscriptionProviderIds())
+  const readiness = isSubscriptionBrokerConfigured()
+    ? await subscriptionBrokerReadiness()
+    : { ready: false, providers: [] as SubscriptionProviderId[] }
+  const eligible = new Set(readiness.providers.filter((provider) => configured.has(provider)))
+  const available = readiness.ready && eligible.size > 0
   return NextResponse.json({
     data: {
       available,
@@ -122,9 +129,13 @@ export async function GET(_request: NextRequest, _context: AppApiRouteContext) {
         id,
         label,
         description,
-        enabled: available,
+        enabled: eligible.has(id),
       })),
-      ...(!available ? { reason: 'Subscription connections are not configured for this deployment.' } : {}),
+      ...(!available ? {
+        reason: readiness.ready
+          ? 'No subscription provider has been verified and enabled for this deployment.'
+          : 'The subscription broker is not ready on this deployment.',
+      } : {}),
     },
   })
 }
@@ -144,6 +155,9 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
 
   const userId = context.auth.userId
   const providerId = body.providerId
+  if (!enabledSubscriptionProviderIds().includes(providerId)) {
+    return responseError('This subscription provider is not enabled for this deployment', 404)
+  }
   const repository = getOverlayServerContext().appData.repositories.providerConnections
   let connectionId = body.connectionId as string | undefined
   let created = false
@@ -205,12 +219,28 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     return NextResponse.json({ data: { connectionId, authorization } })
   } catch (_error) {
     if (created) {
-      await subscriptionBrokerRequest('/v1/subscriptions/disconnect', {
-        ownerId: userId,
+      try {
+        await subscriptionBrokerRequest('/v1/subscriptions/disconnect', {
+          ownerId: userId,
+          connectionId,
+          providerId,
+        })
+        await repository.remove({ connectionId, userId })
+      } catch (_error) {
+        await repository.update({
+          connectionId,
+          userId,
+          status: 'error',
+          lastError: 'Authorization cleanup is pending; retry disconnect before reconnecting.',
+        }).catch((_error) => undefined)
+      }
+    } else {
+      await repository.update({
         connectionId,
-        providerId,
+        userId,
+        status: 'error',
+        lastError: 'Authorization could not be started. Retry or reconnect.',
       }).catch((_error) => undefined)
-      await repository.remove({ connectionId, userId }).catch((_error) => undefined)
     }
     return responseError('Could not start subscription authorization. Retry or contact support.', 503)
   }
@@ -229,12 +259,16 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
 
   const { connectionId, action } = body as { connectionId: string; action: 'poll' | 'refresh' | 'callback' }
   const userId = context.auth.userId
+  const repository = getOverlayServerContext().appData.repositories.providerConnections
   return await withConnectionLock(userId, connectionId, async () => {
     const connection = await fetchOwnedConnection(userId, connectionId)
     if (!connection || !isSubscriptionConnection(connection)) {
       return responseError('Connection not found', 404)
     }
     const providerId = connection.subscriptionProvider as SubscriptionProviderId
+    if (!enabledSubscriptionProviderIds().includes(providerId)) {
+      return responseError('This subscription provider is not enabled for this deployment', 404)
+    }
     const brokerBody = { ownerId: userId, connectionId, providerId }
     try {
       let result: SubscriptionConnectionResult
@@ -250,6 +284,8 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
         const device = await subscriptionBrokerRequest<{
           status: string
           deviceCode?: { deviceAuthId: string; userCode: string; expiresAt: number }
+          authorizationGeneration?: string
+          pollLease?: { token: string; expiresAt: number }
           models?: Array<{ id: string; name: string }>
         }>('/v1/subscriptions/codex-device', brokerBody)
         if (device.status === 'polling') {
@@ -258,6 +294,10 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
         if (device.status === 'connected') {
           result = { status: 'connected', models: device.models }
         } else if (device.status === 'expired' || !device.deviceCode) {
+          await repository.update({
+            connectionId, userId, status: 'error',
+            lastError: 'Codex authorization expired. Reconnect to continue.',
+          })
           return NextResponse.json({
             data: { status: device.status === 'expired' ? 'expired' : 'error' },
           })
@@ -269,6 +309,10 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
             })
             const expiry = codexAccessTokenExpiry(tokens)
             if (!expiry || expiry <= Date.now()) {
+              await repository.update({
+                connectionId, userId, status: 'error',
+                lastError: 'OpenAI returned an expired subscription token. Reconnect.',
+              })
               return NextResponse.json({
                 data: { status: 'error', error: 'OpenAI returned an expired subscription token. Reconnect.' },
               })
@@ -277,6 +321,8 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
               '/v1/subscriptions/import-codex',
               {
                 ...brokerBody,
+                authorizationGeneration: device.authorizationGeneration,
+                pollLease: device.pollLease?.token,
                 tokens: { ...tokens, expired: new Date(expiry).toISOString() },
               },
             )
@@ -285,12 +331,20 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
               return NextResponse.json({ data: { status: 'pending' } })
             }
             if (error instanceof CodexSignInError && error.code === 'expired') {
+              await repository.update({
+                connectionId, userId, status: 'error',
+                lastError: 'Codex authorization expired. Reconnect to continue.',
+              })
               return NextResponse.json({ data: { status: 'expired' } })
             }
             throw error
           }
         } finally {
-          await subscriptionBrokerRequest('/v1/subscriptions/codex-release', brokerBody).catch((_error) => undefined)
+          await subscriptionBrokerRequest('/v1/subscriptions/codex-release', {
+            ...brokerBody,
+            authorizationGeneration: device.authorizationGeneration,
+            pollLease: device.pollLease?.token,
+          }).catch((_error) => undefined)
         }
       } else {
         result = await subscriptionBrokerRequest<SubscriptionConnectionResult>(
@@ -300,7 +354,11 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       }
 
       if (result.status === 'connected' && result.models) {
-        const previousEnabled = action === 'refresh' ? connection.enabledModelIds : undefined
+        const priorDiscovery = typeof connection.discoveredModelsJson === 'string' &&
+          connection.discoveredModelsJson.trim() !== ''
+        const previousEnabled = connection.status === 'active' || priorDiscovery || Boolean(connection.discoveredAt)
+          ? connection.enabledModelIds
+          : undefined
         const updated = await updateConnectedMetadata(
           userId,
           connectionId,
@@ -325,6 +383,10 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
         },
       })
     } catch (_error) {
+      await repository.update({
+        connectionId, userId, status: 'error',
+        lastError: 'The subscription operation failed. Retry or reconnect.',
+      }).catch((_error: unknown) => undefined)
       return NextResponse.json({
         data: { status: 'error', error: 'The subscription operation failed. Retry or reconnect.' },
       })

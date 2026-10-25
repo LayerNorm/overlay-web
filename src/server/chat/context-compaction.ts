@@ -163,6 +163,7 @@ export async function compactMessagesForContext(params: {
   targetModelId: string
   userId?: string
   accessToken?: string
+  summarizerModelId?: string
   previousSummary?: ContextSummarySnapshot | null
   contextWindowOverride?: number
   generateSummaryText?: (args: {
@@ -281,7 +282,7 @@ export async function compactMessagesForContext(params: {
         summaryEstimatedTokens: estimateContextTokens(summaryForContext),
         contextWindow,
         targetModelId: params.targetModelId,
-        summarizerModelId: FREE_TIER_DEFAULT_MODEL_ID,
+        summarizerModelId: params.summarizerModelId ?? FREE_TIER_DEFAULT_MODEL_ID,
       },
     }
   } catch (error) {

@@ -10,8 +10,10 @@ import { convertToModelMessages, generateText } from '@/server/ai/sdk'
 import { getLanguageModel } from '@/server/ai/model-runtime'
 import { modelSupportsZeroDataRetention } from '@/shared/ai/gateway/model-data'
 import {
+  FREE_TIER_DEFAULT_MODEL_ID,
   DEFAULT_MODEL_ID,
 } from '@/shared/ai/gateway/model-types'
+import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
 import { resolveAuthorizedModelIds } from '@/server/ai/model-policy-authority'
 import { meterAutomationWorkflowRun } from '@/server/billing/automation-workflow-billing'
 import { resolveBillingPayer } from '@/server/billing/billing-runtime'
@@ -542,6 +544,9 @@ export async function prepareAutomationAgentTurn(
     userId,
     targetModelId: effectiveModelId,
   })
+  const summaryModelId = isByokModelId(effectiveModelId)
+    ? effectiveModelId
+    : FREE_TIER_DEFAULT_MODEL_ID
   messagesForModel = cloneMessagesWithIndexedFileHint(
     messagesForModel,
     indexedAttachmentList,
@@ -557,7 +562,7 @@ export async function prepareAutomationAgentTurn(
         estimatedInputTokens,
         idempotencyKey: requestIdempotencyKey,
         maxOutputTokens: targetSummaryTokens,
-        modelId: effectiveModelId,
+        modelId: summaryModelId,
         operationId: `${operationIdPrefix}.context-summary`,
         paid,
         requestFingerprint,
@@ -575,7 +580,7 @@ export async function prepareAutomationAgentTurn(
           userId,
         })
         providerWorkStarted = true
-        const summaryModel = await getLanguageModel(effectiveModelId, undefined, userId)
+        const summaryModel = await getLanguageModel(summaryModelId, undefined, userId)
         const summaryResult = await generateText({
           model: summaryModel,
           temperature: 0.1,
@@ -588,7 +593,7 @@ export async function prepareAutomationAgentTurn(
         await actUsageBudgetService.recordFinishedUsage({
           forceFreeTierLimits: false,
           inputTokens: summaryUsage?.inputTokens ?? estimatedInputTokens,
-          modelId: effectiveModelId,
+          modelId: summaryModelId,
           outputTokens: summaryUsage?.outputTokens ?? targetSummaryTokens,
           reservationId: summaryReservation.reservationId,
           userId,
@@ -612,6 +617,7 @@ export async function prepareAutomationAgentTurn(
     },
     messages: messagesForModel,
     targetModelId: effectiveModelId,
+    summarizerModelId: summaryModelId,
     userId,
   })
 
