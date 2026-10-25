@@ -27,6 +27,9 @@ labels have no disabled-link semantics, so embedded note-title inputs remain acc
 and editable.
 Resolve scope with `usePanelScope` and destinations with `useWorkspaceHref` so
 handle routes, legacy links and solo workspaces retain the same scope as navigation.
+Settings is unscoped: its header starts with Settings and links to `/app/settings`
+without a Personal/Workspace prefix or scope query. The legacy Archived and Memories
+surfaces use the same Settings root because they redirect into Settings.
 
 ## Tailwind CSS v4 configuration
 

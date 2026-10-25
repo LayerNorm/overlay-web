@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Settings breadcrumbs read Settings > page instead of a Personal or Workspace prefix.
+
 - Return not found for a removed workspace retained in an API client's active-workspace header.
 
 - Reject native approval decisions from users outside the conversation with a clear not-found response.
