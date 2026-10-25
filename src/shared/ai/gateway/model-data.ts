@@ -407,6 +407,12 @@ export function getEnabledChatModels(
   const ids = enabledModelIds.length > 0 ? enabledModelIds : DEFAULT_CURATED_CHAT_MODEL_IDS
   const enabled = new Set(ids.map((id) => LEGACY_CHAT_MODEL_ID_ALIASES[id] ?? id))
   const curated = getModelsByIntelligence(isFreeTier).filter((model) => enabled.has(model.id))
+  const availableByok = Array.from(byokModels.values()).filter(
+    (model) => model.sourceLabel === 'Subscription',
+  )
+  for (const model of availableByok) {
+    if (!curated.some((candidate) => candidate.id === model.id)) curated.push(model)
+  }
   const curatedIds = new Set(curated.map((model) => model.id))
   // Keep enabled ids visible. Prefer real catalog/curated rows; only synthesize a
   // provisional row before the gateway catalog loads so the picker never collapses.

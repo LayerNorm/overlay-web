@@ -11,7 +11,6 @@ import { getLanguageModel } from '@/server/ai/model-runtime'
 import { modelSupportsZeroDataRetention } from '@/shared/ai/gateway/model-data'
 import {
   DEFAULT_MODEL_ID,
-  FREE_TIER_DEFAULT_MODEL_ID,
 } from '@/shared/ai/gateway/model-types'
 import { resolveAuthorizedModelIds } from '@/server/ai/model-policy-authority'
 import { meterAutomationWorkflowRun } from '@/server/billing/automation-workflow-billing'
@@ -558,7 +557,7 @@ export async function prepareAutomationAgentTurn(
         estimatedInputTokens,
         idempotencyKey: requestIdempotencyKey,
         maxOutputTokens: targetSummaryTokens,
-        modelId: FREE_TIER_DEFAULT_MODEL_ID,
+        modelId: effectiveModelId,
         operationId: `${operationIdPrefix}.context-summary`,
         paid,
         requestFingerprint,
@@ -576,7 +575,7 @@ export async function prepareAutomationAgentTurn(
           userId,
         })
         providerWorkStarted = true
-        const summaryModel = await getLanguageModel(FREE_TIER_DEFAULT_MODEL_ID, undefined)
+        const summaryModel = await getLanguageModel(effectiveModelId, undefined, userId)
         const summaryResult = await generateText({
           model: summaryModel,
           temperature: 0.1,
@@ -589,7 +588,7 @@ export async function prepareAutomationAgentTurn(
         await actUsageBudgetService.recordFinishedUsage({
           forceFreeTierLimits: false,
           inputTokens: summaryUsage?.inputTokens ?? estimatedInputTokens,
-          modelId: FREE_TIER_DEFAULT_MODEL_ID,
+          modelId: effectiveModelId,
           outputTokens: summaryUsage?.outputTokens ?? targetSummaryTokens,
           reservationId: summaryReservation.reservationId,
           userId,

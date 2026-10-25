@@ -162,6 +162,29 @@ test('active BYOK models register without replacing hosted models and respect ex
   assert.equal(getEnabledChatModels([byokId], true).length, 0)
 })
 
+test('enabled subscription models bypass the legacy global model whitelist', () => {
+  const subscriptionModelId = 'byok/subscription_1/openai/gpt-4.1'
+  registerByokModels([{
+    _id: 'subscription_1',
+    authKind: 'subscription',
+    subscriptionProvider: 'codex',
+    providerId: 'subscription:codex',
+    endpoint: '',
+    displayName: 'Personal ChatGPT',
+    enabledModelIds: ['openai/gpt-4.1'],
+    discoveredModelsJson: JSON.stringify({ data: [{ id: 'openai/gpt-4.1' }] }),
+    status: 'active',
+    isDefault: false,
+    isDeletable: true,
+  }])
+
+  const models = getEnabledChatModels(['openrouter/free'], true)
+  assert.ok(models.some((model) => model.id === subscriptionModelId))
+  assert.equal(models.find((model) => model.id === subscriptionModelId)?.sourceLabel, 'Subscription')
+
+  registerByokModels([])
+})
+
 test('modelUsesAiGatewayTransport only flags models served by the metered gateway key', () => {
   assert.equal(modelUsesAiGatewayTransport('anthropic/claude-opus-4.7'), true)
   assert.equal(modelUsesAiGatewayTransport('overlay-free'), false)

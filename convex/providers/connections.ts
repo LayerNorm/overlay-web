@@ -14,11 +14,23 @@ const connectionStatusValidator = v.union(
   v.literal('active'),
   v.literal('error'),
   v.literal('untested'),
+  v.literal('pending'),
+)
+const authKindValidator = v.union(v.literal('api_key'), v.literal('subscription'))
+const subscriptionProviderValidator = v.union(
+  v.literal('codex'),
+  v.literal('xai'),
+  v.literal('meta'),
+  v.literal('kimi'),
+  v.literal('kimi-ai'),
+  v.literal('devin'),
 )
 
 const connectionRowValidator = v.object({
   _id: v.id('userProviderConnections'),
   providerId: v.string(),
+  authKind: v.optional(authKindValidator),
+  subscriptionProvider: v.optional(subscriptionProviderValidator),
   endpoint: v.string(),
   displayName: v.string(),
   enabledModelIds: v.array(v.string()),
@@ -42,6 +54,8 @@ function stripSecrets(row: Doc<'userProviderConnections'>) {
   return {
     _id: row._id,
     providerId: row.providerId,
+    authKind: row.authKind,
+    subscriptionProvider: row.subscriptionProvider,
     endpoint: row.endpoint,
     displayName: row.displayName,
     enabledModelIds: row.enabledModelIds,
@@ -107,6 +121,8 @@ export const createByServer = mutation({
     serverSecret: v.string(),
     userId: v.string(),
     providerId: v.string(),
+    authKind: v.optional(authKindValidator),
+    subscriptionProvider: v.optional(subscriptionProviderValidator),
     endpoint: v.string(),
     displayName: v.string(),
     vaultKeyName: v.string(),
@@ -119,9 +135,19 @@ export const createByServer = mutation({
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
     const now = Date.now()
+    if (
+      (args.authKind === 'subscription' &&
+        (!args.subscriptionProvider || args.providerId !== `subscription:${args.subscriptionProvider}` || args.endpoint !== '' || args.vaultObjectId)) ||
+      (args.authKind !== 'subscription' &&
+        (args.subscriptionProvider !== undefined || args.providerId.startsWith('subscription:')))
+    ) {
+      throw new Error('Invalid subscription connection metadata')
+    }
     return await ctx.db.insert('userProviderConnections', {
       userId: args.userId,
       providerId: args.providerId,
+      authKind: args.authKind,
+      subscriptionProvider: args.subscriptionProvider,
       endpoint: args.endpoint,
       displayName: args.displayName,
       vaultKeyName: args.vaultKeyName,
@@ -141,6 +167,8 @@ export const updateByServer = mutation({
     serverSecret: v.string(),
     connectionId: v.id('userProviderConnections'),
     displayName: v.optional(v.string()),
+    authKind: v.optional(authKindValidator),
+    subscriptionProvider: v.optional(subscriptionProviderValidator),
     endpoint: v.optional(v.string()),
     vaultObjectId: v.optional(v.string()),
     enabledModelIds: v.optional(v.array(v.string())),
@@ -155,6 +183,13 @@ export const updateByServer = mutation({
     requireServerSecret(args.serverSecret)
     const row = await readConnectionById(ctx, args.connectionId)
     if (!row) throw new Error('Connection not found')
+    if (args.authKind !== undefined || args.subscriptionProvider !== undefined) {
+      throw new Error('Subscription identity cannot be changed')
+    }
+    if (row.authKind === 'subscription' &&
+      (args.endpoint !== undefined || args.vaultObjectId !== undefined)) {
+      throw new Error('Subscription identity and credentials cannot be changed')
+    }
 
     const updates: Record<string, unknown> = { updatedAt: Date.now() }
     if (args.displayName !== undefined) updates.displayName = args.displayName
@@ -276,6 +311,12 @@ const connectionWithVaultValidator = v.object({
   isDefault: v.boolean(),
   isDeletable: v.boolean(),
   status: connectionStatusValidator,
+  authKind: v.optional(authKindValidator),
+  subscriptionProvider: v.optional(subscriptionProviderValidator),
+  discoveredModelsJson: v.optional(v.string()),
+  discoveredAt: v.optional(v.number()),
+  lastError: v.optional(v.string()),
+  lastTestedAt: v.optional(v.number()),
 })
 
 export const getByServer = query({
@@ -292,6 +333,8 @@ export const getByServer = query({
       _id: row._id,
       userId: row.userId,
       providerId: row.providerId,
+      authKind: row.authKind,
+      subscriptionProvider: row.subscriptionProvider,
       endpoint: row.endpoint,
       displayName: row.displayName,
       vaultKeyName: row.vaultKeyName,
@@ -300,6 +343,10 @@ export const getByServer = query({
       isDefault: row.isDefault,
       isDeletable: row.isDeletable,
       status: row.status,
+      discoveredModelsJson: row.discoveredModelsJson,
+      discoveredAt: row.discoveredAt,
+      lastError: row.lastError,
+      lastTestedAt: row.lastTestedAt,
     }
   },
 })

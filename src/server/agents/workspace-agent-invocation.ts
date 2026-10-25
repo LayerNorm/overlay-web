@@ -25,6 +25,7 @@ import {
 } from '@/shared/chat/persist-assistant-turn'
 import { toolFailureOutput } from '@/shared/chat/tool-outcomes'
 import { FREE_TIER_AUTO_MODEL_ID, isFreeTierChatModelId } from '@/shared/ai/gateway/model-types'
+import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
 import {
   createAgentMessageStream,
   appendAgentTextPart,
@@ -167,6 +168,7 @@ export class WorkspaceAgentInvocationError extends Error {
  * the agent answering instead of failing the turn outright.
  */
 export function agentModelAttempts(modelId: string): string[] {
+  if (isByokModelId(modelId)) return [modelId]
   return isFreeTierChatModelId(modelId) ? [modelId] : [modelId, FREE_TIER_AUTO_MODEL_ID]
 }
 
@@ -928,7 +930,7 @@ export async function runWorkspaceAgentTurn(args: {
         return null
       }
       reservationId = reservation.reservationId
-      const model = await getLanguageModel(effectiveModelId, args.accessToken)
+      const model = await getLanguageModel(effectiveModelId, args.accessToken, args.actorUserId)
 
       const isDefaultMaster = Boolean(agent.isDefault || agent.name.toLowerCase() === 'overlay')
       // Recall is a per-message user choice. The agent's allow-list still

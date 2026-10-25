@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Add per-user subscription provider connections through an isolated broker for Codex, xAI, Meta, Kimi, Kimi AI, and Devin; subscription routing never falls back to Overlay-paid inference.
+
 - Clear connection-error notices when retrying a remote agent that produced no text; preserve genuine partial replies and their recovery offsets.
 
 - Reuse explicit Preview-only, non-refilling machine QA funding while keeping ordinary Personal previews free.

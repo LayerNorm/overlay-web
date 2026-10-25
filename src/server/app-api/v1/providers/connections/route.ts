@@ -17,6 +17,9 @@ import {
 import { overlayProviderDiscoveryModels } from '@/server/ai/gateway/overlay-provider-models'
 import { logger } from '@/server/observability/logger'
 import { summarizeErrorForLog } from '@/shared/security/safe-log'
+import { isSubscriptionConnection } from '@/shared/ai/gateway/subscription-providers'
+import { parseDiscoveredModels } from '@/shared/ai/gateway/byok-model-conversion'
+import { subscriptionBrokerRequest } from '@/server/ai/gateway/subscription-broker'
 
 const MAX_CONNECTIONS_PER_USER = 20
 const MAX_DISPLAY_NAME_LENGTH = 80
@@ -322,6 +325,58 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       return NextResponse.json({ error: 'Connection not found' }, { status: 404 })
     }
 
+    if (!existing.isDeletable) {
+      return NextResponse.json(
+        { error: 'This connection cannot be deleted (it is the default provider)' },
+        { status: 403 },
+      )
+    }
+
+    if (existing.authKind === 'subscription' || existing.providerId.startsWith('subscription:')) {
+      if (!isSubscriptionConnection(existing)) {
+        return NextResponse.json({ error: 'Invalid subscription connection metadata' }, { status: 400 })
+      }
+      const allowedKeys = new Set(['connectionId', 'displayName', 'enabledModelIds'])
+      if (Object.keys(body).some((key) => !allowedKeys.has(key))) {
+        return NextResponse.json(
+          { error: 'Subscription credentials and provider metadata cannot be edited here' },
+          { status: 400 },
+        )
+      }
+      const safeDisplayName = displayName === undefined ? undefined : normalizedDisplayName(displayName)
+      if (safeDisplayName === null) {
+        return NextResponse.json({ error: 'Invalid displayName' }, { status: 400 })
+      }
+      const safeEnabledModelIds = normalizedModelIds(enabledModelIds)
+      if (safeEnabledModelIds === null) {
+        return NextResponse.json({ error: 'Invalid enabledModelIds' }, { status: 400 })
+      }
+      const discoveredIds = new Set(
+        parseDiscoveredModels(existing.discoveredModelsJson).map((model) => model.id),
+      )
+      if (safeEnabledModelIds?.some((modelId) => !discoveredIds.has(modelId))) {
+        return NextResponse.json(
+          { error: 'Enabled models must be present in the account discovery list' },
+          { status: 400 },
+        )
+      }
+      if (safeEnabledModelIds !== undefined) {
+        await subscriptionBrokerRequest('/v1/subscriptions/models', {
+          ownerId: auth.userId,
+          connectionId,
+          providerId: existing.subscriptionProvider,
+          enabledModelIds: safeEnabledModelIds,
+        })
+      }
+      await repository.update({
+        connectionId,
+        userId: auth.userId,
+        ...(safeDisplayName !== undefined ? { displayName: safeDisplayName } : {}),
+        ...(safeEnabledModelIds !== undefined ? { enabledModelIds: safeEnabledModelIds } : {}),
+      })
+      return NextResponse.json({ success: true })
+    }
+
     const endpointResolution = resolveByokEndpointForPatch(
       existing.providerId,
       endpoint,
@@ -448,6 +503,17 @@ export async function DELETE(request: NextRequest, context: AppApiRouteContext) 
         { error: 'This connection cannot be deleted (it is the default provider)' },
         { status: 403 },
       )
+    }
+
+    if (existing.authKind === 'subscription' || existing.providerId.startsWith('subscription:')) {
+      if (!isSubscriptionConnection(existing)) {
+        return NextResponse.json({ error: 'Invalid subscription connection metadata' }, { status: 400 })
+      }
+      await subscriptionBrokerRequest('/v1/subscriptions/disconnect', {
+        ownerId: auth.userId,
+        connectionId,
+        providerId: existing.subscriptionProvider,
+      })
     }
 
     // Delete the external credential first. If AWS rejects that call, metadata

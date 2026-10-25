@@ -30,7 +30,6 @@ import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
 import { userFacingOpenRouterError } from '@/server/ai/model-runtime'
 import { uploadFilePartsForModel } from '@/server/ai/file-upload'
 import {
-  FREE_TIER_DEFAULT_MODEL_ID,
   isFreeTierChatModelId,
   OPENROUTER_FREE_MODEL_ID,
 } from '@/shared/ai/gateway/model-types'
@@ -474,7 +473,7 @@ export async function executeActTurn(
           estimatedInputTokens,
           idempotencyKey: context.requestIdempotencyKey,
           maxOutputTokens: targetSummaryTokens,
-          modelId: FREE_TIER_DEFAULT_MODEL_ID,
+          modelId: effectiveModelId,
           operationId: 'conversation.act.context-summary',
           paid,
           requestFingerprint: context.requestFingerprint,
@@ -492,7 +491,7 @@ export async function executeActTurn(
             userId,
           })
           providerWorkStarted = true
-          const summaryModel = await getLanguageModel(FREE_TIER_DEFAULT_MODEL_ID, accessToken)
+          const summaryModel = await getLanguageModel(effectiveModelId, accessToken, userId)
           const summaryResult = await generateText({
             model: summaryModel,
             temperature: 0.1,
@@ -505,7 +504,7 @@ export async function executeActTurn(
           await actUsageBudgetService.recordFinishedUsage({
             forceFreeTierLimits: false,
             inputTokens: summaryUsage?.inputTokens ?? estimatedInputTokens,
-            modelId: FREE_TIER_DEFAULT_MODEL_ID,
+            modelId: effectiveModelId,
             outputTokens: summaryUsage?.outputTokens ?? targetSummaryTokens,
             reservationId: summaryReservation.reservationId,
             userId,
@@ -532,6 +531,7 @@ export async function executeActTurn(
       replyContextForModel,
       targetModelId: effectiveModelId,
       userId: conversationUserId,
+      modelUserId: userId,
     })
     const userSystemPromptExtension = buildSecondarySystemPromptExtension(systemPrompt)
 

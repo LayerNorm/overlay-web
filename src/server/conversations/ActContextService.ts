@@ -386,6 +386,7 @@ export class ActContextService {
     requestMessages: UIMessage[]
     targetModelId: string
     userId: string
+    modelUserId?: string
   }): Promise<UIMessage[]> {
     const messagesForModel = await this.buildMessagesForModel({
       requestMessages: args.requestMessages,
@@ -404,6 +405,7 @@ export class ActContextService {
       replyContextForModel: args.replyContextForModel,
       targetModelId: args.targetModelId,
       userId: args.userId,
+      modelUserId: args.modelUserId,
     })
   }
 
@@ -419,6 +421,7 @@ export class ActContextService {
     replyContextForModel?: string
     targetModelId: string
     userId: string
+    modelUserId?: string
   }): Promise<UIMessage[]> {
     let messagesForModel = args.messages
     messagesForModel = mergeReplyContextIntoMessagesForModel(messagesForModel, args.replyContextForModel)
@@ -446,6 +449,7 @@ export class ActContextService {
     const compaction = await compactMessagesForContext({
       messages: messagesForModel,
       targetModelId: args.targetModelId,
+      userId: args.modelUserId ?? args.userId,
       accessToken: args.accessToken,
       previousSummary: previousContextSummary,
       ...(args.generateSummaryText ? { generateSummaryText: args.generateSummaryText } : {}),

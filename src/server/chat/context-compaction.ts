@@ -161,6 +161,7 @@ function summarySystemMessage(summary: string): UIMessage {
 export async function compactMessagesForContext(params: {
   messages: UIMessage[]
   targetModelId: string
+  userId?: string
   accessToken?: string
   previousSummary?: ContextSummarySnapshot | null
   contextWindowOverride?: number
@@ -235,7 +236,7 @@ export async function compactMessagesForContext(params: {
             import('@/server/ai/model-runtime'),
             import('@/server/ai/sdk'),
           ])
-          const model = await getLanguageModel(FREE_TIER_DEFAULT_MODEL_ID, params.accessToken)
+          const model = await getLanguageModel(params.targetModelId, params.accessToken, params.userId)
           const result = await generateText({
             model,
             temperature: 0.1,

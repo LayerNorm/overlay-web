@@ -36,35 +36,30 @@ type ModelSelectionControls = {
   setSelectedModels: (modelIds: string[]) => void
 }
 
-function useByokModelFallback({
+const CONNECTION_UNAVAILABLE_NOTICE = 'This model connection is unavailable. Reconnect it in Settings > Providers or choose another model. No fallback has been selected.'
+
+function useByokModelAvailability({
   chatPrefsHydrated,
   modelCatalogReady,
   selectableTextModels,
   selectedActModel,
-  setSelectedActModel,
-  setSelectedModels,
+  selectedModels,
+  setComposerNotice,
 }: {
   chatPrefsHydrated: boolean
   modelCatalogReady: boolean
   selectableTextModels: ChatModel[]
   selectedActModel: string
-} & ModelSelectionControls) {
+  selectedModels: string[]
+  setComposerNotice: ComposerNoticeSetter
+}) {
+  const unavailable = chatPrefsHydrated && modelCatalogReady && [selectedActModel, ...selectedModels].some((id) =>
+    isByokModelId(id) && !selectableTextModels.some((model) => model.id === id),
+  )
   useEffect(() => {
-    if (!chatPrefsHydrated || !modelCatalogReady || !isByokModelId(selectedActModel)) return
-    if (selectableTextModels.some((model) => model.id === selectedActModel)) return
-    const fallbackModelId = selectableTextModels[0]?.id ?? FREE_TIER_AUTO_MODEL_ID
-    // react-doctor-disable-next-line react-doctor/no-pass-live-state-to-parent, react-doctor/no-pass-data-to-parent
-    setSelectedModels([fallbackModelId])
-    // react-doctor-disable-next-line react-doctor/no-pass-live-state-to-parent, react-doctor/no-pass-data-to-parent
-    setSelectedActModel(fallbackModelId)
-  }, [
-    chatPrefsHydrated,
-    modelCatalogReady,
-    selectableTextModels,
-    selectedActModel,
-    setSelectedActModel,
-    setSelectedModels,
-  ])
+    setComposerNotice((current) => unavailable ? CONNECTION_UNAVAILABLE_NOTICE : current === CONNECTION_UNAVAILABLE_NOTICE ? null : current)
+  }, [unavailable, setComposerNotice])
+  return unavailable
 }
 
 function useFreeTierModelSelection({
@@ -118,6 +113,7 @@ function useZdrModelSelection({
 } & ModelSelectionControls) {
   useEffect(() => {
     if (!chatPrefsHydrated || !effectiveOnlyAllowZdrModels) return
+    if ([selectedActModel, ...selectedModels].some(isByokModelId)) return
     const fallback = selectableTextModels[0]?.id ?? DEFAULT_MODEL_ID
     const nextSelected = selectedModels.filter((id) => modelSupportsZeroDataRetention(id)).slice(0, 1)
     const resolvedSelected = nextSelected.length > 0 ? nextSelected : [fallback]
@@ -256,16 +252,15 @@ export function useChatBillingControls({
     isModelAccessRestricted &&
     !isByokModelId(selectedActModel) &&
     !isFreeTierChatModelId(selectedActModel)
-  const isSendBlocked = premiumModelBlocked
-
-  useByokModelFallback({
+  const connectionUnavailable = useByokModelAvailability({
     chatPrefsHydrated,
     modelCatalogReady,
     selectableTextModels,
     selectedActModel,
-    setSelectedActModel,
-    setSelectedModels,
+    selectedModels,
+    setComposerNotice,
   })
+  const isSendBlocked = premiumModelBlocked || connectionUnavailable
 
   useFreeTierModelSelection({
     activeChatId,

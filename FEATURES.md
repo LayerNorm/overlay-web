@@ -64,6 +64,7 @@ All runtime feature keys are listed below or in the launch table above. Related 
 | Sandbox tool capability | Enabled in config | `sandboxes` / `SANDBOXES` | Not a substitute for `COMPUTERS` or external cloud flags; runtime/provider wiring is described below |
 | Web search | Enabled, credentials required | `webSearch` / `WEB_SEARCH` | Elo gateway (Tavily/Parallel search paths), `ELO_API_KEY` |
 | Models, routing, native provider connections | Enabled | `modelRouting` / `MODEL_ROUTING`; `LLM_GATEWAY`, `OVERLAY_PROVIDER_MODELS` | OpenRouter default, Vercel AI Gateway, OpenAI, Anthropic, Groq; allowlists and billing still apply |
+| Subscription model connections | Implemented; broker deployment required | Server-only `OVERLAY_SUBSCRIPTION_BROKER_URL` and `OVERLAY_SUBSCRIPTION_BROKER_KEY`; broker master key | Per-connection CLIProxyAPI workers for Codex, xAI, Meta, Kimi, Kimi AI, and Devin; no shared pool or paid fallback; hosted provider compatibility remains unverified |
 | Voice transcription | Enabled, hosted paid access required | UI `voiceTranscription`; no dedicated runtime switch | Groq hosted transcription; local on-device transcription is a separate client path |
 | Image/video generation | Implemented, model/tool/entitlement gated | No dedicated runtime flag; tool grants and configured gateway | Configured media models and output services; not disabled by external runtime release |
 | Workspaces, teams, invitations | Enabled in app | UI `workspaces`; collaboration rollout below | Convex, Overlay membership/authorization |
@@ -93,6 +94,7 @@ Provider names accepted by the schema are **not** proof of a working adapter. De
 | Auth | `AUTH_PROVIDER`, `OVERLAY_PROVIDER_AUTH` | `workos`, `better-auth`, `oidc`, `none`; Better Auth needs its own database and SSO/access-policy config |
 | Storage | `OVERLAY_PROVIDER_OBJECT_STORAGE`, `storage.provider` | `r2`, `s3`, `none` |
 | Models | `OVERLAY_PROVIDER_MODELS`, `LLM_GATEWAY` | `openrouter`, `ai-gateway`, `openai`, `anthropic`, `groq`, `none`; gateway models and credential stores remain independent of external harness accounts |
+| Subscription models | `OVERLAY_SUBSCRIPTION_BROKER_URL`, `OVERLAY_SUBSCRIPTION_BROKER_KEY` | Separate long-running broker pinned to CLIProxyAPI commit `bc0643405a1d0adf77dd0f109972ac3313d66397`; requires HTTPS except local development. It is not a provider pool or a native external-agent credential adapter |
 | Embeddings | `OVERLAY_PROVIDER_EMBEDDINGS` | `ai-gateway`, `openai`; `azure-openai` is schema-only, not implemented by the factory |
 | Vector search | `OVERLAY_PROVIDER_VECTOR_SEARCH` | `convex`, `none`; `pgvector` and `pinecone` are rejected as unimplemented |
 | Integrations | `OVERLAY_PROVIDER_INTEGRATIONS` | `composio`, `executor`, `none`; schema value `mcp` is not selected by the integration factory (use MCP server connections separately) |
