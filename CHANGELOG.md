@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Return not found for a removed workspace retained in an API client's active-workspace header.
+
 - Reject native approval decisions from users outside the conversation with a clear not-found response.
 
 - Retain native-agent tool calls and their real results when durable turns finalize, so completed execution evidence survives reload.
