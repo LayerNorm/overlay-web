@@ -23,8 +23,9 @@ function rowScopeOf(row: ScopedDoc): 'personal' | 'workspace' {
 
 const scopeValidator = v.union(v.literal('personal'), v.literal('workspace'))
 
-async function authorize(params: { accessToken?: string; serverSecret?: string; userId: string }) {
+async function authorize(params: { accessToken?: string; serverSecret?: string; userId: string }, requireServerAuthentication = false) {
   if (validateServerSecret(params.serverSecret)) return
+  if (requireServerAuthentication) throw new Error('Unauthorized')
   await requireAccessToken(params.accessToken ?? '', params.userId)
 }
 
@@ -39,6 +40,8 @@ export function scopeMutations(
   table: ScopedTable,
   kind: ResourceKind,
   options?: {
+    /** Keep resources whose policy lives in web routes behind the same server boundary. */
+    requireServerAuthentication?: boolean
     onArchive?: Record<string, unknown>
     /** Ids of the rows that belong under this one (a folder's contents), moved, archived, and restored with it. */
     descendants?: (db: unknown, id: string) => Promise<string[]>
@@ -66,7 +69,7 @@ export function scopeMutations(
   }
 
   async function applyScope(ctx: MutationCtx, args: ScopeMutationArgs & { to: 'personal' | 'workspace' }): Promise<ScopeMutationResult> {
-    await authorize(args)
+    await authorize(args, options?.requireServerAuthentication)
     const { db, id, row } = await readableRow(ctx, args)
     const plan = await planMove(ctx, { kind, row, to: args.to, userId: args.userId })
     if (!plan.ok || !id) return { ok: false, reason: plan.ok ? 'not_found' : plan.reason }
@@ -88,7 +91,7 @@ export function scopeMutations(
   const archive = mutation({
     args: common,
     handler: async (ctx, args): Promise<ScopeMutationResult> => {
-      await authorize(args)
+      await authorize(args, options?.requireServerAuthentication)
       const { db, id, row } = await readableRow(ctx, args)
       const plan = await planArchive(ctx, { row, userId: args.userId, now: Date.now() })
       if (!plan.ok || !id) return { ok: false, reason: plan.ok ? 'not_found' : plan.reason }
@@ -109,7 +112,7 @@ export function scopeMutations(
   const restore = mutation({
     args: common,
     handler: async (ctx, args): Promise<ScopeMutationResult> => {
-      await authorize(args)
+      await authorize(args, options?.requireServerAuthentication)
       const { db, id, row } = await readableRow(ctx, args)
       const plan = await planRestore(ctx, { row, userId: args.userId })
       if (!plan.ok || !id) return { ok: false, reason: plan.ok ? 'not_found' : plan.reason }

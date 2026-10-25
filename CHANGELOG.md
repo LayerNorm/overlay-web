@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Require server authentication for task scope, archive and restore so browser tokens cannot bypass Work policy or forge agent activity.
+
 - Keep task revisions increasing when a comment follows an edit in the same clock tick, so stale updates remain rejected.
 
 - Preserve native-agent attribution when task tools archive, restore, or move a task.

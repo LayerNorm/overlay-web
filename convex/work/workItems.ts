@@ -143,6 +143,7 @@ async function tidyLinksAfterMove(ctx: MutationCtx, args: { movedIds: string[]; 
 
 // Moving, archiving, and restoring follow the shared Personal / Workspace rules; each is written to the task's log.
 const workScopeMutations = scopeMutations('workItems', 'content', {
+  requireServerAuthentication: true,
   descendants: descendantIds,
   afterApply: async (rawCtx, change) => {
     const ctx = rawCtx as MutationCtx

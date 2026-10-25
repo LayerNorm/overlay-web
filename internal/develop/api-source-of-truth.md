@@ -57,6 +57,8 @@ Task revisions advance monotonically for edits, comments, status/rank moves, sco
 affected descendants. Expected conflicts use Convex application-error data so Production redaction preserves
 the API's `409 work_conflict`. Task tools use these routes; service-authenticated agent attribution affects
 activity only and never replaces the human caller's permissions.
+Work scope, archive and restore mutations also require server authentication; a browser token cannot bypass
+the web capability/runtime checks or supply an agent activity actor directly to Convex.
 
 ## Connected-agent drive
 

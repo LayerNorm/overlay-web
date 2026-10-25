@@ -2,6 +2,7 @@ import { beforeAll, describe, expect, test, vi } from 'vitest'
 import { convexTest } from 'convex-test'
 import { makeFunctionReference } from 'convex/server'
 import schema from './schema'
+import * as workAuth from './lib/auth'
 import { parseUpdateWorkItem } from '../src/server/work/work-input'
 
 const modules = import.meta.glob('./**/*.ts')
@@ -729,6 +730,32 @@ describe('archived tasks and long ranks', () => {
 })
 
 describe('trusted callers, reviewers and batches', () => {
+  test.each(['setScope', 'archive', 'restore'] as const)('%s refuses valid browser tokens and forged agent attribution', async (action) => {
+    const convex = convexTest(schema, modules)
+    await seed(convex)
+    const work = api(convex)
+    const task = await work.create('alice', { title: 'Server-only scope boundary' })
+    if (action === 'restore') await work.archive('alice', task._id)
+    const before = await work.get('alice', task._id)
+    const eventsBefore = await work.events('alice', task._id)
+    const validBrowserToken = vi.spyOn(workAuth, 'requireAccessToken').mockResolvedValue({
+      iss: 'https://api.workos.com', sub: 'alice', exp: now / 1_000 + 3600,
+    })
+    try {
+      for (const actingAgentPrincipalId of [undefined, 'p-agent']) {
+        await expect(convex.mutation(m(`work/workItems:${action}`), {
+          workspaceId, userId: 'alice', id: task._id, accessToken: 'valid-browser-token',
+          ...(actingAgentPrincipalId ? { actingAgentPrincipalId } : {}),
+          ...(action === 'setScope' ? { to: 'workspace' } : {}),
+        })).rejects.toThrow(/Unauthorized/)
+        expect(await work.get('alice', task._id)).toEqual(before)
+        expect(await work.events('alice', task._id)).toEqual(eventsBefore)
+      }
+    } finally {
+      validBrowserToken.mockRestore()
+    }
+  })
+
   test('a browser token alone reaches nothing: Work is served through the web app routes', async () => {
     const convex = convexTest(schema, modules)
     await seed(convex)
