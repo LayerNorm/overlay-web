@@ -222,7 +222,12 @@ function encrypt(value, aad) {
 function decrypt(serialized, aad) {
   const envelope = JSON.parse(serialized)
   if (envelope.version !== SNAPSHOT_VERSION) throw new Error('Invalid encrypted snapshot')
-  const decipher = createDecipheriv('aes-256-gcm', masterKey(), Buffer.from(envelope.iv, 'base64'))
+  const decipher = createDecipheriv(
+    'aes-256-gcm',
+    masterKey(),
+    Buffer.from(envelope.iv, 'base64'),
+    { authTagLength: 16 },
+  )
   decipher.setAAD(Buffer.from(aad))
   decipher.setAuthTag(Buffer.from(envelope.tag, 'base64'))
   return JSON.parse(Buffer.concat([

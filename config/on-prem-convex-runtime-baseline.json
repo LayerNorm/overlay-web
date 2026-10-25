@@ -170,6 +170,7 @@
     "src/app/api/v1/provider-accounts/route.ts",
     "src/app/api/v1/providers/connections/route.ts",
     "src/app/api/v1/providers/connections/test/route.ts",
+    "src/app/api/v1/providers/subscriptions/route.ts",
     "src/app/api/v1/scope/route.ts",
     "src/app/api/v1/search/route.ts",
     "src/app/api/v1/settings/route.ts",

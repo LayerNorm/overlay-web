@@ -144,6 +144,17 @@ const ProviderConnectionTestRequest = z.object({
   apiKey: z.string().optional(),
 })
 
+const SubscriptionAuthorizationRequest = z.object({
+  providerId: z.string().optional(),
+  connectionId: z.string().optional(),
+}).passthrough()
+
+const SubscriptionUpdateRequest = z.object({
+  action: z.enum(['poll', 'refresh', 'callback']),
+  connectionId: z.string().min(1),
+  callbackUrl: z.string().optional(),
+}).passthrough()
+
 export const webApiBoundaryDefinitions = [
   {
     method: 'GET', path: '/api/v1/agent-environments', schema: { query: EmptyQuery, response: UnknownResponse },
@@ -867,6 +878,30 @@ export const webApiBoundaryDefinitions = [
     schema: { json: UpdateBillingSettingsRequest },
     summary: 'Update billing settings',
     tag: 'Billing',
+    publicReference: false,
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/providers/subscriptions',
+    schema: { query: EmptyQuery, response: UnknownResponse },
+    summary: 'List verified subscription providers',
+    tag: 'Providers',
+    publicReference: false,
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/providers/subscriptions',
+    schema: { json: SubscriptionAuthorizationRequest, response: UnknownResponse },
+    summary: 'Start subscription authorization',
+    tag: 'Providers',
+    publicReference: false,
+  },
+  {
+    method: 'PATCH',
+    path: '/api/v1/providers/subscriptions',
+    schema: { json: SubscriptionUpdateRequest, response: UnknownResponse },
+    summary: 'Poll or refresh subscription authorization',
+    tag: 'Providers',
     publicReference: false,
   },
   { method: 'POST', path: '/api/v1/transcribe', schema: { formData: TranscribeRequest }, summary: 'Transcribe audio', tag: 'Media' },
