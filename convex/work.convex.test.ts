@@ -1,7 +1,9 @@
-import { beforeAll, describe, expect, test } from 'vitest'
+import { beforeAll, describe, expect, test, vi } from 'vitest'
 import { convexTest } from 'convex-test'
 import { makeFunctionReference } from 'convex/server'
 import schema from './schema'
+import * as workAuth from './lib/auth'
+import { parseUpdateWorkItem } from '../src/server/work/work-input'
 
 const modules = import.meta.glob('./**/*.ts')
 const secret = 'work-secret'
@@ -15,7 +17,7 @@ const q = (name: string) => makeFunctionReference<'query'>(name)
 const m = (name: string) => makeFunctionReference<'mutation'>(name)
 
 type Convex = ReturnType<typeof convexTest>
-type Item = { _id: string; title: string; status: string; rank: string; scope: string; parentId?: string; assigneePrincipalId?: string; archivedAt?: number; blocked: boolean }
+type Item = { _id: string; title: string; status: string; rank: string; scope: string; parentId?: string; assigneePrincipalId?: string; archivedAt?: number; blocked: boolean; updatedAt: number }
 
 /** A workspace with an owner, an admin, two members, a guest, and an agent. */
 async function seed(convex: Convex, policy?: Record<string, unknown>) {
@@ -28,12 +30,14 @@ async function seed(convex: Convex, policy?: Record<string, unknown>) {
       await ctx.db.insert('workspaceMemberships', { membershipId: `m-${userId}`, workspaceId, principalId: `p-${userId}`, role, status: 'active', joinedAt: now, updatedAt: now })
     }
     await ctx.db.insert('workspacePrincipals', { principalId: 'p-agent', workspaceId, type: 'agent', agentId: 'agent-1', displayName: 'Researcher', createdAt: now, updatedAt: now })
+    await ctx.db.insert('workspacePrincipals', { principalId: 'p-archived-actor', workspaceId, type: 'agent', agentId: 'archived-actor', displayName: 'Archived agent', archivedAt: now, createdAt: now, updatedAt: now })
     await ctx.db.insert('workspaceAgentDefinitions', {
       principalId: 'p-agent', agentId: 'agent-1', workspaceId, name: 'Researcher', instructions: 'Research.',
       harness: 'overlay', modelId: 'test-model', allowedToolIds: [], invocationPolicy: 'mention',
       visibility: 'workspace', createdByPrincipalId: 'p-owner', createdAt: now, updatedAt: now,
     })
     await ctx.db.insert('workspacePrincipals', { principalId: 'p-outsider', workspaceId: otherWorkspaceId, type: 'human', userId: 'outsider', displayName: 'outsider', createdAt: now, updatedAt: now })
+    await ctx.db.insert('workspacePrincipals', { principalId: 'p-agent-other', workspaceId: otherWorkspaceId, type: 'agent', agentId: 'agent-other', displayName: 'Other agent', createdAt: now, updatedAt: now })
     await ctx.db.insert('workspaceMemberships', { membershipId: 'm-outsider', workspaceId: otherWorkspaceId, principalId: 'p-outsider', role: 'owner', status: 'active', joinedAt: now, updatedAt: now })
     if (policy) await ctx.db.insert('workspaceSharingPolicies', { workspaceId, publicLinksEnabled: true, createdAt: now, updatedAt: now, ...policy })
   })
@@ -88,6 +92,93 @@ function api(convex: Convex) {
     comment: (userId: string, workItemId: string, body: string) => convex.mutation(m('work/workItemEvents:addComment'), { ...auth(userId), workItemId, body }),
   }
 }
+
+test('a stale API update cannot overwrite a newer task mutation', async () => {
+  const convex = convexTest(schema, modules)
+  await seed(convex)
+  const work = api(convex)
+  const clock = vi.spyOn(Date, 'now').mockReturnValue(now)
+  try {
+    const original = await work.create('alice', { title: 'Original' })
+    clock.mockReturnValue(now + 1)
+    await work.update('alice', original._id, { title: 'Newer human edit' })
+    const stale = parseUpdateWorkItem({ title: 'Stale agent edit', expectedUpdatedAt: original.updatedAt })
+    await expect(work.update('alice', original._id, { ...stale })).rejects.toThrow(/WORK_INVALID:conflict/)
+    expect((await work.get('alice', original._id))?.title).toBe('Newer human edit')
+  } finally {
+    clock.mockRestore()
+  }
+})
+
+test('field, status and scope updates commit together or leave the task and activity unchanged', async () => {
+  const convex = convexTest(schema, modules)
+  await seed(convex)
+  const work = api(convex)
+  const original = await work.create('alice', { title: 'Original', startDate: '2030-01-02' })
+  const before = await work.events('alice', original._id)
+  await expect(work.update('alice', original._id, {
+    ...parseUpdateWorkItem({ title: 'Invalid edit', scope: 'workspace', status: 'done', dueDate: '2030-01-01' }),
+  })).rejects.toThrow(/date_order/)
+  expect(await work.get('alice', original._id)).toMatchObject({ title: 'Original', scope: 'personal', status: 'todo' })
+  expect(await work.events('alice', original._id)).toEqual(before)
+
+  const changed = await work.update('alice', original._id, {
+    ...parseUpdateWorkItem({ title: 'Complete edit', scope: 'workspace', status: 'done', expectedUpdatedAt: original.updatedAt }),
+  })
+  expect(changed).toMatchObject({ title: 'Complete edit', scope: 'workspace', status: 'done' })
+  expect(await work.get('bob', original._id)).toMatchObject({ title: 'Complete edit', scope: 'workspace', status: 'done' })
+})
+
+test('a comment cannot resurrect an obsolete revision after a same-tick edit', async () => {
+  const convex = convexTest(schema, modules)
+  await seed(convex)
+  const work = api(convex)
+  const clock = vi.spyOn(Date, 'now').mockReturnValue(now)
+  try {
+    const original = await work.create('alice', { title: 'Original' })
+    const edited = await work.update('alice', original._id, {
+      title: 'Newer human edit', expectedUpdatedAt: original.updatedAt,
+    })
+    await work.comment('alice', original._id, 'Keep the newer edit')
+    await expect(work.update('alice', original._id, {
+      title: 'Stale agent edit', expectedUpdatedAt: original.updatedAt,
+    })).rejects.toThrow(/WORK_INVALID:conflict/)
+    const current = await work.get('alice', original._id)
+    expect(current?.title).toBe('Newer human edit')
+    expect(current?.updatedAt).toBeGreaterThan(edited.updatedAt)
+    expect((await work.events('alice', original._id)).at(-1)).toMatchObject({
+      kind: 'comment', data: { body: 'Keep the newer edit' },
+    })
+  } finally {
+    clock.mockRestore()
+  }
+})
+
+test('task revisions advance for edits, moves and archive/restore within one clock tick', async () => {
+  const convex = convexTest(schema, modules)
+  await seed(convex)
+  const work = api(convex)
+  const clock = vi.spyOn(Date, 'now').mockReturnValue(now)
+  try {
+    const original = await work.create('alice', { title: 'Original' })
+    let previous = original.updatedAt
+    for (const change of [
+      () => work.update('alice', original._id, { title: 'Changed' }),
+      () => work.comment('alice', original._id, 'Same-tick comment'),
+      () => work.move('alice', original._id, { status: 'progress' }),
+      () => work.setScope('alice', original._id, 'workspace'),
+      () => work.archive('alice', original._id),
+      () => work.restore('alice', original._id),
+    ]) {
+      await change()
+      const current = await convex.run((ctx) => ctx.db.get(original._id as import('./_generated/dataModel').Id<'workItems'>))
+      expect(current?.updatedAt).toBeGreaterThan(previous)
+      previous = current!.updatedAt
+    }
+  } finally {
+    clock.mockRestore()
+  }
+})
 
 describe('personal and workspace visibility', () => {
   test('personal tasks are private; workspace tasks are shared with members but not guests or other workspaces', async () => {
@@ -148,6 +239,24 @@ describe('personal and workspace visibility', () => {
     await expect(work.update('alice', adminTask._id, { status: 'progress' })).rejects.toThrow(/Unauthorized/)
     expect((await work.update('bob', adminTask._id, { status: 'progress' })).status).toBe('progress')
   })
+})
+
+test('acting agent attribution is validated and applied to Work activity only', async () => {
+  const convex = convexTest(schema, modules)
+  await seed(convex)
+  const task = await api(convex).create('alice', { actingAgentPrincipalId: 'p-agent' })
+  await convex.mutation(m('work/workItems:update'), { ...auth('alice'), id: task._id, title: 'Updated', actingAgentPrincipalId: 'p-agent' })
+  await convex.mutation(m('work/workItems:move'), { ...auth('alice'), id: task._id, status: 'progress', actingAgentPrincipalId: 'p-agent' })
+  await convex.mutation(m('work/workItemEvents:addComment'), { ...auth('alice'), workItemId: task._id, body: 'Review this', actingAgentPrincipalId: 'p-agent' })
+  await convex.mutation(m('work/workItems:archive'), { ...auth('alice'), id: task._id, actingAgentPrincipalId: 'p-agent' })
+  await convex.mutation(m('work/workItems:restore'), { ...auth('alice'), id: task._id, actingAgentPrincipalId: 'p-agent' })
+  const events = await api(convex).events('alice', task._id)
+  expect(events.length).toBeGreaterThanOrEqual(5)
+  expect(events.every((event) => event.actorPrincipalId === 'p-agent')).toBe(true)
+
+  for (const actingAgentPrincipalId of ['p-alice', 'p-archived-actor', 'p-agent-other']) {
+    await expect(api(convex).create('alice', { actingAgentPrincipalId })).rejects.toThrow('WORK_INVALID:acting_agent')
+  }
 })
 
 describe('move, archive and restore', () => {
@@ -621,6 +730,32 @@ describe('archived tasks and long ranks', () => {
 })
 
 describe('trusted callers, reviewers and batches', () => {
+  test.each(['setScope', 'archive', 'restore'] as const)('%s refuses valid browser tokens and forged agent attribution', async (action) => {
+    const convex = convexTest(schema, modules)
+    await seed(convex)
+    const work = api(convex)
+    const task = await work.create('alice', { title: 'Server-only scope boundary' })
+    if (action === 'restore') await work.archive('alice', task._id)
+    const before = await work.get('alice', task._id)
+    const eventsBefore = await work.events('alice', task._id)
+    const validBrowserToken = vi.spyOn(workAuth, 'requireAccessToken').mockResolvedValue({
+      iss: 'https://api.workos.com', sub: 'alice', exp: now / 1_000 + 3600,
+    })
+    try {
+      for (const actingAgentPrincipalId of [undefined, 'p-agent']) {
+        await expect(convex.mutation(m(`work/workItems:${action}`), {
+          workspaceId, userId: 'alice', id: task._id, accessToken: 'valid-browser-token',
+          ...(actingAgentPrincipalId ? { actingAgentPrincipalId } : {}),
+          ...(action === 'setScope' ? { to: 'workspace' } : {}),
+        })).rejects.toThrow(/Unauthorized/)
+        expect(await work.get('alice', task._id)).toEqual(before)
+        expect(await work.events('alice', task._id)).toEqual(eventsBefore)
+      }
+    } finally {
+      validBrowserToken.mockRestore()
+    }
+  })
+
   test('a browser token alone reaches nothing: Work is served through the web app routes', async () => {
     const convex = convexTest(schema, modules)
     await seed(convex)

@@ -81,18 +81,23 @@ export interface CreateWorkItemRequest {
   scope?: ResourceScope
   description?: string
   status?: WorkStatus
+  blocked?: boolean
   priority?: WorkPriority
   assigneePrincipalId?: string
   reviewerUserId?: string
   startDate?: string
   dueDate?: string
   parentId?: string
+  blockedBy?: string[]
   doneWhen?: WorkDoneWhen[]
   context?: WorkContextRef[]
 }
 
 /** `null` clears a field; leaving it out leaves it as is. */
 export interface UpdateWorkItemRequest {
+  /** Refuse the entire update if the task changed since it was read. */
+  expectedUpdatedAt?: number
+  scope?: ResourceScope
   title?: string
   description?: string | null
   status?: WorkStatus

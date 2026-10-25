@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { validateApiClientBoundary } from './api-boundary'
+import { getApiBoundarySchema, validateApiClientBoundary } from './api-boundary'
 
 test('automation run boundary accepts Convex scheduled runner payloads', () => {
   assert.doesNotThrow(() => {
@@ -52,5 +52,15 @@ test('agent accounts and cloud machines accept supported providers only', () => 
       method: 'POST',
       body: { agentId: 'a1', adapterId: provider, providerAccountId: 'acc1' },
     }), /Invalid POST \/api\/v1\/agent-environments\/cloud body: Invalid enum value/)
+  }
+})
+
+test('scope request parsing preserves native task activity attribution', () => {
+  const schema = getApiBoundarySchema('/api/v1/scope', 'POST')?.json
+  assert.ok(schema)
+  for (const action of ['archive', 'restore', 'move']) {
+    const body = { resource: 'work', id: 'task1', action, actingAgentPrincipalId: 'p-agent',
+      ...(action === 'move' ? { to: 'workspace' } : {}) }
+    assert.deepEqual(schema.parse(body), body)
   }
 })

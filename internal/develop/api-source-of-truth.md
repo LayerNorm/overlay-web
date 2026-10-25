@@ -39,8 +39,11 @@ The filesystem under `src/app/api/**/route.ts` is authoritative for route existe
 Work routes (`/api/v1/work`) follow the same layering as other scoped content: thin route files, `WorkService`
 (`src/server/work/`) over a `WorkRepository`, and Convex (`convex/work/`) as the owner of the rules. Convex refuses a
 change with `WORK_INVALID:<reason>`; `src/shared/work/errors.ts` turns the reason into the plain message and status
-the API returns (400, or 409 for an archived task), and `Unauthorized` becomes 403. Moving a task between Personal and
-Workspace, archiving and restoring are not Work routes: use `POST /api/v1/scope` with `resource: 'work'`. The wire types
+the API returns (400, or 409 for an archived task or stale revision), and `Unauthorized` becomes 403.
+`PATCH /api/v1/work/[id]` accepts an optional `expectedUpdatedAt` and can combine fields, status and scope atomically.
+Convex checks the revision before writes, reuses the shared scope-move rules and rolls back all changes on refusal.
+Combined scope requests preserve the shared `resource.move` audit, including denials; audit failure remains best effort.
+Explicit scope-only moves, archive and restore also use `POST /api/v1/scope` with `resource: 'work'`. The wire types
 (`WorkItem`, `WorkEvent`, `WorkContext`, and the request bodies) live in `@overlay/app-core`; `@overlay/api-client`
 exposes them as `client.work`.
 
@@ -49,6 +52,13 @@ creator's own creator-only agent. Workspace tasks accept only workspace-visible
 agents. Assignment never starts an agent run. Context hides other people's
 creator-only agents and includes creature appearance metadata. Scope moves keep
 only assignees allowed in the destination and record any cleared assignee.
+
+Task revisions advance monotonically for edits, comments, status/rank moves, scope changes, archive and restore, including
+affected descendants. Expected conflicts use Convex application-error data so Production redaction preserves
+the API's `409 work_conflict`. Task tools use these routes; service-authenticated agent attribution affects
+activity only and never replaces the human caller's permissions.
+Work scope, archive and restore mutations also require server authentication; a browser token cannot bypass
+the web capability/runtime checks or supply an agent activity actor directly to Convex.
 
 ## Connected-agent drive
 
@@ -369,3 +379,5 @@ Workspace billing is exposed only through authenticated `/api/v1/workspaces/:wor
 Paid feature routes also never accept a billing-account identifier. The BFF resolves the authorized workspace and derives an API-key or resource subject; `BillingPayerResolver` chooses the account server-side. Convex hybrid search receives the already-resolved account only over the server-secret boundary, while Convex background indexing independently resolves the source workspace. The static owner-funded boundary check and `billable-feature-coverage.test.ts` are the source of truth for launch completeness.
 
 `GET /api/v1/subscription` and `GET /api/v1/bootstrap` expose the effective payer entitlement for the active workspace. An eligible organization workspace returns its workspace billing-account plan and remaining budget to every active member; personal workspaces and organizations outside the rollout retain personal entitlements. Clients send `x-overlay-workspace-id` on workspace-scoped entitlement reads so the model picker and the server-side charge path resolve the same payer. Billing settings, checkout, top-up, and portal mutations remain personal or workspace-manager operations and never become member-authorized merely because entitlement reads are shared.
+
+Task archive/restore/move requests preserve optional `actingAgentPrincipalId` through the scope request schema. The scope handler forwards it only for service-authenticated Work operations; browser callers retain human attribution and permissions.

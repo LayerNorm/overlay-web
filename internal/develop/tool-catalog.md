@@ -10,6 +10,7 @@ Every surface builds its tools through one pipeline (`prepareActTooling`, `src/s
 | Knowledge and files (read) | `search_knowledge`, `search_in_files`, `list_files`, `read_file` |
 | File editing | `write_file`, `create_folder`, `move_file` |
 | Notes | `list_notes`, `get_note`, `create_note`, `append_to_note`, `replace_note_section`, `edit_note`, `update_note`, `delete_note` |
+| Tasks | `list_tasks`, `get_task`, `create_task`, `update_task`, `comment_on_task`, `archive_task`, `restore_task` |
 | Skills | `list_skills`, `draft_skill_from_chat` |
 | Automations | `list_automations`, `draft_automation_from_chat`, `create_automation`, `update_automation`, `pause_automation`, `delete_automation` |
 | Image | `generate_image` |
@@ -28,7 +29,7 @@ Not tool ids but granted as capabilities:
 
 ## Scope on list tools
 
-`list_notes`, `list_files`, `list_skills`, and `list_automations` take an optional `scope`: `personal` (only yours),
+`list_notes`, `list_files`, `list_skills`, `list_automations`, and `list_tasks` take an optional `scope`: `personal` (only yours),
 or `workspace` (shared with the workspace); archived items are not offered to agents (they live in Settings → Archived, not in any scope). Omitted, they return everything active the caller can read, which
 includes what other members shared with the workspace but never their personal items. Skills the workspace shares are also
 in the skill directory every agent gets, and `search_mcp_tools` / `call_mcp_tool` reach MCP servers members shared with
@@ -47,12 +48,12 @@ for Claude Code / Codex over `/api/agent-mcp` alike. In a shared room:
   notes and memories, and their personal skills are not loaded; what the workspace shares still is.
 - **Searches** (`search_knowledge`, `search_memory`, `search_messages`) send `workspaceOnly`: nothing private is returned,
   not even the person's own, and files are not searched (`chunkVisibleToSearch`).
-- **Lists** (`list_files`, `list_notes`, `list_skills`, `list_automations`) read the Workspace scope whatever `scope` was asked.
+- **Lists** (`list_files`, `list_notes`, `list_skills`, `list_automations`, `list_tasks`) read the Workspace scope whatever `scope` was asked.
 - **Not offered**: `list_chats`, `read_chat`, `search_in_files`.
 - **Connected apps**: only the workspace's (`workspace_…`) tools; the person's own accounts are not offered.
 - **MCP servers**: only the ones shared with the workspace.
 
-Not covered: reading a specific item by id (`read_file`, `get_note`), the write tools (which create the person's personal
+Not covered: reading a specific item by id (`read_file`, `get_note`, `get_task`), the write tools (which default to the person's personal
 items), computer and browser tools, and agents asking agents. Naming an item in the message is how a person includes it on
 purpose, but there is no per-message opt-in yet.
 
@@ -78,6 +79,14 @@ Older hosts retain the legacy retry flow until upgraded.
 
 ## Outside-app access levels (`src/shared/mcp/access.ts`)
 
-- **Read only**: `search_memory`, `search_messages`, `list_chats`, `read_chat`, `search_knowledge`, `search_in_files`, `list_files`, `read_file`, `list_notes`, `get_note`, `list_skills`, `list_automations`.
-- **Read and write**: read, plus memory, knowledge, files, notes, and skills groups and web search.
-- **Everything**: write, plus automations, connected apps, your MCP servers, image and video, the browser, and asking agents. Never agent editing or computers. (A personal token at this level saw 46 tools on 2026-10-03.)
+- **Read only**: `search_memory`, `search_messages`, `list_chats`, `read_chat`, `search_knowledge`, `search_in_files`, `list_files`, `read_file`, `list_notes`, `get_note`, `list_skills`, `list_automations`, `list_tasks`, `get_task`.
+- **Read and write**: read, plus memory, knowledge, files, notes, skills and tasks groups and web search.
+- **Everything**: write, plus automations, connected apps, your MCP servers, image and video, the browser, and asking agents. Never agent editing or computers.
+
+Task tools use the Work API and its existing permissions. `update_task` sends fields, status and scope in one
+transaction; its optional revision is checked by Convex before any write. Conflicts require another read.
+Comments also advance the task revision monotonically, so a same-tick comment cannot revive a stale write.
+All Work mutations, including scope/archive/restore, require server authentication at the Convex boundary.
+Task tools never delete tasks or start an agent run. Agent turns supply activity attribution only through
+service-authenticated calls, including archive/restore scope requests; other callers cannot choose their event actor. Existing full-toolbox grants
+receive the later-added Tasks group through `LATER_GROUP_MEMBERS`.

@@ -40,6 +40,11 @@ test('update lets null clear a field and leaves absent fields alone', () => {
   assert.throws(() => parseUpdateWorkItem({ blocked: 'yes' }), /blocked/)
   assert.throws(() => parseUpdateWorkItem({ title: null }), /text/)
   assert.throws(() => parseUpdateWorkItem({ dueDate: 20260101 }), /text or null/)
+  assert.deepEqual(parseUpdateWorkItem({ expectedUpdatedAt: 20, scope: 'workspace' }), { expectedUpdatedAt: 20, scope: 'workspace' })
+  for (const value of ['20', null, -1, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
+    assert.throws(() => parseUpdateWorkItem({ expectedUpdatedAt: value }), /expectedUpdatedAt/)
+  }
+  assert.throws(() => parseUpdateWorkItem({ scope: 'other' }), /scope/)
 })
 
 test('move and comment bodies', () => {
