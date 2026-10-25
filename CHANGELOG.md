@@ -4,9 +4,9 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
-- Subscription broker capacity counts pending authorizations across providers and serializes worker admission.
+- Settings breadcrumbs read Settings > page instead of a Personal or Workspace prefix.
 
-- Add per-user subscription provider connections through an isolated broker for Codex, xAI, Meta, Kimi, Kimi AI, and Devin; subscription routing never falls back to Overlay-paid inference.
+- Subscription connections now use request-based Codex endpoints in the Overlay app, with durable Convex coordination and credentials held in the vault; no separate broker is required. Other provider adapters remain unavailable until implemented, and subscription inference never falls back to Overlay-paid routing.
 
 - Return not found for a removed workspace retained in an API client's active-workspace header.
 
@@ -33,6 +33,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 - Overlay Free no longer cuts off longer OpenRouter Free replies with overlay_free_stream_prelude_too_large.
 
 - Add task tools for listing, reading, creating, updating, commenting on, archiving, and restoring Work tasks, with agent activity attribution. Updates check revisions inside the mutation and commit fields, status and scope together, preserving concurrent edits and avoiding partial changes.
+- Chat can now find archived tasks to restore them.
 - Let workspace-visible and personally owned agents take Personal tasks, keep creator-only agents private from other members, and preserve assignment eligibility when tasks change scope.
 
 - Restore Resume and Release control for the controlling user after reloading an agent conversation.

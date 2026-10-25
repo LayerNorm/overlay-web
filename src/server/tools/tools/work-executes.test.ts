@@ -24,12 +24,12 @@ const task = {
 
 function mockApi(handler: (url: URL, init: RequestInit, body: Record<string, unknown> | null) => unknown) {
   const originalFetch = globalThis.fetch
-  const requests: Array<{ path: string; method: string; body: Record<string, unknown> | null }> = []
+  const requests: Array<{ path: string; search: string; method: string; body: Record<string, unknown> | null }> = []
   globalThis.fetch = (async (input, init = {}) => {
     const url = new URL(String(input))
     const method = init.method ?? 'GET'
     const body = typeof init.body === 'string' ? JSON.parse(init.body) as Record<string, unknown> : null
-    requests.push({ path: url.pathname, method, body })
+    requests.push({ path: url.pathname, search: url.search, method, body })
     const result = handler(url, init, body)
     return result instanceof Response ? result : Response.json(result)
   }) as typeof fetch
@@ -129,6 +129,47 @@ test('list filters status, agent assignee, query and clamps limit', async () => 
       assert.equal(result.truncated, true)
       assert.equal(result.tasks[0]?.assignee, 'Researcher')
     }
+    const workSearch = api.requests.find((request) => request.path === '/api/v1/work')?.search
+    assert.equal(new URLSearchParams(workSearch).get('view'), 'workspace')
+  } finally {
+    api.restore()
+  }
+})
+
+test('lists archived tasks by requested scope and keeps done tasks', async () => {
+  const items = [
+    { ...task, id: 'personal-archived', title: 'Personal archive', scope: 'personal', status: 'done' },
+    { ...task, id: 'workspace-archived', title: 'Workspace archive', scope: 'workspace', status: 'done' },
+  ]
+  const api = mockApi((url) => url.pathname.endsWith('/context') ? contextBody : { items })
+  try {
+    const result = await executeListTasks(baseOptions, { archived: true, scope: 'workspace' })
+    assert.equal(result.success, true)
+    if (result.success) {
+      assert.deepEqual(result.tasks.map((item) => item.id), ['workspace-archived'])
+      assert.equal(result.tasks[0]?.status, 'done')
+    }
+    const workSearch = api.requests.find((request) => request.path === '/api/v1/work')?.search
+    assert.equal(new URLSearchParams(workSearch).get('view'), 'archived')
+  } finally {
+    api.restore()
+  }
+})
+
+test('limits archived tasks to workspace scope in shared rooms', async () => {
+  const items = [
+    { ...task, id: 'personal-archived', title: 'Personal archive', scope: 'personal' },
+    { ...task, id: 'workspace-archived', title: 'Workspace archive', scope: 'workspace' },
+  ]
+  const api = mockApi((url) => url.pathname.endsWith('/context') ? contextBody : { items })
+  try {
+    const result = await executeListTasks({ ...baseOptions, sharedRoom: true }, { archived: true })
+    assert.equal(result.success, true)
+    if (result.success) {
+      assert.deepEqual(result.tasks.map((item) => item.id), ['workspace-archived'])
+    }
+    const workSearch = api.requests.find((request) => request.path === '/api/v1/work')?.search
+    assert.equal(new URLSearchParams(workSearch).get('view'), 'archived')
   } finally {
     api.restore()
   }
