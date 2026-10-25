@@ -393,11 +393,20 @@ server.listen(config.port, '127.0.0.1')
   assert.equal((await post('/v1/chat/completions', {
     model: 'model-a', messages: [{ role: 'user', content: 'hello' }], rotate: true,
   })).status, 200)
-  await new Promise((resolve) => setTimeout(resolve, 100))
   const identity = keyFor('owner-a', 'conn-a')
   const snapshotPath = path.join(root, 'state', `${identity}.enc`)
-  const rotated = decrypt(await readFile(snapshotPath, 'utf8'), `overlay-subscription:${identity}`)
-  assert.match(rotated.authFiles['xai-account@example.test.json'], /token-rotated/)
+  let rotatedCredential = ''
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    try {
+      const snapshot = decrypt(await readFile(snapshotPath, 'utf8'), `overlay-subscription:${identity}`)
+      rotatedCredential = snapshot.authFiles['xai-account@example.test.json'] ?? ''
+      if (rotatedCredential.includes('token-rotated')) break
+    } catch (error) {
+      if (error?.code !== 'ENOENT') throw error
+    }
+    await new Promise((resolve) => setTimeout(resolve, 25))
+  }
+  assert.match(rotatedCredential, /token-rotated/)
   assert.equal((await post('/v1/subscriptions/models', {
     ownerId: 'owner-a', connectionId: 'conn-a', providerId: 'xai', enabledModelIds: [],
   })).status, 200)
