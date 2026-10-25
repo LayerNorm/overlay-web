@@ -30,8 +30,11 @@ Not tool ids but granted as capabilities:
 ## Scope on list tools
 
 `list_notes`, `list_files`, `list_skills`, `list_automations`, and `list_tasks` take an optional `scope`: `personal` (only yours),
-or `workspace` (shared with the workspace); archived items are not offered to agents (they live in Settings → Archived, not in any scope). Omitted, they return everything active the caller can read, which
-includes what other members shared with the workspace but never their personal items. Skills the workspace shares are also
+or `workspace` (shared with the workspace). `list_tasks` also accepts `archived: true` to find archived Work tasks for
+`restore_task`; it can return archived tasks of any status, filtered by resolved scope. Shared rooms remain Workspace-only.
+With `archived` omitted, `list_tasks` returns active tasks. Other list tools return active items only. When `scope` is omitted
+(and `archived` is omitted for `list_tasks`), the list tools return everything active the caller can read, which includes
+what other members shared with the workspace but never their personal items. Skills the workspace shares are also
 in the skill directory every agent gets, and `search_mcp_tools` / `call_mcp_tool` reach MCP servers members shared with
 the workspace: the server runs with its creator's credentials on Overlay's servers, so a member's agent sees only the
 server's name and tools, never the secret. Connectors work differently: the workspace has its own accounts for the same connectors (Extensions → Workspace → Connectors), held by a workspace entity at the provider (`ovws_<workspaceId>`), separate from every member's personal accounts. When a workspace has any, its agents get a second set of connector tools named `workspace_<tool>` that act through those shared accounts, beside the person's own tools; each describes whose accounts it uses. Only Composio supports this; the Executor provider stays personal-only.
