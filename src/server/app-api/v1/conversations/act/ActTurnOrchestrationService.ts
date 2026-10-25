@@ -16,6 +16,7 @@ import {
   assertUserCanUseByokModel,
   getLanguageModel,
   getGatewayModelId,
+  isSubscriptionModelForUser,
 } from '@/server/ai/model-runtime'
 import { createRuntimeOverlayFreeLanguageModel } from '@/server/ai/gateway/overlay-free-router'
 import { modelSupportsZeroDataRetention, modelUsesAiGatewayTransport } from '@/shared/ai/gateway/model-data'
@@ -25,7 +26,7 @@ import {
   getLowCreditFallbackAttemptModelIds,
 } from '@/shared/ai/gateway/model-fallbacks'
 import { isGatewayCreditLow } from '@/server/ai/gateway/gateway-credits'
-import { resolveModelContextWindow } from '@/server/chat/context-compaction'
+import { resolveModelContextWindow, summaryGenerationOptions } from '@/server/chat/context-compaction'
 import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
 import { userFacingOpenRouterError } from '@/server/ai/model-runtime'
 import { uploadFilePartsForModel } from '@/server/ai/file-upload'
@@ -496,11 +497,10 @@ export async function executeActTurn(
           })
           providerWorkStarted = true
           const summaryModel = await getLanguageModel(summaryModelId, accessToken, userId)
+          const isSubscription = await isSubscriptionModelForUser(summaryModelId, userId)
           const summaryResult = await generateText({
             model: summaryModel,
-            temperature: 0.1,
-            maxOutputTokens: targetSummaryTokens,
-            prompt,
+            ...summaryGenerationOptions({ prompt, targetSummaryTokens, isSubscription }),
           })
           const summaryUsage = (summaryResult as unknown as {
             usage?: { inputTokens?: number; outputTokens?: number }

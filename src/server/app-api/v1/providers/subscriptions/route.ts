@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { createSubscriptionService } from '@/server/ai/subscriptions/service'
 import {
-  isSubscriptionConnection,
   isSubscriptionProviderId,
   subscriptionProvider,
   type SubscriptionProviderId,
@@ -17,7 +16,6 @@ import {
   fetchOwnedConnection,
   isRecord,
   responseError,
-  withConnectionLock,
 } from './subscription-connection-helpers'
 
 export async function GET(_request: NextRequest, _context: AppApiRouteContext) {
@@ -59,21 +57,20 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
     action: 'poll' | 'refresh' | 'callback'
   }
   const userId = context.auth.userId
-  return await withConnectionLock(userId, connectionId, async () => {
-    const connection = await fetchOwnedConnection(userId, connectionId)
-    if (!connection || !isSubscriptionConnection(connection)) {
-      return responseError('Connection not found', 404)
-    }
-    const providerId = connection.subscriptionProvider as SubscriptionProviderId
-    if (!createSubscriptionService().isEnabled(providerId)) {
-      return responseError('This subscription provider is not enabled for this deployment', 404)
-    }
-    return await executeSubscriptionUpdate(
-      userId,
-      connectionId,
-      body as SubscriptionUpdateBody,
-    )
-  })
+  const connection = await fetchOwnedConnection(userId, connectionId)
+  if (!connection || connection.authKind !== 'subscription' ||
+      !isSubscriptionProviderId(connection.subscriptionProvider)) {
+    return responseError('Connection not found', 404)
+  }
+  const providerId = connection.subscriptionProvider as SubscriptionProviderId
+  if (!createSubscriptionService().isEnabled(providerId)) {
+    return responseError('This subscription provider is not enabled for this deployment', 404)
+  }
+  return await executeSubscriptionUpdate(
+    userId,
+    connectionId,
+    body as SubscriptionUpdateBody,
+  )
 }
 
 export const subscriptionProviderName = (providerId: SubscriptionProviderId) =>

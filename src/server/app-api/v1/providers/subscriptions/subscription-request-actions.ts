@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { createSubscriptionService } from '@/server/ai/subscriptions/service'
+import type { ByokConnectionRow } from '@/shared/ai/gateway/byok-model-conversion'
 import {
-  isSubscriptionConnection,
   type SubscriptionProviderId,
 } from '@/shared/ai/gateway/subscription-providers'
+import type { ProviderConnectionRecord } from '@/server/ai/provider-connections/ProviderConnectionRepository'
 import {
   MAX_CONNECTIONS,
   fetchOwnedConnection,
@@ -14,6 +15,33 @@ import {
 
 export type SubscriptionUpdateBody = Record<string, unknown> & {
   action: 'poll' | 'refresh' | 'callback'
+}
+
+function publicConnection(connection: ProviderConnectionRecord): ByokConnectionRow {
+  return {
+    _id: connection._id,
+    providerId: connection.providerId,
+    authKind: connection.authKind,
+    subscriptionProvider: connection.subscriptionProvider,
+    endpoint: connection.endpoint,
+    displayName: connection.displayName,
+    enabledModelIds: connection.enabledModelIds,
+    discoveredModelsJson: connection.discoveredModelsJson,
+    discoveredAt: connection.discoveredAt,
+    status: connection.status,
+    lastError: connection.lastError,
+    lastTestedAt: connection.lastTestedAt,
+    isDefault: connection.isDefault,
+    isDeletable: connection.isDeletable,
+    createdAt: connection.createdAt,
+    updatedAt: connection.updatedAt,
+  }
+}
+
+function connectedResponse(connection: ProviderConnectionRecord) {
+  return NextResponse.json({
+    data: { status: 'connected', connection: publicConnection(connection) },
+  })
 }
 
 export async function startSubscriptionConnection(
@@ -30,7 +58,7 @@ export async function startSubscriptionConnection(
   let created = false
   if (connectionId) {
     const existing = await repository.get({ connectionId, userId })
-    if (!existing || !isSubscriptionConnection(existing) ||
+    if (!existing || existing.authKind !== 'subscription' ||
         existing.subscriptionProvider !== providerId) {
       return responseError('Connection not found', 404)
     }
@@ -56,7 +84,12 @@ export async function startSubscriptionConnection(
     return NextResponse.json({ data: { connectionId, authorization } })
   } catch (_error) {
     if (created) {
-      await repository.remove({ userId, connectionId }).catch((_removeError) => undefined)
+      try {
+        await service.disconnect(userId, connectionId)
+        await repository.remove({ userId, connectionId })
+      } catch (_cleanupError) {
+        // Keep the connection row reachable so failed or in-flight cleanup can be retried.
+      }
     }
     return responseError('Could not start subscription authorization. Retry or contact support.', 503)
   }
@@ -68,28 +101,37 @@ export async function executeSubscriptionUpdate(
   body: SubscriptionUpdateBody,
 ) {
   if (body.action === 'callback') return responseError('This subscription action is unavailable', 400)
+  const service = createSubscriptionService()
+  const existing = await fetchOwnedConnection(userId, connectionId)
+  if (!existing || existing.authKind !== 'subscription') {
+    return responseError('Connection not found', 404)
+  }
   try {
-    const service = createSubscriptionService()
+    if (body.action === 'poll' && existing.status === 'active') {
+      return connectedResponse(existing)
+    }
     const result = body.action === 'poll'
       ? await service.poll(userId, connectionId)
       : await service.refresh(userId, connectionId)
+    if (result.status === 'connected') {
+      const connection = await fetchOwnedConnection(userId, connectionId)
+      if (!connection || connection.authKind !== 'subscription' || connection.status !== 'active') {
+        return responseError('Subscription connection is not ready yet. Retry shortly.', 503)
+      }
+      return connectedResponse(connection)
+    }
     return NextResponse.json({ data: result })
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Subscription update failed'
-    return responseError(message, /busy|not due/.test(message) ? 409 : 400)
-  }
-}
-
-export async function disconnectSubscriptionConnection(userId: string, connectionId: string) {
-  const connection = await fetchOwnedConnection(userId, connectionId)
-  if (!connection || !isSubscriptionConnection(connection)) return responseError('Connection not found', 404)
-  try {
-    await createSubscriptionService().disconnect(userId, connectionId)
-    await getOverlayServerContext().appData.repositories.providerConnections.remove({
-      userId, connectionId,
-    })
-    return NextResponse.json({ data: { connectionId, disconnected: true } })
-  } catch (_error) {
-    return responseError('Subscription cleanup is pending. Retry disconnect.', 503)
+    const latest = body.action === 'poll'
+      ? await fetchOwnedConnection(userId, connectionId).catch((_readError) => null)
+      : null
+    if (latest?.authKind === 'subscription' && latest.status === 'active') {
+      return connectedResponse(latest)
+    }
+    if (body.action === 'poll' && error instanceof Error &&
+        ['Subscription poll is not due', 'Subscription connection is busy'].includes(error.message)) {
+      return NextResponse.json({ data: { status: 'pending' } })
+    }
+    return responseError('The subscription operation failed. Retry or reconnect.', 503)
   }
 }

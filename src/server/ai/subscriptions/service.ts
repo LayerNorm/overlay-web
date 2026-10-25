@@ -62,9 +62,15 @@ function allowedProviders(): SubscriptionProviderId[] {
 }
 
 function publicError(error: unknown): string {
-  if (error instanceof CodexSignInError) return error.message
-  if (error instanceof Error && /not due|busy|expired|not found|unavailable/.test(error.message)) {
-    return error.message
+  if (error instanceof CodexSignInError) {
+    switch (error.code) {
+      case 'pending': return 'Waiting for authorization approval.'
+      case 'expired': return 'Authorization expired. Reconnect to continue.'
+      case 'denied':
+      case 'rejected': return 'Authorization was rejected. Reconnect to continue.'
+      case 'unsupported': return 'Codex subscription authorization is unavailable.'
+      default: return 'Codex authorization could not be completed. Retry or reconnect.'
+    }
   }
   return 'The subscription operation failed. Retry or reconnect.'
 }
@@ -145,6 +151,9 @@ export class SubscriptionService {
   }
 
   async poll(userId: string, connectionId: string): Promise<SubscriptionResult> {
+    const current = await this.repository.get({ userId, connectionId })
+    if (current?.phase === 'active') return { status: 'connected', models: [] }
+    if (current?.phase === 'discovering') return await this.discover(userId, connectionId)
     const leaseToken = randomUUID()
     const lease = await this.repository.acquirePoll({ userId, connectionId, leaseToken })
     const fenced = {
@@ -211,6 +220,10 @@ export class SubscriptionService {
       const latestSecret = await this.credentials.read(lease.credentialRef)
       const latest = latestSecret ? parseCodexTokens(latestSecret) : null
       if (!latest) throw new Error('Subscription credential is unavailable')
+      if (!codexTokensNeedRefresh(latest, Date.now())) {
+        await this.repository.releaseRefresh?.(fenced)
+        return { status: 'connected', models: [] }
+      }
       const refreshed = await refreshCodexTokens(latest, { fetch: this.codexFetch() })
       const credentialRef = await this.writeSecret(userId, connectionId, 'codex', serializeCodexTokens(refreshed))
       const committed = await this.commitCredentialCandidate(fenced, credentialRef)
@@ -314,12 +327,34 @@ export class SubscriptionService {
       await this.cleanupRefs(fenced.userId, fenced.connectionId, result.cleanupRefs)
       return true
     } catch (_error) {
-      const state = await this.repository.get({
+      let state: Awaited<ReturnType<SubscriptionRepository['get']>>
+      try {
+        state = await this.repository.get({
         userId: fenced.userId,
         connectionId: fenced.connectionId,
-      }).catch((_error) => null)
-      if (state?.credentialRef === credentialRef && state.phase === 'discovering') return true
-      if (state) await this.credentials.delete(credentialRef).catch((_error) => undefined)
+        })
+      } catch (_error) {
+        try {
+          await this.repository.retainCleanupRef?.({
+            userId: fenced.userId, connectionId: fenced.connectionId, credentialRef,
+          })
+        } catch (_retainError) { /* retain the original failure */ }
+        return false
+      }
+      if (state?.credentialRef === credentialRef ||
+          state?.pendingStateRef === credentialRef ||
+          state?.cleanupRefs.includes(credentialRef)) return true
+      if (state) {
+        try {
+          await this.credentials.delete(credentialRef)
+        } catch (_error) {
+          try {
+            await this.repository.retainCleanupRef?.({
+              userId: fenced.userId, connectionId: fenced.connectionId, credentialRef,
+            })
+          } catch (_retainError) { /* retain the original failure */ }
+        }
+      }
       return false
     }
   }
@@ -329,9 +364,26 @@ export class SubscriptionService {
     connectionId: string,
     candidateRef: string,
   ): Promise<void> {
-    const state = await this.repository.get({ userId, connectionId }).catch((_error) => null)
+    let state: Awaited<ReturnType<SubscriptionRepository['get']>>
+    try {
+      state = await this.repository.get({ userId, connectionId })
+    } catch (_error) {
+      try {
+        await this.repository.retainCleanupRef?.({ userId, connectionId, credentialRef: candidateRef })
+      } catch (_retainError) { /* retain the original failure */ }
+      return
+    }
     if (state?.credentialRef === candidateRef || state?.pendingStateRef === candidateRef) return
-    if (state) await this.credentials.delete(candidateRef).catch((_error) => undefined)
+    if (state?.cleanupRefs.includes(candidateRef)) return
+    if (state) {
+      try {
+        await this.credentials.delete(candidateRef)
+      } catch (_error) {
+        try {
+          await this.repository.retainCleanupRef?.({ userId, connectionId, credentialRef: candidateRef })
+        } catch (_retainError) { /* retain the original failure */ }
+      }
+    }
   }
 
   private async cleanupRefs(userId: string, connectionId: string, refs: string[]): Promise<boolean> {
@@ -365,9 +417,15 @@ export class SubscriptionService {
   }
 
   private codexFetch() {
+    const deadline = Date.now() + 25_000
     return async (url: string, init: Parameters<typeof fetch>[1]) => {
+      const remaining = deadline - Date.now()
+      if (remaining <= 0) throw new Error('Subscription provider request deadline exceeded')
+      const timeout = AbortSignal.timeout(Math.min(remaining, 10_000))
+      const signal = init?.signal ? AbortSignal.any([init.signal, timeout]) : timeout
       const response = await this.fetcher(url, {
         ...init,
+        signal,
         redirect: 'error',
         cache: 'no-store',
       })

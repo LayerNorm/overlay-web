@@ -4,7 +4,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import type { UIMessage } from 'ai'
 import { FREE_TIER_DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
-import { compactMessagesForContext } from './context-compaction'
+import { compactMessagesForContext, summaryGenerationOptions } from './context-compaction'
 
 function textMessage(id: string, role: 'user' | 'assistant', text: string): UIMessage {
   return {
@@ -140,4 +140,17 @@ test('context compaction falls back to deterministic trim when summarization fai
   assert.equal(result.summaryToPersist, undefined)
   assert.ok(result.messages.length < messages.length)
   assert.equal(result.messages.at(-1)?.id, 'm12')
+})
+
+test('subscription summaries omit unsupported generation parameters without changing BYOK defaults', () => {
+  assert.deepEqual(summaryGenerationOptions({
+    prompt: 'summary',
+    targetSummaryTokens: 1000,
+    isSubscription: true,
+  }), { prompt: 'summary' })
+  assert.deepEqual(summaryGenerationOptions({
+    prompt: 'summary',
+    targetSummaryTokens: 1000,
+    isSubscription: false,
+  }), { prompt: 'summary', temperature: 0.1, maxOutputTokens: 1000 })
 })

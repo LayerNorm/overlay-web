@@ -81,7 +81,7 @@ async function vaultRequest<T>(
       })()
     : null
 
-  if (!response.ok) {
+  if (!response.ok && !(method === 'DELETE' && response.status === 404)) {
     throw new Error(formatVaultApiError(response.status, response.headers.get('x-request-id')))
   }
 

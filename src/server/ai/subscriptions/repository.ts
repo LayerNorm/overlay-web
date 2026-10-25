@@ -27,6 +27,7 @@ export interface SubscriptionRepository {
   acquirePoll(args: { userId: string; connectionId: string; leaseToken: string }): Promise<{ generation: number; revision: number; pendingStateRef: string; expiresAt: number }>
   releasePendingPoll(args: FencedArgs & { pollIntervalMs: number }): Promise<void>
   acquireRefresh(args: { userId: string; connectionId: string; leaseToken: string }): Promise<{ generation: number; revision: number; credentialRef: string; providerId: SubscriptionProviderId }>
+  releaseRefresh?(args: FencedArgs): Promise<void>
   commitCredentialForDiscovery(args: FencedArgs & { credentialRef: string }): Promise<{ revision: number; cleanupRefs: string[] }>
   acquireDiscovery(args: { userId: string; connectionId: string; leaseToken: string }): Promise<{ generation: number; revision: number; credentialRef: string; providerId: SubscriptionProviderId }>
   releaseDiscovery(args: FencedArgs): Promise<void>
@@ -36,6 +37,7 @@ export interface SubscriptionRepository {
   forDispatch(args: { userId: string; connectionId: string; modelId: string }): Promise<{ providerId: SubscriptionProviderId; credentialRef: string; generation: number } | null>
   revokeAllByUser(userId: string): Promise<string[]>
   removeCleanupRef(args: { userId: string; connectionId: string; credentialRef: string }): Promise<void>
+  retainCleanupRef?(args: { userId: string; connectionId: string; credentialRef: string }): Promise<void>
   forgetAllByUser(userId: string): Promise<void>
   forgetDisconnected(args: { userId: string; connectionId: string }): Promise<void>
   listByUser(userId: string): Promise<SubscriptionState[]>
@@ -131,6 +133,14 @@ export class ConvexSubscriptionRepository implements SubscriptionRepository {
     }
   }
 
+  async releaseRefresh(args: FencedArgs) {
+    await convex.mutation(
+      'providers/subscriptions:releaseRefresh',
+      { serverSecret: this.secret, ...args },
+      { throwOnError: true },
+    )
+  }
+
   async commitCredentialForDiscovery(args: FencedArgs & { credentialRef: string }) {
     return requireMutationResult(await convex.mutation<{ revision: number; cleanupRefs: string[] }>(
       'providers/subscriptions:commitCredentialForDiscovery',
@@ -215,6 +225,14 @@ export class ConvexSubscriptionRepository implements SubscriptionRepository {
   async removeCleanupRef(args: { userId: string; connectionId: string; credentialRef: string }) {
     await convex.mutation(
       'providers/subscriptions:removeCleanupRef',
+      { serverSecret: this.secret, ...args },
+      { throwOnError: true },
+    )
+  }
+
+  async retainCleanupRef(args: { userId: string; connectionId: string; credentialRef: string }) {
+    await convex.mutation(
+      'providers/subscriptions:retainCleanupRef',
       { serverSecret: this.secret, ...args },
       { throwOnError: true },
     )

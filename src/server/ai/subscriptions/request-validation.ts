@@ -11,7 +11,10 @@ export function assertSupportedCodexRequest(body: Record<string, unknown>, model
   if (body.zero_data_retention === true || body.zeroDataRetention === true || body.zdr === true) {
     throw new Error('This subscription service does not guarantee zero data retention')
   }
-  inspectTextOnly(body)
+  inspectInputTextOnly(body.input)
+  if (Array.isArray(body.modalities) && body.modalities.some((item) => item !== 'text')) {
+    throw new Error('This subscription service supports text-only requests')
+  }
   validateTools(body)
   for (const option of [
     'temperature', 'top_p', 'max_output_tokens', 'max_completion_tokens',
@@ -26,24 +29,21 @@ export function assertSupportedCodexRequest(body: Record<string, unknown>, model
   }
 }
 
-function inspectTextOnly(value: unknown): void {
+function inspectInputTextOnly(value: unknown): void {
   if (Array.isArray(value)) {
-    for (const item of value) inspectTextOnly(item)
+    for (const item of value) inspectInputTextOnly(item)
     return
   }
   if (!value || typeof value !== 'object') return
-  for (const [key, nested] of Object.entries(value)) {
-    if (['image_url', 'input_image', 'input_audio', 'audio_url', 'video_url', 'input_file'].includes(key)) {
-      throw new Error('This subscription service supports text-only requests')
-    }
-    if (key === 'modalities' && Array.isArray(nested) && nested.some((item) => item !== 'text')) {
-      throw new Error('This subscription service supports text-only requests')
-    }
-    if (key === 'type' && typeof nested === 'string' && nonTextTypes.has(nested)) {
-      throw new Error('This subscription service supports text-only requests')
-    }
-    inspectTextOnly(nested)
+  const item = value as Record<string, unknown>
+  if (typeof item.type === 'string' && nonTextTypes.has(item.type)) {
+    throw new Error('This subscription service supports text-only requests')
   }
+  if (['image_url', 'input_image', 'input_audio', 'audio_url', 'video_url', 'input_file']
+      .some((key) => key in item)) {
+    throw new Error('This subscription service supports text-only requests')
+  }
+  if (Array.isArray(item.content)) inspectInputTextOnly(item.content)
 }
 
 function toolName(value: unknown): value is string {

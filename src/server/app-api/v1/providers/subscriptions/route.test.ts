@@ -3,6 +3,8 @@ import test from 'node:test'
 import { NextRequest } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import type { ByokConnectionRow } from '@/shared/ai/gateway/byok-model-conversion'
+import type { ProviderConnectionRecord } from '@/server/ai/provider-connections/ProviderConnectionRepository'
+import type { SubscriptionProgress } from '@/features/settings/components/subscription-connection-client'
 
 const originalEnv = {
   nextPhase: process.env.NEXT_PHASE,
@@ -116,4 +118,99 @@ test('generic connection updates cannot forge subscription discovery metadata', 
     discoveredModelsJson: JSON.stringify({ data: [{ id: 'forged' }] }),
   }), apiContext())
   assert.equal(response.status, 400)
+})
+
+test('completed and repeated polls return the hook connection contract without secret fields', async (t) => {
+  const previous = process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS
+  process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS = 'codex'
+  t.after(() => {
+    if (previous === undefined) delete process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS
+    else process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS = previous
+  })
+  const { getOverlayServerContext } = await import('@/server/bootstrap')
+  const repository = getOverlayServerContext().appData.repositories.providerConnections
+  const pending: ProviderConnectionRecord = {
+    _id: 'connection-1',
+    userId: 'user_1',
+    credentialRef: 'vault-secret',
+    providerId: 'subscription:codex',
+    authKind: 'subscription',
+    subscriptionProvider: 'codex',
+    endpoint: '',
+    displayName: 'ChatGPT subscription',
+    enabledModelIds: ['account-model'],
+    discoveredModelsJson: JSON.stringify({ data: [{ id: 'account-model', name: 'Account model' }] }),
+    status: 'pending',
+    isDefault: false,
+    isDeletable: true,
+  }
+  const active = { ...pending, status: 'active' as const }
+  let reads = 0
+  t.mock.method(repository, 'get', async () => reads++ === 0 ? pending : active)
+  const { SubscriptionService } = await import('@/server/ai/subscriptions/service')
+  t.mock.method(SubscriptionService.prototype, 'poll', async () => ({
+    status: 'connected',
+    models: [{ id: 'account-model', name: 'Account model' }],
+  }))
+  const { PATCH } = await import('./route')
+  const firstResponse = await PATCH(request('/api/v1/providers/subscriptions', 'PATCH', {
+    connectionId: 'connection-1',
+    action: 'poll',
+  }), apiContext())
+  assert.equal(firstResponse.status, 200)
+  const first = (await firstResponse.json() as { data: SubscriptionProgress }).data
+  assert.equal(first.status, 'connected')
+  assert.equal(first.connection?._id, 'connection-1')
+  assert.equal(first.connection?.status, 'active')
+  assert.equal('credentialRef' in (first.connection ?? {}), false)
+  assert.equal('userId' in (first.connection ?? {}), false)
+
+  const secondResponse = await PATCH(request('/api/v1/providers/subscriptions', 'PATCH', {
+    connectionId: 'connection-1',
+    action: 'poll',
+  }), apiContext())
+  const second = (await secondResponse.json() as { data: SubscriptionProgress }).data
+  assert.equal(second.status, 'connected')
+  assert.equal(second.connection?._id, 'connection-1')
+})
+
+test('connection DELETE uses durable subscription disconnect before removing the row', async (t) => {
+  const previous = process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS
+  process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS = 'codex'
+  t.after(() => {
+    if (previous === undefined) delete process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS
+    else process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS = previous
+  })
+  const { getOverlayServerContext } = await import('@/server/bootstrap')
+  const repository = getOverlayServerContext().appData.repositories.providerConnections
+  const connection: ProviderConnectionRecord = {
+    _id: 'connection-1',
+    userId: 'user_1',
+    providerId: 'subscription:codex',
+    authKind: 'subscription',
+    subscriptionProvider: 'codex',
+    endpoint: '',
+    displayName: 'ChatGPT subscription',
+    enabledModelIds: [],
+    status: 'error',
+    isDefault: false,
+    isDeletable: true,
+  }
+  const order: string[] = []
+  t.mock.method(repository, 'get', async () => connection)
+  t.mock.method(repository, 'remove', async () => {
+    order.push('remove')
+    return connection
+  })
+  const { SubscriptionService } = await import('@/server/ai/subscriptions/service')
+  t.mock.method(SubscriptionService.prototype, 'disconnect', async () => {
+    order.push('disconnect')
+  })
+  const { DELETE } = await import('../connections/route')
+  const response = await DELETE(request(
+    '/api/v1/providers/connections?connectionId=connection-1',
+    'DELETE',
+  ), apiContext())
+  assert.equal(response.status, 200)
+  assert.deepEqual(order, ['disconnect', 'remove'])
 })

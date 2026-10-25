@@ -56,6 +56,17 @@ export async function assertUserCanUseByokModel(
   return { connection, rawModelId: parsed.rawModelId }
 }
 
+export async function isSubscriptionModelForUser(modelId: string, userId: string): Promise<boolean> {
+  const parsed = parseByokModelId(modelId)
+  if (!parsed) return false
+  const connection = await getUserByokConnection(userId, parsed.connectionId)
+  return Boolean(
+    connection &&
+    isSubscriptionConnection(connection) &&
+    isSubscriptionProviderId(connection.subscriptionProvider),
+  )
+}
+
 export async function getLanguageModel(
   modelId: string,
   accessToken?: string,

@@ -1,6 +1,7 @@
 # Unified request-based subscription connections
 
-Status: Approved request-based redesign; implementation and provider acceptance in progress.
+Status: Phases 1, 2 and 4 are implemented in the request-based Codex path. Provider expansion,
+live provider acceptance and preview verification remain deferred/unverified.
 
 ## Decision
 

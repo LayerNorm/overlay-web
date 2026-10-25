@@ -7,7 +7,8 @@ import type { WorkspaceAccess } from '@overlay/workspace-contracts'
 import { OVERLAY_TOOL_IDS } from '@overlay/tools-core'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { convertToModelMessages, generateText } from '@/server/ai/sdk'
-import { getLanguageModel } from '@/server/ai/model-runtime'
+import { getLanguageModel, isSubscriptionModelForUser } from '@/server/ai/model-runtime'
+import { summaryGenerationOptions } from '@/server/chat/context-compaction'
 import { modelSupportsZeroDataRetention } from '@/shared/ai/gateway/model-data'
 import {
   FREE_TIER_DEFAULT_MODEL_ID,
@@ -582,11 +583,10 @@ export async function prepareAutomationAgentTurn(
         })
         providerWorkStarted = true
         const summaryModel = await getLanguageModel(summaryModelId, undefined, userId)
+        const isSubscription = await isSubscriptionModelForUser(summaryModelId, userId)
         const summaryResult = await generateText({
           model: summaryModel,
-          temperature: 0.1,
-          maxOutputTokens: targetSummaryTokens,
-          prompt,
+          ...summaryGenerationOptions({ prompt, targetSummaryTokens, isSubscription }),
         })
         const summaryUsage = (summaryResult as unknown as {
           usage?: { inputTokens?: number; outputTokens?: number }

@@ -1,14 +1,18 @@
 import 'server-only'
 
 import { createOpenAI } from '@ai-sdk/openai'
+import { wrapLanguageModel } from 'ai'
 import type { LanguageModel } from '@/server/ai/provider-types'
-import { createSubscriptionService } from './service'
+import type { CodexTokenSet } from '@/server/agents/provider-accounts/codex-subscription'
+import { createSubscriptionService, type SubscriptionService } from './service'
 import { normalizeCodexResponsesBody } from './request-validation'
 
 const CODEX_RESPONSES_ENDPOINT = 'https://chatgpt.com/backend-api/codex/responses'
 const maxRequestBytes = 2_000_000
 const maxResponseBytes = 8_000_000
 const maxEventBytes = 1_000_000
+const safeUpstreamError = 'Codex subscription request failed'
+const safeStreamError = 'Codex did not complete the response'
 
 function errorResponse(status: number, message: string) {
   return new Response(JSON.stringify({
@@ -25,15 +29,19 @@ async function readRequestBody(input: RequestInfo | URL, init?: RequestInit): Pr
   if (!reader) return ''
   const chunks: Uint8Array[] = []
   let total = 0
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-    total += value.byteLength
-    if (total > maxRequestBytes) {
-      await reader.cancel()
-      throw new Error('Subscription request body is too large')
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      total += value.byteLength
+      if (total > maxRequestBytes) throw new Error('Subscription request body is too large')
+      chunks.push(value)
     }
-    chunks.push(value)
+  } catch (error) {
+    await reader.cancel().catch((_cancelError) => undefined)
+    throw error
+  } finally {
+    reader.releaseLock()
   }
   const body = new Uint8Array(total)
   let offset = 0
@@ -44,59 +52,87 @@ async function readRequestBody(input: RequestInfo | URL, init?: RequestInit): Pr
   return new TextDecoder().decode(body)
 }
 
+function parseSseEvent(frame: string): unknown | '[DONE]' | null {
+  const data = frame.split(/\r?\n/)
+    .filter((line) => line.startsWith('data:'))
+    .map((line) => line.slice(5).trimStart())
+    .join('\n')
+  if (!data) return null
+  if (data === '[DONE]') return '[DONE]'
+  try {
+    const value: unknown = JSON.parse(data)
+    if (!value || typeof value !== 'object' || Array.isArray(value) ||
+        typeof (value as { type?: unknown }).type !== 'string') {
+      throw new Error()
+    }
+    return value
+  } catch (_error) {
+    throw new Error(safeStreamError)
+  }
+}
+
+function encodeSseEvent(value: unknown): Uint8Array {
+  return new TextEncoder().encode(`data: ${JSON.stringify(value)}\n\n`)
+}
+
+function failedSseEvent(value: Record<string, unknown>) {
+  return {
+    type: 'response.failed',
+    sequence_number: typeof value.sequence_number === 'number' ? value.sequence_number : 0,
+    response: {
+      error: { code: 'subscription_request_failed', message: safeUpstreamError },
+      incomplete_details: { reason: 'error' },
+    },
+  }
+}
+
 export async function completedResponse(response: Response): Promise<Response> {
-  if (!response.body) throw new Error('Codex returned an empty response')
-  const reader = response.body.getReader()
+  const reader = response.body?.getReader()
+  if (!reader) throw new Error(safeStreamError)
   const decoder = new TextDecoder()
   let buffer = ''
   let totalBytes = 0
-  let completed: Record<string, unknown> | undefined
-  let failed = false
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-    totalBytes += value.byteLength
-    if (totalBytes > maxResponseBytes) throw new Error('Codex response is too large')
-    buffer = (buffer + decoder.decode(value, { stream: true })).replace(/\r\n/g, '\n')
-    if (buffer.length > maxEventBytes && !buffer.includes('\n\n')) {
-      throw new Error('Codex response event is too large')
-    }
-    let boundary = buffer.indexOf('\n\n')
-    while (boundary >= 0) {
-      const event = buffer.slice(0, boundary)
-      buffer = buffer.slice(boundary + 2)
-      if (new TextEncoder().encode(event).byteLength > maxEventBytes) {
-        throw new Error('Codex response event is too large')
-      }
-      const data = event.split(/\r?\n/)
-        .filter((line) => line.startsWith('data:'))
-        .map((line) => line.slice(5).trimStart())
-        .join('\n')
-      if (data && data !== '[DONE]') {
-        let payload: unknown
-        try {
-          payload = JSON.parse(data)
-        } catch (_error) {
-          throw new Error('Codex returned an invalid event')
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      totalBytes += value.byteLength
+      if (totalBytes > maxResponseBytes) throw new Error(safeStreamError)
+      buffer += decoder.decode(value, { stream: true })
+      let boundary = buffer.search(/\r?\n\r?\n/)
+      while (boundary >= 0) {
+        const match = /\r?\n\r?\n/.exec(buffer.slice(boundary))
+        if (!match) break
+        const frame = buffer.slice(0, boundary)
+        if (new TextEncoder().encode(frame).byteLength > maxEventBytes) throw new Error(safeStreamError)
+        buffer = buffer.slice(boundary + match[0].length)
+        const event = parseSseEvent(frame)
+        if (event === '[DONE]') throw new Error(safeStreamError)
+        const type = event && typeof event === 'object' ? (event as { type?: string }).type : undefined
+        if (type === 'response.failed' || type === 'response.incomplete' || type === 'error') {
+          throw new Error(safeStreamError)
         }
-        if (payload && typeof payload === 'object' && 'type' in payload) {
-          const item = payload as Record<string, unknown>
-          if (item.type === 'response.completed') {
-            completed = item.response as Record<string, unknown>
-          } else if (item.type === 'error' || item.type === 'response.failed' ||
-                     item.type === 'response.incomplete') {
-            failed = true
-          }
+        if (type === 'response.completed' && event && typeof event === 'object' &&
+            (event as { response?: unknown }).response &&
+            typeof (event as { response?: unknown }).response === 'object') {
+          await reader.cancel().catch((_cancelError) => undefined)
+          return Response.json((event as { response: object }).response, { status: response.status })
         }
+        boundary = buffer.search(/\r?\n\r?\n/)
       }
-      boundary = buffer.indexOf('\n\n')
+      if (new TextEncoder().encode(buffer).byteLength > maxEventBytes) throw new Error(safeStreamError)
     }
+    buffer += decoder.decode()
+    if (buffer.trim()) throw new Error(safeStreamError)
+    throw new Error(safeStreamError)
+  } catch (error) {
+    await reader.cancel().catch((_cancelError) => undefined)
+    throw error instanceof Error && error.message === safeUpstreamError
+      ? error
+      : new Error(safeStreamError)
+  } finally {
+    reader.releaseLock()
   }
-  if (failed || !completed) throw new Error('Codex did not complete the response')
-  return new Response(JSON.stringify(completed), {
-    status: response.status,
-    headers: { 'content-type': 'application/json' },
-  })
 }
 
 export function boundedStream(stream: ReadableStream<Uint8Array>): ReadableStream<Uint8Array> {
@@ -104,56 +140,62 @@ export function boundedStream(stream: ReadableStream<Uint8Array>): ReadableStrea
   const decoder = new TextDecoder()
   let total = 0
   let pending = ''
+  let completed = false
   const encoder = new TextEncoder()
-  const sanitizeEvent = (event: string) => {
-    const lines = event.split(/\r?\n/)
-    const data = lines
-      .filter((line) => line.startsWith('data:'))
-      .map((line) => line.slice(5).trimStart())
-      .join('\n')
-    if (!data || data === '[DONE]') return `${event}\n\n`
-    try {
-      const payload: unknown = JSON.parse(data)
-      if (payload && typeof payload === 'object' && 'type' in payload) {
-        const type = (payload as { type: unknown }).type
-        if (type === 'error' || type === 'response.failed' || type === 'response.incomplete') {
-          const safePayload = type === 'error'
-            ? { type, error: { message: 'Codex subscription request failed', type: 'api_error' } }
-            : {
-                type: 'response.failed',
-                response: { error: { message: 'Codex subscription request failed' } },
-              }
-          const prefix = lines.filter((line) => !line.startsWith('data:'))
-          return `${[...prefix, `data: ${JSON.stringify(safePayload)}`].join('\n')}\n\n`
-        }
-      }
-    } catch (_error) {
-      return `${event}\n\n`
-    }
-    return `${event}\n\n`
-  }
   return new ReadableStream({
     async pull(controller) {
       try {
-        const { done, value } = await reader.read()
-        if (done) {
-          if (pending.length > maxEventBytes) throw new Error('Codex event is too large')
-          controller.close()
-          return
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) {
+            pending += decoder.decode()
+            if (pending.trim() || !completed) throw new Error(safeStreamError)
+            controller.close()
+            return
+          }
+          total += value.byteLength
+          if (total > maxResponseBytes) throw new Error(safeStreamError)
+          pending += decoder.decode(value, { stream: true })
+          const events = pending.split(/\r?\n\r?\n/)
+          pending = events.pop() ?? ''
+          if (encoder.encode(pending).byteLength > maxEventBytes ||
+              events.some((event) => encoder.encode(event).byteLength > maxEventBytes)) {
+            throw new Error(safeStreamError)
+          }
+          const output: Uint8Array[] = []
+          for (const frame of events) {
+            const event = parseSseEvent(frame)
+            if (event === null || event === '[DONE]') {
+              if (event === '[DONE]' && !completed) throw new Error(safeStreamError)
+              continue
+            }
+            const type = (event as { type: string }).type
+            if (type === 'response.failed' || type === 'response.incomplete' || type === 'error') {
+              output.push(encodeSseEvent(failedSseEvent(event as Record<string, unknown>)))
+              completed = true
+              await reader.cancel().catch((_cancelError) => undefined)
+              if (output.length) controller.enqueue(concatBytes(output))
+              controller.close()
+              return
+            }
+            if (type === 'response.completed') {
+              completed = true
+              output.push(encodeSseEvent(event))
+              await reader.cancel().catch((_cancelError) => undefined)
+              controller.enqueue(concatBytes(output))
+              controller.close()
+              return
+            }
+            output.push(encodeSseEvent(event))
+          }
+          if (output.length) {
+            controller.enqueue(concatBytes(output))
+            return
+          }
         }
-        total += value.byteLength
-        if (total > maxResponseBytes) throw new Error('Codex response is too large')
-        pending += decoder.decode(value, { stream: true })
-        const events = pending.split(/\r?\n\r?\n/)
-        pending = events.pop() ?? ''
-        if (encoder.encode(pending).byteLength > maxEventBytes ||
-            events.some((event) => encoder.encode(event).byteLength > maxEventBytes)) {
-          throw new Error('Codex response event is too large')
-        }
-        controller.enqueue(encoder.encode(events.map(sanitizeEvent).join('')))
       } catch (_error) {
         await reader.cancel().catch((_cancelError) => undefined)
-        controller.error(new Error('Codex subscription response failed'))
+        controller.error(new Error(safeStreamError))
       }
     },
     async cancel(reason) {
@@ -162,13 +204,27 @@ export function boundedStream(stream: ReadableStream<Uint8Array>): ReadableStrea
   })
 }
 
+function concatBytes(chunks: Uint8Array[]): Uint8Array {
+  const result = new Uint8Array(chunks.reduce((total, chunk) => total + chunk.byteLength, 0))
+  let offset = 0
+  for (const chunk of chunks) {
+    result.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  return result
+}
+
+type DispatchService = Pick<SubscriptionService, 'credentialForDispatch'>
 export function createSubscriptionLanguageModel(args: {
   ownerId: string
   connectionId: string
   providerId: string
   modelId: string
+  dispatchService?: DispatchService
+  fetcher?: typeof fetch
 }): LanguageModel {
   if (args.providerId !== 'codex') throw new Error('Subscription request adapter is not available')
+  const fetcher = args.fetcher ?? fetch
   const provider = createOpenAI({
     apiKey: 'overlay-subscription-placeholder',
     baseURL: 'https://chatgpt.com/backend-api/codex',
@@ -179,20 +235,22 @@ export function createSubscriptionLanguageModel(args: {
         return errorResponse(400, 'Unsupported subscription request')
       }
       let body: Record<string, unknown>
+      let wantsStream = false
       try {
         const text = await readRequestBody(input, init)
         const parsed: unknown = JSON.parse(text)
         if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
           return errorResponse(400, 'Invalid subscription request')
         }
-        body = normalizeCodexResponsesBody(parsed as Record<string, unknown>, args.modelId)
+        const rawBody = parsed as Record<string, unknown>
+        wantsStream = rawBody.stream === true ||
+          new Headers(init?.headers).get('accept')?.includes('text/event-stream') === true
+        body = normalizeCodexResponsesBody(rawBody, args.modelId)
       } catch (error) {
         return errorResponse(400, error instanceof Error ? error.message : 'Invalid subscription request')
       }
-      const wantsStream = body.stream === true ||
-        new Headers(init?.headers).get('accept')?.includes('text/event-stream') === true
       try {
-        const tokens = await createSubscriptionService().credentialForDispatch(
+        const tokens: CodexTokenSet = await (args.dispatchService ?? createSubscriptionService()).credentialForDispatch(
           args.ownerId, args.connectionId, args.modelId,
         )
         const headers = new Headers({
@@ -201,7 +259,7 @@ export function createSubscriptionLanguageModel(args: {
           'content-type': 'application/json',
         })
         if (tokens.accountId) headers.set('ChatGPT-Account-Id', tokens.accountId)
-        const upstream = await fetch(CODEX_RESPONSES_ENDPOINT, {
+        const upstream = await fetcher(CODEX_RESPONSES_ENDPOINT, {
           method: 'POST',
           headers,
           body: JSON.stringify(body),
@@ -211,9 +269,9 @@ export function createSubscriptionLanguageModel(args: {
         })
         if (!upstream.ok) {
           await upstream.body?.cancel().catch((_error) => undefined)
-          return errorResponse(upstream.status, 'Codex subscription request failed')
+          return errorResponse(400, safeUpstreamError)
         }
-        if (!upstream.body) return await completedResponse(upstream)
+        if (!upstream.body) return errorResponse(400, safeStreamError)
         return wantsStream
           ? new Response(boundedStream(upstream.body), {
               status: upstream.status,
@@ -222,9 +280,29 @@ export function createSubscriptionLanguageModel(args: {
           : await completedResponse(upstream)
       } catch (error) {
         if (error instanceof Error && error.name === 'AbortError') throw error
-        return errorResponse(502, 'Codex subscription request failed')
+        return errorResponse(400, safeUpstreamError)
       }
     },
   })
-  return provider.responses(args.modelId) as LanguageModel
+  return wrapLanguageModel({
+    model: provider.responses(args.modelId),
+    middleware: {
+      async transformParams({ params }) {
+        const providerOptions = params.providerOptions?.openai
+        const openaiOptions = providerOptions && typeof providerOptions === 'object'
+          ? providerOptions as Record<string, unknown>
+          : {}
+        if (openaiOptions.conversation != null || openaiOptions.previousResponseId != null) {
+          throw new Error('Codex subscriptions do not support server-side conversation state')
+        }
+        return {
+          ...params,
+          providerOptions: {
+            ...params.providerOptions,
+            openai: { ...openaiOptions, store: false },
+          },
+        }
+      },
+    },
+  }) as LanguageModel
 }

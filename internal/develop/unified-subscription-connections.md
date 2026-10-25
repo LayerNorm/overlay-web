@@ -49,6 +49,9 @@ are rejected rather than silently dropped. Provider failures never trigger
 additional inference or paid fallback.
 
 The request-based connection flow does not provide subscription credentials to
-external cloud agents, background consumers or native-only legacy paths. Fixed
+external cloud agents or native-only legacy paths. First-party owner-aware
+background consumers such as context compaction and automation turns resolve
+the same owner's active connection through the server service and use the same
+ownership, enabled-model and lease checks as interactive requests. Fixed
 system-owned `TAB_GROUP_MODEL` and `MEDIA_INTENT_MODEL` tasks remain on their
 configured system model path.

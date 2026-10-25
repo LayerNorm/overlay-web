@@ -47,7 +47,10 @@ const stateValidator = v.object({
   updatedAt: v.number(),
 })
 
-const leaseDurationMs = 30_000
+// Exchanges perform more than one provider request before the immutable vault
+// write and fenced Convex commit. Keep enough room for that bounded operation;
+// callers still impose a shorter provider-network deadline.
+const leaseDurationMs = 60_000
 
 function dedupeRefs(...values: Array<string | undefined>): string[] {
   return [...new Set(values.filter((value): value is string => Boolean(value)))]
@@ -403,6 +406,32 @@ export const acquireRefresh = mutation({
   },
 })
 
+export const releaseRefresh = mutation({
+  args: {
+    serverSecret: v.string(),
+    userId: v.string(),
+    connectionId: v.id('userProviderConnections'),
+    generation: v.number(),
+    revision: v.number(),
+    leaseToken: v.string(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const state = await loadState(ctx, args.connectionId)
+    if (!state || state.userId !== args.userId) throw new Error('Subscription connection not found')
+    assertLease(state, args.leaseToken, args.generation, args.revision, 'refresh')
+    await ctx.db.patch(state._id, {
+      revision: state.revision + 1,
+      leaseToken: undefined,
+      leaseUntil: undefined,
+      leaseOperation: undefined,
+      updatedAt: Date.now(),
+    })
+    return null
+  },
+})
+
 export const commitCredentialForDiscovery = mutation({
   args: {
     serverSecret: v.string(),
@@ -732,7 +761,33 @@ export const removeCleanupRef = mutation({
     await ctx.db.patch(state._id, {
       cleanupRefs,
       cleanupStatus: cleanupStatus(cleanupRefs),
-      revision: state.revision + 1,
+      updatedAt: Date.now(),
+    })
+    return null
+  },
+})
+
+export const retainCleanupRef = mutation({
+  args: {
+    serverSecret: v.string(),
+    userId: v.string(),
+    connectionId: v.id('userProviderConnections'),
+    credentialRef: v.string(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const state = await loadState(ctx, args.connectionId)
+    if (!state || state.userId !== args.userId ||
+        state.credentialRef === args.credentialRef ||
+        state.pendingStateRef === args.credentialRef) {
+      throw new Error('Subscription cleanup is unavailable')
+    }
+    if (state.cleanupRefs.includes(args.credentialRef)) return null
+    const cleanupRefs = dedupeRefs(...state.cleanupRefs, args.credentialRef)
+    await ctx.db.patch(state._id, {
+      cleanupRefs,
+      cleanupStatus: cleanupStatus(cleanupRefs),
       updatedAt: Date.now(),
     })
     return null

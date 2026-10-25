@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { logger } from '@/server/observability/logger'
-import { writeByokVaultKey } from './byok-vault'
+import { deleteByokVaultKey, writeByokVaultKey } from './byok-vault'
 
 test('Vault writes reject redirects and do not expose upstream error bodies', async (t) => {
   const previousApiKey = process.env.WORKOS_API_KEY
@@ -42,4 +42,10 @@ test('Vault writes reject redirects and do not expose upstream error bodies', as
   assert.equal(capturedInit?.redirect, 'error')
   assert.equal(capturedInit?.cache, 'no-store')
   assert.equal(new Headers(capturedInit?.headers).get('authorization'), 'Bearer workos_test_key')
+})
+
+test('Vault DELETE treats an already-deleted object as success', async (t) => {
+  process.env.WORKOS_API_KEY = 'workos_test_key'
+  t.mock.method(globalThis, 'fetch', async () => new Response('', { status: 404 }))
+  await deleteByokVaultKey('already-deleted')
 })

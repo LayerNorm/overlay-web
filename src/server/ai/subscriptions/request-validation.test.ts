@@ -38,3 +38,22 @@ test('rejects media, hosted tools, ZDR, and unsupported semantic options', () =>
     assert.throws(() => normalizeCodexResponsesBody(body, 'm'))
   }
 })
+
+test('function JSON schema property names do not masquerade as media input', () => {
+  assert.doesNotThrow(() => normalizeCodexResponsesBody({
+    model: 'm',
+    input: [{ role: 'user', content: 'describe the URL field' }],
+    tools: [{
+      type: 'function',
+      name: 'lookup',
+      parameters: {
+        type: 'object',
+        properties: { image_url: { type: 'string' } },
+      },
+    }],
+  }, 'm'))
+  assert.throws(() => normalizeCodexResponsesBody({
+    model: 'm',
+    input: [{ type: 'input_image', image_url: 'https://example.test/a.png' }],
+  }, 'm'), /text-only/)
+})

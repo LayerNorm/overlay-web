@@ -48,6 +48,16 @@ export type ContextCompactionResult = {
   summaryToPersist?: ContextSummaryToPersist
 }
 
+export function summaryGenerationOptions(args: {
+  prompt: string
+  targetSummaryTokens: number
+  isSubscription: boolean
+}) {
+  return args.isSubscription
+    ? { prompt: args.prompt }
+    : { prompt: args.prompt, temperature: 0.1, maxOutputTokens: args.targetSummaryTokens }
+}
+
 export function estimateContextTokens(value: unknown): number {
   return Math.ceil(JSON.stringify(value).length / 4)
 }
@@ -236,16 +246,17 @@ export async function compactMessagesForContext(params: {
     const summary = params.generateSummaryText
       ? (await params.generateSummaryText({ prompt, targetSummaryTokens })).trim()
       : (await (async () => {
-          const [{ getLanguageModel }, { generateText }] = await Promise.all([
+          const [{ getLanguageModel, isSubscriptionModelForUser }, { generateText }] = await Promise.all([
             import('@/server/ai/model-runtime'),
             import('@/server/ai/sdk'),
           ])
           const model = await getLanguageModel(summarizerModelId, params.accessToken, params.userId)
+          const isSubscription = Boolean(
+            params.userId && await isSubscriptionModelForUser(summarizerModelId, params.userId),
+          )
           const result = await generateText({
             model,
-            temperature: 0.1,
-            maxOutputTokens: targetSummaryTokens,
-            prompt,
+            ...summaryGenerationOptions({ prompt, targetSummaryTokens, isSubscription }),
           })
           return result.text.trim()
         })())
