@@ -7,6 +7,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 - Saved collaborative message edits now update rendered text and retain attachments instead of showing the original message.
 
 - Use shadcn focus-visible rings for text inputs and textareas, present message editing with text actions, autosize work titles and agent instructions as layouts settle, and group agent Details into collapsed Model, Instructions, Tools and Advanced disclosures.
+- Settings breadcrumbs read Settings > page instead of a Personal or Workspace prefix.
 
 - Return not found for a removed workspace retained in an API client's active-workspace header.
 
@@ -33,6 +34,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 - Overlay Free no longer cuts off longer OpenRouter Free replies with overlay_free_stream_prelude_too_large.
 
 - Add task tools for listing, reading, creating, updating, commenting on, archiving, and restoring Work tasks, with agent activity attribution. Updates check revisions inside the mutation and commit fields, status and scope together, preserving concurrent edits and avoiding partial changes.
+- Chat can now find archived tasks to restore them.
 - Let workspace-visible and personally owned agents take Personal tasks, keep creator-only agents private from other members, and preserve assignment eligibility when tasks change scope.
 
 - Restore Resume and Release control for the controlling user after reloading an agent conversation.

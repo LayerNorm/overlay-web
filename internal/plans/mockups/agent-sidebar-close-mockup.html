@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Agent sidebar close control</title>
+<style>
+:root{color-scheme:light dark;--page:#fff;--sidebar:#f7f7f7;--text:#171717;--muted:#737373;--fill:#ededed;--line:#ddd}
+@media(prefers-color-scheme:dark){:root{--page:#171717;--sidebar:#202020;--text:#ededed;--muted:#a3a3a3;--fill:#303030;--line:#444}}
+*{box-sizing:border-box}body{margin:0;font:14px/1.5 system-ui,sans-serif;background:var(--page);color:var(--text)}
+button{font:inherit;color:inherit;border:0;background:none;cursor:pointer;border-radius:6px}button:hover{background:var(--fill)}button:focus-visible{outline:2px solid var(--muted);outline-offset:2px}
+.app{height:100dvh;display:flex}.nav{width:220px;background:var(--sidebar);padding:20px 12px}.nav strong{display:block;padding:0 10px 24px}.nav div{padding:9px 10px}.nav .selected{background:var(--fill);border-radius:6px}
+main{flex:1;min-width:0;display:flex;flex-direction:column}header{height:56px;padding:6px 12px 6px 20px;display:flex;align-items:center;justify-content:space-between;flex:none}h1{font-size:14px;font-weight:500;margin:0}.icon{display:grid;place-items:center;width:44px;height:44px;color:var(--muted)}svg.icon-svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round}
+.conversation{flex:1;padding:40px 24px;overflow:auto}.conversation p{max-width:540px;margin:0 auto;color:var(--muted)}.composer{margin:16px 24px 24px;padding:16px;border:1px solid var(--line);border-radius:16px;color:var(--muted)}
+aside{position:relative;width:380px;flex:none;background:var(--sidebar);display:flex;flex-direction:column;overflow:hidden}aside[hidden]{display:none}.close{position:absolute;top:6px;right:8px;z-index:1}.hero{text-align:center;padding:44px 20px 16px;flex:none}.creature{width:72px;height:72px}.hero h2{font-size:18px;font-weight:500;margin:14px 0 2px}.hero p{font-size:13px;color:var(--muted);margin:0}
+.tabs{display:flex;justify-content:center;gap:4px;padding:0 20px 16px;flex:none}.tabs button{padding:8px 14px;font-size:12px;border-radius:24px}.tabs button[aria-selected=true]{background:var(--fill)}.content{padding:0 20px 28px;overflow:auto;flex:1;min-height:0}.content h3{font-size:12px;font-weight:500;color:var(--muted);margin:20px 0 8px}.field{background:var(--fill);padding:12px;border-radius:8px}.row{padding:12px 0;display:flex;justify-content:space-between;gap:16px}.row span:last-child{color:var(--muted)}.hint{font-size:12px;color:var(--muted)}
+@media(max-width:900px){.nav{display:none}}@media(max-width:640px){aside{position:fixed;inset:0 0 0 auto;width:min(380px,100%);z-index:2}.conversation{padding:24px 16px}.composer{margin:16px}.app:has(aside:not([hidden])) main{visibility:hidden}}
+</style>
+<div class="app">
+<nav class="nav" aria-label="Preview context"><strong>Personal</strong><div>Work</div><div class="selected">Agents</div><div>Chats</div><div>Files</div><div>Automations</div></nav>
+<main><header><h1>Coding bot</h1><button class="icon" id="toggle" aria-label="Close agent sidebar" aria-expanded="true" aria-controls="sidebar"><svg class="icon-svg" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M15 3v18"/></svg></button></header><div class="conversation"><p>What would you like to work on?</p></div><div class="composer">Message Coding bot</div></main>
+<aside id="sidebar" aria-label="Agent sidebar">
+<button class="icon close" id="close" aria-label="Close agent sidebar" title="Close agent sidebar"><svg class="icon-svg" viewBox="0 0 24 24"><path d="m18 6-12 12M6 6l12 12"/></svg></button>
+<div class="hero"><svg class="creature" viewBox="0 0 100 100" aria-hidden="true"><path d="M50 8c16 0 24 9 27 18 12 2 19 12 17 25-1 12-10 20-20 21-5 12-15 18-26 18-13 0-23-8-26-19C10 69 4 59 6 47c2-12 11-19 21-20C31 15 38 8 50 8z" fill="#60a5fa"/><rect x="36" y="34" width="9" height="20" rx="4.5" fill="#171717"/><rect x="56" y="34" width="9" height="20" rx="4.5" fill="#171717"/></svg><h2>Coding bot</h2><p>Your coding assistant</p></div>
+<div class="tabs" role="tablist" aria-label="Agent information"><button role="tab" aria-selected="true" data-tab="Details">Details</button><button role="tab" aria-selected="false" data-tab="Library">Library</button><button role="tab" aria-selected="false" data-tab="Computer">Computer</button></div>
+<div class="content" id="content" role="tabpanel"><h3>Instructions</h3><div class="field">Help me build and maintain my projects.</div><h3>Model</h3><div class="row"><span>Auto</span><span>Default</span></div><h3>Tools</h3><div class="row"><span>Files</span><span>Enabled</span></div><div class="row"><span>Web search</span><span>Enabled</span></div><p class="hint">Close-button proposal. Other fields are illustrative.</p></div>
+</aside></div>
+<script>
+const sidebar=document.getElementById('sidebar'),toggle=document.getElementById('toggle'),close=document.getElementById('close'),content=document.getElementById('content'),details=content.innerHTML;
+function setOpen(open){sidebar.hidden=!open;toggle.setAttribute('aria-expanded',String(open));toggle.setAttribute('aria-label',`${open?'Close':'Open'} agent sidebar`);if(!open)toggle.focus();else close.focus()}
+toggle.onclick=()=>setOpen(sidebar.hidden);close.onclick=()=>setOpen(false);document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!sidebar.hidden)setOpen(false)});
+document.querySelectorAll('[data-tab]').forEach(button=>button.onclick=()=>{document.querySelectorAll('[data-tab]').forEach(tab=>tab.setAttribute('aria-selected',String(tab===button)));content.innerHTML=button.dataset.tab==='Details'?details:button.dataset.tab==='Library'?'<h3>Library</h3><p class="hint">No files yet.</p>':'<h3>Computer</h3><p class="hint">No computer connected.</p>'});
+</script>
+</html>

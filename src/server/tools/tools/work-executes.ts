@@ -122,13 +122,15 @@ export async function executeListTasks(
     assignee?: string
     query?: string
     includeDone?: boolean
+    archived?: boolean
     limit?: number
   },
 ) {
   try {
     const scope = roomListScope(options, input.scope)
     const params = new URLSearchParams()
-    if (scope) params.set('view', scope)
+    if (input.archived) params.set('view', 'archived')
+    else if (scope) params.set('view', scope)
     const [itemsResult, contextResult] = await Promise.all([
       getJson<{ items: WorkItem[] }>(options, `${WORK_PATH}${params.size ? `?${params}` : ''}`),
       taskContext(options),
@@ -146,8 +148,9 @@ export async function executeListTasks(
     }
     const query = input.query?.trim().toLowerCase()
     const filtered = itemsResult.data.items.filter((item) => {
+      if (input.archived && scope && item.scope !== scope) return false
       if (statuses && !statuses.has(item.status)) return false
-      if (!input.includeDone && !statuses?.has('done') && item.status === 'done') return false
+      if (!input.archived && !input.includeDone && !statuses?.has('done') && item.status === 'done') return false
       if (query && !item.title.toLowerCase().includes(query)) return false
       if (agentPrincipalIds && (!item.assigneePrincipalId || !agentPrincipalIds.has(item.assigneePrincipalId))) return false
       if (assigneePrincipalId && item.assigneePrincipalId !== assigneePrincipalId) return false
