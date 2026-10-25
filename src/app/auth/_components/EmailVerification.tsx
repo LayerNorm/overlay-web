@@ -136,4 +136,3 @@ export function CheckEmailScreen({
     </LandingAuthPageChrome>
   )
 }
-

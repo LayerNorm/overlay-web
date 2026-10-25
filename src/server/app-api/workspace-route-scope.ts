@@ -55,7 +55,7 @@ export async function resolveWorkspaceRequestScope(
   try {
     return await service.resolveActiveWorkspace(auth.userId, requestedWorkspaceId)
   } catch (error) {
-    if (routeScoped) throw new UnavailableWorkspaceRouteError()
+    if (routeScoped || requestedWorkspaceId) throw new UnavailableWorkspaceRouteError()
     throw error
   }
 }

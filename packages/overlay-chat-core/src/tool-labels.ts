@@ -175,6 +175,7 @@ export function getDescriptiveToolLabel(
 
   // Not a real tool: the row shown while a connected agent's computer is woken up or reconnecting.
   if (toolName === 'connect_computer') {
+    if (phase === 'error') return 'Computer connection failed'
     return phase === 'running' ? 'Connecting to computer' : 'Connected to computer'
   }
 
@@ -210,6 +211,13 @@ export function getDescriptiveToolLabel(
     list_chats: 'Looking through your chats',
     read_chat: 'Reading a chat',
     list_notes: 'Listing your notes',
+    list_tasks: 'Listing tasks',
+    get_task: 'Opening a task',
+    create_task: 'Creating a task',
+    update_task: 'Updating a task',
+    comment_on_task: 'Commenting on a task',
+    archive_task: 'Archiving a task',
+    restore_task: 'Restoring a task',
     get_note: 'Opening a note',
     create_note: 'Creating a note',
     append_to_note: 'Adding to a note',
@@ -227,6 +235,10 @@ export function getDescriptiveToolLabel(
     computer_write_file: 'Writing a file on the computer',
     computer_list_files: 'Listing files on the computer',
     computer_open_url: 'Opening a URL on the computer',
+    computer_screenshot: 'Taking a screenshot of the computer',
+    computer_input: 'Interacting with the computer',
+    computer_browser: 'Controlling the browser on the computer',
+    computer_terminal: 'Managing a terminal session on the computer',
   }
   if (map[toolName]) return map[toolName]!
 

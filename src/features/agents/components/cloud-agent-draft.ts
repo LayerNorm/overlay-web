@@ -1,7 +1,7 @@
-import type { AgentProviderId } from '@/shared/agents/provider-accounts'
+import type { AgentProviderId, SupportedAgentProviderId } from '@/shared/agents/provider-accounts'
 
 export type OtherAgentDraft = {
-  adapterId: AgentProviderId
+  adapterId: SupportedAgentProviderId
   runsOn: 'cloud' | 'machine'
   providerAccountId: string
   /** The agent's own model id; empty is the agent's default. */

@@ -31,6 +31,16 @@ Sandbox and Daytona were removed. Overlay Cloud agents use the same Agent Host
 `OVERLAY_FEATURE_OVERLAY_CLOUD_ENVIRONMENTS`, paid entitlements and provider configuration. The
 connected (on-your-machine) path also requires the master release gate and workspace rollout.
 
+Product BYO choices are Claude Code and Codex. Historical OpenCode, Hermes, and Cursor records
+remain readable, and existing accounts remain visible for removal, but these providers cannot be
+selected, reconnected, bound to new agents, or sent credentials for runs. Generic custom ACP
+adapters remain available to self-hosted Agent Host configurations.
+
+The prepared source release pins Claude ACP `0.93.0`, Codex ACP `2.2.2`, Agent Host/protocol
+`0.4.3`, and agent image v10. This change prepares code only: packages and images are not
+published or rolled out. Existing machines need a later idle upgrade before they receive the
+retired-launcher removal and updated adapter pins.
+
 The release includes `@mention` invocation, durable runs and commands, streamed transcript
 projection, approval/elicitation, cancellation, reconnect/resume, artifacts, audit, policy,
 and billing. It explicitly excludes remote desktop, unrestricted terminals, general file
@@ -78,7 +88,9 @@ Unicode boundary before action, terminal and liveness events are emitted. A long
 script must not fail a turn merely because its provider uses the script as its title.
 The original command, approval decision and streamed answer are unaffected.
 
-The host executable supports `connect <code> --server <origin>`. The agent editor emits a single
+The host executable supports `connect <code> --server <origin>`. The agent editor preserves an explicitly selected supported adapter during new-agent
+environment loading; existing agents derive their adapter from the saved binding/model.
+The agent editor emits a single
 harness-specific command with `--adapter <id> --run`; the same command works on a local computer,
 VPS, or customer sandbox. It creates or reuses an Ed25519 device key, displays the same short
 phrase shown in Overlay, waits for browser approval, stores
@@ -171,13 +183,11 @@ BYO branch selects the harness first, filters approved environments by advertise
 records an explicitly granted default working directory. Creating an environment stays inside the same editor
 and returns directly to the binding step after phrase and root approval. A failed
 binding retry edits the already-durable agent identity rather than creating a duplicate. The host
-ships data-only manifests for Codex (`@agentclientprotocol/codex-acp@1.7.0`) and Claude Code
-(`@agentclientprotocol/claude-agent-acp@0.70.0`). Hermes 0.20.6 or newer is a third built-in target
-through the official `hermes acp` stdio server. It uses the unchanged ACP lifecycle for session
-creation/loading, streamed message and tool updates, permissions, cancellation, and authentication;
-the host does not translate Hermes through a private protocol. Adding another ACP target extends the
-manifest and conformance fixtures, not conversation orchestration. The built-in user-owned adapter
-IDs live in
+ships data-only manifests for Codex (`@agentclientprotocol/codex-acp@2.2.2`) and Claude Code
+(`@agentclientprotocol/claude-agent-acp@0.93.0`). These are the only product-supported built-in
+targets. Generic custom ACP commands remain configurable for self-hosted hosts. Adding another
+product target requires an explicit support decision and conformance fixtures, not a product
+binding inferred from an environment advertisement. The built-in user-owned adapter IDs live in
 `@overlay/workspace-contracts`; they are deliberately separate from the managed-sandbox adapter
 allowlist so enabling a local or VPS adapter never makes Overlay Cloud eligible.
 PostgreSQL migration 0066 repairs older databases whose recorded migration history omitted the
@@ -243,8 +253,8 @@ Claude, or equivalent authentication directory into a managed sandbox.
 Phase 7 makes `@layernorm/overlay-agent-host` and `@layernorm/overlay-agent-bridge-protocol` publishable packages and
 requires Node.js 24. The first production package line is `0.1.0`; Hermes support was released in
 the lockstep `0.2.0` package line under the shorter legacy names. The product-qualified public
-package names begin with lockstep `0.3.0`; the current PATH-safe release line is lockstep `0.3.5`. The application copies an exact
-`npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.3.10 overlay-agent-host ...`
+package names begin with lockstep `0.3.0`; the prepared release line is lockstep `0.4.3`. The application copies an exact
+`npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.4.3 overlay-agent-host ...`
 command rather than following npm `latest` or inheriting an unsupported system Node runtime. The host and
 protocol packages release together, the host depends on the exact protocol version, and the npm
 release workflow publishes compiled ESM plus declarations for both packages with provenance after
@@ -273,8 +283,8 @@ be publicly reachable. Eve connection
 authorization (`authorization.required`) is not bridged by the current host contract, so the
 adapter fails that run closed instead of leaving an OAuth pause unobservable. Use static or
 app-scoped Eve connection auth until a dedicated authorization capability is added.
-Hermes uses its official ACP server. OpenClaw and other native adapters remain ineligible unless ACP
-is unavailable and the unchanged host conformance suite passes.
+OpenClaw and other native adapters remain ineligible unless ACP is unavailable and the unchanged
+host conformance suite passes.
 
 Phase 8 uses one entitlement-derived policy for both persistence providers. Environment redemption
 rechecks the enrollment-time environment ceiling atomically; remote dispatch atomically enforces
@@ -363,6 +373,17 @@ artifact-retention observation, and matching production Convex rollout and stabi
 complete.
 
 ## Overlay workspace tools for connected agents
+
+Native Overlay agent turns in direct messages and rooms run as durable
+prepare/model/tool/finalize steps. Ask approvals suspend the exact pending tool
+call for up to 15 minutes and resume from saved model state; they do not replay
+completed model or tool work. Only the original run initiator can resolve a
+room approval. Inaccessible conversations return 404 before reading the run; other
+participants receive 403 when they attempt to decide another user’s approval.
+Auto skips approval prompts but does not bypass authorization,
+tool grants, entitlements, takeover protection, or deny policy. Release QA must
+cover approval denial and approval resumption, cancellation and revoked grants,
+and exact-run authorization before rollout.
 
 A connected agent gets the same Overlay workspace tools a native agent with the same grant gets —
 notes (including the patch-style `edit_note`, `replace_note_section`, and `append_to_note`), files
@@ -489,9 +510,12 @@ required by law may be tombstoned and access-restricted rather than silently orp
 An offline environment never appears to be working. The environment list derives its displayed
 health from the most recent heartbeat: an `online` row becomes effectively `offline` after 45
 seconds without a heartbeat, and the settings UI refreshes every 15 seconds while environments
-exist. Interactive mentions may remain queued
-for a short, explicitly displayed window; the UI must show `Waiting for <environment>` with
-Cancel and Retry. Commands are durable and claim-once. Revocation prevents new claims
+exist. Interactive mentions may remain queued for a short window. The transcript shows
+`Connecting to computer` with cancellation through the existing hover-toolbar Stop icon,
+not inline waiting text or buttons. A recoverable failure exposes a Retry icon in that same
+toolbar; it is absent while connecting or recovering. Retry lets the backend choose reconnect
+or a fresh attempt based on the available session. Runs requiring inspection retain the
+explicit, confirmed Start fresh control. Commands are durable and claim-once. Revocation prevents new claims
 immediately; active credentials expire and leases terminate safely. Reconnect resumes from
 acknowledged command/event cursors. Duplicate sequences are acknowledged without reapplying;
 gaps are rejected with the next expected sequence. The Environments settings surface repeats
@@ -725,7 +749,7 @@ flowchart LR
     Overlay["Overlay control plane<br/>identity, runs, approvals, transcript"]
     Host["Overlay Agent Host<br/>on an execution environment"]
     Adapter["ACP adapter"]
-    Agent["Codex, Claude Code, or Hermes"]
+    Agent["Codex or Claude Code"]
     Files["Approved project roots"]
 
     User <--> Overlay
@@ -804,7 +828,7 @@ flowchart LR
     Bridge["Agent Bridge Protocol v1<br/>enrollment, commands, events,<br/>acknowledgements, artifacts"]
     Host["Agent Host<br/>CLI or daemon"]
     ACP["ACP<br/>sessions, prompts, streaming,<br/>permissions, cancellation"]
-    Harness["Codex, Claude Code,<br/>or Hermes"]
+    Harness["Codex or Claude Code"]
     MCP["MCP<br/>optional tools and resources"]
     Tools["APIs, databases, browsers,<br/>and other tools"]
 
@@ -867,7 +891,7 @@ Overlay generates one harness-specific command. For a local Codex environment, t
 this shape:
 
 ```sh
-npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.3.3 \
+npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.4.3 \
   overlay-agent-host connect <enrollment-code> \
   --server https://getoverlay.io \
   --kind local \
@@ -875,8 +899,7 @@ npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.3.3 \
   --run
 ```
 
-For Hermes on a VPS, use `--kind vps --adapter hermes`. The package requires Node.js 24 or newer.
-The generated command installs and launches both the pinned Node 24 runtime and host package, so a
+The package requires Node.js 24 or newer. The generated command installs and launches both the pinned Node 24 runtime and host package, so a
 machine-wide Node 22 installation does not silently run unsupported code. `connect` enrolls the
 environment, saves a mode-0600 restart config beside the private connection state, and `--run`
 keeps the host in the foreground after approval.
@@ -925,15 +948,12 @@ flowchart LR
     Host["Agent Host"]
     Codex["Codex manifest"]
     Claude["Claude Code manifest"]
-    Hermes["Hermes manifest"]
     CodexProcess["npx -y<br/>@agentclientprotocol/codex-acp@2.2.2"]
-    ClaudeProcess["npx -y<br/>@agentclientprotocol/claude-agent-acp@0.91.0"]
-    HermesProcess["hermes acp<br/>Hermes 0.20.6 or newer"]
+    ClaudeProcess["npx -y<br/>@agentclientprotocol/claude-agent-acp@0.93.0"]
     Session["ACP session over stdio"]
 
     Host --> Codex --> CodexProcess --> Session
     Host --> Claude --> ClaudeProcess --> Session
-    Host --> Hermes --> HermesProcess --> Session
 ```
 
 For each run, the ACP adapter spawns the process in the validated working directory, initializes
@@ -1034,6 +1054,8 @@ drive/device credentials and refuse redirects. Ambiguous writes require a journa
 Persistent journals, hydration and runtime synchronization are implemented; their ownership
 and shutdown rules are described below. Package/image activation remains gated on acceptance.
 
+Retry preserves the original run configuration and committed provider output. When the run has accepted no text, remove its generated connection notice before restarting at offset zero. Use accepted stream counters to distinguish notices from genuine text; older counters without delta coverage do not justify discarding saved output.
+
 A successful options discovery with no model catalog offers only the runtime default and the
 saved choice marked unreported; it never substitutes the legacy hard-coded list. The model
 control stays disabled while its bound environment is still loading. Older undiscovered hosts
@@ -1049,10 +1071,9 @@ creating a draft PR. Existing version branches are preserved. It never publishes
 Drafts still need ordinary required CI and subscription-provider Preview QA; the workflow token
 does not trigger normal PR workflows, so review must dispatch checks or trigger a trusted PR event.
 
-Hermes uses its official `hermes acp` server. Overlay does not translate Hermes through a private
-protocol. OpenClaw and other native adapters require the unchanged host conformance suite when ACP
-is unavailable. A custom ACP command can be described through explicit adapter configuration, but
-the product-supported built-in manifests remain Codex, Claude Code, and Hermes.
+OpenClaw and other native adapters require the unchanged host conformance suite when ACP
+is unavailable. A custom ACP command can be described through explicit adapter configuration; it
+does not become a product BYO choice or binding.
 
 ### An agent mention becomes one durable remote run
 
@@ -1170,7 +1191,7 @@ continue using `@overlay/*`.
 | `@layernorm/overlay-agent-bridge-protocol` | Public versioned schemas, request proofs, limits, commands, events, and acknowledgements. It does not start agents. |
 | `@layernorm/overlay-agent-host` | Public CLI and daemon that runs on a local computer, VPS, container, or managed sandbox. |
 | ACP adapter inside the Agent Host | Starts and communicates with the selected local agent process. |
-| Codex, Claude Code, or Hermes | Performs the actual coding and tool work. |
+| Codex or Claude Code | Performs the actual coding and tool work. |
 | `@overlay/agent-runtime` | Internal server-side helpers for Overlay-hosted turns. It is not the BYOA CLI. |
 | `@overlay/workspace-contracts` | Internal adapter identifiers and connected-agent domain contracts. |
 | `@overlay/sandbox-runtime` | Provider-neutral lifecycle for managed sandboxes (Boat/Box and E2B). |
@@ -1194,7 +1215,7 @@ private chain of thought.
 
 ### Current rollout boundary
 
-The local and VPS host architecture and the Codex, Claude Code, and Hermes ACP manifests are
+The local and VPS host architecture and the Codex and Claude Code ACP manifests are
 implemented. Managed sandboxes use the same host image and protocol and appear only when their
 cloud, run and control-plane flags and workspace rollout eligibility all pass. Broad availability
 still requires image, conformance, credential, egress, billing, cleanup, security-review and stability
@@ -1680,6 +1701,8 @@ credential, current Files revision/source, scope and live authorization before r
 cache keys bind the exact execution grant and signed content identity. Cache pressure
 returns a retryable unavailable response rather than exceeding the bound.
 
+Native Overlay agents store `ask` or `auto` in the workspace agent's existing permission-mode field. Unset values mean Ask. These values configure Overlay tool approvals and are never sent to connected harnesses, whose advertised permission values remain unchanged. Auto does not override an MCP server's `deny` policy.
+
 Long-horizon provider smoke defaults come from `infra/agent-image/versions.json`;
 `--adapter-version` is an explicit override for investigating a different candidate.
 Shared room run-status reads require active workspace membership and conversation
@@ -1687,3 +1710,21 @@ participation; personal conversations remain owner-only. During web-first deploy
 only the previous validator's explicit extra-`remoteRunId` rejection retries the legacy
 read with the same actor and conversation. Its result must match the requested run;
 authorization and unrelated errors never trigger a fallback.
+
+### Native Overlay agent approvals
+
+Native agent tool calls in direct messages and rooms run through separate durable
+preparation, model, tool, and finalization steps. Ask approvals attach to the exact
+active run and resume at the pending tool call. Only the initiating user can approve a
+room run. An unanswered request is denied after 15 minutes. Auto skips approval only;
+authorization, plan, entitlement, billing, takeover, and MCP deny checks still apply.
+
+Model-step content keeps SDK `tool-call` parts, while live progress uses UI
+`tool-invocation` parts. Finalization combines the model calls with their recorded
+outcomes so terminal tool rows and execution evidence survive reload.
+
+Tool calls receive a stable run and tool-call idempotency key. A completed durable step
+is not replayed; if an interrupted tool step is retried before its result is recorded,
+the call fails closed rather than repeating a potentially ambiguous external action.
+Tools that do not deduplicate external side effects may still have an uncertain outcome.
+Hosted release QA remains necessary for approval, cancellation, and timeout behavior.

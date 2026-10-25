@@ -29,11 +29,12 @@ function render() {
   )
 }
 
-test('usage and storage collapse behind disclosure headers without retired app links', () => {
+test('usage and storage collapse behind disclosure headers', () => {
   const html = render()
   for (const label of ['Usage', 'Storage']) {
     assert.match(html, new RegExp(`aria-expanded="false"[^>]*>.*?${label}`, 's'))
   }
+  assert.doesNotMatch(html, /Apps/)
   // Collapsed sections keep their rows out of the menu until opened.
   assert.doesNotMatch(html, /Chrome Extension/)
   assert.doesNotMatch(html, />Apps</)

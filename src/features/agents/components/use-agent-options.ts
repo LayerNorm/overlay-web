@@ -35,6 +35,6 @@ export function useAgentOptions(workspaceId: string | null, agentId: string) {
     return () => { cancelled = true; window.clearInterval(timer) }
   }, [workspaceId, agentId])
   return loaded?.workspaceId === workspaceId && loaded.agentId === agentId
-    ? { environment: loaded.environment, error: loaded.error }
-    : { environment: null, error: null }
+    ? { environment: loaded.environment, error: loaded.error, loading: false }
+    : { environment: null, error: null, loading: Boolean(workspaceId) }
 }

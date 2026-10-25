@@ -58,6 +58,13 @@ export class ComputersClient {
     )
   }
 
+  control(workspaceId: string, computerId: string, action: 'take' | 'release', init?: RequestInit) {
+    return this.http.json<{ computer: Computer }>(
+      `/api/v1/computers/${encodeURIComponent(computerId)}/control`,
+      this.http.jsonRequest({ action }, { ...workspaceInit(workspaceId, init), method: 'POST' }),
+    )
+  }
+
   stop(workspaceId: string, computerId: string, init?: RequestInit) {
     return this.http.json<{ computer: Computer }>(
       `/api/v1/computers/${encodeURIComponent(computerId)}/stop`,

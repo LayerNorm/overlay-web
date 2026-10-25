@@ -24,6 +24,7 @@ import {
   AgentTypeSelector,
   ByoAgentFields,
   DangerZone,
+  OverlayAgentPermissionsField,
 } from './AgentEditorForm'
 import { AgentSurfacesField } from './AgentSurfacesField'
 import { CloudAgentPanel } from './CloudAgentPanel'
@@ -191,6 +192,12 @@ export function AgentSidebarAdvancedSettings({ editor }: { editor: Controller })
       {overlaySettings ? (
         <>
           <section>
+            <OverlayAgentPermissionsField
+              value={form.permissionMode}
+              onChange={(value) => { form.setPermissionMode(value); form.markDirty() }}
+            />
+          </section>
+          <section>
             <SectionHeading>Mentions</SectionHeading>
             <p className="mt-2 rounded-[10px] bg-(--surface-subtle) p-3 text-xs leading-5 text-(--muted)">
               Mention-first is enforced. One-to-one agent DMs invoke implicitly. Group DMs require a human mention or reply in the agent&apos;s thread.
@@ -205,9 +212,11 @@ export function AgentSidebarAdvancedSettings({ editor }: { editor: Controller })
                   size={computer.computerSize}
                   onSizeChange={(size) => { computer.setComputerSize(size); form.markDirty() }}
                   computer={computer.agentComputer}
+                  agentName={form.name}
                   openBusy={computer.computerOpenBusy}
                   lifecycleBusy={computer.computerLifecycleBusy}
                   onOpenDesktop={() => void computer.openAgentComputer()}
+                  onControl={() => void computer.controlAgentComputer()}
                   onTogglePower={() => void computer.toggleAgentComputerPower()}
                   onDelete={() => void computer.deleteAgentComputer()}
                   loadError={computer.computerLoadError}

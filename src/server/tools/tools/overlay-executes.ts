@@ -6,12 +6,20 @@ import { agentGatewayExecEnv } from '@/server/ai/agent-gateway/env'
 import { machineForAgent, touchEnvironmentMachine } from '@/server/agents/environment-machine'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import {
+  ComputerDesktopDriverError,
+  openUrl as openComputerUrl,
+  runBrowserAction as runComputerBrowserAction,
+  runComputerDriverCommand,
+  run as runComputerDesktopCommand,
+} from '@/server/computers/ComputerDesktopDriver'
+import {
   ComputerServiceError,
   type ComputerActor,
 } from '@/server/computers/ComputerService'
 import type { Computer, ComputerOwnerType } from '@overlay/workspace-contracts/computers'
 import { callInternalApi, callInternalApiGet, toolAuthBody } from './internal-api'
 import type { OverlayToolsOptions } from './types'
+import { toolRequiresApproval } from '@overlay/tools-core/policy'
 
 /**
  * Memory writes carry an explicit owner when an agent is driving the turn, so
@@ -900,6 +908,7 @@ const COMPUTER_EXEC_MAX_OUTPUT_CHARS = 40_000
 const COMPUTER_READ_MAX_BYTES = 256 * 1024
 const COMPUTER_EXEC_TIMEOUT_DEFAULT_MS = 60_000
 const COMPUTER_EXEC_TIMEOUT_MAX_MS = 300_000
+const COMPUTER_TERMINAL_ENV_TTL_MS = 30 * 60 * 1000
 
 function truncateOutput(value: string): { text: string; truncated: boolean } {
   if (value.length <= COMPUTER_EXEC_MAX_OUTPUT_CHARS) {
@@ -910,15 +919,38 @@ function truncateOutput(value: string): { text: string; truncated: boolean } {
 
 function computerErrorResult(err: unknown, fallback: string) {
   if (err instanceof ComputerServiceError) {
-    return { success: false, error: err.message, code: err.code }
+    return { success: false as const, error: err.message, code: err.code }
   }
-  return { success: false, error: err instanceof Error ? err.message : fallback }
+  if (err instanceof Error && err.message === 'COMPUTER_MAINTENANCE_IN_PROGRESS') {
+    return {
+      success: false as const,
+      error: 'computer_busy',
+      message: 'The Computer is busy with another action. Wait a moment and try again.',
+    }
+  }
+  if (err instanceof ComputerDesktopDriverError) {
+    return {
+      success: false as const,
+      error: err.message,
+      code: err.code,
+      ...(err.missing.length ? { missing: err.missing } : {}),
+      ...(err.detail ? { detail: err.detail } : {}),
+    }
+  }
+  return { success: false as const, error: err instanceof Error ? err.message : fallback }
 }
 
 async function computerInstanceFor(
   options: OverlayToolsOptions,
 ): Promise<
-  | { ok: true; computer: Pick<Computer, 'id' | 'name'>; instance: SandboxInstance }
+  | {
+      ok: true
+      computer: Pick<Computer, 'id' | 'name' | 'controlledByUserId'>
+      operate<T>(
+        operation: (instance: SandboxInstance, computer: Pick<Computer, 'controlledByUserId'>) => Promise<T>,
+        actionDeadlineMs?: number,
+      ): Promise<T>
+    }
   | { ok: false; error: string }
 > {
   if (!options.workspaceId) {
@@ -932,18 +964,28 @@ async function computerInstanceFor(
     // the creator-only access rule rather than failing closed.
     const access = (await workspaceService.listForUser(options.userId))
       .find((entry) => entry.workspace.id === options.workspaceId)
+    if (!access) return { ok: false, error: 'You do not have access to this workspace.' }
     const actor: ComputerActor = {
       userId: options.userId,
+      workspaceId: access.workspace.id,
       principalId: access?.principal.id,
       workspaceRole: access?.membership.role === 'owner' ? 'owner' : 'member',
     }
-    const { computer, instance } = await computerService.instanceForOwner({
+    const computer = await computerService.getForOwner({
       actor,
       workspaceId: options.workspaceId,
       ownerType,
       ownerId,
     })
-    return { ok: true, computer, instance }
+    return {
+      ok: true,
+      computer,
+      operate: (operation, actionDeadlineMs) => computerService.withOwnerOperation({
+        actor, workspaceId: options.workspaceId!, ownerType, ownerId,
+        actionDeadlineMs,
+        operation: (current, instance) => operation(instance, current),
+      }),
+    }
   } catch (err) {
     // An agent bound to an Overlay Cloud environment already has a machine —
     // its environment sandbox. Fall back to it before reporting "no computer"
@@ -958,7 +1000,7 @@ async function computerInstanceFor(
         return {
           ok: true,
           computer: { id: `env:${machine.environment.id}`, name: machine.environment.name },
-          instance: machine.instance,
+          operate: async (operation) => await operation(machine.instance, { controlledByUserId: undefined }),
         }
       }
     }
@@ -987,20 +1029,20 @@ export async function executeComputerExec(
       Math.max(input.timeoutMs ?? COMPUTER_EXEC_TIMEOUT_DEFAULT_MS, 5_000),
       COMPUTER_EXEC_TIMEOUT_MAX_MS,
     )
-    const handle = await resolved.instance.runCommand({
-      command: input.command,
-      cwd: input.cwd,
-      // Scoped gateway credentials so agent CLIs on the machine authenticate
-      // through Overlay's metered proxy — no real provider keys in the box.
-      environment: agentGatewayExecEnv({
-        workspaceId: options.workspaceId!,
-        userId: options.userId,
-        agentId: options.agentId,
-        ttlMs: timeoutMs + 60_000,
-      }),
-      timeoutMs,
-    })
-    const result = await handle.wait()
+    const result = await resolved.operate(async (instance) => {
+      const handle = await instance.runCommand({
+        command: input.command,
+        cwd: input.cwd,
+        environment: agentGatewayExecEnv({
+          workspaceId: options.workspaceId!,
+          userId: options.userId,
+          agentId: options.agentId,
+          ttlMs: timeoutMs + 60_000,
+        }),
+        timeoutMs,
+      })
+      return await handle.wait()
+    }, timeoutMs)
     const stdout = truncateOutput(result.stdout)
     const stderr = truncateOutput(result.stderr)
     return {
@@ -1025,7 +1067,7 @@ export async function executeComputerReadFile(
   const resolved = await computerInstanceFor(options)
   if (!resolved.ok) return { success: false, error: resolved.error }
   try {
-    const bytes = await resolved.instance.readFile(input.path)
+    const bytes = await resolved.operate((instance) => instance.readFile(input.path))
     if (bytes === null) {
       return { success: false, error: `No file at ${input.path}` }
     }
@@ -1053,7 +1095,7 @@ export async function executeComputerWriteFile(
   if (!resolved.ok) return { success: false, error: resolved.error }
   try {
     const bytes = new TextEncoder().encode(input.contents)
-    await resolved.instance.writeFiles([{ path: input.path, contents: bytes }])
+    await resolved.operate((instance) => instance.writeFiles([{ path: input.path, contents: bytes }]))
     return {
       success: true,
       path: input.path,
@@ -1073,7 +1115,7 @@ export async function executeComputerListFiles(
   if (!resolved.ok) return { success: false, error: resolved.error }
   try {
     const path = input.path ?? '/home/user'
-    const entries = await resolved.instance.listFiles(path)
+    const entries = await resolved.operate((instance) => instance.listFiles(path))
     return {
       success: true,
       path,
@@ -1095,34 +1137,262 @@ export async function executeComputerOpenUrl(
 ) {
   const resolved = await computerInstanceFor(options)
   if (!resolved.ok) return { success: false, error: resolved.error }
-  if (!resolved.instance.capabilities.desktop) {
-    return { success: false, error: 'This computer has no desktop to open URLs on.' }
-  }
   try {
-    // The bearer ticket is never returned to the transcript — the user can
-    // watch through their own "Open desktop" surface. runCommand executes
-    // outside the desktop session, so DISPLAY is set explicitly.
-    const handle = await resolved.instance.runCommand({
-      command: 'xdg-open',
-      args: [input.url],
-      environment: { DISPLAY: ':0' },
-      timeoutMs: 15_000,
-    })
-    const result = await handle.wait()
-    if (result.exitCode !== 0) {
-      return {
-        success: false,
-        error: `xdg-open failed (exit ${result.exitCode}): ${result.stderr.trim() || result.stdout.trim() || 'no output'}`,
-      }
-    }
+    const result = await executeComputerActionWithTakeover(
+      resolved.computer.controlledByUserId,
+      'computer_open_url',
+      input,
+      () => resolved.operate(
+        (instance, current) => executeComputerActionWithTakeover(
+          current.controlledByUserId,
+          'computer_open_url',
+          input,
+          () => openComputerUrl(instance, input.url),
+        ),
+        120_000,
+      ),
+    )
+    if (isComputerUserInControlResult(result)) return result
     return {
       success: true,
       opened: input.url,
-      note: 'The URL opened on the computer’s desktop. The user can watch it live via Open desktop in Settings or the agent editor.',
+      openedWith: result.openedWith,
+      note: result.openedWith === 'browser'
+        ? 'Opened in the persistent browser on the visible desktop. The user can watch it live via Open desktop.'
+        : 'Opened with the desktop URL handler because the browser driver is unavailable. The user can watch it live via Open desktop.',
       computerId: resolved.computer.id,
     }
   } catch (err) {
     return computerErrorResult(err, 'Failed to open the URL on the computer')
+  }
+}
+
+export async function executeComputerScreenshot(options: OverlayToolsOptions) {
+  const resolved = await computerInstanceFor(options)
+  if (!resolved.ok) return { success: false as const, error: resolved.error }
+  try {
+    const result = await executeComputerActionWithTakeover(
+      resolved.computer.controlledByUserId,
+      'computer_screenshot',
+      {},
+      () => resolved.operate(
+        (instance) => runComputerDesktopCommand(instance, 'screenshot'),
+        120_000,
+      ),
+    )
+    if (isComputerUserInControlResult(result)) return result
+    if (
+      typeof result.width !== 'number'
+      || typeof result.height !== 'number'
+      || !(result.image instanceof Uint8Array)
+    ) {
+      throw new ComputerDesktopDriverError('desktop_driver_failed', 'The screenshot was incomplete.')
+    }
+    return {
+      success: true as const,
+      width: result.width,
+      height: result.height,
+      image: result.image,
+      computerId: resolved.computer.id,
+    }
+  } catch (err) {
+    return computerErrorResult(err, 'Failed to capture the computer screenshot')
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+export type ComputerInputAction =
+  | { action: 'click'; x: number; y: number; button?: 'left' | 'middle' | 'right'; count?: number; confirm?: boolean }
+  | { action: 'double_click'; x: number; y: number; confirm?: boolean }
+  | { action: 'right_click'; x: number; y: number; confirm?: boolean }
+  | { action: 'move'; x: number; y: number }
+  | { action: 'drag'; from: { x: number; y: number }; to: { x: number; y: number } }
+  | { action: 'type'; text: string }
+  | { action: 'key'; keys: string }
+  | { action: 'scroll'; x?: number; y?: number; direction: 'up' | 'down' | 'left' | 'right'; amount: number }
+  | { action: 'wait'; ms: number }
+
+export type ComputerBrowserAction =
+  | { action: 'navigate'; url: string }
+  | { action: 'back' }
+  | { action: 'forward' }
+  | { action: 'reload' }
+  | { action: 'snapshot' }
+  | { action: 'click'; ref: string; confirm?: boolean }
+  | { action: 'type'; ref: string; text: string; submit?: boolean }
+  | { action: 'scroll'; direction: 'up' | 'down' | 'left' | 'right'; amount: number }
+  | { action: 'press'; keys: 'Enter' | 'Tab' | 'Escape' | 'ArrowUp' | 'ArrowDown' | 'ArrowLeft' | 'ArrowRight' | 'PageDown' }
+  | { action: 'tabs' }
+  | { action: 'switch_tab'; index: number }
+  | { action: 'new_tab'; url: string }
+
+export type ComputerTerminalAction =
+  | { action: 'start'; command: string; cwd?: string }
+  | { action: 'read'; id: string; offset?: number; maxBytes?: number }
+  | { action: 'cancel'; id: string; signal?: 'INT' | 'TERM' | 'KILL' }
+  | { action: 'list' }
+
+const COMPUTER_ACTION_APPROVAL_MESSAGE =
+  "This action needs approval. Use Work mode, or set this agent's Permissions to Auto."
+
+const COMPUTER_USER_IN_CONTROL_RESULT = {
+  success: false as const,
+  error: 'user_in_control' as const,
+  message: 'The user has taken control of this Computer. Wait for them to hand it back, then take a new screenshot or snapshot before continuing.',
+}
+
+type ComputerControlTool = 'computer_input' | 'computer_browser' | 'computer_open_url' | 'computer_screenshot'
+
+function computerActionBlockedByTakeover(toolName: ComputerControlTool, input: unknown): boolean {
+  if (toolName === 'computer_open_url') return true
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return false
+  const action = (input as { action?: unknown }).action
+  if (toolName === 'computer_input') return action !== 'wait'
+  if (toolName === 'computer_browser') return action !== 'snapshot' && action !== 'tabs'
+  return false
+}
+
+export async function executeComputerActionWithTakeover<T>(
+  controlledByUserId: string | undefined,
+  toolName: ComputerControlTool,
+  input: unknown,
+  operate: () => Promise<T>,
+): Promise<T | typeof COMPUTER_USER_IN_CONTROL_RESULT> {
+  if (controlledByUserId && computerActionBlockedByTakeover(toolName, input)) {
+    return COMPUTER_USER_IN_CONTROL_RESULT
+  }
+  return await operate()
+}
+
+function isComputerUserInControlResult(
+  value: unknown,
+): value is typeof COMPUTER_USER_IN_CONTROL_RESULT {
+  return typeof value === 'object' && value !== null && 'error' in value && value.error === 'user_in_control'
+}
+
+export async function executeComputerActionWithApproval<T>(
+  options: Pick<OverlayToolsOptions, 'approvalMode' | 'computerApprovalContext'>,
+  toolName: 'computer_input' | 'computer_browser' | 'computer_exec' | 'computer_terminal',
+  input: unknown,
+  operate: () => Promise<T>,
+): Promise<T | { success: false; error: 'approval_required'; message: string }> {
+  if (
+    options.computerApprovalContext !== 'work'
+    && toolRequiresApproval(toolName, input, { approvalMode: options.approvalMode })
+  ) {
+    return {
+      success: false,
+      error: 'approval_required',
+      message: COMPUTER_ACTION_APPROVAL_MESSAGE,
+    }
+  }
+  return await operate()
+}
+
+export async function executeComputerBrowser(
+  options: OverlayToolsOptions,
+  input: ComputerBrowserAction,
+) {
+  const resolved = await computerInstanceFor(options)
+  if (!resolved.ok) return { success: false as const, error: resolved.error }
+  const { action, ...args } = input
+  try {
+    const output = await executeComputerActionWithTakeover(
+      resolved.computer.controlledByUserId,
+      'computer_browser',
+      input,
+      () => resolved.operate(
+        (instance, current) => executeComputerActionWithTakeover(
+          current.controlledByUserId,
+          'computer_browser',
+          input,
+          () => runComputerBrowserAction(instance, action, args),
+        ),
+        120_000,
+      ),
+    )
+    if (isComputerUserInControlResult(output)) return output
+    if (output.result.success === false) return output.result
+    return {
+      success: true as const,
+      action,
+      result: output.result,
+      text: output.text,
+      computerId: resolved.computer.id,
+    }
+  } catch (err) {
+    return computerErrorResult(err, 'Browser action failed')
+  }
+}
+
+export async function executeComputerInput(
+  options: OverlayToolsOptions,
+  input: ComputerInputAction,
+) {
+  const resolved = await computerInstanceFor(options)
+  if (!resolved.ok) return { success: false as const, error: resolved.error }
+  const { action, ...inputArgs } = input
+  const command = action === 'double_click' || action === 'right_click' ? 'click' : action
+  const args: Record<string, unknown> = { ...inputArgs }
+  if (action === 'double_click') args.count = 2
+  if (action === 'right_click') args.button = 'right'
+  try {
+    const result = await executeComputerActionWithTakeover(
+      resolved.computer.controlledByUserId,
+      'computer_input',
+      input,
+      () => resolved.operate(
+        (instance, current) => executeComputerActionWithTakeover(
+          current.controlledByUserId,
+          'computer_input',
+          input,
+          () => runComputerDesktopCommand(instance, command, args),
+        ),
+        120_000,
+      ),
+    )
+    if (isComputerUserInControlResult(result)) return result
+    if (isRecord(result) && result.success === false) return result
+    if (isRecord(result) && isRecord(result.result) && result.result.success === false) {
+      return result.result
+    }
+    return { success: true as const, acknowledgement: `${action.replace('_', ' ')} completed.` }
+  } catch (err) {
+    return computerErrorResult(err, 'Computer input failed')
+  }
+}
+
+export async function executeComputerTerminal(
+  options: OverlayToolsOptions,
+  input: ComputerTerminalAction,
+) {
+  const resolved = await computerInstanceFor(options)
+  if (!resolved.ok) return { success: false as const, error: resolved.error }
+  const { action, ...args } = input
+  const environment = action === 'start'
+    ? agentGatewayExecEnv({
+        workspaceId: options.workspaceId!,
+        userId: options.userId,
+        agentId: options.agentId,
+        ttlMs: COMPUTER_TERMINAL_ENV_TTL_MS,
+      })
+    : undefined
+  try {
+    const result = await resolved.operate(
+      (instance) => runComputerDriverCommand(
+        instance,
+        `terminal_${action}`,
+        args,
+        { requireDesktop: false, environment },
+      ),
+      45_000,
+    )
+    return { success: true as const, action, ...result, computerId: resolved.computer.id }
+  } catch (err) {
+    return computerErrorResult(err, 'Terminal session action failed')
   }
 }
 

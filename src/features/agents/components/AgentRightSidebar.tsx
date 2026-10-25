@@ -4,57 +4,39 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
 import { RightSidebar } from '@overlay/modules-react/shell'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
-import { useAgentEditorController } from './AgentEditorPage'
+import type { useAgentEditorController } from './AgentEditorPage'
 import { AgentComputerTabView } from './AgentComputerTab.parts'
 import { AgentSidebarDetails } from './AgentSidebarDetails'
 import { AgentLibraryTab } from './AgentRightSidebar.parts'
 import { AgentSidebarHero } from './AgentSidebarHero.parts'
-import { useAgentSidebarComputer } from './use-agent-sidebar-computer'
+import type { useAgentSidebarComputer } from './use-agent-sidebar-computer'
 import { createAgentAutosaveScheduler } from '../lib/agent-autosave-scheduler'
 import { isAgentEditSaveFailure } from '../lib/agent-edit-save-result'
 
 export function AgentRightSidebar({
-  agentId,
-  activeWorkspaceId,
   conversationId,
   activeTab,
   onTabChange,
-  onClose,
-  onArchived,
   showcase = false,
+  editor,
   controlled,
+  computerAccess,
   onTakeControl,
+  onReleaseControl,
 }: {
-  agentId: string
-  activeWorkspaceId: string | null
   conversationId: string
   activeTab: string
   onTabChange(id: string): void
-  onClose(): void
-  onArchived(): void
   showcase?: boolean
+  editor: ReturnType<typeof useAgentEditorController>
   controlled: boolean
-  onTakeControl(ticketUrl: string, computerName: string, refreshTicket: () => void): void
+  computerAccess: ReturnType<typeof useAgentSidebarComputer>
+  onTakeControl(ticketUrl: string, computerName: string): void
+  onReleaseControl(): void
 }) {
   const { capabilities } = useOverlayCapabilities()
   const computersEnabled = capabilities.computers === true && !showcase
-  const editor = useAgentEditorController({
-    mode: 'edit',
-    agentId,
-    showcase,
-    presentation: 'panel',
-    keepOpenOnSave: true,
-    onClose,
-    onArchived,
-  })
   const selectedTab = activeTab
-  const computerAccess = useAgentSidebarComputer({
-    activeWorkspaceId,
-    agentId,
-    enabled: computersEnabled,
-    visible: selectedTab === 'computer',
-    state: editor.computer,
-  })
   const [saveFailed, setSaveFailed] = useState(false)
   const schedulerRef = useRef<ReturnType<typeof createAgentAutosaveScheduler> | null>(null)
 
@@ -119,14 +101,15 @@ export function AgentRightSidebar({
           ticketError={computerAccess.ticketError}
           ticketLoading={computerAccess.ticketLoading}
           controlled={controlled}
+          currentUserId={computerAccess.currentUserId}
+          controlBusy={computerAccess.controlBusy}
           waking={computerAccess.waking}
           onWake={() => void computerAccess.wake()}
           onRetry={() => void (computerAccess.computerError
             ? computerAccess.loadComputer()
             : computerAccess.retryTicket())}
-          onTakeControl={(ticketUrl, computerName) => {
-            onTakeControl(ticketUrl, computerName, computerAccess.retryTicket)
-          }}
+          onTakeControl={onTakeControl}
+          onReleaseControl={onReleaseControl}
         />
       ) : null,
     },

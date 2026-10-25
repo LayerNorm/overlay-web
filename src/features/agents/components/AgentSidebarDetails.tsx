@@ -148,7 +148,7 @@ export function AgentSidebarDetails({
           This agent ran on a hosted runtime that is no longer available. It is unchanged; recreate it as an Overlay agent, or connect an agent running on your own machine.
         </p>
       ) : null}
-      <DetailsDisclosure label="Advanced">
+      <DetailsDisclosure label="Advanced" summary={overlaySettings ? (form.permissionMode === 'auto' ? 'Auto' : 'Ask') : undefined}>
         <AgentSidebarAdvancedSettings editor={editor} />
       </DetailsDisclosure>
     </div>

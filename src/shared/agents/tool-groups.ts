@@ -110,6 +110,12 @@ export const AGENT_TOOL_GROUPS: readonly AgentToolGroup[] = [
     ],
   },
   {
+    id: 'tasks',
+    label: 'Tasks',
+    description: 'Create, update, and archive tasks in Work.',
+    toolIds: ['list_tasks', 'get_task', 'create_task', 'update_task', 'comment_on_task', 'archive_task', 'restore_task'],
+  },
+  {
     id: 'image',
     label: 'Image generation',
     description: 'Generate images.',
@@ -198,8 +204,13 @@ const LATER_GROUP_MEMBERS: ReadonlyArray<{ grantedBy: readonly string[]; adds: r
   // Reading chats joined the memory group.
   { grantedBy: ['search_messages'], adds: ['list_chats', 'read_chat'] },
   { grantedBy: ['update_note'], adds: ['append_to_note', 'replace_note_section', 'edit_note'] },
+  {
+    grantedBy: ['computer_exec', 'computer_read_file', 'computer_write_file', 'computer_list_files', 'computer_open_url'],
+    adds: ['computer_screenshot', 'computer_input', 'computer_browser', 'computer_terminal'],
+  },
   // Agents that hold the whole toolbox (automations, video, and the browser) can ask other agents.
   { grantedBy: ['create_automation', 'generate_video', 'interactive_browser_session'], adds: ['list_agents', 'ask_agent', 'read_agent_reply', 'post_message'] },
+  { grantedBy: ['create_automation', 'generate_video', 'interactive_browser_session'], adds: ['list_tasks', 'get_task', 'create_task', 'update_task', 'comment_on_task', 'archive_task', 'restore_task'] },
 ]
 
 export function normalizeAgentToolGrant(allowedToolIds: readonly string[]): string[] {

@@ -4,6 +4,7 @@ import {
   getOverlayRuntimeConfig,
   getOverlayRuntimeConfigSync,
 } from '@/server/config'
+import { getOverlayServerContext } from '@/server/bootstrap'
 import {
   deriveOverlayCapabilities,
   normalizeIntegrationProviderKey,
@@ -44,6 +45,8 @@ import type { ChatToolRequestId } from '@/shared/chat/tool-requests'
 import type { Entitlements } from '@/shared/app/app-contracts'
 import { COMPUTER_TOOL_IDS } from '@/shared/agents/tool-groups'
 import { withoutSharedRoomWithheldTools, workspaceToolsOnly } from '@/server/tools/shared-room-policy'
+import { withPersonalComputerToolIds } from './personal-computer-tooling'
+export { withPersonalComputerToolIds }
 
 type ActMode = 'chat' | 'automate'
 type MediaToolIntent = 'image' | 'video' | null
@@ -78,6 +81,8 @@ export function preloadActExternalToolTasks(params: {
   userId: string
   /** In a workspace, the connectors it shares are loaded beside the person's own. */
   workspaceId?: string
+  approvalMode?: 'ask' | 'auto'
+  computerApprovalContext?: 'work' | 'automation'
 }): ActToolPreloadTasks {
   try {
     if (!getActCapabilitiesSync().integrations) {
@@ -116,6 +121,8 @@ export function preloadActExternalToolTasks(params: {
     userId: params.userId,
     accessToken: params.accessToken,
     workspaceId: params.workspaceId,
+    approvalMode: params.approvalMode,
+    computerApprovalContext: params.computerApprovalContext,
   })
   void integrationToolsTask.catch((error) => {
     logger.warn('[conversations/act] integration tool preload failed:', summarizeErrorForLog(error))
@@ -131,6 +138,9 @@ export async function prepareActTooling(params: {
   automationExecution?: boolean
   automationMode?: boolean
   automationId?: string
+  computerApprovalContext?: 'work' | 'automation'
+  approvalMode?: 'ask' | 'auto'
+  findPersonalComputer?: (workspaceId: string, userId: string) => Promise<unknown | null>
   baseUrl: string
   conversationId?: string
   entitlements: Entitlements
@@ -185,10 +195,23 @@ export async function prepareActTooling(params: {
     params.requestedToolIds ?? [],
     memoryEnabled,
   )
-  const baseToolIds = withAgentGrantToolIds(
-    intentToolIds,
-    params.accountAllowedToolIds,
-    params.agentId !== undefined || params.grantedToolSurface === true,
+  const baseToolIds = await withPersonalComputerToolIds(
+    withAgentGrantToolIds(
+      intentToolIds,
+      params.accountAllowedToolIds,
+      params.agentId !== undefined || params.grantedToolSurface === true,
+    ),
+    {
+      userId: params.userId,
+      workspaceId: params.workspaceId,
+      agentId: params.agentId,
+      computerApprovalContext: params.computerApprovalContext,
+      automationExecution: params.automationExecution,
+      automationMode: params.automationMode,
+      mode: params.mode,
+      findPersonalComputer: params.findPersonalComputer ?? ((workspaceId, userId) =>
+        getOverlayServerContext().appData.repositories.computers.findByOwner(workspaceId, 'user', userId)),
+    },
   )
   const policyToolIds = applyAccountToolPolicy(applyRuntimeToolGates(
     baseToolIds,
@@ -211,6 +234,7 @@ export async function prepareActTooling(params: {
           turnId: params.turnId,
           modelId: params.effectiveModelId,
           workspaceOnly: params.sharedRoom,
+          approvalMode: params.approvalMode,
         })
   const [integrationRawAll, mcpToolsResult, webToolSet, webSearchTool, deepSearchTool, webFetchTool] = await Promise.all([
     capabilities.integrations ? params.preloadTasks.integrationToolsTask : Promise.resolve({} as ToolSet),
@@ -223,6 +247,8 @@ export async function prepareActTooling(params: {
         conversationId: params.conversationId,
         turnId: params.turnId,
         automationId: params.automationId,
+        computerApprovalContext: params.computerApprovalContext,
+        approvalMode: params.approvalMode,
         baseUrl: params.baseUrl,
         allowedToolIds: allowedOverlayToolIds,
         forwardCookie: params.forwardCookie ?? undefined,

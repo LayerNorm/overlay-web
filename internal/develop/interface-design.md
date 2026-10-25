@@ -44,6 +44,13 @@ border color for new controls.
 Tailwind utility names apply to class names. Literal CSS, including injected
 note-editor styles, uses standard properties such as `flex-shrink: 0`.
 
+## Agent connection controls
+
+Connecting agent messages use the existing hover-toolbar Stop icon to cancel. Do not
+add inline timeout explanations, Cancel buttons, or preemptive Retry buttons. Recoverable
+failures expose a Retry icon in the same toolbar; retries in progress hide it. Preserve
+failure output and the explicit safety confirmation for runs that need inspection.
+
 ## Resizable panels
 
 Use `PanelResizeHandle` from `@overlay/ui` for adjustable sidebar and side-panel
@@ -80,12 +87,18 @@ in isolated Chromium. Use the Playwright browser or set
 Non-deletion confirmations pass a task-specific `busyLabel` (for example, “Saving…”).
 
 Connected-agent settings use the bound environment's advertised model, effort and permission
-choices. Each control saves for the next turn. Known permission modes use compact labels
-Manual, Edits, Plan, Auto and Bypass; local Bypass requires the shared confirmation dialog.
+choices. Each control saves for the next turn. Permissions use readable runtime labels,
+including Manual, Accept edits, Plan, Auto, Do not ask, and Bypass permissions when advertised.
 An identity edit must not overwrite choices saved through these independent controls.
 Older combined model/effort ids resolve to separate live controls only when both choices
 are advertised. Show the effective effort, preserve it when changing models, and leave
-unsupported choices visibly marked; never replace them with discovery defaults.
+saved but unavailable values visible instead of silently replacing them. Runtime catalogs are
+authoritative: discovery defaults do not imply settings applied to an active run. Keep loading
+and discovery errors explicit, and offer permission defaults only when the host advertises them.
+Full-access permission modes require explicit confirmation on both cloud and local agents.
+
+Native Overlay agent Permissions use the editor's ordinary dirty and Save flow. Ask is the default.
+Choosing Auto requires confirmation and cancellation leaves Ask selected.
 
 Connected-agent drive status sits below the answer without modifying provider Markdown. Saving
 and unsaved states use a quiet status line. Saved file/folder counts expand to at most 32 authorized
@@ -223,6 +236,9 @@ instructions.
 Agent Details uses collapsed `Collapsible` rows for Model, Instructions, Tools
 and Advanced. Keep summaries concise and visible only while collapsed. Mentions
 is a plain heading inside Advanced, not a nested disclosure.
+Native Permissions lives inside Advanced, with the effective Ask/Auto choice in
+the collapsed summary. Keep its existing confirmation and save behavior, and
+preserve Computer takeover/handback controls when regrouping the fields.
 
 Radix forbids empty item values; the adapter uses private index IDs and translates
 back to original public values. Empty options remain selectable (sharing, replay,

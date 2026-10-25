@@ -12,6 +12,7 @@ const harness = v.union(
   v.literal('pi'),
   v.literal('hermes'),
 )
+const writableHarness = v.union(v.literal('overlay'), v.literal('claude-code'), v.literal('codex'))
 const agentVisibility = v.union(v.literal('creator'), v.literal('workspace'))
 const agentValidator = v.object({
   agentId: v.string(),
@@ -41,7 +42,7 @@ const agentValidator = v.object({
 export const createByServer = mutation({
   args: {
     serverSecret: v.string(), agentId: v.string(), principalId: v.string(), workspaceId: v.string(),
-    name: v.string(), description: v.optional(v.string()), instructions: v.string(), harness,
+    name: v.string(), description: v.optional(v.string()), instructions: v.string(), harness: writableHarness,
     permissionMode: v.optional(v.string()), effort: v.optional(v.string()),
     modelId: v.string(), avatarColor: v.optional(v.string()), avatarShape: v.optional(v.string()),
     allowedToolIds: v.array(v.string()),
@@ -181,7 +182,7 @@ export const updateByServer = mutation({
     serverSecret: v.string(), agentId: v.string(), workspaceId: v.string(),
     name: v.optional(v.string()), description: v.optional(v.string()), instructions: v.optional(v.string()),
     permissionMode: v.optional(v.string()), effort: v.optional(v.string()),
-    harness: v.optional(harness), modelId: v.optional(v.string()), avatarColor: v.optional(v.string()),
+    harness: v.optional(writableHarness), modelId: v.optional(v.string()), avatarColor: v.optional(v.string()),
     avatarShape: v.optional(v.string()),
     allowedToolIds: v.optional(v.array(v.string())), now: v.number(),
     teamIds: v.optional(v.array(v.string())), visibility: v.optional(agentVisibility),

@@ -2,6 +2,7 @@ import type { AssistantVisualBlock } from '@overlay/chat-core'
 import { buildAssistantVisualSequence, splitUserDisplayText } from '@overlay/chat-core'
 import type { RoomMessageAttachment, RoomMessageView } from './RoomMessageItem'
 import { driveSyncStatusSchema } from '@layernorm/overlay-agent-bridge-protocol'
+import { NATIVE_AGENT_APPROVAL_PART, readNativeAgentApproval } from '@/shared/agents/native-agent-approval'
 
 export type RoomMessagePart = {
   toolInvocation?: Record<string, unknown>
@@ -245,12 +246,21 @@ export function toRoomMessageView({
   const isAgent = message.authorKind === 'agent' || message.authorKind === 'model'
   const { bodyText, docNames } = splitUserDisplayText(stripAttachmentSummary(message.content ?? ''))
   const remoteQueue = remoteQueueStatus(message.parts)
+  const remoteRun = remoteRunStatus(message.parts)
   const blocks: AssistantVisualBlock[] = (() => {
     if (!isAgent) return []
     // While a connected agent's computer wakes up the row reads like a tool call that is running ("Connecting to
     // computer", shimmering) instead of the stored "Waiting for <name>" text.
     if (remoteQueue) return [{ kind: 'tool', key: 'connect-computer', name: 'connect_computer', state: 'input-available' }]
     const sequence = buildAssistantVisualSequence(displayParts(partsUntilPendingRequest(message.parts)))
+    const environmentName = message.parts?.find(part => part.type === 'data-remote-agent-status')?.data?.environmentName
+    const waitingText = typeof environmentName === 'string' ? `Waiting for ${environmentName}` : undefined
+    const onlyWaitingText = waitingText && (sequence.length === 0 ? bodyText === waitingText
+      : sequence.length === 1 && sequence[0]?.kind === 'text' && sequence[0].text === waitingText)
+    if (onlyWaitingText && (remoteRun?.state === 'recoverable' || remoteRun?.state === 'recovering')) {
+      return [{ kind: 'tool', key: 'connect-computer', name: 'connect_computer',
+        state: remoteRun.state === 'recoverable' ? 'output-error' : 'input-available' }]
+    }
     if (sequence.length > 0) return sequence
     return bodyText ? [{ kind: 'text', text: bodyText }] : []
   })()
@@ -279,8 +289,11 @@ export function toRoomMessageView({
     mentions,
     askedBy: askedBy(message),
     remoteQueue,
+    nativeApproval: message.authorKind === 'agent' && message.status === 'generating'
+      ? readNativeAgentApproval(message.parts?.find((part) => part.type === NATIVE_AGENT_APPROVAL_PART)?.data)
+      : undefined,
     remoteRequest: remoteRequest(message.parts),
-    remoteRun: remoteRunStatus(message.parts),
+    remoteRun,
     remoteDrive: remoteDriveStatus(message.parts),
     // Assistant rows are inserted with status 'generating' at turn start and
     // patched through settle, so createdAt→updatedAt brackets the run.

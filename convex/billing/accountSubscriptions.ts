@@ -189,7 +189,9 @@ export const upsertByServer = mutation({
     ) return { billingAccountId, applied: false }
     const now = Date.now()
     const isCancellation = args.status === 'canceled' && args.planKind === 'free' && args.planAmountCents === 0
-    const periodChanged = !isCancellation && existing?.currentPeriodStart !== undefined
+    // Attaching a first provider subscription is not a renewal of the local allowance.
+    const firstProviderSubscription = !existing?.providerSubscriptionId && Boolean(args.stripeSubscriptionId)
+    const periodChanged = !isCancellation && !firstProviderSubscription && existing?.currentPeriodStart !== undefined
       && args.currentPeriodStart !== undefined
       && args.currentPeriodStart - existing.currentPeriodStart >= 60 * 60 * 1000
     const planKind = args.planKind ?? existing?.planKind ?? 'free'
@@ -458,7 +460,9 @@ export const upsertFromStripeInternal = internalMutation({
       && args.providerEventCreatedAt < existing.providerEventCreatedAt) return { applied: false }
     const now = Date.now()
     const isCancellation = args.status === 'canceled' && args.planKind === 'free' && args.planAmountCents === 0
-    const periodChanged = !isCancellation && existing?.currentPeriodStart !== undefined
+    // Attaching a first provider subscription is not a renewal of the local allowance.
+    const firstProviderSubscription = !existing?.providerSubscriptionId && Boolean(args.stripeSubscriptionId)
+    const periodChanged = !isCancellation && !firstProviderSubscription && existing?.currentPeriodStart !== undefined
       && args.currentPeriodStart !== undefined
       && args.currentPeriodStart - existing.currentPeriodStart >= 60 * 60 * 1000
     const value = {

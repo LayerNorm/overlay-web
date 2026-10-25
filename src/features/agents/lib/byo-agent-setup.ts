@@ -1,4 +1,5 @@
 import type { AgentEnvironmentResource } from '@overlay/api-client'
+import { parseByoModelId } from '@/shared/agents/agent-model'
 import {
   BUILT_IN_USER_OWNED_ACP_ADAPTER_IDS,
   type BuiltInUserOwnedAcpAdapterId,
@@ -16,11 +17,6 @@ export const BUILT_IN_BYO_HARNESSES = [
     id: 'claude-code',
     label: 'Claude Code',
     description: 'Run Anthropic Claude Code through the Agent Client Protocol.',
-  },
-  {
-    id: 'hermes',
-    label: 'Hermes',
-    description: 'Run Hermes 0.20.6 or newer through its official Agent Client Protocol server.',
   },
 ] as const satisfies ReadonlyArray<{
   id: BuiltInUserOwnedAcpAdapterId
@@ -54,24 +50,13 @@ export function acpAdaptersForEnvironment(environment: AgentEnvironmentResource)
   ))
 }
 
-export function availableByoHarnesses(environments: AgentEnvironmentResource[]): ByoHarnessOption[] {
-  const options = new Map<string, ByoHarnessOption>(BUILT_IN_BYO_HARNESSES.map((harness) => [
-    harness.id,
-    { ...harness, connectable: true },
-  ]))
-  for (const environment of environments) {
-    for (const adapter of acpAdaptersForEnvironment(environment)) {
-      if (!options.has(adapter.id)) {
-        options.set(adapter.id, {
-          id: adapter.id,
-          label: adapter.label,
-          description: 'Use the ACP-compatible harness advertised by this environment.',
-          connectable: false,
-        })
-      }
-    }
-  }
-  return [...options.values()]
+export function availableByoHarnesses(): ByoHarnessOption[] {
+  return BUILT_IN_BYO_HARNESSES.map((harness) => ({ ...harness, connectable: true }))
+}
+
+export function resolveByoAdapterId(modelId?: string, bindingAdapterId?: unknown): string {
+  if (typeof bindingAdapterId === 'string' && bindingAdapterId) return bindingAdapterId
+  return (modelId && parseByoModelId(modelId)?.adapterId) || 'codex'
 }
 
 export function builtInHarnessCatalogIsComplete() {
@@ -101,7 +86,8 @@ export function workspaceAgentUsesManagedHarness(
 }
 
 export function environmentSupportsHarness(environment: AgentEnvironmentResource, harnessId: string) {
-  return acpAdaptersForEnvironment(environment).some((adapter) => adapter.id === harnessId)
+  return (BUILT_IN_USER_OWNED_ACP_ADAPTER_IDS as readonly string[]).includes(harnessId)
+    && acpAdaptersForEnvironment(environment).some((adapter) => adapter.id === harnessId)
 }
 
 export function defaultWorkingDirectory(environment: AgentEnvironmentResource | undefined) {

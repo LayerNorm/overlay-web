@@ -15,13 +15,31 @@ import {
   executeUpdateNote,
 } from './notes-executes'
 import { executeBrowserRunTask } from './browser-executes'
+import {
+  executeArchiveTask,
+  executeCommentOnTask,
+  executeCreateTask,
+  executeGetTask,
+  executeListTasks,
+  executeRestoreTask,
+  executeUpdateTask,
+  TASK_CONTEXT_TYPES,
+  TASK_DATE_PATTERN,
+  TASK_STATUS_VALUES,
+} from './work-executes'
 import { executeListChats, executeReadChat } from './chats-executes'
 import {
   executeComputerExec,
+  executeComputerBrowser,
+  executeComputerInput,
+  executeComputerTerminal,
   executeComputerListFiles,
   executeComputerOpenUrl,
   executeComputerReadFile,
+  executeComputerScreenshot,
   executeComputerWriteFile,
+  executeComputerActionWithApproval,
+  type ComputerTerminalAction,
   executeCreateAutomation,
   executeDeleteAutomation,
   executeDraftAutomationFromChat,
@@ -49,6 +67,7 @@ import {
   executeUpdateMemory,
 } from './overlay-executes'
 import { assertOverlayToolAllowed } from './policy'
+import { toolRequiresApproval } from '@overlay/tools-core/policy'
 import {
   executeCreateFolder,
   executeListFiles,
@@ -58,6 +77,159 @@ import {
 } from './files-executes'
 import { runInToolCallScope } from './internal-api'
 import type { OverlayToolsOptions } from './types'
+
+const computerPointSchema = z.object({
+  x: z.number().int().min(0).max(8192),
+  y: z.number().int().min(0).max(8192),
+}).strict()
+const computerBrowserUrlSchema = z.string().url().refine(
+  (value) => /^https?:\/\//i.test(value),
+  'URL must use HTTP or HTTPS.',
+)
+const computerInputVariants = z.discriminatedUnion('action', [
+  z.object({
+    action: z.literal('click'),
+    x: z.number().int().min(0).max(8192),
+    y: z.number().int().min(0).max(8192),
+    button: z.enum(['left', 'middle', 'right']).optional(),
+    count: z.number().int().min(1).max(25).optional(),
+    confirm: z.boolean().optional(),
+  }).strict(),
+  z.object({
+    action: z.literal('double_click'),
+    x: z.number().int().min(0).max(8192),
+    y: z.number().int().min(0).max(8192),
+    confirm: z.boolean().optional(),
+  }).strict(),
+  z.object({
+    action: z.literal('right_click'),
+    x: z.number().int().min(0).max(8192),
+    y: z.number().int().min(0).max(8192),
+    confirm: z.boolean().optional(),
+  }).strict(),
+  z.object({
+    action: z.literal('move'),
+    x: z.number().int().min(0).max(8192),
+    y: z.number().int().min(0).max(8192),
+  }).strict(),
+  z.object({ action: z.literal('drag'), from: computerPointSchema, to: computerPointSchema }).strict(),
+  z.object({ action: z.literal('type'), text: z.string().max(10000) }).strict(),
+  z.object({ action: z.literal('key'), keys: z.string().min(1).max(100) }).strict(),
+  z.object({
+    action: z.literal('scroll'),
+    x: z.number().int().min(0).max(8192).optional(),
+    y: z.number().int().min(0).max(8192).optional(),
+    direction: z.enum(['up', 'down', 'left', 'right']),
+    amount: z.number().int().min(1).max(25),
+  }).strict(),
+  z.object({ action: z.literal('wait'), ms: z.number().int().min(0).max(10000) }).strict(),
+])
+const computerInputSchema = z.object({
+  action: z.enum([
+    'click', 'double_click', 'right_click', 'move', 'drag', 'type', 'key', 'scroll', 'wait',
+  ]),
+  x: z.number().int().min(0).max(8192).optional(),
+  y: z.number().int().min(0).max(8192).optional(),
+  button: z.enum(['left', 'middle', 'right']).optional(),
+  count: z.number().int().min(1).max(25).optional(),
+  confirm: z.boolean().optional(),
+  from: computerPointSchema.optional(),
+  to: computerPointSchema.optional(),
+  text: z.string().max(10000).optional(),
+  keys: z.string().min(1).max(100).optional(),
+  direction: z.enum(['up', 'down', 'left', 'right']).optional(),
+  amount: z.number().int().min(1).max(25).optional(),
+  ms: z.number().int().min(0).max(10000).optional(),
+}).strict().superRefine((input, ctx) => {
+  const parsed = computerInputVariants.safeParse(input)
+  if (!parsed.success) {
+    for (const issue of parsed.error.issues) ctx.addIssue(issue)
+  }
+})
+const computerBrowserVariants = z.discriminatedUnion('action', [
+  z.object({ action: z.literal('navigate'), url: computerBrowserUrlSchema }).strict(),
+  z.object({ action: z.literal('back') }).strict(),
+  z.object({ action: z.literal('forward') }).strict(),
+  z.object({ action: z.literal('reload') }).strict(),
+  z.object({ action: z.literal('snapshot') }).strict(),
+  z.object({
+    action: z.literal('click'),
+    ref: z.string().min(1).max(64),
+    confirm: z.boolean().optional(),
+  }).strict(),
+  z.object({
+    action: z.literal('type'),
+    ref: z.string().min(1).max(64),
+    text: z.string().max(10000),
+    submit: z.boolean().optional(),
+  }).strict(),
+  z.object({
+    action: z.literal('scroll'),
+    direction: z.enum(['up', 'down', 'left', 'right']),
+    amount: z.number().int().min(1).max(25),
+  }).strict(),
+  z.object({
+    action: z.literal('press'),
+    keys: z.enum(['Enter', 'Tab', 'Escape', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'PageDown']),
+  }).strict(),
+  z.object({ action: z.literal('tabs') }).strict(),
+  z.object({ action: z.literal('switch_tab'), index: z.number().int().min(0).max(49) }).strict(),
+  z.object({ action: z.literal('new_tab'), url: computerBrowserUrlSchema }).strict(),
+])
+const computerBrowserSchema = z.object({
+  action: z.enum([
+    'navigate', 'back', 'forward', 'reload', 'snapshot', 'click', 'type',
+    'scroll', 'press', 'tabs', 'switch_tab', 'new_tab',
+  ]),
+  url: computerBrowserUrlSchema.optional(),
+  ref: z.string().min(1).max(64).optional(),
+  confirm: z.boolean().optional(),
+  text: z.string().max(10000).optional(),
+  submit: z.boolean().optional(),
+  direction: z.enum(['up', 'down', 'left', 'right']).optional(),
+  amount: z.number().int().min(1).max(25).optional(),
+  keys: z.enum(['Enter', 'Tab', 'Escape', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'PageDown']).optional(),
+  index: z.number().int().min(0).max(49).optional(),
+}).strict().superRefine((input, ctx) => {
+  const parsed = computerBrowserVariants.safeParse(input)
+  if (!parsed.success) {
+    for (const issue of parsed.error.issues) ctx.addIssue(issue)
+  }
+})
+const computerTerminalIdSchema = z.string().regex(/^t-[0-9a-f]{12}$/)
+const computerTerminalVariants = z.discriminatedUnion('action', [
+  z.object({
+    action: z.literal('start'),
+    command: z.string().min(1).max(100000),
+    cwd: z.string().max(4096).optional(),
+  }).strict(),
+  z.object({
+    action: z.literal('read'),
+    id: computerTerminalIdSchema,
+    offset: z.number().int().min(0).optional(),
+    maxBytes: z.number().int().min(1).max(65536).optional(),
+  }).strict(),
+  z.object({
+    action: z.literal('cancel'),
+    id: computerTerminalIdSchema,
+    signal: z.enum(['INT', 'TERM', 'KILL']).optional(),
+  }).strict(),
+  z.object({ action: z.literal('list') }).strict(),
+])
+const computerTerminalSchema = z.object({
+  action: z.enum(['start', 'read', 'cancel', 'list']),
+  command: z.string().min(1).max(100000).optional(),
+  cwd: z.string().max(4096).optional(),
+  id: computerTerminalIdSchema.optional(),
+  offset: z.number().int().min(0).optional(),
+  maxBytes: z.number().int().min(1).max(65536).optional(),
+  signal: z.enum(['INT', 'TERM', 'KILL']).optional(),
+}).strict().superRefine((input, ctx) => {
+  const parsed = computerTerminalVariants.safeParse(input)
+  if (!parsed.success) {
+    for (const issue of parsed.error.issues) ctx.addIssue(issue)
+  }
+})
 
 /**
  * Overlay-defined tools only (no Composio, no web search). Act agent: full tool surface.
@@ -795,9 +967,17 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
           .optional()
           .describe('Max run time in ms (default 60s, max 5m)'),
       }),
+      ...(options.computerApprovalContext !== undefined
+        ? { needsApproval: () => toolRequiresApproval('computer_exec', {}, { approvalMode: options.approvalMode }) }
+        : {}),
       execute: async (input) => {
         assertToolAllowed('computer_exec')
-        return executeComputerExec(options, input)
+        return await executeComputerActionWithApproval(
+          options,
+          'computer_exec',
+          input,
+          () => executeComputerExec(options, input),
+        )
       },
     })
     }
@@ -849,13 +1029,124 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
         'so signed-in sessions and web apps the user has set up there can be used. ' +
         'The user can watch the desktop live via Open desktop.',
       inputSchema: z.object({
-        url: z.string().url().describe('The URL to open in the computer’s browser'),
+        url: computerBrowserUrlSchema.describe('The HTTP or HTTPS URL to open in the computer’s browser'),
       }),
       execute: async (input) => {
         assertToolAllowed('computer_open_url')
         return executeComputerOpenUrl(options, input)
       },
     })
+    }
+
+    if (shouldExposeTool('computer_screenshot')) {
+      tools.computer_screenshot = tool({
+        description: 'Capture the visible screen on the bound computer and return it as an image.',
+        inputSchema: z.object({}).strict(),
+        execute: async () => {
+          assertToolAllowed('computer_screenshot')
+          return executeComputerScreenshot(options)
+        },
+        toModelOutput: ({ output }) => {
+          if (!output.success) {
+            return { type: 'text', value: output.error }
+          }
+          if (!(output.image instanceof Uint8Array)) {
+            return { type: 'text', value: 'Screenshot failed.' }
+          }
+          return {
+            type: 'content',
+            value: [
+              { type: 'text', text: `Screenshot captured at ${output.width} by ${output.height} pixels.` },
+              {
+                type: 'file',
+                data: { type: 'data', data: output.image },
+                mediaType: 'image/png',
+              },
+            ],
+          }
+        },
+      })
+    }
+
+    if (shouldExposeTool('computer_input')) {
+      tools.computer_input = tool({
+        description:
+          'Interact with the visible desktop using coordinates from the latest computer_screenshot. ' +
+          'Take a screenshot before choosing coordinates and after each action to verify the result. ' +
+          'Risky coordinate clicks require confirm: true after approval. ' +
+          'click, double_click, right_click, and move require x and y; drag requires from and to; ' +
+          'type requires text; key requires keys; scroll requires direction and amount with optional x and y; ' +
+          'wait requires ms. computer_open_url opens pages in this same visible browser.',
+        inputSchema: computerInputSchema,
+        ...(options.computerApprovalContext !== undefined
+          ? { needsApproval: (input) => toolRequiresApproval('computer_input', input, { approvalMode: options.approvalMode }) }
+          : {}),
+        execute: async (input) => {
+          assertToolAllowed('computer_input')
+          const parsed = computerInputVariants.parse(input)
+          return await executeComputerActionWithApproval(
+            options,
+            'computer_input',
+            parsed,
+            () => executeComputerInput(options, parsed),
+          )
+        },
+      })
+    }
+
+    if (shouldExposeTool('computer_browser')) {
+      tools.computer_browser = tool({
+        description:
+          'Control the signed-in browser visible on this computer. Prefer this tool for websites: take a snapshot, then act using its element refs. ' +
+          'Typing, focus and navigation can replace page elements. Take a fresh snapshot after page changes and before reusing refs. ' +
+          'If stale_browser_ref is returned, no action occurred: take a new snapshot and choose the current target, never retry the expired ref or guess a replacement. ' +
+          'For a potentially consequential click, call click with confirm: true so the user can approve it. ' +
+          'Use computer_screenshot and computer_input for non-browser apps or controls absent from a fresh snapshot. The user sees the same browser in Open desktop.',
+        inputSchema: computerBrowserSchema,
+        ...(options.computerApprovalContext !== undefined
+          ? { needsApproval: (input) => toolRequiresApproval('computer_browser', input, { approvalMode: options.approvalMode }) }
+          : {}),
+        execute: async (input) => {
+          assertToolAllowed('computer_browser')
+          const parsed = computerBrowserVariants.parse(input)
+          return await executeComputerActionWithApproval(
+            options,
+            'computer_browser',
+            parsed,
+            () => executeComputerBrowser(options, parsed),
+          )
+        },
+        toModelOutput: ({ output }) => ({
+          type: 'text',
+          value: 'text' in output && typeof output.text === 'string'
+            ? output.text
+            : 'message' in output && typeof output.message === 'string'
+              ? output.message
+              : 'error' in output ? String(output.error) : 'Browser action failed.',
+        }),
+      })
+    }
+
+    if (shouldExposeTool('computer_terminal')) {
+      tools.computer_terminal = tool({
+        description:
+          'Run long-running or non-interactive commands on the bound Overlay Computer, such as builds, servers, or watchers. ' +
+          'Start a session, poll its output with read, and cancel it when done. Starting a command may require approval. The Computer may idle-stop if the agent stops making tool calls, which ends its sessions.',
+        inputSchema: computerTerminalSchema,
+        ...(options.computerApprovalContext !== undefined
+          ? { needsApproval: (input) => toolRequiresApproval('computer_terminal', input, { approvalMode: options.approvalMode }) }
+          : {}),
+        execute: async (input) => {
+          assertToolAllowed('computer_terminal')
+          const parsed = computerTerminalVariants.parse(input) as ComputerTerminalAction
+          return await executeComputerActionWithApproval(
+            options,
+            'computer_terminal',
+            parsed,
+            () => executeComputerTerminal(options, parsed),
+          )
+        },
+      })
     }
 
     if (shouldExposeTool('create_note')) {
@@ -966,6 +1257,109 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
       },
     })
     }
+
+  const taskIdSchema = z.string().min(1).describe('Task id from list_tasks or get_task')
+  const taskStatusSchema = z.enum(TASK_STATUS_VALUES)
+  const taskPrioritySchema = z.enum(['low', 'medium', 'high'])
+  const taskDateSchema = z.string().regex(TASK_DATE_PATTERN, 'Use YYYY-MM-DD')
+  const taskContextSchema = z.array(z.object({
+    type: z.enum(TASK_CONTEXT_TYPES),
+    id: z.string(),
+    label: z.string(),
+  }).strict()).max(50)
+  const taskDoneWhenSchema = z.array(z.object({
+    text: z.string(),
+    checked: z.boolean(),
+  }).strict()).max(50)
+
+  if (shouldExposeTool('list_tasks')) {
+    tools.list_tasks = tool({
+      description: 'List tasks in Work. Filter by scope, status, assignee, title text, and completion.',
+      inputSchema: z.object({
+        scope: z.enum(['personal', 'workspace']).optional(),
+        status: z.union([taskStatusSchema, z.array(taskStatusSchema).min(1)]).optional(),
+        assignee: z.string().optional(),
+        query: z.string().optional(),
+        includeDone: z.boolean().optional(),
+        limit: z.number().int().min(1).max(200).optional(),
+      }).strict(),
+      execute: async (input) => { assertToolAllowed('list_tasks'); return executeListTasks(options, input) },
+    })
+  }
+  if (shouldExposeTool('get_task')) {
+    tools.get_task = tool({
+      description: 'Get a task and its latest activity from Work.',
+      inputSchema: z.object({ taskId: taskIdSchema }).strict(),
+      execute: async (input) => { assertToolAllowed('get_task'); return executeGetTask(options, input) },
+    })
+  }
+  if (shouldExposeTool('create_task')) {
+    tools.create_task = tool({
+      description: 'Create a task in Work. Assigning an agent does not start it.',
+      inputSchema: z.object({
+        title: z.string().min(1),
+        scope: z.enum(['personal', 'workspace']).optional(),
+        description: z.string().optional(),
+        status: taskStatusSchema.optional(),
+        priority: taskPrioritySchema.optional(),
+        assignee: z.string().optional(),
+        reviewer: z.string().optional(),
+        startDate: taskDateSchema.nullable().optional(),
+        dueDate: taskDateSchema.nullable().optional(),
+        parentId: z.string().optional(),
+        blockedBy: z.array(z.string()).max(50).optional(),
+        doneWhen: taskDoneWhenSchema.optional(),
+        context: taskContextSchema.optional(),
+        blocked: z.boolean().optional(),
+      }).strict(),
+      execute: async (input) => { assertToolAllowed('create_task'); return executeCreateTask(options, input) },
+    })
+  }
+  if (shouldExposeTool('update_task')) {
+    tools.update_task = tool({
+      description: 'Update task fields in Work. Include the revision from get_task to avoid overwriting newer changes.',
+      inputSchema: z.object({
+        taskId: taskIdSchema,
+        revision: z.string().optional(),
+        scope: z.enum(['personal', 'workspace']).optional(),
+        title: z.string().optional(),
+        description: z.string().nullable().optional(),
+        status: taskStatusSchema.optional(),
+        blocked: z.boolean().optional(),
+        priority: taskPrioritySchema.optional(),
+        assignee: z.string().nullable().optional(),
+        reviewer: z.string().nullable().optional(),
+        startDate: taskDateSchema.nullable().optional(),
+        dueDate: taskDateSchema.nullable().optional(),
+        parentId: z.string().nullable().optional(),
+        blockedBy: z.array(z.string()).max(50).optional(),
+        doneWhen: taskDoneWhenSchema.optional(),
+        context: taskContextSchema.optional(),
+      }).strict(),
+      execute: async (input) => { assertToolAllowed('update_task'); return executeUpdateTask(options, input) },
+    })
+  }
+  if (shouldExposeTool('comment_on_task')) {
+    tools.comment_on_task = tool({
+      description: 'Add a comment to a task in Work.',
+      inputSchema: z.object({ taskId: taskIdSchema, body: z.string().min(1) }).strict(),
+      execute: async (input) => { assertToolAllowed('comment_on_task'); return executeCommentOnTask(options, input) },
+    })
+  }
+  if (shouldExposeTool('archive_task')) {
+    tools.archive_task = tool({
+      description: 'Archive a task in Work.',
+      inputSchema: z.object({ taskId: taskIdSchema }).strict(),
+      execute: async (input) => { assertToolAllowed('archive_task'); return executeArchiveTask(options, input) },
+    })
+  }
+  if (shouldExposeTool('restore_task')) {
+    tools.restore_task = tool({
+      description: 'Restore an archived task in Work.',
+      inputSchema: z.object({ taskId: taskIdSchema }).strict(),
+      execute: async (input) => { assertToolAllowed('restore_task'); return executeRestoreTask(options, input) },
+    })
+  }
 
   // ── Image & Video generation tools ─────────────────────────────────────────
 
