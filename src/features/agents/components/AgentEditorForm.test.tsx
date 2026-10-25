@@ -9,6 +9,8 @@ import {
   AgentComputerSection,
   AgentTypeSelector,
   ByoAgentFields,
+  OverlayAgentPermissionsField,
+  resolveOverlayPermissionModeSelection,
   OverlayAgentFields,
 } from './AgentEditorForm'
 
@@ -38,6 +40,29 @@ test('agent type selector offers create-your-own and bring-your-own', () => {
   const markup = renderToStaticMarkup(<AgentTypeSelector value="overlay" onChange={() => undefined} />)
   assert.match(markup, /Create your own agent/)
   assert.match(markup, /Bring your own agent/)
+})
+
+test('Overlay agent permissions default to Ask and explain both modes', () => {
+  const ask = renderToStaticMarkup(<OverlayAgentPermissionsField value="ask" onChange={() => undefined} />)
+  assert.match(ask, /Permissions/)
+  assert.match(ask, /Asks before typing, terminal commands, risky clicks and app actions\./)
+  const auto = renderToStaticMarkup(<OverlayAgentPermissionsField value="auto" onChange={() => undefined} />)
+  assert.match(auto, /Runs everything without asking, including in automations\./)
+})
+
+test('Auto permission selection requires confirmation and cancel keeps Ask', () => {
+  const pending = resolveOverlayPermissionModeSelection('ask', 'auto', false)
+  assert.deepEqual(pending, { mode: 'ask', confirmationRequired: true })
+  const cancelled = pending.mode
+  assert.equal(cancelled, 'ask')
+  assert.deepEqual(resolveOverlayPermissionModeSelection('ask', 'auto', true), {
+    mode: 'auto',
+    confirmationRequired: false,
+  })
+  assert.deepEqual(resolveOverlayPermissionModeSelection('auto', 'auto', false), {
+    mode: 'auto',
+    confirmationRequired: false,
+  })
 })
 
 test('overlay fields render instructions, tools, and the mention-first note', () => {
@@ -108,9 +133,12 @@ const agentComputer: Computer = {
 const computerSectionProps = {
   size: 'default' as const,
   onSizeChange: () => undefined,
+  currentUserId: 'user_1',
+  agentName: 'Scout',
   openBusy: false,
   lifecycleBusy: null,
   onOpenDesktop: () => undefined,
+  onControl: () => undefined,
   onTogglePower: () => undefined,
   onDelete: () => undefined,
 }
@@ -138,7 +166,20 @@ test('computer section shows the provisioned desktop and locks the size', () => 
   assert.match(markup, /Scout computer/)
   assert.match(markup, /ready · large/)
   assert.match(markup, /Open desktop/)
+  assert.match(markup, /Take control/)
   assert.doesNotMatch(markup, /aria-label="Computer size"/)
+})
+
+test('computer section shows hand back and takeover status for the current user', () => {
+  const markup = renderToStaticMarkup(
+    <AgentComputerSection
+      enabled
+      computer={{ ...agentComputer, controlledByUserId: 'user_1', controlTakenAt: 2 }}
+      {...computerSectionProps}
+    />,
+  )
+  assert.match(markup, /Hand back/)
+  assert.match(markup, /You have control\. Scout is paused\./)
 })
 
 test('computer section warns that disabling a provisioned computer deletes it', () => {

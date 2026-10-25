@@ -10,6 +10,10 @@ origin must match exactly; redirects are refused. Overlay's bearer/service ident
 workspace checks and idempotency keys remain required. Other origins and Production
 never receive this hosting credential.
 
+An explicit active-workspace header remains an access boundary after membership
+removal: inaccessible targets return 404, just like workspace route targets,
+without falling back to another workspace.
+
 ## Route catalogs
 
 The API documentation generator also checks each v1 filesystem route against

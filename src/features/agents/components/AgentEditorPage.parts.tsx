@@ -10,6 +10,7 @@ import {
   AgentBehaviorFields,
   type AgentModelFieldProps,
   AgentMemoriesSection,
+  OverlayAgentPermissionsField,
   AgentTypeSelector,
 
   DangerZone,
@@ -87,6 +88,7 @@ function AgentEditorFormSection({
     avatarColor,
     avatarShape,
     visibility,
+    permissionMode,
     enabledToolGroups,
     advanced,
     dirty,
@@ -99,6 +101,7 @@ function AgentEditorFormSection({
     setAvatarColor,
     setAvatarShape,
     setVisibility,
+    setPermissionMode,
     setAdvanced,
   } = form
   const {
@@ -132,6 +135,7 @@ function AgentEditorFormSection({
   } = byo
   const {
     agentComputer,
+    currentUserId,
     computerSize,
     setComputerSize,
     computerLoadError,
@@ -140,6 +144,7 @@ function AgentEditorFormSection({
     computerOpenBusy,
     computerLifecycleBusy,
     openAgentComputer,
+    controlAgentComputer,
     toggleAgentComputerPower,
     deleteAgentComputer,
   } = computer
@@ -210,9 +215,12 @@ function AgentEditorFormSection({
               size: computerSize,
               onSizeChange: (next: ComputerSize) => { setComputerSize(next); markDirty() },
               computer: agentComputer,
+              currentUserId,
+              agentName: name,
               openBusy: computerOpenBusy,
               lifecycleBusy: computerLifecycleBusy,
               onOpenDesktop: () => void openAgentComputer(),
+              onControl: () => void controlAgentComputer(),
               onTogglePower: () => void toggleAgentComputerPower(),
               onDelete: () => void deleteAgentComputer(),
               loadError: computerLoadError,
@@ -221,6 +229,13 @@ function AgentEditorFormSection({
               disabled: showcase,
             } : undefined}
           />}
+
+          {agentType === 'overlay' ? (
+            <OverlayAgentPermissionsField
+              value={permissionMode}
+              onChange={(value) => { setPermissionMode(value); markDirty() }}
+            />
+          ) : null}
 
           {agentType === 'overlay' ? (
             <AgentSurfacesField agentName={name} hasAgent={Boolean(agent)} surfaces={surfaces} />

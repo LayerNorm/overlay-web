@@ -31,6 +31,30 @@ const snapshot = (t: ReturnType<typeof convexTest>) => t.run(async ctx => ({
   balance: await ctx.db.query('billingAccountBalances').first(),
 }))
 
+describe('first provider subscription attachment', () => {
+  for (const route of ['internal', 'server'] as const) {
+    test(`${route} preserves usage, holds and top-ups when attaching the first Stripe subscription`, async () => {
+      const t = await fixture({ used: 2_955_000, reserved: 933_000, grant: 100, topUps: 200 })
+      const args = { billingAccountId: 'ba-test', stripeSubscriptionId: 'sub_first', planKind: 'paid' as const,
+        planAmountCents: 800, status: 'active' as const, currentPeriodStart: 4_000_000, providerEventCreatedAt: 2 }
+      const update = () => t.mutation(route === 'internal' ? internalUpdate : serverUpdate,
+        route === 'internal' ? args : { ...args, serverSecret: secret })
+      await update()
+      await update()
+      expect((await snapshot(t)).balance).toMatchObject({ includedMicros: 8_000_000, usedMicros: 2_955_000,
+        allowanceUsedMicros: 2_955_000, reservedMicros: 933_000, institutionalGrantMicros: 100,
+        topUpPurchasedMicros: 200, topUpBalanceMicros: 200 })
+      expect((await snapshot(t)).subscription).toMatchObject({ providerSubscriptionId: 'sub_first', planAmountCents: 800 })
+      const before = await snapshot(t)
+      const renewal = { ...args, currentPeriodStart: 8_000_000, providerEventCreatedAt: 3 }
+      await expect(t.mutation(route === 'internal' ? internalUpdate : serverUpdate,
+        route === 'internal' ? renewal : { ...renewal, serverSecret: secret }))
+        .rejects.toThrow('billing_period_rollover_has_active_reservations')
+      expect(await snapshot(t)).toEqual(before)
+    })
+  }
+})
+
 describe('subscription cancellation preserves paid usage accounting', () => {
   for (const route of ['internal', 'server'] as const) {
     test(`${route} cancellation succeeds after spend and does not leave unused paid credit`, async () => {

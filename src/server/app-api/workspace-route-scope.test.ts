@@ -4,7 +4,7 @@ import { NextRequest } from 'next/server'
 import type { WorkspaceAccess } from '@overlay/workspace-contracts'
 import type { AuthenticatedAppUser } from '@/server/auth/app-api-auth'
 import { ACTIVE_WORKSPACE_HEADER, ROUTE_WORKSPACE_HEADER } from '@/shared/workspaces/constants'
-import { resolveWorkspaceRequestScope } from './workspace-route-scope'
+import { resolveWorkspaceRequestScope, UnavailableWorkspaceRouteError } from './workspace-route-scope'
 
 function access(id: string): WorkspaceAccess {
   return { workspace: { id } } as WorkspaceAccess
@@ -111,6 +111,18 @@ test('the legacy active-workspace action is not mistaken for an immutable ID', a
   })
   await resolveWorkspaceRequestScope(request, session(), state.service)
   assert.deepEqual(state.ids, ['workspace-a'])
+})
+
+test('a revoked explicit active-workspace header returns unavailable without falling back', async () => {
+  const state = harness(['removed-workspace'])
+  const request = new NextRequest('https://app.example/api/v1/agents', {
+    headers: { [ACTIVE_WORKSPACE_HEADER]: 'removed-workspace' },
+  })
+  await assert.rejects(
+    resolveWorkspaceRequestScope(request, session(), state.service),
+    UnavailableWorkspaceRouteError,
+  )
+  assert.deepEqual(state.ids, ['removed-workspace'])
 })
 
 test('same-origin Referer is a browser-only fallback; native callers retain legacy scope', async () => {

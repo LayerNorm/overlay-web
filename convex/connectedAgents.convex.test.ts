@@ -4,6 +4,7 @@ import { makeFunctionReference } from 'convex/server'
 import schema from './schema'
 import type { ConnectedAgentContractRepository } from '../src/shared/agents/connected-agent-repository-contract'
 import { verifyConnectedAgentRepositoryContract } from '../src/shared/agents/connected-agent-repository-contract'
+import { prepareSandboxSpendLimits } from './lib/sandboxSpendLimits'
 
 const modules = import.meta.glob('./**/*.ts')
 const secret = 'connected-agent-contract-secret'
@@ -11,12 +12,189 @@ const secret = 'connected-agent-contract-secret'
 beforeAll(() => { process.env.INTERNAL_API_SECRET = secret })
 
 describe('Convex connected-agent provider contract', () => {
+  test('runtime holds reserve workspace and subject credit, then settle only authoritative execution cost', async () => {
+    const convex = convexTest(schema, modules)
+    const workspaceId = 'runtime_workspace'
+    const payer = { scope: 'workspace', billingAccountId: 'runtime_wallet', userId: 'user', workspaceId, spendSubjectKind: 'programmatic', spendSubjectId: 'agent:a1' }
+    const call = (name: string, args: Record<string, unknown>) => convex.mutation(reference(name), { ...args, serverSecret: secret })
+    await call('createEnvironmentByServer', { id: 'runtime_env', workspaceId, kind: 'managed', name: 'Runtime', status: 'online', capabilities: {}, now: 1 })
+    await call('createSandboxLeaseByServer', {
+      id: 'runtime_lease', workspaceId, environmentId: 'runtime_env', provider: 'e2b', providerReference: 'sandbox', status: 'running', reservedUntil: 1_000_000,
+      usage: { meteredUsage: {}, meterVersion: 0, lastPayer: payer }, cleanupAttempts: 0, now: 1,
+    })
+    const ids = await convex.run(async (ctx) => {
+      await ctx.db.insert('billingAccounts', {
+        billingAccountId: 'runtime_wallet', workspaceId, scope: 'workspace', status: 'active', pricingVersion: 'markup_25_v1', markupBasisPoints: 2_500, createdAt: 1, updatedAt: 1,
+      })
+      await ctx.db.insert('billingAccountSubscriptions', subscriptionRow('runtime_wallet'))
+      const balance = await ctx.db.insert('billingAccountBalances', {
+        billingAccountId: 'runtime_wallet', mode: 'budgeted', includedMicros: 10_000_000, institutionalGrantMicros: 0, allowanceUsedMicros: 0,
+        topUpPurchasedMicros: 0, topUpBalanceMicros: 0, usedMicros: 0, reservedMicros: 500_000, version: 1, createdAt: 1, updatedAt: 1,
+      })
+      const limit = await ctx.db.insert('billingAccountSpendLimits', {
+        billingAccountId: 'runtime_wallet', subjectKind: 'programmatic', subjectId: 'agent:a1', limitMicros: 5_000_000,
+        usedMicros: 0, reservedMicros: 200_000, periodStart: 0, periodEnd: 1_000_000, version: 1, createdAt: 1, updatedAt: 1,
+      })
+      const member = await ctx.db.insert('billingAccountSpendLimits', {
+        billingAccountId: 'runtime_wallet', subjectKind: 'member', subjectId: 'user', limitMicros: 6_000_000,
+        usedMicros: 0, reservedMicros: 100_000, periodStart: 0, periodEnd: 1_000_000, version: 1, createdAt: 1, updatedAt: 1,
+      })
+      return { balance, limit, member }
+    })
+    const tick = (version: number, holdCents: number, costCents = 0, overrides = {}) => call('meterSandboxLeaseDebitByServer', {
+      workspaceId, leaseId: 'runtime_lease', now: version + 10, meteredAt: version + 10,
+      expectedMeterVersion: version, meteredProviderReference: 'sandbox', meteredUsage: { wallTimeMs: version * 1_000 },
+      payer, runtimeHoldCents: holdCents, minRemainingCents: 0,
+      ...(costCents ? { charge: { costCents, providerCostUsd: costCents / 125, durationSeconds: 1, modelId: 'sandbox/e2b', metadata: {} } } : {}),
+      ...overrides,
+    })
+    expect(await tick(0, 200)).toMatchObject({ applied: true, remainingCents: 750, meterVersion: 1 })
+    expect(await tick(0, 200)).toMatchObject({ applied: false, reason: 'lease_conflict' })
+    expect(await tick(1, 300)).toMatchObject({ applied: true, remainingCents: 650, meterVersion: 2 })
+    await convex.run(async (ctx) => {
+      expect(await ctx.db.get(ids.member)).toMatchObject({ usedMicros: 0, reservedMicros: 3_100_000 })
+      await ctx.db.patch(ids.member, { limitMicros: 3_500_000 })
+    })
+    expect(await tick(2, 400)).toMatchObject({ applied: false, reason: 'insufficient_budget', remainingCents: 340 })
+    await convex.run(async (ctx) => { await ctx.db.patch(ids.member, { limitMicros: 6_000_000 }) })
+    await expect(tick(2, 300, 0, { payer: { ...payer, spendSubjectId: 'agent:other' } })).rejects.toThrow('sandbox_runtime_hold_identity_changed')
+    await expect(tick(2, 300, 0, { payer: { ...payer, userId: 'another-member' } })).rejects.toThrow('sandbox_runtime_hold_identity_changed')
+    expect(await tick(2, 600, 0, { providerEvidence: { usage: { finalSeconds: 5 }, stopped: true } }))
+      .toMatchObject({ applied: false, reason: 'insufficient_budget', remainingCents: 480 })
+    await convex.run(async (ctx) => {
+      expect(await ctx.db.get(ids.balance)).toMatchObject({ usedMicros: 0, reservedMicros: 3_500_000 })
+      expect(await ctx.db.get(ids.limit)).toMatchObject({ usedMicros: 0, reservedMicros: 3_200_000 })
+      const lease = await ctx.db.query('agentSandboxLeases').withIndex('by_leaseId', (q) => q.eq('leaseId', 'runtime_lease')).unique()
+      expect(lease?.usage).toMatchObject({ meterVersion: 2, lastProviderEvidence: { usage: { finalSeconds: 5 }, stopped: true, providerReference: 'sandbox' } })
+    })
+    expect(await tick(2, 50, 100)).toMatchObject({ applied: true, remainingCents: 800, meterVersion: 3 })
+    await convex.run(async (ctx) => { await ctx.db.patch(ids.member, { limitMicros: 1 }) })
+    expect(await tick(3, 0, 20)).toMatchObject({ applied: true, remainingCents: 830, meterVersion: 4 })
+    await convex.run(async (ctx) => {
+      expect(await ctx.db.get(ids.balance)).toMatchObject({ usedMicros: 1_200_000, allowanceUsedMicros: 1_200_000, reservedMicros: 500_000 })
+      expect(await ctx.db.get(ids.limit)).toMatchObject({ usedMicros: 1_200_000, reservedMicros: 200_000 })
+      expect(await ctx.db.get(ids.member)).toMatchObject({ usedMicros: 1_200_000, reservedMicros: 100_000 })
+      const operations = await ctx.db.query('usageOperations').collect()
+      expect(operations).toHaveLength(2)
+      expect(operations[0]?.sandboxEvidence).toMatchObject({ category: 'compute', provider: 'e2b', providerCostUsd: 0.8, pricingVersion: 'markup_25_v1' })
+    })
+  })
+
+  test('without a paid plan, live machine time is refused but confirmed-stopped usage still settles', async () => {
+    const convex = convexTest(schema, modules)
+    const workspaceId = 'downgrade_workspace'
+    const payer = { scope: 'workspace', billingAccountId: 'downgrade_wallet', userId: 'user', workspaceId }
+    const call = (name: string, args: Record<string, unknown>) => convex.mutation(reference(name), { ...args, serverSecret: secret })
+    await call('createEnvironmentByServer', { id: 'downgrade_env', workspaceId, kind: 'managed', name: 'Downgrade', status: 'online', capabilities: {}, now: 1 })
+    await call('createSandboxLeaseByServer', {
+      id: 'downgrade_lease', workspaceId, environmentId: 'downgrade_env', provider: 'box', providerReference: 'sandbox', status: 'running', reservedUntil: 1_000_000,
+      usage: { meteredUsage: {}, meterVersion: 0, meteredProviderReference: 'sandbox', lastPayer: payer }, cleanupAttempts: 0, now: 1,
+    })
+    await convex.run(async (ctx) => {
+      await ctx.db.insert('billingAccounts', {
+        billingAccountId: 'downgrade_wallet', workspaceId, scope: 'workspace', status: 'active', pricingVersion: 'markup_25_v1', markupBasisPoints: 2_500, createdAt: 1, updatedAt: 1,
+      })
+      await ctx.db.insert('billingAccountSubscriptions', subscriptionRow('downgrade_wallet', 'free'))
+      await ctx.db.insert('billingAccountBalances', {
+        billingAccountId: 'downgrade_wallet', mode: 'budgeted', includedMicros: 10_000_000, institutionalGrantMicros: 0, allowanceUsedMicros: 0,
+        topUpPurchasedMicros: 0, topUpBalanceMicros: 0, usedMicros: 0, reservedMicros: 0, version: 1, createdAt: 1, updatedAt: 1,
+      })
+    })
+    const charge = { costCents: 50, providerCostUsd: 0.4, durationSeconds: 60, modelId: 'sandbox/box', metadata: {} }
+    const tick = (overrides: Record<string, unknown>) => call('meterSandboxLeaseDebitByServer', {
+      workspaceId, leaseId: 'downgrade_lease', now: 10, meteredAt: 10, expectedMeterVersion: 0,
+      meteredProviderReference: 'sandbox', meteredUsage: { wallTimeMs: 60_000 }, payer, minRemainingCents: 0, ...overrides,
+    })
+    expect(await tick({ charge, providerEvidence: { usage: {}, stopped: false } })).toMatchObject({ applied: false, reason: 'paid_plan_required' })
+    expect(await tick({ runtimeHoldCents: 10, providerEvidence: { usage: {}, stopped: true } })).toMatchObject({ applied: false, reason: 'paid_plan_required' })
+    expect(await tick({ charge, providerEvidence: { usage: {}, stopped: true } })).toMatchObject({ applied: true, meterVersion: 1, remainingCents: 950 })
+    await convex.run(async (ctx) => {
+      expect(await ctx.db.query('usageOperations').collect()).toHaveLength(1)
+    })
+  })
+
+  test('a previous-period runtime hold cannot consume another reservation after limit rollover', async () => {
+    const convex = convexTest(schema, modules)
+    await convex.run(async (ctx) => {
+      const limit = await ctx.db.insert('billingAccountSpendLimits', {
+        billingAccountId: 'wallet', subjectKind: 'member', subjectId: 'user', limitMicros: 600,
+        usedMicros: 100, reservedMicros: 200, periodStart: 100, periodEnd: 1_000, version: 2, createdAt: 1, updatedAt: 100,
+      })
+      const result = await prepareSandboxSpendLimits(ctx, {
+        billingAccountId: 'wallet', userId: 'user', now: 200,
+        usage: { runtimeHoldLimits: [{ id: limit, periodStart: 0 }] },
+        previousHoldMicros: 500, holdMicros: 350, chargeMicros: 0,
+      })
+      expect(result).toEqual({ ok: false, remainingMicros: 300 })
+      expect(await ctx.db.get(limit)).toMatchObject({ usedMicros: 100, reservedMicros: 200 })
+    })
+  })
+
   test('rejects a missing server capability before reading tenant state', async () => {
     const convex = convexTest(schema, modules)
     await expect(convex.mutation(reference('createEnvironmentByServer'), {
       serverSecret: 'wrong-secret', id: 'environment', workspaceId: 'workspace', kind: 'local',
       name: 'Host', status: 'online', capabilities: {}, now: 1,
     })).rejects.toThrow(/Unauthorized/)
+  })
+
+  test('claims meter batches by due time and makes overlapping sweeps disjoint', async () => {
+    const convex = convexTest(schema, modules)
+    const call = (name: string, args: Record<string, unknown>) => convex.mutation(reference(name), { ...args, serverSecret: secret })
+    for (let index = 0; index < 45; index += 1) {
+      await call('createEnvironmentByServer', {
+        id: `env-${index}`, workspaceId: 'fair-ws', kind: 'managed', name: 'Fair lease',
+        status: 'online', capabilities: {}, now: 1,
+      })
+      await call('createSandboxLeaseByServer', {
+        id: `fair-${index}`, workspaceId: 'fair-ws',
+        environmentId: `env-${index}`, provider: 'box', status: 'running',
+        reservedUntil: 500_000, usage: { meteredUsage: {}, meterVersion: 0 },
+        cleanupAttempts: 0, now: 1, nextMeterAt: index === 0 ? undefined : 1,
+      })
+    }
+    const claim = (token: string) => call('claimSandboxLeasesByServer', {
+      statuses: ['running'], now: 10_000, limit: 20, claimToken: token, claimUntil: 40_000,
+    })
+    const [firstResult, overlappingResult] = await Promise.all([claim('sweep-a'), claim('sweep-b')]) as Array<{
+      leases: Array<{ id: string }>
+      deferred: boolean
+    }>
+    const first = firstResult.leases
+    const overlapping = overlappingResult.leases
+    const firstIds = new Set([...first, ...overlapping].map((lease) => lease.id))
+    expect(first.length + overlapping.length).toBe(40)
+    expect(firstIds.size).toBe(40)
+    const remaining = (await claim('sweep-c') as { leases: Array<{ id: string }> }).leases
+    expect(remaining).toHaveLength(5)
+    expect(remaining.some((lease) => firstIds.has(lease.id))).toBe(false)
+    const last = await claim('sweep-d') as { leases: Array<{ id: string }> }
+    expect(last.leases).toHaveLength(0)
+  })
+
+  test('defers blocked cleanup heads so due leases behind more than one batch become claimable', async () => {
+    const convex = convexTest(schema, modules)
+    const call = (name: string, args: Record<string, unknown>) => convex.mutation(reference(name), { ...args, serverSecret: secret })
+    for (let index = 0; index < 33; index += 1) {
+      await call('createEnvironmentByServer', {
+        id: `blocked-env-${index}`, workspaceId: 'defer-ws', kind: 'managed', name: 'Deferred lease',
+        status: 'online', capabilities: {}, now: 1,
+      })
+      await call('createSandboxLeaseByServer', {
+        id: `defer-${index}`, workspaceId: 'defer-ws',
+        environmentId: `blocked-env-${index}`, provider: 'box', status: 'running',
+        reservedUntil: 500_000, usage: { meteredUsage: {}, meterVersion: 0 },
+        cleanupAttempts: 0, cleanupAfter: index < 30 ? 20_000 : undefined, now: 1,
+      })
+    }
+    const claim = (token: string) => call('claimSandboxLeasesByServer', {
+      statuses: ['running'], now: 10_000, limit: 20, claimToken: token, claimUntil: 40_000,
+    }) as Promise<{ leases: Array<{ id: string }>; deferred: boolean }>
+    const deferred = await claim('blocked-a')
+    expect(deferred.leases).toHaveLength(0)
+    expect(deferred.deferred).toBe(true)
+    const due = await claim('blocked-b')
+    expect(due.leases.map((lease) => lease.id)).toEqual(['defer-30', 'defer-31', 'defer-32'])
   })
 
   test('passes shared lifecycle, tenancy, ordering and deletion semantics', async () => {
@@ -110,6 +288,7 @@ describe('Convex connected-agent provider contract', () => {
         status: 'active', pricingVersion: 'markup_25_v1', markupBasisPoints: 2_500,
         createdAt: 1, updatedAt: 1,
       })
+      await ctx.db.insert('billingAccountSubscriptions', subscriptionRow('billing_meter'))
       // $10 funded: $10 = 1000 cents = 10_000_000 micros.
       await ctx.db.insert('billingAccountBalances', {
         billingAccountId: 'billing_meter', mode: 'budgeted',
@@ -166,6 +345,42 @@ describe('Convex connected-agent provider contract', () => {
       })
     expect(declined).toMatchObject({ applied: false, reason: 'insufficient_budget', remainingCents: 800 })
 
+    const limitId = await convex.run(async (ctx) => {
+      await ctx.db.insert('billingAccounts', {
+        billingAccountId: 'foreign_wallet', scope: 'workspace', workspaceId: 'foreign_workspace',
+        status: 'active', pricingVersion: 'markup_25_v1', markupBasisPoints: 2_500, createdAt: 1, updatedAt: 1,
+      })
+      await ctx.db.insert('billingAccountBalances', {
+        billingAccountId: 'foreign_wallet', mode: 'budgeted', includedMicros: 10_000_000,
+        institutionalGrantMicros: 0, allowanceUsedMicros: 0, topUpPurchasedMicros: 0,
+        topUpBalanceMicros: 0, usedMicros: 0, reservedMicros: 0, version: 1, createdAt: 1, updatedAt: 1,
+      })
+      return await ctx.db.insert('billingAccountSpendLimits', {
+        billingAccountId: 'billing_meter', subjectKind: 'programmatic', subjectId: 'agent:a1',
+        limitMicros: 1_000_000, usedMicros: 990_000, reservedMicros: 10_000,
+        periodStart: 0, periodEnd: 1_000, version: 1, createdAt: 1, updatedAt: 1,
+      })
+    })
+    const nextTick = {
+      workspaceId, leaseId: 'meter_lease', now: 301, expectedMeterVersion: 1,
+      meteredUsage: { wallTimeMs: 200_000 }, meteredAt: 301,
+      meteredProviderReference: 'sandbox-1', minRemainingCents: 0,
+      charge: { costCents: 1, durationSeconds: 1, modelId: 'sandbox/box', providerCostUsd: 0.008, metadata: {} },
+    }
+    await expect(call('meterSandboxLeaseDebitByServer', {
+      ...nextTick, payer: { scope: 'workspace', billingAccountId: 'foreign_wallet', userId: 'user_meter', workspaceId: 'foreign_workspace' },
+    })).rejects.toThrow('workspace_billing_account_mismatch')
+    const limited = await call('meterSandboxLeaseDebitByServer', {
+      ...nextTick, payer: { scope: 'workspace', billingAccountId: 'billing_meter', userId: 'user_meter', workspaceId, spendSubjectKind: 'programmatic', spendSubjectId: 'agent:a1' },
+    })
+    expect(limited).toMatchObject({ applied: false, reason: 'insufficient_budget', remainingCents: 0 })
+    expect(await read('getSandboxLeaseByServer', { workspaceId, leaseId: 'meter_lease' })).toMatchObject({ usage: { meterVersion: 1 } })
+    await convex.run(async (ctx) => {
+      const foreign = await ctx.db.query('billingAccountBalances').withIndex('by_billingAccountId', (q) => q.eq('billingAccountId', 'foreign_wallet')).unique()
+      expect(foreign?.usedMicros).toBe(0)
+      await ctx.db.delete(limitId)
+    })
+
     // Stop the lease: status flips to stopping, still meterable for the tail.
     const stopped = await call<{ status: string }>('stopSandboxLeaseByServer', {
       workspaceId, leaseId: 'meter_lease', reason: 'low_balance', now: 400,
@@ -197,6 +412,13 @@ describe('Convex connected-agent provider contract', () => {
     expect(lease.usage.meteredUsage.wallTimeMs).toBe(200_000)
   })
 })
+
+function subscriptionRow(billingAccountId: string, planKind: 'free' | 'paid' = 'paid') {
+  return {
+    billingAccountId, provider: 'test', planKind, planVersion: 'variable_v2' as const, planAmountCents: planKind === 'paid' ? 500 : 0,
+    markupBasisPoints: 2_500, status: 'active' as const, autoTopUpEnabled: false, autoTopUpAmountCents: 0, createdAt: 1, updatedAt: 1,
+  }
+}
 
 function reference(operation: string) {
   return makeFunctionReference<'mutation'>(`agents/connectedAgents:${operation}`)

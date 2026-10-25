@@ -5,12 +5,15 @@ import {
   OPENROUTER_FREE_MODEL_ID,
   getModelForId,
   getModelsByIntelligence,
+  isFreeTierModel,
   listModelInfo,
+  pickBestModelForAct,
   resolveModelId,
   toAnthropicApiModelId,
   toOpenAIApiModelId,
   toOpenRouterApiModelId,
 } from './index'
+import { pricingFromCatalog } from './adapters/common'
 
 test('resolves legacy model aliases', () => {
   assert.equal(resolveModelId('claude-opus-4-6'), 'anthropic/claude-opus-4.7')
@@ -81,4 +84,19 @@ test('free-tier users hoist free models above premium', () => {
       'openai/gpt-5.6-luna',
     ],
   )
+})
+
+test('MiniMax M3.1 Flash has zero cost without becoming a free-tier router', () => {
+  const modelId = 'minimax/minimax-m3.1-flash'
+  const model = getModelForId(modelId)
+
+  assert.equal(model?.name, 'MiniMax M3.1 Flash')
+  assert.equal(model?.cost, 0)
+  assert.equal(model?.speedTier, 3)
+  assert.equal(model?.supportsVision, true)
+  assert.equal(model?.supportsReasoning, true)
+  assert.equal(model?.supportsZeroDataRetention, false)
+  assert.equal(isFreeTierModel(modelId), false)
+  assert.equal(pricingFromCatalog(modelId).isFree, true)
+  assert.equal(pickBestModelForAct([modelId, FREE_TIER_AUTO_MODEL_ID]), FREE_TIER_AUTO_MODEL_ID)
 })

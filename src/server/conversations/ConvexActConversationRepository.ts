@@ -407,6 +407,7 @@ export class ConvexActConversationRepository implements ActConversationRepositor
   }
 
   async getLatestAgentRun(args: {
+    agentRunId?: string
     remoteRunId?: string
     conversationId: ConversationId
     userId: string
@@ -414,6 +415,7 @@ export class ConvexActConversationRepository implements ActConversationRepositor
     const run = await readCompatibleAgentRun(args.remoteRunId, remoteRunId =>
       convex.query<ConvexAgentRunDoc | null>('chat/conversations:getLatestAgentRun', {
         conversationId: args.conversationId, userId: args.userId,
+        ...(args.agentRunId ? {agentRunId: args.agentRunId as Id<'conversationAgentRuns'>} : {}),
         ...(remoteRunId ? {remoteRunId} : {}), serverSecret: this.serverSecret,
       }, {throwOnError: true}))
     return run ? mapConvexAgentRun(run) : null

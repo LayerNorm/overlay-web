@@ -257,3 +257,29 @@ test('provider-managed connection deletion is denied and audited', async () => {
     reason: 'Provider does not support disconnect',
   })
 })
+
+test('Executor approval metadata survives toolset reconstruction', async () => {
+  const executor = new ExecutorIntegrationProvider({
+    apiBaseUrl: 'https://executor.example.test/api',
+    webBaseUrl: 'https://executor.example.test',
+    apiKey: 'test',
+    fetcher: async () => json([
+      { address: 'mail.send', integration: 'mail', name: 'Send', description: 'Send mail', requiresApproval: true },
+      { address: 'mail.list', integration: 'mail', name: 'List', description: 'List mail', requiresApproval: false },
+    ]),
+  })
+  const toolOptions = { userId: 'user-1', approvalMode: 'ask', computerApprovalContext: 'work' } as never
+  const searchTools = await executor.createToolSet(toolOptions)
+  const search = searchTools.EXECUTOR_SEARCH_TOOLS as unknown as {
+    execute(input: { query: string; limit: number }, options: unknown): Promise<unknown>
+  }
+  await search.execute({ query: 'mail', limit: 10 }, {})
+
+  const rebuiltTools = await executor.createToolSet(toolOptions)
+  const execute = rebuiltTools.EXECUTOR_EXECUTE_TOOL as unknown as {
+    needsApproval(input: { toolAddress: string }): boolean
+  }
+  assert.equal(execute.needsApproval({ toolAddress: 'mail.send' }), true)
+  assert.equal(execute.needsApproval({ toolAddress: 'mail.list' }), false)
+  assert.equal(execute.needsApproval({ toolAddress: 'unknown.tool' }), true)
+})

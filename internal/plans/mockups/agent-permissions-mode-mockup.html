@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Agent permissions mode</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&display=swap">
+<style>
+:root{--bg:#fff;--panel:#fff;--fg:#0a0a0a;--muted:#737373;--border:#e5e5e5;--subtle:#f5f5f5;--seg:#f5f5f5;--seg-on:#fff;--btn:#ececec;--btn-fg:#0a0a0a;--app:#fafafa}
+.dark{--bg:#0a0a0a;--panel:#171717;--fg:#fafafa;--muted:#a3a3a3;--border:#2a2a2a;--subtle:#202020;--seg:#262626;--seg-on:#3a3a3a;--btn:#2e2e2e;--btn-fg:#fafafa;--app:#0f0f0f}
+*{box-sizing:border-box}
+body{margin:0;font-family:Geist,system-ui,sans-serif;background:var(--app);color:var(--fg);font-size:14px;height:100vh;display:flex}
+.main{flex:1;display:flex;align-items:center;justify-content:center;color:var(--muted)}
+.panel{width:380px;background:var(--panel);border-left:1px solid var(--border);display:flex;flex-direction:column}
+.head{height:48px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;border-bottom:1px solid var(--border);font-weight:500}
+.body{padding:20px 16px;display:flex;flex-direction:column;gap:20px;overflow:auto}
+.lbl{font-size:12px;font-weight:500;margin-bottom:6px}
+.input{height:36px;border:1px solid var(--border);border-radius:8px;padding:0 10px;display:flex;align-items:center;background:var(--panel)}
+.seg{display:flex;background:var(--seg);border-radius:8px;padding:3px;gap:3px}
+.seg button{flex:1;height:30px;border:0;border-radius:6px;background:transparent;color:var(--muted);font:inherit;font-size:13px;cursor:pointer}
+.seg button.on{background:var(--seg-on);color:var(--fg);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.hint{font-size:12px;color:var(--muted);margin-top:6px;line-height:16px}
+.toggle{position:fixed;left:16px;bottom:16px;height:32px;padding:0 12px;border:0;border-radius:8px;background:var(--btn);color:var(--btn-fg);font:inherit;font-size:13px;cursor:pointer}
+.save{height:36px;border:0;border-radius:8px;background:var(--btn);color:var(--btn-fg);font:inherit;font-weight:500}
+.chip{display:inline-flex;gap:6px;flex-wrap:wrap}
+.chip span{font-size:12px;border:1px solid var(--border);border-radius:6px;padding:3px 8px}
+</style>
+</head>
+<body>
+<div class="main">Agent chat</div>
+<aside class="panel">
+  <div class="head">Agent settings <span style="color:var(--muted)">✕</span></div>
+  <div class="body">
+    <div><div class="lbl">Name</div><div class="input">Research assistant</div></div>
+    <div><div class="lbl">Model</div><div class="input">Claude Sonnet 5</div></div>
+    <div><div class="lbl">Tools</div><div class="chip"><span>Computer</span><span>Notes</span><span>Files</span><span>Web</span></div></div>
+    <div>
+      <div class="lbl">Permissions</div>
+      <div class="seg" role="radiogroup" aria-label="Permissions">
+        <button class="on" data-mode="ask">Ask</button>
+        <button data-mode="auto">Auto</button>
+      </div>
+      <div class="hint" id="hint"></div>
+    </div>
+    <div><div class="lbl">Access</div><div class="input">Everyone in this workspace</div></div>
+    <button class="save">Save changes</button>
+  </div>
+</aside>
+<button class="toggle" id="theme">Dark mode</button>
+<script>
+const hints={ask:'Asks before typing, terminal commands, risky clicks and app actions.',auto:'Runs everything without asking, including in automations.'}
+const hint=document.getElementById('hint')
+document.querySelectorAll('.seg button').forEach(b=>b.onclick=()=>{document.querySelectorAll('.seg button').forEach(x=>x.classList.toggle('on',x===b));hint.textContent=hints[b.dataset.mode]})
+hint.textContent=hints.ask
+document.getElementById('theme').onclick=e=>{const d=document.documentElement.classList.toggle('dark');e.target.textContent=d?'Light mode':'Dark mode'}
+</script>
+</body>
+</html>

@@ -6,6 +6,12 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Settings breadcrumbs read Settings > page instead of a Personal or Workspace prefix.
 
+- Return not found for a removed workspace retained in an API client's active-workspace header.
+
+- Reject native approval decisions from users outside the conversation with a clear not-found response.
+
+- Retain native-agent tool calls and their real results when durable turns finalize, so completed execution evidence survives reload.
+
 - Clear connection-error notices when retrying a remote agent that produced no text; preserve genuine partial replies and their recovery offsets.
 
 - Reuse explicit Preview-only, non-refilling machine QA funding while keeping ordinary Personal previews free.
@@ -26,6 +32,24 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Add task tools for listing, reading, creating, updating, commenting on, archiving, and restoring Work tasks, with agent activity attribution. Updates check revisions inside the mutation and commit fields, status and scope together, preserving concurrent edits and avoiding partial changes.
 - Let workspace-visible and personally owned agents take Personal tasks, keep creator-only agents private from other members, and preserve assignment eligibility when tasks change scope.
+
+- Restore Resume and Release control for the controlling user after reloading an agent conversation.
+- Keep synthetic Computer QA funding behind explicit Preview fixture opt-in while preserving existing test balances.
+- Allow native-agent workflow retries to recapture the screen without replaying clicks, typing, commands or unknown tools. Keep fresh authorization and billing checks, and log safe preparation-failure metadata.
+
+- Browser tools now report expired element references as recoverable stale references and direct agents to refresh their snapshot without guessing or clicking a replacement target.
+- Apply Stripe webhook event markers and workspace billing updates atomically so failed writes remain retryable without duplicate credit grants.
+- Keep agent Computer controls and background refreshes scoped to the current workspace and agent, including wake and takeover responses.
+- Workspace Stripe checkout now propagates subscription persistence failures and omits unsupported customer-sync fields. Attaching the first Stripe subscription preserves existing usage, reservations, and top-up credit instead of treating the local allowance as a renewed subscription.
+- Harden Computer browser profile lock recovery around stale or reused PIDs while protecting live profile owners.
+- Add durable Ask approvals for native agents in direct messages and rooms, with pending calls resuming without replaying prior tool calls. Release QA remains required.
+- Add Ask and Auto permission modes for Overlay agents.
+- Work approval prompts now appear even if the live update connection stalls.
+- Work approval prompts now appear during the first turn of a new chat.
+- Require confirmation for risky coordinate clicks on browser controls.
+- Fix ordinary clicks in the browser being asked for approval.
+- Show Computer control progress only for control actions, not start, stop or delete.
+- Alert on delayed sandbox metering and failed stop or cleanup operations.
 
 - Keep agent Details and Computer tabs synchronized after starting, stopping, waking or deleting the attached computer.
 
@@ -67,12 +91,14 @@ This file records user-visible and operational changes that reach `main`. Pull r
 - Stop offering the desktop and mobile apps, which are not available. `/download` now redirects to `/home` unless `OVERLAY_DESKTOP_DOWNLOADS_ENABLED=1` (the page and release plumbing stay for later), and it leaves the sitemap and footer. The landing page lists the web, Slack, ChatGPT, Claude, Cursor and MCP apps instead of macOS, Windows, iOS and Android, and its "Get Overlay" card offers Web, your AI apps, self-hosting and developer links. The account page's Desktop app panel and the profile menu's "Soon" app items are removed. The 18 Desktop docs pages are deleted and redirect to the Help Center. Desktop sign-in handoff, mobile auth completion and the account-deletion deep link are unchanged.
 
 - Bring every other marketing page onto the home page design: pricing, download, manifesto, the blog/changelog/self-hosting placeholders and all nine legal pages now share one `StaticMarketingShell` (landing nav, framed column, footer) with a common page head. Legal pages get a sticky table of contents, pricing's FAQ uses the shared accordion, and `/download` regains its nav and footer. The old marketing navbar, button, reveal animation and serif layout helper are removed.
-
 - Let people who left sign-up before verifying finish from sign-in. Signing in with the right password for an unverified account now opens the code screen with Resend, then signs in once the code is accepted, instead of linking to a missing `/auth/verify-email` page. Sign-in and sign-up also show a plain fallback message instead of crashing when an error response is not text.
 
 - Add account-level workspace discovery, freeform workspace creation and invitation entry before onboarding. Suggested answers fill an editable composer in main chat and agent conversations without submitting automatically. New owners get a team question; invited members get a shorter setup. Restore profile drafts on refresh and remove the tour target border.
 
 - Replace the `/home` scroll story with a static landing page in one framed column (approved mockup `internal/plans/mockups/landing-static-mockup-v2.html`): a one-color headline whose five underlined phrases jump to their sections, a still of the app with the live sidebar (Work, Chats, Files, Automations) and agents drawn as their creatures, then superpowers, the create/manage/deploy/bring-your-own steps, teams, controls, where to get Overlay and the FAQ. The footer's Product links now point at `#control-plane`, `#get-overlay`, `#ai-employees` and `#deploy`. The scroll engine, scene graphics and interactive demo are removed.
+
+- Added MiniMax M3.1 Flash (free, vision) to the model list.
+- Keep the model you pick in an existing chat after sending. The composer and saved chat model no longer revert to the chat's earlier model once the reply starts.
 
 - Show loading branding immediately, keep onboarding answers in the normal message style and anchor the workspace tour beside navigation. Open one-to-one AI employee conversations in Agents instead of Chats.
 
@@ -84,19 +110,51 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Make conversational onboarding sessions reset-safe with run-scoped transcript recovery and durable summaries of validated user choices.
 
-- Keep the model you pick in an existing chat after sending. The composer and saved chat model no longer revert to the chat's earlier model once the reply starts.
 - Keep earlier messages visible after a reply finishes in a chat reopened from history. Restored chats now load the full transcript into the active chat runtime instead of only the current mode's turns.
 
 - Remove multi-model selection and compare responses across text, image, and video chats. Existing saved model preferences and conversations continue with one primary model response.
 
+- Run Computer commands with injected environments across compound shell bodies, expose bounded input diagnostics, and ensure browser pages and windows are visible.
+
+- Preserve Work screenshot model output and approval cards, and recover Chromium profile locks.
+
+- Retry concurrent Computer actions, expose personal Computers in Work chats, and clarify busy and approval errors.
+
+- Add human takeover controls for Computers and require approval for risky browser clicks.
+
+- Add persistent, cancellable terminal sessions for Computer commands.
+
+- Require Work-mode approval for typing and key presses on Computers, and fail closed in regular chats.
+
+- Add persistent browser controls for agents, including snapshots and ref-based actions.
+
+- Add provider-neutral desktop screenshots and input controls for Overlay agents.
+
 - Align Work quick-add with the sidebar scope, keep workspace storage quotas visible, and make sidebar create actions permanent with neutral placeholders, toasts, and centered loading marks.
 - Announce stopped and failed Work runs only when their status transitions live to a terminal state.
-
 - Add OpenCode Go to Settings > Providers. Chat, Responses, and Messages model protocols use the OpenCode Go subscription endpoint with stable conversation sessions.
 
 - Match file and automation sidebar rows to chats with shared 32px rows, 14px text and 16px icons, reduce agent names to the conversation text size, and give every shared chat composer a subtle theme-aware outline.
 
 - Pin `follow-redirects` to 1.16.1 to clear two high-severity advisories (GHSA-q3jh-wrc6-jgq8, GHSA-8r9p-f939-6h3c) that block the production dependency audit.
+
+- Report unowned Boat and E2B machines from bounded inventory scans without stopping or deleting them.
+
+- Record cloud agent allocations before setup and reclaim machines whose setup was interrupted instead of leaving them running unbilled.
+
+- Correct Computer Start and Stop notifications to match the completed action.
+
+- Add an isolated, synthetic funded Computer QA workspace to Preview fixtures while retaining the free Personal workspace. Re-seeding preserves spent credit, holds and plan changes; no Stripe payment or automatic top-up is created.
+
+- Enroll persistent Computers in the shared sandbox lease ledger before provider allocation or wake. Meter Boat's weighted counters, reserve both the runtime member and agent spend subject, preserve disks on idle/budget stops, and retain durable cleanup and allocation references for retries. Computer deletion settles usage before removing the provider resource; this is a scoped lifecycle/accounting substep, not completion of Phase 2.
+
+- Stop running machines and Computers at the next meter tick after a workspace leaves its paid plan, while still settling confirmed-stopped usage and releasing unused holds.
+
+- Recheck paid workspace and finite-credit admission for cloud-agent machine allocation, explicit resume/restart controls, workflow wakes and stopped-execution recovery under the authenticated actor or the remote run's stored actor. Remote resume, retry and start-fresh are refused before any control is recorded. Pause and cleanup remain available after downgrade.
+
+- Settle E2B compute from completed provider executions and actual allocation, reserve credit while executions run, and retain final usage for retry if billing fails. Enforce workspace and subject limits on machine metering; preserve Boat's weighted counters instead of substituting elapsed time.
+
+- Bind Computer access to the authorized workspace and require paid workspace credit before provisioning, starting, desktop access or tool execution. Concurrent owner claims allocate only one machine; failed deletion retains the provider reference for retry, and lifecycle reads never implicitly resume a machine.
 
 - Make both sidebar edges resizable, keep native agent text visible between tool calls while it streams, preserve its generation order after completion and reload, and match the approved agent hierarchy with regular-weight names, aligned icons and flush-left threads. Scale tool Orbs to the wordmark ratio and center them beside wrapped labels. Use the shared avatar popover for outside-click and Escape dismissal.
 

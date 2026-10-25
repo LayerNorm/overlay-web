@@ -10,6 +10,7 @@ import { readWorkspacePathScope } from '@/shared/workspaces/routing'
 import { parsePanelScope } from '@/shared/workspaces/panel-scope'
 import { resetRuntimeState } from './conversation-runtime-utils'
 import type { ConversationRuntime, ConversationUiState } from '../chat-interface/types'
+import type { PendingFirstSendState } from './chat-send-pending-first'
 
 type LoadChat = (chatId: string, options?: { replaceUrl?: boolean }) => Promise<void>
 
@@ -24,6 +25,7 @@ export function useChatRouteController({
   hideSidebar,
   mode,
   pendingTitleRef,
+  pendingFirstSendRef,
   persistActiveRuntimeUiState,
   resetComposerToolIds,
   routerReplace,
@@ -34,6 +36,7 @@ export function useChatRouteController({
   setActiveViewer,
   setInterruptedExchangeIdx,
   setIsTemporaryChat,
+  setPendingRunConversationId,
   setRuntimeHydrationVersion,
   setSourcesPanel,
 }: {
@@ -47,6 +50,7 @@ export function useChatRouteController({
   hideSidebar?: boolean
   mode: 'chat' | 'automate'
   pendingTitleRef: MutableRefObject<{ chatId: string; title: string } | null>
+  pendingFirstSendRef: MutableRefObject<PendingFirstSendState | null>
   persistActiveRuntimeUiState: () => void
   resetComposerToolIds: (temporary: boolean) => void
   routerReplace: (href: string) => void
@@ -57,6 +61,7 @@ export function useChatRouteController({
   setActiveViewer: (chatId: string | null) => void
   setInterruptedExchangeIdx: Dispatch<SetStateAction<number | null>>
   setIsTemporaryChat: Dispatch<SetStateAction<boolean>>
+  setPendingRunConversationId: (conversationId: string | null) => void
   setRuntimeHydrationVersion: Dispatch<SetStateAction<number>>
   setSourcesPanel: (panel: null) => void
 }) {
@@ -117,6 +122,8 @@ export function useChatRouteController({
     persistActiveRuntimeUiState()
     activeChatIdRef.current = null
     pendingTitleRef.current = null
+    pendingFirstSendRef.current = null
+    setPendingRunConversationId(null)
     setActiveViewer(null)
     setActiveChatId(null)
     setInterruptedExchangeIdx(null)
@@ -141,6 +148,7 @@ export function useChatRouteController({
     clearTransientComposerState,
     emptyRuntimeRef,
     pendingTitleRef,
+    pendingFirstSendRef,
     persistActiveRuntimeUiState,
     resetComposerToolIds,
     setActiveChatId,
@@ -148,6 +156,7 @@ export function useChatRouteController({
     setActiveViewer,
     setInterruptedExchangeIdx,
     setIsTemporaryChat,
+    setPendingRunConversationId,
     setRuntimeHydrationVersion,
     setSourcesPanel,
     syncStandaloneChatUrl,
@@ -169,6 +178,8 @@ export function useChatRouteController({
     persistActiveRuntimeUiState()
     activeChatIdRef.current = null
     pendingTitleRef.current = null
+    pendingFirstSendRef.current = null
+    setPendingRunConversationId(null)
     setIsTemporaryChat(false)
     resetComposerToolIds(false)
     setActiveChatId(null)
@@ -192,6 +203,7 @@ export function useChatRouteController({
     idParam,
     mode,
     pendingTitleRef,
+    pendingFirstSendRef,
     persistActiveRuntimeUiState,
     resetComposerToolIds,
     setActiveChatId,
@@ -199,6 +211,7 @@ export function useChatRouteController({
     setActiveViewer,
     setInterruptedExchangeIdx,
     setIsTemporaryChat,
+    setPendingRunConversationId,
     setSourcesPanel,
   ])
 

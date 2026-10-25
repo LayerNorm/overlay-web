@@ -55,7 +55,9 @@ export async function POST(_request: Request, context: AppApiRouteContext) {
     const agentId = await gate(context, true)
     if (typeof agentId !== 'string') return agentId
     const { action } = actionSchema.parse(context.parsedJson)
-    await createCloudAgentMachineService().control({ workspaceId: context.workspace.workspace.id, agentId, action })
+    await createCloudAgentMachineService().control({
+      actorUserId: context.auth.userId, workspaceId: context.workspace.workspace.id, agentId, action,
+    })
     return NextResponse.json({ ok: true }, { headers: NO_STORE })
   } catch (error) {
     return failure(error)

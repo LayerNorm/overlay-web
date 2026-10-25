@@ -750,6 +750,19 @@ async function projectedState(convex: ReturnType<typeof convexTest>, messageId: 
 function mutationRef(operation: string) { return makeFunctionReference<'mutation'>(`agents/connectedAgents:${operation}`) }
 function queryRef(operation: string) { return makeFunctionReference<'query'>(`agents/connectedAgents:${operation}`) }
 
+test('remote run snapshot projects the run actor and agent instead of the environment approver', async () => {
+  const f = await durableFixture()
+  await f.convex.run(async ctx => {
+    const environment = await ctx.db.query('agentEnvironments').withIndex('by_environmentId', q => q.eq('environmentId', environmentId)).unique()
+    await ctx.db.patch(environment!._id, { approvedByUserId: 'approver-user' })
+  })
+  const snapshot = await f.convex.query(makeFunctionReference<'query'>('agents/remoteRuns:readByServer'), {
+    serverSecret: secret, runId: 'run-remote-turn',
+  }) as { actorUserId?: string; agentId?: string } | null
+  expect(snapshot).toMatchObject({ actorUserId, agentId })
+  expect(snapshot?.actorUserId).not.toBe('approver-user')
+})
+
 async function durableFixture(overrides: Record<string, unknown> = {}) {
   const convex = convexTest(schema, modules)
   const seeded = await seedRoom(convex)
