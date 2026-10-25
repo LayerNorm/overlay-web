@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { ConvexError } from 'convex/values'
 import type { WorkItem } from '@overlay/app-core'
 import { WorkService, WorkServiceError, translateWorkError } from './WorkService'
 import type { WorkRepository } from './WorkRepository'
@@ -40,6 +41,15 @@ test('refusals from Convex become plain messages with a status', () => {
 
   const other = new Error('network down')
   assert.equal(translateWorkError(other), other)
+})
+
+test('a production-redacted revision conflict remains an HTTP 409', () => {
+  const error = new ConvexError('WORK_INVALID:conflict')
+  error.message = '[Request ID: example] Server Error'
+  const translated = translateWorkError(error)
+  assert.ok(translated instanceof WorkServiceError)
+  assert.equal(translated.statusCode, 409)
+  assert.equal(translated.code, 'work_conflict')
 })
 
 test('a missing task is a 404 and a caller without access to the workspace is refused', async () => {

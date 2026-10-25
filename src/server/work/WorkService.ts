@@ -20,7 +20,7 @@ export class WorkServiceError extends Error {
   }
 }
 
-type Actor = { userId: string; workspaceId: string }
+type Actor = { userId: string; workspaceId: string; actingAgentPrincipalId?: string }
 
 /**
  * Tasks. Who may see or change what is decided in Convex (the shared Personal / Workspace rules); this turns its

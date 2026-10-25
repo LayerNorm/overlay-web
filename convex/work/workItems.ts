@@ -1,4 +1,4 @@
-import { v } from 'convex/values'
+import { ConvexError, v } from 'convex/values'
 import { mutation, query, type MutationCtx } from '../_generated/server'
 import type { Id } from '../_generated/dataModel'
 import { validateServerSecret } from '../lib/auth'
@@ -23,6 +23,7 @@ import {
   normalizeTitle,
   principalIdForUser,
   rebalanceColumn,
+  workEventActorPrincipalId,
   type WorkItemDoc,
 } from '../lib/workItems'
 import { checkBlockedBy, checkParent } from '../../src/shared/work/graph'
@@ -45,6 +46,7 @@ const auth = {
   workspaceId: v.string(),
   accessToken: v.optional(v.string()),
   serverSecret: v.optional(v.string()),
+  actingAgentPrincipalId: v.optional(v.string()),
 }
 
 /**
@@ -134,34 +136,45 @@ async function tidyLinksAfterMove(ctx: MutationCtx, args: { movedIds: string[]; 
     const blockers = other.blockedBy?.filter((blockerId) => !moved.has(String(blockerId)))
     const blockersChanged = blockers !== undefined && blockers.length !== other.blockedBy?.length
     if (parentMoved || blockersChanged) {
-      await ctx.db.patch(other._id, { ...(parentMoved ? { parentId: undefined } : {}), ...(blockersChanged ? { blockedBy: blockers } : {}) })
+      await ctx.db.patch(other._id, { ...(parentMoved ? { parentId: undefined } : {}), ...(blockersChanged ? { blockedBy: blockers } : {}), updatedAt: Math.max(Date.now(), other.updatedAt + 1) })
     }
   }
 }
 
 // Moving, archiving, and restoring follow the shared Personal / Workspace rules; each is written to the task's log.
-export const { setScope, archive, restore } = scopeMutations('workItems', 'content', {
+const workScopeMutations = scopeMutations('workItems', 'content', {
+  requireServerAuthentication: true,
   descendants: descendantIds,
   afterApply: async (rawCtx, change) => {
     const ctx = rawCtx as MutationCtx
     const row = change.row as unknown as WorkItemDoc
+    const actorPrincipalId = await workEventActorPrincipalId(ctx as MutationCtx, {
+      workspaceId: row.workspaceId,
+      principalId: (await loadWorkViewer(ctx as MutationCtx, row.workspaceId, change.userId)).principalId,
+      actingAgentPrincipalId: change.actingAgentPrincipalId,
+    })
     if (change.action === 'scope' && change.to) {
       await tidyLinksAfterMove(ctx, {
-        movedIds: change.moved ?? [change.id],
+        movedIds: change.affectedIds,
         to: change.to,
         workspaceId: row.workspaceId,
-        actorPrincipalId: (await loadWorkViewer(ctx, row.workspaceId, change.userId)).principalId,
+        actorPrincipalId,
       })
+    }
+    for (const id of change.affectedIds) {
+      const affected = await ctx.db.get(id as Id<'workItems'>)
+      if (affected) await ctx.db.patch(affected._id, { updatedAt: Math.max(Date.now(), affected.updatedAt + 1) })
     }
     await logWorkEvent(ctx, {
       workItemId: change.id as Id<'workItems'>,
       workspaceId: row.workspaceId,
-      actorPrincipalId: (await loadWorkViewer(ctx, row.workspaceId, change.userId)).principalId,
+      actorPrincipalId,
       kind: change.action,
       data: change.action === 'scope' ? { from: rowScope(row), to: change.to } : undefined,
     })
   },
 })
+export const { setScope, archive, restore } = workScopeMutations
 
 /**
  * A named reviewer may answer a review without being able to edit the task: approve it (done) or send it back
@@ -356,12 +369,14 @@ export const create = mutation({
     scope: scopeArg,
     description: v.optional(v.string()),
     status: v.optional(statusArg),
+    blocked: v.optional(v.boolean()),
     priority: v.optional(v.number()),
     assigneePrincipalId: v.optional(v.string()),
     reviewerUserId: v.optional(v.string()),
     startDate: v.optional(v.string()),
     dueDate: v.optional(v.string()),
     parentId: v.optional(v.string()),
+    blockedBy: v.optional(v.array(v.string())),
     doneWhen: v.optional(doneWhenArg),
     context: v.optional(contextArg),
   },
@@ -370,6 +385,11 @@ export const create = mutation({
     const scope = await assertCanCreateInScope(ctx, { kind: 'content', scope: args.scope, workspaceId: args.workspaceId, userId: args.userId })
     const viewer = await loadWorkViewer(ctx, args.workspaceId, args.userId)
     if (viewer.viewer.role === null || viewer.viewer.role === 'guest') throw new Error('Unauthorized')
+    const actorPrincipalId = await workEventActorPrincipalId(ctx, {
+      workspaceId: args.workspaceId,
+      principalId: viewer.principalId,
+      actingAgentPrincipalId: args.actingAgentPrincipalId,
+    })
     const title = normalizeTitle(args.title)
     const status = args.status ?? DEFAULT_WORK_STATUS
     const startDate = args.startDate !== undefined ? normalizeDate(args.startDate) : undefined
@@ -391,7 +411,7 @@ export const create = mutation({
       title,
       ...(args.description !== undefined ? { description: normalizeDescription(args.description) } : {}),
       status,
-      blocked: false,
+      blocked: args.blocked ?? false,
       priority: args.priority !== undefined ? normalizePriority(args.priority) : DEFAULT_WORK_PRIORITY,
       rank: await endRank(ctx, args.workspaceId, status),
       ...(args.assigneePrincipalId ? { assigneePrincipalId: args.assigneePrincipalId } : {}),
@@ -404,18 +424,26 @@ export const create = mutation({
       createdAt: now,
       updatedAt: now,
     })
-    await logWorkEvent(ctx, { workItemId: id, workspaceId: args.workspaceId, actorPrincipalId: viewer.principalId, kind: 'created', data: { status, scope } })
+    if (args.blockedBy?.length) {
+      const row = await ctx.db.get(id)
+      if (!row) throw new Error('WORK_INVALID:not_found')
+      const blockers = await assertBlockers(ctx, { row, blockedBy: args.blockedBy, userId: args.userId })
+      await ctx.db.patch(id, { blockedBy: blockers.map((blocker) => blocker._id) })
+    }
+    await logWorkEvent(ctx, { workItemId: id, workspaceId: args.workspaceId, actorPrincipalId, kind: 'created', data: { status, scope } })
     return await ctx.db.get(id)
   },
 })
 
 /** Every field `update` can change except `status`. */
-const UPDATE_FIELDS = ['title', 'description', 'blocked', 'priority', 'assigneePrincipalId', 'reviewerUserId', 'startDate', 'dueDate', 'parentId', 'blockedBy', 'doneWhen', 'context'] as const
+const UPDATE_FIELDS = ['title', 'description', 'blocked', 'priority', 'assigneePrincipalId', 'reviewerUserId', 'startDate', 'dueDate', 'parentId', 'blockedBy', 'doneWhen', 'context', 'scope'] as const
 
 export const update = mutation({
   args: {
     ...auth,
     id: v.string(),
+    expectedUpdatedAt: v.optional(v.number()),
+    scope: scopeArg,
     title: v.optional(v.string()),
     description: v.optional(v.union(v.string(), v.null())),
     status: v.optional(statusArg),
@@ -433,14 +461,28 @@ export const update = mutation({
   handler: async (ctx, args) => {
     await authorize(args)
     const viewer = await loadWorkViewer(ctx, args.workspaceId, args.userId)
-    const row = await getReadableRow(ctx, { row: await loadWorkItem(ctx, args.id), userId: args.userId, workspaceId: args.workspaceId })
+    let row = await getReadableRow(ctx, { row: await loadWorkItem(ctx, args.id), userId: args.userId, workspaceId: args.workspaceId })
     if (!row) throw new Error('Unauthorized')
     if (!canWork(row, viewer)) {
       const onlyStatus = UPDATE_FIELDS.every((field) => (args as Record<string, unknown>)[field] === undefined)
       if (!onlyStatus || !mayAnswerReview(row, viewer, args.userId, args.status)) throw new Error('Unauthorized')
     }
     if (row.archivedAt !== undefined) throw new Error('WORK_INVALID:archived')
+    if (args.expectedUpdatedAt !== undefined && args.expectedUpdatedAt !== row.updatedAt) {
+      throw new ConvexError('WORK_INVALID:conflict')
+    }
+    if (args.scope !== undefined && args.scope !== rowScope(row)) {
+      const changed = await workScopeMutations.applyScope(ctx, { ...args, to: args.scope })
+      if (!changed.ok) throw new ConvexError('WORK_INVALID:scope_forbidden')
+      row = await loadWorkItem(ctx, args.id)
+      if (!row) throw new Error('Unauthorized')
+    }
     const scope = rowScope(row)
+    const actorPrincipalId = await workEventActorPrincipalId(ctx, {
+      workspaceId: args.workspaceId,
+      principalId: viewer.principalId,
+      actingAgentPrincipalId: args.actingAgentPrincipalId,
+    })
     const patch: Partial<WorkItemDoc> = {}
     const events: Array<{ kind: Parameters<typeof logWorkEvent>[1]['kind']; data?: unknown }> = []
 
@@ -515,9 +557,9 @@ export const update = mutation({
     if (args.context !== undefined) patch.context = normalizeContext(args.context)
 
     if (Object.keys(patch).length === 0) return row
-    await ctx.db.patch(row._id, { ...patch, updatedAt: Date.now() })
+    await ctx.db.patch(row._id, { ...patch, updatedAt: Math.max(Date.now(), row.updatedAt + 1) })
     for (const event of events) {
-      await logWorkEvent(ctx, { workItemId: row._id, workspaceId: row.workspaceId, actorPrincipalId: viewer.principalId, ...event })
+      await logWorkEvent(ctx, { workItemId: row._id, workspaceId: row.workspaceId, actorPrincipalId, ...event })
     }
     return await ctx.db.get(row._id)
   },
@@ -541,6 +583,11 @@ export const move = mutation({
     const row = await getReadableRow(ctx, { row: await loadWorkItem(ctx, args.id), userId: args.userId, workspaceId: args.workspaceId })
     if (!row || (!canWork(row, viewer) && !mayAnswerReview(row, viewer, args.userId, args.status))) throw new Error('Unauthorized')
     if (row.archivedAt !== undefined) throw new Error('WORK_INVALID:archived')
+    const actorPrincipalId = await workEventActorPrincipalId(ctx, {
+      workspaceId: args.workspaceId,
+      principalId: viewer.principalId,
+      actingAgentPrincipalId: args.actingAgentPrincipalId,
+    })
     const status = args.status ?? row.status
 
     const neighbour = async (id: string | null | undefined) => {
@@ -551,9 +598,9 @@ export const move = mutation({
     const [above, below] = await Promise.all([neighbour(args.afterId), neighbour(args.beforeId)])
     const rank = above || below ? rankBetween(above?.rank ?? null, below?.rank ?? null) : await endRank(ctx, row.workspaceId, status)
 
-    await ctx.db.patch(row._id, { status, rank, updatedAt: Date.now() })
+    await ctx.db.patch(row._id, { status, rank, updatedAt: Math.max(Date.now(), row.updatedAt + 1) })
     if (status !== row.status) {
-      await logWorkEvent(ctx, { workItemId: row._id, workspaceId: row.workspaceId, actorPrincipalId: viewer.principalId, kind: 'status', data: { from: row.status, to: status } })
+      await logWorkEvent(ctx, { workItemId: row._id, workspaceId: row.workspaceId, actorPrincipalId, kind: 'status', data: { from: row.status, to: status } })
     }
     if (needsRebalance(rank)) await rebalanceColumn(ctx, row.workspaceId, status)
     return await ctx.db.get(row._id)

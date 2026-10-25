@@ -103,20 +103,20 @@ export class ConvexWorkRepository implements WorkRepository {
     }
   }
 
-  async create(args: { userId: string; workspaceId: string; input: CreateWorkItemRequest }): Promise<WorkItem> {
-    const doc = await convex.mutation<WorkItemDoc | null>('work/workItems:create', { ...this.base(args), ...args.input }, { throwOnError: true })
+  async create(args: { userId: string; workspaceId: string; input: CreateWorkItemRequest; actingAgentPrincipalId?: string }): Promise<WorkItem> {
+    const doc = await convex.mutation<WorkItemDoc | null>('work/workItems:create', { ...this.base(args), ...args.input, ...(args.actingAgentPrincipalId ? { actingAgentPrincipalId: args.actingAgentPrincipalId } : {}) }, { throwOnError: true })
     if (!doc) throw new Error('Failed to create task')
     return mapWorkItemDoc(doc)
   }
 
-  async update(args: { userId: string; workspaceId: string; id: string; input: UpdateWorkItemRequest }): Promise<WorkItem> {
-    const doc = await convex.mutation<WorkItemDoc | null>('work/workItems:update', { ...this.base(args), id: args.id, ...args.input }, { throwOnError: true })
+  async update(args: { userId: string; workspaceId: string; id: string; input: UpdateWorkItemRequest; actingAgentPrincipalId?: string }): Promise<WorkItem> {
+    const doc = await convex.mutation<WorkItemDoc | null>('work/workItems:update', { ...this.base(args), id: args.id, ...args.input, ...(args.actingAgentPrincipalId ? { actingAgentPrincipalId: args.actingAgentPrincipalId } : {}) }, { throwOnError: true })
     if (!doc) throw new Error('Failed to update task')
     return mapWorkItemDoc(doc)
   }
 
-  async move(args: { userId: string; workspaceId: string; id: string; input: MoveWorkItemRequest }): Promise<WorkItem> {
-    const doc = await convex.mutation<WorkItemDoc | null>('work/workItems:move', { ...this.base(args), id: args.id, ...args.input }, { throwOnError: true })
+  async move(args: { userId: string; workspaceId: string; id: string; input: MoveWorkItemRequest; actingAgentPrincipalId?: string }): Promise<WorkItem> {
+    const doc = await convex.mutation<WorkItemDoc | null>('work/workItems:move', { ...this.base(args), id: args.id, ...args.input, ...(args.actingAgentPrincipalId ? { actingAgentPrincipalId: args.actingAgentPrincipalId } : {}) }, { throwOnError: true })
     if (!doc) throw new Error('Failed to move task')
     return mapWorkItemDoc(doc)
   }
@@ -132,7 +132,7 @@ export class ConvexWorkRepository implements WorkRepository {
     return outcome
   }
 
-  async addComment(args: { userId: string; workspaceId: string; id: string; body: string }): Promise<void> {
-    await convex.mutation('work/workItemEvents:addComment', { ...this.base(args), workItemId: args.id, body: args.body }, { throwOnError: true })
+  async addComment(args: { userId: string; workspaceId: string; id: string; body: string; actingAgentPrincipalId?: string }): Promise<void> {
+    await convex.mutation('work/workItemEvents:addComment', { ...this.base(args), workItemId: args.id, body: args.body, ...(args.actingAgentPrincipalId ? { actingAgentPrincipalId: args.actingAgentPrincipalId } : {}) }, { throwOnError: true })
   }
 }

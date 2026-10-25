@@ -93,17 +93,20 @@ export function parseCreateWorkItem(body: unknown): CreateWorkItemRequest {
   const title = text(body, 'title')
   if (title === undefined) throw new WorkInputError('title is required.')
   if (body.scope !== undefined && !parseResourceScope(body.scope)) throw new WorkInputError("scope must be 'personal' or 'workspace'.")
+  if (body.blocked !== undefined && typeof body.blocked !== 'boolean') throw new WorkInputError('blocked must be true or false.')
   return defined({
     title,
     scope: parseResourceScope(body.scope),
     description: text(body, 'description'),
     status: status(body),
+    blocked: body.blocked as boolean | undefined,
     priority: priority(body),
     assigneePrincipalId: text(body, 'assigneePrincipalId'),
     reviewerUserId: text(body, 'reviewerUserId'),
     startDate: text(body, 'startDate'),
     dueDate: text(body, 'dueDate'),
     parentId: text(body, 'parentId'),
+    blockedBy: blockedBy(body),
     doneWhen: doneWhen(body),
     context: contextRefs(body),
   })
@@ -111,8 +114,14 @@ export function parseCreateWorkItem(body: unknown): CreateWorkItemRequest {
 
 export function parseUpdateWorkItem(body: unknown): UpdateWorkItemRequest {
   if (!isBody(body)) throw new WorkInputError('Send a JSON body.')
+  if (body.scope !== undefined && !parseResourceScope(body.scope)) throw new WorkInputError("scope must be 'personal' or 'workspace'.")
+  if (body.expectedUpdatedAt !== undefined && (typeof body.expectedUpdatedAt !== 'number' || !Number.isSafeInteger(body.expectedUpdatedAt) || body.expectedUpdatedAt < 0)) {
+    throw new WorkInputError('expectedUpdatedAt must be a nonnegative integer.')
+  }
   if (body.blocked !== undefined && typeof body.blocked !== 'boolean') throw new WorkInputError('blocked must be true or false.')
   return defined({
+    expectedUpdatedAt: body.expectedUpdatedAt as number | undefined,
+    scope: parseResourceScope(body.scope),
     title: text(body, 'title'),
     description: clearableText(body, 'description'),
     status: status(body),

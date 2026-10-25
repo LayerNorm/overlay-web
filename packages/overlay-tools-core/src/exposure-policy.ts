@@ -42,6 +42,15 @@ const AUTOMATION_TOOL_IDS = [
   'pause_automation',
   'delete_automation',
 ] as const
+const TASK_TOOL_IDS = [
+  'list_tasks',
+  'get_task',
+  'create_task',
+  'update_task',
+  'comment_on_task',
+  'archive_task',
+  'restore_task',
+] as const
 
 function matchesAny(text: string, patterns: RegExp[]): boolean {
   return patterns.some((pattern) => pattern.test(text))
@@ -87,6 +96,10 @@ function isExplicitAutomationRequest(text: string): boolean {
     /\b(automation|automations|automate|scheduled|recurring|repeatable|every day|daily|weekly|monthly|hourly)\b/i,
     /\b(run|send|check|monitor|summari[sz]e|report)\b.{0,80}\b(every|daily|weekly|monthly|hourly|each morning|each week)\b/i,
   ])
+}
+
+function isExplicitTaskRequest(text: string): boolean {
+  return /\b(task|tasks|work item|work items|to-do|to-dos|todo|todos)\b/i.test(text)
 }
 
 function addAll(target: Set<string>, toolIds: readonly string[]): void {
@@ -138,6 +151,9 @@ export function allowedOverlayToolIdsForTurn(params: {
   }
   if (!params.automationExecution && (params.automationMode || isExplicitAutomationRequest(text))) {
     addAll(allowed, AUTOMATION_TOOL_IDS)
+  }
+  if (isExplicitTaskRequest(text)) {
+    addAll(allowed, TASK_TOOL_IDS)
   }
 
   return Array.from(allowed)
