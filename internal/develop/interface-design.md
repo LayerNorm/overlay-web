@@ -237,7 +237,9 @@ and width changes and after fonts load; use it for work titles and agent
 instructions.
 
 Agent Details uses collapsed `Collapsible` rows for Model, Instructions, Tools
-and Advanced. Keep summaries concise and visible only while collapsed. Mentions
+and Advanced. Keep labels at their intrinsic width and truncate only the flexible
+summary, so long instructions cannot crowd out the section name. Keep summaries
+concise and visible only while collapsed. Mentions
 is a plain heading inside Advanced, not a nested disclosure.
 Native Permissions lives inside Advanced, with the effective Ask/Auto choice in
 the collapsed summary. Keep its existing confirmation and save behavior, and

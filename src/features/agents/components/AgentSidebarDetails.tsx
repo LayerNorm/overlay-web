@@ -29,9 +29,9 @@ function DetailsDisclosure({ label, summary, children }: {
           type="button"
           className="group/details-disclosure h-8 w-full justify-start rounded-md px-1 text-left text-xs font-medium text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)"
         >
-          <span className="truncate">{label}</span>
+          <span className="shrink-0">{label}</span>
           {summary ? (
-            <span className="ml-auto min-w-0 truncate pl-3 font-normal text-(--muted-light) group-data-[state=open]/details-disclosure:hidden">
+            <span className="ml-auto min-w-0 flex-1 truncate pl-3 font-normal text-(--muted-light) group-data-[state=open]/details-disclosure:hidden">
               {summary}
             </span>
           ) : null}
