@@ -67,6 +67,7 @@ test('unstyled inputs reset base typography while preserving consumer classes', 
   const consumerClasses = renderedClasses(<Input className={unstyledInput('text-xs')} />)
   assert.equal(consumerClasses.has('text-xs'), true)
   assert.equal(consumerClasses.has('text-[length:inherit]'), false)
+  assert.equal(resetClasses.has('focus-visible:ring-0'), true)
 })
 
 test('unstyled textareas reset base layout and typography while preserving consumer classes', () => {
@@ -81,6 +82,7 @@ test('unstyled textareas reset base layout and typography while preserving consu
   assert.equal(resetClasses.has('min-h-auto'), true)
   assert.equal(resetClasses.has('text-[length:inherit]'), true)
   assert.equal(resetClasses.has('leading-[inherit]'), true)
+  assert.equal(resetClasses.has('focus-visible:ring-0'), true)
 
   const consumerClasses = renderedClasses(
     <Textarea className={unstyledTextarea('resize-none text-xs leading-relaxed')} />,
@@ -89,4 +91,21 @@ test('unstyled textareas reset base layout and typography while preserving consu
   assert.equal(consumerClasses.has('resize-y'), false)
   assert.equal(consumerClasses.has('text-xs'), true)
   assert.equal(consumerClasses.has('leading-relaxed'), true)
+})
+
+test('shared text controls use the shadcn focus-visible treatment', () => {
+  const inputClasses = renderedClasses(<Input />)
+  const textareaClasses = renderedClasses(<Textarea />)
+  const focusClasses = [
+    'transition-[color,box-shadow]',
+    'focus-visible:border-(--foreground)/30',
+    'focus-visible:ring-3',
+    'focus-visible:ring-(--foreground)/15',
+  ]
+
+  for (const className of focusClasses) {
+    assert.equal(inputClasses.has(className), true, `${className} should be present on Input`)
+    assert.equal(textareaClasses.has(className), true, `${className} should be present on Textarea`)
+  }
+  assert.equal(inputClasses.has('rounded-md'), true)
 })

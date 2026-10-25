@@ -129,7 +129,7 @@ function InlineEditor({
           finish(true)
         }
       }}
-      className={`h-auto min-w-0 border-0 bg-transparent px-1 py-0 text-center shadow-none focus-visible:ring-0 ${className}`}
+      className={`h-auto min-w-0 border-0 bg-transparent px-1 py-0 text-center shadow-none ${className}`}
     />
   )
 }

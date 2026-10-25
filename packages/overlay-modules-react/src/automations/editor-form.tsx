@@ -209,7 +209,7 @@ function AutomationConfigurationCard({
             <Input
               value={name}
               onChange={(event) => onNameChange(event.target.value)}
-              className={unstyledInput("mt-1 w-full rounded-lg border border-(--border) bg-(--background) px-3 py-2 text-sm text-(--foreground) outline-hidden focus:ring-1 focus:ring-(--foreground)")}
+              className={unstyledInput("mt-1 w-full rounded-lg border border-(--border) bg-(--background) px-3 py-2 text-sm text-(--foreground) outline-hidden transition-[color,box-shadow] focus-visible:border-(--foreground)/30 focus-visible:ring-3 focus-visible:ring-(--foreground)/15")}
             />
           </label>
           <label className="block text-sm font-medium text-(--foreground)">
@@ -217,7 +217,7 @@ function AutomationConfigurationCard({
             <Input
               value={description}
               onChange={(event) => onDescriptionChange(event.target.value)}
-              className={unstyledInput("mt-1 w-full rounded-lg border border-(--border) bg-(--background) px-3 py-2 text-sm text-(--foreground) outline-hidden focus:ring-1 focus:ring-(--foreground)")}
+              className={unstyledInput("mt-1 w-full rounded-lg border border-(--border) bg-(--background) px-3 py-2 text-sm text-(--foreground) outline-hidden transition-[color,box-shadow] focus-visible:border-(--foreground)/30 focus-visible:ring-3 focus-visible:ring-(--foreground)/15")}
             />
           </label>
         </div>

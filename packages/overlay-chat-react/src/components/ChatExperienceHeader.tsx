@@ -1,6 +1,6 @@
 'use client'
 
-import { unstyledButton, unstyledInput } from '@overlay/ui/control-reset'
+import { unstyledButton } from '@overlay/ui/control-reset'
 
 import { Suspense, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react'
 import {
@@ -214,7 +214,7 @@ function HeaderTitleSection({
         <Input
           ref={headerTitleInputRef}
           aria-label="Conversation title"
-          className={unstyledInput(`min-w-0 flex-1 rounded-md border border-(--border) bg-(--background) px-2 py-1 text-sm font-medium text-(--foreground) outline-hidden focus:ring-1 focus:ring-(--foreground) md:max-w-[min(100%,20rem)] lg:max-w-[24rem]`)}
+          className="h-8 min-w-0 flex-1 font-medium md:max-w-[min(100%,20rem)] lg:max-w-[24rem]"
           value={editingChatTitle}
           onChange={(e) => onEditingChatTitleChange(e.target.value)}
           onKeyDown={(e) => {

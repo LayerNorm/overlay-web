@@ -4,6 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Use shadcn focus-visible rings for text inputs and textareas, present message editing with text actions, autosize work titles and agent instructions as layouts settle, and group agent Details into collapsed Model, Instructions, Tools and Advanced disclosures.
 - Overlay Free no longer cuts off longer OpenRouter Free replies with overlay_free_stream_prelude_too_large.
 - Let workspace-visible and personally owned agents take Personal tasks, keep creator-only agents private from other members, and preserve assignment eligibility when tasks change scope.
 

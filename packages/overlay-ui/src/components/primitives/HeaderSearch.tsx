@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Search } from 'lucide-react'
 import { cn } from '../../utils/cn'
+import { Input } from '../ui/input'
 import { IconButton } from './IconButton'
 
 export interface HeaderSearchProps {
@@ -54,7 +55,7 @@ export function HeaderSearch({
         <label className="relative block w-52 max-w-[45vw]">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-(--muted)" size={14} />
           <span className="sr-only">{label}</span>
-          <input
+          <Input
             autoFocus
             value={value}
             onChange={(event) => onChange(event.target.value)}
@@ -62,7 +63,7 @@ export function HeaderSearch({
               if (event.key === 'Escape') dismiss()
             }}
             placeholder={placeholder}
-            className="h-8 w-full rounded-md border border-(--border) bg-(--surface-subtle) pl-8 pr-3 text-xs outline-hidden focus:border-(--muted)"
+            className="h-8 pl-8 pr-3 text-xs"
           />
         </label>
       ) : null}

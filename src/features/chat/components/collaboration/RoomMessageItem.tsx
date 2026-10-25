@@ -12,7 +12,6 @@ import {
 } from 'react'
 import {
   Bookmark,
-  Check,
   FileText,
   Flag,
   Link2,
@@ -22,7 +21,6 @@ import {
   SmilePlus,
   Square,
   Trash2,
-  X,
 } from 'lucide-react'
 import type { AssistantVisualBlock } from '@overlay/chat-core'
 import { RemoteRunDeadline } from './RemoteRunDeadline'
@@ -570,7 +568,7 @@ function RoomMessageEditor({ editingContent, onEditingContentChange, onSaveEdit,
   onCancelEdit: () => void
 }) {
   return (
-    <div className="mt-1 flex w-full gap-2">
+    <div className="mt-1 w-full">
       <Textarea
         autoFocus
         rows={3}
@@ -583,28 +581,16 @@ function RoomMessageEditor({ editingContent, onEditingContentChange, onSaveEdit,
           }
           if (event.key === 'Escape') onCancelEdit()
         }}
-        className="min-h-20 flex-1 resize-y"
+        className="w-full resize-none"
       />
-      <Button
-        variant="primary"
-        size="icon"
-        type="button"
-        onClick={onSaveEdit}
-        aria-label="Save edit"
-        className="shrink-0"
-      >
-        <Check size={14} />
-      </Button>
-      <Button
-        variant="ghost"
-        size="icon"
-        type="button"
-        onClick={onCancelEdit}
-        aria-label="Cancel edit"
-        className="h-9 w-9 shrink-0 rounded-lg p-0 text-(--muted) hover:bg-(--surface-subtle)"
-      >
-        <X size={14} />
-      </Button>
+      <div className="mt-2 flex justify-end gap-2">
+        <Button variant="ghost" size="sm" type="button" onClick={onCancelEdit} aria-label="Cancel edit">
+          Cancel
+        </Button>
+        <Button variant="primary" size="sm" type="button" onClick={onSaveEdit} aria-label="Save edit">
+          Save
+        </Button>
+      </div>
     </div>
   )
 }
