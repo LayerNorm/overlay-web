@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Keep task revisions increasing when a comment follows an edit in the same clock tick, so stale updates remain rejected.
+
 - Preserve native-agent attribution when task tools archive, restore, or move a task.
 
 - Overlay Free no longer cuts off longer OpenRouter Free replies with overlay_free_stream_prelude_too_large.

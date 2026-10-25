@@ -53,7 +53,7 @@ agents. Assignment never starts an agent run. Context hides other people's
 creator-only agents and includes creature appearance metadata. Scope moves keep
 only assignees allowed in the destination and record any cleared assignee.
 
-Task revisions advance monotonically for edits, status/rank moves, scope changes, archive and restore, including
+Task revisions advance monotonically for edits, comments, status/rank moves, scope changes, archive and restore, including
 affected descendants. Expected conflicts use Convex application-error data so Production redaction preserves
 the API's `409 work_conflict`. Task tools use these routes; service-authenticated agent attribution affects
 activity only and never replaces the human caller's permissions.

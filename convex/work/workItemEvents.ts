@@ -51,6 +51,6 @@ export const addComment = mutation({
       actingAgentPrincipalId: args.actingAgentPrincipalId,
     })
     await logWorkEvent(ctx, { workItemId: item._id, workspaceId: item.workspaceId, actorPrincipalId, kind: 'comment', data: { body } })
-    await ctx.db.patch(item._id, { updatedAt: Date.now() })
+    await ctx.db.patch(item._id, { updatedAt: Math.max(Date.now(), item.updatedAt + 1) })
   },
 })

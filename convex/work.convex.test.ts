@@ -128,6 +128,31 @@ test('field, status and scope updates commit together or leave the task and acti
   expect(await work.get('bob', original._id)).toMatchObject({ title: 'Complete edit', scope: 'workspace', status: 'done' })
 })
 
+test('a comment cannot resurrect an obsolete revision after a same-tick edit', async () => {
+  const convex = convexTest(schema, modules)
+  await seed(convex)
+  const work = api(convex)
+  const clock = vi.spyOn(Date, 'now').mockReturnValue(now)
+  try {
+    const original = await work.create('alice', { title: 'Original' })
+    const edited = await work.update('alice', original._id, {
+      title: 'Newer human edit', expectedUpdatedAt: original.updatedAt,
+    })
+    await work.comment('alice', original._id, 'Keep the newer edit')
+    await expect(work.update('alice', original._id, {
+      title: 'Stale agent edit', expectedUpdatedAt: original.updatedAt,
+    })).rejects.toThrow(/WORK_INVALID:conflict/)
+    const current = await work.get('alice', original._id)
+    expect(current?.title).toBe('Newer human edit')
+    expect(current?.updatedAt).toBeGreaterThan(edited.updatedAt)
+    expect((await work.events('alice', original._id)).at(-1)).toMatchObject({
+      kind: 'comment', data: { body: 'Keep the newer edit' },
+    })
+  } finally {
+    clock.mockRestore()
+  }
+})
+
 test('task revisions advance for edits, moves and archive/restore within one clock tick', async () => {
   const convex = convexTest(schema, modules)
   await seed(convex)
@@ -138,6 +163,7 @@ test('task revisions advance for edits, moves and archive/restore within one clo
     let previous = original.updatedAt
     for (const change of [
       () => work.update('alice', original._id, { title: 'Changed' }),
+      () => work.comment('alice', original._id, 'Same-tick comment'),
       () => work.move('alice', original._id, { status: 'progress' }),
       () => work.setScope('alice', original._id, 'workspace'),
       () => work.archive('alice', original._id),
