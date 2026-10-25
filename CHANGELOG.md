@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Settings breadcrumbs read Settings > page instead of a Personal or Workspace prefix.
+
 - Clear connection-error notices when retrying a remote agent that produced no text; preserve genuine partial replies and their recovery offsets.
 
 - Reuse explicit Preview-only, non-refilling machine QA funding while keeping ordinary Personal previews free.
