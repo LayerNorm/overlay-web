@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Reuse explicit Preview-only, non-refilling machine QA funding while keeping ordinary Personal previews free.
+
 - Limit selectable BYO providers to Claude Code and Codex while preserving retired account and
   workspace-agent records for history and removal. Prepare Agent Host/protocol `0.4.3`, Claude
   ACP `0.93.0`, Codex ACP `2.2.2`, and agent image v10; publishing and idle machine upgrades are

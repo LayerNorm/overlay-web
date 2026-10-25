@@ -32,6 +32,16 @@ part of the release path. Historical staging drills are preserved in
    PR backends. Re-adding the label creates a fresh backend and fixtures.
    Closed and unknown preview hosts must return HTTPS 404.
 
+For funded machine acceptance, `OVERLAY_PREVIEW_QA_FIXTURES=computer-workspace`
+opts only the selected Preview branch into a separate synthetic Computer QA
+workspace. Its initial $5 wallet covers normal paid admission for Computers or
+Overlay Cloud; no Computer is allocated by the seed. Existing fixtures, balances,
+holds and plan changes are preserved on reruns. Keep the ordinary Personal
+workspace free, use the existing scoped Preview provider credential, and record
+actual resource cleanup. The $1 layout fixture is below the default cloud startup
+floor and is not a runtime-funding fixture. Synthetic ledger credit does not pay
+the provider's real compute bill.
+
 ## Production
 
 1. Cloud Builder PRs enter the main merge queue after checks and proportionate
