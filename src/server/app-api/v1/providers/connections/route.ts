@@ -19,7 +19,7 @@ import { logger } from '@/server/observability/logger'
 import { summarizeErrorForLog } from '@/shared/security/safe-log'
 import { isSubscriptionConnection } from '@/shared/ai/gateway/subscription-providers'
 import { parseDiscoveredModels } from '@/shared/ai/gateway/byok-model-conversion'
-import { subscriptionBrokerRequest } from '@/server/ai/gateway/subscription-broker'
+import { createSubscriptionService } from '@/server/ai/subscriptions/service'
 
 const MAX_CONNECTIONS_PER_USER = 20
 const MAX_DISPLAY_NAME_LENGTH = 80
@@ -353,14 +353,6 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
           { status: 400 },
         )
       }
-      if (safeEnabledModelIds !== undefined) {
-        await subscriptionBrokerRequest('/v1/subscriptions/models', {
-          ownerId: auth.userId,
-          connectionId,
-          providerId: existing.subscriptionProvider,
-          enabledModelIds: safeEnabledModelIds,
-        })
-      }
       await repository.update({
         connectionId,
         userId: auth.userId,
@@ -502,11 +494,7 @@ export async function DELETE(request: NextRequest, context: AppApiRouteContext) 
       if (!isSubscriptionConnection(existing)) {
         return NextResponse.json({ error: 'Invalid subscription connection metadata' }, { status: 400 })
       }
-      await subscriptionBrokerRequest('/v1/subscriptions/disconnect', {
-        ownerId: auth.userId,
-        connectionId,
-        providerId: existing.subscriptionProvider,
-      })
+      await createSubscriptionService().disconnect(auth.userId, connectionId)
     }
 
     // Delete the external credential first. If AWS rejects that call, metadata

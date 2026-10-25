@@ -1,14 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
-import {
-  enabledSubscriptionProviderIds,
-  isSubscriptionBrokerConfigured,
-  subscriptionBrokerReadiness,
-} from '@/server/ai/gateway/subscription-broker'
+import { createSubscriptionService } from '@/server/ai/subscriptions/service'
 import {
   isSubscriptionConnection,
   isSubscriptionProviderId,
-  SUBSCRIPTION_PROVIDERS,
   subscriptionProvider,
   type SubscriptionProviderId,
 } from '@/shared/ai/gateway/subscription-providers'
@@ -16,7 +11,7 @@ import {
   executeSubscriptionUpdate,
   startSubscriptionConnection,
   type SubscriptionUpdateBody,
-} from './subscription-connection-actions'
+} from './subscription-request-actions'
 import {
   CONNECTION_ID,
   fetchOwnedConnection,
@@ -26,28 +21,7 @@ import {
 } from './subscription-connection-helpers'
 
 export async function GET(_request: NextRequest, _context: AppApiRouteContext) {
-  const configured = new Set(enabledSubscriptionProviderIds())
-  const readiness = isSubscriptionBrokerConfigured()
-    ? await subscriptionBrokerReadiness()
-    : { ready: false, providers: [] as SubscriptionProviderId[] }
-  const eligible = new Set(readiness.providers.filter((provider) => configured.has(provider)))
-  const available = readiness.ready && eligible.size > 0
-  return NextResponse.json({
-    data: {
-      available,
-      providers: SUBSCRIPTION_PROVIDERS.map(({ id, label, description }) => ({
-        id,
-        label,
-        description,
-        enabled: eligible.has(id),
-      })),
-      ...(!available ? {
-        reason: readiness.ready
-          ? 'No subscription provider has been verified and enabled for this deployment.'
-          : 'The subscription broker is not ready on this deployment.',
-      } : {}),
-    },
-  })
+  return NextResponse.json({ data: createSubscriptionService().providers() })
 }
 
 export async function POST(request: NextRequest, context: AppApiRouteContext) {
@@ -91,14 +65,13 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       return responseError('Connection not found', 404)
     }
     const providerId = connection.subscriptionProvider as SubscriptionProviderId
-    if (!enabledSubscriptionProviderIds().includes(providerId)) {
+    if (!createSubscriptionService().isEnabled(providerId)) {
       return responseError('This subscription provider is not enabled for this deployment', 404)
     }
     return await executeSubscriptionUpdate(
       userId,
       connectionId,
       body as SubscriptionUpdateBody,
-      connection,
     )
   })
 }

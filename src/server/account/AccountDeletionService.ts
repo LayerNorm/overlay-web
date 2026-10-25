@@ -2,8 +2,8 @@ import 'server-only'
 
 import { logger } from '@/server/observability/logger'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
-import { subscriptionBrokerRequest } from '@/server/ai/gateway/subscription-broker'
-import { isSubscriptionConnection } from '@/shared/ai/gateway/subscription-providers'
+import { SubscriptionService } from '@/server/ai/subscriptions/service'
+import { ConvexSubscriptionRepository } from '@/server/ai/subscriptions/repository'
 import type { OverlayServerContext } from '@/server/bootstrap'
 import type { AccountDataDeletionVerification } from './AccountDataDeletionRepository'
 import {
@@ -20,8 +20,22 @@ export type AccountDeletionResult = {
   verification?: AccountDataDeletionVerification
 }
 
+export interface AccountSubscriptionRevoker {
+  revokeAllForUser(userId: string): Promise<void>
+}
+
 export class AccountDeletionService {
-  constructor(private readonly ctx: OverlayServerContext) {}
+  private readonly subscriptionRevoker: AccountSubscriptionRevoker
+
+  constructor(
+    private readonly ctx: OverlayServerContext,
+    subscriptionRevoker?: AccountSubscriptionRevoker,
+  ) {
+    this.subscriptionRevoker = subscriptionRevoker ?? new SubscriptionService(
+      new ConvexSubscriptionRepository(),
+      ctx.byokCredentialStore,
+    )
+  }
 
   async deleteAccount(args: { userId: string; request?: Request }): Promise<AccountDeletionResult> {
     await this.revokeSubscriptionConnections(args.userId)
@@ -55,19 +69,11 @@ export class AccountDeletionService {
   }
 
   private async revokeSubscriptionConnections(userId: string): Promise<void> {
-    const connections = await this.ctx.appData.repositories.providerConnections.listPublic({ userId })
-    const subscriptions = connections.filter((connection) => isSubscriptionConnection(connection))
-    for (const connection of subscriptions) {
-      try {
-        await subscriptionBrokerRequest('/v1/subscriptions/disconnect', {
-          ownerId: userId,
-          connectionId: connection._id,
-          providerId: connection.subscriptionProvider,
-        })
-      } catch (error) {
-        logger.error(`[account/delete] Subscription revocation failed for ${userId}:`, error instanceof Error ? error.name : 'unknown')
-        throw new Error('Could not revoke subscription connections. Nothing else was deleted; try again.')
-      }
+    try {
+      await this.subscriptionRevoker.revokeAllForUser(userId)
+    } catch (error) {
+      logger.error(`[account/delete] Subscription revocation failed for ${userId}:`, error instanceof Error ? error.name : 'unknown')
+      throw new Error('Could not revoke subscription connections. Nothing else was deleted; try again.')
     }
   }
 

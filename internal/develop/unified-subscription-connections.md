@@ -5,64 +5,50 @@ connections. They keep the `byok/{connectionId}/{modelId}` model namespace and
 are checked against the authenticated owner, active connection status, account
 discovery and the enabled-model list before inference. The empty endpoint on a
 subscription record is a sentinel only; subscription inference never uses it
-as a destination.
+as a destination and never falls back to paid Overlay routing.
 
-## Services and configuration
+## Request-based architecture
 
-The web application calls a separate Node broker through the server-only
-`OVERLAY_SUBSCRIPTION_BROKER_URL` and `OVERLAY_SUBSCRIPTION_BROKER_KEY`
-settings. The URL must be HTTPS outside local development. Do not put either
-setting in `NEXT_PUBLIC_*` or accept a broker URL from a client.
+The web application handles authorization, polling, token refresh, discovery
+and inference. Convex stores owner-bound state, generations, leases, polling
+times, connection metadata and opaque vault references. The existing
+`ByokCredentialStore` holds immutable snapshots of Codex device and token JSON.
+There is no subscription broker process, Docker service, broker key, master
+key, or local auth directory.
 
-Provider rollout is independently allowlisted in the application with
-`OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS` and in the broker with
-`OVERLAY_SUBSCRIPTION_BROKER_ENABLED_PROVIDERS`. Both are comma-separated
-provider IDs and default to empty. Enable only adapters verified for the
-specific deployment, in both settings. The supported labels are ChatGPT/Codex,
-Grok Build, Meta Muse, Kimi, Kimi AI and Devin. Anthropic/Claude,
-Antigravity and Gemini subscriptions are excluded. These allowlists control
-eligibility; they do not establish live provider compatibility.
+`OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS` remains empty by default. Runtime
+eligibility is the intersection of that deployment allowlist and implemented
+request adapters; currently only `codex` is implemented. Other listed
+providers remain visible but unavailable until their request adapters and
+configuration are implemented. An environment setting cannot enable an
+unimplemented adapter. Anthropic/Claude, Antigravity and Gemini subscriptions
+remain excluded.
 
-The broker needs `OVERLAY_SUBSCRIPTION_BROKER_KEY` (shared with the backend)
-and `OVERLAY_SUBSCRIPTION_MASTER_KEY` (a private 32-byte key used to encrypt
-durable AES-GCM snapshots). Build
-`packages/overlay-subscription-broker/Dockerfile`; it fetches CLIProxyAPI at
-the pinned commit documented in that Dockerfile. Mount its runtime directory
-as private `noexec` tmpfs and its state directory on encrypted persistent
-storage. Keep the broker reachable only from the application backend. See the
-broker README for a keyless example and container limits.
+Codex authorization uses the existing device-code helper. Durable Convex
+leases fence authorization, polling, refresh and discovery across instances;
+the rotating refresh token is reread after acquiring its lease and a refreshed
+immutable vault snapshot is committed before release. Ambiguous expired refresh
+leases require reconnect rather than reusing a potentially consumed token.
+Disconnect revokes the generation and public connection access before cleanup.
+Failed vault deletion leaves retryable cleanup references in Convex.
 
-Every connection has an isolated worker, auth directory, API key and
-management key. Capacity admission is shared across providers and includes pending
-Codex authorizations; worker startup is reserved before another connection can
-be admitted. Worker ports bind to loopback. Subprocess output is discarded.
-Only authenticated server requests can create, poll, update models for, or
-revoke a connection; each operation carries both owner and connection IDs.
-Corrupt snapshots stop broker startup rather than silently creating a new
-account. Disconnect revokes worker state before deleting connection metadata.
+Codex model discovery uses the signed-in account's
+`https://chatgpt.com/backend-api/codex/models?client_version=0.154.0` catalog.
+No static model list is used. Empty or unavailable discovery preserves
+recoverable credentials for a later retry. Generic connection edits may change
+display name or enabled selections but cannot forge discovery, provider, or
+subscription status metadata.
 
-Codex authorization uses Overlay's existing device-code exchange helper; the
-resulting token metadata is imported into that account's isolated worker, which
-then owns refresh and rotation. xAI, Meta, Kimi, Kimi AI and Devin rely on the
-pinned CLIProxyAPI management handlers. Devin callback completion validates a
-loopback callback and matching state without fetching a user-supplied URL.
+Inference uses the installed OpenAI Responses SDK adapter with a placeholder
+SDK key. Each dispatch revalidates owner, provider, active status, discovered
+and enabled model membership before reading the vault. Only the fixed Codex
+Responses endpoint receives the account bearer token. Requests support text
+and function/custom-text tools; images, files, audio, video, hosted tools and
+zero-data-retention guarantees are unsupported. Unsupported semantic options
+are rejected rather than silently dropped. Provider failures never trigger
+additional inference or paid fallback.
 
-## Compatibility and coverage
-
-Provider adapters and OAuth host allowlists are defined in the broker source,
-but no live subscription account or hosted broker has been tested. Do not
-interpret this source-level integration as a live compatibility guarantee.
-Anthropic/Claude, Antigravity and Gemini subscriptions are excluded.
-Only discovered models are shown, and model selection cannot be forged through
-the generic connection update route. Inference currently supports text
-requests; image, audio, video and ZDR guarantees are not supported. This broker
-does not supply credentials to external cloud agents or native-only legacy
-agent paths. Fixed system-owned `TAB_GROUP_MODEL` and `MEDIA_INTENT_MODEL`
-background tasks do not use a selected subscription connection; they remain
-on their configured system model path. These contexts are not covered by
-first-party subscription model selection.
-
-The frontend and the API expose authorization status without returning device
-secrets or callback state. Polling is serialized per connection, and an
-incomplete Codex poll releases its lease for the next request. On a failed
-disconnect, leave the metadata intact and retry revocation before removing it.
+The request-based connection flow does not provide subscription credentials to
+external cloud agents, background consumers or native-only legacy paths. Fixed
+system-owned `TAB_GROUP_MODEL` and `MEDIA_INTENT_MODEL` tasks remain on their
+configured system model path.

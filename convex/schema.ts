@@ -201,6 +201,46 @@ export default defineSchema({
     .index('by_userId', ['userId'])
     .index('by_userId_providerId', ['userId', 'providerId']),
 
+  providerSubscriptionStates: defineTable({
+    userId: v.string(),
+    connectionId: v.id('userProviderConnections'),
+    providerId: v.union(
+      v.literal('codex'),
+      v.literal('xai'),
+      v.literal('meta'),
+      v.literal('kimi'),
+      v.literal('kimi-ai'),
+      v.literal('devin'),
+    ),
+    generation: v.number(),
+    revision: v.number(),
+    phase: v.union(
+      v.literal('pending'),
+      v.literal('discovering'),
+      v.literal('active'),
+      v.literal('needs_reconnect'),
+      v.literal('disconnected'),
+    ),
+    credentialRef: v.optional(v.string()),
+    pendingStateRef: v.optional(v.string()),
+    nextPollAt: v.optional(v.number()),
+    expiresAt: v.optional(v.number()),
+    leaseToken: v.optional(v.string()),
+    leaseUntil: v.optional(v.number()),
+    leaseOperation: v.optional(v.union(
+      v.literal('authorization'),
+      v.literal('poll'),
+      v.literal('refresh'),
+      v.literal('discovery'),
+    )),
+    cleanupRefs: v.array(v.string()),
+    cleanupStatus: v.union(v.literal('clean'), v.literal('pending')),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_connectionId', ['connectionId'])
+    .index('by_userId', ['userId']),
+
   // Metadata for the credentials an Overlay Cloud agent runs on (a Claude Code
   // setup-token or API key, an OpenAI API key). The secret itself lives in the
   // credential vault; only its opaque reference is stored here, and it is

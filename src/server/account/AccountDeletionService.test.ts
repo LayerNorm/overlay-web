@@ -17,7 +17,9 @@ function service(options: { providerRefs?: string[]; agentRefs?: string[]; failO
       },
     },
   } as unknown as OverlayServerContext
-  const run = (userId = 'user-1') => (new AccountDeletionService(ctx) as unknown as {
+  const run = (userId = 'user-1') => (new AccountDeletionService(ctx, {
+    revokeAllForUser: async () => {},
+  }) as unknown as {
     deleteStoredCredentials(userId: string): Promise<void>
   }).deleteStoredCredentials(userId)
   return { run, deleted }
@@ -42,32 +44,11 @@ test('a person with no stored credentials deletes cleanly', async () => {
   assert.deepEqual(deleted, [])
 })
 
-test('account deletion retains metadata and reports no cleanup when subscription revocation fails', async (t) => {
-  const previousUrl = process.env.OVERLAY_SUBSCRIPTION_BROKER_URL
-  const previousKey = process.env.OVERLAY_SUBSCRIPTION_BROKER_KEY
-  process.env.OVERLAY_SUBSCRIPTION_BROKER_URL = 'https://broker.example.test'
-  process.env.OVERLAY_SUBSCRIPTION_BROKER_KEY = 'b'.repeat(48)
-  t.after(() => {
-    if (previousUrl === undefined) delete process.env.OVERLAY_SUBSCRIPTION_BROKER_URL
-    else process.env.OVERLAY_SUBSCRIPTION_BROKER_URL = previousUrl
-    if (previousKey === undefined) delete process.env.OVERLAY_SUBSCRIPTION_BROKER_KEY
-    else process.env.OVERLAY_SUBSCRIPTION_BROKER_KEY = previousKey
-  })
-  t.mock.method(globalThis, 'fetch', async () =>
-    new Response(JSON.stringify({ error: 'broker unavailable' }), { status: 503 }))
-
-  const ctx = {
-    appData: { repositories: { providerConnections: {
-      listPublic: async () => [{
-        _id: 'conn_1',
-        authKind: 'subscription',
-        providerId: 'subscription:xai',
-        subscriptionProvider: 'xai',
-        endpoint: '',
-      }],
-    } } },
-  } as unknown as OverlayServerContext
-  const deletion = new AccountDeletionService(ctx) as unknown as {
+test('account deletion stops before row deletion when subscription vault cleanup fails', async () => {
+  const ctx = {} as unknown as OverlayServerContext
+  const deletion = new AccountDeletionService(ctx, {
+    revokeAllForUser: async () => { throw new Error('vault unavailable') },
+  }) as unknown as {
     deleteAccount(args: { userId: string }): Promise<unknown>
     deleteIntegrationConnectionsBestEffort(userId: string): Promise<void>
   }

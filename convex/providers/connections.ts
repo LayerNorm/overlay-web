@@ -190,6 +190,23 @@ export const updateByServer = mutation({
       (args.endpoint !== undefined || args.vaultObjectId !== undefined)) {
       throw new Error('Subscription identity and credentials cannot be changed')
     }
+    if (row.authKind === 'subscription') {
+      if (
+        args.discoveredModelsJson !== undefined ||
+        args.discoveredAt !== undefined ||
+        args.status !== undefined ||
+        args.lastError !== undefined ||
+        args.lastTestedAt !== undefined
+      ) {
+        throw new Error('Subscription discovery and status are service-controlled')
+      }
+      if (args.enabledModelIds !== undefined) {
+        const discovered = subscriptionModelIds(row.discoveredModelsJson)
+        if (args.enabledModelIds.some((modelId) => !discovered.has(modelId))) {
+          throw new Error('Enabled subscription models must be discovered')
+        }
+      }
+    }
 
     const updates: Record<string, unknown> = { updatedAt: Date.now() }
     if (args.displayName !== undefined) updates.displayName = args.displayName
@@ -206,6 +223,22 @@ export const updateByServer = mutation({
     return null
   },
 })
+
+function subscriptionModelIds(discoveredModelsJson: string | undefined): Set<string> {
+  if (!discoveredModelsJson) return new Set()
+  try {
+    const parsed: unknown = JSON.parse(discoveredModelsJson)
+    if (!parsed || typeof parsed !== 'object' || !('data' in parsed) || !Array.isArray(parsed.data)) {
+      return new Set()
+    }
+    return new Set(parsed.data.flatMap((model) =>
+      model && typeof model === 'object' && 'id' in model &&
+      typeof model.id === 'string' ? [model.id] : []
+    ))
+  } catch {
+    return new Set()
+  }
+}
 
 export const deleteByServer = mutation({
   args: {

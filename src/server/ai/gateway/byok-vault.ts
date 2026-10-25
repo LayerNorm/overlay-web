@@ -14,7 +14,7 @@ import { summarizeErrorForLog } from '@/shared/security/safe-log'
 
 export type ByokVaultKeyContext = {
   /** `agent-provider-account` is a coding-agent credential (Claude Code, Codex), not a model-routing key; `agent-secret` is a value an agent's imported config asked for (an MCP server's token). */
-  purpose: 'byok-provider-key' | 'agent-provider-account' | 'agent-secret'
+  purpose: 'byok-provider-key' | 'agent-provider-account' | 'agent-secret' | 'subscription-credential'
   userId: string
   providerId: string
   connectionId?: string
@@ -146,8 +146,7 @@ export async function deleteByokVaultKey(vaultObjectId: string): Promise<void> {
     logger.info('[BYOK Vault] Deleted vault object')
   } catch (error) {
     logger.error('[BYOK Vault] Failed to delete vault object', summarizeErrorForLog(error))
-    // Don't throw — the Convex record is already being deleted; a stale vault
-    // object is a minor leak, not a user-facing failure.
+    throw new Error('Failed to delete vault object')
   }
 }
 
