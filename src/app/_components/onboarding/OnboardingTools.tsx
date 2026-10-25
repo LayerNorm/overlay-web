@@ -96,7 +96,7 @@ export function OnboardingTools({ session, disabled, onContinue }: {
   return (
     <div>
       <OnboardingSubscriptions disabled={disabled} />
-      {nothingAvailable ? <p className="text-[13px] text-muted-foreground">Connections aren&apos;t available right now. You can add them later from Settings.</p> : null}
+      {nothingAvailable ? <p className="text-[13px] text-muted-foreground">App and agent connections aren&apos;t available on this deployment.</p> : null}
       {apps instanceof Set ? <>
         {agents ? <p className="mb-1.5 text-[11px] font-medium text-muted-foreground">Apps</p> : null}
         <ToolRows rows={visibleApps.map((app) => ({ id: app.slug, name: ONBOARDING_TOOL_LABELS[app.slug], detail: app.detail, connected: apps.has(app.slug), busy: connecting === app.slug, onConnect: () => { void connect(app.slug) } }))} disabled={disabled || Boolean(connecting)} />

@@ -46,8 +46,6 @@ export type OnboardingServiceDependencies = {
   effects: OnboardingEffects
   reply?: OnboardingReplyFactory
   createRunId?: () => string
-  /** False when this deployment has neither app integrations nor connected agents, so the tools step is skipped. */
-  toolsAvailable?: boolean
 }
 export type OnboardingSessionResponse = { completed: boolean; session: OnboardingSession | null }
 
@@ -170,7 +168,7 @@ export class ConversationalOnboardingService {
     const steps = onboardingProfileSteps(current)
     let nextIndex = steps.indexOf(current.step) + 1
     while ((steps[nextIndex] === 'team' && profile.team) || (steps[nextIndex] === 'website' && profile.website)) nextIndex++
-    const step: OnboardingStep = steps[nextIndex] ?? (current.member ? this.toolsStep(current) : 'employees')
+    const step: OnboardingStep = steps[nextIndex] ?? (current.member ? 'connections' : 'employees')
     const reply = await this.makeReply(step, profile, current.aiEnabled, {})
     const revision = current.revision + 1
     return {
@@ -257,7 +255,7 @@ export class ConversationalOnboardingService {
 
   private stepAfter(current: OnboardingSession): OnboardingStep {
     const solo = /^(just me|solo|on my own|by myself)[.!]?$/i.test(current.profile.team?.trim() ?? '')
-    if (current.step === 'employees') return this.toolsStep(current)
+    if (current.step === 'employees') return 'connections'
     if (current.step === 'connections') return current.flowVersion === 2 ? 'external' : 'memories'
     if (current.step === 'external') return 'memories'
     return current.step === 'memories' && !current.member && !solo ? 'teammates' : 'task'
@@ -357,9 +355,6 @@ export class ConversationalOnboardingService {
   }
   private assertWorkspace(session: OnboardingSession, workspaceId: string) {
     if (session.workspaceId !== workspaceId) throw new OnboardingServiceError('Onboarding is already in progress in another workspace', 409, 'workspace_mismatch')
-  }
-  private toolsStep(session: OnboardingSession): OnboardingStep {
-    return session.flowVersion === 3 && this.deps.toolsAvailable === false ? 'memories' : 'connections'
   }
   private nonce(userId: string, runId: string, revision: number, kind: string) { return `onboarding:${userId}:${runId}:${revision}:${kind}` }
 }
