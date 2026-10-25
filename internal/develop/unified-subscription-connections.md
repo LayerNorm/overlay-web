@@ -33,7 +33,9 @@ storage. Keep the broker reachable only from the application backend. See the
 broker README for a keyless example and container limits.
 
 Every connection has an isolated worker, auth directory, API key and
-management key. Worker ports bind to loopback. Subprocess output is discarded.
+management key. Capacity admission is shared across providers and includes pending
+Codex authorizations; worker startup is reserved before another connection can
+be admitted. Worker ports bind to loopback. Subprocess output is discarded.
 Only authenticated server requests can create, poll, update models for, or
 revoke a connection; each operation carries both owner and connection IDs.
 Corrupt snapshots stop broker startup rather than silently creating a new

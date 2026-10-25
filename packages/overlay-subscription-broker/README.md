@@ -41,7 +41,9 @@ Configure the application separately with
 `OVERLAY_SUBSCRIPTION_BROKER_URL=https://<private-broker-host>` and the same
 service key. Use HTTP only for an explicitly local development broker. Set
 `OVERLAY_SUBSCRIPTION_MAX_WORKERS` to a value from 1 to 128 to lower the
-default process cap; container memory and CPU limits remain the outer safety
+default process cap. All providers share serialized admission, including pending
+Codex device authorizations and worker startup; reconnecting the same connection
+reuses its reservation. Container memory and CPU limits remain the outer safety
 boundary. `OVERLAY_SUBSCRIPTION_BROKER_ENABLED_PROVIDERS` is an explicit
 operator rollout allowlist and defaults to empty. This is eligibility
 configuration, not proof that a provider works in production; verify each

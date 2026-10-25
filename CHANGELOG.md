@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Subscription broker capacity counts pending authorizations across providers and serializes worker admission.
+
 - Add per-user subscription provider connections through an isolated broker for Codex, xAI, Meta, Kimi, Kimi AI, and Devin; subscription routing never falls back to Overlay-paid inference.
 
 - Return not found for a removed workspace retained in an API client's active-workspace header.

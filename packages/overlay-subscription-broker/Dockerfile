@@ -18,6 +18,7 @@ COPY --from=cliproxy-build /out/cli-proxy-api /usr/local/bin/cli-proxy-api
 COPY packages/overlay-subscription-broker/package.json \
   packages/overlay-subscription-broker/server.mjs \
   packages/overlay-subscription-broker/state.mjs \
+  packages/overlay-subscription-broker/capacity.mjs \
   packages/overlay-subscription-broker/request-validation.mjs \
   packages/overlay-subscription-broker/record-validation.mjs \
   packages/overlay-subscription-broker/persistence.mjs \

@@ -1,8 +1,6 @@
-import { lstat, readFile, readdir } from 'node:fs/promises'
-import path from 'node:path'
+import { readFile } from 'node:fs/promises'
 import { randomBytes } from 'node:crypto'
 import {
-  MAX_WORKERS,
   constantTimeSecret,
   keyFor,
   now,
@@ -15,16 +13,12 @@ import {
   atomicSnapshot,
   decrypt,
   snapshotPath,
-  stateRoot,
 } from './persistence.mjs'
 import { validateRecord } from './record-validation.mjs'
+import { withAuthorizationCapacity } from './capacity.mjs'
 import { connectedResult, discoverModels } from './authorization.mjs'
 import { management, snapshotWorker, startWorker, stopWorker } from './worker-lifecycle.mjs'
 
-const SNAPSHOT_FILE = /^[a-f0-9]{64}\.enc$/
-const SNAPSHOT_TEMP_FILE = /^[a-f0-9]{64}\.enc\.[a-f0-9]{16}\.tmp$/
-const SNAPSHOT_BACKUP_FILE = /^[a-f0-9]{64}\.enc\.bak$/
-const MAX_SNAPSHOT_BYTES = 3_000_000
 
 export async function startCodexAuthorization(body) {
   if (body.providerId !== 'codex' || !providerEnabled('codex')) {
@@ -37,12 +31,7 @@ export async function startCodexAuthorization(body) {
     throw subscriptionError(400, 'Invalid Codex device authorization')
   }
   const identity = keyFor(body.ownerId, body.connectionId)
-  return await withLock('codex-pending-capacity', async () => {
-    const pending = await pendingCodexIdentities()
-    if (workers.size + pending.size >= MAX_WORKERS &&
-        !workers.has(identity) && !pending.has(identity)) {
-      throw subscriptionError(503, 'Subscription capacity is full')
-    }
+  return await withAuthorizationCapacity(identity, async () => {
     return await withLock(identity, async () => {
       const previous = workers.get(identity)
       if (previous) await stopWorker(previous)
@@ -78,29 +67,6 @@ export async function startCodexAuthorization(body) {
   })
 }
 
-async function pendingCodexIdentities() {
-  const files = await readdir(stateRoot())
-  const identities = new Set()
-  for (const file of files) {
-    if (file === '.broker.lock' || SNAPSHOT_BACKUP_FILE.test(file) ||
-        SNAPSHOT_TEMP_FILE.test(file)) continue
-    if (!SNAPSHOT_FILE.test(file)) throw new Error('Unexpected subscription state file')
-    const identity = file.slice(0, -4)
-    const filePath = path.join(stateRoot(), file)
-    const info = await lstat(filePath)
-    if (!info.isFile() || info.isSymbolicLink() ||
-        info.size <= 0 || info.size > MAX_SNAPSHOT_BYTES) {
-      throw new Error('Unreadable encrypted subscription state')
-    }
-    const record = decrypt(await readFile(filePath, 'utf8'), `overlay-subscription:${identity}`)
-    validateRecord(record, identity)
-    if (record.providerId === 'codex' && record.status === 'pending' &&
-        record.codexDeviceCode.expiresAt > now()) {
-      identities.add(identity)
-    }
-  }
-  return identities
-}
 
 export async function getCodexDeviceCode(body) {
   const identity = keyFor(body.ownerId, body.connectionId)
@@ -190,7 +156,7 @@ function matchesPollLease(record, body) {
 
 export async function importCodex(body) {
   const identity = keyFor(body.ownerId, body.connectionId)
-  return await withLock(identity, async () => {
+  return await withAuthorizationCapacity(identity, () => withLock(identity, async () => {
     let worker = workers.get(identity)
     if (worker && (worker.providerId !== 'codex' || worker.status !== 'pending')) {
       throw subscriptionError(403, 'Codex authorization is not pending')
@@ -200,12 +166,11 @@ export async function importCodex(body) {
       throw subscriptionError(403, 'Codex authorization lease is stale')
     }
     if (!worker) {
-      if (workers.size >= MAX_WORKERS) throw subscriptionError(503, 'Subscription capacity is full')
       worker = await startWorker(createPendingWorkerRecord(body, pending))
       workers.set(identity, worker)
     }
     return await importCodexTokens(worker, body)
-  })
+  }))
 }
 
 function validImportLease(pending, body) {

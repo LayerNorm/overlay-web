@@ -1,6 +1,5 @@
 import { randomBytes } from 'node:crypto'
 import {
-  MAX_WORKERS,
   assertEnabledProvider,
   keyFor,
   now,
@@ -8,6 +7,7 @@ import {
   workers,
   withLock,
 } from './state.mjs'
+import { withAuthorizationCapacity } from './capacity.mjs'
 import { validAuthorizationUrl } from './request-validation.mjs'
 import { startWorker, management, snapshotWorker, stopWorker } from './worker-lifecycle.mjs'
 
@@ -15,12 +15,9 @@ export async function startAuthorization(body) {
   const { ownerId, connectionId, providerId } = body
   assertEnabledProvider(providerId)
   const identity = keyFor(ownerId, connectionId)
-  return await withLock(identity, async () => {
+  return await withAuthorizationCapacity(identity, () => withLock(identity, async () => {
     if (providerId === 'codex') {
       throw subscriptionError(409, 'Codex authorization must use the Overlay device-code adapter')
-    }
-    if (workers.size >= MAX_WORKERS && !workers.has(identity)) {
-      throw subscriptionError(503, 'Subscription capacity is full')
     }
     const previous = workers.get(identity)
     if (previous) await stopWorker(previous)
@@ -59,7 +56,7 @@ export async function startAuthorization(body) {
       await stopWorker(worker)
       throw error
     }
-  })
+  }))
 }
 
 export async function pollAuthorization(body) {
