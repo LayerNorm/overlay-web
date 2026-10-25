@@ -74,7 +74,7 @@ import type { OverlayToolsOptions } from './types'
 /**
  * Overlay-defined tools only (no Composio, no web search). Act agent: full tool surface.
  */
-/** Optional on every list tool: narrows the list to one scope (archived items are not offered to agents). Omitted means everything active the caller can see. */
+/** Optional on every list tool: narrows the list to one scope. `list_tasks` can include archived tasks when `archived` is true. Without `scope`, active lists include everything the caller can see. */
 const toolScopeSchema = z
   .enum(['personal', 'workspace'])
   .optional()
@@ -995,13 +995,14 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
 
   if (shouldExposeTool('list_tasks')) {
     tools.list_tasks = tool({
-      description: 'List tasks in Work. Filter by scope, status, assignee, title text, and completion.',
+      description: 'List tasks in Work. Filter by scope, status, assignee, title text, and completion. Set archived to true to list archived tasks instead, for example to find the id for restore_task.',
       inputSchema: z.object({
         scope: z.enum(['personal', 'workspace']).optional(),
         status: z.union([taskStatusSchema, z.array(taskStatusSchema).min(1)]).optional(),
         assignee: z.string().optional(),
         query: z.string().optional(),
         includeDone: z.boolean().optional(),
+        archived: z.boolean().optional(),
         limit: z.number().int().min(1).max(200).optional(),
       }).strict(),
       execute: async (input) => { assertToolAllowed('list_tasks'); return executeListTasks(options, input) },
@@ -1076,7 +1077,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
   }
   if (shouldExposeTool('restore_task')) {
     tools.restore_task = tool({
-      description: 'Restore an archived task in Work.',
+      description: 'Restore an archived task in Work. Find its id with list_tasks and archived set to true.',
       inputSchema: z.object({ taskId: taskIdSchema }).strict(),
       execute: async (input) => { assertToolAllowed('restore_task'); return executeRestoreTask(options, input) },
     })

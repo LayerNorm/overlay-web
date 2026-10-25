@@ -13,6 +13,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 - Overlay Free no longer cuts off longer OpenRouter Free replies with overlay_free_stream_prelude_too_large.
 
 - Add task tools for listing, reading, creating, updating, commenting on, archiving, and restoring Work tasks, with agent activity attribution. Updates check revisions inside the mutation and commit fields, status and scope together, preserving concurrent edits and avoiding partial changes.
+- Chat can now find archived tasks to restore them.
 - Let workspace-visible and personally owned agents take Personal tasks, keep creator-only agents private from other members, and preserve assignment eligibility when tasks change scope.
 
 - Keep agent Details and Computer tabs synchronized after starting, stopping, waking or deleting the attached computer.
