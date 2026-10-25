@@ -11,6 +11,16 @@ export function environmentAgentOptions(capabilities: Record<string, unknown>, a
   return undefined
 }
 
+export function defaultAgentPermissionMode(options: AdapterOptions | undefined, cloud: boolean): string {
+  const preferred = cloud ? 'auto' : 'acceptEdits'
+  return options?.mode?.values.some(value => value.id === preferred)
+    ? preferred : options?.mode?.currentValue ?? ''
+}
+
+export function agentModeNeedsConfirmation(mode: string): boolean {
+  return ['bypassPermissions', 'full-access', 'danger-full-access'].includes(mode)
+}
+
 /** Older Codex choices combine model and effort; live catalogs can advertise them separately. */
 export function resolvedAgentModelChoice(options: AdapterOptions | undefined, model: string, effort?: string) {
   const combined = /^(.+)\[([^\]]+)\]$/.exec(model)

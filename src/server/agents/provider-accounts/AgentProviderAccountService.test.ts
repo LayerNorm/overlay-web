@@ -77,6 +77,7 @@ test('connect stores the secret in the vault only, and the public account never 
 
 test('connect refuses mismatched or malformed credentials before touching the vault', async () => {
   const { service, vault } = harness()
+  await assert.rejects(service.connect({ userId: 'u1', provider: 'hermes', method: 'api_key', secret: OPENAI_KEY }), /no longer supported/)
   await assert.rejects(service.connect({ userId: 'u1', provider: 'claude-code', method: 'subscription', secret: CLAUDE_KEY }), /API key/)
   await assert.rejects(service.connect({ userId: 'u1', provider: 'claude-code', method: 'api_key', secret: CLAUDE_TOKEN }), /subscription/)
   await assert.rejects(service.connect({ userId: 'u1', provider: 'codex', method: 'api_key', secret: CLAUDE_KEY }), /Anthropic/)
@@ -105,6 +106,26 @@ test('a failed database write does not leave an orphaned secret', async () => {
   const { service, vault } = harness({ createThrows: 'AGENT_PROVIDER_ACCOUNT_LIMIT' })
   await assert.rejects(service.connect({ userId: 'u1', provider: 'codex', method: 'api_key', secret: OPENAI_KEY }), /limit/)
   assert.equal(vault.size, 0)
+})
+
+test('retired accounts remain readable and removable but cannot reconnect or release credentials', async () => {
+  const { service, rows, vault } = harness()
+  rows.set('legacy', {
+    id: 'legacy', userId: 'u1', provider: 'hermes', method: 'api_key', label: 'Old account',
+    credentialRef: 'legacy-ref', status: 'active', createdAt: 1, updatedAt: 1,
+  })
+  vault.set('legacy-ref', 'legacy-secret')
+
+  assert.equal((await service.list('u1'))[0]?.provider, 'hermes')
+  await assert.rejects(service.reconnect({ userId: 'u1', accountId: 'legacy', secret: 'new-secret' }), /no longer supported/)
+  await assert.rejects(service.resolveRunEnvironment({
+    accountId: 'legacy', ownerUserId: 'u1', expectedProvider: 'hermes',
+  }), /no longer supported/)
+  assert.equal(vault.get('legacy-ref'), 'legacy-secret')
+
+  await service.remove({ userId: 'u1', accountId: 'legacy' })
+  assert.equal(rows.has('legacy'), false)
+  assert.equal(vault.has('legacy-ref'), false)
 })
 
 test('accounts are private: another user cannot reconnect, rename, remove, or run on them', async () => {

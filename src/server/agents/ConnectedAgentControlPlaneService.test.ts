@@ -640,7 +640,8 @@ test('a binding records the account and who chose it, and refuses accounts that 
   assert.equal(upserts[0]?.adapterConfig.providerAccountId, 'account-1')
   assert.equal(upserts[0]?.adapterConfig.providerAccountOwnerUserId, 'user-1')
   await assertControlPlaneError(() => service.upsertBinding({ ...base, providerAccountId: 'someone-elses' }), 'provider_account_invalid')
-  await assertControlPlaneError(() => service.upsertBinding({ ...base, adapterId: 'eve', providerAccountId: 'account-1' }), 'provider_account_unsupported')
+  await assertControlPlaneError(() => service.upsertBinding({ ...base, adapterId: 'hermes', providerAccountId: 'account-1' }), 'adapter_unavailable')
+  await assertControlPlaneError(() => service.upsertBinding({ ...base, adapterId: 'eve', providerAccountId: 'account-1' }), 'adapter_unavailable')
 })
 
 test('run credentials go only to the Overlay Cloud host running that active run, for the account the binding chose', async () => {

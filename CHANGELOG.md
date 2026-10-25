@@ -4,6 +4,16 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Clear connection-error notices when retrying a remote agent that produced no text; preserve genuine partial replies and their recovery offsets.
+
+- Reuse explicit Preview-only, non-refilling machine QA funding while keeping ordinary Personal previews free.
+
+- Limit selectable BYO providers to Claude Code and Codex while preserving retired account and
+  workspace-agent records for history and removal. Prepare Agent Host/protocol `0.4.3`, Claude
+  ACP `0.93.0`, Codex ACP `2.2.2`, and agent image v10; publishing and idle machine upgrades are
+  not part of this source change.
+- Move agent reconnect controls into the message hover toolbar: Stop cancels connection attempts, Retry appears only after recoverable failure, and inline waiting text and buttons are removed.
+
 - Require server authentication for task scope, archive and restore so browser tokens cannot bypass Work policy or forge agent activity.
 
 - Keep task revisions increasing when a comment follows an edit in the same clock tick, so stale updates remain rejected.

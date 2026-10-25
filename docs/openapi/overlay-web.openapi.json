@@ -6651,10 +6651,7 @@
                     "type": "string",
                     "enum": [
                       "claude-code",
-                      "codex",
-                      "opencode",
-                      "hermes",
-                      "cursor"
+                      "codex"
                     ]
                   },
                   "method": {
