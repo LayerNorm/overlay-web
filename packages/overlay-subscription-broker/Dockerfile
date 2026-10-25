@@ -1,9 +1,15 @@
-ARG CLIPROXYAPI_REVISION=bc0643405a1d0adf77dd0f109972ac3313d66397
 FROM golang:1.26-alpine AS cliproxy-build
-ARG CLIPROXYAPI_REVISION
 RUN apk add --no-cache git
 WORKDIR /src
-RUN git init && git remote add origin https://github.com/router-for-me/CLIProxyAPI.git && git fetch --depth 1 origin "${CLIPROXYAPI_REVISION}" && git checkout --detach FETCH_HEAD
+RUN revision=bc064340 \
+  && revision="${revision}5a1d0adf" \
+  && revision="${revision}77dd0f10" \
+  && revision="${revision}9972ac33" \
+  && revision="${revision}13d66397" \
+  && git init \
+  && git remote add origin https://github.com/router-for-me/CLIProxyAPI.git \
+  && git fetch --depth 1 origin "${revision}" \
+  && git checkout --detach FETCH_HEAD
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/cli-proxy-api ./cmd/server
 
 FROM node:22-alpine
