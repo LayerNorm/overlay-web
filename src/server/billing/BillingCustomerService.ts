@@ -87,19 +87,32 @@ export class BillingCustomerService {
     billingAccountId?: string
     userId: string
   }) {
-    const entitlements = args.billingAccountId
-      ? await this.deps.repository.getBillingAccountEntitlementsByServer({
-          billingAccountId: args.billingAccountId,
-        })
-      : await this.deps.repository.getEntitlementsByServer({ userId: args.userId })
+    const [entitlements, userEntitlements] = args.billingAccountId
+      ? await Promise.all([
+          this.deps.repository.getBillingAccountEntitlementsByServer({
+            billingAccountId: args.billingAccountId,
+          }),
+          this.deps.repository.getEntitlementsByServer({ userId: args.userId }),
+        ])
+      : [
+          await this.deps.repository.getEntitlementsByServer({ userId: args.userId }),
+          null,
+        ]
     if (!entitlements) {
       serviceError({ error: 'Failed to load subscription' }, 502)
     }
-    const usageBuckets = normalizeUsageBuckets(entitlements)
+    const appEntitlements = args.billingAccountId
+      ? {
+          ...entitlements,
+          overlayStorageBytesUsed: userEntitlements?.overlayStorageBytesUsed ?? entitlements.overlayStorageBytesUsed,
+          overlayStorageBytesLimit: userEntitlements?.overlayStorageBytesLimit ?? entitlements.overlayStorageBytesLimit,
+        }
+      : entitlements
+    const usageBuckets = normalizeUsageBuckets(appEntitlements)
     return {
-      ...entitlements,
-      dailyUsage: entitlements.dailyUsage ?? { ask: 0, write: 0, agent: 0 },
-      ...getTopUpPreferenceSnapshot(entitlements),
+      ...appEntitlements,
+      dailyUsage: appEntitlements.dailyUsage ?? { ask: 0, write: 0, agent: 0 },
+      ...getTopUpPreferenceSnapshot(appEntitlements),
       ...usageBuckets,
       creditsUsed: usageBuckets.budgetUsedCents,
       creditsTotal: usageBuckets.budgetTotalCents / 100,

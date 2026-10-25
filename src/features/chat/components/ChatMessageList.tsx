@@ -7,7 +7,7 @@ import {
   MessageScrollerViewport,
 } from '@overlay/ui/ai'
 import type { ReactNode, RefObject } from 'react'
-import { useCallback, useMemo } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import type { UseChatHelpers } from '@/components/providers/ai-chat-client'
 import type { UIMessage } from '@/shared/chat/ai-ui-message'
 import type { WebSourceItem } from '@/shared/web/web-sources'
@@ -22,10 +22,12 @@ import {
   type ChatTranscriptPresentation,
 } from '@overlay/chat-react/transcript'
 import type { ChatTranscriptExchangeView } from '@overlay/chat-core'
+import { getUserTurnId } from '@overlay/chat-core'
 import type { DraftModalState, GenerationResult } from './chat-interface/types'
 import { recordRender } from '@overlay/chat-react/lib/perf-debug'
 import { ChatMessage } from './ChatMessage'
 import { toChatTranscriptView } from './chat/toChatTranscriptView'
+import { reconcileTranscriptIdentity } from './chat/chat-transcript-identity'
 
 type ChatInstance = UseChatHelpers<UIMessage>
 
@@ -37,7 +39,6 @@ export type ChatMessageListState = {
   exchangeModels: string[][]
   selectedImageModels: string[]
   selectedVideoModels: string[]
-  selectedTabPerExchange: number[]
   selectedModels: string[]
   exchangeModes: ('ask' | 'act')[]
 }
@@ -50,11 +51,10 @@ export type ChatMessageListRuntime = {
   interruptedExchangeIdx: number | null
   exitingTurnIds: string[]
   sourcesPanel: { turnId: string; sources: WebSourceItem[] } | null
-  getResponseForExchangeForModel: (modelId: string, exchangeIndex: number, slotOrder?: string[]) => UIMessage | null
+  getResponseForExchange: (exchangeIndex: number) => UIMessage | null
 }
 
 export type ChatMessageListActions = {
-  onTabSelect: (exchangeIndex: number, tabIndex: number) => void
   onJumpToReply: (turnId: string) => void
   onDeleteTurn: (turnId: string) => void | Promise<void>
   onReplyToMediaPrompt: (prompt: string, kind: 'image' | 'video', turnId: string | null) => void
@@ -63,7 +63,7 @@ export type ChatMessageListActions = {
   onOpenDraft: (state: DraftModalState) => void
   onCreateAutomationDraft: (state: Extract<DraftModalState, { kind: 'automation' }>) => void | Promise<void>
   onOpenSources: (turnId: string, sources: WebSourceItem[]) => void
-  onRetry: (message: UIMessage, exchangeIndex: number, isActExchange: boolean, exchangeModels: string[]) => void | Promise<void>
+  onRetry: (message: UIMessage, exchangeIndex: number, isActExchange: boolean, modelId: string) => void | Promise<void>
   onOpenFilePreview: (name: string, fileIds: string[]) => void | Promise<void>
   onOpenAttachmentPreview: (
     preview: AttachmentPreview,
@@ -99,8 +99,15 @@ export function ChatMessageList({
   runtime,
   actions,
 }: ChatMessageListProps) {
+  const conversationId = transcriptKey ?? null
+  const firstUserMessage = state.primaryMessages.find((message) => message.role === 'user')
+  const firstTurnId = firstUserMessage ? getUserTurnId(firstUserMessage) ?? firstUserMessage.id : null
+  const [identity, setIdentity] = useState({ conversationId, firstTurnId, key: 0 })
+  const nextIdentity = reconcileTranscriptIdentity(identity, conversationId, firstTurnId)
+  if (nextIdentity !== identity) setIdentity(nextIdentity)
+
   return (
-    <MessageScrollerProvider key={transcriptKey ?? undefined} defaultScrollPosition="end" autoScroll>
+    <MessageScrollerProvider key={nextIdentity.key} defaultScrollPosition="end" autoScroll>
       <MessageScroller className="overlay-chat-surface min-h-0 flex-1">
         <MessageScrollerViewport
           ref={messagesScrollRef}
@@ -146,7 +153,6 @@ function ChatMessages({
       primaryMessages: state.primaryMessages,
       exchangeModes: state.exchangeModes,
       exchangeModels: state.exchangeModels,
-      selectedTabPerExchange: state.selectedTabPerExchange,
       selectedModels: state.selectedModels,
       exchangeGenTypes: state.exchangeGenTypes,
       generationResults: state.generationResults,
@@ -154,10 +160,10 @@ function ChatMessages({
       isActiveLoading: runtime.isActiveLoading,
       isOptimisticLoading: runtime.isOptimisticLoading,
       interruptedExchangeIdx: runtime.interruptedExchangeIdx,
-      getResponseForExchangeForModel: runtime.getResponseForExchangeForModel,
+      getResponseForExchange: runtime.getResponseForExchange,
     }),
     [
-      runtime.getResponseForExchangeForModel,
+      runtime.getResponseForExchange,
       runtime.interruptedExchangeIdx,
       runtime.isActiveLoading,
       runtime.isOptimisticLoading,
@@ -168,7 +174,6 @@ function ChatMessages({
       state.latestExchangeIndex,
       state.primaryMessages,
       state.selectedModels,
-      state.selectedTabPerExchange,
     ],
   )
 
@@ -211,15 +216,13 @@ function ChatMessages({
         chatInstances={runtime.chatInstances}
         exchangeModes={state.exchangeModes}
         exchangeModels={state.exchangeModels}
-        selectedTabPerExchange={state.selectedTabPerExchange}
         selectedModels={state.selectedModels}
         isActiveLoading={runtime.isActiveLoading}
         isOptimisticLoading={runtime.isOptimisticLoading}
         interruptedExchangeIdx={runtime.interruptedExchangeIdx}
         exitingTurnIds={runtime.exitingTurnIds}
         sourcesPanel={runtime.sourcesPanel}
-        getResponseForExchangeForModel={runtime.getResponseForExchangeForModel}
-        onTabSelect={actions.onTabSelect}
+        getResponseForExchange={runtime.getResponseForExchange}
         onJumpToReply={actions.onJumpToReply}
         onDeleteTurn={actions.onDeleteTurn}
         onReplyToAssistantText={actions.onReplyToAssistantText}

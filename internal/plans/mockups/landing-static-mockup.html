@@ -1,0 +1,709 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Overlay landing — static</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&family=Libre+Baskerville&display=swap" rel="stylesheet">
+<!--
+  Static landing mockup. References: devin.ai (framed column, hairline grid,
+  two-tone headings, numbered lifecycle) and generalinput.com (centered hero,
+  product shot, soft gray cards). No scroll-driven animation; hover states only.
+  Copy is the current landing copy, rearranged into ordinary sections.
+-->
+<style>
+:root {
+  --bg: #ffffff;
+  --panel: #f7f7f7;
+  --panel-2: #f1f1f1;
+  --card: #ffffff;
+  --line: #ebebeb;
+  --line-2: #e2e2e2;
+  --text: #171717;
+  --muted: #737373;
+  --faint: #a3a3a3;
+  --btn: #171717;
+  --btn-text: #ffffff;
+  --btn-2: #ffffff;
+  --accent: #2563eb;
+  --ok: #16a34a;
+  --shadow: 0 1px 2px rgba(0,0,0,.04), 0 8px 24px -12px rgba(0,0,0,.08);
+  --sans: 'Geist', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --mono: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --serif: 'Libre Baskerville', Georgia, serif;
+  --w: 1120px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #111111; --panel: #171717; --panel-2: #1d1d1d; --card: #1a1a1a;
+    --line: #232323; --line-2: #2c2c2c; --text: #ededed; --muted: #8f8f8f; --faint: #5f5f5f;
+    --btn: #2a2a2a; --btn-text: #f5f5f5; --btn-2: #1a1a1a; --accent: #60a5fa; --ok: #4ade80;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.6);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #111111; --panel: #171717; --panel-2: #1d1d1d; --card: #1a1a1a;
+  --line: #232323; --line-2: #2c2c2c; --text: #ededed; --muted: #8f8f8f; --faint: #5f5f5f;
+  --btn: #2a2a2a; --btn-text: #f5f5f5; --btn-2: #1a1a1a; --accent: #60a5fa; --ok: #4ade80;
+  --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.6);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { -webkit-text-size-adjust: 100%; }
+body { background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 15px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+a { color: inherit; text-decoration: none; }
+button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+.i { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+.i.sm { width: 14px; height: 14px; }
+.i.lg { width: 20px; height: 20px; }
+
+/* The framed column: one container with hairline rails, sections separated by hairlines */
+.frame { max-width: calc(var(--w) + 2px); margin: 0 auto; border-left: 1px solid var(--line); border-right: 1px solid var(--line); }
+.sec { border-top: 1px solid var(--line); padding: 96px 56px; }
+.sec.tight { padding-top: 72px; padding-bottom: 72px; }
+
+/* Type */
+h1, h2, h3 { font-weight: 500; letter-spacing: -0.025em; }
+.h1 { font-size: 60px; line-height: 1.04; letter-spacing: -0.035em; }
+.h2 { font-size: 40px; line-height: 1.1; letter-spacing: -0.03em; }
+.h3 { font-size: 17px; line-height: 1.35; letter-spacing: -0.01em; }
+.dim { color: var(--faint); }
+.lead { font-size: 18px; line-height: 1.6; color: var(--muted); }
+.body { color: var(--muted); font-size: 14.5px; line-height: 1.6; }
+.eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: .02em; color: var(--muted); text-transform: uppercase; }
+
+/* Lockup: orb at 0.5em on the baseline, 0.4em gap, serif lowercase word */
+.lockup { display: inline-flex; align-items: baseline; gap: .4em; font-size: 22px; }
+.lockup .orb { width: .5em; height: .5em; }
+.lockup .word { font-family: var(--serif); letter-spacing: -0.01em; line-height: 1; }
+
+/* Metal orb (OverlayMark) and agent orbs, as CSS */
+.orb { display: inline-block; border-radius: 50%; flex: none;
+  background: radial-gradient(circle at 36% 28%, #fff 0%, #eceef1 20%, #a8adb5 46%, #4c5158 74%, #17191d 100%);
+  box-shadow: inset 0 -1px 1px rgba(255,255,255,.35); }
+.ao { --c: #71717a; width: 18px; height: 18px; border-radius: 50%; flex: none;
+  background: radial-gradient(circle at 36% 28%, color-mix(in srgb, var(--c) 12%, #fff) 0%, color-mix(in srgb, var(--c) 48%, #fff) 24%, var(--c) 52%, color-mix(in srgb, var(--c) 60%, #000) 82%, color-mix(in srgb, var(--c) 30%, #000) 100%); }
+
+/* Buttons */
+.btn { display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 18px; border-radius: 999px; font-size: 14px; font-weight: 500; white-space: nowrap; transition: background .15s, border-color .15s, opacity .15s; }
+.btn.sm { height: 32px; padding: 0 14px; font-size: 13px; }
+.btn.primary { background: var(--btn); color: var(--btn-text); border: 1px solid transparent; }
+:root[data-theme="dark"] .btn.primary { border-color: #3a3a3a; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .btn.primary { border-color: #3a3a3a; } }
+.btn.primary:hover { opacity: .88; }
+.btn.ghost { background: var(--btn-2); border: 1px solid var(--line-2); }
+.btn.ghost:hover { background: var(--panel); }
+.btn .go { transition: transform .15s; }
+.btn:hover .go { transform: translateX(2px); }
+
+/* Nav */
+.nav { position: sticky; top: 0; z-index: 20; background: color-mix(in srgb, var(--bg) 86%, transparent); backdrop-filter: saturate(1.4) blur(12px); -webkit-backdrop-filter: saturate(1.4) blur(12px); border-bottom: 1px solid var(--line); }
+.nav-in { max-width: calc(var(--w) + 2px); margin: 0 auto; height: 60px; display: flex; align-items: center; gap: 28px; padding: 0 24px; }
+.nav-links { display: flex; gap: 24px; font-size: 14px; color: var(--muted); }
+.nav-links a:hover { color: var(--text); }
+.nav-right { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+.icon-btn { width: 32px; height: 32px; display: grid; place-items: center; border-radius: 8px; color: var(--muted); }
+.icon-btn:hover { background: var(--panel); color: var(--text); }
+.nav .login { font-size: 14px; color: var(--muted); padding: 0 10px; }
+.nav .login:hover { color: var(--text); }
+
+/* Hero */
+.hero { padding: 104px 40px 96px; text-align: center; }
+.hero .h1 { max-width: 1000px; margin: 0 auto; font-size: 56px; }
+.br-lg { display: block; }
+.hero .lead { max-width: 560px; margin: 22px auto 0; }
+.hero-actions { margin-top: 32px; display: flex; gap: 10px; justify-content: center; }
+.byoa { margin-top: 28px; display: flex; gap: 8px; justify-content: center; align-items: center; flex-wrap: wrap; font-size: 13px; color: var(--muted); }
+.chip { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 999px; border: 1px solid var(--line-2); background: var(--card); font-size: 12.5px; color: var(--text); }
+.chip .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--faint); }
+
+/* Product shot */
+.shot-wrap { margin-top: 64px; padding: 0 0 0; }
+.shot { text-align: left; border: 1px solid var(--line-2); border-radius: 14px; background: var(--card); box-shadow: var(--shadow); overflow: hidden; display: grid; grid-template-columns: 220px 1fr 300px; grid-template-rows: 100%; height: 580px; font-size: 13px; }
+.shot > * { min-height: 0; overflow: hidden; }
+.sb { background: var(--panel); border-right: 1px solid var(--line); padding: 14px 10px; display: flex; flex-direction: column; gap: 2px; }
+.sb .lockup { font-size: 17px; padding: 2px 8px 14px; }
+.sb-item { display: flex; align-items: center; gap: 9px; height: 30px; padding: 0 8px; border-radius: 7px; color: var(--muted); }
+.sb-item.on { background: var(--card); color: var(--text); box-shadow: 0 0 0 1px var(--line-2); }
+.sb-label { font-size: 11.5px; color: var(--faint); padding: 14px 8px 6px; }
+.sb-item .meta { margin-left: auto; font-size: 11px; color: var(--faint); }
+.sb-item .live { margin-left: auto; width: 6px; height: 6px; border-radius: 50%; background: var(--ok); }
+.sb-user { margin-top: auto; display: flex; align-items: center; gap: 9px; padding: 10px 8px 2px; border-top: 1px solid var(--line); font-size: 12.5px; }
+.avatar { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-size: 10.5px; font-weight: 500; background: var(--panel-2); border: 1px solid var(--line-2); color: var(--muted); }
+
+.chat { display: flex; flex-direction: column; min-width: 0; }
+.chat-head { height: 48px; display: flex; align-items: center; gap: 9px; padding: 0 18px; border-bottom: 1px solid var(--line); font-weight: 500; }
+.chat-head .sub { color: var(--faint); font-weight: 400; }
+.chat-head .people { margin-left: auto; display: flex; }
+.chat-head .people .avatar { margin-left: -6px; border: 2px solid var(--card); }
+.msgs { flex: 1; min-height: 0; padding: 22px 22px 0; display: flex; flex-direction: column; gap: 16px; overflow: hidden; }
+.m-user { align-self: flex-end; max-width: 78%; background: var(--panel-2); border-radius: 14px; padding: 9px 13px; line-height: 1.5; }
+.m-user .who { display: block; font-size: 11px; color: var(--faint); margin-bottom: 2px; }
+.m-agent { display: flex; gap: 10px; max-width: 94%; line-height: 1.6; }
+.m-agent .ao { margin-top: 2px; }
+.m-agent ol { margin: 6px 0 0 18px; color: var(--text); }
+.m-agent code, .code { font-family: var(--mono); font-size: 11.5px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 5px; padding: 0 4px; }
+.steps { display: inline-flex; align-items: center; gap: 7px; height: 26px; padding: 0 10px; border-radius: 7px; border: 1px solid var(--line); color: var(--muted); font-size: 12px; margin-bottom: 8px; }
+.composer { margin: 14px 18px 18px; border: 1px solid var(--line-2); border-radius: 14px; padding: 11px 12px 9px; background: var(--card); }
+.composer .ph { color: var(--faint); }
+.composer .row { margin-top: 12px; display: flex; align-items: center; gap: 8px; color: var(--muted); }
+.composer .model { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; height: 24px; padding: 0 8px; border-radius: 6px; background: var(--panel); }
+.composer .send { margin-left: auto; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: var(--btn); color: var(--btn-text); }
+
+.side { border-left: 1px solid var(--line); background: var(--card); display: flex; flex-direction: column; min-width: 0; }
+.side-head { height: 48px; display: flex; align-items: center; gap: 8px; padding: 0 16px; border-bottom: 1px solid var(--line); font-weight: 500; }
+.side-head .tag { margin-left: auto; font-size: 11px; font-weight: 400; color: var(--ok); display: inline-flex; align-items: center; gap: 5px; }
+.side-head .tag::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.term { margin: 14px; flex: 1; min-height: 0; border-radius: 10px; background: #141414; color: #d4d4d4; font-family: var(--mono); font-size: 11px; line-height: 1.75; padding: 12px 14px; overflow: hidden; border: 1px solid #222; }
+.term .p { color: #6b7280; }
+.term .g { color: #4ade80; }
+.term .y { color: #fbbf24; }
+.pr { margin: 0 14px 14px; border: 1px solid var(--line); border-radius: 10px; padding: 11px 12px; display: flex; gap: 10px; align-items: flex-start; }
+.pr .t { font-weight: 500; }
+.pr .s { font-size: 12px; color: var(--muted); }
+.pr .i { color: var(--ok); margin-top: 2px; }
+
+/* Section heads */
+.head { max-width: 640px; }
+.head.center { margin: 0 auto; text-align: center; }
+.head .lead { margin-top: 16px; }
+
+/* Superpowers: three soft cards */
+.cards3 { margin-top: 56px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.card .art { height: 236px; border-radius: 14px; background: var(--panel); border: 1px solid var(--line); display: grid; place-items: center; overflow: hidden; padding: 22px; }
+.card h3 { margin-top: 18px; }
+.card p { margin-top: 6px; }
+.tagline { margin-top: 44px; text-align: center; color: var(--muted); font-size: 14px; }
+.tagline b { color: var(--text); font-weight: 500; }
+
+/* Mini UI fragments used as illustrations */
+.mini { width: 100%; max-width: 280px; background: var(--card); border: 1px solid var(--line-2); border-radius: 11px; box-shadow: var(--shadow); font-size: 12px; }
+.mini-h { display: flex; align-items: center; gap: 7px; padding: 9px 12px; border-bottom: 1px solid var(--line); font-weight: 500; }
+.mini-h .meta { margin-left: auto; color: var(--faint); font-weight: 400; font-size: 11px; }
+.mini-r { display: flex; align-items: center; gap: 8px; padding: 8px 12px; color: var(--muted); }
+.mini-r + .mini-r { border-top: 1px solid var(--line); }
+.mini-r .k { color: var(--text); }
+.mini-r .meta { margin-left: auto; color: var(--faint); font-size: 11px; white-space: nowrap; }
+.tools { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; max-width: 280px; }
+.tool { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 12px; background: var(--card); border: 1px solid var(--line-2); border-radius: 9px; font-size: 12.5px; box-shadow: 0 1px 2px rgba(0,0,0,.03); }
+.tool .sq { width: 14px; height: 14px; border-radius: 4px; background: var(--c, #999); opacity: .9; }
+
+/* Lifecycle: numbered alternating rows */
+.life { margin-top: 64px; display: flex; flex-direction: column; gap: 88px; }
+.step { display: grid; grid-template-columns: 1fr 1fr; gap: 56px; align-items: center; }
+.step:nth-child(even) .step-art { order: 2; }
+.step .num { font-family: var(--mono); font-size: 13px; color: var(--faint); }
+.step h3 { font-size: 28px; line-height: 1.15; letter-spacing: -0.025em; margin-top: 10px; }
+.step p { margin-top: 12px; max-width: 420px; }
+.step .more { margin-top: 18px; display: inline-flex; align-items: center; gap: 4px; font-size: 14px; color: var(--accent); }
+.step .more:hover { text-decoration: underline; text-underline-offset: 3px; }
+.step-art { height: 340px; border-radius: 16px; background: var(--panel); border: 1px solid var(--line); display: grid; place-items: center; padding: 28px; }
+.step-art .mini { max-width: 360px; }
+.field { padding: 10px 12px; }
+.field + .field { border-top: 1px solid var(--line); }
+.field .l { font-size: 11px; color: var(--faint); }
+.field .v { margin-top: 2px; color: var(--text); }
+.pill-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.pill-row span { font-size: 11px; height: 22px; display: inline-flex; align-items: center; padding: 0 8px; border-radius: 6px; background: var(--panel); border: 1px solid var(--line); color: var(--muted); }
+.mini-foot { padding: 10px 12px; border-top: 1px solid var(--line); display: flex; justify-content: flex-end; }
+.mini-foot .btn { height: 28px; font-size: 12px; padding: 0 12px; }
+.status { font-size: 11px; display: inline-flex; align-items: center; gap: 5px; color: var(--muted); }
+.status::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--c, var(--faint)); }
+
+/* Hairline grid (anywhere / together / sovereignty) */
+.grid3 { margin-top: 56px; display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid var(--line); border-left: 1px solid var(--line); }
+.cell { border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 28px; display: flex; flex-direction: column; }
+.cell .art { height: 190px; border-radius: 12px; background: var(--panel); display: grid; place-items: center; margin-bottom: 22px; padding: 18px; }
+.cell p { margin-top: 6px; }
+.plats { display: grid; grid-template-columns: repeat(3, auto); gap: 8px; }
+.share-row { display: flex; align-items: center; gap: 8px; padding: 7px 12px; }
+.share-row .role { margin-left: auto; font-size: 11px; color: var(--faint); }
+.code-card { width: 100%; max-width: 260px; border-radius: 10px; background: #141414; border: 1px solid #222; color: #d4d4d4; font-family: var(--mono); font-size: 11px; line-height: 1.8; padding: 12px 14px; }
+.code-card .p { color: #6b7280; }
+
+/* Control list */
+.split { display: grid; grid-template-columns: 340px 1fr; gap: 56px; }
+.ctrl { display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid var(--line); }
+.ctrl div { display: flex; align-items: center; gap: 12px; padding: 18px 4px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 14.5px; }
+.ctrl div:nth-child(odd) { padding-right: 20px; }
+.ctrl div:nth-child(even) { padding-left: 20px; border-left: 1px solid var(--line); }
+.ctrl .i { color: var(--text); }
+
+/* Get Overlay */
+.cta-card { border-radius: 18px; background: var(--panel); border: 1px solid var(--line); padding: 56px; display: grid; grid-template-columns: 1fr 1.4fr; gap: 48px; align-items: start; }
+.cta-card .h2 { font-size: 36px; }
+.cta-card .hero-actions { justify-content: flex-start; margin-top: 26px; }
+.platforms { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+.pcol { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 6px; }
+.pcol h4 { font-size: 12px; font-weight: 500; color: var(--faint); padding: 8px 10px 6px; }
+.prow { display: flex; align-items: center; gap: 10px; height: 38px; padding: 0 10px; border-radius: 8px; font-size: 14px; }
+.prow:hover { background: var(--panel); }
+.prow .go { margin-left: auto; color: var(--faint); transition: transform .15s, color .15s; }
+.prow:hover .go { color: var(--text); transform: translateX(2px); }
+.prow .i:first-child { color: var(--muted); }
+
+/* FAQ */
+.faq { max-width: 760px; margin: 48px auto 0; border-top: 1px solid var(--line); }
+.faq details { border-bottom: 1px solid var(--line); }
+.faq summary { list-style: none; cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 20px 2px; font-size: 16.5px; font-weight: 500; letter-spacing: -0.01em; }
+.faq summary::-webkit-details-marker { display: none; }
+.faq summary .i { color: var(--faint); transition: transform .2s; }
+.faq details[open] summary .i { transform: rotate(45deg); }
+.faq p { padding: 0 2px 22px; max-width: 640px; }
+
+/* Footer */
+.foot { border-top: 1px solid var(--line); }
+.foot-in { padding: 56px; display: grid; grid-template-columns: 1.4fr repeat(4, 1fr); gap: 32px; }
+.foot h5 { font-size: 13px; font-weight: 500; margin-bottom: 12px; }
+.foot ul { list-style: none; display: flex; flex-direction: column; gap: 9px; font-size: 13.5px; color: var(--muted); }
+.foot a:hover { color: var(--text); }
+.foot .small { margin-top: 14px; font-size: 13px; color: var(--muted); max-width: 240px; }
+.foot-bar { border-top: 1px solid var(--line); padding: 20px 56px; display: flex; justify-content: space-between; font-size: 12.5px; color: var(--faint); }
+
+/* Responsive */
+@media (max-width: 1040px) {
+  .shot { grid-template-columns: 200px 1fr; }
+  .shot .side { display: none; }
+  .cta-card { grid-template-columns: 1fr; }
+  .split { grid-template-columns: 1fr; gap: 32px; }
+}
+@media (max-width: 860px) {
+  .nav-links { display: none; }
+  .sec { padding: 72px 24px; }
+  .hero { padding: 72px 24px 72px; }
+  .h1, .hero .h1 { font-size: 40px; }
+  .br-lg { display: inline; }
+  .h2 { font-size: 32px; }
+  .cards3, .grid3 { grid-template-columns: 1fr; }
+  .step { grid-template-columns: 1fr; gap: 24px; }
+  .step:nth-child(even) .step-art { order: 0; }
+  .step-art { height: 300px; }
+  .shot { grid-template-columns: 1fr; height: 500px; }
+  .shot .sb { display: none; }
+  .ctrl { grid-template-columns: 1fr; }
+  .ctrl div:nth-child(even) { padding-left: 4px; border-left: 0; }
+  .cta-card { padding: 32px 24px; }
+  .foot-in { grid-template-columns: 1fr 1fr; padding: 40px 24px; }
+  .foot-bar { padding: 20px 24px; }
+  .nav .login, .nav .hide-sm { display: none; }
+}
+@media (max-width: 520px) {
+  .h1, .hero .h1 { font-size: 34px; }
+  .platforms { grid-template-columns: 1fr; }
+  .hero-actions { flex-wrap: wrap; }
+}
+</style>
+</head>
+<body>
+
+<!-- Lucide icon sprite -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></symbol>
+  <symbol id="i-arrow-up" viewBox="0 0 24 24"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+  <symbol id="i-chev-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-github" viewBox="0 0 24 24"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></symbol>
+  <symbol id="i-msg" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></symbol>
+  <symbol id="i-db" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/></symbol>
+  <symbol id="i-wrench" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></symbol>
+  <symbol id="i-monitor" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></symbol>
+  <symbol id="i-users" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
+  <symbol id="i-file" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M16 13H8M16 17H8M10 9H8"/></symbol>
+  <symbol id="i-zap" viewBox="0 0 24 24"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/></symbol>
+  <symbol id="i-book" viewBox="0 0 24 24"><path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M5 12h14M12 5v14"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+  <symbol id="i-pr" viewBox="0 0 24 24"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><path d="M6 9v12"/></symbol>
+  <symbol id="i-term" viewBox="0 0 24 24"><path d="m4 17 6-6-6-6"/><path d="M12 19h8"/></symbol>
+  <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></symbol>
+  <symbol id="i-phone" viewBox="0 0 24 24"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M12 18h.01"/></symbol>
+  <symbol id="i-laptop" viewBox="0 0 24 24"><path d="M18 5a2 2 0 0 1 2 2v8.526a2 2 0 0 0 .212.897l1.068 2.127a1 1 0 0 1-.9 1.45H3.62a1 1 0 0 1-.9-1.45l1.068-2.127A2 2 0 0 0 4 15.526V7a2 2 0 0 1 2-2z"/><path d="M20.054 15.987H3.946"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></symbol>
+  <symbol id="i-hand" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></symbol>
+  <symbol id="i-gauge" viewBox="0 0 24 24"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></symbol>
+  <symbol id="i-history" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
+  <symbol id="i-braces" viewBox="0 0 24 24"><path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5c0 1.1.9 2 2 2h1"/><path d="M16 21h1a2 2 0 0 0 2-2v-5c0-1.1.9-2 2-2a2 2 0 0 1-2-2V5a2 2 0 0 0-2-2h-1"/></symbol>
+  <symbol id="i-plug" viewBox="0 0 24 24"><path d="M12 22v-5"/><path d="M9 8V2M15 8V2"/><path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z"/></symbol>
+  <symbol id="i-login" viewBox="0 0 24 24"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="m10 17 5-5-5-5"/><path d="M15 12H3"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></symbol>
+  <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></symbol>
+  <symbol id="i-discord" viewBox="0 0 256 199"><path stroke="none" fill="currentColor" d="M216.856 16.597A208.502 208.502 0 0 0 164.042 0c-2.275 4.113-4.933 9.645-6.766 14.046-19.692-2.961-39.203-2.961-58.533 0-1.832-4.4-4.55-9.933-6.846-14.046a207.809 207.809 0 0 0-52.855 16.638C5.618 67.147-3.443 116.4 1.087 164.956c22.169 16.555 43.653 26.612 64.775 33.193A161.094 161.094 0 0 0 79.735 175.3a136.413 136.413 0 0 1-21.846-10.632 108.636 108.636 0 0 0 5.356-4.237c42.122 19.702 87.89 19.702 129.51 0a131.66 131.66 0 0 0 5.355 4.237 136.07 136.07 0 0 1-21.886 10.653c4.006 8.02 8.638 15.67 13.873 22.848 21.142-6.58 42.646-16.637 64.815-33.213 5.316-56.288-9.08-105.09-38.056-148.36ZM85.474 135.095c-12.645 0-23.015-11.805-23.015-26.18s10.149-26.2 23.015-26.2c12.867 0 23.236 11.804 23.015 26.2.02 14.375-10.148 26.18-23.015 26.18Zm85.051 0c-12.645 0-23.014-11.805-23.014-26.18s10.148-26.2 23.014-26.2c12.867 0 23.236 11.804 23.015 26.2 0 14.375-10.148 26.18-23.015 26.18Z"/></symbol>
+</svg>
+
+<header class="nav">
+  <div class="nav-in">
+    <a class="lockup" href="#" aria-label="Overlay home"><span class="orb"></span><span class="word">overlay</span></a>
+    <nav class="nav-links" aria-label="Primary">
+      <a href="#">Product</a><a href="#">Docs</a><a href="#">Pricing</a><a href="#">Blog</a>
+    </nav>
+    <div class="nav-right">
+      <button class="icon-btn" id="theme" type="button" aria-label="Toggle light / dark mode"><svg class="i"><use href="#i-moon"/></svg></button>
+      <a class="icon-btn hide-sm" href="#" aria-label="Discord"><svg class="i"><use href="#i-discord"/></svg></a>
+      <a class="icon-btn hide-sm" href="#" aria-label="GitHub"><svg class="i"><use href="#i-github"/></svg></a>
+      <a class="login" href="#">Sign in</a>
+      <a class="btn primary sm" href="#">Get started</a>
+    </div>
+  </div>
+</header>
+
+<div class="frame">
+
+  <!-- Hero -->
+  <section class="hero">
+    <h1 class="h1"><span class="dim">The open source, multiplayer, cloud</span><span class="br-lg"></span> control plane for AI employees</h1>
+    <p class="lead">Create, deploy and manage AI employees with memory, tools and their own computer. Accessible from anywhere.</p>
+    <div class="hero-actions">
+      <a class="btn primary" href="#">Get started <svg class="i go"><use href="#i-arrow"/></svg></a>
+      <a class="btn ghost" href="#"><svg class="i"><use href="#i-github"/></svg> Star on GitHub</a>
+    </div>
+    <div class="byoa">
+      <span>Bring your own agents</span>
+      <span class="chip"><span class="dot"></span>Claude Code</span>
+      <span class="chip"><span class="dot"></span>Codex</span>
+      <span class="chip"><span class="dot"></span>Cursor</span>
+      <span class="chip"><span class="dot"></span>Hermes</span>
+    </div>
+
+    <div class="shot-wrap">
+      <div class="shot" aria-label="Overlay app preview">
+        <aside class="sb">
+          <span class="lockup"><span class="orb"></span><span class="word">overlay</span></span>
+          <div class="sb-item"><svg class="i sm"><use href="#i-search"/></svg>Search</div>
+          <div class="sb-item"><svg class="i sm"><use href="#i-msg"/></svg>Chats</div>
+          <div class="sb-item"><svg class="i sm"><use href="#i-clock"/></svg>Automations</div>
+          <div class="sb-item"><svg class="i sm"><use href="#i-file"/></svg>Files</div>
+          <div class="sb-item"><svg class="i sm"><use href="#i-book"/></svg>Knowledge</div>
+          <div class="sb-label">Agents</div>
+          <div class="sb-item on"><span class="ao" style="--c:#16a34a;width:16px;height:16px"></span>Engineering<span class="live"></span></div>
+          <div class="sb-item"><span class="ao" style="--c:#db2777;width:16px;height:16px"></span>Customer support</div>
+          <div class="sb-item"><span class="ao" style="--c:#7c3aed;width:16px;height:16px"></span>Fundraising</div>
+          <div class="sb-item"><span class="ao" style="--c:#2563eb;width:16px;height:16px"></span>Docs agent</div>
+          <div class="sb-item"><span class="ao" style="--c:#64748b;width:16px;height:16px"></span>Codex agent<span class="meta">BYOA</span></div>
+          <div class="sb-user"><span class="avatar">MC</span>Maya Chen</div>
+        </aside>
+
+        <div class="chat">
+          <div class="chat-head"><span class="ao" style="--c:#16a34a"></span>Engineering <span class="sub">· Checkout tests</span>
+            <div class="people"><span class="avatar">MC</span><span class="avatar">SR</span></div>
+          </div>
+          <div class="msgs">
+            <div class="m-user"><span class="who">Maya</span>Checkout tests have been failing on main since last night. Can you find out why?</div>
+            <div class="m-agent"><span class="ao" style="--c:#16a34a"></span>
+              <div>
+                <div class="steps"><svg class="i sm"><use href="#i-check"/></svg>Ran 4 steps · GitHub, terminal<svg class="i sm"><use href="#i-chev"/></svg></div>
+                <div>I bisected the last 9 commits. The first failure is <code>a41c9f2</code>: a date fixture in <code>checkout.test.ts</code> now falls on the wrong side of the DST change.</div>
+                <ol><li><code>computeTaxWindow()</code> uses local time</li><li>The fixture assumes UTC</li></ol>
+              </div>
+            </div>
+            <div class="m-user"><span class="who">Sam</span>Fix the fixture, but use a fake clock instead of hard-coded dates.</div>
+            <div class="m-agent"><span class="ao" style="--c:#16a34a"></span>
+              <div>Done. I added a fake clock in <code>test/utils/clock.ts</code>, updated 3 suites and ran everything: all 214 tests pass. PR #482 is open.</div>
+            </div>
+          </div>
+          <div class="composer">
+            <div class="ph">Ask Engineering anything…</div>
+            <div class="row"><svg class="i sm"><use href="#i-plus"/></svg><span class="model">Claude Opus <svg class="i sm"><use href="#i-chev-down"/></svg></span>
+              <span class="send"><svg class="i sm"><use href="#i-arrow-up"/></svg></span></div>
+          </div>
+        </div>
+
+        <aside class="side">
+          <div class="side-head"><svg class="i sm"><use href="#i-monitor"/></svg>Computer<span class="tag">Running</span></div>
+          <div class="term">
+<span class="p">~/checkout $</span> git bisect run npm test<br>
+<span class="y">a41c9f2</span> is the first bad commit<br>
+<span class="p">~/checkout $</span> npm test<br>
+&nbsp;✓ cart.test.ts <span class="p">(41)</span><br>
+&nbsp;✓ checkout.test.ts <span class="p">(58)</span><br>
+&nbsp;✓ tax-window.test.ts <span class="p">(23)</span><br>
+&nbsp;✓ invoices.test.ts <span class="p">(92)</span><br>
+<span class="g">Tests&nbsp; 214 passed</span><br>
+<span class="p">~/checkout $</span> gh pr create<br>
+<span class="p">→</span> #482 opened
+          </div>
+          <div class="pr"><svg class="i"><use href="#i-pr"/></svg><div><div class="t">#482 Fake clock for checkout tests</div><div class="s">CI green · review requested from Sam</div></div></div>
+        </aside>
+      </div>
+    </div>
+  </section>
+
+  <!-- Superpowers -->
+  <section class="sec">
+    <div class="head center">
+      <h2 class="h2">AI agents with superpowers</h2>
+      <p class="lead">Every agent gets memory, tools and a computer of its own.</p>
+    </div>
+    <div class="cards3">
+      <article class="card">
+        <div class="art">
+          <div class="mini">
+            <div class="mini-h"><svg class="i sm"><use href="#i-db"/></svg>Memory<span class="meta">Engineering</span></div>
+            <div class="mini-r"><span class="k">Tests use a fake clock</span><span class="meta">today</span></div>
+            <div class="mini-r"><span class="k">Sam reviews billing/ and auth/</span><span class="meta">Tue</span></div>
+            <div class="mini-r"><span class="k">Skip wrappers, no external consumers</span><span class="meta">Mon</span></div>
+          </div>
+        </div>
+        <h3 class="h3">Memory that remembers everything</h3>
+        <p class="body">Decisions, preferences and context carry over between conversations, so you never explain twice.</p>
+      </article>
+      <article class="card">
+        <div class="art">
+          <div class="tools">
+            <span class="tool"><span class="sq" style="--c:#171717"></span>GitHub</span>
+            <span class="tool"><span class="sq" style="--c:#e01e5a"></span>Slack</span>
+            <span class="tool"><span class="sq" style="--c:#5e6ad2"></span>Linear</span>
+            <span class="tool"><span class="sq" style="--c:#ea4335"></span>Gmail</span>
+            <span class="tool"><span class="sq" style="--c:#4285f4"></span>Calendar</span>
+            <span class="tool"><span class="sq" style="--c:#737373"></span>Notion</span>
+            <span class="tool"><span class="sq" style="--c:#0ea5e9"></span>Browser</span>
+          </div>
+        </div>
+        <h3 class="h3">Tools that work where you work</h3>
+        <p class="body">Create issues, draft email, update the calendar and drive a real browser, with your approval where it matters.</p>
+      </article>
+      <article class="card">
+        <div class="art">
+          <div class="mini">
+            <div class="mini-h"><svg class="i sm"><use href="#i-monitor"/></svg>Its own machine<span class="meta">always on</span></div>
+            <div class="mini-r"><svg class="i sm"><use href="#i-term"/></svg><span class="k">npm test</span><span class="meta" style="color:var(--ok)">214 passed</span></div>
+            <div class="mini-r"><svg class="i sm"><use href="#i-globe"/></svg><span class="k">Browser session</span><span class="meta">2 tabs</span></div>
+            <div class="mini-r"><svg class="i sm"><use href="#i-file"/></svg><span class="k">launch-plan.md</span><span class="meta">saved</span></div>
+          </div>
+        </div>
+        <h3 class="h3">A computer that can do anything</h3>
+        <p class="body">Agents run code, use a browser and keep files on a machine that stays on while your laptop is closed.</p>
+      </article>
+    </div>
+    <p class="tagline">Agents with superpowers are <b>AI employees.</b></p>
+  </section>
+
+  <!-- One place -->
+  <section class="sec">
+    <div class="head">
+      <h2 class="h2"><span class="dim">One place</span><br>to get things done</h2>
+    </div>
+    <div class="life">
+      <div class="step">
+        <div class="step-art">
+          <div class="mini">
+            <div class="mini-h"><span class="ao" style="--c:#db2777"></span>New agent</div>
+            <div class="field"><div class="l">Name</div><div class="v">Customer support</div></div>
+            <div class="field"><div class="l">Instructions</div><div class="v">Triage new support tickets every morning and flag anything urgent.</div></div>
+            <div class="field"><div class="l">Tools</div><div class="pill-row"><span>Gmail</span><span>Slack</span><span>Linear</span><span>Files</span></div></div>
+            <div class="mini-foot"><span class="btn primary">Create agent</span></div>
+          </div>
+        </div>
+        <div>
+          <div class="num">01</div>
+          <h3>Create</h3>
+          <p class="body">Describe the job in plain language. Pick the tools, the model and the knowledge it can use, and your agent is ready in seconds.</p>
+          <a class="more" href="#">Create an agent <svg class="i sm"><use href="#i-chev"/></svg></a>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-art">
+          <div class="mini">
+            <div class="mini-h"><svg class="i sm"><use href="#i-users"/></svg>Roster<span class="meta">5 agents</span></div>
+            <div class="mini-r"><span class="ao" style="--c:#16a34a;width:14px;height:14px"></span><span class="k">Engineering</span><span class="meta"><span class="status" style="--c:var(--ok)">Working</span></span></div>
+            <div class="mini-r"><span class="ao" style="--c:#db2777;width:14px;height:14px"></span><span class="k">Customer support</span><span class="meta"><span class="status" style="--c:#f59e0b">Needs approval</span></span></div>
+            <div class="mini-r"><span class="ao" style="--c:#7c3aed;width:14px;height:14px"></span><span class="k">Fundraising</span><span class="meta"><span class="status">Idle</span></span></div>
+            <div class="mini-r"><span class="ao" style="--c:#2563eb;width:14px;height:14px"></span><span class="k">Docs agent</span><span class="meta"><span class="status">Idle</span></span></div>
+            <div class="mini-r"><span class="ao" style="--c:#64748b;width:14px;height:14px"></span><span class="k">Codex agent</span><span class="meta"><span class="status" style="--c:var(--ok)">Working</span></span></div>
+          </div>
+        </div>
+        <div>
+          <div class="num">02</div>
+          <h3>Manage</h3>
+          <p class="body">See what every agent is doing, approve what needs a human and read the full run history, all from one roster.</p>
+          <a class="more" href="#">See the roster <svg class="i sm"><use href="#i-chev"/></svg></a>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-art">
+          <div class="mini">
+            <div class="mini-h"><svg class="i sm"><use href="#i-zap"/></svg>Daily Competitor Launch Monitor</div>
+            <div class="field"><div class="l">Trigger</div><div class="v">Every weekday · 8:00 AM</div></div>
+            <div class="field"><div class="l">Agent</div><div class="v" style="display:flex;align-items:center;gap:7px"><span class="ao" style="--c:#7c3aed;width:14px;height:14px"></span>Fundraising</div></div>
+            <div class="field"><div class="l">Posts to</div><div class="v">#product-intel</div></div>
+            <div class="mini-foot"><span class="status" style="--c:var(--ok)">Enabled · next run tomorrow 8:00 AM</span></div>
+          </div>
+        </div>
+        <div>
+          <div class="num">03</div>
+          <h3>Deploy</h3>
+          <p class="body">Put agents on schedules and triggers, or reach them in Slack, Telegram, iMessage and the web. They report back to the same place.</p>
+          <a class="more" href="#">Explore automations <svg class="i sm"><use href="#i-chev"/></svg></a>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-art">
+          <div class="mini">
+            <div class="mini-h"><svg class="i sm"><use href="#i-plug"/></svg>Connected agents</div>
+            <div class="mini-r"><svg class="i sm"><use href="#i-term"/></svg><span class="k">Claude Code</span><span class="meta">maya-mbp</span></div>
+            <div class="mini-r"><svg class="i sm"><use href="#i-term"/></svg><span class="k">Codex</span><span class="meta">build-server</span></div>
+            <div class="mini-r"><svg class="i sm"><use href="#i-term"/></svg><span class="k">Cursor</span><span class="meta">sam-desktop</span></div>
+            <div class="mini-r"><svg class="i sm"><use href="#i-braces"/></svg><span class="k">Any agent via the API</span><span class="meta">MCP</span></div>
+          </div>
+        </div>
+        <div>
+          <div class="num">04</div>
+          <h3>Bring your own agents</h3>
+          <p class="body">Connect agents running on machines you control. They join the same roster with shared context, workspace tools and supervision.</p>
+          <a class="more" href="#">Connect an agent <svg class="i sm"><use href="#i-chev"/></svg></a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Anywhere / together / sovereignty -->
+  <section class="sec">
+    <div class="head">
+      <h2 class="h2">Built for how teams<br><span class="dim">actually work</span></h2>
+    </div>
+    <div class="grid3">
+      <div class="cell">
+        <div class="art">
+          <div class="plats">
+            <span class="tool"><svg class="i sm"><use href="#i-globe"/></svg>Web</span>
+            <span class="tool"><svg class="i sm"><use href="#i-laptop"/></svg>macOS</span>
+            <span class="tool"><svg class="i sm"><use href="#i-laptop"/></svg>Windows</span>
+            <span class="tool"><svg class="i sm"><use href="#i-phone"/></svg>iOS</span>
+            <span class="tool"><svg class="i sm"><use href="#i-phone"/></svg>Android</span>
+            <span class="tool"><svg class="i sm"><use href="#i-msg"/></svg>Slack</span>
+          </div>
+        </div>
+        <h3 class="h3">Accessible from anywhere, literally</h3>
+        <p class="body">Web, desktop, mobile and the chat apps you already use. Agents keep working while your laptop is closed.</p>
+      </div>
+      <div class="cell">
+        <div class="art">
+          <div class="mini" style="max-width:250px">
+            <div class="mini-h">Share Engineering</div>
+            <div class="share-row"><span class="avatar">MC</span>Maya Chen<span class="role">Owner</span></div>
+            <div class="share-row"><span class="avatar">SR</span>Sam Reyes<span class="role">Can edit</span></div>
+            <div class="share-row"><span class="avatar">LP</span>Lena Park<span class="role">Can view</span></div>
+          </div>
+        </div>
+        <h3 class="h3">Better, together</h3>
+        <p class="body">Share agents with your whole team and assign them work in any thread. Everyone sees every run and result.</p>
+      </div>
+      <div class="cell">
+        <div class="art">
+          <div class="code-card">
+            <span class="p">$</span> git clone overlay<br>
+            <span class="p">$</span> docker compose up<br>
+            <span class="p">#</span> AGPL-3.0 · self-hosted
+          </div>
+        </div>
+        <h3 class="h3">We care about your sovereignty</h3>
+        <p class="body">Open source under AGPL-3.0. Read the source before you trust it, or self-host on your own servers.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Control -->
+  <section class="sec tight">
+    <div class="split">
+      <h2 class="h2">Stay in control<br><span class="dim">of every agent on the roster</span></h2>
+      <div class="ctrl">
+        <div><svg class="i"><use href="#i-lock"/></svg>Permissions per agent and per tool</div>
+        <div><svg class="i"><use href="#i-hand"/></svg>Approvals before sensitive actions</div>
+        <div><svg class="i"><use href="#i-gauge"/></svg>Spend limits for every run</div>
+        <div><svg class="i"><use href="#i-history"/></svg>Complete run history</div>
+        <div><svg class="i"><use href="#i-shield"/></svg>Audit trails, including your own agents</div>
+        <div><svg class="i"><use href="#i-globe"/></svg>Hosted or self-hosted</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Get Overlay -->
+  <section class="sec">
+    <div class="cta-card">
+      <div>
+        <h2 class="h2">Hire your first AI employee</h2>
+        <p class="body" style="margin-top:12px;max-width:340px">The free tier needs no card. Start on the web, then take Overlay everywhere you work.</p>
+        <div class="hero-actions">
+          <a class="btn primary" href="#">Get started <svg class="i go"><use href="#i-arrow"/></svg></a>
+          <a class="btn ghost" href="#">Book a call</a>
+        </div>
+      </div>
+      <div class="platforms">
+        <div class="pcol"><h4>Web</h4>
+          <a class="prow" href="#"><svg class="i"><use href="#i-globe"/></svg>Get started<svg class="i sm go"><use href="#i-arrow"/></svg></a>
+          <a class="prow" href="#"><svg class="i"><use href="#i-login"/></svg>Sign in<svg class="i sm go"><use href="#i-arrow"/></svg></a>
+        </div>
+        <div class="pcol"><h4>Desktop</h4>
+          <a class="prow" href="#"><svg class="i"><use href="#i-laptop"/></svg>macOS<svg class="i sm go"><use href="#i-arrow"/></svg></a>
+          <a class="prow" href="#"><svg class="i"><use href="#i-laptop"/></svg>Windows<svg class="i sm go"><use href="#i-arrow"/></svg></a>
+        </div>
+        <div class="pcol"><h4>Mobile</h4>
+          <a class="prow" href="#"><svg class="i"><use href="#i-phone"/></svg>iOS<svg class="i sm go"><use href="#i-arrow"/></svg></a>
+          <a class="prow" href="#"><svg class="i"><use href="#i-phone"/></svg>Android<svg class="i sm go"><use href="#i-arrow"/></svg></a>
+        </div>
+        <div class="pcol"><h4>Developer</h4>
+          <a class="prow" href="#"><svg class="i"><use href="#i-plug"/></svg>MCP<svg class="i sm go"><use href="#i-arrow"/></svg></a>
+          <a class="prow" href="#"><svg class="i"><use href="#i-braces"/></svg>API<svg class="i sm go"><use href="#i-arrow"/></svg></a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FAQ -->
+  <section class="sec">
+    <div class="head center"><h2 class="h2">Questions, answered</h2></div>
+    <div class="faq">
+      <details><summary>How do I run all my AI agents from one place?<svg class="i"><use href="#i-plus"/></svg></summary>
+        <p class="body">Overlay gives every agent a home in one workspace: agents you create in Overlay and agents you already use (Codex, Claude Code, Hermes) connect to the same roster with shared context, tools, and a computer to work from.</p></details>
+      <details><summary>Can I bring my own agents to Overlay?<svg class="i"><use href="#i-plus"/></svg></summary>
+        <p class="body">Yes. Connect agents running on machines you control. They join the same roster and receive workspace tools, context, and supervision through Overlay.</p></details>
+      <details><summary>Where do Overlay agents work?<svg class="i"><use href="#i-plus"/></svg></summary>
+        <p class="body">In the Overlay app and wherever work already happens: Slack, Telegram, iMessage, and the web. Agents can be scheduled or triggered, and they report back to the same place.</p></details>
+      <details><summary>How do I control what agents can do?<svg class="i"><use href="#i-plus"/></svg></summary>
+        <p class="body">Permissions, tool approvals, spend limits, run history, and audit trails apply to every agent on the roster, not just the ones Overlay runs.</p></details>
+      <details><summary>Is Overlay open source?<svg class="i"><use href="#i-plus"/></svg></summary>
+        <p class="body">Yes. The core is AGPL-3.0 with hosted and self-hosted options, plus commercial licensing for organizations that need different terms. The free tier needs no card.</p></details>
+    </div>
+  </section>
+
+  <footer class="foot">
+    <div class="foot-in">
+      <div>
+        <a class="lockup" href="#"><span class="orb"></span><span class="word">overlay</span></a>
+        <p class="small">The open source control plane for AI employees.</p>
+      </div>
+      <div><h5>Product</h5><ul><li><a href="#">Agents</a></li><li><a href="#">Automations</a></li><li><a href="#">Computers</a></li><li><a href="#">Pricing</a></li></ul></div>
+      <div><h5>Download</h5><ul><li><a href="#">macOS</a></li><li><a href="#">Windows</a></li><li><a href="#">iOS</a></li><li><a href="#">Android</a></li></ul></div>
+      <div><h5>Developers</h5><ul><li><a href="#">Docs</a></li><li><a href="#">API</a></li><li><a href="#">MCP</a></li><li><a href="#">GitHub</a></li></ul></div>
+      <div><h5>Company</h5><ul><li><a href="#">About</a></li><li><a href="#">Blog</a></li><li><a href="#">Discord</a></li><li><a href="#">Terms</a></li></ul></div>
+    </div>
+    <div class="foot-bar"><span>© 2026 LayerNorm</span><span>AGPL-3.0</span></div>
+  </footer>
+</div>
+
+<script>
+  // Theme toggle only — the page itself has no scroll-driven motion.
+  (function () {
+    var root = document.documentElement, btn = document.getElementById('theme');
+    function isDark() {
+      var t = root.getAttribute('data-theme');
+      return t ? t === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
+    }
+    function paint() { btn.querySelector('use').setAttribute('href', isDark() ? '#i-sun' : '#i-moon'); }
+    btn.addEventListener('click', function () { root.setAttribute('data-theme', isDark() ? 'light' : 'dark'); paint(); });
+    paint();
+  })();
+</script>
+</body>
+</html>

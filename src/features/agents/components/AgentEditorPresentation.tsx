@@ -18,10 +18,8 @@ export function SayHelloButton({ mode, hasAgent, highlight, showcase, onSayHello
   return <Button variant="secondary" size="sm" onClick={onSayHello}><MessageSquare size={13} /> Say hello</Button>
 }
 
-export function AgentEditorSidePanel({ title, mode, savedFlash, onTogglePanelMode, onClose, children }: {
+export function AgentEditorSidePanel({ title, onTogglePanelMode, onClose, children }: {
   title: string
-  mode: 'new' | 'edit'
-  savedFlash: boolean
   onTogglePanelMode?: () => void
   onClose(): void
   children: ReactNode
@@ -31,9 +29,6 @@ export function AgentEditorSidePanel({ title, mode, savedFlash, onTogglePanelMod
       title={title}
       actions={(
         <>
-          {savedFlash && mode === 'edit'
-            ? <span role="status" className="text-[11px] text-(--muted)">Saved</span>
-            : null}
           {onTogglePanelMode ? (
             <Button variant="ghost"
               type="button"

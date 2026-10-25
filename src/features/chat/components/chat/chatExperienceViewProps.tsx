@@ -1,5 +1,6 @@
 'use client'
 
+import { MODEL_RECOMMENDATIONS } from '@/shared/ai/gateway/model-data'
 import { latestContextUsage } from '@overlay/chat-react'
 import type React from 'react'
 import {
@@ -69,6 +70,8 @@ export function buildChatExperienceViewProps(
       },
     },
     headerProps: {
+      favoriteScope: c.favoriteScope,
+      modelRecommendations: MODEL_RECOMMENDATIONS,
       hideHeader: c.hideHeader,
       activeChatId: c.activeChatId,
       editingChatId: c.editingChatId,
@@ -84,6 +87,7 @@ export function buildChatExperienceViewProps(
       projectName: c.projectName,
       showAutomationChatTab: c.showAutomationChatTab,
       appMode: c.mode,
+      hasAutomationContext: c.hasAutomationContext,
       isTemporaryChat: c.isTemporaryChat,
       isActiveLoading: c.isActiveLoading,
       onTemporaryChatToggle: c.handleTemporaryChatToggle,
@@ -151,7 +155,6 @@ export function buildChatExperienceViewProps(
               exchangeModels: c.exchangeModels,
               selectedImageModels: c.selectedImageModels,
               selectedVideoModels: c.selectedVideoModels,
-              selectedTabPerExchange: c.selectedTabPerExchange,
               selectedModels: c.selectedModels,
               exchangeModes: c.exchangeModes,
             },
@@ -163,10 +166,9 @@ export function buildChatExperienceViewProps(
               interruptedExchangeIdx: c.interruptedExchangeIdx,
               exitingTurnIds: c.exitingTurnIds,
               sourcesPanel: c.sourcesPanel,
-              getResponseForExchangeForModel: c.getResponseForExchangeForModel,
+              getResponseForExchange: c.getResponseForExchange,
             },
             actions: {
-              onTabSelect: c.handleTabSelect,
               onJumpToReply: c.jumpToReplyTarget,
               onDeleteTurn: c.isPublicShowcase ? () => c.requireAuth('history') : c.handleDeleteTurnById,
               onReplyToMediaPrompt: c.beginReplyToMediaPrompt,

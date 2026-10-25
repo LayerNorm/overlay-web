@@ -8,6 +8,7 @@ import {
   AccessSelector,
   AgentAvatar,
   AgentBehaviorFields,
+  type AgentModelFieldProps,
   AgentMemoriesSection,
   AgentTypeSelector,
 
@@ -38,10 +39,9 @@ type AgentEditorFormSectionProps = {
   computersAvailable: boolean
   connectedAgentsEnabled: boolean
   connectedAgentsChecked: boolean
-  modelOptions: { value: string; label: string }[]
+  modelField: AgentModelFieldProps
   valid: boolean
   busy: boolean
-  error: string | null
   form: ReturnType<typeof useAgentEditorForm>
   runtime: ReturnType<typeof useAgentRuntime>
   byo: ReturnType<typeof useByoConnection>
@@ -62,10 +62,9 @@ function AgentEditorFormSection({
   computersAvailable,
   connectedAgentsEnabled,
   connectedAgentsChecked,
-  modelOptions,
+  modelField,
   valid,
   busy,
-  error,
   form,
   runtime,
   byo,
@@ -91,7 +90,6 @@ function AgentEditorFormSection({
     enabledToolGroups,
     advanced,
     dirty,
-    savedFlash,
     markDirty,
     toggleToolGroup,
     setName,
@@ -136,6 +134,9 @@ function AgentEditorFormSection({
     agentComputer,
     computerSize,
     setComputerSize,
+    computerLoadError,
+    computerProvisionError,
+    retryComputerLoad,
     computerOpenBusy,
     computerLifecycleBusy,
     openAgentComputer,
@@ -177,7 +178,7 @@ function AgentEditorFormSection({
             onInstructionsChange={(value) => { setInstructions(value); markDirty() }}
             modelId={modelId}
             onModelChange={(value) => { setModelId(value); markDirty() }}
-            modelOptions={modelOptions}
+            modelField={modelField}
             enabledToolGroups={enabledToolGroups}
             onToggleToolGroup={toggleToolGroup}
             advanced={advanced}
@@ -214,6 +215,9 @@ function AgentEditorFormSection({
               onOpenDesktop: () => void openAgentComputer(),
               onTogglePower: () => void toggleAgentComputerPower(),
               onDelete: () => void deleteAgentComputer(),
+              loadError: computerLoadError,
+              provisionError: computerProvisionError,
+              onRetryLoad: retryComputerLoad,
               disabled: showcase,
             } : undefined}
           />}
@@ -239,8 +243,6 @@ function AgentEditorFormSection({
 
           <AgentEditorFormFooter
             mode={mode}
-            error={error}
-            savedFlash={savedFlash}
             busy={busy}
             valid={valid}
             dirty={dirty}
@@ -257,8 +259,6 @@ function AgentEditorFormSection({
 
 function AgentEditorFormFooter({
   mode,
-  error,
-  savedFlash,
   busy,
   valid,
   dirty,
@@ -268,8 +268,6 @@ function AgentEditorFormFooter({
   onCancel,
 }: {
   mode: 'new' | 'edit'
-  error: string | null
-  savedFlash: boolean
   busy: boolean
   valid: boolean
   dirty: boolean
@@ -280,10 +278,6 @@ function AgentEditorFormFooter({
 }) {
   return (
     <>
-      {error ? <p role="alert" className="text-xs text-red-500">{error}</p> : null}
-      {savedFlash && mode === 'edit'
-        ? <p role="status" className="text-xs text-(--muted)">Saved.</p>
-        : null}
       {mode === 'new' ? (
         <>
           <Button className="mt-2 w-full" disabled={busy || !valid} onClick={onCreate}>
@@ -309,6 +303,7 @@ function AgentEditorFormFooter({
 
 export function AgentEditorView({
   presentation,
+  embedded,
   panelMode,
   onTogglePanelMode,
   title,
@@ -322,12 +317,11 @@ export function AgentEditorView({
   isDefaultMaster,
   valid,
   busy,
-  error,
   showcase,
   computersAvailable,
   connectedAgentsEnabled,
   connectedAgentsChecked,
-  modelOptions,
+  modelField,
   form,
   runtime,
   byo,
@@ -341,6 +335,7 @@ export function AgentEditorView({
   archiveAgent,
 }: {
   presentation: 'page' | 'panel'
+  embedded: boolean
   panelMode?: 'dialog' | 'side'
   onTogglePanelMode?: () => void
   title: string
@@ -354,12 +349,11 @@ export function AgentEditorView({
   isDefaultMaster: boolean
   valid: boolean
   busy: boolean
-  error: string | null
   showcase: boolean
   computersAvailable: boolean
   connectedAgentsEnabled: boolean
   connectedAgentsChecked: boolean
-  modelOptions: { value: string; label: string }[]
+  modelField: AgentModelFieldProps
   form: ReturnType<typeof useAgentEditorForm>
   runtime: ReturnType<typeof useAgentRuntime>
   byo: ReturnType<typeof useByoConnection>
@@ -372,8 +366,6 @@ export function AgentEditorView({
   cancelEdit(): void
   archiveAgent(): void
 }) {
-  const { savedFlash } = form
-
   const editor = (
     <AppScreenShell
       style={inPanel ? { background: 'transparent' } : undefined}
@@ -397,7 +389,12 @@ export function AgentEditorView({
         />
       ) : undefined}
     >
-      <AppScreenBody padding="lg" maxWidth="xl" className={inPanel ? 'min-h-full pb-4 sm:pb-4' : 'min-h-full'} style={inPanel ? { background: 'transparent' } : undefined}>
+      <AppScreenBody
+        padding={embedded ? 'none' : 'lg'}
+        maxWidth={embedded ? 'none' : 'xl'}
+        className={inPanel ? 'min-h-full pb-4 sm:pb-4' : 'min-h-full'}
+        style={inPanel ? { background: 'transparent' } : undefined}
+      >
         {loading ? (
           <AgentEditorSkeleton />
         ) : loadFailed || (mode === 'edit' && !agent) ? (
@@ -422,10 +419,9 @@ export function AgentEditorView({
             computersAvailable={computersAvailable}
             connectedAgentsEnabled={connectedAgentsEnabled}
             connectedAgentsChecked={connectedAgentsChecked}
-            modelOptions={modelOptions}
+            modelField={modelField}
             valid={valid}
             busy={busy}
-            error={error}
             form={form}
             runtime={runtime}
             byo={byo}
@@ -443,13 +439,13 @@ export function AgentEditorView({
     </AppScreenShell>
   )
 
+  if (embedded) return editor
+
   if (presentation === 'panel') {
     if (panelMode === 'side') {
       return (
         <AgentEditorSidePanel
           title={title}
-          mode={mode}
-          savedFlash={savedFlash}
           onTogglePanelMode={onTogglePanelMode}
           onClose={closeEditor}
         >

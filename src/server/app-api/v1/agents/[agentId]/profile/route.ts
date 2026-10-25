@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { z } from 'zod'
+import { z } from 'zod/v3'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { WorkspaceAgentServiceError } from '@/server/agents'

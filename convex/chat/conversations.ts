@@ -46,6 +46,16 @@ const generatedUiData = v.union(
     connectUrl: v.optional(v.string()),
     connected: v.optional(v.boolean()),
   }),
+  v.object({
+    version: v.literal(1),
+    kind: v.literal('questionnaire'),
+    prompt: v.string(),
+    choices: v.array(v.object({
+      id: v.string(),
+      label: v.string(),
+    })),
+    multiple: v.boolean(),
+  }),
 )
 
 /** Matches AI SDK UI parts we persist; `tool-invocation` restores tool chips after reload. */

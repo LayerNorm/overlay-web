@@ -2,6 +2,9 @@ import { v } from 'convex/values'
 import { internalMutation, type MutationCtx } from '../_generated/server'
 import { requireStagingSeedEnvironment } from '../lib/staging'
 import { requirePreviewDeployment } from '../lib/preview'
+import { seedPreviewWorkspace } from './previewWorkspace'
+
+import { claimWorkspaceHandle } from '../lib/workspaceHandles'
 
 /** Internal, idempotent fixtures. Identity comes from the sandbox account configuration. */
 export const init = internalMutation({
@@ -13,6 +16,20 @@ export const init = internalMutation({
     const email = process.env.PREVIEW_LOGIN_EMAIL?.trim()
     if (!userId?.startsWith('user_') || !email) throw new Error('Configure the sandbox preview login identity before seeding')
     return seedFixtures(ctx, { userId, email, lane: 'preview' })
+  },
+})
+
+/** Opt-in paid, multi-member fixtures; never part of ordinary deployment seeding. */
+export const initQa = internalMutation({
+  args: {},
+  returns: v.object({ userId: v.string(), workspaceId: v.string() }),
+  handler: async (ctx) => {
+    requirePreviewDeployment()
+    const userId = process.env.PREVIEW_LOGIN_USER_ID?.trim()
+    const email = process.env.PREVIEW_LOGIN_EMAIL?.trim()
+    if (!userId?.startsWith('user_') || !email) throw new Error('Configure the sandbox preview login identity before seeding')
+    await seedFixtures(ctx, { userId, email, lane: 'preview' })
+    return seedPreviewWorkspace(ctx, { userId, email })
   },
 })
 
@@ -48,8 +65,17 @@ async function seedFixtures(
   const workspace = await ctx.db.query('workspaces')
     .withIndex('by_workspaceId', (q) => q.eq('workspaceId', workspaceId)).unique()
   if (!workspace) {
+    const slug = `personal-${crypto.randomUUID().replace(/-/g, '').slice(0, 16)}`
+    await claimWorkspaceHandle(ctx, {
+      handle: slug,
+      workspaceId,
+      kind: 'canonical',
+      visibility: 'public',
+      now,
+      allowReserved: true,
+    })
     await ctx.db.insert('workspaces', {
-      workspaceId, kind: 'personal', name: 'Personal', slug: workspaceId,
+      workspaceId, kind: 'personal', name: 'Personal', slug,
       status: 'active', personalOwnerUserId: userId, createdByPrincipalId: principalId,
       createdAt: now, updatedAt: now,
     })

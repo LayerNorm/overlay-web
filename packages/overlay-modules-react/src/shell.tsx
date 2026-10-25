@@ -1,10 +1,15 @@
 'use client'
-import { Button } from '@overlay/ui/primitives'
+import { Button, PanelResizeHandle } from '@overlay/ui/primitives'
 import { unstyledButton } from '@overlay/ui/control-reset'
 import type { CSSProperties, HTMLAttributes, ReactNode } from 'react'
 import { useEffect, useRef, useState } from 'react'
 import { X } from 'lucide-react'
 import { cn, usePresence } from '@overlay/ui'
+import { AppBreadcrumbs, type AppBreadcrumbItem } from './components/AppBreadcrumbs'
+export { AppBreadcrumbs, AppBreadcrumbContext } from './components/AppBreadcrumbs'
+export type { AppBreadcrumbItem } from './components/AppBreadcrumbs'
+export { RightSidebar, RightSidebarToggle } from './components/RightSidebar'
+export type { RightSidebarTab } from './components/RightSidebar'
 
 export type AppScreenBodyPadding = 'none' | 'sm' | 'md' | 'lg'
 export type AppScreenBodyMaxWidth = 'none' | 'sm' | 'md' | 'lg' | 'xl'
@@ -22,8 +27,7 @@ export interface AppScreenShellProps extends HTMLAttributes<HTMLDivElement> {
   rightPanelMode?: 'docked' | 'floating'
   onRightPanelClose?: () => void
   /**
-   * Enables the drag handle on the panel's inner edge. Receives the width in
-   * pixels while dragging; the caller owns clamping to its own bounds.
+   * Controls the width externally. Without a callback the shell owns resize state.
    */
   onRightPanelResize?: (width: number) => void
   rightPanelOverlayLabel?: string
@@ -147,7 +151,7 @@ function ScreenRightPanel({
           resizing ? 'transition-none' : null,
           floating
             ? 'inset-y-2 right-2 max-w-[calc(100vw-1rem)] rounded-xl border border-(--border) bg-(--sidebar-surface) shadow-xl lg:max-w-none'
-            : 'inset-y-0 shadow-2xl lg:static lg:z-auto lg:max-w-none lg:shadow-none',
+            : 'inset-y-0 shadow-2xl lg:relative lg:z-auto lg:max-w-none lg:shadow-none',
           rightPanelVisibilityClasses(visible, floating, widthClassName),
         )}
         style={widthStyle}
@@ -156,6 +160,7 @@ function ScreenRightPanel({
       >
         {onResize && visible ? (
           <PanelResizeHandle
+            className="hidden lg:block"
             width={typeof width === 'number' ? width : 0}
             onResize={onResize}
             onResizingChange={onResizingChange}
@@ -192,6 +197,9 @@ export function AppScreenShell({
   ...props
 }: AppScreenShellProps) {
   const rightPanelState = useRightPanelState(rightPanel, rightPanelOpen)
+  const [resizedWidth, setResizedWidth] = useState<number | null>(null)
+  const panelWidth = onRightPanelResize ? rightPanelWidth : resizedWidth ?? rightPanelWidth
+  const numericWidth = typeof panelWidth === 'number' ? panelWidth : { sm: 320, md: 384, lg: 448 }[panelWidth]
 
   return (
     <div
@@ -222,10 +230,10 @@ export function AppScreenShell({
             visible={rightPanelState.visible}
             floating={rightPanelMode === 'floating'}
             resizing={rightPanelState.resizing}
-            width={rightPanelWidth}
+            width={numericWidth}
             overlayLabel={rightPanelOverlayLabel}
             onClose={onRightPanelClose}
-            onResize={onRightPanelResize}
+            onResize={onRightPanelResize ?? setResizedWidth}
             onResizingChange={rightPanelState.setResizing}
           >
             {rightPanelState.content}
@@ -236,59 +244,9 @@ export function AppScreenShell({
   )
 }
 
-/**
- * Drag handle on the panel's inner edge. Dragging left widens the panel, so the
- * delta is inverted. Pointer capture keeps the drag alive over the iframe or any
- * other content the cursor crosses, which a plain mousemove listener loses.
- */
-function PanelResizeHandle({
-  width,
-  onResize,
-  onResizingChange,
-}: {
-  width: number
-  onResize: (width: number) => void
-  onResizingChange: (resizing: boolean) => void
-}) {
-  const dragRef = useRef<{ startX: number; startWidth: number } | null>(null)
-
-  return (
-    <div
-      role="separator"
-      aria-orientation="vertical"
-      aria-label="Resize side panel"
-      className="group/resize absolute inset-y-0 left-0 z-40 hidden w-2 -translate-x-1 cursor-col-resize touch-none select-none lg:block"
-      onPointerDown={(event) => {
-        if (event.button !== 0) return
-        event.preventDefault()
-        // Fall back to the measured column when the caller uses a preset width.
-        const startWidth = width || event.currentTarget.parentElement?.clientWidth || 0
-        dragRef.current = { startX: event.clientX, startWidth }
-        event.currentTarget.setPointerCapture(event.pointerId)
-        onResizingChange(true)
-      }}
-      onPointerMove={(event) => {
-        const drag = dragRef.current
-        if (!drag) return
-        onResize(drag.startWidth + (drag.startX - event.clientX))
-      }}
-      onPointerUp={(event) => {
-        dragRef.current = null
-        event.currentTarget.releasePointerCapture(event.pointerId)
-        onResizingChange(false)
-      }}
-      onPointerCancel={() => {
-        dragRef.current = null
-        onResizingChange(false)
-      }}
-    >
-      <span className="pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-transparent transition-colors group-hover/resize:bg-(--muted-light)" />
-    </div>
-  )
-}
-
 export interface AppScreenHeaderProps extends Omit<HTMLAttributes<HTMLDivElement>, 'title'> {
   title?: ReactNode
+  breadcrumbs?: AppBreadcrumbItem[]
   subtitle?: ReactNode
   description?: ReactNode
   leading?: ReactNode
@@ -302,24 +260,20 @@ export interface AppScreenHeaderProps extends Omit<HTMLAttributes<HTMLDivElement
 
 function AppScreenHeaderTitle({
   title,
+  breadcrumbs,
   subtitle,
   description,
   leading,
   metadata,
-}: Pick<AppScreenHeaderProps, 'title' | 'subtitle' | 'description' | 'leading' | 'metadata'>) {
+}: Pick<AppScreenHeaderProps, 'title' | 'breadcrumbs' | 'subtitle' | 'description' | 'leading' | 'metadata'>) {
   return (
     <div className="flex min-w-0 flex-1 items-center">
       {leading ? <div className="mr-2 shrink-0">{leading}</div> : null}
       <div className="min-w-0 flex-1">
-        <div className="flex min-w-0 items-center">
-          {title ? <h1 className="truncate text-sm font-medium text-(--foreground)">{title}</h1> : null}
-          {subtitle ? (
-            <>
-              <span className="mx-2 shrink-0 text-(--muted-light)">·</span>
-              <span className="truncate text-sm text-(--muted)">{subtitle}</span>
-            </>
-          ) : null}
-          {metadata ? <span className="ml-2 shrink-0">{metadata}</span> : null}
+        <div className="flex min-w-0 items-baseline">
+          <AppBreadcrumbs asHeading title={title} items={breadcrumbs} />
+          {subtitle ? <span className="ml-2 truncate text-sm text-(--muted)">{subtitle}</span> : null}
+          {metadata ? <span className="ml-2 shrink-0 text-xs leading-5 text-(--muted)">{metadata}</span> : null}
         </div>
         {description ? (
           <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-(--muted)">{description}</p>
@@ -330,7 +284,7 @@ function AppScreenHeaderTitle({
 }
 
 export function AppScreenHeader({
-  title, subtitle, description, leading, metadata,
+  title, breadcrumbs, subtitle, description, leading, metadata,
   tabs, search, actions, menu,
   border = false,
   className,
@@ -353,6 +307,7 @@ export function AppScreenHeader({
           <div className="flex min-w-0 items-center gap-3">
             <AppScreenHeaderTitle
               title={title}
+              breadcrumbs={breadcrumbs}
               subtitle={subtitle}
               description={description}
               leading={leading}
@@ -362,8 +317,8 @@ export function AppScreenHeader({
           {(search || actions || tabs || menu) ? (
             <div className="flex max-w-full min-w-0 shrink-0 items-center gap-2 overflow-x-auto scrollbar-none md:overflow-visible [&::-webkit-scrollbar]:hidden">
               {search}
-              {actions}
               {tabs ? <div className="min-w-0 shrink overflow-x-auto scrollbar-none [&::-webkit-scrollbar]:hidden">{tabs}</div> : null}
+              {actions}
               {menu}
             </div>
           ) : null}

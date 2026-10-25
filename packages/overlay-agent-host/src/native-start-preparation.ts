@@ -1,5 +1,5 @@
 import {createHash} from 'node:crypto'
-import {z} from 'zod'
+import {z} from 'zod/v3'
 import type {AgentHostCommand} from '@layernorm/overlay-agent-bridge-protocol'
 
 /** Pin the command while allowing its delivery-only MCP token to rotate. No command or credential is persisted here. */

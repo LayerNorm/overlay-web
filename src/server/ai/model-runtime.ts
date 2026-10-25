@@ -6,7 +6,6 @@ import {
   getGatewayModelId,
   getGatewayVideoModel,
   getOpenRouterLanguageModel,
-  getOpenRouterLanguageModelCapturingRoutedModel,
 } from '@/server/ai/gateway/ai-gateway'
 import { userFacingOpenRouterError } from '@/server/ai/gateway/openrouter-service'
 import type { LanguageModel } from '@/server/ai/provider-types'
@@ -39,7 +38,10 @@ export async function getLanguageModel(
   modelId: string,
   accessToken?: string,
   userId?: string,
-  options?: { allowLowBalanceFallback?: boolean },
+  options?: {
+    allowLowBalanceFallback?: boolean
+    sessionId?: string
+  },
 ): Promise<LanguageModel> {
   const parsed = parseByokModelId(modelId)
   if (isByokModelId(modelId) && !parsed) throw new Error('Invalid BYOK model id.')
@@ -58,7 +60,10 @@ export async function getLanguageModel(
       apiKey,
       fetch: createByokProviderFetch(connection.endpoint),
     })
-    const model = await gateway.createLanguageModel(rawModelId, { accessToken })
+    const model = await gateway.createLanguageModel(rawModelId, {
+      accessToken,
+      sessionId: options?.sessionId,
+    })
     return model.implementation as LanguageModel
   }
 
@@ -77,6 +82,5 @@ export {
   getGatewayModelId,
   getGatewayVideoModel,
   getOpenRouterLanguageModel,
-  getOpenRouterLanguageModelCapturingRoutedModel,
   userFacingOpenRouterError,
 }

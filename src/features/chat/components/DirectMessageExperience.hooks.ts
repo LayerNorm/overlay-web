@@ -15,7 +15,6 @@ import {
 import type { useRouter } from 'next/navigation'
 import type {
   ChannelSummary,
-  Computer,
   ConversationParticipant,
   ConversationPin,
   ConversationPresence,
@@ -23,10 +22,12 @@ import type {
   MessageReaction,
 } from '@overlay/workspace-contracts'
 import type { AttachmentPreview, AttachmentPreviewOpenOptions } from '@overlay/chat-react'
+import { toast } from '@overlay/ui/primitives'
 import type { MentionCategory, MentionItem } from '@/shared/knowledge/mention-types'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { resolveMentionedPrincipalIds } from '@/shared/mentions/principal-mentions'
 import { clearDraft, readDraft, writeDraft } from '@/shared/chat/conversation-drafts'
+import { isTransientConversationDraft } from '@/shared/chat/chat-view-navigation'
 import { dispatchChatArchived, dispatchChatCreated, dispatchChatModified, dispatchChatTitleUpdated, sanitizeChatTitle } from '@/shared/chat/chat-title'
 import { announceArchived } from '@/shared/app/archive-toast'
 import {
@@ -46,7 +47,7 @@ import {
   type RoomMessageRecord,
 } from './collaboration/room-message-view'
 import type { RoomPanelKind } from './collaboration/RoomSidePanels'
-import { buildWorkspaceHref } from '@/shared/workspaces/routing'
+import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import { useChatPanels } from './chat/useChatPanels'
 import { useChatShellPanels } from './chat/useChatShellPanels'
 import { useChatAttachments } from './useChatAttachments'
@@ -430,7 +431,6 @@ export function useRoomTranscript({
   showcase,
   isAgentShowcase,
   agentResponding,
-  setNotice,
   markVisibleRead,
   setNewMessageCount,
 }: {
@@ -439,7 +439,6 @@ export function useRoomTranscript({
   showcase: boolean
   isAgentShowcase: boolean
   agentResponding: string | null
-  setNotice: Dispatch<SetStateAction<string | null>>
   markVisibleRead: () => Promise<void>
   setNewMessageCount: Dispatch<SetStateAction<number>>
 }) {
@@ -581,13 +580,13 @@ export function useRoomTranscript({
       }))
       setMessages((current) => mergeRoomMessages(older, current))
     } catch {
-      setNotice('Older messages could not be loaded.')
+      toast.error('Older messages could not be loaded.')
       prependScrollRef.current = null
       skipNextMessageGrowthRef.current = false
     } finally {
       setLoadingOlderMessages(false)
     }
-  }, [conversationId, hasMoreMessages, loadingOlderMessages, setNotice, showcase])
+  }, [conversationId, hasMoreMessages, loadingOlderMessages, showcase])
 
   const applyLiveRoomMessages = useCallback((liveMessages: RoomMessageRecord[]) => {
     setMessages((current) => mergeRoomMessages(liveMessages, current))
@@ -839,48 +838,6 @@ export function useAgentDirectory({
   return directoryAgentsByPrincipal
 }
 
-export function useAgentDesktop({
-  showcase,
-  computersEnabled,
-  activeWorkspaceId,
-  headerAgentId,
-}: {
-  showcase: boolean
-  computersEnabled: boolean | undefined
-  activeWorkspaceId: string | null | undefined
-  headerAgentId: string | undefined
-}) {
-  // The bound computer behind a one-to-one agent DM — surfaced as a subtle
-  // "Desktop" affordance in the header (Grokbot-style) when one is usable.
-  const [agentComputer, setAgentComputer] = useState<Computer | null>(null)
-  const [desktopOpenBusy, setDesktopOpenBusy] = useState(false)
-  useEffect(() => {
-    if (showcase || !computersEnabled || !activeWorkspaceId || !headerAgentId) {
-      queueMicrotask(() => setAgentComputer(null))
-      return
-    }
-    let cancelled = false
-    void overlayAppClient.computers.list(activeWorkspaceId).then((result) => {
-      if (cancelled) return
-      setAgentComputer(result.computers.find(
-        (computer) => computer.ownerType === 'agent' && computer.ownerId === headerAgentId,
-      ) ?? null)
-    }, () => undefined)
-    return () => { cancelled = true }
-  }, [showcase, computersEnabled, activeWorkspaceId, headerAgentId])
-  const openAgentDesktop = useCallback(() => {
-    if (!activeWorkspaceId || !agentComputer || desktopOpenBusy) return
-    setDesktopOpenBusy(true)
-    void overlayAppClient.computers.openDesktop(activeWorkspaceId, agentComputer.id)
-      .then((ticket) => {
-        if (ticket.url) window.open(ticket.url, '_blank', 'noopener')
-      })
-      .catch(() => undefined)
-      .finally(() => setDesktopOpenBusy(false))
-  }, [activeWorkspaceId, agentComputer, desktopOpenBusy])
-  return { agentComputer, desktopOpenBusy, openAgentDesktop }
-}
-
 function resolveRoomIdentity({
   participants,
   currentPrincipalId,
@@ -1088,7 +1045,7 @@ export function useRoomViewModels({
 export function useDraftConversation({
   conversationId,
   conversationType,
-  draft,
+  draft: requestedDraft,
   showcase,
   title,
   messages,
@@ -1102,6 +1059,7 @@ export function useDraftConversation({
   messages: OptimisticMessage[]
   messagesRef: RefObject<OptimisticMessage[]>
 }) {
+  const draft = isTransientConversationDraft(conversationType, requestedDraft)
   const draftCommittedRef = useRef(!draft)
 
   const commitDraftConversation = useCallback(() => {
@@ -1394,7 +1352,6 @@ export function useRoomComposer({
   readOnly?: boolean
 }) {
   // ── composer state (identical wiring to the personal chat composer) ─────────
-  const [composerNotice, setComposerNotice] = useState<string | null>(null)
   const [isDragging, setIsDragging] = useState(false)
   const [showAttachMenu, setShowAttachMenu] = useState(false)
   const [showModeMenu, setShowModeMenu] = useState(false)
@@ -1412,6 +1369,7 @@ export function useRoomComposer({
     inputRef,
     inputRevision,
     setInput,
+    subscribeToInput,
   } = useComposerTextState()
   const {
     attachedImages,
@@ -1428,7 +1386,7 @@ export function useRoomComposer({
     addDocumentsFromPicker,
     addImages,
     handlePaste,
-  } = useChatAttachments({ setComposerNotice })
+  } = useChatAttachments()
 
   // Restore a half-written message when the room reopens. Storage failures are
   // absorbed by the draft module, so private browsing simply starts empty.
@@ -1457,7 +1415,7 @@ export function useRoomComposer({
     const text = (inputRef.current ?? input).trim()
     const readyDocuments = pendingChatDocuments.filter((document) => document.status === 'ready')
     if (pendingChatDocuments.some((document) => document.status === 'uploading')) {
-      setComposerNotice('Attachments are still uploading.')
+      setAttachmentError('Wait for documents to finish indexing.')
       return
     }
     if (!text && attachedImages.length === 0 && readyDocuments.length === 0) return
@@ -1484,7 +1442,6 @@ export function useRoomComposer({
     setAttachedImages([])
     setPendingChatDocuments([])
     setAttachmentError(null)
-    setComposerNotice(null)
     setReplyContext(null)
     clearDraft({ workspaceId: activeWorkspaceId, conversationId })
 
@@ -1551,8 +1508,6 @@ export function useRoomComposer({
   }
 
   return {
-    composerNotice,
-    setComposerNotice,
     isDragging,
     showAttachMenu,
     setShowAttachMenu,
@@ -1570,6 +1525,7 @@ export function useRoomComposer({
     inputRevision,
     setInput,
     attachedImages,
+    subscribeToInput,
     setAttachedImages,
     pendingChatDocuments,
     setPendingChatDocuments,
@@ -1668,7 +1624,6 @@ export function useMessageActions({
   setSavedMessages,
   setMessages,
   loadMessages,
-  setNotice,
 }: {
   conversationId: string
   currentPrincipalId: string
@@ -1681,7 +1636,6 @@ export function useMessageActions({
   setSavedMessages: Dispatch<SetStateAction<ConversationSavedMessage[]>>
   setMessages: Dispatch<SetStateAction<OptimisticMessage[]>>
   loadMessages: () => Promise<void>
-  setNotice: Dispatch<SetStateAction<string | null>>
 }) {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingContent, setEditingContent] = useState('')
@@ -1691,9 +1645,9 @@ export function useMessageActions({
     url.searchParams.set('message', messageId)
     try {
       await navigator.clipboard.writeText(url.toString())
-      setNotice('Message link copied.')
+      toast.success('Message link copied.')
     } catch {
-      setNotice('Could not copy the message link.')
+      toast.error('Could not copy the message link.')
     }
   }
 
@@ -1736,9 +1690,9 @@ export function useMessageActions({
         messageId,
         reason: 'other',
       })
-      setNotice('Report sent to the workspace owners.')
+      toast.success('Report sent to the workspace owners.')
     } catch {
-      setNotice('Could not send the report.')
+      toast.error('Could not send the report.')
     }
   }
 
@@ -1879,7 +1833,6 @@ export function useRoomActions({
   otherParticipantsCount,
   currentParticipantArchived,
   loadParticipants,
-  setNotice,
   setMenuOpen,
 }: {
   conversationId: string
@@ -1891,9 +1844,9 @@ export function useRoomActions({
   otherParticipantsCount: number
   currentParticipantArchived: boolean
   loadParticipants: () => Promise<void>
-  setNotice: Dispatch<SetStateAction<string | null>>
   setMenuOpen: Dispatch<SetStateAction<boolean>>
 }) {
+  const buildWorkspaceHref = useWorkspaceHref()
   const [pendingArchiveScope, setPendingArchiveScope] = useState(false)
   const [scopeDialogBusy, setScopeDialogBusy] = useState(false)
   const [scopeDialogError, setScopeDialogError] = useState<string | null>(null)
@@ -1904,19 +1857,25 @@ export function useRoomActions({
     confirmation: string,
   ) {
     if (showcase) {
-      setNotice(confirmation)
+      toast.success(confirmation)
       setMenuOpen(false)
-      return
+      return true
     }
-    await overlayAppClient.conversations.updateParticipantState(conversationId, state)
-    setNotice(confirmation)
+    try {
+      await overlayAppClient.conversations.updateParticipantState(conversationId, state)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not update the conversation.')
+      return false
+    }
+    toast.success(confirmation)
     setMenuOpen(false)
     await loadParticipants()
+    return true
   }
 
   async function archiveConversation(scope: 'self' | 'everyone') {
     if (showcase) {
-      setNotice('Conversation archived')
+      toast.success('Conversation archived.')
       setMenuOpen(false)
       setPendingArchiveScope(false)
       return
@@ -1947,7 +1906,7 @@ export function useRoomActions({
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Conversation could not be archived'
       if (pendingArchiveScope) setScopeDialogError(message)
-      else setNotice(message)
+      toast.error(message)
     } finally {
       setScopeDialogBusy(false)
     }
@@ -1956,12 +1915,14 @@ export function useRoomActions({
   function archiveMenuAction() {
     setMenuOpen(false)
     if (currentParticipantArchived) {
-      void updateState({ archived: false }, 'Conversation restored').then(() => {
+      void updateState({ archived: false }, 'Conversation restored').then((updated) => {
+        if (!updated) return
         const view = conversationType === 'channel' ? 'channels' : 'dms'
-        const chatBase = activeWorkspaceId
-          ? buildWorkspaceHref(activeWorkspaceId, '/app/chat')
-          : '/app/chat'
-        router.push(`${chatBase}?${new URLSearchParams({ view, id: conversationId }).toString()}`)
+        router.push(buildWorkspaceHref(
+          activeWorkspaceId ?? null,
+          `/app/chat?${new URLSearchParams({ view, id: conversationId }).toString()}`,
+          'workspace',
+        ))
       }).catch(() => undefined)
       return
     }
@@ -1995,12 +1956,15 @@ export function useRoomActions({
       })
       setPendingDeleteScope(false)
       const view = conversationType === 'channel' ? 'channels' : 'dms'
-      const chatBase = activeWorkspaceId
-        ? buildWorkspaceHref(activeWorkspaceId, '/app/chat')
-        : '/app/chat'
-      router.push(`${chatBase}?${new URLSearchParams({ view }).toString()}`)
+      router.push(buildWorkspaceHref(
+        activeWorkspaceId ?? null,
+        `/app/chat?${new URLSearchParams({ view }).toString()}`,
+        'workspace',
+      ))
     } catch (error) {
-      setScopeDialogError(error instanceof Error ? error.message : 'Conversation could not be deleted')
+      const message = error instanceof Error ? error.message : 'Conversation could not be deleted'
+      setScopeDialogError(message)
+      toast.error(message)
     } finally {
       setScopeDialogBusy(false)
     }
@@ -2183,7 +2147,6 @@ export function useDirectMessageRoom({
   activeWorkspaceId,
   convexRoomSubscriptionEnabled,
   refreshNotifications,
-  computersEnabled,
   onOpenAttachmentPreview,
 }: {
   conversationId: string
@@ -2195,7 +2158,6 @@ export function useDirectMessageRoom({
   activeWorkspaceId: string | null | undefined
   convexRoomSubscriptionEnabled: boolean
   refreshNotifications: () => void
-  computersEnabled: boolean
   onOpenAttachmentPreview: RoomMessageContext['onOpenAttachmentPreview']
 }) {
   const isAgentShowcase = showcase && conversationId === SHOWCASE_AGENT_CONVERSATION_ID
@@ -2203,7 +2165,6 @@ export function useDirectMessageRoom({
   const menuTriggerRef = useRef<HTMLButtonElement>(null)
   const [roomPanel, setRoomPanel] = useState<RoomPanelKind | null>(null)
   const [addPeopleOpen, setAddPeopleOpen] = useState(false)
-  const [notice, setNotice] = useState<string | null>(null)
   const [agentResponding, setAgentResponding] = useState<string | null>(null)
   const [shareOpen, setShareOpen] = useState(false)
   const [memoryEnabled, setMemoryEnabled] = useState(() =>
@@ -2226,7 +2187,6 @@ export function useDirectMessageRoom({
     showcase,
     isAgentShowcase,
     agentResponding,
-    setNotice,
     markVisibleRead: readMarkers.markVisibleRead,
     setNewMessageCount: readMarkers.setNewMessageCount,
   })
@@ -2259,12 +2219,6 @@ export function useDirectMessageRoom({
     directoryAgentsByPrincipal,
     pins: collab.pins,
     threadRootId: thread.threadRootId,
-  })
-  const desktop = useAgentDesktop({
-    showcase,
-    computersEnabled,
-    activeWorkspaceId,
-    headerAgentId: vm.headerAgent?.id,
   })
   const commitDraftConversation = useDraftConversation({
     conversationId,
@@ -2322,7 +2276,6 @@ export function useDirectMessageRoom({
     setSavedMessages: collab.setSavedMessages,
     setMessages: transcript.setMessages,
     loadMessages: transcript.loadMessages,
-    setNotice,
   })
   const navigation = useMessageNavigation({
     listRef: transcript.listRef,
@@ -2344,7 +2297,6 @@ export function useDirectMessageRoom({
     otherParticipantsCount: vm.otherParticipants.length,
     currentParticipantArchived: Boolean(vm.currentParticipant?.archivedAt),
     loadParticipants: roster.loadParticipants,
-    setNotice,
     setMenuOpen,
   })
   const messageCtx = buildRoomMessageContext({
@@ -2372,8 +2324,6 @@ export function useDirectMessageRoom({
     setRoomPanel,
     addPeopleOpen,
     setAddPeopleOpen,
-    notice,
-    setNotice,
     agentResponding,
     setAgentResponding,
     shareOpen,
@@ -2388,7 +2338,6 @@ export function useDirectMessageRoom({
     thread,
     transcript,
     vm,
-    desktop,
     sendMessage,
     composer,
     remoteControls,

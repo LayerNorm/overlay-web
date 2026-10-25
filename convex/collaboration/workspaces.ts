@@ -5,6 +5,15 @@ import { mutation, query } from '../_generated/server'
 import type { Doc } from '../_generated/dataModel'
 import { requireServerSecret } from '../lib/auth'
 import { deleteChunksForSource } from '../knowledge/knowledge'
+import { claimWorkspaceHandle, getWorkspaceHandle, isWorkspaceHandleAvailable } from '../lib/workspaceHandles'
+import {
+  buildWorkspaceHandleCandidate,
+  isReservedWorkspaceHandle,
+  isWorkspaceHandleSyntaxValid,
+  normalizeWorkspaceHandleInput,
+  validateWorkspaceHandleAddress,
+  workspaceHandleBaseFromName,
+} from '@/shared/workspaces/handle-policy'
 
 const MAX_DIRECTORY_ROWS = 500
 
@@ -50,6 +59,11 @@ const workspaceValidator = v.object({
   updatedAt: v.number(),
   archivedAt: v.optional(v.number()),
 })
+const workspaceHandleResolutionValidator = v.object({
+  workspaceId: v.string(),
+  canonicalHandle: v.string(),
+  canonical: v.boolean(),
+})
 
 const principalValidator = v.object({
   principalId: v.string(),
@@ -91,6 +105,14 @@ const invitationValidator = v.object({
   replacedAt: v.optional(v.number()),
   createdAt: v.number(),
   updatedAt: v.number(),
+})
+
+const receivedInvitationValidator = v.object({
+  id: v.string(),
+  workspaceId: v.string(),
+  workspaceName: v.string(),
+  role: invitationRole,
+  expiresAt: v.number(),
 })
 
 const teamValidator = v.object({
@@ -151,6 +173,7 @@ export const ensurePersonalWorkspaceByServer = mutation({
     userId: v.string(),
     displayName: v.string(),
     email: v.optional(v.string()),
+    slug: v.optional(v.string()),
     workspaceName: v.string(),
     now: v.number(),
   },
@@ -174,12 +197,22 @@ export const ensurePersonalWorkspaceByServer = mutation({
       requireUnusedId(ctx, 'membership', args.membershipId),
     ])
     const now = args.now
+    const personalHandle = args.slug?.trim().toLowerCase()
+      || `personal-${slugify(args.workspaceId)}`
+    await claimWorkspaceHandle(ctx, {
+      handle: personalHandle,
+      workspaceId: args.workspaceId,
+      kind: 'canonical',
+      visibility: 'public',
+      now,
+      allowReserved: true,
+    })
     const [workspace, principal, membership] = await Promise.all([
       insertAndRead(ctx, 'workspaces', {
         workspaceId: args.workspaceId,
         kind: 'personal',
         name: requiredName(args.workspaceName, 'Workspace'),
-        slug: `personal-${slugify(args.workspaceId)}`,
+        slug: personalHandle,
         status: 'active',
         createdByPrincipalId: args.principalId,
         personalOwnerUserId: args.userId,
@@ -225,6 +258,8 @@ export const createOrganizationByServer = mutation({
     creatorEmail: v.optional(v.string()),
     name: v.string(),
     slug: v.optional(v.string()),
+    handleExplicit: v.optional(v.boolean()),
+    handleSuffixes: v.optional(v.array(v.string())),
     now: v.number(),
   },
   returns: workspaceAccessValidator,
@@ -236,12 +271,55 @@ export const createOrganizationByServer = mutation({
       requireUnusedId(ctx, 'membership', args.membershipId),
     ])
     const now = args.now
-    const slug = slugify(args.slug ?? args.name)
-    const duplicateSlug = await ctx.db
-      .query('workspaces')
-      .withIndex('by_slug', (q) => q.eq('slug', slug))
-      .first()
-    if (duplicateSlug) throw new Error('WORKSPACE_SLUG_ALREADY_EXISTS')
+    const base = workspaceHandleBaseFromName(args.name)
+    const automatic = args.handleExplicit === false
+      || (args.handleExplicit === undefined && args.slug === undefined)
+    const requestedBase = base
+      && isWorkspaceHandleSyntaxValid(base)
+      && !isReservedWorkspaceHandle(base)
+      ? base
+      : buildWorkspaceHandleCandidate(null, args.handleSuffixes?.[0] ?? crypto.randomUUID())
+    let requestedSlug = normalizeWorkspaceHandleInput(args.slug ?? requestedBase)
+    if (automatic && (
+      !isWorkspaceHandleSyntaxValid(requestedSlug)
+      || isReservedWorkspaceHandle(requestedSlug)
+    )) {
+      requestedSlug = requestedBase
+    }
+    const explicit = args.handleExplicit === true
+      || (args.handleExplicit === undefined && args.slug !== undefined)
+    if (
+      !isWorkspaceHandleSyntaxValid(requestedSlug)
+      || (explicit && isReservedWorkspaceHandle(requestedSlug))
+    ) {
+      throw new Error('WORKSPACE_HANDLE_INVALID')
+    }
+    let slug = requestedSlug
+    if (!(await isWorkspaceHandleAvailable(ctx, slug, args.workspaceId))) {
+      if (!automatic) throw new Error('WORKSPACE_HANDLE_ALREADY_EXISTS')
+      const fallbacks = args.handleSuffixes?.length
+        ? args.handleSuffixes
+        : [slugify(args.workspaceId), `${slugify(args.workspaceId)}-fallback`]
+      let allocated: string | null = null
+      for (const suffix of fallbacks) {
+        const candidate = buildWorkspaceHandleCandidate(base, suffix)
+        if (isWorkspaceHandleSyntaxValid(candidate)
+          && !isReservedWorkspaceHandle(candidate)
+          && await isWorkspaceHandleAvailable(ctx, candidate, args.workspaceId)) {
+          allocated = candidate
+          break
+        }
+      }
+      if (!allocated) throw new Error('WORKSPACE_HANDLE_AUTO_RETRY')
+      slug = allocated
+    }
+    await claimWorkspaceHandle(ctx, {
+      handle: slug,
+      workspaceId: args.workspaceId,
+      kind: 'canonical',
+      visibility: 'public',
+      now,
+    })
     const [workspace, principal, membership, generalChannelId] =
       await Promise.all([
         insertAndRead(ctx, 'workspaces', {
@@ -360,6 +438,110 @@ export const getWorkspaceByServer = query({
     requireServerSecret(args.serverSecret)
     const workspace = await getWorkspace(ctx, args.workspaceId)
     return workspace ? workspaceValue(workspace) : null
+  },
+})
+
+export const resolveWorkspaceHandleByServer = query({
+  args: { serverSecret: v.string(), handle: v.string(), userId: v.string() },
+  returns: v.union(workspaceHandleResolutionValidator, v.null()),
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const address = validateWorkspaceHandleAddress(args.handle)
+    if (!address.ok) return null
+    const handle = address.handle
+    const registered = await getWorkspaceHandle(ctx, handle)
+    let workspace = registered
+      ? await getWorkspace(ctx, registered.workspaceId)
+      : null
+    if (registered?.visibility === 'private') return null
+    if (!workspace && !registered) {
+      const state = await ctx.db.query('workspaceHandleMigrationState')
+        .withIndex('by_key', (q) => q.eq('key', 'workspace-handles-v1'))
+        .unique()
+      if (state?.status === 'ready') return null
+      const legacy = await ctx.db.query('workspaces')
+        .withIndex('by_slug', (q) => q.eq('slug', handle))
+        .first()
+      if (legacy?.kind === 'organization') workspace = legacy
+    }
+    if (!workspace || workspace.status !== 'active') return null
+    const access = await findHumanAccess(ctx, workspace, args.userId, false)
+    if (!access || access.membership.status !== 'active') return null
+    return {
+      workspaceId: workspace.workspaceId,
+      canonicalHandle: workspace.slug,
+      canonical: workspace.slug === handle,
+    }
+  },
+})
+
+export const workspaceHandleRegistryReadyByServer = query({
+  args: { serverSecret: v.string() },
+  returns: v.boolean(),
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const state = await ctx.db.query('workspaceHandleMigrationState')
+      .withIndex('by_key', (q) => q.eq('key', 'workspace-handles-v1'))
+      .unique()
+    return state?.status === 'ready'
+  },
+})
+
+export const updateWorkspaceHandleByServer = mutation({
+  args: {
+    serverSecret: v.string(),
+    workspaceId: v.string(),
+    actorUserId: v.string(),
+    slug: v.string(),
+    now: v.number(),
+  },
+  returns: workspaceValidator,
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const target = normalizeWorkspaceHandleInput(args.slug)
+    if (!isWorkspaceHandleSyntaxValid(target) || isReservedWorkspaceHandle(target)) {
+      throw new Error('WORKSPACE_HANDLE_INVALID')
+    }
+    const state = await ctx.db.query('workspaceHandleMigrationState')
+      .withIndex('by_key', (q) => q.eq('key', 'workspace-handles-v1'))
+      .unique()
+    if (state?.status !== 'ready') throw new Error('WORKSPACE_HANDLE_REGISTRY_NOT_READY')
+    const workspace = await requireWorkspace(ctx, args.workspaceId)
+    if (workspace.status !== 'active') throw new Error('WORKSPACE_NOT_FOUND')
+    const access = await findHumanAccess(ctx, workspace, args.actorUserId, false)
+    if (!access || access.membership.role !== 'owner' || access.membership.status !== 'active') {
+      throw new Error('WORKSPACE_ACCESS_DENIED')
+    }
+    if (workspace.slug === target) return workspaceValue(workspace)
+
+    await claimWorkspaceHandle(ctx, {
+      handle: target,
+      workspaceId: args.workspaceId,
+      kind: 'canonical',
+      visibility: 'public',
+      now: args.now,
+    })
+    await claimWorkspaceHandle(ctx, {
+      handle: workspace.slug,
+      workspaceId: args.workspaceId,
+      kind: 'alias',
+      visibility: 'public',
+      now: args.now,
+      allowReserved: workspace.kind === 'personal' && workspace.slug.startsWith('personal-'),
+    })
+    await ctx.db.patch(workspace._id, { slug: target, updatedAt: args.now })
+    await ctx.db.insert('auditEvents', {
+      eventId: `workspace.handle.${args.workspaceId}.${args.now}.${target}`,
+      actorType: 'user',
+      actorUserId: args.actorUserId,
+      action: 'workspace.handle.update',
+      resourceType: 'workspace',
+      resourceId: args.workspaceId,
+      outcome: 'success',
+      metadataJson: JSON.stringify({ previousHandle: workspace.slug, handle: target }),
+      createdAt: args.now,
+    })
+    return workspaceValue({ ...workspace, slug: target, updatedAt: args.now })
   },
 })
 
@@ -871,6 +1053,36 @@ export const listInvitationsByServer = query({
     return invitations
       .map((row) => invitationValueWithExpiry(row))
       .filter((row) => !args.status || row.status === args.status)
+  },
+})
+
+export const listReceivedInvitationsByServer = query({
+  args: {
+    serverSecret: v.string(),
+    email: v.string(),
+    now: v.number(),
+  },
+  returns: v.array(receivedInvitationValidator),
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const email = requiredEmail(args.email)
+    const invitations = await ctx.db
+      .query('workspaceInvitations')
+      .withIndex('by_email_status', (q) =>
+        q.eq('email', email).eq('status', 'pending').gt('expiresAt', args.now))
+      .take(MAX_DIRECTORY_ROWS)
+    const summaries = await Promise.all(invitations.map(async (invitation) => {
+        const workspace = await getWorkspace(ctx, invitation.workspaceId)
+        if (!workspace || workspace.status !== 'active') return null
+        return {
+          id: invitation.invitationId,
+          workspaceId: workspace.workspaceId,
+          workspaceName: workspace.name,
+          role: invitation.role,
+          expiresAt: invitation.expiresAt,
+        }
+      }))
+    return summaries.filter((summary): summary is NonNullable<typeof summary> => summary !== null)
   },
 })
 

@@ -1,4 +1,4 @@
-import { z } from 'zod'
+import { z } from 'zod/v3'
 
 export const AuthFields = {
   accessToken: z.string().min(1).optional(),

@@ -69,12 +69,9 @@ export function patchLiveMessagesIntoRuntime(
 ) {
   let changed = false
   for (const incoming of liveMessages) {
-    if (incoming.mode !== 'act') continue
+    if (incoming.mode !== 'act' || (incoming.variantIndex ?? 0) !== 0) continue
     changed = patchMessageIntoList(runtime.actChat.messages as UIMessage[], incoming) || changed
-    const slot = incoming.variantIndex ?? 0
-    if (slot >= 0 && slot < runtime.askChats.length) {
-      changed = patchMessageIntoList(runtime.askChats[slot]!.messages as UIMessage[], incoming) || changed
-    }
+    changed = patchMessageIntoList(runtime.askChats[0].messages as UIMessage[], incoming) || changed
   }
   return changed
 }
@@ -129,17 +126,14 @@ export function patchServerAssistantRowsIntoRuntime(
 ) {
   let changed = false
   for (const incoming of assistantRows) {
-    if ((incoming.mode ?? 'act') !== 'act') continue
+    if ((incoming.mode ?? 'act') !== 'act' || (incoming.variantIndex ?? 0) !== 0) continue
     changed = patchServerMessageIntoList(runtime.actChat.messages as UIMessage[], incoming) || changed
-    const slot = incoming.variantIndex ?? 0
-    if (slot >= 0 && slot < runtime.askChats.length) {
-      changed = patchServerMessageIntoList(runtime.askChats[slot]!.messages as UIMessage[], incoming) || changed
-    }
+    changed = patchServerMessageIntoList(runtime.askChats[0].messages as UIMessage[], incoming) || changed
   }
   return changed
 }
 
 export function cloneRuntimeMessageArrays(runtime: ConversationRuntime) {
   runtime.actChat.messages = [...runtime.actChat.messages]
-  for (const chat of runtime.askChats) chat.messages = [...chat.messages]
+  runtime.askChats[0].messages = [...runtime.askChats[0].messages]
 }

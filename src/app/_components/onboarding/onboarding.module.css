@@ -1,0 +1,21 @@
+.chrome { display: flex; flex-shrink: 0; opacity: 1; transition: opacity 700ms ease; }
+.chrome[data-hidden='true'] { width: 0; max-width: 0; overflow: hidden; opacity: 0; visibility: hidden; }
+.chrome[data-hidden='true'] * { visibility: hidden !important; }
+.main { position: relative; flex: 1; min-width: 0; overflow: hidden; }
+.conversation { height: 100%; }
+.conversation[data-hidden='true'] { visibility: hidden; }
+/* Lines up with the message text column: 36px avatar + 10px gap in RoomMessageItem. */
+.reply { padding: 10px 4px 8px 46px; }
+.appear { animation: appear 260ms cubic-bezier(.2,.8,.2,1) both; }
+.intro { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; background: var(--background); transition: opacity 500ms ease; }
+.intro[data-out='true'] { opacity: 0; pointer-events: none; }
+.introLockup { font-size: 40px; animation: appear 700ms cubic-bezier(.2,.8,.2,1) both; }
+.introLine { margin-top: 18px; color: var(--muted-foreground); font-size: 14px; animation: appear 700ms 350ms cubic-bezier(.2,.8,.2,1) both; }
+.dots { display: flex; align-items: center; gap: 4px; height: 22px; color: var(--muted-light); }
+.dots span { width: 5px; height: 5px; border-radius: 50%; background: currentColor; animation: pulse 1s ease-in-out infinite; }
+.dots span:nth-child(2) { animation-delay: 140ms; }
+.dots span:nth-child(3) { animation-delay: 280ms; }
+.highlight { background: var(--surface-subtle); color: var(--foreground); border-radius: 8px; }
+@keyframes pulse { 0%,70%,100% { opacity: .35; transform: translateY(0); } 35% { opacity: 1; transform: translateY(-2px); } }
+@keyframes appear { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) { .chrome, .intro, .introLockup, .introLine, .appear, .dots span { transition: none; animation: none; } }

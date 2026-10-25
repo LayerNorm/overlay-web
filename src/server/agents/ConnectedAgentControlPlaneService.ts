@@ -50,6 +50,7 @@ import { logger } from '@/server/observability/logger'
 import { mintAgentMcpToken, verifyAgentMcpToken } from './agent-mcp-token'
 import { AgentProviderAccountError, type AgentProviderAccountService } from './provider-accounts/AgentProviderAccountService'
 import { AGENT_AUTH_FAILURE_CODE, isSupportedAgentProviderId, type AgentProviderId } from '@/shared/agents/provider-accounts'
+import { externalAgentLaunchEnabled } from './external-agent-policy'
 
 const ENROLLMENT_TTL_MS = 10 * 60_000
 /** Convex refusals that mean the batch itself was unusable, not that the run or policy refused it. */
@@ -110,6 +111,7 @@ export class ConnectedAgentControlPlaneService {
     wakeMachine?: (args: { workspaceId: string; environmentId: string }) => Promise<'running' | 'resumed' | 'unavailable'>
     now?: () => number
     isEnabled?: (workspaceId?: string) => boolean | Promise<boolean>
+    launchEnabled?: (workspaceId?: string) => boolean | Promise<boolean>
     artifactsEnabled?: () => boolean | Promise<boolean>
     driveEnabled?: () => boolean | Promise<boolean>
     /** Only the canonical billing-backed policy may consume the backend projection. */
@@ -217,7 +219,6 @@ export class ConnectedAgentControlPlaneService {
   }
 
   async listEnvironments(args: { actorUserId: string; workspaceId: string }) {
-    await this.assertEnabled(args.workspaceId)
     await this.dependencies.workspaces.resolveActiveWorkspace(args.actorUserId, args.workspaceId)
     const environments = await this.dependencies.repository.listEnvironments({ workspaceId: args.workspaceId })
     const now = this.now()
@@ -316,7 +317,6 @@ export class ConnectedAgentControlPlaneService {
   }
 
   async revokeEnvironment(args: { actorUserId: string; workspaceId: string; environmentId: string }) {
-    await this.assertEnabled(args.workspaceId)
     await this.requireManager(args.actorUserId, args.workspaceId)
     const revoked = await this.dependencies.repository.revokeEnvironment({
       workspaceId: args.workspaceId,
@@ -331,7 +331,6 @@ export class ConnectedAgentControlPlaneService {
   }
 
   async listBindings(args: { actorUserId: string; workspaceId: string; agentId?: string }) {
-    await this.assertEnabled(args.workspaceId)
     await this.requireManager(args.actorUserId, args.workspaceId)
     return await this.dependencies.repository.listBindings({
       workspaceId: args.workspaceId,
@@ -411,7 +410,6 @@ export class ConnectedAgentControlPlaneService {
   }
 
   async disableBindings(args: { actorUserId: string; workspaceId: string; agentId: string }) {
-    await this.assertEnabled(args.workspaceId)
     await this.requireManager(args.actorUserId, args.workspaceId)
     const disabled = await this.dependencies.repository.disableBindingsForAgent({
       workspaceId: args.workspaceId,
@@ -435,7 +433,7 @@ export class ConnectedAgentControlPlaneService {
     controlRequestId?: string
     action: 'cancel' | 'retry' | 'resume' | 'start_fresh'
   }) {
-    await this.assertEnabled(args.workspaceId)
+    if (args.action !== 'cancel') await this.assertEnabled(args.workspaceId)
     const now = this.now()
     // Old Convex validators reject unknown arguments during web-first rollout.
     // Enable the optional control extension only after the v2 backend is live.
@@ -656,13 +654,13 @@ export class ConnectedAgentControlPlaneService {
     proofChallenge: string
     signature: string
   }): Promise<EnvironmentCredentialResponse> {
-    await this.assertEnabled()
     const now = this.now()
     const pending = await this.dependencies.repository.getEnvironmentProofChallenge({
       environmentId: args.environmentId,
       now,
     })
     if (!pending) throw controlPlaneError('Environment is awaiting approval or its proof expired', 425, 'environment_pending')
+    await this.assertEnabled(pending.environment.workspaceId)
     if (sha256(args.proofChallenge) !== pending.proofChallenge.challengeHash) {
       throw controlPlaneError('Proof challenge is invalid', 401, 'proof_invalid')
     }
@@ -696,7 +694,6 @@ export class ConnectedAgentControlPlaneService {
     requiredMethod: AgentEnvironmentCredentialMethod
     rawBody: Uint8Array
   }): Promise<HostAuthentication> {
-    await this.assertEnabled()
     if (args.rawBody.byteLength > MAX_HOST_REQUEST_BYTES) {
       throw controlPlaneError('Request body is too large', 413, 'request_too_large')
     }
@@ -776,6 +773,7 @@ export class ConnectedAgentControlPlaneService {
    * on the control plane side beyond the vault.
    */
   async issueRunCredentials(auth: HostAuthentication, runId: string): Promise<{ env: Record<string, string> }> {
+    await this.assertEnabled(auth.credential.workspaceId)
     const accounts = this.dependencies.agentProviderAccounts
     if (!accounts) throw controlPlaneError('Provider accounts are unavailable', 503, 'provider_accounts_unavailable')
     if (auth.environment.kind !== 'overlay_cloud') {
@@ -817,6 +815,7 @@ export class ConnectedAgentControlPlaneService {
   }
 
   async issueDiscoveryCredentials(auth: HostAuthentication, adapterId: string): Promise<{ env: Record<string, string> }> {
+    await this.assertEnabled(auth.credential.workspaceId)
     const accounts = this.dependencies.agentProviderAccounts
     if (!accounts) throw controlPlaneError('Provider accounts are unavailable', 503, 'provider_accounts_unavailable')
     if (auth.environment.kind !== 'overlay_cloud') throw controlPlaneError('Only Overlay Cloud environments receive provider credentials', 403, 'run_credentials_forbidden')
@@ -881,7 +880,10 @@ export class ConnectedAgentControlPlaneService {
   }
 
   async pollCommands(auth: HostAuthentication, limit: number) {
-    const [commands, resolvedThroughSequence] = await Promise.all([
+    const launchEnabled = this.dependencies.launchEnabled
+      ? await this.dependencies.launchEnabled(auth.credential.workspaceId)
+      : await externalAgentLaunchEnabled(auth.credential.workspaceId)
+    const [claimedCommands, resolvedThroughSequence] = await Promise.all([
       this.dependencies.repository.claimCommands({
         workspaceId: auth.credential.workspaceId,
         environmentId: auth.credential.environmentId,
@@ -895,6 +897,15 @@ export class ConnectedAgentControlPlaneService {
           environmentId: auth.credential.environmentId,
         }) : Promise.resolve(undefined),
     ])
+    const commands = launchEnabled
+      ? claimedCommands
+      : claimedCommands.map((command) => ['cancel', 'shutdown', 'observe'].includes(command.type)
+        ? command
+        : {
+            ...command,
+            type: 'shutdown' as const,
+            payload: { reason: 'External agent runtimes are disabled.' },
+          })
     const parsedCommands = commands.map((command) => {
       if (new TextEncoder().encode(JSON.stringify(command)).byteLength > MAX_COMMAND_BYTES) {
         throw controlPlaneError('Queued command exceeds the bridge protocol byte limit', 413, 'command_too_large')
@@ -1125,15 +1136,17 @@ export class ConnectedAgentControlPlaneService {
   }
 
   private async assertEnabled(workspaceId?: string) {
-    if (this.dependencies.isEnabled) {
-      if (!await this.dependencies.isEnabled(workspaceId)) {
-        throw controlPlaneError('Connected agent control plane is disabled', 404, 'feature_disabled')
-      }
-      return
-    }
-    const runtime = await getOverlayRuntimeConfig()
-    if (runtime.features.connectedAgentControlPlane !== true) {
+    const controlPlaneEnabled = this.dependencies.isEnabled
+      ? await this.dependencies.isEnabled(workspaceId)
+      : (await getOverlayRuntimeConfig()).features.connectedAgentControlPlane === true
+    if (!controlPlaneEnabled) {
       throw controlPlaneError('Connected agent control plane is disabled', 404, 'feature_disabled')
+    }
+    const launchEnabled = this.dependencies.launchEnabled
+      ? await this.dependencies.launchEnabled(workspaceId)
+      : await externalAgentLaunchEnabled(workspaceId)
+    if (!launchEnabled) {
+      throw controlPlaneError('External agent runtimes are disabled', 404, 'feature_disabled')
     }
   }
 

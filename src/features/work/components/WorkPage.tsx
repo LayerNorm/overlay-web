@@ -1,14 +1,14 @@
 'use client'
-import { unstyledButton } from '@overlay/ui/control-reset'
 
 import Link from 'next/link'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useHotkeys } from 'react-hotkeys-hook'
-import { AlertCircle, ListChecks, Plus, X } from 'lucide-react'
+import { ListChecks, Plus } from 'lucide-react'
 import type { WorkItem } from '@overlay/app-core'
 import type { PanelScope } from '@/shared/workspaces/panel-scope'
 import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
-import { Alert, Button, HeaderSearch } from '@overlay/ui/primitives'
+import { WorkRefreshErrorNotice } from './WorkRefreshErrorNotice'
+import { Button, HeaderSearch } from '@overlay/ui/primitives'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 import { requireShortcutHotkey } from '@/shared/shortcuts/shortcut-registry'
 import { toWorkDate } from '@/shared/work/dates'
@@ -49,18 +49,6 @@ function EmptyState({ title, description, action }: { title: string; description
         {action ? <div className="mt-4 flex justify-center">{action}</div> : null}
       </div>
     </div>
-  )
-}
-
-function ErrorBanner({ message, onDismiss }: { message: string; onDismiss: () => void }) {
-  return (
-    <Alert variant="destructive" className="mx-6 mt-3 flex shrink-0 items-start gap-2 px-3 py-2 text-[13px]">
-      <AlertCircle size={15} className="mt-0.5 shrink-0" aria-hidden />
-      <span className="flex-1">{message}</span>
-      <Button variant="ghost" type="button" onClick={onDismiss} aria-label="Dismiss" className={unstyledButton(`shrink-0 rounded p-0.5 hover:bg-red-100 dark:hover:bg-red-900/40`)}>
-        <X size={14} />
-      </Button>
-    </Alert>
   )
 }
 
@@ -124,7 +112,7 @@ function WorkBody({
 function WorkScreen() {
   const { scope, view, solo } = useWorkRoute()
   const { taskId, openTask, closeTask } = useWorkUrlState()
-  const { state, items, viewer, error, dismissError, truncated } = useWorkData()
+  const { state, items, viewer, error, refresh, truncated } = useWorkData()
   const [query, setQuery] = useState('')
   const quickAdd = useRef<WorkQuickAddHandle>(null)
   const today = useMemo(() => toWorkDate(new Date()), [])
@@ -134,7 +122,8 @@ function WorkScreen() {
   useHotkeys(requireShortcutHotkey('work.new'), () => quickAdd.current?.focus(), { preventDefault: true })
 
   const visible = useMemo(() => filterWork(items, { filter: 'all', query, viewer }), [items, query, viewer])
-  const title = solo ? WORK_VIEW_LABELS[view] : `${scope === 'workspace' ? 'Workspace' : 'Personal'} / ${WORK_VIEW_LABELS[view]}`
+  const title = WORK_VIEW_LABELS[view]
+  const selectedTask = items.find((item) => item.id === taskId)
   const loaded = state === 'ready'
   // The List scrolls the page; the Board and Timeline scroll inside their own area.
   const pageScrolls = view === 'list' || !loaded || visible.length === 0
@@ -148,7 +137,8 @@ function WorkScreen() {
       rightPanelOverlayLabel="Close task"
       header={(
         <AppScreenHeader
-          title={title}
+          title={selectedTask?.title ?? title}
+          breadcrumbs={selectedTask ? [{ label: title }] : undefined}
           tabs={<PageSubviewTabs />}
           metadata={loaded ? <span className="text-xs text-(--muted-light)">{countOpen(items)} open</span> : undefined}
           search={<HeaderSearch value={query} onChange={setQuery} label="Search tasks" placeholder="Search tasks" />}
@@ -162,8 +152,8 @@ function WorkScreen() {
       )}
     >
       <AppScreenBody padding="none" maxWidth="none" scroll="hidden" className="flex h-full min-h-0 flex-col" data-testid="work-page">
-        {error && state !== 'error' ? <ErrorBanner message={error} onDismiss={dismissError} /> : null}
         {truncated ? <p className="mx-6 mt-3 shrink-0 text-xs text-(--muted)" role="note">Showing the first {WORK_LIMITS.listCap.toLocaleString('en-US')} tasks. Archive finished work to see the rest.</p> : null}
+        {state !== 'error' ? <WorkRefreshErrorNotice error={error} onRetry={() => void refresh()} /> : null}
         <WorkQuickAdd ref={quickAdd} disabled={!loaded} />
         <div className={`flex min-h-0 flex-1 flex-col ${pageScrolls ? 'overflow-auto' : 'overflow-hidden'}`}>
           <WorkBody

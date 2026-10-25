@@ -2,7 +2,7 @@ import 'server-only'
 import type { AgentDriveDownloadCache } from './agent-drive-download-cache'
 
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto'
-import { z } from 'zod'
+import { z } from 'zod/v3'
 import { drivePathSegments } from '@layernorm/overlay-agent-bridge-protocol'
 import { buildAgentDriveCandidates } from '@/shared/agents/agent-drive-manifest'
 import type { AgentDriveTokenClaims } from './agent-drive-token'

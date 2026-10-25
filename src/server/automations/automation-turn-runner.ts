@@ -214,9 +214,12 @@ export async function callDurableAutomationModel(args: {
   providerOptions?: Record<string, Record<string, unknown>>
   reasoning?: 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
   toolDefinitions: PersonalChatWorkToolDefinition[]
+  conversationId: string
   userId: string
 }): Promise<AutomationModelCallResult> {
-  const model = await getLanguageModel(args.modelId, undefined, args.userId)
+  const model = await getLanguageModel(args.modelId, undefined, args.userId, {
+    sessionId: args.conversationId,
+  })
   const tools = Object.fromEntries(args.toolDefinitions.map((definition) => [
     definition.name,
     tool({
@@ -654,7 +657,6 @@ export async function prepareAutomationAgentTurn(
     conversationId: cid,
     entitlements: runtimeEntitlements,
     effectiveModelId,
-    isMultiModelFollowUpSlot: false,
     latestUserText: userText,
     memoryEnabled,
     // The agent remembers as itself on surface turns, so what it learns from
@@ -697,7 +699,6 @@ export async function prepareAutomationAgentTurn(
     exposedMediaTools: actTooling.exposedMediaTools,
     hasPreloadedDocContext,
     indexedNote,
-    isMultiModelFollowUpSlot: false,
     memoryContext,
     memoryEnabled,
     mentionsContext,
@@ -851,8 +852,6 @@ export async function finalizeAutomationAgentTurn(args: {
       ...summarizeAgentToolMetrics(args.steps),
       ...workflowMetrics,
     },
-    multiModelSlotIndex: 0,
-    multiModelTotal: 1,
     importedAuthorName: input.name,
     sourceCitations: plan.sourceCitations,
     timedOut: false,
@@ -921,8 +920,6 @@ export async function failAutomationAgentTurn(args: {
             .map((result) => result.toolCallId)
             .filter(Boolean)),
         ),
-        multiModelSlotIndex: 0,
-        multiModelTotal: 1,
         importedAuthorName: input.name,
         timedOut: false,
         timeoutMs: 0,

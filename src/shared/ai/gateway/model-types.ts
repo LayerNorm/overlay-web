@@ -55,7 +55,8 @@ export interface VideoModel {
   subModes: VideoSubMode[]
 }
 
-export const FREE_TIER_AUTO_MODEL_ID = 'openrouter/free'
+export const FREE_TIER_AUTO_MODEL_ID = 'overlay-free'
+export const OPENROUTER_FREE_MODEL_ID = 'openrouter/free'
 /** @deprecated Alias for {@link FREE_TIER_AUTO_MODEL_ID}. */
 export const FREE_TIER_DEFAULT_MODEL_ID = FREE_TIER_AUTO_MODEL_ID
 export const PAID_TIER_DEFAULT_MODEL_ID = 'deepseek/deepseek-v4-flash-0731' as const
@@ -78,7 +79,7 @@ export const FREE_TIER_LEGACY_DEFAULT_MODEL_IDS = [
   'stepfun-ai/step-3.5-flash',
 ] as const
 
-export type FreeTierChatModelId = typeof FREE_TIER_AUTO_MODEL_ID
+export type FreeTierChatModelId = typeof FREE_TIER_AUTO_MODEL_ID | typeof OPENROUTER_FREE_MODEL_ID
 
 export function isLegacyFreeTierDefaultModelId(modelId: string | undefined): modelId is string {
   return Boolean(modelId && (FREE_TIER_LEGACY_DEFAULT_MODEL_IDS as readonly string[]).includes(modelId))
@@ -87,7 +88,7 @@ export function isLegacyFreeTierDefaultModelId(modelId: string | undefined): mod
 export function isFreeTierChatModelId(
   modelId: string | undefined,
 ): modelId is FreeTierChatModelId {
-  return modelId === FREE_TIER_AUTO_MODEL_ID
+  return modelId === FREE_TIER_AUTO_MODEL_ID || modelId === OPENROUTER_FREE_MODEL_ID
 }
 
 export function resolveFreeTierChatModelId(modelId: string | undefined): string | undefined {

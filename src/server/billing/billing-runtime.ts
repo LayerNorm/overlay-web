@@ -15,6 +15,7 @@ import {
 import { ensureWorkspaceBudgetAvailable } from '@/server/billing/workspace-budget'
 import { logSecurityEvent } from '@/server/observability/security-events'
 import { hashOperationalIdentifier } from '@/server/security/operational-key-hash'
+import type { BillingRepository } from './BillingRepository'
 
 export function isPaidPlan(entitlements: Pick<Entitlements, 'tier' | 'planKind'>): boolean {
   if (entitlements.planKind) return entitlements.planKind === 'paid'
@@ -255,9 +256,11 @@ export async function getPayerEntitlements(params: {
   ])
   const server = getOverlayServerContext()
   if (payer.scope === 'workspace') {
-    return await server.appData.repositories.billing.getBillingAccountEntitlementsByServer({
+    return await getWorkspaceEntitlementsWithUserStorage({
       billingAccountId: payer.billingAccountId,
-    }) as Entitlements | null
+      repository: server.appData.repositories.billing,
+      userId: params.userId,
+    })
   }
   return params.fallbackEntitlements
     ?? await server.appData.repositories.usage.getEntitlements({ userId: params.userId })
@@ -305,12 +308,32 @@ async function resolveProviderBillingContext(params: {
   const server = getOverlayServerContext()
   const payer = await server.billingPayerResolver.resolve(params)
   const entitlements = payer.scope === 'workspace'
-    ? await server.appData.repositories.billing.getBillingAccountEntitlementsByServer({
+    ? await getWorkspaceEntitlementsWithUserStorage({
         billingAccountId: payer.billingAccountId,
-      }) as Entitlements | null
+        repository: server.appData.repositories.billing,
+        userId: params.userId,
+      })
     : params.entitlements
   if (!entitlements) throw new Error('billing_payer_entitlements_not_found')
   return { entitlements, payer }
+}
+
+async function getWorkspaceEntitlementsWithUserStorage(args: {
+  billingAccountId: string
+  repository: BillingRepository
+  userId: string
+}): Promise<Entitlements | null> {
+  const [accountEntitlements, userEntitlements] = await Promise.all([
+    args.repository.getBillingAccountEntitlementsByServer({ billingAccountId: args.billingAccountId }),
+    args.repository.getEntitlementsByServer({ userId: args.userId }),
+  ])
+  return accountEntitlements
+    ? {
+        ...accountEntitlements,
+        overlayStorageBytesUsed: userEntitlements?.overlayStorageBytesUsed ?? accountEntitlements.overlayStorageBytesUsed,
+        overlayStorageBytesLimit: userEntitlements?.overlayStorageBytesLimit ?? accountEntitlements.overlayStorageBytesLimit,
+      } as Entitlements
+    : null
 }
 
 function logBudgetSecurityEvent(

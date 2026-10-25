@@ -28,7 +28,7 @@ function record(overrides: Partial<RoomMessageRecord> = {}): RoomMessageRecord {
   }
 }
 
-function render(message: RoomMessageRecord, authorName = 'Maya Chen', grouped = false, streaming = false, canResolve = false, remoteStatus?: React.ReactNode) {
+function render(message: RoomMessageRecord, authorName = 'Maya Chen', grouped = false, streaming = false, canResolve = false, remoteStatus?: React.ReactNode, personalChatStyle = false) {
   return renderToStaticMarkup(
     <RoomMessageItem
       message={toRoomMessageView({
@@ -62,9 +62,19 @@ function render(message: RoomMessageRecord, authorName = 'Maya Chen', grouped = 
       onResolveRemoteRequest={canResolve ? () => undefined : undefined}
       grouped={grouped}
       remoteStatus={remoteStatus}
+      onStopResponse={streaming ? () => undefined : undefined}
+      personalChatStyle={personalChatStyle}
     />,
   )
 }
+
+test('streaming agent controls stay hidden until their own response is hovered or focused', () => {
+  const html = render(record({ authorKind: 'agent', authorPrincipalId: 'agent', content: 'Working' }), 'Agent', false, true, false, undefined, true)
+  assert.match(html, /aria-label="Stop response"/)
+  assert.match(html, /chat-exchange-actions--hover[^\"]*transition-opacity opacity-0 group-hover\/exchange:opacity-100/)
+  assert.match(html, /focus-within:opacity-100/)
+  assert.match(html, /-ml-1\.5/)
+})
 
 test('provider Markdown paths use saved Files ids while source text and external links stay intact', () => {
   const text = '[the briefing](briefing/INDEX.md) and [NASA](https://science.nasa.gov/earth/)'

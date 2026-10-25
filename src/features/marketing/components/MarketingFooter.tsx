@@ -22,11 +22,10 @@ const FOOTER_COLUMNS: Array<{ title: string; links: FootLink[] }> = [
   {
     title: "Product",
     links: [
-      { label: "Agents", href: "/home#agents" },
-      { label: "Platforms", href: "/home#platforms" },
-      { label: "Computers", href: "/home#computers" },
-      { label: "Automations", href: "/home#automations" },
-      { label: "Download", href: "/download" },
+      { label: "Agents", href: "/home#control-plane" },
+      { label: "Platforms", href: "/home#get-overlay" },
+      { label: "Computers", href: "/home#ai-employees" },
+      { label: "Automations", href: "/home#deploy" },
       { label: "Pricing", href: "/pricing" },
     ],
   },
@@ -69,8 +68,8 @@ export function MarketingFooter() {
   return (
     <footer className="border-t border-(--border) px-6 py-12 md:px-10 md:py-16">
       <div className="mx-auto max-w-7xl">
-        <div className="grid gap-10 md:grid-cols-[1.4fr_repeat(4,1fr)]">
-          <div>
+        <div className="grid grid-cols-2 gap-x-6 gap-y-10 sm:grid-cols-4 md:grid-cols-[1.4fr_repeat(4,1fr)]">
+          <div className="col-span-2 sm:col-span-4 md:col-span-1">
             <Link href="/home" className="inline-flex text-(--foreground)">
               <BrandLockup style={{ fontSize: 18 }} />
             </Link>

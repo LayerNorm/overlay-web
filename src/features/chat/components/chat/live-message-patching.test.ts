@@ -25,19 +25,14 @@ function runtimeFor(): ConversationRuntime {
   return {
     askChats: [
       { messages: [firstTurn], setMessages() {}, stop() {} } as never,
-      { messages: [firstTurn], setMessages() {}, stop() {} } as never,
-      { messages: [], setMessages() {}, stop() {} } as never,
-      { messages: [], setMessages() {}, stop() {} } as never,
     ],
     actChat: { messages: [firstTurn], setMessages() {}, stop() {} } as never,
     hydrated: true,
     ui: createConversationUiState({
       selectedActModel: 'model-a',
-      selectedModels: ['model-a', 'model-b'],
-      askModelSelectionMode: 'multiple',
+      selectedModels: ['model-a'],
       exchangeModes: ['act'],
-      exchangeModels: [['model-a', 'model-b']],
-      selectedTabPerExchange: [0],
+      exchangeModels: [['model-a']],
       exchangeGenTypes: ['text'],
       isFirstMessage: false,
     }),
@@ -53,16 +48,37 @@ test('patches live act assistant snapshots into act chat and matching ask slot',
     mode: 'act',
     content: 'hello',
     contentType: 'text',
-    modelId: 'model-b',
-    variantIndex: 1,
+    modelId: 'model-a',
+    variantIndex: 0,
     status: 'generating',
   } as LiveConversationMessage
 
   assert.equal(patchLiveMessagesIntoRuntime(runtime, [incoming]), true)
   assert.equal((runtime.actChat.messages[1] as unknown as { id?: string }).id, 'message-1')
-  assert.equal((runtime.askChats[1].messages[1] as unknown as { id?: string }).id, 'message-1')
-  assert.equal(runtime.askChats[0].messages.length, 1)
+  assert.equal((runtime.askChats[0].messages[1] as unknown as { id?: string }).id, 'message-1')
   assert.equal(patchLiveMessagesIntoRuntime(runtime, [incoming]), false)
+})
+
+test('ignores non-primary live and fallback assistant variants', () => {
+  const runtime = runtimeFor()
+  assert.equal(patchLiveMessagesIntoRuntime(runtime, [{
+    _id: 'alternate-message',
+    turnId: 'turn-1',
+    role: 'assistant',
+    mode: 'act',
+    content: 'alternate',
+    modelId: 'model-b',
+    variantIndex: 1,
+  } as LiveConversationMessage]), false)
+  assert.equal(patchServerAssistantRowsIntoRuntime(runtime, [{
+    id: 'alternate-message',
+    turnId: 'turn-1',
+    role: 'assistant',
+    mode: 'act',
+    model: 'model-b',
+    variantIndex: 1,
+  }]), false)
+  assert.equal(runtime.askChats[0].messages.length, 1)
 })
 
 test('patches fallback server rows and ignores identical snapshots', () => {

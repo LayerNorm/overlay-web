@@ -2,8 +2,11 @@
 
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import { toast } from '@overlay/ui/primitives'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
-import { buildWorkspaceHref } from '@/shared/workspaces/routing'
+import { usePanelScope } from '@/hooks/use-panel-scope'
+import { useWorkspaceHref } from '@/hooks/use-workspace-href'
+import { buildWorkspaceHandleHref, buildWorkspaceSwitchHref } from '@/shared/workspaces/routing'
 import { WorkspaceSwitcherView } from './WorkspaceSwitcherView'
 
 export function WorkspaceSwitcher({
@@ -25,6 +28,8 @@ export function WorkspaceSwitcher({
   const pathname = usePathname() ?? '/app/chat'
   const router = useRouter()
   const searchParams = useSearchParams()
+  const currentScope = usePanelScope()
+  const buildWorkspaceHref = useWorkspaceHref()
   const {
     status,
     workspaces,
@@ -39,7 +44,6 @@ export function WorkspaceSwitcher({
   const [open, setOpen] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
   const [createBusy, setCreateBusy] = useState(false)
-  const [actionError, setActionError] = useState<string | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
 
@@ -52,26 +56,28 @@ export function WorkspaceSwitcher({
   }, [])
 
   async function selectWorkspace(workspaceId: string) {
-    setActionError(null)
     try {
       await switchWorkspace(workspaceId)
       setOpen(false)
       onNavigate?.()
-      const params = new URLSearchParams(searchParams?.toString() ?? '')
-      // Resource selectors belong to the previous workspace and must never
-      // cross the isolation boundary during navigation.
-      params.delete('id')
-      if (showcase) params.set('showcase', '1')
-      const query = params.toString()
-      router.push(`${buildWorkspaceHref(workspaceId, pathname)}${query ? `?${query}` : ''}`)
+      const destination = workspaces.find((workspace) => workspace.id === workspaceId)
+      const search = new URLSearchParams(searchParams?.toString() ?? '')
+      if (showcase) search.set('showcase', '1')
+      const href = buildWorkspaceSwitchHref({
+        workspaceId,
+        handle: destination?.routingHandle,
+        pathname,
+        search: search.toString(),
+        currentScope,
+      })
+      router.push(href)
     } catch (switchError) {
-      setActionError(switchError instanceof Error ? switchError.message : 'Could not switch workspaces.')
+      toast.error(switchError instanceof Error ? switchError.message : 'Could not switch workspaces.')
     }
   }
 
   async function createAndSelect(name: string) {
     setCreateBusy(true)
-    setActionError(null)
     try {
       const workspace = await createWorkspace({ name })
       await switchWorkspace(workspace.id)
@@ -80,11 +86,14 @@ export function WorkspaceSwitcher({
       onNavigate?.()
       const params = new URLSearchParams({ section: 'workspace' })
       if (showcase) params.set('showcase', '1')
+      const settings = `/app/settings?${params.toString()}`
       router.push(
-        `${buildWorkspaceHref(workspace.id, '/app/settings')}?${params.toString()}`,
+        workspace.routingHandle
+          ? buildWorkspaceHandleHref(workspace.routingHandle, settings)
+          : buildWorkspaceHref(workspace.id, settings),
       )
     } catch (createError) {
-      setActionError(createError instanceof Error ? createError.message : 'Could not create the workspace.')
+      toast.error(createError instanceof Error ? createError.message : 'Could not create the workspace.')
     } finally {
       setCreateBusy(false)
     }
@@ -93,13 +102,11 @@ export function WorkspaceSwitcher({
   function openCreateDialog() {
     setOpen(false)
     setCreateOpen(true)
-    setActionError(null)
   }
 
   function handleCreateOpenChange(nextOpen: boolean) {
     if (createBusy) return
     setCreateOpen(nextOpen)
-    if (!nextOpen) setActionError(null)
   }
 
   return (
@@ -117,7 +124,7 @@ export function WorkspaceSwitcher({
       activeWorkspaceId={activeWorkspaceId}
       switchingWorkspaceId={switchingWorkspaceId}
       error={error}
-      actionError={actionError}
+      actionError={null}
       refresh={() => void refresh()}
       onSelectWorkspace={(workspaceId) => void selectWorkspace(workspaceId)}
       onCreateRequest={openCreateDialog}

@@ -12,6 +12,6 @@ RUN chmod 0755 /usr/local/bin/overlayctl
 # SECURITY BOUNDARY: this is a short-lived installer, never an application
 # service. Docker-socket access is equivalent to host-root access. The image has
 # no listening port, daemon, health server, or long-running command; it exits
-# after overlayctl finishes. See docs/deploy-operate/one-command-install.mdx.
+# after overlayctl finishes. See docs/self-hosting/install/one-command.mdx.
 # nosemgrep: dockerfile.security.missing-user.missing-user,dockerfile.security.missing-user-entrypoint.missing-user-entrypoint
 ENTRYPOINT ["overlayctl"]

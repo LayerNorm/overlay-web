@@ -72,7 +72,7 @@ that integration check.
 
 For admin QA, bind both backend URL settings on the exact feature branch to that PR's isolated Convex backend, reuse the shared Preview admin credentials and provision the matching secret/test operator on that backend, register the test callback, then request an exact-SHA admin Preview through the connected Vercel tools. The existing customer-web preview controller does not configure or clean resources in the admin project. Shared admin Preview backend URLs are blank so unbound builds fail closed. Record the binding and clear branch backend URLs when QA ends; never point an admin PR at shared development or customer production.
 
-Deploy backend changes from clean current canonical main after matching customer web is live. For endpoint retirement, first ship and verify replacement callers; verify authenticated standalone admin acceptance before removing the old web admin. Keep ordinary member initialization and append-only operational audit separate from operator powers. See [Admin Console](../../docs/develop/admin-console.md).
+Deploy backend changes from clean current canonical main after matching customer web is live. For endpoint retirement, first ship and verify replacement callers; verify authenticated standalone admin acceptance before removing the old web admin. Keep ordinary member initialization and append-only operational audit separate from operator powers. See [Admin Console](../../internal/develop/admin-console.md).
 
 ## Local laptop owner path
 
@@ -177,7 +177,46 @@ runtime secret store. Follow the [cloud browser protection recipe](browser-testi
 Keep protection enabled. GitHub/Vercel secrets do not automatically populate a
 cloud Builder VM. Overlay sandbox login is separate.
 
-Sign in using the configured sandbox QA identity or the [preview login recipe](browser-testing-with-agent-browser.md). Exercise the feature as a user would:
+When Devin is the coding agent, use the existing Pro demo credentials from the
+Devin secret store to perform authenticated QA on the canonical PR preview URL.
+Reuse credentials already available to the session instead of asking the owner
+to provide them again. Never copy credential values into source, documentation,
+logs, screenshots or PR comments. Use these credentials for QA only on
+`https://pr-<number>.preview.getoverlay.io`, not on production.
+
+Verify the signed-in identity and effective plan in the isolated preview before
+testing paid features. A Pro account in another environment does not automatically
+give the preview Pro entitlements: its backend has independent billing and
+workspace fixtures. If the preview reports Free or lacks a multi-member workspace,
+report that specific fixture gap rather than requesting the same credentials
+again or claiming paid/scope-isolation acceptance. Provision approved synthetic
+fixtures only on the PR's isolated backend; never change production billing or
+invite real people to make a test pass.
+
+For approved paid/workspace QA, the opt-in internal `dev/seed:initQa` mutation
+creates a synthetic **Preview QA Team**, two human principals (one is the configured
+QA identity), separate Personal/Workspace agents, and a paid fixture with a one-time
+$1 allowance. It does not charge Stripe, enable automatic top-ups, or send invitations.
+It refuses non-Preview deployments and ordinary preview seeding does not invoke it.
+For hosted seeding without exporting credentials, set
+`OVERLAY_PREVIEW_QA_FIXTURES=paid-workspace` on **only the approved PR branch's**
+Vercel Preview environment. Its next successful build invokes the fixture on that
+PR backend with the existing Preview deploy key. Do not set this flag globally.
+Alternatively, after confirming the current PR deployment and its isolated backend, run it with
+the project-scoped Preview deploy key in a private key-only environment file:
+
+```sh
+npx convex run dev/seed:initQa '{}' --deployment preview/pr-<number> --env-file <preview-key-only-file>
+```
+
+Never use `.env.local`, a Production key, or a shared development backend for this
+command. Reruns preserve existing fixtures and do not replenish spent allowance.
+Select **Preview QA Team** in the app before verifying Pro entitlement and scope
+isolation; the original Personal workspace and its billing remain unchanged.
+
+Other Builders can use the configured sandbox QA identity or the
+[preview login recipe](browser-testing-with-agent-browser.md). Exercise the
+feature as a user would:
 
 - Complete its main interaction from start to finish.
 - Test the changed journey in the deployed app, including sign-in and navigation

@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { logger } from '@/server/observability/logger'
+import { toolFailureOutput } from '@/shared/chat/tool-outcomes'
 
 /**
  * The slice of the collaboration repository a streaming agent turn needs. Kept
@@ -54,6 +55,16 @@ export const AGENT_STREAM_FLUSH_CHARS = 200
  */
 export const AGENT_STREAM_EVENT_INTERVAL_MS = 1_000
 
+/** Keep text in the ordered parts snapshot as well as the searchable message content. */
+export function appendAgentTextPart(parts: Array<Record<string, unknown>>, delta: string): void {
+  const last = parts.at(-1)
+  if (last?.type === 'text' && typeof last.text === 'string') {
+    parts[parts.length - 1] = { ...last, text: last.text + delta }
+  } else {
+    parts.push({ type: 'text', text: delta })
+  }
+}
+
 export type AgentMessageStream = ReturnType<typeof createAgentMessageStream>
 
 /**
@@ -92,6 +103,7 @@ export function createAgentMessageStream(args: {
   let disabled = false
   let pendingText = ''
   let pendingParts: Array<Record<string, unknown>> | null = null
+  let latestParts: Array<Record<string, unknown>> | null = null
   let lastFlushAt = 0
   /** No event has been published yet, so the first flush must publish one. */
   let lastEventAt = Number.NEGATIVE_INFINITY
@@ -159,10 +171,10 @@ export function createAgentMessageStream(args: {
     }
   }
 
-  const maybeFlush = (): void => {
+  const maybeFlush = (flushParts = true): void => {
     if (disabled) return
     const due = pendingText.length >= AGENT_STREAM_FLUSH_CHARS
-      || pendingParts !== null
+      || (flushParts && pendingParts !== null)
       || (pendingText.length > 0 && now() - lastFlushAt >= AGENT_STREAM_FLUSH_INTERVAL_MS)
     if (!due) return
     // Detached from the buffer before queueing, so a later finalize cannot
@@ -180,10 +192,14 @@ export function createAgentMessageStream(args: {
     },
 
     /** Buffers generated text; writes once a flush threshold trips. */
-    pushText(delta: string): void {
+    pushText(delta: string, parts?: Array<Record<string, unknown>>): void {
       if (disabled || !delta) return
       pendingText += delta
-      maybeFlush()
+      if (parts) {
+        pendingParts = parts
+        latestParts = parts.map((part) => ({ ...part }))
+      }
+      maybeFlush(false)
     },
 
     /**
@@ -194,6 +210,7 @@ export function createAgentMessageStream(args: {
     pushParts(parts: Array<Record<string, unknown>>): void {
       if (disabled) return
       pendingParts = parts
+      latestParts = parts.map((part) => ({ ...part }))
       maybeFlush()
     },
 
@@ -256,6 +273,38 @@ export function createAgentMessageStream(args: {
     }): Promise<void> {
       pendingText = ''
       pendingParts = null
+      const parts = result?.parts ?? latestParts
+      const terminalParts = parts?.map((part) => {
+        if (part.type === 'reasoning' && part.state === 'streaming') {
+          return { ...part, state: 'done' }
+        }
+        if (part.type !== 'tool-invocation' || !part.toolInvocation || typeof part.toolInvocation !== 'object') {
+          return part
+        }
+        const invocation = part.toolInvocation as Record<string, unknown>
+        const state = typeof invocation.state === 'string' ? invocation.state : ''
+        const approvalPending = invocation.approvalStatus === 'requested'
+          || (invocation.approvalStatus === 'approved' && !('toolOutput' in invocation))
+        if (
+          approvalPending
+          || state === 'output-available'
+          || state === 'output-error'
+          || state === 'output-denied'
+        ) {
+          return part
+        }
+        return {
+          ...part,
+          toolInvocation: {
+            ...invocation,
+            state: 'output-error',
+            toolOutput: toolFailureOutput(
+              undefined,
+              'The agent turn ended before the tool returned an execution result.',
+            ),
+          },
+        }
+      })
       await enqueue(async () => {
         if (!messageId || disabled) return
         try {
@@ -264,7 +313,7 @@ export function createAgentMessageStream(args: {
             conversationId: args.conversationId,
             ...(result?.content === undefined ? {} : { content: result.content }),
             messageId,
-            ...(result?.parts ? { parts: result.parts } : {}),
+            ...(terminalParts ? { parts: terminalParts } : {}),
             workspaceId: args.workspaceId,
           })
         } catch (error) {

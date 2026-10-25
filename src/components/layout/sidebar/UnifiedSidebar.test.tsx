@@ -47,7 +47,6 @@ function render(overrides: Partial<UnifiedSidebarProps> = {}) {
       panelNav={chatNav}
       onSearch={noop}
       scope="workspace"
-      solo={false}
       account={<span>Account</span>}
       {...overrides}
     />,
@@ -64,14 +63,17 @@ test('main pages render as links and Files and Extensions move under More', () =
   assert.match(html, />3</)
 })
 
-test('the scope toggle marks the selected scope and locks Workspace for a solo workspace', () => {
+test('the scope toggle remains available to solo workspaces', () => {
   const html = render()
   assert.match(html, /aria-pressed="true"[^>]*>Workspace</)
   assert.match(html, /aria-pressed="false"[^>]*>Personal</)
-  const solo = render({ solo: true })
-  assert.match(solo, /aria-label="Scope"/)
-  assert.match(solo, /aria-pressed="true"[^>]*>Personal</)
-  assert.match(solo, /aria-disabled="true"[^>]*>Workspace</)
+  assert.match(html, /aria-label="Scope"/)
+})
+
+test('Personal scope does not show Workspace Chat subviews', () => {
+  const html = render({ scope: 'personal' })
+  assert.match(html, /aria-label="Scope"/)
+  assert.doesNotMatch(html, /Direct messages|Channels|Activity/)
 })
 
 test('chat destinations for the selected scope render as sidebar rows', () => {
@@ -93,6 +95,9 @@ test('chat sections each list their own items and headers only open or close', (
   assert.doesNotMatch(html, /data-active="true"(?:(?!data-active).)*<span>Direct messages/s)
   assert.match(html, /aria-expanded="true"[^>]*>(?:(?!<\/button>).)*<span[^>]*>Channels/s)
   assert.match(html, /aria-label="New channel"/)
+  const newChannelAction = html.match(/<button(?=[^>]*aria-label="New channel")[^>]*>/)?.[0]
+  assert.ok(newChannelAction)
+  assert.doesNotMatch(newChannelAction, /opacity-0|group-hover\/section/)
 })
 
 test('collapsed shows icons only, with labels as titles', () => {
@@ -174,4 +179,13 @@ test('Work lists Needs you, Assigned to me and Everything as open sections in th
   assert.match(html, /tasks:mine/)
   assert.match(html, /tasks:all/)
   assert.equal((html.match(/aria-expanded="true"/g) ?? []).length >= 3, true)
+})
+
+
+test('expanded desktop sidebar has an accessible resize edge, collapsed and mobile copies do not', () => {
+  const html = render({ resizable: true })
+  assert.match(html, /aria-label="Resize left sidebar"/)
+  assert.match(html, /aria-valuenow="264"/)
+  assert.doesNotMatch(render({ resizable: true, collapsed: true }), /aria-label="Resize left sidebar"/)
+  assert.doesNotMatch(render({ resizable: false }), /aria-label="Resize left sidebar"/)
 })

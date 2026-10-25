@@ -2,7 +2,7 @@ import { readFile, readdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { zodToJsonSchema } from 'zod-to-json-schema'
-import type { ZodTypeAny } from 'zod'
+import type { ZodTypeAny } from 'zod/v3'
 import {
   webApiBoundaryDefinitions,
   webApiExcludedRouteDefinitions,

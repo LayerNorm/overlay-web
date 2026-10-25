@@ -4,48 +4,18 @@ import { randomUUID } from 'node:crypto'
 import type {
   WorkspaceAgentBundle,
   WorkspaceAgentCreateInput,
-  WorkspaceAgentCreatureShape,
   WorkspaceAgentDirectoryItem,
   WorkspaceAgentUpdateInput,
-  WorkspaceAgentVisibility,
   WorkspaceArchivedAgentThread,
   WorkspaceMembershipRole,
 } from '@overlay/workspace-contracts'
-import {
-  WORKSPACE_AGENT_CREATURE_SHAPES,
-} from '@overlay/workspace-contracts'
 import { DEFAULT_MODEL_ID, FREE_TIER_AUTO_MODEL_ID } from '@/shared/ai/gateway/model-types'
-import { isSupportedAgentProviderId } from '@/shared/agents/provider-accounts'
 import { parseByoModelId } from '@/shared/agents/agent-model'
 import type { WorkspaceService } from '@/server/workspaces/WorkspaceService'
 import type { WorkspaceAgentRepository } from './WorkspaceAgentRepository'
-
-export class WorkspaceAgentServiceError extends Error {
-  constructor(
-    public readonly code: 'forbidden' | 'not_found' | 'validation' | 'conflict',
-    message: string,
-  ) {
-    super(message)
-    this.name = 'WorkspaceAgentServiceError'
-  }
-}
-
-const SUPPORTED_WORKSPACE_AGENT_HARNESSES = ['overlay', 'claude-code', 'codex'] as const
-type SupportedWorkspaceAgentHarness = (typeof SUPPORTED_WORKSPACE_AGENT_HARNESSES)[number]
-
-function assertSupportedWorkspaceAgentHarness(value: string): asserts value is SupportedWorkspaceAgentHarness {
-  if (!(SUPPORTED_WORKSPACE_AGENT_HARNESSES as readonly string[]).includes(value)) {
-    throw new WorkspaceAgentServiceError('validation', 'Unsupported agent harness')
-  }
-}
-
-function assertSupportedAgentConfiguration(modelId: string, harness: string): void {
-  assertSupportedWorkspaceAgentHarness(harness)
-  const byo = parseByoModelId(modelId)
-  if (byo && !isSupportedAgentProviderId(byo.adapterId)) {
-    throw new WorkspaceAgentServiceError('validation', 'Unsupported connected agent adapter')
-  }
-}
+import { externalAgentPolicyAllowsRecord, type ExternalAgentPolicyDecision, type ExternalAgentPolicyRecord } from './external-agent-policy'
+import { WorkspaceAgentServiceError, assertSupportedWorkspaceAgentHarness, assertSupportedAgentConfiguration, normalizeVisibility, required, optional, color, shape, unique } from './workspace-agent-validation'
+export { WorkspaceAgentServiceError } from './workspace-agent-validation'
 
 export class WorkspaceAgentService {
   constructor(
@@ -53,6 +23,14 @@ export class WorkspaceAgentService {
     private readonly workspaces: WorkspaceService,
     private readonly id: () => string = randomUUID,
     private readonly now: () => number = Date.now,
+    private readonly externalAgentPolicy: (args: {
+      workspaceId: string
+      record: ExternalAgentPolicyRecord
+    }) => Promise<ExternalAgentPolicyDecision> = async ({ record }) => ({
+      external: record.harness !== undefined && record.harness !== 'overlay'
+        || parseByoModelId(record.modelId) !== null,
+      allowed: false,
+    }),
   ) {}
 
   async list(args: { actorUserId: string; workspaceId: string; includeArchived?: boolean }) {
@@ -179,6 +157,12 @@ export class WorkspaceAgentService {
       throw new WorkspaceAgentServiceError('validation', 'One or more teams do not exist in this workspace')
     }
     const agentId = this.id()
+    await this.assertExternalAgentAllowed({
+      id: agentId,
+      workspaceId: access.workspace.id,
+      harness,
+      modelId,
+    })
     try {
       return await this.repository.create({
         agentId,
@@ -229,6 +213,19 @@ export class WorkspaceAgentService {
         harness: args.input.harness,
       })
     }
+    const merged = {
+      id: agent.id,
+      workspaceId: access.workspace.id,
+      harness: args.input.harness ?? agent.harness,
+      modelId: args.input.modelId ?? agent.modelId,
+    }
+    await this.assertExternalAgentAllowed(merged)
+    await this.assertExternalAgentAllowed({
+      id: agent.id,
+      workspaceId: access.workspace.id,
+      harness: agent.harness,
+      modelId: agent.modelId,
+    })
     let teamIds: string[] | undefined
     if (args.input.teamIds !== undefined) {
       teamIds = unique(args.input.teamIds)
@@ -263,6 +260,12 @@ export class WorkspaceAgentService {
     })
     if (!updated) throw new WorkspaceAgentServiceError('not_found', 'Agent not found')
     return updated
+  }
+
+  private async assertExternalAgentAllowed(record: ExternalAgentPolicyRecord): Promise<void> {
+    if (!await externalAgentPolicyAllowsRecord(this.externalAgentPolicy, record)) {
+      throw new WorkspaceAgentServiceError('forbidden', 'External agent runtimes are disabled for this deployment')
+    }
   }
 
   async archive(args: { actorUserId: string; workspaceId: string; agentId: string }) {
@@ -519,44 +522,4 @@ export function canCreateAgent(role: WorkspaceMembershipRole) {
 /** Creator-only agents are visible to their creator alone. */
 export function canSeeAgent(agent: Pick<WorkspaceAgentDirectoryItem, 'visibility' | 'createdByPrincipalId'>, principalId: string) {
   return agent.visibility !== 'creator' || agent.createdByPrincipalId === principalId
-}
-
-function normalizeVisibility(value: WorkspaceAgentVisibility | undefined): WorkspaceAgentVisibility {
-  return value === 'creator' ? 'creator' : 'workspace'
-}
-
-function required(value: string, label: string, max: number) {
-  const normalized = value.trim()
-  if (!normalized) throw new WorkspaceAgentServiceError('validation', `${label} is required`)
-  if (normalized.length > max) throw new WorkspaceAgentServiceError('validation', `${label} is too long`)
-  return normalized
-}
-
-function optional(value: string | undefined, max: number) {
-  const normalized = value?.trim()
-  if (!normalized) return undefined
-  if (normalized.length > max) throw new WorkspaceAgentServiceError('validation', 'Description is too long')
-  return normalized
-}
-
-function color(value?: string) {
-  const normalized = value?.trim()
-  if (!normalized) return undefined
-  if (!/^#[0-9a-f]{6}$/i.test(normalized)) {
-    throw new WorkspaceAgentServiceError('validation', 'Avatar color must be a six-digit hex color')
-  }
-  return normalized.toLowerCase()
-}
-
-function shape(value?: string): WorkspaceAgentCreatureShape | undefined {
-  const normalized = value?.trim().toLowerCase()
-  if (!normalized) return undefined
-  if (!(WORKSPACE_AGENT_CREATURE_SHAPES as readonly string[]).includes(normalized)) {
-    throw new WorkspaceAgentServiceError('validation', 'Avatar shape is not a known creature shape')
-  }
-  return normalized as WorkspaceAgentCreatureShape
-}
-
-function unique(values: string[]) {
-  return [...new Set(values.map((value) => value.trim()).filter(Boolean))]
 }

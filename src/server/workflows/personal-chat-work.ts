@@ -48,8 +48,6 @@ export type PersonalChatWorkWorkflowInput = {
   instructions: string
   messages: ModelMessage[]
   modelId: string
-  multiModelSlotIndex?: number
-  multiModelTotal?: number
   paid: boolean
   providerOptions?: Record<string, Record<string, unknown>>
   reasoning?: 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
@@ -133,11 +131,14 @@ async function callWorkModelStep(args: {
   providerOptions?: Record<string, Record<string, unknown>>
   reasoning?: 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
   toolDefinitions: PersonalChatWorkToolDefinition[]
+  conversationId: string
   userId: string
 }): Promise<WorkModelCallResult> {
   'use step'
 
-  const model = await getLanguageModel(args.modelId, undefined, args.userId)
+  const model = await getLanguageModel(args.modelId, undefined, args.userId, {
+    sessionId: args.conversationId,
+  })
   const tools = Object.fromEntries(args.toolDefinitions.map((definition) => [
     definition.name,
     tool({
@@ -300,6 +301,7 @@ export async function personalChatWorkWorkflow(input: PersonalChatWorkWorkflowIn
         providerOptions: input.providerOptions,
         reasoning: input.reasoning,
         toolDefinitions: input.toolDefinitions,
+        conversationId: input.conversationId,
         userId: input.billingUserId,
       })
 
@@ -514,8 +516,6 @@ export async function personalChatWorkWorkflow(input: PersonalChatWorkWorkflowIn
             usage: aggregatePersonalChatWorkUsage(allSteps),
           },
           modelId: input.modelId,
-          multiModelSlotIndex: input.multiModelSlotIndex,
-          multiModelTotal: input.multiModelTotal,
           paid: input.paid,
           reservationId: input.reservationId,
           resourceUserId: input.resourceUserId,

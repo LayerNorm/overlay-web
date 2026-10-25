@@ -1,3 +1,2 @@
-# Internal engineering records are versioned with the repository but are not
-# part of the public Mintlify site. Public developer documentation uses .mdx.
-develop/*.md
+# Internal engineering records live in internal/ at the repo root, outside the
+# public Mintlify site.

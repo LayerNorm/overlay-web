@@ -25,7 +25,7 @@ import { AgentSlashMenu } from './chat-interface/AgentSlashMenu'
 import { useAgentSlashMenu } from './chat-interface/useAgentSlashMenu'
 import { ReplyContextBar } from './chat-interface/ReplyContextBar'
 import { ChatEmptyHero, ChatEmptyState } from './ChatEmptyState'
-import { AttachmentPreviewTray, ComposerAlerts } from './ChatComposerAttachments'
+import { AttachmentPreviewTray, useComposerAlertToasts } from './ChatComposerAttachments'
 import type { ChatToolRequestId } from '@/shared/chat/tool-requests'
 import { toComposerViewProps, type ChatComposerProps, type ComposerViewProps } from './ChatComposerTypes'
 
@@ -97,6 +97,7 @@ const TOOL_REQUEST_BY_ID = new Map(TOOL_REQUEST_OPTIONS.map((tool) => [tool.id, 
 
 export function ChatComposer(props: ChatComposerProps) {
   const viewProps = toComposerViewProps(props)
+  useComposerAlertToasts(viewProps.composerNotice ?? null, viewProps.attachmentError ?? null)
   const disabledSend =
     !viewProps.hasComposerText &&
     viewProps.attachedImages.length === 0 &&
@@ -116,7 +117,6 @@ export function ChatComposer(props: ChatComposerProps) {
           }`}
         >
           {viewProps.mode === 'chat' && !viewProps.showCenteredEmptyChat ? null : null}
-          <ComposerAlerts attachmentError={viewProps.attachmentError} composerNotice={viewProps.composerNotice} />
           {viewProps.beforeComposerContent}
           {viewProps.billingPromptContent}
           {viewProps.isSendBlocked && !viewProps.isActiveLoading && viewProps.blockedComposerContent ? (
@@ -148,10 +148,11 @@ function ComposerInputCard(props: ComposerViewProps & { disabledSend: boolean })
   const slash = useAgentSlashMenu(props.input, props.onInputChange, props.agentCommands)
 
   const handleComposerKeyDown = (event: ReactKeyboardEvent) => {
+    if (event.nativeEvent.isComposing || event.keyCode === 229) return
     if (slash.handleKeyDown(event)) return
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault()
-      void props.onSend()
+      if (!props.isSendBlocked && props.hasComposerText) void props.onSend()
     }
   }
 
@@ -230,12 +231,12 @@ function ComposerControls(props: ComposerControlsProps) {
   const hasAgentCommands = Boolean(props.agentCommands?.length)
   return (
     <PromptInputFooter>
-      <AttachMenu {...props} />
-      <DelayedTooltip label={mentionTooltip} side="top">
+      {props.textOnly ? null : <AttachMenu {...props} />}
+      {props.textOnly ? null : <DelayedTooltip label={mentionTooltip} side="top">
         <PromptInputButton onClick={() => props.textareaRef.current?.openMentionPopup()} aria-label="Insert mention">
           <AtSign size={16} strokeWidth={1.75} />
         </PromptInputButton>
-      </DelayedTooltip>
+      </DelayedTooltip>}
       {hasAgentCommands ? (
         <DelayedTooltip label="Agent slash commands" side="top">
           <PromptInputButton
@@ -282,7 +283,7 @@ function ComposerControls(props: ComposerControlsProps) {
           status={props.isActiveLoading ? 'streaming' : 'ready'}
           onStop={() => void props.onStop()}
           onClick={() => void props.onSend()}
-          disabled={props.disabledSend}
+          disabled={props.disabledSend || props.isSendBlocked}
         />
       </DelayedTooltip>
     </PromptInputFooter>
@@ -306,11 +307,7 @@ function mentionReferenceLabel(props: Pick<ComposerViewProps, 'capabilities' | '
 
 function composerPlaceholder(props: ComposerViewProps): string {
   if (props.placeholder) return props.placeholder
-  if (props.mode === 'automate') {
-    return 'Describe an automation, use @ to reference available context...'
-  }
-  const referenceLabel = mentionReferenceLabel(props)
-  return `Ask anything, use @ to ${referenceLabel.charAt(0).toLowerCase()}${referenceLabel.slice(1)}...`
+  return 'What do you want to get done?'
 }
 
 function AttachMenu(props: ComposerViewProps & { mixedFileInputRef: RefObject<HTMLInputElement | null> }) {

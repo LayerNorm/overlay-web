@@ -1,7 +1,7 @@
+import { AppRouteSessionRecovery } from '../_components/AppRouteSessionRecovery'
 import { Suspense } from 'react'
 import dynamic from 'next/dynamic'
 import { getOverlaySession } from '@/server/auth/session'
-import { redirect } from 'next/navigation'
 import { PublicShowcaseToolsView } from '@/features/showcase/PublicShowcaseToolsView'
 import { ChatRouteSkeleton } from '../_components/AppRouteSkeletons'
 
@@ -25,9 +25,7 @@ async function ToolsRouteContent({
       </Suspense>
     )
   }
-  if (!session) {
-    redirect('/app/chat?signin=nav')
-  }
+  if (!session) return <AppRouteSessionRecovery />
   return <ToolsView userId={session.user.id} />
 }
 

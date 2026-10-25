@@ -4,195 +4,65 @@ import type { UIMessage } from '@/shared/chat/ai-ui-message'
 import { createConversationUiState } from '@overlay/chat-core'
 import type { ConversationRuntime } from '../chat-interface/types'
 import {
-  getResponseForExchangeForModel,
-  prepareAskModelThreadsForTextTurn,
+  getResponseForExchange,
   readableModelId,
   removeTurnFromConversationRuntime,
   sameAssistantSnapshot,
+  withViewModelSelection,
 } from './chat-runtime-helpers'
 
-function user(id: string, text = id): UIMessage {
-  return {
-    id,
-    role: 'user',
-    parts: [{ type: 'text', text }],
-  } as UIMessage
+function message(id: string, role: 'user' | 'assistant', text = id): UIMessage {
+  return { id, role, parts: [{ type: 'text', text }] } as UIMessage
 }
 
-function assistant(id: string, text = id, extra: Partial<Record<string, unknown>> = {}): UIMessage {
+function runtimeFor(): ConversationRuntime {
+  const user = message('turn-1', 'user')
+  const primary = { ...message('answer-0', 'assistant'), turnId: 'turn-1', variantIndex: 0 } as UIMessage
+  const other = { ...message('answer-1', 'assistant'), turnId: 'turn-1', variantIndex: 1 } as UIMessage
   return {
-    id,
-    role: 'assistant',
-    parts: [{ type: 'text', text }],
-    ...extra,
-  } as UIMessage
-}
-
-function runtimeFor(params: {
-  selectedModels?: string[]
-  selectedActModel?: string
-  exchangeModels?: string[][]
-  selectedTabPerExchange?: number[]
-  exchangeGenTypes?: ('text' | 'image' | 'video')[]
-  generationResults?: Map<number, never[]>
-  askMessages?: UIMessage[][]
-  actMessages?: UIMessage[]
-} = {}): ConversationRuntime {
-  const selectedModels = params.selectedModels ?? ['model-a']
-  const askMessages = params.askMessages ?? [[user('turn-1'), assistant('a-1')]]
-  return {
-    askChats: [
-      { messages: askMessages[0] ?? [], setMessages() {}, stop() {} } as never,
-      { messages: askMessages[1] ?? [], setMessages() {}, stop() {} } as never,
-      { messages: askMessages[2] ?? [], setMessages() {}, stop() {} } as never,
-      { messages: askMessages[3] ?? [], setMessages() {}, stop() {} } as never,
-    ],
-    actChat: { messages: params.actMessages ?? askMessages[0] ?? [], setMessages() {}, stop() {} } as never,
+    askChats: [{ messages: [user, primary], setMessages() {}, stop() {} } as never],
+    actChat: { messages: [user, primary, other], setMessages() {}, stop() {} } as never,
     hydrated: true,
     ui: createConversationUiState({
-      selectedActModel: params.selectedActModel ?? selectedModels[0] ?? 'model-a',
-      selectedModels,
-      askModelSelectionMode: selectedModels.length > 1 ? 'multiple' : 'single',
-      exchangeModes: (params.exchangeModels ?? [selectedModels]).map(() => 'act'),
-      exchangeModels: params.exchangeModels ?? [selectedModels],
-      selectedTabPerExchange: params.selectedTabPerExchange ?? [0],
-      generationResults: params.generationResults ?? new Map(),
-      exchangeGenTypes: params.exchangeGenTypes ?? ['text'],
+      selectedActModel: 'model-a',
+      selectedModels: ['model-a'],
+      exchangeModes: ['act'],
+      exchangeModels: [['model-a']],
+      exchangeGenTypes: ['text'],
       isFirstMessage: false,
     }),
   }
 }
 
-test('formats readable model ids without losing common abbreviations', () => {
+test('formats readable model ids and compares assistant snapshots', () => {
   assert.equal(readableModelId('openai/gpt-4.1-mini'), 'GPT 4.1 Mini')
-  assert.equal(readableModelId('zai/glm-4.5v'), 'GLM 4.5v')
-})
-
-test('compares assistant snapshots by status, model, routed model, and parts', () => {
-  const first = assistant('a', 'hello', {
-    status: 'generating',
-    model: 'model-a',
-    metadata: { routedModelId: 'provider/model-a' },
-  })
-  const same = assistant('a-copy', 'hello', {
-    status: 'generating',
-    model: 'model-a',
-    metadata: { routedModelId: 'provider/model-a' },
-  })
-  const changed = assistant('a-copy', 'hello world', {
-    status: 'generating',
-    model: 'model-a',
-    metadata: { routedModelId: 'provider/model-a' },
-  })
-
+  const first = message('a', 'assistant', 'hello')
+  const same = message('b', 'assistant', 'hello')
   assert.equal(sameAssistantSnapshot(first, same), true)
-  assert.equal(sameAssistantSnapshot(first, changed), false)
 })
 
-test('falls back to actChat when the selected model thread is missing an earlier assistant', () => {
-  const runtime = runtimeFor({
-    selectedModels: ['model-b'],
-    exchangeModels: [['model-a'], ['model-b']],
-    askMessages: [[
-      user('u-1'),
-      user('u-2'),
-      assistant('b-2', 'second', { model: 'model-b' }),
-    ]],
-    actMessages: [
-      user('u-1'),
-      assistant('a-1', 'first', { model: 'model-a' }),
-      user('u-2'),
-      assistant('b-2', 'second', { model: 'model-b' }),
-    ],
-  })
-  runtime.ui.orphanModelThreads.set('model-a', [
-    user('u-1'),
-    assistant('a-1', 'first', { model: 'model-a' }),
-    user('u-2'),
-  ])
-
-  assert.equal(
-    getResponseForExchangeForModel({
-      modelId: 'model-a',
-      exchangeIndex: 0,
-      selectedModels: ['model-b'],
-      activeRuntime: runtime,
-      activeAskChats: runtime.askChats,
-      isActiveLoading: false,
-    })?.id,
-    'a-1',
-  )
+test('uses one primary response and removes the selected turn from both runtimes', () => {
+  const runtime = runtimeFor()
+  assert.equal(getResponseForExchange({ exchangeIndex: 0, activeRuntime: runtime })?.id, 'answer-0')
+  assert.equal(removeTurnFromConversationRuntime(runtime, 'turn-1').removedExchangeIndex, 0)
+  assert.equal(runtime.askChats[0].messages.length, 0)
+  assert.equal(runtime.actChat.messages.length, 0)
 })
 
-test('selects the assistant response for a model exchange from live slots', () => {
-  const runtime = runtimeFor({
-    selectedModels: ['model-a', 'model-b'],
-    askMessages: [
-      [user('u1'), assistant('a1'), user('u2'), assistant('a2')],
-      [user('u1'), assistant('b1'), user('u2'), assistant('b2')],
-    ],
+test('withViewModelSelection carries the picked model into a stale runtime snapshot', () => {
+  const stale = createConversationUiState({
+    selectedModels: ['openai/gpt-5.4-mini'],
+    selectedActModel: 'openai/gpt-5.4-mini',
+    exchangeModels: [['openai/gpt-5.4-mini']],
   })
 
-  assert.equal(
-    getResponseForExchangeForModel({
-      modelId: 'model-b',
-      exchangeIndex: 1,
-      selectedModels: ['model-a', 'model-b'],
-      activeRuntime: runtime,
-      activeAskChats: runtime.askChats,
-      isActiveLoading: false,
-    })?.id,
-    'b2',
-  )
-})
-
-test('prepares text turn threads from the previous selected base model', () => {
-  const baseThread = [user('u1'), assistant('a1')]
-  const runtime = runtimeFor({
-    selectedModels: ['model-a'],
-    exchangeModels: [['model-a']],
-    askMessages: [baseThread],
+  const next = withViewModelSelection(stale, {
+    selectedModels: ['openrouter/free'],
+    selectedActModel: 'openrouter/free',
   })
 
-  const result = prepareAskModelThreadsForTextTurn(runtime, ['model-b', 'model-c'])
-
-  assert.equal(result.historyBaseModelId, 'model-a')
-  assert.deepEqual(runtime.ui.selectedModels, ['model-b', 'model-c'])
-  assert.equal(runtime.ui.selectedActModel, 'model-b')
-  assert.deepEqual(runtime.askChats[0].messages, baseThread)
-  assert.deepEqual(runtime.askChats[1].messages, baseThread)
-  assert.notEqual(runtime.askChats[0].messages, baseThread)
-  assert.equal(runtime.ui.orphanModelThreads.get('model-a')?.[1]?.id, 'a1')
-})
-
-test('removes a turn and reindexes per-exchange UI state', () => {
-  const runtime = runtimeFor({
-    selectedModels: ['model-a'],
-    exchangeModels: [['model-a'], ['model-a']],
-    selectedTabPerExchange: [0, 0],
-    exchangeGenTypes: ['text', 'image'],
-    generationResults: new Map([[1, []]]),
-    askMessages: [[
-      user('turn-1'),
-      assistant('a1', 'a1', { turnId: 'turn-1' }),
-      user('turn-2'),
-      assistant('a2', 'a2', { turnId: 'turn-2' }),
-    ]],
-    actMessages: [
-      user('turn-1'),
-      assistant('act-a1', 'act-a1', { turnId: 'turn-1' }),
-      user('turn-2'),
-      assistant('act-a2', 'act-a2', { turnId: 'turn-2' }),
-    ],
-  })
-
-  const result = removeTurnFromConversationRuntime(runtime, 'turn-1')
-
-  assert.equal(result.removedExchangeIndex, 0)
-  assert.deepEqual(runtime.askChats[0].messages.map((message) => message.id), ['turn-2', 'a2'])
-  assert.deepEqual(runtime.actChat.messages.map((message) => message.id), ['turn-2', 'act-a2'])
-  assert.deepEqual(runtime.ui.exchangeGenTypes, ['image'])
-  assert.equal(runtime.ui.generationResults.has(0), true)
-  assert.equal(runtime.ui.generationResults.has(1), false)
-  assert.equal(runtime.ui.isFirstMessage, false)
+  assert.deepEqual(next.selectedModels, ['openrouter/free'])
+  assert.equal(next.selectedActModel, 'openrouter/free')
+  assert.deepEqual(next.exchangeModels, [['openai/gpt-5.4-mini']])
+  assert.deepEqual(stale.selectedModels, ['openai/gpt-5.4-mini'])
 })

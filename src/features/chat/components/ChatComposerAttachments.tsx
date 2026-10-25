@@ -1,8 +1,9 @@
 'use client'
 
 import Image from 'next/image'
-import { AlertCircle, FileText, X } from 'lucide-react'
-import { Button } from '@overlay/ui/primitives'
+import { FileText, X } from 'lucide-react'
+import { Button, toast } from '@overlay/ui/primitives'
+import { useEffect } from 'react'
 import type { ChatComposerAttachmentState } from './ChatComposerTypes'
 
 function fileTypeLabel(name: string): string {
@@ -144,27 +145,17 @@ export function AttachmentPreviewTray({
   )
 }
 
-export function ComposerAlerts({
-  attachmentError,
-  composerNotice,
-}: {
-  attachmentError: string | null
-  composerNotice: string | null
-}) {
-  const alert = attachmentError ?? composerNotice
-  if (!alert) return null
-  const error = Boolean(attachmentError)
-  return (
-    <div
-      className="mb-2 flex items-center gap-2 rounded-2xl border px-4 py-3 text-xs"
-      style={{
-        background: error ? 'var(--chat-alert-error-bg)' : 'var(--chat-alert-warn-bg)',
-        borderColor: error ? 'var(--chat-alert-error-border)' : 'var(--chat-alert-warn-border)',
-        color: error ? 'var(--chat-alert-error-text)' : 'var(--chat-alert-warn-text)',
-      }}
-    >
-      <AlertCircle size={13} className="shrink-0 opacity-80" />
-      {alert}
-    </div>
-  )
+export function useComposerAlertToasts(
+  composerNotice: string | null,
+  attachmentError: string | null,
+) {
+  useEffect(() => {
+    if (composerNotice) toast.warning(composerNotice, { id: 'composer-notice' })
+    else toast.dismiss('composer-notice')
+  }, [composerNotice])
+
+  useEffect(() => {
+    if (attachmentError) toast.error(attachmentError, { id: 'composer-attachment-error' })
+    else toast.dismiss('composer-attachment-error')
+  }, [attachmentError])
 }

@@ -1,6 +1,6 @@
 import { chmod, mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { z } from 'zod'
+import { z } from 'zod/v3'
 import { environmentCredentialResponseSchema, filesystemGrantSchema } from '@layernorm/overlay-agent-bridge-protocol'
 
 const storedConnectionSchema = environmentCredentialResponseSchema.extend({

@@ -29,8 +29,8 @@ export function SettingsPageShell({
     <AppScreenShell
       header={
         <AppScreenHeader
-          title={title}
-          subtitle={activeLabel}
+          title={activeLabel}
+          breadcrumbs={[{ label: title }]}
           metadata={activeDetail}
           actions={actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
           className="px-6"

@@ -52,7 +52,7 @@ test('metrics reports fetch one lookahead row to identify truncation exactly', a
   assert.equal(report.runners.tool_loop.runs, 2)
 })
 
-test('startWork forwards variantIndex for multi-model work turns', async () => {
+test('startWork always creates the primary response variant', async () => {
   let received: Parameters<ActConversationRepository['startAgentRun']>[0] | undefined
   const repository = {
     async startAgentRun(args: Parameters<ActConversationRepository['startAgentRun']>[0]) {
@@ -81,23 +81,9 @@ test('startWork forwards variantIndex for multi-model work turns', async () => {
     turnId: 'turn_1',
     userId: 'user_1',
     userMessageId: 'msg_u1' as never,
-    variantIndex: 0,
   })
   assert.equal(received?.variantIndex, 0)
   assert.equal(received?.mode, 'work')
   assert.equal(received?.runner, 'workflow')
   assert.equal(run0?.id, 'run_0')
-
-  const run1 = await service.startWork({
-    conversationId: 'conv_1' as never,
-    modelId: 'model-b',
-    turnId: 'turn_1',
-    userId: 'user_1',
-    userMessageId: 'msg_u1' as never,
-    variantIndex: 1,
-  })
-  assert.equal(received?.variantIndex, 1)
-  assert.equal(received?.mode, 'work')
-  assert.equal(received?.runner, 'workflow')
-  assert.equal(run1?.id, 'run_1')
 })

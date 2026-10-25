@@ -13,6 +13,7 @@
     ".": "./src/index.ts",
     "./draft-review-modal": "./src/components/DraftReviewModal.tsx",
     "./generated-ui-card": "./src/components/GeneratedUiCard.tsx",
+    "./questionnaire": "./src/components/Questionnaire.tsx",
     "./media-slot-output": "./src/components/MediaSlotOutput.tsx",
     "./model-indicators": "./src/components/ModelIndicators.tsx",
     "./model-qualities-panel": "./src/components/ModelQualitiesPanel.tsx",

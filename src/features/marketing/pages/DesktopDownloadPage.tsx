@@ -1,21 +1,15 @@
 import Link from 'next/link'
-import { MarketingButton } from '@/features/marketing/components/MarketingButton'
-import { MarketingFooter } from '@/features/marketing/components/MarketingFooter'
-import { StaticMarketingShell } from '@/features/marketing/components/StaticMarketingShell'
-import {
-  minimalBody,
-  minimalDisplay,
-  minimalLabel,
-  minimalSection,
-  minimalSerif,
-  minimalTextLink,
-} from '@/features/marketing/lib/minimalLayout'
+import { ArrowRight, ArrowUpRight, BookOpen, Cpu, Download, FileCheck, Shield } from 'lucide-react'
+import { GithubMark } from '@/features/marketing/landing/GithubMark'
+import type { ReactNode } from 'react'
+import { MarketingPageHead, StaticMarketingShell } from '@/features/marketing/components/StaticMarketingShell'
 import type { LatestReleaseInfo } from '@/shared/web/latest-release'
 import { LATEST_RELEASE_DOWNLOAD_PATH } from '@/shared/web/latest-release'
 
+const DESKTOP_REPO_URL = 'https://github.com/LayerNorm/overlay-desktop'
+
 export type DesktopDownloadPageProps = {
   downloadsEnabled: boolean
-  embedded?: boolean
   release: LatestReleaseInfo | null
   releaseError: string | null
 }
@@ -31,218 +25,107 @@ function formatPublishedAt(iso: string | undefined): string | null {
   })
 }
 
-function DownloadsNotOpenCard() {
+function ExternalButton({ href, primary = false, children }: { href: string; primary?: boolean; children: ReactNode }) {
   return (
-    <>
-      <p className={minimalBody()}>
-        Signed public downloads are not open yet. Source is available now;
-        the official beta DMG ships after Gate B (signing, notarization, and
-        release review).
-      </p>
-      <div className="flex flex-wrap gap-3 pt-2">
-        <MarketingButton
-          href="https://github.com/LayerNorm/overlay-desktop"
-          external
-          variant="primary"
-          arrow="up-right"
-        >
-          View source
-        </MarketingButton>
-        <MarketingButton
-          href="https://getoverlay.io/docs/desktop/overview"
-          external
-          variant="secondary"
-          arrow="up-right"
-        >
-          Desktop docs
-        </MarketingButton>
-      </div>
-    </>
+    <a className={primary ? 'btn primary' : 'btn ghost'} href={href} target="_blank" rel="noopener noreferrer">
+      {children}
+    </a>
   )
 }
 
-function ReleaseLoadErrorCard({ releaseError }: { releaseError: string | null }) {
+/** What the page offers right now: the signed build, a load error, or source only. */
+function DownloadState({ downloadsEnabled, release, releaseError }: DesktopDownloadPageProps) {
+  if (!downloadsEnabled) {
+    return (
+      <>
+        <p className="body">
+          Signed public downloads are not open yet. Source is available now; the official beta DMG ships after signing, notarization and release review.
+        </p>
+        <div className="actions">
+          <ExternalButton href={DESKTOP_REPO_URL} primary><GithubMark /> View source</ExternalButton>
+          <ExternalButton href={`${DESKTOP_REPO_URL}#readme`}><BookOpen className="i" /> Read me</ExternalButton>
+        </div>
+      </>
+    )
+  }
+  if (releaseError || !release) {
+    return (
+      <>
+        <p className="body">
+          A signed build could not be loaded right now{releaseError ? ` (${releaseError})` : ''}. Try again later, or install from source.
+        </p>
+        <div className="actions">
+          <ExternalButton href={`${DESKTOP_REPO_URL}/releases`} primary>GitHub Releases <ArrowUpRight className="i" /></ExternalButton>
+          <ExternalButton href={DESKTOP_REPO_URL}><GithubMark /> Build from source</ExternalButton>
+        </div>
+      </>
+    )
+  }
+  const published = formatPublishedAt(release.publishedAt ?? undefined)
   return (
     <>
-      <p className={minimalBody()}>
-        A signed build could not be loaded right now
-        {releaseError ? ` (${releaseError})` : ''}. Try again later, or
-        install from source.
-      </p>
-      <div className="flex flex-wrap gap-3 pt-2">
-        <MarketingButton
-          href="https://github.com/LayerNorm/overlay-desktop/releases"
-          external
-          variant="primary"
-          arrow="up-right"
-        >
-          GitHub Releases
-        </MarketingButton>
-        <MarketingButton
-          href="https://github.com/LayerNorm/overlay-desktop"
-          external
-          variant="secondary"
-          arrow="up-right"
-        >
-          Build from source
-        </MarketingButton>
+      <div className="actions">
+        <Link className="btn primary" href={LATEST_RELEASE_DOWNLOAD_PATH}><Download className="i" /> Download for macOS</Link>
+        <ExternalButton href={`${DESKTOP_REPO_URL}/releases/latest`}>Release notes <ArrowUpRight className="i" /></ExternalButton>
       </div>
-    </>
-  )
-}
-
-function ReleaseDownloadCard({
-  release,
-  published,
-}: {
-  release: LatestReleaseInfo
-  published: string | null
-}) {
-  return (
-    <>
-      <p className="text-sm text-(--muted)">
+      <p className="meta-line">
         Version {release.version}
         {published ? ` · ${published}` : null}
         {release.releaseName ? ` · ${release.releaseName}` : null}
       </p>
-      <p className={`mt-2 ${minimalBody()}`}>
-        Platform: <strong>macOS, Apple Silicon</strong>
-      </p>
-      <div className="flex flex-wrap gap-3 pt-4">
-        <MarketingButton
-          href={LATEST_RELEASE_DOWNLOAD_PATH}
-          variant="primary"
-          arrow="right"
-        >
-          Download for macOS
-        </MarketingButton>
-        <MarketingButton
-          href="https://github.com/LayerNorm/overlay-desktop/releases/latest"
-          external
-          variant="secondary"
-          arrow="up-right"
-        >
-          Release notes
-        </MarketingButton>
-      </div>
     </>
   )
 }
 
-function DownloadCard({
-  downloadsEnabled,
-  release,
-  releaseError,
-  published,
-}: {
-  downloadsEnabled: boolean
-  release: LatestReleaseInfo | null
-  releaseError: string | null
-  published: string | null
-}) {
-  const body = !downloadsEnabled ? (
-    <DownloadsNotOpenCard />
-  ) : releaseError || !release ? (
-    <ReleaseLoadErrorCard releaseError={releaseError} />
+function DetailRow({ href, icon, label }: { href: string; icon: ReactNode; label: string }) {
+  const content = <>{icon}{label}<ArrowRight className="i go" /></>
+  return href.startsWith('/') ? (
+    <Link className="prow" href={href}>{content}</Link>
   ) : (
-    <ReleaseDownloadCard release={release} published={published} />
-  )
-  return (
-    <div className="mt-10 space-y-4 rounded-xl border border-(--border) bg-(--surface-subtle) p-6">
-      {body}
-    </div>
+    <a className="prow" href={href} target="_blank" rel="noopener noreferrer">{content}</a>
   )
 }
 
-function DownloadLinks({ canDownload }: { canDownload: boolean }) {
-  return (
-    <ul className={`mt-10 space-y-3 ${minimalBody()}`}>
-      <li>
-        <a
-          className={minimalTextLink()}
-          href="https://getoverlay.io/docs/desktop/system-requirements"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          System requirements
-        </a>
-      </li>
-      <li>
-        <Link className={minimalTextLink()} href="/privacy">
-          Privacy policy
-        </Link>
-      </li>
-      <li>
-        <a
-          className={minimalTextLink()}
-          href="https://github.com/LayerNorm/overlay-desktop"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Source repository
-        </a>
-      </li>
-      {canDownload ? (
-        <li>
-          <a
-            className={minimalTextLink()}
-            href="https://github.com/LayerNorm/overlay-desktop/releases/latest"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Checksums & provenance (GitHub Release assets)
-          </a>
-        </li>
-      ) : null}
-    </ul>
-  )
-}
-
-export function DesktopDownloadPage({
-  downloadsEnabled,
-  embedded = false,
-  release,
-  releaseError,
-}: DesktopDownloadPageProps) {
-  const published = formatPublishedAt(release?.publishedAt ?? undefined)
+/** The desktop download page; pass no release while loading. */
+export function DesktopDownloadPage({ downloadsEnabled, release, releaseError, loading = false }: DesktopDownloadPageProps & { loading?: boolean }) {
   const canDownload = downloadsEnabled && Boolean(release)
+  return (
+    <StaticMarketingShell>
+      <main>
+        <MarketingPageHead
+          label="Desktop"
+          title="Download Overlay for macOS"
+          lead={
+            <>
+              Official builds are for macOS on Apple Silicon. Hosted cloud features use Overlay Server, which is{' '}
+              <a href="https://getoverlay.io">getoverlay.io</a> by default.
+            </>
+          }
+        >
+          {loading ? (
+            <p className="meta-line" role="status">Loading the latest release…</p>
+          ) : (
+            <DownloadState downloadsEnabled={downloadsEnabled} release={release} releaseError={releaseError} />
+          )}
+        </MarketingPageHead>
 
-  const content = (
-      <main className="min-h-full flex-1">
-        <section className={minimalSection()}>
-          <div className="mx-auto max-w-2xl">
-            <p className={minimalLabel()}>Desktop</p>
-            <h1 className={`mt-4 ${minimalDisplay()}`} style={minimalSerif()}>
-              Download Overlay for macOS
-            </h1>
-            <p className={`mt-6 ${minimalBody()}`}>
-              Official builds are for <strong>macOS on Apple Silicon</strong> only.
-              Hosted cloud features require Overlay Server (default:{' '}
-              <a className="underline underline-offset-4" href="https://getoverlay.io">
-                getoverlay.io
-              </a>
-              ).
-            </p>
-
-            <DownloadCard
-              downloadsEnabled={downloadsEnabled}
-              release={release}
-              releaseError={releaseError}
-              published={published}
-            />
-
-            <DownloadLinks canDownload={canDownload} />
+        <section className="sec">
+          <div className="split">
+            <div className="head">
+              <h2 className="h2">Before you install</h2>
+              <p className="lead">Check the requirements, read how your data is handled, or build it yourself.</p>
+            </div>
+            <div className="pcol">
+              <DetailRow href={`${DESKTOP_REPO_URL}#readme`} icon={<Cpu className="i" />} label="System requirements" />
+              <DetailRow href="/privacy" icon={<Shield className="i" />} label="Privacy policy" />
+              <DetailRow href={DESKTOP_REPO_URL} icon={<GithubMark />} label="Source repository" />
+              {canDownload ? (
+                <DetailRow href={`${DESKTOP_REPO_URL}/releases/latest`} icon={<FileCheck className="i" />} label="Checksums and provenance" />
+              ) : null}
+            </div>
           </div>
         </section>
       </main>
-  )
-
-  if (embedded) return content
-
-  return (
-    <StaticMarketingShell>
-      {content}
-      <MarketingFooter />
     </StaticMarketingShell>
   )
 }

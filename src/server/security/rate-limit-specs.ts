@@ -12,6 +12,14 @@ export const CHAT_RATE_LIMITS: RateLimitSpec[] = [
 ]
 
 const ENDPOINT_RATE_LIMITS: Record<string, RateLimitSpec[]> = {
+  'GET /api/v1/workspace-handles/:handle': [
+    { bucket: 'workspace-handles:resolve:ip', limit: 240, windowMs: TEN_MINUTES },
+    { bucket: 'workspace-handles:resolve:user', limit: 120, windowMs: TEN_MINUTES },
+  ],
+  'PATCH /api/v1/workspaces/:workspaceId/handle': [
+    { bucket: 'workspace-handles:update:ip', limit: 20, windowMs: TEN_MINUTES },
+    { bucket: 'workspace-handles:update:user', limit: 10, windowMs: TEN_MINUTES },
+  ],
   // Bootstrap read routes fire on every app-shell load. Without dedicated
   // specs they fall through to the shared `api:default:user` bucket
   // (300/10min), so a burst from one route (e.g. the model-catalog hook's
@@ -26,9 +34,32 @@ const ENDPOINT_RATE_LIMITS: Record<string, RateLimitSpec[]> = {
     { bucket: 'settings:ip', limit: 600, windowMs: TEN_MINUTES },
     { bucket: 'settings:user', limit: 300, windowMs: TEN_MINUTES },
   ],
+  'GET /api/v1/onboarding/session': [
+    { bucket: 'onboarding:session:read:ip', limit: 120, windowMs: TEN_MINUTES },
+    { bucket: 'onboarding:session:read:user', limit: 60, windowMs: TEN_MINUTES },
+  ],
+  'POST /api/v1/onboarding/session': [
+    { bucket: 'onboarding:session:write:ip', limit: 60, windowMs: TEN_MINUTES },
+    { bucket: 'onboarding:session:write:user', limit: 30, windowMs: TEN_MINUTES },
+  ],
   'GET /api/v1/workspaces': [
     { bucket: 'workspaces:list:ip', limit: 600, windowMs: TEN_MINUTES },
     { bucket: 'workspaces:list:user', limit: 300, windowMs: TEN_MINUTES },
+  ],
+  // The Work page and its sidebar sections both read the list and context on
+  // every mount, and the shell reads the subscription; in the shared pool a
+  // few open tabs exhausted it and left the app half-loaded.
+  'GET /api/v1/work': [
+    { bucket: 'work:list:ip', limit: 900, windowMs: TEN_MINUTES },
+    { bucket: 'work:list:user', limit: 450, windowMs: TEN_MINUTES },
+  ],
+  'GET /api/v1/work/context': [
+    { bucket: 'work:context:ip', limit: 900, windowMs: TEN_MINUTES },
+    { bucket: 'work:context:user', limit: 450, windowMs: TEN_MINUTES },
+  ],
+  'GET /api/v1/subscription': [
+    { bucket: 'subscription:read:ip', limit: 600, windowMs: TEN_MINUTES },
+    { bucket: 'subscription:read:user', limit: 300, windowMs: TEN_MINUTES },
   ],
   'GET /api/v1/conversations': [
     { bucket: 'conversations:list:ip', limit: 600, windowMs: TEN_MINUTES },
@@ -213,6 +244,15 @@ const DYNAMIC_ENDPOINT_RATE_LIMITS: DynamicEndpointRateLimit[] = [
     limits: [
       { bucket: 'agents:threads:write:ip', limit: 240, windowMs: TEN_MINUTES },
       { bucket: 'agents:threads:write:user', limit: 120, windowMs: TEN_MINUTES },
+    ],
+  },
+  {
+    // Read by the shell and the workspace create-access hook on every load.
+    method: 'GET',
+    pattern: /^\/api\/v1\/workspaces\/[^/]+\/policies$/,
+    limits: [
+      { bucket: 'workspaces:policies:read:ip', limit: 600, windowMs: TEN_MINUTES },
+      { bucket: 'workspaces:policies:read:user', limit: 300, windowMs: TEN_MINUTES },
     ],
   },
   {

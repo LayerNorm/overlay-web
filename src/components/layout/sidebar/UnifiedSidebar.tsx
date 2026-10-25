@@ -1,10 +1,11 @@
 'use client'
 
-import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
+import { Fragment, useEffect, useRef, useState, type ReactNode, type CSSProperties } from 'react'
 import Link from 'next/link'
 import { ChevronRight, Ellipsis, Loader2, PanelLeft, Search } from 'lucide-react'
 import {
   Button,
+  PanelResizeHandle,
   Popover,
   PopoverContent,
   PopoverTrigger,
@@ -51,7 +52,7 @@ function NavRow({ item, collapsed }: { item: PrimaryRailItem; collapsed: boolean
     title: collapsed ? item.label : item.title,
     'aria-current': item.active ? ('page' as const) : undefined,
     'data-tour': item.dataTour,
-    className: collapsed ? 'justify-center px-0' : undefined,
+    className: collapsed ? 'justify-center px-0' : '[&>svg]:mx-1',
   }
   return (
     <SidebarMenuItem>
@@ -124,7 +125,8 @@ function MoreMenu({ items, collapsed }: { items: readonly PrimaryRailItem[]; col
             isActive={Boolean(activeItem)}
             title={collapsed ? label : undefined}
             aria-label={label}
-            className={collapsed ? 'justify-center px-0' : undefined}
+            data-tour="nav-more"
+            className={collapsed ? 'justify-center px-0' : '[&>svg]:mx-1'}
             onPointerEnter={hoverOpen}
             onPointerLeave={hoverClose}
             onClick={(event) => {
@@ -221,11 +223,11 @@ function ScopeToggle({
 }
 
 /** Rows under the selected scope (for Chats: Direct messages, Channels, Activity). */
-function scopeChildren(nav: SecondaryPanelNav | undefined, scope: PanelScope, solo: boolean): ReadonlyArray<InlineNavItem> {
+function scopeChildren(nav: SecondaryPanelNav | undefined, scope: PanelScope): ReadonlyArray<InlineNavItem> {
   if (!nav) return []
   const row = nav.items.find((item) => item.id === scope)
   if (row?.children?.length) return row.children
-  return solo ? nav.items.filter((item) => item.id.includes(':')) : []
+  return []
 }
 
 export interface UnifiedSidebarProps {
@@ -245,10 +247,10 @@ export interface UnifiedSidebarProps {
   sectionRows?: ReadonlyArray<InlineNavItem>
   onSearch?: (() => void) | null
   scope: PanelScope
-  solo: boolean
   account: ReactNode
   /** Toggle collapse with Cmd/Ctrl+B. */
   keyboardShortcut?: boolean
+  resizable?: boolean
   /** List More pages as plain rows (the phone drawer has no room for a side menu). */
   inlineMore?: boolean
   /** Owns the header tabs; a second copy (the phone drawer) must not clear them when it closes. */
@@ -343,20 +345,22 @@ export function UnifiedSidebar({
   sectionRows,
   onSearch,
   scope,
-  solo,
   account,
   keyboardShortcut = false,
+  resizable = false,
   inlineMore = false,
   publishSubviews = true,
   children,
   className,
 }: UnifiedSidebarProps) {
+  const [width, setWidth] = useState(264)
+  const [resizing, setResizing] = useState(false)
   const settingsNav = panelKind === 'settings' ? panelNav : undefined
   const settingsBack = items.find((item) => item.id === 'settings-close')
   const mainItems = items.filter((item) => !MORE_ITEM_IDS.has(item.id))
   const moreItems = items.filter((item) => MORE_ITEM_IDS.has(item.id))
   const scopedNav = panelKind && panelKind !== 'settings' ? panelNav : undefined
-  const rows = scopeChildren(scopedNav, scope, solo)
+  const rows = scopeChildren(scopedNav, scope)
   const tabsPage = Boolean(panelKind && TAB_PANEL_KINDS.has(panelKind))
 
   useCollapseShortcut(keyboardShortcut, collapsed, onCollapsedChange)
@@ -388,10 +392,12 @@ export function UnifiedSidebar({
     <Sidebar
       aria-label="Sidebar"
       data-collapsed={collapsed}
-      className={cn('border-r-0', collapsed ? 'w-14' : 'w-64', className)}
+      style={{ '--sidebar-resized-width': `${width}px` } as CSSProperties}
+      className={cn('border-r-0', collapsed ? 'w-14' : 'w-(--sidebar-resized-width)', className, resizing && 'transition-none')}
     >
+      {resizable && !collapsed ? <PanelResizeHandle edge="right" width={width} onResize={setWidth} onResizingChange={setResizing} minWidth={220} maxWidth={420} label="Resize left sidebar" /> : null}
       <SidebarHeaderBar brand={brand} collapsed={collapsed} onCollapsedChange={onCollapsedChange} onSearch={settingsNav ? null : onSearch} />
-      {collapsed || settingsNav ? null : <ScopeToggle scope={solo ? 'personal' : scope} workspaceLocked={solo} onChange={changeScope} />}
+      {collapsed || settingsNav ? null : <ScopeToggle scope={scope} workspaceLocked={false} onChange={changeScope} />}
       {settingsNav ? (
         <SidebarContent>
           <SettingsSidebarNav nav={settingsNav} collapsed={collapsed} onBack={settingsBack?.onSelect} />

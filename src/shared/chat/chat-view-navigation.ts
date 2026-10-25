@@ -1,6 +1,35 @@
 import type { CachedConversation } from './chat-list-cache'
+import { buildWorkspaceHref, resolveWorkspaceSurface } from '../workspaces/routing'
+
+export function agentConversationRedirect(args: { pathname: string; workspaceId: string | null; agentId?: string; conversationId: string; guided: boolean; showcase: boolean }) {
+  if (args.guided || args.showcase || !args.workspaceId || !args.agentId || resolveWorkspaceSurface(args.pathname) !== 'chat') return null
+  return `${buildWorkspaceHref(args.workspaceId, '/app/agents')}?${new URLSearchParams({ agent: args.agentId, id: args.conversationId })}`
+}
 
 export type CollaborationChatView = 'dms' | 'channels'
+
+export function isTransientConversationDraft(conversationType: 'dm' | 'channel', draft: boolean): boolean {
+  // Channels are durable as soon as they are created, even without messages.
+  return conversationType === 'dm' && draft
+}
+
+export function scopeForConversationDetail(conversation: {
+  conversationType?: 'personal' | 'dm' | 'channel'
+  scope?: 'personal' | 'workspace'
+}): 'personal' | 'workspace' {
+  if (conversation.conversationType === 'dm' || conversation.conversationType === 'channel') {
+    return 'workspace'
+  }
+  return conversation.scope === 'workspace' ? 'workspace' : 'personal'
+}
+
+export function shouldSkipChatHistoryPrefetch(args: {
+  pathScope: string | null
+  hasScopeQuery: boolean
+  hasViewQuery: boolean
+}): boolean {
+  return args.pathScope === 'personal' || args.pathScope === 'workspace' || args.hasScopeQuery || args.hasViewQuery
+}
 
 export type SoftChatRoute = {
   conversationId: string | null

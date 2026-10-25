@@ -46,6 +46,42 @@ export default defineSchema({
     updatedAt: v.number(),
   }).index('by_key', ['key']),
 
+  overlayFreeRoutes: defineTable({
+    routeKey: v.string(),
+    transport: v.union(v.literal('gateway'), v.literal('openrouter')),
+    modelId: v.string(),
+    provider: v.string(),
+    capabilitiesJson: v.string(),
+    pricingJson: v.string(),
+    catalogVerifiedAt: v.number(),
+    catalogExpiresAt: v.number(),
+    generation: v.number(),
+    canaryVerifiedAt: v.optional(v.number()),
+    canaryExpiresAt: v.optional(v.number()),
+    quarantineReason: v.optional(v.string()),
+    quarantineAt: v.optional(v.number()),
+    cooldownUntil: v.optional(v.number()),
+    latestReceiptAt: v.optional(v.number()),
+    latestReceiptJson: v.optional(v.string()),
+    latestActualModelId: v.optional(v.string()),
+    latestActualProvider: v.optional(v.string()),
+    activeLeaseToken: v.optional(v.string()),
+    activeLeaseExpiresAt: v.optional(v.number()),
+    updatedAt: v.number(),
+  })
+    .index('by_routeKey', ['routeKey'])
+    .index('by_transport_generation', ['transport', 'generation'])
+    .index('by_catalogExpiresAt', ['catalogExpiresAt']),
+
+  overlayFreeRefreshLocks: defineTable({
+    key: v.string(),
+    leaseToken: v.string(),
+    leaseExpiresAt: v.number(),
+    retryAfter: v.number(),
+    generation: v.number(),
+    updatedAt: v.number(),
+  }).index('by_key', ['key']),
+
   billingAccounts: defineTable({
     billingAccountId: v.string(),
     scope: v.union(v.literal('personal'), v.literal('workspace')),
@@ -286,6 +322,7 @@ export default defineSchema({
     chatStarterDay: v.optional(v.string()),
     // Onboarding tour state
     hasSeenOnboarding: v.optional(v.boolean()),
+    onboardingSession: v.optional(v.string()),
     overlayStorageBytesUsed: v.optional(v.number()),
     fileBandwidthBytesUsed: v.optional(v.number()),
     fileBandwidthPeriodStart: v.optional(v.number()),
@@ -1335,6 +1372,16 @@ export default defineSchema({
                 connectUrl: v.optional(v.string()),
                 connected: v.optional(v.boolean()),
               }),
+              v.object({
+                version: v.literal(1),
+                kind: v.literal('questionnaire'),
+                prompt: v.string(),
+                choices: v.array(v.object({
+                  id: v.string(),
+                  label: v.string(),
+                })),
+                multiple: v.boolean(),
+              }),
             ),
             transient: v.optional(v.boolean()),
           }),
@@ -1926,6 +1973,26 @@ export default defineSchema({
     .index('by_slug', ['slug'])
     .index('by_personalOwnerUserId', ['personalOwnerUserId']),
 
+  workspaceHandles: defineTable({
+    handle: v.string(),
+    workspaceId: v.string(),
+    kind: v.union(v.literal('canonical'), v.literal('alias')),
+    visibility: v.union(v.literal('public'), v.literal('private')),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_handle', ['handle'])
+    .index('by_workspaceId', ['workspaceId']),
+
+  workspaceHandleMigrationState: defineTable({
+    key: v.string(),
+    status: v.union(v.literal('pending'), v.literal('ready'), v.literal('blocked')),
+    cursor: v.optional(v.string()),
+    updatedAt: v.number(),
+    conflictCount: v.number(),
+  })
+    .index('by_key', ['key']),
+
   workspacePrincipals: defineTable({
     principalId: v.string(),
     workspaceId: v.string(),
@@ -2057,6 +2124,7 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index('by_invitationId', ['invitationId'])
+    .index('by_email_status', ['email', 'status', 'expiresAt'])
     .index('by_workspaceId_createdAt', ['workspaceId', 'createdAt'])
     .index('by_workspaceId_email_status', ['workspaceId', 'email', 'status'])
     .index('by_workspaceId_status_expiresAt', ['workspaceId', 'status', 'expiresAt'])

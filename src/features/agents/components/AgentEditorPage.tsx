@@ -1,19 +1,22 @@
 'use client'
 
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import type { ComponentProps } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import type { WorkspaceAgentCreateInput, WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
 import {
-  getEnabledChatModels,
+  getModelsByIntelligence,
   getGatewayCatalogRevision,
 } from '@/shared/ai/gateway/model-data'
 import { useGatewayModelCatalog } from '@/components/providers/useGatewayModelCatalog'
-import { useAppSettings } from '@/components/providers/AppSettingsProvider'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
+import { useAppSettings } from '@/components/providers/AppSettingsProvider'
+import { useWorkspaceTextModelAccess, buildSelectableTextModels } from '@/components/providers/useWorkspaceTextModelAccess'
+import { useAuth } from '@/contexts/AuthContext'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
+import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import { parseByoModelId } from '@/shared/agents/agent-model'
 import { buildWorkspaceAgentInput, isAgentEditorValid, isDefaultMasterAgent } from '../lib/agent-editor-input'
-import { buildAgentsDirectoryHref } from '../lib/agent-chat'
 import { getInitialEditorState, getShowcaseAgent } from '../lib/agent-editor-state'
 import { useByoConnection } from './use-byo-connection'
 import { useAgentSurfaces } from './use-agent-surfaces'
@@ -24,44 +27,69 @@ import { useAgentComputer } from './use-agent-computer'
 import { useAgentEditorActions } from './use-agent-editor-actions'
 import { AgentEditorView } from './AgentEditorPage.parts'
 
-export function AgentEditorPage({
-  mode,
-  agentId,
-  showcase = false,
-  presentation = 'page',
-  panelMode,
-  onTogglePanelMode,
-  onClose,
-  onCreated,
-  onArchived,
-  onSaved,
-}: {
+export type AgentEditorPageProps = {
   mode: 'new' | 'edit'
   agentId?: string
   showcase?: boolean
   presentation?: 'page' | 'panel'
+  embedded?: boolean
   panelMode?: 'dialog' | 'side'
   onTogglePanelMode?: () => void
   onClose?: () => void
   onCreated?: (agent: WorkspaceAgentDirectoryItem) => void
   onArchived?: () => void
   onSaved?: () => void
-}) {
+  keepOpenOnSave?: boolean
+}
+
+export function AgentEditorPage(props: AgentEditorPageProps) {
+  const { viewProps } = useAgentEditorController(props)
+  return createAgentEditorPageView(viewProps)
+}
+
+export function createAgentEditorPageView(viewProps: ComponentProps<typeof AgentEditorView>) {
+  return <AgentEditorView {...viewProps} />
+}
+
+export function useAgentEditorController({
+  mode,
+  agentId,
+  showcase = false,
+  presentation = 'page',
+  embedded = false,
+  panelMode,
+  onTogglePanelMode,
+  onClose,
+  onCreated,
+  onArchived,
+  onSaved,
+  keepOpenOnSave = false,
+}: AgentEditorPageProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const showHello = searchParams?.get('hello') === '1'
   const { activeWorkspaceId } = useWorkspace()
+  const buildWorkspaceHref = useWorkspaceHref()
   const { capabilities } = useOverlayCapabilities()
+  const { settings } = useAppSettings()
+  const { user: authUser } = useAuth()
   const computersAvailable = capabilities.computers === true
   const { revision } = useGatewayModelCatalog({ enabled: true })
-  const { settings } = useAppSettings()
-  const enabledModelIds = settings.enabledChatModelIds
+  const modelAccess = useWorkspaceTextModelAccess({
+    activeWorkspaceId,
+    billingEnabled: capabilities.billing === true,
+    catalogRevision: revision,
+    onlyAllowZdrModels: settings.onlyAllowZdrModels,
+  })
+  const { loadSubscription } = modelAccess
+  useEffect(() => {
+    void loadSubscription()
+  }, [loadSubscription])
 
   const showcaseAgent = getShowcaseAgent(showcase, mode, agentId)
   // One initializer keeps per-field fallbacks out of the component body.
   const [initial] = useState(() => getInitialEditorState({ showcase, mode, agent: showcaseAgent }))
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
 
   const bootstrap = useAgentEditorBootstrap({ showcase, mode, agentId, activeWorkspaceId, initial })
   const { agent, setAgent, loading, loadFailed, canCreate, connectedAgentsEnabled, connectedAgentsChecked } = bootstrap
@@ -84,16 +112,41 @@ export function AgentEditorPage({
   const computer = useAgentComputer({
     showcase, computersAvailable, activeWorkspaceId, agent, agentType: runtime.agentType,
     enabledToolGroups: form.enabledToolGroups, setEnabledToolGroups: form.setEnabledToolGroups,
-    markDirty: form.markDirty, setError,
+    markDirty: form.markDirty,
   })
 
-  const modelOptions = useMemo(() => {
+  const allTextModels = useMemo(() => {
     void revision
     void getGatewayCatalogRevision()
-    return getEnabledChatModels(enabledModelIds, false)
+    return getModelsByIntelligence(false)
       .filter((model) => model.id !== 'nvidia/nemotron-nano-9b-v2')
-      .map((model) => ({ value: model.id, label: model.name }))
-  }, [enabledModelIds, revision])
+  }, [revision])
+  const modelField = useMemo(() => {
+    const accessUnresolved = capabilities.billing === true && !modelAccess.entitlements
+    const selectableTextModels = modelAccess.loading || accessUnresolved
+      ? buildSelectableTextModels({
+          isModelAccessRestricted: true,
+          effectiveOnlyAllowZdrModels: false,
+        })
+      : modelAccess.selectableTextModels
+    return {
+      favoriteScope: authUser?.id ?? null,
+      isFreeTier: modelAccess.isFreeTier || modelAccess.loading || accessUnresolved,
+      isFreeTierWorkspace: modelAccess.isFreeTier,
+      modelPickerLabel: allTextModels.find((model) => model.id === form.modelId)?.name ?? form.modelId,
+      selectableTextModels,
+      textModelsLoading: false,
+    }
+  }, [
+    allTextModels,
+    authUser?.id,
+    capabilities.billing,
+    form.modelId,
+    modelAccess.entitlements,
+    modelAccess.isFreeTier,
+    modelAccess.loading,
+    modelAccess.selectableTextModels,
+  ])
 
   const isDefaultMaster = isDefaultMasterAgent(agent)
   const valid = isAgentEditorValid({
@@ -102,7 +155,9 @@ export function AgentEditorPage({
     bindingValid: byo.bindingValid || runtime.cloudAgent,
   })
 
-  const directoryHref = buildAgentsDirectoryHref(activeWorkspaceId, showcase)
+  const directoryHref = showcase
+    ? '/app/agents?showcase=1'
+    : buildWorkspaceHref(activeWorkspaceId, '/app/agents', 'personal')
   const closeEditor = () => onClose ? onClose() : router.push(directoryHref)
 
   const buildInput = useCallback((): WorkspaceAgentCreateInput => {
@@ -147,7 +202,6 @@ export function AgentEditorPage({
     router,
     busy,
     setBusy,
-    setError,
     agent,
     setAgent,
     directoryHref,
@@ -161,6 +215,7 @@ export function AgentEditorPage({
     onCreated,
     onArchived,
     onSaved,
+    keepOpenOnSave,
   })
 
   const title = useMemo(() => {
@@ -175,39 +230,60 @@ export function AgentEditorPage({
   // painting a second, darker background inside the panel frame.
   const inPanel = presentation === 'panel'
 
-  return (
-    <AgentEditorView
-      presentation={presentation}
-      panelMode={panelMode}
-      onTogglePanelMode={onTogglePanelMode}
-      title={title}
-      inPanel={inPanel}
-      showHello={showHello}
-      mode={mode}
-      agent={agent}
-      loading={loading}
-      loadFailed={loadFailed}
-      canCreate={canCreate}
-      isDefaultMaster={isDefaultMaster}
-      valid={valid}
-      busy={busy}
-      error={error}
-      showcase={showcase}
-      computersAvailable={computersAvailable}
-      connectedAgentsEnabled={connectedAgentsEnabled}
-      connectedAgentsChecked={connectedAgentsChecked}
-      modelOptions={modelOptions}
-      form={form}
-      runtime={runtime}
-      byo={byo}
-      computer={computer}
-      surfaces={surfaces}
-      closeEditor={closeEditor}
-      sayHello={sayHello}
-      persistNew={persistNew}
-      saveEdit={saveEdit}
-      cancelEdit={cancelEdit}
-      archiveAgent={archiveAgent}
-    />
-  )
+  const viewProps: ComponentProps<typeof AgentEditorView> = {
+    presentation,
+    embedded,
+    panelMode,
+    onTogglePanelMode,
+    title,
+    inPanel,
+    showHello,
+    mode,
+    agent,
+    loading,
+    loadFailed,
+    canCreate,
+    isDefaultMaster,
+    valid,
+    busy,
+    showcase,
+    computersAvailable,
+    connectedAgentsEnabled,
+    connectedAgentsChecked,
+    modelField,
+    form,
+    runtime,
+    byo,
+    computer,
+    surfaces,
+    closeEditor,
+    sayHello,
+    persistNew,
+    saveEdit,
+    cancelEdit,
+    archiveAgent,
+  }
+
+  return {
+    viewProps,
+    mode,
+    agent,
+    loading,
+    loadFailed,
+    connectedAgentsChecked,
+    isDefaultMaster,
+    valid,
+    busy,
+    showcase,
+    computersAvailable,
+    connectedAgentsEnabled,
+    modelField,
+    form,
+    runtime,
+    byo,
+    computer,
+    surfaces,
+    saveEdit,
+    archiveAgent,
+  }
 }

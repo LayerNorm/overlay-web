@@ -1,5 +1,6 @@
 import { MessageFooter } from '@overlay/ui/ai'
 import { FlashCopyIconButton } from '../DraftReviewModal'
+import { messageActionVisibilityClass } from './message-action-visibility'
 
 export function UserMessageActions({
   markdown,
@@ -11,7 +12,7 @@ export function UserMessageActions({
   if (!markdown.trim()) return null
 
   return (
-    <MessageFooter className="px-0">
+    <MessageFooter className={`chat-exchange-actions--hover px-0 ${messageActionVisibilityClass()}`}>
       <FlashCopyIconButton
         copyText={markdown}
         disabled={disabled}

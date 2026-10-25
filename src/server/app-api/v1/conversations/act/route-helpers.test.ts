@@ -12,7 +12,6 @@ import {
   messagesRequireVision,
   prefixFallbackNoticeAfterStart,
   resolveActAbortTimeoutMs,
-  resolveActMultiModelState,
   resolveActTurnId,
   observeFirstTextToken,
   runActModelAttempts,
@@ -52,26 +51,6 @@ test('tool-loop reservations cover every permitted model step', () => {
   }), {
     estimatedInputTokens: 120_012,
     maxOutputTokens: 98_304,
-  })
-})
-
-test('resolveActMultiModelState clamps slots and marks follow-up slots', () => {
-  assert.deepEqual(resolveActMultiModelState({ rawMultiModelTotal: 8, rawMultiModelSlotIndex: 9 }), {
-    multiModelTotal: 4,
-    multiModelSlotIndex: 3,
-    isMultiModelFollowUpSlot: true,
-  })
-  assert.deepEqual(resolveActMultiModelState({ rawMultiModelTotal: 1, rawMultiModelSlotIndex: 1 }), {
-    multiModelTotal: 2,
-    multiModelSlotIndex: 1,
-    isMultiModelFollowUpSlot: true,
-  })
-  assert.deepEqual(resolveActMultiModelState({
-    idempotencyKey: 'act:turn-abc:1',
-  }), {
-    multiModelTotal: 2,
-    multiModelSlotIndex: 1,
-    isMultiModelFollowUpSlot: true,
   })
 })
 
@@ -157,7 +136,7 @@ test('runActModelAttempts describes the full budget fallback chain', async () =>
   assert.equal(result, 'ok')
   assert.deepEqual(events, [
     'fallback:anthropic/claude-opus-4.7->z-ai/glm-5.1:openrouter/free,anthropic/claude-opus-4.7',
-    'run:z-ai/glm-5.1:Free Router and Claude Opus 4.7 exceeded remaining budget, switching to GLM 5.1.',
+    'run:z-ai/glm-5.1:OpenRouter Free and Claude Opus 4.7 exceeded remaining budget, switching to GLM 5.1.',
   ])
 })
 

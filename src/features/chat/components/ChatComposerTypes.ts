@@ -54,6 +54,7 @@ export type ChatComposerActions = {
   onAutomateSuggestion?: (id: EmptyAutomateSuggestionId) => void
 }
 export type ChatComposerSurface = {
+  textOnly?: boolean
   hideModeMenu?: boolean
   hideGenerationModes?: boolean
   placeholder?: string

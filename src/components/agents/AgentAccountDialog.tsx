@@ -3,7 +3,7 @@ import { unstyledButton } from '@overlay/ui/control-reset'
 import { useEffect, useRef, useState } from 'react'
 import { Check, Copy } from 'lucide-react'
 import type { ProviderAccountResource } from '@overlay/api-client'
-import { Button, DialogFrame, Input, SegmentedControl } from '@overlay/ui/primitives'
+import { Button, DialogFrame, Input, SegmentedControl, toast } from '@overlay/ui/primitives'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import {
   AGENT_PROVIDERS,
@@ -167,9 +167,10 @@ export function AccountDialog({ target, initialProvider, onClose, onSaved }: {
       else saved = (await overlayAppClient.providerAccounts.connect({ provider, method, secret: check.secret, ...(label.trim() ? { label: label.trim() } : {}) })).account
       // The credential leaves this component the moment it is saved.
       setSecret('')
+      toast.success(reconnecting ? 'Account reconnected.' : 'Account connected.')
       onSaved(saved)
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : 'Could not save the account.')
+      toast.error(saveError instanceof Error ? saveError.message : 'Could not save the account.')
     } finally {
       setBusy(false)
     }

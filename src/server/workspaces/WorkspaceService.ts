@@ -2,16 +2,18 @@ import { defaultWorkspaceName } from '@/shared/workspaces/default-name'
 import { MAX_FREE_WORKSPACES_PER_OWNER } from '@/shared/billing/free-allowance'
 import 'server-only'
 
-import { randomUUID } from 'node:crypto'
+import { randomBytes, randomUUID } from 'node:crypto'
 import {
   canJoinTeam,
   canManageWorkspace,
   DEFAULT_WORKSPACE_POLICY,
   WORKSPACE_ROLLOUT_STAGES,
+  type AccountWorkspaceInvitation,
   type WorkspaceAccess,
   type WorkspaceInvitation,
   type WorkspaceMembership,
   type WorkspaceMembershipRole,
+  type WorkspaceHandleResolutionResponse,
   type WorkspaceMember,
   type WorkspacePrincipal,
   type WorkspacePrincipalType,
@@ -24,6 +26,15 @@ import {
   type WorkspaceTeamMember,
   type WorkspaceTeamWithMembers,
 } from '@overlay/workspace-contracts'
+import {
+  buildWorkspaceHandleCandidate,
+  isReservedWorkspaceHandle,
+  isWorkspaceHandleSyntaxValid,
+  normalizeWorkspaceHandleInput,
+  validateWorkspaceHandleAddress,
+  validateWorkspaceHandleInput,
+  workspaceHandleBaseFromName,
+} from '@/shared/workspaces/handle-policy'
 import {
   isWorkspaceInRollout,
   parseDeploymentRolloutStage,
@@ -40,6 +51,8 @@ type WorkspaceServiceOptions = {
   lifecycleEvents?: LifecycleEventPublisher
   /** Whether a workspace is on a paid plan. Workspaces with a plan do not count toward a person's free-workspace limit. */
   hasWorkspacePlan?: (workspaceId: string) => Promise<boolean>
+  workspaceHandleWritesEnabled?: () => boolean
+  createHandleSuffix?: () => string
 }
 
 export class WorkspaceServiceError extends Error {
@@ -48,6 +61,8 @@ export class WorkspaceServiceError extends Error {
     readonly statusCode: number,
     readonly code:
       | 'conflict'
+      | 'handle_conflict'
+      | 'handles_not_ready'
       | 'forbidden'
       | 'invitation_expired'
       | 'invitation_invalid'
@@ -79,7 +94,7 @@ export class WorkspaceService {
     const userId = required(args.userId, 'userId')
     return await this.repository.ensurePersonalWorkspace({
       workspaceId: this.id(),
-      slug: `personal-${slugify(userId)}`,
+      slug: `personal-${this.handleSuffix()}`,
       principalId: this.id(),
       userId,
       displayName: optional(args.displayName) ?? optional(args.email) ?? 'Personal',
@@ -91,6 +106,13 @@ export class WorkspaceService {
 
   async listForUser(userId: string): Promise<WorkspaceAccess[]> {
     return await this.repository.listForUser(required(userId, 'userId'))
+  }
+
+  async listReceivedInvitations(args: { email: string; now: number }): Promise<AccountWorkspaceInvitation[]> {
+    return await this.repository.listReceivedInvitations({
+      email: normalizeEmail(args.email),
+      now: args.now,
+    })
   }
 
   /** Read-only principal lookup for lifecycle event attribution. */
@@ -208,16 +230,82 @@ export class WorkspaceService {
       && access.workspace.status === 'active')
     const planned = await Promise.all(owned.map((access) => this.options.hasWorkspacePlan?.(access.workspace.id) ?? false))
     if (planned.filter((hasPlan) => !hasPlan).length >= MAX_FREE_WORKSPACES_PER_OWNER) throw freeWorkspaceLimit()
-    return await this.repository.createOrganization({
+    const explicitHandle = args.slug === undefined ? undefined : this.normalizeHandle(args.slug)
+    const base = workspaceHandleBaseFromName(name)
+    const automaticBase = base
+      && isWorkspaceHandleSyntaxValid(base)
+      && !isReservedWorkspaceHandle(base)
+      ? base
+      : buildWorkspaceHandleCandidate(null, this.handleSuffix())
+    const slug = explicitHandle ?? automaticBase
+    try {
+      return await this.repository.createOrganization({
       workspaceId: this.id(),
       ownerPrincipalId: this.id(),
       actorUserId,
       ownerDisplayName: optional(args.displayName) ?? optional(args.email) ?? actorUserId,
       ownerEmail: normalizeOptionalEmail(args.email),
       name,
-      slug: normalizeOptionalSlug(args.slug) ?? slugify(name),
+      slug,
+      handleExplicit: explicitHandle !== undefined,
+      handleSuffixes: Array.from({ length: 4 }, () => this.handleSuffix()),
       now: this.now(),
+      })
+    } catch (error) {
+      if (hasWorkspaceHandleConflict(error) && explicitHandle !== undefined) {
+        throw new WorkspaceServiceError('That workspace address is already in use', 409, 'handle_conflict')
+      }
+      throw error
+    }
+  }
+
+  async resolveWorkspaceHandle(args: {
+    userId: string
+    handle: string
+  }): Promise<WorkspaceHandleResolutionResponse | null> {
+    const result = validateWorkspaceHandleAddress(args.handle)
+    if (!result.ok || !this.repository.resolveWorkspaceHandle) return null
+    return await this.repository.resolveWorkspaceHandle({
+      userId: required(args.userId, 'userId'),
+      handle: result.handle,
     })
+  }
+
+  async updateWorkspaceHandle(args: {
+    actorUserId: string
+    workspaceId: string
+    slug: string
+  }): Promise<WorkspaceAccess['workspace']> {
+    if (!this.areWorkspaceHandleWritesEnabled()) {
+      throw new WorkspaceServiceError('Workspace address changes are not available yet', 409, 'handles_not_ready')
+    }
+    const actor = await this.requireActor(args, ['owner'])
+    const result = validateWorkspaceHandleInput(args.slug)
+    if (!result.ok) {
+      throw validation(result.reason === 'reserved'
+        ? 'That workspace address is reserved'
+        : 'Workspace addresses must be 3 to 63 lowercase letters or numbers separated by single hyphens')
+    }
+    const ready = await this.repository.isWorkspaceHandleRegistryReady?.() ?? false
+    if (!ready || !this.repository.updateWorkspaceHandle) {
+      throw new WorkspaceServiceError('Workspace address changes are not available yet', 409, 'handles_not_ready')
+    }
+    try {
+      const updated = await this.repository.updateWorkspaceHandle({
+        workspaceId: actor.workspace.id,
+        actorUserId: required(args.actorUserId, 'actorUserId'),
+        slug: result.handle,
+        now: this.now(),
+      })
+      if (!updated) throw notFound()
+      return updated
+    } catch (error) {
+      if (error instanceof WorkspaceServiceError) throw error
+      if (hasWorkspaceHandleConflict(error)) {
+        throw new WorkspaceServiceError('That workspace address is already in use', 409, 'handle_conflict')
+      }
+      throw error
+    }
   }
 
   /** Owners and admins may rename their workspace (names are 1–80 characters). */
@@ -1068,6 +1156,27 @@ export class WorkspaceService {
   private now(): number {
     return (this.options.now ?? Date.now)()
   }
+
+  private areWorkspaceHandleWritesEnabled(): boolean {
+    return this.options.workspaceHandleWritesEnabled?.()
+      ?? process.env.OVERLAY_WORKSPACE_HANDLE_WRITES_ENABLED === 'true'
+  }
+
+  private handleSuffix(): string {
+    const supplied = this.options.createHandleSuffix?.()
+    if (supplied) return supplied.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 12)
+    return randomBytes(5).toString('hex')
+  }
+
+  private normalizeHandle(value: string): string {
+    const result = validateWorkspaceHandleInput(value)
+    if (!result.ok) {
+      throw validation(result.reason === 'reserved'
+        ? 'That workspace address is reserved'
+        : 'Workspace addresses must be 3 to 63 letters or numbers separated by single hyphens')
+    }
+    return normalizeWorkspaceHandleInput(result.handle)
+  }
 }
 
 function isUsableAccess(access: WorkspaceAccess | null): access is WorkspaceAccess {
@@ -1150,27 +1259,14 @@ function normalizeOptionalEmail(value: string | undefined): string | undefined {
   return value === undefined ? undefined : normalizeEmail(value)
 }
 
-function normalizeOptionalSlug(value: string | undefined): string | undefined {
-  const slug = optional(value)?.toLowerCase()
-  if (!slug) return undefined
-  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
-    throw validation('slug must contain lowercase letters, numbers, and single hyphens')
-  }
-  return slug
-}
-
-function slugify(value: string): string {
-  const slug = value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 63)
-  return slug || 'workspace'
-}
-
 function validation(message: string): WorkspaceServiceError {
   return new WorkspaceServiceError(message, 400, 'validation')
+}
+
+function hasWorkspaceHandleConflict(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error)
+  return message.includes('WORKSPACE_HANDLE_ALREADY_EXISTS')
+    || message.includes('WORKSPACE_SLUG_ALREADY_EXISTS')
 }
 
 function freeWorkspaceLimit(): WorkspaceServiceError {

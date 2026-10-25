@@ -1,7 +1,8 @@
 'use client'
 
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { useState, useCallback, useMemo, useRef, useSyncExternalStore, type Dispatch, type SetStateAction } from 'react'
+import { useEffect, useState, useCallback, useMemo, useRef, useSyncExternalStore, type Dispatch, type SetStateAction } from 'react'
+import { TOUR_NAVIGATION_EVENT } from './tour-navigation'
 import { MessageSquare } from 'lucide-react'
 import {
   resolveOverlayAppShellConfig,
@@ -46,6 +47,7 @@ import {
 import { resolveSecondaryPanelNav } from './appSidebarPanelNav'
 import { resolveRecentChatHref } from './chatPanelNav'
 import { useIsSoloWorkspace } from '@/hooks/use-solo-workspace'
+import type { PanelScope } from '@/shared/workspaces/panel-scope'
 import {
   useBodyScrollLock,
   useCollaborationUnread,
@@ -127,7 +129,7 @@ function useSidebarNavInteractions(args: {
   requireAuth: ReturnType<typeof useGuestGate>['requireAuth']
   publicShowcase: boolean
   activeWorkspaceId: string | null
-  buildWorkspaceHref: (workspaceId: string, href: string) => string
+  buildWorkspaceHref: (workspaceId: string, href: string, scope?: PanelScope) => string
   primaryNavActionByItemId: ReturnType<typeof useSidebarActions>['primaryNavActionByItemId']
   runSidebarAction: ReturnType<typeof useAppSidebarActions>['runSidebarAction']
   router: ReturnType<typeof useRouter>
@@ -251,7 +253,7 @@ function useSidebarPanelChrome(args: {
   collaborationUnread: ReturnType<typeof useCollaborationUnread>
   totalUnread: number
   router: ReturnType<typeof useRouter>
-  buildWorkspaceHref: (workspaceId: string, href: string) => string
+  buildWorkspaceHref: (workspaceId: string, href: string, scope?: PanelScope) => string
   currentSearchParams: URLSearchParams
   availableToolsInlineItems: ReturnType<typeof useSidebarNavConfig>['availableToolsInlineItems']
   settingsSections: ReturnType<typeof useSidebarNavConfig>['settingsSections']
@@ -458,7 +460,7 @@ function useSidebarDerivedPanels(args: {
   sidebarActions: ReturnType<typeof useSidebarActions>['sidebarActions']
   primaryNavActionByItemId: ReturnType<typeof useSidebarActions>['primaryNavActionByItemId']
   router: ReturnType<typeof useRouter>
-  buildWorkspaceHref: (workspaceId: string, href: string) => string
+  buildWorkspaceHref: (workspaceId: string, href: string, scope?: PanelScope) => string
   pendingNav: { href: string; fromPath: string } | null
   pendingSecondaryNav: { id: string; fromRouteKey: string } | null
   currentRouteKey: string
@@ -755,7 +757,8 @@ export function useAppSidebarState({
     [resolveSurfaceAdapter],
   )
   const buildWorkspaceHref = useCallback(
-    (workspaceId: string, href: string) => buildHrefAdapter?.(workspaceId, href) ?? href,
+    (workspaceId: string, href: string, scope?: PanelScope) =>
+      buildHrefAdapter?.(workspaceId, href, scope) ?? href,
     [buildHrefAdapter],
   )
 
@@ -765,6 +768,14 @@ export function useAppSidebarState({
   const [accountMenuOpen, setAccountMenuOpen] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [mobileView, setMobileView] = useState<'nav' | 'panel'>('nav')
+  useEffect(() => {
+    const onTourNavigation = (event: Event) => {
+      setMobileView('nav')
+      setMobileMenuOpen((event as CustomEvent<{ open: boolean }>).detail.open)
+    }
+    window.addEventListener(TOUR_NAVIGATION_EVENT, onTourNavigation)
+    return () => window.removeEventListener(TOUR_NAVIGATION_EVENT, onTourNavigation)
+  }, [])
   const [mobileAccountOpen, setMobileAccountOpen] = useState(false)
   const storedSidebarCollapsed = useSyncExternalStore(
     subscribeToSidebarCollapsed,

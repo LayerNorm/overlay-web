@@ -10,6 +10,18 @@ boundaries.
 
 ## Release boundary
 
+**Current public launch: native Overlay agents only.** External runtimes on both Overlay
+Cloud and user-owned machines are disabled by the default-off
+`OVERLAY_FEATURE_EXTERNAL_AGENTS` master release gate. Native agent computers and model
+provider connections remain independent. The protocol capabilities below describe the
+implemented external-agent subsystem, not public availability. See the root
+[feature inventory](../../FEATURES.md) for status, providers and re-enablement steps.
+
+The agent conversation roster listens to workspace-scoped directory-change events after
+creation, editing, archive and restore. Refreshes invalidate older responses and show a
+pending state so client-side navigation cannot mistake a newly created agent for an
+unavailable one. Unmounting or changing workspace cancels publication from the old roster.
+
 The first release supports agent conversations and supervised work through one outbound-only
 Overlay Agent Host. ACP is the primary coding-agent adapter; bounded eve and native adapters
 may normalize into the same protocol. Environments are `local`, `vps`, `overlay_cloud`, or
@@ -17,7 +29,7 @@ may normalize into the same protocol. Environments are `local`, `vps`, `overlay_
 Sandbox and Daytona were removed. Overlay Cloud agents use the same Agent Host
 (`internal/plans/OVERLAY_CLOUD_AGENTS_PLAN.md`), with machine provisioning and the product UI behind
 `OVERLAY_FEATURE_OVERLAY_CLOUD_ENVIRONMENTS`, paid entitlements and provider configuration. The
-connected (on-your-machine) path described here is unaffected.
+connected (on-your-machine) path also requires the master release gate and workspace rollout.
 
 Product BYO choices are Claude Code and Codex. Historical OpenCode, Hermes, and Cursor records
 remain readable, and existing accounts remain visible for removal, but these providers cannot be
@@ -76,7 +88,9 @@ Unicode boundary before action, terminal and liveness events are emitted. A long
 script must not fail a turn merely because its provider uses the script as its title.
 The original command, approval decision and streamed answer are unaffected.
 
-The host executable supports `connect <code> --server <origin>`. The agent editor emits a single
+The host executable supports `connect <code> --server <origin>`. The agent editor preserves an explicitly selected supported adapter during new-agent
+environment loading; existing agents derive their adapter from the saved binding/model.
+The agent editor emits a single
 harness-specific command with `--adapter <id> --run`; the same command works on a local computer,
 VPS, or customer sandbox. It creates or reuses an Ed25519 device key, displays the same short
 phrase shown in Overlay, waits for browser approval, stores
@@ -507,12 +521,16 @@ command on macOS.
 
 ## Rollout flags
 
-The server-side runtime config has four independent, default-off flags:
+The server-side runtime config has a default-off master release gate,
+`features.externalAgents` (`OVERLAY_FEATURE_EXTERNAL_AGENTS`), plus these independent,
+default-off subfeature switches:
 
 1. `features.connectedAgentControlPlane` gates enrollment and environment management.
 2. `features.remoteAgentRuns` gates command dispatch and remote `AgentRun` execution.
 3. `features.connectedAgentArtifacts` gates agent artifact upload, completion, and download.
 4. `features.overlayCloudEnvironments` gates managed-environment provisioning.
+5. `features.connectedAgentDrive` (`OVERLAY_FEATURE_CONNECTED_AGENT_DRIVE`) gates the
+   connected-host drive integration, not native Files/computer storage.
 
 The environment-variable forms are `OVERLAY_FEATURE_CONNECTED_AGENT_CONTROL_PLANE`,
 `OVERLAY_FEATURE_REMOTE_AGENT_RUNS`, `OVERLAY_FEATURE_CONNECTED_AGENT_ARTIFACTS`, and
@@ -529,6 +547,7 @@ does not make any workspace eligible.
 A BYOA-only production activation is intentionally narrow:
 
 - publish and independently install-smoke the exact Agent Host and bridge-protocol versions;
+- set `OVERLAY_FEATURE_EXTERNAL_AGENTS=1` only after isolated-preview acceptance;
 - set `OVERLAY_FEATURE_CONNECTED_AGENT_CONTROL_PLANE=1` and
   `OVERLAY_FEATURE_REMOTE_AGENT_RUNS=1` in production;
 - keep `OVERLAY_FEATURE_CONNECTED_AGENT_ARTIFACTS=0` and
@@ -543,11 +562,13 @@ Changing a rollout variable requires a new production deployment so the immutabl
 the approved values. Roll back by setting the rollout stage to `off`; use either global feature flag
 as the incident kill switch when the entire control plane or all new remote dispatch must stop.
 
-Route services read these flags before selecting a database repository, so disabled features
-cannot reach the backend. Enabling a dependent feature does not implicitly
-enable its prerequisite: Overlay Cloud requires all three, and remote runs require the first
-two. These are server policy switches, not client assertions; bootstrap may expose only the
-resulting authorized capability.
+Setup and execution services enforce release policy before new work or provisioning.
+Authorized history, cancellation, resource teardown, host terminal events and usage settlement
+remain available while release gates are off. These cleanup paths do not authorize queued
+starts or new runtime credentials. Existing external agents never fall back to native execution.
+Enabling a dependent feature does not implicitly enable its prerequisites: Overlay Cloud needs
+the master, control-plane, remote-run and cloud gates plus workspace eligibility. These are
+server policy switches, not client assertions; bootstrap exposes the resulting capability.
 
 Connected-agent artifacts remain disabled in staging and production until uploads are quarantined,
 scanned in full by a production malware engine, validated by content magic, and served only as safe

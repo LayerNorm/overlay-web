@@ -1,0 +1,18 @@
+---
+title: "Conversations"
+description: "Create, update, run, and stop web conversations."
+---
+
+Use the typed `@overlay/api-client` conversation methods when possible.
+
+Typical flow:
+
+1. Create or load a conversation with `/api/v1/conversations`.
+2. Add user-visible messages with `/api/v1/conversations/message`.
+3. Run an Act turn with `/api/v1/conversations/act`.
+4. On reconnect, read `/api/v1/conversations/run` and reload the authoritative conversation state; AgentRun decides whether a turn is still active.
+5. Stop an active turn with `/api/v1/conversations/stop`.
+
+Chat mode streams directly while the request is connected and persists the final assistant message once. If the connection closes, the client shows the active AgentRun and reloads the completed message through normal conversation synchronization. Work mode also streams the UI message response over the same `/api/v1/conversations/act` SSE connection while the workflow runs, then persists the final assistant message through the same AgentRun lifecycle.
+
+Conversation messages may contain text, file references, generated UI data, and tool invocation parts. Keep generated and persisted message shapes aligned with `@overlay/app-core`.

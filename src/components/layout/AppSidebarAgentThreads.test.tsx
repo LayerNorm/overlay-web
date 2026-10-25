@@ -10,15 +10,13 @@ import { AgentThreadRows } from './AppSidebarAgentThreads'
 const agent = { id: 'agent_1', name: 'Overlay' } as WorkspaceAgentDirectoryItem
 const noop = () => undefined
 
-function render(bundle: WorkspaceAgentBundle | 'loading' | 'error', props: { activeConversationId?: string | null; creatingThread?: boolean } = {}) {
+function render(bundle: WorkspaceAgentBundle | 'loading' | 'error', props: { activeConversationId?: string | null } = {}) {
   return renderToStaticMarkup(
     <AgentThreadRows
       agent={agent}
       bundle={bundle}
       activeConversationId={props.activeConversationId ?? null}
-      creatingThread={props.creatingThread ?? false}
       onOpenThread={noop}
-      onCreateThread={noop}
       onArchiveThread={noop}
       onDeleteThread={noop}
     />,
@@ -37,17 +35,17 @@ const bundle = {
   ],
 } as unknown as WorkspaceAgentBundle
 
-test('an agent\'s threads are an indented tree with a guide line, ending in New thread', () => {
+test('an agent\'s threads share the icon column without redundant labels or creation rows', () => {
   const html = render(bundle)
-  assert.match(html, /data-slot="sidebar-menu-sub"/)
-  assert.match(html, /border-l border-\(--muted-light\)\/40/)
-  for (const label of ['Overlay', 'Q4 launch plan', 'Daily digest', 'PR sweep', 'New thread']) assert.match(html, new RegExp(label))
+  assert.match(html, /data-slot="sidebar-menu"/)
+  assert.doesNotMatch(html, /data-slot="sidebar-menu-sub"/)
+  assert.doesNotMatch(html, /border-l|ml-3\.5|pl-2/)
+  assert.match(html, /\[&amp;&gt;svg\]:mx-1/)
+  for (const label of ['Overlay', 'Q4 launch plan', 'Daily digest', 'PR sweep']) assert.match(html, new RegExp(label))
   // Archived threads belong to Settings → Archived.
   assert.doesNotMatch(html, /Old thread/)
-  assert.match(html, /Main/)
+  assert.doesNotMatch(html, />Main<|New thread/)
   assert.match(html, /Paused/)
-  // New thread is last in the list.
-  assert.ok(html.lastIndexOf('New thread') > html.lastIndexOf('PR sweep'))
 })
 
 test('only the open thread is marked current, and each thread has archive and delete actions', () => {
@@ -61,12 +59,9 @@ test('only the open thread is marked current, and each thread has archive and de
   assert.match(html, /group-hover\/menu-sub-item:opacity-100/)
 })
 
-test('an automation without a conversation is inert; New thread shows a spinner while creating', () => {
+test('an automation without a conversation is inert', () => {
   const html = render(bundle)
   assert.match(html, /disabled=""[^>]*>[\s\S]*?PR sweep/)
-  const creating = render(bundle, { creatingThread: true })
-  assert.match(creating, /animate-spin/)
-  assert.match(creating, /disabled=""[^>]*>[\s\S]*?New thread/)
 })
 
 test('threads that are loading show placeholders; a failed load says so', () => {

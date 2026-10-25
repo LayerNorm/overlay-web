@@ -5,7 +5,7 @@ import { unstyledButton } from '@overlay/ui/control-reset'
 import { useCallback, useEffect, useState } from 'react'
 import { KeyRound, Plus, Trash2 } from 'lucide-react'
 import type { ProviderAccountResource } from '@overlay/api-client'
-import { Button } from '@overlay/ui/primitives'
+import { Button, toast } from '@overlay/ui/primitives'
 import { ConfirmDialog } from '@overlay/ui/overlays'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { AGENT_PROVIDERS, isSupportedAgentProviderId, type AgentProviderAuthMethod } from '@/shared/agents/provider-accounts'
@@ -30,7 +30,7 @@ function formatLastUsed(timestamp: number | undefined): string {
  */
 export function AgentAccountSettings() {
   const [accounts, setAccounts] = useState<ProviderAccountResource[] | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [dialog, setDialog] = useState<{ mode: 'connect' } | { mode: 'reconnect'; account: ProviderAccountResource } | null>(null)
   const [removing, setRemoving] = useState<ProviderAccountResource | null>(null)
   const [busy, setBusy] = useState(false)
@@ -39,9 +39,9 @@ export function AgentAccountSettings() {
     try {
       const result = await overlayAppClient.providerAccounts.list({ cache: 'no-store' })
       setAccounts(result.data)
-      setError(null)
+      setLoadError(null)
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : 'Could not load your accounts.')
+      setLoadError(loadError instanceof Error ? loadError.message : 'Could not load your accounts.')
       setAccounts((current) => current ?? [])
     }
   }, [])
@@ -55,9 +55,10 @@ export function AgentAccountSettings() {
     try {
       await overlayAppClient.providerAccounts.remove(removing.id)
       setRemoving(null)
+      toast.success('Account removed.')
       await refresh()
     } catch (removeError) {
-      setError(removeError instanceof Error ? removeError.message : 'Could not remove the account.')
+      toast.error(removeError instanceof Error ? removeError.message : 'Could not remove the account.')
     } finally {
       setBusy(false)
     }
@@ -79,7 +80,7 @@ export function AgentAccountSettings() {
         </div>
       </div>
 
-      {error ? <p role="alert" className="text-sm text-red-500">{error}</p> : null}
+      {loadError ? <p role="alert" className="text-sm text-red-500">{loadError}</p> : null}
 
       <div className="space-y-2">
         {accounts !== null && accounts.length === 0 ? (

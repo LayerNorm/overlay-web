@@ -2,6 +2,7 @@
 import { Button } from '@overlay/ui/primitives'
 import { unstyledButton } from '@overlay/ui/control-reset'
 import { useState } from 'react'
+import { toast } from '@overlay/ui/primitives'
 import { Archive, RotateCcw, User, Users } from 'lucide-react'
 import type { ScopedResourceKind } from '@overlay/app-core'
 import { useScopeItemActions, type ScopedItem } from '@/hooks/use-scope-item-actions'
@@ -29,7 +30,6 @@ export function ScopeBulkActions({
 }) {
   const actions = useScopeItemActions(kind, resource)
   const [busy, setBusy] = useState(false)
-  const [failed, setFailed] = useState(0)
   if (items.length === 0) return null
 
   const options = items.map((item) => actions.optionsFor(item))
@@ -38,27 +38,42 @@ export function ScopeBulkActions({
   const canRestore = options.every((option) => option.canRestore)
   if (!moveTo && !canArchive && !canRestore) return null
 
-  async function run(request: (id: string) => Promise<unknown>, archiving = false) {
+  async function run(
+    request: (id: string) => Promise<unknown>,
+    action: 'move' | 'archive' | 'restore',
+    successMessage?: string,
+  ) {
     setBusy(true)
-    setFailed(0)
     const results = await Promise.allSettled(items.map((item) => request(item._id)))
     const changedIds = items.filter((_, index) => results[index]!.status === 'fulfilled').map((item) => item._id)
     const failures = items.length - changedIds.length
-    setFailed(failures)
     setBusy(false)
     if (changedIds.length > 0) onDone(changedIds, failures === 0)
-    if (archiving && changedIds.length > 0) {
+    if (failures > 0) {
+      const pastParticiple = action === 'move' ? 'moved' : action === 'archive' ? 'archived' : 'restored'
+      const pastTense = action === 'move' ? 'Moved' : action === 'archive' ? 'Archived' : 'Restored'
+      toast.error(
+        `${pastTense} ${changedIds.length} of ${items.length} items. ${failures} could not be ${pastParticiple}.`,
+      )
+    }
+    if (action === 'archive' && changedIds.length > 0) {
       announceArchived({
         name: changedIds.length === 1 ? (items.find((item) => item._id === changedIds[0]) as { name?: string; title?: string } | undefined)?.name ?? '1 item' : `${changedIds.length} items`,
         ...(changedIds.length > 1 ? { summary: `Archived ${changedIds.length} items` } : {}),
         undo: async () => { await Promise.all(changedIds.map((id) => actions.restore(id))) },
         onUndone: () => refreshAfterRestore(resource),
       })
+    } else if (failures === 0 && changedIds.length > 0 && successMessage) {
+      toast.success(successMessage)
     }
   }
 
   const count = items.length
-  const move = (to: ResourceScope) => run((id) => actions.move(id, to))
+  const move = (to: ResourceScope) => run(
+    (id) => actions.move(id, to),
+    'move',
+    `Moved ${count} ${count === 1 ? 'item' : 'items'} to ${to === 'workspace' ? 'Workspace' : 'Personal'}.`,
+  )
   return (
     <>
       {moveTo ? (
@@ -68,18 +83,21 @@ export function ScopeBulkActions({
         </Button>
       ) : null}
       {canArchive ? (
-        <Button variant="ghost" type="button" disabled={busy} onClick={() => void run(actions.archive, true)} className={unstyledButton(BUTTON)}>
+        <Button variant="ghost" type="button" disabled={busy} onClick={() => void run(actions.archive, 'archive')} className={unstyledButton(BUTTON)}>
           <Archive size={13} />
           Archive ({count})
         </Button>
       ) : null}
       {canRestore ? (
-        <Button variant="ghost" type="button" disabled={busy} onClick={() => void run(actions.restore)} className={unstyledButton(BUTTON)}>
+        <Button variant="ghost" type="button" disabled={busy} onClick={() => void run(
+          actions.restore,
+          'restore',
+          `Restored ${count} ${count === 1 ? 'item' : 'items'}.`,
+        )} className={unstyledButton(BUTTON)}>
           <RotateCcw size={13} />
           Restore ({count})
         </Button>
       ) : null}
-      {failed > 0 ? <span role="alert" className="text-xs text-red-500">{failed} could not be changed.</span> : null}
     </>
   )
 }

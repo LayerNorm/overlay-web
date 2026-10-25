@@ -31,8 +31,9 @@ import {
   getRedactedOverlayRuntimeConfigSummary,
 } from '@/server/config'
 import { isRuntimeConfigSummaryVisible } from '@/shared/config'
-import { getOverlayCapabilities } from '@/server/capabilities'
+import { getOverlayCapabilities, withWorkspaceExternalAgentCapabilities } from '@/server/capabilities'
 import { deriveAppDataCapabilities, type AppDataCapabilities } from '@/server/app-data/capabilities'
+import { externalAgentLaunchEnabled } from '@/server/agents/external-agent-policy'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import type { BillingEntitlementsRecord } from '@/server/billing/BillingRepository'
 
@@ -63,10 +64,17 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
       workspaceId: context.workspace.workspace.id,
     })
     const entitlementsPromise: Promise<Entitlements | null> = billingPayer.scope === 'workspace'
-      ? serverContext.appData.repositories.billing.getBillingAccountEntitlementsByServer({
-          billingAccountId: billingPayer.billingAccountId,
-        }).then((value) => value
-          ? toAppEntitlements(value)
+      ? Promise.all([
+          serverContext.appData.repositories.billing.getBillingAccountEntitlementsByServer({
+            billingAccountId: billingPayer.billingAccountId,
+          }),
+          serverContext.appData.repositories.billing.getEntitlementsByServer({ userId: auth.userId }),
+        ]).then(([accountEntitlements, userEntitlements]) => accountEntitlements
+          ? toAppEntitlements({
+              ...accountEntitlements,
+              overlayStorageBytesUsed: userEntitlements?.overlayStorageBytesUsed ?? accountEntitlements.overlayStorageBytesUsed,
+              overlayStorageBytesLimit: userEntitlements?.overlayStorageBytesLimit ?? accountEntitlements.overlayStorageBytesLimit,
+            })
           : null)
       : convex.query<Entitlements | null>('platform/usage:getEntitlementsByServer', {
           userId: auth.userId,
@@ -134,7 +142,11 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
       ...(overlayAppConfig.modelPolicy?.filterVideoModels?.(VIDEO_MODELS, modelPolicyContext) ??
         VIDEO_MODELS),
     ]
-    const capabilities = await getOverlayCapabilities()
+    const [deploymentCapabilities, launchEnabled] = await Promise.all([
+      getOverlayCapabilities(),
+      externalAgentLaunchEnabled(context.workspace.workspace.id),
+    ])
+    const capabilities = withWorkspaceExternalAgentCapabilities(deploymentCapabilities, launchEnabled)
     const appShell = resolveOverlayAppShellConfig(overlayAppConfig, { capabilities })
 
     const response: AppBootstrapResponse & {

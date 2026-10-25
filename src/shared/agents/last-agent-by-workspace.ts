@@ -13,6 +13,25 @@ const STORAGE_KEY = 'overlay:last-agent-by-workspace'
 
 const MAX_ENTRIES = 200
 
+export function agentBelongsToCreatorScope<T extends { createdByPrincipalId: string }>(
+  agent: T,
+  viewerPrincipalId: string | null | undefined,
+  scope: 'personal' | 'workspace',
+): boolean {
+  if (!viewerPrincipalId) return false
+  return scope === 'personal'
+    ? agent.createdByPrincipalId === viewerPrincipalId
+    : agent.createdByPrincipalId !== viewerPrincipalId
+}
+
+export function agentsForCreatorScope<T extends { createdByPrincipalId: string }>(
+  agents: readonly T[],
+  viewerPrincipalId: string | null | undefined,
+  scope: 'personal' | 'workspace',
+): T[] {
+  return agents.filter((agent) => agentBelongsToCreatorScope(agent, viewerPrincipalId, scope))
+}
+
 function workspaceKey(workspaceId: string | null | undefined): string {
   return workspaceId || 'legacy'
 }

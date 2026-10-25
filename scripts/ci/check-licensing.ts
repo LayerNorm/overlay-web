@@ -42,8 +42,8 @@ const requiredDocs = [
   'COMMERCIAL_LICENSE.md',
   'CLA.md',
   'PRIVATE_COMPONENTS.md',
-  'docs/legal/licensing.mdx',
-  'docs/legal/self-hosting-obligations.mdx',
+  'docs/self-hosting/licensing/license.mdx',
+  'docs/self-hosting/licensing/obligations.mdx',
 ]
 
 const requiredDocSnippets = [

@@ -7,12 +7,19 @@ import type {
   WorkspaceAgentDirectoryItem,
 } from '@overlay/workspace-contracts'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import { enabledAgentToolGroupIds } from '@/shared/agents/tool-groups'
 import { announceArchived } from '@/shared/app/archive-toast'
 import { dispatchAgentDirectoryChanged } from '@/shared/workspace/sidebar-events'
 import { workspaceAgentUsesByo } from '../lib/byo-agent-setup'
-import { buildAgentEditorHref, startAgentChat } from '../lib/agent-chat'
+import { startAgentChat } from '../lib/agent-chat'
+import {
+  confirmComputerToolRemoval,
+  type AgentEditSaveResult,
+} from '../lib/agent-edit-save-result'
 import { AVATAR_FALLBACK_COLOR } from '../lib/agent-editor-utils'
+import { toast } from '@overlay/ui/primitives'
+import { notifyActionError } from './notification-events'
 import type { useAgentRuntime } from './use-agent-runtime'
 import type { useByoConnection } from './use-byo-connection'
 import type { useAgentEditorForm } from './use-agent-editor-form'
@@ -25,7 +32,6 @@ export function useAgentEditorActions({
   router,
   busy,
   setBusy,
-  setError,
   agent,
   setAgent,
   directoryHref,
@@ -39,6 +45,7 @@ export function useAgentEditorActions({
   onCreated,
   onArchived,
   onSaved,
+  keepOpenOnSave = false,
 }: {
   showcase: boolean
   presentation: 'page' | 'panel'
@@ -46,7 +53,6 @@ export function useAgentEditorActions({
   router: ReturnType<typeof useRouter>
   busy: boolean
   setBusy: Dispatch<SetStateAction<boolean>>
-  setError: Dispatch<SetStateAction<string | null>>
   agent: WorkspaceAgentDirectoryItem | null
   setAgent: Dispatch<SetStateAction<WorkspaceAgentDirectoryItem | null>>
   directoryHref: string
@@ -60,7 +66,9 @@ export function useAgentEditorActions({
   onCreated?: (agent: WorkspaceAgentDirectoryItem) => void
   onArchived?: () => void
   onSaved?: () => void
+  keepOpenOnSave?: boolean
 }) {
+  const buildWorkspaceHref = useWorkspaceHref()
   const { agentType, cloudAgent } = runtime
   const { environmentId, adapterId, workingDirectory } = byo
   const {
@@ -74,9 +82,8 @@ export function useAgentEditorActions({
     setAvatarShape,
     setVisibility,
     setDirty,
-    setSavedFlash,
   } = form
-  const { agentComputer, setAgentComputer, computerSize } = computer
+  const { agentComputer, computerSize, setComputerProvisionError } = computer
 
   const persistNew = () => {
     if (showcase) {
@@ -85,7 +92,6 @@ export function useAgentEditorActions({
     }
     if (!activeWorkspaceId || busy) return
     setBusy(true)
-    setError(null)
     void (async () => {
       try {
         const saved = await overlayAppClient.agents.create(activeWorkspaceId, buildInput())
@@ -98,92 +104,93 @@ export function useAgentEditorActions({
             // fails. Land on the edit page so a retry never creates a duplicate.
             setAgent(saved.agent)
             if (presentation === 'page') {
-              router.push(`${buildAgentEditorHref(activeWorkspaceId, saved.agent.id)}?hello=1`)
+              router.push(buildWorkspaceHref(activeWorkspaceId, `/app/agents/${encodeURIComponent(saved.agent.id)}?hello=1`, 'personal'))
             }
             throw bindingError
           })
         }
         if (agentType === 'overlay' && computersAvailable && enabledToolGroups.has('computer')) {
+          setComputerProvisionError(null)
           await overlayAppClient.computers.provision(activeWorkspaceId, {
             ownerType: 'agent',
             ownerId: saved.agent.id,
             size: computerSize,
             name: `${saved.agent.name} computer`,
           }).catch(async (computerError) => {
+            setComputerProvisionError(
+              computerError instanceof Error ? computerError.message : 'Could not create the computer.',
+              saved.agent.id,
+            )
             // The agent is durable even if its computer fails to provision —
             // land on the edit page so a retry never creates a duplicate agent.
             setAgent(saved.agent)
             if (presentation === 'page') {
-              router.push(`${buildAgentEditorHref(activeWorkspaceId, saved.agent.id)}?hello=1`)
+              router.push(buildWorkspaceHref(activeWorkspaceId, `/app/agents/${encodeURIComponent(saved.agent.id)}?hello=1`, 'personal'))
             }
             throw computerError
           })
         }
         dispatchAgentDirectoryChanged(activeWorkspaceId)
+        toast.success('Agent created.')
         if (onCreated) onCreated(saved.agent)
-        else router.push(`${buildAgentEditorHref(activeWorkspaceId, saved.agent.id)}?hello=1`)
+        else router.push(buildWorkspaceHref(activeWorkspaceId, `/app/agents/${encodeURIComponent(saved.agent.id)}?hello=1`, 'personal'))
       } catch (saveError) {
-        setError(saveError instanceof Error ? saveError.message : 'Could not save agent.')
+        notifyActionError((message) => toast.error(message), saveError, 'Could not save agent.')
       } finally {
         setBusy(false)
       }
     })()
   }
 
-  const saveEdit = () => {
-    if (showcase || !activeWorkspaceId || !agent || busy) return
-    if (
-      agentType === 'overlay' && agentComputer && !enabledToolGroups.has('computer')
-      && !window.confirm(`Delete ${agent.name}'s computer? Its disk state is destroyed permanently.`)
-    ) return
+  const saveEdit = async ({
+    silent = false,
+    ignoreBusy = false,
+  }: {
+    silent?: boolean
+    ignoreBusy?: boolean
+  } = {}): Promise<AgentEditSaveResult> => {
+    if (showcase || !activeWorkspaceId || !agent || (busy && !ignoreBusy)) return 'failed'
+    const confirmation = confirmComputerToolRemoval({
+      shouldConfirm: Boolean(
+        agentType === 'overlay' && agentComputer && !enabledToolGroups.has('computer'),
+      ),
+      confirm: () => window.confirm(
+        `Delete ${agent.name}'s computer? Its disk state is destroyed permanently.`,
+      ),
+      revertToggle: () => form.toggleToolGroup('computer'),
+    })
+    if (confirmation === 'cancelled') return 'cancelled'
+    const editVersion = form.version
     setBusy(true)
-    setError(null)
-    void (async () => {
-      try {
-        const saved = await overlayAppClient.agents.update(activeWorkspaceId, agent.id, buildInput())
-        if (agentType === 'byo' && cloudAgent) {
-          // An Overlay Cloud agent's binding (machine, account) is managed from its machine panel; rewriting it here would drop the account.
-        } else if (agentType === 'byo') {
-          await overlayAppClient.agentEnvironments.upsertBinding(activeWorkspaceId, {
-            agentId: saved.agent.id,
-            environmentId, adapterId, workingDirectory: workingDirectory.trim(),
-          })
-        } else if (workspaceAgentUsesByo(agent)) {
-          // Switched a connected agent back to Overlay: drop its binding once.
-          await overlayAppClient.agentEnvironments.disableBindings(activeWorkspaceId, saved.agent.id)
-            .catch(() => undefined)
-        }
-        if (agentType === 'overlay' && computersAvailable) {
-          // An `error`-status computer is a dead row from a failed provision —
-          // saving retries the provision; the service reclaims the dead row.
-          if (enabledToolGroups.has('computer') && (!agentComputer || agentComputer.status === 'error')) {
-            const provisioned = await overlayAppClient.computers.provision(activeWorkspaceId, {
-              ownerType: 'agent',
-              ownerId: saved.agent.id,
-              size: computerSize,
-              name: `${saved.agent.name} computer`,
-            })
-            setAgentComputer(provisioned.computer)
-          } else if (!enabledToolGroups.has('computer') && agentComputer) {
-            await overlayAppClient.computers.destroy(activeWorkspaceId, agentComputer.id)
-            setAgentComputer(null)
-          }
-        }
-        dispatchAgentDirectoryChanged(activeWorkspaceId)
+    try {
+      const saved = await persistAgentEdit({
+        workspaceId: activeWorkspaceId,
+        agent,
+        buildInput,
+        agentType,
+        cloudAgent,
+        environmentId,
+        adapterId,
+        workingDirectory,
+        computersAvailable,
+        enabledToolGroups,
+        computer,
+      })
+      dispatchAgentDirectoryChanged(activeWorkspaceId)
+      if (form.isVersionCurrent(editVersion)) {
         setAgent(saved.agent)
         setDirty(false)
-        setSavedFlash(true)
-        if (onSaved) onSaved()
-        // Panel presentations close on save — the saved flash only matters on
-        // the standalone editor page. onSaved must run first: it clears the
-        // workspace's never-saved marker before closeEditor can act on it.
-        if (presentation === 'panel') closeEditor()
-      } catch (saveError) {
-        setError(saveError instanceof Error ? saveError.message : 'Could not save agent.')
-      } finally {
-        setBusy(false)
       }
-    })()
+      if (!silent) toast.success('Agent saved.')
+      if (onSaved) onSaved()
+      if (presentation === 'panel' && !keepOpenOnSave) closeEditor()
+      return 'saved'
+    } catch (saveError) {
+      if (!silent) toast.error(saveError instanceof Error ? saveError.message : 'Could not save agent.')
+      return 'failed'
+    } finally {
+      setBusy(false)
+    }
   }
 
   const cancelEdit = () => {
@@ -200,7 +207,6 @@ export function useAgentEditorActions({
     setVisibility(agent.visibility)
     setEnabledToolGroups(enabledAgentToolGroupIds(agent.allowedToolIds))
     setDirty(false)
-    setError(null)
     closeEditor()
   }
 
@@ -211,7 +217,6 @@ export function useAgentEditorActions({
       : `Archive ${agent.name}? It will leave rooms and teams, but its message history will remain.`
     if (!window.confirm(prompt)) return
     setBusy(true)
-    setError(null)
     try {
       // Delete the machine first so a failure leaves the agent in place to retry, not a paid machine with no owner.
       if (cloudAgent) await overlayAppClient.cloudAgents.remove(activeWorkspaceId, agent.id)
@@ -229,7 +234,7 @@ export function useAgentEditorActions({
       if (onArchived) onArchived()
       else router.push(directoryHref)
     } catch (archiveError) {
-      setError(archiveError instanceof Error ? archiveError.message : 'Could not archive agent.')
+      toast.error(archiveError instanceof Error ? archiveError.message : 'Could not archive agent.')
     } finally {
       setBusy(false)
     }
@@ -241,11 +246,135 @@ export function useAgentEditorActions({
       workspaceId: activeWorkspaceId,
       agentPrincipalId: agent.principalId,
       showcase,
+      buildHref: buildWorkspaceHref,
       push: (href) => router.push(href),
     }).catch((chatError) => {
-      setError(chatError instanceof Error ? chatError.message : 'Could not start an agent chat.')
+      toast.error(chatError instanceof Error ? chatError.message : 'Could not start an agent chat.')
     })
   }
 
   return { persistNew, saveEdit, cancelEdit, archiveAgent, sayHello }
+}
+
+async function persistAgentEdit({
+  workspaceId,
+  agent,
+  buildInput,
+  agentType,
+  cloudAgent,
+  environmentId,
+  adapterId,
+  workingDirectory,
+  computersAvailable,
+  enabledToolGroups,
+  computer,
+}: {
+  workspaceId: string
+  agent: WorkspaceAgentDirectoryItem
+  buildInput(): WorkspaceAgentCreateInput
+  agentType: ReturnType<typeof useAgentRuntime>['agentType']
+  cloudAgent: ReturnType<typeof useAgentRuntime>['cloudAgent']
+  environmentId: ReturnType<typeof useByoConnection>['environmentId']
+  adapterId: ReturnType<typeof useByoConnection>['adapterId']
+  workingDirectory: ReturnType<typeof useByoConnection>['workingDirectory']
+  computersAvailable: boolean
+  enabledToolGroups: Set<string>
+  computer: ReturnType<typeof useAgentComputer>
+}) {
+  const saved = await overlayAppClient.agents.update(workspaceId, agent.id, buildInput())
+  await updateAgentBinding({
+    workspaceId,
+    agent,
+    savedAgentId: saved.agent.id,
+    agentType,
+    cloudAgent,
+    environmentId,
+    adapterId,
+    workingDirectory,
+  })
+  await syncAgentComputer({
+    workspaceId,
+    agentType,
+    computersAvailable,
+    enabledToolGroups,
+    savedAgent: saved.agent,
+    computer,
+  })
+  return saved
+}
+
+async function updateAgentBinding({
+  workspaceId,
+  agent,
+  savedAgentId,
+  agentType,
+  cloudAgent,
+  environmentId,
+  adapterId,
+  workingDirectory,
+}: {
+  workspaceId: string
+  agent: WorkspaceAgentDirectoryItem
+  savedAgentId: string
+  agentType: ReturnType<typeof useAgentRuntime>['agentType']
+  cloudAgent: ReturnType<typeof useAgentRuntime>['cloudAgent']
+  environmentId: ReturnType<typeof useByoConnection>['environmentId']
+  adapterId: ReturnType<typeof useByoConnection>['adapterId']
+  workingDirectory: ReturnType<typeof useByoConnection>['workingDirectory']
+}) {
+  if (agentType === 'byo' && cloudAgent) return
+  if (agentType === 'byo') {
+    await overlayAppClient.agentEnvironments.upsertBinding(workspaceId, {
+      agentId: savedAgentId,
+      environmentId,
+      adapterId,
+      workingDirectory: workingDirectory.trim(),
+    })
+    return
+  }
+  if (workspaceAgentUsesByo(agent)) {
+    await overlayAppClient.agentEnvironments.disableBindings(workspaceId, savedAgentId)
+      .catch(() => undefined)
+  }
+}
+
+async function syncAgentComputer({
+  workspaceId,
+  agentType,
+  computersAvailable,
+  enabledToolGroups,
+  savedAgent,
+  computer,
+}: {
+  workspaceId: string
+  agentType: ReturnType<typeof useAgentRuntime>['agentType']
+  computersAvailable: boolean
+  enabledToolGroups: Set<string>
+  savedAgent: WorkspaceAgentDirectoryItem
+  computer: ReturnType<typeof useAgentComputer>
+}) {
+  if (agentType !== 'overlay' || !computersAvailable) return
+  const { agentComputer, setAgentComputer, computerSize, setComputerProvisionError } = computer
+  if (enabledToolGroups.has('computer') && (!agentComputer || agentComputer.status === 'error')) {
+    setComputerProvisionError(null)
+    const provisioned = await overlayAppClient.computers.provision(workspaceId, {
+      ownerType: 'agent',
+      ownerId: savedAgent.id,
+      size: computerSize,
+      name: `${savedAgent.name} computer`,
+    }).catch((computerError: unknown) => {
+      setComputerProvisionError(
+        computerError instanceof Error ? computerError.message : 'Could not create the computer.',
+        savedAgent.id,
+      )
+      throw computerError
+    })
+    setAgentComputer(provisioned.computer)
+    setComputerProvisionError(null)
+    return
+  }
+  if (!enabledToolGroups.has('computer') && agentComputer) {
+    await overlayAppClient.computers.destroy(workspaceId, agentComputer.id)
+    setAgentComputer(null)
+  }
 }

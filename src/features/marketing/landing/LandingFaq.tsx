@@ -1,4 +1,4 @@
-import './styles/landing-faq.css'
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@overlay/ui/primitives'
 
 const FAQ_ITEMS: { q: string; a: string }[] = [
   {
@@ -33,31 +33,23 @@ const faqStructuredData = {
   })),
 }
 
-/** A quiet FAQ after the scroll story, before the footer. The matching
- * FAQPage JSON-LD lets answer engines cite the answers. */
+/** The FAQ before the footer. The matching FAQPage JSON-LD lets answer engines cite the answers. */
 export function LandingFaq() {
   return (
-    <section className="lfaq border-t border-(--border)">
+    <section className="sec">
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(faqStructuredData) }}
       />
-      <div className="mx-auto max-w-3xl px-6 py-16 md:py-20">
-        <h2 className="font-serif text-3xl tracking-tight md:text-4xl">Questions, answered</h2>
-        <div className="mt-8 border-t border-(--border)">
-          {FAQ_ITEMS.map((item) => (
-            <details key={item.q} className="group border-b border-(--border)">
-              <summary className="flex cursor-pointer items-center justify-between gap-4 py-5 font-serif text-base md:text-lg">
-                {item.q}
-                <span className="shrink-0 text-(--muted) transition-transform duration-200 group-open:rotate-45">
-                  +
-                </span>
-              </summary>
-              <p className="max-w-2xl pb-5 text-sm leading-7 text-(--muted)">{item.a}</p>
-            </details>
-          ))}
-        </div>
-      </div>
+      <div className="head center"><h2 className="h2">Questions, answered</h2></div>
+      <Accordion type="single" collapsible className="faq">
+        {FAQ_ITEMS.map((item) => (
+          <AccordionItem key={item.q} value={item.q} className="last:border-b">
+            <AccordionTrigger className="faq-q">{item.q}</AccordionTrigger>
+            <AccordionContent className="body faq-a">{item.a}</AccordionContent>
+          </AccordionItem>
+        ))}
+      </Accordion>
     </section>
   )
 }

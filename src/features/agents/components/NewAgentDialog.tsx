@@ -10,8 +10,8 @@ import type {
   WorkspaceAgentDirectoryItem,
   WorkspaceAgentVisibility,
 } from '@overlay/workspace-contracts'
-import { Button, DialogFrame, Input, ListboxSelect, SegmentedControl, Textarea, Toggle } from '@overlay/ui/primitives'
-import { getEnabledChatModels, getGatewayCatalogRevision } from '@/shared/ai/gateway/model-data'
+import { Button, DialogFrame, Input, ListboxSelect, SegmentedControl, Textarea, Toggle, toast } from '@overlay/ui/primitives'
+import { getModelsByIntelligence, getGatewayCatalogRevision } from '@/shared/ai/gateway/model-data'
 import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import {
   AGENT_TOOL_GROUPS,
@@ -23,7 +23,6 @@ import { rememberAgentOpened } from '@/shared/agents/last-agent-by-workspace'
 import { dispatchAgentDirectoryChanged } from '@/shared/workspace/sidebar-events'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useGatewayModelCatalog } from '@/components/providers/useGatewayModelCatalog'
-import { useAppSettings } from '@/components/providers/AppSettingsProvider'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 import { buildWorkspaceAgentInput } from '../lib/agent-editor-input'
 import { AgentAvatarPicker } from './AgentAvatarPicker'
@@ -202,18 +201,19 @@ function ComputerSection({ draft, onChange }: {
 }
 
 /** The dialog's fields. Presentational: all state lives in `draft`. */
-export function NewAgentFields({ draft, onChange, modelOptions, computersAvailable, otherAgentsAvailable = false, otherAgentsNote = 'Coming soon', onOpenMachineSetup }: {
+export function NewAgentFields({ draft, onChange, modelOptions, computersAvailable, otherAgentsAvailable = false, otherAgentsEnabled = otherAgentsAvailable, otherAgentsNote = 'Paid plans', onOpenMachineSetup }: {
   draft: NewAgentDraft
   onChange(patch: Partial<NewAgentDraft>): void
   modelOptions: ModelOption[]
   computersAvailable: boolean
   /** Overlay Cloud agents are offered only where the deployment supports them. */
   otherAgentsAvailable?: boolean
+  otherAgentsEnabled?: boolean
   /** Why Other agent is unavailable ("Coming soon", or "Paid plans" on a free plan). */
   otherAgentsNote?: string
   onOpenMachineSetup?(): void
 }) {
-  const other = draft.kind === 'other'
+  const other = otherAgentsAvailable && draft.kind === 'other'
   const patchOther = useCallback((patch: Partial<OtherAgentDraft>) => onChange({ other: { ...draft.other, ...patch } }), [draft.other, onChange])
   return (
     <div className="space-y-3.5">
@@ -246,7 +246,7 @@ export function NewAgentFields({ draft, onChange, modelOptions, computersAvailab
           className="min-h-20 resize-none!"
         />
       </div>
-      <div>
+      {otherAgentsEnabled ? <div>
         <FieldLabel info="Overlay agents are built into Overlay. Other agents (Claude Code, Codex) bring their own tools and run on a machine.">Type</FieldLabel>
         <SegmentedControl
           ariaLabel="Agent type"
@@ -255,7 +255,7 @@ export function NewAgentFields({ draft, onChange, modelOptions, computersAvailab
           options={otherAgentsAvailable ? TYPE_OPTIONS : TYPE_OPTIONS.map((option) => (option.value === 'other' ? { ...option, description: otherAgentsNote, disabled: true } : option))}
           onChange={(kind) => onChange({ kind })}
         />
-      </div>
+      </div> : null}
       {other ? (
         <OtherAgentFields
           other={draft.other}
@@ -284,15 +284,13 @@ export function NewAgentFields({ draft, onChange, modelOptions, computersAvailab
 
 function useModelOptions(): ModelOption[] {
   const { revision } = useGatewayModelCatalog({ enabled: true })
-  const { settings } = useAppSettings()
-  const enabledModelIds = settings.enabledChatModelIds
   return useMemo(() => {
     void revision
     void getGatewayCatalogRevision()
-    return getEnabledChatModels(enabledModelIds, false)
+    return getModelsByIntelligence(false)
       .filter((model) => model.id !== 'nvidia/nemotron-nano-9b-v2')
       .map((model) => ({ value: model.id, label: model.name }))
-  }, [enabledModelIds, revision])
+  }, [revision])
 }
 
 /** Creates the agent (and its computer when asked for), then refreshes the roster. */
@@ -349,9 +347,8 @@ export function NewAgentDialog({ open, workspaceId, onClose, onCreated, onOpenMa
   const otherAgentsNote = freePlan ? 'Paid plans' : 'Coming soon'
   const modelOptions = useModelOptions()
   const [rawDraft, setDraft] = useState(initialNewAgentDraft)
-  const draft = { ...rawDraft, modelId: resolveDraftModelId(rawDraft.modelId, modelOptions) }
+  const draft = { ...rawDraft, kind: otherAgentsAvailable ? rawDraft.kind : 'overlay' as const, modelId: resolveDraftModelId(rawDraft.modelId, modelOptions) }
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const update = useCallback((patch: Partial<NewAgentDraft>) => setDraft((current) => ({ ...current, ...patch })), [])
   const cloud = useCloudAgentCreate({
     workspaceId,
@@ -370,7 +367,6 @@ export function NewAgentDialog({ open, workspaceId, onClose, onCreated, onOpenMa
       return
     }
     setDraft(initialNewAgentDraft())
-    setError(null)
     onClose()
   }
 
@@ -387,19 +383,19 @@ export function NewAgentDialog({ open, workspaceId, onClose, onCreated, onOpenMa
       return
     }
     setBusy(true)
-    setError(null)
     try {
       const { agent, computerError } = await createAgentFromDraft(workspaceId, draft, computersAvailable)
       setDraft(initialNewAgentDraft())
+      toast.success('Agent created.')
       onCreated(agent, computerError)
     } catch (createError) {
-      setError(createError instanceof Error ? createError.message : 'Could not create the agent.')
+      toast.error(createError instanceof Error ? createError.message : 'Could not create the agent.')
     } finally {
       setBusy(false)
     }
   }
 
-  const shownError = error ?? cloud.error
+  const shownError = cloud.error
   const failed = cloud.view?.phase === 'failed'
 
   return (
@@ -435,6 +431,7 @@ export function NewAgentDialog({ open, workspaceId, onClose, onCreated, onOpenMa
             modelOptions={modelOptions}
             computersAvailable={computersAvailable}
             otherAgentsAvailable={otherAgentsAvailable}
+            otherAgentsEnabled={capabilities.cloudAgents === true}
             otherAgentsNote={otherAgentsNote}
             {...(onOpenMachineSetup ? { onOpenMachineSetup } : {})}
           />

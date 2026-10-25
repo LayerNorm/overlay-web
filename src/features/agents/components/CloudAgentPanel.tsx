@@ -2,11 +2,11 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import type { CloudAgentStatusResource, ProviderAccountResource } from '@overlay/api-client'
-import { Button } from '@overlay/ui/primitives'
+import { Button, toast } from '@overlay/ui/primitives'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { CLOUD_AGENT_STATE_LABEL, isCloudAgentStarting, type CloudAgentAction } from '@/shared/agents/cloud-agent'
-import { isSupportedAgentProviderId, type SupportedAgentProviderId } from '@/shared/agents/provider-accounts'
+import { isSupportedAgentProviderId } from '@/shared/agents/provider-accounts'
 import { AccountDialog } from '@/components/agents/AgentAccountDialog'
 import { CloudAgentConfig } from './CloudAgentConfig'
 import { useEditorLoad } from './EditorLoadGate'
@@ -118,19 +118,17 @@ function ReconnectNotice({ state, supported, label, onReconnect }: {
 export function CloudAgentPanel({ agentId }: { agentId: string }) {
   const { workspaceId, status, error, refresh } = useCloudAgentStatus(agentId)
   const [busy, setBusy] = useState<PanelBusy>(null)
-  const [actionError, setActionError] = useState<string | null>(null)
   const [reconnect, setReconnect] = useState<ProviderAccountResource | null>(null)
   useEditorLoad(!status && !error)
 
   const run = async (action: CloudAgentAction) => {
     if (!workspaceId || busy) return
     setBusy(action)
-    setActionError(null)
     try {
       await overlayAppClient.cloudAgents.control(workspaceId, agentId, action)
       refresh()
     } catch (controlError) {
-      setActionError(controlError instanceof Error ? controlError.message : 'That did not work. Try again.')
+      toast.error(controlError instanceof Error ? controlError.message : 'That did not work. Try again.')
     } finally {
       setBusy(null)
     }
@@ -140,18 +138,17 @@ export function CloudAgentPanel({ agentId }: { agentId: string }) {
     const adapterId = status?.machine?.adapterId ?? status?.adapterId
     if (!workspaceId || busy) return
     if (!status?.account || !adapterId || !isSupportedAgentProviderId(adapterId)) {
-      setActionError(adapterId && !isSupportedAgentProviderId(adapterId)
+      toast.error(adapterId && !isSupportedAgentProviderId(adapterId)
         ? 'This agent is no longer supported and cannot start a new machine.'
         : 'Reconnect this agent’s account before starting a new machine.')
       return
     }
     setBusy('retry')
-    setActionError(null)
     try {
-      await overlayAppClient.cloudAgents.provision(workspaceId, { agentId, adapterId: adapterId as SupportedAgentProviderId, providerAccountId: status.account.id, size: 'small' })
+      await overlayAppClient.cloudAgents.provision(workspaceId, { agentId, adapterId, providerAccountId: status.account.id, size: 'small' })
       refresh()
     } catch (retryError) {
-      setActionError(retryError instanceof Error ? retryError.message : 'Could not start the machine.')
+      toast.error(retryError instanceof Error ? retryError.message : 'Could not start the machine.')
     } finally {
       setBusy(null)
     }
@@ -162,7 +159,6 @@ export function CloudAgentPanel({ agentId }: { agentId: string }) {
     const environmentId = status?.environment?.id
     if (!workspaceId || !environmentId || busy) return
     setBusy('control')
-    setActionError(null)
     const tab = window.open('', '_blank')
     try {
       const ticket = await openDesktopWhenReady(workspaceId, environmentId)
@@ -174,7 +170,7 @@ export function CloudAgentPanel({ agentId }: { agentId: string }) {
       }
     } catch (openError) {
       tab?.close()
-      setActionError(openError instanceof Error ? openError.message : 'Could not open the desktop.')
+      toast.error(openError instanceof Error ? openError.message : 'Could not open the desktop.')
     } finally {
       setBusy(null)
     }
@@ -183,14 +179,18 @@ export function CloudAgentPanel({ agentId }: { agentId: string }) {
   const openReconnect = async () => {
     const adapterId = status?.machine?.adapterId ?? status?.adapterId
     if (!adapterId || !isSupportedAgentProviderId(adapterId)) {
-      setActionError('This agent is no longer supported and cannot be reconnected.')
+      toast.error('This agent is no longer supported and cannot be reconnected.')
       return
     }
     // Only the account's owner can reconnect it; for anyone else the list will not contain it.
-    const accounts = await overlayAppClient.providerAccounts.list({ cache: 'no-store' }).catch(() => null)
-    const account = accounts?.data.find((candidate) => candidate.id === status?.account?.id)
-    if (account) setReconnect(account)
-    else setActionError('Only the person who connected this account can reconnect it.')
+    try {
+      const accounts = await overlayAppClient.providerAccounts.list({ cache: 'no-store' })
+      const account = accounts.data.find((candidate) => candidate.id === status?.account?.id)
+      if (account) setReconnect(account)
+      else toast.error('Only the person who connected this account can reconnect it.')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not load the connected account.')
+    }
   }
 
   if (!status) {
@@ -239,7 +239,6 @@ export function CloudAgentPanel({ agentId }: { agentId: string }) {
           <ReconnectNotice state={status.state} supported={reconnectSupported} label={adapterLabel} onReconnect={() => void openReconnect()} />
 
           <MachineActions state={status.state} busy={busy} onRun={(action) => void run(action)} onRetry={() => void retry()} onControl={() => void control()} />
-          {actionError ? <p role="alert" className="mt-2 text-xs text-red-500">{actionError}</p> : null}
         </div>
       </div>
 

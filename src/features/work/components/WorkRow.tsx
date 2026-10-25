@@ -95,7 +95,7 @@ export function WorkRow({
             }
           }}
           title={editable ? 'Double-click to rename' : undefined}
-          className={unstyledButton(`min-w-0 flex-1 truncate text-left text-sm ${done ? 'text-(--muted) line-through decoration-(--muted-light)' : 'text-(--foreground)'}`)}
+          className={unstyledButton(`min-w-0 flex-1 truncate text-left text-sm leading-5 ${done ? 'text-(--muted) line-through decoration-(--muted-light)' : 'text-(--foreground)'}`)}
         >
           {item.title}
         </Button>
@@ -109,10 +109,10 @@ export function WorkRow({
           assignee={assignee}
           people={people}
           myPrincipalId={viewer?.principalId ?? null}
-          personalOnly={item.scope === 'personal'}
+          scope={item.scope}
           disabled={!editable}
           onChange={(assigneePrincipalId) => void updateTask(item.id, { assigneePrincipalId })}
-          className="grid place-items-center p-0.5"
+          className="flex items-center justify-center p-0.5"
         >
           <Avatar person={assignee} />
         </OwnerPicker>

@@ -1,4 +1,4 @@
-import { z } from 'zod'
+import { z } from 'zod/v3'
 import { AuthFields, BooleanQueryValue, IdQuery, IntegerQueryValue, PaginationQuery, UnknownResponse } from './common'
 
 export const ConversationListQuery = PaginationQuery.extend({
@@ -92,6 +92,7 @@ export const ActConversationRequest = z.object({
   ...AuthFields,
   conversationId: z.string().optional(),
   conversationClientId: z.string().min(1).optional(),
+  scope: z.enum(['personal', 'workspace']).optional(),
   askModelIds: z.array(z.string()).optional(),
   messages: z.array(z.unknown()).optional(),
   prompt: z.string().optional(),
@@ -119,8 +120,6 @@ export const ActConversationRequest = z.object({
     name: z.string(),
     fileIds: z.array(z.string()).optional(),
   })).optional(),
-  multiModelSlotIndex: z.number().int().min(0).optional(),
-  multiModelTotal: z.number().int().min(1).optional(),
   reasoning: z.enum(['provider-default', 'none', 'minimal', 'low', 'medium', 'high', 'xhigh']).optional(),
 }).passthrough()
 

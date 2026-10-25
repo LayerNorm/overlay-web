@@ -16,6 +16,16 @@ test('free model fallbacks stay inside the free-tier catalog', () => {
   assert.deepEqual(fallbacks, [])
 })
 
+test('low-credit retry cannot escape either safe free router', () => {
+  for (const modelId of ['overlay-free', 'openrouter/free']) {
+    assert.deepEqual(getLowCreditFallbackAttemptModelIds({
+      modelId,
+      paid: false,
+      paidFallbackModelIds: ['anthropic/claude-opus-4.7'],
+    }), [modelId])
+  }
+})
+
 // Paid-model prices come from the live AI Gateway catalog, registered at
 // runtime; the static curated rows carry no prices. Register a priced slice so
 // the paid fallback path runs the same way it does in production.

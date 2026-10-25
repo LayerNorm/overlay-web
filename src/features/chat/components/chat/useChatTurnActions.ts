@@ -4,11 +4,12 @@ import { useCallback } from 'react'
 import type { Dispatch, MutableRefObject, RefObject, SetStateAction } from 'react'
 import type { UIMessage } from '@/shared/chat/ai-ui-message'
 import { createIdempotencyKey } from '@overlay/api-client'
+import { toast } from '@overlay/ui/primitives'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { scrollToExchangeTurn } from '@/features/chat/lib/scroll-to-exchange-turn'
 import { DEFAULT_CHAT_TITLE } from '../chat-interface/constants'
 import {
-  getResponseForExchangeForModel as selectResponseForExchangeForModel,
+  getResponseForExchange,
   removeTurnFromConversationRuntime,
 } from './chat-runtime-helpers'
 import type { useChatRuntimes } from './useChatRuntimes'
@@ -16,19 +17,14 @@ import type { useConversationUiState } from './useConversationUiState'
 import type { useChatRouteController } from './useChatRouteController'
 import type { useChatConversationLoader } from './useChatConversationLoader'
 import type { useChatSendController } from './useChatSendController'
-import type { useChatPreferences } from './useChatPreferences'
 import type { useComposerTools } from './useComposerTools'
 import type { MentionInputHandle } from '../chat-interface/MentionInput'
 
 type Runtimes = ReturnType<typeof useChatRuntimes>
-type ChatPrefs = ReturnType<typeof useChatPreferences>
 
 export function useChatTurnActions({
-  selectedModels,
   activeRuntime,
-  activeAskChats,
   isActiveLoading,
-  setSelectedTabPerExchange,
   setReplyContext,
   textareaRef,
   ensureConversationRuntime,
@@ -40,7 +36,6 @@ export function useChatTurnActions({
   resetToBlankChatSurface,
   isTemporaryChat,
   activeChatId,
-  setComposerNotice,
   setIsSwitchingChat,
   createNewChat,
   loadChat,
@@ -48,11 +43,8 @@ export function useChatTurnActions({
   activeChatTitle,
   setExitingTurnIds,
 }: {
-  selectedModels: ChatPrefs['selectedModels']
   activeRuntime: Runtimes['activeRuntime']
-  activeAskChats: Runtimes['activeRuntime']['askChats']
   isActiveLoading: boolean
-  setSelectedTabPerExchange: ReturnType<typeof useConversationUiState>['setSelectedTabPerExchange']
   setReplyContext: ReturnType<typeof useComposerTools>['setReplyContext']
   textareaRef: RefObject<MentionInputHandle | null>
   ensureConversationRuntime: Runtimes['ensureConversationRuntime']
@@ -64,7 +56,6 @@ export function useChatTurnActions({
   resetToBlankChatSurface: ReturnType<typeof useChatRouteController>['resetToBlankChatSurface']
   isTemporaryChat: boolean
   activeChatId: string | null
-  setComposerNotice: Dispatch<SetStateAction<string | null>>
   setIsSwitchingChat: Dispatch<SetStateAction<boolean>>
   createNewChat: ReturnType<typeof useChatSendController>['createNewChat']
   loadChat: ReturnType<typeof useChatConversationLoader>['loadChat']
@@ -72,28 +63,12 @@ export function useChatTurnActions({
   activeChatTitle: string | null
   setExitingTurnIds: Dispatch<SetStateAction<string[]>>
 }) {
-  const getResponseForExchangeForModel = useCallback((
-    modelId: string,
-    exchIdx: number,
-    /** For Act multi-compare, slot order is the exchange's model list, not the global picker. */
-    slotOrder?: string[],
-  ): UIMessage | null => selectResponseForExchangeForModel({
-    modelId,
-    exchangeIndex: exchIdx,
-    slotOrder,
-    selectedModels,
+  const getResponseForExchangeAtIndex = useCallback((
+    exchangeIndex: number,
+  ): UIMessage | null => getResponseForExchange({
+    exchangeIndex,
     activeRuntime,
-    activeAskChats,
-    isActiveLoading,
-  }), [activeAskChats, activeRuntime, isActiveLoading, selectedModels])
-
-  const handleTabSelect = useCallback((exchIdx: number, tabIdx: number) => {
-    setSelectedTabPerExchange((prev) => {
-      const next = [...prev]
-      next[exchIdx] = tabIdx
-      return next
-    })
-  }, [setSelectedTabPerExchange])
+  }), [activeRuntime])
 
   const beginReplyToAssistantText = useCallback((assistantText: string, targetUserTurnId: string | null) => {
     const t = assistantText.trim()
@@ -131,11 +106,9 @@ export function useChatTurnActions({
     const runtime = ensureConversationRuntime(chatId)
     const { removedExchangeIndex } = removeTurnFromConversationRuntime(runtime, turnId)
 
-    runtime.askChats.forEach((chat, index) => {
-      if (activeChatIdRef.current === chatId && chatInstances[index]) {
-        chatInstances[index].setMessages([...chat.messages] as UIMessage[])
-      }
-    })
+    if (activeChatIdRef.current === chatId) {
+      chatInstances[0]?.setMessages([...runtime.askChats[0].messages] as UIMessage[])
+    }
     if (activeChatIdRef.current === chatId) {
       actChat.setMessages([...runtime.actChat.messages] as UIMessage[])
     }
@@ -156,7 +129,6 @@ export function useChatTurnActions({
     const targetTurnId = turnId?.trim()
     if (!sourceChatId || !targetTurnId || isActiveLoading) return
     try {
-      setComposerNotice('Creating branch…')
       setIsSwitchingChat(true)
       const sourceRes = await overlayAppClient.conversations.getResponse({
         conversationId: sourceChatId,
@@ -226,11 +198,9 @@ export function useChatTurnActions({
       const branchRuntime = runtimesRef.current.get(branchChatId)
       if (branchRuntime) branchRuntime.hydrated = false
       await loadChat(branchChatId)
-      setComposerNotice('Branch created.')
-      window.setTimeout(() => setComposerNotice(null), 2500)
+      toast.success('Branch created.')
     } catch (error) {
-      setComposerNotice(error instanceof Error ? error.message : 'Could not create branch')
-      window.setTimeout(() => setComposerNotice(null), 5000)
+      toast.error(error instanceof Error ? error.message : 'Could not create branch')
       setIsSwitchingChat(false)
     }
   }
@@ -238,8 +208,7 @@ export function useChatTurnActions({
   async function handleDeleteTurnById(turnId: string) {
     const cid = activeChatIdRef.current ?? activeChatId
     if (!cid || !turnId) {
-      setComposerNotice('Cannot delete this message right now.')
-      window.setTimeout(() => setComposerNotice(null), 4000)
+      toast.error('Cannot delete this message right now.')
       return
     }
     const EXIT_MS = 300
@@ -249,22 +218,19 @@ export function useChatTurnActions({
       const res = await overlayAppClient.conversations.deleteMessageResponse({ conversationId: cid, turnId })
       const payload = (await res.json().catch(() => ({}))) as { error?: string }
       if (!res.ok) {
-        setComposerNotice(payload.error || 'Could not delete this turn.')
-        window.setTimeout(() => setComposerNotice(null), 5000)
+        toast.error(payload.error || 'Could not delete this turn.')
         return
       }
       removeTurnFromRuntime(cid, turnId)
     } catch {
-      setComposerNotice('Could not delete this turn.')
-      window.setTimeout(() => setComposerNotice(null), 5000)
+      toast.error('Could not delete this turn.')
     } finally {
       setExitingTurnIds((prev) => prev.filter((id) => id !== turnId))
     }
   }
 
   return {
-    getResponseForExchangeForModel,
-    handleTabSelect,
+    getResponseForExchange: getResponseForExchangeAtIndex,
     beginReplyToAssistantText,
     beginReplyToMediaPrompt,
     jumpToReplyTarget,

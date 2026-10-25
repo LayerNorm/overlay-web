@@ -1,4 +1,5 @@
-import { BrainCircuit, Check, DollarSign, Server, ShieldCheck, X, Zap } from 'lucide-react'
+import { BrainCircuit, Check, DollarSign, ImageIcon, Server, ShieldCheck, X, Zap } from 'lucide-react'
+import { providerLabel } from '@overlay/ui/ai'
 import type { ComponentType, ReactNode } from 'react'
 import type { ReasoningLevel } from '@overlay/chat-core'
 import { ListboxSelect } from '@overlay/ui/primitives'
@@ -118,23 +119,27 @@ export function ModelQualitiesPanel({
 
   return (
     <div className="flex flex-col gap-1">
-      <MetricRow
+      {model.name ? <h3 className="mb-1 text-sm font-medium text-(--foreground)">{model.name}</h3> : null}
+      {model.description ? <p className="mb-2 text-xs leading-relaxed text-(--muted)">{model.description}</p> : null}
+      {model.intelligence !== undefined ? <MetricRow
         icon={BrainCircuit}
         label="Intelligence"
         value={Math.round(model.intelligence ?? 0)}
-      />
+      /> : null}
       <MetricRow
         icon={Server}
         label="Provider"
-        value={<span className="block max-w-27 truncate">{model.provider ?? 'Unknown'}</span>}
+        value={<span className="block max-w-32 truncate">{providerLabel(model.provider ?? 'unknown')}</span>}
       />
-      <MetricRow icon={DollarSign} label="Cost" value={costLabel(model)} />
-      <MetricRow icon={Zap} label="Speed" value={speedLabel(model)} />
-      <MetricRow
+      {model.supportsVision ? <MetricRow icon={ImageIcon} label="Vision" value="Supported" /> : null}
+      {model.supportsReasoning ? <MetricRow icon={BrainCircuit} label="Reasoning" value="Supported" /> : null}
+      {model.cost !== undefined ? <MetricRow icon={DollarSign} label="Cost" value={costLabel(model)} /> : null}
+      {model.medianOutputTokensPerSecond !== undefined ? <MetricRow icon={Zap} label="Speed" value={speedLabel(model)} /> : null}
+      {model.supportsZeroDataRetention !== undefined ? <MetricRow
         icon={ShieldCheck}
         label="ZDR"
         value={<ZdrValue supported={model.supportsZeroDataRetention} />}
-      />
+      /> : null}
       <ReasoningRow
         portal={reasoningPortal}
         levels={reasoningLevels}

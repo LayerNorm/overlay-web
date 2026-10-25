@@ -70,7 +70,7 @@ export function StatusPicker({
     <Picker
       label={`Status: ${WORK_STATUS_LABELS[status]}`}
       disabled={disabled}
-      className={className || 'grid h-6 w-6 place-items-center'}
+      className={className || 'flex h-6 w-6 shrink-0 items-center justify-center'}
       trigger={() => children ?? <StatusIcon status={status} />}
     >
       {(close) => (
@@ -103,7 +103,7 @@ export function OwnerPicker({
   assignee,
   people,
   myPrincipalId,
-  personalOnly,
+  scope,
   onChange,
   disabled,
   children,
@@ -113,21 +113,20 @@ export function OwnerPicker({
   assignee: WorkPerson | null
   people: readonly WorkPerson[]
   myPrincipalId: string | null
-  /** A personal task can only be yours. */
-  personalOnly?: boolean
+  scope: 'personal' | 'workspace'
   onChange: (principalId: string | null) => void
   disabled?: boolean
   children?: ReactNode
   className?: string
   label?: string
 }) {
-  const humans = people.filter((person) => person.type === 'human' && (!personalOnly || person.principalId === myPrincipalId))
-  const agents = personalOnly ? [] : people.filter((person) => person.type === 'agent')
+  const humans = people.filter((person) => person.type === 'human' && (scope !== 'personal' || person.principalId === myPrincipalId))
+  const agents = people.filter((person) => person.type === 'agent' && (scope !== 'workspace' || person.agentVisibility !== 'creator'))
   return (
     <Picker
       label={`${label}: ${assignee?.displayName ?? 'Unassigned'}`}
       disabled={disabled}
-      className={className || 'grid place-items-center'}
+      className={className || 'flex shrink-0 items-center justify-center'}
       trigger={() => children ?? <Avatar person={assignee} />}
     >
       {(close) => {

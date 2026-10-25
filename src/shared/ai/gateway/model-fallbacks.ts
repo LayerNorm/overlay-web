@@ -74,6 +74,7 @@ function paidFallbackCandidates(params: FallbackParams): string[] {
 
 export function getChatModelFallbackCandidates(params: FallbackParams): string[] {
   if (isByokModelId(params.modelId)) return []
+  if (isFreeTierChatModelId(params.modelId)) return []
   const candidates = params.paid && !isFreeTierChatModelId(params.modelId)
     ? paidFallbackCandidates(params)
     : freeFallbackCandidates(params)
@@ -90,6 +91,7 @@ export function getChatModelFallbackCandidates(params: FallbackParams): string[]
 export function getLowCreditFallbackAttemptModelIds(params: FallbackParams & {
   paidFallbackModelIds?: readonly string[]
 }): string[] {
+  if (isFreeTierChatModelId(params.modelId)) return [params.modelId]
   const freeIds = [FREE_TIER_AUTO_MODEL_ID, ...freeFallbackCandidates(params)]
     .filter((modelId) => supportsRequiredInputs(modelId, params))
   const merged = [...freeIds, params.modelId, ...(params.paidFallbackModelIds ?? [])]

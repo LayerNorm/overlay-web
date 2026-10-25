@@ -11,7 +11,6 @@ import {
 
 test('builds a stable submitted composer snapshot', () => {
   const snapshot = buildSubmittedComposerSnapshot({
-    askModelSelectionMode: 'multiple',
     selectedModels: [
       'moonshotai/kimi-k2.6',
       'z-ai/glm-5.1',
@@ -35,12 +34,9 @@ test('builds a stable submitted composer snapshot', () => {
 
   assert.equal(snapshot.requestMode, 'chat')
   assert.equal(snapshot.hasReadyDocs, true)
-  // Legacy stored ids resolve through the model alias map.
+  // Legacy stored ids resolve through the model alias map, retaining only the first model.
   assert.deepEqual(snapshot.textModelsForTurn, [
     'moonshotai/kimi-k2.6',
-    'z-ai/glm-5.1',
-    'qwen/qwen3.6-plus',
-    'deepseek/deepseek-v4-flash-0731',
   ])
   assert.deepEqual(snapshot.selectedToolIdsSnapshot, ['web_search'])
 })
@@ -106,6 +102,7 @@ test('builds text payload with indexed documents, mentions, reply metadata, and 
 test('builds pending-first and normal act bodies without null conversation ids', () => {
   const pendingBody = buildCommonActBody({
     chatId: PENDING_FIRST_CHAT_ID,
+    scope: 'workspace',
     pendingConversationClientId: 'client-1',
     temporaryChatSnapshot: false,
     textModelsForTurn: ['model-a'],
@@ -123,6 +120,7 @@ test('builds pending-first and normal act bodies without null conversation ids',
 
   const pendingRecord = pendingBody as Record<string, unknown>
   assert.equal(pendingRecord.conversationClientId, 'client-1')
+  assert.equal(pendingRecord.scope, 'workspace')
   assert.equal(pendingRecord.conversationId, undefined)
   assert.equal(pendingRecord.automationId, 'automation-1')
   assert.deepEqual(pendingRecord.askModelIds, ['model-a'])
@@ -146,6 +144,7 @@ test('builds pending-first and normal act bodies without null conversation ids',
   const normalRecord = normalBody as Record<string, unknown>
   assert.equal(normalRecord.conversationId, 'chat-1')
   assert.equal(normalRecord.conversationClientId, undefined)
+  assert.equal(normalRecord.scope, undefined)
   assert.equal(normalRecord.personalChatMode, 'work')
 })
 

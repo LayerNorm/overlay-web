@@ -1,7 +1,7 @@
 'use client'
 
 import type { ReactNode } from 'react'
-import { useState, useEffect } from 'react'
+import { useEffect } from 'react'
 import {
   IMPORT_MEMORY_PROMPT,
   type KnowledgeFileNode as FileNode,
@@ -95,13 +95,11 @@ function KnowledgeSurfaceDialogs({
         <AddMemoryDialog
           value={memories.addText}
           saving={memories.isSavingMemory}
-          error={memories.memorySaveError}
           onChange={memories.setAddText}
           onSave={memories.handleAddMemory}
           onClose={() => {
             memories.setShowAddMemory(false)
             memories.setAddText('')
-            memories.setMemorySaveError(null)
           }}
         />
       )}
@@ -110,7 +108,6 @@ function KnowledgeSurfaceDialogs({
         <ImportMemoryDialog
           value={memories.importText}
           saving={memories.isImporting}
-          error={memories.importMemoryError}
           promptCopied={memories.importPromptCopied}
           onChange={memories.setImportText}
           onSave={memories.handleImportMemory}
@@ -122,7 +119,6 @@ function KnowledgeSurfaceDialogs({
           onClose={() => {
             memories.setShowImportMemory(false)
             memories.setImportText('')
-            memories.setImportMemoryError(null)
           }}
         />
       )}
@@ -187,7 +183,7 @@ function KnowledgeMemoriesTab({
         hasPending={hasPending}
         onOpen={memories.openMemory}
         onToggleSelect={select.toggleMemorySelect}
-        onAddFirst={() => { memories.setShowAddMemory(true); memories.setMemorySaveError(null) }}
+        onAddFirst={() => memories.setShowAddMemory(true)}
         onDelete={(memoryId, event) => {
           event.stopPropagation()
           void memories.handleDeleteMemory(memoryId)
@@ -198,24 +194,12 @@ function KnowledgeMemoriesTab({
 }
 
 function KnowledgeFilesTabNotices({
-  fileUploadPending,
-  fileUploadError,
   fileList,
 }: {
-  fileUploadPending: { label: string } | null
-  fileUploadError: string | null
   fileList: ReturnType<typeof useSurfaceFileList>
 }) {
   return (
     <>
-      {fileUploadPending && (
-        <KnowledgePendingNotice title="Uploading…" preview={fileUploadPending.label} />
-      )}
-      {fileUploadError && (
-        <p className="mx-auto mb-3 max-w-3xl text-xs text-red-400" role="alert">
-          {fileUploadError}
-        </p>
-      )}
       {fileList.filesLoadError && (
         <p className="mx-auto mb-3 max-w-3xl text-xs text-red-400" role="alert">
           {fileList.filesLoadError}
@@ -233,8 +217,6 @@ function KnowledgeSurfaceBody({
   hostSelectedFileId,
   filePort,
   renderFileViewer,
-  fileUploadPending,
-  fileUploadError,
   memories,
   fileList,
   opened,
@@ -249,8 +231,6 @@ function KnowledgeSurfaceBody({
   hostSelectedFileId: string | null
   filePort: SharedKnowledgeFilePort
   renderFileViewer: (props: { file: FileNode; name: string; content: string; url?: string }) => ReactNode
-  fileUploadPending: { label: string } | null
-  fileUploadError: string | null
   memories: ReturnType<typeof useSurfaceMemories>
   fileList: ReturnType<typeof useSurfaceFileList>
   opened: ReturnType<typeof useOpenedFile>
@@ -290,8 +270,6 @@ function KnowledgeSurfaceBody({
 
       {activeTab === 'files' && !opened.selectedFile && (
         <KnowledgeFilesTabNotices
-          fileUploadPending={fileUploadPending}
-          fileUploadError={fileUploadError}
           fileList={fileList}
         />
       )}
@@ -383,14 +361,12 @@ export function SharedKnowledgeSurface({
   const fileList = useSurfaceFileList({ initialFiles, adapters, activeTab })
   const { files, setFiles, filesLoading } = fileList
 
-  const [fileUploadPending, setFileUploadPending] = useState<{ label: string } | null>(null)
-  const [fileUploadError, setFileUploadError] = useState<string | null>(null)
-
   const opened = useOpenedFile({
     adapters,
     filePort,
     setFiles,
     openFilesInHost,
+    fileOpenParam,
     updateQuery,
   })
   const { loadFile } = opened
@@ -445,16 +421,12 @@ export function SharedKnowledgeSurface({
     filePort,
     activeFolder,
     setFiles,
-    setFileUploadPending,
-    setFileUploadError,
   })
 
   const folderUpload = useFolderUpload({
     adapters,
     filePort,
     setFiles,
-    setFileUploadPending,
-    setFileUploadError,
   })
 
   useEffect(() => {
@@ -522,8 +494,8 @@ export function SharedKnowledgeSurface({
             onFileTitleChange={opened.handleFileTitleChange}
             onSetFileSearchOpen={folderBrowser.setFileSearchOpen}
             onSetFileSearchQuery={folderBrowser.setFileSearchQuery}
-            onImportMemory={() => { memories.setShowImportMemory(true); memories.setImportMemoryError(null) }}
-            onNewMemory={() => { memories.setShowAddMemory(true); memories.setMemorySaveError(null) }}
+            onImportMemory={() => memories.setShowImportMemory(true)}
+            onNewMemory={() => memories.setShowAddMemory(true)}
             onRefreshOutputs={() => select.setOutputsRefreshKey((k) => k + 1)}
             onSetMemorySearchOpen={memories.setMemorySearchOpen}
             onSetMemorySearchQuery={memories.setMemorySearchQuery}
@@ -558,8 +530,6 @@ export function SharedKnowledgeSurface({
           hostSelectedFileId={hostSelectedFileId}
           filePort={filePort}
           renderFileViewer={renderFileViewer}
-          fileUploadPending={fileUploadPending}
-          fileUploadError={fileUploadError}
           memories={memories}
           fileList={fileList}
           opened={opened}

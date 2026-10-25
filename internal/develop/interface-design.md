@@ -16,6 +16,18 @@ and style reset in the existing message toolbar,
 with recording/stopped/error in its accessible label. They require both the branch build opt-in
 and conversation query, and remain absent from Production.
 
+## App screen breadcrumbs
+
+`AppScreenHeader` and custom module headers use the shared `AppBreadcrumbs` component,
+composed from the shadcn Radix Breadcrumb primitives in `@overlay/ui/primitives`.
+`AppBreadcrumbContext` supplies the active Personal/Workspace scope and page; callers add
+subpages or selected records through `breadcrumbs` and the final title. Preserve scope in
+breadcrumb destinations and expose only the final item as the current page. Current-page
+labels have no disabled-link semantics, so embedded note-title inputs remain accessible
+and editable.
+Resolve scope with `usePanelScope` and destinations with `useWorkspaceHref` so
+handle routes, legacy links and solo workspaces retain the same scope as navigation.
+
 ## Tailwind CSS v4 configuration
 
 `postcss.config.mjs` loads `@tailwindcss/postcss`. The app imports `tailwindcss`
@@ -31,6 +43,21 @@ border color for new controls.
 
 Tailwind utility names apply to class names. Literal CSS, including injected
 note-editor styles, uses standard properties such as `flex-shrink: 0`.
+
+## Resizable panels
+
+Use `PanelResizeHandle` from `@overlay/ui` for adjustable sidebar and side-panel
+widths. It exposes a vertical separator with pointer resizing, arrow-key steps,
+and Home/End bounds; the owning shell supplies and stores the width.
+
+The agent conversation sidebar uses the app sidebar surface and one scroll
+container below its fixed hero and tabs. Its editable fields autosave after an
+800ms debounce and flush on blur; saves serialize so newer edits cannot be
+overwritten by an older response.
+
+Details and Computer tabs share the editor's computer state. Start, Stop, Wake,
+provisioning and deletion update both views; the preview only owns its connection
+ticket, not a second cached machine record.
 
 ## Shared modal dialogs
 
@@ -225,6 +252,7 @@ The Work page (`src/features/work/`) follows the existing patterns and adds a fe
   text field has it first.
 - **Pickers are small floating menus** (`FloatingMenu`) with a section label, the options, and a check on the current
   one. Status, owner, reviewer, priority and parent all use the same `Picker` in `WorkPickers.tsx`.
+- Owner pickers include usable agents on Personal tasks and hide creator-only agents on Workspace tasks. Agent owners use their creature appearance; assigning an owner never starts a run.
 - **The done-when checklist is the one place a box is ticked.** Each condition is a `button role="checkbox"`, not an
   `<input type="checkbox">`: it is part of a task's content (a list the person writes), not an on/off setting, so the
   Toggle rule does not apply to it. Boolean settings on a task (Blocked) are Toggles.
@@ -263,6 +291,14 @@ stays visible but `disabled`, with a description such as "Coming soon".
 Creation dialogs carry no hint lines. Labels are one or two words; anything
 that needs explaining gets an `InfoTip` (Lucide `Info`, `DelayedTooltip`) after
 the label, via `FieldLabel` in `src/features/agents/components/InfoTip.tsx`.
+
+## Agents are creatures, never orbs
+
+Every surface that identifies an agent — rosters, chat headers, message
+authors, marketing app shots and HTML mockups — renders its creature
+(`AgentCreature`: `avatarShape` body, `avatarColor` fill, eyes). Do not use the
+`Orb` glow variant or any colored sphere as an agent identity; the metal orb is
+the Overlay brand mark and system marker only.
 
 ## Avatars are edited in place
 
@@ -437,7 +473,8 @@ Run `node scripts/qa/tabs-interactions.mjs` for real-browser regressions; it acc
 
 ## Marketing FAQ and page metadata
 
-The landing FAQ uses native details/summary disclosures after the scroll story.
+Every public marketing page renders inside `StaticMarketingShell` (landing nav, hairline-framed column, footer) and opens with `MarketingPageHead`; page blocks come from `landing.css` (`.sec`, `.h1`, `.lead`, `.btn`), so new pages match the home page without their own theme.
+The landing FAQ uses the shadcn `Accordion` (`@overlay/ui/primitives`, single open item, collapsible) near the end of the static home page.
 Its visible answers and FAQ structured data share one source; describe available
 capabilities only. Public marketing pages define their own canonical paths so
 they do not inherit the root homepage canonical.
@@ -449,7 +486,7 @@ Chat surfaces build on shadcn AI Elements primitives copied into `packages/overl
 
 Visual rules for these and every new component:
 
-1. **Flat and borderless.** No resting borders or rings on cards, code blocks, the composer, chips, buttons, approval items, popovers or sidebars. Surfaces differ by fill only (page, sidebar, subtle, elevated). Floating layers keep a soft shadow. Focus rings stay for keyboard focus; destructive states tint the fill.
+1. **Flat surfaces.** No resting borders or rings on cards, code blocks, chips, buttons, approval items, popovers or sidebars. Surfaces differ by fill only (page, sidebar, subtle, elevated). The shared composer is the exception: a subtle 1px `--border` outline separates its elevated fill from the page in both themes. Floating layers keep a soft shadow. Focus rings stay for keyboard focus; destructive states tint the fill.
 2. **Solid headers, no blur.** Page and sidebar headers use the same fill as the surface below them, with no divider and no backdrop blur.
 3. **One model selector.** Model menus render `ModelSelector` from `@overlay/chat-react`: Text / Image / Video at the top, a filled search field, then a provider rail (Favorites star, then one `ProviderLogo` per provider) beside the list grouped by provider. Rows read logo, name, favorite star, selected check, capability chips. Search collapses to one flat list. Free-tier Auto stays pinned on top. Favorites are per browser (`overlay:favorite-models`) and survive blocked storage in memory.
 4. **One Prompt Input.** Every chat composer is built from `PromptInput` parts in `@overlay/chat-react` (`PromptInputBody`, `PromptInputFooter`, `PromptInputTools`, `PromptInputButton`, `PromptInputSubmit`). Footer order: +, @, optional /, tool chips, model controls, submit (ArrowUp, spinner while submitted, stop while streaming). In web chat the model button lives in the composer, not the header.

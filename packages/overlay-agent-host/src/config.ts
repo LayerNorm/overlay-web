@@ -1,6 +1,6 @@
 import { chmod, mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
-import { z } from 'zod'
+import { z } from 'zod/v3'
 import { filesystemGrantSchema } from '@layernorm/overlay-agent-bridge-protocol'
 import { loadStoredConnection } from './connection.js'
 import { ACP_ADAPTER_MANIFESTS, resolveAcpAdapterManifest } from './adapter-manifests.js'

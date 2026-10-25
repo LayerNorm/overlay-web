@@ -1,6 +1,6 @@
 import {constants} from 'node:fs'
 import {open, lstat, unlink} from 'node:fs/promises'
-import {z} from 'zod'
+import {z} from 'zod/v3'
 
 const accessSchema = z.object({origin: z.string().url(), secret: z.string().min(1).max(4096).regex(/^[\x21-\x7e]+$/)}).strict()
 export type PreviewHostingAccess = z.infer<typeof accessSchema>

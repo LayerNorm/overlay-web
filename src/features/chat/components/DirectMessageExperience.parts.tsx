@@ -9,14 +9,12 @@ import {
   Bell,
   BellOff,
   Hash,
-  Monitor,
   MoreHorizontal,
   Pin,
   Share2,
   Slack,
   UserRound,
   UsersRound,
-  X,
 } from 'lucide-react'
 import { Button, FloatingMenu, MenuItem } from '@overlay/ui/primitives'
 import { agentThreadHref } from '@/components/layout/sidebar-nav'
@@ -35,6 +33,7 @@ import type { Id } from '../../../../convex/_generated/dataModel'
 import { ChatComposer } from './ChatComposer'
 import { ConversationScopeActionDialog } from './collaboration/ConversationScopeActionDialog'
 import { ConvexRoomMessageSubscription } from './collaboration/ConvexRoomMessageSubscription'
+import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import { NewDirectMessageDialog } from './NewDirectMessageDialog'
 import { ShareDialog } from '@/components/share/ShareDialog'
 import { RoomMessageItem } from './collaboration/RoomMessageItem'
@@ -52,7 +51,6 @@ import {
 import type {
   OptimisticMessage,
   RoomMessageContext,
-  useAgentDesktop,
   useMessageActions,
   useMessageNavigation,
   useReadMarkers,
@@ -215,33 +213,7 @@ export function RoomHeaderLeading({
   )
 }
 
-function AgentDesktopButton({ desktop }: { desktop: ReturnType<typeof useAgentDesktop> }) {
-  const { agentComputer, desktopOpenBusy, openAgentDesktop } = desktop
-  if (!agentComputer || (agentComputer.status !== 'ready' && agentComputer.status !== 'stopped')) return null
-  return (
-    <Button
-      variant="ghost"
-      type="button"
-      onClick={openAgentDesktop}
-      disabled={desktopOpenBusy}
-      title={agentComputer.status === 'stopped' ? 'View desktop — resumes the machine' : 'View desktop'}
-      className="h-8 gap-1.5 rounded-md px-2 text-xs font-normal text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground) disabled:opacity-60"
-    >
-      <span className="relative">
-        <Monitor size={14} />
-        <span
-          className={`absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full ${
-            agentComputer.status === 'ready' ? 'bg-emerald-500' : 'bg-amber-500'
-          }`}
-        />
-      </span>
-      <span className="hidden sm:inline">{desktopOpenBusy ? 'Opening…' : 'Desktop'}</span>
-    </Button>
-  )
-}
-
 export function RoomHeaderActions({
-  desktop,
   vm,
   roster,
   collab,
@@ -255,7 +227,6 @@ export function RoomHeaderActions({
   menuTriggerRef,
   onShare,
 }: {
-  desktop: ReturnType<typeof useAgentDesktop>
   vm: ReturnType<typeof useRoomViewModels>
   roster: ReturnType<typeof useRoomRoster>
   collab: ReturnType<typeof useRoomCollaboration>
@@ -273,36 +244,6 @@ export function RoomHeaderActions({
   const { updateState: onUpdateState, archiveMenuAction: onArchive } = roomActions
   return (
     <div className="relative flex items-center gap-1">
-      <AgentDesktopButton desktop={desktop} />
-      {headerActions}
-      {collab.pins.length > 0 ? (
-        <Button
-          variant="ghost"
-          type="button"
-          onClick={() => setRoomPanel((current) => (current === 'pinned' ? null : 'pinned'))}
-          aria-pressed={roomPanel === 'pinned'}
-          title="Pinned messages"
-          className={`h-8 gap-1 rounded-md px-2 text-xs font-normal transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground) ${
-            roomPanel === 'pinned' ? 'bg-(--surface-subtle) text-(--foreground)' : 'text-(--muted)'
-          }`}
-        >
-          <Pin size={13} />
-          {collab.pins.length}
-        </Button>
-      ) : null}
-      <Button
-        variant="ghost"
-        type="button"
-        onClick={() => setRoomPanel((current) => (current === 'people' ? null : 'people'))}
-        aria-pressed={roomPanel === 'people'}
-        title="People in this room"
-        className={`h-8 gap-1.5 rounded-md px-2 text-xs font-normal transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground) ${
-          roomPanel === 'people' ? 'bg-(--surface-subtle) text-(--foreground)' : 'text-(--muted)'
-        }`}
-      >
-        <UsersRound size={14} />
-        {roster.participants.length}
-      </Button>
       <FloatingMenu
         kind="menu"
         trigger={
@@ -330,6 +271,16 @@ export function RoomHeaderActions({
             onClick={() => {
               setMenuOpen(false)
               onShare()
+            }}
+          />
+        ) : null}
+        {collab.pins.length > 0 ? (
+          <MenuButton
+            icon={Pin}
+            label="Pinned messages"
+            onClick={() => {
+              setMenuOpen(false)
+              setRoomPanel((current) => (current === 'pinned' ? null : 'pinned'))
             }}
           />
         ) : null}
@@ -363,6 +314,20 @@ export function RoomHeaderActions({
           onClick={onArchive}
         />
       </FloatingMenu>
+      <Button
+        variant="ghost"
+        type="button"
+        onClick={() => setRoomPanel((current) => (current === 'people' ? null : 'people'))}
+        aria-pressed={roomPanel === 'people'}
+        title="People in this room"
+        className={`h-8 gap-1.5 rounded-md px-2 text-xs font-normal transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground) ${
+          roomPanel === 'people' ? 'bg-(--surface-subtle) text-(--foreground)' : 'text-(--muted)'
+        }`}
+      >
+        <UsersRound size={14} />
+        {roster.participants.length}
+      </Button>
+      {headerActions}
     </div>
   )
 }
@@ -387,23 +352,6 @@ function MenuButton({
     </MenuItem>
   )
 }
-
-export function RoomNoticeBar({
-  notice,
-  onDismiss,
-}: {
-  notice: string | null
-  onDismiss: () => void
-}) {
-  if (!notice) return null
-  return (
-    <div className="flex items-center justify-between bg-(--surface-subtle) px-4 py-2 text-xs text-(--muted)">
-      <span>{notice}</span>
-      <Button variant="ghost" size="icon" type="button" onClick={onDismiss} aria-label="Dismiss" className="h-auto w-auto p-0 text-inherit hover:bg-transparent hover:text-current"><X size={13} /></Button>
-    </div>
-  )
-}
-
 
 function resolveMessageAuthorName(message: OptimisticMessage, ctx: RoomMessageContext): string {
   return message.importedAuthorName?.trim()
@@ -484,11 +432,13 @@ export function RoomMessage({
   ctx,
   inThread,
   grouped,
+  hideToolbar,
 }: {
   message: OptimisticMessage
   ctx: RoomMessageContext
   inThread?: boolean
   grouped?: boolean
+  hideToolbar?: boolean
 }) {
   const author = ctx.participants.find((participant) => participant.principalId === message.authorPrincipalId)
   const authorAgent = message.authorPrincipalId
@@ -519,7 +469,7 @@ export function RoomMessage({
     teaserMessage,
     teaserAuthor,
   })
-  return <RoomMessageItem {...itemProps} remoteStatus={view.streaming && view.remoteRun
+  return <RoomMessageItem {...itemProps} hideToolbar={hideToolbar} remoteStatus={view.streaming && view.remoteRun
     ? <RemoteRunLiveness key={view.remoteRun.runId} conversationId={ctx.conversationId} runId={view.remoteRun.runId}
         workspaceId={ctx.participants.find(participant => participant.principalId === ctx.currentPrincipalId)?.workspaceId} />
     : null} />
@@ -558,6 +508,9 @@ export function RoomTranscript({
   title,
   channelTopic,
   ctx,
+  footer,
+  hideScrollbar,
+  guided,
 }: {
   transcript: ReturnType<typeof useRoomTranscript>
   readMarkers: ReturnType<typeof useReadMarkers>
@@ -567,6 +520,10 @@ export function RoomTranscript({
   title: string
   channelTopic: string | undefined
   ctx: RoomMessageContext
+  footer?: ReactNode
+  hideScrollbar?: boolean
+  /** Guided onboarding: plain messages without action toolbars. */
+  guided?: boolean
 }) {
   const {
     listRef,
@@ -597,7 +554,7 @@ export function RoomTranscript({
       <div
         ref={listRef}
         onScroll={onScroll}
-        className="h-full min-h-0 w-full overflow-y-auto overflow-x-hidden overscroll-contain px-3 py-3 sm:px-4 sm:py-4"
+        className={`h-full min-h-0 w-full overflow-y-auto overflow-x-hidden overscroll-contain px-3 py-3 sm:px-4 sm:py-4 ${hideScrollbar ? '[scrollbar-width:none] [&::-webkit-scrollbar]:hidden' : ''}`}
       >
         <div className={`mx-auto flex min-h-full w-full min-w-0 max-w-4xl flex-col gap-1 sm:gap-1.5 ${!loading && mainMessages.length === 0 ? 'justify-center' : 'justify-end'}`}>
           {hasMoreMessages ? (
@@ -656,11 +613,13 @@ export function RoomTranscript({
                     message={message}
                     ctx={ctx}
                     grouped={grouped}
+                    hideToolbar={guided}
                   />
                 </div>
               )
             })
           )}
+          {footer}
         </div>
       </div>
     </div>
@@ -781,6 +740,18 @@ export function SurfaceReadOnlyComposer({ surfacePlatform }: { surfacePlatform: 
   )
 }
 
+export type GuidedRoomComposer = {
+  value: string
+  onChange(value: string): void
+  onSubmit(): void
+  placeholder: string
+  disabled: boolean
+  revision: number
+  focusRevision?: number
+  /** Shown but not typable, for steps answered with the controls above it. */
+  locked?: boolean
+}
+
 export function RoomComposer({
   composer,
   title,
@@ -793,6 +764,7 @@ export function RoomComposer({
   setMentions,
   onOpenAttachmentPreview,
   onOpenFilePreview,
+  guided,
 }: {
   composer: ReturnType<typeof useRoomComposer>
   title: string
@@ -805,16 +777,23 @@ export function RoomComposer({
   setMentions: Dispatch<SetStateAction<MentionItem[]>>
   onOpenAttachmentPreview: RoomMessageContext['onOpenAttachmentPreview']
   onOpenFilePreview: (name: string, fileIds: string[]) => void | Promise<void>
+  guided?: GuidedRoomComposer
 }) {
+  useEffect(() => {
+    if (guided?.focusRevision) composer.composerRef.current?.focus()
+  }, [guided?.focusRevision, composer.composerRef])
+  const locked = Boolean(guided?.locked)
   return (
+    <div inert={locked} aria-disabled={locked || undefined} className={locked ? 'pointer-events-none opacity-50 transition-opacity' : 'transition-opacity'}>
     <ChatComposer
       mode="chat"
       surface={{
         hideModeMenu: true,
         hideGenerationModes: true,
-        placeholder: `Message ${title}, use @ to notify someone…`,
-        mentionCategories,
-        agentCommands,
+        placeholder: guided?.placeholder ?? 'What do you want to get done?',
+        mentionCategories: guided ? [] : mentionCategories,
+        agentCommands: guided ? [] : agentCommands,
+        textOnly: Boolean(guided),
       }}
       emptyState={{ showCenteredEmptyChat: false, greetingLine: '' }}
       attachments={{
@@ -831,8 +810,8 @@ export function RoomComposer({
         onOpenFilePreview,
       }}
       runtime={{
-        composerNotice: composer.composerNotice,
-        isSendBlocked: false,
+        composerNotice: null,
+        isSendBlocked: guided?.disabled ?? false,
         isActiveLoading: false,
         isTemporaryChat: false,
         blockedComposerContent: null,
@@ -841,20 +820,20 @@ export function RoomComposer({
         replyContext: composer.replyContext,
         setReplyContext: composer.setReplyContext,
         textareaRef: composer.composerRef,
-        input: composer.input,
-        inputRevision: composer.inputRevision,
-        onInputChange: composer.onComposerInput,
+        input: guided?.value ?? composer.input,
+        inputRevision: guided?.revision ?? composer.inputRevision,
+        onInputChange: guided?.onChange ?? composer.onComposerInput,
         onMentionsChange: setMentions,
-        onPaste: composer.handlePaste,
-        hasComposerText: composer.hasComposerText,
+        onPaste: guided ? () => {} : composer.handlePaste,
+        hasComposerText: guided ? Boolean(guided.value.trim()) : composer.hasComposerText,
       }}
       toolState={{
         showAttachMenu: composer.showAttachMenu,
         setShowAttachMenu: composer.setShowAttachMenu,
         attachMenuRef: composer.attachMenuRef,
         selectedToolIds: [],
-        memoryEnabled,
-        capabilities: participantsHaveAgent
+        memoryEnabled: guided ? false : memoryEnabled,
+        capabilities: !guided && participantsHaveAgent
           ? capabilities
           : { ...capabilities, memory: false, vectorSearch: false },
         onToggleTool: () => {},
@@ -872,9 +851,10 @@ export function RoomComposer({
       }}
       actions={{
         onStop: () => {},
-        onSend: () => void composer.handleSend(),
+        onSend: guided ? () => { if (!guided.disabled) guided.onSubmit() } : () => void composer.handleSend(),
       }}
     />
+    </div>
   )
 }
 
@@ -913,6 +893,7 @@ export function RoomDialogs({
   router: ReturnType<typeof useRouter>
   onParticipantsAdded: () => void
 }) {
+  const buildWorkspaceHref = useWorkspaceHref()
   const {
     attachmentPreview,
     attachmentPreviewMode,
@@ -962,11 +943,15 @@ export function RoomDialogs({
           onOpenChange={onAddPeopleOpenChange}
           onCreated={({ id, title: createdTitle, agentId }) => {
             if (agentId) {
-              router.push(agentThreadHref('/app/agents', agentId, id))
+              router.push(agentThreadHref(buildWorkspaceHref(activeWorkspaceId ?? null, '/app/agents'), agentId, id))
               return
             }
             const view = conversationType === 'channel' ? 'channels' : 'dms'
-            router.push(`/app/chat?${new URLSearchParams({ view, id, draft: '1', title: createdTitle }).toString()}`)
+            router.push(buildWorkspaceHref(
+              activeWorkspaceId ?? null,
+              `/app/chat?${new URLSearchParams({ view, id, ...(conversationType === 'dm' ? { draft: '1' } : {}), title: createdTitle }).toString()}`,
+              'workspace',
+            ))
           }}
           onParticipantsAdded={onParticipantsAdded}
         />

@@ -1,17 +1,12 @@
 import type { UIMessage } from '@/shared/chat/ai-ui-message'
 import {
   chooseAssistantCandidate,
-  cloneOrphanModelThreadsMap,
-  cloneUiMessageThread,
   createConversationUiState,
   getMessageText,
-  latestTextExchangeIndex,
   messageHasVisibleAssistantActivity,
-  sameModelOrder,
-  sameModelSet,
-  selectedModelForExchange,
 } from '@overlay/chat-core'
-import type { ConversationRuntime } from '../chat-interface/types'
+import { normalizeChatModelSelection } from '@/shared/chat/chat-model-prefs'
+import type { ConversationRuntime, ConversationUiState } from '../chat-interface/types'
 
 /**
  * Value-equality for two assistant messages as far as the live-sync effect cares.
@@ -96,107 +91,28 @@ function findAssistantAtExchange(messages: UIMessage[] | undefined, exchangeInde
   return null
 }
 
-function messageModelId(message: UIMessage | null): string | undefined {
-  return (message as { model?: string } | null)?.model
-}
-
-export function getResponseForExchangeForModel({
-  modelId,
+export function getResponseForExchange({
   exchangeIndex,
-  slotOrder,
-  selectedModels,
   activeRuntime,
-  activeAskChats,
-  isActiveLoading,
 }: {
-  modelId: string
   exchangeIndex: number
-  /** For Act multi-compare, slot order is the exchange's model list, not the global picker. */
-  slotOrder?: string[]
-  selectedModels: string[]
   activeRuntime: ConversationRuntime
-  activeAskChats: Array<{ messages: UIMessage[] }>
-  isActiveLoading: boolean
 }): UIMessage | null {
-  const order = slotOrder && slotOrder.length > 0 ? slotOrder : selectedModels
-  const liveIdx = order.indexOf(modelId)
-  const canUseLiveSlot =
-    liveIdx >= 0 &&
-    (sameModelOrder(order, activeRuntime.ui.selectedModels) ||
-      (isActiveLoading && !!slotOrder?.length))
-  const preferredLists: UIMessage[][] = []
-  if (canUseLiveSlot) preferredLists.push(activeAskChats[liveIdx]?.messages ?? [])
-  const orphanThread = activeRuntime.ui.orphanModelThreads.get(modelId)
-  if (orphanThread?.length) preferredLists.push(orphanThread as UIMessage[])
-  preferredLists.push(activeRuntime.actChat.messages as UIMessage[])
-  for (const chat of activeAskChats) {
-    if (chat.messages?.length) preferredLists.push(chat.messages)
-  }
+  const preferredLists = [
+    activeRuntime.actChat.messages as UIMessage[],
+    activeRuntime.askChats[0]?.messages ?? [],
+  ]
 
   let fallback: UIMessage | null = null
   for (const messages of preferredLists) {
     const candidate = findAssistantAtExchange(messages, exchangeIndex)
     if (!candidate) continue
-    const candidateModel = messageModelId(candidate)
-    if (candidateModel && candidateModel !== modelId) {
-      if (!fallback && messageHasVisibleAssistantActivity(candidate)) fallback = candidate
-      continue
-    }
     if (messageHasVisibleAssistantActivity(candidate) || !fallback) {
       if (messageHasVisibleAssistantActivity(candidate)) return candidate
       fallback = candidate
     }
   }
   return fallback
-}
-
-export function prepareAskModelThreadsForTextTurn(
-  runtime: ConversationRuntime,
-  nextModelIds: string[],
-): { historyBaseModelId?: string } {
-  const ui = runtime.ui
-  const nextModels = nextModelIds.slice(0, 4)
-  if (nextModels.length === 0) return {}
-
-  const orphanThreads = cloneOrphanModelThreadsMap(ui.orphanModelThreads)
-  ui.selectedModels.slice(0, 4).forEach((modelId, slotIdx) => {
-    const slotMessages = runtime.askChats[slotIdx]?.messages
-    if (slotMessages?.length) {
-      orphanThreads.set(modelId, cloneUiMessageThread(slotMessages as UIMessage[]))
-    }
-  })
-
-  const latestTextIdx = latestTextExchangeIndex(ui)
-  const previousModels = latestTextIdx >= 0 ? (ui.exchangeModels[latestTextIdx] ?? []) : []
-  const modelSetUnchanged = previousModels.length > 0 && sameModelSet(previousModels, nextModels)
-  const selectedBaseModelId = selectedModelForExchange(ui, latestTextIdx)
-  const baseModelId = modelSetUnchanged ? undefined : selectedBaseModelId ?? previousModels[0] ?? ui.selectedModels[0]
-  const baseSlotIdx = baseModelId ? ui.selectedModels.indexOf(baseModelId) : -1
-  const activeBaseThread =
-    baseSlotIdx >= 0 ? (runtime.askChats[baseSlotIdx]?.messages as UIMessage[] | undefined) : undefined
-  const baseThread =
-    baseModelId
-      ? orphanThreads.get(baseModelId) ?? activeBaseThread
-      : undefined
-
-  nextModels.forEach((modelId, slotIdx) => {
-    const sourceThread =
-      modelSetUnchanged
-        ? orphanThreads.get(modelId) ?? []
-        : baseThread ?? orphanThreads.get(modelId) ?? []
-    runtime.askChats[slotIdx]!.messages = cloneUiMessageThread(sourceThread as UIMessage[])
-  })
-  for (let slotIdx = nextModels.length; slotIdx < runtime.askChats.length; slotIdx++) {
-    runtime.askChats[slotIdx]!.messages = []
-  }
-  runtime.ui = createConversationUiState({
-    ...ui,
-    selectedModels: nextModels,
-    selectedActModel: nextModels[0] ?? ui.selectedActModel,
-    askModelSelectionMode: nextModels.length > 1 ? 'multiple' : 'single',
-    orphanModelThreads: orphanThreads,
-  })
-  return baseModelId ? { historyBaseModelId: baseModelId } : {}
 }
 
 export function removeTurnFromConversationRuntime(
@@ -212,9 +128,7 @@ export function removeTurnFromConversationRuntime(
     .map((message) => ((message as { turnId?: string }).turnId || message.id))
   const removedExchangeIndex = previousUserTurnIds.indexOf(turnId)
 
-  runtime.askChats.forEach((chat) => {
-    chat.messages = removeTurn(chat.messages as UIMessage[]) as never
-  })
+  runtime.askChats[0].messages = removeTurn(runtime.askChats[0].messages as UIMessage[]) as never
   runtime.actChat.messages = removeTurn(runtime.actChat.messages as UIMessage[]) as never
 
   if (removedExchangeIndex >= 0) {
@@ -222,7 +136,6 @@ export function removeTurnFromConversationRuntime(
       ...runtime.ui,
       exchangeModes: runtime.ui.exchangeModes.filter((_, index) => index !== removedExchangeIndex),
       exchangeModels: runtime.ui.exchangeModels.filter((_, index) => index !== removedExchangeIndex),
-      selectedTabPerExchange: runtime.ui.selectedTabPerExchange.filter((_, index) => index !== removedExchangeIndex),
       exchangeGenTypes: runtime.ui.exchangeGenTypes.filter((_, index) => index !== removedExchangeIndex),
       generationResults: new Map(
         [...runtime.ui.generationResults.entries()]
@@ -234,4 +147,24 @@ export function removeTurnFromConversationRuntime(
   }
 
   return { removedExchangeIndex }
+}
+
+/**
+ * The picker writes the model choice to view state only, so a runtime snapshot
+ * can lag behind it. Carry the visible choice into the snapshot before applying
+ * it back to the view, or the composer reverts to the chat's earlier model.
+ */
+export function withViewModelSelection(
+  ui: ConversationUiState,
+  view: { selectedModels: string[]; selectedActModel: string },
+): ConversationUiState {
+  const normalized = normalizeChatModelSelection({
+    askModelIds: view.selectedModels,
+    actModelId: view.selectedActModel,
+  })
+  return {
+    ...ui,
+    selectedModels: [...normalized.askModelIds],
+    selectedActModel: normalized.actModelId,
+  }
 }
