@@ -908,7 +908,13 @@ export const controlRemoteAgentTurnByServer = mutation({
       .first()
     const commandId = `command_${crypto.randomUUID()}`
     const existingMessage = await ctx.db.get(run.assistantMessageId)
-    const textOffset = mode === 'start_fresh' && existingMessage ? (await hydrateRemoteMessage(ctx, existingMessage)).content.length : 0
+    const message = existingMessage ? await hydrateRemoteMessage(ctx, existingMessage) : null
+    // Before provider text arrives, the visible text is a waiting/error notice.
+    // Older counters without delta coverage cannot prove that text is disposable.
+    const noProviderText = session.eventCursor === 0 || (run.streamStats?.textDeltaChars === 0
+      && run.streamStats.textCheckpointChars === 0)
+    const content = noProviderText ? '' : message?.content ?? ''
+    const textOffset = mode === 'start_fresh' ? content.length : 0
     await ctx.db.insert('agentRunCommands', { commandId, workspaceId: args.workspaceId,
       environmentId: session.environmentId, runId: args.runId, type: mode === 'resume' ? 'reconnect' : 'start',
       sequence: (latest?.sequence ?? 0) + 1,
@@ -920,11 +926,18 @@ export const controlRemoteAgentTurnByServer = mutation({
       metrics: { ...(run.metrics ?? {}), workflowRetryCount: (run.metrics?.workflowRetryCount ?? 0) + 1 }, updatedAt: args.now })
     await ctx.db.patch(session._id, { status: 'recovering', endedAt: undefined,
       capabilitySnapshot: { ...snapshot, queueExpiresAt: args.queueExpiresAt }, updatedAt: args.now })
-    const parts = (existingMessage?.parts ?? []).filter((part) => part.type !== 'data-remote-agent-status')
-    await ctx.db.patch(run.assistantMessageId, { parts: conversationParts([...parts, {
+    const parts = (message?.parts ?? []).filter((part) => part.type !== 'data-remote-agent-status'
+      && !(noProviderText && (part.type === 'text' || part.type === 'output-text')))
+    const nextParts = conversationParts([...parts, {
       type: 'data-remote-agent-status', data: { environmentName: environment.name,
         queueExpiresAt: args.queueExpiresAt, runId: args.runId, state: 'recovering' },
-    }]), status: 'generating', updatedAt: args.now })
+    }])
+    const storedMessage = existingMessage?.remoteTextStored
+      ? await prepareRemoteMessageText(ctx, existingMessage, {content, parts: nextParts})
+      : {content, parts: nextParts, textChanged: false}
+    const {textChanged: _textChanged, ...messageFields} = storedMessage
+    void _textChanged
+    await ctx.db.patch(run.assistantMessageId, { ...messageFields, status: 'generating', updatedAt: args.now })
     await ctx.db.insert('conversationEvents', { conversationId: run.conversationId, workspaceId: args.workspaceId,
       messageId: run.assistantMessageId, type: 'message.delta', userId: run.userId, createdAt: args.now })
     return { applied: true, commandId, messageId: run.assistantMessageId }

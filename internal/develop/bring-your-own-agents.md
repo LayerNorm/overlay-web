@@ -1043,6 +1043,8 @@ drive/device credentials and refuse redirects. Ambiguous writes require a journa
 Persistent journals, hydration and runtime synchronization are implemented; their ownership
 and shutdown rules are described below. Package/image activation remains gated on acceptance.
 
+Retry preserves the original run configuration and committed provider output. When the run has accepted no text, remove its generated connection notice before restarting at offset zero. Use accepted stream counters to distinguish notices from genuine text; older counters without delta coverage do not justify discarding saved output.
+
 A successful options discovery with no model catalog offers only the runtime default and the
 saved choice marked unreported; it never substitutes the legacy hard-coded list. The model
 control stays disabled while its bound environment is still loading. Older undiscovered hosts

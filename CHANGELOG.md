@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Clear connection-error notices when retrying a remote agent that produced no text; preserve genuine partial replies and their recovery offsets.
+
 - Reuse explicit Preview-only, non-refilling machine QA funding while keeping ordinary Personal previews free.
 
 - Limit selectable BYO providers to Claude Code and Codex while preserving retired account and
