@@ -31,7 +31,7 @@ function DetailsDisclosure({ label, summary, children }: {
         >
           <span className="shrink-0">{label}</span>
           {summary ? (
-            <span className="ml-auto min-w-0 flex-1 truncate pl-3 font-normal text-(--muted-light) group-data-[state=open]/details-disclosure:hidden">
+            <span className="ml-auto min-w-0 flex-1 truncate pl-3 text-right font-normal text-(--muted-light) group-data-[state=open]/details-disclosure:hidden">
               {summary}
             </span>
           ) : null}
