@@ -8,7 +8,7 @@ Node.js 24 or newer is required. Overlay's one-copy command supplies a pinned No
 when the machine's default `node` is older:
 
 ```sh
-npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.3.6 \
+npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.4.3 \
   overlay-agent-host connect <enrollment-code> \
   --server https://getoverlay.io \
   --kind vps \
@@ -34,20 +34,16 @@ credential remains in the mode-0600 connection store rather than the JSON file:
   },
   "adapters": [
     { "manifest": "codex" },
-    { "manifest": "claude-code" },
-    { "manifest": "hermes" }
+    { "manifest": "claude-code" }
   ]
 }
 ```
 
 The built-in manifests resolve to the exact, release-tested
-`@agentclientprotocol/codex-acp@1.7.0` and
-`@agentclientprotocol/claude-agent-acp@0.70.0` packages. Hermes uses its official
-`hermes acp` stdio server and requires Hermes Agent 0.20.6 or newer. Install Hermes from the
-official Nous Research distribution, then verify it before enrollment with
-`hermes acp --check`. A custom
-ACP process can still use the explicit `id`, `displayName`, `protocol`, `command`, and `args`
-shape.
+`@agentclientprotocol/codex-acp@2.2.2` and
+`@agentclientprotocol/claude-agent-acp@0.93.0` packages.
+A custom ACP process can still use the explicit `id`, `displayName`, `protocol`, `command`, and
+`args` shape.
 
 ## acpx engine and Overlay Cloud images
 
@@ -76,7 +72,7 @@ network URL:
 The equivalent enrollment form is:
 
 ```sh
-npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.3.6 \
+npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.4.3 \
   overlay-agent-host connect <enrollment-code> \
   --server https://getoverlay.io \
   --kind vps \
@@ -100,9 +96,9 @@ Terminal closes and returns after login or process failure. Use the exact config
 `connect`:
 
 ```sh
-npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.3.6 \
+npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.4.3 \
   overlay-agent-host service install --config "$HOME/.overlay/agent-host/config.json"
-npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.3.6 \
+npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.4.3 \
   overlay-agent-host service status --config "$HOME/.overlay/agent-host/config.json"
 ```
 
@@ -142,12 +138,12 @@ isolation, run the host and harness under a restricted OS account, container, VM
 sandbox.
 
 Native adapters such as OpenClaw are added only when the harness cannot expose ACP and only after
-the unchanged Agent Host conformance suite passes. Hermes uses its official ACP server. MCP remains
+the unchanged Agent Host conformance suite passes. MCP remains
 a tool/resource protocol; it is not used as the execution lifecycle transport.
 
 ### Durable lifecycle extension
 
-Candidate 0.4.2 can opt in with `OVERLAY_REMOTE_RUN_LIFECYCLE_VERSION=2`
+Release 0.4.3 can opt in with `OVERLAY_REMOTE_RUN_LIFECYCLE_VERSION=2`
 against a server that supports the same negotiated extension. Keep this unset
 against older servers. Live reattachment, session loading, interrupted-turn
 continuation, approval restoration and provider checkpoints are separate

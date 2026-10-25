@@ -35,7 +35,7 @@ export type AgentProtocolAdapter = (typeof AGENT_PROTOCOL_ADAPTERS)[number]
  * Keep this separate from the managed-sandbox allowlist: being built in must never imply
  * that Overlay Cloud is released for the same harness.
  */
-export const BUILT_IN_USER_OWNED_ACP_ADAPTER_IDS = ['codex', 'claude-code', 'hermes'] as const
+export const BUILT_IN_USER_OWNED_ACP_ADAPTER_IDS = ['codex', 'claude-code'] as const
 export type BuiltInUserOwnedAcpAdapterId = (typeof BUILT_IN_USER_OWNED_ACP_ADAPTER_IDS)[number]
 
 export function isBuiltInUserOwnedAcpAdapterId(value: unknown): value is BuiltInUserOwnedAcpAdapterId {
@@ -56,9 +56,17 @@ export const MANAGED_HARNESS_IDS = [
 ] as const
 export type ManagedHarnessId = (typeof MANAGED_HARNESS_IDS)[number]
 
+export const SUPPORTED_MANAGED_HARNESS_IDS = ['claude-code', 'codex'] as const
+export type SupportedManagedHarnessId = (typeof SUPPORTED_MANAGED_HARNESS_IDS)[number]
+
 export function isManagedHarnessId(value: unknown): value is ManagedHarnessId {
   return typeof value === 'string'
     && (MANAGED_HARNESS_IDS as readonly string[]).includes(value)
+}
+
+export function isSupportedManagedHarnessId(value: unknown): value is SupportedManagedHarnessId {
+  return typeof value === 'string'
+    && (SUPPORTED_MANAGED_HARNESS_IDS as readonly string[]).includes(value)
 }
 
 export type AgentBinding = {

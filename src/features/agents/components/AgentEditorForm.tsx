@@ -128,7 +128,7 @@ export function AgentTypeSelector({ value, onChange, hidden }: {
           onSelect={() => onChange('byo')}
           icon={<Server size={15} />}
           label="Bring your own agent"
-          description="Run Codex, Claude Code, or Hermes on your own machines and VPSs."
+          description="Run Codex or Claude Code on your own machines and VPSs."
         />
       </div>
     </div>

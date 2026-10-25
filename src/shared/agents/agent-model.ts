@@ -29,10 +29,9 @@ export type AgentModelChoice = { value: string; label: string; hint?: string }
 export const AGENT_MODEL_CHOICES: Partial<Record<AgentProviderId, readonly AgentModelChoice[]>> = {
   'claude-code': [
     { value: 'default', label: 'Default', hint: 'Claude Code picks (recommended)' },
-    { value: 'opus[1m]', label: 'Opus 5.5', hint: 'Everyday, complex tasks' },
-    { value: 'claude-fable-5-1', label: 'Fable 5.1', hint: 'Hardest, longest-running tasks' },
-    { value: 'sonnet', label: 'Sonnet 5', hint: 'Efficient for routine tasks' },
-    { value: 'haiku', label: 'Haiku 4.5', hint: 'Fastest for quick answers' },
+    { value: 'opus', label: 'Opus', hint: 'Version chosen by your runtime' },
+    { value: 'sonnet', label: 'Sonnet', hint: 'Version chosen by your runtime' },
+    { value: 'haiku', label: 'Haiku', hint: 'Version chosen by your runtime' },
   ],
 }
 

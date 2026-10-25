@@ -182,7 +182,11 @@ export function planAssistantWorkCollapse(
       const onlyTools = seg.items.every((item) => item.kind === 'tool')
       if (onlyTools && seg.items.length === 1) {
         const tool = seg.items[0] as ToolVisualBlock
-        if (getDraftFromToolBlock(tool) || isOverlayGatedToolOutput(tool.toolOutput)) {
+        if (
+          tool.name === 'connect_computer' ||
+          getDraftFromToolBlock(tool) ||
+          isOverlayGatedToolOutput(tool.toolOutput)
+        ) {
           continue
         }
       }

@@ -175,6 +175,7 @@ export function getDescriptiveToolLabel(
 
   // Not a real tool: the row shown while a connected agent's computer is woken up or reconnecting.
   if (toolName === 'connect_computer') {
+    if (phase === 'error') return 'Computer connection failed'
     return phase === 'running' ? 'Connecting to computer' : 'Connected to computer'
   }
 

@@ -341,6 +341,36 @@ test('Overlay permission mode accepts Ask and Auto and rejects connected-harness
   assert.equal(updated.permissionMode, 'auto')
 })
 
+test('new agent assignments reject retired providers while historical agents remain editable', async () => {
+  const fixture = serviceFor(CREATOR_PRINCIPAL_ID, 'member', [
+    defaultAgentFixture(),
+    agentFixture({ id: 'legacy', harness: 'hermes', modelId: 'byo/hermes' }),
+    agentFixture({ id: 'legacy-provider', harness: 'codex', modelId: 'byo/codex' }),
+  ], {}, { externalAgentPolicy: async () => ({ external: true, allowed: true }) })
+  await assert.rejects(fixture.service.create({
+    actorUserId: 'user-1', workspaceId: WORKSPACE_ID,
+    input: { name: 'Retired', instructions: 'No longer supported', modelId: 'byo/hermes' },
+  }), /Unsupported connected agent adapter/)
+  await assert.rejects(fixture.service.create({
+    actorUserId: 'user-1', workspaceId: WORKSPACE_ID,
+    input: { name: 'Retired', instructions: 'No longer supported', modelId: 'test-model', harness: 'pi' },
+  }), /Unsupported agent harness/)
+  await assert.rejects(fixture.service.update({
+    actorUserId: 'user-1', workspaceId: WORKSPACE_ID, agentId: 'legacy-provider',
+    input: { modelId: 'byo/opencode' },
+  }), /Unsupported connected agent adapter/)
+  await assert.rejects(fixture.service.update({
+    actorUserId: 'user-1', workspaceId: WORKSPACE_ID, agentId: 'legacy',
+    input: { harness: 'hermes' },
+  }), /Unsupported agent harness/)
+  const renamed = await fixture.service.update({
+    actorUserId: 'user-1', workspaceId: WORKSPACE_ID, agentId: 'legacy',
+    input: { name: 'Historical agent' },
+  })
+  assert.equal(renamed.harness, 'hermes')
+  assert.equal(renamed.modelId, 'byo/hermes')
+})
+
 test('native create and update remain available while external runtimes are disabled', async () => {
   const seed = [defaultAgentFixture(), agentFixture({ id: 'agent-native' })]
   const { service } = serviceFor(CREATOR_PRINCIPAL_ID, 'member', seed)

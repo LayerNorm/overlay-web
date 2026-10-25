@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { getOverlayServerContext } from '@/server/bootstrap'
-import { isAgentProviderId } from '@/shared/agents/provider-accounts'
+import { isSupportedAgentProviderId } from '@/shared/agents/provider-accounts'
 import type { Entitlements } from '@/shared/app/app-contracts'
 import { ComputerAdmission } from '@/server/computers/ComputerAdmission'
 import { ComputerServiceError } from '@/server/computers/ComputerService'
@@ -31,7 +31,7 @@ export function createCloudAgentMachineService() {
     },
     accountSummary: async (userId, accountId) => {
       const account = (await server.agentProviderAccounts.list(userId)).find((candidate) => candidate.id === accountId)
-      if (!account || !isAgentProviderId(account.provider)) return null
+      if (!account || !isSupportedAgentProviderId(account.provider)) return null
       return { id: account.id, label: account.label, provider: account.provider, method: account.method, status: account.status }
     },
   })

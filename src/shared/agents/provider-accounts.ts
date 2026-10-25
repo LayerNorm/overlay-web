@@ -1,16 +1,14 @@
 /**
- * Accounts an agent runs on: the person's own Claude or OpenAI credentials,
- * delivered to an Overlay Cloud machine for one run at a time. Nothing here is
- * secret; values live in the credential vault.
+ * Provider identifiers include historical account records. Only supported
+ * providers may be configured or receive credentials for a run.
  */
 
 export const AGENT_PROVIDER_IDS = ['claude-code', 'codex', 'opencode', 'hermes', 'cursor'] as const
-/**
- * Offered in pickers. Hermes is held back: its installer fails on the Boat base layer (it downloads Python 3.14 and
- * cannot unpack it), so a Hermes machine never enrolls. Backend support stays so it can be switched back on.
- */
-export const SELECTABLE_AGENT_PROVIDER_IDS = AGENT_PROVIDER_IDS.filter((id) => id !== 'hermes')
 export type AgentProviderId = (typeof AGENT_PROVIDER_IDS)[number]
+
+export const SUPPORTED_AGENT_PROVIDER_IDS = ['claude-code', 'codex'] as const
+export type SupportedAgentProviderId = (typeof SUPPORTED_AGENT_PROVIDER_IDS)[number]
+export const SELECTABLE_AGENT_PROVIDER_IDS = SUPPORTED_AGENT_PROVIDER_IDS
 
 export const AGENT_PROVIDER_AUTH_METHODS = ['subscription', 'api_key'] as const
 export type AgentProviderAuthMethod = (typeof AGENT_PROVIDER_AUTH_METHODS)[number]
@@ -20,8 +18,6 @@ export type AgentProviderAccountStatus = 'active' | 'needs_reauth'
 export type AgentProviderDefinition = {
   id: AgentProviderId
   label: string
-  /** Not yet proven with real accounts: offered as bring-your-own-key and labelled as such. */
-  experimental?: boolean
   /** Methods offered. Codex subscriptions are signed in with ChatGPT and kept alive by a credential broker. */
   methods: readonly AgentProviderAuthMethod[]
   /** Environment variable the agent process reads, per method. */
@@ -52,30 +48,26 @@ export const AGENT_PROVIDERS: Record<AgentProviderId, AgentProviderDefinition> =
       api_key: 'An OpenAI API key. Usage is billed to your OpenAI account.',
     },
   },
-  // Experimental agents: their own CLIs are on the machine, each brings its own key (an environment variable).
   opencode: {
     id: 'opencode',
     label: 'OpenCode',
-    experimental: true,
-    methods: ['api_key'],
-    env: { api_key: 'OPENROUTER_API_KEY' },
-    help: { subscription: null, api_key: 'An OpenRouter API key, which gives OpenCode access to most models. Usage is billed to your OpenRouter account.' },
+    methods: [],
+    env: {},
+    help: { subscription: null, api_key: null },
   },
   hermes: {
     id: 'hermes',
     label: 'Hermes',
-    experimental: true,
-    methods: ['api_key'],
-    env: { api_key: 'OPENROUTER_API_KEY' },
-    help: { subscription: null, api_key: 'An OpenRouter API key. Usage is billed to your OpenRouter account.' },
+    methods: [],
+    env: {},
+    help: { subscription: null, api_key: null },
   },
   cursor: {
     id: 'cursor',
     label: 'Cursor',
-    experimental: true,
-    methods: ['api_key'],
-    env: { api_key: 'CURSOR_API_KEY' },
-    help: { subscription: null, api_key: 'A Cursor API key from your Cursor account settings. Usage is billed to your Cursor plan.' },
+    methods: [],
+    env: {},
+    help: { subscription: null, api_key: null },
   },
 }
 
@@ -84,6 +76,10 @@ export const MAX_AGENT_PROVIDER_LABEL_LENGTH = 80
 
 export function isAgentProviderId(value: unknown): value is AgentProviderId {
   return typeof value === 'string' && (AGENT_PROVIDER_IDS as readonly string[]).includes(value)
+}
+
+export function isSupportedAgentProviderId(value: unknown): value is SupportedAgentProviderId {
+  return typeof value === 'string' && (SUPPORTED_AGENT_PROVIDER_IDS as readonly string[]).includes(value)
 }
 
 export function isAgentProviderAuthMethod(value: unknown): value is AgentProviderAuthMethod {
@@ -96,19 +92,10 @@ export function agentProviderEnv(
   method: AgentProviderAuthMethod,
   secret: string,
 ): Record<string, string> | null {
+  if (!isSupportedAgentProviderId(provider)) return null
   const name = AGENT_PROVIDERS[provider].env[method]
   if (!name) return null
-  return { [name]: secret, ...EXPERIMENTAL_AGENT_DEFAULT_ENV[provider] }
-}
-
-/**
- * Experimental agents run on OpenRouter, so they get a cheap default model instead of whatever the tool would pick.
- * The agent's own config (imported or edited on the machine) can still override it.
- */
-const CHEAP_OPENROUTER_MODEL = 'deepseek/deepseek-v4-flash'
-const EXPERIMENTAL_AGENT_DEFAULT_ENV: Partial<Record<AgentProviderId, Record<string, string>>> = {
-  opencode: { OPENCODE_CONFIG_CONTENT: JSON.stringify({ model: `openrouter/${CHEAP_OPENROUTER_MODEL}` }) },
-  hermes: { HERMES_INFERENCE_PROVIDER: 'openrouter', LLM_MODEL: CHEAP_OPENROUTER_MODEL },
+  return { [name]: secret }
 }
 
 export type AgentProviderSecretCheck = { ok: true; secret: string } | { ok: false; reason: string }
@@ -123,6 +110,9 @@ export function checkAgentProviderSecret(
   method: AgentProviderAuthMethod,
   raw: unknown,
 ): AgentProviderSecretCheck {
+  if (!isSupportedAgentProviderId(provider)) {
+    return { ok: false, reason: 'This agent is no longer supported. Remove its account in Settings → Agent accounts.' }
+  }
   if (typeof raw !== 'string') return { ok: false, reason: 'Enter the credential.' }
   const secret = raw.trim()
   if (!secret) return { ok: false, reason: 'Enter the credential.' }
@@ -162,9 +152,9 @@ export type AgentProviderAccount = {
 export const AGENT_PROVIDER_REAUTH_MESSAGE: Record<AgentProviderId, string> = {
   'claude-code': 'Claude Code could not sign in. Reconnect your Claude account in Settings → Agent accounts.',
   codex: 'Codex could not sign in. Reconnect your OpenAI account in Settings → Agent accounts.',
-  opencode: 'OpenCode could not sign in. Reconnect your OpenRouter key in Settings → Agent accounts.',
-  hermes: 'Hermes could not sign in. Reconnect your OpenRouter key in Settings → Agent accounts.',
-  cursor: 'Cursor could not sign in. Reconnect your Cursor key in Settings → Agent accounts.',
+  opencode: 'OpenCode is no longer supported. Remove its account in Settings → Agent accounts.',
+  hermes: 'Hermes is no longer supported. Remove its account in Settings → Agent accounts.',
+  cursor: 'Cursor is no longer supported. Remove its account in Settings → Agent accounts.',
 }
 
 /** Failure code a host reports when the agent rejected its credentials. */
