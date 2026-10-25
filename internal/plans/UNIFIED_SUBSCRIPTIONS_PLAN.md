@@ -200,4 +200,6 @@ Existing files to evolve, not a prescription to replace them wholesale:
 
 ## Implementation status
 
-Architecture and end-to-end implementation are approved, with Anthropic and Antigravity excluded. Begin with a Codex-first integration gate, then complete the allowed-provider foundation, model-picker integration, compatible consumers, and safe migration. UI mockup approval is pending. No application implementation, PR, hosted broker, or preview test has yet been completed. Completion requires reporting the actual provider/runtime coverage and any live-test gaps, not treating API mocks as a successful end-to-end rollout.
+The approved subscription-connection implementation is present on the feature branch, with Anthropic/Claude, Antigravity, and Gemini subscriptions excluded. App and broker provider allowlists are independent and default empty. No live provider account, authorization, inference, hosted-broker deployment, or preview has been verified; allowlist configuration is eligibility, not compatibility evidence.
+
+Current gaps remain explicit: external cloud and native-only legacy runtimes do not receive subscription credentials, and the fixed system-owned `TAB_GROUP_MODEL` and `MEDIA_INTENT_MODEL` background tasks do not route through the selected subscription connection. Preserve these system paths rather than implying general subscription coverage. Completion still requires provider-specific real acceptance evidence and reporting actual runtime coverage.

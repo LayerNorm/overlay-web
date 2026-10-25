@@ -109,16 +109,48 @@ export function assertSupportedSubscriptionRequest(body) {
   inspect(body)
 }
 
-function assertOverlayTools(body) {
+function toolName(value) {
+  return typeof value === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(value)
+}
+
+function jsonSchema(value) {
+  return value && typeof value === 'object' && !Array.isArray(value)
+}
+
+function assertOverlayTools(body, pathname) {
   if (!Array.isArray(body.tools)) return
   for (const tool of body.tools) {
-    if (!tool || typeof tool !== 'object' || !['function', 'custom'].includes(tool.type)) {
+    if (!tool || typeof tool !== 'object' || Array.isArray(tool)) {
       throw subscriptionError(400, 'This subscription service does not support hosted provider tools')
     }
-    if (tool.type === 'function' && (!tool.function || typeof tool.function !== 'object')) {
-      throw subscriptionError(400, 'Invalid function tool')
+    if (tool.type === 'function') {
+      const responses = pathname === '/v1/responses'
+      const definition = responses ? tool : tool.function
+      if (!definition || typeof definition !== 'object' || Array.isArray(definition) ||
+          (responses ? 'function' in tool : 'name' in tool) ||
+          !toolName(definition.name) || !jsonSchema(definition.parameters) ||
+          (definition.description !== undefined &&
+            (typeof definition.description !== 'string' || definition.description.length > 1024)) ||
+          (definition.strict !== undefined && typeof definition.strict !== 'boolean')) {
+        throw subscriptionError(400, 'Invalid function tool')
+      }
+      if (!responses && (Object.keys(tool).some((key) => !['type', 'function'].includes(key)) ||
+          Object.keys(definition).some((key) =>
+            !['name', 'description', 'parameters', 'strict'].includes(key)))) {
+        throw subscriptionError(400, 'Invalid function tool')
+      }
+      if (responses && Object.keys(tool).some((key) =>
+        !['type', 'name', 'description', 'parameters', 'strict'].includes(key))) {
+        throw subscriptionError(400, 'Invalid function tool')
+      }
+      continue
     }
-    if (tool.type === 'custom' && (typeof tool.name !== 'string' || tool.name.length > 128)) {
+    if (pathname !== '/v1/responses' || tool.type !== 'custom' ||
+        !toolName(tool.name) ||
+        (tool.description !== undefined &&
+          (typeof tool.description !== 'string' || tool.description.length > 1024)) ||
+        (tool.format !== undefined && !jsonSchema(tool.format)) ||
+        Object.keys(tool).some((key) => !['type', 'name', 'description', 'format'].includes(key))) {
       throw subscriptionError(400, 'Invalid custom text tool')
     }
   }
@@ -127,12 +159,21 @@ function assertOverlayTools(body) {
     throw subscriptionError(400, 'This subscription service does not support hosted provider tools')
   }
   const choice = body.tool_choice
-  if (choice && typeof choice === 'object' &&
-      (!['function', 'custom'].includes(choice.type) ||
-       (choice.type === 'function' &&
-        typeof choice.name !== 'string' && typeof choice.function?.name !== 'string') ||
-       (choice.type === 'custom' && typeof choice.name !== 'string'))) {
-    throw subscriptionError(400, 'This subscription service does not support hosted provider tools')
+  if (choice && typeof choice === 'object') {
+    const responses = pathname === '/v1/responses'
+    const functionChoice = choice.type === 'function' &&
+      (responses
+        ? toolName(choice.name) && !('function' in choice)
+        : choice.function && typeof choice.function === 'object' &&
+          !Array.isArray(choice.function) && toolName(choice.function.name) && !('name' in choice))
+    const customChoice = responses && choice.type === 'custom' && toolName(choice.name)
+    if ((!functionChoice && !customChoice) ||
+        Object.keys(choice).some((key) =>
+          responses
+            ? !['type', 'name'].includes(key) && !(choice.type === 'function' && key === 'function')
+            : !['type', 'function'].includes(key))) {
+      throw subscriptionError(400, 'This subscription service does not support hosted provider tools')
+    }
   }
 }
 
@@ -271,14 +312,17 @@ function providerTypes(providerId) {
   return new Set(providerId === 'kimi-ai' ? ['kimi', 'kimi-ai'] : [providerId])
 }
 
-function hasCredentialValue(value) {
-  if (!value || typeof value !== 'object') return false
-  for (const key of ['access_token', 'refresh_token', 'id_token', 'api_key', 'token']) {
-    const candidate = value[key]
-    if (typeof candidate === 'string' && candidate.trim()) return true
-    if (candidate && typeof candidate === 'object' && hasCredentialValue(candidate)) return true
-  }
-  return false
+function hasCredentialValue(providerId, value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const fields = {
+    codex: ['access_token', 'refresh_token', 'id_token'],
+    xai: ['access_token', 'refresh_token', 'id_token'],
+    meta: ['access_token', 'dca_token', 'api_key'],
+    kimi: ['access_token', 'refresh_token'],
+    'kimi-ai': ['access_token', 'refresh_token'],
+    devin: ['session_token', 'raw_token'],
+  }[providerId] ?? []
+  return fields.some((key) => typeof value[key] === 'string' && value[key].trim().length > 0)
 }
 
 function validateAuthFiles(providerId, authFiles, status) {
@@ -296,14 +340,15 @@ function validateAuthFiles(providerId, authFiles, status) {
     throw new Error('Subscription state contains multiple accounts')
   }
   for (const [name, contents] of entries) {
-    if (!/^[A-Za-z0-9._-]{1,120}\.json$/.test(name) ||
+    if (Buffer.byteLength(name) > 255 || !/^[A-Za-z0-9@._+-]{1,251}\.json$/.test(name) ||
+        name === '.json' || name !== path.basename(name) ||
         typeof contents !== 'string' || contents.length === 0 || contents.length > 2_000_000) {
       throw new Error('Invalid encrypted subscription credentials')
     }
     let parsed
     try { parsed = JSON.parse(contents) } catch { throw new Error('Invalid encrypted subscription credentials') }
     if (!parsed || typeof parsed !== 'object' || !providerTypes(providerId).has(parsed.type) ||
-        !hasCredentialValue(parsed)) {
+        !hasCredentialValue(providerId, parsed)) {
       throw new Error('Encrypted subscription credentials belong to another provider')
     }
     if (providerId === 'codex' &&
@@ -562,11 +607,12 @@ async function startWorker(record) {
   try {
     await waitForWorker(worker)
     worker.watcher = watch(authDir, { persistent: false }, () => {
+      if (worker.status !== 'connected') return
       void withLock(identity, () => snapshotWorker(worker)).catch(() => {
-        void markWorkerUnusable(worker)
+        void markWorkerUnusable(worker).catch(() => {})
       })
     })
-    worker.watcher.on('error', () => { void markWorkerUnusable(worker) })
+    worker.watcher.on('error', () => { void markWorkerUnusable(worker).catch(() => {}) })
     return worker
   } catch (error) {
     if (child.exitCode === null) child.kill('SIGKILL')
@@ -582,6 +628,7 @@ async function markWorkerUnusable(worker) {
   worker.watcher?.close()
   if (worker.child.exitCode === null) worker.child.kill('SIGTERM')
   workers.delete(worker.identity)
+  await rm(snapshotPath(worker.identity), { force: true })
   await rm(worker.root, { recursive: true, force: true }).catch(() => {})
 }
 
@@ -601,18 +648,18 @@ async function waitForWorker(worker) {
 async function snapshotWorker(worker) {
   if (worker.closed) return
   try {
-    const names = await readdir(worker.authDir)
     const authFiles = {}
-    for (const name of names) {
-      if (!/^[A-Za-z0-9._-]{1,120}\.json$/.test(name)) {
-        throw new Error('Unexpected subscription auth file')
+    if (worker.status !== 'pending') {
+      const names = await readdir(worker.authDir)
+      for (const name of names) {
+        if ((name.startsWith('.oauth-') && name.endsWith('.oauth')) ||
+            name.startsWith('.oauth-callback-')) continue
+        if (Buffer.byteLength(name) > 255 || !/^[A-Za-z0-9@._+-]{1,251}\.json$/.test(name) ||
+            name === '.json' || name !== path.basename(name)) {
+          throw new Error('Unexpected subscription auth file')
+        }
+        authFiles[name] = await readStableAuthFile(path.join(worker.authDir, name), worker.providerId)
       }
-      const filePath = path.join(worker.authDir, name)
-      const info = await lstat(filePath)
-      if (!info.isFile() || info.isSymbolicLink() || info.size <= 0 || info.size > 2_000_000) {
-        throw new Error('Unreadable subscription auth file')
-      }
-      authFiles[name] = await readFile(filePath, 'utf8')
     }
     validateAuthFiles(worker.providerId, authFiles, worker.status)
     const record = {
@@ -638,6 +685,39 @@ async function snapshotWorker(worker) {
     await markWorkerUnusable(worker)
     throw error
   }
+}
+
+async function readStableAuthFile(filePath, providerId) {
+  let previousContents
+  let previousStat
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    try {
+      const before = await lstat(filePath)
+      if (!before.isFile() || before.isSymbolicLink() || before.size <= 0 || before.size > 2_000_000) {
+        throw new Error('Unreadable subscription auth file')
+      }
+      const contents = await readFile(filePath, 'utf8')
+      const after = await lstat(filePath)
+      const parsed = JSON.parse(contents)
+      if (!after.isFile() || after.isSymbolicLink() || after.size !== before.size ||
+          after.mtimeMs !== before.mtimeMs || Buffer.byteLength(contents) !== after.size ||
+          !parsed || typeof parsed !== 'object' || Array.isArray(parsed) ||
+          !providerTypes(providerId).has(parsed.type) || !hasCredentialValue(providerId, parsed)) {
+        throw new Error('Subscription auth file is not stable')
+      }
+      if (contents === previousContents && after.size === previousStat?.size &&
+          after.mtimeMs === previousStat?.mtimeMs && after.ino === previousStat?.ino) {
+        return contents
+      }
+      previousContents = contents
+      previousStat = after
+    } catch {
+      previousContents = undefined
+      previousStat = undefined
+    }
+    if (attempt < 7) await new Promise((resolve) => setTimeout(resolve, 25))
+  }
+  throw new Error('Subscription auth file did not stabilize')
 }
 
 async function management(worker, pathname, options = {}) {
@@ -942,19 +1022,6 @@ async function callbackAuthorization(body) {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ provider: 'devin', redirect_url: callback.toString() }),
     })
-    if ((await readdir(worker.authDir)).length > 0) {
-      worker.status = 'connected'
-      try {
-        worker.discoveredModels = await discoverModels(worker)
-      } catch {
-        worker.status = 'error'
-        await snapshotWorker(worker)
-        throw subscriptionError(502, 'The provider model catalog could not be discovered')
-      }
-      worker.enabledModelIds = worker.discoveredModels.map((model) => model.id)
-      await snapshotWorker(worker)
-      return { status: 'connected', models: worker.discoveredModels }
-    }
     await snapshotWorker(worker)
     return { status: 'pending' }
   })
@@ -1181,7 +1248,7 @@ async function inference(request, response, pathname) {
   try {
     const body = await readJson(request)
     assertSupportedSubscriptionRequest(body)
-    assertOverlayTools(body)
+    assertOverlayTools(body, pathname)
     if (controller.signal.aborted) {
       response.destroy()
       return

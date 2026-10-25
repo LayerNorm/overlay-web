@@ -14,6 +14,15 @@ The web application calls a separate Node broker through the server-only
 settings. The URL must be HTTPS outside local development. Do not put either
 setting in `NEXT_PUBLIC_*` or accept a broker URL from a client.
 
+Provider rollout is independently allowlisted in the application with
+`OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS` and in the broker with
+`OVERLAY_SUBSCRIPTION_BROKER_ENABLED_PROVIDERS`. Both are comma-separated
+provider IDs and default to empty. Enable only adapters verified for the
+specific deployment, in both settings. The supported labels are ChatGPT/Codex,
+Grok Build, Meta Muse, Kimi, Kimi AI and Devin. Anthropic/Claude,
+Antigravity and Gemini subscriptions are excluded. These allowlists control
+eligibility; they do not establish live provider compatibility.
+
 The broker needs `OVERLAY_SUBSCRIPTION_BROKER_KEY` (shared with the backend)
 and `OVERLAY_SUBSCRIPTION_MASTER_KEY` (a private 32-byte key used to encrypt
 durable AES-GCM snapshots). Build
@@ -41,11 +50,15 @@ loopback callback and matching state without fetching a user-supplied URL.
 Provider adapters and OAuth host allowlists are defined in the broker source,
 but no live subscription account or hosted broker has been tested. Do not
 interpret this source-level integration as a live compatibility guarantee.
+Anthropic/Claude, Antigravity and Gemini subscriptions are excluded.
 Only discovered models are shown, and model selection cannot be forged through
 the generic connection update route. Inference currently supports text
 requests; image, audio, video and ZDR guarantees are not supported. This broker
 does not supply credentials to external cloud agents or native-only legacy
-agent paths.
+agent paths. Fixed system-owned `TAB_GROUP_MODEL` and `MEDIA_INTENT_MODEL`
+background tasks do not use a selected subscription connection; they remain
+on their configured system model path. These contexts are not covered by
+first-party subscription model selection.
 
 The frontend and the API expose authorization status without returning device
 secrets or callback state. Polling is serialized per connection, and an

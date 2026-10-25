@@ -3,6 +3,7 @@ import 'server-only'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import type { UIMessage } from 'ai'
+import { FREE_TIER_DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import { compactMessagesForContext } from './context-compaction'
 
 function textMessage(id: string, role: 'user' | 'assistant', text: string): UIMessage {
@@ -64,6 +65,37 @@ test('context compaction summarizes old messages and preserves the newest two ex
   assert.equal(result.messages[1]?.id, 'm9')
   assert.equal(result.messages[2]?.id, 'm10')
   assert.equal(result.summaryToPersist?.summarizedThroughMessageId, 'm8')
+})
+
+test('context compaction uses the free summarizer for hosted target models', async () => {
+  const result = await compactMessagesForContext({
+    messages: longMessages(10),
+    targetModelId: 'claude-sonnet-4-6',
+    contextWindowOverride: 4_000,
+    generateSummaryText: async () => 'Hosted model summary.',
+  })
+
+  assert.equal(result.summaryToPersist?.summarizerModelId, FREE_TIER_DEFAULT_MODEL_ID)
+})
+
+test('context compaction uses the selected BYOK model unless a summarizer is explicit', async () => {
+  const targetModelId = 'byok/connection-1/model-a'
+  const selected = await compactMessagesForContext({
+    messages: longMessages(10),
+    targetModelId,
+    contextWindowOverride: 4_000,
+    generateSummaryText: async () => 'BYOK model summary.',
+  })
+  const explicit = await compactMessagesForContext({
+    messages: longMessages(10),
+    targetModelId,
+    summarizerModelId: 'openrouter/free',
+    contextWindowOverride: 4_000,
+    generateSummaryText: async () => 'Explicit summary.',
+  })
+
+  assert.equal(selected.summaryToPersist?.summarizerModelId, targetModelId)
+  assert.equal(explicit.summaryToPersist?.summarizerModelId, 'openrouter/free')
 })
 
 test('context compaction rolls previous summary forward with only newly old messages', async () => {

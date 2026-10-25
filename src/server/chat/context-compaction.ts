@@ -7,6 +7,7 @@ import {
   FREE_TIER_DEFAULT_MODEL_ID,
   isFreeTierChatModelId,
 } from '@/shared/ai/gateway/model-types'
+import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
 import { summarizeErrorForLog } from '@/shared/security/safe-log'
 
 const CONTEXT_TRIGGER_RATIO = 0.8
@@ -223,6 +224,8 @@ export async function compactMessagesForContext(params: {
     MIN_SUMMARY_OUTPUT_TOKENS,
     Math.min(MAX_SUMMARY_OUTPUT_TOKENS, targetTokens - preservedTokens - 256),
   )
+  const summarizerModelId = params.summarizerModelId ??
+    (isByokModelId(params.targetModelId) ? params.targetModelId : FREE_TIER_DEFAULT_MODEL_ID)
 
   try {
     const prompt = buildSummaryPrompt({
@@ -237,7 +240,7 @@ export async function compactMessagesForContext(params: {
             import('@/server/ai/model-runtime'),
             import('@/server/ai/sdk'),
           ])
-          const model = await getLanguageModel(params.targetModelId, params.accessToken, params.userId)
+          const model = await getLanguageModel(summarizerModelId, params.accessToken, params.userId)
           const result = await generateText({
             model,
             temperature: 0.1,
@@ -282,7 +285,7 @@ export async function compactMessagesForContext(params: {
         summaryEstimatedTokens: estimateContextTokens(summaryForContext),
         contextWindow,
         targetModelId: params.targetModelId,
-        summarizerModelId: params.summarizerModelId ?? FREE_TIER_DEFAULT_MODEL_ID,
+        summarizerModelId,
       },
     }
   } catch (error) {
