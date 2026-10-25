@@ -35,6 +35,21 @@ export async function loadWorkViewer(ctx: Ctx, workspaceId: string, userId: stri
   return { ...scope, principalId }
 }
 
+export async function workEventActorPrincipalId(
+  ctx: Ctx,
+  args: { workspaceId: string; principalId: string; actingAgentPrincipalId?: string },
+): Promise<string> {
+  if (args.actingAgentPrincipalId === undefined) return args.principalId
+  const principal = await ctx.db
+    .query('workspacePrincipals')
+    .withIndex('by_principalId', (q) => q.eq('principalId', args.actingAgentPrincipalId as string))
+    .unique()
+  if (!principal || principal.type !== 'agent' || principal.workspaceId !== args.workspaceId || principal.archivedAt !== undefined) {
+    throw new Error('WORK_INVALID:acting_agent')
+  }
+  return principal.principalId
+}
+
 export function canWork(row: WorkItemDoc, viewer: ScopeContext & { principalId: string }): boolean {
   return canWorkOnItem(row, viewer.viewer, viewer.principalId, viewer.policy)
 }

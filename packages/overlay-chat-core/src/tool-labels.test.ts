@@ -23,6 +23,16 @@ test('a connected agent action shows the title the agent gave it', () => {
   assert.equal(getDescriptiveToolLabel('remote_action', {}), 'Remote Action')
 })
 
+test('task tool rows use clear action labels', () => {
+  assert.equal(getDescriptiveToolLabel('list_tasks'), 'Listing tasks')
+  assert.equal(getDescriptiveToolLabel('get_task'), 'Opening a task')
+  assert.equal(getDescriptiveToolLabel('create_task'), 'Creating a task')
+  assert.equal(getDescriptiveToolLabel('update_task'), 'Updating a task')
+  assert.equal(getDescriptiveToolLabel('comment_on_task'), 'Commenting on a task')
+  assert.equal(getDescriptiveToolLabel('archive_task'), 'Archiving a task')
+  assert.equal(getDescriptiveToolLabel('restore_task'), 'Restoring a task')
+})
+
 test('an action with no real name is shown as Tool call', () => {
   assert.equal(getDescriptiveToolLabel('remote_action', { title: 'tool call' }), 'Tool call')
   assert.equal(getDescriptiveToolLabel('remote_action', { title: 'Tool' }), 'Tool call')

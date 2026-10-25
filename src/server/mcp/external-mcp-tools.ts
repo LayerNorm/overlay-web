@@ -21,6 +21,7 @@ function instructionsFor(principal: McpPrincipal, workspaceName: string | null, 
     `Overlay${workspaceName ? ` — ${workspaceName}` : ''}`,
     'These tools act on the owner\'s Overlay workspace: their notes, files, memory, and knowledge' +
       (toolNames.includes('create_automation') ? ', automations' : '') +
+      (toolNames.includes('list_tasks') ? ', tasks' : '') +
       (toolNames.some((name) => name.includes('mcp')) ? ', connected apps, and MCP servers' : '') + '. ' +
       `Access is limited to what the owner chose for ${principal.clientName}: ${MCP_ACCESS_LABEL[principal.access].toLowerCase()}. ` +
       'Notes are Markdown — read one with get_note and change it with edit_note, replace_note_section, or append_to_note rather than rewriting it. ' +
