@@ -65,6 +65,16 @@ test('a full grant enables every group', () => {
   assert.equal(enabledAgentToolGroupIds(allAgentToolGrantIds()).size, AGENT_TOOL_GROUPS.length)
 })
 
+test('Tasks is a default group and legacy broad grants add every task tool', () => {
+  const tasks = AGENT_TOOL_GROUPS.find((group) => group.id === 'tasks')!
+  assert.equal(tasks.label, 'Tasks')
+  assert.equal(tasks.description, 'Create, update, and archive tasks in Work.')
+  assert.equal(DEFAULT_AGENT_TOOL_GROUP_IDS.includes('tasks'), true)
+  assert.deepEqual(tasks.toolIds, ['list_tasks', 'get_task', 'create_task', 'update_task', 'comment_on_task', 'archive_task', 'restore_task'])
+  const legacyGrant = normalizeAgentToolGrant(['create_automation', 'generate_video', 'interactive_browser_session'])
+  for (const id of tasks.toolIds) assert.ok(legacyGrant.includes(id), `${id} was not added to a legacy grant`)
+})
+
 test('every group grants either tool ids or a capability', () => {
   for (const group of AGENT_TOOL_GROUPS) {
     assert.ok(

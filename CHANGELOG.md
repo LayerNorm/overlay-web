@@ -5,11 +5,20 @@ This file records user-visible and operational changes that reach `main`. Pull r
 ## Unreleased
 
 - Retain native-agent tool calls and their real results when durable turns finalize, so completed execution evidence survives reload.
+- Require server authentication for task scope, archive and restore so browser tokens cannot bypass Work policy or forge agent activity.
+
+- Keep task revisions increasing when a comment follows an edit in the same clock tick, so stale updates remain rejected.
+
+- Preserve native-agent attribution when task tools archive, restore, or move a task.
+
+- Overlay Free no longer cuts off longer OpenRouter Free replies with overlay_free_stream_prelude_too_large.
+
+- Add task tools for listing, reading, creating, updating, commenting on, archiving, and restoring Work tasks, with agent activity attribution. Updates check revisions inside the mutation and commit fields, status and scope together, preserving concurrent edits and avoiding partial changes.
+- Let workspace-visible and personally owned agents take Personal tasks, keep creator-only agents private from other members, and preserve assignment eligibility when tasks change scope.
 
 - Restore Resume and Release control for the controlling user after reloading an agent conversation.
 - Keep synthetic Computer QA funding behind explicit Preview fixture opt-in while preserving existing test balances.
 - Allow native-agent workflow retries to recapture the screen without replaying clicks, typing, commands or unknown tools. Keep fresh authorization and billing checks, and log safe preparation-failure metadata.
-- Overlay Free no longer cuts off longer OpenRouter Free replies with overlay_free_stream_prelude_too_large.
 
 - Browser tools now report expired element references as recoverable stale references and direct agents to refresh their snapshot without guessing or clicking a replacement target.
 - Apply Stripe webhook event markers and workspace billing updates atomically so failed writes remain retryable without duplicate credit grants.
@@ -25,7 +34,6 @@ This file records user-visible and operational changes that reach `main`. Pull r
 - Show Computer control progress only for control actions, not start, stop or delete.
 - Alert on delayed sandbox metering and failed stop or cleanup operations.
 
-- Let workspace-visible and personally owned agents take Personal tasks, keep creator-only agents private from other members, and preserve assignment eligibility when tasks change scope.
 - Keep agent Details and Computer tabs synchronized after starting, stopping, waking or deleting the attached computer.
 
 - Standardize workspace headers on shadcn breadcrumbs, keep Workspace agent selection separate from remembered Personal threads, simplify agent thread controls, shorten composer prompts, and correct response hover controls and direct-message dialog sizing. Returning through the Files breadcrumb clears the selected editor and ignores stale file loads. Editable note titles retain enabled accessibility semantics.

@@ -10,7 +10,7 @@ import type {
   WorkItem,
 } from '@overlay/app-core'
 
-type Actor = { userId: string; workspaceId: string }
+type Actor = { userId: string; workspaceId: string; actingAgentPrincipalId?: string }
 
 export interface WorkRepository {
   list(args: Actor & { view?: ResourceView }): Promise<WorkItem[]>

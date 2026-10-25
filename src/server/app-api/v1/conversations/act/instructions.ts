@@ -46,6 +46,7 @@ export function buildActAgentInstructions(params: {
     generatedUiNote() +
     notes.generationNote +
     notes.automationDraftNote +
+    notes.taskToolsNote +
     requestedToolsNote(params.requestedToolIds ?? [], params.memoryEnabled !== false) +
     notes.browserToolNote +
     notes.toolAuthorizationNote +
@@ -73,6 +74,9 @@ function buildActInstructionNotes(params: Parameters<typeof buildActAgentInstruc
     actAgentIntro: actAgentIntro(hasCallableTools),
     agentTaskBehavior: agentTaskBehavior(),
     automationDraftNote: automationDraftNote(params),
+    taskToolsNote: [...availableTools].some((id) => id.endsWith('_task') || id === 'list_tasks')
+      ? '\nWhen task tools are available, use list_tasks and get_task to inspect Work, then create_task, update_task, comment_on_task, archive_task, or restore_task for the requested change. Assigning an agent does not start it.'
+      : '',
     browserToolNote: availableTools.has('interactive_browser_session')
       ? '\nYou also have an interactive_browser_session tool that drives a real browser. Reserve it strictly for tasks that require UI interaction (login, form submission, JS-heavy scraping, screenshot). For any information lookup or research request, use web_search, deep_search, or web_fetch instead.'
       : '',
