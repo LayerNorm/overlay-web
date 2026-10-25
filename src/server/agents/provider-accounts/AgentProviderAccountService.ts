@@ -6,6 +6,7 @@ import {
   AGENT_PROVIDERS,
   agentProviderEnv,
   checkAgentProviderSecret,
+  isSupportedAgentProviderId,
   MAX_AGENT_PROVIDER_LABEL_LENGTH,
   type AgentProviderAccount,
   type AgentProviderAuthMethod,
@@ -82,6 +83,9 @@ export class AgentProviderAccountService {
     secret: unknown
   }): Promise<AgentProviderAccount> {
     await this.assertLaunchEnabled()
+    if (!isSupportedAgentProviderId(args.provider)) {
+      throw new AgentProviderAccountError('This agent is no longer supported.', 400, 'provider_unsupported')
+    }
     if (args.provider === 'codex' && args.method === 'subscription') {
       throw new AgentProviderAccountError('Sign in with ChatGPT instead of pasting a credential.', 400, 'use_sign_in')
     }
@@ -117,6 +121,9 @@ export class AgentProviderAccountService {
   async reconnect(args: { userId: string; accountId: string; secret: unknown }): Promise<AgentProviderAccount> {
     await this.assertLaunchEnabled()
     const account = await this.requireOwned(args.userId, args.accountId)
+    if (!isSupportedAgentProviderId(account.provider)) {
+      throw new AgentProviderAccountError('This agent is no longer supported.', 400, 'provider_unsupported')
+    }
     if (account.provider === 'codex' && account.method === 'subscription') {
       throw new AgentProviderAccountError('Sign in with ChatGPT again to reconnect this account.', 400, 'use_sign_in')
     }
@@ -170,6 +177,9 @@ export class AgentProviderAccountService {
     const account = await this.dependencies.repository.get({ accountId: args.accountId })
     if (!account || account.userId !== args.ownerUserId || account.provider !== args.expectedProvider) {
       throw new AgentProviderAccountError('This agent has no usable account', 409, 'account_unavailable')
+    }
+    if (!isSupportedAgentProviderId(account.provider) || !isSupportedAgentProviderId(args.expectedProvider)) {
+      throw new AgentProviderAccountError('This agent is no longer supported.', 409, 'provider_unsupported')
     }
     if (account.status === 'needs_reauth') {
       throw new AgentProviderAccountError('Reconnect this account in Settings → Agent accounts', 409, 'account_needs_reauth')
@@ -326,6 +336,9 @@ export class AgentProviderAccountService {
   /** The account when it exists, belongs to `userId`, and fits `provider`. Throws otherwise. */
   async requireUsable(args: { userId: string; accountId: string; provider: AgentProviderId }) {
     const account = await this.requireOwned(args.userId, args.accountId)
+    if (!isSupportedAgentProviderId(account.provider) || !isSupportedAgentProviderId(args.provider)) {
+      throw new AgentProviderAccountError('This agent is no longer supported.', 409, 'provider_unsupported')
+    }
     if (account.provider !== args.provider) {
       throw new AgentProviderAccountError('That account is for a different agent', 400, 'account_provider_mismatch')
     }
@@ -338,14 +351,13 @@ export class AgentProviderAccountService {
    * a bad one surfaces on first use as "needs sign-in".
    */
   private async verify(provider: AgentProviderId, method: AgentProviderAuthMethod, secret: string): Promise<'valid' | 'invalid' | 'unknown'> {
+    if (!isSupportedAgentProviderId(provider)) {
+      throw new AgentProviderAccountError('This agent is no longer supported.', 400, 'provider_unsupported')
+    }
     if (method !== 'api_key') return 'unknown'
-    // Cursor has no read-only check we can rely on, so its key is accepted and a bad one shows on first use.
-    if (provider === 'cursor') return 'unknown'
     const request: { url: string; headers: Record<string, string> } = provider === 'claude-code'
       ? { url: 'https://api.anthropic.com/v1/models?limit=1', headers: { 'x-api-key': secret, 'anthropic-version': '2023-06-01' } }
-      : provider === 'opencode' || provider === 'hermes'
-        ? { url: 'https://openrouter.ai/api/v1/auth/key', headers: { authorization: `Bearer ${secret}` } }
-        : { url: 'https://api.openai.com/v1/models', headers: { authorization: `Bearer ${secret}` } }
+      : { url: 'https://api.openai.com/v1/models', headers: { authorization: `Bearer ${secret}` } }
     try {
       const fetcher: Fetch = this.dependencies.fetch ?? ((url, init) => fetch(url, init))
       const response = await fetcher(request.url, {

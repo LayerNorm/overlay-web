@@ -4,6 +4,7 @@ import test from 'node:test'
 import {
   BUILT_IN_USER_OWNED_ACP_ADAPTER_IDS,
   MANAGED_HARNESS_IDS,
+  SUPPORTED_MANAGED_HARNESS_IDS,
   isManagedHarnessId,
 } from '@overlay/workspace-contracts'
 import { getModel } from '@/shared/ai/gateway/model-data'
@@ -14,13 +15,14 @@ import {
   managedHarnessModelOption,
 } from './harness-catalog'
 
-test('managed harness catalog covers every MANAGED_HARNESS_IDS entry exactly once', () => {
+test('managed harness catalog contains only supported choices while persisted ids remain readable', () => {
   assert.equal(managedHarnessCatalogIsComplete(), true)
-  assert.equal(MANAGED_HARNESS_CATALOG.length, MANAGED_HARNESS_IDS.length)
+  assert.equal(MANAGED_HARNESS_CATALOG.length, SUPPORTED_MANAGED_HARNESS_IDS.length)
   assert.deepEqual(
     [...MANAGED_HARNESS_CATALOG.map((entry) => entry.id)].sort(),
-    [...MANAGED_HARNESS_IDS].sort(),
+    [...SUPPORTED_MANAGED_HARNESS_IDS].sort(),
   )
+  assert.deepEqual(MANAGED_HARNESS_IDS, ['claude-code', 'codex', 'opencode', 'pi', 'hermes'])
 })
 
 test('catalog entries carry presentation metadata and coherent kinds', () => {
@@ -37,8 +39,8 @@ test('catalog entries carry presentation metadata and coherent kinds', () => {
 
 test('managedHarnessEntry resolves by id and ignores unknown ids', () => {
   assert.equal(managedHarnessEntry('claude-code')?.kind, 'bridge')
-  assert.equal(managedHarnessEntry('pi')?.kind, 'host')
-  assert.equal(managedHarnessEntry('hermes')?.kind, 'acp')
+  assert.equal(managedHarnessEntry('pi'), undefined)
+  assert.equal(managedHarnessEntry('hermes'), undefined)
   assert.equal(managedHarnessEntry('openclaw'), undefined)
   assert.equal(managedHarnessEntry('overlay'), undefined)
 })

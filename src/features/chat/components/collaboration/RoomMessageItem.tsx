@@ -19,6 +19,7 @@ import {
   MessageSquareReply,
   Pencil,
   Pin,
+  RotateCcw,
   SmilePlus,
   Square,
   Trash2,
@@ -40,6 +41,8 @@ import { roomMessageDomId } from './room-message-view'
 import type { DriveSyncStatus } from '@layernorm/overlay-agent-bridge-protocol'
 import { RemoteDriveStatus, useSavedDriveLinkResolver } from './RemoteDriveStatus'
 import { RemoteRunTrace } from './RemoteRunTrace'
+import { NativeAgentApprovalCard } from './NativeAgentApprovalCard'
+import type { NativeAgentApproval } from '@/shared/agents/native-agent-approval'
 
 export type RoomMessageReaction = {
   emoji: string
@@ -88,6 +91,7 @@ export type RoomMessageView = {
   streaming?: boolean
   /** Set when this message is one agent's question to another, on a person's behalf: who asked, and how far down the chain it is. */
   askedBy?: { name: string; hop: number; parentConversationId?: string }
+  nativeApproval?: NativeAgentApproval
   remoteQueue?: { runId: string; environmentName: string; queueExpiresAt: number }
   remoteRequest?: { pendingDelivery?: boolean; expiresAt?: number; machineCostContinues?: boolean; runId: string; requestKey: string; kind: 'permission' | 'elicitation'; prompt: string;
     options: Array<{ id: string; label: string }>; requestedSchema?: Record<string, unknown> }
@@ -320,7 +324,13 @@ export function RoomMessageItem({
     : null
   const stopHandler = activeRemoteRun && onControlRemoteQueue
     ? () => onControlRemoteQueue(activeRemoteRun.runId, 'cancel')
-    : message.streaming ? onStopResponse : undefined
+    : !message.remoteRun && message.streaming ? onStopResponse : undefined
+  const retryableRun = message.remoteRun?.state === 'recoverable' && message.remoteRun.retryable
+    ? message.remoteRun
+    : null
+  const retryHandler = retryableRun && onControlRemoteQueue
+    ? () => onControlRemoteQueue(retryableRun.runId, 'retry')
+    : undefined
 
   const toolbar = hideToolbar ? null : (
     <RoomMessageToolbar
@@ -333,6 +343,7 @@ export function RoomMessageItem({
       saved={saved}
       disabled={Boolean(message.delivery)}
       onStop={stopHandler}
+      onRetry={retryHandler}
       onStartEdit={onStartEdit}
       onDelete={onDelete}
       onReport={onReport}
@@ -768,9 +779,7 @@ function AgentMessageBody({ message, onOpenAttachmentPreview, onControlRemoteQue
           {message.remoteRun?.state !== 'finalizing' ? remoteStatus : null}
         </div>
       ) : null}
-      {message.remoteQueue && onControlRemoteQueue ? (
-        <RemoteQueueControls queue={message.remoteQueue} onControl={onControlRemoteQueue} />
-      ) : null}
+      {message.nativeApproval ? <NativeAgentApprovalCard key={message.nativeApproval.token} approval={message.nativeApproval} /> : null}
       {message.remoteRun ? <RemoteRunDeadline deadlineAt={message.remoteRun.hardDeadlineAt} state={message.remoteRun.state} /> : null}
       {message.remoteRun?.recovered ? <p className="mt-1 text-xs text-(--muted)" role="status">Recovered</p> : null}
       {message.remoteRun?.state === 'cancelled' ? <p className='mt-2 text-xs text-(--muted)' role='status'>Cancelled</p> : null}
@@ -1037,7 +1046,6 @@ function RemoteRunControls({ run, onControl }: {
   onControl: NonNullable<RoomMessageItemProps['onControlRemoteQueue']>
 }) {
   if (['completed', 'cancelled', 'failed'].includes(run.state)) return null
-  if (run.state === 'recovering') return <p className='mt-2 text-xs text-(--muted)' role='status'>Resuming…</p>
   if (run.state === 'cancelling') return <p className='mt-2 text-xs text-(--muted)' role='status'>Cancellation requested. Waiting for execution to stop.</p>
   if (run.state === 'needs_attention') return (
     <div className="mt-2 flex items-center gap-2 text-xs text-(--muted)">
@@ -1049,76 +1057,8 @@ function RemoteRunControls({ run, onControl }: {
         }}>Start fresh</Button>
     </div>
   )
-  if (run.state === 'recoverable') return (
-    <div className="mt-2 flex items-center gap-2 text-xs text-(--muted)">
-        <span>
-          {run.retryClass === 'host_offline'
-            ? 'The environment went offline.'
-            : 'This run can be recovered.'}
-        </span>
-        <Button
-          variant="ghost"
-          type='button'
-          onClick={() => onControl(run.runId, 'resume')}
-          className='h-auto rounded-md bg-(--surface-subtle) px-2 py-1 font-normal text-(--foreground) hover:bg-(--surface-muted)'
-        >
-          Resume
-        </Button>
-        <Button
-          variant="ghost"
-          type='button'
-          onClick={() => onControl(run.runId, 'start_fresh')}
-          className='h-auto rounded-md px-2 py-1 font-normal text-inherit hover:bg-(--surface-subtle)'
-        >
-          Start fresh
-        </Button>
-    </div>
-  )
   // Cancelling an active run is the Stop button in the message toolbar.
   return null
-}
-
-function RemoteQueueControls({
-  queue,
-  onControl,
-}: {
-  queue: NonNullable<RoomMessageView['remoteQueue']>
-  onControl: NonNullable<RoomMessageItemProps['onControlRemoteQueue']>
-}) {
-  const [elapsed, setElapsed] = useState(false)
-
-  useEffect(() => {
-    const refresh = () => setElapsed(Date.now() >= queue.queueExpiresAt)
-    refresh()
-    const timeout = window.setTimeout(refresh, Math.max(0, queue.queueExpiresAt - Date.now()))
-    return () => window.clearTimeout(timeout)
-  }, [queue.queueExpiresAt])
-
-  return (
-    <div className="mt-2 flex items-center gap-2 text-xs text-(--muted)">
-      <span>
-        {elapsed
-          ? 'The 2-minute waiting window elapsed.'
-          : 'Waiting up to 2 minutes for the environment to reconnect.'}
-      </span>
-      <Button
-        variant="ghost"
-        type='button'
-        onClick={() => onControl(queue.runId, 'cancel')}
-        className='h-auto rounded-md px-2 py-1 font-normal text-inherit hover:bg-(--surface-subtle) hover:text-(--foreground)'
-      >
-        Cancel
-      </Button>
-      <Button
-        variant="ghost"
-        type='button'
-        onClick={() => onControl(queue.runId, 'retry')}
-        className='h-auto rounded-md bg-(--surface-subtle) px-2 py-1 font-normal text-(--foreground) hover:bg-(--surface-muted)'
-      >
-        Retry
-      </Button>
-    </div>
-  )
 }
 
 const QUICK_REACTIONS = [
@@ -1229,6 +1169,7 @@ function RoomMessageToolbar({
   saved,
   disabled,
   onStop,
+  onRetry,
   onStartEdit,
   onDelete,
   onReport,
@@ -1249,6 +1190,7 @@ function RoomMessageToolbar({
   saved: boolean
   disabled: boolean
   onStop?: () => void
+  onRetry?: () => void
   onStartEdit: () => void
   onDelete: () => void
   onReport: () => void
@@ -1271,6 +1213,11 @@ function RoomMessageToolbar({
       {onStop ? (
         <ToolbarIconButton buttonClass={buttonClass} onClick={onStop} disabled={disabled} ariaLabel="Stop response" title="Stop response">
           <Square size={13} strokeWidth={1.75} className="fill-current" />
+        </ToolbarIconButton>
+      ) : null}
+      {onRetry ? (
+        <ToolbarIconButton buttonClass={buttonClass} onClick={onRetry} disabled={disabled} ariaLabel="Retry connection" title="Retry connection">
+          <RotateCcw size={14} strokeWidth={1.75} />
         </ToolbarIconButton>
       ) : null}
       <EmojiPickerButton

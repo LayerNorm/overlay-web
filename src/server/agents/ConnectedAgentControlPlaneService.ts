@@ -19,7 +19,6 @@ import {
   type AgentEnvironmentCredentialMethod,
   type AgentFilesystemGrant,
   type AgentSandboxLease,
-  type ManagedHarnessId,
 } from '@overlay/workspace-contracts'
 import type { ObjectStore } from '@overlay/app-core'
 import {
@@ -50,7 +49,7 @@ import { describeFailure } from '@/server/observability/failure-classification'
 import { logger } from '@/server/observability/logger'
 import { mintAgentMcpToken, verifyAgentMcpToken } from './agent-mcp-token'
 import { AgentProviderAccountError, type AgentProviderAccountService } from './provider-accounts/AgentProviderAccountService'
-import { AGENT_AUTH_FAILURE_CODE, isAgentProviderId, type AgentProviderId } from '@/shared/agents/provider-accounts'
+import { AGENT_AUTH_FAILURE_CODE, isSupportedAgentProviderId, type AgentProviderId } from '@/shared/agents/provider-accounts'
 import { externalAgentLaunchEnabled } from './external-agent-policy'
 
 const ENROLLMENT_TTL_MS = 10 * 60_000
@@ -109,7 +108,8 @@ export class ConnectedAgentControlPlaneService {
     deliverMachineFiles?: (args: { workspaceId: string; environmentId: string; files: Array<{ path: string; contents: string; mode?: number }> }) => Promise<void>
     /** The agent's own secret values (an imported MCP server's token), added to a run's environment. */
     agentSecretEnv?: (agentId: string) => Promise<Record<string, string>>
-    wakeMachine?: (args: { workspaceId: string; environmentId: string }) => Promise<'running' | 'resumed' | 'unavailable'>
+    wakeMachine?: (args: { actorUserId: string; workspaceId: string; agentId: string; environmentId: string }) => Promise<'running' | 'resumed' | 'unavailable'>
+    admitMachine?: (args: { actorUserId: string; workspaceId: string; agentId: string }) => Promise<void>
     now?: () => number
     isEnabled?: (workspaceId?: string) => boolean | Promise<boolean>
     launchEnabled?: (workspaceId?: string) => boolean | Promise<boolean>
@@ -357,6 +357,9 @@ export class ConnectedAgentControlPlaneService {
       !args.workingDirectory.trim() || args.workingDirectory.length > 4_096) {
       throw controlPlaneError('Agent binding fields are invalid', 400, 'binding_invalid')
     }
+    if (!isSupportedAgentProviderId(args.adapterId)) {
+      throw controlPlaneError('The selected agent adapter is not supported', 409, 'adapter_unavailable')
+    }
     const environment = await this.dependencies.repository.getEnvironment({
       workspaceId: args.workspaceId,
       environmentId: args.environmentId,
@@ -375,7 +378,7 @@ export class ConnectedAgentControlPlaneService {
     const adapterConfig: Record<string, unknown> = { adapterId: args.adapterId, workingDirectory: args.workingDirectory }
     if (args.providerAccountId) {
       const accounts = this.dependencies.agentProviderAccounts
-      if (!accounts || !isAgentProviderId(args.adapterId)) {
+      if (!accounts || !isSupportedAgentProviderId(args.adapterId)) {
         throw controlPlaneError('This agent cannot run on a provider account', 400, 'provider_account_unsupported')
       }
       try {
@@ -431,7 +434,19 @@ export class ConnectedAgentControlPlaneService {
     controlRequestId?: string
     action: 'cancel' | 'retry' | 'resume' | 'start_fresh'
   }) {
-    if (args.action !== 'cancel') await this.assertEnabled(args.workspaceId)
+    const machine = args.action !== 'cancel' && this.dependencies.wakeMachine
+      ? await this.cloudMachineForRun(args)
+      : undefined
+    if (args.action !== 'cancel') {
+      await this.assertEnabled(args.workspaceId)
+      if (machine) {
+        await this.dependencies.admitMachine?.({
+          actorUserId: args.actorUserId,
+          workspaceId: args.workspaceId,
+          agentId: machine.agentId,
+        })
+      }
+    }
     const now = this.now()
     // Old Convex validators reject unknown arguments during web-first rollout.
     // Enable the optional control extension only after the v2 backend is live.
@@ -453,16 +468,11 @@ export class ConnectedAgentControlPlaneService {
       } as const
       throw controlPlaneError(errors[reason][1], errors[reason][0], `remote_run_${reason}`)
     }
-    if (args.action !== 'cancel' && this.dependencies.wakeMachine) {
-      const environments = await this.dependencies.repository.listEnvironments({ workspaceId: args.workspaceId })
-      // Resolve the authorized run through its session; never wake a BYOA environment.
-      for (const environment of environments) {
-        const session = await this.dependencies.repository.getRemoteSessionForRun({ workspaceId: args.workspaceId, environmentId: environment.id, runId: args.runId })
-        if (!session || environment.kind !== 'overlay_cloud') continue
-        const outcome = await this.dependencies.wakeMachine({ workspaceId: args.workspaceId, environmentId: environment.id })
-        if (outcome === 'unavailable') throw controlPlaneError('The agent machine is unavailable. Inspect its state before continuing.', 409, 'remote_machine_unavailable')
-        break
-      }
+    if (machine && this.dependencies.wakeMachine) {
+      const outcome = await this.dependencies.wakeMachine({
+        actorUserId: args.actorUserId, workspaceId: args.workspaceId, agentId: machine.agentId, environmentId: machine.environmentId,
+      })
+      if (outcome === 'unavailable') throw controlPlaneError('The agent machine is unavailable. Inspect its state before continuing.', 409, 'remote_machine_unavailable')
     }
     if (result.terminal && this.dependencies.settleUsage &&
       (result.terminal.reservationId || result.terminal.sandboxBilling?.reservationId)) {
@@ -473,6 +483,21 @@ export class ConnectedAgentControlPlaneService {
       commandId: result.commandId,
     }, args.runId, 'agent_remote_run')
     return result
+  }
+
+  // Resolve the authorized run through its session; never wake a BYOA environment.
+  private async cloudMachineForRun(args: { workspaceId: string; runId: string }) {
+    const environments = await this.dependencies.repository.listEnvironments({ workspaceId: args.workspaceId })
+    for (const environment of environments) {
+      const session = await this.dependencies.repository.getRemoteSessionForRun({ workspaceId: args.workspaceId, environmentId: environment.id, runId: args.runId })
+      if (!session || environment.kind !== 'overlay_cloud') continue
+      const billing = session.capabilitySnapshot?.billing as { agentId?: unknown } | undefined
+      if (typeof billing?.agentId !== 'string' || !billing.agentId) {
+        throw controlPlaneError('The agent machine is unavailable. Inspect its state before continuing.', 409, 'remote_machine_unavailable')
+      }
+      return { agentId: billing.agentId, environmentId: environment.id }
+    }
+    return undefined
   }
 
   async resolveRemoteRequest(args: {
@@ -793,7 +818,7 @@ export class ConnectedAgentControlPlaneService {
     const accountId = typeof binding?.adapterConfig.providerAccountId === 'string' ? binding.adapterConfig.providerAccountId : ''
     const ownerUserId = typeof binding?.adapterConfig.providerAccountOwnerUserId === 'string' ? binding.adapterConfig.providerAccountOwnerUserId : ''
     const adapterId = binding?.adapterConfig.adapterId
-    if (!binding || !accountId || !ownerUserId || !isAgentProviderId(adapterId)) {
+    if (!binding || !accountId || !ownerUserId || !isSupportedAgentProviderId(adapterId)) {
       throw controlPlaneError('This agent has no provider account', 409, 'provider_account_missing')
     }
     try {
@@ -820,7 +845,7 @@ export class ConnectedAgentControlPlaneService {
     const adapters = auth.environment.capabilities.adapters
     const offered = Array.isArray(adapters) && adapters.some((adapter: unknown) =>
       typeof adapter === 'object' && adapter !== null && 'id' in adapter && adapter.id === adapterId)
-    if (!isAgentProviderId(adapterId) || !offered)
+    if (!isSupportedAgentProviderId(adapterId) || !offered)
       throw controlPlaneError('This adapter is unavailable', 409, 'provider_account_missing')
     const bindings = await this.dependencies.repository.listBindings({ workspaceId: auth.credential.workspaceId })
     const matches = bindings.filter(binding => binding.enabled && binding.environmentId === auth.environment.id && binding.adapterConfig.adapterId === adapterId)

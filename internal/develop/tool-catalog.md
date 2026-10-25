@@ -16,7 +16,7 @@ Every surface builds its tools through one pipeline (`prepareActTooling`, `src/s
 | Image | `generate_image` |
 | Video | `generate_video`, `generate_video_with_reference`, `animate_image`, `apply_motion_control`, `edit_video` |
 | Browser (paid) | `interactive_browser_session` |
-| Computer (paid, opt-in) | `computer_exec`, `computer_read_file`, `computer_write_file`, `computer_list_files`, `computer_open_url` |
+| Computer (paid, opt-in) | `computer_exec`, `computer_read_file`, `computer_write_file`, `computer_list_files`, `computer_open_url`, `computer_screenshot`, `computer_input`, `computer_browser`, `computer_terminal` |
 | Agents (editing) | `create_agent`, `update_agent` |
 | Ask other agents | `list_agents`, `ask_agent`, `read_agent_reply`, `post_message` (see `agent-to-agent.md`) |
 | Chat only | `present_generated_ui` (renders a draft or connect card in the chat) |
@@ -68,6 +68,10 @@ purpose, but there is no per-message opt-in yet.
 | **Overlay (native) agent** | Its grant (groups it was given, `allowedToolIds`) intersected with deployment, account, and project policy. A grant only narrows. New agents get every group except Computer. |
 | **Claude Code / Codex on Overlay Cloud, or on your machine** | The same tools through the Overlay MCP server (`/api/agent-mcp`), limited by the agent's grant, minus `computer_*` (it has its own machine) and `present_generated_ui`. Tools that need approval show an approval card. |
 | **Outside AI apps** (ChatGPT, Claude, Cursor…) | The same tools through `/api/mcp` at the access level the person chose (below), minus agent editing, the `draft_*_from_chat` tools, `present_generated_ui`, computer tools, and `post_message`. |
+
+## Native agent permissions
+
+Overlay agents use Ask by default. Ask requires approval for typing, consequential clicks, computer commands, command starts, selected connected-app actions and MCP tools whose server policy requires approval. In contexts without an approval UI, those actions return `approval_required`. Auto skips those approval gates for the agent, including automations; MCP tools denied by server policy remain denied. Personal chats without an agent always use Ask. Connected-agent permission values remain owned by the connected harness.
 
 Connected-agent MCP calls revalidate the current session and execution generation before running,
 including after a human approval wait. Start-command credentials keep their original scope, grant

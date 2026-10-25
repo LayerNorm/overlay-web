@@ -51,6 +51,13 @@ export function shouldPrepareConnectedAgentDrive(input: {
     && z.object({ drive: z.object({ version: z.literal(1) }) }).safeParse(input.capabilities).success
 }
 
+export function permissionModeForConnectedHarness(
+  harness: string,
+  permissionMode?: string,
+): string | undefined {
+  return harness === 'overlay' ? undefined : permissionMode
+}
+
 /**
  * Step budgets.
  *
@@ -253,7 +260,7 @@ export const CONNECTED_AGENT_INTERACTIVE_QUEUE_MS = 2 * 60_000
  * than threaded through from the request that triggered it: a durable turn can
  * start long after that request is gone, and the room may have moved on.
  */
-async function loadRoomTurnContext(args: {
+export async function loadRoomTurnContext(args: {
   actorUserId: string
   conversationId: string
   messageId: string
@@ -443,7 +450,7 @@ export async function resolveWorkspaceAgentInvocations(args: {
       instructions: agent.instructions,
       invocationNonce: `agent:${args.messageId}:${agent.id}`,
       modelId: agent.modelId,
-      permissionMode: agent.permissionMode,
+      permissionMode: permissionModeForConnectedHarness(agent.harness, agent.permissionMode),
       effort: agent.effort,
       toolGrant: {
         allowedToolIds: [...agent.allowedToolIds],
@@ -759,7 +766,10 @@ export async function startRemoteWorkspaceAgentTurn(args: {
     // still read online for a heartbeat window. wake() is a no-op when the
     // machine is running with a live host.
     if (started.lifecycleVersion !== 2 && args.invocation.remoteTarget.environmentKind === 'overlay_cloud') {
-      wakeCloudAgentAfterResponse({ workspaceId: args.workspaceId, environmentId: args.invocation.remoteTarget.environmentId })
+      wakeCloudAgentAfterResponse({
+        actorUserId: args.actorUserId, workspaceId: args.workspaceId, agentId: args.invocation.agentId,
+        environmentId: args.invocation.remoteTarget.environmentId,
+      })
     }
     return started
   } catch (error) {
@@ -970,6 +980,10 @@ export async function runWorkspaceAgentTurn(args: {
             allowedToolIds: agent.allowedToolIds,
             isDefaultMaster,
           },
+          ...(agent.harness === 'overlay'
+            ? { approvalMode: agent.permissionMode === 'auto' ? 'auto' as const : 'ask' as const }
+            : {}),
+          computerApprovalContext: 'work',
           idempotencyKey: invocationNonce,
           latestUserText,
           memoryEnabled,

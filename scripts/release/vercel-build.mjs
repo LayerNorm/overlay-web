@@ -94,6 +94,10 @@ export function buildPlan(env) {
         ...(env.OVERLAY_PREVIEW_QA_FIXTURES === 'paid-workspace' ? [{
           command: './node_modules/.bin/convex',
           args: ['run', 'dev/seed:initQa', '{}', '--deployment', 'preview/pr-' + pr],
+        }] : []),
+        ...(env.OVERLAY_PREVIEW_QA_FIXTURES === 'computer-workspace' ? [{
+          command: './node_modules/.bin/convex',
+          args: ['run', 'dev/seed:initComputerQa', '{}', '--deployment', 'preview/pr-' + pr],
         }] : [])],
       env: childEnv,
       target: 'preview pr-' + pr,

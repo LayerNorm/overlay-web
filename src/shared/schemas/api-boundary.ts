@@ -160,7 +160,7 @@ export const webApiBoundaryDefinitions = [
     schema: {
       json: z.object({
         agentId: z.string().min(1).max(256),
-        adapterId: z.enum(['claude-code', 'codex', 'opencode', 'hermes', 'cursor']),
+        adapterId: z.enum(['claude-code', 'codex']),
         providerAccountId: z.string().min(1).max(64),
         size: z.enum(['small', 'default', 'large']).optional(),
       }).strict(),
@@ -285,6 +285,12 @@ export const webApiBoundaryDefinitions = [
     pattern: /^\/api\/v1\/computers\/[^/]+\/desktop$/,
     schema: { json: EmptyRequest, response: UnknownResponse },
     summary: 'Issue a short-lived desktop stream ticket', tag: 'Computers',
+  },
+  {
+    method: 'POST', path: '/api/v1/computers/{computerId}/control', routePath: '/api/v1/computers/[computerId]/control',
+    pattern: /^\/api\/v1\/computers\/[^/]+\/control$/,
+    schema: { json: z.object({ action: z.enum(['take', 'release']) }).strict(), response: UnknownResponse },
+    summary: 'Take or release human control of a computer', tag: 'Computers',
   },
   {
     method: 'POST', path: '/api/v1/computers/{computerId}/start', routePath: '/api/v1/computers/[computerId]/start',
@@ -695,7 +701,7 @@ export const webApiBoundaryDefinitions = [
     method: 'POST', path: '/api/v1/provider-accounts',
     schema: {
       json: z.object({
-        provider: z.enum(['claude-code', 'codex', 'opencode', 'hermes', 'cursor']),
+        provider: z.enum(['claude-code', 'codex']),
         method: z.enum(['subscription', 'api_key']),
         secret: z.string().min(1).max(4096),
         label: z.string().max(80).optional(),

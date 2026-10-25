@@ -7,7 +7,7 @@ import type {RemoteRunSnapshot} from './remote-agent-run-lifecycle'
 
 const observedAt = Date.now()
 function snapshot(): RemoteRunSnapshot {
-  return {runId: 'run', workspaceId: 'workspace', environmentId: 'environment', environmentKind: 'overlay_cloud',
+  return {runId: 'run', actorUserId: 'run-user', agentId: 'run-agent', workspaceId: 'workspace', environmentId: 'environment', environmentKind: 'overlay_cloud',
     nativeRestorationAdvertised: true, lifecycle: {version: 2, revision: 8, phase: 'needs_attention', cause: 'process_lost',
       currentAttemptId: 'attempt', executionGeneration: 1, coordinatorGeneration: 2, coordinatorId: 'owner',
       hardDeadlineAt: observedAt + 3_600_000, claimDeadlineAt: observedAt + 120_000}}
@@ -25,13 +25,22 @@ async function exercise(current: RemoteRunSnapshot | null, options: {record?: bo
       query: async () => current,
       mutation: async (operation: string, args: Record<string, unknown>) => {
         calls.push({operation, args: structuredClone(args)})
+        if (operation.endsWith('advanceByServer')) return {phase: 'waking'}
         return operation.endsWith('recordProviderStopByServer') ? options.record !== false : options.begin !== false
       },
     }},
     './cloud/create-cloud-agent-machine-service': {createCloudAgentMachineService: () => ({
-      resumeStoppedExecution: async (args: {workspaceId: string; environmentId: string;
+      wake: async (args: {actorUserId: string; workspaceId: string; agentId: string; environmentId: string}) => {
+        assert.equal(args.actorUserId, 'run-user')
+        assert.equal(args.workspaceId, 'workspace')
+        assert.equal(args.agentId, 'run-agent')
+        assert.equal(args.environmentId, 'environment')
+        return 'running'
+      },
+      resumeStoppedExecution: async (args: {actorUserId: string; workspaceId: string; agentId: string; environmentId: string;
         authorize: (proof: {leaseId: string; providerReference: string; observedAt: number}) => Promise<boolean>}) => {
         inspected++
+        assert.equal(args.actorUserId, 'run-user'); assert.equal(args.agentId, 'run-agent')
         assert.equal(args.workspaceId, 'workspace'); assert.equal(args.environmentId, 'environment')
         if (options.live) return 'unavailable'
         resumed = await args.authorize({leaseId: 'lease', providerReference: 'machine', observedAt})
@@ -47,6 +56,34 @@ async function exercise(current: RemoteRunSnapshot | null, options: {record?: bo
   }})
   await exports.restoreStoppedRemoteRun({runId: 'run', coordinatorId: 'owner', generation: 2})
   return {calls, inspected, resumed}
+}
+
+async function exerciseWake(current: RemoteRunSnapshot | null) {
+  const calls: Array<{operation: string; args: Record<string, unknown>}> = []
+  let wakeArgs: Record<string, unknown> | null = null
+  const exports: Record<string, (input: {runId: string; coordinatorId: string; generation: number}) => Promise<void>> = {}
+  const dependencies: Record<string, unknown> = {
+    'server-only': {},
+    '@/server/shared/internal-api-secret': {getInternalApiSecret: () => 'test-secret'},
+    '@/server/database/lazy-convex': {lazyConvex: {
+      query: async () => current,
+      mutation: async (operation: string, args: Record<string, unknown>) => {
+        calls.push({operation, args: structuredClone(args)})
+        return {phase: 'waking'}
+      },
+    }},
+    './cloud/create-cloud-agent-machine-service': {createCloudAgentMachineService: () => ({
+      wake: async (args: Record<string, unknown>) => { wakeArgs = args; return 'running' },
+    })},
+  }
+  const source = readFileSync(new URL('./remote-agent-run-lifecycle.ts', import.meta.url), 'utf8')
+  const compiled = ts.transpileModule(source, {compilerOptions: {module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022}}).outputText
+  new Script(compiled).runInNewContext({exports, Date, require: (id: string) => {
+    assert.ok(id in dependencies, `Unexpected dependency ${id}`)
+    return dependencies[id]
+  }})
+  await exports.wakeRemoteRun({runId: 'run', coordinatorId: 'owner', generation: 2})
+  return {calls, wakeArgs: wakeArgs ? JSON.parse(JSON.stringify(wakeArgs)) : null}
 }
 
 test('stopped-machine continuation persists its exact proof then queues under the next revision before resume', async () => {
@@ -66,9 +103,24 @@ test('stopped-machine continuation persists its exact proof then queues under th
 test('missing capability, changed coordinator, cancelled or expired run never inspects or resumes a machine', async () => {
   const original = snapshot()
   const cases = [null, {...original, nativeRestorationAdvertised: false}, {...original, environmentKind: 'local'},
+    {...original, actorUserId: undefined}, {...original, agentId: undefined},
     ...[{coordinatorId: 'other'}, {coordinatorGeneration: 3}, {phase: 'cancelled' as const},
       {hardDeadlineAt: observedAt - 1}, {cause: 'approval_context_lost'}].map(change => ({...original, lifecycle: {...original.lifecycle, ...change}}))]
   for (const current of cases) assert.deepEqual(await exercise(current), {calls: [], inspected: 0, resumed: false})
+  for (const current of [{...original, lifecycle: {...original.lifecycle, phase: 'queued' as const}, actorUserId: undefined},
+    {...original, lifecycle: {...original.lifecycle, phase: 'queued' as const}, agentId: undefined}]) {
+    assert.deepEqual(await exerciseWake(current), {calls: [], wakeArgs: null})
+  }
+})
+
+test('workflow wake forwards the stored run actor and agent to machine admission', async () => {
+  const current = snapshot()
+  current.lifecycle = {...current.lifecycle, phase: 'queued'}
+  const result = await exerciseWake(current)
+  assert.deepEqual(result.calls.map(call => call.operation), ['agents/remoteRuns:advanceByServer'])
+  assert.deepEqual(result.wakeArgs, {
+    actorUserId: 'run-user', workspaceId: 'workspace', agentId: 'run-agent', environmentId: 'environment',
+  })
 })
 
 test('live work and rejected proof or queue authorization cannot trigger a resume', async () => {

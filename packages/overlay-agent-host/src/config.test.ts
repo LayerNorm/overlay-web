@@ -18,11 +18,11 @@ test('enrollment restart configuration is private and excludes credentials', asy
       stateDirectory: directory,
       filesystem: { mode: 'selected_roots', roots: ['/workspace'] },
       adapters: [{
-        id: 'hermes',
-        displayName: 'Hermes',
+        id: 'custom-acp',
+        displayName: 'My custom agent',
         protocol: 'acp',
-        command: 'hermes',
-        args: ['acp'],
+        command: 'custom-agent',
+        args: ['--stdio'],
       }],
     })
 
@@ -72,7 +72,7 @@ test('managed recovery rollout enables only validated native launchers and an ex
   const adapters: AgentHostConfig['adapters'] = [
     {id: 'claude-code', displayName: 'Claude', protocol: 'acpx', agent: 'claude'},
     {id: 'codex', displayName: 'Codex', protocol: 'acpx', agent: 'codex'},
-    {id: 'hermes', displayName: 'Hermes', protocol: 'acpx', agent: 'hermes'},
+    {id: 'custom-acp', displayName: 'Custom ACP', protocol: 'acpx', agent: 'custom'},
     {id: 'codex', displayName: 'Other', protocol: 'acpx', agent: 'other'},
     {id: 'codex', displayName: 'Direct', protocol: 'acp', command: 'other'},
     {id: 'fake', displayName: 'Fake', protocol: 'fake'},

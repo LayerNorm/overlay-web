@@ -5,7 +5,8 @@ import { unstyledButton, unstyledTextarea } from '@overlay/ui/control-reset'
 import { Fragment, useEffect, useMemo, useState, type ComponentProps, type ReactNode } from 'react'
 import Link from 'next/link'
 import { Bot, Check, ChevronDown, Copy, Hash, Laptop, Loader2, Lock, Monitor, Plus, Server, ShieldCheck, Sparkles, Terminal, Trash2, Users } from 'lucide-react'
-import { Button, Input, ListboxSelect, Textarea, Toggle } from '@overlay/ui/primitives'
+import { Button, Input, ListboxSelect, SegmentedControl, Textarea, Toggle } from '@overlay/ui/primitives'
+import { ConfirmDialog } from '@overlay/ui/overlays'
 import type { Computer, ComputerSize, SurfaceBinding, SurfaceChannelOption, SurfaceConnection, WorkspaceAgentCreatureShape } from '@overlay/workspace-contracts'
 import type { AgentEnvironmentResource } from '@overlay/api-client'
 import type { WorkspaceAgentVisibility } from '@overlay/workspace-contracts'
@@ -127,7 +128,7 @@ export function AgentTypeSelector({ value, onChange, hidden }: {
           onSelect={() => onChange('byo')}
           icon={<Server size={15} />}
           label="Bring your own agent"
-          description="Run Codex, Claude Code, or Hermes on your own machines and VPSs."
+          description="Run Codex or Claude Code on your own machines and VPSs."
         />
       </div>
     </div>
@@ -320,6 +321,60 @@ export function AccessSelector({ value, onChange }: { value: WorkspaceAgentVisib
   )
 }
 
+export function OverlayAgentPermissionsField({
+  value,
+  onChange,
+}: {
+  value: 'ask' | 'auto'
+  onChange(value: 'ask' | 'auto'): void
+}) {
+  const [confirmAuto, setConfirmAuto] = useState(false)
+  return (
+    <div>
+      <FieldLabel info="Choose whether this agent asks before taking actions or runs them without approval.">Permissions</FieldLabel>
+      <SegmentedControl
+        ariaLabel="Permissions"
+        layout="stretch"
+        value={value}
+        options={[{ value: 'ask', label: 'Ask' }, { value: 'auto', label: 'Auto' }]}
+        onChange={(next) => {
+          const selected = next === 'auto' ? 'auto' : 'ask'
+          const selection = resolveOverlayPermissionModeSelection(value, selected, false)
+          if (selection.confirmationRequired) setConfirmAuto(true)
+          else onChange(selection.mode)
+        }}
+      />
+      <p className="mt-1.5 text-[11px] leading-4 text-(--muted)">
+        {value === 'ask'
+          ? 'Asks before typing, terminal commands, risky clicks and app actions.'
+          : 'Runs everything without asking, including in automations.'}
+      </p>
+      <ConfirmDialog
+        isOpen={confirmAuto}
+        title="Let this agent act without asking?"
+        description="It will type, run commands, click and use apps without your approval, including in automations."
+        confirmLabel="Use Auto"
+        onCancel={() => setConfirmAuto(false)}
+        onConfirm={() => {
+          onChange(resolveOverlayPermissionModeSelection(value, 'auto', true).mode)
+          setConfirmAuto(false)
+        }}
+      />
+    </div>
+  )
+}
+
+export function resolveOverlayPermissionModeSelection(
+  current: 'ask' | 'auto',
+  selected: 'ask' | 'auto',
+  confirmedAuto: boolean,
+): { mode: 'ask' | 'auto'; confirmationRequired: boolean } {
+  if (selected === 'auto' && current !== 'auto' && !confirmedAuto) {
+    return { mode: current, confirmationRequired: true }
+  }
+  return { mode: selected, confirmationRequired: false }
+}
+
 const COMPUTER_SIZE_OPTIONS = [
   { value: 'small', label: 'Small · 2 vCPU, 4 GB' },
   { value: 'default', label: 'Default · 4 vCPU, 8 GB' },
@@ -353,7 +408,7 @@ function ComputerCardActions({ status, canTogglePower, canDeleteComputer, powerL
   canDeleteComputer: boolean
   powerLabel: string
   openBusy: boolean
-  lifecycleBusy: 'start' | 'stop' | 'delete' | null
+  lifecycleBusy: 'start' | 'stop' | 'delete' | 'control' | null
   onOpenDesktop(): void
   onTogglePower(): void
   onDelete(): void
@@ -380,24 +435,42 @@ function ComputerCardActions({ status, canTogglePower, canDeleteComputer, powerL
   )
 }
 
-function ProvisionedComputerCard({ computer, openBusy, lifecycleBusy, onOpenDesktop, onTogglePower, onDelete }: {
+function ProvisionedComputerCard({ computer, currentUserId, agentName, openBusy, lifecycleBusy, onOpenDesktop, onControl, onTogglePower, onDelete }: {
   computer: Computer
+  currentUserId?: string
+  agentName: string
   openBusy: boolean
-  lifecycleBusy: 'start' | 'stop' | 'delete' | null
+  lifecycleBusy: 'start' | 'stop' | 'delete' | 'control' | null
   onOpenDesktop(): void
+  onControl(): void
   onTogglePower(): void
   onDelete(): void
 }) {
   const canTogglePower = computer.status === 'ready' || computer.status === 'stopped'
   const canDeleteComputer = canTogglePower || computer.status === 'error'
   const powerLabel = lifecycleBusy === 'stop' ? 'Stopping…' : lifecycleBusy === 'start' ? 'Starting…' : computer.status === 'ready' ? 'Stop' : 'Start'
+  const controlledByCurrentUser = Boolean(computer.controlledByUserId && computer.controlledByUserId === currentUserId)
+  const statusLine = computer.controlledByUserId
+    ? controlledByCurrentUser
+      ? `You have control. ${agentName} is paused.`
+      : 'Someone else has control'
+    : isComputerRecentlyActive(computer.lastActiveAt)
+      ? `${agentName} is using it`
+      : null
   return (
     <div className="flex items-center justify-between gap-3 rounded-xl border border-(--border) p-3">
       <div className="min-w-0">
         <p className="flex items-center gap-1.5 text-xs font-medium text-(--foreground)"><Monitor size={13} className="shrink-0 text-(--muted)" />{computer.name ?? 'Computer'}</p>
-        <p className="mt-0.5 text-[11px] leading-4 text-(--muted)">{computer.status} · {computer.size} · size is fixed once provisioned</p>
+        <p className="mt-0.5 flex items-center gap-1.5 text-[11px] leading-4 text-(--muted)">
+          {statusLine ? <><span className={`h-1.5 w-1.5 rounded-full ${computer.controlledByUserId ? 'bg-blue-500' : 'bg-green-500'}`} />{statusLine}</> : `${computer.status} · ${computer.size} · size is fixed once provisioned`}
+        </p>
       </div>
       <div className="flex shrink-0 items-center gap-1.5">
+        {(computer.controlledByUserId || computer.status === 'ready') ? (
+          <Button variant="secondary" size="sm" onClick={onControl} disabled={lifecycleBusy !== null || openBusy}>
+            {lifecycleBusy === 'control' ? (computer.controlledByUserId ? 'Handing back…' : 'Taking control…') : computer.controlledByUserId ? 'Hand back' : 'Take control'}
+          </Button>
+        ) : null}
         <ComputerCardActions
           status={computer.status}
           canTogglePower={canTogglePower}
@@ -414,23 +487,30 @@ function ProvisionedComputerCard({ computer, openBusy, lifecycleBusy, onOpenDesk
   )
 }
 
+function isComputerRecentlyActive(lastActiveAt: number | null): boolean {
+  return lastActiveAt !== null && Date.now() - lastActiveAt < 120_000
+}
+
 /**
  * Accessory rendered under the Computer tool-group row: the size picker while
  * unprovisioned, the provisioned machine card with lifecycle controls, and the
  * destructive-save warning. The group's own ToggleRow is the on/off control —
  * enabled means "this agent gets a computer".
  */
-export function AgentComputerSection({ enabled, size, onSizeChange, computer, openBusy, lifecycleBusy, onOpenDesktop, onTogglePower, onDelete, loadError, provisionError, onRetryLoad, disabled }: {
+export function AgentComputerSection({ enabled, size, onSizeChange, computer, currentUserId, agentName, openBusy, lifecycleBusy, onOpenDesktop, onControl, onTogglePower, onDelete, loadError, provisionError, onRetryLoad, disabled }: {
   enabled: boolean
   size: ComputerSize
   onSizeChange(next: ComputerSize): void
   computer: Computer | null
+  currentUserId?: string
+  agentName: string
   loadError: string | null
   provisionError: string | null
   onRetryLoad(): void
   openBusy: boolean
-  lifecycleBusy: 'start' | 'stop' | 'delete' | null
+  lifecycleBusy: 'start' | 'stop' | 'delete' | 'control' | null
   onOpenDesktop(): void
+  onControl(): void
   onTogglePower(): void
   onDelete(): void
   disabled?: boolean
@@ -442,9 +522,12 @@ export function AgentComputerSection({ enabled, size, onSizeChange, computer, op
       {enabled && computer ? (
         <ProvisionedComputerCard
           computer={computer}
+          currentUserId={currentUserId}
+          agentName={agentName}
           openBusy={openBusy}
           lifecycleBusy={lifecycleBusy}
           onOpenDesktop={onOpenDesktop}
+          onControl={onControl}
           onTogglePower={onTogglePower}
           onDelete={onDelete}
         />

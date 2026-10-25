@@ -1,11 +1,21 @@
-import { getWorkflowMetadata } from 'workflow'
+import { FatalError, getWorkflowMetadata } from 'workflow'
 import {
-  abandonWorkspaceAgentRun,
   attachWorkspaceAgentRun,
+  beginWorkspaceAgentModelCall,
+  callWorkspaceAgentModel,
   completeWorkspaceAgentRun,
-  executeWorkspaceAgentTurn,
+  executeWorkspaceAgentTool,
   failWorkspaceAgentRun,
+  finalizeWorkspaceAgentTurn,
+  inspectWorkspaceAgentTool,
+  persistWorkspaceAgentToolProgress,
+  prepareWorkspaceAgentTurn,
+  resumeWorkspaceAgentAfterApproval,
+  settleWorkspaceAgentUsage,
+  waitForWorkspaceAgentApproval,
 } from '@/server/agents/workspace-agent-turn-lifecycle'
+import { runWorkspaceAgentTurnLoop, type WorkspaceAgentLoopUsage } from '@/server/agents/workspace-agent-turn-loop'
+import { requestWorkspaceAgentApproval } from './workspace-agent-approval'
 
 /**
  * Reason code and retryability for a failed turn.
@@ -24,12 +34,14 @@ function describeWorkspaceAgentFailure(error: unknown): {
   const reasonCode = error instanceof Error && error.name === 'WorkspaceAgentInvocationError'
     ? String((error as { reasonCode?: unknown }).reasonCode ?? 'model_failed')
     : 'model_failed'
+  const isFatal = error instanceof Error && error.name === 'FatalError'
   return {
     errorMessage: error instanceof Error ? error.message : 'The agent turn failed.',
     reasonCode,
     // An entitlement or usage refusal will refuse again; retrying it only burns
     // the run. Everything else is worth another attempt.
-    retryable: reasonCode !== 'not_entitled'
+    retryable: !isFatal
+      && reasonCode !== 'not_entitled'
       && reasonCode !== 'usage_limited'
       && reasonCode !== 'room_access_denied'
       && reasonCode !== 'not_a_collaboration_room',
@@ -59,14 +71,8 @@ export type WorkspaceAgentTurnInput = {
  * the transcript before this starts, so wherever the reader goes, they come
  * back to it.
  *
- * This deliberately runs the existing model turn as a single step rather than
- * as a `WorkflowAgent` loop. Replay granularity is therefore the whole turn:
- * a crash re-runs it from the top instead of resuming at the last tool call.
- * That trade buys token-level streaming, which a `WorkflowAgent` cannot give a
- * transcript row — it streams into the workflow's own output stream, which
- * only the single holder of the run id can read. Rooms need every participant
- * to see the reply, so the row wins. See internal/develop/bring-your-own-agents.md, "Durable agent
- * runs", for the follow-up that revisits this.
+ * Model calls and tool calls are separate durable steps. In particular, an
+ * approval suspension never replays a completed provider request or tool.
  */
 export async function workspaceAgentTurnWorkflow(input: WorkspaceAgentTurnInput) {
   'use workflow'
@@ -78,35 +84,84 @@ export async function workspaceAgentTurnWorkflow(input: WorkspaceAgentTurnInput)
     workflowRunId,
   })
 
+  let prepared: Awaited<ReturnType<typeof prepareWorkspaceAgentTurn>> | undefined
+  const usage: WorkspaceAgentLoopUsage = {
+    inputTokens: 0,
+    outputTokens: 0,
+    usageKnown: true,
+    providerCallStarted: false,
+    providerOutcomeAmbiguous: false,
+  }
+  let usageSettlementAttempted = false
   try {
-    const result = await executeWorkspaceAgentTurn({
-      actorUserId: input.actorUserId,
-      agentId: input.agentId,
-      conversationId: input.conversationId,
-      messageId: input.messageId,
-      memoryEnabled: input.memoryEnabled !== false,
-      threadRootMessageId: input.threadRootMessageId,
-      turnMessageId: input.turnMessageId,
-      workspaceId: input.workspaceId,
+    prepared = await prepareWorkspaceAgentTurn({ ...input, memoryEnabled: input.memoryEnabled !== false })
+    const loop = await runWorkspaceAgentTurnLoop({
+      prepared,
+      usage,
+      dependencies: {
+        beginFirstModelCall: async () => await beginWorkspaceAgentModelCall({
+          actorUserId: input.actorUserId,
+          prepared: prepared!,
+        }),
+        callModel: callWorkspaceAgentModel,
+        inspectTool: inspectWorkspaceAgentTool,
+        executeTool: executeWorkspaceAgentTool,
+        persistProgress: persistWorkspaceAgentToolProgress,
+        finalize: finalizeWorkspaceAgentTurn,
+        requestApproval: async ({ toolCall, cycle }) => {
+          const token = `native-agent-approval:${input.runId}:${cycle}`
+          return await requestWorkspaceAgentApproval({
+            actorUserId: input.actorUserId,
+            runId: input.runId,
+            token,
+            requests: [{
+              approvalId: `${input.runId}:${toolCall.toolCallId}`,
+              toolCallId: toolCall.toolCallId,
+              toolName: toolCall.toolName,
+              input: toolCall.input,
+            }],
+          }, { publish: waitForWorkspaceAgentApproval, resume: resumeWorkspaceAgentAfterApproval })
+        },
+      },
     })
-    if (!result) {
-      // The turn ran and produced nothing — an empty completion, or a reply
-      // this agent had already posted. Either way there is nothing to record,
-      // and the run must not stay active.
-      await abandonWorkspaceAgentRun({
-        actorUserId: input.actorUserId,
-        reasonCode: 'empty_response',
-        runId: input.runId,
-      })
-      return { completed: false, runId: input.runId }
+    const result = loop.result as Awaited<ReturnType<typeof finalizeWorkspaceAgentTurn>>
+    const settlement = await settleWorkspaceAgentUsage({
+      actorUserId: input.actorUserId,
+      prepared,
+      inputTokens: usage.inputTokens,
+      outputTokens: usage.outputTokens,
+      usageKnown: usage.usageKnown,
+      providerCallStarted: usage.providerCallStarted,
+      providerOutcomeAmbiguous: usage.providerOutcomeAmbiguous,
+    })
+    if (!settlement.settled && !settlement.reconciled) {
+      throw new Error('Native agent usage could not be settled.')
     }
-    await completeWorkspaceAgentRun({
-      actorUserId: input.actorUserId,
-      result,
-      runId: input.runId,
-    })
+    usageSettlementAttempted = true
+    const completed = await completeWorkspaceAgentRun({ actorUserId: input.actorUserId, result, runId: input.runId })
+    if (completed?.status !== 'completed') throw new FatalError('The agent run did not complete.')
     return { completed: true, runId: input.runId }
   } catch (error) {
+    let settlementError: unknown
+    if (prepared && !usageSettlementAttempted) {
+      try {
+        const settlement = await settleWorkspaceAgentUsage({
+          actorUserId: input.actorUserId,
+          prepared,
+          inputTokens: usage.inputTokens,
+          outputTokens: usage.outputTokens,
+          usageKnown: usage.usageKnown,
+          providerCallStarted: usage.providerCallStarted,
+          providerOutcomeAmbiguous: usage.providerOutcomeAmbiguous,
+        })
+        if (!settlement.settled && !settlement.reconciled) {
+          throw new Error('Native agent usage could not be settled.')
+        }
+        usageSettlementAttempted = true
+      } catch (settlementFailure) {
+        settlementError = settlementFailure
+      }
+    }
     const failure = describeWorkspaceAgentFailure(error)
     await failWorkspaceAgentRun({
       actorUserId: input.actorUserId,
@@ -118,6 +173,7 @@ export async function workspaceAgentTurnWorkflow(input: WorkspaceAgentTurnInput)
       turnMessageId: input.turnMessageId,
       workspaceId: input.workspaceId,
     })
+    if (settlementError) throw settlementError
     throw error
   }
 }

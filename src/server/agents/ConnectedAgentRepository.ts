@@ -25,6 +25,7 @@ export type ConnectedAgentUpdateSandboxLease = Partial<Pick<
   AgentSandboxLease,
   | 'status' | 'providerReference' | 'reservationId' | 'reservedUntil'
   | 'runtimeStartedAt' | 'runtimeEndedAt' | 'usage' | 'cleanupAttempts' | 'cleanupAfter'
+  | 'nextMeterAt' | 'meterClaimToken' | 'meterClaimUntil'
 >> & { workspaceId: string; leaseId: string; now: number }
 export type ConnectedAgentUpsertHarnessSession = Omit<AgentHarnessSession, 'createdAt' | 'updatedAt'> & { now: number }
 
@@ -131,7 +132,10 @@ export type ConnectedAgentSandboxMeterCharge = {
 
 export type ConnectedAgentMeterSandboxLeaseResult =
   | { applied: true; meterVersion: number; remainingCents?: number }
-  | { applied: false; reason: 'lease_missing' | 'lease_not_meterable' | 'lease_conflict' | 'insufficient_budget'; remainingCents?: number }
+  | { applied: false; reason: 'lease_missing' | 'lease_not_meterable' | 'lease_conflict' | 'insufficient_budget' | 'paid_plan_required'; remainingCents?: number }
+
+export type ComputerMaintenanceClaim = { token: string; kind: 'provision' | 'wake' | 'stop' | 'delete' | 'idle'; expiresAt: number }
+export type ComputerActivityClaim = { token: string; expiresAt: number }
 
 export type ConnectedAgentStartRemoteTurn = {
   lifecycleVersion?: 2
@@ -371,6 +375,76 @@ export interface ConnectedAgentRepository {
     cleanupBefore?: number
     limit?: number
   }): Promise<AgentSandboxLease[]>
+  claimSandboxLeases?(args: {
+    statuses: AgentSandboxLeaseStatus[]
+    now: number
+    limit: number
+    claimToken: string
+    claimUntil: number
+  }): Promise<{ leases: AgentSandboxLease[]; deferred: boolean }>
+  finishSandboxLeaseClaim?(args: {
+    workspaceId: string
+    leaseId: string
+    claimToken: string
+    now: number
+    nextMeterAt: number
+    cleanupAfter?: number | null
+  }): Promise<boolean>
+  claimComputerMaintenance?(args: {
+    workspaceId: string
+    leaseId: string
+    kind: ComputerMaintenanceClaim['kind']
+    token: string
+    now: number
+    expiresAt: number
+    force?: boolean
+    idleBefore?: number
+    reconcileToken?: string
+    expectedProviderReference?: string | null
+    actorUserId?: string
+    ownerType?: 'agent' | 'user'
+    ownerId?: string
+  }): Promise<ComputerMaintenanceClaim | null>
+  transitionComputerLifecycle?(args: {
+    workspaceId: string
+    computerId: string
+    leaseId: string
+    token: string
+    transition: 'wake_armed' | 'session_armed' | 'ready' | 'paused' | 'deleted' | 'failed' | 'cancelled'
+    expectedProviderReference: string | null
+    now: number
+    reservedUntil?: number
+    cleanupAfter?: number | null
+    cleanupAttempts?: number
+    activityToken?: string
+    activityUserId?: string
+    activityExpiresAt?: number
+    allocationRetryable?: boolean
+  }): Promise<boolean>
+  releaseComputerMaintenance?(args: { workspaceId: string; leaseId: string; token: string; now: number }): Promise<boolean>
+  claimComputerActivity?(args: {
+    workspaceId: string
+    leaseId: string
+    token: string
+    userId: string
+    now: number
+    expiresAt: number
+  }): Promise<ComputerActivityClaim | null>
+  releaseComputerActivity?(args: { workspaceId: string; leaseId: string; token: string; now: number }): Promise<boolean>
+  prepareComputerAllocation?(args: {
+    workspaceId: string
+    leaseId: string
+    allocationKey: string
+    allocationRecipe: string
+    maintenanceToken: string
+    now: number
+  }): Promise<{ requestedAt: number } | null>
+  computerHasActiveRuns?(args: {
+    workspaceId: string
+    ownerType: string
+    ownerId: string
+    now: number
+  }): Promise<boolean>
   updateSandboxLease(input: ConnectedAgentUpdateSandboxLease): Promise<AgentSandboxLease | null>
   patchSandboxLeaseUsage(args: {
     workspaceId: string
@@ -393,6 +467,8 @@ export interface ConnectedAgentRepository {
     meteredAt: number
     payer?: ConnectedAgentSandboxLeasePayer
     charge?: ConnectedAgentSandboxMeterCharge
+    runtimeHoldCents?: number
+    providerEvidence?: { usage: Record<string, unknown>; stopped: boolean }
     minRemainingCents: number
   }): Promise<ConnectedAgentMeterSandboxLeaseResult>
   stopSandboxLease(args: {

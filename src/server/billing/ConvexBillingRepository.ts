@@ -150,7 +150,7 @@ export class ConvexBillingRepository implements BillingRepository {
     return await convex.mutation('billing/accountSubscriptions:upsertByServer', {
       ...args,
       serverSecret: this.serverSecret,
-    })
+    }, { throwOnError: true })
   }
 
   async recordBillingAccountTopUp(args: {

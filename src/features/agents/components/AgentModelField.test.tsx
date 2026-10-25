@@ -13,12 +13,13 @@ test('a discovered agent with no model catalog does not advertise the legacy har
   assert.doesNotMatch(html, /Haiku 4\.5|Fastest for quick answers/)
 })
 
-test('a reported model uses its provider label while undiscovered legacy agents retain their existing label', () => {
+test('reported models use provider labels while legacy aliases do not claim a version', () => {
   const current = renderToStaticMarkup(<AgentModelField adapterId="claude-code" model="new-model"
     options={{ discoveredAt: 1, model: { values: [{ id: 'new-model', label: 'New provider model' }] } }} onChange={() => undefined} />)
   assert.match(current, /New provider model/)
   const legacy = renderToStaticMarkup(<AgentModelField adapterId="claude-code" model="haiku" onChange={() => undefined} />)
-  assert.match(legacy, /Haiku 4\.5/)
+  assert.match(legacy, /Haiku · Version chosen by your runtime/)
+  assert.doesNotMatch(legacy, /Haiku 4\.5|Haiku 5\.5/)
 })
 
 test('an older combined model renders the offered base model when the agent reports effort separately', () => {

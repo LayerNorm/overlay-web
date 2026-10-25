@@ -10,7 +10,6 @@ export const INTEGRATION_TESTS = new Set([
   'packages/overlay-sandbox-runtime/src/box.live.test.ts',
   'packages/overlay-sandbox-runtime/src/live-conformance.test.ts',
   'examples/customer-deployment/mirror/mirror.integration.test.mjs',
-  'packages/overlay-agent-host/src/hermes-acp.integration.test.ts',
 ])
 
 export const REACT_SERVER_TESTS = new Set([

@@ -139,3 +139,10 @@ test('Git first-push lookup accepts only the exact open internal main PR', async
   }
   assert.equal(await previewBuildEnvironment(preview, { fetchImpl: () => { throw Error('unexpected lookup') } }), preview)
 })
+
+test('Computer QA fixtures require explicit isolated preview opt-in', () => {
+  assert.equal(buildPlan(preview).after.length, 1)
+  const plan = buildPlan({ ...preview, OVERLAY_PREVIEW_QA_FIXTURES: 'computer-workspace' })
+  assert.deepEqual(plan.after[1].args, ['run', 'dev/seed:initComputerQa', '{}', '--deployment', 'preview/pr-123'])
+  assert.equal(buildPlan({ VERCEL_ENV: 'production', OVERLAY_PREVIEW_QA_FIXTURES: 'computer-workspace' }).command, 'npm')
+})

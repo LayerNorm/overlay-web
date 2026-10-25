@@ -1,7 +1,7 @@
 {
-  "imageVersion": 9,
+  "imageVersion": 10,
   "packages": {
-    "@agentclientprotocol/claude-agent-acp": "0.91.0",
+    "@agentclientprotocol/claude-agent-acp": "0.93.0",
     "@agentclientprotocol/codex-acp": "2.2.2"
   }
 }

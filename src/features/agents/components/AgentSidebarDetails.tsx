@@ -11,6 +11,7 @@ import {
   SectionHeading,
 } from './AgentSidebarDetails.parts'
 import type { useAgentEditorController } from './AgentEditorPage'
+import { OverlayAgentPermissionsField } from './AgentEditorForm'
 
 type Controller = ReturnType<typeof useAgentEditorController>
 
@@ -102,6 +103,12 @@ export function AgentSidebarDetails({
           <section>
             <SectionHeading>Tools</SectionHeading>
             <AgentSidebarTools editor={editor} />
+          </section>
+          <section>
+            <OverlayAgentPermissionsField
+              value={form.permissionMode}
+              onChange={(value) => { form.setPermissionMode(value); form.markDirty() }}
+            />
           </section>
         </>
       ) : null}

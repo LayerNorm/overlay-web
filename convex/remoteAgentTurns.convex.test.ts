@@ -22,6 +22,54 @@ const agentPrincipalId = 'principal-agent-remote-turn'
 beforeAll(() => { process.env.INTERNAL_API_SECRET = secret })
 
 describe('Convex remote agent room turns', () => {
+  test.each([
+    {prefix: '', preparing: false, legacyCounters: false},
+    {prefix: '', preparing: true, legacyCounters: false},
+    {prefix: 'Saved answer 🙂\n', preparing: false, legacyCounters: false},
+    {prefix: 'The agent\'s machine restarted before this run finished. Send the message again.', preparing: false, legacyCounters: false},
+    {prefix: 'Long committed reply 🙂\n'.repeat(4000), preparing: false, legacyCounters: false},
+    {prefix: 'Legacy delta output', preparing: false, legacyCounters: true},
+  ])('retry after a machine restart preserves provider text ($preparing, $legacyCounters, $prefix.length characters)', async ({prefix, preparing, legacyCounters}) => {
+    const convex = convexTest(schema, modules)
+    const seeded = await seedRoom(convex)
+    const call = <T>(operation: string, args: Record<string, unknown>) =>
+      convex.mutation(mutationRef(operation), { ...args, serverSecret: secret }) as Promise<T>
+    await convex.run(async ctx => {
+      const environment = await ctx.db.query('agentEnvironments').withIndex('by_environmentId', q => q.eq('environmentId', environmentId)).unique()
+      await ctx.db.patch(environment!._id, {kind: 'overlay_cloud', status: 'online', lastSeenAt: now})
+    })
+    await call('upsertBindingByServer', bindingInput())
+    const started = await call<{messageId: string}>('startRemoteAgentTurnByServer', startInput(seeded))
+    if (preparing) await call('applyRemoteEventsByServer', {workspaceId, environmentId, sessionId: 'session-remote-turn',
+      events: [event(1, 'session_preparing', {})], now: now + 1})
+    if (prefix) await call('applyRemoteEventsByServer', {workspaceId, environmentId, sessionId: 'session-remote-turn',
+      events: [event(1, legacyCounters ? 'text_delta' : 'text_checkpoint', {offset: 0, text: prefix})], now: now + 1})
+    if (legacyCounters) await convex.run(async ctx => {
+      const run = await ctx.db.query('conversationAgentRuns').withIndex('by_externalRunId', q => q.eq('externalRunId', 'run-remote-turn')).unique()
+      const {textDeltaChars: _delta, ...olderStats} = run!.streamStats!
+      void _delta
+      await ctx.db.patch(run!._id, {streamStats: olderStats})
+    })
+    await call('sweepRemoteRunsByServer', {now: now + 2, hostOfflineBefore: 0, limit: 100, abandonEnvironmentId: environmentId})
+    const retry = await call<{applied: boolean; commandId: string}>('controlRemoteAgentTurnByServer', {
+      actorUserId, workspaceId, conversationId: seeded.conversationId, runId: 'run-remote-turn',
+      action: 'retry', queueExpiresAt: now + 60_000, now: now + 3,
+    })
+    expect(retry.applied).toBe(true)
+    const commands = await call<Array<{id: string; payload: {metadata: Record<string, unknown>}}>>('claimCommandsByServer', {
+      workspaceId, environmentId, now: now + 4, leaseMs: 5000, limit: 10,
+    })
+    expect(commands.find(command => command.id === retry.commandId)?.payload.metadata.recoveryTextOffset ?? 0).toBe(prefix.length)
+    const sequence = prefix || preparing ? 2 : 1
+    await call('applyRemoteEventsByServer', {workspaceId, environmentId, sessionId: 'session-remote-turn',
+      events: [event(sequence, 'session_started', {remoteSessionId: 'recovered', adapterId: 'acp'}),
+        event(sequence + 1, 'text_delta', {offset: prefix.length, text: 'Recovered output'}),
+        event(sequence + 2, 'completed', {usage: {}})], now: now + 5})
+    const message = await convex.run(async ctx => hydrateRemoteMessage(ctx, (await ctx.db.get(started.messageId))!))
+    expect(message?.content).toBe(prefix + 'Recovered output')
+    expect(message?._id).toBe(started.messageId)
+  })
+
   test('a legacy fresh retry retains the committed prefix and receives its canonical offset', async () => {
     const convex = convexTest(schema, modules)
     const seeded = await seedRoom(convex)
@@ -701,6 +749,19 @@ async function projectedState(convex: ReturnType<typeof convexTest>, messageId: 
 }
 function mutationRef(operation: string) { return makeFunctionReference<'mutation'>(`agents/connectedAgents:${operation}`) }
 function queryRef(operation: string) { return makeFunctionReference<'query'>(`agents/connectedAgents:${operation}`) }
+
+test('remote run snapshot projects the run actor and agent instead of the environment approver', async () => {
+  const f = await durableFixture()
+  await f.convex.run(async ctx => {
+    const environment = await ctx.db.query('agentEnvironments').withIndex('by_environmentId', q => q.eq('environmentId', environmentId)).unique()
+    await ctx.db.patch(environment!._id, { approvedByUserId: 'approver-user' })
+  })
+  const snapshot = await f.convex.query(makeFunctionReference<'query'>('agents/remoteRuns:readByServer'), {
+    serverSecret: secret, runId: 'run-remote-turn',
+  }) as { actorUserId?: string; agentId?: string } | null
+  expect(snapshot).toMatchObject({ actorUserId, agentId })
+  expect(snapshot?.actorUserId).not.toBe('approver-user')
+})
 
 async function durableFixture(overrides: Record<string, unknown> = {}) {
   const convex = convexTest(schema, modules)

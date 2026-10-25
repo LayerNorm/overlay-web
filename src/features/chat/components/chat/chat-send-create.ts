@@ -49,6 +49,7 @@ export async function createNewChatForSend({
   setChats,
   setInterruptedExchangeIdx,
   setIsTemporaryChat,
+  setPendingRunConversationId,
   setRuntimeHydrationVersion,
   syncStandaloneChatUrl,
   startFirstMessageRename,
@@ -74,6 +75,7 @@ export async function createNewChatForSend({
   setChats: Dispatch<SetStateAction<Conversation[]>>
   setInterruptedExchangeIdx: (idx: number | null) => void
   setIsTemporaryChat: (isTemporaryChat: boolean) => void
+  setPendingRunConversationId: (conversationId: string | null) => void
   setRuntimeHydrationVersion: Dispatch<SetStateAction<number>>
   syncStandaloneChatUrl: (chatId: string | null) => void
   startFirstMessageRename: (chatId: string, seedText: string) => void
@@ -122,6 +124,7 @@ export async function createNewChatForSend({
     const pending = pendingFirstSendRef.current
     if (pending && trimmedClientId && pending.conversationClientId === trimmedClientId) {
       pending.realChatId = data.id
+      setPendingRunConversationId(data.id)
       startPendingFirstSendRename(pending, startFirstMessageRename)
       if (pendingScrollTurnIdRef.current && !pendingScrollChatIdRef.current) {
         pendingScrollChatIdRef.current = data.id

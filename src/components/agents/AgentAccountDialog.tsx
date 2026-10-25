@@ -9,8 +9,9 @@ import {
   AGENT_PROVIDERS,
   SELECTABLE_AGENT_PROVIDER_IDS,
   checkAgentProviderSecret,
+  isSupportedAgentProviderId,
   type AgentProviderAuthMethod,
-  type AgentProviderId,
+  type SupportedAgentProviderId,
 } from '@/shared/agents/provider-accounts'
 
 const METHOD_LABEL: Record<AgentProviderAuthMethod, string> = { subscription: 'Subscription', api_key: 'API key' }
@@ -128,11 +129,13 @@ function CodexSignIn({ accountId, label, onConnected, onError }: {
 export function AccountDialog({ target, initialProvider, onClose, onSaved }: {
   target: ProviderAccountResource | null
   /** Which agent's account to start on when connecting a new one. */
-  initialProvider?: AgentProviderId
+  initialProvider?: SupportedAgentProviderId
   onClose(): void
   onSaved(account?: ProviderAccountResource): void
 }) {
-  const [provider, setProvider] = useState<AgentProviderId>(target?.provider ?? initialProvider ?? 'claude-code')
+  const [provider, setProvider] = useState<SupportedAgentProviderId>(
+    target && isSupportedAgentProviderId(target.provider) ? target.provider : initialProvider ?? 'claude-code',
+  )
   const [method, setMethod] = useState<AgentProviderAuthMethod>(target?.method ?? 'subscription')
   const [secret, setSecret] = useState('')
   const [label, setLabel] = useState('')
@@ -145,7 +148,9 @@ export function AccountDialog({ target, initialProvider, onClose, onSaved }: {
   const help = definition.help[method]
   const chatgptSignIn = provider === 'codex' && method === 'subscription'
 
-  const pickProvider = (next: AgentProviderId) => {
+  if (target && !isSupportedAgentProviderId(target.provider)) return null
+
+  const pickProvider = (next: SupportedAgentProviderId) => {
     setProvider(next)
     // A provider only offers the methods it supports (Codex: API key).
     if (!AGENT_PROVIDERS[next].methods.includes(method)) setMethod(AGENT_PROVIDERS[next].methods[0]!)
@@ -206,12 +211,6 @@ export function AccountDialog({ target, initialProvider, onClose, onSaved }: {
               />
             </div>
           </>
-        ) : null}
-
-        {definition.experimental ? (
-          <p className="rounded-lg bg-(--surface-subtle) px-3 py-2 text-[11px] leading-4 text-(--muted)">
-            {definition.label} is experimental on Overlay Cloud: it runs with your own key and has not been proven with as many accounts as Claude Code and Codex.
-          </p>
         ) : null}
 
         {chatgptSignIn ? (
