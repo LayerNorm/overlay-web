@@ -64,6 +64,7 @@ export function activatePendingFirstSend({
   replaceConversationRuntime,
   setActiveChatId,
   setActiveViewer,
+  setPendingRunConversationId,
   setRuntimeHydrationVersion,
   startFirstMessageRename,
   syncStandaloneChatUrl,
@@ -81,6 +82,7 @@ export function activatePendingFirstSend({
   ) => ConversationRuntime
   setActiveChatId: (chatId: string | null) => void
   setActiveViewer: (chatId: string | null) => void
+  setPendingRunConversationId: (conversationId: string | null) => void
   setRuntimeHydrationVersion: Dispatch<SetStateAction<number>>
   startFirstMessageRename: (chatId: string, seedText: string) => void
   syncStandaloneChatUrl: (chatId: string | null) => void
@@ -101,6 +103,7 @@ export function activatePendingFirstSend({
   activeChatIdRef.current = realId
   setActiveViewer(realId)
   setActiveChatId(realId)
+  setPendingRunConversationId(null)
   syncStandaloneChatUrl(realId)
   applyUiStateToView(preview.ui)
   resetRuntimeState(emptyRuntime)

@@ -2,6 +2,7 @@ import type { AssistantVisualBlock } from '@overlay/chat-core'
 import { buildAssistantVisualSequence, splitUserDisplayText } from '@overlay/chat-core'
 import type { RoomMessageAttachment, RoomMessageView } from './RoomMessageItem'
 import { driveSyncStatusSchema } from '@layernorm/overlay-agent-bridge-protocol'
+import { NATIVE_AGENT_APPROVAL_PART, readNativeAgentApproval } from '@/shared/agents/native-agent-approval'
 
 export type RoomMessagePart = {
   toolInvocation?: Record<string, unknown>
@@ -288,6 +289,9 @@ export function toRoomMessageView({
     mentions,
     askedBy: askedBy(message),
     remoteQueue,
+    nativeApproval: message.authorKind === 'agent' && message.status === 'generating'
+      ? readNativeAgentApproval(message.parts?.find((part) => part.type === NATIVE_AGENT_APPROVAL_PART)?.data)
+      : undefined,
     remoteRequest: remoteRequest(message.parts),
     remoteRun,
     remoteDrive: remoteDriveStatus(message.parts),

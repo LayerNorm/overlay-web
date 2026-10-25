@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { toast } from '@overlay/ui/primitives'
 import type { useAgentComputer } from './use-agent-computer'
 
 export function useAgentSidebarComputer({
@@ -9,38 +10,50 @@ export function useAgentSidebarComputer({
   agentId,
   enabled,
   visible,
+  currentUserId,
   state,
 }: {
   activeWorkspaceId: string | null
   agentId: string
   enabled: boolean
   visible: boolean
+  currentUserId: string | undefined
   state: ReturnType<typeof useAgentComputer>
 }) {
   const {
-    agentComputer: computer,
-    setAgentComputer: setComputer,
+    agentComputer: storedComputer,
     initialLoading: computerLoading,
     computerLoadError,
-    retryComputerLoad: loadComputer,
+    retryComputerLoad,
+    updateAgentComputerControl,
+    startAgentComputer,
   } = state
+  const computer = enabled && storedComputer?.workspaceId === activeWorkspaceId
+    && storedComputer.ownerType === 'agent' && storedComputer.ownerId === agentId ? storedComputer : null
+  const [controlBusy, setControlBusy] = useState(false)
+  const controlPending = useRef(false)
   const [wakeError, setWakeError] = useState<string | null>(null)
   const [ticketUrl, setTicketUrl] = useState<string | null>(null)
   const [ticketError, setTicketError] = useState<string | null>(null)
   const [ticketLoading, setTicketLoading] = useState(false)
   const [ticketAttempt, setTicketAttempt] = useState(0)
-  const [waking, setWaking] = useState(false)
+  const waking = state.computerLifecycleBusy === 'start'
   const requestId = useRef(0)
+
+  const loadComputer = useCallback(() => {
+    setWakeError(null)
+    retryComputerLoad()
+  }, [retryComputerLoad])
 
   useEffect(() => {
     setWakeError(null)
-  }, [activeWorkspaceId, agentId, computer?.status])
+  }, [activeWorkspaceId, agentId, enabled, computer?.status])
 
   const shouldPoll = Boolean(enabled && activeWorkspaceId && computer
-    && (computer.status === 'provisioning' || (computer.status as string) === 'starting'))
+    && (visible || computer.status === 'provisioning' || (computer.status as string) === 'starting'))
   useEffect(() => {
     if (!shouldPoll || !activeWorkspaceId) return
-    const timer = window.setInterval(() => { void loadComputer() }, 10_000)
+    const timer = window.setInterval(loadComputer, 5_000)
     return () => window.clearInterval(timer)
   }, [activeWorkspaceId, loadComputer, shouldPoll])
 
@@ -68,30 +81,43 @@ export function useAgentSidebarComputer({
 
   const wake = useCallback(async () => {
     if (!activeWorkspaceId || !computer || waking) return
-    setWaking(true)
     try {
-      const result = await overlayAppClient.computers.start(activeWorkspaceId, computer.id)
-      setComputer(result.computer)
+      const result = await startAgentComputer()
+      if (!result) return
       setWakeError(null)
     } catch {
       setWakeError('Could not wake the computer.')
-    } finally {
-      setWaking(false)
     }
-  }, [activeWorkspaceId, computer, setComputer, waking])
+  }, [activeWorkspaceId, computer, startAgentComputer, waking])
 
   const retryTicket = useCallback(() => {
     setTicketUrl(null)
     setTicketAttempt((attempt) => attempt + 1)
   }, [])
 
-  const refreshComputer = useCallback(() => {
-    setWakeError(null)
-    loadComputer()
-  }, [loadComputer])
+  const changeControl = useCallback(async (action: 'take' | 'release') => {
+    if (!computer || !currentUserId || controlPending.current) return false
+    controlPending.current = true
+    setControlBusy(true)
+    try {
+      const updated = await updateAgentComputerControl(action)
+      if (!updated) return false
+      setWakeError(null)
+      return true
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not change computer control.')
+      return false
+    } finally {
+      controlPending.current = false
+      setControlBusy(false)
+    }
+  }, [computer, currentUserId, updateAgentComputerControl])
 
   return {
     computer,
+    currentUserId,
+    controlBusy: controlBusy || Boolean(state.computerLifecycleBusy),
+    changeControl,
     computerLoading,
     computerError: computerLoadError ?? wakeError,
     ticketUrl,
@@ -100,6 +126,6 @@ export function useAgentSidebarComputer({
     wake,
     waking,
     retryTicket,
-    loadComputer: refreshComputer,
+    loadComputer,
   }
 }

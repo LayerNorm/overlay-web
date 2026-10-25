@@ -109,7 +109,9 @@ export class StripeBillingProvider extends CoreStripeBillingProvider {
       topUpQuantityForAmountCents: getTopUpQuantityForCheckout,
       syncBillingAccountCustomer: repository
         ? (args) => repository.upsertBillingAccountSubscription({
-            ...args,
+            billingAccountId: args.billingAccountId,
+            stripeCustomerId: args.stripeCustomerId,
+            stripeSubscriptionId: args.stripeSubscriptionId,
             planKind: args.planKind ?? 'free',
             planAmountCents: args.planAmountCents ?? 0,
             status: args.status ?? 'active',

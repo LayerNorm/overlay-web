@@ -163,6 +163,20 @@ test('any workspace, including a first one, can be set up for a plan; until then
   )
 })
 
+test('workspace verification fails when a paid subscription cannot be persisted', async () => {
+  const service = fixture({
+    role: 'admin',
+    repository: repository({
+      async upsertBillingAccountSubscription() {
+        throw new Error('billing_period_rollover_has_active_reservations')
+      },
+    }),
+  })
+  await assert.rejects(service.verify({
+    actorUserId: 'admin_1', workspaceId: 'workspace_1', kind: 'paid_plan', sessionId: 'cs_test_workspace',
+  }), /billing_period_rollover_has_active_reservations/)
+})
+
 function fixture(args: {
   provider?: BillingProvider
   repository?: BillingRepository

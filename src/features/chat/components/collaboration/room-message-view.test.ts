@@ -16,6 +16,19 @@ function record(overrides: Partial<RoomMessageRecord> = {}): RoomMessageRecord {
   }
 }
 
+test('pending native approval survives transcript reload and is hidden on terminal or human messages', () => {
+  const approval = {
+    runId: 'r1', conversationId: 'c1', userId: 'u1', token: 'h1', requestedAt: 1,
+    requests: [{ approvalId: 'a1', toolCallId: 't1', toolName: 'computer_exec', input: { command: 'pwd' } }],
+  }
+  const message = record({ status: 'generating', parts: [{ type: 'data-native-agent-approval', data: approval }] })
+  const view = (value: RoomMessageRecord) => toRoomMessageView({ message: value, currentPrincipalId: 'me', authorName: 'Agent' })
+  assert.deepEqual(view(JSON.parse(JSON.stringify(message))).nativeApproval, approval)
+  assert.equal(view({ ...message, status: 'completed' }).nativeApproval, undefined)
+  assert.equal(view({ ...message, status: 'error' }).nativeApproval, undefined)
+  assert.equal(view({ ...message, authorKind: 'human' }).nativeApproval, undefined)
+})
+
 test('questionnaires stay busy through pending and persisted agent generation, then unlock', () => {
   assert.equal(isRoomAgentResponding([], 'Overlay'), true)
   assert.equal(isRoomAgentResponding([record({ status: 'generating' })], null), true)

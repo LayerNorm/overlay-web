@@ -29,6 +29,7 @@ const RESERVED_SECRET_NAME = /^(?:PATH|HOME|SHELL|USER|IFS|BASH_ENV|ENV|LD_.*|DY
 export const EXPORT_CONFIG_PACKAGE = '@layernorm/overlay-agent-host@latest'
 
 export type ApplyProfile = (args: {
+  actorUserId: string
   workspaceId: string
   agentId: string
   bundle: AgentProfileBundle
@@ -138,7 +139,9 @@ export class AgentProfileService {
     }
     const hooksEnabled = args.hooksEnabled ?? profile.hooksEnabled
     const bundle = decodeProfileBundle(await this.dependencies.repository.readChunks(profile.id))
-    await this.dependencies.apply({ workspaceId: args.workspaceId, agentId: args.agentId, bundle, hooksEnabled, version: profile.version })
+    await this.dependencies.apply({
+      actorUserId: args.actorUserId, workspaceId: args.workspaceId, agentId: args.agentId, bundle, hooksEnabled, version: profile.version,
+    })
     await this.dependencies.repository.activate({ profileId: profile.id, now: this.now() })
     await this.audit('agent_profile.applied', 'user', profile.id, { workspaceId: args.workspaceId, agentId: args.agentId, actorUserId: args.actorUserId, version: profile.version })
     return { version: profile.version }
@@ -150,7 +153,9 @@ export class AgentProfileService {
     await this.dependencies.repository.setHooksEnabled({ profileId: profile.id, enabled: args.enabled })
     if (profile.status === 'active') {
       const bundle = decodeProfileBundle(await this.dependencies.repository.readChunks(profile.id))
-      await this.dependencies.apply({ workspaceId: args.workspaceId, agentId: args.agentId, bundle, hooksEnabled: args.enabled, version: profile.version })
+      await this.dependencies.apply({
+        actorUserId: args.actorUserId, workspaceId: args.workspaceId, agentId: args.agentId, bundle, hooksEnabled: args.enabled, version: profile.version,
+      })
     }
     await this.audit('agent_profile.hooks', 'user', profile.id, { workspaceId: args.workspaceId, agentId: args.agentId, actorUserId: args.actorUserId, enabled: args.enabled })
   }

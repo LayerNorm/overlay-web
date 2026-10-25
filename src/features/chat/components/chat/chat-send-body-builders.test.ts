@@ -41,6 +41,27 @@ test('builds a stable submitted composer snapshot', () => {
   assert.deepEqual(snapshot.selectedToolIdsSnapshot, ['web_search'])
 })
 
+test('keeps MiniMax M3.1 Flash as the selected text model', () => {
+  const modelId = 'minimax/minimax-m3.1-flash'
+  const snapshot = buildSubmittedComposerSnapshot({
+    selectedModels: [modelId],
+    selectedActModel: modelId,
+    activeChatTitle: 'Title',
+    selectedImageModels: [],
+    selectedVideoModels: [],
+    attachedImages: [],
+    pendingChatDocuments: [],
+    mentions: [],
+    isTemporaryChat: false,
+    mode: 'chat',
+    selectedToolIds: [],
+    memoryEnabled: false,
+    text: 'hello',
+  })
+
+  assert.deepEqual(snapshot.textModelsForTurn, [modelId])
+})
+
 test('validates blocked send inputs by status and modality', () => {
   const base = {
     text: '',

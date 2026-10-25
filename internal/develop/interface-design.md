@@ -97,6 +97,9 @@ authoritative: discovery defaults do not imply settings applied to an active run
 and discovery errors explicit, and offer permission defaults only when the host advertises them.
 Full-access permission modes require explicit confirmation on both cloud and local agents.
 
+Native Overlay agent Permissions use the editor's ordinary dirty and Save flow. Ask is the default.
+Choosing Auto requires confirmation and cancellation leaves Ask selected.
+
 Connected-agent drive status sits below the answer without modifying provider Markdown. Saving
 and unsaved states use a quiet status line. Saved file/folder counts expand to at most 32 authorized
 Files links, with a link to Files for larger results. Folders navigate by folder id; files open by

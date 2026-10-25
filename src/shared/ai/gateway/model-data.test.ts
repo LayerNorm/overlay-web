@@ -5,11 +5,14 @@ import {
   getEnabledChatModels,
   getModelsByIntelligence,
   getModel,
+  CHAT_MODEL_QUALITY_PRIORITY,
+  DEFAULT_CURATED_CHAT_MODEL_IDS,
   MODEL_RECOMMENDATIONS,
   getGatewayCatalogRevision,
   IMAGE_MODELS,
   VIDEO_MODELS,
   modelUsesAiGatewayTransport,
+  pickBestModelForAct,
   registerByokModels,
   registerGatewayCatalogModels,
 } from './model-data'
@@ -203,4 +206,44 @@ test('provider catalog includes older non-recommended models without enabling th
   assert.equal(getModel(oldModel)?.id, oldModel)
   assert.ok(!MODEL_RECOMMENDATIONS.text.some((id: string) => id === oldModel))
   assert.equal(getModelsByIntelligence(true)[0].id, 'overlay-free')
+})
+
+test('MiniMax M3.1 Flash is selectable with zero-price vision metadata', () => {
+  const modelId = 'minimax/minimax-m3.1-flash'
+  const gatewayModel = {
+    id: modelId,
+    gatewayId: modelId,
+    name: 'MiniMax M3.1 Flash',
+    type: 'language' as const,
+    provider: 'minimax',
+    tags: ['reasoning', 'tool-use', 'vision', 'structured-output', 'implicit-caching', 'open-weights'],
+    pricing: { input: '0', output: '0' },
+    inputPricePerMillion: 0,
+    outputPricePerMillion: 0,
+  }
+
+  registerGatewayCatalogModels([])
+  const fallback = getModel(modelId)
+  assert.equal(fallback?.cost, 0)
+  assert.equal(fallback?.speedTier, 3)
+  assert.equal(fallback?.supportsVision, true)
+  assert.equal(fallback?.supportsReasoning, true)
+  assert.equal(fallback?.supportsSearch, false)
+  assert.equal(fallback?.supportsZeroDataRetention, false)
+  assert.ok(DEFAULT_CURATED_CHAT_MODEL_IDS.includes(modelId))
+
+  registerGatewayCatalogModels([gatewayModel])
+  const live = getModel(modelId)
+  assert.equal(live?.pricePer1mTokens, 0)
+  assert.equal(live?.cost, 0)
+  assert.equal(live?.speedTier, 3)
+  assert.equal(live?.supportsVision, true)
+  assert.equal(live?.supportsReasoning, true)
+  assert.equal(live?.supportsZeroDataRetention, false)
+  assert.equal(CHAT_MODEL_QUALITY_PRIORITY[
+    CHAT_MODEL_QUALITY_PRIORITY.indexOf('minimax/minimax-m2.7') + 1
+  ], modelId)
+  assert.equal(getEnabledChatModels([modelId], false)[0]?.id, modelId)
+  assert.equal(modelUsesAiGatewayTransport(modelId), true)
+  assert.equal(pickBestModelForAct([modelId, 'overlay-free']), 'overlay-free')
 })

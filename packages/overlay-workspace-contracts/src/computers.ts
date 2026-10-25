@@ -29,4 +29,6 @@ export type Computer = {
   createdAt: number
   updatedAt: number
   lastActiveAt: number | null
+  controlledByUserId?: string
+  controlTakenAt?: number
 }

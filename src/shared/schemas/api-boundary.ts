@@ -287,6 +287,12 @@ export const webApiBoundaryDefinitions = [
     summary: 'Issue a short-lived desktop stream ticket', tag: 'Computers',
   },
   {
+    method: 'POST', path: '/api/v1/computers/{computerId}/control', routePath: '/api/v1/computers/[computerId]/control',
+    pattern: /^\/api\/v1\/computers\/[^/]+\/control$/,
+    schema: { json: z.object({ action: z.enum(['take', 'release']) }).strict(), response: UnknownResponse },
+    summary: 'Take or release human control of a computer', tag: 'Computers',
+  },
+  {
     method: 'POST', path: '/api/v1/computers/{computerId}/start', routePath: '/api/v1/computers/[computerId]/start',
     pattern: /^\/api\/v1\/computers\/[^/]+\/start$/,
     schema: { json: EmptyRequest, response: UnknownResponse },

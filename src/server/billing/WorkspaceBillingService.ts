@@ -227,6 +227,7 @@ export class WorkspaceBillingService {
       const amountCents = verification.planAmountCents ?? quantityToPlanAmountCents(quantity)
       await this.deps.repository.upsertBillingAccountSubscription({
         billingAccountId: account.billingAccountId,
+        provider: 'stripe',
         stripeCustomerId: verification.providerCustomerId,
         stripeSubscriptionId: verification.providerSubscriptionId,
         stripePriceId: verification.providerPriceId,

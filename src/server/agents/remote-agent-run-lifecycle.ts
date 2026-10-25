@@ -6,7 +6,7 @@ import type { RemoteRunState } from '@/shared/agents/remote-run'
 
 type Coordinator = { runId: string; coordinatorId: string; generation: number }
 export type RemoteRunSnapshot = { runId: string; workspaceId: string; environmentId: string; environmentKind: string; lifecycle: RemoteRunState;
-  nativeRestorationAdvertised?: boolean; nativePreparationPending?: boolean }
+  actorUserId?: string; agentId?: string; nativeRestorationAdvertised?: boolean; nativePreparationPending?: boolean }
 export async function readRemoteRun(runId: string): Promise<RemoteRunSnapshot | null> {
   'use step'
   return lazyConvex.query('agents/remoteRuns:readByServer', { serverSecret: getInternalApiSecret(), runId }, { throwOnError: true })
@@ -25,10 +25,14 @@ export async function wakeRemoteRun(input: Coordinator): Promise<void> {
   const snapshot = await lazyConvex.query<RemoteRunSnapshot | null>('agents/remoteRuns:readByServer', { serverSecret: getInternalApiSecret(), runId: input.runId }, { throwOnError: true })
   if (!snapshot || snapshot.lifecycle.coordinatorId !== input.coordinatorId || snapshot.lifecycle.coordinatorGeneration !== input.generation
     || !['queued', 'waking'].includes(snapshot.lifecycle.phase) || Date.now() >= snapshot.lifecycle.hardDeadlineAt) return
+  if (snapshot.environmentKind === 'overlay_cloud'
+    && (typeof snapshot.actorUserId !== 'string' || !snapshot.actorUserId || typeof snapshot.agentId !== 'string' || !snapshot.agentId)) return
   const advanced = await lazyConvex.mutation<RemoteRunState>('agents/remoteRuns:advanceByServer', { serverSecret: getInternalApiSecret(), ...input, wake: true, now: Date.now() }, { throwOnError: true })
   if (advanced?.phase !== 'waking') return
   if (snapshot.environmentKind === 'overlay_cloud') {
-    const outcome = await createCloudAgentMachineService().wake({ workspaceId: snapshot.workspaceId, environmentId: snapshot.environmentId })
+    const outcome = await createCloudAgentMachineService().wake({
+      actorUserId: snapshot.actorUserId!, workspaceId: snapshot.workspaceId, agentId: snapshot.agentId!, environmentId: snapshot.environmentId,
+    })
     if (outcome === 'unavailable') throw new Error('remote_machine_unavailable: inspect the machine and the original execution before continuing')
   }
 }
@@ -44,8 +48,10 @@ export async function restoreStoppedRemoteRun(input: Coordinator): Promise<void>
     || !['process_health_unknown', 'process_health_required', 'process_lost', 'execution_stopped', 'old_writer_not_isolated',
       'native_restoration', 'preparation_health_required', 'command_unclaimed'].includes(snapshot.lifecycle.cause ?? '')
     || Date.now() >= snapshot.lifecycle.hardDeadlineAt) return
+  if (typeof snapshot.actorUserId !== 'string' || !snapshot.actorUserId || typeof snapshot.agentId !== 'string' || !snapshot.agentId) return
   // This service only observes already-stopped machines. It never stops a live writer for recovery.
-  await createCloudAgentMachineService().resumeStoppedExecution({workspaceId: snapshot.workspaceId, environmentId: snapshot.environmentId,
+  await createCloudAgentMachineService().resumeStoppedExecution({
+    actorUserId: snapshot.actorUserId, workspaceId: snapshot.workspaceId, agentId: snapshot.agentId, environmentId: snapshot.environmentId,
     authorize: async proof => {
       const state = snapshot.lifecycle
       const queued = snapshot.nativePreparationPending && state.providerStop && state.lastHealthAt === undefined

@@ -13,6 +13,12 @@ export class WorkspaceAgentServiceError extends Error {
   }
 }
 
+export function assertValidOverlayPermissionMode(harness: string, permissionMode?: string) {
+  if (harness === 'overlay' && permissionMode !== undefined && permissionMode !== 'ask' && permissionMode !== 'auto') {
+    throw new WorkspaceAgentServiceError('validation', 'Overlay permission mode must be ask or auto')
+  }
+}
+
 const SUPPORTED_WORKSPACE_AGENT_HARNESSES = ['overlay', 'claude-code', 'codex'] as const
 type SupportedWorkspaceAgentHarness = (typeof SUPPORTED_WORKSPACE_AGENT_HARNESSES)[number]
 

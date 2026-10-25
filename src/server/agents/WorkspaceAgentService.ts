@@ -7,15 +7,16 @@ import type {
   WorkspaceAgentDirectoryItem,
   WorkspaceAgentUpdateInput,
   WorkspaceArchivedAgentThread,
-  WorkspaceMembershipRole,
 } from '@overlay/workspace-contracts'
 import { DEFAULT_MODEL_ID, FREE_TIER_AUTO_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import { parseByoModelId } from '@/shared/agents/agent-model'
 import type { WorkspaceService } from '@/server/workspaces/WorkspaceService'
 import type { WorkspaceAgentRepository } from './WorkspaceAgentRepository'
 import { externalAgentPolicyAllowsRecord, type ExternalAgentPolicyDecision, type ExternalAgentPolicyRecord } from './external-agent-policy'
-import { WorkspaceAgentServiceError, assertSupportedWorkspaceAgentHarness, assertSupportedAgentConfiguration, normalizeVisibility, required, optional, color, shape, unique } from './workspace-agent-validation'
+import { canCreateAgent, canSeeAgent, mapThreadError } from './WorkspaceAgentService.helpers'
+import { WorkspaceAgentServiceError, assertSupportedWorkspaceAgentHarness, assertSupportedAgentConfiguration, assertValidOverlayPermissionMode, normalizeVisibility, required, optional, color, shape, unique } from './workspace-agent-validation'
 export { WorkspaceAgentServiceError } from './workspace-agent-validation'
+export { canCreateAgent, canSeeAgent } from './WorkspaceAgentService.helpers'
 
 export class WorkspaceAgentService {
   constructor(
@@ -142,6 +143,7 @@ export class WorkspaceAgentService {
     const harness = args.input.harness ?? 'overlay'
     assertSupportedWorkspaceAgentHarness(harness)
     assertSupportedAgentConfiguration(modelId, harness)
+    assertValidOverlayPermissionMode(harness, args.input.permissionMode)
     await this.workspaces.assertAgentHarnessAllowed({
       actorUserId: args.actorUserId,
       workspaceId: access.workspace.id,
@@ -213,13 +215,15 @@ export class WorkspaceAgentService {
         harness: args.input.harness,
       })
     }
-    const merged = {
+    const effectiveHarness = args.input.harness ?? agent.harness ?? 'overlay'
+    const effectivePermissionMode = args.input.permissionMode ?? agent.permissionMode
+    assertValidOverlayPermissionMode(effectiveHarness, effectivePermissionMode)
+    await this.assertExternalAgentAllowed({
       id: agent.id,
       workspaceId: access.workspace.id,
-      harness: args.input.harness ?? agent.harness,
+      harness: effectiveHarness,
       modelId: args.input.modelId ?? agent.modelId,
-    }
-    await this.assertExternalAgentAllowed(merged)
+    })
     await this.assertExternalAgentAllowed({
       id: agent.id,
       workspaceId: access.workspace.id,
@@ -495,31 +499,4 @@ export class WorkspaceAgentService {
     }
     return { access, agent }
   }
-}
-
-/** Convex agent-thread mutations signal domain failures by message. */
-function mapThreadError(error: unknown): Error {
-  const message = error instanceof Error ? error.message : String(error)
-  if (message.includes('AGENT_LAST_THREAD')) {
-    return new WorkspaceAgentServiceError('conflict', 'An agent must keep at least one thread')
-  }
-  if (message.includes('AGENT_ARCHIVED')) {
-    return new WorkspaceAgentServiceError('conflict', 'Archived agents cannot start new threads')
-  }
-  if (message.includes('THREAD_ACCESS_DENIED') || message.includes('WORKSPACE_ACCESS_DENIED')) {
-    return new WorkspaceAgentServiceError('forbidden', 'Thread is not accessible')
-  }
-  if (message.includes('THREAD_NOT_FOUND') || message.includes('AGENT_NOT_FOUND')) {
-    return new WorkspaceAgentServiceError('not_found', 'Thread not found')
-  }
-  return error instanceof Error ? error : new Error(message)
-}
-
-export function canCreateAgent(role: WorkspaceMembershipRole) {
-  return role !== 'guest'
-}
-
-/** Creator-only agents are visible to their creator alone. */
-export function canSeeAgent(agent: Pick<WorkspaceAgentDirectoryItem, 'visibility' | 'createdByPrincipalId'>, principalId: string) {
-  return agent.visibility !== 'creator' || agent.createdByPrincipalId === principalId
 }

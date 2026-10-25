@@ -1,11 +1,6 @@
 import { FREE_TIER_AUTO_MODEL_ID, OPENROUTER_FREE_MODEL_ID } from './models'
 
-/**
- * Highest quality first — used when picking a default Act model from a
- * multi-model selection and when sorting the model picker by intelligence.
- * Kept in sync with the web app's `src/shared/ai/gateway/model-data.ts`.
- */
-export const CHAT_MODEL_QUALITY_PRIORITY: readonly string[] = [
+const ACT_MODEL_FALLBACK_PRIORITY: readonly string[] = [
   'anthropic/claude-opus-4.7',
   'gemini-3.1-pro-preview',
   'gpt-5.4',
@@ -25,6 +20,16 @@ export const CHAT_MODEL_QUALITY_PRIORITY: readonly string[] = [
   'openai/gpt-oss-120b',
   'nvidia/nemotron-nano-9b-v2',
   'minimax/minimax-m2.7',
+  FREE_TIER_AUTO_MODEL_ID,
+]
+
+/**
+ * Highest quality first — used for model sorting.
+ * Kept in sync with the web app's `src/shared/ai/gateway/model-data.ts`.
+ */
+export const CHAT_MODEL_QUALITY_PRIORITY: readonly string[] = [
+  ...ACT_MODEL_FALLBACK_PRIORITY.slice(0, -1),
+  'minimax/minimax-m3.1-flash',
   FREE_TIER_AUTO_MODEL_ID,
 ]
 
@@ -67,7 +72,7 @@ export function getModelsByIntelligence<T extends { id: string }>(
 export function pickBestModelForAct(selectedModelIds: readonly string[]): string | undefined {
   if (selectedModelIds.length === 1) return selectedModelIds[0]
   const sel = new Set(selectedModelIds)
-  for (const id of CHAT_MODEL_QUALITY_PRIORITY) {
+  for (const id of ACT_MODEL_FALLBACK_PRIORITY) {
     if (sel.has(id)) return id
   }
   return selectedModelIds[0]

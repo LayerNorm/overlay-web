@@ -310,9 +310,18 @@ export default defineSchema({
     ),
     error: v.optional(v.string()),
     environmentId: v.optional(v.string()),
+    allocationKey: v.optional(v.string()),
+    provider: v.optional(v.string()),
+    providerReference: v.optional(v.string()),
+    allocatedAt: v.optional(v.number()),
+    reclaimPending: v.optional(v.boolean()),
     createdAt: v.number(),
     updatedAt: v.number(),
-  }).index('by_workspaceId_agentId', ['workspaceId', 'agentId']),
+  })
+    .index('by_workspaceId_agentId', ['workspaceId', 'agentId'])
+    .index('by_provider_providerReference', ['provider', 'providerReference'])
+    .index('by_reclaimPending_updatedAt', ['reclaimPending', 'updatedAt'])
+    .index('by_phase_updatedAt', ['phase', 'updatedAt']),
 
   // A person's own row: profile, onboarding, chat starters, storage and bandwidth used, and the link to their personal
   // billing account. An account has no plan (plans belong to workspaces).
@@ -550,6 +559,14 @@ export default defineSchema({
     modelId: v.optional(v.string()),
     usageTokens: v.optional(v.number()),
     usageSeconds: v.optional(v.number()),
+    sandboxEvidence: v.optional(v.object({
+      category: v.literal('compute'),
+      provider: v.string(),
+      providerReference: v.string(),
+      providerCostUsd: v.number(),
+      pricingVersion: v.string(),
+      metadataJson: v.string(),
+    })),
     createdAt: v.number(),
   })
     .index('by_operationId', ['operationId'])
@@ -735,10 +752,13 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
     lastActiveAt: v.optional(v.number()),
+    controlledByUserId: v.optional(v.string()),
+    controlTakenAt: v.optional(v.number()),
   })
     .index('by_entityId', ['id'])
     .index('by_workspaceId', ['workspaceId'])
-    .index('by_workspaceId_owner', ['workspaceId', 'ownerType', 'ownerId']),
+    .index('by_workspaceId_owner', ['workspaceId', 'ownerType', 'ownerId'])
+    .index('by_provider_providerRef', ['provider', 'providerRef']),
 
   // External agent surfaces (Slack, later Teams/Discord). surfaceConnections
   // is metadata for one platform install — the Chat SDK state adapter owns
@@ -1303,6 +1323,8 @@ export default defineSchema({
     .index('by_conversationId_status_updatedAt', ['conversationId', 'status', 'updatedAt'])
     .index('by_userId_createdAt', ['userId', 'createdAt'])
     .index('by_environmentId_createdAt', ['environmentId', 'createdAt'])
+    .index('by_agentId_status', ['agentId', 'status'])
+    .index('by_userId_status', ['userId', 'status'])
     .index('by_externalRunId', ['externalRunId'])
     .index('by_runner_status_leaseExpiresAt', ['runner', 'status', 'leaseExpiresAt'])
     .index('by_assistantMessageId', ['assistantMessageId'])
@@ -1414,6 +1436,22 @@ export default defineSchema({
           v.object({
             type: v.union(v.literal('data-remote-agent-request'), v.literal('data-remote-agent-plan'), v.literal('data-remote-agent-diff'), v.literal('data-remote-agent-terminal'), v.literal('data-remote-agent-commands'), v.literal('data-remote-agent-drive'), v.literal('data-agent-lineage')),
             data: v.any(),
+          }),
+          v.object({
+            type: v.literal('data-native-agent-approval'),
+            data: v.object({
+              runId: v.string(),
+              conversationId: v.string(),
+              userId: v.string(),
+              token: v.string(),
+              requestedAt: v.number(),
+              requests: v.array(v.object({
+                approvalId: v.string(),
+                toolCallId: v.string(),
+                toolName: v.string(),
+                input: v.any(),
+              })),
+            }),
           }),
           v.object({
             type: v.literal('tool-invocation'),
@@ -2639,16 +2677,20 @@ export default defineSchema({
     .index('by_workspaceId_status', ['workspaceId', 'status']),
 
   agentSandboxLeases: defineTable({
-    leaseId: v.string(), workspaceId: v.string(), environmentId: v.string(), runId: v.optional(v.string()),
+    leaseId: v.string(), workspaceId: v.string(), environmentId: v.optional(v.string()), computerId: v.optional(v.string()), runId: v.optional(v.string()),
     provider: v.string(), providerReference: v.optional(v.string()), status: v.string(),
     reservationId: v.optional(v.string()), reservedUntil: v.number(),
-    runtimeStartedAt: v.optional(v.number()), runtimeEndedAt: v.optional(v.number()), usage: v.any(),
-    cleanupAttempts: v.number(), cleanupAfter: v.optional(v.number()),
+    runtimeStartedAt: v.optional(v.number()), runtimeEndedAt: v.optional(v.union(v.number(), v.null())), usage: v.any(),
+    cleanupAttempts: v.number(), cleanupAfter: v.optional(v.union(v.number(), v.null())),
+    nextMeterAt: v.optional(v.union(v.number(), v.null())), meterClaimToken: v.optional(v.union(v.string(), v.null())), meterClaimUntil: v.optional(v.union(v.number(), v.null())),
     createdAt: v.number(), updatedAt: v.number(),
   }).index('by_leaseId', ['leaseId'])
     .index('by_workspaceId', ['workspaceId'])
     .index('by_workspaceId_environmentId', ['workspaceId', 'environmentId'])
-    .index('by_status_cleanupAfter', ['status', 'cleanupAfter']),
+    .index('by_workspaceId_computerId', ['workspaceId', 'computerId'])
+    .index('by_provider_providerReference', ['provider', 'providerReference'])
+    .index('by_status_cleanupAfter', ['status', 'cleanupAfter'])
+    .index('by_status_nextMeterAt', ['status', 'nextMeterAt']),
 
   agentSandboxSettlements: defineTable({
     reservationId: v.string(), workspaceId: v.string(), environmentId: v.string(),

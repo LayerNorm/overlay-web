@@ -46,7 +46,7 @@ function memory() {
 function setup(options: { editable?: boolean } = {}) {
   const { repository, profiles } = memory()
   const vault = new Map<string, string>()
-  const applied: Array<{ version: number; hooksEnabled: boolean; bundle: AgentProfileBundle }> = []
+  const applied: Array<{ actorUserId: string; version: number; hooksEnabled: boolean; bundle: AgentProfileBundle }> = []
   const service = new AgentProfileService({
     repository,
     agents: { requireEditable: async () => { if (options.editable === false) throw new Error('not allowed') } },
@@ -55,7 +55,7 @@ function setup(options: { editable?: boolean } = {}) {
       read: async (ref) => vault.get(ref) ?? null,
       delete: async (ref) => { vault.delete(ref) },
     },
-    apply: async (a) => { applied.push({ version: a.version, hooksEnabled: a.hooksEnabled, bundle: a.bundle }) },
+    apply: async (a) => { applied.push({ actorUserId: a.actorUserId, version: a.version, hooksEnabled: a.hooksEnabled, bundle: a.bundle }) },
     audit: { record: async () => undefined } as never,
   })
   return { service, profiles, vault, applied }
@@ -101,6 +101,7 @@ test('apply makes a version active, a newer one supersedes it, and an earlier on
   await service.apply({ ...who, profileId: second.profileId })
   await service.apply({ ...who, profileId: first.profileId })
   assert.deepEqual(applied.map((a) => a.bundle.files[0]?.content), ['one', 'two', 'one'])
+  assert.deepEqual(applied.map((a) => a.actorUserId), ['u1', 'u1', 'u1'])
   const state = await service.state(who)
   assert.equal(state.profiles.filter((p) => p.status === 'active').length, 1)
   await assert.rejects(service.apply({ ...who, profileId: first.profileId }), /Only a version waiting/)
@@ -113,6 +114,7 @@ test('hooks stay off until asked, and discarding only works before applying', as
   assert.equal(applied[0]!.hooksEnabled, false)
   await service.setHooks({ ...who, profileId, enabled: true })
   assert.equal(applied[1]!.hooksEnabled, true)
+  assert.equal(applied[1]!.actorUserId, who.actorUserId)
   await assert.rejects(service.discard({ ...who, profileId }), /waiting for review/)
 })
 

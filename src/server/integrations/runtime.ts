@@ -72,6 +72,8 @@ export async function createIntegrationToolSet(args: {
   workspaceId?: string
   conversationId?: string
   turnId?: string
+  approvalMode?: 'ask' | 'auto'
+  computerApprovalContext?: 'work' | 'automation'
 }) {
   const provider = getIntegrationProvider()
   const { workspaceId, ...own } = args
