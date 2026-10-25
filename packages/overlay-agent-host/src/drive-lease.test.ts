@@ -12,7 +12,7 @@ const scope = { kind: 'workspace' as const, workspaceId: 'workspace' }
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), 'drive-lease-')), cache = join(root, 'cache'), path = join(root, 'private', 'lease.sqlite')
   mkdirSync(cache)
-  return { root, path, cache, clean: () => rmSync(root, { recursive: true, force: true }) }
+  return { root, path, cache, clean: () => rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }) }
 }
 
 test('a held cache lease excludes another connection and releases explicitly without changing scope', () => {
@@ -52,6 +52,7 @@ test('process loss releases the OS cache lease without TTL takeover or deleting 
     AgentDriveLease.acquire(${JSON.stringify(f.path)}, ${JSON.stringify(f.cache)}, ${JSON.stringify(scope)});
     process.stdout.write('lease-held'); setInterval(()=>{},1000);`)
   const child = spawn(process.execPath, ['--import', 'tsx', childSource], { cwd: fileURLToPath(new URL('../../../', import.meta.url)), stdio: ['ignore', 'pipe', 'pipe'] })
+  const closed = new Promise<void>(resolve => { child.once('close', () => resolve()) })
   try {
     const ready = await Promise.race([
       once(child.stdout, 'data').then(([chunk]) => String(chunk)),
@@ -67,6 +68,7 @@ test('process loss releases the OS cache lease without TTL takeover or deleting 
     assert.throws(() => AgentDriveLease.acquire(f.path, f.cache, { kind: 'workspace', workspaceId: 'other' }), /SCOPE_CHANGED/)
   } finally {
     if (child.exitCode === null && child.signalCode === null) { const exited = once(child, 'exit'); child.kill('SIGKILL'); await exited }
+    await closed
     f.clean()
   }
 })
