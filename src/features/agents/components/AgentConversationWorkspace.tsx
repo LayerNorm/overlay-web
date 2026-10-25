@@ -32,12 +32,14 @@ import { AgentRightSidebar } from './AgentRightSidebar'
 import { AgentComputerControlOverlay } from './AgentComputerTab.parts'
 import { sendAgentGreeting, startAgentChat } from '../lib/agent-chat'
 import { NewAgentDialog } from './NewAgentDialog'
+import { useAgentConversationComputer } from './use-agent-conversation-computer'
 import { useAgentThreadScope } from '../lib/use-agent-thread-scope'
 import { usePanelScope } from '@/hooks/use-panel-scope'
 import type { PanelScope } from '@/shared/workspaces/panel-scope'
 import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import { AgentDirectoryScreen, AgentEditorPanel } from './AgentConversationWorkspace.parts'
 import { subscribeAgentDirectory, type AgentDirectoryState } from '../lib/agent-directory'
+import { openAgentComputerControl } from '../lib/agent-computer-control'
 
 type EditorMode = 'new' | 'edit' | null
 
@@ -240,6 +242,20 @@ function agentDetailRouteState(args: {
 }
 
 export function AgentConversationWorkspace({ showcase = false }: { showcase?: boolean }) {
+  return showcase
+    ? <DirectMessageExperience conversationId="showcase-agent-welcome" showcase />
+    : <ScopedAgentConversationWorkspace />
+}
+
+function ScopedAgentConversationWorkspace() {
+  const { activeWorkspaceId } = useWorkspace()
+  const searchParams = useSearchParams()
+  const agentId = searchParams?.get('agent') ?? searchParams?.get('agentId') ?? null
+  const scopeKey = JSON.stringify([activeWorkspaceId, agentId])
+  return <AgentConversationWorkspaceContent key={scopeKey} />
+}
+
+function AgentConversationWorkspaceContent() {
   const router = useRouter()
   const pathname = usePathname() ?? ''
   const buildWorkspaceHref = useWorkspaceHref()
@@ -259,29 +275,33 @@ export function AgentConversationWorkspace({ showcase = false }: { showcase?: bo
   const [error, setError] = useState<string | null>(null)
   const [resolving, setResolving] = useState(false)
   const [retryCount, setRetryCount] = useState(0)
-  const [computerControlState, setComputerControlState] = useState<{
-    conversationId: string | null
-    control: { ticketUrl: string; computerName: string; refreshTicket: () => void } | null
-  }>({ conversationId: null, control: null })
-  const computerControl = computerControlState.conversationId === conversationId
-    ? computerControlState.control
-    : null
-  const updateComputerControl = useCallback((control: {
-    ticketUrl: string
-    computerName: string
-    refreshTicket: () => void
-  } | null) => {
-    setComputerControlState({ conversationId, control })
-  }, [conversationId])
+  const closeRightSidebar = useCallback(() => {
+    setSidebarPreferences((current) => ({ ...current, open: false }))
+  }, [])
+  const { sidebarEditor, computerAccess, computerControl, updateComputerControl } = useAgentConversationComputer({
+    activeWorkspaceId,
+    agentId,
+    conversationId,
+    sidebarPreferences,
+    onClose: closeRightSidebar,
+    onArchived: () => {
+      setEditorMode(null)
+      if (agentId) clearAgentOpened(activeWorkspaceId, agentId)
+      router.replace(buildWorkspaceHref(activeWorkspaceId, '/app/agents', 'personal'))
+    },
+  })
+  const releaseComputerControl = () => {
+    void computerAccess.changeControl('release').then((confirmed) => {
+      if (!confirmed) return
+      if (sidebarPreferences.open) computerAccess.retryTicket()
+      updateComputerControl(null)
+    })
+  }
 
   const [createOpen, setCreateOpen] = useState(false)
   useEffect(() => {
     setAgentRightSidebarPreferences(sidebarPreferences)
   }, [sidebarPreferences])
-
-  const closeRightSidebar = useCallback(() => {
-    setSidebarPreferences((current) => ({ ...current, open: false }))
-  }, [])
 
   const updateSidebarOpen = useCallback((open: boolean) => {
     setSidebarPreferences((current) => ({ ...current, open }))
@@ -296,13 +316,9 @@ export function AgentConversationWorkspace({ showcase = false }: { showcase?: bo
   // person confirms. The logged-out showcase keeps the static editor form.
   const openCreate = useCallback(() => {
     setError(null)
-    if (showcase) {
-      setEditorMode('new')
-      return
-    }
     setEditorMode(null)
     setCreateOpen(true)
-  }, [showcase])
+  }, [])
 
   useEffect(() => {
     window.addEventListener(NEW_AGENT_EVENT, openCreate)
@@ -375,7 +391,7 @@ export function AgentConversationWorkspace({ showcase = false }: { showcase?: bo
   // as a plain sibling stacks it under the content instead of beside it.
   const sideEditor = panelMode === 'side' ? editor : null
   const dialogEditor = panelMode === 'dialog' ? editor : null
-  const createDialog = showcase ? null : (
+  const createDialog = (
     <NewAgentDialog
       open={createOpen}
       workspaceId={activeWorkspaceId}
@@ -396,13 +412,6 @@ export function AgentConversationWorkspace({ showcase = false }: { showcase?: bo
       onClick={openCreate}
     />
   )
-
-  // Logged-out demo: a fixed showcase agent conversation, no backend.
-  // Checked before the conversation branch because the showcase URL carries
-  // its own demo id, which must not trigger a real fetch.
-  if (showcase) {
-    return <DirectMessageExperience conversationId="showcase-agent-welcome" showcase />
-  }
 
   const detailState = agentDetailRouteState({
     conversationId,
@@ -430,17 +439,23 @@ export function AgentConversationWorkspace({ showcase = false }: { showcase?: bo
   if (conversationId && threadScope.allowed) {
     const agentSidebar = agentId && sidebarPreferences.open ? (
       <AgentRightSidebar
-        agentId={agentId}
-        activeWorkspaceId={activeWorkspaceId}
         conversationId={conversationId}
         activeTab={sidebarPreferences.tab}
         onTabChange={updateSidebarTab}
-        onClose={closeRightSidebar}
-        onArchived={handleArchived}
-        showcase={showcase}
+        showcase={false}
+        editor={sidebarEditor}
         controlled={Boolean(computerControl)}
-        onTakeControl={(ticketUrl, computerName, refreshTicket) => {
-          updateComputerControl({ ticketUrl, computerName, refreshTicket })
+        computerAccess={computerAccess}
+        onReleaseControl={releaseComputerControl}
+        onTakeControl={(ticketUrl, computerName) => {
+          void openAgentComputerControl({
+            computer: computerAccess.computer,
+            currentUserId: computerAccess.currentUserId,
+            ticketUrl,
+            computerName,
+            changeControl: computerAccess.changeControl,
+            onOpen: updateComputerControl,
+          })
         }}
       />
     ) : null
@@ -464,10 +479,8 @@ export function AgentConversationWorkspace({ showcase = false }: { showcase?: bo
             <AgentComputerControlOverlay
               ticketUrl={computerControl.ticketUrl}
               computerName={computerControl.computerName}
-              onClose={() => {
-                if (sidebarPreferences.open) computerControl.refreshTicket()
-                updateComputerControl(null)
-              }}
+              controlBusy={computerAccess.controlBusy}
+              onClose={releaseComputerControl}
             />
           ) : null}
         />

@@ -93,6 +93,26 @@ export interface McpServerConfig {
   oauthTokenVersion?: number;
 }
 
+export function createMcpToolApproval(args: {
+  approvalMode?: "ask" | "auto";
+  configById: ReadonlyMap<string, Pick<McpServerConfig, "defaultToolPolicy" | "toolPolicies">>;
+}): McpToolApprovalFn {
+  return ({ toolCall }) => {
+    if (args.approvalMode === "auto") return undefined;
+    if (toolCall.toolName !== "call_mcp_tool") return undefined;
+    const { serverId, toolName } = toolCall.input as {
+      serverId?: string;
+      toolName?: string;
+    };
+    if (!serverId || !toolName) return undefined;
+    const config = args.configById.get(serverId);
+    return config &&
+      resolveMcpToolPolicy(config, toolName) === "approval_required"
+      ? "user-approval"
+      : undefined;
+  };
+}
+
 export function buildMcpToolsContext(args: {
   userId: string;
   conversationId?: string;
@@ -466,6 +486,7 @@ export async function createMcpLazyMetaTools(args: {
   conversationId?: string;
   turnId?: string;
   modelId?: string;
+  approvalMode?: "ask" | "auto";
   /** In a room others can read: only the workspace's shared servers, never the person's own. */
   workspaceOnly?: boolean;
 }): Promise<{
@@ -679,19 +700,7 @@ export async function createMcpLazyMetaTools(args: {
   // `toolApproval` configuration. The approval decision for `call_mcp_tool`
   // depends on the tool's input (serverId/toolName), so we use a function that
   // resolves the MCP server's policy at call time.
-  const toolApproval: McpToolApprovalFn = ({ toolCall }) => {
-    if (toolCall.toolName !== "call_mcp_tool") return undefined;
-    const { serverId, toolName } = toolCall.input as {
-      serverId?: string;
-      toolName?: string;
-    };
-    if (!serverId || !toolName) return undefined;
-    const config = configById.get(serverId);
-    return config &&
-      resolveMcpToolPolicy(config, toolName) === "approval_required"
-      ? "user-approval"
-      : undefined;
-  };
+  const toolApproval = createMcpToolApproval({ approvalMode: args.approvalMode, configById });
 
   // v7: toolsContext provides request-scoped runtime metadata to tools
   // that declare a `contextSchema`. This replaces closure capture for

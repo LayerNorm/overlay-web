@@ -214,6 +214,8 @@ command. Reruns preserve existing fixtures and do not replenish spent allowance.
 Select **Preview QA Team** in the app before verifying Pro entitlement and scope
 isolation; the original Personal workspace and its billing remain unchanged.
 
+Computer lifecycle QA uses `OVERLAY_PREVIEW_QA_FIXTURES=computer-workspace` on its exact Preview branch to invoke `dev/seed:initComputerQa`. Ordinary seeding remains free; the existing `paid-workspace` fixture is separate. Both are Preview-only, preserve spent balances on rebuild, and use the existing scoped credential.
+
 Other Builders can use the configured sandbox QA identity or the
 [preview login recipe](browser-testing-with-agent-browser.md). Exercise the
 feature as a user would:

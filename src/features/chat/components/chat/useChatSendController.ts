@@ -2,7 +2,6 @@
 
 import {
   useCallback,
-  useRef,
   type Dispatch,
   type MutableRefObject,
   type RefObject,
@@ -82,6 +81,7 @@ export function useChatSendController({
   pendingScrollTurnIdRef,
   personalChatMode,
   persistActiveRuntimeUiState,
+  pendingFirstSendRef,
   refreshSelectedAutomation,
   replaceConversationRuntime,
   replyContext,
@@ -107,6 +107,7 @@ export function useChatSendController({
   setIsTemporaryChat,
   setMentions,
   setPendingChatDocuments,
+  setPendingRunConversationId,
   setReplyContext,
   setRuntimeHydrationVersion,
   prefetchFirstMessageTitle,
@@ -153,6 +154,7 @@ export function useChatSendController({
   pendingScrollTurnIdRef: MutableRefObject<string | null>
   personalChatMode: 'chat' | 'work'
   persistActiveRuntimeUiState: () => void
+  pendingFirstSendRef: MutableRefObject<PendingFirstSendState | null>
   refreshSelectedAutomation: (options?: { showLoading?: boolean; conversationId?: string }) => Promise<void>
   replaceConversationRuntime: (
     chatId: string,
@@ -183,6 +185,7 @@ export function useChatSendController({
   setIsTemporaryChat: (isTemporaryChat: boolean) => void
   setMentions: Dispatch<SetStateAction<MentionItem[]>>
   setPendingChatDocuments: Dispatch<SetStateAction<PendingChatDocument[]>>
+  setPendingRunConversationId: (conversationId: string | null) => void
   setReplyContext: (context: ReplyContext) => void
   setRuntimeHydrationVersion: Dispatch<SetStateAction<number>>
   prefetchFirstMessageTitle: (seedText: string) => void
@@ -197,8 +200,6 @@ export function useChatSendController({
   userId: string | null
   videoSubMode: VideoSubMode
 }) {
-  const pendingFirstSendRef = useRef<PendingFirstSendState | null>(null)
-
   const isStreamChatActive = useCallback((
     chatId: string,
     temporaryChatSnapshot: boolean,
@@ -208,7 +209,7 @@ export function useChatSendController({
     isTemporaryChatRef,
     pendingFirstSendRef,
     temporaryChatSnapshot,
-  }), [activeChatIdRef, isTemporaryChatRef])
+  }), [activeChatIdRef, isTemporaryChatRef, pendingFirstSendRef])
 
   const tryActivatePendingFirstSend = useCallback(() => {
     activatePendingFirstSend({
@@ -220,6 +221,7 @@ export function useChatSendController({
       replaceConversationRuntime,
       setActiveChatId,
       setActiveViewer,
+      setPendingRunConversationId,
       setRuntimeHydrationVersion,
       startFirstMessageRename,
       syncStandaloneChatUrl,
@@ -229,9 +231,11 @@ export function useChatSendController({
     applyUiStateToView,
     emptyRuntimeRef,
     markChatModified,
+    pendingFirstSendRef,
     replaceConversationRuntime,
     setActiveChatId,
     setActiveViewer,
+    setPendingRunConversationId,
     setRuntimeHydrationVersion,
     startFirstMessageRename,
     syncStandaloneChatUrl,
@@ -259,6 +263,7 @@ export function useChatSendController({
       setChats,
       setInterruptedExchangeIdx,
       setIsTemporaryChat,
+      setPendingRunConversationId,
       setRuntimeHydrationVersion,
       syncStandaloneChatUrl,
       startFirstMessageRename,
@@ -272,6 +277,7 @@ export function useChatSendController({
     ensureConversationRuntime,
     invalidateLoadChatRequest,
     mode,
+    pendingFirstSendRef,
     pendingScrollChatIdRef,
     pendingScrollTurnIdRef,
     persistActiveRuntimeUiState,
@@ -283,6 +289,7 @@ export function useChatSendController({
     setChats,
     setInterruptedExchangeIdx,
     setIsTemporaryChat,
+    setPendingRunConversationId,
     setRuntimeHydrationVersion,
     syncStandaloneChatUrl,
     startFirstMessageRename,
@@ -305,7 +312,7 @@ export function useChatSendController({
       return
     }
     completeSession(chatId, active)
-  }, [completeSession, createNewChat, tryActivatePendingFirstSend])
+  }, [completeSession, createNewChat, pendingFirstSendRef, tryActivatePendingFirstSend])
 
   const handleSend = useCallback(async () => {
     if (!userId && !authUser) {
@@ -474,6 +481,7 @@ export function useChatSendController({
     pendingChatDocuments,
     pendingScrollChatIdRef,
     pendingScrollTurnIdRef,
+    pendingFirstSendRef,
     personalChatMode,
     refreshSelectedAutomation,
     replyContext,

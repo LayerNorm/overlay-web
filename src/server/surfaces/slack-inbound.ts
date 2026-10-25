@@ -21,6 +21,13 @@ import { postSlackAgentMessage } from './slack-reply'
 
 const WORKING_PLACEHOLDER = '_Working…_'
 
+function resolvedAgentPermissionMode(
+  harness: string | undefined,
+  permissionMode: string | undefined,
+): 'ask' | 'auto' {
+  return harness === 'overlay' && permissionMode === 'auto' ? 'auto' : 'ask'
+}
+
 /**
  * One inbound Slack message → resolve binding → post placeholder → start the
  * durable surface turn. No-ops quietly for unbound channels, removed
@@ -147,6 +154,7 @@ async function handleInboundSlackMessage(args: {
       agentInstructions: agent.instructions,
       agentPrincipalId: agent.principalId,
       agentAllowedToolIds: agent.allowedToolIds,
+      agentPermissionMode: resolvedAgentPermissionMode(agent.harness, agent.permissionMode),
       agentIsDefault: agent.isDefault === true,
       creatorPrincipalId,
       authorExternalId: message.author.userId,

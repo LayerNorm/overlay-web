@@ -54,6 +54,7 @@ import { recordRender } from '@overlay/chat-react/lib/perf-debug'
 import type { Conversation } from '../chat-interface/types'
 import type { MentionInputHandle } from '../chat-interface/MentionInput'
 import type { ConversationLoadSnapshot } from './chatTransport'
+import type { PendingFirstSendState } from './chat-send-pending-first'
 import { useChatTemporaryState } from './useChatTemporaryState'
 import { useComposerTools } from './useComposerTools'
 import { useChatModelDefaults } from './useChatModelDefaults'
@@ -168,6 +169,8 @@ export function useChatExperienceController({
   } = useChatRuntimes(activeChatId)
   const [, forceLiveSyncRender] = useState(0)
   const [runtimeHydrationVersion, setRuntimeHydrationVersion] = useState(0)
+  const [pendingRunConversationId, setPendingRunConversationId] = useState<string | null>(null)
+  const pendingFirstSendRef = useRef<PendingFirstSendState | null>(null)
   const {
     attachmentPreview,
     attachmentPreviewMode,
@@ -436,11 +439,13 @@ export function useChatExperienceController({
     routerReplace: router.replace,
     searchParams,
     selectedAutomation,
+    pendingFirstSendRef,
     setActiveChatId,
     setActiveChatTitle,
     setActiveViewer,
     setInterruptedExchangeIdx,
     setIsTemporaryChat,
+    setPendingRunConversationId,
     setRuntimeHydrationVersion,
     setSourcesPanel,
   })
@@ -468,8 +473,9 @@ export function useChatExperienceController({
     activeAskChats.some((chat) => chat.status === 'streaming' || chat.status === 'submitted') ||
     actChat.status === 'streaming' ||
     actChat.status === 'submitted'
+  const runConversationId = activeChatId ?? pendingRunConversationId
   const agentRunLifecycle = useAgentRunLifecycle({
-    conversationId: activeChatId,
+    conversationId: runConversationId,
     enabled: !isPublicShowcase && Boolean(authUser),
     localStreamActive,
     convexAccessToken,
@@ -848,6 +854,7 @@ export function useChatExperienceController({
     pendingChatDocuments,
     pendingScrollChatIdRef,
     pendingScrollTurnIdRef,
+    pendingFirstSendRef,
     personalChatMode,
     persistActiveRuntimeUiState,
     refreshSelectedAutomation,
@@ -875,6 +882,7 @@ export function useChatExperienceController({
     setIsTemporaryChat,
     setMentions,
     setPendingChatDocuments,
+    setPendingRunConversationId,
     setReplyContext,
     setRuntimeHydrationVersion,
     prefetchFirstMessageTitle,
@@ -919,7 +927,7 @@ export function useChatExperienceController({
 
   const { workApprovalContent } = useWorkApproval({
     agentRunLifecycle,
-    activeChatId,
+    activeChatId: runConversationId,
   })
 
   const {

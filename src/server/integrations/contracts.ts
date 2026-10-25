@@ -99,6 +99,8 @@ export interface ToolExecutor {
     userId: string
     conversationId?: string
     turnId?: string
+    approvalMode?: 'ask' | 'auto'
+    computerApprovalContext?: 'work' | 'automation'
   }): Promise<ToolSet>
   execute(request: IntegrationExecutionRequest): Promise<IntegrationExecutionResult>
 }

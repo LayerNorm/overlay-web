@@ -233,14 +233,15 @@ export type AgentApprovalRequest = {
 }
 
 export const AGENT_SANDBOX_LEASE_STATUSES = [
-  'reserved', 'provisioning', 'running', 'stopping', 'released', 'cleanup_failed',
+  'reserved', 'provisioning', 'running', 'paused', 'stopping', 'released', 'cleanup_failed',
 ] as const
 export type AgentSandboxLeaseStatus = (typeof AGENT_SANDBOX_LEASE_STATUSES)[number]
 
 export type AgentSandboxLease = {
   id: string
   workspaceId: string
-  environmentId: string
+  environmentId?: string
+  computerId?: string
   runId?: string
   provider: string
   providerReference?: string
@@ -252,6 +253,9 @@ export type AgentSandboxLease = {
   usage: Record<string, unknown>
   cleanupAttempts: number
   cleanupAfter?: number
+  nextMeterAt?: number
+  meterClaimToken?: string
+  meterClaimUntil?: number
   createdAt: number
   updatedAt: number
 }

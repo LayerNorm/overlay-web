@@ -111,6 +111,7 @@ For a description of what each route does and its associated implementation file
 - `GET, POST /api/v1/computers`
 - `DELETE, GET /api/v1/computers/[computerId]`
 - `POST /api/v1/computers/[computerId]/desktop`
+- `POST /api/v1/computers/[computerId]/control`
 - `POST /api/v1/computers/[computerId]/start`
 - `POST /api/v1/computers/[computerId]/stop`
 

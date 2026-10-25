@@ -93,6 +93,7 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
   { path: '/api/v1/computers/:computerId/start', methods: { POST: authenticated() } },
   { path: '/api/v1/computers/:computerId/stop', methods: { POST: authenticated() } },
   { path: '/api/v1/computers/:computerId/desktop', methods: { POST: authenticated() } },
+  { path: '/api/v1/computers/:computerId/control', methods: { POST: authenticated() } },
   {
     path: '/api/v1/agent-environments',
     methods: { GET: authenticated() },
