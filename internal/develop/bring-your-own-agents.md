@@ -378,7 +378,9 @@ Native Overlay agent turns in direct messages and rooms run as durable
 prepare/model/tool/finalize steps. Ask approvals suspend the exact pending tool
 call for up to 15 minutes and resume from saved model state; they do not replay
 completed model or tool work. Only the original run initiator can resolve a
-room approval. Auto skips approval prompts but does not bypass authorization,
+room approval. Inaccessible conversations return 404 before reading the run; other
+participants receive 403 when they attempt to decide another user’s approval.
+Auto skips approval prompts but does not bypass authorization,
 tool grants, entitlements, takeover protection, or deny policy. Release QA must
 cover approval denial and approval resumption, cancellation and revoked grants,
 and exact-run authorization before rollout.

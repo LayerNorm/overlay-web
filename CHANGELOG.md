@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Reject native approval decisions from users outside the conversation with a clear not-found response.
+
 - Retain native-agent tool calls and their real results when durable turns finalize, so completed execution evidence survives reload.
 
 - Clear connection-error notices when retrying a remote agent that produced no text; preserve genuine partial replies and their recovery offsets.
