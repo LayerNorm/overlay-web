@@ -1907,7 +1907,7 @@ export const editMessage = mutation({
       editedAt: now,
       editHistory: [
         ...(message.editHistory ?? []),
-        { content: hydrated.content, editedAt: now },
+        { content: message.content, editedAt: now },
       ],
       updatedAt: now,
     })
