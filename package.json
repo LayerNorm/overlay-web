@@ -273,7 +273,7 @@
     "katex": "^0.16.38",
     "lowlight": "^3.3.0",
     "lucide-react": "^0.575.0",
-    "mammoth": "^1.12.0",
+    "mammoth": "^1.13.0",
     "mdast-util-from-markdown": "^2.0.3",
     "mdast-util-gfm": "^3.1.0",
     "mdast-util-math": "^3.0.0",
