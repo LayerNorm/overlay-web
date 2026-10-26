@@ -22,6 +22,27 @@ const child = (id: string, stepId: string, budget: number): HarnessChild => ({
   id, stepId, maxCostMicros: budget, costMicros: 0, allowedToolIds: ['read'], status: 'running', evidenceRefs: [],
 })
 
+test('external provider costs remain distinct from Overlay budget usage through child settlement', () => {
+  let parent = admitHarnessChild(replaceHarnessPlan(make(), steps, now), child('first', 'read', 0), now)
+  let worker = createHarnessSnapshot({ runId: 'first', rootRunId: 'root', parentRunId: 'root', depth: 1,
+    goal: 'Read source', constraints: [], policy: { ...parent.policy, allowedToolIds: ['read'], requiresPlan: false, maxCostMicros: 0 },
+  }, now)
+  const receipt: HarnessReceipt = { id: 'external', modelId: 'byok/connection/model', provider: 'unreported', inputTokens: 10,
+    outputTokens: 1, reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, contextWindow: null, costMicros: 0,
+    costSource: 'external', externalCostMicros: null }
+  for (const entry of [receipt, { ...receipt, id: 'known', externalCostMicros: 25 }]) {
+    worker = recordHarnessReceipt(worker, entry, now)
+    parent = recordHarnessChildReceipt(parent, 'first', entry, now)
+  }
+  parent = settleHarnessChild(parent, finishHarness(worker, now), now)
+  assert.equal(parent.usage.costMicros, 0)
+  assert.equal(parent.usage.externalCostMicros, 25)
+  assert.equal(parent.usage.unpricedExternalCalls, 1)
+  assert.equal(parent.usage.inputTokens, 20)
+  assert.throws(() => recordHarnessReceipt(make(), { ...receipt, costMicros: 25 }, now), /external/)
+  assert.throws(() => recordHarnessReceipt(make(), { ...receipt, cacheReadTokens: 11 }, now), /Cached tokens/)
+})
+
 test('pending model spend cannot also be reserved by a delegated child', () => {
   let state = replaceHarnessPlan(make(), steps, now)
   state = reserveHarnessModel(state, 'model:0', 60, now)

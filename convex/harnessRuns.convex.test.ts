@@ -242,6 +242,8 @@ describe('durable harness runs', () => {
       cacheReadTokens: 8,
       cacheWriteTokens: 1,
       costMicros: 300,
+      externalCostMicros: 0,
+      unpricedExternalCalls: 0,
     })
     const persisted = await convex.run(async ctx => ctx.db.query('harnessReceipts')
       .withIndex('by_runId_createdAt', q => q.eq('runId', input.runId)).collect())

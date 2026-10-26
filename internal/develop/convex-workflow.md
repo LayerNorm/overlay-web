@@ -205,6 +205,16 @@ The adapter must reserve an upper bound for the dispatched prompt and output,
 not an average predicted cost. These holds enforce the run budget; billing-account
 reservations and settlement remain separate adapter responsibilities.
 
+`captureHarnessModelUsage` allowlists token counts and routing references before
+usage crosses a durable step boundary. `resolveHarnessModelUsage` resolves Gateway
+generation receipts using the existing server credential resolver; delayed
+ingestion retries the lookup, never inference. Without a generation reference,
+catalog-derived costs are explicitly marked estimates. Unknown pricing requires
+reconciliation. BYOK contributes no Overlay-funded inference cost but records
+external cost as unknown, not zero. Known external cost and unpriced external
+calls roll up separately through child joins. The run's spending authorization
+bounds Overlay-funded inference, not the user's external provider account.
+
 `compactHarnessPrompt` extends the existing chat compaction policy for SDK
 provider prompts. It preserves the latest user request and complete tool
 transactions, carries a rolling summary, and counts caller-supplied instruction,

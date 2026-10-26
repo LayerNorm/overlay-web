@@ -110,6 +110,8 @@ const receiptValidator = v.object({
   cacheWriteTokens: v.number(),
   contextWindow: v.union(v.number(), v.null()),
   costMicros: v.number(),
+  costSource: v.optional(v.union(v.literal('provider'), v.literal('catalog'), v.literal('external'))),
+  externalCostMicros: v.optional(v.union(v.number(), v.null())),
 })
 
 const childValidator = v.object({

@@ -33,7 +33,11 @@ export type HarnessReceipt = {
   cacheReadTokens: number
   cacheWriteTokens: number
   contextWindow: number | null
+  /** Overlay-funded inference cost; external BYOK charges are accounted separately. */
   costMicros: number
+  costSource?: 'provider' | 'catalog' | 'external'
+  /** Present only for user-funded inference; null means the provider did not report its charge. */
+  externalCostMicros?: number | null
 }
 
 export type HarnessPolicy = {
@@ -42,6 +46,7 @@ export type HarnessPolicy = {
   allowedToolIds: string[]
   requiresPlan: boolean
   deadlineAt: number
+  /** Bounds Overlay-funded inference, not spending on user-owned provider accounts. */
   maxCostMicros: number
   maxParallelChildren: number
   maxDepth: number
@@ -54,6 +59,8 @@ export type HarnessUsage = {
   cacheReadTokens: number
   cacheWriteTokens: number
   costMicros: number
+  externalCostMicros?: number
+  unpricedExternalCalls?: number
 }
 
 export type HarnessChild = {
@@ -246,12 +253,24 @@ function validateHarnessReceipt(receipt: HarnessReceipt) {
   }
   if (!receipt.id || !receipt.modelId || !receipt.provider) throw new Error('A receipt requires actual routing identity.')
   if (receipt.contextWindow !== null && (!Number.isSafeInteger(receipt.contextWindow) || receipt.contextWindow <= 0)) throw new Error('Invalid context window.')
+  if (receipt.cacheReadTokens + receipt.cacheWriteTokens > receipt.inputTokens) throw new Error('Cached tokens exceed total input usage.')
+  if (receipt.externalCostMicros !== undefined) {
+    if (receipt.costMicros !== 0 || receipt.costSource !== 'external'
+      || (receipt.externalCostMicros !== null && (!Number.isSafeInteger(receipt.externalCostMicros) || receipt.externalCostMicros < 0))) throw new Error('Invalid external provider cost.')
+  } else if (receipt.costSource === 'external') throw new Error('External provider cost must be reported or explicitly unknown.')
+}
+
+const usageKeys = ['inputTokens', 'outputTokens', 'reasoningTokens', 'cacheReadTokens', 'cacheWriteTokens', 'costMicros', 'externalCostMicros', 'unpricedExternalCalls'] as const
+
+function receiptUsage(receipt: HarnessReceipt): HarnessUsage {
+  return { ...receipt, externalCostMicros: receipt.externalCostMicros ?? 0, unpricedExternalCalls: receipt.externalCostMicros === null ? 1 : 0 }
 }
 
 function addHarnessUsage(target: HarnessUsage, delta: HarnessUsage) {
-  for (const key of Object.keys(target) as (keyof HarnessUsage)[]) {
-    if (!Number.isSafeInteger(delta[key]) || delta[key] < 0) throw new Error('Usage cannot decrease.')
-    target[key] += delta[key]
+  for (const key of usageKeys) {
+    const value = delta[key] ?? 0
+    if (!Number.isSafeInteger(value) || value < 0) throw new Error('Usage cannot decrease.')
+    target[key] = (target[key] ?? 0) + value
     if (!Number.isSafeInteger(target[key])) throw new Error('Usage overflow.')
   }
 }
@@ -266,7 +285,7 @@ export function recordHarnessReceipt(state: HarnessSnapshot, receipt: HarnessRec
   const next = mutable(state)
   if (next.modelReservation?.id === receipt.id) next.modelReservation = undefined
   next.latestReceipt = { ...receipt }
-  addHarnessUsage(next.usage, receipt)
+  addHarnessUsage(next.usage, receiptUsage(receipt))
   return changed(next, now, false)
 }
 
@@ -277,10 +296,10 @@ export function recordHarnessChildReceipt(state: HarnessSnapshot, childRunId: st
   const child = next.children.find(candidate => candidate.id === childRunId)
   if (!child) throw new Error('Unknown child reservation for usage reconciliation.')
   const accounted = child.accountedUsage ?? { inputTokens: 0, outputTokens: 0, reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, costMicros: 0 }
-  addHarnessUsage(accounted, receipt)
+  addHarnessUsage(accounted, receiptUsage(receipt))
   child.accountedUsage = accounted
   child.costMicros = accounted.costMicros
-  addHarnessUsage(next.usage, receipt)
+  addHarnessUsage(next.usage, receiptUsage(receipt))
   return changed(next, now, false)
 }
 
@@ -433,8 +452,8 @@ export function settleHarnessChild(state: HarnessSnapshot, childState: HarnessSn
     accountedUsage: { ...childState.usage },
   })
   const delta = { ...childState.usage }
-  for (const key of Object.keys(next.usage) as (keyof HarnessSnapshot['usage'])[]) {
-    delta[key] -= child.accountedUsage?.[key] ?? 0
+  for (const key of usageKeys) {
+    delta[key] = (delta[key] ?? 0) - (child.accountedUsage?.[key] ?? 0)
   }
   addHarnessUsage(next.usage, delta)
   return changed(next, now)
