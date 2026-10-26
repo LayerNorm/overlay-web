@@ -181,6 +181,31 @@ Convex code may import browser-safe shared modules from `src/shared`. Convex mus
 
 ## Overlay Harness storage
 
+### Personal workflow integration
+
+`src/server/workflows/personal-harness.ts` composes `runOverlayHarness` with personal
+authorization, model billing, tool reconstruction, durable waits and transcript
+delivery. It is not yet selected by the personal conversation Act endpoint.
+Keep the legacy workflows available for in-flight runs until migration and parity
+acceptance are complete.
+
+The workflow claims the harness before attaching root delivery or executing model
+calls. Each run registers its wake hook before launching children. Child IDs are
+deterministic per delegation call, admission reserves their budget atomically,
+and duplicate workflow starts cannot claim an already-owned child. Child briefs
+exclude parent conversation history and limit tools to their admitted subset.
+
+Completion persists `resultSummary` separately from the compacted `workingSummary`.
+Parent settlement reads that bounded result. Root delivery uses existing assistant
+transcript persistence without charging the aggregate usage again. Raw model-stream
+closure produces the UI finish event through the SDK transform.
+
+Before switching traffic, verify model routing/fallback parity, root admission
+policy, descendant cancellation, full tool-result retrieval and trusted verification.
+The local production build compiles the workflow, but this does not establish hosted
+Workflow/Convex execution. Exact-SHA isolated Preview smoke and browser QA remain
+required, and production Context/Plan/Queue UI remains gated on mockup approval.
+
 Canonical `AgentRun` status includes active `waiting_for_input` and
 `waiting_for_children` states. Each can resume to `running` or end as failed or
 cancelled; terminal states cannot reopen. The `harnessWaits` ledger retains

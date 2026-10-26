@@ -8,6 +8,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Add workflow-owned input/approval wait storage, child attention notifications and an owner-only personal run input API for the upcoming harness migration. Personal tool approvals also remain owner-only in shared conversations.
 
+- Connect the canonical personal harness workflow to authorized model/tools, bounded child execution and transcript delivery. This entrypoint remains inactive until Chat/Work parity and isolated QA are complete.
+
 - Saved collaborative message edits now update rendered text and retain attachments instead of showing the original message.
 
 - Use shadcn focus-visible rings for text inputs and textareas, present message editing with text actions, autosize work titles and agent instructions as layouts settle, and group agent Details into collapsed Model, Instructions, Tools and Advanced disclosures.
