@@ -7,6 +7,7 @@ import {
   type HarnessPlanInput, type HarnessReceipt,
   claimHarnessExecution, hasRunnableHarnessMilestones, waitForHarnessChildren, resumeHarness,
   reserveHarnessModel, reservedHarnessCostMicros,
+  bindHarnessModelDispatch,
 } from './harness-state'
 
 const now = 1_000
@@ -20,6 +21,23 @@ const steps: HarnessPlanInput[] = [
 ]
 const child = (id: string, stepId: string, budget: number): HarnessChild => ({
   id, stepId, maxCostMicros: budget, costMicros: 0, allowedToolIds: ['read'], status: 'running', evidenceRefs: [],
+})
+
+test('model dispatch binds one billing reservation without releasing the budget hold', () => {
+  const reserved = reserveHarnessModel(make(), 'receipt', 80, now)
+  const dispatch = { modelId: 'provider/model', billingReservationId: 'billing-reservation' }
+  const bound = bindHarnessModelDispatch(reserved, 'receipt', dispatch, now)
+  assert.equal(reserved.modelReservation?.dispatch, undefined)
+  assert.deepEqual(bound.modelReservation?.dispatch, dispatch)
+  assert.equal(reservedHarnessCostMicros(bound), 80)
+  assert.equal(bindHarnessModelDispatch(bound, 'receipt', dispatch, now), bound)
+  assert.throws(() => bindHarnessModelDispatch(bound, 'receipt', { ...dispatch, billingReservationId: null }, now), /cannot change/)
+  assert.throws(() => bindHarnessModelDispatch(bound, 'other', dispatch, now), /matching reservation/)
+  assert.throws(() => bindHarnessModelDispatch(make(), 'receipt', dispatch, now), /matching reservation/)
+  const cancelled = terminateHarness(bound, 'cancelled', 'User stopped', now)
+  assert.deepEqual(cancelled.modelReservation?.dispatch, dispatch)
+  assert.throws(() => bindHarnessModelDispatch(cancelled, 'receipt', dispatch, now))
+  assert.equal(bindHarnessModelDispatch(reserved, 'receipt', { ...dispatch, billingReservationId: null }, now).modelReservation?.dispatch?.billingReservationId, null)
 })
 
 test('external provider costs remain distinct from Overlay budget usage through child settlement', () => {

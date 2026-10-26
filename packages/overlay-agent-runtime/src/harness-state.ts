@@ -99,7 +99,11 @@ export type HarnessSnapshot = {
   lastContinuationProgressRevision: number
   stalledContinuations: number
   latestReceipt?: HarnessReceipt
-  modelReservation?: { id: string; maxCostMicros: number }
+  modelReservation?: {
+    id: string
+    maxCostMicros: number
+    dispatch?: { modelId: string; billingReservationId: string | null }
+  }
   usage: HarnessUsage
   updatedAt: number
 }
@@ -137,7 +141,9 @@ export function createHarnessSnapshot(input: {
 function mutable(state: HarnessSnapshot): HarnessSnapshot {
   return {
     ...state, plan: state.plan.map(step => ({ ...step, evidenceRefs: [...step.evidenceRefs] })),
-    ...(state.modelReservation ? { modelReservation: { ...state.modelReservation } } : {}),
+    ...(state.modelReservation ? { modelReservation: { ...state.modelReservation,
+      ...(state.modelReservation.dispatch ? { dispatch: { ...state.modelReservation.dispatch } } : {}),
+    } } : {}),
     evidence: [...state.evidence], children: state.children.map(child => ({ ...child, evidenceRefs: [...child.evidenceRefs],
       ...(child.accountedUsage ? { accountedUsage: { ...child.accountedUsage } } : {}),
     })),
@@ -350,6 +356,28 @@ export function reserveHarnessModel(state: HarnessSnapshot, id: string, maxCostM
   assertHarnessRunnable(state, now, maxCostMicros)
   const next = mutable(state)
   next.modelReservation = { id, maxCostMicros }
+  return changed(next, now, false)
+}
+
+export function bindHarnessModelDispatch(
+  state: HarnessSnapshot,
+  id: string,
+  dispatch: { modelId: string; billingReservationId: string | null },
+  now: number,
+): HarnessSnapshot {
+  assertHarnessRunnable(state, now)
+  if (!state.modelReservation || state.modelReservation.id !== id) throw new Error('Model dispatch requires its matching reservation.')
+  if (!dispatch.modelId.trim() || dispatch.modelId.length > 256
+    || (dispatch.billingReservationId !== null && (!dispatch.billingReservationId.trim() || dispatch.billingReservationId.length > 256))) {
+    throw new Error('Invalid model dispatch identity.')
+  }
+  const existing = state.modelReservation.dispatch
+  if (existing) {
+    if (existing.modelId === dispatch.modelId && existing.billingReservationId === dispatch.billingReservationId) return state
+    throw new Error('Model dispatch cannot change its billing reservation or model.')
+  }
+  const next = mutable(state)
+  next.modelReservation = { ...state.modelReservation, dispatch: { ...dispatch } }
   return changed(next, now, false)
 }
 

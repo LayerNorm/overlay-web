@@ -16,6 +16,7 @@ export type HarnessAdmission = {
 export type HarnessOperation =
   | { type: 'claim_execution'; workflowRunId: string }
   | { type: 'reserve_model'; id: string; maxCostMicros: number }
+  | { type: 'bind_model_dispatch'; id: string; modelId: string; billingReservationId: string | null }
   | { type: 'replace_plan'; steps: HarnessPlanInput[] }
   | { type: 'transition_step'; id: string; status: HarnessStepStatus; evidenceRefs?: string[]; skipReason?: string }
   | { type: 'record_evidence'; evidence: HarnessEvidence }

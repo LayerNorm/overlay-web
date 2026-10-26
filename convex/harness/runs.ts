@@ -6,6 +6,7 @@ import { getReadableRow } from '../lib/resourceScope'
 import {
   admitHarnessChild,
   blockHarness,
+  bindHarnessModelDispatch,
   checkpointHarness,
   claimHarnessExecution,
   createHarnessSnapshot,
@@ -127,6 +128,7 @@ const childValidator = v.object({
 
 const operationValidator = v.union(
   v.object({ type: v.literal('reserve_model'), id: v.string(), maxCostMicros: v.number() }),
+  v.object({ type: v.literal('bind_model_dispatch'), id: v.string(), modelId: v.string(), billingReservationId: v.union(v.string(), v.null()) }),
   v.object({ type: v.literal('claim_execution'), workflowRunId: v.string() }),
   v.object({ type: v.literal('replace_plan'), steps: v.array(planInputValidator) }),
   v.object({
@@ -312,6 +314,7 @@ function assertBoundedOperation(operation: HarnessOperation) {
       }
       break
     case 'reserve_model':
+    case 'bind_model_dispatch':
       if (!operation.id.trim() || operation.id.length > MAX_ID_LENGTH) throw new Error('Invalid model reservation identity.')
       break
     case 'checkpoint':
@@ -686,6 +689,10 @@ async function applyReducer(
       return { snapshot: claimHarnessExecution(current, operation.workflowRunId, now) }
     case 'reserve_model':
       return { snapshot: reserveHarnessModel(current, operation.id, operation.maxCostMicros, now) }
+    case 'bind_model_dispatch':
+      return { snapshot: bindHarnessModelDispatch(current, operation.id, {
+        modelId: operation.modelId, billingReservationId: operation.billingReservationId,
+      }, now) }
     case 'replace_plan':
       return { snapshot: replaceHarnessPlan(current, operation.steps, now) }
     case 'transition_step':

@@ -232,6 +232,13 @@ ID while retaining the delivery AgentRun ID. The personal adapter requires
 interactive approval policy and cannot stand in for an agent or automation
 principal. These adapters are not yet connected to production entrypoints.
 
+Before provider dispatch, `bind_model_dispatch` associates the held model call
+with its selected model and billing reservation (explicitly `null` for calls
+without an account hold). That identity is immutable and survives cancellation.
+It is a settlement reference, not evidence that a provider was called or finished.
+Only the matching usage receipt clears the model hold; dispatch binding does not
+release any budget or authorize automatic provider retries.
+
 `compactHarnessPrompt` extends the existing chat compaction policy for SDK
 provider prompts. It preserves the latest user request and complete tool
 transactions, carries a rolling summary, and counts caller-supplied instruction,

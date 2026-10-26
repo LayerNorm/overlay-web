@@ -90,6 +90,25 @@ function oneStep(id: string, requiresVerification = false) {
 }
 
 describe('durable harness runs', () => {
+  test('persists billing dispatch ownership for settlement after cancellation', async () => {
+    const convex = convexTest(schema, modules)
+    const input = admission('dispatch', await seedConversation(convex))
+    await admit(convex, input)
+    const reserved = await apply(convex, input, 'reserve', 0, { type: 'reserve_model', id: 'receipt', maxCostMicros: 600 })
+    const operation = { type: 'bind_model_dispatch' as const, id: 'receipt', modelId: 'fixture/model', billingReservationId: 'billing-reservation' }
+    const bound = await apply(convex, input, 'dispatch', reserved.snapshot.revision, operation)
+    expect((await get(convex, input.runId))?.modelReservation?.dispatch).toEqual({ modelId: 'fixture/model', billingReservationId: 'billing-reservation' })
+    expect((await apply(convex, input, 'dispatch', reserved.snapshot.revision, operation)).applied).toBe(false)
+    await expect(apply(convex, input, 'rebind', bound.snapshot.revision, { ...operation, billingReservationId: 'other' })).rejects.toThrow(/cannot change/)
+    const cancelled = await apply(convex, input, 'cancel', bound.snapshot.revision, { type: 'terminate', status: 'cancelled', reason: 'User stopped.' })
+    expect(cancelled.snapshot.modelReservation?.dispatch?.billingReservationId).toBe('billing-reservation')
+    const settled = await apply(convex, input, 'settle', cancelled.snapshot.revision, { type: 'record_receipt', receipt: {
+      id: 'receipt', modelId: 'fixture/model', provider: 'fixture', inputTokens: 10, outputTokens: 1, reasoningTokens: 0,
+      cacheReadTokens: 0, cacheWriteTokens: 0, contextWindow: null, costMicros: 500,
+    } })
+    expect(settled.snapshot.modelReservation).toBeUndefined()
+    expect(settled.snapshot.status).toBe('cancelled')
+  })
   test('persists in-flight model reservations and replaces them with late receipts after cancellation', async () => {
     const convex = convexTest(schema, modules)
     const input = admission('reserved-model', await seedConversation(convex))
