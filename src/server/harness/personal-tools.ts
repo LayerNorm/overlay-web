@@ -14,13 +14,13 @@ import { refreshPersonalHarnessAccess, type PersonalHarnessAccess } from './pers
 
 export type PersonalHarnessToolsInput = {
   access: PersonalHarnessAccess
-  context: PersonalChatWorkToolingContext
+  context: Omit<PersonalChatWorkToolingContext, 'entitlements' | 'paid'>
   definitions: PersonalChatWorkToolDefinition[]
 }
 
 async function executeAuthorizedTool(args: {
   access: PersonalHarnessAccess
-  context: PersonalChatWorkToolingContext
+  context: PersonalHarnessToolsInput['context']
   toolName: string
   input: unknown
   messages: unknown[]
@@ -37,7 +37,7 @@ async function executeAuthorizedTool(args: {
 
 async function toolNeedsApproval(args: {
   access: PersonalHarnessAccess
-  context: PersonalChatWorkToolingContext
+  context: PersonalHarnessToolsInput['context']
   toolName: string
   input: unknown
   messages: unknown[]

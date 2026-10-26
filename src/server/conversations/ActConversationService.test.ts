@@ -123,6 +123,39 @@ test('act entitlement service allows a free-tier user to use their own provider 
   assert.equal(result.runtimeEntitlements.planKind, 'free')
 })
 
+test('policy-only authorization preserves a paid subscription while its funds are reserved', async () => {
+  const entitlements = { ...freeEntitlements, planKind: 'paid' as const, budgetTotalCents: 100, budgetRemainingCents: 0 }
+  let reads = 0
+  const service = new ActEntitlementService({
+    repository: repository({
+      getEntitlements: async () => { reads++; return entitlements },
+      getAppSettings: async () => null,
+    }),
+  })
+  const result = await service.gateModelPolicy({ effectiveModelId: 'fixture/paid-model', userId: 'user_1' })
+  assert.equal(result.paid, true)
+  assert.equal(result.runtimeEntitlements, entitlements)
+  assert.equal(result.runtimeEntitlements.budgetRemainingCents, 0)
+  assert.equal(reads, 1)
+})
+
+test('policy-only authorization still enforces revoked subscriptions and ZDR settings', async () => {
+  const service = new ActEntitlementService({
+    repository: repository({ getEntitlements: async () => freeEntitlements, getAppSettings: async () => null }),
+  })
+  await assert.rejects(service.gateModelPolicy({ effectiveModelId: 'fixture/paid-model', userId: 'user_1' }),
+    (error: unknown) => error instanceof ActConversationServiceError && error.statusCode === 403)
+  assert.equal((await service.gateModelPolicy({ effectiveModelId: 'byok/connection/model', userId: 'user_1' })).paid, false)
+  const restricted = new ActEntitlementService({
+    repository: repository({
+      getEntitlements: async () => ({ ...freeEntitlements, planKind: 'paid' as const }),
+      getAppSettings: async () => ({ onlyAllowZdrModels: true }) as never,
+    }),
+  })
+  await assert.rejects(restricted.gateModelPolicy({ effectiveModelId: 'fixture/non-zdr', userId: 'user_1' }),
+    (error: unknown) => error instanceof ActConversationServiceError && error.payload.error === 'zdr_model_required')
+})
+
 test('act context service builds model history without current turn or other assistant model variants', async () => {
   const service = new ActContextService({
     repository: repository({

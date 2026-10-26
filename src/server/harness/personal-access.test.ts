@@ -9,7 +9,7 @@ const mocks = vi.hoisted(() => ({
 }))
 vi.mock('server-only', () => ({}))
 vi.mock('./ConvexHarnessRepository', () => ({ ConvexHarnessRepository: class { get = mocks.state } }))
-vi.mock('@/server/conversations/http', () => ({ actEntitlementService: { gateModelAccess: mocks.gate } }))
+vi.mock('@/server/conversations/http', () => ({ actEntitlementService: { gateModelPolicy: mocks.gate } }))
 vi.mock('@/server/ai/model-policy-authority', () => ({ resolveAuthorizedModelIds: mocks.models }))
 vi.mock('@/server/ai/model-runtime', () => ({ assertUserCanUseByokModel: mocks.byok }))
 vi.mock('@/server/bootstrap', () => ({ getOverlayServerContext: () => ({

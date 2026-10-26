@@ -8,7 +8,7 @@ const input: PersonalHarnessToolsInput = {
   access: { actorUserId: 'user', runId: 'child', workflowRunId: 'workflow', conversationId: 'conversation', workspaceId: 'workspace',
     principalId: 'principal', agentRunId: 'agent-run', authentication: { type: 'session' } },
   context: { userId: 'user', workspaceId: 'workspace', conversationId: 'conversation', effectiveModelId: 'model',
-    baseUrl: 'https://example.test', paid: true, entitlements: {} as never, memoryEnabled: false, requestedToolIds: [], turnId: 'turn', requestFingerprint: 'request' },
+    baseUrl: 'https://example.test', memoryEnabled: false, requestedToolIds: [], turnId: 'turn', requestFingerprint: 'request' },
   definitions: [{ name: 'read_file', inputSchema: { type: 'object', properties: {} }, needsApproval: false }],
 }
 const options = { toolCallId: 'call', messages: [] }

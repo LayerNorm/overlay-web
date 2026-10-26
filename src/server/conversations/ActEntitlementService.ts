@@ -41,6 +41,37 @@ export class ActEntitlementService {
     repository: ActConversationRepository
   }) {}
 
+  // Authorization only. Each provider operation must separately reserve its
+  // spend; an existing reservation must not revoke access or trigger a top-up.
+  async gateModelPolicy(args: {
+    effectiveModelId: string
+    userId: string
+    workspaceId?: string
+    programmaticSubjectId?: string
+  }): Promise<ActModelGateResult> {
+    const [entitlements, appSettings] = await Promise.all([
+      this.getEntitlements(args),
+      this.deps.repository.getAppSettings({ userId: args.userId }),
+    ])
+    if (!entitlements) {
+      serviceError({ error: 'Unauthorized', message: 'Could not verify subscription. Try signing out and back in.' }, 401)
+    }
+    const paid = isPaidPlan(entitlements)
+    if (!paid && !isByokModelId(args.effectiveModelId) && !isFreeTierChatModelId(args.effectiveModelId)) {
+      serviceError({
+        error: 'premium_model_not_allowed',
+        message: 'Free tier is limited to free models. Upgrade to a paid plan to use premium models.',
+      }, 403)
+    }
+    if (paid && appSettings?.onlyAllowZdrModels && !modelSupportsZeroDataRetention(args.effectiveModelId)) {
+      serviceError({
+        error: 'zdr_model_required',
+        message: 'Your settings only allow zero data retention models. Choose a ZDR-supported model to continue.',
+      }, 400)
+    }
+    return { appSettings, paid, runtimeEntitlements: entitlements }
+  }
+
   async gateModelAccess(args: {
     effectiveModelId: string
     userId: string

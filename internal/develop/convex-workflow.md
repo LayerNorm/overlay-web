@@ -193,6 +193,9 @@ cannot create a second worker. A child-only wait has a persisted status and can
 resume without recreating the children. Tool execution rechecks access after
 approval; returned SDK system messages are not replayed as conversation input.
 Instructions and current durable context are rebuilt on continuation instead.
+An output-token limit continues the partial response instead of completing the
+task. Filtered, errored or otherwise unfinished provider returns cannot be
+reported as successful completion; usage is still settled.
 
 Model dispatch holds a durable `reserve_model` authorization with the same ID as
 its eventual usage receipt. Child admission cannot spend that held amount while
@@ -259,6 +262,10 @@ must be selected and authorized during preparation, not hidden in provider
 options. Provider-executed tools and unpriced cache configurations fail closed.
 Text input estimates include byte/protocol overhead; media uses the known model
 context limit. These are spending forecasts, not provider token measurements.
+Personal permission refresh uses `gateModelPolicy`, which checks the current
+subscription and ZDR policy without topping up or requiring unreserved funds.
+A model hold must not disable authorized tools while the SDK executes them.
+Each model or billable tool operation still reserves its own spend before use.
 
 `compactHarnessPrompt` extends the existing chat compaction policy for SDK
 provider prompts. It preserves the latest user request and complete tool

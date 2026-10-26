@@ -107,7 +107,7 @@ export async function refreshPersonalHarnessAccess(
     authorization.filterCatalogResourceIds({
       capability: 'integrations.use', resourceIds: context.accountAllowedConnectorIds ?? [], resourceType: 'connector', subject,
     }),
-    actEntitlementService.gateModelAccess({
+    actEntitlementService.gateModelPolicy({
       effectiveModelId: context.effectiveModelId, userId: access.actorUserId,
       workspaceId: access.workspaceId, programmaticSubjectId: context.billingProgrammaticSubjectId,
     }),
