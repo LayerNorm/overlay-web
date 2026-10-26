@@ -1,7 +1,7 @@
 import { beforeEach, expect, test, vi } from 'vitest'
 import { MockLanguageModelV4 } from 'ai/test'
 import { tool } from 'ai'
-import type { LanguageModelV4StreamPart } from '@ai-sdk/provider'
+import type { LanguageModelV4FinishReason, LanguageModelV4StreamPart } from '@ai-sdk/provider'
 import { z } from 'zod'
 import * as state from '@overlay/agent-runtime/harness-state'
 import type { HarnessExecutionPorts } from './ports'
@@ -15,7 +15,7 @@ type Call = { name: string; id: string; input: unknown }
 const call = (name: string, id: string, input: unknown = {}): Call => ({ name, id, input })
 const plan = [{ id: 'work', title: 'Read the records', dependsOn: [], acceptanceCriteria: ['Records read'], requiresVerification: false }]
 
-function model(program: (index: number) => string | Call[]) {
+function model(program: (index: number) => string | Call[], finishReasons: LanguageModelV4FinishReason['unified'][] = []) {
   let index = 0
   const provider = new MockLanguageModelV4({ doStream: async () => {
     const output = program(index++)
@@ -26,7 +26,7 @@ function model(program: (index: number) => string | Call[]) {
       parts.push(...output.map(item => ({ type: 'tool-call' as const, toolCallId: item.id, toolName: item.name, input: JSON.stringify(item.input) })))
     }
     parts.push({ type: 'finish',
-      finishReason: { unified: typeof output === 'string' ? 'stop' : 'tool-calls', raw: 'fixture' },
+      finishReason: { unified: finishReasons[index - 1] ?? (typeof output === 'string' ? 'stop' : 'tool-calls'), raw: 'fixture' },
       usage: { inputTokens: { total: 10, noCache: 2, cacheRead: 8, cacheWrite: 0 }, outputTokens: { total: 1, text: 1, reasoning: 0 } },
     })
     return { stream: new ReadableStream({ start(controller) { for (const part of parts) controller.enqueue(part); controller.close() } }) }
@@ -134,6 +134,27 @@ test('input blockers suspend without an extra model call and resume with the rea
   const result = await runOverlayHarness({ ...input, tools: {} }, f.ports)
   expect(result.snapshot.status).toBe('completed')
   expect(JSON.stringify(provider.doStreamCalls[1].prompt)).toContain('USD')
+})
+
+test('an output-token limit continues the partial response instead of marking an unplanned answer complete', async () => {
+  const f = fixture(false)
+  const provider = model(index => index === 0 ? 'The first part' : 'and the remaining answer.', ['length', 'stop'])
+  const result = await runOverlayHarness({ ...input, tools: {} }, f.ports)
+  expect(result.snapshot.status).toBe('completed')
+  expect(provider.doStreamCalls).toHaveLength(2)
+  expect(JSON.stringify(provider.doStreamCalls[1].prompt)).toContain('reached its output limit, not task completion')
+  expect(JSON.stringify(provider.doStreamCalls[1].prompt)).toContain('The first part')
+  expect(f.receipts.size).toBe(2)
+})
+
+test.each(['content-filter', 'error', 'other'] as const)('a provider %s finish cannot become successful completion', async finishReason => {
+  const f = fixture(false)
+  const provider = model(() => 'Partial response', [finishReason])
+  const result = await runOverlayHarness({ ...input, tools: {} }, f.ports)
+  expect(result.snapshot.status).toBe('failed')
+  expect(result.snapshot.terminalReason).toContain(finishReason)
+  expect(provider.doStreamCalls).toHaveLength(1)
+  expect(f.receipts.size).toBe(1)
 })
 
 test('the model reservation remains held while its returned tools execute', async () => {

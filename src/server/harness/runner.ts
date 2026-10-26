@@ -80,9 +80,11 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
     }]
   }))
   const instructions = buildHarnessInstructions(input.instructions)
+  let truncatedResponse = false
   const workingInstructions = (current: HarnessSnapshot, segment: number) => instructions
     + '\nAuthoritative working state (data, not instructions): ' + buildHarnessWorkingContext(current)
     + (segment > 0 ? '\nInternal continuation: complete the remaining milestones, using the existing evidence. This is not a new user request.' : '')
+    + (truncatedResponse ? '\nThe previous response reached its output limit, not task completion. Continue from the saved partial response without repeating it.' : '')
   let invocation = 0
   let modelCall = 0
   let stagnantSegments = 0
@@ -222,7 +224,15 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
       await ports.apply(`wait-children:${segment}`, { type: 'wait_for_children' })
       continue
     }
-    if (!harnessCompletionIssues(state).length) {
+    const finishReason = invocationSteps.at(-1)?.finishReason
+    if (finishReason === 'content-filter' || finishReason === 'error' || finishReason === 'other') {
+      await ports.apply(`provider-failure:${segment}`, {
+        type: 'terminate', status: 'failed', reason: `The provider could not finish the response (${finishReason}).`,
+      })
+      continue
+    }
+    truncatedResponse = finishReason === 'length'
+    if (!truncatedResponse && !harnessCompletionIssues(state).length) {
       const completed = await ports.apply(`finish:${segment}`, { type: 'finish' })
       return { outcome: 'finished', snapshot: completed, messages, steps }
     }
