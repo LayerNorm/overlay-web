@@ -29,7 +29,7 @@ export class ConvexHarnessRepository implements HarnessRepository {
 
   async get(input: { actorUserId: string; runId: string }): Promise<HarnessSnapshot | null> {
     return await convex.query<HarnessSnapshot | null>('harness/runs:get', {
-      ...input,
+      actorUserId: input.actorUserId, runId: input.runId,
       serverSecret: this.serverSecret,
     }, { throwOnError: true })
   }
@@ -56,7 +56,7 @@ export class ConvexHarnessRepository implements HarnessRepository {
     input: HarnessWaitReference & { request: HarnessWaitRequest },
   ): Promise<HarnessWait> {
     const wait = await convex.mutation<HarnessWait>('harness/runs:publishWait', {
-      ...input,
+      actorUserId: input.actorUserId, runId: input.runId, workflowRunId: input.workflowRunId, request: input.request,
       serverSecret: this.serverSecret,
     }, { throwOnError: true })
     if (!wait) throw new Error('Harness wait publication returned no wait.')
@@ -65,14 +65,14 @@ export class ConvexHarnessRepository implements HarnessRepository {
 
   async resolveWait(input: HarnessWaitReference & { token: string }): Promise<void> {
     await convex.mutation<void>('harness/runs:resolveWait', {
-      ...input,
+      actorUserId: input.actorUserId, runId: input.runId, workflowRunId: input.workflowRunId, token: input.token,
       serverSecret: this.serverSecret,
     }, { throwOnError: true })
   }
 
   async listPendingWaits(input: HarnessWaitReference): Promise<HarnessWait[]> {
     const waits = await convex.query<HarnessWait[]>('harness/runs:listPendingWaits', {
-      ...input,
+      actorUserId: input.actorUserId, runId: input.runId, workflowRunId: input.workflowRunId,
       serverSecret: this.serverSecret,
     }, { throwOnError: true })
     if (!waits) throw new Error('Harness pending wait query returned no result.')

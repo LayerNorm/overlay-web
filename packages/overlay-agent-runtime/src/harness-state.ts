@@ -95,6 +95,7 @@ export type HarnessSnapshot = {
   blocker?: { kind: 'input' | 'approval' | 'budget' | 'stuck'; question: string }
   terminalReason?: string
   workingSummary: string
+  resultSummary?: string
   continuations: number
   lastContinuationProgressRevision: number
   stalledContinuations: number
@@ -449,12 +450,14 @@ export function checkpointHarness(state: HarnessSnapshot, summary: string, now: 
   return changed(next, now, false)
 }
 
-export function finishHarness(state: HarnessSnapshot, now: number): HarnessSnapshot {
+export function finishHarness(state: HarnessSnapshot, now: number, resultSummary?: string): HarnessSnapshot {
   assertHarnessRunnable(state, now)
+  if (resultSummary !== undefined && resultSummary.length > 8_000) throw new Error('Keep the result summary under 8,000 characters.')
   const issues = harnessCompletionIssues(state)
   if (issues.length) throw new Error(issues.join(' '))
   const next = mutable(state)
   next.status = 'completed'
+  if (resultSummary !== undefined) next.resultSummary = resultSummary
   return changed(next, now)
 }
 
@@ -476,7 +479,7 @@ export function settleHarnessChild(state: HarnessSnapshot, childState: HarnessSn
   const next = mutable(state)
   Object.assign(next.children.find(candidate => candidate.id === child.id)!, {
     status: childState.status, costMicros: childState.usage.costMicros,
-    summary: childState.workingSummary, evidenceRefs: childState.evidence.map(item => item.id),
+    summary: childState.resultSummary ?? childState.workingSummary, evidenceRefs: childState.evidence.map(item => item.id),
     accountedUsage: { ...childState.usage },
   })
   const delta = { ...childState.usage }

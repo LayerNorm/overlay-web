@@ -217,7 +217,8 @@ test('joining a child charges usage once, releases unused budget and preserves a
   worker = recordHarnessReceipt(worker, { id: 'call', modelId: 'model', provider: 'provider', inputTokens: 100,
     outputTokens: 10, reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, contextWindow: null, costMicros: 40,
   }, now)
-  worker = finishHarness(worker, now)
+  assert.throws(() => finishHarness(worker, now, 'x'.repeat(8_001)), /result summary/)
+  worker = finishHarness(worker, now, 'Checked the source records.')
   assert.throws(() => settleHarnessChild(state, { ...worker, policy: { ...worker.policy, actorUserId: 'other' } }, now), /authority/)
   assert.throws(() => settleHarnessChild(state, {
     ...worker, policy: { ...worker.policy, allowedToolIds: ['read', 'write', 'admin'] },
@@ -227,6 +228,7 @@ test('joining a child charges usage once, releases unused budget and preserves a
   }, now), /authority/)
   state = settleHarnessChild(state, worker, now)
   assert.equal(state.usage.costMicros, 40)
+  assert.equal(state.children[0]?.summary, 'Checked the source records.')
   assert.equal(settleHarnessChild(state, worker, now), state)
   assertHarnessRunnable(state, now, 60)
   assert.throws(() => assertHarnessRunnable(state, now, 61), /spending/)

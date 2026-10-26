@@ -65,7 +65,7 @@ export function createHarnessControlTools(ports: HarnessExecutionPorts) {
         if (!parent.children.some(child => child.id === childRunId)) throw new Error('This run did not delegate that child.')
         const child = await ports.readChild(childRunId)
         if (child.parentRunId !== parent.runId || child.rootRunId !== parent.rootRunId) throw new Error('Invalid child lineage.')
-        return { status: child.status, summary: child.workingSummary, evidence: child.evidence, blocker: child.blocker }
+        return { status: child.status, summary: child.resultSummary ?? child.workingSummary, evidence: child.evidence, blocker: child.blocker }
       },
     }),
   }

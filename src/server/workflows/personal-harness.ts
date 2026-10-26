@@ -1,0 +1,135 @@
+import { createHook, FatalError, getWorkflowMetadata, getWritable } from 'workflow'
+import { start } from 'workflow/api'
+import type { ModelCallStreamPart } from '@ai-sdk/workflow'
+import type { ToolSet } from 'ai'
+import type { HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
+import { createPersonalHarnessTools } from '@/server/harness/personal-tools'
+import { createPersonalHarnessExecutionPorts } from '@/server/harness/personal-ports'
+import { createPersonalHarnessWaitPorts } from '@/server/harness/personal-waits'
+import { admitPersonalHarnessChild } from '@/server/harness/personal-child-steps'
+import { buildPersonalHarnessDelivery } from '@/server/harness/personal-delivery'
+import {
+  attachPersonalHarnessDelivery, closePersonalHarnessStream, finishPersonalHarnessDelivery,
+} from '@/server/harness/personal-delivery-steps'
+import { harnessWakeToken, notifyHarnessAncestors, readHarnessChild } from '@/server/harness/personal-wait-steps'
+import { applyHarnessOperation, claimHarnessState, readHarnessState } from '@/server/harness/state-steps'
+import { runOverlayHarness, type HarnessExecutionResult } from '@/server/harness/runner'
+import type { PersonalHarnessAccess } from '@/server/harness/personal-access'
+import type { PersonalHarnessWorkflowInput } from '@/server/harness/personal-workflow-input'
+import { persistPersonalChatWorkProgress } from '@/server/conversations/personal-chat-work-lifecycle'
+
+async function startPersonalHarnessChild(
+  parent: PersonalHarnessAccess,
+  input: PersonalHarnessWorkflowInput,
+): Promise<string> {
+  'use step'
+  const { ConvexHarnessRepository } = await import('@/server/harness/ConvexHarnessRepository')
+  const repository = new ConvexHarnessRepository()
+  const parentState = await repository.get(parent)
+  const child = await repository.get({ actorUserId: parent.actorUserId, runId: input.access.runId })
+  if (!parentState || parentState.workflowRunId !== parent.workflowRunId
+    || !parentState.children.some(entry => entry.id === child?.runId)
+    || !child || child.parentRunId !== parent.runId || child.rootRunId !== parentState.rootRunId
+    || input.access.actorUserId !== parent.actorUserId || input.access.agentRunId !== parent.agentRunId
+    || input.access.conversationId !== parent.conversationId || input.access.workspaceId !== parent.workspaceId) {
+    throw new FatalError('Invalid child launch authority.')
+  }
+  if (child.workflowRunId) return child.workflowRunId
+  if (['completed', 'failed', 'cancelled'].includes(parentState.status)
+    || ['completed', 'failed', 'cancelled'].includes(child.status)) throw new FatalError('Child launch is no longer active.')
+  // An ambiguous start can launch another workflow, but only one can claim this
+  // admitted child. A losing workflow never executes a model or tool.
+  return (await start(personalHarnessWorkflow, [input])).runId
+}
+
+export function personalHarnessChildInput(
+  parent: PersonalHarnessWorkflowInput,
+  child: HarnessSnapshot,
+): PersonalHarnessWorkflowInput {
+  const allowed = new Set(child.policy.allowedToolIds)
+  return {
+    access: { ...parent.access, runId: child.runId },
+    context: { ...parent.context, latestUserText: child.goal },
+    definitions: parent.definitions.filter(definition => allowed.has(definition.name)),
+    settings: parent.settings,
+    instructions: `${parent.instructions}\n\nComplete only the assigned bounded task. Return concise findings with evidence references and any blockers. Do not expand the scope or contact the user except through the harness input mechanism.`,
+    messages: [{ role: 'user', content: JSON.stringify({ goal: child.goal, constraints: child.constraints }) }],
+  }
+}
+
+export async function personalHarnessWorkflow(input: PersonalHarnessWorkflowInput) {
+  'use workflow'
+
+  const { workflowRunId } = getWorkflowMetadata()
+  const access = { ...input.access, workflowRunId }
+  const initial = await readHarnessState(access)
+  if (['completed', 'failed', 'cancelled'].includes(initial.status)) return { runId: initial.runId, status: initial.status }
+  if (!await claimHarnessState(access)) return { runId: initial.runId, status: 'already_running' }
+  const isRoot = !initial.parentRunId
+  using wake = createHook<unknown>({ token: harnessWakeToken(workflowRunId) })
+  let result: HarnessExecutionResult | undefined
+  let progress = ''
+  try {
+    if (await wake.getConflict()) throw new FatalError('Harness wake channel is already owned.')
+    if (isRoot) await attachPersonalHarnessDelivery(access)
+    const execution = { access, context: input.context }
+    const ports = createPersonalHarnessExecutionPorts(execution, {
+      ...createPersonalHarnessWaitPorts({ access, wake: wake[Symbol.asyncIterator]() }),
+      readChild: childRunId => readHarnessChild(access, childRunId),
+      delegate: async (delegation, toolCallId) => {
+        const child = await admitPersonalHarnessChild(execution, delegation, toolCallId)
+        const snapshot = await readHarnessChild(access, child.id)
+        await startPersonalHarnessChild(access, personalHarnessChildInput(input, snapshot))
+        return child
+      },
+      recordToolResult: async event => {
+        const state = await readHarnessState(access)
+        if (['completed', 'failed', 'cancelled'].includes(state.status)) return
+        const value = event.success ? event.output : event.error instanceof Error ? event.error.message : event.error
+        const summary = (typeof value === 'string' ? value : JSON.stringify(value)) || (event.success ? 'Tool completed without an output.' : 'Tool failed.')
+        await applyHarnessOperation(access, `tool-evidence:${event.toolCall.toolCallId}`, { type: 'record_evidence', evidence: {
+          id: `tool:${event.toolCall.toolCallId}`, kind: 'tool_result', source: event.toolCall.toolName,
+          summary: summary.slice(0, 2_000), verdict: event.success ? 'observed' : 'failed', createdAt: Date.now(),
+        } })
+      },
+    })
+    const recordModelStep = ports.recordModelStep
+    ports.recordModelStep = async (step, receiptId) => {
+      await recordModelStep(step, receiptId)
+      if (isRoot && step.text) {
+        progress = `${progress}${progress ? '\n\n' : ''}${step.text}`.slice(-160_000)
+        await persistPersonalChatWorkProgress({ agentRunId: access.agentRunId, resourceUserId: access.actorUserId, content: progress })
+      }
+    }
+    result = await runOverlayHarness({
+      instructions: input.instructions, messages: input.messages, settings: input.settings,
+      model: { modelId: input.context.effectiveModelId, credentialOwnerId: access.actorUserId, sessionId: access.conversationId, allowLowBalanceFallback: false },
+      tools: createPersonalHarnessTools({ ...execution, definitions: input.definitions }),
+      writable: getWritable<ModelCallStreamPart<ToolSet>>(),
+    }, ports)
+    if (result.outcome === 'already_running') return { runId: initial.runId, status: 'already_running' }
+    if (!['completed', 'failed', 'cancelled'].includes(result.snapshot.status)) {
+      result.snapshot = await applyHarnessOperation(access, 'blocked-finalization', {
+        type: 'terminate', status: 'failed', reason: result.snapshot.blocker?.question || 'The task is blocked and cannot continue.',
+      })
+    }
+  } catch (error) {
+    const reason = (error instanceof Error ? error.message : 'Harness execution failed.').slice(0, 2_000)
+    const state = await readHarnessState(access)
+    const snapshot = ['completed', 'failed', 'cancelled'].includes(state.status) ? state
+      : await applyHarnessOperation(access, 'execution-failed', { type: 'terminate', status: 'failed', reason })
+    result = { outcome: 'finished', snapshot, messages: [], steps: [] }
+  }
+  if (isRoot) {
+    const delivery = buildPersonalHarnessDelivery(result, input.delivery?.sourceCitations)
+    if (!result.steps.length && progress) {
+      delivery.content = progress
+      delivery.parts = [{ type: 'text', text: progress }]
+    }
+    await finishPersonalHarnessDelivery(access, delivery, { emitWebhook: input.delivery?.emitWebhook ?? false, turnId: input.context.turnId })
+  } else {
+    await notifyHarnessAncestors(access)
+  }
+  await closePersonalHarnessStream(result.snapshot.status === 'failed' ? result.snapshot.terminalReason : undefined)
+  return { runId: result.snapshot.runId, status: result.snapshot.status }
+}

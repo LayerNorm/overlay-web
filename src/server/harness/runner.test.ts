@@ -54,7 +54,7 @@ function fixture(requiresPlan = true) {
         case 'block': current = state.blockHarness(current, operation.blocker, now); break
         case 'resume': current = state.resumeHarness(current, now); break
         case 'checkpoint': current = state.checkpointHarness(current, operation.summary, now); break
-        case 'finish': current = state.finishHarness(current, now); break
+        case 'finish': current = state.finishHarness(current, now, operation.resultSummary); break
         case 'terminate': current = state.terminateHarness(current, operation.status, operation.reason, now); break
         case 'wait_for_children': current = state.waitForHarnessChildren(current, now); break
         default: throw new Error(`Unexpected fixture operation: ${operation.type}`)
@@ -118,6 +118,7 @@ test('the real SDK runs beyond twenty tool calls and continues after early sign-
   expect(result.snapshot.continuations).toBeGreaterThan(0)
   expect(JSON.stringify(provider.doStreamCalls[0].prompt)).toContain('Preserve the original constraints after compaction.')
   expect(result.snapshot.workingSummary).toBe('Preserve the original constraints after compaction.')
+  expect(result.snapshot.resultSummary).toBe('All requested records were read.')
   expect(provider.doStreamCalls.every(options => options.prompt.filter(message => message.role === 'system').length === 1)).toBe(true)
   expect(f.receipts.size).toBe(provider.doStreamCalls.length)
   expect(result.snapshot.usage.cacheReadTokens).toBe(provider.doStreamCalls.length * 8)

@@ -191,7 +191,7 @@ const operationValidator = v.union(
     constraints: v.array(v.string()),
   }),
   v.object({ type: v.literal('settle_child'), childRunId: v.string() }),
-  v.object({ type: v.literal('finish') }),
+  v.object({ type: v.literal('finish'), resultSummary: v.optional(v.string()) }),
   v.object({
     type: v.literal('terminate'),
     status: v.union(v.literal('cancelled'), v.literal('failed')),
@@ -347,6 +347,9 @@ function assertBoundedOperation(operation: HarnessOperation) {
       break
     case 'checkpoint':
       if (operation.summary.length > MAX_WORKING_SUMMARY_LENGTH) throw new Error('Harness working summary exceeds 8,000 characters.')
+      break
+    case 'finish':
+      if (operation.resultSummary !== undefined && operation.resultSummary.length > MAX_WORKING_SUMMARY_LENGTH) throw new Error('Harness result summary exceeds 8,000 characters.')
       break
     case 'block':
       if (!operation.blocker.question.trim() || operation.blocker.question.length > MAX_EVIDENCE_SUMMARY_LENGTH) {
@@ -918,7 +921,7 @@ async function applyReducer(
       const childSnapshot = await hydrateSnapshot(ctx, childRun)
       let snapshot = settleHarnessChild(current, childSnapshot, now)
       if (childSnapshot.status === 'completed') {
-        const rawSummary = childSnapshot.workingSummary.trim() || `Completed child run ${childSnapshot.runId}.`
+        const rawSummary = childSnapshot.resultSummary?.trim() || childSnapshot.workingSummary.trim() || `Completed child run ${childSnapshot.runId}.`
         const summary = rawSummary.length > MAX_EVIDENCE_SUMMARY_LENGTH
           ? `${rawSummary.slice(0, MAX_EVIDENCE_SUMMARY_LENGTH - 1)}…`
           : rawSummary
@@ -945,7 +948,7 @@ async function applyReducer(
       return { snapshot }
     }
     case 'finish':
-      return { snapshot: finishHarness(current, now) }
+      return { snapshot: finishHarness(current, now, operation.resultSummary) }
     case 'terminate':
       return { snapshot: terminateHarness(current, operation.status, operation.reason, now) }
   }

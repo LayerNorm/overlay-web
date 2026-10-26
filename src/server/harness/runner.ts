@@ -242,7 +242,10 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
       continue
     }
     if (!truncatedResponse && !harnessCompletionIssues(state).length) {
-      const completed = await ports.apply(`finish:${segment}`, { type: 'finish' })
+      const resultSummary = invocationSteps.at(-1)?.text?.trim()
+      const completed = await ports.apply(`finish:${segment}`, {
+        type: 'finish', ...(resultSummary ? { resultSummary: resultSummary.slice(0, 8_000) } : {}),
+      })
       return { outcome: 'finished', snapshot: completed, messages, steps }
     }
     stagnantSegments = harnessProgressFingerprint(state) === before ? stagnantSegments + 1 : 0

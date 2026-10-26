@@ -27,7 +27,7 @@ export type HarnessOperation =
   | { type: 'wait_for_children' }
   | { type: 'admit_child'; child: HarnessChild; goal: string; constraints: string[] }
   | { type: 'settle_child'; childRunId: string }
-  | { type: 'finish' }
+  | { type: 'finish'; resultSummary?: string }
   | { type: 'terminate'; status: 'cancelled' | 'failed'; reason: string }
 
 export type HarnessMutationInput = {
@@ -72,4 +72,7 @@ export interface HarnessRepository {
   get(input: { actorUserId: string; runId: string }): Promise<HarnessSnapshot | null>
   apply(input: HarnessMutationInput): Promise<HarnessMutationResult>
   readEvidence(input: { actorUserId: string; runId: string; evidenceId: string }): Promise<HarnessEvidence | null>
+  publishWait(input: HarnessWaitReference & { request: HarnessWaitRequest }): Promise<HarnessWait>
+  resolveWait(input: HarnessWaitReference & { token: string }): Promise<void>
+  listPendingWaits(input: HarnessWaitReference): Promise<HarnessWait[]>
 }
