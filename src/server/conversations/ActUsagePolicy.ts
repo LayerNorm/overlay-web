@@ -28,6 +28,20 @@ export type ActBudgetReservationResult =
   | { ok: true; reservationId: string | null }
   | { ok: false; failure: ActBudgetFailure }
 
+export type ActFinishedUsage = {
+  forceFreeTierLimits: boolean
+  inputTokens: number
+  cachedInputTokens?: number
+  cacheWriteTokens?: number
+  /** Validated provider receipt, in USD; never supplied by a client. */
+  providerCostUsd?: number
+  modelId: string
+  outputTokens: number
+  reservationId: string | null
+  userId: string
+  operationId?: string
+}
+
 export interface ActUsagePolicy {
   getEntitlements(args: {
     userId: string
@@ -47,15 +61,7 @@ export interface ActUsagePolicy {
     workspaceId?: string
     programmaticSubjectId?: string
   }): Promise<ActBudgetReservationResult>
-  recordFinishedUsage(args: {
-    forceFreeTierLimits: boolean
-    inputTokens: number
-    modelId: string
-    outputTokens: number
-    reservationId: string | null
-    userId: string
-    operationId?: string
-  }): Promise<{ finalized: boolean; reservationId: string | null }>
+  recordFinishedUsage(args: ActFinishedUsage): Promise<{ finalized: boolean; reservationId: string | null }>
   markReservationStarted(args: {
     reservationId: string | null | undefined
     userId: string
@@ -113,15 +119,7 @@ export class UnlimitedUsagePolicy implements ActUsagePolicy {
     return { ok: true, reservationId: null }
   }
 
-  async recordFinishedUsage(_args: {
-    forceFreeTierLimits: boolean
-    inputTokens: number
-    modelId: string
-    outputTokens: number
-    reservationId: string | null
-    userId: string
-    operationId?: string
-  }): Promise<{ finalized: boolean; reservationId: string | null }> {
+  async recordFinishedUsage(_args: ActFinishedUsage): Promise<{ finalized: boolean; reservationId: string | null }> {
     return { finalized: false, reservationId: null }
   }
   async markReservationStarted(_args: {
@@ -279,20 +277,22 @@ export class BillingBackedActUsagePolicy implements ActUsagePolicy {
     return { ok: true, reservationId: reservation.reservationId }
   }
 
-  async recordFinishedUsage(args: {
-    forceFreeTierLimits: boolean
-    inputTokens: number
-    modelId: string
-    outputTokens: number
-    reservationId: string | null
-    userId: string
-    operationId?: string
-  }): Promise<{ finalized: boolean; reservationId: string | null }> {
-    const providerCostUsd = await calculateLanguageModelTokenCostOrNull(
+  async recordFinishedUsage(args: ActFinishedUsage): Promise<{ finalized: boolean; reservationId: string | null }> {
+    const cachedInputTokens = args.cachedInputTokens ?? 0
+    const cacheWriteTokens = args.cacheWriteTokens ?? 0
+    if (![cachedInputTokens, cacheWriteTokens].every(value => Number.isSafeInteger(value) && value >= 0)
+      || cachedInputTokens + cacheWriteTokens > args.inputTokens) {
+      throw new Error('Invalid cached token usage.')
+    }
+    if (args.providerCostUsd !== undefined && (!Number.isFinite(args.providerCostUsd) || args.providerCostUsd < 0)) {
+      throw new Error('Invalid provider cost receipt.')
+    }
+    const providerCostUsd = args.providerCostUsd ?? await calculateLanguageModelTokenCostOrNull(
       args.modelId,
       args.inputTokens,
-      0,
+      cachedInputTokens,
       args.outputTokens,
+      cacheWriteTokens,
     )
     if (providerCostUsd === null) {
       logger.error('[conversations/act] Missing pricing for completed provider call', { modelId: args.modelId })
@@ -317,7 +317,7 @@ export class BillingBackedActUsagePolicy implements ActUsagePolicy {
       modelId: args.modelId,
       inputTokens: args.inputTokens,
       outputTokens: args.outputTokens,
-      cachedTokens: 0,
+      cachedTokens: cachedInputTokens,
       cost: costCents,
       timestamp: Date.now(),
     }]

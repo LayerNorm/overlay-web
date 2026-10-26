@@ -204,6 +204,15 @@ Persist a successful summary before dispatch and reject an unfit prompt. The
 controller reloads working state after preparation and retains that summary at
 continuation checkpoints.
 
+Harness billing adapters can supply `cachedInputTokens`, `cacheWriteTokens` and
+an exact, server-validated `providerCostUsd` to `recordFinishedUsage`. A receipt
+takes precedence over catalog estimates, including a verified zero-cost receipt.
+Without one, pricing separates uncached input, cache reads, cache writes and
+output. Missing cache-write pricing remains unknown and triggers reservation
+reconciliation rather than a fabricated zero-cost charge. Existing callers keep
+their uncached behavior until they supply these fields; BYOK external charges
+must not be inferred from Overlay's zero billing for user-owned credentials.
+
 The controller is not yet connected to production surfaces. Its focused QA uses
 the real SDK with a mock provider, including more than twenty calls, natural early
 return, input suspension, approval/denial, revoked authorization, cancellation,
@@ -212,6 +221,8 @@ budget refusal and no-progress recovery:
 ```sh
 npx vitest run --config vitest.unit.config.mts src/server/harness/runner.test.ts
 npx vitest run --config vitest.unit.config.mts src/server/harness/prompt-compaction.test.ts
+npx vitest run --config vitest.unit.config.mts src/server/harness/usage-billing.test.ts
+node --import tsx --test src/server/ai/gateway/model-pricing.test.ts
 npx vitest run --config vitest.config.mts convex/harnessRuns.convex.test.ts
 npx tsx --test packages/overlay-agent-runtime/src/harness-state.test.ts
 ```
