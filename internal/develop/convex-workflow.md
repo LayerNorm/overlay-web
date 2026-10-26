@@ -223,6 +223,15 @@ Durable accounting binds the workspace explicitly so a tab switch cannot move
 usage to another workspace. `requireRecorded: true` prevents a caller from
 advancing after a failed write or a reservation that still needs reconciliation.
 
+`personal-tools.ts` reconstructs personal Chat/Work tools inside authorized durable
+steps. `personal-access.ts` refreshes workspace membership, principal identity,
+conversation and delivery-run access, API key validity, model policy, entitlements
+and catalog grants at execution time. Admission grants are an upper bound, not a
+cached permission decision. Each child namespaces its tool effects by harness run
+ID while retaining the delivery AgentRun ID. The personal adapter requires
+interactive approval policy and cannot stand in for an agent or automation
+principal. These adapters are not yet connected to production entrypoints.
+
 `compactHarnessPrompt` extends the existing chat compaction policy for SDK
 provider prompts. It preserves the latest user request and complete tool
 transactions, carries a rolling summary, and counts caller-supplied instruction,
