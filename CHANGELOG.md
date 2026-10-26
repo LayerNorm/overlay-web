@@ -6,6 +6,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Add the shared Overlay Harness execution and persistence foundations: evidence-gated plans, durable state operations, semantic continuation, secure model references and single-workflow ownership. Existing surfaces remain on their current runners pending migration and parity QA.
 
+- Add workflow-owned input/approval wait storage, child attention notifications and an owner-only personal run input API for the upcoming harness migration. Personal tool approvals also remain owner-only in shared conversations.
+
 - Saved collaborative message edits now update rendered text and retain attachments instead of showing the original message.
 
 - Use shadcn focus-visible rings for text inputs and textareas, present message editing with text actions, autosize work titles and agent instructions as layouts settle, and group agent Details into collapsed Model, Instructions, Tools and Advanced disclosures.

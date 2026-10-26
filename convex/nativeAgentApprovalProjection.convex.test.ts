@@ -460,6 +460,8 @@ describe('native agent approval projection', () => {
           assistantMessageId: waitingAssistantMessageId,
           mode: 'work',
           runner: 'workflow',
+          workflowRunId: 'wait-workflow',
+          ...(status === 'waiting_for_input' ? { inputRequest: { token: 'input-token', requestedAt: now, question: 'Which file?' } } : {}),
           status,
           createdAt: now,
           updatedAt: now,
@@ -503,13 +505,21 @@ describe('native agent approval projection', () => {
       })
       expect(latest).toMatchObject({ _id: seeded.waitingRunId, status })
 
+      await expect(convex.mutation(api.chat.conversations.transitionAgentRun, {
+        runId: seeded.waitingRunId, serverSecret, status: 'running', userId: initiatorUserId,
+        expectedWorkflowRunId: 'wrong-workflow',
+      })).rejects.toThrow('AgentRun workflow ownership changed')
+      if (status === 'waiting_for_input') expect(latest?.inputRequest?.token).toBe('input-token')
+
       const resumed = await convex.mutation(api.chat.conversations.transitionAgentRun, {
         runId: seeded.waitingRunId,
+        expectedWorkflowRunId: 'wait-workflow',
         serverSecret,
         status: 'running',
         userId: initiatorUserId,
       })
       expect(resumed?.status).toBe('running')
+      expect(resumed?.inputRequest).toBeUndefined()
 
       const cancellableRunId = await convex.run(async ctx => {
         const now = Date.now()

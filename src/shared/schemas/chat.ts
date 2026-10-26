@@ -70,6 +70,13 @@ export const AgentRunApprovalRequest = z.object({
   reason: z.string().max(1000).optional(),
 })
 
+export const AgentRunInputRequest = z.object({
+  conversationId: z.string().min(1).max(256),
+  agentRunId: z.string().min(1).max(256),
+  token: z.string().min(1).max(256),
+  text: z.string().trim().min(1).max(32_000),
+}).strict()
+
 export const AgentRunMetricEventRequest = z.object({
   conversationId: z.string().min(1),
   agentRunId: z.string().min(1),

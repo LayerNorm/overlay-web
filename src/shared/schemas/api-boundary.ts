@@ -19,6 +19,7 @@ import {
 import {
   ActConversationRequest,
   AgentRunApprovalRequest,
+  AgentRunInputRequest,
   AgentRunMetricEventRequest,
   AgentRunMetricsQuery,
   AddConversationMessageRequest,
@@ -492,6 +493,13 @@ export const webApiBoundaryDefinitions = [
     path: '/api/v1/conversations/run/approval',
     schema: { json: AgentRunApprovalRequest },
     summary: 'Approve or deny a waiting AgentRun tool call',
+    tag: 'Conversations',
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/conversations/run/input',
+    schema: { json: AgentRunInputRequest },
+    summary: 'Provide requested input to a waiting personal AgentRun',
     tag: 'Conversations',
   },
   {

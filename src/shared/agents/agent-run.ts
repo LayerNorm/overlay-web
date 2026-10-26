@@ -108,6 +108,7 @@ export type AgentRun = {
   cancelledAt?: number
   terminalError?: AgentRunTerminalError
   approval?: AgentRunApproval
+  inputRequest?: { token: string; requestedAt: number; question: string }
   metrics?: AgentRunMetrics
   /** Connected-agent transport counters; remote runs only. */
   streamStats?: RemoteRunStreamStats

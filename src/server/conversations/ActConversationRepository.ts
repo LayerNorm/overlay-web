@@ -320,6 +320,8 @@ export interface ActConversationRepository {
   }): Promise<AgentRun | null>
   transitionAgentRun(args: {
     approval?: AgentRunApproval
+    inputRequest?: AgentRun['inputRequest']
+    expectedWorkflowRunId?: string
     leaseExpiresAt?: number
     runId: string
     status: AgentRunStatus

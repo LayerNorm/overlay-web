@@ -37,6 +37,7 @@ type ConvexAgentRunDoc = {
   createdAt: number
   terminalError?: { code: string; message: string; retryable: boolean }
   approval?: AgentRunResource['approval']
+  inputRequest?: AgentRunResource['inputRequest']
   metrics?: {
     browserDisconnectedAt?: number
     browserReconnectedAt?: number
@@ -98,6 +99,7 @@ export function toAgentRunResource(doc: ConvexAgentRunDoc): AgentRunResource | n
     updatedAt: doc.updatedAt,
     terminalError: doc.terminalError,
     approval: doc.approval,
+    inputRequest: doc.inputRequest,
     metrics: doc.metrics as AgentRunResource['metrics'],
   } as unknown as AgentRunResource
 }

@@ -232,6 +232,18 @@ export class ConversationsClient {
     )
   }
 
+  submitRunInput(body: {
+    conversationId: string
+    agentRunId: string
+    token: string
+    text: string
+  }, init?: MutationRequestInit) {
+    return this.http.json<{ success: boolean }>(
+      '/api/v1/conversations/run/input',
+      this.http.jsonRequest(body, { ...init, method: 'POST' }),
+    )
+  }
+
   // ---------------------------------------------------------------------------
   // Collaboration: notifications, participants, presence, reactions, pins,
   // saved messages, channels, and direct messages. These mirror the BFF routes

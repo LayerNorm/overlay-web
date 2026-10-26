@@ -18,6 +18,6 @@ export function agentRunApprovalAccess(
     run.status !== 'waiting_for_approval' ||
     run.approval?.token !== request.token
   ) return 'inactive'
-  if (run.mode === 'room' && run.userId !== request.actorUserId) return 'initiator-only'
+  if (run.userId !== request.actorUserId) return 'initiator-only'
   return 'allowed'
 }

@@ -1259,6 +1259,11 @@ export default defineSchema({
       message: v.string(),
       retryable: v.boolean(),
     })),
+    inputRequest: v.optional(v.object({
+      token: v.string(),
+      requestedAt: v.number(),
+      question: v.string(),
+    })),
     approval: v.optional(v.object({
       token: v.string(),
       requestedAt: v.number(),
@@ -2778,6 +2783,20 @@ export default defineSchema({
     childJson: v.string(),
   }).index('by_runId_childRunId', ['runId', 'childRunId'])
     .index('by_runId', ['runId']),
+
+  harnessWaits: defineTable({
+    runId: v.string(),
+    rootRunId: v.string(),
+    workflowRunId: v.string(),
+    token: v.string(),
+    kind: v.union(v.literal('input'), v.literal('approval')),
+    requestJson: v.string(),
+    question: v.string(),
+    createdAt: v.number(),
+    resolvedAt: v.optional(v.number()),
+  }).index('by_token', ['token'])
+    .index('by_runId_resolvedAt', ['runId', 'resolvedAt', 'createdAt'])
+    .index('by_rootRunId_resolvedAt', ['rootRunId', 'resolvedAt', 'createdAt']),
 
   /** Immutable ledger of committed operations, keyed by the caller's operation id. */
   harnessOperations: defineTable({

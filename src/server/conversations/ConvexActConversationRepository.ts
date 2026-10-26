@@ -322,6 +322,8 @@ export class ConvexActConversationRepository implements ActConversationRepositor
 
   async transitionAgentRun(args: {
     approval?: AgentRun['approval']
+    inputRequest?: AgentRun['inputRequest']
+    expectedWorkflowRunId?: string
     leaseExpiresAt?: number
     runId: string
     status: AgentRunStatus

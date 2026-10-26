@@ -44,6 +44,29 @@ export type HarnessMutationResult = {
   snapshot: HarnessSnapshot
 }
 
+export type HarnessWaitRequest =
+  | { kind: 'input'; token: string }
+  | {
+      kind: 'approval'
+      token: string
+      requests: Array<{ approvalId: string; toolCallId: string; toolName: string; input: unknown }>
+    }
+
+export type HarnessWait = HarnessWaitRequest & {
+  runId: string
+  rootRunId: string
+  workflowRunId: string
+  question: string
+  createdAt: number
+  resolvedAt?: number
+}
+
+export type HarnessWaitReference = {
+  actorUserId: string
+  runId: string
+  workflowRunId: string
+}
+
 export interface HarnessRepository {
   admit(input: HarnessAdmission): Promise<HarnessSnapshot>
   get(input: { actorUserId: string; runId: string }): Promise<HarnessSnapshot | null>

@@ -889,6 +889,8 @@ export const startAgentRun = mutation({
 
 export const transitionAgentRun = mutation({
   args: {
+    inputRequest: v.optional(v.object({ token: v.string(), requestedAt: v.number(), question: v.string() })),
+    expectedWorkflowRunId: v.optional(v.string()),
     approval: v.optional(v.object({
       token: v.string(),
       requestedAt: v.number(),
@@ -910,6 +912,9 @@ export const transitionAgentRun = mutation({
     if (!validateServerSecret(args.serverSecret)) throw new Error('Unauthorized')
     const run = await ctx.db.get(args.runId)
     if (!run || run.userId !== args.userId) throw new Error('Unauthorized')
+    if (args.expectedWorkflowRunId !== undefined && run.workflowRunId !== args.expectedWorkflowRunId) {
+      throw new Error('AgentRun workflow ownership changed')
+    }
     assertAgentRunTransition(run.status, args.status)
     const now = Date.now()
     await ctx.db.patch(run._id, {
@@ -917,6 +922,7 @@ export const transitionAgentRun = mutation({
       leaseExpiresAt: args.leaseExpiresAt ?? run.leaseExpiresAt,
       startedAt: args.status === 'running' ? (run.startedAt ?? now) : run.startedAt,
       approval: args.status === 'waiting_for_approval' ? args.approval : undefined,
+      inputRequest: args.status === 'waiting_for_input' ? args.inputRequest : undefined,
       updatedAt: now,
     })
     const message = await ctx.db.get(run.assistantMessageId)
@@ -1001,6 +1007,7 @@ export const completeAgentRun = mutation({
       completedAt: now,
       leaseExpiresAt: undefined,
       approval: undefined,
+      inputRequest: undefined,
       metrics: { ...run.metrics, ...args.metrics },
       updatedAt: now,
     })
@@ -1049,6 +1056,7 @@ export const failAgentRun = mutation({
       failedAt: now,
       leaseExpiresAt: undefined,
       approval: undefined,
+      inputRequest: undefined,
       terminalError: args.error,
       metrics: { ...run.metrics, ...args.metrics },
       updatedAt: now,
@@ -1246,6 +1254,7 @@ export const cancelAgentRuns = mutation({
         cancelledAt: now,
         leaseExpiresAt: undefined,
         approval: undefined,
+        inputRequest: undefined,
         terminalError: {
           code: 'cancelled_by_user',
           message: 'The run was cancelled by the user.',

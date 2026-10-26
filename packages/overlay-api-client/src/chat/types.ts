@@ -95,6 +95,7 @@ export type AgentRunResource = {
   failedAt?: number
   cancelledAt?: number
   terminalError?: { code: string; message: string; retryable: boolean }
+  inputRequest?: { token: string; requestedAt: number; question: string }
   approval?: {
     token: string
     requestedAt: number

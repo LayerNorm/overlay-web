@@ -181,11 +181,25 @@ Convex code may import browser-safe shared modules from `src/shared`. Convex mus
 
 ## Overlay Harness storage
 
-Canonical `AgentRun` status now includes active `waiting_for_input` and
+Canonical `AgentRun` status includes active `waiting_for_input` and
 `waiting_for_children` states. Each can resume to `running` or end as failed or
-cancelled; terminal states cannot reopen. This is a lifecycle foundation only:
-input APIs, UI, persisted payloads, lifecycle-hook wiring, and app-traffic
-migration remain pending.
+cancelled; terminal states cannot reopen. The `harnessWaits` ledger retains
+immutable, workflow-owned input and approval requests. A root can read its
+descendants' pending requests, but a child cannot read sibling requests.
+
+The personal wait adapter commits hook registration before publishing a request.
+Children notify ancestors without directly changing the conversation projection;
+the root selects pending human attention when joining its children. Notifications
+only trigger authoritative state reads, never execution or settlement themselves.
+`POST /api/v1/conversations/run/input` accepts bounded text from the owner of the
+exact waiting personal run. It resumes existing work rather than creating a new
+conversation turn. The workflow hook durably retains the full reply and the
+harness stores a bounded user-input evidence summary. Model/tool authorization is
+rechecked after resumption. Delivery transitions can be fenced by workflow ID.
+
+This adapter is not yet connected to the production workflow entrypoint. Child
+launch/finalization, transcript delivery and app-traffic migration remain pending.
+Input controls and the Context/Plan/Queue presentation still require mockup approval.
 
 The canonical controller is `src/server/harness/runner.ts`. It runs inside a
 surface workflow and delegates model/tool iteration to `WorkflowAgent`, using

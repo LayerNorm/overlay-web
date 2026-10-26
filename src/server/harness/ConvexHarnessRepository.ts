@@ -5,6 +5,9 @@ import type {
   HarnessMutationInput,
   HarnessMutationResult,
   HarnessRepository,
+  HarnessWait,
+  HarnessWaitReference,
+  HarnessWaitRequest,
 } from '@overlay/agent-runtime/harness-store'
 import type { HarnessEvidence, HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
 import { lazyConvex as convex } from '@/server/database/lazy-convex'
@@ -47,5 +50,32 @@ export class ConvexHarnessRepository implements HarnessRepository {
       ...input,
       serverSecret: this.serverSecret,
     }, { throwOnError: true })
+  }
+
+  async publishWait(
+    input: HarnessWaitReference & { request: HarnessWaitRequest },
+  ): Promise<HarnessWait> {
+    const wait = await convex.mutation<HarnessWait>('harness/runs:publishWait', {
+      ...input,
+      serverSecret: this.serverSecret,
+    }, { throwOnError: true })
+    if (!wait) throw new Error('Harness wait publication returned no wait.')
+    return wait
+  }
+
+  async resolveWait(input: HarnessWaitReference & { token: string }): Promise<void> {
+    await convex.mutation<void>('harness/runs:resolveWait', {
+      ...input,
+      serverSecret: this.serverSecret,
+    }, { throwOnError: true })
+  }
+
+  async listPendingWaits(input: HarnessWaitReference): Promise<HarnessWait[]> {
+    const waits = await convex.query<HarnessWait[]>('harness/runs:listPendingWaits', {
+      ...input,
+      serverSecret: this.serverSecret,
+    }, { throwOnError: true })
+    if (!waits) throw new Error('Harness pending wait query returned no result.')
+    return waits
   }
 }

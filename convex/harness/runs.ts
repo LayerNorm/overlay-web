@@ -31,6 +31,9 @@ import type {
   HarnessMutationResult,
   HarnessOperation,
   HarnessSource,
+  HarnessWait,
+  HarnessWaitReference,
+  HarnessWaitRequest,
 } from '../../packages/overlay-agent-runtime/src/harness-store'
 import { v } from 'convex/values'
 
@@ -49,6 +52,30 @@ const MAX_WORKING_SUMMARY_LENGTH = 8_000
 const MAX_HARNESS_DEPTH = 32
 const MAX_OPERATION_JSON_BYTES = 256 * 1024
 const MAX_PLAN_JSON_BYTES = 512 * 1024
+const MAX_WAIT_REQUESTS = 128
+
+const waitRequestValidator = v.union(
+  v.object({
+    kind: v.literal('input'),
+    token: v.string(),
+  }),
+  v.object({
+    kind: v.literal('approval'),
+    token: v.string(),
+    requests: v.array(v.object({
+      approvalId: v.string(),
+      toolCallId: v.string(),
+      toolName: v.string(),
+      input: v.any(),
+    })),
+  }),
+)
+
+const waitReferenceFields = {
+  actorUserId: v.string(),
+  runId: v.string(),
+  workflowRunId: v.string(),
+}
 
 const policyValidator = v.object({
   actorUserId: v.string(),
@@ -175,6 +202,7 @@ const operationValidator = v.union(
 type HarnessMetadata = Omit<HarnessSnapshot, 'plan' | 'evidence' | 'children'>
 type ReadContext = Pick<QueryCtx, 'db'>
 type RunRow = Doc<'harnessRuns'>
+type WaitRow = Doc<'harnessWaits'>
 
 function stableJson(value: unknown): string {
   const normalize = (item: unknown): unknown => {
@@ -466,6 +494,152 @@ async function loadLineage(
     }
   }
   return entries
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false
+  const prototype = Object.getPrototypeOf(value)
+  return prototype === Object.prototype || prototype === null
+}
+
+function hasExactKeys(record: Record<string, unknown>, expected: string[]): boolean {
+  const keys = Reflect.ownKeys(record)
+  return keys.length === expected.length
+    && keys.every(key => typeof key === 'string' && expected.includes(key))
+}
+
+function assertWaitJsonValue(value: unknown, ancestors = new Set<object>()): void {
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return
+  if (typeof value === 'number' && Number.isFinite(value)) return
+  if (typeof value !== 'object' || !isPlainRecordOrArray(value)) {
+    throw new Error('Harness wait request input must be JSON serializable.')
+  }
+  if (ancestors.has(value)) throw new Error('Harness wait request input must not be cyclic.')
+  ancestors.add(value)
+  if (Array.isArray(value)) {
+    for (const entry of value) assertWaitJsonValue(entry, ancestors)
+  } else {
+    for (const entry of Object.values(value)) assertWaitJsonValue(entry, ancestors)
+  }
+  ancestors.delete(value)
+}
+
+function isPlainRecordOrArray(value: object): value is Record<string, unknown> | unknown[] {
+  return Array.isArray(value) || isPlainRecord(value)
+}
+
+function assertWaitText(value: unknown, field: string): asserts value is string {
+  if (typeof value !== 'string' || !value.trim() || value.length > MAX_ID_LENGTH) {
+    throw new Error(`Invalid harness wait ${field}.`)
+  }
+}
+
+function canonicalWaitRequest(value: unknown): { request: HarnessWaitRequest; requestJson: string } {
+  if (!isPlainRecord(value)) throw new Error('Invalid harness wait request shape.')
+  let request: HarnessWaitRequest
+  if (value.kind === 'input') {
+    if (!hasExactKeys(value, ['kind', 'token'])) throw new Error('Invalid harness input wait request shape.')
+    assertWaitText(value.token, 'token')
+    request = { kind: 'input', token: value.token }
+  } else if (value.kind === 'approval') {
+    if (!hasExactKeys(value, ['kind', 'token', 'requests'])) {
+      throw new Error('Invalid harness approval wait request shape.')
+    }
+    assertWaitText(value.token, 'token')
+    if (!Array.isArray(value.requests) || value.requests.length < 1 || value.requests.length > MAX_WAIT_REQUESTS) {
+      throw new Error('Harness approval waits must contain between 1 and 128 requests.')
+    }
+    const requests: Array<{ approvalId: string; toolCallId: string; toolName: string; input: unknown }> = []
+    const approvalIds = new Set<string>()
+    const toolCallIds = new Set<string>()
+    for (const entry of value.requests) {
+      if (!isPlainRecord(entry) || !hasExactKeys(entry, ['approvalId', 'toolCallId', 'toolName', 'input'])
+        || !Object.prototype.hasOwnProperty.call(entry, 'input')) {
+        throw new Error('Invalid harness approval request shape.')
+      }
+      assertWaitText(entry.approvalId, 'approval id')
+      assertWaitText(entry.toolCallId, 'approval tool call id')
+      assertWaitText(entry.toolName, 'approval tool name')
+      if (approvalIds.has(entry.approvalId) || toolCallIds.has(entry.toolCallId)) {
+        throw new Error('Harness approval waits must not contain duplicate approval or tool-call ids.')
+      }
+      approvalIds.add(entry.approvalId)
+      toolCallIds.add(entry.toolCallId)
+      assertWaitJsonValue(entry.input)
+      requests.push({
+        approvalId: entry.approvalId,
+        toolCallId: entry.toolCallId,
+        toolName: entry.toolName,
+        input: entry.input,
+      })
+    }
+    request = { kind: 'approval', token: value.token, requests }
+  } else {
+    throw new Error('Invalid harness wait request kind.')
+  }
+
+  const requestJson = stableJson(request)
+  if (new TextEncoder().encode(requestJson).byteLength > MAX_OPERATION_JSON_BYTES) {
+    throw new Error('Harness wait request exceeds the 256 KiB encoded limit.')
+  }
+  return { request: parseJson<HarnessWaitRequest>(requestJson), requestJson }
+}
+
+function waitFromRow(row: WaitRow): HarnessWait {
+  const { request } = canonicalWaitRequest(parseJson<unknown>(row.requestJson))
+  if (request.kind !== row.kind || request.token !== row.token) {
+    throw new Error('Invalid stored harness wait authority.')
+  }
+  return {
+    ...request,
+    runId: row.runId,
+    rootRunId: row.rootRunId,
+    workflowRunId: row.workflowRunId,
+    question: row.question,
+    createdAt: row.createdAt,
+    ...(row.resolvedAt === undefined ? {} : { resolvedAt: row.resolvedAt }),
+  }
+}
+
+function assertWaitReference(reference: HarnessWaitReference): void {
+  if (!reference.actorUserId.trim()
+    || !reference.runId.trim() || reference.runId.length > MAX_ID_LENGTH
+    || !reference.workflowRunId.trim() || reference.workflowRunId.length > MAX_ID_LENGTH) {
+    throw new Error('Invalid harness wait identity.')
+  }
+}
+
+async function loadWaitAuthority(
+  ctx: ReadContext,
+  reference: HarnessWaitReference,
+  serverSecret: string,
+): Promise<{ run: RunRow; lineage: LineageEntry[]; metadata: HarnessMetadata }> {
+  assertWaitReference(reference)
+  const run = await findRun(ctx, reference.runId)
+  if (!run) throw new Error('HARNESS_RUN_NOT_FOUND')
+  const lineage = await loadLineage(ctx, run, reference.actorUserId, serverSecret)
+  const metadata = lineage[0]!.metadata
+  if (metadata.workflowRunId !== reference.workflowRunId) throw new Error('HARNESS_WORKFLOW_ACCESS_DENIED')
+  return { run, lineage, metadata }
+}
+
+function assertActiveWaitLineage(lineage: LineageEntry[]): void {
+  if (lineage.some(entry => isTerminalStatus(entry.metadata.status))) {
+    throw new Error('The harness run or an ancestor is terminal.')
+  }
+}
+
+function waitBlockerQuestion(metadata: HarnessMetadata, kind: HarnessWaitRequest['kind']): string {
+  const expectedStatus = kind === 'input' ? 'waiting_for_input' : 'waiting_for_approval'
+  const blocker = metadata.blocker
+  if (metadata.status !== expectedStatus || !blocker || blocker.kind !== kind) {
+    throw new Error('HARNESS_WAIT_KIND_MISMATCH')
+  }
+  const question = blocker.question
+  if (!question.trim() || question.length > MAX_EVIDENCE_SUMMARY_LENGTH) {
+    throw new Error('Invalid stored harness wait question.')
+  }
+  return question
 }
 
 async function hydrateSnapshot(
@@ -1044,5 +1218,135 @@ export const readEvidence = query({
     await loadLineage(ctx, run, args.actorUserId, args.serverSecret)
     const evidence = await getEvidenceRow(ctx, run.runId, args.evidenceId)
     return evidence ? parseJson<HarnessEvidence>(evidence.evidenceJson) : null
+  },
+})
+
+export const publishWait = mutation({
+  args: {
+    ...waitReferenceFields,
+    request: waitRequestValidator,
+    serverSecret: v.string(),
+  },
+  handler: async (ctx, args): Promise<HarnessWait> => {
+    requireHarnessServerSecret(args.serverSecret)
+    const reference: HarnessWaitReference = {
+      actorUserId: args.actorUserId,
+      runId: args.runId,
+      workflowRunId: args.workflowRunId,
+    }
+    const { run, lineage, metadata } = await loadWaitAuthority(ctx, reference, args.serverSecret)
+    const { request, requestJson } = canonicalWaitRequest(args.request)
+    const existing = await ctx.db.query('harnessWaits')
+      .withIndex('by_token', q => q.eq('token', request.token))
+      .unique()
+    if (existing) {
+      if (existing.runId !== run.runId
+        || existing.rootRunId !== run.rootRunId
+        || existing.workflowRunId !== reference.workflowRunId
+        || existing.kind !== request.kind
+        || existing.requestJson !== requestJson) {
+        throw new Error('HARNESS_WAIT_TOKEN_CONFLICT')
+      }
+      return waitFromRow(existing)
+    }
+
+    assertActiveWaitLineage(lineage)
+    const question = waitBlockerQuestion(metadata, request.kind)
+    const pending = await ctx.db.query('harnessWaits')
+      .withIndex('by_runId_resolvedAt', q => q.eq('runId', run.runId).eq('resolvedAt', undefined))
+      .take(2)
+    if (pending.length) throw new Error('HARNESS_WAIT_ALREADY_PENDING')
+
+    const createdAt = Date.now()
+    await ctx.db.insert('harnessWaits', {
+      runId: run.runId,
+      rootRunId: run.rootRunId,
+      workflowRunId: reference.workflowRunId,
+      token: request.token,
+      kind: request.kind,
+      requestJson,
+      question,
+      createdAt,
+    })
+    return {
+      ...request,
+      runId: run.runId,
+      rootRunId: run.rootRunId,
+      workflowRunId: reference.workflowRunId,
+      question,
+      createdAt,
+    }
+  },
+})
+
+export const resolveWait = mutation({
+  args: {
+    ...waitReferenceFields,
+    token: v.string(),
+    serverSecret: v.string(),
+  },
+  handler: async (ctx, args): Promise<void> => {
+    requireHarnessServerSecret(args.serverSecret)
+    const reference: HarnessWaitReference = {
+      actorUserId: args.actorUserId,
+      runId: args.runId,
+      workflowRunId: args.workflowRunId,
+    }
+    const { run } = await loadWaitAuthority(ctx, reference, args.serverSecret)
+    assertWaitText(args.token, 'token')
+    const wait = await ctx.db.query('harnessWaits')
+      .withIndex('by_token', q => q.eq('token', args.token))
+      .unique()
+    if (!wait
+      || wait.runId !== run.runId
+      || wait.rootRunId !== run.rootRunId
+      || wait.workflowRunId !== reference.workflowRunId) {
+      throw new Error('HARNESS_WAIT_NOT_FOUND')
+    }
+    if (wait.resolvedAt !== undefined) return
+    await ctx.db.patch(wait._id, { resolvedAt: Date.now() })
+  },
+})
+
+export const listPendingWaits = query({
+  args: {
+    ...waitReferenceFields,
+    serverSecret: v.string(),
+  },
+  handler: async (ctx, args): Promise<HarnessWait[]> => {
+    requireHarnessServerSecret(args.serverSecret)
+    const reference: HarnessWaitReference = {
+      actorUserId: args.actorUserId,
+      runId: args.runId,
+      workflowRunId: args.workflowRunId,
+    }
+    const { run } = await loadWaitAuthority(ctx, reference, args.serverSecret)
+    const candidates = await ctx.db.query('harnessWaits')
+      .withIndex('by_rootRunId_resolvedAt', q => (
+        q.eq('rootRunId', run.rootRunId).eq('resolvedAt', undefined)
+      ))
+      .take(513)
+    if (candidates.length > 512) throw new Error('HARNESS_WAIT_SCAN_LIMIT_EXCEEDED')
+
+    const pendingRunIds = new Set<string>()
+    const waits: HarnessWait[] = []
+    for (const candidate of candidates) {
+      if (candidate.resolvedAt !== undefined) continue
+      if (candidate.rootRunId !== run.rootRunId) throw new Error('Invalid stored harness wait lineage.')
+      if (pendingRunIds.has(candidate.runId)) throw new Error('Multiple pending harness waits exist for one run.')
+      pendingRunIds.add(candidate.runId)
+      const candidateRun = await findRun(ctx, candidate.runId)
+      if (!candidateRun || candidateRun.rootRunId !== run.rootRunId) {
+        throw new Error('Invalid stored harness wait lineage.')
+      }
+      const candidateLineage = await loadLineage(ctx, candidateRun, reference.actorUserId, args.serverSecret)
+      if (candidateLineage[0]!.metadata.workflowRunId !== candidate.workflowRunId) {
+        throw new Error('Invalid stored harness wait workflow owner.')
+      }
+      if (!candidateLineage.some(entry => entry.run.runId === run.runId)) continue
+      if (candidateLineage.some(entry => isTerminalStatus(entry.metadata.status))) continue
+      waits.push(waitFromRow(candidate))
+    }
+    return waits.sort((left, right) => left.createdAt - right.createdAt || left.token.localeCompare(right.token))
   },
 })
