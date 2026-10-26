@@ -1241,6 +1241,8 @@ export default defineSchema({
       v.literal('queued'),
       v.literal('running'),
       v.literal('waiting_for_approval'),
+      v.literal('waiting_for_input'),
+      v.literal('waiting_for_children'),
       v.literal('completed'),
       v.literal('failed'),
       v.literal('cancelled'),

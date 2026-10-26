@@ -136,7 +136,29 @@ export class AgentRunService {
     }) ?? undefined
   }
 
-  async resumeAfterApproval(args: {
+  async waitForInput(args: {
+    leaseExpiresAt?: number
+    runId: string
+    userId: string
+  }): Promise<AgentRun | undefined> {
+    return await this.repository.transitionAgentRun({
+      ...args,
+      status: 'waiting_for_input',
+    }) ?? undefined
+  }
+
+  async waitForChildren(args: {
+    leaseExpiresAt?: number
+    runId: string
+    userId: string
+  }): Promise<AgentRun | undefined> {
+    return await this.repository.transitionAgentRun({
+      ...args,
+      status: 'waiting_for_children',
+    }) ?? undefined
+  }
+
+  async resumeAfterWait(args: {
     runId: string
     userId: string
   }): Promise<AgentRun | undefined> {
@@ -144,6 +166,13 @@ export class AgentRunService {
       ...args,
       status: 'running',
     }) ?? undefined
+  }
+
+  async resumeAfterApproval(args: {
+    runId: string
+    userId: string
+  }): Promise<AgentRun | undefined> {
+    return await this.resumeAfterWait(args)
   }
 
   async fail(args: {

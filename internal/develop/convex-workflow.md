@@ -181,6 +181,12 @@ Convex code may import browser-safe shared modules from `src/shared`. Convex mus
 
 ## Overlay Harness storage
 
+Canonical `AgentRun` status now includes active `waiting_for_input` and
+`waiting_for_children` states. Each can resume to `running` or end as failed or
+cancelled; terminal states cannot reopen. This is a lifecycle foundation only:
+input APIs, UI, persisted payloads, lifecycle-hook wiring, and app-traffic
+migration remain pending.
+
 The canonical controller is `src/server/harness/runner.ts`. It runs inside a
 surface workflow and delegates model/tool iteration to `WorkflowAgent`, using
 `isLoopFinished()` with semantic suspension conditions rather than a tool-call

@@ -87,3 +87,26 @@ test('startWork always creates the primary response variant', async () => {
   assert.equal(received?.runner, 'workflow')
   assert.equal(run0?.id, 'run_0')
 })
+
+test('input and child waits resume through canonical AgentRun transitions', async () => {
+  const transitions: Parameters<ActConversationRepository['transitionAgentRun']>[0][] = []
+  const repository = {
+    async transitionAgentRun(args: Parameters<ActConversationRepository['transitionAgentRun']>[0]) {
+      transitions.push(args)
+      return null
+    },
+  } as unknown as ActConversationRepository
+  const service = new AgentRunService(repository)
+
+  await service.waitForInput({ runId: 'run_1', userId: 'user_1', leaseExpiresAt: 100 })
+  await service.waitForChildren({ runId: 'run_2', userId: 'user_1' })
+  await service.resumeAfterWait({ runId: 'run_1', userId: 'user_1' })
+  await service.resumeAfterApproval({ runId: 'run_2', userId: 'user_1' })
+
+  assert.deepEqual(transitions, [
+    { runId: 'run_1', userId: 'user_1', leaseExpiresAt: 100, status: 'waiting_for_input' },
+    { runId: 'run_2', userId: 'user_1', status: 'waiting_for_children' },
+    { runId: 'run_1', userId: 'user_1', status: 'running' },
+    { runId: 'run_2', userId: 'user_1', status: 'running' },
+  ])
+})

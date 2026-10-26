@@ -88,7 +88,8 @@ export async function refreshPersonalHarnessAccess(
     || !agentRun || agentRun.id !== access.agentRunId || agentRun.userId !== access.actorUserId
     || agentRun.conversationId !== access.conversationId || agentRun.workflowRunId !== root.workflowRunId
     || agentRun.runner !== 'workflow' || agentRun.mode === 'room'
-    || (agentRun.status !== 'running' && !(state.parentRunId && agentRun.status === 'waiting_for_approval'))) {
+    || (agentRun.status !== 'running' && !(state.parentRunId
+      && ['waiting_for_approval', 'waiting_for_input', 'waiting_for_children'].includes(agentRun.status)))) {
     throw new FatalError('Personal harness resource access has changed.')
   }
   const authorization = server.authorizationService

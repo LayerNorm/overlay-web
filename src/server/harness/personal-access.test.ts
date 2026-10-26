@@ -90,13 +90,19 @@ test('API key resumes check current revocation, expiration, owner and scopes wit
   expect(mocks.keys).toHaveBeenCalledWith({ userId: 'user' })
 })
 
-test('child execution keeps its own workflow fence but shares the root delivery run', async () => {
+test('child execution may share a waiting root delivery run while roots still require running', async () => {
   const child = { ...snapshot(), runId: 'child', rootRunId: 'harness', parentRunId: 'harness', workflowRunId: 'child-workflow' }
   mocks.state.mockResolvedValueOnce(child).mockResolvedValueOnce({ ...snapshot(), status: 'waiting_for_children' })
+  mocks.agentRun.mockResolvedValueOnce({ ...agentRun(), status: 'waiting_for_children' })
   await refreshPersonalHarnessAccess({ ...access, runId: 'child', workflowRunId: 'child-workflow' }, context, 'read_file')
   expect(mocks.state).toHaveBeenNthCalledWith(2, { actorUserId: 'user', runId: 'harness' })
   mocks.state.mockResolvedValueOnce(child).mockResolvedValueOnce({ ...snapshot(), status: 'cancelled' })
   await expect(refreshPersonalHarnessAccess({ ...access, runId: 'child', workflowRunId: 'child-workflow' }, context, 'read_file')).rejects.toThrow(/root harness/)
+
+  for (const status of ['waiting_for_input', 'waiting_for_children'] as const) {
+    mocks.agentRun.mockResolvedValueOnce({ ...agentRun(), status })
+    await expect(refreshPersonalHarnessAccess(access, context)).rejects.toThrow(/resource access/)
+  }
 })
 
 test('checks current model policy and BYOK connection authority instead of trusting old entitlements', async () => {

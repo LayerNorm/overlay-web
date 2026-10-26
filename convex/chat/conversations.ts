@@ -1,6 +1,7 @@
 import { hydrateRemoteMessages, deleteRemoteMessageText } from '../lib/remoteMessageText'
 import { v } from 'convex/values'
 import { DEFAULT_MODEL_ID } from '../../src/shared/ai/gateway/model-types'
+import { ACTIVE_AGENT_RUN_STATUSES as CANONICAL_ACTIVE_AGENT_RUN_STATUSES } from '../../src/shared/agents/agent-run'
 import { internalMutation, mutation, query } from '../_generated/server'
 import { internal } from '../_generated/api'
 import type { Doc } from '../_generated/dataModel'
@@ -109,6 +110,8 @@ const agentRunStatus = v.union(
   v.literal('queued'),
   v.literal('running'),
   v.literal('waiting_for_approval'),
+  v.literal('waiting_for_input'),
+  v.literal('waiting_for_children'),
   v.literal('completed'),
   v.literal('failed'),
   v.literal('cancelled'),
@@ -135,11 +138,13 @@ const agentRunMetrics = v.object({
   staleDetectedAt: v.optional(v.number()),
 })
 
-const ACTIVE_AGENT_RUN_STATUSES = new Set(['queued', 'running', 'waiting_for_approval'])
+const ACTIVE_AGENT_RUN_STATUSES = new Set<string>(CANONICAL_ACTIVE_AGENT_RUN_STATUSES)
 const AGENT_RUN_TRANSITIONS: Record<string, ReadonlySet<string>> = {
   queued: new Set(['running', 'failed', 'cancelled']),
-  running: new Set(['running', 'waiting_for_approval', 'completed', 'failed', 'cancelled']),
+  running: new Set(['running', 'waiting_for_approval', 'waiting_for_input', 'waiting_for_children', 'completed', 'failed', 'cancelled']),
   waiting_for_approval: new Set(['running', 'failed', 'cancelled']),
+  waiting_for_input: new Set(['running', 'failed', 'cancelled']),
+  waiting_for_children: new Set(['running', 'failed', 'cancelled']),
   completed: new Set(),
   failed: new Set(),
   cancelled: new Set(),
@@ -1082,7 +1087,7 @@ export const getLatestAgentRun = query({
     }
     const active: Doc<'conversationAgentRuns'>[] = []
     const runsByStatus = await Promise.all(
-      (['queued', 'running', 'waiting_for_approval'] as const).map((status) =>
+      CANONICAL_ACTIVE_AGENT_RUN_STATUSES.map((status) =>
         ctx.db
           .query('conversationAgentRuns')
           .withIndex('by_conversationId_status_updatedAt', (q) => q
@@ -1331,7 +1336,7 @@ export const expireToolLoopAgentRunLeases = internalMutation({
     // executor disappeared, whichever executor that was. Work-mode runs carry
     // no lease and are excluded by the `mode` check below.
     for (const runner of ['tool_loop', 'workflow'] as const) {
-      for (const status of ['queued', 'running', 'waiting_for_approval'] as const) {
+      for (const status of CANONICAL_ACTIVE_AGENT_RUN_STATUSES) {
         const remaining = 100 - expired.length
         if (remaining <= 0) break
         const rows = await ctx.db
@@ -1503,11 +1508,10 @@ export const watchAgentRun = query({
     const conversation = await ctx.db.get(conversationId)
     if (!conversation || conversation.userId !== userId || conversation.deletedAt) return null
 
-    // Check for active runs first (queued, running, waiting_for_approval).
-    const activeStatuses = ['queued', 'running', 'waiting_for_approval'] as const
+    // Check for canonical active runs before falling back to a terminal run.
     const active: Doc<'conversationAgentRuns'>[] = []
     const runsByStatus = await Promise.all(
-      activeStatuses.map((status) =>
+      CANONICAL_ACTIVE_AGENT_RUN_STATUSES.map((status) =>
         ctx.db
           .query('conversationAgentRuns')
           .withIndex('by_conversationId_status_updatedAt', (q) => q
