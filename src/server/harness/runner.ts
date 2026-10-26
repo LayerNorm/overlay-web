@@ -207,6 +207,14 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
     messages = invocationMessages.filter(message => message.role !== 'system')
     steps.push(...invocationSteps)
     state = await ports.read()
+    const finishReason = invocationSteps.at(-1)?.finishReason
+    if (!isTerminal(state) && (finishReason === 'content-filter' || finishReason === 'error' || finishReason === 'other')) {
+      await ports.apply(`provider-failure:${segment}`, {
+        type: 'terminate', status: 'failed', reason: `The provider could not finish the response (${finishReason}).`,
+      })
+      continue
+    }
+    truncatedResponse = finishReason === 'length'
     if (state.status !== 'running') continue
     if (pending.length) {
       if (pending.some(request => !tools[request.toolName]?.execute || !tools[request.toolName]?.needsApproval)) {
@@ -233,14 +241,6 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
       await ports.apply(`wait-children:${segment}`, { type: 'wait_for_children' })
       continue
     }
-    const finishReason = invocationSteps.at(-1)?.finishReason
-    if (finishReason === 'content-filter' || finishReason === 'error' || finishReason === 'other') {
-      await ports.apply(`provider-failure:${segment}`, {
-        type: 'terminate', status: 'failed', reason: `The provider could not finish the response (${finishReason}).`,
-      })
-      continue
-    }
-    truncatedResponse = finishReason === 'length'
     if (!truncatedResponse && !harnessCompletionIssues(state).length) {
       const completed = await ports.apply(`finish:${segment}`, { type: 'finish' })
       return { outcome: 'finished', snapshot: completed, messages, steps }

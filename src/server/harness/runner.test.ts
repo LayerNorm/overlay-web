@@ -216,6 +216,23 @@ test('cancellation after a tool prevents another model call', async () => {
   expect(provider.doStreamCalls).toHaveLength(1)
 })
 
+test('provider failure takes precedence over waiting for children', async () => {
+  const f = fixture(false)
+  const record = f.ports.recordModelStep
+  f.ports.recordModelStep = async (step, receiptId) => {
+    await record(step, receiptId)
+    const current = await f.ports.read()
+    current.children.push({ id: 'child', stepId: 'work', allowedToolIds: [], maxCostMicros: 0, costMicros: 0,
+      status: 'running', evidenceRefs: [] })
+  }
+  f.ports.waitForChildren = vi.fn()
+  const provider = model(() => 'Unable to continue.', ['content-filter'])
+  const result = await runOverlayHarness({ ...input, tools: {} }, f.ports)
+  expect(result.snapshot.status).toBe('failed')
+  expect(f.ports.waitForChildren).not.toHaveBeenCalled()
+  expect(provider.doStreamCalls).toHaveLength(1)
+})
+
 test('budget refusal happens before contacting the model', async () => {
   const f = fixture()
   const provider = model(() => 'Must not run')
