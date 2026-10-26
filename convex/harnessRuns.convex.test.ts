@@ -90,6 +90,30 @@ function oneStep(id: string, requiresVerification = false) {
 }
 
 describe('durable harness runs', () => {
+  test('persists in-flight model reservations and replaces them with late receipts after cancellation', async () => {
+    const convex = convexTest(schema, modules)
+    const input = admission('reserved-model', await seedConversation(convex))
+    await admit(convex, input)
+    const plan = await apply(convex, input, 'plan', 0, { type: 'replace_plan', steps: oneStep('read') })
+    const reserved = await apply(convex, input, 'reserve', plan.snapshot.revision, { type: 'reserve_model', id: 'model:0', maxCostMicros: 600 })
+    expect((await get(convex, input.runId))?.modelReservation).toEqual({ id: 'model:0', maxCostMicros: 600 })
+    const replay = await apply(convex, input, 'reserve', plan.snapshot.revision, { type: 'reserve_model', id: 'model:0', maxCostMicros: 600 })
+    expect(replay.applied).toBe(false)
+    await expect(apply(convex, input, 'delegate', reserved.snapshot.revision, {
+      type: 'admit_child', child: { id: 'worker', stepId: 'read', allowedToolIds: ['tool:read'], maxCostMicros: 401, costMicros: 0, status: 'running', evidenceRefs: [] },
+      goal: 'Read source', constraints: [],
+    })).rejects.toThrow(/spending/)
+    const cancelled = await apply(convex, input, 'cancel', reserved.snapshot.revision, { type: 'terminate', status: 'cancelled', reason: 'User stopped.' })
+    expect(cancelled.snapshot.modelReservation?.maxCostMicros).toBe(600)
+    const receipt = { id: 'model:0', modelId: 'fixture/model', provider: 'fixture', inputTokens: 10, outputTokens: 1,
+      reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, contextWindow: null, costMicros: 500 }
+    const settled = await apply(convex, input, 'receipt', cancelled.snapshot.revision, { type: 'record_receipt', receipt })
+    expect(settled.snapshot.modelReservation).toBeUndefined()
+    expect(settled.snapshot.usage.costMicros).toBe(500)
+    expect(settled.snapshot.status).toBe('cancelled')
+    await apply(convex, input, 'receipt-again', settled.snapshot.revision, { type: 'record_receipt', receipt })
+    expect((await get(convex, input.runId))?.usage.costMicros).toBe(500)
+  })
   test('binds one workflow owner atomically and keeps the claim on reload', async () => {
     const convex = convexTest(schema, modules)
     const input = admission('run-owner', await seedConversation(convex))

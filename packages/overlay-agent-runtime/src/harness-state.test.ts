@@ -6,6 +6,7 @@ import {
   replaceHarnessPlan, settleHarnessChild, terminateHarness, transitionHarnessStep, type HarnessChild, type HarnessEvidence,
   type HarnessPlanInput, type HarnessReceipt,
   claimHarnessExecution, hasRunnableHarnessMilestones, waitForHarnessChildren, resumeHarness,
+  reserveHarnessModel, reservedHarnessCostMicros,
 } from './harness-state'
 
 const now = 1_000
@@ -19,6 +20,48 @@ const steps: HarnessPlanInput[] = [
 ]
 const child = (id: string, stepId: string, budget: number): HarnessChild => ({
   id, stepId, maxCostMicros: budget, costMicros: 0, allowedToolIds: ['read'], status: 'running', evidenceRefs: [],
+})
+
+test('pending model spend cannot also be reserved by a delegated child', () => {
+  let state = replaceHarnessPlan(make(), steps, now)
+  state = reserveHarnessModel(state, 'model:0', 60, now)
+  assert.equal(reserveHarnessModel(state, 'model:0', 60, now), state)
+  assert.throws(() => reserveHarnessModel(state, 'model:0', 61, now), /Reconcile/)
+  assert.throws(() => reserveHarnessModel(state, 'model:1', 0, now), /Reconcile/)
+  assert.throws(() => admitHarnessChild(state, child('first', 'read', 41), now), /spending/)
+  state = admitHarnessChild(state, child('first', 'read', 40), now)
+  assert.equal(reservedHarnessCostMicros(state), 100)
+  const pending = state
+  state = recordHarnessReceipt(state, { id: 'model:0', modelId: 'model', provider: 'provider', inputTokens: 1,
+    outputTokens: 1, reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, contextWindow: null, costMicros: 50,
+  }, now)
+  assert.deepEqual(pending.modelReservation, { id: 'model:0', maxCostMicros: 60 })
+  assert.equal(state.modelReservation, undefined)
+  assert.equal(reservedHarnessCostMicros(state), 40)
+  assertHarnessRunnable(state, now, 10)
+  assert.throws(() => assertHarnessRunnable(state, now, 11), /spending/)
+})
+
+test('a cancelled child retains its unresolved model liability until the matching receipt arrives', () => {
+  const parent = admitHarnessChild(replaceHarnessPlan(make(), steps, now), child('first', 'read', 60), now)
+  let worker = createHarnessSnapshot({ runId: 'first', rootRunId: 'root', parentRunId: 'root', depth: 1,
+    goal: 'Read source', constraints: [], policy: { ...parent.policy, allowedToolIds: ['read'], requiresPlan: false, maxCostMicros: 60 },
+  }, now)
+  worker = reserveHarnessModel(worker, 'model:0', 60, now)
+  assert.throws(() => finishHarness(worker, now), /reconciliation/)
+  worker = terminateHarness(worker, 'cancelled', 'User stopped', now)
+  assert.throws(() => settleHarnessChild(parent, worker, now), /Reconcile/)
+  const receipt: HarnessReceipt = { id: 'unrelated', modelId: 'model', provider: 'provider', inputTokens: 1,
+    outputTokens: 1, reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, contextWindow: null, costMicros: 0,
+  }
+  worker = recordHarnessReceipt(worker, receipt, now)
+  assert.ok(worker.modelReservation)
+  worker = recordHarnessReceipt(worker, { ...receipt, id: 'model:0', costMicros: 40 }, now)
+  assert.equal(worker.status, 'cancelled')
+  assert.equal(worker.modelReservation, undefined)
+  const settled = settleHarnessChild(parent, worker, now)
+  assert.equal(settled.usage.costMicros, 40)
+  assertHarnessRunnable(settled, now, 60)
 })
 
 test('one workflow owns a run and child-only waiting preserves resumable state', () => {

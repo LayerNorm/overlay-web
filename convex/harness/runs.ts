@@ -13,6 +13,7 @@ import {
   recordHarnessEvidence,
   recordHarnessChildReceipt,
   recordHarnessReceipt,
+  reserveHarnessModel,
   replaceHarnessPlan,
   resumeHarness,
   settleHarnessChild,
@@ -123,6 +124,7 @@ const childValidator = v.object({
 })
 
 const operationValidator = v.union(
+  v.object({ type: v.literal('reserve_model'), id: v.string(), maxCostMicros: v.number() }),
   v.object({ type: v.literal('claim_execution'), workflowRunId: v.string() }),
   v.object({ type: v.literal('replace_plan'), steps: v.array(planInputValidator) }),
   v.object({
@@ -214,6 +216,7 @@ function metadataFromSnapshot(snapshot: HarnessSnapshot): HarnessMetadata {
     lastContinuationProgressRevision: snapshot.lastContinuationProgressRevision,
     stalledContinuations: snapshot.stalledContinuations,
     ...(snapshot.latestReceipt === undefined ? {} : { latestReceipt: snapshot.latestReceipt }),
+    ...(snapshot.modelReservation === undefined ? {} : { modelReservation: snapshot.modelReservation }),
     usage: snapshot.usage,
     updatedAt: snapshot.updatedAt,
   }
@@ -305,6 +308,9 @@ function assertBoundedOperation(operation: HarnessOperation) {
         || !operation.receipt.provider.trim() || operation.receipt.provider.length > MAX_ID_LENGTH) {
         throw new Error('Harness receipt exceeds its bounds.')
       }
+      break
+    case 'reserve_model':
+      if (!operation.id.trim() || operation.id.length > MAX_ID_LENGTH) throw new Error('Invalid model reservation identity.')
       break
     case 'checkpoint':
       if (operation.summary.length > MAX_WORKING_SUMMARY_LENGTH) throw new Error('Harness working summary exceeds 8,000 characters.')
@@ -676,6 +682,8 @@ async function applyReducer(
   switch (operation.type) {
     case 'claim_execution':
       return { snapshot: claimHarnessExecution(current, operation.workflowRunId, now) }
+    case 'reserve_model':
+      return { snapshot: reserveHarnessModel(current, operation.id, operation.maxCostMicros, now) }
     case 'replace_plan':
       return { snapshot: replaceHarnessPlan(current, operation.steps, now) }
     case 'transition_step':

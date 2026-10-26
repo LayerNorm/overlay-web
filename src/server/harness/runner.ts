@@ -119,7 +119,7 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
       instructions,
       tools,
       ...input.settings,
-      maxRetries: 2,
+      maxRetries: 0,
       stopWhen: [isLoopFinished(), () => {
         const progress = harnessProgressFingerprint(observedState)
         stagnantCalls = progress === previous ? stagnantCalls + 1 : 0
@@ -138,13 +138,16 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
           throw new HarnessYield()
         }
         const system = workingInstructions(current, segment)
-        const prepared = await ports.prepareModel({ state: current, messages: prompt, instructions: system, toolNames: Object.keys(tools) })
+        const receiptId = `model:${modelCall}`
+        const prepared = await ports.prepareModel({ receiptId, state: current, messages: prompt, instructions: system, toolNames: Object.keys(tools) })
         if (!Number.isSafeInteger(prepared.estimatedCostMicros) || prepared.estimatedCostMicros < 0) throw new Error('Invalid model cost reservation.')
         if (prepared.model && prepared.model.credentialOwnerId !== input.model.credentialOwnerId) throw new Error('Model routing cannot change the credential owner.')
         current = await ports.read()
         if (current.status !== 'running') throw new HarnessYield()
+        const complete = harnessCompletionIssues(current).length === 0 && current.plan.length > 0
         try {
           assertHarnessRunnable(current, Date.now(), prepared.estimatedCostMicros)
+          current = await ports.apply(`reserve:${receiptId}`, { type: 'reserve_model', id: receiptId, maxCostMicros: prepared.estimatedCostMicros })
         } catch (_error) {
           await ports.apply(`budget:${segment}:${modelCall}`, {
             type: 'block', blocker: { kind: 'budget', question: 'The authorized time or spending budget is exhausted. Review the partial result before starting more work.' },
@@ -153,7 +156,6 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
         }
         const needsPlan = current.policy.requiresPlan && !current.plan.length
         observedState = current
-        const complete = harnessCompletionIssues(current).length === 0 && current.plan.length > 0
         const allowed = new Set(prepared.activeToolNames)
         const activeTools = Object.keys(tools).filter(name => !complete && (needsPlan
           ? name === 'harness_set_plan' || name === 'harness_report_blocker'

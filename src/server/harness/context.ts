@@ -1,4 +1,4 @@
-import type { HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
+import { reservedHarnessCostMicros, type HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
 
 export const HARNESS_CONTROL_TOOLS = [
   'harness_set_plan',
@@ -25,9 +25,7 @@ export function buildHarnessInstructions(surfaceInstructions: string): string {
 }
 
 export function buildHarnessWorkingContext(state: HarnessSnapshot): string {
-  const reservedCostMicros = state.children
-    .filter(child => child.status === 'running')
-    .reduce((sum, child) => sum + Math.max(0, child.maxCostMicros - child.costMicros), 0)
+  const reservedCostMicros = reservedHarnessCostMicros(state)
   return JSON.stringify({
     goal: state.goal,
     constraints: state.constraints,

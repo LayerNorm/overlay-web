@@ -48,6 +48,7 @@ function fixture(requiresPlan = true) {
     apply: async (_id, operation) => {
       const now = Date.now()
       switch (operation.type) {
+        case 'reserve_model': current = state.reserveHarnessModel(current, operation.id, operation.maxCostMicros, now); break
         case 'replace_plan': current = state.replaceHarnessPlan(current, operation.steps, now); break
         case 'transition_step': current = state.transitionHarnessStep(current, operation, now); break
         case 'block': current = state.blockHarness(current, operation.blocker, now); break
@@ -133,6 +134,29 @@ test('input blockers suspend without an extra model call and resume with the rea
   const result = await runOverlayHarness({ ...input, tools: {} }, f.ports)
   expect(result.snapshot.status).toBe('completed')
   expect(JSON.stringify(provider.doStreamCalls[1].prompt)).toContain('USD')
+})
+
+test('the model reservation remains held while its returned tools execute', async () => {
+  const f = fixture()
+  f.ports.prepareModel = async request => ({ messages: request.messages, activeToolNames: request.toolNames, estimatedCostMicros: 60 })
+  model(index => {
+    if (index === 0) return [call('harness_set_plan', 'plan', { steps: plan })]
+    if (index === 1) return [call('read', 'read')]
+    if (index === 2) return [call('harness_update_step', 'done', { id: 'work', status: 'done', evidenceRefs: ['tool:read'] })]
+    return 'Finished.'
+  })
+  const execute = vi.fn(async () => {
+    const current = await f.ports.read()
+    expect(current.modelReservation).toEqual({ id: 'model:1', maxCostMicros: 60 })
+    expect(() => state.admitHarnessChild(current, {
+      id: 'child', stepId: 'work', allowedToolIds: ['read'], maxCostMicros: 50, costMicros: 0, status: 'running', evidenceRefs: [],
+    }, Date.now())).toThrow(/spending/)
+    return 'Read source.'
+  })
+  const result = await runOverlayHarness({ ...input, tools: { read: tool({ inputSchema: z.object({}), execute }) } }, f.ports)
+  expect(execute).toHaveBeenCalledTimes(1)
+  expect(result.snapshot.status).toBe('completed')
+  expect(result.snapshot.modelReservation).toBeUndefined()
 })
 
 test.each([true, false])('SDK approvals reconstruct the request/response protocol, approved=%s', async approved => {

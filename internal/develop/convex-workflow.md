@@ -194,6 +194,17 @@ resume without recreating the children. Tool execution rechecks access after
 approval; returned SDK system messages are not replayed as conversation input.
 Instructions and current durable context are rebuilt on continuation instead.
 
+Model dispatch holds a durable `reserve_model` authorization with the same ID as
+its eventual usage receipt. Child admission cannot spend that held amount while
+the SDK executes returned tools, before `onStepEnd` supplies usage. Only the
+matching receipt replaces the hold with actual spend; cancellation does not
+erase an unresolved liability. Ambiguous provider failures require reconciliation
+before another call or child-budget release. Automatic SDK model retries are
+disabled so one authorization cannot silently fund multiple uncertain attempts.
+The adapter must reserve an upper bound for the dispatched prompt and output,
+not an average predicted cost. These holds enforce the run budget; billing-account
+reservations and settlement remain separate adapter responsibilities.
+
 `compactHarnessPrompt` extends the existing chat compaction policy for SDK
 provider prompts. It preserves the latest user request and complete tool
 transactions, carries a rolling summary, and counts caller-supplied instruction,

@@ -92,6 +92,7 @@ export type HarnessSnapshot = {
   lastContinuationProgressRevision: number
   stalledContinuations: number
   latestReceipt?: HarnessReceipt
+  modelReservation?: { id: string; maxCostMicros: number }
   usage: HarnessUsage
   updatedAt: number
 }
@@ -129,6 +130,7 @@ export function createHarnessSnapshot(input: {
 function mutable(state: HarnessSnapshot): HarnessSnapshot {
   return {
     ...state, plan: state.plan.map(step => ({ ...step, evidenceRefs: [...step.evidenceRefs] })),
+    ...(state.modelReservation ? { modelReservation: { ...state.modelReservation } } : {}),
     evidence: [...state.evidence], children: state.children.map(child => ({ ...child, evidenceRefs: [...child.evidenceRefs],
       ...(child.accountedUsage ? { accountedUsage: { ...child.accountedUsage } } : {}),
     })),
@@ -262,6 +264,7 @@ export function recordHarnessReceipt(state: HarnessSnapshot, receipt: HarnessRec
   }
   validateHarnessReceipt(receipt)
   const next = mutable(state)
+  if (next.modelReservation?.id === receipt.id) next.modelReservation = undefined
   next.latestReceipt = { ...receipt }
   addHarnessUsage(next.usage, receipt)
   return changed(next, now, false)
@@ -293,7 +296,7 @@ export function admitHarnessChild(state: HarnessSnapshot, child: HarnessChild, n
   if (active.length >= state.policy.maxParallelChildren) throw new Error('The child concurrency budget is exhausted.')
   if (child.allowedToolIds.some(id => !state.policy.allowedToolIds.includes(id))) throw new Error('Child capabilities cannot exceed the parent.')
   if (!Number.isSafeInteger(child.maxCostMicros) || child.maxCostMicros < 0
-    || state.usage.costMicros + active.reduce((sum, candidate) => sum + Math.max(0, candidate.maxCostMicros - candidate.costMicros), 0) + child.maxCostMicros > state.policy.maxCostMicros) throw new Error('The root spending budget cannot cover this child.')
+    || state.usage.costMicros + reservedHarnessCostMicros(state) + child.maxCostMicros > state.policy.maxCostMicros) throw new Error('The root spending budget cannot cover this child.')
   if (child.status !== 'running' || child.evidenceRefs.length || child.costMicros !== 0 || child.accountedUsage !== undefined) throw new Error('A new child must be empty and running.')
   const next = mutable(state)
   next.children.push({ ...child, allowedToolIds: [...child.allowedToolIds], evidenceRefs: [...child.evidenceRefs] })
@@ -309,7 +312,26 @@ export function harnessCompletionIssues(state: HarnessSnapshot): string[] {
     ...(state.plan.length && !state.plan.some(step => step.status === 'done') ? ['No milestone was completed.'] : []),
     ...state.plan.filter(step => !['done', 'skipped'].includes(step.status)).map(step => `Milestone ${step.id} is unfinished.`),
     ...(state.children.some(child => child.status === 'running') ? ['Child work is still running.'] : []),
+    ...(state.modelReservation ? ['Model usage is awaiting reconciliation.'] : []),
   ]
+}
+
+export function reservedHarnessCostMicros(state: HarnessSnapshot): number {
+  return (state.modelReservation?.maxCostMicros ?? 0)
+    + state.children.filter(child => child.status === 'running').reduce((sum, child) => sum + Math.max(0, child.maxCostMicros - child.costMicros), 0)
+}
+
+export function reserveHarnessModel(state: HarnessSnapshot, id: string, maxCostMicros: number, now: number): HarnessSnapshot {
+  assertActive(state)
+  if (!id.trim() || id.length > 256 || !Number.isSafeInteger(maxCostMicros) || maxCostMicros < 0) throw new Error('Invalid model reservation.')
+  if (state.modelReservation) {
+    if (state.modelReservation.id === id && state.modelReservation.maxCostMicros === maxCostMicros) return state
+    throw new Error('Reconcile the previous model call before reserving another.')
+  }
+  assertHarnessRunnable(state, now, maxCostMicros)
+  const next = mutable(state)
+  next.modelReservation = { id, maxCostMicros }
+  return changed(next, now, false)
 }
 
 export function assertHarnessRunnable(state: HarnessSnapshot, now: number, estimatedNextCostMicros = 0) {
@@ -317,7 +339,7 @@ export function assertHarnessRunnable(state: HarnessSnapshot, now: number, estim
   if (state.status !== 'running' || state.blocker) throw new Error('The run is waiting for a blocker to resolve.')
   if (now >= state.policy.deadlineAt) throw new Error('The authorized run deadline is exhausted.')
   if (!Number.isSafeInteger(estimatedNextCostMicros) || estimatedNextCostMicros < 0) throw new Error('A nonnegative cost reservation is required.')
-  const reserved = state.children.filter(child => child.status === 'running').reduce((sum, child) => sum + Math.max(0, child.maxCostMicros - child.costMicros), 0)
+  const reserved = reservedHarnessCostMicros(state)
   if (state.usage.costMicros + reserved + estimatedNextCostMicros > state.policy.maxCostMicros) throw new Error('The authorized spending budget is exhausted.')
 }
 
@@ -402,6 +424,7 @@ export function settleHarnessChild(state: HarnessSnapshot, childState: HarnessSn
     || childState.policy.maxParallelChildren > state.policy.maxParallelChildren) throw new Error('The child exceeds its delegated authority.')
   if (child.status !== 'running') return state
   if (!['completed', 'failed', 'cancelled'].includes(childState.status)) throw new Error('Child work has not finished.')
+  if (childState.modelReservation || childState.children.some(child => child.status === 'running' || child.status === 'cancelled')) throw new Error('Reconcile outstanding child model calls before releasing its budget.')
   if (childState.usage.costMicros > child.maxCostMicros) throw new Error('Child usage exceeded its authorization; reconcile before continuing.')
   const next = mutable(state)
   Object.assign(next.children.find(candidate => candidate.id === child.id)!, {

@@ -32,6 +32,7 @@ export interface HarnessExecutionPorts {
   readEvidence(evidenceId: string): Promise<HarnessEvidence | null>
   authorizeTool(toolName: string): Promise<void>
   prepareModel(input: {
+    receiptId: string
     state: HarnessSnapshot
     messages: LanguageModelV4Prompt
     instructions: string
