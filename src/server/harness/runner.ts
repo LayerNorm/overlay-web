@@ -50,6 +50,7 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
   const controls = new Set<string>(HARNESS_CONTROL_TOOLS)
   if (Object.keys(input.tools).some(name => controls.has(name))) throw new Error('Surface tools cannot replace harness control tools.')
   const initial = await ports.read()
+  let observedState = initial
   if (isTerminal(initial)) return { outcome: 'finished', snapshot: initial, messages, steps }
   if (!await ports.claim()) return { outcome: 'already_running', snapshot: await ports.read(), messages, steps }
   const definitions = { ...input.tools, ...createHarnessControlTools(ports) }
@@ -119,12 +120,11 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
       tools,
       ...input.settings,
       maxRetries: 2,
-      stopWhen: [isLoopFinished(), async () => {
-        const current = await ports.read()
-        const progress = harnessProgressFingerprint(current)
+      stopWhen: [isLoopFinished(), () => {
+        const progress = harnessProgressFingerprint(observedState)
         stagnantCalls = progress === previous ? stagnantCalls + 1 : 0
         previous = progress
-        return current.status !== 'running' || onlyChildrenRemain(current) || stagnantCalls >= 3
+        return observedState.status !== 'running' || onlyChildrenRemain(observedState) || stagnantCalls >= 3
       }],
       prepareStep: async ({ messages: prompt }) => {
         let current = await ports.read()
@@ -152,6 +152,7 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
           throw new HarnessYield()
         }
         const needsPlan = current.policy.requiresPlan && !current.plan.length
+        observedState = current
         const complete = harnessCompletionIssues(current).length === 0 && current.plan.length > 0
         const allowed = new Set(prepared.activeToolNames)
         const activeTools = Object.keys(tools).filter(name => !complete && (needsPlan
@@ -168,6 +169,7 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
       onStepEnd: async step => ports.recordModelStep(step, `model:${modelCall++}`),
       onToolExecutionEnd: async event => {
         if (!controls.has(event.toolCall.toolName)) await ports.recordToolResult(event)
+        observedState = await ports.read()
       },
       onEnd: async result => {
         invocationSteps = result.steps

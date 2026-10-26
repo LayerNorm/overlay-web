@@ -41,6 +41,7 @@ function fixture(requiresPlan = true) {
     deadlineAt: Date.now() + 60_000, maxCostMicros: 100, maxDepth: 1, maxParallelChildren: 2,
   } }, Date.now())
   const receipts = new Set<string>()
+  const sdkSteps: number[] = []
   const ports: HarnessExecutionPorts = {
     claim: async () => { current = state.claimHarnessExecution(current, 'workflow', Date.now()); return true },
     read: async () => current,
@@ -63,6 +64,7 @@ function fixture(requiresPlan = true) {
     authorizeTool: vi.fn(async () => undefined),
     prepareModel: async input => ({ messages: input.messages, activeToolNames: input.toolNames, estimatedCostMicros: 0 }),
     recordModelStep: async (step, id) => {
+      sdkSteps.push(step.stepNumber)
       expect(receipts.has(id)).toBe(false)
       receipts.add(id)
       current = state.recordHarnessReceipt(current, {
@@ -84,7 +86,7 @@ function fixture(requiresPlan = true) {
     waitForInput: async () => null,
     waitForApproval: async () => null,
   }
-  return { ports, receipts }
+  return { ports, receipts, sdkSteps }
 }
 
 const input = { instructions: 'Use the tools to perform the requested work.', messages: [{ role: 'user' as const, content: 'Read the records.' }], model: { modelId: 'fixture/model', credentialOwnerId: 'user' } }
@@ -111,6 +113,7 @@ test('the real SDK runs beyond twenty tool calls and continues after early sign-
   expect(result.snapshot.status).toBe('completed')
   expect(reads).toBe(24)
   expect(provider.doStreamCalls.length).toBeGreaterThan(20)
+  expect(f.sdkSteps.some(step => step >= 10)).toBe(true)
   expect(result.snapshot.continuations).toBeGreaterThan(0)
   expect(JSON.stringify(provider.doStreamCalls[0].prompt)).toContain('Preserve the original constraints after compaction.')
   expect(result.snapshot.workingSummary).toBe('Preserve the original constraints after compaction.')
