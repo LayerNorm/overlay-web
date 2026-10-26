@@ -215,6 +215,14 @@ external cost as unknown, not zero. Known external cost and unpriced external
 calls roll up separately through child joins. The run's spending authorization
 bounds Overlay-funded inference, not the user's external provider account.
 
+`admitHarnessRequestUsage` consumes the root's request allowance with a stable
+operation ID before inference. Child runs do not consume another request; Auto
+and BYOK retain their existing exemptions. Internal model receipts set the
+server-only `countAsRequest: false` while retaining all cost and token accounting.
+Durable accounting binds the workspace explicitly so a tab switch cannot move
+usage to another workspace. `requireRecorded: true` prevents a caller from
+advancing after a failed write or a reservation that still needs reconciliation.
+
 `compactHarnessPrompt` extends the existing chat compaction policy for SDK
 provider prompts. It preserves the latest user request and complete tool
 transactions, carries a rolling summary, and counts caller-supplied instruction,

@@ -48,7 +48,7 @@ export async function resolveHarnessModelUsage(input: {
   if (estimate === null) throw new FatalError('Provider cost is unknown; reconcile the model reservation.')
   return {
     receipt: { ...base, costMicros: harnessCostMicros(estimate), costSource: 'catalog' },
-    providerCostUsd: estimate,
+    providerCostUsd: null,
   }
 }
 

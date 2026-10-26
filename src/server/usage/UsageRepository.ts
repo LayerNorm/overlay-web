@@ -25,6 +25,8 @@ export type UsageReservationStatus =
 
 export type UsageEvent = {
   cachedTokens?: number
+  /** Internal model/child calls set false; the root request is counted separately. Server-owned only. */
+  countAsRequest?: boolean
   costCents: number
   durationSeconds?: number
   eventId?: string
@@ -165,6 +167,7 @@ export interface UsageRepository {
     forceFreeTierLimits?: boolean
     operationId: string
     userId: string
+    workspaceId?: string
   }): Promise<{ recorded: number }>
   reconcileExpired(args?: {
     limit?: number

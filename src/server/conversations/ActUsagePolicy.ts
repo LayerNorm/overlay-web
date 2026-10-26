@@ -30,6 +30,10 @@ export type ActBudgetReservationResult =
 
 export type ActFinishedUsage = {
   forceFreeTierLimits: boolean
+  countAsRequest?: boolean
+  workspaceId?: string
+  /** Durable callers must not advance past a failed accounting write. */
+  requireRecorded?: boolean
   inputTokens: number
   cachedInputTokens?: number
   cacheWriteTokens?: number
@@ -302,8 +306,10 @@ export class BillingBackedActUsagePolicy implements ActUsagePolicy {
           reservationId: args.reservationId,
           errorMessage: `pricing_missing:${args.modelId}`,
         }).catch((err) => logger.error('[conversations/act] Failed to mark reservation for reconcile:', summarizeErrorForLog(err)))
+        if (args.requireRecorded) throw new Error('Model pricing requires reconciliation.')
         return { finalized: false, reservationId: null }
       }
+      if (args.requireRecorded) throw new Error('Model pricing requires reconciliation.')
       return { finalized: false, reservationId: args.reservationId }
     }
 
@@ -318,18 +324,23 @@ export class BillingBackedActUsagePolicy implements ActUsagePolicy {
       inputTokens: args.inputTokens,
       outputTokens: args.outputTokens,
       cachedTokens: cachedInputTokens,
+      ...(args.countAsRequest !== undefined ? { countAsRequest: args.countAsRequest } : {}),
+      ...(args.providerCostUsd !== undefined ? { providerCostUsd: args.providerCostUsd } : {}),
       cost: costCents,
       timestamp: Date.now(),
     }]
 
     try {
       if (args.reservationId) {
-        await finalizeProviderBudgetReservation({
+        const settlement = await finalizeProviderBudgetReservation({
           userId: args.userId,
           reservationId: args.reservationId,
           actualProviderCostUsd: providerCostUsd,
           events,
         })
+        if (args.requireRecorded && (!settlement || !('status' in settlement) || settlement.status !== 'finalized')) {
+          throw new Error('The model reservation has not settled.')
+        }
         return { finalized: true, reservationId: null }
       }
       if ('recordBatch' in this.deps.repository) {
@@ -337,8 +348,11 @@ export class BillingBackedActUsagePolicy implements ActUsagePolicy {
           operationId: args.operationId ?? `act_${globalThis.crypto.randomUUID()}`,
           userId: args.userId,
           forceFreeTierLimits: args.forceFreeTierLimits,
+          ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
           events: events.map((event) => ({
             cachedTokens: event.cachedTokens,
+            ...(args.countAsRequest !== undefined ? { countAsRequest: args.countAsRequest } : {}),
+            ...(args.providerCostUsd !== undefined ? { providerCostUsd: args.providerCostUsd } : {}),
             costCents: event.cost,
             inputTokens: event.inputTokens,
             kind: event.type,
@@ -348,6 +362,7 @@ export class BillingBackedActUsagePolicy implements ActUsagePolicy {
           })),
         })
       } else {
+        if (args.requireRecorded) throw new Error('Durable accounting requires an idempotent usage repository.')
         await this.deps.repository.recordUsageBatch({
           events,
           forceFreeTierLimits: args.forceFreeTierLimits,
@@ -363,8 +378,10 @@ export class BillingBackedActUsagePolicy implements ActUsagePolicy {
           reservationId: args.reservationId,
           errorMessage: summarizeErrorForLog(err),
         }).catch((reconcileErr) => logger.error('[conversations/act] Failed to mark reservation for reconcile:', summarizeErrorForLog(reconcileErr)))
+        if (args.requireRecorded) throw new Error('Model usage could not be recorded; reconciliation is required.')
         return { finalized: false, reservationId: null }
       }
+      if (args.requireRecorded) throw new Error('Model usage could not be recorded.')
       return { finalized: false, reservationId: args.reservationId }
     }
   }

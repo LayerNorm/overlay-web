@@ -13,6 +13,7 @@ vi.mock('@/server/billing/billing-runtime', () => ({
 }))
 
 import { BillingBackedActUsagePolicy, type ActFinishedUsage } from '@/server/conversations/ActUsagePolicy'
+import type { UsageRepository } from '@/server/usage'
 
 const usage: ActFinishedUsage = {
   userId: 'user', modelId: 'provider/model', inputTokens: 1_000, outputTokens: 100,
@@ -55,4 +56,25 @@ test('invalid provider cost and overlapping cache usage are rejected before bill
   await expect(policy.recordFinishedUsage({ ...usage, cachedInputTokens: 900 })).rejects.toThrow('Invalid cached token')
   expect(mocks.finalize).not.toHaveBeenCalled()
   expect(mocks.pricing).not.toHaveBeenCalled()
+})
+
+test('internal model receipts preserve usage but do not consume another request allowance', async () => {
+  const recordBatch = vi.fn(async () => ({ recorded: 1 }))
+  const durable = new BillingBackedActUsagePolicy({ repository: { recordBatch } as unknown as UsageRepository })
+  await durable.recordFinishedUsage({ ...usage, reservationId: null, countAsRequest: false, requireRecorded: true,
+    workspaceId: 'original-workspace', operationId: 'harness:root:model:1', providerCostUsd: 0 })
+  expect(recordBatch).toHaveBeenCalledWith(expect.objectContaining({ workspaceId: 'original-workspace', operationId: 'harness:root:model:1',
+    events: [expect.objectContaining({ countAsRequest: false, providerCostUsd: 0, cachedTokens: 600, inputTokens: 1_000 })] }))
+  recordBatch.mockRejectedValueOnce(new Error('database unavailable'))
+  await expect(durable.recordFinishedUsage({ ...usage, reservationId: null, requireRecorded: true })).rejects.toThrow(/could not be recorded/)
+})
+
+test('durable callers cannot advance past an unsettled reservation or unknown pricing', async () => {
+  mocks.finalize.mockResolvedValueOnce({ status: 'reconcile_required' })
+  await expect(policy.recordFinishedUsage({ ...usage, requireRecorded: true })).rejects.toThrow(/reconciliation/)
+  mocks.pricing.mockResolvedValueOnce(null)
+  await expect(policy.recordFinishedUsage({ ...usage, requireRecorded: true })).rejects.toThrow(/pricing requires reconciliation/)
+  mocks.finalize.mockResolvedValueOnce({ status: 'finalized' })
+  expect(await policy.recordFinishedUsage({ ...usage, requireRecorded: true, countAsRequest: false })).toMatchObject({ finalized: true })
+  expect(mocks.finalize).toHaveBeenLastCalledWith(expect.objectContaining({ events: [expect.objectContaining({ countAsRequest: false })] }))
 })

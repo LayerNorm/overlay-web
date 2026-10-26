@@ -273,6 +273,7 @@ export class ConvexUsageRepository implements UsageRepository {
     forceFreeTierLimits?: boolean
     operationId: string
     userId: string
+    workspaceId?: string
   }): Promise<{ recorded: number }> {
     const result = await convex.mutation<{ recorded?: number }>('platform/usage:recordBatch', {
       events: args.events.map(toConvexEvent),
@@ -280,6 +281,7 @@ export class ConvexUsageRepository implements UsageRepository {
       operationId: args.operationId,
       serverSecret: this.serverSecret,
       userId: args.userId,
+      workspaceId: args.workspaceId,
     }, { throwOnError: true })
     if (!result) throw new Error('Failed to record usage batch')
     return { recorded: result.recorded ?? args.events.length }
@@ -319,6 +321,7 @@ function workspaceEntitlements(balance: {
 function toConvexEvent(event: UsageEvent) {
   return {
     cachedTokens: event.cachedTokens,
+    countAsRequest: event.countAsRequest,
     cost: event.costCents,
     durationSeconds: event.durationSeconds,
     inputTokens: event.inputTokens,

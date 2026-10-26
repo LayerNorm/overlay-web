@@ -74,7 +74,9 @@ function getPastWeekDates(): string[] {
 function countsTowardFreeTierMessageLimit(event: {
   type: 'ask' | 'write' | 'agent' | 'embedding' | 'transcription' | 'generation' | 'sandbox'
   modelId?: string
+  countAsRequest?: boolean
 }): boolean {
+  if (event.countAsRequest === false) return false
   if (event.type !== 'ask' && event.type !== 'write' && event.type !== 'agent') return false
   return event.modelId !== FREE_TIER_AUTO_MODEL_ID
 }
@@ -85,6 +87,7 @@ export type UsageEvent = {
   inputTokens?: number
   outputTokens?: number
   cachedTokens?: number
+  countAsRequest?: boolean
   providerCostUsd?: number
   cost: number
   durationSeconds?: number
@@ -129,7 +132,8 @@ async function getDailyUsageForPatch(ctx: MutationCtx, userId: string, date: str
  * allowance everyone in it shares. "Working in" is the person's active workspace, which the app sets whenever they open
  * or switch to one. See `usageCountSubject`. (A paid workspace pays for usage instead and never counts it here.)
  */
-async function usageCounterSubject(ctx: EntitlementCtx, userId: string): Promise<string> {
+async function usageCounterSubject(ctx: EntitlementCtx, userId: string, workspaceId?: string): Promise<string> {
+  if (workspaceId) return usageCountSubject({ userId, free: true, activeWorkspaceId: workspaceId })
   const preference = await ctx.db
     .query('workspaceUserPreferences')
     .withIndex('by_userId', (q) => q.eq('userId', userId))
@@ -208,10 +212,11 @@ export async function applyUsageEvents(
   ctx: MutationCtx,
   userId: string,
   events: UsageEvent[],
+  workspaceId?: string,
 ): Promise<{ success: true; eventsProcessed: number }> {
   const billingAccount = await ensurePersonalBillingAccount(ctx, userId)
   const today = new Date().toISOString().split('T')[0]
-  const countSubject = await usageCounterSubject(ctx, userId)
+  const countSubject = await usageCounterSubject(ctx, userId, workspaceId)
 
   let dailyUsage = await ctx.db
     .query('dailyUsage')
@@ -397,8 +402,9 @@ async function enforceFreeTierUsageLimits(
   ctx: MutationCtx,
   userId: string,
   events: UsageEvent[],
+  workspaceId?: string,
 ): Promise<void> {
-  const weeklyUsage = await weeklyFreeUsage(ctx, await usageCounterSubject(ctx, userId))
+  const weeklyUsage = await weeklyFreeUsage(ctx, await usageCounterSubject(ctx, userId, workspaceId))
 
   let batchAsk = 0, batchWrite = 0, batchAgent = 0
   let batchTranscriptionSeconds = 0
@@ -412,16 +418,16 @@ async function enforceFreeTierUsageLimits(
     }
   }
 
-  if (weeklyUsage.ask + batchAsk > FREE_WEEKLY_LIMITS.ask) {
+  if (batchAsk > 0 && weeklyUsage.ask + batchAsk > FREE_WEEKLY_LIMITS.ask) {
     throw new Error('free_tier_limit_exceeded: weekly ask limit reached')
   }
-  if (weeklyUsage.write + batchWrite > FREE_WEEKLY_LIMITS.write) {
+  if (batchWrite > 0 && weeklyUsage.write + batchWrite > FREE_WEEKLY_LIMITS.write) {
     throw new Error('free_tier_limit_exceeded: weekly write limit reached')
   }
-  if (weeklyUsage.agent + batchAgent > FREE_WEEKLY_LIMITS.agent) {
+  if (batchAgent > 0 && weeklyUsage.agent + batchAgent > FREE_WEEKLY_LIMITS.agent) {
     throw new Error('free_tier_limit_exceeded: weekly agent limit reached')
   }
-  if (weeklyUsage.transcriptionSeconds + batchTranscriptionSeconds > FREE_WEEKLY_TRANSCRIPTION_SECONDS) {
+  if (batchTranscriptionSeconds > 0 && weeklyUsage.transcriptionSeconds + batchTranscriptionSeconds > FREE_WEEKLY_TRANSCRIPTION_SECONDS) {
     throw new Error('free_tier_limit_exceeded: weekly transcription limit reached')
   }
 }
@@ -454,6 +460,7 @@ export const recordBatch = mutation({
         inputTokens: v.optional(v.number()),
         outputTokens: v.optional(v.number()),
         cachedTokens: v.optional(v.number()),
+        countAsRequest: v.optional(v.boolean()),
         providerCostUsd: v.optional(v.number()),
         cost: v.number(),
         durationSeconds: v.optional(v.number()),
@@ -481,8 +488,8 @@ export const recordBatch = mutation({
       return { success: true, eventsProcessed: events.length, recorded: events.length, idempotent: false }
     }
     const billingAccount = await ensurePersonalBillingAccount(ctx, userId)
-    await enforceFreeTierUsageLimits(ctx, userId, events)
-    const result = await applyUsageEvents(ctx, userId, events)
+    await enforceFreeTierUsageLimits(ctx, userId, events, workspaceId)
+    const result = await applyUsageEvents(ctx, userId, events, workspaceId)
     if (operationId) {
       const cents = events.reduce((sum, event) => sum + Math.max(0, event.cost), 0)
       await ctx.db.insert('usageOperations', {
@@ -1290,6 +1297,7 @@ export const finalizeBudgetReservationByServer = mutation({
         inputTokens: v.optional(v.number()),
         outputTokens: v.optional(v.number()),
         cachedTokens: v.optional(v.number()),
+        countAsRequest: v.optional(v.boolean()),
         providerCostUsd: v.optional(v.number()),
         cost: v.number(),
         durationSeconds: v.optional(v.number()),

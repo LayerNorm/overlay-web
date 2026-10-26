@@ -125,6 +125,8 @@ export type ActUsageEvent = {
   inputTokens: number
   outputTokens: number
   cachedTokens: number
+  countAsRequest?: boolean
+  providerCostUsd?: number
   cost: number
   timestamp: number
 }
