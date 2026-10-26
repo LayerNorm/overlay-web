@@ -331,7 +331,7 @@
     "tailwindcss": "^4.3.3",
     "typescript": "^5",
     "vitest": "^4.1.11",
-    "yaml": "2.9.0",
+    "yaml": "2.9.1",
     "zod-to-json-schema": "^3.25.2"
   },
   "overrides": {
