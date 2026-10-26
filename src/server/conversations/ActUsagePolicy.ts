@@ -39,6 +39,8 @@ export type ActFinishedUsage = {
   cacheWriteTokens?: number
   /** Validated provider receipt, in USD; never supplied by a client. */
   providerCostUsd?: number
+  /** A previously resolved catalog quote, never exposed as an exact provider receipt. */
+  catalogCostUsd?: number
   modelId: string
   outputTokens: number
   reservationId: string | null
@@ -291,7 +293,10 @@ export class BillingBackedActUsagePolicy implements ActUsagePolicy {
     if (args.providerCostUsd !== undefined && (!Number.isFinite(args.providerCostUsd) || args.providerCostUsd < 0)) {
       throw new Error('Invalid provider cost receipt.')
     }
-    const providerCostUsd = args.providerCostUsd ?? await calculateLanguageModelTokenCostOrNull(
+    if (args.catalogCostUsd !== undefined && (!Number.isFinite(args.catalogCostUsd) || args.catalogCostUsd < 0)) {
+      throw new Error('Invalid catalog cost estimate.')
+    }
+    const providerCostUsd = args.providerCostUsd ?? args.catalogCostUsd ?? await calculateLanguageModelTokenCostOrNull(
       args.modelId,
       args.inputTokens,
       cachedInputTokens,
@@ -314,7 +319,7 @@ export class BillingBackedActUsagePolicy implements ActUsagePolicy {
     }
 
     const costCents = billableBudgetCentsFromProviderUsd(providerCostUsd)
-    if (costCents <= 0 && args.inputTokens <= 0 && args.outputTokens <= 0) {
+    if (!args.requireRecorded && costCents <= 0 && args.inputTokens <= 0 && args.outputTokens <= 0) {
       return { finalized: false, reservationId: args.reservationId }
     }
 

@@ -54,6 +54,7 @@ test('catalog fallback is explicitly an estimate and missing prices never become
   const estimated = await resolveHarnessModelUsage(input)
   expect(estimated.receipt).toMatchObject({ costSource: 'catalog', costMicros: 710 })
   expect(estimated.providerCostUsd).toBeNull()
+  expect(estimated.catalogCostUsd).toBe(0.00071)
   expect(mocks.pricing).toHaveBeenCalledWith('provider/actual', 1_000, 600, 100, 200)
   mocks.pricing.mockResolvedValue(null)
   await expect(resolveHarnessModelUsage(input)).rejects.toThrow(/unknown/)

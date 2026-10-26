@@ -12,7 +12,7 @@ export async function resolveHarnessModelUsage(input: {
   requestedModelId: string
   contextWindow: number | null
   observation: HarnessModelObservation
-}): Promise<{ receipt: HarnessReceipt; providerCostUsd: number | null }> {
+}): Promise<{ receipt: HarnessReceipt; providerCostUsd: number | null; catalogCostUsd: number | null }> {
   'use step'
 
   const { generationId, ...observation } = input.observation
@@ -21,6 +21,7 @@ export async function resolveHarnessModelUsage(input: {
     return {
       receipt: { ...base, costMicros: 0, costSource: 'external', externalCostMicros: null },
       providerCostUsd: null,
+      catalogCostUsd: null,
     }
   }
   if (generationId) {
@@ -41,6 +42,7 @@ export async function resolveHarnessModelUsage(input: {
       receipt: { ...base, modelId: generation.model, provider: generation.providerName,
         costMicros: harnessCostMicros(generation.totalCost), costSource: 'provider' },
       providerCostUsd: generation.totalCost,
+      catalogCostUsd: null,
     }
   }
   const estimate = await calculateLanguageModelTokenCostOrNull(observation.modelId,
@@ -49,6 +51,7 @@ export async function resolveHarnessModelUsage(input: {
   return {
     receipt: { ...base, costMicros: harnessCostMicros(estimate), costSource: 'catalog' },
     providerCostUsd: null,
+    catalogCostUsd: estimate,
   }
 }
 

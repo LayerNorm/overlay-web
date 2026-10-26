@@ -69,6 +69,18 @@ test('internal model receipts preserve usage but do not consume another request 
   await expect(durable.recordFinishedUsage({ ...usage, reservationId: null, requireRecorded: true })).rejects.toThrow(/could not be recorded/)
 })
 
+test('durable zero-usage calls are recorded, and a frozen catalog quote is not relabeled as exact provider cost', async () => {
+  const recordBatch = vi.fn<UsageRepository['recordBatch']>().mockResolvedValue({ recorded: 1 })
+  const durable = new BillingBackedActUsagePolicy({ repository: { recordBatch } as unknown as UsageRepository })
+  await durable.recordFinishedUsage({ ...usage, reservationId: null, inputTokens: 0, outputTokens: 0,
+    cachedInputTokens: 0, cacheWriteTokens: 0, requireRecorded: true, catalogCostUsd: 0, operationId: 'zero' })
+  expect(recordBatch).toHaveBeenCalledWith(expect.objectContaining({ events: [expect.objectContaining({ costCents: 0 })] }))
+  await durable.recordFinishedUsage({ ...usage, reservationId: null, requireRecorded: true, catalogCostUsd: 0.00082 })
+  expect(recordBatch.mock.calls[1][0].events[0]).not.toHaveProperty('providerCostUsd')
+  expect(mocks.pricing).not.toHaveBeenCalled()
+  await expect(durable.recordFinishedUsage({ ...usage, catalogCostUsd: -1 })).rejects.toThrow(/catalog cost/)
+})
+
 test('durable callers cannot advance past an unsettled reservation or unknown pricing', async () => {
   mocks.finalize.mockResolvedValueOnce({ status: 'reconcile_required' })
   await expect(policy.recordFinishedUsage({ ...usage, requireRecorded: true })).rejects.toThrow(/reconciliation/)

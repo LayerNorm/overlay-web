@@ -253,7 +253,7 @@ export function transitionHarnessStep(state: HarnessSnapshot, input: {
   return changed(next, now)
 }
 
-function validateHarnessReceipt(receipt: HarnessReceipt) {
+export function validateHarnessReceipt(receipt: HarnessReceipt) {
   for (const value of [receipt.inputTokens, receipt.outputTokens, receipt.reasoningTokens, receipt.cacheReadTokens, receipt.cacheWriteTokens, receipt.costMicros]) {
     if (!Number.isSafeInteger(value) || value < 0) throw new Error('Usage and cost must be known nonnegative integers.')
   }

@@ -239,6 +239,16 @@ It is a settlement reference, not evidence that a provider was called or finishe
 Only the matching usage receipt clears the model hold; dispatch binding does not
 release any budget or authorize automatic provider retries.
 
+`settleHarnessModelUsage` orchestrates separate durable receipt-lookup, account
+settlement, and harness-receipt steps. Call it from workflow orchestration, not
+inside another step: replay must retain the resolved provider receipt or catalog
+quote even if the account write succeeds before the harness write fails. Billing
+uses the persisted dispatch binding and original workspace, accepts late usage
+after cancellation, and never counts internal calls as additional requests. BYOK
+writes a token audit with unknown external cost, without an Overlay charge. A
+failed account write leaves the harness hold unresolved. Production entrypoint
+wiring remains pending.
+
 `compactHarnessPrompt` extends the existing chat compaction policy for SDK
 provider prompts. It preserves the latest user request and complete tool
 transactions, carries a rolling summary, and counts caller-supplied instruction,
