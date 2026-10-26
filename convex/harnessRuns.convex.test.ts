@@ -90,6 +90,18 @@ function oneStep(id: string, requiresVerification = false) {
 }
 
 describe('durable harness runs', () => {
+  test('binds one workflow owner atomically and keeps the claim on reload', async () => {
+    const convex = convexTest(schema, modules)
+    const input = admission('run-owner', await seedConversation(convex))
+    await admit(convex, input)
+    await apply(convex, input, 'owner-first', 0, { type: 'claim_execution', workflowRunId: 'workflow-first' })
+    expect((await get(convex, input.runId))?.workflowRunId).toBe('workflow-first')
+    const retry = await apply(convex, input, 'owner-retry', 1, { type: 'claim_execution', workflowRunId: 'workflow-first' })
+    expect(retry.snapshot.revision).toBe(1)
+    await expect(apply(convex, input, 'owner-second', 1, { type: 'claim_execution', workflowRunId: 'workflow-second' }))
+      .rejects.toThrow(/ALREADY_CLAIMED/)
+  })
+
   test('round-trips normalized plans and requires current independent verification', async () => {
     const convex = convexTest(schema, modules)
     const conversationId = await seedConversation(convex)

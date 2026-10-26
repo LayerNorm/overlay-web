@@ -5,6 +5,7 @@ import {
   currentHarnessContext, finishHarness, recordHarnessEvidence, recordHarnessReceipt, recordHarnessChildReceipt,
   replaceHarnessPlan, settleHarnessChild, terminateHarness, transitionHarnessStep, type HarnessChild, type HarnessEvidence,
   type HarnessPlanInput, type HarnessReceipt,
+  claimHarnessExecution, hasRunnableHarnessMilestones, waitForHarnessChildren, resumeHarness,
 } from './harness-state'
 
 const now = 1_000
@@ -18,6 +19,22 @@ const steps: HarnessPlanInput[] = [
 ]
 const child = (id: string, stepId: string, budget: number): HarnessChild => ({
   id, stepId, maxCostMicros: budget, costMicros: 0, allowedToolIds: ['read'], status: 'running', evidenceRefs: [],
+})
+
+test('one workflow owns a run and child-only waiting preserves resumable state', () => {
+  let state = claimHarnessExecution(make(), 'workflow', now)
+  assert.equal(claimHarnessExecution(state, 'workflow', now), state)
+  assert.throws(() => claimHarnessExecution(state, 'other-workflow', now), /ALREADY_CLAIMED/)
+  state = replaceHarnessPlan(state, steps, now)
+  assert.equal(hasRunnableHarnessMilestones(state), true)
+  assert.throws(() => waitForHarnessChildren(state, now), /Only wait/)
+  state = admitHarnessChild(state, child('child', 'read', 40), now)
+  assert.equal(hasRunnableHarnessMilestones(state), false)
+  state = waitForHarnessChildren(state, now)
+  assert.equal(state.status, 'waiting_for_children')
+  state = resumeHarness(state, now)
+  assert.equal(state.status, 'running')
+  assert.equal(state.children[0].status, 'running')
 })
 
 test('completion requires persisted evidence, satisfied dependencies and independent verification', () => {

@@ -16,10 +16,12 @@ export class ConvexHarnessRepository implements HarnessRepository {
   }
 
   async admit(input: HarnessAdmission): Promise<HarnessSnapshot> {
-    return await convex.mutation<HarnessSnapshot>('harness/runs:admit', {
+    const snapshot = await convex.mutation<HarnessSnapshot>('harness/runs:admit', {
       ...input,
       serverSecret: this.serverSecret,
     }, { throwOnError: true })
+    if (!snapshot) throw new Error('Harness admission returned no snapshot.')
+    return snapshot
   }
 
   async get(input: { actorUserId: string; runId: string }): Promise<HarnessSnapshot | null> {
@@ -30,10 +32,12 @@ export class ConvexHarnessRepository implements HarnessRepository {
   }
 
   async apply(input: HarnessMutationInput): Promise<HarnessMutationResult> {
-    return await convex.mutation<HarnessMutationResult>('harness/runs:apply', {
+    const result = await convex.mutation<HarnessMutationResult>('harness/runs:apply', {
       ...input,
       serverSecret: this.serverSecret,
     }, { throwOnError: true })
+    if (!result) throw new Error('Harness mutation returned no result.')
+    return result
   }
 
   async readEvidence(

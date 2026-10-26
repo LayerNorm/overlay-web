@@ -73,6 +73,7 @@ export type HarnessSnapshot = {
   runId: string
   rootRunId: string
   parentRunId?: string
+  workflowRunId?: string
   depth: number
   goal: string
   constraints: string[]
@@ -331,11 +332,40 @@ export function blockHarness(state: HarnessSnapshot, blocker: NonNullable<Harnes
 
 export function resumeHarness(state: HarnessSnapshot, now: number): HarnessSnapshot {
   assertActive(state)
-  if (!state.blocker) throw new Error('There is no blocker to resolve.')
+  if (!state.blocker && state.status !== 'waiting_for_children') throw new Error('There is no blocker to resolve.')
   const next = mutable(state)
   next.blocker = undefined
   next.status = 'running'
   return changed(next, now)
+}
+
+export function hasRunnableHarnessMilestones(state: HarnessSnapshot): boolean {
+  if (state.policy.requiresPlan && !state.plan.length) return true
+  return state.plan.some(step => !['done', 'skipped'].includes(step.status)
+    && step.dependsOn.every(id => state.plan.some(candidate => candidate.id === id && ['done', 'skipped'].includes(candidate.status)))
+    && (!step.childRunId || !state.children.some(child => child.id === step.childRunId && child.status === 'running')))
+}
+
+export function claimHarnessExecution(state: HarnessSnapshot, workflowRunId: string, now: number): HarnessSnapshot {
+  assertActive(state)
+  if (!workflowRunId.trim() || workflowRunId.length > 256) throw new Error('Invalid workflow execution identity.')
+  if (state.workflowRunId) {
+    if (state.workflowRunId !== workflowRunId) throw new Error('HARNESS_EXECUTION_ALREADY_CLAIMED')
+    return state
+  }
+  const next = mutable(state)
+  next.workflowRunId = workflowRunId
+  return changed(next, now, false)
+}
+
+export function waitForHarnessChildren(state: HarnessSnapshot, now: number): HarnessSnapshot {
+  assertHarnessRunnable(state, now)
+  if (!state.children.some(child => child.status === 'running') || hasRunnableHarnessMilestones(state)) {
+    throw new Error('Only wait for children when no local milestone is ready.')
+  }
+  const next = mutable(state)
+  next.status = 'waiting_for_children'
+  return changed(next, now, false)
 }
 
 export function checkpointHarness(state: HarnessSnapshot, summary: string, now: number): HarnessSnapshot {

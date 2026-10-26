@@ -181,6 +181,33 @@ Convex code may import browser-safe shared modules from `src/shared`. Convex mus
 
 ## Overlay Harness storage
 
+The canonical controller is `src/server/harness/runner.ts`. It runs inside a
+surface workflow and delegates model/tool iteration to `WorkflowAgent`, using
+`isLoopFinished()` with semantic suspension conditions rather than a tool-call
+limit. Surface IO ports supply authorization, context preparation, receipts,
+evidence, authenticated waits and child lifecycle operations, not another loop.
+`state-steps.ts` binds state IO to Convex through registered durable steps.
+
+Every run claims one immutable `workflowRunId` before dispatch. Duplicate starts
+cannot create a second worker. A child-only wait has a persisted status and can
+resume without recreating the children. Tool execution rechecks access after
+approval; returned SDK system messages are not replayed as conversation input.
+Instructions and current durable context are rebuilt on continuation instead.
+
+The controller is not yet connected to production surfaces. Its focused QA uses
+the real SDK with a mock provider, including more than twenty calls, natural early
+return, input suspension, approval/denial, revoked authorization, cancellation,
+budget refusal and no-progress recovery:
+
+```sh
+npx vitest run --config vitest.unit.config.mts src/server/harness/runner.test.ts
+npx vitest run --config vitest.config.mts convex/harnessRuns.convex.test.ts
+npx tsx --test packages/overlay-agent-runtime/src/harness-state.test.ts
+```
+
+Hosted acceptance still requires an isolated Preview with the exact PR SHA;
+there is no production Harness route to exercise yet.
+
 The standalone Overlay Harness state foundation is stored by `convex/harness/runs.ts` and
 `src/server/harness/ConvexHarnessRepository.ts`. The Convex handlers require the internal
 server secret and recheck the source resource's current access on every call; a future BFF

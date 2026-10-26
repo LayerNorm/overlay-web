@@ -7,6 +7,7 @@ import {
   admitHarnessChild,
   blockHarness,
   checkpointHarness,
+  claimHarnessExecution,
   createHarnessSnapshot,
   finishHarness,
   recordHarnessEvidence,
@@ -17,6 +18,7 @@ import {
   settleHarnessChild,
   terminateHarness,
   transitionHarnessStep,
+  waitForHarnessChildren,
   type HarnessChild,
   type HarnessEvidence,
   type HarnessPolicy,
@@ -121,6 +123,7 @@ const childValidator = v.object({
 })
 
 const operationValidator = v.union(
+  v.object({ type: v.literal('claim_execution'), workflowRunId: v.string() }),
   v.object({ type: v.literal('replace_plan'), steps: v.array(planInputValidator) }),
   v.object({
     type: v.literal('transition_step'),
@@ -147,6 +150,7 @@ const operationValidator = v.union(
     }),
   }),
   v.object({ type: v.literal('resume') }),
+  v.object({ type: v.literal('wait_for_children') }),
   v.object({
     type: v.literal('admit_child'),
     child: childValidator,
@@ -194,6 +198,7 @@ function metadataFromSnapshot(snapshot: HarnessSnapshot): HarnessMetadata {
     runId: snapshot.runId,
     rootRunId: snapshot.rootRunId,
     ...(snapshot.parentRunId === undefined ? {} : { parentRunId: snapshot.parentRunId }),
+    ...(snapshot.workflowRunId === undefined ? {} : { workflowRunId: snapshot.workflowRunId }),
     depth: snapshot.depth,
     goal: snapshot.goal,
     constraints: snapshot.constraints,
@@ -348,6 +353,7 @@ async function normalizeAndCheckSource(
   serverSecret: string,
 ): Promise<HarnessSource> {
   if ('conversationId' in source) {
+    if (typeof source.conversationId !== 'string') throw new Error('CONVERSATION_ACCESS_DENIED')
     const conversationId = ctx.db.normalizeId('conversations', source.conversationId)
     if (!conversationId) throw new Error('CONVERSATION_ACCESS_DENIED')
     const conversation = await ctx.db.get(conversationId)
@@ -668,6 +674,8 @@ async function applyReducer(
   evidenceToPersist?: HarnessEvidence
 }> {
   switch (operation.type) {
+    case 'claim_execution':
+      return { snapshot: claimHarnessExecution(current, operation.workflowRunId, now) }
     case 'replace_plan':
       return { snapshot: replaceHarnessPlan(current, operation.steps, now) }
     case 'transition_step':
@@ -692,6 +700,8 @@ async function applyReducer(
       return { snapshot: blockHarness(current, operation.blocker, now) }
     case 'resume':
       return { snapshot: resumeHarness(current, now) }
+    case 'wait_for_children':
+      return { snapshot: waitForHarnessChildren(current, now) }
     case 'admit_child': {
       const admission = childAdmission(current, operation)
       if (await findRun(ctx, admission.runId)) throw new Error('Harness child run id already exists.')

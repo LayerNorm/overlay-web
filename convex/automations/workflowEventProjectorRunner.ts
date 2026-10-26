@@ -42,9 +42,9 @@ export const runProjectionTick = internalAction({
       import("workflow/runtime"),
     ]);
 
-    let world: ReturnType<typeof getWorld> | null = null;
+    let world: Awaited<ReturnType<typeof getWorld>>;
     try {
-      world = getWorld();
+      world = await getWorld();
     } catch {
       // Workflow SDK not available in this environment
       return null;

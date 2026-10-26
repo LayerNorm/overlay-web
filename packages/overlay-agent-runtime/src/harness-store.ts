@@ -14,6 +14,7 @@ export type HarnessAdmission = {
 }
 
 export type HarnessOperation =
+  | { type: 'claim_execution'; workflowRunId: string }
   | { type: 'replace_plan'; steps: HarnessPlanInput[] }
   | { type: 'transition_step'; id: string; status: HarnessStepStatus; evidenceRefs?: string[]; skipReason?: string }
   | { type: 'record_evidence'; evidence: HarnessEvidence }
@@ -21,6 +22,7 @@ export type HarnessOperation =
   | { type: 'checkpoint'; summary: string }
   | { type: 'block'; blocker: NonNullable<HarnessSnapshot['blocker']> }
   | { type: 'resume' }
+  | { type: 'wait_for_children' }
   | { type: 'admit_child'; child: HarnessChild; goal: string; constraints: string[] }
   | { type: 'settle_child'; childRunId: string }
   | { type: 'finish' }
