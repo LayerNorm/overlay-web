@@ -41,21 +41,20 @@ function onlyChildrenRemain(state: HarnessSnapshot) {
   return state.children.some(child => child.status === 'running') && !hasRunnableHarnessMilestones(state)
 }
 
-// Called inside a surface's workflow, never inside a single durable step.
-// WorkflowAgent owns model/tool iteration; this controller owns task completion.
-export async function runOverlayHarness(input: HarnessExecutionInput, ports: HarnessExecutionPorts): Promise<HarnessExecutionResult> {
-  if (input.messages.some(message => message.role === 'system')) throw new Error('Supply trusted system content through harness instructions, not conversation messages.')
-  let messages = input.messages
-  const steps: StepResult<ToolSet>[] = []
-  const controls = new Set<string>(HARNESS_CONTROL_TOOLS)
-  if (Object.keys(input.tools).some(name => controls.has(name))) throw new Error('Surface tools cannot replace harness control tools.')
-  const initial = await ports.read()
-  let observedState = initial
-  if (isTerminal(initial)) return { outcome: 'finished', snapshot: initial, messages, steps }
-  if (!await ports.claim()) return { outcome: 'already_running', snapshot: await ports.read(), messages, steps }
-  const definitions = { ...input.tools, ...createHarnessControlTools(ports) }
+function assertNoControlToolReplacement(tools: ToolSet, controls: Set<string>): void {
+  if (Object.keys(tools).some(name => controls.has(name))) {
+    throw new Error('Surface tools cannot replace harness control tools.')
+  }
+}
+
+function wrapAuthorizedTools(
+  surfaceTools: ToolSet,
+  ports: HarnessExecutionPorts,
+  controls: Set<string>,
+): ToolSet {
+  const definitions = { ...surfaceTools, ...createHarnessControlTools(ports) }
   let toolTail: Promise<unknown> = Promise.resolve()
-  const tools: ToolSet = Object.fromEntries(Object.entries(definitions).sort(([a], [b]) => a.localeCompare(b)).map(([name, definition]) => {
+  return Object.fromEntries(Object.entries(definitions).sort(([a], [b]) => a.localeCompare(b)).map(([name, definition]) => {
     const execute = definition.execute
     return [name, !execute ? definition : {
       ...definition,
@@ -79,7 +78,10 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
       },
     }]
   }))
-  const toolDefinitions: LanguageModelV4FunctionTool[] = await Promise.all(Object.entries(tools).map(async ([name, definition]) => {
+}
+
+async function prepareToolDefinitions(tools: ToolSet): Promise<LanguageModelV4FunctionTool[]> {
+  return Promise.all(Object.entries(tools).map(async ([name, definition]) => {
     if (definition.type === 'provider' || typeof definition.description === 'function') {
       throw new Error('Harness tools must have prepared function schemas and descriptions.')
     }
@@ -90,6 +92,150 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
       providerOptions: definition.providerOptions,
     }
   }))
+}
+
+type WaitingStateOutcome =
+  | { kind: 'blocked'; snapshot: HarnessSnapshot }
+  | { kind: 'restart'; messages: ModelMessage[]; invocation: number; resetStagnation: boolean }
+
+type HarnessApprovalDecision = NonNullable<Awaited<ReturnType<HarnessExecutionPorts['waitForApproval']>>>[number]
+type ApprovalResumeOutcome =
+  | { kind: 'blocked'; snapshot: HarnessSnapshot }
+  | { kind: 'restart'; messages: ModelMessage[]; resetStagnation: boolean }
+
+async function handleWaitingState(
+  state: HarnessSnapshot,
+  messages: ModelMessage[],
+  ports: HarnessExecutionPorts,
+  invocation: number,
+): Promise<WaitingStateOutcome | null> {
+  if (state.status === 'waiting_for_children') {
+    await ports.waitForChildren(state.children.filter(child => child.status === 'running').map(child => child.id))
+    const current = await ports.read()
+    if (!isTerminal(current)) await ports.apply(`resume-children:${invocation}`, { type: 'resume' })
+    return { kind: 'restart', messages, invocation: invocation + (isTerminal(current) ? 0 : 1), resetStagnation: false }
+  }
+  if (state.status === 'running') return null
+  if (state.blocker?.kind !== 'input') return { kind: 'blocked', snapshot: state }
+  const reply = await ports.waitForInput(state)
+  if (!reply) return { kind: 'blocked', snapshot: await ports.read() }
+  const current = await ports.read()
+  if (isTerminal(current)) return { kind: 'restart', messages, invocation, resetStagnation: false }
+  await ports.apply(`resume-input:${invocation}`, { type: 'resume' })
+  return {
+    kind: 'restart',
+    messages: [...messages, ...reply],
+    invocation: invocation + 1,
+    resetStagnation: true,
+  }
+}
+
+function assertPendingApprovalsExecutable(pending: HarnessApprovalRequest[], tools: ToolSet): void {
+  if (pending.some(request => !tools[request.toolName]?.execute || !tools[request.toolName]?.needsApproval)) {
+    throw new Error('A tool returned without an executor or a supported approval policy.')
+  }
+}
+
+function assertApprovalDecisions(pending: HarnessApprovalRequest[], decisions: HarnessApprovalDecision[]): void {
+  if (decisions.length !== pending.length || new Set(decisions.map(item => item.approvalId)).size !== pending.length
+    || pending.some(request => !decisions.some(decision => decision.approvalId === request.approvalId))) {
+    throw new Error('Every pending approval needs exactly one authenticated decision.')
+  }
+}
+
+function appendApprovalMessages(
+  messages: ModelMessage[],
+  pending: HarnessApprovalRequest[],
+  decisions: HarnessApprovalDecision[],
+): ModelMessage[] {
+  return [...messages,
+    { role: 'assistant', content: pending.map(request => ({ type: 'tool-approval-request', approvalId: request.approvalId, toolCallId: request.toolCallId })) },
+    { role: 'tool', content: decisions.map(decision => ({ type: 'tool-approval-response', ...decision })) },
+  ]
+}
+
+async function resumePendingApprovals(
+  pending: HarnessApprovalRequest[],
+  tools: ToolSet,
+  messages: ModelMessage[],
+  ports: HarnessExecutionPorts,
+  segment: number,
+): Promise<ApprovalResumeOutcome> {
+  assertPendingApprovalsExecutable(pending, tools)
+  await ports.apply(`approval:${segment}`, { type: 'block', blocker: { kind: 'approval', question: 'Approval is required before executing these actions.' } })
+  const decisions = await ports.waitForApproval(pending)
+  if (!decisions) return { kind: 'blocked', snapshot: await ports.read() }
+  const state = await ports.read()
+  if (isTerminal(state)) return { kind: 'restart', messages, resetStagnation: false }
+  assertApprovalDecisions(pending, decisions)
+  const resumedMessages = appendApprovalMessages(messages, pending, decisions)
+  await ports.apply(`resume-approval:${segment}`, { type: 'resume' })
+  return { kind: 'restart', messages: resumedMessages, resetStagnation: true }
+}
+
+async function terminateOnProviderFailure(
+  state: HarnessSnapshot,
+  finishReason: string | undefined,
+  ports: HarnessExecutionPorts,
+  segment: number,
+): Promise<boolean> {
+  if (!isTerminal(state) && (finishReason === 'content-filter' || finishReason === 'error' || finishReason === 'other')) {
+    await ports.apply(`provider-failure:${segment}`, {
+      type: 'terminate', status: 'failed', reason: `The provider could not finish the response (${finishReason}).`,
+    })
+    return true
+  }
+  return false
+}
+
+type InvocationContinuation =
+  | { kind: 'finished'; snapshot: HarnessSnapshot }
+  | { kind: 'continue'; stagnantSegments: number }
+
+async function finishOrCheckpointInvocation(
+  state: HarnessSnapshot,
+  ports: HarnessExecutionPorts,
+  segment: number,
+  before: string,
+  invocationSteps: StepResult<ToolSet>[],
+  truncatedResponse: boolean,
+  stagnantSegments: number,
+): Promise<InvocationContinuation> {
+  if (onlyChildrenRemain(state)) {
+    await ports.apply(`wait-children:${segment}`, { type: 'wait_for_children' })
+    return { kind: 'continue', stagnantSegments }
+  }
+  if (!truncatedResponse && !harnessCompletionIssues(state).length) {
+    const resultSummary = invocationSteps.at(-1)?.text?.trim()
+    const completed = await ports.apply(`finish:${segment}`, {
+      type: 'finish', ...(resultSummary ? { resultSummary: resultSummary.slice(0, 8_000) } : {}),
+    })
+    return { kind: 'finished', snapshot: completed }
+  }
+  const nextStagnantSegments = harnessProgressFingerprint(state) === before ? stagnantSegments + 1 : 0
+  if (nextStagnantSegments >= 2) {
+    await ports.apply(`stuck:${segment}`, { type: 'block', blocker: { kind: 'stuck', question: 'No durable progress after two continuation attempts. Review the plan or provide the missing input before retrying.' } })
+    return { kind: 'continue', stagnantSegments: nextStagnantSegments }
+  }
+  const summary = state.workingSummary || invocationSteps.at(-1)?.text?.trim() || ''
+  await ports.apply(`checkpoint:${segment}`, { type: 'checkpoint', summary: summary.slice(0, 8_000) })
+  return { kind: 'continue', stagnantSegments: nextStagnantSegments }
+}
+
+// Called inside a surface's workflow, never inside a single durable step.
+// WorkflowAgent owns model/tool iteration; this controller owns task completion.
+export async function runOverlayHarness(input: HarnessExecutionInput, ports: HarnessExecutionPorts): Promise<HarnessExecutionResult> {
+  if (input.messages.some(message => message.role === 'system')) throw new Error('Supply trusted system content through harness instructions, not conversation messages.')
+  let messages = input.messages
+  const steps: StepResult<ToolSet>[] = []
+  const controls = new Set<string>(HARNESS_CONTROL_TOOLS)
+  assertNoControlToolReplacement(input.tools, controls)
+  const initial = await ports.read()
+  let observedState = initial
+  if (isTerminal(initial)) return { outcome: 'finished', snapshot: initial, messages, steps }
+  if (!await ports.claim()) return { outcome: 'already_running', snapshot: await ports.read(), messages, steps }
+  const tools = wrapAuthorizedTools(input.tools, ports, controls)
+  const toolDefinitions = await prepareToolDefinitions(tools)
   const instructions = buildHarnessInstructions(input.instructions)
   let truncatedResponse = false
   let invocation = 0
@@ -97,24 +243,14 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
   let stagnantSegments = 0
 
   while (true) {
-    let state = await ports.read()
+    const state = await ports.read()
     if (isTerminal(state)) return { outcome: 'finished', snapshot: state, messages, steps }
-    if (state.status === 'waiting_for_children') {
-      await ports.waitForChildren(state.children.filter(child => child.status === 'running').map(child => child.id))
-      state = await ports.read()
-      if (isTerminal(state)) continue
-      await ports.apply(`resume-children:${invocation++}`, { type: 'resume' })
-      continue
-    }
-    if (state.status !== 'running') {
-      if (state.blocker?.kind !== 'input') return { outcome: 'blocked', snapshot: state, messages, steps }
-      const reply = await ports.waitForInput(state)
-      if (!reply) return { outcome: 'blocked', snapshot: await ports.read(), messages, steps }
-      state = await ports.read()
-      if (isTerminal(state)) continue
-      messages = [...messages, ...reply]
-      await ports.apply(`resume-input:${invocation++}`, { type: 'resume' })
-      stagnantSegments = 0
+    const waiting = await handleWaitingState(state, messages, ports, invocation)
+    if (waiting) {
+      if (waiting.kind === 'blocked') return { outcome: 'blocked', snapshot: waiting.snapshot, messages, steps }
+      messages = waiting.messages
+      invocation = waiting.invocation
+      if (waiting.resetStagnation) stagnantSegments = 0
       continue
     }
     const segment = invocation++
@@ -206,54 +342,24 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
     // from trusted instructions and current durable state on every invocation.
     messages = invocationMessages.filter(message => message.role !== 'system')
     steps.push(...invocationSteps)
-    state = await ports.read()
+    const updatedState = await ports.read()
     const finishReason = invocationSteps.at(-1)?.finishReason
-    if (!isTerminal(state) && (finishReason === 'content-filter' || finishReason === 'error' || finishReason === 'other')) {
-      await ports.apply(`provider-failure:${segment}`, {
-        type: 'terminate', status: 'failed', reason: `The provider could not finish the response (${finishReason}).`,
-      })
-      continue
-    }
+    if (await terminateOnProviderFailure(updatedState, finishReason, ports, segment)) continue
     truncatedResponse = finishReason === 'length'
-    if (state.status !== 'running') continue
+    if (updatedState.status !== 'running') continue
     if (pending.length) {
-      if (pending.some(request => !tools[request.toolName]?.execute || !tools[request.toolName]?.needsApproval)) {
-        throw new Error('A tool returned without an executor or a supported approval policy.')
+      const approval = await resumePendingApprovals(pending, tools, messages, ports, segment)
+      if (approval.kind === 'blocked') {
+        return { outcome: 'blocked', snapshot: approval.snapshot, messages, steps }
       }
-      await ports.apply(`approval:${segment}`, { type: 'block', blocker: { kind: 'approval', question: 'Approval is required before executing these actions.' } })
-      const decisions = await ports.waitForApproval(pending)
-      if (!decisions) return { outcome: 'blocked', snapshot: await ports.read(), messages, steps }
-      state = await ports.read()
-      if (isTerminal(state)) continue
-      if (decisions.length !== pending.length || new Set(decisions.map(item => item.approvalId)).size !== pending.length
-        || pending.some(request => !decisions.some(decision => decision.approvalId === request.approvalId))) {
-        throw new Error('Every pending approval needs exactly one authenticated decision.')
-      }
-      messages = [...messages,
-        { role: 'assistant', content: pending.map(request => ({ type: 'tool-approval-request', approvalId: request.approvalId, toolCallId: request.toolCallId })) },
-        { role: 'tool', content: decisions.map(decision => ({ type: 'tool-approval-response', ...decision })) },
-      ]
-      await ports.apply(`resume-approval:${segment}`, { type: 'resume' })
-      stagnantSegments = 0
+      messages = approval.messages
+      if (approval.resetStagnation) stagnantSegments = 0
       continue
     }
-    if (onlyChildrenRemain(state)) {
-      await ports.apply(`wait-children:${segment}`, { type: 'wait_for_children' })
-      continue
+    const continuation = await finishOrCheckpointInvocation(updatedState, ports, segment, before, invocationSteps, truncatedResponse, stagnantSegments)
+    if (continuation.kind === 'finished') {
+      return { outcome: 'finished', snapshot: continuation.snapshot, messages, steps }
     }
-    if (!truncatedResponse && !harnessCompletionIssues(state).length) {
-      const resultSummary = invocationSteps.at(-1)?.text?.trim()
-      const completed = await ports.apply(`finish:${segment}`, {
-        type: 'finish', ...(resultSummary ? { resultSummary: resultSummary.slice(0, 8_000) } : {}),
-      })
-      return { outcome: 'finished', snapshot: completed, messages, steps }
-    }
-    stagnantSegments = harnessProgressFingerprint(state) === before ? stagnantSegments + 1 : 0
-    if (stagnantSegments >= 2) {
-      await ports.apply(`stuck:${segment}`, { type: 'block', blocker: { kind: 'stuck', question: 'No durable progress after two continuation attempts. Review the plan or provide the missing input before retrying.' } })
-      continue
-    }
-    const summary = state.workingSummary || invocationSteps.at(-1)?.text?.trim() || ''
-    await ports.apply(`checkpoint:${segment}`, { type: 'checkpoint', summary: summary.slice(0, 8_000) })
+    stagnantSegments = continuation.stagnantSegments
   }
 }

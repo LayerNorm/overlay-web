@@ -20,11 +20,14 @@ export type PersonalHarnessModelDispatch = {
   contextWindow: number | null
 }
 
-// Runs inside the actual provider step. No credentials or resolved grants cross
-// its durable boundary; a bound dispatch is never automatically sent again.
-export async function authorizePersonalHarnessModelDispatch(reference: HarnessModelReference, options: LanguageModelV4CallOptions): Promise<void> {
-  const input = reference.personal
-  if (!input || reference.credentialOwnerId !== input.access.actorUserId || reference.allowLowBalanceFallback !== false) {
+type PersonalDispatchReference = NonNullable<HarnessModelReference['personal']>
+
+function assertPreparedDispatch(
+  reference: HarnessModelReference,
+  input: PersonalDispatchReference,
+  options: LanguageModelV4CallOptions,
+): void {
+  if (reference.credentialOwnerId !== input.access.actorUserId || reference.allowLowBalanceFallback !== false) {
     throw new FatalError('Personal model dispatch identity or routing is invalid.')
   }
   if (!Number.isSafeInteger(input.maxOutputTokens) || input.maxOutputTokens <= 0
@@ -33,12 +36,45 @@ export async function authorizePersonalHarnessModelDispatch(reference: HarnessMo
     || estimateHarnessInputTokens(options, input.contextWindow) > input.inputTokenBudget) {
     throw new FatalError('The model call exceeds its prepared token limits.')
   }
-  if (options.tools?.some(tool => tool.type === 'provider')) throw new FatalError('Provider-executed tools require separate spend authorization.')
+  if (options.tools?.some(tool => tool.type === 'provider')) {
+    throw new FatalError('Provider-executed tools require separate spend authorization.')
+  }
   for (const routing of [options.providerOptions?.gateway, options.providerOptions?.openrouter]) {
     if (routing?.models !== undefined && (!Array.isArray(routing.models) || routing.models.length > 0)) {
       throw new FatalError('Model fallback must be prepared and authorized before dispatch.')
     }
   }
+}
+
+async function claimPersonalModelDispatch(input: PersonalDispatchReference, modelId: string, operationId: string, billingReservationId: string | null): Promise<void> {
+  const repository = new ConvexHarnessRepository()
+  let claimed = false
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const current = await repository.get({ actorUserId: input.access.actorUserId, runId: input.access.runId })
+    if (current?.workflowRunId !== input.access.workflowRunId || current.modelReservation?.id !== input.receiptId || current.modelReservation.dispatch) {
+      throw new FatalError('Model dispatch has already been claimed or revoked.')
+    }
+    const result = await repository.apply({
+      actorUserId: input.access.actorUserId, runId: input.access.runId,
+      operationId: `${operationId}:dispatch`, expectedRevision: current.revision,
+      operation: { type: 'bind_model_dispatch', id: input.receiptId, modelId, billingReservationId },
+    })
+    if (result.conflict) continue
+    if (!result.applied) throw new FatalError('Model dispatch has already been claimed.')
+    claimed = true
+    break
+  }
+  if (!claimed) throw new FatalError('Model dispatch ownership is contended.')
+}
+
+// Runs inside the actual provider step. No credentials or resolved grants cross
+// its durable boundary; a bound dispatch is never automatically sent again.
+export async function authorizePersonalHarnessModelDispatch(reference: HarnessModelReference, options: LanguageModelV4CallOptions): Promise<void> {
+  const input = reference.personal
+  if (!input) {
+    throw new FatalError('Personal model dispatch identity or routing is invalid.')
+  }
+  assertPreparedDispatch(reference, input, options)
   const refreshed = await refreshPersonalHarnessAccess(input.access, {
     baseUrl: '', userId: input.access.actorUserId, workspaceId: input.access.workspaceId,
     conversationId: input.access.conversationId, effectiveModelId: reference.modelId,
@@ -65,24 +101,7 @@ export async function authorizePersonalHarnessModelDispatch(reference: HarnessMo
   })
   if (!reservation.ok) throw new FatalError(`Model budget reservation declined: ${reservation.code}`)
   try {
-    const repository = new ConvexHarnessRepository()
-    let claimed = false
-    for (let attempt = 0; attempt < 8; attempt++) {
-      const current = await repository.get({ actorUserId: input.access.actorUserId, runId: input.access.runId })
-      if (current?.workflowRunId !== input.access.workflowRunId || current.modelReservation?.id !== input.receiptId || current.modelReservation.dispatch) {
-        throw new FatalError('Model dispatch has already been claimed or revoked.')
-      }
-      const result = await repository.apply({
-        actorUserId: input.access.actorUserId, runId: input.access.runId,
-        operationId: `${operationId}:dispatch`, expectedRevision: current.revision,
-        operation: { type: 'bind_model_dispatch', id: input.receiptId, modelId: reference.modelId, billingReservationId: reservation.reservationId },
-      })
-      if (result.conflict) continue
-      if (!result.applied) throw new FatalError('Model dispatch has already been claimed.')
-      claimed = true
-      break
-    }
-    if (!claimed) throw new FatalError('Model dispatch ownership is contended.')
+    await claimPersonalModelDispatch(input, reference.modelId, operationId, reservation.reservationId)
   } catch (error) {
     await releaseProviderBudgetReservation({ userId: input.access.actorUserId, reservationId: reservation.reservationId,
       reason: 'Harness dispatch binding failed before provider execution.' })

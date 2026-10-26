@@ -205,6 +205,8 @@ policy, descendant cancellation, full tool-result retrieval and trusted verifica
 The local production build compiles the workflow, but this does not establish hosted
 Workflow/Convex execution. Exact-SHA isolated Preview smoke and browser QA remain
 required, and production Context/Plan/Queue UI remains gated on mockup approval.
+The Workflow compiler regenerates `src/app/.well-known/workflow/` during builds;
+its compiled route files are generated output and should not be committed.
 
 Canonical `AgentRun` status includes active `waiting_for_input` and
 `waiting_for_children` states. Each can resume to `running` or end as failed or

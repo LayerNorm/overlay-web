@@ -62,6 +62,44 @@ export type HarnessPromptCompaction = {
   summaryFailed: boolean
 }
 
+type HarnessPromptHistory = Exclude<LanguageModelV4Prompt[number], { role: 'system' }>[]
+
+function selectHarnessHistory(messages: HarnessPromptHistory): {
+  candidates: HarnessPromptHistory
+  retained: HarnessPromptHistory
+} | null {
+  const pending = new Set<string>()
+  let cut = 0
+  let latestUser = -1
+  for (let index = 0; index < messages.length; index++) {
+    const message = messages[index]
+    if (message.role === 'user') latestUser = index
+    for (const part of message.content) {
+      if (part.type === 'tool-call') pending.add(part.toolCallId)
+      if (part.type === 'tool-result') pending.delete(part.toolCallId)
+    }
+    if (!pending.size && index + 1 <= messages.length - PRESERVED_RECENT_MESSAGES) cut = index + 1
+  }
+  if (!cut) return null
+  const retained = messages.slice(cut)
+  if (latestUser >= 0 && latestUser < cut) retained.unshift(messages[latestUser])
+  const candidates = messages.slice(0, cut).filter((_message, index) => index !== latestUser)
+  return candidates.length ? { candidates, retained } : null
+}
+
+function serializeHarnessTranscript(candidates: HarnessPromptHistory): string {
+  return candidates.map(message => ({
+    role: message.role,
+    content: message.content.flatMap(part => {
+      if (part.type === 'text') return [{ type: 'text', text: part.text }]
+      if (part.type === 'tool-call') return [{ type: 'tool-call', text: JSON.stringify({ id: part.toolCallId, name: part.toolName, input: part.input }) }]
+      if (part.type === 'tool-result') return [{ type: 'tool-result', text: JSON.stringify({ id: part.toolCallId, name: part.toolName, output: part.output }) }]
+      if (part.type === 'file') return [{ type: 'file', text: `Attachment: ${part.mediaType}` }]
+      return []
+    }),
+  })).map(message => JSON.stringify(message)).join('\n')
+}
+
 // The caller supplies and meters the authorized summarizer. Provider prompts
 // must not pass through UIMessage trimming, which can split tool transactions.
 export async function compactHarnessPrompt(params: {
@@ -90,37 +128,14 @@ export async function compactHarnessPrompt(params: {
   })
   if (originalEstimatedTokens < usable * CONTEXT_TRIGGER_RATIO) return unchanged()
 
-  const pending = new Set<string>()
-  let cut = 0
-  let latestUser = -1
-  for (let index = 0; index < messages.length; index++) {
-    const message = messages[index]
-    if (message.role === 'user') latestUser = index
-    for (const part of message.content) {
-      if (part.type === 'tool-call') pending.add(part.toolCallId)
-      if (part.type === 'tool-result') pending.delete(part.toolCallId)
-    }
-    if (!pending.size && index + 1 <= messages.length - PRESERVED_RECENT_MESSAGES) cut = index + 1
-  }
-  if (!cut) return unchanged()
-  const retained = messages.slice(cut)
-  if (latestUser >= 0 && latestUser < cut) retained.unshift(messages[latestUser])
-  const candidates = messages.slice(0, cut).filter((_message, index) => index !== latestUser)
-  if (!candidates.length) return unchanged()
+  const history = selectHarnessHistory(messages)
+  if (!history) return unchanged()
+  const { candidates, retained } = history
   const remaining = usable - params.fixedOverheadTokens - estimateContextTokens(retained)
   const targetSummaryTokens = Math.min(2_000, Math.floor(params.contextWindow * CONTEXT_TARGET_RATIO), Math.floor(remaining / 2))
   if (targetSummaryTokens < 128) return unchanged()
 
-  const transcript = candidates.map(message => ({
-    role: message.role,
-    content: message.content.flatMap(part => {
-      if (part.type === 'text') return [{ type: 'text', text: part.text }]
-      if (part.type === 'tool-call') return [{ type: 'tool-call', text: JSON.stringify({ id: part.toolCallId, name: part.toolName, input: part.input }) }]
-      if (part.type === 'tool-result') return [{ type: 'tool-result', text: JSON.stringify({ id: part.toolCallId, name: part.toolName, output: part.output }) }]
-      if (part.type === 'file') return [{ type: 'file', text: `Attachment: ${part.mediaType}` }]
-      return []
-    }),
-  })).map(message => JSON.stringify(message)).join('\n')
+  const transcript = serializeHarnessTranscript(candidates)
 
   let summary = previousSummary
   try {
