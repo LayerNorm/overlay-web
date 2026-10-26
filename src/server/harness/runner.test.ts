@@ -91,6 +91,14 @@ const input = { instructions: 'Use the tools to perform the requested work.', me
 
 test('the real SDK runs beyond twenty tool calls and continues after early sign-off', async () => {
   const f = fixture()
+  let prepared = false
+  f.ports.prepareModel = async request => {
+    if (!prepared) {
+      prepared = true
+      await f.ports.apply('context-summary', { type: 'checkpoint', summary: 'Preserve the original constraints after compaction.' })
+    }
+    return { messages: request.messages, activeToolNames: request.toolNames, estimatedCostMicros: 0 }
+  }
   let reads = 0
   const provider = model(index => {
     if (index === 0) return [call('harness_set_plan', 'plan', { steps: plan })]
@@ -104,6 +112,8 @@ test('the real SDK runs beyond twenty tool calls and continues after early sign-
   expect(reads).toBe(24)
   expect(provider.doStreamCalls.length).toBeGreaterThan(20)
   expect(result.snapshot.continuations).toBeGreaterThan(0)
+  expect(JSON.stringify(provider.doStreamCalls[0].prompt)).toContain('Preserve the original constraints after compaction.')
+  expect(result.snapshot.workingSummary).toBe('Preserve the original constraints after compaction.')
   expect(provider.doStreamCalls.every(options => options.prompt.filter(message => message.role === 'system').length === 1)).toBe(true)
   expect(f.receipts.size).toBe(provider.doStreamCalls.length)
   expect(result.snapshot.usage.cacheReadTokens).toBe(provider.doStreamCalls.length * 8)

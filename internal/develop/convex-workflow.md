@@ -194,6 +194,16 @@ resume without recreating the children. Tool execution rechecks access after
 approval; returned SDK system messages are not replayed as conversation input.
 Instructions and current durable context are rebuilt on continuation instead.
 
+`compactHarnessPrompt` extends the existing chat compaction policy for SDK
+provider prompts. It preserves the latest user request and complete tool
+transactions, carries a rolling summary, and counts caller-supplied instruction,
+tool-schema and working-state overhead. Its summarizer must be authorized and
+metered by the caller. A failed summary retains the original history; an
+oversized prompt returns `fitsBudget: false` rather than silently losing evidence.
+Persist a successful summary before dispatch and reject an unfit prompt. The
+controller reloads working state after preparation and retains that summary at
+continuation checkpoints.
+
 The controller is not yet connected to production surfaces. Its focused QA uses
 the real SDK with a mock provider, including more than twenty calls, natural early
 return, input suspension, approval/denial, revoked authorization, cancellation,
@@ -201,6 +211,7 @@ budget refusal and no-progress recovery:
 
 ```sh
 npx vitest run --config vitest.unit.config.mts src/server/harness/runner.test.ts
+npx vitest run --config vitest.unit.config.mts src/server/harness/prompt-compaction.test.ts
 npx vitest run --config vitest.config.mts convex/harnessRuns.convex.test.ts
 npx tsx --test packages/overlay-agent-runtime/src/harness-state.test.ts
 ```
