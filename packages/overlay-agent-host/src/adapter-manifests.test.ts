@@ -12,14 +12,14 @@ test('built-in ACP targets are limited to Claude Code and Codex', () => {
     displayName: 'Codex',
     protocol: 'acp',
     command: 'npx',
-    args: ['-y', '@agentclientprotocol/codex-acp@2.2.2'],
+    args: ['-y', '@agentclientprotocol/codex-acp@2.3.0'],
   })
   assert.deepEqual(resolveAcpAdapterManifest('claude-code'), {
     id: 'claude-code',
     displayName: 'Claude Code',
     protocol: 'acp',
     command: 'npx',
-    args: ['-y', '@agentclientprotocol/claude-agent-acp@0.93.0'],
+    args: ['-y', '@agentclientprotocol/claude-agent-acp@0.97.0'],
   })
   assert.equal(resolveAcpAdapterManifest('hermes'), undefined)
 })

@@ -183,8 +183,8 @@ BYO branch selects the harness first, filters approved environments by advertise
 records an explicitly granted default working directory. Creating an environment stays inside the same editor
 and returns directly to the binding step after phrase and root approval. A failed
 binding retry edits the already-durable agent identity rather than creating a duplicate. The host
-ships data-only manifests for Codex (`@agentclientprotocol/codex-acp@2.2.2`) and Claude Code
-(`@agentclientprotocol/claude-agent-acp@0.93.0`). These are the only product-supported built-in
+ships data-only manifests for Codex (`@agentclientprotocol/codex-acp@2.3.0`) and Claude Code
+(`@agentclientprotocol/claude-agent-acp@0.97.0`). These are the only product-supported built-in
 targets. Generic custom ACP commands remain configurable for self-hosted hosts. Adding another
 product target requires an explicit support decision and conformance fixtures, not a product
 binding inferred from an environment advertisement. The built-in user-owned adapter IDs live in
@@ -948,8 +948,8 @@ flowchart LR
     Host["Agent Host"]
     Codex["Codex manifest"]
     Claude["Claude Code manifest"]
-    CodexProcess["npx -y<br/>@agentclientprotocol/codex-acp@2.2.2"]
-    ClaudeProcess["npx -y<br/>@agentclientprotocol/claude-agent-acp@0.93.0"]
+    CodexProcess["npx -y<br/>@agentclientprotocol/codex-acp@2.3.0"]
+    ClaudeProcess["npx -y<br/>@agentclientprotocol/claude-agent-acp@0.97.0"]
     Session["ACP session over stdio"]
 
     Host --> Codex --> CodexProcess --> Session
