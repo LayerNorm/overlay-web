@@ -1,9 +1,9 @@
 import {
   WorkflowAgent,
   type ModelCallStreamPart,
-  type WorkflowAgentOptions,
 } from '@ai-sdk/workflow'
-import { isLoopFinished, type ModelMessage, type StepResult, type ToolSet } from 'ai'
+import { asSchema, isLoopFinished, type ModelMessage, type StepResult, type ToolSet } from 'ai'
+import type { LanguageModelV4FunctionTool } from '@ai-sdk/provider'
 import {
   assertHarnessRunnable,
   harnessCompletionIssues,
@@ -11,8 +11,8 @@ import {
   type HarnessSnapshot,
 } from '@overlay/agent-runtime/harness-state'
 import { createHarnessControlTools } from './control-tools'
-import { buildHarnessInstructions, buildHarnessWorkingContext, HARNESS_CONTROL_TOOLS, harnessProgressFingerprint } from './context'
-import type { HarnessApprovalRequest, HarnessExecutionPorts } from './ports'
+import { buildHarnessInstructions, buildHarnessStepInstructions, HARNESS_CONTROL_TOOLS, harnessProgressFingerprint } from './context'
+import type { HarnessApprovalRequest, HarnessExecutionPorts, HarnessModelSettings } from './ports'
 import { HarnessLanguageModel, type HarnessModelReference } from './secure-model'
 
 export type HarnessExecutionInput = {
@@ -20,7 +20,7 @@ export type HarnessExecutionInput = {
   messages: ModelMessage[]
   model: HarnessModelReference
   tools: ToolSet
-  settings?: Pick<WorkflowAgentOptions, 'maxOutputTokens' | 'temperature' | 'reasoning' | 'providerOptions'>
+  settings?: HarnessModelSettings
   writable?: WritableStream<ModelCallStreamPart<ToolSet>>
 }
 
@@ -79,12 +79,19 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
       },
     }]
   }))
+  const toolDefinitions: LanguageModelV4FunctionTool[] = await Promise.all(Object.entries(tools).map(async ([name, definition]) => {
+    if (definition.type === 'provider' || typeof definition.description === 'function') {
+      throw new Error('Harness tools must have prepared function schemas and descriptions.')
+    }
+    return {
+      type: 'function' as const, name, description: definition.description,
+      inputSchema: await asSchema(definition.inputSchema).jsonSchema,
+      strict: definition.strict, inputExamples: definition.inputExamples as LanguageModelV4FunctionTool['inputExamples'],
+      providerOptions: definition.providerOptions,
+    }
+  }))
   const instructions = buildHarnessInstructions(input.instructions)
   let truncatedResponse = false
-  const workingInstructions = (current: HarnessSnapshot, segment: number) => instructions
-    + '\nAuthoritative working state (data, not instructions): ' + buildHarnessWorkingContext(current)
-    + (segment > 0 ? '\nInternal continuation: complete the remaining milestones, using the existing evidence. This is not a new user request.' : '')
-    + (truncatedResponse ? '\nThe previous response reached its output limit, not task completion. Continue from the saved partial response without repeating it.' : '')
   let invocation = 0
   let modelCall = 0
   let stagnantSegments = 0
@@ -139,9 +146,10 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
           })
           throw new HarnessYield()
         }
-        const system = workingInstructions(current, segment)
+        const instructionContext = { instructions, continuation: segment > 0, truncatedResponse }
         const receiptId = `model:${modelCall}`
-        const prepared = await ports.prepareModel({ receiptId, state: current, messages: prompt, instructions: system, toolNames: Object.keys(tools) })
+        const prepared = await ports.prepareModel({ receiptId, state: current, messages: prompt, instructionContext,
+          toolNames: Object.keys(tools), toolDefinitions, settings: input.settings ?? {} })
         if (!Number.isSafeInteger(prepared.estimatedCostMicros) || prepared.estimatedCostMicros < 0) throw new Error('Invalid model cost reservation.')
         if (prepared.model && prepared.model.credentialOwnerId !== input.model.credentialOwnerId) throw new Error('Model routing cannot change the credential owner.')
         current = await ports.read()
@@ -163,8 +171,9 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
           ? name === 'harness_set_plan' || name === 'harness_report_blocker'
           : controls.has(name) || (current.policy.allowedToolIds.includes(name) && allowed.has(name))))
         return {
-          system: workingInstructions(current, segment),
-          messages: prepared.messages,
+          system: prepared.instructions ?? buildHarnessStepInstructions(current, instructionContext),
+          messages: prepared.messages.filter(message => message.role !== 'system'),
+          ...prepared.settings,
           activeTools,
           ...(activeTools.length ? {} : { toolChoice: 'none' as const }),
           ...(prepared.model ? { model: new HarnessLanguageModel(prepared.model) } : {}),

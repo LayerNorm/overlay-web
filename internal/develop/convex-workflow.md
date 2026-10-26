@@ -267,6 +267,23 @@ subscription and ZDR policy without topping up or requiring unreserved funds.
 A model hold must not disable authorized tools while the SDK executes them.
 Each model or billable tool operation still reserves its own spend before use.
 
+`createPersonalHarnessExecutionPorts` connects state ownership, root request
+admission, tool reauthorization, model preparation and usage settlement. Surface
+adapters still supply authenticated waits, child lifecycle and tool observations.
+Preparation receives stable JSON function schemas and trusted instruction context,
+then returns the exact instructions and settings used for the quoted prompt.
+This prevents a later working-state rebuild from changing the authorized input.
+The default 32k working-context policy is not reported as provider capacity:
+catalog capacity remains nullable in receipts. Explicit output limits and fresh
+ZDR routing are enforced during preparation and again at dispatch.
+
+Compaction summaries use the same secure model and `WorkflowAgent`, with separate
+`summary:<main-receipt>:<chunk>` holds and receipts. Each summary is settled before
+checkpointing or quoting the main call, without consuming another root request.
+Failed or truncated summaries preserve the original history and stop preparation;
+an unresolved summary billing hold cannot be followed by another paid call.
+The personal entrypoint and lifecycle migration is still pending.
+
 `compactHarnessPrompt` extends the existing chat compaction policy for SDK
 provider prompts. It preserves the latest user request and complete tool
 transactions, carries a rolling summary, and counts caller-supplied instruction,

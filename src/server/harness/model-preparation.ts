@@ -8,6 +8,17 @@ import { estimateHarnessInputTokens, forecastHarnessModelCost, hasHarnessCacheWr
 import { refreshPersonalHarnessAccess, type PersonalHarnessAccess } from './personal-access'
 import type { HarnessModelReference } from './secure-model'
 
+export async function readHarnessModelLimits(modelId: string): Promise<{ contextWindow: number | null; maxOutputTokens: number | null }> {
+  'use step'
+  const catalog = await getGatewayCatalogModel(modelId)
+  return {
+    contextWindow: catalog?.type === 'language' && Number.isSafeInteger(catalog.contextWindow) && catalog.contextWindow! > 0
+      ? catalog.contextWindow! : null,
+    maxOutputTokens: catalog?.type === 'language' && Number.isSafeInteger(catalog.maxTokens) && catalog.maxTokens! > 0
+      ? catalog.maxTokens! : null,
+  }
+}
+
 // Call after compiling the exact prompt and tool schemas. This quotes only;
 // dispatch reauthorizes and claims its account reservation inside the model step.
 export async function preparePersonalHarnessModel(input: {

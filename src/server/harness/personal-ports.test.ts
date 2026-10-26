@@ -1,0 +1,131 @@
+import { beforeEach, expect, test, vi } from 'vitest'
+import { MockLanguageModelV4 } from 'ai/test'
+import type { LanguageModelV4StreamPart } from '@ai-sdk/provider'
+import type { HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
+import * as state from '@overlay/agent-runtime/harness-state'
+import type { HarnessOperation } from '@overlay/agent-runtime/harness-store'
+import { createPersonalHarnessExecutionPorts } from './personal-ports'
+import { runOverlayHarness } from './runner'
+import { estimateHarnessInputTokens } from './model-forecast'
+
+const mocks = vi.hoisted(() => ({ read: vi.fn(), apply: vi.fn(), claim: vi.fn(), refresh: vi.fn(), catalog: vi.fn(),
+  model: vi.fn(), authorize: vi.fn(), settle: vi.fn(), admit: vi.fn() }))
+vi.mock('server-only', () => ({}))
+vi.mock('./personal-access', () => ({ refreshPersonalHarnessAccess: mocks.refresh }))
+vi.mock('@/server/ai/gateway/gateway-catalog', () => ({ getGatewayCatalogModel: mocks.catalog }))
+vi.mock('@/server/ai/model-runtime', () => ({ getLanguageModel: mocks.model }))
+vi.mock('./personal-model-dispatch', () => ({ authorizePersonalHarnessModelDispatch: mocks.authorize }))
+vi.mock('./settle-model-step', () => ({ settleHarnessModelUsage: mocks.settle }))
+vi.mock('./request-usage-step', () => ({ admitHarnessRequestUsage: mocks.admit }))
+vi.mock('./state-steps', () => ({ readHarnessState: mocks.read, applyHarnessOperation: mocks.apply,
+  createHarnessStatePorts: (reference: unknown) => ({ read: mocks.read, claim: mocks.claim,
+    apply: (id: string, operation: unknown) => mocks.apply(reference, id, operation), readEvidence: async () => null }),
+}))
+
+const access = { actorUserId: 'user', runId: 'run', workflowRunId: 'workflow', conversationId: 'conversation', agentRunId: 'delivery',
+  workspaceId: 'workspace', principalId: 'principal', authentication: { type: 'session' as const } }
+const context = { userId: 'user', workspaceId: 'workspace', conversationId: 'conversation', effectiveModelId: 'fixture/model',
+  baseUrl: 'https://example.test', memoryEnabled: true, requestedToolIds: [], turnId: 'turn', requestFingerprint: 'request' }
+const execution = { instructions: 'Read the requested records.', messages: [{ role: 'user' as const, content: 'Check the observations, but do not publish.' }],
+  tools: {}, model: { modelId: 'fixture/model', credentialOwnerId: 'user' }, settings: { maxOutputTokens: 100 } }
+const surface = { recordToolResult: vi.fn(), delegate: vi.fn(), readChild: vi.fn(), waitForChildren: vi.fn(), waitForInput: vi.fn(), waitForApproval: vi.fn() }
+let current: HarnessSnapshot
+
+beforeEach(() => {
+  vi.resetAllMocks()
+  current = state.claimHarnessExecution(state.createHarnessSnapshot({ runId: 'run', goal: 'Check observations', constraints: ['Do not publish'], policy: {
+    actorUserId: 'user', workspaceId: 'workspace', requiresPlan: false, allowedToolIds: [], maxCostMicros: 1_000_000,
+    deadlineAt: Date.now() + 60_000, maxDepth: 1, maxParallelChildren: 2,
+  } }, Date.now()), 'workflow', Date.now())
+  mocks.claim.mockResolvedValue(true)
+  mocks.read.mockImplementation(async () => current)
+  mocks.refresh.mockImplementation(async (_access, supplied) => ({ ...supplied, requiresZeroDataRetention: true }))
+  mocks.catalog.mockResolvedValue({ type: 'language', contextWindow: 64_000, maxTokens: 1_000,
+    pricing: { input: '0.000001', output: '0.000002' } })
+  mocks.apply.mockImplementation(async (_reference, _id, operation: HarnessOperation) => {
+    if (operation.type === 'reserve_model') current = state.reserveHarnessModel(current, operation.id, operation.maxCostMicros, Date.now())
+    else if (operation.type === 'checkpoint') current = state.checkpointHarness(current, operation.summary, Date.now())
+    else if (operation.type === 'finish') current = state.finishHarness(current, Date.now())
+    else throw new Error(`Unexpected operation: ${operation.type}`)
+    return current
+  })
+  mocks.authorize.mockImplementation(async (reference, options) => {
+    expect(estimateHarnessInputTokens(options, reference.personal.contextWindow)).toBeLessThanOrEqual(reference.personal.inputTokenBudget)
+    expect(options.maxOutputTokens).toBe(reference.personal.maxOutputTokens)
+    expect(options.providerOptions.gateway.zeroDataRetention).toBe(true)
+    expect(current.modelReservation?.id).toBe(reference.personal.receiptId)
+    current = state.bindHarnessModelDispatch(current, reference.personal.receiptId, { modelId: reference.modelId, billingReservationId: 'billing' }, Date.now())
+  })
+  mocks.settle.mockImplementation(async ({ receiptId, observation, contextWindow }) => {
+    current = state.recordHarnessReceipt(current, { ...observation, id: receiptId, contextWindow, costMicros: 120, costSource: 'provider' }, Date.now())
+    return current.latestReceipt
+  })
+})
+
+function provider(finishReason: 'stop' | 'length' = 'stop') {
+  const model = new MockLanguageModelV4({ doStream: async () => {
+    const text = current.modelReservation?.id.startsWith('summary:') ? 'Earlier records were read. Do not publish. Verify the final result.' : 'The observations are checked.'
+    const parts: LanguageModelV4StreamPart[] = [{ type: 'stream-start', warnings: [] }, { type: 'text-start', id: 'text' },
+      { type: 'text-delta', id: 'text', delta: text }, { type: 'text-end', id: 'text' },
+      { type: 'finish', finishReason: { unified: finishReason, raw: finishReason },
+        usage: { inputTokens: { total: 100, noCache: 100, cacheRead: 0, cacheWrite: 0 }, outputTokens: { total: 10, text: 10, reasoning: 0 } } }]
+    return { stream: new ReadableStream({ start(controller) { parts.forEach(part => controller.enqueue(part)); controller.close() } }) }
+  } })
+  mocks.model.mockResolvedValue(model)
+  return model
+}
+
+function history() {
+  return [...execution.messages, ...Array.from({ length: 8 }, () => ({ role: 'assistant' as const, content: 'Prior observation. '.repeat(180) })),
+    { role: 'assistant' as const, content: 'The records are ready to compare.' },
+    { role: 'assistant' as const, content: 'Check the final result without publishing.' }]
+}
+
+test('real SDK dispatch receives the quoted instructions, schemas, output cap and ZDR settings, with one root admission', async () => {
+  const model = provider()
+  const ports = createPersonalHarnessExecutionPorts({ access, context }, surface)
+  const result = await runOverlayHarness(execution, ports)
+  expect(result.snapshot.status).toBe('completed')
+  expect(model.doStreamCalls).toHaveLength(1)
+  expect(model.doStreamCalls[0].prompt.filter(message => message.role === 'system')).toHaveLength(1)
+  expect(model.doStreamCalls[0].tools?.map(tool => tool.name)).toContain('harness_set_plan')
+  expect(mocks.admit).toHaveBeenCalledExactlyOnceWith(access, 'fixture/model')
+  expect(mocks.settle).toHaveBeenCalledWith(expect.objectContaining({ receiptId: 'model:0', contextWindow: 64_000 }))
+  expect(mocks.admit.mock.invocationCallOrder[0]).toBeLessThan(mocks.authorize.mock.invocationCallOrder[0])
+  expect(current.modelReservation).toBeUndefined()
+})
+
+test('compaction uses separately reserved and settled SDK calls before the main quote, without extra request admission', async () => {
+  const model = provider()
+  const ports = createPersonalHarnessExecutionPorts({ access, context, contextBudgetTokens: 8_192 }, surface)
+  const result = await runOverlayHarness({ ...execution, messages: history() }, ports)
+  expect(result.snapshot.status).toBe('completed')
+  expect(result.snapshot.workingSummary).toContain('Do not publish')
+  expect(model.doStreamCalls.length).toBeGreaterThan(1)
+  expect(mocks.settle.mock.calls.slice(0, -1).every(([call]) => call.receiptId.startsWith('summary:model:0:'))).toBe(true)
+  expect(mocks.settle.mock.calls.at(-1)?.[0].receiptId).toBe('model:0')
+  expect(JSON.stringify(model.doStreamCalls.at(-1)?.prompt)).toContain(result.snapshot.workingSummary)
+  expect(JSON.stringify(model.doStreamCalls.at(-1)?.prompt)).not.toContain('Prior observation. '.repeat(10))
+  expect(mocks.admit).toHaveBeenCalledTimes(1)
+  expect(mocks.settle).toHaveBeenCalledTimes(model.doStreamCalls.length)
+  expect(current.modelReservation).toBeUndefined()
+})
+
+test.each(['length', 'billing'] as const)('failed compaction (%s) cannot dispatch the main call or discard history', async failure => {
+  const model = provider(failure === 'length' ? 'length' : 'stop')
+  if (failure === 'billing') mocks.settle.mockRejectedValue(new Error('Billing unavailable'))
+  const ports = createPersonalHarnessExecutionPorts({ access, context, contextBudgetTokens: 8_192 }, surface)
+  await expect(runOverlayHarness({ ...execution, messages: history() }, ports)).rejects.toThrow(/safely compacted/)
+  expect(model.doStreamCalls).toHaveLength(1)
+  expect(current.workingSummary).toBe('')
+  if (failure === 'billing') expect(current.modelReservation?.dispatch).toBeDefined()
+  else expect(current.modelReservation).toBeUndefined()
+})
+
+test('failed ownership does not authorize or admit another request', async () => {
+  mocks.claim.mockResolvedValue(false)
+  const result = await runOverlayHarness(execution, createPersonalHarnessExecutionPorts({ access, context }, surface))
+  expect(result.outcome).toBe('already_running')
+  expect(mocks.refresh).not.toHaveBeenCalled()
+  expect(mocks.admit).not.toHaveBeenCalled()
+})
