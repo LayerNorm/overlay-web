@@ -24,7 +24,7 @@ export type PersonalHarnessAccess = HarnessExecutionReference & {
 // a durable replay must not reuse a permission decision made before a wait.
 export async function refreshPersonalHarnessAccess(
   access: PersonalHarnessAccess,
-  context: PersonalChatWorkToolingContext,
+  context: Omit<PersonalChatWorkToolingContext, 'entitlements' | 'paid'>,
   toolName?: string,
 ): Promise<PersonalChatWorkToolingContext> {
   if (context.userId !== access.actorUserId || context.workspaceId !== access.workspaceId

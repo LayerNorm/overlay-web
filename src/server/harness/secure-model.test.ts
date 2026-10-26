@@ -4,8 +4,10 @@ import type { LanguageModelV4CallOptions, LanguageModelV4GenerateResult } from '
 import { WORKFLOW_DESERIALIZE, WORKFLOW_SERIALIZE } from '@workflow/serde'
 import { getLanguageModel } from '@/server/ai/model-runtime'
 import { HarnessLanguageModel } from './secure-model'
+import { authorizePersonalHarnessModelDispatch, type PersonalHarnessModelDispatch } from './personal-model-dispatch'
 
 vi.mock('@/server/ai/model-runtime', () => ({ getLanguageModel: vi.fn() }))
+vi.mock('./personal-model-dispatch', () => ({ authorizePersonalHarnessModelDispatch: vi.fn() }))
 
 const reference = {
   modelId: 'fixture/model',
@@ -27,7 +29,31 @@ const result: LanguageModelV4GenerateResult = {
   warnings: [],
 }
 
-beforeEach(() => { vi.mocked(getLanguageModel).mockReset() })
+beforeEach(() => { vi.mocked(getLanguageModel).mockReset(); vi.mocked(authorizePersonalHarnessModelDispatch).mockReset() })
+
+const personal: PersonalHarnessModelDispatch = {
+  access: { actorUserId: 'fixture-user', runId: 'run', workflowRunId: 'workflow', conversationId: 'conversation',
+    workspaceId: 'workspace', principalId: 'principal', agentRunId: 'delivery', authentication: { type: 'api-key', apiKeyId: 'key-reference' } },
+  receiptId: 'model:0', memoryEnabled: true, requestFingerprint: 'fingerprint', inputTokenBudget: 10_000,
+  maxOutputTokens: 100, contextWindow: 100_000,
+}
+
+test('personal dispatch serializes only references, and reauthorizes before resolving provider credentials', async () => {
+  const guarded = new HarnessLanguageModel({ ...reference, personal: { ...personal,
+    access: { ...personal.access, accessToken: 'fixture-secret', authentication: { ...personal.access.authentication, rawKey: 'fixture-secret' } },
+  } } as typeof reference & { personal: PersonalHarnessModelDispatch })
+  const serialized = HarnessLanguageModel[WORKFLOW_SERIALIZE](guarded)
+  expect(serialized.personal).toEqual(personal)
+  expect(JSON.stringify(serialized)).not.toContain('fixture-secret')
+  vi.mocked(authorizePersonalHarnessModelDispatch).mockRejectedValueOnce(new Error('revoked'))
+  await expect(guarded.doGenerate(options)).rejects.toThrow('revoked')
+  expect(getLanguageModel).not.toHaveBeenCalled()
+  vi.mocked(getLanguageModel).mockResolvedValue(new MockLanguageModelV4({ doGenerate: result }))
+  await guarded.doGenerate(options)
+  expect(authorizePersonalHarnessModelDispatch).toHaveBeenCalledTimes(2)
+  expect(HarnessLanguageModel.prototype.doStream).toHaveProperty('maxRetries', 0)
+  expect(HarnessLanguageModel.prototype.doGenerate).toHaveProperty('maxRetries', 0)
+})
 
 test('serialization contains references only and does not resolve credentials', () => {
   const model = new HarnessLanguageModel({ ...reference, apiKey: 'fixture-secret' } as typeof reference)

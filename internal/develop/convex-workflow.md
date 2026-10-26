@@ -249,6 +249,17 @@ writes a token audit with unknown external cost, without an Overlay charge. A
 failed account write leaves the harness hold unresolved. Production entrypoint
 wiring remains pending.
 
+Personal `HarnessLanguageModel` references can carry an allowlisted dispatch
+reference, without credentials or persisted entitlements. Inside the provider
+step it refreshes access, checks prepared token limits and a fresh conservative
+catalog forecast, reserves account funds, atomically claims dispatch, and marks
+the account hold started. A replayed claim cannot redispatch even for free/BYOK
+calls. Provider failures retain the hold for reconciliation. Routing fallbacks
+must be selected and authorized during preparation, not hidden in provider
+options. Provider-executed tools and unpriced cache configurations fail closed.
+Text input estimates include byte/protocol overhead; media uses the known model
+context limit. These are spending forecasts, not provider token measurements.
+
 `compactHarnessPrompt` extends the existing chat compaction policy for SDK
 provider prompts. It preserves the latest user request and complete tool
 transactions, carries a rolling summary, and counts caller-supplied instruction,
