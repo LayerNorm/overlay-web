@@ -2,8 +2,8 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   admitHarnessChild, assertHarnessRunnable, blockHarness, checkpointHarness, createHarnessSnapshot,
-  currentHarnessContext, finishHarness, recordHarnessEvidence, recordHarnessReceipt,
-  replaceHarnessPlan, settleHarnessChild, transitionHarnessStep, type HarnessChild, type HarnessEvidence,
+  currentHarnessContext, finishHarness, recordHarnessEvidence, recordHarnessReceipt, recordHarnessChildReceipt,
+  replaceHarnessPlan, settleHarnessChild, terminateHarness, transitionHarnessStep, type HarnessChild, type HarnessEvidence,
   type HarnessPlanInput, type HarnessReceipt,
 } from './harness-state'
 
@@ -131,4 +131,56 @@ test('joining a child charges usage once, releases unused budget and preserves a
   assert.equal(settleHarnessChild(state, worker, now), state)
   assertHarnessRunnable(state, now, 60)
   assert.throws(() => assertHarnessRunnable(state, now, 61), /spending/)
+})
+
+test('child receipts reserve only unspent budget, join without double counting, and reconcile after cancellation', () => {
+  let parent = admitHarnessChild(replaceHarnessPlan(make(), steps, now), child('first', 'read', 60), now)
+  const receipt: HarnessReceipt = {
+    id: 'child-call', modelId: 'model', provider: 'provider', inputTokens: 100, outputTokens: 10,
+    reasoningTokens: 2, cacheReadTokens: 80, cacheWriteTokens: 5, contextWindow: 1_000, costMicros: 40,
+  }
+  const parentReceipt = { ...receipt, id: 'parent-call', inputTokens: 200, costMicros: 10 }
+  parent = recordHarnessReceipt(parent, parentReceipt, now)
+  const previous = parent
+  parent = recordHarnessChildReceipt(parent, 'first', receipt, now)
+  assert.equal(previous.children[0]!.accountedUsage, undefined)
+  assert.equal(parent.usage.costMicros, 50)
+  assert.equal(parent.usage.inputTokens, 300)
+  assert.equal(parent.latestReceipt!.id, 'parent-call')
+  assert.equal(parent.progressRevision, previous.progressRevision)
+  assertHarnessRunnable(parent, now, 30)
+  assert.throws(() => assertHarnessRunnable(parent, now, 31), /spending/)
+
+  let worker = createHarnessSnapshot({ runId: 'first', parentRunId: 'root', rootRunId: 'root', depth: 1,
+    goal: 'Read source', constraints: [], policy: { ...parent.policy, requiresPlan: false, maxCostMicros: 60 },
+  }, now)
+  worker.policy.allowedToolIds = ['read']
+  worker = finishHarness(recordHarnessReceipt(worker, receipt, now), now)
+  parent = settleHarnessChild(parent, worker, now)
+  assert.equal(parent.usage.costMicros, 50)
+  assert.equal(parent.usage.inputTokens, 300)
+  assert.equal(parent.usage.cacheReadTokens, 160)
+  assert.equal(parent.usage.reasoningTokens, 4)
+  assertHarnessRunnable(parent, now, 50)
+
+  parent = terminateHarness(parent, 'cancelled', 'Stopped by user', now)
+  const settled = parent
+  parent = recordHarnessChildReceipt(parent, 'first', { ...receipt, id: 'late', costMicros: 5 }, now)
+  assert.equal(parent.status, 'cancelled')
+  assert.equal(parent.usage.costMicros, 55)
+  assert.equal(parent.usage.inputTokens, 400)
+  assert.equal(parent.children[0]!.costMicros, 45)
+  assert.equal(settled.children[0]!.costMicros, 40)
+  assert.equal(settled.children[0]!.accountedUsage!.costMicros, 40)
+  assert.equal(parent.latestReceipt!.id, 'parent-call')
+})
+
+test('reconciliation does not let child overspend create a negative reservation', () => {
+  let parent = admitHarnessChild(replaceHarnessPlan(make(), steps, now), child('first', 'read', 60), now)
+  parent = recordHarnessChildReceipt(parent, 'first', {
+    id: 'overrun', modelId: 'model', provider: 'provider', inputTokens: 1, outputTokens: 1,
+    reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, contextWindow: null, costMicros: 70,
+  }, now)
+  assertHarnessRunnable(parent, now, 30)
+  assert.throws(() => assertHarnessRunnable(parent, now, 31), /spending/)
 })

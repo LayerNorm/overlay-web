@@ -1,0 +1,560 @@
+import { beforeAll, describe, expect, test } from 'vitest'
+import { convexTest } from 'convex-test'
+import { makeFunctionReference } from 'convex/server'
+import type {
+  HarnessAdmission,
+  HarnessMutationResult,
+  HarnessOperation,
+} from '../packages/overlay-agent-runtime/src/harness-store'
+import type { HarnessSnapshot } from '../packages/overlay-agent-runtime/src/harness-state'
+import schema from './schema'
+
+const modules = import.meta.glob('./**/*.ts')
+const secret = 'harness-storage-test-secret'
+
+beforeAll(() => { process.env.INTERNAL_API_SECRET = secret })
+
+const mutation = (name: string) => makeFunctionReference<'mutation'>(`harness/runs:${name}`)
+const query = (name: string) => makeFunctionReference<'query'>(`harness/runs:${name}`)
+type Convex = ReturnType<typeof convexTest>
+
+async function seedConversation(convex: Convex, userId = 'alice', workspaceId?: string) {
+  const now = Date.now()
+  return await convex.run(ctx => ctx.db.insert('conversations', {
+    userId,
+    ...(workspaceId ? { workspaceId, conversationType: 'personal' as const } : {}),
+    title: 'Harness source',
+    lastModified: now,
+    createdAt: now,
+    updatedAt: now,
+    lastMode: 'act',
+    askModelIds: ['fixture/model'],
+    actModelId: 'fixture/model',
+  }))
+}
+
+function admission(runId: string, conversationId: string, overrides: Partial<HarnessAdmission['policy']> = {}): HarnessAdmission {
+  return {
+    runId,
+    goal: 'Complete the requested work.',
+    constraints: ['Preserve the source scope.'],
+    policy: {
+      actorUserId: 'alice',
+      allowedToolIds: ['tool:read', 'tool:write'],
+      requiresPlan: true,
+      deadlineAt: Date.now() + 60_000,
+      maxCostMicros: 1_000,
+      maxParallelChildren: 2,
+      maxDepth: 2,
+      ...overrides,
+    },
+    source: { conversationId },
+  }
+}
+
+async function admit(convex: Convex, input: HarnessAdmission, serverSecret = secret) {
+  return await convex.mutation(mutation('admit'), { ...input, serverSecret }) as HarnessSnapshot
+}
+
+async function apply(
+  convex: Convex,
+  input: HarnessAdmission,
+  operationId: string,
+  expectedRevision: number,
+  operation: HarnessOperation,
+  actorUserId = input.policy.actorUserId,
+  serverSecret = secret,
+) {
+  return await convex.mutation(mutation('apply'), {
+    actorUserId,
+    runId: input.runId,
+    operationId,
+    expectedRevision,
+    operation,
+    serverSecret,
+  }) as HarnessMutationResult
+}
+
+async function get(convex: Convex, runId: string, actorUserId = 'alice', serverSecret = secret) {
+  return await convex.query(query('get'), { actorUserId, runId, serverSecret }) as HarnessSnapshot | null
+}
+
+function oneStep(id: string, requiresVerification = false) {
+  return [{
+    id,
+    title: `Complete ${id}`,
+    dependsOn: [],
+    acceptanceCriteria: ['The milestone is complete.'],
+    requiresVerification,
+  }]
+}
+
+describe('durable harness runs', () => {
+  test('round-trips normalized plans and requires current independent verification', async () => {
+    const convex = convexTest(schema, modules)
+    const conversationId = await seedConversation(convex)
+    const input = admission('run-plan', conversationId)
+    await admit(convex, input)
+
+    const plan = await apply(convex, input, 'plan', 0, { type: 'replace_plan', steps: oneStep('inspect', true) })
+    expect(plan.snapshot.planRevision).toBe(1)
+    expect(plan.snapshot.plan[0]).toMatchObject({ id: 'inspect', status: 'pending', evidenceRefs: [] })
+
+    const firstEvidence = {
+      id: 'tool-output',
+      kind: 'tool_result' as const,
+      summary: 'The source was inspected.',
+      source: 'tool:read',
+      verdict: 'observed' as const,
+      createdAt: Date.now(),
+    }
+    const recorded = await apply(convex, input, 'tool-output', 1, { type: 'record_evidence', evidence: firstEvidence })
+    expect(recorded.snapshot.revision).toBe(2)
+    await expect(apply(convex, input, 'premature-completion', 2, {
+      type: 'transition_step',
+      id: 'inspect',
+      status: 'done',
+      evidenceRefs: ['tool-output'],
+    })).rejects.toThrow(/Independent verification/)
+
+    const verification = {
+      id: 'verification',
+      kind: 'verification' as const,
+      summary: 'An independent check passed.',
+      source: 'reviewer:independent',
+      verdict: 'passed' as const,
+      createdAt: Date.now(),
+      verification: { stepId: 'inspect', planRevision: 1 },
+    }
+    await apply(convex, input, 'verification', 2, { type: 'record_evidence', evidence: verification })
+    const completed = await apply(convex, input, 'complete-inspect', 3, {
+      type: 'transition_step',
+      id: 'inspect',
+      status: 'done',
+      evidenceRefs: ['tool-output', 'verification'],
+    })
+    expect(completed.snapshot.plan[0]?.status).toBe('done')
+
+    const fresh = await get(convex, input.runId)
+    expect(fresh?.plan).toEqual(completed.snapshot.plan)
+    expect(fresh?.evidence.map(item => item.id)).toEqual(['tool-output', 'verification'])
+    const persisted = await convex.run(async ctx => ({
+      planRows: await ctx.db.query('harnessPlanSteps').withIndex('by_runId', q => q.eq('runId', input.runId)).collect(),
+      revisions: await ctx.db.query('harnessPlanRevisions')
+        .withIndex('by_runId_planRevision', q => q.eq('runId', input.runId).eq('planRevision', 1)).collect(),
+      metadata: await ctx.db.query('harnessRuns').withIndex('by_runId', q => q.eq('runId', input.runId)).unique(),
+    }))
+    expect(persisted.planRows).toHaveLength(1)
+    expect(persisted.revisions).toHaveLength(1)
+    expect(JSON.parse(persisted.metadata!.metadataJson)).not.toHaveProperty('plan')
+    expect(JSON.parse(persisted.metadata!.metadataJson)).not.toHaveProperty('evidence')
+    expect(JSON.parse(persisted.metadata!.metadataJson)).not.toHaveProperty('children')
+  })
+
+  test('checks operation idempotency before CAS and leaves stale mutations without writes', async () => {
+    const convex = convexTest(schema, modules)
+    const input = admission('run-cas', await seedConversation(convex))
+    await admit(convex, input)
+
+    const operation: HarnessOperation = { type: 'replace_plan', steps: oneStep('first') }
+    const applied = await apply(convex, input, 'same-operation', 0, operation)
+    expect(applied.applied).toBe(true)
+    const replay = await apply(convex, input, 'same-operation', 0, operation)
+    expect(replay).toMatchObject({ applied: false, conflict: false, snapshot: { revision: 1 } })
+    await expect(apply(convex, input, 'same-operation', 1, {
+      type: 'replace_plan',
+      steps: oneStep('different'),
+    })).rejects.toThrow(/HARNESS_OPERATION_ID_CONFLICT/)
+
+    const stale = await apply(convex, input, 'stale-checkpoint', 0, { type: 'checkpoint', summary: 'stale' })
+    expect(stale).toMatchObject({ applied: false, conflict: true, snapshot: { revision: 1 } })
+    const persisted = await convex.run(async ctx => ({
+      operations: await ctx.db.query('harnessOperations')
+        .withIndex('by_runId_operationId', q => q.eq('runId', input.runId)).collect(),
+      checkpoints: await ctx.db.query('harnessCheckpoints')
+        .withIndex('by_runId_revision', q => q.eq('runId', input.runId)).collect(),
+      evidence: await ctx.db.query('harnessEvidence')
+        .withIndex('by_runId_createdAt', q => q.eq('runId', input.runId)).collect(),
+    }))
+    expect(persisted.operations).toHaveLength(1)
+    expect(persisted.checkpoints).toHaveLength(0)
+    expect(persisted.evidence).toHaveLength(0)
+  })
+
+  test('deduplicates receipt A, B, A across operation ids', async () => {
+    const convex = convexTest(schema, modules)
+    const input = admission('run-receipts', await seedConversation(convex))
+    await admit(convex, input)
+    const receiptA = {
+      id: 'receipt-a', modelId: 'fixture/a', provider: 'fixture',
+      inputTokens: 10, outputTokens: 2, reasoningTokens: 1, cacheReadTokens: 3, cacheWriteTokens: 0,
+      contextWindow: 1_000, costMicros: 100,
+    }
+    const receiptB = {
+      id: 'receipt-b', modelId: 'fixture/b', provider: 'fixture',
+      inputTokens: 20, outputTokens: 4, reasoningTokens: 2, cacheReadTokens: 5, cacheWriteTokens: 1,
+      contextWindow: null, costMicros: 200,
+    }
+    await apply(convex, input, 'receipt-a-first', 0, { type: 'record_receipt', receipt: receiptA })
+    await apply(convex, input, 'receipt-b', 1, { type: 'record_receipt', receipt: receiptB })
+    const duplicateA = await apply(convex, input, 'receipt-a-again', 2, { type: 'record_receipt', receipt: receiptA })
+    expect(duplicateA).toMatchObject({ applied: false, conflict: false })
+    expect(duplicateA.snapshot.usage).toEqual({
+      inputTokens: 30,
+      outputTokens: 6,
+      reasoningTokens: 3,
+      cacheReadTokens: 8,
+      cacheWriteTokens: 1,
+      costMicros: 300,
+    })
+    const persisted = await convex.run(async ctx => ctx.db.query('harnessReceipts')
+      .withIndex('by_runId_createdAt', q => q.eq('runId', input.runId)).collect())
+    expect(persisted).toHaveLength(2)
+  })
+
+  test('settles a normally completed child without charging propagated receipts twice', async () => {
+    const convex = convexTest(schema, modules)
+    const input = admission('run-settlement-root', await seedConversation(convex), { maxParallelChildren: 2 })
+    await admit(convex, input)
+    await apply(convex, input, 'settlement-root-plan', 0, {
+      type: 'replace_plan', steps: oneStep('delegated'),
+    })
+    const childInput = { ...input, runId: 'run-settlement-child' }
+    await apply(convex, input, 'settlement-admit-child', 1, {
+      type: 'admit_child',
+      child: {
+        id: childInput.runId, stepId: 'delegated', allowedToolIds: ['tool:read'],
+        maxCostMicros: 100, costMicros: 0, status: 'running', evidenceRefs: [],
+      },
+      goal: 'Complete the delegated milestone.',
+      constraints: [],
+    })
+    await apply(convex, childInput, 'settlement-child-plan', 0, {
+      type: 'replace_plan', steps: oneStep('work'),
+    })
+    const receipt = {
+      id: 'settlement-receipt', modelId: 'fixture/model', provider: 'fixture',
+      inputTokens: 4, outputTokens: 1, reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0,
+      contextWindow: null, costMicros: 60,
+    }
+    await apply(convex, childInput, 'settlement-receipt', 1, { type: 'record_receipt', receipt })
+    const evidence = {
+      id: 'settlement-proof', kind: 'tool_result' as const, summary: 'Work completed.',
+      source: 'tool:read', verdict: 'observed' as const, createdAt: Date.now(),
+    }
+    await apply(convex, childInput, 'settlement-evidence', 2, { type: 'record_evidence', evidence })
+    await apply(convex, childInput, 'settlement-step', 3, {
+      type: 'transition_step', id: 'work', status: 'done', evidenceRefs: [evidence.id],
+    })
+    await apply(convex, childInput, 'settlement-finish', 4, { type: 'finish' })
+
+    const settled = await apply(convex, input, 'settlement-join', 3, {
+      type: 'settle_child', childRunId: childInput.runId,
+    })
+    expect(settled.snapshot.usage.costMicros).toBe(60)
+    expect(settled.snapshot.latestReceipt).toBeUndefined()
+    expect(settled.snapshot.children[0]).toMatchObject({
+      status: 'completed',
+      accountedUsage: { costMicros: 60 },
+    })
+    const parentStep = await apply(convex, input, 'settlement-parent-step', settled.snapshot.revision, {
+      type: 'transition_step', id: 'delegated', status: 'done',
+      evidenceRefs: settled.snapshot.evidence.map(item => item.id),
+    })
+    await apply(convex, input, 'settlement-parent-finish', parentStep.snapshot.revision, { type: 'finish' })
+    expect((await get(convex, childInput.runId))?.status).toBe('completed')
+    const completedChild = await get(convex, childInput.runId)
+    await apply(convex, childInput, 'settlement-late-child-receipt', completedChild!.revision, {
+      type: 'record_receipt', receipt: { ...receipt, id: 'settlement-late-receipt', costMicros: 1 },
+    })
+    expect((await get(convex, childInput.runId))?.status).toBe('completed')
+    expect(await get(convex, input.runId)).toMatchObject({ status: 'completed', usage: { costMicros: 61 } })
+  })
+
+  test('propagates grandchild receipts through cancellation and late retries exactly once', async () => {
+    const convex = convexTest(schema, modules)
+    const input = admission('run-accounting-root', await seedConversation(convex), {
+      maxParallelChildren: 2,
+      maxDepth: 3,
+    })
+    await admit(convex, input)
+    await apply(convex, input, 'accounting-plan', 0, {
+      type: 'replace_plan',
+      steps: oneStep('delegated'),
+    })
+    const childInput = { ...input, runId: 'run-accounting-child' }
+    await apply(convex, input, 'accounting-child', 1, {
+      type: 'admit_child',
+      child: {
+        id: childInput.runId, stepId: 'delegated', allowedToolIds: ['tool:read'],
+        maxCostMicros: 400, costMicros: 0, status: 'running', evidenceRefs: [],
+      },
+      goal: 'Inspect the delegated milestone.',
+      constraints: [],
+    })
+    await apply(convex, childInput, 'accounting-child-plan', 0, {
+      type: 'replace_plan',
+      steps: oneStep('nested'),
+    })
+    const grandchildInput = { ...input, runId: 'run-accounting-grandchild' }
+    await apply(convex, childInput, 'accounting-grandchild', 1, {
+      type: 'admit_child',
+      child: {
+        id: grandchildInput.runId, stepId: 'nested', allowedToolIds: ['tool:read'],
+        maxCostMicros: 100, costMicros: 0, status: 'running', evidenceRefs: [],
+      },
+      goal: 'Inspect one nested item.',
+      constraints: [],
+    })
+    const receiptA = {
+      id: 'accounting-a', modelId: 'fixture/a', provider: 'fixture',
+      inputTokens: 10, outputTokens: 2, reasoningTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0,
+      contextWindow: null, costMicros: 100,
+    }
+    const receiptB = { ...receiptA, id: 'accounting-b', costMicros: 200 }
+    await apply(convex, grandchildInput, 'accounting-receipt-a', 0, { type: 'record_receipt', receipt: receiptA })
+    expect((await get(convex, input.runId))?.usage.costMicros).toBe(100)
+    expect((await get(convex, childInput.runId))?.usage.costMicros).toBe(100)
+    expect((await get(convex, input.runId))?.latestReceipt).toBeUndefined()
+
+    const cancelled = await apply(convex, childInput, 'accounting-cancel-child', 3, {
+      type: 'terminate', status: 'cancelled', reason: 'Stop this subtree.',
+    })
+    expect(cancelled.snapshot.status).toBe('cancelled')
+    expect((await get(convex, input.runId))?.status).toBe('running')
+    expect((await get(convex, grandchildInput.runId))?.status).toBe('cancelled')
+    expect((await get(convex, input.runId))?.usage.costMicros).toBe(100)
+    const countsAfterTermination = await convex.run(async ctx => ({
+      root: await ctx.db.query('harnessRuns').withIndex('by_runId', q => q.eq('runId', input.runId)).unique(),
+      child: await ctx.db.query('harnessRuns').withIndex('by_runId', q => q.eq('runId', childInput.runId)).unique(),
+    }))
+    expect(countsAfterTermination.root?.activeDescendantCount).toBe(0)
+    expect(countsAfterTermination.child?.activeDescendantCount).toBe(0)
+
+    await expect(apply(convex, grandchildInput, 'blocked-after-intermediate-cancel', 1, {
+      type: 'checkpoint', summary: 'Must not run.',
+    })).rejects.toThrow(/terminal/)
+    await apply(convex, grandchildInput, 'accounting-receipt-b', 1, { type: 'record_receipt', receipt: receiptB })
+    await apply(convex, grandchildInput, 'accounting-receipt-a-retry', 2, { type: 'record_receipt', receipt: receiptA })
+    const rootAfterRetry = await get(convex, input.runId)
+    expect(rootAfterRetry?.usage.costMicros).toBe(300)
+    expect(rootAfterRetry?.latestReceipt).toBeUndefined()
+    const receipts = await convex.run(async ctx => ctx.db.query('harnessReceipts')
+      .withIndex('by_runId_createdAt', q => q.eq('runId', grandchildInput.runId)).collect())
+    expect(receipts).toHaveLength(2)
+
+    const rootBeforeCancellation = await get(convex, input.runId)
+    const rootCancelled = await apply(convex, input, 'accounting-cancel-root', rootBeforeCancellation!.revision, {
+      type: 'terminate', status: 'cancelled', reason: 'Cancel the root after the child stopped.',
+    })
+    expect(rootCancelled.snapshot.status).toBe('cancelled')
+    const receiptC = { ...receiptA, id: 'accounting-c', costMicros: 300 }
+    await apply(convex, grandchildInput, 'accounting-receipt-c', 2, { type: 'record_receipt', receipt: receiptC })
+    await apply(convex, grandchildInput, 'accounting-receipt-c-retry', 3, { type: 'record_receipt', receipt: receiptC })
+    const rootAfterCancelledLateReceipt = await get(convex, input.runId)
+    expect(rootAfterCancelledLateReceipt?.status).toBe('cancelled')
+    expect(rootAfterCancelledLateReceipt?.usage.costMicros).toBe(600)
+    expect(rootAfterCancelledLateReceipt?.latestReceipt).toBeUndefined()
+  })
+
+  test('rechecks actor, server secret and workspace membership before operation replay', async () => {
+    const convex = convexTest(schema, modules)
+    const personal = admission('run-authorization', await seedConversation(convex))
+    await admit(convex, personal)
+    await apply(convex, personal, 'committed', 0, { type: 'checkpoint', summary: 'committed' })
+    await expect(get(convex, personal.runId, 'mallory')).rejects.toThrow()
+    await expect(get(convex, personal.runId, 'alice', 'wrong-secret')).rejects.toThrow(/Unauthorized/)
+
+    const workspaceId = 'workspace-harness'
+    const now = Date.now()
+    const workspace = await convex.run(async ctx => {
+      await ctx.db.insert('workspaces', {
+        workspaceId, kind: 'organization', name: 'Harness', slug: 'harness',
+        status: 'active', createdAt: now, updatedAt: now,
+      })
+      await ctx.db.insert('workspacePrincipals', {
+        principalId: 'principal-alice',
+        workspaceId,
+        type: 'human',
+        userId: 'alice',
+        displayName: 'Alice',
+        createdAt: now,
+        updatedAt: now,
+      })
+      const membershipId = await ctx.db.insert('workspaceMemberships', {
+        membershipId: 'membership-alice',
+        workspaceId,
+        principalId: 'principal-alice',
+        role: 'member',
+        status: 'active',
+        joinedAt: now,
+        updatedAt: now,
+      })
+      return { membershipId }
+    })
+    const workspaceConversationId = await seedConversation(convex, 'alice', workspaceId)
+    const shared = admission('run-workspace', workspaceConversationId, { workspaceId })
+    await admit(convex, shared)
+    const committed = {
+      type: 'checkpoint',
+      summary: 'workspace operation',
+    } as const
+    await apply(convex, shared, 'workspace-committed', 0, committed)
+    await convex.run(ctx => ctx.db.patch(workspace.membershipId, { status: 'suspended' }))
+    await expect(apply(convex, shared, 'workspace-committed', 0, committed)).rejects.toThrow()
+  })
+
+  test('admits a bounded child atomically and projects root cancellation without rewriting child state', async () => {
+    const convex = convexTest(schema, modules)
+    const input = admission('run-root', await seedConversation(convex), {
+      maxCostMicros: 1_000,
+      maxParallelChildren: 1,
+    })
+    await admit(convex, input)
+    await apply(convex, input, 'root-plan', 0, {
+      type: 'replace_plan',
+      steps: [...oneStep('delegated'), ...oneStep('second')],
+    })
+    const childOperation: HarnessOperation = {
+      type: 'admit_child',
+      child: {
+        id: 'run-child',
+        stepId: 'delegated',
+        allowedToolIds: ['tool:read'],
+        maxCostMicros: 400,
+        costMicros: 0,
+        status: 'running',
+        evidenceRefs: [],
+      },
+      goal: 'Inspect the delegated milestone.',
+      constraints: ['Do not change files.'],
+    }
+    const admitted = await apply(convex, input, 'child-admission', 1, childOperation)
+    expect(admitted.snapshot.children).toMatchObject([{
+      id: 'run-child',
+      allowedToolIds: ['tool:read'],
+      maxCostMicros: 400,
+      status: 'running',
+    }])
+    expect(admitted.snapshot.plan.find(step => step.id === 'delegated')?.childRunId).toBe('run-child')
+    const child = await get(convex, 'run-child')
+    expect(child).toMatchObject({
+      runId: 'run-child',
+      rootRunId: input.runId,
+      parentRunId: input.runId,
+      depth: 1,
+      goal: 'Inspect the delegated milestone.',
+      constraints: [...input.constraints, 'Do not change files.'],
+      status: 'running',
+      plan: [],
+      evidence: [],
+      children: [],
+      usage: { costMicros: 0 },
+      policy: {
+        actorUserId: 'alice',
+        allowedToolIds: ['tool:read'],
+        requiresPlan: true,
+        maxCostMicros: 400,
+      },
+    })
+    const childRows = await convex.run(async ctx => ({
+      run: await ctx.db.query('harnessRuns').withIndex('by_runId', q => q.eq('runId', 'run-child')).unique(),
+      reservation: await ctx.db.query('harnessChildren')
+        .withIndex('by_runId_childRunId', q => q.eq('runId', input.runId).eq('childRunId', 'run-child')).unique(),
+    }))
+    expect(childRows.run).not.toBeNull()
+    expect(JSON.parse(childRows.reservation!.childJson).maxCostMicros).toBe(400)
+
+    await apply(convex, { ...input, runId: 'run-child' }, 'child-plan', 0, {
+      type: 'replace_plan',
+      steps: oneStep('nested'),
+    })
+    await expect(apply(convex, { ...input, runId: 'run-child' }, 'nested-child', 1, {
+      type: 'admit_child',
+      child: {
+        id: 'run-grandchild',
+        stepId: 'nested',
+        allowedToolIds: ['tool:read'],
+        maxCostMicros: 100,
+        costMicros: 0,
+        status: 'running',
+        evidenceRefs: [],
+      },
+      goal: 'Inspect one nested item.',
+      constraints: [],
+    })).rejects.toThrow(/root child concurrency budget/)
+    const afterRejectedAdmission = await get(convex, 'run-child')
+    expect(afterRejectedAdmission?.revision).toBe(1)
+    expect(await get(convex, 'run-grandchild')).toBeNull()
+
+    const cancelled = await apply(convex, input, 'cancel-root', 2, {
+      type: 'terminate',
+      status: 'cancelled',
+      reason: 'User cancelled.',
+    })
+    expect(cancelled.snapshot.status).toBe('cancelled')
+    expect(cancelled.snapshot.children[0]?.status).toBe('cancelled')
+    expect((await get(convex, 'run-child'))?.status).toBe('cancelled')
+    const childMetadata = await convex.run(async ctx => ctx.db.query('harnessRuns')
+      .withIndex('by_runId', q => q.eq('runId', 'run-child')).unique())
+    expect(JSON.parse(childMetadata!.metadataJson).status).toBe('running')
+    await expect(apply(convex, input, 'after-cancel', 3, { type: 'checkpoint', summary: 'must not run' }))
+      .rejects.toThrow(/terminal/)
+  })
+
+  test('hydrates implicit transition evidence refs older than the recent evidence window', async () => {
+    const convex = convexTest(schema, modules)
+    const input = admission('run-old-evidence', await seedConversation(convex))
+    await admit(convex, input)
+    await apply(convex, input, 'old-plan', 0, { type: 'replace_plan', steps: oneStep('inspect') })
+    const evidence = {
+      id: 'old-evidence', kind: 'tool_result' as const, summary: 'Original result.',
+      source: 'tool:read', verdict: 'observed' as const, createdAt: Date.now(),
+    }
+    await apply(convex, input, 'old-evidence', 1, { type: 'record_evidence', evidence })
+    await apply(convex, input, 'mark-verifying', 2, {
+      type: 'transition_step', id: 'inspect', status: 'verifying', evidenceRefs: [evidence.id],
+    })
+    let revision = 3
+    for (let index = 0; index < 40; index++) {
+      await apply(convex, input, `new-evidence-${index}`, revision, {
+        type: 'record_evidence',
+        evidence: {
+          id: `new-evidence-${index}`, kind: 'tool_result', summary: `Observation ${index}.`,
+          source: 'tool:read', verdict: 'observed', createdAt: Date.now() + index,
+        },
+      })
+      revision++
+    }
+    const completed = await apply(convex, input, 'complete-with-implicit-evidence', revision, {
+      type: 'transition_step', id: 'inspect', status: 'done',
+    })
+    expect(completed.snapshot.plan[0]?.status).toBe('done')
+    expect(completed.snapshot.plan[0]?.evidenceRefs).toEqual([evidence.id])
+    expect(completed.snapshot.evidence.some(item => item.id === evidence.id)).toBe(true)
+  })
+
+  test('rejects oversized UTF-8 operation payloads without writes', async () => {
+    const convex = convexTest(schema, modules)
+    const input = admission('run-size-bound', await seedConversation(convex))
+    await admit(convex, input)
+    const oversizedSteps = Array.from({ length: 128 }, (_, index) => ({
+      id: `large-${index}`, title: 'Large plan', dependsOn: [], acceptanceCriteria: ['😀'.repeat(1_000)],
+      requiresVerification: false,
+    }))
+    await expect(apply(convex, input, 'oversized-plan', 0, {
+      type: 'replace_plan',
+      steps: oversizedSteps,
+    })).rejects.toThrow(/encoded limit/)
+    const persisted = await convex.run(async ctx => ({
+      run: await ctx.db.query('harnessRuns').withIndex('by_runId', q => q.eq('runId', input.runId)).unique(),
+      planRows: await ctx.db.query('harnessPlanSteps').withIndex('by_runId', q => q.eq('runId', input.runId)).collect(),
+      revisions: await ctx.db.query('harnessPlanRevisions').withIndex('by_runId_planRevision', q => q.eq('runId', input.runId)).collect(),
+      operations: await ctx.db.query('harnessOperations').withIndex('by_runId_operationId', q => q.eq('runId', input.runId)).collect(),
+    }))
+    expect(JSON.parse(persisted.run!.metadataJson).revision).toBe(0)
+    expect(persisted.planRows).toHaveLength(0)
+    expect(persisted.revisions).toHaveLength(0)
+    expect(persisted.operations).toHaveLength(0)
+  })
+})

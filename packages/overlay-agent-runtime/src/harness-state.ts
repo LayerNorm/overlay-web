@@ -47,6 +47,15 @@ export type HarnessPolicy = {
   maxDepth: number
 }
 
+export type HarnessUsage = {
+  inputTokens: number
+  outputTokens: number
+  reasoningTokens: number
+  cacheReadTokens: number
+  cacheWriteTokens: number
+  costMicros: number
+}
+
 export type HarnessChild = {
   id: string
   stepId: string
@@ -56,6 +65,7 @@ export type HarnessChild = {
   status: 'running' | 'completed' | 'failed' | 'cancelled'
   summary?: string
   evidenceRefs: string[]
+  accountedUsage?: HarnessUsage
 }
 
 export type HarnessSnapshot = {
@@ -81,7 +91,7 @@ export type HarnessSnapshot = {
   lastContinuationProgressRevision: number
   stalledContinuations: number
   latestReceipt?: HarnessReceipt
-  usage: { inputTokens: number; outputTokens: number; reasoningTokens: number; cacheReadTokens: number; cacheWriteTokens: number; costMicros: number }
+  usage: HarnessUsage
   updatedAt: number
 }
 
@@ -118,7 +128,9 @@ export function createHarnessSnapshot(input: {
 function mutable(state: HarnessSnapshot): HarnessSnapshot {
   return {
     ...state, plan: state.plan.map(step => ({ ...step, evidenceRefs: [...step.evidenceRefs] })),
-    evidence: [...state.evidence], children: state.children.map(child => ({ ...child, evidenceRefs: [...child.evidenceRefs] })),
+    evidence: [...state.evidence], children: state.children.map(child => ({ ...child, evidenceRefs: [...child.evidenceRefs],
+      ...(child.accountedUsage ? { accountedUsage: { ...child.accountedUsage } } : {}),
+    })),
     usage: { ...state.usage },
   }
 }
@@ -225,23 +237,46 @@ export function transitionHarnessStep(state: HarnessSnapshot, input: {
   return changed(next, now)
 }
 
+function validateHarnessReceipt(receipt: HarnessReceipt) {
+  for (const value of [receipt.inputTokens, receipt.outputTokens, receipt.reasoningTokens, receipt.cacheReadTokens, receipt.cacheWriteTokens, receipt.costMicros]) {
+    if (!Number.isSafeInteger(value) || value < 0) throw new Error('Usage and cost must be known nonnegative integers.')
+  }
+  if (!receipt.id || !receipt.modelId || !receipt.provider) throw new Error('A receipt requires actual routing identity.')
+  if (receipt.contextWindow !== null && (!Number.isSafeInteger(receipt.contextWindow) || receipt.contextWindow <= 0)) throw new Error('Invalid context window.')
+}
+
+function addHarnessUsage(target: HarnessUsage, delta: HarnessUsage) {
+  for (const key of Object.keys(target) as (keyof HarnessUsage)[]) {
+    if (!Number.isSafeInteger(delta[key]) || delta[key] < 0) throw new Error('Usage cannot decrease.')
+    target[key] += delta[key]
+    if (!Number.isSafeInteger(target[key])) throw new Error('Usage overflow.')
+  }
+}
+
 // The caller must atomically deduplicate receipt.id per run before recording.
 export function recordHarnessReceipt(state: HarnessSnapshot, receipt: HarnessReceipt, now: number): HarnessSnapshot {
   if (state.latestReceipt?.id === receipt.id) {
     if (JSON.stringify(state.latestReceipt) !== JSON.stringify(receipt)) throw new Error('Receipt identity cannot be reused for different usage.')
     return state
   }
-  for (const value of [receipt.inputTokens, receipt.outputTokens, receipt.reasoningTokens, receipt.cacheReadTokens, receipt.cacheWriteTokens, receipt.costMicros]) {
-    if (!Number.isSafeInteger(value) || value < 0) throw new Error('Usage and cost must be known nonnegative integers.')
-  }
-  if (!receipt.id || !receipt.modelId || !receipt.provider) throw new Error('A receipt requires actual routing identity.')
-  if (receipt.contextWindow !== null && (!Number.isSafeInteger(receipt.contextWindow) || receipt.contextWindow <= 0)) throw new Error('Invalid context window.')
+  validateHarnessReceipt(receipt)
   const next = mutable(state)
   next.latestReceipt = { ...receipt }
-  for (const key of Object.keys(next.usage) as (keyof HarnessSnapshot['usage'])[]) {
-    next.usage[key] += receipt[key]
-    if (!Number.isSafeInteger(next.usage[key])) throw new Error('Usage overflow.')
-  }
+  addHarnessUsage(next.usage, receipt)
+  return changed(next, now, false)
+}
+
+// Apply once to each ancestor in the same transaction as the originating receipt.
+export function recordHarnessChildReceipt(state: HarnessSnapshot, childRunId: string, receipt: HarnessReceipt, now: number): HarnessSnapshot {
+  validateHarnessReceipt(receipt)
+  const next = mutable(state)
+  const child = next.children.find(candidate => candidate.id === childRunId)
+  if (!child) throw new Error('Unknown child reservation for usage reconciliation.')
+  const accounted = child.accountedUsage ?? { inputTokens: 0, outputTokens: 0, reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, costMicros: 0 }
+  addHarnessUsage(accounted, receipt)
+  child.accountedUsage = accounted
+  child.costMicros = accounted.costMicros
+  addHarnessUsage(next.usage, receipt)
   return changed(next, now, false)
 }
 
@@ -257,8 +292,8 @@ export function admitHarnessChild(state: HarnessSnapshot, child: HarnessChild, n
   if (active.length >= state.policy.maxParallelChildren) throw new Error('The child concurrency budget is exhausted.')
   if (child.allowedToolIds.some(id => !state.policy.allowedToolIds.includes(id))) throw new Error('Child capabilities cannot exceed the parent.')
   if (!Number.isSafeInteger(child.maxCostMicros) || child.maxCostMicros < 0
-    || state.usage.costMicros + active.reduce((sum, candidate) => sum + candidate.maxCostMicros - candidate.costMicros, 0) + child.maxCostMicros > state.policy.maxCostMicros) throw new Error('The root spending budget cannot cover this child.')
-  if (child.status !== 'running' || child.evidenceRefs.length || child.costMicros !== 0) throw new Error('A new child must be empty and running.')
+    || state.usage.costMicros + active.reduce((sum, candidate) => sum + Math.max(0, candidate.maxCostMicros - candidate.costMicros), 0) + child.maxCostMicros > state.policy.maxCostMicros) throw new Error('The root spending budget cannot cover this child.')
+  if (child.status !== 'running' || child.evidenceRefs.length || child.costMicros !== 0 || child.accountedUsage !== undefined) throw new Error('A new child must be empty and running.')
   const next = mutable(state)
   next.children.push({ ...child, allowedToolIds: [...child.allowedToolIds], evidenceRefs: [...child.evidenceRefs] })
   Object.assign(next.plan.find(candidate => candidate.id === child.stepId)!, { childRunId: child.id, status: 'running' })
@@ -281,7 +316,7 @@ export function assertHarnessRunnable(state: HarnessSnapshot, now: number, estim
   if (state.status !== 'running' || state.blocker) throw new Error('The run is waiting for a blocker to resolve.')
   if (now >= state.policy.deadlineAt) throw new Error('The authorized run deadline is exhausted.')
   if (!Number.isSafeInteger(estimatedNextCostMicros) || estimatedNextCostMicros < 0) throw new Error('A nonnegative cost reservation is required.')
-  const reserved = state.children.filter(child => child.status === 'running').reduce((sum, child) => sum + child.maxCostMicros - child.costMicros, 0)
+  const reserved = state.children.filter(child => child.status === 'running').reduce((sum, child) => sum + Math.max(0, child.maxCostMicros - child.costMicros), 0)
   if (state.usage.costMicros + reserved + estimatedNextCostMicros > state.policy.maxCostMicros) throw new Error('The authorized spending budget is exhausted.')
 }
 
@@ -342,11 +377,13 @@ export function settleHarnessChild(state: HarnessSnapshot, childState: HarnessSn
   Object.assign(next.children.find(candidate => candidate.id === child.id)!, {
     status: childState.status, costMicros: childState.usage.costMicros,
     summary: childState.workingSummary, evidenceRefs: childState.evidence.map(item => item.id),
+    accountedUsage: { ...childState.usage },
   })
+  const delta = { ...childState.usage }
   for (const key of Object.keys(next.usage) as (keyof HarnessSnapshot['usage'])[]) {
-    next.usage[key] += childState.usage[key]
-    if (!Number.isSafeInteger(next.usage[key])) throw new Error('Usage overflow.')
+    delta[key] -= child.accountedUsage?.[key] ?? 0
   }
+  addHarnessUsage(next.usage, delta)
   return changed(next, now)
 }
 

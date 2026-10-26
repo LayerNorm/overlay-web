@@ -179,6 +179,21 @@ The preview guards still disable cron registration and outbound delivery at runt
 
 Convex code may import browser-safe shared modules from `src/shared`. Convex must not import `src/server`, because server-only modules can break Convex bundling.
 
+## Overlay Harness storage
+
+The standalone Overlay Harness state foundation is stored by `convex/harness/runs.ts` and
+`src/server/harness/ConvexHarnessRepository.ts`. The Convex handlers require the internal
+server secret and recheck the source resource's current access on every call; a future BFF
+must authenticate the caller before using this server-only repository. They are not direct
+browser APIs and are not yet wired into application traffic.
+
+Harness run metadata stays compact. Plans, plan revisions, evidence, receipts, child
+reservations, operations and checkpoints use separate indexed rows; receipt identity is
+deduplicated in the same transaction as usage aggregation. Child runs have independent
+state and usage. Unique receipts propagate through their ancestors atomically, including
+late billing reconciliation; settlement does not charge that usage again. Keep these rows
+additive and do not deploy a feature-worktree schema to shared or customer backends.
+
 ## Browser auth for reactive queries
 
 Convex **queries and mutations cannot call `fetch()`**. WorkOS / Better Auth JWKS verification therefore cannot run inside `watchRoomMessages` or other browser `useQuery` handlers.
