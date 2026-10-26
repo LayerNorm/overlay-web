@@ -372,6 +372,10 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
     methods: { POST: resource('conversation', 'edit', {}, 'conversations.edit') },
   },
   {
+    path: '/api/v1/conversations/run/input',
+    methods: { POST: resource('conversation', 'edit', {}, 'conversations.edit') },
+  },
+  {
     path: '/api/v1/conversations/run/remote',
     methods: { POST: resource('conversation', 'edit', {}, 'conversations.edit') },
   },
