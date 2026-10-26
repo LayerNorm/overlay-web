@@ -21,6 +21,9 @@
     "vitest": "4.1.6"
   },
   "overrides": {
-    "devalue": "5.9.4"
+    "devalue": "5.9.4",
+    "@workflow/core": {
+      "nanoid": "5.1.16"
+    }
   }
 }
