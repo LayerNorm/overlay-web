@@ -58,6 +58,14 @@ test('fallback model lists must be authorized before dispatch, while empty lists
   expect(mocks.started).toHaveBeenCalledTimes(1)
 })
 
+test('a newly enabled ZDR policy requires actual ZDR routing before reserving provider funds', async () => {
+  mocks.refresh.mockResolvedValue({ entitlements: {}, requiresZeroDataRetention: true })
+  await expect(authorizePersonalHarnessModelDispatch(reference, options)).rejects.toThrow(/zero data retention routing/)
+  expect(mocks.reserve).not.toHaveBeenCalled()
+  await authorizePersonalHarnessModelDispatch(reference, { ...options, providerOptions: { gateway: { zeroDataRetention: true } } })
+  expect(mocks.started).toHaveBeenCalledTimes(1)
+})
+
 test('prior dispatch and atomic claim replays cannot dispatch again, including calls without account holds', async () => {
   mocks.read.mockResolvedValueOnce({ ...state, modelReservation: { ...state.modelReservation, dispatch: { modelId: 'provider/model', billingReservationId: null } } })
   await expect(authorizePersonalHarnessModelDispatch(reference, options)).rejects.toThrow(/already/)

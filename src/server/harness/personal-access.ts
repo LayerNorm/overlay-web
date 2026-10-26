@@ -20,13 +20,17 @@ export type PersonalHarnessAccess = HarnessExecutionReference & {
   authentication: { type: 'session' | 'access-token' } | { type: 'api-key'; apiKeyId: string }
 }
 
+export type PersonalHarnessExecutionContext = PersonalChatWorkToolingContext & {
+  requiresZeroDataRetention: boolean
+}
+
 // Call inside the model/tool step, not only in an earlier preparation step:
 // a durable replay must not reuse a permission decision made before a wait.
 export async function refreshPersonalHarnessAccess(
   access: PersonalHarnessAccess,
   context: Omit<PersonalChatWorkToolingContext, 'entitlements' | 'paid'>,
   toolName?: string,
-): Promise<PersonalChatWorkToolingContext> {
+): Promise<PersonalHarnessExecutionContext> {
   if (context.userId !== access.actorUserId || context.workspaceId !== access.workspaceId
     || context.conversationId !== access.conversationId || context.automationExecution
     || context.automationId || context.approvalMode === 'auto') {
@@ -131,6 +135,7 @@ export async function refreshPersonalHarnessAccess(
     memoryEnabled: context.memoryEnabled,
     mode: context.mode,
     paid: gate.paid,
+    requiresZeroDataRetention: gate.paid && gate.appSettings?.onlyAllowZdrModels === true,
     requestFingerprint: context.requestFingerprint,
     turnId: context.turnId,
     requestedToolIds: context.requestedToolIds.filter(id => allowedTools.includes(id)),

@@ -45,6 +45,9 @@ export async function authorizePersonalHarnessModelDispatch(reference: HarnessMo
     turnId: input.receiptId, requestFingerprint: input.requestFingerprint, memoryEnabled: input.memoryEnabled,
     billingProgrammaticSubjectId: input.billingProgrammaticSubjectId, requestedToolIds: [], approvalMode: 'ask',
   })
+  if (refreshed.requiresZeroDataRetention && options.providerOptions?.gateway?.zeroDataRetention !== true) {
+    throw new FatalError('The model call must use current zero data retention routing.')
+  }
   const state = await new ConvexHarnessRepository().get({ actorUserId: input.access.actorUserId, runId: input.access.runId })
   const hold = state?.modelReservation
   if (!state || state.workflowRunId !== input.access.workflowRunId || hold?.id !== input.receiptId || hold.dispatch) {
