@@ -308,13 +308,12 @@ async function validatePersonalDeliveryAdmission(
   admission: HarnessAdmission,
   source: HarnessSource,
 ): Promise<Doc<'conversationAgentRuns'>> {
-  if (!('conversationId' in source) || typeof source.conversationId !== 'string'
-    || admission.policy.workspaceId !== undefined) {
+  if (!('conversationId' in source) || typeof source.conversationId !== 'string') {
     throw new Error('HARNESS_DELIVERY_SOURCE_DENIED')
   }
   const conversationId = ctx.db.normalizeId('conversations', source.conversationId)
   const conversation = conversationId ? await ctx.db.get(conversationId) : null
-  if (!conversation || conversation.deletedAt || conversation.workspaceId !== undefined
+  if (!conversation || conversation.deletedAt || conversation.workspaceId !== admission.policy.workspaceId
     || (conversation.conversationType ?? 'personal') !== 'personal'
     || conversation.userId !== admission.policy.actorUserId) {
     throw new Error('HARNESS_DELIVERY_SOURCE_DENIED')
@@ -532,6 +531,67 @@ async function loadLineage(
     }
   }
   return entries
+}
+
+function assertCancellationLineageEntry(
+  run: RunRow,
+  metadata: HarnessMetadata,
+  root: RunRow,
+  rootMetadata: HarnessMetadata,
+  source: HarnessSource,
+  actorUserId: string,
+) {
+  const runSource = parseJson<HarnessSource>(run.sourceJson)
+  if (run.rootRunId !== root.runId || run.actorUserId !== actorUserId
+    || metadata.runId !== run.runId || metadata.rootRunId !== root.runId
+    || metadata.parentRunId !== run.parentRunId || metadata.policy.actorUserId !== actorUserId
+    || metadata.policy.workspaceId !== rootMetadata.policy.workspaceId
+    || metadata.depth > MAX_HARNESS_DEPTH || stableJson(runSource) !== stableJson(source)) {
+    throw new Error('Invalid harness cancellation lineage.')
+  }
+}
+
+async function validateCancellationLineage(
+  ctx: ReadContext,
+  run: RunRow,
+  root: RunRow,
+  source: HarnessSource,
+  rootMetadata: HarnessMetadata,
+  actorUserId: string,
+): Promise<HarnessMetadata> {
+  const entries: LineageEntry[] = []
+  const seen = new Set<string>()
+  let current: RunRow | null = run
+  while (current) {
+    if (entries.length >= MAX_HARNESS_DEPTH + 1 || seen.has(current.runId)) {
+      throw new Error('Invalid harness cancellation lineage.')
+    }
+    seen.add(current.runId)
+    const metadata = parseJson<HarnessMetadata>(current.metadataJson)
+    assertCancellationLineageEntry(current, metadata, root, rootMetadata, source, actorUserId)
+    checkedActiveCount(current.activeDescendantCount)
+    entries.push({ run: current, metadata })
+    if (current.runId === root.runId) break
+    if (current.parentRunId === undefined) throw new Error('Invalid harness cancellation lineage.')
+    current = await findRun(ctx, current.parentRunId)
+    if (!current) throw new Error('Invalid harness cancellation lineage.')
+  }
+  const lineageRoot = entries.at(-1)
+  if (!lineageRoot || lineageRoot.run._id !== root._id
+    || lineageRoot.run.parentRunId !== undefined || lineageRoot.metadata.parentRunId !== undefined
+    || lineageRoot.metadata.depth !== 0) {
+    throw new Error('Invalid harness cancellation lineage.')
+  }
+  for (let index = 0; index < entries.length - 1; index++) {
+    const child = entries[index]
+    const parent = entries[index + 1]
+    if (child.run.parentRunId !== parent.run.runId
+      || child.metadata.parentRunId !== parent.run.runId
+      || child.metadata.depth !== parent.metadata.depth + 1) {
+      throw new Error('Invalid harness cancellation lineage.')
+    }
+  }
+  return entries[0]!.metadata
 }
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
@@ -900,13 +960,14 @@ export async function cancelHarnessDelivery(
     || root.actorUserId !== delivery.userId || root.deliveryAgentRunId !== delivery._id
     || delivery.runner !== 'workflow' || delivery.mode === 'room'
     || !source || !('conversationId' in source) || source.conversationId !== delivery.conversationId
-    || !conversation || conversation.userId !== delivery.userId || conversation.workspaceId !== undefined
+    || !conversation || conversation.userId !== delivery.userId
     || conversation.deletedAt || (conversation.conversationType ?? 'personal') !== 'personal') {
     throw new Error('HARNESS_DELIVERY_BINDING_INVALID')
   }
   const metadata = parseJson<HarnessMetadata>(root.metadataJson)
   if (metadata.runId !== root.runId || metadata.rootRunId !== root.rootRunId
-    || metadata.parentRunId !== undefined || metadata.policy.actorUserId !== delivery.userId) {
+    || metadata.parentRunId !== undefined || metadata.policy.actorUserId !== delivery.userId
+    || metadata.policy.workspaceId !== conversation.workspaceId) {
     throw new Error('HARNESS_DELIVERY_BINDING_INVALID')
   }
   if (isTerminalStatus(metadata.status)) {
@@ -1470,19 +1531,27 @@ export const listDeliveryWorkflowRuns = query({
       : null
     const conversation = conversationId ? await ctx.db.get(conversationId) : null
     if (!conversation || conversationId !== delivery.conversationId || conversation.userId !== args.actorUserId
-      || conversation.workspaceId !== undefined || conversation.deletedAt
+      || conversation.deletedAt
       || (conversation.conversationType ?? 'personal') !== 'personal') {
       throw new Error('HARNESS_DELIVERY_ACCESS_DENIED')
     }
     const rootMetadata = parseJson<HarnessMetadata>(root.metadataJson)
+    if (rootMetadata.runId !== root.runId || rootMetadata.rootRunId !== root.rootRunId
+      || rootMetadata.parentRunId !== undefined || rootMetadata.depth !== 0
+      || rootMetadata.policy.actorUserId !== args.actorUserId
+      || rootMetadata.policy.workspaceId !== conversation.workspaceId) {
+      throw new Error('HARNESS_DELIVERY_ACCESS_DENIED')
+    }
     if (!isTerminalStatus(rootMetadata.status)) throw new Error('HARNESS_DELIVERY_ROOT_ACTIVE')
+    const rootSource = parseJson<HarnessSource>(root.sourceJson)
     const page = await ctx.db.query('harnessRuns')
       .withIndex('by_rootRunId', query => query.eq('rootRunId', args.rootRunId))
       .paginate({ cursor: args.cursor, numItems: 100 })
     const workflowRunIds: string[] = []
     for (const row of page.page) {
-      const lineage = await loadLineage(ctx, row, args.actorUserId, args.serverSecret)
-      const metadata = lineage[0]!.metadata
+      const metadata = await validateCancellationLineage(
+        ctx, row, root, rootSource, rootMetadata, args.actorUserId,
+      )
       if (row.runId === root.runId || !isTerminalStatus(metadata.status)) {
         if (metadata.workflowRunId) workflowRunIds.push(metadata.workflowRunId)
       }

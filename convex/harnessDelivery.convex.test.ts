@@ -177,6 +177,89 @@ describe('personal harness delivery binding', () => {
     expect(await get(convex, dmInput.runId)).toBeNull()
   })
 
+  test('stops and cleans up a scoped personal delivery after workspace membership is suspended', async () => {
+    const convex = convexTest(schema, modules)
+    const workspaceId = 'workspace-scoped-harness'
+    const now = Date.now()
+    const membershipId = await convex.run(async ctx => {
+      await ctx.db.insert('workspaces', {
+        workspaceId, kind: 'organization', name: 'Harness', slug: 'harness',
+        status: 'active', createdAt: now, updatedAt: now,
+      })
+      await ctx.db.insert('workspacePrincipals', {
+        principalId: 'principal-alice',
+        workspaceId,
+        type: 'human',
+        userId: 'alice',
+        displayName: 'Alice',
+        createdAt: now,
+        updatedAt: now,
+      })
+      return await ctx.db.insert('workspaceMemberships', {
+        membershipId: 'membership-alice',
+        workspaceId,
+        principalId: 'principal-alice',
+        role: 'member',
+        status: 'active',
+        joinedAt: now,
+        updatedAt: now,
+      })
+    })
+    const conversationId = await seedConversation(convex, 'alice', { workspaceId })
+    const deliveryId = await seedDelivery(convex, conversationId)
+    const mismatched = admission('scoped-root', conversationId, deliveryId)
+    mismatched.policy.workspaceId = 'workspace-other'
+    await expect(admit(convex, mismatched)).rejects.toThrow()
+    expect(await get(convex, mismatched.runId)).toBeNull()
+    expect((await convex.run(ctx => ctx.db.get(deliveryId as never)))?.harnessRunId).toBeUndefined()
+
+    const input = admission('scoped-root', conversationId, deliveryId)
+    input.policy.workspaceId = workspaceId
+    const admitted = await admit(convex, input)
+    expect((await admit(convex, input)).revision).toBe(admitted.revision)
+    const claimed = await apply(convex, input, 'scoped-root-claim', 0, {
+      type: 'claim_execution', workflowRunId: 'scoped-root-workflow',
+    })
+    const planned = await apply(convex, input, 'scoped-root-plan', claimed.snapshot.revision, {
+      type: 'replace_plan',
+      steps: [{ id: 'delegate', title: 'Delegate', dependsOn: [], acceptanceCriteria: ['Complete it.'], requiresVerification: false }],
+    })
+    const childInput = { ...input, runId: 'scoped-child' }
+    const childAdmission = await apply(convex, input, 'scoped-child-admission', planned.snapshot.revision, {
+      type: 'admit_child',
+      child: {
+        id: childInput.runId, stepId: 'delegate', allowedToolIds: ['tool:read'],
+        maxCostMicros: 500, costMicros: 0, status: 'running', evidenceRefs: [],
+      },
+      goal: 'Complete the delegated work.',
+      constraints: [],
+    })
+    await apply(convex, childInput, 'scoped-child-claim', 0, {
+      type: 'claim_execution', workflowRunId: 'scoped-child-workflow',
+    })
+    await convex.run(ctx => ctx.db.patch(membershipId, { status: 'suspended' }))
+
+    const cancelled = await cancelDelivery(convex, conversationId)
+    expect(cancelled.cancelledHarnessRoots).toEqual([{ agentRunId: deliveryId, runId: input.runId }])
+    const root = await convex.run(async ctx => ctx.db.query('harnessRuns')
+      .withIndex('by_runId', queryBuilder => queryBuilder.eq('runId', input.runId))
+      .unique())
+    expect(root && JSON.parse(root.metadataJson).status).toBe('cancelled')
+    await expect(get(convex, input.runId)).rejects.toThrow()
+    await expect(apply(convex, input, 'scoped-revoked-apply', childAdmission.snapshot.revision, {
+      type: 'checkpoint', summary: 'Must remain unauthorized.',
+    })).rejects.toThrow()
+
+    const cleanup = await convex.query(query('listDeliveryWorkflowRuns'), {
+      actorUserId: 'alice', agentRunId: deliveryId, rootRunId: input.runId, cursor: null, serverSecret: secret,
+    }) as { workflowRunIds: string[]; cursor: string; isDone: boolean }
+    expect(cleanup.workflowRunIds).toEqual(expect.arrayContaining([
+      'scoped-root-workflow', 'scoped-child-workflow',
+    ]))
+    expect(cleanup.workflowRunIds).toHaveLength(2)
+    expect(cleanup.isDone).toBe(true)
+  })
+
   test('stop fences a claimed root before delivery attach, retains holds and allows one late receipt', async () => {
     const convex = convexTest(schema, modules)
     const conversationId = await seedConversation(convex)
