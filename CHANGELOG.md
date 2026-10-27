@@ -4,7 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
-- Wait durably for busy free-model routes before inference, retaining exclusive route leases and zero-cost rejection receipts. Ambiguous provider failures still retain billing holds and never authorize another Harness dispatch.
+- Wait durably for busy free-model routes before inference, retaining exclusive route leases and zero-cost rejection receipts. Convex accepts the same bounded rejection reasons as the runtime. Ambiguous provider failures still retain billing holds and never authorize another Harness dispatch.
 
 - Persist completed child-run results as parent observations so delegated milestones can reference their output without treating it as independent verification. Children inherit their parent's planning policy instead of requiring unnecessary plans for trivial replies.
 

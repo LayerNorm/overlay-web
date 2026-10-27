@@ -90,6 +90,33 @@ function oneStep(id: string, requiresVerification = false) {
 }
 
 describe('durable harness runs', () => {
+  test.each(['budget', 'model_unavailable', 'route_capacity'] as const)('persists a zero-usage %s rejection through the mutation boundary', async rejectionReason => {
+    const convex = convexTest(schema, modules)
+    const input = admission('rejection', await seedConversation(convex))
+    await admit(convex, input)
+    let state = (await apply(convex, input, 'reserve', 0, { type: 'reserve_model', id: 'model:0', maxCostMicros: 600 })).snapshot
+    if (rejectionReason !== 'budget') {
+      state = (await apply(convex, input, 'dispatch', state.revision, { type: 'bind_model_dispatch', id: 'model:0',
+        modelId: 'openrouter/free', billingReservationId: 'billing-reservation' })).snapshot
+    }
+    const receipt = { id: 'model:0', modelId: 'openrouter/free', provider: 'overlay-free-router',
+      inputTokens: 0, outputTokens: 0, reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0,
+      contextWindow: null, costMicros: 0, costSource: 'catalog' as const, rejectionReason }
+    await expect(apply(convex, input, 'invalid-rejection', state.revision, {
+      type: 'record_receipt', receipt: { ...receipt, inputTokens: 1 },
+    })).rejects.toThrow(/confirmed zero usage and cost/i)
+    expect((await get(convex, input.runId))?.modelReservation).toEqual(state.modelReservation)
+    const settled = await apply(convex, input, 'reject', state.revision, { type: 'record_receipt', receipt })
+    expect(settled.snapshot.modelReservation).toBeUndefined()
+    const reloaded = await get(convex, input.runId)
+    expect(reloaded?.latestReceipt).toEqual(receipt)
+    expect(reloaded?.usage.costMicros).toBe(0)
+    expect(reloaded?.status).toBe('running')
+    const replay = await apply(convex, input, 'reject', state.revision, { type: 'record_receipt', receipt })
+    expect(replay.applied).toBe(false)
+    expect(replay.snapshot.latestReceipt).toEqual(receipt)
+  })
+
   test.each([false, true])('children inherit requiresPlan=%s without weakening an explicit parent requirement', async requiresPlan => {
     const convex = convexTest(schema, modules)
     const input = admission('planning-parent', await seedConversation(convex), { requiresPlan })
