@@ -3,9 +3,13 @@ import { createNativeHarnessTools, type NativeHarnessToolsInput } from './native
 import { executeNativeHarnessTool } from './native-tool-steps'
 import type { HarnessToolExecutionOptions } from './tool-approvals'
 
-const mocks = vi.hoisted(() => ({ refresh: vi.fn(), build: vi.fn(), execute: vi.fn() }))
+const mocks = vi.hoisted(() => ({ refresh: vi.fn(), build: vi.fn(), execute: vi.fn(), dispatch: vi.fn() }))
 vi.mock('server-only', () => ({}))
 vi.mock('./native-access', () => ({ refreshNativeHarnessAccess: mocks.refresh }))
+vi.mock('./native-tool-steps', async importOriginal => ({
+  ...await importOriginal<typeof import('./native-tool-steps')>(),
+  dispatchNativeHarnessAgentRequest: mocks.dispatch,
+}))
 vi.mock('@/server/agents/agent-tooling', () => ({ buildWorkspaceAgentTooling: mocks.build }))
 vi.mock('@/server/conversations/personal-chat-work-tools', () => ({
   executePersonalChatWorkToolResult: async (options: {
@@ -94,7 +98,8 @@ test('native tools preserve model-output envelopes and never retry an ambiguous 
   expect(executeNativeHarnessTool.maxRetries).toBe(0)
 })
 
-test('named-agent ask and post tools refuse without rebuilding authority or calling an executor', async () => {
+test('named-agent ask and post tools dispatch in process without rebuilding ordinary tool authority', async () => {
+  mocks.dispatch.mockResolvedValue({ status: 'working', childRunIds: ['workspace:delivery'] })
   const tools = createNativeHarnessTools({
     ...input,
     definitions: ['ask_agent', 'post_message'].map(name => ({
@@ -106,13 +111,13 @@ test('named-agent ask and post tools refuse without rebuilding authority or call
   for (const name of ['ask_agent', 'post_message']) {
     const definition = tools[name]!
     expect(await definition.needsApproval!({}, options)).toBe(false)
-    expect(await definition.execute!({}, options)).toEqual({
-      success: false,
-      error: 'Asking other agents is not available in this run yet.',
-      code: 'harness_dispatch_required',
-    })
+    expect(await definition.execute!({ agent: 'Writer', message: 'Review this' }, options))
+      .toEqual({ status: 'working', childRunIds: ['workspace:delivery'] })
   }
   expect(mocks.refresh).not.toHaveBeenCalled()
   expect(mocks.build).not.toHaveBeenCalled()
   expect(mocks.execute).not.toHaveBeenCalled()
+  expect(mocks.dispatch).toHaveBeenCalledTimes(2)
+  expect(mocks.dispatch).toHaveBeenNthCalledWith(1, input.access, input.context, 'call', 'ask_agent', { agent: 'Writer', message: 'Review this' })
+  expect(mocks.dispatch).toHaveBeenNthCalledWith(2, input.access, input.context, 'call', 'post_message', { agent: 'Writer', message: 'Review this' })
 })

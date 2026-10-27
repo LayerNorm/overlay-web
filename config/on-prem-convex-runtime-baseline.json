@@ -436,6 +436,8 @@
     "src/server/harness/native-access.ts",
     "src/server/harness/native-child-steps.ts",
     "src/server/harness/native-delivery-steps.ts",
+    "src/server/harness/native-named-child-launch.ts",
+    "src/server/harness/native-tool-steps.ts",
     "src/server/harness/native-turn-start.ts",
     "src/server/harness/personal-access.ts",
     "src/server/harness/personal-admission.ts",

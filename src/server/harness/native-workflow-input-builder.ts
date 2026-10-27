@@ -39,10 +39,11 @@ export async function buildNativeHarnessWorkflowInput(args: {
   })
   const room = prepared.room
   const triggeringMessage = room.history.find(message => message._id === run.userMessageId)
+  const validTriggerAuthor = (triggeringMessage?.authorKind === 'human' || triggeringMessage?.authorKind === 'agent')
+    && triggeringMessage.authorPrincipalId === run.initiatorPrincipalId
   if (!room.conversation.workspaceId || room.conversation.workspaceId !== args.workspaceId
     || prepared.agent.harness !== 'overlay' || prepared.agent.principalId !== run.agentPrincipalId
-    || triggeringMessage?.authorKind !== 'human'
-    || triggeringMessage.authorPrincipalId !== run.initiatorPrincipalId) {
+    || !validTriggerAuthor) {
     throw new Error('The native agent room identity changed.')
   }
   const sharedRoom = isSharedRoom({

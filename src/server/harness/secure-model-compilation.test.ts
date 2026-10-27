@@ -10,7 +10,8 @@ import type { HarnessLanguageModel } from './secure-model'
 test.each([
   ['model-preparation.ts', ['preparePersonalHarnessModel', 'readHarnessModelLimits']],
   ['native-model-preparation.ts', ['prepareNativeHarnessModel']],
-  ['native-tool-steps.ts', ['nativeHarnessToolNeedsApproval', 'executeNativeHarnessTool']],
+  ['native-tool-steps.ts', ['nativeHarnessToolNeedsApproval', 'executeNativeHarnessTool', 'dispatchNativeHarnessAgentRequest']],
+  ['native-named-child-launch.ts', ['startNativeHarnessNamedChild']],
   ['native-child-steps.ts', ['admitNativeHarnessChild']],
   ['native-delivery-steps.ts', ['writeNativeHarnessFallback', 'attachNativeHarnessDelivery',
     'projectNativeHarnessWait', 'finishNativeHarnessDelivery']],
@@ -30,6 +31,12 @@ test.each([
   if (filename === 'native-tool-steps.ts') {
     const execute = compiledModule.exports.executeNativeHarnessTool as ((...args: unknown[]) => unknown) & { maxRetries?: number }
     expect(execute.maxRetries).toBe(0)
+    const dispatch = compiledModule.exports.dispatchNativeHarnessAgentRequest as ((...args: unknown[]) => unknown) & { maxRetries?: number }
+    expect(dispatch.maxRetries).toBe(0)
+  }
+  if (filename === 'native-named-child-launch.ts') {
+    const launch = compiledModule.exports.startNativeHarnessNamedChild as ((...args: unknown[]) => unknown) & { maxRetries?: number }
+    expect(launch.maxRetries).toBe(0)
   }
   for (const name of exports) {
     await compiledModule.exports[name]({ fixture: true })

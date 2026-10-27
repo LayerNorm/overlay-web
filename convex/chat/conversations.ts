@@ -1245,7 +1245,7 @@ export const cancelAgentRuns = mutation({
     }
     const cancelledHarnessRoots: Array<{ agentRunId: string; runId: string }> = []
     for (const run of activeRuns) {
-      if (run.harnessRunId) cancelledHarnessRoots.push(await cancelHarnessDelivery(ctx, run, now))
+      if (run.harnessRunId) cancelledHarnessRoots.push(await cancelHarnessDelivery(ctx, run, now, args.serverSecret))
     }
     const runMessages = await Promise.all(
       activeRuns.map((run) => ctx.db.get(run.assistantMessageId)),

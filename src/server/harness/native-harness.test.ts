@@ -59,6 +59,24 @@ test('owner attaches and finalizes without supplying a writable stream', async (
   expect(mocks.notify).not.toHaveBeenCalled()
 })
 
+test('a named delivery owner notifies its parent after finalization', async () => {
+  state = { ...state, runId: 'workspace:target-run', rootRunId: 'workspace:agent', parentRunId: 'workspace:agent', depth: 1 }
+  mocks.read.mockResolvedValue(state)
+  mocks.run.mockResolvedValue({ outcome: 'finished', snapshot: { ...state, status: 'completed' }, messages: [], steps: [] })
+  const childInput = {
+    ...input,
+    access: {
+      ...input.access, runId: state.runId, agentRunId: 'target-run', agentId: 'target',
+      agentPrincipalId: 'target-principal', conversationId: 'target-room', userMessageId: 'target-question',
+      assistantMessageId: 'target-answer', turnId: 'target-turn',
+    },
+  }
+  await expect(nativeHarnessWorkflow(childInput)).resolves.toEqual({ runId: state.runId, status: 'completed' })
+  expect(mocks.attach).toHaveBeenCalledOnce()
+  expect(mocks.finish).toHaveBeenCalledOnce()
+  expect(mocks.notify).toHaveBeenCalledOnce()
+})
+
 test('anonymous child only notifies ancestors', async () => {
   state = { ...state, runId: 'child', parentRunId: 'workspace:agent' }
   mocks.read.mockResolvedValue(state)

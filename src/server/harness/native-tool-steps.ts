@@ -1,7 +1,15 @@
 import 'server-only'
 
 import { FatalError } from 'workflow'
+import { reservedHarnessCostMicros } from '@overlay/agent-runtime/harness-state'
+import { isFreeTierChatModelId } from '@/shared/ai/gateway/model-types'
 import { buildWorkspaceAgentTooling, type WorkspaceAgentToolingResult } from '@/server/agents/agent-tooling'
+import { resolveWorkspaceAgentInvocations } from '@/server/agents/workspace-agent-invocation'
+import { agentStartFailureMessage } from '@/server/app-api/v1/conversations/message/agent-start-failure'
+import { getOverlayServerContext } from '@/server/bootstrap'
+import { buildNativeHarnessWorkflowInput } from './native-workflow-input-builder'
+import { ConvexHarnessRepository } from './ConvexHarnessRepository'
+import { startNativeHarnessNamedChild } from './native-named-child-launch'
 import { executePersonalChatWorkToolResult } from '@/server/conversations/personal-chat-work-tools'
 import { refreshNativeHarnessAccess } from './native-access'
 import type { NativeHarnessToolsInput } from './native-tools'
@@ -66,3 +74,151 @@ export async function executeNativeHarnessTool(call: NativeToolCall, approved: b
 }
 
 executeNativeHarnessTool.maxRetries = 0
+
+export async function dispatchNativeHarnessAgentRequest(
+  access: NativeHarnessToolsInput['access'],
+  context: NativeHarnessToolsInput['context'],
+  toolCallId: string,
+  toolName: string,
+  input: unknown,
+): Promise<unknown> {
+  'use step'
+  if (!toolCallId || toolCallId.length > 256 || !['ask_agent', 'post_message'].includes(toolName)) {
+    throw new FatalError('Invalid native agent request.')
+  }
+  await refreshNativeHarnessAccess(access, context, toolName)
+  const values = input && typeof input === 'object' && !Array.isArray(input)
+    ? input as Record<string, unknown> : {}
+  const server = getOverlayServerContext()
+  const repository = new ConvexHarnessRepository()
+  const childRunIds: string[] = []
+  const startTurns = async (args: {
+    actorUserId: string
+    conversationId: string
+    messageId: string
+    mentionedPrincipalIds: string[]
+    prompt: string
+    workspaceId: string
+  }) => {
+    const invocations = await resolveWorkspaceAgentInvocations(args)
+    if (invocations.some(invocation => invocation.externalAgent || invocation.remoteTarget || invocation.harness !== 'overlay')) {
+      throw new Error("External agents can't be asked from this run yet.")
+    }
+    const budgetParent = await repository.get(access)
+    if (!budgetParent || budgetParent.workflowRunId !== access.workflowRunId
+      || budgetParent.policy.actorUserId !== access.actorUserId || budgetParent.policy.workspaceId !== access.workspaceId) {
+      throw new FatalError('Native parent run is no longer available.')
+    }
+    const remaining = Math.max(0,
+      budgetParent.policy.maxCostMicros - budgetParent.usage.costMicros - reservedHarnessCostMicros(budgetParent))
+    const childBudget = Math.floor(remaining / (invocations.length + 1))
+    const started: Array<{ agentId: string; turnId: string }> = []
+    for (const invocation of invocations) {
+      const turn = await server.appData.repositories.conversationCollaboration.startAgentTurn({
+        actorUserId: access.actorUserId,
+        agentId: invocation.agentId,
+        authorPrincipalId: invocation.agentPrincipalId,
+        clientNonce: invocation.invocationNonce,
+        conversationId: args.conversationId,
+        initiatorPrincipalId: access.agentPrincipalId,
+        modelId: invocation.modelId,
+        executionEngine: 'overlay_harness',
+        turnId: invocation.turnId,
+        userMessageId: args.messageId,
+        workspaceId: args.workspaceId,
+      })
+      try {
+        const workflowInput = await buildNativeHarnessWorkflowInput({
+          actorUserId: access.actorUserId,
+          workspaceId: args.workspaceId,
+          conversationId: args.conversationId,
+          runId: turn.runId,
+          memoryEnabled: false,
+        })
+        const parent = await repository.get(access)
+        if (!parent || parent.workflowRunId !== access.workflowRunId
+          || parent.policy.actorUserId !== access.actorUserId || parent.policy.workspaceId !== access.workspaceId) {
+          throw new FatalError('Native parent run is no longer available.')
+        }
+        const allowedToolIds = [...new Set(workflowInput.definitions
+          .map(definition => definition.name)
+          .filter(name => parent.policy.allowedToolIds.includes(name)))].sort()
+        workflowInput.definitions = workflowInput.definitions.filter(definition => allowedToolIds.includes(definition.name))
+        const childRunId = `workspace:${turn.runId}`
+        const child = {
+          id: childRunId,
+          stepId: `ask:${toolCallId}:${invocation.agentId}`,
+          allowedToolIds,
+          maxCostMicros: isFreeTierChatModelId(invocation.modelId) ? 0 : childBudget,
+          costMicros: 0,
+          status: 'running' as const,
+          evidenceRefs: [],
+        }
+        let admitted = false
+        for (let attempt = 0; attempt < 8; attempt++) {
+          const state = attempt === 0 ? parent : await repository.get(access)
+          if (!state || state.workflowRunId !== access.workflowRunId
+            || state.policy.actorUserId !== access.actorUserId || state.policy.workspaceId !== access.workspaceId) {
+            throw new FatalError('Native parent run is no longer available.')
+          }
+          const result = await repository.apply({
+            actorUserId: access.actorUserId,
+            runId: access.runId,
+            operationId: `named-child:${toolCallId}:${invocation.agentId}`,
+            expectedRevision: state.revision,
+            operation: {
+              type: 'admit_named_child',
+              child,
+              step: {
+                title: `Ask ${invocation.agentName}`,
+                acceptanceCriteria: [`${invocation.agentName} responds to the request.`],
+              },
+              goal: args.prompt.slice(0, 32_000),
+              constraints: [],
+              target: { deliveryAgentRunId: turn.runId, conversationId: args.conversationId },
+            },
+          })
+          if (!result.conflict) {
+            const matchingChild = result.snapshot.children.find(entry => entry.id === childRunId)
+            if (!matchingChild) throw new FatalError('Named child admission returned no child.')
+            admitted = true
+            break
+          }
+        }
+        if (!admitted) throw new Error('Named child admission is contended.')
+        await startNativeHarnessNamedChild(access, workflowInput, childRunId)
+        childRunIds.push(childRunId)
+        started.push({ agentId: invocation.agentId, turnId: invocation.turnId })
+      } catch (error) {
+        await server.appData.repositories.conversationCollaboration.failAgentMessage({
+          actorUserId: access.actorUserId,
+          conversationId: args.conversationId,
+          content: agentStartFailureMessage(invocation.agentName, error),
+          messageId: turn.messageId,
+          workspaceId: args.workspaceId,
+        }).catch((_error) => undefined)
+        throw error
+      }
+    }
+    return started
+  }
+
+  const caller = { agentId: access.agentId, conversationId: access.conversationId, turnId: access.turnId }
+  const actor = { actorUserId: access.actorUserId, actorPrincipalId: access.principalId, workspaceId: access.workspaceId, caller, startTurns }
+  if (toolName === 'ask_agent') {
+    if (typeof values.agent !== 'string' || typeof values.message !== 'string') throw new FatalError('Invalid ask_agent input.')
+    return { ...await server.agentAsks.ask({ ...actor, target: values.agent, message: values.message, wait: false }), childRunIds }
+  }
+  if (typeof values.conversationId !== 'string' || typeof values.text !== 'string'
+    || (values.mentions !== undefined && (!Array.isArray(values.mentions) || values.mentions.some(item => typeof item !== 'string')))) {
+    throw new FatalError('Invalid post_message input.')
+  }
+  return { ...await server.agentAsks.post({
+    ...actor,
+    conversationId: values.conversationId,
+    text: values.text,
+    mentions: (values.mentions as string[] | undefined) ?? [],
+  }), childRunIds }
+}
+
+dispatchNativeHarnessAgentRequest.maxRetries = 0

@@ -57,6 +57,58 @@ function admission(conversationId: string, deliveryAgentRunId: string): HarnessA
       deadlineAt: Date.now() + 60_000, maxCostMicros: 0, maxDepth: 2, maxParallelChildren: 2 } }
 }
 
+async function namedAdmissionFixture(convex: Convex, scenario?: string) {
+  const fixture = await seed(convex)
+  const parentTurn = await open(convex, fixture)
+  const parent = admission(fixture.conversationId, parentTurn.runId)
+  await convex.mutation(mutation('harness/runs:admit'), { ...parent, serverSecret: secret })
+  const target = await convex.run(async ctx => {
+    const now = Date.now()
+    await ctx.db.insert('workspacePrincipals', { principalId: 'target-principal', workspaceId: 'workspace', type: 'agent',
+      agentId: 'target', displayName: 'Target', createdAt: now, updatedAt: now })
+    await ctx.db.insert('workspaceAgentDefinitions', { agentId: 'target', workspaceId: 'workspace',
+      principalId: 'target-principal', name: 'Target', instructions: '', harness: 'overlay', modelId: 'openrouter/free',
+      allowedToolIds: [], invocationPolicy: 'mention', createdByPrincipalId: 'alice', createdAt: now, updatedAt: now })
+    const conversationId = await ctx.db.insert('conversations', { userId: 'alice', workspaceId: 'workspace',
+      conversationType: 'dm', title: 'Asked agent', lastModified: now, createdAt: now, updatedAt: now,
+      lastMode: 'act', askModelIds: [], actModelId: 'openrouter/free' })
+    const participants: Record<string, string> = {}
+    for (const [principalId, principalType] of [['alice', 'human'], ['agent-principal', 'agent'], ['target-principal', 'agent']] as const) {
+      participants[principalId] = await ctx.db.insert('conversationParticipants', { conversationId, workspaceId: 'workspace',
+        principalId, principalType, role: 'member', status: 'active', notificationLevel: 'all', joinedAt: now, updatedAt: now })
+    }
+    const userMessageId = await ctx.db.insert('conversationMessages', { conversationId, userId: 'alice',
+      turnId: 'named-question', role: 'user', mode: 'act', content: 'Please inspect this.', contentType: 'text',
+      authorKind: 'agent', authorPrincipalId: 'agent-principal', createdAt: now })
+    return { conversationId, userMessageId, participants }
+  })
+  const targetTurn = await convex.mutation(mutation('collaboration/directMessages:startAgentTurn'), {
+    actorUserId: 'alice', agentId: 'target', authorPrincipalId: 'target-principal',
+    initiatorPrincipalId: 'agent-principal', conversationId: target.conversationId, clientNonce: 'named-child',
+    turnId: 'target-turn', modelId: 'openrouter/free', userMessageId: target.userMessageId,
+    workspaceId: 'workspace', ...(scenario === 'wrong-engine' ? {} : { executionEngine: 'overlay_harness' }),
+    serverSecret: secret,
+  })
+  await convex.run(async ctx => {
+    if (scenario === 'non-participant') {
+      await ctx.db.patch(ctx.db.normalizeId('conversationParticipants', target.participants['target-principal']!)!, { status: 'removed' })
+    }
+    if (scenario === 'foreign-workspace') await ctx.db.patch(target.conversationId, { workspaceId: 'foreign-workspace' })
+    if (scenario === 'trigger-author') await ctx.db.patch(target.userMessageId, { authorPrincipalId: 'other-agent' })
+    if (scenario === 'already-bound') await ctx.db.patch(targetTurn.runId, { harnessRunId: 'workspace:already-bound' })
+  })
+  const childRunId = `workspace:${targetTurn.runId}`
+  const operation: HarnessOperation = {
+    type: 'admit_named_child',
+    child: { id: childRunId, stepId: 'ask:call:target', allowedToolIds: [], maxCostMicros: 0,
+      costMicros: 0, status: 'running', evidenceRefs: [] },
+    step: { title: 'Ask Target', acceptanceCriteria: ['Target responds to the request.'] },
+    goal: 'Please inspect this.', constraints: [],
+    target: { deliveryAgentRunId: targetTurn.runId, conversationId: target.conversationId },
+  }
+  return { fixture, parent, parentTurn, target, targetTurn, childRunId, operation }
+}
+
 async function apply(convex: Convex, runId: string, operation: HarnessOperation) {
   const state = await convex.query(query('harness/runs:get'), { actorUserId: 'alice', runId, serverSecret: secret })
   return convex.mutation(mutation('harness/runs:apply'), { actorUserId: 'alice', runId, expectedRevision: state.revision,
@@ -74,6 +126,145 @@ test('native admission binds one room delivery for its invoker, not its room cre
   expect((await convex.mutation(mutation('harness/runs:admit'), input)).revision).toBe(root.revision)
   expect((await open(convex, fixture)).resumed).toBe(true)
   await expect(convex.mutation(mutation('harness/runs:admit'), { ...input, runId: 'different-root' })).rejects.toThrow()
+})
+
+test('named admission binds a cross-room delivery authored by the current parent agent', async () => {
+  const convex = convexTest(schema, modules)
+  const fixture = await seed(convex)
+  const parentTurn = await open(convex, fixture)
+  const parent = admission(fixture.conversationId, parentTurn.runId)
+  await convex.mutation(mutation('harness/runs:admit'), { ...parent, serverSecret: secret })
+  const target = await convex.run(async ctx => {
+    const now = Date.now()
+    await ctx.db.insert('workspacePrincipals', { principalId: 'target-principal', workspaceId: 'workspace', type: 'agent',
+      agentId: 'target', displayName: 'Target', createdAt: now, updatedAt: now })
+    await ctx.db.insert('workspaceAgentDefinitions', { agentId: 'target', workspaceId: 'workspace',
+      principalId: 'target-principal', name: 'Target', instructions: '', harness: 'overlay', modelId: 'openrouter/free',
+      allowedToolIds: [], invocationPolicy: 'mention', createdByPrincipalId: 'alice', createdAt: now, updatedAt: now })
+    const conversationId = await ctx.db.insert('conversations', { userId: 'alice', workspaceId: 'workspace',
+      conversationType: 'dm', title: 'Asked agent', lastModified: now, createdAt: now, updatedAt: now,
+      lastMode: 'act', askModelIds: [], actModelId: 'openrouter/free' })
+    for (const [principalId, principalType] of [['alice', 'human'], ['agent-principal', 'agent'], ['target-principal', 'agent']] as const) {
+      await ctx.db.insert('conversationParticipants', { conversationId, workspaceId: 'workspace', principalId, principalType,
+        role: 'member', status: 'active', notificationLevel: 'all', joinedAt: now, updatedAt: now })
+    }
+    const userMessageId = await ctx.db.insert('conversationMessages', { conversationId, userId: 'alice',
+      turnId: 'named-question', role: 'user', mode: 'act', content: 'Please inspect this.', contentType: 'text',
+      authorKind: 'agent', authorPrincipalId: 'agent-principal', createdAt: now })
+    return { conversationId, userMessageId }
+  })
+  const targetTurn = await convex.mutation(mutation('collaboration/directMessages:startAgentTurn'), {
+    actorUserId: 'alice', agentId: 'target', authorPrincipalId: 'target-principal',
+    initiatorPrincipalId: 'agent-principal', conversationId: target.conversationId, clientNonce: 'named-child',
+    turnId: 'target-turn', modelId: 'openrouter/free', userMessageId: target.userMessageId,
+    workspaceId: 'workspace', executionEngine: 'overlay_harness', serverSecret: secret,
+  })
+  const childRunId = `workspace:${targetTurn.runId}`
+  const result = await convex.mutation(mutation('harness/runs:apply'), {
+    actorUserId: 'alice', runId: parent.runId, expectedRevision: 0, operationId: 'named-child:call:target',
+    operation: {
+      type: 'admit_named_child',
+      child: { id: childRunId, stepId: 'ask:call:target', allowedToolIds: [], maxCostMicros: 0,
+        costMicros: 0, status: 'running', evidenceRefs: [] },
+      step: { title: 'Ask Target', acceptanceCriteria: ['Target responds to the request.'] },
+      goal: 'Please inspect this.', constraints: [],
+      target: { deliveryAgentRunId: targetTurn.runId, conversationId: target.conversationId },
+    },
+    serverSecret: secret,
+  })
+  expect(result.snapshot.children).toEqual([expect.objectContaining({ id: childRunId, stepId: 'ask:call:target' })])
+  expect((await convex.run(ctx => ctx.db.get(targetTurn.runId)))?.harnessRunId).toBe(childRunId)
+  expect((await convex.query(query('harness/runs:get'), { actorUserId: 'alice', runId: childRunId, serverSecret: secret }))
+    .parentRunId).toBe(parent.runId)
+  await apply(convex, parent.runId, { type: 'claim_execution', workflowRunId: 'root-workflow' })
+  await apply(convex, childRunId, { type: 'claim_execution', workflowRunId: 'named-child-workflow' })
+  await convex.mutation(mutation('chat/conversations:cancelAgentRuns'), {
+    conversationId: fixture.conversationId, userId: 'alice', serverSecret: secret,
+  })
+  expect((await convex.query(query('harness/runs:get'), {
+    actorUserId: 'alice', runId: childRunId, serverSecret: secret,
+  })).status).toBe('cancelled')
+  const workflows = await convex.query(query('harness/runs:listDeliveryWorkflowRuns'), {
+    actorUserId: 'alice', agentRunId: parentTurn.runId, rootRunId: parent.runId, cursor: null, serverSecret: secret,
+  })
+  expect(workflows.workflowRunIds).toEqual(expect.arrayContaining(['root-workflow', 'named-child-workflow']))
+})
+
+test.each(['wrong-engine', 'non-participant', 'foreign-workspace', 'trigger-author', 'already-bound'])
+  ('named admission rejects %s targets atomically', async scenario => {
+    const convex = convexTest(schema, modules)
+    const fixture = await namedAdmissionFixture(convex, scenario)
+    await expect(apply(convex, fixture.parent.runId, fixture.operation)).rejects.toThrow()
+    expect((await convex.query(query('harness/runs:get'), {
+      actorUserId: 'alice', runId: fixture.parent.runId, serverSecret: secret,
+    })).children).toEqual([])
+    const targetRun = await convex.run(ctx => ctx.db.get(fixture.targetTurn.runId))
+    if (scenario === 'already-bound') expect(targetRun?.harnessRunId).toBe('workspace:already-bound')
+    else expect(targetRun?.harnessRunId).toBeUndefined()
+  })
+
+test('named-child Stop cancels only that cross-room subtree and leaves its parent active', async () => {
+  const convex = convexTest(schema, modules)
+  const fixture = await namedAdmissionFixture(convex)
+  await apply(convex, fixture.parent.runId, fixture.operation)
+  const siblingTarget = await convex.run(async ctx => {
+    const now = Date.now()
+    const conversationId = await ctx.db.insert('conversations', { userId: 'alice', workspaceId: 'workspace',
+      conversationType: 'dm', title: 'Sibling agent room', lastModified: now, createdAt: now, updatedAt: now,
+      lastMode: 'act', askModelIds: [], actModelId: 'openrouter/free' })
+    for (const [principalId, principalType] of [
+      ['alice', 'human'], ['agent-principal', 'agent'], ['target-principal', 'agent'],
+    ] as const) {
+      await ctx.db.insert('conversationParticipants', { conversationId, workspaceId: 'workspace', principalId,
+        principalType, role: 'member', status: 'active', notificationLevel: 'all', joinedAt: now, updatedAt: now })
+    }
+    const userMessageId = await ctx.db.insert('conversationMessages', { conversationId, userId: 'alice',
+      turnId: 'sibling-question', role: 'user', mode: 'act', content: 'Inspect the sibling room.',
+      contentType: 'text', authorKind: 'agent', authorPrincipalId: 'agent-principal', createdAt: now })
+    return { conversationId, userMessageId }
+  })
+  const siblingTurn = await convex.mutation(mutation('collaboration/directMessages:startAgentTurn'), {
+    actorUserId: 'alice', agentId: 'target', authorPrincipalId: 'target-principal',
+    initiatorPrincipalId: 'agent-principal', conversationId: siblingTarget.conversationId,
+    clientNonce: 'named-sibling', turnId: 'sibling-turn', modelId: 'openrouter/free',
+    userMessageId: siblingTarget.userMessageId, workspaceId: 'workspace', executionEngine: 'overlay_harness',
+    serverSecret: secret,
+  })
+  const siblingRunId = `workspace:${siblingTurn.runId}`
+  await apply(convex, fixture.parent.runId, {
+    type: 'admit_named_child',
+    child: { id: siblingRunId, stepId: 'ask:sibling:target', allowedToolIds: [], maxCostMicros: 0,
+      costMicros: 0, status: 'running', evidenceRefs: [] },
+    step: { title: 'Ask sibling', acceptanceCriteria: ['The sibling responds.'] },
+    goal: 'Inspect the sibling room.', constraints: [],
+    target: { deliveryAgentRunId: siblingTurn.runId, conversationId: siblingTarget.conversationId },
+  })
+  await apply(convex, fixture.parent.runId, { type: 'claim_execution', workflowRunId: 'root-workflow' })
+  await apply(convex, fixture.childRunId, { type: 'claim_execution', workflowRunId: 'named-child-workflow' })
+  await apply(convex, siblingRunId, { type: 'claim_execution', workflowRunId: 'sibling-workflow' })
+  await convex.mutation(mutation('chat/conversations:cancelAgentRuns'), {
+    conversationId: fixture.target.conversationId, userId: 'alice', serverSecret: secret,
+  })
+  expect((await convex.query(query('harness/runs:get'), {
+    actorUserId: 'alice', runId: fixture.childRunId, serverSecret: secret,
+  })).status).toBe('cancelled')
+  const parentState = await convex.query(query('harness/runs:get'), {
+    actorUserId: 'alice', runId: fixture.parent.runId, serverSecret: secret,
+  })
+  expect(parentState.status).toBe('running')
+  expect(parentState.children).toEqual(expect.arrayContaining([
+    expect.objectContaining({ id: fixture.childRunId, status: 'running' }),
+    expect.objectContaining({ id: siblingRunId, status: 'running' }),
+  ]))
+  expect((await convex.query(query('harness/runs:get'), {
+    actorUserId: 'alice', runId: siblingRunId, serverSecret: secret,
+  })).status).toBe('running')
+  expect((await convex.run(ctx => ctx.db.get(siblingTurn.runId)))?.status).toBe('queued')
+  const workflows = await convex.query(query('harness/runs:listDeliveryWorkflowRuns'), {
+    actorUserId: 'alice', agentRunId: fixture.targetTurn.runId, rootRunId: fixture.childRunId,
+    cursor: null, serverSecret: secret,
+  })
+  expect(workflows.workflowRunIds).toEqual(['named-child-workflow'])
 })
 
 test.each(['legacy', 'foreign-actor', 'external-agent', 'archived-agent', 'wrong-principal', 'removed-agent', 'removed-invoker', 'foreign-message'])

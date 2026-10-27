@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
-  admitHarnessChild, assertHarnessRunnable, blockHarness, checkpointHarness, createHarnessSnapshot,
+  admitHarnessChild, admitHarnessNamedChild, assertHarnessRunnable, blockHarness, checkpointHarness, createHarnessSnapshot,
   currentHarnessContext, finishHarness, recordHarnessEvidence, recordHarnessReceipt, recordHarnessChildReceipt,
   replaceHarnessPlan, settleHarnessChild, terminateHarness, transitionHarnessStep, type HarnessChild, type HarnessEvidence,
   type HarnessPlanInput, type HarnessReceipt,
@@ -216,6 +216,49 @@ test('child reservations enforce capabilities, root spending, concurrency and de
   assert.throws(() => assertHarnessRunnable(state, now, 1), /spending/)
   assert.throws(() => admitHarnessChild({ ...state, depth: 1, children: [] }, child('deep', 'extra', 0), now), /depth/)
   assert.throws(() => assertHarnessRunnable(state, 10_000), /deadline/)
+})
+
+test('named child admission appends and assigns its synthetic milestone atomically', () => {
+  const initial = make()
+  const admitted = admitHarnessNamedChild(initial, child('workspace:delivery', 'ask:call:planner', 40), {
+    title: 'Ask Planner',
+    acceptanceCriteria: ['Planner returns a reply.'],
+  }, now)
+  assert.equal(initial.plan.length, 0)
+  assert.equal(initial.children.length, 0)
+  assert.deepEqual(admitted.plan, [{
+    id: 'ask:call:planner',
+    title: 'Ask Planner',
+    dependsOn: [],
+    acceptanceCriteria: ['Planner returns a reply.'],
+    requiresVerification: false,
+    status: 'running',
+    evidenceRefs: [],
+    childRunId: 'workspace:delivery',
+  }])
+  assert.equal(admitted.children[0]?.id, 'workspace:delivery')
+  assert.throws(() => admitHarnessNamedChild(admitted, child('workspace:other', 'ask:call:planner', 0), {
+    title: 'Duplicate',
+    acceptanceCriteria: ['Complete'],
+  }, now), /milestone identity/)
+})
+
+test('named child admission enforces spending, depth, concurrency and plan size', () => {
+  const step = { title: 'Ask agent', acceptanceCriteria: ['Receive the reply.'] }
+  assert.throws(() => admitHarnessNamedChild(make(), child('expensive', 'ask:expensive', 101), step, now), /spending/)
+  assert.throws(() => admitHarnessNamedChild({ ...make(), depth: 1 }, child('deep', 'ask:deep', 0), step, now), /depth/)
+  assert.throws(() => admitHarnessNamedChild({
+    ...make(),
+    children: [child('first', 'first', 0), child('second', 'second', 0)],
+  }, child('third', 'ask:third', 0), step, now), /concurrency/)
+  const full = replaceHarnessPlan(make(), Array.from({ length: 128 }, (_, index) => ({
+    id: `step-${index}`,
+    title: `Step ${index}`,
+    acceptanceCriteria: ['Complete the step.'],
+    dependsOn: [],
+    requiresVerification: false,
+  })), now)
+  assert.throws(() => admitHarnessNamedChild(full, child('full', 'ask:full', 0), step, now), /128/)
 })
 
 test('joining a child charges usage once, releases unused budget and preserves authority', () => {

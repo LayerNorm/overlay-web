@@ -27,6 +27,14 @@ export type HarnessOperation =
   | { type: 'resume' }
   | { type: 'wait_for_children' }
   | { type: 'admit_child'; child: HarnessChild; goal: string; constraints: string[] }
+  | {
+      type: 'admit_named_child'
+      child: HarnessChild
+      step: { title: string; acceptanceCriteria: string[] }
+      goal: string
+      constraints: string[]
+      target: { deliveryAgentRunId: string; conversationId: string }
+    }
   | { type: 'settle_child'; childRunId: string }
   | { type: 'finish'; resultSummary?: string }
   | { type: 'terminate'; status: 'cancelled' | 'failed'; reason: string }

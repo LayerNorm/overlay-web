@@ -338,6 +338,50 @@ export function admitHarnessChild(state: HarnessSnapshot, child: HarnessChild, n
   return changed(next, now)
 }
 
+export function admitHarnessNamedChild(
+  state: HarnessSnapshot,
+  child: HarnessChild,
+  step: { title: string; acceptanceCriteria: string[] },
+  now: number,
+): HarnessSnapshot {
+  assertHarnessRunnable(state, now)
+  if (!child.id) throw new Error('A child identity is required.')
+  if (state.children.some(candidate => candidate.id === child.id)) throw new Error('Child identity is already reserved.')
+  if (state.plan.some(candidate => candidate.id === child.stepId)) throw new Error('Named child milestone identity already exists.')
+  if (state.plan.length >= 128) throw new Error('A harness plan may contain at most 128 milestones.')
+  if (!step.title.trim() || !step.acceptanceCriteria.length || step.acceptanceCriteria.some(criterion => !criterion.trim())) {
+    throw new Error('Each milestone needs an identity, title and acceptance criteria.')
+  }
+  if (state.depth >= state.policy.maxDepth) throw new Error('The child depth budget is exhausted.')
+  if (state.children.filter(candidate => candidate.status === 'running').length >= state.policy.maxParallelChildren) {
+    throw new Error('The child concurrency budget is exhausted.')
+  }
+  if (child.allowedToolIds.some(id => !state.policy.allowedToolIds.includes(id))) {
+    throw new Error('Child capabilities cannot exceed the parent.')
+  }
+  if (!Number.isSafeInteger(child.maxCostMicros) || child.maxCostMicros < 0
+    || state.usage.costMicros + reservedHarnessCostMicros(state) + child.maxCostMicros > state.policy.maxCostMicros) {
+    throw new Error('The root spending budget cannot cover this child.')
+  }
+  if (child.status !== 'running' || child.evidenceRefs.length || child.costMicros !== 0 || child.accountedUsage !== undefined) {
+    throw new Error('A new child must be empty and running.')
+  }
+  const next = mutable(state)
+  next.plan.push({
+    id: child.stepId,
+    title: step.title,
+    dependsOn: [],
+    acceptanceCriteria: [...step.acceptanceCriteria],
+    requiresVerification: false,
+    status: 'running',
+    evidenceRefs: [],
+    childRunId: child.id,
+  })
+  next.planRevision++
+  next.children.push({ ...child, allowedToolIds: [...child.allowedToolIds], evidenceRefs: [...child.evidenceRefs] })
+  return changed(next, now)
+}
+
 export function harnessCompletionIssues(state: HarnessSnapshot): string[] {
   return [
     ...(state.status !== 'running' ? ['The run is not running.'] : []),

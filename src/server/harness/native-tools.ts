@@ -1,8 +1,7 @@
 import type { ToolSet } from 'ai'
 import type { PersonalChatWorkToolDefinition } from '@/shared/agents/personal-chat-work'
-import { harnessDispatchRequiredOutput } from '@/shared/agents/harness-dispatch-refusal'
 import type { NativeHarnessAccess, NativeHarnessContext } from './native-access'
-import { executeNativeHarnessTool, nativeHarnessToolNeedsApproval } from './native-tool-steps'
+import { dispatchNativeHarnessAgentRequest, executeNativeHarnessTool, nativeHarnessToolNeedsApproval } from './native-tool-steps'
 import { createHarnessTools } from './tools'
 
 export type NativeHarnessToolsInput = {
@@ -13,13 +12,13 @@ export type NativeHarnessToolsInput = {
 
 export function createNativeHarnessTools(input: NativeHarnessToolsInput): ToolSet {
   const context = { access: input.access, context: input.context }
-  const refusedTools = new Set(['ask_agent', 'post_message'])
+  const agentRequestTools = new Set(['ask_agent', 'post_message'])
   return createHarnessTools(input.definitions, {
-    needsApproval: call => refusedTools.has(call.toolName)
+    needsApproval: call => agentRequestTools.has(call.toolName)
       ? Promise.resolve(false)
       : nativeHarnessToolNeedsApproval({ ...context, ...call }),
-    execute: (call, approved) => refusedTools.has(call.toolName)
-      ? Promise.resolve(harnessDispatchRequiredOutput)
+    execute: (call, approved) => agentRequestTools.has(call.toolName)
+      ? dispatchNativeHarnessAgentRequest(input.access, input.context, call.toolCallId, call.toolName, call.input)
       : executeNativeHarnessTool({ ...context, ...call }, approved),
   })
 }

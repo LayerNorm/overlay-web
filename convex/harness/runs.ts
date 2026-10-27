@@ -6,6 +6,7 @@ import { getReadableRow } from '../lib/resourceScope'
 import { isHarnessDeliveryConversation, validateNativeHarnessDelivery } from './nativeDelivery'
 import {
   admitHarnessChild,
+  admitHarnessNamedChild,
   blockHarness,
   bindHarnessModelDispatch,
   checkpointHarness,
@@ -192,6 +193,14 @@ const operationValidator = v.union(
     child: childValidator,
     goal: v.string(),
     constraints: v.array(v.string()),
+  }),
+  v.object({
+    type: v.literal('admit_named_child'),
+    child: childValidator,
+    step: v.object({ title: v.string(), acceptanceCriteria: v.array(v.string()) }),
+    goal: v.string(),
+    constraints: v.array(v.string()),
+    target: v.object({ deliveryAgentRunId: v.string(), conversationId: v.string() }),
   }),
   v.object({ type: v.literal('settle_child'), childRunId: v.string() }),
   v.object({ type: v.literal('finish'), resultSummary: v.optional(v.string()) }),
@@ -439,6 +448,25 @@ function assertBoundedOperation(operation: HarnessOperation) {
         throw new Error('Harness child admission exceeds its bounds.')
       }
       break
+    case 'admit_named_child':
+      if (!operation.child.id.trim() || operation.child.id.length > MAX_ID_LENGTH
+        || !operation.child.stepId.trim() || operation.child.stepId.length > MAX_ID_LENGTH
+        || operation.child.allowedToolIds.length > MAX_TOOL_IDS
+        || operation.child.allowedToolIds.some(id => !id.trim() || id.length > MAX_TOOL_ID_LENGTH)
+        || operation.child.evidenceRefs.length > MAX_EVIDENCE_REFS
+        || operation.child.evidenceRefs.some(id => !id.trim() || id.length > MAX_EVIDENCE_ID_LENGTH)
+        || operation.child.summary !== undefined
+        || !operation.step.title.trim() || operation.step.title.length > MAX_EVIDENCE_SUMMARY_LENGTH
+        || !operation.step.acceptanceCriteria.length || operation.step.acceptanceCriteria.length > MAX_ACCEPTANCE_CRITERIA
+        || operation.step.acceptanceCriteria.some(item => !item.trim() || item.length > MAX_EVIDENCE_SUMMARY_LENGTH)
+        || !operation.target.deliveryAgentRunId.trim() || operation.target.deliveryAgentRunId.length > MAX_ID_LENGTH
+        || !operation.target.conversationId.trim() || operation.target.conversationId.length > MAX_ID_LENGTH
+        || !operation.goal.trim() || operation.goal.length > MAX_GOAL_LENGTH
+        || operation.constraints.length > MAX_CONSTRAINTS
+        || operation.constraints.some(item => !item.trim() || item.length > MAX_CONSTRAINT_LENGTH)) {
+        throw new Error('Harness named child admission exceeds its bounds.')
+      }
+      break
     case 'settle_child':
       if (!operation.childRunId.trim() || operation.childRunId.length > MAX_ID_LENGTH) {
         throw new Error('Invalid harness child run id.')
@@ -577,11 +605,13 @@ function assertCancellationLineageEntry(
   actorUserId: string,
 ) {
   const runSource = parseJson<HarnessSource>(run.sourceJson)
+  const sourceMismatch = stableJson(runSource) !== stableJson(source)
   if (run.rootRunId !== root.runId || run.actorUserId !== actorUserId
     || metadata.runId !== run.runId || metadata.rootRunId !== root.runId
     || metadata.parentRunId !== run.parentRunId || metadata.policy.actorUserId !== actorUserId
     || metadata.policy.workspaceId !== rootMetadata.policy.workspaceId
-    || metadata.depth > MAX_HARNESS_DEPTH || stableJson(runSource) !== stableJson(source)) {
+    || metadata.depth > MAX_HARNESS_DEPTH
+    || (sourceMismatch && (run.parentRunId === undefined || run.deliveryAgentRunId === undefined))) {
     throw new Error('Invalid harness cancellation lineage.')
   }
 }
@@ -593,7 +623,7 @@ async function validateCancellationLineage(
   source: HarnessSource,
   rootMetadata: HarnessMetadata,
   actorUserId: string,
-): Promise<HarnessMetadata> {
+): Promise<{ metadata: HarnessMetadata; lineageRunIds: string[] }> {
   const entries: LineageEntry[] = []
   const seen = new Set<string>()
   let current: RunRow | null = run
@@ -604,6 +634,21 @@ async function validateCancellationLineage(
     seen.add(current.runId)
     const metadata = parseJson<HarnessMetadata>(current.metadataJson)
     assertCancellationLineageEntry(current, metadata, root, rootMetadata, source, actorUserId)
+    if (current.deliveryAgentRunId) {
+      const deliveryId = ctx.db.normalizeId('conversationAgentRuns', current.deliveryAgentRunId)
+      const delivery = deliveryId ? await ctx.db.get(deliveryId) : null
+      const namedSource = parseJson<HarnessSource>(current.sourceJson)
+      const conversationId = namedSource && 'conversationId' in namedSource && typeof namedSource.conversationId === 'string'
+        ? ctx.db.normalizeId('conversations', namedSource.conversationId) : null
+      const conversation = conversationId ? await ctx.db.get(conversationId) : null
+      if (!delivery || delivery.harnessRunId !== current.runId
+        || current.runId !== `workspace:${delivery._id}`
+        || delivery.conversationId !== conversationId || delivery.userId !== actorUserId
+        || delivery.runner !== 'workflow' || delivery.executionEngine !== 'overlay_harness'
+        || !isHarnessDeliveryConversation(conversation, delivery, current.runId)) {
+        throw new Error('Invalid named harness cancellation binding.')
+      }
+    }
     checkedActiveCount(current.activeDescendantCount)
     entries.push({ run: current, metadata })
     if (current.runId === root.runId) break
@@ -626,7 +671,7 @@ async function validateCancellationLineage(
       throw new Error('Invalid harness cancellation lineage.')
     }
   }
-  return entries[0]!.metadata
+  return { metadata: entries[0]!.metadata, lineageRunIds: entries.map(entry => entry.run.runId) }
 }
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
@@ -930,7 +975,10 @@ async function getEvidenceRow(ctx: ReadContext, runId: string, evidenceId: strin
     .unique()
 }
 
-function childAdmission(parent: HarnessSnapshot, operation: Extract<HarnessOperation, { type: 'admit_child' }>) {
+function childAdmission(
+  parent: HarnessSnapshot,
+  operation: Extract<HarnessOperation, { type: 'admit_child' | 'admit_named_child' }>,
+) {
   const constraints = [...parent.constraints, ...operation.constraints]
   if (constraints.length > MAX_CONSTRAINTS) throw new Error('Child constraints exceed the 32-entry limit.')
   const policy: HarnessPolicy = {
@@ -983,36 +1031,34 @@ export async function cancelHarnessDelivery(
   ctx: MutationCtx,
   delivery: Doc<'conversationAgentRuns'>,
   now: number,
+  serverSecret: string,
 ): Promise<{ agentRunId: string; runId: string }> {
   if (!delivery.harnessRunId) throw new Error('HARNESS_DELIVERY_BINDING_MISSING')
-  const root = await findRun(ctx, delivery.harnessRunId)
-  const source = root ? parseJson<HarnessSource>(root.sourceJson) : null
-  const conversationId = source && 'conversationId' in source && typeof source.conversationId === 'string'
-    ? ctx.db.normalizeId('conversations', source.conversationId)
-    : null
-  const conversation = conversationId ? await ctx.db.get(conversationId) : null
-  if (!root || root.parentRunId !== undefined || root.rootRunId !== root.runId
-    || root.actorUserId !== delivery.userId || root.deliveryAgentRunId !== delivery._id
-    || delivery.runner !== 'workflow'
+  const run = await findRun(ctx, delivery.harnessRunId)
+  const source = run ? parseJson<HarnessSource>(run.sourceJson) : null
+  const conversation = await ctx.db.get(delivery.conversationId)
+  if (!run || run.runId !== `workspace:${delivery._id}` || run.deliveryAgentRunId !== delivery._id
+    || run.actorUserId !== delivery.userId || delivery.runner !== 'workflow'
     || !source || !('conversationId' in source) || source.conversationId !== delivery.conversationId
-    || !isHarnessDeliveryConversation(conversation, delivery, root.runId)) {
+    || !isHarnessDeliveryConversation(conversation, delivery, run.runId)) {
     throw new Error('HARNESS_DELIVERY_BINDING_INVALID')
   }
-  const metadata = parseJson<HarnessMetadata>(root.metadataJson)
-  if (metadata.runId !== root.runId || metadata.rootRunId !== root.rootRunId
-    || metadata.parentRunId !== undefined || metadata.policy.actorUserId !== delivery.userId
+  const lineage = await loadLineage(ctx, run, delivery.userId, serverSecret)
+  const metadata = lineage[0]!.metadata
+  if (metadata.runId !== run.runId || metadata.rootRunId !== run.rootRunId
+    || metadata.parentRunId !== run.parentRunId || metadata.policy.actorUserId !== delivery.userId
     || metadata.policy.workspaceId !== conversation?.workspaceId) {
     throw new Error('HARNESS_DELIVERY_BINDING_INVALID')
   }
   if (isTerminalStatus(metadata.status)) {
-    return { agentRunId: delivery._id, runId: root.runId }
+    return { agentRunId: delivery._id, runId: run.runId }
   }
-  const snapshot = await hydrateSnapshot(ctx, root)
+  const snapshot = await hydrateSnapshot(ctx, run)
   const cancelled = terminateHarness(snapshot, 'cancelled', 'The delivery was cancelled by the user.', now)
-  await persistMetadata(ctx, root, cancelled)
-  await persistChildren(ctx, root.runId, snapshot.children, cancelled.children)
-  await releaseTerminalSubtree(ctx, root, [{ run: root, metadata }])
-  return { agentRunId: delivery._id, runId: root.runId }
+  await persistMetadata(ctx, run, cancelled)
+  await persistChildren(ctx, run.runId, snapshot.children, cancelled.children)
+  await releaseTerminalSubtree(ctx, run, lineage)
+  return { agentRunId: delivery._id, runId: run.runId }
 }
 
 async function applyReducer(
@@ -1024,7 +1070,11 @@ async function applyReducer(
   now: number,
 ): Promise<{
   snapshot: HarnessSnapshot
-  childRun?: { admission: ReturnType<typeof childAdmission>; snapshot: HarnessSnapshot }
+  childRun?: {
+    admission: ReturnType<typeof childAdmission> & { source?: HarnessSource; deliveryAgentRunId?: string }
+    snapshot: HarnessSnapshot
+    delivery?: Doc<'conversationAgentRuns'>
+  }
   evidenceToPersist?: HarnessEvidence
 }> {
   switch (operation.type) {
@@ -1076,6 +1126,54 @@ async function applyReducer(
         depth: admission.depth,
       }, now)
       return { snapshot, childRun: { admission, snapshot: childSnapshot } }
+    }
+    case 'admit_named_child': {
+      const admission = childAdmission(current, operation)
+      if (admission.runId !== `workspace:${operation.target.deliveryAgentRunId}`) {
+        throw new Error('HARNESS_DELIVERY_TARGET_DENIED')
+      }
+      if (await findRun(ctx, admission.runId)) throw new Error('Harness child run id already exists.')
+      const deliveryId = ctx.db.normalizeId('conversationAgentRuns', operation.target.deliveryAgentRunId)
+      const delivery = deliveryId ? await ctx.db.get(deliveryId) : null
+      if (!delivery) throw new Error('HARNESS_DELIVERY_TARGET_DENIED')
+      const source: HarnessSource = { conversationId: operation.target.conversationId }
+      await validateNativeHarnessDelivery(ctx, {
+        ...admission,
+        deliveryAgentRunId: delivery._id,
+        source,
+      }, source, delivery, serverSecret)
+      const root = await findRun(ctx, run.rootRunId)
+      const parentDeliveryRunId = run.deliveryAgentRunId ?? root?.deliveryAgentRunId
+      const parentDeliveryId = parentDeliveryRunId
+        ? ctx.db.normalizeId('conversationAgentRuns', parentDeliveryRunId) : null
+      const parentDelivery = parentDeliveryId ? await ctx.db.get(parentDeliveryId) : null
+      const targetConversation = await ctx.db.get(delivery.conversationId)
+      const trigger = await ctx.db.get(delivery.userMessageId)
+      if (!parentDelivery?.agentPrincipalId || !targetConversation || !trigger
+        || targetConversation.workspaceId !== current.policy.workspaceId
+        || delivery.conversationId !== targetConversation._id
+        || trigger.conversationId !== targetConversation._id
+        || trigger.authorPrincipalId !== parentDelivery.agentPrincipalId) {
+        throw new Error('HARNESS_DELIVERY_TARGET_DENIED')
+      }
+      const snapshot = admitHarnessNamedChild(current, operation.child, operation.step, now)
+      const childSnapshot = createHarnessSnapshot({
+        runId: admission.runId,
+        goal: admission.goal,
+        constraints: admission.constraints,
+        policy: admission.policy,
+        parentRunId: admission.parentRunId,
+        rootRunId: admission.rootRunId,
+        depth: admission.depth,
+      }, now)
+      return {
+        snapshot,
+        childRun: {
+          admission: { ...admission, source, deliveryAgentRunId: delivery._id },
+          snapshot: childSnapshot,
+          delivery,
+        },
+      }
     }
     case 'settle_child': {
       const childRun = await findRun(ctx, operation.childRunId)
@@ -1308,7 +1406,9 @@ export const apply = mutation({
       })
     }
 
-    if (operation.type === 'admit_child') await incrementAncestorCounts(ctx, lineage)
+    if (operation.type === 'admit_child' || operation.type === 'admit_named_child') {
+      await incrementAncestorCounts(ctx, lineage)
+    }
     if (becameTerminal) await releaseTerminalSubtree(ctx, run, lineage)
 
     if (changed) {
@@ -1327,28 +1427,32 @@ export const apply = mutation({
       }
     }
     if (result.childRun) {
-      const { admission, snapshot } = result.childRun
+      const { admission, snapshot, delivery } = result.childRun
+      const source = admission.source ?? parseJson<HarnessSource>(run.sourceJson)
       await ctx.db.insert('harnessRuns', {
         runId: snapshot.runId,
         actorUserId: snapshot.policy.actorUserId,
         rootRunId: snapshot.rootRunId,
         parentRunId: snapshot.parentRunId,
+        ...(delivery ? { deliveryAgentRunId: delivery._id } : {}),
         activeDescendantCount: 0,
-        sourceJson: run.sourceJson,
+        sourceJson: stableJson(source),
         admissionJson: stableJson({
           runId: admission.runId,
           goal: admission.goal,
           constraints: admission.constraints,
           policy: admission.policy,
-          source: parseJson<HarnessSource>(run.sourceJson),
+          source,
           rootRunId: admission.rootRunId,
           parentRunId: admission.parentRunId,
           depth: admission.depth,
+          ...(delivery ? { deliveryAgentRunId: delivery._id } : {}),
         }),
         metadataJson: stableJson(metadataFromSnapshot(snapshot)),
         createdAt: now,
         updatedAt: now,
       })
+      if (delivery) await ctx.db.patch(delivery._id, { harnessRunId: snapshot.runId })
     }
     if (operation.type === 'checkpoint') {
       await ctx.db.insert('harnessCheckpoints', {
@@ -1555,17 +1659,44 @@ export const listDeliveryWorkflowRuns = query({
       || delivery.status !== 'cancelled' || delivery.harnessRunId !== args.rootRunId) {
       throw new Error('HARNESS_DELIVERY_ACCESS_DENIED')
     }
-    const root = await findRun(ctx, args.rootRunId)
-    if (!root || root.parentRunId !== undefined || root.rootRunId !== root.runId
-      || root.actorUserId !== args.actorUserId || root.deliveryAgentRunId !== delivery._id) {
+    const target = await findRun(ctx, args.rootRunId)
+    if (!target || target.runId !== `workspace:${delivery._id}`
+      || target.actorUserId !== args.actorUserId || target.deliveryAgentRunId !== delivery._id
+      || (target.parentRunId === undefined && target.rootRunId !== target.runId)
+      || (target.parentRunId !== undefined && target.rootRunId === target.runId)) {
       throw new Error('HARNESS_DELIVERY_ACCESS_DENIED')
     }
+    const targetSource = parseJson<HarnessSource>(target.sourceJson)
+    const targetConversationId = targetSource && 'conversationId' in targetSource && typeof targetSource.conversationId === 'string'
+      ? ctx.db.normalizeId('conversations', targetSource.conversationId)
+      : null
+    const targetConversation = targetConversationId ? await ctx.db.get(targetConversationId) : null
+    if (!targetSource || !('conversationId' in targetSource)
+      || targetSource.conversationId !== delivery.conversationId
+      || !isHarnessDeliveryConversation(targetConversation, delivery, target.runId)) {
+      throw new Error('HARNESS_DELIVERY_ACCESS_DENIED')
+    }
+    const targetMetadata = parseJson<HarnessMetadata>(target.metadataJson)
+    if (targetMetadata.runId !== target.runId || targetMetadata.rootRunId !== target.rootRunId
+      || targetMetadata.parentRunId !== target.parentRunId || targetMetadata.policy.actorUserId !== args.actorUserId
+      || targetMetadata.policy.workspaceId !== targetConversation?.workspaceId
+      || !isTerminalStatus(targetMetadata.status)) {
+      throw new Error('HARNESS_DELIVERY_ACCESS_DENIED')
+    }
+    const root = await findRun(ctx, target.rootRunId)
+    if (!root || root.parentRunId !== undefined || root.rootRunId !== root.runId
+      || root.actorUserId !== args.actorUserId || !root.deliveryAgentRunId) {
+      throw new Error('HARNESS_DELIVERY_ACCESS_DENIED')
+    }
+    const rootDeliveryId = ctx.db.normalizeId('conversationAgentRuns', root.deliveryAgentRunId)
+    const rootDelivery = rootDeliveryId ? await ctx.db.get(rootDeliveryId) : null
     const source = parseJson<HarnessSource>(root.sourceJson)
     const conversationId = source && 'conversationId' in source && typeof source.conversationId === 'string'
       ? ctx.db.normalizeId('conversations', source.conversationId)
       : null
     const conversation = conversationId ? await ctx.db.get(conversationId) : null
-    if (!isHarnessDeliveryConversation(conversation, delivery, root.runId)) {
+    if (!rootDelivery || rootDelivery.harnessRunId !== root.runId
+      || !isHarnessDeliveryConversation(conversation, rootDelivery, root.runId)) {
       throw new Error('HARNESS_DELIVERY_ACCESS_DENIED')
     }
     const rootMetadata = parseJson<HarnessMetadata>(root.metadataJson)
@@ -1575,18 +1706,21 @@ export const listDeliveryWorkflowRuns = query({
       || rootMetadata.policy.workspaceId !== conversation?.workspaceId) {
       throw new Error('HARNESS_DELIVERY_ACCESS_DENIED')
     }
-    if (!isTerminalStatus(rootMetadata.status)) throw new Error('HARNESS_DELIVERY_ROOT_ACTIVE')
+    if (target.runId === root.runId && !isTerminalStatus(rootMetadata.status)) {
+      throw new Error('HARNESS_DELIVERY_ROOT_ACTIVE')
+    }
     const rootSource = parseJson<HarnessSource>(root.sourceJson)
     const page = await ctx.db.query('harnessRuns')
-      .withIndex('by_rootRunId', query => query.eq('rootRunId', args.rootRunId))
+      .withIndex('by_rootRunId', query => query.eq('rootRunId', target.rootRunId))
       .paginate({ cursor: args.cursor, numItems: 100 })
     const workflowRunIds: string[] = []
     for (const row of page.page) {
-      const metadata = await validateCancellationLineage(
+      const validated = await validateCancellationLineage(
         ctx, row, root, rootSource, rootMetadata, args.actorUserId,
       )
-      if (row.runId === root.runId || !isTerminalStatus(metadata.status)) {
-        if (metadata.workflowRunId) workflowRunIds.push(metadata.workflowRunId)
+      if (!validated.lineageRunIds.includes(target.runId)) continue
+      if (row.runId === target.runId || !isTerminalStatus(validated.metadata.status)) {
+        if (validated.metadata.workflowRunId) workflowRunIds.push(validated.metadata.workflowRunId)
       }
     }
     return {
