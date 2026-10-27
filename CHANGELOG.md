@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Fix Harness Workflow initialization by configuring model retry limits on compiler-safe step functions, keeping credentials and authorization inside durable execution.
+
 - Recover personal Chat and Work sends after a pre-dispatch session rejection, using the shared browser session refresh and preserving turn identity without replaying provider failures.
 
 - Add the shared Overlay Harness execution and persistence foundations: evidence-gated plans, durable state operations, semantic continuation, secure model references and single-workflow ownership. Authenticated personal Chat and Work now use these foundations; other surfaces await migration and parity QA.

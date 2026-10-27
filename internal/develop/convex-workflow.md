@@ -462,6 +462,17 @@ Collaboration realtime is native Convex when `appDataCapabilities.provider === '
 
 Do not run `/api/v1/conversations/events` long-polls alongside those subscriptions. That endpoint is a non-realtime fallback; polling it against the Convex repository multiplies one browser connection into repeated Convex queries and authorization calls.
 
+## Harness model step registration
+
+`HarnessLanguageModel` delegates to named `streamHarnessModel` and
+`generateHarnessModel` steps with `maxRetries = 0`. Do not assign retry metadata
+to class prototype methods marked `use step`: the Workflow compiler removes
+those methods and registers proxies after module initialization, so assigning
+metadata can crash the workflow before it claims its durable root. Provider
+resolution and fresh dispatch authorization remain inside the named steps.
+The compiler regression test evaluates the transformed adapter, not just its
+untransformed TypeScript implementation.
+
 ## Bounded maintenance and list queries
 
 Maintenance jobs and user-facing lists must advance through indexed, bounded pages. `runEmptyConversationCleanup` persists its pagination cursor in `maintenanceCursors`, and `files/files:listPage` is the cursor-based file listing source. Keep legacy list functions bounded during web/Convex deployment overlap; never restore a growing-table `.collect()` for compatibility.

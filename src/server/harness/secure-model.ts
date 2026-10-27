@@ -47,25 +47,33 @@ export class HarnessLanguageModel implements LanguageModelV4 {
   }
 
   async doStream(options: LanguageModelV4CallOptions) {
-    'use step'
-    if (this.reference.personal) {
-      const { authorizePersonalHarnessModelDispatch } = await import('./personal-model-dispatch')
-      await authorizePersonalHarnessModelDispatch(this.reference, options)
-    }
-    const { secureModelDoStream } = await import('./secure-model-runtime')
-    return secureModelDoStream(this.reference, options)
+    return streamHarnessModel(this.reference, options)
   }
 
   async doGenerate(options: LanguageModelV4CallOptions) {
-    'use step'
-    if (this.reference.personal) {
-      const { authorizePersonalHarnessModelDispatch } = await import('./personal-model-dispatch')
-      await authorizePersonalHarnessModelDispatch(this.reference, options)
-    }
-    const { secureModelDoGenerate } = await import('./secure-model-runtime')
-    return secureModelDoGenerate(this.reference, options)
+    return generateHarnessModel(this.reference, options)
   }
 }
 
-Object.assign(HarnessLanguageModel.prototype.doStream, { maxRetries: 0 })
-Object.assign(HarnessLanguageModel.prototype.doGenerate, { maxRetries: 0 })
+export async function streamHarnessModel(reference: HarnessModelReference, options: LanguageModelV4CallOptions) {
+  'use step'
+  if (reference.personal) {
+    const { authorizePersonalHarnessModelDispatch } = await import('./personal-model-dispatch')
+    await authorizePersonalHarnessModelDispatch(reference, options)
+  }
+  const { secureModelDoStream } = await import('./secure-model-runtime')
+  return secureModelDoStream(reference, options)
+}
+
+export async function generateHarnessModel(reference: HarnessModelReference, options: LanguageModelV4CallOptions) {
+  'use step'
+  if (reference.personal) {
+    const { authorizePersonalHarnessModelDispatch } = await import('./personal-model-dispatch')
+    await authorizePersonalHarnessModelDispatch(reference, options)
+  }
+  const { secureModelDoGenerate } = await import('./secure-model-runtime')
+  return secureModelDoGenerate(reference, options)
+}
+
+streamHarnessModel.maxRetries = 0
+generateHarnessModel.maxRetries = 0

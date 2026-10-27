@@ -3,7 +3,7 @@ import { MockLanguageModelV3, MockLanguageModelV4 } from 'ai/test'
 import type { LanguageModelV4CallOptions, LanguageModelV4GenerateResult } from '@ai-sdk/provider'
 import { WORKFLOW_DESERIALIZE, WORKFLOW_SERIALIZE } from '@workflow/serde'
 import { getLanguageModel } from '@/server/ai/model-runtime'
-import { HarnessLanguageModel } from './secure-model'
+import { generateHarnessModel, HarnessLanguageModel, streamHarnessModel } from './secure-model'
 import { authorizePersonalHarnessModelDispatch, type PersonalHarnessModelDispatch } from './personal-model-dispatch'
 
 vi.mock('@/server/ai/model-runtime', () => ({ getLanguageModel: vi.fn() }))
@@ -51,8 +51,8 @@ test('personal dispatch serializes only references, and reauthorizes before reso
   vi.mocked(getLanguageModel).mockResolvedValue(new MockLanguageModelV4({ doGenerate: result }))
   await guarded.doGenerate(options)
   expect(authorizePersonalHarnessModelDispatch).toHaveBeenCalledTimes(2)
-  expect(HarnessLanguageModel.prototype.doStream).toHaveProperty('maxRetries', 0)
-  expect(HarnessLanguageModel.prototype.doGenerate).toHaveProperty('maxRetries', 0)
+  expect(streamHarnessModel).toHaveProperty('maxRetries', 0)
+  expect(generateHarnessModel).toHaveProperty('maxRetries', 0)
 })
 
 test('serialization contains references only and does not resolve credentials', () => {
