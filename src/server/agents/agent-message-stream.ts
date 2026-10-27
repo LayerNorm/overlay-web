@@ -2,6 +2,7 @@ import 'server-only'
 
 import { logger } from '@/server/observability/logger'
 import { toolFailureOutput } from '@/shared/chat/tool-outcomes'
+import { compactAssistantPersistenceForConvex } from '@/shared/chat/persist-assistant-turn'
 
 /**
  * The slice of the collaboration repository a streaming agent turn needs. Kept
@@ -66,6 +67,48 @@ export function appendAgentTextPart(parts: Array<Record<string, unknown>>, delta
 }
 
 export type AgentMessageStream = ReturnType<typeof createAgentMessageStream>
+
+function compactAgentPartsForPersistence(parts: Array<Record<string, unknown>>) {
+  return compactAssistantPersistenceForConvex({ content: '', parts }).parts.map((part) => {
+    if (part.type !== 'tool-invocation') return part
+    const invocation = part.toolInvocation && typeof part.toolInvocation === 'object'
+      ? (part.toolInvocation as Record<string, unknown>)
+      : {}
+    return {
+      ...part,
+      toolInvocation: Object.fromEntries(
+        Object.entries(invocation).filter(([, value]) => value !== undefined),
+      ),
+    }
+  })
+}
+
+export async function persistAgentToolProgress(args: {
+  store: Pick<AgentMessageStreamStore, 'appendAgentMessageDelta'>
+  actorUserId: string
+  conversationId: string
+  messageId: string
+  workspaceId: string
+  parts: Array<Record<string, unknown>>
+}): Promise<void> {
+  try {
+    await args.store.appendAgentMessageDelta({
+      actorUserId: args.actorUserId,
+      contentDelta: '',
+      conversationId: args.conversationId,
+      messageId: args.messageId,
+      parts: compactAgentPartsForPersistence(args.parts),
+      workspaceId: args.workspaceId,
+    })
+  } catch (error) {
+    // Progress is a display snapshot, not a tool checkpoint. Finalization rewrites it.
+    logger.warn('[workspace-agent] tool progress append failed', {
+      conversationId: args.conversationId,
+      messageId: args.messageId,
+      error: error instanceof Error ? error.message : String(error),
+    })
+  }
+}
 
 /**
  * Persists a workspace-agent reply into a `generating` transcript row as it is
@@ -156,7 +199,7 @@ export function createAgentMessageStream(args: {
         conversationId: args.conversationId,
         ...(emitEvent ? { emitEvent: true } : {}),
         messageId: id,
-        ...(parts ? { parts } : {}),
+        ...(parts ? { parts: compactAgentPartsForPersistence(parts) } : {}),
         workspaceId: args.workspaceId,
       })
       lastFlushAt = at
