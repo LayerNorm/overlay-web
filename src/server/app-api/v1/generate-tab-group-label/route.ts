@@ -81,7 +81,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
 
     let label = ''
     try {
-      const model = await getLanguageModel(TAB_GROUP_MODEL, auth.accessToken)
+      const model = await getLanguageModel(TAB_GROUP_MODEL, auth.accessToken, auth.userId)
       await markProviderBudgetStarted({
         userId: auth.userId,
         reservationId: reservation.reservationId,

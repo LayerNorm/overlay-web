@@ -284,10 +284,12 @@ export function useChatExperienceController({
     setComposerNotice,
   })
   const {
+    connectionUnavailable,
     isBudgetExhaustedPaid,
     isFreeTier,
     isSendBlocked,
     loadSubscription,
+    premiumModelBlocked,
     selectableTextModels,
   } = useChatBillingControls({
     activeChatId,
@@ -839,6 +841,8 @@ export function useChatExperienceController({
     isFirstMessage,
     isFreeTier,
     isSendBlocked,
+    connectionUnavailable,
+    premiumModelBlocked,
     isTemporaryChat,
     isTemporaryChatRef,
     loadChats,
@@ -1121,6 +1125,8 @@ export function useChatExperienceController({
     isFreeTier,
     isBudgetExhaustedPaid,
     isSendBlocked,
+    connectionUnavailable,
+    premiumModelBlocked,
     workApprovalContent,
     draftModalState,
     isDraftSaving,

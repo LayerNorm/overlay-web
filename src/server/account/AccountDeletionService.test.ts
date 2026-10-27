@@ -17,7 +17,9 @@ function service(options: { providerRefs?: string[]; agentRefs?: string[]; failO
       },
     },
   } as unknown as OverlayServerContext
-  const run = (userId = 'user-1') => (new AccountDeletionService(ctx) as unknown as {
+  const run = (userId = 'user-1') => (new AccountDeletionService(ctx, {
+    revokeAllForUser: async () => {},
+  }) as unknown as {
     deleteStoredCredentials(userId: string): Promise<void>
   }).deleteStoredCredentials(userId)
   return { run, deleted }
@@ -40,4 +42,24 @@ test('a person with no stored credentials deletes cleanly', async () => {
   const { run, deleted } = service()
   await run()
   assert.deepEqual(deleted, [])
+})
+
+test('account deletion stops before row deletion when subscription vault cleanup fails', async () => {
+  const ctx = {} as unknown as OverlayServerContext
+  const deletion = new AccountDeletionService(ctx, {
+    revokeAllForUser: async () => { throw new Error('vault unavailable') },
+  }) as unknown as {
+    deleteAccount(args: { userId: string }): Promise<unknown>
+    deleteIntegrationConnectionsBestEffort(userId: string): Promise<void>
+  }
+  let integrationCleanupCalled = false
+  deletion.deleteIntegrationConnectionsBestEffort = async () => {
+    integrationCleanupCalled = true
+  }
+
+  await assert.rejects(
+    deletion.deleteAccount({ userId: 'user-1' }),
+    /Could not revoke subscription connections\. Nothing else was deleted/,
+  )
+  assert.equal(integrationCleanupCalled, false)
 })

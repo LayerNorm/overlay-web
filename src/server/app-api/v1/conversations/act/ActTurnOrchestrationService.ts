@@ -16,21 +16,21 @@ import {
   assertUserCanUseByokModel,
   getLanguageModel,
   getGatewayModelId,
+  isSubscriptionModelForUser,
 } from '@/server/ai/model-runtime'
 import { createRuntimeOverlayFreeLanguageModel } from '@/server/ai/gateway/overlay-free-router'
 import { modelSupportsZeroDataRetention, modelUsesAiGatewayTransport } from '@/shared/ai/gateway/model-data'
-import { isKimiK3ModelId } from '@/shared/ai/gateway/model-types'
+import { FREE_TIER_DEFAULT_MODEL_ID, isKimiK3ModelId } from '@/shared/ai/gateway/model-types'
 import {
   getChatModelFallbackCandidates,
   getLowCreditFallbackAttemptModelIds,
 } from '@/shared/ai/gateway/model-fallbacks'
 import { isGatewayCreditLow } from '@/server/ai/gateway/gateway-credits'
-import { resolveModelContextWindow } from '@/server/chat/context-compaction'
+import { resolveModelContextWindow, summaryGenerationOptions } from '@/server/chat/context-compaction'
 import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
 import { userFacingOpenRouterError } from '@/server/ai/model-runtime'
 import { uploadFilePartsForModel } from '@/server/ai/file-upload'
 import {
-  FREE_TIER_DEFAULT_MODEL_ID,
   isFreeTierChatModelId,
   OPENROUTER_FREE_MODEL_ID,
 } from '@/shared/ai/gateway/model-types'
@@ -465,6 +465,9 @@ export async function executeActTurn(
       historyBaseModelId,
     })
     messagesForModel = cloneMessagesWithIndexedFileHint(messagesForModel, indexedAttachmentList, hasPreloadedDocContext)
+    const summaryModelId = isByokModelId(effectiveModelId)
+      ? effectiveModelId
+      : FREE_TIER_DEFAULT_MODEL_ID
     messagesForModel = await actContextService.prepareExistingMessagesForModel({
       accessToken,
       conversationId: cid,
@@ -475,7 +478,7 @@ export async function executeActTurn(
           estimatedInputTokens,
           idempotencyKey: context.requestIdempotencyKey,
           maxOutputTokens: targetSummaryTokens,
-          modelId: FREE_TIER_DEFAULT_MODEL_ID,
+          modelId: summaryModelId,
           operationId: 'conversation.act.context-summary',
           paid,
           requestFingerprint: context.requestFingerprint,
@@ -493,12 +496,11 @@ export async function executeActTurn(
             userId,
           })
           providerWorkStarted = true
-          const summaryModel = await getLanguageModel(FREE_TIER_DEFAULT_MODEL_ID, accessToken)
+          const summaryModel = await getLanguageModel(summaryModelId, accessToken, userId)
+          const isSubscription = await isSubscriptionModelForUser(summaryModelId, userId)
           const summaryResult = await generateText({
             model: summaryModel,
-            temperature: 0.1,
-            maxOutputTokens: targetSummaryTokens,
-            prompt,
+            ...summaryGenerationOptions({ prompt, targetSummaryTokens, isSubscription }),
           })
           const summaryUsage = (summaryResult as unknown as {
             usage?: { inputTokens?: number; outputTokens?: number }
@@ -506,7 +508,7 @@ export async function executeActTurn(
           await actUsageBudgetService.recordFinishedUsage({
             forceFreeTierLimits: false,
             inputTokens: summaryUsage?.inputTokens ?? estimatedInputTokens,
-            modelId: FREE_TIER_DEFAULT_MODEL_ID,
+            modelId: summaryModelId,
             outputTokens: summaryUsage?.outputTokens ?? targetSummaryTokens,
             reservationId: summaryReservation.reservationId,
             userId,
@@ -532,7 +534,9 @@ export async function executeActTurn(
       messages: messagesForModel,
       replyContextForModel,
       targetModelId: effectiveModelId,
+      summarizerModelId: summaryModelId,
       userId: conversationUserId,
+      modelUserId: userId,
     })
     const userSystemPromptExtension = buildSecondarySystemPromptExtension(systemPrompt)
 

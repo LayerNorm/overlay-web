@@ -370,7 +370,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       )
     }
 
-    const model = await getLanguageModel(effectiveModelId, auth.accessToken)
+    const model = await getLanguageModel(effectiveModelId, auth.accessToken, auth.userId)
     const transcript = (messages ?? [])
       .filter((message) => message && typeof message.content === 'string')
       .map((message, index) => `${index + 1}. ${message.role.toUpperCase()}: ${message.content}`)

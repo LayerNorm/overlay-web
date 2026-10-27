@@ -11,6 +11,7 @@ import {
 import type { OverlayRuntimeConfig } from '@/shared/config'
 import {
   deleteByokVaultKey,
+  deleteByokVaultKeyByName,
   readByokVaultKey,
   updateByokVaultKey,
   writeByokVaultKey,
@@ -20,10 +21,12 @@ import {
 export type ByokCredentialContext = ByokVaultKeyContext
 
 export interface ByokCredentialStore {
-  write(args: { apiKey: string; context: ByokCredentialContext }): Promise<string>
+  newCredentialName(): string
+  write(args: { apiKey: string; context: ByokCredentialContext; name?: string }): Promise<string>
   read(credentialRef: string): Promise<string | null>
   update(args: { credentialRef: string; apiKey: string }): Promise<void>
   delete(credentialRef: string): Promise<void>
+  deleteByName(name: string): Promise<void>
 }
 
 type SecretsManagerSender = {
@@ -35,8 +38,12 @@ type SecretsManagerSender = {
 
 /** WorkOS Vault remains the default for the existing hosted Convex deployment. */
 export class WorkOSByokCredentialStore implements ByokCredentialStore {
-  async write(args: { apiKey: string; context: ByokCredentialContext }): Promise<string> {
-    return await writeByokVaultKey(`byok_${randomUUID()}`, args.apiKey, args.context)
+  newCredentialName(): string {
+    return `byok_${randomUUID()}`
+  }
+
+  async write(args: { apiKey: string; context: ByokCredentialContext; name?: string }): Promise<string> {
+    return await writeByokVaultKey(args.name ?? this.newCredentialName(), args.apiKey, args.context)
   }
 
   async read(credentialRef: string): Promise<string | null> {
@@ -49,6 +56,10 @@ export class WorkOSByokCredentialStore implements ByokCredentialStore {
 
   async delete(credentialRef: string): Promise<void> {
     await deleteByokVaultKey(credentialRef)
+  }
+
+  async deleteByName(name: string): Promise<void> {
+    await deleteByokVaultKeyByName(name)
   }
 }
 
@@ -70,9 +81,13 @@ export class AwsSecretsManagerByokCredentialStore implements ByokCredentialStore
 
   private readonly kmsKeyId: string | undefined
 
-  async write(args: { apiKey: string; context: ByokCredentialContext }): Promise<string> {
+  newCredentialName(): string {
+    return `${this.prefix}/${randomUUID()}`
+  }
+
+  async write(args: { apiKey: string; context: ByokCredentialContext; name?: string }): Promise<string> {
     const result = await this.client.send(new CreateSecretCommand({
-      Name: `${this.prefix}/${randomUUID()}`,
+      Name: args.name ?? this.newCredentialName(),
       SecretString: args.apiKey,
       ...(this.kmsKeyId ? { KmsKeyId: this.kmsKeyId } : {}),
       Tags: [
@@ -100,11 +115,19 @@ export class AwsSecretsManagerByokCredentialStore implements ByokCredentialStore
   }
 
   async delete(credentialRef: string): Promise<void> {
+    await this.deleteSecret(credentialRef)
+  }
+
+  async deleteByName(name: string): Promise<void> {
+    await this.deleteSecret(name)
+  }
+
+  private async deleteSecret(secretId: string): Promise<void> {
     // Explicit provider disconnects must immediately make a credential
     // unrecoverable. A missing secret means a previous retry already succeeded.
     try {
       await this.client.send(new DeleteSecretCommand({
-        SecretId: credentialRef,
+        SecretId: secretId,
         ForceDeleteWithoutRecovery: true,
       }))
     } catch (error) {

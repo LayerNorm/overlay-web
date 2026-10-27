@@ -31,6 +31,7 @@ import {
 // ─── Provider Dialog (Add / Edit) ───
 
 export interface ProviderDialogProps {
+  intro?: React.ReactNode
   state: Exclude<DialogState, null>
   busy: boolean
   onBusyChange: (busy: boolean) => void
@@ -610,7 +611,7 @@ function useProviderForm({ state, isEdit, onBusyChange, onSaved }: {
   }
 }
 
-export function ProviderDialog({ state, busy, onBusyChange, onClose, onSaved }: ProviderDialogProps) {
+export function ProviderDialog({ state, busy, onBusyChange, onClose, onSaved, intro }: ProviderDialogProps) {
   const isEdit = state.mode === 'edit'
   const {
     providerId,
@@ -657,6 +658,7 @@ export function ProviderDialog({ state, busy, onBusyChange, onClose, onSaved }: 
       }
     >
       <div className="mt-4 flex flex-col gap-4">
+        {intro}
         {/* Provider selector — only for add mode */}
         {!isEdit ? (
           <ProviderPresetSelect

@@ -7,6 +7,7 @@ import {
   FREE_TIER_DEFAULT_MODEL_ID,
   isFreeTierChatModelId,
 } from '@/shared/ai/gateway/model-types'
+import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
 import { summarizeErrorForLog } from '@/shared/security/safe-log'
 
 const CONTEXT_TRIGGER_RATIO = 0.8
@@ -45,6 +46,16 @@ export type ContextCompactionResult = {
   didCompact: boolean
   usedFallbackTrim: boolean
   summaryToPersist?: ContextSummaryToPersist
+}
+
+export function summaryGenerationOptions(args: {
+  prompt: string
+  targetSummaryTokens: number
+  isSubscription: boolean
+}) {
+  return args.isSubscription
+    ? { prompt: args.prompt }
+    : { prompt: args.prompt, temperature: 0.1, maxOutputTokens: args.targetSummaryTokens }
 }
 
 export function estimateContextTokens(value: unknown): number {
@@ -161,7 +172,9 @@ function summarySystemMessage(summary: string): UIMessage {
 export async function compactMessagesForContext(params: {
   messages: UIMessage[]
   targetModelId: string
+  userId?: string
   accessToken?: string
+  summarizerModelId?: string
   previousSummary?: ContextSummarySnapshot | null
   contextWindowOverride?: number
   generateSummaryText?: (args: {
@@ -221,6 +234,8 @@ export async function compactMessagesForContext(params: {
     MIN_SUMMARY_OUTPUT_TOKENS,
     Math.min(MAX_SUMMARY_OUTPUT_TOKENS, targetTokens - preservedTokens - 256),
   )
+  const summarizerModelId = params.summarizerModelId ??
+    (isByokModelId(params.targetModelId) ? params.targetModelId : FREE_TIER_DEFAULT_MODEL_ID)
 
   try {
     const prompt = buildSummaryPrompt({
@@ -231,16 +246,17 @@ export async function compactMessagesForContext(params: {
     const summary = params.generateSummaryText
       ? (await params.generateSummaryText({ prompt, targetSummaryTokens })).trim()
       : (await (async () => {
-          const [{ getLanguageModel }, { generateText }] = await Promise.all([
+          const [{ getLanguageModel, isSubscriptionModelForUser }, { generateText }] = await Promise.all([
             import('@/server/ai/model-runtime'),
             import('@/server/ai/sdk'),
           ])
-          const model = await getLanguageModel(FREE_TIER_DEFAULT_MODEL_ID, params.accessToken)
+          const model = await getLanguageModel(summarizerModelId, params.accessToken, params.userId)
+          const isSubscription = Boolean(
+            params.userId && await isSubscriptionModelForUser(summarizerModelId, params.userId),
+          )
           const result = await generateText({
             model,
-            temperature: 0.1,
-            maxOutputTokens: targetSummaryTokens,
-            prompt,
+            ...summaryGenerationOptions({ prompt, targetSummaryTokens, isSubscription }),
           })
           return result.text.trim()
         })())
@@ -280,7 +296,7 @@ export async function compactMessagesForContext(params: {
         summaryEstimatedTokens: estimateContextTokens(summaryForContext),
         contextWindow,
         targetModelId: params.targetModelId,
-        summarizerModelId: FREE_TIER_DEFAULT_MODEL_ID,
+        summarizerModelId,
       },
     }
   } catch (error) {
