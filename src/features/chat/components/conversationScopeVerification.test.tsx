@@ -46,7 +46,7 @@ test('draft collaboration details are probed before the real conversation render
   const routeKey = conversationDetailRouteKey({
     pathScope: 'workspace',
     conversationId: params.get('id'),
-    publicShowcaseSnapshots: false,
+
   })
   assert.equal(routeKey, 'workspace:dm-1')
   assert.equal(renderGate(routeKey, null), '')
@@ -85,7 +85,7 @@ test('draft markers do not bypass authorization for unknown conversation ids', a
   const routeKey = conversationDetailRouteKey({
     pathScope: 'workspace',
     conversationId: params.get('id'),
-    publicShowcaseSnapshots: false,
+
   })
   const statuses: ConversationDetailScopeStatus[] = []
   const location: ConversationRouteLocation = {
@@ -111,22 +111,12 @@ test('draft markers do not bypass authorization for unknown conversation ids', a
   assert.match(renderGate(routeKey, statuses[0]!), /Conversation unavailable/)
 })
 
-test('public showcase snapshots bypass resource probing and the detail gate', () => {
-  const routeKey = conversationDetailRouteKey({
-    pathScope: 'workspace',
-    conversationId: 'snapshot-id',
-    publicShowcaseSnapshots: true,
-  })
-  assert.equal(routeKey, null)
-  assert.match(renderGate(routeKey, null, 'Showcase snapshot'), /Showcase snapshot/)
-})
-
 test('authorized details in the wrong scope redirect with hash and remain gated', async () => {
   const params = new URLSearchParams('id=dm-1&view=personal&draft=1&title=Fresh')
   const routeKey = conversationDetailRouteKey({
     pathScope: 'personal',
     conversationId: params.get('id'),
-    publicShowcaseSnapshots: false,
+
   })
   const location: ConversationRouteLocation = {
     pathname: '/w/team/personal/chat',

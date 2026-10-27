@@ -23,7 +23,7 @@ test('switching agent scope drops the selected agent and thread in either direct
     let href = ''
     const next = scope === 'personal' ? 'workspace' : 'personal'
     const built = resolveSecondaryPanelNav({
-      panelKind: 'agents', publicShowcase: false,
+      panelKind: 'agents',
       routeState: { scope, chatsView: 'personal', filesView: 'all', toolsView: 'all', workView: 'list', notesOpen: false, canonicalWorkspaceRoute: true, settingsSection: 'profile' },
       effectivePendingSecondaryNavId: null, totalUnread: 0,
       collaborationUnread: { dms: 0, channels: 0, total: 0 }, shouldLoadCollaborationUnread: false,
@@ -200,7 +200,7 @@ test('solo users can navigate to Workspace sub-rows without collapsing scope', (
 test('solo Workspace panel clicks build scoped destinations and Agent switches clear selectors', () => {
   const destinations: string[] = []
   const common = {
-    publicShowcase: false,
+
     effectivePendingSecondaryNavId: null,
     totalUnread: 0,
     collaborationUnread: { dms: 0, channels: 0, total: 0 },
@@ -261,7 +261,7 @@ test('a solo page with no sub-rows retains both strict scope rows', () => {
 test('solo Workspace AI chats stay under Workspace scope', async () => {
   const destinations: string[] = []
   const nav = buildChatPanelNav({
-    publicShowcase: false,
+
     chatsView: 'personal',
     effectivePendingSecondaryNavId: null,
     chatUnreadBadges: {},
@@ -279,7 +279,7 @@ test('solo Workspace AI chats stay under Workspace scope', async () => {
   assert.equal(workspace?.children, undefined)
 
   const workspaceNav = buildChatPanelNav({
-    publicShowcase: false,
+
     chatsView: 'workspace-chats',
     effectivePendingSecondaryNavId: null,
     chatUnreadBadges: {},

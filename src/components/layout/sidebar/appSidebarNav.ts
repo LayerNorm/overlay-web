@@ -53,7 +53,7 @@ export const PANEL_KIND_TITLES: Record<SecondaryPanelKind, string> = {
 
 export const SETTINGS_SECTION_ICONS: Record<string, LucideIcon> = {
   general: Settings,
-  account: User,
+  profile: User,
   customization: Palette,
   shortcuts: Keyboard,
   memories: Brain,
@@ -257,21 +257,16 @@ export function resolveSidebarRouteState({
 export function resolveNavItemDestination(
   href: string,
   {
-    publicShowcase,
+
     activeWorkspaceId,
     buildWorkspaceHref,
   }: {
-    publicShowcase: boolean
+
     activeWorkspaceId: string | null
     buildWorkspaceHref: (workspaceId: string, href: string) => string
   },
 ): string {
-  return publicShowcase
-    ? `${href}?${new URLSearchParams({
-        showcase: '1',
-        ...(href === '/app/chat' ? { id: 'showcase-welcome' } : {}),
-      }).toString()}`
-    : activeWorkspaceId
+  return activeWorkspaceId
       ? buildWorkspaceHref(activeWorkspaceId, href)
       : href
 }
@@ -332,20 +327,20 @@ export function gateSidebarNavItem(
   item: SidebarNavItem,
   {
     isGuestConfirmed,
-    publicShowcase,
+
     requireAuth,
     primaryNavActionByItemId,
     runSidebarAction,
   }: {
     isGuestConfirmed: boolean
-    publicShowcase: boolean
+
     requireAuth: (reason: GateReason) => void
     primaryNavActionByItemId: ReadonlyMap<string, OverlaySidebarAction>
     runSidebarAction: (action: OverlaySidebarAction) => Promise<boolean>
   },
 ): 'action' | 'gated' | 'ok' {
   if (!item.href || item.disabled) return 'gated'
-  if (isGuestConfirmed && !publicShowcase && item.href !== '/app/chat') {
+  if (isGuestConfirmed && item.href !== '/app/chat') {
     requireAuth('nav')
     return 'gated'
   }
@@ -361,7 +356,7 @@ export function selectSidebarNavItem(
   item: SidebarNavItem,
   ctx: {
     isGuestConfirmed: boolean
-    publicShowcase: boolean
+
     requireAuth: (reason: GateReason) => void
     primaryNavActionByItemId: ReadonlyMap<string, OverlaySidebarAction>
     runSidebarAction: (action: OverlaySidebarAction) => Promise<boolean>
@@ -408,7 +403,7 @@ export function selectMobileNavItem(
   item: SidebarNavItem,
   ctx: {
     isGuestConfirmed: boolean
-    publicShowcase: boolean
+
     requireAuth: (reason: GateReason) => void
     primaryNavActionByItemId: ReadonlyMap<string, OverlaySidebarAction>
     runSidebarAction: (action: OverlaySidebarAction) => Promise<boolean>
@@ -436,29 +431,12 @@ export async function signOutToLanding() {
   window.location.href = '/'
 }
 
-export function resolveShowcasePrimaryLinks(publicShowcase: boolean): Array<{
-  id: string
-  label: string
-  icon: LucideIcon
-  href: string
-}> {
-  return publicShowcase
-    ? [
-      { id: 'app', label: 'App', icon: LayoutDashboard, href: ROOT_APP_DESTINATION },
-      { id: 'home', label: 'Home', icon: House, href: '/home' },
-      { id: 'manifesto', label: 'Manifesto', icon: ScrollText, href: '/manifesto' },
-      { id: 'pricing', label: 'Pricing', icon: CreditCard, href: '/pricing' },
-      { id: 'docs', label: 'Docs', icon: FileText, href: MARKETING_DOCS_URL },
-    ]
-    : []
-}
-
 export function resolveResourceAction({
   chatOpen,
   chatsView,
   contextualAction,
   panelKind,
-  publicShowcase,
+
   requireAuth,
   runSidebarAction,
 }: {
@@ -466,30 +444,26 @@ export function resolveResourceAction({
   chatsView: string
   contextualAction: OverlaySidebarAction | null
   panelKind: SecondaryPanelKind | null
-  publicShowcase: boolean
+
   requireAuth: (reason: GateReason) => void
   runSidebarAction: (action: OverlaySidebarAction) => Promise<boolean>
 }): { label: string; onClick: () => void } | null {
   if (chatOpen && chatsView === 'dms') {
     return {
       label: 'New message',
-      onClick: () => publicShowcase
-        ? requireAuth('nav')
-        : window.dispatchEvent(new CustomEvent(NEW_DIRECT_MESSAGE_EVENT)),
+      onClick: () => window.dispatchEvent(new CustomEvent(NEW_DIRECT_MESSAGE_EVENT)),
     }
   }
   if (chatOpen && chatsView === 'channels') {
     return {
       label: 'New channel',
-      onClick: () => publicShowcase
-        ? requireAuth('nav')
-        : window.dispatchEvent(new CustomEvent(NEW_CHANNEL_EVENT)),
+      onClick: () => window.dispatchEvent(new CustomEvent(NEW_CHANNEL_EVENT)),
     }
   }
   if (contextualAction) {
     return {
       label: contextualAction.label,
-      onClick: () => publicShowcase ? requireAuth('nav') : void runSidebarAction(contextualAction),
+      onClick: () => void runSidebarAction(contextualAction),
     }
   }
   if (panelKind === 'agents') {
@@ -548,7 +522,7 @@ export function buildPrimaryRailItems({
   navItems,
   primaryNavActionByItemId,
   isGuestConfirmed,
-  publicShowcase,
+
   cumulativeChatUnread,
   settingsPathActive,
   pathname,
@@ -563,7 +537,7 @@ export function buildPrimaryRailItems({
   navItems: SidebarNavItem[]
   primaryNavActionByItemId: ReadonlyMap<string, OverlaySidebarAction>
   isGuestConfirmed: boolean
-  publicShowcase: boolean
+
   cumulativeChatUnread: number
   settingsPathActive: boolean
   pathname: string
@@ -579,7 +553,7 @@ export function buildPrimaryRailItems({
     const shortcut = navIdx < 9 ? navIdx + 1 : null
     const canOpenDestinationInNewTab = Boolean(item.href)
       && !primaryNavActionByItemId.has(item.id)
-      && (!isGuestConfirmed || publicShowcase || item.href === '/app/chat')
+      && (!isGuestConfirmed || item.href === '/app/chat')
     railItems.push({
       id: item.id,
       label: item.label,
@@ -607,7 +581,7 @@ export function buildPrimaryRailItems({
     })
   })
 
-  if (settingsPathActive && !publicShowcase) {
+  if (settingsPathActive) {
     // Settings has no entry in the primary rail, so surface its return action
     // after the regular navigation items while it is open.
     railItems.push({
@@ -627,22 +601,6 @@ export function buildPrimaryRailItems({
   }
 
   return railItems
-}
-
-export function buildShowcaseRailFooterItems(
-  links: Array<{ id: string; label: string; icon: LucideIcon; href: string }>,
-  router: { push: (href: string) => void },
-): PrimaryRailItem[] {
-  return links.map((link) => ({
-    id: link.id,
-    label: link.label,
-    icon: link.icon,
-    title: link.label,
-    onSelect: () => {
-      if (/^https?:\/\//.test(link.href)) window.location.assign(link.href)
-      else router.push(link.href)
-    },
-  }))
 }
 
 export interface MobileNavItemVm {

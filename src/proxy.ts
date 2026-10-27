@@ -316,10 +316,9 @@ export async function proxy(request: NextRequest) {
     )
   }
 
-  if (
-    pathname === '/app/account'
-    || (request.nextUrl.searchParams.get('section') === 'account' && pathname !== '/account')
-  ) {
+  const isLegacyAccountSettings = pathname === '/app/settings'
+    || /^\/w\/[^/]+\/(?:workspace|personal)\/settings$/.test(pathname)
+  if (pathname === '/app/account' || (isLegacyAccountSettings && request.nextUrl.searchParams.get('section') === 'account')) {
     const destination = new URL('/account', request.url)
     for (const [key, value] of request.nextUrl.searchParams) {
       if (key !== 'section') destination.searchParams.append(key, value)
@@ -365,12 +364,14 @@ function isRetiredShowcaseRequest(request: NextRequest): boolean {
     || pathname.startsWith('/explore/')
     || pathname === '/api/public/showcase'
     || pathname.startsWith('/api/public/showcase/')
-    || pathname.split('/').some((segment) => segment.toLowerCase().includes('showcase-'))
   ) return true
-  if (request.nextUrl.searchParams.has('showcase')) return true
-  return Array.from(request.nextUrl.searchParams.values()).some((value) =>
-    value.toLowerCase().includes('showcase-'),
-  )
+  const appPath = pathname === '/app' || pathname.startsWith('/app/') || /^\/w\/[^/]+\/workspace\//.test(pathname)
+  if (!appPath) return false
+  const params = request.nextUrl.searchParams
+  if (params.get('showcase') === '1') return true
+  const retiredIds = new Set(['showcase-welcome', 'showcase-agent-welcome', 'showcase-research'])
+  if (pathname.split('/').some((segment) => retiredIds.has(segment))) return true
+  return ['id', 'conversationId', 'threadId', 'agentId'].some((key) => retiredIds.has(params.get(key) ?? ''))
 }
 
 type ProxySecurityContext = {

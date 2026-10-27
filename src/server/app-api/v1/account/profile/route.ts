@@ -3,7 +3,7 @@ import type { AccountAppApiRouteContext } from '@/server/app-api/bff-context'
 import { lazyConvex } from '@/server/database/lazy-convex'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { downloadBuffer } from '@/server/storage/object-store'
-import { resolveIdentityDisplayName } from '@/shared/workspaces/identity-resolution'
+import { resolveIdentityDisplayName, versionedIdentityUrl } from '@/shared/workspaces/identity-resolution'
 import {
   identityObjectKey,
   identityUploadError,
@@ -66,6 +66,8 @@ export async function PATCH(_request: Request, context: AccountAppApiRouteContex
 
 export async function POST(request: Request, context: AccountAppApiRouteContext) {
   try {
+    const currentIdentity = await getIdentity(context.auth.userId)
+    if (!currentIdentity) return NextResponse.json({ error: 'Profile not found.' }, { status: 404 })
     const form = await request.formData()
     const file = form.get('file')
     if (!(file instanceof File)) return NextResponse.json({ error: 'An image file is required.' }, { status: 400 })
@@ -130,7 +132,10 @@ function toAccountProfile(identity: AccountIdentity) {
       email: identity.email,
     }),
     photoUrl: identity.photoObjectKey
-      ? `/api/v1/account/profile/photo?userId=${encodeURIComponent(identity.userId)}`
+      ? versionedIdentityUrl(
+          `/api/v1/account/profile/photo?userId=${encodeURIComponent(identity.userId)}`,
+          identity.photoObjectKey,
+        )
       : identity.profilePictureUrl ?? null,
     displayNameOverride: identity.displayNameOverride ?? null,
     hasCustomPhoto: Boolean(identity.photoObjectKey),

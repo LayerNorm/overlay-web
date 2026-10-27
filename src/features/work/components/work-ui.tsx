@@ -1,5 +1,5 @@
 import type { WorkPerson, WorkPriority, WorkStatus } from '@overlay/app-core'
-import { Avatar as AvatarRoot, AvatarFallback } from '@overlay/ui/primitives'
+import { Avatar as AvatarRoot, AvatarFallback, AvatarImage } from '@overlay/ui/primitives'
 import { AgentCreature } from '@/components/orb/Creature'
 import { WORK_PRIORITY_LABELS } from '@/shared/work/status'
 import { dueTone, formatWorkDate } from '@/shared/work/dates'
@@ -42,7 +42,7 @@ export function StatusIcon({ status, size = 16, className = '' }: { status: Work
 }
 
 /** A person is a round badge with initials; an agent is its creature avatar. Unassigned is a dashed circle. */
-export function Avatar({ person, size = 22, title }: { person: Pick<WorkPerson, 'displayName' | 'type' | 'avatarColor' | 'avatarShape'> | null; size?: number; title?: string }) {
+export function Avatar({ person, size = 22, title }: { person: Pick<WorkPerson, 'displayName' | 'type' | 'avatarColor' | 'avatarShape' | 'photoUrl'> | null; size?: number; title?: string }) {
   const dimension = { width: size, height: size, fontSize: Math.max(9, Math.round(size * 0.42)) }
   if (!person) {
     return (
@@ -78,6 +78,7 @@ export function Avatar({ person, size = 22, title }: { person: Pick<WorkPerson, 
       title={title ?? person.displayName}
       aria-label={title ?? person.displayName}
     >
+      {person.photoUrl ? <AvatarImage src={person.photoUrl} alt="" /> : null}
       <AvatarFallback className="bg-transparent font-semibold">{initialsOf(person.displayName)}</AvatarFallback>
     </AvatarRoot>
   )

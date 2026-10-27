@@ -567,7 +567,7 @@ export function AgentSurfacesSection({
   connections: SurfaceConnection[]
   bindings: SurfaceBinding[]
   canBind: boolean
-  /** True once the server answered the bind gate — keeps the "creator only" hint off showcase/BYO editors. */
+  /** True once the server answered the bind gate, keeping the creator hint off BYO editors. */
   canBindResolved: boolean
   channelPicker: SurfaceChannelPicker | null
   busyId: string | null

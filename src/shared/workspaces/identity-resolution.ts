@@ -24,3 +24,10 @@ export function resolveIdentityPhotoUrl(input: {
     || input.providerPhotoUrl?.trim()
     || null
 }
+
+export function versionedIdentityUrl(url: string, objectKey: string): string {
+  const filename = objectKey.split('/').at(-1) ?? ''
+  const version = filename.replace(/\.webp$/i, '')
+  if (!/^[0-9a-f-]{36}$/i.test(version)) return url
+  return `${url}${url.includes('?') ? '&' : '?'}v=${encodeURIComponent(version)}`
+}

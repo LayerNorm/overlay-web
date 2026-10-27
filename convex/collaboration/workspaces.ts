@@ -4,7 +4,7 @@ import type { MutationCtx, QueryCtx } from '../_generated/server'
 import { mutation, query } from '../_generated/server'
 import type { Doc } from '../_generated/dataModel'
 import { requireServerSecret } from '../lib/auth'
-import { resolveIdentityDisplayName, resolveIdentityPhotoUrl } from '@/shared/workspaces/identity-resolution'
+import { resolveIdentityDisplayName, resolveIdentityPhotoUrl, versionedIdentityUrl } from '@/shared/workspaces/identity-resolution'
 import { deleteChunksForSource } from '../knowledge/knowledge'
 import { claimWorkspaceHandle, getWorkspaceHandle, isWorkspaceHandleAvailable } from '../lib/workspaceHandles'
 import {
@@ -217,6 +217,7 @@ export const ensurePersonalWorkspaceByServer = mutation({
         workspaceId: args.workspaceId,
         kind: 'personal',
         name: requiredName(args.workspaceName, 'Workspace'),
+        iconPreset: defaultWorkspaceIconPreset(args.workspaceId),
         slug: personalHandle,
         status: 'active',
         createdByPrincipalId: args.principalId,
@@ -246,7 +247,7 @@ export const ensurePersonalWorkspaceByServer = mutation({
     ])
     return {
       workspace: workspaceValue(workspace),
-      principal: principalValue(principal),
+      principal: (await resolvedPrincipalValues(ctx, [principal]))[0]!,
       membership: membershipValue(membership),
     }
   },
@@ -329,9 +330,10 @@ export const createOrganizationByServer = mutation({
       await Promise.all([
         insertAndRead(ctx, 'workspaces', {
       workspaceId: args.workspaceId,
-      kind: 'organization',
-      name: requiredName(args.name, 'Workspace'),
-      slug,
+        kind: 'organization',
+        name: requiredName(args.name, 'Workspace'),
+        iconPreset: defaultWorkspaceIconPreset(args.workspaceId),
+        slug,
       status: 'active',
       createdByPrincipalId: args.principalId,
       createdAt: now,
@@ -394,7 +396,7 @@ export const createOrganizationByServer = mutation({
     })
     return {
       workspace: workspaceValue(workspace),
-      principal: principalValue(principal),
+      principal: (await resolvedPrincipalValues(ctx, [principal]))[0]!,
       membership: membershipValue(membership),
     }
   },
@@ -572,20 +574,34 @@ export const getWorkspaceIdentityDirectoryByServer = query({
     const accountByUser = new Map(accounts.filter(Boolean).map((account) => [account!.userId, account!]))
     return humans.map((principal) => {
       const account = accountByUser.get(principal!.userId!)
+      const workspacePhotoUrl = principal!.photoObjectKey
+        ? versionedIdentityUrl(
+            `/api/v1/workspaces/${encodeURIComponent(args.workspaceId)}/profile/photo?principalId=${encodeURIComponent(principal!.principalId)}`,
+            principal!.photoObjectKey,
+          )
+        : undefined
+      const accountPhotoUrl = account?.photoObjectKey
+        ? versionedIdentityUrl(
+            `/api/v1/account/profile/photo?userId=${encodeURIComponent(principal!.userId!)}`,
+            account.photoObjectKey,
+          )
+        : account?.profilePictureUrl
       return {
         principalId: principal!.principalId,
         userId: principal!.userId,
-        displayName: principal!.displayName,
+        displayName: resolveIdentityDisplayName({
+          workspaceOverride: principal!.displayNameOverride,
+          accountOverride: account?.displayNameOverride,
+          providerName: [account?.firstName, account?.lastName].filter(Boolean).join(' ').trim() || account?.name,
+          legacyDisplayName: principal!.displayName,
+          email: account?.email ?? principal!.email,
+        }),
         email: principal!.email,
         displayNameOverride: principal!.displayNameOverride,
-        photoUrl: principal!.photoObjectKey
-          ? `/api/v1/workspaces/${encodeURIComponent(args.workspaceId)}/profile/photo?principalId=${encodeURIComponent(principal!.principalId)}`
-          : undefined,
+        photoUrl: workspacePhotoUrl ?? accountPhotoUrl,
         accountDisplayNameOverride: account?.displayNameOverride,
         accountName: [account?.firstName, account?.lastName].filter(Boolean).join(' ').trim() || account?.name,
-        accountPhotoUrl: account?.photoObjectKey
-          ? `/api/v1/account/profile/photo?userId=${encodeURIComponent(principal!.userId!)}`
-          : account?.profilePictureUrl,
+        accountPhotoUrl,
         accountPhotoObjectKey: account?.photoObjectKey,
       }
     })
@@ -814,7 +830,7 @@ export const resolveActiveWorkspaceByServer = mutation({
       await upsertActivePreference(ctx, args.userId, workspace.workspaceId)
       return {
         workspace: workspaceValue(workspace),
-        principal: principalValue(principal),
+        principal: (await resolvedPrincipalValues(ctx, [principal]))[0]!,
         membership: membershipValue(membership),
       }
     }
@@ -921,7 +937,10 @@ export const updatePrincipalByServer = mutation({
       updatedAt: Date.now(),
     }
     await ctx.db.patch(principal._id, patch)
-    return principalValue({ ...principal, ...patch })
+    const updated = { ...principal, ...patch }
+    return updated.type === 'human'
+      ? (await resolvedPrincipalValues(ctx, [updated]))[0]!
+      : principalValue(updated)
   },
 })
 
@@ -931,7 +950,11 @@ export const getPrincipalByServer = query({
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
     const principal = await getPrincipal(ctx, args.principalId)
-    return principal ? principalValue(principal) : null
+    return principal
+      ? principal.type === 'human'
+        ? (await resolvedPrincipalValues(ctx, [principal]))[0]!
+        : principalValue(principal)
+      : null
   },
 })
 
@@ -945,7 +968,9 @@ export const getHumanPrincipalByServer = query({
       .withIndex('by_workspaceId_userId', (q) =>
         q.eq('workspaceId', args.workspaceId).eq('userId', args.userId))
       .unique()
-    return principal?.type === 'human' ? principalValue(principal) : null
+    return principal?.type === 'human'
+      ? (await resolvedPrincipalValues(ctx, [principal]))[0]!
+      : null
   },
 })
 
@@ -1171,7 +1196,9 @@ export const acceptInvitationByServer = mutation({
     })
     return {
       workspace: workspaceValue(workspace),
-      principal: principalValue(principal),
+      principal: principal.type === 'human'
+        ? (await resolvedPrincipalValues(ctx, [principal]))[0]!
+        : principalValue(principal),
       membership: membershipValue(membership),
     }
   },
@@ -2753,7 +2780,7 @@ async function findHumanAccess(
   if (!membership || (!includeSuspended && membership.status !== 'active')) return null
   return {
     workspace: workspaceValue(workspace),
-    principal: principalValue(principal),
+    principal: (await resolvedPrincipalValues(ctx, [principal]))[0]!,
     membership: membershipValue(membership),
   }
 }
@@ -2916,7 +2943,9 @@ function workspaceValue(row: Doc<'workspaces'>) {
     workspaceId: row.workspaceId,
     kind: row.kind,
     name: row.name,
-    iconUrl: row.iconObjectKey ? `/api/v1/workspaces/${encodeURIComponent(row.workspaceId)}/icon` : undefined,
+    iconUrl: row.iconObjectKey
+      ? versionedIdentityUrl(`/api/v1/workspaces/${encodeURIComponent(row.workspaceId)}/icon`, row.iconObjectKey)
+      : undefined,
     iconPreset: row.iconPreset,
     slug: row.slug,
     status: row.status,
@@ -2939,7 +2968,10 @@ function principalValue(row: Doc<'workspacePrincipals'>) {
     displayName: row.displayName,
     displayNameOverride: row.displayNameOverride,
     photoUrl: row.photoObjectKey
-      ? `/api/v1/workspaces/${encodeURIComponent(row.workspaceId)}/profile/photo?principalId=${encodeURIComponent(row.principalId)}`
+      ? versionedIdentityUrl(
+          `/api/v1/workspaces/${encodeURIComponent(row.workspaceId)}/profile/photo?principalId=${encodeURIComponent(row.principalId)}`,
+          row.photoObjectKey,
+        )
       : undefined,
     email: row.email,
     createdByPrincipalId: row.createdByPrincipalId,
@@ -2972,10 +3004,16 @@ function resolvedPrincipalValue(
   const providerName = [account?.firstName, account?.lastName].filter(Boolean).join(' ').trim()
     || account?.name?.trim()
   const workspacePhotoUrl = principal.photoObjectKey
-    ? `/api/v1/workspaces/${encodeURIComponent(principal.workspaceId)}/profile/photo?principalId=${encodeURIComponent(principal.principalId)}`
+    ? versionedIdentityUrl(
+        `/api/v1/workspaces/${encodeURIComponent(principal.workspaceId)}/profile/photo?principalId=${encodeURIComponent(principal.principalId)}`,
+        principal.photoObjectKey,
+      )
     : undefined
   const accountPhotoUrl = account?.photoObjectKey
-    ? `/api/v1/account/profile/photo?userId=${encodeURIComponent(principal.userId ?? '')}`
+    ? versionedIdentityUrl(
+        `/api/v1/account/profile/photo?userId=${encodeURIComponent(principal.userId ?? '')}`,
+        account.photoObjectKey,
+      )
     : account?.profilePictureUrl
   const displayName = principal.type === 'human'
     ? resolveIdentityDisplayName({
@@ -3123,6 +3161,12 @@ function slugify(value: string): string {
     .slice(0, 80)
   if (!slug) throw new Error('WORKSPACE_SLUG_REQUIRED')
   return slug
+}
+
+function defaultWorkspaceIconPreset(workspaceId: string): string {
+  let hash = 0
+  for (const character of workspaceId) hash = (hash * 31 + character.charCodeAt(0)) >>> 0
+  return `shape-${(hash % 6) + 1}`
 }
 
 function requirePrincipalSubject(args: {

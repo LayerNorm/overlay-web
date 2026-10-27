@@ -61,7 +61,7 @@ function ImageEditorContent({ title, photoUrl, fallback, workspace, resetLabel, 
     try {
       const image = await createImageBitmap(file)
       if (!mounted.current) { image.close(); return }
-      if (image.width * image.height > 40_000_000) { image.close(); throw new Error('Choose an image under 40 megapixels.') }
+      if (image.width * image.height > 24_000_000) { image.close(); throw new Error('Choose an image under 24 megapixels.') }
       bitmap.current?.close()
       bitmap.current = image
       setSource(image)

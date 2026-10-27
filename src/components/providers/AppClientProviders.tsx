@@ -16,7 +16,7 @@ export function GatewayModelCatalogPrefetch() {
   const enabled = shouldLoadGatewayModelCatalog({
     isAuthenticated: Boolean(user),
     isAuthLoading: isLoading,
-    isPublicShowcase: false,
+
   })
   useEffect(() => {
     if (enabled) prefetchGatewayModelCatalog()

@@ -3,7 +3,7 @@ import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { lazyConvex } from '@/server/database/lazy-convex'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { downloadBuffer } from '@/server/storage/object-store'
-import { resolveIdentityDisplayName, resolveIdentityPhotoUrl } from '@/shared/workspaces/identity-resolution'
+import { resolveIdentityDisplayName, resolveIdentityPhotoUrl, versionedIdentityUrl } from '@/shared/workspaces/identity-resolution'
 import {
   identityObjectKey,
   identityUploadError,
@@ -65,10 +65,14 @@ export async function PATCH(_request: Request, context: AppApiRouteContext) {
 
 export async function POST(request: Request, context: AppApiRouteContext) {
   try {
+    const workspaceIdValue = await workspaceId(context)
+    const authorizedIdentity = await getIdentity(context, workspaceIdValue)
+    if (!authorizedIdentity) {
+      return NextResponse.json({ error: 'Active workspace membership is required.' }, { status: 403 })
+    }
     const file = (await request.formData()).get('file')
     if (!(file instanceof File)) return NextResponse.json({ error: 'An image file is required.' }, { status: 400 })
     const image = await processIdentityImage(file)
-    const workspaceIdValue = await workspaceId(context)
     const key = identityObjectKey('workspaces', `${workspaceIdValue}/${context.auth.userId}`)
     await saveIdentityImage(key, image)
     let result: { oldPhotoObjectKey: string | null } | null = null
@@ -142,10 +146,16 @@ function toWorkspaceProfile(identity: WorkspaceIdentity) {
   })
   const photoUrl = resolveIdentityPhotoUrl({
     workspacePhotoUrl: identity.photoObjectKey
-      ? `/api/v1/workspaces/${encodeURIComponent(identity.workspaceId)}/profile/photo?principalId=${encodeURIComponent(identity.principalId)}`
+      ? versionedIdentityUrl(
+          `/api/v1/workspaces/${encodeURIComponent(identity.workspaceId)}/profile/photo?principalId=${encodeURIComponent(identity.principalId)}`,
+          identity.photoObjectKey,
+        )
       : null,
     accountPhotoUrl: identity.accountPhotoObjectKey
-      ? `/api/v1/account/profile/photo?userId=${encodeURIComponent(identity.userId)}`
+      ? versionedIdentityUrl(
+          `/api/v1/account/profile/photo?userId=${encodeURIComponent(identity.userId)}`,
+          identity.accountPhotoObjectKey,
+        )
       : null,
     providerPhotoUrl: identity.accountPhotoUrl,
   })
@@ -163,7 +173,10 @@ function toWorkspaceProfile(identity: WorkspaceIdentity) {
     accountDisplayName,
     accountPhotoUrl: resolveIdentityPhotoUrl({
       accountPhotoUrl: identity.accountPhotoObjectKey
-        ? `/api/v1/account/profile/photo?userId=${encodeURIComponent(identity.userId)}`
+        ? versionedIdentityUrl(
+            `/api/v1/account/profile/photo?userId=${encodeURIComponent(identity.userId)}`,
+            identity.accountPhotoObjectKey,
+          )
         : null,
       providerPhotoUrl: identity.accountPhotoUrl,
     }),

@@ -34,12 +34,12 @@ import {
 } from './DirectMessageExperience.parts'
 
 function shouldDisableQuestionnaireSuggestions(
-  showcase: boolean,
+
   guided: boolean,
   hasSurfacePlatform: boolean,
   agentResponding: boolean,
 ) {
-  return showcase || guided || hasSurfacePlatform || agentResponding
+  return guided || hasSurfacePlatform || agentResponding
 }
 
 function resolveRoomRightPanel({
@@ -51,7 +51,7 @@ function resolveRoomRightPanel({
   roster,
   thread,
   conversationType,
-  showcase,
+
   messageCtx,
 }: {
   panels: ReturnType<typeof useRoomPanels>
@@ -62,7 +62,7 @@ function resolveRoomRightPanel({
   roster: ReturnType<typeof useDirectMessageRoom>['roster']
   thread: ReturnType<typeof useDirectMessageRoom>['thread']
   conversationType: 'dm' | 'channel'
-  showcase: boolean
+
   messageCtx: ReturnType<typeof useDirectMessageRoom>['messageCtx']
 }) {
   const roomPanelOpen = room.roomPanel === 'people' || room.roomPanel === 'pinned'
@@ -79,7 +79,7 @@ function resolveRoomRightPanel({
         roomPanel={room.roomPanel}
         conversationType={conversationType}
         title={vm.title}
-        showcase={showcase}
+
         roster={roster}
         vm={vm}
         thread={thread}
@@ -186,7 +186,7 @@ function GuidedPendingMessage({
 
 export function DirectMessageExperience({
   conversationId,
-  showcase = false,
+
   conversationType = "dm",
   draft = false,
   draftTitle,
@@ -200,7 +200,7 @@ export function DirectMessageExperience({
   guided,
 }: {
   conversationId: string;
-  showcase?: boolean;
+
   conversationType?: "dm" | "channel";
   draft?: boolean;
   draftTitle?: string;
@@ -219,8 +219,7 @@ export function DirectMessageExperience({
   const convexAccessToken = useConvexAuthToken()
   const { refreshNotifications } = useCollaborationRealtime()
   const { settings: appSettings } = useAppSettings()
-  const convexLiveSyncEnabled = !showcase
-    && appDataCapabilities.provider === 'convex'
+  const convexLiveSyncEnabled = appDataCapabilities.provider === 'convex'
     && appDataCapabilities.requiresConvexClient
     && appDataCapabilities.supportsRealtime
   const convexRoomSubscriptionEnabled = convexLiveSyncEnabled
@@ -229,7 +228,7 @@ export function DirectMessageExperience({
   const panels = useRoomPanels({ renderAttachmentViewer: AttachmentViewer })
   const room = useDirectMessageRoom({
     conversationId,
-    showcase,
+
     conversationType,
     draft,
     draftTitle,
@@ -242,7 +241,7 @@ export function DirectMessageExperience({
   const { vm, roster, collab, thread, transcript, composer, roomActions, messageCtx } = room
   const pathname = usePathname()
   const agentId = roomAgentId(vm)
-  const agentHref = agentConversationRedirect({ pathname: pathname ?? '', workspaceId: activeWorkspaceId, agentId, conversationId, guided: Boolean(guided), showcase })
+  const agentHref = agentConversationRedirect({ pathname: pathname ?? '', workspaceId: activeWorkspaceId, agentId, conversationId, guided: Boolean(guided),  })
   useEffect(() => { if (agentHref) router.replace(agentHref) }, [agentHref, router])
   const { loadMessages } = transcript
   const pendingMessage = guided?.pendingMessage
@@ -260,7 +259,7 @@ export function DirectMessageExperience({
     roster,
     thread,
     conversationType,
-    showcase,
+
     messageCtx,
       })
       const externalPanelOpen = Boolean(externalRightPanel)
@@ -281,7 +280,7 @@ export function DirectMessageExperience({
   })
 
   return (
-    <QuestionnaireComposerProvider value={composer.input} readDraft={() => composer.inputRef.current} subscribe={composer.subscribeToInput} disabled={shouldDisableQuestionnaireSuggestions(showcase, Boolean(guided), Boolean(transcript.surfacePlatform), isRoomAgentResponding(transcript.messages, room.agentResponding))} onChange={(value) => { composer.setInput(value); composer.onComposerInput(value); composer.composerRef.current?.focus() }}>
+    <QuestionnaireComposerProvider value={composer.input} readDraft={() => composer.inputRef.current} subscribe={composer.subscribeToInput} disabled={shouldDisableQuestionnaireSuggestions(Boolean(guided), Boolean(transcript.surfacePlatform), isRoomAgentResponding(transcript.messages, room.agentResponding))} onChange={(value) => { composer.setInput(value); composer.onComposerInput(value); composer.composerRef.current?.focus() }}>
       <LinkOpenInterceptor
         preference={appSettings.linkOpenPreference}
         onOpenInOverlay={panels.openLinkPreview}
@@ -330,7 +329,7 @@ export function DirectMessageExperience({
                 roster={roster}
                 collab={collab}
                 roomActions={roomActions}
-                showcase={showcase}
+
                 headerActions={headerActions}
                 roomPanel={room.roomPanel}
                 setRoomPanel={room.setRoomPanel}
@@ -364,7 +363,6 @@ export function DirectMessageExperience({
               <RoomComposer
                 guided={guided?.composer ?? undefined}
                 composer={composer}
-                title={vm.title}
                 mentionCategories={vm.mentionCategories}
                 agentCommands={vm.agentCommands}
                 capabilities={capabilities}
@@ -397,7 +395,6 @@ export function DirectMessageExperience({
         conversationId={conversationId}
         conversationType={conversationType}
         title={vm.title}
-        showcase={showcase}
         currentParticipant={vm.currentParticipant}
         participants={roster.participants}
         router={router}

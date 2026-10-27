@@ -10,26 +10,14 @@ export async function startAgentChat(args: {
   workspaceId: string | null
   agentId?: string
   agentPrincipalId: string
-  showcase?: boolean
+
   surface?: 'agents' | 'chat'
   scope?: PanelScope
   buildHref?: (workspaceId: string | null, href: string, scope?: PanelScope) => string
   push(href: string): void
 }): Promise<string | null> {
   const surface = args.surface ?? 'chat'
-  if (args.showcase) {
-    const basePath = surface === 'agents' ? '/app/agents' : '/app/chat'
-    // `view=dms` belongs to the chats surface's subview vocabulary only; on
-    // the agents surface the panel resolves `view` against its own tabs.
-    const params = new URLSearchParams({ showcase: '1', id: args.agentPrincipalId })
-    if (surface === 'agents') {
-      if (args.agentId) params.set('agent', args.agentId)
-    } else {
-      params.set('view', 'dms')
-    }
-    args.push(`${basePath}?${params.toString()}`)
-    return args.agentPrincipalId
-  }
+
   if (!args.workspaceId) return null
   // Agents open into their main thread. The resolver adopts the legacy DM
   // when one exists, so pre-thread history is never lost.
@@ -65,14 +53,14 @@ export async function startAgentChat(args: {
 }
 
 /** Canonical workspace-scoped href for the agent editor pages. */
-export function buildAgentEditorHref(workspaceId: string | null, agentId: string | 'new', showcase = false): string {
-  if (showcase || !workspaceId) return `/app/agents/${agentId}?showcase=1`
+export function buildAgentEditorHref(workspaceId: string | null, agentId: string | 'new', ): string {
+  if (!workspaceId) return `/app/agents/${agentId}`
   return `/app/w/${encodeURIComponent(workspaceId)}/agents/${agentId}`
 }
 
 /** Canonical workspace-scoped href for the agents directory. */
-export function buildAgentsDirectoryHref(workspaceId: string | null, showcase = false): string {
-  if (showcase || !workspaceId) return '/app/agents?showcase=1'
+export function buildAgentsDirectoryHref(workspaceId: string | null, ): string {
+  if (!workspaceId) return '/app/agents'
   return `/app/w/${encodeURIComponent(workspaceId)}/agents`
 }
 

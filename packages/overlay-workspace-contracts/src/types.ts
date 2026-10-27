@@ -63,8 +63,6 @@ export type WorkspaceMembership = {
   workspaceId: string
   principalId: string
   role: WorkspaceMembershipRole
-  iconUrl?: string
-  iconPreset?: string
   status: WorkspaceMembershipStatus
   invitedByPrincipalId?: string
   joinedAt: number
@@ -416,6 +414,7 @@ export type ConversationParticipant = {
   principalId: string
   principalType: Extract<WorkspacePrincipalType, 'human' | 'agent'>
   displayName: string
+  photoUrl?: string
   email?: string
   role: ConversationParticipantRole
   status: 'active' | 'removed'

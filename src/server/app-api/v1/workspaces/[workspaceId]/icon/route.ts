@@ -5,6 +5,7 @@ import { lazyConvex } from '@/server/database/lazy-convex'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { downloadBuffer } from '@/server/storage/object-store'
+import { versionedIdentityUrl } from '@/shared/workspaces/identity-resolution'
 import {
   identityObjectKey,
   identityUploadError,
@@ -84,7 +85,10 @@ export async function POST(request: Request, context: AppApiRouteContext) {
       throw error
     }
     await removeIdentityImage(result?.oldIconObjectKey)
-    return NextResponse.json({ iconUrl: `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/icon`, iconPreset: null })
+    return NextResponse.json({
+      iconUrl: versionedIdentityUrl(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/icon`, key),
+      iconPreset: null,
+    })
   } catch (error) {
     return error instanceof Error && error.message.startsWith('IDENTITY_UPLOAD_')
       ? identityUploadError(error)

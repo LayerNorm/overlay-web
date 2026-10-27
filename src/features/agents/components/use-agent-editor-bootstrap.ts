@@ -7,13 +7,13 @@ import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvi
 import type { getInitialEditorState } from '../lib/agent-editor-state'
 
 export function useAgentEditorBootstrap({
-  showcase,
+
   mode,
   agentId,
   activeWorkspaceId,
   initial,
 }: {
-  showcase: boolean
+
   mode: 'new' | 'edit'
   agentId: string | undefined
   activeWorkspaceId: string | null
@@ -26,17 +26,17 @@ export function useAgentEditorBootstrap({
   const [canCreate, setCanCreate] = useState(initial.canCreate)
   const [connectedAgentsEnabled, setConnectedAgentsEnabled] = useState(false)
   /** Whether the connected-agents check has answered; the settings wait for it so the agent-type choice does not pop in. */
-  const [connectedAgentsChecked, setConnectedAgentsChecked] = useState(showcase)
+  const [connectedAgentsChecked, setConnectedAgentsChecked] = useState(false)
 
   // Reset the load state when the load parameters change (before the effect
   // below kicks off the next fetch).
-  const [loadParams, setLoadParams] = useState({ showcase, mode, agentId, activeWorkspaceId })
+  const [loadParams, setLoadParams] = useState({  mode, agentId, activeWorkspaceId })
   if (
-    loadParams.showcase !== showcase || loadParams.mode !== mode
+    loadParams.mode !== mode
     || loadParams.agentId !== agentId || loadParams.activeWorkspaceId !== activeWorkspaceId
   ) {
-    setLoadParams({ showcase, mode, agentId, activeWorkspaceId })
-    if (!showcase && activeWorkspaceId) {
+    setLoadParams({  mode, agentId, activeWorkspaceId })
+    if (activeWorkspaceId) {
       setLoading(true)
       setLoadFailed(false)
     }
@@ -44,7 +44,7 @@ export function useAgentEditorBootstrap({
 
   // Load the agent (edit) or the create permission (new).
   useEffect(() => {
-    if (showcase) return
+
     if (!activeWorkspaceId) return
     let cancelled = false
     if (mode === 'edit' && agentId) {
@@ -59,11 +59,11 @@ export function useAgentEditorBootstrap({
       )
     }
     return () => { cancelled = true }
-  }, [activeWorkspaceId, agentId, mode, showcase])
+  }, [activeWorkspaceId, agentId, mode, ])
 
   // Connected-agent availability gates the BYO type.
   useEffect(() => {
-    if (showcase || !activeWorkspaceId) return
+    if (!activeWorkspaceId) return
     let cancelled = false
     void overlayAppClient.agentEnvironments.listBindings(activeWorkspaceId)
       .then((result) => { if (!cancelled) {
@@ -72,7 +72,7 @@ export function useAgentEditorBootstrap({
       } })
       .catch(() => { if (!cancelled) { setConnectedAgentsEnabled(false); setConnectedAgentsChecked(true) } })
     return () => { cancelled = true }
-  }, [activeWorkspaceId, capabilities.externalAgents, showcase])
+  }, [activeWorkspaceId, capabilities.externalAgents, ])
 
   return { agent, setAgent, loading, loadFailed, canCreate, connectedAgentsEnabled, connectedAgentsChecked }
 }

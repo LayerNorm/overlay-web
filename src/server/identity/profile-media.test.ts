@@ -28,3 +28,8 @@ test('identity uploads reject files above the byte limit', async () => {
   const file = new File([Buffer.alloc(5 * 1024 * 1024 + 1)], 'large.png', { type: 'image/png' })
   await assert.rejects(() => processIdentityImage(file), /IDENTITY_UPLOAD_SIZE/)
 })
+
+test('identity uploads reject corrupt image data with a client error code', async () => {
+  const file = new File([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 1, 2, 3])], 'corrupt.png', { type: 'image/png' })
+  await assert.rejects(() => processIdentityImage(file), /IDENTITY_UPLOAD_DECODE/)
+})

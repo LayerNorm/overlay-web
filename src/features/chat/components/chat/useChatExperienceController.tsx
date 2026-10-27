@@ -75,7 +75,7 @@ export type ChatExperienceProps = {
   belowEmptyComposer?: React.ReactNode
   initialChats?: Conversation[]
   initialChatPageInfo?: ChatListPageInfo
-  publicShowcaseSnapshots?: Readonly<Record<string, ConversationLoadSnapshot>>
+
 }
 
 export function useChatExperienceController({
@@ -88,20 +88,20 @@ export function useChatExperienceController({
   belowEmptyComposer,
   initialChats,
   initialChatPageInfo,
-  publicShowcaseSnapshots,
+
 }: ChatExperienceProps) {
   recordRender('ChatExperience')
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const buildWorkspaceHref = useWorkspaceHref()
-  const isPublicShowcase = Boolean(publicShowcaseSnapshots)
+
   const { settings, updateSettings } = useAppSettings()
   const { user: authUser, isLoading: authLoading } = useAuth()
   const gatewayCatalogEnabled = shouldLoadGatewayModelCatalog({
     isAuthenticated: Boolean(authUser),
     isAuthLoading: authLoading,
-    isPublicShowcase,
+
   })
   const { appDataCapabilities, capabilities } = useOverlayCapabilities()
   const {
@@ -123,10 +123,9 @@ export function useChatExperienceController({
     [byokConnections, gatewayCatalogRevision],
   )
   const billingEnabled = capabilities.billing
-  const convexLiveSyncEnabled = !isPublicShowcase &&
-    appDataCapabilities.requiresConvexClient && appDataCapabilities.supportsRealtime
-  const titleGenerationEnabled = !isPublicShowcase && appDataCapabilities.supportsChatPersistence
-  const generatedOutputsEnabled = !isPublicShowcase
+  const convexLiveSyncEnabled = appDataCapabilities.requiresConvexClient && appDataCapabilities.supportsRealtime
+  const titleGenerationEnabled = appDataCapabilities.supportsChatPersistence
+  const generatedOutputsEnabled = true
   const convexAccessToken = useConvexAuthToken()
   const { startSession, completeSession, markRead, setActiveViewer, sessions } = useAsyncSessions()
   const activeChatIdRef = useRef<string | null>(null)
@@ -151,7 +150,6 @@ export function useChatExperienceController({
     initialChatPageInfo,
     initialChats,
     pendingTitleRef,
-    useSeededGuestData: isPublicShowcase,
     userId,
   })
   const [activeChatId, setActiveChatId] = useState<string | null>(null)
@@ -218,7 +216,7 @@ export function useChatExperienceController({
     setReasoning,
   } = useChatPreferences()
   const [, setIsSwitchingChat] = useState(false)
-  const generatedUiConnectorActions = useGeneratedUiConnectorActions({ enabled: !isPublicShowcase })
+  const generatedUiConnectorActions = useGeneratedUiConnectorActions({ enabled: true })
 
   const [isDragging, setIsDragging] = useState(false)
   const {
@@ -363,7 +361,7 @@ export function useChatExperienceController({
     setPersonalMentionConfirmationOpen,
     mentionCategories,
     personMentions,
-  } = useChatMentions({ activeWorkspaceId, isPublicShowcase })
+  } = useChatMentions({ activeWorkspaceId,  })
   const wasStreamingRef = useRef(false)
 
   const replaceActiveChatRoute = useCallback(() => {
@@ -371,7 +369,7 @@ export function useChatExperienceController({
     const params = new URLSearchParams()
     const view = searchParams.get('view')
     if (view && ['personal', 'workspace-chats', 'dms', 'channels'].includes(view)) params.set('view', view)
-    if (searchParams.get('showcase') === '1') params.set('showcase', '1')
+
     const query = params.toString()
     router.replace(buildWorkspaceHref(activeWorkspaceId, `/app/chat${query ? `?${query}` : ''}`))
   }, [activeWorkspaceId, buildWorkspaceHref, hideSidebar, router, searchParams])
@@ -476,7 +474,7 @@ export function useChatExperienceController({
   const runConversationId = activeChatId ?? pendingRunConversationId
   const agentRunLifecycle = useAgentRunLifecycle({
     conversationId: runConversationId,
-    enabled: !isPublicShowcase && Boolean(authUser),
+    enabled: Boolean(authUser),
     localStreamActive,
     convexAccessToken,
     enableConvexLiveSync: convexLiveSyncEnabled,
@@ -527,7 +525,7 @@ export function useChatExperienceController({
   // runtime's loaded messages to the current useChat instances so the greeting
   // disappears immediately. Using refs avoids stale closures from loadChat.
   useEffect(() => {
-    if (!activeChatId || isPublicShowcase) return
+    if (!activeChatId) return
     const runtime = runtimesRef.current.get(activeChatId)
     if (!runtime) return
     if (chat0Ref.current.messages !== runtime.askChats[0].messages) {
@@ -536,7 +534,7 @@ export function useChatExperienceController({
     if (actChatRef.current.messages !== runtime.actChat.messages) {
       actChatRef.current.setMessages([...runtime.actChat.messages] as UIMessage[])
     }
-  }, [activeChatId, actChatRef, chat0Ref, isPublicShowcase, runtimeHydrationVersion, runtimesRef])
+  }, [activeChatId, actChatRef, chat0Ref,  runtimeHydrationVersion, runtimesRef])
 
   const {
     beginHeaderChatRename,
@@ -614,7 +612,7 @@ export function useChatExperienceController({
       forceLiveSyncRender((value) => value + 1)
     }
 
-    if (isPublicShowcase || isTemporaryChatRef.current || !targetChatId || targetChatId === TEMPORARY_CHAT_ID) return
+    if (isTemporaryChatRef.current || !targetChatId || targetChatId === TEMPORARY_CHAT_ID) return
     void overlayAppClient.conversations.updateMessageUiPartResponse({
       conversationId: targetChatId,
       messageId,
@@ -626,7 +624,7 @@ export function useChatExperienceController({
     }).catch(() => {
       toast.error('Could not save draft edits.')
     })
-  }, [actChatRef, chat0Ref, emptyRuntimeRef, forceLiveSyncRender, isPublicShowcase, isTemporaryChatRef, runtimesRef])
+  }, [actChatRef, chat0Ref, emptyRuntimeRef, forceLiveSyncRender,  isTemporaryChatRef, runtimesRef])
 
   /** Hide header rename until `loadChat` has applied messages/meta (`runtime.hydrated`). */
   const activeChatHydrated = Boolean(
@@ -636,11 +634,11 @@ export function useChatExperienceController({
   useEffect(() => {
     if (authLoading) return
     if (initialChats === undefined || (!userId && authUser?.id)) void loadChats()
-    if (!isPublicShowcase) void loadSubscription()
-  }, [authLoading, authUser?.id, initialChats, isPublicShowcase, loadChats, loadSubscription, userId])
+    void loadSubscription()
+  }, [authLoading, authUser?.id, initialChats,  loadChats, loadSubscription, userId])
 
   useEffect(() => {
-    if (!activeChatId || isPublicShowcase) return
+    if (!activeChatId) return
     const t = window.setTimeout(() => {
       const normalized = normalizeChatModelSelection({
         askModelIds: selectedModels,
@@ -654,7 +652,7 @@ export function useChatExperienceController({
       })
     }, 600)
     return () => clearTimeout(t)
-  }, [selectedModels, selectedActModel, activeChatId, isPublicShowcase])
+  }, [selectedModels, selectedActModel, activeChatId, ])
 
   const {
     refreshSelectedAutomation,
@@ -683,7 +681,6 @@ export function useChatExperienceController({
     applyUiStateToView,
     chats,
     clearTransientComposerState,
-    conversationSnapshots: publicShowcaseSnapshots,
     ensureConversationRuntime,
     emptyRuntimeRef,
     hasAutomationContext,
@@ -974,7 +971,7 @@ export function useChatExperienceController({
     handleAutomateSuggestion,
     handleCreateAutomationDraftViaChat,
   } = useComposerActions({
-    isPublicShowcase,
+
     requireAuth,
     personMentions,
     setPersonalMentionConfirmationOpen,
@@ -1029,7 +1026,7 @@ export function useChatExperienceController({
     showAutomationHeaderControls,
     automationDetailTab,
     isTemporaryChat,
-    isPublicShowcase,
+
     mode,
     composerMode,
     generationMode,

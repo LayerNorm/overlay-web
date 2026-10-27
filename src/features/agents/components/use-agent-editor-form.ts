@@ -19,17 +19,15 @@ import type { AgentType } from './AgentEditorForm'
 
 export function useAgentEditorForm({
   initial,
-  showcaseAgent,
   agent,
-  showcase,
+
   activeWorkspaceId,
   setLegacyHostedRuntime,
   setAgentType,
 }: {
   initial: ReturnType<typeof getInitialEditorState>
-  showcaseAgent: WorkspaceAgentDirectoryItem | null
   agent: WorkspaceAgentDirectoryItem | null
-  showcase: boolean
+
   activeWorkspaceId: string | null
   setLegacyHostedRuntime: Dispatch<SetStateAction<boolean>>
   setAgentType: Dispatch<SetStateAction<AgentType>>
@@ -44,9 +42,7 @@ export function useAgentEditorForm({
   const [permissionMode, setPermissionMode] = useState<'ask' | 'auto'>(
     initial.permissionMode === 'auto' ? 'auto' : 'ask',
   )
-  const [enabledToolGroups, setEnabledToolGroups] = useState<Set<string>>(() => (showcaseAgent
-    ? enabledAgentToolGroupIds(showcaseAgent.allowedToolIds)
-    : new Set(DEFAULT_AGENT_TOOL_GROUP_IDS)))
+  const [enabledToolGroups, setEnabledToolGroups] = useState<Set<string>>(() => new Set(DEFAULT_AGENT_TOOL_GROUP_IDS))
   const [advanced, setAdvanced] = useState(false)
   const [dirty, setDirty] = useState(false)
   const [version, setVersion] = useState(0)
@@ -99,7 +95,7 @@ export function useAgentEditorForm({
   // header update while typing; a clean form or an unmounted editor clears the
   // override.
   useEffect(() => {
-    if (showcase || !agent || !activeWorkspaceId) return
+    if (!agent || !activeWorkspaceId) return
     dispatchAgentDraftPreview({
       workspaceId: activeWorkspaceId,
       agentId: agent.id,
@@ -108,7 +104,7 @@ export function useAgentEditorForm({
         ? { name: name.trim() || 'Untitled agent', description, avatarColor, avatarShape }
         : null,
     })
-  }, [showcase, agent, activeWorkspaceId, dirty, name, description, avatarColor, avatarShape])
+  }, [ agent, activeWorkspaceId, dirty, name, description, avatarColor, avatarShape])
 
   useEffect(() => {
     if (!agent || !activeWorkspaceId) return

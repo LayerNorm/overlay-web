@@ -59,12 +59,16 @@ test('legacy account settings and app account paths redirect to canonical accoun
     '/app/settings?section=account&billing=return',
     '/app/account?handoff=desktop',
     '/w/acme/workspace/settings?section=account&return=%2Fapp%2Fwork',
+    '/w/acme/personal/settings?section=account&desktop_code_challenge=pkce-fixture',
   ]) {
     const response = await proxy(new NextRequest(origin + path))
     const location = new URL(response.headers.get('location')!)
     assert.equal(response.status, 307)
     assert.equal(location.pathname, '/account')
     assert.equal(location.searchParams.has('section'), false)
+    if (path.includes('billing=return')) assert.equal(location.searchParams.get('billing'), 'return')
+    if (path.includes('return=')) assert.equal(location.searchParams.get('return'), '/app/work')
+    if (path.includes('desktop_code_challenge=')) assert.equal(location.searchParams.get('desktop_code_challenge'), 'pkce-fixture')
   }
 })
 
@@ -82,6 +86,17 @@ test('retired showcase and explore routes redirect before application subscripti
     assert.equal(location.pathname, '/home')
     assert.equal(location.search, '')
   }
+})
+
+test('showcase-like workspace names and unrelated API parameters are not retired routes', async () => {
+  process.env.AUTH_PROVIDER = 'workos'
+  const workspace = await proxy(new NextRequest(origin + '/w/showcase-team/workspace/work?return=showcase-welcome'))
+  const workspaceLocation = new URL(workspace.headers.get('location')!)
+  assert.notEqual(workspaceLocation.pathname, '/home')
+
+  const api = await proxy(new NextRequest(origin + '/api/v1/workspaces/real/members?section=account'))
+  assert.equal(api.status, 200)
+  assert.equal(api.headers.get('location'), null)
 })
 
 test('a query containing an external URL stays inside the local return path', async () => {

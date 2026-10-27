@@ -6,11 +6,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { deleteObject, uploadBuffer } from '@/server/storage/object-store'
 
 export const MAX_IDENTITY_UPLOAD_BYTES = 5 * 1024 * 1024
+const MAX_IDENTITY_REQUEST_BYTES = MAX_IDENTITY_UPLOAD_BYTES + 64 * 1024
 const MAX_IMAGE_PIXELS = 24_000_000
 
 export async function limitIdentityUploadBody(request: NextRequest): Promise<NextRequest | NextResponse> {
   const contentLength = Number(request.headers.get('content-length') ?? 0)
-  if (contentLength > MAX_IDENTITY_UPLOAD_BYTES) {
+  if (contentLength > MAX_IDENTITY_REQUEST_BYTES) {
     return NextResponse.json({ error: 'Upload exceeds the 5 MB limit.' }, { status: 413 })
   }
   if (!request.body) return NextResponse.json({ error: 'Upload body is required.' }, { status: 400 })
@@ -22,7 +23,7 @@ export async function limitIdentityUploadBody(request: NextRequest): Promise<Nex
     const { done, value } = await reader.read()
     if (done) break
     total += value.byteLength
-    if (total > MAX_IDENTITY_UPLOAD_BYTES) {
+    if (total > MAX_IDENTITY_REQUEST_BYTES) {
       await reader.cancel()
       return NextResponse.json({ error: 'Upload exceeds the 5 MB limit.' }, { status: 413 })
     }
@@ -43,16 +44,21 @@ export async function processIdentityImage(file: File): Promise<Buffer> {
   if (!format || format !== file.type) {
     throw new Error('IDENTITY_UPLOAD_FORMAT')
   }
-  const image = sharp(input, { limitInputPixels: MAX_IMAGE_PIXELS, failOn: 'error' })
-  const metadata = await image.metadata()
-  if (!metadata.width || !metadata.height || metadata.width * metadata.height > MAX_IMAGE_PIXELS) {
-    throw new Error('IDENTITY_UPLOAD_DIMENSIONS')
+  try {
+    const image = sharp(input, { limitInputPixels: MAX_IMAGE_PIXELS, failOn: 'error' })
+    const metadata = await image.metadata()
+    if (!metadata.width || !metadata.height || metadata.width * metadata.height > MAX_IMAGE_PIXELS) {
+      throw new Error('IDENTITY_UPLOAD_DIMENSIONS')
+    }
+    return await image
+      .rotate()
+      .resize(512, 512, { fit: 'cover', position: 'centre' })
+      .webp({ quality: 86 })
+      .toBuffer()
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith('IDENTITY_UPLOAD_')) throw error
+    throw new Error('IDENTITY_UPLOAD_DECODE')
   }
-  return await image
-    .rotate()
-    .resize(512, 512, { fit: 'cover', position: 'centre' })
-    .webp({ quality: 86 })
-    .toBuffer()
 }
 
 export function identityObjectKey(scope: string, ownerId: string): string {

@@ -7,6 +7,10 @@ export interface MentionItem {
   id: string
   name: string
   description?: string
+  photoUrl?: string
+  principalType?: 'human' | 'agent' | 'service'
+  avatarColor?: string
+  avatarShape?: string
   icon?: string
   logoUrl?: string
   meta?: Record<string, unknown>
@@ -18,4 +22,3 @@ export interface MentionCategory {
   icon: string
   items: MentionItem[]
 }
-

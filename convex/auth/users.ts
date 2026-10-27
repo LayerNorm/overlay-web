@@ -226,7 +226,10 @@ export const getAccountPhotoByServer = query({
     const shared = await Promise.all(actorPrincipals
       .filter((principal) => targetWorkspaceIds.has(principal.workspaceId) && principal.type === 'human')
       .map(async (principal) => {
-        const [actorMembership, targetPrincipal] = await Promise.all([
+        const [workspace, actorMembership, targetPrincipal] = await Promise.all([
+          ctx.db.query('workspaces')
+            .withIndex('by_workspaceId', (q) => q.eq('workspaceId', principal.workspaceId))
+            .unique(),
           ctx.db.query('workspaceMemberships')
             .withIndex('by_workspaceId_principalId', (q) =>
               q.eq('workspaceId', principal.workspaceId).eq('principalId', principal.principalId))
@@ -237,7 +240,9 @@ export const getAccountPhotoByServer = query({
             .unique(),
         ])
         if (
-          principal.archivedAt !== undefined
+          !workspace
+          || workspace.status !== 'active'
+          || principal.archivedAt !== undefined
           || !actorMembership
           || actorMembership.status !== 'active'
           || !targetPrincipal

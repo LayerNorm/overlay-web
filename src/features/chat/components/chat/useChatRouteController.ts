@@ -110,7 +110,7 @@ export function useChatRouteController({
       return
     }
     const params = new URLSearchParams()
-    if (searchParams?.get('showcase') === '1') params.set('showcase', '1')
+
     if (viewParam && ['personal', 'workspace-chats', 'dms', 'channels'].includes(viewParam)) params.set('view', viewParam)
     if (chatId) params.set('id', chatId)
     const query = params.toString()
@@ -260,7 +260,7 @@ export function useChatRouteController({
     const params = new URLSearchParams()
     const view = searchParams?.get('view')
     if (view && ['personal', 'workspace-chats', 'dms', 'channels'].includes(view)) params.set('view', view)
-    if (searchParams?.get('showcase') === '1') params.set('showcase', '1')
+
     const query = params.toString()
     const href = buildWorkspaceHref(null, `/app/chat${query ? `?${query}` : ''}`, routeScope)
     routerReplace(href)
