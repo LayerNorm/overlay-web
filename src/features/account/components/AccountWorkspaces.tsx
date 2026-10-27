@@ -10,6 +10,7 @@ import { WorkspaceAvatar } from '@/components/identity/WorkspaceAvatar'
 import { buildWorkspaceHref } from '@/shared/workspaces/routing'
 import { workspaceMemberLabel } from '@/shared/workspaces/solo-workspace'
 import { identityRequest } from '@/hooks/useIdentityProfile'
+import { overlayAppClient } from '@/shared/app/overlay-app-client'
 
 export function AccountWorkspaces() {
   const router = useRouter()
@@ -18,6 +19,7 @@ export function AccountWorkspaces() {
   const [creating, setCreating] = useState(false)
   const [busy, setBusy] = useState<string | null>(null)
   const generation = useRef(0)
+  const opening = useRef(false)
   const load = useCallback(async () => {
     const current = ++generation.current
     try {
@@ -26,6 +28,22 @@ export function AccountWorkspaces() {
     } catch (caught) { if (current === generation.current) setError(caught instanceof Error ? caught.message : 'Could not load workspaces.') }
   }, [])
   useEffect(() => { void load(); return () => { generation.current += 1 } }, [load])
+
+  async function openWorkspace(workspaceId: string) {
+    if (opening.current) return
+    opening.current = true
+    setBusy(workspaceId)
+    setError(null)
+    try {
+      await overlayAppClient.workspaces.activate(workspaceId)
+      router.push(buildWorkspaceHref(workspaceId, '/app/work'))
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Could not open the workspace.')
+    } finally {
+      opening.current = false
+      setBusy(null)
+    }
+  }
 
   async function accept(invitationId: string) {
     if (busy) return
@@ -42,7 +60,7 @@ export function AccountWorkspaces() {
     {error ? <div role="alert" className="text-sm text-destructive"><p>{error}</p><Button variant="ghost" onClick={() => void load()}>Try again</Button></div> : null}
     {!directory && !error ? <p className="text-sm text-muted-foreground" role="status">Loading workspaces...</p> : null}
     {directory?.workspaces.length === 0 ? <p className="py-4 text-sm text-muted-foreground">You have no workspaces yet.</p> : null}
-    <div className="space-y-3">{directory?.workspaces.map((workspace) => <Link key={workspace.id} href={buildWorkspaceHref(workspace.id, '/app/work')} className="-mx-3 flex items-center gap-3 rounded-lg px-3 py-3 transition-colors hover:bg-(--surface-subtle) focus-visible:outline-ring">
+    <div className="space-y-3">{directory?.workspaces.map((workspace) => <Link key={workspace.id} href={buildWorkspaceHref(workspace.id, '/app/work')} aria-busy={busy === workspace.id} onNavigate={(event) => { event.preventDefault(); void openWorkspace(workspace.id) }} className="-mx-3 flex items-center gap-3 rounded-lg px-3 py-3 transition-colors hover:bg-(--surface-subtle) focus-visible:outline-ring">
       <WorkspaceAvatar workspace={workspace} />
       <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{workspace.name}</p><p className="mt-1 text-xs text-muted-foreground">{workspaceMemberLabel(workspace)}</p></div>
       <span className="text-xs capitalize text-muted-foreground">{workspace.role}</span><ChevronRight className="size-4 text-muted-foreground" />

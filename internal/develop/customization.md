@@ -12,6 +12,8 @@ it must remain usable when workspace loading fails or there are no memberships.
 Legacy account settings links redirect there while preserving callback parameters.
 Billing stays inside each workspace. Interactive demo routes and fixtures are retired;
 legacy explore/showcase entry points redirect to `/home`.
+Opening a workspace from Account activates it before navigating so unscoped Settings
+and subsequent reloads retain the chosen workspace, matching the workspace switcher.
 
 Settings → Workspace → Profile edits only the signed-in member's name and photo
 in that workspace. Identity resolves workspace override → account override →
