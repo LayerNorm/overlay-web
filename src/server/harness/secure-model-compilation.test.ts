@@ -10,6 +10,7 @@ import type { HarnessLanguageModel } from './secure-model'
 test.each([
   ['model-preparation.ts', ['preparePersonalHarnessModel', 'readHarnessModelLimits']],
   ['native-model-preparation.ts', ['prepareNativeHarnessModel']],
+  ['native-tool-steps.ts', ['nativeHarnessToolNeedsApproval', 'executeNativeHarnessTool']],
 ] as const)('compiled %s exposes only durable server steps', async (filename, exports) => {
   const path = fileURLToPath(new URL(`./${filename}`, import.meta.url))
   const source = await readFile(path, 'utf8')
@@ -23,6 +24,10 @@ test.each([
     [Symbol.for('WORKFLOW_USE_STEP')]: (id: string) => (...args: unknown[]) => dispatch(id, ...args),
   })
   expect(Object.keys(compiledModule.exports).sort()).toEqual([...exports].sort())
+  if (filename === 'native-tool-steps.ts') {
+    const execute = compiledModule.exports.executeNativeHarnessTool as ((...args: unknown[]) => unknown) & { maxRetries?: number }
+    expect(execute.maxRetries).toBe(0)
+  }
   for (const name of exports) {
     await compiledModule.exports[name]({ fixture: true })
     expect(dispatch).toHaveBeenLastCalledWith(expect.stringContaining(`//${name}`), { fixture: true })

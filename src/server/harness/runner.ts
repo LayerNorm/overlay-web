@@ -14,6 +14,7 @@ import { createHarnessControlTools } from './control-tools'
 import { buildHarnessInstructions, buildHarnessStepInstructions, HARNESS_CONTROL_TOOLS, harnessProgressFingerprint } from './context'
 import type { HarnessApprovalRequest, HarnessExecutionPorts, HarnessModelSettings } from './ports'
 import { HarnessLanguageModel, type HarnessModelReference } from './secure-model'
+import { createHarnessToolApprovals, type HarnessToolApprovals, type HarnessToolExecutionOptions } from './tool-approvals'
 
 export type HarnessExecutionInput = {
   instructions: string
@@ -51,6 +52,7 @@ function wrapAuthorizedTools(
   surfaceTools: ToolSet,
   ports: HarnessExecutionPorts,
   controls: Set<string>,
+  approvals: HarnessToolApprovals,
 ): ToolSet {
   const definitions = { ...surfaceTools, ...createHarnessControlTools(ports) }
   let toolTail: Promise<unknown> = Promise.resolve()
@@ -69,9 +71,9 @@ function wrapAuthorizedTools(
           }
           const invoke = execute as (
             input: unknown,
-            options: Parameters<NonNullable<typeof execute>>[1],
+            options: HarnessToolExecutionOptions,
           ) => unknown
-          return invoke(value, options)
+          return invoke(value, { ...options, harnessApproved: approvals.consume(name, options.toolCallId, value) })
         })
         toolTail = pending.then(() => undefined, () => undefined)
         return pending
@@ -160,6 +162,7 @@ async function resumePendingApprovals(
   messages: ModelMessage[],
   ports: HarnessExecutionPorts,
   segment: number,
+  approvals: HarnessToolApprovals,
 ): Promise<ApprovalResumeOutcome> {
   assertPendingApprovalsExecutable(pending, tools)
   await ports.apply(`approval:${segment}`, { type: 'block', blocker: { kind: 'approval', question: 'Approval is required before executing these actions.' } })
@@ -170,6 +173,7 @@ async function resumePendingApprovals(
   assertApprovalDecisions(pending, decisions)
   const resumedMessages = appendApprovalMessages(messages, pending, decisions)
   await ports.apply(`resume-approval:${segment}`, { type: 'resume' })
+  approvals.record(pending, decisions)
   return { kind: 'restart', messages: resumedMessages, resetStagnation: true }
 }
 
@@ -234,7 +238,8 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
   let observedState = initial
   if (isTerminal(initial)) return { outcome: 'finished', snapshot: initial, messages, steps }
   if (!await ports.claim()) return { outcome: 'already_running', snapshot: await ports.read(), messages, steps }
-  const tools = wrapAuthorizedTools(input.tools, ports, controls)
+  const approvals = createHarnessToolApprovals()
+  const tools = wrapAuthorizedTools(input.tools, ports, controls, approvals)
   const toolDefinitions = await prepareToolDefinitions(tools)
   const instructions = buildHarnessInstructions(input.instructions)
   let truncatedResponse = false
@@ -354,7 +359,7 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
     truncatedResponse = finishReason === 'length'
     if (updatedState.status !== 'running') continue
     if (pending.length) {
-      const approval = await resumePendingApprovals(pending, tools, messages, ports, segment)
+      const approval = await resumePendingApprovals(pending, tools, messages, ports, segment, approvals)
       if (approval.kind === 'blocked') {
         return { outcome: 'blocked', snapshot: approval.snapshot, messages, steps }
       }

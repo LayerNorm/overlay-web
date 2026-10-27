@@ -1,11 +1,6 @@
-import { jsonSchema, tool, type ToolSet } from 'ai'
-import { FatalError } from 'workflow'
-import {
-  isPersonalChatWorkToolOutputEnvelope,
-  type PersonalChatWorkToolDefinition,
-  type PersonalChatWorkToolingContext,
-} from '@/shared/agents/personal-chat-work'
-import { HARNESS_CONTROL_TOOLS } from './context'
+import type { ToolSet } from 'ai'
+import type { PersonalChatWorkToolDefinition, PersonalChatWorkToolingContext } from '@/shared/agents/personal-chat-work'
+import { createHarnessTools } from './tools'
 import type { PersonalHarnessAccess } from './personal-access'
 
 export type PersonalHarnessToolsInput = {
@@ -57,26 +52,11 @@ async function toolNeedsApproval(args: {
 }
 
 export function createPersonalHarnessTools(input: PersonalHarnessToolsInput): ToolSet {
-  const tools: ToolSet = {}
-  const reserved = new Set<string>(HARNESS_CONTROL_TOOLS)
-  for (const definition of [...input.definitions].sort((a, b) => a.name.localeCompare(b.name))) {
-    if (reserved.has(definition.name) || Object.hasOwn(tools, definition.name)
-      || ['__proto__', 'constructor', 'prototype'].includes(definition.name)) {
-      throw new FatalError('Duplicate or reserved harness tool name.')
-    }
-    const context = { access: input.access, context: input.context, toolName: definition.name }
-    tools[definition.name] = tool({
-      description: definition.description,
-      inputSchema: jsonSchema(definition.inputSchema),
-      // Re-evaluate even if admission said no approval was needed.
-      needsApproval: async (value, options) => toolNeedsApproval({ ...context, input: value, messages: options.messages, toolCallId: options.toolCallId }),
-      execute: async (value, options) => executeAuthorizedTool({ ...context, input: value, messages: options.messages, toolCallId: options.toolCallId }),
-      toModelOutput: ({ output }) => isPersonalChatWorkToolOutputEnvelope(output)
-        ? output.overlayModelOutput as never
-        : typeof output === 'string' ? { type: 'text', value: output } : { type: 'json', value: output as never },
-    })
-  }
-  return tools
+  const context = { access: input.access, context: input.context }
+  return createHarnessTools(input.definitions, {
+    needsApproval: call => toolNeedsApproval({ ...context, ...call }),
+    execute: call => executeAuthorizedTool({ ...context, ...call }),
+  })
 }
 
 // Tool side effects have their own idempotency keys. A failed execution is
