@@ -38,6 +38,8 @@ export type HarnessReceipt = {
   costSource?: 'provider' | 'catalog' | 'external'
   /** Present only for user-funded inference; null means the provider did not report its charge. */
   externalCostMicros?: number | null
+  /** Confirmed rejection before inference, never an ambiguous provider failure. */
+  rejectionReason?: 'budget' | 'model_unavailable'
 }
 
 export type HarnessPolicy = {
@@ -255,6 +257,12 @@ export function transitionHarnessStep(state: HarnessSnapshot, input: {
 }
 
 export function validateHarnessReceipt(receipt: HarnessReceipt) {
+  if (receipt.rejectionReason !== undefined && (
+    !['budget', 'model_unavailable'].includes(receipt.rejectionReason)
+    || [receipt.inputTokens, receipt.outputTokens, receipt.reasoningTokens, receipt.cacheReadTokens,
+      receipt.cacheWriteTokens, receipt.costMicros].some(value => value !== 0)
+    || receipt.costSource !== 'catalog' || receipt.externalCostMicros !== undefined
+  )) throw new Error('Rejected inference must have confirmed zero usage and cost.')
   for (const value of [receipt.inputTokens, receipt.outputTokens, receipt.reasoningTokens, receipt.cacheReadTokens, receipt.cacheWriteTokens, receipt.costMicros]) {
     if (!Number.isSafeInteger(value) || value < 0) throw new Error('Usage and cost must be known nonnegative integers.')
   }

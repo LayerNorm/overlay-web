@@ -1,0 +1,54 @@
+import { beforeEach, expect, test, vi } from 'vitest'
+import { GatewayModelNotFoundError, GatewayRateLimitError } from '@ai-sdk/gateway'
+import { isConfirmedHarnessModelRejection, recordHarnessModelRejection } from './model-rejection'
+import type { HarnessModelReference } from './secure-model'
+
+const mocks = vi.hoisted(() => ({ read: vi.fn(), apply: vi.fn(), release: vi.fn() }))
+vi.mock('server-only', () => ({}))
+vi.mock('./state-steps', () => ({ readHarnessState: mocks.read, applyHarnessOperation: mocks.apply }))
+vi.mock('@/server/billing/billing-runtime', () => ({ releaseProviderBudgetReservation: mocks.release }))
+const reference: HarnessModelReference = { modelId: 'provider/model', credentialOwnerId: 'user', allowLowBalanceFallback: false,
+  personal: { access: { actorUserId: 'user', runId: 'root', workflowRunId: 'workflow', conversationId: 'conversation', agentRunId: 'delivery',
+    workspaceId: 'workspace', principalId: 'principal', authentication: { type: 'session' } },
+  receiptId: 'model:0', memoryEnabled: false, requestFingerprint: 'request', inputTokenBudget: 100, maxOutputTokens: 100, contextWindow: 1_000 } }
+const hold = { id: 'model:0', maxCostMicros: 100 }
+const state = { workflowRunId: 'workflow', modelReservation: hold }
+
+beforeEach(() => { vi.resetAllMocks(); mocks.read.mockResolvedValue(state) })
+
+test('only a typed model-not-found rejection without a generation is confirmed', () => {
+  expect(isConfirmedHarnessModelRejection(new GatewayModelNotFoundError())).toBe(true)
+  for (const error of [new GatewayModelNotFoundError({ generationId: 'generation' }), new GatewayModelNotFoundError({ statusCode: 500 }),
+    new GatewayRateLimitError(), new Error('timeout'), { name: 'GatewayModelNotFoundError', statusCode: 404 }]) {
+    expect(isConfirmedHarnessModelRejection(error)).toBe(false)
+  }
+})
+
+test('budget refusal clears only an unbound hold with a zero-cost rejection receipt', async () => {
+  await recordHarnessModelRejection(reference, 'budget')
+  expect(mocks.release).not.toHaveBeenCalled()
+  expect(mocks.apply).toHaveBeenCalledWith(reference.personal!.access, 'rejected:model:0', {
+    type: 'record_receipt', receipt: expect.objectContaining({ id: 'model:0', rejectionReason: 'budget', costMicros: 0, inputTokens: 0, outputTokens: 0 }),
+  })
+  mocks.read.mockResolvedValue({ ...state, modelReservation: { ...hold, dispatch: { modelId: 'provider/model', billingReservationId: 'billing' } } })
+  await expect(recordHarnessModelRejection(reference, 'budget')).rejects.toThrow('matching dispatch')
+  expect(mocks.apply).toHaveBeenCalledOnce()
+})
+
+test('confirmed provider rejection releases its account reservation before recording; failed release preserves the hold', async () => {
+  mocks.read.mockResolvedValue({ ...state, modelReservation: { ...hold, dispatch: { modelId: 'provider/model', billingReservationId: 'billing' } } })
+  mocks.release.mockRejectedValueOnce(new Error('storage unavailable'))
+  await expect(recordHarnessModelRejection(reference, 'model_unavailable')).rejects.toThrow('storage unavailable')
+  expect(mocks.apply).not.toHaveBeenCalled()
+  await recordHarnessModelRejection(reference, 'model_unavailable')
+  expect(mocks.release).toHaveBeenLastCalledWith(expect.objectContaining({ userId: 'user', reservationId: 'billing' }))
+  expect(mocks.release.mock.invocationCallOrder[1]).toBeLessThan(mocks.apply.mock.invocationCallOrder[0])
+})
+
+test('foreign ownership and external models cannot clear a dispatch', async () => {
+  mocks.read.mockResolvedValue({ ...state, workflowRunId: 'other' })
+  await expect(recordHarnessModelRejection(reference, 'budget')).rejects.toThrow('owner')
+  await expect(recordHarnessModelRejection({ ...reference, modelId: 'byok/key/model' }, 'budget')).rejects.toThrow('external')
+  expect(mocks.release).not.toHaveBeenCalled()
+  expect(mocks.apply).not.toHaveBeenCalled()
+})

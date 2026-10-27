@@ -10,6 +10,7 @@ import type { SourceCitationMap } from '@/shared/knowledge/ask-knowledge-types'
 export function buildPersonalHarnessDelivery(
   result: HarnessExecutionResult,
   sourceCitations?: SourceCitationMap,
+  fallbackNotices: string[] = [],
 ) {
   const displayResult = <T extends { type: string }>(part: T): T => {
     if (part.type !== 'tool-result' || !('output' in part) || !isPersonalChatWorkToolOutputEnvelope(part.output)) return part
@@ -19,6 +20,9 @@ export function buildPersonalHarnessDelivery(
     ...step, content: step.content.map(displayResult), toolResults: step.toolResults.map(displayResult),
   }))
   let transcript = buildAssistantPersistenceFromSteps(steps, result.snapshot.resultSummary ?? result.snapshot.workingSummary)
+  if (fallbackNotices.length) {
+    transcript = replaceAssistantTextForPersistence(transcript, `${fallbackNotices.join('\n\n')}\n\n${transcript.content}`)
+  }
   if (sourceCitations && Object.keys(sourceCitations).length) {
     transcript = replaceAssistantTextForPersistence(transcript, linkifySourceCitationsMarkdown(transcript.content, sourceCitations))
   }

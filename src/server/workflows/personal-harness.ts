@@ -9,7 +9,7 @@ import { createPersonalHarnessWaitPorts } from '@/server/harness/personal-waits'
 import { admitPersonalHarnessChild } from '@/server/harness/personal-child-steps'
 import { buildPersonalHarnessDelivery } from '@/server/harness/personal-delivery'
 import {
-  attachPersonalHarnessDelivery, closePersonalHarnessStream, finishPersonalHarnessDelivery,
+  attachPersonalHarnessDelivery, closePersonalHarnessStream, finishPersonalHarnessDelivery, writePersonalHarnessFallback,
 } from '@/server/harness/personal-delivery-steps'
 import { harnessWakeToken, notifyHarnessAncestors, readHarnessChild } from '@/server/harness/personal-wait-steps'
 import { applyHarnessOperation, claimHarnessState, readHarnessState } from '@/server/harness/state-steps'
@@ -52,6 +52,7 @@ export function personalHarnessChildInput(
     context: { ...parent.context, latestUserText: child.goal },
     definitions: parent.definitions.filter(definition => allowed.has(definition.name)),
     settings: parent.settings,
+    modelCandidates: parent.modelCandidates,
     instructions: `${parent.instructions}\n\nComplete only the assigned bounded task. Return concise findings with evidence references and any blockers. Do not expand the scope or contact the user except through the harness input mechanism.`,
     messages: [{ role: 'user', content: JSON.stringify({ goal: child.goal, constraints: child.constraints }) }],
   }
@@ -69,6 +70,7 @@ export async function personalHarnessWorkflow(input: PersonalHarnessWorkflowInpu
   using wake = createHook<unknown>({ token: harnessWakeToken(workflowRunId) })
   let result: HarnessExecutionResult | undefined
   let progress = ''
+  const fallbackNotices: string[] = []
   try {
     if (await wake.getConflict()) throw new FatalError('Harness wake channel is already owned.')
     if (isRoot) await attachPersonalHarnessDelivery(access)
@@ -92,7 +94,9 @@ export async function personalHarnessWorkflow(input: PersonalHarnessWorkflowInpu
           summary: summary.slice(0, 2_000), verdict: event.success ? 'observed' : 'failed', createdAt: Date.now(),
         } })
       },
-    })
+    }, input.modelCandidates ? { candidateIds: input.modelCandidates,
+      onFallback: isRoot ? async event => { fallbackNotices.push(await writePersonalHarnessFallback(access, event)) } : undefined,
+    } : undefined)
     const recordModelStep = ports.recordModelStep
     ports.recordModelStep = async (step, receiptId) => {
       await recordModelStep(step, receiptId)
@@ -121,10 +125,11 @@ export async function personalHarnessWorkflow(input: PersonalHarnessWorkflowInpu
     result = { outcome: 'finished', snapshot, messages: [], steps: [] }
   }
   if (isRoot) {
-    const delivery = buildPersonalHarnessDelivery(result, input.delivery?.sourceCitations)
+    const delivery = buildPersonalHarnessDelivery(result, input.delivery?.sourceCitations, fallbackNotices)
     if (!result.steps.length && progress) {
-      delivery.content = progress
-      delivery.parts = [{ type: 'text', text: progress }]
+      const content = fallbackNotices.length ? `${fallbackNotices.join('\n\n')}\n\n${progress}` : progress
+      delivery.content = content
+      delivery.parts = [{ type: 'text', text: content }]
     }
     await finishPersonalHarnessDelivery(access, delivery, { emitWebhook: input.delivery?.emitWebhook ?? false, turnId: input.context.turnId })
   } else {

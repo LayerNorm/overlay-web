@@ -52,6 +52,7 @@ export interface HarnessExecutionPorts {
     settings?: HarnessModelSettings
   }>
   recordModelStep(step: Parameters<WorkflowAgentOnStepEndCallback<ToolSet>>[0], receiptId: string): Promise<void>
+  recoverModelFailure?(receiptId: string): Promise<boolean>
   recordToolResult(event: WorkflowAgentToolExecutionEndEvent<ToolSet>): Promise<void>
   delegate(input: HarnessDelegation, toolCallId: string): Promise<HarnessChild>
   readChild(childRunId: string): Promise<HarnessSnapshot>

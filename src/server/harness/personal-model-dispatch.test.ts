@@ -3,9 +3,10 @@ import type { LanguageModelV4CallOptions } from '@ai-sdk/provider'
 import { authorizePersonalHarnessModelDispatch } from './personal-model-dispatch'
 import type { HarnessModelReference } from './secure-model'
 
-const mocks = vi.hoisted(() => ({ refresh: vi.fn(), read: vi.fn(), apply: vi.fn(), reserve: vi.fn(), started: vi.fn(), release: vi.fn(), forecast: vi.fn() }))
+const mocks = vi.hoisted(() => ({ refresh: vi.fn(), read: vi.fn(), apply: vi.fn(), reserve: vi.fn(), started: vi.fn(), release: vi.fn(), forecast: vi.fn(), reject: vi.fn() }))
 vi.mock('server-only', () => ({}))
 vi.mock('./personal-access', () => ({ refreshPersonalHarnessAccess: mocks.refresh }))
+vi.mock('./model-rejection', () => ({ recordHarnessModelRejection: mocks.reject }))
 vi.mock('./ConvexHarnessRepository', () => ({ ConvexHarnessRepository: class { get = mocks.read; apply = mocks.apply } }))
 vi.mock('./model-forecast', () => ({ estimateHarnessInputTokens: () => 100, hasHarnessCacheWrites: () => false, forecastHarnessModelCost: mocks.forecast }))
 vi.mock('@/server/billing/billing-runtime', () => ({ reserveProviderBudget: mocks.reserve, markProviderBudgetStarted: mocks.started, releaseProviderBudgetReservation: mocks.release }))
@@ -17,6 +18,14 @@ const reference: HarnessModelReference = { modelId: 'provider/model', credential
     maxOutputTokens: 50, contextWindow: 1_000 } }
 const options: LanguageModelV4CallOptions = { prompt: [], maxOutputTokens: 50 }
 const state = { workflowRunId: 'workflow', revision: 1, modelReservation: { id: 'model:0', maxCostMicros: 60 } }
+
+test('budget rejection is durably recorded before failing and never binds or starts provider execution', async () => {
+  mocks.reserve.mockResolvedValue({ ok: false, code: 'insufficient_credits' })
+  await expect(authorizePersonalHarnessModelDispatch(reference, options)).rejects.toThrow('reservation declined')
+  expect(mocks.reject).toHaveBeenCalledExactlyOnceWith(reference, 'budget')
+  expect(mocks.apply).not.toHaveBeenCalled()
+  expect(mocks.started).not.toHaveBeenCalled()
+})
 
 beforeEach(() => {
   vi.resetAllMocks()

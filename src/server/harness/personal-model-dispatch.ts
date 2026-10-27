@@ -8,6 +8,7 @@ import { ConvexHarnessRepository } from './ConvexHarnessRepository'
 import { refreshPersonalHarnessAccess, type PersonalHarnessAccess } from './personal-access'
 import { estimateHarnessInputTokens, forecastHarnessModelCost, hasHarnessCacheWrites } from './model-forecast'
 import type { HarnessModelReference } from './secure-model'
+import { recordHarnessModelRejection } from './model-rejection'
 
 export type PersonalHarnessModelDispatch = {
   access: PersonalHarnessAccess
@@ -99,7 +100,10 @@ export async function authorizePersonalHarnessModelDispatch(reference: HarnessMo
     providerCostUsd: estimate / 1_000_000, kind: 'agent', modelId: reference.modelId,
     operationId, reservationId: operationId, requestFingerprint: input.requestFingerprint,
   })
-  if (!reservation.ok) throw new FatalError(`Model budget reservation declined: ${reservation.code}`)
+  if (!reservation.ok) {
+    await recordHarnessModelRejection(reference, 'budget')
+    throw new FatalError(`Model budget reservation declined: ${reservation.code}`)
+  }
   try {
     await claimPersonalModelDispatch(input, reference.modelId, operationId, reservation.reservationId)
   } catch (error) {

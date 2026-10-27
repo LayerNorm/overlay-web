@@ -1,7 +1,7 @@
 import type { HarnessExecutionPorts } from './ports'
 import type { PersonalHarnessToolsInput } from './personal-tools'
 import { refreshPersonalHarnessAccess } from './personal-access'
-import { createPersonalHarnessModelPorts } from './personal-model-ports'
+import { createPersonalHarnessModelPorts, type PersonalHarnessModelRouting } from './personal-model-ports'
 import { admitHarnessRequestUsage } from './request-usage-step'
 import { createHarnessStatePorts } from './state-steps'
 
@@ -21,12 +21,13 @@ export async function authorizePersonalHarnessExecution(
 export function createPersonalHarnessExecutionPorts(
   input: Pick<PersonalHarnessToolsInput, 'access' | 'context'> & { contextBudgetTokens?: number },
   surface: SurfacePorts,
+  routing?: PersonalHarnessModelRouting,
 ): HarnessExecutionPorts {
   const state = createHarnessStatePorts(input.access)
   return {
     ...surface,
     ...state,
-    ...createPersonalHarnessModelPorts(input),
+    ...createPersonalHarnessModelPorts(input, routing),
     claim: async () => {
       if (!await state.claim()) return false
       await authorizePersonalHarnessExecution(input)

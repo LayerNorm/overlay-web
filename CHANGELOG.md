@@ -12,6 +12,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Bind a personal delivery AgentRun to its root harness atomically at admission and fence the root atomically when Stop cancels that delivery. Workflow SDK cancellation is best-effort physical cleanup after the durable fence; it does not promise to abort provider work already dispatched. Final result summaries remain separately persisted from working summaries.
 
+- Add bounded, freshly authorized model fallback to the personal harness after confirmed pre-inference rejections. Ambiguous provider failures keep their unresolved spend holds and do not dispatch again. Fallback notices stream and persist with the final transcript; existing Chat/Work traffic is not switched yet.
+
 - Saved collaborative message edits now update rendered text and retain attachments instead of showing the original message.
 
 - Use shadcn focus-visible rings for text inputs and textareas, present message editing with text actions, autosize work titles and agent instructions as layouts settle, and group agent Details into collapsed Model, Instructions, Tools and Advanced disclosures.

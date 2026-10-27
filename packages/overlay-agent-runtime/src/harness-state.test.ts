@@ -8,9 +8,19 @@ import {
   claimHarnessExecution, hasRunnableHarnessMilestones, waitForHarnessChildren, resumeHarness,
   reserveHarnessModel, reservedHarnessCostMicros,
   bindHarnessModelDispatch,
+  validateHarnessReceipt,
 } from './harness-state'
 
 const now = 1_000
+
+test('a rejection receipt cannot conceal consumed tokens or unknown costs', () => {
+  const receipt: HarnessReceipt = { id: 'rejected', modelId: 'model', provider: 'overlay-admission', inputTokens: 0, outputTokens: 0,
+    reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, contextWindow: null, costMicros: 0, costSource: 'catalog', rejectionReason: 'budget' }
+  validateHarnessReceipt(receipt)
+  for (const delta of [{ inputTokens: 1 }, { outputTokens: 1 }, { costMicros: 1 }, { externalCostMicros: null }, { costSource: 'provider' as const }]) {
+    assert.throws(() => validateHarnessReceipt({ ...receipt, ...delta }), /confirmed zero/)
+  }
+})
 const make = () => createHarnessSnapshot({ runId: 'root', goal: 'Produce a checked report', constraints: [], policy: {
   actorUserId: 'user', allowedToolIds: ['read', 'write'], requiresPlan: true,
   deadlineAt: 10_000, maxCostMicros: 100, maxParallelChildren: 2, maxDepth: 1,

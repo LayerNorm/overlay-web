@@ -58,7 +58,12 @@ export class HarnessLanguageModel implements LanguageModelV4 {
       sessionId: this.reference.sessionId,
       allowLowBalanceFallback: this.reference.allowLowBalanceFallback,
     })
-    return wrapLanguageModel({ model, middleware: [] }).doStream(options)
+    try {
+      return await wrapLanguageModel({ model, middleware: [] }).doStream(options)
+    } catch (error) {
+      await recordConfirmedRejection(this.reference, error)
+      throw error
+    }
   }
 
   async doGenerate(options: LanguageModelV4CallOptions) {
@@ -71,8 +76,19 @@ export class HarnessLanguageModel implements LanguageModelV4 {
       sessionId: this.reference.sessionId,
       allowLowBalanceFallback: this.reference.allowLowBalanceFallback,
     })
-    return wrapLanguageModel({ model, middleware: [] }).doGenerate(options)
+    try {
+      return await wrapLanguageModel({ model, middleware: [] }).doGenerate(options)
+    } catch (error) {
+      await recordConfirmedRejection(this.reference, error)
+      throw error
+    }
   }
+}
+
+async function recordConfirmedRejection(reference: HarnessModelReference, error: unknown): Promise<void> {
+  if (!reference.personal || reference.modelId.startsWith('byok/')) return
+  const { isConfirmedHarnessModelRejection, recordHarnessModelRejection } = await import('./model-rejection')
+  if (isConfirmedHarnessModelRejection(error)) await recordHarnessModelRejection(reference, 'model_unavailable')
 }
 
 Object.assign(HarnessLanguageModel.prototype.doStream, { maxRetries: 0 })

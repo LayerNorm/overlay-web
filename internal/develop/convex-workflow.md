@@ -235,9 +235,20 @@ conversation turn. The workflow hook durably retains the full reply and the
 harness stores a bounded user-input evidence summary. Model/tool authorization is
 rechecked after resumption. Delivery transitions can be fenced by workflow ID.
 
-This adapter is not yet connected to the production workflow entrypoint. Child
-launch/finalization, transcript delivery and app-traffic migration remain pending.
+The canonical personal workflow now connects this adapter with child launch,
+finalization and transcript delivery. App-traffic migration remains pending.
 Input controls and the Context/Plan/Queue presentation still require mockup approval.
+
+Personal workflow inputs may carry an admitted ordered model candidate list, with
+at most five distinct models. Every selected candidate is prepared and authorized
+again, including its context capacity, cost forecast and current ZDR requirements.
+BYOK never falls back to an Overlay-funded model. Only a declined account budget
+before dispatch or a typed Gateway model-not-found response (404 without a
+generation ID, before receiving a stream) produces a zero-usage rejection receipt.
+The next candidate uses a new receipt identity, not a replayed provider dispatch.
+Network timeouts, 5xx, rate limits, partial streams and unknown failures retain
+their holds and fail closed instead of risking a duplicate paid call. The root
+streams the existing fallback notice and retains it in the final transcript.
 
 The canonical controller is `src/server/harness/runner.ts`. It runs inside a
 surface workflow and delegates model/tool iteration to `WorkflowAgent`, using

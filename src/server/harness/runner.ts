@@ -327,6 +327,7 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
     })
 
     let pending: HarnessApprovalRequest[] = []
+    let recoveredModel = false
     try {
       const result = await agent.stream({ messages, writable: input.writable, preventClose: true, sendFinish: false })
       invocationMessages = result.messages
@@ -336,12 +337,17 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
         .filter(call => !result.toolResults.some(result => result.toolCallId === call.toolCallId))
         .map(call => ({ approvalId: `approval-${call.toolCallId}`, toolCallId: call.toolCallId, toolName: call.toolName, input: call.input }))
     } catch (error) {
-      if (!(error instanceof HarnessYield)) throw error
+      if (!(error instanceof HarnessYield)) {
+        if (!await ports.recoverModelFailure?.(`model:${modelCall}`)) throw error
+        modelCall++
+        recoveredModel = true
+      }
     }
     // WorkflowAgent returns its system prompt in history. Rebuild it exclusively
     // from trusted instructions and current durable state on every invocation.
     messages = invocationMessages.filter(message => message.role !== 'system')
     steps.push(...invocationSteps)
+    if (recoveredModel) continue
     const updatedState = await ports.read()
     const finishReason = invocationSteps.at(-1)?.finishReason
     if (await terminateOnProviderFailure(updatedState, finishReason, ports, segment)) continue

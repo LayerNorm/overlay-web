@@ -9,6 +9,30 @@ import { agentRunService } from '@/server/conversations/http'
 import { ConvexHarnessRepository } from './ConvexHarnessRepository'
 import type { PersonalHarnessAccess } from './personal-access'
 import type { buildPersonalHarnessDelivery } from './personal-delivery'
+import type { PersonalHarnessModelRouting } from './personal-model-ports'
+import { fallbackNoticeText } from '@/server/app-api/v1/conversations/act/route-helpers'
+
+export async function writePersonalHarnessFallback(
+  access: PersonalHarnessAccess,
+  event: Parameters<NonNullable<PersonalHarnessModelRouting['onFallback']>>[0],
+): Promise<string> {
+  'use step'
+  const state = await new ConvexHarnessRepository().get(access)
+  if (!state || state.parentRunId || state.workflowRunId !== access.workflowRunId || state.status !== 'running'
+    || state.latestReceipt?.id !== event.receiptId || state.latestReceipt.modelId !== event.from
+    || state.latestReceipt.rejectionReason !== event.reason) throw new FatalError('Invalid fallback delivery authority.')
+  const notice = fallbackNoticeText([{ modelId: event.from, reason: event.reason === 'budget' ? 'budget' : 'provider' }], event.to)
+  const writer = getWritable<ModelCallStreamPart<ToolSet>>().getWriter()
+  const id = `harness-fallback:${event.receiptId}`
+  try {
+    await writer.write({ type: 'text-start', id })
+    await writer.write({ type: 'text-delta', id, text: `${notice}\n\n` })
+    await writer.write({ type: 'text-end', id })
+  } finally {
+    writer.releaseLock()
+  }
+  return notice
+}
 
 export async function attachPersonalHarnessDelivery(access: PersonalHarnessAccess): Promise<void> {
   'use step'

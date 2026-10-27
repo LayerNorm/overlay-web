@@ -31,6 +31,44 @@ const execution = { instructions: 'Read the requested records.', messages: [{ ro
 const surface = { recordToolResult: vi.fn(), delegate: vi.fn(), readChild: vi.fn(), waitForChildren: vi.fn(), waitForInput: vi.fn(), waitForApproval: vi.fn() }
 let current: HarnessSnapshot
 
+test('a confirmed rejection continues through the SDK with a fresh candidate and receipt, admitting only one request', async () => {
+  provider()
+  const onFallback = vi.fn()
+  mocks.authorize.mockImplementationOnce(async reference => {
+    current = state.recordHarnessReceipt(current, { id: reference.personal.receiptId, modelId: reference.modelId,
+      provider: 'overlay-admission', inputTokens: 0, outputTokens: 0, reasoningTokens: 0, cacheReadTokens: 0,
+      cacheWriteTokens: 0, contextWindow: 64_000, costMicros: 0, costSource: 'catalog', rejectionReason: 'budget' }, Date.now())
+    throw new Error('Budget declined before provider dispatch.')
+  })
+  const ports = createPersonalHarnessExecutionPorts({ access, context }, surface,
+    { candidateIds: ['fixture/model', 'fixture/fallback'], onFallback })
+  const result = await runOverlayHarness(execution, ports)
+  expect(result.snapshot.status).toBe('completed')
+  expect(onFallback).toHaveBeenCalledExactlyOnceWith({ from: 'fixture/model', to: 'fixture/fallback', receiptId: 'model:0', reason: 'budget' })
+  expect(mocks.model).toHaveBeenCalledExactlyOnceWith('fixture/fallback', undefined, 'user', expect.objectContaining({ allowLowBalanceFallback: false }))
+  expect(mocks.refresh).toHaveBeenCalledWith(access, expect.objectContaining({ effectiveModelId: 'fixture/fallback' }))
+  expect(mocks.settle).toHaveBeenCalledWith(expect.objectContaining({ receiptId: 'model:1' }))
+  expect(mocks.admit).toHaveBeenCalledOnce()
+  expect(current.modelReservation).toBeUndefined()
+})
+
+test('an ambiguous provider error retains its hold and never tries another model', async () => {
+  const onFallback = vi.fn()
+  const failed = new MockLanguageModelV4({ doStream: async () => { throw new Error('Network timeout') } })
+  mocks.model.mockResolvedValue(failed)
+  const ports = createPersonalHarnessExecutionPorts({ access, context }, surface,
+    { candidateIds: ['fixture/model', 'fixture/fallback'], onFallback })
+  await expect(runOverlayHarness(execution, ports)).rejects.toThrow('Network timeout')
+  expect(mocks.model).toHaveBeenCalledOnce()
+  expect(current.modelReservation?.dispatch?.modelId).toBe('fixture/model')
+  expect(onFallback).not.toHaveBeenCalled()
+})
+
+test('BYOK routing cannot acquire an Overlay-funded fallback', () => {
+  expect(() => createPersonalHarnessExecutionPorts({ access, context: { ...context, effectiveModelId: 'byok/key/model' } }, surface,
+    { candidateIds: ['byok/key/model', 'fixture/model'] })).toThrow('Invalid admitted model routing')
+})
+
 beforeEach(() => {
   vi.resetAllMocks()
   current = state.claimHarnessExecution(state.createHarnessSnapshot({ runId: 'run', goal: 'Check observations', constraints: ['Do not publish'], policy: {
