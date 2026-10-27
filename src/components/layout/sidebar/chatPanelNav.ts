@@ -69,7 +69,7 @@ const WORKSPACE_CHATS_ITEM = { id: 'workspace-chats', label: 'AI chats', icon: M
 const WORKSPACE_CHAT_IDS = new Set(['dms', 'channels', 'activity'])
 
 export function buildChatPanelNav({
-  publicShowcase,
+
   chatsView,
   effectivePendingSecondaryNavId,
   chatUnreadBadges,
@@ -80,7 +80,7 @@ export function buildChatPanelNav({
   beginSecondaryNavigation,
   solo,
 }: {
-  publicShowcase: boolean
+
   chatsView: string
   effectivePendingSecondaryNavId: string | null
   chatUnreadBadges: Record<string, number>
@@ -91,9 +91,7 @@ export function buildChatPanelNav({
   beginSecondaryNavigation: (id: string) => void
   solo: boolean
 }): SecondaryPanelNav {
-  const chatItems = (publicShowcase
-    ? chatsInlineItems.filter((item) => item.id !== 'activity')
-    : chatsInlineItems).map((item) => ({ ...item, badgeCount: chatUnreadBadges[item.id] }))
+  const chatItems = (chatsInlineItems).map((item) => ({ ...item, badgeCount: chatUnreadBadges[item.id] }))
   const flat: SecondaryPanelNav = {
     items: chatItems,
     activeId: chatsView,
@@ -126,7 +124,7 @@ export function buildChatPanelNav({
         conversationId = result.conversationId
       }
       const params = new URLSearchParams()
-      if (publicShowcase) params.set('showcase', '1')
+
       params.set('view', next)
       if (conversationId) params.set('id', conversationId)
       router.push(mergeHrefSearchParams(baseHref, params))
@@ -140,9 +138,9 @@ export function buildChatPanelNav({
     scope: chatScope,
     sub: chatScope === 'workspace' ? chatsView : null,
     // Workspace AI chats, direct messages, channels, and activity are the Workspace scope; personal chats have no sub-rows.
-    subItems: { workspace: [...(publicShowcase ? [] : [WORKSPACE_CHATS_ITEM]), ...workspaceChatItems] },
+    subItems: { workspace: [...([WORKSPACE_CHATS_ITEM]), ...workspaceChatItems] },
     pendingId: effectivePendingSecondaryNavId,
     badges: { workspace: unreadOf('dms') + unreadOf('channels') },
-    onSelect: (scope, sub) => flat.onSelect(sub ?? (scope !== 'workspace' ? scope : chatScope === 'workspace' ? chatsView : publicShowcase ? 'dms' : 'workspace-chats')),
+    onSelect: (scope, sub) => flat.onSelect(sub ?? (scope !== 'workspace' ? scope : chatScope === 'workspace' ? chatsView : 'workspace-chats')),
   })
 }

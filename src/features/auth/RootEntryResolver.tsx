@@ -1,0 +1,55 @@
+'use client'
+
+import { useEffect } from 'react'
+import {
+  ROOT_APP_DESTINATION,
+  classifyRootSessionResponse,
+  resolveRootEntryDestination,
+} from '@/shared/auth/root-entry'
+import { AppBootLoader } from '@/components/layout/AppBootLoader'
+
+export function RootEntryResolver() {
+  // Client-side data load on mount — no server data layer in this app.
+  // react-doctor-disable-next-line react-doctor/no-fetch-in-effect
+  useEffect(() => {
+    let cancelled = false
+
+    async function resolveEntry() {
+      try {
+        const response = await fetch('/api/auth/session', {
+          credentials: 'same-origin',
+          cache: 'no-store',
+        })
+        const body = response.ok
+          ? await response.json().catch(() => null) as {
+              authenticated?: boolean
+              user?: { id?: string }
+            } | null
+          : null
+        const resolution = classifyRootSessionResponse({
+          ok: response.ok && Boolean(body),
+          authenticated: body?.authenticated,
+          hasUser: Boolean(body?.user?.id),
+        })
+        const destination = resolveRootEntryDestination(resolution)
+
+        if (!cancelled) {
+          // Routing into the app is safe on a transient auth failure because
+          // the app remains server-authorized.
+          window.location.replace(destination ?? ROOT_APP_DESTINATION)
+        }
+      } catch {
+        if (!cancelled) window.location.replace(ROOT_APP_DESTINATION)
+      }
+    }
+
+    void resolveEntry()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  // Same screen as the server Suspense fallback it replaces, rendered
+  // already-settled so the handoff shows no second splash.
+  return <AppBootLoader settled />
+}

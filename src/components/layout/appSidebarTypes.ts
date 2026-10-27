@@ -34,7 +34,7 @@ export interface AppSidebarWorkspaceAdapter {
 export interface AppSidebarProps {
   collaborationNotifications?: WorkspaceNotification[]
   /** Public landing mode keeps the production shell but swaps repositories for static data. */
-  publicShowcase?: boolean
+
   /** Injected from app shell — keeps chat feature UI out of shared layout code. */
   renderChatPanel?: (context: AppSidebarChatPanelContext) => ReactNode
   /** Injected from app shell — keeps automations feature UI out of shared layout code. */

@@ -15,26 +15,23 @@ export function useChatListController({
   initialChats,
   pendingTitleRef,
   userId,
-  useSeededGuestData = false,
 }: {
   initialChatPageInfo?: ChatListPageInfo
   initialChats?: Conversation[]
   pendingTitleRef: MutableRefObject<{ chatId: string; title: string } | null>
   userId: string | null
-  useSeededGuestData?: boolean
 }) {
   const [chats, setChats] = useState<Conversation[]>(() =>
-    userId || useSeededGuestData ? (initialChats ?? getCachedChatList() ?? []) : [],
+    userId ? (initialChats ?? getCachedChatList() ?? []) : [],
   )
 
   useEffect(() => {
-    if ((userId || useSeededGuestData) && initialChats) primeChatList(initialChats, initialChatPageInfo)
-  }, [initialChatPageInfo, initialChats, useSeededGuestData, userId])
+    if ((userId) && initialChats) primeChatList(initialChats, initialChatPageInfo)
+  }, [initialChatPageInfo, initialChats, userId])
 
   // Snapshot pendingTitleRef before the async fetch so a concurrent PATCH completing
   // mid-flight can't clear the ref before we apply the local title override.
   const loadChats = useCallback(async () => {
-    if (useSeededGuestData) return
     try {
       const pending = pendingTitleRef.current
       const serverChats = await fetchChatList({ force: true })
@@ -57,7 +54,7 @@ export function useChatListController({
     } catch {
       // Chat list refresh is best-effort; existing local/cached state remains usable.
     }
-  }, [pendingTitleRef, useSeededGuestData])
+  }, [pendingTitleRef])
 
   useWorkspaceChanged(loadChats)
 

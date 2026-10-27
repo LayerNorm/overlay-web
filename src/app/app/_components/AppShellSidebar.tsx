@@ -13,11 +13,6 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { usePanelScope, useSavedPanelScope } from '@/hooks/use-panel-scope'
 import { useIsSoloWorkspace } from '@/hooks/use-solo-workspace'
 import { ARCHIVED_SETTINGS_PATH, isLegacyArchivedScope, resolvePanelScope } from '@/shared/workspaces/panel-scope'
-import { SHOWCASE_CHAT_SUMMARIES } from '@/features/showcase/showcase-data'
-import {
-  PublicShowcaseAutomationsInlinePanel,
-  PublicShowcaseFilesInlinePanel,
-} from '@/features/showcase/PublicShowcaseSidebarPanels'
 import { WorkspaceSwitcher } from '@/features/workspaces/components/WorkspaceSwitcher'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { useWorkspaceHref } from '@/hooks/use-workspace-href'
@@ -27,7 +22,7 @@ import {
 } from '@/shared/workspaces/routing'
 import { useCollaborationRealtime } from '@/features/chat/components/collaboration/CollaborationRealtimeProvider'
 
-export function AppShellSidebar({ publicShowcase: forcedPublicShowcase = false }: { publicShowcase?: boolean }) {
+export function AppShellSidebar() {
   const searchParams = useSearchParams()
   const pathname = usePathname() ?? ''
   const router = useRouter()
@@ -37,7 +32,6 @@ export function AppShellSidebar({ publicShowcase: forcedPublicShowcase = false }
   useEffect(() => {
     if (legacyArchived) router.replace(ARCHIVED_SETTINGS_PATH)
   }, [legacyArchived, router])
-  const publicShowcase = forcedPublicShowcase || searchParams?.get('showcase') === '1'
   const { activeWorkspaceId } = useWorkspace()
   const buildWorkspaceHref = useWorkspaceHref()
   const { notifications: collaborationNotifications } = useCollaborationRealtime()
@@ -58,7 +52,6 @@ export function AppShellSidebar({ publicShowcase: forcedPublicShowcase = false }
     <AppSidebar
       key={activeWorkspaceId ?? 'no-workspace'}
       collaborationNotifications={collaborationNotifications}
-      publicShowcase={publicShowcase}
       workspace={{
         activeWorkspaceId,
         buildHref: buildWorkspaceHref,
@@ -66,7 +59,6 @@ export function AppShellSidebar({ publicShowcase: forcedPublicShowcase = false }
         renderSwitcher: ({ compact, onNavigate, placement, userLabel, accountMenu }) => (
           <WorkspaceSwitcher
             compact={compact}
-            showcase={publicShowcase}
             placement={placement}
             userLabel={userLabel}
             accountMenu={accountMenu}
@@ -84,31 +76,21 @@ export function AppShellSidebar({ publicShowcase: forcedPublicShowcase = false }
             onNavigate={onNavigate}
             baseHref={chatBaseHref}
             workspaceId={activeWorkspaceId}
-            seededChats={publicShowcase ? SHOWCASE_CHAT_SUMMARIES : undefined}
             view={section ? sectionChatView(view) : undefined}
           />
         )
       )}
       renderAutomationsPanel={({ onNavigate }) => (
-        publicShowcase
-          ? <PublicShowcaseAutomationsInlinePanel onNavigate={onNavigate} />
-          : <AutomationsInlinePanel onNavigate={onNavigate} />
+        <AutomationsInlinePanel onNavigate={onNavigate} />
       )}
-      renderFilesPanel={publicShowcase
-        ? ({ onNavigate }) => <PublicShowcaseFilesInlinePanel onNavigate={onNavigate} />
-        : undefined}
-      renderWorkSection={publicShowcase ? undefined : ({ filter, onNavigate }) => <WorkSidebarSection filter={filter} onNavigate={onNavigate} />}
+      renderWorkSection={({ filter, onNavigate }) => <WorkSidebarSection filter={filter} onNavigate={onNavigate} />}
       renderAgentsPanel={({ onNavigate }) => (
-        publicShowcase
-          ? undefined
-          : (
-            <AgentsInlinePanel
-              workspaceId={activeWorkspaceId}
-              baseHref={activeWorkspaceId ? buildWorkspaceHref(activeWorkspaceId, '/app/agents', agentsView) : undefined}
-              view={agentsView}
-              onNavigate={onNavigate}
-            />
-          )
+        <AgentsInlinePanel
+          workspaceId={activeWorkspaceId}
+          baseHref={activeWorkspaceId ? buildWorkspaceHref(activeWorkspaceId, '/app/agents', agentsView) : undefined}
+          view={agentsView}
+          onNavigate={onNavigate}
+        />
       )}
     />
   )

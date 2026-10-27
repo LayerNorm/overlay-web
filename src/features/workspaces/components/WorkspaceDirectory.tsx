@@ -11,7 +11,7 @@ import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { fetchWithSessionRecovery } from '@/shared/auth/session-fetch'
 import { buildWorkspaceHref } from '@/shared/workspaces/routing'
 import { workspaceMemberLabel } from '@/shared/workspaces/solo-workspace'
-import { WorkspaceAvatar } from './WorkspaceAvatar'
+import { WorkspaceAvatar } from '@/components/identity/WorkspaceAvatar'
 
 export function WorkspaceDirectory({ onOpen }: { onOpen(): void }) {
   const router = useRouter()

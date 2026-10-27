@@ -3,34 +3,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Check, Search, UserRound, UserPlus } from 'lucide-react'
 import { AgentCreature } from '@/components/orb/Creature'
-import { Button, DialogFrame, Input } from '@overlay/ui/primitives'
+import { Avatar, AvatarFallback, AvatarImage, Button, DialogFrame, Input } from '@overlay/ui/primitives'
 import type { WorkspaceManagementItem } from '@overlay/workspace-contracts'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 
-const SHOWCASE_CURRENT_PRINCIPAL_ID = 'showcase-divyansh'
 const EMPTY_EXCLUDED_PRINCIPAL_IDS: string[] = []
-const SHOWCASE_ITEMS: WorkspaceManagementItem[] = [
-  {
-    id: 'showcase-member-priya',
-    kind: 'member',
-    name: 'Priya Nair',
-    description: 'priya@acme.test',
-    principalId: 'showcase-priya',
-    principalType: 'human',
-    role: 'member',
-    status: 'active',
-  },
-  {
-    id: 'showcase-agent-research',
-    kind: 'member',
-    name: 'Research agent',
-    description: 'Sources, synthesis, and briefs',
-    principalId: 'showcase-agent-research',
-    principalType: 'agent',
-    role: 'member',
-    status: 'active',
-  },
-]
 
 type NewDirectMessageDialogProps = {
   open: boolean
@@ -38,7 +15,6 @@ type NewDirectMessageDialogProps = {
   sourceConversationId?: string
   addToConversationId?: string
   addToConversationType?: 'dm' | 'channel'
-  showcase?: boolean
   excludedPrincipalIds?: string[]
   onOpenChange(open: boolean): void
   onCreated?(conversation: { id: string; title: string; agentId?: string }): void
@@ -49,7 +25,6 @@ type DialogActionContext = Pick<
   NewDirectMessageDialogProps,
   'sourceConversationId' | 'addToConversationId' | 'onOpenChange' | 'onCreated' | 'onParticipantsAdded'
 > & {
-  showcase: boolean
   workspaceId: string
   addToConversationType: 'dm' | 'channel'
   excludedPrincipalIds: string[]
@@ -94,19 +69,10 @@ async function createDirectMessage(ctx: DialogActionContext, selected: string[],
     addToConversationId,
     addToConversationType,
     excludedPrincipalIds,
-    showcase,
     sourceConversationId,
     workspaceId,
   } = ctx
   if (selected.length === 0 || busy) return
-  if (showcase) {
-    if (addToConversationId) ctx.onParticipantsAdded?.()
-    else ctx.onCreated?.({ id: 'showcase-created-dm', title: 'New direct message' })
-    ctx.onOpenChange(false)
-    ctx.setSelected([])
-    ctx.setQuery('')
-    return
-  }
   ctx.setBusy(true)
   ctx.setError(null)
   try {
@@ -142,10 +108,6 @@ async function createDirectMessage(ctx: DialogActionContext, selected: string[],
 }
 
 async function inviteByEmail(ctx: DialogActionContext, email: string) {
-  if (ctx.showcase) {
-    ctx.setInviteSent(true)
-    return
-  }
   ctx.setBusy(true)
   ctx.setError(null)
   try {
@@ -211,9 +173,10 @@ function MemberListItem({
           <AgentCreature agent={{ name: item.name, avatarColor: item.avatarColor, avatarShape: item.avatarShape }} size={32} />
         </span>
       ) : (
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-(--surface-muted) text-(--muted)">
-          <UserRound size={14} />
-        </span>
+        <Avatar className="h-8 w-8 shrink-0">
+          <AvatarImage src={item.photoUrl ?? undefined} alt="" />
+          <AvatarFallback>{item.name.trim().slice(0, 1).toUpperCase() || <UserRound size={14} />}</AvatarFallback>
+        </Avatar>
       )}
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-medium text-(--foreground)">{item.name}</span>
@@ -302,24 +265,21 @@ export function NewDirectMessageDialog({
   sourceConversationId,
   addToConversationId,
   addToConversationType = 'channel',
-  showcase = false,
   excludedPrincipalIds = EMPTY_EXCLUDED_PRINCIPAL_IDS,
   onOpenChange,
   onCreated,
   onParticipantsAdded,
 }: NewDirectMessageDialogProps) {
-  const [items, setItems] = useState<WorkspaceManagementItem[]>(showcase ? SHOWCASE_ITEMS : [])
-  const [currentPrincipalId, setCurrentPrincipalId] = useState(
-    showcase ? SHOWCASE_CURRENT_PRINCIPAL_ID : '',
-  )
+  const [items, setItems] = useState<WorkspaceManagementItem[]>([])
+  const [currentPrincipalId, setCurrentPrincipalId] = useState('')
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<string[]>([])
-  const [loading, setLoading] = useState(!showcase)
+  const [loading, setLoading] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [inviteSent, setInviteSent] = useState(false)
 
-  const membersKey = open && !showcase ? workspaceId : null
+  const membersKey = open ? workspaceId : null
   const [loadedKey, setLoadedKey] = useState<string | null>(membersKey)
   if (membersKey !== loadedKey) {
     setLoadedKey(membersKey)
@@ -331,7 +291,7 @@ export function NewDirectMessageDialog({
   }
 
   useEffect(() => {
-    if (!open || showcase) return
+    if (!open) return
     let cancelled = false
     void loadWorkspaceMembers(workspaceId).then((result) => {
       if (cancelled) return
@@ -343,7 +303,7 @@ export function NewDirectMessageDialog({
       if (!cancelled) setLoading(false)
     })
     return () => { cancelled = true }
-  }, [open, showcase, workspaceId])
+  }, [open, workspaceId])
 
   const candidates = useMemo(
     () => filterCandidates(items, currentPrincipalId, excludedPrincipalIds, query),
@@ -354,7 +314,6 @@ export function NewDirectMessageDialog({
     : null
   const copy = resolveDialogCopy(addToConversationId, addToConversationType, sourceConversationId)
   const actionContext: DialogActionContext = {
-    showcase,
     workspaceId,
     sourceConversationId,
     addToConversationId,

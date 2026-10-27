@@ -28,10 +28,16 @@ test('concurrent automatic claims allocate unique handles for duplicate display 
     handleExplicit: false,
     handleSuffixes: [`suffix${index}a`, `suffix${index}b`],
     now,
-  }) as Promise<{ workspace: { workspaceId: string; slug: string } }>
+  }) as Promise<{ workspace: { workspaceId: string; slug: string; iconPreset?: string } }>
   const created = await Promise.all([createOrganization(1), createOrganization(2)])
   expect(new Set(created.map((item) => item.workspace.slug)).size).toBe(2)
   expect(created.map((item) => item.workspace.workspaceId).sort()).toEqual(['workspace-1', 'workspace-2'])
+  const presetFor = (workspaceId: string) => {
+    let hash = 0
+    for (const character of workspaceId) hash = (hash * 31 + character.charCodeAt(0)) >>> 0
+    return `shape-${(hash % 6) + 1}`
+  }
+  expect(created.map((item) => item.workspace.iconPreset)).toEqual(['workspace-1', 'workspace-2'].map(presetFor))
 })
 
 test('owner changes preserve immutable identity, retain aliases, and deny admins', async () => {

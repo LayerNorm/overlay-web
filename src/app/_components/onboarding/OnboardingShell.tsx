@@ -13,12 +13,12 @@ import { OnboardingTour } from './OnboardingTour'
 import { requestOnboarding, skipOnboarding } from './onboarding-client'
 import styles from './onboarding.module.css'
 
-type ShellProps = { sidebar: ReactNode; children: ReactNode; publicShowcase: boolean }
+type ShellProps = { sidebar: ReactNode; children: ReactNode }
 
 export function OnboardingShell(props: ShellProps) {
   const { user } = useAuth()
   const { activeWorkspaceId } = useWorkspace()
-  if (props.publicShowcase || !user || !activeWorkspaceId) return <>{props.sidebar}<main className="app-main min-w-0 flex-1 overflow-hidden pt-14 md:pt-0">{props.children}</main></>
+  if (!user || !activeWorkspaceId) return <>{props.sidebar}<main className="app-main min-w-0 flex-1 overflow-hidden pt-14 md:pt-0">{props.children}</main></>
   return <AuthenticatedOnboardingShell key={`${user.id}:${activeWorkspaceId}`} {...props} workspaceId={activeWorkspaceId} />
 }
 

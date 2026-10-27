@@ -125,7 +125,7 @@ export default function ChatExperience(props: ChatExperienceProps) {
         preference={c.settings.linkOpenPreference}
         onOpenInOverlay={c.openLinkPreview}
       />
-      <QuestionnaireComposerProvider value={c.input} readDraft={() => c.inputRef.current} subscribe={c.subscribeToInput} onChange={c.setQuestionnaireDraft} disabled={c.isPublicShowcase || c.isActiveLoading}>
+      <QuestionnaireComposerProvider value={c.input} readDraft={() => c.inputRef.current} subscribe={c.subscribeToInput} onChange={c.setQuestionnaireDraft} disabled={c.isActiveLoading}>
       <ChatExperienceView
         {...buildChatExperienceViewProps(
           c,

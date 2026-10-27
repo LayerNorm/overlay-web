@@ -12,7 +12,7 @@ import { AgentComputerCoordinator } from './agent-computer-coordinator'
 import type { AgentType } from './AgentEditorForm'
 
 export function useAgentComputer({
-  showcase,
+
   computersAvailable,
   activeWorkspaceId,
   agent,
@@ -21,7 +21,7 @@ export function useAgentComputer({
   setEnabledToolGroups,
   markDirty,
 }: {
-  showcase: boolean
+
   computersAvailable: boolean
   activeWorkspaceId: string | null
   agent: WorkspaceAgentDirectoryItem | null
@@ -46,7 +46,7 @@ export function useAgentComputer({
   const [loadedFor, setLoadedFor] = useState<string | null>(null)
   const [refreshRevision, setRefreshRevision] = useState(0)
   const initialLoading = Boolean(
-    !showcase && computersAvailable && activeWorkspaceId && agent && agentType === 'overlay' && loadedFor !== scopeKey,
+    computersAvailable && activeWorkspaceId && agent && agentType === 'overlay' && loadedFor !== scopeKey,
   )
   const currentAgentComputer = agentComputer?.workspaceId === activeWorkspaceId
     && agentComputer.ownerType === 'agent' && agentComputer.ownerId === agent?.id ? agentComputer : null
@@ -64,7 +64,7 @@ export function useAgentComputer({
   // A bound machine implies the Computer tool group: force it on so the merged
   // toggle never shows "off" above a live machine.
   useEffect(() => {
-    if (showcase || !computersAvailable || !activeWorkspaceId || !agent || agentType !== 'overlay') return
+    if (!computersAvailable || !activeWorkspaceId || !agent || agentType !== 'overlay') return
     const request = coordinator.beginRefresh()
     if (!request) return
     let cancelled = false
@@ -93,7 +93,7 @@ export function useAgentComputer({
       },
     )
     return () => { cancelled = true }
-  }, [showcase, computersAvailable, activeWorkspaceId, agent, agentType, coordinator, refreshRevision, scopeKey, markDirty, setEnabledToolGroups])
+  }, [ computersAvailable, activeWorkspaceId, agent, agentType, coordinator, refreshRevision, scopeKey, markDirty, setEnabledToolGroups])
 
   const setAgentComputer = useCallback((next: Computer | null) => {
     if (next && (next.workspaceId !== activeWorkspaceId || next.ownerType !== 'agent' || next.ownerId !== agent?.id)) return

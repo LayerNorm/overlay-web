@@ -137,6 +137,128 @@ export const getUserProfile = query({
   },
 })
 
+const accountIdentityValidator = v.object({
+  userId: v.string(),
+  email: v.optional(v.string()),
+  name: v.optional(v.string()),
+  firstName: v.optional(v.string()),
+  lastName: v.optional(v.string()),
+  profilePictureUrl: v.optional(v.string()),
+  displayNameOverride: v.optional(v.string()),
+  photoObjectKey: v.optional(v.string()),
+})
+
+export const getAccountIdentityByServer = query({
+  args: { serverSecret: v.string(), userId: v.string() },
+  returns: v.union(accountIdentityValidator, v.null()),
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const subscription = await ctx.db
+      .query('subscriptions')
+      .withIndex('by_userId', (q) => q.eq('userId', args.userId))
+      .first()
+    if (!subscription) return null
+    return {
+      userId: subscription.userId,
+      email: subscription.email,
+      name: subscription.name,
+      firstName: subscription.firstName,
+      lastName: subscription.lastName,
+      profilePictureUrl: subscription.profilePictureUrl,
+      displayNameOverride: subscription.displayNameOverride,
+      photoObjectKey: subscription.photoObjectKey,
+    }
+  },
+})
+
+export const updateAccountIdentityByServer = mutation({
+  args: {
+    serverSecret: v.string(),
+    userId: v.string(),
+    displayNameOverride: v.optional(v.union(v.string(), v.null())),
+    photoObjectKey: v.optional(v.union(v.string(), v.null())),
+  },
+  returns: v.object({
+    oldPhotoObjectKey: v.union(v.string(), v.null()),
+  }),
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const subscription = await ctx.db
+      .query('subscriptions')
+      .withIndex('by_userId', (q) => q.eq('userId', args.userId))
+      .first()
+    if (!subscription) throw new Error('ACCOUNT_PROFILE_NOT_FOUND')
+    const patch: Record<string, unknown> = {}
+    if (args.displayNameOverride !== undefined) {
+      patch.displayNameOverride = args.displayNameOverride || undefined
+    }
+    if (args.photoObjectKey !== undefined) {
+      patch.photoObjectKey = args.photoObjectKey || undefined
+    }
+    await ctx.db.patch(subscription._id, patch)
+    return {
+      oldPhotoObjectKey: args.photoObjectKey !== undefined && subscription.photoObjectKey !== args.photoObjectKey
+        ? subscription.photoObjectKey ?? null
+        : null,
+    }
+  },
+})
+
+export const getAccountPhotoByServer = query({
+  args: { serverSecret: v.string(), actorUserId: v.string(), targetUserId: v.string() },
+  returns: v.union(v.object({ photoObjectKey: v.string() }), v.null()),
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const target = await ctx.db.query('subscriptions')
+      .withIndex('by_userId', (q) => q.eq('userId', args.targetUserId))
+      .first()
+    if (!target?.photoObjectKey) return null
+    if (args.actorUserId === args.targetUserId) return { photoObjectKey: target.photoObjectKey }
+    const [actorPrincipals, targetPrincipals] = await Promise.all([
+      ctx.db.query('workspacePrincipals')
+        .withIndex('by_userId', (q) => q.eq('userId', args.actorUserId))
+        .take(500),
+      ctx.db.query('workspacePrincipals')
+        .withIndex('by_userId', (q) => q.eq('userId', args.targetUserId))
+        .take(500),
+    ])
+    const targetWorkspaceIds = new Set(targetPrincipals.map((principal) => principal.workspaceId))
+    const shared = await Promise.all(actorPrincipals
+      .filter((principal) => targetWorkspaceIds.has(principal.workspaceId) && principal.type === 'human')
+      .map(async (principal) => {
+        const [workspace, actorMembership, targetPrincipal] = await Promise.all([
+          ctx.db.query('workspaces')
+            .withIndex('by_workspaceId', (q) => q.eq('workspaceId', principal.workspaceId))
+            .unique(),
+          ctx.db.query('workspaceMemberships')
+            .withIndex('by_workspaceId_principalId', (q) =>
+              q.eq('workspaceId', principal.workspaceId).eq('principalId', principal.principalId))
+            .unique(),
+          ctx.db.query('workspacePrincipals')
+            .withIndex('by_workspaceId_userId', (q) =>
+              q.eq('workspaceId', principal.workspaceId).eq('userId', args.targetUserId))
+            .unique(),
+        ])
+        if (
+          !workspace
+          || workspace.status !== 'active'
+          || principal.archivedAt !== undefined
+          || !actorMembership
+          || actorMembership.status !== 'active'
+          || !targetPrincipal
+          || targetPrincipal.type !== 'human'
+          || targetPrincipal.archivedAt !== undefined
+        ) return false
+        const targetMembership = await ctx.db.query('workspaceMemberships')
+          .withIndex('by_workspaceId_principalId', (q) =>
+            q.eq('workspaceId', principal.workspaceId).eq('principalId', targetPrincipal.principalId))
+          .unique()
+        return targetMembership?.status === 'active'
+      }))
+    return shared.some(Boolean) ? { photoObjectKey: target.photoObjectKey } : null
+  },
+})
+
 /** Server-only: read persisted personalized chat starters (see chatStarterDay for daily refresh). */
 export const getChatStartersByServer = query({
   args: { serverSecret: v.string(), userId: v.string() },

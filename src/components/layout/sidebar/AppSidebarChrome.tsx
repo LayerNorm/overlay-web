@@ -560,19 +560,12 @@ function MobileNavRowAccessory({
   return null
 }
 
-export interface ShowcaseLink {
-  id: string
-  label: string
-  icon: LucideIcon
-  href: string
-}
-
 export function MobileNavStep({
   brandLink,
   onClose,
   navItems,
-  showcaseLinks,
-  onShowcaseSelect,
+
+
   footer,
 }: {
   brandLink: ReactNode
@@ -588,8 +581,8 @@ export function MobileNavStep({
     opensPanel: boolean
     onSelect: () => void
   }>
-  showcaseLinks: ShowcaseLink[]
-  onShowcaseSelect: (link: ShowcaseLink) => void
+
+
   footer: ReactNode
 }) {
   return (
@@ -623,25 +616,7 @@ export function MobileNavStep({
               onSelect={item.onSelect}
             />
           ))}
-          {showcaseLinks.length ? (
-            <div className="mt-0.5 border-t border-(--border) pt-1">
-              {showcaseLinks.map((link) => {
-                const Icon = link.icon
-                return (
-                  <Button variant="ghost"
-                    key={link.id}
-                    type="button"
-                    onClick={() => onShowcaseSelect(link)}
-                    aria-label={link.label}
-                    className={unstyledButton("group flex h-9 w-full items-center gap-2.5 rounded-md px-3 text-sm text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)")}
-                  >
-                    <Icon size={15} />
-                    <div className="min-w-0 flex-1 text-left">{link.label}</div>
-                  </Button>
-                )
-              })}
-            </div>
-          ) : null}
+
         </SidebarNav>
         {footer}
       </div>
@@ -714,7 +689,7 @@ export function MobileSidebar({
   brandLink,
   navItems,
   onSelectItem,
-  showcaseLinks,
+
   menuRef,
   isGuestConfirmed,
   workspace,
@@ -738,7 +713,7 @@ export function MobileSidebar({
   brandLink: ReactNode
   navItems: MobileNavItemVm[]
   onSelectItem: (item: SidebarNavItem) => void
-  showcaseLinks: ShowcaseLink[]
+
   menuRef: { current: HTMLDivElement | null }
   isGuestConfirmed: boolean
   workspace: AppSidebarWorkspaceAdapter | undefined
@@ -777,12 +752,8 @@ export function MobileSidebar({
             opensPanel: vm.opensPanel,
             onSelect: () => onSelectItem(vm.item),
           }))}
-          showcaseLinks={showcaseLinks}
-          onShowcaseSelect={(link) => {
-            if (/^https?:\/\//.test(link.href)) window.location.assign(link.href)
-            else router.push(link.href)
-            onClose()
-          }}
+
+
           footer={
             <MobileAccountFooter
               menuRef={menuRef}

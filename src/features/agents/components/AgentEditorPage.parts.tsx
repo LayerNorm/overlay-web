@@ -36,7 +36,7 @@ type AgentEditorFormSectionProps = {
   mode: 'new' | 'edit'
   agent: WorkspaceAgentDirectoryItem | null
   isDefaultMaster: boolean
-  showcase: boolean
+
   computersAvailable: boolean
   connectedAgentsEnabled: boolean
   connectedAgentsChecked: boolean
@@ -59,7 +59,7 @@ function AgentEditorFormSection({
   mode,
   agent,
   isDefaultMaster,
-  showcase,
+
   computersAvailable,
   connectedAgentsEnabled,
   connectedAgentsChecked,
@@ -226,7 +226,7 @@ function AgentEditorFormSection({
               loadError: computerLoadError,
               provisionError: computerProvisionError,
               onRetryLoad: retryComputerLoad,
-              disabled: showcase,
+              disabled: false,
             } : undefined}
           />}
 
@@ -332,7 +332,7 @@ export function AgentEditorView({
   isDefaultMaster,
   valid,
   busy,
-  showcase,
+
   computersAvailable,
   connectedAgentsEnabled,
   connectedAgentsChecked,
@@ -364,7 +364,7 @@ export function AgentEditorView({
   isDefaultMaster: boolean
   valid: boolean
   busy: boolean
-  showcase: boolean
+
   computersAvailable: boolean
   connectedAgentsEnabled: boolean
   connectedAgentsChecked: boolean
@@ -397,7 +397,7 @@ export function AgentEditorView({
               mode={mode}
               hasAgent={Boolean(agent)}
               highlight={showHello}
-              showcase={showcase}
+
               onSayHello={sayHello}
             />
           )}
@@ -430,7 +430,7 @@ export function AgentEditorView({
             mode={mode}
             agent={agent}
             isDefaultMaster={isDefaultMaster}
-            showcase={showcase}
+
             computersAvailable={computersAvailable}
             connectedAgentsEnabled={connectedAgentsEnabled}
             connectedAgentsChecked={connectedAgentsChecked}

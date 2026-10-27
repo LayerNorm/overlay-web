@@ -8,7 +8,7 @@ import Link from 'next/link'
 import { Check, ChevronDown, Loader2, Plus, RefreshCw } from 'lucide-react'
 import { CollapsibleSection, MenuItem, Popover, PopoverContent, PopoverTrigger, Button } from '@overlay/ui/primitives'
 import { CreateWorkspaceDialog } from './CreateWorkspaceDialog'
-import { WorkspaceAvatar } from './WorkspaceAvatar'
+import { WorkspaceAvatar } from '@/components/identity/WorkspaceAvatar'
 import type { WorkspaceLifecycleStatus, WorkspaceSummary } from '@/shared/workspaces/types'
 
 type WorkspaceListProps = {

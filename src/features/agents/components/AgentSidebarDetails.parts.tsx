@@ -222,7 +222,7 @@ export function AgentSidebarAdvancedSettings({ editor }: { editor: Controller })
                   loadError={computer.computerLoadError}
                   provisionError={computer.computerProvisionError}
                   onRetryLoad={computer.retryComputerLoad}
-                  disabled={editor.showcase}
+                  disabled={false}
                 />
               </div>
             </section>

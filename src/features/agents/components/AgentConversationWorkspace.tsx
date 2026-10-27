@@ -241,10 +241,8 @@ function agentDetailRouteState(args: {
   return 'ready'
 }
 
-export function AgentConversationWorkspace({ showcase = false }: { showcase?: boolean }) {
-  return showcase
-    ? <DirectMessageExperience conversationId="showcase-agent-welcome" showcase />
-    : <ScopedAgentConversationWorkspace />
+export function AgentConversationWorkspace() {
+  return <ScopedAgentConversationWorkspace />
 }
 
 function ScopedAgentConversationWorkspace() {
@@ -313,7 +311,7 @@ function AgentConversationWorkspaceContent() {
   }, [])
 
   // "New agent" opens the creation dialog; nothing is created until the
-  // person confirms. The logged-out showcase keeps the static editor form.
+  // person confirms.
   const openCreate = useCallback(() => {
     setError(null)
     setEditorMode(null)
@@ -442,7 +440,7 @@ function AgentConversationWorkspaceContent() {
         conversationId={conversationId}
         activeTab={sidebarPreferences.tab}
         onTabChange={updateSidebarTab}
-        showcase={false}
+
         editor={sidebarEditor}
         controlled={Boolean(computerControl)}
         computerAccess={computerAccess}

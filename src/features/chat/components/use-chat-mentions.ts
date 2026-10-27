@@ -6,10 +6,10 @@ import type { MentionCategory, MentionItem } from '@/shared/knowledge/mention-ty
 
 export function useChatMentions({
   activeWorkspaceId,
-  isPublicShowcase,
+
 }: {
   activeWorkspaceId: string | null | undefined
-  isPublicShowcase: boolean
+
 }) {
   const [mentions, setMentions] = useState<MentionItem[]>([])
   const [personalMentionConfirmationOpen, setPersonalMentionConfirmationOpen] = useState(false)
@@ -29,7 +29,7 @@ export function useChatMentions({
   }, [])
 
   useEffect(() => {
-    if (!activeWorkspaceId || isPublicShowcase) {
+    if (!activeWorkspaceId) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setMentionCategories([])
       return
@@ -57,6 +57,10 @@ export function useChatMentions({
           id: item.principalId,
           name: item.name,
           description: item.principalType === 'agent' ? 'Agent' : 'Workspace member',
+          principalType: item.principalType,
+          avatarColor: item.avatarColor,
+          avatarShape: item.avatarShape,
+          ...(item.principalType === 'human' && item.photoUrl ? { photoUrl: item.photoUrl } : {}),
           icon: 'UsersRound',
         })
       }
@@ -73,7 +77,7 @@ export function useChatMentions({
       if (!cancelled) setMentionCategories([])
     })
     return () => { cancelled = true }
-  }, [activeWorkspaceId, isPublicShowcase])
+  }, [activeWorkspaceId, ])
 
   const personMentions = useMemo(
     () => mentions.filter((mention) => mention.type === 'person'),

@@ -89,6 +89,7 @@ import {
   RunAutomationRequest,
   EmptyQuery,
   EmptyRequest,
+  FormDataBoundary,
   UnknownResponse,
 } from './index'
 
@@ -96,6 +97,7 @@ export type ApiBoundarySchema = {
   query?: ZodTypeAny
   json?: ZodTypeAny
   formData?: ZodTypeAny
+  deferFormDataParsing?: boolean
   response?: ZodTypeAny
 }
 
@@ -145,7 +147,141 @@ const ProviderConnectionTestRequest = z.object({
   apiKey: z.string().optional(),
 })
 
+const IdentityProfileResponse = z.object({
+  displayName: z.string(),
+  photoUrl: z.string().nullable(),
+  displayNameOverride: z.string().nullable(),
+  hasCustomPhoto: z.boolean(),
+  email: z.string(),
+})
+
+const WorkspaceIdentityProfileResponse = IdentityProfileResponse.extend({
+  accountDisplayName: z.string(),
+  accountPhotoUrl: z.string().nullable(),
+})
+
+const IdentityProfilePatch = z.object({
+  displayName: z.string().trim().max(80).nullable().optional(),
+  resetPhoto: z.boolean().optional(),
+}).strict()
+
+const WorkspaceIconPatch = z.object({
+  preset: z.enum(['shape-1', 'shape-2', 'shape-3', 'shape-4', 'shape-5', 'shape-6']).nullable(),
+}).strict()
+
 export const webApiBoundaryDefinitions = [
+  {
+    method: 'GET',
+    path: '/api/v1/account/profile',
+    schema: { response: IdentityProfileResponse },
+    summary: 'Read the signed-in account profile',
+    tag: 'Account',
+  },
+  {
+    method: 'PATCH',
+    path: '/api/v1/account/profile',
+    schema: { json: IdentityProfilePatch, response: IdentityProfileResponse },
+    summary: 'Update the signed-in account profile',
+    tag: 'Account',
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/account/profile/photo',
+    schema: { query: z.object({ userId: z.string().optional() }) },
+    summary: 'Read an authorized account profile photo',
+    tag: 'Account',
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/account/profile/photo',
+    schema: {
+      formData: FormDataBoundary,
+      deferFormDataParsing: true,
+      response: IdentityProfileResponse,
+    },
+    summary: 'Upload an account profile photo',
+    description: 'Accepts a multipart `file` image. The server authorizes the account before parsing or processing the upload.',
+    tag: 'Account',
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/workspaces/{workspaceId}/profile',
+    routePath: '/api/v1/workspaces/[workspaceId]/profile',
+    pattern: /^\/api\/v1\/workspaces\/[^/]+\/profile$/,
+    schema: { response: WorkspaceIdentityProfileResponse },
+    summary: 'Read the current member profile in a workspace',
+    tag: 'Workspaces',
+  },
+  {
+    method: 'PATCH',
+    path: '/api/v1/workspaces/{workspaceId}/profile',
+    routePath: '/api/v1/workspaces/[workspaceId]/profile',
+    pattern: /^\/api\/v1\/workspaces\/[^/]+\/profile$/,
+    schema: { json: IdentityProfilePatch, response: WorkspaceIdentityProfileResponse },
+    summary: 'Update the current member profile in a workspace',
+    tag: 'Workspaces',
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/workspaces/{workspaceId}/profile/photo',
+    routePath: '/api/v1/workspaces/[workspaceId]/profile/photo',
+    pattern: /^\/api\/v1\/workspaces\/[^/]+\/profile\/photo$/,
+    schema: { query: z.object({ principalId: z.string().min(1) }) },
+    summary: 'Read an authorized workspace profile photo',
+    tag: 'Workspaces',
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/workspaces/{workspaceId}/profile/photo',
+    routePath: '/api/v1/workspaces/[workspaceId]/profile/photo',
+    pattern: /^\/api\/v1\/workspaces\/[^/]+\/profile\/photo$/,
+    schema: {
+      formData: FormDataBoundary,
+      deferFormDataParsing: true,
+      response: WorkspaceIdentityProfileResponse,
+    },
+    summary: 'Upload a workspace profile photo',
+    description: 'Accepts a multipart `file` image. The server authorizes active workspace membership before parsing or processing the upload.',
+    tag: 'Workspaces',
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/workspaces/{workspaceId}/icon',
+    routePath: '/api/v1/workspaces/[workspaceId]/icon',
+    pattern: /^\/api\/v1\/workspaces\/[^/]+\/icon$/,
+    schema: {},
+    summary: 'Read the workspace icon',
+    tag: 'Workspaces',
+  },
+  {
+    method: 'PATCH',
+    path: '/api/v1/workspaces/{workspaceId}/icon',
+    routePath: '/api/v1/workspaces/[workspaceId]/icon',
+    pattern: /^\/api\/v1\/workspaces\/[^/]+\/icon$/,
+    schema: {
+      json: WorkspaceIconPatch,
+      response: z.object({
+        iconPreset: z.string().nullable(),
+        iconUrl: z.string().nullable(),
+      }),
+    },
+    summary: 'Set a preset workspace icon',
+    tag: 'Workspaces',
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/workspaces/{workspaceId}/icon',
+    routePath: '/api/v1/workspaces/[workspaceId]/icon',
+    pattern: /^\/api\/v1\/workspaces\/[^/]+\/icon$/,
+    schema: {
+      formData: FormDataBoundary,
+      deferFormDataParsing: true,
+      response: z.object({ iconUrl: z.string(), iconPreset: z.null() }),
+    },
+    summary: 'Upload a workspace icon',
+    description: 'Accepts a multipart `file` image. The server authorizes a workspace owner or admin before parsing or processing the upload.',
+    tag: 'Workspaces',
+  },
   {
     method: 'GET', path: '/api/v1/agent-environments', schema: { query: EmptyQuery, response: UnknownResponse },
     summary: 'List connected agent environments in the active workspace', tag: 'Agent environments',

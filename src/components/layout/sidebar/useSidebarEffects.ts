@@ -53,12 +53,12 @@ export function useTemporaryChatUiHidden({
 }
 
 export function useCollaborationUnread({
-  publicShowcase,
+
   user,
   activeWorkspaceId,
   collaborationNotifications,
 }: {
-  publicShowcase: boolean
+
   user: object | null
   activeWorkspaceId: string | null
   collaborationNotifications: WorkspaceNotification[]
@@ -66,7 +66,7 @@ export function useCollaborationUnread({
   const [collaborationUnread, setCollaborationUnread] = useState({ dms: 0, channels: 0, total: 0 })
 
   useEffect(() => {
-    if (publicShowcase || !user || !activeWorkspaceId) {
+    if (!user || !activeWorkspaceId) {
       return
     }
     let cancelled = false
@@ -93,7 +93,7 @@ export function useCollaborationUnread({
     return () => {
       cancelled = true
     }
-  }, [activeWorkspaceId, collaborationNotifications, publicShowcase, user])
+  }, [activeWorkspaceId, collaborationNotifications,  user])
 
   return collaborationUnread
 }
@@ -194,7 +194,7 @@ export function useSidebarNavHotkeys({
   resolveWorkspaceSurface,
   settingsPathActive,
   isGuestConfirmed,
-  publicShowcase,
+
   activeWorkspaceId,
   buildWorkspaceHref,
   requireAuth,
@@ -208,7 +208,7 @@ export function useSidebarNavHotkeys({
   resolveWorkspaceSurface: (path: string) => string | null
   settingsPathActive: boolean
   isGuestConfirmed: boolean
-  publicShowcase: boolean
+
   activeWorkspaceId: string | null
   buildWorkspaceHref: (workspaceId: string, href: string) => string
   requireAuth: (reason: GateReason) => void
@@ -243,17 +243,12 @@ export function useSidebarNavHotkeys({
         pathname.startsWith(item.href) ||
         (canonicalWorkspaceRoute && workspaceSurface === resolveWorkspaceSurface(item.href))
       ) return
-      if (isGuestConfirmed && !publicShowcase && item.href !== '/app/chat') { requireAuth('nav'); return }
+      if (isGuestConfirmed && item.href !== '/app/chat') { requireAuth('nav'); return }
       const workspaceHref = activeWorkspaceId
         ? buildWorkspaceHref(activeWorkspaceId, item.href)
         : item.href
       setPendingNav({ href: workspaceHref, fromPath: pathname })
-      router.push(publicShowcase
-        ? `${item.href}?${new URLSearchParams({
-            showcase: '1',
-            ...(item.href === '/app/chat' ? { id: 'showcase-welcome' } : {}),
-          }).toString()}`
-        : workspaceHref)
+      router.push(workspaceHref)
     },
     NAV_HOTKEY_OPTIONS,
     [
@@ -263,7 +258,7 @@ export function useSidebarNavHotkeys({
       isGuestConfirmed,
       navItems,
       pathname,
-      publicShowcase,
+
       requireAuth,
       router,
       workspaceSurface,

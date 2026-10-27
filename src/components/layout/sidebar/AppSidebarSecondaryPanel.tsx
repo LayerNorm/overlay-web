@@ -31,7 +31,7 @@ export interface SecondaryPanelContentProps {
   nav?: SecondaryPanelNav
   action?: SidebarResourceAction | null
   search?: SidebarResourceSearch | null
-  /** Pinned to the bottom of the panel (e.g. showcase links). */
+  /** Pinned to the bottom of the panel. */
   footer?: ReactNode
   children?: ReactNode
 }

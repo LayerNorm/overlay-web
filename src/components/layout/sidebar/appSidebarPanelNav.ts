@@ -16,7 +16,7 @@ function buildFilesPanelNav({
   effectivePendingSecondaryNavId,
   notesOpen,
   currentSearchParams,
-  publicShowcase,
+
   activeWorkspaceId,
   buildWorkspaceHref,
   router,
@@ -28,7 +28,7 @@ function buildFilesPanelNav({
   effectivePendingSecondaryNavId: string | null
   notesOpen: boolean
   currentSearchParams: URLSearchParams
-  publicShowcase: boolean
+
   activeWorkspaceId: string | null
   buildWorkspaceHref: (workspaceId: string, href: string, scope?: PanelScope) => string
   router: SidebarRouter
@@ -50,7 +50,7 @@ function buildFilesPanelNav({
       if (nextScope === scope && nextView === filesView && !hasOpenItem) return
       beginSecondaryNavigation(nextSub ? `${nextScope}:${nextSub}` : nextScope)
       const params = withPanelScope(currentSearchParams, nextScope)
-      if (publicShowcase) params.set('showcase', '1')
+
       if (nextView === 'all') params.delete('view')
       else params.set('view', nextView)
       params.delete('file')
@@ -77,7 +77,7 @@ function buildAgentsPanelNav({
   scope,
   effectivePendingSecondaryNavId,
   currentSearchParams,
-  publicShowcase,
+
   activeWorkspaceId,
   buildWorkspaceHref,
   router,
@@ -87,7 +87,7 @@ function buildAgentsPanelNav({
   scope: PanelScope
   effectivePendingSecondaryNavId: string | null
   currentSearchParams: URLSearchParams
-  publicShowcase: boolean
+
   activeWorkspaceId: string | null
   buildWorkspaceHref: (workspaceId: string, href: string, scope?: PanelScope) => string
   router: SidebarRouter
@@ -106,7 +106,7 @@ function buildAgentsPanelNav({
       const params = withPanelScope(currentSearchParams, next)
       // The tab used to be `?view=`; the scope replaces it.
       params.delete('view')
-      if (publicShowcase) params.set('showcase', '1')
+
       for (const selector of ['agent', 'agentId', 'id', 'thread', 'threadId', 'conversationId']) {
         params.delete(selector)
       }
@@ -133,7 +133,7 @@ function buildToolsPanelNav({
   effectivePendingSecondaryNavId,
   toolsItems,
   currentSearchParams,
-  publicShowcase,
+
   activeWorkspaceId,
   buildWorkspaceHref,
   router,
@@ -145,7 +145,7 @@ function buildToolsPanelNav({
   effectivePendingSecondaryNavId: string | null
   toolsItems: ReadonlyArray<InlineNavItem>
   currentSearchParams: URLSearchParams
-  publicShowcase: boolean
+
   activeWorkspaceId: string | null
   buildWorkspaceHref: (workspaceId: string, href: string, scope?: PanelScope) => string
   router: SidebarRouter
@@ -163,7 +163,7 @@ function buildToolsPanelNav({
       if (nextScope === scope && nextView === toolsView) return
       beginSecondaryNavigation(nextSub ? `${nextScope}:${nextSub}` : nextScope)
       const params = withPanelScope(new URLSearchParams(currentSearchParams.toString()), nextScope)
-      if (publicShowcase) params.set('showcase', '1')
+
       params.set('view', nextView)
       params.delete('scope')
       const legacyHref = `/app/tools?${params.toString()}`
@@ -179,7 +179,7 @@ function buildAutomationsPanelNav({
   scope,
   effectivePendingSecondaryNavId,
   currentSearchParams,
-  publicShowcase,
+
   activeWorkspaceId,
   buildWorkspaceHref,
   router,
@@ -189,7 +189,7 @@ function buildAutomationsPanelNav({
   scope: PanelScope
   effectivePendingSecondaryNavId: string | null
   currentSearchParams: URLSearchParams
-  publicShowcase: boolean
+
   activeWorkspaceId: string | null
   buildWorkspaceHref: (workspaceId: string, href: string, scope?: PanelScope) => string
   router: SidebarRouter
@@ -211,7 +211,7 @@ function buildAutomationsPanelNav({
       params.delete('automation')
       params.delete('automationId')
       params.delete('scope')
-      if (publicShowcase) params.set('showcase', '1')
+
       const query = params.toString()
       if (activeWorkspaceId) {
         router.push(buildWorkspaceHref(
@@ -258,7 +258,7 @@ function buildSettingsPanelNav({
 
 export function resolveSecondaryPanelNav({
   panelKind,
-  publicShowcase,
+
   routeState,
   effectivePendingSecondaryNavId,
   totalUnread,
@@ -275,7 +275,7 @@ export function resolveSecondaryPanelNav({
   solo,
 }: {
   panelKind: SidebarRouteState['panelKind']
-  publicShowcase: boolean
+
   routeState: Pick<SidebarRouteState, 'chatsView' | 'filesView' | 'scope' | 'toolsView' | 'workView' | 'notesOpen' | 'settingsSection'>
   effectivePendingSecondaryNavId: string | null
   totalUnread: number
@@ -301,7 +301,7 @@ export function resolveSecondaryPanelNav({
       activity: cumulativeChatUnread,
     }
     return buildChatPanelNav({
-      publicShowcase,
+
       chatsView: routeState.chatsView,
       effectivePendingSecondaryNavId,
       chatUnreadBadges,
@@ -320,7 +320,7 @@ export function resolveSecondaryPanelNav({
       effectivePendingSecondaryNavId,
       notesOpen: routeState.notesOpen,
       currentSearchParams,
-      publicShowcase,
+
       activeWorkspaceId,
       buildWorkspaceHref,
       router,
@@ -333,7 +333,7 @@ export function resolveSecondaryPanelNav({
       scope: routeState.scope,
       effectivePendingSecondaryNavId,
       currentSearchParams,
-      publicShowcase,
+
       activeWorkspaceId,
       buildWorkspaceHref,
       router,
@@ -346,7 +346,7 @@ export function resolveSecondaryPanelNav({
       scope: routeState.scope,
       effectivePendingSecondaryNavId,
       currentSearchParams,
-      publicShowcase,
+
       activeWorkspaceId,
       buildWorkspaceHref,
       router,
@@ -361,7 +361,7 @@ export function resolveSecondaryPanelNav({
       currentSearchParams,
       effectivePendingSecondaryNavId,
       toolsItems,
-      publicShowcase,
+
       activeWorkspaceId,
       buildWorkspaceHref,
       router,
