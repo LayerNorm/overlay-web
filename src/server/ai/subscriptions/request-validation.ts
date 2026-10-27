@@ -17,7 +17,6 @@ export function assertSupportedCodexRequest(body: Record<string, unknown>, model
   }
   validateTools(body)
   for (const option of [
-    'temperature', 'top_p', 'max_output_tokens', 'max_completion_tokens',
     'truncation', 'user', 'previous_response_id', 'prompt_cache_retention',
   ]) {
     if (body[option] !== undefined && body[option] !== null) {
@@ -86,17 +85,23 @@ export function normalizeCodexResponsesBody(
   body: Record<string, unknown>,
   modelId: string,
 ): Record<string, unknown> {
-  assertSupportedCodexRequest(body, modelId)
-  const input = Array.isArray(body.input)
-    ? body.input.map((item) => {
+  const normalizedBody = { ...body }
+  for (const option of [
+    'max_output_tokens', 'max_completion_tokens', 'temperature', 'top_p',
+  ]) {
+    delete normalizedBody[option]
+  }
+  assertSupportedCodexRequest(normalizedBody, modelId)
+  const input = Array.isArray(normalizedBody.input)
+    ? normalizedBody.input.map((item) => {
         if (!isRecord(item) || item.role !== 'system') return item
         return { ...item, role: 'developer' }
       })
-    : body.input
-  const instructions = typeof body.instructions === 'string' ? body.instructions : ''
-  const include = Array.isArray(body.include) ? body.include : []
+    : normalizedBody.input
+  const instructions = typeof normalizedBody.instructions === 'string' ? normalizedBody.instructions : ''
+  const include = Array.isArray(normalizedBody.include) ? normalizedBody.include : []
   return {
-    ...body,
+    ...normalizedBody,
     input,
     instructions,
     include: [...new Set([...include, 'reasoning.encrypted_content'])],

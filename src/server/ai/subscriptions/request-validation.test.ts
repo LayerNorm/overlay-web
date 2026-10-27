@@ -33,9 +33,28 @@ test('rejects media, hosted tools, ZDR, and unsupported semantic options', () =>
     { model: 'm', input: [{ type: 'input_image', image_url: 'https://example.test/a.png' }] },
     { model: 'm', tools: [{ type: 'web_search' }] },
     { model: 'm', zero_data_retention: true },
-    { model: 'm', temperature: 0.4 },
   ]) {
     assert.throws(() => normalizeCodexResponsesBody(body, 'm'))
+  }
+  for (const option of ['truncation', 'user', 'previous_response_id', 'prompt_cache_retention']) {
+    assert.throws(
+      () => normalizeCodexResponsesBody({ model: 'm', [option]: 'unsupported' }, 'm'),
+      new RegExp(`Codex subscription requests do not support ${option}`),
+    )
+  }
+})
+
+test('strips unsupported output and sampling controls before Codex validation', () => {
+  const normalized = normalizeCodexResponsesBody({
+    model: 'm',
+    input: 'hello',
+    max_output_tokens: 8192,
+    max_completion_tokens: 4096,
+    temperature: 0.4,
+    top_p: 0.9,
+  }, 'm')
+  for (const option of ['max_output_tokens', 'max_completion_tokens', 'temperature', 'top_p']) {
+    assert.equal(Object.hasOwn(normalized, option), false)
   }
 })
 

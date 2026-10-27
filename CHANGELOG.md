@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Strip Codex-incompatible output and sampling controls before forwarding subscription inference requests.
+
 - Fix subscription authorization failing to store sign-in state because the credential-vault context contained an unsupported character.
 
 - Preserve safe failure codes, HTTP statuses, upstream error codes, and offending field names in credential-vault logs so subscription authorization failures can be diagnosed without exposing credentials or upstream response bodies.

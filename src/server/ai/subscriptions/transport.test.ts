@@ -86,10 +86,16 @@ test('AI SDK generateText uses a completed JSON fixture and stateless storage', 
       { headers: { 'content-type': 'text/event-stream' } },
     )
   })
-  const result = await generateText({ model, prompt: 'say hello', maxRetries: 0 })
+  const result = await generateText({
+    model,
+    prompt: 'say hello',
+    maxRetries: 0,
+    maxOutputTokens: 8192,
+  })
   assert.equal(result.text, 'fixture response')
   assert.equal(requestBody?.stream, true)
   assert.equal(requestBody?.store, false)
+  assert.equal(Object.hasOwn(requestBody ?? {}, 'max_output_tokens'), false)
 })
 
 test('AI SDK tool continuation sends complete history rather than stored item references', { timeout: 5_000 }, async () => {

@@ -64,8 +64,10 @@ and enabled model membership before reading the vault. Only the fixed Codex
 Responses endpoint receives the account bearer token. Requests support text
 and function/custom-text tools; images, files, audio, video, hosted tools and
 zero-data-retention guarantees are unsupported. Unsupported semantic options
-are rejected rather than silently dropped. Provider failures never trigger
-additional inference or paid fallback.
+are rejected rather than silently dropped. The adapter removes the unsupported
+`max_output_tokens`, `max_completion_tokens`, `temperature`, and `top_p` controls
+before validation. Provider failures never trigger additional inference or paid
+fallback.
 
 The request-based connection flow does not provide subscription credentials to
 external cloud agents or native-only legacy paths. First-party owner-aware
