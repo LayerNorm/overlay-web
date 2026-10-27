@@ -5,6 +5,7 @@ import { FatalError } from 'workflow'
 import type { HarnessReceipt } from '@overlay/agent-runtime/harness-state'
 import { releaseProviderBudgetReservation } from '@/server/billing/billing-runtime'
 import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
+import { OPENROUTER_FREE_MODEL_ID, OVERLAY_FREE_MODEL_ID } from '@/shared/ai/gateway/overlay-free-policy'
 import { applyHarnessOperation, readHarnessState } from './state-steps'
 import type { HarnessModelReference } from './secure-model'
 
@@ -20,22 +21,28 @@ export async function recordHarnessModelRejection(
 ): Promise<void> {
   const input = reference.personal
   if (!input || isByokModelId(reference.modelId)) throw new FatalError('Cannot reject an external model dispatch.')
+  if (reason === 'route_capacity' && reference.modelId !== OPENROUTER_FREE_MODEL_ID && reference.modelId !== OVERLAY_FREE_MODEL_ID) {
+    throw new FatalError('Only the free router can confirm a capacity rejection.')
+  }
   const state = await readHarnessState(input.access)
   if (state.workflowRunId !== input.access.workflowRunId) throw new FatalError('Model rejection has no execution owner.')
   if (state.latestReceipt?.id === input.receiptId && state.latestReceipt.rejectionReason === reason) return
   const hold = state.modelReservation
   if (hold?.id !== input.receiptId
     || (reason === 'budget' && hold.dispatch)
-    || (reason === 'model_unavailable' && hold.dispatch?.modelId !== reference.modelId)) {
+    || (reason !== 'budget' && hold.dispatch?.modelId !== reference.modelId)) {
     throw new FatalError('Model rejection has no matching dispatch.')
   }
   if (hold.dispatch?.billingReservationId) {
     await releaseProviderBudgetReservation({ userId: input.access.actorUserId,
-      reservationId: hold.dispatch.billingReservationId, reason: 'Gateway rejected an unavailable model before inference.' })
+      reservationId: hold.dispatch.billingReservationId, reason: reason === 'route_capacity'
+        ? 'The free router had no capacity; no provider inference was attempted.'
+        : 'Gateway rejected an unavailable model before inference.' })
   }
   await applyHarnessOperation(input.access, `rejected:${input.receiptId}`, {
     type: 'record_receipt', receipt: {
-      id: input.receiptId, modelId: reference.modelId, provider: reason === 'budget' ? 'overlay-admission' : 'gateway',
+      id: input.receiptId, modelId: reference.modelId,
+      provider: reason === 'budget' ? 'overlay-admission' : reason === 'route_capacity' ? 'overlay-free-router' : 'gateway',
       inputTokens: 0, outputTokens: 0, reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0,
       contextWindow: input.contextWindow, costMicros: 0, costSource: 'catalog', rejectionReason: reason,
     },

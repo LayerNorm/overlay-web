@@ -18,6 +18,7 @@ import {
   type OverlayFreeStreamContext,
 } from './overlay-free-router-contracts'
 import { trustedOverlayFreeOptions } from './overlay-free-request-policy'
+import { OverlayFreeRouteBusyError } from './overlay-free-router-errors'
 
 function isRateLimited(error: unknown): boolean {
   return typeof error === 'object' && error !== null &&
@@ -84,12 +85,15 @@ export async function doOverlayFreeStream({
   }
 
   let attemptIndex = 0
+  let routeBusy = false
+  let generationAttempted = false
   const prepareAttempt = async (
     candidate: OverlayFreeRoute,
     fallbackRemains: boolean,
   ): Promise<OverlayFreePreparedAttempt | null> => {
     if (options.abortSignal?.aborted) throw options.abortSignal.reason ?? new Error('aborted')
     const claimed = await claim(candidate)
+    if (claimed.status === 'busy') routeBusy = true
     const route = claimed.route
     const token = route?.activeLeaseToken
     if (claimed.status !== 'claimed' || !route || !token) return null
@@ -136,6 +140,7 @@ export async function doOverlayFreeStream({
       if (closed) throw new DOMException('Stream cancelled', 'AbortError')
       if (options.abortSignal?.aborted) throw options.abortSignal.reason ?? new Error('aborted')
       generationStarted = true
+      generationAttempted = true
       const response = await languageModel.doStream({
         ...trustedOverlayFreeOptions(options, route, capabilities),
         abortSignal: AbortSignal.any([
@@ -198,6 +203,7 @@ export async function doOverlayFreeStream({
   }
 
   let current = await safeOpenNext()
+  if (!current && routeBusy && !generationAttempted) throw new OverlayFreeRouteBusyError()
   if (!current) throw new Error('overlay_free_no_eligible_route')
   const initialResponse = current.response
 

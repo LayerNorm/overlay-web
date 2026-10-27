@@ -120,3 +120,11 @@ test('deadline expiry leaves the request unresolved instead of inventing a respo
   expect(mocks.apply).not.toHaveBeenCalled()
   expect(disposed).toHaveBeenCalledOnce()
 })
+
+test('a failed child with unresolved usage fails closed without retrying settlement', async () => {
+  state.status = 'waiting_for_children'
+  mocks.child.mockResolvedValue({ ...state, runId: 'child', status: 'failed', modelReservation: { id: 'model:0', maxCostMicros: 0 } })
+  const ports = createPersonalHarnessWaitPorts({ access, wake: { next: vi.fn() } })
+  await expect(ports.waitForChildren(['child'])).rejects.toThrow('billing holds were preserved')
+  expect(mocks.apply).not.toHaveBeenCalled()
+})

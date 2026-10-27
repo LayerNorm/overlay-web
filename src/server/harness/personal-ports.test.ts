@@ -11,7 +11,8 @@ import { runOverlayHarness } from './runner'
 import { estimateHarnessInputTokens } from './model-forecast'
 
 const mocks = vi.hoisted(() => ({ read: vi.fn(), apply: vi.fn(), claim: vi.fn(), refresh: vi.fn(), catalog: vi.fn(),
-  model: vi.fn(), authorize: vi.fn(), settle: vi.fn(), admit: vi.fn() }))
+  model: vi.fn(), authorize: vi.fn(), settle: vi.fn(), admit: vi.fn(), capacity: vi.fn(), capacityReset: vi.fn() }))
+vi.mock('./model-capacity', () => ({ createHarnessCapacityWaiter: () => ({ wait: mocks.capacity, reset: mocks.capacityReset }) }))
 vi.mock('server-only', () => ({}))
 vi.mock('./personal-access', () => ({ refreshPersonalHarnessAccess: mocks.refresh }))
 vi.mock('@/server/ai/gateway/gateway-catalog', () => ({ getGatewayCatalogModel: mocks.catalog }))
@@ -67,6 +68,36 @@ test('an ambiguous provider error retains its hold and never tries another model
   expect(mocks.model).toHaveBeenCalledOnce()
   expect(current.modelReservation?.dispatch?.modelId).toBe('fixture/model')
   expect(onFallback).not.toHaveBeenCalled()
+})
+
+test('confirmed capacity rejection resumes the same free model with a fresh receipt and one admission', async () => {
+  provider()
+  const onFallback = vi.fn()
+  const freeContext = { ...context, effectiveModelId: 'openrouter/free' }
+  mocks.refresh.mockImplementation(async (_access, supplied) => ({ ...supplied, requiresZeroDataRetention: false }))
+  mocks.capacity.mockResolvedValue(true)
+  mocks.authorize.mockImplementation(async reference => {
+    current = state.bindHarnessModelDispatch(current, reference.personal.receiptId, { modelId: reference.modelId, billingReservationId: null }, Date.now())
+  }).mockImplementationOnce(async reference => {
+    current = state.recordHarnessReceipt(current, { id: reference.personal.receiptId, modelId: reference.modelId,
+      provider: 'overlay-free-router', inputTokens: 0, outputTokens: 0, reasoningTokens: 0, cacheReadTokens: 0,
+      cacheWriteTokens: 0, contextWindow: null, costMicros: 0, costSource: 'catalog', rejectionReason: 'route_capacity' }, Date.now())
+    throw new Error('Confirmed capacity rejection before inference.')
+  })
+  mocks.settle.mockImplementation(async ({ receiptId, observation, contextWindow }) => {
+    current = state.recordHarnessReceipt(current, { ...observation, id: receiptId, contextWindow, costMicros: 0, costSource: 'provider' }, Date.now())
+    return current.latestReceipt
+  })
+  const ports = createPersonalHarnessExecutionPorts({ access, context: freeContext }, surface,
+    { candidateIds: ['openrouter/free'], onFallback })
+  const result = await runOverlayHarness({ ...execution, model: { ...execution.model, modelId: 'openrouter/free' } }, ports)
+  expect(result.snapshot.status).toBe('completed')
+  expect(mocks.capacity).toHaveBeenCalledExactlyOnceWith(expect.anything(), 'model:0', 'openrouter/free')
+  expect(mocks.model).toHaveBeenCalledExactlyOnceWith('openrouter/free', undefined, 'user', expect.objectContaining({ allowLowBalanceFallback: false }))
+  expect(mocks.settle).toHaveBeenCalledWith(expect.objectContaining({ receiptId: 'model:1' }))
+  expect(mocks.admit).toHaveBeenCalledOnce()
+  expect(onFallback).not.toHaveBeenCalled()
+  expect(current.modelReservation).toBeUndefined()
 })
 
 test('BYOK routing cannot acquire an Overlay-funded fallback', () => {

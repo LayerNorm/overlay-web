@@ -43,6 +43,20 @@ async function lockAndPublish(convex: ReturnType<typeof convexTest>, now = 1) {
 }
 
 describe('overlay-free durable safety state', () => {
+  test('capacity discovery can include busy routes without bypassing their lease', async () => {
+    const convex = convexTest(schema, modules)
+    const row = await lockAndPublish(convex)
+    const claim = { serverSecret: secret, routeKey: row.routeKey, leaseToken: 'first', now: 2,
+      leaseMs: 180_000, purpose: 'user' as const, expectedGeneration: row.generation }
+    expect((await convex.mutation(api.platform.overlayFreeSafety.claimByServer, claim)).status).toBe('claimed')
+    const query = { serverSecret: secret, now: 3, generation: row.generation }
+    expect(await convex.query(api.platform.overlayFreeSafety.listEligibleByServer, query)).toEqual([])
+    expect(await convex.query(api.platform.overlayFreeSafety.listEligibleByServer, { ...query, includeBusy: true })).toHaveLength(1)
+    expect((await convex.mutation(api.platform.overlayFreeSafety.claimByServer, { ...claim, leaseToken: 'second', now: 3 })).status).toBe('busy')
+    await convex.mutation(api.platform.overlayFreeSafety.quarantineExpiredLeasesByServer, { serverSecret: secret, now: 180_003 })
+    expect(await convex.query(api.platform.overlayFreeSafety.listEligibleByServer, { ...query, now: 180_003, includeBusy: true })).toEqual([])
+  })
+
   test('late settlement quarantines even when no cleanup has run', async () => {
     const convex = convexTest(schema, modules)
     const row = await lockAndPublish(convex)

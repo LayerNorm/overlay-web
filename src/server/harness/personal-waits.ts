@@ -69,6 +69,9 @@ export function createPersonalHarnessWaitPorts(input: {
         for (const childRunId of childRunIds) {
           const child = await readHarnessChild(access, childRunId)
           if (['completed', 'cancelled', 'failed'].includes(child.status)) {
+            if (child.modelReservation || child.children.some(descendant => ['running', 'cancelled'].includes(descendant.status))) {
+              throw new FatalError('A child ended with unresolved model usage. Its billing holds were preserved; reconcile before continuing.')
+            }
             await applyHarnessOperation(access, `settle-child:${child.runId}:${child.revision}`, { type: 'settle_child', childRunId })
             settled = true
           }

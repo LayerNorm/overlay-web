@@ -104,7 +104,7 @@ function routeWithoutLease(row: NonNullable<Awaited<ReturnType<typeof findRoute>
 }
 
 export const listEligibleByServer = query({
-  args: { serverSecret: v.string(), now: v.number(), generation: v.number() },
+  args: { serverSecret: v.string(), now: v.number(), generation: v.number(), includeBusy: v.optional(v.boolean()) },
   returns: v.array(routeValidator),
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
@@ -115,7 +115,7 @@ export const listEligibleByServer = query({
       (row.transport === 'openrouter' || (row.canaryExpiresAt ?? 0) > args.now) &&
       !row.quarantineReason &&
       (!row.cooldownUntil || row.cooldownUntil <= args.now) &&
-      (!row.activeLeaseToken || row.activeLeaseExpiresAt !== undefined && row.activeLeaseExpiresAt <= args.now)
+      (args.includeBusy || !row.activeLeaseToken || row.activeLeaseExpiresAt !== undefined && row.activeLeaseExpiresAt <= args.now)
     ).map(routeWithoutLease)
   },
 })

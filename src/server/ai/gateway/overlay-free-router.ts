@@ -1,4 +1,5 @@
 import 'server-only'
+import { OverlayFreeRouteBusyError } from './overlay-free-router-errors'
 
 import { createOpenRouter } from '@openrouter/ai-sdk-provider'
 import type {
@@ -200,9 +201,12 @@ class OverlayFreeLanguageModel implements LanguageModelV4 {
       ...candidates.filter((route) => route.transport === 'openrouter').slice(0, 1),
     ]
     let lastError: unknown = new Error('overlay_free_no_eligible_route')
+    let routeBusy = false
+    let generationAttempted = false
     for (const candidate of attempts) {
       if (options.abortSignal?.aborted) throw options.abortSignal.reason ?? new Error('aborted')
       const claimed = await this.claim(candidate)
+      if (claimed.status === 'busy') routeBusy = true
       const route = claimed.route
       const token = route?.activeLeaseToken
       if (claimed.status !== 'claimed' || !route || !token) continue
@@ -223,6 +227,7 @@ class OverlayFreeLanguageModel implements LanguageModelV4 {
         const model = await this.model(checked.route)
         if (options.abortSignal?.aborted) throw options.abortSignal.reason ?? new Error('aborted')
         generationStarted = true
+        generationAttempted = true
         const result = await model.doGenerate({
           ...trustedOverlayFreeOptions(options, checked.route, checked.capabilities),
           abortSignal: options.abortSignal ? AbortSignal.any([options.abortSignal, controller.signal]) : controller.signal,
@@ -271,6 +276,7 @@ class OverlayFreeLanguageModel implements LanguageModelV4 {
         }
       }
     }
+    if (routeBusy && !generationAttempted) throw new OverlayFreeRouteBusyError()
     throw lastError
   }
 
@@ -331,7 +337,7 @@ export function createOverlayFreeRepository(): OverlayFreeRepository {
       }, { throwOnError: true })
       const routes = required(await convex.query<OverlayFreeRoute[]>(
         'platform/overlayFreeSafety:listEligibleByServer',
-        { serverSecret: secret(), now: Date.now(), generation: state.generation },
+        { serverSecret: secret(), now: Date.now(), generation: state.generation, includeBusy: true },
         { throwOnError: true },
       ), 'route_list')
       if (!Array.isArray(routes)) throw new Error('overlay_free_storage_route_list_failed')

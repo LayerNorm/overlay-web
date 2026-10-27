@@ -3,6 +3,7 @@ import test from 'node:test'
 import { generateText, stepCountIs, tool } from 'ai'
 import { z } from 'zod/v3'
 import { getGatewayLanguageModel } from './ai-gateway'
+import { OverlayFreeRouteBusyError } from './overlay-free-router-errors'
 import type { LanguageModelV4, LanguageModelV4CallOptions, LanguageModelV4StreamPart } from '@ai-sdk/provider'
 import {
   createOverlayFreeLanguageModel,
@@ -140,6 +141,31 @@ test('claims, revalidates, pins one provider, strips caller controls, and settle
     'settle:gateway:second/model:second:true',
   ])
 })
+
+for (const method of ['doStream', 'doGenerate'] as const) {
+  test(`${method} identifies busy capacity only when no provider inference was attempted`, async () => {
+    const calls: string[] = []
+    const routes = [route('gateway', 'provider/model', 'provider'), route('openrouter', 'openrouter/free', 'openrouter')]
+    let firstRouteBusy = true
+    const deps = dependencies(routes, calls, { claim: async (key, token) => firstRouteBusy || key.startsWith('openrouter:')
+      ? { status: 'busy', route: null }
+      : { status: 'claimed', route: { ...routes[0], activeLeaseToken: token } } })
+    const dispatch = async () => { calls.push('inference'); throw new Error('ambiguous timeout') }
+    const languageModel = createOverlayFreeLanguageModel({ ...deps, providers: {
+      gateway: async () => ({ ...model('provider', dispatch), doStream: dispatch }),
+      openrouter: async () => { throw new Error('busy route must not dispatch') },
+    } })
+    await assert.rejects(languageModel[method](options()), OverlayFreeRouteBusyError)
+    assert.deepEqual(calls, [])
+    firstRouteBusy = false
+    await assert.rejects(languageModel[method](options()), error => {
+      assert.ok(error instanceof Error)
+      assert.ok(!(error instanceof OverlayFreeRouteBusyError))
+      return true
+    })
+    assert.deepEqual(calls, ['inference', `settle:${routes[0].routeKey}:false`])
+  })
+}
 
 test('rechecks current catalog before constructing a provider and tries the next route', async () => {
   const routes = [

@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Wait durably for busy free-model routes before inference, retaining exclusive route leases and zero-cost rejection receipts. Ambiguous provider failures still retain billing holds and never authorize another Harness dispatch.
+
 - Persist completed child-run results as parent observations so delegated milestones can reference their output without treating it as independent verification. Children inherit their parent's planning policy instead of requiring unnecessary plans for trivial replies.
 
 - Fix Harness Workflow initialization by configuring model retry limits on compiler-safe step functions, keeping credentials and authorization inside durable execution.

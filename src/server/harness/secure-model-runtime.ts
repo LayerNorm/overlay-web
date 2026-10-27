@@ -1,6 +1,7 @@
 import type { LanguageModelV4CallOptions } from '@ai-sdk/provider'
 import { wrapLanguageModel } from 'ai'
 import { getLanguageModel } from '@/server/ai/model-runtime'
+import { OverlayFreeRouteBusyError } from '@/server/ai/gateway/overlay-free-router-errors'
 import type { HarnessModelReference } from './secure-model'
 
 async function model(reference: HarnessModelReference) {
@@ -14,6 +15,10 @@ async function model(reference: HarnessModelReference) {
 async function recordConfirmedRejection(reference: HarnessModelReference, error: unknown): Promise<void> {
   if (!reference.personal || reference.modelId.startsWith('byok/')) return
   const { isConfirmedHarnessModelRejection, recordHarnessModelRejection } = await import('./model-rejection')
+  if (error instanceof OverlayFreeRouteBusyError) {
+    await recordHarnessModelRejection(reference, 'route_capacity')
+    return
+  }
   if (isConfirmedHarnessModelRejection(error)) await recordHarnessModelRejection(reference, 'model_unavailable')
 }
 

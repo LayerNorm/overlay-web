@@ -52,3 +52,17 @@ test('foreign ownership and external models cannot clear a dispatch', async () =
   expect(mocks.release).not.toHaveBeenCalled()
   expect(mocks.apply).not.toHaveBeenCalled()
 })
+
+test('capacity rejection releases only a matching free-router dispatch with a zero receipt', async () => {
+  const free = { ...reference, modelId: 'openrouter/free' }
+  mocks.read.mockResolvedValue({ ...state, modelReservation: { ...hold, dispatch: { modelId: free.modelId, billingReservationId: 'billing' } } })
+  await recordHarnessModelRejection(free, 'route_capacity')
+  expect(mocks.apply).toHaveBeenCalledWith(free.personal!.access, 'rejected:model:0', expect.objectContaining({
+    receipt: expect.objectContaining({ rejectionReason: 'route_capacity', provider: 'overlay-free-router', inputTokens: 0, outputTokens: 0, costMicros: 0 }),
+  }))
+  expect(mocks.release).toHaveBeenCalledOnce()
+  await expect(recordHarnessModelRejection(reference, 'route_capacity')).rejects.toThrow('Only the free router')
+  mocks.read.mockResolvedValue(state)
+  await expect(recordHarnessModelRejection(free, 'route_capacity')).rejects.toThrow('matching dispatch')
+  expect(mocks.apply).toHaveBeenCalledOnce()
+})
