@@ -1,11 +1,7 @@
 import type { HarnessExecutionPorts } from './ports'
 import type { PersonalHarnessToolsInput } from './personal-tools'
 import { createPersonalHarnessModelPorts, type PersonalHarnessModelRouting } from './personal-model-ports'
-import { admitHarnessRequestUsage } from './request-usage-step'
-import { createHarnessStatePorts } from './state-ports'
-
-type SurfacePorts = Pick<HarnessExecutionPorts,
-  'recordToolResult' | 'delegate' | 'readChild' | 'waitForChildren' | 'waitForInput' | 'waitForApproval'>
+import { createHarnessExecutionPorts, type HarnessSurfacePorts } from './execution-ports'
 
 export async function authorizePersonalHarnessExecution(
   input: Pick<PersonalHarnessToolsInput, 'access' | 'context'>,
@@ -20,20 +16,14 @@ export async function authorizePersonalHarnessExecution(
 // another model loop or billing implementation.
 export function createPersonalHarnessExecutionPorts(
   input: Pick<PersonalHarnessToolsInput, 'access' | 'context'> & { contextBudgetTokens?: number },
-  surface: SurfacePorts,
+  surface: HarnessSurfacePorts,
   routing?: PersonalHarnessModelRouting,
 ): HarnessExecutionPorts {
-  const state = createHarnessStatePorts(input.access)
-  return {
-    ...surface,
-    ...state,
-    ...createPersonalHarnessModelPorts(input, routing),
-    claim: async () => {
-      if (!await state.claim()) return false
-      await authorizePersonalHarnessExecution(input)
-      await admitHarnessRequestUsage(input.access, input.context.effectiveModelId)
-      return true
-    },
-    authorizeTool: toolName => authorizePersonalHarnessExecution(input, toolName),
-  }
+  return createHarnessExecutionPorts({
+    reference: input.access,
+    modelId: input.context.effectiveModelId,
+    authorize: toolName => authorizePersonalHarnessExecution(input, toolName),
+    model: createPersonalHarnessModelPorts(input, routing),
+    surface,
+  })
 }

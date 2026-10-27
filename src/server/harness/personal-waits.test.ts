@@ -1,6 +1,7 @@
 import { beforeEach, expect, test, vi } from 'vitest'
 import { createHarnessSnapshot, type HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
 import { createPersonalHarnessWaitPorts } from './personal-waits'
+import { createHarnessWaitPorts } from './waits'
 
 const mocks = vi.hoisted(() => ({ hook: vi.fn(), sleep: vi.fn(), read: vi.fn(), apply: vi.fn(),
   publish: vi.fn(), resolve: vi.fn(), list: vi.fn(), notify: vi.fn(), project: vi.fn(), child: vi.fn() }))
@@ -64,6 +65,17 @@ test('child input notifies ancestors without changing root delivery status', asy
   expect(await ports.waitForInput(state)).toHaveLength(1)
   expect(mocks.project).not.toHaveBeenCalled()
   expect(mocks.notify).toHaveBeenCalledTimes(2)
+})
+
+test('shared waits use the supplied projection without personal delivery authority', async () => {
+  const reference = { actorUserId: 'user', runId: 'run', workflowRunId: 'workflow' }
+  const projectWait = vi.fn(async () => 'projected' as const)
+  const ports = createHarnessWaitPorts({ reference, projectWait, wake: { next: vi.fn() } })
+  expect(await ports.waitForInput(state)).toEqual([{ role: 'user', content: 'The quarterly report.' }])
+  expect(mocks.publish).toHaveBeenCalledWith(reference, { kind: 'input', token: 'harness:wait:workflow:0' })
+  expect(projectWait).toHaveBeenCalledWith({ wait: expect.objectContaining({ kind: 'input' }) })
+  expect(projectWait).toHaveBeenLastCalledWith({ status: 'running' })
+  expect(mocks.project).not.toHaveBeenCalled()
 })
 
 test('an authenticated approval decision covers exactly the pending request IDs', async () => {

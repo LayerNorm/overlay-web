@@ -7,6 +7,7 @@ import type { HarnessOperation } from '@overlay/agent-runtime/harness-store'
 import { KIMI_K3_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import { createPersonalHarnessExecutionPorts } from './personal-ports'
 import { createPersonalHarnessModelPorts } from './personal-model-ports'
+import { createHarnessModelPorts } from './model-ports'
 import { runOverlayHarness } from './runner'
 import { estimateHarnessInputTokens } from './model-forecast'
 
@@ -36,6 +37,27 @@ const execution = { instructions: 'Read the requested records.', messages: [{ ro
   tools: {}, model: { modelId: 'fixture/model', credentialOwnerId: 'user' }, settings: { maxOutputTokens: 100 } }
 const surface = { recordToolResult: vi.fn(), delegate: vi.fn(), readChild: vi.fn(), waitForChildren: vi.fn(), waitForInput: vi.fn(), waitForApproval: vi.fn() }
 let current: HarnessSnapshot
+
+test('shared model preparation delegates surface authority without requiring personal context', async () => {
+  const reference = { actorUserId: 'user', runId: 'run', workflowRunId: 'workflow' }
+  const prepare = vi.fn(async ({ modelId, options }) => ({
+    model: { modelId, credentialOwnerId: 'user' }, options, contextWindow: 64_000, estimatedCostMicros: 100,
+  }))
+  const ports = createHarnessModelPorts({ reference, modelId: 'fixture/model', prepare })
+  const result = await ports.prepareModel({
+    receiptId: 'model:0', state: current,
+    messages: [{ role: 'user', content: [{ type: 'text', text: 'Check observations.' }] }],
+    instructionContext: { instructions: 'Check observations.', continuation: false, truncatedResponse: false },
+    toolNames: [], toolDefinitions: [], settings: { maxOutputTokens: 100 },
+  })
+  expect(prepare).toHaveBeenCalledExactlyOnceWith({
+    modelId: 'fixture/model', receiptId: 'model:0',
+    options: expect.objectContaining({ maxOutputTokens: 100, tools: [], prompt: expect.any(Array) }),
+  })
+  expect(result.model).toEqual({ modelId: 'fixture/model', credentialOwnerId: 'user' })
+  expect(result.estimatedCostMicros).toBe(100)
+  expect(mocks.refresh).not.toHaveBeenCalled()
+})
 
 test('a confirmed rejection continues through the SDK with a fresh candidate and receipt, admitting only one request', async () => {
   provider()
