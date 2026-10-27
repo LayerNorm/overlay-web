@@ -81,7 +81,7 @@ test('Vault diagnostics discard invalid upstream identifiers', async (t) => {
   const log = t.mock.method(console, 'error', () => undefined)
 
   await assert.rejects(writeByokVaultKey('byok_test', 'sensitive', {
-    purpose: 'subscription-credential', userId: 'user_1', providerId: 'subscription:codex',
+    purpose: 'subscription-credential', userId: 'user_1', providerId: 'subscription-codex',
   }), { message: 'Failed to store API key in vault' })
 
   const logged = String(log.mock.calls[0].arguments[0])
@@ -89,6 +89,79 @@ test('Vault diagnostics discard invalid upstream identifiers', async (t) => {
   for (const untrustedValue of ['bad request with spaces', 'x y', 'str']) {
     assert.equal(logged.includes(untrustedValue), false)
   }
+})
+
+test('Vault rejects invalid context values before fetching and logs only offending keys', async (t) => {
+  const previousApiKey = process.env.WORKOS_API_KEY
+  process.env.WORKOS_API_KEY = 'workos_test_key'
+  t.after(() => {
+    if (previousApiKey === undefined) delete process.env.WORKOS_API_KEY
+    else process.env.WORKOS_API_KEY = previousApiKey
+  })
+  const fetch = t.mock.method(globalThis, 'fetch', async () => new Response(null, { status: 201 }))
+  const log = t.mock.method(console, 'error', () => undefined)
+
+  await assert.rejects(writeByokVaultKey('byok_test', 'sensitive', {
+    purpose: 'subscription-credential', userId: 'user_1', providerId: 'subscription:codex',
+  }), { message: 'Failed to store API key in vault' })
+
+  assert.equal(fetch.mock.callCount(), 0)
+  const logged = String(log.mock.calls[0].arguments[0])
+  assert.deepEqual(JSON.parse(logged).context, {
+    code: 'invalid_context',
+    invalidContextKeys: ['providerId'],
+  })
+  assert.equal(logged.includes('subscription:codex'), false)
+})
+
+test('Vault rejects contexts with more than ten entries before fetching', async (t) => {
+  const previousApiKey = process.env.WORKOS_API_KEY
+  process.env.WORKOS_API_KEY = 'workos_test_key'
+  t.after(() => {
+    if (previousApiKey === undefined) delete process.env.WORKOS_API_KEY
+    else process.env.WORKOS_API_KEY = previousApiKey
+  })
+  const fetch = t.mock.method(globalThis, 'fetch', async () => new Response(null, { status: 201 }))
+  const log = t.mock.method(console, 'error', () => undefined)
+  const context = Object.fromEntries(
+    Array.from({ length: 11 }, (_, index) => [`field${index}`, 'valid-value']),
+  ) as Parameters<typeof writeByokVaultKey>[2]
+
+  await assert.rejects(writeByokVaultKey('byok_test', 'sensitive', context), {
+    message: 'Failed to store API key in vault',
+  })
+
+  assert.equal(fetch.mock.callCount(), 0)
+  assert.deepEqual(JSON.parse(String(log.mock.calls[0].arguments[0])).context, {
+    code: 'invalid_context',
+    invalidContextKeys: ['field10'],
+  })
+})
+
+test('Vault diagnostics log WorkOS error object field names without messages', async (t) => {
+  const previousApiKey = process.env.WORKOS_API_KEY
+  process.env.WORKOS_API_KEY = 'workos_test_key'
+  t.after(() => {
+    if (previousApiKey === undefined) delete process.env.WORKOS_API_KEY
+    else process.env.WORKOS_API_KEY = previousApiKey
+  })
+  const upstreamMessage = "value can only contain letters, numbers, '/', '_', and '-'"
+  t.mock.method(globalThis, 'fetch', async () => new Response(JSON.stringify({
+    errors: { context: [upstreamMessage] },
+  }), { status: 400 }))
+  const log = t.mock.method(console, 'error', () => undefined)
+
+  await assert.rejects(writeByokVaultKey('byok_test', 'sensitive', {
+    purpose: 'subscription-credential', userId: 'user_1', providerId: 'subscription-codex',
+  }), { message: 'Failed to store API key in vault' })
+
+  const logged = String(log.mock.calls[0].arguments[0])
+  assert.deepEqual(JSON.parse(logged).context, {
+    code: 'http_failure',
+    httpStatus: 400,
+    upstreamFields: ['context'],
+  })
+  assert.equal(logged.includes(upstreamMessage), false)
 })
 
 test('Vault diagnostics do not log non-JSON upstream bodies', async (t) => {
@@ -104,7 +177,7 @@ test('Vault diagnostics do not log non-JSON upstream bodies', async (t) => {
   const log = t.mock.method(console, 'error', () => undefined)
 
   await assert.rejects(writeByokVaultKey('byok_test', 'sensitive', {
-    purpose: 'subscription-credential', userId: 'user_1', providerId: 'subscription:codex',
+    purpose: 'subscription-credential', userId: 'user_1', providerId: 'subscription-codex',
   }), { message: 'Failed to store API key in vault' })
 
   const logged = String(log.mock.calls[0].arguments[0])
@@ -122,7 +195,7 @@ test('Vault diagnostics distinguish missing configuration without attempting a r
   const fetch = t.mock.method(globalThis, 'fetch', async () => { throw new Error('must not fetch') })
   const log = t.mock.method(console, 'error', () => undefined)
   await assert.rejects(writeByokVaultKey('byok_test', 'sensitive', {
-    purpose: 'subscription-credential', userId: 'user_1', providerId: 'subscription:codex',
+    purpose: 'subscription-credential', userId: 'user_1', providerId: 'subscription-codex',
   }), { message: 'Failed to store API key in vault' })
   assert.equal(fetch.mock.callCount(), 0)
   assert.deepEqual(JSON.parse(String(log.mock.calls[0].arguments[0])).context, { code: 'missing_configuration' })
@@ -143,7 +216,7 @@ test('Vault diagnostics never log transport messages or malformed success bodies
   const log = t.mock.method(console, 'error', () => undefined)
   for (const code of ['transport_failure', 'invalid_response']) {
     await assert.rejects(writeByokVaultKey('byok_test', 'sensitive', {
-      purpose: 'subscription-credential', userId: 'user_1', providerId: 'subscription:codex',
+      purpose: 'subscription-credential', userId: 'user_1', providerId: 'subscription-codex',
     }), { message: 'Failed to store API key in vault' })
     const logged = String(log.mock.calls.at(-1)?.arguments[0])
     assert.deepEqual(JSON.parse(logged).context, { code })

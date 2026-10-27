@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { SubscriptionService } from './service'
 import type { SubscriptionRepository } from './repository'
-import type { ByokCredentialStore } from '@/server/ai/gateway/byok-credential-store'
+import type { ByokCredentialContext, ByokCredentialStore } from '@/server/ai/gateway/byok-credential-store'
 
 class FakeRepository {
   order: string[] = []
@@ -55,7 +55,9 @@ class FakeRepository {
 class FakeCredentials {
   values = new Map<string, string>()
   deleted: string[] = []
-  async write(args: { apiKey: string }) {
+  contexts: ByokCredentialContext[] = []
+  async write(args: { apiKey: string; context?: ByokCredentialContext }) {
+    if (args.context) this.contexts.push(args.context)
     const ref = `vault-${this.values.size + 1}`
     this.values.set(ref, args.apiKey)
     return ref
@@ -134,6 +136,7 @@ test('Codex authorization reserves a durable generation before requesting and va
   assert.match(credentials.values.get(reference) ?? '', /device-secret/)
   assert.equal(repository.state?.pendingStateRef, reference)
   assert.equal(repository.state?.ownerId, undefined)
+  assert.equal(credentials.contexts[0]?.providerId, 'subscription-codex')
   assert.equal(service.isEnabled('codex'), true)
   assert.equal(service.isEnabled('xai'), false)
 })

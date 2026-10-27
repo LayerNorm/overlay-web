@@ -27,7 +27,7 @@ type VaultObject = VaultObjectMetadata & {
   value?: unknown
 }
 
-type VaultFailureCode = 'missing_configuration' | 'http_failure' | 'invalid_response'
+type VaultFailureCode = 'missing_configuration' | 'http_failure' | 'invalid_context' | 'invalid_response'
 
 type VaultUpstreamFailureDetails = {
   upstreamCode?: string
@@ -40,6 +40,7 @@ class VaultFailure extends Error {
     readonly httpStatus?: number,
     readonly upstreamCode?: string,
     readonly upstreamFields?: string[],
+    readonly invalidContextKeys?: string[],
   ) {
     super(`WorkOS Vault ${code}`)
   }
@@ -50,6 +51,7 @@ type VaultFailureLogContext = {
   httpStatus?: number
   upstreamCode?: string
   upstreamFields?: string[]
+  invalidContextKeys?: string[]
 }
 
 function vaultFailureContext(error: unknown): VaultFailureLogContext {
@@ -60,11 +62,15 @@ function vaultFailureContext(error: unknown): VaultFailureLogContext {
     ...(error.httpStatus === undefined ? {} : { httpStatus: error.httpStatus }),
     ...(error.upstreamCode === undefined ? {} : { upstreamCode: error.upstreamCode }),
     ...(error.upstreamFields === undefined ? {} : { upstreamFields: error.upstreamFields }),
+    ...(error.invalidContextKeys === undefined ? {} : { invalidContextKeys: error.invalidContextKeys }),
   }
 }
 
 const UPSTREAM_CODE_PATTERN = /^[a-z][a-z0-9_.-]{0,63}$/i
 const UPSTREAM_FIELD_PATTERN = /^[a-z][a-z0-9_.\[\]-]{0,63}$/i
+const VAULT_CONTEXT_VALUE_PATTERN = /^[A-Za-z0-9/_-]{1,500}$/
+const MAX_VAULT_CONTEXT_ENTRIES = 10
+const MAX_DIAGNOSTIC_CONTEXT_KEYS = 5
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
@@ -93,12 +99,37 @@ function getVaultUpstreamFailureDetails(payload: unknown): VaultUpstreamFailureD
       upstreamFields.push(field)
       if (upstreamFields.length === 5) break
     }
+  } else if (isPlainObject(payload.errors)) {
+    for (const field of Object.keys(payload.errors)) {
+      if (!UPSTREAM_FIELD_PATTERN.test(field) || seenFields.has(field)) continue
+      seenFields.add(field)
+      upstreamFields.push(field)
+      if (upstreamFields.length === 5) break
+    }
   }
 
   return {
     ...(upstreamCode === undefined ? {} : { upstreamCode }),
     ...(upstreamFields.length === 0 ? {} : { upstreamFields }),
   }
+}
+
+function getInvalidVaultContextKeys(context: ByokVaultKeyContext): string[] | undefined {
+  if (!isPlainObject(context)) return ['context']
+
+  const entries = Object.entries(context)
+  const invalidKeys = entries.flatMap(([key, value], index) =>
+    typeof value !== 'string' ||
+    !VAULT_CONTEXT_VALUE_PATTERN.test(value) ||
+    (entries.length > MAX_VAULT_CONTEXT_ENTRIES && index >= MAX_VAULT_CONTEXT_ENTRIES)
+      ? [key]
+      : [],
+  )
+  if (invalidKeys.length === 0) return undefined
+
+  const safeKeys = [...new Set(invalidKeys.filter((key) => UPSTREAM_FIELD_PATTERN.test(key)))]
+    .slice(0, MAX_DIAGNOSTIC_CONTEXT_KEYS)
+  return safeKeys.length > 0 ? safeKeys : ['context']
 }
 
 function getWorkOSApiKey(): string {
@@ -175,6 +206,11 @@ export async function writeByokVaultKey(
   context: ByokVaultKeyContext,
 ): Promise<string> {
   try {
+    const invalidContextKeys = getInvalidVaultContextKeys(context)
+    if (invalidContextKeys) {
+      throw new VaultFailure('invalid_context', undefined, undefined, undefined, invalidContextKeys)
+    }
+
     const result = await vaultRequest<VaultObjectMetadata>('POST', '/vault/v1/kv', {
       name: vaultKeyName,
       value: apiKey,

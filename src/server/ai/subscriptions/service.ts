@@ -399,7 +399,7 @@ export class SubscriptionService {
         purpose: credentialPurpose,
         userId,
         connectionId,
-        providerId: `subscription:${providerId}`,
+        providerId: `subscription-${providerId}`,
       },
     })
   }

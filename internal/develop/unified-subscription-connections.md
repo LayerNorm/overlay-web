@@ -48,6 +48,8 @@ use Preview credentials, never a Production key. HTTP failures may also log
 WorkOS's machine-readable `upstreamCode` and offending `upstreamFields` names
 when they match a strict identifier pattern; messages and values are never
 logged.
+Vault context values are limited to letters, numbers, `/`, `_`, and `-`, and
+the writer validates each value and the ten-entry limit before making a request.
 
 Codex model discovery uses the signed-in account's
 `https://chatgpt.com/backend-api/codex/models?client_version=0.154.0` catalog.
