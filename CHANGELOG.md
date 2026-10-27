@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Join active Harness children with durable waits instead of model polling, and explicitly request the final deliverable once all plan evidence is complete.
+
 - Wait durably for busy free-model routes before inference, retaining exclusive route leases and zero-cost rejection receipts. Convex accepts the same bounded rejection reasons as the runtime. Ambiguous provider failures still retain billing holds and never authorize another Harness dispatch.
 
 - Persist completed child-run results as parent observations so delegated milestones can reference their output without treating it as independent verification. Reading a completed result first settles the parent's child state, avoiding a completion race while retaining unresolved-usage safeguards. Children inherit their parent's planning policy instead of requiring unnecessary plans for trivial replies.

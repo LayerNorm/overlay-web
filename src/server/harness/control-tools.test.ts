@@ -24,8 +24,9 @@ function fixture() {
     return parent
   })
   const readChild = vi.fn(async () => child)
-  const ports = { read: async () => parent, readChild, apply } as unknown as HarnessExecutionPorts
-  return { ports, apply, readChild, child }
+  const waitForChildren = vi.fn<HarnessExecutionPorts['waitForChildren']>(async () => undefined)
+  const ports = { read: async () => parent, readChild, waitForChildren, apply } as unknown as HarnessExecutionPorts
+  return { ports, apply, readChild, waitForChildren, child }
 }
 
 test('completed child results become parent observations without certifying independent verification', async () => {
@@ -61,7 +62,23 @@ test('a completed child with unresolved usage cannot expose completion evidence'
   expect(f.child.modelReservation).toBeDefined()
 })
 
-test.each(['running', 'failed', 'cancelled'] as const)('%s children do not produce completion evidence', async status => {
+test('joining an active child suspends until its completed result is available', async () => {
+  const f = fixture()
+  f.readChild.mockResolvedValueOnce({ ...f.child, status: 'running' })
+  let complete!: () => void
+  f.waitForChildren.mockImplementation(() => new Promise<void>(resolve => { complete = resolve }))
+  const pending = createHarnessControlTools(f.ports).harness_read_child.execute!(
+    { childRunId: 'child' }, { toolCallId: 'read-child', messages: [] },
+  )
+  await vi.waitFor(() => expect(f.waitForChildren).toHaveBeenCalledWith(['child']))
+  expect(f.apply).not.toHaveBeenCalled()
+  complete()
+  await expect(pending).resolves.toMatchObject({ status: 'completed', evidenceRef: 'child-result:read-child' })
+  expect(f.readChild).toHaveBeenCalledTimes(2)
+  expect(f.waitForChildren).toHaveBeenCalledOnce()
+})
+
+test.each(['failed', 'cancelled'] as const)('%s children do not produce completion evidence', async status => {
   const f = fixture()
   f.readChild.mockResolvedValue({ ...f.child, status })
   const result = await createHarnessControlTools(f.ports).harness_read_child.execute!(

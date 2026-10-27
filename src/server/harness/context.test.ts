@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest'
-import { createHarnessSnapshot, recordHarnessEvidence, recordHarnessReceipt } from '@overlay/agent-runtime/harness-state'
-import { buildHarnessInstructions, buildHarnessWorkingContext, harnessProgressFingerprint } from './context'
+import { createHarnessSnapshot, recordHarnessEvidence, recordHarnessReceipt, replaceHarnessPlan, transitionHarnessStep } from '@overlay/agent-runtime/harness-state'
+import { buildHarnessInstructions, buildHarnessStepInstructions, buildHarnessWorkingContext, harnessProgressFingerprint } from './context'
 
 const make = () => createHarnessSnapshot({
   runId: 'fixture-run', goal: 'Check the requested document', constraints: ['Do not publish it'],
@@ -9,6 +9,20 @@ const make = () => createHarnessSnapshot({
     deadlineAt: 10_000, maxCostMicros: 100, maxParallelChildren: 2, maxDepth: 2,
   },
 }, 1_000)
+
+test('completed plans request the final deliverable instead of more bookkeeping', () => {
+  let state = replaceHarnessPlan(make(), [{ id: 'work', title: 'Read document', dependsOn: [],
+    acceptanceCriteria: ['Document read'], requiresVerification: false }], 1_000)
+  const context = { instructions: 'Surface instructions', continuation: true, truncatedResponse: false }
+  expect(buildHarnessStepInstructions(state, context)).toContain('complete the remaining milestones')
+  state = recordHarnessEvidence(state, { id: 'read', kind: 'tool_result', source: 'read',
+    summary: 'Document read', verdict: 'observed', createdAt: 1_000 }, 1_000)
+  state = transitionHarnessStep(state, { id: 'work', status: 'done', evidenceRefs: ['read'] }, 1_000)
+  const instructions = buildHarnessStepInstructions(state, context)
+  expect(instructions).toContain('All plan milestones and required evidence are complete')
+  expect(instructions).toContain('respecting its requested output format')
+  expect(instructions).not.toContain('complete the remaining milestones')
+})
 
 test('keeps the cacheable instruction prefix separate from changing working state', () => {
   const state = make()

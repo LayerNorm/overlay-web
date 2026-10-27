@@ -58,13 +58,18 @@ export function createHarnessControlTools(ports: HarnessExecutionPorts) {
       execute: async (input, { toolCallId }) => ports.delegate(input, toolCallId),
     }),
     harness_read_child: tool({
-      description: 'Read the bounded result of an admitted child. A completed result returns a parent evidenceRef for milestone completion, not independent verification. Do not poll running children; the controller waits durably.',
+      description: 'Join an admitted child, waiting durably if it is still working. Start independent children before joining them. A completed result returns a parent evidenceRef for milestone completion, not independent verification.',
       inputSchema: z.object({ childRunId: id }),
       execute: async ({ childRunId }, { toolCallId }) => {
         const parent = await ports.read()
         if (!parent.children.some(child => child.id === childRunId)) throw new Error('This run did not delegate that child.')
-        const child = await ports.readChild(childRunId)
+        let child = await ports.readChild(childRunId)
         if (child.parentRunId !== parent.runId || child.rootRunId !== parent.rootRunId) throw new Error('Invalid child lineage.')
+        if (!['completed', 'failed', 'cancelled'].includes(child.status)) {
+          await ports.waitForChildren([childRunId])
+          child = await ports.readChild(childRunId)
+          if (child.parentRunId !== parent.runId || child.rootRunId !== parent.rootRunId) throw new Error('Invalid child lineage.')
+        }
         const result = { status: child.status, summary: child.resultSummary ?? child.workingSummary, evidence: child.evidence, blocker: child.blocker }
         if (child.status !== 'completed') return result
         await ports.apply(`settle-child:${child.runId}:${child.revision}`, { type: 'settle_child', childRunId })

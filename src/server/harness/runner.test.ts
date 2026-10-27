@@ -5,6 +5,7 @@ import type { LanguageModelV4FinishReason, LanguageModelV4StreamPart } from '@ai
 import { z } from 'zod'
 import * as state from '@overlay/agent-runtime/harness-state'
 import type { HarnessExecutionPorts } from './ports'
+import { buildHarnessStepInstructions } from './context'
 import { getLanguageModel } from '@/server/ai/model-runtime'
 import { runOverlayHarness } from './runner'
 
@@ -63,7 +64,8 @@ function fixture(requiresPlan = true) {
     },
     readEvidence: async id => current.evidence.find(item => item.id === id) ?? null,
     authorizeTool: vi.fn(async () => undefined),
-    prepareModel: async input => ({ messages: input.messages, activeToolNames: input.toolNames, estimatedCostMicros: 0 }),
+    prepareModel: async request => ({ messages: request.messages, instructions: buildHarnessStepInstructions(current, request.instructionContext),
+      activeToolNames: request.toolNames, estimatedCostMicros: 0 }),
     recordModelStep: async (step, id) => {
       sdkSteps.push(step.stepNumber)
       expect(receipts.has(id)).toBe(false)
@@ -100,7 +102,8 @@ test('the real SDK runs beyond twenty tool calls and continues after early sign-
       prepared = true
       await f.ports.apply('context-summary', { type: 'checkpoint', summary: 'Preserve the original constraints after compaction.' })
     }
-    return { messages: request.messages, activeToolNames: request.toolNames, estimatedCostMicros: 0 }
+    return { messages: request.messages, instructions: buildHarnessStepInstructions(await f.ports.read(), request.instructionContext),
+      activeToolNames: request.toolNames, estimatedCostMicros: 0 }
   }
   let reads = 0
   const provider = model(index => {
@@ -119,6 +122,8 @@ test('the real SDK runs beyond twenty tool calls and continues after early sign-
   expect(JSON.stringify(provider.doStreamCalls[0].prompt)).toContain('Preserve the original constraints after compaction.')
   expect(result.snapshot.workingSummary).toBe('Preserve the original constraints after compaction.')
   expect(result.snapshot.resultSummary).toBe('All requested records were read.')
+  expect(JSON.stringify(provider.doStreamCalls.at(-1)?.prompt)).toContain('All plan milestones and required evidence are complete')
+  expect(provider.doStreamCalls.at(-1)?.toolChoice).toEqual({ type: 'none' })
   expect(provider.doStreamCalls.every(options => options.prompt.filter(message => message.role === 'system').length === 1)).toBe(true)
   expect(f.receipts.size).toBe(provider.doStreamCalls.length)
   expect(result.snapshot.usage.cacheReadTokens).toBe(provider.doStreamCalls.length * 8)
