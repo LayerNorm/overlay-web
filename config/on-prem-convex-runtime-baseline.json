@@ -431,6 +431,7 @@
     "src/server/files/FileService.ts",
     "src/server/files/FileServicePayloads.ts",
     "src/server/harness/ConvexHarnessRepository.ts",
+    "src/server/harness/native-access.ts",
     "src/server/harness/personal-access.ts",
     "src/server/harness/personal-admission.ts",
     "src/server/harness/personal-cancellation.ts",
