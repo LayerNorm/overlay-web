@@ -5,6 +5,8 @@ import { CONVEX_APP_DATA_CAPABILITIES } from '@/server/app-data/capabilities'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { POST } from './route'
 
+vi.mock('server-only', () => ({}))
+
 const context: AppApiRouteContext = {
   params: Promise.resolve({}), auth: { userId: 'owner', accessToken: 'test', authType: 'session' },
   parsedQuery: {}, parsedJson: {}, parsedFormData: null, capabilities: DEFAULT_OVERLAY_CAPABILITIES,
