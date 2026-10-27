@@ -251,6 +251,12 @@ export function startActRetryStream(params: StartActTextStreamParams) {
   /* eslint-enable @typescript-eslint/no-explicit-any */
 }
 
-export function reportTextStreamError(error: unknown, fallbackMessage: string) {
-  toast.error(error instanceof Error ? error.message : fallbackMessage)
+export function reportTextStreamError(
+  error: unknown,
+  fallbackMessage: string,
+  onUsageExhaustedError?: (message: string) => boolean,
+) {
+  const message = error instanceof Error ? error.message : fallbackMessage
+  if (onUsageExhaustedError?.(message)) return
+  toast.error(message)
 }

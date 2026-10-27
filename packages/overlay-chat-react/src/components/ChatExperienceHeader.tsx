@@ -164,10 +164,13 @@ export interface ChatExperienceHeaderProps {
   selectedVideoModels: string[]
   onSelectVideoModel: (modelId: string) => void
   selectableTextModels: ChatModel[]
+  pickerTextModels?: ChatModel[]
   textModelsLoading: boolean
   selectedActModel: string
   selectedModels: string[]
   onToggleTextModel: (modelId: string) => void
+  isTextModelLocked?: (modelId: string) => boolean
+  onLockedTextModelSelect?: (model: ChatModel) => void
   hasAutomationContext: boolean
   reasoning?: ReasoningLevel
   onReasoningChange?: (level: ReasoningLevel | undefined) => void
@@ -572,8 +575,11 @@ export function ChatModelPickerDropdown({
   selectedVideoModels,
   onSelectVideoModel,
   selectableTextModels,
+  pickerTextModels,
   selectedActModel,
   onToggleTextModel,
+  isTextModelLocked,
+  onLockedTextModelSelect,
   favoriteScope,
   modelRecommendations,
   isFreeTierChatModelId,
@@ -594,8 +600,11 @@ export function ChatModelPickerDropdown({
   | 'selectedVideoModels'
   | 'onSelectVideoModel'
   | 'selectableTextModels'
+  | 'pickerTextModels'
   | 'selectedActModel'
   | 'onToggleTextModel'
+  | 'isTextModelLocked'
+  | 'onLockedTextModelSelect'
   | 'favoriteScope'
   | 'modelRecommendations'
   | 'isFreeTierChatModelId'
@@ -622,7 +631,7 @@ export function ChatModelPickerDropdown({
       <div className="px-1.5 pt-1.5">{modeToggle}</div>
       {generationMode === 'text' ? (
         <ModelSelector
-          models={selectableTextModels}
+          models={pickerTextModels ?? selectableTextModels}
           recommendedIds={modelRecommendations?.text}
           pinnedIds={isFreeTier ? selectableTextModels.filter((m) => isFreeTierChatModelId(m.id)).map((m) => m.id) : []}
           favoriteIds={favoriteIds}
@@ -631,7 +640,14 @@ export function ChatModelPickerDropdown({
           listRef={modelPickerListScrollRef}
           searchInputRef={modelSearchInputRef}
           isSelected={(m) => m.id === selectedActModel}
-          onSelect={(m) => onToggleTextModel(m.id)}
+          isLocked={isTextModelLocked ? (m) => isTextModelLocked(m.id) : undefined}
+          onSelect={(m) => {
+            if (m.id !== selectedActModel && isTextModelLocked?.(m.id)) {
+              onLockedTextModelSelect?.(m)
+              return
+            }
+            onToggleTextModel(m.id)
+          }}
           onRowHover={(m, row) => {
             const r = row.getBoundingClientRect()
             onHoveredModelChange(m.id, { x: r.left - 8, y: r.top + r.height / 2 })
@@ -686,8 +702,11 @@ export type ChatModelPickerProps = {
   selectedVideoModels?: string[]
   onSelectVideoModel?: (modelId: string) => void
   selectableTextModels: ChatModel[]
+  pickerTextModels?: ChatModel[]
   selectedActModel: string
   onToggleTextModel: (modelId: string) => void
+  isTextModelLocked?: (modelId: string) => boolean
+  onLockedTextModelSelect?: (model: ChatModel) => void
   favoriteScope?: string | null
   modelRecommendations?: Partial<Record<GenerationMode, readonly string[]>>
   isFreeTierChatModelId: (modelId: string) => boolean
@@ -766,8 +785,11 @@ export function ChatModelPicker({
   selectedVideoModels,
   onSelectVideoModel,
   selectableTextModels,
+  pickerTextModels,
   selectedActModel,
   onToggleTextModel,
+  isTextModelLocked,
+  onLockedTextModelSelect,
   favoriteScope,
   modelRecommendations,
   isFreeTierChatModelId,
@@ -839,7 +861,7 @@ export function ChatModelPicker({
               modelPickerRef={pickerRef}
               modelId={activeHoveredModelId}
               position={activeQualitiesPos}
-              resolveModel={(id) => resolvePickerModel(id, resolveModel, selectableTextModels, activeImageModels, activeVideoModels)}
+              resolveModel={(id) => resolvePickerModel(id, resolveModel, pickerTextModels ?? selectableTextModels, activeImageModels, activeVideoModels)}
               reasoning={reasoning}
               onReasoningChange={onReasoningChange}
               onHoveredModelChange={handleHoveredModelChange}
@@ -862,8 +884,14 @@ export function ChatModelPicker({
             selectedVideoModels={activeSelectedVideoModels}
             onSelectVideoModel={onSelectVideoModel ?? IGNORE_MODEL_CHANGE}
             selectableTextModels={selectableTextModels}
+            pickerTextModels={pickerTextModels}
             selectedActModel={selectedActModel}
             onToggleTextModel={onToggleTextModel}
+            isTextModelLocked={isTextModelLocked}
+            onLockedTextModelSelect={(model) => {
+              handleOpenChange(false)
+              onLockedTextModelSelect?.(model)
+            }}
             isFreeTierChatModelId={isFreeTierChatModelId}
             onHoveredModelChange={handleHoveredModelChange}
             modelSearchInputRef={modelSearchInputRef}

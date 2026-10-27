@@ -11,24 +11,25 @@ import {
 import { modelSupportsZeroDataRetention } from '@/shared/ai/gateway/model-data'
 import { useRouter } from 'next/navigation'
 import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
+import { toast } from '@overlay/ui/primitives'
 import type { Entitlements } from '../chat-interface/types'
 import {
   budgetRemainingCentsFor,
+  isTextModelLocked,
   useWorkspaceTextModelAccess,
 } from '@/components/providers/useWorkspaceTextModelAccess'
 import { CONNECTION_UNAVAILABLE_NOTICE, hasUnavailableByokModel } from './chat-composer-blocking'
+import { showUsageExhaustedToast, WORKSPACE_BILLING_PATH } from './usage-exhausted-toast'
 
 type ChatRouter = {
   replace: (href: string) => void
+  push: (href: string) => void
 }
 
 type ChatSearchParams = {
   get: (name: string) => string | null
   toString: () => string
 } | null
-
-const BUDGET_EXHAUSTED_NOTICE =
-  'This workspace’s credit is used up. Add credit in Workspace → Billing to keep using paid models, or switch to Auto for free chat.'
 
 type ComposerNoticeSetter = (value: string | null | ((current: string | null) => string | null)) => void
 
@@ -147,12 +148,12 @@ function applyFetchedEntitlements(
   {
     announcedBudgetExhaustedRef,
     setAutoTopUpEnabledDraft,
-    setComposerNotice,
+    router,
     setTopUpAmountDraftCents,
   }: {
     announcedBudgetExhaustedRef: { current: boolean }
     setAutoTopUpEnabledDraft: (value: boolean) => void
-    setComposerNotice: ComposerNoticeSetter
+    router: ChatRouter
     setTopUpAmountDraftCents: (value: number) => void
   },
 ) {
@@ -162,18 +163,12 @@ function applyFetchedEntitlements(
   const exhausted = planKind === 'paid' && budgetRemainingCentsFor(data) <= 0
   if (exhausted && !announcedBudgetExhaustedRef.current) {
     announcedBudgetExhaustedRef.current = true
-    setComposerNotice(BUDGET_EXHAUSTED_NOTICE)
+    showUsageExhaustedToast(router, 'paid')
   } else if (!exhausted) {
     announcedBudgetExhaustedRef.current = false
-    setComposerNotice((current) =>
-      current === BUDGET_EXHAUSTED_NOTICE
-        ? null
-        : current,
-    )
+    toast.dismiss('usage-exhausted')
   }
 }
-
-const WORKSPACE_BILLING_PATH = '/app/settings?section=workspace&workspace_tab=billing'
 
 /** Credit and top-ups belong to the workspace, so both actions open Workspace → Billing. */
 function useTopUpActions() {
@@ -193,6 +188,7 @@ export function useChatBillingControls({
   modelCatalogReady = true,
   chatPrefsHydrated,
   onlyAllowZdrModels,
+  router,
   selectedActModel,
   selectedModels,
   setComposerNotice,
@@ -226,10 +222,10 @@ export function useChatBillingControls({
     applyFetchedEntitlements(data, {
       announcedBudgetExhaustedRef,
       setAutoTopUpEnabledDraft,
-      setComposerNotice,
+      router,
       setTopUpAmountDraftCents,
     })
-  }, [setComposerNotice])
+  }, [router])
   const modelAccess = useWorkspaceTextModelAccess<Entitlements>({
     activeWorkspaceId,
     billingEnabled,
@@ -249,12 +245,10 @@ export function useChatBillingControls({
     effectiveOnlyAllowZdrModels,
     entitlements,
     loadSubscription,
+    pickerTextModels,
     selectableTextModels,
   } = modelAccess
-  const premiumModelBlocked =
-    isModelAccessRestricted &&
-    !isByokModelId(selectedActModel) &&
-    !isFreeTierChatModelId(selectedActModel)
+  const premiumModelBlocked = isTextModelLocked(selectedActModel, isModelAccessRestricted)
   const connectionUnavailable = useByokModelAvailability({
     chatPrefsHydrated,
     modelCatalogReady,
@@ -302,9 +296,11 @@ export function useChatBillingControls({
     isPaidSubscription,
     isSendBlocked,
     loadSubscription,
+    pickerTextModels,
     premiumModelBlocked,
     connectionUnavailable,
     selectableTextModels,
+    isModelAccessRestricted,
     setAutoTopUpEnabledDraft,
     setTopUpAmountDraftCents,
     topUpAmountDraftCents,

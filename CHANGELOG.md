@@ -6,6 +6,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Avoid remounting new chats after their first response and keep the generation-mode tooltip from opening when the model picker receives programmatic focus.
 
+- Keep free workspaces visibly free until paid, show locked premium models with upgrade paths, and surface paid and weekly usage exhaustion in chat.
+
 - Enable ChatGPT/Codex subscription connections in the hosted production environment. Other subscription adapters remain unavailable.
 
 - Keep the composer available when a disconnected BYOK model is selected, with guidance to reconnect or choose another model.

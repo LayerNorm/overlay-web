@@ -55,6 +55,33 @@ test('Recommended opens by default with a Favorites then grid rail and no inline
   assert.doesNotMatch(html, /lucide-brain-circuit|lucide-image/)
 })
 
+test('locked models show a paid-plan lock and remain clickable for selection', () => {
+  const html = renderToStaticMarkup(
+    <ModelSelector
+      models={MODELS}
+      recommendedIds={['claude-opus']}
+      favoriteIds={[]}
+      onToggleFavorite={() => {}}
+      isSelected={(model) => model.id === 'auto'}
+      isLocked={(model) => model.id === 'claude-opus'}
+      onSelect={() => {}}
+    />,
+  )
+  const row = html.slice(html.indexOf('data-model-row="claude-opus"'))
+  const modelButton = row.slice(0, row.indexOf('data-slot="model-favorite"'))
+  const modelSelectedSlot = row.slice(row.indexOf('data-slot="model-selected"'))
+
+  assert.match(row, /title="Paid plan"/)
+  assert.match(row, /lucide-lock/)
+  assert.match(row, /Paid plan/)
+  assert.match(modelSelectedSlot, /text-\(--muted-light\)/)
+  assert.match(modelSelectedSlot, /width="11"/)
+  assert.match(modelSelectedSlot, /stroke-width="1.75"/)
+  assert.doesNotMatch(modelButton, /disabled=""/)
+  assert.doesNotMatch(modelButton, /disabled:opacity-40|disabled:cursor-not-allowed/)
+  assert.doesNotMatch(row.slice(0, row.indexOf('<button')), /opacity-40/)
+})
+
 test('capabilities and capitalized providers render in model details', () => {
   const html = renderToStaticMarkup(<ModelQualitiesPanel model={{
     provider: 'moonshotai', supportsVision: true, supportsReasoning: true,

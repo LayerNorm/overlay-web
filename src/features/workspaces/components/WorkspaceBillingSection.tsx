@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { CircleAlert, CreditCard, Loader2, RefreshCw, WalletCards } from 'lucide-react'
-import { Button, EmptyState, Toggle, toast } from '@overlay/ui/primitives'
+import { Button, Checkbox, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, EmptyState, Toggle, toast } from '@overlay/ui/primitives'
 import type { WorkspaceBillingSummaryResponse, WorkspaceSummary } from '@overlay/workspace-contracts'
 import { currentLegalAcceptancePayload } from '@/shared/legal/legal-documents'
 import type { WorkspaceManagementClient } from '@/shared/workspaces/types'
@@ -23,6 +23,12 @@ type BillingState =
   | { status: 'loading' }
   | { status: 'error'; message: string }
   | { status: 'ready'; summary: WorkspaceBillingSummaryResponse }
+
+export function isPaidWorkspaceBilling(summary: WorkspaceBillingSummaryResponse): boolean {
+  return summary.initialized && (
+    summary.subscription.planKind === 'paid' || summary.credits.topUpBalance > 0
+  )
+}
 
 export function WorkspaceBillingSection({
   client,
@@ -64,6 +70,8 @@ function useWorkspaceBilling(client: WorkspaceManagementClient, workspace: Works
   const [topUpAmountCents, setTopUpAmountCents] = useState(800)
   const [refreshKey, setRefreshKey] = useState(0)
   const [acceptedCheckoutTerms, setAcceptedCheckoutTerms] = useState(false)
+  const [upgradeDialogOpen, setUpgradeDialogOpen] = useState(false)
+  const handledUpgradeParamRef = useRef(false)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -84,6 +92,19 @@ function useWorkspaceBilling(client: WorkspaceManagementClient, workspace: Works
       })
     return () => controller.abort()
   }, [client, refreshKey, workspace.id])
+
+  useEffect(() => {
+    if (searchParams?.get('upgrade') !== '1') {
+      handledUpgradeParamRef.current = false
+      return
+    }
+    if (state.status !== 'ready' || handledUpgradeParamRef.current) return
+    handledUpgradeParamRef.current = true
+    if (!isPaidWorkspaceBilling(state.summary) && state.summary.canManage) setUpgradeDialogOpen(true)
+    const url = new URL(window.location.href)
+    url.searchParams.delete('upgrade')
+    window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`)
+  }, [searchParams, state])
 
   useEffect(() => {
     const sessionId = searchParams?.get('workspace_session_id')
@@ -140,6 +161,8 @@ function useWorkspaceBilling(client: WorkspaceManagementClient, workspace: Works
     setTopUpAmountCents,
     acceptedCheckoutTerms,
     setAcceptedCheckoutTerms,
+    upgradeDialogOpen,
+    setUpgradeDialogOpen,
     refresh: () => setRefreshKey((value) => value + 1),
     run,
   }
@@ -156,7 +179,7 @@ function WorkspaceBillingLoaded({
   summary: WorkspaceBillingSummaryResponse
   billing: WorkspaceBilling
 }) {
-  const { busy, run } = billing
+  const { busy } = billing
 
   return (
     <div data-testid="workspace-billing" className="space-y-4 p-5">
@@ -169,15 +192,23 @@ function WorkspaceBillingLoaded({
           </div>
         </dl>
       ) : null}
-      {!summary.initialized ? (
+      {!isPaidWorkspaceBilling(summary) ? (
         <WalletSetupCard
           canManage={summary.canManage}
           busy={busy}
-          onSetup={() => void run('initialize', () => client.initializeBilling(workspaceId))}
+          onUpgrade={() => billing.setUpgradeDialogOpen(true)}
         />
       ) : (
         <WalletOverview client={client} workspaceId={workspaceId} summary={summary} billing={billing} />
       )}
+      <WorkspaceUpgradeDialog
+        open={billing.upgradeDialogOpen}
+        onOpenChange={billing.setUpgradeDialogOpen}
+        client={client}
+        workspaceId={workspaceId}
+        summary={summary}
+        billing={billing}
+      />
     </div>
   )
 }
@@ -185,22 +216,99 @@ function WorkspaceBillingLoaded({
 function WalletSetupCard({
   canManage,
   busy,
-  onSetup,
+  onUpgrade,
 }: {
   canManage: boolean
   busy: string | null
-  onSetup: () => void
+  onUpgrade: () => void
 }) {
   return (
     <div className="rounded-xl border border-(--border) p-5">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="text-sm font-medium text-(--foreground)">Free</p>
-          <p className="mt-1 max-w-xl text-xs leading-5 text-(--muted)">Everyone working in this workspace shares one free weekly allowance of chat turns. Add a plan to give the workspace its own pool of credits for agents, files, automations, browser runs, and other hosted work, shared by every member.</p>
+          <p className="mt-1 max-w-xl text-xs leading-5 text-(--muted)">Everyone in this workspace shares one free weekly allowance of chat turns. Upgrade for shared credits and every model.</p>
         </div>
-        {canManage ? <Button size="sm" disabled={busy !== null} onClick={onSetup}>{busy === 'initialize' ? <Loader2 size={13} className="animate-spin" /> : <WalletCards size={13} />}Add a plan</Button> : null}
+        {canManage ? <Button size="sm" disabled={busy !== null} onClick={onUpgrade}><WalletCards size={13} />Upgrade</Button> : null}
       </div>
     </div>
+  )
+}
+
+function WorkspaceUpgradeDialog({
+  open,
+  onOpenChange,
+  client,
+  workspaceId,
+  summary,
+  billing,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  client: WorkspaceManagementClient
+  workspaceId: string
+  summary: WorkspaceBillingSummaryResponse
+  billing: WorkspaceBilling
+}) {
+  const [checkoutBusy, setCheckoutBusy] = useState(false)
+
+  const continueToPayment = async () => {
+    if (!billing.acceptedCheckoutTerms || checkoutBusy) return
+    setCheckoutBusy(true)
+    try {
+      if (!summary.initialized) await client.initializeBilling(workspaceId)
+      const { url } = await client.createBillingCheckout(workspaceId, {
+        planAmountCents: billing.planAmountCents,
+        topUpAmountCents: billing.topUpAmountCents,
+        autoTopUpEnabled: false,
+        ...currentLegalAcceptancePayload(),
+      })
+      if (!url) throw new Error('Could not start workspace checkout.')
+      window.location.assign(url)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not start workspace checkout.')
+      billing.refresh()
+    } finally {
+      setCheckoutBusy(false)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(nextOpen) => {
+      if (!checkoutBusy) onOpenChange(nextOpen)
+    }}>
+      <DialogContent showCloseButton={false}>
+        <DialogHeader>
+          <DialogTitle>Upgrade to a paid workspace</DialogTitle>
+        </DialogHeader>
+        <DialogDescription>Monthly credits shared by everyone in this workspace.</DialogDescription>
+        <DollarAmountInput
+          label="Monthly amount"
+          valueCents={billing.planAmountCents}
+          minCents={PAID_PLAN_MIN_AMOUNT_CENTS}
+          maxCents={PAID_PLAN_MAX_AMOUNT_CENTS}
+          suffix="/month"
+          onChange={billing.setPlanAmountCents}
+        />
+        <div className="flex items-start gap-2 text-xs leading-5 text-(--muted)">
+          <Checkbox
+            checked={billing.acceptedCheckoutTerms}
+            onCheckedChange={(checked) => billing.setAcceptedCheckoutTerms(checked === true)}
+            aria-label="I agree to the Terms, Privacy Policy, and billing terms."
+          />
+          <span>
+            I agree to the <a className="underline" href="/terms">Terms</a>, <a className="underline" href="/privacy">Privacy Policy</a>, and <a className="underline" href="/refunds">billing terms</a>.
+          </span>
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" disabled={checkoutBusy} onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button disabled={!billing.acceptedCheckoutTerms || checkoutBusy} onClick={() => void continueToPayment()}>
+            {checkoutBusy ? <Loader2 size={13} className="animate-spin" /> : null}
+            Continue to payment
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 
