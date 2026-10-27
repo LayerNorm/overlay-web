@@ -1,5 +1,6 @@
-import { Avatar, AvatarFallback } from '@overlay/ui/primitives'
+import { Avatar, AvatarFallback, AvatarImage } from '@overlay/ui/primitives'
 import type { WorkspaceSummary } from '@/shared/workspaces/types'
+import { workspaceIconUrl } from '@/shared/workspaces/icon-presets'
 
 function initials(name: string): string {
   return name
@@ -10,12 +11,11 @@ function initials(name: string): string {
     .join('') || 'W'
 }
 
-/** Every workspace looks the same: its initials. (There is no longer a separate look for a personal workspace.) */
 export function WorkspaceAvatar({
   workspace,
   size = 'md',
 }: {
-  workspace: Pick<WorkspaceSummary, 'name'>
+  workspace: Pick<WorkspaceSummary, 'name'> & { iconUrl?: string | null; iconPreset?: string | null }
   size?: 'sm' | 'md' | 'lg'
 }) {
   const sizeClass = {
@@ -26,6 +26,7 @@ export function WorkspaceAvatar({
 
   return (
     <Avatar className={`border border-(--border) bg-(--surface-subtle) font-semibold text-(--foreground) ${sizeClass}`} aria-hidden>
+      <AvatarImage src={workspaceIconUrl(workspace)} alt="" />
       <AvatarFallback className="bg-transparent font-semibold">{initials(workspace.name)}</AvatarFallback>
     </Avatar>
   )

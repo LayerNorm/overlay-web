@@ -6,7 +6,7 @@ import { Suspense, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { redirect, useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { Link2, ListCollapse, Mail, Moon, Sun, Play, Palette, PanelsLeftBottom, ShieldCheck } from 'lucide-react'
-import { AccountPageContent } from '@/app/app/account/account-content'
+import { ProfileSettings } from '@/features/account/components/ProfileSettings'
 import { DefaultChatModelSetting } from '@/features/settings/components/DefaultChatModelSetting'
 import { useAppSettings } from '@/components/providers/AppSettingsProvider'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
@@ -39,8 +39,6 @@ import { ComputerSettings } from '@/features/settings/components/ComputerSetting
 import { ShortcutsSettings } from '@/features/settings/components/ShortcutsSettings'
 import { WorkspaceSettingsPanel } from '@/features/workspaces/components/WorkspaceSettingsPanel'
 import { isWorkspaceSettingsTab } from '@/features/workspaces/lib/workspace-settings-tabs'
-import { createShowcaseWorkspaceManagementClient } from '@/features/showcase/showcase-workspace-client'
-import { SHOWCASE_WORKSPACES } from '@/features/showcase/showcase-data'
 import { ProviderConnectionsSetting } from '@/features/settings/components/ProviderConnectionsSetting'
 
 const MemoriesView = dynamic(
@@ -131,14 +129,6 @@ function GeneralSettingsSection({
   )
 }
 
-function AccountSettingsSection() {
-  return (
-    <Suspense fallback={null}>
-      <AccountPageContent embedded />
-    </Suspense>
-  )
-}
-
 /** Settings for agents: how their replies read, then the accounts agents on Overlay Cloud run on. */
 function AgentsSettingsSection({
   settings,
@@ -167,17 +157,12 @@ function AgentsSettingsSection({
 }
 
 function WorkspaceSettingsSection({
-  publicShowcase,
-  showcaseWorkspaceManagementClient,
   workspaceTabParam,
 }: {
-  publicShowcase: boolean
-  showcaseWorkspaceManagementClient: ReturnType<typeof createShowcaseWorkspaceManagementClient>
   workspaceTabParam: string | null | undefined
 }) {
   return (
     <WorkspaceSettingsPanel
-      client={publicShowcase ? showcaseWorkspaceManagementClient : undefined}
       initialTab={isWorkspaceSettingsTab(workspaceTabParam)
         ? workspaceTabParam as Parameters<typeof WorkspaceSettingsPanel>[0]['initialTab']
         : undefined}
@@ -300,8 +285,6 @@ function SettingsSectionContent({
   busy,
   billingSettings,
   billingEnabled,
-  publicShowcase,
-  showcaseWorkspaceManagementClient,
   workspaceTabParam,
   updateSettings,
   onMemoriesHeaderStateChange,
@@ -315,8 +298,6 @@ function SettingsSectionContent({
   busy: boolean
   billingSettings: BillingSettings | null
   billingEnabled: OverlayCapabilitiesApi['capabilities']['billing']
-  publicShowcase: boolean
-  showcaseWorkspaceManagementClient: ReturnType<typeof createShowcaseWorkspaceManagementClient>
   workspaceTabParam: string | null | undefined
   updateSettings: AppSettingsApi['updateSettings']
   onMemoriesHeaderStateChange: (state: MemoriesHeaderState | null) => void
@@ -336,12 +317,10 @@ function SettingsSectionContent({
       />
     )
   }
-  if (section === 'account') return <AccountSettingsSection />
+  if (section === 'profile') return <ProfileSettings />
   if (section === 'workspace') {
     return (
       <WorkspaceSettingsSection
-        publicShowcase={publicShowcase}
-        showcaseWorkspaceManagementClient={showcaseWorkspaceManagementClient}
         workspaceTabParam={workspaceTabParam}
       />
     )
@@ -392,14 +371,8 @@ function SettingsPage() {
   const sectionIds = useMemo(() => new Set<string>(sections.map((s) => s.id)), [sections])
   const rawSection = searchParams?.get('section') ?? defaultSectionId
   const section = sectionIds.has(rawSection) ? rawSection : defaultSectionId
-  const publicShowcase = searchParams?.get('showcase') === '1'
-  const showcaseWorkspaceManagementClient = useMemo(
-    () => createShowcaseWorkspaceManagementClient(SHOWCASE_WORKSPACES),
-    [],
-  )
-
   const { isAuthenticated, isLoading: authLoading } = useAuth()
-  if (!publicShowcase && !authLoading && !isAuthenticated) {
+  if (!authLoading && !isAuthenticated) {
     redirect('/app/chat?signin=nav')
   }
 
@@ -474,8 +447,6 @@ function SettingsPage() {
           busy={busy}
           billingSettings={billingSettings}
           billingEnabled={capabilities.billing}
-          publicShowcase={publicShowcase}
-          showcaseWorkspaceManagementClient={showcaseWorkspaceManagementClient}
           workspaceTabParam={searchParams?.get('workspace_tab')}
           updateSettings={updateSettings}
           onMemoriesHeaderStateChange={setMemoriesHeaderState}

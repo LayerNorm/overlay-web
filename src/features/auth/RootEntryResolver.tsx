@@ -35,8 +35,7 @@ export function RootEntryResolver() {
 
         if (!cancelled) {
           // Routing into the app is safe on a transient auth failure because
-          // the app remains server-authorized. Most importantly, a provider
-          // outage can never misclassify a real user as a showcase guest.
+          // the app remains server-authorized.
           window.location.replace(destination ?? ROOT_APP_DESTINATION)
         }
       } catch {

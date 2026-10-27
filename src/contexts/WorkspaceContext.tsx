@@ -248,6 +248,14 @@ export function WorkspaceProvider({
     return () => controller.abort()
   }, [load])
 
+  useEffect(() => {
+    const handleIdentityUpdate = () => {
+      void load(undefined, { force: true })
+    }
+    window.addEventListener('overlay:identity-updated', handleIdentityUpdate)
+    return () => window.removeEventListener('overlay:identity-updated', handleIdentityUpdate)
+  }, [load])
+
   const refresh = useCallback(async () => {
     await load(undefined, { force: true })
   }, [load])

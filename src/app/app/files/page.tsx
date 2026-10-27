@@ -6,7 +6,6 @@ import { getInitialKnowledgeFiles } from '@/server/app/route-data'
 import { resolveKnowledgeLayout } from '@overlay/app-core'
 import { FilesRouteSkeleton, type FilesRouteSkeletonLayout } from '../_components/AppRouteSkeletons'
 import { FilesRouteLoadingSkeleton } from './FilesRouteLoadingSkeleton'
-import { PublicShowcaseKnowledgeView } from '@/features/showcase/PublicShowcaseKnowledgeView'
 
 // TODO: Cache Components adoption. Refactor this route so this opt-out can be removed.
 // See: https://nextjs.org/docs/app/guides/migrating-to-cache-components
@@ -22,7 +21,6 @@ const KnowledgeView = dynamic(
 
 type FilesSearchParams = {
   layout?: string | string[]
-  showcase?: string | string[]
 }
 
 function firstParam(value: string | string[] | undefined): string | undefined {
@@ -55,15 +53,6 @@ export default async function FilesPage({
 }) {
   const session = await getOverlaySession()
   const params = await searchParams
-  const publicShowcase = firstParam(params?.showcase) === '1'
-
-  if (publicShowcase) {
-    return (
-      <Suspense fallback={null}>
-        <PublicShowcaseKnowledgeView />
-      </Suspense>
-    )
-  }
   if (!session) return <AppRouteSessionRecovery />
   const layout = resolveFilesLayout(params)
   return (

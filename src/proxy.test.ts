@@ -43,19 +43,45 @@ for (const scenario of [
   })
 }
 
-test('an authenticated account alias preserves query parameters and selects account settings', async () => {
+test('an authenticated account route stays at the canonical route', async () => {
   process.env.AUTH_PROVIDER = 'workos'
   const payload = 'synthetic-session-payload'
   const signature = createHmac('sha256', secret).update(payload).digest('hex')
   const response = await proxy(new NextRequest(origin + '/account?desktop_code_challenge=pkce-fixture&section=other', {
     headers: { cookie: `overlay_session=${payload}.${signature}` },
   }))
-  assert.equal(response.status, 307)
-  const location = new URL(response.headers.get('location')!)
-  assert.equal(location.origin, origin)
-  assert.equal(location.pathname, '/app/settings')
-  assert.equal(location.searchParams.get('desktop_code_challenge'), 'pkce-fixture')
-  assert.equal(location.searchParams.get('section'), 'account')
+  assert.equal(response.status, 200)
+  assert.equal(response.headers.get('location'), null)
+})
+
+test('legacy account settings and app account paths redirect to canonical account', async () => {
+  for (const path of [
+    '/app/settings?section=account&billing=return',
+    '/app/account?handoff=desktop',
+    '/w/acme/workspace/settings?section=account&return=%2Fapp%2Fwork',
+  ]) {
+    const response = await proxy(new NextRequest(origin + path))
+    const location = new URL(response.headers.get('location')!)
+    assert.equal(response.status, 307)
+    assert.equal(location.pathname, '/account')
+    assert.equal(location.searchParams.has('section'), false)
+  }
+})
+
+test('retired showcase and explore routes redirect before application subscriptions', async () => {
+  for (const path of [
+    '/explore/chat',
+    '/app/chat?showcase=1&id=showcase-welcome',
+    '/app/agents?id=showcase-agent-welcome',
+    '/app/agents/showcase-research',
+    '/api/public/showcase/ask',
+  ]) {
+    const response = await proxy(new NextRequest(origin + path))
+    const location = new URL(response.headers.get('location')!)
+    assert.equal(response.status, 307)
+    assert.equal(location.pathname, '/home')
+    assert.equal(location.search, '')
+  }
 })
 
 test('a query containing an external URL stays inside the local return path', async () => {

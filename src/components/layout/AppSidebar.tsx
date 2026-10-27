@@ -19,7 +19,6 @@ import { signOutToLanding } from './sidebar/appSidebarNav'
 import { useOptionalAppSettings } from '@/components/providers/AppSettingsProvider'
 import { useAppSidebarState } from './sidebar/useAppSidebarState'
 import { EMPTY_COLLABORATION_NOTIFICATIONS, type AppSidebarProps } from './appSidebarTypes'
-import { ROOT_SHOWCASE_DESTINATION } from '@/shared/auth/root-entry'
 import { WORK_FILTER_LABELS, type WorkFilter } from '@/shared/work/query'
 import type { InlineNavItem } from './AppSidebarInlinePanels'
 
@@ -50,7 +49,7 @@ export default function AppSidebar({
   })
   const classicLayout = useOptionalAppSettings()?.settings.useSecondarySidebar === true
   const railExpanded = !s.sidebarCollapsed
-  const brandHomeHref = publicShowcase ? ROOT_SHOWCASE_DESTINATION : s.brandConfig.homeHref
+  const brandHomeHref = s.brandConfig.homeHref
   const brandLabel = s.brandConfig.shortName ?? s.brandConfig.name
 
   const brandLink = (
@@ -68,7 +67,6 @@ export default function AppSidebar({
   const accountMenuProps = {
     billingEnabled: s.billingEnabled,
     entitlements: s.entitlements,
-    demoHref: !publicShowcase && s.user ? ROOT_SHOWCASE_DESTINATION : undefined,
   }
   const accountMenuContent = (
     <SidebarAccountMenu

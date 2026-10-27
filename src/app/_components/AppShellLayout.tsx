@@ -19,7 +19,7 @@ import { getAuthorizationEnforcementMode } from '@/server/authorization'
 import { AppConfigurationErrorState } from '@/app/app/_components/AppConfigurationErrorState'
 import { AppShellLoadingFallback, ChatRouteSkeleton } from '@/app/app/_components/AppRouteSkeletons'
 import { getSelectedIntegrationProviderId } from '@/server/integrations'
-import { WorkspaceAppBoundaryWithShowcase } from '@/app/_components/WorkspaceAppBoundaryWithShowcase'
+import { WorkspaceAppBoundary } from '@/features/workspaces/components/WorkspaceAppBoundary'
 import { WorkspaceScopedContentBoundary } from '@/features/workspaces/components/WorkspaceScopedContentBoundary'
 import { AppBreadcrumbProvider } from '@/components/layout/AppBreadcrumbProvider'
 import { CollaborationRealtimeProvider } from '@/features/chat/components/collaboration/CollaborationRealtimeProvider'
@@ -41,11 +41,9 @@ function WorkspaceSwitchFallback() {
 
 async function AppShellContent({
   children,
-  publicShowcase,
   suppressGuestPrompts,
 }: {
   children: React.ReactNode
-  publicShowcase: boolean
   suppressGuestPrompts: boolean
 }) {
   let session: Awaited<ReturnType<typeof getOverlaySession>>
@@ -77,11 +75,8 @@ async function AppShellContent({
       initialUser={user}
       requiresConvexClient={appDataCapabilities.requiresConvexClient}
     >
-      <WorkspaceAppBoundaryWithShowcase
-        hasAuthenticatedUser={Boolean(user)}
-        publicShowcase={publicShowcase}
-      >
-        <GatewayModelCatalogPrefetch publicShowcase={publicShowcase} />
+      <WorkspaceAppBoundary hasAuthenticatedUser={Boolean(user)}>
+        <GatewayModelCatalogPrefetch />
         <div className="flex h-screen overflow-hidden bg-background text-foreground">
           <AsyncSessionsProvider>
             <NavigationProgressProvider>
@@ -95,7 +90,7 @@ async function AppShellContent({
                   <AuthorizationProvider authorization={authorization}>
                     <BackgroundPollManager />
                     <GuestGateProvider suppressPrompts={suppressGuestPrompts}>
-                        <OnboardingShell publicShowcase={publicShowcase} sidebar={<AppShellSidebar publicShowcase={publicShowcase} />}>
+                        <OnboardingShell sidebar={<AppShellSidebar />}>
                           <Suspense fallback={<AppMainFallback />}>
                             <WorkspaceScopedContentBoundary fallback={<WorkspaceSwitchFallback />}>
                               <AppBreadcrumbProvider><AuthorizationRouteGuard>{children}</AuthorizationRouteGuard></AppBreadcrumbProvider>
@@ -109,24 +104,21 @@ async function AppShellContent({
             </NavigationProgressProvider>
           </AsyncSessionsProvider>
         </div>
-      </WorkspaceAppBoundaryWithShowcase>
+      </WorkspaceAppBoundary>
     </AppClientProviders>
   )
 }
 
 export function AppShellLayout({
   children,
-  publicShowcase = false,
   suppressGuestPrompts = false,
 }: {
   children: React.ReactNode
-  publicShowcase?: boolean
   suppressGuestPrompts?: boolean
 }) {
   return (
     <Suspense fallback={<AppShellLoadingFallback />}>
       <AppShellContent
-        publicShowcase={publicShowcase}
         suppressGuestPrompts={suppressGuestPrompts}
       >
         {children}

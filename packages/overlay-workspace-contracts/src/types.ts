@@ -31,6 +31,8 @@ export type Workspace = {
   name: string
   slug: string
   status: WorkspaceStatus
+  iconUrl?: string
+  iconPreset?: string
   createdByPrincipalId?: string
   createdAt: number
   updatedAt: number
@@ -48,6 +50,8 @@ export type WorkspacePrincipal = {
   /** Stable workspace-local identity for an integration or machine actor. */
   serviceId?: string
   displayName: string
+  displayNameOverride?: string | null
+  photoUrl?: string
   email?: string
   createdByPrincipalId?: string
   createdAt: number
@@ -59,6 +63,8 @@ export type WorkspaceMembership = {
   workspaceId: string
   principalId: string
   role: WorkspaceMembershipRole
+  iconUrl?: string
+  iconPreset?: string
   status: WorkspaceMembershipStatus
   invitedByPrincipalId?: string
   joinedAt: number
@@ -151,6 +157,8 @@ export type WorkspaceSummary = {
   name: string
   slug: string
   routingHandle?: string
+  iconUrl?: string
+  iconPreset?: string
   kind: WorkspaceKind
   status: WorkspaceStatus
   role: WorkspaceMembershipRole
@@ -318,6 +326,7 @@ export type WorkspaceManagementItem = {
   badge?: string
   principalId?: string
   principalType?: WorkspacePrincipalType
+  photoUrl?: string
   /** An agent's own avatar, so pickers can show it instead of a generic icon. */
   avatarColor?: string
   avatarShape?: string

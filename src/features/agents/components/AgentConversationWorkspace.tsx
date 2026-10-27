@@ -241,10 +241,8 @@ function agentDetailRouteState(args: {
   return 'ready'
 }
 
-export function AgentConversationWorkspace({ showcase = false }: { showcase?: boolean }) {
-  return showcase
-    ? <DirectMessageExperience conversationId="showcase-agent-welcome" showcase />
-    : <ScopedAgentConversationWorkspace />
+export function AgentConversationWorkspace() {
+  return <ScopedAgentConversationWorkspace />
 }
 
 function ScopedAgentConversationWorkspace() {

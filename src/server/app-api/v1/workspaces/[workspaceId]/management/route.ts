@@ -9,6 +9,8 @@ import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { workspaceErrorResponse } from '@/server/app-api/v1/workspaces/route'
 import { requiredWorkspaceParam } from '@/server/app-api/v1/workspaces/inputs'
+import { lazyConvex } from '@/server/database/lazy-convex'
+import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 
 const MANAGEMENT_VIEWS = [
   'people',
@@ -48,6 +50,32 @@ export async function GET(_request: Request, context: AppApiRouteContext) {
       items,
       workspaceKind: access.workspace.kind,
     })
+    const identities = await lazyConvex.query<Array<{
+      principalId: string
+      displayNameOverride?: string
+      accountDisplayNameOverride?: string
+      accountName?: string
+      displayName: string
+      photoUrl?: string
+      accountPhotoUrl?: string
+    }>>('collaboration/workspaces:getWorkspaceIdentityDirectoryByServer', {
+      serverSecret: getInternalApiSecret(),
+      workspaceId,
+      actorUserId: context.auth.userId,
+    }, { throwOnError: true }).catch((_error) => []) ?? []
+    const identityByPrincipal = new Map(identities.map((identity) => [identity.principalId, identity]))
+    const humanDetails = (principal: { id: string; displayName: string }) => {
+      const identity = identityByPrincipal.get(principal.id)
+      return {
+        name: identity?.displayNameOverride?.trim()
+          || identity?.accountDisplayNameOverride?.trim()
+          || identity?.accountName?.trim()
+          || principal.displayName,
+        ...((identity?.photoUrl || identity?.accountPhotoUrl)
+          ? { photoUrl: identity.photoUrl || identity.accountPhotoUrl }
+          : {}),
+      }
+    }
 
     if (view === 'sharing') return NextResponse.json(response([]))
 
@@ -94,7 +122,7 @@ export async function GET(_request: Request, context: AppApiRouteContext) {
             return {
               id: principal.id,
               kind: 'member' as const,
-              name: principal.displayName,
+              ...humanDetails(principal),
               description: principal.email ?? 'Workspace guest',
               detail: `${grants} ${grants === 1 ? 'resource' : 'resources'}`,
               badge: membership.status,
@@ -183,7 +211,7 @@ export async function GET(_request: Request, context: AppApiRouteContext) {
         .map(({ principal, membership }) => ({
           id: principal.id,
           kind: 'member' as const,
-          name: principal.displayName,
+          ...humanDetails(principal),
           description: principal.email ?? 'Workspace member',
           detail: membership.role,
           badge: membership.status,

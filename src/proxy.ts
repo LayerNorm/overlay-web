@@ -307,12 +307,25 @@ export async function proxy(request: NextRequest) {
 
   const security = createProxySecurityContext(request, pathname)
 
-  // /app/account is a legacy implementation route; account settings are canonical under /app/settings.
-  if (pathname === '/app/account') {
-    const destination = new URL('/app/settings' + request.nextUrl.search, request.url)
-    destination.searchParams.set('section', 'account')
+  if (isRetiredShowcaseRequest(request)) {
+    const destination = new URL('/home', request.url)
     return applyBrowserSecurityHeaders(
-      NextResponse.redirect(destination),
+      NextResponse.redirect(destination, 307),
+      security.cspHeaderName,
+      security.cspPolicy,
+    )
+  }
+
+  if (
+    pathname === '/app/account'
+    || (request.nextUrl.searchParams.get('section') === 'account' && pathname !== '/account')
+  ) {
+    const destination = new URL('/account', request.url)
+    for (const [key, value] of request.nextUrl.searchParams) {
+      if (key !== 'section') destination.searchParams.append(key, value)
+    }
+    return applyBrowserSecurityHeaders(
+      NextResponse.redirect(destination, 307),
       security.cspHeaderName,
       security.cspPolicy,
     )
@@ -342,20 +355,22 @@ export async function proxy(request: NextRequest) {
   const protectedResponse = await handleProtectedRoute(request, security)
   if (protectedResponse) return protectedResponse
 
-  // Preserve /account as a compatibility alias while making the canonical
-  // settings query visible to client navigation. Internal rewrite query params
-  // are not reliable input to useSearchParams during hydration.
-  if (pathname === '/account') {
-    const destination = new URL('/app/settings' + request.nextUrl.search, request.url)
-    destination.searchParams.set('section', 'account')
-    return applyBrowserSecurityHeaders(
-      NextResponse.redirect(destination),
-      security.cspHeaderName,
-      security.cspPolicy,
-    )
-  }
-
   return security.nextResponse()
+}
+
+function isRetiredShowcaseRequest(request: NextRequest): boolean {
+  const pathname = request.nextUrl.pathname
+  if (
+    pathname === '/explore'
+    || pathname.startsWith('/explore/')
+    || pathname === '/api/public/showcase'
+    || pathname.startsWith('/api/public/showcase/')
+    || pathname.split('/').some((segment) => segment.toLowerCase().includes('showcase-'))
+  ) return true
+  if (request.nextUrl.searchParams.has('showcase')) return true
+  return Array.from(request.nextUrl.searchParams.values()).some((value) =>
+    value.toLowerCase().includes('showcase-'),
+  )
 }
 
 type ProxySecurityContext = {

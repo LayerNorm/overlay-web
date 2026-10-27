@@ -12,14 +12,12 @@ import { WorkspaceSwitcherView } from './WorkspaceSwitcherView'
 export function WorkspaceSwitcher({
   onNavigate,
   compact = false,
-  showcase = false,
   placement = 'header',
   accountMenu,
   userLabel,
 }: {
   onNavigate?: () => void
   compact?: boolean
-  showcase?: boolean
   /** Footer placement opens upward and can host the account menu. */
   placement?: 'header' | 'footer'
   accountMenu?: ReactNode
@@ -62,7 +60,6 @@ export function WorkspaceSwitcher({
       onNavigate?.()
       const destination = workspaces.find((workspace) => workspace.id === workspaceId)
       const search = new URLSearchParams(searchParams?.toString() ?? '')
-      if (showcase) search.set('showcase', '1')
       const href = buildWorkspaceSwitchHref({
         workspaceId,
         handle: destination?.routingHandle,
@@ -85,7 +82,6 @@ export function WorkspaceSwitcher({
       setOpen(false)
       onNavigate?.()
       const params = new URLSearchParams({ section: 'workspace' })
-      if (showcase) params.set('showcase', '1')
       const settings = `/app/settings?${params.toString()}`
       router.push(
         workspace.routingHandle
