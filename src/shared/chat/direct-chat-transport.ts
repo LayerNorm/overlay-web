@@ -9,6 +9,7 @@ import {
   markTtftClientMilestone,
   wrapUiMessageStreamForTtft,
 } from '@/shared/chat/ttft-client-debug'
+import { fetchWithSessionRecovery } from '@/shared/auth/session-fetch'
 
 type ChatBody = object | undefined
 type ChatFetch = NonNullable<HttpChatTransportInitOptions<UIMessage>['fetch']>
@@ -90,7 +91,11 @@ export function createChatDiagnosticFetch(fetchImpl?: ChatFetch): ChatFetch {
     const endpoint = requestEndpoint(input)
     const requestId = requestHeader(init, 'x-request-id')
     try {
-      const response = await (fetchImpl ?? globalThis.fetch)(input, init)
+      const response = await fetchWithSessionRecovery(input, init, {
+        fetch: fetchImpl,
+        // Only the BFF's pre-dispatch auth rejection is safe to replay.
+        shouldRecover: (response) => response.headers.get('WWW-Authenticate') === 'Bearer',
+      })
       if (response.ok) return response
 
       const text = await response.clone().text().catch(() => '')

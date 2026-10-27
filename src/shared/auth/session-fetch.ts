@@ -29,11 +29,24 @@ function canRecoverBrowserSession(input: RequestInfo | URL, init?: RequestInit):
   return url.origin === window.location.origin && url.pathname.startsWith('/api/v1/')
 }
 
-export const fetchWithSessionRecovery: typeof fetch = async (input, init) => {
+export async function fetchWithSessionRecovery(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  options: {
+    fetch?: typeof fetch
+    shouldRecover?: (response: Response) => boolean
+  } = {},
+): Promise<Response> {
+  const fetchImpl = options.fetch ?? fetch
   const revision = getBrowserSessionRevision()
   const scopedInit = withRouteWorkspaceTarget(input, init)
-  const response = await fetch(input, scopedInit)
-  if (response.status !== 401 || response.redirected || !canRecoverBrowserSession(input, init)) {
+  const response = await fetchImpl(input, scopedInit)
+  if (
+    response.status !== 401
+    || response.redirected
+    || !canRecoverBrowserSession(input, init)
+    || options.shouldRecover?.(response) === false
+  ) {
     return response
   }
 
@@ -45,5 +58,5 @@ export const fetchWithSessionRecovery: typeof fetch = async (input, init) => {
   }
   init?.signal?.throwIfAborted()
   // Keep the original body, headers and idempotency key. Never loop on a second 401.
-  return fetch(input, scopedInit)
+  return fetchImpl(input, scopedInit)
 }

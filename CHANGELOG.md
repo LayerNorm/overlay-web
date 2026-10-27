@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Recover personal Chat and Work sends after a pre-dispatch session rejection, using the shared browser session refresh and preserving turn identity without replaying provider failures.
+
 - Add the shared Overlay Harness execution and persistence foundations: evidence-gated plans, durable state operations, semantic continuation, secure model references and single-workflow ownership. Authenticated personal Chat and Work now use these foundations; other surfaces await migration and parity QA.
 
 - Add workflow-owned input/approval wait storage, child attention notifications and an owner-only personal run input API for the upcoming harness migration. Personal tool approvals also remain owner-only in shared conversations.

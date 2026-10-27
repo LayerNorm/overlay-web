@@ -4,6 +4,13 @@ description: "Why the web app owns backend route contracts and how other surface
 ---
 The web app owns backend route contracts for every surface. Desktop, mobile, Chrome, and future surfaces should call the same `/api/v1/*` endpoints through `@overlay/api-client` rather than copying route-specific fetch logic.
 
+Browser chat streaming shares the app client's session-recovery broker and route
+workspace targeting. It retries once only for the BFF's pre-dispatch 401 with a
+bare `WWW-Authenticate: Bearer` challenge, preserving the original body, turn,
+request ID and idempotency key. Provider errors, ambiguous failures and started
+streams never trigger chat-session replay. Explicit bearer requests and
+cross-origin requests remain outside browser cookie recovery.
+
 On an isolated protected Preview, server-side workspace-tool requests to that Preview's
 own `/api/` routes add the existing Vercel automation hosting header. The configured PR
 origin must match exactly; redirects are refused. Overlay's bearer/service identity,
