@@ -60,12 +60,13 @@ export function WorkspaceBillingSection({
 
 type WorkspaceBilling = ReturnType<typeof useWorkspaceBilling>
 
+const handledCheckoutKeys = new Set<string>()
+
 function useWorkspaceBilling(client: WorkspaceManagementClient, workspace: WorkspaceSummary) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [state, setState] = useState<BillingState>({ status: 'loading' })
   const [busy, setBusy] = useState<string | null>(null)
-  const handledCheckoutRef = useRef<string | null>(null)
   const [planAmountCents, setPlanAmountCents] = useState(800)
   const [topUpAmountCents, setTopUpAmountCents] = useState(800)
   const [refreshKey, setRefreshKey] = useState(0)
@@ -115,8 +116,8 @@ function useWorkspaceBilling(client: WorkspaceManagementClient, workspace: Works
         : null
     if (!sessionId || !kind) return
     const checkoutKey = sessionId && kind ? `${kind}:${sessionId}` : null
-    if (!checkoutKey || handledCheckoutRef.current === checkoutKey) return
-    handledCheckoutRef.current = checkoutKey
+    if (!checkoutKey || handledCheckoutKeys.has(checkoutKey)) return
+    handledCheckoutKeys.add(checkoutKey)
     setBusy('verify')
     void client
       .verifyBillingCheckout(workspace.id, { kind, sessionId })
