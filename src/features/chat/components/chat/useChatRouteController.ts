@@ -6,7 +6,7 @@ import { normalizeAutomationDetailTab } from '@overlay/app-core/automations'
 import type { AutomationDetail } from '@overlay/app-core'
 import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import { usePanelScope } from '@/hooks/use-panel-scope'
-import { readWorkspacePathScope } from '@/shared/workspaces/routing'
+import { normalizeChatViewForScope, readWorkspacePathScope } from '@/shared/workspaces/routing'
 import { parsePanelScope } from '@/shared/workspaces/panel-scope'
 import { resetRuntimeState } from './conversation-runtime-utils'
 import type { ConversationRuntime, ConversationUiState } from '../chat-interface/types'
@@ -91,7 +91,9 @@ export function useChatRouteController({
   const syncStandaloneChatUrl = useCallback((chatId: string | null, options: { replaceUrl?: boolean } = {}) => {
     if (hideSidebar || options.replaceUrl === false) return
     const replaceUrl = (href: string) => {
-      routerReplace(href)
+      if (typeof window !== 'undefined') {
+        window.history.replaceState(window.history.state, '', href)
+      }
     }
     if (mode === 'automate') {
       const params = new URLSearchParams()
@@ -111,11 +113,16 @@ export function useChatRouteController({
     }
     const params = new URLSearchParams()
 
-    if (viewParam && ['personal', 'workspace-chats', 'dms', 'channels'].includes(viewParam)) params.set('view', viewParam)
+    const view = routeScope
+      ? normalizeChatViewForScope(routeScope, viewParam)
+      : viewParam && ['personal', 'workspace-chats', 'dms', 'channels'].includes(viewParam)
+        ? viewParam
+        : null
+    if (view) params.set('view', view)
     if (chatId) params.set('id', chatId)
     const query = params.toString()
     replaceUrl(buildWorkspaceHref(null, `/app/chat${query ? `?${query}` : ''}`, routeScope))
-  }, [automationIdParam, buildWorkspaceHref, hideSidebar, mode, routeScope, routerReplace, searchParams, viewParam])
+  }, [automationIdParam, buildWorkspaceHref, hideSidebar, mode, routeScope, searchParams, viewParam])
 
   const resetToBlankChatSurface = useCallback((options: { temporary: boolean }) => {
     invalidateLoadChatRequestRef.current?.()

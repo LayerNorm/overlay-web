@@ -12,6 +12,7 @@ import type { AutomationDetail } from '@overlay/app-core'
 import { ChatComposer } from './ChatComposer'
 import { ChatMessageList } from './ChatMessageList'
 import { ChatDropOverlay } from './ChatDropOverlay'
+import { UpgradeModelDialog } from './UpgradeModelDialog'
 
 const DraftReviewModal = dynamic(
   () => import('./chat-interface/Modals').then((mod) => ({ default: mod.DraftReviewModal })),
@@ -62,6 +63,7 @@ export type ChatExperienceViewProps = {
   composerProps: React.ComponentProps<typeof ChatComposer> | null
   draftReviewProps: React.ComponentProps<typeof DraftReviewModal>
   attachmentPreviewProps: React.ComponentProps<typeof AttachmentPreviewDialog>
+  upgradeModelDialogProps: React.ComponentProps<typeof UpgradeModelDialog>
 }
 
 export function ChatExperienceView({
@@ -74,6 +76,7 @@ export function ChatExperienceView({
   composerProps,
   draftReviewProps,
   attachmentPreviewProps,
+  upgradeModelDialogProps,
 }: ChatExperienceViewProps) {
   const modelControlsInComposer = Boolean(composerProps) && !headerProps.hasAutomationContext
   return (
@@ -136,6 +139,7 @@ export function ChatExperienceView({
       </AppScreenShell>
 
       <AttachmentPreviewDialog {...attachmentPreviewProps} />
+      <UpgradeModelDialog {...upgradeModelDialogProps} />
     </>
   )
 }

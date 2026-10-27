@@ -3,6 +3,7 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { isFreeTierChatModelId, type ChatModel } from '@/shared/ai/gateway/model-types'
 import { getModelsByIntelligence } from '@/shared/ai/gateway/model-data'
+import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
 import { ACTIVE_WORKSPACE_HEADER } from '@/shared/workspaces/constants'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 
@@ -76,6 +77,24 @@ export function buildSelectableTextModels({
     : availableTextModels
 }
 
+export function buildPickerTextModels({
+  effectiveOnlyAllowZdrModels,
+  isModelAccessRestricted = false,
+}: {
+  effectiveOnlyAllowZdrModels: boolean
+  isModelAccessRestricted?: boolean
+}): ChatModel[] {
+  const availableTextModels = getModelsByIntelligence(isModelAccessRestricted)
+    .filter((model) => model.id !== 'nvidia/nemotron-nano-9b-v2')
+  return effectiveOnlyAllowZdrModels
+    ? availableTextModels.filter((model) => model.supportsZeroDataRetention)
+    : availableTextModels
+}
+
+export function isTextModelLocked(modelId: string, isModelAccessRestricted: boolean): boolean {
+  return isModelAccessRestricted && !isByokModelId(modelId) && !isFreeTierChatModelId(modelId)
+}
+
 export function useWorkspaceTextModelAccess<T extends WorkspaceModelEntitlements = WorkspaceModelEntitlements>({
   activeWorkspaceId,
   billingEnabled,
@@ -99,6 +118,19 @@ export function useWorkspaceTextModelAccess<T extends WorkspaceModelEntitlements
     void catalogRevision
     void modelCatalogVersion
     return buildSelectableTextModels(derived)
+  }, [
+    catalogRevision,
+    derived.effectiveOnlyAllowZdrModels,
+    derived.isModelAccessRestricted,
+    modelCatalogVersion,
+  ])
+  const pickerTextModels = useMemo(() => {
+    void catalogRevision
+    void modelCatalogVersion
+    return buildPickerTextModels({
+      effectiveOnlyAllowZdrModels: derived.effectiveOnlyAllowZdrModels,
+      isModelAccessRestricted: derived.isModelAccessRestricted,
+    })
   }, [
     catalogRevision,
     derived.effectiveOnlyAllowZdrModels,
@@ -159,6 +191,7 @@ export function useWorkspaceTextModelAccess<T extends WorkspaceModelEntitlements
     entitlements,
     loading,
     loadSubscription,
+    pickerTextModels,
     selectableTextModels,
   }
 }

@@ -44,6 +44,7 @@ export function sendTextTurn({
   isStreamChatActive,
   loadChats,
   loadSubscription,
+  onUsageExhaustedError,
   markChatModified,
   pendingFirstSendRef,
   pendingScrollChatIdRef,
@@ -70,6 +71,7 @@ export function sendTextTurn({
   isStreamChatActive: (chatId: string, temporaryChatSnapshot: boolean) => boolean
   loadChats: () => Promise<void>
   loadSubscription: () => Promise<unknown>
+  onUsageExhaustedError: (message: string) => boolean
   markChatModified: (chatId: string, titleSnapshot?: string | null) => void
   pendingFirstSendRef: MutableRefObject<PendingFirstSendState | null>
   pendingScrollChatIdRef: MutableRefObject<string | null>
@@ -264,7 +266,7 @@ export function sendTextTurn({
     completeSession: completeSessionForStream,
     loadChats: snapshot.temporaryChatSnapshot ? (() => {}) : loadChats,
     loadSubscription: refreshAfterActTextTurn,
-    onError: (error, fallbackMessage) => reportTextStreamError(error, fallbackMessage),
+    onError: (error, fallbackMessage) => reportTextStreamError(error, fallbackMessage, onUsageExhaustedError),
     logPrefix: 'Act',
   })
 }

@@ -75,6 +75,7 @@ export function useChatSendController({
   isTemporaryChatRef,
   loadChats,
   loadSubscription,
+  onUsageExhaustedError,
   markChatModified,
   memoryEnabled,
   mentions,
@@ -150,6 +151,7 @@ export function useChatSendController({
   isTemporaryChatRef: MutableRefObject<boolean>
   loadChats: () => Promise<void>
   loadSubscription: () => Promise<unknown>
+  onUsageExhaustedError: (message: string) => boolean
   markChatModified: (chatId: string, titleSnapshot?: string | null) => void
   memoryEnabled: boolean
   mentions: MentionItem[]
@@ -438,6 +440,7 @@ export function useChatSendController({
       isStreamChatActive,
       loadChats,
       loadSubscription,
+      onUsageExhaustedError,
       markChatModified,
       pendingFirstSendRef,
       pendingScrollChatIdRef,
@@ -481,6 +484,7 @@ export function useChatSendController({
     isTemporaryChatRef,
     loadChats,
     loadSubscription,
+    onUsageExhaustedError,
     markChatModified,
     memoryEnabled,
     mentions,

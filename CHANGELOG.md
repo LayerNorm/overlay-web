@@ -5,6 +5,9 @@ This file records user-visible and operational changes that reach `main`. Pull r
 ## Unreleased
 
 - Refresh recommended models to each provider's latest releases, give every model provider a logo, show the app's logo on chat connect cards and switch them to Connected once linked, and use the shared model picker in the New agent dialog with GLM 5.3 Flash as the default. Free workspaces now see only Auto and OpenRouter free in model pickers even when billing is turned off for the deployment.
+- Avoid remounting new chats after their first response and keep the generation-mode tooltip from opening when the model picker receives programmatic focus.
+
+- Keep free workspaces visibly free until paid, show locked premium models with upgrade paths, and surface paid and weekly usage exhaustion in chat.
 
 - Enable ChatGPT/Codex subscription connections in the hosted production environment. Other subscription adapters remain unavailable.
 

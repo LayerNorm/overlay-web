@@ -6,6 +6,7 @@ import { buildWorkspaceHandleHref } from '@/shared/workspaces/routing'
 import {
   ConversationDetailScopeGate,
   conversationDetailRouteKey,
+  markConversationScopeVerified,
   startConversationDetailScopeProbe,
   type ConversationDetailScopeStatus,
   type ConversationRouteLocation,
@@ -78,6 +79,17 @@ test('draft collaboration details are probed before the real conversation render
   assert.equal(calls, 1)
   assert.deepEqual(statuses, [{ routeKey, status: 'verified' }])
   assert.match(renderGate(routeKey, statuses[0]!), /Conversation/)
+})
+
+test('newly created conversations render without waiting for a detail probe', () => {
+  const routeKey = conversationDetailRouteKey({
+    pathScope: 'personal',
+    conversationId: 'created-chat',
+  })
+
+  assert.equal(renderGate(routeKey, null), '')
+  markConversationScopeVerified('personal', 'created-chat')
+  assert.match(renderGate(routeKey, null), /Conversation/)
 })
 
 test('draft markers do not bypass authorization for unknown conversation ids', async () => {
