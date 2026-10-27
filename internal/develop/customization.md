@@ -6,6 +6,26 @@ The web app is the canonical surface for enterprise customization. Self-hosters 
 
 ## Brand, Theme, And Navigation
 
+Account is the workspace-independent `/account` page, linked above Settings in the
+workspace menu. It shows account identity, memberships, sign out and account deletion;
+it must remain usable when workspace loading fails or there are no memberships.
+Legacy account settings links redirect there while preserving callback parameters.
+Billing stays inside each workspace. Interactive demo routes and fixtures are retired;
+legacy explore/showcase entry points redirect to `/home`.
+
+Settings → Workspace → Profile edits only the signed-in member's name and photo
+in that workspace. Identity resolves workspace override → account override →
+sign-in provider → safe fallback; clearing an override restores inheritance.
+Provider synchronization must not overwrite custom fields. Workspace owners/admins
+can choose bundled icon presets, upload an icon or restore initials. New workspaces
+receive a stable preset; existing workspaces are not backfilled.
+
+Custom identity images use authenticated media routes, never public object URLs.
+Reads require active shared membership; writes require the matching account/member,
+or owner/admin access for workspace icons. Uploads accept PNG/JPEG/WebP up to 5 MB,
+authorize before decoding, and re-encode to bounded 512px WebP without metadata.
+Agent identity continues to use creature avatars.
+
 `src/overlay.config.ts` is a serializable app registry. It can replace brand metadata, add navigation destinations, hide feature-gated surfaces, register settings panels, and describe custom tools or integrations.
 
 The default brand mark is the `OverlayMark` SVG orb component (`@overlay/ui`, re-exported from
