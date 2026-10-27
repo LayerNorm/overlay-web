@@ -27,7 +27,7 @@ import {
   type WorkspaceAgentTurnResult,
 } from './workspace-agent-invocation'
 import { buildAgentTurnContext } from './agent-turn-context'
-import { createAgentMessageStream, appendAgentTextPart } from './agent-message-stream'
+import { createAgentMessageStream, appendAgentTextPart, persistAgentToolProgress } from './agent-message-stream'
 import { hashOperationalIdentifier } from '@/server/security/operational-key-hash'
 import { agentMemoryOwnerId } from '@/shared/agents/agent-memory'
 import {
@@ -444,9 +444,9 @@ export async function persistWorkspaceAgentToolProgress(input: {
   parts: Array<Record<string, unknown>>
 }) {
   'use step'
-  await getOverlayServerContext().appData.repositories.conversationCollaboration.appendAgentMessageDelta({
+  await persistAgentToolProgress({
+    store: getOverlayServerContext().appData.repositories.conversationCollaboration,
     actorUserId: input.prepared.actorUserId,
-    contentDelta: '',
     conversationId: input.prepared.conversationId,
     messageId: input.prepared.turnMessageId,
     parts: input.parts,
