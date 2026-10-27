@@ -2,6 +2,7 @@ import { beforeEach, expect, test, vi } from 'vitest'
 import { MockLanguageModelV4 } from 'ai/test'
 import { tool } from 'ai'
 import type { LanguageModelV4FinishReason, LanguageModelV4StreamPart } from '@ai-sdk/provider'
+import { FatalError } from 'workflow'
 import { z } from 'zod'
 import * as state from '@overlay/agent-runtime/harness-state'
 import type { HarnessExecutionPorts } from './ports'
@@ -310,4 +311,26 @@ test('write runs need a durable plan and real tool evidence to complete action m
   expect(result.snapshot.evidence).toContainEqual(expect.objectContaining({ id: 'tool:write-result', verdict: 'observed' }))
   expect(provider.doStreamCalls[0]?.toolChoice).toEqual({ type: 'required' })
   expect(execute).toHaveBeenCalledOnce()
+})
+
+
+test('FatalError from a control tool execution is returned as model-visible error output', async () => {
+  const f = fixture()
+  const apply = f.ports.apply
+  f.ports.apply = async (operationId, operation) => {
+    if (operation.type === 'transition_step') throw new FatalError('Deterministic operation rejected.')
+    return apply(operationId, operation)
+  }
+  const provider = model(index => index === 0
+    ? [call('harness_set_plan', 'plan', { steps: plan })]
+    : index === 1
+      ? [call('harness_update_step', 'reject-update', { id: 'work', status: 'done', evidenceRefs: ['missing'] })]
+      : 'The update was rejected and the milestone remains open.')
+
+  const result = await runOverlayHarness({ ...input, tools: {} }, f.ports)
+
+  expect(result.snapshot.status).not.toBe('completed')
+  expect(provider.doStreamCalls.length).toBeGreaterThanOrEqual(3)
+  expect(JSON.stringify(provider.doStreamCalls[2]?.prompt)).toContain('error-text')
+  expect(JSON.stringify(provider.doStreamCalls[2]?.prompt)).toContain('Deterministic operation rejected.')
 })

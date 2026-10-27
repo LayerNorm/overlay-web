@@ -1,12 +1,19 @@
+import { ConvexError } from 'convex/values'
 import { FatalError, RetryableError } from 'workflow'
 import type { HarnessEvidence, HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
-import type { HarnessOperation } from '@overlay/agent-runtime/harness-store'
+import type { HarnessMutationResult, HarnessOperation } from '@overlay/agent-runtime/harness-store'
 import { ConvexHarnessRepository } from './ConvexHarnessRepository'
 
 export type HarnessExecutionReference = {
   actorUserId: string
   runId: string
   workflowRunId: string
+}
+
+function rejectedOperationMessage(error: unknown): string | null {
+  if (!(error instanceof ConvexError) || !error.data || typeof error.data !== 'object') return null
+  const data = error.data as { code?: unknown; message?: unknown }
+  return data.code === 'HARNESS_OPERATION_REJECTED' && typeof data.message === 'string' ? data.message : null
 }
 
 export async function readHarnessState(reference: HarnessExecutionReference): Promise<HarnessSnapshot> {
@@ -44,10 +51,17 @@ export async function applyHarnessOperation(
     const state = await repository.get({ actorUserId: reference.actorUserId, runId: reference.runId })
     if (!state) throw new FatalError('HARNESS_RUN_NOT_FOUND')
     if (state.workflowRunId !== reference.workflowRunId) throw new FatalError('HARNESS_EXECUTION_NOT_OWNED')
-    const result = await repository.apply({
-      actorUserId: reference.actorUserId, runId: reference.runId,
-      operationId, expectedRevision: state.revision, operation,
-    })
+    let result: HarnessMutationResult
+    try {
+      result = await repository.apply({
+        actorUserId: reference.actorUserId, runId: reference.runId,
+        operationId, expectedRevision: state.revision, operation,
+      })
+    } catch (error) {
+      const message = rejectedOperationMessage(error)
+      if (message !== null) throw new FatalError(message)
+      throw error
+    }
     if (!result.conflict) return result.snapshot
   }
   throw new RetryableError('Harness state is contended.')

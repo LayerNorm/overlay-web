@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, test } from 'vitest'
 import { convexTest } from 'convex-test'
 import { makeFunctionReference } from 'convex/server'
+import { ConvexError } from 'convex/values'
 import type {
   HarnessAdmission,
   HarnessMutationResult,
@@ -186,6 +187,31 @@ describe('durable harness runs', () => {
     expect(settled.snapshot.status).toBe('cancelled')
     await apply(convex, input, 'receipt-again', settled.snapshot.revision, { type: 'record_receipt', receipt })
     expect((await get(convex, input.runId))?.usage.costMicros).toBe(500)
+  })
+
+  test('reducer rejection exposes a typed operation error for workflow retry handling', async () => {
+    const convex = convexTest(schema, modules)
+    const input = admission('rejected-operation', await seedConversation(convex))
+    await admit(convex, input)
+    const plan = await apply(convex, input, 'plan', 0, { type: 'replace_plan', steps: oneStep('inspect') })
+    let rejection: unknown
+    try {
+      await apply(convex, input, 'invalid-evidence', plan.snapshot.revision, {
+        type: 'transition_step',
+        id: 'inspect',
+        status: 'done',
+        evidenceRefs: ['missing-evidence'],
+      })
+    } catch (error) {
+      rejection = error
+    }
+    expect(rejection).toBeInstanceOf(ConvexError)
+    expect(rejection).toMatchObject({
+      data: {
+        code: 'HARNESS_OPERATION_REJECTED',
+        message: 'Evidence must reference successful observations from this run.',
+      },
+    })
   })
   test('binds one workflow owner atomically and keeps the claim on reload', async () => {
     const convex = convexTest(schema, modules)

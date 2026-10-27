@@ -5,7 +5,7 @@ import { createNativeHarnessTools } from '@/server/harness/native-tools'
 import { createNativeHarnessExecutionPorts } from '@/server/harness/native-ports'
 import { createHarnessWaitPorts } from '@/server/harness/waits'
 import { admitNativeHarnessChild } from '@/server/harness/native-child-steps'
-import { buildPersonalHarnessDelivery } from '@/server/harness/personal-delivery'
+import { buildNativeHarnessDelivery } from '@/server/harness/native-tool-metrics'
 import {
   attachNativeHarnessDelivery, finishNativeHarnessDelivery, projectNativeHarnessWait, writeNativeHarnessFallback,
 } from '@/server/harness/native-delivery-steps'
@@ -109,7 +109,7 @@ export async function nativeHarnessWorkflow(input: NativeHarnessWorkflowInput) {
     result = { outcome: 'finished', snapshot, messages: [], steps: [] }
   }
   if (owns) {
-    const delivery = buildPersonalHarnessDelivery(result, undefined, fallbackNotices)
+    const delivery = buildNativeHarnessDelivery(result, fallbackNotices)
     await finishNativeHarnessDelivery(access, delivery, { memoryEnabled: input.context.memoryEnabled })
   }
   if (initial.parentRunId) await notifyHarnessAncestors(access)

@@ -1,5 +1,6 @@
 import { beforeEach, expect, test, vi } from 'vitest'
 import { MockLanguageModelV4 } from 'ai/test'
+import type { LanguageModelV4CallOptions } from '@ai-sdk/provider'
 import type { LanguageModelV4StreamPart } from '@ai-sdk/provider'
 import type { HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
 import * as state from '@overlay/agent-runtime/harness-state'
@@ -37,6 +38,27 @@ const execution = { instructions: 'Read the requested records.', messages: [{ ro
   tools: {}, model: { modelId: 'fixture/model', credentialOwnerId: 'user' }, settings: { maxOutputTokens: 100 } }
 const surface = { recordToolResult: vi.fn(), delegate: vi.fn(), readChild: vi.fn(), waitForChildren: vi.fn(), waitForInput: vi.fn(), waitForApproval: vi.fn() }
 let current: HarnessSnapshot
+
+function preparedHarnessModel(modelId: string, receiptId: string, options: LanguageModelV4CallOptions, contextWindow: number) {
+  return {
+    model: {
+      modelId,
+      credentialOwnerId: 'user',
+      personal: {
+        access,
+        receiptId,
+        memoryEnabled: true,
+        requestFingerprint: 'request',
+        inputTokenBudget: contextWindow,
+        maxOutputTokens: options.maxOutputTokens ?? 0,
+        contextWindow,
+      },
+    },
+    options: { ...options, providerOptions: { gateway: { zeroDataRetention: true } } },
+    contextWindow,
+    estimatedCostMicros: 100,
+  }
+}
 
 test('shared model preparation delegates surface authority without requiring personal context', async () => {
   const reference = { actorUserId: 'user', runId: 'run', workflowRunId: 'workflow' }
@@ -211,6 +233,13 @@ function history() {
     { role: 'assistant' as const, content: 'Check the final result without publishing.' }]
 }
 
+function compactableHistory() {
+  return history().map(message => ({
+    role: message.role,
+    content: [{ type: 'text' as const, text: message.content }],
+  }))
+}
+
 test('real SDK dispatch receives the quoted instructions, schemas, output cap and ZDR settings, with one root admission', async () => {
   const model = provider()
   const ports = createPersonalHarnessExecutionPorts({ access, context }, surface)
@@ -241,15 +270,106 @@ test('compaction uses separately reserved and settled SDK calls before the main 
   expect(current.modelReservation).toBeUndefined()
 })
 
-test.each(['length', 'billing'] as const)('failed compaction (%s) cannot dispatch the main call or discard history', async failure => {
-  const model = provider(failure === 'length' ? 'length' : 'stop')
-  if (failure === 'billing') mocks.settle.mockRejectedValue(new Error('Billing unavailable'))
+test('a failed summary with an unsettled reservation cannot dispatch the main call', async () => {
+  const model = provider()
+  mocks.settle.mockRejectedValue(new Error('Billing unavailable'))
   const ports = createPersonalHarnessExecutionPorts({ access, context, contextBudgetTokens: 8_192 }, surface)
   await expect(runOverlayHarness({ ...execution, messages: history() }, ports)).rejects.toThrow(/safely compacted/)
   expect(model.doStreamCalls).toHaveLength(1)
   expect(current.workingSummary).toBe('')
-  if (failure === 'billing') expect(current.modelReservation?.dispatch).toBeDefined()
-  else expect(current.modelReservation).toBeUndefined()
+  expect(current.modelReservation?.dispatch).toBeDefined()
+})
+
+test('summary calls reserve reasoning headroom while the prompt retains the summary target', async () => {
+  const model = provider()
+  mocks.catalog.mockResolvedValue({ type: 'language', contextWindow: 128_000, maxTokens: 8_192 })
+  const prepare = vi.fn(async ({ modelId, receiptId, options }) => preparedHarnessModel(modelId, receiptId, options, 128_000))
+  const ports = createHarnessModelPorts({
+    reference: { actorUserId: 'user', runId: 'run', workflowRunId: 'workflow' },
+    modelId: 'fixture/model',
+    contextBudgetTokens: 8_192,
+    prepare,
+  })
+  await ports.prepareModel({
+    receiptId: 'model:summary-headroom', state: current, messages: compactableHistory(),
+    instructionContext: { instructions: execution.instructions, continuation: false, truncatedResponse: false },
+    toolNames: [], toolDefinitions: [], settings: { maxOutputTokens: 512 },
+  })
+
+  const summaryRequest = prepare.mock.calls.find(([request]) => request.purpose === 'summary')?.[0]
+  expect(summaryRequest).toBeDefined()
+  const targetSummaryTokens = Number(JSON.stringify(summaryRequest!.options.prompt).match(/Target length: at most (\d+) tokens/)?.[1])
+  const expectedOutputTokens = Math.min(8_192, Math.max(4 * targetSummaryTokens, targetSummaryTokens + 4_096))
+  expect(summaryRequest!.options.maxOutputTokens).toBe(expectedOutputTokens)
+  expect(expectedOutputTokens).toBeGreaterThan(targetSummaryTokens)
+  expect(JSON.stringify(summaryRequest!.options.prompt)).toContain(`at most ${targetSummaryTokens} tokens`)
+  expect(model.doStreamCalls[0]?.maxOutputTokens).toBe(expectedOutputTokens)
+})
+
+test('a failed summary falls back to uncompacted history when it fits the real model window', async () => {
+  const model = provider('length')
+  mocks.catalog.mockResolvedValue({ type: 'language', contextWindow: 128_000, maxTokens: 20_000 })
+  const prepare = vi.fn(async ({ modelId, receiptId, options }) => preparedHarnessModel(modelId, receiptId, options, 128_000))
+  const originalMessages = compactableHistory()
+  const ports = createHarnessModelPorts({
+    reference: { actorUserId: 'user', runId: 'run', workflowRunId: 'workflow' },
+    modelId: 'fixture/model',
+    contextBudgetTokens: 8_192,
+    prepare,
+  })
+  const result = await ports.prepareModel({
+    receiptId: 'model:fallback-fit', state: current, messages: originalMessages,
+    instructionContext: { instructions: execution.instructions, continuation: false, truncatedResponse: false },
+    toolNames: [], toolDefinitions: [], settings: { maxOutputTokens: 12_000 },
+  })
+
+  const responseRequest = prepare.mock.calls.find(([request]) => request.purpose === 'response')?.[0]
+  expect(responseRequest?.options.maxOutputTokens).toBe(12_000)
+  expect(result.messages).toHaveLength(originalMessages.length)
+  expect(result.settings?.maxOutputTokens).toBe(12_000)
+  expect(model.doStreamCalls).toHaveLength(1)
+  expect(current.modelReservation).toBeUndefined()
+})
+
+test('a failed summary remains fatal when the uncompacted prompt exceeds the real model window', async () => {
+  const model = provider('length')
+  mocks.catalog.mockResolvedValue({ type: 'language', contextWindow: 8_192, maxTokens: 8_192 })
+  const prepare = vi.fn(async ({ modelId, receiptId, options }) => preparedHarnessModel(modelId, receiptId, options, 8_192))
+  const ports = createHarnessModelPorts({
+    reference: { actorUserId: 'user', runId: 'run', workflowRunId: 'workflow' },
+    modelId: 'fixture/model',
+    contextBudgetTokens: 8_192,
+    prepare,
+  })
+  await expect(ports.prepareModel({
+    receiptId: 'model:fallback-too-large', state: current,
+    messages: [{ role: 'assistant', content: [{ type: 'text' as const, text: 'Large history '.repeat(10_000) }] }],
+    instructionContext: { instructions: execution.instructions, continuation: false, truncatedResponse: false },
+    toolNames: [], toolDefinitions: [], settings: { maxOutputTokens: 8_000 },
+  })).rejects.toThrow(/safely compacted/)
+  expect(prepare).not.toHaveBeenCalled()
+  expect(model.doStreamCalls).toHaveLength(0)
+})
+
+test('a failed summary remains fatal while its model reservation is pending', async () => {
+  const model = provider('length')
+  mocks.catalog.mockResolvedValue({ type: 'language', contextWindow: 128_000, maxTokens: 8_192 })
+  mocks.settle.mockImplementationOnce(async () => undefined)
+  const prepare = vi.fn(async ({ modelId, receiptId, options }) => preparedHarnessModel(modelId, receiptId, options, 128_000))
+  const ports = createHarnessModelPorts({
+    reference: { actorUserId: 'user', runId: 'run', workflowRunId: 'workflow' },
+    modelId: 'fixture/model',
+    contextBudgetTokens: 8_192,
+    prepare,
+  })
+  await expect(ports.prepareModel({
+    receiptId: 'model:fallback-pending', state: current, messages: compactableHistory(),
+    instructionContext: { instructions: execution.instructions, continuation: false, truncatedResponse: false },
+    toolNames: [], toolDefinitions: [], settings: { maxOutputTokens: 512 },
+  })).rejects.toThrow(/safely compacted/)
+  expect(prepare.mock.calls.filter(([request]) => request.purpose === 'response')).toHaveLength(0)
+  expect(current.modelReservation).toBeDefined()
+  expect(model.doStreamCalls).toHaveLength(1)
 })
 
 test('failed ownership does not authorize or admit another request', async () => {

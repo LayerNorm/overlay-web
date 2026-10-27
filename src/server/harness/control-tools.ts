@@ -30,7 +30,18 @@ export function createHarnessControlTools(ports: HarnessExecutionPorts) {
         skipReason: z.string().max(2_000).optional(),
       }),
       execute: async (input, { toolCallId }) => {
-        const state = await ports.apply(`control:${toolCallId}`, { type: 'transition_step', ...input })
+        let state: Awaited<ReturnType<HarnessExecutionPorts['apply']>>
+        try {
+          state = await ports.apply(`control:${toolCallId}`, { type: 'transition_step', ...input })
+        } catch (error) {
+          if (!(error instanceof Error) || error.message !== 'Evidence must reference successful observations from this run.') throw error
+          const availableEvidenceIds = (await ports.read()).evidence
+            .filter(evidence => evidence.verdict !== 'failed')
+            .sort((left, right) => right.createdAt - left.createdAt)
+            .slice(0, 12)
+            .map(evidence => evidence.id)
+          return { success: false, error: error.message, availableEvidenceIds }
+        }
         return { planRevision: state.planRevision, step: state.plan.find(step => step.id === input.id) }
       },
     }),

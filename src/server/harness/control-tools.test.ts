@@ -23,10 +23,11 @@ function fixture() {
     else throw new Error('Unexpected operation')
     return parent
   })
+  const setParent = (snapshot: HarnessSnapshot) => { parent = snapshot }
   const readChild = vi.fn(async () => child)
   const waitForChildren = vi.fn<HarnessExecutionPorts['waitForChildren']>(async () => undefined)
   const ports = { read: async () => parent, readChild, waitForChildren, apply } as unknown as HarnessExecutionPorts
-  return { ports, apply, readChild, waitForChildren, child }
+  return { ports, apply, readChild, waitForChildren, child, setParent }
 }
 
 test('completed child results become parent observations without certifying independent verification', async () => {
@@ -62,6 +63,33 @@ test('plan tools accept answer-only milestones', () => {
       answerOnly: true,
     }],
   })).toMatchObject({ steps: [{ answerOnly: true }] })
+})
+
+test('rejected evidence updates return the 12 most recent successful evidence IDs', async () => {
+  const f = fixture()
+  let parent = await f.ports.read()
+  for (let index = 1; index <= 15; index++) {
+    parent = recordHarnessEvidence(parent, {
+      id: `evidence:${index}`,
+      kind: 'tool_result',
+      source: 'read',
+      summary: `Observation ${index}`,
+      verdict: index === 15 ? 'failed' : 'observed',
+      createdAt: index,
+    }, index)
+  }
+  f.setParent(parent)
+
+  const result = await createHarnessControlTools(f.ports).harness_update_step.execute!(
+    { id: 'work', status: 'done', evidenceRefs: ['missing-evidence'] },
+    { toolCallId: 'bad-evidence', messages: [] },
+  )
+
+  expect(result).toEqual({
+    success: false,
+    error: 'Evidence must reference successful observations from this run.',
+    availableEvidenceIds: Array.from({ length: 12 }, (_, index) => `evidence:${14 - index}`),
+  })
 })
 
 test('a completed child with unresolved usage cannot expose completion evidence', async () => {

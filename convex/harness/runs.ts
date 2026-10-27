@@ -38,7 +38,7 @@ import type {
   HarnessWaitRequest,
 } from '../../packages/overlay-agent-runtime/src/harness-store'
 import { harnessToolsRequirePlan } from '../../packages/overlay-agent-runtime/src/harness-write-tools'
-import { v } from 'convex/values'
+import { ConvexError, v } from 'convex/values'
 
 const MAX_ID_LENGTH = 256
 const MAX_EVIDENCE_ID_LENGTH = 512
@@ -1409,7 +1409,15 @@ export const apply = mutation({
     }
 
     const now = Date.now()
-    const result = await applyReducer(ctx, run, currentState, operation, args.serverSecret, now)
+    let result: Awaited<ReturnType<typeof applyReducer>>
+    try {
+      result = await applyReducer(ctx, run, currentState, operation, args.serverSecret, now)
+    } catch (error) {
+      throw new ConvexError({
+        code: 'HARNESS_OPERATION_REJECTED',
+        message: error instanceof Error ? error.message : 'Harness operation rejected.',
+      })
+    }
     const next = result.snapshot
     const changed = next.revision !== current.revision
     const becameTerminal = !isTerminalStatus(metadata.status) && isTerminalStatus(next.status)
