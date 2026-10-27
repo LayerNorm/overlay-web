@@ -64,7 +64,7 @@ export async function PATCH(_request: Request, context: AccountAppApiRouteContex
   }
 }
 
-export async function POST(request: Request, context: AccountAppApiRouteContext) {
+export async function uploadPhoto(request: Request, context: AccountAppApiRouteContext) {
   try {
     const currentIdentity = await getIdentity(context.auth.userId)
     if (!currentIdentity) return NextResponse.json({ error: 'Profile not found.' }, { status: 404 })

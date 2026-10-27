@@ -63,7 +63,7 @@ export async function PATCH(_request: Request, context: AppApiRouteContext) {
   }
 }
 
-export async function POST(request: Request, context: AppApiRouteContext) {
+export async function uploadPhoto(request: Request, context: AppApiRouteContext) {
   try {
     const workspaceIdValue = await workspaceId(context)
     const authorizedIdentity = await getIdentity(context, workspaceIdValue)

@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import * as domainService from '@/server/app-api/v1/workspaces/[workspaceId]/profile/route'
+import * as domainService from '@/server/app-api/v1/workspaces/[workspaceId]/profile/photo/route'
 import { handleBffRoute } from '@/app/api/v1/_utils/bff'
 import { limitIdentityUploadBody } from '@/server/identity/profile-media'
 
 export async function GET(request: NextRequest, context: unknown) {
-  return handleBffRoute(request, context, domainService.GET_PHOTO)
+  return handleBffRoute(request, context, domainService.GET)
 }
 
 export async function POST(request: NextRequest, context: unknown) {

@@ -1,15 +1,18 @@
 # Compact web API route catalog
 
-A one-line-per-route summary derived from a filesystem audit of every `src/app/api/**/route.ts`. It contains the same 208 routes as the full `api-route-catalog.mdx` but omits the per-route descriptions and implementation file lists.
+A one-line-per-route summary derived from a filesystem audit of every `src/app/api/**/route.ts`. It contains the same 213 routes as the full `api-route-catalog.md` but omits the per-route descriptions and implementation file lists.
 
-- **Total routes:** 208
+- **Total routes:** 213
 - **Non-versioned routes:** 40
-- **`/api/v1` routes:** 168
+- **`/api/v1` routes:** 173
 - **Verification status:** 0 missing, 0 stale, 0 HTTP-method mismatches against the route filesystem.
 
 For a description of what each route does and its associated implementation files, see the [full web API route catalog](./api-route-catalog.md).
 
 ## Authentication, sessions, account
+
+- `GET, PATCH /api/v1/account/profile`
+- `GET, POST /api/v1/account/profile/photo`
 
 - `POST /api/auth/preview-login`
 - `POST /api/account/delete`
@@ -234,6 +237,10 @@ For a description of what each route does and its associated implementation file
 - `POST /api/v1/transcribe`
 
 ## Workspaces and invitations
+
+- `GET, PATCH, POST /api/v1/workspaces/[workspaceId]/icon`
+- `GET, PATCH /api/v1/workspaces/[workspaceId]/profile`
+- `GET, POST /api/v1/workspaces/[workspaceId]/profile/photo`
 
 - `GET, POST /api/v1/account/workspaces`
 - `GET /api/v1/workspace-handles/[handle]`

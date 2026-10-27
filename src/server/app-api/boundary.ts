@@ -77,7 +77,7 @@ export async function parseApiBoundaryInput(request: NextRequest): Promise<Parse
     parsed.parsedQuery = objectRecord(result.data)
   }
 
-  if (schema.formData) {
+  if (schema.formData && !schema.deferFormDataParsing) {
     const formData = await request.clone().formData().catch((_error) => undefined)
     const result = schema.formData.safeParse(formData)
     if (!result.success) return { ...parsed, error: validationError(result.error.issues) }
