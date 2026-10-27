@@ -98,5 +98,7 @@ export function resolveFreeTierChatModelId(modelId: string | undefined): string 
 }
 
 export const DEFAULT_MODEL_ID = PAID_TIER_DEFAULT_MODEL_ID
+/** New agents start on GLM 5.3 Flash (gateway id `zai/glm-5.3-flash`). */
+export const NEW_AGENT_DEFAULT_MODEL_ID = 'z-ai/glm-5.3-flash' as const
 export const DEFAULT_IMAGE_MODEL_ID = 'openai/gpt-image-1.5'
 export const DEFAULT_VIDEO_MODEL_ID = 'google/veo-3.1-generate-001'

@@ -13,10 +13,19 @@ import {
 // tsconfig, so they resolve React from the global.
 ;(globalThis as typeof globalThis & { React: typeof React }).React = React
 
-const models = [{ value: 'test-model', label: 'Test model' }]
+const models = ['test-model']
+const modelField = {
+  favoriteScope: null,
+  isFreeTier: false,
+  isFreeTierWorkspace: false,
+  modelPickerLabel: 'Test model',
+  selectableTextModels: [],
+  textModelsLoading: false,
+}
 
 test('new agents default to every tool except computer, private, no computer', () => {
   const draft = initialNewAgentDraft()
+  assert.equal(draft.modelId, 'z-ai/glm-5.3-flash')
   assert.equal(draft.visibility, 'creator')
   assert.equal(draft.computer, false)
   assert.equal(draft.toolGroups.has('computer'), false)
@@ -39,7 +48,7 @@ test('an unavailable default model falls back to the first enabled one', () => {
 
 test('fields render in order with other agents disabled', () => {
   const markup = renderToStaticMarkup(
-    <NewAgentFields draft={{ ...initialNewAgentDraft(), modelId: 'test-model' }} onChange={() => undefined} modelOptions={models} computersAvailable />,
+    <NewAgentFields draft={{ ...initialNewAgentDraft(), modelId: 'test-model' }} onChange={() => undefined} modelField={modelField} computersAvailable />,
   )
   const order = ['Edit avatar', '>Name<', '>Description<', '>Computer<', '>Access<', '>Advanced<']
   const positions = order.map((needle) => markup.indexOf(needle))
@@ -50,7 +59,7 @@ test('fields render in order with other agents disabled', () => {
 
 test('a stale external draft cannot reveal external setup while disabled', () => {
   const markup = renderToStaticMarkup(
-    <NewAgentFields draft={{ ...initialNewAgentDraft(), kind: 'other' }} onChange={() => undefined} modelOptions={models} computersAvailable />,
+    <NewAgentFields draft={{ ...initialNewAgentDraft(), kind: 'other' }} onChange={() => undefined} modelField={modelField} computersAvailable />,
   )
   assert.doesNotMatch(markup, /Other agent|>Runs on<|>Account<|>Machine</)
   assert.match(markup, />Computer</)
@@ -59,7 +68,7 @@ test('a stale external draft cannot reveal external setup while disabled', () =>
 
 test('the computer row is hidden when the deployment has no computers', () => {
   const markup = renderToStaticMarkup(
-    <NewAgentFields draft={initialNewAgentDraft()} onChange={() => undefined} modelOptions={models} computersAvailable={false} />,
+    <NewAgentFields draft={initialNewAgentDraft()} onChange={() => undefined} modelField={modelField} computersAvailable={false} />,
   )
   assert.doesNotMatch(markup, />Computer</)
 })
@@ -77,7 +86,7 @@ test('an agent on Overlay Cloud needs a name and an account, not instructions', 
 test('other agents are selectable where cloud agents are available, and show their own fields', () => {
   const draft = { ...initialNewAgentDraft(), kind: 'other' as const, modelId: 'test-model' }
   const markup = renderToStaticMarkup(
-    <NewAgentFields draft={draft} onChange={() => undefined} modelOptions={models} computersAvailable otherAgentsAvailable />,
+    <NewAgentFields draft={draft} onChange={() => undefined} modelField={modelField} computersAvailable otherAgentsAvailable />,
   )
   assert.doesNotMatch(markup, /Other agent: Coming soon/)
   const order = ['>Type<', '>Agent<', '>Runs on<', '>Account<', '>Machine<', '>Access<']

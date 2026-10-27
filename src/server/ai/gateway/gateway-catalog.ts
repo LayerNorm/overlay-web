@@ -33,6 +33,7 @@ const GATEWAY_TO_APP_MODEL_ID: Record<string, string> = {
   'alibaba/qwen3.6-plus': 'qwen/qwen3.6-plus',
   'zai/glm-5.1': 'z-ai/glm-5.1',
   'zai/glm-5.3-flash': 'z-ai/glm-5.3-flash',
+  'zai/glm-5.3': 'z-ai/glm-5.3',
 }
 
 function pricePerMillion(value: unknown): number | undefined {

@@ -51,6 +51,8 @@ export function useGeneratedUiConnectorActions({ enabled = true }: { enabled?: b
 
     const onChanged = () => void loadConnected()
     window.addEventListener('overlay:integrations-changed', onChanged)
+    // OAuth finishes in another tab; refresh connected state when the user returns.
+    window.addEventListener('focus', onChanged)
     let bc: BroadcastChannel | null = null
     try {
       bc = new BroadcastChannel(INTEGRATIONS_BC_CHANNEL)
@@ -61,6 +63,7 @@ export function useGeneratedUiConnectorActions({ enabled = true }: { enabled?: b
     return () => {
       window.clearTimeout(initialLoad)
       window.removeEventListener('overlay:integrations-changed', onChanged)
+      window.removeEventListener('focus', onChanged)
       bc?.close()
     }
   }, [enabled, loadConnected])

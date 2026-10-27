@@ -15,6 +15,7 @@ import type { GeneratedUiData } from '@overlay/chat-core/generated-ui'
 import type { SourceCitationMap } from '../../lib/source-citations'
 import type { WebSourceItem } from '../../lib/web-sources'
 import { MarkdownMessage } from '../MarkdownMessage'
+import { MarkdownConnectorActionsContext } from '../markdown/connector-actions-context'
 import type {
   AttachmentPreview,
   AttachmentPreviewOpenOptions,
@@ -307,16 +308,18 @@ function TextSegmentItem({ seg, ctx }: SegmentItemProps<'text'>) {
     <div
       className="w-full px-1 py-1 text-sm leading-relaxed text-(--foreground)"
     >
-      <MarkdownMessage
-        key={`md-${ctx.markdownKeyPrefix}-${seg.originIndex}`}
-        text={block.text}
-        isStreaming={ctx.isTextStreaming && isLastText}
-        sourceCitations={isLastText ? ctx.sourceCitations : undefined}
-        webSources={isLastText && ctx.webSources && ctx.webSources.length > 0 ? ctx.webSources : undefined}
-        suppressTypingIndicator={ctx.suppressTypingIndicator}
-        resolveFileHref={ctx.resolveFileHref}
-        onOpenAttachmentPreview={ctx.onOpenAttachmentPreview}
-      />
+      <MarkdownConnectorActionsContext.Provider value={ctx.generatedUiConnectorActions}>
+        <MarkdownMessage
+          key={`md-${ctx.markdownKeyPrefix}-${seg.originIndex}`}
+          text={block.text}
+          isStreaming={ctx.isTextStreaming && isLastText}
+          sourceCitations={isLastText ? ctx.sourceCitations : undefined}
+          webSources={isLastText && ctx.webSources && ctx.webSources.length > 0 ? ctx.webSources : undefined}
+          suppressTypingIndicator={ctx.suppressTypingIndicator}
+          resolveFileHref={ctx.resolveFileHref}
+          onOpenAttachmentPreview={ctx.onOpenAttachmentPreview}
+        />
+      </MarkdownConnectorActionsContext.Provider>
     </div>
   )
 }

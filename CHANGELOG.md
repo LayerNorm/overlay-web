@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Refresh recommended models to each provider's latest releases, give every model provider a logo, show the app's logo on chat connect cards and switch them to Connected once linked, and use the shared model picker in the New agent dialog with GLM 5.3 Flash as the default.
+
 - Move Account outside workspace settings, add workspace-specific profiles with provider-photo fallbacks, and let workspace admins choose or upload icons. Retire the outdated interactive demo.
 
 - Keep native agents running after a failed tool-progress write and compact live tool results before saving them to the transcript.

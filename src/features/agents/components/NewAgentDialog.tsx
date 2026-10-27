@@ -2,7 +2,7 @@
 
 import { unstyledButton } from '@overlay/ui/control-reset'
 
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ChevronDown, X } from 'lucide-react'
 import type {
   ComputerSize,
@@ -11,8 +11,9 @@ import type {
   WorkspaceAgentVisibility,
 } from '@overlay/workspace-contracts'
 import { Button, DialogFrame, Input, ListboxSelect, SegmentedControl, Textarea, Toggle, toast } from '@overlay/ui/primitives'
-import { getModelsByIntelligence, getGatewayCatalogRevision } from '@/shared/ai/gateway/model-data'
-import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
+import { ChatModelPicker } from '@overlay/chat-react'
+import { MODEL_RECOMMENDATIONS, getModelsByIntelligence, getGatewayCatalogRevision } from '@/shared/ai/gateway/model-data'
+import { NEW_AGENT_DEFAULT_MODEL_ID, isFreeTierChatModelId } from '@/shared/ai/gateway/model-types'
 import {
   AGENT_TOOL_GROUPS,
   AGENT_TOOL_PRESETS,
@@ -24,6 +25,10 @@ import { dispatchAgentDirectoryChanged } from '@/shared/workspace/sidebar-events
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useGatewayModelCatalog } from '@/components/providers/useGatewayModelCatalog'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
+import { useAppSettings } from '@/components/providers/AppSettingsProvider'
+import { useWorkspaceTextModelAccess, buildSelectableTextModels } from '@/components/providers/useWorkspaceTextModelAccess'
+import { useAuth } from '@/contexts/AuthContext'
+import type { AgentModelFieldProps } from './AgentEditorForm'
 import { buildWorkspaceAgentInput } from '../lib/agent-editor-input'
 import { AgentAvatarPicker } from './AgentAvatarPicker'
 import { FieldLabel } from './InfoTip'
@@ -58,7 +63,7 @@ export function initialNewAgentDraft(): NewAgentDraft {
     computer: false,
     computerSize: 'default',
     visibility: 'creator',
-    modelId: DEFAULT_MODEL_ID,
+    modelId: NEW_AGENT_DEFAULT_MODEL_ID,
     toolGroups: new Set(AGENT_TOOL_PRESETS.everything),
   }
 }
@@ -97,21 +102,19 @@ const PRESET_SUMMARY: Record<AgentToolPreset, string> = {
   readonly: 'Read-only tools',
 }
 
-type ModelOption = { value: string; label: string }
-
 /** The draft's model when it is offered, else the first enabled model (e.g. free tier without the paid default). */
-export function resolveDraftModelId(modelId: string, options: readonly ModelOption[]): string {
-  return options.some((option) => option.value === modelId) ? modelId : (options[0]?.value ?? modelId)
+export function resolveDraftModelId(modelId: string, modelIds: readonly string[]): string {
+  return modelIds.includes(modelId) ? modelId : (modelIds[0] ?? modelId)
 }
 
-function AdvancedSection({ draft, onChange, modelOptions }: {
+function AdvancedSection({ draft, onChange, modelField }: {
   draft: NewAgentDraft
   onChange(patch: Partial<NewAgentDraft>): void
-  modelOptions: ModelOption[]
+  modelField: AgentModelFieldProps
 }) {
   const [open, setOpen] = useState(false)
   const preset = agentToolPresetFor(draft.toolGroups)
-  const modelLabel = modelOptions.find((option) => option.value === draft.modelId)?.label ?? draft.modelId
+  const modelLabel = modelField.modelPickerLabel
   const toolsLabel = preset ? PRESET_SUMMARY[preset] : `${[...draft.toolGroups].length} tools`
   const toggleGroup = (id: string) => {
     const next = new Set(draft.toolGroups)
@@ -137,12 +140,19 @@ function AdvancedSection({ draft, onChange, modelOptions }: {
         <div className="space-y-4 px-3 pb-3 pt-0.5">
           <div>
             <FieldLabel>Model</FieldLabel>
-            <ListboxSelect
-              aria-label="Agent model"
-              value={draft.modelId}
-              options={modelOptions.length > 0 ? modelOptions : [{ value: draft.modelId, label: draft.modelId }]}
-              onChange={(modelId) => onChange({ modelId })}
-              portal
+            <ChatModelPicker
+              placement='field'
+              modelPickerLabel={modelField.modelPickerLabel}
+              selectableTextModels={modelField.selectableTextModels}
+              selectedActModel={draft.modelId}
+              onToggleTextModel={(modelId) => onChange({ modelId })}
+              isFreeTier={modelField.isFreeTier}
+              isFreeTierChatModelId={isFreeTierChatModelId}
+              favoriteScope={modelField.favoriteScope}
+              modelRecommendations={MODEL_RECOMMENDATIONS}
+              textModelsLoading={modelField.textModelsLoading}
+              generationMode='text'
+              lockedGenerationMode='text'
             />
           </div>
           <div>
@@ -201,10 +211,10 @@ function ComputerSection({ draft, onChange }: {
 }
 
 /** The dialog's fields. Presentational: all state lives in `draft`. */
-export function NewAgentFields({ draft, onChange, modelOptions, computersAvailable, otherAgentsAvailable = false, otherAgentsEnabled = otherAgentsAvailable, otherAgentsNote = 'Paid plans', onOpenMachineSetup }: {
+export function NewAgentFields({ draft, onChange, modelField, computersAvailable, otherAgentsAvailable = false, otherAgentsEnabled = otherAgentsAvailable, otherAgentsNote = 'Paid plans', onOpenMachineSetup }: {
   draft: NewAgentDraft
   onChange(patch: Partial<NewAgentDraft>): void
-  modelOptions: ModelOption[]
+  modelField: AgentModelFieldProps
   computersAvailable: boolean
   /** Overlay Cloud agents are offered only where the deployment supports them. */
   otherAgentsAvailable?: boolean
@@ -277,20 +287,50 @@ export function NewAgentFields({ draft, onChange, modelOptions, computersAvailab
           onChange={(visibility) => onChange({ visibility })}
         />
       </div>
-      {other ? null : <AdvancedSection draft={draft} onChange={onChange} modelOptions={modelOptions} />}
+      {other ? null : <AdvancedSection draft={draft} onChange={onChange} modelField={modelField} />}
     </div>
   )
 }
 
-function useModelOptions(): ModelOption[] {
+/** Same model access as the agent editor, so the dialog offers exactly the models the agent can run. */
+function useNewAgentModelField(workspaceId: string | null, draftModelId: string): { modelField: AgentModelFieldProps; modelId: string } {
+  const { capabilities } = useOverlayCapabilities()
+  const { settings } = useAppSettings()
+  const { user: authUser } = useAuth()
   const { revision } = useGatewayModelCatalog({ enabled: true })
-  return useMemo(() => {
+  const modelAccess = useWorkspaceTextModelAccess({
+    activeWorkspaceId: workspaceId,
+    billingEnabled: capabilities.billing === true,
+    catalogRevision: revision,
+    onlyAllowZdrModels: settings.onlyAllowZdrModels,
+  })
+  const { loadSubscription } = modelAccess
+  useEffect(() => {
+    void loadSubscription()
+  }, [loadSubscription])
+  const allTextModels = useMemo(() => {
     void revision
     void getGatewayCatalogRevision()
     return getModelsByIntelligence(false)
-      .filter((model) => model.id !== 'nvidia/nemotron-nano-9b-v2')
-      .map((model) => ({ value: model.id, label: model.name }))
   }, [revision])
+  const accessUnresolved = capabilities.billing === true && !modelAccess.entitlements
+  const restricted = modelAccess.loading || accessUnresolved
+  const selectableTextModels = useMemo(
+    () => restricted
+      ? buildSelectableTextModels({ isModelAccessRestricted: true, effectiveOnlyAllowZdrModels: false })
+      : modelAccess.selectableTextModels,
+    [restricted, modelAccess.selectableTextModels],
+  )
+  const modelId = resolveDraftModelId(draftModelId, selectableTextModels.map((model) => model.id))
+  const modelField = {
+    favoriteScope: authUser?.id ?? null,
+    isFreeTier: modelAccess.isFreeTier || restricted,
+    isFreeTierWorkspace: modelAccess.isFreeTier,
+    modelPickerLabel: allTextModels.find((model) => model.id === modelId)?.name ?? modelId,
+    selectableTextModels,
+    textModelsLoading: false,
+  }
+  return { modelField, modelId }
 }
 
 /** Creates the agent (and its computer when asked for), then refreshes the roster. */
@@ -345,9 +385,9 @@ export function NewAgentDialog({ open, workspaceId, onClose, onCreated, onOpenMa
   const freePlan = useIsFreePlan(open && capabilities.cloudAgents === true && capabilities.billing === true, workspaceId)
   const otherAgentsAvailable = capabilities.cloudAgents === true && !freePlan
   const otherAgentsNote = freePlan ? 'Paid plans' : 'Coming soon'
-  const modelOptions = useModelOptions()
   const [rawDraft, setDraft] = useState(initialNewAgentDraft)
-  const draft = { ...rawDraft, kind: otherAgentsAvailable ? rawDraft.kind : 'overlay' as const, modelId: resolveDraftModelId(rawDraft.modelId, modelOptions) }
+  const { modelField, modelId } = useNewAgentModelField(workspaceId, rawDraft.modelId)
+  const draft = { ...rawDraft, kind: otherAgentsAvailable ? rawDraft.kind : 'overlay' as const, modelId }
   const [busy, setBusy] = useState(false)
   const update = useCallback((patch: Partial<NewAgentDraft>) => setDraft((current) => ({ ...current, ...patch })), [])
   const cloud = useCloudAgentCreate({
@@ -428,7 +468,7 @@ export function NewAgentDialog({ open, workspaceId, onClose, onCreated, onOpenMa
           <NewAgentFields
             draft={draft}
             onChange={update}
-            modelOptions={modelOptions}
+            modelField={modelField}
             computersAvailable={computersAvailable}
             otherAgentsAvailable={otherAgentsAvailable}
             otherAgentsEnabled={capabilities.cloudAgents === true}

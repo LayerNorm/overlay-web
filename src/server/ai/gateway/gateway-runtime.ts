@@ -17,6 +17,7 @@ const GATEWAY_MODEL_ID_ALIASES: Record<string, string> = {
   'qwen/qwen3.6-plus': 'alibaba/qwen3.6-plus',
   'z-ai/glm-5.1': 'zai/glm-5.1',
   'z-ai/glm-5.3-flash': 'zai/glm-5.3-flash',
+  'z-ai/glm-5.3': 'zai/glm-5.3',
 }
 
 export async function resolveGatewayApiKey(accessToken?: string): Promise<string | null> {
