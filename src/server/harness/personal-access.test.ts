@@ -33,7 +33,7 @@ const snapshot = () => ({ ...createHarnessSnapshot({ runId: 'harness', goal: 'Re
   actorUserId: 'user', workspaceId: 'original-workspace', allowedToolIds: ['read_file', 'call_mcp_tool'], requiresPlan: false,
   maxCostMicros: 1_000_000, deadlineAt: Date.now() + 60_000, maxDepth: 1, maxParallelChildren: 2,
 } }, Date.now()), workflowRunId: 'workflow' })
-const agentRun = () => ({ id: 'agent-run', conversationId: 'conversation', userId: 'user', workflowRunId: 'workflow',
+const agentRun = () => ({ id: 'agent-run', conversationId: 'conversation', userId: 'user', harnessRunId: 'harness', workflowRunId: 'workflow',
   runner: 'workflow', mode: 'work', status: 'running' })
 
 beforeEach(() => {

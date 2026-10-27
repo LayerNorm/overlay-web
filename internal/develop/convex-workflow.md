@@ -208,6 +208,17 @@ required, and production Context/Plan/Queue UI remains gated on mockup approval.
 The Workflow compiler regenerates `src/app/.well-known/workflow/` during builds;
 its compiled route files are generated output and should not be committed.
 
+Personal root admission binds exactly one queued personal delivery AgentRun to the
+root in the same Convex transaction. Stop cancels that delivery and the bound
+root in one transaction, so the durable terminal root fences descendants without
+rewriting every child row. Pending model holds remain until their matching late
+receipt settles them. The server may subsequently perform best-effort SDK
+Workflow cancellation for claimed root and child runs; that cleanup is physical
+resource cleanup only and cannot promise to abort provider work already dispatched.
+Admission and cancellation bindings are additive, so legacy generic harness
+admissions and existing Work traffic remain unchanged while this personal
+entrypoint is inactive.
+
 Canonical `AgentRun` status includes active `waiting_for_input` and
 `waiting_for_children` states. Each can resume to `running` or end as failed or
 cancelled; terminal states cannot reopen. The `harnessWaits` ledger retains

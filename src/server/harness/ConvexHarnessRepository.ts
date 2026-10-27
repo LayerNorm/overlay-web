@@ -78,4 +78,29 @@ export class ConvexHarnessRepository implements HarnessRepository {
     if (!waits) throw new Error('Harness pending wait query returned no result.')
     return waits
   }
+
+  async listDeliveryWorkflowRuns(input: {
+    actorUserId: string
+    agentRunId: string
+    rootRunId: string
+    cursor: string | null
+  }): Promise<{ workflowRunIds: string[]; cursor: string; isDone: boolean }> {
+    const page = await convex.query<{ workflowRunIds: string[]; cursor: string; isDone: boolean }>(
+      'harness/runs:listDeliveryWorkflowRuns',
+      {
+        actorUserId: input.actorUserId,
+        agentRunId: input.agentRunId,
+        rootRunId: input.rootRunId,
+        cursor: input.cursor,
+        serverSecret: this.serverSecret,
+      },
+      { throwOnError: true },
+    )
+    if (!page) throw new Error('Harness workflow cleanup query returned no result.')
+    return {
+      workflowRunIds: page.workflowRunIds,
+      cursor: page.cursor,
+      isDone: page.isDone,
+    }
+  }
 }

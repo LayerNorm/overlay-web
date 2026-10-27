@@ -10,6 +10,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Connect the canonical personal harness workflow to authorized model/tools, bounded child execution and transcript delivery. This entrypoint remains inactive until Chat/Work parity and isolated QA are complete.
 
+- Bind a personal delivery AgentRun to its root harness atomically at admission and fence the root atomically when Stop cancels that delivery. Workflow SDK cancellation is best-effort physical cleanup after the durable fence; it does not promise to abort provider work already dispatched. Final result summaries remain separately persisted from working summaries.
+
 - Saved collaborative message edits now update rendered text and retain attachments instead of showing the original message.
 
 - Use shadcn focus-visible rings for text inputs and textareas, present message editing with text actions, autosize work titles and agent instructions as layouts settle, and group agent Details into collapsed Model, Instructions, Tools and Advanced disclosures.

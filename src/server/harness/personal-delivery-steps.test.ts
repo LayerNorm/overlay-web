@@ -15,7 +15,7 @@ const access = { actorUserId: 'user', runId: 'root', workflowRunId: 'workflow', 
 const state = { runId: 'root', workflowRunId: 'workflow', status: 'completed' }
 const delivery = { content: 'Result', parts: [{ type: 'text', text: 'Result' }], tokens: { input: 100, output: 10 },
   metrics: { inputTokens: 100, outputTokens: 10, providerCostMicros: 0, toolCallCount: 1, toolSuccessCount: 1, toolFailureCount: 0 } }
-const run = { id: 'delivery', userId: 'user', conversationId: 'conversation', runner: 'workflow', mode: 'work', status: 'running', workflowRunId: 'workflow' }
+const run = { id: 'delivery', userId: 'user', conversationId: 'conversation', harnessRunId: 'root', runner: 'workflow', mode: 'work', status: 'running', workflowRunId: 'workflow' }
 
 beforeEach(() => {
   vi.resetAllMocks()
@@ -40,6 +40,14 @@ test('stale delivery ownership and an explicit stop never become successful comp
   await expect(finishPersonalHarnessDelivery(access, delivery, { emitWebhook: false, turnId: 'turn' })).rejects.toThrow('ownership changed')
   mocks.delivery.mockResolvedValueOnce({ ...run, status: 'cancelled' })
   await finishPersonalHarnessDelivery(access, delivery, { emitWebhook: false, turnId: 'turn' })
+  expect(mocks.complete).not.toHaveBeenCalled()
+})
+
+test('a delivery bound to another harness root cannot attach or finish', async () => {
+  mocks.delivery.mockResolvedValue({ ...run, harnessRunId: 'other-root' })
+  await expect(attachPersonalHarnessDelivery(access)).rejects.toThrow('personal delivery')
+  await expect(finishPersonalHarnessDelivery(access, delivery, { emitWebhook: false, turnId: 'turn' })).rejects.toThrow('ownership changed')
+  expect(mocks.attach).not.toHaveBeenCalled()
   expect(mocks.complete).not.toHaveBeenCalled()
 })
 

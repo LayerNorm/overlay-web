@@ -99,6 +99,7 @@ const admissionValidator = v.object({
   constraints: v.array(v.string()),
   policy: policyValidator,
   source: sourceValidator,
+  deliveryAgentRunId: v.optional(v.string()),
 })
 
 const planInputValidator = v.object({
@@ -244,6 +245,7 @@ function metadataFromSnapshot(snapshot: HarnessSnapshot): HarnessMetadata {
     ...(snapshot.blocker === undefined ? {} : { blocker: snapshot.blocker }),
     ...(snapshot.terminalReason === undefined ? {} : { terminalReason: snapshot.terminalReason }),
     workingSummary: snapshot.workingSummary,
+    ...(snapshot.resultSummary === undefined ? {} : { resultSummary: snapshot.resultSummary }),
     continuations: snapshot.continuations,
     lastContinuationProgressRevision: snapshot.lastContinuationProgressRevision,
     stalledContinuations: snapshot.stalledContinuations,
@@ -274,6 +276,10 @@ function canonicalAdmission(input: HarnessAdmission, source: HarnessSource): Har
 
 function assertBoundedAdmission(input: HarnessAdmission) {
   if (!input.runId.trim() || input.runId.length > MAX_ID_LENGTH) throw new Error('Invalid harness run id.')
+  if (input.deliveryAgentRunId !== undefined
+    && (!input.deliveryAgentRunId.trim() || input.deliveryAgentRunId.length > MAX_ID_LENGTH)) {
+    throw new Error('Invalid harness delivery run id.')
+  }
   if (!input.goal.trim() || input.goal.length > MAX_GOAL_LENGTH) throw new Error('Harness goal must be nonempty and at most 32,000 characters.')
   if (input.constraints.length > MAX_CONSTRAINTS
     || input.constraints.some(constraint => !constraint.trim() || constraint.length > MAX_CONSTRAINT_LENGTH)) {
@@ -295,6 +301,35 @@ function assertBoundedAdmission(input: HarnessAdmission) {
     || input.policy.maxDepth > MAX_HARNESS_DEPTH) {
     throw new Error('Invalid harness policy.')
   }
+}
+
+async function validatePersonalDeliveryAdmission(
+  ctx: ReadContext,
+  admission: HarnessAdmission,
+  source: HarnessSource,
+): Promise<Doc<'conversationAgentRuns'>> {
+  if (!('conversationId' in source) || typeof source.conversationId !== 'string'
+    || admission.policy.workspaceId !== undefined) {
+    throw new Error('HARNESS_DELIVERY_SOURCE_DENIED')
+  }
+  const conversationId = ctx.db.normalizeId('conversations', source.conversationId)
+  const conversation = conversationId ? await ctx.db.get(conversationId) : null
+  if (!conversation || conversation.deletedAt || conversation.workspaceId !== undefined
+    || (conversation.conversationType ?? 'personal') !== 'personal'
+    || conversation.userId !== admission.policy.actorUserId) {
+    throw new Error('HARNESS_DELIVERY_SOURCE_DENIED')
+  }
+  const deliveryId = ctx.db.normalizeId('conversationAgentRuns', admission.deliveryAgentRunId!)
+  const delivery = deliveryId ? await ctx.db.get(deliveryId) : null
+  if (!delivery || delivery.conversationId !== conversationId
+    || delivery.userId !== admission.policy.actorUserId
+    || delivery.runner !== 'workflow' || delivery.mode === 'room'
+    || delivery.status !== 'queued' || delivery.startedAt !== undefined
+    || delivery.workflowRunId !== undefined || delivery.harnessRunId !== undefined
+    || delivery.completedAt !== undefined || delivery.failedAt !== undefined || delivery.cancelledAt !== undefined) {
+    throw new Error('HARNESS_DELIVERY_TARGET_DENIED')
+  }
+  return delivery
 }
 
 function assertBoundedOperation(operation: HarnessOperation) {
@@ -849,6 +884,42 @@ async function releaseTerminalSubtree(
   await ctx.db.patch(run._id, { activeDescendantCount: 0 })
 }
 
+export async function cancelHarnessDelivery(
+  ctx: MutationCtx,
+  delivery: Doc<'conversationAgentRuns'>,
+  now: number,
+): Promise<{ agentRunId: string; runId: string }> {
+  if (!delivery.harnessRunId) throw new Error('HARNESS_DELIVERY_BINDING_MISSING')
+  const root = await findRun(ctx, delivery.harnessRunId)
+  const source = root ? parseJson<HarnessSource>(root.sourceJson) : null
+  const conversationId = source && 'conversationId' in source && typeof source.conversationId === 'string'
+    ? ctx.db.normalizeId('conversations', source.conversationId)
+    : null
+  const conversation = conversationId ? await ctx.db.get(conversationId) : null
+  if (!root || root.parentRunId !== undefined || root.rootRunId !== root.runId
+    || root.actorUserId !== delivery.userId || root.deliveryAgentRunId !== delivery._id
+    || delivery.runner !== 'workflow' || delivery.mode === 'room'
+    || !source || !('conversationId' in source) || source.conversationId !== delivery.conversationId
+    || !conversation || conversation.userId !== delivery.userId || conversation.workspaceId !== undefined
+    || conversation.deletedAt || (conversation.conversationType ?? 'personal') !== 'personal') {
+    throw new Error('HARNESS_DELIVERY_BINDING_INVALID')
+  }
+  const metadata = parseJson<HarnessMetadata>(root.metadataJson)
+  if (metadata.runId !== root.runId || metadata.rootRunId !== root.rootRunId
+    || metadata.parentRunId !== undefined || metadata.policy.actorUserId !== delivery.userId) {
+    throw new Error('HARNESS_DELIVERY_BINDING_INVALID')
+  }
+  if (isTerminalStatus(metadata.status)) {
+    return { agentRunId: delivery._id, runId: root.runId }
+  }
+  const snapshot = await hydrateSnapshot(ctx, root)
+  const cancelled = terminateHarness(snapshot, 'cancelled', 'The delivery was cancelled by the user.', now)
+  await persistMetadata(ctx, root, cancelled)
+  await persistChildren(ctx, root.runId, snapshot.children, cancelled.children)
+  await releaseTerminalSubtree(ctx, root, [{ run: root, metadata }])
+  return { agentRunId: delivery._id, runId: root.runId }
+}
+
 async function applyReducer(
   ctx: MutationCtx,
   run: RunRow,
@@ -976,10 +1047,20 @@ export const admit = mutation({
       if (existing.parentRunId !== undefined || existing.admissionJson !== admissionJson) {
         throw new Error('HARNESS_ADMISSION_CONFLICT')
       }
+      if (admission.deliveryAgentRunId !== undefined) {
+        const deliveryId = ctx.db.normalizeId('conversationAgentRuns', admission.deliveryAgentRunId)
+        const delivery = deliveryId ? await ctx.db.get(deliveryId) : null
+        if (existing.deliveryAgentRunId !== deliveryId || delivery?.harnessRunId !== existing.runId) {
+          throw new Error('HARNESS_ADMISSION_CONFLICT')
+        }
+      }
       const lineage = await loadLineage(ctx, existing, admission.policy.actorUserId, serverSecret)
       return await currentSnapshot(ctx, existing, lineage)
     }
 
+    const delivery = admission.deliveryAgentRunId
+      ? await validatePersonalDeliveryAdmission(ctx, admission, source)
+      : undefined
     const now = Date.now()
     const snapshot = createHarnessSnapshot({
       runId: admission.runId,
@@ -991,6 +1072,7 @@ export const admit = mutation({
       runId: snapshot.runId,
       actorUserId: admission.policy.actorUserId,
       rootRunId: snapshot.rootRunId,
+      ...(delivery ? { deliveryAgentRunId: delivery._id } : {}),
       activeDescendantCount: 0,
       sourceJson: stableJson(source),
       admissionJson,
@@ -998,6 +1080,7 @@ export const admit = mutation({
       createdAt: now,
       updatedAt: now,
     })
+    if (delivery) await ctx.db.patch(delivery._id, { harnessRunId: snapshot.runId })
     return snapshot
   },
 })
@@ -1351,5 +1434,63 @@ export const listPendingWaits = query({
       waits.push(waitFromRow(candidate))
     }
     return waits.sort((left, right) => left.createdAt - right.createdAt || left.token.localeCompare(right.token))
+  },
+})
+
+export const listDeliveryWorkflowRuns = query({
+  args: {
+    actorUserId: v.string(),
+    agentRunId: v.string(),
+    rootRunId: v.string(),
+    cursor: v.union(v.string(), v.null()),
+    serverSecret: v.string(),
+  },
+  handler: async (ctx, args) => {
+    requireHarnessServerSecret(args.serverSecret)
+    if (!args.actorUserId.trim() || !args.agentRunId.trim() || !args.rootRunId.trim()
+      || args.actorUserId.length > MAX_ID_LENGTH || args.agentRunId.length > MAX_ID_LENGTH
+      || args.rootRunId.length > MAX_ID_LENGTH) {
+      throw new Error('Invalid delivery workflow query identity.')
+    }
+    const deliveryId = ctx.db.normalizeId('conversationAgentRuns', args.agentRunId)
+    const delivery = deliveryId ? await ctx.db.get(deliveryId) : null
+    if (!delivery || delivery._id !== deliveryId || delivery.userId !== args.actorUserId
+      || delivery.runner !== 'workflow' || delivery.mode === 'room'
+      || delivery.status !== 'cancelled' || delivery.harnessRunId !== args.rootRunId) {
+      throw new Error('HARNESS_DELIVERY_ACCESS_DENIED')
+    }
+    const root = await findRun(ctx, args.rootRunId)
+    if (!root || root.parentRunId !== undefined || root.rootRunId !== root.runId
+      || root.actorUserId !== args.actorUserId || root.deliveryAgentRunId !== delivery._id) {
+      throw new Error('HARNESS_DELIVERY_ACCESS_DENIED')
+    }
+    const source = parseJson<HarnessSource>(root.sourceJson)
+    const conversationId = source && 'conversationId' in source && typeof source.conversationId === 'string'
+      ? ctx.db.normalizeId('conversations', source.conversationId)
+      : null
+    const conversation = conversationId ? await ctx.db.get(conversationId) : null
+    if (!conversation || conversationId !== delivery.conversationId || conversation.userId !== args.actorUserId
+      || conversation.workspaceId !== undefined || conversation.deletedAt
+      || (conversation.conversationType ?? 'personal') !== 'personal') {
+      throw new Error('HARNESS_DELIVERY_ACCESS_DENIED')
+    }
+    const rootMetadata = parseJson<HarnessMetadata>(root.metadataJson)
+    if (!isTerminalStatus(rootMetadata.status)) throw new Error('HARNESS_DELIVERY_ROOT_ACTIVE')
+    const page = await ctx.db.query('harnessRuns')
+      .withIndex('by_rootRunId', query => query.eq('rootRunId', args.rootRunId))
+      .paginate({ cursor: args.cursor, numItems: 100 })
+    const workflowRunIds: string[] = []
+    for (const row of page.page) {
+      const lineage = await loadLineage(ctx, row, args.actorUserId, args.serverSecret)
+      const metadata = lineage[0]!.metadata
+      if (row.runId === root.runId || !isTerminalStatus(metadata.status)) {
+        if (metadata.workflowRunId) workflowRunIds.push(metadata.workflowRunId)
+      }
+    }
+    return {
+      workflowRunIds: [...new Set(workflowRunIds)],
+      cursor: page.continueCursor,
+      isDone: page.isDone,
+    }
   },
 })

@@ -9,6 +9,7 @@ import type { QueryCtx } from '../_generated/server'
 import { requireAccessToken, validateServerSecret } from '../lib/auth'
 import { recordConversationEvent } from '../collaboration/events'
 import { requireConversationAccess } from '../collaboration/directMessages'
+import { cancelHarnessDelivery } from '../harness/runs'
 import { conversationListVersion } from '../lib/conversationListVersion'
 import { deleteChunksForSource } from '../knowledge/knowledge'
 
@@ -1226,6 +1227,10 @@ export const cancelAgentRuns = mutation({
     for (const run of activeRuns) {
       assertAgentRunTransition(run.status, 'cancelled')
     }
+    const cancelledHarnessRoots: Array<{ agentRunId: string; runId: string }> = []
+    for (const run of activeRuns) {
+      if (run.harnessRunId) cancelledHarnessRoots.push(await cancelHarnessDelivery(ctx, run, now))
+    }
     const runMessages = await Promise.all(
       activeRuns.map((run) => ctx.db.get(run.assistantMessageId)),
     )
@@ -1277,6 +1282,7 @@ export const cancelAgentRuns = mutation({
       cancelledWorkflows: activeRuns.flatMap((run) => run.workflowRunId
         ? [{ agentRunId: run._id, workflowRunId: run.workflowRunId }]
         : []),
+      cancelledHarnessRoots,
       remoteRunIds,
       stoppedCount: activeRuns.length + remoteRunIds.length,
     }

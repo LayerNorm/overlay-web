@@ -344,6 +344,7 @@ export class ConvexActConversationRepository implements ActConversationRepositor
     cancelledRunIds: string[]
     cancelledWorkflowRunIds: string[]
     cancelledWorkflows: Array<{ agentRunId: string; workflowRunId: string }>
+    cancelledHarnessRoots?: Array<{ agentRunId: string; runId: string }>
     remoteRunIds?: string[]
     stoppedCount: number
   }> {
@@ -351,6 +352,7 @@ export class ConvexActConversationRepository implements ActConversationRepositor
       cancelledRunIds: string[]
       cancelledWorkflowRunIds: string[]
       cancelledWorkflows: Array<{ agentRunId: string; workflowRunId: string }>
+      cancelledHarnessRoots?: Array<{ agentRunId: string; runId: string }>
       remoteRunIds?: string[]
       stoppedCount: number
     }>(

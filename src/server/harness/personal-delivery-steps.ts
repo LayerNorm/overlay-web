@@ -18,12 +18,14 @@ export async function attachPersonalHarnessDelivery(access: PersonalHarnessAcces
     conversationId: asConversationId(access.conversationId), userId: access.actorUserId, agentRunId: access.agentRunId,
   })
   if (!current || current.id !== access.agentRunId || current.userId !== access.actorUserId
-    || current.conversationId !== access.conversationId || current.runner !== 'workflow' || current.mode === 'room'
+    || current.conversationId !== access.conversationId || current.harnessRunId !== state.runId
+    || current.runner !== 'workflow' || current.mode === 'room'
     || (current.workflowRunId && current.workflowRunId !== access.workflowRunId)) throw new FatalError('Invalid personal delivery run.')
   const run = await agentRunService.attachWorkflow({
     runId: access.agentRunId, userId: access.actorUserId, workflowRunId: access.workflowRunId,
   })
-  if (!run || run.conversationId !== access.conversationId || run.runner !== 'workflow'
+  if (!run || run.conversationId !== access.conversationId || run.harnessRunId !== state.runId
+    || run.runner !== 'workflow'
     || run.workflowRunId !== access.workflowRunId || run.mode === 'room') throw new FatalError('Invalid personal delivery run.')
 }
 
@@ -39,7 +41,8 @@ export async function finishPersonalHarnessDelivery(
   const run = await server.appData.repositories.conversations.getLatestAgentRun({
     conversationId: asConversationId(access.conversationId), userId: access.actorUserId, agentRunId: access.agentRunId,
   })
-  if (!run || run.id !== access.agentRunId || run.userId !== access.actorUserId || run.conversationId !== access.conversationId || run.workflowRunId !== access.workflowRunId
+  if (!run || run.id !== access.agentRunId || run.userId !== access.actorUserId || run.conversationId !== access.conversationId
+    || run.harnessRunId !== state.runId || run.workflowRunId !== access.workflowRunId
     || run.runner !== 'workflow' || run.mode === 'room') throw new FatalError('Personal delivery ownership changed.')
   if (run.status === 'cancelled' || run.status === 'failed') return
   if (state.status === 'completed') {

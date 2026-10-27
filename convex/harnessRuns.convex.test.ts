@@ -303,7 +303,11 @@ describe('durable harness runs', () => {
     await apply(convex, childInput, 'settlement-step', 3, {
       type: 'transition_step', id: 'work', status: 'done', evidenceRefs: [evidence.id],
     })
-    await apply(convex, childInput, 'settlement-finish', 4, { type: 'finish' })
+    await apply(convex, childInput, 'settlement-checkpoint', 4, { type: 'checkpoint', summary: 'Intermediate working notes.' })
+    await apply(convex, childInput, 'settlement-finish', 5, { type: 'finish', resultSummary: 'Verified child result.' })
+    expect(await get(convex, childInput.runId)).toMatchObject({
+      workingSummary: 'Intermediate working notes.', resultSummary: 'Verified child result.',
+    })
 
     const settled = await apply(convex, input, 'settlement-join', 3, {
       type: 'settle_child', childRunId: childInput.runId,
@@ -313,19 +317,21 @@ describe('durable harness runs', () => {
     expect(settled.snapshot.children[0]).toMatchObject({
       status: 'completed',
       accountedUsage: { costMicros: 60 },
+      summary: 'Verified child result.',
     })
     const parentStep = await apply(convex, input, 'settlement-parent-step', settled.snapshot.revision, {
       type: 'transition_step', id: 'delegated', status: 'done',
       evidenceRefs: settled.snapshot.evidence.map(item => item.id),
     })
-    await apply(convex, input, 'settlement-parent-finish', parentStep.snapshot.revision, { type: 'finish' })
+    await apply(convex, input, 'settlement-parent-finish', parentStep.snapshot.revision, { type: 'finish', resultSummary: 'Integrated final result.' })
     expect((await get(convex, childInput.runId))?.status).toBe('completed')
     const completedChild = await get(convex, childInput.runId)
     await apply(convex, childInput, 'settlement-late-child-receipt', completedChild!.revision, {
       type: 'record_receipt', receipt: { ...receipt, id: 'settlement-late-receipt', costMicros: 1 },
     })
     expect((await get(convex, childInput.runId))?.status).toBe('completed')
-    expect(await get(convex, input.runId)).toMatchObject({ status: 'completed', usage: { costMicros: 61 } })
+    expect(await get(convex, input.runId)).toMatchObject({ status: 'completed', resultSummary: 'Integrated final result.', usage: { costMicros: 61 } })
+    expect((await get(convex, childInput.runId))?.resultSummary).toBe('Verified child result.')
   })
 
   test('propagates grandchild receipts through cancellation and late retries exactly once', async () => {

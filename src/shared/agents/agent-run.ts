@@ -101,6 +101,7 @@ export type AgentRun = {
   status: AgentRunStatus
   variantIndex?: number
   workflowRunId?: string
+  harnessRunId?: string
   leaseExpiresAt?: number
   startedAt?: number
   completedAt?: number

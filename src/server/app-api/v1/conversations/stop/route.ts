@@ -1,5 +1,5 @@
 import { logger } from '@/server/observability/logger'
-import { NextRequest, NextResponse } from 'next/server'
+import { after, NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { getAuthorizedResourceUserId } from '@/server/app-api/bff-context'
@@ -8,8 +8,29 @@ import { agentRunService } from '@/server/conversations/http'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
 import { asConversationId } from '@/server/conversations/ActConversationRepository'
 import { getRun } from 'workflow/api'
+import { cancelPersonalHarnessWorkflows } from '@/server/harness/personal-cancellation'
 
-export async function POST(request: NextRequest, context: AppApiRouteContext) {
+type StopRouteDependencies = {
+  conversations: Pick<ReturnType<typeof getOverlayServerContext>['appData']['repositories']['conversations'], 'cancelAgentRuns'>
+  controlRemoteTurn?: (input: {
+    actorUserId: string
+    workspaceId: string
+    conversationId: string
+    runId: string
+    action: 'cancel'
+  }) => Promise<unknown>
+  abortToolLoops?: typeof abortToolLoopRunIds
+  cancelWorkflow?: (workflowRunId: string) => Promise<void>
+  recordMetrics?: (runId: string, userId: string, cancellationAcknowledgedAt: number) => Promise<unknown>
+  schedule?: typeof after
+  cancelHarnessWorkflows?: typeof cancelPersonalHarnessWorkflows
+}
+
+export async function POST(
+  request: NextRequest,
+  context: AppApiRouteContext,
+  dependencies?: StopRouteDependencies,
+) {
   try {
     const body = await request.json() as {
       conversationId?: string
@@ -28,7 +49,8 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       )
     }
 
-    const repository = getOverlayServerContext().appData.repositories.conversations
+    const server = dependencies ? undefined : getOverlayServerContext()
+    const repository = dependencies?.conversations ?? server!.appData.repositories.conversations
     const resourceUserId = getAuthorizedResourceUserId(context)
     const cancelled = await repository.cancelAgentRuns({
       conversationId: asConversationId(conversationId),
@@ -39,7 +61,9 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     })
     // Connected agents (Claude Code, Codex…) are stopped through the control plane, which tells their machine to cancel.
     const remoteRunIds = cancelled.remoteRunIds ?? []
-    await Promise.all(remoteRunIds.map((runId) => getOverlayServerContext().connectedAgentControlPlane.controlRemoteTurn({
+    const controlRemoteTurn = dependencies?.controlRemoteTurn
+      ?? (input => server!.connectedAgentControlPlane.controlRemoteTurn(input))
+    await Promise.all(remoteRunIds.map((runId) => controlRemoteTurn({
       actorUserId: context.auth.userId,
       workspaceId: context.workspace.workspace.id,
       conversationId,
@@ -48,10 +72,12 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     }).catch((error) => {
       logger.warn('[conversations/stop POST] Failed to cancel remote run', { runId, error })
     })))
-    const abortedLocalRunIds = abortToolLoopRunIds(cancelled.cancelledRunIds)
+    const abortedLocalRunIds = (dependencies?.abortToolLoops ?? abortToolLoopRunIds)(cancelled.cancelledRunIds)
+    const cancelWorkflow = dependencies?.cancelWorkflow
+      ?? (async (workflowRunId: string) => { await getRun(workflowRunId).cancel() })
     const cancelledWorkflowAgentRunIds = (await Promise.all(cancelled.cancelledWorkflows.map(async (run) => {
       try {
-        await getRun(run.workflowRunId).cancel()
+        await cancelWorkflow(run.workflowRunId)
         return run.agentRunId
       } catch (error) {
         logger.warn('[conversations/stop POST] Failed to cancel workflow run', { runId: run.workflowRunId, error })
@@ -59,12 +85,29 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       }
     }))).filter((runId): runId is string => Boolean(runId))
     const cancellationAcknowledgedAt = Date.now()
+    const recordMetrics = dependencies?.recordMetrics
+      ?? (async (runId: string, userId: string, acknowledgedAt: number) => agentRunService.recordMetrics({
+        metrics: { cancellationAcknowledgedAt: acknowledgedAt }, runId, userId,
+      }))
     await Promise.all([...abortedLocalRunIds, ...cancelledWorkflowAgentRunIds].map((runId) =>
-      agentRunService.recordMetrics({
-        metrics: { cancellationAcknowledgedAt },
-        runId,
-        userId: resourceUserId,
-      }).catch((_error) => undefined)))
+      recordMetrics(runId, resourceUserId, cancellationAcknowledgedAt).catch((_error) => undefined)))
+    const schedule = dependencies?.schedule ?? after
+    const cancelHarnessWorkflows = dependencies?.cancelHarnessWorkflows ?? cancelPersonalHarnessWorkflows
+    for (const root of cancelled.cancelledHarnessRoots ?? []) {
+      schedule(async () => {
+        try {
+          await cancelHarnessWorkflows({
+            actorUserId: resourceUserId,
+            agentRunId: root.agentRunId,
+            rootRunId: root.runId,
+          })
+        } catch (error) {
+          logger.warn('[conversations/stop POST] Failed to clean up personal harness workflows', {
+            agentRunId: root.agentRunId, rootRunId: root.runId, error,
+          })
+        }
+      })
+    }
     return NextResponse.json({
       success: true,
       stoppedCount: cancelled.stoppedCount,

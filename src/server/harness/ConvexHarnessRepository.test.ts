@@ -33,3 +33,15 @@ test('wait mutations serialize only the contract, not their caller authenticatio
   await repository.resolveWait({ ...reference, token: 'token' })
   expect(mocks.mutation).toHaveBeenLastCalledWith('harness/runs:resolveWait', { ...identity, token: 'token' }, { throwOnError: true })
 })
+
+test('delivery cleanup query serializes only its authorized identity and cursor', async () => {
+  const page = { workflowRunIds: ['workflow'], cursor: 'next', isDone: false, ignored: 'not returned' }
+  mocks.query.mockResolvedValueOnce(page)
+  const repository = new ConvexHarnessRepository()
+  await expect(repository.listDeliveryWorkflowRuns({
+    actorUserId: 'user', agentRunId: 'delivery', rootRunId: 'root', cursor: null,
+  })).resolves.toEqual({ workflowRunIds: ['workflow'], cursor: 'next', isDone: false })
+  expect(mocks.query).toHaveBeenLastCalledWith('harness/runs:listDeliveryWorkflowRuns', {
+    actorUserId: 'user', agentRunId: 'delivery', rootRunId: 'root', cursor: null, serverSecret: 'fixture-secret',
+  }, { throwOnError: true })
+})

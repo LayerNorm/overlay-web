@@ -432,6 +432,7 @@
     "src/server/files/FileServicePayloads.ts",
     "src/server/harness/ConvexHarnessRepository.ts",
     "src/server/harness/personal-access.ts",
+    "src/server/harness/personal-cancellation.ts",
     "src/server/harness/personal-child-steps.ts",
     "src/server/harness/personal-delivery-steps.ts",
     "src/server/harness/personal-model-dispatch.ts",

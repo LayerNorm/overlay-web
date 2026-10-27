@@ -10,6 +10,21 @@ import { ConvexHarnessRepository } from './ConvexHarnessRepository'
 import type { PersonalHarnessAccess } from './personal-access'
 import type { HarnessExecutionReference } from './state-steps'
 
+type PersonalDeliveryRepository = ReturnType<typeof getOverlayServerContext>['appData']['repositories']['conversations']
+type PersonalDeliveryRun = NonNullable<Awaited<ReturnType<PersonalDeliveryRepository['getLatestAgentRun']>>>
+
+function assertPersonalWaitDeliveryOwnership(
+  run: PersonalDeliveryRun | null,
+  access: PersonalHarnessAccess,
+  rootRunId: string,
+): asserts run is PersonalDeliveryRun {
+  if (!run || run.userId !== access.actorUserId || run.conversationId !== access.conversationId
+    || run.harnessRunId !== rootRunId || run.runner !== 'workflow' || run.mode === 'room'
+    || run.workflowRunId !== access.workflowRunId) {
+    throw new FatalError('Conversation wait ownership changed.')
+  }
+}
+
 export function harnessWakeToken(workflowRunId: string) {
   return `harness:wake:${workflowRunId}`
 }
@@ -83,10 +98,7 @@ export async function projectPersonalHarnessWait(
   const run = await conversations.getLatestAgentRun({
     conversationId: asConversationId(access.conversationId), userId: access.actorUserId, agentRunId: access.agentRunId,
   })
-  if (!run || run.userId !== access.actorUserId || run.conversationId !== access.conversationId
-    || run.runner !== 'workflow' || run.mode === 'room' || run.workflowRunId !== access.workflowRunId) {
-    throw new FatalError('Conversation wait ownership changed.')
-  }
+  assertPersonalWaitDeliveryOwnership(run, access, state.runId)
   if (isTerminalAgentRunStatus(run.status)) return 'inactive'
   const wait = 'wait' in projection
     ? (await repository.listPendingWaits(access)).find(candidate => candidate.token === projection.wait.token)

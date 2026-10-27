@@ -21,7 +21,7 @@ beforeEach(() => {
   mocks.get.mockImplementation(async ({ runId }) => runId === 'root' ? root : runId === 'child' ? child : null)
   mocks.list.mockResolvedValue([wait])
   mocks.delivery.mockResolvedValue({ id: 'delivery', userId: 'user', conversationId: 'conversation', runner: 'workflow',
-    mode: 'work', status: 'waiting_for_children', workflowRunId: 'workflow' })
+    mode: 'work', status: 'waiting_for_children', harnessRunId: 'root', workflowRunId: 'workflow' })
 })
 
 test('root projects stored child input with an atomic delivery workflow fence', async () => {

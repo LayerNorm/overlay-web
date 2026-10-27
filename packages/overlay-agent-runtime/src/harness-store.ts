@@ -11,6 +11,7 @@ export type HarnessAdmission = {
   constraints: string[]
   policy: HarnessPolicy
   source: HarnessSource
+  deliveryAgentRunId?: string
 }
 
 export type HarnessOperation =
