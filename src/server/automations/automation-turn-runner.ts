@@ -7,12 +7,14 @@ import type { WorkspaceAccess } from '@overlay/workspace-contracts'
 import { OVERLAY_TOOL_IDS } from '@overlay/tools-core'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { convertToModelMessages, generateText } from '@/server/ai/sdk'
-import { getLanguageModel } from '@/server/ai/model-runtime'
+import { getLanguageModel, isSubscriptionModelForUser } from '@/server/ai/model-runtime'
+import { summaryGenerationOptions } from '@/server/chat/context-compaction'
 import { modelSupportsZeroDataRetention } from '@/shared/ai/gateway/model-data'
 import {
-  DEFAULT_MODEL_ID,
   FREE_TIER_DEFAULT_MODEL_ID,
+  DEFAULT_MODEL_ID,
 } from '@/shared/ai/gateway/model-types'
+import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
 import { resolveAuthorizedModelIds } from '@/server/ai/model-policy-authority'
 import { meterAutomationWorkflowRun } from '@/server/billing/automation-workflow-billing'
 import { resolveBillingPayer } from '@/server/billing/billing-runtime'
@@ -544,6 +546,9 @@ export async function prepareAutomationAgentTurn(
     userId,
     targetModelId: effectiveModelId,
   })
+  const summaryModelId = isByokModelId(effectiveModelId)
+    ? effectiveModelId
+    : FREE_TIER_DEFAULT_MODEL_ID
   messagesForModel = cloneMessagesWithIndexedFileHint(
     messagesForModel,
     indexedAttachmentList,
@@ -559,7 +564,7 @@ export async function prepareAutomationAgentTurn(
         estimatedInputTokens,
         idempotencyKey: requestIdempotencyKey,
         maxOutputTokens: targetSummaryTokens,
-        modelId: FREE_TIER_DEFAULT_MODEL_ID,
+        modelId: summaryModelId,
         operationId: `${operationIdPrefix}.context-summary`,
         paid,
         requestFingerprint,
@@ -577,12 +582,11 @@ export async function prepareAutomationAgentTurn(
           userId,
         })
         providerWorkStarted = true
-        const summaryModel = await getLanguageModel(FREE_TIER_DEFAULT_MODEL_ID, undefined)
+        const summaryModel = await getLanguageModel(summaryModelId, undefined, userId)
+        const isSubscription = await isSubscriptionModelForUser(summaryModelId, userId)
         const summaryResult = await generateText({
           model: summaryModel,
-          temperature: 0.1,
-          maxOutputTokens: targetSummaryTokens,
-          prompt,
+          ...summaryGenerationOptions({ prompt, targetSummaryTokens, isSubscription }),
         })
         const summaryUsage = (summaryResult as unknown as {
           usage?: { inputTokens?: number; outputTokens?: number }
@@ -590,7 +594,7 @@ export async function prepareAutomationAgentTurn(
         await actUsageBudgetService.recordFinishedUsage({
           forceFreeTierLimits: false,
           inputTokens: summaryUsage?.inputTokens ?? estimatedInputTokens,
-          modelId: FREE_TIER_DEFAULT_MODEL_ID,
+          modelId: summaryModelId,
           outputTokens: summaryUsage?.outputTokens ?? targetSummaryTokens,
           reservationId: summaryReservation.reservationId,
           userId,
@@ -614,6 +618,7 @@ export async function prepareAutomationAgentTurn(
     },
     messages: messagesForModel,
     targetModelId: effectiveModelId,
+    summarizerModelId: summaryModelId,
     userId,
   })
 

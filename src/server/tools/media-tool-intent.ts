@@ -95,7 +95,7 @@ export async function classifyMediaToolIntentForTurn(params: {
   if (!reservation.ok) return null
 
   try {
-    const model = await getLanguageModel(MEDIA_INTENT_MODEL, params.accessToken)
+    const model = await getLanguageModel(MEDIA_INTENT_MODEL, params.accessToken, params.userId)
     await markProviderBudgetStarted({
       userId: params.userId,
       reservationId: reservation.reservationId,

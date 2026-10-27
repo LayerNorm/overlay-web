@@ -44,6 +44,8 @@ export class ConvexProviderConnectionRepository implements ProviderConnectionRep
         serverSecret: getInternalApiSecret(),
         userId: args.userId,
         providerId: args.providerId,
+        ...(args.authKind ? { authKind: args.authKind } : {}),
+        ...(args.subscriptionProvider ? { subscriptionProvider: args.subscriptionProvider } : {}),
         endpoint: args.endpoint,
         displayName: args.displayName,
         // Retained only for hosted WorkOS-Vault compatibility. The credential
@@ -69,6 +71,8 @@ export class ConvexProviderConnectionRepository implements ProviderConnectionRep
         serverSecret: getInternalApiSecret(),
         connectionId: args.connectionId,
         ...(args.displayName !== undefined ? { displayName: args.displayName } : {}),
+        ...(args.authKind !== undefined ? { authKind: args.authKind } : {}),
+        ...(args.subscriptionProvider !== undefined ? { subscriptionProvider: args.subscriptionProvider } : {}),
         ...(args.endpoint !== undefined ? { endpoint: args.endpoint } : {}),
         ...(args.credentialRef !== undefined ? { vaultObjectId: args.credentialRef } : {}),
         ...(args.enabledModelIds !== undefined ? { enabledModelIds: args.enabledModelIds } : {}),

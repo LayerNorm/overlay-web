@@ -8,6 +8,10 @@
  */
 
 import type { ChatModel } from '@/shared/ai/gateway/model-types'
+import {
+  isSubscriptionProviderId,
+  isSubscriptionConnection,
+} from '@/shared/ai/gateway/subscription-providers'
 
 /** Prefix for all BYOK-namespaced model IDs: `byok/{connectionId}/{rawModelId}`. */
 export const BYOK_MODEL_PREFIX = 'byok/'
@@ -52,12 +56,14 @@ export function parseByokModelId(
 export interface ByokConnectionRow {
   _id: string
   providerId: string
+  authKind?: 'api_key' | 'subscription'
+  subscriptionProvider?: string
   endpoint: string
   displayName: string
   enabledModelIds: string[]
   discoveredModelsJson?: string
   discoveredAt?: number
-  status: 'active' | 'error' | 'untested'
+  status: 'active' | 'error' | 'untested' | 'pending'
   lastError?: string
   lastTestedAt?: number
   isDefault: boolean
@@ -107,11 +113,13 @@ export function isByokConnectionRow(value: unknown): value is ByokConnectionRow 
   return (
     typeof value._id === 'string' &&
     typeof value.providerId === 'string' &&
+    (value.authKind === undefined || value.authKind === 'api_key' || value.authKind === 'subscription') &&
+    (value.subscriptionProvider === undefined || isSubscriptionProviderId(value.subscriptionProvider)) &&
     typeof value.endpoint === 'string' &&
     typeof value.displayName === 'string' &&
     Array.isArray(value.enabledModelIds) &&
     value.enabledModelIds.every((id) => typeof id === 'string') &&
-    (value.status === 'active' || value.status === 'error' || value.status === 'untested') &&
+    (value.status === 'active' || value.status === 'error' || value.status === 'untested' || value.status === 'pending') &&
     typeof value.isDefault === 'boolean' &&
     typeof value.isDeletable === 'boolean'
   )
@@ -183,6 +191,17 @@ export function formatByokModelDisplayName(rawModelId: string, discoveredName?: 
  */
 export function byokConnectionToChatModels(connection: ByokConnectionRow): ChatModel[] {
   if (connection.isDefault && connection.providerId === 'vercel-ai-gateway') return []
+  const subscription = isSubscriptionConnection(connection)
+  const provider = subscription
+    ? ({
+        codex: 'openai',
+        xai: 'xai',
+        meta: 'meta-llama',
+        kimi: 'moonshotai',
+        'kimi-ai': 'moonshotai',
+        devin: 'devin',
+      } as const)[connection.subscriptionProvider! as 'codex' | 'xai' | 'meta' | 'kimi' | 'kimi-ai' | 'devin']
+    : connection.displayName
 
   const discovered = parseDiscoveredModels(connection.discoveredModelsJson)
   const discoveredById = new Map(discovered.map((m) => [m.id, m]))
@@ -192,7 +211,9 @@ export function byokConnectionToChatModels(connection: ByokConnectionRow): ChatM
     return {
       id: byokModelId(connection._id, rawModelId),
       name: formatByokModelDisplayName(rawModelId, discovered?.name),
-      provider: connection.displayName,
+      provider,
+      sourceLabel: subscription ? 'Subscription' : 'API key',
+      connectionName: connection.displayName,
       intelligence: 0,
       cost: 1,
       speedTier: 2,

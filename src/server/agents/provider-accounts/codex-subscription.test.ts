@@ -48,6 +48,16 @@ test('a sign-in starts with a one-time code and the link to enter it at', async 
   assert.deepEqual(JSON.parse(openai.calls[0]!.body), { client_id: CODEX_CLIENT_ID })
 })
 
+test('device authorization requests reject redirects', async (t) => {
+  let redirect: RequestRedirect | undefined
+  t.mock.method(globalThis, 'fetch', async (_input, init) => {
+    redirect = init?.redirect
+    return Response.json({ device_auth_id: 'dev-1', user_code: 'ABCD-1234', interval: '5' })
+  })
+  await requestCodexDeviceCode()
+  assert.equal(redirect, 'error')
+})
+
 test('while the person has not approved, polling reports pending; once they have, the code is exchanged for tokens', async () => {
   const pending = fakeOpenAi(() => ({ status: 403 }))
   await assert.rejects(pollCodexDeviceCode({ deviceAuthId: 'd', userCode: 'u' }, { fetch: pending.fetch }), (error: CodexSignInError) => error.code === 'pending')

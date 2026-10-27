@@ -1,8 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { logger } from '@/server/observability/logger'
-import { writeByokVaultKey } from './byok-vault'
+import { deleteByokVaultKey, deleteByokVaultKeyByName, writeByokVaultKey } from './byok-vault'
 
 test('Vault writes reject redirects and do not expose upstream error bodies', async (t) => {
   const previousApiKey = process.env.WORKOS_API_KEY
@@ -18,12 +17,16 @@ test('Vault writes reject redirects and do not expose upstream error bodies', as
     init?: RequestInit,
   ) => {
     capturedInit = init
-    return new Response(JSON.stringify({ message: 'sensitive upstream detail' }), {
+    return new Response(JSON.stringify({
+      code: 'invalid_request_parameters',
+      message: '<sensitive>',
+      errors: [{ field: 'key_context', code: 'invalid', message: '<sensitive2>' }],
+    }), {
       status: 400,
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', 'x-request-id': 'sensitive-request-id' },
     })
   })
-  t.mock.method(logger, 'error', () => undefined)
+  const log = t.mock.method(console, 'error', () => undefined)
 
   await assert.rejects(
     () => writeByokVaultKey('byok_user_connection', 'provider_test_key', {
@@ -42,4 +45,236 @@ test('Vault writes reject redirects and do not expose upstream error bodies', as
   assert.equal(capturedInit?.redirect, 'error')
   assert.equal(capturedInit?.cache, 'no-store')
   assert.equal(new Headers(capturedInit?.headers).get('authorization'), 'Bearer workos_test_key')
+  assert.equal(log.mock.callCount(), 1)
+  const logged = String(log.mock.calls[0].arguments[0])
+  assert.deepEqual(JSON.parse(logged).context, {
+    code: 'http_failure',
+    httpStatus: 400,
+    upstreamCode: 'invalid_request_parameters',
+    upstreamFields: ['key_context'],
+  })
+  for (const sensitive of [
+    '<sensitive>',
+    '<sensitive2>',
+    'sensitive-request-id',
+    'workos_test_key',
+    'provider_test_key',
+    'user_1',
+  ]) {
+    assert.equal(logged.includes(sensitive), false)
+  }
+})
+
+test('Vault diagnostics discard invalid upstream identifiers', async (t) => {
+  const previousApiKey = process.env.WORKOS_API_KEY
+  process.env.WORKOS_API_KEY = 'workos_test_key'
+  t.after(() => {
+    if (previousApiKey === undefined) delete process.env.WORKOS_API_KEY
+    else process.env.WORKOS_API_KEY = previousApiKey
+  })
+
+  t.mock.method(globalThis, 'fetch', async () => new Response(JSON.stringify({
+    error: 'bad request with spaces',
+    errors: [{ field: 'x y' }, 'str'],
+    code: 123,
+  }), { status: 400 }))
+  const log = t.mock.method(console, 'error', () => undefined)
+
+  await assert.rejects(writeByokVaultKey('byok_test', 'sensitive', {
+    purpose: 'subscription-credential', userId: 'user_1', providerId: 'subscription-codex',
+  }), { message: 'Failed to store API key in vault' })
+
+  const logged = String(log.mock.calls[0].arguments[0])
+  assert.deepEqual(JSON.parse(logged).context, { code: 'http_failure', httpStatus: 400 })
+  for (const untrustedValue of ['bad request with spaces', 'x y', 'str']) {
+    assert.equal(logged.includes(untrustedValue), false)
+  }
+})
+
+test('Vault rejects invalid context values before fetching and logs only offending keys', async (t) => {
+  const previousApiKey = process.env.WORKOS_API_KEY
+  process.env.WORKOS_API_KEY = 'workos_test_key'
+  t.after(() => {
+    if (previousApiKey === undefined) delete process.env.WORKOS_API_KEY
+    else process.env.WORKOS_API_KEY = previousApiKey
+  })
+  const fetch = t.mock.method(globalThis, 'fetch', async () => new Response(null, { status: 201 }))
+  const log = t.mock.method(console, 'error', () => undefined)
+
+  await assert.rejects(writeByokVaultKey('byok_test', 'sensitive', {
+    purpose: 'subscription-credential', userId: 'user_1', providerId: 'subscription:codex',
+  }), { message: 'Failed to store API key in vault' })
+
+  assert.equal(fetch.mock.callCount(), 0)
+  const logged = String(log.mock.calls[0].arguments[0])
+  assert.deepEqual(JSON.parse(logged).context, {
+    code: 'invalid_context',
+    invalidContextKeys: ['providerId'],
+  })
+  assert.equal(logged.includes('subscription:codex'), false)
+})
+
+test('Vault rejects contexts with more than ten entries before fetching', async (t) => {
+  const previousApiKey = process.env.WORKOS_API_KEY
+  process.env.WORKOS_API_KEY = 'workos_test_key'
+  t.after(() => {
+    if (previousApiKey === undefined) delete process.env.WORKOS_API_KEY
+    else process.env.WORKOS_API_KEY = previousApiKey
+  })
+  const fetch = t.mock.method(globalThis, 'fetch', async () => new Response(null, { status: 201 }))
+  const log = t.mock.method(console, 'error', () => undefined)
+  const context = Object.fromEntries(
+    Array.from({ length: 11 }, (_, index) => [`field${index}`, 'valid-value']),
+  ) as Parameters<typeof writeByokVaultKey>[2]
+
+  await assert.rejects(writeByokVaultKey('byok_test', 'sensitive', context), {
+    message: 'Failed to store API key in vault',
+  })
+
+  assert.equal(fetch.mock.callCount(), 0)
+  assert.deepEqual(JSON.parse(String(log.mock.calls[0].arguments[0])).context, {
+    code: 'invalid_context',
+    invalidContextKeys: ['field10'],
+  })
+})
+
+test('Vault diagnostics log WorkOS error object field names without messages', async (t) => {
+  const previousApiKey = process.env.WORKOS_API_KEY
+  process.env.WORKOS_API_KEY = 'workos_test_key'
+  t.after(() => {
+    if (previousApiKey === undefined) delete process.env.WORKOS_API_KEY
+    else process.env.WORKOS_API_KEY = previousApiKey
+  })
+  const upstreamMessage = "value can only contain letters, numbers, '/', '_', and '-'"
+  t.mock.method(globalThis, 'fetch', async () => new Response(JSON.stringify({
+    errors: { context: [upstreamMessage] },
+  }), { status: 400 }))
+  const log = t.mock.method(console, 'error', () => undefined)
+
+  await assert.rejects(writeByokVaultKey('byok_test', 'sensitive', {
+    purpose: 'subscription-credential', userId: 'user_1', providerId: 'subscription-codex',
+  }), { message: 'Failed to store API key in vault' })
+
+  const logged = String(log.mock.calls[0].arguments[0])
+  assert.deepEqual(JSON.parse(logged).context, {
+    code: 'http_failure',
+    httpStatus: 400,
+    upstreamFields: ['context'],
+  })
+  assert.equal(logged.includes(upstreamMessage), false)
+})
+
+test('Vault diagnostics do not log non-JSON upstream bodies', async (t) => {
+  const previousApiKey = process.env.WORKOS_API_KEY
+  process.env.WORKOS_API_KEY = 'workos_test_key'
+  t.after(() => {
+    if (previousApiKey === undefined) delete process.env.WORKOS_API_KEY
+    else process.env.WORKOS_API_KEY = previousApiKey
+  })
+
+  const upstreamText = 'sensitive non-JSON upstream detail'
+  t.mock.method(globalThis, 'fetch', async () => new Response(upstreamText, { status: 400 }))
+  const log = t.mock.method(console, 'error', () => undefined)
+
+  await assert.rejects(writeByokVaultKey('byok_test', 'sensitive', {
+    purpose: 'subscription-credential', userId: 'user_1', providerId: 'subscription-codex',
+  }), { message: 'Failed to store API key in vault' })
+
+  const logged = String(log.mock.calls[0].arguments[0])
+  assert.deepEqual(JSON.parse(logged).context, { code: 'http_failure', httpStatus: 400 })
+  assert.equal(logged.includes(upstreamText), false)
+})
+
+test('Vault diagnostics distinguish missing configuration without attempting a request', async (t) => {
+  const previousApiKey = process.env.WORKOS_API_KEY
+  delete process.env.WORKOS_API_KEY
+  t.after(() => {
+    if (previousApiKey === undefined) delete process.env.WORKOS_API_KEY
+    else process.env.WORKOS_API_KEY = previousApiKey
+  })
+  const fetch = t.mock.method(globalThis, 'fetch', async () => { throw new Error('must not fetch') })
+  const log = t.mock.method(console, 'error', () => undefined)
+  await assert.rejects(writeByokVaultKey('byok_test', 'sensitive', {
+    purpose: 'subscription-credential', userId: 'user_1', providerId: 'subscription-codex',
+  }), { message: 'Failed to store API key in vault' })
+  assert.equal(fetch.mock.callCount(), 0)
+  assert.deepEqual(JSON.parse(String(log.mock.calls[0].arguments[0])).context, { code: 'missing_configuration' })
+})
+
+test('Vault diagnostics never log transport messages or malformed success bodies', async (t) => {
+  const previousApiKey = process.env.WORKOS_API_KEY
+  process.env.WORKOS_API_KEY = 'workos_test_key'
+  t.after(() => {
+    if (previousApiKey === undefined) delete process.env.WORKOS_API_KEY
+    else process.env.WORKOS_API_KEY = previousApiKey
+  })
+  let transportFailure = true
+  t.mock.method(globalThis, 'fetch', async () => {
+    if (transportFailure) throw new Error('sensitive transport detail')
+    return new Response('sensitive malformed success')
+  })
+  const log = t.mock.method(console, 'error', () => undefined)
+  for (const code of ['transport_failure', 'invalid_response']) {
+    await assert.rejects(writeByokVaultKey('byok_test', 'sensitive', {
+      purpose: 'subscription-credential', userId: 'user_1', providerId: 'subscription-codex',
+    }), { message: 'Failed to store API key in vault' })
+    const logged = String(log.mock.calls.at(-1)?.arguments[0])
+    assert.deepEqual(JSON.parse(logged).context, { code })
+    assert.equal(logged.includes('sensitive'), false)
+    transportFailure = false
+  }
+})
+
+test('Vault DELETE treats an already-deleted object as success', async (t) => {
+  process.env.WORKOS_API_KEY = 'workos_test_key'
+  t.mock.method(globalThis, 'fetch', async () => new Response('', { status: 404 }))
+  await deleteByokVaultKey('already-deleted')
+})
+
+test('Vault delete by name resolves the object ID and does not log values', async (t) => {
+  const previousApiKey = process.env.WORKOS_API_KEY
+  process.env.WORKOS_API_KEY = 'workos_test_key'
+  t.after(() => {
+    if (previousApiKey === undefined) delete process.env.WORKOS_API_KEY
+    else process.env.WORKOS_API_KEY = previousApiKey
+  })
+
+  const name = 'byok_orphan/part'
+  const secretValue = 'sensitive-vault-value'
+  const calls: Array<{ url: string; method: string }> = []
+  t.mock.method(globalThis, 'fetch', async (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input)
+    const method = init?.method ?? 'GET'
+    calls.push({ url, method })
+    if (method === 'GET') return Response.json({ id: 'vault-object-id', value: secretValue })
+    return new Response(null, { status: 204 })
+  })
+  const info = t.mock.method(console, 'info', () => undefined)
+  const error = t.mock.method(console, 'error', () => undefined)
+
+  await deleteByokVaultKeyByName(name)
+
+  assert.equal(calls.length, 2)
+  assert.equal(calls[0]?.method, 'GET')
+  assert.equal(calls[0]?.url.endsWith(`/vault/v1/kv/name/${encodeURIComponent(name)}`), true)
+  assert.equal(calls[1]?.method, 'DELETE')
+  assert.equal(calls[1]?.url.endsWith('/vault/v1/kv/vault-object-id'), true)
+  const logged = JSON.stringify([...info.mock.calls, ...error.mock.calls])
+  assert.equal(logged.includes(secretValue), false)
+  assert.equal(logged.includes(name), false)
+})
+
+test('Vault delete by name treats a missing name as already deleted', async (t) => {
+  const previousApiKey = process.env.WORKOS_API_KEY
+  process.env.WORKOS_API_KEY = 'workos_test_key'
+  t.after(() => {
+    if (previousApiKey === undefined) delete process.env.WORKOS_API_KEY
+    else process.env.WORKOS_API_KEY = previousApiKey
+  })
+
+  const fetch = t.mock.method(globalThis, 'fetch', async () => new Response(null, { status: 404 }))
+  const error = t.mock.method(console, 'error', () => undefined)
+  await deleteByokVaultKeyByName('already-absent')
+  assert.equal(fetch.mock.callCount(), 1)
+  assert.equal(error.mock.callCount(), 0)
 })

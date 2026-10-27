@@ -17,6 +17,8 @@ import {
 } from 'lucide-react'
 import { SettingsToggle } from '@overlay/modules-react/settings'
 import { getByokPreset } from '@overlay/llm-gateway'
+import { ProviderLogo } from '@overlay/ui/ai'
+import { subscriptionLogo, subscriptionRequest, type SubscriptionProgress } from './subscription-connection-client'
 import type { GatewayCatalogModel } from '@/shared/ai/gateway/gateway-catalog'
 import type { ByokConnectionRow } from '@/shared/ai/gateway/byok-model-conversion'
 import {
@@ -82,6 +84,12 @@ function useProviderConnectionActions({
     setDiscovering(true)
     setRowError(null)
     try {
+      if (connection.providerId.startsWith('subscription:')) {
+        const progress = await subscriptionRequest<SubscriptionProgress>({ connectionId: connection._id, action: 'refresh' })
+        await onRefreshConnections()
+        if (progress.status !== 'connected') throw new Error(progress.error ?? 'Reconnect this subscription to refresh its models.')
+        return
+      }
       if (defaultGateway) await onRefreshGateway()
       // react-doctor-disable-next-line react-doctor/no-fetch-response-used-without-status-check
       const res = await fetch('/api/v1/providers/connections/test', {
@@ -123,6 +131,7 @@ function useProviderConnectionActions({
     }
   }, [
     connection._id,
+    connection.providerId,
     defaultGateway,
     discovering,
     onRefreshConnections,
@@ -271,7 +280,7 @@ export function ProviderConnectionRow({
   )
   const enabledCount = defaultGateway ? allModels.length : allModels.filter((model) => effectiveSettingsIds.has(model.appModelId)).length
   const displayModelCount = defaultGateway && allModels.length > 0 ? allModels.length : discoveredCount
-  const providerLabel = preset?.allowsCustomEndpoint && endpointHost
+  const providerLabel = connection.providerId.startsWith('subscription:') ? 'Subscription · Personal' : preset?.allowsCustomEndpoint && endpointHost
     ? `${preset.label} · ${endpointHost}`
     : (preset?.label ?? connection.providerId)
   const {
@@ -360,10 +369,11 @@ function ProviderConnectionHeader({
   onDelete: () => void
 }) {
   const hasError = connection.status === 'error'
+  const subscription = connection.providerId.startsWith('subscription:')
   return (
     <div className="flex items-center gap-3 px-4 py-3.5">
       {/* Status indicator */}
-      <span
+      {subscription ? <ProviderLogo provider={subscriptionLogo(connection.providerId)} size={22} className="shrink-0" /> : <span
         className={`inline-flex h-2 w-2 shrink-0 rounded-full ${
           hasError
             ? 'bg-red-500'
@@ -371,7 +381,7 @@ function ProviderConnectionHeader({
               ? 'bg-green-500'
               : 'bg-(--muted-light)'
         }`}
-      />
+      />}
 
       {/* Connection info */}
       <div className="min-w-0 flex-1">
@@ -381,7 +391,7 @@ function ProviderConnectionHeader({
           </span>
           {connection.isDefault ? (
             <span className="shrink-0 rounded-full bg-(--surface-subtle) px-1.5 py-0.5 text-[9px] font-semibold text-(--muted)">
-              DEFAULT
+              OVERLAY
             </span>
           ) : null}
         </div>
@@ -389,13 +399,13 @@ function ProviderConnectionHeader({
           <span className="truncate">{providerLabel}</span>
           <span>·</span>
           <span className="shrink-0">
-            {isDefaultGatewayConnection(connection) ? `${enabledCount} available` : `${enabledCount} authorized`}
+            {isDefaultGatewayConnection(connection) ? `${enabledCount} available` : `${enabledCount} enabled`}
             {displayModelCount > 0 ? ` · ${displayModelCount} model${displayModelCount !== 1 ? 's' : ''}` : ' · 0 models'}
           </span>
           {connection.lastTestedAt ? (
             <>
               <span>·</span>
-              <span className="shrink-0">Searched {formatRelativeTime(connection.lastTestedAt)}</span>
+              <span className="shrink-0">Updated {formatRelativeTime(connection.lastTestedAt)}</span>
             </>
           ) : null}
         </div>
@@ -434,16 +444,16 @@ function ProviderConnectionHeader({
           type="button"
           onClick={onEdit}
           className={unstyledButton(`flex h-8 w-8 items-center justify-center rounded-lg text-(--muted) hover:bg-(--surface-muted) hover:text-(--foreground)`)}
-          aria-label="Edit provider"
+          aria-label={subscription ? 'Reconnect subscription' : 'Edit provider'}
         >
-          <Pencil size={14} strokeWidth={1.8} />
+          {subscription ? <RefreshCw size={14} strokeWidth={1.8} /> : <Pencil size={14} strokeWidth={1.8} />}
         </Button>
         {connection.isDeletable ? (
           <Button variant="ghost"
             type="button"
             onClick={onDelete}
             className={unstyledButton(`flex h-8 w-8 items-center justify-center rounded-lg text-(--muted) hover:bg-(--surface-muted) hover:text-red-500`)}
-            aria-label="Delete provider"
+            aria-label="Disconnect provider"
           >
             <Trash2 size={14} strokeWidth={1.8} />
           </Button>

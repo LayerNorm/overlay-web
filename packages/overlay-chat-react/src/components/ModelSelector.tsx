@@ -9,7 +9,7 @@ import { GenerationModeToggle } from './GenerationModeToggle'
 
 type GenerationModeToggleProps = ComponentProps<typeof GenerationModeToggle>
 
-export type ModelSelectorItem = { id: string; name: string; provider?: string }
+export type ModelSelectorItem = { id: string; name: string; provider?: string; sourceLabel?: string; connectionName?: string }
 
 export type ModelSelectorSection<T extends ModelSelectorItem> = {
   id: string
@@ -57,7 +57,7 @@ export function filterModels<T extends ModelSelectorItem>(models: readonly T[], 
   const needle = query.trim().toLowerCase()
   if (!needle) return [...models]
   return models.filter((model) =>
-    [model.name, model.id, model.provider ? providerLabel(model.provider) : '']
+    [model.name, model.id, model.provider ? providerLabel(model.provider) : '', model.sourceLabel ?? '', model.connectionName ?? '']
       .some((value) => value.toLowerCase().includes(needle)),
   )
 }
@@ -150,7 +150,11 @@ export function ModelSelector<T extends ModelSelectorItem>({
           } ${selected ? 'font-medium text-(--foreground)' : 'text-(--muted)'}`)}
         >
           <ProviderLogo provider={model.provider ?? 'other'} size={14} className="text-(--foreground)" />
-          <span className="min-w-0 truncate">{model.name}</span>
+          <span className="min-w-0 flex-1 truncate" title={model.connectionName ? `${model.name} · ${model.connectionName}` : model.name}>
+            <span className="block truncate">{model.name}</span>
+            {model.connectionName ? <span className="block truncate text-[10px] font-normal text-(--muted-light)">{model.connectionName}</span> : null}
+          </span>
+          {model.sourceLabel ? <span className="shrink-0 rounded border border-(--border) px-1.5 py-0.5 text-[9px] font-normal text-(--muted)">{model.sourceLabel}</span> : null}
         </Button>
         <Button
           variant="ghost"

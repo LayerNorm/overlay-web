@@ -487,6 +487,10 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
     },
   },
   { path: '/api/v1/providers/connections/test', methods: { POST: authenticated() } },
+  {
+    path: '/api/v1/providers/subscriptions',
+    methods: { GET: authenticated(), POST: authenticated(), PATCH: authenticated() },
+  },
   // Agent provider accounts (Claude Code / Codex credentials) are scoped to the caller's own user id.
   {
     path: '/api/v1/provider-accounts',
