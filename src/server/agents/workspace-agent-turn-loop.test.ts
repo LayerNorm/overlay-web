@@ -17,6 +17,7 @@ import {
   workspaceAgentToolResultOutput,
 } from './workspace-agent-turn-utils'
 import { settleWorkspaceAgentUsageWithPolicy } from './workspace-agent-usage'
+import { persistAgentToolProgress } from './agent-message-stream'
 
 function prepared(maxSteps = 5): WorkspaceAgentPreparedContext {
   return {
@@ -78,6 +79,42 @@ function usageState(): WorkspaceAgentLoopUsage {
     providerOutcomeAmbiguous: false,
   }
 }
+
+test('failed tool-progress writes do not stop tools, lose model results, or skip finalization', async () => {
+  const actions: string[] = []
+  let writes = 0
+  let finalized = false
+  const dependencies = createDependencies({ calls: [], actions })
+  dependencies.callModel = async ({ modelStep, messages }) => {
+    if (modelStep === 0) return modelCall([toolCall('read_file', 'read-1'), toolCall('read_file', 'read-2')])
+    assert.equal(modelStep, 1)
+    assert.deepEqual(messages.at(-1), {
+      role: 'tool',
+      content: ['read-1', 'read-2'].map((toolCallId) => ({
+        type: 'tool-result', toolCallId, toolName: 'read_file',
+        output: { type: 'json', value: { success: true } },
+      })),
+    })
+    return modelCall([], 'Completed both actions.')
+  }
+  dependencies.persistProgress = async ({ parts }) => persistAgentToolProgress({
+    store: { appendAgentMessageDelta: async () => { writes += 1; throw new Error('Server Error') } },
+    actorUserId: 'user_1', conversationId: 'conversation_1', messageId: 'message_1',
+    workspaceId: 'workspace_1', parts,
+  })
+  dependencies.finalize = async ({ content, steps }) => {
+    finalized = true
+    assert.equal(content, 'Completed both actions.')
+    assert.equal(steps.length, 2)
+    return { completed: true }
+  }
+
+  const result = await runWorkspaceAgentTurnLoop({ prepared: prepared(), dependencies, usage: usageState() })
+  assert.equal(writes, 2)
+  assert.deepEqual(actions, ['read-1', 'read-2'])
+  assert.equal(finalized, true)
+  assert.deepEqual(result.result, { completed: true })
+})
 
 test('normalizes native tool results and feeds them to a subsequent AI SDK mock completion', async () => {
   const screenshotResult = workspaceAgentToolResultFromOutput({

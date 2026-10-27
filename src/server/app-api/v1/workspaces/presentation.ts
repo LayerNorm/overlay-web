@@ -15,6 +15,8 @@ export function toWorkspaceSummary(
     kind: access.workspace.kind,
     status: access.workspace.status,
     role: access.membership.role,
+    ...(access.workspace.iconUrl ? { iconUrl: access.workspace.iconUrl } : {}),
+    ...(access.workspace.iconPreset ? { iconPreset: access.workspace.iconPreset } : {}),
     ...(options.memberCount === undefined ? {} : { memberCount: options.memberCount }),
     ...(options.humanMemberCount === undefined ? {} : { humanMemberCount: options.humanMemberCount }),
   }

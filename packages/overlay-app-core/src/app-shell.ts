@@ -138,7 +138,7 @@ export const DEFAULT_OVERLAY_NAVIGATION: readonly OverlayNavigationItem[] = [
 
 export const DEFAULT_OVERLAY_SETTINGS_SECTIONS: readonly OverlaySettingsSection[] = [
   { id: 'general', label: 'General' },
-  { id: 'account', label: 'Account' },
+  { id: 'profile', label: 'Profile' },
   { id: 'workspace', label: 'Workspace' },
   { id: 'customization', label: 'Customization' },
   { id: 'shortcuts', label: 'Shortcuts' },
@@ -193,7 +193,7 @@ export const DEFAULT_OVERLAY_FEATURE_MODULES: readonly OverlayFeatureModule[] = 
     label: 'Settings and account',
     description: 'Settings, account, billing, customization, and policy panels.',
     navigationItemId: 'settings',
-    routePatterns: ['/app/settings', '/account'],
+    routePatterns: ['/app/settings'],
     componentKey: 'overlay.modules.settingsAccount',
     packageName: '@overlay/modules-react',
     order: 50,
@@ -239,7 +239,7 @@ export const DEFAULT_OVERLAY_SIDEBAR_ACTIONS: readonly OverlaySidebarAction[] = 
 
 export const DEFAULT_OVERLAY_SETTINGS_PANELS: readonly OverlaySettingsPanel[] = [
   { id: 'general', sectionId: 'general', label: 'General', componentKey: 'overlay.settings.general', order: 10 },
-  { id: 'account', sectionId: 'account', label: 'Account', componentKey: 'overlay.settings.account', order: 20 },
+  { id: 'profile', sectionId: 'profile', label: 'Profile', componentKey: 'overlay.settings.profile', order: 20 },
   { id: 'customization', sectionId: 'customization', label: 'Customization', componentKey: 'overlay.settings.customization', order: 30 },
   { id: 'shortcuts', sectionId: 'shortcuts', label: 'Shortcuts', componentKey: 'overlay.settings.shortcuts', order: 35 },
   { id: 'memories', sectionId: 'memories', label: 'Memories', componentKey: 'overlay.settings.memories', featureFlagId: 'knowledge', requiredCapabilities: ['memory'], order: 40 },
@@ -540,7 +540,7 @@ export function overlayNavigationToDestinations(
     href: '/app/settings',
     subviews: settingsSections.map((section) => section.id),
   })
-  destinations.push({ id: 'account', label: 'Account settings', href: '/app/settings?section=account' })
+  destinations.push({ id: 'account', label: 'Account', href: '/account' })
 
   return destinations
 }

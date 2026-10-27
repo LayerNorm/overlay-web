@@ -14,8 +14,8 @@ test('mobile navigation exposes the actual rows as tour targets', () => {
       id, label: id, icon: Circle, active: false, pending: false,
       unreadCount: 0, opensPanel: false, onSelect() {},
     }))}
-    showcaseLinks={[]}
-    onShowcaseSelect={() => {}}
+
+
     footer={null}
   />)
   for (const id of ids) assert.match(html, new RegExp(`data-tour="nav-${id}"`))

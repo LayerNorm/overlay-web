@@ -18,6 +18,14 @@ and conversation query, and remain absent from Production.
 
 ## App screen breadcrumbs
 
+Account and workspace Profile use the shared identity image editor with Avatar,
+Dialog, Button and Input primitives. Photo changes support square crop, zoom and
+positioning; workspace icons also offer bundled presets and initials. Keep the
+scope visible in headings, provide explicit save/error states and restore inherited
+account defaults by clearing workspace overrides rather than copying current values.
+Human avatars fall back to initials when images are missing or fail to load;
+agents retain their creature avatars.
+
 `AppScreenHeader` and custom module headers use the shared `AppBreadcrumbs` component,
 composed from the shadcn Radix Breadcrumb primitives in `@overlay/ui/primitives`.
 `AppBreadcrumbContext` supplies the active Personal/Workspace scope and page; callers add
@@ -227,6 +235,23 @@ When migrating a control while preserving its existing visual contract, import
 `unstyledButton`, `unstyledInput`, or `unstyledTextarea` from
 `@overlay/ui/control-reset`. Apply the helper at the existing control so local
 classes and native semantics remain explicit.
+
+Shared `Input` and `Textarea` controls use the shadcn focus-visible border and
+ring treatment; `Input` uses `rounded-md`. Preserve the keyboard focus ring by
+using `focus-visible:ring-0` only when a control intentionally has no ring.
+Search and message editors use `@overlay/ui` primitives, with message edit
+actions below the full-width textarea. `useAutosizeTextarea` remeasures on value
+and width changes and after fonts load; use it for work titles and agent
+instructions.
+
+Agent Details uses collapsed `Collapsible` rows for Model, Instructions, Tools
+and Advanced. Keep labels at their intrinsic width and truncate only the flexible
+summary, so long instructions cannot crowd out the section name. Keep summaries
+concise and visible only while collapsed. Mentions
+is a plain heading inside Advanced, not a nested disclosure.
+Native Permissions lives inside Advanced, with the effective Ask/Auto choice in
+the collapsed summary. Keep its existing confirmation and save behavior, and
+preserve Computer takeover/handback controls when regrouping the fields.
 
 Radix forbids empty item values; the adapter uses private index IDs and translates
 back to original public values. Empty options remain selectable (sharing, replay,

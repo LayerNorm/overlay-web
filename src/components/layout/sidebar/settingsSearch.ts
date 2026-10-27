@@ -1,8 +1,8 @@
 import type { InlineNavItem } from '@/components/layout/AppSidebarInlinePanels'
 
 const SETTINGS_GROUPS: ReadonlyArray<{ label: string; ids: readonly string[] }> = [
-  { label: 'Personal', ids: ['general', 'account', 'customization', 'shortcuts', 'memories', 'archived'] },
-  { label: 'Workspace', ids: ['workspace', 'agent-accounts', 'agent-environments', 'computers', 'models', 'providers'] },
+  { label: 'Personal', ids: ['general', 'customization', 'shortcuts', 'memories', 'archived'] },
+  { label: 'Workspace', ids: ['profile', 'workspace', 'agent-accounts', 'agent-environments', 'computers', 'models', 'providers'] },
   { label: 'Integrations', ids: ['connected-apps', 'webhooks'] },
   { label: 'Support', ids: ['contact'] },
 ]
@@ -10,7 +10,7 @@ const SETTINGS_GROUPS: ReadonlyArray<{ label: string; ids: readonly string[] }> 
 /** Words for the settings on each page, so a search for "theme" finds Customization. */
 const SETTINGS_KEYWORDS: Readonly<Record<string, readonly string[]>> = {
   general: ['auto-continue', 'default model', 'open links', 'zdr', 'zero data retention', 'billing', 'plan', 'usage', 'subscription'],
-  account: ['profile', 'name', 'email', 'password', 'sign out', 'log out', 'delete account'],
+  profile: ['display name', 'photo', 'avatar', 'account defaults'],
   workspace: ['members', 'invite', 'team', 'roles', 'permissions', 'workspace name'],
   customization: ['appearance', 'theme', 'dark mode', 'light mode', 'rail and panel', 'sidebar', 'layout'],
   shortcuts: ['keyboard', 'hotkeys', 'keybindings'],

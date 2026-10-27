@@ -64,7 +64,6 @@ import { ConversationScopeActionDialog } from './collaboration/ConversationScope
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import type { WorkspaceNotification } from '@overlay/workspace-contracts'
 
-
 type Conversation = {
   _id: string
   title: string
@@ -163,18 +162,18 @@ function useNewConversationDialogs(chatView: ChatView, workspaceId: string | nul
 
 function useCollaborationUnread({
   workspaceId,
-  isPublicShowcase,
+
   user,
   collaborationNotifications,
 }: {
   workspaceId: string | null | undefined
-  isPublicShowcase: boolean
+
   user: AuthUser | null
   collaborationNotifications: WorkspaceNotification[]
 }) {
   const [collaborationUnread, setCollaborationUnread] = useState<Record<string, number>>({})
   useEffect(() => {
-    if (!workspaceId || isPublicShowcase || !user) {
+    if (!workspaceId || !user) {
       queueMicrotask(() => setCollaborationUnread({}))
       return
     }
@@ -199,7 +198,7 @@ function useCollaborationUnread({
     return () => {
       window.removeEventListener('overlay:collaboration-read', handleCollaborationRead)
     }
-  }, [collaborationNotifications, isPublicShowcase, user, workspaceId])
+  }, [collaborationNotifications,  user, workspaceId])
   return collaborationUnread
 }
 
@@ -207,7 +206,6 @@ function useChatListData({
   authLoading,
   chatView,
   refreshKey,
-  seededChats,
   user,
   workspaceId,
   conversationListVersion,
@@ -215,25 +213,19 @@ function useChatListData({
   authLoading: boolean
   chatView: ChatView
   refreshKey: number
-  seededChats: Conversation[] | undefined
   user: AuthUser | null
   workspaceId: string | null | undefined
   conversationListVersion: number | null
 }) {
-  const isPublicShowcase = seededChats !== undefined
-  const [chats, setChats] = useState<Conversation[]>(() => seededChats ?? [])
-  const [loading, setLoading] = useState(!isPublicShowcase)
+
+  const [chats, setChats] = useState<Conversation[]>(() => [])
+  const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
   const [hasMore, setHasMore] = useState(() => getCachedChatListPageInfo().hasMore)
   const lastConversationListVersionRef = useRef<number | null>(null)
 
   const loadChats = useCallback(async (signal?: { cancelled: boolean }) => {
-    if (seededChats) {
-      setChats(seededChats)
-      setHasMore(false)
-      setLoading(false)
-      return
-    }
+
     if (authLoading) return
     if (!user) {
       clearChatListCache()
@@ -271,7 +263,7 @@ function useChatListData({
     }
     // Exhausted retries; stop the skeleton so the UI doesn't hang indefinitely.
     if (!signal?.cancelled) setLoading(false)
-  }, [authLoading, seededChats, user])
+  }, [authLoading, user])
 
   async function loadMoreChats() {
     if (!user) return
@@ -289,12 +281,6 @@ function useChatListData({
     let timeoutId: number | undefined
     queueMicrotask(() => {
       if (signal.cancelled) return
-      if (seededChats) {
-        setChats(seededChats)
-        setHasMore(false)
-        setLoading(false)
-        return
-      }
       if (authLoading) {
         setLoading(true)
         return
@@ -324,7 +310,7 @@ function useChatListData({
       signal.cancelled = true
       if (timeoutId !== undefined) window.clearTimeout(timeoutId)
     }
-  }, [authLoading, chatView, loadChats, refreshKey, seededChats, user, workspaceId])
+  }, [authLoading, chatView, loadChats, refreshKey, user, workspaceId])
 
   useWorkspaceChanged(useCallback(() => { void loadChats() }, [loadChats]))
 
@@ -388,7 +374,7 @@ function useChatListEvents({
   activeId,
   baseHref,
   chatView,
-  isPublicShowcase,
+
   openChat,
   pathname,
   router,
@@ -400,7 +386,7 @@ function useChatListEvents({
   activeId: string | null
   baseHref: string
   chatView: ChatView
-  isPublicShowcase: boolean
+
   openChat: (chat: Conversation) => void
   pathname: string
   router: ReturnType<typeof useRouter>
@@ -495,7 +481,7 @@ function useChatListEvents({
     })
 
   useEffect(() => {
-    if (isPublicShowcase) return
+
     if (!user) return
     window.addEventListener(CHAT_CREATED_EVENT, handleChatUpserted)
     window.addEventListener(CHAT_MODIFIED_EVENT, handleChatUpserted)
@@ -509,7 +495,7 @@ function useChatListEvents({
       window.removeEventListener(CHAT_DELETED_EVENT, handleChatDeleted)
       window.removeEventListener(CHAT_ARCHIVED_EVENT, handleChatArchived)
     }
-  }, [activeId, baseHref, chatView, isPublicShowcase, openChat, pathname, router, setChats, setLoading, user, workspaceId])
+  }, [activeId, baseHref, chatView,  openChat, pathname, router, setChats, setLoading, user, workspaceId])
 
   return deletingChatIds
 }
@@ -633,7 +619,7 @@ function ChatListRow({
   isStreaming,
   unread,
   editingTitle,
-  isPublicShowcase,
+
   onOpenChat,
   onBeginRename,
   onRequestArchive,
@@ -648,7 +634,7 @@ function ChatListRow({
   isStreaming: boolean
   unread: number
   editingTitle: string
-  isPublicShowcase: boolean
+
   onOpenChat: (chat: Conversation) => void
   onBeginRename: (chat: Conversation, event: MouseEvent<HTMLButtonElement>) => void
   onRequestArchive: (chat: Conversation, event: MouseEvent<HTMLButtonElement>) => void
@@ -665,7 +651,7 @@ function ChatListRow({
         isDeleting ? 'max-h-0 -translate-y-1 opacity-0' : 'max-h-8 opacity-100',
       )}
     >
-      {!isPublicShowcase && isEditing ? (
+      {isEditing ? (
         <div className="flex h-7 min-w-0 items-center gap-2 px-2 text-xs text-(--muted)">
           <ChatConversationIcon chat={chat} size={12} className="shrink-0" />
           <Input
@@ -706,7 +692,7 @@ function ChatListRow({
             isActive={active}
             aria-current={active ? 'page' : undefined}
             onClick={() => { if (!isDeleting) onOpenChat(chat) }}
-            className={cn('h-8 gap-2.5 text-sm', isPublicShowcase ? undefined : canRename ? 'pr-14' : 'pr-8')}
+            className={cn('h-8 gap-2.5 text-sm', canRename ? 'pr-14' : 'pr-8')}
           >
             <ChatConversationIcon chat={chat} size={12} className="shrink-0" />
             <span className="flex-1 truncate">{chat.title}</span>
@@ -719,7 +705,7 @@ function ChatListRow({
               {unread > 9 ? '9+' : unread}
             </SidebarMenuBadge>
           ) : null}
-          {isPublicShowcase ? null : (
+          {(
             <>
               {canRename ? (
                 <SidebarMenuAction
@@ -757,7 +743,7 @@ function ChatListBody({
   getUnread,
   collaborationUnread,
   editingTitle,
-  isPublicShowcase,
+
   hasMore,
   loadingMore,
   loadMoreChats,
@@ -779,7 +765,7 @@ function ChatListBody({
   getUnread: ReturnType<typeof useAsyncSessions>['getUnread']
   collaborationUnread: ReturnType<typeof useCollaborationUnread>
   editingTitle: string
-  isPublicShowcase: boolean
+
   hasMore: boolean
   loadingMore: boolean
   loadMoreChats: () => Promise<void> | void
@@ -840,7 +826,7 @@ function ChatListBody({
               isStreaming={sessions[chat._id]?.status === 'streaming'}
               unread={Math.max(getUnread(chat._id), collaborationUnread[chat._id] ?? 0)}
               editingTitle={editingTitle}
-              isPublicShowcase={isPublicShowcase}
+
               onOpenChat={openChat}
               onBeginRename={beginRename}
               onRequestArchive={requestArchive}
@@ -873,7 +859,6 @@ export function ChatInlinePanel({
   onNavigate,
   baseHref = '/app/chat',
   workspaceId,
-  seededChats,
   view: sectionView,
 }: {
   refreshKey: number
@@ -881,7 +866,6 @@ export function ChatInlinePanel({
   onNavigate?: () => void
   baseHref?: string
   workspaceId?: string | null
-  seededChats?: Conversation[]
   /** Pins the list to one view (a sidebar section) instead of following the route. */
   view?: ChatView
 }) {
@@ -897,7 +881,7 @@ export function ChatInlinePanel({
     conversationListVersion,
     notifications: collaborationNotifications,
   } = useCollaborationRealtime()
-  const isPublicShowcase = seededChats !== undefined
+
   useBrowserRouteVersion()
   const searchActiveId = searchParams?.get('id') ?? null
   const browserActiveId = typeof window === 'undefined'
@@ -935,7 +919,7 @@ export function ChatInlinePanel({
     const targetBaseHref = buildWorkspaceHref(workspaceId ?? null, baseHref, targetScope)
     rememberLastChatForView(workspaceId, targetView, chat._id)
     const href = mergeHrefSearchParams(targetBaseHref, new URLSearchParams({
-      ...(isPublicShowcase ? { showcase: '1' } : {}),
+      ...({}),
       view: targetView,
       id: chat._id,
     }))
@@ -950,7 +934,7 @@ export function ChatInlinePanel({
       router.push(href)
     }
     onNavigate?.()
-  }, [baseHref, buildWorkspaceHref, isPublicShowcase, onNavigate, pathname, router, workspaceId])
+  }, [baseHref, buildWorkspaceHref,  onNavigate, pathname, router, workspaceId])
 
   const {
     newDirectMessageOpen,
@@ -960,7 +944,7 @@ export function ChatInlinePanel({
   } = useNewConversationDialogs(chatView, workspaceId)
   const collaborationUnread = useCollaborationUnread({
     workspaceId,
-    isPublicShowcase,
+
     user,
     collaborationNotifications,
   })
@@ -977,8 +961,7 @@ export function ChatInlinePanel({
     authLoading,
     chatView,
     refreshKey,
-    seededChats,
-    user,
+      user,
     workspaceId,
     conversationListVersion,
   })
@@ -986,7 +969,7 @@ export function ChatInlinePanel({
     activeId,
     baseHref: scopedBaseHref,
     chatView,
-    isPublicShowcase,
+
     openChat,
     pathname,
     router,
@@ -1027,7 +1010,7 @@ export function ChatInlinePanel({
       getUnread={getUnread}
       collaborationUnread={collaborationUnread}
       editingTitle={editingTitle}
-      isPublicShowcase={isPublicShowcase}
+
       hasMore={hasMore}
       loadingMore={loadingMore}
       loadMoreChats={loadMoreChats}
@@ -1041,7 +1024,7 @@ export function ChatInlinePanel({
     <ChatListDialogs
       workspaceId={workspaceId}
       buildHref={buildWorkspaceHref}
-      isPublicShowcase={isPublicShowcase}
+
       router={router}
       onNavigate={onNavigate}
       newDirectMessageOpen={newDirectMessageOpen}
@@ -1062,7 +1045,7 @@ export function ChatInlinePanel({
 function ChatListDialogs({
   workspaceId,
   buildHref,
-  isPublicShowcase,
+
   router,
   onNavigate,
   newDirectMessageOpen,
@@ -1078,7 +1061,7 @@ function ChatListDialogs({
 }: {
   workspaceId?: string | null
   buildHref: ReturnType<typeof useWorkspaceHref>
-  isPublicShowcase: boolean
+
   router: ReturnType<typeof useRouter>
   onNavigate?: () => void
   newDirectMessageOpen: boolean
@@ -1118,7 +1101,7 @@ function ChatListDialogs({
         <NewChannelDialog
           open={newChannelOpen}
           workspaceId={workspaceId}
-          showcase={isPublicShowcase}
+
           onOpenChange={setNewChannelOpen}
           onCreated={({ id, title }) => {
             router.push(buildHref(

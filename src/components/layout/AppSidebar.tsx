@@ -19,7 +19,6 @@ import { signOutToLanding } from './sidebar/appSidebarNav'
 import { useOptionalAppSettings } from '@/components/providers/AppSettingsProvider'
 import { useAppSidebarState } from './sidebar/useAppSidebarState'
 import { EMPTY_COLLABORATION_NOTIFICATIONS, type AppSidebarProps } from './appSidebarTypes'
-import { ROOT_SHOWCASE_DESTINATION } from '@/shared/auth/root-entry'
 import { WORK_FILTER_LABELS, type WorkFilter } from '@/shared/work/query'
 import type { InlineNavItem } from './AppSidebarInlinePanels'
 
@@ -35,7 +34,7 @@ export type {
 
 export default function AppSidebar({
   collaborationNotifications = EMPTY_COLLABORATION_NOTIFICATIONS,
-  publicShowcase = false,
+
   renderChatPanel,
   renderAutomationsPanel,
   renderFilesPanel,
@@ -45,12 +44,12 @@ export default function AppSidebar({
 }: AppSidebarProps) {
   const s = useAppSidebarState({
     collaborationNotifications,
-    publicShowcase,
+
     workspace,
   })
   const classicLayout = useOptionalAppSettings()?.settings.useSecondarySidebar === true
   const railExpanded = !s.sidebarCollapsed
-  const brandHomeHref = publicShowcase ? ROOT_SHOWCASE_DESTINATION : s.brandConfig.homeHref
+  const brandHomeHref = s.brandConfig.homeHref
   const brandLabel = s.brandConfig.shortName ?? s.brandConfig.name
 
   const brandLink = (
@@ -68,7 +67,6 @@ export default function AppSidebar({
   const accountMenuProps = {
     billingEnabled: s.billingEnabled,
     entitlements: s.entitlements,
-    demoHref: !publicShowcase && s.user ? ROOT_SHOWCASE_DESTINATION : undefined,
   }
   const accountMenuContent = (
     <SidebarAccountMenu
@@ -190,7 +188,7 @@ export default function AppSidebar({
           sectionActions={sectionActions}
           renderSection={renderSection}
           sectionRows={sectionRows}
-          onSearch={publicShowcase ? () => s.requireAuth('history') : () => s.openGlobalSearch(null)}
+          onSearch={() => s.openGlobalSearch(null)}
           scope={s.routeState.scope}
           account={desktopAccountSlot}
           className={`hidden h-full transition-[width,opacity] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] md:flex ${
@@ -269,7 +267,7 @@ export default function AppSidebar({
           brandLink={brandLink}
           navItems={s.mobileNavItems}
           onSelectItem={s.onSelectMobileNavItem}
-          showcaseLinks={s.showcasePrimaryLinks}
+
           menuRef={s.mobileMenuRef}
           isGuestConfirmed={s.isGuestConfirmed}
           workspace={workspace}
@@ -295,7 +293,7 @@ export default function AppSidebar({
             sectionActions={sectionActions}
             renderSection={renderSection}
             sectionRows={sectionRows}
-            onSearch={publicShowcase ? () => s.requireAuth('history') : () => { s.closeMobileDrawer(); s.openGlobalSearch(null) }}
+            onSearch={() => { s.closeMobileDrawer(); s.openGlobalSearch(null) }}
             scope={s.routeState.scope}
             account={desktopAccountSlot}
             className="h-full w-full bg-transparent"

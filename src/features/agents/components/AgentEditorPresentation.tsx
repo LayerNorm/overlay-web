@@ -7,14 +7,14 @@ import { AppWindow, MessageSquare, PanelRight } from 'lucide-react'
 import { Button, DialogFrame } from '@overlay/ui/primitives'
 import { AppScreenSidePanel } from '@overlay/modules-react/shell'
 
-export function SayHelloButton({ mode, hasAgent, highlight, showcase, onSayHello }: {
+export function SayHelloButton({ mode, hasAgent, highlight,  onSayHello }: {
   mode: 'new' | 'edit'
   hasAgent: boolean
   highlight: boolean
-  showcase: boolean
+
   onSayHello(): void
 }) {
-  if (mode !== 'edit' || !hasAgent || (!highlight && !showcase)) return null
+  if (mode !== 'edit' || !hasAgent || (!highlight)) return null
   return <Button variant="secondary" size="sm" onClick={onSayHello}><MessageSquare size={13} /> Say hello</Button>
 }
 

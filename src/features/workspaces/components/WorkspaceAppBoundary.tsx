@@ -3,9 +3,9 @@
 import { Button } from '@overlay/ui/primitives'
 
 import { useEffect, useState, type ReactNode } from 'react'
-import { usePathname, useSearchParams } from 'next/navigation'
+import { usePathname } from 'next/navigation'
 import { CircleAlert } from 'lucide-react'
-import type { WorkspaceClient, WorkspaceLifecycleStatus } from '@/shared/workspaces/types'
+import type { WorkspaceLifecycleStatus } from '@/shared/workspaces/types'
 import { workspaceClient } from '../lib/workspace-client'
 import { useAuth } from '@/contexts/AuthContext'
 import { WorkspaceProvider, useWorkspace } from '@/contexts/WorkspaceContext'
@@ -22,13 +22,13 @@ function isWorkspaceStatusUndecided(
   return status === 'loading' || (status === 'idle' && (authLoading || hasUser))
 }
 
-function WorkspaceHydrationBoundary({ children, publicShowcase }: { children: ReactNode; publicShowcase: boolean }) {
+function WorkspaceHydrationBoundary({ children }: { children: ReactNode }) {
   const { status, error, refresh, workspaces } = useWorkspace()
   const pathname = usePathname()
   const { isLoading: authLoading, user } = useAuth()
   const [directoryOpen, setDirectoryOpen] = useState(false)
   const invitationRoute = pathname?.startsWith('/app/invitations/')
-  const emptyAccount = status === 'ready' && workspaces.length === 0 && !publicShowcase && Boolean(user) && !invitationRoute
+  const emptyAccount = status === 'ready' && workspaces.length === 0 && Boolean(user) && !invitationRoute
   if (emptyAccount && !directoryOpen) setDirectoryOpen(true)
   const [hasShownApp, setHasShownApp] = useState(status === 'ready' || bootAppShown.wasShown())
   if (status === 'ready' && !hasShownApp) {
@@ -71,10 +71,10 @@ function WorkspaceHydrationBoundary({ children, publicShowcase }: { children: Re
       </div>
     )
   }
-  if (!publicShowcase && invitationRoute && pathname) {
+  if (invitationRoute && pathname) {
     return <AcceptWorkspaceInvitation invitationId={pathname.split('/').at(-1) ?? ''} />
   }
-  if (!publicShowcase && user && (emptyAccount || directoryOpen || pathname === '/app/workspaces')) {
+  if (user && (emptyAccount || directoryOpen || pathname === '/app/workspaces')) {
     return <WorkspaceDirectory onOpen={() => setDirectoryOpen(false)} />
   }
   return children
@@ -83,28 +83,18 @@ function WorkspaceHydrationBoundary({ children, publicShowcase }: { children: Re
 export function WorkspaceAppBoundary({
   children,
   hasAuthenticatedUser,
-  publicShowcase: forcedPublicShowcase = false,
-  showcaseClient,
 }: {
   children: ReactNode
   hasAuthenticatedUser: boolean
-  publicShowcase?: boolean
-  /** Composed by the app layer so this feature never imports showcase. */
-  showcaseClient?: WorkspaceClient
 }) {
-  const searchParams = useSearchParams()
   const { user } = useAuth()
-  const publicShowcase = forcedPublicShowcase || searchParams?.get('showcase') === '1'
   // Cache Components can first paint this layout without a session. The client
   // auth check still finds the cookie, so enable workspaces from that too.
-  const enabled = hasAuthenticatedUser || publicShowcase || Boolean(user)
+  const enabled = hasAuthenticatedUser || Boolean(user)
 
   return (
-    <WorkspaceProvider
-      enabled={enabled}
-      client={publicShowcase && showcaseClient ? showcaseClient : workspaceClient}
-    >
-      <WorkspaceHydrationBoundary publicShowcase={publicShowcase}>{children}</WorkspaceHydrationBoundary>
+    <WorkspaceProvider enabled={enabled} client={workspaceClient}>
+      <WorkspaceHydrationBoundary>{children}</WorkspaceHydrationBoundary>
     </WorkspaceProvider>
   )
 }

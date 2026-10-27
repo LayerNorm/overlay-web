@@ -60,137 +60,6 @@ export type OptimisticMessage = RoomMessageRecord
 const PENDING_AGENT_REPLY_PREFIX = 'optimistic_pending_reply_'
 const PENDING_AGENT_REPLY_SORT_LEAD_MS = 30_000
 
-export const SHOWCASE_CONVERSATION_ID = 'showcase-dm'
-export const SHOWCASE_WORKSPACE_ID = 'showcase-acme'
-export const SHOWCASE_CURRENT_PRINCIPAL_ID = 'showcase-divyansh'
-export const SHOWCASE_PARTICIPANTS: ConversationParticipant[] = [
-  ['showcase-divyansh', 'Divyansh', 'moderator'],
-  ['showcase-maya', 'Maya Chen', 'member'],
-  ['showcase-rahul', 'Rahul Shah', 'member'],
-].map(([principalId, displayName, role], index) => ({
-  conversationId: SHOWCASE_CONVERSATION_ID,
-  workspaceId: SHOWCASE_WORKSPACE_ID,
-  principalId,
-  principalType: 'human',
-  displayName,
-  role: role as ConversationParticipant['role'],
-  status: 'active',
-  notificationLevel: 'all',
-  joinedAt: Date.parse('2026-07-29T17:00:00.000Z') + index,
-  updatedAt: Date.parse('2026-07-29T17:00:00.000Z') + index,
-}))
-export const SHOWCASE_PRESENCE: ConversationPresence[] = SHOWCASE_PARTICIPANTS.map((participant, index) => ({
-  workspaceId: SHOWCASE_WORKSPACE_ID,
-  principalId: participant.principalId,
-  conversationId: SHOWCASE_CONVERSATION_ID,
-  status: index < 2 ? 'online' : 'away',
-  typing: false,
-  lastSeenAt: Date.parse('2026-07-29T18:10:00.000Z') - index * 60_000,
-}))
-export const SHOWCASE_MESSAGES: OptimisticMessage[] = [
-  {
-    id: 'showcase-dm-message-1',
-    turnId: 'showcase-dm-turn-1',
-    authorKind: 'human',
-    authorPrincipalId: 'showcase-maya',
-    content: 'I pulled the customer feedback into the launch project. The onboarding gap is still the clearest pattern.',
-    createdAt: Date.parse('2026-07-29T18:02:00.000Z'),
-  },
-  {
-    id: 'showcase-dm-message-2',
-    turnId: 'showcase-dm-turn-2',
-    authorKind: 'human',
-    authorPrincipalId: SHOWCASE_CURRENT_PRINCIPAL_ID,
-    content: 'Agreed. Let’s make the first useful outcome happen before we introduce the rest of the workspace.',
-    createdAt: Date.parse('2026-07-29T18:05:00.000Z'),
-  },
-  {
-    id: 'showcase-dm-message-3',
-    turnId: 'showcase-dm-turn-3',
-    authorKind: 'human',
-    authorPrincipalId: 'showcase-rahul',
-    content: '@Divyansh I can have the revised flow ready for review this afternoon.',
-    createdAt: Date.parse('2026-07-29T18:08:00.000Z'),
-  },
-  {
-    id: 'showcase-thread-reply-1',
-    turnId: 'showcase-thread-turn-1',
-    authorKind: 'human',
-    authorPrincipalId: 'showcase-rahul',
-    content: 'I can turn that pattern into the first-run checklist today.',
-    createdAt: Date.parse('2026-07-29T18:09:00.000Z'),
-    threadRootMessageId: 'showcase-dm-message-1',
-  },
-]
-
-export const SHOWCASE_AGENT_CONVERSATION_ID = 'showcase-agent-welcome'
-export const SHOWCASE_AGENT_PRINCIPAL_ID = 'showcase-research-principal'
-export const SHOWCASE_AGENT_IDENTITY = {
-  name: 'Research partner',
-  avatarColor: '#2563eb',
-  avatarShape: 'droplet',
-} as const
-export const SHOWCASE_AGENT_PARTICIPANTS: ConversationParticipant[] = [
-  {
-    conversationId: SHOWCASE_AGENT_CONVERSATION_ID,
-    workspaceId: SHOWCASE_WORKSPACE_ID,
-    principalId: SHOWCASE_CURRENT_PRINCIPAL_ID,
-    principalType: 'human',
-    displayName: 'Divyansh',
-    role: 'moderator',
-    status: 'active',
-    notificationLevel: 'all',
-    joinedAt: Date.parse('2026-07-29T17:00:00.000Z'),
-    updatedAt: Date.parse('2026-07-29T17:00:00.000Z'),
-  },
-  {
-    conversationId: SHOWCASE_AGENT_CONVERSATION_ID,
-    workspaceId: SHOWCASE_WORKSPACE_ID,
-    principalId: SHOWCASE_AGENT_PRINCIPAL_ID,
-    principalType: 'agent',
-    displayName: SHOWCASE_AGENT_IDENTITY.name,
-    role: 'member',
-    status: 'active',
-    notificationLevel: 'all',
-    joinedAt: Date.parse('2026-07-29T17:00:00.000Z'),
-    updatedAt: Date.parse('2026-07-29T17:00:00.000Z'),
-  },
-]
-export const SHOWCASE_AGENT_PRESENCE: ConversationPresence[] = SHOWCASE_AGENT_PARTICIPANTS.map((participant) => ({
-  workspaceId: SHOWCASE_WORKSPACE_ID,
-  principalId: participant.principalId,
-  conversationId: SHOWCASE_AGENT_CONVERSATION_ID,
-  status: 'online',
-  typing: false,
-  lastSeenAt: Date.parse('2026-07-29T18:10:00.000Z'),
-}))
-export const SHOWCASE_AGENT_MESSAGES: OptimisticMessage[] = [
-  {
-    id: 'showcase-agent-message-1',
-    turnId: 'showcase-agent-turn-1',
-    authorKind: 'human',
-    authorPrincipalId: SHOWCASE_CURRENT_PRINCIPAL_ID,
-    content: 'Can you pull together what customers keep saying about onboarding?',
-    createdAt: Date.parse('2026-07-29T18:02:00.000Z'),
-  },
-  {
-    id: 'showcase-agent-message-2',
-    turnId: 'showcase-agent-turn-2',
-    authorKind: 'agent',
-    authorPrincipalId: SHOWCASE_AGENT_PRINCIPAL_ID,
-    content: 'I read through the latest 23 feedback notes. The clearest pattern is the first-run gap — it shows up in 9 of them, mostly around workspace setup. Want me to turn this into a checklist for the team?',
-    createdAt: Date.parse('2026-07-29T18:05:00.000Z'),
-  },
-  {
-    id: 'showcase-agent-message-3',
-    turnId: 'showcase-agent-turn-3',
-    authorKind: 'human',
-    authorPrincipalId: SHOWCASE_CURRENT_PRINCIPAL_ID,
-    content: 'Yes — draft it, and flag anything that needs a human decision.',
-    createdAt: Date.parse('2026-07-29T18:08:00.000Z'),
-  },
-]
-
 function requireArray<T>(value: T[] | undefined, label: string): T[] {
   if (!Array.isArray(value)) throw new Error(`${label} returned an invalid response`)
   return value
@@ -198,11 +67,11 @@ function requireArray<T>(value: T[] | undefined, label: string): T[] {
 
 export function useThreadPanel({
   conversationId,
-  showcase,
+
   setRoomPanel,
 }: {
   conversationId: string
-  showcase: boolean
+
   setRoomPanel: Dispatch<SetStateAction<RoomPanelKind | null>>
 }) {
   const [threadRootId, setThreadRootId] = useState<string | null>(null)
@@ -210,7 +79,7 @@ export function useThreadPanel({
   const [threadInput, setThreadInput] = useState('')
 
   useEffect(() => {
-    if (!threadRootId || showcase) {
+    if (!threadRootId) {
       queueMicrotask(() => setThreadFollowing(false))
       return
     }
@@ -225,16 +94,16 @@ export function useThreadPanel({
     return () => {
       cancelled = true
     }
-  }, [conversationId, showcase, threadRootId])
+  }, [conversationId,  threadRootId])
 
   const toggleThreadFollow = useCallback(() => {
-    if (!threadRootId || showcase) return
+    if (!threadRootId) return
     const next = !threadFollowing
     setThreadFollowing(next)
     void overlayAppClient.conversations.setThreadFollow(conversationId, threadRootId, next)
       .then((result) => setThreadFollowing(result.followed))
       .catch(() => setThreadFollowing(!next))
-  }, [conversationId, showcase, threadFollowing, threadRootId])
+  }, [conversationId,  threadFollowing, threadRootId])
 
   const openThread = useCallback((messageId: string) => {
     setThreadRootId(messageId)
@@ -254,11 +123,11 @@ export function useThreadPanel({
 
 export function useReadMarkers({
   conversationId,
-  showcase,
+
   refreshNotifications,
 }: {
   conversationId: string
-  showcase: boolean
+
   refreshNotifications: () => void
 }) {
   const [unreadBoundarySequence, setUnreadBoundarySequence] = useState<number | null>(null)
@@ -267,7 +136,7 @@ export function useReadMarkers({
   const readMarkInFlightRef = useRef(false)
 
   const clearCollaborationNotifications = useCallback(async () => {
-    if (showcase) return
+
     try {
       await overlayAppClient.conversations.markConversationNotificationsRead(conversationId)
       refreshNotifications()
@@ -277,10 +146,10 @@ export function useReadMarkers({
     window.dispatchEvent(new CustomEvent('overlay:collaboration-read', {
       detail: { conversationId },
     }))
-  }, [conversationId, refreshNotifications, showcase])
+  }, [conversationId, refreshNotifications, ])
 
   const markVisibleRead = useCallback(async () => {
-    if (showcase || document.visibilityState !== 'visible') return
+    if (document.visibilityState !== 'visible') return
     if (readMarkInFlightRef.current) return
     readMarkInFlightRef.current = true
     try {
@@ -294,7 +163,7 @@ export function useReadMarkers({
     } finally {
       readMarkInFlightRef.current = false
     }
-  }, [clearCollaborationNotifications, conversationId, showcase])
+  }, [clearCollaborationNotifications, conversationId, ])
 
   const noteParticipantsLoaded = useCallback((
     nextParticipants: ConversationParticipant[],
@@ -318,30 +187,33 @@ export function useReadMarkers({
 
 export function useRoomRoster({
   conversationId,
-  showcase,
-  isAgentShowcase,
+
+
   noteParticipantsLoaded,
 }: {
   conversationId: string
-  showcase: boolean
-  isAgentShowcase: boolean
+
+
   noteParticipantsLoaded: (participants: ConversationParticipant[], principalId: string) => void
 }) {
   const [participants, setParticipants] = useState<ConversationParticipant[]>(
-    isAgentShowcase ? SHOWCASE_AGENT_PARTICIPANTS : showcase ? SHOWCASE_PARTICIPANTS : [],
+    [],
   )
   const [currentPrincipalId, setCurrentPrincipalId] = useState(
-    showcase ? SHOWCASE_CURRENT_PRINCIPAL_ID : '',
+    '',
   )
   const [presence, setPresence] = useState<ConversationPresence[]>(
-    isAgentShowcase ? SHOWCASE_AGENT_PRESENCE : showcase ? SHOWCASE_PRESENCE : [],
+    [],
   )
+  const participantsRequest = useRef(0)
   const applyConvexPresence = useCallback((next: ConversationPresence[]) => {
     setPresence(next)
   }, [])
 
   const loadParticipants = useCallback(async () => {
+    const requestId = ++participantsRequest.current
     const result = await overlayAppClient.conversations.participants(conversationId)
+    if (requestId !== participantsRequest.current) return
     const nextParticipants = requireArray(result.participants, 'Conversation participants')
     if (typeof result.currentPrincipalId !== 'string' || !result.currentPrincipalId) {
       throw new Error('Conversation participants returned an invalid principal')
@@ -350,6 +222,21 @@ export function useRoomRoster({
     setCurrentPrincipalId(result.currentPrincipalId)
     noteParticipantsLoaded(nextParticipants, result.currentPrincipalId)
   }, [conversationId, noteParticipantsLoaded])
+
+  useEffect(() => {
+    const invalidate = () => { participantsRequest.current += 1 }
+    const reloadIdentity = (event: Event) => {
+      const workspaceId = (event as CustomEvent<{ workspaceId?: string }>).detail?.workspaceId
+      if (!workspaceId || participants.some((participant) => participant.workspaceId === workspaceId)) {
+        void loadParticipants()
+      }
+    }
+    window.addEventListener('overlay:identity-updated', reloadIdentity)
+    return () => {
+      window.removeEventListener('overlay:identity-updated', reloadIdentity)
+      invalidate()
+    }
+  }, [loadParticipants, participants])
 
   const loadPresence = useCallback(async () => {
     const result = await overlayAppClient.conversations.presence(conversationId)
@@ -369,31 +256,14 @@ export function useRoomRoster({
 export function useRoomCollaboration({
   conversationId,
   conversationType,
-  showcase,
+
 }: {
   conversationId: string
   conversationType: 'dm' | 'channel'
-  showcase: boolean
+
 }) {
-  const [channel, setChannel] = useState<ChannelSummary | null>(showcase && conversationType === 'channel' ? {
-    conversationId,
-    workspaceId: SHOWCASE_WORKSPACE_ID,
-    name: 'product-launch',
-    slug: 'product-launch',
-    topic: 'Launch decisions, customer feedback, and rollout coordination',
-    visibility: 'public',
-    participantCount: SHOWCASE_PARTICIPANTS.length,
-    createdAt: Date.parse('2026-07-29T17:00:00.000Z'),
-    updatedAt: Date.parse('2026-07-29T18:10:00.000Z'),
-  } : null)
-  const [reactions, setReactions] = useState<MessageReaction[]>(showcase ? [{
-    conversationId,
-    messageId: 'showcase-dm-message-1',
-    emoji: '👍',
-    principalIds: ['showcase-divyansh', 'showcase-rahul'],
-    count: 2,
-    reactedByCurrentPrincipal: true,
-  }] : [])
+  const [channel, setChannel] = useState<ChannelSummary | null>(null)
+  const [reactions, setReactions] = useState<MessageReaction[]>([])
   const [pins, setPins] = useState<ConversationPin[]>([])
   const [savedMessages, setSavedMessages] = useState<ConversationSavedMessage[]>([])
 
@@ -428,24 +298,24 @@ export function useRoomCollaboration({
 export function useRoomTranscript({
   conversationId,
   threadRootId,
-  showcase,
-  isAgentShowcase,
+
+
   agentResponding,
   markVisibleRead,
   setNewMessageCount,
 }: {
   conversationId: string
   threadRootId: string | null
-  showcase: boolean
-  isAgentShowcase: boolean
+
+
   agentResponding: string | null
   markVisibleRead: () => Promise<void>
   setNewMessageCount: Dispatch<SetStateAction<number>>
 }) {
   const [messages, setMessages] = useState<OptimisticMessage[]>(
-    isAgentShowcase ? SHOWCASE_AGENT_MESSAGES : showcase ? SHOWCASE_MESSAGES : [],
+    [],
   )
-  const [loading, setLoading] = useState(!showcase)
+  const [loading, setLoading] = useState(true)
   const [hasMoreMessages, setHasMoreMessages] = useState(false)
   const [loadingOlderMessages, setLoadingOlderMessages] = useState(false)
   const [conversationTitle, setConversationTitle] = useState<string | null>(null)
@@ -537,7 +407,7 @@ export function useRoomTranscript({
   }, [conversationId, threadRootId])
 
   const loadOlderMessages = useCallback(async () => {
-    if (showcase || loadingOlderMessages || !hasMoreMessages) return
+    if (loadingOlderMessages || !hasMoreMessages) return
     const earliest = messagesRef.current
       .filter((message) => !message.threadRootMessageId)
       .reduce<number | undefined>((value, message) => value === undefined ? message.createdAt : Math.min(value, message.createdAt), undefined)
@@ -586,7 +456,7 @@ export function useRoomTranscript({
     } finally {
       setLoadingOlderMessages(false)
     }
-  }, [conversationId, hasMoreMessages, loadingOlderMessages, showcase])
+  }, [conversationId, hasMoreMessages, loadingOlderMessages, ])
 
   const applyLiveRoomMessages = useCallback((liveMessages: RoomMessageRecord[]) => {
     setMessages((current) => mergeRoomMessages(liveMessages, current))
@@ -677,7 +547,7 @@ export function useRoomTranscript({
 export function useRoomLifecycle({
   conversationId,
   convexRoomSubscriptionEnabled,
-  showcase,
+
   loadParticipants,
   loadMessages,
   loadCollaboration,
@@ -686,7 +556,7 @@ export function useRoomLifecycle({
 }: {
   conversationId: string
   convexRoomSubscriptionEnabled: boolean
-  showcase: boolean
+
   loadParticipants: () => Promise<void>
   loadMessages: () => Promise<void>
   loadCollaboration: () => Promise<void>
@@ -696,7 +566,7 @@ export function useRoomLifecycle({
   const sessionIdRef = useRef<string | null>(null)
 
   useEffect(() => {
-    if (showcase) return
+
     let cancelled = false
     // When Convex realtime presence subscription is active, skip the initial
     // HTTP presence load — the subscription will deliver presence state.
@@ -740,7 +610,7 @@ export function useRoomLifecycle({
         .updatePresence(conversationId, { status: 'offline', sessionId })
         .catch(() => undefined)
     }
-  }, [conversationId, convexRoomSubscriptionEnabled, loadCollaboration, loadMessages, loadParticipants, loadPresence, setLoading, showcase])
+  }, [conversationId, convexRoomSubscriptionEnabled, loadCollaboration, loadMessages, loadParticipants, loadPresence, setLoading, ])
 
   return sessionIdRef
 }
@@ -754,14 +624,14 @@ type AgentDirectoryEntry = {
 
 export function useAgentDirectory({
   activeWorkspaceId,
-  showcase,
+
   conversationId,
-  isAgentShowcase,
+
 }: {
   activeWorkspaceId: string | null | undefined
-  showcase: boolean
+
   conversationId: string
-  isAgentShowcase: boolean
+
 }) {
   const [agentsByPrincipal, setAgentsByPrincipal] = useState<ReadonlyMap<string, AgentDirectoryEntry>>(new Map())
   // Unsaved editor drafts overlay the fetched directory so the header renames
@@ -786,14 +656,7 @@ export function useAgentDirectory({
     return merged
   }, [agentsByPrincipal, agentDrafts])
   useEffect(() => {
-    if (showcase) {
-      queueMicrotask(() => setAgentsByPrincipal(isAgentShowcase ? new Map([[SHOWCASE_AGENT_PRINCIPAL_ID, {
-        name: SHOWCASE_AGENT_IDENTITY.name,
-        avatarColor: SHOWCASE_AGENT_IDENTITY.avatarColor,
-        avatarShape: SHOWCASE_AGENT_IDENTITY.avatarShape,
-      }]]) : new Map()))
-      return
-    }
+
     if (!activeWorkspaceId) {
       queueMicrotask(() => {
         setAgentsByPrincipal(new Map())
@@ -834,7 +697,7 @@ export function useAgentDirectory({
       window.removeEventListener(AGENT_DIRECTORY_CHANGED_EVENT, load)
       window.removeEventListener(AGENT_DRAFT_PREVIEW_EVENT, onDraftPreview)
     }
-  }, [activeWorkspaceId, showcase, conversationId, isAgentShowcase])
+  }, [activeWorkspaceId,  conversationId, ])
   return directoryAgentsByPrincipal
 }
 
@@ -1046,7 +909,7 @@ export function useDraftConversation({
   conversationId,
   conversationType,
   draft: requestedDraft,
-  showcase,
+
   title,
   messages,
   messagesRef,
@@ -1054,7 +917,7 @@ export function useDraftConversation({
   conversationId: string
   conversationType: 'dm' | 'channel'
   draft: boolean
-  showcase: boolean
+
   title: string
   messages: OptimisticMessage[]
   messagesRef: RefObject<OptimisticMessage[]>
@@ -1080,7 +943,7 @@ export function useDraftConversation({
   }, [conversationId, conversationType, draft, title])
 
   useEffect(() => () => {
-    if (!draft || draftCommittedRef.current || showcase || messagesRef.current.length > 0) return
+    if (!draft || draftCommittedRef.current || messagesRef.current.length > 0) return
     void (async () => {
       const removed = await overlayAppClient.conversations.deleteResponse({
         conversationId,
@@ -1093,7 +956,7 @@ export function useDraftConversation({
         }).catch(() => undefined)
       }
     })()
-  }, [conversationId, draft, messagesRef, showcase])
+  }, [conversationId, draft, messagesRef, ])
 
   useEffect(() => {
     if (draft && messages.some((message) => !message.id.startsWith('optimistic_'))) {
@@ -1105,7 +968,7 @@ export function useDraftConversation({
 }
 
 export function useSendMessage({
-  showcase,
+
   currentPrincipalId,
   setMessages,
   conversationId,
@@ -1122,7 +985,7 @@ export function useSendMessage({
   messages,
   mentions,
 }: {
-  showcase: boolean
+
   currentPrincipalId: string
   setMessages: Dispatch<SetStateAction<OptimisticMessage[]>>
   conversationId: string
@@ -1187,20 +1050,7 @@ export function useSendMessage({
     const turnId = options?.existing?.turnId ?? `human_${crypto.randomUUID()}`
     const optimisticId = `optimistic_${clientNonce}`
     const threadRootMessageId = options?.threadRootMessageId
-    if (showcase) {
-    setMessages((current) => [...current, {
-        id: optimisticId,
-        turnId,
-        authorKind: 'human',
-        authorPrincipalId: currentPrincipalId,
-        content: text,
-        parts,
-        createdAt: options?.existing?.createdAt ?? Date.now(),
-        clientNonce,
-        threadRootMessageId,
-      } satisfies OptimisticMessage].sort(compareRoomMessageRecords))
-      return
-    }
+
     setMessages((current) => [
       ...current.filter((message) => message.clientNonce !== clientNonce),
       {
@@ -1312,7 +1162,7 @@ export function useSendMessage({
   }
 
   useEffect(() => {
-    if (showcase || !currentPrincipalId || pendingCollaborationMessageSentRef.current) return
+    if (!currentPrincipalId || pendingCollaborationMessageSentRef.current) return
     const pending = takePendingCollaborationMessage(conversationId)
     if (!pending) return
     pendingCollaborationMessageSentRef.current = true
@@ -1320,13 +1170,13 @@ export function useSendMessage({
   // `sendMessage` is intentionally omitted: it is recreated while room state
   // changes, whereas a pending conversion must be consumed exactly once.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [conversationId, currentPrincipalId, showcase])
+  }, [conversationId, currentPrincipalId, ])
 
   return sendMessage
 }
 
 export function useRoomComposer({
-  showcase,
+
   activeWorkspaceId,
   conversationId,
   sessionIdRef,
@@ -1335,7 +1185,7 @@ export function useRoomComposer({
   setMentions,
   readOnly = false,
 }: {
-  showcase: boolean
+
   activeWorkspaceId: string | null | undefined
   conversationId: string
   sessionIdRef: RefObject<string | null>
@@ -1391,9 +1241,9 @@ export function useRoomComposer({
   // Restore a half-written message when the room reopens. Storage failures are
   // absorbed by the draft module, so private browsing simply starts empty.
   useEffect(() => {
-    if (showcase) return
+
     queueMicrotask(() => setInput(readDraft({ workspaceId: activeWorkspaceId, conversationId })))
-  }, [activeWorkspaceId, conversationId, setInput, showcase])
+  }, [activeWorkspaceId, conversationId, setInput, ])
 
   useEffect(() => {
     if (!showAttachMenu) return
@@ -1455,7 +1305,7 @@ export function useRoomComposer({
 
   function onComposerInput(text: string) {
     handleComposerInputChange(text)
-    if (showcase) return
+
     writeDraft({ workspaceId: activeWorkspaceId, conversationId }, text)
     const now = Date.now()
     if (now - lastTypingSentAt.current > 2_500) {
@@ -1615,7 +1465,7 @@ export function useRemoteAgentControls({
 export function useMessageActions({
   conversationId,
   currentPrincipalId,
-  showcase,
+
   reactions,
   setReactions,
   pins,
@@ -1627,7 +1477,7 @@ export function useMessageActions({
 }: {
   conversationId: string
   currentPrincipalId: string
-  showcase: boolean
+
   reactions: MessageReaction[]
   setReactions: Dispatch<SetStateAction<MessageReaction[]>>
   pins: ConversationPin[]
@@ -1653,12 +1503,7 @@ export function useMessageActions({
 
   async function toggleReaction(messageId: string, emoji: string) {
     const current = reactions.find((reaction) => reaction.messageId === messageId && reaction.emoji === emoji)
-    if (showcase) {
-      setReactions((rows) => current
-        ? rows.map((row) => row === current ? { ...row, count: Math.max(0, row.count + (row.reactedByCurrentPrincipal ? -1 : 1)), reactedByCurrentPrincipal: !row.reactedByCurrentPrincipal } : row)
-        : [...rows, { conversationId, messageId, emoji, principalIds: [currentPrincipalId], count: 1, reactedByCurrentPrincipal: true }])
-      return
-    }
+
     const result = await overlayAppClient.conversations.setReaction(conversationId, {
       messageId,
       emoji,
@@ -1669,10 +1514,7 @@ export function useMessageActions({
 
   async function togglePinned(messageId: string) {
     const pinned = pins.some((pin) => pin.messageId === messageId)
-    if (showcase) {
-      setPins((rows) => pinned ? rows.filter((row) => row.messageId !== messageId) : [...rows, { conversationId, messageId, pinnedByPrincipalId: currentPrincipalId, createdAt: Date.now() }])
-      return
-    }
+
     await overlayAppClient.conversations.setPinned(conversationId, { messageId, pinned: !pinned })
     const result = await overlayAppClient.conversations.pins(conversationId)
     setPins(requireArray(result.pins, 'Conversation pins'))
@@ -1684,7 +1526,7 @@ export function useMessageActions({
    * moderation.
    */
   async function reportMessage(messageId: string) {
-    if (showcase) return
+
     try {
       await overlayAppClient.conversations.reportMessage(conversationId, {
         messageId,
@@ -1698,10 +1540,7 @@ export function useMessageActions({
 
   async function toggleSaved(messageId: string) {
     const saved = savedMessages.some((row) => row.conversationId === conversationId && row.messageId === messageId)
-    if (showcase) {
-      setSavedMessages((rows) => saved ? rows.filter((row) => row.messageId !== messageId) : [...rows, { conversationId, messageId, principalId: currentPrincipalId, createdAt: Date.now() }])
-      return
-    }
+
     await overlayAppClient.conversations.setSaved({ conversationId, messageId, saved: !saved })
     const result = await overlayAppClient.conversations.savedMessages()
     setSavedMessages(requireArray(result.savedMessages, 'Saved messages'))
@@ -1710,25 +1549,14 @@ export function useMessageActions({
   async function saveEdit(messageId: string) {
     const content = editingContent.trim()
     if (!content) return
-    if (showcase) {
-      setMessages((current) => current.map((message) => (
-        message.id === messageId ? { ...message, content, editedAt: Date.now() } : message
-      )))
-      setEditingId(null)
-      return
-    }
+
     await overlayAppClient.conversations.editCollaborativeMessage(conversationId, messageId, content)
     setEditingId(null)
     await loadMessages()
   }
 
   async function deleteMessage(messageId: string) {
-    if (showcase) {
-      setMessages((current) => current.map((message) => (
-        message.id === messageId ? { ...message, deletedAt: Date.now(), content: '' } : message
-      )))
-      return
-    }
+
     await overlayAppClient.conversations.deleteCollaborativeMessage(conversationId, messageId)
     await loadMessages()
   }
@@ -1826,7 +1654,7 @@ export function useMessageNavigation({
 export function useRoomActions({
   conversationId,
   conversationType,
-  showcase,
+
   title,
   activeWorkspaceId,
   router,
@@ -1837,7 +1665,7 @@ export function useRoomActions({
 }: {
   conversationId: string
   conversationType: 'dm' | 'channel'
-  showcase: boolean
+
   title: string
   activeWorkspaceId: string | null | undefined
   router: ReturnType<typeof useRouter>
@@ -1856,11 +1684,7 @@ export function useRoomActions({
     state: Parameters<typeof overlayAppClient.conversations.updateParticipantState>[1],
     confirmation: string,
   ) {
-    if (showcase) {
-      toast.success(confirmation)
-      setMenuOpen(false)
-      return true
-    }
+
     try {
       await overlayAppClient.conversations.updateParticipantState(conversationId, state)
     } catch (error) {
@@ -1874,12 +1698,7 @@ export function useRoomActions({
   }
 
   async function archiveConversation(scope: 'self' | 'everyone') {
-    if (showcase) {
-      toast.success('Conversation archived.')
-      setMenuOpen(false)
-      setPendingArchiveScope(false)
-      return
-    }
+
     setScopeDialogBusy(true)
     setScopeDialogError(null)
     try {
@@ -2139,7 +1958,7 @@ export function buildRoomMessageContext({
 
 export function useDirectMessageRoom({
   conversationId,
-  showcase,
+
   conversationType,
   draft,
   draftTitle,
@@ -2150,7 +1969,7 @@ export function useDirectMessageRoom({
   onOpenAttachmentPreview,
 }: {
   conversationId: string
-  showcase: boolean
+
   conversationType: 'dm' | 'channel'
   draft: boolean
   draftTitle: string | undefined
@@ -2160,7 +1979,7 @@ export function useDirectMessageRoom({
   refreshNotifications: () => void
   onOpenAttachmentPreview: RoomMessageContext['onOpenAttachmentPreview']
 }) {
-  const isAgentShowcase = showcase && conversationId === SHOWCASE_AGENT_CONVERSATION_ID
+
   const [menuOpen, setMenuOpen] = useState(false)
   const menuTriggerRef = useRef<HTMLButtonElement>(null)
   const [roomPanel, setRoomPanel] = useState<RoomPanelKind | null>(null)
@@ -2172,20 +1991,20 @@ export function useDirectMessageRoom({
   )
   const [mentions, setMentions] = useState<MentionItem[]>([])
 
-  const readMarkers = useReadMarkers({ conversationId, showcase, refreshNotifications })
+  const readMarkers = useReadMarkers({ conversationId,  refreshNotifications })
   const roster = useRoomRoster({
     conversationId,
-    showcase,
-    isAgentShowcase,
+
+
     noteParticipantsLoaded: readMarkers.noteParticipantsLoaded,
   })
-  const collab = useRoomCollaboration({ conversationId, conversationType, showcase })
-  const thread = useThreadPanel({ conversationId, showcase, setRoomPanel })
+  const collab = useRoomCollaboration({ conversationId, conversationType,  })
+  const thread = useThreadPanel({ conversationId,  setRoomPanel })
   const transcript = useRoomTranscript({
     conversationId,
     threadRootId: thread.threadRootId,
-    showcase,
-    isAgentShowcase,
+
+
     agentResponding,
     markVisibleRead: readMarkers.markVisibleRead,
     setNewMessageCount: readMarkers.setNewMessageCount,
@@ -2193,7 +2012,7 @@ export function useDirectMessageRoom({
   const sessionIdRef = useRoomLifecycle({
     conversationId,
     convexRoomSubscriptionEnabled,
-    showcase,
+
     loadParticipants: roster.loadParticipants,
     loadMessages: transcript.loadMessages,
     loadCollaboration: collab.loadCollaboration,
@@ -2202,9 +2021,9 @@ export function useDirectMessageRoom({
   })
   const directoryAgentsByPrincipal = useAgentDirectory({
     activeWorkspaceId,
-    showcase,
+
     conversationId,
-    isAgentShowcase,
+
   })
   const vm = useRoomViewModels({
     participants: roster.participants,
@@ -2224,13 +2043,13 @@ export function useDirectMessageRoom({
     conversationId,
     conversationType,
     draft,
-    showcase,
+
     title: vm.title,
     messages: transcript.messages,
     messagesRef: transcript.messagesRef,
   })
   const sendMessage = useSendMessage({
-    showcase,
+
     currentPrincipalId: roster.currentPrincipalId,
     setMessages: transcript.setMessages,
     conversationId,
@@ -2248,7 +2067,7 @@ export function useDirectMessageRoom({
     mentions,
   })
   const composer = useRoomComposer({
-    showcase,
+
     activeWorkspaceId,
     conversationId,
     sessionIdRef,
@@ -2267,7 +2086,7 @@ export function useDirectMessageRoom({
   const actions = useMessageActions({
     conversationId,
     currentPrincipalId: roster.currentPrincipalId,
-    showcase,
+
     reactions: collab.reactions,
     setReactions: collab.setReactions,
     pins: collab.pins,
@@ -2290,7 +2109,7 @@ export function useDirectMessageRoom({
   const roomActions = useRoomActions({
     conversationId,
     conversationType,
-    showcase,
+
     title: vm.title,
     activeWorkspaceId,
     router,
@@ -2316,7 +2135,7 @@ export function useDirectMessageRoom({
   })
 
   return {
-    isAgentShowcase,
+
     menuOpen,
     setMenuOpen,
     menuTriggerRef,

@@ -1,5 +1,5 @@
 'use client'
-import { Button } from '@overlay/ui/primitives'
+import { Avatar, AvatarFallback, AvatarImage, Button } from '@overlay/ui/primitives'
 import { unstyledButton } from '@overlay/ui/control-reset'
 import { useEffect, useEffectEvent, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { ReactNode } from 'react'
@@ -16,6 +16,7 @@ import {
   Zap,
 } from 'lucide-react'
 import type { MentionCategory, MentionItem, MentionType } from '@/shared/knowledge/mention-types'
+import { AgentCreature } from '@/components/orb/Creature'
 
 const ICON_MAP: Record<
   string,
@@ -285,7 +286,14 @@ function ItemRow({
   const fallbackIcon = CATEGORY_ORDER.find((c) => c.type === categoryType)?.icon || 'FileText'
   return (
     <OptionButton {...base} compact onClick={() => onSelect(item)}>
-      {item.logoUrl ? (
+      {item.type === 'person' && item.principalType === 'agent' ? (
+        <AgentCreature agent={{ name: item.name, avatarColor: item.avatarColor, avatarShape: item.avatarShape }} size={20} />
+      ) : item.type === 'person' ? (
+        <Avatar className="h-5 w-5 shrink-0">
+          <AvatarImage src={item.photoUrl ?? undefined} alt="" />
+          <AvatarFallback className="text-[9px]">{item.name.trim().slice(0, 1).toUpperCase() || '?'}</AvatarFallback>
+        </Avatar>
+      ) : item.logoUrl ? (
         /* eslint-disable-next-line @next/next/no-img-element */
         <img src={item.logoUrl} alt="" className="h-4 w-4 shrink-0 rounded-sm object-contain" />
       ) : (

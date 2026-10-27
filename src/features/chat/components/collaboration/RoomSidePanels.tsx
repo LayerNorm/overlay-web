@@ -138,7 +138,7 @@ export function RoomThreadPanel({
           rows={1}
           placeholder="Reply…"
           aria-label="Reply in thread"
-          className="min-h-9 w-auto flex-1 resize-none rounded-none border-0 bg-transparent px-2 py-2 text-sm shadow-none outline-hidden placeholder:text-(--muted-light) focus:ring-0"
+          className="min-h-9 w-auto flex-1 resize-none rounded-none border-0 bg-transparent px-2 py-2 text-sm shadow-none outline-hidden placeholder:text-(--muted-light) focus-visible:ring-0"
           onKeyDown={(event) => {
             if (event.key === 'Enter' && !event.shiftKey) {
               event.preventDefault()

@@ -22,7 +22,7 @@ import { parseRoots } from '../lib/agent-editor-utils'
  */
 export function useByoConnection(args: {
   activeWorkspaceId: string | null
-  showcase: boolean
+
   agent: WorkspaceAgentDirectoryItem | null
   agentType: AgentType
   connectedAgentsEnabled: boolean
@@ -33,7 +33,7 @@ export function useByoConnection(args: {
   /** The agent's binding is an Overlay Cloud machine (it names a provider account), managed from its own panel. */
   onCloudBinding?(): void
 }) {
-  const { activeWorkspaceId, showcase, agent, agentType, connectedAgentsEnabled, setAgentType, onLegacyHostedBinding, onCloudBinding } = args
+  const { activeWorkspaceId,  agent, agentType, connectedAgentsEnabled, setAgentType, onLegacyHostedBinding, onCloudBinding } = args
   const [environmentChoice, setEnvironmentChoice] = useState<EnvironmentChoice>('existing')
   const [environments, setEnvironments] = useState<AgentEnvironmentResource[]>([])
   const [environmentsLoading, setEnvironmentsLoading] = useState(false)
@@ -51,18 +51,18 @@ export function useByoConnection(args: {
   const [loadedFor, setLoadedFor] = useState<string | null>(null)
   const loadKey = agent?.id ?? 'new'
   const initialLoading = Boolean(
-    activeWorkspaceId && !showcase && connectedAgentsEnabled && (agent || agentType === 'byo') && loadedFor !== loadKey,
+    activeWorkspaceId && connectedAgentsEnabled && (agent || agentType === 'byo') && loadedFor !== loadKey,
   )
 
   const refreshEnvironments = useCallback(async () => {
-    if (!activeWorkspaceId || showcase) return []
+    if (!activeWorkspaceId) return []
     const result = await overlayAppClient.agentEnvironments.list(activeWorkspaceId, { cache: 'no-store' })
     setEnvironments(result.environments)
     return result.environments
-  }, [activeWorkspaceId, showcase])
+  }, [activeWorkspaceId, ])
 
   useEffect(() => {
-    if (!activeWorkspaceId || showcase || !connectedAgentsEnabled || (!agent && agentType !== 'byo')) return
+    if (!activeWorkspaceId || !connectedAgentsEnabled || (!agent && agentType !== 'byo')) return
     let cancelled = false
     setEnvironmentsLoading(true)
     setEnvironmentError(null)
@@ -100,7 +100,7 @@ export function useByoConnection(args: {
     return () => { cancelled = true }
     // `onLegacyHostedBinding` must be a stable useCallback from the page — a new
     // function identity every render would refetch environments in a loop.
-  }, [activeWorkspaceId, agent, agentType, args.initialAdapterId, connectedAgentsEnabled, setAgentType, onLegacyHostedBinding, onCloudBinding, showcase])
+  }, [activeWorkspaceId, agent, agentType, args.initialAdapterId, connectedAgentsEnabled, setAgentType, onLegacyHostedBinding, onCloudBinding, ])
 
   useEffect(() => {
     if (!command || setupEnvironmentId) return
@@ -155,10 +155,7 @@ export function useByoConnection(args: {
   }
 
   const beginConnection = async () => {
-    if (showcase) {
-      setEnvironmentError('Sign in to connect an environment.')
-      return
-    }
+
     if (!activeWorkspaceId || !selectedHarness?.connectable) return
     setEnvironmentBusy('connect')
     setEnvironmentError(null)

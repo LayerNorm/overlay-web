@@ -166,7 +166,7 @@ export function AgentEnvironmentSettings() {
                   <div className="mt-4 space-y-3 border-t border-(--border) pt-4">
                     <div className="flex items-center gap-2 text-sm text-(--foreground)"><ShieldCheck size={16} className="text-(--muted)" /> Verify phrase: <strong>{environment.verificationPhrase ?? 'waiting'}</strong></div>
                     <label className="block text-xs text-(--muted)">Approved project roots, one per line
-                      <Textarea value={roots[environment.id] ?? (environment.kind === 'overlay_cloud' ? '/workspace' : '')} onChange={(event) => setRoots((current) => ({ ...current, [environment.id]: event.target.value }))} placeholder={environment.kind === 'overlay_cloud' ? '/workspace' : '/Users/you/Projects'} className={unstyledTextarea(`mt-2 min-h-20 w-full resize-y rounded-xl border border-(--border) bg-(--background) px-3 py-2 text-sm text-(--foreground) outline-hidden focus:ring-1 focus:ring-(--muted)`)} />
+                      <Textarea value={roots[environment.id] ?? (environment.kind === 'overlay_cloud' ? '/workspace' : '')} onChange={(event) => setRoots((current) => ({ ...current, [environment.id]: event.target.value }))} placeholder={environment.kind === 'overlay_cloud' ? '/workspace' : '/Users/you/Projects'} className={unstyledTextarea(`mt-2 min-h-20 w-full resize-y rounded-xl border border-(--border) bg-(--background) px-3 py-2 text-sm text-(--foreground) outline-hidden transition-[color,box-shadow] focus-visible:border-(--foreground)/30 focus-visible:ring-3 focus-visible:ring-(--foreground)/15`)} />
                     </label>
                     <Button variant="secondary" size="sm" type="button" disabled={busy !== null} onClick={() => void approve(environment.id)}>Approve environment</Button>
                   </div>
@@ -176,7 +176,7 @@ export function AgentEnvironmentSettings() {
                     {editingRoots === environment.id ? (
                       <div className="space-y-2">
                         <label className="block text-xs text-(--muted)">Approved project roots, one per line
-                          <Textarea value={roots[environment.id] ?? ''} onChange={(event) => setRoots((current) => ({ ...current, [environment.id]: event.target.value }))} className={unstyledTextarea(`mt-2 min-h-20 w-full resize-y rounded-xl border border-(--border) bg-(--background) px-3 py-2 text-sm text-(--foreground) outline-hidden focus:ring-1 focus:ring-(--muted)`)} />
+                          <Textarea value={roots[environment.id] ?? ''} onChange={(event) => setRoots((current) => ({ ...current, [environment.id]: event.target.value }))} className={unstyledTextarea(`mt-2 min-h-20 w-full resize-y rounded-xl border border-(--border) bg-(--background) px-3 py-2 text-sm text-(--foreground) outline-hidden transition-[color,box-shadow] focus-visible:border-(--foreground)/30 focus-visible:ring-3 focus-visible:ring-(--foreground)/15`)} />
                         </label>
                         <div className="flex gap-2">
                           <Button variant="secondary" size="sm" type="button" disabled={busy !== null} onClick={() => void updateRoots(environment.id)}>Save roots</Button>

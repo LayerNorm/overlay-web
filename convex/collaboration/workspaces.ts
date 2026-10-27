@@ -4,6 +4,7 @@ import type { MutationCtx, QueryCtx } from '../_generated/server'
 import { mutation, query } from '../_generated/server'
 import type { Doc } from '../_generated/dataModel'
 import { requireServerSecret } from '../lib/auth'
+import { resolveIdentityDisplayName, resolveIdentityPhotoUrl, versionedIdentityUrl } from '@/shared/workspaces/identity-resolution'
 import { deleteChunksForSource } from '../knowledge/knowledge'
 import { claimWorkspaceHandle, getWorkspaceHandle, isWorkspaceHandleAvailable } from '../lib/workspaceHandles'
 import {
@@ -51,6 +52,8 @@ const workspaceValidator = v.object({
   workspaceId: v.string(),
   kind: workspaceKind,
   name: v.string(),
+  iconUrl: v.optional(v.string()),
+  iconPreset: v.optional(v.string()),
   slug: v.string(),
   status: workspaceStatus,
   createdByPrincipalId: v.optional(v.string()),
@@ -73,6 +76,8 @@ const principalValidator = v.object({
   agentId: v.optional(v.string()),
   serviceId: v.optional(v.string()),
   displayName: v.string(),
+  displayNameOverride: v.optional(v.string()),
+  photoUrl: v.optional(v.string()),
   email: v.optional(v.string()),
   createdByPrincipalId: v.optional(v.string()),
   createdAt: v.number(),
@@ -212,6 +217,7 @@ export const ensurePersonalWorkspaceByServer = mutation({
         workspaceId: args.workspaceId,
         kind: 'personal',
         name: requiredName(args.workspaceName, 'Workspace'),
+        iconPreset: defaultWorkspaceIconPreset(args.workspaceId),
         slug: personalHandle,
         status: 'active',
         createdByPrincipalId: args.principalId,
@@ -241,7 +247,7 @@ export const ensurePersonalWorkspaceByServer = mutation({
     ])
     return {
       workspace: workspaceValue(workspace),
-      principal: principalValue(principal),
+      principal: (await resolvedPrincipalValues(ctx, [principal]))[0]!,
       membership: membershipValue(membership),
     }
   },
@@ -324,9 +330,10 @@ export const createOrganizationByServer = mutation({
       await Promise.all([
         insertAndRead(ctx, 'workspaces', {
       workspaceId: args.workspaceId,
-      kind: 'organization',
-      name: requiredName(args.name, 'Workspace'),
-      slug,
+        kind: 'organization',
+        name: requiredName(args.name, 'Workspace'),
+        iconPreset: defaultWorkspaceIconPreset(args.workspaceId),
+        slug,
       status: 'active',
       createdByPrincipalId: args.principalId,
       createdAt: now,
@@ -389,7 +396,7 @@ export const createOrganizationByServer = mutation({
     })
     return {
       workspace: workspaceValue(workspace),
-      principal: principalValue(principal),
+      principal: (await resolvedPrincipalValues(ctx, [principal]))[0]!,
       membership: membershipValue(membership),
     }
   },
@@ -404,6 +411,9 @@ export const listForUserByServer = query({
       .query('workspacePrincipals')
       .withIndex('by_userId', (q) => q.eq('userId', args.userId))
       .take(MAX_DIRECTORY_ROWS)
+    const account = await ctx.db.query('subscriptions')
+      .withIndex('by_userId', (q) => q.eq('userId', args.userId))
+      .first()
     const accesses = await Promise.all(principals.map(async (principal) => {
       const [workspace, membership] = await Promise.all([
         getWorkspace(ctx, principal.workspaceId),
@@ -419,7 +429,7 @@ export const listForUserByServer = query({
       if (!workspace || !membership || membership.status !== 'active') return null
       return {
         workspace: workspaceValue(workspace),
-        principal: principalValue(principal),
+        principal: resolvedPrincipalValue(principal, account),
         membership: membershipValue(membership),
       }
     }))
@@ -438,6 +448,236 @@ export const getWorkspaceByServer = query({
     requireServerSecret(args.serverSecret)
     const workspace = await getWorkspace(ctx, args.workspaceId)
     return workspace ? workspaceValue(workspace) : null
+  },
+})
+
+const workspaceIdentityValidator = v.object({
+  workspaceId: v.string(),
+  principalId: v.string(),
+  userId: v.string(),
+  displayNameOverride: v.union(v.string(), v.null()),
+  photoObjectKey: v.union(v.string(), v.null()),
+  accountDisplayNameOverride: v.union(v.string(), v.null()),
+  accountPhotoObjectKey: v.union(v.string(), v.null()),
+  accountName: v.union(v.string(), v.null()),
+  accountPhotoUrl: v.union(v.string(), v.null()),
+  email: v.union(v.string(), v.null()),
+})
+
+export const getWorkspaceIdentityByServer = query({
+  args: { serverSecret: v.string(), workspaceId: v.string(), userId: v.string() },
+  returns: v.union(workspaceIdentityValidator, v.null()),
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const workspace = await getWorkspace(ctx, args.workspaceId)
+    if (!workspace || workspace.status !== 'active') return null
+    const principal = await ctx.db.query('workspacePrincipals')
+      .withIndex('by_workspaceId_userId', (q) => q.eq('workspaceId', args.workspaceId).eq('userId', args.userId))
+      .unique()
+    if (!principal || principal.type !== 'human' || principal.archivedAt !== undefined) return null
+    const membership = await getMembershipForPrincipal(ctx, args.workspaceId, principal.principalId)
+    if (!membership || membership.status !== 'active') return null
+    const account = await ctx.db.query('subscriptions')
+      .withIndex('by_userId', (q) => q.eq('userId', args.userId))
+      .first()
+    return {
+      workspaceId: args.workspaceId,
+      principalId: principal.principalId,
+      userId: args.userId,
+      displayNameOverride: principal.displayNameOverride ?? null,
+      photoObjectKey: principal.photoObjectKey ?? null,
+      accountDisplayNameOverride: account?.displayNameOverride ?? null,
+      accountPhotoObjectKey: account?.photoObjectKey ?? null,
+      accountName: [account?.firstName, account?.lastName].filter(Boolean).join(' ').trim()
+        || account?.name
+        || null,
+      accountPhotoUrl: account?.profilePictureUrl ?? null,
+      email: account?.email ?? principal.email ?? null,
+    }
+  },
+})
+
+export const updateWorkspaceIdentityByServer = mutation({
+  args: {
+    serverSecret: v.string(),
+    workspaceId: v.string(),
+    userId: v.string(),
+    displayNameOverride: v.optional(v.union(v.string(), v.null())),
+    photoObjectKey: v.optional(v.union(v.string(), v.null())),
+  },
+  returns: v.object({ oldPhotoObjectKey: v.union(v.string(), v.null()) }),
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const workspace = await requireActiveWorkspace(ctx, args.workspaceId)
+    const principal = await ctx.db.query('workspacePrincipals')
+      .withIndex('by_workspaceId_userId', (q) => q.eq('workspaceId', args.workspaceId).eq('userId', args.userId))
+      .unique()
+    if (!principal || principal.type !== 'human' || principal.archivedAt !== undefined) {
+      throw new Error('WORKSPACE_PROFILE_FORBIDDEN')
+    }
+    const membership = await getMembershipForPrincipal(ctx, args.workspaceId, principal.principalId)
+    if (!membership || membership.status !== 'active' || workspace.status !== 'active') {
+      throw new Error('WORKSPACE_PROFILE_FORBIDDEN')
+    }
+    const patch: Record<string, unknown> = { updatedAt: Date.now() }
+    if (args.displayNameOverride !== undefined) {
+      patch.displayNameOverride = args.displayNameOverride || undefined
+    }
+    if (args.photoObjectKey !== undefined) {
+      patch.photoObjectKey = args.photoObjectKey || undefined
+    }
+    await ctx.db.patch(principal._id, patch)
+    return {
+      oldPhotoObjectKey: args.photoObjectKey !== undefined && principal.photoObjectKey !== args.photoObjectKey
+        ? principal.photoObjectKey ?? null
+        : null,
+    }
+  },
+})
+
+export const getWorkspaceIdentityDirectoryByServer = query({
+  args: { serverSecret: v.string(), workspaceId: v.string(), actorUserId: v.string() },
+  returns: v.array(v.object({
+    principalId: v.string(),
+    userId: v.optional(v.string()),
+    displayName: v.string(),
+    email: v.optional(v.string()),
+    displayNameOverride: v.optional(v.string()),
+    photoUrl: v.optional(v.string()),
+    accountDisplayNameOverride: v.optional(v.string()),
+    accountName: v.optional(v.string()),
+    accountPhotoUrl: v.optional(v.string()),
+    accountPhotoObjectKey: v.optional(v.string()),
+  })),
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const workspace = await getWorkspace(ctx, args.workspaceId)
+    if (!workspace || workspace.status !== 'active') return []
+    const actor = await ctx.db.query('workspacePrincipals')
+      .withIndex('by_workspaceId_userId', (q) => q.eq('workspaceId', args.workspaceId).eq('userId', args.actorUserId))
+      .unique()
+    const actorMembership = actor
+      ? await getMembershipForPrincipal(ctx, args.workspaceId, actor.principalId)
+      : null
+    if (!actorMembership || actorMembership.status !== 'active') return []
+    const memberships = (await ctx.db.query('workspaceMemberships')
+      .withIndex('by_workspaceId_role_status', (q) => q.eq('workspaceId', args.workspaceId))
+      .take(MAX_DIRECTORY_ROWS))
+      .filter((membership) => membership.status === 'active')
+    const principals = await Promise.all(memberships.map((membership) => getPrincipal(ctx, membership.principalId)))
+    const humans = principals.filter((principal) =>
+      principal?.type === 'human' && principal.archivedAt === undefined && principal.userId)
+    const userIds = Array.from(new Set(humans.map((principal) => principal!.userId!)))
+    const accounts = await Promise.all(userIds.map((userId) => ctx.db.query('subscriptions')
+      .withIndex('by_userId', (q) => q.eq('userId', userId))
+      .first()))
+    const accountByUser = new Map(accounts.filter(Boolean).map((account) => [account!.userId, account!]))
+    return humans.map((principal) => {
+      const account = accountByUser.get(principal!.userId!)
+      const workspacePhotoUrl = principal!.photoObjectKey
+        ? versionedIdentityUrl(
+            `/api/v1/workspaces/${encodeURIComponent(args.workspaceId)}/profile/photo?principalId=${encodeURIComponent(principal!.principalId)}`,
+            principal!.photoObjectKey,
+          )
+        : undefined
+      const accountPhotoUrl = account?.photoObjectKey
+        ? versionedIdentityUrl(
+            `/api/v1/account/profile/photo?userId=${encodeURIComponent(principal!.userId!)}`,
+            account.photoObjectKey,
+          )
+        : account?.profilePictureUrl
+      return {
+        principalId: principal!.principalId,
+        userId: principal!.userId,
+        displayName: resolveIdentityDisplayName({
+          workspaceOverride: principal!.displayNameOverride,
+          accountOverride: account?.displayNameOverride,
+          providerName: [account?.firstName, account?.lastName].filter(Boolean).join(' ').trim() || account?.name,
+          legacyDisplayName: principal!.displayName,
+          email: account?.email ?? principal!.email,
+        }),
+        email: principal!.email,
+        displayNameOverride: principal!.displayNameOverride,
+        photoUrl: workspacePhotoUrl ?? accountPhotoUrl,
+        accountDisplayNameOverride: account?.displayNameOverride,
+        accountName: [account?.firstName, account?.lastName].filter(Boolean).join(' ').trim() || account?.name,
+        accountPhotoUrl,
+        accountPhotoObjectKey: account?.photoObjectKey,
+      }
+    })
+  },
+})
+
+export const updateWorkspaceIconByServer = mutation({
+  args: {
+    serverSecret: v.string(),
+    workspaceId: v.string(),
+    actorUserId: v.string(),
+    iconObjectKey: v.optional(v.union(v.string(), v.null())),
+    preset: v.optional(v.union(v.string(), v.null())),
+  },
+  returns: v.object({ oldIconObjectKey: v.union(v.string(), v.null()) }),
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const workspace = await requireActiveWorkspace(ctx, args.workspaceId)
+    const access = await findHumanAccess(ctx, workspace, args.actorUserId, false)
+    if (!access || access.membership.status !== 'active'
+      || (access.membership.role !== 'owner' && access.membership.role !== 'admin')) {
+      throw new Error('WORKSPACE_ICON_FORBIDDEN')
+    }
+    if (args.preset && !/^shape-[1-6]$/.test(args.preset)) throw new Error('WORKSPACE_ICON_PRESET_INVALID')
+    if (args.iconObjectKey !== undefined) {
+      await ctx.db.patch(workspace._id, {
+        iconObjectKey: args.iconObjectKey || undefined,
+        iconPreset: undefined,
+        updatedAt: Date.now(),
+      })
+    } else if (args.preset !== undefined) {
+      await ctx.db.patch(workspace._id, {
+        iconObjectKey: undefined,
+        iconPreset: args.preset || undefined,
+        updatedAt: Date.now(),
+      })
+    }
+    return {
+      oldIconObjectKey: args.iconObjectKey !== undefined && workspace.iconObjectKey !== args.iconObjectKey
+        ? workspace.iconObjectKey ?? null
+        : args.preset !== undefined ? workspace.iconObjectKey ?? null : null,
+    }
+  },
+})
+
+export const getWorkspaceIconByServer = query({
+  args: { serverSecret: v.string(), workspaceId: v.string(), actorUserId: v.string() },
+  returns: v.union(v.object({ iconObjectKey: v.string() }), v.null()),
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const workspace = await requireActiveWorkspace(ctx, args.workspaceId)
+    const access = await findHumanAccess(ctx, workspace, args.actorUserId, false)
+    if (!access || access.membership.status !== 'active' || !workspace.iconObjectKey) return null
+    return { iconObjectKey: workspace.iconObjectKey }
+  },
+})
+
+export const getWorkspaceProfilePhotoByServer = query({
+  args: { serverSecret: v.string(), workspaceId: v.string(), actorUserId: v.string(), principalId: v.string() },
+  returns: v.union(v.object({ photoObjectKey: v.string() }), v.null()),
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const workspace = await getWorkspace(ctx, args.workspaceId)
+    if (!workspace || workspace.status !== 'active') return null
+    const actor = await findHumanAccess(ctx, workspace, args.actorUserId, false)
+    if (!actor || actor.membership.status !== 'active') return null
+    const principal = await requirePrincipal(ctx, args.workspaceId, args.principalId)
+    const membership = await getMembershipForPrincipal(ctx, args.workspaceId, args.principalId)
+    if (
+      principal.type !== 'human'
+      || principal.archivedAt !== undefined
+      || !membership
+      || membership.status !== 'active'
+      || !principal.photoObjectKey
+    ) return null
+    return { photoObjectKey: principal.photoObjectKey }
   },
 })
 
@@ -590,7 +830,7 @@ export const resolveActiveWorkspaceByServer = mutation({
       await upsertActivePreference(ctx, args.userId, workspace.workspaceId)
       return {
         workspace: workspaceValue(workspace),
-        principal: principalValue(principal),
+        principal: (await resolvedPrincipalValues(ctx, [principal]))[0]!,
         membership: membershipValue(membership),
       }
     }
@@ -697,7 +937,10 @@ export const updatePrincipalByServer = mutation({
       updatedAt: Date.now(),
     }
     await ctx.db.patch(principal._id, patch)
-    return principalValue({ ...principal, ...patch })
+    const updated = { ...principal, ...patch }
+    return updated.type === 'human'
+      ? (await resolvedPrincipalValues(ctx, [updated]))[0]!
+      : principalValue(updated)
   },
 })
 
@@ -707,7 +950,11 @@ export const getPrincipalByServer = query({
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
     const principal = await getPrincipal(ctx, args.principalId)
-    return principal ? principalValue(principal) : null
+    return principal
+      ? principal.type === 'human'
+        ? (await resolvedPrincipalValues(ctx, [principal]))[0]!
+        : principalValue(principal)
+      : null
   },
 })
 
@@ -721,7 +968,9 @@ export const getHumanPrincipalByServer = query({
       .withIndex('by_workspaceId_userId', (q) =>
         q.eq('workspaceId', args.workspaceId).eq('userId', args.userId))
       .unique()
-    return principal?.type === 'human' ? principalValue(principal) : null
+    return principal?.type === 'human'
+      ? (await resolvedPrincipalValues(ctx, [principal]))[0]!
+      : null
   },
 })
 
@@ -740,11 +989,11 @@ export const listPrincipalsByServer = query({
       .query('workspacePrincipals')
       .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId))
       .take(MAX_DIRECTORY_ROWS)
-    return principals
+    const filtered = principals
       .filter((principal) =>
         (args.includeArchived || principal.archivedAt === undefined)
         && (!args.type || principal.type === args.type))
-      .map(principalValue)
+    return await resolvedPrincipalValues(ctx, filtered)
   },
 })
 
@@ -947,7 +1196,9 @@ export const acceptInvitationByServer = mutation({
     })
     return {
       workspace: workspaceValue(workspace),
-      principal: principalValue(principal),
+      principal: principal.type === 'human'
+        ? (await resolvedPrincipalValues(ctx, [principal]))[0]!
+        : principalValue(principal),
       membership: membershipValue(membership),
     }
   },
@@ -1144,11 +1395,17 @@ export const listMembersByServer = query({
       const principal = await getPrincipal(ctx, membership.principalId)
       if (!principal || principal.workspaceId !== args.workspaceId) return null
       return {
-        principal: principalValue(principal),
+        principal,
         membership: membershipValue(membership),
       }
     }))
-    return entries.filter((value): value is NonNullable<typeof value> => value !== null)
+    const validEntries = entries.filter((value): value is NonNullable<typeof value> => value !== null)
+    const principals = await resolvedPrincipalValues(ctx, validEntries.map((entry) => entry.principal))
+    const principalById = new Map(principals.map((principal) => [principal.principalId, principal]))
+    return validEntries.map((entry) => ({
+      principal: principalById.get(entry.principal.principalId)!,
+      membership: entry.membership,
+    }))
   },
 })
 
@@ -2523,7 +2780,7 @@ async function findHumanAccess(
   if (!membership || (!includeSuspended && membership.status !== 'active')) return null
   return {
     workspace: workspaceValue(workspace),
-    principal: principalValue(principal),
+    principal: (await resolvedPrincipalValues(ctx, [principal]))[0]!,
     membership: membershipValue(membership),
   }
 }
@@ -2686,6 +2943,10 @@ function workspaceValue(row: Doc<'workspaces'>) {
     workspaceId: row.workspaceId,
     kind: row.kind,
     name: row.name,
+    iconUrl: row.iconObjectKey
+      ? versionedIdentityUrl(`/api/v1/workspaces/${encodeURIComponent(row.workspaceId)}/icon`, row.iconObjectKey)
+      : undefined,
+    iconPreset: row.iconPreset,
     slug: row.slug,
     status: row.status,
     createdByPrincipalId: row.createdByPrincipalId,
@@ -2705,11 +2966,70 @@ function principalValue(row: Doc<'workspacePrincipals'>) {
     agentId: row.agentId,
     serviceId: row.serviceId,
     displayName: row.displayName,
+    displayNameOverride: row.displayNameOverride,
+    photoUrl: row.photoObjectKey
+      ? versionedIdentityUrl(
+          `/api/v1/workspaces/${encodeURIComponent(row.workspaceId)}/profile/photo?principalId=${encodeURIComponent(row.principalId)}`,
+          row.photoObjectKey,
+        )
+      : undefined,
     email: row.email,
     createdByPrincipalId: row.createdByPrincipalId,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     archivedAt: row.archivedAt,
+  }
+}
+
+async function resolvedPrincipalValues(
+  ctx: { db: DatabaseReader },
+  principals: Doc<'workspacePrincipals'>[],
+) {
+  const userIds = Array.from(new Set(principals.flatMap((principal) =>
+    principal.type === 'human' && principal.userId ? [principal.userId] : [])))
+  const accounts = await Promise.all(userIds.map((userId) => ctx.db.query('subscriptions')
+    .withIndex('by_userId', (q) => q.eq('userId', userId))
+    .first()))
+  const accountByUserId = new Map(accounts.filter(Boolean).map((account) => [account!.userId, account!]))
+  return principals.map((principal) => resolvedPrincipalValue(
+    principal,
+    principal.userId ? accountByUserId.get(principal.userId) : undefined,
+  ))
+}
+
+function resolvedPrincipalValue(
+  principal: Doc<'workspacePrincipals'>,
+  account?: Doc<'subscriptions'> | null,
+) {
+  const providerName = [account?.firstName, account?.lastName].filter(Boolean).join(' ').trim()
+    || account?.name?.trim()
+  const workspacePhotoUrl = principal.photoObjectKey
+    ? versionedIdentityUrl(
+        `/api/v1/workspaces/${encodeURIComponent(principal.workspaceId)}/profile/photo?principalId=${encodeURIComponent(principal.principalId)}`,
+        principal.photoObjectKey,
+      )
+    : undefined
+  const accountPhotoUrl = account?.photoObjectKey
+    ? versionedIdentityUrl(
+        `/api/v1/account/profile/photo?userId=${encodeURIComponent(principal.userId ?? '')}`,
+        account.photoObjectKey,
+      )
+    : account?.profilePictureUrl
+  const displayName = principal.type === 'human'
+    ? resolveIdentityDisplayName({
+        workspaceOverride: principal.displayNameOverride,
+        accountOverride: account?.displayNameOverride,
+        providerName,
+        legacyDisplayName: principal.displayName,
+        email: account?.email,
+      })
+    : principal.displayName
+  return {
+    ...principalValue(principal),
+    displayName,
+    photoUrl: principal.type === 'human'
+      ? resolveIdentityPhotoUrl({ workspacePhotoUrl, accountPhotoUrl }) ?? undefined
+      : undefined,
   }
 }
 
@@ -2841,6 +3161,12 @@ function slugify(value: string): string {
     .slice(0, 80)
   if (!slug) throw new Error('WORKSPACE_SLUG_REQUIRED')
   return slug
+}
+
+function defaultWorkspaceIconPreset(workspaceId: string): string {
+  let hash = 0
+  for (const character of workspaceId) hash = (hash * 31 + character.charCodeAt(0)) >>> 0
+  return `shape-${(hash % 6) + 1}`
 }
 
 function requirePrincipalSubject(args: {

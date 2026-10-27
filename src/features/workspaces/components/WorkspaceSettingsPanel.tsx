@@ -1,5 +1,7 @@
 'use client'
 
+import { identityInitials } from '@/shared/workspaces/identity-initials'
+
 import { workspaceMemberLabel } from '@/shared/workspaces/solo-workspace'
 import React from 'react'
 import { useEffect, useMemo, useState } from 'react'
@@ -10,12 +12,16 @@ import {
   Link2,
   Loader2,
   MessageSquareText,
+  Pencil,
   RefreshCw,
   RotateCw,
   Trash2,
   UsersRound,
 } from 'lucide-react'
 import {
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
   Button,
   EmptyState,
   Select,
@@ -40,7 +46,7 @@ import type {
   WorkspaceManagementClient,
   WorkspaceSettingsTab,
 } from '@/shared/workspaces/types'
-import { WorkspaceAvatar } from './WorkspaceAvatar'
+import { WorkspaceAvatar } from '@/components/identity/WorkspaceAvatar'
 import { WorkspaceNameEditor } from './WorkspaceNameEditor'
 import {
   ConfirmWorkspaceActionDialog,
@@ -51,12 +57,41 @@ import {
 import { WorkspaceBillingSection } from './WorkspaceBillingSection'
 import { ImportPanel } from './ImportPanel'
 import { invalidateWorkspaceScopePolicy } from '@/hooks/use-workspace-create-access'
+import { AgentCreature } from '@/components/orb/Creature'
+import { IdentityImageEditor, type IdentityImageChoice } from '@/components/identity/IdentityImageEditor'
+import { identityRequest, notifyIdentityUpdated } from '@/hooks/useIdentityProfile'
+import { workspaceIconUrl } from '@/shared/workspaces/icon-presets'
 
 export type WorkspaceManagementState =
   | { status: 'loading' }
   | { status: 'error'; message: string }
   | ({ status: 'ready' } & WorkspaceManagementResponse)
 
+function WorkspaceIconControl({ workspace }: { workspace: WorkspaceSummary }) {
+  const [open, setOpen] = useState(false)
+  const { refresh } = useWorkspace()
+  const canEdit = workspace.role === 'owner' || workspace.role === 'admin'
+
+  async function save(choice: IdentityImageChoice) {
+    const endpoint = `/api/v1/workspaces/${encodeURIComponent(workspace.id)}/icon`
+    if ('file' in choice) {
+      const body = new FormData()
+      body.append('file', choice.file)
+      await identityRequest(endpoint, { method: 'POST', body })
+    } else {
+      await identityRequest(endpoint, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ preset: 'preset' in choice ? choice.preset : null }) })
+    }
+    await refresh()
+    notifyIdentityUpdated(workspace.id)
+    toast.success('Workspace icon saved.')
+  }
+
+  if (!canEdit) return <WorkspaceAvatar workspace={workspace} size="lg" />
+  return <>
+    <Button variant="ghost" className="relative size-10 shrink-0 rounded-xl p-0" aria-label="Change workspace icon" onClick={() => setOpen(true)}><WorkspaceAvatar workspace={workspace} size="lg" /><span className="absolute -bottom-1 -right-1 rounded-full border border-(--border) bg-background p-1 shadow-sm"><Pencil className="size-2.5" /></span></Button>
+    <IdentityImageEditor open={open} onOpenChange={setOpen} title="Workspace icon" workspace photoUrl={workspaceIconUrl(workspace)} fallback={identityInitials(workspace.name, 'W')} resetLabel="Use initials" onSave={save} />
+  </>
+}
 
 function WorkspaceSettingsTabs({
   activeTab,
@@ -184,9 +219,9 @@ export function WorkspaceManagementContent({
           const busy = busyItemId === item.id
           return (
             <div key={item.id} className="flex min-h-16 items-center gap-3 px-5 py-3">
-              <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-(--border) bg-(--surface-subtle) text-(--muted)">
+              {item.principalType === 'agent' ? <AgentCreature agent={item} size={36} /> : item.principalType === 'human' ? <Avatar className="size-9"><AvatarImage src={item.photoUrl ?? undefined} alt="" /><AvatarFallback>{identityInitials(item.name)}</AvatarFallback></Avatar> : <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-(--border) bg-(--surface-subtle) text-(--muted)">
                 <Icon size={15} />
-              </span>
+              </span>}
               <span className="min-w-0 flex-1">
                 <span className="flex items-center gap-2">
                   <span className="truncate text-sm font-medium text-(--foreground)">{item.name}</span>
@@ -1062,7 +1097,7 @@ function WorkspacePanelBody({
   return (
     <section className="overflow-hidden rounded-2xl border border-(--border) bg-(--surface-elevated)">
       <header className="flex items-center gap-3 px-5 py-4">
-        <WorkspaceAvatar workspace={activeWorkspace} size="lg" />
+        <WorkspaceIconControl key={activeWorkspace.id} workspace={activeWorkspace} />
         <div className="min-w-0 flex-1">
           <WorkspaceNameEditor workspace={activeWorkspace} client={client} />
           <p className="mt-0.5 truncate text-xs text-(--muted)">{workspaceLabel}</p>

@@ -50,6 +50,13 @@ export function AuthProvider({
   }
 
   useEffect(() => {
+    if (!initialSessionResolved || !initialUser) return
+    void applyAccountIdentity(initialUser).then((resolvedUser) => {
+      setUser((current) => current?.id === resolvedUser.id ? resolvedUser : current)
+    })
+  }, [initialSessionResolved, initialUser])
+
+  useEffect(() => {
     if (isLoading) return
     const nextUserId = user?.id ?? null
     if (reconciledUserId.current === nextUserId) return
@@ -73,7 +80,7 @@ export function AuthProvider({
         success,
       })
       if (result.status === 'authenticated') {
-        setUser(result.user)
+        setUser(await applyAccountIdentity(result.user))
       } else if (result.status === 'unauthenticated') {
         setUser(null)
       }
@@ -81,6 +88,15 @@ export function AuthProvider({
       setIsLoading(false)
     }
   }, [])
+
+  useEffect(() => {
+    const handleIdentityUpdate = (event: Event) => {
+      const workspaceId = (event as CustomEvent<{ workspaceId?: string }>).detail?.workspaceId
+      if (!workspaceId) void checkSession('manual')
+    }
+    window.addEventListener('overlay:identity-updated', handleIdentityUpdate)
+    return () => window.removeEventListener('overlay:identity-updated', handleIdentityUpdate)
+  }, [checkSession])
 
   const signOut = useCallback(async () => {
     try {
@@ -146,6 +162,24 @@ export function AuthProvider({
       {children}
     </AuthContext.Provider>
   )
+}
+
+async function applyAccountIdentity(user: AuthUser): Promise<AuthUser> {
+  try {
+    const response = await fetch('/api/v1/account/profile', {
+      credentials: 'same-origin',
+      cache: 'no-store',
+    })
+    if (!response.ok) return user
+    const profile = await response.json() as { displayName?: string; photoUrl?: string | null }
+    return {
+      ...user,
+      ...(profile.displayName ? { firstName: profile.displayName, lastName: undefined } : {}),
+      profilePictureUrl: profile.photoUrl ?? undefined,
+    }
+  } catch {
+    return user
+  }
 }
 
 export function AuthBoundary(props: AuthProviderProps) {

@@ -18,12 +18,11 @@ test('empty channels are durable even when opened through a legacy draft link', 
 })
 
 test('one-to-one agent conversations move from Chats to their agent thread without losing history', () => {
-  const args = { pathname: '/app/w/workspace-1/chat', workspaceId: 'workspace-1', agentId: 'overlay', conversationId: 'existing-thread', guided: false, showcase: false }
+  const args = { pathname: '/app/w/workspace-1/chat', workspaceId: 'workspace-1', agentId: 'overlay', conversationId: 'existing-thread', guided: false,  }
   assert.equal(agentConversationRedirect(args), '/app/w/workspace-1/agents?agent=overlay&id=existing-thread')
   assert.equal(agentConversationRedirect({ ...args, pathname: '/app/w/workspace-1/agents' }), null)
   assert.equal(agentConversationRedirect({ ...args, agentId: undefined }), null)
   assert.equal(agentConversationRedirect({ ...args, guided: true }), null)
-  assert.equal(agentConversationRedirect({ ...args, showcase: true }), null)
 })
 
 const chats = [

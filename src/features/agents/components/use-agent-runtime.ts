@@ -1,8 +1,6 @@
 'use client'
 
 import { useCallback, useState } from 'react'
-import type { WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
-import { workspaceAgentUsesByo, workspaceAgentUsesManagedHarness } from '../lib/byo-agent-setup'
 import type { AgentType } from './AgentEditorForm'
 
 /**
@@ -10,17 +8,9 @@ import type { AgentType } from './AgentEditorForm'
  * runtime (Claude Code, Codex, … on Overlay Cloud) are `legacyHostedRuntime`:
  * those runtimes were removed, so such an agent is shown read-only.
  */
-export function useAgentRuntime({
-  showcaseAgent,
-}: {
-  showcaseAgent: WorkspaceAgentDirectoryItem | null
-}) {
-  const [agentType, setAgentType] = useState<AgentType>(() => (
-    workspaceAgentUsesByo(showcaseAgent) ? 'byo' : 'overlay'
-  ))
-  const [legacyHostedRuntime, setLegacyHostedRuntime] = useState(() => (
-    Boolean(showcaseAgent && workspaceAgentUsesManagedHarness(showcaseAgent))
-  ))
+export function useAgentRuntime() {
+  const [agentType, setAgentType] = useState<AgentType>('overlay')
+  const [legacyHostedRuntime, setLegacyHostedRuntime] = useState(false)
 
   const [cloudAgent, setCloudAgent] = useState(false)
   /** The agent's binding is an Overlay Cloud machine. */

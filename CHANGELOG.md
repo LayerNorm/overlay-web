@@ -12,6 +12,13 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Preserve safe failure codes, HTTP statuses, upstream error codes, and offending field names in credential-vault logs so subscription authorization failures can be diagnosed without exposing credentials or upstream response bodies.
 
+- Move Account outside workspace settings, add workspace-specific profiles with provider-photo fallbacks, and let workspace admins choose or upload icons. Retire the outdated interactive demo.
+
+- Keep native agents running after a failed tool-progress write and compact live tool results before saving them to the transcript.
+
+- Saved collaborative message edits now update rendered text and retain attachments instead of showing the original message.
+
+- Use shadcn focus-visible rings for text inputs and textareas, present message editing with text actions, autosize work titles and agent instructions as layouts settle, and group agent Details into collapsed Model, Instructions, Tools and Advanced disclosures.
 - Settings breadcrumbs read Settings > page instead of a Personal or Workspace prefix.
 
 - Subscription connections now use request-based Codex endpoints in the Overlay app, with durable Convex coordination and credentials held in the vault; the retired broker is no longer required. Other provider adapters remain unavailable until individually implemented, and subscription inference never falls back to Overlay-paid routing.

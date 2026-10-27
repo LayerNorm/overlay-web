@@ -17,7 +17,7 @@ import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import { parseByoModelId } from '@/shared/agents/agent-model'
 import { buildWorkspaceAgentInput, isAgentEditorValid, isDefaultMasterAgent } from '../lib/agent-editor-input'
-import { getInitialEditorState, getShowcaseAgent } from '../lib/agent-editor-state'
+import { getInitialEditorState } from '../lib/agent-editor-state'
 import { useByoConnection } from './use-byo-connection'
 import { useAgentSurfaces } from './use-agent-surfaces'
 import { useAgentEditorBootstrap } from './use-agent-editor-bootstrap'
@@ -30,7 +30,7 @@ import { AgentEditorView } from './AgentEditorPage.parts'
 export type AgentEditorPageProps = {
   mode: 'new' | 'edit'
   agentId?: string
-  showcase?: boolean
+
   presentation?: 'page' | 'panel'
   embedded?: boolean
   panelMode?: 'dialog' | 'side'
@@ -54,7 +54,7 @@ export function createAgentEditorPageView(viewProps: ComponentProps<typeof Agent
 export function useAgentEditorController({
   mode,
   agentId,
-  showcase = false,
+
   presentation = 'page',
   embedded = false,
   panelMode,
@@ -86,31 +86,30 @@ export function useAgentEditorController({
     void loadSubscription()
   }, [loadSubscription])
 
-  const showcaseAgent = getShowcaseAgent(showcase, mode, agentId)
   // One initializer keeps per-field fallbacks out of the component body.
-  const [initial] = useState(() => getInitialEditorState({ showcase, mode, agent: showcaseAgent }))
+  const [initial] = useState(() => getInitialEditorState({ mode, agent: null }))
   const [busy, setBusy] = useState(false)
 
-  const bootstrap = useAgentEditorBootstrap({ showcase, mode, agentId, activeWorkspaceId, initial })
+  const bootstrap = useAgentEditorBootstrap({  mode, agentId, activeWorkspaceId, initial })
   const { agent, setAgent, loading, loadFailed, canCreate, connectedAgentsEnabled, connectedAgentsChecked } = bootstrap
 
-  const runtime = useAgentRuntime({ showcaseAgent })
+  const runtime = useAgentRuntime()
 
   const byo = useByoConnection({
-    activeWorkspaceId, showcase, agent, agentType: runtime.agentType, connectedAgentsEnabled,
+    activeWorkspaceId,  agent, agentType: runtime.agentType, connectedAgentsEnabled,
     setAgentType: runtime.setAgentType, onLegacyHostedBinding: runtime.onLegacyHostedBinding,
     onCloudBinding: runtime.onCloudBinding,
   })
 
   const form = useAgentEditorForm({
-    initial, showcaseAgent, agent, showcase, activeWorkspaceId,
+    initial, agent, activeWorkspaceId,
     setLegacyHostedRuntime: runtime.setLegacyHostedRuntime,
     setAgentType: runtime.setAgentType,
   })
 
-  const surfaces = useAgentSurfaces({ activeWorkspaceId, showcase, agent, agentType: runtime.agentType })
+  const surfaces = useAgentSurfaces({ activeWorkspaceId,  agent, agentType: runtime.agentType })
   const computer = useAgentComputer({
-    showcase, computersAvailable, activeWorkspaceId, agent, agentType: runtime.agentType,
+     computersAvailable, activeWorkspaceId, agent, agentType: runtime.agentType,
     enabledToolGroups: form.enabledToolGroups, setEnabledToolGroups: form.setEnabledToolGroups,
     markDirty: form.markDirty,
   })
@@ -155,9 +154,7 @@ export function useAgentEditorController({
     bindingValid: byo.bindingValid || runtime.cloudAgent,
   })
 
-  const directoryHref = showcase
-    ? '/app/agents?showcase=1'
-    : buildWorkspaceHref(activeWorkspaceId, '/app/agents', 'personal')
+  const directoryHref = buildWorkspaceHref(activeWorkspaceId, '/app/agents', 'personal')
   const closeEditor = () => onClose ? onClose() : router.push(directoryHref)
 
   const buildInput = useCallback((): WorkspaceAgentCreateInput => {
@@ -198,7 +195,7 @@ export function useAgentEditorController({
     agent])
 
   const { persistNew, saveEdit, cancelEdit, archiveAgent, sayHello } = useAgentEditorActions({
-    showcase,
+
     presentation,
     activeWorkspaceId,
     router,
@@ -248,7 +245,7 @@ export function useAgentEditorController({
     isDefaultMaster,
     valid,
     busy,
-    showcase,
+
     computersAvailable,
     connectedAgentsEnabled,
     connectedAgentsChecked,
@@ -276,7 +273,7 @@ export function useAgentEditorController({
     isDefaultMaster,
     valid,
     busy,
-    showcase,
+
     computersAvailable,
     connectedAgentsEnabled,
     modelField,

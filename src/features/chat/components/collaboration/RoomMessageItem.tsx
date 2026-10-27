@@ -12,7 +12,6 @@ import {
 } from 'react'
 import {
   Bookmark,
-  Check,
   FileText,
   Flag,
   Link2,
@@ -23,7 +22,6 @@ import {
   SmilePlus,
   Square,
   Trash2,
-  X,
 } from 'lucide-react'
 import type { AssistantVisualBlock } from '@overlay/chat-core'
 import { RemoteRunDeadline } from './RemoteRunDeadline'
@@ -31,7 +29,7 @@ import { FlashCopyIconButton } from '@overlay/chat-react/draft-review-modal'
 import { UserMessageBubble } from '@overlay/chat-react/user-message-bubble'
 import { AssistantVisualBlocks, messageActionVisibilityClass } from '@overlay/chat-react/transcript'
 import type { AttachmentPreview, ChatMessageMention } from '@overlay/chat-react'
-import { Button, Input, Select, Textarea, Toggle } from '@overlay/ui/primitives'
+import { Avatar, AvatarFallback, AvatarImage, Button, Input, Select, Textarea, Toggle } from '@overlay/ui/primitives'
 import { MarkdownMessage } from '@overlay/chat-react'
 import { AgentCreature } from '@/components/orb/Creature'
 import { MAX_AGENT_HOPS } from '@/shared/agents/agent-lineage'
@@ -67,6 +65,7 @@ export type RoomMessageView = {
   /** Sent by the signed-in principal — rendered as the right-hand user bubble. */
   mine: boolean
   authorName: string
+  authorPhotoUrl?: string
   authorKind: 'human' | 'agent' | 'model' | 'system'
   authorColor?: string
   /** Creature body shape for agent authors; absent means circle. */
@@ -145,8 +144,6 @@ export type RoomMessageItemProps = {
 
 /** Rooms do not surface draft review; agent drafts are handled in personal chat. */
 const NOOP_DRAFT = () => {}
-
-
 
 function authorInitial(name: string): string {
   return name.trim().slice(0, 1).toUpperCase() || '?'
@@ -463,12 +460,12 @@ function RoomMessageAvatar({ message }: { message: RoomMessageView }) {
       status={message.authorStatus}
       triggerClassName="rounded-lg"
     >
-      <span
-        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-(--surface-muted) text-[13px] font-semibold text-(--foreground)"
-        aria-hidden
-      >
-        {authorInitial(message.mine ? 'You' : message.authorName)}
-      </span>
+      <Avatar className="h-9 w-9 shrink-0 rounded-lg bg-(--surface-muted)">
+        <AvatarImage src={message.authorPhotoUrl} alt="" />
+        <AvatarFallback className="rounded-lg text-[13px] font-semibold">
+          {authorInitial(message.mine ? 'You' : message.authorName)}
+        </AvatarFallback>
+      </Avatar>
     </AuthorIdentityPopover>
   )
 }
@@ -581,7 +578,7 @@ function RoomMessageEditor({ editingContent, onEditingContentChange, onSaveEdit,
   onCancelEdit: () => void
 }) {
   return (
-    <div className="mt-1 flex w-full gap-2">
+    <div className="mt-1 w-full">
       <Textarea
         autoFocus
         rows={3}
@@ -594,28 +591,16 @@ function RoomMessageEditor({ editingContent, onEditingContentChange, onSaveEdit,
           }
           if (event.key === 'Escape') onCancelEdit()
         }}
-        className="min-h-20 flex-1 resize-y"
+        className="w-full resize-none"
       />
-      <Button
-        variant="primary"
-        size="icon"
-        type="button"
-        onClick={onSaveEdit}
-        aria-label="Save edit"
-        className="shrink-0"
-      >
-        <Check size={14} />
-      </Button>
-      <Button
-        variant="ghost"
-        size="icon"
-        type="button"
-        onClick={onCancelEdit}
-        aria-label="Cancel edit"
-        className="h-9 w-9 shrink-0 rounded-lg p-0 text-(--muted) hover:bg-(--surface-subtle)"
-      >
-        <X size={14} />
-      </Button>
+      <div className="mt-2 flex justify-end gap-2">
+        <Button variant="ghost" size="sm" type="button" onClick={onCancelEdit} aria-label="Cancel edit">
+          Cancel
+        </Button>
+        <Button variant="primary" size="sm" type="button" onClick={onSaveEdit} aria-label="Save edit">
+          Save
+        </Button>
+      </div>
     </div>
   )
 }
@@ -806,7 +791,7 @@ function SentRoomMessage({ rootProps, highlightClass, toolbar, content, onRetryS
       {...rootProps}
       className={`group/exchange relative -mx-1 flex scroll-mt-6 justify-end gap-2.5 rounded-lg px-1 py-1 message-appear transition-colors ${personalChatStyle ? '' : 'hover:bg-(--surface-subtle)'} ${highlightClass}`}
     >
-      <div className="relative flex min-w-0 max-w-[min(92%,36rem)] flex-col items-end gap-1 sm:max-w-[75%]">
+      <div className={`relative flex min-w-0 max-w-[min(92%,36rem)] flex-col items-end gap-1 sm:max-w-[75%] ${content.editing ? 'w-full' : ''}`}>
         {!personalChatStyle && toolbar}
         <RoomMessageAttachments message={message} onOpenAttachmentPreview={content.onOpenAttachmentPreview} />
         {content.editing ? (

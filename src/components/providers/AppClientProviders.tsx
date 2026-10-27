@@ -1,7 +1,6 @@
 'use client'
 
 import { Suspense, useEffect, type ReactNode } from 'react'
-import { useSearchParams } from 'next/navigation'
 import { Analytics } from '@vercel/analytics/next'
 import { SpeedInsights } from '@vercel/speed-insights/next'
 import { AuthProvider, useAuth, type AuthUser } from '@/contexts/AuthContext'
@@ -12,14 +11,12 @@ import { ConvexAuthProvider } from '@/components/providers/ConvexAuthProvider'
 import { prefetchGatewayModelCatalog } from '@/components/providers/useGatewayModelCatalog'
 import { shouldLoadGatewayModelCatalog } from '@/shared/ai/gateway/catalog-access'
 
-export function GatewayModelCatalogPrefetch({ publicShowcase: forcedPublicShowcase }: { publicShowcase: boolean }) {
-  const searchParams = useSearchParams()
-  const publicShowcase = forcedPublicShowcase || searchParams?.get('showcase') === '1'
+export function GatewayModelCatalogPrefetch() {
   const { user, isLoading } = useAuth()
   const enabled = shouldLoadGatewayModelCatalog({
     isAuthenticated: Boolean(user),
     isAuthLoading: isLoading,
-    isPublicShowcase: publicShowcase,
+
   })
   useEffect(() => {
     if (enabled) prefetchGatewayModelCatalog()

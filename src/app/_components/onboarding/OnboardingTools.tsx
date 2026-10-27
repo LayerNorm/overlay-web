@@ -142,7 +142,7 @@ function ExternalAgentConnection({ session, harness, onSaved, onClose }: { sessi
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const setAgentType = useCallback(() => {}, [])
-  const byo = useByoConnection({ activeWorkspaceId: session.workspaceId, showcase: false, agent, agentType: 'byo', connectedAgentsEnabled: true, initialAdapterId: harness, setAgentType })
+  const byo = useByoConnection({ activeWorkspaceId: session.workspaceId,  agent, agentType: 'byo', connectedAgentsEnabled: true, initialAdapterId: harness, setAgentType })
   const save = async () => {
     setBusy(true); setError(null)
     try {

@@ -273,7 +273,7 @@ function NodeConfigPanel({
           <Input
             value={label}
             onChange={(e) => commitLabel(e.target.value)}
-            className={unstyledInput("mt-1 w-full rounded-lg border border-(--border) bg-(--background) px-3 py-2 text-sm text-(--foreground) outline-hidden focus:ring-1 focus:ring-(--foreground)")}
+            className={unstyledInput("mt-1 w-full rounded-lg border border-(--border) bg-(--background) px-3 py-2 text-sm text-(--foreground) outline-hidden transition-[color,box-shadow] focus-visible:border-(--foreground)/30 focus-visible:ring-3 focus-visible:ring-(--foreground)/15")}
           />
         </label>
         {node.kind === 'prompt' && (
@@ -283,7 +283,7 @@ function NodeConfigPanel({
               value={text}
               onChange={(e) => commitText(e.target.value)}
               rows={4}
-              className={unstyledTextarea("mt-1 w-full rounded-lg border border-(--border) bg-(--background) px-3 py-2 text-sm text-(--foreground) outline-hidden focus:ring-1 focus:ring-(--foreground)")}
+              className={unstyledTextarea("mt-1 w-full rounded-lg border border-(--border) bg-(--background) px-3 py-2 text-sm text-(--foreground) outline-hidden transition-[color,box-shadow] focus-visible:border-(--foreground)/30 focus-visible:ring-3 focus-visible:ring-(--foreground)/15")}
             />
           </label>
         )}
@@ -294,7 +294,7 @@ function NodeConfigPanel({
               value={condition}
               onChange={(e) => commitCondition(e.target.value)}
               placeholder="e.g. result.success === true"
-              className={unstyledInput("mt-1 w-full rounded-lg border border-(--border) bg-(--background) px-3 py-2 text-sm text-(--foreground) outline-hidden focus:ring-1 focus:ring-(--foreground)")}
+              className={unstyledInput("mt-1 w-full rounded-lg border border-(--border) bg-(--background) px-3 py-2 text-sm text-(--foreground) outline-hidden transition-[color,box-shadow] focus-visible:border-(--foreground)/30 focus-visible:ring-3 focus-visible:ring-(--foreground)/15")}
             />
           </label>
         )}
@@ -305,7 +305,7 @@ function NodeConfigPanel({
               value={node.config.toolId ?? ''}
               onChange={(e) => onUpdate({ config: { toolId: e.target.value } })}
               placeholder="e.g. web_search"
-              className={unstyledInput("mt-1 w-full rounded-lg border border-(--border) bg-(--background) px-3 py-2 text-sm text-(--foreground) outline-hidden focus:ring-1 focus:ring-(--foreground)")}
+              className={unstyledInput("mt-1 w-full rounded-lg border border-(--border) bg-(--background) px-3 py-2 text-sm text-(--foreground) outline-hidden transition-[color,box-shadow] focus-visible:border-(--foreground)/30 focus-visible:ring-3 focus-visible:ring-(--foreground)/15")}
             />
           </label>
         )}
@@ -316,7 +316,7 @@ function NodeConfigPanel({
               value={node.config.outputKind ?? ''}
               onChange={(e) => onUpdate({ config: { outputKind: e.target.value } })}
               placeholder="e.g. chat"
-              className={unstyledInput("mt-1 w-full rounded-lg border border-(--border) bg-(--background) px-3 py-2 text-sm text-(--foreground) outline-hidden focus:ring-1 focus:ring-(--foreground)")}
+              className={unstyledInput("mt-1 w-full rounded-lg border border-(--border) bg-(--background) px-3 py-2 text-sm text-(--foreground) outline-hidden transition-[color,box-shadow] focus-visible:border-(--foreground)/30 focus-visible:ring-3 focus-visible:ring-(--foreground)/15")}
             />
           </label>
         )}

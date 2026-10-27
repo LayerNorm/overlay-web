@@ -89,10 +89,10 @@ function canonicalRouteDestination(args: {
   descriptor: ReturnType<typeof readWorkspaceRouteDescriptor>
   currentWorkspaceRoutingHandle: string | undefined
   currentScope: ReturnType<typeof usePanelScope>
-  showcase: boolean
+
 }): string | null {
-  const { pathname, search, hash, routeTargetKind, descriptor, currentWorkspaceRoutingHandle, currentScope, showcase } = args
-  if (showcase || new URLSearchParams(search).get('section') === 'account') return null
+  const { pathname, search, hash, routeTargetKind, descriptor, currentWorkspaceRoutingHandle, currentScope,  } = args
+  if (new URLSearchParams(search).get('section') === 'account') return null
   if (routeTargetKind === 'handle') return canonicalHandleDestination(pathname, search, hash)
   if (!descriptor || !currentWorkspaceRoutingHandle
     || !validateWorkspaceHandleAddress(currentWorkspaceRoutingHandle).ok) return null
@@ -114,9 +114,9 @@ function shouldBlockScopedContent(args: {
   pathname: string
   routeSearch: string
   currentScope: ReturnType<typeof usePanelScope>
-  showcase: boolean
+
 }): boolean {
-  const { descriptor, routeTarget, status, currentWorkspace, pathname, routeSearch, currentScope, showcase } = args
+  const { descriptor, routeTarget, status, currentWorkspace, pathname, routeSearch, currentScope,  } = args
   const scopedSurface = Boolean(descriptor && SCOPED_WORKSPACE_SURFACES.has(descriptor.surface))
   const metadataPending = scopedSurface && routeTarget?.kind === 'id' && status !== 'ready'
   const currentLocation = `${pathname}${routeSearch ? `?${routeSearch}` : ''}`
@@ -128,7 +128,7 @@ function shouldBlockScopedContent(args: {
     descriptor,
     currentWorkspaceRoutingHandle: currentWorkspace?.routingHandle,
     currentScope,
-    showcase,
+
   })
   return Boolean(metadataPending || (destination && destination !== currentLocation))
 }
@@ -146,7 +146,7 @@ type WorkspaceScopedContentGateState = {
   pathname: string
   routeSearch: string
   currentScope: ReturnType<typeof usePanelScope>
-  showcase: boolean
+
 }
 
 export function WorkspaceScopedContentGate({
@@ -171,7 +171,7 @@ export function WorkspaceScopedContentGate({
     pathname,
     routeSearch,
     currentScope,
-    showcase,
+
   } = state
   if (shouldWaitForWorkspaceContent({
     switchingWorkspaceId,
@@ -192,7 +192,7 @@ export function WorkspaceScopedContentGate({
     pathname,
     routeSearch,
     currentScope,
-    showcase,
+
   })) return fallback
   return <Fragment key={scopeKey}>{children}</Fragment>
 }
@@ -236,7 +236,7 @@ export function WorkspaceScopedContentBoundary({
       descriptor,
       currentWorkspaceRoutingHandle: currentWorkspace?.routingHandle,
       currentScope,
-      showcase: searchParams?.get('showcase') === '1',
+
     })
     if (destination && current !== destination) router.replace(destination, { scroll: false })
   }, [currentScope, currentWorkspace?.routingHandle, descriptor, pathname, router, routeTarget?.kind, routeTarget?.value, searchParams])
@@ -271,7 +271,7 @@ export function WorkspaceScopedContentBoundary({
         pathname,
         routeSearch,
         currentScope,
-        showcase: searchParams?.get('showcase') === '1',
+
       }}
     >
       {children}

@@ -162,6 +162,14 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
     path: '/api/v1/account/workspaces',
     methods: { GET: authenticated(), POST: authenticated() },
   },
+  {
+    path: '/api/v1/account/profile',
+    methods: { GET: authenticated(), PATCH: authenticated() },
+  },
+  {
+    path: '/api/v1/account/profile/photo',
+    methods: { GET: authenticated(), POST: authenticated() },
+  },
   { path: '/api/v1/workspace-handles/:handle', methods: { GET: authenticated() } },
   {
     path: '/api/v1/workspaces',
@@ -175,6 +183,18 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
   {
     path: '/api/v1/workspaces/:workspaceId/management',
     methods: { GET: authenticated() },
+  },
+  {
+    path: '/api/v1/workspaces/:workspaceId/profile',
+    methods: { GET: authenticated(), PATCH: authenticated() },
+  },
+  {
+    path: '/api/v1/workspaces/:workspaceId/profile/photo',
+    methods: { GET: authenticated(), POST: authenticated() },
+  },
+  {
+    path: '/api/v1/workspaces/:workspaceId/icon',
+    methods: { GET: authenticated(), PATCH: authenticated(), POST: authenticated() },
   },
   {
     path: '/api/v1/workspaces/:workspaceId/invitations',

@@ -1,8 +1,8 @@
 import type { CachedConversation } from './chat-list-cache'
 import { buildWorkspaceHref, resolveWorkspaceSurface } from '../workspaces/routing'
 
-export function agentConversationRedirect(args: { pathname: string; workspaceId: string | null; agentId?: string; conversationId: string; guided: boolean; showcase: boolean }) {
-  if (args.guided || args.showcase || !args.workspaceId || !args.agentId || resolveWorkspaceSurface(args.pathname) !== 'chat') return null
+export function agentConversationRedirect(args: { pathname: string; workspaceId: string | null; agentId?: string; conversationId: string; guided: boolean;  }) {
+  if (args.guided || !args.workspaceId || !args.agentId || resolveWorkspaceSurface(args.pathname) !== 'chat') return null
   return `${buildWorkspaceHref(args.workspaceId, '/app/agents')}?${new URLSearchParams({ agent: args.agentId, id: args.conversationId })}`
 }
 

@@ -17,7 +17,7 @@ export function AgentRightSidebar({
   conversationId,
   activeTab,
   onTabChange,
-  showcase = false,
+
   editor,
   controlled,
   computerAccess,
@@ -27,7 +27,7 @@ export function AgentRightSidebar({
   conversationId: string
   activeTab: string
   onTabChange(id: string): void
-  showcase?: boolean
+
   editor: ReturnType<typeof useAgentEditorController>
   controlled: boolean
   computerAccess: ReturnType<typeof useAgentSidebarComputer>
@@ -35,7 +35,7 @@ export function AgentRightSidebar({
   onReleaseControl(): void
 }) {
   const { capabilities } = useOverlayCapabilities()
-  const computersEnabled = capabilities.computers === true && !showcase
+  const computersEnabled = capabilities.computers === true
   const selectedTab = activeTab
   const [saveFailed, setSaveFailed] = useState(false)
   const schedulerRef = useRef<ReturnType<typeof createAgentAutosaveScheduler> | null>(null)

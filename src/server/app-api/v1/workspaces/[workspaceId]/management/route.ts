@@ -48,6 +48,10 @@ export async function GET(_request: Request, context: AppApiRouteContext) {
       items,
       workspaceKind: access.workspace.kind,
     })
+    const humanDetails = (principal: { displayName: string; photoUrl?: string }) => ({
+      name: principal.displayName,
+      ...(principal.photoUrl ? { photoUrl: principal.photoUrl } : {}),
+    })
 
     if (view === 'sharing') return NextResponse.json(response([]))
 
@@ -94,7 +98,7 @@ export async function GET(_request: Request, context: AppApiRouteContext) {
             return {
               id: principal.id,
               kind: 'member' as const,
-              name: principal.displayName,
+              ...humanDetails(principal),
               description: principal.email ?? 'Workspace guest',
               detail: `${grants} ${grants === 1 ? 'resource' : 'resources'}`,
               badge: membership.status,
@@ -183,7 +187,7 @@ export async function GET(_request: Request, context: AppApiRouteContext) {
         .map(({ principal, membership }) => ({
           id: principal.id,
           kind: 'member' as const,
-          name: principal.displayName,
+          ...humanDetails(principal),
           description: principal.email ?? 'Workspace member',
           detail: membership.role,
           badge: membership.status,
