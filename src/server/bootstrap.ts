@@ -66,6 +66,7 @@ import { ConnectedAgentControlPlaneService } from '@/server/agents/ConnectedAgen
 import { lazyConvex } from '@/server/database/lazy-convex'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { AgentAskService } from '@/server/agents/agent-asks/AgentAskService'
+import { asConversationId } from '@/server/conversations/ActConversationRepository'
 import { AgentProfileService } from '@/server/agents/profiles/AgentProfileService'
 import { McpAccessService } from '@/server/mcp/McpAccessService'
 import { AgentProviderAccountService } from '@/server/agents/provider-accounts/AgentProviderAccountService'
@@ -332,6 +333,12 @@ export function createOverlayServerContext(
   })
   const agentAsks = new AgentAskService({
     collaboration: appData.repositories.conversationCollaboration,
+    getCallerRun: ({ actorUserId, conversationId, turnId, agentId }) => appData.repositories.conversations.getLatestAgentRun({
+      conversationId: asConversationId(conversationId),
+      userId: actorUserId,
+      turnId,
+      agentId,
+    }),
     directory: async (actorUserId, workspaceId) => (await workspaceAgentService.list({ actorUserId, workspaceId })).agents,
     claimBudget: async (args) => (await lazyConvex.mutation<{ ok: true } | { ok: false; reason: 'budget' | 'turn_limit' }>(
       'agents/agentAsks:claimAgentAskByServer',

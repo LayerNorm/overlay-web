@@ -163,6 +163,7 @@ implements ConversationCollaborationRepository {
     authorPrincipalId: string
     clientNonce: string
     conversationId: string
+    initiatorPrincipalId?: string
     modelId: string
     executionEngine?: 'overlay_harness'
     threadRootMessageId?: string

@@ -67,6 +67,7 @@ export async function buildAgentTurnContext(args: {
   participants: readonly AgentRoomParticipant[]
   requestFingerprint: string
   workspaceId: string
+  includeAutoRetrieval?: boolean
 }): Promise<AgentTurnContext> {
   const server = getOverlayServerContext()
   // The room rule: in a room others can read, the summoner's private memory, files, and skills are not loaded for the agent
@@ -102,7 +103,7 @@ export async function buildAgentTurnContext(args: {
     : Promise.resolve('')
 
   const retrievalTask: Promise<string> = (async () => {
-    if (!args.latestUserText.trim() || !access.personalRetrieval) return ''
+    if (args.includeAutoRetrieval === false || !args.latestUserText.trim() || !access.personalRetrieval) return ''
     try {
       const { buildAutoRetrievalBundle } = await import('@/server/knowledge/ask-knowledge-context')
       const bundle = await buildAutoRetrievalBundle({

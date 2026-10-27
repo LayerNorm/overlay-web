@@ -19,6 +19,11 @@ import {
 } from '@/shared/agents/agent-lineage'
 import type { ConversationMessageRow } from '@/server/conversations/ActConversationRepository'
 import type { ConversationCollaborationRepository } from '@/server/conversations/ConversationCollaborationRepository'
+import type { AgentRun } from '@/shared/agents/agent-run'
+import {
+  HARNESS_DISPATCH_REQUIRED_CODE,
+  HARNESS_DISPATCH_REQUIRED_MESSAGE,
+} from '@/shared/agents/harness-dispatch-refusal'
 
 const REPLY_WAIT_MS = 80_000
 const REPLY_POLL_MS = 2_000
@@ -67,6 +72,7 @@ type Person = { actorUserId: string; actorPrincipalId: string; workspaceId: stri
 export class AgentAskService {
   constructor(private readonly dependencies: {
     collaboration: Collaboration
+    getCallerRun: (args: { actorUserId: string; conversationId: string; turnId: string; agentId: string }) => Promise<AgentRun | null>
     /** The agents the person can see, which is also who they can ask. */
     directory: (actorUserId: string, workspaceId: string) => Promise<WorkspaceAgentDirectoryItem[]>
     /** Takes one question from the request's and the turn's budgets. */
@@ -105,6 +111,7 @@ export class AgentAskService {
     message: string
     wait: boolean
   }): Promise<AgentAskResult> {
+    if (args.caller) await this.refuseHarnessCaller(args, args.caller)
     const message = this.cleanMessage(args.message)
     const visible = await this.visibleAgents(args)
     const target = this.findAgent(visible, args.target)
@@ -155,6 +162,7 @@ export class AgentAskService {
     text: string
     mentions: string[]
   }): Promise<AgentPostResult> {
+    await this.refuseHarnessCaller(args, args.caller)
     const text = this.cleanMessage(args.text)
     if (args.mentions.length > MAX_MENTIONS) throw new AgentAskError(`Mention at most ${MAX_MENTIONS} agents in one message.`, 400, 'too_many_mentions')
     const visible = await this.visibleAgents(args)
@@ -234,6 +242,26 @@ export class AgentAskService {
     if (!message) throw new AgentAskError('Say what you need from the agent.', 400, 'message_required')
     if (message.length > MAX_QUESTION_CHARS) throw new AgentAskError('That message is too long; shorten it.', 400, 'message_too_long')
     return message
+  }
+
+  private async refuseHarnessCaller(
+    person: Person,
+    caller: Caller,
+  ): Promise<void> {
+    const run = await this.dependencies.getCallerRun({
+      actorUserId: person.actorUserId,
+      conversationId: caller.conversationId,
+      turnId: caller.turnId,
+      agentId: caller.agentId,
+    })
+    if (run?.userId === person.actorUserId && run.conversationId === caller.conversationId && run.turnId === caller.turnId
+      && run.agentId === caller.agentId && run.executionEngine === 'overlay_harness') {
+      throw new AgentAskError(
+        HARNESS_DISPATCH_REQUIRED_MESSAGE,
+        409,
+        HARNESS_DISPATCH_REQUIRED_CODE,
+      )
+    }
   }
 
   private async visibleAgents(args: { actorUserId: string; workspaceId: string }) {

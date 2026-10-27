@@ -1074,6 +1074,8 @@ export const getLatestAgentRun = query({
     conversationId: v.id('conversations'),
     agentRunId: v.optional(v.id('conversationAgentRuns')),
     remoteRunId: v.optional(v.string()),
+    turnId: v.optional(v.string()),
+    agentId: v.optional(v.string()),
     serverSecret: v.string(),
     userId: v.string(),
   },
@@ -1095,6 +1097,12 @@ export const getLatestAgentRun = query({
     if (args.agentRunId) {
       const run = await ctx.db.get(args.agentRunId)
       return run?.conversationId === args.conversationId ? run : null
+    }
+    if (args.turnId) {
+      const run = await ctx.db.query('conversationAgentRuns')
+        .withIndex('by_turn_variant', q => q.eq('conversationId', args.conversationId).eq('turnId', args.turnId!))
+        .first()
+      return run?.userId === args.userId && (!args.agentId || run.agentId === args.agentId) ? run : null
     }
     const active: Doc<'conversationAgentRuns'>[] = []
     const runsByStatus = await Promise.all(

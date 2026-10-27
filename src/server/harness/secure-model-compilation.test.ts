@@ -37,6 +37,33 @@ test.each([
   }
 })
 
+test('compiled native Harness workflow loads without runtime server dependencies', async () => {
+  const path = fileURLToPath(new URL('../workflows/native-harness.ts', import.meta.url))
+  const source = await readFile(path, 'utf8')
+  const compiled = await applySwcTransform('src/server/workflows/native-harness.ts', source, 'workflow', path)
+  const { code } = await transform(compiled.code, { format: 'cjs', target: 'es2022' })
+  const compiledModule = { exports: {} as Record<string, unknown> }
+  const imports: string[] = []
+  runInNewContext(code, {
+    module: compiledModule,
+    exports: compiledModule.exports,
+    __private_workflows: new Map(),
+    require: (id: string) => {
+      imports.push(id)
+      if (id === 'workflow') return { createHook: vi.fn(), FatalError: Error, getWorkflowMetadata: vi.fn() }
+      if (id === 'workflow/api') return { start: vi.fn() }
+      return new Proxy({}, { get: () => vi.fn() })
+    },
+    [Symbol.for('WORKFLOW_USE_STEP')]: (id: string) => (...args: unknown[]) => [id, ...args],
+  })
+  expect(compiledModule.exports).toHaveProperty('nativeHarnessWorkflow')
+  expect(imports).not.toContain('server-only')
+  expect(imports).not.toContain('@/server/bootstrap')
+  expect(imports).not.toContain('@/server/database/lazy-convex')
+  expect(imports).not.toContain('@/server/conversations/http')
+  expect(imports.some(id => id.startsWith('@/server/agents/'))).toBe(false)
+})
+
 test.each([false, true])('compiled workflow can load and dispatch the credential-free model adapter (native: %s)', async native => {
   const path = fileURLToPath(new URL('./secure-model.ts', import.meta.url))
   const source = await readFile(path, 'utf8')

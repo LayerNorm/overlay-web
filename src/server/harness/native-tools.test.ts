@@ -93,3 +93,26 @@ test('native tools preserve model-output envelopes and never retry an ambiguous 
   expect(mocks.execute).toHaveBeenCalledTimes(2)
   expect(executeNativeHarnessTool.maxRetries).toBe(0)
 })
+
+test('named-agent ask and post tools refuse without rebuilding authority or calling an executor', async () => {
+  const tools = createNativeHarnessTools({
+    ...input,
+    definitions: ['ask_agent', 'post_message'].map(name => ({
+      name,
+      inputSchema: { type: 'object', properties: {} },
+      needsApproval: false,
+    })),
+  })
+  for (const name of ['ask_agent', 'post_message']) {
+    const definition = tools[name]!
+    expect(await definition.needsApproval!({}, options)).toBe(false)
+    expect(await definition.execute!({}, options)).toEqual({
+      success: false,
+      error: 'Asking other agents is not available in this run yet.',
+      code: 'harness_dispatch_required',
+    })
+  }
+  expect(mocks.refresh).not.toHaveBeenCalled()
+  expect(mocks.build).not.toHaveBeenCalled()
+  expect(mocks.execute).not.toHaveBeenCalled()
+})

@@ -28,6 +28,7 @@ export async function startNativeHarnessChild(parent: NativeHarnessAccess, input
     || parentState.policy.actorUserId !== parent.actorUserId || parentState.policy.workspaceId !== parent.workspaceId
     || !parentState.children.some(entry => entry.id === child?.runId)
     || !child || child.parentRunId !== parent.runId || child.rootRunId !== parentState.rootRunId
+    || child.policy.actorUserId !== parent.actorUserId || child.policy.workspaceId !== parent.workspaceId
     || identity.some(key => input.access[key] !== parent[key])
     || ['completed', 'failed', 'cancelled'].includes(parentState.status)
     || ['completed', 'failed', 'cancelled'].includes(child.status)) {

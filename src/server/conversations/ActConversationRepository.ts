@@ -367,6 +367,8 @@ export interface ActConversationRepository {
   getLatestAgentRun(args: {
     agentRunId?: string
     remoteRunId?: string
+    turnId?: string
+    agentId?: string
     conversationId: ConversationId
     userId: string
   }): Promise<AgentRun | null>

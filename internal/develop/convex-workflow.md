@@ -192,6 +192,13 @@ surfaces and hosted parity QA remain pending.
 `mode: 'automate'` alone remains a configuration chat; only the automation
 execution flags keep a request on the legacy path.
 
+Native Harness room turns are available only behind the default-off
+`OVERLAY_NATIVE_HARNESS=1` server flag and only for overlay Harness agents;
+remote and external turns remain on legacy runners. App traffic intentionally
+stays on the old runners until routing/media/artifact parity is finished.
+Native Harness named-agent asks/posts remain refused until H2 shared-root
+dispatch is implemented.
+
 The workflow claims the harness before attaching root delivery or executing model
 calls. Each run registers its wake hook before launching children. Child IDs are
 deterministic per delegation call, admission reserves their budget atomically,

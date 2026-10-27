@@ -228,6 +228,7 @@ export type WorkspaceAgentInvocation = {
   /** Idempotency key for this (message, agent) pair. */
   invocationNonce: string
   modelId: string
+  harness?: string
   permissionMode?: string
   effort?: string
   /** The agent's tool grant — connected agents get their Overlay tools from it. */
@@ -450,6 +451,7 @@ export async function resolveWorkspaceAgentInvocations(args: {
       instructions: agent.instructions,
       invocationNonce: `agent:${args.messageId}:${agent.id}`,
       modelId: agent.modelId,
+      harness: agent.harness,
       permissionMode: permissionModeForConnectedHarness(agent.harness, agent.permissionMode),
       effort: agent.effort,
       toolGrant: {

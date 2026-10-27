@@ -367,6 +367,8 @@ export class ConvexActConversationRepository implements ActConversationRepositor
       convex.query<ConvexAgentRunDoc | null>('chat/conversations:getLatestAgentRun', {
         conversationId: args.conversationId, userId: args.userId,
         ...(args.agentRunId ? {agentRunId: args.agentRunId as Id<'conversationAgentRuns'>} : {}),
+        ...(args.turnId ? { turnId: args.turnId } : {}),
+        ...(args.agentId ? { agentId: args.agentId } : {}),
         ...(remoteRunId ? {remoteRunId} : {}), serverSecret: this.serverSecret,
       }, {throwOnError: true}))
     return run ? mapConvexAgentRun(run) : null

@@ -42,3 +42,7 @@ The question shows "Agent question · step N of 3 · see where it came from" in 
 ## Not built yet
 
 A spend limit in money rather than tokens (the usage ledger is per turn and not yet summed per chain), and posting into a conversation the agent is not already part of (an agent must be a participant today).
+
+Native Harness runs fail closed for `ask_agent` and `post_message` with
+`harness_dispatch_required` until shared-root dispatch is implemented. This
+prevents an H1 native turn from escaping into an independent legacy workflow.
