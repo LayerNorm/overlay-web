@@ -682,7 +682,7 @@ export const enqueueMemoryExtraction = mutation({
  * Both the human invoker's room access and the agent's active participation in
  * that room, which every agent-authored write must satisfy.
  */
-async function requireAgentAuthor(
+export async function requireAgentAuthor(
   ctx: CollaborationCtx,
   args: {
     actorUserId: string
@@ -813,6 +813,7 @@ export const startAgentTurn = mutation({
     clientNonce: v.string(),
     conversationId: v.id('conversations'),
     modelId: v.string(),
+    executionEngine: v.optional(v.literal('overlay_harness')),
     threadRootMessageId: v.optional(v.id('conversationMessages')),
     turnId: v.string(),
     userMessageId: v.id('conversationMessages'),
@@ -844,6 +845,7 @@ export const startAgentTurn = mutation({
       agentPrincipalId: args.authorPrincipalId,
       mode: 'room',
       runner: 'workflow',
+      ...(args.executionEngine ? { executionEngine: args.executionEngine } : {}),
       status: 'queued',
       // A room turn has no heartbeat, so the lease is an outer bound: a sweep
       // fails whatever is still active past it rather than leaving a reply

@@ -3,6 +3,7 @@ import type { Doc } from '../_generated/dataModel'
 import { requireConversationAccess } from '../collaboration/directMessages'
 import { validateServerSecret } from '../lib/auth'
 import { getReadableRow } from '../lib/resourceScope'
+import { isHarnessDeliveryConversation, validateNativeHarnessDelivery } from './nativeDelivery'
 import {
   admitHarnessChild,
   blockHarness,
@@ -350,6 +351,19 @@ async function bindLegacyPersonalSource(ctx: MutationCtx, admission: HarnessAdmi
   // Materialize only the owner's implicit personal scope, in the same transaction
   // as admission. Never move legacy chats into a selected organization workspace.
   await ctx.db.patch(conversation._id, { workspaceId: workspace.workspaceId })
+}
+
+async function validateHarnessDeliveryAdmission(
+  ctx: ReadContext,
+  admission: HarnessAdmission,
+  source: HarnessSource,
+  serverSecret: string,
+): Promise<Doc<'conversationAgentRuns'>> {
+  const deliveryId = ctx.db.normalizeId('conversationAgentRuns', admission.deliveryAgentRunId!)
+  const delivery = deliveryId ? await ctx.db.get(deliveryId) : null
+  return delivery?.mode === 'room'
+    ? validateNativeHarnessDelivery(ctx, admission, source, delivery, serverSecret)
+    : validatePersonalDeliveryAdmission(ctx, admission, source)
 }
 
 function assertBoundedOperation(operation: HarnessOperation) {
@@ -979,16 +993,15 @@ export async function cancelHarnessDelivery(
   const conversation = conversationId ? await ctx.db.get(conversationId) : null
   if (!root || root.parentRunId !== undefined || root.rootRunId !== root.runId
     || root.actorUserId !== delivery.userId || root.deliveryAgentRunId !== delivery._id
-    || delivery.runner !== 'workflow' || delivery.mode === 'room'
+    || delivery.runner !== 'workflow'
     || !source || !('conversationId' in source) || source.conversationId !== delivery.conversationId
-    || !conversation || conversation.userId !== delivery.userId
-    || conversation.deletedAt || (conversation.conversationType ?? 'personal') !== 'personal') {
+    || !isHarnessDeliveryConversation(conversation, delivery, root.runId)) {
     throw new Error('HARNESS_DELIVERY_BINDING_INVALID')
   }
   const metadata = parseJson<HarnessMetadata>(root.metadataJson)
   if (metadata.runId !== root.runId || metadata.rootRunId !== root.rootRunId
     || metadata.parentRunId !== undefined || metadata.policy.actorUserId !== delivery.userId
-    || metadata.policy.workspaceId !== conversation.workspaceId) {
+    || metadata.policy.workspaceId !== conversation?.workspaceId) {
     throw new Error('HARNESS_DELIVERY_BINDING_INVALID')
   }
   if (isTerminalStatus(metadata.status)) {
@@ -1142,7 +1155,7 @@ export const admit = mutation({
     }
 
     const delivery = admission.deliveryAgentRunId
-      ? await validatePersonalDeliveryAdmission(ctx, admission, source)
+      ? await validateHarnessDeliveryAdmission(ctx, admission, source, serverSecret)
       : undefined
     const now = Date.now()
     const snapshot = createHarnessSnapshot({
@@ -1538,7 +1551,7 @@ export const listDeliveryWorkflowRuns = query({
     const deliveryId = ctx.db.normalizeId('conversationAgentRuns', args.agentRunId)
     const delivery = deliveryId ? await ctx.db.get(deliveryId) : null
     if (!delivery || delivery._id !== deliveryId || delivery.userId !== args.actorUserId
-      || delivery.runner !== 'workflow' || delivery.mode === 'room'
+      || delivery.runner !== 'workflow'
       || delivery.status !== 'cancelled' || delivery.harnessRunId !== args.rootRunId) {
       throw new Error('HARNESS_DELIVERY_ACCESS_DENIED')
     }
@@ -1552,16 +1565,14 @@ export const listDeliveryWorkflowRuns = query({
       ? ctx.db.normalizeId('conversations', source.conversationId)
       : null
     const conversation = conversationId ? await ctx.db.get(conversationId) : null
-    if (!conversation || conversationId !== delivery.conversationId || conversation.userId !== args.actorUserId
-      || conversation.deletedAt
-      || (conversation.conversationType ?? 'personal') !== 'personal') {
+    if (!isHarnessDeliveryConversation(conversation, delivery, root.runId)) {
       throw new Error('HARNESS_DELIVERY_ACCESS_DENIED')
     }
     const rootMetadata = parseJson<HarnessMetadata>(root.metadataJson)
     if (rootMetadata.runId !== root.runId || rootMetadata.rootRunId !== root.rootRunId
       || rootMetadata.parentRunId !== undefined || rootMetadata.depth !== 0
       || rootMetadata.policy.actorUserId !== args.actorUserId
-      || rootMetadata.policy.workspaceId !== conversation.workspaceId) {
+      || rootMetadata.policy.workspaceId !== conversation?.workspaceId) {
       throw new Error('HARNESS_DELIVERY_ACCESS_DENIED')
     }
     if (!isTerminalStatus(rootMetadata.status)) throw new Error('HARNESS_DELIVERY_ROOT_ACTIVE')

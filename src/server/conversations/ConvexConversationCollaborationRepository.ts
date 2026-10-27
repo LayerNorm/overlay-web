@@ -164,6 +164,7 @@ implements ConversationCollaborationRepository {
     clientNonce: string
     conversationId: string
     modelId: string
+    executionEngine?: 'overlay_harness'
     threadRootMessageId?: string
     turnId: string
     userMessageId: string

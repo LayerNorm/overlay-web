@@ -1209,15 +1209,21 @@ export const cancelAgentRuns = mutation({
   handler: async (ctx, args) => {
     if (!validateServerSecret(args.serverSecret)) throw new Error('Unauthorized')
     const conversation = await ctx.db.get(args.conversationId)
-    if (!conversation || conversation.userId !== args.userId || conversation.deletedAt) {
+    if (!conversation || conversation.deletedAt) {
       throw new Error('Unauthorized')
     }
+    const isRoom = (conversation.conversationType ?? 'personal') !== 'personal'
+    if (isRoom && conversation.workspaceId) {
+      await requireConversationAccess(ctx, { actorUserId: args.userId, conversationId: args.conversationId,
+        workspaceId: conversation.workspaceId, serverSecret: args.serverSecret })
+    } else if (isRoom || conversation.userId !== args.userId) throw new Error('Unauthorized')
     const runs = await ctx.db
       .query('conversationAgentRuns')
       .withIndex('by_conversationId_createdAt', (q) => q.eq('conversationId', args.conversationId))
       .collect()
     const matching = runs.filter((run) =>
       ACTIVE_AGENT_RUN_STATUSES.has(run.status) &&
+      (!isRoom || run.userId === args.userId) &&
       (!args.messageId || run.assistantMessageId === args.messageId),
     )
     // A connected agent's run is cancelled through the control plane (it tells the agent's machine to stop and settles
