@@ -13,7 +13,8 @@ export function createHarnessControlTools(ports: HarnessExecutionPorts) {
         title: z.string().min(1).max(500),
         dependsOn: z.array(id).max(128),
         acceptanceCriteria: z.array(z.string().min(1).max(2_000)).min(1).max(16),
-        requiresVerification: z.boolean(),
+        requiresVerification: z.boolean().default(false)
+          .describe('true only when a delegated verifier will independently check this milestone'),
         answerOnly: z.boolean().optional().describe('true only for a milestone that is answering from knowledge or prior evidence with no external effect'),
       })).min(1).max(128) }),
       execute: async ({ steps }, { toolCallId }) => {
@@ -34,13 +35,21 @@ export function createHarnessControlTools(ports: HarnessExecutionPorts) {
         try {
           state = await ports.apply(`control:${toolCallId}`, { type: 'transition_step', ...input })
         } catch (error) {
-          if (!(error instanceof Error) || error.message !== 'Evidence must reference successful observations from this run.') throw error
-          const availableEvidenceIds = (await ports.read()).evidence
-            .filter(evidence => evidence.verdict !== 'failed')
-            .sort((left, right) => right.createdAt - left.createdAt)
-            .slice(0, 12)
-            .map(evidence => evidence.id)
-          return { success: false, error: error.message, availableEvidenceIds }
+          if (!(error instanceof Error)) throw error
+          if (error.message === 'Evidence must reference successful observations from this run.') {
+            const availableEvidenceIds = (await ports.read()).evidence
+              .filter(evidence => evidence.verdict !== 'failed')
+              .sort((left, right) => right.createdAt - left.createdAt)
+              .slice(0, 12)
+              .map(evidence => evidence.id)
+            return { success: false, error: error.message, availableEvidenceIds }
+          }
+          const verificationError = 'Independent verification of this milestone in the current plan revision is required.'
+          if (error.message === verificationError) {
+            return { success: false, error: verificationError,
+              hint: 'Revise the plan if no independent verifier is available for this milestone.' }
+          }
+          throw error
         }
         return { planRevision: state.planRevision, step: state.plan.find(step => step.id === input.id) }
       },

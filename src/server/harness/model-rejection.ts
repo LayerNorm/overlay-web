@@ -2,7 +2,6 @@ import 'server-only'
 
 import { GatewayModelNotFoundError } from '@ai-sdk/gateway'
 import { FatalError } from 'workflow'
-import type { HarnessReceipt } from '@overlay/agent-runtime/harness-state'
 import { releaseProviderBudgetReservation } from '@/server/billing/billing-runtime'
 import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
 import { OPENROUTER_FREE_MODEL_ID, OVERLAY_FREE_MODEL_ID } from '@/shared/ai/gateway/overlay-free-policy'
@@ -17,7 +16,7 @@ export function isConfirmedHarnessModelRejection(error: unknown): boolean {
 // timeout, 5xx, rate limit or stream failure retains its unresolved hold.
 export async function recordHarnessModelRejection(
   reference: HarnessModelReference,
-  reason: NonNullable<HarnessReceipt['rejectionReason']>,
+  reason: 'budget' | 'model_unavailable' | 'route_capacity',
 ): Promise<void> {
   if (reference.personal && reference.native) throw new FatalError('Model rejection has ambiguous execution authority.')
   const input = reference.personal ?? reference.native

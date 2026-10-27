@@ -13,14 +13,14 @@ import { runOverlayHarness } from './runner'
 import { estimateHarnessInputTokens } from './model-forecast'
 
 const mocks = vi.hoisted(() => ({ read: vi.fn(), apply: vi.fn(), claim: vi.fn(), refresh: vi.fn(), catalog: vi.fn(),
-  model: vi.fn(), authorize: vi.fn(), settle: vi.fn(), admit: vi.fn(), capacity: vi.fn(), capacityReset: vi.fn() }))
+  model: vi.fn(), authorize: vi.fn(), settle: vi.fn(), releaseSummary: vi.fn(), admit: vi.fn(), capacity: vi.fn(), capacityReset: vi.fn() }))
 vi.mock('./model-capacity', () => ({ createHarnessCapacityWaiter: () => ({ wait: mocks.capacity, reset: mocks.capacityReset }) }))
 vi.mock('server-only', () => ({}))
 vi.mock('./personal-access', () => ({ refreshPersonalHarnessAccess: mocks.refresh }))
 vi.mock('@/server/ai/gateway/gateway-catalog', () => ({ getGatewayCatalogModel: mocks.catalog }))
 vi.mock('@/server/ai/model-runtime', () => ({ getLanguageModel: mocks.model }))
 vi.mock('./personal-model-dispatch', () => ({ authorizePersonalHarnessModelDispatch: mocks.authorize }))
-vi.mock('./settle-model-step', () => ({ settleHarnessModelUsage: mocks.settle }))
+vi.mock('./settle-model-step', () => ({ settleHarnessModelUsage: mocks.settle, releaseFreeSummaryFailure: mocks.releaseSummary }))
 vi.mock('./request-usage-step', () => ({ admitHarnessRequestUsage: mocks.admit }))
 vi.mock('./state-steps', () => ({ readHarnessState: mocks.read, applyHarnessOperation: mocks.apply,
   claimHarnessState: mocks.claim,
@@ -197,6 +197,7 @@ beforeEach(() => {
   mocks.apply.mockImplementation(async (_reference, _id, operation: HarnessOperation) => {
     if (operation.type === 'reserve_model') current = state.reserveHarnessModel(current, operation.id, operation.maxCostMicros, Date.now())
     else if (operation.type === 'checkpoint') current = state.checkpointHarness(current, operation.summary, Date.now())
+    else if (operation.type === 'record_receipt') current = state.recordHarnessReceipt(current, operation.receipt, Date.now())
     else if (operation.type === 'finish') current = state.finishHarness(current, Date.now())
     else throw new Error(`Unexpected operation: ${operation.type}`)
     return current
@@ -206,16 +207,27 @@ beforeEach(() => {
     expect(options.maxOutputTokens).toBe(reference.personal.maxOutputTokens)
     expect(options.providerOptions.gateway.zeroDataRetention).toBe(true)
     expect(current.modelReservation?.id).toBe(reference.personal.receiptId)
-    current = state.bindHarnessModelDispatch(current, reference.personal.receiptId, { modelId: reference.modelId, billingReservationId: 'billing' }, Date.now())
+    current = state.bindHarnessModelDispatch(current, reference.personal.receiptId, {
+      modelId: reference.modelId, billingReservationId: reference.modelId === 'openrouter/free' ? null : 'billing',
+    }, Date.now())
   })
   mocks.settle.mockImplementation(async ({ receiptId, observation, contextWindow }) => {
     current = state.recordHarnessReceipt(current, { ...observation, id: receiptId, contextWindow, costMicros: 120, costSource: 'provider' }, Date.now())
     return current.latestReceipt
   })
+  mocks.releaseSummary.mockImplementation(async ({ receiptId, modelId, contextWindow }) => {
+    if (current.modelReservation?.id !== receiptId || current.modelReservation.maxCostMicros !== 0) return
+    current = state.recordHarnessReceipt(current, {
+      id: receiptId, modelId, provider: 'overlay-free-router', inputTokens: 0, outputTokens: 0,
+      reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, contextWindow,
+      costMicros: 0, costSource: 'catalog', rejectionReason: 'summary_failed',
+    }, Date.now())
+  })
 })
 
-function provider(finishReason: 'stop' | 'length' = 'stop') {
+function provider(finishReason: 'stop' | 'length' = 'stop', failSummary = false) {
   const model = new MockLanguageModelV4({ doStream: async () => {
+    if (failSummary && current.modelReservation?.id.startsWith('summary:')) throw new Error('Summary stream aborted.')
     const text = current.modelReservation?.id.startsWith('summary:') ? 'Earlier records were read. Do not publish. Verify the final result.' : 'The observations are checked.'
     const parts: LanguageModelV4StreamPart[] = [{ type: 'stream-start', warnings: [] }, { type: 'text-start', id: 'text' },
       { type: 'text-delta', id: 'text', delta: text }, { type: 'text-end', id: 'text' },
@@ -329,6 +341,35 @@ test('a failed summary falls back to uncompacted history when it fits the real m
   expect(result.settings?.maxOutputTokens).toBe(12_000)
   expect(model.doStreamCalls).toHaveLength(1)
   expect(current.modelReservation).toBeUndefined()
+})
+
+test('a failed zero-cost free summary releases its reservation and falls back to full history', async () => {
+  const model = provider('stop', true)
+  mocks.catalog.mockResolvedValue({ type: 'language', contextWindow: 128_000, maxTokens: 8_192 })
+  const prepare = vi.fn(async ({ modelId, receiptId, options }) => ({
+    ...preparedHarnessModel(modelId, receiptId, options, 128_000),
+    estimatedCostMicros: 0,
+  }))
+  const originalMessages = compactableHistory()
+  const ports = createHarnessModelPorts({
+    reference: { actorUserId: 'user', runId: 'run', workflowRunId: 'workflow' },
+    modelId: 'openrouter/free',
+    contextBudgetTokens: 8_192,
+    prepare,
+  })
+  const result = await ports.prepareModel({
+    receiptId: 'model:free-summary-fallback', state: current, messages: originalMessages,
+    instructionContext: { instructions: execution.instructions, continuation: false, truncatedResponse: false },
+    toolNames: [], toolDefinitions: [], settings: { maxOutputTokens: 512 },
+  })
+  expect(mocks.releaseSummary).toHaveBeenCalledWith(expect.objectContaining({
+    receiptId: expect.stringMatching(/^summary:model:free-summary-fallback:/), modelId: 'openrouter/free',
+  }))
+  expect(current.modelReservation).toBeUndefined()
+  expect(current.latestReceipt).toMatchObject({ rejectionReason: 'summary_failed', inputTokens: 0, outputTokens: 0 })
+  expect(result.messages).toHaveLength(originalMessages.length)
+  expect(prepare.mock.calls.filter(([request]) => request.purpose === 'response')).toHaveLength(1)
+  expect(model.doStreamCalls).toHaveLength(1)
 })
 
 test('a failed summary remains fatal when the uncompacted prompt exceeds the real model window', async () => {

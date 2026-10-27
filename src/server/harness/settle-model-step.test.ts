@@ -1,6 +1,6 @@
 import { beforeEach, expect, test, vi } from 'vitest'
 import { bindHarnessModelDispatch, createHarnessSnapshot, reserveHarnessModel, type HarnessReceipt } from '@overlay/agent-runtime/harness-state'
-import { settleHarnessModelUsage } from './settle-model-step'
+import { releaseFreeSummaryFailure, settleHarnessModelUsage } from './settle-model-step'
 
 const mocks = vi.hoisted(() => ({ read: vi.fn(), resolve: vi.fn(), bill: vi.fn(), batch: vi.fn(), apply: vi.fn() }))
 vi.mock('server-only', () => ({}))
@@ -17,11 +17,11 @@ const observation = { modelId: 'provider/actual', provider: 'provider', inputTok
   reasoningTokens: 2, cacheReadTokens: 50, cacheWriteTokens: 20 }
 const receipt: HarnessReceipt = { ...observation, id: 'model:0', contextWindow: 100_000, costMicros: 100, costSource: 'provider' }
 const input = { reference, receiptId: 'model:0', observation, contextWindow: 100_000 }
-const state = (billingReservationId: string | null = 'billing', modelId = 'provider/requested') => ({
+const state = (billingReservationId: string | null = 'billing', modelId = 'provider/requested', maxCostMicros = 100) => ({
   ...bindHarnessModelDispatch(reserveHarnessModel(createHarnessSnapshot({ runId: 'root', goal: 'Work', constraints: [], policy: {
     actorUserId: 'user', workspaceId: 'original-workspace', requiresPlan: false, allowedToolIds: [], maxCostMicros: 1_000,
     deadlineAt: 10_000, maxDepth: 1, maxParallelChildren: 2,
-  } }, 1), 'model:0', 100, 1), 'model:0', { modelId, billingReservationId }, 1),
+  } }, 1), 'model:0', maxCostMicros, 1), 'model:0', { modelId, billingReservationId }, 1),
   workflowRunId: 'workflow',
 })
 
@@ -65,6 +65,22 @@ test('rejects mismatched execution ownership or an unbound model hold before cha
   }
   expect(mocks.resolve).not.toHaveBeenCalled()
   expect(mocks.bill).not.toHaveBeenCalled()
+})
+
+test('summary failure clears only a zero-cost free-route hold with a rejected receipt', async () => {
+  mocks.read.mockResolvedValue(state(null, 'openrouter/free', 0))
+  await releaseFreeSummaryFailure({ reference, receiptId: 'model:0', modelId: 'openrouter/free', contextWindow: 128_000 })
+  expect(mocks.apply).toHaveBeenCalledExactlyOnceWith(reference, 'summary-failed:model:0', {
+    type: 'record_receipt',
+    receipt: expect.objectContaining({
+      id: 'model:0', modelId: 'openrouter/free', rejectionReason: 'summary_failed',
+      inputTokens: 0, outputTokens: 0, costMicros: 0, costSource: 'catalog',
+    }),
+  })
+  mocks.apply.mockClear()
+  mocks.read.mockResolvedValue(state(null, 'openrouter/free', 100))
+  await releaseFreeSummaryFailure({ reference, receiptId: 'model:0', modelId: 'openrouter/free', contextWindow: 128_000 })
+  expect(mocks.apply).not.toHaveBeenCalled()
 })
 
 test('BYOK writes token audit with unknown external cost but no Overlay charge', async () => {

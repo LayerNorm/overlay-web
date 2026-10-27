@@ -65,6 +65,35 @@ test('plan tools accept answer-only milestones', () => {
   })).toMatchObject({ steps: [{ answerOnly: true }] })
 })
 
+test('plan tools default independent verification to false and preserve explicit requests', () => {
+  const planTool = createHarnessControlTools(fixture().ports).harness_set_plan
+  const step = { id: 'work', title: 'Do work', dependsOn: [], acceptanceCriteria: ['Complete the work.'] }
+  expect(planTool.inputSchema.parse({ steps: [step] }).steps[0]?.requiresVerification).toBe(false)
+  expect(planTool.inputSchema.parse({ steps: [{ ...step, requiresVerification: true }] }).steps[0]?.requiresVerification).toBe(true)
+})
+
+test('verification rejection tells the model to revise an unsatisfiable plan', async () => {
+  const f = fixture()
+  const policy = { actorUserId: 'user', allowedToolIds: [], requiresPlan: false,
+    deadlineAt: Date.now() + 60_000, maxCostMicros: 0, maxParallelChildren: 2, maxDepth: 2 }
+  let parent = createHarnessSnapshot({ runId: 'verification', goal: 'Check work', constraints: [], policy }, Date.now())
+  parent = replaceHarnessPlan(parent, [{ id: 'work', title: 'Check work', dependsOn: [],
+    acceptanceCriteria: ['Check work'], requiresVerification: true }], Date.now())
+  parent = recordHarnessEvidence(parent, {
+    id: 'source:1', kind: 'tool_result', source: 'read', summary: 'Observed source', verdict: 'observed', createdAt: Date.now(),
+  }, Date.now())
+  f.setParent(parent)
+  const result = await createHarnessControlTools(f.ports).harness_update_step.execute!(
+    { id: 'work', status: 'done', evidenceRefs: ['source:1'] }, { toolCallId: 'finish-work', messages: [] },
+  )
+  expect(result).toEqual({
+    success: false,
+    error: 'Independent verification of this milestone in the current plan revision is required.',
+    hint: 'Revise the plan if no independent verifier is available for this milestone.',
+  })
+  expect((await f.ports.read()).plan[0].status).toBe('pending')
+})
+
 test('rejected evidence updates return the 12 most recent successful evidence IDs', async () => {
   const f = fixture()
   let parent = await f.ports.read()
