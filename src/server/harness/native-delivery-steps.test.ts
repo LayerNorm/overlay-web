@@ -3,13 +3,15 @@ import { agentMemoryOwnerId } from '@/shared/agents/agent-memory'
 import { finishNativeHarnessDelivery, attachNativeHarnessDelivery, projectNativeHarnessWait } from './native-delivery-steps'
 
 const mocks = vi.hoisted(() => ({ get: vi.fn(), delivery: vi.fn(), attach: vi.fn(), complete: vi.fn(),
-  finalize: vi.fn(), failMessage: vi.fn(), fail: vi.fn(), transition: vi.fn(), memory: vi.fn(), list: vi.fn() }))
+  finalize: vi.fn(), failMessage: vi.fn(), fail: vi.fn(), transition: vi.fn(), memory: vi.fn(), list: vi.fn(),
+  listMessages: vi.fn(), agent: vi.fn() }))
 vi.mock('server-only', () => ({}))
 vi.mock('./ConvexHarnessRepository', () => ({ ConvexHarnessRepository: class { get = mocks.get; listPendingWaits = mocks.list } }))
 vi.mock('@/server/bootstrap', () => ({ getOverlayServerContext: () => ({ appData: { repositories: {
   conversations: { getLatestAgentRun: mocks.delivery, transitionAgentRun: mocks.transition },
-  conversationCollaboration: { finalizeAgentMessage: mocks.finalize, failAgentMessage: mocks.failMessage, enqueueMemoryExtraction: mocks.memory },
-} } }) }))
+  conversationCollaboration: { finalizeAgentMessage: mocks.finalize, failAgentMessage: mocks.failMessage,
+    enqueueMemoryExtraction: mocks.memory, listMessages: mocks.listMessages },
+} }, workspaceAgentService: { get: mocks.agent } }) }))
 vi.mock('@/server/conversations/http', () => ({ agentRunService: { attachWorkflow: mocks.attach, complete: mocks.complete, fail: mocks.fail } }))
 
 const access = { actorUserId: 'user', runId: 'workspace:agent', workflowRunId: 'workflow', workspaceId: 'workspace',
@@ -21,6 +23,8 @@ const run = { id: 'agent', userId: 'user', conversationId: 'room', agentId: 'age
   executionEngine: 'overlay_harness', harnessRunId: 'workspace:agent', workflowRunId: 'workflow', status: 'running' }
 const delivery = { content: 'Answer', parts: [{ type: 'reasoning', text: 'secret' }, { type: 'text', text: 'Answer' }],
   tokens: { input: 3, output: 2 }, routedModelId: 'fixture/model', metrics: { outputTokens: 2 } }
+const assistantMessage = { _id: 'answer', turnId: 'turn', authorKind: 'agent', authorPrincipalId: 'agent-principal',
+  status: 'generating', content: '' }
 
 beforeEach(() => {
   vi.resetAllMocks()
@@ -28,6 +32,8 @@ beforeEach(() => {
   mocks.delivery.mockResolvedValue(run)
   mocks.attach.mockResolvedValue(run)
   mocks.memory.mockResolvedValue(undefined)
+  mocks.listMessages.mockResolvedValue([assistantMessage])
+  mocks.agent.mockResolvedValue({ name: 'Agent' })
 })
 
 test('native owner attaches and finalizes an authoritative room message without reasoning', async () => {
@@ -70,12 +76,46 @@ test('finalization replaces live tool progress without duplicate tool parts', as
 
 test('native failure keeps streamed partial content and cancellation is fenced', async () => {
   mocks.get.mockResolvedValue({ ...state, status: 'failed', terminalReason: 'Failed.' })
+  mocks.listMessages.mockResolvedValue([{ ...assistantMessage, content: 'Partial streamed response' }])
   await finishNativeHarnessDelivery(access, delivery, { memoryEnabled: false })
   expect(mocks.failMessage).toHaveBeenCalledWith(expect.not.objectContaining({ content: expect.anything() }))
   expect(mocks.fail).toHaveBeenCalledOnce()
   mocks.get.mockResolvedValue({ ...state, status: 'cancelled' })
   await finishNativeHarnessDelivery(access, delivery, { memoryEnabled: false })
   expect(mocks.transition).toHaveBeenCalledWith(expect.objectContaining({ status: 'cancelled', expectedWorkflowRunId: 'workflow' }))
+})
+
+test('native failure with empty content writes the friendly quota failure copy', async () => {
+  mocks.get.mockResolvedValue({
+    ...state, status: 'failed', terminalReason: 'free_tier_limit_exceeded: weekly agent limit reached',
+  })
+  await finishNativeHarnessDelivery(access, delivery, { memoryEnabled: false })
+  expect(mocks.listMessages).toHaveBeenCalledWith({
+    actorUserId: 'user', conversationId: 'room', messageId: 'answer', workspaceId: 'workspace', limit: 1,
+  })
+  expect(mocks.agent).toHaveBeenCalledWith({ actorUserId: 'user', workspaceId: 'workspace', agentId: 'agent' })
+  expect(mocks.failMessage).toHaveBeenCalledWith(expect.objectContaining({
+    content: 'Agent could not start this turn. Your message was saved; please try sending it again.',
+  }))
+  expect(mocks.failMessage.mock.calls[0][0].content).not.toContain('free_tier_limit_exceeded')
+  expect(mocks.fail).toHaveBeenCalledOnce()
+})
+
+test('native failure with a foreign assistant row does not replace its content', async () => {
+  mocks.get.mockResolvedValue({ ...state, status: 'failed', terminalReason: 'Failed.' })
+  mocks.listMessages.mockResolvedValue([{ ...assistantMessage, authorPrincipalId: 'foreign-agent' }])
+  await finishNativeHarnessDelivery(access, delivery, { memoryEnabled: false })
+  expect(mocks.failMessage).toHaveBeenCalledWith(expect.not.objectContaining({ content: expect.anything() }))
+  expect(mocks.agent).not.toHaveBeenCalled()
+  expect(mocks.fail).toHaveBeenCalledOnce()
+})
+
+test('native failure still fails the run when reading the assistant message fails', async () => {
+  mocks.get.mockResolvedValue({ ...state, status: 'failed', terminalReason: 'Failed.' })
+  mocks.listMessages.mockRejectedValue(new Error('message store unavailable'))
+  await expect(finishNativeHarnessDelivery(access, delivery, { memoryEnabled: false })).resolves.toBeUndefined()
+  expect(mocks.failMessage).toHaveBeenCalledWith(expect.not.objectContaining({ content: expect.anything() }))
+  expect(mocks.fail).toHaveBeenCalledOnce()
 })
 
 test('foreign room identity cannot project or finalize', async () => {

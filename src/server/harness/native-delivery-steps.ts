@@ -4,6 +4,7 @@ import { FatalError } from 'workflow'
 import type { HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
 import { agentMemoryOwnerId } from '@/shared/agents/agent-memory'
 import { compactAssistantPersistenceForConvex } from '@/shared/chat/persist-assistant-turn'
+import { agentStartFailureMessage } from '@/server/app-api/v1/conversations/message/agent-start-failure'
 import { reconcileUnverifiedAgentActionClaims } from '@/server/agents/workspace-agent-invocation'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { asConversationId } from '@/server/conversations/ActConversationRepository'
@@ -126,9 +127,26 @@ export async function finishNativeHarnessDelivery(
   }
   if (state.status === 'failed') {
     const reason = state.terminalReason || 'The harness could not complete this task.'
+    let content: string | undefined
+    try {
+      const [message] = await server.appData.repositories.conversationCollaboration.listMessages({
+        actorUserId: access.actorUserId, conversationId: access.conversationId, messageId: access.assistantMessageId,
+        workspaceId: access.workspaceId, limit: 1,
+      })
+      if (message && message._id === access.assistantMessageId && message.turnId === access.turnId
+        && message.authorKind === 'agent' && message.authorPrincipalId === access.agentPrincipalId
+        && message.status === 'generating' && !message.content.trim()) {
+        const agent = await server.workspaceAgentService.get({
+          actorUserId: access.actorUserId, workspaceId: access.workspaceId, agentId: access.agentId,
+        })
+        content = agentStartFailureMessage(agent.name, reason)
+      }
+    } catch (_error) {
+      content = undefined
+    }
     await server.appData.repositories.conversationCollaboration.failAgentMessage({
       actorUserId: access.actorUserId, conversationId: access.conversationId,
-      messageId: access.assistantMessageId, workspaceId: access.workspaceId,
+      messageId: access.assistantMessageId, workspaceId: access.workspaceId, ...(content ? { content } : {}),
     })
     await agentRunService.fail({
       runId: access.agentRunId, userId: access.actorUserId, errorText: reason,
