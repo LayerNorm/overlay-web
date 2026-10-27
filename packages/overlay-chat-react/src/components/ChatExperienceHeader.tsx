@@ -578,6 +578,7 @@ export function ChatModelPickerDropdown({
   modelRecommendations,
   isFreeTierChatModelId,
   onHoveredModelChange,
+  modelSearchInputRef,
 }: Pick<
   ChatExperienceHeaderProps,
   | 'generationMode'
@@ -599,7 +600,7 @@ export function ChatModelPickerDropdown({
   | 'modelRecommendations'
   | 'isFreeTierChatModelId'
   | 'onHoveredModelChange'
-> & { lockedGenerationMode?: GenerationMode }) {
+> & { lockedGenerationMode?: GenerationMode; modelSearchInputRef: RefObject<HTMLInputElement | null> }) {
   const { favoriteIds, toggleFavorite } = useFavoriteModelIds(favoriteScope)
   const mediaModels = generationMode === 'image' ? imageModels : videoModels
   const selectedMediaIds = generationMode === 'image' ? selectedImageModels : selectedVideoModels
@@ -628,6 +629,7 @@ export function ChatModelPickerDropdown({
           onToggleFavorite={toggleFavorite}
           onListChange={() => onHoveredModelChange(null, null)}
           listRef={modelPickerListScrollRef}
+          searchInputRef={modelSearchInputRef}
           isSelected={(m) => m.id === selectedActModel}
           onSelect={(m) => onToggleTextModel(m.id)}
           onRowHover={(m, row) => {
@@ -645,6 +647,7 @@ export function ChatModelPickerDropdown({
           onToggleFavorite={toggleFavorite}
           onListChange={() => onHoveredModelChange(null, null)}
           listRef={modelPickerListScrollRef}
+          searchInputRef={modelSearchInputRef}
           isSelected={(m) => m.id === selectedMediaIds[0]}
           onSelect={(m) => onSelectMediaModel(m.id)}
           onRowHover={(m, row) => {
@@ -773,6 +776,7 @@ export function ChatModelPicker({
 }: ChatModelPickerProps) {
   const internalPickerRef = useRef<HTMLDivElement>(null)
   const internalListRef = useRef<HTMLDivElement>(null)
+  const modelSearchInputRef = useRef<HTMLInputElement>(null)
   const [internalOpen, setInternalOpen] = useState(false)
   const [internalHoveredModelId, setInternalHoveredModelId] = useState<string | null>(null)
   const [internalQualitiesPos, setInternalQualitiesPos] = useState<ModelQualitiesPosition | null>(null)
@@ -820,6 +824,10 @@ export function ChatModelPicker({
         </DelayedTooltip>
         <PopoverContent
           ref={pickerRef}
+          onOpenAutoFocus={(event) => {
+            event.preventDefault()
+            modelSearchInputRef.current?.focus()
+          }}
           align={placementConfig.popoverAlign}
           aria-label="Choose model"
           data-tour="model-picker"
@@ -858,6 +866,7 @@ export function ChatModelPicker({
             onToggleTextModel={onToggleTextModel}
             isFreeTierChatModelId={isFreeTierChatModelId}
             onHoveredModelChange={handleHoveredModelChange}
+            modelSearchInputRef={modelSearchInputRef}
           />
         </PopoverContent>
       </div>

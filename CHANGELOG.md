@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Avoid remounting new chats after their first response and keep the generation-mode tooltip from opening when the model picker receives programmatic focus.
+
 - Move Account outside workspace settings, add workspace-specific profiles with provider-photo fallbacks, and let workspace admins choose or upload icons. Retire the outdated interactive demo.
 
 - Keep native agents running after a failed tool-progress write and compact live tool results before saving them to the transcript.

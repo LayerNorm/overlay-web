@@ -77,6 +77,7 @@ export interface ModelSelectorProps<T extends ModelSelectorItem> {
   onRowHover?: (model: T, row: HTMLElement) => void
   onListChange?: () => void
   listRef?: Ref<HTMLDivElement>
+  searchInputRef?: Ref<HTMLInputElement>
   beforeList?: ReactNode
   footer?: ReactNode
 }
@@ -96,6 +97,7 @@ export function ModelSelector<T extends ModelSelectorItem>({
   onRowHover,
   onListChange,
   listRef,
+  searchInputRef,
   beforeList,
   footer,
 }: ModelSelectorProps<T>) {
@@ -181,6 +183,7 @@ export function ModelSelector<T extends ModelSelectorItem>({
       <label className="flex items-center gap-2 rounded-md bg-(--surface-subtle) px-2 py-1.5 text-xs text-(--muted)">
         <Search size={13} strokeWidth={1.75} aria-hidden="true" className="shrink-0" />
         <Input
+          ref={searchInputRef}
           type="search"
           value={query}
           onChange={(event) => {

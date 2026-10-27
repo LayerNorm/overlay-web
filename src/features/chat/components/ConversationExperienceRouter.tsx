@@ -17,6 +17,7 @@ import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import {
   ConversationDetailScopeGate,
   conversationDetailRouteKey,
+  isConversationScopeVerified,
   startConversationDetailScopeProbe,
   type ConversationDetailScopeStatus,
   type ConversationScopeDetail,
@@ -91,7 +92,7 @@ export function ConversationExperienceRouter(props: ComponentProps<typeof ChatEx
 
   })
   useEffect(() => {
-    if (!resourceRouteKey || !conversationId || !pathScope) return
+    if (!resourceRouteKey || !conversationId || !pathScope || isConversationScopeVerified(resourceRouteKey)) return
     return startConversationDetailScopeProbe({
       routeKey: resourceRouteKey,
       conversationId,

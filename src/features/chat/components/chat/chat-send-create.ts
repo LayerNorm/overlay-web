@@ -7,6 +7,7 @@ import { dispatchChatCreated } from '@/shared/chat/chat-title'
 import { upsertCachedChat } from '@/shared/chat/chat-list-cache'
 import { DEFAULT_CHAT_TITLE } from '../chat-interface/constants'
 import { legacyWorkspaceScopeForRoute, readWorkspacePathScope } from '@/shared/workspaces/routing'
+import { markConversationScopeVerified } from '../conversationScopeVerification'
 import type {
   Conversation,
   ConversationRuntime,
@@ -92,6 +93,7 @@ export async function createNewChatForSend({
   })
   const initialSelectedModels = normalizedInitialSelection.askModelIds
   const trimmedClientId = options.clientId?.trim()
+  const workspaceScoped = workspaceChatsViewActive()
   const res = await overlayAppClient.conversations.createResponse(
     {
       title: initialTitle,
@@ -99,13 +101,14 @@ export async function createNewChatForSend({
       actModelId: normalizedInitialSelection.actModelId,
       lastMode: 'act',
       ...(trimmedClientId ? { clientId: trimmedClientId } : {}),
-      ...(workspaceChatsViewActive() ? { scope: 'workspace' as const } : {}),
+      ...(workspaceScoped ? { scope: 'workspace' as const } : {}),
     },
     { idempotencyKey: trimmedClientId ?? createIdempotencyKey() },
   )
   if (!res.ok) return null
 
   const data = await res.json()
+  markConversationScopeVerified(workspaceScoped ? 'workspace' : 'personal', data.id)
   setInterruptedExchangeIdx(null)
   const newChat: Conversation = {
     _id: data.id,
