@@ -525,8 +525,8 @@ function ExchangeUserMessage({
 function ExchangeErrorNotice({ errorMessage }: { errorMessage: string }) {
   return (
     <div className="flex justify-start px-1 py-1">
-      {isUsageExhaustedError(errorMessage) ? (
-        <UsageExhaustedNotice />
+      {isWeeklyUsageLimitError(errorMessage) || isUsageExhaustedError(errorMessage) ? (
+        <UsageExhaustedNotice variant={isWeeklyUsageLimitError(errorMessage) ? 'free' : 'paid'} />
       ) : (
         <div
           className="flex items-center gap-2 px-3 py-2 rounded-lg border text-xs"
@@ -542,6 +542,13 @@ function ExchangeErrorNotice({ errorMessage }: { errorMessage: string }) {
       )}
     </div>
   )
+}
+
+function isWeeklyUsageLimitError(errorMessage: string | null | undefined): boolean {
+  const normalized = errorMessage?.toLowerCase() ?? ''
+  return normalized.includes('weekly_limit')
+    || normalized.includes('weekly limit')
+    || normalized.includes("this week's free chats")
 }
 
 function ExchangeSettledNotices({

@@ -30,13 +30,23 @@ test('persistedGenerationErrorMessage does not treat assistant prose as the erro
   )
 })
 
-test('errorLabel maps exhausted usage to the account top-up message', () => {
+test('errorLabel maps exhausted usage to the workspace billing message', () => {
+  assert.equal(
+    USAGE_EXHAUSTED_LABEL,
+    "You're out of credits. Top up in Workspace Billing to continue.",
+  )
   assert.equal(errorLabel(new Error('insufficient_credits')), USAGE_EXHAUSTED_LABEL)
   assert.equal(errorLabel(new Error('insufficient_budget')), USAGE_EXHAUSTED_LABEL)
   assert.equal(errorLabel(new Error('No budget remaining. Switch to a free model or top up your account.')), USAGE_EXHAUSTED_LABEL)
   assert.equal(errorLabel(new Error("No such subscription: 'sub_1TKxeqPH7ssnO0LIvQigJkN7'")), USAGE_EXHAUSTED_LABEL)
   assert.equal(isUsageExhaustedError(USAGE_EXHAUSTED_LABEL), true)
   assert.equal(looksLikeStoredGenerationError("No such subscription: 'sub_1TKxeqPH7ssnO0LIvQigJkN7'"), true)
+})
+
+test('weekly usage errors keep their free chat label', () => {
+  const freeChatsLabel = "You've used this week's free chats. Upgrade for shared credits and every model."
+  assert.equal(errorLabel(new Error('weekly_limit')), freeChatsLabel)
+  assert.equal(errorLabel(new Error('Weekly limit reached')), freeChatsLabel)
 })
 
 test('persistedGenerationErrorMessage keeps real stored error strings', () => {

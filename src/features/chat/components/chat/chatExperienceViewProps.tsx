@@ -98,6 +98,9 @@ export function buildChatExperienceViewProps(
       onPersonalChatModeChange: c.handlePersonalChatModeChange,
       renderExportMenu,
       ...c.headerModelProps,
+      pickerTextModels: c.pickerTextModels,
+      isTextModelLocked: c.isTextModelLocked,
+      onLockedTextModelSelect: c.setUpgradeModel,
       automationHeaderModelId: c.automationHeaderModelId,
       automationHeaderModels: c.automationHeaderModels,
       onSaveAutomationHeaderModel: c.saveAutomationHeaderModel,
@@ -125,6 +128,16 @@ export function buildChatExperienceViewProps(
             isFreeTier: c.isFreeTier,
           }
         : null,
+    upgradeModelDialogProps: {
+      model: c.upgradeModel,
+      onOpenChange: (open: boolean) => {
+        if (!open) c.setUpgradeModel(null)
+      },
+      onUpgrade: () => {
+        c.setUpgradeModel(null)
+        c.router.push('/app/settings?section=workspace&workspace_tab=billing&upgrade=1')
+      },
+    },
     messageListProps:
       c.showAutomationChatTab && (c.hasHistory || c.showChatLoadingState)
         ? {

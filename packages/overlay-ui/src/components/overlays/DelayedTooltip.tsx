@@ -1,7 +1,7 @@
 'use client'
 
 import type { ReactNode } from 'react'
-import { Fragment, isValidElement, useCallback, useEffect, useState, useSyncExternalStore } from 'react'
+import { Fragment, isValidElement, useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { cn } from '../../utils/cn'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip'
 
@@ -39,6 +39,17 @@ export function DelayedTooltip({
   const [descriptionId, setDescriptionId] = useState<string | null>(null)
   const [open, setOpen] = useState(false)
   const [focusedElement, setFocusedElement] = useState<HTMLElement | null>(null)
+  const focusedElementRef = useRef<HTMLElement | null>(null)
+  const pointerInsideRef = useRef(false)
+  const handleOpenChange = useCallback((nextOpen: boolean) => {
+    if (
+      nextOpen
+      && !pointerInsideRef.current
+      && focusedElementRef.current
+      && !focusedElementRef.current.matches(':focus-visible')
+    ) return
+    setOpen(nextOpen)
+  }, [])
   const captureTooltipContent = useCallback((element: HTMLDivElement | null) => {
     setDescriptionId(element?.id ?? null)
   }, [])
@@ -73,13 +84,25 @@ export function DelayedTooltip({
   }
   return (
     <TooltipProvider delayDuration={450}>
-      <Tooltip open={open} onOpenChange={setOpen}>
+      <Tooltip open={open} onOpenChange={handleOpenChange}>
         <span
           className={cn('relative inline-flex', className)}
-          onFocusCapture={(event) => {
-            if (event.target instanceof HTMLElement) setFocusedElement(event.target)
+          onPointerEnter={() => {
+            pointerInsideRef.current = true
           }}
-          onBlurCapture={() => setFocusedElement(null)}
+          onPointerLeave={() => {
+            pointerInsideRef.current = false
+          }}
+          onFocusCapture={(event) => {
+            if (event.target instanceof HTMLElement) {
+              focusedElementRef.current = event.target
+              setFocusedElement(event.target)
+            }
+          }}
+          onBlurCapture={() => {
+            focusedElementRef.current = null
+            setFocusedElement(null)
+          }}
         >
           <TooltipTrigger asChild>
             {isValidElement(children) && children.type !== Fragment ? children : <span>{children}</span>}

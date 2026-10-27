@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useRef, useState, type ComponentProps, type ReactNode, type Ref } from 'react'
-import { Check, LayoutGrid, Search, Star } from 'lucide-react'
+import { Check, LayoutGrid, Lock, Search, Star } from 'lucide-react'
 import { unstyledButton, unstyledInput } from '@overlay/ui/control-reset'
 import { Button, Input } from '@overlay/ui/primitives'
 import { ProviderLogo, providerLabel } from '@overlay/ui/ai'
@@ -72,11 +72,13 @@ export interface ModelSelectorProps<T extends ModelSelectorItem> {
   favoriteIds: readonly string[]
   onToggleFavorite: (modelId: string) => void
   isSelected: (model: T) => boolean
+  isLocked?: (model: T) => boolean
   isDisabled?: (model: T) => boolean
   onSelect: (model: T) => void
   onRowHover?: (model: T, row: HTMLElement) => void
   onListChange?: () => void
   listRef?: Ref<HTMLDivElement>
+  searchInputRef?: Ref<HTMLInputElement>
   beforeList?: ReactNode
   footer?: ReactNode
 }
@@ -91,11 +93,13 @@ export function ModelSelector<T extends ModelSelectorItem>({
   favoriteIds,
   onToggleFavorite,
   isSelected,
+  isLocked,
   isDisabled,
   onSelect,
   onRowHover,
   onListChange,
   listRef,
+  searchInputRef,
   beforeList,
   footer,
 }: ModelSelectorProps<T>) {
@@ -125,6 +129,7 @@ export function ModelSelector<T extends ModelSelectorItem>({
 
   const renderRow = (model: T, keyPrefix: string) => {
     const selected = isSelected(model)
+    const locked = !selected && (isLocked?.(model) ?? false)
     const favorite = favoriteSet.has(model.id)
     const disabled = isDisabled?.(model) ?? false
     return (
@@ -170,8 +175,9 @@ export function ModelSelector<T extends ModelSelectorItem>({
         >
           <Star size={11} strokeWidth={1.75} fill={favorite ? 'currentColor' : 'none'} />
         </Button>
-        <span data-slot="model-selected" className="flex size-4 shrink-0 items-center justify-center text-(--foreground)">
+        <span data-slot="model-selected" className={`flex size-4 shrink-0 items-center justify-center ${locked ? 'text-(--muted-light)' : 'text-(--foreground)'}`}>
           {selected ? <Check size={12} strokeWidth={2} aria-hidden="true" /> : null}
+          {locked ? <span title="Paid plan" className="inline-flex"><Lock size={11} strokeWidth={1.75} aria-hidden="true" /><span className="sr-only">Paid plan</span></span> : null}
         </span>
       </div>
     )
@@ -185,6 +191,7 @@ export function ModelSelector<T extends ModelSelectorItem>({
       <label className="flex items-center gap-2 rounded-md bg-(--surface-subtle) px-2 py-1.5 text-xs text-(--muted)">
         <Search size={13} strokeWidth={1.75} aria-hidden="true" className="shrink-0" />
         <Input
+          ref={searchInputRef}
           type="search"
           value={query}
           onChange={(event) => {

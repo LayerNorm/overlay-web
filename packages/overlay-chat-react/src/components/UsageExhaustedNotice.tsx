@@ -1,33 +1,39 @@
 'use client'
 
-import { WalletCards } from 'lucide-react'
+import { Button } from '@overlay/ui/primitives'
 
-export const ACCOUNT_TOP_UP_HREF = '/app/settings?section=account'
+export const WORKSPACE_BILLING_HREF = '/app/settings?section=workspace&workspace_tab=billing'
 
 export function UsageExhaustedNotice({
-  accountHref = ACCOUNT_TOP_UP_HREF,
+  href,
+  variant = 'paid',
 }: {
-  accountHref?: string
+  href?: string
+  variant?: 'paid' | 'free'
 }) {
+  const copy = variant === 'free'
+    ? {
+        title: "You've used this week's free chats",
+        description: 'Upgrade for shared credits and every model.',
+        action: 'Upgrade',
+        href: `${WORKSPACE_BILLING_HREF}&upgrade=1`,
+      }
+    : {
+        title: "You're out of credits",
+        description: 'Top up in Billing to keep chatting.',
+        action: 'Open billing',
+        href: WORKSPACE_BILLING_HREF,
+      }
+
   return (
-    <div className="w-full max-w-[min(100%,28rem)] rounded-xl border border-(--border) bg-(--surface-elevated) px-4 py-3">
-      <div className="flex items-start gap-3">
-        <span className="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-(--surface-subtle) text-(--muted)">
-          <WalletCards size={14} strokeWidth={1.75} />
-        </span>
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium text-(--foreground)">You have used your allowance</p>
-          <p className="mt-1 text-xs leading-5 text-(--muted)">
-            Chat is paused until you add credits. Top up from Account to keep going.
-          </p>
-          <a
-            href={accountHref}
-            className="mt-3 inline-flex h-8 items-center justify-center rounded-lg bg-(--foreground) px-3 text-xs font-medium text-(--background) transition-transform duration-160 ease-out hover:opacity-90 active:scale-[0.97]"
-          >
-            Add credits
-          </a>
-        </div>
+    <div className="flex w-full items-center justify-between gap-4 rounded-xl border bg-(--surface-elevated) px-4 py-3.5">
+      <div className="min-w-0">
+        <p className="text-[13px] font-medium text-(--foreground)">{copy.title}</p>
+        <p className="mt-1 text-xs text-(--muted)">{copy.description}</p>
       </div>
+      <Button asChild size="sm" variant="secondary">
+        <a href={href ?? copy.href}>{copy.action}</a>
+      </Button>
     </div>
   )
 }

@@ -31,6 +31,7 @@ export function useChatRetryController({
   loadChats,
   loadSubscription,
   mode,
+  onUsageExhaustedError,
   selectedActModel,
   shouldScrollRef,
   startSession,
@@ -45,6 +46,7 @@ export function useChatRetryController({
   loadChats: () => Promise<void>
   loadSubscription: () => Promise<unknown>
   mode: 'chat' | 'automate'
+  onUsageExhaustedError: (message: string) => boolean
   selectedActModel: string
   shouldScrollRef: MutableRefObject<boolean>
   startSession: (
@@ -120,7 +122,7 @@ export function useChatRetryController({
         completeSession,
         loadChats,
         loadSubscription,
-        onError: (error, fallbackMessage) => reportTextStreamError(error, fallbackMessage),
+        onError: (error, fallbackMessage) => reportTextStreamError(error, fallbackMessage, onUsageExhaustedError),
         logPrefix: 'Act retry',
       })
     },
@@ -135,6 +137,7 @@ export function useChatRetryController({
       loadChats,
       loadSubscription,
       mode,
+      onUsageExhaustedError,
       selectedActModel,
       shouldScrollRef,
       startSession,

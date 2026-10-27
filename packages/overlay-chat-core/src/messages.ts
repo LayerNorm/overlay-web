@@ -585,11 +585,11 @@ export function persistedGenerationErrorMessage(responseText: string | null | un
 }
 
 export const USAGE_EXHAUSTED_LABEL =
-  'You have used your allowance. Add credits in Account to continue.'
+  "You're out of credits. Top up in Workspace Billing to continue."
 
 export function isUsageExhaustedError(text: string | null | undefined): boolean {
   if (!text) return false
-  return /insufficient_credits|insufficient_budget|no budget remaining|budget is exhausted|budget exhausted|paid budget is empty|add budget|top up your account|you('ve| have) used your allowance|allowance is (used|spent)|usage is spent|no such subscription|resource_missing/i.test(
+  return /insufficient_credits|insufficient_budget|no budget remaining|budget is exhausted|budget exhausted|paid budget is empty|add budget|top up your account|you('re| are) out of credits|you('ve| have) used your allowance|allowance is (used|spent)|usage is spent|no such subscription|resource_missing/i.test(
     text,
   )
 }
@@ -619,7 +619,9 @@ export function errorLabel(err: Error | null | undefined): string | null {
   }
   if (hasOrderedErrorTerms(message, 'gateway', ['auth', 'key', 'billing', 'quota', 'limit'])
     || hasOrderedErrorTerms(message, 'provider', ['blocked', 'billing', 'quota', 'limit'])) return message
-  if (message.includes('weekly_limit')) return 'Weekly limit reached - upgrade to a paid plan for unlimited messages.'
+  if (/weekly_limit|weekly limit|this week's free chats/i.test(message)) {
+    return "You've used this week's free chats. Upgrade for shared credits and every model."
+  }
   if (message.includes('premium_model')) return 'This model requires a paid plan.'
   if (message.includes('generation_not_allowed')) return 'This action requires a paid plan.'
   if (message.includes('insufficient_credits') || message.includes('insufficient_budget')) {

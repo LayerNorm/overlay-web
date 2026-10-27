@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import type { ConversationRuntime } from '../chat-interface/types'
+import { isConversationScopeVerified } from '../conversationScopeVerification'
 import { createNewChatForSend } from './chat-send-create'
 import type { PendingFirstSendState } from './chat-send-pending-first'
 
@@ -53,6 +54,7 @@ test('deferred first-chat creation exposes the real id to the run lifecycle', as
   })
 
   assert.equal(chatId, 'chat-real')
+  assert.equal(isConversationScopeVerified('personal:chat-real'), true)
   assert.equal(pending.realChatId, 'chat-real')
   assert.deepEqual(pendingRunConversationIds, ['chat-real'])
   assert.equal(createResponse.mock.callCount(), 1)
@@ -103,6 +105,7 @@ test('new chat creation follows Workspace path scope over conflicting view query
       tryActivatePendingFirstSend: () => undefined,
     })
     assert.equal(createInput?.scope, 'workspace')
+    assert.equal(isConversationScopeVerified('workspace:chat-created'), true)
   } finally {
     client.createResponse = originalCreateResponse
     if (originalWindow === undefined) delete (globalThis as typeof globalThis & { window?: Window }).window
