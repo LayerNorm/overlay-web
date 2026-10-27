@@ -3,13 +3,14 @@ import { createNativeHarnessTools, type NativeHarnessToolsInput } from './native
 import { executeNativeHarnessTool } from './native-tool-steps'
 import type { HarnessToolExecutionOptions } from './tool-approvals'
 
-const mocks = vi.hoisted(() => ({ refresh: vi.fn(), build: vi.fn(), execute: vi.fn(), dispatch: vi.fn() }))
+const mocks = vi.hoisted(() => ({ refresh: vi.fn(), build: vi.fn(), execute: vi.fn(), dispatch: vi.fn(), progress: vi.fn() }))
 vi.mock('server-only', () => ({}))
 vi.mock('./native-access', () => ({ refreshNativeHarnessAccess: mocks.refresh }))
 vi.mock('./native-tool-steps', async importOriginal => ({
   ...await importOriginal<typeof import('./native-tool-steps')>(),
   dispatchNativeHarnessAgentRequest: mocks.dispatch,
 }))
+vi.mock('./native-tool-progress', () => ({ projectNativeHarnessToolProgress: mocks.progress }))
 vi.mock('@/server/agents/agent-tooling', () => ({ buildWorkspaceAgentTooling: mocks.build }))
 vi.mock('@/server/conversations/personal-chat-work-tools', () => ({
   executePersonalChatWorkToolResult: async (options: {
@@ -37,6 +38,7 @@ beforeEach(() => {
   mocks.refresh.mockResolvedValue(authority)
   mocks.build.mockImplementation(async () => tooling())
   mocks.execute.mockResolvedValue({ ok: true })
+  mocks.progress.mockResolvedValue(undefined)
 })
 
 test('native tools reconstruct current identity, grants and memory policy with child-scoped effects', async () => {
@@ -96,6 +98,14 @@ test('native tools preserve model-output envelopes and never retry an ambiguous 
   await expect(definition.execute!({}, options)).rejects.toThrow(/ambiguous/)
   expect(mocks.execute).toHaveBeenCalledTimes(2)
   expect(executeNativeHarnessTool.maxRetries).toBe(0)
+})
+
+test('presentation progress failures do not change the tool result or re-execute it', async () => {
+  mocks.progress.mockRejectedValue(new Error('progress write unavailable'))
+  const definition = createNativeHarnessTools(input).read_file
+  await expect(definition.execute!({ fileId: 'file' }, options)).resolves.toEqual({ ok: true })
+  expect(mocks.execute).toHaveBeenCalledOnce()
+  expect(mocks.progress).toHaveBeenCalledTimes(2)
 })
 
 test('named-agent ask and post tools dispatch in process without rebuilding ordinary tool authority', async () => {

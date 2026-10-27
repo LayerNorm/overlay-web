@@ -44,6 +44,30 @@ test('native owner attaches and finalizes an authoritative room message without 
   }))
 })
 
+test('finalization replaces live tool progress without duplicate tool parts', async () => {
+  const livePart = {
+    type: 'tool-invocation',
+    toolInvocation: { toolCallId: 'call', toolName: 'read_file', state: 'input-available', toolInput: { fileId: 'file' } },
+  }
+  const finalPart = {
+    type: 'tool-invocation',
+    toolInvocation: {
+      toolCallId: 'call', toolName: 'read_file', state: 'output-available',
+      toolInput: { fileId: 'file' }, toolOutput: { ok: true },
+    },
+  }
+  let persistedParts: Array<Record<string, unknown>> = [livePart]
+  mocks.finalize.mockImplementation(async (args: { parts?: Array<Record<string, unknown>> }) => {
+    persistedParts = args.parts ?? persistedParts
+  })
+  await finishNativeHarnessDelivery(access, { ...delivery, parts: [finalPart] }, { memoryEnabled: false })
+  expect(persistedParts).toEqual([finalPart])
+  expect(persistedParts.filter(part => (
+    part.type === 'tool-invocation'
+    && (part.toolInvocation as { toolCallId?: string }).toolCallId === 'call'
+  ))).toHaveLength(1)
+})
+
 test('native failure keeps streamed partial content and cancellation is fenced', async () => {
   mocks.get.mockResolvedValue({ ...state, status: 'failed', terminalReason: 'Failed.' })
   await finishNativeHarnessDelivery(access, delivery, { memoryEnabled: false })

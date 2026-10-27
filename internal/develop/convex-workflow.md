@@ -196,8 +196,11 @@ Native Harness room turns are available only behind the default-off
 `OVERLAY_NATIVE_HARNESS=1` server flag and only for overlay Harness agents;
 remote and external turns remain on legacy runners. App traffic intentionally
 stays on the old runners until routing/media/artifact parity is finished.
-Native Harness named-agent asks/posts remain refused until H2 shared-root
-dispatch is implemented.
+Native Harness named-agent asks/posts use H2 shared-root dispatch; the HTTP
+route continues to refuse Harness callers. Delivery owners persist bounded
+tool-invocation snapshots while tools run, and finalization replaces those
+snapshots with the authoritative transcript parts. Anonymous child deliveries
+do not write tool progress into the parent's room.
 
 The workflow claims the harness before attaching root delivery or executing model
 calls. Each run registers its wake hook before launching children. Child IDs are

@@ -14,6 +14,10 @@ import { executePersonalChatWorkToolResult } from '@/server/conversations/person
 import { refreshNativeHarnessAccess } from './native-access'
 import type { NativeHarnessToolsInput } from './native-tools'
 import type { HarnessToolCall } from './tools'
+import {
+  projectNativeHarnessToolProgress,
+  type NativeHarnessToolProgress,
+} from './native-tool-progress'
 
 type NativeToolCall = HarnessToolCall & Pick<NativeHarnessToolsInput, 'access' | 'context'>
 
@@ -50,6 +54,73 @@ async function needsApproval(tooling: WorkspaceAgentToolingResult, call: NativeT
   } }) === 'user-approval'
 }
 
+function displayToolResult(result: unknown): unknown {
+  if (!result || typeof result !== 'object' || !('overlayModelOutput' in result)) return result
+  return (result as { display?: unknown }).display
+}
+
+function isToolFailureOutput(output: unknown): boolean {
+  if (!output || typeof output !== 'object') return false
+  const record = output as Record<string, unknown>
+  return record.success === false || typeof record.error === 'string' || typeof record.errorMessage === 'string'
+}
+
+function toolProgressResult(call: NativeToolCall, result: unknown): NativeHarnessToolProgress {
+  const output = displayToolResult(result)
+  return {
+    toolCallId: call.toolCallId,
+    toolName: call.toolName,
+    input: call.input,
+    state: isToolFailureOutput(output) ? 'output-error' : 'output-available',
+    output,
+  }
+}
+
+function toolProgressError(call: NativeToolCall, error: unknown): NativeHarnessToolProgress {
+  return {
+    toolCallId: call.toolCallId,
+    toolName: call.toolName,
+    input: call.input,
+    state: 'output-error',
+    output: { error: error instanceof Error ? error.message : String(error) },
+  }
+}
+
+async function safelyProjectNativeHarnessToolProgress(
+  call: NativeToolCall,
+  progress: NativeHarnessToolProgress | (() => NativeHarnessToolProgress),
+): Promise<void> {
+  try {
+    await projectNativeHarnessToolProgress(
+      call.access,
+      call.context,
+      typeof progress === 'function' ? progress() : progress,
+    )
+  } catch (_error) {
+    // Tool progress is presentation-only and must never affect the tool effect.
+  }
+}
+
+async function executeWithNativeHarnessToolProgress<T>(
+  call: NativeToolCall,
+  execute: () => Promise<T>,
+): Promise<T> {
+  await safelyProjectNativeHarnessToolProgress(call, {
+    toolCallId: call.toolCallId,
+    toolName: call.toolName,
+    input: call.input,
+    state: 'input-available',
+  })
+  try {
+    const result = await execute()
+    await safelyProjectNativeHarnessToolProgress(call, () => toolProgressResult(call, result))
+    return result
+  } catch (error) {
+    await safelyProjectNativeHarnessToolProgress(call, () => toolProgressError(call, error))
+    throw error
+  }
+}
+
 export async function nativeHarnessToolNeedsApproval(call: NativeToolCall): Promise<boolean> {
   'use step'
   return needsApproval(await freshTooling(call), call)
@@ -62,7 +133,7 @@ export async function executeNativeHarnessTool(call: NativeToolCall, approved: b
   const current = await freshTooling(call)
   if (await needsApproval(current, call) && !approved) throw new FatalError('This native action became approval-required before execution.')
   const definition = current.tools[call.toolName]
-  return executePersonalChatWorkToolResult({
+  return executeWithNativeHarnessToolProgress(call, () => executePersonalChatWorkToolResult({
     execute: () => definition.execute!(call.input as never, {
       toolCallId: call.toolCallId, messages: call.messages, context: current.toolsContext?.[call.toolName],
       agentRunId: call.access.agentRunId, logicalStepId: call.toolCallId, idempotencyKey: idempotencyKey(call),
@@ -70,7 +141,7 @@ export async function executeNativeHarnessTool(call: NativeToolCall, approved: b
     input: call.input, toolCallId: call.toolCallId,
     toModelOutput: typeof definition.toModelOutput === 'function'
       ? async args => definition.toModelOutput!(args as never) : undefined,
-  })
+  }))
 }
 
 executeNativeHarnessTool.maxRetries = 0
@@ -205,20 +276,39 @@ export async function dispatchNativeHarnessAgentRequest(
 
   const caller = { agentId: access.agentId, conversationId: access.conversationId, turnId: access.turnId }
   const actor = { actorUserId: access.actorUserId, actorPrincipalId: access.principalId, workspaceId: access.workspaceId, caller, startTurns }
+  const progressCall: NativeToolCall = {
+    access,
+    context,
+    messages: [],
+    toolCallId,
+    toolName,
+    input,
+  }
   if (toolName === 'ask_agent') {
     if (typeof values.agent !== 'string' || typeof values.message !== 'string') throw new FatalError('Invalid ask_agent input.')
-    return { ...await server.agentAsks.ask({ ...actor, target: values.agent, message: values.message, wait: false }), childRunIds }
+    const target = values.agent
+    const message = values.message
+    return executeWithNativeHarnessToolProgress(progressCall, async () => ({
+      ...await server.agentAsks.ask({ ...actor, target, message, wait: false }),
+      childRunIds,
+    }))
   }
   if (typeof values.conversationId !== 'string' || typeof values.text !== 'string'
     || (values.mentions !== undefined && (!Array.isArray(values.mentions) || values.mentions.some(item => typeof item !== 'string')))) {
     throw new FatalError('Invalid post_message input.')
   }
-  return { ...await server.agentAsks.post({
-    ...actor,
-    conversationId: values.conversationId,
-    text: values.text,
-    mentions: (values.mentions as string[] | undefined) ?? [],
-  }), childRunIds }
+  const conversationId = values.conversationId
+  const text = values.text
+  const mentions = (values.mentions as string[] | undefined) ?? []
+  return executeWithNativeHarnessToolProgress(progressCall, async () => ({
+    ...await server.agentAsks.post({
+      ...actor,
+      conversationId,
+      text,
+      mentions,
+    }),
+    childRunIds,
+  }))
 }
 
 dispatchNativeHarnessAgentRequest.maxRetries = 0
