@@ -53,7 +53,7 @@ function AccountNameEditor({ profile, onSave, onCancel }: { profile: IdentityPro
   const [name, setName] = useState(profile.displayNameOverride ?? profile.displayName)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  return <DialogContent showCloseButton={!busy} onEscapeKeyDown={(event) => { if (busy) event.preventDefault() }} onInteractOutside={(event) => { if (busy) event.preventDefault() }}><DialogHeader><DialogTitle>Account name</DialogTitle><DialogDescription>Your default name across Overlay.</DialogDescription></DialogHeader>
+  return <DialogContent showCloseButton={!busy} onEscapeKeyDown={(event) => { if (busy) event.preventDefault() }} onInteractOutside={(event) => { if (busy) event.preventDefault() }}><DialogHeader className="flex-col items-start gap-1 pr-6"><DialogTitle>Account name</DialogTitle><DialogDescription>Your default name across Overlay.</DialogDescription></DialogHeader>
     <form className="space-y-4" onSubmit={(event) => {
       event.preventDefault()
       if (busy) return

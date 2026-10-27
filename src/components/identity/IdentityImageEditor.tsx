@@ -101,7 +101,7 @@ function ImageEditorContent({ title, photoUrl, fallback, workspace, resetLabel, 
   const preview = choice && 'preset' in choice ? WORKSPACE_ICON_PRESETS.find((item) => item.id === choice.preset)?.url
     : choice && 'reset' in choice ? undefined : photoUrl ?? undefined
   return <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-[420px]" showCloseButton={!busy} onEscapeKeyDown={(event) => { if (busy) event.preventDefault() }} onInteractOutside={(event) => { if (busy) event.preventDefault() }}>
-    <DialogHeader><DialogTitle>{title}</DialogTitle><DialogDescription>{workspace ? 'Shown wherever this workspace appears.' : 'Choose how people see you.'}</DialogDescription></DialogHeader>
+    <DialogHeader className="flex-col items-start gap-1 pr-6"><DialogTitle>{title}</DialogTitle><DialogDescription>{workspace ? 'Shown wherever this workspace appears.' : 'Choose how people see you.'}</DialogDescription></DialogHeader>
     <div className="flex justify-center py-3">
       {source ? <canvas ref={canvas} width={512} height={512} className={`size-44 ${workspace ? 'rounded-xl' : 'rounded-full'}`} aria-label="Cropped image preview" />
         : <Avatar className={`size-22 ${workspace ? 'rounded-xl' : ''}`}><AvatarImage src={preview} alt="" /><AvatarFallback>{fallback}</AvatarFallback></Avatar>}
