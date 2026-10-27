@@ -44,7 +44,10 @@ the HTTP status. `missing_configuration` means the runtime has no
 Vault access; `transport_failure` covers request/response transport failures;
 `invalid_response` means a create response omitted its object ID. Credentials,
 upstream response bodies and messages are never logged. Preview diagnosis must
-use Preview credentials, never a Production key.
+use Preview credentials, never a Production key. HTTP failures may also log
+WorkOS's machine-readable `upstreamCode` and offending `upstreamFields` names
+when they match a strict identifier pattern; messages and values are never
+logged.
 
 Codex model discovery uses the signed-in account's
 `https://chatgpt.com/backend-api/codex/models?client_version=0.154.0` catalog.

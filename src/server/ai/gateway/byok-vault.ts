@@ -29,16 +29,76 @@ type VaultObject = VaultObjectMetadata & {
 
 type VaultFailureCode = 'missing_configuration' | 'http_failure' | 'invalid_response'
 
+type VaultUpstreamFailureDetails = {
+  upstreamCode?: string
+  upstreamFields?: string[]
+}
+
 class VaultFailure extends Error {
-  constructor(readonly code: VaultFailureCode, readonly httpStatus?: number) {
+  constructor(
+    readonly code: VaultFailureCode,
+    readonly httpStatus?: number,
+    readonly upstreamCode?: string,
+    readonly upstreamFields?: string[],
+  ) {
     super(`WorkOS Vault ${code}`)
   }
 }
 
-function vaultFailureContext(error: unknown): { code: string; httpStatus?: number } {
-  return error instanceof VaultFailure
-    ? { code: error.code, ...(error.httpStatus === undefined ? {} : { httpStatus: error.httpStatus }) }
-    : { code: 'transport_failure' }
+type VaultFailureLogContext = {
+  code: string
+  httpStatus?: number
+  upstreamCode?: string
+  upstreamFields?: string[]
+}
+
+function vaultFailureContext(error: unknown): VaultFailureLogContext {
+  if (!(error instanceof VaultFailure)) return { code: 'transport_failure' }
+
+  return {
+    code: error.code,
+    ...(error.httpStatus === undefined ? {} : { httpStatus: error.httpStatus }),
+    ...(error.upstreamCode === undefined ? {} : { upstreamCode: error.upstreamCode }),
+    ...(error.upstreamFields === undefined ? {} : { upstreamFields: error.upstreamFields }),
+  }
+}
+
+const UPSTREAM_CODE_PATTERN = /^[a-z][a-z0-9_.-]{0,63}$/i
+const UPSTREAM_FIELD_PATTERN = /^[a-z][a-z0-9_.\[\]-]{0,63}$/i
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
+  const prototype = Object.getPrototypeOf(value)
+  return prototype === Object.prototype || prototype === null
+}
+
+function getVaultUpstreamFailureDetails(payload: unknown): VaultUpstreamFailureDetails {
+  if (!isPlainObject(payload)) return {}
+
+  const upstreamCode =
+    typeof payload.code === 'string' && UPSTREAM_CODE_PATTERN.test(payload.code)
+      ? payload.code
+      : typeof payload.error === 'string' && UPSTREAM_CODE_PATTERN.test(payload.error)
+        ? payload.error
+        : undefined
+
+  const upstreamFields: string[] = []
+  const seenFields = new Set<string>()
+  if (Array.isArray(payload.errors)) {
+    for (const error of payload.errors) {
+      if (!isPlainObject(error)) continue
+      const field = error.field
+      if (typeof field !== 'string' || !UPSTREAM_FIELD_PATTERN.test(field) || seenFields.has(field)) continue
+      seenFields.add(field)
+      upstreamFields.push(field)
+      if (upstreamFields.length === 5) break
+    }
+  }
+
+  return {
+    ...(upstreamCode === undefined ? {} : { upstreamCode }),
+    ...(upstreamFields.length === 0 ? {} : { upstreamFields }),
+  }
 }
 
 function getWorkOSApiKey(): string {
@@ -88,7 +148,13 @@ async function vaultRequest<T>(
     : null
 
   if (!response.ok && !(method === 'DELETE' && response.status === 404)) {
-    throw new VaultFailure('http_failure', response.status)
+    const upstreamFailureDetails = getVaultUpstreamFailureDetails(payload)
+    throw new VaultFailure(
+      'http_failure',
+      response.status,
+      upstreamFailureDetails.upstreamCode,
+      upstreamFailureDetails.upstreamFields,
+    )
   }
 
   return payload as T

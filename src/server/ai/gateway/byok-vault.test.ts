@@ -17,7 +17,11 @@ test('Vault writes reject redirects and do not expose upstream error bodies', as
     init?: RequestInit,
   ) => {
     capturedInit = init
-    return new Response(JSON.stringify({ message: 'sensitive upstream detail' }), {
+    return new Response(JSON.stringify({
+      code: 'invalid_request_parameters',
+      message: '<sensitive>',
+      errors: [{ field: 'key_context', code: 'invalid', message: '<sensitive2>' }],
+    }), {
       status: 400,
       headers: { 'content-type': 'application/json', 'x-request-id': 'sensitive-request-id' },
     })
@@ -43,10 +47,69 @@ test('Vault writes reject redirects and do not expose upstream error bodies', as
   assert.equal(new Headers(capturedInit?.headers).get('authorization'), 'Bearer workos_test_key')
   assert.equal(log.mock.callCount(), 1)
   const logged = String(log.mock.calls[0].arguments[0])
-  assert.deepEqual(JSON.parse(logged).context, { code: 'http_failure', httpStatus: 400 })
-  for (const sensitive of ['sensitive upstream detail', 'sensitive-request-id', 'workos_test_key', 'provider_test_key', 'user_1']) {
+  assert.deepEqual(JSON.parse(logged).context, {
+    code: 'http_failure',
+    httpStatus: 400,
+    upstreamCode: 'invalid_request_parameters',
+    upstreamFields: ['key_context'],
+  })
+  for (const sensitive of [
+    '<sensitive>',
+    '<sensitive2>',
+    'sensitive-request-id',
+    'workos_test_key',
+    'provider_test_key',
+    'user_1',
+  ]) {
     assert.equal(logged.includes(sensitive), false)
   }
+})
+
+test('Vault diagnostics discard invalid upstream identifiers', async (t) => {
+  const previousApiKey = process.env.WORKOS_API_KEY
+  process.env.WORKOS_API_KEY = 'workos_test_key'
+  t.after(() => {
+    if (previousApiKey === undefined) delete process.env.WORKOS_API_KEY
+    else process.env.WORKOS_API_KEY = previousApiKey
+  })
+
+  t.mock.method(globalThis, 'fetch', async () => new Response(JSON.stringify({
+    error: 'bad request with spaces',
+    errors: [{ field: 'x y' }, 'str'],
+    code: 123,
+  }), { status: 400 }))
+  const log = t.mock.method(console, 'error', () => undefined)
+
+  await assert.rejects(writeByokVaultKey('byok_test', 'sensitive', {
+    purpose: 'subscription-credential', userId: 'user_1', providerId: 'subscription:codex',
+  }), { message: 'Failed to store API key in vault' })
+
+  const logged = String(log.mock.calls[0].arguments[0])
+  assert.deepEqual(JSON.parse(logged).context, { code: 'http_failure', httpStatus: 400 })
+  for (const untrustedValue of ['bad request with spaces', 'x y', 'str']) {
+    assert.equal(logged.includes(untrustedValue), false)
+  }
+})
+
+test('Vault diagnostics do not log non-JSON upstream bodies', async (t) => {
+  const previousApiKey = process.env.WORKOS_API_KEY
+  process.env.WORKOS_API_KEY = 'workos_test_key'
+  t.after(() => {
+    if (previousApiKey === undefined) delete process.env.WORKOS_API_KEY
+    else process.env.WORKOS_API_KEY = previousApiKey
+  })
+
+  const upstreamText = 'sensitive non-JSON upstream detail'
+  t.mock.method(globalThis, 'fetch', async () => new Response(upstreamText, { status: 400 }))
+  const log = t.mock.method(console, 'error', () => undefined)
+
+  await assert.rejects(writeByokVaultKey('byok_test', 'sensitive', {
+    purpose: 'subscription-credential', userId: 'user_1', providerId: 'subscription:codex',
+  }), { message: 'Failed to store API key in vault' })
+
+  const logged = String(log.mock.calls[0].arguments[0])
+  assert.deepEqual(JSON.parse(logged).context, { code: 'http_failure', httpStatus: 400 })
+  assert.equal(logged.includes(upstreamText), false)
 })
 
 test('Vault diagnostics distinguish missing configuration without attempting a request', async (t) => {

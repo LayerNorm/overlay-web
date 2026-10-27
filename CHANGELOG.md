@@ -4,7 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
-- Preserve safe failure codes and HTTP statuses in credential-vault logs so subscription authorization failures can be diagnosed without exposing credentials or upstream response bodies.
+- Preserve safe failure codes, HTTP statuses, upstream error codes, and offending field names in credential-vault logs so subscription authorization failures can be diagnosed without exposing credentials or upstream response bodies.
 
 - Settings breadcrumbs read Settings > page instead of a Personal or Workspace prefix.
 
