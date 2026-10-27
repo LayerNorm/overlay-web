@@ -43,3 +43,23 @@ test('only active, non-default provider connections enter the chat model registr
   ])
   assert.deepEqual(models.map((model) => model.id), ['byok/active/vendor/model-a'])
 })
+
+test('subscription models keep provider identity and connection source labels', () => {
+  const [model] = byokConnectionsToChatModels([{
+    _id: 'subscription_1',
+    authKind: 'subscription',
+    subscriptionProvider: 'codex',
+    providerId: 'subscription:codex',
+    endpoint: '',
+    displayName: 'Personal ChatGPT',
+    enabledModelIds: ['openai/gpt-4.1'],
+    discoveredModelsJson: JSON.stringify({ data: [{ id: 'openai/gpt-4.1' }] }),
+    status: 'active',
+    isDefault: false,
+    isDeletable: true,
+  }])
+  assert.equal(model?.id, 'byok/subscription_1/openai/gpt-4.1')
+  assert.equal(model?.provider, 'openai')
+  assert.equal(model?.sourceLabel, 'Subscription')
+  assert.equal(model?.connectionName, 'Personal ChatGPT')
+})

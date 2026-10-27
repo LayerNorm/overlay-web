@@ -1,6 +1,6 @@
 'use client'
 
-import { Button } from '@overlay/ui/primitives'
+import { Button, toast } from '@overlay/ui/primitives'
 
 import { useCallback, useState } from 'react'
 import { AlertCircle, KeyRound, Loader2, Plus } from 'lucide-react'
@@ -16,6 +16,7 @@ import { useByokModels } from '@/components/providers/useByokModels'
 import { useGatewayModelCatalog } from '@/components/providers/useGatewayModelCatalog'
 import { ProviderConnectionRow } from './ProviderConnectionRow'
 import { ProviderDialog } from './ProviderDialog'
+import { ConnectProviderDialog } from './ConnectProviderDialog'
 import {
   getEffectiveSettingsModelIds,
   type DialogState,
@@ -37,6 +38,8 @@ export function ProviderConnectionsSetting() {
   }, [refresh])
 
   const handleDeleted = useCallback(async (connection: ByokConnectionRow) => {
+    await refresh()
+    const subscription = connection.providerId.startsWith('subscription:')
     const removedModelIds = new Set(
       connection.enabledModelIds.map((rawModelId) => byokModelId(connection._id, rawModelId)),
     )
@@ -49,14 +52,13 @@ export function ProviderConnectionsSetting() {
         ? nextEnabledModelIds
         : [...DEFAULT_CURATED_CHAT_MODEL_IDS],
       modelOrder: settings.modelOrder.filter((modelId) => !removedModelIds.has(modelId)),
-      ...(removedModelIds.has(settings.defaultActModelId ?? '')
+      ...(!subscription && removedModelIds.has(settings.defaultActModelId ?? '')
         ? { defaultActModelId: FREE_TIER_AUTO_MODEL_ID }
         : {}),
-      ...(nextAskModelIds.length !== settings.defaultAskModelIds.length
+      ...(!subscription && nextAskModelIds.length !== settings.defaultAskModelIds.length
         ? { defaultAskModelIds: nextAskModelIds.length > 0 ? nextAskModelIds : [FREE_TIER_AUTO_MODEL_ID] }
         : {}),
     })
-    await refresh()
     setDeleteTarget(null)
   }, [refresh, settings, updateSettings])
 
@@ -66,7 +68,7 @@ export function ProviderConnectionsSetting() {
       <div className="flex items-center justify-between gap-3">
         <div>
           <p className="text-sm text-(--muted)">
-            Connect your own AI provider keys and manage which models may use them. Overlay catalog models are available directly in the picker.
+            Connect your subscriptions or API keys. Choose their models anywhere in Overlay.
           </p>
         </div>
         <Button variant="secondary" size="sm" className="shrink-0"
@@ -101,7 +103,7 @@ export function ProviderConnectionsSetting() {
           <KeyRound size={24} className="mx-auto mb-3 text-(--muted-light)" strokeWidth={1.5} />
           <p className="text-sm text-(--muted)">No provider connections yet.</p>
           <p className="mt-1 text-xs text-(--muted-light)">
-            Add a provider to use your own API keys with Overlay.
+            Bring a subscription or API key to get started.
           </p>
         </div>
       ) : null}
@@ -129,7 +131,13 @@ export function ProviderConnectionsSetting() {
       ) : null}
 
       {/* Add/Edit Dialog */}
-      {dialog ? (
+      {dialog?.mode === 'add' || (dialog?.mode === 'edit' && dialog.connection.providerId.startsWith('subscription:')) ? (
+        <ConnectProviderDialog
+          connection={dialog.mode === 'edit' ? dialog.connection : undefined}
+          onClose={() => setDialog(null)}
+          onConnected={refresh}
+        />
+      ) : dialog ? (
         <ProviderDialog
           state={dialog}
           busy={busy}
@@ -143,18 +151,22 @@ export function ProviderConnectionsSetting() {
       {deleteTarget ? (
         <ConfirmDialog
           isOpen={true}
-          title="Delete provider"
-          description={`Remove "${deleteTarget.displayName}" and its API key? Models from this provider will no longer appear in your dropdown.`}
-          confirmLabel="Delete"
+          title="Disconnect provider"
+          description={`Disconnect "${deleteTarget.displayName}"? Its models will leave your dropdown. Chats using this subscription will need a new connection or an explicitly selected model.`}
+          confirmLabel="Disconnect"
           destructive
           busy={busy}
           onConfirm={async () => {
+            if (busy) return
             setBusy(true)
             try {
               const res = await fetch(`/api/v1/providers/connections?connectionId=${deleteTarget._id}`, {
                 method: 'DELETE',
               })
-              if (res.ok) await handleDeleted(deleteTarget)
+              if (!res.ok) throw new Error('Could not disconnect the provider. Try again.')
+              await handleDeleted(deleteTarget)
+            } catch (value) {
+              toast.error(value instanceof Error ? value.message : 'Could not disconnect the provider.')
             } finally {
               setBusy(false)
             }

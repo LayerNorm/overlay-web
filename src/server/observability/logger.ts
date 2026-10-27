@@ -62,6 +62,7 @@ function isRecord(value: unknown): value is LogContext {
 
 function shouldRedactKey(key: string): boolean {
   const normalized = key.toLowerCase().replaceAll('-', '_')
+  if (normalized === 'invalidcontextkeys') return false
   return SENSITIVE_KEY_EXACT.has(normalized) || SENSITIVE_KEY_PARTS.some((part) => normalized.includes(part))
 }
 

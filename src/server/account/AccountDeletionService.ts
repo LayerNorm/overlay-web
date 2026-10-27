@@ -2,6 +2,8 @@ import 'server-only'
 
 import { logger } from '@/server/observability/logger'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
+import { SubscriptionService } from '@/server/ai/subscriptions/service'
+import { ConvexSubscriptionRepository } from '@/server/ai/subscriptions/repository'
 import type { OverlayServerContext } from '@/server/bootstrap'
 import type { AccountDataDeletionVerification } from './AccountDataDeletionRepository'
 import {
@@ -18,10 +20,25 @@ export type AccountDeletionResult = {
   verification?: AccountDataDeletionVerification
 }
 
+export interface AccountSubscriptionRevoker {
+  revokeAllForUser(userId: string): Promise<void>
+}
+
 export class AccountDeletionService {
-  constructor(private readonly ctx: OverlayServerContext) {}
+  private readonly subscriptionRevoker: AccountSubscriptionRevoker
+
+  constructor(
+    private readonly ctx: OverlayServerContext,
+    subscriptionRevoker?: AccountSubscriptionRevoker,
+  ) {
+    this.subscriptionRevoker = subscriptionRevoker ?? new SubscriptionService(
+      new ConvexSubscriptionRepository(),
+      ctx.byokCredentialStore,
+    )
+  }
 
   async deleteAccount(args: { userId: string; request?: Request }): Promise<AccountDeletionResult> {
+    await this.revokeSubscriptionConnections(args.userId)
     await this.deleteIntegrationConnectionsBestEffort(args.userId)
     // Ends every other-AI-app connection the person made; their tokens stop working at once.
     await this.ctx.appData.repositories.mcpGrants.deleteAllForUser({ userId: args.userId }).catch((error) => {
@@ -49,6 +66,15 @@ export class AccountDeletionService {
     })
 
     return convexResult
+  }
+
+  private async revokeSubscriptionConnections(userId: string): Promise<void> {
+    try {
+      await this.subscriptionRevoker.revokeAllForUser(userId)
+    } catch (error) {
+      logger.error(`[account/delete] Subscription revocation failed for ${userId}:`, error instanceof Error ? error.name : 'unknown')
+      throw new Error('Could not revoke subscription connections. Nothing else was deleted; try again.')
+    }
   }
 
   /**

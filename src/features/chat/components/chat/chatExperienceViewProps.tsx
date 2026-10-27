@@ -9,6 +9,7 @@ import {
 import { Button } from '@overlay/ui/primitives'
 import { DelayedTooltip } from '../DelayedTooltip'
 import { PersonalMentionConversionPrompt } from '../PersonalMentionConversionPrompt'
+import { shouldShowPaidModelReplacement } from './chat-composer-blocking'
 import type { useChatExperienceController } from './useChatExperienceController'
 import type { useChatShellPanels } from './useChatShellPanels'
 import type { AttachmentPreview } from './useChatPanels'
@@ -223,11 +224,14 @@ export function buildChatExperienceViewProps(
               isSendBlocked: c.isSendBlocked,
               isActiveLoading: c.isActiveLoading,
               isTemporaryChat: c.isTemporaryChat,
-              blockedComposerContent: c.isBudgetExhaustedPaid ? null : (
+              blockedComposerContent: shouldShowPaidModelReplacement({
+                isBudgetExhaustedPaid: c.isBudgetExhaustedPaid,
+                premiumModelBlocked: c.premiumModelBlocked,
+              }) ? (
                 <div className="flex items-center gap-2 rounded-2xl border border-(--border) bg-(--background) px-4 py-3 text-xs text-(--muted)">
                   This model requires a paid plan. Switch to Auto or upgrade.
                 </div>
-              ),
+              ) : null,
             },
             inputState: {
               replyContext: c.replyContext,

@@ -17,21 +17,21 @@ import {
   assertUserCanUseByokModel,
   getLanguageModel,
   getGatewayModelId,
+  isSubscriptionModelForUser,
 } from '@/server/ai/model-runtime'
 import { createRuntimeOverlayFreeLanguageModel } from '@/server/ai/gateway/overlay-free-router'
 import { modelSupportsZeroDataRetention, modelUsesAiGatewayTransport } from '@/shared/ai/gateway/model-data'
-import { isKimiK3ModelId } from '@/shared/ai/gateway/model-types'
+import { FREE_TIER_DEFAULT_MODEL_ID, isKimiK3ModelId } from '@/shared/ai/gateway/model-types'
 import {
   getChatModelFallbackCandidates,
   getLowCreditFallbackAttemptModelIds,
 } from '@/shared/ai/gateway/model-fallbacks'
 import { isGatewayCreditLow } from '@/server/ai/gateway/gateway-credits'
-import { resolveModelContextWindow } from '@/server/chat/context-compaction'
+import { resolveModelContextWindow, summaryGenerationOptions } from '@/server/chat/context-compaction'
 import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
 import { userFacingOpenRouterError } from '@/server/ai/model-runtime'
 import { uploadFilePartsForModel } from '@/server/ai/file-upload'
 import {
-  FREE_TIER_DEFAULT_MODEL_ID,
   isFreeTierChatModelId,
   OPENROUTER_FREE_MODEL_ID,
 } from '@/shared/ai/gateway/model-types'
@@ -508,74 +508,78 @@ export async function executeActTurn(
         mergeReplyContextIntoMessagesForModel(messagesForModel, replyContextForModel),
       )
     } else {
+      const summaryModelId = isByokModelId(effectiveModelId)
+        ? effectiveModelId
+        : FREE_TIER_DEFAULT_MODEL_ID
       messagesForModel = await actContextService.prepareExistingMessagesForModel({
-      accessToken,
-      conversationId: cid,
-      generateSummaryText: async ({ prompt, targetSummaryTokens }) => {
-        const estimatedInputTokens = Math.ceil(prompt.length / 4) + 64
-        const summaryReservation = await actUsageBudgetService.reserveForAttempt({
-          entitlements: runtimeEntitlements,
-          estimatedInputTokens,
-          idempotencyKey: context.requestIdempotencyKey,
-          maxOutputTokens: targetSummaryTokens,
-          modelId: FREE_TIER_DEFAULT_MODEL_ID,
-          operationId: 'conversation.act.context-summary',
-          paid,
-          requestFingerprint: context.requestFingerprint,
-          userId,
-          workspaceId: billingWorkspaceId,
-          programmaticSubjectId: billingProgrammaticSubjectId,
-        })
-        if (!summaryReservation.ok) {
-          throw new Error(String(summaryReservation.failure.payload.error ?? 'context_summary_budget_denied'))
-        }
-        let providerWorkStarted = false
-        try {
-          await actUsageBudgetService.markReservationStarted({
-            reservationId: summaryReservation.reservationId,
-            userId,
-          })
-          providerWorkStarted = true
-          const summaryModel = await getLanguageModel(FREE_TIER_DEFAULT_MODEL_ID, accessToken)
-          const summaryResult = await generateText({
-            model: summaryModel,
-            temperature: 0.1,
+        accessToken,
+        conversationId: cid,
+        generateSummaryText: async ({ prompt, targetSummaryTokens }) => {
+          const estimatedInputTokens = Math.ceil(prompt.length / 4) + 64
+          const summaryReservation = await actUsageBudgetService.reserveForAttempt({
+            entitlements: runtimeEntitlements,
+            estimatedInputTokens,
+            idempotencyKey: context.requestIdempotencyKey,
             maxOutputTokens: targetSummaryTokens,
-            prompt,
-          })
-          const summaryUsage = (summaryResult as unknown as {
-            usage?: { inputTokens?: number; outputTokens?: number }
-          }).usage
-          await actUsageBudgetService.recordFinishedUsage({
-            forceFreeTierLimits: false,
-            inputTokens: summaryUsage?.inputTokens ?? estimatedInputTokens,
-            modelId: FREE_TIER_DEFAULT_MODEL_ID,
-            outputTokens: summaryUsage?.outputTokens ?? targetSummaryTokens,
-            reservationId: summaryReservation.reservationId,
+            modelId: summaryModelId,
+            operationId: 'conversation.act.context-summary',
+            paid,
+            requestFingerprint: context.requestFingerprint,
             userId,
+            workspaceId: billingWorkspaceId,
+            programmaticSubjectId: billingProgrammaticSubjectId,
           })
-          return summaryResult.text.trim()
-        } catch (error) {
-          await actUsageBudgetService.releaseReservation({
-            reason: error instanceof Error ? error.message : 'context_summary_provider_failed',
-            reservationId: summaryReservation.reservationId,
-            userId,
-          }).catch((_releaseError) => undefined)
-          if (providerWorkStarted && summaryReservation.reservationId) {
-            await actUsageBudgetService.markReservationForReconcile({
-              errorMessage: error instanceof Error ? error.message : 'context_summary_provider_failed',
+          if (!summaryReservation.ok) {
+            throw new Error(String(summaryReservation.failure.payload.error ?? 'context_summary_budget_denied'))
+          }
+          let providerWorkStarted = false
+          try {
+            await actUsageBudgetService.markReservationStarted({
               reservationId: summaryReservation.reservationId,
               userId,
-            }).catch((_reconcileError) => undefined)
+            })
+            providerWorkStarted = true
+            const summaryModel = await getLanguageModel(summaryModelId, accessToken, userId)
+            const isSubscription = await isSubscriptionModelForUser(summaryModelId, userId)
+            const summaryResult = await generateText({
+              model: summaryModel,
+              ...summaryGenerationOptions({ prompt, targetSummaryTokens, isSubscription }),
+            })
+            const summaryUsage = (summaryResult as unknown as {
+              usage?: { inputTokens?: number; outputTokens?: number }
+            }).usage
+            await actUsageBudgetService.recordFinishedUsage({
+              forceFreeTierLimits: false,
+              inputTokens: summaryUsage?.inputTokens ?? estimatedInputTokens,
+              modelId: summaryModelId,
+              outputTokens: summaryUsage?.outputTokens ?? targetSummaryTokens,
+              reservationId: summaryReservation.reservationId,
+              userId,
+            })
+            return summaryResult.text.trim()
+          } catch (error) {
+            await actUsageBudgetService.releaseReservation({
+              reason: error instanceof Error ? error.message : 'context_summary_provider_failed',
+              reservationId: summaryReservation.reservationId,
+              userId,
+            }).catch((_releaseError) => undefined)
+            if (providerWorkStarted && summaryReservation.reservationId) {
+              await actUsageBudgetService.markReservationForReconcile({
+                errorMessage: error instanceof Error ? error.message : 'context_summary_provider_failed',
+                reservationId: summaryReservation.reservationId,
+                userId,
+              }).catch((_reconcileError) => undefined)
+            }
+            throw error
           }
-          throw error
-        }
-      },
-      historyBaseModelId,
-      messages: messagesForModel,
-      replyContextForModel,
-      targetModelId: effectiveModelId,
-      userId: conversationUserId,
+        },
+        historyBaseModelId,
+        messages: messagesForModel,
+        replyContextForModel,
+        targetModelId: effectiveModelId,
+        summarizerModelId: summaryModelId,
+        userId: conversationUserId,
+        modelUserId: userId,
       })
     }
     const userSystemPromptExtension = buildSecondarySystemPromptExtension(systemPrompt)

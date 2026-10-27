@@ -229,6 +229,7 @@ For a description of what each route does and its associated implementation file
 - `GET, POST /api/v1/onboarding/session`
 - `DELETE, GET, PATCH, POST /api/v1/provider-accounts`
 - `DELETE, GET, PATCH, POST /api/v1/providers/connections`
+- `GET, PATCH, POST /api/v1/providers/subscriptions`
 - `POST /api/v1/providers/connections/test`
 - `GET /api/v1/shares/impact`
 - `DELETE, GET, POST /api/v1/shares`

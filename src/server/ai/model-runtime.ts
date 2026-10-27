@@ -13,7 +13,17 @@ import { ByokGateway, type ByokConnection } from '@overlay/llm-gateway'
 import type { ProviderConnectionRecord } from '@/server/ai/provider-connections'
 import { assertByokRuntimeConnectionAllowed } from '@/server/ai/gateway/byok-security'
 import { createByokProviderFetch } from '@/server/ai/gateway/byok-provider-fetch'
-import { isByokModelId, parseByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
+import {
+  isByokModelId,
+  parseByokModelId,
+  parseDiscoveredModels,
+} from '@/shared/ai/gateway/byok-model-conversion'
+import {
+  isSubscriptionConnection,
+  isSubscriptionProviderId,
+} from '@/shared/ai/gateway/subscription-providers'
+import { createSubscriptionLanguageModel } from '@/server/ai/subscriptions/transport'
+import { createSubscriptionService } from '@/server/ai/subscriptions/service'
 
 async function getUserByokConnection(
   userId: string,
@@ -30,8 +40,31 @@ export async function assertUserCanUseByokModel(
   if (!parsed) throw new Error('Invalid BYOK model id.')
   const connection = await getUserByokConnection(userId, parsed.connectionId)
   if (!connection) throw new Error('BYOK connection not found.')
+  if (connection.authKind === 'subscription' || connection.providerId.startsWith('subscription:')) {
+    if (!isSubscriptionConnection(connection) ||
+        !isSubscriptionProviderId(connection.subscriptionProvider) ||
+        !createSubscriptionService().isEnabled(connection.subscriptionProvider) ||
+        connection.endpoint !== '' ||
+        connection.status !== 'active' ||
+        !connection.enabledModelIds.includes(parsed.rawModelId) ||
+        !parseDiscoveredModels(connection.discoveredModelsJson).some((model) => model.id === parsed.rawModelId)) {
+      throw new Error('Subscription connection is unavailable or this model is not enabled.')
+    }
+    return { connection, rawModelId: parsed.rawModelId }
+  }
   assertByokRuntimeConnectionAllowed(connection, parsed.rawModelId)
   return { connection, rawModelId: parsed.rawModelId }
+}
+
+export async function isSubscriptionModelForUser(modelId: string, userId: string): Promise<boolean> {
+  const parsed = parseByokModelId(modelId)
+  if (!parsed) return false
+  const connection = await getUserByokConnection(userId, parsed.connectionId)
+  return Boolean(
+    connection &&
+    isSubscriptionConnection(connection) &&
+    isSubscriptionProviderId(connection.subscriptionProvider),
+  )
 }
 
 export async function getLanguageModel(
@@ -48,6 +81,14 @@ export async function getLanguageModel(
   if (parsed) {
     if (!userId) throw new Error('Authenticated user required for BYOK models.')
     const { connection, rawModelId } = await assertUserCanUseByokModel(modelId, userId)
+    if (isSubscriptionConnection(connection) && isSubscriptionProviderId(connection.subscriptionProvider)) {
+      return createSubscriptionLanguageModel({
+        ownerId: userId,
+        connectionId: connection._id,
+        providerId: connection.subscriptionProvider,
+        modelId: rawModelId,
+      })
+    }
     const apiKey = connection.credentialRef
       ? await getOverlayServerContext().byokCredentialStore.read(connection.credentialRef)
       : null

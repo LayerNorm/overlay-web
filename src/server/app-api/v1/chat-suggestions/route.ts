@@ -84,7 +84,7 @@ async function generateStartersWithLLM(args: {
   if (!entitlements) return null
   const authorized = await resolveAuthorizedModelIds({ entitlements })
   if (!authorized.chat.has(FREE_TIER_AUTO_MODEL_ID)) return null
-  const model = await getLanguageModel(FREE_TIER_AUTO_MODEL_ID, args.accessToken)
+  const model = await getLanguageModel(FREE_TIER_AUTO_MODEL_ID, args.accessToken, args.userId)
   const prompt = `Generate exactly 4 conversation starter prompts for an AI chat app. Each prompt:
 - One clear sentence, 8–22 words
 - Specific, actionable, and phrased as a task the assistant can help complete

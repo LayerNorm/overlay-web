@@ -1,7 +1,6 @@
 import 'server-only'
 
 import { logger } from '@/server/observability/logger'
-import { summarizeErrorForLog } from '@/shared/security/safe-log'
 
 /**
  * Server-side helpers for writing, reading, and deleting BYOK (bring-your-own-key)
@@ -14,7 +13,7 @@ import { summarizeErrorForLog } from '@/shared/security/safe-log'
 
 export type ByokVaultKeyContext = {
   /** `agent-provider-account` is a coding-agent credential (Claude Code, Codex), not a model-routing key; `agent-secret` is a value an agent's imported config asked for (an MCP server's token). */
-  purpose: 'byok-provider-key' | 'agent-provider-account' | 'agent-secret'
+  purpose: 'byok-provider-key' | 'agent-provider-account' | 'agent-secret' | 'subscription-credential'
   userId: string
   providerId: string
   connectionId?: string
@@ -28,12 +27,115 @@ type VaultObject = VaultObjectMetadata & {
   value?: unknown
 }
 
+type VaultFailureCode = 'missing_configuration' | 'http_failure' | 'invalid_context' | 'invalid_response'
+
+type VaultUpstreamFailureDetails = {
+  upstreamCode?: string
+  upstreamFields?: string[]
+}
+
+class VaultFailure extends Error {
+  constructor(
+    readonly code: VaultFailureCode,
+    readonly httpStatus?: number,
+    readonly upstreamCode?: string,
+    readonly upstreamFields?: string[],
+    readonly invalidContextKeys?: string[],
+  ) {
+    super(`WorkOS Vault ${code}`)
+  }
+}
+
+type VaultFailureLogContext = {
+  code: string
+  httpStatus?: number
+  upstreamCode?: string
+  upstreamFields?: string[]
+  invalidContextKeys?: string[]
+}
+
+function vaultFailureContext(error: unknown): VaultFailureLogContext {
+  if (!(error instanceof VaultFailure)) return { code: 'transport_failure' }
+
+  return {
+    code: error.code,
+    ...(error.httpStatus === undefined ? {} : { httpStatus: error.httpStatus }),
+    ...(error.upstreamCode === undefined ? {} : { upstreamCode: error.upstreamCode }),
+    ...(error.upstreamFields === undefined ? {} : { upstreamFields: error.upstreamFields }),
+    ...(error.invalidContextKeys === undefined ? {} : { invalidContextKeys: error.invalidContextKeys }),
+  }
+}
+
+const UPSTREAM_CODE_PATTERN = /^[a-z][a-z0-9_.-]{0,63}$/i
+const UPSTREAM_FIELD_PATTERN = /^[a-z][a-z0-9_.\[\]-]{0,63}$/i
+const VAULT_CONTEXT_VALUE_PATTERN = /^[A-Za-z0-9/_-]{1,500}$/
+const MAX_VAULT_CONTEXT_ENTRIES = 10
+const MAX_DIAGNOSTIC_CONTEXT_KEYS = 5
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
+  const prototype = Object.getPrototypeOf(value)
+  return prototype === Object.prototype || prototype === null
+}
+
+function getVaultUpstreamFailureDetails(payload: unknown): VaultUpstreamFailureDetails {
+  if (!isPlainObject(payload)) return {}
+
+  const upstreamCode =
+    typeof payload.code === 'string' && UPSTREAM_CODE_PATTERN.test(payload.code)
+      ? payload.code
+      : typeof payload.error === 'string' && UPSTREAM_CODE_PATTERN.test(payload.error)
+        ? payload.error
+        : undefined
+
+  const upstreamFields: string[] = []
+  const seenFields = new Set<string>()
+  if (Array.isArray(payload.errors)) {
+    for (const error of payload.errors) {
+      if (!isPlainObject(error)) continue
+      const field = error.field
+      if (typeof field !== 'string' || !UPSTREAM_FIELD_PATTERN.test(field) || seenFields.has(field)) continue
+      seenFields.add(field)
+      upstreamFields.push(field)
+      if (upstreamFields.length === 5) break
+    }
+  } else if (isPlainObject(payload.errors)) {
+    for (const field of Object.keys(payload.errors)) {
+      if (!UPSTREAM_FIELD_PATTERN.test(field) || seenFields.has(field)) continue
+      seenFields.add(field)
+      upstreamFields.push(field)
+      if (upstreamFields.length === 5) break
+    }
+  }
+
+  return {
+    ...(upstreamCode === undefined ? {} : { upstreamCode }),
+    ...(upstreamFields.length === 0 ? {} : { upstreamFields }),
+  }
+}
+
+function getInvalidVaultContextKeys(context: ByokVaultKeyContext): string[] | undefined {
+  if (!isPlainObject(context)) return ['context']
+
+  const entries = Object.entries(context)
+  const invalidKeys = entries.flatMap(([key, value], index) =>
+    typeof value !== 'string' ||
+    !VAULT_CONTEXT_VALUE_PATTERN.test(value) ||
+    (entries.length > MAX_VAULT_CONTEXT_ENTRIES && index >= MAX_VAULT_CONTEXT_ENTRIES)
+      ? [key]
+      : [],
+  )
+  if (invalidKeys.length === 0) return undefined
+
+  const safeKeys = [...new Set(invalidKeys.filter((key) => UPSTREAM_FIELD_PATTERN.test(key)))]
+    .slice(0, MAX_DIAGNOSTIC_CONTEXT_KEYS)
+  return safeKeys.length > 0 ? safeKeys : ['context']
+}
+
 function getWorkOSApiKey(): string {
   const apiKey = process.env.WORKOS_API_KEY?.trim()
   if (!apiKey) {
-    throw new Error(
-      'WORKOS_API_KEY is not configured. BYOK vault operations require WorkOS Vault access.',
-    )
+    throw new VaultFailure('missing_configuration')
   }
   return apiKey
 }
@@ -42,15 +144,11 @@ function getWorkOSBaseUrl(): string {
   return (process.env.WORKOS_API_BASE_URL?.trim() || 'https://api.workos.com').replace(/\/$/, '')
 }
 
-function formatVaultApiError(status: number, requestId: string | null): string {
-  const suffix = requestId ? ` (request id: ${requestId})` : ''
-  return `WorkOS Vault request failed (${status})${suffix}`
-}
-
 async function vaultRequest<T>(
   method: 'GET' | 'POST' | 'PUT' | 'DELETE',
   path: string,
   body?: Record<string, unknown>,
+  options: { notFoundIsSuccess?: boolean } = {},
 ): Promise<T | null> {
   const response = await fetch(`${getWorkOSBaseUrl()}${path}`, {
     method,
@@ -66,6 +164,7 @@ async function vaultRequest<T>(
   })
 
   if (response.status === 204) return null
+  if (response.status === 404 && (method === 'DELETE' || options.notFoundIsSuccess)) return null
 
   // The body must be read before it can be parsed — nothing else can run
   // concurrently, so the await is inherent.
@@ -82,7 +181,13 @@ async function vaultRequest<T>(
     : null
 
   if (!response.ok) {
-    throw new Error(formatVaultApiError(response.status, response.headers.get('x-request-id')))
+    const upstreamFailureDetails = getVaultUpstreamFailureDetails(payload)
+    throw new VaultFailure(
+      'http_failure',
+      response.status,
+      upstreamFailureDetails.upstreamCode,
+      upstreamFailureDetails.upstreamFields,
+    )
   }
 
   return payload as T
@@ -90,7 +195,7 @@ async function vaultRequest<T>(
 
 function getVaultObjectId(payload: VaultObjectMetadata | null): string {
   if (payload && typeof payload.id === 'string' && payload.id.trim()) return payload.id
-  throw new Error('WorkOS Vault did not return an object id')
+  throw new VaultFailure('invalid_response')
 }
 
 /**
@@ -103,6 +208,11 @@ export async function writeByokVaultKey(
   context: ByokVaultKeyContext,
 ): Promise<string> {
   try {
+    const invalidContextKeys = getInvalidVaultContextKeys(context)
+    if (invalidContextKeys) {
+      throw new VaultFailure('invalid_context', undefined, undefined, undefined, invalidContextKeys)
+    }
+
     const result = await vaultRequest<VaultObjectMetadata>('POST', '/vault/v1/kv', {
       name: vaultKeyName,
       value: apiKey,
@@ -112,7 +222,7 @@ export async function writeByokVaultKey(
     logger.info('[BYOK Vault] Created vault object')
     return vaultObjectId
   } catch (error) {
-    logger.error('[BYOK Vault] Failed to create vault object', summarizeErrorForLog(error))
+    logger.error('[BYOK Vault] Failed to create vault object', vaultFailureContext(error))
     throw new Error('Failed to store API key in vault')
   }
 }
@@ -131,7 +241,7 @@ export async function updateByokVaultKey(
     })
     logger.info('[BYOK Vault] Updated vault object')
   } catch (error) {
-    logger.error('[BYOK Vault] Failed to update vault object', summarizeErrorForLog(error))
+    logger.error('[BYOK Vault] Failed to update vault object', vaultFailureContext(error))
     throw new Error('Failed to rotate API key in vault')
   }
 }
@@ -145,10 +255,29 @@ export async function deleteByokVaultKey(vaultObjectId: string): Promise<void> {
     await vaultRequest<null>('DELETE', `/vault/v1/kv/${encodeURIComponent(vaultObjectId)}`)
     logger.info('[BYOK Vault] Deleted vault object')
   } catch (error) {
-    logger.error('[BYOK Vault] Failed to delete vault object', summarizeErrorForLog(error))
-    // Don't throw — the Convex record is already being deleted; a stale vault
-    // object is a minor leak, not a user-facing failure.
+    logger.error('[BYOK Vault] Failed to delete vault object', vaultFailureContext(error))
+    throw new Error('Failed to delete vault object')
   }
+}
+
+export async function readByokVaultKeyIdByName(name: string): Promise<string | null> {
+  try {
+    const object = await vaultRequest<VaultObjectMetadata>(
+      'GET',
+      `/vault/v1/kv/name/${encodeURIComponent(name)}`,
+      undefined,
+      { notFoundIsSuccess: true },
+    )
+    return object === null ? null : getVaultObjectId(object)
+  } catch (error) {
+    logger.error('[BYOK Vault] Failed to resolve vault object by name', vaultFailureContext(error))
+    throw new Error('Failed to resolve vault object by name')
+  }
+}
+
+export async function deleteByokVaultKeyByName(name: string): Promise<void> {
+  const vaultObjectId = await readByokVaultKeyIdByName(name)
+  if (vaultObjectId !== null) await deleteByokVaultKey(vaultObjectId)
 }
 
 /**
@@ -171,7 +300,7 @@ export async function readByokVaultKey(vaultObjectId: string): Promise<string | 
     const val = typeof obj?.value === 'string' ? obj.value.trim() : ''
     return val.length > 0 ? val : null
   } catch (error) {
-    logger.warn('[BYOK Vault] Failed to read vault object', summarizeErrorForLog(error))
+    logger.warn('[BYOK Vault] Failed to read vault object', vaultFailureContext(error))
     return null
   }
 }

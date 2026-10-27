@@ -134,7 +134,7 @@ async function generateTitleWithModel({
   })
   if (!reservation.ok) return null
 
-  const languageModel = await getLanguageModel(model.id, auth.accessToken)
+  const languageModel = await getLanguageModel(model.id, auth.accessToken, auth.userId)
   let result: Awaited<ReturnType<typeof generateText>>
   try {
     await chatUsagePolicy.markReservationStarted({

@@ -4,6 +4,20 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Enable ChatGPT/Codex subscription connections in the hosted production environment. Other subscription adapters remain unavailable.
+
+- Keep the composer available when a disconnected BYOK model is selected, with guidance to reconnect or choose another model.
+
+- Track pending credential-vault writes so orphaned objects are deleted after process crashes; disconnect and account deletion retain tracking until in-flight writes have drained.
+
+- Keep a selected subscription or API-key model on new conversations for free-tier accounts instead of resetting to Auto.
+
+- Strip Codex-incompatible output and sampling controls before forwarding subscription inference requests.
+
+- Fix subscription authorization failing to store sign-in state because the credential-vault context contained an unsupported character.
+
+- Preserve safe failure codes, HTTP statuses, upstream error codes, and offending field names in credential-vault logs so subscription authorization failures can be diagnosed without exposing credentials or upstream response bodies.
+
 - Move Account outside workspace settings, add workspace-specific profiles with provider-photo fallbacks, and let workspace admins choose or upload icons. Retire the outdated interactive demo.
 
 - Keep native agents running after a failed tool-progress write and compact live tool results before saving them to the transcript.
@@ -34,6 +48,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Use shadcn focus-visible rings for text inputs and textareas, present message editing with text actions, autosize work titles and agent instructions as layouts settle, and group agent Details into collapsed Model, Instructions, Tools and Advanced disclosures.
 - Settings breadcrumbs read Settings > page instead of a Personal or Workspace prefix.
+
+- Subscription connections now use request-based Codex endpoints in the Overlay app, with durable Convex coordination and credentials held in the vault; the retired broker is no longer required. Other provider adapters remain unavailable until individually implemented, and subscription inference never falls back to Overlay-paid routing.
 
 - Return not found for a removed workspace retained in an API client's active-workspace header.
 

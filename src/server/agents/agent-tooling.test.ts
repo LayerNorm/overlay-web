@@ -69,6 +69,12 @@ test('a free model has nothing to fall back to and is attempted once', () => {
   assert.deepEqual(agentModelAttempts(FREE_TIER_AUTO_MODEL_ID), [FREE_TIER_AUTO_MODEL_ID])
 })
 
+test('a BYOK model does not fall back to Overlay-paid inference', () => {
+  assert.deepEqual(agentModelAttempts('byok/connection_123/openai/gpt-4o'), [
+    'byok/connection_123/openai/gpt-4o',
+  ])
+})
+
 test('the recall instruction is only given when recall is actually available', () => {
   const base = {
     agentName: 'Overlay',
