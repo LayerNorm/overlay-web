@@ -1,5 +1,5 @@
 import type { LanguageModelV4CallOptions } from '@ai-sdk/provider'
-import { wrapLanguageModel } from 'ai'
+import { extractReasoningMiddleware, wrapLanguageModel } from 'ai'
 import { getLanguageModel } from '@/server/ai/model-runtime'
 import { OverlayFreeRouteBusyError } from '@/server/ai/gateway/overlay-free-router-errors'
 import type { HarnessModelReference } from './secure-model'
@@ -9,7 +9,7 @@ async function model(reference: HarnessModelReference) {
     sessionId: reference.sessionId,
     allowLowBalanceFallback: reference.allowLowBalanceFallback,
   })
-  return wrapLanguageModel({ model: provider, middleware: [] })
+  return wrapLanguageModel({ model: provider, middleware: extractReasoningMiddleware({ tagName: 'think' }) })
 }
 
 async function recordConfirmedRejection(reference: HarnessModelReference, error: unknown): Promise<void> {

@@ -16,6 +16,20 @@ const reference: HarnessModelReference = { modelId: 'openrouter/free', credentia
 
 beforeEach(() => { vi.resetAllMocks(); mocks.confirmed.mockReturnValue(false) })
 
+test('generated results separate tagged reasoning without changing provider accounting', async () => {
+  const usage = { inputTokens: { total: 10, noCache: 10, cacheRead: 0, cacheWrite: 0 },
+    outputTokens: { total: 5, text: 5, reasoning: 0 } }
+  const provider = new MockLanguageModelV4({ doGenerate: async () => ({
+    content: [{ type: 'text', text: '<think>Private planning</think>Final result' }],
+    finishReason: { unified: 'stop', raw: 'stop' }, usage, warnings: [],
+  }) })
+  mocks.model.mockResolvedValue(provider)
+  const result = await secureModelDoGenerate(reference, { prompt: [] })
+  expect(result.content).toEqual([{ type: 'reasoning', text: 'Private planning' }, { type: 'text', text: 'Final result' }])
+  expect(result.usage).toEqual(usage)
+  expect(provider.doGenerateCalls).toHaveLength(1)
+})
+
 test.each([secureModelDoStream, secureModelDoGenerate])('only the typed pre-inference busy result creates a capacity receipt', async invoke => {
   let failure: Error = new OverlayFreeRouteBusyError()
   const dispatch = async () => { throw failure }

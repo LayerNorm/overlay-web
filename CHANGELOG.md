@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Separate tagged model reasoning from Harness final answers and delegated result summaries using the AI SDK middleware, preserving provider usage receipts.
+
 - Join active Harness children with durable waits instead of model polling, and explicitly request the final deliverable once all plan evidence is complete.
 
 - Wait durably for busy free-model routes before inference, retaining exclusive route leases and zero-cost rejection receipts. Convex accepts the same bounded rejection reasons as the runtime. Ambiguous provider failures still retain billing holds and never authorize another Harness dispatch.

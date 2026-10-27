@@ -94,6 +94,16 @@ function fixture(requiresPlan = true) {
 
 const input = { instructions: 'Use the tools to perform the requested work.', messages: [{ role: 'user' as const, content: 'Read the records.' }], model: { modelId: 'fixture/model', credentialOwnerId: 'user' } }
 
+test('reasoning stays separate from the durable final result shared with parents', async () => {
+  const f = fixture(false)
+  const provider = model(() => '<think>Private planning</think>Final result')
+  const result = await runOverlayHarness({ ...input, tools: {} }, f.ports)
+  expect(result.snapshot.resultSummary).toBe('Final result')
+  expect(result.steps[0]?.reasoningText).toBe('Private planning')
+  expect(provider.doStreamCalls).toHaveLength(1)
+  expect(result.snapshot.usage.outputTokens).toBe(1)
+})
+
 test('the real SDK runs beyond twenty tool calls and continues after early sign-off', async () => {
   const f = fixture()
   let prepared = false
