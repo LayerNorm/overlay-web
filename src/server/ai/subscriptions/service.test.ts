@@ -437,6 +437,38 @@ test('fresh pending writes are not deleted by stale reconciliation', async () =>
   assert.deepEqual(repository.state?.pendingWrites, [{ name: 'fresh-write', createdAt }])
 })
 
+for (const operation of ['disconnect', 'revokeAllForUser'] as const) {
+  test(`${operation} retains pending names while a vault write may still create its object`, async () => {
+    const repository = new FakeRepository()
+    const name = 'in-flight-credential'
+    const createdAt = Date.now()
+    repository.state = {
+      userId: 'owner-1', connectionId: 'connection-1', providerId: 'codex',
+      phase: 'pending', generation: 1, revision: 1, cleanupRefs: [],
+      leaseUntil: Date.now() + 60_000,
+      pendingWrites: [{ name, createdAt }],
+    }
+    const credentials = new FakeCredentials()
+    const service = createService(repository, credentials, async () => { throw new Error('unused') })
+    const revoke = () => operation === 'disconnect'
+      ? service.disconnect('owner-1', 'connection-1')
+      : service.revokeAllForUser('owner-1')
+
+    await assert.rejects(revoke(), /Subscription cleanup is pending/)
+    assert.deepEqual(credentials.deletedNames, [])
+    assert.equal(repository.forgetDisconnectedCalls + repository.forgetAllCalls, 0)
+    assert.deepEqual(repository.state?.pendingWrites, [{ name, createdAt }])
+
+    // The provider finishes creating the object, but the writer crashes before committing its reference.
+    await credentials.write({ name, apiKey: 'late-credential' })
+    repository.state = { ...repository.state, leaseUntil: Date.now() - 1 }
+    await revoke()
+    assert.deepEqual(credentials.deletedNames, [name])
+    assert.equal(credentials.values.size, 0)
+    assert.equal(repository.state, null)
+  })
+}
+
 test('disconnect reconciles all pending writes and does not forget state after a deletion failure', async () => {
   const repository = new FakeRepository()
   repository.state = {

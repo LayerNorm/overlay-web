@@ -410,6 +410,10 @@ export class SubscriptionService {
     }
     if (!state) return true
 
+    if (state.leaseUntil !== undefined && state.leaseUntil > Date.now()) {
+      return (state.pendingWrites?.length ?? 0) === 0
+    }
+
     const cutoff = Date.now() - olderThanMs
     let succeeded = true
     for (const pendingWrite of state.pendingWrites ?? []) {

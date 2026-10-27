@@ -38,9 +38,11 @@ name and timestamp in Convex. Saving the resulting reference or retaining it for
 cleanup clears that pending name in the same mutation. Writes older than five
 minutes are deleted by name during reconciliation, which exceeds the 60 second
 Convex lease and avoids touching an in-flight write. Disconnect and account
-revocation reconcile all pending writes after invalidation and block state
-removal until cleanup succeeds. This closes the process-crash orphan window
-without claiming cross-service atomicity.
+revocation invalidate access immediately, retain pending names while the previous
+operation's lease may still be running, and reconcile them only after that cleanup
+barrier expires. An early name lookup returning no object must not erase tracking
+for a write that can still finish. State removal waits for successful cleanup.
+This preserves recovery after a writer crashes without claiming cross-service atomicity.
 
 Vault failures log only a structured failure code and, for upstream rejections,
 the HTTP status. `missing_configuration` means the runtime has no

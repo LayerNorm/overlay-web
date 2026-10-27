@@ -6,7 +6,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Keep the composer available when a disconnected BYOK model is selected, with guidance to reconnect or choose another model.
 
-- Track pending credential-vault writes so orphaned objects are deleted after process crashes.
+- Track pending credential-vault writes so orphaned objects are deleted after process crashes; disconnect and account deletion retain tracking until in-flight writes have drained.
 
 - Keep a selected subscription or API-key model on new conversations for free-tier accounts instead of resetting to Auto.
 
