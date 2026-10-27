@@ -464,6 +464,12 @@ Do not run `/api/v1/conversations/events` long-polls alongside those subscriptio
 
 ## Harness model step registration
 
+`harness_read_child` returns a parent-owned `evidenceRef` for a completed child
+result. It is an observed tool result, not independent verification; milestones
+requiring verification still need a separate passing verification receipt.
+Running, failed, cancelled or unrelated children cannot supply this completion
+evidence. Original child evidence IDs remain scoped to their child run.
+
 `HarnessLanguageModel` delegates to named `streamHarnessModel` and
 `generateHarnessModel` steps with `maxRetries = 0`. Do not assign retry metadata
 to class prototype methods marked `use step`: the Workflow compiler removes

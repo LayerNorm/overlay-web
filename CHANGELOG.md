@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Persist completed child-run results as parent observations so delegated milestones can reference their output without treating it as independent verification.
+
 - Fix Harness Workflow initialization by configuring model retry limits on compiler-safe step functions, keeping credentials and authorization inside durable execution.
 
 - Recover personal Chat and Work sends after a pre-dispatch session rejection, using the shared browser session refresh and preserving turn identity without replaying provider failures.
