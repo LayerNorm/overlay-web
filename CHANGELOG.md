@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Enable ChatGPT/Codex subscription connections in the hosted production environment. Other subscription adapters remain unavailable.
+
 - Keep the composer available when a disconnected BYOK model is selected, with guidance to reconnect or choose another model.
 
 - Track pending credential-vault writes so orphaned objects are deleted after process crashes; disconnect and account deletion retain tracking until in-flight writes have drained.
