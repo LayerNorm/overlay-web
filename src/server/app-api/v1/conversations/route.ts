@@ -3,12 +3,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { paginateArray } from '@/server/app-api/pagination-core'
 import { getOverlayServerContext } from '@/server/bootstrap'
-import {
-  DEFAULT_MODEL_ID,
-  FREE_TIER_DEFAULT_MODEL_ID,
-  resolveFreeTierChatModelId,
-} from '@/shared/ai/gateway/model-types'
-import { normalizeChatModelSelection } from '@/shared/chat/chat-model-prefs'
 import { canUsePaidBudgetFeatures } from '@/server/billing/billing-runtime'
 import {
   GENERATED_UI_DATA_TYPE,
@@ -18,24 +12,8 @@ import type {
   ConversationMessageRow,
 } from '@/server/conversations/ActConversationRepository'
 import { asConversationId } from '@/server/conversations/ActConversationRepository'
+import { resolveConversationModelSelection } from './conversation-model-selection'
 import {conversationMessageParts} from './message-parts'
-
-function clampFreeTierAskModels(modelIds: string[] | undefined): string[] {
-  const requested =
-    modelIds
-      ?.map(resolveFreeTierChatModelId)
-      .filter((id): id is string => Boolean(id)) ?? []
-  const deduped = [...new Set(requested)].slice(0, 4)
-  return deduped.length > 0 ? deduped : [FREE_TIER_DEFAULT_MODEL_ID]
-}
-
-function normalizePaidChatModels(modelIds: string[] | undefined, actModelId: string | undefined) {
-  return normalizeChatModelSelection({
-    askModelIds: modelIds,
-    actModelId,
-    fallbackModelId: DEFAULT_MODEL_ID,
-  })
-}
 
 function readBooleanParam(value: string | null): boolean | undefined {
   if (value == null) return undefined
@@ -260,19 +238,18 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const repository = appData.repositories.conversations
     const entitlements = await chatUsagePolicy.getEntitlements({ userId: auth.userId })
     const isFreeTier = !entitlements || !canUsePaidBudgetFeatures(entitlements)
-    const freeAskModelIds = clampFreeTierAskModels(body.askModelIds)
-    const freeActModelId =
-      resolveFreeTierChatModelId(body.actModelId) ??
-      freeAskModelIds[0] ??
-      FREE_TIER_DEFAULT_MODEL_ID
-    const paidModels = normalizePaidChatModels(body.askModelIds, body.actModelId)
+    const models = resolveConversationModelSelection({
+      isFreeTier,
+      askModelIds: body.askModelIds,
+      actModelId: body.actModelId,
+    })
     const id = await repository.createConversation({
       userId: auth.userId,
       workspaceId: context.workspace.workspace.id,
       clientId: body.clientId?.trim() || undefined,
       title: body.title || 'New Chat',
-      askModelIds: isFreeTier ? freeAskModelIds : paidModels.askModelIds,
-      actModelId: isFreeTier ? freeActModelId : paidModels.actModelId,
+      askModelIds: models.askModelIds,
+      actModelId: models.actModelId,
       lastMode: body.lastMode,
       ...(body.scope === 'workspace' ? { scope: 'workspace' as const } : {}),
     })
@@ -311,19 +288,13 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
     if (body.askModelIds !== undefined || body.actModelId !== undefined) {
       const entitlements = await chatUsagePolicy.getEntitlements({ userId: auth.userId })
       const isFreeTier = !entitlements || !canUsePaidBudgetFeatures(entitlements)
-      if (isFreeTier) {
-        const freeAskModelIds = body.askModelIds !== undefined
-          ? clampFreeTierAskModels(body.askModelIds)
-          : undefined
-        askModelIds = freeAskModelIds
-        actModelId = body.actModelId !== undefined
-          ? resolveFreeTierChatModelId(body.actModelId) ?? freeAskModelIds?.[0] ?? FREE_TIER_DEFAULT_MODEL_ID
-          : undefined
-      } else {
-        const normalized = normalizePaidChatModels(body.askModelIds, body.actModelId)
-        askModelIds = body.askModelIds !== undefined ? normalized.askModelIds : undefined
-        actModelId = body.actModelId !== undefined ? normalized.actModelId : undefined
-      }
+      const models = resolveConversationModelSelection({
+        isFreeTier,
+        askModelIds: body.askModelIds,
+        actModelId: body.actModelId,
+      })
+      askModelIds = body.askModelIds !== undefined ? models.askModelIds : undefined
+      actModelId = body.actModelId !== undefined ? models.actModelId : undefined
     }
 
     await repository.updateConversation({

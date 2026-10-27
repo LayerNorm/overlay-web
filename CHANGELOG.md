@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Keep a selected subscription or API-key model on new conversations for free-tier accounts instead of resetting to Auto.
+
 - Strip Codex-incompatible output and sampling controls before forwarding subscription inference requests.
 
 - Fix subscription authorization failing to store sign-in state because the credential-vault context contained an unsupported character.
