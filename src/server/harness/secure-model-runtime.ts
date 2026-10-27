@@ -23,12 +23,16 @@ async function recordConfirmedRejection(reference: HarnessModelReference, error:
 }
 
 export async function secureModelDoStream(reference: HarnessModelReference, options: LanguageModelV4CallOptions) {
+  let result: Awaited<ReturnType<Awaited<ReturnType<typeof model>>['doStream']>>
   try {
-    return await (await model(reference)).doStream(options)
+    result = await (await model(reference)).doStream(options)
   } catch (error) {
     await recordConfirmedRejection(reference, error)
     throw error
   }
+  if (!reference.native?.streamToDelivery) return result
+  const { projectNativeHarnessStream } = await import('./native-model-stream')
+  return { ...result, stream: await projectNativeHarnessStream(reference, result.stream) }
 }
 
 export async function secureModelDoGenerate(reference: HarnessModelReference, options: LanguageModelV4CallOptions) {

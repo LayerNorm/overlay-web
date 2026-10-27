@@ -48,7 +48,7 @@ const native: NativeHarnessModelDispatch = {
   access: { actorUserId: 'fixture-user', runId: 'workspace:delivery', workflowRunId: 'workflow',
     conversationId: 'room', agentRunId: 'delivery', workspaceId: 'workspace', principalId: 'principal',
     agentId: 'agent', agentPrincipalId: 'agent-principal', userMessageId: 'question', assistantMessageId: 'answer', turnId: 'turn' },
-  receiptId: 'model:0', memoryEnabled: true, sharedRoom: false, requestFingerprint: 'request',
+  receiptId: 'model:0', memoryEnabled: true, sharedRoom: false, requestFingerprint: 'request', streamToDelivery: true,
   inputTokenBudget: 10_000, maxOutputTokens: 100, contextWindow: 100_000,
 }
 

@@ -10,6 +10,7 @@ export type NativeHarnessModelDispatch = Omit<HarnessModelDispatch, 'access' | '
   access: NativeHarnessAccess
   memoryEnabled: boolean
   sharedRoom: boolean
+  streamToDelivery?: boolean
 }
 
 export async function authorizeNativeHarnessModelDispatch(reference: HarnessModelReference, options: LanguageModelV4CallOptions): Promise<void> {

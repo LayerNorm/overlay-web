@@ -56,6 +56,7 @@ export class HarnessLanguageModel implements LanguageModelV4 {
           userMessageId: native.access.userMessageId, assistantMessageId: native.access.assistantMessageId, turnId: native.access.turnId,
         },
         receiptId: native.receiptId, memoryEnabled: native.memoryEnabled, sharedRoom: native.sharedRoom,
+        ...(native.streamToDelivery === true ? { streamToDelivery: true } : {}),
         requestFingerprint: native.requestFingerprint, inputTokenBudget: native.inputTokenBudget,
         maxOutputTokens: native.maxOutputTokens, contextWindow: native.contextWindow,
       } } : {}),

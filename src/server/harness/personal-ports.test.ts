@@ -51,7 +51,7 @@ test('shared model preparation delegates surface authority without requiring per
     toolNames: [], toolDefinitions: [], settings: { maxOutputTokens: 100 },
   })
   expect(prepare).toHaveBeenCalledExactlyOnceWith({
-    modelId: 'fixture/model', receiptId: 'model:0',
+    modelId: 'fixture/model', receiptId: 'model:0', purpose: 'response',
     options: expect.objectContaining({ maxOutputTokens: 100, tools: [], prompt: expect.any(Array) }),
   })
   expect(result.model).toEqual({ modelId: 'fixture/model', credentialOwnerId: 'user' })

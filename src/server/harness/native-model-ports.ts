@@ -11,8 +11,8 @@ export function createNativeHarnessModelPorts(input: {
     reference: input.access,
     modelId: input.context.modelId,
     contextBudgetTokens: input.contextBudgetTokens,
-    prepare: ({ modelId, receiptId, options }) => prepareNativeHarnessModel({
-      access: input.access, context: { ...input.context, modelId }, receiptId, options,
+    prepare: ({ modelId, receiptId, purpose, options }) => prepareNativeHarnessModel({
+      access: input.access, context: { ...input.context, modelId }, receiptId, purpose, options,
     }),
   }, routing)
 }

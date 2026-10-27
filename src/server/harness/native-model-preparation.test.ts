@@ -43,3 +43,10 @@ test('revocation precedes pricing and native calls reuse the shared capacity and
     providerOptions: { gateway: { models: ['other/model'] } },
   } })).rejects.toThrow(/fallback/)
 })
+
+test('only a delivery-owning response can stream to the room, never context summaries or anonymous children', async () => {
+  expect((await prepareNativeHarnessModel({ ...input, purpose: 'response' })).model.native?.streamToDelivery).toBe(true)
+  expect((await prepareNativeHarnessModel({ ...input, purpose: 'summary' })).model.native?.streamToDelivery).toBeUndefined()
+  expect((await prepareNativeHarnessModel(input)).model.native?.streamToDelivery).toBeUndefined()
+  expect((await prepareNativeHarnessModel({ ...input, purpose: 'response', access: { ...access, runId: 'child' } })).model.native?.streamToDelivery).toBeUndefined()
+})
