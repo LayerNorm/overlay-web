@@ -67,6 +67,7 @@ export function createHarnessControlTools(ports: HarnessExecutionPorts) {
         if (child.parentRunId !== parent.runId || child.rootRunId !== parent.rootRunId) throw new Error('Invalid child lineage.')
         const result = { status: child.status, summary: child.resultSummary ?? child.workingSummary, evidence: child.evidence, blocker: child.blocker }
         if (child.status !== 'completed') return result
+        await ports.apply(`settle-child:${child.runId}:${child.revision}`, { type: 'settle_child', childRunId })
         const evidenceRef = `child-result:${toolCallId}`
         await ports.apply(`control:${toolCallId}`, { type: 'record_evidence', evidence: {
           id: evidenceRef, kind: 'tool_result', source: `harness_read_child:${child.runId}`,
