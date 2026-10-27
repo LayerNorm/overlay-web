@@ -45,6 +45,7 @@ import {
 } from './chat-send-create'
 import { sendMediaTurn } from './chat-send-media'
 import { sendTextTurn } from './chat-send-text'
+import { getBlockedSendNotice } from './chat-composer-blocking'
 
 export { TEMPORARY_CHAT_ID, PENDING_FIRST_CHAT_ID } from './chat-send-body-builders'
 
@@ -65,9 +66,11 @@ export function useChatSendController({
   invalidateLoadChatRequest,
   isActiveLoading,
   isBudgetExhaustedPaid,
+  connectionUnavailable,
   isFirstMessage,
   isFreeTier,
   isSendBlocked,
+  premiumModelBlocked,
   isTemporaryChat,
   isTemporaryChatRef,
   loadChats,
@@ -138,9 +141,11 @@ export function useChatSendController({
   invalidateLoadChatRequest: () => void
   isActiveLoading: boolean
   isBudgetExhaustedPaid: boolean
+  connectionUnavailable: boolean
   isFirstMessage: boolean
   isFreeTier: boolean
   isSendBlocked: boolean
+  premiumModelBlocked: boolean
   isTemporaryChat: boolean
   isTemporaryChatRef: MutableRefObject<boolean>
   loadChats: () => Promise<void>
@@ -359,11 +364,11 @@ export function useChatSendController({
     }
     if (sendValidationError === 'empty') return
     if (isSendBlocked) {
-      setComposerNotice(
-        isBudgetExhaustedPaid
-          ? 'Budget exhausted. Add a top-up to continue with paid models, or switch to Auto for free chat.'
-          : 'This model requires a paid plan. Switch to Auto or upgrade.',
-      )
+      setComposerNotice(getBlockedSendNotice({
+        connectionUnavailable,
+        isBudgetExhaustedPaid,
+        premiumModelBlocked,
+      }))
       return
     }
 
@@ -466,9 +471,11 @@ export function useChatSendController({
     inputRef,
     isActiveLoading,
     isBudgetExhaustedPaid,
+    connectionUnavailable,
     isFirstMessage,
     isFreeTier,
     isSendBlocked,
+    premiumModelBlocked,
     isStreamChatActive,
     isTemporaryChat,
     isTemporaryChatRef,

@@ -16,6 +16,7 @@ import {
   budgetRemainingCentsFor,
   useWorkspaceTextModelAccess,
 } from '@/components/providers/useWorkspaceTextModelAccess'
+import { CONNECTION_UNAVAILABLE_NOTICE, hasUnavailableByokModel } from './chat-composer-blocking'
 
 type ChatRouter = {
   replace: (href: string) => void
@@ -36,8 +37,6 @@ type ModelSelectionControls = {
   setSelectedModels: (modelIds: string[]) => void
 }
 
-const CONNECTION_UNAVAILABLE_NOTICE = 'This model connection is unavailable. Reconnect it in Settings > Providers or choose another model. No fallback has been selected.'
-
 function useByokModelAvailability({
   chatPrefsHydrated,
   modelCatalogReady,
@@ -53,9 +52,13 @@ function useByokModelAvailability({
   selectedModels: string[]
   setComposerNotice: ComposerNoticeSetter
 }) {
-  const unavailable = chatPrefsHydrated && modelCatalogReady && [selectedActModel, ...selectedModels].some((id) =>
-    isByokModelId(id) && !selectableTextModels.some((model) => model.id === id),
-  )
+  const unavailable = hasUnavailableByokModel({
+    chatPrefsHydrated,
+    modelCatalogReady,
+    selectableTextModels,
+    selectedActModel,
+    selectedModels,
+  })
   useEffect(() => {
     setComposerNotice((current) => unavailable ? CONNECTION_UNAVAILABLE_NOTICE : current === CONNECTION_UNAVAILABLE_NOTICE ? null : current)
   }, [unavailable, setComposerNotice])
@@ -300,6 +303,7 @@ export function useChatBillingControls({
     isSendBlocked,
     loadSubscription,
     premiumModelBlocked,
+    connectionUnavailable,
     selectableTextModels,
     setAutoTopUpEnabledDraft,
     setTopUpAmountDraftCents,

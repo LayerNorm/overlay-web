@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Keep the composer available when a disconnected BYOK model is selected, with guidance to reconnect or choose another model.
+
 - Track pending credential-vault writes so orphaned objects are deleted after process crashes.
 
 - Keep a selected subscription or API-key model on new conversations for free-tier accounts instead of resetting to Auto.
