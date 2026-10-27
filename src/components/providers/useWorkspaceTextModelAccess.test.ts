@@ -55,3 +55,22 @@ test('ZDR-only access excludes models without zero-data-retention support', () =
   assert.ok(zdrModels.length > 0)
   assert.ok(zdrModels.every((model) => model.supportsZeroDataRetention))
 })
+
+test('billing-disabled deployments still restrict free workspaces to Auto and OpenRouter free', () => {
+  const freeAccess = resolveEntitlementDerived({
+    tier: 'free',
+    creditsUsed: 0,
+    creditsTotal: 0,
+  }, false, false)
+  assert.equal(freeAccess.isFreeTier, true)
+  assert.deepEqual(
+    buildSelectableTextModels(freeAccess).map((model) => model.id).sort(),
+    ['openrouter/free', 'overlay-free'],
+  )
+})
+
+test('billing-disabled deployments without entitlements keep the full list', () => {
+  const unknownAccess = resolveEntitlementDerived(null, false, false)
+  assert.equal(unknownAccess.isFreeTier, false)
+  assert.ok(buildSelectableTextModels(unknownAccess).length > 2)
+})

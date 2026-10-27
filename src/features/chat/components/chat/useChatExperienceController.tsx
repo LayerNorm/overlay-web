@@ -311,7 +311,6 @@ export function useChatExperienceController({
     applyDefaultChatModelsToView,
   } = useChatModelDefaults({
     settings,
-    billingEnabled,
     isFreeTier,
     hasStoredTextModelSelection,
     selectedActModel,

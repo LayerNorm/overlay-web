@@ -313,7 +313,7 @@ function useNewAgentModelField(workspaceId: string | null, draftModelId: string)
     void getGatewayCatalogRevision()
     return getModelsByIntelligence(false)
   }, [revision])
-  const accessUnresolved = capabilities.billing === true && !modelAccess.entitlements
+  const accessUnresolved = !modelAccess.entitlements
   const restricted = modelAccess.loading || accessUnresolved
   const selectableTextModels = useMemo(
     () => restricted
