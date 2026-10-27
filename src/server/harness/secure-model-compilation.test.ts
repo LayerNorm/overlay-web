@@ -7,7 +7,7 @@ import { transform } from 'esbuild'
 import { expect, test, vi } from 'vitest'
 import type { HarnessLanguageModel } from './secure-model'
 
-test('compiled workflow can load and dispatch the credential-free model adapter', async () => {
+test.each([false, true])('compiled workflow can load and dispatch the credential-free model adapter (native: %s)', async native => {
   const path = fileURLToPath(new URL('./secure-model.ts', import.meta.url))
   const source = await readFile(path, 'utf8')
   const compiled = await applySwcTransform('src/server/harness/secure-model.ts', source, 'workflow', path)
@@ -28,7 +28,13 @@ test('compiled workflow can load and dispatch the credential-free model adapter'
       return step
     },
   })
-  const reference = { modelId: 'fixture/model', credentialOwnerId: 'fixture-user' }
+  const reference = { modelId: 'fixture/model', credentialOwnerId: 'fixture-user', ...(native ? { native: {
+    access: { actorUserId: 'fixture-user', runId: 'workspace:delivery', workflowRunId: 'workflow', workspaceId: 'workspace',
+      principalId: 'human-principal', agentId: 'agent', agentPrincipalId: 'agent-principal', conversationId: 'room',
+      agentRunId: 'delivery', userMessageId: 'question', assistantMessageId: 'answer', turnId: 'turn' },
+    receiptId: 'model:0', memoryEnabled: true, sharedRoom: false, requestFingerprint: 'request',
+    inputTokenBudget: 1_000, maxOutputTokens: 100, contextWindow: 10_000,
+  } } : {}) }
   const model = new compiledModule.exports.HarnessLanguageModel(reference)
   const options = { prompt: [] }
   await model.doStream(options)

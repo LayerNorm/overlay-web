@@ -13,7 +13,7 @@ async function model(reference: HarnessModelReference) {
 }
 
 async function recordConfirmedRejection(reference: HarnessModelReference, error: unknown): Promise<void> {
-  if (!reference.personal || reference.modelId.startsWith('byok/')) return
+  if ((!reference.personal && !reference.native) || reference.modelId.startsWith('byok/')) return
   const { isConfirmedHarnessModelRejection, recordHarnessModelRejection } = await import('./model-rejection')
   if (error instanceof OverlayFreeRouteBusyError) {
     await recordHarnessModelRejection(reference, 'route_capacity')

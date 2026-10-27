@@ -14,6 +14,14 @@ const reference: HarnessModelReference = { modelId: 'openrouter/free', credentia
   receiptId: 'model:0', memoryEnabled: false, requestFingerprint: 'request', inputTokenBudget: 100, maxOutputTokens: 100, contextWindow: null,
 } }
 
+const nativeReference: HarnessModelReference = { modelId: 'openrouter/free', credentialOwnerId: 'user', native: {
+  access: { actorUserId: 'user', runId: 'workspace:delivery', workflowRunId: 'workflow', workspaceId: 'workspace',
+    principalId: 'human-principal', agentId: 'agent', agentPrincipalId: 'agent-principal', conversationId: 'room',
+    agentRunId: 'delivery', userMessageId: 'question', assistantMessageId: 'answer', turnId: 'turn' },
+  receiptId: 'model:0', memoryEnabled: false, sharedRoom: true, requestFingerprint: 'request',
+  inputTokenBudget: 100, maxOutputTokens: 100, contextWindow: null,
+} }
+
 beforeEach(() => { vi.resetAllMocks(); mocks.confirmed.mockReturnValue(false) })
 
 test('generated results separate tagged reasoning without changing provider accounting', async () => {
@@ -30,16 +38,19 @@ test('generated results separate tagged reasoning without changing provider acco
   expect(provider.doGenerateCalls).toHaveLength(1)
 })
 
-test.each([secureModelDoStream, secureModelDoGenerate])('only the typed pre-inference busy result creates a capacity receipt', async invoke => {
+test.each([
+  [secureModelDoStream, reference], [secureModelDoGenerate, reference],
+  [secureModelDoStream, nativeReference], [secureModelDoGenerate, nativeReference],
+] as const)('only the typed pre-inference busy result creates a capacity receipt', async (invoke, dispatchReference) => {
   let failure: Error = new OverlayFreeRouteBusyError()
   const dispatch = async () => { throw failure }
   mocks.model.mockResolvedValue(new MockLanguageModelV4({ doStream: dispatch, doGenerate: dispatch }))
-  await expect(invoke(reference, { prompt: [] })).rejects.toBe(failure)
-  expect(mocks.record).toHaveBeenCalledExactlyOnceWith(reference, 'route_capacity')
+  await expect(invoke(dispatchReference, { prompt: [] })).rejects.toBe(failure)
+  expect(mocks.record).toHaveBeenCalledExactlyOnceWith(dispatchReference, 'route_capacity')
   failure = new Error('overlay_free_route_busy')
-  await expect(invoke(reference, { prompt: [] })).rejects.toBe(failure)
+  await expect(invoke(dispatchReference, { prompt: [] })).rejects.toBe(failure)
   expect(mocks.record).toHaveBeenCalledOnce()
   failure = new OverlayFreeRouteBusyError()
   mocks.record.mockRejectedValueOnce(new Error('receipt storage failed'))
-  await expect(invoke(reference, { prompt: [] })).rejects.toThrow('receipt storage failed')
+  await expect(invoke(dispatchReference, { prompt: [] })).rejects.toThrow('receipt storage failed')
 })

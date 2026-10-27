@@ -19,7 +19,8 @@ export async function recordHarnessModelRejection(
   reference: HarnessModelReference,
   reason: NonNullable<HarnessReceipt['rejectionReason']>,
 ): Promise<void> {
-  const input = reference.personal
+  if (reference.personal && reference.native) throw new FatalError('Model rejection has ambiguous execution authority.')
+  const input = reference.personal ?? reference.native
   if (!input || isByokModelId(reference.modelId)) throw new FatalError('Cannot reject an external model dispatch.')
   if (reason === 'route_capacity' && reference.modelId !== OPENROUTER_FREE_MODEL_ID && reference.modelId !== OVERLAY_FREE_MODEL_ID) {
     throw new FatalError('Only the free router can confirm a capacity rejection.')

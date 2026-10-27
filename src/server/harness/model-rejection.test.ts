@@ -66,3 +66,24 @@ test('capacity rejection releases only a matching free-router dispatch with a ze
   await expect(recordHarnessModelRejection(free, 'route_capacity')).rejects.toThrow('matching dispatch')
   expect(mocks.apply).toHaveBeenCalledOnce()
 })
+
+test('native confirmed rejection retains the same receipt and billing safeguards', async () => {
+  const native = {
+    access: { actorUserId: 'user', runId: 'workspace:delivery', workflowRunId: 'workflow', workspaceId: 'workspace',
+      principalId: 'human-principal', agentId: 'agent', agentPrincipalId: 'agent-principal', conversationId: 'room',
+      agentRunId: 'delivery', userMessageId: 'question', assistantMessageId: 'answer', turnId: 'turn' },
+    receiptId: 'model:0', memoryEnabled: false, sharedRoom: true, requestFingerprint: 'request',
+    inputTokenBudget: 100, maxOutputTokens: 100, contextWindow: 1_000,
+  }
+  const free: HarnessModelReference = { modelId: 'openrouter/free', credentialOwnerId: 'user', allowLowBalanceFallback: false, native }
+  mocks.read.mockResolvedValue({ ...state, modelReservation: { ...hold,
+    dispatch: { modelId: free.modelId, billingReservationId: 'billing' },
+  } })
+  await recordHarnessModelRejection(free, 'route_capacity')
+  expect(mocks.apply).toHaveBeenCalledExactlyOnceWith(native.access, 'rejected:model:0', expect.objectContaining({
+    receipt: expect.objectContaining({ rejectionReason: 'route_capacity', costMicros: 0, inputTokens: 0, outputTokens: 0 }),
+  }))
+  await expect(recordHarnessModelRejection({ ...free, personal: reference.personal }, 'route_capacity')).rejects.toThrow(/ambiguous/)
+  await expect(recordHarnessModelRejection({ ...free, modelId: 'byok/key/model' }, 'route_capacity')).rejects.toThrow(/external/)
+  expect(mocks.release).toHaveBeenCalledOnce()
+})

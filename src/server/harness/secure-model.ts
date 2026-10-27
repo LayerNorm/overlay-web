@@ -1,6 +1,7 @@
 import type { LanguageModelV4, LanguageModelV4CallOptions } from '@ai-sdk/provider'
 import { WORKFLOW_DESERIALIZE, WORKFLOW_SERIALIZE } from '@workflow/serde'
 import type { PersonalHarnessModelDispatch } from './personal-model-dispatch'
+import type { NativeHarnessModelDispatch } from './native-model-dispatch'
 
 export type HarnessModelReference = {
   modelId: string
@@ -8,6 +9,11 @@ export type HarnessModelReference = {
   sessionId?: string
   allowLowBalanceFallback?: boolean
   personal?: PersonalHarnessModelDispatch
+  native?: NativeHarnessModelDispatch
+}
+
+function assertSingleAuthority(reference: HarnessModelReference): void {
+  if (reference.personal && reference.native) throw new Error('A model dispatch cannot have both personal and native authority.')
 }
 
 export class HarnessLanguageModel implements LanguageModelV4 {
@@ -21,6 +27,8 @@ export class HarnessLanguageModel implements LanguageModelV4 {
 
   static [WORKFLOW_SERIALIZE](model: HarnessLanguageModel): HarnessModelReference {
     const personal = model.reference.personal
+    const native = model.reference.native
+    assertSingleAuthority(model.reference)
     return {
       modelId: model.reference.modelId,
       credentialOwnerId: model.reference.credentialOwnerId,
@@ -38,6 +46,18 @@ export class HarnessLanguageModel implements LanguageModelV4 {
         receiptId: personal.receiptId, memoryEnabled: personal.memoryEnabled, requestFingerprint: personal.requestFingerprint,
         ...(personal.billingProgrammaticSubjectId ? { billingProgrammaticSubjectId: personal.billingProgrammaticSubjectId } : {}),
         inputTokenBudget: personal.inputTokenBudget, maxOutputTokens: personal.maxOutputTokens, contextWindow: personal.contextWindow,
+      } } : {}),
+      ...(native ? { native: {
+        access: {
+          actorUserId: native.access.actorUserId, runId: native.access.runId, workflowRunId: native.access.workflowRunId,
+          workspaceId: native.access.workspaceId, principalId: native.access.principalId,
+          agentId: native.access.agentId, agentPrincipalId: native.access.agentPrincipalId,
+          conversationId: native.access.conversationId, agentRunId: native.access.agentRunId,
+          userMessageId: native.access.userMessageId, assistantMessageId: native.access.assistantMessageId, turnId: native.access.turnId,
+        },
+        receiptId: native.receiptId, memoryEnabled: native.memoryEnabled, sharedRoom: native.sharedRoom,
+        requestFingerprint: native.requestFingerprint, inputTokenBudget: native.inputTokenBudget,
+        maxOutputTokens: native.maxOutputTokens, contextWindow: native.contextWindow,
       } } : {}),
     }
   }
@@ -57,9 +77,14 @@ export class HarnessLanguageModel implements LanguageModelV4 {
 
 export async function streamHarnessModel(reference: HarnessModelReference, options: LanguageModelV4CallOptions) {
   'use step'
+  assertSingleAuthority(reference)
   if (reference.personal) {
     const { authorizePersonalHarnessModelDispatch } = await import('./personal-model-dispatch')
     await authorizePersonalHarnessModelDispatch(reference, options)
+  }
+  if (reference.native) {
+    const { authorizeNativeHarnessModelDispatch } = await import('./native-model-dispatch')
+    await authorizeNativeHarnessModelDispatch(reference, options)
   }
   const { secureModelDoStream } = await import('./secure-model-runtime')
   return secureModelDoStream(reference, options)
@@ -67,9 +92,14 @@ export async function streamHarnessModel(reference: HarnessModelReference, optio
 
 export async function generateHarnessModel(reference: HarnessModelReference, options: LanguageModelV4CallOptions) {
   'use step'
+  assertSingleAuthority(reference)
   if (reference.personal) {
     const { authorizePersonalHarnessModelDispatch } = await import('./personal-model-dispatch')
     await authorizePersonalHarnessModelDispatch(reference, options)
+  }
+  if (reference.native) {
+    const { authorizeNativeHarnessModelDispatch } = await import('./native-model-dispatch')
+    await authorizeNativeHarnessModelDispatch(reference, options)
   }
   const { secureModelDoGenerate } = await import('./secure-model-runtime')
   return secureModelDoGenerate(reference, options)

@@ -5,9 +5,11 @@ import { WORKFLOW_DESERIALIZE, WORKFLOW_SERIALIZE } from '@workflow/serde'
 import { getLanguageModel } from '@/server/ai/model-runtime'
 import { generateHarnessModel, HarnessLanguageModel, streamHarnessModel } from './secure-model'
 import { authorizePersonalHarnessModelDispatch, type PersonalHarnessModelDispatch } from './personal-model-dispatch'
+import { authorizeNativeHarnessModelDispatch, type NativeHarnessModelDispatch } from './native-model-dispatch'
 
 vi.mock('@/server/ai/model-runtime', () => ({ getLanguageModel: vi.fn() }))
 vi.mock('./personal-model-dispatch', () => ({ authorizePersonalHarnessModelDispatch: vi.fn() }))
+vi.mock('./native-model-dispatch', () => ({ authorizeNativeHarnessModelDispatch: vi.fn() }))
 
 const reference = {
   modelId: 'fixture/model',
@@ -29,7 +31,11 @@ const result: LanguageModelV4GenerateResult = {
   warnings: [],
 }
 
-beforeEach(() => { vi.mocked(getLanguageModel).mockReset(); vi.mocked(authorizePersonalHarnessModelDispatch).mockReset() })
+beforeEach(() => {
+  vi.mocked(getLanguageModel).mockReset()
+  vi.mocked(authorizePersonalHarnessModelDispatch).mockReset()
+  vi.mocked(authorizeNativeHarnessModelDispatch).mockReset()
+})
 
 const personal: PersonalHarnessModelDispatch = {
   access: { actorUserId: 'fixture-user', runId: 'run', workflowRunId: 'workflow', conversationId: 'conversation',
@@ -37,6 +43,41 @@ const personal: PersonalHarnessModelDispatch = {
   receiptId: 'model:0', memoryEnabled: true, requestFingerprint: 'fingerprint', inputTokenBudget: 10_000,
   maxOutputTokens: 100, contextWindow: 100_000,
 }
+
+const native: NativeHarnessModelDispatch = {
+  access: { actorUserId: 'fixture-user', runId: 'workspace:delivery', workflowRunId: 'workflow',
+    conversationId: 'room', agentRunId: 'delivery', workspaceId: 'workspace', principalId: 'principal',
+    agentId: 'agent', agentPrincipalId: 'agent-principal', userMessageId: 'question', assistantMessageId: 'answer', turnId: 'turn' },
+  receiptId: 'model:0', memoryEnabled: true, sharedRoom: false, requestFingerprint: 'request',
+  inputTokenBudget: 10_000, maxOutputTokens: 100, contextWindow: 100_000,
+}
+
+test('native authority round-trips without secrets and both provider methods reauthorize first', async () => {
+  const model = new HarnessLanguageModel({ ...reference, native: { ...native,
+    access: { ...native.access, accessToken: 'fixture-secret' }, secret: 'fixture-secret',
+  } } as typeof reference & { native: NativeHarnessModelDispatch })
+  const serialized = HarnessLanguageModel[WORKFLOW_SERIALIZE](model)
+  expect(serialized.native).toEqual(native)
+  expect(JSON.stringify(serialized)).not.toContain('fixture-secret')
+  const restored = HarnessLanguageModel[WORKFLOW_DESERIALIZE](serialized)
+  vi.mocked(authorizeNativeHarnessModelDispatch).mockRejectedValueOnce(new Error('revoked'))
+  await expect(restored.doStream(options)).rejects.toThrow(/revoked/)
+  expect(getLanguageModel).not.toHaveBeenCalled()
+  vi.mocked(getLanguageModel).mockResolvedValue(new MockLanguageModelV4({ doGenerate: result }))
+  expect(await restored.doGenerate(options)).toEqual(result)
+  expect(authorizeNativeHarnessModelDispatch).toHaveBeenCalledTimes(2)
+  expect(authorizePersonalHarnessModelDispatch).not.toHaveBeenCalled()
+})
+
+test('ambiguous native and personal identities cannot serialize or execute', async () => {
+  const model = new HarnessLanguageModel({ ...reference, personal, native })
+  expect(() => HarnessLanguageModel[WORKFLOW_SERIALIZE](model)).toThrow(/both personal and native/)
+  await expect(model.doGenerate(options)).rejects.toThrow(/both personal and native/)
+  await expect(model.doStream(options)).rejects.toThrow(/both personal and native/)
+  expect(getLanguageModel).not.toHaveBeenCalled()
+  expect(authorizeNativeHarnessModelDispatch).not.toHaveBeenCalled()
+  expect(authorizePersonalHarnessModelDispatch).not.toHaveBeenCalled()
+})
 
 test('personal dispatch serializes only references, and reauthorizes before resolving provider credentials', async () => {
   const guarded = new HarnessLanguageModel({ ...reference, personal: { ...personal,
