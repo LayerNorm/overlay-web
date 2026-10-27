@@ -6,6 +6,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Move Account outside workspace settings, add workspace-specific profiles with provider-photo fallbacks, and let workspace admins choose or upload icons. Retire the outdated interactive demo.
 
+- Keep native agents running after a failed tool-progress write and compact live tool results before saving them to the transcript.
+
 - Saved collaborative message edits now update rendered text and retain attachments instead of showing the original message.
 
 - Use shadcn focus-visible rings for text inputs and textareas, present message editing with text actions, autosize work titles and agent instructions as layouts settle, and group agent Details into collapsed Model, Instructions, Tools and Advanced disclosures.
