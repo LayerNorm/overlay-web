@@ -469,6 +469,9 @@ result. It is an observed tool result, not independent verification; milestones
 requiring verification still need a separate passing verification receipt.
 Running, failed, cancelled or unrelated children cannot supply this completion
 evidence. Original child evidence IDs remain scoped to their child run.
+Children inherit the parent's `requiresPlan` policy. Optional planning stays
+optional for a trivial delegated reply; an explicit plan requirement cannot be
+weakened through delegation. The parent still needs a milestone to delegate.
 
 `HarnessLanguageModel` delegates to named `streamHarnessModel` and
 `generateHarnessModel` steps with `maxRetries = 0`. Do not assign retry metadata

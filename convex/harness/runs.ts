@@ -922,7 +922,7 @@ function childAdmission(parent: HarnessSnapshot, operation: Extract<HarnessOpera
     actorUserId: parent.policy.actorUserId,
     ...(parent.policy.workspaceId ? { workspaceId: parent.policy.workspaceId } : {}),
     allowedToolIds: [...new Set(operation.child.allowedToolIds)].sort(),
-    requiresPlan: true,
+    requiresPlan: parent.policy.requiresPlan,
     deadlineAt: parent.policy.deadlineAt,
     maxCostMicros: operation.child.maxCostMicros,
     maxParallelChildren: parent.policy.maxParallelChildren,

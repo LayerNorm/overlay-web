@@ -90,6 +90,24 @@ function oneStep(id: string, requiresVerification = false) {
 }
 
 describe('durable harness runs', () => {
+  test.each([false, true])('children inherit requiresPlan=%s without weakening an explicit parent requirement', async requiresPlan => {
+    const convex = convexTest(schema, modules)
+    const input = admission('planning-parent', await seedConversation(convex), { requiresPlan })
+    await admit(convex, input)
+    const planned = await apply(convex, input, 'plan', 0, { type: 'replace_plan', steps: oneStep('delegated') })
+    await apply(convex, input, 'delegate', planned.snapshot.revision, {
+      type: 'admit_child', child: { id: 'planning-child', stepId: 'delegated', allowedToolIds: [],
+        maxCostMicros: 0, costMicros: 0, status: 'running', evidenceRefs: [] },
+      goal: 'Return a short answer.', constraints: [],
+    })
+    const child = await get(convex, 'planning-child')
+    expect(child?.policy.requiresPlan).toBe(requiresPlan)
+    const finish = apply(convex, { ...input, runId: 'planning-child' }, 'finish', child!.revision,
+      { type: 'finish', resultSummary: 'A short answer.' })
+    if (requiresPlan) await expect(finish).rejects.toThrow(/plan is required/)
+    else expect((await finish).snapshot.status).toBe('completed')
+  })
+
   test('persists billing dispatch ownership for settlement after cancellation', async () => {
     const convex = convexTest(schema, modules)
     const input = admission('dispatch', await seedConversation(convex))
