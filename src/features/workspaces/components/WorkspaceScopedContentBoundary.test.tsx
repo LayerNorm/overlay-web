@@ -15,7 +15,7 @@ import type { WorkspaceSummary } from '@/shared/workspaces/types'
 function renderBoundary(
   pathname: string,
   search: string,
-  showcase = false,
+
   routingHandle: string | null = 'team',
 ) {
   const routeTarget = readWorkspaceRouteTarget(pathname)
@@ -42,19 +42,13 @@ function renderBoundary(
         pathname,
         routeSearch: search,
         currentScope: 'personal',
-        showcase,
+
       }}
     >
       <span>Scoped page</span>
     </WorkspaceScopedContentGate>,
   )
 }
-
-test('showcase content is not held behind legacy scope canonicalization', () => {
-  const html = renderBoundary('/app/chat', 'showcase=1', true)
-  assert.match(html, /Scoped page/)
-  assert.doesNotMatch(html, /Opening workspace/)
-})
 
 test('account and unknown routes are not held behind scope canonicalization', () => {
   const account = renderBoundary('/app/chat', 'section=account')

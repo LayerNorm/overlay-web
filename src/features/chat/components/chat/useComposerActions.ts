@@ -22,7 +22,7 @@ import type { MentionInputHandle } from '../chat-interface/MentionInput'
 type ChatPrefs = ReturnType<typeof useChatPreferences>
 
 export function useComposerActions({
-  isPublicShowcase,
+
   requireAuth,
   personMentions,
   setPersonalMentionConfirmationOpen,
@@ -42,7 +42,7 @@ export function useComposerActions({
   isActiveLoading,
   setShowModelPicker,
 }: {
-  isPublicShowcase: boolean
+
   requireAuth: ReturnType<typeof useGuestGate>['requireAuth']
   personMentions: ReturnType<typeof useChatMentions>['personMentions']
   setPersonalMentionConfirmationOpen: ReturnType<typeof useChatMentions>['setPersonalMentionConfirmationOpen']
@@ -65,16 +65,13 @@ export function useComposerActions({
   const autoContinuedForMessageRef = useRef<Set<string>>(new Set())
 
   const effectiveHandleSend = useCallback(async () => {
-    if (isPublicShowcase) {
-      requireAuth('nav')
-      return
-    }
+
     if (personMentions.length > 0) {
       setPersonalMentionConfirmationOpen(true)
       return
     }
     await handleSend()
-  }, [handleSend, isPublicShowcase, personMentions.length, requireAuth, setPersonalMentionConfirmationOpen])
+  }, [handleSend,  personMentions.length, requireAuth, setPersonalMentionConfirmationOpen])
 
   const focusComposer = useCallback(() => {
     window.setTimeout(() => {

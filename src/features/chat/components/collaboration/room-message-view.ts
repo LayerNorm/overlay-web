@@ -229,6 +229,7 @@ export function toRoomMessageView({
   message,
   currentPrincipalId,
   authorName,
+  authorPhotoUrl,
   authorColor,
   authorShape,
   mentions = [],
@@ -237,6 +238,7 @@ export function toRoomMessageView({
   message: RoomMessageRecord
   currentPrincipalId: string
   authorName: string
+  authorPhotoUrl?: string
   authorColor?: string
   authorShape?: string
   mentions?: Array<{ type: string; id: string; name: string; avatarColor?: string; avatarShape?: string }>
@@ -271,6 +273,7 @@ export function toRoomMessageView({
     // An imported message carries its own author identity; prefer it over the
     // participant-resolved name (the Slack author is usually not a participant).
     authorName: message.importedAuthorName?.trim() || authorName,
+    authorPhotoUrl,
     authorEmail: message.importedAuthorEmail,
     authorStatus: message.importedAuthorStatus,
     authorKind: message.authorKind,

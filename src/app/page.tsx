@@ -2,7 +2,7 @@ import { Suspense } from 'react'
 import { redirect } from 'next/navigation'
 import { getOverlaySession } from '@/server/auth/session'
 import { AppBootLoader } from '@/components/layout/AppBootLoader'
-import { RootEntryResolver } from '@/features/showcase/RootEntryResolver'
+import { RootEntryResolver } from '@/features/auth/RootEntryResolver'
 import { ROOT_APP_DESTINATION } from '@/shared/auth/root-entry'
 
 function RootEntryFallback() {

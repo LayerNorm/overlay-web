@@ -14,7 +14,7 @@ type ChatInterfaceProps = {
   belowEmptyComposer?: ReactNode
   initialChats?: CachedConversation[]
   initialChatPageInfo?: ChatListPageInfo
-  publicShowcaseSnapshots?: Readonly<Record<string, ConversationLoadSnapshot>>
+
 }
 
 function ChatSuspenseFallback({ hideHeader = false, mode = 'chat' }: { hideHeader?: boolean; mode?: 'chat' | 'automate' }) {

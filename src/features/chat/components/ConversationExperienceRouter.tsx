@@ -88,7 +88,7 @@ export function ConversationExperienceRouter(props: ComponentProps<typeof ChatEx
   const resourceRouteKey = conversationDetailRouteKey({
     pathScope,
     conversationId,
-    publicShowcaseSnapshots: Boolean(props.publicShowcaseSnapshots),
+
   })
   useEffect(() => {
     if (!resourceRouteKey || !conversationId || !pathScope) return
@@ -124,7 +124,7 @@ export function ConversationExperienceRouter(props: ComponentProps<typeof ChatEx
         conversationId={conversationId}
         draft={draft}
         draftTitle={draftTitle}
-        showcase={Boolean(props.publicShowcaseSnapshots)}
+
       />
     )
   } else if (view === 'channels' && conversationId) {
@@ -135,7 +135,7 @@ export function ConversationExperienceRouter(props: ComponentProps<typeof ChatEx
         conversationType="channel"
         draft={draft}
         draftTitle={draftTitle}
-        showcase={Boolean(props.publicShowcaseSnapshots)}
+
       />
     )
   } else if (view === 'dms' || view === 'channels') {

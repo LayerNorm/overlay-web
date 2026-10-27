@@ -29,7 +29,7 @@ import { FlashCopyIconButton } from '@overlay/chat-react/draft-review-modal'
 import { UserMessageBubble } from '@overlay/chat-react/user-message-bubble'
 import { AssistantVisualBlocks, messageActionVisibilityClass } from '@overlay/chat-react/transcript'
 import type { AttachmentPreview, ChatMessageMention } from '@overlay/chat-react'
-import { Button, Input, Select, Textarea, Toggle } from '@overlay/ui/primitives'
+import { Avatar, AvatarFallback, AvatarImage, Button, Input, Select, Textarea, Toggle } from '@overlay/ui/primitives'
 import { MarkdownMessage } from '@overlay/chat-react'
 import { AgentCreature } from '@/components/orb/Creature'
 import { MAX_AGENT_HOPS } from '@/shared/agents/agent-lineage'
@@ -65,6 +65,7 @@ export type RoomMessageView = {
   /** Sent by the signed-in principal — rendered as the right-hand user bubble. */
   mine: boolean
   authorName: string
+  authorPhotoUrl?: string
   authorKind: 'human' | 'agent' | 'model' | 'system'
   authorColor?: string
   /** Creature body shape for agent authors; absent means circle. */
@@ -143,8 +144,6 @@ export type RoomMessageItemProps = {
 
 /** Rooms do not surface draft review; agent drafts are handled in personal chat. */
 const NOOP_DRAFT = () => {}
-
-
 
 function authorInitial(name: string): string {
   return name.trim().slice(0, 1).toUpperCase() || '?'
@@ -461,12 +460,12 @@ function RoomMessageAvatar({ message }: { message: RoomMessageView }) {
       status={message.authorStatus}
       triggerClassName="rounded-lg"
     >
-      <span
-        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-(--surface-muted) text-[13px] font-semibold text-(--foreground)"
-        aria-hidden
-      >
-        {authorInitial(message.mine ? 'You' : message.authorName)}
-      </span>
+      <Avatar className="h-9 w-9 shrink-0 rounded-lg bg-(--surface-muted)">
+        <AvatarImage src={message.authorPhotoUrl} alt="" />
+        <AvatarFallback className="rounded-lg text-[13px] font-semibold">
+          {authorInitial(message.mine ? 'You' : message.authorName)}
+        </AvatarFallback>
+      </Avatar>
     </AuthorIdentityPopover>
   )
 }

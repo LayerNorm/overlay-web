@@ -25,9 +25,9 @@ export type ConversationRouteLocation = {
 export function conversationDetailRouteKey(args: {
   pathScope: PanelScope | null
   conversationId: string | null
-  publicShowcaseSnapshots: boolean
+
 }): string | null {
-  if (args.publicShowcaseSnapshots || !args.pathScope || !args.conversationId) return null
+  if (!args.pathScope || !args.conversationId) return null
   return `${args.pathScope}:${args.conversationId}`
 }
 

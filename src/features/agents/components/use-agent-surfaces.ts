@@ -41,11 +41,11 @@ const SURFACE_ERROR_LABELS: Record<string, string> = {
  */
 export function useAgentSurfaces(args: {
   activeWorkspaceId: string | null
-  showcase: boolean
+
   agent: WorkspaceAgentDirectoryItem | null
   agentType: AgentType
 }) {
-  const { activeWorkspaceId, showcase, agent, agentType } = args
+  const { activeWorkspaceId,  agent, agentType } = args
   const searchParams = useSearchParams()
   const handledOAuthNoticeRef = useRef<string | null>(null)
   const [connections, setConnections] = useState<SurfaceConnection[]>([])
@@ -57,7 +57,7 @@ export function useAgentSurfaces(args: {
   const [busyBindingId, setBusyBindingId] = useState<string | null>(null)
 
   const enabled = Boolean(
-    !showcase && activeWorkspaceId && agent && !agent.archivedAt && agentType === 'overlay',
+    activeWorkspaceId && agent && !agent.archivedAt && agentType === 'overlay',
   )
   // Which agent's connections have been read once (derived, so the first render already knows it is loading).
   const [loadedFor, setLoadedFor] = useState<string | null>(null)

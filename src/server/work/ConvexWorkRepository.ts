@@ -25,6 +25,7 @@ type ContextResult = {
     type: 'human' | 'agent' | 'service'
     userId: string | null
     displayName: string
+    photoUrl?: string
     agentVisibility?: 'workspace' | 'creator'
     avatarColor?: string
     avatarShape?: string

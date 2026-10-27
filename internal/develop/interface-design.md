@@ -18,6 +18,14 @@ and conversation query, and remain absent from Production.
 
 ## App screen breadcrumbs
 
+Account and workspace Profile use the shared identity image editor with Avatar,
+Dialog, Button and Input primitives. Photo changes support square crop, zoom and
+positioning; workspace icons also offer bundled presets and initials. Keep the
+scope visible in headings, provide explicit save/error states and restore inherited
+account defaults by clearing workspace overrides rather than copying current values.
+Human avatars fall back to initials when images are missing or fail to load;
+agents retain their creature avatars.
+
 `AppScreenHeader` and custom module headers use the shared `AppBreadcrumbs` component,
 composed from the shadcn Radix Breadcrumb primitives in `@overlay/ui/primitives`.
 `AppBreadcrumbContext` supplies the active Personal/Workspace scope and page; callers add

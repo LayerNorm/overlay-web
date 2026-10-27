@@ -11,7 +11,7 @@ export type KnowledgeSubview = 'memories' | 'files' | 'outputs'
 export type ExtensionsSubview = 'connectors' | 'skills' | 'mcps' | 'apps' | 'all'
 export type SettingsSubview =
   | 'general'
-  | 'account'
+  | 'profile'
   | 'customization'
   | 'memories'
   | 'providers'
@@ -43,9 +43,9 @@ export const CANONICAL_APP_DESTINATIONS: readonly AppDestinationConfig[] = [
     id: 'settings',
     label: 'Settings',
     href: '/app/settings',
-    subviews: ['general', 'account', 'customization', 'providers', 'models', 'contact'],
+    subviews: ['general', 'profile', 'customization', 'providers', 'models', 'contact'],
   },
-  { id: 'account', label: 'Account settings', href: '/app/settings?section=account' },
+  { id: 'account', label: 'Account', href: '/account' },
 ] as const
 
 export interface AppFeatureFlags {

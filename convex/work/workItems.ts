@@ -30,6 +30,7 @@ import { checkBlockedBy, checkParent } from '../../src/shared/work/graph'
 import { compareRanked, rankBetween } from '../../src/shared/work/rank'
 import { DEFAULT_WORK_PRIORITY, DEFAULT_WORK_STATUS, WORK_LIMITS } from '../../src/shared/work/status'
 import { rowScope } from '../../src/shared/workspaces/resource-scope'
+import { resolveIdentityDisplayName, resolveIdentityPhotoUrl, versionedIdentityUrl } from '../../src/shared/workspaces/identity-resolution'
 
 const scopeArg = v.optional(v.union(v.literal('personal'), v.literal('workspace')))
 const viewArg = v.optional(v.union(v.literal('personal'), v.literal('workspace'), v.literal('archived')))
@@ -200,6 +201,7 @@ export const context = query({
       type: v.union(v.literal('human'), v.literal('agent')),
       userId: v.union(v.string(), v.null()),
       displayName: v.string(),
+      photoUrl: v.optional(v.string()),
       agentVisibility: v.optional(v.union(v.literal('workspace'), v.literal('creator'))),
       avatarColor: v.optional(v.string()),
       avatarShape: v.optional(v.string()),
@@ -217,6 +219,12 @@ export const context = query({
     const memberships = await ctx.db.query('workspaceMemberships').withIndex('by_workspaceId', (q) => q.eq('workspaceId', workspaceId)).collect()
     const roleByPrincipal = new Map(memberships.filter((m) => m.status === 'active').map((m) => [m.principalId, m.role]))
     const eligible = principals.filter((p) => p.archivedAt === undefined)
+    const humanUserIds = Array.from(new Set(eligible.flatMap((principal) =>
+      principal.type === 'human' && principal.userId ? [principal.userId] : [])))
+    const accountRows = await Promise.all(humanUserIds.map((id) => ctx.db.query('subscriptions')
+      .withIndex('by_userId', (q) => q.eq('userId', id))
+      .first()))
+    const accountByUserId = new Map(accountRows.filter(Boolean).map((account) => [account!.userId, account!]))
     const assignees = (await Promise.all(eligible.map(async (p) => {
       if (p.type === 'agent') {
         const agent = await agentAssignability(ctx, { workspaceId, principal: p })
@@ -232,7 +240,37 @@ export const context = query({
         }
       }
       if (p.type !== 'human' || !roleByPrincipal.has(p.principalId) || roleByPrincipal.get(p.principalId) === 'guest') return null
-      return { principalId: p.principalId, type: p.type, userId: p.userId ?? null, displayName: p.displayName }
+      const account = p.userId ? accountByUserId.get(p.userId) : undefined
+      const providerName = [account?.firstName, account?.lastName].filter(Boolean).join(' ').trim()
+        || account?.name
+      const photoUrl = resolveIdentityPhotoUrl({
+        workspacePhotoUrl: p.photoObjectKey
+          ? versionedIdentityUrl(
+              `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/profile/photo?principalId=${encodeURIComponent(p.principalId)}`,
+              p.photoObjectKey,
+            )
+          : null,
+        accountPhotoUrl: account?.photoObjectKey
+          ? versionedIdentityUrl(
+              `/api/v1/account/profile/photo?userId=${encodeURIComponent(p.userId ?? '')}`,
+              account.photoObjectKey,
+            )
+          : null,
+        providerPhotoUrl: account?.profilePictureUrl,
+      })
+      return {
+        principalId: p.principalId,
+        type: p.type,
+        userId: p.userId ?? null,
+        displayName: resolveIdentityDisplayName({
+          workspaceOverride: p.displayNameOverride,
+          accountOverride: account?.displayNameOverride,
+          providerName,
+          legacyDisplayName: p.displayName,
+          email: account?.email ?? p.email,
+        }),
+        ...(photoUrl ? { photoUrl } : {}),
+      }
     }))).filter((person) => person !== null)
       .sort((a, b) => (a.type === b.type ? a.displayName.localeCompare(b.displayName) : a.type === 'human' ? -1 : 1))
     return { principalId: viewer.principalId, role: viewer.viewer.role, canCreateInWorkspace: await canCreateWorkspaceTask(ctx, workspaceId, userId), assignees }

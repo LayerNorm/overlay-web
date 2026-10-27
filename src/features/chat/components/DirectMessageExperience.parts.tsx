@@ -218,7 +218,7 @@ export function RoomHeaderActions({
   roster,
   collab,
   roomActions,
-  showcase,
+
   headerActions,
   roomPanel,
   setRoomPanel,
@@ -231,7 +231,7 @@ export function RoomHeaderActions({
   roster: ReturnType<typeof useRoomRoster>
   collab: ReturnType<typeof useRoomCollaboration>
   roomActions: ReturnType<typeof useRoomActions>
-  showcase: boolean
+
   headerActions: ReactNode
   roomPanel: RoomPanelKind | null
   setRoomPanel: Dispatch<SetStateAction<RoomPanelKind | null>>
@@ -264,7 +264,7 @@ export function RoomHeaderActions({
         align="end"
         className="w-48 p-1"
       >
-        {!showcase && currentParticipant?.role === 'moderator' ? (
+        {currentParticipant?.role === 'moderator' ? (
           <MenuButton
             icon={Share2}
             label="Share"
@@ -453,6 +453,7 @@ export function RoomMessage({
     message,
     currentPrincipalId: ctx.currentPrincipalId,
     authorName,
+    authorPhotoUrl: author?.principalType === 'human' ? author.photoUrl : undefined,
     authorColor: authorAgent?.avatarColor,
     authorShape: authorAgent?.avatarShape,
     mentions: ctx.participantMentions,
@@ -630,7 +631,7 @@ export function RoomSidePanel({
   roomPanel,
   conversationType,
   title,
-  showcase,
+
   roster,
   vm,
   thread,
@@ -645,7 +646,7 @@ export function RoomSidePanel({
   roomPanel: RoomPanelKind | null
   conversationType: 'dm' | 'channel'
   title: string
-  showcase: boolean
+
   roster: ReturnType<typeof useRoomRoster>
   vm: ReturnType<typeof useRoomViewModels>
   thread: ReturnType<typeof useThreadPanel>
@@ -674,7 +675,7 @@ export function RoomSidePanel({
         participants={roster.participants}
         presence={roster.presence}
         currentPrincipalId={roster.currentPrincipalId}
-        onAddPeople={showcase ? undefined : onAddPeople}
+        onAddPeople={onAddPeople}
         onClose={onClosePanel}
       />
     )
@@ -754,7 +755,6 @@ export type GuidedRoomComposer = {
 
 export function RoomComposer({
   composer,
-  title,
   mentionCategories,
   agentCommands,
   capabilities,
@@ -767,7 +767,6 @@ export function RoomComposer({
   guided,
 }: {
   composer: ReturnType<typeof useRoomComposer>
-  title: string
   mentionCategories: MentionCategory[]
   agentCommands: import('./collaboration/room-message-view').RemoteAgentCommand[]
   capabilities: CapabilityCheck
@@ -870,7 +869,6 @@ export function RoomDialogs({
   conversationId,
   conversationType,
   title,
-  showcase,
   currentParticipant,
   participants,
   router,
@@ -887,7 +885,6 @@ export function RoomDialogs({
   conversationId: string
   conversationType: 'dm' | 'channel'
   title: string
-  showcase: boolean
   currentParticipant: ConversationParticipant | undefined
   participants: ConversationParticipant[]
   router: ReturnType<typeof useRouter>
@@ -931,11 +928,9 @@ export function RoomDialogs({
         }}
       />
 
-
       {addPeopleOpen ? (
         <NewDirectMessageDialog
           open
-          showcase={showcase}
           workspaceId={currentParticipant?.workspaceId ?? ''}
           addToConversationId={conversationId}
           addToConversationType={conversationType}

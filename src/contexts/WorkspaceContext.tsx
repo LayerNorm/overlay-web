@@ -248,6 +248,14 @@ export function WorkspaceProvider({
     return () => controller.abort()
   }, [load])
 
+  useEffect(() => {
+    const handleIdentityUpdate = () => {
+      void load(undefined, { force: true })
+    }
+    window.addEventListener('overlay:identity-updated', handleIdentityUpdate)
+    return () => window.removeEventListener('overlay:identity-updated', handleIdentityUpdate)
+  }, [load])
+
   const refresh = useCallback(async () => {
     await load(undefined, { force: true })
   }, [load])
@@ -332,7 +340,7 @@ export function useWorkspace(): WorkspaceContextValue {
   return value
 }
 
-/** The workspace context where one may be absent (tests, the public showcase); null outside a provider. */
+/** The workspace context where one may be absent (such as tests); null outside a provider. */
 export function useOptionalWorkspace(): WorkspaceContextValue | null {
   return useContext(WorkspaceContext)
 }

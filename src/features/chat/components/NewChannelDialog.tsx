@@ -9,13 +9,13 @@ import { overlayAppClient } from '@/shared/app/overlay-app-client'
 export function NewChannelDialog({
   open,
   workspaceId,
-  showcase = false,
+
   onOpenChange,
   onCreated,
 }: {
   open: boolean
   workspaceId: string
-  showcase?: boolean
+
   onOpenChange(open: boolean): void
   onCreated(channel: { id: string; title: string }): void
 }) {
@@ -29,7 +29,7 @@ export function NewChannelDialog({
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!open || visibility !== 'private' || showcase) return
+    if (!open || visibility !== 'private') return
     let cancelled = false
     void Promise.all([
       overlayAppClient.workspaces.management(workspaceId, 'people'),
@@ -45,7 +45,7 @@ export function NewChannelDialog({
       setMembers([...byPrincipal.values()].filter((item) => item.principalId !== people.currentPrincipalId))
     }).catch(() => setError('Could not load workspace members.'))
     return () => { cancelled = true }
-  }, [open, showcase, visibility, workspaceId])
+  }, [open,  visibility, workspaceId])
 
   const candidates = useMemo(() => {
     const needle = query.trim().toLowerCase()
@@ -54,11 +54,7 @@ export function NewChannelDialog({
 
   async function create() {
     if (!name.trim() || busy) return
-    if (showcase) {
-      onCreated({ id: 'showcase-channel-product', title: name.trim() })
-      onOpenChange(false)
-      return
-    }
+
     setBusy(true)
     setError(null)
     try {

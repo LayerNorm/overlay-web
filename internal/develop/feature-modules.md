@@ -33,7 +33,7 @@ capability (`OVERLAY_FEATURE_WORK`); Alt+1 is Work when it is on, and the other 
 panel is navigation only (`SecondaryPanelKind` `work`, not a resource list): Personal and Workspace, each with
 List, Board, and Timeline beneath, kept in the URL as `?scope=` and `?view=`.
 
-The default brand `homeHref`, authenticated root/app entry and ordinary web auth returns point to `/app/work`. Explicit white-label `homeHref` overrides and explicit Account/desktop auth returns remain intact. The destination stays static for the prerendered shell: `OVERLAY_FEATURE_WORK=0` shows the Work-unavailable notice with an Agents link, and missing `work.use` permission retains the existing access-denied boundary. The public showcase still opens Agents.
+The default brand `homeHref`, authenticated root/app entry and ordinary web auth returns point to `/app/work`. Explicit white-label `homeHref` overrides and explicit Account/desktop auth returns remain intact. The destination stays static for the prerendered shell: `OVERLAY_FEATURE_WORK=0` shows the Work-unavailable notice with an Agents link, and missing `work.use` permission retains the existing access-denied boundary.
 
 ## Settings Panels
 

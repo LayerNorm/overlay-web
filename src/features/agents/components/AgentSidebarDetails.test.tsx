@@ -14,7 +14,7 @@ function renderDetails() {
     connectedAgentsChecked: true,
     connectedAgentsEnabled: false,
     isDefaultMaster: false,
-    showcase: false,
+
     computersAvailable: false,
     byo: { initialLoading: false },
     surfaces: { initialLoading: false },

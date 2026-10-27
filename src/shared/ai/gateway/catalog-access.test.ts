@@ -7,14 +7,13 @@ describe('shouldLoadGatewayModelCatalog', () => {
     assert.equal(shouldLoadGatewayModelCatalog({
       isAuthenticated: true,
       isAuthLoading: false,
-      isPublicShowcase: false,
+
     }), true)
   })
 
   for (const state of [
-    { isAuthenticated: false, isAuthLoading: false, isPublicShowcase: false },
-    { isAuthenticated: true, isAuthLoading: true, isPublicShowcase: false },
-    { isAuthenticated: true, isAuthLoading: false, isPublicShowcase: true },
+    { isAuthenticated: false, isAuthLoading: false,  },
+    { isAuthenticated: true, isAuthLoading: true,  },
   ]) {
     it(`does not load for state ${JSON.stringify(state)}`, () => {
       assert.equal(shouldLoadGatewayModelCatalog(state), false)

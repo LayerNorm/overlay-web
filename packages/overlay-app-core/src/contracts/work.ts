@@ -58,6 +58,7 @@ export interface WorkPerson {
   type: 'human' | 'agent'
   userId: string | null
   displayName: string
+  photoUrl?: string
   agentVisibility?: 'workspace' | 'creator'
   avatarColor?: string
   avatarShape?: string

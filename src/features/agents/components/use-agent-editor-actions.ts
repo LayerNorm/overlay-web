@@ -26,7 +26,7 @@ import type { useAgentEditorForm } from './use-agent-editor-form'
 import type { useAgentComputer } from './use-agent-computer'
 
 export function useAgentEditorActions({
-  showcase,
+
   presentation,
   activeWorkspaceId,
   router,
@@ -47,7 +47,7 @@ export function useAgentEditorActions({
   onSaved,
   keepOpenOnSave = false,
 }: {
-  showcase: boolean
+
   presentation: 'page' | 'panel'
   activeWorkspaceId: string | null
   router: ReturnType<typeof useRouter>
@@ -86,10 +86,7 @@ export function useAgentEditorActions({
   const { agentComputer, computerSize, setComputerProvisionError } = computer
 
   const persistNew = () => {
-    if (showcase) {
-      router.push(directoryHref)
-      return
-    }
+
     if (!activeWorkspaceId || busy) return
     setBusy(true)
     void (async () => {
@@ -149,7 +146,7 @@ export function useAgentEditorActions({
     silent?: boolean
     ignoreBusy?: boolean
   } = {}): Promise<AgentEditSaveResult> => {
-    if (showcase || !activeWorkspaceId || !agent || (busy && !ignoreBusy)) return 'failed'
+    if (!activeWorkspaceId || !agent || (busy && !ignoreBusy)) return 'failed'
     const confirmation = confirmComputerToolRemoval({
       shouldConfirm: Boolean(
         agentType === 'overlay' && agentComputer && !enabledToolGroups.has('computer'),
@@ -211,7 +208,7 @@ export function useAgentEditorActions({
   }
 
   const archiveAgent = async () => {
-    if (showcase || !activeWorkspaceId || !agent || busy) return
+    if (!activeWorkspaceId || !agent || busy) return
     const prompt = cloudAgent
       ? `Archive ${agent.name}? Its machine and everything on it is deleted. Its message history will remain.`
       : `Archive ${agent.name}? It will leave rooms and teams, but its message history will remain.`
@@ -245,7 +242,7 @@ export function useAgentEditorActions({
     void startAgentChat({
       workspaceId: activeWorkspaceId,
       agentPrincipalId: agent.principalId,
-      showcase,
+
       buildHref: buildWorkspaceHref,
       push: (href) => router.push(href),
     }).catch((chatError) => {

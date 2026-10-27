@@ -12,6 +12,7 @@ import {
   type WorkPerson,
 } from '@overlay/app-core'
 import { useAuth } from '@/contexts/AuthContext'
+import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { useWorkspaceChanged } from '@/hooks/use-workspace-changed'
 import { useWorkspaceCreateAccess } from '@/hooks/use-workspace-create-access'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
@@ -80,6 +81,7 @@ function messageOf(error: unknown, fallback: string): string {
 export function WorkDataProvider({ children }: { children: ReactNode }) {
   const { listView, scope } = useWorkRoute()
   const { user } = useAuth()
+  const { activeWorkspace } = useWorkspace()
   const { access, viewer: accessViewer } = useWorkspaceCreateAccess()
   const [items, setItems] = useState<WorkItem[]>([])
   // Tasks opened by link that the list does not hold. Editable like any other, but never part of the list itself.
@@ -150,6 +152,15 @@ export function WorkDataProvider({ children }: { children: ReactNode }) {
     window.addEventListener(WORK_UPDATED_EVENT, reload)
     return () => window.removeEventListener(WORK_UPDATED_EVENT, reload)
   }, [load])
+
+  useEffect(() => {
+    const reloadIdentity = (event: Event) => {
+      const workspaceId = (event as CustomEvent<{ workspaceId?: string }>).detail?.workspaceId
+      if (!workspaceId || workspaceId === activeWorkspace?.id) void load()
+    }
+    window.addEventListener('overlay:identity-updated', reloadIdentity)
+    return () => window.removeEventListener('overlay:identity-updated', reloadIdentity)
+  }, [activeWorkspace?.id, load])
 
   /** One change has settled; when nothing is waiting any more and a refresh is owed, ask the server what is true. */
   const settle = useCallback((startedIn: number) => {
