@@ -38,6 +38,14 @@ a process crash between them can still leave an unreferenced vault object.
 This is not cross-service atomicity; rollout needs vault reconciliation for that
 residual crash window.
 
+Vault failures log only a structured failure code and, for upstream rejections,
+the HTTP status. `missing_configuration` means the runtime has no
+`WORKOS_API_KEY`; `http_failure` requires checking that environment's WorkOS
+Vault access; `transport_failure` covers request/response transport failures;
+`invalid_response` means a create response omitted its object ID. Credentials,
+upstream response bodies and messages are never logged. Preview diagnosis must
+use Preview credentials, never a Production key.
+
 Codex model discovery uses the signed-in account's
 `https://chatgpt.com/backend-api/codex/models?client_version=0.154.0` catalog.
 No static model list is used. Empty or unavailable discovery preserves

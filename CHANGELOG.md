@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Preserve safe failure codes and HTTP statuses in credential-vault logs so subscription authorization failures can be diagnosed without exposing credentials or upstream response bodies.
+
 - Settings breadcrumbs read Settings > page instead of a Personal or Workspace prefix.
 
 - Subscription connections now use request-based Codex endpoints in the Overlay app, with durable Convex coordination and credentials held in the vault; the retired broker is no longer required. Other provider adapters remain unavailable until individually implemented, and subscription inference never falls back to Overlay-paid routing.

@@ -1,7 +1,6 @@
 import 'server-only'
 
 import { logger } from '@/server/observability/logger'
-import { summarizeErrorForLog } from '@/shared/security/safe-log'
 
 /**
  * Server-side helpers for writing, reading, and deleting BYOK (bring-your-own-key)
@@ -28,23 +27,30 @@ type VaultObject = VaultObjectMetadata & {
   value?: unknown
 }
 
+type VaultFailureCode = 'missing_configuration' | 'http_failure' | 'invalid_response'
+
+class VaultFailure extends Error {
+  constructor(readonly code: VaultFailureCode, readonly httpStatus?: number) {
+    super(`WorkOS Vault ${code}`)
+  }
+}
+
+function vaultFailureContext(error: unknown): { code: string; httpStatus?: number } {
+  return error instanceof VaultFailure
+    ? { code: error.code, ...(error.httpStatus === undefined ? {} : { httpStatus: error.httpStatus }) }
+    : { code: 'transport_failure' }
+}
+
 function getWorkOSApiKey(): string {
   const apiKey = process.env.WORKOS_API_KEY?.trim()
   if (!apiKey) {
-    throw new Error(
-      'WORKOS_API_KEY is not configured. BYOK vault operations require WorkOS Vault access.',
-    )
+    throw new VaultFailure('missing_configuration')
   }
   return apiKey
 }
 
 function getWorkOSBaseUrl(): string {
   return (process.env.WORKOS_API_BASE_URL?.trim() || 'https://api.workos.com').replace(/\/$/, '')
-}
-
-function formatVaultApiError(status: number, requestId: string | null): string {
-  const suffix = requestId ? ` (request id: ${requestId})` : ''
-  return `WorkOS Vault request failed (${status})${suffix}`
 }
 
 async function vaultRequest<T>(
@@ -82,7 +88,7 @@ async function vaultRequest<T>(
     : null
 
   if (!response.ok && !(method === 'DELETE' && response.status === 404)) {
-    throw new Error(formatVaultApiError(response.status, response.headers.get('x-request-id')))
+    throw new VaultFailure('http_failure', response.status)
   }
 
   return payload as T
@@ -90,7 +96,7 @@ async function vaultRequest<T>(
 
 function getVaultObjectId(payload: VaultObjectMetadata | null): string {
   if (payload && typeof payload.id === 'string' && payload.id.trim()) return payload.id
-  throw new Error('WorkOS Vault did not return an object id')
+  throw new VaultFailure('invalid_response')
 }
 
 /**
@@ -112,7 +118,7 @@ export async function writeByokVaultKey(
     logger.info('[BYOK Vault] Created vault object')
     return vaultObjectId
   } catch (error) {
-    logger.error('[BYOK Vault] Failed to create vault object', summarizeErrorForLog(error))
+    logger.error('[BYOK Vault] Failed to create vault object', vaultFailureContext(error))
     throw new Error('Failed to store API key in vault')
   }
 }
@@ -131,7 +137,7 @@ export async function updateByokVaultKey(
     })
     logger.info('[BYOK Vault] Updated vault object')
   } catch (error) {
-    logger.error('[BYOK Vault] Failed to update vault object', summarizeErrorForLog(error))
+    logger.error('[BYOK Vault] Failed to update vault object', vaultFailureContext(error))
     throw new Error('Failed to rotate API key in vault')
   }
 }
@@ -145,7 +151,7 @@ export async function deleteByokVaultKey(vaultObjectId: string): Promise<void> {
     await vaultRequest<null>('DELETE', `/vault/v1/kv/${encodeURIComponent(vaultObjectId)}`)
     logger.info('[BYOK Vault] Deleted vault object')
   } catch (error) {
-    logger.error('[BYOK Vault] Failed to delete vault object', summarizeErrorForLog(error))
+    logger.error('[BYOK Vault] Failed to delete vault object', vaultFailureContext(error))
     throw new Error('Failed to delete vault object')
   }
 }
@@ -170,7 +176,7 @@ export async function readByokVaultKey(vaultObjectId: string): Promise<string | 
     const val = typeof obj?.value === 'string' ? obj.value.trim() : ''
     return val.length > 0 ? val : null
   } catch (error) {
-    logger.warn('[BYOK Vault] Failed to read vault object', summarizeErrorForLog(error))
+    logger.warn('[BYOK Vault] Failed to read vault object', vaultFailureContext(error))
     return null
   }
 }
