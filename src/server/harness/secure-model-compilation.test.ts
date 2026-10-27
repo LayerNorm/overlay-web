@@ -7,6 +7,28 @@ import { transform } from 'esbuild'
 import { expect, test, vi } from 'vitest'
 import type { HarnessLanguageModel } from './secure-model'
 
+test.each([
+  ['model-preparation.ts', ['preparePersonalHarnessModel', 'readHarnessModelLimits']],
+  ['native-model-preparation.ts', ['prepareNativeHarnessModel']],
+] as const)('compiled %s exposes only durable server steps', async (filename, exports) => {
+  const path = fileURLToPath(new URL(`./${filename}`, import.meta.url))
+  const source = await readFile(path, 'utf8')
+  const compiled = await applySwcTransform(`src/server/harness/${filename}`, source, 'workflow', path)
+  const { code } = await transform(compiled.code, { format: 'cjs', target: 'es2022' })
+  const compiledModule = { exports: {} as Record<string, (...args: unknown[]) => unknown> }
+  const dispatch = vi.fn()
+  runInNewContext(code, {
+    module: compiledModule, exports: compiledModule.exports,
+    require: (id: string) => { throw new Error(`Unexpected workflow import: ${id}`) },
+    [Symbol.for('WORKFLOW_USE_STEP')]: (id: string) => (...args: unknown[]) => dispatch(id, ...args),
+  })
+  expect(Object.keys(compiledModule.exports).sort()).toEqual([...exports].sort())
+  for (const name of exports) {
+    await compiledModule.exports[name]({ fixture: true })
+    expect(dispatch).toHaveBeenLastCalledWith(expect.stringContaining(`//${name}`), { fixture: true })
+  }
+})
+
 test.each([false, true])('compiled workflow can load and dispatch the credential-free model adapter (native: %s)', async native => {
   const path = fileURLToPath(new URL('./secure-model.ts', import.meta.url))
   const source = await readFile(path, 'utf8')

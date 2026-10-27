@@ -2,7 +2,7 @@ import 'server-only'
 
 import type { LanguageModelV4CallOptions } from '@ai-sdk/provider'
 import { refreshNativeHarnessAccess, type NativeHarnessAccess, type NativeHarnessContext } from './native-access'
-import { quoteHarnessModel } from './model-preparation'
+import { quoteHarnessModel } from './model-quote'
 import type { PreparedHarnessModel } from './model-ports'
 
 export async function prepareNativeHarnessModel(input: {
