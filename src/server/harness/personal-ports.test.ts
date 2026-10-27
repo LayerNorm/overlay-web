@@ -311,7 +311,7 @@ test('summary calls reserve reasoning headroom while the prompt retains the summ
   const summaryRequest = prepare.mock.calls.find(([request]) => request.purpose === 'summary')?.[0]
   expect(summaryRequest).toBeDefined()
   const targetSummaryTokens = Number(JSON.stringify(summaryRequest!.options.prompt).match(/Target length: at most (\d+) tokens/)?.[1])
-  const expectedOutputTokens = Math.min(8_192, Math.max(4 * targetSummaryTokens, targetSummaryTokens + 4_096))
+  const expectedOutputTokens = Math.min(8_192, targetSummaryTokens + 2_048)
   expect(summaryRequest!.options.maxOutputTokens).toBe(expectedOutputTokens)
   expect(expectedOutputTokens).toBeGreaterThan(targetSummaryTokens)
   expect(JSON.stringify(summaryRequest!.options.prompt)).toContain(`at most ${targetSummaryTokens} tokens`)

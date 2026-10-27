@@ -10,6 +10,7 @@ import {
   type OverlayFreeRepository,
   type OverlayFreeRoute,
 } from './overlay-free-router'
+import { FREE_ROUTE_IDLE_TIMEOUT_MS, FREE_ROUTE_LEASE_MS, FREE_ROUTE_TIMEOUT_MS } from '@/shared/ai/gateway/overlay-free-policy'
 
 const now = Date.now()
 
@@ -53,7 +54,7 @@ function options(): LanguageModelV4CallOptions {
 function model(
   provider: string,
   generate: (options: LanguageModelV4CallOptions) => Promise<Awaited<ReturnType<LanguageModelV4['doGenerate']>>>,
-  stream?: () => ReadableStream<LanguageModelV4StreamPart>,
+  stream?: (options: LanguageModelV4CallOptions) => ReadableStream<LanguageModelV4StreamPart>,
 ): LanguageModelV4 {
   return {
     specificationVersion: 'v4',
@@ -61,11 +62,66 @@ function model(
     modelId: provider,
     supportedUrls: {},
     doGenerate: generate,
-    doStream: async () => {
+    doStream: async (options) => {
       if (!stream) throw new Error('stream not used')
-      return { stream: stream(), request: {}, response: { headers: {} } }
+      return { stream: stream(options), request: {}, response: { headers: {} } }
     },
   }
+}
+
+function abortableStream(
+  options: LanguageModelV4CallOptions,
+  emitFirstChunk: boolean,
+  intervalMs?: number,
+  finishAfterChunks?: number,
+): ReadableStream<LanguageModelV4StreamPart> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  let chunkCount = 0
+  let controllerRef: ReadableStreamDefaultController<LanguageModelV4StreamPart> | undefined
+  const signal = options.abortSignal
+  const onAbort = () => controllerRef?.error(signal?.reason ?? new Error('aborted'))
+  return new ReadableStream({
+    start(controller) {
+      controllerRef = controller
+      if (signal?.aborted) onAbort()
+      else signal?.addEventListener('abort', onAbort, { once: true })
+      if (emitFirstChunk) controller.enqueue({ type: 'text-delta', id: 'timed-text-0', delta: 'a' })
+    },
+    pull(controller) {
+      if (intervalMs === undefined || timer !== undefined) return
+      timer = setTimeout(() => {
+        timer = undefined
+        chunkCount += 1
+        if (finishAfterChunks !== undefined && chunkCount > finishAfterChunks) {
+          controller.enqueue({
+            type: 'finish',
+            finishReason: { unified: 'stop', raw: 'stop' },
+            usage: usage(),
+            providerMetadata: { openrouter: { usage: { cost: '0' } } },
+          })
+          controller.close()
+        } else {
+          controller.enqueue({ type: 'text-delta', id: `timed-text-${chunkCount}`, delta: 'a' })
+        }
+      }, intervalMs)
+    },
+    cancel() {
+      if (timer !== undefined) clearTimeout(timer)
+      signal?.removeEventListener('abort', onAbort)
+    },
+  })
+}
+
+async function readAfterTimer(
+  reader: ReadableStreamDefaultReader<LanguageModelV4StreamPart>,
+  milliseconds: number,
+  tick: (milliseconds: number) => void,
+) {
+  const pending = reader.read()
+  await Promise.resolve()
+  await Promise.resolve()
+  tick(milliseconds)
+  return await pending
 }
 
 function dependencies(routes: OverlayFreeRoute[], calls: string[], overrides: Partial<OverlayFreeRepository> = {}) {
@@ -657,4 +713,111 @@ test('preflight network failures cool down without quarantining an uncalled prov
   })
   await assert.rejects(routed.doGenerate(options()), /overlay_free_no_eligible_route/)
   assert.deepEqual(calls, ['cooldown:gateway:first/model:first'])
+})
+
+test('steady output can run beyond the first-output timeout and settles safely', async (t) => {
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'] })
+  const calls: string[] = []
+  const routed = createOverlayFreeLanguageModel({
+    ...dependencies([route('openrouter', 'openrouter/free', 'openrouter')], calls),
+    providers: {
+      gateway: async () => { throw new Error('unexpected Gateway call') },
+      openrouter: async () => model('openrouter', async () => openRouterReceipt(), (request) =>
+        abortableStream(request, true, 20_000, 3)),
+    },
+  })
+  const response = await routed.doStream(options())
+  const reader = response.stream.getReader()
+
+  assert.equal((await reader.read()).value?.type, 'text-delta')
+  for (let index = 0; index < 4; index += 1) {
+    const next = await readAfterTimer(reader, 20_000, (milliseconds) => t.mock.timers.tick(milliseconds))
+    assert.equal(next.value?.type, index === 3 ? 'finish' : 'text-delta')
+  }
+  assert.equal((await reader.read()).done, true)
+  assert.ok(4 * 20_000 > FREE_ROUTE_TIMEOUT_MS)
+  assert.deepEqual(calls, ['settle:openrouter:openrouter/free:openrouter:true'])
+})
+
+test('silence after semantic output aborts at the idle timeout and settles unsafe', async (t) => {
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'] })
+  const calls: string[] = []
+  const routed = createOverlayFreeLanguageModel({
+    ...dependencies([route('openrouter', 'openrouter/free', 'openrouter')], calls),
+    providers: {
+      gateway: async () => { throw new Error('unexpected Gateway call') },
+      openrouter: async () => model('openrouter', async () => openRouterReceipt(), (request) =>
+        abortableStream(request, true)),
+    },
+  })
+  const response = await routed.doStream(options())
+  const reader = response.stream.getReader()
+
+  assert.equal((await reader.read()).value?.type, 'text-delta')
+  await assert.rejects(readAfterTimer(
+    reader,
+    FREE_ROUTE_IDLE_TIMEOUT_MS,
+    (milliseconds) => t.mock.timers.tick(milliseconds),
+  ))
+  assert.deepEqual(calls, ['settle:openrouter:openrouter/free:openrouter:false'])
+})
+
+test('no semantic output before the first-output timeout aborts and settles a missing receipt', async (t) => {
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'] })
+  const calls: string[] = []
+  const routed = createOverlayFreeLanguageModel({
+    ...dependencies([route('openrouter', 'openrouter/free', 'openrouter')], calls),
+    providers: {
+      gateway: async () => { throw new Error('unexpected Gateway call') },
+      openrouter: async () => model('openrouter', async () => openRouterReceipt(), (request) =>
+        abortableStream(request, false)),
+    },
+  })
+  const response = await routed.doStream(options())
+  const reader = response.stream.getReader()
+  const pending = reader.read()
+  await Promise.resolve()
+  await Promise.resolve()
+
+  await assert.rejects(async () => {
+    t.mock.timers.tick(FREE_ROUTE_TIMEOUT_MS)
+    await pending
+  })
+  assert.deepEqual(calls, ['settle:openrouter:openrouter/free:openrouter:false'])
+})
+
+test('the absolute lease cap aborts a never-ending steady stream before lease expiry', async (t) => {
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'] })
+  const calls: string[] = []
+  const deps = dependencies([route('openrouter', 'openrouter/free', 'openrouter')], calls)
+  const claim = deps.repository.claim
+  let leaseExpiresAt = 0
+  deps.repository.claim = async (routeKey, leaseToken, generation, purpose) => {
+    const claimed = await claim(routeKey, leaseToken, generation, purpose)
+    leaseExpiresAt = Date.now() + FREE_ROUTE_LEASE_MS
+    return {
+      ...claimed,
+      route: claimed.route ? { ...claimed.route, activeLeaseExpiresAt: leaseExpiresAt } : null,
+    }
+  }
+  const routed = createOverlayFreeLanguageModel({
+    ...deps,
+    providers: {
+      gateway: async () => { throw new Error('unexpected Gateway call') },
+      openrouter: async () => model('openrouter', async () => openRouterReceipt(), (request) =>
+        abortableStream(request, true, 10_000)),
+    },
+  })
+  const response = await routed.doStream(options())
+  const reader = response.stream.getReader()
+
+  assert.equal((await reader.read()).value?.type, 'text-delta')
+  for (let index = 0; index < 16; index += 1) {
+    assert.equal((await readAfterTimer(reader, 10_000, (milliseconds) =>
+      t.mock.timers.tick(milliseconds))).value?.type, 'text-delta')
+  }
+  await assert.rejects(readAfterTimer(reader, 5_000, (milliseconds) =>
+    t.mock.timers.tick(milliseconds)))
+  assert.ok(Date.now() < leaseExpiresAt)
+  assert.deepEqual(calls, ['settle:openrouter:openrouter/free:openrouter:false'])
 })

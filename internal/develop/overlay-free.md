@@ -26,5 +26,7 @@ deduplication state. Receipt validation and quarantine remain unchanged.
 The safety checks reduce risk but cannot guarantee zero spend. Providers may
 change pricing between preflight and execution, and the first request can be
 charged before its receipt is checked. Unsafe or missing receipts quarantine
-the route. Quarantine recovery is a trusted-operator action after reviewing
-current provider pricing and receipts; there is no public reset endpoint.
+the route. Quarantine recovery is performed through the internal
+`clearRouteQuarantine` mutation by a trusted operator after reviewing current
+provider pricing and receipts. The expected quarantine reason is required as a
+guard, and there is no public reset endpoint.

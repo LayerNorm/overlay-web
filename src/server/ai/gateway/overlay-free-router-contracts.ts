@@ -88,7 +88,10 @@ export type OverlayFreeAttempt = {
   token: string
   reader: ReadableStreamDefaultReader<LanguageModelV4StreamPart>
   response: LanguageModelV4StreamResult
-  timer: ReturnType<typeof setTimeout>
+  timer?: ReturnType<typeof setTimeout>
+  idleTimer?: ReturnType<typeof setTimeout>
+  leaseTimer?: ReturnType<typeof setTimeout>
+  claimTime: number
   controller: AbortController
   settled: boolean
 }
@@ -99,6 +102,7 @@ export type OverlayFreePreparedAttempt = {
   capabilities: FreeRouteCapabilities
   controller: AbortController
   timer: ReturnType<typeof setTimeout>
+  claimTime: number
 }
 
 export type OverlayFreeStreamContext = {

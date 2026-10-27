@@ -7,6 +7,8 @@ import type {
 } from '@ai-sdk/provider'
 import {
   assessFreeReceipt,
+  FREE_ROUTE_IDLE_TIMEOUT_MS,
+  FREE_ROUTE_LEASE_MS,
   FREE_ROUTE_TIMEOUT_MS,
 } from '@/shared/ai/gateway/overlay-free-policy'
 import { logger } from '@/server/observability/logger'
@@ -19,6 +21,21 @@ import {
 } from './overlay-free-router-contracts'
 import { trustedOverlayFreeOptions } from './overlay-free-request-policy'
 import { OverlayFreeRouteBusyError } from './overlay-free-router-errors'
+
+type AttemptTimers = {
+  timer?: ReturnType<typeof setTimeout>
+  idleTimer?: ReturnType<typeof setTimeout>
+  leaseTimer?: ReturnType<typeof setTimeout>
+}
+
+function clearAttemptTimers(attempt: AttemptTimers): void {
+  if (attempt.timer !== undefined) clearTimeout(attempt.timer)
+  if (attempt.idleTimer !== undefined) clearTimeout(attempt.idleTimer)
+  if (attempt.leaseTimer !== undefined) clearTimeout(attempt.leaseTimer)
+  attempt.timer = undefined
+  attempt.idleTimer = undefined
+  attempt.leaseTimer = undefined
+}
 
 function isRateLimited(error: unknown): boolean {
   return typeof error === 'object' && error !== null &&
@@ -92,6 +109,7 @@ export async function doOverlayFreeStream({
     fallbackRemains: boolean,
   ): Promise<OverlayFreePreparedAttempt | null> => {
     if (options.abortSignal?.aborted) throw options.abortSignal.reason ?? new Error('aborted')
+    const claimTime = Date.now()
     const claimed = await claim(candidate)
     if (claimed.status === 'busy') routeBusy = true
     const route = claimed.route
@@ -115,7 +133,7 @@ export async function doOverlayFreeStream({
     }
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), timeout)
-    return { route: checked.route, token, capabilities: checked.capabilities, controller, timer }
+    return { route: checked.route, token, capabilities: checked.capabilities, controller, timer, claimTime }
   }
 
   const settleMissingReceipt = async (route: OverlayFreeRoute, token: string) => {
@@ -133,7 +151,7 @@ export async function doOverlayFreeStream({
   const invokePreparedAttempt = async (
     prepared: OverlayFreePreparedAttempt,
   ): Promise<OverlayFreeAttempt | null> => {
-    const { route, token, capabilities, controller, timer } = prepared
+    const { route, token, capabilities, controller, timer, claimTime } = prepared
     let generationStarted = false
     try {
       const languageModel = await model(route)
@@ -157,11 +175,12 @@ export async function doOverlayFreeStream({
         reader: response.stream.getReader(),
         response,
         timer,
+        claimTime,
         controller,
         settled: false,
       }
     } catch (error) {
-      clearTimeout(timer)
+      clearAttemptTimers(prepared)
       if (closed || options.abortSignal?.aborted) {
         if (!generationStarted || isRateLimited(error)) {
           await store(repository.cooldown(route.routeKey, token, now()))
@@ -220,6 +239,21 @@ export async function doOverlayFreeStream({
     preludeSize = 0
   }
 
+  const rearmIdleTimer = (attempt: OverlayFreeAttempt) => {
+    if (attempt.idleTimer !== undefined) clearTimeout(attempt.idleTimer)
+    attempt.idleTimer = setTimeout(() => attempt.controller.abort(), FREE_ROUTE_IDLE_TIMEOUT_MS)
+  }
+
+  const startSemanticTimers = (attempt: OverlayFreeAttempt) => {
+    clearAttemptTimers(attempt)
+    rearmIdleTimer(attempt)
+    const leaseExpiresAt = attempt.route.activeLeaseExpiresAt ?? attempt.claimTime + FREE_ROUTE_LEASE_MS
+    attempt.leaseTimer = setTimeout(
+      () => attempt.controller.abort(),
+      Math.max(0, leaseExpiresAt - 15_000 - Date.now()),
+    )
+  }
+
   const settleUnsafe = async (attempt: OverlayFreeAttempt, reason: string) => {
     if (attempt.settled) return
     attempt.settled = true
@@ -242,7 +276,7 @@ export async function doOverlayFreeStream({
 
   const handleEnd = async () => {
     const attempt = current!
-    clearTimeout(attempt.timer)
+    clearAttemptTimers(attempt)
     await settleUnsafe(attempt, 'missing receipt')
     if (closed) return
     if (semantic || options.abortSignal?.aborted) {
@@ -253,7 +287,7 @@ export async function doOverlayFreeStream({
 
   const handleEarlyError = async (error: unknown) => {
     const attempt = current!
-    clearTimeout(attempt.timer)
+    clearAttemptTimers(attempt)
     await attempt.reader.cancel().catch((_error) => undefined)
     if (closed) return
     if (isRateLimited(error) && !semantic) {
@@ -273,7 +307,7 @@ export async function doOverlayFreeStream({
 
   const handleFinish = async (part: Extract<LanguageModelV4StreamPart, { type: 'finish' }>, controller: ReadableStreamDefaultController<LanguageModelV4StreamPart>) => {
     const attempt = current!
-    clearTimeout(attempt.timer)
+    clearAttemptTimers(attempt)
     const receipt = assessFreeReceipt({
       providerMetadata: part.providerMetadata,
       response: { modelId: responseModelId },
@@ -332,6 +366,7 @@ export async function doOverlayFreeStream({
     if (part.type === 'raw') return 'continue'
     if (!semantic) {
       semantic = true
+      startSemanticTimers(current!)
       for (const buffered of prelude) controller.enqueue(buffered)
       prelude = []
       preludeParts.clear()
@@ -362,7 +397,7 @@ export async function doOverlayFreeStream({
   ): Promise<boolean> => {
     if (closed) return false
     if (current) {
-      clearTimeout(current.timer)
+      clearAttemptTimers(current)
       await current.reader.cancel().catch((_error) => undefined)
       if (closed) return false
       if (!current.settled) {
@@ -397,6 +432,7 @@ export async function doOverlayFreeStream({
             await handleEnd()
             continue
           }
+          if (semantic && current) rearmIdleTimer(current)
           if (await processPart(next.value, controller) === 'return') return
         } catch (error) {
           if (!await handlePullError(error, controller)) return
@@ -407,9 +443,10 @@ export async function doOverlayFreeStream({
       if (closed) return
       closed = true
       streamAbort.abort()
-      if (!current || current.settled) return
-      clearTimeout(current.timer)
+      if (!current) return
+      clearAttemptTimers(current)
       current.controller.abort()
+      if (current.settled) return
       try {
         await current.reader.cancel()
       } finally {

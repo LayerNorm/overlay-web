@@ -3,6 +3,7 @@ export const OPENROUTER_FREE_MODEL_ID = 'openrouter/free'
 export const FREE_ROUTE_TTL_MS = 60 * 60 * 1000
 export const FREE_ROUTE_LEASE_MS = 3 * 60 * 1000
 export const FREE_ROUTE_TIMEOUT_MS = 60 * 1000
+export const FREE_ROUTE_IDLE_TIMEOUT_MS = 30 * 1000
 export const FREE_ROUTE_COOLDOWN_MS = 60 * 1000
 
 const PREFERRED_MODELS = [
