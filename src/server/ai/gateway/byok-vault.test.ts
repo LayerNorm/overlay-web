@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { deleteByokVaultKey, writeByokVaultKey } from './byok-vault'
+import { deleteByokVaultKey, deleteByokVaultKeyByName, writeByokVaultKey } from './byok-vault'
 
 test('Vault writes reject redirects and do not expose upstream error bodies', async (t) => {
   const previousApiKey = process.env.WORKOS_API_KEY
@@ -229,4 +229,52 @@ test('Vault DELETE treats an already-deleted object as success', async (t) => {
   process.env.WORKOS_API_KEY = 'workos_test_key'
   t.mock.method(globalThis, 'fetch', async () => new Response('', { status: 404 }))
   await deleteByokVaultKey('already-deleted')
+})
+
+test('Vault delete by name resolves the object ID and does not log values', async (t) => {
+  const previousApiKey = process.env.WORKOS_API_KEY
+  process.env.WORKOS_API_KEY = 'workos_test_key'
+  t.after(() => {
+    if (previousApiKey === undefined) delete process.env.WORKOS_API_KEY
+    else process.env.WORKOS_API_KEY = previousApiKey
+  })
+
+  const name = 'byok_orphan/part'
+  const secretValue = 'sensitive-vault-value'
+  const calls: Array<{ url: string; method: string }> = []
+  t.mock.method(globalThis, 'fetch', async (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input)
+    const method = init?.method ?? 'GET'
+    calls.push({ url, method })
+    if (method === 'GET') return Response.json({ id: 'vault-object-id', value: secretValue })
+    return new Response(null, { status: 204 })
+  })
+  const info = t.mock.method(console, 'info', () => undefined)
+  const error = t.mock.method(console, 'error', () => undefined)
+
+  await deleteByokVaultKeyByName(name)
+
+  assert.equal(calls.length, 2)
+  assert.equal(calls[0]?.method, 'GET')
+  assert.equal(calls[0]?.url.endsWith(`/vault/v1/kv/name/${encodeURIComponent(name)}`), true)
+  assert.equal(calls[1]?.method, 'DELETE')
+  assert.equal(calls[1]?.url.endsWith('/vault/v1/kv/vault-object-id'), true)
+  const logged = JSON.stringify([...info.mock.calls, ...error.mock.calls])
+  assert.equal(logged.includes(secretValue), false)
+  assert.equal(logged.includes(name), false)
+})
+
+test('Vault delete by name treats a missing name as already deleted', async (t) => {
+  const previousApiKey = process.env.WORKOS_API_KEY
+  process.env.WORKOS_API_KEY = 'workos_test_key'
+  t.after(() => {
+    if (previousApiKey === undefined) delete process.env.WORKOS_API_KEY
+    else process.env.WORKOS_API_KEY = previousApiKey
+  })
+
+  const fetch = t.mock.method(globalThis, 'fetch', async () => new Response(null, { status: 404 }))
+  const error = t.mock.method(console, 'error', () => undefined)
+  await deleteByokVaultKeyByName('already-absent')
+  assert.equal(fetch.mock.callCount(), 1)
+  assert.equal(error.mock.callCount(), 0)
 })

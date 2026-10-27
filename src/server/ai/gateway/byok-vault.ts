@@ -148,6 +148,7 @@ async function vaultRequest<T>(
   method: 'GET' | 'POST' | 'PUT' | 'DELETE',
   path: string,
   body?: Record<string, unknown>,
+  options: { notFoundIsSuccess?: boolean } = {},
 ): Promise<T | null> {
   const response = await fetch(`${getWorkOSBaseUrl()}${path}`, {
     method,
@@ -163,6 +164,7 @@ async function vaultRequest<T>(
   })
 
   if (response.status === 204) return null
+  if (response.status === 404 && (method === 'DELETE' || options.notFoundIsSuccess)) return null
 
   // The body must be read before it can be parsed — nothing else can run
   // concurrently, so the await is inherent.
@@ -178,7 +180,7 @@ async function vaultRequest<T>(
       })()
     : null
 
-  if (!response.ok && !(method === 'DELETE' && response.status === 404)) {
+  if (!response.ok) {
     const upstreamFailureDetails = getVaultUpstreamFailureDetails(payload)
     throw new VaultFailure(
       'http_failure',
@@ -256,6 +258,26 @@ export async function deleteByokVaultKey(vaultObjectId: string): Promise<void> {
     logger.error('[BYOK Vault] Failed to delete vault object', vaultFailureContext(error))
     throw new Error('Failed to delete vault object')
   }
+}
+
+export async function readByokVaultKeyIdByName(name: string): Promise<string | null> {
+  try {
+    const object = await vaultRequest<VaultObjectMetadata>(
+      'GET',
+      `/vault/v1/kv/name/${encodeURIComponent(name)}`,
+      undefined,
+      { notFoundIsSuccess: true },
+    )
+    return object === null ? null : getVaultObjectId(object)
+  } catch (error) {
+    logger.error('[BYOK Vault] Failed to resolve vault object by name', vaultFailureContext(error))
+    throw new Error('Failed to resolve vault object by name')
+  }
+}
+
+export async function deleteByokVaultKeyByName(name: string): Promise<void> {
+  const vaultObjectId = await readByokVaultKeyIdByName(name)
+  if (vaultObjectId !== null) await deleteByokVaultKey(vaultObjectId)
 }
 
 /**

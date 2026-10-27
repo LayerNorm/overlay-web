@@ -28,6 +28,12 @@ import type {
 
 const implementedProviders = new Set<SubscriptionProviderId>(['codex'])
 const credentialPurpose = 'subscription-credential' as const
+const pendingWriteStaleAgeMs = 5 * 60_000
+
+type WrittenSecret = {
+  ref: string
+  name: string
+}
 
 type PendingCodexState = {
   v: 1
@@ -102,12 +108,13 @@ export class SubscriptionService {
     connectionId: string,
     providerId: SubscriptionProviderId,
   ): Promise<SubscriptionAuthorization> {
+    await this.reconcilePendingWrites(userId, connectionId, { olderThanMs: pendingWriteStaleAgeMs })
     if (!this.isEnabled(providerId)) throw new Error('Subscription request adapter is not available')
     const leaseToken = randomUUID()
     const lease = await this.repository.reserveAuthorization({
       userId, connectionId, providerId, leaseToken,
     })
-    let candidateRef: string | undefined
+    let candidate: WrittenSecret | undefined
     try {
       const device = await requestCodexDeviceCode({
         fetch: this.codexFetch(),
@@ -118,20 +125,22 @@ export class SubscriptionService {
         userCode: device.userCode,
         interval: device.interval,
       }
-      candidateRef = await this.writeSecret(userId, connectionId, providerId, JSON.stringify(pending))
+      const written = await this.writeSecret(userId, connectionId, providerId, JSON.stringify(pending))
+      candidate = written
       try {
         const saved = await this.repository.savePendingAuthorization({
           userId, connectionId,
           generation: lease.generation,
           revision: lease.revision,
           leaseToken,
-          pendingStateRef: candidateRef,
+          pendingStateRef: written.ref,
+          pendingWriteName: written.name,
           expiresAt: device.expiresAt,
           pollIntervalMs: device.interval * 1000,
         })
         await this.cleanupRefs(userId, connectionId, saved.cleanupRefs)
       } catch (error) {
-        await this.deleteCandidateIfUncommitted(userId, connectionId, candidateRef)
+        await this.deleteCandidateIfUncommitted(userId, connectionId, written)
         throw error
       }
       return {
@@ -141,7 +150,7 @@ export class SubscriptionService {
         interval: device.interval,
       }
     } catch (error) {
-      if (candidateRef) await this.deleteCandidateIfUncommitted(userId, connectionId, candidateRef)
+      if (candidate) await this.deleteCandidateIfUncommitted(userId, connectionId, candidate)
       await this.repository.failClosed({
         userId, connectionId, generation: lease.generation, revision: lease.revision,
         leaseToken, error: 'Authorization could not be started. Reconnect to continue.',
@@ -151,6 +160,7 @@ export class SubscriptionService {
   }
 
   async poll(userId: string, connectionId: string): Promise<SubscriptionResult> {
+    await this.reconcilePendingWrites(userId, connectionId, { olderThanMs: pendingWriteStaleAgeMs })
     const current = await this.repository.get({ userId, connectionId })
     if (current?.phase === 'active') return { status: 'connected', models: [] }
     if (current?.phase === 'discovering') return await this.discover(userId, connectionId)
@@ -171,11 +181,11 @@ export class SubscriptionService {
       }, { fetch: this.codexFetch() })
       const expiry = codexAccessTokenExpiry(tokens)
       if (!expiry || expiry <= Date.now()) throw new Error('Codex returned an expired subscription token')
-      const credentialRef = await this.writeSecret(
+      const candidate = await this.writeSecret(
         userId, connectionId, 'codex', serializeCodexTokens(tokens),
       )
-      const candidate = await this.commitCredentialCandidate(fenced, credentialRef)
-      if (!candidate) throw new Error('Authorization could not be committed')
+      const committed = await this.commitCredentialCandidate(fenced, candidate)
+      if (!committed) throw new Error('Authorization could not be committed')
       return await this.discover(userId, connectionId)
     } catch (error) {
       if (error instanceof CodexSignInError && error.code === 'pending') {
@@ -199,6 +209,7 @@ export class SubscriptionService {
   }
 
   async refresh(userId: string, connectionId: string): Promise<SubscriptionResult> {
+    await this.reconcilePendingWrites(userId, connectionId, { olderThanMs: pendingWriteStaleAgeMs })
     const state = await this.repository.get({ userId, connectionId })
     if (state?.phase === 'discovering') return await this.discover(userId, connectionId)
     if (state?.phase !== 'active' || !state.credentialRef) {
@@ -225,8 +236,8 @@ export class SubscriptionService {
         return { status: 'connected', models: [] }
       }
       const refreshed = await refreshCodexTokens(latest, { fetch: this.codexFetch() })
-      const credentialRef = await this.writeSecret(userId, connectionId, 'codex', serializeCodexTokens(refreshed))
-      const committed = await this.commitCredentialCandidate(fenced, credentialRef)
+      const candidate = await this.writeSecret(userId, connectionId, 'codex', serializeCodexTokens(refreshed))
+      const committed = await this.commitCredentialCandidate(fenced, candidate)
       if (!committed) throw new Error('Refreshed subscription credential could not be committed')
       return await this.discover(userId, connectionId)
     } catch (error) {
@@ -240,7 +251,9 @@ export class SubscriptionService {
 
   async disconnect(userId: string, connectionId: string): Promise<void> {
     const refs = await this.repository.disconnect({ userId, connectionId })
-    if (!await this.cleanupRefs(userId, connectionId, refs)) {
+    const refsCleaned = await this.cleanupRefs(userId, connectionId, refs)
+    const pendingWritesCleaned = await this.reconcilePendingWrites(userId, connectionId, { olderThanMs: 0 })
+    if (!refsCleaned || !pendingWritesCleaned) {
       throw new Error('Subscription cleanup is pending')
     }
     await this.repository.forgetDisconnected({ userId, connectionId })
@@ -283,11 +296,12 @@ export class SubscriptionService {
   async revokeAllForUser(userId: string): Promise<void> {
     await this.repository.revokeAllByUser(userId)
     const states = await this.repository.listByUser(userId)
+    let cleanupSucceeded = true
     for (const state of states) {
-      if (!await this.cleanupRefs(userId, state.connectionId, state.cleanupRefs)) {
-        throw new Error('Subscription cleanup is pending')
-      }
+      if (!await this.cleanupRefs(userId, state.connectionId, state.cleanupRefs)) cleanupSucceeded = false
+      if (!await this.reconcilePendingWrites(userId, state.connectionId, { olderThanMs: 0 })) cleanupSucceeded = false
     }
+    if (!cleanupSucceeded) throw new Error('Subscription cleanup is pending')
     await this.repository.forgetAllByUser(userId)
   }
 
@@ -320,10 +334,13 @@ export class SubscriptionService {
 
   private async commitCredentialCandidate(
     fenced: { userId: string; connectionId: string; generation: number; revision: number; leaseToken: string },
-    credentialRef: string,
+    candidate: WrittenSecret,
   ): Promise<boolean> {
+    const { ref: credentialRef, name: pendingWriteName } = candidate
     try {
-      const result = await this.repository.commitCredentialForDiscovery({ ...fenced, credentialRef })
+      const result = await this.repository.commitCredentialForDiscovery({
+        ...fenced, credentialRef, pendingWriteName,
+      })
       await this.cleanupRefs(fenced.userId, fenced.connectionId, result.cleanupRefs)
       return true
     } catch (_error) {
@@ -336,7 +353,7 @@ export class SubscriptionService {
       } catch (_error) {
         try {
           await this.repository.retainCleanupRef({
-            userId: fenced.userId, connectionId: fenced.connectionId, credentialRef,
+            userId: fenced.userId, connectionId: fenced.connectionId, credentialRef, pendingWriteName,
           })
         } catch (_retainError) { /* retain the original failure */ }
         return false
@@ -344,7 +361,7 @@ export class SubscriptionService {
       if (state?.credentialRef === credentialRef ||
           state?.pendingStateRef === credentialRef ||
           state?.cleanupRefs.includes(credentialRef)) return true
-      await this.deleteCandidateIfUncommitted(fenced.userId, fenced.connectionId, credentialRef)
+      await this.deleteCandidateIfUncommitted(fenced.userId, fenced.connectionId, candidate)
       return false
     }
   }
@@ -352,14 +369,17 @@ export class SubscriptionService {
   private async deleteCandidateIfUncommitted(
     userId: string,
     connectionId: string,
-    candidateRef: string,
+    candidate: WrittenSecret,
   ): Promise<void> {
+    const { ref: candidateRef, name: pendingWriteName } = candidate
     let state: Awaited<ReturnType<SubscriptionRepository['get']>>
     try {
       state = await this.repository.get({ userId, connectionId })
     } catch (_error) {
       try {
-        await this.repository.retainCleanupRef({ userId, connectionId, credentialRef: candidateRef })
+        await this.repository.retainCleanupRef({
+          userId, connectionId, credentialRef: candidateRef, pendingWriteName,
+        })
       } catch (_retainError) { /* retain the original failure */ }
       return
     }
@@ -367,11 +387,43 @@ export class SubscriptionService {
     if (state?.cleanupRefs.includes(candidateRef)) return
     try {
       await this.credentials.delete(candidateRef)
+      await this.repository.clearPendingWrite({ userId, connectionId, name: pendingWriteName })
     } catch (_error) {
       try {
-        await this.repository.retainCleanupRef({ userId, connectionId, credentialRef: candidateRef })
+        await this.repository.retainCleanupRef({
+          userId, connectionId, credentialRef: candidateRef, pendingWriteName,
+        })
       } catch (_retainError) { /* retain the original failure */ }
     }
+  }
+
+  private async reconcilePendingWrites(
+    userId: string,
+    connectionId: string,
+    { olderThanMs }: { olderThanMs: number },
+  ): Promise<boolean> {
+    let state: Awaited<ReturnType<SubscriptionRepository['get']>>
+    try {
+      state = await this.repository.get({ userId, connectionId })
+    } catch (_error) {
+      return false
+    }
+    if (!state) return true
+
+    const cutoff = Date.now() - olderThanMs
+    let succeeded = true
+    for (const pendingWrite of state.pendingWrites ?? []) {
+      if (pendingWrite.createdAt > cutoff) continue
+      try {
+        await this.credentials.deleteByName(pendingWrite.name)
+        await this.repository.clearPendingWrite({
+          userId, connectionId, name: pendingWrite.name,
+        })
+      } catch (_error) {
+        succeeded = false
+      }
+    }
+    return succeeded
   }
 
   private async cleanupRefs(userId: string, connectionId: string, refs: string[]): Promise<boolean> {
@@ -392,16 +444,28 @@ export class SubscriptionService {
     connectionId: string,
     providerId: SubscriptionProviderId,
     value: string,
-  ): Promise<string> {
-    return await this.credentials.write({
-      apiKey: value,
-      context: {
-        purpose: credentialPurpose,
-        userId,
-        connectionId,
-        providerId: `subscription-${providerId}`,
-      },
-    })
+  ): Promise<WrittenSecret> {
+    const name = this.credentials.newCredentialName()
+    await this.repository.registerPendingWrite({ userId, connectionId, name })
+    try {
+      const ref = await this.credentials.write({
+        name,
+        apiKey: value,
+        context: {
+          purpose: credentialPurpose,
+          userId,
+          connectionId,
+          providerId: `subscription-${providerId}`,
+        },
+      })
+      return { ref, name }
+    } catch (error) {
+      try {
+        await this.credentials.deleteByName(name)
+        await this.repository.clearPendingWrite({ userId, connectionId, name })
+      } catch (_cleanupError) { /* leave the pending name for reconciliation */ }
+      throw error
+    }
   }
 
   private codexFetch() {

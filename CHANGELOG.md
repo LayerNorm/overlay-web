@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Track pending credential-vault writes so orphaned objects are deleted after process crashes.
+
 - Keep a selected subscription or API-key model on new conversations for free-tier accounts instead of resetting to Auto.
 
 - Strip Codex-incompatible output and sampling controls before forwarding subscription inference requests.

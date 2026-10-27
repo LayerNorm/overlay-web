@@ -20,6 +20,7 @@ export type SubscriptionState = {
   leaseOperation?: SubscriptionLeaseOperation
   cleanupRefs: string[]
   cleanupStatus: 'clean' | 'pending'
+  pendingWrites?: Array<{ name: string; createdAt: number }>
 }
 
 export type SubscriptionModel = {

@@ -235,6 +235,10 @@ export default defineSchema({
     )),
     cleanupRefs: v.array(v.string()),
     cleanupStatus: v.union(v.literal('clean'), v.literal('pending')),
+    pendingWrites: v.optional(v.array(v.object({
+      name: v.string(),
+      createdAt: v.number(),
+    }))),
     createdAt: v.number(),
     updatedAt: v.number(),
   })

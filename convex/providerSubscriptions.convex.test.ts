@@ -134,6 +134,120 @@ test('subscription reservation cannot be called without the internal server secr
   })).rejects.toThrow()
 })
 
+test('authorization and discovery commits atomically clear their pending Vault write names', async () => {
+  let now = Date.now()
+  const clock = vi.spyOn(Date, 'now').mockImplementation(() => now)
+  try {
+    const convex = convexTest(schema, modules)
+    const connectionId = await createConnection(convex)
+    const args = { serverSecret: secret, userId: 'owner-1', connectionId }
+    const reservation = await convex.mutation(mutation('reserveAuthorization'), {
+      ...args,
+      providerId: 'codex',
+      leaseToken: 'authorization-lease',
+    })
+    await convex.mutation(mutation('registerPendingWrite'), { ...args, name: 'pending-authorization' })
+    await convex.mutation(mutation('savePendingAuthorization'), {
+      ...args,
+      generation: reservation.generation,
+      revision: reservation.revision,
+      leaseToken: 'authorization-lease',
+      pendingStateRef: 'vault-pending-state',
+      pendingWriteName: 'pending-authorization',
+      expiresAt: now + 10 * 60_000,
+      pollIntervalMs: 2_000,
+    })
+    expect((await convex.query(query('getByServer'), args))?.pendingWrites).toEqual([])
+
+    now += 3_000
+    const poll = await convex.mutation(mutation('acquirePoll'), {
+      ...args,
+      leaseToken: 'poll-lease',
+    })
+    await convex.mutation(mutation('registerPendingWrite'), { ...args, name: 'pending-credential' })
+    await convex.mutation(mutation('commitCredentialForDiscovery'), {
+      ...args,
+      generation: poll.generation!,
+      revision: poll.revision!,
+      leaseToken: 'poll-lease',
+      credentialRef: 'vault-credential',
+      pendingWriteName: 'pending-credential',
+    })
+    expect((await convex.query(query('getByServer'), args))?.pendingWrites).toEqual([])
+  } finally {
+    clock.mockRestore()
+  }
+})
+
+test('retainCleanupRef atomically moves a pending write into durable cleanup refs', async () => {
+  const convex = convexTest(schema, modules)
+  const pending = await createPendingAuthorization(convex)
+  const args = {
+    serverSecret: secret,
+    userId: 'owner-1',
+    connectionId: pending.connectionId,
+  }
+  await convex.mutation(mutation('registerPendingWrite'), { ...args, name: 'orphan-write' })
+  await convex.mutation(mutation('retainCleanupRef'), {
+    ...args,
+    credentialRef: 'vault-orphan',
+    pendingWriteName: 'orphan-write',
+  })
+
+  const state = await convex.query(query('getByServer'), args)
+  expect(state?.pendingWrites).toEqual([])
+  expect(state?.cleanupRefs).toContain('vault-orphan')
+})
+
+test('disconnect and account forgetting refuse to remove state with pending Vault writes', async () => {
+  const convex = convexTest(schema, modules)
+  const pending = await createPendingAuthorization(convex)
+  const args = {
+    serverSecret: secret,
+    userId: 'owner-1',
+    connectionId: pending.connectionId,
+  }
+  await convex.mutation(mutation('registerPendingWrite'), { ...args, name: 'orphan-write' })
+  await convex.mutation(mutation('disconnect'), args)
+  await convex.mutation(mutation('removeCleanupRef'), {
+    ...args,
+    credentialRef: 'vault-pending-state',
+  })
+
+  await expect(convex.mutation(mutation('forgetDisconnectedByServer'), args)).rejects.toThrow(/pending/)
+  await expect(convex.mutation(mutation('forgetAllByUser'), {
+    serverSecret: secret,
+    userId: 'owner-1',
+  })).rejects.toThrow(/credentials remain/)
+})
+
+test('pending Vault write registration is owner checked and capped at twenty entries', async () => {
+  const convex = convexTest(schema, modules)
+  const pending = await createPendingAuthorization(convex)
+  const args = {
+    serverSecret: secret,
+    connectionId: pending.connectionId,
+  }
+  await expect(convex.mutation(mutation('registerPendingWrite'), {
+    ...args,
+    userId: 'another-owner',
+    name: 'wrong-owner-write',
+  })).rejects.toThrow(/Subscription connection not found/)
+
+  for (let index = 0; index < 20; index += 1) {
+    await convex.mutation(mutation('registerPendingWrite'), {
+      ...args,
+      userId: 'owner-1',
+      name: `pending-${index}`,
+    })
+  }
+  await expect(convex.mutation(mutation('registerPendingWrite'), {
+    ...args,
+    userId: 'owner-1',
+    name: 'pending-21',
+  })).rejects.toThrow(/Too many pending/)
+})
+
 test('disconnect fences an in-flight poll and retains its vault reference for cleanup', async () => {
   let now = Date.now()
   const clock = vi.spyOn(Date, 'now').mockImplementation(() => now)

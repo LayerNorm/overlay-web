@@ -43,6 +43,10 @@ const stateValidator = v.object({
   leaseOperation: v.optional(operationValidator),
   cleanupRefs: v.array(v.string()),
   cleanupStatus: v.union(v.literal('clean'), v.literal('pending')),
+  pendingWrites: v.optional(v.array(v.object({
+    name: v.string(),
+    createdAt: v.number(),
+  }))),
   createdAt: v.number(),
   updatedAt: v.number(),
 })
@@ -173,6 +177,53 @@ export const getForDispatchByServer = query({
   },
 })
 
+export const registerPendingWrite = mutation({
+  args: {
+    serverSecret: v.string(),
+    userId: v.string(),
+    connectionId: v.id('userProviderConnections'),
+    name: v.string(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const state = await loadState(ctx, args.connectionId)
+    if (!state || state.userId !== args.userId) throw new Error('Subscription connection not found')
+    await loadConnection(ctx, args.connectionId, args.userId, state.providerId)
+    const pendingWrites = state.pendingWrites ?? []
+    if (pendingWrites.length >= 20) throw new Error('Too many pending subscription credential writes')
+    const now = Date.now()
+    await ctx.db.patch(state._id, {
+      pendingWrites: [...pendingWrites, { name: args.name, createdAt: now }],
+      updatedAt: now,
+    })
+    return null
+  },
+})
+
+export const clearPendingWrite = mutation({
+  args: {
+    serverSecret: v.string(),
+    userId: v.string(),
+    connectionId: v.id('userProviderConnections'),
+    name: v.string(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const state = await loadState(ctx, args.connectionId)
+    if (!state || state.userId !== args.userId) throw new Error('Subscription connection not found')
+    await loadConnection(ctx, args.connectionId, args.userId, state.providerId)
+    const pendingWrites = state.pendingWrites ?? []
+    if (!pendingWrites.some((write) => write.name === args.name)) return null
+    await ctx.db.patch(state._id, {
+      pendingWrites: pendingWrites.filter((write) => write.name !== args.name),
+      updatedAt: Date.now(),
+    })
+    return null
+  },
+})
+
 export const reserveAuthorization = mutation({
   args: {
     serverSecret: v.string(),
@@ -215,6 +266,7 @@ export const reserveAuthorization = mutation({
       leaseOperation: 'authorization' as const,
       cleanupRefs,
       cleanupStatus: cleanupStatus(cleanupRefs),
+      ...(previous?.pendingWrites ? { pendingWrites: previous.pendingWrites } : {}),
       createdAt: previous?.createdAt ?? now,
       updatedAt: now,
     }
@@ -238,6 +290,7 @@ export const savePendingAuthorization = mutation({
     revision: v.number(),
     leaseToken: v.string(),
     pendingStateRef: v.string(),
+    pendingWriteName: v.optional(v.string()),
     expiresAt: v.number(),
     pollIntervalMs: v.number(),
   },
@@ -266,6 +319,9 @@ export const savePendingAuthorization = mutation({
       leaseOperation: undefined,
       cleanupRefs,
       cleanupStatus: cleanupStatus(cleanupRefs),
+      ...(args.pendingWriteName === undefined ? {} : {
+        pendingWrites: (state.pendingWrites ?? []).filter((write) => write.name !== args.pendingWriteName),
+      }),
       updatedAt: now,
     })
     return { revision: state.revision + 1, cleanupRefs }
@@ -441,6 +497,7 @@ export const commitCredentialForDiscovery = mutation({
     revision: v.number(),
     leaseToken: v.string(),
     credentialRef: v.string(),
+    pendingWriteName: v.optional(v.string()),
   },
   returns: v.object({
     revision: v.number(),
@@ -473,6 +530,9 @@ export const commitCredentialForDiscovery = mutation({
       leaseOperation: undefined,
       cleanupRefs,
       cleanupStatus: cleanupStatus(cleanupRefs),
+      ...(args.pendingWriteName === undefined ? {} : {
+        pendingWrites: (state.pendingWrites ?? []).filter((write) => write.name !== args.pendingWriteName),
+      }),
       updatedAt: Date.now(),
     })
     return { revision, cleanupRefs }
@@ -683,6 +743,7 @@ export const disconnect = mutation({
       leaseUntil: state?.leaseUntil,
       cleanupRefs,
       cleanupStatus: cleanupStatus(cleanupRefs),
+      ...(state?.pendingWrites ? { pendingWrites: state.pendingWrites } : {}),
       createdAt: state?.createdAt ?? now,
       updatedAt: now,
     }
@@ -774,6 +835,7 @@ export const retainCleanupRef = mutation({
     userId: v.string(),
     connectionId: v.id('userProviderConnections'),
     credentialRef: v.string(),
+    pendingWriteName: v.optional(v.string()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -784,11 +846,13 @@ export const retainCleanupRef = mutation({
         state.pendingStateRef === args.credentialRef) {
       throw new Error('Subscription cleanup is unavailable')
     }
-    if (state.cleanupRefs.includes(args.credentialRef)) return null
     const cleanupRefs = dedupeRefs(...state.cleanupRefs, args.credentialRef)
     await ctx.db.patch(state._id, {
       cleanupRefs,
       cleanupStatus: cleanupStatus(cleanupRefs),
+      ...(args.pendingWriteName === undefined ? {} : {
+        pendingWrites: (state.pendingWrites ?? []).filter((write) => write.name !== args.pendingWriteName),
+      }),
       updatedAt: Date.now(),
     })
     return null
@@ -806,6 +870,7 @@ export const forgetAllByUser = mutation({
       .collect()
     if (states.some((state) =>
       state.credentialRef || state.pendingStateRef || state.cleanupRefs.length > 0 ||
+      (state.pendingWrites?.length ?? 0) > 0 ||
       (state.leaseUntil !== undefined && state.leaseUntil > Date.now())
     )) {
       throw new Error('Subscription credentials remain during account deletion')
@@ -827,6 +892,7 @@ export const forgetDisconnectedByServer = mutation({
     const state = await loadState(ctx, args.connectionId)
     if (!state || state.userId !== args.userId || state.phase !== 'disconnected' ||
         state.credentialRef || state.pendingStateRef || state.cleanupRefs.length > 0 ||
+        (state.pendingWrites?.length ?? 0) > 0 ||
         (state.leaseUntil !== undefined && state.leaseUntil > Date.now())) {
       throw new Error('Subscription cleanup is still pending')
     }

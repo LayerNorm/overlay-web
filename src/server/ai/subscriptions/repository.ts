@@ -23,12 +23,14 @@ function requireMutationResult<T>(result: T | null | undefined): T {
 export interface SubscriptionRepository {
   get(args: { userId: string; connectionId: string }): Promise<SubscriptionState | null>
   reserveAuthorization(args: { userId: string; connectionId: string; providerId: SubscriptionProviderId; leaseToken: string }): Promise<{ generation: number; revision: number; cleanupRefs: string[] }>
-  savePendingAuthorization(args: FencedArgs & { pendingStateRef: string; expiresAt: number; pollIntervalMs: number }): Promise<{ revision: number; cleanupRefs: string[] }>
+  registerPendingWrite(args: { userId: string; connectionId: string; name: string }): Promise<void>
+  clearPendingWrite(args: { userId: string; connectionId: string; name: string }): Promise<void>
+  savePendingAuthorization(args: FencedArgs & { pendingStateRef: string; pendingWriteName?: string; expiresAt: number; pollIntervalMs: number }): Promise<{ revision: number; cleanupRefs: string[] }>
   acquirePoll(args: { userId: string; connectionId: string; leaseToken: string }): Promise<{ generation: number; revision: number; pendingStateRef: string; expiresAt: number }>
   releasePendingPoll(args: FencedArgs & { pollIntervalMs: number }): Promise<void>
   acquireRefresh(args: { userId: string; connectionId: string; leaseToken: string }): Promise<{ generation: number; revision: number; credentialRef: string; providerId: SubscriptionProviderId }>
   releaseRefresh(args: FencedArgs): Promise<void>
-  commitCredentialForDiscovery(args: FencedArgs & { credentialRef: string }): Promise<{ revision: number; cleanupRefs: string[] }>
+  commitCredentialForDiscovery(args: FencedArgs & { credentialRef: string; pendingWriteName?: string }): Promise<{ revision: number; cleanupRefs: string[] }>
   acquireDiscovery(args: { userId: string; connectionId: string; leaseToken: string }): Promise<{ generation: number; revision: number; credentialRef: string; providerId: SubscriptionProviderId }>
   releaseDiscovery(args: FencedArgs): Promise<void>
   commitActive(args: FencedArgs & { credentialRef: string; discoveredModelsJson: string; discoveredModelIds: string[]; displayName?: string }): Promise<{ revision: number; enabledModelIds: string[]; cleanupRefs: string[] }>
@@ -37,7 +39,7 @@ export interface SubscriptionRepository {
   forDispatch(args: { userId: string; connectionId: string; modelId: string }): Promise<{ providerId: SubscriptionProviderId; credentialRef: string; generation: number } | null>
   revokeAllByUser(userId: string): Promise<string[]>
   removeCleanupRef(args: { userId: string; connectionId: string; credentialRef: string }): Promise<void>
-  retainCleanupRef(args: { userId: string; connectionId: string; credentialRef: string }): Promise<void>
+  retainCleanupRef(args: { userId: string; connectionId: string; credentialRef: string; pendingWriteName?: string }): Promise<void>
   forgetAllByUser(userId: string): Promise<void>
   forgetDisconnected(args: { userId: string; connectionId: string }): Promise<void>
   listByUser(userId: string): Promise<SubscriptionState[]>
@@ -49,6 +51,22 @@ export class ConvexSubscriptionRepository implements SubscriptionRepository {
   async get(args: { userId: string; connectionId: string }) {
     return await convex.query<SubscriptionState | null>(
       'providers/subscriptions:getByServer',
+      { serverSecret: this.secret, ...args },
+      { throwOnError: true },
+    )
+  }
+
+  async registerPendingWrite(args: { userId: string; connectionId: string; name: string }) {
+    await convex.mutation(
+      'providers/subscriptions:registerPendingWrite',
+      { serverSecret: this.secret, ...args },
+      { throwOnError: true },
+    )
+  }
+
+  async clearPendingWrite(args: { userId: string; connectionId: string; name: string }) {
+    await convex.mutation(
+      'providers/subscriptions:clearPendingWrite',
       { serverSecret: this.secret, ...args },
       { throwOnError: true },
     )
@@ -67,7 +85,7 @@ export class ConvexSubscriptionRepository implements SubscriptionRepository {
     ))
   }
 
-  async savePendingAuthorization(args: FencedArgs & { pendingStateRef: string; expiresAt: number; pollIntervalMs: number }) {
+  async savePendingAuthorization(args: FencedArgs & { pendingStateRef: string; pendingWriteName?: string; expiresAt: number; pollIntervalMs: number }) {
     return requireMutationResult(await convex.mutation<{ revision: number; cleanupRefs: string[] }>(
       'providers/subscriptions:savePendingAuthorization',
       { serverSecret: this.secret, ...args },
@@ -141,7 +159,7 @@ export class ConvexSubscriptionRepository implements SubscriptionRepository {
     )
   }
 
-  async commitCredentialForDiscovery(args: FencedArgs & { credentialRef: string }) {
+  async commitCredentialForDiscovery(args: FencedArgs & { credentialRef: string; pendingWriteName?: string }) {
     return requireMutationResult(await convex.mutation<{ revision: number; cleanupRefs: string[] }>(
       'providers/subscriptions:commitCredentialForDiscovery',
       { serverSecret: this.secret, ...args },
@@ -230,7 +248,7 @@ export class ConvexSubscriptionRepository implements SubscriptionRepository {
     )
   }
 
-  async retainCleanupRef(args: { userId: string; connectionId: string; credentialRef: string }) {
+  async retainCleanupRef(args: { userId: string; connectionId: string; credentialRef: string; pendingWriteName?: string }) {
     await convex.mutation(
       'providers/subscriptions:retainCleanupRef',
       { serverSecret: this.secret, ...args },

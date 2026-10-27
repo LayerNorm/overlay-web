@@ -33,10 +33,14 @@ Disconnect revokes the generation and public connection access before cleanup.
 Failed vault deletion leaves retryable cleanup references in Convex.
 Disconnect retains the prior operation deadline as a cleanup barrier before a
 connection or account can be removed. A retry can finish deletion after that
-deadline. Vault creation and Convex reference persistence are separate services:
-a process crash between them can still leave an unreferenced vault object.
-This is not cross-service atomicity; rollout needs vault reconciliation for that
-residual crash window.
+deadline. Before writing a Vault object, the service registers its generated
+name and timestamp in Convex. Saving the resulting reference or retaining it for
+cleanup clears that pending name in the same mutation. Writes older than five
+minutes are deleted by name during reconciliation, which exceeds the 60 second
+Convex lease and avoids touching an in-flight write. Disconnect and account
+revocation reconcile all pending writes after invalidation and block state
+removal until cleanup succeeds. This closes the process-crash orphan window
+without claiming cross-service atomicity.
 
 Vault failures log only a structured failure code and, for upstream rejections,
 the HTTP status. `missing_configuration` means the runtime has no
