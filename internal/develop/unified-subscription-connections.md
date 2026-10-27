@@ -24,6 +24,22 @@ configuration are implemented. An environment setting cannot enable an
 unimplemented adapter. Anthropic/Claude, Antigravity and Gemini subscriptions
 remain excluded.
 
+## Hosted rollout
+
+The customer-web Production environment enables the implemented adapter with
+`OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS=codex`. The empty application default
+remains fail-closed for unconfigured deployments. This setting belongs to the web
+server; Convex needs no matching feature flag. Environment changes take effect
+only in a new web deployment. Other listed providers stay unavailable until their
+request adapters are implemented.
+
+After changing the allowlist, verify the authenticated subscription availability
+endpoint and Settings → Providers on the live deployment. Exercise sign-in and
+cancellation without retaining test credentials. Completed reconnect and live
+expired-token refresh remain acceptance checks; fixture coverage does not establish
+those live results. Roll back availability by emptying the allowlist and deploying
+again, retaining the additive backend and cleanup paths for existing connections.
+
 Codex authorization uses the existing device-code helper. Durable Convex
 leases fence authorization, polling, refresh and discovery across instances;
 the rotating refresh token is reread after acquiring its lease and a refreshed
