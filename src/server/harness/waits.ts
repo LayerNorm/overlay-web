@@ -1,5 +1,6 @@
 import { createHook, FatalError, sleep } from 'workflow'
 import type { HarnessWait, HarnessWaitRequest } from '@overlay/agent-runtime/harness-store'
+import type { HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
 import { z } from 'zod'
 import type { HarnessExecutionPorts } from './ports'
 import { applyHarnessOperation, readHarnessState, type HarnessExecutionReference } from './state-steps'
@@ -15,12 +16,16 @@ export type HarnessWaitProjection = { wait: HarnessWait } | { status: 'running' 
 
 export function createHarnessWaitPorts(input: {
   reference: HarnessExecutionReference
+  deliveryRunId?: string
   projectWait: (projection: HarnessWaitProjection) => Promise<'projected' | 'stale' | 'inactive'>
   // The workflow registers this hook before launching any children, and keeps
   // it alive until finalization. Notifications are buffered while the model runs.
   wake: AsyncIterator<unknown>
 }): Pick<HarnessExecutionPorts, 'waitForInput' | 'waitForApproval' | 'waitForChildren'> {
   const access = input.reference
+  const ownsDelivery = (state: HarnessSnapshot) => input.deliveryRunId
+    ? state.runId === input.deliveryRunId
+    : !state.parentRunId
   let sequence = 0
 
   const withDeadline = async <T>(pending: PromiseLike<T>, deadlineAt: number): Promise<T> => Promise.race([
@@ -34,11 +39,11 @@ export function createHarnessWaitPorts(input: {
     const wait = await publishHarnessWait(access, request)
     const state = await readHarnessState(access)
     await notifyHarnessAncestors(access)
-    if (!state.parentRunId && await input.projectWait({ wait }) === 'inactive') return null
+    if (ownsDelivery(state) && await input.projectWait({ wait }) === 'inactive') return null
     const result = await withDeadline(hook, state.policy.deadlineAt)
     await resolveHarnessWait(access, wait.token)
     await notifyHarnessAncestors(access)
-    if (!state.parentRunId) await input.projectWait({ status: 'running' })
+    if (ownsDelivery(state)) await input.projectWait({ status: 'running' })
     return result
   }
 
@@ -79,10 +84,10 @@ export function createHarnessWaitPorts(input: {
           }
         }
         if (settled || !childRunIds.length) {
-          if (!state.parentRunId) await input.projectWait({ status: 'running' })
+          if (ownsDelivery(state)) await input.projectWait({ status: 'running' })
           return
         }
-        if (!state.parentRunId) {
+        if (ownsDelivery(state)) {
           const [wait] = await listHarnessWaits(access)
           const projected = await input.projectWait(wait ? { wait } : { status: 'waiting_for_children' })
           if (projected === 'inactive') return

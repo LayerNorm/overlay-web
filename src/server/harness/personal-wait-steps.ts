@@ -2,13 +2,13 @@ import 'server-only'
 
 import { FatalError } from 'workflow'
 import { resumeHook } from 'workflow/api'
-import type { HarnessWait, HarnessWaitRequest } from '@overlay/agent-runtime/harness-store'
+import type { HarnessWaitRequest } from '@overlay/agent-runtime/harness-store'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { asConversationId } from '@/server/conversations/ActConversationRepository'
-import { isTerminalAgentRunStatus } from '@/shared/agents/agent-run'
 import { ConvexHarnessRepository } from './ConvexHarnessRepository'
 import type { PersonalHarnessAccess } from './personal-access'
 import type { HarnessExecutionReference } from './state-steps'
+import { projectHarnessDeliveryWait, type HarnessWaitProjection } from './delivery-wait-projection'
 import { harnessWakeToken } from './wait-token'
 export { harnessWakeToken }
 
@@ -83,7 +83,7 @@ export async function notifyHarnessAncestors(reference: HarnessExecutionReferenc
 // for approval must not pause a parent that is still doing independent work.
 export async function projectPersonalHarnessWait(
   access: PersonalHarnessAccess,
-  projection: { wait: HarnessWait } | { status: 'running' | 'waiting_for_children' },
+  projection: HarnessWaitProjection,
 ): Promise<'projected' | 'stale' | 'inactive'> {
   'use step'
   const repository = new ConvexHarnessRepository()
@@ -92,26 +92,9 @@ export async function projectPersonalHarnessWait(
     throw new FatalError('Only the owning root may project conversation waits.')
   }
   if (['completed', 'cancelled', 'failed'].includes(state.status)) return 'inactive'
-  const conversations = getOverlayServerContext().appData.repositories.conversations
-  const run = await conversations.getLatestAgentRun({
+  const run = await getOverlayServerContext().appData.repositories.conversations.getLatestAgentRun({
     conversationId: asConversationId(access.conversationId), userId: access.actorUserId, agentRunId: access.agentRunId,
   })
   assertPersonalWaitDeliveryOwnership(run, access, state.runId)
-  if (isTerminalAgentRunStatus(run.status)) return 'inactive'
-  const wait = 'wait' in projection
-    ? (await repository.listPendingWaits(access)).find(candidate => candidate.token === projection.wait.token)
-    : undefined
-  if ('wait' in projection && !wait) return 'stale'
-  const status = wait ? (wait.kind === 'input' ? 'waiting_for_input' : 'waiting_for_approval')
-    : (projection as { status: 'running' | 'waiting_for_children' }).status
-  if (run.status === status && (!wait || (wait.kind === 'input'
-    ? run.inputRequest?.token === wait.token : run.approval?.token === wait.token))) return 'projected'
-  const identity = { runId: access.agentRunId, userId: access.actorUserId, expectedWorkflowRunId: access.workflowRunId }
-  if (run.status !== 'running') await conversations.transitionAgentRun({ ...identity, status: 'running' })
-  if (status !== 'running') await conversations.transitionAgentRun({
-    ...identity, status,
-    ...(wait?.kind === 'input' ? { inputRequest: { token: wait.token, question: wait.question, requestedAt: wait.createdAt } } : {}),
-    ...(wait?.kind === 'approval' ? { approval: { token: wait.token, title: wait.question, requestedAt: wait.createdAt, requests: wait.requests } } : {}),
-  })
-  return 'projected'
+  return projectHarnessDeliveryWait(access, run, projection)
 }

@@ -78,6 +78,25 @@ test('shared waits use the supplied projection without personal delivery authori
   expect(mocks.project).not.toHaveBeenCalled()
 })
 
+test('native delivery ownership projects only the named workspace root', async () => {
+  state = { ...state, runId: 'workspace:agent', parentRunId: undefined }
+  const projectWait = vi.fn(async () => 'projected' as const)
+  const ports = createHarnessWaitPorts({
+    reference: { ...access, runId: 'workspace:agent' }, deliveryRunId: 'workspace:agent',
+    projectWait, wake: { next: vi.fn() },
+  })
+  await ports.waitForInput(state)
+  expect(projectWait).toHaveBeenCalled()
+  projectWait.mockClear()
+  state = { ...state, runId: 'anonymous-child', parentRunId: 'workspace:agent' }
+  const childPorts = createHarnessWaitPorts({
+    reference: { ...access, runId: 'anonymous-child' }, deliveryRunId: 'workspace:agent',
+    projectWait, wake: { next: vi.fn() },
+  })
+  await childPorts.waitForInput(state)
+  expect(projectWait).not.toHaveBeenCalled()
+})
+
 test('an authenticated approval decision covers exactly the pending request IDs', async () => {
   mocks.hook.mockReturnValue(hook({ approved: false, reason: 'Do not send.' }))
   const requests = ['one', 'two'].map(id => ({ approvalId: id, toolCallId: `call-${id}`, toolName: 'send', input: { id } }))
