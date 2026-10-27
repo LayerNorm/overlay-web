@@ -156,13 +156,15 @@ test('names are read out of conversational answers', async () => {
   assert.equal(result.session?.profile.name, 'Divyansh')
 })
 
-test('the tools step is skipped when nothing can be connected', async () => {
+test('provider connections remain in onboarding independently of app and agent capabilities', async () => {
   const f = fixture()
-  const service = new ConversationalOnboardingService({ repository: f.repository, effects: f.effects, toolsAvailable: false })
+  const service = new ConversationalOnboardingService({ repository: f.repository, effects: f.effects })
   let result = await service.start('user-1', 'workspace-1')
   for (const value of ['Ada', 'Design', 'A small team', 'Writing & content']) {
     result = await service.act('user-1', 'workspace-1', { action: 'answer', runId: result.session!.runId, revision: result.session!.revision, value })
   }
+  result = await service.act('user-1', 'workspace-1', { action: 'advance', runId: result.session!.runId, revision: result.session!.revision })
+  assert.equal(result.session?.step, 'connections')
   result = await service.act('user-1', 'workspace-1', { action: 'advance', runId: result.session!.runId, revision: result.session!.revision })
   assert.equal(result.session?.step, 'memories')
 })

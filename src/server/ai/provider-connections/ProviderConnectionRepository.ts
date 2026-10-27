@@ -1,6 +1,7 @@
 import 'server-only'
 
 import type { ByokConnectionRow } from '@/shared/ai/gateway/byok-model-conversion'
+import type { SubscriptionProviderId } from '@/shared/ai/gateway/subscription-providers'
 
 export type ProviderConnectionStatus = ByokConnectionRow['status']
 
@@ -16,6 +17,8 @@ export type ProviderConnectionRecord = ByokConnectionRow & {
 export type CreateProviderConnectionInput = {
   userId: string
   providerId: string
+  authKind?: 'api_key' | 'subscription'
+  subscriptionProvider?: SubscriptionProviderId
   endpoint: string
   displayName: string
   credentialRef?: string
@@ -28,6 +31,8 @@ export type UpdateProviderConnectionInput = {
   connectionId: string
   userId: string
   displayName?: string
+  authKind?: 'api_key' | 'subscription'
+  subscriptionProvider?: SubscriptionProviderId
   endpoint?: string
   credentialRef?: string
   enabledModelIds?: string[]

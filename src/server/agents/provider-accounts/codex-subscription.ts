@@ -20,7 +20,13 @@ export const CODEX_REFRESH_MARGIN_MS = 25 * 60_000
 /** A placeholder Codex cannot use to refresh: the machine must never hold the real refresh token. */
 const MACHINE_REFRESH_PLACEHOLDER = 'overlay-managed-refresh-token-not-valid'
 
-export type CodexFetch = (url: string, init: { method: string; headers: Record<string, string>; body: string; signal?: AbortSignal }) =>
+export type CodexFetch = (url: string, init: {
+  method: string
+  headers: Record<string, string>
+  body: string
+  signal?: AbortSignal
+  redirect?: RequestRedirect
+}) =>
   Promise<{ status: number; text(): Promise<string> }>
 
 export class CodexSignInError extends Error {
@@ -52,7 +58,7 @@ export type CodexDeviceCode = {
   expiresAt: number
 }
 
-const defaultFetch: CodexFetch = (url, init) => fetch(url, init)
+const defaultFetch: CodexFetch = (url, init) => fetch(url, { ...init, redirect: 'error' })
 
 function json(response: string): Record<string, unknown> {
   try {

@@ -63,3 +63,21 @@ test('capabilities and capitalized providers render in model details', () => {
   assert.match(html, /Vision/)
   assert.match(html, /Reasoning/)
 })
+
+test('duplicate model names retain source identity, connection labels and independent favorites', () => {
+  const models = [
+    { id: 'openai/gpt-5', name: 'GPT-5', provider: 'openai' },
+    { id: 'byok/personal/gpt-5', name: 'GPT-5', provider: 'openai', sourceLabel: 'Subscription', connectionName: 'Personal ChatGPT' },
+    { id: 'byok/key/gpt-5', name: 'GPT-5', provider: 'openai', sourceLabel: 'API key', connectionName: 'My API key' },
+  ]
+  const sections = groupModelsByProvider(models, { favoriteIds: ['byok/personal/gpt-5'] })
+  assert.deepEqual(sections.find((section) => section.id === 'provider:openai')?.models.map((model) => model.id), models.map((model) => model.id))
+  assert.deepEqual(sections[0].models.map((model) => model.id), ['byok/personal/gpt-5'])
+  assert.deepEqual(filterModels(models, 'subscription').map((model) => model.id), ['byok/personal/gpt-5'])
+  assert.deepEqual(filterModels(models, 'personal chatgpt').map((model) => model.id), ['byok/personal/gpt-5'])
+  const html = renderToStaticMarkup(<ModelSelector models={models} recommendedIds={models.map((model) => model.id)} favoriteIds={['byok/personal/gpt-5']} onToggleFavorite={() => {}} isSelected={(model) => model.id === 'byok/personal/gpt-5'} onSelect={() => {}} />)
+  assert.match(html, /Subscription/)
+  assert.match(html, /Personal ChatGPT/)
+  assert.match(html, /API key/)
+  for (const model of models) assert.ok(html.includes(`data-model-row="${model.id}"`))
+})

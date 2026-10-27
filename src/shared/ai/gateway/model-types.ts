@@ -19,6 +19,8 @@ export interface ChatModel {
   name: string
   provider: string
   description?: string
+  sourceLabel?: string
+  connectionName?: string
   intelligence: number
   /** 0 = free, 1 = cheap, 2 = mid, 3 = expensive */
   cost: 0 | 1 | 2 | 3

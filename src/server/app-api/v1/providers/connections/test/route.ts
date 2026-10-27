@@ -19,6 +19,7 @@ import {
   sanitizeOpenCodeGoProbeError,
   selectOpenCodeGoProbeModel,
 } from '@/server/ai/gateway/opencode-go-probe'
+import { isSubscriptionConnection } from '@/shared/ai/gateway/subscription-providers'
 
 const MAX_API_KEY_LENGTH = 16_384
 const MAX_DISCOVERY_BYTES = 1_000_000
@@ -113,6 +114,16 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
 
       if (!existing) {
         return NextResponse.json({ error: 'Connection not found' }, { status: 404 })
+      }
+
+      if (existing.authKind === 'subscription' || existing.providerId.startsWith('subscription:')) {
+        if (!isSubscriptionConnection(existing)) {
+          return NextResponse.json({ error: 'Invalid subscription connection metadata' }, { status: 400 })
+        }
+        return NextResponse.json(
+          { error: 'Subscription connections are checked during authorization, not through provider endpoint tests.' },
+          { status: 400 },
+        )
       }
 
       if (existing.isDefault && existing.providerId === 'vercel-ai-gateway') {
