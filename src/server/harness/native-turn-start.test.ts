@@ -50,7 +50,7 @@ beforeEach(() => {
   mocks.startWorkflow.mockResolvedValue({})
 })
 
-test('admits with the personal policy defaults and starts the native workflow with the built input', async () => {
+test('read-only native tool sets remain plan-optional and start with the built input', async () => {
   const admit = vi.fn().mockResolvedValue({ runId: 'workspace:agent-run', status: 'running' })
   const startWorkflow = vi.fn()
   await startNativeHarnessTurn({
@@ -75,6 +75,25 @@ test('admits with the personal policy defaults and starts the native workflow wi
     deliveryAgentRunId: 'agent-run',
   })
   expect(startWorkflow).toHaveBeenCalledWith(mocks.workflow, [workflowInput])
+})
+
+test('requires a durable plan when the native tool set includes a write-capable tool', async () => {
+  const admit = vi.fn().mockResolvedValue({ runId: 'workspace:agent-run', status: 'running' })
+  await startNativeHarnessTurn({
+    actorUserId: 'user', workspaceId: 'workspace', conversationId: 'room', runId: 'agent-run', memoryEnabled: true,
+  }, {
+    buildInput: async () => ({
+      ...workflowInput,
+      definitions: [...workflowInput.definitions, { name: 'create_note', inputSchema: { type: 'object', properties: {} } }],
+    }) as never,
+    getAgentRun: async () => run as never,
+    getPaid: async () => true,
+    repository: { admit } as never,
+    startWorkflow: vi.fn(),
+  })
+  expect(admit).toHaveBeenCalledWith(expect.objectContaining({
+    policy: expect.objectContaining({ requiresPlan: true }),
+  }))
 })
 
 test('a duplicate admission reconnects to the existing workflow without starting another', async () => {

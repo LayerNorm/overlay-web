@@ -4,6 +4,7 @@ import { tool } from 'ai'
 import { z } from 'zod'
 import type { LanguageModelV4FinishReason, LanguageModelV4StreamPart } from '@ai-sdk/provider'
 import * as runtime from '@overlay/agent-runtime/harness-state'
+import { harnessToolsRequirePlan } from './write-tools'
 import type { HarnessExecutionPorts } from './ports'
 import { buildPersonalHarnessDelivery } from './personal-delivery'
 import { runOverlayHarness } from './runner'
@@ -123,6 +124,7 @@ function model(program: (index: number) => string | Call[], finishReasons: Langu
 }
 
 function harnessFixture(options: { allowedToolIds?: string[]; requiresPlan?: boolean } = {}) {
+  const allowedToolIds = options.allowedToolIds ?? ['read_file', 'write_file']
   let current = runtime.createHarnessSnapshot({
     runId: 'workspace:run',
     goal: 'Complete the requested work.',
@@ -130,8 +132,8 @@ function harnessFixture(options: { allowedToolIds?: string[]; requiresPlan?: boo
     policy: {
       actorUserId: 'human',
       workspaceId: 'workspace',
-      allowedToolIds: options.allowedToolIds ?? ['read_file', 'write_file'],
-      requiresPlan: options.requiresPlan ?? false,
+      allowedToolIds,
+      requiresPlan: options.requiresPlan ?? harnessToolsRequirePlan(allowedToolIds),
       deadlineAt: Date.now() + 60_000,
       maxCostMicros: 100,
       maxParallelChildren: 2,
@@ -339,7 +341,19 @@ it('Revocation mid-run — the next step fails closed and cannot complete or wri
     needsApproval: async () => false,
     execute: async () => 'read',
   })
-  model(index => index === 0 ? [{ name: 'read_file', id: 'read-1' }] : 'should not run')
+  model(index => index === 0
+    ? [{
+      name: 'harness_set_plan',
+      id: 'plan',
+      input: { steps: [{
+        id: 'read',
+        title: 'Read source',
+        dependsOn: [],
+        acceptanceCriteria: ['Read the source.'],
+        requiresVerification: false,
+      }] },
+    }]
+    : [{ name: 'read_file', id: 'read-1' }])
   const originalPrepare = fixture.ports.prepareModel
   fixture.ports.prepareModel = async request => {
     if (fixture.calls.filter(call => call.kind === 'model').length > 0) {
@@ -408,7 +422,7 @@ it('Model — candidate routing can recover from an unavailable entitled model a
 })
 
 it('Streaming — live text/tool parts arrive before finalization, and final persistence strips reasoning and duplicates', async () => {
-  const fixture = harnessFixture()
+  const fixture = harnessFixture({ allowedToolIds: ['read_file'] })
   const tools = createHarnessTools([definition('read_file')], {
     needsApproval: async () => false,
     execute: async () => ({ ok: true }),
@@ -453,6 +467,42 @@ it('Streaming — live text/tool parts arrive before finalization, and final per
     .filter(part => part.type === 'tool-invocation')
     .map(part => (part as { toolInvocation?: { toolCallId?: string } }).toolInvocation?.toolCallId)
   expect(new Set(toolIds).size).toBe(toolIds.length)
+})
+
+it('Plan: write claims without a plan stay blocked, while answer-only Q&A completes', async () => {
+  const writeFixture = harnessFixture({ allowedToolIds: ['write_file'] })
+  const writeTools = createHarnessTools([definition('write_file')], {
+    needsApproval: async () => false,
+    execute: async () => 'created',
+  })
+  const textOnly = model(() => 'I created notes 01 through 08 with IDs.')
+  const blocked = await writeFixture.run(writeTools)
+  expect(blocked.outcome).toBe('blocked')
+  expect(blocked.snapshot.status).not.toBe('completed')
+  expect(blocked.snapshot.blocker?.kind).toBe('stuck')
+  expect(textOnly.doStreamCalls).toHaveLength(2)
+  expect(textOnly.doStreamCalls[0]?.toolChoice).toEqual({ type: 'required' })
+
+  const qaFixture = harnessFixture({ allowedToolIds: ['write_file'] })
+  const answer = model(index => index === 0
+    ? [{
+      name: 'harness_set_plan',
+      id: 'answer-plan',
+      input: { steps: [{
+        id: 'answer',
+        title: 'Answer from knowledge',
+        dependsOn: [],
+        acceptanceCriteria: ['Answer the question.'],
+        requiresVerification: false,
+        answerOnly: true,
+      }] },
+    }]
+    : 'Here is the answer based on prior knowledge.')
+  const completed = await qaFixture.run(writeTools)
+  expect(completed.snapshot.status).toBe('completed')
+  expect(completed.snapshot.plan[0]).toMatchObject({ id: 'answer', answerOnly: true, status: 'done' })
+  expect(answer.doStreamCalls[0]?.toolChoice).toEqual({ type: 'required' })
+  expect(answer.doStreamCalls[1]?.toolChoice).toEqual({ type: 'none' })
 })
 
 it('Budget — two named children plus the parent remain within the ceiling and a third ask is refused before a turn row', () => {

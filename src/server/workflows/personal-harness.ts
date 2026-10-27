@@ -14,6 +14,7 @@ import {
 import { notifyHarnessAncestors, readHarnessChild } from '@/server/harness/personal-wait-steps'
 import { harnessWakeToken } from '@/server/harness/wait-token'
 import { applyHarnessOperation, claimHarnessState, readHarnessState } from '@/server/harness/state-steps'
+import { harnessToolResultEvidence } from '@/server/harness/tool-evidence'
 import { runOverlayHarness, type HarnessExecutionResult } from '@/server/harness/runner'
 import type { PersonalHarnessAccess } from '@/server/harness/personal-access'
 import type { PersonalHarnessWorkflowInput } from '@/server/harness/personal-workflow-input'
@@ -88,12 +89,9 @@ export async function personalHarnessWorkflow(input: PersonalHarnessWorkflowInpu
       recordToolResult: async event => {
         const state = await readHarnessState(access)
         if (['completed', 'failed', 'cancelled'].includes(state.status)) return
-        const value = event.success ? event.output : event.error instanceof Error ? event.error.message : event.error
-        const summary = (typeof value === 'string' ? value : JSON.stringify(value)) || (event.success ? 'Tool completed without an output.' : 'Tool failed.')
-        await applyHarnessOperation(access, `tool-evidence:${event.toolCall.toolCallId}`, { type: 'record_evidence', evidence: {
-          id: `tool:${event.toolCall.toolCallId}`, kind: 'tool_result', source: event.toolCall.toolName,
-          summary: summary.slice(0, 2_000), verdict: event.success ? 'observed' : 'failed', createdAt: Date.now(),
-        } })
+        await applyHarnessOperation(access, `tool-evidence:${event.toolCall.toolCallId}`, {
+          type: 'record_evidence', evidence: harnessToolResultEvidence(event, Date.now()),
+        })
       },
     }, input.modelCandidates ? { candidateIds: input.modelCandidates,
       onFallback: isRoot ? async event => { fallbackNotices.push(await writePersonalHarnessFallback(access, event)) } : undefined,

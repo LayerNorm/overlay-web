@@ -117,13 +117,22 @@ describe('durable harness runs', () => {
     expect(replay.snapshot.latestReceipt).toEqual(receipt)
   })
 
-  test.each([false, true])('children inherit requiresPlan=%s without weakening an explicit parent requirement', async requiresPlan => {
+  test.each([
+    { parentRequiresPlan: true, parentToolIds: ['write_file'], childToolIds: ['write_file'], requiresPlan: true },
+    { parentRequiresPlan: true, parentToolIds: ['read_file', 'write_file'], childToolIds: ['read_file'], requiresPlan: false },
+    { parentRequiresPlan: false, parentToolIds: ['write_file'], childToolIds: ['write_file'], requiresPlan: false },
+  ])('children derive plan policy from native ancestry and their own tools: $childToolIds', async ({
+    parentRequiresPlan, parentToolIds, childToolIds, requiresPlan,
+  }) => {
     const convex = convexTest(schema, modules)
-    const input = admission('planning-parent', await seedConversation(convex), { requiresPlan })
+    const input = admission('planning-parent', await seedConversation(convex), {
+      requiresPlan: parentRequiresPlan,
+      allowedToolIds: parentToolIds,
+    })
     await admit(convex, input)
     const planned = await apply(convex, input, 'plan', 0, { type: 'replace_plan', steps: oneStep('delegated') })
     await apply(convex, input, 'delegate', planned.snapshot.revision, {
-      type: 'admit_child', child: { id: 'planning-child', stepId: 'delegated', allowedToolIds: [],
+      type: 'admit_child', child: { id: 'planning-child', stepId: 'delegated', allowedToolIds: childToolIds,
         maxCostMicros: 0, costMicros: 0, status: 'running', evidenceRefs: [] },
       goal: 'Return a short answer.', constraints: [],
     })
@@ -249,6 +258,29 @@ describe('durable harness runs', () => {
     expect(JSON.parse(persisted.metadata!.metadataJson)).not.toHaveProperty('plan')
     expect(JSON.parse(persisted.metadata!.metadataJson)).not.toHaveProperty('evidence')
     expect(JSON.parse(persisted.metadata!.metadataJson)).not.toHaveProperty('children')
+  })
+
+  test('round-trips answer-only plans, completes them without evidence, and rejects verification requirements', async () => {
+    const convex = convexTest(schema, modules)
+    const input = admission('run-answer-only', await seedConversation(convex))
+    await admit(convex, input)
+    const step = { ...oneStep('answer')[0]!, answerOnly: true }
+    const planned = await apply(convex, input, 'answer-plan', 0, { type: 'replace_plan', steps: [step] })
+    expect(planned.snapshot.plan[0]).toMatchObject({ id: 'answer', answerOnly: true, status: 'pending' })
+    expect((await get(convex, input.runId))?.plan[0]).toMatchObject({ answerOnly: true, status: 'pending' })
+
+    const finished = await apply(convex, input, 'answer-finish', planned.snapshot.revision, {
+      type: 'finish', resultSummary: 'Answered from prior knowledge.',
+    })
+    expect(finished.snapshot.status).toBe('completed')
+    expect(finished.snapshot.plan[0]).toMatchObject({ answerOnly: true, status: 'done' })
+    expect((await get(convex, input.runId))?.plan[0]).toMatchObject({ answerOnly: true, status: 'done' })
+
+    const rejectedInput = admission('run-answer-only-verification', await seedConversation(convex))
+    await admit(convex, rejectedInput)
+    await expect(apply(convex, rejectedInput, 'invalid-answer-plan', 0, {
+      type: 'replace_plan', steps: [{ ...oneStep('answer', true)[0]!, answerOnly: true }],
+    })).rejects.toThrow(/Answer-only/)
   })
 
   test('checks operation idempotency before CAS and leaves stale mutations without writes', async () => {

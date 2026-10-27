@@ -201,6 +201,11 @@ route continues to refuse Harness callers. Delivery owners persist bounded
 tool-invocation snapshots while tools run, and finalization replaces those
 snapshots with the authoritative transcript parts. Anonymous child deliveries
 do not write tool progress into the parent's room.
+Native Harness roots require a durable plan when their effective tool set
+includes a write-capable tool. Action milestones require tool-result evidence.
+Read-only runs can answer without action milestones by using one answer-only
+milestone. Native descendants derive the same policy from their admitted tools.
+Personal Chat and Work roots and descendants remain plan-optional.
 
 The workflow claims the harness before attaching root delivery or executing model
 calls. Each run registers its wake hook before launching children. Child IDs are

@@ -7,6 +7,7 @@ import { asConversationId } from '@/server/conversations/ActConversationReposito
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { ConvexHarnessRepository } from './ConvexHarnessRepository'
 import { personalHarnessPolicy } from './personal-admission-policy'
+import { harnessToolsRequirePlan } from './write-tools'
 import { buildNativeHarnessWorkflowInput } from './native-workflow-input-builder'
 import type { NativeHarnessWorkflowInput } from './native-workflow-input'
 import { nativeHarnessWorkflow } from '@/server/workflows/native-harness'
@@ -81,6 +82,7 @@ export async function startNativeHarnessTurn(
       actorUserId: workflowInput.access.actorUserId,
       workspaceId: workflowInput.access.workspaceId,
       allowedToolIds: workflowInput.definitions.map(definition => definition.name),
+      requiresPlan: harnessToolsRequirePlan(workflowInput.definitions.map(definition => definition.name)),
       modelId: workflowInput.context.modelId,
       paid,
       createdAt: run.createdAt,

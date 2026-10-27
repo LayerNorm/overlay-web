@@ -14,6 +14,7 @@ export function createHarnessControlTools(ports: HarnessExecutionPorts) {
         dependsOn: z.array(id).max(128),
         acceptanceCriteria: z.array(z.string().min(1).max(2_000)).min(1).max(16),
         requiresVerification: z.boolean(),
+        answerOnly: z.boolean().optional().describe('true only for a milestone that is answering from knowledge or prior evidence with no external effect'),
       })).min(1).max(128) }),
       execute: async ({ steps }, { toolCallId }) => {
         const state = await ports.apply(`control:${toolCallId}`, { type: 'replace_plan', steps })

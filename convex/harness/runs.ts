@@ -37,6 +37,7 @@ import type {
   HarnessWaitReference,
   HarnessWaitRequest,
 } from '../../packages/overlay-agent-runtime/src/harness-store'
+import { harnessToolsRequirePlan } from '../../packages/overlay-agent-runtime/src/harness-write-tools'
 import { v } from 'convex/values'
 
 const MAX_ID_LENGTH = 256
@@ -110,6 +111,7 @@ const planInputValidator = v.object({
   dependsOn: v.array(v.string()),
   acceptanceCriteria: v.array(v.string()),
   requiresVerification: v.boolean(),
+  answerOnly: v.optional(v.boolean()),
 })
 
 const evidenceValidator = v.object({
@@ -400,6 +402,10 @@ function assertBoundedOperation(operation: HarnessOperation) {
           || step.acceptanceCriteria.length > MAX_ACCEPTANCE_CRITERIA
           || step.acceptanceCriteria.some(item => !item.trim() || item.length > MAX_CONSTRAINT_LENGTH)) {
           throw new Error('Harness plan milestones exceed their bounds.')
+        }
+        if (step.answerOnly && (step.requiresVerification
+          || ('childRunId' in step && step.childRunId !== undefined))) {
+          throw new Error('Answer-only milestones cannot require verification or delegate work.')
         }
       }
       break
@@ -1001,7 +1007,7 @@ function childAdmission(
     actorUserId: parent.policy.actorUserId,
     ...(parent.policy.workspaceId ? { workspaceId: parent.policy.workspaceId } : {}),
     allowedToolIds: [...new Set(operation.child.allowedToolIds)].sort(),
-    requiresPlan: parent.policy.requiresPlan,
+    requiresPlan: parent.policy.requiresPlan && harnessToolsRequirePlan(operation.child.allowedToolIds),
     deadlineAt: parent.policy.deadlineAt,
     maxCostMicros: operation.child.maxCostMicros,
     maxParallelChildren: parent.policy.maxParallelChildren,

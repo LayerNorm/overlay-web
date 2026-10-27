@@ -50,6 +50,20 @@ test('completed child results become parent observations without certifying inde
   expect((await f.ports.read()).plan[0].status).toBe('done')
 })
 
+test('plan tools accept answer-only milestones', () => {
+  const planTool = createHarnessControlTools(fixture().ports).harness_set_plan
+  expect(planTool.inputSchema.parse({
+    steps: [{
+      id: 'answer',
+      title: 'Answer from prior knowledge',
+      dependsOn: [],
+      acceptanceCriteria: ['Answer the question.'],
+      requiresVerification: false,
+      answerOnly: true,
+    }],
+  })).toMatchObject({ steps: [{ answerOnly: true }] })
+})
+
 test('a completed child with unresolved usage cannot expose completion evidence', async () => {
   const f = fixture()
   f.child.modelReservation = { id: 'model:0', maxCostMicros: 0 }

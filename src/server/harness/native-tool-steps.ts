@@ -12,6 +12,7 @@ import { ConvexHarnessRepository } from './ConvexHarnessRepository'
 import { startNativeHarnessNamedChild } from './native-named-child-launch'
 import { executePersonalChatWorkToolResult } from '@/server/conversations/personal-chat-work-tools'
 import { refreshNativeHarnessAccess } from './native-access'
+import { isToolFailureOutput } from './tool-evidence'
 import type { NativeHarnessToolsInput } from './native-tools'
 import type { HarnessToolCall } from './tools'
 import {
@@ -59,19 +60,13 @@ function displayToolResult(result: unknown): unknown {
   return (result as { display?: unknown }).display
 }
 
-function isToolFailureOutput(output: unknown): boolean {
-  if (!output || typeof output !== 'object') return false
-  const record = output as Record<string, unknown>
-  return record.success === false || typeof record.error === 'string' || typeof record.errorMessage === 'string'
-}
-
 function toolProgressResult(call: NativeToolCall, result: unknown): NativeHarnessToolProgress {
   const output = displayToolResult(result)
   return {
     toolCallId: call.toolCallId,
     toolName: call.toolName,
     input: call.input,
-    state: isToolFailureOutput(output) ? 'output-error' : 'output-available',
+    state: isToolFailureOutput(result) ? 'output-error' : 'output-available',
     output,
   }
 }

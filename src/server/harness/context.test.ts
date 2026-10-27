@@ -24,6 +24,18 @@ test('completed plans request the final deliverable instead of more bookkeeping'
   expect(instructions).not.toContain('complete the remaining milestones')
 })
 
+test('write-capable runs receive evidence-backed planning instructions', () => {
+  const instructions = buildHarnessStepInstructions(make(), {
+    instructions: 'Surface instructions', continuation: false, truncatedResponse: false,
+  })
+  expect(instructions).toContain('call harness_set_plan before anything else')
+  expect(instructions).toContain('tool:<id> evidence IDs from observations')
+  expect(instructions).toContain('one answerOnly milestone')
+  expect(instructions).toContain('Never describe actions that were not executed')
+  expect(instructions).not.toContain('\u2013')
+  expect(instructions).not.toContain('\u2014')
+})
+
 test('keeps the cacheable instruction prefix separate from changing working state', () => {
   const state = make()
   const prefix = buildHarnessInstructions('Surface persona')

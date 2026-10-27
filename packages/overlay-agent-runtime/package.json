@@ -13,6 +13,7 @@
     "./agent-runtime": "./src/agent-runtime.ts",
     "./context-builder": "./src/context-builder.ts",
     "./harness-state": "./src/harness-state.ts",
+    "./harness-write-tools": "./src/harness-write-tools.ts",
     "./harness-store": "./src/harness-store.ts",
     "./persist-turn": "./src/persist-turn.ts",
     "./tool-registry": "./src/tool-registry.ts",

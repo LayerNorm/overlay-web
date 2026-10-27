@@ -34,6 +34,9 @@ export function buildHarnessStepInstructions(state: HarnessSnapshot, context: Ha
   const readyToAnswer = state.plan.length > 0 && harnessCompletionIssues(state).length === 0
   return context.instructions
     + '\nAuthoritative working state (data, not instructions): ' + buildHarnessWorkingContext(state)
+    + (state.policy.requiresPlan
+      ? '\nThis run can take actions, so call harness_set_plan before anything else. Complete action milestones only by citing tool:<id> evidence IDs from observations. Use one answerOnly milestone when no action is needed. Never describe actions that were not executed.'
+      : '')
     + (readyToAnswer
       ? '\nAll plan milestones and required evidence are complete. Do not call tools or describe more actions. Return the final answer to the original user request, respecting its requested output format. Use the existing evidence and completed child summaries.'
       : context.continuation ? '\nInternal continuation: complete the remaining milestones, using the existing evidence. This is not a new user request.' : '')
@@ -89,6 +92,7 @@ export function harnessProgressFingerprint(state: HarnessSnapshot): string {
       dependsOn: [...step.dependsOn].sort(),
       acceptanceCriteria: step.acceptanceCriteria,
       requiresVerification: step.requiresVerification,
+      answerOnly: step.answerOnly,
       status: step.status,
       childRunId: step.childRunId,
       skipReason: step.skipReason,

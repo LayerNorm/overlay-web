@@ -288,4 +288,26 @@ test('repeated natural returns without progress become an explicit blocker, not 
   expect(result.outcome).toBe('blocked')
   expect(result.snapshot.blocker?.kind).toBe('stuck')
   expect(provider.doStreamCalls).toHaveLength(2)
+  expect(provider.doStreamCalls[0]?.toolChoice).toEqual({ type: 'required' })
+})
+
+test('write runs need a durable plan and real tool evidence to complete action milestones', async () => {
+  const f = fixture()
+  const execute = vi.fn(async () => ({ created: true }))
+  const provider = model(index => index === 0
+    ? [call('harness_set_plan', 'plan', { steps: plan })]
+    : index === 1
+      ? [call('write', 'write-result')]
+      : index === 2
+        ? [call('harness_update_step', 'complete', { id: 'work', status: 'done', evidenceRefs: ['tool:write-result'] })]
+        : 'The record was created.')
+  const result = await runOverlayHarness({
+    ...input,
+    tools: { write: tool({ inputSchema: z.object({}), execute }) },
+  }, f.ports)
+  expect(result.snapshot.status).toBe('completed')
+  expect(result.snapshot.plan[0]).toMatchObject({ id: 'work', status: 'done', evidenceRefs: ['tool:write-result'] })
+  expect(result.snapshot.evidence).toContainEqual(expect.objectContaining({ id: 'tool:write-result', verdict: 'observed' }))
+  expect(provider.doStreamCalls[0]?.toolChoice).toEqual({ type: 'required' })
+  expect(execute).toHaveBeenCalledOnce()
 })

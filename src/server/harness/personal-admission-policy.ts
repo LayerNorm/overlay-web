@@ -9,6 +9,7 @@ export function personalHarnessPolicy(input: {
   actorUserId: string
   workspaceId: string
   allowedToolIds: string[]
+  requiresPlan?: boolean
   modelId: string
   paid: boolean
   createdAt: number
@@ -25,7 +26,7 @@ export function personalHarnessPolicy(input: {
     actorUserId: input.actorUserId,
     workspaceId: input.workspaceId,
     allowedToolIds: [...new Set(input.allowedToolIds)].sort(),
-    requiresPlan: false,
+    requiresPlan: input.requiresPlan ?? false,
     deadlineAt: input.createdAt + durationMs,
     maxCostMicros: input.paid && !isByokModelId(input.modelId) ? Math.floor(maxProviderCostUsd * 1_000_000) : 0,
     maxParallelChildren: 3,

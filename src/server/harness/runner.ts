@@ -316,6 +316,7 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
           messages: prepared.messages.filter(message => message.role !== 'system'),
           ...prepared.settings,
           activeTools,
+          ...(needsPlan ? { toolChoice: 'required' as const } : {}),
           ...(activeTools.length ? {} : { toolChoice: 'none' as const }),
           ...(prepared.model ? { model: new HarnessLanguageModel(prepared.model) } : {}),
         }
