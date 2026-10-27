@@ -322,13 +322,33 @@ async function validatePersonalDeliveryAdmission(
   const delivery = deliveryId ? await ctx.db.get(deliveryId) : null
   if (!delivery || delivery.conversationId !== conversationId
     || delivery.userId !== admission.policy.actorUserId
-    || delivery.runner !== 'workflow' || delivery.mode === 'room'
+    || delivery.runner !== 'workflow' || delivery.executionEngine !== 'overlay_harness' || delivery.mode === 'room'
     || delivery.status !== 'queued' || delivery.startedAt !== undefined
     || delivery.workflowRunId !== undefined || delivery.harnessRunId !== undefined
     || delivery.completedAt !== undefined || delivery.failedAt !== undefined || delivery.cancelledAt !== undefined) {
     throw new Error('HARNESS_DELIVERY_TARGET_DENIED')
   }
   return delivery
+}
+
+async function bindLegacyPersonalSource(ctx: MutationCtx, admission: HarnessAdmission): Promise<void> {
+  if (!admission.deliveryAgentRunId || !admission.policy.workspaceId
+    || !('conversationId' in admission.source) || typeof admission.source.conversationId !== 'string') return
+  const conversationId = ctx.db.normalizeId('conversations', admission.source.conversationId)
+  const conversation = conversationId ? await ctx.db.get(conversationId) : null
+  if (!conversation || conversation.workspaceId !== undefined) return
+  await validatePersonalDeliveryAdmission(ctx, {
+    ...admission, policy: { ...admission.policy, workspaceId: undefined },
+  }, admission.source)
+  const workspace = await ctx.db.query('workspaces')
+    .withIndex('by_workspaceId', q => q.eq('workspaceId', admission.policy.workspaceId!)).unique()
+  if (!workspace || workspace.status !== 'active' || workspace.kind !== 'personal'
+    || workspace.personalOwnerUserId !== admission.policy.actorUserId) {
+    throw new Error('HARNESS_DELIVERY_SOURCE_DENIED')
+  }
+  // Materialize only the owner's implicit personal scope, in the same transaction
+  // as admission. Never move legacy chats into a selected organization workspace.
+  await ctx.db.patch(conversation._id, { workspaceId: workspace.workspaceId })
 }
 
 function assertBoundedOperation(operation: HarnessOperation) {
@@ -1093,6 +1113,7 @@ export const admit = mutation({
     const { serverSecret, ...rawAdmission } = args
     const input = rawAdmission as HarnessAdmission
     assertBoundedAdmission(input)
+    await bindLegacyPersonalSource(ctx, input)
     const source = await normalizeAndCheckSource(
       ctx,
       input.source,

@@ -43,13 +43,13 @@ export async function attachPersonalHarnessDelivery(access: PersonalHarnessAcces
   })
   if (!current || current.id !== access.agentRunId || current.userId !== access.actorUserId
     || current.conversationId !== access.conversationId || current.harnessRunId !== state.runId
-    || current.runner !== 'workflow' || current.mode === 'room'
+    || current.runner !== 'workflow' || current.executionEngine !== 'overlay_harness' || current.mode === 'room'
     || (current.workflowRunId && current.workflowRunId !== access.workflowRunId)) throw new FatalError('Invalid personal delivery run.')
   const run = await agentRunService.attachWorkflow({
     runId: access.agentRunId, userId: access.actorUserId, workflowRunId: access.workflowRunId,
   })
   if (!run || run.conversationId !== access.conversationId || run.harnessRunId !== state.runId
-    || run.runner !== 'workflow'
+    || run.runner !== 'workflow' || run.executionEngine !== 'overlay_harness'
     || run.workflowRunId !== access.workflowRunId || run.mode === 'room') throw new FatalError('Invalid personal delivery run.')
 }
 
@@ -67,7 +67,7 @@ export async function finishPersonalHarnessDelivery(
   })
   if (!run || run.id !== access.agentRunId || run.userId !== access.actorUserId || run.conversationId !== access.conversationId
     || run.harnessRunId !== state.runId || run.workflowRunId !== access.workflowRunId
-    || run.runner !== 'workflow' || run.mode === 'room') throw new FatalError('Personal delivery ownership changed.')
+    || run.runner !== 'workflow' || run.executionEngine !== 'overlay_harness' || run.mode === 'room') throw new FatalError('Personal delivery ownership changed.')
   if (run.status === 'cancelled' || run.status === 'failed') return
   if (state.status === 'completed') {
     // Every model/summary receipt was already billed by the model ports.

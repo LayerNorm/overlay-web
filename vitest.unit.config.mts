@@ -13,6 +13,8 @@ export default defineConfig({
       'packages/**/src/**/*.test.ts',
       'scripts/**/*.test.ts',
       'src/server/harness/**/*.test.ts',
+      'src/server/app-api/v1/conversations/act/model-candidates.test.ts',
+      'src/server/app-api/v1/conversations/act/personal-harness-turn.test.ts',
     ],
     exclude: ['**/node_modules/**', '**/dist/**'],
     passWithNoTests: false,

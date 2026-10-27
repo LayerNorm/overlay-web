@@ -112,7 +112,7 @@ function assertDeliveryOwnership(
   if (!agentRun || agentRun.id !== access.agentRunId || agentRun.userId !== access.actorUserId
     || agentRun.conversationId !== access.conversationId || agentRun.harnessRunId !== root.runId
     || agentRun.workflowRunId !== root.workflowRunId
-    || agentRun.runner !== 'workflow' || agentRun.mode === 'room'
+    || agentRun.runner !== 'workflow' || agentRun.executionEngine !== 'overlay_harness' || agentRun.mode === 'room'
     || (agentRun.status !== 'running' && !(state.parentRunId
       && ['waiting_for_approval', 'waiting_for_input', 'waiting_for_children'].includes(agentRun.status)))) {
     throw new FatalError('Personal harness resource access has changed.')

@@ -39,6 +39,19 @@ describe('generated UI conversation persistence', () => {
       userId,
       userMessageId,
     })
+    const replay = await convex.mutation(api.chat.conversations.startAgentRun, {
+      conversationId,
+      executionEngine: 'overlay_harness',
+      mode: 'chat',
+      modelId: 'test-model',
+      runner: 'workflow',
+      serverSecret,
+      turnId: 'questionnaire-turn',
+      userId,
+      userMessageId,
+    })
+    expect(replay._id).toBe(run._id)
+    expect(replay.executionEngine).toBeUndefined()
     await convex.mutation(api.chat.conversations.transitionAgentRun, {
       leaseExpiresAt: Date.now() + 60_000,
       runId: run._id,

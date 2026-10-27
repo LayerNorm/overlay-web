@@ -59,7 +59,10 @@ async function seedDelivery(
       createdAt: now,
       updatedAt: now,
     })
-    return await ctx.db.insert('conversationAgentRuns', {
+    const omitExecutionEngine = overrides.omitExecutionEngine === true
+    const fields = { ...overrides }
+    delete fields.omitExecutionEngine
+    const delivery = {
       conversationId: conversationId as never,
       turnId: `turn-${now}`,
       userId: 'alice',
@@ -67,11 +70,14 @@ async function seedDelivery(
       assistantMessageId,
       mode: 'work',
       runner: 'workflow',
+      executionEngine: 'overlay_harness',
       status: 'queued',
       createdAt: now,
       updatedAt: now,
-      ...(overrides as never),
-    })
+      ...fields,
+    } as Record<string, unknown>
+    if (omitExecutionEngine) delete delivery.executionEngine
+    return await ctx.db.insert('conversationAgentRuns', delivery as never)
   })
 }
 
@@ -124,6 +130,41 @@ async function cancelDelivery(convex: Convex, conversationId: string) {
   }) as { cancelledHarnessRoots?: Array<{ agentRunId: string; runId: string }> }
 }
 
+async function seedPersonalWorkspace(convex: Convex, workspaceId: string, ownerUserId: string) {
+  const now = Date.now()
+  return await convex.run(async ctx => {
+    await ctx.db.insert('workspaces', {
+      workspaceId,
+      kind: 'personal',
+      name: 'Personal',
+      slug: workspaceId,
+      status: 'active',
+      personalOwnerUserId: ownerUserId,
+      createdAt: now,
+      updatedAt: now,
+    })
+    const principalId = `${workspaceId}-principal`
+    await ctx.db.insert('workspacePrincipals', {
+      principalId,
+      workspaceId,
+      type: 'human',
+      userId: ownerUserId,
+      displayName: 'Owner',
+      createdAt: now,
+      updatedAt: now,
+    })
+    return await ctx.db.insert('workspaceMemberships', {
+      membershipId: `${workspaceId}-membership`,
+      workspaceId,
+      principalId,
+      role: 'owner',
+      status: 'active',
+      joinedAt: now,
+      updatedAt: now,
+    })
+  })
+}
+
 describe('personal harness delivery binding', () => {
   test('admits and replays one queued delivery with an atomic binding', async () => {
     const convex = convexTest(schema, modules)
@@ -151,6 +192,7 @@ describe('personal harness delivery binding', () => {
       { name: 'remote', delivery: { runner: 'remote' }, source: 'own' },
       { name: 'tool-loop', delivery: { runner: 'tool_loop' }, source: 'own' },
       { name: 'room', delivery: { mode: 'room' }, source: 'own' },
+      { name: 'legacy-engine', delivery: { omitExecutionEngine: true }, source: 'own' },
       { name: 'started', delivery: { startedAt: 1, workflowRunId: 'already-running' }, source: 'own' },
       { name: 'bound', delivery: { harnessRunId: 'other-root' }, source: 'own' },
     ] as const
@@ -175,6 +217,61 @@ describe('personal harness delivery binding', () => {
     const dmInput = admission('dm-root', dmConversationId, dmDeliveryId)
     await expect(admit(convex, dmInput)).rejects.toThrow()
     expect(await get(convex, dmInput.runId)).toBeNull()
+  })
+
+  test('binds an unscoped personal conversation only to its owner personal workspace', async () => {
+    const convex = convexTest(schema, modules)
+    const workspaceId = 'alice-personal'
+    await seedPersonalWorkspace(convex, workspaceId, 'alice')
+    const conversationId = await seedConversation(convex)
+    const deliveryId = await seedDelivery(convex, conversationId)
+    const input = admission('legacy-personal-root', conversationId, deliveryId)
+    input.policy.workspaceId = workspaceId
+
+    const admitted = await admit(convex, input)
+    expect((await admit(convex, input)).revision).toBe(admitted.revision)
+    expect((await convex.run(ctx => ctx.db.get(conversationId as never)))?.workspaceId).toBe(workspaceId)
+    expect((await convex.run(ctx => ctx.db.get(deliveryId as never)))?.harnessRunId).toBe(input.runId)
+    expect(await get(convex, input.runId)).toMatchObject({ runId: input.runId, policy: { workspaceId } })
+
+    for (const denied of [
+      { name: 'organization', workspaceId: 'alice-organization', kind: 'organization' as const, owner: 'alice' },
+      { name: 'other-owner', workspaceId: 'other-personal', kind: 'personal' as const, owner: 'bob' },
+    ]) {
+      const scopedConvex = convexTest(schema, modules)
+      const now = Date.now()
+      await scopedConvex.run(ctx => ctx.db.insert('workspaces', {
+        workspaceId: denied.workspaceId,
+        kind: denied.kind,
+        name: denied.name,
+        slug: denied.workspaceId,
+        status: 'active',
+        personalOwnerUserId: denied.owner,
+        createdAt: now,
+        updatedAt: now,
+      }))
+      const legacyConversationId = await seedConversation(scopedConvex)
+      const legacyDeliveryId = await seedDelivery(scopedConvex, legacyConversationId)
+      const deniedInput = admission(`${denied.name}-root`, legacyConversationId, legacyDeliveryId)
+      deniedInput.policy.workspaceId = denied.workspaceId
+      await expect(admit(scopedConvex, deniedInput)).rejects.toThrow()
+      expect((await scopedConvex.run(ctx => ctx.db.get(legacyConversationId as never)))?.workspaceId).toBeUndefined()
+      expect((await scopedConvex.run(ctx => ctx.db.get(legacyDeliveryId as never)))?.harnessRunId).toBeUndefined()
+      expect(await get(scopedConvex, deniedInput.runId)).toBeNull()
+    }
+
+    const mismatchedConvex = convexTest(schema, modules)
+    const scopedConversationId = await seedConversation(mismatchedConvex, 'alice', {
+      workspaceId: 'already-scoped',
+      conversationType: 'personal',
+    })
+    const scopedDeliveryId = await seedDelivery(mismatchedConvex, scopedConversationId)
+    const mismatchedInput = admission('scoped-mismatch-root', scopedConversationId, scopedDeliveryId)
+    mismatchedInput.policy.workspaceId = 'different-workspace'
+    await expect(admit(mismatchedConvex, mismatchedInput)).rejects.toThrow()
+    expect((await mismatchedConvex.run(ctx => ctx.db.get(scopedConversationId as never)))?.workspaceId).toBe('already-scoped')
+    expect((await mismatchedConvex.run(ctx => ctx.db.get(scopedDeliveryId as never)))?.harnessRunId).toBeUndefined()
+    expect(await get(mismatchedConvex, mismatchedInput.runId)).toBeNull()
   })
 
   test('stops and cleans up a scoped personal delivery after workspace membership is suspended', async () => {

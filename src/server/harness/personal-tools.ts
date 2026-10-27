@@ -5,12 +5,8 @@ import {
   type PersonalChatWorkToolDefinition,
   type PersonalChatWorkToolingContext,
 } from '@/shared/agents/personal-chat-work'
-import {
-  executePersonalChatWorkTool,
-  personalChatWorkToolNeedsApproval,
-} from '@/server/conversations/personal-chat-work-tools'
 import { HARNESS_CONTROL_TOOLS } from './context'
-import { refreshPersonalHarnessAccess, type PersonalHarnessAccess } from './personal-access'
+import type { PersonalHarnessAccess } from './personal-access'
 
 export type PersonalHarnessToolsInput = {
   access: PersonalHarnessAccess
@@ -27,6 +23,10 @@ async function executeAuthorizedTool(args: {
   toolCallId: string
 }) {
   'use step'
+  const [{ refreshPersonalHarnessAccess }, { executePersonalChatWorkTool }] = await Promise.all([
+    import('./personal-access'),
+    import('@/server/conversations/personal-chat-work-tools'),
+  ])
   const context = await refreshPersonalHarnessAccess(args.access, args.context, args.toolName)
   return executePersonalChatWorkTool(args.input, {
     context: { ...context, agentRunId: args.access.agentRunId, harnessRunId: args.access.runId, toolName: args.toolName },
@@ -44,6 +44,10 @@ async function toolNeedsApproval(args: {
   toolCallId: string
 }) {
   'use step'
+  const [{ refreshPersonalHarnessAccess }, { personalChatWorkToolNeedsApproval }] = await Promise.all([
+    import('./personal-access'),
+    import('@/server/conversations/personal-chat-work-tools'),
+  ])
   const context = await refreshPersonalHarnessAccess(args.access, args.context, args.toolName)
   return personalChatWorkToolNeedsApproval(args.input, {
     context: { ...context, agentRunId: args.access.agentRunId, toolName: args.toolName },

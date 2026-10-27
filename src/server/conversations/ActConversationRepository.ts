@@ -312,6 +312,7 @@ export interface ActConversationRepository {
     mode: AgentRunMode
     modelId: string
     runner: AgentRunRunner
+    executionEngine?: 'overlay_harness'
     turnId: string
     userId: string
     userMessageId: Id<'conversationMessages'>

@@ -121,6 +121,10 @@ export const ActConversationRequest = z.object({
   requestedToolIds: z.unknown().optional(),
   memoryEnabled: z.boolean().optional(),
   actAbortTimeoutMs: z.number().finite().positive().optional(),
+  harnessBudget: z.object({
+    maxProviderCostUsd: z.number().finite().min(0).max(100).optional(),
+    durationMs: z.number().int().min(30_000).max(7 * 24 * 60 * 60 * 1_000).optional(),
+  }).optional(),
   mentions: z.array(z.object({
     type: z.string(),
     id: z.string(),

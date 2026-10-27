@@ -1,9 +1,8 @@
 import type { HarnessExecutionPorts } from './ports'
 import type { PersonalHarnessToolsInput } from './personal-tools'
-import { refreshPersonalHarnessAccess } from './personal-access'
 import { createPersonalHarnessModelPorts, type PersonalHarnessModelRouting } from './personal-model-ports'
 import { admitHarnessRequestUsage } from './request-usage-step'
-import { createHarnessStatePorts } from './state-steps'
+import { createHarnessStatePorts } from './state-ports'
 
 type SurfacePorts = Pick<HarnessExecutionPorts,
   'recordToolResult' | 'delegate' | 'readChild' | 'waitForChildren' | 'waitForInput' | 'waitForApproval'>
@@ -13,6 +12,7 @@ export async function authorizePersonalHarnessExecution(
   toolName?: string,
 ): Promise<void> {
   'use step'
+  const { refreshPersonalHarnessAccess } = await import('./personal-access')
   await refreshPersonalHarnessAccess(input.access, input.context, toolName)
 }
 

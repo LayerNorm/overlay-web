@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { logger } from '@/server/observability/logger'
 import { after, NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
@@ -63,6 +64,8 @@ import {
   type MediaToolIntent,
 } from '@/server/tools/media-tool-intent'
 import { resolveAuthorizedModelIds } from '@/server/ai/model-policy-authority'
+import { mergeReplyContextIntoMessagesForModel } from '@/shared/chat/reply-context-for-model'
+import { sanitizeUiMessagesForModelApi } from '@/shared/chat/sanitize-ui-messages-for-model'
 import { ensureActConversationId } from '@/server/conversations/ensure-act-conversation'
 import { registerToolLoopRun } from '@/server/conversations/tool-loop-run-registry'
 import {
@@ -105,6 +108,12 @@ import { resolveBillingPayer } from '@/server/billing/billing-runtime'
 import { start } from 'workflow/api'
 import { personalChatWorkWorkflow } from '@/server/workflows/personal-chat-work'
 import { describePersonalChatWorkTools } from '@/server/conversations/personal-chat-work-tools'
+import { prepareActModelCandidates } from './model-candidates'
+import {
+  isPersonalHarnessRouteEligible,
+  personalHarnessConversationClientId,
+  startPersonalHarnessTurn,
+} from './personal-harness-turn'
 import {
   calculateProviderCostMicros,
   summarizeAgentToolMetrics,
@@ -187,6 +196,7 @@ export async function executeActTurn(
       requestedToolIds: rawRequestedToolIds,
       memoryEnabled: rawMemoryEnabled,
       actAbortTimeoutMs,
+      harnessBudget,
       mentions: rawMentions,
       reasoning: rawReasoning,
     } = bodyResult.data
@@ -198,6 +208,11 @@ export async function executeActTurn(
     actWebhookSkip = automationExecution === true
     const { auth } = context
     const userId = auth.userId
+    const usePersonalHarness = isPersonalHarnessRouteEligible({
+      authType: auth.authType,
+      automationExecution,
+      automationMode,
+    })
     const conversationUserId = getAuthorizedResourceUserId(context)
     const billingWorkspaceId = context.workspace.workspace.id
     const mentionedAgent = rawMentions?.find((mention) => mention.type === 'agent')
@@ -229,7 +244,7 @@ export async function executeActTurn(
       turnId,
       variantIndex: 0,
     })
-    const effectiveModelId = resolveEffectiveActModelId(modelId)
+    let effectiveModelId = resolveEffectiveActModelId(modelId)
     requestModelId = effectiveModelId
     const serverSecret = getInternalApiSecret()
     const requestedToolIds = normalizeChatToolRequestIds(rawRequestedToolIds)
@@ -289,6 +304,21 @@ export async function executeActTurn(
         { status: 403 },
       )
     }
+    const modelCandidates = usePersonalHarness
+      ? await prepareActModelCandidates({
+          authorization: authorizationService,
+          context,
+          modelId: effectiveModelId,
+          paid,
+          onlyAllowZdrModels: appSettings?.onlyAllowZdrModels === true,
+          requiresVision: messagesRequireVision(uiMessages),
+          authorizedModelIds: authorizedModelIds.chat,
+        })
+      : undefined
+    if (modelCandidates?.length) {
+      effectiveModelId = modelCandidates[0]!
+      requestModelId = effectiveModelId
+    }
     if (_ttftDebug) _tAuth = performance.now()
 
     const {
@@ -301,15 +331,25 @@ export async function executeActTurn(
       attachmentNames,
     })
 
+    const tid = usePersonalHarness
+      ? turnId?.trim() || context.requestIdempotencyKey?.trim() || randomUUID()
+      : resolveActTurnId(turnId)
     let cid = conversationId ? asConversationId(conversationId) : undefined
     const trimmedClientId = conversationClientId?.trim()
-    const parallelCreate = !conversationId && Boolean(trimmedClientId)
-    if (!cid && trimmedClientId) {
+    const durableClientId = trimmedClientId || (!conversationId && usePersonalHarness
+      ? personalHarnessConversationClientId({
+          actorUserId: userId,
+          workspaceId: billingWorkspaceId,
+          turnId: tid,
+        })
+      : undefined)
+    const parallelCreate = !conversationId && Boolean(durableClientId)
+    if (!cid && durableClientId) {
       const ensureStartedAt = _ttftDebug ? performance.now() : 0
       cid = await ensureActConversationId({
         userId: conversationUserId,
         repository: actConversationRepository,
-        conversationClientId: trimmedClientId,
+        conversationClientId: durableClientId,
         scope,
         entitlements: runtimeEntitlements,
         askModelIds,
@@ -332,8 +372,6 @@ export async function executeActTurn(
         })
       })
     }
-    const tid = resolveActTurnId(turnId)
-
     // P3.3: hoist Composio to Wave 1 — start before any await so it overlaps all prep work.
     // Cache in composio-tools.ts makes this ~0ms on repeat requests within 10 minutes.
     const toolPreloadTasks = preloadActExternalToolTasks({
@@ -341,7 +379,7 @@ export async function executeActTurn(
       accessToken,
       serverSecret,
       workspaceId: context.workspace.workspace.id,
-      computerApprovalContext: personalChatMode === 'work' ? 'work' : undefined,
+      computerApprovalContext: usePersonalHarness || personalChatMode === 'work' ? 'work' : undefined,
     })
     const accountAllowedToolIdsTask = filterCatalogResources({
       authorization: authorizationService,
@@ -465,7 +503,12 @@ export async function executeActTurn(
       historyBaseModelId,
     })
     messagesForModel = cloneMessagesWithIndexedFileHint(messagesForModel, indexedAttachmentList, hasPreloadedDocContext)
-    messagesForModel = await actContextService.prepareExistingMessagesForModel({
+    if (usePersonalHarness) {
+      messagesForModel = sanitizeUiMessagesForModelApi(
+        mergeReplyContextIntoMessagesForModel(messagesForModel, replyContextForModel),
+      )
+    } else {
+      messagesForModel = await actContextService.prepareExistingMessagesForModel({
       accessToken,
       conversationId: cid,
       generateSummaryText: async ({ prompt, targetSummaryTokens }) => {
@@ -533,7 +576,8 @@ export async function executeActTurn(
       replyContextForModel,
       targetModelId: effectiveModelId,
       userId: conversationUserId,
-    })
+      })
+    }
     const userSystemPromptExtension = buildSecondarySystemPromptExtension(systemPrompt)
 
     const mediaHeuristicSkipped =
@@ -551,17 +595,26 @@ export async function executeActTurn(
     })
     const agentRunLeaseExpiresAt = Date.now() + actAbortTimeoutMsResolved + 60_000
     const agentRunEligible = Boolean(cid) && automationExecution !== true && automationMode !== true
-    const useWorkRunner = agentRunEligible && personalChatMode === 'work'
+    const useWorkRunner = !usePersonalHarness && agentRunEligible && personalChatMode === 'work'
     const agentRunTask = agentRunEligible
-      ? (useWorkRunner
-          ? agentRunService.startWork({
+      ? (usePersonalHarness
+          ? agentRunService.startPersonalWorkflow({
+              conversationId: cid,
+              mode: personalChatMode ?? 'chat',
+              modelId: effectiveModelId,
+              turnId: tid,
+              userId: conversationUserId,
+              userMessageId,
+            })
+          : useWorkRunner
+            ? agentRunService.startWork({
               conversationId: cid,
               modelId: effectiveModelId,
               turnId: tid,
               userId: conversationUserId,
               userMessageId,
             })
-          : agentRunService.startChat({
+            : agentRunService.startChat({
               conversationId: cid,
               leaseExpiresAt: agentRunLeaseExpiresAt,
               modelId: effectiveModelId,
@@ -579,7 +632,7 @@ export async function executeActTurn(
 	        automationExecution: automationExecution === true,
 	        automationMode: automationMode === true,
 	        automationId,
-	        computerApprovalContext: useWorkRunner ? 'work' : undefined,
+	        computerApprovalContext: usePersonalHarness || useWorkRunner ? 'work' : undefined,
 	        baseUrl: getInternalApiBaseUrl(request),
 	        conversationId: cid,
         entitlements: runtimeEntitlements,
@@ -603,14 +656,14 @@ export async function executeActTurn(
     if (agentRunEligible && !agentRun) {
       throw new Error('Failed to establish AgentRun before generation')
     }
-    pendingAgentRunId = agentRun?.id
-    if (!useWorkRunner && agentRun?.status === 'queued') {
+    pendingAgentRunId = usePersonalHarness ? undefined : agentRun?.id
+    if (!useWorkRunner && !usePersonalHarness && agentRun?.status === 'queued') {
       await agentRunService.markRunning({
         leaseExpiresAt: agentRunLeaseExpiresAt,
         runId: agentRun.id,
         userId: conversationUserId,
       })
-    } else if (!useWorkRunner && agentRun && agentRun.status !== 'running') {
+    } else if (!useWorkRunner && !usePersonalHarness && agentRun && agentRun.status !== 'running') {
       throw new Error(`AgentRun ${agentRun.id} is already ${agentRun.status}`)
     }
     if (_ttftDebug) _tTools = performance.now()
@@ -644,6 +697,65 @@ export async function executeActTurn(
       automationExecution: automationExecution === true,
       automationMode: automationMode === true,
     })
+
+    if (usePersonalHarness) {
+      if (!agentRun || !cid || !modelCandidates) throw new Error('Personal harness requires an admitted AgentRun and model candidates.')
+      const personalAgentRun = agentRun
+      return await startPersonalHarnessTurn({
+        agentRun: personalAgentRun,
+        auth,
+        budget: {
+          maxProviderCostUsd: harnessBudget?.maxProviderCostUsd,
+          durationMs: harnessBudget?.durationMs
+            ?? (actAbortTimeoutMs !== undefined
+              ? resolveActAbortTimeoutMs({ requestedTimeoutMs: actAbortTimeoutMs })
+              : undefined),
+        },
+        conversationId: cid,
+        emitWebhook: !actWebhookSkip,
+        effectiveModelId,
+        goal: latestUserText ?? '',
+        hasDynamicApproval: Boolean(actTooling.toolApproval),
+        instructions: actInstructions,
+        messagesForModel,
+        modelCandidates,
+        paid,
+        principalId: context.workspace.principal.id,
+        rawReasoning,
+        requestId,
+        releaseConcurrency: () => {
+          concurrencySlot?.release()
+          concurrencySlot = null
+        },
+        recordProgress: async content => {
+          await agentRunService.recordProgress({
+            content,
+            runId: personalAgentRun.id,
+            userId: conversationUserId,
+          })
+        },
+        sourceCitations: sourceCitationMap,
+        tools,
+        toolingContext: {
+          accountAllowedConnectorIds: [...accountAllowedConnectorIds],
+          accountAllowedToolIds: [...accountAllowedToolIds],
+          baseUrl: getInternalApiBaseUrl(request),
+          billingProgrammaticSubjectId,
+          conversationId: cid,
+          effectiveModelId,
+          latestUserText,
+          mediaToolIntent: resolvedMediaToolIntent,
+          memoryEnabled,
+          mode: mode ?? 'chat',
+          requestFingerprint: context.requestFingerprint,
+          requestedToolIds: [...requestedToolIds],
+          turnId: tid,
+          userId,
+          workspaceId: billingWorkspaceId,
+        },
+        workspaceId: billingWorkspaceId,
+      })
+    }
 
     if (useWorkRunner) {
       if (!agentRun || !cid) throw new Error('Work mode requires an AgentRun and conversation')

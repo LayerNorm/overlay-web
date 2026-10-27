@@ -4,15 +4,15 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
-- Add the shared Overlay Harness execution and persistence foundations: evidence-gated plans, durable state operations, semantic continuation, secure model references and single-workflow ownership. Existing surfaces remain on their current runners pending migration and parity QA.
+- Add the shared Overlay Harness execution and persistence foundations: evidence-gated plans, durable state operations, semantic continuation, secure model references and single-workflow ownership. Authenticated personal Chat and Work now use these foundations; other surfaces await migration and parity QA.
 
 - Add workflow-owned input/approval wait storage, child attention notifications and an owner-only personal run input API for the upcoming harness migration. Personal tool approvals also remain owner-only in shared conversations.
 
-- Connect the canonical personal harness workflow to authorized model/tools, bounded child execution and transcript delivery. This entrypoint remains inactive until Chat/Work parity and isolated QA are complete.
+- Route authenticated personal Chat and Work turns through durable Harness Workflow admission with a default $1 Overlay model-cost cap and 24-hour deadline, configurable up to $100 and seven days. New personal AgentRuns carry the immutable `executionEngine: 'overlay_harness'` discriminator; legacy rows and same-turn replays remain unmarked and owned by their existing runners. In-flight runs and internal automation remain on legacy runners; UI work, other surfaces and hosted parity QA are pending.
 
 - Bind a personal delivery AgentRun to its root harness atomically at admission and fence the root atomically when Stop cancels that delivery. Workflow SDK cancellation is best-effort physical cleanup after the durable fence; it does not promise to abort provider work already dispatched. Final result summaries remain separately persisted from working summaries.
 
-- Add bounded, freshly authorized model fallback to the personal harness after confirmed pre-inference rejections. Ambiguous provider failures keep their unresolved spend holds and do not dispatch again. Fallback notices stream and persist with the final transcript; existing Chat/Work traffic is not switched yet.
+- Add bounded, freshly authorized model fallback to the personal harness after confirmed pre-inference rejections. Ambiguous provider failures keep their unresolved spend holds and do not dispatch again. Fallback notices stream and persist with the final transcript for authenticated personal Chat and Work.
 
 - Saved collaborative message edits now update rendered text and retain attachments instead of showing the original message.
 

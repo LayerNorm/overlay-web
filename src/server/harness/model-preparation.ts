@@ -4,6 +4,7 @@ import type { LanguageModelV4CallOptions } from '@ai-sdk/provider'
 import { FatalError } from 'workflow'
 import { getGatewayCatalogModel } from '@/server/ai/gateway/gateway-catalog'
 import type { PersonalChatWorkToolingContext } from '@/shared/agents/personal-chat-work'
+import { modelSupportsZeroDataRetention } from '@/shared/ai/gateway/model-data'
 import { estimateHarnessInputTokens, forecastHarnessModelCost, hasHarnessCacheWrites } from './model-forecast'
 import { refreshPersonalHarnessAccess, type PersonalHarnessAccess } from './personal-access'
 import type { HarnessModelReference } from './secure-model'
@@ -55,7 +56,7 @@ export async function preparePersonalHarnessModel(input: {
   }
   const options: LanguageModelV4CallOptions = {
     ...input.options,
-    ...(context.requiresZeroDataRetention ? { providerOptions: {
+    ...(context.requiresZeroDataRetention || modelSupportsZeroDataRetention(context.effectiveModelId) ? { providerOptions: {
       ...input.options.providerOptions,
       gateway: { ...input.options.providerOptions?.gateway, zeroDataRetention: true },
     } } : {}),

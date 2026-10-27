@@ -185,9 +185,12 @@ Convex code may import browser-safe shared modules from `src/shared`. Convex mus
 
 `src/server/workflows/personal-harness.ts` composes `runOverlayHarness` with personal
 authorization, model billing, tool reconstruction, durable waits and transcript
-delivery. It is not yet selected by the personal conversation Act endpoint.
-Keep the legacy workflows available for in-flight runs until migration and parity
-acceptance are complete.
+delivery. Authenticated personal Chat and Work requests in the conversation Act
+endpoint are admitted to this workflow. In-flight runs and internal service or
+automation execution remain on legacy runners until a later migration. Other
+surfaces and hosted parity QA remain pending.
+`mode: 'automate'` alone remains a configuration chat; only the automation
+execution flags keep a request on the legacy path.
 
 The workflow claims the harness before attaching root delivery or executing model
 calls. Each run registers its wake hook before launching children. Child IDs are
@@ -200,11 +203,30 @@ Parent settlement reads that bounded result. Root delivery uses existing assista
 transcript persistence without charging the aggregate usage again. Raw model-stream
 closure produces the UI finish event through the SDK transform.
 
-Before switching traffic, verify model routing/fallback parity, root admission
-policy, descendant cancellation, full tool-result retrieval and trusted verification.
-The local production build compiles the workflow, but this does not establish hosted
-Workflow/Convex execution. Exact-SHA isolated Preview smoke and browser QA remain
-required, and production Context/Plan/Queue UI remains gated on mockup approval.
+The default personal policy caps paid Overlay model and summary inference at $1 and
+expires 24 hours after the stable AgentRun creation time. `harnessBudget` can set a
+provider-cost cap from $0 to $100 and a duration from 30 seconds to seven days.
+Free accounts and BYOK have no Overlay-funded provider spend. Each model call still
+rechecks account authorization and reserves billing independently. This cap does
+not include media or tool charges, or external BYOK bills.
+
+The route resolves the stable turn ID before conversation creation. When neither a
+conversation ID nor client ID is supplied, it creates a conversation using a
+bounded client ID derived from the actor, workspace and turn. Personal requests
+bind the root to one queued AgentRun during admission; the workflow alone claims
+and attaches it. Legacy unscoped personal conversations can bind only to the
+owner's active personal workspace in the same admission transaction. Scoped
+conversations must match the policy workspace, and organization workspaces cannot
+claim an unscoped personal conversation.
+
+The local production build passed with the checked-in CI fixture environment:
+`INTERNAL_API_SECRET=test-internal-secret`,
+`NEXT_PUBLIC_CONVEX_URL=https://fixture.convex.cloud` and
+`OVERLAY_DEPLOYMENT_ENV=test`. It compiled 95 steps across six workflows, passed
+TypeScript checking and completed static-page generation. This does not establish
+hosted Workflow/Convex execution. Exact-SHA isolated Preview smoke and browser QA
+remain required, and production Context/Plan/Queue UI remains gated on mockup
+approval.
 The Workflow compiler regenerates `src/app/.well-known/workflow/` during builds;
 its compiled route files are generated output and should not be committed.
 
@@ -216,8 +238,15 @@ receipt settles them. The server may subsequently perform best-effort SDK
 Workflow cancellation for claimed root and child runs; that cleanup is physical
 resource cleanup only and cannot promise to abort provider work already dispatched.
 Admission and cancellation bindings are additive, so legacy generic harness
-admissions and existing Work traffic remain unchanged while this personal
-entrypoint is inactive.
+admissions remain unchanged. Existing in-flight Work runs and internal automation
+continue on their legacy runner until that traffic is migrated.
+
+New personal Chat and Work AgentRuns are created with the immutable optional
+`executionEngine: 'overlay_harness'` discriminator. Existing rows remain
+unmarked, including legacy Work runs whose `runner` is already `workflow`.
+Replaying `startAgentRun` returns the existing row without changing its engine,
+and personal Harness admission and delivery ownership reject unmarked rows.
+Legacy stop and cleanup authorization remains compatible with in-flight runs.
 
 Canonical `AgentRun` status includes active `waiting_for_input` and
 `waiting_for_children` states. Each can resume to `running` or end as failed or
@@ -235,8 +264,8 @@ conversation turn. The workflow hook durably retains the full reply and the
 harness stores a bounded user-input evidence summary. Model/tool authorization is
 rechecked after resumption. Delivery transitions can be fenced by workflow ID.
 
-The canonical personal workflow now connects this adapter with child launch,
-finalization and transcript delivery. App-traffic migration remains pending.
+The canonical personal workflow connects this adapter with child launch,
+finalization and transcript delivery for authenticated personal Chat and Work.
 Input controls and the Context/Plan/Queue presentation still require mockup approval.
 
 Personal workflow inputs may carry an admitted ordered model candidate list, with
@@ -351,7 +380,8 @@ Compaction summaries use the same secure model and `WorkflowAgent`, with separat
 checkpointing or quoting the main call, without consuming another root request.
 Failed or truncated summaries preserve the original history and stop preparation;
 an unresolved summary billing hold cannot be followed by another paid call.
-The personal entrypoint and lifecycle migration is still pending.
+Hosted execution validation and migration of the remaining legacy runners are
+still pending.
 
 `compactHarnessPrompt` extends the existing chat compaction policy for SDK
 provider prompts. It preserves the latest user request and complete tool

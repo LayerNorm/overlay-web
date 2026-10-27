@@ -4,7 +4,9 @@ import type { LanguageModelV4StreamPart } from '@ai-sdk/provider'
 import type { HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
 import * as state from '@overlay/agent-runtime/harness-state'
 import type { HarnessOperation } from '@overlay/agent-runtime/harness-store'
+import { KIMI_K3_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import { createPersonalHarnessExecutionPorts } from './personal-ports'
+import { createPersonalHarnessModelPorts } from './personal-model-ports'
 import { runOverlayHarness } from './runner'
 import { estimateHarnessInputTokens } from './model-forecast'
 
@@ -18,6 +20,9 @@ vi.mock('./personal-model-dispatch', () => ({ authorizePersonalHarnessModelDispa
 vi.mock('./settle-model-step', () => ({ settleHarnessModelUsage: mocks.settle }))
 vi.mock('./request-usage-step', () => ({ admitHarnessRequestUsage: mocks.admit }))
 vi.mock('./state-steps', () => ({ readHarnessState: mocks.read, applyHarnessOperation: mocks.apply,
+  claimHarnessState: mocks.claim,
+}))
+vi.mock('./state-ports', () => ({
   createHarnessStatePorts: (reference: unknown) => ({ read: mocks.read, claim: mocks.claim,
     apply: (id: string, operation: unknown) => mocks.apply(reference, id, operation), readEvidence: async () => null }),
 }))
@@ -67,6 +72,40 @@ test('an ambiguous provider error retains its hold and never tries another model
 test('BYOK routing cannot acquire an Overlay-funded fallback', () => {
   expect(() => createPersonalHarnessExecutionPorts({ access, context: { ...context, effectiveModelId: 'byok/key/model' } }, surface,
     { candidateIds: ['byok/key/model', 'fixture/model'] })).toThrow('Invalid admitted model routing')
+})
+
+test('Kimi K3 reasoning is prepared for the active fallback candidate', async () => {
+  const ports = createPersonalHarnessModelPorts({ access, context }, {
+    candidateIds: ['fixture/model', KIMI_K3_MODEL_ID],
+  })
+  current = state.recordHarnessReceipt(current, {
+    id: 'model:0',
+    modelId: 'fixture/model',
+    provider: 'overlay-admission',
+    inputTokens: 0,
+    outputTokens: 0,
+    reasoningTokens: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    contextWindow: 64_000,
+    costMicros: 0,
+    costSource: 'catalog',
+    rejectionReason: 'budget',
+  }, Date.now())
+  expect(await ports.recoverModelFailure?.('model:0')).toBe(true)
+  const prepared = await ports.prepareModel({
+    receiptId: 'model:1',
+    state: current,
+    messages: [{ role: 'user', content: [{ type: 'text', text: 'Check the requested result.' }] }],
+    instructionContext: { instructions: 'Check the requested result.', continuation: false, truncatedResponse: false },
+    toolNames: [],
+    toolDefinitions: [],
+    settings: { maxOutputTokens: 100, reasoning: 'low' },
+  })
+
+  expect(prepared.model?.modelId).toBe(KIMI_K3_MODEL_ID)
+  expect(prepared.settings?.reasoning).toBe('xhigh')
+  expect(mocks.refresh).toHaveBeenCalledWith(access, expect.objectContaining({ effectiveModelId: KIMI_K3_MODEL_ID }))
 })
 
 beforeEach(() => {

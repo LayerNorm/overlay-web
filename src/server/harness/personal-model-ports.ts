@@ -2,8 +2,9 @@ import { WorkflowAgent } from '@ai-sdk/workflow'
 import { isLoopFinished } from 'ai'
 import { FatalError } from 'workflow'
 import type { HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
-import { compactHarnessPrompt, estimateContextTokens } from '@/server/chat/context-compaction'
+import { compactHarnessPrompt, estimateContextTokens } from '@/server/chat/context-compaction-core'
 import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
+import { isKimiK3ModelId } from '@/shared/ai/gateway/model-types'
 import { buildHarnessStepInstructions } from './context'
 import { captureHarnessModelUsage } from './model-usage'
 import { preparePersonalHarnessModel, readHarnessModelLimits } from './model-preparation'
@@ -108,10 +109,18 @@ export function createPersonalHarnessModelPorts(input: Pick<PersonalHarnessTools
         prompt: [{ role: 'system', content: instructions }, ...compacted.messages],
       } })
       preparedCalls.set(request.receiptId, prepared)
+      const reasoning = isKimiK3ModelId(candidates[candidateIndex]) && request.settings.reasoning !== undefined
+        ? 'xhigh'
+        : request.settings.reasoning
       return {
         messages: compacted.messages, instructions, activeToolNames: request.toolNames,
         estimatedCostMicros: prepared.estimatedCostMicros, model: prepared.model,
-        settings: { ...request.settings, maxOutputTokens, providerOptions: prepared.options.providerOptions },
+        settings: {
+          ...request.settings,
+          ...(reasoning !== undefined ? { reasoning } : {}),
+          maxOutputTokens,
+          providerOptions: prepared.options.providerOptions,
+        },
       }
     },
     recordModelStep: async (step, receiptId) => {

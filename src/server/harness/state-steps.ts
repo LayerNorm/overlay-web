@@ -2,7 +2,6 @@ import { FatalError, RetryableError } from 'workflow'
 import type { HarnessEvidence, HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
 import type { HarnessOperation } from '@overlay/agent-runtime/harness-store'
 import { ConvexHarnessRepository } from './ConvexHarnessRepository'
-import type { HarnessExecutionPorts } from './ports'
 
 export type HarnessExecutionReference = {
   actorUserId: string
@@ -57,13 +56,4 @@ export async function applyHarnessOperation(
 export async function readHarnessEvidence(reference: HarnessExecutionReference, evidenceId: string): Promise<HarnessEvidence | null> {
   'use step'
   return new ConvexHarnessRepository().readEvidence({ actorUserId: reference.actorUserId, runId: reference.runId, evidenceId })
-}
-
-export function createHarnessStatePorts(reference: HarnessExecutionReference): Pick<HarnessExecutionPorts, 'claim' | 'read' | 'apply' | 'readEvidence'> {
-  return {
-    claim: () => claimHarnessState(reference),
-    read: () => readHarnessState(reference),
-    apply: (operationId, operation) => applyHarnessOperation(reference, operationId, operation),
-    readEvidence: evidenceId => readHarnessEvidence(reference, evidenceId),
-  }
 }

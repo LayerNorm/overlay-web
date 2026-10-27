@@ -2,10 +2,11 @@ import { beforeEach, expect, test, vi } from 'vitest'
 import type { PersonalChatWorkToolingContext } from '@/shared/agents/personal-chat-work'
 import { preparePersonalHarnessModel } from './model-preparation'
 
-const mocks = vi.hoisted(() => ({ refresh: vi.fn(), catalog: vi.fn() }))
+const mocks = vi.hoisted(() => ({ refresh: vi.fn(), catalog: vi.fn(), zdr: vi.fn() }))
 vi.mock('server-only', () => ({}))
 vi.mock('./personal-access', () => ({ refreshPersonalHarnessAccess: mocks.refresh }))
 vi.mock('@/server/ai/gateway/gateway-catalog', () => ({ getGatewayCatalogModel: mocks.catalog }))
+vi.mock('@/shared/ai/gateway/model-data', () => ({ modelSupportsZeroDataRetention: mocks.zdr }))
 
 const access = { actorUserId: 'user', runId: 'run', workflowRunId: 'workflow', conversationId: 'conversation', agentRunId: 'delivery',
   workspaceId: 'workspace', principalId: 'principal', authentication: { type: 'session' as const } }
@@ -19,6 +20,7 @@ const input = { access, context, receiptId: 'model:0', options: {
 
 beforeEach(() => {
   vi.resetAllMocks()
+  mocks.zdr.mockReturnValue(false)
   mocks.refresh.mockImplementation(async (_access, supplied) => ({ ...supplied, entitlements: { confidential: 'must-not-persist' } }))
   mocks.catalog.mockResolvedValue({ type: 'language', contextWindow: 32_000, maxTokens: 1_000,
     pricing: { input: '0.000001', output: '0.000002' } })
@@ -41,6 +43,13 @@ test('enforces fresh ZDR routing without losing other provider settings', async 
   } } })
   expect(prepared.options.providerOptions).toEqual({ gateway: { zeroDataRetention: true, order: ['fixture-provider'] },
     anthropic: { thinking: { type: 'disabled' } } })
+})
+
+test('forces ZDR for each supported active candidate even when account policy does not require it', async () => {
+  mocks.zdr.mockReturnValue(true)
+  mocks.refresh.mockResolvedValue({ ...context, requiresZeroDataRetention: false })
+  const prepared = await preparePersonalHarnessModel(input)
+  expect(prepared.options.providerOptions).toEqual({ gateway: { zeroDataRetention: true } })
 })
 
 test('rejects unauthenticated, unsupported, unpriced and oversized dispatches before admission', async () => {

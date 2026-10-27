@@ -98,6 +98,7 @@ export type AgentRun = {
   remoteSessionId?: string
   mode: AgentRunMode
   runner: AgentRunRunner
+  executionEngine?: 'overlay_harness'
   status: AgentRunStatus
   variantIndex?: number
   workflowRunId?: string

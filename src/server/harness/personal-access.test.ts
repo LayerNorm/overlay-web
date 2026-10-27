@@ -34,7 +34,7 @@ const snapshot = () => ({ ...createHarnessSnapshot({ runId: 'harness', goal: 'Re
   maxCostMicros: 1_000_000, deadlineAt: Date.now() + 60_000, maxDepth: 1, maxParallelChildren: 2,
 } }, Date.now()), workflowRunId: 'workflow' })
 const agentRun = () => ({ id: 'agent-run', conversationId: 'conversation', userId: 'user', harnessRunId: 'harness', workflowRunId: 'workflow',
-  runner: 'workflow', mode: 'work', status: 'running' })
+  runner: 'workflow', executionEngine: 'overlay_harness', mode: 'work', status: 'running' })
 
 beforeEach(() => {
   vi.resetAllMocks()
@@ -71,6 +71,8 @@ test('rejects stale execution, cancelled delivery, changed principals and out-of
   }
   await expect(refreshPersonalHarnessAccess(access, context, 'ungranted')).rejects.toThrow(/capabilities/)
   mocks.agentRun.mockResolvedValueOnce({ ...agentRun(), status: 'cancelled' })
+  await expect(refreshPersonalHarnessAccess(access, context)).rejects.toThrow(/resource access/)
+  mocks.agentRun.mockResolvedValueOnce({ ...agentRun(), executionEngine: undefined })
   await expect(refreshPersonalHarnessAccess(access, context)).rejects.toThrow(/resource access/)
   mocks.workspace.mockResolvedValueOnce({ workspace: { id: 'original-workspace' }, principal: { id: 'different' } })
   await expect(refreshPersonalHarnessAccess(access, context)).rejects.toThrow(/resource access/)

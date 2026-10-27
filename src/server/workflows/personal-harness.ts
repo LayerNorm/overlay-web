@@ -11,7 +11,8 @@ import { buildPersonalHarnessDelivery } from '@/server/harness/personal-delivery
 import {
   attachPersonalHarnessDelivery, closePersonalHarnessStream, finishPersonalHarnessDelivery, writePersonalHarnessFallback,
 } from '@/server/harness/personal-delivery-steps'
-import { harnessWakeToken, notifyHarnessAncestors, readHarnessChild } from '@/server/harness/personal-wait-steps'
+import { notifyHarnessAncestors, readHarnessChild } from '@/server/harness/personal-wait-steps'
+import { harnessWakeToken } from '@/server/harness/wait-token'
 import { applyHarnessOperation, claimHarnessState, readHarnessState } from '@/server/harness/state-steps'
 import { runOverlayHarness, type HarnessExecutionResult } from '@/server/harness/runner'
 import type { PersonalHarnessAccess } from '@/server/harness/personal-access'

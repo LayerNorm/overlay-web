@@ -18,7 +18,8 @@ const access = { actorUserId: 'user', runId: 'root', workflowRunId: 'workflow', 
 const state = { runId: 'root', workflowRunId: 'workflow', status: 'completed' }
 const delivery = { content: 'Result', parts: [{ type: 'text', text: 'Result' }], tokens: { input: 100, output: 10 },
   metrics: { inputTokens: 100, outputTokens: 10, providerCostMicros: 0, toolCallCount: 1, toolSuccessCount: 1, toolFailureCount: 0 } }
-const run = { id: 'delivery', userId: 'user', conversationId: 'conversation', harnessRunId: 'root', runner: 'workflow', mode: 'work', status: 'running', workflowRunId: 'workflow' }
+const run = { id: 'delivery', userId: 'user', conversationId: 'conversation', harnessRunId: 'root', runner: 'workflow',
+  executionEngine: 'overlay_harness', mode: 'work', status: 'running', workflowRunId: 'workflow' }
 
 test('only the owning running root can stream a notice matching its confirmed rejection', async () => {
   const event = { from: 'provider/model', to: 'provider/fallback', receiptId: 'model:0', reason: 'budget' as const }
@@ -65,6 +66,14 @@ test('stale delivery ownership and an explicit stop never become successful comp
 test('a delivery bound to another harness root cannot attach or finish', async () => {
   mocks.delivery.mockResolvedValue({ ...run, harnessRunId: 'other-root' })
   await expect(attachPersonalHarnessDelivery(access)).rejects.toThrow('personal delivery')
+  await expect(finishPersonalHarnessDelivery(access, delivery, { emitWebhook: false, turnId: 'turn' })).rejects.toThrow('ownership changed')
+  expect(mocks.attach).not.toHaveBeenCalled()
+  expect(mocks.complete).not.toHaveBeenCalled()
+})
+
+test('an unmarked legacy Workflow delivery cannot be attached or finalized as personal Harness', async () => {
+  mocks.delivery.mockResolvedValue({ ...run, executionEngine: undefined })
+  await expect(attachPersonalHarnessDelivery(access)).rejects.toThrow('Invalid personal delivery run.')
   await expect(finishPersonalHarnessDelivery(access, delivery, { emitWebhook: false, turnId: 'turn' })).rejects.toThrow('ownership changed')
   expect(mocks.attach).not.toHaveBeenCalled()
   expect(mocks.complete).not.toHaveBeenCalled()

@@ -85,7 +85,48 @@ test('startWork always creates the primary response variant', async () => {
   assert.equal(received?.variantIndex, 0)
   assert.equal(received?.mode, 'work')
   assert.equal(received?.runner, 'workflow')
+  assert.equal(received?.executionEngine, undefined)
   assert.equal(run0?.id, 'run_0')
+})
+
+test('startPersonalWorkflow creates workflow variant zero for both personal modes', async () => {
+  const received: Parameters<ActConversationRepository['startAgentRun']>[0][] = []
+  const repository = {
+    async startAgentRun(args: Parameters<ActConversationRepository['startAgentRun']>[0]) {
+      received.push(args)
+      return {
+        id: `run_${args.mode}`,
+        conversationId: args.conversationId,
+        turnId: args.turnId,
+        userId: args.userId,
+        userMessageId: args.userMessageId,
+        assistantMessageId: `msg_${args.mode}`,
+        mode: args.mode,
+        runner: args.runner,
+        status: 'queued',
+        variantIndex: args.variantIndex,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      } as unknown as AgentRun
+    },
+  } as unknown as ActConversationRepository
+  const service = new AgentRunService(repository)
+
+  for (const mode of ['chat', 'work'] as const) {
+    await service.startPersonalWorkflow({
+      conversationId: 'conv_1' as never,
+      mode,
+      modelId: 'model-a',
+      turnId: `turn_${mode}`,
+      userId: 'user_1',
+      userMessageId: 'msg_u1' as never,
+    })
+  }
+
+  assert.deepEqual(received.map(({ mode, runner, variantIndex, executionEngine }) => ({ mode, runner, variantIndex, executionEngine })), [
+    { mode: 'chat', runner: 'workflow', variantIndex: 0, executionEngine: 'overlay_harness' },
+    { mode: 'work', runner: 'workflow', variantIndex: 0, executionEngine: 'overlay_harness' },
+  ])
 })
 
 test('input and child waits resume through canonical AgentRun transitions', async () => {

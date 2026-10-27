@@ -37,6 +37,28 @@ export class AgentRunService {
     }) ?? undefined
   }
 
+  async startPersonalWorkflow(args: {
+    conversationId?: ConversationId
+    mode: 'chat' | 'work'
+    modelId: string
+    turnId: string
+    userId: string
+    userMessageId?: Id<'conversationMessages'>
+  }): Promise<AgentRun | undefined> {
+    if (!args.conversationId || !args.userMessageId) return undefined
+    return await this.repository.startAgentRun({
+      conversationId: args.conversationId,
+      mode: args.mode,
+      modelId: args.modelId,
+      runner: 'workflow',
+      executionEngine: 'overlay_harness',
+      turnId: args.turnId,
+      userId: args.userId,
+      userMessageId: args.userMessageId,
+      variantIndex: 0,
+    }) ?? undefined
+  }
+
   async startWork(args: {
     conversationId?: ConversationId
     modelId: string

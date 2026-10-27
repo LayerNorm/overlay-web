@@ -1,7 +1,5 @@
 import type { LanguageModelV4, LanguageModelV4CallOptions } from '@ai-sdk/provider'
 import { WORKFLOW_DESERIALIZE, WORKFLOW_SERIALIZE } from '@workflow/serde'
-import { wrapLanguageModel } from 'ai'
-import { getLanguageModel } from '@/server/ai/model-runtime'
 import type { PersonalHarnessModelDispatch } from './personal-model-dispatch'
 
 export type HarnessModelReference = {
@@ -54,16 +52,8 @@ export class HarnessLanguageModel implements LanguageModelV4 {
       const { authorizePersonalHarnessModelDispatch } = await import('./personal-model-dispatch')
       await authorizePersonalHarnessModelDispatch(this.reference, options)
     }
-    const model = await getLanguageModel(this.reference.modelId, undefined, this.reference.credentialOwnerId, {
-      sessionId: this.reference.sessionId,
-      allowLowBalanceFallback: this.reference.allowLowBalanceFallback,
-    })
-    try {
-      return await wrapLanguageModel({ model, middleware: [] }).doStream(options)
-    } catch (error) {
-      await recordConfirmedRejection(this.reference, error)
-      throw error
-    }
+    const { secureModelDoStream } = await import('./secure-model-runtime')
+    return secureModelDoStream(this.reference, options)
   }
 
   async doGenerate(options: LanguageModelV4CallOptions) {
@@ -72,23 +62,9 @@ export class HarnessLanguageModel implements LanguageModelV4 {
       const { authorizePersonalHarnessModelDispatch } = await import('./personal-model-dispatch')
       await authorizePersonalHarnessModelDispatch(this.reference, options)
     }
-    const model = await getLanguageModel(this.reference.modelId, undefined, this.reference.credentialOwnerId, {
-      sessionId: this.reference.sessionId,
-      allowLowBalanceFallback: this.reference.allowLowBalanceFallback,
-    })
-    try {
-      return await wrapLanguageModel({ model, middleware: [] }).doGenerate(options)
-    } catch (error) {
-      await recordConfirmedRejection(this.reference, error)
-      throw error
-    }
+    const { secureModelDoGenerate } = await import('./secure-model-runtime')
+    return secureModelDoGenerate(this.reference, options)
   }
-}
-
-async function recordConfirmedRejection(reference: HarnessModelReference, error: unknown): Promise<void> {
-  if (!reference.personal || reference.modelId.startsWith('byok/')) return
-  const { isConfirmedHarnessModelRejection, recordHarnessModelRejection } = await import('./model-rejection')
-  if (isConfirmedHarnessModelRejection(error)) await recordHarnessModelRejection(reference, 'model_unavailable')
 }
 
 Object.assign(HarnessLanguageModel.prototype.doStream, { maxRetries: 0 })
