@@ -3,6 +3,7 @@ import test from 'node:test'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import type { ConversationRuntime } from '../chat-interface/types'
 import { isConversationScopeVerified } from '../conversationScopeVerification'
+import { prefetchTitle } from '@/features/chat/lib/generate-title'
 import { createNewChatForSend } from './chat-send-create'
 import type { PendingFirstSendState } from './chat-send-pending-first'
 
@@ -12,6 +13,21 @@ test('deferred first-chat creation exposes the real id to the run lifecycle', as
     'createResponse',
     async () => new Response(JSON.stringify({ id: 'chat-real' }), { status: 201 }),
   )
+  t.mock.method(
+    overlayAppClient.chat,
+    'generateTitleResponse',
+    async () => new Response(JSON.stringify({ title: 'Generated first-message title' }), { status: 200 }),
+  )
+  const previousWindow = globalThis.window
+  Object.defineProperty(globalThis, 'window', {
+    configurable: true,
+    value: { setTimeout: () => 1 },
+  })
+  try {
+    assert.equal(await prefetchTitle('seed with resolved title'), 'Generated first-message title')
+  } finally {
+    Object.defineProperty(globalThis, 'window', { configurable: true, value: previousWindow })
+  }
   const pending: PendingFirstSendState = {
     conversationClientId: 'client-1',
     previewRuntime: {} as ConversationRuntime,
@@ -19,7 +35,7 @@ test('deferred first-chat creation exposes the real id to the run lifecycle', as
     realChatId: null,
     wasFirst: true,
     renameStarted: false,
-    renameSeed: 'hello',
+    renameSeed: 'seed with resolved title',
     activeChatTitleSnapshot: null,
   }
   const pendingFirstSendRef = { current: pending }
@@ -57,6 +73,7 @@ test('deferred first-chat creation exposes the real id to the run lifecycle', as
   assert.equal(isConversationScopeVerified('personal:chat-real'), true)
   assert.equal(pending.realChatId, 'chat-real')
   assert.deepEqual(pendingRunConversationIds, ['chat-real'])
+  assert.equal(createResponse.mock.calls[0]?.arguments[0].title, 'Generated first-message title')
   assert.equal(createResponse.mock.callCount(), 1)
 })
 

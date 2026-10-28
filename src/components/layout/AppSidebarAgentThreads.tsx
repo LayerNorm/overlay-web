@@ -21,6 +21,7 @@ export function AgentThreadRows({
   bundle,
   activeConversationId,
   onOpenThread,
+  onOpenAutomation,
   onArchiveThread,
   onDeleteThread,
 }: {
@@ -28,6 +29,7 @@ export function AgentThreadRows({
   bundle: WorkspaceAgentBundle | 'loading' | 'error'
   activeConversationId: string | null
   onOpenThread(agent: WorkspaceAgentDirectoryItem, conversationId: string): void
+  onOpenAutomation(automationId: string): void
   onArchiveThread(agent: WorkspaceAgentDirectoryItem, conversationId: string, archived: boolean): void
   onDeleteThread(agent: WorkspaceAgentDirectoryItem, conversationId: string): void
 }) {
@@ -101,9 +103,10 @@ export function AgentThreadRows({
           <SidebarMenuSubItem key={automation.automationId}>
             <ThreadButton
               isActive={active}
-              disabled={!target}
-              onClick={() => { if (target) onOpenThread(agent, target) }}
-              className={!target ? 'cursor-default opacity-70' : undefined}
+              onClick={() => {
+                if (target) onOpenThread(agent, target)
+                else onOpenAutomation(automation.automationId)
+              }}
             >
               <Workflow aria-hidden />
               <span className="flex-1 truncate">{automation.name}</span>

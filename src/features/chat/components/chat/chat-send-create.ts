@@ -3,10 +3,11 @@ import posthog from 'posthog-js'
 import { createIdempotencyKey } from '@overlay/api-client'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { normalizeChatModelSelection } from '@/shared/chat/chat-model-prefs'
-import { dispatchChatCreated } from '@/shared/chat/chat-title'
+import { dispatchChatCreated, isPlaceholderChatTitle } from '@/shared/chat/chat-title'
 import { upsertCachedChat } from '@/shared/chat/chat-list-cache'
 import { DEFAULT_CHAT_TITLE } from '../chat-interface/constants'
 import { legacyWorkspaceScopeForRoute, readWorkspacePathScope } from '@/shared/workspaces/routing'
+import { peekResolvedTitle } from '@/features/chat/lib/generate-title'
 import { markConversationScopeVerified } from '../conversationScopeVerification'
 import type {
   Conversation,
@@ -86,7 +87,17 @@ export async function createNewChatForSend({
   persistActiveRuntimeUiState()
   setIsTemporaryChat(false)
   resetComposerToolIds(false)
-  const initialTitle = options.title ?? (mode === 'automate' ? 'New automation' : DEFAULT_CHAT_TITLE)
+  const pendingTitleSeed = options.clientId
+    ? pendingFirstSendRef.current?.conversationClientId === options.clientId
+      ? pendingFirstSendRef.current.renameSeed
+      : undefined
+    : undefined
+  const prefetchedTitle = mode === 'chat' && pendingTitleSeed
+    ? peekResolvedTitle(pendingTitleSeed)
+    : null
+  const initialTitle = isPlaceholderChatTitle(options.title)
+    ? prefetchedTitle ?? (mode === 'automate' ? options.title?.trim() || 'New automation' : DEFAULT_CHAT_TITLE)
+    : options.title!
   const normalizedInitialSelection = normalizeChatModelSelection({
     askModelIds: selectedModels.slice(0, 1),
     actModelId: selectedActModel,

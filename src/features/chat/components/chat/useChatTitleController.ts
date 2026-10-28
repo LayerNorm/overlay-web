@@ -5,6 +5,8 @@ import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import {
   dispatchChatModified,
   dispatchChatTitleUpdated,
+  mergeChatTitle,
+  resolveChatModifiedTitle,
   sanitizeChatTitle,
 } from '@/shared/chat/chat-title'
 import { upsertCachedChat } from '@/shared/chat/chat-list-cache'
@@ -44,6 +46,8 @@ export function useChatTitleController({
   const [editingChatId, setEditingChatId] = useState<string | null>(null)
   const [editingChatTitle, setEditingChatTitle] = useState('')
   const headerTitleInputRef = useRef<HTMLInputElement>(null)
+  const chatsRef = useRef(chats)
+  chatsRef.current = chats
 
   const applyChatTitleUpdate = useCallback((chatId: string, title: string) => {
     const nextTitle = sanitizeChatTitle(title, DEFAULT_CHAT_TITLE)
@@ -66,11 +70,16 @@ export function useChatTitleController({
   }, [activeChatIdRef, pendingTitleRef, setActiveChatTitle, setChats, updateRuntimeUiState])
 
   const markChatModified = useCallback((chatId: string, title?: string | null) => {
-    const existingTitle =
-      title ||
-      activeChatTitle ||
-      chats.find((chat) => chat._id === chatId)?.title ||
-      DEFAULT_CHAT_TITLE
+    const pendingTitle = pendingTitleRef.current?.chatId === chatId
+      ? pendingTitleRef.current.title
+      : null
+    const latestListTitle = chatsRef.current.find((chat) => chat._id === chatId)?.title
+    const existingTitle = resolveChatModifiedTitle({
+      explicitTitle: title,
+      pendingTitle,
+      latestListTitle,
+      fallback: DEFAULT_CHAT_TITLE,
+    })
     const chat = {
       _id: chatId,
       title: existingTitle,
@@ -79,11 +88,15 @@ export function useChatTitleController({
     upsertCachedChat(chat)
     setChats((prev) => {
       const existing = prev.find((item) => item._id === chatId)
-      const merged = { ...existing, ...chat, title: chat.title || existing?.title || DEFAULT_CHAT_TITLE }
+      const merged = {
+        ...existing,
+        ...chat,
+        title: mergeChatTitle(existing?.title ?? chat.title, chat.title),
+      }
       return [merged, ...prev.filter((item) => item._id !== chatId)]
     })
     dispatchChatModified({ chat })
-  }, [activeChatTitle, chats, setChats])
+  }, [pendingTitleRef, setChats])
 
   const beginHeaderChatRename = useCallback(() => {
     if (!activeChatId) return

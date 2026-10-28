@@ -17,6 +17,7 @@ function render(bundle: WorkspaceAgentBundle | 'loading' | 'error', props: { act
       bundle={bundle}
       activeConversationId={props.activeConversationId ?? null}
       onOpenThread={noop}
+      onOpenAutomation={noop}
       onArchiveThread={noop}
       onDeleteThread={noop}
     />,
@@ -59,9 +60,9 @@ test('only the open thread is marked current, and each thread has archive and de
   assert.match(html, /group-hover\/menu-sub-item:opacity-100/)
 })
 
-test('an automation without a conversation is inert', () => {
+test('an automation without a conversation remains openable', () => {
   const html = render(bundle)
-  assert.match(html, /disabled=""[^>]*>[\s\S]*?PR sweep/)
+  assert.doesNotMatch(html, /disabled=""[^>]*>[\s\S]*?PR sweep/)
 })
 
 test('threads that are loading show placeholders; a failed load says so', () => {

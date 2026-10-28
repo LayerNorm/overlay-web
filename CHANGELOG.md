@@ -24,6 +24,14 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Add Preview capability diagnostics, combined paid/Computer fixtures, explicit audited QA recovery, isolated protected callbacks, production schedules with controlled test delivery, and preconfigured owner/member/outsider QA sign-in.
 
+- Abort title generation at its shared deadline or client cancellation, stop retries, and release failed-attempt reservations.
+
+- Keep generated chat titles stable through optimistic updates and use a resolved first-message title when creating chats.
+- Include agent-created automations in the Automations list, show their agent avatars, and open them from agent rows.
+- Start new agent conversations with the agent's instructions as the first user message.
+- Generate chat titles with the Auto free router and retry stalled title requests once.
+- Retry empty Auto title generations, skip free models that return an empty reply, and record routed-model diagnostics.
+
 - Preserve connector-card links for unavailable services and render the Poolside provider mark without opaque export backgrounds.
 
 - Refresh recommended models to each provider's latest releases, give every model provider a logo, show the app's logo on chat connect cards and switch them to Connected once linked, and use the shared model picker in the New agent dialog with GLM 5.3 Flash as the default. Free workspaces now see only Auto and OpenRouter free in model pickers even when billing is turned off for the deployment.

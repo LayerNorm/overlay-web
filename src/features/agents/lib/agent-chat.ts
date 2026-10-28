@@ -4,12 +4,14 @@ import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { dispatchChatCreated } from '@/shared/chat/chat-title'
 import { buildWorkspaceHref } from '@/shared/workspaces/routing'
 import type { PanelScope } from '@/shared/workspaces/panel-scope'
+import { savePendingCollaborationMessage } from '@/shared/chat/pending-collaboration-message'
 
 /** Opens (or creates) the agent's main thread, then navigates to it. Resolves the conversation id (null when it cannot be determined). */
 export async function startAgentChat(args: {
   workspaceId: string | null
   agentId?: string
   agentPrincipalId: string
+  initialMessage?: string
 
   surface?: 'agents' | 'chat'
   scope?: PanelScope
@@ -28,6 +30,13 @@ export async function startAgentChat(args: {
     ?? (await overlayAppClient.conversations.createWorkspaceDirectMessage(args.workspaceId, {
       principalIds: [args.agentPrincipalId],
     })).directMessage.conversationId
+  if (args.initialMessage?.trim()) {
+    savePendingCollaborationMessage({
+      conversationId,
+      content: args.initialMessage,
+      expectedAgentPrincipalId: args.agentPrincipalId,
+    })
+  }
   dispatchChatCreated({
     chat: {
       _id: conversationId,

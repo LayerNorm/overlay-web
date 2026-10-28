@@ -6,6 +6,7 @@ import {
   CHAT_DELETED_EVENT,
   CHAT_MODIFIED_EVENT,
   CHAT_TITLE_UPDATED_EVENT,
+  mergeChatTitle,
   type ChatCreatedDetail,
   type ChatDeletedDetail,
   type ChatModifiedDetail,
@@ -50,7 +51,7 @@ export function useChatListEventSync({
         const merged = {
           ...existing,
           ...nextChat,
-          title: nextChat.title || existing.title,
+          title: mergeChatTitle(existing.title, nextChat.title),
         }
         const withoutExisting = prev.filter((chat) => chat._id !== nextChat._id)
         return [merged, ...withoutExisting]
