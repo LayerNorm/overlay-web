@@ -1,32 +1,27 @@
-import { describe, expect, it } from 'vitest'
+import assert from 'node:assert/strict'
+import test from 'node:test'
 import { extractTitle } from './extract-title'
 
-describe('extractTitle', () => {
-  it('strips a complete reasoning block before the title', () => {
-    expect(extractTitle('<think>user asks about tides</think>\nOcean Tides Explained')).toBe(
-      'Ocean Tides Explained',
-    )
-  })
+test('strips a complete reasoning block before the title', () => {
+  assert.equal(extractTitle('<think>user asks about tides</think>\nOcean Tides Explained'), 'Ocean Tides Explained')
+})
 
-  it('strips case-insensitive multiline thinking blocks', () => {
-    expect(extractTitle('<THINKING>private\nreasoning</tHiNkInG>\nGarden Planning')).toBe(
-      'Garden Planning',
-    )
-  })
+test('strips case-insensitive multiline thinking blocks', () => {
+  assert.equal(extractTitle('<THINKING>private\nreasoning</tHiNkInG>\nGarden Planning'), 'Garden Planning')
+})
 
-  it('drops an unclosed reasoning block', () => {
-    expect(extractTitle('<think>still reasoning')).toBe('')
-  })
+test('drops an unclosed reasoning block', () => {
+  assert.equal(extractTitle('<think>still reasoning'), '')
+})
 
-  it('keeps title text before an unclosed reasoning block', () => {
-    expect(extractTitle('Garden Planning\n<thinking>unfinished')).toBe('Garden Planning')
-  })
+test('keeps title text before an unclosed reasoning block', () => {
+  assert.equal(extractTitle('Garden Planning\n<thinking>unfinished'), 'Garden Planning')
+})
 
-  it('strips a title prefix and quotes', () => {
-    expect(extractTitle('Title: "Balcony Herb Garden"')).toBe('Balcony Herb Garden')
-  })
+test('strips a title prefix and quotes', () => {
+  assert.equal(extractTitle('Title: "Balcony Herb Garden"'), 'Balcony Herb Garden')
+})
 
-  it('keeps the first non-empty line of plain text', () => {
-    expect(extractTitle('Desk Organization Tips\n')).toBe('Desk Organization Tips')
-  })
+test('keeps the first non-empty line of plain text', () => {
+  assert.equal(extractTitle('Desk Organization Tips\n'), 'Desk Organization Tips')
 })
