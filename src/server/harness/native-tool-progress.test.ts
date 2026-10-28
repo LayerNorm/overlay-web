@@ -2,12 +2,16 @@ import { beforeEach, expect, test, vi } from 'vitest'
 import { projectNativeHarnessToolProgress, type NativeHarnessToolProgress } from './native-tool-progress'
 import type { NativeHarnessAccess, NativeHarnessContext } from './native-access'
 
-const mocks = vi.hoisted(() => ({ list: vi.fn(), append: vi.fn(), refresh: vi.fn(), warn: vi.fn() }))
+const mocks = vi.hoisted(() => ({ list: vi.fn(), append: vi.fn(), complete: vi.fn(), refresh: vi.fn(), warn: vi.fn() }))
 vi.mock('server-only', () => ({}))
 vi.mock('./native-access', () => ({ refreshNativeHarnessAccess: mocks.refresh }))
 vi.mock('@/server/observability/logger', () => ({ logger: { warn: mocks.warn } }))
 vi.mock('@/server/bootstrap', () => ({ getOverlayServerContext: () => ({
-  appData: { repositories: { conversationCollaboration: { listMessages: mocks.list, appendAgentMessageDelta: mocks.append } } },
+  appData: { repositories: { conversationCollaboration: {
+    listMessages: mocks.list,
+    appendAgentMessageDelta: mocks.append,
+    completeAgentToolInvocation: mocks.complete,
+  } } },
 }) }))
 
 const access: NativeHarnessAccess = {
@@ -79,15 +83,61 @@ test('a cancelled delivery can finalize only an existing running tool part', asy
     ...progress, state: 'output-available', output: { ok: true },
   })
 
-  expect(mocks.append).toHaveBeenCalledOnce()
-  expect(mocks.append.mock.calls[0]![0].parts).toEqual([
-    { type: 'text', text: 'Working' },
-    { type: 'tool-invocation', toolInvocation: {
-      toolCallId: 'call', toolName: 'read_file', state: 'output-available',
-      toolInput: { fileId: 'file' }, toolOutput: { ok: true },
-    } },
-  ])
+  expect(mocks.complete).toHaveBeenCalledWith({
+    actorUserId: 'human',
+    authorPrincipalId: 'agent-principal',
+    conversationId: 'room',
+    messageId: 'answer',
+    turnId: 'turn',
+    workspaceId: 'workspace',
+    toolCallId: 'call',
+    toolName: 'read_file',
+    state: 'output-available',
+    output: { ok: true },
+  })
+  expect(mocks.append).not.toHaveBeenCalled()
   expect(mocks.refresh).toHaveBeenCalledWith(access, context, 'read_file', { allowCancelledToolProgress: true })
+})
+
+test('a cancelled delivery finalizes a completed message with compacted output', async () => {
+  const runningPart = {
+    type: 'tool-invocation',
+    toolInvocation: {
+      toolCallId: progress.toolCallId,
+      toolName: progress.toolName,
+      state: 'input-available',
+      toolInput: progress.input,
+    },
+  }
+  const output = { payload: 'x'.repeat(20_000) }
+  mocks.refresh.mockResolvedValue({ runStatus: 'cancelled' })
+  mocks.list.mockResolvedValueOnce([{
+    ...baseMessage,
+    status: 'completed',
+    parts: [...baseMessage.parts, runningPart],
+  }])
+
+  await projectNativeHarnessToolProgress(access, context, {
+    ...progress, state: 'output-available', output,
+  })
+
+  expect(mocks.complete).toHaveBeenCalledOnce()
+  const args = mocks.complete.mock.calls[0]![0] as { output?: unknown }
+  expect(args).toMatchObject({
+    actorUserId: 'human',
+    authorPrincipalId: 'agent-principal',
+    conversationId: 'room',
+    messageId: 'answer',
+    turnId: 'turn',
+    workspaceId: 'workspace',
+    toolCallId: 'call',
+    toolName: 'read_file',
+    state: 'output-available',
+  })
+  expect(args.output).not.toEqual(output)
+  expect(args.output).toMatchObject({ truncated: true })
+  expect(JSON.stringify(args.output).length).toBeLessThan(5_000)
+  expect(mocks.append).not.toHaveBeenCalled()
 })
 
 test('a cancelled delivery can mark an existing tool part as errored', async () => {
@@ -107,14 +157,46 @@ test('a cancelled delivery can mark an existing tool part as errored', async () 
     ...progress, state: 'output-error', output: { error: 'failed' },
   })
 
-  expect(mocks.append).toHaveBeenCalledOnce()
-  expect(mocks.append.mock.calls[0]![0].parts[1]).toEqual({
+  expect(mocks.complete).toHaveBeenCalledWith(expect.objectContaining({
+    actorUserId: 'human',
+    authorPrincipalId: 'agent-principal',
+    conversationId: 'room',
+    messageId: 'answer',
+    turnId: 'turn',
+    workspaceId: 'workspace',
+    toolCallId: 'call',
+    toolName: 'read_file',
+    state: 'output-error',
+    output: { error: 'failed' },
+  }))
+  expect(mocks.append).not.toHaveBeenCalled()
+})
+
+test('a cancelled run that ends after the first access read uses the final-state mutation', async () => {
+  const runningPart = {
     type: 'tool-invocation',
     toolInvocation: {
-      toolCallId: 'call', toolName: 'read_file', state: 'output-error',
-      toolInput: { fileId: 'file' }, toolOutput: { error: 'failed' },
+      toolCallId: progress.toolCallId,
+      toolName: progress.toolName,
+      state: 'input-available',
+      toolInput: progress.input,
     },
+  }
+  mocks.refresh
+    .mockResolvedValueOnce({ runStatus: 'running' })
+    .mockResolvedValueOnce({ runStatus: 'cancelled' })
+  mocks.list.mockResolvedValueOnce([{
+    ...baseMessage,
+    status: 'completed',
+    parts: [...baseMessage.parts, runningPart],
+  }])
+
+  await projectNativeHarnessToolProgress(access, context, {
+    ...progress, state: 'output-available', output: { ok: true },
   })
+
+  expect(mocks.complete).toHaveBeenCalledOnce()
+  expect(mocks.append).not.toHaveBeenCalled()
 })
 
 test('cancelled deliveries cannot create tool parts or write non-final progress', async () => {
@@ -125,6 +207,7 @@ test('cancelled deliveries cannot create tool parts or write non-final progress'
   await projectNativeHarnessToolProgress(access, context, progress)
 
   expect(mocks.append).not.toHaveBeenCalled()
+  expect(mocks.complete).not.toHaveBeenCalled()
 })
 
 test('anonymous children do not project tool progress', async () => {
@@ -132,6 +215,7 @@ test('anonymous children do not project tool progress', async () => {
   expect(mocks.refresh).not.toHaveBeenCalled()
   expect(mocks.list).not.toHaveBeenCalled()
   expect(mocks.append).not.toHaveBeenCalled()
+  expect(mocks.complete).not.toHaveBeenCalled()
 })
 
 test('stale or foreign message rows are skipped', async () => {
@@ -146,6 +230,7 @@ test('stale or foreign message rows are skipped', async () => {
     await projectNativeHarnessToolProgress(access, context, progress)
   }
   expect(mocks.append).not.toHaveBeenCalled()
+  expect(mocks.complete).not.toHaveBeenCalled()
 })
 
 test('persistence failures are presentation-only and bound', async () => {

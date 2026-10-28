@@ -68,7 +68,7 @@ export function appendAgentTextPart(parts: Array<Record<string, unknown>>, delta
 
 export type AgentMessageStream = ReturnType<typeof createAgentMessageStream>
 
-function compactAgentPartsForPersistence(parts: Array<Record<string, unknown>>) {
+export function compactAgentPartsForPersistence(parts: Array<Record<string, unknown>>) {
   return compactAssistantPersistenceForConvex({ content: '', parts }).parts.map((part) => {
     if (part.type !== 'tool-invocation') return part
     const invocation = part.toolInvocation && typeof part.toolInvocation === 'object'

@@ -255,6 +255,28 @@ implements ConversationCollaborationRepository {
     }, { throwOnError: true })
   }
 
+  async completeAgentToolInvocation(args: {
+    actorUserId: string
+    authorPrincipalId: string
+    conversationId: string
+    messageId: string
+    output?: unknown
+    state: 'output-available' | 'output-error'
+    toolCallId: string
+    toolName: string
+    turnId: string
+    workspaceId: string
+  }) {
+    const { output, ...fields } = args
+    await convex.mutation('collaboration/directMessages:completeAgentToolInvocation', {
+      ...fields,
+      ...(output === undefined ? {} : { output }),
+      conversationId: args.conversationId as Id<'conversations'>,
+      messageId: args.messageId as Id<'conversationMessages'>,
+      serverSecret: this.serverSecret,
+    }, { throwOnError: true })
+  }
+
   async getConversationEventCursor(args: { actorUserId: string; workspaceId: string }) {
     return await convex.query<number>('collaboration/directMessages:getConversationEventCursor', {
       ...args,

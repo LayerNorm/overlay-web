@@ -1,7 +1,8 @@
 import 'server-only'
 
-import { persistAgentToolProgress } from '@/server/agents/agent-message-stream'
+import { compactAgentPartsForPersistence, persistAgentToolProgress } from '@/server/agents/agent-message-stream'
 import { getOverlayServerContext } from '@/server/bootstrap'
+import type { ConversationCollaborationRepository } from '@/server/conversations/ConversationCollaborationRepository'
 import { logger } from '@/server/observability/logger'
 import { refreshNativeHarnessAccess, type NativeHarnessAccess, type NativeHarnessContext } from './native-access'
 
@@ -37,6 +38,48 @@ function isExistingInputToolCall(part: Record<string, unknown> | undefined, prog
   return invocation.toolName === progress.toolName && invocation.state === 'input-available'
 }
 
+function isTargetAgentMessage(
+  message: { _id: string; turnId: string; authorKind?: string; authorPrincipalId?: string } | undefined,
+  access: NativeHarnessAccess,
+): boolean {
+  return Boolean(message && message._id === access.assistantMessageId
+    && message.turnId === access.turnId
+    && message.authorKind === 'agent'
+    && message.authorPrincipalId === access.agentPrincipalId)
+}
+
+function isCancelledFinalToolCall(
+  progress: NativeHarnessToolProgress,
+  part: Record<string, unknown> | undefined,
+): boolean {
+  return progress.state !== 'input-available' && isExistingInputToolCall(part, progress)
+}
+
+async function completeCancelledToolInvocation(
+  store: Pick<ConversationCollaborationRepository, 'completeAgentToolInvocation'>,
+  access: NativeHarnessAccess,
+  progress: NativeHarnessToolProgress,
+  part: Record<string, unknown>,
+): Promise<void> {
+  if (progress.state === 'input-available') return
+  const [compactedPart] = compactAgentPartsForPersistence([part])
+  const invocation = compactedPart?.toolInvocation && typeof compactedPart.toolInvocation === 'object'
+    ? compactedPart.toolInvocation as Record<string, unknown>
+    : {}
+  await store.completeAgentToolInvocation({
+    actorUserId: access.actorUserId,
+    authorPrincipalId: access.agentPrincipalId,
+    conversationId: access.conversationId,
+    messageId: access.assistantMessageId,
+    turnId: access.turnId,
+    workspaceId: access.workspaceId,
+    toolCallId: progress.toolCallId,
+    toolName: progress.toolName,
+    state: progress.state,
+    ...(invocation.toolOutput === undefined ? {} : { output: invocation.toolOutput }),
+  })
+}
+
 /**
  * Tool progress is a best-effort display snapshot. The terminal delivery
  * rewrites the row with the authoritative Harness transcript.
@@ -60,24 +103,27 @@ export async function projectNativeHarnessToolProgress(
       limit: 1,
       workspaceId: access.workspaceId,
     })
-    if (!message || message._id !== access.assistantMessageId
-      || message.turnId !== access.turnId
-      || message.authorKind !== 'agent'
-      || message.authorPrincipalId !== access.agentPrincipalId
-      || message.status !== 'generating') return
+    if (!isTargetAgentMessage(message, access)) return
 
     const parts = (message.parts ?? [])
       .filter(part => part.type !== 'reasoning')
       .map(part => ({ ...part }))
     const nextPart = toolInvocationPart(progress)
     const existingIndex = parts.findIndex(part => sameToolCall(part, progress.toolCallId))
-    const existingInputToolCall = isExistingInputToolCall(parts[existingIndex], progress)
-    if (before.runStatus === 'cancelled' && (!finalState || !existingInputToolCall)) return
+    const canFinalizeCancelledCall = isCancelledFinalToolCall(progress, parts[existingIndex])
+    if (message.status !== 'generating' && !canFinalizeCancelledCall) return
+    if (before.runStatus === 'cancelled' && !canFinalizeCancelledCall) return
     if (existingIndex >= 0) parts[existingIndex] = nextPart
     else parts.push(nextPart)
 
     const after = await refreshNativeHarnessAccess(access, context, progress.toolName, accessOptions)
-    if (after.runStatus === 'cancelled' && (!finalState || !existingInputToolCall)) return
+    const cancelled = before.runStatus === 'cancelled' || after.runStatus === 'cancelled'
+    if (cancelled && !canFinalizeCancelledCall) return
+    if (cancelled) {
+      await completeCancelledToolInvocation(store, access, progress, nextPart)
+      return
+    }
+    if (message.status !== 'generating') return
     await persistAgentToolProgress({
       store,
       actorUserId: access.actorUserId,

@@ -11,6 +11,7 @@ const edit = makeFunctionReference<'mutation'>('collaboration/directMessages:edi
 const finalize = makeFunctionReference<'mutation'>('collaboration/directMessages:finalizeAgentMessage')
 const fail = makeFunctionReference<'mutation'>('collaboration/directMessages:failAgentMessage')
 const sanitize = makeFunctionReference<'mutation'>('collaboration/directMessages:sanitizeAgentMessageTextParts')
+const completeTool = makeFunctionReference<'mutation'>('collaboration/directMessages:completeAgentToolInvocation')
 
 for (const chunked of [false, true]) {
   test(`editing ${chunked ? 'chunked' : 'inline'} human text updates rendered parts and preserves attachments`, async () => {
@@ -123,4 +124,110 @@ test('finalizing an assistant message strips textual tool-call parts and preserv
     { type: 'tool-invocation', toolInvocation: { toolCallId: 'failed-call', toolName: 'get_note', state: 'output-available' } },
   ])
   expect(failedMessage?.status).toBe('error')
+})
+
+test('completing a tool invocation updates only its matching input part on a completed message', async () => {
+  const t = convexTest(schema, modules)
+  const inputPart = {
+    type: 'tool-invocation',
+    toolInvocation: {
+      toolCallId: 'call',
+      toolName: 'read_file',
+      state: 'input-available',
+      toolInput: { path: 'notes.md' },
+    },
+  }
+  const otherPart = {
+    type: 'tool-invocation',
+    toolInvocation: {
+      toolCallId: 'other-call',
+      toolName: 'read_file',
+      state: 'input-available',
+      toolInput: { path: 'other.md' },
+    },
+  }
+  const ids = await t.run(async ctx => {
+    await ctx.db.insert('workspacePrincipals', {
+      principalId: 'human', workspaceId: 'qa', type: 'human', userId: 'owner',
+      displayName: 'QA', createdAt: 1, updatedAt: 1,
+    })
+    await ctx.db.insert('workspaceMemberships', {
+      membershipId: 'qa-member', workspaceId: 'qa', principalId: 'human',
+      role: 'owner', status: 'active', joinedAt: 1, updatedAt: 1,
+    })
+    const conversationId = await ctx.db.insert('conversations', {
+      userId: 'owner', workspaceId: 'qa', title: 'QA', conversationType: 'personal',
+      lastModified: 1, updatedAt: 1, createdAt: 1, lastMode: 'act', askModelIds: [], actModelId: 'm',
+    })
+    const messageId = await ctx.db.insert('conversationMessages', {
+      conversationId, userId: 'owner', authorKind: 'agent', authorPrincipalId: 'agent', turnId: 'turn',
+      role: 'assistant', mode: 'act', content: 'Reply remains unchanged',
+      parts: [{ type: 'text', text: 'Reply remains unchanged' }, inputPart, otherPart],
+      contentType: 'text', status: 'completed', createdAt: 1, updatedAt: 1,
+    })
+    const finalizedMessageId = await ctx.db.insert('conversationMessages', {
+      conversationId, userId: 'owner', authorKind: 'agent', authorPrincipalId: 'agent', turnId: 'turn',
+      role: 'assistant', mode: 'act', content: 'Already finalized',
+      parts: [{
+        type: 'tool-invocation',
+        toolInvocation: {
+          toolCallId: 'call',
+          toolName: 'read_file',
+          state: 'output-available',
+          toolInput: { path: 'notes.md' },
+          toolOutput: { content: 'existing result' },
+        },
+      }],
+      contentType: 'text', status: 'completed', createdAt: 2, updatedAt: 2,
+    })
+    return { conversationId, messageId, finalizedMessageId }
+  })
+  const args = {
+    actorUserId: 'owner',
+    authorPrincipalId: 'agent',
+    conversationId: ids.conversationId,
+    messageId: ids.messageId,
+    turnId: 'turn',
+    workspaceId: 'qa',
+    toolCallId: 'call',
+    toolName: 'read_file',
+    state: 'output-error' as const,
+    output: { error: 'file unavailable' },
+    serverSecret: secret,
+  }
+
+  await t.mutation(completeTool, args)
+
+  const message = await t.run(async ctx => await ctx.db.get(ids.messageId))
+  expect(message?.status).toBe('completed')
+  expect(message?.content).toBe('Reply remains unchanged')
+  expect(message?.parts).toEqual([
+    { type: 'text', text: 'Reply remains unchanged' },
+    {
+      type: 'tool-invocation',
+      toolInvocation: {
+        toolCallId: 'call',
+        toolName: 'read_file',
+        state: 'output-error',
+        toolInput: { path: 'notes.md' },
+        toolOutput: { error: 'file unavailable' },
+      },
+    },
+    otherPart,
+  ])
+  expect(message?.updatedAt).toBeGreaterThan(1)
+
+  const beforeNoOps = await t.run(async ctx => ({
+    message: await ctx.db.get(ids.messageId),
+    finalizedMessage: await ctx.db.get(ids.finalizedMessageId),
+  }))
+  await t.mutation(completeTool, { ...args, authorPrincipalId: 'other-agent' })
+  await t.mutation(completeTool, { ...args, turnId: 'other-turn' })
+  await t.mutation(completeTool, { ...args, toolName: 'write_file' })
+  await t.mutation(completeTool, { ...args, messageId: ids.finalizedMessageId })
+  const afterNoOps = await t.run(async ctx => ({
+    message: await ctx.db.get(ids.messageId),
+    finalizedMessage: await ctx.db.get(ids.finalizedMessageId),
+  }))
+  expect(afterNoOps).toEqual(beforeNoOps)
 })

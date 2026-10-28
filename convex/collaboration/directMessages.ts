@@ -1129,6 +1129,58 @@ export const sanitizeAgentMessageTextParts = mutation({
   },
 })
 
+export const completeAgentToolInvocation = mutation({
+  args: {
+    actorUserId: v.string(),
+    authorPrincipalId: v.string(),
+    conversationId: v.id('conversations'),
+    messageId: v.id('conversationMessages'),
+    turnId: v.string(),
+    workspaceId: v.string(),
+    toolCallId: v.string(),
+    toolName: v.string(),
+    state: v.union(v.literal('output-available'), v.literal('output-error')),
+    output: v.optional(v.any()),
+    serverSecret: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    await requireConversationAccess(ctx, args)
+    const message = await ctx.db.get(args.messageId)
+    if (!message || message.conversationId !== args.conversationId
+      || message.authorKind !== 'agent' || message.authorPrincipalId !== args.authorPrincipalId
+      || message.turnId !== args.turnId) return
+
+    const messageParts = (message.parts ?? []) as Array<Record<string, unknown>>
+    const matches = messageParts.flatMap((part, index) => {
+      if (part.type !== 'tool-invocation' || !part.toolInvocation || typeof part.toolInvocation !== 'object') {
+        return []
+      }
+      const toolInvocation = part.toolInvocation as Record<string, unknown>
+      if (toolInvocation.toolCallId !== args.toolCallId || toolInvocation.toolName !== args.toolName
+        || toolInvocation.state !== 'input-available') return []
+      return [{ index, part, toolInvocation }]
+    })
+    if (matches.length !== 1) return
+
+    const match = matches[0]!
+    const toolInvocation = { ...match.toolInvocation }
+    delete toolInvocation.toolOutput
+    const parts = [...messageParts]
+    parts[match.index] = {
+      ...match.part,
+      toolInvocation: {
+        ...toolInvocation,
+        state: args.state,
+        ...(args.output === undefined ? {} : { toolOutput: args.output }),
+      },
+    }
+    await ctx.db.patch(args.messageId, {
+      parts: parts as unknown as NonNullable<typeof message.parts>,
+      updatedAt: Date.now(),
+    })
+  },
+})
+
 export const createDirectMessage = mutation({
   args: {
     actorUserId: v.string(),

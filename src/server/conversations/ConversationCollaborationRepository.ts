@@ -161,6 +161,18 @@ export interface ConversationCollaborationRepository {
     turnId: string
     workspaceId: string
   }): Promise<void>
+  completeAgentToolInvocation(args: {
+    actorUserId: string
+    authorPrincipalId: string
+    conversationId: string
+    messageId: string
+    output?: unknown
+    state: 'output-available' | 'output-error'
+    toolCallId: string
+    toolName: string
+    turnId: string
+    workspaceId: string
+  }): Promise<void>
   getConversationEventCursor(args: {
     actorUserId: string
     workspaceId: string
