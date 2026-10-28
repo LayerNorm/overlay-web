@@ -72,6 +72,8 @@ const ZERO_PRICING_FIELDS = [
   'internal_reasoning',
   'input_cache_read',
 ] as const
+const REQUIRED_ZERO_PRICING_FIELDS = ['prompt', 'completion'] as const
+const NUMERIC_STRING_PATTERN = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i
 
 async function findRoute(ctx: QueryCtx | MutationCtx, routeKey: string) {
   return await ctx.db
@@ -89,11 +91,27 @@ function hasZeroQuarantinePricing(pricingJson: string): boolean {
   }
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
   const pricing = value as Record<string, unknown>
-  return ZERO_PRICING_FIELDS.every((field) => {
-    const price = pricing[field]
+  const isZeroPrice = (price: unknown) => {
     if (typeof price === 'number') return Number.isFinite(price) && price === 0
     return typeof price === 'string' && /^\+?0+(?:\.0+)?(?:e[+-]?\d+)?$/i.test(price.trim())
-  })
+  }
+  if (!REQUIRED_ZERO_PRICING_FIELDS.every((field) =>
+    Object.prototype.hasOwnProperty.call(pricing, field) && isZeroPrice(pricing[field])
+  )) return false
+
+  for (const field of ZERO_PRICING_FIELDS) {
+    if (Object.prototype.hasOwnProperty.call(pricing, field) && !isZeroPrice(pricing[field])) return false
+  }
+  for (const [field, price] of Object.entries(pricing)) {
+    if (field === 'discount' || ZERO_PRICING_FIELDS.includes(field as (typeof ZERO_PRICING_FIELDS)[number])) continue
+    if (typeof price === 'number') {
+      if (!Number.isFinite(price) || price !== 0) return false
+    } else if (typeof price === 'string' && NUMERIC_STRING_PATTERN.test(price.trim())) {
+      const numericPrice = Number(price)
+      if (!Number.isFinite(numericPrice) || numericPrice !== 0) return false
+    }
+  }
+  return true
 }
 
 async function findLock(ctx: QueryCtx | MutationCtx) {

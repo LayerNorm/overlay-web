@@ -380,6 +380,50 @@ describe('overlay-free durable safety state', () => {
     }
   })
 
+  test('quarantine recovery accepts the minimal OpenRouter pricing shape and ignores discount', async () => {
+    for (const pricingJson of [
+      '{"prompt":"0","completion":"0"}',
+      '{"prompt":"0","completion":"0","discount":"0.01"}',
+    ]) {
+      const convex = convexTest(schema, modules)
+      const row = await lockAndPublish(convex)
+      await updateRoute(convex, row.routeKey, {
+        pricingJson,
+        quarantineReason: 'stream error after output',
+      })
+
+      expect(await convex.mutation(internal.platform.overlayFreeSafety.clearRouteQuarantine, {
+        routeKey: row.routeKey, expectedReason: 'stream error after output', now: 10,
+      })).toEqual({ status: 'cleared', routeKey: row.routeKey })
+    }
+  })
+
+  test('quarantine recovery rejects the OpenRouter pricing shape without completion', async () => {
+    const convex = convexTest(schema, modules)
+    const row = await lockAndPublish(convex)
+    await updateRoute(convex, row.routeKey, {
+      pricingJson: '{"prompt":"0"}',
+      quarantineReason: 'stream error after output',
+    })
+
+    expect(await convex.mutation(internal.platform.overlayFreeSafety.clearRouteQuarantine, {
+      routeKey: row.routeKey, expectedReason: 'stream error after output', now: 10,
+    })).toEqual({ status: 'nonzero_pricing' })
+  })
+
+  test('quarantine recovery rejects unknown nonzero pricing fields', async () => {
+    const convex = convexTest(schema, modules)
+    const row = await lockAndPublish(convex)
+    await updateRoute(convex, row.routeKey, {
+      pricingJson: '{"prompt":"0","completion":"0","foo":"0.01"}',
+      quarantineReason: 'stream error after output',
+    })
+
+    expect(await convex.mutation(internal.platform.overlayFreeSafety.clearRouteQuarantine, {
+      routeKey: row.routeKey, expectedReason: 'stream error after output', now: 10,
+    })).toEqual({ status: 'nonzero_pricing' })
+  })
+
   test('quarantine recovery clears only quarantine fields and preserves receipt audit data', async () => {
     const convex = convexTest(schema, modules)
     const row = await lockAndPublish(convex)
