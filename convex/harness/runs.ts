@@ -26,6 +26,7 @@ import {
   type HarnessChild,
   type HarnessEvidence,
   type HarnessPolicy,
+  type HarnessReceipt,
   type HarnessSnapshot,
 } from '../../packages/overlay-agent-runtime/src/harness-state'
 import type {
@@ -39,6 +40,7 @@ import type {
 } from '../../packages/overlay-agent-runtime/src/harness-store'
 import { harnessToolsRequirePlan } from '../../packages/overlay-agent-runtime/src/harness-write-tools'
 import { ConvexError, v } from 'convex/values'
+import { OPENROUTER_FREE_MODEL_ID, OVERLAY_FREE_MODEL_ID } from '@/shared/ai/gateway/overlay-free-policy'
 
 const MAX_ID_LENGTH = 256
 const MAX_EVIDENCE_ID_LENGTH = 512
@@ -1078,11 +1080,57 @@ export async function cancelHarnessDelivery(
     return { agentRunId: delivery._id, runId: run.runId }
   }
   const snapshot = await hydrateSnapshot(ctx, run)
-  const cancelled = terminateHarness(snapshot, 'cancelled', 'The delivery was cancelled by the user.', now)
+  const summaryReceipt = freeSummaryCancellationReceipt(snapshot)
+  let cancellationState = snapshot
+  if (summaryReceipt) {
+    const receiptJson = stableJson(summaryReceipt)
+    const existingReceipt = await ctx.db.query('harnessReceipts')
+      .withIndex('by_runId_receiptId', query => (
+        query.eq('runId', run.runId).eq('receiptId', summaryReceipt.id)
+      ))
+      .unique()
+    if (existingReceipt && existingReceipt.receiptJson !== receiptJson) {
+      throw new Error('HARNESS_RECEIPT_ID_CONFLICT')
+    }
+    if (!existingReceipt) {
+      await ctx.db.insert('harnessReceipts', {
+        runId: run.runId,
+        receiptId: summaryReceipt.id,
+        receiptJson,
+        createdAt: now,
+      })
+    }
+    cancellationState = recordHarnessReceipt(snapshot, summaryReceipt, now)
+  }
+  const cancelled = terminateHarness(cancellationState, 'cancelled', 'The delivery was cancelled by the user.', now)
   await persistMetadata(ctx, run, cancelled)
   await persistChildren(ctx, run.runId, snapshot.children, cancelled.children)
   await releaseTerminalSubtree(ctx, run, lineage)
   return { agentRunId: delivery._id, runId: run.runId }
+}
+
+function freeSummaryCancellationReceipt(state: HarnessSnapshot): HarnessReceipt | undefined {
+  const reservation = state.modelReservation
+  const dispatch = reservation?.dispatch
+  if (!reservation || !reservation.id.startsWith('summary:') || reservation.maxCostMicros !== 0
+    || !dispatch || dispatch.billingReservationId !== null
+    || (dispatch.modelId !== OPENROUTER_FREE_MODEL_ID && dispatch.modelId !== OVERLAY_FREE_MODEL_ID)) {
+    return undefined
+  }
+  return {
+    id: reservation.id,
+    modelId: dispatch.modelId,
+    provider: 'overlay-free-router',
+    inputTokens: 0,
+    outputTokens: 0,
+    reasoningTokens: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    contextWindow: null,
+    costMicros: 0,
+    costSource: 'catalog',
+    rejectionReason: 'summary_failed',
+  }
 }
 
 async function applyReducer(

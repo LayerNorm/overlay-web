@@ -424,6 +424,66 @@ describe('personal harness delivery binding', () => {
     expect((await get(convex, 'independent-root'))?.status).toBe('running')
   })
 
+  test('stop releases only zero-cost free summary reservations without a billing hold', async () => {
+    const scenarios = [
+      { runId: 'cancel-free-summary', modelId: 'openrouter/free', billingReservationId: null, maxCostMicros: 0, released: true },
+      { runId: 'cancel-paid-summary', modelId: 'openrouter/free', billingReservationId: 'billing-hold', maxCostMicros: 500, released: false },
+      { runId: 'cancel-billed-free-summary', modelId: 'openrouter/free', billingReservationId: 'billing-hold', maxCostMicros: 0, released: false },
+      { runId: 'cancel-external-summary', modelId: 'external/provider', billingReservationId: null, maxCostMicros: 0, released: false },
+    ] as const
+
+    for (const scenario of scenarios) {
+      const convex = convexTest(schema, modules)
+      const conversationId = await seedConversation(convex)
+      const deliveryId = await seedDelivery(convex, conversationId)
+      const input = admission(scenario.runId, conversationId, deliveryId)
+      await admit(convex, input)
+      const claimed = await apply(convex, input, 'claim', 0, {
+        type: 'claim_execution', workflowRunId: `${scenario.runId}-workflow`,
+      })
+      const reservationId = `summary:${scenario.runId}`
+      const reserved = await apply(convex, input, 'reserve-summary', claimed.snapshot.revision, {
+        type: 'reserve_model', id: reservationId, maxCostMicros: scenario.maxCostMicros,
+      })
+      await apply(convex, input, 'dispatch-summary', reserved.snapshot.revision, {
+        type: 'bind_model_dispatch', id: reservationId,
+        modelId: scenario.modelId, billingReservationId: scenario.billingReservationId,
+      })
+
+      await cancelDelivery(convex, conversationId)
+      const root = await get(convex, scenario.runId)
+      expect(root?.status).toBe('cancelled')
+      if (scenario.released) {
+        expect(root?.modelReservation).toBeUndefined()
+        expect(root?.latestReceipt).toMatchObject({
+          id: reservationId,
+          modelId: 'openrouter/free',
+          provider: 'overlay-free-router',
+          rejectionReason: 'summary_failed',
+          costMicros: 0,
+        })
+        const storedReceipt = await convex.run(ctx => ctx.db.query('harnessReceipts')
+          .withIndex('by_runId_receiptId', query => (
+            query.eq('runId', scenario.runId).eq('receiptId', reservationId)
+          ))
+          .unique())
+        expect(JSON.parse(storedReceipt!.receiptJson)).toMatchObject({
+          id: reservationId, rejectionReason: 'summary_failed', costMicros: 0,
+        })
+      } else {
+        expect(root?.modelReservation).toMatchObject({
+          id: reservationId,
+          maxCostMicros: scenario.maxCostMicros,
+          dispatch: {
+            modelId: scenario.modelId,
+            billingReservationId: scenario.billingReservationId,
+          },
+        })
+        expect(root?.latestReceipt).toBeUndefined()
+      }
+    }
+  })
+
   test('authorizes cleanup queries and continues across an empty filtered page', async () => {
     const convex = convexTest(schema, modules)
     const conversationId = await seedConversation(convex)
