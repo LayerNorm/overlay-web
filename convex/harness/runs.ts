@@ -1080,28 +1080,7 @@ export async function cancelHarnessDelivery(
     return { agentRunId: delivery._id, runId: run.runId }
   }
   const snapshot = await hydrateSnapshot(ctx, run)
-  const summaryReceipt = freeSummaryCancellationReceipt(snapshot)
-  let cancellationState = snapshot
-  if (summaryReceipt) {
-    const receiptJson = stableJson(summaryReceipt)
-    const existingReceipt = await ctx.db.query('harnessReceipts')
-      .withIndex('by_runId_receiptId', query => (
-        query.eq('runId', run.runId).eq('receiptId', summaryReceipt.id)
-      ))
-      .unique()
-    if (existingReceipt && existingReceipt.receiptJson !== receiptJson) {
-      throw new Error('HARNESS_RECEIPT_ID_CONFLICT')
-    }
-    if (!existingReceipt) {
-      await ctx.db.insert('harnessReceipts', {
-        runId: run.runId,
-        receiptId: summaryReceipt.id,
-        receiptJson,
-        createdAt: now,
-      })
-    }
-    cancellationState = recordHarnessReceipt(snapshot, summaryReceipt, now)
-  }
+  const cancellationState = await recordFreeModelTerminalReceipt(ctx, run.runId, snapshot, now)
   const cancelled = terminateHarness(cancellationState, 'cancelled', 'The delivery was cancelled by the user.', now)
   await persistMetadata(ctx, run, cancelled)
   await persistChildren(ctx, run.runId, snapshot.children, cancelled.children)
@@ -1109,10 +1088,10 @@ export async function cancelHarnessDelivery(
   return { agentRunId: delivery._id, runId: run.runId }
 }
 
-function freeSummaryCancellationReceipt(state: HarnessSnapshot): HarnessReceipt | undefined {
+function freeModelTerminalReceipt(state: HarnessSnapshot): HarnessReceipt | undefined {
   const reservation = state.modelReservation
   const dispatch = reservation?.dispatch
-  if (!reservation || !reservation.id.startsWith('summary:') || reservation.maxCostMicros !== 0
+  if (!reservation || reservation.maxCostMicros !== 0
     || !dispatch || dispatch.billingReservationId !== null
     || (dispatch.modelId !== OPENROUTER_FREE_MODEL_ID && dispatch.modelId !== OVERLAY_FREE_MODEL_ID)) {
     return undefined
@@ -1129,8 +1108,34 @@ function freeSummaryCancellationReceipt(state: HarnessSnapshot): HarnessReceipt 
     contextWindow: null,
     costMicros: 0,
     costSource: 'catalog',
-    rejectionReason: 'summary_failed',
+    ...(reservation.id.startsWith('summary:') ? { rejectionReason: 'summary_failed' as const } : {}),
   }
+}
+
+async function recordFreeModelTerminalReceipt(
+  ctx: MutationCtx,
+  runId: string,
+  state: HarnessSnapshot,
+  now: number,
+): Promise<HarnessSnapshot> {
+  const receipt = freeModelTerminalReceipt(state)
+  if (!receipt) return state
+  const receiptJson = stableJson(receipt)
+  const existingReceipt = await ctx.db.query('harnessReceipts')
+    .withIndex('by_runId_receiptId', query => query.eq('runId', runId).eq('receiptId', receipt.id))
+    .unique()
+  if (existingReceipt && existingReceipt.receiptJson !== receiptJson) {
+    throw new Error('HARNESS_RECEIPT_ID_CONFLICT')
+  }
+  if (!existingReceipt) {
+    await ctx.db.insert('harnessReceipts', {
+      runId,
+      receiptId: receipt.id,
+      receiptJson,
+      createdAt: now,
+    })
+  }
+  return recordHarnessReceipt(state, receipt, now)
 }
 
 async function applyReducer(
@@ -1285,8 +1290,10 @@ async function applyReducer(
     }
     case 'finish':
       return { snapshot: finishHarness(current, now, operation.resultSummary) }
-    case 'terminate':
-      return { snapshot: terminateHarness(current, operation.status, operation.reason, now) }
+    case 'terminate': {
+      const settled = await recordFreeModelTerminalReceipt(ctx, run.runId, current, now)
+      return { snapshot: terminateHarness(settled, operation.status, operation.reason, now) }
+    }
   }
 }
 

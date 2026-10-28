@@ -89,6 +89,46 @@ function logUnsafeReceipt(route: OverlayFreeRoute, receipt: OverlayFreeReceiptSu
   })
 }
 
+type GenerateFailureResult = {
+  capacityRejected: boolean
+  ambiguousAttempt: boolean
+  rethrow: boolean
+}
+
+async function settleGenerateFailure(
+  repository: OverlayFreeRepository,
+  route: OverlayFreeRoute,
+  token: string,
+  now: () => number,
+  error: unknown,
+  generationStarted: boolean,
+  aborted: boolean,
+): Promise<GenerateFailureResult> {
+  if (aborted) {
+    if (!generationStarted) {
+      await repository.cooldown(route.routeKey, token, now())
+      return { capacityRejected: false, ambiguousAttempt: false, rethrow: true }
+    }
+    await repository.settle({
+      routeKey: route.routeKey, leaseToken: token, now: now(),
+      receipt: { safe: false, cost: null, reason: 'request aborted' },
+      safe: false, cost: null, reason: 'request aborted',
+    })
+    return { capacityRejected: false, ambiguousAttempt: true, rethrow: true }
+  }
+  const rateLimited = isRateLimited(error)
+  if (!generationStarted || rateLimited) {
+    await repository.cooldown(route.routeKey, token, now())
+    return { capacityRejected: generationStarted && rateLimited, ambiguousAttempt: false, rethrow: false }
+  }
+  await repository.settle({
+    routeKey: route.routeKey, leaseToken: token, now: now(),
+    receipt: { safe: false, cost: null, reason: 'missing receipt' },
+    safe: false, cost: null, reason: 'missing receipt',
+  })
+  return { capacityRejected: false, ambiguousAttempt: true, rethrow: false }
+}
+
 export function createSingleRequestFetch(fetcher: typeof fetch): typeof fetch {
   let requested = false
   let retryStatus: { status: number; statusText: string } | undefined
@@ -201,12 +241,12 @@ class OverlayFreeLanguageModel implements LanguageModelV4 {
       ...candidates.filter((route) => route.transport === 'openrouter').slice(0, 1),
     ]
     let lastError: unknown = new Error('overlay_free_no_eligible_route')
-    let routeBusy = false
-    let generationAttempted = false
+    let capacityRejected = false
+    let ambiguousAttempt = false
     for (const candidate of attempts) {
       if (options.abortSignal?.aborted) throw options.abortSignal.reason ?? new Error('aborted')
       const claimed = await this.claim(candidate)
-      if (claimed.status === 'busy') routeBusy = true
+      if (claimed.status === 'busy' || claimed.status === 'cooldown') capacityRejected = true
       const route = claimed.route
       const token = route?.activeLeaseToken
       if (claimed.status !== 'claimed' || !route || !token) continue
@@ -227,7 +267,6 @@ class OverlayFreeLanguageModel implements LanguageModelV4 {
         const model = await this.model(checked.route)
         if (options.abortSignal?.aborted) throw options.abortSignal.reason ?? new Error('aborted')
         generationStarted = true
-        generationAttempted = true
         const result = await model.doGenerate({
           ...trustedOverlayFreeOptions(options, checked.route, checked.capabilities),
           abortSignal: options.abortSignal ? AbortSignal.any([options.abortSignal, controller.signal]) : controller.signal,
@@ -253,30 +292,16 @@ class OverlayFreeLanguageModel implements LanguageModelV4 {
         clearTimeout(timer)
         if (settlementAttempted) throw error
         lastError = error
-        if (options.abortSignal?.aborted) {
-          if (generationStarted) {
-            await this.config.repository.settle({
-              routeKey: route.routeKey, leaseToken: token, now: this.clock(),
-              receipt: { safe: false, cost: null, reason: 'request aborted' },
-              safe: false, cost: null, reason: 'request aborted',
-            })
-          } else {
-            await this.config.repository.cooldown(route.routeKey, token, this.clock())
-          }
-          throw error
-        }
-        if (!generationStarted || isRateLimited(error)) {
-          await this.config.repository.cooldown(route.routeKey, token, this.clock())
-        } else {
-          await this.config.repository.settle({
-            routeKey: route.routeKey, leaseToken: token, now: this.clock(),
-            receipt: { safe: false, cost: null, reason: 'missing receipt' },
-            safe: false, cost: null, reason: 'missing receipt',
-          })
-        }
+        const failure = await settleGenerateFailure(
+          this.config.repository, route, token, () => this.clock(), error, generationStarted,
+          options.abortSignal?.aborted ?? false,
+        )
+        capacityRejected ||= failure.capacityRejected
+        ambiguousAttempt ||= failure.ambiguousAttempt
+        if (failure.rethrow) throw error
       }
     }
-    if (routeBusy && !generationAttempted) throw new OverlayFreeRouteBusyError()
+    if (capacityRejected && !ambiguousAttempt) throw new OverlayFreeRouteBusyError()
     throw lastError
   }
 

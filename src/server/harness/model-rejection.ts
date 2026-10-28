@@ -13,7 +13,8 @@ export function isConfirmedHarnessModelRejection(error: unknown): boolean {
 }
 
 // Called inside the provider step, only before receiving a model stream. A
-// timeout, 5xx, rate limit or stream failure retains its unresolved hold.
+// confirmed free-router 429 is route capacity; paid and gateway rate limits,
+// timeouts, 5xx responses and stream failures retain their unresolved holds.
 export async function recordHarnessModelRejection(
   reference: HarnessModelReference,
   reason: 'budget' | 'model_unavailable' | 'route_capacity',

@@ -102,8 +102,8 @@ export async function doOverlayFreeStream({
   }
 
   let attemptIndex = 0
-  let routeBusy = false
-  let generationAttempted = false
+  let capacityRejected = false
+  let ambiguousAttempt = false
   const prepareAttempt = async (
     candidate: OverlayFreeRoute,
     fallbackRemains: boolean,
@@ -111,7 +111,7 @@ export async function doOverlayFreeStream({
     if (options.abortSignal?.aborted) throw options.abortSignal.reason ?? new Error('aborted')
     const claimTime = Date.now()
     const claimed = await claim(candidate)
-    if (claimed.status === 'busy') routeBusy = true
+    if (claimed.status === 'busy' || claimed.status === 'cooldown') capacityRejected = true
     const route = claimed.route
     const token = route?.activeLeaseToken
     if (claimed.status !== 'claimed' || !route || !token) return null
@@ -158,7 +158,6 @@ export async function doOverlayFreeStream({
       if (closed) throw new DOMException('Stream cancelled', 'AbortError')
       if (options.abortSignal?.aborted) throw options.abortSignal.reason ?? new Error('aborted')
       generationStarted = true
-      generationAttempted = true
       const response = await languageModel.doStream({
         ...trustedOverlayFreeOptions(options, route, capabilities),
         abortSignal: AbortSignal.any([
@@ -169,6 +168,7 @@ export async function doOverlayFreeStream({
         await response.stream.cancel()
         throw new DOMException('Stream cancelled', 'AbortError')
       }
+      ambiguousAttempt = true
       return {
         route,
         token,
@@ -181,8 +181,11 @@ export async function doOverlayFreeStream({
       }
     } catch (error) {
       clearAttemptTimers(prepared)
+      const rateLimited = isRateLimited(error)
       if (closed || options.abortSignal?.aborted) {
-        if (!generationStarted || isRateLimited(error)) {
+        if (generationStarted) ambiguousAttempt = true
+        if (!generationStarted || rateLimited) {
+          if (generationStarted && rateLimited) capacityRejected = true
           await store(repository.cooldown(route.routeKey, token, now()))
         } else {
           await settleMissingReceipt(route, token)
@@ -190,9 +193,11 @@ export async function doOverlayFreeStream({
         if (closed) return null
         throw error
       }
-      if (!generationStarted || isRateLimited(error)) {
+      if (!generationStarted || rateLimited) {
+        if (generationStarted && rateLimited) capacityRejected = true
         await store(repository.cooldown(route.routeKey, token, now()))
       } else {
+        ambiguousAttempt = true
         await settleMissingReceipt(route, token)
       }
       return null
@@ -222,7 +227,7 @@ export async function doOverlayFreeStream({
   }
 
   let current = await safeOpenNext()
-  if (!current && routeBusy && !generationAttempted) throw new OverlayFreeRouteBusyError()
+  if (!current && capacityRejected && !ambiguousAttempt) throw new OverlayFreeRouteBusyError()
   if (!current) throw new Error('overlay_free_no_eligible_route')
   const initialResponse = current.response
 
@@ -257,6 +262,7 @@ export async function doOverlayFreeStream({
   const settleUnsafe = async (attempt: OverlayFreeAttempt, reason: string) => {
     if (attempt.settled) return
     attempt.settled = true
+    if (reason === 'missing receipt') ambiguousAttempt = true
     await store(repository.settle({
       routeKey: attempt.route.routeKey,
       leaseToken: attempt.token,

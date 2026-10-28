@@ -41,7 +41,7 @@ test('generated results separate tagged reasoning without changing provider acco
 test.each([
   [secureModelDoStream, reference], [secureModelDoGenerate, reference],
   [secureModelDoStream, nativeReference], [secureModelDoGenerate, nativeReference],
-] as const)('only the typed pre-inference busy result creates a capacity receipt', async (invoke, dispatchReference) => {
+] as const)('only the typed free-router busy result creates a capacity receipt', async (invoke, dispatchReference) => {
   let failure: Error = new OverlayFreeRouteBusyError()
   const dispatch = async () => { throw failure }
   mocks.model.mockResolvedValue(new MockLanguageModelV4({ doStream: dispatch, doGenerate: dispatch }))

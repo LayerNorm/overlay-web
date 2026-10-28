@@ -17,6 +17,8 @@ A **hold** (a `budgetReservations` row in `reserved` or `reconcile_required`) is
 
 Native workspace-agent turns keep one reservation across durable model steps and aggregate the provider-reported token usage. Known, unambiguous usage is settled idempotently on both success and failure; an ambiguous provider outcome or failed settlement keeps the reservation for reconciliation with the observed token totals. A reservation is released only when the provider was not called or confirmed no usage. Transcript finalization is a separate workflow step.
 
+Harness terminal cancellation and failure may release a zero-cost free-router model hold only when no provider billing reservation exists. Paid, externally billed, nonzero-cost, and provider-started holds remain unresolved until authoritative usage evidence settles them.
+
 ## Stuck holds (fixed 2026-10-02)
 
 A call that failed, or finished costing more than was held, used to leave its reservation in `reconcile_required`, waiting for "provider evidence" that nothing supplied, and it counted as held forever. One account had 356 of them, $11.66 of a $20 allowance.

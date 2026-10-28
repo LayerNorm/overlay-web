@@ -223,6 +223,73 @@ for (const method of ['doStream', 'doGenerate'] as const) {
   })
 }
 
+for (const method of ['doStream', 'doGenerate'] as const) {
+  test(`${method} treats a cooled-only route as busy capacity`, async () => {
+    const calls: string[] = []
+    const routes = [route('openrouter', 'openrouter/free', 'openrouter')]
+    const deps = dependencies(routes, calls, {
+      claim: async () => ({ status: 'cooldown', route: null }),
+    })
+    const languageModel = createOverlayFreeLanguageModel({
+      ...deps,
+      providers: {
+        gateway: async () => { throw new Error('unexpected Gateway call') },
+        openrouter: async () => { throw new Error('cooled route must not dispatch') },
+      },
+    })
+    await assert.rejects(languageModel[method](options()), OverlayFreeRouteBusyError)
+    assert.deepEqual(calls, [])
+  })
+}
+
+for (const method of ['doStream', 'doGenerate'] as const) {
+  test(`${method} classifies a pre-response 429 as busy capacity and cools the route`, async () => {
+    const calls: string[] = []
+    const routes = [route('openrouter', 'openrouter/free', 'openrouter')]
+    const rateLimit = Object.assign(new Error('upstream 429'), { statusCode: 429 })
+    const deps = dependencies(routes, calls)
+    const languageModel = createOverlayFreeLanguageModel({
+      ...deps,
+      providers: {
+        gateway: async () => { throw new Error('unexpected Gateway call') },
+        openrouter: async () => model('openrouter', async () => { throw rateLimit }, () => { throw rateLimit }),
+      },
+    })
+    await assert.rejects(languageModel[method](options()), OverlayFreeRouteBusyError)
+    assert.deepEqual(calls, [`cooldown:${routes[0]!.routeKey}`])
+  })
+}
+
+for (const method of ['doStream', 'doGenerate'] as const) {
+  test(`${method} preserves a post-generation 500 and settles a missing receipt`, async () => {
+    const calls: string[] = []
+    const routes = [route('openrouter', 'openrouter/free', 'openrouter')]
+    const upstreamFailure = new Error('upstream 500')
+    const deps = dependencies(routes, calls)
+    const languageModel = createOverlayFreeLanguageModel({
+      ...deps,
+      providers: {
+        gateway: async () => { throw new Error('unexpected Gateway call') },
+        openrouter: async () => method === 'doGenerate'
+          ? model('openrouter', async () => { throw upstreamFailure })
+          : model('openrouter', async () => openRouterReceipt(), () => new ReadableStream({
+            start(controller) {
+              controller.enqueue({ type: 'error', error: upstreamFailure })
+              controller.close()
+            },
+          })),
+      },
+    })
+    if (method === 'doGenerate') {
+      await assert.rejects(languageModel.doGenerate(options()), /upstream 500/)
+    } else {
+      const response = await languageModel.doStream(options())
+      await assert.rejects(response.stream.getReader().read(), /upstream 500/)
+    }
+    assert.deepEqual(calls, [`settle:${routes[0]!.routeKey}:false`])
+  })
+}
+
 test('rechecks current catalog before constructing a provider and tries the next route', async () => {
   const routes = [
     route('gateway', 'first/model', 'first'),
@@ -712,6 +779,20 @@ test('preflight network failures cool down without quarantining an uncalled prov
     },
   })
   await assert.rejects(routed.doGenerate(options()), /overlay_free_no_eligible_route/)
+  assert.deepEqual(calls, ['cooldown:gateway:first/model:first'])
+})
+
+test('stream preflight catalog failures remain no-eligible-route', async () => {
+  const calls: string[] = []
+  const routed = createOverlayFreeLanguageModel({
+    ...dependencies([route('gateway', 'first/model', 'first')], calls),
+    preflight: async () => { throw new Error('catalog unavailable') },
+    providers: {
+      gateway: async () => { throw new Error('must not call') },
+      openrouter: async () => { throw new Error('must not call') },
+    },
+  })
+  await assert.rejects(routed.doStream(options()), /overlay_free_no_eligible_route/)
   assert.deepEqual(calls, ['cooldown:gateway:first/model:first'])
 })
 
