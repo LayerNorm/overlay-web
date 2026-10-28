@@ -537,6 +537,40 @@ function normalizeScheduleInput(schedule: unknown): unknown {
   return schedule
 }
 
+type SavedAutomationRecord = { name?: string; title?: string; enabled?: boolean }
+
+async function savedAutomation(
+  options: OverlayToolsOptions,
+  automationId: string | undefined,
+  record: SavedAutomationRecord | undefined,
+  fallback: { name?: string; enabled?: boolean },
+) {
+  let persisted = record
+  if (!persisted && automationId) {
+    try {
+      const params = new URLSearchParams({ automationId })
+      const res = await callInternalApiGet(
+        `/api/v1/automations?${params}`,
+        options.accessToken,
+        options.baseUrl,
+        options.forwardCookie,
+        options.serverSecret,
+        options.userId,
+        options.workspaceId,
+      )
+      if (res.ok) persisted = await res.json() as SavedAutomationRecord
+    } catch (_error) {
+      persisted = undefined
+    }
+  }
+  const name = persisted?.name ?? persisted?.title ?? fallback.name
+  const enabled = typeof persisted?.enabled === 'boolean' ? persisted.enabled : fallback.enabled
+  return {
+    ...(name !== undefined ? { name } : {}),
+    ...(enabled !== undefined ? { enabled } : {}),
+  }
+}
+
 export async function executeCreateAutomation(
   options: OverlayToolsOptions,
   input: {
@@ -577,8 +611,16 @@ export async function executeCreateAutomation(
       const err = await res.json().catch((_error) => ({ error: 'Failed to create automation' }))
       return { success: false, error: (err as { error?: string }).error ?? 'Failed to create automation' }
     }
-    const data = (await res.json()) as { id?: string }
-    return { success: true, automationId: automationId ?? data.id }
+    const data = (await res.json()) as { id?: string; automation?: SavedAutomationRecord }
+    const id = automationId ?? data.id
+    return {
+      success: true,
+      automationId: id,
+      saved: await savedAutomation(options, id, data.automation, {
+        name: input.name,
+        enabled: input.enabled ?? true,
+      }),
+    }
   } catch (err) {
     return {
       success: false,
@@ -615,7 +657,14 @@ export async function executeUpdateAutomation(
       const err = await res.json().catch((_error) => ({ error: 'Failed to update automation' }))
       return { success: false, error: (err as { error?: string }).error ?? 'Failed to update automation' }
     }
-    return { success: true }
+    const data = await res.json().catch((_error) => null) as { automation?: SavedAutomationRecord } | null
+    return {
+      success: true,
+      saved: await savedAutomation(options, input.automationId, data?.automation, {
+        name: input.name,
+        enabled: input.enabled,
+      }),
+    }
   } catch (err) {
     return {
       success: false,
@@ -634,7 +683,11 @@ export async function executePauseAutomation(options: OverlayToolsOptions, input
       { method: 'PATCH', forwardCookie: options.forwardCookie },
     )
     if (!res.ok) return { success: false, error: 'Failed to pause automation' }
-    return { success: true }
+    const data = await res.json().catch((_error) => null) as { automation?: SavedAutomationRecord } | null
+    return {
+      success: true,
+      saved: await savedAutomation(options, input.automationId, data?.automation, { enabled: false }),
+    }
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : 'Failed to pause automation' }
   }

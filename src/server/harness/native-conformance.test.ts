@@ -13,6 +13,7 @@ import { createHarnessToolApprovals } from './tool-approvals'
 import { createNativeHarnessTools } from './native-tools'
 import { finishNativeHarnessDelivery } from './native-delivery-steps'
 import { projectNativeHarnessToolProgress } from './native-tool-progress'
+import { harnessToolResultEvidence } from './tool-evidence'
 import { AgentAskError, AgentAskService } from '@/server/agents/agent-asks/AgentAskService'
 import { startWorkspaceAgentTurns } from '@/server/agents/start-agent-turns'
 import { prepareWorkspaceAgentTurn } from '@/server/agents/workspace-agent-durable'
@@ -34,6 +35,15 @@ const mocks = vi.hoisted(() => ({
   failAgentRun: vi.fn(),
   nativeState: null as unknown,
 }))
+
+it('persists saved write fields in native tool-result evidence summaries', () => {
+  const evidence = harnessToolResultEvidence({
+    toolCall: { toolCallId: 'note-1', toolName: 'create_note' },
+    success: true,
+    output: { success: true, noteId: 'note-1', saved: { title: 'Untitled', tags: [] } },
+  } as never, 1_000)
+  expect(evidence.summary).toContain('"saved":{"title":"Untitled","tags":[]}')
+})
 
 vi.mock('server-only', () => ({}))
 vi.mock('@/server/ai/model-runtime', () => ({ getLanguageModel: mocks.getLanguageModel }))

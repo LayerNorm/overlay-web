@@ -23,6 +23,7 @@ type FileSummary = {
   type: 'file' | 'folder'
   kind?: string
   parentId?: string | null
+  path?: string
   mimeType?: string
   sizeBytes?: number
   updatedAt: number
@@ -93,6 +94,52 @@ function summarize(file: FileSummary) {
     mimeType: file.mimeType,
     sizeBytes: file.sizeBytes,
     updatedAt: file.updatedAt,
+  }
+}
+
+async function persistedFilePath(options: OverlayToolsOptions, file: FileSummary): Promise<string> {
+  const folders: string[] = []
+  const visited = new Set([file._id])
+  let parentId = file.parentId ?? null
+  while (parentId && !visited.has(parentId) && folders.length < 32) {
+    visited.add(parentId)
+    try {
+      const res = await get(options, new URLSearchParams({ fileId: parentId }))
+      if (!res.ok) break
+      const parent = await res.json() as FileSummary
+      folders.unshift(parent.name)
+      parentId = parent.parentId ?? null
+    } catch (_error) {
+      break
+    }
+  }
+  return folders.length ? folders.join(' / ') : 'Library'
+}
+
+async function savedFile(
+  options: OverlayToolsOptions,
+  fileId: string | undefined,
+  record: FileSummary | undefined,
+  fallback: { name?: string; path?: string },
+) {
+  let file = record
+  if (!file && fileId) {
+    try {
+      const res = await get(options, new URLSearchParams({ fileId }))
+      if (res.ok) file = await res.json() as FileSummary
+    } catch (_error) {
+      file = undefined
+    }
+  }
+  if (file?.name) {
+    return {
+      name: file.name,
+      path: file.path ?? await persistedFilePath(options, file),
+    }
+  }
+  return {
+    ...(fallback.name !== undefined ? { name: fallback.name } : {}),
+    ...(fallback.path !== undefined ? { path: fallback.path } : {}),
   }
 }
 
@@ -192,7 +239,12 @@ export async function executeWriteFile(
         }
       }
       if (!res.ok) return { success: false, error: await errorMessage(res, 'Failed to write file') }
-      return { success: true, fileId: input.fileId.trim() }
+      const data = await res.json().catch((_error) => null) as { file?: FileSummary } | null
+      return {
+        success: true,
+        fileId: input.fileId.trim(),
+        saved: await savedFile(options, input.fileId.trim(), data?.file, { name: input.name?.trim() }),
+      }
     }
     const name = input.name?.trim()
     if (!name) return { success: false, error: 'name is required to create a file.' }
@@ -206,8 +258,15 @@ export async function executeWriteFile(
       ...(input.folderId ? { parentId: input.folderId } : {}),
     })
     if (!res.ok) return { success: false, error: await errorMessage(res, 'Failed to create file') }
-    const data = await res.json() as { id?: string }
-    return { success: true, fileId: data.id }
+    const data = await res.json() as { id?: string; file?: FileSummary }
+    return {
+      success: true,
+      fileId: data.id,
+      saved: await savedFile(options, data.id, data.file, {
+        name,
+        path: input.folderId ?? 'Library',
+      }),
+    }
   } catch (err) {
     return failure(err, 'Failed to write file')
   }
@@ -227,8 +286,15 @@ export async function executeCreateFolder(
       ...(input.parentId ? { parentId: input.parentId } : {}),
     })
     if (!res.ok) return { success: false, error: await errorMessage(res, 'Failed to create folder') }
-    const data = await res.json() as { id?: string }
-    return { success: true, folderId: data.id }
+    const data = await res.json() as { id?: string; file?: FileSummary }
+    return {
+      success: true,
+      folderId: data.id,
+      saved: await savedFile(options, data.id, data.file, {
+        name,
+        path: input.parentId ?? 'Library',
+      }),
+    }
   } catch (err) {
     return failure(err, 'Failed to create folder')
   }
@@ -248,7 +314,15 @@ export async function executeMoveFile(
       ...(input.name?.trim() ? { name: input.name.trim() } : {}),
     })
     if (!res.ok) return { success: false, error: await errorMessage(res, 'Failed to move file') }
-    return { success: true, fileId: input.fileId.trim() }
+    const data = await res.json().catch((_error) => null) as { file?: FileSummary } | null
+    return {
+      success: true,
+      fileId: input.fileId.trim(),
+      saved: await savedFile(options, input.fileId.trim(), data?.file, {
+        ...(input.name?.trim() ? { name: input.name.trim() } : {}),
+        ...(input.folderId === null ? { path: 'Library' } : input.folderId ? { path: input.folderId } : {}),
+      }),
+    }
   } catch (err) {
     return failure(err, 'Failed to move file')
   }

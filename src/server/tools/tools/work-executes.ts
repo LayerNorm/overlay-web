@@ -109,6 +109,20 @@ function fullTask(item: WorkItem, people: readonly WorkPerson[]) {
   }
 }
 
+function savedTask(
+  item: Pick<WorkItem, 'title' | 'status' | 'dueDate'> | undefined,
+  input: { title?: string; status?: string; dueDate?: string | null },
+) {
+  const title = item ? item.title : input.title
+  const status = item ? item.status : input.status
+  const dueDate = item ? item.dueDate : input.dueDate
+  return {
+    ...(title !== undefined ? { title } : {}),
+    ...(status !== undefined ? { status } : {}),
+    ...(dueDate ? { dueDate } : {}),
+  }
+}
+
 async function fetchTask(options: OverlayToolsOptions, taskId: string): Promise<ApiResult<WorkItem>> {
   const result = await getJson<{ item: WorkItem }>(options, `${WORK_PATH}/${encodeURIComponent(taskId.trim())}`)
   return result.ok ? { ok: true, data: result.data.item } : result
@@ -242,14 +256,19 @@ export async function executeCreateTask(options: OverlayToolsOptions, input: {
     const fields = apiFields({ ...input, startDate: dateValue(input.startDate), dueDate: dateValue(input.dueDate) }, contextResult.data)
     delete fields.status
     for (const key of ['startDate', 'dueDate'] as const) if (fields[key] === null) delete fields[key]
-    const response = await sendJson<{ item: WorkItem }>(options, WORK_PATH, {
+    const response = await sendJson<{ item?: WorkItem }>(options, WORK_PATH, {
       ...fields,
       title: input.title,
       ...(input.scope ? { scope: input.scope } : {}),
       ...(input.status ? { status: input.status } : {}),
     })
     if (!response.ok) return { success: false, error: response.error }
-    return { success: true, task: fullTask(response.data.item, contextResult.data.people) }
+    const item = response.data.item
+    return {
+      success: true,
+      ...(item ? { task: fullTask(item, contextResult.data.people) } : {}),
+      saved: savedTask(item, input),
+    }
   } catch (error) {
     return failure(error, 'Failed to create task')
   }
@@ -291,8 +310,8 @@ export async function executeUpdateTask(options: OverlayToolsOptions, input: {
     if (input.scope !== undefined) fields.scope = input.scope
     if (expectedUpdatedAt !== undefined) fields.expectedUpdatedAt = expectedUpdatedAt
     const result = Object.keys(fields).length > 0
-      ? await sendJson<{ item: WorkItem }>(options, `${WORK_PATH}/${encodeURIComponent(input.taskId.trim())}`, fields, 'PATCH')
-      : await getJson<{ item: WorkItem }>(options, `${WORK_PATH}/${encodeURIComponent(input.taskId.trim())}`)
+      ? await sendJson<{ item?: WorkItem }>(options, `${WORK_PATH}/${encodeURIComponent(input.taskId.trim())}`, fields, 'PATCH')
+      : await getJson<{ item?: WorkItem }>(options, `${WORK_PATH}/${encodeURIComponent(input.taskId.trim())}`)
     if (!result.ok) {
       if (result.conflict) {
         const current = await fetchTask(options, input.taskId)
@@ -300,7 +319,12 @@ export async function executeUpdateTask(options: OverlayToolsOptions, input: {
       }
       return { success: false, error: result.error }
     }
-    return { success: true, task: fullTask(result.data.item, contextResult.data.people) }
+    const item = result.data.item
+    return {
+      success: true,
+      ...(item ? { task: fullTask(item, contextResult.data.people) } : {}),
+      saved: savedTask(item, input),
+    }
   } catch (error) {
     return failure(error, 'Failed to update task')
   }

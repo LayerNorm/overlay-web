@@ -2,7 +2,13 @@ import 'server-only'
 
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { executeListFiles, executeReadFile, executeWriteFile } from './files-executes'
+import {
+  executeCreateFolder,
+  executeListFiles,
+  executeMoveFile,
+  executeReadFile,
+  executeWriteFile,
+} from './files-executes'
 import type { OverlayToolsOptions } from './types'
 
 const options: OverlayToolsOptions = { userId: 'user_1', workspaceId: 'ws_1', baseUrl: 'https://overlay.test' }
@@ -53,7 +59,11 @@ test('write_file creates with a mime type and reports a stale revision as a conf
     return Response.json({ id: 'f2' })
   })
   try {
-    assert.deepEqual(await executeWriteFile(options, { name: 'report.md', content: '# R', folderId: 'd1' }), { success: true, fileId: 'f2' })
+    assert.deepEqual(await executeWriteFile(options, { name: 'report.md', content: '# R', folderId: 'd1' }), {
+      success: true,
+      fileId: 'f2',
+      saved: { name: 'report.md', path: 'd1' },
+    })
     assert.equal(bodies[0]?.mimeType, 'text/markdown')
     assert.equal(bodies[0]?.parentId, 'd1')
     const conflict = await executeWriteFile(options, { fileId: 'f2', content: 'x', expectedRevision: '3' })
@@ -62,6 +72,56 @@ test('write_file creates with a mime type and reports a stale revision as a conf
     assert.equal(bodies[1]?.expectedUpdatedAt, 3)
   } finally {
     restore()
+  }
+})
+
+test('file and folder writes echo persisted names and folder paths', async () => {
+  const files = new Map<string, Record<string, unknown>>([
+    ['d1', { _id: 'd1', name: 'Docs', type: 'folder', parentId: null, updatedAt: 1 }],
+  ])
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = (async (input, init = {}) => {
+    const url = new URL(String(input))
+    if (init.method === 'POST') {
+      const body = JSON.parse(String(init.body)) as Record<string, unknown>
+      const id = body.type === 'folder' ? 'folder_created' : 'file_created'
+      files.set(id, {
+        _id: id,
+        name: body.type === 'folder' ? 'Persisted folder' : 'Persisted file.md',
+        type: body.type,
+        parentId: body.parentId ?? null,
+        updatedAt: 2,
+      })
+      return Response.json({ id })
+    }
+    if (init.method === 'PATCH') {
+      const body = JSON.parse(String(init.body)) as Record<string, unknown>
+      const file = files.get(String(body.fileId))!
+      if (body.name) file.name = body.name === 'Requested move' ? 'Persisted move' : 'Persisted edit'
+      if ('parentId' in body) file.parentId = body.parentId
+      return Response.json({ success: true })
+    }
+    const file = files.get(url.searchParams.get('fileId') ?? '')
+    return file ? Response.json(file) : Response.json({ error: 'Not found' }, { status: 404 })
+  }) as typeof fetch
+  try {
+    const created = await executeWriteFile(options, { name: 'Requested file.md', content: 'body', folderId: 'd1' })
+    assert.deepEqual(created.saved, { name: 'Persisted file.md', path: 'Docs' })
+
+    const updated = await executeWriteFile(options, {
+      fileId: 'file_created', name: 'Requested edit', content: 'new body',
+    })
+    assert.deepEqual(updated.saved, { name: 'Persisted edit', path: 'Docs' })
+
+    const moved = await executeMoveFile(options, {
+      fileId: 'file_created', folderId: null, name: 'Requested move',
+    })
+    assert.deepEqual(moved.saved, { name: 'Persisted move', path: 'Library' })
+
+    const folder = await executeCreateFolder(options, { name: 'Requested folder', parentId: 'd1' })
+    assert.deepEqual(folder.saved, { name: 'Persisted folder', path: 'Docs' })
+  } finally {
+    globalThis.fetch = originalFetch
   }
 })
 
