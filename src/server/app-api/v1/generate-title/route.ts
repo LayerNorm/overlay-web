@@ -9,18 +9,15 @@ import {
   canUsePaidBudgetFeatures,
 } from '@/server/billing/billing-runtime'
 import type { Entitlements } from '@overlay/billing'
+import { FREE_TIER_AUTO_MODEL_ID } from '@/shared/ai/gateway/model-types'
 
 /**
- * Title models in priority order, both served by the Vercel AI Gateway (ids
- * without a catalog entry pass straight through to the gateway).
- *
- * The first is free, so titles keep working on plans with no paid budget — the
- * old single-model route reserved paid budget for every title and returned null
- * for everyone else, which is why chats stayed "New Chat".
+ * Titles use the Auto free router, which falls back across the verified-free
+ * AI Gateway and OpenRouter free models, so one unavailable free model no
+ * longer leaves chats on "New Chat".
  */
 const TITLE_MODELS: ReadonlyArray<{ id: string; free: boolean }> = [
-  { id: 'poolside/laguna-s-2.1-free', free: true },
-  { id: 'deepseek/deepseek-v4-flash', free: false },
+  { id: FREE_TIER_AUTO_MODEL_ID, free: true },
 ]
 const FALLBACK_TITLE = 'New Chat'
 const MAX_PROMPT_CHARS = 1200

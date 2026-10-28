@@ -7,6 +7,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 - Keep generated chat titles stable through optimistic updates and use a resolved first-message title when creating chats.
 - Include agent-created automations in the Automations list, show their agent avatars, and open them from agent rows.
 - Start new agent conversations with the agent's instructions as the first user message.
+- Generate chat titles with the Auto free router and retry stalled title requests once.
 
 - Preserve connector-card links for unavailable services and render the Poolside provider mark without opaque export backgrounds.
 
