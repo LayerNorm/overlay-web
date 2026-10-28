@@ -86,3 +86,10 @@ refill accepts only synthetic active plans and preserves consumed spend, live
 reservations and provider billing history. Free recovery resets only recent QA
 turn/transcription counters. It is separate from normal seeding and never funds
 a provider account. Test actual Stripe checkout/events separately from fixtures.
+
+A shared Stripe test account broadcasts events to all registered PR endpoints.
+Preview refuses live-mode events and ignores metadata-bound billing events whose
+account does not exist on that backend, before recording or applying them.
+Production retains its transactional retry behavior for missing-account failures.
+Each PR backend needs its own endpoint signing secret; test-key configuration
+alone does not establish webhook delivery or payment acceptance.

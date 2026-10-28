@@ -260,7 +260,9 @@ The standalone admin console uses a dedicated operator secret and WorkOS identit
 
 Every successful Preview build binds `NEXT_PUBLIC_APP_URL`, `OVERLAY_BFF_URL`,
 `AUTOMATION_RUNNER_BASE_URL` and `OVERLAY_AGENT_PUBLIC_URL` to its canonical PR
-origin, using an ephemeral mode-0600 file removed after success or failure.
+origin, using an ephemeral mode-0600 file removed after success or failure. The scoped
+`env set --from-file` uses `--force` only for this explicit allowlist, so rebuilds
+and rotations replace stale values without touching other backend settings.
 Only approved backend-owned settings are transferred; session secrets, login
 passwords and deployment selectors are excluded. Per-backend Stripe webhook
 secrets are deliberately excluded and belong to endpoint provisioning. Live

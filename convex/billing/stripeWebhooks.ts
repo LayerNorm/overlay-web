@@ -3,6 +3,7 @@ import type Stripe from 'stripe'
 import { internal } from '../_generated/api'
 import { internalMutation, type MutationCtx } from '../_generated/server'
 import { extractPlanFromSubscription, getSubscriptionPeriodMs, mapSubscriptionStatus } from './lib/stripeOverlaySubscription'
+import { isPreviewDeployment } from '../lib/preview'
 
 function readBooleanMetadata(value: string | undefined): boolean | undefined {
   if (value === 'true') return true
@@ -211,6 +212,21 @@ export const processEventInternal = internalMutation({
   returns: v.null(),
   handler: async (ctx, args): Promise<null> => {
     const event = args.event as Stripe.Event
+    if (isPreviewDeployment()) {
+      if (event.livemode === true) throw new Error('Preview refuses live Stripe events')
+      // Shared test accounts deliver each event to every PR endpoint. An event
+      // for another backend must not create billing data or retry indefinitely.
+      const object = event.data.object as unknown as {
+        metadata?: { billingAccountId?: string }
+        parent?: { subscription_details?: { metadata?: { billingAccountId?: string } } }
+      }
+      const accountId = object.metadata?.billingAccountId ?? object.parent?.subscription_details?.metadata?.billingAccountId
+      if (accountId) {
+        const account = await ctx.db.query('billingAccounts')
+          .withIndex('by_billingAccountId', q => q.eq('billingAccountId', accountId)).unique()
+        if (!account) return null
+      }
+    }
     switch (event.type) {
       case 'customer.subscription.created':
         await handlers['customer.subscription.created'](ctx, event)

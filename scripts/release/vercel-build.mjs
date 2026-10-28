@@ -164,7 +164,7 @@ export function runBuild(env = process.env, spawn = spawnSync) {
       writeFileSync(runtimeFile, previewRuntimeEnvFile(plan.env), { mode: 0o600 })
       const pr = plan.env.VERCEL_GIT_PULL_REQUEST_ID
       plan.after.unshift({ command: './node_modules/.bin/convex',
-        args: ['env', 'set', '--from-file', runtimeFile, '--deployment', 'preview/pr-' + pr] })
+        args: ['env', 'set', '--from-file', runtimeFile, '--force', '--deployment', 'preview/pr-' + pr] })
       for (const step of [plan, ...(plan.after ?? [])]) {
         if (step.command.includes('convex')) step.args.push('--env-file', envFile)
       }

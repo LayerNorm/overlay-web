@@ -121,6 +121,7 @@ test('preview rebuild repairs missing fixtures after deploy and never seeds a fa
     assert.equal(calls.length, Math.min(failAt + 1, 3))
     if (calls[1]) {
       assert.deepEqual(calls[1].args.slice(0, 3), ['env', 'set', '--from-file'])
+      assert.ok(calls[1].args.includes('--force'))
       assert.equal(calls[1].args[calls[1].args.indexOf('--deployment') + 1], 'preview/pr-123')
     }
     if (calls[2]) assert.deepEqual(calls[2].args.slice(0, 5), ['run', 'dev/seed:init', '{}', '--deployment', 'preview/pr-123'])
