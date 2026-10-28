@@ -10,21 +10,76 @@ import { overlayAppClient } from '@/shared/app/overlay-app-client'
 const requests = new Map<string, Promise<string | null>>()
 const resolvedTitles = new Map<string, string>()
 const REQUEST_TTL_MS = 120_000
+const REQUEST_TIMEOUT_MS = 15_000
+const MAX_REQUEST_ATTEMPTS = 2
 const MAX_TRACKED_REQUESTS = 8
 
 function seedKey(text: string): string {
   return text.trim().slice(0, 1200)
 }
 
-async function requestTitle(text: string): Promise<string | null> {
-  try {
-    const res = await overlayAppClient.chat.generateTitleResponse({ text })
-    if (res.ok) {
-      const data = await res.json()
-      return (data.title as string)?.trim() || null
+type TitleRequestAttempt =
+  | { kind: 'resolved'; title: string | null }
+  | { kind: 'retry' }
+  | { kind: 'stop' }
+
+async function requestTitleAttempt(text: string, timeoutMs: number): Promise<TitleRequestAttempt> {
+  const controller = new AbortController()
+  let timedOut = false
+  let timeoutId: ReturnType<typeof setTimeout> | undefined
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      timedOut = true
+      controller.abort()
+      reject(new Error('Title request timed out'))
+    }, timeoutMs)
+  })
+  const request = (async (): Promise<TitleRequestAttempt> => {
+    let res: Response
+    try {
+      res = await overlayAppClient.chat.generateTitleResponse(
+        { text },
+        { signal: controller.signal },
+      )
+    } catch {
+      return { kind: 'retry' }
     }
+
+    if (!res.ok) {
+      return res.status === 429 || res.status >= 500 ? { kind: 'retry' } : { kind: 'stop' }
+    }
+
+    let data: unknown
+    try {
+      data = await res.json()
+    } catch (error) {
+      const networkFailure = error instanceof TypeError || (error instanceof Error && error.name === 'AbortError')
+      return timedOut || networkFailure ? { kind: 'retry' } : { kind: 'stop' }
+    }
+
+    const title = data && typeof data === 'object' && 'title' in data && typeof data.title === 'string'
+      ? data.title.trim()
+      : ''
+    return { kind: 'resolved', title: title || null }
+  })()
+
+  try {
+    return await Promise.race([request, timeout])
   } catch {
-    /* Keep the local title; the chat is still usable without a generated one. */
+    return { kind: 'retry' }
+  } finally {
+    if (timeoutId !== undefined) clearTimeout(timeoutId)
+  }
+}
+
+export async function requestTitle(
+  text: string,
+  timeoutMs = REQUEST_TIMEOUT_MS,
+): Promise<string | null> {
+  for (let attempt = 0; attempt < MAX_REQUEST_ATTEMPTS; attempt++) {
+    const result = await requestTitleAttempt(text, timeoutMs)
+    if (result.kind === 'resolved') return result.title
+    if (result.kind === 'stop') return null
   }
   return null
 }
