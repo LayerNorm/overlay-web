@@ -121,7 +121,7 @@ export function useAgentEditorController({
       .filter((model) => model.id !== 'nvidia/nemotron-nano-9b-v2')
   }, [revision])
   const modelField = useMemo(() => {
-    const accessUnresolved = capabilities.billing === true && !modelAccess.entitlements
+    const accessUnresolved = !modelAccess.entitlements
     const selectableTextModels = modelAccess.loading || accessUnresolved
       ? buildSelectableTextModels({
           isModelAccessRestricted: true,
@@ -139,7 +139,6 @@ export function useAgentEditorController({
   }, [
     allTextModels,
     authUser?.id,
-    capabilities.billing,
     form.modelId,
     modelAccess.entitlements,
     modelAccess.isFreeTier,

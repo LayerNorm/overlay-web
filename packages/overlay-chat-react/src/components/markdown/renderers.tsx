@@ -9,13 +9,14 @@ import {
   CodeBlockTitle,
   useHighlightedCode,
 } from '@overlay/ui/ai'
-import { Code2, PanelRightOpen, Play } from 'lucide-react'
+import { Check, Code2, PanelRightOpen, Play, Plug } from 'lucide-react'
 import { Orb } from '@overlay/ui'
 import { isValidElement, useId, useState, type ReactNode } from 'react'
 import type {
   AttachmentPreview,
   AttachmentPreviewOpenOptions,
 } from '../AttachmentPreviewShell'
+import { useMarkdownConnectorActions } from './connector-actions-context'
 
 export type MarkdownCodeBlockActions = {
   onOpenAttachmentPreview?: (
@@ -46,6 +47,71 @@ const CONNECT_SERVICE_DESCRIPTIONS: Record<string, string> = {
   'twitter': 'Post tweets and manage your account',
   'asana': 'Create tasks and manage projects',
   'linkedin': 'Manage posts and profile actions',
+}
+
+function ConnectServiceLogo({ serviceName, logoUrl }: { serviceName: string; logoUrl: string | null }) {
+  const [failed, setFailed] = useState(false)
+  return (
+    <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-(--border) bg-(--surface-subtle) text-(--muted)">
+      {logoUrl && !failed ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={logoUrl} alt={serviceName} width={20} height={20} className="h-5 w-5 object-contain" onError={() => setFailed(true)} />
+      ) : (
+        <Plug size={16} strokeWidth={1.75} aria-hidden="true" />
+      )}
+    </span>
+  )
+}
+
+/** Card for a model-written `[Connect <app>](url)` link; flips to Connected once the app is linked. */
+export function ConnectServiceCard({ serviceName, href }: { serviceName: string; href: string }) {
+  const actions = useMarkdownConnectorActions()
+  const connected = actions?.isConnected?.(serviceName) ?? false
+  const logoUrl = actions?.getLogoUrl?.(serviceName) ?? null
+  const description = connected
+    ? 'Ready to use'
+    : CONNECT_SERVICE_DESCRIPTIONS[serviceName.toLowerCase()] || 'Connect to use this integration'
+  const body = (
+    <>
+      <ConnectServiceLogo serviceName={serviceName} logoUrl={logoUrl} />
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-medium leading-snug text-(--foreground)">{serviceName}</span>
+        <span className="block text-xs leading-snug text-(--muted)">{description}</span>
+      </span>
+    </>
+  )
+  const cardClass = 'my-1.5 inline-flex max-w-[360px] min-w-[260px] items-center gap-3 rounded-xl border border-(--border) bg-(--surface-elevated) px-3 py-2.5'
+  if (connected) {
+    return (
+      <span data-slot="connect-card" data-state="connected" className={cardClass}>
+        {body}
+        <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-xs text-(--muted)">
+          <Check size={14} strokeWidth={1.75} aria-hidden="true" />
+          Connected
+        </span>
+      </span>
+    )
+  }
+  if (actions?.connect && (actions.canConnect?.(serviceName) ?? true)) {
+    return (
+      <span data-slot="connect-card" data-state="disconnected" className={cardClass}>
+        {body}
+        <Button size="sm" variant="primary" className="shrink-0" onClick={() => void actions.connect?.(serviceName)}>
+          Connect
+        </Button>
+      </span>
+    )
+  }
+  return (
+    <a href={href} target="_blank" rel="noopener noreferrer" className="no-underline">
+      <span data-slot="connect-card" data-state="disconnected" className={`${cardClass} transition-colors hover:bg-(--surface-subtle)`}>
+        {body}
+        <span className="shrink-0 whitespace-nowrap rounded-md bg-(--foreground) px-3 py-1.5 text-xs text-(--background)">
+          Connect
+        </span>
+      </span>
+    </a>
+  )
 }
 
 function isHtmlLanguage(language: string): boolean {
@@ -181,30 +247,7 @@ export const baseMdComponents = {
 
     if (connectMatch && href) {
       const serviceName = connectMatch[1].trim()
-      const description =
-        CONNECT_SERVICE_DESCRIPTIONS[serviceName.toLowerCase()] ||
-        'Connect to use this integration'
-
-      return (
-        <a href={href} target="_blank" rel="noopener noreferrer" className="no-underline">
-          <span
-            className="my-1.5 inline-flex max-w-[360px] min-w-[260px] items-center gap-3 rounded-xl border border-(--border) bg-(--surface-elevated) px-3 py-2.5 transition-colors hover:bg-(--surface-subtle)"
-          >
-            <span
-              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-(--border) bg-(--surface-subtle) text-xs font-bold text-(--foreground)"
-            >
-              {serviceName.charAt(0).toUpperCase()}
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block text-sm font-medium leading-snug text-(--foreground)">{serviceName}</span>
-              <span className="block text-xs leading-snug text-(--muted)">{description}</span>
-            </span>
-            <span className="shrink-0 whitespace-nowrap rounded-md bg-(--foreground) px-3 py-1.5 text-xs text-(--background)">
-              Connect
-            </span>
-          </span>
-        </a>
-      )
+      return <ConnectServiceCard serviceName={serviceName} href={href} />
     }
 
     // `/app/...` handling lives in the component-local `a` override so it can

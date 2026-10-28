@@ -1,5 +1,5 @@
 import type { WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
-import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
+import { NEW_AGENT_DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import { AVATAR_FALLBACK_COLOR } from './agent-editor-utils'
 
 export function getInitialEditorState(args: {
@@ -15,7 +15,7 @@ export function getInitialEditorState(args: {
     name: agent?.name ?? '',
     description: agent?.description ?? '',
     instructions: agent?.instructions ?? '',
-    modelId: agent?.modelId ?? DEFAULT_MODEL_ID,
+    modelId: agent?.modelId ?? NEW_AGENT_DEFAULT_MODEL_ID,
     avatarColor: agent?.avatarColor ?? AVATAR_FALLBACK_COLOR,
     avatarShape: agent?.avatarShape ?? 'circle',
     visibility: agent?.visibility ?? 'workspace',

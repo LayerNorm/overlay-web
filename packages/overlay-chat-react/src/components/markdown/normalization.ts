@@ -46,6 +46,11 @@ function stripTrailingSourcesBlock(text: string): string {
   return kept.join('\n')
 }
 
+/** Connect cards carry the app's logo, so drop decorative emoji the model puts before the link. */
+export function stripEmojiBeforeConnectLinks(text: string): string {
+  return text.replace(/(?:[\p{Extended_Pictographic}\u{1F1E6}-\u{1F1FF}][\u{FE0F}\u{200D}]*\s*)+(?=\[connect\s)/giu, '')
+}
+
 export function normalizeGeneratedMarkdown(
   text: string,
   options?: {
@@ -58,6 +63,7 @@ export function normalizeGeneratedMarkdown(
 ): string {
   let t = mergeGfmTableContinuationLines(stripHtmlishToMarkdown(stripThinkingPlaceholderMarkdown(text)))
   t = bracketNormalize(t)
+  t = stripEmojiBeforeConnectLinks(t)
   // Defuse prose pseudo-math (currency like `$8,000 ... $57,600`) and recover real
   // TeX delimiters before remark-math runs, so currency is not italicized as math.
   t = normalizeAssistantMathMarkdown(t)

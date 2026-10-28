@@ -228,7 +228,7 @@ export function useChatExperienceController({
     setReasoning,
   } = useChatPreferences()
   const [, setIsSwitchingChat] = useState(false)
-  const generatedUiConnectorActions = useGeneratedUiConnectorActions({ enabled: true })
+  const generatedUiConnectorActions = useGeneratedUiConnectorActions({ enabled: capabilities.integrations })
 
   const [isDragging, setIsDragging] = useState(false)
   const {
@@ -332,7 +332,6 @@ export function useChatExperienceController({
     applyDefaultChatModelsToView,
   } = useChatModelDefaults({
     settings,
-    billingEnabled,
     isFreeTier,
     hasStoredTextModelSelection,
     selectedActModel,
