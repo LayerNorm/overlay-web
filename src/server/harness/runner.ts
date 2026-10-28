@@ -270,7 +270,7 @@ async function finishOrCheckpointInvocation(
   }
   const completionIssues = harnessCompletionIssues(state)
   const resultSummary = latestFinalAnswerText(runSteps, toolNames)
-  const finalAnswerRequired = !completionIssues.length && !resultSummary
+  const finalAnswerRequired = !truncatedResponse && !completionIssues.length && !resultSummary
   if (!truncatedResponse && !completionIssues.length && resultSummary) {
     const completed = await ports.apply(`finish:${segment}`, {
       type: 'finish', ...(resultSummary ? { resultSummary: resultSummary.slice(0, 8_000) } : {}),

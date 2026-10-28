@@ -1,4 +1,5 @@
-import { createHash } from 'node:crypto'
+import { sha256 } from '@noble/hashes/sha2.js'
+import { bytesToHex } from '@noble/hashes/utils.js'
 
 function normalizeToolInput(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(normalizeToolInput)
@@ -16,5 +17,5 @@ function normalizeToolInput(value: unknown): unknown {
 export function harnessToolInputDigest(toolName: string, input: unknown): string {
   const json = JSON.stringify([toolName, normalizeToolInput(input)])
   if (json === undefined) throw new Error('Harness tool input must be JSON serializable.')
-  return createHash('sha256').update(json).digest('hex')
+  return bytesToHex(sha256(new TextEncoder().encode(json)))
 }
