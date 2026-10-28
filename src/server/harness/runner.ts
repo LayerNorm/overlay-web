@@ -1,6 +1,7 @@
 import {
   WorkflowAgent,
   type ModelCallStreamPart,
+  type WorkflowAgentStreamResult,
 } from '@ai-sdk/workflow'
 import { asSchema, isLoopFinished, type ModelMessage, type StepResult, type ToolSet } from 'ai'
 import type { LanguageModelV4FunctionTool } from '@ai-sdk/provider'
@@ -55,7 +56,7 @@ function wrapAuthorizedTools(
   controls: Set<string>,
   approvals: HarnessToolApprovals,
 ): ToolSet {
-  const definitions = { ...surfaceTools, ...createHarnessControlTools(ports, new Set(Object.keys(surfaceTools))) }
+  const definitions = { ...surfaceTools, ...createHarnessControlTools(ports) }
   let toolTail: Promise<unknown> = Promise.resolve()
   return Object.fromEntries(Object.entries(definitions).sort(([a], [b]) => a.localeCompare(b)).map(([name, definition]) => {
     const execute = definition.execute
@@ -137,6 +138,43 @@ function assertPendingApprovalsExecutable(pending: HarnessApprovalRequest[], too
   if (pending.some(request => !tools[request.toolName]?.execute || !tools[request.toolName]?.needsApproval)) {
     throw new Error('A tool returned without an executor or a supported approval policy.')
   }
+}
+
+function isInvalidApprovalCall(result: WorkflowAgentStreamResult<ToolSet>, callId: string): boolean {
+  const lastStepCall = result.steps.at(-1)?.toolCalls.find(call => call.toolCallId === callId)
+  if ((lastStepCall as typeof lastStepCall & { invalid?: boolean })?.invalid === true) return true
+  let assistantCallIndex = -1
+  for (let index = result.messages.length - 1; index >= 0; index--) {
+    const message = result.messages[index]
+    const hasCall = message?.role === 'assistant' && Array.isArray(message.content)
+      && message.content.some((part: unknown) => typeof part === 'object' && part !== null
+        && 'type' in part && part.type === 'tool-call'
+        && 'toolCallId' in part && part.toolCallId === callId)
+    if (hasCall) {
+      assistantCallIndex = index
+      break
+    }
+  }
+  return assistantCallIndex >= 0 && result.messages.slice(assistantCallIndex + 1).some(message => (
+    message.role === 'tool' && message.content.some(part =>
+      part.type === 'tool-result' && part.toolCallId === callId && part.output.type === 'error-text')
+  ))
+}
+
+function unresolvedApprovalCalls(result: WorkflowAgentStreamResult<ToolSet>): HarnessApprovalRequest[] {
+  const lastStep = result.steps.at(-1)
+  const lastStepContent = lastStep?.content ?? []
+  return result.toolCalls
+    .filter(call => (call as typeof call & { invalid?: boolean }).invalid !== true
+      && !isInvalidApprovalCall(result, call.toolCallId)
+      && !result.toolResults.some(toolResult => toolResult.toolCallId === call.toolCallId)
+      && !lastStepContent.some(part => part.type === 'tool-error' && part.toolCallId === call.toolCallId))
+    .map(call => ({
+      approvalId: `approval-${call.toolCallId}`,
+      toolCallId: call.toolCallId,
+      toolName: call.toolName,
+      input: call.input,
+    }))
 }
 
 function assertApprovalDecisions(pending: HarnessApprovalRequest[], decisions: HarnessApprovalDecision[]): void {
@@ -307,7 +345,6 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
           continuation: segment > 0,
           truncatedResponse,
           finalAnswerRequired,
-          deferredToolNames: Object.keys(input.tools),
         }
         const receiptId = `model:${modelCall}`
         const prepared = await ports.prepareModel({ receiptId, state: current, messages: prompt, instructionContext,
@@ -330,7 +367,7 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
         observedState = current
         const allowed = new Set(prepared.activeToolNames)
         const activeTools = Object.keys(tools).filter(name => !complete && (needsPlan
-          ? name === 'harness_set_plan' || name === 'harness_report_blocker'
+          ? name === 'harness_set_plan'
           : controls.has(name) || (current.policy.allowedToolIds.includes(name) && allowed.has(name))))
         return {
           system: prepared.instructions ?? buildHarnessStepInstructions(current, instructionContext),
@@ -360,9 +397,7 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
       invocationMessages = result.messages
       invocationSteps = result.steps
       if ('error' in result && result.error) throw result.error
-      pending = result.toolCalls
-        .filter(call => !result.toolResults.some(result => result.toolCallId === call.toolCallId))
-        .map(call => ({ approvalId: `approval-${call.toolCallId}`, toolCallId: call.toolCallId, toolName: call.toolName, input: call.input }))
+      pending = unresolvedApprovalCalls(result)
     } catch (error) {
       if (!(error instanceof HarnessYield)) {
         if (!await ports.recoverModelFailure?.(`model:${modelCall}`)) throw error

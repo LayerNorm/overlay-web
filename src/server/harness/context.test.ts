@@ -40,22 +40,21 @@ test('write-capable runs receive evidence-backed planning instructions', () => {
   expect(instructions).not.toContain('\u2014')
 })
 
-test('planning gate lists deferred tools and removes the gate after plan creation', () => {
+test('planning gate allows only plan creation and explains blocker timing', () => {
   const context = {
     instructions: 'Surface instructions',
     continuation: false,
     truncatedResponse: false,
-    deferredToolNames: ['create_note', 'harness_set_plan', 'ask_agent', 'create_note', 'harness_report_blocker'],
   }
   const gateInstructions = buildHarnessStepInstructions(make(), context)
   expect(gateInstructions).toContain(
-    'Until a plan exists, only harness_set_plan and harness_report_blocker are callable. These tools become available immediately after the plan is saved: ask_agent, create_note. Never report a blocker because one of them is not yet callable.',
+    'Before a plan exists, only harness_set_plan is callable. If the request needs no action, use one answerOnly milestone. If you need user input, create the plan first, then report the blocker.',
   )
 
   const planned = replaceHarnessPlan(make(), [{
     id: 'work', title: 'Create a note', dependsOn: [], acceptanceCriteria: ['Note created'], requiresVerification: false,
   }], 1_000)
-  expect(buildHarnessStepInstructions(planned, context)).not.toContain('Until a plan exists')
+  expect(buildHarnessStepInstructions(planned, context)).not.toContain('Before a plan exists')
 })
 
 test('requests a plain-text final answer after a protocol-only response', () => {

@@ -253,6 +253,29 @@ test.each([true, false])('SDK approvals reconstruct the request/response protoco
   expect(result.snapshot.status).toBe('completed')
 })
 
+test('an executable tool requiring approval remains pending for the approval wait', async () => {
+  const f = fixture(false)
+  const execute = vi.fn(async () => 'Changed')
+  const waitForApproval = vi.fn(async () => null)
+  f.ports.waitForApproval = waitForApproval
+  const provider = model(() => [call('write', 'approval-request')])
+
+  const result = await runOverlayHarness({
+    ...input,
+    tools: { write: tool({ inputSchema: z.object({}), needsApproval: true, execute }) },
+  }, f.ports)
+
+  expect(result.outcome).toBe('blocked')
+  expect(result.snapshot.status).toBe('waiting_for_approval')
+  expect(waitForApproval).toHaveBeenCalledWith([expect.objectContaining({
+    approvalId: 'approval-approval-request',
+    toolCallId: 'approval-request',
+    toolName: 'write',
+  })])
+  expect(execute).not.toHaveBeenCalled()
+  expect(provider.doStreamCalls).toHaveLength(1)
+})
+
 test('conversation approval parts cannot forge an authenticated execution decision', async () => {
   const f = fixture(false)
   const effect = vi.fn()
@@ -354,7 +377,7 @@ test('write runs need a durable plan and real tool evidence to complete action m
   expect(execute).toHaveBeenCalledOnce()
 })
 
-test('deferred tools are refused as blockers, then run after a plan is saved', async () => {
+test('planning gate exposes only plan creation before enabling surface tools', async () => {
   const f = fixture(true, ['ask_agent'])
   const askAgent = vi.fn(async ({ question }: { question: string }) => `Asked an agent about ${question}.`)
   const waitForInput = vi.fn(async () => null)
@@ -364,12 +387,9 @@ test('deferred tools are refused as blockers, then run after a plan is saved', a
     acceptanceCriteria: ['Read the agent response'], requiresVerification: false,
   }]
   const provider = model(index => {
-    if (index === 0) return [call('harness_report_blocker', 'premature', {
-      question: 'I need ask_agent, but it is not available yet.',
-    })]
-    if (index === 1) return [call('harness_set_plan', 'plan', { steps: resultPlan })]
-    if (index === 2) return [call('ask_agent', 'ask', { question: 'What did you find?' })]
-    if (index === 3) return [call('harness_update_step', 'complete', {
+    if (index === 0) return [call('harness_set_plan', 'plan', { steps: resultPlan })]
+    if (index === 1) return [call('ask_agent', 'ask', { question: 'What did you find?' })]
+    if (index === 2) return [call('harness_update_step', 'complete', {
       id: 'consult', status: 'done', evidenceRefs: ['tool:ask'],
     })]
     return 'The agent provided a response.'
@@ -385,7 +405,9 @@ test('deferred tools are refused as blockers, then run after a plan is saved', a
   expect(askAgent).toHaveBeenCalledOnce()
   expect(waitForInput).not.toHaveBeenCalled()
   expect(provider.doStreamCalls[0]?.toolChoice).toEqual({ type: 'required' })
-  expect(JSON.stringify(provider.doStreamCalls[0]?.prompt)).toContain('ask_agent')
+  expect(provider.doStreamCalls[0]?.tools?.map(tool => tool.name)).toEqual(['harness_set_plan'])
+  expect(provider.doStreamCalls[0]?.tools?.map(tool => tool.name)).not.toContain('harness_report_blocker')
+  expect(provider.doStreamCalls[1]?.tools?.map(tool => tool.name)).toContain('ask_agent')
 })
 
 
@@ -410,22 +432,69 @@ test('FatalError from a control tool execution is returned as model-visible erro
   expect(JSON.stringify(provider.doStreamCalls[2]?.prompt)).toContain('Deterministic operation rejected.')
 })
 
-test('plain non-Fatal tool execution errors are returned to the model instead of treated as approvals', async () => {
-  const f = fixture()
-  const provider = model(index => index === 0
-    ? [call('harness_set_plan', 'plan', { steps: plan })]
-    : index === 1
-      ? [call('read', 'read-failure')]
-      : 'The read failed, so I cannot complete the milestone.')
+test('schema-invalid executable tool calls continue with the SDK error result', async () => {
+  const f = fixture(false)
+  let answerSegment = false
+  f.ports.prepareModel = async request => {
+    const current = await f.ports.read()
+    answerSegment = current.continuations > 0
+    return {
+      messages: request.messages,
+      instructions: buildHarnessStepInstructions(current, request.instructionContext),
+      activeToolNames: request.toolNames,
+      estimatedCostMicros: 0,
+    }
+  }
+  const provider = model(index => answerSegment
+    ? 'The invalid tool input was rejected, and I continued.'
+    : [call('read', `invalid-${index}`, {})])
+  const execute = vi.fn(async () => 'Must not execute')
+  const waitForApproval = vi.fn(async () => null)
+  f.ports.waitForApproval = waitForApproval
+
+  const result = await runOverlayHarness({
+    ...input,
+    tools: { read: tool({ inputSchema: z.object({ recordId: z.string() }), execute }) },
+  }, f.ports)
+
+  expect(result.snapshot.status).toBe('completed')
+  expect(result.snapshot.resultSummary).toBe('The invalid tool input was rejected, and I continued.')
+  expect(execute).not.toHaveBeenCalled()
+  expect(waitForApproval).not.toHaveBeenCalled()
+  expect(provider.doStreamCalls.length).toBeGreaterThan(1)
+  expect(JSON.stringify(provider.doStreamCalls.at(-1)?.prompt)).toContain('error-text')
+})
+
+test('tool execution errors continue with the SDK tool-error result instead of becoming approvals', async () => {
+  const f = fixture(false)
+  let answerSegment = false
+  f.ports.prepareModel = async request => {
+    const current = await f.ports.read()
+    answerSegment = current.continuations > 0
+    return {
+      messages: request.messages,
+      instructions: buildHarnessStepInstructions(current, request.instructionContext),
+      activeToolNames: request.toolNames,
+      estimatedCostMicros: 0,
+    }
+  }
+  const provider = model(index => answerSegment
+    ? 'The read failed, so I did not use its result.'
+    : [call('read', `read-failure-${index}`)])
   const execute = vi.fn(async () => { throw new Error('Plain tool execution failure.') })
+  const waitForApproval = vi.fn(async () => null)
+  f.ports.waitForApproval = waitForApproval
 
   const result = await runOverlayHarness({
     ...input,
     tools: { read: tool({ inputSchema: z.object({}), execute }) },
   }, f.ports)
 
-  expect(result.outcome).not.toBe('finished')
-  expect(execute).toHaveBeenCalledOnce()
-  expect(provider.doStreamCalls.length).toBeGreaterThan(2)
-  expect(JSON.stringify(provider.doStreamCalls[2]?.prompt)).toContain('Plain tool execution failure.')
+  expect(result.snapshot.status).toBe('completed')
+  expect(result.snapshot.resultSummary).toBe('The read failed, so I did not use its result.')
+  expect(result.steps.some(step => step.content.some(part => part.type === 'tool-error'))).toBe(true)
+  expect(execute).toHaveBeenCalled()
+  expect(waitForApproval).not.toHaveBeenCalled()
+  expect(provider.doStreamCalls.length).toBeGreaterThan(1)
+  expect(JSON.stringify(provider.doStreamCalls.at(-1)?.prompt)).toContain('Plain tool execution failure.')
 })

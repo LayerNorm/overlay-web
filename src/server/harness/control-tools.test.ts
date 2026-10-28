@@ -111,35 +111,21 @@ test('plan execution normalizes raw omitted verification input before applying t
   })
 })
 
-test('blockers that name deferred tools are returned without entering the waiting state', async () => {
+test('blockers are rejected until a required plan exists', async () => {
   const f = fixture()
   f.setParent(planningGateState())
-  const blockerTool = createHarnessControlTools(f.ports, new Set(['ask_agent'])).harness_report_blocker
+  const blockerTool = createHarnessControlTools(f.ports).harness_report_blocker
   const result = await blockerTool.execute!(
-    { question: 'I cannot ask_agent because it is not available yet.' },
+    { question: 'Which account should I update?' },
     { toolCallId: 'deferred-blocker', messages: [] },
   )
 
   expect(result).toEqual({
     success: false,
-    error: 'Tools become available after harness_set_plan; create the plan first.',
+    error: 'Call harness_set_plan first; report blockers after the plan exists.',
   })
   expect(f.apply).not.toHaveBeenCalled()
   expect((await f.ports.read()).status).toBe('running')
-})
-
-test('genuine input blockers still record during the planning gate', async () => {
-  const f = fixture()
-  f.setParent(planningGateState())
-  const blockerTool = createHarnessControlTools(f.ports, new Set(['ask_agent'])).harness_report_blocker
-  const question = 'Which account should I update?'
-  const result = await blockerTool.execute!({ question }, { toolCallId: 'genuine-blocker', messages: [] })
-
-  expect(result).toEqual({ status: 'waiting_for_input', question })
-  expect(f.apply).toHaveBeenCalledWith('control:genuine-blocker', {
-    type: 'block', blocker: { kind: 'input', question },
-  })
-  expect((await f.ports.read()).status).toBe('waiting_for_input')
 })
 
 test.each([
@@ -151,7 +137,7 @@ test.each([
     id: 'work', title: 'Ask the agent', dependsOn: [], acceptanceCriteria: ['Agent consulted'], requiresVerification: false,
   }], Date.now())
   f.setParent(planned)
-  const blockerTool = createHarnessControlTools(f.ports, new Set(['ask_agent'])).harness_report_blocker
+  const blockerTool = createHarnessControlTools(f.ports).harness_report_blocker
   const result = await blockerTool.execute!({ question }, { toolCallId: 'post-plan-blocker', messages: [] })
 
   expect(result).toEqual({ status: 'waiting_for_input', question })
