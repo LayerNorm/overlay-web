@@ -78,6 +78,10 @@ export function useGeneratedUiConnectorActions({ enabled = true }: { enabled?: b
     return Boolean(resolved && connected.has(resolved))
   }, [connected])
 
+  const canConnect = useCallback((serviceName: string, slug?: string) => (
+    enabled && Boolean(resolveConnectorSlug(serviceName, slug))
+  ), [enabled])
+
   const connect = useCallback(async (serviceName: string, slug?: string) => {
     const resolved = resolveConnectorSlug(serviceName, slug)
     if (!resolved) return
@@ -127,10 +131,11 @@ export function useGeneratedUiConnectorActions({ enabled = true }: { enabled?: b
     () => ({
       getLogoUrl,
       isConnected,
+      canConnect,
       connect,
       openExternalUrl,
       openEmailDraft,
     }),
-    [connect, getLogoUrl, isConnected, openEmailDraft, openExternalUrl],
+    [canConnect, connect, getLogoUrl, isConnected, openEmailDraft, openExternalUrl],
   )
 }

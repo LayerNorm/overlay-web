@@ -92,7 +92,7 @@ export function ConnectServiceCard({ serviceName, href }: { serviceName: string;
       </span>
     )
   }
-  if (actions?.connect) {
+  if (actions?.connect && (actions.canConnect?.(serviceName) ?? true)) {
     return (
       <span data-slot="connect-card" data-state="disconnected" className={cardClass}>
         {body}

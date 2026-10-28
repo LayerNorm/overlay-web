@@ -552,3 +552,16 @@ A native terminal detail shares its command's call key. Both live tool groups an
 
 While a turn continues, an attached terminal detail follows its command's resolved state even if the retained attachment still says running. Match by call key regardless of part order; unrelated running commands and standalone terminal details remain live.
 The liveness status uses only the first command line, capped at 96 Unicode code points. Full command bodies remain in collapsed tool details so a long script cannot crowd out the answer, deadline or recovery state.
+
+## Provider models and connection cards
+
+Agent creation and editing share the chat model picker, with workspace entitlements
+restricting runnable models. Unresolved access stays on the free choices; the paid
+new-agent default is GLM 5.3 Flash. Chat may show locked premium choices for upgrade
+discovery while retaining its send-time access checks.
+
+Markdown Connect cards use the integration logo and current connection state. Only
+replace their original URL with an OAuth button when integrations are enabled and
+the service name resolves to a supported connector. Otherwise keep the link usable.
+Refresh connection state on window focus after an OAuth tab returns. Inline provider
+marks use monochrome foreground paths; discard filled export backgrounds.

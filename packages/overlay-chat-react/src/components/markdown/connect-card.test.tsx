@@ -39,3 +39,10 @@ test('decorative emoji before connect links are dropped', () => {
   assert.equal(stripEmojiBeforeConnectLinks('🔗 ✉️ [connect Notion](https://x.test)'), '[connect Notion](https://x.test)')
   assert.equal(stripEmojiBeforeConnectLinks('Done 🎉 [Docs](https://x.test)'), 'Done 🎉 [Docs](https://x.test)')
 })
+
+// Disabled integrations and unrecognized model-written service names retain their original destination.
+test('connect cards keep the original link when the action cannot handle this service', () => {
+  const markup = render({ canConnect: () => false, connect: () => { throw new Error('Unavailable action') } })
+  assert.match(markup, /href="https:\/\/example.com\/oauth"/)
+  assert.doesNotMatch(markup, /<button/)
+})

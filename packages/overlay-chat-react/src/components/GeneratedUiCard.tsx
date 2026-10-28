@@ -30,6 +30,7 @@ import { FileMarkdown } from '@overlay/modules-react/file-viewer'
 import { ConversationQuestionnaire } from './Questionnaire'
 
 export type GeneratedUiConnectorActions = {
+  canConnect?: (serviceName: string, slug?: string) => boolean
   getLogoUrl?: (serviceName: string, slug?: string) => string | null
   isConnected?: (serviceName: string, slug?: string) => boolean
   connect?: (serviceName: string, slug?: string) => void | Promise<void>
