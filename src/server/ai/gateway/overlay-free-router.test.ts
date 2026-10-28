@@ -5,7 +5,12 @@ import { z } from 'zod/v3'
 import { getGatewayLanguageModel } from './ai-gateway'
 import { OverlayFreeRouteBusyError, OverlayFreeRouteInterruptedError } from './overlay-free-router-errors'
 import { confirmOpenRouterGenerationCost as confirmGenerationCost } from './openrouter-generation-cost'
-import type { LanguageModelV4, LanguageModelV4CallOptions, LanguageModelV4StreamPart } from '@ai-sdk/provider'
+import type {
+  LanguageModelV4,
+  LanguageModelV4CallOptions,
+  LanguageModelV4GenerateResult,
+  LanguageModelV4StreamPart,
+} from '@ai-sdk/provider'
 import {
   createOverlayFreeLanguageModel,
   type OverlayFreeRepository,
@@ -244,6 +249,14 @@ function gatewayReceipt(modelId: string, provider: string, cost = '0') {
   }
 }
 
+function gatewayReceiptWithContent(
+  modelId: string,
+  provider: string,
+  content: LanguageModelV4GenerateResult['content'],
+) {
+  return { ...gatewayReceipt(modelId, provider), content }
+}
+
 function openRouterReceipt(modelId = 'provider/free', cost = '0') {
   return {
     content: [{ type: 'text' as const, text: 'free' }],
@@ -451,6 +464,145 @@ test('returns a completed nonzero-receipt answer without retrying another provid
   assert.equal(result.content[0]?.type, 'text')
   assert.equal(result.providerMetadata?.overlayFree.safe, false)
   assert.deepEqual(calls, ['settle:gateway:first/model:first:false'])
+})
+
+test('fails over after a safe empty gateway completion', async () => {
+  const routes = [
+    route('gateway', 'first/model', 'first'),
+    route('gateway', 'second/model', 'second'),
+  ]
+  const calls: string[] = []
+  const languageModel = createOverlayFreeLanguageModel({
+    ...dependencies(routes, calls),
+    providers: {
+      gateway: async (modelId, provider) => model(provider, async () => {
+        calls.push(`generate:${provider}`)
+        return provider === 'first'
+          ? gatewayReceiptWithContent(modelId, provider, [])
+          : gatewayReceiptWithContent(modelId, provider, [{ type: 'text', text: 'Ocean Tides' }])
+      }),
+      openrouter: async () => { throw new Error('unexpected OpenRouter call') },
+    },
+    now: () => now,
+  })
+
+  const result = await languageModel.doGenerate(options())
+
+  assert.deepEqual(result.content, [{ type: 'text', text: 'Ocean Tides' }])
+  assert.ok(calls.includes('generate:second'))
+  assert.ok(calls.includes('settle:gateway:first/model:first:true'))
+  assert.ok(calls.includes('settle:gateway:second/model:second:true'))
+})
+
+test('fails over after reasoning-only content', async () => {
+  const routes = [
+    route('gateway', 'first/model', 'first'),
+    route('gateway', 'second/model', 'second'),
+  ]
+  const calls: string[] = []
+  const languageModel = createOverlayFreeLanguageModel({
+    ...dependencies(routes, calls),
+    providers: {
+      gateway: async (modelId, provider) => model(provider, async () => {
+        calls.push(`generate:${provider}`)
+        return provider === 'first'
+          ? gatewayReceiptWithContent(modelId, provider, [{ type: 'reasoning', text: 'working it out' }])
+          : gatewayReceiptWithContent(modelId, provider, [{ type: 'text', text: 'Ocean Tides' }])
+      }),
+      openrouter: async () => { throw new Error('unexpected OpenRouter call') },
+    },
+    now: () => now,
+  })
+
+  const result = await languageModel.doGenerate(options())
+
+  assert.deepEqual(result.content, [{ type: 'text', text: 'Ocean Tides' }])
+  assert.ok(calls.includes('generate:second'))
+})
+
+test('returns the last safe empty completion after trying every candidate', async () => {
+  const routes = [
+    route('gateway', 'first/model', 'first'),
+    route('gateway', 'second/model', 'second'),
+  ]
+  const calls: string[] = []
+  const languageModel = createOverlayFreeLanguageModel({
+    ...dependencies(routes, calls),
+    providers: {
+      gateway: async (modelId, provider) => model(provider, async () => {
+        calls.push(`generate:${provider}`)
+        return provider === 'first'
+          ? gatewayReceiptWithContent(modelId, provider, [])
+          : gatewayReceiptWithContent(modelId, provider, [{ type: 'reasoning', text: 'last empty result' }])
+      }),
+      openrouter: async () => { throw new Error('unexpected OpenRouter call') },
+    },
+    now: () => now,
+  })
+
+  const result = await languageModel.doGenerate(options())
+
+  assert.deepEqual(result.content, [{ type: 'reasoning', text: 'last empty result' }])
+  assert.ok(calls.includes('generate:first'))
+  assert.ok(calls.includes('generate:second'))
+  assert.ok(calls.includes('settle:gateway:first/model:first:true'))
+  assert.ok(calls.includes('settle:gateway:second/model:second:true'))
+})
+
+test('returns an empty completion from the only candidate without waiting for capacity', async () => {
+  const candidate = route('gateway', 'only/model', 'only')
+  const calls: string[] = []
+  const languageModel = createOverlayFreeLanguageModel({
+    ...dependencies([candidate], calls),
+    providers: {
+      gateway: async (modelId, provider) => model(provider, async () => {
+        calls.push('generate:only')
+        return gatewayReceiptWithContent(modelId, provider, [])
+      }),
+      openrouter: async () => { throw new Error('unexpected OpenRouter call') },
+    },
+    now: () => now,
+  })
+
+  const result = await languageModel.doGenerate(options())
+
+  assert.deepEqual(result.content, [])
+  assert.deepEqual(calls, [
+    'generate:only',
+    'settle:gateway:only/model:only:true',
+  ])
+})
+
+test('does not fail over after a tool-call-only completion', async () => {
+  const routes = [
+    route('gateway', 'first/model', 'first'),
+    route('gateway', 'second/model', 'second'),
+  ]
+  const calls: string[] = []
+  const languageModel = createOverlayFreeLanguageModel({
+    ...dependencies(routes, calls),
+    providers: {
+      gateway: async (modelId, provider) => model(provider, async () => {
+        calls.push(`generate:${provider}`)
+        return gatewayReceiptWithContent(modelId, provider, [{
+          type: 'tool-call',
+          toolCallId: 'call_1',
+          toolName: 'lookup',
+          input: '{}',
+        }])
+      }),
+      openrouter: async () => { throw new Error('unexpected OpenRouter call') },
+    },
+    now: () => now,
+  })
+
+  const result = await languageModel.doGenerate(options())
+
+  assert.equal(result.content[0]?.type, 'tool-call')
+  assert.deepEqual(calls, [
+    'generate:first',
+    'settle:gateway:first/model:first:true',
+  ])
 })
 
 test('explicit OpenRouter Free is fallback-only and retains its model identity', async () => {

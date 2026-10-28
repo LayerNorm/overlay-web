@@ -54,6 +54,30 @@ function isRateLimited(error: unknown): boolean {
     'statusCode' in error && (error as { statusCode?: unknown }).statusCode === 429
 }
 
+export function isEmptyOverlayFreeCompletion(content: LanguageModelV4GenerateResult['content']): boolean {
+  const hasText = content.some((part) => part.type === 'text' && part.text.trim().length > 0)
+  const hasToolCall = content.some((part) => part.type === 'tool-call')
+  return !hasText && !hasToolCall
+}
+
+function shouldRetryEmptyCompletion(
+  safe: boolean,
+  content: LanguageModelV4GenerateResult['content'],
+): boolean {
+  return safe && isEmptyOverlayFreeCompletion(content)
+}
+
+function resultAfterGenerateAttempts(
+  lastEmpty: LanguageModelV4GenerateResult | undefined,
+  capacityRejected: boolean,
+  ambiguousAttempt: boolean,
+  lastError: unknown,
+): LanguageModelV4GenerateResult {
+  if (lastEmpty) return lastEmpty
+  if (capacityRejected && !ambiguousAttempt) throw new OverlayFreeRouteBusyError()
+  throw lastError
+}
+
 function receiptSummary(value: ReturnType<typeof assessFreeReceipt>): OverlayFreeReceiptSummary {
   return {
     safe: value.safe,
@@ -244,6 +268,7 @@ class OverlayFreeLanguageModel implements LanguageModelV4 {
     let lastError: unknown = new Error('overlay_free_no_eligible_route')
     let capacityRejected = false
     let ambiguousAttempt = false
+    let lastEmpty: LanguageModelV4GenerateResult | undefined
     for (const candidate of attempts) {
       if (options.abortSignal?.aborted) throw options.abortSignal.reason ?? new Error('aborted')
       const claimed = await this.claim(candidate)
@@ -285,10 +310,16 @@ class OverlayFreeLanguageModel implements LanguageModelV4 {
         })
         logUnsafeReceipt(checked.route, summary)
         if (value.actualModelId) this.config.onModelCaptured?.(value.actualModelId)
-        return {
+        const completedResult = {
           ...result,
           providerMetadata: overlayMetadata(result.providerMetadata, checked.route, summary),
         }
+        if (shouldRetryEmptyCompletion(value.safe, result.content)) {
+          lastEmpty = completedResult
+          logger.warn('[overlay-free] empty completion, trying next route', { routeKey: checked.route.routeKey })
+          continue
+        }
+        return completedResult
       } catch (error) {
         clearTimeout(timer)
         if (settlementAttempted) throw error
@@ -302,8 +333,7 @@ class OverlayFreeLanguageModel implements LanguageModelV4 {
         if (failure.rethrow) throw error
       }
     }
-    if (capacityRejected && !ambiguousAttempt) throw new OverlayFreeRouteBusyError()
-    throw lastError
+    return resultAfterGenerateAttempts(lastEmpty, capacityRejected, ambiguousAttempt, lastError)
   }
 
   async doStream(options: LanguageModelV4CallOptions): Promise<LanguageModelV4StreamResult> {

@@ -31,6 +31,17 @@ export function conversationDetailRouteKey(args: {
   return `${args.pathScope}:${args.conversationId}`
 }
 
+const verifiedConversationRouteKeys = new Set<string>()
+
+export function markConversationScopeVerified(pathScope: PanelScope, conversationId: string) {
+  const routeKey = conversationDetailRouteKey({ pathScope, conversationId })
+  if (routeKey) verifiedConversationRouteKeys.add(routeKey)
+}
+
+export function isConversationScopeVerified(routeKey: string | null) {
+  return Boolean(routeKey && verifiedConversationRouteKeys.has(routeKey))
+}
+
 export function ConversationDetailScopeGate({
   routeKey,
   status,
@@ -44,6 +55,7 @@ export function ConversationDetailScopeGate({
 }) {
   if (!routeKey) return children
   if (status?.routeKey === routeKey && status.status === 'unavailable') return fallback
+  if (isConversationScopeVerified(routeKey)) return children
   if (status?.routeKey !== routeKey) return null
   return children
 }

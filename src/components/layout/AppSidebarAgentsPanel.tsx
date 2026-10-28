@@ -14,6 +14,7 @@ import { SidebarMenu, SidebarMenuAction, SidebarMenuButton, SidebarMenuItem, Sid
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { announceArchived } from '@/shared/app/archive-toast'
 import { AgentCreature } from '@/components/orb/Creature'
+import { automationHref } from '@overlay/app-core/automations'
 import {
   AGENT_DIRECTORY_CHANGED_EVENT,
   AGENT_DRAFT_PREVIEW_EVENT,
@@ -31,6 +32,8 @@ import {
 import {
   CHAT_TITLE_UPDATED_EVENT,
   dispatchChatCreated,
+  isPlaceholderChatTitle,
+  mergeChatTitle,
   type ChatTitleUpdatedDetail,
 } from '@/shared/chat/chat-title'
 import {
@@ -51,16 +54,42 @@ function bundleThreadTitle(bundle: AgentBundleMap[string] | undefined, conversat
 function useAgentBundles(workspaceId: string | null) {
   const [bundles, setBundles] = useState<AgentBundleMap>({})
   const bundleRequests = useRef(new Map<string, symbol>())
+  const threadTitleOverrides = useRef(new Map<string, string>())
 
   const loadBundle = useCallback(async (agentId: string) => {
     if (!workspaceId) return
     const request = Symbol(agentId)
     bundleRequests.current.set(agentId, request)
-    setBundles((current) => ({ ...current, [agentId]: 'loading' }))
+    setBundles((current) => {
+      const existing = current[agentId]
+      return existing && typeof existing === 'object'
+        ? current
+        : { ...current, [agentId]: 'loading' }
+    })
     try {
       const bundle = await overlayAppClient.agents.bundle(workspaceId, agentId)
       if (bundleRequests.current.get(agentId) !== request) return
-      setBundles((current) => ({ ...current, [agentId]: bundle }))
+      setBundles((current) => {
+        const previous = current[agentId]
+        const previousThreads = previous && typeof previous === 'object'
+          ? new Map(previous.threads.map((thread) => [thread.conversationId, thread.title] as const))
+          : new Map<string, string>()
+        return {
+          ...current,
+          [agentId]: {
+            ...bundle,
+            threads: bundle.threads.map((thread) => {
+              const titleBeforeFetch = threadTitleOverrides.current.get(thread.conversationId)
+                ?? previousThreads.get(thread.conversationId)
+                ?? thread.title
+              return {
+                ...thread,
+                title: mergeChatTitle(titleBeforeFetch, thread.title),
+              }
+            }),
+          },
+        }
+      })
     } catch {
       if (bundleRequests.current.get(agentId) !== request) return
       setBundles((current) => ({ ...current, [agentId]: 'error' }))
@@ -73,6 +102,8 @@ function useAgentBundles(workspaceId: string | null) {
     const onTitleUpdated = (event: Event) => {
       const { chatId, title } = (event as CustomEvent<ChatTitleUpdatedDetail>).detail ?? {}
       if (!chatId || !title) return
+      if (!isPlaceholderChatTitle(title)) threadTitleOverrides.current.set(chatId, title)
+      else threadTitleOverrides.current.delete(chatId)
       setBundles((current) => {
         let touched = false
         const next = { ...current }
@@ -83,7 +114,9 @@ function useAgentBundles(workspaceId: string | null) {
           next[agentId] = {
             ...bundle,
             threads: bundle.threads.map((thread) =>
-              thread.conversationId === chatId ? { ...thread, title } : thread),
+              thread.conversationId === chatId
+                ? { ...thread, title }
+                : thread),
           }
           touched = true
         }
@@ -206,6 +239,7 @@ function useAgentDirectory(
 function useAgentActions({
   workspaceId,
   baseHref,
+  buildWorkspaceHref,
   view,
   onNavigate,
   bundles,
@@ -217,6 +251,7 @@ function useAgentActions({
 }: {
   workspaceId: string | null
   baseHref: string
+  buildWorkspaceHref: ReturnType<typeof useWorkspaceHref>
   view: AgentsPanelView
   onNavigate?: () => void
   bundles: AgentBundleMap
@@ -273,6 +308,12 @@ function useAgentActions({
     router.push(agentThreadHref(baseHref, agent.id, conversationId, view))
     onNavigate?.()
   }, [baseHref, onNavigate, router, view, workspaceId])
+
+  const openAutomation = useCallback((automationId: string) => {
+    const href = automationHref({ _id: automationId })
+    router.push(buildWorkspaceHref(workspaceId, href, view))
+    onNavigate?.()
+  }, [buildWorkspaceHref, onNavigate, router, view, workspaceId])
 
   const createThread = useCallback(async (agent: WorkspaceAgentDirectoryItem) => {
     if (!workspaceId || creatingThreadFor) return
@@ -411,6 +452,7 @@ function useAgentActions({
     creatingThreadFor,
     openAgentById,
     openThread,
+    openAutomation,
     createThread,
     archiveThread,
     deleteThread,
@@ -430,6 +472,7 @@ function AgentListRow({
   onToggleExpanded,
   onOpenAgent,
   onOpenThread,
+  onOpenAutomation,
   onCreateThread,
   onArchiveThread,
   onDeleteThread,
@@ -445,6 +488,7 @@ function AgentListRow({
   onToggleExpanded: (agentId: string) => void
   onOpenAgent: (agent: WorkspaceAgentDirectoryItem) => void
   onOpenThread: (agent: WorkspaceAgentDirectoryItem, conversationId: string) => void
+  onOpenAutomation: (automationId: string) => void
   onCreateThread: (agent: WorkspaceAgentDirectoryItem) => void
   onArchiveThread: (agent: WorkspaceAgentDirectoryItem, conversationId: string, archived: boolean) => void
   onDeleteThread: (agent: WorkspaceAgentDirectoryItem, conversationId: string) => void
@@ -500,6 +544,7 @@ function AgentListRow({
           bundle={bundle}
           activeConversationId={activeConversationId}
           onOpenThread={onOpenThread}
+          onOpenAutomation={onOpenAutomation}
           onArchiveThread={onArchiveThread}
           onDeleteThread={onDeleteThread}
         />
@@ -571,6 +616,7 @@ export function AgentsInlinePanel({
     creatingThreadFor,
     openAgentById,
     openThread,
+    openAutomation,
     createThread,
     archiveThread,
     deleteThread,
@@ -578,6 +624,7 @@ export function AgentsInlinePanel({
   } = useAgentActions({
     workspaceId,
     baseHref: scopedBaseHref,
+    buildWorkspaceHref,
     view,
     onNavigate,
     bundles,
@@ -646,6 +693,7 @@ export function AgentsInlinePanel({
               onToggleExpanded={toggleExpanded}
               onOpenAgent={(target) => void openAgentById(target)}
               onOpenThread={openThread}
+              onOpenAutomation={openAutomation}
               onCreateThread={(target) => void createThread(target)}
               onArchiveThread={(target, conversationId, archived) => {
                 void archiveThread(target, conversationId, archived)

@@ -7,6 +7,8 @@ import type { GeneratedUiData } from '@overlay/chat-core/generated-ui'
 import type { AutomationDetail } from '@overlay/app-core'
 import { usePathname, useSearchParams, useRouter } from 'next/navigation'
 import { normalizeChatModelSelection } from '@/shared/chat/chat-model-prefs'
+import { isTextModelLocked as isWorkspaceTextModelLocked } from '@/components/providers/useWorkspaceTextModelAccess'
+import type { ChatModel } from '@/shared/ai/gateway/model-types'
 import { useChatListEventSync } from './useChatListEventSync'
 import { useChatAttachments } from '../useChatAttachments'
 import { useChatBillingControls } from './useChatBillingControls'
@@ -64,6 +66,10 @@ import { useChatTurnActions } from './useChatTurnActions'
 import { useWorkApproval } from './useWorkApproval'
 import { useComposerActions } from './useComposerActions'
 import { buildChatDerivedView } from './chatDerivedView'
+import {
+  showUsageExhaustedToast,
+  usageExhaustionVariantForError,
+} from './usage-exhausted-toast'
 
 export type ChatExperienceProps = {
   userId: string | null
@@ -92,6 +98,12 @@ export function useChatExperienceController({
 }: ChatExperienceProps) {
   recordRender('ChatExperience')
   const router = useRouter()
+  const onUsageExhaustedError = useCallback((message: string) => {
+    const variant = usageExhaustionVariantForError(message)
+    if (!variant) return false
+    showUsageExhaustedToast(router, variant)
+    return true
+  }, [router])
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const buildWorkspaceHref = useWorkspaceHref()
@@ -216,7 +228,7 @@ export function useChatExperienceController({
     setReasoning,
   } = useChatPreferences()
   const [, setIsSwitchingChat] = useState(false)
-  const generatedUiConnectorActions = useGeneratedUiConnectorActions({ enabled: true })
+  const generatedUiConnectorActions = useGeneratedUiConnectorActions({ enabled: capabilities.integrations })
 
   const [isDragging, setIsDragging] = useState(false)
   const {
@@ -243,6 +255,7 @@ export function useChatExperienceController({
 
   const [isOptimisticLoading, setIsOptimisticLoading] = useState(false)
   const [composerNotice, setComposerNotice] = useState<string | null>(null)
+  const [upgradeModel, setUpgradeModel] = useState<Pick<ChatModel, 'name'> | null>(null)
   const previousAgentRunRef = useRef<AgentRunNoticePrevious | null>(null)
   const {
     attachedImages,
@@ -287,9 +300,11 @@ export function useChatExperienceController({
     connectionUnavailable,
     isBudgetExhaustedPaid,
     isFreeTier,
+    isModelAccessRestricted,
     isSendBlocked,
     loadSubscription,
     premiumModelBlocked,
+    pickerTextModels,
     selectableTextModels,
   } = useChatBillingControls({
     activeChatId,
@@ -309,11 +324,14 @@ export function useChatExperienceController({
     setSelectedActModel,
     setSelectedModels,
   })
+  const isPickerTextModelLocked = useCallback(
+    (modelId: string) => isWorkspaceTextModelLocked(modelId, isModelAccessRestricted),
+    [isModelAccessRestricted],
+  )
   const {
     applyDefaultChatModelsToView,
   } = useChatModelDefaults({
     settings,
-    billingEnabled,
     isFreeTier,
     hasStoredTextModelSelection,
     selectedActModel,
@@ -810,6 +828,7 @@ export function useChatExperienceController({
     loadChats,
     loadSubscription,
     mode,
+    onUsageExhaustedError,
     selectedActModel,
     shouldScrollRef,
     startSession,
@@ -848,6 +867,7 @@ export function useChatExperienceController({
     isTemporaryChatRef,
     loadChats,
     loadSubscription,
+    onUsageExhaustedError,
     markChatModified,
     memoryEnabled,
     mentions,
@@ -1041,6 +1061,10 @@ export function useChatExperienceController({
     selectedVideoModels,
     automationHeaderModelId,
     automationHeaderModels: selectableTextModels,
+    pickerTextModels,
+    isTextModelLocked: isPickerTextModelLocked,
+    upgradeModel,
+    setUpgradeModel,
     saveAutomationHeaderModel,
     selectAutomationDetailTab,
     headerModelProps,

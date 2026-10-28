@@ -164,6 +164,23 @@ test('AutomationService.createAutomation preserves paid-plan requirement', async
   )
 })
 
+test('AutomationService.getAutomations includes agent-bound automations', async () => {
+  const agentAutomation = { _id: 'automation_agent', agentId: 'agent_1' }
+  let excludeAgentBound: boolean | undefined = true
+  const repository = createRepository({
+    async listAutomations(args) {
+      excludeAgentBound = args.excludeAgentBound
+      return [agentAutomation] as never
+    },
+  })
+  const { service } = createService(repository)
+
+  const result = await service.getAutomations({ userId: 'user_1', workspaceId: 'workspace_1' })
+
+  assert.deepEqual(result, [agentAutomation])
+  assert.equal(excludeAgentBound, undefined)
+})
+
 test('AutomationService.createAutomation preserves interval floor response shape', async () => {
   const { service } = createService()
 

@@ -518,6 +518,20 @@ capabilities only. Public marketing pages define their own canonical paths so
 they do not inherit the root homepage canonical.
 
 
+## Chat titles and new-agent startup
+
+Title events update the header, sidebar and list cache together. Optimistic list
+updates must preserve a known title when an incoming value is a placeholder.
+Agent threads generate a title from their first human message and preserve custom
+names. Title generation uses Auto's free routes with one shared 12-second provider
+deadline across server attempts; caller cancellation aborts generation too.
+
+After agent creation, carry its instructions to the new conversation as one pending
+user message. Consume it only when the human and expected solo agent are loaded;
+expire it after 60 seconds. Use the static greeting only for empty instructions.
+Agent-created automations also appear in Automations with the owning creature
+avatar. Sidebar rows without a conversation open the automation itself.
+
 ## Chat AI primitives (`@overlay/ui/ai`)
 
 Chat surfaces build on shadcn AI Elements primitives copied into `packages/overlay-ui/src/components/ui` and exported from `@overlay/ui/ai` (kept out of the main barrel so Shiki only loads where chat renders): `Message`, `Bubble`, `Trace`, `CodeBlock` (+ `useHighlightedCode`, Shiki JS engine, GitHub light/dark themes that presets never tint), `MessageScroller` (`@shadcn/react`), `Item`, `InputGroup`, `Attachment`, `HoverCard`, `Collapsible`, `Spinner`. Upstream semantic classes are rewritten to Overlay variables (`bg-(--surface-subtle)`, `text-(--muted)`, `text-(--danger)`); `--muted` is a text color here, so never add a `--color-muted` theme alias. Every Trace step uses the Orb in `TraceIcon`; a running step's title shimmers (CSS in `styles.css`, off under reduced motion).
@@ -552,3 +566,16 @@ A native terminal detail shares its command's call key. Both live tool groups an
 
 While a turn continues, an attached terminal detail follows its command's resolved state even if the retained attachment still says running. Match by call key regardless of part order; unrelated running commands and standalone terminal details remain live.
 The liveness status uses only the first command line, capped at 96 Unicode code points. Full command bodies remain in collapsed tool details so a long script cannot crowd out the answer, deadline or recovery state.
+
+## Provider models and connection cards
+
+Agent creation and editing share the chat model picker, with workspace entitlements
+restricting runnable models. Unresolved access stays on the free choices; the paid
+new-agent default is GLM 5.3 Flash. Chat may show locked premium choices for upgrade
+discovery while retaining its send-time access checks.
+
+Markdown Connect cards use the integration logo and current connection state. Only
+replace their original URL with an OAuth button when integrations are enabled and
+the service name resolves to a supported connector. Otherwise keep the link usable.
+Refresh connection state on window focus after an OAuth tab returns. Inline provider
+marks use monochrome foreground paths; discard filled export backgrounds.

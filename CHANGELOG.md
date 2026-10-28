@@ -4,6 +4,21 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Abort title generation at its shared deadline or client cancellation, stop retries, and release failed-attempt reservations.
+
+- Keep generated chat titles stable through optimistic updates and use a resolved first-message title when creating chats.
+- Include agent-created automations in the Automations list, show their agent avatars, and open them from agent rows.
+- Start new agent conversations with the agent's instructions as the first user message.
+- Generate chat titles with the Auto free router and retry stalled title requests once.
+- Retry empty Auto title generations, skip free models that return an empty reply, and record routed-model diagnostics.
+
+- Preserve connector-card links for unavailable services and render the Poolside provider mark without opaque export backgrounds.
+
+- Refresh recommended models to each provider's latest releases, give every model provider a logo, show the app's logo on chat connect cards and switch them to Connected once linked, and use the shared model picker in the New agent dialog with GLM 5.3 Flash as the default. Free workspaces now see only Auto and OpenRouter free in model pickers even when billing is turned off for the deployment.
+- Avoid remounting new chats after their first response and keep the generation-mode tooltip from opening when the model picker receives programmatic focus.
+
+- Keep free workspaces visibly free until paid, show locked premium models with upgrade paths, and surface paid and weekly usage exhaustion in chat.
+
 - Enable ChatGPT/Codex subscription connections in the hosted production environment. Other subscription adapters remain unavailable.
 
 - Keep the composer available when a disconnected BYOK model is selected, with guidance to reconnect or choose another model.
