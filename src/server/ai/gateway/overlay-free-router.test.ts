@@ -224,9 +224,9 @@ for (const method of ['doStream', 'doGenerate'] as const) {
 }
 
 for (const method of ['doStream', 'doGenerate'] as const) {
-  test(`${method} treats a cooled-only route as busy capacity`, async () => {
+  test(`${method} treats a listed cooled route as busy capacity`, async () => {
     const calls: string[] = []
-    const routes = [route('openrouter', 'openrouter/free', 'openrouter')]
+    const routes = [{ ...route('openrouter', 'openrouter/free', 'openrouter'), cooldownUntil: now + 60_000 }]
     const deps = dependencies(routes, calls, {
       claim: async () => ({ status: 'cooldown', route: null }),
     })

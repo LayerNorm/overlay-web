@@ -362,7 +362,13 @@ export function createOverlayFreeRepository(): OverlayFreeRepository {
       }, { throwOnError: true })
       const routes = required(await convex.query<OverlayFreeRoute[]>(
         'platform/overlayFreeSafety:listEligibleByServer',
-        { serverSecret: secret(), now: Date.now(), generation: state.generation, includeBusy: true },
+        {
+          serverSecret: secret(),
+          now: Date.now(),
+          generation: state.generation,
+          includeBusy: true,
+          includeCooldown: true,
+        },
         { throwOnError: true },
       ), 'route_list')
       if (!Array.isArray(routes)) throw new Error('overlay_free_storage_route_list_failed')

@@ -18,6 +18,10 @@ claimed atomically for one request at a time; busy routes are skipped. A request
 lease lasts up to three minutes, and an unresolved expired lease permanently
 quarantines that route.
 
+Server-side capacity discovery includes busy and cooled routes so the router can
+classify claim rejections. Claims continue to refuse busy or cooled routes and
+never grant a lease while a route is cooling down.
+
 Before semantic output, the stream buffers at most 32 distinct metadata/start
 parts and 64 KiB; identical parts count once. After output begins, metadata passes
 through without consuming that prelude budget. Fallback resets the buffer and

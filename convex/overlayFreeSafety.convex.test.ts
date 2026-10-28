@@ -93,6 +93,38 @@ describe('overlay-free durable safety state', () => {
     expect(await convex.query(api.platform.overlayFreeSafety.listEligibleByServer, { ...query, now: 180_003, includeBusy: true })).toEqual([])
   })
 
+  test('capacity discovery can include cooled routes without bypassing cooldown or quarantine', async () => {
+    const convex = convexTest(schema, modules)
+    const row = await lockAndPublish(convex)
+    const claim = {
+      serverSecret: secret, routeKey: row.routeKey, leaseToken: 'cooldown-route', now: 2,
+      leaseMs: 180_000, purpose: 'user' as const, expectedGeneration: row.generation,
+    }
+    expect((await convex.mutation(api.platform.overlayFreeSafety.claimByServer, claim)).status).toBe('claimed')
+    expect(await convex.mutation(api.platform.overlayFreeSafety.cooldownByServer, {
+      serverSecret: secret,
+      routeKey: row.routeKey,
+      leaseToken: claim.leaseToken,
+      now: 3,
+      cooldownUntil: 60_003,
+      reason: 'pre-generation rejection',
+    })).toEqual({ status: 'settled' })
+
+    const query = { serverSecret: secret, now: 4, generation: row.generation }
+    expect(await convex.query(api.platform.overlayFreeSafety.listEligibleByServer, query)).toEqual([])
+    expect(await convex.query(api.platform.overlayFreeSafety.listEligibleByServer, {
+      ...query, includeCooldown: true,
+    })).toHaveLength(1)
+    expect((await convex.mutation(api.platform.overlayFreeSafety.claimByServer, {
+      ...claim, leaseToken: 'retry', now: 4,
+    })).status).toBe('cooldown')
+
+    await updateRoute(convex, row.routeKey, { quarantineReason: 'stream error after output', quarantineAt: 4 })
+    expect(await convex.query(api.platform.overlayFreeSafety.listEligibleByServer, {
+      ...query, includeBusy: true, includeCooldown: true,
+    })).toEqual([])
+  })
+
   test('late settlement quarantines even when no cleanup has run', async () => {
     const convex = convexTest(schema, modules)
     const row = await lockAndPublish(convex)
