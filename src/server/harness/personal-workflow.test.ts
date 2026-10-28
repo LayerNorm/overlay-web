@@ -76,6 +76,7 @@ beforeEach(() => {
   mocks.read.mockImplementation(async () => state)
   mocks.claim.mockResolvedValue(true)
   mocks.conflict.mockResolvedValue(null)
+  mocks.tools.mockReturnValue({})
   mocks.ports.mockImplementation((_execution, surface) => ({ ...surface, recordModelStep: vi.fn() }))
   mocks.run.mockImplementation(async () => completed())
 })

@@ -47,6 +47,7 @@ beforeEach(() => {
   mocks.read.mockResolvedValue(state)
   mocks.claim.mockResolvedValue(true)
   mocks.conflict.mockResolvedValue(null)
+  mocks.tools.mockReturnValue({})
   mocks.ports.mockImplementation((_execution: unknown, surface: unknown) => ({ ...surface }))
   mocks.run.mockResolvedValue({ outcome: 'finished', snapshot: { ...state, status: 'completed' }, messages: [], steps: [] })
 })
