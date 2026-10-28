@@ -80,6 +80,21 @@ test('native projection holds split protocol markers and drops the call and foll
   expect(JSON.stringify(mocks.append.mock.calls)).not.toContain('must stay hidden')
 })
 
+test('native projection strips the nested create_note protocol from the live reply', async () => {
+  const leaked = '[[{"name":"create_note","parameters":{"title":"QA354-01","content":"1"}},{"name":"create_note","parameters":{"title":"QA354-02","content":"2"}},{"name":"create_note","parameters":{"title":"QA354-03","content":"3"}}]]'
+  const parts = [
+    text('Before\n\n'),
+    text(leaked.slice(0, 24)),
+    text(leaked.slice(24)),
+    text('\n\nAfter'),
+    finish,
+  ]
+  expect(await drain(await projectNativeHarnessStream(reference, source(parts), new Set(['create_note'])))).toEqual(parts)
+  const visible = mocks.append.mock.calls.map(([args]) => args.contentDelta).join('')
+  expect(visible).toBe('Before\n\nAfter')
+  expect(JSON.stringify(mocks.append.mock.calls)).not.toContain('"name":"create_note"')
+})
+
 test('native projection flushes an unresolved marker prefix at finish', async () => {
   const parts = [text('Visible <tool_'), finish]
   expect(await drain(await projectNativeHarnessStream(reference, source(parts)))).toEqual(parts)

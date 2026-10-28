@@ -5,8 +5,10 @@ import type { HarnessToolExecutionOptions } from './tool-approvals'
 
 const mocks = vi.hoisted(() => ({
   refresh: vi.fn(), build: vi.fn(), execute: vi.fn(), dispatch: vi.fn(), progress: vi.fn(), apply: vi.fn(),
+  warn: vi.fn(),
 }))
 vi.mock('server-only', () => ({}))
+vi.mock('@/server/observability/logger', () => ({ logger: { warn: mocks.warn } }))
 vi.mock('./native-access', () => ({ refreshNativeHarnessAccess: mocks.refresh }))
 vi.mock('./state-steps', () => ({ applyHarnessOperation: mocks.apply }))
 vi.mock('./native-tool-steps', async importOriginal => ({
@@ -146,6 +148,9 @@ test('presentation progress failures do not change the tool result or re-execute
   await expect(definition.execute!({ fileId: 'file' }, options)).resolves.toEqual({ ok: true })
   expect(mocks.execute).toHaveBeenCalledOnce()
   expect(mocks.progress).toHaveBeenCalledTimes(2)
+  expect(mocks.warn).toHaveBeenCalledWith('[harness] native tool progress write failed', expect.objectContaining({
+    runId: input.access.runId, toolCallId: 'call', error: 'progress write unavailable',
+  }))
 })
 
 test('named-agent ask and post tools dispatch in process without rebuilding ordinary tool authority', async () => {

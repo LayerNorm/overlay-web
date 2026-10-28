@@ -33,26 +33,34 @@ export type NativeHarnessContext = {
   requestFingerprint: string
 }
 
-function assertActiveAuthority(access: NativeHarnessAccess, state: HarnessSnapshot | null): asserts state is HarnessSnapshot {
+function assertActiveAuthority(
+  access: NativeHarnessAccess,
+  state: HarnessSnapshot | null,
+  allowCancelledToolProgress = false,
+): asserts state is HarnessSnapshot {
+  const cancelledToolProgress = allowCancelledToolProgress && state?.runId === access.runId && state.status === 'cancelled'
   if (!state?.workflowRunId || state.policy.actorUserId !== access.actorUserId
-    || state.policy.workspaceId !== access.workspaceId || state.policy.deadlineAt <= Date.now()
-    || ['completed', 'failed', 'cancelled'].includes(state.status)) {
+    || state.policy.workspaceId !== access.workspaceId
+    || (state.policy.deadlineAt <= Date.now() && !cancelledToolProgress)
+    || ['completed', 'failed'].includes(state.status)
+    || (state.status === 'cancelled' && !cancelledToolProgress)) {
     throw new FatalError('Native harness execution is no longer authorized.')
   }
 }
 
-async function readNativeAuthority(access: NativeHarnessAccess, toolName?: string) {
+async function readNativeAuthority(access: NativeHarnessAccess, toolName?: string, allowCancelledToolProgress = false) {
   const repository = new ConvexHarnessRepository()
   const state = await repository.get(access)
-  assertActiveAuthority(access, state)
-  if (state.workflowRunId !== access.workflowRunId || state.status !== 'running') {
+  assertActiveAuthority(access, state, allowCancelledToolProgress)
+  if (state.workflowRunId !== access.workflowRunId
+    || (state.status !== 'running' && !(allowCancelledToolProgress && state.status === 'cancelled'))) {
     throw new FatalError('Native harness execution is not owned by this workflow.')
   }
   if (toolName && !state.policy.allowedToolIds.includes(toolName)) {
     throw new FatalError('Tool is outside this harness run\'s capabilities.')
   }
   const root = state.parentRunId ? await repository.get({ actorUserId: access.actorUserId, runId: state.rootRunId }) : state
-  assertActiveAuthority(access, root)
+  assertActiveAuthority(access, root, allowCancelledToolProgress && root?.runId === state.runId)
   const deliveryRunId = `workspace:${access.agentRunId}`
   let delivery = state
   const visited = new Set<string>()
@@ -71,17 +79,25 @@ async function readNativeAuthority(access: NativeHarnessAccess, toolName?: strin
   return { state, delivery }
 }
 
-function assertNativeDelivery(access: NativeHarnessAccess, state: HarnessSnapshot, delivery: HarnessSnapshot, run: AgentRun | null): void {
+function assertNativeDelivery(
+  access: NativeHarnessAccess,
+  state: HarnessSnapshot,
+  delivery: HarnessSnapshot,
+  run: AgentRun | null,
+  allowCancelledToolProgress = false,
+): void {
   if (!run || run.id !== access.agentRunId || run.userId !== access.actorUserId
     || run.conversationId !== access.conversationId || run.agentId !== access.agentId
     || run.agentPrincipalId !== access.agentPrincipalId || run.turnId !== access.turnId
     || run.userMessageId !== access.userMessageId || run.assistantMessageId !== access.assistantMessageId) {
     throw new FatalError('Native delivery identity changed.')
   }
+  const cancelledToolProgress = allowCancelledToolProgress && state.runId === access.runId && state.status === 'cancelled'
   if (run.runner !== 'workflow' || run.executionEngine !== 'overlay_harness' || run.mode !== 'room'
     || run.harnessRunId !== delivery.runId || run.workflowRunId !== delivery.workflowRunId
     || (run.status !== 'running' && !(state.runId !== delivery.runId
-      && ['waiting_for_input', 'waiting_for_approval', 'waiting_for_children'].includes(run.status)))) {
+      && ['waiting_for_input', 'waiting_for_approval', 'waiting_for_children'].includes(run.status))
+      && !(cancelledToolProgress && run.status === 'cancelled'))) {
     throw new FatalError('Native delivery execution changed.')
   }
 }
@@ -125,8 +141,14 @@ async function assertNativeCapabilities(access: NativeHarnessAccess, context: Na
 }
 
 // This returns fresh, in-process authority, never a durable permission snapshot.
-export async function refreshNativeHarnessAccess(access: NativeHarnessAccess, context: NativeHarnessContext, toolName?: string) {
-  const { state, delivery } = await readNativeAuthority(access, toolName)
+export async function refreshNativeHarnessAccess(
+  access: NativeHarnessAccess,
+  context: NativeHarnessContext,
+  toolName?: string,
+  options: { allowCancelledToolProgress?: boolean } = {},
+) {
+  const allowCancelledToolProgress = options.allowCancelledToolProgress === true && Boolean(toolName)
+  const { state, delivery } = await readNativeAuthority(access, toolName, allowCancelledToolProgress)
   const server = getOverlayServerContext()
   const [room, workspace, run] = await Promise.all([
     loadRoomTurnContext({ actorUserId: access.actorUserId, workspaceId: access.workspaceId,
@@ -139,7 +161,7 @@ export async function refreshNativeHarnessAccess(access: NativeHarnessAccess, co
   if (workspace.workspace.id !== access.workspaceId || workspace.principal.id !== access.principalId) {
     throw new FatalError('Native workspace identity changed.')
   }
-  assertNativeDelivery(access, state, delivery, run)
+  assertNativeDelivery(access, state, delivery, run, allowCancelledToolProgress)
   const agent = assertRoomIdentity(access, context, room)
   await assertNativeCapabilities(access, context, toolName)
   const gate = await actEntitlementService.gateModelPolicy({ effectiveModelId: context.modelId,
@@ -150,5 +172,6 @@ export async function refreshNativeHarnessAccess(access: NativeHarnessAccess, co
     throw new FatalError('The native model is no longer allowed by server policy.')
   }
   return { agent, latestUserText: room.latestUserText, entitlements: gate.runtimeEntitlements, paid: gate.paid,
+    runStatus: state.status,
     requiresZeroDataRetention: gate.paid && gate.appSettings?.onlyAllowZdrModels === true }
 }

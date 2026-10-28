@@ -113,6 +113,21 @@ test('refuses stale execution, capabilities and model access before provider adm
   await expect(refreshNativeHarnessAccess(access, context)).rejects.toThrow(/server policy/)
 })
 
+test('only final tool progress may refresh authority after cancellation', async () => {
+  mocks.state.mockResolvedValue({ ...snapshot(), status: 'cancelled' })
+  mocks.run.mockResolvedValue({ ...delivery(), status: 'cancelled' })
+
+  await expect(refreshNativeHarnessAccess(access, context, 'read_file', { allowCancelledToolProgress: true }))
+    .resolves.toMatchObject({ runStatus: 'cancelled' })
+  await expect(refreshNativeHarnessAccess(access, context, 'read_file')).rejects.toThrow(/no longer authorized/)
+  await expect(refreshNativeHarnessAccess(access, context, undefined, { allowCancelledToolProgress: true }))
+    .rejects.toThrow(/no longer authorized/)
+
+  mocks.state.mockResolvedValue({ ...snapshot(), status: 'failed' })
+  await expect(refreshNativeHarnessAccess(access, context, 'read_file', { allowCancelledToolProgress: true }))
+    .rejects.toThrow(/no longer authorized/)
+})
+
 test('children can execute while their delivery waits, but cannot borrow a sibling delivery or outlive Stop', async () => {
   const child = { ...snapshot(), runId: 'child', parentRunId: access.runId, depth: 1, workflowRunId: 'child-workflow' }
   const childAccess = { ...access, runId: child.runId, workflowRunId: child.workflowRunId }

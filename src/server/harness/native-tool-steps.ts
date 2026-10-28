@@ -93,8 +93,12 @@ async function safelyProjectNativeHarnessToolProgress(
       call.context,
       typeof progress === 'function' ? progress() : progress,
     )
-  } catch (_error) {
-    // Tool progress is presentation-only and must never affect the tool effect.
+  } catch (error) {
+    logger.warn('[harness] native tool progress write failed', {
+      runId: call.access.runId,
+      toolCallId: call.toolCallId,
+      error: error instanceof Error ? error.message : String(error),
+    })
   }
 }
 

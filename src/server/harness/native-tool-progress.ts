@@ -31,6 +31,12 @@ function sameToolCall(part: Record<string, unknown>, toolCallId: string): boolea
   return (part.toolInvocation as Record<string, unknown>).toolCallId === toolCallId
 }
 
+function isExistingInputToolCall(part: Record<string, unknown> | undefined, progress: NativeHarnessToolProgress): boolean {
+  if (!part || !sameToolCall(part, progress.toolCallId)) return false
+  const invocation = part.toolInvocation as Record<string, unknown>
+  return invocation.toolName === progress.toolName && invocation.state === 'input-available'
+}
+
 /**
  * Tool progress is a best-effort display snapshot. The terminal delivery
  * rewrites the row with the authoritative Harness transcript.
@@ -44,7 +50,9 @@ export async function projectNativeHarnessToolProgress(
 
   try {
     const store = getOverlayServerContext().appData.repositories.conversationCollaboration
-    await refreshNativeHarnessAccess(access, context, progress.toolName)
+    const finalState = progress.state !== 'input-available'
+    const accessOptions = finalState ? { allowCancelledToolProgress: true } : undefined
+    const before = await refreshNativeHarnessAccess(access, context, progress.toolName, accessOptions)
     const [message] = await store.listMessages({
       actorUserId: access.actorUserId,
       conversationId: access.conversationId,
@@ -63,10 +71,13 @@ export async function projectNativeHarnessToolProgress(
       .map(part => ({ ...part }))
     const nextPart = toolInvocationPart(progress)
     const existingIndex = parts.findIndex(part => sameToolCall(part, progress.toolCallId))
+    const existingInputToolCall = isExistingInputToolCall(parts[existingIndex], progress)
+    if (before.runStatus === 'cancelled' && (!finalState || !existingInputToolCall)) return
     if (existingIndex >= 0) parts[existingIndex] = nextPart
     else parts.push(nextPart)
 
-    await refreshNativeHarnessAccess(access, context, progress.toolName)
+    const after = await refreshNativeHarnessAccess(access, context, progress.toolName, accessOptions)
+    if (after.runStatus === 'cancelled' && (!finalState || !existingInputToolCall)) return
     await persistAgentToolProgress({
       store,
       actorUserId: access.actorUserId,
@@ -76,7 +87,7 @@ export async function projectNativeHarnessToolProgress(
       workspaceId: access.workspaceId,
     })
   } catch (error) {
-    logger.warn('[harness] native tool progress projection unavailable', {
+    logger.warn('[harness] native tool progress write failed', {
       runId: access.runId,
       toolCallId: progress.toolCallId,
       error: error instanceof Error ? error.message : String(error),

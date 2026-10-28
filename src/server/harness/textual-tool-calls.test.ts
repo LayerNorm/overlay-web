@@ -34,6 +34,16 @@ test('strips known tool JSON objects and arrays, including fenced blocks and sta
   )).toBe('')
 })
 
+test('strips the nested create_note protocol leaked in QA354', () => {
+  const leaked = '[[{"name":"create_note","parameters":{"title":"QA354-01","content":"1"}},{"name":"create_note","parameters":{"title":"QA354-02","content":"2"}},{"name":"create_note","parameters":{"title":"QA354-03","content":"3"}}]]'
+  const names = new Set([...toolNames, 'create_note'])
+  expect(stripTextualToolCalls(`Before\n\n${leaked}\n\nAfter`, names)).toBe('Before\n\nAfter')
+  expect(stripTextualToolCalls('The requested payload is ' + leaked + ' for illustration.', names))
+    .toBe('The requested payload is ' + leaked + ' for illustration.')
+  const code = '```json\n{"name":"unknown_tool","parameters":{"path":"a"}}\n```'
+  expect(stripTextualToolCalls(code, names)).toBe(code)
+})
+
 test('preserves unknown-tool JSON and JSON embedded in ordinary prose', () => {
   const unknown = '{"name":"unknown_tool","parameters":{"path":"a"}}'
   const known = '{"name":"read_file","arguments":{"path":"a"}}'

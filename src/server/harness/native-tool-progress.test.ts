@@ -62,6 +62,71 @@ test('the delivery owner projects running then completed tool progress', async (
   expect(mocks.refresh).toHaveBeenCalledTimes(4)
 })
 
+test('a cancelled delivery can finalize only an existing running tool part', async () => {
+  const runningPart = {
+    type: 'tool-invocation',
+    toolInvocation: {
+      toolCallId: progress.toolCallId,
+      toolName: progress.toolName,
+      state: 'input-available',
+      toolInput: progress.input,
+    },
+  }
+  mocks.refresh.mockResolvedValue({ runStatus: 'cancelled' })
+  mocks.list.mockResolvedValueOnce([{ ...baseMessage, parts: [...baseMessage.parts, runningPart] }])
+
+  await projectNativeHarnessToolProgress(access, context, {
+    ...progress, state: 'output-available', output: { ok: true },
+  })
+
+  expect(mocks.append).toHaveBeenCalledOnce()
+  expect(mocks.append.mock.calls[0]![0].parts).toEqual([
+    { type: 'text', text: 'Working' },
+    { type: 'tool-invocation', toolInvocation: {
+      toolCallId: 'call', toolName: 'read_file', state: 'output-available',
+      toolInput: { fileId: 'file' }, toolOutput: { ok: true },
+    } },
+  ])
+  expect(mocks.refresh).toHaveBeenCalledWith(access, context, 'read_file', { allowCancelledToolProgress: true })
+})
+
+test('a cancelled delivery can mark an existing tool part as errored', async () => {
+  const runningPart = {
+    type: 'tool-invocation',
+    toolInvocation: {
+      toolCallId: progress.toolCallId,
+      toolName: progress.toolName,
+      state: 'input-available',
+      toolInput: progress.input,
+    },
+  }
+  mocks.refresh.mockResolvedValue({ runStatus: 'cancelled' })
+  mocks.list.mockResolvedValueOnce([{ ...baseMessage, parts: [...baseMessage.parts, runningPart] }])
+
+  await projectNativeHarnessToolProgress(access, context, {
+    ...progress, state: 'output-error', output: { error: 'failed' },
+  })
+
+  expect(mocks.append).toHaveBeenCalledOnce()
+  expect(mocks.append.mock.calls[0]![0].parts[1]).toEqual({
+    type: 'tool-invocation',
+    toolInvocation: {
+      toolCallId: 'call', toolName: 'read_file', state: 'output-error',
+      toolInput: { fileId: 'file' }, toolOutput: { error: 'failed' },
+    },
+  })
+})
+
+test('cancelled deliveries cannot create tool parts or write non-final progress', async () => {
+  mocks.refresh.mockResolvedValue({ runStatus: 'cancelled' })
+  await projectNativeHarnessToolProgress(access, context, {
+    ...progress, state: 'output-error', output: { error: 'failed' },
+  })
+  await projectNativeHarnessToolProgress(access, context, progress)
+
+  expect(mocks.append).not.toHaveBeenCalled()
+})
+
 test('anonymous children do not project tool progress', async () => {
   await projectNativeHarnessToolProgress({ ...access, runId: 'anonymous-child' }, context, progress)
   expect(mocks.refresh).not.toHaveBeenCalled()

@@ -65,7 +65,10 @@ export async function secureModelDoStream(reference: HarnessModelReference, opti
   const stream = captureRouteInterruption(reference, result.stream)
   if (!reference.native?.streamToDelivery) return { ...result, stream }
   const { projectNativeHarnessStream } = await import('./native-model-stream')
-  return { ...result, stream: await projectNativeHarnessStream(reference, stream) }
+  const toolNames = new Set((options.tools ?? []).flatMap(tool => (
+    'name' in tool && typeof tool.name === 'string' ? [tool.name] : []
+  )))
+  return { ...result, stream: await projectNativeHarnessStream(reference, stream, toolNames) }
 }
 
 export async function secureModelDoGenerate(reference: HarnessModelReference, options: LanguageModelV4CallOptions) {

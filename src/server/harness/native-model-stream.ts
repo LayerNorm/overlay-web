@@ -5,12 +5,101 @@ import { getOverlayServerContext } from '@/server/bootstrap'
 import { createAgentMessageStream, appendAgentTextPart } from '@/server/agents/agent-message-stream'
 import { logger } from '@/server/observability/logger'
 import { compactAssistantPersistenceForConvex, MAX_PERSISTED_ASSISTANT_CONTENT_CHARS } from '@/shared/chat/persist-assistant-turn'
+import { stripTextualToolCalls } from '@/shared/ai/textual-tool-calls'
 import { refreshNativeHarnessAccess } from './native-access'
 import type { HarnessModelReference } from './secure-model'
+
+function couldBeginTextualToolCall(value: string): boolean {
+  const trimmed = value.trimStart()
+  if (!trimmed || trimmed.startsWith('```') || '```'.startsWith(trimmed)) return true
+  if (trimmed.startsWith('{')) {
+    const next = trimmed.slice(1).trimStart()
+    return !next || next.startsWith('"')
+  }
+  if (trimmed.startsWith('[')) {
+    const next = trimmed.slice(1).trimStart()
+    return !next || next.startsWith('{') || next.startsWith('[')
+  }
+  return false
+}
+
+function createTextualToolCallProjector(
+  toolNames: ReadonlySet<string>,
+  appendVisibleText: (text: string) => void,
+) {
+  let partialLine = ''
+  let candidateParagraph = ''
+  let codeFence = ''
+  let insideCodeFence = false
+
+  const flushCandidate = (separator = '') => {
+    const visible = stripTextualToolCalls(candidateParagraph, toolNames)
+    if (visible) appendVisibleText(visible + separator)
+    candidateParagraph = ''
+  }
+
+  const projectLine = (line: string) => {
+    if (candidateParagraph) {
+      if (/^[ \t]*\n$/.test(line)) flushCandidate(line)
+      else candidateParagraph += line
+      return
+    }
+    if (insideCodeFence) {
+      codeFence += line
+      if (/^[ \t]*```/.test(line)) {
+        appendVisibleText(stripTextualToolCalls(codeFence, toolNames))
+        codeFence = ''
+        insideCodeFence = false
+      }
+      return
+    }
+    if (/^[ \t]*```/.test(line)) {
+      codeFence = line
+      insideCodeFence = true
+      return
+    }
+    if (/^[ \t]*[\[{]/.test(line)) {
+      candidateParagraph = line
+      return
+    }
+    appendVisibleText(line)
+  }
+
+  return {
+    push(text: string) {
+      const combined = partialLine + text
+      partialLine = ''
+      let start = 0
+      while (start < combined.length) {
+        const newline = combined.indexOf('\n', start)
+        if (newline < 0) {
+          const remainder = combined.slice(start)
+          if (candidateParagraph || insideCodeFence || couldBeginTextualToolCall(remainder)) {
+            partialLine = remainder
+          } else {
+            appendVisibleText(remainder)
+          }
+          return
+        }
+        projectLine(combined.slice(start, newline + 1))
+        start = newline + 1
+      }
+    },
+    flush() {
+      if (partialLine) projectLine(partialLine)
+      partialLine = ''
+      if (candidateParagraph) flushCandidate()
+      if (codeFence) appendVisibleText(stripTextualToolCalls(codeFence, toolNames))
+      codeFence = ''
+      insideCodeFence = false
+    },
+  }
+}
 
 export async function projectNativeHarnessStream(
   reference: HarnessModelReference,
   source: ReadableStream<LanguageModelV4StreamPart>,
+  toolNames: ReadonlySet<string> = new Set(),
 ): Promise<ReadableStream<LanguageModelV4StreamPart>> {
   const native = reference.native
   if (!native?.streamToDelivery || native.access.runId !== `workspace:${native.access.agentRunId}`) return source
@@ -54,6 +143,7 @@ export async function projectNativeHarnessStream(
       parts = compactAssistantPersistenceForConvex({ content: '', parts }).parts
       stream.pushText(visible, parts)
     }
+    const textualToolCallProjector = createTextualToolCallProjector(toolNames, appendVisibleText)
     const projectTextDelta = (delta: string) => {
       if (protocolSeen || remaining <= 0) return
       const combined = `${pendingMarkerPrefix}${delta}`
@@ -62,7 +152,7 @@ export async function projectNativeHarnessStream(
         .filter(index => index >= 0)
         .sort((a, b) => a - b)[0]
       if (markerIndex !== undefined) {
-        appendVisibleText(combined.slice(0, markerIndex))
+        textualToolCallProjector.push(combined.slice(0, markerIndex))
         pendingMarkerPrefix = ''
         protocolSeen = true
         return
@@ -74,11 +164,12 @@ export async function projectNativeHarnessStream(
         }
       }
       pendingMarkerPrefix = combined.slice(combined.length - heldLength)
-      appendVisibleText(combined.slice(0, combined.length - heldLength))
+      textualToolCallProjector.push(combined.slice(0, combined.length - heldLength))
     }
     const flushPendingText = () => {
-      if (!protocolSeen) appendVisibleText(pendingMarkerPrefix)
+      if (!protocolSeen) textualToolCallProjector.push(pendingMarkerPrefix)
       pendingMarkerPrefix = ''
+      textualToolCallProjector.flush()
     }
     return source.pipeThrough(new TransformStream<LanguageModelV4StreamPart, LanguageModelV4StreamPart>({
       async transform(part, controller) {
