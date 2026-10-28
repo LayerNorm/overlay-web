@@ -8,7 +8,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 - Include agent-created automations in the Automations list, show their agent avatars, and open them from agent rows.
 - Start new agent conversations with the agent's instructions as the first user message.
 - Generate chat titles with the Auto free router and retry stalled title requests once.
-- Retry empty Auto title generations and record routed-model diagnostics.
+- Retry empty Auto title generations, skip free models that return an empty reply, and record routed-model diagnostics.
 
 - Preserve connector-card links for unavailable services and render the Poolside provider mark without opaque export backgrounds.
 

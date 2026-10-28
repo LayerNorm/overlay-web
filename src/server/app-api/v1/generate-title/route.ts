@@ -141,9 +141,9 @@ async function generateTitleWithModel({
   const sanitizedTitle = sanitizeChatTitle(extractTitle(result.text ?? ''), FALLBACK_TITLE)
   if (sanitizedTitle === FALLBACK_TITLE) {
     logger.warn('[ChatTitle][server] Model returned an empty title', {
-      finishReason: result.finishReason,
+      stopCause: result.finishReason,
       modelId,
-      reasoningLength: result.reasoningText?.length ?? 0,
+      thinkingChars: result.reasoningText?.length ?? 0,
       routedModelId,
       textLength: result.text?.length ?? 0,
     })
