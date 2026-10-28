@@ -25,7 +25,7 @@ Are our tools personal, workspace, or mixed, and how do we scope and search them
 | Skills | `list_skills`, `draft_skill_from_chat` | Yours plus those the workspace shares; `scope` argument | Draft only | OK; results lack scope |
 | Automations | `list_automations`, `draft_automation_from_chat`, `create_automation`, `update_automation`, `pause_automation`, `delete_automation` | Scope-aware list | `create_automation`: Personal | No `scope` on create |
 | Image, video | `generate_image`, `generate_video*`, `animate_image`, `apply_motion_control`, `edit_video` | n/a | Output files, Personal | Fine for now; no way to put an output in the workspace |
-| Browser, Computer | `interactive_browser_session`, `computer_*` | Your own machine and browser | Your own machine | **Personal by nature**: should never be offered as a workspace resource |
+| Computer | `computer_*` (including browsing) | Your own Computer | Your own Computer | **Personal by nature**: should never be offered as a workspace resource |
 | Agents | `create_agent`, `update_agent`, `list_agents`, `ask_agent`, `read_agent_reply`, `post_message` | Workspace agents and rooms | Workspace objects | Workspace-level already; not part of the Personal/Workspace resource model |
 | Web | `web_search`, `deep_search`, `web_fetch` | The internet | none | No scope question |
 | Connectors | Provider meta-tools (Composio) | Your connected accounts | Acts through them | **New: the workspace now has its own accounts** (`workspace_` prefixed tools) beside yours, so a turn can hold two sets of tools with the same names and different accounts |
@@ -61,7 +61,7 @@ So the tool surface is **mixed**: resource tools (files, notes, skills, automati
 
 1. **Resource tools** (files, notes, outputs, skills, automations, memories, MCP servers): reads return everything the caller may read, optionally narrowed by `scope`; each result carries `scope` and `ownerUserId` (and the owner's display name); creates take `scope` (default Personal); two new tools, `move_to_scope` and `archive_item`/`restore_item`, call `POST /api/v1/scope`, so an agent can do what the buttons do, under the same rules.
 2. **Identity tools** (connectors, MCP calls): act through an account. Personal and workspace accounts are labelled; when both exist for a connector the turn says which it will use, and a tool call can name `account: personal | workspace`.
-3. **Machine tools** (`interactive_browser_session`, `computer_*`): Personal only, never shared; documented as such.
+3. **Machine tools** (`computer_*`, including browsing): Personal only, never shared; documented as such.
 4. **Workspace objects** (agents, rooms, messages): already workspace-level; unchanged, but subject to the room rule below.
 
 ### The room rule (decision needed)

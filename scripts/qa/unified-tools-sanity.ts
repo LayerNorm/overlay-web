@@ -1,6 +1,6 @@
 /**
  * Lightweight sanity checks for unified tool policy vs bucket mapping.
- * Run: npx tsx scripts/unified-tools-sanity.ts   (or: node --experimental-strip-types)
+ * Run: NODE_OPTIONS=--conditions=react-server npx tsx scripts/qa/unified-tools-sanity.ts
  */
 import { overlayToolIdSet } from '../../src/server/tools/tools/policy.ts'
 import {
@@ -16,8 +16,6 @@ function fail(msg: string): never {
 const overlayIds = [...overlayToolIdSet()]
 
 const expectedOverlayBuckets: Record<string, ReturnType<typeof toolCostBucketForId>> = {
-  browser_run_task: 'browser',
-  interactive_browser_session: 'browser',
   generate_image: 'image',
   generate_video: 'video',
   animate_image: 'video',
