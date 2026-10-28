@@ -141,6 +141,19 @@ test('runtime settings bind callbacks and transfer only approved backend credent
   assert.throws(() => previewRuntimeEnvFile({ ...preview, STRIPE_SECRET_KEY: 'sk_live_fixture' }), /Stripe test/)
 })
 
+test('billing previews provision their test endpoint after runtime settings and before seeding', () => {
+  const calls = []
+  assert.equal(runBuild({ ...preview, OVERLAY_FEATURE_BILLING: 'true', STRIPE_SECRET_KEY: 'sk_test_fixture' }, (command, args) => {
+    calls.push({ command, args: [...args] })
+    return { status: 0 }
+  }), 0)
+  assert.equal(calls[1].args[0], 'env')
+  assert.equal(calls[2].command, 'node')
+  assert.equal(calls[2].args[0], 'scripts/release/preview-payments-build.mjs')
+  assert.ok(!existsSync(calls[2].args[1]))
+  assert.equal(calls[3].args[1], 'dev/seed:init')
+})
+
 
 test('Git first-push lookup accepts only the exact open internal main PR', async () => {
   const env = { ...preview, VERCEL_GIT_PULL_REQUEST_ID: '', VERCEL_GIT_COMMIT_REF: 'codex/probe',

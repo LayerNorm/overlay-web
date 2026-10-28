@@ -168,3 +168,11 @@ Comma-separated paid/Computer fixtures compose; explicit audited recovery is
 separate from non-destructive seeding. Background jobs and outbound test delivery
 require the configuration described in Convex Workflow. Configuration checks
 never substitute for actual provider, scheduled-job, browser or cleanup acceptance.
+
+Billing-enabled Preview builds provision one owned Stripe test webhook and retain
+its backend signing secret across rebuilds. The controller uses the existing
+Preview-only Stripe key through Vercel, includes tagged endpoints in reconciliation,
+and confirms endpoint deletion before backend removal. Ownership or provider
+failures remain visible and cannot report successful cleanup. Endpoint setup is
+configuration evidence; actual checkout, signature, event and cancellation
+acceptance remains required. See Convex Workflow for recovery semantics.

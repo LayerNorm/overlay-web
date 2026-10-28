@@ -2,6 +2,7 @@
 // Runs only from trusted main workflow code. No dependencies, PR checkout, or shell evaluation.
 import { readFileSync, appendFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
+import { previewPaymentsFromVercel } from './preview-payments.mjs'
 
 export const CONFIG = Object.freeze({
   repository: 'LayerNorm/overlay-web', repositoryId: 1133644268,
@@ -181,7 +182,7 @@ async function pages(api, path, key, query = {}) {
 }
 
 export class PreviewController {
-  constructor({ github, vercel, backends, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)),
+  constructor({ github, vercel, backends, payments, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)),
     now = Date.now, report = console.log, verifyRemoved = async origin => {
       const result = await fetch(origin, { redirect: 'manual', signal: AbortSignal.timeout(30_000) })
       if (result.status !== 404 || result.headers.get('location')) throw new Error('Closed preview hostname must return 404')
@@ -195,6 +196,7 @@ export class PreviewController {
       }
     } }) {
     this.github = github; this.vercel = vercel; this.backends = backends
+    this.payments = payments
     this.sleep = sleep; this.now = now; this.report = report
     this.verifyHttps = verifyHttps
     this.verifyRemoved = verifyRemoved
@@ -256,6 +258,8 @@ export class PreviewController {
   async cleanup(pr) {
     // Stop every owned build before deleting the backend it could recreate.
     await this.settleBranch(pr)
+    // Signing-secret ownership is verifiable while the backend still exists.
+    await this.payments.remove(pr.number)
     const address = previewAddress(pr.number)
     const variables = await this.environment(pr)
     if (variables.some(e => e.comment !== address.marker || e.target.some(t => t !== 'preview'))) {
@@ -454,6 +458,7 @@ export class PreviewController {
     }
     // Find old closed PRs even after all their Vercel resources were removed.
     for (const number of await this.backends.inventory()) numbers.add(number)
+    for (const number of await this.payments.inventory()) numbers.add(number)
     return [...numbers].sort((a, b) => a - b)
   }
 }
@@ -461,10 +466,11 @@ export class PreviewController {
 export async function main(env = process.env, args = process.argv.slice(2)) {
   if (env.GITHUB_REPOSITORY && env.GITHUB_REPOSITORY !== CONFIG.repository) throw new Error('Unexpected workflow repository')
   const convex = previewBackendClient(env.CONVEX_PREVIEW_CONTROL_KEY)
+  const vercel = apiClient({ token: env.VERCEL_PREVIEW_TOKEN, service: 'Vercel', base: 'https://api.vercel.com', teamId: CONFIG.teamId })
+  const backends = new PreviewBackends({ api: convex })
   const controller = new PreviewController({
     github: apiClient({ token: env.GITHUB_TOKEN, service: 'GitHub', base: 'https://api.github.com' }),
-    vercel: apiClient({ token: env.VERCEL_PREVIEW_TOKEN, service: 'Vercel', base: 'https://api.vercel.com', teamId: CONFIG.teamId }),
-    backends: new PreviewBackends({ api: convex }),
+    vercel, backends, payments: previewPaymentsFromVercel(vercel, backends),
   })
   if (args[0] === 'inventory') {
     const numbers = await controller.inventory()

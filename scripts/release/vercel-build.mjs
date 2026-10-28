@@ -165,6 +165,9 @@ export function runBuild(env = process.env, spawn = spawnSync) {
       const pr = plan.env.VERCEL_GIT_PULL_REQUEST_ID
       plan.after.unshift({ command: './node_modules/.bin/convex',
         args: ['env', 'set', '--from-file', runtimeFile, '--force', '--deployment', 'preview/pr-' + pr] })
+      if (['true', '1'].includes(plan.env.OVERLAY_FEATURE_BILLING)) {
+        plan.after.splice(1, 0, { command: 'node', args: ['scripts/release/preview-payments-build.mjs', envFile] })
+      }
       for (const step of [plan, ...(plan.after ?? [])]) {
         if (step.command.includes('convex')) step.args.push('--env-file', envFile)
       }

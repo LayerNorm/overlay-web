@@ -204,6 +204,10 @@ Provision verified member/outsider sandbox users and configure their
 identity header selects only those configured accounts; the seed gives each a
 personal workspace and adds only the member to Preview QA Team.
 Seeded entitlements do not establish Stripe checkout or webhook acceptance.
+Billing-enabled Preview builds provision and verify an owned Stripe test endpoint
+on their backend. Rebuilds retain its signing secret; the trusted controller
+cleans the endpoint before its backend. Confirm actual payment/event processing,
+replay handling and cancellation in addition to endpoint configuration.
 Record capability configuration, provider calls, persistence, scheduled work,
 permission failures and cleanup separately; missing infrastructure stays BLOCKED.
 

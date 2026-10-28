@@ -280,3 +280,24 @@ fixtures accept a bounded synthetic available-credit target. Refill preserves
 consumed spend, reservations, purchased funding and usage operations, accepts only
 active `preview-fixture` subscriptions, and records an idempotent audit event.
 It cannot repair real Stripe subscriptions or replenish provider account budgets.
+
+### Isolated Stripe test endpoints
+
+Billing-enabled Preview builds run `preview-payments-build.mjs` after synchronizing
+runtime settings and before seeding. The helper requires the pinned project
+Preview credential, verifies the exact PR backend, and uses only a Stripe test
+key. One owned `/stripe/webhook` endpoint carries the PR, project and backend
+metadata. Its signing secret and endpoint ID persist only on that backend.
+Rebuilds reuse the endpoint and repair missing event subscriptions. A lost
+creation/persistence response can recover the original secret by replaying the
+exact idempotent request; expired recovery fails visibly and removes only its
+new duplicate, preserving the original endpoint for inspection.
+
+The trusted controller reuses the existing Preview-only Stripe credential via
+its existing Vercel access. It removes and reads back the owned test endpoints
+before deleting their backend. Live endpoints, foreign projects, wrong backend
+URLs and unverified ownership are refused. A failed payment cleanup preserves
+the backend for recovery and cannot report successful cleanup. Six-hour inventory
+includes tagged Stripe endpoints; a missing backend is reported on that PR's
+cleanup rather than silently deleting an ambiguous resource. No package install,
+PR checkout or additional deployment credential is needed by the controller.

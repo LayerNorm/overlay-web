@@ -93,3 +93,10 @@ account does not exist on that backend, before recording or applying them.
 Production retains its transactional retry behavior for missing-account failures.
 Each PR backend needs its own endpoint signing secret; test-key configuration
 alone does not establish webhook delivery or payment acceptance.
+
+Preview payment provisioning is part of billing-enabled builds. The scoped helper
+reuses a metadata-bound test endpoint, persists its signing secret only on the
+owned backend, and repairs event subscriptions. The trusted controller confirms
+endpoint deletion before backend cleanup. Test-key mode and endpoint/backend
+ownership are independently checked; configuration success is separate from
+actual checkout, signed delivery, billing persistence and cancellation acceptance.
