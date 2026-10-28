@@ -237,6 +237,41 @@ export function recordHarnessEvidence(state: HarnessSnapshot, evidence: HarnessE
   return changed(next, now)
 }
 
+function hasWriteEvidenceAlreadyUsedByAction(
+  state: HarnessSnapshot,
+  stepId: string,
+  evidence: Array<HarnessEvidence | undefined>,
+): boolean {
+  return evidence.some(item => item?.kind === 'tool_result' && harnessToolsRequirePlan([item.source])
+    && state.plan.some(other => other.id !== stepId && !other.answerOnly && other.status === 'done'
+      && other.evidenceRefs.includes(item.id)))
+}
+
+function validateStepCompletion(
+  state: HarnessSnapshot,
+  step: HarnessPlanStep,
+  evidence: Array<HarnessEvidence | undefined>,
+): void {
+  if (step.dependsOn.some(id => !['done', 'skipped'].includes(state.plan.find(candidate => candidate.id === id)!.status))) {
+    throw new Error('Dependencies are not complete.')
+  }
+  if (!step.answerOnly && !evidence.length) throw new Error('Completion requires evidence.')
+  if (state.policy.requiresPlan && !step.answerOnly && !evidence.some(item => item?.kind === 'tool_result')) {
+    throw new Error('Completion requires tool-result evidence.')
+  }
+  if (state.policy.requiresPlan && !step.answerOnly
+    && hasWriteEvidenceAlreadyUsedByAction(state, step.id, evidence)) {
+    throw new Error('Evidence from a write tool already supports another milestone.')
+  }
+  if (step.requiresVerification && !evidence.some(item => item?.kind === 'verification' && item.verdict === 'passed'
+    && item.verification?.stepId === step.id && item.verification.planRevision === state.planRevision)) {
+    throw new Error('Independent verification of this milestone in the current plan revision is required.')
+  }
+  if (step.childRunId && !state.children.some(child => child.id === step.childRunId && child.status === 'completed')) {
+    throw new Error('The delegated child has not completed.')
+  }
+}
+
 export function transitionHarnessStep(state: HarnessSnapshot, input: {
   id: string; status: HarnessStepStatus; evidenceRefs?: string[]; skipReason?: string
 }, now: number): HarnessSnapshot {
@@ -251,22 +286,7 @@ export function transitionHarnessStep(state: HarnessSnapshot, input: {
   const evidenceRefs = [...new Set(input.evidenceRefs ?? step.evidenceRefs)]
   const evidence = evidenceRefs.map(id => state.evidence.find(candidate => candidate.id === id))
   if (evidence.some(item => !item || item.verdict === 'failed')) throw new Error('Evidence must reference successful observations from this run.')
-  if (input.status === 'done') {
-    if (step.dependsOn.some(id => !['done', 'skipped'].includes(next.plan.find(candidate => candidate.id === id)!.status))) throw new Error('Dependencies are not complete.')
-    if (!step.answerOnly && !evidence.length) throw new Error('Completion requires evidence.')
-    if (state.policy.requiresPlan && !step.answerOnly && !evidence.some(item => item?.kind === 'tool_result')) {
-      throw new Error('Completion requires tool-result evidence.')
-    }
-    if (state.policy.requiresPlan && !step.answerOnly && evidence.some(item => (
-      item?.kind === 'tool_result'
-      && harnessToolsRequirePlan([item.source])
-      && next.plan.some(other => other.id !== step.id && !other.answerOnly && other.status === 'done'
-        && other.evidenceRefs.includes(item.id))
-    ))) throw new Error('Evidence from a write tool already supports another milestone.')
-    if (step.requiresVerification && !evidence.some(item => item?.kind === 'verification' && item.verdict === 'passed'
-      && item.verification?.stepId === step.id && item.verification.planRevision === state.planRevision)) throw new Error('Independent verification of this milestone in the current plan revision is required.')
-    if (step.childRunId && !state.children.some(child => child.id === step.childRunId && child.status === 'completed')) throw new Error('The delegated child has not completed.')
-  }
+  if (input.status === 'done') validateStepCompletion(state, step, evidence)
   if (input.status === 'skipped' && !input.skipReason?.trim()) throw new Error('Skipping work requires a reason.')
   if (step.status === input.status && JSON.stringify(step.evidenceRefs) === JSON.stringify(evidenceRefs)) return state
   Object.assign(step, { status: input.status, evidenceRefs, ...(input.status === 'skipped' ? { skipReason: input.skipReason } : {}) })
