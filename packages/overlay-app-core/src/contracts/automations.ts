@@ -75,6 +75,7 @@ export interface AutomationGraph {
 
 export interface AutomationSummary extends ScopedResourceFields {
   _id: string
+  agentId?: string
   /** The creator; only they can move it between scopes. */
   userId?: string
   name?: string

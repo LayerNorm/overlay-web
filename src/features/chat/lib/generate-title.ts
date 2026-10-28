@@ -8,6 +8,7 @@ import { overlayAppClient } from '@/shared/app/overlay-app-client'
  * and can be applied without a second round trip.
  */
 const requests = new Map<string, Promise<string | null>>()
+const resolvedTitles = new Map<string, string>()
 const REQUEST_TTL_MS = 120_000
 const MAX_TRACKED_REQUESTS = 8
 
@@ -31,12 +32,20 @@ async function requestTitle(text: string): Promise<string | null> {
 function track(key: string, promise: Promise<string | null>): Promise<string | null> {
   if (requests.size >= MAX_TRACKED_REQUESTS) {
     const oldest = requests.keys().next()
-    if (!oldest.done) requests.delete(oldest.value)
+    if (!oldest.done) {
+      requests.delete(oldest.value)
+      resolvedTitles.delete(oldest.value)
+    }
   }
   requests.set(key, promise)
-  void promise.finally(() => {
+  void promise.then((title) => {
+    if (requests.get(key) !== promise) return
+    if (title) resolvedTitles.set(key, title)
     window.setTimeout(() => {
-      if (requests.get(key) === promise) requests.delete(key)
+      if (requests.get(key) === promise) {
+        requests.delete(key)
+        resolvedTitles.delete(key)
+      }
     }, REQUEST_TTL_MS)
   })
   return promise
@@ -53,6 +62,10 @@ export function prefetchTitle(text: string): Promise<string | null> | null {
   const existing = requests.get(key)
   if (existing) return existing
   return track(key, requestTitle(text))
+}
+
+export function peekResolvedTitle(text: string): string | null {
+  return resolvedTitles.get(seedKey(text)) ?? null
 }
 
 export function generateTitle(text: string): Promise<string | null> {

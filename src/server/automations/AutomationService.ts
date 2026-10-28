@@ -288,15 +288,11 @@ export class AutomationService {
       if (!automation) serviceError({ error: 'Not found' }, 404)
       return automation
     }
-    // The standalone Automations surface lists only standalone automations;
-    // agent-owned automations (created inside agent threads) nest under their
-    // agent in the sidebar instead.
     return await this.deps.repository.listAutomations({
       userId: args.userId,
       includeDeleted: args.includeDeleted,
       workspaceId: args.workspaceId,
       view: args.view,
-      excludeAgentBound: true,
     })
   }
 

@@ -37,7 +37,7 @@ import {
 } from '@/shared/workspace/sidebar-events'
 import { takePendingCollaborationMessage } from '../lib/pending-collaboration-message'
 import { defaultMemoryEnabled } from '@/shared/chat/tool-requests'
-import { generateTitle } from '@/features/chat/lib/generate-title'
+import { prefetchTitle } from '@/features/chat/lib/generate-title'
 import {
   compareRoomMessageRecords,
   mergeRoomMessages,
@@ -1003,7 +1003,7 @@ export function useSendMessage({
   mentions: MentionItem[]
 }) {
   const threadRenameRequestedRef = useRef(false)
-  const pendingCollaborationMessageSentRef = useRef(false)
+  const pendingCollaborationMessageSentRef = useRef<string | null>(null)
 
   // A pending reply row goes once the agent's real reply row exists (or after a minute, so none can linger).
   useEffect(() => {
@@ -1046,6 +1046,7 @@ export function useSendMessage({
     const text = content.trim()
     const parts = options?.parts ?? options?.existing?.parts
     if (!text && !parts?.length) return
+    let ownsThreadRename = false
     const clientNonce = options?.existing?.clientNonce ?? crypto.randomUUID()
     const turnId = options?.existing?.turnId ?? `human_${crypto.randomUUID()}`
     const optimisticId = `optimistic_${clientNonce}`
@@ -1076,6 +1077,11 @@ export function useSendMessage({
         && text.length > 0
         && !threadRenameRequestedRef.current
         && (conversationTitle === 'New thread' || conversationTitle === soloAgentParticipant.displayName)
+      const titlePromise = renameAgentThread ? prefetchTitle(text) : null
+      if (renameAgentThread) {
+        ownsThreadRename = true
+        threadRenameRequestedRef.current = true
+      }
       const agentParticipants = participants.filter((participant) => participant.principalType === 'agent')
       const humanParticipants = participants.filter((participant) => participant.principalType === 'human')
       const threadAgentId = threadRootMessageId
@@ -1129,20 +1135,20 @@ export function useSendMessage({
       // from here. The reply arrives in the transcript on its own, so there is
       // nothing for this client to hold open and nothing to wait for.
       if (renameAgentThread && soloAgentParticipant) {
-        threadRenameRequestedRef.current = true
         const agentName = soloAgentParticipant.displayName
-        void generateTitle(text).then(async (aiTitle) => {
+        const previousTitle = conversationTitle ?? 'New thread'
+        void titlePromise?.then(async (aiTitle) => {
           if (!aiTitle) {
             threadRenameRequestedRef.current = false
             return
           }
           const title = sanitizeChatTitle(aiTitle, agentName)
+          dispatchChatTitleUpdated({ chatId: conversationId, title })
           try {
             const res = await overlayAppClient.conversations.updateResponse({ conversationId, title })
-            if (res.ok) dispatchChatTitleUpdated({ chatId: conversationId, title })
-            else threadRenameRequestedRef.current = false
+            if (!res.ok) throw new Error('Could not update conversation title')
           } catch {
-            // Keep the placeholder thread title.
+            dispatchChatTitleUpdated({ chatId: conversationId, title: previousTitle })
             threadRenameRequestedRef.current = false
           }
         })
@@ -1151,6 +1157,7 @@ export function useSendMessage({
       commitDraftConversation()
       void saved
     } catch {
+      if (ownsThreadRename) threadRenameRequestedRef.current = false
       setMessages((current) => current
         .filter((message) => !message.id.startsWith(`${PENDING_AGENT_REPLY_PREFIX}${clientNonce}`))
         .map((message) => (
@@ -1162,15 +1169,29 @@ export function useSendMessage({
   }
 
   useEffect(() => {
-    if (!currentPrincipalId || pendingCollaborationMessageSentRef.current) return
-    const pending = takePendingCollaborationMessage(conversationId)
+    if (
+      !currentPrincipalId
+      || loading
+      || !participants.length
+      || pendingCollaborationMessageSentRef.current === conversationId
+    ) return
+    const pending = takePendingCollaborationMessage(
+      conversationId,
+      (message) => {
+        if (!message.expectedAgentPrincipalId) return true
+        const senderIsLoaded = participants.some((participant) => (
+          participant.principalId === currentPrincipalId && participant.principalType === 'human'
+        ))
+        return senderIsLoaded && soloAgentParticipant?.principalId === message.expectedAgentPrincipalId
+      },
+    )
     if (!pending) return
-    pendingCollaborationMessageSentRef.current = true
+    pendingCollaborationMessageSentRef.current = conversationId
     void sendMessage(pending.content)
   // `sendMessage` is intentionally omitted: it is recreated while room state
   // changes, whereas a pending conversion must be consumed exactly once.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [conversationId, currentPrincipalId, ])
+  }, [conversationId, currentPrincipalId, participants, soloAgentParticipant, loading])
 
   return sendMessage
 }

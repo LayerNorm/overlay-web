@@ -3,6 +3,7 @@ import { isPaginatedEnvelope, type PaginatedEnvelope } from '@/shared/api/pagina
 import { trackCacheState } from '@/shared/observability/client-metrics'
 import { recordRequest } from '@/shared/observability/duplicate-tracker'
 import { ROUTE_WORKSPACE_HEADER } from '@/shared/workspaces/constants'
+import { mergeChatTitle } from './chat-title'
 
 export type CachedConversation = {
   _id: string
@@ -139,7 +140,9 @@ export function upsertCachedChat(chat: CachedConversation) {
   const cache = getWorkspaceCache()
   const current = cache.cachedChats ?? []
   const existing = current.find((item) => item._id === chat._id)
-  const merged = existing ? { ...existing, ...chat } : chat
+  const merged = existing
+    ? { ...existing, ...chat, title: mergeChatTitle(existing.title, chat.title) }
+    : chat
   cache.cachedChats = sortByLastModified([merged, ...current.filter((item) => item._id !== chat._id)])
   cache.cachedAt = Date.now()
 }
