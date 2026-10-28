@@ -43,6 +43,8 @@ This is the route-entry-point inventory for the web app. It is intended as a wor
 
 ## 2. Billing, subscriptions, releases, and billing webhooks
 
+Workspace checkout, top-up and portal return URLs include the initiating workspace in `/app/w/<workspaceId>/settings`; changing the active workspace in another tab cannot redirect payment verification to another wallet.
+
 - `POST /api/checkout` — Retired: an account is never free or paid, so after billing capability, session and rate-limit checks it answers `410 account_plans_retired` ("Plans and credit belong to workspaces now"). Workspace plans start at `POST /api/v1/workspaces/[workspaceId]/billing/checkout`. Files: `src/app/api/checkout/route.ts`; `src/server/billing/http.ts` (`accountPlansRetiredResponse`).
 - `POST /api/checkout/verify` — Retired: an account cannot be paid, so it answers `410 account_plans_retired` to a signed-in caller (401 otherwise). Files: `src/app/api/checkout/verify/route.ts`; `src/server/billing/http.ts`.
 - `GET /api/entitlements` — Returns the authenticated user’s effective billing entitlements, including workspace-aware payer resolution where enabled. Files: `src/app/api/entitlements/route.ts`; `src/server/billing/http.ts`; `src/server/billing/BillingCustomerService.ts`; `src/server/auth/session.ts`.

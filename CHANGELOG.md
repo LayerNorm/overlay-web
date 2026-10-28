@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Return Stripe checkout, top-up and portal flows to the workspace that started them, including when another tab changes the active workspace.
+
 - Restrict automation workflow status/events to the parent automation's scope and current workspace membership, and bind scheduler cancellation to its owner's stored workflow ID.
 
 - Queue automation completion/failure webhooks in the same transaction as terminal run settlement, including durable scheduled runs and idempotent retries.

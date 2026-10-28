@@ -421,6 +421,7 @@
     "src/server/authorization/ensure-default-user-role.ts",
     "src/server/authorization/index.ts",
     "src/server/automations/ConvexAutomationRepository.ts",
+    "src/server/automations/workflow-access.ts",
     "src/server/billing/ConvexBillingProviderEventRepository.ts",
     "src/server/billing/ConvexBillingRepository.ts",
     "src/server/bootstrap.ts",
