@@ -199,6 +199,10 @@ never resets usage or credit. Synthetic credits do not pay real provider costs.
 
 Exercise Free, paid, exhausted-credit and multi-identity scenarios separately.
 A synthetic collaborator principal is not a second authenticated QA identity.
+Provision verified member/outsider sandbox users and configure their
+`PREVIEW_MEMBER_LOGIN_*` / `PREVIEW_OUTSIDER_LOGIN_*` settings. The Preview login
+identity header selects only those configured accounts; the seed gives each a
+personal workspace and adds only the member to Preview QA Team.
 Seeded entitlements do not establish Stripe checkout or webhook acceptance.
 Record capability configuration, provider calls, persistence, scheduled work,
 permission failures and cleanup separately; missing infrastructure stays BLOCKED.

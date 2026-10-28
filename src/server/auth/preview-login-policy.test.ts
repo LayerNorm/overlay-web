@@ -74,3 +74,28 @@ test('a mismatched provider identity cannot create a session', async () => {
   assert.equal(response.status, 404)
   assert.equal(saved, false)
 })
+
+test('only configured member/outsider identities may be selected and must be verified', async () => {
+  const qaEnv = { ...env, PREVIEW_MEMBER_LOGIN_USER_ID: 'user_member', PREVIEW_MEMBER_LOGIN_EMAIL: 'member@example.test',
+    PREVIEW_MEMBER_LOGIN_PASSWORD: 'member-password' }
+  for (const identity of ['member', 'outsider', 'user_arbitrary']) {
+    const req = request()
+    req.headers.set('x-overlay-preview-identity', identity)
+    let saved = false
+    const response = await previewLoginResponse(req, qaEnv, {
+      authenticate: async (email, password) => {
+        assert.equal(identity, 'member')
+        assert.equal(email, qaEnv.PREVIEW_MEMBER_LOGIN_EMAIL)
+        assert.equal(password, qaEnv.PREVIEW_MEMBER_LOGIN_PASSWORD)
+        return { ...session, user: { ...session.user, id: 'user_member' } }
+      }, saveSession: async () => { saved = true }, rateLimit: async () => null,
+    })
+    assert.equal(response.status, identity === 'member' ? 200 : 404)
+    assert.equal(saved, identity === 'member')
+  }
+  const response = await previewLoginResponse(request(), env, {
+    authenticate: async () => ({ ...session, user: { ...session.user, emailVerified: false } }),
+    saveSession: async () => { throw new Error('Unverified identity cannot create a session') }, rateLimit: async () => null,
+  })
+  assert.equal(response.status, 404)
+})

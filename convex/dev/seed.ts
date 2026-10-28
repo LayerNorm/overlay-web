@@ -16,7 +16,19 @@ export const init = internalMutation({
     const userId = process.env.PREVIEW_LOGIN_USER_ID?.trim()
     const email = process.env.PREVIEW_LOGIN_EMAIL?.trim()
     if (!userId?.startsWith('user_') || !email) throw new Error('Configure the sandbox preview login identity before seeding')
-    return seedFixtures(ctx, { userId, email, lane: 'preview' })
+    const owner = await seedFixtures(ctx, { userId, email, lane: 'preview' })
+    const identities = new Set([userId])
+    for (const role of ['MEMBER', 'OUTSIDER']) {
+      const qaUserId = process.env[`PREVIEW_${role}_LOGIN_USER_ID`]?.trim()
+      const qaEmail = process.env[`PREVIEW_${role}_LOGIN_EMAIL`]?.trim()
+      if (!qaUserId && !qaEmail) continue
+      if (!qaUserId?.startsWith('user_') || !qaEmail || identities.has(qaUserId)) {
+        throw new Error('Configure a distinct Preview QA identity and email for ' + role)
+      }
+      identities.add(qaUserId)
+      await seedFixtures(ctx, { userId: qaUserId, email: qaEmail, lane: 'preview' })
+    }
+    return owner
   },
 })
 

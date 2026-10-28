@@ -83,7 +83,13 @@ created agent and machine until terminal state is confirmed, and retain their id
 in the private report. Cleanup must check successful responses before claiming deletion.
 
 The server chooses the seeded QA identity; callers cannot supply an arbitrary
-user ID. This route returns 404 outside Preview. Real human OAuth uses
+user ID. The optional `x-overlay-preview-identity` header selects `owner` (default),
+`member` or `outsider` only. Member/outsider identities require their own
+`PREVIEW_MEMBER_LOGIN_*` / `PREVIEW_OUTSIDER_LOGIN_*` email, user ID and password
+on web Preview. Only their IDs/emails synchronize to Convex. Each must authenticate
+as the expected verified WorkOS sandbox user. The seed creates their personal
+workspaces; the paid fixture adds the member to its team and leaves the outsider
+unaffiliated. Keep passwords in private runtime stores. This route returns 404 outside Preview. Real human OAuth uses
 the same canonical preview origin with the WorkOS sandbox wildcard callback.
 
 For long connected-agent timing checks, the Preview-only branch build setting

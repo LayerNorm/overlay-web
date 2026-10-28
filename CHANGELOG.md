@@ -4,7 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
-- Add Preview capability diagnostics, combined paid/Computer fixtures, explicit audited QA recovery, isolated protected callbacks, and opt-in production schedules with controlled test delivery.
+- Add Preview capability diagnostics, combined paid/Computer fixtures, explicit audited QA recovery, isolated protected callbacks, opt-in production schedules with controlled test delivery, and preconfigured owner/member/outsider QA sign-in.
 
 - Preserve connector-card links for unavailable services and render the Poolside provider mark without opaque export backgrounds.
 
