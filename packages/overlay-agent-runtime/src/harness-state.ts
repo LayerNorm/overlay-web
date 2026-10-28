@@ -190,9 +190,11 @@ export function replaceHarnessPlan(state: HarnessSnapshot, steps: HarnessPlanInp
   if (!steps.length || steps.length > 128) throw new Error('Use between one and 128 meaningful milestones.')
   const normalizedSteps = steps.map(step => {
     const previous = state.plan.find(candidate => candidate.id === step.id)
-    return previous?.childRunId && step.evidenceTools === undefined && previous.evidenceTools
-      ? { ...step, evidenceTools: [...previous.evidenceTools] }
-      : step
+    if (!previous?.childRunId || (previous.evidenceTools === undefined && step.evidenceTools === undefined)) return step
+    return {
+      ...step,
+      evidenceTools: [...new Set([...(previous.evidenceTools ?? []), ...(step.evidenceTools ?? [])])],
+    }
   })
   const byId = new Map(normalizedSteps.map(step => [step.id, step]))
   if (byId.size !== normalizedSteps.length) throw new Error('Plan IDs must be unique.')
@@ -424,7 +426,6 @@ export function admitHarnessChild(state: HarnessSnapshot, child: HarnessChild, n
   Object.assign(delegatedStep, { childRunId: child.id, status: 'running' })
   if (needsChildEvidenceTool) {
     delegatedStep.evidenceTools = [...(step.evidenceTools ?? []), 'harness_read_child']
-    next.planRevision++
   }
   return changed(next, now)
 }

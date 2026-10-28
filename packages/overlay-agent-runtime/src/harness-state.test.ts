@@ -333,6 +333,75 @@ test('revising an attached named-child milestone inherits its evidenceTools', ()
   assert.equal(revised.plan[0]?.status, 'running')
 })
 
+test('revising an attached delegated step merges its original evidenceTools', () => {
+  const planned = replaceHarnessPlan(make(), [{
+    id: 'delegate',
+    title: 'Delegate the work',
+    dependsOn: [],
+    acceptanceCriteria: ['Child result read'],
+    requiresVerification: false,
+    evidenceTools: ['write', 'read'],
+  }], now)
+  const admitted = admitHarnessChild(planned, child('child-1', 'delegate', 0), now + 1)
+  const revised = replaceHarnessPlan(admitted, [{
+    id: 'delegate',
+    title: 'Delegate the work',
+    dependsOn: [],
+    acceptanceCriteria: ['Child result read'],
+    requiresVerification: false,
+    evidenceTools: ['write', 'read'],
+  }], now + 2)
+  assert.equal(revised, admitted)
+  assert.deepEqual(revised.plan[0]?.evidenceTools, ['write', 'read', 'harness_read_child'])
+})
+
+test('delegation preserves verification evidence for another milestone', () => {
+  let state = replaceHarnessPlan(make(), [
+    {
+      id: 'delegate',
+      title: 'Delegate the work',
+      dependsOn: [],
+      acceptanceCriteria: ['Child result read'],
+      requiresVerification: false,
+      evidenceTools: ['read'],
+    },
+    {
+      id: 'verified',
+      title: 'Check the result',
+      dependsOn: [],
+      acceptanceCriteria: ['Result independently checked'],
+      requiresVerification: true,
+      evidenceTools: ['read'],
+    },
+  ], now)
+  state = recordHarnessEvidence(state, {
+    id: 'verified-result',
+    kind: 'tool_result',
+    source: 'read',
+    summary: 'Read the result',
+    verdict: 'observed',
+    createdAt: now + 1,
+  }, now + 1)
+  state = recordHarnessEvidence(state, {
+    id: 'verification',
+    kind: 'verification',
+    source: 'check:verified',
+    summary: 'The result is correct',
+    verdict: 'passed',
+    createdAt: now + 2,
+    verification: { stepId: 'verified', planRevision: state.planRevision },
+  }, now + 2)
+  const planRevision = state.planRevision
+  state = admitHarnessChild(state, child('child-1', 'delegate', 0), now + 3)
+  assert.equal(state.planRevision, planRevision)
+  state = transitionHarnessStep(state, {
+    id: 'verified',
+    status: 'done',
+    evidenceRefs: ['verified-result', 'verification'],
+  }, now + 4)
+  assert.equal(state.plan.find(step => step.id === 'verified')?.status, 'done')
+})
+
 test('a requiresPlan delegated milestone completes with harness_read_child evidence', () => {
   const planned = replaceHarnessPlan(make(), [{
     id: 'delegate',
