@@ -139,7 +139,7 @@ test('completion requires persisted evidence, satisfied dependencies and indepen
     id: 'prompt', kind: 'user_input', source: 'user', summary: 'Create a note.', verdict: 'observed', createdAt: now,
   }, now)
   assert.throws(() => transitionHarnessStep(state, { id: 'read', status: 'done', evidenceRefs: ['prompt'] }, now), /tool-result evidence/)
-  state = recordHarnessEvidence(state, { id: 'source', kind: 'tool_result', source: 'file:revision-1', summary: 'Read source', verdict: 'observed', createdAt: now }, now)
+  state = recordHarnessEvidence(state, { id: 'source', kind: 'tool_result', source: 'read_file', summary: 'Read source', verdict: 'observed', createdAt: now }, now)
   assert.throws(() => transitionHarnessStep(state, { id: 'report', status: 'done', evidenceRefs: ['source'] }, now), /Dependencies/)
   state = transitionHarnessStep(state, { id: 'read', status: 'done', evidenceRefs: ['source'] }, now)
   assert.throws(() => transitionHarnessStep(state, { id: 'report', status: 'done', evidenceRefs: ['source'] }, now), /verification/)
@@ -246,7 +246,7 @@ test('reducers isolate caller-owned inputs', () => {
 test('plan revisions reject cycles and invalidate completed downstream work', () => {
   let state = replaceHarnessPlan(make(), steps.map(step => ({ ...step, requiresVerification: false })), now)
   assert.throws(() => replaceHarnessPlan(state, steps.map(step => ({ ...step, dependsOn: [step.id] })), now), /cycle/)
-  state = recordHarnessEvidence(state, { id: 'source', kind: 'tool_result', source: 'file:revision-1', summary: 'Read source', verdict: 'observed', createdAt: now }, now)
+  state = recordHarnessEvidence(state, { id: 'source', kind: 'tool_result', source: 'read_file', summary: 'Read source', verdict: 'observed', createdAt: now }, now)
   for (const id of ['read', 'report']) state = transitionHarnessStep(state, { id, status: 'done', evidenceRefs: ['source'] }, now)
   const previous = state
   state = replaceHarnessPlan(state, state.plan.map(step => ({ ...step, title: step.id === 'read' ? 'Read revised source' : step.title })), now)
@@ -411,4 +411,32 @@ test('plan-optional runs still require evidence for non-answer milestones', () =
   let state = { ...base, policy: { ...base.policy, requiresPlan: false } }
   state = replaceHarnessPlan(state, [{ id: 'read', title: 'Read', dependsOn: [], acceptanceCriteria: ['Read'], requiresVerification: false }], now)
   assert.throws(() => transitionHarnessStep(state, { id: 'read', status: 'done' }, now), /Completion requires evidence/)
+})
+
+test('write-tool evidence cannot complete multiple action milestones, but read evidence can be shared', () => {
+  const plan: HarnessPlanInput[] = [
+    { id: 'first', title: 'First action', dependsOn: [], acceptanceCriteria: ['First action done'], requiresVerification: false },
+    { id: 'second', title: 'Second action', dependsOn: [], acceptanceCriteria: ['Second action done'], requiresVerification: false },
+  ]
+  const initial = replaceHarnessPlan(make(), plan, now)
+  const writeEvidence = recordHarnessEvidence(initial, {
+    id: 'write-result', kind: 'tool_result', source: 'create_note', summary: 'Created a note', verdict: 'observed', createdAt: now,
+  }, now)
+  const afterFirstWrite = transitionHarnessStep(writeEvidence, {
+    id: 'first', status: 'done', evidenceRefs: ['write-result'],
+  }, now)
+  assert.throws(() => transitionHarnessStep(afterFirstWrite, {
+    id: 'second', status: 'done', evidenceRefs: ['write-result'],
+  }, now), /Evidence from a write tool already supports another milestone/)
+
+  const readEvidence = recordHarnessEvidence(initial, {
+    id: 'read-result', kind: 'tool_result', source: 'get_note', summary: 'Read a note', verdict: 'observed', createdAt: now,
+  }, now)
+  const afterFirstRead = transitionHarnessStep(readEvidence, {
+    id: 'first', status: 'done', evidenceRefs: ['read-result'],
+  }, now)
+  const afterSecondRead = transitionHarnessStep(afterFirstRead, {
+    id: 'second', status: 'done', evidenceRefs: ['read-result'],
+  }, now)
+  assert.equal(afterSecondRead.plan[1]?.status, 'done')
 })

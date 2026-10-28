@@ -242,6 +242,38 @@ test.each([
   expect((await f.ports.read()).plan[0]?.status).toBe('pending')
 })
 
+test('write evidence already used by another action milestone returns model-visible guidance', async () => {
+  const f = fixture()
+  const now = Date.now()
+  const policy = { actorUserId: 'user', allowedToolIds: [], requiresPlan: true,
+    deadlineAt: now + 60_000, maxCostMicros: 0, maxParallelChildren: 2, maxDepth: 2 }
+  let parent = createHarnessSnapshot({ runId: 'write-evidence', goal: 'Complete both actions', constraints: [], policy }, now)
+  parent = replaceHarnessPlan(parent, [
+    { id: 'first', title: 'First action', dependsOn: [], acceptanceCriteria: ['First action done'], requiresVerification: false },
+    { id: 'second', title: 'Second action', dependsOn: [], acceptanceCriteria: ['Second action done'], requiresVerification: false },
+  ], now)
+  parent = recordHarnessEvidence(parent, {
+    id: 'tool:create_note', kind: 'tool_result', source: 'create_note', summary: 'Created a note', verdict: 'observed', createdAt: now,
+  }, now)
+  parent = transitionHarnessStep(parent, {
+    id: 'first', status: 'done', evidenceRefs: ['tool:create_note'],
+  }, now)
+  f.setParent(parent)
+
+  const result = await createHarnessControlTools(f.ports).harness_update_step.execute!(
+    { id: 'second', status: 'done', evidenceRefs: ['tool:create_note'] },
+    { toolCallId: 'reuse-write-result', messages: [] },
+  )
+
+  expect(result).toEqual({
+    success: false,
+    error: 'Evidence from a write tool already supports another milestone.',
+    availableEvidenceIds: ['tool:create_note'],
+    hint: "Cite the tool result that performed this milestone's own action, or revise the plan to merge the milestones.",
+  })
+  expect((await f.ports.read()).plan.find(step => step.id === 'second')?.status).toBe('pending')
+})
+
 test('dependency rejection returns unresolved dependency IDs and a completion hint', async () => {
   const f = fixture()
   const policy = { actorUserId: 'user', allowedToolIds: [], requiresPlan: true,

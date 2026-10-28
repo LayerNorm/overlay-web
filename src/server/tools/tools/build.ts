@@ -1153,7 +1153,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
       tools.create_note = tool({
       description: 'Create a new note. Content is Markdown (GitHub-flavored, with $math$ and - [ ] task lists).',
       inputSchema: z.object({
-        title: z.string().optional(),
+        title: z.string().trim().min(1).describe('Note title'),
         content: z.string().describe('Markdown body'),
         tags: z.array(z.string()).optional(),
       }),

@@ -1,3 +1,5 @@
+import { harnessToolsRequirePlan } from './harness-write-tools'
+
 export type HarnessStatus = 'running' | 'waiting_for_input' | 'waiting_for_approval' | 'waiting_for_children' | 'completed' | 'cancelled' | 'failed'
 export type HarnessStepStatus = 'pending' | 'running' | 'blocked' | 'verifying' | 'done' | 'skipped'
 
@@ -255,6 +257,12 @@ export function transitionHarnessStep(state: HarnessSnapshot, input: {
     if (state.policy.requiresPlan && !step.answerOnly && !evidence.some(item => item?.kind === 'tool_result')) {
       throw new Error('Completion requires tool-result evidence.')
     }
+    if (state.policy.requiresPlan && !step.answerOnly && evidence.some(item => (
+      item?.kind === 'tool_result'
+      && harnessToolsRequirePlan([item.source])
+      && next.plan.some(other => other.id !== step.id && !other.answerOnly && other.status === 'done'
+        && other.evidenceRefs.includes(item.id))
+    ))) throw new Error('Evidence from a write tool already supports another milestone.')
     if (step.requiresVerification && !evidence.some(item => item?.kind === 'verification' && item.verdict === 'passed'
       && item.verification?.stepId === step.id && item.verification.planRevision === state.planRevision)) throw new Error('Independent verification of this milestone in the current plan revision is required.')
     if (step.childRunId && !state.children.some(child => child.id === step.childRunId && child.status === 'completed')) throw new Error('The delegated child has not completed.')

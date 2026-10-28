@@ -28,6 +28,7 @@ export type HarnessInstructionContext = {
   instructions: string
   continuation: boolean
   truncatedResponse: boolean
+  finalAnswerRequired?: boolean
   deferredToolNames?: readonly string[]
 }
 
@@ -48,6 +49,7 @@ export function buildHarnessStepInstructions(state: HarnessSnapshot, context: Ha
       ? '\nAll plan milestones and required evidence are complete. Do not call tools or describe more actions. Return the final answer to the original user request, respecting its requested output format. Use the existing evidence and completed child summaries.'
       : context.continuation ? '\nInternal continuation: complete the remaining milestones, using the existing evidence. This is not a new user request.' : '')
     + (context.truncatedResponse ? '\nThe previous response reached its output limit, not task completion. Continue from the saved partial response without repeating it.' : '')
+    + (context.finalAnswerRequired ? '\nAll milestones are complete. Reply to the user now in plain text with the results; do not write tool calls as text.' : '')
 }
 
 export function buildHarnessWorkingContext(state: HarnessSnapshot): string {

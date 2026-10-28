@@ -114,6 +114,30 @@ test('runner stores sanitized final text and ignores a trailing textual tool cal
   expect(result.snapshot.resultSummary).toBe('The capital of France is Paris.')
 })
 
+test('runner requests a real answer after a protocol-only final segment', async () => {
+  const f = fixture(false)
+  const protocol = '[[{"name":"harness_set_plan","parameters":{}}]'
+  const provider = model(index => index === 0 ? protocol : 'The answer is 6.')
+  const result = await runOverlayHarness({ ...input, tools: {} }, f.ports)
+  expect(result.snapshot.status).toBe('completed')
+  expect(result.snapshot.resultSummary).toBe('The answer is 6.')
+  expect(provider.doStreamCalls).toHaveLength(2)
+  expect(JSON.stringify(provider.doStreamCalls[1]?.prompt))
+    .toContain('All milestones are complete. Reply to the user now in plain text with the results; do not write tool calls as text.')
+})
+
+test('runner stops as stuck after two protocol-only final segments', async () => {
+  const f = fixture(false)
+  const protocol = '[[{"name":"harness_set_plan","parameters":{}}]'
+  const provider = model(() => protocol)
+  const result = await runOverlayHarness({ ...input, tools: {} }, f.ports)
+  expect(result.outcome).toBe('blocked')
+  expect(result.snapshot.blocker?.kind).toBe('stuck')
+  expect(provider.doStreamCalls).toHaveLength(2)
+  expect(JSON.stringify(provider.doStreamCalls[1]?.prompt))
+    .toContain('All milestones are complete. Reply to the user now in plain text with the results; do not write tool calls as text.')
+})
+
 test('runner checkpoint summary falls back to sanitized step text', async () => {
   const f = fixture()
   const protocol = '<tool_call>harness_update_step<arg_key>id</arg_key><arg_value>step1</arg_value><arg_key>status</arg_key><arg_value>done</arg_value></tool_call>'

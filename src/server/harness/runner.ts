@@ -195,7 +195,7 @@ async function terminateOnProviderFailure(
 
 type InvocationContinuation =
   | { kind: 'finished'; snapshot: HarnessSnapshot }
-  | { kind: 'continue'; stagnantSegments: number }
+  | { kind: 'continue'; stagnantSegments: number; finalAnswerRequired: boolean }
 
 async function finishOrCheckpointInvocation(
   state: HarnessSnapshot,
@@ -209,11 +209,12 @@ async function finishOrCheckpointInvocation(
 ): Promise<InvocationContinuation> {
   if (onlyChildrenRemain(state)) {
     await ports.apply(`wait-children:${segment}`, { type: 'wait_for_children' })
-    return { kind: 'continue', stagnantSegments }
+    return { kind: 'continue', stagnantSegments, finalAnswerRequired: false }
   }
-  if (!truncatedResponse && !harnessCompletionIssues(state).length) {
-    const resultSummary = latestNonEmptyStepText(runSteps, toolNames)
-      || stripTextualToolCalls(state.workingSummary, toolNames)
+  const completionIssues = harnessCompletionIssues(state)
+  const resultSummary = latestNonEmptyStepText(runSteps, toolNames)
+  const finalAnswerRequired = !truncatedResponse && !completionIssues.length && !resultSummary
+  if (!truncatedResponse && !completionIssues.length && resultSummary) {
     const completed = await ports.apply(`finish:${segment}`, {
       type: 'finish', ...(resultSummary ? { resultSummary: resultSummary.slice(0, 8_000) } : {}),
     })
@@ -222,12 +223,12 @@ async function finishOrCheckpointInvocation(
   const nextStagnantSegments = harnessProgressFingerprint(state) === before ? stagnantSegments + 1 : 0
   if (nextStagnantSegments >= 2) {
     await ports.apply(`stuck:${segment}`, { type: 'block', blocker: { kind: 'stuck', question: 'No durable progress after two continuation attempts. Review the plan or provide the missing input before retrying.' } })
-    return { kind: 'continue', stagnantSegments: nextStagnantSegments }
+    return { kind: 'continue', stagnantSegments: nextStagnantSegments, finalAnswerRequired }
   }
   const summary = stripTextualToolCalls(state.workingSummary, toolNames)
     || latestNonEmptyStepText(runSteps, toolNames)
   await ports.apply(`checkpoint:${segment}`, { type: 'checkpoint', summary: summary.slice(0, 8_000) })
-  return { kind: 'continue', stagnantSegments: nextStagnantSegments }
+  return { kind: 'continue', stagnantSegments: nextStagnantSegments, finalAnswerRequired }
 }
 
 function latestNonEmptyStepText(steps: StepResult<ToolSet>[], toolNames: ReadonlySet<string>): string {
@@ -256,6 +257,7 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
   const toolDefinitions = await prepareToolDefinitions(tools)
   const instructions = buildHarnessInstructions(input.instructions)
   let truncatedResponse = false
+  let finalAnswerRequired = false
   let invocation = 0
   let modelCall = 0
   let stagnantSegments = 0
@@ -304,6 +306,7 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
           instructions,
           continuation: segment > 0,
           truncatedResponse,
+          finalAnswerRequired,
           deferredToolNames: Object.keys(input.tools),
         }
         const receiptId = `model:${modelCall}`
@@ -391,5 +394,6 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
       return { outcome: 'finished', snapshot: continuation.snapshot, messages, steps }
     }
     stagnantSegments = continuation.stagnantSegments
+    finalAnswerRequired = continuation.finalAnswerRequired
   }
 }

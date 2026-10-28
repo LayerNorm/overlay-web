@@ -58,6 +58,14 @@ test('planning gate lists deferred tools and removes the gate after plan creatio
   expect(buildHarnessStepInstructions(planned, context)).not.toContain('Until a plan exists')
 })
 
+test('requests a plain-text final answer after a protocol-only response', () => {
+  const state = make()
+  const context = { instructions: 'Surface instructions', continuation: true, truncatedResponse: false }
+  const required = buildHarnessStepInstructions(state, { ...context, finalAnswerRequired: true })
+  expect(required).toContain('All milestones are complete. Reply to the user now in plain text with the results; do not write tool calls as text.')
+  expect(buildHarnessStepInstructions(state, context)).not.toContain('Reply to the user now in plain text')
+})
+
 test('keeps the cacheable instruction prefix separate from changing working state', () => {
   const state = make()
   const prefix = buildHarnessInstructions('Surface persona')

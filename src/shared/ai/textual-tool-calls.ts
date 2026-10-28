@@ -20,15 +20,20 @@ function isToolCallJson(segment: string, toolNames: ReadonlySet<string>): boolea
   }
 }
 
+function startsWithKnownToolCall(segment: string, toolNames: ReadonlySet<string>): boolean {
+  const match = segment.match(/^[\s\[]*\{\s*"name"\s*:\s*"([^"]+)"/)
+  return match !== null && toolNames.has(match[1]!)
+}
+
 function stripFencedToolCalls(text: string, toolNames: ReadonlySet<string>): string {
   return text.replace(/```[^\n]*\n([\s\S]*?)\n```/g, (block, body: string) => (
-    isToolCallJson(body.trim(), toolNames) ? '' : block
+    isToolCallJson(body.trim(), toolNames) || startsWithKnownToolCall(body.trim(), toolNames) ? '' : block
   ))
 }
 
 function stripStandaloneToolCalls(text: string, toolNames: ReadonlySet<string>): string {
   return text.split(/\n[ \t]*\n+/).flatMap(paragraph => {
-    if (isToolCallJson(paragraph.trim(), toolNames)) return []
+    if (isToolCallJson(paragraph.trim(), toolNames) || startsWithKnownToolCall(paragraph.trim(), toolNames)) return []
     return paragraph.split('\n').filter(line => !isToolCallJson(line.trim(), toolNames)).join('\n')
   }).join('\n\n')
 }

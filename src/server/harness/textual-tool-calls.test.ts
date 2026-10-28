@@ -42,6 +42,19 @@ test('preserves unknown-tool JSON and JSON embedded in ordinary prose', () => {
     .toBe(`The payload is ${known} and is only an example.`)
 })
 
+test('strips malformed known-tool JSON segments from QA344 while preserving surrounding paragraphs', () => {
+  const malformedPlan = '[\n[{"name": "harness_set_plan", "parameters": {...}}]'
+  const malformedNote = '[[{ "name": "create_note", "parameters": { "content": "2", "tags": ["QA344-GROUND"] } }]'
+  const names = new Set([...toolNames, 'harness_set_plan', 'create_note'])
+  expect(stripTextualToolCalls(malformedPlan, names)).toBe('')
+  expect(stripTextualToolCalls(malformedNote, names)).toBe('')
+  expect(stripTextualToolCalls(`Result before.\n\n${malformedNote}\n\nResult after.`, names))
+    .toBe('Result before.\n\nResult after.')
+  expect(stripTextualToolCalls(`\`\`\`json\n${malformedPlan}\n\`\`\``, names)).toBe('')
+  expect(stripTextualToolCalls('[[{"name":"future_tool","parameters":{}}]', names))
+    .toBe('[[{"name":"future_tool","parameters":{}}]')
+})
+
 test('collapses blank lines after removing protocol blocks', () => {
   expect(stripTextualToolCalls(`Paris\n\n\n<tool_call>call</tool_call>\n\n\nFrance`, toolNames))
     .toBe('Paris\n\nFrance')
