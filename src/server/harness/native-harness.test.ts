@@ -60,6 +60,12 @@ test('owner attaches and finalizes without supplying a writable stream', async (
   expect(mocks.notify).not.toHaveBeenCalled()
 })
 
+test('native finalization receives tool names from the active ToolSet', async () => {
+  mocks.tools.mockReturnValue({ read_file: {} })
+  await nativeHarnessWorkflow(input)
+  expect(mocks.finish.mock.calls[0][3]).toContain('read_file')
+})
+
 test('a named delivery owner notifies its parent after finalization', async () => {
   state = { ...state, runId: 'workspace:target-run', rootRunId: 'workspace:agent', parentRunId: 'workspace:agent', depth: 1 }
   mocks.read.mockResolvedValue(state)

@@ -4,6 +4,7 @@ import { FatalError } from 'workflow'
 import type { HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
 import { agentMemoryOwnerId } from '@/shared/agents/agent-memory'
 import { compactAssistantPersistenceForConvex } from '@/shared/chat/persist-assistant-turn'
+import { stripTextualToolCalls, stripTextualToolCallsFromParts } from '@/shared/ai/textual-tool-calls'
 import { agentStartFailureMessage } from '@/server/app-api/v1/conversations/message/agent-start-failure'
 import { reconcileUnverifiedAgentActionClaims } from '@/server/agents/workspace-agent-invocation'
 import { getOverlayServerContext } from '@/server/bootstrap'
@@ -89,21 +90,34 @@ export async function finishNativeHarnessDelivery(
   access: NativeHarnessAccess,
   delivery: Delivery,
   options: { memoryEnabled: boolean },
+  activeToolNames: ReadonlySet<string> = new Set(),
 ): Promise<void> {
   'use step'
   const { state, run } = await readNativeDelivery(access)
   assertNativeDeliveryOwnership(access, state, run)
   if (!run) throw new FatalError('Native delivery ownership changed.')
-  if (run.status === 'cancelled' || run.status === 'failed') return
   const server = getOverlayServerContext()
+  const sanitizeStreamedMessage = async () => {
+    await server.appData.repositories.conversationCollaboration.sanitizeAgentMessageTextParts({
+      actorUserId: access.actorUserId, authorPrincipalId: access.agentPrincipalId,
+      conversationId: access.conversationId, messageId: access.assistantMessageId,
+      toolNames: [...activeToolNames], turnId: access.turnId, workspaceId: access.workspaceId,
+    })
+  }
+  if (run.status === 'cancelled' || run.status === 'failed') {
+    await sanitizeStreamedMessage()
+    return
+  }
   if (state.status === 'completed') {
     const persistence = compactAssistantPersistenceForConvex(reconcileUnverifiedAgentActionClaims({
-      content: delivery.content,
-      parts: delivery.parts.filter(part => part.type !== 'reasoning'),
+      content: stripTextualToolCalls(delivery.content, activeToolNames),
+      parts: stripTextualToolCallsFromParts(delivery.parts, activeToolNames)
+        .filter(part => (part as { type?: unknown }).type !== 'reasoning'),
     }))
     await server.appData.repositories.conversationCollaboration.finalizeAgentMessage({
       actorUserId: access.actorUserId, content: persistence.content, conversationId: access.conversationId,
-      messageId: access.assistantMessageId, parts: persistence.parts, tokens: delivery.tokens, workspaceId: access.workspaceId,
+      messageId: access.assistantMessageId, parts: persistence.parts, tokens: delivery.tokens,
+      toolNames: [...activeToolNames], workspaceId: access.workspaceId,
     })
     await agentRunService.complete({
       ...delivery, content: persistence.content, parts: persistence.parts,
@@ -119,6 +133,7 @@ export async function finishNativeHarnessDelivery(
     return
   }
   if (state.status === 'cancelled') {
+    await sanitizeStreamedMessage()
     await server.appData.repositories.conversations.transitionAgentRun({
       runId: access.agentRunId, userId: access.actorUserId, status: 'cancelled',
       expectedWorkflowRunId: access.workflowRunId,
@@ -146,7 +161,8 @@ export async function finishNativeHarnessDelivery(
     }
     await server.appData.repositories.conversationCollaboration.failAgentMessage({
       actorUserId: access.actorUserId, conversationId: access.conversationId,
-      messageId: access.assistantMessageId, workspaceId: access.workspaceId, ...(content ? { content } : {}),
+      messageId: access.assistantMessageId, toolNames: [...activeToolNames],
+      workspaceId: access.workspaceId, ...(content ? { content } : {}),
     })
     await agentRunService.fail({
       runId: access.agentRunId, userId: access.actorUserId, errorText: reason,

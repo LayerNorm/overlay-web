@@ -114,7 +114,7 @@ export async function nativeHarnessWorkflow(input: NativeHarnessWorkflowInput) {
   }
   if (owns) {
     const delivery = buildNativeHarnessDelivery(result, fallbackNotices, activeToolNames)
-    await finishNativeHarnessDelivery(access, delivery, { memoryEnabled: input.context.memoryEnabled })
+    await finishNativeHarnessDelivery(access, delivery, { memoryEnabled: input.context.memoryEnabled }, activeToolNames)
   }
   if (initial.parentRunId) await notifyHarnessAncestors(access)
   return { runId: result.snapshot.runId, status: result.snapshot.status }

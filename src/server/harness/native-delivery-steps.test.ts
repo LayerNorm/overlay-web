@@ -5,13 +5,14 @@ import { buildNativeHarnessDelivery } from './native-tool-metrics'
 
 const mocks = vi.hoisted(() => ({ get: vi.fn(), delivery: vi.fn(), attach: vi.fn(), complete: vi.fn(),
   finalize: vi.fn(), failMessage: vi.fn(), fail: vi.fn(), transition: vi.fn(), memory: vi.fn(), list: vi.fn(),
-  listMessages: vi.fn(), agent: vi.fn() }))
+  listMessages: vi.fn(), agent: vi.fn(), sanitize: vi.fn() }))
 vi.mock('server-only', () => ({}))
 vi.mock('./ConvexHarnessRepository', () => ({ ConvexHarnessRepository: class { get = mocks.get; listPendingWaits = mocks.list } }))
 vi.mock('@/server/bootstrap', () => ({ getOverlayServerContext: () => ({ appData: { repositories: {
   conversations: { getLatestAgentRun: mocks.delivery, transitionAgentRun: mocks.transition },
   conversationCollaboration: { finalizeAgentMessage: mocks.finalize, failAgentMessage: mocks.failMessage,
-    enqueueMemoryExtraction: mocks.memory, listMessages: mocks.listMessages },
+    enqueueMemoryExtraction: mocks.memory, listMessages: mocks.listMessages,
+    sanitizeAgentMessageTextParts: mocks.sanitize },
 } }, workspaceAgentService: { get: mocks.agent } }) }))
 vi.mock('@/server/conversations/http', () => ({ agentRunService: { attachWorkflow: mocks.attach, complete: mocks.complete, fail: mocks.fail } }))
 
@@ -97,6 +98,26 @@ test('native terminal persistence keeps the earlier answer when the last step is
   }))
 })
 
+test('native terminal persistence strips nested JSON text parts and preserves tool progress and the answer', async () => {
+  const protocol = '[[{"name":"get_note","parameters":{"noteId":"n1"}}]]'
+  const toolProgress = {
+    type: 'tool-invocation',
+    toolInvocation: { toolCallId: 'call', toolName: 'get_note', state: 'output-available' },
+  }
+  const answer = { type: 'text', text: 'The note says 6.' }
+  await finishNativeHarnessDelivery(access, {
+    ...delivery,
+    content: 'The note says 6.',
+    parts: [{ type: 'text', text: protocol }, toolProgress, answer],
+  }, { memoryEnabled: false }, new Set(['get_note']))
+  expect(mocks.finalize).toHaveBeenCalledWith(expect.objectContaining({
+    content: 'The note says 6.',
+    parts: [toolProgress, answer],
+    toolNames: ['get_note'],
+  }))
+  expect(mocks.complete).toHaveBeenCalledWith(expect.objectContaining({ parts: [toolProgress, answer] }))
+})
+
 test('native failure keeps streamed partial content and cancellation is fenced', async () => {
   mocks.get.mockResolvedValue({ ...state, status: 'failed', terminalReason: 'Failed.' })
   mocks.listMessages.mockResolvedValue([{ ...assistantMessage, content: 'Partial streamed response' }])
@@ -104,7 +125,10 @@ test('native failure keeps streamed partial content and cancellation is fenced',
   expect(mocks.failMessage).toHaveBeenCalledWith(expect.not.objectContaining({ content: expect.anything() }))
   expect(mocks.fail).toHaveBeenCalledOnce()
   mocks.get.mockResolvedValue({ ...state, status: 'cancelled' })
-  await finishNativeHarnessDelivery(access, delivery, { memoryEnabled: false })
+  await finishNativeHarnessDelivery(access, delivery, { memoryEnabled: false }, new Set(['get_note']))
+  expect(mocks.sanitize).toHaveBeenCalledWith(expect.objectContaining({
+    messageId: 'answer', toolNames: ['get_note'], turnId: 'turn',
+  }))
   expect(mocks.transition).toHaveBeenCalledWith(expect.objectContaining({ status: 'cancelled', expectedWorkflowRunId: 'workflow' }))
 })
 
@@ -170,6 +194,7 @@ test('attach permits an unattached AgentRun, then verifies its exact Workflow ow
 test('already-cancelled AgentRun is preserved without finalization', async () => {
   mocks.delivery.mockResolvedValue({ ...run, status: 'cancelled' })
   await finishNativeHarnessDelivery(access, delivery, { memoryEnabled: false })
+  expect(mocks.sanitize).toHaveBeenCalledWith(expect.objectContaining({ messageId: 'answer' }))
   expect(mocks.finalize).not.toHaveBeenCalled()
   expect(mocks.fail).not.toHaveBeenCalled()
   expect(mocks.transition).not.toHaveBeenCalled()

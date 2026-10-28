@@ -37,3 +37,23 @@ test('personal transcript recognizes JSON calls from the active surface tool set
   expect(delivery.content).toBe('Read complete.')
   expect(JSON.stringify(delivery.parts)).not.toContain(call)
 })
+
+test('personal persistence removes nested tool-call arrays from per-step text parts', () => {
+  const call = '[[{"name":"get_note","parameters":{"noteId":"n1"}}]]'
+  const result = {
+    snapshot: {
+      resultSummary: 'Read complete.',
+      usage: { inputTokens: 0, outputTokens: 0, costMicros: 0 },
+    },
+    messages: [],
+    steps: [{
+      text: `Read complete.\n\n${call}`,
+      content: [{ type: 'text', text: call }],
+      toolCalls: [],
+      toolResults: [],
+    }],
+  } as never
+  const delivery = buildPersonalHarnessDelivery(result, undefined, [], new Set(['get_note']))
+  expect(delivery.parts).toEqual([{ type: 'text', text: 'Read complete.' }])
+  expect(delivery.content).toBe('Read complete.')
+})

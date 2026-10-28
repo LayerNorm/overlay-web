@@ -28,6 +28,10 @@ test('strips known tool JSON objects and arrays, including fenced blocks and sta
     '[{"name":"harness_update_step","arguments":{"id":"step1"}}]',
     toolNames,
   )).toBe('')
+  expect(stripTextualToolCalls(
+    '[[{"name":"harness_update_step","parameters":{"id":"step1","status":"done"}}]]',
+    toolNames,
+  )).toBe('')
 })
 
 test('preserves unknown-tool JSON and JSON embedded in ordinary prose', () => {

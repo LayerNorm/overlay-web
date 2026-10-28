@@ -209,6 +209,7 @@ implements ConversationCollaborationRepository {
     conversationId: string
     messageId: string
     parts?: Array<Record<string, unknown>>
+    toolNames?: string[]
     tokens?: { input: number; output: number }
     workspaceId: string
   }) {
@@ -226,9 +227,27 @@ implements ConversationCollaborationRepository {
     conversationId: string
     messageId: string
     parts?: Array<Record<string, unknown>>
+    toolNames?: string[]
     workspaceId: string
   }) {
     await convex.mutation('collaboration/directMessages:failAgentMessage', {
+      ...args,
+      conversationId: args.conversationId as Id<'conversations'>,
+      messageId: args.messageId as Id<'conversationMessages'>,
+      serverSecret: this.serverSecret,
+    }, { throwOnError: true })
+  }
+
+  async sanitizeAgentMessageTextParts(args: {
+    actorUserId: string
+    authorPrincipalId: string
+    conversationId: string
+    messageId: string
+    toolNames: string[]
+    turnId: string
+    workspaceId: string
+  }) {
+    await convex.mutation('collaboration/directMessages:sanitizeAgentMessageTextParts', {
       ...args,
       conversationId: args.conversationId as Id<'conversations'>,
       messageId: args.messageId as Id<'conversationMessages'>,

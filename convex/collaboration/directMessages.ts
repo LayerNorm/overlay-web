@@ -11,6 +11,7 @@ import { conversationListVersion } from '../lib/conversationListVersion'
 import { resolveConversationActivityState } from '../../src/shared/chat/conversation-activity-state'
 import { ROOM_AGENT_RUN_LEASE_MS } from '../../src/shared/agents/agent-run'
 import { agentMemoryOwnerId } from '../../src/shared/agents/agent-memory'
+import { stripTextualToolCalls, stripTextualToolCallsFromParts } from '../../src/shared/ai/textual-tool-calls'
 import { resolveIdentityDisplayName, versionedIdentityUrl } from '../../src/shared/workspaces/identity-resolution'
 
 type CollaborationCtx = Pick<QueryCtx, 'db'> | Pick<MutationCtx, 'db'>
@@ -1025,6 +1026,7 @@ export const finalizeAgentMessage = mutation({
     conversationId: v.id('conversations'),
     messageId: v.id('conversationMessages'),
     parts: v.optional(v.array(v.any())),
+    toolNames: v.optional(v.array(v.string())),
     tokens: v.optional(v.object({ input: v.number(), output: v.number() })),
     workspaceId: v.string(),
     serverSecret: v.optional(v.string()),
@@ -1034,9 +1036,12 @@ export const finalizeAgentMessage = mutation({
     const message = await loadGeneratingAgentMessage(ctx, args)
     if (!message) return
     const now = Date.now()
+    const toolNames = args.toolNames ? new Set(args.toolNames) : undefined
     await ctx.db.patch(args.messageId, {
-      content: args.content,
-      ...(args.parts ? { parts: args.parts } : {}),
+      content: toolNames ? stripTextualToolCalls(args.content, toolNames) : args.content,
+      ...(args.parts ? {
+        parts: toolNames ? stripTextualToolCallsFromParts(args.parts, toolNames) : args.parts,
+      } : {}),
       ...(args.tokens ? { tokens: args.tokens } : {}),
       status: 'completed',
       updatedAt: now,
@@ -1067,6 +1072,7 @@ export const failAgentMessage = mutation({
     conversationId: v.id('conversations'),
     messageId: v.id('conversationMessages'),
     parts: v.optional(v.array(v.any())),
+    toolNames: v.optional(v.array(v.string())),
     workspaceId: v.string(),
     serverSecret: v.optional(v.string()),
   },
@@ -1074,9 +1080,16 @@ export const failAgentMessage = mutation({
     await requireConversationAccess(ctx, args)
     const message = await loadGeneratingAgentMessage(ctx, args)
     if (!message) return
+    const toolNames = args.toolNames ? new Set(args.toolNames) : undefined
+    const content = args.content === undefined
+      ? toolNames ? stripTextualToolCalls(message.content, toolNames) : undefined
+      : toolNames ? stripTextualToolCalls(args.content, toolNames) : args.content
+    const parts = args.parts === undefined
+      ? toolNames && message.parts ? stripTextualToolCallsFromParts(message.parts, toolNames) : undefined
+      : toolNames ? stripTextualToolCallsFromParts(args.parts, toolNames) : args.parts
     await ctx.db.patch(args.messageId, {
-      ...(args.content === undefined ? {} : { content: args.content }),
-      ...(args.parts ? { parts: args.parts } : {}),
+      ...(content === undefined ? {} : { content }),
+      ...(parts === undefined ? {} : { parts }),
       status: 'error',
       updatedAt: Date.now(),
     })
@@ -1086,6 +1099,32 @@ export const failAgentMessage = mutation({
       userId: args.actorUserId,
       type: 'message.failed',
       messageId: args.messageId,
+    })
+  },
+})
+
+export const sanitizeAgentMessageTextParts = mutation({
+  args: {
+    actorUserId: v.string(),
+    authorPrincipalId: v.string(),
+    conversationId: v.id('conversations'),
+    messageId: v.id('conversationMessages'),
+    toolNames: v.array(v.string()),
+    turnId: v.string(),
+    workspaceId: v.string(),
+    serverSecret: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    await requireConversationAccess(ctx, args)
+    const message = await ctx.db.get(args.messageId)
+    if (!message || message.conversationId !== args.conversationId
+      || message.authorKind !== 'agent' || message.authorPrincipalId !== args.authorPrincipalId
+      || message.turnId !== args.turnId) return
+    const toolNames = new Set(args.toolNames)
+    await ctx.db.patch(args.messageId, {
+      content: stripTextualToolCalls(message.content, toolNames),
+      ...(message.parts ? { parts: stripTextualToolCallsFromParts(message.parts, toolNames) } : {}),
+      updatedAt: Date.now(),
     })
   },
 })
