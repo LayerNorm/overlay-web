@@ -76,3 +76,13 @@ The audit defaults to the development Convex deployment. Production inspection r
 
 - [ ] Fix the unrelated on-prem Convex inventory mismatch in the existing chat and auth files.
 - [ ] Fix the unrelated conversation smoke-test index mismatch.
+
+## Preview fixture recovery
+
+Paid and Computer fixtures compose through the comma-separated Preview fixture
+setting. Internal `dev/qa:recover` accepts only the configured QA identity's known
+fixtures on Preview, with an idempotent request ID and audited recovery. Paid
+refill accepts only synthetic active plans and preserves consumed spend, live
+reservations and provider billing history. Free recovery resets only recent QA
+turn/transcription counters. It is separate from normal seeding and never funds
+a provider account. Test actual Stripe checkout/events separately from fixtures.

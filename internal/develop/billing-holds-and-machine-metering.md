@@ -122,9 +122,13 @@ the shared Preview Boat credential. Keep production and other Preview branches
 unchanged. Test free admission in Personal and funded lifecycle in Computer QA;
 allocate at most one small disposable Computer, then stop and delete that resource.
 Record its ID, provider reference and operation timestamps for cost reconciliation.
-Preview registers no Convex crons: the four-minute provider fence is not proof of
-Overlay's ten-minute idle supervisor. Scheduled metering/idle acceptance requires
-separate controlled supervision; do not claim it from a successful desktop open.
+Preview background jobs require `OVERLAY_PREVIEW_BACKGROUND_JOBS=1` and verified
+PR callback configuration (see Convex Workflow). The four-minute provider fence
+is not proof of Overlay's ten-minute idle supervisor: verify scheduled metering,
+idle-stop and settlement through their actual jobs. A successful desktop open
+does not establish them. Combine paid and Computer fixtures with a comma-separated
+fixture list. Explicit `dev/qa:recover` can refill synthetic available credit while
+preserving spend and holds; rebuilds never refill it.
 
 V2 remote tasks bind reservations to the logical run through `remoteRunId`.
 Expired/stale-hold policy preserves a task's hold while execution or terminal

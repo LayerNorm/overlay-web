@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Add Preview capability diagnostics, combined paid/Computer fixtures, explicit audited QA recovery, isolated protected callbacks, and opt-in production schedules with controlled test delivery.
+
 - Preserve connector-card links for unavailable services and render the Poolside provider mark without opaque export backgrounds.
 
 - Refresh recommended models to each provider's latest releases, give every model provider a logo, show the app's logo on chat connect cards and switch them to Connected once linked, and use the shared model picker in the New agent dialog with GLM 5.3 Flash as the default. Free workspaces now see only Auto and OpenRouter free in model pickers even when billing is turned off for the deployment.

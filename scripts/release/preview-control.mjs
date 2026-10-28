@@ -399,6 +399,9 @@ export class PreviewController {
         const state = deployment.readyState ?? deployment.state
         if (state !== lastState) { this.report(`PR ${number}: ${state} (${pr.head.sha.slice(0, 12)})`); lastState = state }
         if (state === 'READY') break
+        if (state === 'BLOCKED') {
+          throw new Error('Controller Preview deployment BLOCKED: inspect deployment-source policy, REST API permission and team access')
+        }
         if (['ERROR', 'CANCELED'].includes(state)) throw new Error(`Preview deployment ${state}`)
         await this.sleep(10_000)
       }

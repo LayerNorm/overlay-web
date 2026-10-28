@@ -4,8 +4,8 @@ import { isPreviewDeployment } from './lib/preview'
 
 const crons = cronJobs()
 
-// Preview fixtures must never start scheduled work or call shared third parties.
-if (!isPreviewDeployment()) {
+// Opt in only after this backend has its own app callback and test providers.
+if (!isPreviewDeployment() || process.env.OVERLAY_PREVIEW_BACKGROUND_JOBS === '1') {
   crons.hourly('overlay-free catalog refresh', { minuteUTC: 0 }, internal.platform.overlayFreeRefresh.runTick, {})
 
 crons.interval('expired connected-agent MCP results', { hours: 1 }, internal.agents.mcpCalls.cleanupExpired)

@@ -52,6 +52,16 @@ The skill is also installed via `npx skills add vercel-labs/agent-browser`.
 
 ## Authentication
 
+### Preview preflight
+
+Run `node scripts/release/preview-doctor.mjs <PR>` to verify current-head hosting
+and inspect missing configuration before browser setup. The command uses complete
+REST environment metadata and emits names/status only. It does not prove browser
+access, login, actual provider execution or background processing. Hosting access
+for a browser and hosting access for Convex callbacks are separate: callbacks
+require the existing bypass credential on their isolated backend and exact PR
+origin validation. Keep share links and bypass credentials out of evidence.
+
 ### PR preview QA login
 
 For the release-workflow migration, use the canonical

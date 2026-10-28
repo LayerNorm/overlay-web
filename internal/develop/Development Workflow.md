@@ -165,6 +165,44 @@ Use the shared hosting settings above. Do not copy `.env.local` wholesale or dep
 
 The build wrapper resolves missing PR-number metadata by public branch/SHA lookup without sending credentials. Inspect controller/build logs for failures. Never test an older deployment as evidence for the new head.
 
+### Preview preflight and recovery
+
+Run `node scripts/release/preview-doctor.mjs <PR>` before browser QA. It checks
+the canonical alias against the current PR SHA and reports missing capability
+settings without credential values. `--require-full` additionally rejects missing
+capability configuration. This is configuration evidence, not live provider or
+browser acceptance. The complete REST inventory avoids connector summaries that
+truncate environment lists to 100 entries; never create another key because a
+summary omitted an existing one.
+
+Native Git Preview deployments may be `BLOCKED` by the intended REST-only policy.
+Inspect the controller-created deployment for the same SHA before diagnosing an
+account hold. A blocked controller deployment is a failure requiring source-policy,
+REST permission and team-access checks; inspect build/runtime logs for other
+failures. Reconcile the requested Preview after correcting the cause. Older
+deployments remain diagnostic evidence only. Keep the PR draft until current-head
+acceptance succeeds. The unrelated admin deployment status is not a required
+customer-web check; relevant admin changes still require their own acceptance.
+
+Preview background work requires `OVERLAY_PREVIEW_BACKGROUND_JOBS=1`, isolated
+providers, exact PR callback URLs and hosting access on the backend. Verify
+automations, ingestion, projections, supervision and reconciliation through their
+normal schedules. Email/webhooks additionally require the test destination lists
+in Convex Workflow. Browser access does not prove server callback access.
+
+For exhausted fixtures, invoke internal `dev/qa:recover` only on the verified PR
+backend, with a new `requestId`, fixture `personal`, `paid-workspace` or
+`computer-workspace`, and `availableCents` for paid fixtures. Use a Preview-scoped
+key-only file or authenticated CLI with the full project/Preview reference.
+Never pass `.env.local`. Recovery is explicit and audited; deployment seeding
+never resets usage or credit. Synthetic credits do not pay real provider costs.
+
+Exercise Free, paid, exhausted-credit and multi-identity scenarios separately.
+A synthetic collaborator principal is not a second authenticated QA identity.
+Seeded entitlements do not establish Stripe checkout or webhook acceptance.
+Record capability configuration, provider calls, persistence, scheduled work,
+permission failures and cleanup separately; missing infrastructure stays BLOCKED.
+
 ### 4. Test the preview in the browser
 
 Cloud Builders without a Vercel session should use the authenticated Vercel MCP
@@ -214,7 +252,7 @@ command. Reruns preserve existing fixtures and do not replenish spent allowance.
 Select **Preview QA Team** in the app before verifying Pro entitlement and scope
 isolation; the original Personal workspace and its billing remain unchanged.
 
-Computer lifecycle QA uses `OVERLAY_PREVIEW_QA_FIXTURES=computer-workspace` on its exact Preview branch to invoke `dev/seed:initComputerQa`. Ordinary seeding remains free; the existing `paid-workspace` fixture is separate. Both are Preview-only, preserve spent balances on rebuild, and use the existing scoped credential.
+Computer lifecycle QA uses `OVERLAY_PREVIEW_QA_FIXTURES=computer-workspace` on its exact Preview branch to invoke `dev/seed:initComputerQa`. Ordinary seeding remains free; the existing `paid-workspace` fixture is separate. Combine fixtures with `OVERLAY_PREVIEW_QA_FIXTURES=paid-workspace,computer-workspace`; duplicate names run once and unknown names fail before deployment. Both are Preview-only, preserve spent balances on rebuild, and use the existing scoped credential.
 
 Other Builders can use the configured sandbox QA identity or the
 [preview login recipe](browser-testing-with-agent-browser.md). Exercise the
@@ -228,7 +266,7 @@ feature as a user would:
 - Exercise relevant errors, permissions, and tenant boundaries.
 - Check browser console or network failures when behavior is unexpected.
 
-Use synthetic data and test providers. Capture screenshots or a short recording where they help demonstrate the result. Clean up the test data you create.
+Use synthetic data and test providers. Capture screenshots or a short recording where they help demonstrate the result. Capture sanitized failure evidence before cleanup. Keep failed fixtures only for a bounded investigation within the open PR lifecycle; closure/label removal still deletes its owned backend and resources. Clean up created provider resources and successful test data.
 
 Fix findings, commit, and push. Wait for the updated deployment and repeat the affected QA on the new revision. Keep the final evidence tied to the current PR head.
 

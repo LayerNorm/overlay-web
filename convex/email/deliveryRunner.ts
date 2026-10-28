@@ -10,7 +10,7 @@ import type { Id } from '../_generated/dataModel'
 import { internalAction, type ActionCtx } from '../_generated/server'
 import type { EmailProvider, LifecycleEmailEvent } from '../../src/shared/email'
 import { renderLifecycleEmail } from '../../src/shared/email'
-import { isPreviewDeployment } from '../lib/preview'
+import { deliveryEnabled, requireDeliveryDestination } from '../lib/previewDelivery'
 
 const WORKER_ID = 'convex-email-runner-v1'
 
@@ -18,7 +18,7 @@ export const runMinuteTick = internalAction({
   args: {},
   returns: v.null(),
   handler: async (ctx) => {
-    if (isPreviewDeployment() || emailProviderName() === 'none') return null
+    if (!deliveryEnabled('email') || emailProviderName() === 'none') return null
     const ids = await ctx.runMutation(internal.email.outbox.claimDueInternal, {
       limit: 25,
       now: Date.now(),
@@ -34,7 +34,7 @@ export const deliverOne = internalAction({
   args: { outboxId: v.id('emailOutbox') },
   returns: v.null(),
   handler: async (ctx, args) => {
-    if (isPreviewDeployment()) return null
+    if (!deliveryEnabled('email')) return null
     const job = await ctx.runQuery(internal.email.outbox.getDeliveryInternal, args)
     if (!job) return null
     const event = parseEvent(job.payloadJson)
@@ -56,6 +56,7 @@ export const deliverOne = internalAction({
     }
 
     try {
+      requireDeliveryDestination('email', job.recipient)
       const provider = createProvider()
       const content = renderLifecycleEmail(
         event,

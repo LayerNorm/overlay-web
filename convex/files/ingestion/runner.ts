@@ -1,3 +1,4 @@
+import { fetchAppCallback } from '../../lib/appCallback'
 import { v } from 'convex/values'
 import { internal } from '../../_generated/api'
 import { internalAction, internalMutation, query } from '../../_generated/server'
@@ -158,7 +159,7 @@ export const processOne = internalAction({
       if (!baseUrl) {
         throw new Error('OVERLAY_BFF_URL is not configured')
       }
-      const response = await fetch(`${baseUrl}/api/v1/files/ingest-jobs/process`, {
+      const response = await fetchAppCallback(`${baseUrl}/api/v1/files/ingest-jobs/process`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

@@ -15,7 +15,7 @@ clean current canonical main, and runs proportionate authenticated smoke.
 Frontend-only releases need no backend push. Use the production-scoped key through
 a private key-only env file; never pass .env.local or use convex:push:all.
 
-Staging is optional for sensitive changes explicitly requesting extra acceptance.
+Sensitive changes use expanded acceptance on their isolated PR preview. The staging lane is retired.
 There is no custom production deployment
 workflow or Vercel deployment token requirement. See
 [Preview and Production QA](./worktree-staging-qa.md) for recovery.
@@ -84,14 +84,19 @@ deletion by an administrator in the Convex dashboard.
 Convex injects the preview URL into the web build. `deploymentEnv()` keeps
 server configuration on the same captured URL as the browser; generic runtime
 `process.env` lookups must not recover an old shared dashboard URL. Preview
-crons are not registered, and email/webhook delivery actions return without
-sending. Project preview defaults contain matching internal API/service secrets,
+crons register the production schedule when `OVERLAY_PREVIEW_BACKGROUND_JOBS=1`.
+Enable it after verifying isolated providers and the PR callback configuration.
+Email and webhook delivery require exact test-recipient and HTTPS-origin lists
+(`OVERLAY_PREVIEW_EMAIL_RECIPIENTS`, `OVERLAY_PREVIEW_WEBHOOK_ORIGINS`); unlisted
+destinations fail delivery and retain retry diagnostics. Webhooks cannot redirect. Project preview defaults contain matching internal API/service secrets,
 the sandbox client ID and seed identity; passwords stay on the web app only.
 
 Provider credentials are configured once in `overlay-landing`'s unscoped Preview settings
 and this project's **preview** defaults. New backends inherit the defaults;
-existing backends do not synchronize automatically. A key rotation therefore
-updates both defaults and each still-open backend. Reuse verified development
+the build wrapper synchronizes its approved backend settings after deployment
+and before fixture repair. Existing backends need a successful rebuild after rotation;
+controller reuse of an existing READY build does not synchronize settings. Update
+both defaults and each still-open backend or rebuild it. Reuse verified development
 credentials from `.env.local` through an explicit allowlist, mapping test
 `DEV_STRIPE_*` values to the runtime names as well. Never import the file wholesale:
 it also contains live Stripe, a production OpenRouter key, and shared-dev backend
@@ -250,3 +255,26 @@ After Stage 3d, legacy customer-secret operator reads/writes are removed. The we
 ## Operator backend cutover
 
 The standalone admin console uses a dedicated operator secret and WorkOS identity. Customer-web default member provisioning moves to `authorization/defaults:ensureDefaultUserRoleByServer`, which accepts only a user id and creates the fixed non-operator member role. This additive endpoint must be deployed before switching the web shell caller; only after the switched web revision is live may the legacy operator mutations be removed. Ordinary authorization reads and append-only operational audit remain available to the web app.
+
+### Preview callbacks and recovery
+
+Every successful Preview build binds `NEXT_PUBLIC_APP_URL`, `OVERLAY_BFF_URL`,
+`AUTOMATION_RUNNER_BASE_URL` and `OVERLAY_AGENT_PUBLIC_URL` to its canonical PR
+origin, using an ephemeral mode-0600 file removed after success or failure.
+Only approved backend-owned settings are transferred; session secrets, login
+passwords and deployment selectors are excluded. Per-backend Stripe webhook
+secrets are deliberately excluded and belong to endpoint provisioning. Live
+Stripe keys are refused.
+
+Scheduled BFF calls use `fetchAppCallback`: Preview requires its canonical origin
+and the existing `VERCEL_AUTOMATION_BYPASS_SECRET`, retains application service
+authentication, refuses cross-PR/production targets and redirects, and times out.
+Production callbacks do not acquire Preview hosting credentials. Missing callback
+configuration fails visibly rather than sending Preview work to production.
+
+Internal `dev/qa:recover` supports explicit configured-identity fixture recovery.
+`personal` resets only recent QA free-turn/transcription counters; paid and Computer
+fixtures accept a bounded synthetic available-credit target. Refill preserves
+consumed spend, reservations, purchased funding and usage operations, accepts only
+active `preview-fixture` subscriptions, and records an idempotent audit event.
+It cannot repair real Stripe subscriptions or replenish provider account budgets.
