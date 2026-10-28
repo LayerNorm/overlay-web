@@ -188,9 +188,15 @@ function validateStepEvidenceTools(state: HarnessSnapshot, step: HarnessPlanInpu
 export function replaceHarnessPlan(state: HarnessSnapshot, steps: HarnessPlanInput[], now: number): HarnessSnapshot {
   assertActive(state)
   if (!steps.length || steps.length > 128) throw new Error('Use between one and 128 meaningful milestones.')
-  const byId = new Map(steps.map(step => [step.id, step]))
-  if (byId.size !== steps.length) throw new Error('Plan IDs must be unique.')
-  for (const step of steps) {
+  const normalizedSteps = steps.map(step => {
+    const previous = state.plan.find(candidate => candidate.id === step.id)
+    return previous?.childRunId && step.evidenceTools === undefined && previous.evidenceTools
+      ? { ...step, evidenceTools: [...previous.evidenceTools] }
+      : step
+  })
+  const byId = new Map(normalizedSteps.map(step => [step.id, step]))
+  if (byId.size !== normalizedSteps.length) throw new Error('Plan IDs must be unique.')
+  for (const step of normalizedSteps) {
     if (!step.id.trim() || !step.title.trim() || !step.acceptanceCriteria.length || step.acceptanceCriteria.some(criterion => !criterion.trim())) throw new Error('Each milestone needs an identity, title and acceptance criteria.')
     if (step.dependsOn.some(id => !byId.has(id))) throw new Error('Unknown dependency.')
     validateStepEvidenceTools(state, step)
@@ -209,10 +215,10 @@ export function replaceHarnessPlan(state: HarnessSnapshot, steps: HarnessPlanInp
     visiting.delete(id)
     visited.add(id)
   }
-  for (const step of steps) visit(step.id)
+  for (const step of normalizedSteps) visit(step.id)
   if (state.plan.some(step => !byId.has(step.id))) throw new Error('Keep existing milestones; explicitly skip obsolete work with a reason.')
   const next = mutable(state)
-  next.plan = steps.map(step => {
+  next.plan = normalizedSteps.map(step => {
     const previous = state.plan.find(candidate => candidate.id === step.id)
     const same = previous && previous.title === step.title && previous.requiresVerification === step.requiresVerification
       && previous.answerOnly === step.answerOnly
@@ -297,7 +303,8 @@ function validateStepCompletion(
       && step.evidenceTools!.some(toolId => evidenceSourceMatchesTool(item.source, toolId)))) {
     throw new Error("Completion requires tool-result evidence from this milestone's evidenceTools.")
   }
-  if (!step.answerOnly && hasToolResultEvidenceAlreadyUsedByAction(state, step.id, evidence)) {
+  if (state.policy.requiresPlan && !step.answerOnly
+    && hasToolResultEvidenceAlreadyUsedByAction(state, step.id, evidence)) {
     throw new Error('Evidence from a tool result already supports another milestone.')
   }
   if (step.requiresVerification && !evidence.some(item => item?.kind === 'verification' && item.verdict === 'passed'
@@ -398,6 +405,11 @@ export function admitHarnessChild(state: HarnessSnapshot, child: HarnessChild, n
   if (state.children.some(candidate => candidate.id === child.id)) throw new Error('Child identity is already reserved.')
   const step = state.plan.find(candidate => candidate.id === child.stepId)
   if (!step || step.childRunId || ['done', 'skipped'].includes(step.status)) throw new Error('Delegate an unfinished unassigned milestone.')
+  const needsChildEvidenceTool = (state.policy.requiresPlan || step.evidenceTools !== undefined)
+    && !step.evidenceTools?.includes('harness_read_child')
+  if (needsChildEvidenceTool && (step.evidenceTools?.length ?? 0) >= 8) {
+    throw new Error(`Milestone "${step.id}" cannot be delegated because evidenceTools already lists eight tools.`)
+  }
   if (step.dependsOn.some(id => !['done', 'skipped'].includes(state.plan.find(candidate => candidate.id === id)!.status))) throw new Error('Finish dependencies before delegating a milestone.')
   if (state.depth >= state.policy.maxDepth) throw new Error('The child depth budget is exhausted.')
   const active = state.children.filter(candidate => candidate.status === 'running')
@@ -408,7 +420,12 @@ export function admitHarnessChild(state: HarnessSnapshot, child: HarnessChild, n
   if (child.status !== 'running' || child.evidenceRefs.length || child.costMicros !== 0 || child.accountedUsage !== undefined) throw new Error('A new child must be empty and running.')
   const next = mutable(state)
   next.children.push({ ...child, allowedToolIds: [...child.allowedToolIds], evidenceRefs: [...child.evidenceRefs] })
-  Object.assign(next.plan.find(candidate => candidate.id === child.stepId)!, { childRunId: child.id, status: 'running' })
+  const delegatedStep = next.plan.find(candidate => candidate.id === child.stepId)!
+  Object.assign(delegatedStep, { childRunId: child.id, status: 'running' })
+  if (needsChildEvidenceTool) {
+    delegatedStep.evidenceTools = [...(step.evidenceTools ?? []), 'harness_read_child']
+    next.planRevision++
+  }
   return changed(next, now)
 }
 

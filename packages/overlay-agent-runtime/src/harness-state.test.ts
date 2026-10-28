@@ -314,6 +314,63 @@ test('named child admission appends and assigns its synthetic milestone atomical
   }, now), /milestone identity/)
 })
 
+test('revising an attached named-child milestone inherits its evidenceTools', () => {
+  const admitted = admitHarnessNamedChild(make(), child('workspace:delivery', 'ask:call:planner', 40), {
+    title: 'Ask Planner',
+    acceptanceCriteria: ['Planner returns a reply.'],
+  }, now)
+  const revised = replaceHarnessPlan(admitted, [{
+    id: 'ask:call:planner',
+    title: 'Ask Planner',
+    dependsOn: [],
+    acceptanceCriteria: ['Planner returns a reply.'],
+    requiresVerification: false,
+  }], now + 1)
+  assert.equal(revised, admitted)
+  assert.equal(revised.planRevision, admitted.planRevision)
+  assert.deepEqual(revised.plan[0]?.evidenceTools, ['harness_read_child'])
+  assert.equal(revised.plan[0]?.childRunId, 'workspace:delivery')
+  assert.equal(revised.plan[0]?.status, 'running')
+})
+
+test('a requiresPlan delegated milestone completes with harness_read_child evidence', () => {
+  const planned = replaceHarnessPlan(make(), [{
+    id: 'delegate',
+    title: 'Delegate the work',
+    dependsOn: [],
+    acceptanceCriteria: ['Child result read'],
+    requiresVerification: false,
+    evidenceTools: ['read'],
+  }], now)
+  const admitted = admitHarnessChild(planned, child('child-1', 'delegate', 0), now + 1)
+  assert.deepEqual(admitted.plan[0]?.evidenceTools, ['read', 'harness_read_child'])
+  const childRun = createHarnessSnapshot({
+    runId: 'child-1',
+    parentRunId: 'root',
+    rootRunId: 'root',
+    depth: 1,
+    goal: 'Complete the delegated work',
+    constraints: [],
+    policy: { ...admitted.policy, allowedToolIds: ['read'], requiresPlan: false, maxCostMicros: 0 },
+  }, now + 2)
+  const completedChild = finishHarness(childRun, now + 3, 'Delegated result')
+  const settled = settleHarnessChild(admitted, completedChild, now + 4)
+  const evidence = recordHarnessEvidence(settled, {
+    id: 'child-result',
+    kind: 'tool_result',
+    source: 'harness_read_child:child-1',
+    summary: 'Child completed',
+    verdict: 'observed',
+    createdAt: now + 5,
+  }, now + 5)
+  const completed = transitionHarnessStep(evidence, {
+    id: 'delegate',
+    status: 'done',
+    evidenceRefs: ['child-result'],
+  }, now + 6)
+  assert.equal(completed.plan[0]?.status, 'done')
+})
+
 test('named child admission enforces spending, depth, concurrency and plan size', () => {
   const step = { title: 'Ask agent', acceptanceCriteria: ['Receive the reply.'] }
   assert.throws(() => admitHarnessNamedChild(make(), child('expensive', 'ask:expensive', 101), step, now), /spending/)
@@ -421,6 +478,21 @@ test('plan-optional runs still require evidence for non-answer milestones and ma
   state = recordHarnessEvidence(state, { id: 'artifact', kind: 'artifact', source: 'export', summary: 'Saved result', verdict: 'observed', createdAt: now }, now)
   state = transitionHarnessStep(state, { id: 'read', status: 'done', evidenceRefs: ['artifact'] }, now)
   assert.equal(state.plan[0]?.status, 'done')
+})
+
+test('plan-optional action milestones may share a tool result', () => {
+  const base = make()
+  const planOptional = { ...base, policy: { ...base.policy, requiresPlan: false } }
+  let state = replaceHarnessPlan(planOptional, [
+    { id: 'first', title: 'First action', dependsOn: [], acceptanceCriteria: ['First done'], requiresVerification: false },
+    { id: 'second', title: 'Second action', dependsOn: [], acceptanceCriteria: ['Second done'], requiresVerification: false },
+  ], now)
+  state = recordHarnessEvidence(state, {
+    id: 'read-result', kind: 'tool_result', source: 'read', summary: 'Read result', verdict: 'observed', createdAt: now,
+  }, now)
+  state = transitionHarnessStep(state, { id: 'first', status: 'done', evidenceRefs: ['read-result'] }, now)
+  state = transitionHarnessStep(state, { id: 'second', status: 'done', evidenceRefs: ['read-result'] }, now)
+  assert.deepEqual(state.plan.map(step => step.status), ['done', 'done'])
 })
 
 test('requires evidenceTools for action milestones and validates their tool IDs', () => {
