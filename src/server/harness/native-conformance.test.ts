@@ -38,11 +38,12 @@ const mocks = vi.hoisted(() => ({
 
 it('persists saved write fields in native tool-result evidence summaries', () => {
   const evidence = harnessToolResultEvidence({
-    toolCall: { toolCallId: 'note-1', toolName: 'create_note' },
+    toolCall: { toolCallId: 'note-1', toolName: 'create_note', input: { title: 'Untitled', content: '1' } },
     success: true,
     output: { success: true, noteId: 'note-1', saved: { title: 'Untitled', tags: [] } },
   } as never, 1_000)
   expect(evidence.summary).toContain('"saved":{"title":"Untitled","tags":[]}')
+  expect(evidence.inputDigest).toMatch(/^[a-f0-9]{64}$/)
 })
 
 vi.mock('server-only', () => ({}))

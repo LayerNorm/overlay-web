@@ -206,6 +206,12 @@ includes a write-capable tool. Action milestones require tool-result evidence.
 Read-only runs can answer without action milestones by using one answer-only
 milestone. Native descendants derive the same policy from their admitted tools.
 Personal Chat and Work roots and descendants remain plan-optional.
+Tool-result evidence includes a SHA-256 digest over the tool name and
+recursively key-sorted input. Personal and
+native Harness runs reject an identical successful repeat of create_note,
+create_task, create_automation, create_folder or create_agent and direct the
+model to cite the existing evidence; failed creates and other tools are not
+blocked by this guard.
 
 The workflow claims the harness before attaching root delivery or executing model
 calls. Each run registers its wake hook before launching children. Child IDs are

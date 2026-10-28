@@ -1,6 +1,7 @@
 import type { WorkflowAgentToolExecutionEndEvent } from '@ai-sdk/workflow'
 import type { ToolSet } from 'ai'
 import type { HarnessEvidence } from '@overlay/agent-runtime/harness-state'
+import { harnessToolInputDigest } from './tool-input-digest'
 
 function hasFailureMarker(output: unknown, visited = new Set<object>(), depth = 0): boolean {
   if (!output || typeof output !== 'object') return false
@@ -38,5 +39,6 @@ export function harnessToolResultEvidence(
     summary: (summary || (event.success ? 'Tool completed without an output.' : 'Tool failed.')).slice(0, 2_000),
     verdict: failure ? 'failed' : 'observed',
     createdAt: now,
+    inputDigest: harnessToolInputDigest(event.toolCall.toolName, event.toolCall.input),
   }
 }

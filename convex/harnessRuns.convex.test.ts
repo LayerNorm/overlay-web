@@ -316,9 +316,11 @@ describe('durable harness runs', () => {
       source: 'tool:read',
       verdict: 'observed' as const,
       createdAt: Date.now(),
+      inputDigest: 'a'.repeat(64),
     }
     const recorded = await apply(convex, input, 'tool-output', 1, { type: 'record_evidence', evidence: firstEvidence })
     expect(recorded.snapshot.revision).toBe(2)
+    expect(recorded.snapshot.evidence.find(item => item.id === firstEvidence.id)?.inputDigest).toBe(firstEvidence.inputDigest)
     await expect(apply(convex, input, 'premature-completion', 2, {
       type: 'transition_step',
       id: 'inspect',
@@ -347,6 +349,7 @@ describe('durable harness runs', () => {
     const fresh = await get(convex, input.runId)
     expect(fresh?.plan).toEqual(completed.snapshot.plan)
     expect(fresh?.evidence.map(item => item.id)).toEqual(['tool-output', 'verification'])
+    expect(fresh?.evidence.find(item => item.id === firstEvidence.id)?.inputDigest).toBe(firstEvidence.inputDigest)
     const persisted = await convex.run(async ctx => ({
       planRows: await ctx.db.query('harnessPlanSteps').withIndex('by_runId', q => q.eq('runId', input.runId)).collect(),
       revisions: await ctx.db.query('harnessPlanRevisions')

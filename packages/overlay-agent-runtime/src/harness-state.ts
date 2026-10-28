@@ -23,6 +23,7 @@ export type HarnessEvidence = {
   source: string
   verdict: 'observed' | 'passed' | 'failed'
   createdAt: number
+  inputDigest?: string
   verification?: { stepId: string; planRevision: number }
 }
 
@@ -226,6 +227,7 @@ export function recordHarnessEvidence(state: HarnessSnapshot, evidence: HarnessE
   const previous = state.evidence.find(candidate => candidate.id === evidence.id)
   if (previous) {
     if (previous.kind !== evidence.kind || previous.source !== evidence.source || previous.summary !== evidence.summary || previous.verdict !== evidence.verdict
+      || previous.inputDigest !== evidence.inputDigest
       || JSON.stringify(previous.verification) !== JSON.stringify(evidence.verification)) throw new Error('Evidence is immutable; use a new reference for new observations.')
     return state
   }

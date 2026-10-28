@@ -16,7 +16,12 @@ import { buildHarnessInstructions, buildHarnessStepInstructions, HARNESS_CONTROL
 import type { HarnessApprovalRequest, HarnessExecutionPorts, HarnessModelSettings } from './ports'
 import { HarnessLanguageModel, type HarnessModelReference } from './secure-model'
 import { createHarnessToolApprovals, type HarnessToolApprovals, type HarnessToolExecutionOptions } from './tool-approvals'
+import { harnessToolInputDigest } from './tool-input-digest'
 import { stripTextualToolCalls } from './textual-tool-calls'
+
+const DUPLICATE_GUARDED_CREATE_TOOLS = new Set([
+  'create_note', 'create_task', 'create_automation', 'create_folder', 'create_agent',
+])
 
 export type HarnessExecutionInput = {
   instructions: string
@@ -42,6 +47,13 @@ function isTerminal(state: HarnessSnapshot) {
 
 function onlyChildrenRemain(state: HarnessSnapshot) {
   return state.children.some(child => child.status === 'running') && !hasRunnableHarnessMilestones(state)
+}
+
+function duplicateCreateEvidence(state: HarnessSnapshot, name: string, input: unknown): HarnessSnapshot['evidence'][number] | undefined {
+  if (!DUPLICATE_GUARDED_CREATE_TOOLS.has(name)) return undefined
+  const inputDigest = harnessToolInputDigest(name, input)
+  return state.evidence.find(evidence => evidence.kind === 'tool_result'
+    && evidence.verdict !== 'failed' && evidence.source === name && evidence.inputDigest === inputDigest)
 }
 
 function assertNoControlToolReplacement(tools: ToolSet, controls: Set<string>): void {
@@ -70,6 +82,13 @@ function wrapAuthorizedTools(
             if (!state.policy.allowedToolIds.includes(name)) throw new Error('This tool is not authorized for this run.')
             if (state.policy.requiresPlan && !state.plan.length) throw new Error('Create the required plan before executing work.')
             await ports.authorizeTool(name)
+          }
+          const duplicate = duplicateCreateEvidence(state, name, value)
+          if (duplicate) {
+            return {
+              success: false,
+              error: `Duplicate: this exact ${name} call already succeeded as evidence ${duplicate.id}. Cite that evidence instead of repeating it.`,
+            }
           }
           const invoke = execute as (
             input: unknown,
@@ -250,8 +269,8 @@ async function finishOrCheckpointInvocation(
     return { kind: 'continue', stagnantSegments, finalAnswerRequired: false }
   }
   const completionIssues = harnessCompletionIssues(state)
-  const resultSummary = latestNonEmptyStepText(runSteps, toolNames)
-  const finalAnswerRequired = !truncatedResponse && !completionIssues.length && !resultSummary
+  const resultSummary = latestFinalAnswerText(runSteps, toolNames)
+  const finalAnswerRequired = !completionIssues.length && !resultSummary
   if (!truncatedResponse && !completionIssues.length && resultSummary) {
     const completed = await ports.apply(`finish:${segment}`, {
       type: 'finish', ...(resultSummary ? { resultSummary: resultSummary.slice(0, 8_000) } : {}),
@@ -264,12 +283,22 @@ async function finishOrCheckpointInvocation(
     return { kind: 'continue', stagnantSegments: nextStagnantSegments, finalAnswerRequired }
   }
   const summary = stripTextualToolCalls(state.workingSummary, toolNames)
-    || latestNonEmptyStepText(runSteps, toolNames)
+    || latestCheckpointSummaryText(runSteps, toolNames)
   await ports.apply(`checkpoint:${segment}`, { type: 'checkpoint', summary: summary.slice(0, 8_000) })
   return { kind: 'continue', stagnantSegments: nextStagnantSegments, finalAnswerRequired }
 }
 
-function latestNonEmptyStepText(steps: StepResult<ToolSet>[], toolNames: ReadonlySet<string>): string {
+function latestFinalAnswerText(steps: StepResult<ToolSet>[], toolNames: ReadonlySet<string>): string {
+  for (let index = steps.length - 1; index >= 0; index--) {
+    const step = steps[index]
+    if (step.toolCalls.length) break
+    const text = stripTextualToolCalls(step.text ?? '', toolNames)
+    if (text) return text
+  }
+  return ''
+}
+
+function latestCheckpointSummaryText(steps: StepResult<ToolSet>[], toolNames: ReadonlySet<string>): string {
   for (let index = steps.length - 1; index >= 0; index--) {
     const text = stripTextualToolCalls(steps[index]?.text ?? '', toolNames)
     if (text) return text

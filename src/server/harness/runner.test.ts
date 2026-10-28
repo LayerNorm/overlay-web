@@ -9,6 +9,7 @@ import type { HarnessExecutionPorts } from './ports'
 import { buildHarnessStepInstructions } from './context'
 import { getLanguageModel } from '@/server/ai/model-runtime'
 import { runOverlayHarness } from './runner'
+import { harnessToolResultEvidence } from './tool-evidence'
 import type { HarnessToolExecutionOptions } from './tool-approvals'
 
 vi.mock('@/server/ai/model-runtime', () => ({ getLanguageModel: vi.fn() }))
@@ -17,19 +18,21 @@ beforeEach(() => { vi.mocked(getLanguageModel).mockReset() })
 type Call = { name: string; id: string; input: unknown }
 const call = (name: string, id: string, input: unknown = {}): Call => ({ name, id, input })
 const plan = [{ id: 'work', title: 'Read the records', dependsOn: [], acceptanceCriteria: ['Records read'], requiresVerification: false }]
+type ProgramOutput = string | Call[] | { text: string; calls: Call[] }
 
-function model(program: (index: number) => string | Call[], finishReasons: LanguageModelV4FinishReason['unified'][] = []) {
+function model(program: (index: number) => ProgramOutput, finishReasons: LanguageModelV4FinishReason['unified'][] = []) {
   let index = 0
   const provider = new MockLanguageModelV4({ doStream: async () => {
     const output = program(index++)
     const parts: LanguageModelV4StreamPart[] = [{ type: 'stream-start', warnings: [] }]
-    if (typeof output === 'string') {
-      parts.push({ type: 'text-start', id: 'text' }, { type: 'text-delta', id: 'text', delta: output }, { type: 'text-end', id: 'text' })
-    } else {
-      parts.push(...output.map(item => ({ type: 'tool-call' as const, toolCallId: item.id, toolName: item.name, input: JSON.stringify(item.input) })))
+    const text = typeof output === 'string' ? output : Array.isArray(output) ? undefined : output.text
+    const calls = typeof output === 'string' ? [] : Array.isArray(output) ? output : output.calls
+    if (text !== undefined) {
+      parts.push({ type: 'text-start', id: 'text' }, { type: 'text-delta', id: 'text', delta: text }, { type: 'text-end', id: 'text' })
     }
+    parts.push(...calls.map(item => ({ type: 'tool-call' as const, toolCallId: item.id, toolName: item.name, input: JSON.stringify(item.input) })))
     parts.push({ type: 'finish',
-      finishReason: { unified: finishReasons[index - 1] ?? (typeof output === 'string' ? 'stop' : 'tool-calls'), raw: 'fixture' },
+      finishReason: { unified: finishReasons[index - 1] ?? (calls.length ? 'tool-calls' : 'stop'), raw: 'fixture' },
       usage: { inputTokens: { total: 10, noCache: 2, cacheRead: 8, cacheWrite: 0 }, outputTokens: { total: 1, text: 1, reasoning: 0 } },
     })
     return { stream: new ReadableStream({ start(controller) { for (const part of parts) controller.enqueue(part); controller.close() } }) }
@@ -80,10 +83,8 @@ function fixture(requiresPlan = true, extraAllowedToolIds: string[] = []) {
     },
     recordToolResult: async event => {
       if (['completed', 'cancelled', 'failed'].includes(current.status)) return
-      current = state.recordHarnessEvidence(current, {
-        id: `tool:${event.toolCall.toolCallId}`, kind: 'tool_result', source: event.toolCall.toolName,
-        summary: event.success ? JSON.stringify(event.output) : 'Tool failed', verdict: event.success ? 'observed' : 'failed', createdAt: Date.now(),
-      }, Date.now())
+      const now = Date.now()
+      current = state.recordHarnessEvidence(current, harnessToolResultEvidence(event, now), now)
     },
     delegate: async () => { throw new Error('Unexpected delegation') },
     readChild: async () => { throw new Error('Unexpected child read') },
@@ -112,6 +113,62 @@ test('runner stores sanitized final text and ignores a trailing textual tool cal
   model(() => `The capital of France is Paris.\n\n${protocol}`)
   const result = await runOverlayHarness({ ...input, tools: {} }, f.ports)
   expect(result.snapshot.resultSummary).toBe('The capital of France is Paris.')
+})
+
+test('runner uses only text after the last tool call as its final result', async () => {
+  const f = fixture()
+  const finalAnswer = 'All three records were read and verified.'
+  const provider = model(index => {
+    if (index === 0) return [call('harness_set_plan', 'plan', { steps: plan })]
+    if (index === 1) return { text: 'Now reading the records.', calls: [call('read', 'read')] }
+    if (index === 2) return [call('harness_update_step', 'complete', { id: 'work', status: 'done', evidenceRefs: ['tool:read'] })]
+    return finalAnswer
+  })
+  const result = await runOverlayHarness({
+    ...input,
+    tools: { read: tool({ inputSchema: z.object({}), execute: async () => 'Records read.' }) },
+  }, f.ports)
+
+  expect(result.snapshot.status).toBe('completed')
+  expect(result.snapshot.resultSummary).toBe(finalAnswer)
+  expect(provider.doStreamCalls).toHaveLength(4)
+})
+
+test('runner asks for a final answer after tool-call text completes the plan', async () => {
+  const f = fixture()
+  let finalAnswerRequired = false
+  f.ports.prepareModel = async request => {
+    finalAnswerRequired = request.instructionContext.finalAnswerRequired === true
+    const current = await f.ports.read()
+    return {
+      messages: request.messages,
+      instructions: buildHarnessStepInstructions(current, request.instructionContext),
+      activeToolNames: request.toolNames,
+      estimatedCostMicros: 0,
+    }
+  }
+  const finalAnswer = 'The sum is 42.'
+  const provider = model(index => {
+    if (index === 0) return [call('harness_set_plan', 'plan', { steps: plan })]
+    if (index === 1) return [call('read', 'read')]
+    if (index === 2) return {
+      text: 'All milestones are complete.',
+      calls: [call('harness_update_step', 'complete', { id: 'work', status: 'done', evidenceRefs: ['tool:read'] })],
+    }
+    if (index === 3) return '[[{"name":"harness_update_step","parameters":{}}]'
+    return finalAnswer
+  })
+  const result = await runOverlayHarness({
+    ...input,
+    tools: { read: tool({ inputSchema: z.object({}), execute: async () => 'Records read.' }) },
+  }, f.ports)
+
+  expect(finalAnswerRequired).toBe(true)
+  expect(result.snapshot.status).toBe('completed')
+  expect(result.snapshot.resultSummary).toBe(finalAnswer)
+  expect(provider.doStreamCalls).toHaveLength(5)
+  expect(JSON.stringify(provider.doStreamCalls[4]?.prompt))
+    .toContain('All milestones are complete. Reply to the user now in plain text with the results; do not write tool calls as text.')
 })
 
 test('runner requests a real answer after a protocol-only final segment', async () => {
@@ -145,6 +202,88 @@ test('runner checkpoint summary falls back to sanitized step text', async () => 
   const result = await runOverlayHarness({ ...input, tools: {} }, f.ports)
   expect(result.snapshot.workingSummary).toBe('The capital of France is Paris.')
   expect(result.snapshot.workingSummary).not.toContain('<tool_call>')
+})
+
+test('an identical successful create is rejected with its original evidence reference', async () => {
+  const f = fixture(false, ['create_note'])
+  const inputNote = { title: 'Summary', content: 'Same note content.' }
+  const execute = vi.fn(async () => ({ success: true, noteId: 'note-1' }))
+  model(index => index === 0
+    ? [call('create_note', 'create-1', inputNote)]
+    : index === 1
+      ? [call('create_note', 'create-2', inputNote)]
+      : 'The original note is available.')
+  const result = await runOverlayHarness({
+    ...input,
+    tools: { create_note: tool({
+      inputSchema: z.object({ title: z.string(), content: z.string() }),
+      execute,
+    }) },
+  }, f.ports)
+
+  expect(execute).toHaveBeenCalledOnce()
+  expect(result.snapshot.evidence.find(evidence => evidence.id === 'tool:create-1')).toMatchObject({
+    kind: 'tool_result',
+    verdict: 'observed',
+    inputDigest: expect.stringMatching(/^[a-f0-9]{64}$/),
+  })
+  expect(result.snapshot.evidence.find(evidence => evidence.id === 'tool:create-2')).toMatchObject({
+    verdict: 'failed',
+    summary: expect.stringContaining(
+      'Duplicate: this exact create_note call already succeeded as evidence tool:create-1. Cite that evidence instead of repeating it.',
+    ),
+  })
+})
+
+test('different create inputs and repeated edit calls still execute', async () => {
+  const f = fixture(false, ['create_note', 'edit_note'])
+  const create = vi.fn(async () => ({ success: true }))
+  const edit = vi.fn(async () => ({ success: true }))
+  const provider = model(index => {
+    if (index === 0) return [call('create_note', 'create-1', { title: 'One', content: 'First' })]
+    if (index === 1) return [call('create_note', 'create-2', { title: 'One', content: 'Second' })]
+    if (index === 2) return [call('edit_note', 'edit-1', { noteId: 'n1', content: 'Same' })]
+    if (index === 3) return [call('edit_note', 'edit-2', { noteId: 'n1', content: 'Same' })]
+    return 'The note changes were applied.'
+  })
+  const result = await runOverlayHarness({
+    ...input,
+    tools: {
+      create_note: tool({ inputSchema: z.object({ title: z.string(), content: z.string() }), execute: create }),
+      edit_note: tool({ inputSchema: z.object({ noteId: z.string(), content: z.string() }), execute: edit }),
+    },
+  }, f.ports)
+
+  expect(result.snapshot.status).toBe('completed')
+  expect(create).toHaveBeenCalledTimes(2)
+  expect(edit).toHaveBeenCalledTimes(2)
+  expect(provider.doStreamCalls).toHaveLength(5)
+})
+
+test('an identical create can retry after failed tool evidence', async () => {
+  const f = fixture(false, ['create_note'])
+  const execute = vi.fn()
+    .mockResolvedValueOnce({ success: false, error: 'Temporary failure.' })
+    .mockResolvedValueOnce({ success: true, noteId: 'note-2' })
+  const inputNote = { title: 'Retry', content: 'Retry this note.' }
+  const provider = model(index => index === 0
+    ? [call('create_note', 'failed-create', inputNote)]
+    : index === 1
+      ? [call('create_note', 'retry-create', inputNote)]
+      : 'The note was created after retrying.')
+  const result = await runOverlayHarness({
+    ...input,
+    tools: { create_note: tool({
+      inputSchema: z.object({ title: z.string(), content: z.string() }),
+      execute,
+    }) },
+  }, f.ports)
+
+  expect(result.snapshot.status).toBe('completed')
+  expect(execute).toHaveBeenCalledTimes(2)
+  expect(result.snapshot.evidence.find(evidence => evidence.id === 'tool:failed-create')?.verdict).toBe('failed')
+  expect(result.snapshot.evidence.find(evidence => evidence.id === 'tool:retry-create')?.verdict).toBe('observed')
+  expect(provider.doStreamCalls).toHaveLength(3)
 })
 
 test('the real SDK runs beyond twenty tool calls and continues after early sign-off', async () => {

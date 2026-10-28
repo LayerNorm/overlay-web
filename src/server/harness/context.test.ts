@@ -35,6 +35,12 @@ test('write-capable runs receive evidence-backed planning instructions', () => {
   expect(instructions).toContain(
     'Before marking an action milestone done, compare the saved fields in its cited tool results with its acceptance criteria; if any differ, correct them with another tool call first.',
   )
+  expect(instructions).toContain(
+    'Before acting on a pending milestone, check observations; if a successful result already satisfies it, cite that evidence instead of repeating the action.',
+  )
+  expect(buildHarnessInstructions('Surface instructions')).toContain(
+    'Before acting on a pending milestone, check observations; if a successful result already satisfies it, cite that evidence instead of repeating the action.',
+  )
   expect(instructions).toContain('Never describe actions that were not executed')
   expect(instructions).not.toContain('\u2013')
   expect(instructions).not.toContain('\u2014')

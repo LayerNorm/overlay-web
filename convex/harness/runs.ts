@@ -128,6 +128,7 @@ const evidenceValidator = v.object({
   source: v.string(),
   verdict: v.union(v.literal('observed'), v.literal('passed'), v.literal('failed')),
   createdAt: v.number(),
+  inputDigest: v.optional(v.string()),
   verification: v.optional(v.object({
     stepId: v.string(),
     planRevision: v.number(),
@@ -423,6 +424,7 @@ function assertBoundedOperation(operation: HarnessOperation) {
       if (!operation.evidence.id.trim() || operation.evidence.id.length > MAX_EVIDENCE_ID_LENGTH
         || !operation.evidence.source.trim() || operation.evidence.source.length > MAX_EVIDENCE_ID_LENGTH
         || !operation.evidence.summary.trim() || operation.evidence.summary.length > MAX_EVIDENCE_SUMMARY_LENGTH
+        || (operation.evidence.inputDigest !== undefined && !/^[a-f0-9]{64}$/.test(operation.evidence.inputDigest))
         || !Number.isFinite(operation.evidence.createdAt) || operation.evidence.createdAt < 0
         || (operation.evidence.verification !== undefined
           && (!operation.evidence.verification.stepId.trim()
