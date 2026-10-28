@@ -14,7 +14,6 @@ import {
   executeReplaceNoteSection,
   executeUpdateNote,
 } from './notes-executes'
-import { executeBrowserRunTask } from './browser-executes'
 import {
   executeArchiveTask,
   executeCommentOnTask,
@@ -259,7 +258,6 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
     return !allowedToolIds || allowedToolIds.has(toolId)
   }
   const assertToolAllowed = (toolId: string): void => assertOverlayToolAllowed(toolId, allowedToolIds)
-  const includePaidOnlyOverlay = options.includePaidOnlyOverlayTools !== false
   const generatedUiVariantSchema = z.object({
     id: z.string().min(1).optional(),
     label: z.string().min(1),
@@ -906,28 +904,6 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
     execute: async (input) => {
       assertToolAllowed('delete_memory')
       return executeDeleteMemory(options, input)
-    },
-  })
-  }
-
-  if (includePaidOnlyOverlay && shouldExposeTool('interactive_browser_session')) {
-    tools.interactive_browser_session = tool({
-    description:
-      'Remote AI-controlled browser session for INTERACTIVE web tasks only — NOT a search tool. ' +
-      'HARD RULE: you are forbidden from calling this tool for any information-gathering, lookup, research, "find sources", "find papers", "find articles", news, reference, citation, or list-building request. Those MUST go through web_search and/or deep_search (multi-query + domain/recency filters; deep research with long excerpts and includeDomains). ' +
-      'Permitted ONLY when ALL of the following are true: (1) the task literally cannot be satisfied by search results + URLs, AND (2) it requires driving a real browser — e.g. logging in with credentials, clicking through a UI flow, submitting a form, scraping a page that actively blocks non-browser clients, operating a JS-heavy SPA, or capturing a screenshot of a specific rendered page. ' +
-      'Forbidden examples (use web_search / deep_search instead): "give me 10 academic sources on X", "find peer-reviewed papers about Y", "cite research on Z", "look up the latest news on …", "find articles about …", "who is …", "what is …", "summarize the state of …". ' +
-      'If both web tools ran and returned insufficient or irrelevant results, you may then escalate — but state that in your reasoning. Never call this tool as a first attempt for a research-style question. It is ~10–100× slower and more expensive than web search tools.',
-    inputSchema: z.object({
-      task: z.string().describe('What to do in the browser — natural language'),
-      model: z.enum(['bu-mini', 'bu-max']).optional(),
-      sessionId: z.string().optional().describe('Reuse an existing browser session'),
-      keepAlive: z.boolean().optional().describe('Keep session alive after task for follow-ups'),
-      proxyCountryCode: z.string().optional().describe('2-letter country code for residential proxy'),
-    }),
-    execute: async (input) => {
-      assertToolAllowed('interactive_browser_session')
-      return executeBrowserRunTask(options, input)
     },
   })
   }

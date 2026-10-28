@@ -6,7 +6,6 @@ const CHAT_READ_PATHS = new Set([
 ])
 
 const CHAT_WRITE_PATHS = new Set([
-  '/api/v1/browser-task',
   '/api/v1/generate-image',
   '/api/v1/generate-tab-group-label',
   '/api/v1/generate-title',

@@ -51,7 +51,7 @@ test('native Git builds derive their canonical PR origin before branch provision
 
 test('release builds cannot advertise a disabled provider as an enabled capability', () => {
   for (const [provider, feature] of [['INTEGRATIONS', 'INTEGRATIONS'],
-    ['BROWSER', 'BROWSER_USE'], ['SANDBOX', 'SANDBOXES'], ['WEB_SEARCH', 'WEB_SEARCH']]) {
+    ['SANDBOX', 'SANDBOXES'], ['WEB_SEARCH', 'WEB_SEARCH']]) {
     const disabled = { ...preview, ['OVERLAY_PROVIDER_' + provider]: 'none' }
     assert.throws(() => buildPlan(disabled), /requires its feature flag/)
     assert.throws(() => buildPlan({ ...disabled, ['OVERLAY_FEATURE_' + feature]: 'true' }))

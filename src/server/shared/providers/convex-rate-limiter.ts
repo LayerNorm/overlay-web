@@ -26,7 +26,6 @@ export class ConvexRateLimiter implements RateLimiter {
   // in-memory limiter is insufficient on multi-instance serverless deployments.
   private static readonly FAIL_CLOSED_PREFIXES = [
     'owner-funded:',
-    'browser-task:',
     'generation:image:',
     'generation:video:',
     'transcribe:',

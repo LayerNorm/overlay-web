@@ -39,7 +39,7 @@ Default paths:
 | `/opt/overlay/overlayctl` | Local Docker-backed manager wrapper. |
 | `/usr/local/bin/overlayctl` | Convenience wrapper when the installer can write to `/usr/local/bin`. |
 
-The generated deployment uses the `enterprise-private` preset and is private/off by default. Browser use, sandboxes, integrations, web search, analytics, error reporting, billing, webhooks, API keys, vector search, memory, knowledge, automations, and file upload are disabled until an operator edits config and runs:
+The generated deployment uses the `enterprise-private` preset and is private/off by default. Computers, sandboxes, integrations, web search, analytics, error reporting, billing, webhooks, API keys, vector search, memory, knowledge, automations, and file upload are disabled until an operator edits config and runs:
 
 ```bash
 overlayctl apply
@@ -91,7 +91,6 @@ Disable external processors:
 ```json
 {
   "features": {
-    "browserUse": false,
     "sandboxes": false,
     "integrations": false,
     "webSearch": false,

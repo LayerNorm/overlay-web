@@ -22,7 +22,6 @@ export function capabilityConfiguration(settings) {
   const enabled = key => ['true', '1'].includes(value(key))
   return [
     ['integrations', 'INTEGRATIONS', 'INTEGRATIONS', ['COMPOSIO_API_KEY']],
-    ['browser', 'BROWSER_USE', 'BROWSER', ['BROWSER_USE_API_KEY']],
     ['sandbox', 'SANDBOXES', 'SANDBOX', []],
     ['web search', 'WEB_SEARCH', 'WEB_SEARCH', []],
     ['embeddings', 'VECTOR_SEARCH', 'EMBEDDINGS', []],

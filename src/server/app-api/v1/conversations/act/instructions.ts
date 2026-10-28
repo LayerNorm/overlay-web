@@ -77,8 +77,8 @@ function buildActInstructionNotes(params: Parameters<typeof buildActAgentInstruc
     taskToolsNote: [...availableTools].some((id) => id.endsWith('_task') || id === 'list_tasks')
       ? '\nWhen task tools are available, use list_tasks and get_task to inspect Work, then create_task, update_task, comment_on_task, archive_task, or restore_task for the requested change. Assigning an agent does not start it.'
       : '',
-    browserToolNote: availableTools.has('interactive_browser_session')
-      ? '\nYou also have an interactive_browser_session tool that drives a real browser. Reserve it strictly for tasks that require UI interaction (login, form submission, JS-heavy scraping, screenshot). For any information lookup or research request, use web_search, deep_search, or web_fetch instead.'
+    browserToolNote: availableTools.has('computer_browser')
+      ? '\nUse computer_browser to drive the browser inside the bound Computer. The user sees the same browser in Open desktop. Use it for UI interaction, authenticated browsing, and screenshots. For any information lookup or research request, use web_search, deep_search, or web_fetch instead.'
       : '',
     freeTierNote: freeTierNote(params),
     generationNote: generationNote(params.exposedMediaTools),
@@ -192,7 +192,7 @@ function requestedToolsNote(
         ? '- Memory: the user selected memory for this message. Use the provided memory context, and call search_memory if stored memory is needed beyond that context.'
         : '- Memory: the user selected memory, but memory is off for this turn. Do not use memory tools or memory context.')
     } else if (toolId === 'browser') {
-      lines.push('- Browser Use: the user selected browser use for this message. Call interactive_browser_session when the task needs UI interaction, authenticated browsing, screenshots, or a JS-heavy page.')
+      lines.push('- Computer browser: the user selected browser work for this message. Use computer_browser on the bound Computer for UI interaction, authenticated browsing, screenshots, or a JS-heavy page. If a Computer is unavailable, explain that the user needs a Computer in Work mode.')
     }
   }
   return lines.length > 0

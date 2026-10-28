@@ -17,7 +17,7 @@ function buildInstructions(overrides: Partial<Parameters<typeof buildActAgentIns
   return buildActAgentInstructions({
     availableToolIds: [
       'deep_search',
-      'interactive_browser_session',
+      'computer_browser',
       'save_memory',
       'web_fetch',
       'web_search',
@@ -49,7 +49,7 @@ test('buildActAgentInstructions preserves paid tool and context note composition
   assert.doesNotMatch(instructions, /Project instructions/)
   assert.match(instructions, /generate_image, generate_video/)
   assert.match(instructions, /You are in Automate mode\./)
-  assert.match(instructions, /interactive_browser_session/)
+  assert.match(instructions, /computer_browser/)
   assert.match(instructions, /Every code artifact you write must be returned in a fenced Markdown code block/)
   assert.match(instructions, /never place source code, HTML, CSS, JavaScript, JSON, SQL/)
   assert.match(instructions, /WEB_KNOWLEDGE/)
@@ -86,6 +86,6 @@ test('buildActAgentInstructions does not advertise tools when none are registere
   assert.match(instructions, /^You are Overlay’s assistant\./)
   assert.match(instructions, /No callable tools are registered for this turn/)
   assert.match(instructions, /No knowledge or memory tools are callable in this turn/)
-  assert.doesNotMatch(instructions, /You also have an interactive_browser_session tool/)
+  assert.doesNotMatch(instructions, /You also have an computer_browser tool/)
   assert.doesNotMatch(instructions, /PAID_REALITY/)
 })

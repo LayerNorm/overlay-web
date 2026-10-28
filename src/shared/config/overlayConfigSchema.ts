@@ -46,7 +46,6 @@ export const OverlayDatabaseProviderSchema = z.enum(['convex'])
 export const OverlayVectorSearchProviderSchema = z.enum(['convex', 'pgvector', 'pinecone', 'none'])
 export const OverlayEmbeddingsProviderSchema = z.enum(['ai-gateway', 'openai', 'azure-openai', 'none'])
 export const OverlayIntegrationsProviderSchema = z.enum(['composio', 'executor', 'mcp', 'none'])
-export const OverlayBrowserProviderSchema = z.enum(['browser-use', 'self-hosted-playwright', 'none'])
 // `vercel` and `daytona` are inert: both providers were removed. They are still accepted so
 // existing configs and env overrides keep validating; nothing reads them.
 export const OverlaySandboxProviderSchema = z.enum(['box', 'vercel', 'daytona', 'e2b', 'local-firecracker', 'none'])
@@ -68,7 +67,6 @@ const OverlayFeatureFlagsSchema = z
     integrations: z.boolean().optional(),
     skills: z.boolean().optional(),
     mcpServers: z.boolean().optional(),
-    browserUse: z.boolean().optional(),
     sandboxes: z.boolean().optional(),
     webSearch: z.boolean().optional(),
     analytics: z.boolean().optional(),
@@ -133,7 +131,6 @@ const OverlayProvidersSchema = z
     embeddings: z.object({ provider: OverlayEmbeddingsProviderSchema.optional() }).strict().optional(),
     models: z.object({ provider: OverlayLlmGatewayProviderSchema.optional() }).strict().optional(),
     integrations: z.object({ provider: OverlayIntegrationsProviderSchema.optional() }).strict().optional(),
-    browser: z.object({ provider: OverlayBrowserProviderSchema.optional() }).strict().optional(),
     sandbox: z.object({ provider: OverlaySandboxProviderSchema.optional() }).strict().optional(),
     webSearch: z.object({ provider: OverlayWebSearchProviderSchema.optional() }).strict().optional(),
     analytics: z.object({ provider: OverlayAnalyticsProviderSchema.optional() }).strict().optional(),
@@ -462,7 +459,6 @@ export const OverlayRuntimeConfigSchema = z
       embeddings: config.providers.embeddings?.provider ?? 'ai-gateway',
       models: config.providers.models?.provider ?? config.llm.gatewayProvider,
       integrations: config.providers.integrations?.provider ?? (effectiveCapabilities.integrations ? 'composio' : 'none'),
-      browser: config.providers.browser?.provider ?? (effectiveCapabilities.browserUse ? 'browser-use' : 'none'),
       // Box is the hosted provider; E2B will be the self-hosted one.
       sandbox: config.providers.sandbox?.provider ?? (effectiveCapabilities.sandboxes ? 'box' : 'none'),
       webSearch: config.providers.webSearch?.provider ?? (effectiveCapabilities.webSearch ? 'elo' : 'none'),
@@ -583,9 +579,6 @@ export const OverlayRuntimeConfigSchema = z
         }
       }
     }
-    addUnsupportedProviderIssue(ctx, ['providers', 'browser', 'provider'], selectedProviders.browser, {
-      'self-hosted-playwright': 'Self-hosted Playwright is declared for enterprise config v2 but the browser adapter is not implemented. Use browser.provider=browser-use or none.',
-    })
     addUnsupportedProviderIssue(ctx, ['providers', 'sandbox', 'provider'], selectedProviders.sandbox, {
       e2b: 'E2B sandboxes are declared for enterprise config v2 but no E2B adapter exists yet. Use sandbox.provider=box or none.',
       'local-firecracker': 'Local Firecracker sandboxes are declared for enterprise config v2 but no local sandbox adapter exists yet. Use sandbox.provider=box or none.',
@@ -638,7 +631,6 @@ export const OverlayRuntimeConfigSchema = z
 
     if (config.compliance.profile === 'dpdp-strict' && config.compliance.allowExternalProcessors === false) {
       assertExternalProcessorAllowed(ctx, config, 'integrations', selectedProviders.integrations, effectiveCapabilities.integrations, ['providers', 'integrations', 'provider'])
-      assertExternalProcessorAllowed(ctx, config, 'browser', selectedProviders.browser, effectiveCapabilities.browserUse, ['providers', 'browser', 'provider'])
       assertExternalProcessorAllowed(ctx, config, 'sandbox', selectedProviders.sandbox, effectiveCapabilities.sandboxes, ['providers', 'sandbox', 'provider'])
       assertExternalProcessorAllowed(ctx, config, 'webSearch', selectedProviders.webSearch, effectiveCapabilities.webSearch, ['providers', 'webSearch', 'provider'])
       assertExternalProcessorAllowed(ctx, config, 'analytics', selectedProviders.analytics, effectiveCapabilities.analytics, ['providers', 'analytics', 'provider'])

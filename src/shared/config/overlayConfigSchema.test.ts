@@ -320,7 +320,6 @@ test('OverlayRuntimeConfigSchema validates v2 enterprise-private provider select
     features: {
       billing: false,
       integrations: false,
-      browserUse: false,
       sandboxes: false,
       webSearch: false,
       analytics: false,
@@ -333,7 +332,6 @@ test('OverlayRuntimeConfigSchema validates v2 enterprise-private provider select
       vectorSearch: { provider: 'convex' },
       models: { provider: 'openai' },
       integrations: { provider: 'none' },
-      browser: { provider: 'none' },
       sandbox: { provider: 'none' },
       webSearch: { provider: 'none' },
       analytics: { provider: 'none' },
@@ -348,7 +346,6 @@ test('OverlayRuntimeConfigSchema validates v2 enterprise-private provider select
   } satisfies OverlayRuntimeConfigInput)
 
   assert.equal(parsed.preset, 'enterprise-private')
-  assert.equal(parsed.features.browserUse, false)
   assert.equal(parsed.providers.objectStorage?.provider, 's3')
 })
 
@@ -498,13 +495,13 @@ test('OverlayRuntimeConfigSchema rejects dpdp-strict external processors unless 
           allowedProcessorIds: [],
         },
         features: {
-          browserUse: true,
+          integrations: true,
         },
         providers: {
-          browser: { provider: 'browser-use' },
+          integrations: { provider: 'composio' },
         },
       }),
-    /requires browser to be disabled/,
+    /requires integrations to be disabled/,
   )
 
   const parsed = OverlayRuntimeConfigSchema.parse({
@@ -514,26 +511,24 @@ test('OverlayRuntimeConfigSchema rejects dpdp-strict external processors unless 
       profile: 'dpdp-strict',
       minorMode: true,
       allowExternalProcessors: false,
-      allowedProcessorIds: ['browser:browser-use'],
+      allowedProcessorIds: ['integrations:composio'],
     },
     features: {
-      browserUse: true,
-      integrations: false,
+      integrations: true,
       sandboxes: false,
       webSearch: false,
       analytics: false,
       errorReporting: false,
     },
     providers: {
-      browser: { provider: 'browser-use' },
-      integrations: { provider: 'none' },
+      integrations: { provider: 'composio' },
       sandbox: { provider: 'none' },
       webSearch: { provider: 'none' },
       analytics: { provider: 'none' },
       errorReporting: { provider: 'none' },
     },
   } satisfies OverlayRuntimeConfigInput)
-  assert.deepEqual(parsed.compliance.allowedProcessorIds, ['browser:browser-use'])
+  assert.deepEqual(parsed.compliance.allowedProcessorIds, ['integrations:composio'])
 })
 
 test('OverlayRuntimeConfigSchema validates on-prem OIDC/S3/OpenAI config with billing disabled', () => {

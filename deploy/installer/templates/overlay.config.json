@@ -32,7 +32,6 @@
     "knowledge": false,
     "automations": false,
     "integrations": false,
-    "browserUse": false,
     "sandboxes": false,
     "webSearch": false,
     "analytics": false,
@@ -64,9 +63,6 @@
       "provider": "none"
     },
     "integrations": {
-      "provider": "none"
-    },
-    "browser": {
       "provider": "none"
     },
     "sandbox": {

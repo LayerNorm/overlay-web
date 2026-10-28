@@ -13,8 +13,7 @@ import {
 
 describe('@overlay/tools-core', () => {
   it('classifies browser tools into the browser bucket', () => {
-    assert.equal(toolCostBucketForId('browser_run_task'), 'browser')
-    assert.equal(toolCostBucketForId('interactive_browser_session'), 'browser')
+    assert.equal(toolCostBucketForId('computer_browser'), 'internal')
     assert.equal(shouldPersistToolInvocation('browser'), true)
   })
 
@@ -24,7 +23,7 @@ describe('@overlay/tools-core', () => {
       clientSurface: 'chrome-extension',
     })
 
-    assert.equal(ids.includes('interactive_browser_session'), false)
+    assert.equal(ids.includes('computer_browser'), false)
   })
 
   it('exposes the task tools for explicit Work requests', () => {
@@ -44,6 +43,9 @@ describe('@overlay/tools-core', () => {
     // Every assertToolAllowed id in build.ts must exist here or the execute
     // throws "not allowed" regardless of the turn allow-list.
     const registry = overlayToolIdSet()
+    assert.equal(registry.has('interactive_browser_session'), false)
+    assert.equal(registry.has('browser_run_task'), false)
+    for (const id of COMPUTER_TOOL_IDS) assert.equal(toolCostBucketForId(id), 'internal')
     for (const id of ['create_agent', 'update_agent', ...COMPUTER_TOOL_IDS]) {
       assert.ok(registry.has(id), `${id} missing from OVERLAY_TOOL_IDS`)
     }

@@ -10,18 +10,18 @@ test('exposure policy keeps browser tool disabled on extension client unless the
   const researchTools = allowedOverlayToolIdsForTurn({
     latestUserText: 'Find me academic papers about strength training',
   })
-  assert.equal(researchTools.includes('interactive_browser_session'), false)
+  assert.equal(researchTools.includes('computer_browser'), false)
 
   const browserTools = allowedOverlayToolIdsForTurn({
     latestUserText: 'Log into the website and take a screenshot of the billing page',
   })
-  assert.equal(browserTools.includes('interactive_browser_session'), true)
+  assert.equal(browserTools.includes('computer_browser'), true)
 
   const extensionSurface = allowedOverlayToolIdsForTurn({
     latestUserText: 'Fill out the form on this page and submit it',
     clientSurface: 'chrome-extension',
   })
-  assert.equal(extensionSurface.includes('interactive_browser_session'), false)
+  assert.equal(extensionSurface.includes('computer_browser'), false)
 })
 
 test('exposure policy exposes high-risk non-media tools only for explicit matching requests', async () => {

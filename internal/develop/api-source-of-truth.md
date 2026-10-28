@@ -38,6 +38,11 @@ The filesystem under `src/app/api/**/route.ts` is authoritative for route existe
 - Add `*Response` methods when callers need status codes, streaming bodies, redirects, or custom error handling.
 - Stream chat directly through `/api/v1/conversations/act`. Disconnect recovery comes from persisted conversation state; `/api/v1/conversations/stream-auth` and an external replay relay are not public contracts.
 
+Interactive browsing uses the Computer API and `computer_browser` tool on the
+bound machine. The separate `/api/v1/browser-task` endpoint and
+`ChatAuxClient.browserTaskResponse` have been removed; old clients receive the
+ordinary missing-route response. Historical usage rows remain readable.
+
 ## Work (tasks)
 
 Work routes (`/api/v1/work`) follow the same layering as other scoped content: thin route files, `WorkService`

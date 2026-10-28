@@ -110,11 +110,11 @@ preserves provider receipts, rejects unsettled leases/nonzero pricing, and
 expires catalog/canary eligibility so the ordinary refresh must verify the route
 again. Replaying the same request cannot clear a subsequent failure.
 
-Pair a `none` integration, browser, sandbox or web-search provider with its
+Pair a `none` integration, sandbox or web-search provider with its
 `OVERLAY_FEATURE_*` flag set to `false`. Provider selection alone does not change
 capabilities. Release builds reject the mismatch before deploying functions;
 otherwise chat can try to load the disabled integration provider and fail before
-calling its model. The Preview defaults contain these four disabled flags.
+calling its model. Shared defaults must enable the isolated providers accepted for Preview. Interactive browsing uses the configured Computer provider and its paid-workspace admission, not a separate browser provider.
 Preview and Production variables have separate Vercel targets, and the
 corresponding Convex preview defaults remain separate from customer Production.
 

@@ -64,7 +64,6 @@ For a description of what each route does and its associated implementation file
 - `GET /api/v1/capabilities`
 - `GET /api/v1/chat-suggestions`
 - `GET /api/v1/bootstrap`
-- `POST /api/v1/browser-task`
 - `GET /api/v1/discovery`
 - `GET /api/v1/model-catalog`
 - `POST /api/v1/models/overlay-free/refresh`

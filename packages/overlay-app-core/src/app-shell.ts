@@ -256,11 +256,11 @@ export const DEFAULT_OVERLAY_TOOL_REGISTRY: readonly OverlayToolRegistration[] =
   {
     id: 'browser-control',
     label: 'Browser control',
-    description: 'Run browser tasks and interactive browser sessions.',
+    description: 'Browse websites inside the bound Computer.',
     category: 'browser',
     componentKey: 'overlay.tools.browserControl',
     policyGateId: 'browser-tools',
-    requiredCapabilities: ['browserUse'],
+    requiredCapabilities: ['computers'],
   },
   {
     id: 'knowledge-search',

@@ -1728,3 +1728,8 @@ is not replayed; if an interrupted tool step is retried before its result is rec
 the call fails closed rather than repeating a potentially ambiguous external action.
 Tools that do not deduplicate external side effects may still have an uncertain outcome.
 Hosted release QA remains necessary for approval, cancellation, and timeout behavior.
+
+Interactive browser actions use the bound Computer's `computer_browser` driver
+and visible desktop, including on Boat. There is no separate hosted browser
+provider. E2B remains a self-hosted Computer option; acceptance must name the
+provider actually tested.

@@ -32,7 +32,7 @@ const VIDEO_TOOL_IDS = [
   'apply_motion_control',
   'edit_video',
 ] as const
-const BROWSER_TOOL_IDS = ['interactive_browser_session'] as const
+const BROWSER_TOOL_IDS = ['computer_browser', 'computer_open_url', 'computer_screenshot'] as const
 const SKILL_DRAFT_TOOL_IDS = ['draft_skill_from_chat'] as const
 const AUTOMATION_TOOL_IDS = [
   'list_automations',
@@ -119,8 +119,7 @@ export function allowedOverlayToolIdsForTurn(params: {
    */
   mediaToolIntent?: 'image' | 'video' | null
   /**
-   * When `chrome-extension`, never expose `interactive_browser_session` - the Chrome extension
-   * drives the user's real tab via Act/local tools; remote browser sessions are redundant and confusing.
+   * When `chrome-extension`, use its local tab tools rather than adding Computer browser tools.
    */
   clientSurface?: string | null
 }): string[] {

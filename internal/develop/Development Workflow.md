@@ -205,6 +205,11 @@ pricing, records the recovery, and expires catalog/canary eligibility. Run the
 normal catalog refresh and require fresh verification before retrying inference;
 clearing quarantine is not evidence that the provider is safe or working.
 
+Interactive browser acceptance uses `computer_browser` on a Boat Computer (E2B
+where explicitly selected for self-hosting). Verify page navigation, snapshots,
+approvals and visible desktop state on the same machine. Do not configure a
+separate browser service or browser credits.
+
 Exercise Free, paid, exhausted-credit and multi-identity scenarios separately.
 A synthetic collaborator principal is not a second authenticated QA identity.
 Provision verified member/outsider sandbox users and configure their

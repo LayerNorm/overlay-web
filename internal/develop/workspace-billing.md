@@ -112,3 +112,7 @@ acceptance override up to $25. Settled cost is durable and all active wallet
 reservations count; synthetic refills and period rollovers do not reset the guard.
 Actual settlement remains recordable after exhaustion. See Billing Holds and
 Machine Metering for provider-account limits and excluded external charges.
+
+Browser interaction is billed through the bound Computer's machine lease and
+ordinary model usage. The separate browser-task provider and charge path are
+retired; historical browser-task ledger rows remain visible.

@@ -15,7 +15,6 @@ export {
   OverlayPublicUrlPolicySchema,
   OverlayStripeModeSchema,
   OverlayAnalyticsProviderSchema,
-  OverlayBrowserProviderSchema,
   OverlayComplianceProfileSchema,
   OverlayConfigPresetSchema,
   OverlayDatabaseProviderSchema,

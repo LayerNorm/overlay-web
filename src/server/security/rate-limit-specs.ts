@@ -88,11 +88,6 @@ const ENDPOINT_RATE_LIMITS: Record<string, RateLimitSpec[]> = {
     { bucket: 'agents:read:ip', limit: 900, windowMs: TEN_MINUTES },
     { bucket: 'agents:read:user', limit: 450, windowMs: TEN_MINUTES },
   ],
-  'POST /api/v1/browser-task': [
-    { bucket: 'browser-task:ip', limit: 20, windowMs: TEN_MINUTES },
-    { bucket: 'browser-task:user', limit: 10, windowMs: TEN_MINUTES },
-    { bucket: 'browser-task:workspace', limit: 20, windowMs: TEN_MINUTES },
-  ],
   'POST /api/v1/knowledge/search': [
     { bucket: 'knowledge/knowledge:search:ip', limit: 120, windowMs: TEN_MINUTES },
     { bucket: 'knowledge/knowledge:search:user', limit: 60, windowMs: TEN_MINUTES },

@@ -1,20 +1,11 @@
 import 'server-only'
 
 import { tool, type ToolSet } from 'ai'
-import { z } from 'zod/v3'
 import {
   deepSearchInputSchema,
   webFetchInputSchema,
   webSearchInputSchema,
 } from '@/server/tools/tools/web-search'
-
-const interactiveBrowserInputSchema = z.object({
-  task: z.string().describe('What to do in the browser — natural language'),
-  model: z.enum(['bu-mini', 'bu-max']).optional(),
-  sessionId: z.string().optional().describe('Reuse an existing browser session'),
-  keepAlive: z.boolean().optional().describe('Keep session alive after task for follow-ups'),
-  proxyCountryCode: z.string().optional().describe('2-letter country code for residential proxy'),
-})
 
 /**
  * Stubs for paid-only Act tools on the **free** plan only. Never merge this tool set for
@@ -61,17 +52,6 @@ export function createFreeTierGatedStubTools(forFreeTierActOnly: boolean): ToolS
         message: 'Web page fetching is available on a paid plan.',
       }),
     }),
-    interactive_browser_session: tool({
-      description:
-        'Remote AI-controlled browser session for interactive web tasks. On the free plan this tool only ' +
-        'registers the need for browser automation. Call it when the task requires driving a real browser ' +
-        '(not for simple web lookup — use web_search or deep_search first for research).',
-      inputSchema: interactiveBrowserInputSchema,
-      execute: async () => ({
-        _overlayGatedFeature: true as const,
-        feature: 'remote_browser' as const,
-        message: 'Remote browser sessions are available on a paid plan.',
-      }),
-    }),
+
   }
 }

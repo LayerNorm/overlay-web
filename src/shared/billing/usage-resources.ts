@@ -41,6 +41,7 @@ export function usageResourceFor(charge: UsageCharge): UsageResourceKey {
   // Automation runs are metered per workflow step under the pseudo-model `workflow-steps`; model calls an automation
   // makes stay under Models, with their model.
   if (/(^|\/)workflow-steps$/.test(charge.modelId ?? '')) return 'automations'
+  // Historical ledger rows remain readable after retiring the separate browser service.
   if (op.startsWith('agent.browser-task')) return 'browser_tasks'
   if (op.startsWith('media.generate-image')) return 'images'
   if (op.startsWith('media.generate-video')) return 'video'

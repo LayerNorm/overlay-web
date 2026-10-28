@@ -109,7 +109,6 @@ export type AssistantVisualSegment =
   | { kind: 'text'; block: Extract<AssistantVisualBlock, { kind: 'text' }>; originIndex: number }
   | { kind: 'file'; block: Extract<AssistantVisualBlock, { kind: 'file' }>; originIndex: number }
   | { kind: 'generated-ui'; block: Extract<AssistantVisualBlock, { kind: 'generated-ui' }>; originIndex: number }
-  | { kind: 'browser'; block: ToolVisualBlock; originIndex: number }
   | { kind: 'tools'; items: ToolGroupItem[]; originIndex: number }
 
 export type MentionType = 'file' | 'connector' | 'automation' | 'skill' | 'mcp' | 'chat'

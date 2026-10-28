@@ -8,7 +8,6 @@ export const CAPABILITY_LABELS: Record<OverlayCapability, string> = {
   integrations: 'Integrations',
   skills: 'Skills',
   mcpServers: 'MCP servers',
-  browserUse: 'Browser use',
   sandboxes: 'Sandboxes',
   webSearch: 'Web search',
   analytics: 'Analytics',
@@ -89,7 +88,6 @@ export function getRequiredCapabilityForRoute(
   if (startsWithRoute(normalizedPath, '/api/v1/skills')) return 'skills'
   if (startsWithRoute(normalizedPath, '/api/v1/mcps')) return 'mcpServers'
   if (startsWithRoute(normalizedPath, '/api/v1/providers/connections')) return 'modelRouting'
-  if (startsWithRoute(normalizedPath, '/api/v1/browser-task')) return 'browserUse'
   if (startsWithRoute(normalizedPath, '/api/v1/memory')) return 'memory'
   if (startsWithRoute(normalizedPath, '/api/v1/files')) return 'files'
   if (normalizedPath === '/api/v1/knowledge/search') return 'vectorSearch'

@@ -194,8 +194,6 @@ export function getDescriptiveToolLabel(
   }
 
   const map: Record<string, string> = {
-    browser_run_task: 'Browsing the web',
-    interactive_browser_session: 'Browsing the web',
     perplexity_search: 'Searching the web',
     parallel_search: 'Deep web research',
     web_search: 'Searching the web',

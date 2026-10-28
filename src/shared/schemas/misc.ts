@@ -11,11 +11,6 @@ export const OnboardingMutationRequest = z.object({
 }).passthrough()
 export const OnboardingActionRequest = OnboardingActionSchema
 
-export const BrowserTaskRequest = z.object({
-  ...AuthFields,
-  task: z.string().optional(),
-}).passthrough()
-
 /** Which slice of a scoped resource to list. Omitted means everything active the caller can see. */
 export const ResourceViewQuery = z.enum(['personal', 'workspace', 'archived']).optional()
 

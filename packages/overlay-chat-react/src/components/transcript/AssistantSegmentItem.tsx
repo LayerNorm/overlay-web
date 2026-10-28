@@ -22,7 +22,6 @@ import type {
 } from '../AttachmentPreviewShell'
 import type { GeneratedUiConnectorActions } from '../GeneratedUiCard'
 import {
-  BrowserToolBlock,
   DraftSuggestionCard,
   GatedPaidFeatureCallout,
   MemoryToolBlock,
@@ -99,15 +98,6 @@ export function AssistantSegmentItem({
   if (seg.kind === 'reasoning') {
     return (
       <ReasoningSegmentItem seg={seg} chainTop={chainTop} chainBottom={chainBottom} ctx={ctx} />
-    )
-  }
-  if (seg.kind === 'browser') {
-    return (
-      <BrowserToolBlock
-        block={seg.block}
-        connectTop={chainTop}
-        connectBottom={chainBottom}
-      />
     )
   }
   if (seg.kind === 'tools') {
@@ -331,7 +321,6 @@ export function assistantSegmentKey(
   isStreaming: boolean,
 ): string {
   if (seg.kind === 'reasoning') return `${keyPrefix}-seq-r-${seg.originIndex}-${seg.block.key}`
-  if (seg.kind === 'browser') return `${keyPrefix}-seq-${seg.originIndex}-${seg.block.key}`
   if (seg.kind === 'tools') {
     const onlyTools = seg.items.every((it) => it.kind === 'tool')
     if (onlyTools && seg.items.length === 1) {

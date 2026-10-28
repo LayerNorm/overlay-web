@@ -3,7 +3,6 @@ import { describe, it } from 'node:test'
 import { z } from 'zod/v3'
 import {
   AgentRuntime,
-  BrowserTaskAdapter,
   CompositeContextBuilder,
   FileContextBuilder,
   InMemoryPersistTurn,
@@ -56,20 +55,6 @@ describe('@overlay/agent-runtime', () => {
     assert.equal(output.text, 'known context:allowed')
     assert.equal(output.persisted, true)
     assert.equal(persistTurn.turns.length, 1)
-  })
-
-  it('bridges browser tasks through a tool definition', async () => {
-    const adapter = new BrowserTaskAdapter({
-      runTask: async (input) => ({ received: input }),
-    })
-    const registry = new ToolRegistry([adapter.toToolDefinition()])
-
-    const result = await registry.execute({
-      toolId: 'browser_run_task',
-      input: { url: 'https://example.com' },
-    })
-
-    assert.deepEqual(result.output, { received: { url: 'https://example.com' } })
   })
 
   it('assembles knowledge, memory, and file context sources', async () => {
