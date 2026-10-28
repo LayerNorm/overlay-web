@@ -1051,6 +1051,9 @@ export default defineSchema({
     turnId: v.optional(v.string()),
     error: v.optional(v.string()),
     workflowRunId: v.optional(v.string()),
+    workflowProjectionCursor: v.optional(v.string()),
+    workflowProjectionComplete: v.optional(v.boolean()),
+    workflowProjectionUpdatedAt: v.optional(v.number()),
     // Legacy run fields kept so existing production rows continue to validate.
     attemptNumber: v.optional(v.number()),
     assistantMessage: v.optional(v.string()),
@@ -1077,6 +1080,7 @@ export default defineSchema({
     .index('by_automationId_createdAt', ['automationId', 'createdAt'])
     .index('by_automationId_status', ['automationId', 'status'])
     .index('by_status_scheduledFor', ['status', 'scheduledFor'])
+    .index('by_status_projectionComplete_scheduledFor', ['status', 'workflowProjectionComplete', 'scheduledFor'])
     .index('by_userId_createdAt', ['userId', 'createdAt'])
     .index('by_workflowRunId', ['workflowRunId']),
 
@@ -1088,6 +1092,8 @@ export default defineSchema({
     userId: v.string(),
     automationRunId: v.optional(v.id('automationRuns')),
     workflowRunId: v.string(),
+    sourceEventId: v.optional(v.string()),
+    correlationId: v.optional(v.string()),
     stepName: v.string(),
     stepStatus: v.union(
       v.literal('running'),
@@ -1100,6 +1106,8 @@ export default defineSchema({
     createdAt: v.number(),
   })
     .index('by_workflowRunId_createdAt', ['workflowRunId', 'createdAt'])
+    .index('by_workflowRunId_sourceEventId', ['workflowRunId', 'sourceEventId'])
+    .index('by_workflowRunId_correlationId', ['workflowRunId', 'correlationId'])
     .index('by_userId_createdAt', ['userId', 'createdAt'])
     .index('by_automationRunId_createdAt', ['automationRunId', 'createdAt']),
 
