@@ -20,7 +20,7 @@ export const MCP_ACCESS_LABEL: Record<McpAccessLevel, string> = {
 export const MCP_ACCESS_DESCRIPTION: Record<McpAccessLevel, string> = {
   read: 'Search and read your memory, knowledge, files, notes, and tasks. Nothing is changed or spent.',
   write: 'Read, plus create and edit tasks, notes, files, memory, and skills, and search the web.',
-  full: 'Write, plus automations, connected apps, your MCP servers, image and video generation, and the browser. Never agents or computers.',
+  full: 'Write, plus automations, connected apps, your MCP servers, image and video generation. Never agents or computers.',
 }
 
 /** Tools that only read. Group membership alone cannot express "read": a group mixes both. */
@@ -64,14 +64,14 @@ export const MCP_GROUP_COVERAGE: {
   connectedAgents: {
     memory: { exposed: true }, knowledge: { exposed: true }, files: { exposed: true }, web_search: { exposed: true },
     integrations: { exposed: true }, mcp: { exposed: true }, notes: { exposed: true }, skills: { exposed: true },
-    automations: { exposed: true }, image: { exposed: true }, video: { exposed: true }, browser: { exposed: true },
+    automations: { exposed: true }, image: { exposed: true }, video: { exposed: true },
     agents: { exposed: true }, agent_chat: { exposed: true }, tasks: { exposed: true },
     computer: { exposed: false, reason: 'The agent already runs on a machine of its own; a second computer would only duplicate it.' },
   },
   externalApps: {
     memory: { exposed: true }, knowledge: { exposed: true }, files: { exposed: true }, web_search: { exposed: true },
     integrations: { exposed: true }, mcp: { exposed: true }, notes: { exposed: true }, skills: { exposed: true },
-    automations: { exposed: true }, image: { exposed: true }, video: { exposed: true }, browser: { exposed: true },
+    automations: { exposed: true }, image: { exposed: true }, video: { exposed: true },
     agents: { exposed: false, reason: 'Editing agents would let an outside app rewrite what Overlay\'s own agents may do.' },
     agent_chat: { exposed: true },
     tasks: { exposed: true },
