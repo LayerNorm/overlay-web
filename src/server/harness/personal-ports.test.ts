@@ -225,10 +225,12 @@ beforeEach(() => {
   })
 })
 
-function provider(finishReason: 'stop' | 'length' = 'stop', failSummary = false) {
+function provider(finishReason: 'stop' | 'length' = 'stop', failSummary = false, summaryText?: string) {
   const model = new MockLanguageModelV4({ doStream: async () => {
     if (failSummary && current.modelReservation?.id.startsWith('summary:')) throw new Error('Summary stream aborted.')
-    const text = current.modelReservation?.id.startsWith('summary:') ? 'Earlier records were read. Do not publish. Verify the final result.' : 'The observations are checked.'
+    const text = current.modelReservation?.id.startsWith('summary:')
+      ? summaryText ?? 'Earlier records were read. Do not publish. Verify the final result. The user asked to check the supplied records and preserve the original constraints. No external changes were made. Confirm each result before reporting it, and use the persisted observations as the source of truth.'
+      : 'The observations are checked.'
     const parts: LanguageModelV4StreamPart[] = [{ type: 'stream-start', warnings: [] }, { type: 'text-start', id: 'text' },
       { type: 'text-delta', id: 'text', delta: text }, { type: 'text-end', id: 'text' },
       { type: 'finish', finishReason: { unified: finishReason, raw: finishReason },
@@ -250,6 +252,34 @@ function compactableHistory() {
     role: message.role,
     content: [{ type: 'text' as const, text: message.content }],
   }))
+}
+
+async function prepareModelWithSummary(summaryText: string, receiptId: string) {
+  const model = provider('stop', false, summaryText)
+  mocks.catalog.mockResolvedValue({ type: 'language', contextWindow: 128_000, maxTokens: 8_192 })
+  const prepare = vi.fn(async ({ modelId, receiptId: callReceiptId, options }: {
+    modelId: string
+    receiptId: string
+    purpose: 'response' | 'summary'
+    options: LanguageModelV4CallOptions
+  }) => preparedHarnessModel(modelId, callReceiptId, options, 128_000))
+  const originalMessages = compactableHistory()
+  const ports = createHarnessModelPorts({
+    reference: { actorUserId: 'user', runId: 'run', workflowRunId: 'workflow' },
+    modelId: 'fixture/model',
+    contextBudgetTokens: 8_192,
+    prepare,
+  })
+  const result = await ports.prepareModel({
+    receiptId,
+    state: current,
+    messages: originalMessages,
+    instructionContext: { instructions: execution.instructions, continuation: false, truncatedResponse: false },
+    toolNames: [],
+    toolDefinitions: [],
+    settings: { maxOutputTokens: 512 },
+  })
+  return { model, originalMessages, prepare, result }
 }
 
 test('real SDK dispatch receives the quoted instructions, schemas, output cap and ZDR settings, with one root admission', async () => {
@@ -316,6 +346,31 @@ test('summary calls reserve reasoning headroom while the prompt retains the summ
   expect(expectedOutputTokens).toBeGreaterThan(targetSummaryTokens)
   expect(JSON.stringify(summaryRequest!.options.prompt)).toContain(`at most ${targetSummaryTokens} tokens`)
   expect(model.doStreamCalls[0]?.maxOutputTokens).toBe(expectedOutputTokens)
+})
+
+test.each([
+  ['a short summary', ' '.concat('x'.repeat(199), ' ')],
+  ['a User Safety classifier response', `User Safety: safe\n${'Useful continuity details remain in the supplied history. '.repeat(5)}`],
+  ['a Response Safety classifier response', `Response Safety: safe\n${'Useful continuity details remain in the supplied history. '.repeat(5)}`],
+])('%s uses the settled-summary fallback when history fits', async (_label, summaryText) => {
+  const { model, originalMessages, prepare, result } = await prepareModelWithSummary(summaryText, 'model:summary-quality-rejected')
+
+  expect(result.messages).toHaveLength(originalMessages.length)
+  expect(current.modelReservation).toBeUndefined()
+  expect(current.latestReceipt?.id).toMatch(/^summary:model:summary-quality-rejected:/)
+  expect(current.latestReceipt?.rejectionReason).toBeUndefined()
+  expect(prepare.mock.calls.filter(([request]) => request.purpose === 'response')).toHaveLength(1)
+  expect(model.doStreamCalls).toHaveLength(1)
+})
+
+test('a 200-character summary remains accepted', async () => {
+  const summaryText = 'x'.repeat(200)
+  const { originalMessages, result } = await prepareModelWithSummary(summaryText, 'model:summary-quality-accepted')
+
+  expect(current.workingSummary).toBe(summaryText)
+  expect(result.messages.length).toBeLessThan(originalMessages.length)
+  expect(current.modelReservation).toBeUndefined()
+  expect(current.latestReceipt?.rejectionReason).toBeUndefined()
 })
 
 test('a failed summary falls back to uncompacted history when it fits the real model window', async () => {

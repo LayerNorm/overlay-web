@@ -147,6 +147,66 @@ test('rejected evidence updates return the 12 most recent successful evidence ID
   })
 })
 
+test.each([
+  { error: 'Completion requires evidence.', evidenceKind: undefined },
+  { error: 'Completion requires tool-result evidence.', evidenceKind: 'artifact' as const },
+])('completion rejection for $error returns evidence and answerOnly guidance', async ({ error, evidenceKind }) => {
+  const f = fixture()
+  const policy = { actorUserId: 'user', allowedToolIds: [], requiresPlan: true,
+    deadlineAt: Date.now() + 60_000, maxCostMicros: 0, maxParallelChildren: 2, maxDepth: 2 }
+  let parent = createHarnessSnapshot({ runId: 'completion', goal: 'Complete the milestone', constraints: [], policy }, Date.now())
+  parent = replaceHarnessPlan(parent, [{ id: 'work', title: 'Complete the milestone', dependsOn: [],
+    acceptanceCriteria: ['Complete the work'], requiresVerification: false }], Date.now())
+  const evidenceRefs = evidenceKind ? ['artifact:1'] : undefined
+  if (evidenceKind) {
+    parent = recordHarnessEvidence(parent, {
+      id: 'artifact:1', kind: evidenceKind, source: 'file', summary: 'A supplied artifact', verdict: 'observed', createdAt: Date.now(),
+    }, Date.now())
+  }
+  f.setParent(parent)
+
+  const result = await createHarnessControlTools(f.ports).harness_update_step.execute!(
+    { id: 'work', status: 'done', ...(evidenceRefs ? { evidenceRefs } : {}) },
+    { toolCallId: 'complete-work', messages: [] },
+  )
+
+  expect(result).toEqual({
+    success: false,
+    error,
+    availableEvidenceIds: evidenceRefs ?? [],
+    hint: 'Cite tool:<id> evidence that supports this milestone, or revise the plan with harness_set_plan to mark a milestone that only reports results as answerOnly.',
+  })
+  expect((await f.ports.read()).plan[0]?.status).toBe('pending')
+})
+
+test('dependency rejection returns unresolved dependency IDs and a completion hint', async () => {
+  const f = fixture()
+  const policy = { actorUserId: 'user', allowedToolIds: [], requiresPlan: true,
+    deadlineAt: Date.now() + 60_000, maxCostMicros: 0, maxParallelChildren: 2, maxDepth: 2 }
+  const parent = replaceHarnessPlan(
+    createHarnessSnapshot({ runId: 'dependencies', goal: 'Complete dependent work', constraints: [], policy }, Date.now()),
+    [
+      { id: 'first', title: 'First milestone', dependsOn: [], acceptanceCriteria: ['Finish first'], requiresVerification: false },
+      { id: 'second', title: 'Second milestone', dependsOn: ['first'], acceptanceCriteria: ['Finish second'], requiresVerification: false },
+    ],
+    Date.now(),
+  )
+  f.setParent(parent)
+
+  const result = await createHarnessControlTools(f.ports).harness_update_step.execute!(
+    { id: 'second', status: 'done' }, { toolCallId: 'complete-second', messages: [] },
+  )
+
+  expect(result).toEqual({
+    success: false,
+    error: 'Dependencies are not complete.',
+    availableEvidenceIds: [],
+    pendingDependencyIds: ['first'],
+    hint: 'Complete or skip these milestones first.',
+  })
+  expect((await f.ports.read()).plan.find(step => step.id === 'second')?.status).toBe('pending')
+})
+
 test('a completed child with unresolved usage cannot expose completion evidence', async () => {
   const f = fixture()
   f.child.modelReservation = { id: 'model:0', maxCostMicros: 0 }

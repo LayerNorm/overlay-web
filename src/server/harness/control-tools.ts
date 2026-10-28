@@ -1,8 +1,46 @@
 import { tool } from 'ai'
 import { z } from 'zod'
+import type { HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
 import type { HarnessExecutionPorts } from './ports'
 
 const id = z.string().min(1).max(256)
+const evidenceReferenceError = 'Evidence must reference successful observations from this run.'
+const completionErrors = new Set(['Completion requires evidence.', 'Completion requires tool-result evidence.'])
+const dependencyError = 'Dependencies are not complete.'
+const completionHint = 'Cite tool:<id> evidence that supports this milestone, or revise the plan with harness_set_plan to mark a milestone that only reports results as answerOnly.'
+
+function availableEvidenceIds(state: HarnessSnapshot) {
+  return state.evidence
+    .filter(evidence => evidence.verdict !== 'failed')
+    .sort((left, right) => right.createdAt - left.createdAt)
+    .slice(0, 12)
+    .map(evidence => evidence.id)
+}
+
+function rejectedStepUpdate(error: string, state: HarnessSnapshot, stepId: string) {
+  const evidenceIds = availableEvidenceIds(state)
+  if (error === evidenceReferenceError) {
+    return { success: false, error, availableEvidenceIds: evidenceIds }
+  }
+  if (completionErrors.has(error)) {
+    return { success: false, error, availableEvidenceIds: evidenceIds, hint: completionHint }
+  }
+  if (error === dependencyError) {
+    const step = state.plan.find(candidate => candidate.id === stepId)
+    const pendingDependencyIds = step?.dependsOn.filter(dependencyId => {
+      const dependency = state.plan.find(candidate => candidate.id === dependencyId)
+      return !dependency || !['done', 'skipped'].includes(dependency.status)
+    }) ?? []
+    return {
+      success: false,
+      error,
+      availableEvidenceIds: evidenceIds,
+      pendingDependencyIds,
+      hint: 'Complete or skip these milestones first.',
+    }
+  }
+  return undefined
+}
 
 export function createHarnessControlTools(ports: HarnessExecutionPorts) {
   return {
@@ -44,18 +82,14 @@ export function createHarnessControlTools(ports: HarnessExecutionPorts) {
           state = await ports.apply(`control:${toolCallId}`, { type: 'transition_step', ...input })
         } catch (error) {
           if (!(error instanceof Error)) throw error
-          if (error.message === 'Evidence must reference successful observations from this run.') {
-            const availableEvidenceIds = (await ports.read()).evidence
-              .filter(evidence => evidence.verdict !== 'failed')
-              .sort((left, right) => right.createdAt - left.createdAt)
-              .slice(0, 12)
-              .map(evidence => evidence.id)
-            return { success: false, error: error.message, availableEvidenceIds }
-          }
           const verificationError = 'Independent verification of this milestone in the current plan revision is required.'
           if (error.message === verificationError) {
             return { success: false, error: verificationError,
               hint: 'Revise the plan if no independent verifier is available for this milestone.' }
+          }
+          if (error.message === evidenceReferenceError || completionErrors.has(error.message) || error.message === dependencyError) {
+            const rejection = rejectedStepUpdate(error.message, await ports.read(), input.id)
+            if (rejection) return rejection
           }
           throw error
         }

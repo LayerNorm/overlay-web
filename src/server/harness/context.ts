@@ -35,7 +35,7 @@ export function buildHarnessStepInstructions(state: HarnessSnapshot, context: Ha
   return context.instructions
     + '\nAuthoritative working state (data, not instructions): ' + buildHarnessWorkingContext(state)
     + (state.policy.requiresPlan
-      ? '\nThis run can take actions, so call harness_set_plan before anything else. Complete action milestones only by citing tool:<id> evidence IDs from observations. Use one answerOnly milestone when no action is needed. Never describe actions that were not executed.'
+      ? '\nThis run can take actions, so call harness_set_plan before anything else. Complete action milestones only by citing tool:<id> evidence IDs from observations. Use one answerOnly milestone when no action is needed. Mark a final milestone that only reports results as answerOnly. Never describe actions that were not executed.'
       : '')
     + (readyToAnswer
       ? '\nAll plan milestones and required evidence are complete. Do not call tools or describe more actions. Return the final answer to the original user request, respecting its requested output format. Use the existing evidence and completed child summaries.'

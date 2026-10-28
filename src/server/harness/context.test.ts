@@ -31,6 +31,7 @@ test('write-capable runs receive evidence-backed planning instructions', () => {
   expect(instructions).toContain('call harness_set_plan before anything else')
   expect(instructions).toContain('tool:<id> evidence IDs from observations')
   expect(instructions).toContain('one answerOnly milestone')
+  expect(instructions).toContain('Mark a final milestone that only reports results as answerOnly.')
   expect(instructions).toContain('Never describe actions that were not executed')
   expect(instructions).not.toContain('\u2013')
   expect(instructions).not.toContain('\u2014')

@@ -77,7 +77,11 @@ export function createHarnessModelPorts(input: {
       if (result.steps.length !== 1 || result.steps[0].finishReason !== 'stop') {
         throw new FatalError('Context summarization did not finish; the full history was preserved.')
       }
-      return result.steps[0].text
+      const summary = result.steps[0].text
+      if (summary.trim().length < 200 || /^\s*(user|response) safety\s*:/im.test(summary)) {
+        throw new FatalError('Context summarization did not produce a usable summary; the full history was preserved.')
+      }
+      return summary
     } catch (error) {
       await releaseFreeSummaryFailure({ reference, receiptId, modelId: prepared.model.modelId,
         contextWindow: prepared.contextWindow })
