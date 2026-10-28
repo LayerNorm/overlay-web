@@ -144,6 +144,9 @@ Run the smallest checks that cover the change. Use `npm run dev` for local web w
 
 Match QA to risk: visual changes need rendered UI checks; auth, billing, tenant boundaries, migrations, and backend changes need their relevant stronger checks. Read the installed Next.js guides before writing Next.js code.
 
+Web and admin ESLint configurations pin their own TypeScript config roots so a
+single changed-file check can include both apps without ambiguous root detection.
+
 ### 3. Open a draft PR to get the preview
 
 Commit and push the feature branch and open a draft PR against `main`. Opening
