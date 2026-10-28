@@ -38,9 +38,9 @@ function model(program: (index: number) => string | Call[], finishReasons: Langu
   return provider
 }
 
-function fixture(requiresPlan = true) {
+function fixture(requiresPlan = true, extraAllowedToolIds: string[] = []) {
   let current = state.createHarnessSnapshot({ runId: 'run', goal: 'Read the requested records', constraints: [], policy: {
-    actorUserId: 'user', allowedToolIds: ['read', 'write'], requiresPlan,
+    actorUserId: 'user', allowedToolIds: ['read', 'write', ...extraAllowedToolIds], requiresPlan,
     deadlineAt: Date.now() + 60_000, maxCostMicros: 100, maxDepth: 1, maxParallelChildren: 2,
   } }, Date.now())
   const receipts = new Set<string>()
@@ -328,6 +328,40 @@ test('write runs need a durable plan and real tool evidence to complete action m
   expect(result.snapshot.evidence).toContainEqual(expect.objectContaining({ id: 'tool:write-result', verdict: 'observed' }))
   expect(provider.doStreamCalls[0]?.toolChoice).toEqual({ type: 'required' })
   expect(execute).toHaveBeenCalledOnce()
+})
+
+test('deferred tools are refused as blockers, then run after a plan is saved', async () => {
+  const f = fixture(true, ['ask_agent'])
+  const askAgent = vi.fn(async ({ question }: { question: string }) => `Asked an agent about ${question}.`)
+  const waitForInput = vi.fn(async () => null)
+  f.ports.waitForInput = waitForInput
+  const resultPlan = [{
+    id: 'consult', title: 'Consult the agent', dependsOn: [],
+    acceptanceCriteria: ['Read the agent response'], requiresVerification: false,
+  }]
+  const provider = model(index => {
+    if (index === 0) return [call('harness_report_blocker', 'premature', {
+      question: 'I need ask_agent, but it is not available yet.',
+    })]
+    if (index === 1) return [call('harness_set_plan', 'plan', { steps: resultPlan })]
+    if (index === 2) return [call('ask_agent', 'ask', { question: 'What did you find?' })]
+    if (index === 3) return [call('harness_update_step', 'complete', {
+      id: 'consult', status: 'done', evidenceRefs: ['tool:ask'],
+    })]
+    return 'The agent provided a response.'
+  })
+
+  const result = await runOverlayHarness({
+    ...input,
+    tools: { ask_agent: tool({ inputSchema: z.object({ question: z.string() }), execute: askAgent }) },
+  }, f.ports)
+
+  expect(result.snapshot.status).toBe('completed')
+  expect(result.snapshot.blocker).toBeUndefined()
+  expect(askAgent).toHaveBeenCalledOnce()
+  expect(waitForInput).not.toHaveBeenCalled()
+  expect(provider.doStreamCalls[0]?.toolChoice).toEqual({ type: 'required' })
+  expect(JSON.stringify(provider.doStreamCalls[0]?.prompt)).toContain('ask_agent')
 })
 
 

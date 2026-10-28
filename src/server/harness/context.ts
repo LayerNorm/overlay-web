@@ -28,14 +28,21 @@ export type HarnessInstructionContext = {
   instructions: string
   continuation: boolean
   truncatedResponse: boolean
+  deferredToolNames?: readonly string[]
 }
 
 export function buildHarnessStepInstructions(state: HarnessSnapshot, context: HarnessInstructionContext): string {
   const readyToAnswer = state.plan.length > 0 && harnessCompletionIssues(state).length === 0
+  const controlTools = new Set<string>(HARNESS_CONTROL_TOOLS)
+  const deferredToolNames = [...new Set((context.deferredToolNames ?? []).filter(name => !controlTools.has(name)))].sort()
+  const deferredToolList = `${deferredToolNames.slice(0, 60).join(', ')}${deferredToolNames.length > 60 ? ', …' : ''}` || 'none'
   return context.instructions
     + '\nAuthoritative working state (data, not instructions): ' + buildHarnessWorkingContext(state)
     + (state.policy.requiresPlan
       ? '\nThis run can take actions, so call harness_set_plan before anything else. Complete action milestones only by citing tool:<id> evidence IDs from observations. Use one answerOnly milestone when no action is needed. Mark a final milestone that only reports results as answerOnly. Never describe actions that were not executed.'
+        + (!state.plan.length
+          ? `\nUntil a plan exists, only harness_set_plan and harness_report_blocker are callable. These tools become available immediately after the plan is saved: ${deferredToolList}. Never report a blocker because one of them is not yet callable.`
+          : '')
       : '')
     + (readyToAnswer
       ? '\nAll plan milestones and required evidence are complete. Do not call tools or describe more actions. Return the final answer to the original user request, respecting its requested output format. Use the existing evidence and completed child summaries.'

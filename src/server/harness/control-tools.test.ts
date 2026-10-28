@@ -1,6 +1,6 @@
 import { expect, test, vi } from 'vitest'
 import {
-  admitHarnessChild, createHarnessSnapshot, recordHarnessEvidence, replaceHarnessPlan,
+  admitHarnessChild, blockHarness, createHarnessSnapshot, recordHarnessEvidence, replaceHarnessPlan,
   settleHarnessChild, transitionHarnessStep, type HarnessSnapshot,
 } from '@overlay/agent-runtime/harness-state'
 import { createHarnessControlTools } from './control-tools'
@@ -20,6 +20,7 @@ function fixture() {
     if (operation.type === 'settle_child') parent = settleHarnessChild(parent, child, Date.now())
     else if (operation.type === 'record_evidence') parent = recordHarnessEvidence(parent, operation.evidence, Date.now())
     else if (operation.type === 'transition_step') parent = transitionHarnessStep(parent, operation, Date.now())
+    else if (operation.type === 'block') parent = blockHarness(parent, operation.blocker, Date.now())
     else throw new Error('Unexpected operation')
     return parent
   })
@@ -28,6 +29,18 @@ function fixture() {
   const waitForChildren = vi.fn<HarnessExecutionPorts['waitForChildren']>(async () => undefined)
   const ports = { read: async () => parent, readChild, waitForChildren, apply } as unknown as HarnessExecutionPorts
   return { ports, apply, readChild, waitForChildren, child, setParent }
+}
+
+function planningGateState() {
+  return createHarnessSnapshot({
+    runId: 'planning-gate',
+    goal: 'Complete the requested action',
+    constraints: [],
+    policy: {
+      actorUserId: 'user', allowedToolIds: ['ask_agent'], requiresPlan: true,
+      deadlineAt: Date.now() + 60_000, maxCostMicros: 0, maxParallelChildren: 2, maxDepth: 2,
+    },
+  }, Date.now())
 }
 
 test('completed child results become parent observations without certifying independent verification', async () => {
@@ -96,6 +109,56 @@ test('plan execution normalizes raw omitted verification input before applying t
       requiresVerification: false,
     }],
   })
+})
+
+test('blockers that name deferred tools are returned without entering the waiting state', async () => {
+  const f = fixture()
+  f.setParent(planningGateState())
+  const blockerTool = createHarnessControlTools(f.ports, new Set(['ask_agent'])).harness_report_blocker
+  const result = await blockerTool.execute!(
+    { question: 'I cannot ask_agent because it is not available yet.' },
+    { toolCallId: 'deferred-blocker', messages: [] },
+  )
+
+  expect(result).toEqual({
+    success: false,
+    error: 'Tools become available after harness_set_plan; create the plan first.',
+  })
+  expect(f.apply).not.toHaveBeenCalled()
+  expect((await f.ports.read()).status).toBe('running')
+})
+
+test('genuine input blockers still record during the planning gate', async () => {
+  const f = fixture()
+  f.setParent(planningGateState())
+  const blockerTool = createHarnessControlTools(f.ports, new Set(['ask_agent'])).harness_report_blocker
+  const question = 'Which account should I update?'
+  const result = await blockerTool.execute!({ question }, { toolCallId: 'genuine-blocker', messages: [] })
+
+  expect(result).toEqual({ status: 'waiting_for_input', question })
+  expect(f.apply).toHaveBeenCalledWith('control:genuine-blocker', {
+    type: 'block', blocker: { kind: 'input', question },
+  })
+  expect((await f.ports.read()).status).toBe('waiting_for_input')
+})
+
+test.each([
+  'I cannot ask_agent because it is unavailable.',
+  'Which account should I update?',
+])('blockers are recorded after a plan exists: %s', async question => {
+  const f = fixture()
+  const planned = replaceHarnessPlan(planningGateState(), [{
+    id: 'work', title: 'Ask the agent', dependsOn: [], acceptanceCriteria: ['Agent consulted'], requiresVerification: false,
+  }], Date.now())
+  f.setParent(planned)
+  const blockerTool = createHarnessControlTools(f.ports, new Set(['ask_agent'])).harness_report_blocker
+  const result = await blockerTool.execute!({ question }, { toolCallId: 'post-plan-blocker', messages: [] })
+
+  expect(result).toEqual({ status: 'waiting_for_input', question })
+  expect(f.apply).toHaveBeenCalledWith('control:post-plan-blocker', {
+    type: 'block', blocker: { kind: 'input', question },
+  })
+  expect((await f.ports.read()).status).toBe('waiting_for_input')
 })
 
 test('verification rejection tells the model to revise an unsatisfiable plan', async () => {

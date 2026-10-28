@@ -55,7 +55,7 @@ function wrapAuthorizedTools(
   controls: Set<string>,
   approvals: HarnessToolApprovals,
 ): ToolSet {
-  const definitions = { ...surfaceTools, ...createHarnessControlTools(ports) }
+  const definitions = { ...surfaceTools, ...createHarnessControlTools(ports, new Set(Object.keys(surfaceTools))) }
   let toolTail: Promise<unknown> = Promise.resolve()
   return Object.fromEntries(Object.entries(definitions).sort(([a], [b]) => a.localeCompare(b)).map(([name, definition]) => {
     const execute = definition.execute
@@ -300,7 +300,12 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
           })
           throw new HarnessYield()
         }
-        const instructionContext = { instructions, continuation: segment > 0, truncatedResponse }
+        const instructionContext = {
+          instructions,
+          continuation: segment > 0,
+          truncatedResponse,
+          deferredToolNames: Object.keys(input.tools),
+        }
         const receiptId = `model:${modelCall}`
         const prepared = await ports.prepareModel({ receiptId, state: current, messages: prompt, instructionContext,
           toolNames: Object.keys(tools), toolDefinitions, settings: input.settings ?? {} })

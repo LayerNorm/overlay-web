@@ -9,6 +9,19 @@ const completionErrors = new Set(['Completion requires evidence.', 'Completion r
 const dependencyError = 'Dependencies are not complete.'
 const completionHint = 'Cite tool:<id> evidence that supports this milestone, or revise the plan with harness_set_plan to mark a milestone that only reports results as answerOnly.'
 
+function namesDeferredTool(message: string, toolNames: ReadonlySet<string>): boolean {
+  for (const name of toolNames) {
+    let index = message.indexOf(name)
+    while (index >= 0) {
+      const before = message[index - 1]
+      const after = message[index + name.length]
+      if ((!before || !/[A-Za-z0-9_]/.test(before)) && (!after || !/[A-Za-z0-9_]/.test(after))) return true
+      index = message.indexOf(name, index + 1)
+    }
+  }
+  return false
+}
+
 function availableEvidenceIds(state: HarnessSnapshot) {
   return state.evidence
     .filter(evidence => evidence.verdict !== 'failed')
@@ -42,7 +55,10 @@ function rejectedStepUpdate(error: string, state: HarnessSnapshot, stepId: strin
   return undefined
 }
 
-export function createHarnessControlTools(ports: HarnessExecutionPorts) {
+export function createHarnessControlTools(
+  ports: HarnessExecutionPorts,
+  deferredToolNames: ReadonlySet<string> = new Set(),
+) {
   return {
     harness_set_plan: tool({
       description: 'Create or revise durable milestones. Keep existing IDs; explicitly skip obsolete work. Completion requires persisted evidence.',
@@ -105,6 +121,10 @@ export function createHarnessControlTools(ports: HarnessExecutionPorts) {
       description: 'Pause for essential user input. Ask one concise question rather than guessing sensitive choices.',
       inputSchema: z.object({ question: z.string().min(1).max(2_000) }),
       execute: async ({ question }, { toolCallId }) => {
+        const current = await ports.read()
+        if (current.policy.requiresPlan && !current.plan.length && namesDeferredTool(question, deferredToolNames)) {
+          return { success: false, error: 'Tools become available after harness_set_plan; create the plan first.' }
+        }
         const state = await ports.apply(`control:${toolCallId}`, { type: 'block', blocker: { kind: 'input', question } })
         return { status: state.status, question }
       },
