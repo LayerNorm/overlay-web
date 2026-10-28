@@ -198,6 +198,13 @@ key-only file or authenticated CLI with the full project/Preview reference.
 Never pass `.env.local`. Recovery is explicit and audited; deployment seeding
 never resets usage or credit. Synthetic credits do not pay real provider costs.
 
+For a quarantined free-model route, inspect its failure first. Preview-only
+internal `dev/qa:recoverRoute` accepts the exact `routeKey`, `expectedReason` and
+a new `requestId`. It rejects changed reasons, unsettled leases and nonzero
+pricing, records the recovery, and expires catalog/canary eligibility. Run the
+normal catalog refresh and require fresh verification before retrying inference;
+clearing quarantine is not evidence that the provider is safe or working.
+
 Exercise Free, paid, exhausted-credit and multi-identity scenarios separately.
 A synthetic collaborator principal is not a second authenticated QA identity.
 Provision verified member/outsider sandbox users and configure their

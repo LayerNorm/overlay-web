@@ -3,6 +3,7 @@ import { internalMutation } from '../_generated/server'
 import { requirePreviewDeployment } from '../lib/preview'
 import { uniqueWorkspaceAccount } from '../billing/accountModel'
 import { workspaceAllowanceSubject } from '../../src/shared/billing/free-allowance'
+import { hasZeroPricing } from '../../src/shared/ai/gateway/overlay-free-policy'
 
 /** Explicit recovery, never called by ordinary deployment seeding. */
 export const recover = internalMutation({
@@ -73,5 +74,42 @@ export const recover = internalMutation({
       resourceId: workspaceId, outcome: 'success', metadataJson: JSON.stringify(args), createdAt: Date.now(),
     })
     return { workspaceId, applied: true }
+  },
+})
+
+/** Recovery permits re-verification; it never manufactures a safe provider receipt. */
+export const recoverRoute = internalMutation({
+  args: { routeKey: v.string(), expectedReason: v.string(), requestId: v.string() },
+  returns: v.object({ applied: v.boolean() }),
+  handler: async (ctx, args) => {
+    requirePreviewDeployment()
+    if (!/^[a-zA-Z0-9_-]{1,100}$/.test(args.requestId)
+      || !args.routeKey || args.routeKey.length > 300 || !args.expectedReason || args.expectedReason.length > 500) {
+      throw new Error('Route recovery requires a request id, route key and expected reason')
+    }
+    const eventId = `preview-qa-route-recovery:${args.requestId}`
+    const metadataJson = JSON.stringify(args)
+    const previous = await ctx.db.query('auditEvents').withIndex('by_eventId', q => q.eq('eventId', eventId)).unique()
+    if (previous) {
+      if (previous.resourceId !== args.routeKey || previous.metadataJson !== metadataJson) {
+        throw new Error('Route recovery request id reused with different arguments')
+      }
+      return { applied: false }
+    }
+    const route = await ctx.db.query('overlayFreeRoutes').withIndex('by_routeKey', q => q.eq('routeKey', args.routeKey)).unique()
+    if (!route || route.quarantineReason !== args.expectedReason) throw new Error('Route quarantine reason changed or is absent')
+    if (route.activeLeaseToken !== undefined) throw new Error('Settle the route lease before recovery')
+    let pricing: unknown
+    try { pricing = JSON.parse(route.pricingJson) } catch { throw new Error('Route pricing is invalid') }
+    if (!hasZeroPricing(pricing)) throw new Error('Route pricing must be explicitly zero')
+    await ctx.db.patch(route._id, {
+      quarantineReason: undefined, quarantineAt: undefined, cooldownUntil: undefined,
+      catalogExpiresAt: 0, canaryVerifiedAt: undefined, canaryExpiresAt: undefined, updatedAt: Date.now(),
+    })
+    await ctx.db.insert('auditEvents', {
+      eventId, actorType: 'system', action: 'preview.qa.route.recover', resourceType: 'model-route',
+      resourceId: args.routeKey, outcome: 'success', metadataJson, createdAt: Date.now(),
+    })
+    return { applied: true }
   },
 })

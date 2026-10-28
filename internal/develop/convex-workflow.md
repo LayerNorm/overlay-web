@@ -104,6 +104,12 @@ it also contains live Stripe, a production OpenRouter key, and shared-dev backen
 selectors. Keep per-lane session/internal secrets and the build-injected backend
 URL. Cloudflare bucket permissions and model budgets need separate verification.
 
+`dev/qa:recoverRoute` is an internal Preview-only, audited route-quarantine
+recovery operation. Supply the inspected reason and a unique request ID; it
+preserves provider receipts, rejects unsettled leases/nonzero pricing, and
+expires catalog/canary eligibility so the ordinary refresh must verify the route
+again. Replaying the same request cannot clear a subsequent failure.
+
 Pair a `none` integration, browser, sandbox or web-search provider with its
 `OVERLAY_FEATURE_*` flag set to `false`. Provider selection alone does not change
 capabilities. Release builds reject the mismatch before deploying functions;

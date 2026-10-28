@@ -72,3 +72,46 @@ test.each(['production', 'development', 'staging'])('exhausted fixture refuses %
   const t = convexTest(schema, modules)
   await expect(t.mutation(makeFunctionReference<'mutation'>('dev/seed:initExhaustedQa'), {})).rejects.toThrow('Preview seed is unavailable')
 })
+
+const recoverRoute = makeFunctionReference<'mutation'>('dev/qa:recoverRoute')
+
+test('route recovery is audited and replay-safe, preserves receipts and requires fresh verification', async () => {
+  const t = await fixture()
+  const routeKey = 'gateway:model:provider'
+  const id = await t.run(ctx => ctx.db.insert('overlayFreeRoutes', {
+    routeKey, transport: 'gateway', modelId: 'model', provider: 'provider', capabilitiesJson: '{}',
+    pricingJson: '{"prompt":"0","completion":"0"}', catalogVerifiedAt: 1, catalogExpiresAt: Date.now() + 60_000,
+    generation: 1, canaryVerifiedAt: 1, canaryExpiresAt: Date.now() + 60_000,
+    quarantineReason: 'missing receipt', quarantineAt: 1, latestReceiptJson: '{"diagnostic":"retained"}', updatedAt: 1,
+  }))
+  const args = { routeKey, expectedReason: 'missing receipt', requestId: 'route-recovery' }
+  await expect(t.mutation(recoverRoute, { ...args, expectedReason: 'different reason' })).rejects.toThrow('reason changed')
+  expect(await t.mutation(recoverRoute, args)).toEqual({ applied: true })
+  const recovered = await t.run(ctx => ctx.db.get(id))
+  expect(recovered).toMatchObject({ catalogExpiresAt: 0, latestReceiptJson: '{"diagnostic":"retained"}' })
+  expect(recovered?.quarantineReason).toBeUndefined()
+  expect(recovered?.canaryExpiresAt).toBeUndefined()
+  await t.run(ctx => ctx.db.patch(id, { quarantineReason: 'new failure' }))
+  expect(await t.mutation(recoverRoute, args)).toEqual({ applied: false })
+  expect((await t.run(ctx => ctx.db.get(id)))?.quarantineReason).toBe('new failure')
+  await expect(t.mutation(recoverRoute, { ...args, expectedReason: 'new failure' })).rejects.toThrow('reused')
+  expect(await t.run(ctx => ctx.db.query('auditEvents').collect())).toEqual([
+    expect.objectContaining({ action: 'preview.qa.route.recover', resourceId: routeKey }),
+  ])
+})
+
+test('route recovery refuses active leases, nonzero pricing and non-Preview deployments', async () => {
+  const t = await fixture()
+  const args = { routeKey: 'openrouter:free:openrouter', expectedReason: 'missing receipt', requestId: 'route-denials' }
+  const id = await t.run(ctx => ctx.db.insert('overlayFreeRoutes', {
+    routeKey: args.routeKey, transport: 'openrouter', modelId: 'free', provider: 'openrouter', capabilitiesJson: '{}',
+    pricingJson: '{"prompt":"0","completion":"0"}', catalogVerifiedAt: 1, catalogExpiresAt: 2, generation: 1,
+    quarantineReason: args.expectedReason, activeLeaseToken: 'lease', activeLeaseExpiresAt: 0, updatedAt: 1,
+  }))
+  await expect(t.mutation(recoverRoute, args)).rejects.toThrow('Settle the route lease')
+  await t.run(ctx => ctx.db.patch(id, { activeLeaseToken: undefined, activeLeaseExpiresAt: undefined,
+    pricingJson: '{"prompt":"0","completion":"1e-999"}' }))
+  await expect(t.mutation(recoverRoute, args)).rejects.toThrow('explicitly zero')
+  vi.stubEnv('OVERLAY_DEPLOYMENT_ENV', 'production')
+  await expect(t.mutation(recoverRoute, args)).rejects.toThrow('Preview seed is unavailable')
+})

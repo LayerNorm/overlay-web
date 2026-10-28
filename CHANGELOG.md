@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Add audited Preview-only free-route quarantine recovery that requires fresh provider verification before reuse.
+
 - Run the production cron schedule on fresh previews and cap metered Preview spending across wallets independently of synthetic-credit refills.
 
 - Initialize WorkOS password and retained sessions before onboarding so newly invited users have profile state; add an isolated exhausted-quota QA fixture with explicit recovery.
