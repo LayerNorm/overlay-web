@@ -362,6 +362,7 @@ it('Revocation mid-run — the next step fails closed and cannot complete or wri
         dependsOn: [],
         acceptanceCriteria: ['Read the source.'],
         requiresVerification: false,
+        evidenceTools: ['read_file'],
       }] },
     }]
     : [{ name: 'read_file', id: 'read-1' }])
@@ -646,6 +647,7 @@ it('Unbounded loop — more tool calls than legacy maxSteps complete, and premat
       dependsOn: [],
       acceptanceCriteria: ['The work is complete.'],
       requiresVerification: false,
+      evidenceTools: ['read_file'],
     }],
   })
   const tools = {

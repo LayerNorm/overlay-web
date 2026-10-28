@@ -203,6 +203,8 @@ snapshots with the authoritative transcript parts. Anonymous child deliveries
 do not write tool progress into the parent's room.
 Native Harness roots require a durable plan when their effective tool set
 includes a write-capable tool. Action milestones require tool-result evidence.
+Each action milestone declares `evidenceTools`; only results from those tools
+can support it, and a tool result can support only one action milestone.
 Read-only runs can answer without action milestones by using one answer-only
 milestone. Native descendants derive the same policy from their admitted tools.
 Personal Chat and Work roots and descendants remain plan-optional.

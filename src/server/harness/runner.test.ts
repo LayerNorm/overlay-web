@@ -17,7 +17,7 @@ beforeEach(() => { vi.mocked(getLanguageModel).mockReset() })
 
 type Call = { name: string; id: string; input: unknown }
 const call = (name: string, id: string, input: unknown = {}): Call => ({ name, id, input })
-const plan = [{ id: 'work', title: 'Read the records', dependsOn: [], acceptanceCriteria: ['Records read'], requiresVerification: false }]
+const plan = [{ id: 'work', title: 'Read the records', dependsOn: [], acceptanceCriteria: ['Records read'], requiresVerification: false, evidenceTools: ['read', 'write'] }]
 type ProgramOutput = string | Call[] | { text: string; calls: Call[] }
 
 function model(program: (index: number) => ProgramOutput, finishReasons: LanguageModelV4FinishReason['unified'][] = []) {
@@ -523,7 +523,7 @@ test('planning gate exposes only plan creation before enabling surface tools', a
   f.ports.waitForInput = waitForInput
   const resultPlan = [{
     id: 'consult', title: 'Consult the agent', dependsOn: [],
-    acceptanceCriteria: ['Read the agent response'], requiresVerification: false,
+    acceptanceCriteria: ['Read the agent response'], requiresVerification: false, evidenceTools: ['ask_agent'],
   }]
   const provider = model(index => {
     if (index === 0) return [call('harness_set_plan', 'plan', { steps: resultPlan })]

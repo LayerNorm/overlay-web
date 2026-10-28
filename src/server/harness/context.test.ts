@@ -12,7 +12,7 @@ const make = () => createHarnessSnapshot({
 
 test('completed plans request the final deliverable instead of more bookkeeping', () => {
   let state = replaceHarnessPlan(make(), [{ id: 'work', title: 'Read document', dependsOn: [],
-    acceptanceCriteria: ['Document read'], requiresVerification: false }], 1_000)
+    acceptanceCriteria: ['Document read'], requiresVerification: false, evidenceTools: ['read'] }], 1_000)
   const context = { instructions: 'Surface instructions', continuation: true, truncatedResponse: false }
   expect(buildHarnessStepInstructions(state, context)).toContain('complete the remaining milestones')
   state = recordHarnessEvidence(state, { id: 'read', kind: 'tool_result', source: 'read',
@@ -30,6 +30,7 @@ test('write-capable runs receive evidence-backed planning instructions', () => {
   })
   expect(instructions).toContain('call harness_set_plan before anything else')
   expect(instructions).toContain('tool:<id> evidence IDs from observations')
+  expect(instructions).toContain('Give each action milestone evidenceTools listing the tools whose results prove it; cite only results from those tools.')
   expect(instructions).toContain('one answerOnly milestone')
   expect(instructions).toContain('Mark a final milestone that only reports results as answerOnly.')
   expect(instructions).toContain(
@@ -59,6 +60,7 @@ test('planning gate allows only plan creation and explains blocker timing', () =
 
   const planned = replaceHarnessPlan(make(), [{
     id: 'work', title: 'Create a note', dependsOn: [], acceptanceCriteria: ['Note created'], requiresVerification: false,
+    evidenceTools: ['read'],
   }], 1_000)
   expect(buildHarnessStepInstructions(planned, context)).not.toContain('Before a plan exists')
 })
@@ -82,6 +84,11 @@ test('keeps the cacheable instruction prefix separate from changing working stat
   expect(context.budget.remainingCostMicros).toBe(100)
   expect(context).not.toHaveProperty('policy')
   expect(context).not.toHaveProperty('usage')
+  const planned = replaceHarnessPlan(state, [{
+    id: 'work', title: 'Read document', dependsOn: [], acceptanceCriteria: ['Document read'],
+    requiresVerification: false, evidenceTools: ['read'],
+  }], 1_000)
+  expect(JSON.parse(buildHarnessWorkingContext(planned)).plan[0].evidenceTools).toEqual(['read'])
 })
 
 test('accounting and repeated identical observations do not masquerade as progress', () => {

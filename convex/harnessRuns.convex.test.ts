@@ -80,13 +80,14 @@ async function get(convex: Convex, runId: string, actorUserId = 'alice', serverS
   return await convex.query(query('get'), { actorUserId, runId, serverSecret }) as HarnessSnapshot | null
 }
 
-function oneStep(id: string, requiresVerification = false) {
+function oneStep(id: string, requiresVerification = false, evidenceTools = ['tool:read']) {
   return [{
     id,
     title: `Complete ${id}`,
     dependsOn: [],
     acceptanceCriteria: ['The milestone is complete.'],
     requiresVerification,
+    evidenceTools,
   }]
 }
 
@@ -131,7 +132,9 @@ describe('durable harness runs', () => {
       allowedToolIds: parentToolIds,
     })
     await admit(convex, input)
-    const planned = await apply(convex, input, 'plan', 0, { type: 'replace_plan', steps: oneStep('delegated') })
+    const planned = await apply(convex, input, 'plan', 0, {
+      type: 'replace_plan', steps: oneStep('delegated', false, parentToolIds),
+    })
     await apply(convex, input, 'delegate', planned.snapshot.revision, {
       type: 'admit_child', child: { id: 'planning-child', stepId: 'delegated', allowedToolIds: childToolIds,
         maxCostMicros: 0, costMicros: 0, status: 'running', evidenceRefs: [] },
@@ -348,6 +351,7 @@ describe('durable harness runs', () => {
 
     const fresh = await get(convex, input.runId)
     expect(fresh?.plan).toEqual(completed.snapshot.plan)
+    expect(fresh?.plan[0]?.evidenceTools).toEqual(['tool:read'])
     expect(fresh?.evidence.map(item => item.id)).toEqual(['tool-output', 'verification'])
     expect(fresh?.evidence.find(item => item.id === firstEvidence.id)?.inputDigest).toBe(firstEvidence.inputDigest)
     const persisted = await convex.run(async ctx => ({
@@ -384,6 +388,23 @@ describe('durable harness runs', () => {
     await expect(apply(convex, rejectedInput, 'invalid-answer-plan', 0, {
       type: 'replace_plan', steps: [{ ...oneStep('answer', true)[0]!, answerOnly: true }],
     })).rejects.toThrow(/Answer-only/)
+  })
+
+  test('requires evidenceTools for action plans and bounds the tool list', async () => {
+    const convex = convexTest(schema, modules)
+    const input = admission('run-evidence-tools', await seedConversation(convex))
+    await admit(convex, input)
+    await expect(apply(convex, input, 'missing-tools', 0, {
+      type: 'replace_plan', steps: [{ ...oneStep('create')[0]!, evidenceTools: undefined }],
+    })).rejects.toThrow(/must declare evidenceTools/)
+    await expect(apply(convex, input, 'too-many-tools', 0, {
+      type: 'replace_plan', steps: [{ ...oneStep('create')[0]!, evidenceTools: Array(9).fill('tool:read') }],
+    })).rejects.toThrow(/evidenceTools exceed their bounds/)
+    const planned = await apply(convex, input, 'valid-tools', 0, {
+      type: 'replace_plan', steps: [{ ...oneStep('create')[0]!, evidenceTools: ['tool:read', 'tool:write'] }],
+    })
+    expect(planned.snapshot.plan[0]?.evidenceTools).toEqual(['tool:read', 'tool:write'])
+    expect((await get(convex, input.runId))?.plan[0]?.evidenceTools).toEqual(['tool:read', 'tool:write'])
   })
 
   test('checks operation idempotency before CAS and leaves stale mutations without writes', async () => {
@@ -454,7 +475,7 @@ describe('durable harness runs', () => {
     const input = admission('run-settlement-root', await seedConversation(convex), { maxParallelChildren: 2 })
     await admit(convex, input)
     await apply(convex, input, 'settlement-root-plan', 0, {
-      type: 'replace_plan', steps: oneStep('delegated'),
+      type: 'replace_plan', steps: oneStep('delegated', false, ['harness_read_child']),
     })
     const childInput = { ...input, runId: 'run-settlement-child' }
     await apply(convex, input, 'settlement-admit-child', 1, {
@@ -499,9 +520,17 @@ describe('durable harness runs', () => {
       accountedUsage: { costMicros: 60 },
       summary: 'Verified child result.',
     })
-    const parentStep = await apply(convex, input, 'settlement-parent-step', settled.snapshot.revision, {
+    const childResult = {
+      id: 'settlement-child-result', kind: 'tool_result' as const,
+      summary: 'Completed child result.', source: `harness_read_child:${childInput.runId}`,
+      verdict: 'observed' as const, createdAt: Date.now(),
+    }
+    const recordedChildResult = await apply(convex, input, 'settlement-child-result', settled.snapshot.revision, {
+      type: 'record_evidence', evidence: childResult,
+    })
+    const parentStep = await apply(convex, input, 'settlement-parent-step', recordedChildResult.snapshot.revision, {
       type: 'transition_step', id: 'delegated', status: 'done',
-      evidenceRefs: settled.snapshot.evidence.map(item => item.id),
+      evidenceRefs: [childResult.id],
     })
     await apply(convex, input, 'settlement-parent-finish', parentStep.snapshot.revision, { type: 'finish', resultSummary: 'Integrated final result.' })
     expect((await get(convex, childInput.runId))?.status).toBe('completed')

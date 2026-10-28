@@ -5,17 +5,24 @@ import type { HarnessExecutionPorts } from './ports'
 
 const id = z.string().min(1).max(256)
 const evidenceReferenceError = 'Evidence must reference successful observations from this run.'
-const completionErrors = new Set(['Completion requires evidence.', 'Completion requires tool-result evidence.'])
+const completionErrors = new Set([
+  'Completion requires evidence.',
+  'Completion requires tool-result evidence.',
+  "Completion requires tool-result evidence from this milestone's evidenceTools.",
+])
 const dependencyError = 'Dependencies are not complete.'
-const reusedWriteEvidenceError = 'Evidence from a write tool already supports another milestone.'
+const reusedToolResultEvidenceError = 'Evidence from a tool result already supports another milestone.'
 const completionHint = 'Cite tool:<id> evidence that supports this milestone, or revise the plan with harness_set_plan to mark a milestone that only reports results as answerOnly.'
 
 function availableEvidenceIds(state: HarnessSnapshot) {
+  const usedByAction = new Set(state.plan
+    .filter(step => step.status === 'done' && !step.answerOnly)
+    .flatMap(step => step.evidenceRefs))
   return state.evidence
-    .filter(evidence => evidence.verdict !== 'failed')
+    .filter(evidence => evidence.verdict !== 'failed' && !usedByAction.has(evidence.id))
     .sort((left, right) => right.createdAt - left.createdAt)
     .slice(0, 12)
-    .map(evidence => evidence.id)
+    .map(evidence => ({ id: evidence.id, source: evidence.source }))
 }
 
 function rejectedStepUpdate(error: string, state: HarnessSnapshot, stepId: string) {
@@ -26,7 +33,7 @@ function rejectedStepUpdate(error: string, state: HarnessSnapshot, stepId: strin
   if (completionErrors.has(error)) {
     return { success: false, error, availableEvidenceIds: evidenceIds, hint: completionHint }
   }
-  if (error === reusedWriteEvidenceError) {
+  if (error === reusedToolResultEvidenceError) {
     return {
       success: false,
       error,
@@ -60,6 +67,9 @@ export function createHarnessControlTools(ports: HarnessExecutionPorts) {
         title: z.string().min(1).max(500),
         dependsOn: z.array(id).max(128),
         acceptanceCriteria: z.array(z.string().min(1).max(2_000)).min(1).max(16),
+        evidenceTools: z.array(id).max(8)
+          .describe('Tool IDs whose successful results will prove this milestone, e.g. ["create_note"]')
+          .optional(),
         requiresVerification: z.boolean().optional()
           .describe('true only when a delegated verifier will independently check this milestone'),
         answerOnly: z.boolean().optional().describe('true only for a milestone that is answering from knowledge or prior evidence with no external effect'),
@@ -71,6 +81,7 @@ export function createHarnessControlTools(ports: HarnessExecutionPorts) {
           dependsOn: step.dependsOn,
           acceptanceCriteria: step.acceptanceCriteria,
           requiresVerification: step.requiresVerification === true,
+          ...(step.evidenceTools ? { evidenceTools: step.evidenceTools } : {}),
           ...(step.answerOnly === true ? { answerOnly: true } : {}),
         }))
         const state = await ports.apply(`control:${toolCallId}`, { type: 'replace_plan', steps: normalizedSteps })
@@ -97,7 +108,7 @@ export function createHarnessControlTools(ports: HarnessExecutionPorts) {
               hint: 'Revise the plan if no independent verifier is available for this milestone.' }
           }
           if (error.message === evidenceReferenceError || completionErrors.has(error.message)
-            || error.message === dependencyError || error.message === reusedWriteEvidenceError) {
+            || error.message === dependencyError || error.message === reusedToolResultEvidenceError) {
             const rejection = rejectedStepUpdate(error.message, await ports.read(), input.id)
             if (rejection) return rejection
           }

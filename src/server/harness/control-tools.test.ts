@@ -96,6 +96,7 @@ test('plan execution normalizes raw omitted verification input before applying t
       dependsOn: [],
       acceptanceCriteria: ['Apply normalized input'],
       answerOnly: false,
+      evidenceTools: ['ask_agent'],
     }],
   }, { toolCallId: 'raw-plan', messages: [] })
 
@@ -107,6 +108,7 @@ test('plan execution normalizes raw omitted verification input before applying t
       dependsOn: [],
       acceptanceCriteria: ['Apply normalized input'],
       requiresVerification: false,
+      evidenceTools: ['ask_agent'],
     }],
   })
 })
@@ -135,6 +137,7 @@ test.each([
   const f = fixture()
   const planned = replaceHarnessPlan(planningGateState(), [{
     id: 'work', title: 'Ask the agent', dependsOn: [], acceptanceCriteria: ['Agent consulted'], requiresVerification: false,
+    evidenceTools: ['ask_agent'],
   }], Date.now())
   f.setParent(planned)
   const blockerTool = createHarnessControlTools(f.ports).harness_report_blocker
@@ -192,24 +195,26 @@ test('rejected evidence updates return the 12 most recent successful evidence ID
   expect(result).toEqual({
     success: false,
     error: 'Evidence must reference successful observations from this run.',
-    availableEvidenceIds: Array.from({ length: 12 }, (_, index) => `evidence:${14 - index}`),
+    availableEvidenceIds: Array.from({ length: 12 }, (_, index) => ({ id: `evidence:${14 - index}`, source: 'read' })),
   })
 })
 
 test.each([
   { error: 'Completion requires evidence.', evidenceKind: undefined },
   { error: 'Completion requires tool-result evidence.', evidenceKind: 'artifact' as const },
+  { error: "Completion requires tool-result evidence from this milestone's evidenceTools.", evidenceKind: 'tool_result' as const },
 ])('completion rejection for $error returns evidence and answerOnly guidance', async ({ error, evidenceKind }) => {
   const f = fixture()
-  const policy = { actorUserId: 'user', allowedToolIds: [], requiresPlan: true,
+  const policy = { actorUserId: 'user', allowedToolIds: ['read', 'get_note'], requiresPlan: true,
     deadlineAt: Date.now() + 60_000, maxCostMicros: 0, maxParallelChildren: 2, maxDepth: 2 }
   let parent = createHarnessSnapshot({ runId: 'completion', goal: 'Complete the milestone', constraints: [], policy }, Date.now())
   parent = replaceHarnessPlan(parent, [{ id: 'work', title: 'Complete the milestone', dependsOn: [],
-    acceptanceCriteria: ['Complete the work'], requiresVerification: false }], Date.now())
+    acceptanceCriteria: ['Complete the work'], requiresVerification: false, evidenceTools: ['read'] }], Date.now())
   const evidenceRefs = evidenceKind ? ['artifact:1'] : undefined
   if (evidenceKind) {
     parent = recordHarnessEvidence(parent, {
-      id: 'artifact:1', kind: evidenceKind, source: 'file', summary: 'A supplied artifact', verdict: 'observed', createdAt: Date.now(),
+      id: 'artifact:1', kind: evidenceKind, source: evidenceKind === 'tool_result' ? 'get_note' : 'file',
+      summary: 'A supplied artifact', verdict: 'observed', createdAt: Date.now(),
     }, Date.now())
   }
   f.setParent(parent)
@@ -222,21 +227,23 @@ test.each([
   expect(result).toEqual({
     success: false,
     error,
-    availableEvidenceIds: evidenceRefs ?? [],
+    availableEvidenceIds: evidenceRefs
+      ? [{ id: 'artifact:1', source: evidenceKind === 'tool_result' ? 'get_note' : 'file' }]
+      : [],
     hint: 'Cite tool:<id> evidence that supports this milestone, or revise the plan with harness_set_plan to mark a milestone that only reports results as answerOnly.',
   })
   expect((await f.ports.read()).plan[0]?.status).toBe('pending')
 })
 
-test('write evidence already used by another action milestone returns model-visible guidance', async () => {
+test('tool-result evidence already used by another action milestone returns model-visible guidance', async () => {
   const f = fixture()
   const now = Date.now()
-  const policy = { actorUserId: 'user', allowedToolIds: [], requiresPlan: true,
+  const policy = { actorUserId: 'user', allowedToolIds: ['create_note'], requiresPlan: true,
     deadlineAt: now + 60_000, maxCostMicros: 0, maxParallelChildren: 2, maxDepth: 2 }
   let parent = createHarnessSnapshot({ runId: 'write-evidence', goal: 'Complete both actions', constraints: [], policy }, now)
   parent = replaceHarnessPlan(parent, [
-    { id: 'first', title: 'First action', dependsOn: [], acceptanceCriteria: ['First action done'], requiresVerification: false },
-    { id: 'second', title: 'Second action', dependsOn: [], acceptanceCriteria: ['Second action done'], requiresVerification: false },
+    { id: 'first', title: 'First action', dependsOn: [], acceptanceCriteria: ['First action done'], requiresVerification: false, evidenceTools: ['create_note'] },
+    { id: 'second', title: 'Second action', dependsOn: [], acceptanceCriteria: ['Second action done'], requiresVerification: false, evidenceTools: ['create_note'] },
   ], now)
   parent = recordHarnessEvidence(parent, {
     id: 'tool:create_note', kind: 'tool_result', source: 'create_note', summary: 'Created a note', verdict: 'observed', createdAt: now,
@@ -253,8 +260,8 @@ test('write evidence already used by another action milestone returns model-visi
 
   expect(result).toEqual({
     success: false,
-    error: 'Evidence from a write tool already supports another milestone.',
-    availableEvidenceIds: ['tool:create_note'],
+    error: 'Evidence from a tool result already supports another milestone.',
+    availableEvidenceIds: [],
     hint: "Cite the tool result that performed this milestone's own action, or revise the plan to merge the milestones.",
   })
   expect((await f.ports.read()).plan.find(step => step.id === 'second')?.status).toBe('pending')
@@ -262,13 +269,13 @@ test('write evidence already used by another action milestone returns model-visi
 
 test('dependency rejection returns unresolved dependency IDs and a completion hint', async () => {
   const f = fixture()
-  const policy = { actorUserId: 'user', allowedToolIds: [], requiresPlan: true,
+  const policy = { actorUserId: 'user', allowedToolIds: ['read'], requiresPlan: true,
     deadlineAt: Date.now() + 60_000, maxCostMicros: 0, maxParallelChildren: 2, maxDepth: 2 }
   const parent = replaceHarnessPlan(
     createHarnessSnapshot({ runId: 'dependencies', goal: 'Complete dependent work', constraints: [], policy }, Date.now()),
     [
-      { id: 'first', title: 'First milestone', dependsOn: [], acceptanceCriteria: ['Finish first'], requiresVerification: false },
-      { id: 'second', title: 'Second milestone', dependsOn: ['first'], acceptanceCriteria: ['Finish second'], requiresVerification: false },
+      { id: 'first', title: 'First milestone', dependsOn: [], acceptanceCriteria: ['Finish first'], requiresVerification: false, evidenceTools: ['read'] },
+      { id: 'second', title: 'Second milestone', dependsOn: ['first'], acceptanceCriteria: ['Finish second'], requiresVerification: false, evidenceTools: ['read'] },
     ],
     Date.now(),
   )

@@ -112,6 +112,7 @@ const planInputValidator = v.object({
   title: v.string(),
   dependsOn: v.array(v.string()),
   acceptanceCriteria: v.array(v.string()),
+  evidenceTools: v.optional(v.array(v.string())),
   requiresVerification: v.boolean(),
   answerOnly: v.optional(v.boolean()),
 })
@@ -405,6 +406,12 @@ function assertBoundedOperation(operation: HarnessOperation) {
           || step.acceptanceCriteria.length > MAX_ACCEPTANCE_CRITERIA
           || step.acceptanceCriteria.some(item => !item.trim() || item.length > MAX_CONSTRAINT_LENGTH)) {
           throw new Error('Harness plan milestones exceed their bounds.')
+        }
+        if (step.evidenceTools !== undefined && (
+          step.evidenceTools.length > 8
+          || step.evidenceTools.some(id => !id.trim() || id.length > MAX_ID_LENGTH)
+        )) {
+          throw new Error(`Milestone "${step.id}" evidenceTools exceed their bounds.`)
         }
         if (step.answerOnly && (step.requiresVerification
           || ('childRunId' in step && step.childRunId !== undefined))) {
