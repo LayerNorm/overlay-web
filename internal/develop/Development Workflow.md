@@ -184,8 +184,9 @@ deployments remain diagnostic evidence only. Keep the PR draft until current-hea
 acceptance succeeds. The unrelated admin deployment status is not a required
 customer-web check; relevant admin changes still require their own acceptance.
 
-Preview background work requires `OVERLAY_PREVIEW_BACKGROUND_JOBS=1`, isolated
-providers, exact PR callback URLs and hosting access on the backend. Verify
+Preview registers the production schedule from its first deployment. Background
+work requires isolated providers, exact PR callback URLs and hosting access on
+the backend; outbound guards fail closed until those settings are present. Verify
 automations, ingestion, projections, supervision and reconciliation through their
 normal schedules. Email/webhooks additionally require the test destination lists
 in Convex Workflow. Browser access does not prove server callback access.

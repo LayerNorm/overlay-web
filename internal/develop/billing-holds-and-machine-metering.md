@@ -122,8 +122,8 @@ the shared Preview Boat credential. Keep production and other Preview branches
 unchanged. Test free admission in Personal and funded lifecycle in Computer QA;
 allocate at most one small disposable Computer, then stop and delete that resource.
 Record its ID, provider reference and operation timestamps for cost reconciliation.
-Preview background jobs require `OVERLAY_PREVIEW_BACKGROUND_JOBS=1` and verified
-PR callback configuration (see Convex Workflow). The four-minute provider fence
+Preview registers the production schedule from its first deployment. Background
+callbacks require verified PR configuration and hosting access (see Convex Workflow). The four-minute provider fence
 is not proof of Overlay's ten-minute idle supervisor: verify scheduled metering,
 idle-stop and settlement through their actual jobs. A successful desktop open
 does not establish them. Combine paid and Computer fixtures with a comma-separated
@@ -147,3 +147,16 @@ stop proof closes the run and releases its reservation.
 A lifecycle-v2 cancellation timeout is not evidence that a disconnected BYO process
 stopped. Keep the run and reservation unresolved until host stop/provider isolation
 is confirmed; elapsed time must not trigger terminal settlement or release its hold.
+
+### Aggregate Preview provider guard
+
+`OVERLAY_PREVIEW_PROVIDER_BUDGET_CENTS` caps a PR backend's metered commitments
+across all wallets (default $5; bounded at $25 for explicitly approved acceptance).
+Retail reservations conservatively cover provider cost. Admission counts every
+active wallet hold and the durable consumed-spend counter; fixture refills and
+billing-period resets cannot erase that counter. New paid reservations and
+machine headroom fail closed at the cap. Actual incurred settlement and stop
+remain possible after exhaustion, so costs cannot disappear or strand a machine.
+The guard does not replace provider account limits for unmetered service fees,
+retained storage, or activity outside Overlay. Aggregate multiple PRs at the
+provider account when a shared account budget is required.

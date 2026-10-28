@@ -10,6 +10,7 @@ import { paidWorkspaceAccountFor } from '../billing/workspacePayer'
 import { usageCountSubject } from '../../src/shared/billing/free-allowance'
 import { normalizeUsageReconciliationResolution } from '../../src/shared/billing/usage-reconciliation'
 import { canceledPlanCreditPatch, ensureEmptyBalance, ensurePersonalBillingAccount } from '../billing/accountModel'
+import { previewProviderBudgetAvailable, recordPreviewProviderSpend } from '../lib/previewProviderBudget'
 
 const usageReconciliationQueueItemValidator = v.object({
   createdAt: v.number(),
@@ -736,6 +737,7 @@ export const reserveWorkspaceBudgetByServer = mutation({
         : 0
       if (availableLimit < reservedMicros) throw new Error('spend_limit_exceeded')
     }
+    if (!await previewProviderBudgetAvailable(ctx, reservedMicros)) throw new Error('preview_provider_budget_exhausted')
     await ctx.db.insert('budgetReservations', {
       billingAccountId,
       createdAt: now,
@@ -1127,6 +1129,7 @@ export async function finalizeWorkspaceLedger(
     reserveMicros?: number
   },
 ): Promise<void> {
+  await recordPreviewProviderSpend(ctx, args.actualMicros)
   const allowanceRemaining = Math.max(
     0,
     args.balance.includedMicros + args.balance.institutionalGrantMicros - args.balance.allowanceUsedMicros,

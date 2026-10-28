@@ -105,3 +105,10 @@ The optional `exhausted-workspace` fixture provides a separate Free workspace
 whose turn/transcription quota is consumed without provider requests. Explicit
 recovery resets only that workspace's counters; rebuilds preserve the result.
 Use it to verify the denial and recovery paths without consuming real model runs.
+
+A separate Preview provider guard caps metered commitments across all wallets,
+independently of synthetic credits. It defaults to $5 per PR, with an explicit
+acceptance override up to $25. Settled cost is durable and all active wallet
+reservations count; synthetic refills and period rollovers do not reset the guard.
+Actual settlement remains recordable after exhaustion. See Billing Holds and
+Machine Metering for provider-account limits and excluded external charges.

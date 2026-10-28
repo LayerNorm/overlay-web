@@ -8,14 +8,14 @@ const seed = makeFunctionReference<'mutation'>('dev/seed:init')
 const stagingSeed = makeFunctionReference<'mutation'>('dev/seed:initStaging')
 afterEach(() => vi.unstubAllEnvs())
 
-test('preview deployments register no crons and outbound delivery ticks are inert', async () => {
+test('Preview schedules exist on a fresh backend while unconfigured outbound delivery stays inert', async () => {
   vi.stubEnv('OVERLAY_DEPLOYMENT_ENV', 'preview')
   vi.stubEnv('OVERLAY_PREVIEW_BACKGROUND_JOBS', '')
   vi.stubEnv('OVERLAY_PREVIEW_EMAIL_RECIPIENTS', '')
   vi.stubEnv('OVERLAY_PREVIEW_WEBHOOK_ORIGINS', '')
   vi.resetModules()
   const { default: crons } = await import('./crons')
-  expect(JSON.parse(crons.export())).toEqual({})
+  expect(Object.keys(JSON.parse(crons.export()))).toContain('automation scheduler')
   const t = convexTest(schema, modules)
   const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
     throw new Error('Preview must not send outbound requests')
@@ -27,9 +27,9 @@ test('preview deployments register no crons and outbound delivery ticks are iner
   } finally { fetchSpy.mockRestore() }
 })
 
-test('configured Preview runs the same scheduled jobs as Production', async () => {
+test('fresh Preview runs the same scheduled jobs as Production without a second deployment or opt-in', async () => {
   vi.stubEnv('OVERLAY_DEPLOYMENT_ENV', 'preview')
-  vi.stubEnv('OVERLAY_PREVIEW_BACKGROUND_JOBS', '1')
+  vi.stubEnv('OVERLAY_PREVIEW_BACKGROUND_JOBS', '')
   vi.resetModules()
   const preview = JSON.parse((await import('./crons')).default.export())
   vi.stubEnv('OVERLAY_DEPLOYMENT_ENV', 'production')

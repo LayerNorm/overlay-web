@@ -22,6 +22,7 @@ import { assertValidElicitationResponse } from '../../src/shared/agents/elicitat
 import { finalizeWorkspaceLedger, markBudgetReservationReconcile } from '../platform/usage'
 import { connectedAgentPolicyProjection } from '../lib/connectedAgentPolicyProjection'
 import { applySandboxSpendLimits, prepareSandboxSpendLimits } from '../lib/sandboxSpendLimits'
+import { previewProviderBudgetAvailable } from '../lib/previewProviderBudget'
 
 const anyObject = v.any()
 const MAX_COMMAND_BYTES = 128 * 1024
@@ -2588,6 +2589,12 @@ export const meterSandboxLeaseDebitByServer = mutation({
           }
         }
         if (charge || holdMicros > 0 || previousHoldMicros > 0) {
+          // Always allow final settlement/stop. Only new execution headroom can
+          // be refused; an exhausted Preview budget must not hide incurred cost.
+          const extraCommitment = Math.max(0, chargeMicros + holdMicros - previousHoldMicros)
+          if (holdMicros > 0 && !await previewProviderBudgetAvailable(ctx, extraCommitment)) {
+            return { applied: false, reason: 'insufficient_budget', remainingCents: 0 }
+          }
           const limits = await prepareSandboxSpendLimits(ctx, {
             billingAccountId, userId: payer.userId, spendSubjectKind: payer.spendSubjectKind, spendSubjectId: payer.spendSubjectId,
             usage, previousHoldMicros, chargeMicros, holdMicros, now: args.now,

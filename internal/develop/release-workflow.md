@@ -165,8 +165,8 @@ inventory before browser QA. Expected blocked native Git attempts are distinct
 from failures of controller-created REST deployments. Successful Preview builds
 synchronize approved backend settings and exact PR callback URLs before seeding.
 Comma-separated paid/Computer fixtures compose; explicit audited recovery is
-separate from non-destructive seeding. Background jobs and outbound test delivery
-require the configuration described in Convex Workflow. Configuration checks
+separate from non-destructive seeding. Preview registers the production schedule immediately; outbound execution
+requires the isolated configuration described in Convex Workflow. Configuration checks
 never substitute for actual provider, scheduled-job, browser or cleanup acceptance.
 
 Billing-enabled Preview builds provision one owned Stripe test webhook and retain

@@ -84,8 +84,9 @@ deletion by an administrator in the Convex dashboard.
 Convex injects the preview URL into the web build. `deploymentEnv()` keeps
 server configuration on the same captured URL as the browser; generic runtime
 `process.env` lookups must not recover an old shared dashboard URL. Preview
-crons register the production schedule when `OVERLAY_PREVIEW_BACKGROUND_JOBS=1`.
-Enable it after verifying isolated providers and the PR callback configuration.
+crons register the same schedule as production on the first deployment; no
+second deployment or background-job opt-in is needed. Outbound boundaries
+require the isolated provider, exact PR callback configuration and hosting access.
 Email and webhook delivery require exact test-recipient and HTTPS-origin lists
 (`OVERLAY_PREVIEW_EMAIL_RECIPIENTS`, `OVERLAY_PREVIEW_WEBHOOK_ORIGINS`); unlisted
 destinations fail delivery and retain retry diagnostics. Webhooks cannot redirect. Project preview defaults contain matching internal API/service secrets,
