@@ -10,7 +10,7 @@ import { overlayAppClient } from '@/shared/app/overlay-app-client'
 const requests = new Map<string, Promise<string | null>>()
 const resolvedTitles = new Map<string, string>()
 const REQUEST_TTL_MS = 120_000
-const REQUEST_TIMEOUT_MS = 15_000
+const REQUEST_TIMEOUT_MS = 25_000
 const MAX_REQUEST_ATTEMPTS = 2
 const MAX_TRACKED_REQUESTS = 8
 
