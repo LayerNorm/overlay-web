@@ -334,3 +334,23 @@ test('FatalError from a control tool execution is returned as model-visible erro
   expect(JSON.stringify(provider.doStreamCalls[2]?.prompt)).toContain('error-text')
   expect(JSON.stringify(provider.doStreamCalls[2]?.prompt)).toContain('Deterministic operation rejected.')
 })
+
+test('plain non-Fatal tool execution errors are returned to the model instead of treated as approvals', async () => {
+  const f = fixture()
+  const provider = model(index => index === 0
+    ? [call('harness_set_plan', 'plan', { steps: plan })]
+    : index === 1
+      ? [call('read', 'read-failure')]
+      : 'The read failed, so I cannot complete the milestone.')
+  const execute = vi.fn(async () => { throw new Error('Plain tool execution failure.') })
+
+  const result = await runOverlayHarness({
+    ...input,
+    tools: { read: tool({ inputSchema: z.object({}), execute }) },
+  }, f.ports)
+
+  expect(result.outcome).not.toBe('finished')
+  expect(execute).toHaveBeenCalledOnce()
+  expect(provider.doStreamCalls.length).toBeGreaterThan(2)
+  expect(JSON.stringify(provider.doStreamCalls[2]?.prompt)).toContain('Plain tool execution failure.')
+})

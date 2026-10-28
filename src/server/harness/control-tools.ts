@@ -13,12 +13,20 @@ export function createHarnessControlTools(ports: HarnessExecutionPorts) {
         title: z.string().min(1).max(500),
         dependsOn: z.array(id).max(128),
         acceptanceCriteria: z.array(z.string().min(1).max(2_000)).min(1).max(16),
-        requiresVerification: z.boolean().default(false)
+        requiresVerification: z.boolean().optional()
           .describe('true only when a delegated verifier will independently check this milestone'),
         answerOnly: z.boolean().optional().describe('true only for a milestone that is answering from knowledge or prior evidence with no external effect'),
       })).min(1).max(128) }),
       execute: async ({ steps }, { toolCallId }) => {
-        const state = await ports.apply(`control:${toolCallId}`, { type: 'replace_plan', steps })
+        const normalizedSteps = steps.map(step => ({
+          id: step.id,
+          title: step.title,
+          dependsOn: step.dependsOn,
+          acceptanceCriteria: step.acceptanceCriteria,
+          requiresVerification: step.requiresVerification === true,
+          ...(step.answerOnly === true ? { answerOnly: true } : {}),
+        }))
+        const state = await ports.apply(`control:${toolCallId}`, { type: 'replace_plan', steps: normalizedSteps })
         return { planRevision: state.planRevision, plan: state.plan }
       },
     }),

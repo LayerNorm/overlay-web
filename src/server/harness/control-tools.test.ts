@@ -65,11 +65,37 @@ test('plan tools accept answer-only milestones', () => {
   })).toMatchObject({ steps: [{ answerOnly: true }] })
 })
 
-test('plan tools default independent verification to false and preserve explicit requests', () => {
+test('plan tools keep omitted verification optional and preserve explicit requests', () => {
   const planTool = createHarnessControlTools(fixture().ports).harness_set_plan
   const step = { id: 'work', title: 'Do work', dependsOn: [], acceptanceCriteria: ['Complete the work.'] }
-  expect(planTool.inputSchema.parse({ steps: [step] }).steps[0]?.requiresVerification).toBe(false)
+  expect(planTool.inputSchema.parse({ steps: [step] }).steps[0]?.requiresVerification).toBeUndefined()
   expect(planTool.inputSchema.parse({ steps: [{ ...step, requiresVerification: true }] }).steps[0]?.requiresVerification).toBe(true)
+})
+
+test('plan execution normalizes raw omitted verification input before applying the operation', async () => {
+  const f = fixture()
+  const apply = vi.fn<HarnessExecutionPorts['apply']>(async () => f.ports.read())
+  const planTool = createHarnessControlTools({ ...f.ports, apply }).harness_set_plan
+  await planTool.execute!({
+    steps: [{
+      id: 'work',
+      title: 'Raw model plan',
+      dependsOn: [],
+      acceptanceCriteria: ['Apply normalized input'],
+      answerOnly: false,
+    }],
+  }, { toolCallId: 'raw-plan', messages: [] })
+
+  expect(apply).toHaveBeenCalledWith('control:raw-plan', {
+    type: 'replace_plan',
+    steps: [{
+      id: 'work',
+      title: 'Raw model plan',
+      dependsOn: [],
+      acceptanceCriteria: ['Apply normalized input'],
+      requiresVerification: false,
+    }],
+  })
 })
 
 test('verification rejection tells the model to revise an unsatisfiable plan', async () => {

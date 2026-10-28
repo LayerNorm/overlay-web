@@ -60,6 +60,9 @@ export async function applyHarnessOperation(
     } catch (error) {
       const message = rejectedOperationMessage(error)
       if (message !== null) throw new FatalError(message)
+      if (error instanceof Error && error.message.includes('ArgumentValidationError')) {
+        throw new FatalError('Harness operation rejected: invalid operation arguments.')
+      }
       throw error
     }
     if (!result.conflict) return result.snapshot

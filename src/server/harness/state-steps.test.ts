@@ -39,3 +39,17 @@ test('typed rejected operations become fatal without retrying the mutation', asy
   })
   expect(mocks.apply).toHaveBeenCalledOnce()
 })
+
+test('Convex argument validation errors become fatal without retrying the mutation', async () => {
+  mocks.apply.mockRejectedValue(new Error(
+    'Error: [Request ID: fixture] Server Error\nArgumentValidationError: Value does not match validator. Path: .operation',
+  ))
+
+  await expect(applyHarnessOperation(reference, 'invalid-arguments', {
+    type: 'transition_step', id: 'work', status: 'done',
+  })).rejects.toMatchObject({
+    name: 'FatalError',
+    message: 'Harness operation rejected: invalid operation arguments.',
+  })
+  expect(mocks.apply).toHaveBeenCalledOnce()
+})
