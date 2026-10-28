@@ -23,6 +23,8 @@ test('startAgentChat stores initial instructions before navigation', async (t) =
   t.mock.method(overlayAppClient.agents, 'resolveMainThread', async () => ({
     thread: { conversationId: 'conversation-new-agent', title: 'New thread' },
   }))
+  const savedAt = 1_000
+  t.mock.method(Date, 'now', () => savedAt)
   let pendingAtNavigation: string | undefined
 
   const conversationId = await startAgentChat({
@@ -41,5 +43,6 @@ test('startAgentChat stores initial instructions before navigation', async (t) =
     conversationId: 'conversation-new-agent',
     content: '  Follow these instructions  ',
     expectedAgentPrincipalId: 'agent-principal-1',
+    savedAt,
   })
 })
