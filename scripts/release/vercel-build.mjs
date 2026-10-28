@@ -6,9 +6,9 @@ import { pathToFileURL } from 'node:url'
 
 export function previewQaFixtures(value = '') {
   const fixtures = [...new Set(value.split(',').map(name => name.trim()).filter(Boolean))]
-  const supported = ['paid-workspace', 'computer-workspace']
+  const supported = ['paid-workspace', 'computer-workspace', 'exhausted-workspace']
   if (fixtures.some(name => !supported.includes(name))) {
-    throw new Error('Unknown Preview QA fixture; expected paid-workspace or computer-workspace')
+    throw new Error('Unknown Preview QA fixture; expected paid-workspace, computer-workspace or exhausted-workspace')
   }
   return fixtures
 }
@@ -108,6 +108,10 @@ export function buildPlan(env) {
         ...(fixtures.includes('computer-workspace') ? [{
           command: './node_modules/.bin/convex',
           args: ['run', 'dev/seed:initComputerQa', '{}', '--deployment', 'preview/pr-' + pr],
+        }] : []),
+        ...(fixtures.includes('exhausted-workspace') ? [{
+          command: './node_modules/.bin/convex',
+          args: ['run', 'dev/seed:initExhaustedQa', '{}', '--deployment', 'preview/pr-' + pr],
         }] : [])],
       env: childEnv,
       target: 'preview pr-' + pr,

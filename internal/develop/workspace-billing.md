@@ -100,3 +100,8 @@ owned backend, and repairs event subscriptions. The trusted controller confirms
 endpoint deletion before backend cleanup. Test-key mode and endpoint/backend
 ownership are independently checked; configuration success is separate from
 actual checkout, signed delivery, billing persistence and cancellation acceptance.
+
+The optional `exhausted-workspace` fixture provides a separate Free workspace
+whose turn/transcription quota is consumed without provider requests. Explicit
+recovery resets only that workspace's counters; rebuilds preserve the result.
+Use it to verify the denial and recovery paths without consuming real model runs.

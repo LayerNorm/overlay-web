@@ -7,7 +7,7 @@ import { workspaceAllowanceSubject } from '../../src/shared/billing/free-allowan
 /** Explicit recovery, never called by ordinary deployment seeding. */
 export const recover = internalMutation({
   args: {
-    fixture: v.union(v.literal('personal'), v.literal('paid-workspace'), v.literal('computer-workspace')),
+    fixture: v.union(v.literal('personal'), v.literal('paid-workspace'), v.literal('computer-workspace'), v.literal('exhausted-workspace')),
     requestId: v.string(),
     availableCents: v.optional(v.number()),
   },
@@ -20,8 +20,11 @@ export const recover = internalMutation({
     const personal = await ctx.db.query('workspaces')
       .withIndex('by_personalOwnerUserId', q => q.eq('personalOwnerUserId', userId)).unique()
     const workspaceId = args.fixture === 'personal' ? personal?.workspaceId
-      : args.fixture === 'paid-workspace' ? `preview-qa-team-${userId}` : `preview-computer-qa-${userId}`
+      : args.fixture === 'paid-workspace' ? `preview-qa-team-${userId}`
+      : args.fixture === 'exhausted-workspace' ? `preview-exhausted-qa-${userId}` : `preview-computer-qa-${userId}`
     if (!workspaceId) throw new Error('Seed the Preview fixture before recovery')
+    const workspace = await ctx.db.query('workspaces').withIndex('by_workspaceId', q => q.eq('workspaceId', workspaceId)).unique()
+    if (!workspace) throw new Error('Seed the Preview fixture before recovery')
     const eventId = `preview-qa-recovery:${args.requestId}`
     const previous = await ctx.db.query('auditEvents').withIndex('by_eventId', q => q.eq('eventId', eventId)).unique()
     if (previous) {
@@ -30,11 +33,12 @@ export const recover = internalMutation({
       }
       return { workspaceId, applied: false }
     }
-    if (args.fixture === 'personal') {
+    if (args.fixture === 'personal' || args.fixture === 'exhausted-workspace') {
       if (args.availableCents !== undefined) throw new Error('Free fixture recovery cannot grant paid credit')
       const from = new Date(Date.now() - 7 * 86_400_000).toISOString().slice(0, 10)
       // Both keys cover accounts that started before workspace counting was introduced.
-      for (const subject of [userId, workspaceAllowanceSubject(workspaceId)]) {
+      const subjects = args.fixture === 'personal' ? [userId, workspaceAllowanceSubject(workspaceId)] : [workspaceAllowanceSubject(workspaceId)]
+      for (const subject of subjects) {
         const rows = await ctx.db.query('dailyUsage').withIndex('by_userId_date', q =>
           q.eq('userId', subject).gte('date', from)).take(32)
         if (rows.length === 32) throw new Error('Unexpected QA usage history; inspect before resetting')

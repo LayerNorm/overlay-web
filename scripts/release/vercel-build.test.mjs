@@ -5,8 +5,8 @@ import { buildPlan, deploymentEnvFile, runBuild, previewBuildEnvironment, previe
 
 test('paid and Computer fixtures compose once and unknown fixtures fail before deployment', () => {
   assert.deepEqual(previewQaFixtures(' paid-workspace,computer-workspace,paid-workspace '), ['paid-workspace', 'computer-workspace'])
-  const plan = buildPlan({ ...preview, OVERLAY_PREVIEW_QA_FIXTURES: 'paid-workspace,computer-workspace' })
-  assert.deepEqual(plan.after.map(step => step.args[1]), ['dev/seed:init', 'dev/seed:initQa', 'dev/seed:initComputerQa'])
+  const plan = buildPlan({ ...preview, OVERLAY_PREVIEW_QA_FIXTURES: 'paid-workspace,computer-workspace,exhausted-workspace' })
+  assert.deepEqual(plan.after.map(step => step.args[1]), ['dev/seed:init', 'dev/seed:initQa', 'dev/seed:initComputerQa', 'dev/seed:initExhaustedQa'])
   for (const step of plan.after) assert.equal(step.args.at(-1), 'preview/pr-123')
   assert.throws(() => buildPlan({ ...preview, OVERLAY_PREVIEW_QA_FIXTURES: 'paid-workspace,typo' }), /Unknown Preview/)
 })

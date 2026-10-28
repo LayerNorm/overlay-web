@@ -6,6 +6,7 @@ import { ensureEmptyBalance, ensureWorkspaceBillingAccount, uniqueWorkspaceAccou
 import { seedPreviewWorkspace } from './previewWorkspace'
 
 import { claimWorkspaceHandle } from '../lib/workspaceHandles'
+import { workspaceAllowanceSubject } from '../../src/shared/billing/free-allowance'
 
 /** Internal, idempotent fixtures. Identity comes from the sandbox account configuration. */
 export const init = internalMutation({
@@ -58,6 +59,36 @@ export const initComputerQa = internalMutation({
     await seedFixtures(ctx, { userId, email, lane: 'preview' })
     await seedComputerWorkspace(ctx, { userId, email })
     return { userId, workspaceId: 'preview-computer-qa-' + userId }
+  },
+})
+
+/** A separate Free workspace with consumed counters, without making provider calls. */
+export const initExhaustedQa = internalMutation({
+  args: {},
+  returns: v.object({ userId: v.string(), workspaceId: v.string() }),
+  handler: async (ctx) => {
+    requirePreviewDeployment()
+    const userId = process.env.PREVIEW_LOGIN_USER_ID?.trim()
+    const email = process.env.PREVIEW_LOGIN_EMAIL?.trim()
+    if (!userId?.startsWith('user_') || !email) throw new Error('Configure the sandbox preview login identity before seeding')
+    const workspaceId = `preview-exhausted-qa-${userId}`
+    const existing = await ctx.db.query('workspaces')
+      .withIndex('by_workspaceId', q => q.eq('workspaceId', workspaceId)).unique()
+    // Recovery is explicit; a rebuild must not consume a replenished allowance.
+    if (existing) return { userId, workspaceId }
+    const now = Date.now()
+    const principalId = workspaceId + '-owner'
+    const slug = 'quota-qa-' + crypto.randomUUID().replaceAll('-', '').slice(0, 16)
+    await claimWorkspaceHandle(ctx, { handle: slug, workspaceId, kind: 'canonical', visibility: 'public', now, allowReserved: true })
+    await ctx.db.insert('workspaces', { workspaceId, kind: 'organization', name: 'Exhausted QA', slug,
+      status: 'active', createdByPrincipalId: principalId, createdAt: now, updatedAt: now })
+    await ctx.db.insert('workspacePrincipals', { principalId, workspaceId, type: 'human', userId, email,
+      displayName: 'Preview QA', createdAt: now, updatedAt: now })
+    await ctx.db.insert('workspaceMemberships', { membershipId: workspaceId + '-membership', workspaceId, principalId,
+      role: 'owner', status: 'active', joinedAt: now, updatedAt: now })
+    await ctx.db.insert('dailyUsage', { userId: workspaceAllowanceSubject(workspaceId),
+      date: new Date(now).toISOString().slice(0, 10), askCount: 15, writeCount: 15, agentCount: 15, transcriptionSeconds: 600 })
+    return { userId, workspaceId }
   },
 })
 

@@ -192,7 +192,7 @@ in Convex Workflow. Browser access does not prove server callback access.
 
 For exhausted fixtures, invoke internal `dev/qa:recover` only on the verified PR
 backend, with a new `requestId`, fixture `personal`, `paid-workspace` or
-`computer-workspace`, and `availableCents` for paid fixtures. Use a Preview-scoped
+`computer-workspace` or `exhausted-workspace`, and `availableCents` for paid fixtures. Use a Preview-scoped
 key-only file or authenticated CLI with the full project/Preview reference.
 Never pass `.env.local`. Recovery is explicit and audited; deployment seeding
 never resets usage or credit. Synthetic credits do not pay real provider costs.
@@ -419,3 +419,12 @@ The former custom Production Release workflow, promotion script and production d
 - Keep checks proportional and act when the evidence is sufficient. Required CI and current-preview QA determine readiness.
 
 For detailed repository mechanics, read [Agentic Development](agentic-development.mdx), [Release Workflow](release-workflow.mdx), and [Convex Workflow](convex-workflow.mdx).
+
+### Exhausted-quota acceptance
+
+Include `exhausted-workspace` in the comma-separated fixture list to create a
+separate Free **Exhausted QA** workspace with consumed weekly turn/transcription
+counters. It makes no provider calls and grants no paid plan. Ordinary rebuilds
+preserve its state. Use explicit `dev/qa:recover` with that fixture and a new
+request ID to reset only its own counters, then verify normal admission again.
+The Personal fixture remains available for ordinary Free acceptance.

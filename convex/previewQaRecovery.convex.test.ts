@@ -52,3 +52,23 @@ test.each(['production', 'development', 'staging', ''])('recovery refuses %s bef
   const t = convexTest(schema, modules)
   await expect(t.mutation(recover, { fixture: 'personal', requestId: 'denied' })).rejects.toThrow('Preview seed is unavailable')
 })
+
+test('exhausted fixture recovery affects only its counters and rebuilds preserve the result', async () => {
+  const t = await fixture()
+  const seed = makeFunctionReference<'mutation'>('dev/seed:initExhaustedQa')
+  const created = await t.mutation(seed, {})
+  const rows = () => t.run(ctx => ctx.db.query('dailyUsage').collect())
+  expect((await rows())[0]).toMatchObject({ userId: `workspace:${created.workspaceId}`, agentCount: 15, askCount: 15, transcriptionSeconds: 600 })
+  await t.mutation(recover, { fixture: 'exhausted-workspace', requestId: 'exhausted-reset' })
+  expect((await rows())[0]).toMatchObject({ agentCount: 0, askCount: 0, transcriptionSeconds: 0 })
+  await t.mutation(seed, {})
+  expect(await rows()).toHaveLength(1)
+  expect((await rows())[0].agentCount).toBe(0)
+  expect(await t.run(ctx => ctx.db.query('billingAccountSubscriptions').collect())).toHaveLength(1)
+})
+
+test.each(['production', 'development', 'staging'])('exhausted fixture refuses %s', async environment => {
+  vi.stubEnv('OVERLAY_DEPLOYMENT_ENV', environment)
+  const t = convexTest(schema, modules)
+  await expect(t.mutation(makeFunctionReference<'mutation'>('dev/seed:initExhaustedQa'), {})).rejects.toThrow('Preview seed is unavailable')
+})

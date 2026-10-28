@@ -192,6 +192,14 @@ Persistent chat context and hybrid retrieval both resolve memories by `workspace
 
 ## Conversational onboarding
 
+WorkOS session resolution initializes the authenticated user through `UserService`
+before exposing that session to app handlers. This covers password sign-in and
+retained cookies as well as OAuth, so a newly invited user has durable profile
+and onboarding state before starting the flow. Concurrent initialization reads
+coalesce; successful writes are cached for one minute in a bounded process cache.
+Failed writes propagate and are retried, rather than caching a missing profile
+or marking onboarding complete. No plan or membership is granted by this sync.
+
 New owner sessions use `flowVersion: 2` and revision-checked name, about, team, website, and daily-work questions. Invited members skip owner questions and native employees; sessions without a flow version keep the legacy sequence. Back is limited to profile questions before side effects. Optional work-tool connections, external agents, Personal context, invitations, and the first Work task remain separate steps; solo owners skip invitations. Onboarding answers use the durable transcript outbox and completion is recorded only after the task is verified. Unfinished profile drafts are scoped to the workspace and user-owned run and step in session storage. Chat and agent questionnaires use the bounded `present_generated_ui` `questionnaire` kind: suggestions edit the composer but do not submit, authorize, or pause a tool call.
 
 ## Collaboration message contracts
