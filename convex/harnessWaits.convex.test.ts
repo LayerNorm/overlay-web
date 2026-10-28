@@ -144,6 +144,7 @@ async function createChildTree(convex: Convex, childRunIds: string[]) {
     dependsOn: [],
     acceptanceCriteria: [`Inspect ${childRunId}.`],
     requiresVerification: false,
+    evidenceTools: ['tool:read'],
   }))
   let root = (await apply(convex, input, 'root-plan', 1, { type: 'replace_plan', steps: plan })).snapshot
   const children: Array<{ input: HarnessAdmission; reference: HarnessWaitReference }> = []
