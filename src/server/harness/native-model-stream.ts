@@ -41,26 +41,68 @@ export async function projectNativeHarnessStream(
       },
     })
     let firstText = true
+    let protocolSeen = false
+    let pendingMarkerPrefix = ''
+    const markers = ['<tool_call>', '<|python_tag|>']
+    const appendVisibleText = (text: string) => {
+      if (!text || remaining <= 0) return
+      const visible = `${firstText && message.content.trim() ? '\n\n' : ''}${text}`.slice(0, remaining)
+      if (!visible) return
+      firstText = false
+      remaining -= visible.length
+      appendAgentTextPart(parts, visible)
+      parts = compactAssistantPersistenceForConvex({ content: '', parts }).parts
+      stream.pushText(visible, parts)
+    }
+    const projectTextDelta = (delta: string) => {
+      if (protocolSeen || remaining <= 0) return
+      const combined = `${pendingMarkerPrefix}${delta}`
+      const markerIndex = markers
+        .map(marker => combined.indexOf(marker))
+        .filter(index => index >= 0)
+        .sort((a, b) => a - b)[0]
+      if (markerIndex !== undefined) {
+        appendVisibleText(combined.slice(0, markerIndex))
+        pendingMarkerPrefix = ''
+        protocolSeen = true
+        return
+      }
+      let heldLength = 0
+      for (const marker of markers) {
+        for (let length = Math.min(marker.length - 1, combined.length); length > heldLength; length--) {
+          if (marker.startsWith(combined.slice(-length))) heldLength = length
+        }
+      }
+      pendingMarkerPrefix = combined.slice(combined.length - heldLength)
+      appendVisibleText(combined.slice(0, combined.length - heldLength))
+    }
+    const flushPendingText = () => {
+      if (!protocolSeen) appendVisibleText(pendingMarkerPrefix)
+      pendingMarkerPrefix = ''
+    }
     return source.pipeThrough(new TransformStream<LanguageModelV4StreamPart, LanguageModelV4StreamPart>({
       async transform(part, controller) {
         try {
-          if (part.type === 'text-delta' && remaining > 0) {
-            const text = `${firstText && message.content.trim() ? '\n\n' : ''}${part.delta}`.slice(0, remaining)
-            firstText = false
-            remaining -= text.length
-            appendAgentTextPart(parts, text)
-            parts = compactAssistantPersistenceForConvex({ content: '', parts }).parts
-            stream.pushText(text, parts)
+          if (part.type === 'text-delta') {
+            projectTextDelta(part.delta)
           }
-          if (part.type === 'finish' || part.type === 'error') await stream.flush()
+          if (part.type === 'finish' || part.type === 'error') {
+            flushPendingText()
+            await stream.flush()
+          }
         } catch (_error) {
           logger.warn('[harness] native stream projection write unavailable', { runId: access.runId })
         }
         controller.enqueue(part)
       },
-      flush: () => stream.flush().catch(_error => {
-        logger.warn('[harness] native stream projection flush unavailable', { runId: access.runId })
-      }),
+      flush: async () => {
+        try {
+          flushPendingText()
+          await stream.flush()
+        } catch (_error) {
+          logger.warn('[harness] native stream projection flush unavailable', { runId: access.runId })
+        }
+      },
     }))
   } catch (_error) {
     // Presentation cannot retry or cancel an already-dispatched inference.

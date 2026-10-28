@@ -67,6 +67,25 @@ test('native text streams before inference finishes, preserving usage and exclud
   expect(mocks.finalize).not.toHaveBeenCalled()
 })
 
+test('native projection holds split protocol markers and drops the call and following deltas', async () => {
+  const parts = [
+    text('The capital of France is Paris. <tool_'),
+    text('call>harness_update_step arguments'),
+    text(' that must stay hidden'),
+    finish,
+  ]
+  expect(await drain(await projectNativeHarnessStream(reference, source(parts)))).toEqual(parts)
+  expect(mocks.append.mock.calls.map(([args]) => args.contentDelta).join('')).toBe('The capital of France is Paris. ')
+  expect(JSON.stringify(mocks.append.mock.calls)).not.toContain('<tool_call>')
+  expect(JSON.stringify(mocks.append.mock.calls)).not.toContain('must stay hidden')
+})
+
+test('native projection flushes an unresolved marker prefix at finish', async () => {
+  const parts = [text('Visible <tool_'), finish]
+  expect(await drain(await projectNativeHarnessStream(reference, source(parts)))).toEqual(parts)
+  expect(mocks.append.mock.calls.map(([args]) => args.contentDelta).join('')).toBe('Visible <tool_')
+})
+
 test('the real provider middleware removes tagged reasoning before native room projection', async () => {
   const provider = new MockLanguageModelV4({ doStream: async () => ({ stream: source([
     { type: 'text-start', id: 'text' }, text('<think>Hidden thought</think>Public answer'), { type: 'text-end', id: 'text' }, finish,

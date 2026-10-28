@@ -16,6 +16,8 @@ import { harnessWakeToken } from '@/server/harness/wait-token'
 import { applyHarnessOperation, claimHarnessState, readHarnessState } from '@/server/harness/state-steps'
 import { harnessToolResultEvidence } from '@/server/harness/tool-evidence'
 import { runOverlayHarness, type HarnessExecutionResult } from '@/server/harness/runner'
+import { HARNESS_CONTROL_TOOLS } from '@/server/harness/context'
+import { stripTextualToolCalls } from '@/server/harness/textual-tool-calls'
 import type { PersonalHarnessAccess } from '@/server/harness/personal-access'
 import type { PersonalHarnessWorkflowInput } from '@/server/harness/personal-workflow-input'
 import { persistPersonalChatWorkProgress } from '@/server/conversations/personal-chat-work-lifecycle'
@@ -73,6 +75,7 @@ export async function personalHarnessWorkflow(input: PersonalHarnessWorkflowInpu
   let result: HarnessExecutionResult | undefined
   let progress = ''
   const fallbackNotices: string[] = []
+  let activeToolNames = new Set<string>(HARNESS_CONTROL_TOOLS)
   try {
     if (await wake.getConflict()) throw new FatalError('Harness wake channel is already owned.')
     if (isRoot) await attachPersonalHarnessDelivery(access)
@@ -100,14 +103,18 @@ export async function personalHarnessWorkflow(input: PersonalHarnessWorkflowInpu
     ports.recordModelStep = async (step, receiptId) => {
       await recordModelStep(step, receiptId)
       if (isRoot && step.text) {
-        progress = `${progress}${progress ? '\n\n' : ''}${step.text}`.slice(-160_000)
+        const text = stripTextualToolCalls(step.text, activeToolNames)
+        if (!text) return
+        progress = `${progress}${progress ? '\n\n' : ''}${text}`.slice(-160_000)
         await persistPersonalChatWorkProgress({ agentRunId: access.agentRunId, resourceUserId: access.actorUserId, content: progress })
       }
     }
+    const tools = createPersonalHarnessTools({ ...execution, definitions: input.definitions })
+    activeToolNames = new Set([...activeToolNames, ...Object.keys(tools)])
     result = await runOverlayHarness({
       instructions: input.instructions, messages: input.messages, settings: input.settings,
       model: { modelId: input.context.effectiveModelId, credentialOwnerId: access.actorUserId, sessionId: access.conversationId, allowLowBalanceFallback: false },
-      tools: createPersonalHarnessTools({ ...execution, definitions: input.definitions }),
+      tools,
       writable: getWritable<ModelCallStreamPart<ToolSet>>(),
     }, ports)
     if (result.outcome === 'already_running') return { runId: initial.runId, status: 'already_running' }
@@ -124,7 +131,7 @@ export async function personalHarnessWorkflow(input: PersonalHarnessWorkflowInpu
     result = { outcome: 'finished', snapshot, messages: [], steps: [] }
   }
   if (isRoot) {
-    const delivery = buildPersonalHarnessDelivery(result, input.delivery?.sourceCitations, fallbackNotices)
+    const delivery = buildPersonalHarnessDelivery(result, input.delivery?.sourceCitations, fallbackNotices, activeToolNames)
     if (!result.steps.length && progress) {
       const content = fallbackNotices.length ? `${fallbackNotices.join('\n\n')}\n\n${progress}` : progress
       delivery.content = content

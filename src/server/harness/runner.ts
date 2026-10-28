@@ -15,6 +15,7 @@ import { buildHarnessInstructions, buildHarnessStepInstructions, HARNESS_CONTROL
 import type { HarnessApprovalRequest, HarnessExecutionPorts, HarnessModelSettings } from './ports'
 import { HarnessLanguageModel, type HarnessModelReference } from './secure-model'
 import { createHarnessToolApprovals, type HarnessToolApprovals, type HarnessToolExecutionOptions } from './tool-approvals'
+import { stripTextualToolCalls } from './textual-tool-calls'
 
 export type HarnessExecutionInput = {
   instructions: string
@@ -201,7 +202,8 @@ async function finishOrCheckpointInvocation(
   ports: HarnessExecutionPorts,
   segment: number,
   before: string,
-  invocationSteps: StepResult<ToolSet>[],
+  runSteps: StepResult<ToolSet>[],
+  toolNames: ReadonlySet<string>,
   truncatedResponse: boolean,
   stagnantSegments: number,
 ): Promise<InvocationContinuation> {
@@ -210,7 +212,8 @@ async function finishOrCheckpointInvocation(
     return { kind: 'continue', stagnantSegments }
   }
   if (!truncatedResponse && !harnessCompletionIssues(state).length) {
-    const resultSummary = invocationSteps.at(-1)?.text?.trim()
+    const resultSummary = latestNonEmptyStepText(runSteps, toolNames)
+      || stripTextualToolCalls(state.workingSummary, toolNames)
     const completed = await ports.apply(`finish:${segment}`, {
       type: 'finish', ...(resultSummary ? { resultSummary: resultSummary.slice(0, 8_000) } : {}),
     })
@@ -221,9 +224,18 @@ async function finishOrCheckpointInvocation(
     await ports.apply(`stuck:${segment}`, { type: 'block', blocker: { kind: 'stuck', question: 'No durable progress after two continuation attempts. Review the plan or provide the missing input before retrying.' } })
     return { kind: 'continue', stagnantSegments: nextStagnantSegments }
   }
-  const summary = state.workingSummary || invocationSteps.at(-1)?.text?.trim() || ''
+  const summary = stripTextualToolCalls(state.workingSummary, toolNames)
+    || latestNonEmptyStepText(runSteps, toolNames)
   await ports.apply(`checkpoint:${segment}`, { type: 'checkpoint', summary: summary.slice(0, 8_000) })
   return { kind: 'continue', stagnantSegments: nextStagnantSegments }
+}
+
+function latestNonEmptyStepText(steps: StepResult<ToolSet>[], toolNames: ReadonlySet<string>): string {
+  for (let index = steps.length - 1; index >= 0; index--) {
+    const text = stripTextualToolCalls(steps[index]?.text ?? '', toolNames)
+    if (text) return text
+  }
+  return ''
 }
 
 // Called inside a surface's workflow, never inside a single durable step.
@@ -233,6 +245,7 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
   let messages = input.messages
   const steps: StepResult<ToolSet>[] = []
   const controls = new Set<string>(HARNESS_CONTROL_TOOLS)
+  const toolNames = new Set([...Object.keys(input.tools), ...HARNESS_CONTROL_TOOLS])
   assertNoControlToolReplacement(input.tools, controls)
   const initial = await ports.read()
   let observedState = initial
@@ -368,7 +381,7 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
       if (approval.resetStagnation) stagnantSegments = 0
       continue
     }
-    const continuation = await finishOrCheckpointInvocation(updatedState, ports, segment, before, invocationSteps, truncatedResponse, stagnantSegments)
+    const continuation = await finishOrCheckpointInvocation(updatedState, ports, segment, before, steps, toolNames, truncatedResponse, stagnantSegments)
     if (continuation.kind === 'finished') {
       return { outcome: 'finished', snapshot: continuation.snapshot, messages, steps }
     }

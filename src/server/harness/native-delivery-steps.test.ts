@@ -1,6 +1,7 @@
 import { beforeEach, expect, test, vi } from 'vitest'
 import { agentMemoryOwnerId } from '@/shared/agents/agent-memory'
 import { finishNativeHarnessDelivery, attachNativeHarnessDelivery, projectNativeHarnessWait } from './native-delivery-steps'
+import { buildNativeHarnessDelivery } from './native-tool-metrics'
 
 const mocks = vi.hoisted(() => ({ get: vi.fn(), delivery: vi.fn(), attach: vi.fn(), complete: vi.fn(),
   finalize: vi.fn(), failMessage: vi.fn(), fail: vi.fn(), transition: vi.fn(), memory: vi.fn(), list: vi.fn(),
@@ -72,6 +73,28 @@ test('finalization replaces live tool progress without duplicate tool parts', as
     part.type === 'tool-invocation'
     && (part.toolInvocation as { toolCallId?: string }).toolCallId === 'call'
   ))).toHaveLength(1)
+})
+
+test('native terminal persistence keeps the earlier answer when the last step is a textual tool call', async () => {
+  const protocol = '<tool_call>harness_update_step<arg_key>id</arg_key><arg_value>step1</arg_value><arg_key>status</arg_key><arg_value>done</arg_value></tool_call>'
+  const nativeDelivery = buildNativeHarnessDelivery({
+    snapshot: {
+      ...state, status: 'completed', resultSummary: protocol, workingSummary: protocol, evidence: [],
+      usage: { inputTokens: 0, outputTokens: 0, costMicros: 0 },
+    },
+    messages: [],
+    steps: [
+      { text: 'The capital of France is Paris.', content: [{ type: 'text', text: 'The capital of France is Paris.' }], toolCalls: [], toolResults: [] },
+      { text: protocol, content: [{ type: 'text', text: protocol }], toolCalls: [], toolResults: [] },
+    ],
+  } as never)
+  expect(nativeDelivery.content).toBe('The capital of France is Paris.')
+  expect(JSON.stringify(nativeDelivery.parts)).not.toContain('<tool_call>')
+  await finishNativeHarnessDelivery(access, nativeDelivery, { memoryEnabled: false })
+  expect(mocks.finalize).toHaveBeenCalledWith(expect.objectContaining({
+    content: 'The capital of France is Paris.',
+    parts: [{ type: 'text', text: 'The capital of France is Paris.' }],
+  }))
 })
 
 test('native failure keeps streamed partial content and cancellation is fenced', async () => {

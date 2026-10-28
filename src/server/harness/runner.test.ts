@@ -106,6 +106,23 @@ test('reasoning stays separate from the durable final result shared with parents
   expect(result.snapshot.usage.outputTokens).toBe(1)
 })
 
+test('runner stores sanitized final text and ignores a trailing textual tool call', async () => {
+  const f = fixture(false)
+  const protocol = '<tool_call>harness_update_step<arg_key>id</arg_key><arg_value>step1</arg_value><arg_key>status</arg_key><arg_value>done</arg_value></tool_call>'
+  model(() => `The capital of France is Paris.\n\n${protocol}`)
+  const result = await runOverlayHarness({ ...input, tools: {} }, f.ports)
+  expect(result.snapshot.resultSummary).toBe('The capital of France is Paris.')
+})
+
+test('runner checkpoint summary falls back to sanitized step text', async () => {
+  const f = fixture()
+  const protocol = '<tool_call>harness_update_step<arg_key>id</arg_key><arg_value>step1</arg_value><arg_key>status</arg_key><arg_value>done</arg_value></tool_call>'
+  model(() => `The capital of France is Paris.\n\n${protocol}`)
+  const result = await runOverlayHarness({ ...input, tools: {} }, f.ports)
+  expect(result.snapshot.workingSummary).toBe('The capital of France is Paris.')
+  expect(result.snapshot.workingSummary).not.toContain('<tool_call>')
+})
+
 test('the real SDK runs beyond twenty tool calls and continues after early sign-off', async () => {
   const f = fixture()
   let prepared = false
