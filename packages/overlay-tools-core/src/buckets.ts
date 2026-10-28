@@ -1,8 +1,11 @@
+import { COMPUTER_TOOL_IDS } from './policy'
+
 export type ToolCostBucket = 'perplexity' | 'image' | 'video' | 'browser' | 'composio' | 'internal'
 
 export type ToolBucket = ToolCostBucket
 
 export const INTERNAL_TOOL_IDS = new Set<string>([
+  ...COMPUTER_TOOL_IDS,
   'search_knowledge',
   'search_in_files',
   'list_files',
@@ -64,7 +67,6 @@ export function toolCostBucketForId(toolId: string): ToolCostBucket {
     toolId === 'apply_motion_control' ||
     toolId === 'edit_video'
   ) return 'video'
-  if (toolId === 'browser_run_task' || toolId === 'interactive_browser_session') return 'browser'
   if (INTERNAL_TOOL_IDS.has(toolId)) return 'internal'
   return 'composio'
 }

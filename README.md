@@ -131,7 +131,6 @@ Overlay keeps provider adapters behind a common gateway so the collaboration mod
 - [Composio](https://composio.dev/) — External app integrations
 - [TipTap](https://tiptap.dev/) — Rich text editing
 - [Boat](https://boat.dev/) (formerly Box) — Managed machines for Computers and agent environments
-- [Browser Use](https://browser-use.com/) — Browser automation
 - [OpenRouter](https://openrouter.ai/) — Unified model API
 - [Shadcn/UI](https://ui.shadcn.com/) — UI components
 

@@ -1,3 +1,4 @@
+import { fetchAppCallback } from '../lib/appCallback'
 import { v } from 'convex/values'
 import { internal } from '../_generated/api'
 import { internalAction } from '../_generated/server'
@@ -170,7 +171,7 @@ export const runAutomation = internalAction({
         method: 'POST',
         path: runPath,
       })
-      const response = await fetch(`${getAutomationRunnerBaseUrl()}${runPath}`, {
+      const response = await fetchAppCallback(`${getAutomationRunnerBaseUrl()}${runPath}`, {
         method: 'POST',
         headers: {
           'content-type': 'application/json',

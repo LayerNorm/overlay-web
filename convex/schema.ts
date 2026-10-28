@@ -6,6 +6,9 @@ import { defineSchema, defineTable } from 'convex/server'
 import { v } from 'convex/values'
 
 export default defineSchema({
+  previewProviderBudget: defineTable({
+    key: v.string(), spentMicros: v.number(), updatedAt: v.number(),
+  }).index('by_key', ['key']),
   userUiSettings: defineTable({
     userId: v.string(),
     theme: v.union(v.literal('light'), v.literal('dark')),
@@ -1021,6 +1024,7 @@ export default defineSchema({
     .index('by_userId_enabled', ['userId', 'enabled'])
     .index('by_agentId', ['agentId'])
     .index('by_enabled_nextRunAt', ['enabled', 'nextRunAt'])
+    .index('by_schedulerWorkflowRunId', ['schedulerWorkflowRunId'])
     .searchIndex('search_name', {
       searchField: 'name',
       filterFields: ['userId', 'workspaceId', 'deletedAt'],
@@ -1073,7 +1077,8 @@ export default defineSchema({
     .index('by_automationId_createdAt', ['automationId', 'createdAt'])
     .index('by_automationId_status', ['automationId', 'status'])
     .index('by_status_scheduledFor', ['status', 'scheduledFor'])
-    .index('by_userId_createdAt', ['userId', 'createdAt']),
+    .index('by_userId_createdAt', ['userId', 'createdAt'])
+    .index('by_workflowRunId', ['workflowRunId']),
 
   // Durable workflow step events projected from the Workflow SDK.
   // Instead of polling the Workflow SDK's event log every 2 seconds via SSE,

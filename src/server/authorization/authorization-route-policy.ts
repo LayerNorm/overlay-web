@@ -473,7 +473,6 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
   { path: '/api/v1/generate-image', methods: { POST: capability('models.use') } },
   { path: '/api/v1/generate-video', methods: { POST: capability('models.use') } },
   { path: '/api/v1/notebook-agent', methods: { POST: capability('models.use', 'tools.use') } },
-  { path: '/api/v1/browser-task', methods: { POST: capability('tools.use') } },
   {
     path: '/api/v1/imports/slack',
     methods: { GET: authenticated(), POST: authenticated() },

@@ -29,16 +29,20 @@ export async function previewLoginResponse(
   const provided = request.headers.get('x-overlay-preview-secret') ?? ''
   const digest = (value: string) => createHash('sha256').update(value).digest()
   if (!timingSafeEqual(digest(provided), digest(secret))) return unavailable()
-  const email = env.PREVIEW_LOGIN_EMAIL?.trim()
-  const password = env.PREVIEW_LOGIN_PASSWORD
-  const userId = env.PREVIEW_LOGIN_USER_ID?.trim()
+  // Select only pre-provisioned identities; callers cannot supply a user id.
+  const identity = request.headers.get('x-overlay-preview-identity') ?? 'owner'
+  if (!['owner', 'member', 'outsider'].includes(identity)) return unavailable()
+  const prefix = identity === 'owner' ? 'PREVIEW_LOGIN' : `PREVIEW_${identity.toUpperCase()}_LOGIN`
+  const email = env[prefix + '_EMAIL']?.trim()
+  const password = env[prefix + '_PASSWORD']
+  const userId = env[prefix + '_USER_ID']?.trim()
   if (!email || !password || !userId?.startsWith('user_')) return unavailable()
 
   const limited = await dependencies.rateLimit(request)
   if (limited) return limited
   try {
     const session = await dependencies.authenticate(email, password)
-    if (session.user.id !== userId || !session.accessToken || !session.refreshToken) return unavailable()
+    if (session.user.id !== userId || !session.user.emailVerified || !session.accessToken || !session.refreshToken) return unavailable()
     await dependencies.saveSession(session)
     return Response.json({ success: true, userId }, { headers: { 'Cache-Control': 'no-store' } })
   } catch (_error) {

@@ -1,3 +1,4 @@
+import { fetchAppCallback } from '../lib/appCallback'
 import { internalAction } from '../_generated/server'
 
 export const runTick = internalAction({
@@ -10,7 +11,7 @@ export const runTick = internalAction({
     }
     const secret = process.env.INTERNAL_API_SECRET?.trim()
     if (!secret) throw new Error('overlay_free_refresh_secret_missing')
-    const response = await fetch(`${baseUrl}/api/v1/models/overlay-free/refresh`, {
+    const response = await fetchAppCallback(`${baseUrl}/api/v1/models/overlay-free/refresh`, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',

@@ -59,10 +59,6 @@ export function summarizeToolResultForTranscript(params: {
     if (status === 'failed') return toolError || 'Video generation failed.'
   }
 
-  if (toolName === 'browser_run_task' || toolName === 'interactive_browser_session') {
-    return toolMessage || (output?.success === true ? 'Browser task completed successfully.' : toolError || 'Browser task failed.')
-  }
-
   if (toolName === 'perplexity_search' || toolName === 'web_search') {
     const query = readString(input?.query)
       ?? (Array.isArray(input?.query)

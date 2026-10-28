@@ -3,6 +3,15 @@ import test from 'node:test'
 import { CONFIG, PreviewController, PreviewBackends, ApiError, apiClient, previewBackendClient, main, deploymentMatches, previewAddress, trustedPull } from './preview-control.mjs'
 
 const sha = 'a'.repeat(40)
+
+test('a blocked controller build fails immediately with deployment policy guidance', async () => {
+  const f = fixture({ existing: false, buildState: 'BLOCKED' })
+  let sleeps = 0
+  f.controller.sleep = async () => { sleeps++; throw new Error('Unexpected polling') }
+  await assert.rejects(f.controller.run(123), /Controller Preview deployment BLOCKED.*REST API/)
+  assert.equal(sleeps, 0)
+  assert.ok(!f.calls.some(c => c.path?.endsWith('/aliases') && c.method === 'POST'))
+})
 function pull(patch = {}) {
   return { number: 123, state: 'open', base: { ref: 'main', repo: { full_name: CONFIG.repository } },
     labels: [{ name: 'needs-preview' }],
@@ -71,6 +80,7 @@ function fixture({ current = pull(), existing = true, backendActive = true, chan
     throw new Error('Unexpected Vercel request: ' + method + ' ' + path)
   }
   const controller = new PreviewController({ github, vercel, report: () => {}, sleep: async () => {},
+    payments: { remove: async number => { calls.push({ service: 'payment-delete', number }) }, inventory: async () => [] },
     backends: { active: async () => backendActive, renew: async () => ({ name: 'fixture-backend', expiresAt: 123 }),
       remove: async number => { calls.push({ service: 'backend-delete', number }) },
       inventory: async () => [126] },
@@ -155,6 +165,23 @@ test('backend deletion failure cannot publish a successful no-preview status', a
   f.controller.backends.remove = async () => { throw new Error('Backend cleanup failed') }
   await assert.rejects(f.controller.run(123), /Backend cleanup failed/)
   assert.ok(!f.calls.some(c => c.body?.state === 'success'))
+})
+
+test('Stripe cleanup precedes backend deletion and failures preserve the backend for recovery', async () => {
+  const f = fixture({ current: pull({ labels: [] }) })
+  await f.controller.run(123)
+  assert.ok(f.calls.findIndex(c => c.service === 'payment-delete') < f.calls.findIndex(c => c.service === 'backend-delete'))
+  const failed = fixture({ current: pull({ labels: [] }) })
+  failed.controller.payments.remove = async () => { throw new Error('Stripe unavailable') }
+  await assert.rejects(failed.controller.run(123), /Stripe unavailable/)
+  assert.ok(!failed.calls.some(c => c.service === 'backend-delete'))
+  assert.ok(!failed.calls.some(c => c.body?.state === 'success'))
+})
+
+test('reconciliation inventories Stripe-owned PRs even if URL resources are gone', async () => {
+  const f = fixture()
+  f.controller.payments.inventory = async () => [127]
+  assert.ok((await f.controller.inventory()).includes(127))
 })
 
 test('PR identifiers cannot become API paths, hostnames, or shell fragments', () => {

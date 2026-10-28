@@ -13,7 +13,6 @@ function buildTestTools() {
     serverSecret: 'secret-test',
     baseUrl: 'http://localhost:3000',
     allowedToolIds: [],
-    includePaidOnlyOverlayTools: true,
     memoryEnabled: true,
   })
 }
@@ -66,7 +65,6 @@ test('computer screenshot returns image content and computer input validates act
     userId: 'user-test',
     serverSecret: 'secret-test',
     baseUrl: 'http://localhost:3000',
-    includePaidOnlyOverlayTools: true,
     memoryEnabled: true,
   })
   const screenshot = tools.computer_screenshot as unknown as {
@@ -439,7 +437,6 @@ test('Overlay tools expose Gateway-compatible input schemas', async () => {
     userId: 'user-test',
     serverSecret: 'secret-test',
     baseUrl: 'http://localhost:3000',
-    includePaidOnlyOverlayTools: true,
     memoryEnabled: true,
   }))
 })

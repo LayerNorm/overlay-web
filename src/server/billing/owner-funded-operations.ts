@@ -37,11 +37,6 @@ export const OWNER_FUNDED_OPERATIONS = [
     path: '/api/v1/generate-video',
   },
   {
-    id: 'agent.browser-task',
-    method: 'POST',
-    path: '/api/v1/browser-task',
-  },
-  {
     id: 'agent.notebook',
     method: 'POST',
     path: '/api/v1/notebook-agent',

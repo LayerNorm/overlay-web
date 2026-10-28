@@ -8,7 +8,6 @@ const rules = [
   ['src/server/app-api/v1/chat-suggestions/route.ts', 'generationUsagePolicy.reserve', 'generationUsagePolicy.markStarted'],
   ['src/server/app-api/v1/generate-image/route.ts', 'generationUsagePolicy.reserve', 'generationUsagePolicy.markStarted'],
   ['src/server/app-api/v1/generate-video/route.ts', 'generationUsagePolicy.reserve', 'generationUsagePolicy.markStarted'],
-  ['src/server/app-api/v1/browser-task/route.ts', 'generationUsagePolicy.reserve', 'generationUsagePolicy.markStarted'],
   ['src/server/app-api/v1/notebook-agent/route.ts', 'reserveProviderBudget', 'markProviderBudgetStarted'],
   ['src/server/app-api/v1/transcribe/route.ts', 'generationUsagePolicy.reserve', 'generationUsagePolicy.markStarted'],
 ]

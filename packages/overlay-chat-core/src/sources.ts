@@ -199,8 +199,8 @@ export function collectWebSourcesFromBlocks(blocks: AssistantVisualBlock[]): Web
       block.name !== 'web_search' &&
       block.name !== 'deep_search' &&
       block.name !== 'web_fetch' &&
-      block.name !== 'browser_run_task' &&
-      block.name !== 'interactive_browser_session'
+      block.name !== 'computer_browser' &&
+      block.name !== 'computer_open_url'
     ) continue
     collectSourceCandidatesFromUnknown(
       block.toolOutput,

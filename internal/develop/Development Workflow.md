@@ -144,6 +144,9 @@ Run the smallest checks that cover the change. Use `npm run dev` for local web w
 
 Match QA to risk: visual changes need rendered UI checks; auth, billing, tenant boundaries, migrations, and backend changes need their relevant stronger checks. Read the installed Next.js guides before writing Next.js code.
 
+Web and admin ESLint configurations pin their own TypeScript config roots so a
+single changed-file check can include both apps without ambiguous root detection.
+
 ### 3. Open a draft PR to get the preview
 
 Commit and push the feature branch and open a draft PR against `main`. Opening
@@ -164,6 +167,65 @@ Wait for the deployment result and verify that its SHA matches the current PR he
 Use the shared hosting settings above. Do not copy `.env.local` wholesale or deploy shared development or production backends from the feature worktree.
 
 The build wrapper resolves missing PR-number metadata by public branch/SHA lookup without sending credentials. Inspect controller/build logs for failures. Never test an older deployment as evidence for the new head.
+
+### Preview preflight and recovery
+
+Run `node scripts/release/preview-doctor.mjs <PR>` before browser QA. It checks
+the canonical alias against the current PR SHA and reports missing capability
+settings without credential values. `--require-full` additionally rejects missing
+capability configuration. This is configuration evidence, not live provider or
+browser acceptance. The complete REST inventory avoids connector summaries that
+truncate environment lists to 100 entries; never create another key because a
+summary omitted an existing one.
+
+Native Git Preview deployments may be `BLOCKED` by the intended REST-only policy.
+Inspect the controller-created deployment for the same SHA before diagnosing an
+account hold. A blocked controller deployment is a failure requiring source-policy,
+REST permission and team-access checks; inspect build/runtime logs for other
+failures. Reconcile the requested Preview after correcting the cause. Older
+deployments remain diagnostic evidence only. Keep the PR draft until current-head
+acceptance succeeds. The unrelated admin deployment status is not a required
+customer-web check; relevant admin changes still require their own acceptance.
+
+Preview registers the production schedule from its first deployment. Background
+work requires isolated providers, exact PR callback URLs and hosting access on
+the backend; outbound guards fail closed until those settings are present. Verify
+automations, ingestion, projections, supervision and reconciliation through their
+normal schedules. Email/webhooks additionally require the test destination lists
+in Convex Workflow. Browser access does not prove server callback access.
+
+For exhausted fixtures, invoke internal `dev/qa:recover` only on the verified PR
+backend, with a new `requestId`, fixture `personal`, `paid-workspace` or
+`computer-workspace` or `exhausted-workspace`, and `availableCents` for paid fixtures. Use a Preview-scoped
+key-only file or authenticated CLI with the full project/Preview reference.
+Never pass `.env.local`. Recovery is explicit and audited; deployment seeding
+never resets usage or credit. Synthetic credits do not pay real provider costs.
+
+For a quarantined free-model route, inspect its failure first. Preview-only
+internal `dev/qa:recoverRoute` accepts the exact `routeKey`, `expectedReason` and
+a new `requestId`. It rejects changed reasons, unsettled leases and nonzero
+pricing, records the recovery, and expires catalog/canary eligibility. Run the
+normal catalog refresh and require fresh verification before retrying inference;
+clearing quarantine is not evidence that the provider is safe or working.
+
+Interactive browser acceptance uses `computer_browser` on a Boat Computer (E2B
+where explicitly selected for self-hosting). Verify page navigation, snapshots,
+approvals and visible desktop state on the same machine. Do not configure a
+separate browser service or browser credits.
+
+Exercise Free, paid, exhausted-credit and multi-identity scenarios separately.
+A synthetic collaborator principal is not a second authenticated QA identity.
+Provision verified member/outsider sandbox users and configure their
+`PREVIEW_MEMBER_LOGIN_*` / `PREVIEW_OUTSIDER_LOGIN_*` settings. The Preview login
+identity header selects only those configured accounts; the seed gives each a
+personal workspace and adds only the member to Preview QA Team.
+Seeded entitlements do not establish Stripe checkout or webhook acceptance.
+Billing-enabled Preview builds provision and verify an owned Stripe test endpoint
+on their backend. Rebuilds retain its signing secret; the trusted controller
+cleans the endpoint before its backend. Confirm actual payment/event processing,
+replay handling and cancellation in addition to endpoint configuration.
+Record capability configuration, provider calls, persistence, scheduled work,
+permission failures and cleanup separately; missing infrastructure stays BLOCKED.
 
 ### 4. Test the preview in the browser
 
@@ -214,7 +276,7 @@ command. Reruns preserve existing fixtures and do not replenish spent allowance.
 Select **Preview QA Team** in the app before verifying Pro entitlement and scope
 isolation; the original Personal workspace and its billing remain unchanged.
 
-Computer lifecycle QA uses `OVERLAY_PREVIEW_QA_FIXTURES=computer-workspace` on its exact Preview branch to invoke `dev/seed:initComputerQa`. Ordinary seeding remains free; the existing `paid-workspace` fixture is separate. Both are Preview-only, preserve spent balances on rebuild, and use the existing scoped credential.
+Computer lifecycle QA uses `OVERLAY_PREVIEW_QA_FIXTURES=computer-workspace` on its exact Preview branch to invoke `dev/seed:initComputerQa`. Ordinary seeding remains free; the existing `paid-workspace` fixture is separate. Combine fixtures with `OVERLAY_PREVIEW_QA_FIXTURES=paid-workspace,computer-workspace`; duplicate names run once and unknown names fail before deployment. Both are Preview-only, preserve spent balances on rebuild, and use the existing scoped credential.
 
 Other Builders can use the configured sandbox QA identity or the
 [preview login recipe](browser-testing-with-agent-browser.md). Exercise the
@@ -228,7 +290,7 @@ feature as a user would:
 - Exercise relevant errors, permissions, and tenant boundaries.
 - Check browser console or network failures when behavior is unexpected.
 
-Use synthetic data and test providers. Capture screenshots or a short recording where they help demonstrate the result. Clean up the test data you create.
+Use synthetic data and test providers. Capture screenshots or a short recording where they help demonstrate the result. Capture sanitized failure evidence before cleanup. Keep failed fixtures only for a bounded investigation within the open PR lifecycle; closure/label removal still deletes its owned backend and resources. Clean up created provider resources and successful test data.
 
 Fix findings, commit, and push. Wait for the updated deployment and repeat the affected QA on the new revision. Keep the final evidence tied to the current PR head.
 
@@ -373,3 +435,12 @@ The former custom Production Release workflow, promotion script and production d
 - Keep checks proportional and act when the evidence is sufficient. Required CI and current-preview QA determine readiness.
 
 For detailed repository mechanics, read [Agentic Development](agentic-development.mdx), [Release Workflow](release-workflow.mdx), and [Convex Workflow](convex-workflow.mdx).
+
+### Exhausted-quota acceptance
+
+Include `exhausted-workspace` in the comma-separated fixture list to create a
+separate Free **Exhausted QA** workspace with consumed weekly turn/transcription
+counters. It makes no provider calls and grants no paid plan. Ordinary rebuilds
+preserve its state. Use explicit `dev/qa:recover` with that fixture and a new
+request ID to reset only its own counters, then verify normal admission again.
+The Personal fixture remains available for ordinary Free acceptance.

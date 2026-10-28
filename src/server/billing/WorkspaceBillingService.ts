@@ -153,8 +153,8 @@ export class WorkspaceBillingService {
       topUpAmountCents: args.topUpAmountCents,
       autoTopUpEnabled: Boolean(args.autoTopUpEnabled),
       metadata: args.legalMetadata,
-      successUrl: `${this.deps.baseUrl()}/app/settings?section=workspace&workspace_tab=billing&workspace_billing_success=true&workspace_session_id={CHECKOUT_SESSION_ID}`,
-      cancelUrl: `${this.deps.baseUrl()}/app/settings?section=workspace&workspace_tab=billing&workspace_billing_canceled=true`,
+      successUrl: `${this.deps.baseUrl()}/app/w/${encodeURIComponent(workspaceId)}/settings?section=workspace&workspace_tab=billing&workspace_billing_success=true&workspace_session_id={CHECKOUT_SESSION_ID}`,
+      cancelUrl: `${this.deps.baseUrl()}/app/w/${encodeURIComponent(workspaceId)}/settings?section=workspace&workspace_tab=billing&workspace_billing_canceled=true`,
     })
     return { url: result.url }
   }
@@ -176,8 +176,8 @@ export class WorkspaceBillingService {
       kind: 'budget_topup',
       topUpAmountCents: clampTopUpAmountCents(args.amountCents),
       metadata: args.legalMetadata,
-      successUrl: `${this.deps.baseUrl()}/app/settings?section=workspace&workspace_tab=billing&workspace_topup_success=true&workspace_session_id={CHECKOUT_SESSION_ID}`,
-      cancelUrl: `${this.deps.baseUrl()}/app/settings?section=workspace&workspace_tab=billing&workspace_topup_canceled=true`,
+      successUrl: `${this.deps.baseUrl()}/app/w/${encodeURIComponent(workspaceId)}/settings?section=workspace&workspace_tab=billing&workspace_topup_success=true&workspace_session_id={CHECKOUT_SESSION_ID}`,
+      cancelUrl: `${this.deps.baseUrl()}/app/w/${encodeURIComponent(workspaceId)}/settings?section=workspace&workspace_tab=billing&workspace_topup_canceled=true`,
     })
     return { url: result.url }
   }
@@ -195,7 +195,7 @@ export class WorkspaceBillingService {
       billingAccountId: account.billingAccountId,
       workspaceId,
       email: args.actorEmail,
-      returnUrl: `${this.deps.baseUrl()}/app/settings?section=workspace&workspace_tab=billing`,
+      returnUrl: `${this.deps.baseUrl()}/app/w/${encodeURIComponent(workspaceId)}/settings?section=workspace&workspace_tab=billing`,
     })
     return { url: result.url }
   }

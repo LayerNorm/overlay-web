@@ -4,6 +4,26 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Return Stripe checkout, top-up and portal flows to the workspace that started them, including when another tab changes the active workspace.
+
+- Restrict automation workflow status/events to the parent automation's scope and current workspace membership, and bind scheduler cancellation to its owner's stored workflow ID.
+
+- Queue automation completion/failure webhooks in the same transaction as terminal run settlement, including durable scheduled runs and idempotent retries.
+
+- Restore workspace-scoped webhook delivery history and redrive by accepting the app's workspace context and checking each delivery's parent subscription.
+
+- Remove the separate Browser Use service, API and tools; interactive browsing now uses the bound Computer and its existing admission, approvals and machine billing.
+
+- Add audited Preview-only free-route quarantine recovery that requires fresh provider verification before reuse.
+
+- Run the production cron schedule on fresh previews and cap metered Preview spending across wallets independently of synthetic-credit refills.
+
+- Initialize WorkOS password and retained sessions before onboarding so newly invited users have profile state; add an isolated exhausted-quota QA fixture with explicit recovery.
+
+- Provision isolated Stripe test webhooks for billing-enabled previews, retain their signing secrets across rebuilds, and verify owned endpoint cleanup before deleting a Preview backend.
+
+- Add Preview capability diagnostics, combined paid/Computer fixtures, explicit audited QA recovery, isolated protected callbacks, production schedules with controlled test delivery, and preconfigured owner/member/outsider QA sign-in.
+
 - Abort title generation at its shared deadline or client cancellation, stop retries, and release failed-attempt reservations.
 
 - Keep generated chat titles stable through optimistic updates and use a resolved first-message title when creating chats.

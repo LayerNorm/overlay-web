@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getRun } from 'workflow/api'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { logger } from '@/server/observability/logger'
+import { canReadAutomationWorkflow } from '@/server/automations/workflow-access'
 
 // ---------------------------------------------------------------------------
 // GET /api/v1/automations/{id}/stream
@@ -13,7 +14,8 @@ import { logger } from '@/server/observability/logger'
 // uses [id] (not [runId]) to satisfy Next.js's consistent-slug requirement.
 // ---------------------------------------------------------------------------
 
-export async function GET(_request: NextRequest, context?: AppApiRouteContext) {
+export async function GET(_request: NextRequest, context?: AppApiRouteContext,
+  canRead = canReadAutomationWorkflow) {
   try {
     const params = await context?.params ?? {}
     const workflowRunId = (params['runId'] ?? params['id']) as string | undefined
@@ -23,6 +25,11 @@ export async function GET(_request: NextRequest, context?: AppApiRouteContext) {
 
     if (!context?.auth.userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    if (!await canRead({ workflowRunId, userId: context.auth.userId,
+      workspaceId: context.workspace.workspace.id })) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 })
     }
 
     const run = getRun(workflowRunId)

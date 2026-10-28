@@ -1,6 +1,7 @@
 import { v } from 'convex/values'
 import { internal } from '../_generated/api'
 import { internalAction } from '../_generated/server'
+import { deliveryEnabled, requireDeliveryDestination } from '../lib/previewDelivery'
 import { isPreviewDeployment } from '../lib/preview'
 
 const textEncoder = new TextEncoder()
@@ -43,7 +44,7 @@ export const runMinuteTick = internalAction({
   args: {},
   returns: v.null(),
   handler: async (ctx) => {
-    if (isPreviewDeployment()) return null
+    if (!deliveryEnabled('webhook')) return null
     const now = Date.now()
     await ctx.runMutation(internal.webhooks.deliveries.resetStuckDelivering, {
       now,
@@ -69,7 +70,7 @@ export const deliverOne = internalAction({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    if (isPreviewDeployment()) return null
+    if (!deliveryEnabled('webhook')) return null
     const job = await ctx.runQuery(internal.webhooks.deliveries.getDeliveryForExecution, {
       deliveryId: args.deliveryId,
     })
@@ -78,10 +79,12 @@ export const deliverOne = internalAction({
     const timestamp = Date.now()
     let response: Response
     try {
+      requireDeliveryDestination('webhook', job.url)
       const signature = await signPayload(job.secret, job.payloadJson, timestamp)
       // react-doctor-disable-next-line react-doctor/no-fetch-response-used-without-status-check
       response = await fetch(job.url, {
         method: 'POST',
+        ...(isPreviewDeployment() ? { redirect: 'error' as const } : {}),
         headers: {
           'Content-Type': 'application/json',
           'X-Overlay-Event': job.eventType,

@@ -6,6 +6,7 @@ import { getWorld } from 'workflow/runtime'
 import type { Event } from '@workflow/world'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { logger } from '@/server/observability/logger'
+import { canReadAutomationWorkflow } from '@/server/automations/workflow-access'
 
 // ---------------------------------------------------------------------------
 // GET /api/v1/automations/{runId}/events
@@ -49,7 +50,8 @@ function toRunEvent(event: Event) {
   }
 }
 
-export async function GET(request: NextRequest, context?: AppApiRouteContext) {
+export async function GET(request: NextRequest, context?: AppApiRouteContext,
+  canRead = canReadAutomationWorkflow) {
   try {
     const params = await context?.params ?? {}
     const workflowRunId = (params['runId'] ?? params['id']) as string | undefined
@@ -65,6 +67,11 @@ export async function GET(request: NextRequest, context?: AppApiRouteContext) {
         status: 401,
         headers: { 'content-type': 'application/json' },
       })
+    }
+
+    if (!await canRead({ workflowRunId, userId: context.auth.userId,
+      workspaceId: context.workspace.workspace.id })) {
+      return Response.json({ error: 'Not found' }, { status: 404 })
     }
 
     const url = new URL(request.url)

@@ -1,3 +1,4 @@
+import { fetchAppCallback } from '../lib/appCallback'
 import { v } from 'convex/values'
 import { internalAction, internalMutation, query } from '../_generated/server'
 import { validateServerSecret } from '../lib/auth'
@@ -206,7 +207,7 @@ export const processJob = internalAction({
       if (!baseUrl) {
         throw new Error('OVERLAY_BFF_URL is not configured')
       }
-      const response = await fetch(`${baseUrl}/api/v1/imports/slack/process`, {
+      const response = await fetchAppCallback(`${baseUrl}/api/v1/imports/slack/process`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

@@ -1,12 +1,11 @@
 import { cronJobs } from 'convex/server'
 import { internal } from './_generated/api'
-import { isPreviewDeployment } from './lib/preview'
 
 const crons = cronJobs()
 
-// Preview fixtures must never start scheduled work or call shared third parties.
-if (!isPreviewDeployment()) {
-  crons.hourly('overlay-free catalog refresh', { minuteUTC: 0 }, internal.platform.overlayFreeRefresh.runTick, {})
+// All deployments exercise the same lifecycle. Preview outbound boundaries
+// independently require their own app origin, hosting access and test destinations.
+crons.hourly('overlay-free catalog refresh', { minuteUTC: 0 }, internal.platform.overlayFreeRefresh.runTick, {})
 
 crons.interval('expired connected-agent MCP results', { hours: 1 }, internal.agents.mcpCalls.cleanupExpired)
 
@@ -188,7 +187,5 @@ crons.interval(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (internal as any).surfaces.chatState.pruneExpired,
 )
-
-}
 
 export default crons

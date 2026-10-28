@@ -6,6 +6,7 @@ import { scopeMutations } from '../lib/scopeMutations'
 import type { Doc, Id } from '../_generated/dataModel'
 import { internal } from '../_generated/api'
 import { paidWorkspaceAccountFor } from '../billing/workspacePayer'
+import { enqueueTerminalWebhook } from './terminalWebhook'
 import {
   computeNextRunAt as sharedComputeNextRunAt,
   normalizeSchedule as sharedNormalizeSchedule,
@@ -610,6 +611,7 @@ export const markManualRunCompleted = mutation({
       lastError: undefined,
       updatedAt: args.now,
     })
+    await enqueueTerminalWebhook(ctx, run, { type: 'automation.finished', conversationId: args.conversationId }, args.now)
     return null
   },
 })
@@ -639,6 +641,7 @@ export const markManualRunFailed = mutation({
       lastError: args.error,
       updatedAt: args.now,
     })
+    await enqueueTerminalWebhook(ctx, run, { type: 'automation.failed', error: args.error }, args.now)
     return null
   },
 })
@@ -974,6 +977,7 @@ export const markRunCompleted = internalMutation({
       lastError: undefined,
       updatedAt: args.now,
     })
+    await enqueueTerminalWebhook(ctx, run, { type: 'automation.finished', conversationId: args.conversationId }, args.now)
     return null
   },
 })
@@ -1017,6 +1021,7 @@ export const markRunFailed = internalMutation({
       lastError: args.error,
       updatedAt: args.now,
     })
+    await enqueueTerminalWebhook(ctx, run, { type: 'automation.failed', error: args.error }, args.now)
     return null
   },
 })

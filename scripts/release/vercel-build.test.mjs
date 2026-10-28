@@ -1,7 +1,15 @@
 import assert from 'node:assert/strict'
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import test from 'node:test'
-import { buildPlan, deploymentEnvFile, runBuild, previewBuildEnvironment } from './vercel-build.mjs'
+import { buildPlan, deploymentEnvFile, runBuild, previewBuildEnvironment, previewQaFixtures, previewRuntimeEnvFile } from './vercel-build.mjs'
+
+test('paid and Computer fixtures compose once and unknown fixtures fail before deployment', () => {
+  assert.deepEqual(previewQaFixtures(' paid-workspace,computer-workspace,paid-workspace '), ['paid-workspace', 'computer-workspace'])
+  const plan = buildPlan({ ...preview, OVERLAY_PREVIEW_QA_FIXTURES: 'paid-workspace,computer-workspace,exhausted-workspace' })
+  assert.deepEqual(plan.after.map(step => step.args[1]), ['dev/seed:init', 'dev/seed:initQa', 'dev/seed:initComputerQa', 'dev/seed:initExhaustedQa'])
+  for (const step of plan.after) assert.equal(step.args.at(-1), 'preview/pr-123')
+  assert.throws(() => buildPlan({ ...preview, OVERLAY_PREVIEW_QA_FIXTURES: 'paid-workspace,typo' }), /Unknown Preview/)
+})
 
 const preview = {
   OVERLAY_RELEASE_LANE: 'staging', VERCEL_ENV: 'preview',
@@ -43,7 +51,7 @@ test('native Git builds derive their canonical PR origin before branch provision
 
 test('release builds cannot advertise a disabled provider as an enabled capability', () => {
   for (const [provider, feature] of [['INTEGRATIONS', 'INTEGRATIONS'],
-    ['BROWSER', 'BROWSER_USE'], ['SANDBOX', 'SANDBOXES'], ['WEB_SEARCH', 'WEB_SEARCH']]) {
+    ['SANDBOX', 'SANDBOXES'], ['WEB_SEARCH', 'WEB_SEARCH']]) {
     const disabled = { ...preview, ['OVERLAY_PROVIDER_' + provider]: 'none' }
     assert.throws(() => buildPlan(disabled), /requires its feature flag/)
     assert.throws(() => buildPlan({ ...disabled, ['OVERLAY_FEATURE_' + feature]: 'true' }))
@@ -88,7 +96,7 @@ test('paid QA fixtures require explicit preview opt-in and retain isolated targe
     assert.ok(args.includes('--env-file'))
     return { status: 0 }
   }), 0)
-  assert.equal(calls.length, 3)
+  assert.equal(calls.length, 4)
   const failedCalls = []
   assert.equal(runBuild(env, (command, args) => {
     failedCalls.push([...args])
@@ -103,16 +111,47 @@ test('retired staging builds cannot deploy a shared backend', () => {
 })
 
 test('preview rebuild repairs missing fixtures after deploy and never seeds a failed build', () => {
-  for (const failAt of [0, 1, 2]) {
+  for (const failAt of [0, 1, 2, 3]) {
     const calls = []
     const status = runBuild(preview, (command, args) => {
       calls.push({ command, args: [...args] })
       return { status: calls.length - 1 === failAt ? 1 : 0 }
     })
-    assert.equal(status, failAt === 2 ? 0 : 1)
-    assert.equal(calls.length, Math.min(failAt + 1, 2))
-    if (calls[1]) assert.deepEqual(calls[1].args.slice(0, 5), ['run', 'dev/seed:init', '{}', '--deployment', 'preview/pr-123'])
+    assert.equal(status, failAt === 3 ? 0 : 1)
+    assert.equal(calls.length, Math.min(failAt + 1, 3))
+    if (calls[1]) {
+      assert.deepEqual(calls[1].args.slice(0, 3), ['env', 'set', '--from-file'])
+      assert.ok(calls[1].args.includes('--force'))
+      assert.equal(calls[1].args[calls[1].args.indexOf('--deployment') + 1], 'preview/pr-123')
+    }
+    if (calls[2]) assert.deepEqual(calls[2].args.slice(0, 5), ['run', 'dev/seed:init', '{}', '--deployment', 'preview/pr-123'])
   }
+})
+
+test('runtime settings bind callbacks and transfer only approved backend credentials', () => {
+  const text = previewRuntimeEnvFile({ ...preview, SESSION_SECRET: 'not-for-convex', PREVIEW_LOGIN_PASSWORD: 'private',
+    INTERNAL_API_SECRET: 'api-secret', VERCEL_AUTOMATION_BYPASS_SECRET: 'hosting-secret',
+    STRIPE_WEBHOOK_SECRET: 'owned-by-per-backend-registration' })
+  assert.ok(text.includes('OVERLAY_BFF_URL="https://pr-123.preview.getoverlay.io"'))
+  assert.ok(text.includes('VERCEL_AUTOMATION_BYPASS_SECRET="hosting-secret"'))
+  assert.ok(text.includes('INTERNAL_API_SECRET="api-secret"'))
+  assert.ok(!text.includes('SESSION_SECRET'))
+  assert.ok(!text.includes('PREVIEW_LOGIN_PASSWORD'))
+  assert.ok(!text.includes('STRIPE_WEBHOOK_SECRET'))
+  assert.throws(() => previewRuntimeEnvFile({ ...preview, STRIPE_SECRET_KEY: 'sk_live_fixture' }), /Stripe test/)
+})
+
+test('billing previews provision their test endpoint after runtime settings and before seeding', () => {
+  const calls = []
+  assert.equal(runBuild({ ...preview, OVERLAY_FEATURE_BILLING: 'true', STRIPE_SECRET_KEY: 'sk_test_fixture' }, (command, args) => {
+    calls.push({ command, args: [...args] })
+    return { status: 0 }
+  }), 0)
+  assert.equal(calls[1].args[0], 'env')
+  assert.equal(calls[2].command, 'node')
+  assert.equal(calls[2].args[0], 'scripts/release/preview-payments-build.mjs')
+  assert.ok(!existsSync(calls[2].args[1]))
+  assert.equal(calls[3].args[1], 'dev/seed:init')
 })
 
 

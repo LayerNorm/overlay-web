@@ -45,6 +45,22 @@ The filesystem under `src/app/api/**/route.ts` is authoritative for route existe
 - Add `*Response` methods when callers need status codes, streaming bodies, redirects, or custom error handling.
 - Stream chat directly through `/api/v1/conversations/act`. Disconnect recovery comes from persisted conversation state; `/api/v1/conversations/stream-auth` and an external replay relay are not public contracts.
 
+Interactive browsing uses the Computer API and `computer_browser` tool on the
+bound machine. The separate `/api/v1/browser-task` endpoint and
+`ChatAuxClient.browserTaskResponse` have been removed; old clients receive the
+ordinary missing-route response. Historical usage rows remain readable.
+
+Automation workflow status and SSE reads resolve the workflow ID to its stored
+automation/run and apply the parent resource's scope, current membership and
+active workspace before accessing Workflow SDK data. Direct Convex event
+subscriptions apply the same rule. Unknown or deleted parents fail closed;
+legacy scheduler cancellation requires the owner's exact stored scheduler ID.
+Terminal run settlement queues the completion/failure webhook in the same Convex
+transaction. The stable run/event ID deduplicates retries and older emitter calls;
+delivery remains asynchronous through the existing signed, retrying outbox.
+Delivery history and redrive accept the app's workspace context and enforce the
+parent subscription's owner and workspace, including legacy delivery rows.
+
 ## Work (tasks)
 
 Work routes (`/api/v1/work`) follow the same layering as other scoped content: thin route files, `WorkService`
@@ -198,6 +214,14 @@ Persistent chat context and hybrid retrieval both resolve memories by `workspace
 `GET` and `POST /api/v1/account/workspaces` use an account-scoped BFF context and require a signed browser session. Listing never creates a Personal workspace: with no memberships it returns an empty `workspaces` array, an empty-string `activeWorkspaceId`, and invitations queried only for the email in the signed session. The Convex query returns pending, unexpired invitations for active workspaces, capped at the directory limit, and exposes only invitation/workspace summaries. Creation reuses the existing workspace validation and free-workspace limit, activates the created workspace, and sets the active-workspace cookie. Invitation acceptance is also account-scoped so accepting an invitation does not bootstrap Personal. `/api/v1/settings` is account-scoped without a session-only restriction to preserve its existing API authentication methods.
 
 ## Conversational onboarding
+
+WorkOS session resolution initializes the authenticated user through `UserService`
+before exposing that session to app handlers. This covers password sign-in and
+retained cookies as well as OAuth, so a newly invited user has durable profile
+and onboarding state before starting the flow. Concurrent initialization reads
+coalesce; successful writes are cached for one minute in a bounded process cache.
+Failed writes propagate and are retried, rather than caching a missing profile
+or marking onboarding complete. No plan or membership is granted by this sync.
 
 New owner sessions use `flowVersion: 2` and revision-checked name, about, team, website, and daily-work questions. Invited members skip owner questions and native employees; sessions without a flow version keep the legacy sequence. Back is limited to profile questions before side effects. Optional work-tool connections, external agents, Personal context, invitations, and the first Work task remain separate steps; solo owners skip invitations. Onboarding answers use the durable transcript outbox and completion is recorded only after the task is verified. Unfinished profile drafts are scoped to the workspace and user-owned run and step in session storage. Chat and agent questionnaires use the bounded `present_generated_ui` `questionnaire` kind: suggestions edit the composer but do not submit, authorize, or pause a tool call.
 

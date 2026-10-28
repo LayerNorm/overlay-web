@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { WorkOS } from '@workos-inc/node'
+import { AuthenticatedUserInitializer, type AuthenticatedUserWriter } from '../AuthenticatedUserInitializer'
 import type {
   AuthProvider,
   Session,
@@ -17,13 +18,15 @@ export interface WorkOSAuthProviderConfig {
 }
 
 export class WorkOSAuthProvider implements AuthProvider {
+  private readonly initializer: AuthenticatedUserInitializer
   readonly providerConfigSummary: {
     provider: 'workos'
     clientId?: string
     hasApiKey: boolean
   }
 
-  constructor(private readonly config?: WorkOSAuthProviderConfig) {
+  constructor(private readonly config?: WorkOSAuthProviderConfig, users?: AuthenticatedUserWriter) {
+    this.initializer = new AuthenticatedUserInitializer(users)
     const resolved = this.resolveConfig()
     this.providerConfigSummary = {
       provider: 'workos',
@@ -36,14 +39,14 @@ export class WorkOSAuthProvider implements AuthProvider {
     void req
     const { getSession } = await import('@/server/auth/workos-auth')
     const session = await getSession({ allowRefresh: false })
-    return session ? toProviderSession(session) : null
+    return await this.initializer.initialize(session ? toProviderSession(session) : null)
   }
 
   async refreshSession(req: Request): Promise<Session | null> {
     void req
     const { getSession } = await import('@/server/auth/workos-auth')
     const session = await getSession({ allowRefresh: true })
-    return session ? toProviderSession(session) : null
+    return await this.initializer.initialize(session ? toProviderSession(session) : null)
   }
 
   async signOut(req: Request): Promise<void> {

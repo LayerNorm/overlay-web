@@ -134,12 +134,6 @@ export const AGENT_TOOL_GROUPS: readonly AgentToolGroup[] = [
     ],
   },
   {
-    id: 'browser',
-    label: 'Browser',
-    description: 'Drive an interactive browser session.',
-    toolIds: ['interactive_browser_session'],
-  },
-  {
     id: 'computer',
     label: 'Computer',
     description:
@@ -208,7 +202,7 @@ const LATER_GROUP_MEMBERS: ReadonlyArray<{ grantedBy: readonly string[]; adds: r
     grantedBy: ['computer_exec', 'computer_read_file', 'computer_write_file', 'computer_list_files', 'computer_open_url'],
     adds: ['computer_screenshot', 'computer_input', 'computer_browser', 'computer_terminal'],
   },
-  // Agents that hold the whole toolbox (automations, video, and the browser) can ask other agents.
+  // Preserve later-added grants for saved full-toolbox agents, using the retired browser id only as a migration marker.
   { grantedBy: ['create_automation', 'generate_video', 'interactive_browser_session'], adds: ['list_agents', 'ask_agent', 'read_agent_reply', 'post_message'] },
   { grantedBy: ['create_automation', 'generate_video', 'interactive_browser_session'], adds: ['list_tasks', 'get_task', 'create_task', 'update_task', 'comment_on_task', 'archive_task', 'restore_task'] },
 ]
@@ -222,7 +216,7 @@ export function normalizeAgentToolGrant(allowedToolIds: readonly string[]): stri
   for (const { grantedBy, adds } of LATER_GROUP_MEMBERS) {
     if (grantedBy.every((id) => granted.has(id))) adds.forEach((id) => granted.add(id))
   }
-  return [...granted]
+  return [...granted].filter(id => id !== 'interactive_browser_session' && id !== 'browser_run_task')
 }
 
 /** Which groups are fully granted by the given tool-id allow-list. */

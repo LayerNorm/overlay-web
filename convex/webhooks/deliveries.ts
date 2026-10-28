@@ -1,7 +1,6 @@
 import { v } from 'convex/values'
 import { internalMutation, internalQuery, mutation, query } from '../_generated/server'
 import type { MutationCtx } from '../_generated/server'
-import type { Id } from '../_generated/dataModel'
 import { requireServerSecret } from '../lib/auth'
 
 const MAX_ATTEMPTS = 5
@@ -22,6 +21,48 @@ function subscriptionMatchesEvent(events: string[], eventType: string): boolean 
   return events.includes(eventType) || events.includes('*')
 }
 
+export async function enqueueWebhookEvent(ctx: MutationCtx, args: {
+  userId: string
+  eventId: string
+  eventType: string
+  payloadJson: string
+}): Promise<{ enqueued: number }> {
+  const subscriptions = await ctx.db
+    .query('webhookSubscriptions')
+    .withIndex('by_userId_enabled', (q) => q.eq('userId', args.userId).eq('enabled', true))
+    .collect()
+
+  const now = Date.now()
+  let enqueued = 0
+
+  const matchingSubscriptions = subscriptions.filter((subscription) =>
+    subscriptionMatchesEvent(subscription.events, args.eventType))
+  const duplicates = await Promise.all(matchingSubscriptions.map((subscription) =>
+    ctx.db
+      .query('webhookDeliveries')
+      .withIndex('by_subscriptionId_eventId', (q) =>
+        q.eq('subscriptionId', subscription._id).eq('eventId', args.eventId),
+      )
+      .first()))
+  const freshSubscriptions = matchingSubscriptions.filter((_, i) => !duplicates[i])
+  await Promise.all(freshSubscriptions.map((subscription) =>
+    ctx.db.insert('webhookDeliveries', {
+      userId: args.userId,
+      subscriptionId: subscription._id,
+      eventId: args.eventId,
+      eventType: args.eventType,
+      payloadJson: args.payloadJson,
+      status: 'pending',
+      attemptCount: 0,
+      nextAttemptAt: now,
+      createdAt: now,
+      updatedAt: now,
+    })))
+  enqueued = freshSubscriptions.length
+
+  return { enqueued }
+}
+
 export const enqueueByServer = mutation({
   args: {
     serverSecret: v.string(),
@@ -34,46 +75,14 @@ export const enqueueByServer = mutation({
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
 
-    const subscriptions = await ctx.db
-      .query('webhookSubscriptions')
-      .withIndex('by_userId_enabled', (q) => q.eq('userId', args.userId).eq('enabled', true))
-      .collect()
-
-    const now = Date.now()
-    let enqueued = 0
-
-    const matchingSubscriptions = subscriptions.filter((subscription) =>
-      subscriptionMatchesEvent(subscription.events, args.eventType))
-    const duplicates = await Promise.all(matchingSubscriptions.map((subscription) =>
-      ctx.db
-        .query('webhookDeliveries')
-        .withIndex('by_subscriptionId_eventId', (q) =>
-          q.eq('subscriptionId', subscription._id).eq('eventId', args.eventId),
-        )
-        .first()))
-    const freshSubscriptions = matchingSubscriptions.filter((_, i) => !duplicates[i])
-    await Promise.all(freshSubscriptions.map((subscription) =>
-      ctx.db.insert('webhookDeliveries', {
-        userId: args.userId,
-        subscriptionId: subscription._id,
-        eventId: args.eventId,
-        eventType: args.eventType,
-        payloadJson: args.payloadJson,
-        status: 'pending',
-        attemptCount: 0,
-        nextAttemptAt: now,
-        createdAt: now,
-        updatedAt: now,
-      })))
-    enqueued = freshSubscriptions.length
-
-    return { enqueued }
+    return await enqueueWebhookEvent(ctx, args)
   },
 })
 
 export const listByServer = query({
   args: {
     limit: v.optional(v.number()),
+    workspaceId: v.optional(v.string()),
     serverSecret: v.string(),
     subscriptionId: v.optional(v.id('webhookSubscriptions')),
     userId: v.string(),
@@ -110,7 +119,12 @@ export const listByServer = query({
       .withIndex('by_userId_createdAt', (q) => q.eq('userId', args.userId))
       .order('desc')
       .take(limit)
-    return rows
+    const scopedRows = args.workspaceId === undefined ? rows :
+      (await Promise.all(rows.map(async row => {
+        const subscription = await ctx.db.get(row.subscriptionId)
+        return subscription?.userId === args.userId && subscription.workspaceId === args.workspaceId ? row : null
+      }))).filter(row => row !== null)
+    return scopedRows
       .filter((row) => !args.subscriptionId || row.subscriptionId === args.subscriptionId)
       .map((row) => ({
         _id: row._id,
@@ -132,6 +146,7 @@ export const listByServer = query({
 export const redriveByServer = mutation({
   args: {
     deliveryId: v.id('webhookDeliveries'),
+    workspaceId: v.optional(v.string()),
     serverSecret: v.string(),
     userId: v.string(),
   },
@@ -141,6 +156,12 @@ export const redriveByServer = mutation({
     const source = await ctx.db.get(args.deliveryId)
     if (!source || source.userId !== args.userId || source.status !== 'dead') {
       return { deliveryId: null }
+    }
+    if (args.workspaceId !== undefined) {
+      const subscription = await ctx.db.get(source.subscriptionId)
+      if (subscription?.userId !== args.userId || subscription.workspaceId !== args.workspaceId) {
+        return { deliveryId: null }
+      }
     }
     // Cap redrive attempts to prevent DDoS amplification. Count existing
     // deliveries that share the same base event ID (original or redriven).

@@ -72,6 +72,8 @@ test('Tasks is a default group and legacy broad grants add every task tool', () 
   assert.equal(DEFAULT_AGENT_TOOL_GROUP_IDS.includes('tasks'), true)
   assert.deepEqual(tasks.toolIds, ['list_tasks', 'get_task', 'create_task', 'update_task', 'comment_on_task', 'archive_task', 'restore_task'])
   const legacyGrant = normalizeAgentToolGrant(['create_automation', 'generate_video', 'interactive_browser_session'])
+  assert.equal(legacyGrant.includes('interactive_browser_session'), false)
+  assert.equal(legacyGrant.includes('computer_browser'), false)
   for (const id of tasks.toolIds) assert.ok(legacyGrant.includes(id), `${id} was not added to a legacy grant`)
 })
 

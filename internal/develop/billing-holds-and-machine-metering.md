@@ -42,11 +42,11 @@ Persistent Computers enforce admission in `ComputerService`, including desktop a
 
 Cloud-agent machine allocation, explicit resume/restart controls, workflow wakes, and stopped-execution recovery recheck paid-workspace and finite-credit admission using the authenticated actor or the remote run's stored actor and agent. Pause, status, stop, and teardown remain available after downgrade. Missing actor or agent identity on a remote run fails closed before machine or recovery work. Remote resume, retry and start-fresh controls on Overlay Cloud check admission before recording the control, so a refused workspace does not queue work. Every machine meter tick also rechecks the workspace plan in the ledger mutation: once a workspace is no longer paid, ticks that would keep a running machine alive, add a hold, or charge without confirmed-stopped provider evidence return \`paid_plan_required\`, and the scheduler stops the machine (Computers keep their disk). Final settlement of confirmed-stopped usage and release of an unused hold remain allowed. This admission recheck is not a pre-allocation cloud hold.
 
-Cloud Agent provisioning stores its allocation key before provider creation and durably binds the provider reference from the allocation callback. The operations reconcile route reclaims stale setup attempts without a matching active lease, retaining retry state when deletion fails. This route-driven sweep is not a Convex cron; Preview has no Convex crons. It recovers allocations recorded by this flow, not older unrecorded machines or provider-wide orphan inventory, and does not unify Cloud Agent lifecycle paths.
+Cloud Agent provisioning stores its allocation key before provider creation and durably binds the provider reference from the allocation callback. The operations reconcile route reclaims stale setup attempts without a matching active lease, retaining retry state when deletion fails. The minute-level Convex settlement job calls this route on both Preview and Production; Preview requires its own app callback origin and hosting access. It recovers allocations recorded by this flow, not older unrecorded machines or provider-wide orphan inventory, and does not unify Cloud Agent lifecycle paths.
 
 ## Provider inventory reconciliation
 
-The operations reconcile route scans at most two pages of Boat or E2B inventory every 15 minutes; its connected-agent settlement caller runs every minute outside Preview, which has no Convex crons. It reports old live machines without a matching lease, Cloud Agent provision, or Computer record. This is report-only: an environment match alone is not strong ownership evidence, especially for Boat, and automatically stopping or deleting a machine could destroy a customer's disk. Alert on `[sandbox-inventory] unowned provider machines`.
+The operations reconcile route scans at most two pages of Boat or E2B inventory every 15 minutes; its connected-agent settlement caller runs every minute on both Preview and Production. It reports old live machines without a matching lease, Cloud Agent provision, or Computer record. This is report-only: an environment match alone is not strong ownership evidence, especially for Boat, and automatically stopping or deleting a machine could destroy a customer's disk. Alert on `[sandbox-inventory] unowned provider machines`.
 
 The Computer integration is one cumulative Phase 2 substep, not completion of Phase 2. The schema changes are additive optional lease fields and indexes. No shared Convex deployment or migration was performed by this code change. Do not roll back lifecycle code or remove its fields while runtime holds, activity tokens, maintenance intents, or cleanup evidence remain unresolved: reconcile and settle them first. Provider allocation retries must use the saved exact recipe and key within Boat's idempotency-retention window; an older ambiguous allocation requires operator reconciliation.
 
@@ -124,9 +124,13 @@ the shared Preview Boat credential. Keep production and other Preview branches
 unchanged. Test free admission in Personal and funded lifecycle in Computer QA;
 allocate at most one small disposable Computer, then stop and delete that resource.
 Record its ID, provider reference and operation timestamps for cost reconciliation.
-Preview registers no Convex crons: the four-minute provider fence is not proof of
-Overlay's ten-minute idle supervisor. Scheduled metering/idle acceptance requires
-separate controlled supervision; do not claim it from a successful desktop open.
+Preview registers the production schedule from its first deployment. Background
+callbacks require verified PR configuration and hosting access (see Convex Workflow). The four-minute provider fence
+is not proof of Overlay's ten-minute idle supervisor: verify scheduled metering,
+idle-stop and settlement through their actual jobs. A successful desktop open
+does not establish them. Combine paid and Computer fixtures with a comma-separated
+fixture list. Explicit `dev/qa:recover` can refill synthetic available credit while
+preserving spend and holds; rebuilds never refill it.
 
 V2 remote tasks bind reservations to the logical run through `remoteRunId`.
 Expired/stale-hold policy preserves a task's hold while execution or terminal
@@ -145,3 +149,16 @@ stop proof closes the run and releases its reservation.
 A lifecycle-v2 cancellation timeout is not evidence that a disconnected BYO process
 stopped. Keep the run and reservation unresolved until host stop/provider isolation
 is confirmed; elapsed time must not trigger terminal settlement or release its hold.
+
+### Aggregate Preview provider guard
+
+`OVERLAY_PREVIEW_PROVIDER_BUDGET_CENTS` caps a PR backend's metered commitments
+across all wallets (default $5; bounded at $25 for explicitly approved acceptance).
+Retail reservations conservatively cover provider cost. Admission counts every
+active wallet hold and the durable consumed-spend counter; fixture refills and
+billing-period resets cannot erase that counter. New paid reservations and
+machine headroom fail closed at the cap. Actual incurred settlement and stop
+remain possible after exhaustion, so costs cannot disappear or strand a machine.
+The guard does not replace provider account limits for unmetered service fees,
+retained storage, or activity outside Overlay. Aggregate multiple PRs at the
+provider account when a shared account budget is required.

@@ -48,6 +48,31 @@ test('workspace billing rejects members before any Stripe operation', async () =
   assert.equal(providerCalls, 0)
 })
 
+test('checkout, top-up and portal return to the initiating workspace when another tab changes the active workspace', async () => {
+  const checkouts: CheckoutArgs[] = []
+  const portalReturns: string[] = []
+  const service = fixture({ role: 'owner', provider: provider({
+    async createCheckoutSession(args) {
+      checkouts.push(args)
+      return { url: 'https://stripe.test/checkout' }
+    },
+    async createCustomerPortalSession(args) {
+      portalReturns.push(args.returnUrl ?? '')
+      return { url: 'https://stripe.test/portal' }
+    },
+  }) })
+  await service.createSubscriptionCheckout({ actorUserId: 'owner_1', workspaceId: 'workspace_1', planAmountCents: 800, topUpAmountCents: 800 })
+  await service.createTopUp({ actorUserId: 'owner_1', workspaceId: 'workspace_1', amountCents: 800 })
+  await service.createPortal({ actorUserId: 'owner_1', workspaceId: 'workspace_1' })
+  const expected = 'https://overlay.test/app/w/workspace_1/settings?'
+  for (const checkout of checkouts) {
+    assert.ok(checkout.successUrl?.startsWith(expected))
+    assert.ok(checkout.cancelUrl?.startsWith(expected))
+    assert.equal(new URL(checkout.successUrl).searchParams.get('workspace_session_id'), '{CHECKOUT_SESSION_ID}')
+  }
+  assert.ok(portalReturns[0]?.startsWith(expected))
+})
+
 test('members may add usage only when the workspace lets them, and never change the plan', async () => {
   const checkouts: Array<Record<string, unknown>> = []
   const recording = provider({

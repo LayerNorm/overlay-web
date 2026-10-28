@@ -1,3 +1,4 @@
+import { fetchAppCallback } from '../lib/appCallback'
 import { internalAction } from '../_generated/server'
 
 /**
@@ -15,7 +16,7 @@ export const runCleanupTick = internalAction({
     }
     const internalSecret = process.env.INTERNAL_API_SECRET
     if (!internalSecret) throw new Error('connected_agent_artifact_cleanup_secret_missing')
-    const response = await fetch(`${baseUrl}/api/v1/agent-environments/artifacts/cleanup`, {
+    const response = await fetchAppCallback(`${baseUrl}/api/v1/agent-environments/artifacts/cleanup`, {
       method: 'POST',
       headers: { 'x-internal-api-secret': internalSecret },
     })

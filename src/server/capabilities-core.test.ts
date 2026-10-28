@@ -6,7 +6,7 @@ import {
 } from './capabilities-core'
 
 test('enterprise feature routes map to deterministic capabilities', () => {
-  assert.equal(getRequiredCapabilityForRoute('POST', '/api/v1/browser-task'), 'browserUse')
+  assert.equal(getRequiredCapabilityForRoute('POST', '/api/v1/computers'), 'computers')
   assert.equal(getRequiredCapabilityForRoute('GET', '/api/v1/integrations'), 'integrations')
   assert.equal(getRequiredCapabilityForRoute('POST', '/api/v1/providers/connections/test'), 'modelRouting')
   assert.equal(getRequiredCapabilityForRoute('POST', '/api/v1/memory/search'), 'memory')
@@ -25,9 +25,9 @@ test('enterprise feature routes map to deterministic capabilities', () => {
 })
 
 test('disabled capability payload uses stable machine-readable shape', () => {
-  assert.deepEqual(getCapabilityDisabledError('browserUse'), {
-    error: 'Browser use is disabled for this deployment.',
+  assert.deepEqual(getCapabilityDisabledError('computers'), {
+    error: 'Computers is disabled for this deployment.',
     code: 'capability_disabled',
-    capability: 'browserUse',
+    capability: 'computers',
   })
 })

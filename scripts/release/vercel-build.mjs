@@ -4,6 +4,15 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
+export function previewQaFixtures(value = '') {
+  const fixtures = [...new Set(value.split(',').map(name => name.trim()).filter(Boolean))]
+  const supported = ['paid-workspace', 'computer-workspace', 'exhausted-workspace']
+  if (fixtures.some(name => !supported.includes(name))) {
+    throw new Error('Unknown Preview QA fixture; expected paid-workspace, computer-workspace or exhausted-workspace')
+  }
+  return fixtures
+}
+
 /** A Git push can start building before the draft PR is opened. */
 export async function previewBuildEnvironment(env, { fetchImpl = fetch,
   sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), now = Date.now } = {}) {
@@ -44,7 +53,7 @@ export function buildPlan(env) {
 
   const childEnv = { ...env }
   for (const [provider, feature] of [['INTEGRATIONS', 'INTEGRATIONS'],
-    ['BROWSER', 'BROWSER_USE'], ['SANDBOX', 'SANDBOXES'], ['WEB_SEARCH', 'WEB_SEARCH']]) {
+    ['SANDBOX', 'SANDBOXES'], ['WEB_SEARCH', 'WEB_SEARCH']]) {
     if (env['OVERLAY_PROVIDER_' + provider] === 'none'
       && env['OVERLAY_FEATURE_' + feature] !== 'false') {
       throw new Error('Disabled ' + provider + ' provider requires its feature flag to be false')
@@ -80,6 +89,7 @@ export function buildPlan(env) {
       throw new Error('Preview runtime must explicitly identify itself as preview')
     }
     childEnv.CONVEX_PREVIEW = '1'
+    const fixtures = previewQaFixtures(env.OVERLAY_PREVIEW_QA_FIXTURES)
     return {
       command: './node_modules/.bin/convex',
       // --preview-name preserves preview data between pushes. --preview-create
@@ -91,13 +101,17 @@ export function buildPlan(env) {
       // first build can leave it empty, so repair missing fixtures after every push.
       after: [{ command: './node_modules/.bin/convex',
         args: ['run', 'dev/seed:init', '{}', '--deployment', 'preview/pr-' + pr] },
-        ...(env.OVERLAY_PREVIEW_QA_FIXTURES === 'paid-workspace' ? [{
+        ...(fixtures.includes('paid-workspace') ? [{
           command: './node_modules/.bin/convex',
           args: ['run', 'dev/seed:initQa', '{}', '--deployment', 'preview/pr-' + pr],
         }] : []),
-        ...(env.OVERLAY_PREVIEW_QA_FIXTURES === 'computer-workspace' ? [{
+        ...(fixtures.includes('computer-workspace') ? [{
           command: './node_modules/.bin/convex',
           args: ['run', 'dev/seed:initComputerQa', '{}', '--deployment', 'preview/pr-' + pr],
+        }] : []),
+        ...(fixtures.includes('exhausted-workspace') ? [{
+          command: './node_modules/.bin/convex',
+          args: ['run', 'dev/seed:initExhaustedQa', '{}', '--deployment', 'preview/pr-' + pr],
         }] : [])],
       env: childEnv,
       target: 'preview pr-' + pr,
@@ -115,6 +129,33 @@ export function deploymentEnvFile(env) {
   return 'CONVEX_DEPLOY_KEY="' + key + '"\n'
 }
 
+/** Copy only backend-owned settings, never session cookies, passwords, or dev selectors. */
+export function previewRuntimeEnvFile(env) {
+  const origin = env.NEXT_PUBLIC_APP_URL
+  if (!/^https:\/\/pr-[1-9]\d*\.preview\.getoverlay\.io$/.test(origin ?? '')) throw new Error('Invalid Preview callback origin')
+  if (env.STRIPE_SECRET_KEY && !/^(sk|rk)_test_/.test(env.STRIPE_SECRET_KEY)) throw new Error('Preview requires a Stripe test key')
+  const names = ['INTERNAL_API_SECRET', 'INTERNAL_SERVICE_AUTH_SECRET', 'WORKOS_CLIENT_ID',
+    'PREVIEW_LOGIN_USER_ID', 'PREVIEW_LOGIN_EMAIL', 'PROVIDER_KEYS_SECRET',
+    'PREVIEW_MEMBER_LOGIN_USER_ID', 'PREVIEW_MEMBER_LOGIN_EMAIL',
+    'PREVIEW_OUTSIDER_LOGIN_USER_ID', 'PREVIEW_OUTSIDER_LOGIN_EMAIL',
+    'VERCEL_AUTOMATION_BYPASS_SECRET',
+    'OVERLAY_PREVIEW_PROVIDER_BUDGET_CENTS',
+    'OVERLAY_PREVIEW_EMAIL_RECIPIENTS', 'OVERLAY_PREVIEW_WEBHOOK_ORIGINS',
+    'OVERLAY_EMAIL_PROVIDER', 'OVERLAY_EMAIL_FROM', 'OVERLAY_EMAIL_REPLY_TO',
+    'OVERLAY_EMAIL_SES_ACCESS_KEY_ID', 'OVERLAY_EMAIL_SES_SECRET_ACCESS_KEY', 'OVERLAY_EMAIL_SES_REGION',
+    'OVERLAY_EMAIL_RESEND_API_KEY', 'RESEND_API_KEY',
+    'STRIPE_SECRET_KEY', 'STRIPE_PAID_UNIT_PRICE_ID', 'STRIPE_TOPUP_UNIT_PRICE_ID',
+    'STRIPE_PORTAL_CONFIGURATION_ID', 'AI_GATEWAY_API_KEY', 'OPENROUTER_API_KEY',
+    'OVERLAY_PROVIDER_EMBEDDINGS', 'OVERLAY_FEATURE_VECTOR_SEARCH']
+  const values = Object.fromEntries(names.filter(name => env[name] !== undefined).map(name => [name, env[name]]))
+  Object.assign(values, { OVERLAY_DEPLOYMENT_ENV: 'preview', NEXT_PUBLIC_APP_URL: origin,
+    OVERLAY_BFF_URL: origin, AUTOMATION_RUNNER_BASE_URL: origin, OVERLAY_AGENT_PUBLIC_URL: origin })
+  return Object.entries(values).map(([key, value]) => {
+    if (/[\r\n]/.test(value)) throw new Error('Multiline Preview runtime setting is unsupported: ' + key)
+    return key + '=' + JSON.stringify(value)
+  }).join('\n') + '\n'
+}
+
 export function runBuild(env = process.env, spawn = spawnSync) {
   const plan = buildPlan(env)
   console.log('release-build target: ' + plan.target)
@@ -124,6 +165,14 @@ export function runBuild(env = process.env, spawn = spawnSync) {
       directory = mkdtempSync(join(tmpdir(), 'overlay-convex-build-'))
       const envFile = join(directory, 'deployment.env')
       writeFileSync(envFile, deploymentEnvFile(plan.env), { mode: 0o600 })
+      const runtimeFile = join(directory, 'runtime.env')
+      writeFileSync(runtimeFile, previewRuntimeEnvFile(plan.env), { mode: 0o600 })
+      const pr = plan.env.VERCEL_GIT_PULL_REQUEST_ID
+      plan.after.unshift({ command: './node_modules/.bin/convex',
+        args: ['env', 'set', '--from-file', runtimeFile, '--force', '--deployment', 'preview/pr-' + pr] })
+      if (['true', '1'].includes(plan.env.OVERLAY_FEATURE_BILLING)) {
+        plan.after.splice(1, 0, { command: 'node', args: ['scripts/release/preview-payments-build.mjs', envFile] })
+      }
       for (const step of [plan, ...(plan.after ?? [])]) {
         if (step.command.includes('convex')) step.args.push('--env-file', envFile)
       }

@@ -251,7 +251,6 @@
     "@xyflow/react": "^12.11.2",
     "ai": "7.0.93",
     "better-auth": "1.7.7",
-    "browser-use-sdk": "^3.11.1",
     "chat": "^4.40.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

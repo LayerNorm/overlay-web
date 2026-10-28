@@ -43,8 +43,6 @@ export const OVERLAY_TOOL_IDS = [
   'save_memory_batch',
   'update_memory',
   'delete_memory',
-  'browser_run_task',
-  'interactive_browser_session',
   'list_notes',
   'get_note',
   'create_note',

@@ -31,7 +31,6 @@ const FREE_TIER_STUB_TOOL_IDS = [
   'web_search',
   'deep_search',
   'web_fetch',
-  'interactive_browser_session',
 ] as const
 
 export type WorkspaceAgentToolGrant = {

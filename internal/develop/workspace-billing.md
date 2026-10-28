@@ -32,6 +32,10 @@ Plans belong to workspaces, and workspace billing is always on (there is no roll
 
 Workspace owners and admins use the authenticated `/api/v1/workspaces/:workspaceId/billing` API family to initialize a wallet, read credit usage, and open Stripe subscription, top-up, portal, or checkout-verification flows. Overlay creates one Stripe customer per workspace billing account. Stripe metadata binds payments to the account and workspace; the initiating admin is an audit actor, not the payment owner. Duplicate webhook deliveries are idempotent and older subscription events cannot overwrite newer account state.
 
+Checkout success/cancel and portal return URLs carry the initiating workspace in
+`/app/w/<workspaceId>/settings`. The return must select that workspace before
+verification, even if another tab changed the active-workspace cookie during payment.
+
 The Billing settings tab shows the month's credit and top-up balance, the itemized usage for the period (one line per resource), and what happens at $0: a hard stop by default, or automatic top-ups up to a monthly limit an owner or admin sets. Unused credit, including top-ups, does not carry over at renewal. Members have a read-only view.
 
 Billing settings presents uninitialized and initialized-but-unpaid workspaces as Free. Upgrade opens a dialog for the monthly amount and legal acceptance; Continue to payment initializes the wallet if needed, then starts Stripe checkout. The paid billing overview appears only after the workspace has a paid subscription or a top-up balance.
@@ -76,3 +80,43 @@ The audit defaults to the development Convex deployment. Production inspection r
 
 - [ ] Fix the unrelated on-prem Convex inventory mismatch in the existing chat and auth files.
 - [ ] Fix the unrelated conversation smoke-test index mismatch.
+
+## Preview fixture recovery
+
+Paid and Computer fixtures compose through the comma-separated Preview fixture
+setting. Internal `dev/qa:recover` accepts only the configured QA identity's known
+fixtures on Preview, with an idempotent request ID and audited recovery. Paid
+refill accepts only synthetic active plans and preserves consumed spend, live
+reservations and provider billing history. Free recovery resets only recent QA
+turn/transcription counters. It is separate from normal seeding and never funds
+a provider account. Test actual Stripe checkout/events separately from fixtures.
+
+A shared Stripe test account broadcasts events to all registered PR endpoints.
+Preview refuses live-mode events and ignores metadata-bound billing events whose
+account does not exist on that backend, before recording or applying them.
+Production retains its transactional retry behavior for missing-account failures.
+Each PR backend needs its own endpoint signing secret; test-key configuration
+alone does not establish webhook delivery or payment acceptance.
+
+Preview payment provisioning is part of billing-enabled builds. The scoped helper
+reuses a metadata-bound test endpoint, persists its signing secret only on the
+owned backend, and repairs event subscriptions. The trusted controller confirms
+endpoint deletion before backend cleanup. Test-key mode and endpoint/backend
+ownership are independently checked; configuration success is separate from
+actual checkout, signed delivery, billing persistence and cancellation acceptance.
+
+The optional `exhausted-workspace` fixture provides a separate Free workspace
+whose turn/transcription quota is consumed without provider requests. Explicit
+recovery resets only that workspace's counters; rebuilds preserve the result.
+Use it to verify the denial and recovery paths without consuming real model runs.
+
+A separate Preview provider guard caps metered commitments across all wallets,
+independently of synthetic credits. It defaults to $5 per PR, with an explicit
+acceptance override up to $25. Settled cost is durable and all active wallet
+reservations count; synthetic refills and period rollovers do not reset the guard.
+Actual settlement remains recordable after exhaustion. See Billing Holds and
+Machine Metering for provider-account limits and excluded external charges.
+
+Browser interaction is billed through the bound Computer's machine lease and
+ordinary model usage. The separate browser-task provider and charge path are
+retired; historical browser-task ledger rows remain visible.

@@ -37,7 +37,7 @@ Consent binds one person, one workspace (personal or team), and one **access lev
 | --- | --- |
 | Read only | search and read memory, knowledge, files, notes, skills, automations. Nothing is changed or spent. |
 | Read and write | read, plus notes, files, memory, skills writes and web search. |
-| Everything | write, plus automations, connected apps, the person's MCP servers, image and video generation, the browser. |
+| Everything | write, plus automations, connected apps, the person's MCP servers, image and video generation. |
 
 A level is a tool grant in the same shape an Overlay agent holds (`mcpToolGrantFor`, `src/shared/mcp/access.ts`), so the app gets the same tools through the same pipeline (`prepareActTooling`), policy, and entitlements as an Overlay agent with that grant: a level only narrows what the workspace allows. Never offered at any level: computer tools, agent editing (`create_agent`/`update_agent`, which would let an outside app rewrite what Overlay's agents may do), `present_generated_ui`, and tools that need an Overlay conversation (`draft_*_from_chat`). Tools whose server policy needs approval are refused with an explanation: an outside app has no Overlay conversation to show Overlay's approval card in (connected agents, which do, get a real approval round trip; see `bring-your-own-agents.md`). Memory belongs to the person, so every connected app shares it.
 

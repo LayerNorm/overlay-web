@@ -252,7 +252,6 @@ export async function prepareActTooling(params: {
         baseUrl: params.baseUrl,
         allowedToolIds: allowedOverlayToolIds,
         forwardCookie: params.forwardCookie ?? undefined,
-        includePaidOnlyOverlayTools: params.paid,
         memoryEnabled,
         memoryOwnerId: params.memoryOwnerId,
         agentId: params.agentId,
@@ -464,7 +463,9 @@ function withRequestedOverlayToolIds(
       allowed.add('save_memory_batch')
     }
     if (toolId === 'browser') {
-      allowed.add('interactive_browser_session')
+      allowed.add('computer_browser')
+      allowed.add('computer_open_url')
+      allowed.add('computer_screenshot')
     }
   }
 
@@ -487,9 +488,6 @@ export function applyRuntimeToolGates(
   }
   if (!capabilities.knowledge) {
     allowed.delete('search_knowledge')
-  }
-  if (!capabilities.browserUse) {
-    allowed.delete('interactive_browser_session')
   }
   if (!capabilities.computers) {
     for (const toolId of COMPUTER_TOOL_IDS) allowed.delete(toolId)

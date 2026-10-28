@@ -60,7 +60,7 @@ All runtime feature keys are listed below or in the launch table above. Related 
 | Skills | Enabled | `skills` / `SKILLS`; `SKILLS_ENABLED` | Overlay/Convex skill records and tool pipeline |
 | MCP server connections | Enabled | `mcpServers` / `MCP_SERVERS`; `MCP_SERVERS_ENABLED` | MCP protocol and configured servers |
 | Connected apps / Overlay MCP access | Implemented, unchanged | No dedicated external-agent release flag; OAuth grants/access policy | Overlay MCP server for outside clients; separate from hosting an external agent runtime |
-| Browser automation | Enabled in config, provider dependent | `browserUse` / `BROWSER_USE` | Browser-use; native computer browser tools are a separate computer surface |
+| Computer browser | Requires a funded Computer | `computers` / `COMPUTERS` | Browser tools run inside the bound Boat or E2B Computer; there is no separate browser service |
 | Sandbox tool capability | Enabled in config | `sandboxes` / `SANDBOXES` | Not a substitute for `COMPUTERS` or external cloud flags; runtime/provider wiring is described below |
 | Web search | Enabled, credentials required | `webSearch` / `WEB_SEARCH` | Elo gateway (Tavily/Parallel search paths), `ELO_API_KEY` |
 | Models, routing, native provider connections | Enabled | `modelRouting` / `MODEL_ROUTING`; `LLM_GATEWAY`, `OVERLAY_PROVIDER_MODELS` | OpenRouter default, Vercel AI Gateway, OpenAI, Anthropic, Groq; allowlists and billing still apply |
@@ -101,7 +101,7 @@ Provider names accepted by the schema are **not** proof of a working adapter. De
 | Persistent native computers | `OVERLAY_COMPUTER_PROVIDER` | `box` only today, backed by Boat at `boat.dev` (formerly Box); E2B is not wired into native computer selection |
 | External managed sandboxes | `OVERLAY_MANAGED_SANDBOX_PROVIDER` | `box` (Boat) or `e2b`; `BOAT_API_KEY`/legacy `BOX_API_KEY` or `E2B_API_KEY` and template configuration |
 | General sandbox declaration | `OVERLAY_PROVIDER_SANDBOX` | Do not confuse with the two runtime selectors above. `vercel`/`daytona` are retired inert compatibility values; `local-firecracker` is a schema option, not a connected runtime |
-| Browser/search declarations | `OVERLAY_PROVIDER_BROWSER`, `OVERLAY_PROVIDER_WEB_SEARCH` | Current paths use Browser-use/Elo. Schema alternatives are not a promise that switching the selector wires up another implementation |
+| Web search | `OVERLAY_PROVIDER_WEB_SEARCH` | Provider-backed search is separate from interactive browsing inside Computers |
 | Observability | `OVERLAY_PROVIDER_ANALYTICS`, `OVERLAY_PROVIDER_ERROR_REPORTING` | `posthog`/`none`, `sentry`/`none` respectively |
 | Email | `OVERLAY_EMAIL_PROVIDER`, `EMAIL_PROVIDER` | `resend`, `ses`, `smtp`, `none` |
 | Secrets | `OVERLAY_PROVIDER_SECRETS` | BYOK factory selects AWS for `aws-secrets-manager`, otherwise WorkOS Vault; `vault` is not a HashiCorp adapter. Environment model keys are separately selected by `llm.keySource`; `config` key source is reserved/rejected |

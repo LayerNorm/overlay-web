@@ -29,7 +29,6 @@ test('workspace-funded provider boundaries resolve resource and subject payer co
   const files = [
     'src/server/app-api/v1/conversations/act/ActTurnOrchestrationService.ts',
     'src/server/agents/workspace-agent-invocation.ts',
-    'src/server/app-api/v1/browser-task/route.ts',
     'src/server/app-api/v1/generate-image/route.ts',
     'src/server/app-api/v1/generate-video/route.ts',
     'src/server/app-api/v1/transcribe/route.ts',

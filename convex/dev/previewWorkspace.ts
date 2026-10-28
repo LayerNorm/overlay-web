@@ -8,6 +8,11 @@ export async function seedPreviewWorkspace(ctx: MutationCtx, { userId, email }: 
   const workspaceId = `preview-qa-team-${userId}`
   const ownerId = `${workspaceId}-owner`
   const memberId = `${workspaceId}-member`
+  const realMemberId = process.env.PREVIEW_MEMBER_LOGIN_USER_ID?.trim()
+  const realMemberEmail = process.env.PREVIEW_MEMBER_LOGIN_EMAIL?.trim()
+  if ((realMemberId || realMemberEmail) && (!realMemberId?.startsWith('user_') || !realMemberEmail || realMemberId === userId)) {
+    throw new Error('Configure a distinct Preview member identity and email')
+  }
   const workspace = await ctx.db.query('workspaces')
     .withIndex('by_workspaceId', q => q.eq('workspaceId', workspaceId)).unique()
   if (!workspace) await ctx.db.insert('workspaces', {
@@ -21,6 +26,8 @@ export async function seedPreviewWorkspace(ctx: MutationCtx, { userId, email }: 
       email: 'preview-qa-long-member-metadata-for-direct-message-containment@example.test',
       displayName: 'Synthetic Preview Collaborator With A Deliberately Long Display Name For Layout QA',
       role: 'member' as const },
+    ...(realMemberId && realMemberEmail ? [{ principalId: `${workspaceId}-qa-member`, userId: realMemberId,
+      email: realMemberEmail, displayName: 'Preview QA Member', role: 'member' as const }] : []),
   ]) {
     const principal = await ctx.db.query('workspacePrincipals')
       .withIndex('by_principalId', q => q.eq('principalId', person.principalId)).unique()

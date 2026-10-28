@@ -94,18 +94,12 @@ function buildAssistantVisualSegmentsRaw(blocks: AssistantVisualBlock[]): Assist
       i++
       continue
     }
-    if (block.kind === 'tool' && (block.name === 'browser_run_task' || block.name === 'interactive_browser_session')) {
-      out.push({ kind: 'browser', block, originIndex: i })
-      i++
-      continue
-    }
     if (block.kind === 'tool') {
       const start = i
       const group: ToolGroupItem[] = []
       while (i < blocks.length) {
         const item = blocks[i]!
         if (item.kind === 'tool') {
-          if (item.name === 'browser_run_task' || item.name === 'interactive_browser_session') break
           group.push(item)
           i++
           continue
@@ -147,7 +141,7 @@ export function buildAssistantVisualSegments(blocks: AssistantVisualBlock[]): As
 /**
  * Which segments a settled assistant message folds behind the single
  * "Worked" row at the top of the reply: every work segment — tool calls,
- * reasoning beats, browser sessions — collapses, so the collapsed reply is
+ * reasoning beats — collapses, so the collapsed reply is
  * just the text in order plus one summary row. Expanding the row switches
  * the message to the raw timeline, with each work segment back at its true
  * position between the texts. Text never collapses, and segments that are
@@ -174,7 +168,7 @@ export function planAssistantWorkCollapse(
   const collapsedToolCallKeys = new Set<string>()
   for (let i = 0; i < segments.length; i++) {
     const seg = segments[i]!
-    if (seg.kind === 'reasoning' || seg.kind === 'browser') {
+    if (seg.kind === 'reasoning') {
       collapsedIndexes.push(i)
       continue
     }
@@ -211,7 +205,7 @@ export function planAssistantWorkCollapse(
 }
 
 function isToolChainSegment(segment: AssistantVisualSegment): boolean {
-  return segment.kind === 'browser' || segment.kind === 'tools'
+  return segment.kind === 'tools'
 }
 
 export function computeToolChainFlags(segments: AssistantVisualSegment[]): Array<{ chainTop: boolean; chainBottom: boolean }> {

@@ -52,6 +52,16 @@ The skill is also installed via `npx skills add vercel-labs/agent-browser`.
 
 ## Authentication
 
+### Preview preflight
+
+Run `node scripts/release/preview-doctor.mjs <PR>` to verify current-head hosting
+and inspect missing configuration before browser setup. The command uses complete
+REST environment metadata and emits names/status only. It does not prove browser
+access, login, actual provider execution or background processing. Hosting access
+for a browser and hosting access for Convex callbacks are separate: callbacks
+require the existing bypass credential on their isolated backend and exact PR
+origin validation. Keep share links and bypass credentials out of evidence.
+
 ### PR preview QA login
 
 For the release-workflow migration, use the canonical
@@ -73,7 +83,13 @@ created agent and machine until terminal state is confirmed, and retain their id
 in the private report. Cleanup must check successful responses before claiming deletion.
 
 The server chooses the seeded QA identity; callers cannot supply an arbitrary
-user ID. This route returns 404 outside Preview. Real human OAuth uses
+user ID. The optional `x-overlay-preview-identity` header selects `owner` (default),
+`member` or `outsider` only. Member/outsider identities require their own
+`PREVIEW_MEMBER_LOGIN_*` / `PREVIEW_OUTSIDER_LOGIN_*` email, user ID and password
+on web Preview. Only their IDs/emails synchronize to Convex. Each must authenticate
+as the expected verified WorkOS sandbox user. The seed creates their personal
+workspaces; the paid fixture adds the member to its team and leaves the outsider
+unaffiliated. Keep passwords in private runtime stores. This route returns 404 outside Preview. Real human OAuth uses
 the same canonical preview origin with the WorkOS sandbox wildcard callback.
 
 For long connected-agent timing checks, the Preview-only branch build setting

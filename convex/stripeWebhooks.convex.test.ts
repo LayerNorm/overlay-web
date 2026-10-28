@@ -7,6 +7,16 @@ const modules = import.meta.glob('./**/*.ts')
 const processEvent = makeFunctionReference<'mutation'>('billing/stripeWebhooks:processEventInternal')
 afterEach(() => vi.unstubAllEnvs())
 
+test('Preview ignores another backend test event without billing writes and refuses live events', async () => {
+  vi.stubEnv('OVERLAY_DEPLOYMENT_ENV', 'preview')
+  const t = convexTest(schema, modules)
+  const event = { id: 'evt_foreign', type: 'customer.subscription.created', livemode: false,
+    data: { object: { metadata: { billingAccountId: 'another-backend-account' } } } }
+  expect(await t.mutation(processEvent, { event })).toBeNull()
+  expect(await snapshot(t)).toEqual({ events: [], subscriptions: [], topUps: [], balance: null })
+  await expect(t.mutation(processEvent, { event: { ...event, livemode: true } })).rejects.toThrow('live Stripe')
+})
+
 async function provisionAccount(t: ReturnType<typeof convexTest>) {
   await t.run(async ctx => {
     await ctx.db.insert('billingAccounts', { billingAccountId: 'ba-retry', scope: 'workspace', workspaceId: 'ws-retry',

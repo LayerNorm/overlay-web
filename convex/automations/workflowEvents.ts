@@ -1,6 +1,8 @@
 import { v } from 'convex/values'
 import { mutation, query } from '../_generated/server'
 import { requireAccessToken, validateServerSecret } from '../lib/auth'
+import { readableWorkflowAutomation } from './workflowAccess'
+import { getReadableRow } from '../lib/resourceScope'
 
 /**
  * Record a workflow step event (server-secret only, called by the
@@ -69,6 +71,7 @@ export const watchWorkflowStepEvents = query({
     } catch {
       return []
     }
+    if (!await readableWorkflowAutomation(ctx, args)) return []
     const events = await ctx.db
       .query('workflowStepEvents')
       .withIndex('by_workflowRunId_createdAt', (q) =>
@@ -114,6 +117,11 @@ export const watchAutomationRunStepEvents = query({
     } catch {
       return []
     }
+    const run = await ctx.db.get(args.automationRunId)
+    const automation = run && await ctx.db.get(run.automationId)
+    if (!automation || automation.deletedAt || !await getReadableRow(ctx, {
+      row: automation, userId: args.userId,
+    })) return []
     const events = await ctx.db
       .query('workflowStepEvents')
       .withIndex('by_automationRunId_createdAt', (q) =>

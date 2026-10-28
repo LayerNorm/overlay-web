@@ -31,8 +31,6 @@ const WEB_SOURCE_TOOL_NAMES = new Set([
   'web_search',
   'deep_search',
   'web_fetch',
-  'browser_run_task',
-  'interactive_browser_session',
 ])
 
 function truncateForPersistence(text: string, maxChars: number): string {

@@ -21,7 +21,6 @@
     "integrations": false,
     "skills": false,
     "mcpServers": false,
-    "browserUse": false,
     "sandboxes": false,
     "webSearch": false,
     "analytics": false,
@@ -54,9 +53,6 @@
       "provider": "ai-gateway"
     },
     "integrations": {
-      "provider": "none"
-    },
-    "browser": {
       "provider": "none"
     },
     "sandbox": {

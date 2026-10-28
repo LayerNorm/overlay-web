@@ -25,7 +25,6 @@ import {
   AddConversationMessageRequest,
   AgentGreetingRequest,
   AutomationListQuery,
-  BrowserTaskRequest,
   BootstrapQuery,
   ChatSuggestionQuery,
   ConversationListQuery,
@@ -523,13 +522,6 @@ export const webApiBoundaryDefinitions = [
     schema: { query: BootstrapQuery },
     summary: 'Load signed-in app bootstrap state',
     tag: 'Bootstrap',
-  },
-  {
-    method: 'POST',
-    path: '/api/v1/browser-task',
-    schema: { json: BrowserTaskRequest },
-    summary: 'Start a browser task',
-    tag: 'Tools',
   },
   {
     method: 'GET',

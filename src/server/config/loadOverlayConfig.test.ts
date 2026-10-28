@@ -131,7 +131,6 @@ test('configOverridesFromEnv maps enterprise v2 feature, provider, and complianc
     OVERLAY_ALLOWED_REGIONS: 'in,ap-south-1',
     OVERLAY_DATA_RESIDENCY_REQUIRED: '1',
     OVERLAY_RETENTION_MEMORY_DAYS: '365',
-    OVERLAY_FEATURE_BROWSER_USE: 'false',
     OVERLAY_FEATURE_SANDBOXES: 'false',
     OVERLAY_FEATURE_ANALYTICS: 'false',
     OVERLAY_FEATURE_API_DEFAULT_RATE_LIMIT: 'false',
@@ -146,7 +145,6 @@ test('configOverridesFromEnv maps enterprise v2 feature, provider, and complianc
     OVERLAY_FEATURE_CONNECTED_AGENT_DRIVE: 'true',
     OVERLAY_FEATURE_OVERLAY_CLOUD_ENVIRONMENTS: 'true',
     OVERLAY_PROVIDER_SANDBOX: 'none',
-    OVERLAY_PROVIDER_BROWSER: 'none',
     OVERLAY_PROVIDER_WEB_SEARCH: 'none',
     OVERLAY_PROVIDER_ANALYTICS: 'none',
     OVERLAY_PROVIDER_OBJECT_STORAGE: 's3',
@@ -156,7 +154,6 @@ test('configOverridesFromEnv maps enterprise v2 feature, provider, and complianc
   assert.equal(overrides.configVersion, 2)
   assert.equal(overrides.preset, 'dpdp-strict')
   assert.deepEqual(overrides.features, {
-    browserUse: false,
     sandboxes: false,
     analytics: false,
     apiDefaultRateLimit: false,
@@ -174,7 +171,6 @@ test('configOverridesFromEnv maps enterprise v2 feature, provider, and complianc
   assert.deepEqual(overrides.providers, {
     objectStorage: { provider: 's3' },
     models: { provider: 'openai' },
-    browser: { provider: 'none' },
     sandbox: { provider: 'none' },
     webSearch: { provider: 'none' },
     analytics: { provider: 'none' },

@@ -15,7 +15,6 @@ function categoryForToolId(toolId: string): ToolDefinition['category'] {
 function riskForToolId(toolId: string): ToolDefinition['risk'] {
   if (
     toolId.startsWith('delete_') ||
-    toolId === 'interactive_browser_session' ||
     toolId.includes('video') ||
     toolId.includes('image')
   ) {

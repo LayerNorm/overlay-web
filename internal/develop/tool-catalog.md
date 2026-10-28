@@ -15,7 +15,6 @@ Every surface builds its tools through one pipeline (`prepareActTooling`, `src/s
 | Automations | `list_automations`, `draft_automation_from_chat`, `create_automation`, `update_automation`, `pause_automation`, `delete_automation` |
 | Image | `generate_image` |
 | Video | `generate_video`, `generate_video_with_reference`, `animate_image`, `apply_motion_control`, `edit_video` |
-| Browser (paid) | `interactive_browser_session` |
 | Computer (paid, opt-in) | `computer_exec`, `computer_read_file`, `computer_write_file`, `computer_list_files`, `computer_open_url`, `computer_screenshot`, `computer_input`, `computer_browser`, `computer_terminal` |
 | Agents (editing) | `create_agent`, `update_agent` |
 | Ask other agents | `list_agents`, `ask_agent`, `read_agent_reply`, `post_message` (see `agent-to-agent.md`) |
@@ -26,6 +25,14 @@ Not tool ids but granted as capabilities:
 - **Web** (paid): `web_search`, `deep_search`, `web_fetch`. On the free plan they exist as stubs that answer "needs a paid plan".
 - **Connected apps** (`integrations`): the connector provider's meta-tools (Composio: search tools, execute tools, manage connections), named by the provider at run time. They act through the person's connected accounts, and, when the workspace has linked its own accounts, a `workspace_`-prefixed copy acts through those.
 - **Your MCP servers** (`mcp`): `search_mcp_tools` and `call_mcp_tool`, which stand in for every tool on every MCP server the person connected. A server's policy can require approval per tool.
+
+Interactive browsing runs inside the bound Computer through `computer_browser` and
+`computer_open_url`, with the same workspace admission, machine billing, visible
+desktop and approval policy as other Computer actions. There is no separate
+browser provider or natural-language browser-session tool. The Browser composer
+request selects these Computer tools; it cannot bypass Computer availability or
+approvals. Old saved browser-only grants do not automatically gain Computer
+permissions.
 
 ## Scope on list tools
 
@@ -57,7 +64,7 @@ for Claude Code / Codex over `/api/agent-mcp` alike. In a shared room:
 - **MCP servers**: only the ones shared with the workspace.
 
 Not covered: reading a specific item by id (`read_file`, `get_note`, `get_task`), the write tools (which default to the person's personal
-items), computer and browser tools, and agents asking agents. Naming an item in the message is how a person includes it on
+items), computer tools, and agents asking agents. Naming an item in the message is how a person includes it on
 purpose, but there is no per-message opt-in yet.
 
 ## Who gets what
@@ -88,7 +95,7 @@ Older hosts retain the legacy retry flow until upgraded.
 
 - **Read only**: `search_memory`, `search_messages`, `list_chats`, `read_chat`, `search_knowledge`, `search_in_files`, `list_files`, `read_file`, `list_notes`, `get_note`, `list_skills`, `list_automations`, `list_tasks`, `get_task`.
 - **Read and write**: read, plus memory, knowledge, files, notes, skills and tasks groups and web search.
-- **Everything**: write, plus automations, connected apps, your MCP servers, image and video, the browser, and asking agents. Never agent editing or computers.
+- **Everything**: write, plus automations, connected apps, your MCP servers, image and video, asking agents. Never agent editing or computers.
 
 Task tools use the Work API and its existing permissions. `update_task` sends fields, status and scope in one
 transaction; its optional revision is checked by Convex before any write. Conflicts require another read.

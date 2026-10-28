@@ -61,23 +61,3 @@ export class ComposioToolAdapter {
     }))
   }
 }
-
-export class BrowserTaskAdapter {
-  constructor(private readonly options: {
-    toolId?: string
-    runTask: (input: unknown, context: unknown) => Promise<unknown>
-  }) {}
-
-  toToolDefinition(): ToolDefinition {
-    return {
-      id: this.options.toolId ?? 'browser_run_task',
-      label: 'Browser task',
-      description: 'Run a browser automation task through the configured browser provider.',
-      category: 'browser',
-      source: 'browser',
-      costBucket: 'browser',
-      risk: 'high',
-      execute: (input, context) => this.options.runTask(input, context),
-    }
-  }
-}

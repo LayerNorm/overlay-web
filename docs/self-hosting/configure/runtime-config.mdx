@@ -72,7 +72,7 @@ Feature gates must be enforced in UI and server routes. Disabled server routes r
 | Feature | Typical enterprise use |
 | --- | --- |
 | `chat`, `files`, `memory`, `knowledge`, `automations` | Core product surfaces that can be enabled independently. |
-| `integrations`, `browserUse`, `sandboxes`, `webSearch` | External processor surfaces; disable by default until the enterprise approves the processor. |
+| `integrations`, `sandboxes`, `webSearch` | External processor surfaces; disable by default until the enterprise approves the processor. |
 | `analytics`, `errorReporting` | Telemetry surfaces; disable for private/no-telemetry deployments. |
 | `billing`, `webhooks`, `apiKeys`, `vectorSearch`, `modelRouting`, `sso` | Commercial, platform, retrieval, model, and auth surfaces. |
 | `multiTenant` | Reserved. The schema rejects enabling this until shared multi-tenant isolation exists. |
@@ -88,14 +88,12 @@ OVERLAY_COMPLIANCE_PROFILE=enterprise-private
 OVERLAY_ALLOW_EXTERNAL_PROCESSORS=false
 OVERLAY_ALLOWED_PROCESSORS=models:openai,objectStorage:s3
 
-OVERLAY_FEATURE_BROWSER_USE=false
 OVERLAY_FEATURE_SANDBOXES=false
 OVERLAY_FEATURE_INTEGRATIONS=false
 OVERLAY_FEATURE_WEB_SEARCH=false
 OVERLAY_FEATURE_ANALYTICS=false
 OVERLAY_FEATURE_ERROR_REPORTING=false
 
-OVERLAY_PROVIDER_BROWSER=none
 OVERLAY_PROVIDER_SANDBOX=none
 OVERLAY_PROVIDER_INTEGRATIONS=none
 OVERLAY_PROVIDER_WEB_SEARCH=none

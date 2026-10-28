@@ -37,3 +37,12 @@ flushes buffered text, and drains existing drive work before releasing cache own
 state store closes only after outstanding upload acknowledgements settle. Unconfirmed stops
 retain ownership and require inspection; they cannot authorize a replacement writer. This
 shutdown ordering does not replace lifecycle-v2 process fencing or provider isolation proof.
+
+## Protected Preview acceptance
+
+Scheduled idle-stop and meter fallback callbacks use the shared `fetchAppCallback`
+bridge. Preview requires its exact PR app origin and existing hosting bypass
+credential in addition to application authentication; cross-PR/production targets
+and redirects are refused. Enable Preview background jobs only with isolated
+providers and verified callback configuration. Prove the actual timer and sweep
+rather than inferring idle-stop from provider timeout or a successful UI open.

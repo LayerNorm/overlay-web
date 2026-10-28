@@ -87,8 +87,8 @@ const TOOL_REQUEST_OPTIONS: Array<{
   },
   {
     id: 'browser',
-    label: 'Browser Use',
-    description: 'Drive a real browser',
+    label: 'Computer browser',
+    description: 'Browse inside your Computer',
     Icon: MousePointerClick,
   },
 ]
@@ -390,7 +390,7 @@ function isToolRequestEnabled(
   props: Pick<ComposerViewProps, 'capabilities'>,
 ): boolean {
   if (toolId === 'web_search') return props.capabilities.webSearch
-  if (toolId === 'browser') return props.capabilities.browserUse
+  if (toolId === 'browser') return props.capabilities.computers
   if (toolId === 'memory') return props.capabilities.memory && props.capabilities.vectorSearch
   return true
 }

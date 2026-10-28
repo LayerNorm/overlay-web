@@ -23,6 +23,7 @@ const nextTs = (await import('eslint-config-next/typescript')).default
 export default defineConfig([
   ...nextVitals,
   ...nextTs,
+  { languageOptions: { parserOptions: { tsconfigRootDir: import.meta.dirname } } },
   globalIgnores(['.next/**', 'next-env.d.ts', 'node_modules/**']),
   {
     rules: {

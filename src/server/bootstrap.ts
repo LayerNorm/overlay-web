@@ -555,14 +555,14 @@ function normalizeCreateContextInput(
 }
 
 function createAuthProvider(config: OverlayRuntimeConfig | null, userService: UserService): AuthProvider {
-  if (!config) return new WorkOSAuthProvider()
+  if (!config) return new WorkOSAuthProvider(undefined, userService)
 
   switch (selectedProvider(config, 'auth', config.auth.provider)) {
     case 'workos':
       return new WorkOSAuthProvider({
         ...config.auth.workos,
         allowDevFallbacks: config.auth.allowDevFallbacks,
-      })
+      }, userService)
     case 'better-auth':
       return new BetterAuthProvider({ runtimeConfig: config, userService })
     case 'oidc':

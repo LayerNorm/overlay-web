@@ -6,7 +6,6 @@ export interface CapabilityCheck {
   integrations: boolean
   skills: boolean
   mcpServers: boolean
-  browserUse: boolean
   sandboxes: boolean
   webSearch: boolean
   analytics: boolean
@@ -39,7 +38,6 @@ export const DEFAULT_OVERLAY_CAPABILITIES: CapabilityCheck = {
   integrations: true,
   skills: true,
   mcpServers: true,
-  browserUse: true,
   sandboxes: true,
   webSearch: true,
   analytics: true,

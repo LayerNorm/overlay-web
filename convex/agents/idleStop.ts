@@ -1,3 +1,4 @@
+import { fetchAppCallback } from '../lib/appCallback'
 import { v } from 'convex/values'
 import { internalAction } from '../_generated/server'
 
@@ -16,7 +17,7 @@ export const runIdleCheck = internalAction({
     }
     const internalSecret = process.env.INTERNAL_API_SECRET
     if (!internalSecret) throw new Error('agent_idle_check_secret_missing')
-    const response = await fetch(`${baseUrl}/api/v1/agent-environments/operations/reconcile`, {
+    const response = await fetchAppCallback(`${baseUrl}/api/v1/agent-environments/operations/reconcile`, {
       method: 'POST',
       headers: { 'x-internal-api-secret': internalSecret, 'content-type': 'application/json' },
       body: JSON.stringify({ idleCheck: args }),

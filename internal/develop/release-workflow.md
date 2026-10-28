@@ -157,3 +157,22 @@ Vercel CLI 63 non-interactive deployment JSON is parsed explicitly, including na
 ### Historical asynchronous production build submission
 
 Production uses `vercel deploy --prod --skip-domain --no-wait` and the owned exact-SHA READY poll. Other release commands retain a bounded 16 MiB capture. The earlier synchronous attempt stopped at local ENOBUFS while its remote build continued, preserving the customer alias and backend. The corrected complete command passed on the release recorded above; both unpublished earlier builds remain historical.
+
+### Preview configuration acceptance
+
+`preview-doctor.mjs` checks the exact current-head alias and complete environment
+inventory before browser QA. Expected blocked native Git attempts are distinct
+from failures of controller-created REST deployments. Successful Preview builds
+synchronize approved backend settings and exact PR callback URLs before seeding.
+Comma-separated paid/Computer fixtures compose; explicit audited recovery is
+separate from non-destructive seeding. Preview registers the production schedule immediately; outbound execution
+requires the isolated configuration described in Convex Workflow. Configuration checks
+never substitute for actual provider, scheduled-job, browser or cleanup acceptance.
+
+Billing-enabled Preview builds provision one owned Stripe test webhook and retain
+its backend signing secret across rebuilds. The controller uses the existing
+Preview-only Stripe key through Vercel, includes tagged endpoints in reconciliation,
+and confirms endpoint deletion before backend removal. Ownership or provider
+failures remain visible and cannot report successful cleanup. Endpoint setup is
+configuration evidence; actual checkout, signature, event and cancellation
+acceptance remains required. See Convex Workflow for recovery semantics.
