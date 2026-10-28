@@ -185,7 +185,9 @@ and scheduler sites with `config/on-prem-convex-runtime-baseline.json`. Review
 the reported delta before updating it. The release-preview foundation records
 the new preview-login route alongside previously landed permanent-agent deletion,
 workspace auto-top-up, usage/database imports, and pending top-up reconciliation.
-The preview guards still disable cron registration and outbound delivery at runtime.
+Preview registers the production cron schedule. Outbound delivery requires the
+configured test destinations; app callbacks additionally require the exact PR
+origin and its existing hosting-access credential.
 
 ## Import boundary
 
