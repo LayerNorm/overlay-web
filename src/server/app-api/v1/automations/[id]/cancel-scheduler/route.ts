@@ -28,6 +28,9 @@ export async function POST(request: NextRequest, context?: AppApiRouteContext) {
     if (!body.workflowRunId) {
       return NextResponse.json({ error: 'workflowRunId is required' }, { status: 400 })
     }
+    if (automation.userId !== context.auth.userId || automation.schedulerWorkflowRunId !== body.workflowRunId) {
+      return NextResponse.json({ error: 'Scheduler not found' }, { status: 404 })
+    }
 
     await getRun(body.workflowRunId).cancel()
     return NextResponse.json({ ok: true, automationId, workflowRunId: body.workflowRunId })

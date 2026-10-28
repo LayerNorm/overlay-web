@@ -43,6 +43,15 @@ bound machine. The separate `/api/v1/browser-task` endpoint and
 `ChatAuxClient.browserTaskResponse` have been removed; old clients receive the
 ordinary missing-route response. Historical usage rows remain readable.
 
+Automation workflow status and SSE reads resolve the workflow ID to its stored
+automation/run and apply the parent resource's scope, current membership and
+active workspace before accessing Workflow SDK data. Direct Convex event
+subscriptions apply the same rule. Unknown or deleted parents fail closed;
+legacy scheduler cancellation requires the owner's exact stored scheduler ID.
+Terminal run settlement queues the completion/failure webhook in the same Convex
+transaction. The stable run/event ID deduplicates retries and older emitter calls;
+delivery remains asynchronous through the existing signed, retrying outbox.
+
 ## Work (tasks)
 
 Work routes (`/api/v1/work`) follow the same layering as other scoped content: thin route files, `WorkService`

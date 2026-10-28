@@ -22,6 +22,48 @@ function subscriptionMatchesEvent(events: string[], eventType: string): boolean 
   return events.includes(eventType) || events.includes('*')
 }
 
+export async function enqueueWebhookEvent(ctx: MutationCtx, args: {
+  userId: string
+  eventId: string
+  eventType: string
+  payloadJson: string
+}): Promise<{ enqueued: number }> {
+  const subscriptions = await ctx.db
+    .query('webhookSubscriptions')
+    .withIndex('by_userId_enabled', (q) => q.eq('userId', args.userId).eq('enabled', true))
+    .collect()
+
+  const now = Date.now()
+  let enqueued = 0
+
+  const matchingSubscriptions = subscriptions.filter((subscription) =>
+    subscriptionMatchesEvent(subscription.events, args.eventType))
+  const duplicates = await Promise.all(matchingSubscriptions.map((subscription) =>
+    ctx.db
+      .query('webhookDeliveries')
+      .withIndex('by_subscriptionId_eventId', (q) =>
+        q.eq('subscriptionId', subscription._id).eq('eventId', args.eventId),
+      )
+      .first()))
+  const freshSubscriptions = matchingSubscriptions.filter((_, i) => !duplicates[i])
+  await Promise.all(freshSubscriptions.map((subscription) =>
+    ctx.db.insert('webhookDeliveries', {
+      userId: args.userId,
+      subscriptionId: subscription._id,
+      eventId: args.eventId,
+      eventType: args.eventType,
+      payloadJson: args.payloadJson,
+      status: 'pending',
+      attemptCount: 0,
+      nextAttemptAt: now,
+      createdAt: now,
+      updatedAt: now,
+    })))
+  enqueued = freshSubscriptions.length
+
+  return { enqueued }
+}
+
 export const enqueueByServer = mutation({
   args: {
     serverSecret: v.string(),
@@ -34,40 +76,7 @@ export const enqueueByServer = mutation({
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
 
-    const subscriptions = await ctx.db
-      .query('webhookSubscriptions')
-      .withIndex('by_userId_enabled', (q) => q.eq('userId', args.userId).eq('enabled', true))
-      .collect()
-
-    const now = Date.now()
-    let enqueued = 0
-
-    const matchingSubscriptions = subscriptions.filter((subscription) =>
-      subscriptionMatchesEvent(subscription.events, args.eventType))
-    const duplicates = await Promise.all(matchingSubscriptions.map((subscription) =>
-      ctx.db
-        .query('webhookDeliveries')
-        .withIndex('by_subscriptionId_eventId', (q) =>
-          q.eq('subscriptionId', subscription._id).eq('eventId', args.eventId),
-        )
-        .first()))
-    const freshSubscriptions = matchingSubscriptions.filter((_, i) => !duplicates[i])
-    await Promise.all(freshSubscriptions.map((subscription) =>
-      ctx.db.insert('webhookDeliveries', {
-        userId: args.userId,
-        subscriptionId: subscription._id,
-        eventId: args.eventId,
-        eventType: args.eventType,
-        payloadJson: args.payloadJson,
-        status: 'pending',
-        attemptCount: 0,
-        nextAttemptAt: now,
-        createdAt: now,
-        updatedAt: now,
-      })))
-    enqueued = freshSubscriptions.length
-
-    return { enqueued }
+    return await enqueueWebhookEvent(ctx, args)
   },
 })
 

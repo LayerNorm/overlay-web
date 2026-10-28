@@ -4,6 +4,10 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Restrict automation workflow status/events to the parent automation's scope and current workspace membership, and bind scheduler cancellation to its owner's stored workflow ID.
+
+- Queue automation completion/failure webhooks in the same transaction as terminal run settlement, including durable scheduled runs and idempotent retries.
+
 - Remove the separate Browser Use service, API and tools; interactive browsing now uses the bound Computer and its existing admission, approvals and machine billing.
 
 - Add audited Preview-only free-route quarantine recovery that requires fresh provider verification before reuse.
