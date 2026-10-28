@@ -10,6 +10,7 @@ import {
 } from '@/server/billing/billing-runtime'
 import type { Entitlements } from '@overlay/billing'
 import { FREE_TIER_AUTO_MODEL_ID } from '@/shared/ai/gateway/model-types'
+import { extractTitle } from './extract-title'
 
 /**
  * Titles use the Auto free router, which falls back across the verified-free
@@ -21,23 +22,11 @@ const TITLE_MODELS: ReadonlyArray<{ id: string; free: boolean }> = [
 ]
 const FALLBACK_TITLE = 'New Chat'
 const MAX_PROMPT_CHARS = 1200
-const ESTIMATED_OUTPUT_TOKENS = 32
+const MAX_OUTPUT_TOKENS = 512
 
 const TITLE_INSTRUCTIONS =
   'You write short chat titles. Reply with the title only — 3 to 6 words, natural title case, ' +
   'no surrounding quotes, no trailing punctuation, no preamble. Capture the actual topic, not the first words.'
-
-/** Models sometimes wrap the title in quotes or prefix it; keep the first meaningful line. */
-function extractTitle(raw: string): string {
-  const line = raw
-    .split('\n')
-    .map((value) => value.trim())
-    .find((value) => value.length > 0) ?? ''
-  return line
-    .replace(/^(title|chat title)\s*[:\-–]\s*/i, '')
-    .replace(/^["'“”‘’`]+|["'“”‘’`]+$/g, '')
-    .trim()
-}
 
 export async function POST(request: NextRequest, context: AppApiRouteContext) {
   try {
@@ -120,7 +109,7 @@ async function generateTitleWithModel({
     entitlements,
     estimatedInputTokens,
     idempotencyKey: context.requestIdempotencyKey,
-    maxOutputTokens: ESTIMATED_OUTPUT_TOKENS,
+    maxOutputTokens: MAX_OUTPUT_TOKENS,
     modelId: model.id,
     operationId: 'chat.generate-title',
     paid: !model.free && canUsePaidModels,
@@ -142,7 +131,7 @@ async function generateTitleWithModel({
       model: languageModel,
       instructions: TITLE_INSTRUCTIONS,
       temperature: 0.2,
-      maxOutputTokens: ESTIMATED_OUTPUT_TOKENS,
+      maxOutputTokens: MAX_OUTPUT_TOKENS,
       prompt,
     })
   } catch (error) {
@@ -170,7 +159,7 @@ async function generateTitleWithModel({
     forceFreeTierLimits: false,
     inputTokens: usage?.inputTokens ?? estimatedInputTokens,
     modelId: model.id,
-    outputTokens: usage?.outputTokens ?? ESTIMATED_OUTPUT_TOKENS,
+    outputTokens: usage?.outputTokens ?? MAX_OUTPUT_TOKENS,
     reservationId: reservation.reservationId,
     userId: auth.userId,
   }).catch(async (error) => {
