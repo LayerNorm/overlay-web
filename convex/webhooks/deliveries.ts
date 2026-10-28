@@ -1,7 +1,6 @@
 import { v } from 'convex/values'
 import { internalMutation, internalQuery, mutation, query } from '../_generated/server'
 import type { MutationCtx } from '../_generated/server'
-import type { Id } from '../_generated/dataModel'
 import { requireServerSecret } from '../lib/auth'
 
 const MAX_ATTEMPTS = 5
@@ -83,6 +82,7 @@ export const enqueueByServer = mutation({
 export const listByServer = query({
   args: {
     limit: v.optional(v.number()),
+    workspaceId: v.optional(v.string()),
     serverSecret: v.string(),
     subscriptionId: v.optional(v.id('webhookSubscriptions')),
     userId: v.string(),
@@ -119,7 +119,12 @@ export const listByServer = query({
       .withIndex('by_userId_createdAt', (q) => q.eq('userId', args.userId))
       .order('desc')
       .take(limit)
-    return rows
+    const scopedRows = args.workspaceId === undefined ? rows :
+      (await Promise.all(rows.map(async row => {
+        const subscription = await ctx.db.get(row.subscriptionId)
+        return subscription?.userId === args.userId && subscription.workspaceId === args.workspaceId ? row : null
+      }))).filter(row => row !== null)
+    return scopedRows
       .filter((row) => !args.subscriptionId || row.subscriptionId === args.subscriptionId)
       .map((row) => ({
         _id: row._id,
@@ -141,6 +146,7 @@ export const listByServer = query({
 export const redriveByServer = mutation({
   args: {
     deliveryId: v.id('webhookDeliveries'),
+    workspaceId: v.optional(v.string()),
     serverSecret: v.string(),
     userId: v.string(),
   },
@@ -150,6 +156,12 @@ export const redriveByServer = mutation({
     const source = await ctx.db.get(args.deliveryId)
     if (!source || source.userId !== args.userId || source.status !== 'dead') {
       return { deliveryId: null }
+    }
+    if (args.workspaceId !== undefined) {
+      const subscription = await ctx.db.get(source.subscriptionId)
+      if (subscription?.userId !== args.userId || subscription.workspaceId !== args.workspaceId) {
+        return { deliveryId: null }
+      }
     }
     // Cap redrive attempts to prevent DDoS amplification. Count existing
     // deliveries that share the same base event ID (original or redriven).

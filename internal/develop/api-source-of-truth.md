@@ -51,6 +51,8 @@ legacy scheduler cancellation requires the owner's exact stored scheduler ID.
 Terminal run settlement queues the completion/failure webhook in the same Convex
 transaction. The stable run/event ID deduplicates retries and older emitter calls;
 delivery remains asynchronous through the existing signed, retrying outbox.
+Delivery history and redrive accept the app's workspace context and enforce the
+parent subscription's owner and workspace, including legacy delivery rows.
 
 ## Work (tasks)
 
