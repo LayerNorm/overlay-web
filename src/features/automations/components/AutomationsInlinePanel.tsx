@@ -2,7 +2,7 @@
 import { unstyledButton } from '@overlay/ui/control-reset'
 import { Button } from '@overlay/ui/primitives'
 
-import { useState, useCallback, useEffect, useRef, type MouseEvent } from 'react'
+import { useState, useCallback, useEffect, useMemo, useRef, type MouseEvent } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { SidebarListSkeleton } from '@overlay/ui/feedback'
 import { dispatchChatDeleted } from '@/shared/chat/chat-title'
@@ -19,6 +19,13 @@ import { AutomationsInlineList } from '@overlay/modules-react/automations'
 import { useWorkspaceChanged } from '@/hooks/use-workspace-changed'
 import { usePanelListView } from '@/hooks/use-panel-scope'
 import { ScopeItemActions } from '@/components/layout/ScopeItemActions'
+import { AgentCreature } from '@/components/orb/Creature'
+import { useWorkspace } from '@/contexts/WorkspaceContext'
+import {
+  AGENT_DIRECTORY_CHANGED_EVENT,
+  type AgentDirectoryChangedEventDetail,
+} from '@/shared/workspace/sidebar-events'
+import type { WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
 
 const INITIAL_SIDEBAR_LIST_LIMIT = 24
 
@@ -29,7 +36,9 @@ export function AutomationsInlinePanel({
 }) {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const { activeWorkspaceId } = useWorkspace()
   const [automations, setAutomations] = useState<AutomationSummary[]>([])
+  const [agents, setAgents] = useState<WorkspaceAgentDirectoryItem[]>([])
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
   const nextCursorRef = useRef<string | undefined>(undefined)
@@ -42,6 +51,34 @@ export function AutomationsInlinePanel({
   const activeId = searchParams?.get('id') ?? null
   const activeAutomationId = searchParams?.get('automationId') ?? null
   const listView = usePanelListView()
+  const agentsById = useMemo(() => new Map(agents.map((agent) => [agent.id, agent])), [agents])
+
+  useEffect(() => {
+    if (!activeWorkspaceId) {
+      setAgents([])
+      return
+    }
+    let request = 0
+    let disposed = false
+    const loadAgents = () => {
+      const currentRequest = ++request
+      void overlayAppClient.agents.list(activeWorkspaceId).then((response) => {
+        if (!disposed && currentRequest === request) setAgents(response.agents)
+      }).catch(() => {
+        if (!disposed && currentRequest === request) setAgents([])
+      })
+    }
+    const refresh = (event: Event) => {
+      const detail = (event as CustomEvent<AgentDirectoryChangedEventDetail>).detail
+      if (detail?.workspaceId === activeWorkspaceId) loadAgents()
+    }
+    window.addEventListener(AGENT_DIRECTORY_CHANGED_EVENT, refresh)
+    loadAgents()
+    return () => {
+      disposed = true
+      window.removeEventListener(AGENT_DIRECTORY_CHANGED_EVENT, refresh)
+    }
+  }, [activeWorkspaceId])
 
   const loadAutomations = useCallback(async () => {
     try {
@@ -197,6 +234,10 @@ export function AutomationsInlinePanel({
             }}
           />
         )}
+        renderLeadingIcon={(automation) => {
+          const agent = automation.agentId ? agentsById.get(automation.agentId) : undefined
+          return agent ? <AgentCreature agent={agent} size={16} /> : null
+        }}
       />
       {hasMore ? (
         <Button variant="ghost"

@@ -16,6 +16,7 @@ import {
   dispatchChatArchived,
   dispatchChatModified,
   dispatchChatTitleUpdated,
+  mergeChatTitle,
   sanitizeChatTitle,
   type ChatArchivedDetail,
   type ChatCreatedDetail,
@@ -421,7 +422,7 @@ function useChatListEvents({
         const merged = {
           ...existing,
           ...nextChat,
-          title: nextChat.title || existing.title,
+          title: mergeChatTitle(existing.title, nextChat.title),
         }
         const withoutExisting = prev.filter((chat) => chat._id !== nextChat._id)
         return [merged, ...withoutExisting]

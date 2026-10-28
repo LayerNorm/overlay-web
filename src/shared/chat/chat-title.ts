@@ -30,6 +30,34 @@ export interface ChatArchivedDetail {
   chat: ChatCreatedDetail['chat'] & { archivedAt?: number }
 }
 
+export function isPlaceholderChatTitle(title: string | null | undefined): boolean {
+  const normalized = title?.trim().toLowerCase()
+  return !normalized || normalized === 'new chat' || normalized === 'new thread'
+}
+
+export function mergeChatTitle(existing: string, incoming: string): string {
+  return isPlaceholderChatTitle(incoming) && !isPlaceholderChatTitle(existing)
+    ? existing
+    : incoming
+}
+
+export function resolveChatModifiedTitle({
+  explicitTitle,
+  pendingTitle,
+  latestListTitle,
+  fallback = FALLBACK_CHAT_TITLE,
+}: {
+  explicitTitle?: string | null
+  pendingTitle?: string | null
+  latestListTitle?: string | null
+  fallback?: string
+}): string {
+  if (!isPlaceholderChatTitle(explicitTitle)) return explicitTitle!
+  if (!isPlaceholderChatTitle(pendingTitle)) return pendingTitle!
+  if (!isPlaceholderChatTitle(latestListTitle)) return latestListTitle!
+  return fallback
+}
+
 export function sanitizeChatTitle(title: string | null | undefined, fallback = FALLBACK_CHAT_TITLE): string {
   const normalized = (title || '')
     .replace(/\s+/g, ' ')

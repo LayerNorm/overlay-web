@@ -33,6 +33,7 @@ export interface AutomationsInlineListProps {
   onClearPendingDelete: () => void
   /** Extra hover controls for a row (the web app adds Move and Archive, which depend on who is viewing). */
   renderRowActions?: (automation: AutomationSummary) => ReactNode
+  renderLeadingIcon?: (automation: AutomationSummary) => ReactNode
 }
 
 export function AutomationsInlineList({
@@ -53,6 +54,7 @@ export function AutomationsInlineList({
   onConfirmDelete,
   onClearPendingDelete,
   renderRowActions,
+  renderLeadingIcon,
 }: AutomationsInlineListProps) {
   if (automations.length === 0) {
     return <p className="px-2.5 py-2 text-xs text-(--muted-light)">No automations yet</p>
@@ -84,7 +86,7 @@ export function AutomationsInlineList({
                 {pendingNavId === automation._id ? (
                   <Loader2 size={16} className="shrink-0 animate-spin" />
                 ) : (
-                  <Workflow size={16} className="shrink-0" />
+                  renderLeadingIcon?.(automation) ?? <Workflow size={16} className="shrink-0" />
                 )}
                 <Input
                   aria-label="Automation name"
@@ -116,7 +118,7 @@ export function AutomationsInlineList({
                 {pendingNavId === automation._id ? (
                   <Loader2 className="animate-spin" aria-hidden />
                 ) : (
-                  <Workflow aria-hidden />
+                  renderLeadingIcon?.(automation) ?? <Workflow aria-hidden />
                 )}
                 <span className="flex-1 truncate text-left">{automationLabel}</span>
               </SidebarMenuSubButton>

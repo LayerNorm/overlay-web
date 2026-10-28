@@ -85,12 +85,13 @@ function useAgentWorkspaceActions(args: {
             workspaceId: activeWorkspaceId,
             agentId: agent.id,
             agentPrincipalId: agent.principalId,
+            initialMessage: agent.instructions,
             surface: 'agents',
             scope: 'personal',
             buildHref,
             push: (href) => router.push(href),
           })
-          if (conversationId && activeWorkspaceId) {
+          if (conversationId && activeWorkspaceId && !agent.instructions.trim()) {
             await sendAgentGreeting({ workspaceId: activeWorkspaceId, conversationId, agentId: agent.id })
           }
         } catch (chatError) {

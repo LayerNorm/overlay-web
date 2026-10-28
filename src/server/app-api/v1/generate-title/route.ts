@@ -3,44 +3,25 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getBillingProgrammaticSubjectId, type AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { generateText } from '@/server/ai/sdk'
+import { createRuntimeOverlayFreeLanguageModel } from '@/server/ai/gateway/overlay-free-router'
 import { sanitizeChatTitle } from '@/shared/chat/chat-title'
-import { getLanguageModel } from '@/server/ai/model-runtime'
-import {
-  canUsePaidBudgetFeatures,
-} from '@/server/billing/billing-runtime'
 import type { Entitlements } from '@overlay/billing'
+import { FREE_TIER_AUTO_MODEL_ID } from '@/shared/ai/gateway/model-types'
+import { extractTitle } from './extract-title'
+import { runTitleAttempts } from './title-attempts'
 
 /**
- * Title models in priority order, both served by the Vercel AI Gateway (ids
- * without a catalog entry pass straight through to the gateway).
- *
- * The first is free, so titles keep working on plans with no paid budget — the
- * old single-model route reserved paid budget for every title and returned null
- * for everyone else, which is why chats stayed "New Chat".
+ * Titles use the Auto free router, which falls back across the verified-free
+ * AI Gateway and OpenRouter free models, so one unavailable free model no
+ * longer leaves chats on "New Chat".
  */
-const TITLE_MODELS: ReadonlyArray<{ id: string; free: boolean }> = [
-  { id: 'poolside/laguna-s-2.1-free', free: true },
-  { id: 'deepseek/deepseek-v4-flash', free: false },
-]
 const FALLBACK_TITLE = 'New Chat'
 const MAX_PROMPT_CHARS = 1200
-const ESTIMATED_OUTPUT_TOKENS = 32
+const MAX_OUTPUT_TOKENS = 512
 
 const TITLE_INSTRUCTIONS =
   'You write short chat titles. Reply with the title only — 3 to 6 words, natural title case, ' +
   'no surrounding quotes, no trailing punctuation, no preamble. Capture the actual topic, not the first words.'
-
-/** Models sometimes wrap the title in quotes or prefix it; keep the first meaningful line. */
-function extractTitle(raw: string): string {
-  const line = raw
-    .split('\n')
-    .map((value) => value.trim())
-    .find((value) => value.length > 0) ?? ''
-  return line
-    .replace(/^(title|chat title)\s*[:\-–]\s*/i, '')
-    .replace(/^["'“”‘’`]+|["'“”‘’`]+$/g, '')
-    .trim()
-}
 
 export async function POST(request: NextRequest, context: AppApiRouteContext) {
   try {
@@ -61,33 +42,34 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       workspaceId,
     })
     if (!entitlements) return NextResponse.json({ title: null })
-    const canUsePaidModels = canUsePaidBudgetFeatures(entitlements)
 
     const prompt = `Generate a concise title for a conversation that starts with this message:\n\n${text.slice(0, MAX_PROMPT_CHARS)}`
     const estimatedInputTokens = Math.ceil(Math.min(text.length, MAX_PROMPT_CHARS) / 4) + 80
 
-    let lastFailure: unknown = null
-    for (const model of TITLE_MODELS) {
-      if (!model.free && !canUsePaidModels) continue
-      const title = await generateTitleWithModel({
-        canUsePaidModels,
+    const outcome = await runTitleAttempts(
+      (abortSignal) => generateTitleWithModel({
+        abortSignal,
         chatUsagePolicy,
         context,
         entitlements,
         estimatedInputTokens,
-        model,
         programmaticSubjectId,
         prompt,
         workspaceId,
-      }).catch((error) => {
-        lastFailure = error
-        logger.warn('[ChatTitle][server] Title model failed', { modelId: model.id, error })
-        return null
-      })
-      if (title) return NextResponse.json({ title })
-    }
+      }),
+      {
+        maxAttempts: 3,
+        budgetMs: 12_000,
+        signal: request.signal,
+        onError: (error) => logger.warn('[ChatTitle][server] Title model failed', {
+          modelId: FREE_TIER_AUTO_MODEL_ID,
+          error,
+        }),
+      },
+    )
 
-    if (lastFailure) {
+    if (outcome.title !== null) return NextResponse.json({ title: outcome.title })
+    if (outcome.failed) {
       return NextResponse.json({ error: 'Failed to generate title' }, { status: 502 })
     }
     return NextResponse.json({ title: null })
@@ -98,35 +80,34 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
 }
 
 async function generateTitleWithModel({
-  canUsePaidModels,
+  abortSignal,
   chatUsagePolicy,
   context,
   entitlements,
   estimatedInputTokens,
-  model,
   programmaticSubjectId,
   prompt,
   workspaceId,
 }: {
-  canUsePaidModels: boolean
+  abortSignal: AbortSignal
   chatUsagePolicy: ReturnType<typeof getOverlayServerContext>['chatUsagePolicy']
   context: AppApiRouteContext
   entitlements: Entitlements
   estimatedInputTokens: number
-  model: { id: string; free: boolean }
   programmaticSubjectId?: string
   prompt: string
   workspaceId: string
 }): Promise<string | null> {
   const { auth } = context
+  const modelId = FREE_TIER_AUTO_MODEL_ID
   const reservation = await chatUsagePolicy.reserveForAttempt({
     entitlements,
     estimatedInputTokens,
     idempotencyKey: context.requestIdempotencyKey,
-    maxOutputTokens: ESTIMATED_OUTPUT_TOKENS,
-    modelId: model.id,
+    maxOutputTokens: MAX_OUTPUT_TOKENS,
+    modelId,
     operationId: 'chat.generate-title',
-    paid: !model.free && canUsePaidModels,
+    paid: false,
     requestFingerprint: context.requestFingerprint,
     programmaticSubjectId,
     userId: auth.userId,
@@ -134,18 +115,25 @@ async function generateTitleWithModel({
   })
   if (!reservation.ok) return null
 
-  const languageModel = await getLanguageModel(model.id, auth.accessToken, auth.userId)
+  let routedModelId: string | undefined
   let result: Awaited<ReturnType<typeof generateText>>
   try {
+    abortSignal.throwIfAborted()
+    const languageModel = await createRuntimeOverlayFreeLanguageModel({
+      modelId: FREE_TIER_AUTO_MODEL_ID,
+      onModelCaptured: (capturedModelId) => { routedModelId = capturedModelId },
+    })
+    abortSignal.throwIfAborted()
     await chatUsagePolicy.markReservationStarted({
       userId: auth.userId,
       reservationId: reservation.reservationId,
     })
     result = await generateText({
+      abortSignal,
       model: languageModel,
       instructions: TITLE_INSTRUCTIONS,
       temperature: 0.2,
-      maxOutputTokens: ESTIMATED_OUTPUT_TOKENS,
+      maxOutputTokens: MAX_OUTPUT_TOKENS,
       prompt,
     })
   } catch (error) {
@@ -159,7 +147,13 @@ async function generateTitleWithModel({
 
   const sanitizedTitle = sanitizeChatTitle(extractTitle(result.text ?? ''), FALLBACK_TITLE)
   if (sanitizedTitle === FALLBACK_TITLE) {
-    logger.warn('[ChatTitle][server] Model returned an empty title', { modelId: model.id })
+    logger.warn('[ChatTitle][server] Model returned an empty title', {
+      stopCause: result.finishReason,
+      modelId,
+      thinkingChars: result.reasoningText?.length ?? 0,
+      routedModelId,
+      textLength: result.text?.length ?? 0,
+    })
     await chatUsagePolicy.markReservationForReconcile({
       userId: auth.userId,
       reservationId: reservation.reservationId,
@@ -172,8 +166,8 @@ async function generateTitleWithModel({
   await chatUsagePolicy.recordFinishedUsage({
     forceFreeTierLimits: false,
     inputTokens: usage?.inputTokens ?? estimatedInputTokens,
-    modelId: model.id,
-    outputTokens: usage?.outputTokens ?? ESTIMATED_OUTPUT_TOKENS,
+    modelId,
+    outputTokens: usage?.outputTokens ?? MAX_OUTPUT_TOKENS,
     reservationId: reservation.reservationId,
     userId: auth.userId,
   }).catch(async (error) => {
