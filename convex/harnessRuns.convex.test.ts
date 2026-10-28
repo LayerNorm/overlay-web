@@ -119,6 +119,69 @@ describe('durable harness runs', () => {
     expect(replay.snapshot.latestReceipt).toEqual(receipt)
   })
 
+  test('accepts free route interruptions with a released zero-cost hold and rejects paid or BYOK models', async () => {
+    const convex = convexTest(schema, modules)
+    const input = admission('route-interruption', await seedConversation(convex))
+    await admit(convex, input)
+    let state = (await apply(convex, input, 'route-interruption-reserve-0', 0, {
+      type: 'reserve_model', id: 'model:0', maxCostMicros: 0,
+    })).snapshot
+    state = (await apply(convex, input, 'route-interruption-dispatch-0', state.revision, {
+      type: 'bind_model_dispatch', id: 'model:0', modelId: 'openrouter/free', billingReservationId: null,
+    })).snapshot
+
+    for (let index = 0; index < 3; index += 1) {
+      const receipt = {
+        id: `model:${index}`,
+        modelId: 'openrouter/free',
+        provider: 'overlay-free-router',
+        inputTokens: 0,
+        outputTokens: 0,
+        reasoningTokens: 0,
+        cacheReadTokens: 0,
+        cacheWriteTokens: 0,
+        contextWindow: null,
+        costMicros: 0,
+        costSource: 'catalog' as const,
+        rejectionReason: 'route_interrupted' as const,
+      }
+      if (index > 0) {
+        state = (await apply(convex, input, `route-interruption-reserve-${index}`, state.revision, {
+          type: 'reserve_model', id: receipt.id, maxCostMicros: 0,
+        })).snapshot
+        state = (await apply(convex, input, `route-interruption-dispatch-${index}`, state.revision, {
+          type: 'bind_model_dispatch', id: receipt.id, modelId: 'openrouter/free', billingReservationId: null,
+        })).snapshot
+      }
+      state = (await apply(convex, input, `route-interruption-receipt-${index}`, state.revision, {
+        type: 'record_receipt', receipt,
+      })).snapshot
+      expect(state.modelReservation).toBeUndefined()
+      expect(state.routeInterruptionCount).toBe(index + 1)
+    }
+    expect((await get(convex, input.runId))?.routeInterruptionCount).toBe(3)
+
+    for (const [index, modelId] of ['fixture/paid', 'byok/connection/model'].entries()) {
+      const rejectedConvex = convexTest(schema, modules)
+      const rejectedInput = admission(`route-interruption-rejected-${index}`, await seedConversation(rejectedConvex))
+      await admit(rejectedConvex, rejectedInput)
+      let reserved = (await apply(rejectedConvex, rejectedInput, 'reserve', 0, {
+        type: 'reserve_model', id: 'model:0', maxCostMicros: 0,
+      })).snapshot
+      reserved = (await apply(rejectedConvex, rejectedInput, 'dispatch', reserved.revision, {
+        type: 'bind_model_dispatch', id: 'model:0', modelId, billingReservationId: null,
+      })).snapshot
+      await expect(apply(rejectedConvex, rejectedInput, 'reject', reserved.revision, {
+        type: 'record_receipt',
+        receipt: {
+          id: 'model:0', modelId, provider: 'overlay-free-router',
+          inputTokens: 0, outputTokens: 0, reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0,
+          contextWindow: null, costMicros: 0, costSource: 'catalog', rejectionReason: 'route_interrupted',
+        },
+      })).rejects.toThrow(/route interruption requires/i)
+    }
+  })
+
   test.each([
     { parentRequiresPlan: true, parentToolIds: ['write_file'], childToolIds: ['write_file'], requiresPlan: true },
     { parentRequiresPlan: true, parentToolIds: ['read_file', 'write_file'], childToolIds: ['read_file'], requiresPlan: false },

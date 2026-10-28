@@ -17,13 +17,14 @@ export function isConfirmedHarnessModelRejection(error: unknown): boolean {
 // timeouts, 5xx responses and stream failures retain their unresolved holds.
 export async function recordHarnessModelRejection(
   reference: HarnessModelReference,
-  reason: 'budget' | 'model_unavailable' | 'route_capacity',
+  reason: 'budget' | 'model_unavailable' | 'route_capacity' | 'route_interrupted',
 ): Promise<void> {
   if (reference.personal && reference.native) throw new FatalError('Model rejection has ambiguous execution authority.')
   const input = reference.personal ?? reference.native
   if (!input || isByokModelId(reference.modelId)) throw new FatalError('Cannot reject an external model dispatch.')
-  if (reason === 'route_capacity' && reference.modelId !== OPENROUTER_FREE_MODEL_ID && reference.modelId !== OVERLAY_FREE_MODEL_ID) {
-    throw new FatalError('Only the free router can confirm a capacity rejection.')
+  if ((reason === 'route_capacity' || reason === 'route_interrupted')
+    && reference.modelId !== OPENROUTER_FREE_MODEL_ID && reference.modelId !== OVERLAY_FREE_MODEL_ID) {
+    throw new FatalError('Only the free router can record this rejection.')
   }
   const state = await readHarnessState(input.access)
   if (state.workflowRunId !== input.access.workflowRunId) throw new FatalError('Model rejection has no execution owner.')
@@ -34,6 +35,10 @@ export async function recordHarnessModelRejection(
     || (reason !== 'budget' && hold.dispatch?.modelId !== reference.modelId)) {
     throw new FatalError('Model rejection has no matching dispatch.')
   }
+  if (reason === 'route_interrupted'
+    && (hold.maxCostMicros !== 0 || hold.dispatch?.billingReservationId !== null)) {
+    throw new FatalError('A route interruption requires a zero-cost dispatch without a billing reservation.')
+  }
   if (hold.dispatch?.billingReservationId) {
     await releaseProviderBudgetReservation({ userId: input.access.actorUserId,
       reservationId: hold.dispatch.billingReservationId, reason: reason === 'route_capacity'
@@ -43,7 +48,7 @@ export async function recordHarnessModelRejection(
   await applyHarnessOperation(input.access, `rejected:${input.receiptId}`, {
     type: 'record_receipt', receipt: {
       id: input.receiptId, modelId: reference.modelId,
-      provider: reason === 'budget' ? 'overlay-admission' : reason === 'route_capacity' ? 'overlay-free-router' : 'gateway',
+      provider: reason === 'budget' ? 'overlay-admission' : reason === 'route_capacity' || reason === 'route_interrupted' ? 'overlay-free-router' : 'gateway',
       inputTokens: 0, outputTokens: 0, reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0,
       contextWindow: input.contextWindow, costMicros: 0, costSource: 'catalog', rejectionReason: reason,
     },

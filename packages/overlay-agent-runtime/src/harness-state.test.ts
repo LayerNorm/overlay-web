@@ -16,7 +16,7 @@ const now = 1_000
 test('a rejection receipt cannot conceal consumed tokens or unknown costs', () => {
   const receipt: HarnessReceipt = { id: 'rejected', modelId: 'model', provider: 'overlay-admission', inputTokens: 0, outputTokens: 0,
     reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, contextWindow: null, costMicros: 0, costSource: 'catalog', rejectionReason: 'budget' }
-  for (const rejectionReason of ['budget', 'model_unavailable', 'route_capacity', 'summary_failed'] as const) {
+  for (const rejectionReason of ['budget', 'model_unavailable', 'route_capacity', 'route_interrupted', 'summary_failed'] as const) {
     validateHarnessReceipt({ ...receipt, rejectionReason })
     for (const delta of [{ inputTokens: 1 }, { outputTokens: 1 }, { costMicros: 1 }, { externalCostMicros: null }, { costSource: 'provider' as const }]) {
       assert.throws(() => validateHarnessReceipt({ ...receipt, rejectionReason, ...delta }), /confirmed zero/)
@@ -27,6 +27,29 @@ const make = () => createHarnessSnapshot({ runId: 'root', goal: 'Produce a check
   actorUserId: 'user', allowedToolIds: ['read', 'write'], requiresPlan: true,
   deadlineAt: 10_000, maxCostMicros: 100, maxParallelChildren: 2, maxDepth: 1,
 } }, now)
+
+test('route interruption receipts count durably toward the per-run retry cap', () => {
+  let state = make()
+  for (let index = 0; index < 3; index += 1) {
+    state = recordHarnessReceipt(state, {
+      id: `model:${index}`,
+      modelId: 'openrouter/free',
+      provider: 'overlay-free-router',
+      inputTokens: 0,
+      outputTokens: 0,
+      reasoningTokens: 0,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+      contextWindow: null,
+      costMicros: 0,
+      costSource: 'catalog',
+      rejectionReason: 'route_interrupted',
+    }, now)
+  }
+  assert.equal(state.routeInterruptionCount, 3)
+  assert.equal(state.latestReceipt?.rejectionReason, 'route_interrupted')
+})
+
 const steps: HarnessPlanInput[] = [
   { id: 'read', title: 'Read source', acceptanceCriteria: ['Source read'], dependsOn: [], requiresVerification: false, evidenceTools: ['read', 'write'] },
   { id: 'report', title: 'Check report', acceptanceCriteria: ['Figures checked'], dependsOn: ['read'], requiresVerification: true, evidenceTools: ['read', 'write'] },

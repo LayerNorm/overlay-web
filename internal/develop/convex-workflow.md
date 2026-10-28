@@ -208,6 +208,10 @@ can support it, and a tool result can support only one action milestone.
 Read-only runs can answer without action milestones by using one answer-only
 milestone. Native descendants derive the same policy from their admitted tools.
 Personal Chat and Work roots and descendants remain plan-optional.
+When OpenRouter cost confirmation proves an interrupted free-route stream cost
+zero, the Harness records a durable `route_interrupted` receipt and immediately
+retries the same model. It permits two such retries per run; a third interruption
+fails the run.
 Tool-result evidence includes a SHA-256 digest over the tool name and
 recursively key-sorted input. Personal and
 native Harness runs reject an identical successful repeat of create_note,

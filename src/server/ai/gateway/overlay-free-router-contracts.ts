@@ -59,6 +59,7 @@ export type OverlayFreeRouterOptions = {
   repository: OverlayFreeRepository
   providers: OverlayFreeProviderFactory
   preflight: (route: OverlayFreeRoute) => Promise<{ capabilities: FreeRouteCapabilities } | null>
+  confirmOpenRouterGenerationCost?: (generationId: string) => Promise<boolean>
   now?: () => number
   onModelCaptured?: (modelId: string) => void
   modelId?: typeof OVERLAY_FREE_MODEL_ID | typeof OPENROUTER_FREE_MODEL_ID
@@ -94,6 +95,7 @@ export type OverlayFreeAttempt = {
   claimTime: number
   controller: AbortController
   settled: boolean
+  generationId?: string
 }
 
 export type OverlayFreePreparedAttempt = {
@@ -118,6 +120,7 @@ export type OverlayFreeStreamContext = {
     deadline: number,
   ) => Promise<OverlayFreePreflight | null>
   model: (route: OverlayFreeRoute) => Promise<LanguageModelV4>
+  confirmOpenRouterGenerationCost?: (generationId: string) => Promise<boolean>
   now: () => number
   onModelCaptured?: (modelId: string) => void
 }

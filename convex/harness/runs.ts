@@ -149,7 +149,13 @@ const receiptValidator = v.object({
   costMicros: v.number(),
   costSource: v.optional(v.union(v.literal('provider'), v.literal('catalog'), v.literal('external'))),
   externalCostMicros: v.optional(v.union(v.number(), v.null())),
-  rejectionReason: v.optional(v.union(v.literal('budget'), v.literal('model_unavailable'), v.literal('route_capacity'), v.literal('summary_failed'))),
+  rejectionReason: v.optional(v.union(
+    v.literal('budget'),
+    v.literal('model_unavailable'),
+    v.literal('route_capacity'),
+    v.literal('route_interrupted'),
+    v.literal('summary_failed'),
+  )),
 })
 
 const childValidator = v.object({
@@ -279,6 +285,7 @@ function metadataFromSnapshot(snapshot: HarnessSnapshot): HarnessMetadata {
     lastContinuationProgressRevision: snapshot.lastContinuationProgressRevision,
     stalledContinuations: snapshot.stalledContinuations,
     ...(snapshot.latestReceipt === undefined ? {} : { latestReceipt: snapshot.latestReceipt }),
+    ...(snapshot.routeInterruptionCount === undefined ? {} : { routeInterruptionCount: snapshot.routeInterruptionCount }),
     ...(snapshot.modelReservation === undefined ? {} : { modelReservation: snapshot.modelReservation }),
     usage: snapshot.usage,
     updatedAt: snapshot.updatedAt,
@@ -1189,6 +1196,17 @@ async function applyReducer(
       }
     }
     case 'record_receipt':
+      if (operation.receipt.rejectionReason === 'route_interrupted') {
+        const reservation = current.modelReservation
+        if ((operation.receipt.modelId !== OPENROUTER_FREE_MODEL_ID && operation.receipt.modelId !== OVERLAY_FREE_MODEL_ID)
+          || operation.receipt.provider !== 'overlay-free-router'
+          || reservation?.id !== operation.receipt.id
+          || reservation.maxCostMicros !== 0
+          || reservation.dispatch?.modelId !== operation.receipt.modelId
+          || reservation.dispatch.billingReservationId !== null) {
+          throw new Error('A route interruption requires a matching zero-cost free-router dispatch without billing.')
+        }
+      }
       return { snapshot: recordHarnessReceipt(current, operation.receipt, now) }
     case 'checkpoint':
       return { snapshot: checkpointHarness(current, operation.summary, now) }

@@ -42,7 +42,7 @@ export type HarnessReceipt = {
   /** Present only for user-funded inference; null means the provider did not report its charge. */
   externalCostMicros?: number | null
   /** Zero-usage rejection or failure of a zero-cost summary attempt. */
-  rejectionReason?: 'budget' | 'model_unavailable' | 'route_capacity' | 'summary_failed'
+  rejectionReason?: 'budget' | 'model_unavailable' | 'route_capacity' | 'route_interrupted' | 'summary_failed'
 }
 
 export type HarnessPolicy = {
@@ -105,6 +105,7 @@ export type HarnessSnapshot = {
   lastContinuationProgressRevision: number
   stalledContinuations: number
   latestReceipt?: HarnessReceipt
+  routeInterruptionCount?: number
   modelReservation?: {
     id: string
     maxCostMicros: number
@@ -138,7 +139,7 @@ export function createHarnessSnapshot(input: {
     goal: input.goal, constraints: [...input.constraints],
     policy: { ...input.policy, allowedToolIds: [...new Set(input.policy.allowedToolIds)].sort() },
     status: 'running', revision: 0, progressRevision: 0, planRevision: 0, plan: [], evidence: [], children: [], workingSummary: '',
-    continuations: 0, lastContinuationProgressRevision: 0, stalledContinuations: 0,
+    continuations: 0, lastContinuationProgressRevision: 0, stalledContinuations: 0, routeInterruptionCount: 0,
     usage: { inputTokens: 0, outputTokens: 0, reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, costMicros: 0 },
     updatedAt: now,
   }
@@ -341,7 +342,7 @@ export function transitionHarnessStep(state: HarnessSnapshot, input: {
 
 export function validateHarnessReceipt(receipt: HarnessReceipt) {
   if (receipt.rejectionReason !== undefined && (
-    !['budget', 'model_unavailable', 'route_capacity', 'summary_failed'].includes(receipt.rejectionReason)
+    !['budget', 'model_unavailable', 'route_capacity', 'route_interrupted', 'summary_failed'].includes(receipt.rejectionReason)
     || [receipt.inputTokens, receipt.outputTokens, receipt.reasoningTokens, receipt.cacheReadTokens,
       receipt.cacheWriteTokens, receipt.costMicros].some(value => value !== 0)
     || receipt.costSource !== 'catalog' || receipt.externalCostMicros !== undefined
@@ -383,6 +384,9 @@ export function recordHarnessReceipt(state: HarnessSnapshot, receipt: HarnessRec
   const next = mutable(state)
   if (next.modelReservation?.id === receipt.id) next.modelReservation = undefined
   next.latestReceipt = { ...receipt }
+  if (receipt.rejectionReason === 'route_interrupted') {
+    next.routeInterruptionCount = (next.routeInterruptionCount ?? 0) + 1
+  }
   addHarnessUsage(next.usage, receiptUsage(receipt))
   return changed(next, now, false)
 }

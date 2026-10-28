@@ -1,6 +1,6 @@
 import { beforeEach, expect, test, vi } from 'vitest'
 import { MockLanguageModelV4 } from 'ai/test'
-import { OverlayFreeRouteBusyError } from '@/server/ai/gateway/overlay-free-router-errors'
+import { OverlayFreeRouteBusyError, OverlayFreeRouteInterruptedError } from '@/server/ai/gateway/overlay-free-router-errors'
 import type { HarnessModelReference } from './secure-model'
 import { secureModelDoGenerate, secureModelDoStream } from './secure-model-runtime'
 
@@ -53,4 +53,31 @@ test.each([
   failure = new OverlayFreeRouteBusyError()
   mocks.record.mockRejectedValueOnce(new Error('receipt storage failed'))
   await expect(invoke(dispatchReference, { prompt: [] })).rejects.toThrow('receipt storage failed')
+})
+
+test.each([reference, nativeReference])('records an async free-route interruption before rethrowing it', async dispatchReference => {
+  const interruption = new OverlayFreeRouteInterruptedError()
+  mocks.model.mockResolvedValue(new MockLanguageModelV4({
+    doStream: async () => ({
+      stream: new ReadableStream({ start: controller => controller.error(interruption) }),
+    }),
+  }))
+
+  const result = await secureModelDoStream(dispatchReference, { prompt: [] })
+  await expect(result.stream.getReader().read()).rejects.toBe(interruption)
+  expect(mocks.record).toHaveBeenCalledExactlyOnceWith(dispatchReference, 'route_interrupted')
+})
+
+test('BYOK stream interruptions do not create Harness rejection receipts', async () => {
+  const interruption = new OverlayFreeRouteInterruptedError()
+  const byok = { ...reference, modelId: 'byok/connection/model' }
+  mocks.model.mockResolvedValue(new MockLanguageModelV4({
+    doStream: async () => ({
+      stream: new ReadableStream({ start: controller => controller.error(interruption) }),
+    }),
+  }))
+
+  const result = await secureModelDoStream(byok, { prompt: [] })
+  await expect(result.stream.getReader().read()).rejects.toBe(interruption)
+  expect(mocks.record).not.toHaveBeenCalled()
 })

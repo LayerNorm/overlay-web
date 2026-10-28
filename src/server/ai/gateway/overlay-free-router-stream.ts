@@ -10,6 +10,7 @@ import {
   FREE_ROUTE_IDLE_TIMEOUT_MS,
   FREE_ROUTE_LEASE_MS,
   FREE_ROUTE_TIMEOUT_MS,
+  hasZeroPricing,
 } from '@/shared/ai/gateway/overlay-free-policy'
 import { logger } from '@/server/observability/logger'
 import {
@@ -20,7 +21,8 @@ import {
   type OverlayFreeStreamContext,
 } from './overlay-free-router-contracts'
 import { trustedOverlayFreeOptions } from './overlay-free-request-policy'
-import { OverlayFreeRouteBusyError } from './overlay-free-router-errors'
+import { OverlayFreeRouteBusyError, OverlayFreeRouteInterruptedError } from './overlay-free-router-errors'
+import { OPENROUTER_GENERATION_COST_MAX_DURATION_MS } from './openrouter-generation-cost'
 
 type AttemptTimers = {
   timer?: ReturnType<typeof setTimeout>
@@ -86,6 +88,7 @@ export async function doOverlayFreeStream({
   claim,
   preflight,
   model,
+  confirmOpenRouterGenerationCost,
   now,
   onModelCaptured,
 }: OverlayFreeStreamContext): Promise<LanguageModelV4StreamResult> {
@@ -274,6 +277,41 @@ export async function doOverlayFreeStream({
     }))
   }
 
+  const confirmInterruptedAtZeroCost = async (attempt: OverlayFreeAttempt): Promise<boolean> => {
+    if (!semantic || options.abortSignal?.aborted
+      || attempt.route.transport !== 'openrouter'
+      || !attempt.generationId
+      || !confirmOpenRouterGenerationCost) return false
+    try {
+      if (!hasZeroPricing(JSON.parse(attempt.route.pricingJson), ['prompt', 'completion'])) return false
+    } catch (_error) {
+      return false
+    }
+    const leaseExpiresAt = attempt.route.activeLeaseExpiresAt ?? attempt.claimTime + FREE_ROUTE_LEASE_MS
+    if (leaseExpiresAt - 15_000 - Date.now() < OPENROUTER_GENERATION_COST_MAX_DURATION_MS) return false
+    try {
+      return await confirmOpenRouterGenerationCost(attempt.generationId)
+    } catch (_error) {
+      return false
+    }
+  }
+
+  const settleConfirmedInterruption = async (attempt: OverlayFreeAttempt): Promise<void> => {
+    if (attempt.settled) return
+    const reason = 'interrupted after output; zero cost confirmed'
+    const receipt = { safe: true, cost: 0, reason }
+    attempt.settled = true
+    await store(repository.settle({
+      routeKey: attempt.route.routeKey,
+      leaseToken: attempt.token,
+      now: now(),
+      receipt,
+      safe: true,
+      cost: 0,
+      reason,
+    }))
+  }
+
   const advanceBeforeOutput = async () => {
     current = await safeOpenNext()
     resetPrelude()
@@ -302,6 +340,11 @@ export async function doOverlayFreeStream({
         await store(repository.cooldown(attempt.route.routeKey, attempt.token, now()))
       }
     } else {
+      if (semantic && await confirmInterruptedAtZeroCost(attempt)) {
+        await settleConfirmedInterruption(attempt)
+        if (closed) return
+        throw new OverlayFreeRouteInterruptedError()
+      }
       await settleUnsafe(attempt, semantic ? 'stream error after output' : 'missing receipt')
     }
     if (closed) return
@@ -357,6 +400,10 @@ export async function doOverlayFreeStream({
       if (part.type === 'response-metadata' && typeof part.modelId === 'string') {
         responseModelId = part.modelId
       }
+      if (part.type === 'response-metadata' && typeof part.id === 'string'
+        && /^gen-[0-9A-Za-z-]+$/.test(part.id)) {
+        current!.generationId = part.id
+      }
       if (!semantic) {
         const encoded = JSON.stringify(part)
         if (preludeParts.has(encoded)) return 'continue'
@@ -407,6 +454,14 @@ export async function doOverlayFreeStream({
       await current.reader.cancel().catch((_error) => undefined)
       if (closed) return false
       if (!current.settled) {
+        if (semantic && await confirmInterruptedAtZeroCost(current)) {
+          await settleConfirmedInterruption(current)
+          if (!closed) {
+            closed = true
+            controller.error(new OverlayFreeRouteInterruptedError())
+          }
+          return false
+        }
         await settleUnsafe(current, semantic ? 'stream interrupted after output' : 'missing receipt')
       }
     }

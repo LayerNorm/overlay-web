@@ -67,6 +67,37 @@ test('capacity rejection releases only a matching free-router dispatch with a ze
   expect(mocks.apply).toHaveBeenCalledOnce()
 })
 
+test('route interruptions require a free zero-cost unbilled dispatch and do not release billing', async () => {
+  const free = { ...reference, modelId: 'openrouter/free' }
+  const freeHold = {
+    id: 'model:0',
+    maxCostMicros: 0,
+    dispatch: { modelId: free.modelId, billingReservationId: null },
+  }
+  mocks.read.mockResolvedValue({ ...state, modelReservation: freeHold })
+  await recordHarnessModelRejection(free, 'route_interrupted')
+  expect(mocks.apply).toHaveBeenCalledWith(free.personal!.access, 'rejected:model:0', expect.objectContaining({
+    receipt: expect.objectContaining({
+      rejectionReason: 'route_interrupted',
+      provider: 'overlay-free-router',
+      inputTokens: 0,
+      outputTokens: 0,
+      costMicros: 0,
+    }),
+  }))
+  expect(mocks.release).not.toHaveBeenCalled()
+
+  await expect(recordHarnessModelRejection(reference, 'route_interrupted')).rejects.toThrow('Only the free router')
+  await expect(recordHarnessModelRejection({ ...free, modelId: 'byok/key/model' }, 'route_interrupted')).rejects.toThrow('external')
+  mocks.read.mockResolvedValue({ ...state, modelReservation: { ...freeHold, maxCostMicros: 1 } })
+  await expect(recordHarnessModelRejection(free, 'route_interrupted')).rejects.toThrow('zero-cost dispatch')
+  mocks.read.mockResolvedValue({ ...state, modelReservation: {
+    ...freeHold, dispatch: { modelId: free.modelId, billingReservationId: 'billing' },
+  } })
+  await expect(recordHarnessModelRejection(free, 'route_interrupted')).rejects.toThrow('zero-cost dispatch')
+  expect(mocks.release).not.toHaveBeenCalled()
+})
+
 test('native confirmed rejection retains the same receipt and billing safeguards', async () => {
   const native = {
     access: { actorUserId: 'user', runId: 'workspace:delivery', workflowRunId: 'workflow', workspaceId: 'workspace',

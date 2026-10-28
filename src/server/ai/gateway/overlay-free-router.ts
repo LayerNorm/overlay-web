@@ -35,6 +35,7 @@ import {
   trustedOverlayFreeOptions,
 } from './overlay-free-request-policy'
 import { doOverlayFreeStream } from './overlay-free-router-stream'
+import { confirmOpenRouterGenerationCost } from './openrouter-generation-cost'
 import { getOrCreateGateway, getGatewayModelId, resolveOpenRouterApiKey } from './gateway-runtime'
 import { lazyConvex as convex } from '@/server/database/lazy-convex'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
@@ -320,6 +321,7 @@ class OverlayFreeLanguageModel implements LanguageModelV4 {
       claim: (route) => this.claim(route),
       preflight: (route, token, callOptions, deadlineAt) => this.preflight(route, token, callOptions, deadlineAt),
       model: (route) => this.model(route),
+      confirmOpenRouterGenerationCost: this.config.confirmOpenRouterGenerationCost,
       now: () => this.clock(),
       onModelCaptured: this.config.onModelCaptured,
     })
@@ -409,6 +411,10 @@ export async function createRuntimeOverlayFreeLanguageModel(options: {
     onModelCaptured: options.onModelCaptured,
     modelId: options.modelId,
     fallbackOnly: options.fallbackOnly,
+    confirmOpenRouterGenerationCost: async (generationId) => {
+      const apiKey = await resolveOpenRouterApiKey()
+      return apiKey ? confirmOpenRouterGenerationCost(generationId, apiKey) : false
+    },
     providers: {
       gateway: async (modelId) => (await getOrCreateGateway())(modelId),
       openrouter: async () => {

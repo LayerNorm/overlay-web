@@ -434,11 +434,11 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
         recoveredModel = true
       }
     }
+    if (recoveredModel) continue
     // WorkflowAgent returns its system prompt in history. Rebuild it exclusively
     // from trusted instructions and current durable state on every invocation.
     messages = invocationMessages.filter(message => message.role !== 'system')
     steps.push(...invocationSteps)
-    if (recoveredModel) continue
     const updatedState = await ports.read()
     const finishReason = invocationSteps.at(-1)?.finishReason
     if (await terminateOnProviderFailure(updatedState, finishReason, ports, segment)) continue

@@ -1,7 +1,8 @@
-import type { LanguageModelV4CallOptions } from '@ai-sdk/provider'
+import type { LanguageModelV4CallOptions, LanguageModelV4StreamPart } from '@ai-sdk/provider'
 import { extractReasoningMiddleware, wrapLanguageModel } from 'ai'
 import { getLanguageModel } from '@/server/ai/model-runtime'
-import { OverlayFreeRouteBusyError } from '@/server/ai/gateway/overlay-free-router-errors'
+import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
+import { OverlayFreeRouteBusyError, OverlayFreeRouteInterruptedError } from '@/server/ai/gateway/overlay-free-router-errors'
 import type { HarnessModelReference } from './secure-model'
 
 async function model(reference: HarnessModelReference) {
@@ -22,6 +23,37 @@ async function recordConfirmedRejection(reference: HarnessModelReference, error:
   if (isConfirmedHarnessModelRejection(error)) await recordHarnessModelRejection(reference, 'model_unavailable')
 }
 
+function captureRouteInterruption(
+  reference: HarnessModelReference,
+  stream: ReadableStream<LanguageModelV4StreamPart>,
+): ReadableStream<LanguageModelV4StreamPart> {
+  if ((!reference.personal && !reference.native) || isByokModelId(reference.modelId)) return stream
+  const reader = stream.getReader()
+  return new ReadableStream({
+    async pull(controller) {
+      try {
+        const result = await reader.read()
+        if (result.done) controller.close()
+        else controller.enqueue(result.value)
+      } catch (error) {
+        try {
+          if (error instanceof OverlayFreeRouteInterruptedError) {
+            const { recordHarnessModelRejection } = await import('./model-rejection')
+            await recordHarnessModelRejection(reference, 'route_interrupted')
+          }
+        } catch (receiptError) {
+          controller.error(receiptError)
+          return
+        }
+        controller.error(error)
+      }
+    },
+    cancel(reason) {
+      return reader.cancel(reason)
+    },
+  })
+}
+
 export async function secureModelDoStream(reference: HarnessModelReference, options: LanguageModelV4CallOptions) {
   let result: Awaited<ReturnType<Awaited<ReturnType<typeof model>>['doStream']>>
   try {
@@ -30,9 +62,10 @@ export async function secureModelDoStream(reference: HarnessModelReference, opti
     await recordConfirmedRejection(reference, error)
     throw error
   }
-  if (!reference.native?.streamToDelivery) return result
+  const stream = captureRouteInterruption(reference, result.stream)
+  if (!reference.native?.streamToDelivery) return { ...result, stream }
   const { projectNativeHarnessStream } = await import('./native-model-stream')
-  return { ...result, stream: await projectNativeHarnessStream(reference, result.stream) }
+  return { ...result, stream: await projectNativeHarnessStream(reference, stream) }
 }
 
 export async function secureModelDoGenerate(reference: HarnessModelReference, options: LanguageModelV4CallOptions) {

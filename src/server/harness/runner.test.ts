@@ -92,7 +92,27 @@ function fixture(requiresPlan = true, extraAllowedToolIds: string[] = []) {
     waitForInput: async () => null,
     waitForApproval: async () => null,
   }
-  return { ports, receipts, sdkSteps }
+  return {
+    ports,
+    receipts,
+    sdkSteps,
+    recordInterruption: (id: string) => {
+      current = state.recordHarnessReceipt(current, {
+        id,
+        modelId: 'openrouter/free',
+        provider: 'overlay-free-router',
+        inputTokens: 0,
+        outputTokens: 0,
+        reasoningTokens: 0,
+        cacheReadTokens: 0,
+        cacheWriteTokens: 0,
+        contextWindow: 1000,
+        costMicros: 0,
+        costSource: 'catalog',
+        rejectionReason: 'route_interrupted',
+      }, Date.now())
+    },
+  }
 }
 
 const input = { instructions: 'Use the tools to perform the requested work.', messages: [{ role: 'user' as const, content: 'Read the records.' }], model: { modelId: 'fixture/model', credentialOwnerId: 'user' } }
@@ -636,4 +656,87 @@ test('tool execution errors continue with the SDK tool-error result instead of b
   expect(waitForApproval).not.toHaveBeenCalled()
   expect(provider.doStreamCalls.length).toBeGreaterThan(1)
   expect(JSON.stringify(provider.doStreamCalls.at(-1)?.prompt)).toContain('Plain tool execution failure.')
+})
+
+test('a recovered stream failure does not persist its partial invocation messages or steps', async () => {
+  const f = fixture(false)
+  const recover = vi.fn(async (receiptId: string) => {
+    f.recordInterruption(receiptId)
+    return true
+  })
+  f.ports.recoverModelFailure = recover
+  let invocation = 0
+  const provider = new MockLanguageModelV4({
+    doStream: async () => {
+      invocation += 1
+      if (invocation === 1) {
+        return {
+          stream: new ReadableStream<LanguageModelV4StreamPart>({
+            start(controller) {
+              controller.enqueue({ type: 'stream-start', warnings: [] })
+              controller.enqueue({ type: 'text-start', id: 'partial' })
+              controller.enqueue({ type: 'text-delta', id: 'partial', delta: 'Partial failed invocation.' })
+              controller.error(new Error('stream interruption'))
+            },
+          }),
+        }
+      }
+      return {
+        stream: new ReadableStream<LanguageModelV4StreamPart>({
+          start(controller) {
+            controller.enqueue({ type: 'stream-start', warnings: [] })
+            controller.enqueue({ type: 'text-start', id: 'final' })
+            controller.enqueue({ type: 'text-delta', id: 'final', delta: 'Recovered final answer.' })
+            controller.enqueue({ type: 'text-end', id: 'final' })
+            controller.enqueue({
+              type: 'finish',
+              finishReason: { unified: 'stop', raw: 'fixture' },
+              usage: {
+                inputTokens: { total: 10, noCache: 2, cacheRead: 8, cacheWrite: 0 },
+                outputTokens: { total: 1, text: 1, reasoning: 0 },
+              },
+            })
+            controller.close()
+          },
+        }),
+      }
+    },
+  })
+  vi.mocked(getLanguageModel).mockResolvedValue(provider)
+
+  const result = await runOverlayHarness({ ...input, model: { ...input.model, modelId: 'openrouter/free' }, tools: {} }, f.ports)
+
+  expect(recover).toHaveBeenCalledExactlyOnceWith('model:0')
+  expect(provider.doStreamCalls).toHaveLength(2)
+  expect(result.snapshot.resultSummary).toBe('Recovered final answer.')
+  expect(JSON.stringify({ messages: result.messages, steps: result.steps })).not.toContain('Partial failed invocation.')
+})
+
+test('two recovered interruptions retry before the third interruption fails the run', async () => {
+  const f = fixture(false)
+  let interruptions = 0
+  const recover = vi.fn(async (receiptId: string) => {
+    f.recordInterruption(receiptId)
+    interruptions += 1
+    return interruptions <= 2
+  })
+  f.ports.recoverModelFailure = recover
+  const provider = new MockLanguageModelV4({
+    doStream: async () => ({
+      stream: new ReadableStream<LanguageModelV4StreamPart>({
+        start(controller) {
+          controller.enqueue({ type: 'stream-start', warnings: [] })
+          controller.enqueue({ type: 'text-start', id: 'partial' })
+          controller.enqueue({ type: 'text-delta', id: 'partial', delta: 'Interrupted output.' })
+          controller.error(new Error('stream interruption'))
+        },
+      }),
+    }),
+  })
+  vi.mocked(getLanguageModel).mockResolvedValue(provider)
+
+  await expect(runOverlayHarness({ ...input, model: { ...input.model, modelId: 'openrouter/free' }, tools: {} }, f.ports)).rejects.toThrow()
+
+  expect(recover).toHaveBeenCalledTimes(3)
+  expect(provider.doStreamCalls).toHaveLength(3)
 })

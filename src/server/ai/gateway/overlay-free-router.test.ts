@@ -3,7 +3,8 @@ import test from 'node:test'
 import { generateText, stepCountIs, tool } from 'ai'
 import { z } from 'zod/v3'
 import { getGatewayLanguageModel } from './ai-gateway'
-import { OverlayFreeRouteBusyError } from './overlay-free-router-errors'
+import { OverlayFreeRouteBusyError, OverlayFreeRouteInterruptedError } from './overlay-free-router-errors'
+import { confirmOpenRouterGenerationCost as confirmGenerationCost } from './openrouter-generation-cost'
 import type { LanguageModelV4, LanguageModelV4CallOptions, LanguageModelV4StreamPart } from '@ai-sdk/provider'
 import {
   createOverlayFreeLanguageModel,
@@ -27,7 +28,7 @@ function route(transport: 'gateway' | 'openrouter', modelId: string, provider: s
       supportsVision: true,
       supportsJson: true,
     }),
-    pricingJson: JSON.stringify({ input: '0', output: '0' }),
+    pricingJson: JSON.stringify({ prompt: '0', completion: '0' }),
     catalogVerifiedAt: now,
     catalogExpiresAt: now + 3_600_000,
     generation: 1,
@@ -74,6 +75,7 @@ function abortableStream(
   emitFirstChunk: boolean,
   intervalMs?: number,
   finishAfterChunks?: number,
+  generationId?: string,
 ): ReadableStream<LanguageModelV4StreamPart> {
   let timer: ReturnType<typeof setTimeout> | undefined
   let chunkCount = 0
@@ -85,6 +87,14 @@ function abortableStream(
       controllerRef = controller
       if (signal?.aborted) onAbort()
       else signal?.addEventListener('abort', onAbort, { once: true })
+      if (generationId) {
+        controller.enqueue({
+          type: 'response-metadata',
+          id: generationId,
+          modelId: 'openrouter/free',
+          headers: {},
+        })
+      }
       if (emitFirstChunk) controller.enqueue({ type: 'text-delta', id: 'timed-text-0', delta: 'a' })
     },
     pull(controller) {
@@ -141,6 +151,78 @@ function dependencies(routes: OverlayFreeRoute[], calls: string[], overrides: Pa
       capabilities: JSON.parse(value.capabilitiesJson),
     }),
   }
+}
+
+function interruptionSetup(input: {
+  candidate?: OverlayFreeRoute
+  generationId?: string
+  status: number
+  body?: unknown
+  leaseDurationMs?: number
+  failAfterOutput?: boolean
+}) {
+  const calls: string[] = []
+  const settlements: Parameters<NonNullable<OverlayFreeRepository['settle']>>[0][] = []
+  const candidate = input.candidate ?? route('openrouter', 'openrouter/free', 'openrouter')
+  const deps = dependencies([candidate], calls, {
+    settle: async settlement => { settlements.push(settlement) },
+  })
+  if (input.leaseDurationMs !== undefined) {
+    const claim = deps.repository.claim
+    deps.repository.claim = async (routeKey, leaseToken, generation, purpose) => {
+      const claimed = await claim(routeKey, leaseToken, generation, purpose)
+      return {
+        ...claimed,
+        route: claimed.route
+          ? { ...claimed.route, activeLeaseExpiresAt: Date.now() + input.leaseDurationMs! }
+          : null,
+      }
+    }
+  }
+  let requests = 0
+  const confirmOpenRouterGenerationCost = (generationId: string) => confirmGenerationCost(
+    generationId,
+    'server-key',
+    {
+      fetcher: async () => {
+        requests += 1
+        return new Response(input.body === undefined ? null : JSON.stringify(input.body), { status: input.status })
+      },
+      sleep: async () => undefined,
+      timeoutSignal: () => new AbortController().signal,
+    },
+  )
+  const routed = createOverlayFreeLanguageModel({
+    ...deps,
+    confirmOpenRouterGenerationCost,
+    providers: {
+      gateway: async () => model('gateway', async () => openRouterReceipt(), request =>
+        abortableStream(request, true, undefined, undefined, input.generationId)),
+      openrouter: async () => model('openrouter', async () => openRouterReceipt(), request => {
+        if (!input.failAfterOutput) return abortableStream(request, true, undefined, undefined, input.generationId)
+        let emitted = false
+        return new ReadableStream<LanguageModelV4StreamPart>({
+          start(controller) {
+            controller.enqueue({
+              type: 'response-metadata',
+              id: input.generationId,
+              modelId: 'openrouter/free',
+              headers: {},
+            })
+          },
+          pull(controller) {
+            if (!emitted) {
+              emitted = true
+              controller.enqueue({ type: 'text-delta', id: 'interrupt-text', delta: 'partial' })
+            } else {
+              controller.error(new Error('upstream stream interrupted'))
+            }
+          },
+        })
+      }),
+    },
+  })
+  return { routed, requests: () => requests, settlements, calls }
 }
 
 function gatewayReceipt(modelId: string, provider: string, cost = '0') {
@@ -901,4 +983,186 @@ test('the absolute lease cap aborts a never-ending steady stream before lease ex
     t.mock.timers.tick(milliseconds)))
   assert.ok(Date.now() < leaseExpiresAt)
   assert.deepEqual(calls, ['settle:openrouter:openrouter/free:openrouter:false'])
+})
+
+test('a confirmed zero-cost interruption settles safely and the idle timer remains 90 seconds', async (t) => {
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'] })
+  const body = {
+    data: { id: 'gen-confirmed', total_cost: 0, is_byok: false, upstream_inference_cost: null },
+  }
+  const setup = interruptionSetup({ generationId: 'gen-confirmed', status: 200, body })
+  const response = await setup.routed.doStream(options())
+  const reader = response.stream.getReader()
+  let part: ReadableStreamReadResult<LanguageModelV4StreamPart>
+  do {
+    part = await reader.read()
+  } while (!part.done && part.value?.type !== 'text-delta')
+
+  const interrupted = reader.read()
+  await Promise.resolve()
+  await Promise.resolve()
+  t.mock.timers.tick(30_000)
+  await Promise.resolve()
+  assert.equal(setup.requests(), 0)
+  t.mock.timers.tick(60_000)
+  await assert.rejects(interrupted, OverlayFreeRouteInterruptedError)
+
+  assert.equal(setup.requests(), 1)
+  assert.equal(setup.settlements.length, 1)
+  assert.equal(setup.settlements[0]?.safe, true)
+  assert.equal(setup.settlements[0]?.cost, 0)
+  assert.equal(setup.settlements[0]?.reason, 'interrupted after output; zero cost confirmed')
+  assert.deepEqual(setup.settlements[0]?.receipt, {
+    safe: true, cost: 0, reason: 'interrupted after output; zero cost confirmed',
+  })
+})
+
+test('skips cost confirmation when the bounded lookup cannot fit before the lease margin', async () => {
+  const setup = interruptionSetup({
+    generationId: 'gen-short-lease',
+    status: 200,
+    body: { data: { id: 'gen-short-lease', total_cost: 0, is_byok: false, upstream_inference_cost: 0 } },
+    leaseDurationMs: 45_000,
+    failAfterOutput: true,
+  })
+  const reader = (await setup.routed.doStream(options())).stream.getReader()
+  let part: ReadableStreamReadResult<LanguageModelV4StreamPart>
+  do {
+    part = await reader.read()
+  } while (!part.done && part.value?.type !== 'text-delta')
+  await assert.rejects(reader.read())
+
+  assert.equal(setup.requests(), 0)
+  assert.equal(setup.settlements[0]?.safe, false)
+  assert.equal(setup.settlements[0]?.reason, 'stream interrupted after output')
+})
+
+const invalidGenerationCases = [
+  {
+    name: '404 on every poll',
+    status: 404,
+    expectedRequests: 6,
+    body: undefined,
+  },
+  {
+    name: 'positive total cost',
+    status: 200,
+    expectedRequests: 1,
+    body: { data: { id: 'gen-case', total_cost: 0.01, is_byok: false, upstream_inference_cost: 0 } },
+  },
+  {
+    name: 'BYOK generation',
+    status: 200,
+    expectedRequests: 1,
+    body: { data: { id: 'gen-case', total_cost: 0, is_byok: true, upstream_inference_cost: 0 } },
+  },
+  {
+    name: 'generation ID mismatch',
+    status: 200,
+    expectedRequests: 1,
+    body: { data: { id: 'gen-other', total_cost: 0, is_byok: false, upstream_inference_cost: 0 } },
+  },
+  {
+    name: 'nonzero upstream inference cost',
+    status: 200,
+    expectedRequests: 1,
+    body: { data: { id: 'gen-case', total_cost: 0, is_byok: false, upstream_inference_cost: 0.01 } },
+  },
+] as const
+
+for (const scenario of invalidGenerationCases) {
+  test(`unconfirmed ${scenario.name} retains unsafe settlement and quarantine reason`, async t => {
+    t.mock.timers.enable({ apis: ['Date', 'setTimeout'] })
+    const setup = interruptionSetup({
+      generationId: 'gen-case',
+      status: scenario.status,
+      body: scenario.body,
+    })
+    const reader = (await setup.routed.doStream(options())).stream.getReader()
+    let part: ReadableStreamReadResult<LanguageModelV4StreamPart>
+    do {
+      part = await reader.read()
+    } while (!part.done && part.value?.type !== 'text-delta')
+    const interrupted = reader.read()
+    await Promise.resolve()
+    await Promise.resolve()
+    t.mock.timers.tick(FREE_ROUTE_IDLE_TIMEOUT_MS)
+    await assert.rejects(interrupted)
+
+    assert.equal(setup.requests(), scenario.expectedRequests)
+    assert.equal(setup.settlements.length, 1)
+    assert.equal(setup.settlements[0]?.safe, false)
+    assert.equal(setup.settlements[0]?.reason, 'stream interrupted after output')
+  })
+}
+
+test('missing IDs, nonzero pricing and non-OpenRouter routes skip cost lookup', async t => {
+  const candidates = [
+    {
+      name: 'missing generation ID',
+      candidate: route('openrouter', 'openrouter/free', 'openrouter'),
+      generationId: undefined,
+    },
+    {
+      name: 'nonzero route pricing',
+      candidate: {
+        ...route('openrouter', 'openrouter/free', 'openrouter'),
+        pricingJson: JSON.stringify({ prompt: '0.01', completion: '0' }),
+      },
+      generationId: 'gen-route-pricing',
+    },
+    {
+      name: 'non-OpenRouter transport',
+      candidate: route('gateway', 'provider/free', 'provider'),
+      generationId: 'gen-gateway',
+    },
+  ] as const
+
+  for (const scenario of candidates) {
+    await t.test(scenario.name, async t => {
+      t.mock.timers.enable({ apis: ['Date', 'setTimeout'] })
+      const setup = interruptionSetup({
+        candidate: scenario.candidate,
+        generationId: scenario.generationId,
+        status: 200,
+        body: { data: { id: scenario.generationId, total_cost: 0, is_byok: false, upstream_inference_cost: 0 } },
+      })
+      const reader = (await setup.routed.doStream(options())).stream.getReader()
+      let part: ReadableStreamReadResult<LanguageModelV4StreamPart>
+      do {
+        part = await reader.read()
+      } while (!part.done && part.value?.type !== 'text-delta')
+      const interrupted = reader.read()
+      await Promise.resolve()
+      await Promise.resolve()
+      t.mock.timers.tick(FREE_ROUTE_IDLE_TIMEOUT_MS)
+      await assert.rejects(interrupted)
+
+      assert.equal(setup.requests(), 0)
+      assert.equal(setup.settlements[0]?.safe, false)
+      assert.equal(setup.settlements[0]?.reason, 'stream interrupted after output')
+    })
+  }
+})
+
+test('caller aborts after output never query OpenRouter generation cost', async t => {
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'] })
+  const setup = interruptionSetup({
+    generationId: 'gen-caller-abort',
+    status: 200,
+    body: { data: { id: 'gen-caller-abort', total_cost: 0, is_byok: false, upstream_inference_cost: 0 } },
+  })
+  const abort = new AbortController()
+  const reader = (await setup.routed.doStream({ ...options(), abortSignal: abort.signal })).stream.getReader()
+  let part: ReadableStreamReadResult<LanguageModelV4StreamPart>
+  do {
+    part = await reader.read()
+  } while (!part.done && part.value?.type !== 'text-delta')
+  const interrupted = reader.read()
+  await Promise.resolve()
+  abort.abort(new Error('caller stopped'))
+  await assert.rejects(interrupted)
+  assert.equal(setup.requests(), 0)
+  assert.equal(setup.settlements[0]?.safe, false)
+  assert.equal(setup.settlements[0]?.reason, 'stream interrupted after output')
 })

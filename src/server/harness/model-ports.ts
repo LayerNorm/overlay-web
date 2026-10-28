@@ -112,6 +112,10 @@ export function createHarnessModelPorts(input: {
         preparedCalls.delete(receiptId)
         return capacity.wait(state, receiptId, candidates[candidateIndex])
       }
+      if (receipt.rejectionReason === 'route_interrupted') {
+        preparedCalls.delete(receiptId)
+        return (state.routeInterruptionCount ?? 0) <= 2
+      }
       if (receipt.rejectionReason === 'summary_failed') return false
       if (candidateIndex + 1 >= candidates.length) return false
       const from = candidates[candidateIndex++]
