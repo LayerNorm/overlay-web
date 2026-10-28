@@ -2,6 +2,7 @@ import 'server-only'
 
 import { FatalError } from 'workflow'
 import type { HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
+import type { WorkspaceAccess } from '@overlay/workspace-contracts'
 import type { AgentRun } from '@/shared/agents/agent-run'
 import { isSharedRoom } from '@/shared/agents/room-access'
 import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
@@ -102,14 +103,65 @@ function assertNativeDelivery(
   }
 }
 
-function assertRoomIdentity(access: NativeHarnessAccess, context: NativeHarnessContext, room: Awaited<ReturnType<typeof loadRoomTurnContext>>) {
+type NativeRoomTurnContext = Awaited<ReturnType<typeof loadRoomTurnContext>>
+
+function hasActiveOverlayAgentParticipant(room: NativeRoomTurnContext, principalId: string): boolean {
+  const agent = room.directory.agents.some(candidate => candidate.principalId === principalId
+    && !candidate.archivedAt && candidate.harness === 'overlay')
+  const participant = room.participants.some(candidate => candidate.principalId === principalId
+    && candidate.principalType === 'agent')
+  return agent && participant
+}
+
+function parentMatchesNamedChild(
+  access: NativeHarnessAccess,
+  state: HarnessSnapshot,
+  parent: HarnessSnapshot | null,
+): boolean {
+  return Boolean(state.parentRunId && state.runId === access.runId && parent
+    && parent.runId === state.parentRunId
+    && parent.policy.actorUserId === access.actorUserId
+    && parent.policy.workspaceId === access.workspaceId)
+}
+
+async function resolveHumanPrincipalId(
+  access: NativeHarnessAccess,
+  state: HarnessSnapshot,
+  workspace: WorkspaceAccess,
+  room: NativeRoomTurnContext,
+): Promise<string> {
+  const humanPrincipalId = workspace.principal.id
+  if (workspace.workspace.id !== access.workspaceId || workspace.principal.type !== 'human') {
+    throw new FatalError('Native workspace identity changed.')
+  }
+  if (access.principalId === humanPrincipalId) return humanPrincipalId
+  if (!state.parentRunId || state.runId !== access.runId || access.principalId === access.agentPrincipalId) {
+    throw new FatalError('Native workspace identity changed.')
+  }
+  const parent = await new ConvexHarnessRepository().get({
+    actorUserId: access.actorUserId,
+    runId: state.parentRunId,
+  })
+  if (!parentMatchesNamedChild(access, state, parent)
+    || !hasActiveOverlayAgentParticipant(room, access.principalId)) {
+    throw new FatalError('Native workspace identity changed.')
+  }
+  return humanPrincipalId
+}
+
+function assertRoomIdentity(
+  access: NativeHarnessAccess,
+  context: NativeHarnessContext,
+  room: NativeRoomTurnContext,
+  humanPrincipalId: string,
+) {
   const agent = room.directory.agents.find(candidate => candidate.id === access.agentId)
   if (!agent || agent.archivedAt || agent.harness !== 'overlay' || agent.principalId !== access.agentPrincipalId
     || room.conversation.workspaceId !== access.workspaceId || room.conversation.deletedAt
     || (room.conversation.conversationType ?? 'personal') === 'personal') {
     throw new FatalError('Native agent or room access changed.')
   }
-  const human = room.participants.some(participant => participant.principalId === access.principalId && participant.principalType === 'human')
+  const human = room.participants.some(participant => participant.principalId === humanPrincipalId && participant.principalType === 'human')
   const author = room.participants.some(participant => participant.principalId === access.agentPrincipalId && participant.principalType === 'agent')
   if (!human || !author) throw new FatalError('Native room participation was revoked.')
   const shared = isSharedRoom({
@@ -158,11 +210,9 @@ export async function refreshNativeHarnessAccess(
       conversationId: asConversationId(access.conversationId), userId: access.actorUserId, agentRunId: access.agentRunId,
     }),
   ])
-  if (workspace.workspace.id !== access.workspaceId || workspace.principal.id !== access.principalId) {
-    throw new FatalError('Native workspace identity changed.')
-  }
+  const humanPrincipalId = await resolveHumanPrincipalId(access, state, workspace, room)
   assertNativeDelivery(access, state, delivery, run, allowCancelledToolProgress)
-  const agent = assertRoomIdentity(access, context, room)
+  const agent = assertRoomIdentity(access, context, room, humanPrincipalId)
   await assertNativeCapabilities(access, context, toolName)
   const gate = await actEntitlementService.gateModelPolicy({ effectiveModelId: context.modelId,
     userId: access.actorUserId, workspaceId: access.workspaceId, programmaticSubjectId: `agent:${access.agentId}` })

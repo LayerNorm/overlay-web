@@ -47,12 +47,88 @@ const room = () => ({
   participants: [{ principalId: 'human-principal', principalType: 'human' }, { principalId: 'agent-principal', principalType: 'agent' }],
 })
 
+function configureNamedChild(options: {
+  initiatorPrincipalId?: string
+  initiatorHarness?: string
+  initiatorArchivedAt?: number
+  includeInitiator?: boolean
+} = {}) {
+  const childRunId = 'workspace:child-delivery'
+  const childWorkflowRunId = 'child-workflow'
+  const childAgentPrincipalId = 'child-agent-principal'
+  const initiatorPrincipalId = options.initiatorPrincipalId ?? 'asking-agent-principal'
+  const childAccess: NativeHarnessAccess = {
+    ...access,
+    principalId: initiatorPrincipalId,
+    agentId: 'child-agent',
+    agentPrincipalId: childAgentPrincipalId,
+    agentRunId: 'child-delivery',
+    runId: childRunId,
+    workflowRunId: childWorkflowRunId,
+  }
+  const parentState = snapshot()
+  const childState = {
+    ...snapshot(),
+    runId: childRunId,
+    rootRunId: parentState.runId,
+    parentRunId: parentState.runId,
+    depth: 1,
+    workflowRunId: childWorkflowRunId,
+  }
+  mocks.state.mockImplementation(async ({ runId }: { runId: string }) => (
+    runId === childRunId ? childState : parentState
+  ))
+  mocks.workspace.mockResolvedValue({
+    workspace: { id: 'workspace' },
+    principal: { id: 'human-principal', type: 'human' },
+  })
+  const childAgent = {
+    id: 'child-agent',
+    principalId: childAgentPrincipalId,
+    harness: 'overlay',
+    modelId: 'fixture/model',
+    permissionMode: 'ask',
+  }
+  const initiatorAgent = {
+    id: 'asking-agent',
+    principalId: initiatorPrincipalId,
+    harness: options.initiatorHarness ?? 'overlay',
+    modelId: 'fixture/model',
+    permissionMode: 'ask',
+    ...(options.initiatorArchivedAt === undefined ? {} : { archivedAt: options.initiatorArchivedAt }),
+  }
+  const agents = [childAgent, ...(options.includeInitiator === false ? [] : [initiatorAgent])]
+  const participants = [
+    { principalId: 'human-principal', principalType: 'human' },
+    { principalId: childAgentPrincipalId, principalType: 'agent' },
+    ...(options.includeInitiator === false ? [] : [{ principalId: initiatorPrincipalId, principalType: 'agent' }]),
+  ]
+  mocks.room.mockResolvedValue({
+    ...room(),
+    directory: { agents },
+    participants,
+  })
+  mocks.run.mockResolvedValue({
+    ...delivery(),
+    id: childAccess.agentRunId,
+    agentId: childAccess.agentId,
+    agentPrincipalId: childAccess.agentPrincipalId,
+    harnessRunId: childRunId,
+    workflowRunId: childWorkflowRunId,
+    initiatorPrincipalId,
+  })
+  return childAccess
+}
+
 beforeEach(() => {
   vi.resetAllMocks()
   mocks.state.mockResolvedValue(snapshot())
   mocks.room.mockResolvedValue(room())
   mocks.run.mockResolvedValue(delivery())
-  mocks.workspace.mockResolvedValue({ workspace: { id: 'workspace' }, principal: { id: 'human-principal' } })
+  mocks.workspace.mockResolvedValue({
+    workspace: { id: 'workspace' },
+    principal: { id: 'human-principal', type: 'human' },
+  })
   mocks.gate.mockResolvedValue({ paid: true, runtimeEntitlements: { planKind: 'pro' }, appSettings: { onlyAllowZdrModels: true } })
   mocks.subject.mockResolvedValue({ userId: 'human' })
   mocks.capability.mockReturnValue({ allowed: true })
@@ -69,6 +145,31 @@ test('rechecks native identity and model policy without reserving or charging us
   expect(mocks.workspace).toHaveBeenCalledWith('human', 'workspace')
   expect(mocks.room).toHaveBeenCalledWith(expect.objectContaining({ messageId: 'question', conversationId: 'room' }))
   expect(result).not.toHaveProperty('accessToken')
+})
+
+test('allows a named child initiated by an Overlay agent in the room', async () => {
+  const childAccess = configureNamedChild()
+
+  await expect(refreshNativeHarnessAccess(childAccess, context))
+    .resolves.toMatchObject({ agent: { id: 'child-agent' }, paid: true })
+})
+
+test('rejects a root run whose principal differs from the human workspace principal', async () => {
+  await expect(refreshNativeHarnessAccess({ ...access, principalId: 'asking-agent-principal' }, context))
+    .rejects.toThrow('Native workspace identity changed.')
+})
+
+test('rejects named children initiated by agents absent from the room, archived, non-native, or self', async () => {
+  for (const options of [
+    { includeInitiator: false },
+    { initiatorArchivedAt: 1 },
+    { initiatorHarness: 'external' },
+    { initiatorPrincipalId: 'child-agent-principal' },
+  ]) {
+    const childAccess = configureNamedChild(options)
+    await expect(refreshNativeHarnessAccess(childAccess, context))
+      .rejects.toThrow('Native workspace identity changed.')
+  }
 })
 
 test('refuses legacy, foreign, cancelled and mismatched native delivery', async () => {
@@ -91,7 +192,15 @@ test('refuses revoked agents, participants, workspace identity and newly shared 
     mocks.room.mockResolvedValueOnce({ ...room(), participants: room().participants.filter(participant => participant.principalType !== excluded) })
     await expect(refreshNativeHarnessAccess(access, context)).rejects.toThrow(/participation/)
   }
-  mocks.workspace.mockResolvedValueOnce({ workspace: { id: 'other' }, principal: { id: 'human-principal' } })
+  mocks.workspace.mockResolvedValueOnce({
+    workspace: { id: 'other' },
+    principal: { id: 'human-principal', type: 'human' },
+  })
+  await expect(refreshNativeHarnessAccess(access, context)).rejects.toThrow(/workspace identity/)
+  mocks.workspace.mockResolvedValueOnce({
+    workspace: { id: 'workspace' },
+    principal: { id: 'human-principal', type: 'agent' },
+  })
   await expect(refreshNativeHarnessAccess(access, context)).rejects.toThrow(/workspace identity/)
   const shared = { ...room(), participants: [...room().participants, { principalId: 'new-reader', principalType: 'human' }] }
   mocks.room.mockResolvedValue(shared)
