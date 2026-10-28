@@ -518,6 +518,20 @@ capabilities only. Public marketing pages define their own canonical paths so
 they do not inherit the root homepage canonical.
 
 
+## Chat titles and new-agent startup
+
+Title events update the header, sidebar and list cache together. Optimistic list
+updates must preserve a known title when an incoming value is a placeholder.
+Agent threads generate a title from their first human message and preserve custom
+names. Title generation uses Auto's free routes with one shared 12-second provider
+deadline across server attempts; caller cancellation aborts generation too.
+
+After agent creation, carry its instructions to the new conversation as one pending
+user message. Consume it only when the human and expected solo agent are loaded;
+expire it after 60 seconds. Use the static greeting only for empty instructions.
+Agent-created automations also appear in Automations with the owning creature
+avatar. Sidebar rows without a conversation open the automation itself.
+
 ## Chat AI primitives (`@overlay/ui/ai`)
 
 Chat surfaces build on shadcn AI Elements primitives copied into `packages/overlay-ui/src/components/ui` and exported from `@overlay/ui/ai` (kept out of the main barrel so Shiki only loads where chat renders): `Message`, `Bubble`, `Trace`, `CodeBlock` (+ `useHighlightedCode`, Shiki JS engine, GitHub light/dark themes that presets never tint), `MessageScroller` (`@shadcn/react`), `Item`, `InputGroup`, `Attachment`, `HoverCard`, `Collapsible`, `Spinner`. Upstream semantic classes are rewritten to Overlay variables (`bg-(--surface-subtle)`, `text-(--muted)`, `text-(--danger)`); `--muted` is a text color here, so never add a `--color-muted` theme alias. Every Trace step uses the Orb in `TraceIcon`; a running step's title shimmers (CSS in `styles.css`, off under reduced motion).

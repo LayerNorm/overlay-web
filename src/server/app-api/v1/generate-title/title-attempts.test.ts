@@ -78,3 +78,76 @@ test('stops before starting an attempt after the time budget expires', async () 
   assert.deepEqual(result, { title: null, failed: false })
   assert.equal(calls, 1)
 })
+
+test('aborts a stalled provider at the shared deadline and waits for cleanup', async () => {
+  let calls = 0
+  let cleanedUp = false
+  let receivedSignal: AbortSignal | undefined
+  const result = await runTitleAttempts(async (signal) => {
+    calls++
+    receivedSignal = signal
+    try {
+      await new Promise<void>((_resolve, reject) => {
+        signal.addEventListener('abort', () => reject(signal.reason), { once: true })
+      })
+      return 'Unexpected title'
+    } finally {
+      await new Promise((resolve) => setTimeout(resolve, 5))
+      cleanedUp = true
+    }
+  }, { maxAttempts: 3, budgetMs: 20 })
+
+  assert.deepEqual(result, { title: null, failed: true })
+  assert.equal(calls, 1)
+  assert.equal(receivedSignal?.aborted, true)
+  assert.equal(cleanedUp, true)
+})
+
+test('caller cancellation stops the provider and prevents another attempt', async () => {
+  const caller = new AbortController()
+  let calls = 0
+  let cleanedUp = false
+  const reason = new Error('Client disconnected')
+  const result = await runTitleAttempts(async (signal) => {
+    calls++
+    try {
+      await new Promise<void>((_resolve, reject) => {
+        signal.addEventListener('abort', () => reject(signal.reason), { once: true })
+        caller.abort(reason)
+      })
+      return 'Unexpected title'
+    } finally {
+      cleanedUp = true
+    }
+  }, { maxAttempts: 3, budgetMs: 12_000, signal: caller.signal })
+
+  assert.deepEqual(result, { title: null, failed: true })
+  assert.equal(calls, 1)
+  assert.equal(cleanedUp, true)
+})
+
+test('does not start provider work for a caller that already cancelled', async () => {
+  const caller = new AbortController()
+  caller.abort()
+  let calls = 0
+  const result = await runTitleAttempts(async () => {
+    calls++
+    return 'Unexpected title'
+  }, { maxAttempts: 3, budgetMs: 12_000, signal: caller.signal })
+
+  assert.deepEqual(result, { title: null, failed: true })
+  assert.equal(calls, 0)
+})
+
+test('discards a title returned after cancellation', async () => {
+  const caller = new AbortController()
+  let calls = 0
+  const result = await runTitleAttempts(async () => {
+    calls++
+    caller.abort()
+    return 'Late title'
+  }, { maxAttempts: 3, budgetMs: 12_000, signal: caller.signal })
+
+  assert.deepEqual(result, { title: null, failed: true })
+  assert.equal(calls, 1)
+})

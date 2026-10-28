@@ -47,7 +47,8 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const estimatedInputTokens = Math.ceil(Math.min(text.length, MAX_PROMPT_CHARS) / 4) + 80
 
     const outcome = await runTitleAttempts(
-      () => generateTitleWithModel({
+      (abortSignal) => generateTitleWithModel({
+        abortSignal,
         chatUsagePolicy,
         context,
         entitlements,
@@ -59,6 +60,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       {
         maxAttempts: 3,
         budgetMs: 12_000,
+        signal: request.signal,
         onError: (error) => logger.warn('[ChatTitle][server] Title model failed', {
           modelId: FREE_TIER_AUTO_MODEL_ID,
           error,
@@ -78,6 +80,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
 }
 
 async function generateTitleWithModel({
+  abortSignal,
   chatUsagePolicy,
   context,
   entitlements,
@@ -86,6 +89,7 @@ async function generateTitleWithModel({
   prompt,
   workspaceId,
 }: {
+  abortSignal: AbortSignal
   chatUsagePolicy: ReturnType<typeof getOverlayServerContext>['chatUsagePolicy']
   context: AppApiRouteContext
   entitlements: Entitlements
@@ -112,17 +116,20 @@ async function generateTitleWithModel({
   if (!reservation.ok) return null
 
   let routedModelId: string | undefined
-  const languageModel = await createRuntimeOverlayFreeLanguageModel({
-    modelId: FREE_TIER_AUTO_MODEL_ID,
-    onModelCaptured: (capturedModelId) => { routedModelId = capturedModelId },
-  })
   let result: Awaited<ReturnType<typeof generateText>>
   try {
+    abortSignal.throwIfAborted()
+    const languageModel = await createRuntimeOverlayFreeLanguageModel({
+      modelId: FREE_TIER_AUTO_MODEL_ID,
+      onModelCaptured: (capturedModelId) => { routedModelId = capturedModelId },
+    })
+    abortSignal.throwIfAborted()
     await chatUsagePolicy.markReservationStarted({
       userId: auth.userId,
       reservationId: reservation.reservationId,
     })
     result = await generateText({
+      abortSignal,
       model: languageModel,
       instructions: TITLE_INSTRUCTIONS,
       temperature: 0.2,
