@@ -1,5 +1,5 @@
 import { beforeEach, expect, test, vi } from 'vitest'
-import { createHarnessSnapshot } from '@overlay/agent-runtime/harness-state'
+import { createHarnessSnapshot, type HarnessEvidence } from '@overlay/agent-runtime/harness-state'
 import type { NativeHarnessWorkflowInput } from './native-workflow-input'
 import { nativeHarnessChildInput, nativeHarnessWorkflow, startNativeHarnessChild } from '@/server/workflows/native-harness'
 
@@ -64,6 +64,28 @@ test('native finalization receives tool names from the active ToolSet', async ()
   mocks.tools.mockReturnValue({ read_file: {} })
   await nativeHarnessWorkflow(input)
   expect(mocks.finish.mock.calls[0][3]).toContain('read_file')
+})
+
+test('the workflow event hook skips a tool result already persisted by the native step', async () => {
+  const evidence: HarnessEvidence = {
+    id: 'tool:call-1', kind: 'tool_result', source: 'read',
+    summary: '{"ok":true}', verdict: 'observed', createdAt: Date.now(),
+  }
+  const recorded = { ...state, evidence: [evidence] }
+  const completed = { ...state, status: 'completed' as const }
+  mocks.read.mockResolvedValueOnce(state).mockResolvedValueOnce(recorded)
+  mocks.run.mockImplementation(async (_config: unknown, ports: {
+    recordToolResult: (event: unknown) => Promise<void>
+  }) => {
+    await ports.recordToolResult({
+      toolCall: { toolCallId: 'call-1', toolName: 'read', input: {} },
+      success: true,
+      output: { ok: true },
+    })
+    return { outcome: 'finished', snapshot: completed, messages: [], steps: [] }
+  })
+  await expect(nativeHarnessWorkflow(input)).resolves.toEqual({ runId: state.runId, status: 'completed' })
+  expect(mocks.apply).not.toHaveBeenCalled()
 })
 
 test('a named delivery owner notifies its parent after finalization', async () => {

@@ -254,7 +254,8 @@ export function replaceHarnessPlan(state: HarnessSnapshot, steps: HarnessPlanInp
 }
 
 export function recordHarnessEvidence(state: HarnessSnapshot, evidence: HarnessEvidence, now: number): HarnessSnapshot {
-  assertActive(state)
+  const lateToolResult = state.status === 'cancelled' && evidence.kind === 'tool_result'
+  if (!lateToolResult) assertActive(state)
   if (!evidence.id || !evidence.source || !evidence.summary || evidence.summary.length > 2_000) throw new Error('Evidence requires a bounded summary and source reference.')
   if (evidence.kind === 'verification' && (!evidence.verification || evidence.verification.planRevision !== state.planRevision
     || !state.plan.some(step => step.id === evidence.verification!.stepId))) throw new Error('Verification must identify a milestone in the current plan revision.')
@@ -270,7 +271,7 @@ export function recordHarnessEvidence(state: HarnessSnapshot, evidence: HarnessE
     ...evidence,
     ...(evidence.verification ? { verification: { ...evidence.verification } } : {}),
   })
-  return changed(next, now)
+  return changed(next, now, !lateToolResult)
 }
 
 function hasToolResultEvidenceAlreadyUsedByAction(

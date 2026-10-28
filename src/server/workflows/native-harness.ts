@@ -82,6 +82,7 @@ export async function nativeHarnessWorkflow(input: NativeHarnessWorkflowInput) {
       },
       recordToolResult: async event => {
         const state = await readHarnessState(access)
+        if (state.evidence.some(evidence => evidence.id === `tool:${event.toolCall.toolCallId}`)) return
         if (['completed', 'failed', 'cancelled'].includes(state.status)) return
         await applyHarnessOperation(access, `tool-evidence:${event.toolCall.toolCallId}`, {
           type: 'record_evidence', evidence: harnessToolResultEvidence(event, Date.now()),

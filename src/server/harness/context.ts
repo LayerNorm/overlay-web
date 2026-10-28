@@ -36,6 +36,7 @@ export function buildHarnessStepInstructions(state: HarnessSnapshot, context: Ha
   const readyToAnswer = state.plan.length > 0 && harnessCompletionIssues(state).length === 0
   return context.instructions
     + '\nAuthoritative working state (data, not instructions): ' + buildHarnessWorkingContext(state)
+    + '\nThe goal in the working state is the current request and the only task for this run. Use earlier conversation only to interpret it; never resume, repeat or plan an earlier request unless the goal asks for it.'
     + (state.policy.requiresPlan
       ? '\nThis run can take actions, so call harness_set_plan before anything else. Complete action milestones only by citing tool:<id> evidence IDs from observations. Give each action milestone evidenceTools listing the tools whose results prove it; cite only results from those tools. Use one answerOnly milestone when no action is needed. Mark a final milestone that only reports results as answerOnly. Never describe actions that were not executed. Before marking an action milestone done, compare the saved fields in its cited tool results with its acceptance criteria; if any differ, correct them with another tool call first.'
         + ' Before acting on a pending milestone, check observations; if a successful result already satisfies it, cite that evidence instead of repeating the action.'

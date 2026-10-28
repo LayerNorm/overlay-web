@@ -201,6 +201,9 @@ route continues to refuse Harness callers. Delivery owners persist bounded
 tool-invocation snapshots while tools run, and finalization replaces those
 snapshots with the authoritative transcript parts. Anonymous child deliveries
 do not write tool progress into the parent's room.
+Native tool steps persist tool results before returning, allowing a
+tool that finishes during Stop to retain its evidence; the workflow event hook
+skips evidence already recorded by the step.
 Native Harness roots require a durable plan when their effective tool set
 includes a write-capable tool. Action milestones require tool-result evidence.
 Each action milestone declares `evidenceTools`; only results from those tools

@@ -648,6 +648,32 @@ test('one tool-result observation supports one action milestone, while answer-on
   }, now).plan[0]?.status, 'done')
 })
 
+test('cancelled runs accept late tool results without advancing progress', () => {
+  const cancelled = terminateHarness(make(), 'cancelled', 'Stopped by the user.', now)
+  const evidence: HarnessEvidence = {
+    id: 'tool:call-1', kind: 'tool_result', source: 'create_note',
+    summary: 'Created the note.', verdict: 'observed', createdAt: now,
+  }
+  const recorded = recordHarnessEvidence(cancelled, evidence, now + 1)
+  assert.equal(recorded.status, 'cancelled')
+  assert.equal(recorded.terminalReason, cancelled.terminalReason)
+  assert.equal(recorded.revision, cancelled.revision + 1)
+  assert.equal(recorded.progressRevision, cancelled.progressRevision)
+  assert.deepEqual(recorded.evidence, [evidence])
+  assert.equal(recordHarnessEvidence(recorded, { ...evidence, createdAt: now + 2 }, now + 2), recorded)
+
+  for (const kind of ['verification', 'user_input'] as const) {
+    assert.throws(() => recordHarnessEvidence(cancelled, {
+      ...evidence, id: `${kind}-late`, kind,
+    }, now + 1), /The run is terminal/)
+  }
+  const completed = { ...make(), status: 'completed' as const }
+  const failed = terminateHarness(make(), 'failed', 'The run failed.', now)
+  for (const terminal of [completed, failed]) {
+    assert.throws(() => recordHarnessEvidence(terminal, evidence, now + 1), /The run is terminal/)
+  }
+})
+
 test('harness_read_child evidence matches its declared tool ID', () => {
   const planned = replaceHarnessPlan(make(), [{
     id: 'delegate', title: 'Join delegated work', dependsOn: [], acceptanceCriteria: ['Child result read'],

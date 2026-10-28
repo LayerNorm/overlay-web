@@ -2,10 +2,10 @@ import { expect, test } from 'vitest'
 import { createHarnessSnapshot, recordHarnessEvidence, recordHarnessReceipt, replaceHarnessPlan, transitionHarnessStep } from '@overlay/agent-runtime/harness-state'
 import { buildHarnessInstructions, buildHarnessStepInstructions, buildHarnessWorkingContext, harnessProgressFingerprint } from './context'
 
-const make = () => createHarnessSnapshot({
+const make = (requiresPlan = true) => createHarnessSnapshot({
   runId: 'fixture-run', goal: 'Check the requested document', constraints: ['Do not publish it'],
   policy: {
-    actorUserId: 'fixture-user', allowedToolIds: ['read'], requiresPlan: true,
+    actorUserId: 'fixture-user', allowedToolIds: ['read'], requiresPlan,
     deadlineAt: 10_000, maxCostMicros: 100, maxParallelChildren: 2, maxDepth: 2,
   },
 }, 1_000)
@@ -39,12 +39,24 @@ test('write-capable runs receive evidence-backed planning instructions', () => {
   expect(instructions).toContain(
     'Before acting on a pending milestone, check observations; if a successful result already satisfies it, cite that evidence instead of repeating the action.',
   )
+  expect(instructions).toContain(
+    'The goal in the working state is the current request and the only task for this run. Use earlier conversation only to interpret it; never resume, repeat or plan an earlier request unless the goal asks for it.',
+  )
   expect(buildHarnessInstructions('Surface instructions')).toContain(
     'Before acting on a pending milestone, check observations; if a successful result already satisfies it, cite that evidence instead of repeating the action.',
   )
   expect(instructions).toContain('Never describe actions that were not executed')
   expect(instructions).not.toContain('\u2013')
   expect(instructions).not.toContain('\u2014')
+})
+
+test('goal anchoring is present for plan-optional runs', () => {
+  const instructions = buildHarnessStepInstructions(make(false), {
+    instructions: 'Surface instructions', continuation: false, truncatedResponse: false,
+  })
+  expect(instructions).toContain(
+    'The goal in the working state is the current request and the only task for this run. Use earlier conversation only to interpret it; never resume, repeat or plan an earlier request unless the goal asks for it.',
+  )
 })
 
 test('planning gate allows only plan creation and explains blocker timing', () => {

@@ -1447,9 +1447,14 @@ export const apply = mutation({
       return { applied: false, conflict: false, snapshot: replaySnapshot }
     }
 
-    const ancestorTerminal = lineage.some(entry => isTerminalStatus(entry.metadata.status))
-    const isLateReceipt = operation.type === 'record_receipt' && ancestorTerminal
-    if (ancestorTerminal && !isLateReceipt) throw new Error('The harness run is terminal.')
+    const terminalRun = lineage.some(entry => isTerminalStatus(entry.metadata.status))
+    const terminalAncestor = lineage.slice(1).some(entry => isTerminalStatus(entry.metadata.status))
+    const isLateReceipt = operation.type === 'record_receipt' && terminalRun
+    const isLateToolResult = operation.type === 'record_evidence'
+      && operation.evidence.kind === 'tool_result'
+      && metadata.status === 'cancelled'
+      && !terminalAncestor
+    if (terminalRun && !isLateReceipt && !isLateToolResult) throw new Error('The harness run is terminal.')
 
     const extraEvidenceRefs = operation.type === 'transition_step' ? operation.evidenceRefs ?? [] : []
     const hydrateExistingStepRefs = operation.type === 'transition_step' && operation.evidenceRefs === undefined

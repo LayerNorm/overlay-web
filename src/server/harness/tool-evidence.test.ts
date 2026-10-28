@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { harnessToolResultEvidence, isToolFailureOutput } from './tool-evidence'
+import { harnessToolOutputEvidence, harnessToolResultEvidence, isToolFailureOutput } from './tool-evidence'
 import { harnessToolInputDigest } from './tool-input-digest'
 
 const now = 1_000
@@ -36,4 +36,15 @@ test('tool results with failure fields in output envelopes are failed evidence',
   }
   expect(harnessToolResultEvidence(resultEvent(undefined, false), now).verdict).toBe('failed')
   expect(harnessToolResultEvidence(resultEvent({ created: true }), now).verdict).toBe('observed')
+})
+
+test('the native step and workflow hook construct the same tool-result evidence', () => {
+  const output = { success: true, noteId: 'note-1' }
+  expect(harnessToolOutputEvidence({
+    toolCallId: 'call-1',
+    toolName: 'create_note',
+    input: { title: 'Doc', content: 'Text' },
+    output,
+    success: true,
+  }, now)).toEqual(harnessToolResultEvidence(resultEvent(output), now))
 })

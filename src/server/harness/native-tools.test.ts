@@ -3,9 +3,12 @@ import { createNativeHarnessTools, type NativeHarnessToolsInput } from './native
 import { executeNativeHarnessTool } from './native-tool-steps'
 import type { HarnessToolExecutionOptions } from './tool-approvals'
 
-const mocks = vi.hoisted(() => ({ refresh: vi.fn(), build: vi.fn(), execute: vi.fn(), dispatch: vi.fn(), progress: vi.fn() }))
+const mocks = vi.hoisted(() => ({
+  refresh: vi.fn(), build: vi.fn(), execute: vi.fn(), dispatch: vi.fn(), progress: vi.fn(), apply: vi.fn(),
+}))
 vi.mock('server-only', () => ({}))
 vi.mock('./native-access', () => ({ refreshNativeHarnessAccess: mocks.refresh }))
+vi.mock('./state-steps', () => ({ applyHarnessOperation: mocks.apply }))
 vi.mock('./native-tool-steps', async importOriginal => ({
   ...await importOriginal<typeof import('./native-tool-steps')>(),
   dispatchNativeHarnessAgentRequest: mocks.dispatch,
@@ -39,6 +42,7 @@ beforeEach(() => {
   mocks.build.mockImplementation(async () => tooling())
   mocks.execute.mockResolvedValue({ ok: true })
   mocks.progress.mockResolvedValue(undefined)
+  mocks.apply.mockResolvedValue(undefined)
 })
 
 test('native tools reconstruct current identity, grants and memory policy with child-scoped effects', async () => {
@@ -57,6 +61,42 @@ test('native tools reconstruct current identity, grants and memory policy with c
   }))
   await createNativeHarnessTools({ ...input, access: { ...input.access, runId: 'other-child' } }).read_file.execute!({}, options)
   expect(mocks.execute).toHaveBeenLastCalledWith({}, expect.objectContaining({ idempotencyKey: 'harness-run:other-child:tool:call' }))
+})
+
+test('a native tool step records evidence after a tool finishes during Stop', async () => {
+  let runStatus = 'running'
+  mocks.execute.mockImplementation(async () => {
+    runStatus = 'cancelled'
+    return { success: true, noteId: 'note-1' }
+  })
+  const evidence: unknown[] = []
+  mocks.apply.mockImplementation(async (_reference: unknown, _operationId: string, operation: {
+    type: string
+    evidence?: unknown
+  }) => {
+    expect(runStatus).toBe('cancelled')
+    if (operation.type === 'record_evidence') evidence.push(operation.evidence)
+  })
+  const result = await createNativeHarnessTools(input).read_file!.execute!({ fileId: 'file-1' }, options)
+  expect(result).toEqual({ success: true, noteId: 'note-1' })
+  expect(evidence).toHaveLength(1)
+  expect(evidence[0]).toMatchObject({
+    id: 'tool:call',
+    kind: 'tool_result',
+    source: 'read_file',
+    verdict: 'observed',
+    inputDigest: expect.stringMatching(/^[a-f0-9]{64}$/),
+  })
+  expect(mocks.apply).toHaveBeenCalledWith(input.access, 'tool-evidence:call', expect.objectContaining({
+    type: 'record_evidence',
+    evidence: expect.objectContaining({ id: 'tool:call', source: 'read_file' }),
+  }))
+})
+
+test('a thrown native tool does not record result evidence', async () => {
+  mocks.execute.mockRejectedValue(new Error('Tool failed.'))
+  await expect(createNativeHarnessTools(input).read_file!.execute!({}, options)).rejects.toThrow('Tool failed.')
+  expect(mocks.apply).not.toHaveBeenCalled()
 })
 
 test('revoked native authority or a removed grant prevents even an approved tool from executing', async () => {

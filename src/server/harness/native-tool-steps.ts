@@ -12,7 +12,9 @@ import { ConvexHarnessRepository } from './ConvexHarnessRepository'
 import { startNativeHarnessNamedChild } from './native-named-child-launch'
 import { executePersonalChatWorkToolResult } from '@/server/conversations/personal-chat-work-tools'
 import { refreshNativeHarnessAccess } from './native-access'
-import { isToolFailureOutput } from './tool-evidence'
+import { logger } from '@/server/observability/logger'
+import { applyHarnessOperation } from './state-steps'
+import { harnessToolOutputEvidence, isToolFailureOutput } from './tool-evidence'
 import type { NativeHarnessToolsInput } from './native-tools'
 import type { HarnessToolCall } from './tools'
 import {
@@ -128,7 +130,7 @@ export async function executeNativeHarnessTool(call: NativeToolCall, approved: b
   const current = await freshTooling(call)
   if (await needsApproval(current, call) && !approved) throw new FatalError('This native action became approval-required before execution.')
   const definition = current.tools[call.toolName]
-  return executeWithNativeHarnessToolProgress(call, () => executePersonalChatWorkToolResult({
+  const result = await executeWithNativeHarnessToolProgress(call, () => executePersonalChatWorkToolResult({
     execute: () => definition.execute!(call.input as never, {
       toolCallId: call.toolCallId, messages: call.messages, context: current.toolsContext?.[call.toolName],
       agentRunId: call.access.agentRunId, logicalStepId: call.toolCallId, idempotencyKey: idempotencyKey(call),
@@ -137,6 +139,22 @@ export async function executeNativeHarnessTool(call: NativeToolCall, approved: b
     toModelOutput: typeof definition.toModelOutput === 'function'
       ? async args => definition.toModelOutput!(args as never) : undefined,
   }))
+  try {
+    await applyHarnessOperation(call.access, `tool-evidence:${call.toolCallId}`, {
+      type: 'record_evidence',
+      evidence: harnessToolOutputEvidence({
+        toolCallId: call.toolCallId,
+        toolName: call.toolName,
+        input: call.input,
+        output: result,
+        success: true,
+      }, Date.now()),
+    })
+  } catch (error) {
+    // The tool already ran; a failed evidence write must not turn its result into a failure.
+    logger.warn('[harness] native tool evidence write failed', { error, runId: call.access.runId, toolName: call.toolName })
+  }
+  return result
 }
 
 executeNativeHarnessTool.maxRetries = 0

@@ -22,8 +22,26 @@ export function harnessToolResultEvidence(
   event: WorkflowAgentToolExecutionEndEvent<ToolSet>,
   now: number,
 ): HarnessEvidence {
-  const failure = event.success === false || isToolFailureOutput(event.output)
-  const value = event.success ? event.output : event.error instanceof Error ? event.error.message : event.error
+  return harnessToolOutputEvidence({
+    toolCallId: event.toolCall.toolCallId,
+    toolName: event.toolCall.toolName,
+    input: event.toolCall.input,
+    output: event.output,
+    success: event.success,
+    error: event.error,
+  }, now)
+}
+
+export function harnessToolOutputEvidence(args: {
+  toolCallId: string
+  toolName: string
+  input: unknown
+  output: unknown
+  success: boolean
+  error?: unknown
+}, now: number): HarnessEvidence {
+  const failure = !args.success || isToolFailureOutput(args.output)
+  const value = args.success ? args.output : args.error instanceof Error ? args.error.message : args.error
   let summary = typeof value === 'string' ? value : ''
   if (typeof value !== 'string') {
     try {
@@ -33,12 +51,12 @@ export function harnessToolResultEvidence(
     }
   }
   return {
-    id: `tool:${event.toolCall.toolCallId}`,
+    id: `tool:${args.toolCallId}`,
     kind: 'tool_result',
-    source: event.toolCall.toolName,
-    summary: (summary || (event.success ? 'Tool completed without an output.' : 'Tool failed.')).slice(0, 2_000),
+    source: args.toolName,
+    summary: (summary || (args.success ? 'Tool completed without an output.' : 'Tool failed.')).slice(0, 2_000),
     verdict: failure ? 'failed' : 'observed',
     createdAt: now,
-    inputDigest: harnessToolInputDigest(event.toolCall.toolName, event.toolCall.input),
+    inputDigest: harnessToolInputDigest(args.toolName, args.input),
   }
 }

@@ -353,6 +353,42 @@ describe('durable harness runs', () => {
       },
     })
   })
+  test('persists tool-result evidence after cancellation and rejects evidence on failed runs', async () => {
+    const convex = convexTest(schema, modules)
+    const cancelledInput = admission('cancelled-tool-result', await seedConversation(convex))
+    await admit(convex, cancelledInput)
+    const cancelled = await apply(convex, cancelledInput, 'cancel', 0, {
+      type: 'terminate', status: 'cancelled', reason: 'Stop requested.',
+    })
+    const evidence = {
+      id: 'tool:call-1', kind: 'tool_result' as const, source: 'create_note',
+      summary: 'Created the requested note.', verdict: 'observed' as const, createdAt: Date.now(),
+      inputDigest: 'a'.repeat(64),
+    }
+    const recorded = await apply(convex, cancelledInput, 'late-tool-result', cancelled.snapshot.revision, {
+      type: 'record_evidence', evidence,
+    })
+    expect(recorded.snapshot.status).toBe('cancelled')
+    expect(recorded.snapshot.terminalReason).toBe('Stop requested.')
+    expect(recorded.snapshot.progressRevision).toBe(cancelled.snapshot.progressRevision)
+    expect(recorded.snapshot.evidence).toContainEqual(evidence)
+    const persisted = await convex.run(async ctx => ctx.db.query('harnessEvidence')
+      .withIndex('by_runId_evidenceId', q => q.eq('runId', cancelledInput.runId).eq('evidenceId', evidence.id)).unique())
+    expect(JSON.parse(persisted!.evidenceJson)).toEqual(evidence)
+
+    const failedInput = admission('failed-tool-result', await seedConversation(convex))
+    await admit(convex, failedInput)
+    const failed = await apply(convex, failedInput, 'fail', 0, {
+      type: 'terminate', status: 'failed', reason: 'Execution failed.',
+    })
+    await expect(apply(convex, failedInput, 'late-tool-result', failed.snapshot.revision, {
+      type: 'record_evidence', evidence: { ...evidence, id: 'tool:failed-run-call' },
+    })).rejects.toThrow(/terminal/)
+    const failedEvidence = await convex.run(async ctx => ctx.db.query('harnessEvidence')
+      .withIndex('by_runId_evidenceId', q => q.eq('runId', failedInput.runId).eq('evidenceId', 'tool:failed-run-call')).unique())
+    expect(failedEvidence).toBeNull()
+  })
+
   test('binds one workflow owner atomically and keeps the claim on reload', async () => {
     const convex = convexTest(schema, modules)
     const input = admission('run-owner', await seedConversation(convex))
@@ -835,6 +871,14 @@ describe('durable harness runs', () => {
     expect(JSON.parse(childMetadata!.metadataJson).status).toBe('running')
     await expect(apply(convex, input, 'after-cancel', 3, { type: 'checkpoint', summary: 'must not run' }))
       .rejects.toThrow(/terminal/)
+    const projectedChild = await get(convex, 'run-child')
+    await expect(apply(convex, { ...input, runId: 'run-child' }, 'child-tool-after-parent-cancel', projectedChild!.revision, {
+      type: 'record_evidence',
+      evidence: {
+        id: 'tool:child-late', kind: 'tool_result', source: 'tool:read',
+        summary: 'Late child result.', verdict: 'observed', createdAt: Date.now(),
+      },
+    })).rejects.toThrow(/terminal/)
   })
 
   test('hydrates implicit transition evidence refs older than the recent evidence window', async () => {
