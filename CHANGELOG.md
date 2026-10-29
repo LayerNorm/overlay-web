@@ -59,6 +59,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Keep native agents running after a failed tool-progress write and compact live tool results before saving them to the transcript.
 
+- Retry delayed Gateway usage before settling known token counts from catalog pricing, preserve reservation-integrity errors, and safely cancel named descendants after an ancestor stops.
+
 - Separate tagged model reasoning from Harness final answers and delegated result summaries using the AI SDK middleware, preserving provider usage receipts.
 
 - Join active Harness children with durable waits instead of model polling, and explicitly request the final deliverable once all plan evidence is complete.

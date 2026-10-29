@@ -50,4 +50,6 @@ unsupported. A joined child settles its system-owned
 completed children mark it done, while failed or cancelled children skip it
 with the child's reason. `harness_read_child` evidence remains available for a
 separate parent milestone, while ordinary delegated milestones still require
-the parent to complete them with evidence.
+the parent to complete them with evidence. Stop cancels active same-user named
+descendants deepest-first; if an ancestor already terminated, its subtree counts
+are not released a second time.

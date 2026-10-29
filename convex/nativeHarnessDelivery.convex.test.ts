@@ -454,6 +454,60 @@ test('parent Stop leaves an already-terminal named child untouched', async () =>
   expect(rootAfterStop?.activeDescendantCount).toBe(0)
 })
 
+test('child Stop cancels an active descendant after its Harness parent is terminal', async () => {
+  const convex = convexTest(schema, modules)
+  const fixture = await namedAdmissionFixture(convex, 'same-room')
+  await apply(convex, fixture.parent.runId, fixture.operation)
+  await claimAndAttachWorkflow(convex, fixture.parent.runId, fixture.parentTurn.runId, 'parent-workflow')
+  await claimAndAttachWorkflow(convex, fixture.childRunId, fixture.targetTurn.runId, 'child-workflow')
+  await apply(convex, fixture.parent.runId, {
+    type: 'terminate',
+    status: 'cancelled',
+    reason: 'Parent was terminated before child cleanup.',
+  })
+
+  const parentBeforeStop = await convex.run(ctx => ctx.db.query('harnessRuns')
+    .withIndex('by_runId', queryBuilder => queryBuilder.eq('runId', fixture.parent.runId))
+    .unique())
+  const childBeforeStop = await convex.run(ctx => ctx.db.query('harnessRuns')
+    .withIndex('by_runId', queryBuilder => queryBuilder.eq('runId', fixture.childRunId))
+    .unique())
+  expect(JSON.parse(parentBeforeStop!.metadataJson).status).toBe('cancelled')
+  expect(parentBeforeStop?.activeDescendantCount).toBe(0)
+  expect(JSON.parse(childBeforeStop!.metadataJson).status).toBe('running')
+
+  const cancelled = await convex.mutation(mutation('chat/conversations:cancelAgentRuns'), {
+    conversationId: fixture.fixture.conversationId,
+    messageId: fixture.targetTurn.messageId,
+    userId: 'alice',
+    serverSecret: secret,
+  })
+
+  expect(cancelled.stoppedCount).toBe(1)
+  expect(cancelled.cancelledRunIds).toEqual([fixture.targetTurn.runId])
+  expect(cancelled.cancelledWorkflowRunIds).toContain('child-workflow')
+  expect(cancelled.cancelledWorkflows).toContainEqual({
+    agentRunId: fixture.targetTurn.runId,
+    workflowRunId: 'child-workflow',
+  })
+  expect(cancelled.cancelledHarnessRoots).toEqual([{
+    agentRunId: fixture.targetTurn.runId,
+    runId: fixture.childRunId,
+  }])
+  const childAfterStop = await convex.run(ctx => ctx.db.query('harnessRuns')
+    .withIndex('by_runId', queryBuilder => queryBuilder.eq('runId', fixture.childRunId))
+    .unique())
+  const parentAfterStop = await convex.run(ctx => ctx.db.query('harnessRuns')
+    .withIndex('by_runId', queryBuilder => queryBuilder.eq('runId', fixture.parent.runId))
+    .unique())
+  expect(JSON.parse(childAfterStop!.metadataJson).status).toBe('cancelled')
+  expect(childAfterStop?.activeDescendantCount).toBe(0)
+  expect(parentAfterStop?.activeDescendantCount).toBe(0)
+  expect((await convex.run(ctx => ctx.db.get(fixture.targetTurn.runId)))?.status).toBe('cancelled')
+  expect((await convex.run(ctx => ctx.db.get(fixture.targetTurn.messageId)))?.content)
+    .toContain('[Interrupted by user. Continue?]')
+})
+
 test.each(['legacy', 'foreign-actor', 'external-agent', 'archived-agent', 'wrong-principal', 'removed-agent', 'removed-invoker', 'foreign-message'])
   ('native admission rejects %s without leaving a root', async scenario => {
     const convex = convexTest(schema, modules)

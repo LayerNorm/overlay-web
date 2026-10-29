@@ -1061,6 +1061,7 @@ async function releaseTerminalSubtree(
 ) {
   const subtreeSize = checkedActiveCount(run.activeDescendantCount + 1)
   for (const entry of lineage.slice(1)) {
+    if (isTerminalStatus(entry.metadata.status)) break
     const nextCount = checkedActiveCount(entry.run.activeDescendantCount - subtreeSize)
     await ctx.db.patch(entry.run._id, { activeDescendantCount: nextCount })
   }
