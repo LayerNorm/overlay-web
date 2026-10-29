@@ -46,13 +46,15 @@ export function SettingsSidebarNav({
   nav,
   collapsed,
   onBack,
+  settingsGroups,
 }: {
   nav: SecondaryPanelNav
   collapsed: boolean
   onBack?: () => void
+  settingsGroups?: ReadonlyArray<{ label: string; ids: readonly string[] }>
 }) {
   const [query, setQuery] = useState('')
-  const groups = groupSettingsItems(nav.items, collapsed ? '' : query)
+  const groups = groupSettingsItems(nav.items, collapsed ? '' : query, settingsGroups)
   return (
     <>
       <SidebarGroup className="pb-0">

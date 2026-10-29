@@ -280,6 +280,7 @@ export interface UnifiedSidebarProps {
   /** List More pages as plain rows (the phone drawer has no room for a side menu). */
   inlineMore?: boolean
   moreGroups?: ReadonlyArray<{ label?: string; ids: readonly string[] }>
+  settingsGroups?: ReadonlyArray<{ label: string; ids: readonly string[] }>
   /** Owns the header tabs; a second copy (the phone drawer) must not clear them when it closes. */
   publishSubviews?: boolean
   children?: ReactNode
@@ -377,6 +378,7 @@ export function UnifiedSidebar({
   resizable = false,
   inlineMore = false,
   moreGroups = DEFAULT_MORE_GROUPS,
+  settingsGroups,
   publishSubviews = true,
   children,
   className,
@@ -430,7 +432,7 @@ export function UnifiedSidebar({
       {collapsed || settingsNav ? null : <ScopeToggle scope={scope} workspaceLocked={false} onChange={changeScope} />}
       {settingsNav ? (
         <SidebarContent>
-          <SettingsSidebarNav nav={settingsNav} collapsed={collapsed} onBack={settingsBack?.onSelect} />
+          <SettingsSidebarNav nav={settingsNav} collapsed={collapsed} onBack={settingsBack?.onSelect} settingsGroups={settingsGroups} />
         </SidebarContent>
       ) : (
       <SidebarContent>

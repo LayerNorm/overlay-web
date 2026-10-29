@@ -10,11 +10,13 @@ export function SidebarAccountMenu({
   usageMeters,
   itemPaddingClass = 'py-2',
   onAccountClick,
+  onSettingsClick = onAccountClick,
   onSignOut,
 }: {
   usageMeters?: ReactNode
   itemPaddingClass?: string
   onAccountClick: () => void
+  onSettingsClick?: () => void
   onSignOut: () => void
 }) {
   const { Link } = useShellAdapter()
@@ -34,7 +36,7 @@ export function SidebarAccountMenu({
       <div className="border-t border-(--border)">
         <Link
           href="/app/settings"
-          onClick={onAccountClick}
+          onClick={onSettingsClick}
           className={`flex w-full items-center gap-2 px-3 ${itemPaddingClass} text-xs text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)`}
         >
           <Settings size={13} />

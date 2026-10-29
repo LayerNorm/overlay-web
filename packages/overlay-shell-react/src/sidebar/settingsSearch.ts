@@ -24,6 +24,8 @@ const SETTINGS_KEYWORDS: Readonly<Record<string, readonly string[]>> = {
   computers: ['computer', 'desktop', 'machine', 'cloud computer'],
   archived: ['archived chats', 'archive', 'restore'],
   contact: ['support', 'help', 'feedback', 'email us'],
+  transcription: ['voice', 'dictation', 'microphone', 'speech'],
+  assistant: ['pill', 'overlay pill', 'assistant'],
 }
 
 export interface SettingsNavGroup {
@@ -38,10 +40,14 @@ function matches(item: InlineNavItem, query: string): boolean {
 }
 
 /** Settings pages filtered by `query` and split into sidebar groups; empty groups are dropped. */
-export function groupSettingsItems(items: ReadonlyArray<InlineNavItem>, query = ''): SettingsNavGroup[] {
+export function groupSettingsItems(
+  items: ReadonlyArray<InlineNavItem>,
+  query = '',
+  settingsGroups: ReadonlyArray<{ label: string; ids: readonly string[] }> = SETTINGS_GROUPS,
+): SettingsNavGroup[] {
   const visible = items.filter((item) => matches(item, query.trim()))
   const grouped = new Set<string>()
-  const groups: SettingsNavGroup[] = SETTINGS_GROUPS.map((group) => {
+  const groups: SettingsNavGroup[] = settingsGroups.map((group) => {
     const groupItems = visible.filter((item) => group.ids.includes(item.id))
     groupItems.forEach((item) => grouped.add(item.id))
     return { label: group.label, items: groupItems }

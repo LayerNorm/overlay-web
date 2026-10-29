@@ -3,6 +3,7 @@ import test from 'node:test'
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { CollapsibleSection } from '@overlay/ui/primitives'
+import { ShellAdapterProvider, type ShellAdapter, type ShellLinkProps } from '../adapter'
 import { SidebarAccountMenu } from './SidebarAccountMenu'
 
 ;(globalThis as typeof globalThis & { React: typeof React }).React = React
@@ -25,6 +26,31 @@ function render() {
     />,
   )
 }
+
+test('settings can use a separate account-menu action', () => {
+  let settingsClick: (() => void) | undefined
+  const adapter: ShellAdapter = {
+    rememberScope: () => undefined,
+    Link: function CaptureLink({ href, onClick, children }: ShellLinkProps) {
+      if (href === '/app/settings') settingsClick = onClick as (() => void) | undefined
+      return <a href={href}>{children}</a>
+    },
+  }
+  let accountClicks = 0
+  let settingsClicks = 0
+  renderToStaticMarkup(
+    <ShellAdapterProvider value={adapter}>
+      <SidebarAccountMenu
+        onAccountClick={() => { accountClicks += 1 }}
+        onSettingsClick={() => { settingsClicks += 1 }}
+        onSignOut={() => undefined}
+      />
+    </ShellAdapterProvider>,
+  )
+  settingsClick?.()
+  assert.equal(settingsClicks, 1)
+  assert.equal(accountClicks, 0)
+})
 
 test('usage and storage collapse behind disclosure headers', () => {
   const html = render()

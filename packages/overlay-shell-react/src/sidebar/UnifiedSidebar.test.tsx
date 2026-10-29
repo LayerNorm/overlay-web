@@ -169,13 +169,14 @@ test('settings turn the sidebar into a settings sidebar with search and grouped 
   const html = render({
     panelKind: 'settings',
     panelNav: settingsNav,
+    settingsGroups: [{ label: 'Desktop settings', ids: ['general', 'customization', 'connected-apps'] }],
     items: [...items, { id: 'settings-close', label: 'Settings', icon: Puzzle, active: true, onSelect: noop }],
   })
   assert.match(html, /overlay/)
   assert.match(html, /Back to app/)
   assert.match(html, /aria-label="Search settings"/)
-  assert.match(html, />Personal</)
-  assert.match(html, />Integrations</)
+  assert.match(html, />Desktop settings</)
+  assert.doesNotMatch(html, />Personal</)
   assert.match(html, /href="\/app\/settings\?section=customization"/)
   assert.match(html, /aria-current="page"[^>]*href="\/app\/settings\?section=general"|href="\/app\/settings\?section=general"[^>]*aria-current="page"/)
   assert.doesNotMatch(html, /href="\/app\/work"/)
