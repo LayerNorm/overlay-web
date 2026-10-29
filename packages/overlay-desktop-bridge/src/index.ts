@@ -32,7 +32,7 @@ export const methodSchemas = {
   'capture.screenshot': z.object({ display: z.string().max(100).optional() }).strict(),
   'notifications.show': z.object({ title: z.string().min(1).max(200), body: z.string().max(2000), route: z.string().max(2048).startsWith('/app').refine((v) => !v.startsWith('//') && !v.includes('\\')) }).strict(),
   'agentHost.status': empty,
-  'agentHost.start': z.object({ adapter: z.enum(['claude-code', 'codex', 'hermes']), enrollmentCode: z.string().min(6).max(200) }).strict(),
+  'agentHost.start': z.object({ adapter: z.enum(['claude-code', 'codex', 'hermes']), enrollmentCode: z.string().regex(/^[A-Za-z0-9_-]{6,128}$/) }).strict(),
   'agentHost.stop': empty,
   'agentHost.logs': empty,
   'updates.status': empty,

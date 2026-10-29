@@ -172,9 +172,7 @@ export function useByoConnection(args: {
       })
       setCommand(result.command)
       if (desktop?.info.capabilities.includes('agentHost')) {
-        const code = /--code(?:=|\s+)["']?([A-Za-z0-9-]+)/.exec(result.command)?.[1]
-        if (!code) throw new Error('The enrollment command has no connection code.')
-        await desktop.bridge.call('agentHost.start', { adapter: adapterId as 'codex' | 'claude-code', enrollmentCode: code })
+        await desktop.bridge.call('agentHost.start', { adapter: adapterId as 'codex' | 'claude-code', enrollmentCode: result.code })
       }
     } catch (value) {
       setEnvironmentError(value instanceof Error ? value.message : 'Could not create the connection command.')

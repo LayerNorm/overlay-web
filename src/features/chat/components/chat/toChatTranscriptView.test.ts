@@ -3,8 +3,6 @@ import test from 'node:test'
 import { CHAT_PARITY_TEXT_SCENARIOS } from '@overlay/chat-core/parity-fixtures'
 import type { UIMessage } from '@/shared/chat/ai-ui-message'
 import { createWebChatTranscriptAdapter } from './toChatTranscriptView'
-import { createDesktopChatTranscriptAdapter } from '../../../../../overlay-desktop/src/renderer/src/components/chat/desktopChatTranscriptAdapter'
-import type { Message as DesktopMessage } from '../../../../../overlay-desktop/src/renderer/src/components/chat/types'
 
 function message(value: Record<string, unknown>): UIMessage {
   return value as unknown as UIMessage
@@ -38,7 +36,7 @@ test('web transcript renders one selected model response', () => {
   assert.equal(view.exchanges[0]!.responses[0]!.blocks[0]?.kind, 'text')
 })
 
-test('equivalent single-model web and desktop fixtures produce the same transcript contract', () => {
+test('the web-shell transcript preserves the canonical rich-markdown fixture', () => {
   const fixture = CHAT_PARITY_TEXT_SCENARIOS.find((scenario) => scenario.id === 'rich-markdown')!
   const assistantText = fixture.assistantBlocks.find((block) => block.kind === 'text')?.text ?? ''
   const createdAt = 1_721_177_600_000
@@ -65,24 +63,10 @@ test('equivalent single-model web and desktop fixtures produce the same transcri
     getResponseForExchange: () => webAssistant,
   })
 
-  const desktopMessages: DesktopMessage[] = [
-    {
-      id: 'user-parity',
-      turnId: 'turn-parity',
-      role: 'user',
-      content: fixture.userText,
-      timestamp: createdAt,
-    },
-    {
-      id: 'assistant-parity',
-      turnId: 'turn-parity',
-      role: 'assistant',
-      content: assistantText,
-      timestamp: createdAt + 1,
-      selectedModelId: 'parity-model',
-    },
-  ]
-  const desktopView = createDesktopChatTranscriptAdapter()({ messages: desktopMessages })
-
-  assert.deepEqual(desktopView, webView)
+  const exchange = webView.exchanges[0]!
+  const responseText = exchange.responses[0]!.blocks.filter((block) => block.kind === 'text').map((block) => block.text).join('')
+  assert.equal(exchange.user.text, fixture.userText)
+  assert.equal(responseText, assistantText)
+  assert.equal(exchange.status, 'completed')
+  assert.equal(exchange.selectedModelId, 'parity-model')
 })

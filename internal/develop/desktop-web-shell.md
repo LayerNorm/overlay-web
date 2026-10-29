@@ -71,6 +71,10 @@ startup opens Work. No new arbitrary-origin picker is exposed remotely.
 
 ## Verification and release
 
+The chat/files/knowledge CI boundaries retain canonical web renderer checks and
+share a native-shell guard: duplicate desktop renderers/provider clients remain
+retired and both bridge copies must match the canonical source and fingerprint.
+
 Run bridge package tests, web type/lint checks and desktop `npm test`, `npm run
 build`, `npm run check:no-provider-sdks`, and `npm run test:e2e`. Electron Playwright
 uses throwaway profiles. The macOS clean-clone CI runs the Electron boundary
@@ -87,3 +91,10 @@ offline retry and an upgrade profile. Run a signed/notarized artifact on a clean
 and an existing install before binary publication. Desktop's existing release gates,
 protected environments and publish freeze stay in force until their recorded
 acceptance is complete. A successful source build is not signed-release acceptance.
+
+For protected Preview QA, discovery uses the web partition's hosting cookie.
+Native Agent Host QA can receive `OVERLAY_DESKTOP_HOSTING_AUTH_FILE`, pointing to a
+fresh private bootstrap file for the existing CLI `--hosting-auth-file` option.
+The CLI verifies owner-only permissions and exact server origin, consumes the file
+before networking and keeps hosting access out of provider environments. Provision
+it from existing project access; never create a per-feature key or commit the file.
