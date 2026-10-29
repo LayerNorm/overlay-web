@@ -1,7 +1,7 @@
 'use client'
 
 import type { ReactNode } from 'react'
-import { PanelRight } from 'lucide-react'
+import { PanelRight, X } from 'lucide-react'
 import { Button, Tabs, TabsContent, TabsTrigger, TabsTriggerList } from '@overlay/ui/primitives'
 
 export type RightSidebarTab = {
@@ -16,20 +16,28 @@ export function RightSidebar({
   tabs,
   activeTab,
   onTabChange,
+  onClose,
 }: {
   ariaLabel: string
   hero: { avatar: ReactNode; title: ReactNode; titleText: string; subtitle?: ReactNode }
   tabs: RightSidebarTab[]
   activeTab: string
   onTabChange(id: string): void
+  onClose?(): void
 }) {
   const selectedTab = tabs.some((tab) => tab.id === activeTab) ? activeTab : tabs[0]?.id ?? ''
 
   return (
     <aside
       aria-label={ariaLabel}
-      className="flex h-full min-h-0 w-full flex-col overflow-hidden border-l border-(--border) bg-(--sidebar-surface)"
+      className="relative flex h-full min-h-0 w-full flex-col overflow-hidden border-l border-(--border) bg-(--sidebar-surface)"
     >
+      {onClose ? (
+        <Button variant="ghost" size="icon" type="button" aria-label="Close" onClick={onClose}
+          className="absolute right-2 top-2 h-8 w-8 text-(--muted) hover:text-(--foreground)">
+          <X size={16} />
+        </Button>
+      ) : null}
       <div className="flex shrink-0 flex-col items-center px-5 pb-4 pt-9 text-center">
         <div className="flex h-[72px] w-[72px] items-center justify-center">
           {hero.avatar}

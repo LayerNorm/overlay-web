@@ -31,6 +31,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 - Abort title generation at its shared deadline or client cancellation, stop retries, and release failed-attempt reservations.
 
 - Keep generated chat titles stable through optimistic updates and use a resolved first-message title when creating chats.
+- Add an agent sidebar close button and preserve reply row identity from pending through streaming and completion, preventing header blink.
 - Include agent-created automations in the Automations list, show their agent avatars, and open them from agent rows.
 - Start new agent conversations with the agent's instructions as the first user message.
 - Generate chat titles with the Auto free router and retry stalled title requests once.

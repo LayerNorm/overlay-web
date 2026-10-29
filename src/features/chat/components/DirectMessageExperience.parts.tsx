@@ -610,7 +610,6 @@ export function RoomTranscript({
                     </div>
                   ) : null}
                   <RoomMessage
-                    key={message.clientNonce ? `nonce-${message.clientNonce}` : message.id}
                     message={message}
                     ctx={ctx}
                     grouped={grouped}
@@ -712,7 +711,7 @@ export function RoomSidePanel({
         messages={[
           ...[threadRoot, ...threadReplies].map((message) => (
             <RoomMessage
-              key={message.clientNonce ? `nonce-${message.clientNonce}` : message.id}
+              key={roomMessageRowKey(message)}
               message={message}
               ctx={ctx}
               inThread
