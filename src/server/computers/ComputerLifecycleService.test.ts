@@ -171,6 +171,77 @@ test('owner operations retry a temporarily unavailable wake claim', async () => 
   assert.deepEqual(fixture.sleepCalls, [250])
 })
 
+test('a reconnect failure releases its wake claim so the next operation can retry immediately', async () => {
+  const fixture = lifecycleFixture({ failReconnectOnce: true })
+  const computer = fixture.seedComputer('box-ref-1', 'running')
+  const args = {
+    actorUserId: 'user-1', workspaceId: 'ws-1', ownerType: 'user' as const, ownerId: 'user-1',
+    operation: async () => 'done',
+  }
+  await assert.rejects(fixture.service.withOwnerOperation(args), /reconnect failed/)
+  const lifecycle = fixture.leaseRows.get(`computer:${computer.id}`)!.usage.computerLifecycle as { maintenance?: unknown }
+  assert.equal(lifecycle.maintenance, null)
+  assert.equal(await fixture.service.withOwnerOperation(args), 'done')
+  assert.equal(fixture.instances[0].stops, 0)
+  assert.deepEqual(fixture.sleepCalls, [])
+})
+
+for (const kind of ['wake', 'stop', 'idle', 'provision']) {
+  test(`owner operations reconcile an expired ${kind} claim before waking the same computer`, async () => {
+    const fixture = lifecycleFixture()
+    const computer = fixture.seedComputer('box-ref-1', 'running')
+    const leaseId = `computer:${computer.id}`
+    const lease = fixture.leaseRows.get(leaseId)!
+    fixture.leaseRows.set(leaseId, { ...lease, status: 'cleanup_failed', usage: {
+      ...lease.usage, computerLifecycle: { maintenance: { kind, token: 'abandoned', expiresAt: now - 1 } },
+    } })
+    assert.equal(await fixture.service.withOwnerOperation({
+      actorUserId: 'user-1', workspaceId: 'ws-1', ownerType: 'user', ownerId: 'user-1',
+      operation: async () => 'done',
+    }), 'done')
+    assert.equal(fixture.instances[0].stops, 1)
+    assert.equal(fixture.instances[0].resumes, 1)
+    assert.equal(fixture.instances[0].deletes, 0)
+    assert.equal(fixture.createCalls.length, 0)
+    assert.ok(fixture.sequence.indexOf('transition:paused') < fixture.sequence.indexOf('claim:wake'))
+    assert.ok(fixture.sequence.indexOf('meter:stopped') < fixture.sequence.indexOf('reserve'))
+    assert.equal(fixture.leaseRows.get(leaseId)?.status, 'running')
+  })
+}
+
+test('failed reconciliation never resumes a computer or bypasses its unsettled usage', async () => {
+  const fixture = lifecycleFixture({ meterError: new Error('ledger unavailable') })
+  const computer = fixture.seedComputer('box-ref-1', 'running')
+  const leaseId = `computer:${computer.id}`
+  const lease = fixture.leaseRows.get(leaseId)!
+  fixture.leaseRows.set(leaseId, { ...lease, usage: {
+    ...lease.usage, computerLifecycle: { maintenance: { kind: 'wake', token: 'abandoned', expiresAt: now - 1 } },
+  } })
+  await assert.rejects(fixture.service.withOwnerOperation({
+    actorUserId: 'user-1', workspaceId: 'ws-1', ownerType: 'user', ownerId: 'user-1',
+    operation: async () => assert.fail('must not execute'),
+  }), /ledger unavailable/)
+  assert.equal(fixture.instances[0].resumes, 0)
+  assert.equal(fixture.instances[0].deletes, 0)
+  assert.equal(fixture.leaseRows.get(leaseId)?.status, 'cleanup_failed')
+})
+
+test('an expired delete intent cannot be recovered by an owner operation', async () => {
+  const fixture = lifecycleFixture()
+  const computer = fixture.seedComputer('box-ref-1', 'running')
+  const leaseId = `computer:${computer.id}`
+  const lease = fixture.leaseRows.get(leaseId)!
+  fixture.leaseRows.set(leaseId, { ...lease, usage: {
+    ...lease.usage, computerLifecycle: { maintenance: { kind: 'delete', token: 'delete', expiresAt: now - 1 } },
+  } })
+  await assert.rejects(fixture.service.withOwnerOperation({
+    actorUserId: 'user-1', workspaceId: 'ws-1', ownerType: 'user', ownerId: 'user-1',
+    operation: async () => assert.fail('must not execute'),
+  }), /COMPUTER_MAINTENANCE_REQUIRES_RECONCILIATION/)
+  assert.equal(fixture.instances[0].stops, 0)
+  assert.equal(fixture.instances[0].resumes, 0)
+})
+
 test('owner operations stop retrying wake claims after the bounded wait budget', async () => {
   const fixture = lifecycleFixture({ nullWakeClaims: Number.POSITIVE_INFINITY })
   fixture.seedComputer('box-ref-1', 'running')
@@ -267,6 +338,7 @@ function lifecycleFixture(options: {
   failBeforeAllocationOnce?: boolean
   loseDeleteResponseAfterSuccess?: boolean
   nullWakeClaims?: number
+  failReconnectOnce?: boolean
   now?: number
 } = {}) {
   let currentNow = options.now ?? now
@@ -285,6 +357,7 @@ function lifecycleFixture(options: {
   let finalSettlementCount = 0
   let lostLeaseCreateResponse = false
   let nullWakeClaims = options.nullWakeClaims ?? 0
+  let reconnectFailed = false
   const repository: ComputerRepository = {
     async create(row) { computers.set(row.id, row); return row },
     async createWithLease(row, seed) {
@@ -383,6 +456,11 @@ function lifecycleFixture(options: {
       const usage = lease.usage
       const lifecycle = (usage.computerLifecycle ?? {}) as Record<string, unknown>
       const current = lifecycle.maintenance as { token?: string; expiresAt?: number; kind?: string } | undefined
+      if (args.reconcileToken && (current?.token !== args.reconcileToken || (current.expiresAt ?? Infinity) > args.now)) return null
+      if (args.reconcileToken && args.kind === 'stop' && !args.force) {
+        const activity = lifecycle.activityTokens as Record<string, { expiresAt?: number }> | undefined
+        if (Object.values(activity ?? {}).some(value => (value.expiresAt ?? 0) > args.now)) return null
+      }
       const active = Boolean(current?.token && current.token !== args.token && (current.expiresAt ?? Infinity) > args.now)
       const preempt = args.force && ['stop', 'delete'].includes(args.kind) && current?.kind !== 'delete'
       if (active && !preempt) return null
@@ -511,6 +589,10 @@ function lifecycleFixture(options: {
       return instance as unknown as SandboxInstance
     },
     async reconnect(reference) {
+      if (options.failReconnectOnce && !reconnectFailed) {
+        reconnectFailed = true
+        throw new Error('reconnect failed')
+      }
       const existing = instances.find((instance) => instance.reference === reference)
       if (existing && await existing.status() === 'deleted') throw new Error('404 not found')
       if (existing) return existing as unknown as SandboxInstance

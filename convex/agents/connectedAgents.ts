@@ -2120,6 +2120,12 @@ export const claimComputerMaintenanceByServer = mutation({
     const usage = (lease.usage ?? {}) as Record<string, unknown>
     const lifecycle = computerLifecycleUsage(usage)
     const current = lifecycle.maintenance as { token?: string; kind?: string; expiresAt?: number } | undefined
+    if (args.reconcileToken && (current?.token !== args.reconcileToken
+      || (current.expiresAt ?? Number.MAX_SAFE_INTEGER) > args.now)) return null
+    if (args.reconcileToken && args.kind === 'stop' && !args.force) {
+      const activity = lifecycle.activityTokens as Record<string, { expiresAt?: number }> | undefined
+      if (Object.values(activity ?? {}).some(value => (value.expiresAt ?? 0) > args.now)) return null
+    }
     const activeIntent = Boolean(current?.token && current.token !== args.token
       && (current.expiresAt ?? Number.MAX_SAFE_INTEGER) > args.now)
     const mayPreempt = args.force === true && ['stop', 'delete'].includes(args.kind)

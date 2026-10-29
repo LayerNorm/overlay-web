@@ -270,6 +270,37 @@ describe('Convex computers repository surface', () => {
     })).toBeNull()
   })
 
+  test('recovery claims require the exact expired token and cannot interrupt live activity', async () => {
+    const convex = convexTest(schema, modules)
+    await convex.mutation(mutationRef('createWithLease'), {
+      ...baseRow, id: 'computer_recovery', providerRef: 'box-ref', status: 'ready', serverSecret: secret,
+      lease: {
+        leaseId: 'computer:computer_recovery', workspaceId: 'ws_1', computerId: 'computer_recovery',
+        provider: 'box', providerReference: 'box-ref', status: 'running', reservedUntil: 900_000,
+        usage: { computerLifecycle: {
+          maintenance: { kind: 'wake', token: 'abandoned', expiresAt: 2_000 },
+          activityTokens: { activity: { expiresAt: 4_000 } },
+        } }, cleanupAttempts: 0, now: 1_000,
+      },
+    })
+    const recovery = {
+      workspaceId: 'ws_1', leaseId: 'computer:computer_recovery', kind: 'stop', token: 'recovery',
+      expectedProviderReference: 'box-ref', reconcileToken: 'abandoned', force: false,
+      now: 5_000, expiresAt: 365_000, serverSecret: secret,
+    }
+    const claim = agentMutationRef('claimComputerMaintenanceByServer')
+    expect(await convex.mutation(claim, { ...recovery, now: 1_500, force: true })).toBeNull()
+    expect(await convex.mutation(claim, { ...recovery, now: 3_000 })).toBeNull()
+    expect(await convex.mutation(claim, { ...recovery, reconcileToken: 'stale' })).toBeNull()
+    expect(await convex.mutation(claim, recovery)).toMatchObject({ token: 'recovery' })
+    expect(await convex.mutation(claim, { ...recovery, token: 'second', force: true })).toBeNull()
+    await convex.mutation(agentMutationRef('transitionComputerLifecycleByServer'), {
+      workspaceId: 'ws_1', computerId: 'computer_recovery', leaseId: recovery.leaseId,
+      token: 'recovery', transition: 'paused', expectedProviderReference: 'box-ref', now: 5_100, serverSecret: secret,
+    })
+    expect(await convex.mutation(claim, { ...recovery, now: 5_200 })).toBeNull()
+  })
+
   test('atomically excludes idle maintenance while activity is live and isolates workspace claims', async () => {
     const convex = convexTest(schema, modules)
     await convex.mutation(mutationRef('createWithLease'), {
