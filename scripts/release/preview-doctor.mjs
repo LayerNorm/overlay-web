@@ -42,7 +42,7 @@ export function capabilityConfiguration(settings) {
 
 function readJson(command, args) {
   try {
-    return JSON.parse(execFileSync(command, args, { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024,
+    return JSON.parse(execFileSync(command, args, { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024, timeout: 30_000,
       stdio: ['ignore', 'pipe', 'pipe'] }))
   } catch {
     // CLI errors can contain server response bodies; do not echo captured output.

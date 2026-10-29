@@ -4,7 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
-- Add an agent sidebar close button and preserve reply row identity from pending through streaming and completion, preventing header blink.
+- Add trusted-main Preview fixture recovery so coding-agent VMs can request bounded quota/credit recovery without receiving a Convex deploy key.
+
 - Repair scheduled workflow event projection through the authenticated web host, with paged, replay-safe Convex storage and catch-up for short completed runs.
 
 - Return Stripe checkout, top-up and portal flows to the workspace that started them, including when another tab changes the active workspace.
@@ -30,6 +31,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 - Abort title generation at its shared deadline or client cancellation, stop retries, and release failed-attempt reservations.
 
 - Keep generated chat titles stable through optimistic updates and use a resolved first-message title when creating chats.
+- Add an agent sidebar close button and preserve reply row identity from pending through streaming and completion, preventing header blink.
 - Include agent-created automations in the Automations list, show their agent avatars, and open them from agent rows.
 - Start new agent conversations with the agent's instructions as the first user message.
 - Generate chat titles with the Auto free router and retry stalled title requests once.
