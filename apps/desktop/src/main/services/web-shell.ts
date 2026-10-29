@@ -1,5 +1,6 @@
 import { app, BrowserWindow, session, shell, type Session, type WebContents } from 'electron'
 import { serverProfileService } from './security/server-profile-service'
+import { startNativeSignIn } from './security/native-auth-service'
 
 /**
  * Phase 0 spike of internal/plans/DESKTOP_WEB_SHELL_PLAN.md (overlay-web):
@@ -10,6 +11,9 @@ import { serverProfileService } from './security/server-profile-service'
  * - Its own persistent partition, separate from the app and browser sessions.
  * - Only same-origin navigation stays in the window; sign-in pages are allowed
  *   while signing in; every other URL opens in the system browser.
+ * - SSO sign-in runs in the system browser (providers block embedded sign-in).
+ *   The browser's one-time transfer token is redeemed by the window itself, so
+ *   this process never holds the window's tokens.
  * - Permissions are granted only to the server origin, and only those the web
  *   app uses.
  */
@@ -17,6 +21,8 @@ import { serverProfileService } from './security/server-profile-service'
 export const WEB_SHELL_PARTITION = 'persist:overlay'
 
 const SIGN_IN_HOST_SUFFIXES = ['.workos.com', '.authkit.app']
+const SSO_PATH_PREFIX = '/api/auth/sso/'
+const CODE_VERIFIER_HEADER = 'x-overlay-code-verifier'
 
 const GRANTED_PERMISSIONS = new Set([
   'media',
@@ -94,6 +100,13 @@ function hardenNavigation(webContents: WebContents, origin: string): void {
   })
 
   const guard = (event: Electron.Event, url: string): void => {
+    if (isSameOrigin(url, origin) && new URL(url).pathname.startsWith(SSO_PATH_PREFIX)) {
+      event.preventDefault()
+      startNativeSignIn().catch((error) => {
+        console.error('[WebShell] Could not start browser sign-in:', error)
+      })
+      return
+    }
     if (isSameOrigin(url, origin) || isSignInUrl(url)) return
     event.preventDefault()
     openExternally(url)
@@ -126,4 +139,25 @@ export function loadWebShell(window: BrowserWindow): void {
   })
   console.log(`[WebShell] Loading ${origin}/app`)
   void window.loadURL(`${origin}/app`)
+}
+
+/**
+ * Signs the window in with the browser's one-time session transfer token. The
+ * server only accepts it with the PKCE verifier, which this process attaches
+ * as a header to its own navigation.
+ */
+export function redeemSessionTransferInWebShell(
+  window: BrowserWindow,
+  token: string,
+  codeVerifier: string
+): void {
+  const url = new URL('/auth/desktop/complete', getWebShellOrigin())
+  url.searchParams.set('token', token)
+  console.log('[WebShell] Redeeming browser sign-in in the window')
+  void window.loadURL(url.toString(), {
+    extraHeaders: `${CODE_VERIFIER_HEADER}: ${codeVerifier}\n`
+  })
+  if (window.isMinimized()) window.restore()
+  window.show()
+  window.focus()
 }

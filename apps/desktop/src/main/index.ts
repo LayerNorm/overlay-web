@@ -102,6 +102,7 @@ import {
 import { agentApprovalCoordinator } from './services/security/agent-policy/approval-coordinator'
 
 import { initSentry } from './services/sentry'
+import { isWebShellEnabled, redeemSessionTransferInWebShell } from './services/web-shell'
 
 const getLocalService = (modelId: string): typeof parakeetService | typeof whisperKitService => {
   if (modelId.startsWith('parakeet_')) {
@@ -455,6 +456,16 @@ async function handleSessionTransferWithToken(
       consumeSessionTransferVerifier(baseUrl) ||
       safeStorageService.getSecureValue('session-transfer-verifier')?.trim() ||
       null
+
+    if (isWebShellEnabled()) {
+      const mainWindow = windowManager.findWindowByType('main')
+      if (!mainWindow || !codeVerifier) {
+        console.error('[Auth] Web shell session transfer needs the main window and a verifier')
+        return
+      }
+      redeemSessionTransferInWebShell(mainWindow, token, codeVerifier)
+      return
+    }
 
     console.log('[Auth] Redeeming one-time desktop session transfer')
 
