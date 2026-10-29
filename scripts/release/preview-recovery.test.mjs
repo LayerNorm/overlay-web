@@ -74,3 +74,39 @@ test('manual recovery keeps secrets on trusted main without checking out PR code
   assert.doesNotMatch(source, /pull_request_target:|pull_request:|workflow_run:/)
   assert.doesNotMatch(source, /checkout[^\n]*\$\{\{\s*inputs|npm ci|convex deploy/)
 })
+
+test('the trusted HTTP path authorizes only the pinned Preview and invokes only fixture recovery', async () => {
+  const f = fixture()
+  const pr = await f.controller.github()
+  const key = `${CONFIG.convexPreviewKeyScope}|fixture-key`
+  const calls = []
+  const fetchImpl = async (urlValue, options) => {
+    const url = new URL(urlValue)
+    const body = options.body && JSON.parse(options.body)
+    calls.push({url: url.href, method: options.method, body})
+    assert.equal(options.redirect, 'error')
+    if (url.hostname === 'api.github.com') return Response.json(pr)
+    if (url.hostname === 'api.vercel.com') {
+      assert.equal(url.searchParams.get('teamId'), CONFIG.teamId)
+      return Response.json(await f.controller.vercel(url.pathname))
+    }
+    if (url.pathname.endsWith('/list_deployments')) return Response.json([await f.controller.backends.find()])
+    if (url.pathname === '/api/deployment/authorize_preview') {
+      assert.equal(options.headers.authorization, `Bearer ${key}`)
+      assert.match(options.headers['Convex-Client'], /^npm-cli-\d+\.\d+\.\d+$/)
+      assert.deepEqual(body, {previewName: 'pr-123', projectSelection: {kind: 'teamAndProjectSlugs',
+        teamSlug: 'divyansh-lalwani-37bb7', projectSlug: 'overlay'}})
+      return Response.json(await f.controller.authorize())
+    }
+    assert.equal(url.href, 'https://fixture-preview-123.convex.cloud/api/function')
+    assert.equal(options.headers.authorization, 'Convex private-test-admin')
+    assert.deepEqual(body, {path: 'dev/qa:recover', format: 'convex_encoded_json',
+      args: {fixture: 'paid-workspace', requestId: 'gha-456', availableCents: 1000}})
+    return Response.json({status: 'success', value: {applied: true, secret: 'never-emit'}, logLines: ['never-emit']})
+  }
+  const result = await main({GITHUB_REF: 'refs/heads/main', GITHUB_REPOSITORY: CONFIG.repository,
+    GITHUB_TOKEN: 'github-fixture', VERCEL_PREVIEW_TOKEN: 'vercel-fixture', CONVEX_PREVIEW_CONTROL_KEY: key,
+    PR_NUMBER: '123', QA_FIXTURE: 'paid-workspace', GITHUB_RUN_ID: '456'}, fetchImpl)
+  assert.deepEqual(result, {number: 123, fixture: 'paid-workspace', applied: true})
+  assert.equal(calls.filter(c => c.method === 'POST').length, 2)
+})
