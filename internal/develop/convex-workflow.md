@@ -457,7 +457,11 @@ reconciliation rather than a fabricated zero-cost charge. Existing callers keep
 their uncached behavior until they supply these fields; BYOK external charges
 must not be inferred from Overlay's zero billing for user-owned credentials.
 
-The controller is not yet connected to production surfaces. Its focused QA uses
+Authenticated Personal Chat and Work use the shared controller once the selected
+backend publishes its Harness capability marker. Native agents additionally require
+the default-off server setting `OVERLAY_NATIVE_HARNESS=1`. Automations, messaging
+and notebook loops remain on their retained implementations until adapter parity.
+Its focused QA uses
 the real SDK with a mock provider, including more than twenty calls, natural early
 return, input suspension, approval/denial, revoked authorization, cancellation,
 budget refusal and no-progress recovery:
@@ -471,14 +475,34 @@ npx vitest run --config vitest.config.mts convex/harnessRuns.convex.test.ts
 npx tsx --test packages/overlay-agent-runtime/src/harness-state.test.ts
 ```
 
-Hosted acceptance still requires an isolated Preview with the exact PR SHA;
-there is no production Harness route to exercise yet.
+Hosted acceptance requires an isolated Preview with the exact PR SHA.
 
 The standalone Overlay Harness state foundation is stored by `convex/harness/runs.ts` and
 `src/server/harness/ConvexHarnessRepository.ts`. The Convex handlers require the internal
-server secret and recheck the source resource's current access on every call; a future BFF
-must authenticate the caller before using this server-only repository. They are not direct
-browser APIs and are not yet wired into application traffic.
+server secret and recheck the source resource's current access on every call. The BFF
+authenticates the caller before using this server-only repository; these are not direct
+browser APIs.
+
+### Harness web-first rollout
+
+Before creating a personal AgentRun, the web reads the server-owned
+`harnessRevision` marker from the existing authenticated
+`platform/uiSettings:getByServer` query. It is deployment metadata, not a stored
+or writable preference. A successful old-backend response without the marker
+keeps new turns on the retained Chat/Work runner. Authentication, transport,
+unexpected revision and other runtime failures fail closed; they never select
+another engine. No failed admission, model call or tool effect is replayed.
+The check is fresh per admission, so atomic publication of the matching Convex
+functions switches new turns to Harness without another web deployment.
+Existing turns retain their immutable engine ownership.
+Do not infer readiness from missing-function error text: production Convex
+redacts that text to a generic server error.
+
+Release in the normal order: merge, verify matching native Git web is live,
+deploy Convex from clean current canonical main, then smoke Chat and Work.
+Keep Harness tables/functions and legacy handlers through rollback and draining.
+Stop acknowledges an already-terminal Workflow only after SDK status readback;
+an active or unreadable run still reports cancellation failure for investigation.
 
 Harness run metadata stays compact. Plans, plan revisions, evidence, receipts, child
 reservations, operations and checkpoints use separate indexed rows; receipt identity is

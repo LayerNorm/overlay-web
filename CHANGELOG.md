@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Keep Chat and Work available during the Harness web-first rollout by checking backend readiness before admission; recognize already-terminal workflows during Stop cleanup.
+
 - Add trusted-main Preview fixture recovery so coding-agent VMs can request bounded quota/credit recovery without receiving a Convex deploy key.
 
 - Repair scheduled workflow event projection through the authenticated web host, with paged, replay-safe Convex storage and catch-up for short completed runs.

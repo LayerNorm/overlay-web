@@ -19,6 +19,14 @@ const mutation = (name: string) => makeFunctionReference<'mutation'>(`harness/ru
 const query = (name: string) => makeFunctionReference<'query'>(`harness/runs:${name}`)
 type Convex = ReturnType<typeof convexTest>
 
+test('readiness is available only to the authenticated server', async () => {
+  const convex = convexTest(schema, modules)
+  const settings = makeFunctionReference<'query'>('platform/uiSettings:getByServer')
+  expect(await convex.query(settings, { userId: 'alice', serverSecret: secret }))
+    .toMatchObject({ harnessRevision: 'overlay-harness-v1' })
+  await expect(convex.query(settings, { userId: 'alice', serverSecret: 'invalid' })).rejects.toThrow('Unauthorized')
+})
+
 async function seedConversation(convex: Convex, userId = 'alice', workspaceId?: string) {
   const now = Date.now()
   return await convex.run(ctx => ctx.db.insert('conversations', {

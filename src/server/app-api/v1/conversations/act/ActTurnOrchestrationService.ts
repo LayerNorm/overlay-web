@@ -109,6 +109,7 @@ import { start } from 'workflow/api'
 import { personalChatWorkWorkflow } from '@/server/workflows/personal-chat-work'
 import { describePersonalChatWorkTools } from '@/server/conversations/personal-chat-work-tools'
 import { prepareActModelCandidates } from './model-candidates'
+import { isHarnessBackendReady } from '@/server/harness/backend-readiness'
 import {
   isPersonalHarnessRouteEligible,
   personalHarnessConversationClientId,
@@ -212,7 +213,7 @@ export async function executeActTurn(
       authType: auth.authType,
       automationExecution,
       automationMode,
-    })
+    }) && await isHarnessBackendReady(userId)
     const conversationUserId = getAuthorizedResourceUserId(context)
     const billingWorkspaceId = context.workspace.workspace.id
     const mentionedAgent = rawMentions?.find((mention) => mention.type === 'agent')

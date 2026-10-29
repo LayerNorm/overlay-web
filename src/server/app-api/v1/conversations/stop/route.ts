@@ -7,7 +7,7 @@ import { abortToolLoopRunIds } from '@/server/conversations/tool-loop-run-regist
 import { agentRunService } from '@/server/conversations/http'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
 import { asConversationId } from '@/server/conversations/ActConversationRepository'
-import { getRun } from 'workflow/api'
+import { cancelHarnessWorkflow } from '@/server/harness/workflow-cancellation'
 import { cancelPersonalHarnessWorkflows } from '@/server/harness/personal-cancellation'
 
 type StopRouteDependencies = {
@@ -74,7 +74,7 @@ export async function POST(
     })))
     const abortedLocalRunIds = (dependencies?.abortToolLoops ?? abortToolLoopRunIds)(cancelled.cancelledRunIds)
     const cancelWorkflow = dependencies?.cancelWorkflow
-      ?? (async (workflowRunId: string) => { await getRun(workflowRunId).cancel() })
+      ?? cancelHarnessWorkflow
     const cancelledWorkflowAgentRunIds = (await Promise.all(cancelled.cancelledWorkflows.map(async (run) => {
       try {
         await cancelWorkflow(run.workflowRunId)
