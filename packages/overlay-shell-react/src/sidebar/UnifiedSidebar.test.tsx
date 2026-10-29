@@ -3,7 +3,7 @@ import test from 'node:test'
 import React from 'react'
 import { Bell, FileText, Hash, ListChecks, Mail, MessageSquare, Puzzle } from 'lucide-react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { UnifiedSidebar, type UnifiedSidebarProps } from './UnifiedSidebar'
+import { groupMoreItems, UnifiedSidebar, type UnifiedSidebarProps } from './UnifiedSidebar'
 import { publishPageSubviews } from './pageSubviewStore'
 import type { SecondaryPanelNav } from '../types'
 
@@ -61,6 +61,28 @@ test('main pages render as links and Files and Extensions move under More', () =
   assert.doesNotMatch(html, /href="\/app\/tools"/)
   assert.match(html, /aria-label="More"/)
   assert.match(html, />3</)
+})
+
+test('More groups keep labelled items grouped away from the primary rail', () => {
+  const desktopItems: UnifiedSidebarProps['items'] = [
+    ...items,
+    { id: 'voice', label: 'Voice', icon: Bell, href: '/app/voice', onSelect: noop },
+    { id: 'browser', label: 'Browser', icon: Hash, href: '/app/browser', onSelect: noop },
+  ]
+  const groups = [{ ids: ['files', 'extensions'] }, { label: 'This Mac', ids: ['voice', 'browser'] }]
+  const html = render({ items: desktopItems, moreGroups: groups })
+
+  assert.doesNotMatch(html, /href="\/app\/voice"|href="\/app\/browser"/)
+  assert.deepEqual(
+    groupMoreItems(desktopItems, groups).map((group) => ({
+      label: group.label,
+      ids: group.items.map((item) => item.id),
+    })),
+    [
+      { label: undefined, ids: ['files', 'extensions'] },
+      { label: 'This Mac', ids: ['voice', 'browser'] },
+    ],
+  )
 })
 
 test('the scope toggle remains available to solo workspaces', () => {
