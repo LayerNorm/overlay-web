@@ -505,6 +505,19 @@ test('budget refusal happens before contacting the model', async () => {
   expect(provider.doStreamCalls).toHaveLength(0)
 })
 
+test('an outstanding model reservation is not reported as a budget blocker', async () => {
+  const f = fixture()
+  const provider = model(() => 'Must not run')
+  await f.ports.apply('reserve:previous', { type: 'reserve_model', id: 'model:previous', maxCostMicros: 0 })
+
+  await expect(runOverlayHarness({ ...input, tools: {} }, f.ports))
+    .rejects.toThrow('Reconcile the previous model call before reserving another.')
+  const current = await f.ports.read()
+  expect(current.blocker).toBeUndefined()
+  expect(current.status).toBe('running')
+  expect(provider.doStreamCalls).toHaveLength(0)
+})
+
 test('repeated natural returns without progress become an explicit blocker, not success', async () => {
   const f = fixture()
   const provider = model(() => 'Done, without actually making the required plan.')

@@ -385,13 +385,13 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
         const complete = harnessCompletionIssues(current).length === 0 && current.plan.length > 0
         try {
           assertHarnessRunnable(current, Date.now(), prepared.estimatedCostMicros)
-          current = await ports.apply(`reserve:${receiptId}`, { type: 'reserve_model', id: receiptId, maxCostMicros: prepared.estimatedCostMicros })
         } catch (_error) {
           await ports.apply(`budget:${segment}:${modelCall}`, {
             type: 'block', blocker: { kind: 'budget', question: 'The authorized time or spending budget is exhausted. Review the partial result before starting more work.' },
           })
           throw new HarnessYield()
         }
+        current = await ports.apply(`reserve:${receiptId}`, { type: 'reserve_model', id: receiptId, maxCostMicros: prepared.estimatedCostMicros })
         const needsPlan = current.policy.requiresPlan && !current.plan.length
         observedState = current
         const allowed = new Set(prepared.activeToolNames)
