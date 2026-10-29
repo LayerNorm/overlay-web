@@ -5,6 +5,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 ## Unreleased
 
 - Add an agent sidebar close button and preserve reply row identity from pending through streaming and completion, preventing header blink.
+- Repair scheduled workflow event projection through the authenticated web host, with paged, replay-safe Convex storage and catch-up for short completed runs.
 
 - Return Stripe checkout, top-up and portal flows to the workspace that started them, including when another tab changes the active workspace.
 

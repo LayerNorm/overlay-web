@@ -87,6 +87,7 @@
     "src/app/api/v1/automations/[id]/start-scheduler/route.ts",
     "src/app/api/v1/automations/[id]/stream/route.ts",
     "src/app/api/v1/automations/execute/route.ts",
+    "src/app/api/v1/automations/project-events/route.ts",
     "src/app/api/v1/automations/route.ts",
     "src/app/api/v1/automations/run/route.ts",
     "src/app/api/v1/automations/test/route.ts",
