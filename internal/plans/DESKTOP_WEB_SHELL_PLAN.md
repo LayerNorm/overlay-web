@@ -1,6 +1,6 @@
 # Desktop app as a web shell
 
-Status: Proposed (2026-10-29). Phase 0 not started.
+Status: In progress (2026-10-29). Phase 0 spike on desktop main; phase 1 sign-in in progress.
 
 Repos: `LayerNorm/overlay-web` (this repo) and `LayerNorm/overlay-desktop`.
 
@@ -125,30 +125,29 @@ These are small, gated changes in this repo:
 
 ### Sign-in
 
-Google and other providers block sign-in inside embedded browsers, so sign-in
-keeps using the system browser, then moves the session into the window:
+Google and other providers block sign-in inside embedded browsers, so SSO
+sign-in runs in the system browser and the resulting session is moved into
+the window. The desktop main process never holds the window's tokens: WorkOS
+refresh tokens rotate on use, so two holders of one session would sign each
+other out.
 
-1. The user clicks Sign in, either in the window or from the bridge
-   `auth.signIn()`.
-2. The desktop runs the existing PKCE handoff (`native-auth-service`:
-   `/api/v1/discovery` → browser handoff → `overlay://` callback →
-   `/api/auth/native/exchange`). The native token session stays in
-   safeStorage, as today, for native-only calls such as cloud transcription
-   uploads and the Agent Host.
-3. **New:** the desktop asks the server for a one-time, short-lived web
-   session code (`POST /api/auth/native/web-session`, authenticated with the
-   native session). It then navigates the main window to
-   `<serverOrigin>/auth/desktop/complete?code=...`. That route redeems the
-   code once and sets the normal httpOnly `overlay_session` cookie inside the
-   window's partition, then redirects to `/app`. This reuses the existing
-   session-transfer encryption (`session-transfer-crypto`) and the
-   90-second TTL pattern from `/api/auth/desktop-link`.
-4. Signing out on web clears the cookie. The web app then calls
-   `overlayDesktop.auth.signedOut()`, so the desktop also clears its stored
-   native session. Signing out from the native menu clears both.
-5. When the cookie expires but the native session is still valid, the window
-   reaches the sign-in page. The desktop detects that navigation and repeats
-   step 3 silently instead of making the user sign in again.
+1. Email and password sign-in works inside the window as on web.
+2. Clicking an SSO option (a same-origin `/api/auth/sso/*` navigation) is
+   intercepted. The desktop starts the existing PKCE browser handoff
+   (`native-auth-service`: `/account?desktop_code_challenge=...`).
+3. The browser, signed in or after signing in, creates a one-time,
+   90-second, PKCE-bound transfer token (`POST /api/auth/desktop-link`) and
+   opens `overlay://auth/transfer?token=...`.
+4. In web shell mode the desktop does not redeem that token itself. It
+   navigates the window to `<serverOrigin>/auth/desktop/complete?token=...`
+   with the verifier in the `x-overlay-code-verifier` header. That route
+   consumes the token, sets the normal httpOnly session cookie in the
+   window's partition and redirects to `/app`. A bare link cannot sign anyone
+   in, because only the desktop can attach the verifier to its own window's
+   request.
+5. Signing out on web clears the cookie as usual. Native features that need
+   the user's identity get it from the web app through the bridge (phase 2
+   onward) instead of a second stored session.
 
 Everything in the web app (WorkOS session, Convex JWKS verification, billing)
 then works exactly as it does in a browser.
@@ -264,12 +263,11 @@ system browser. Record which flows break; that list feeds phases 1–3.
 
 ### Phase 1: sign-in into the window (web + desktop)
 
-- Web: `POST /api/auth/native/web-session` and `/auth/desktop/complete`,
-  with tests for single use, expiry, origin binding and replay. Update
-  `internal/develop/api-route-catalog.md` and the compact catalog.
-- Desktop: after a native sign-in, redeem a code into the window. Silent
-  re-auth when the window reaches the sign-in page. Sign-out clears both
-  sessions.
+- Web: `/auth/desktop/complete` redeems the browser's transfer token into
+  the window's cookie, with tests for a missing verifier, malformed or used
+  tokens and rate limiting.
+- Desktop: SSO clicks start the browser handoff, and the returned token is
+  redeemed in the window with the verifier header.
 
 Done when: Google sign-in works end to end from a fresh install, restarts
 keep the session, and signing out on either side signs out both.
