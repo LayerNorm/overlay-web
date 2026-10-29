@@ -620,6 +620,22 @@ export function finishHarness(state: HarnessSnapshot, now: number, resultSummary
   return changed(next, now)
 }
 
+function settleNamedChildMilestone(state: HarnessSnapshot, child: HarnessChild, childState: HarnessSnapshot): void {
+  const step = state.plan.find(candidate => candidate.id === child.stepId && candidate.childRunId === child.id
+    && candidate.id.startsWith('ask:') && candidate.status !== 'done' && candidate.status !== 'skipped')
+  if (!step) return
+  if (childState.status === 'completed') {
+    step.status = 'done'
+    return
+  }
+  const reason = childState.terminalReason?.trim()
+    || childState.resultSummary?.trim()
+    || childState.workingSummary.trim()
+    || 'Child run ended without a summary.'
+  step.status = 'skipped'
+  step.skipReason = `${childState.status}: ${reason}`
+}
+
 export function settleHarnessChild(state: HarnessSnapshot, childState: HarnessSnapshot, now: number): HarnessSnapshot {
   assertActive(state)
   const child = state.children.find(candidate => candidate.id === childState.runId)
@@ -641,6 +657,7 @@ export function settleHarnessChild(state: HarnessSnapshot, childState: HarnessSn
     summary: childState.resultSummary ?? childState.workingSummary, evidenceRefs: childState.evidence.map(item => item.id),
     accountedUsage: { ...childState.usage },
   })
+  settleNamedChildMilestone(next, child, childState)
   const delta = { ...childState.usage }
   for (const key of usageKeys) {
     delta[key] = (delta[key] ?? 0) - (child.accountedUsage?.[key] ?? 0)

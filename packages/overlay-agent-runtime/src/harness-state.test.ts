@@ -57,6 +57,15 @@ const steps: HarnessPlanInput[] = [
 const child = (id: string, stepId: string, budget: number): HarnessChild => ({
   id, stepId, maxCostMicros: budget, costMicros: 0, allowedToolIds: ['read'], status: 'running', evidenceRefs: [],
 })
+const childRunState = (parent: ReturnType<typeof make>, runId: string, at: number) => createHarnessSnapshot({
+  runId,
+  parentRunId: parent.runId,
+  rootRunId: parent.rootRunId,
+  depth: parent.depth + 1,
+  goal: 'Return findings.',
+  constraints: [],
+  policy: { ...parent.policy, allowedToolIds: ['read'], requiresPlan: false, maxCostMicros: 0 },
+}, at)
 
 test('model dispatch binds one billing reservation without releasing the budget hold', () => {
   const reserved = reserveHarnessModel(make(), 'receipt', 80, now)
@@ -337,6 +346,61 @@ test('named child admission appends and assigns its synthetic milestone atomical
   }, now), /milestone identity/)
 })
 
+test('settling a completed named child completes its milestone and leaves child-result evidence available', () => {
+  const planned = replaceHarnessPlan(make(), [{
+    id: 'report',
+    title: 'Use the child result',
+    dependsOn: [],
+    acceptanceCriteria: ['Use the answer.'],
+    requiresVerification: false,
+    evidenceTools: ['harness_read_child'],
+  }], now)
+  const askStepId = 'ask:call:planner'
+  const admitted = admitHarnessNamedChild(planned, child('child-1', askStepId, 0), {
+    title: 'Ask Planner',
+    acceptanceCriteria: ['Planner returns a reply.'],
+  }, now + 1)
+  const completedChild = finishHarness(childRunState(admitted, 'child-1', now + 2), now + 3, 'Agent answer.')
+  const settled = settleHarnessChild(admitted, completedChild, now + 4)
+
+  assert.equal(settled.plan.find(step => step.id === askStepId)?.status, 'done')
+  assert.deepEqual(settled.plan.find(step => step.id === askStepId)?.evidenceRefs, [])
+  assert.ok(!harnessCompletionIssues(settled).includes(`Milestone ${askStepId} is unfinished.`))
+  assert.ok(harnessCompletionIssues(settled).includes('Milestone report is unfinished.'))
+  assert.equal(settleHarnessChild(settled, completedChild, now + 5), settled)
+
+  const withEvidence = recordHarnessEvidence(settled, {
+    id: 'child-result:read-child',
+    kind: 'tool_result',
+    source: 'harness_read_child:child-1',
+    summary: 'Agent answer.',
+    verdict: 'observed',
+    createdAt: now + 6,
+  }, now + 6)
+  const completed = transitionHarnessStep(withEvidence, {
+    id: 'report',
+    status: 'done',
+    evidenceRefs: ['child-result:read-child'],
+  }, now + 7)
+  assert.equal(completed.plan.find(step => step.id === 'report')?.status, 'done')
+  assert.deepEqual(completed.plan.find(step => step.id === askStepId)?.evidenceRefs, [])
+})
+
+for (const status of ['failed', 'cancelled'] as const) {
+  test(`settling a ${status} named child skips its milestone with a reason`, () => {
+    const askStepId = 'ask:call:planner'
+    const admitted = admitHarnessNamedChild(make(), child('child-1', askStepId, 0), {
+      title: 'Ask Planner',
+      acceptanceCriteria: ['Planner returns a reply.'],
+    }, now + 1)
+    const endedChild = terminateHarness(childRunState(admitted, 'child-1', now + 2), status, 'Agent stopped before replying.', now + 3)
+    const settled = settleHarnessChild(admitted, endedChild, now + 4)
+
+    assert.equal(settled.plan.find(step => step.id === askStepId)?.status, 'skipped')
+    assert.equal(settled.plan.find(step => step.id === askStepId)?.skipReason, `${status}: Agent stopped before replying.`)
+  })
+}
+
 test('revising an attached named-child milestone inherits its evidenceTools', () => {
   const admitted = admitHarnessNamedChild(make(), child('workspace:delivery', 'ask:call:planner', 40), {
     title: 'Ask Planner',
@@ -447,6 +511,7 @@ test('a requiresPlan delegated milestone completes with harness_read_child evide
   }, now + 2)
   const completedChild = finishHarness(childRun, now + 3, 'Delegated result')
   const settled = settleHarnessChild(admitted, completedChild, now + 4)
+  assert.deepEqual(settled.plan, admitted.plan)
   const evidence = recordHarnessEvidence(settled, {
     id: 'child-result',
     kind: 'tool_result',

@@ -513,6 +513,10 @@ result. It is an observed tool result, not independent verification; milestones
 requiring verification still need a separate passing verification receipt.
 Running, failed, cancelled or unrelated children cannot supply this completion
 evidence. Original child evidence IDs remain scoped to their child run.
+System-owned `ask:<toolCallId>:<agentId>` milestones settle from the joined
+child's terminal status: completion marks them done, while failure or
+cancellation skips them with the child's reason. Other delegated milestones
+still require the parent to complete them with evidence.
 Children inherit the parent's `requiresPlan` policy. Optional planning stays
 optional for a trivial delegated reply; an explicit plan requirement cannot be
 weakened through delegation. The parent still needs a milestone to delegate.
