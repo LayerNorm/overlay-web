@@ -4,6 +4,8 @@ import { start } from 'workflow/api'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { logger } from '@/server/observability/logger'
 import { workspaceAgentTurnWorkflow } from '@/server/workflows/workspace-agent-turn'
+import { startNativeHarnessTurn } from '@/server/harness/native-turn-start'
+import { serverEnv } from '@/server/env/server-env'
 import { agentStartFailureMessage } from '@/server/app-api/v1/conversations/message/agent-start-failure'
 import {
   resolveWorkspaceAgentInvocations,
@@ -32,6 +34,8 @@ export type WorkspaceAgentTurnDispatcherDependencies = {
   startRemote?: typeof startRemoteWorkspaceAgentTurn
   getCollaboration?: () => ReturnType<typeof getOverlayServerContext>['appData']['repositories']['conversationCollaboration']
   startWorkflow?: typeof start
+  startNative?: typeof startNativeHarnessTurn
+  nativeHarnessEnabled?: () => boolean
 }
 
 /**
@@ -89,12 +93,18 @@ export async function startWorkspaceAgentTurns(
         })
         return
       }
+      const useNativeHarness = invocation.harness === 'overlay'
+        && (dependencies.nativeHarnessEnabled?.() ?? serverEnv.overlayNativeHarness === '1')
       const turn = await collaboration.startAgentTurn({
         actorUserId: args.actorUserId,
         agentId: invocation.agentId,
         authorPrincipalId: invocation.agentPrincipalId,
         clientNonce: invocation.invocationNonce,
         conversationId: args.conversationId,
+        ...(useNativeHarness ? {
+          executionEngine: 'overlay_harness' as const,
+          initiatorPrincipalId: args.initiatorPrincipalId,
+        } : {}),
         modelId: invocation.modelId,
         threadRootMessageId: args.threadRootMessageId,
         turnId: invocation.turnId,
@@ -105,6 +115,17 @@ export async function startWorkspaceAgentTurns(
       // or a retried send. Starting a second workflow against the same reply
       // row would bill the turn twice.
       if (turn.resumed) return
+      if (useNativeHarness) {
+        await (dependencies.startNative ?? startNativeHarnessTurn)({
+          actorUserId: args.actorUserId,
+          workspaceId: args.workspaceId,
+          conversationId: args.conversationId,
+          runId: turn.runId,
+          memoryEnabled: args.memoryEnabled,
+          ...(args.threadRootMessageId ? { threadRootMessageId: args.threadRootMessageId } : {}),
+        })
+        return
+      }
       const workflowArgs: Parameters<typeof workspaceAgentTurnWorkflow> = [{
         actorUserId: args.actorUserId,
         agentId: invocation.agentId,

@@ -41,6 +41,15 @@ test('missing API pricing fails closed', () => {
   assert.equal(calculateGatewayVideoCostOrNull({}, 8), null)
 })
 
+test('cache writes are priced separately, not counted again as uncached input', () => {
+  const pricing = { input: '0.000001', input_cache_read: '0.0000001', input_cache_write: '0.00000125', output: '0.000002' }
+  // 200 uncached + 600 cache reads + 200 cache writes + 100 output.
+  const cost = calculateGatewayLanguageTokenCostOrNull(pricing, 1_000, 600, 100, 200)
+  assert.ok(cost !== null && Math.abs(cost - 0.00071) < 1e-12)
+  assert.equal(calculateGatewayLanguageTokenCostOrNull({ input: '0.000001', output: '0.000002' }, 1_000, 0, 100, 200), null)
+  assert.equal(calculateGatewayLanguageTokenCostOrNull(pricing, 1_000, 900, 100, 200), null)
+})
+
 test('media and embedding calculators use Gateway fields', () => {
   assert.equal(calculateGatewayImageCostOrNull('example/image', { image: '0.04' }), 0.04)
   assert.equal(calculateGatewayVideoCostOrNull({

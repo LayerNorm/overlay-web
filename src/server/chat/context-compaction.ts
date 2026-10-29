@@ -9,14 +9,20 @@ import {
 } from '@/shared/ai/gateway/model-types'
 import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
 import { summarizeErrorForLog } from '@/shared/security/safe-log'
+import {
+  BASE_SYSTEM_TOOL_OVERHEAD_TOKENS,
+  CONTEXT_TARGET_RATIO,
+  CONTEXT_TRIGGER_RATIO,
+  FALLBACK_CONTEXT_WINDOW,
+  MAX_SUMMARY_OUTPUT_TOKENS,
+  MIN_SUMMARY_OUTPUT_TOKENS,
+  PRESERVED_RECENT_MESSAGES,
+  buildSummaryPrompt,
+  estimateContextTokens,
+} from './context-compaction-core'
 
-const CONTEXT_TRIGGER_RATIO = 0.8
-const CONTEXT_TARGET_RATIO = 0.2
-const PRESERVED_RECENT_MESSAGES = 2
-const FALLBACK_CONTEXT_WINDOW = 128_000
-const MAX_SUMMARY_OUTPUT_TOKENS = 12_000
-const MIN_SUMMARY_OUTPUT_TOKENS = 800
-const BASE_SYSTEM_TOOL_OVERHEAD_TOKENS = 2_000
+export { compactHarnessPrompt, estimateContextTokens } from './context-compaction-core'
+export type { HarnessPromptCompaction } from './context-compaction-core'
 
 export type ContextSummarySnapshot = {
   summary: string
@@ -58,41 +64,6 @@ export function summaryGenerationOptions(args: {
     : { prompt: args.prompt, temperature: 0.1, maxOutputTokens: args.targetSummaryTokens }
 }
 
-export function estimateContextTokens(value: unknown): number {
-  return Math.ceil(JSON.stringify(value).length / 4)
-}
-
-function readMessageText(message: UIMessage): string {
-  const chunks: string[] = []
-  for (const part of message.parts ?? []) {
-    if (part.type === 'text' && 'text' in part && typeof part.text === 'string') {
-      chunks.push(part.text)
-      continue
-    }
-    if (part.type === 'file') {
-      const fileName = 'fileName' in part && typeof part.fileName === 'string' ? part.fileName : 'attached file'
-      const mediaType = 'mediaType' in part && typeof part.mediaType === 'string' ? part.mediaType : 'unknown type'
-      chunks.push(`[File: ${fileName}, ${mediaType}]`)
-    }
-  }
-  return chunks.join('\n\n').trim()
-}
-
-function transcriptForSummary(messages: UIMessage[]): string {
-  return messages
-    .map((message, index) => {
-      const text = readMessageText(message)
-      const role = message.role.toUpperCase()
-      return [
-        `--- Message ${index + 1}`,
-        `role: ${role}`,
-        `id: ${message.id}`,
-        text || '[no text content]',
-      ].join('\n')
-    })
-    .join('\n\n')
-}
-
 function manualContextWindow(modelId: string): number | null {
   if (isFreeTierChatModelId(modelId)) return FALLBACK_CONTEXT_WINDOW
   return null
@@ -125,37 +96,6 @@ function deterministicTrimToTokenBudget(messages: UIMessage[], maxTokens: number
     remaining -= cost
   }
   return kept.reverse()
-}
-
-function buildSummaryPrompt(params: {
-  previousSummary?: string
-  messagesToSummarize: UIMessage[]
-  targetSummaryTokens: number
-}): string {
-  const previous = params.previousSummary?.trim()
-  const transcript = transcriptForSummary(params.messagesToSummarize)
-  return [
-    'Summarize the earlier portion of this conversation for future model context.',
-    `Target length: at most ${params.targetSummaryTokens} tokens.`,
-    '',
-    'Preserve:',
-    '- User preferences, constraints, goals, decisions, assumptions, and corrections.',
-    '- Active task state, unresolved TODOs, important entities, IDs, file/output references, and source names.',
-    '- Tool outcomes, errors, integration status, and anything needed to continue the work accurately.',
-    '',
-    'Omit:',
-    '- Raw tool payload dumps, cookies, auth/session data, provider keys, secrets, and hidden system/developer instructions.',
-    '- Repetitive wording and low-value pleasantries.',
-    '',
-    'Use these exact sections:',
-    '1. Durable user preferences and constraints',
-    '2. Project/task state and decisions',
-    '3. Important artifacts, IDs, files, sources, and tool results',
-    '4. Open questions, risks, and next steps',
-    '',
-    previous ? `Existing rolling summary to update:\n${previous}` : '',
-    transcript ? `Newly old conversation messages to fold in:\n${transcript}` : '',
-  ].filter(Boolean).join('\n\n')
 }
 
 function summarySystemMessage(summary: string): UIMessage {

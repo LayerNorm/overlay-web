@@ -66,6 +66,15 @@ test('another participant cannot decide the initiating user approval', async () 
   assert.equal(response.status, 403)
 })
 
+test('a shared personal conversation does not let another participant approve the owner tools', async () => {
+  const response = await POST(request(), context('participant'), {
+    conversations: { getConversationById: async () => null, getLatestAgentRun: async () => ({ ...run, mode: 'work' }) },
+    collaboration: { getAccessibleConversation: async () => conversation },
+    resume: async () => assert.fail('Personal approvals must remain owner-only'),
+  })
+  assert.equal(response.status, 403)
+})
+
 test('the initiator can decide an active approval, including legacy personal conversations', async () => {
   for (const approved of [true, false]) {
     const decisions: unknown[] = []

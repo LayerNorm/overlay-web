@@ -13,6 +13,7 @@ import {
 const AGENT_HISTORY_MESSAGE_LIMIT = 24
 /** Roster lines are cheap, but a large channel should not crowd out the transcript. */
 const AGENT_ROSTER_LIMIT = 40
+export const CLOSED_AGENT_TURN_NOTE = '[This earlier turn ended without a reply. Its request is closed; do not resume it unless it is asked again.]'
 
 export type AgentRoomMessage = {
   _id: string
@@ -20,6 +21,7 @@ export type AgentRoomMessage = {
   authorPrincipalId?: string
   content: string
   deletedAt?: number
+  status?: 'generating' | 'completed' | 'error'
 }
 
 export type AgentRoomParticipant = {
@@ -61,12 +63,14 @@ export async function buildAgentTurnContext(args: {
   /** Whether a channel is public or private; part of deciding whether the room is shared. */
   channelVisibility?: string | null
   history: readonly AgentRoomMessage[]
+  currentMessageId?: string
   idempotencyKey: string
   latestUserText: string
   memoryEnabled: boolean
   participants: readonly AgentRoomParticipant[]
   requestFingerprint: string
   workspaceId: string
+  includeAutoRetrieval?: boolean
 }): Promise<AgentTurnContext> {
   const server = getOverlayServerContext()
   // The room rule: in a room others can read, the summoner's private memory, files, and skills are not loaded for the agent
@@ -102,7 +106,7 @@ export async function buildAgentTurnContext(args: {
     : Promise.resolve('')
 
   const retrievalTask: Promise<string> = (async () => {
-    if (!args.latestUserText.trim() || !access.personalRetrieval) return ''
+    if (args.includeAutoRetrieval === false || !args.latestUserText.trim() || !access.personalRetrieval) return ''
     try {
       const { buildAutoRetrievalBundle } = await import('@/server/knowledge/ask-knowledge-context')
       const bundle = await buildAutoRetrievalBundle({
@@ -170,6 +174,7 @@ export async function buildAgentTurnContext(args: {
     messages: buildAgentMessages({
       agentPrincipalId: args.agentPrincipalId,
       history: args.history,
+      currentMessageId: args.currentMessageId,
       participants: args.participants,
     }),
     recalledMemory: Boolean(memoryContext.trim() || retrievalContext.trim()),
@@ -220,18 +225,33 @@ export function buildRoomContext(args: {
 export function buildAgentMessages(args: {
   agentPrincipalId: string
   history: readonly AgentRoomMessage[]
+  currentMessageId?: string
   participants: readonly AgentRoomParticipant[]
 }): ModelMessage[] {
   const namesByPrincipalId = new Map(
     args.participants.map((participant) => [participant.principalId, participant.displayName?.trim()]),
   )
-  return args.history
-    .filter((message) => !message.deletedAt && message.content.trim())
+  const history = args.history.filter((message) => !message.deletedAt)
+  const currentMessageIndex = args.currentMessageId
+    ? history.findIndex((message) => message._id === args.currentMessageId)
+    : -1
+  return history
+    .filter((message, index) => {
+      const isSelf = message.authorKind === 'agent'
+        && message.authorPrincipalId === args.agentPrincipalId
+      if (isSelf && currentMessageIndex >= 0 && index > currentMessageIndex) return false
+      if (isSelf) return message.status !== 'generating' || Boolean(message.content.trim())
+      return Boolean(message.content.trim())
+    })
     .slice(-AGENT_HISTORY_MESSAGE_LIMIT)
     .map((message) => {
       const isSelf = message.authorKind === 'agent'
         && message.authorPrincipalId === args.agentPrincipalId
-      if (isSelf) return { role: 'assistant' as const, content: message.content }
+      if (isSelf) {
+        const closed = message.status === 'error'
+          || (!message.content.trim() && message.status !== 'generating')
+        return { role: 'assistant' as const, content: closed ? CLOSED_AGENT_TURN_NOTE : message.content }
+      }
       const fallback = message.authorKind === 'agent' ? 'Agent' : 'Teammate'
       const author = (message.authorPrincipalId
         ? namesByPrincipalId.get(message.authorPrincipalId)

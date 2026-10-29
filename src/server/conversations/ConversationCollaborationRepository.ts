@@ -113,7 +113,9 @@ export interface ConversationCollaborationRepository {
     authorPrincipalId: string
     clientNonce: string
     conversationId: string
+    initiatorPrincipalId?: string
     modelId: string
+    executionEngine?: 'overlay_harness'
     threadRootMessageId?: string
     turnId: string
     userMessageId: string
@@ -136,6 +138,7 @@ export interface ConversationCollaborationRepository {
     conversationId: string
     messageId: string
     parts?: Array<Record<string, unknown>>
+    toolNames?: string[]
     tokens?: { input: number; output: number }
     workspaceId: string
   }): Promise<void>
@@ -146,6 +149,28 @@ export interface ConversationCollaborationRepository {
     content?: string
     messageId: string
     parts?: Array<Record<string, unknown>>
+    toolNames?: string[]
+    workspaceId: string
+  }): Promise<void>
+  sanitizeAgentMessageTextParts(args: {
+    actorUserId: string
+    authorPrincipalId: string
+    conversationId: string
+    messageId: string
+    toolNames: string[]
+    turnId: string
+    workspaceId: string
+  }): Promise<void>
+  completeAgentToolInvocation(args: {
+    actorUserId: string
+    authorPrincipalId: string
+    conversationId: string
+    messageId: string
+    output?: unknown
+    state: 'output-available' | 'output-error'
+    toolCallId: string
+    toolName: string
+    turnId: string
     workspaceId: string
   }): Promise<void>
   getConversationEventCursor(args: {

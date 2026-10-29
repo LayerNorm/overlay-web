@@ -1,4 +1,5 @@
 import 'server-only'
+import { OverlayFreeRouteBusyError } from './overlay-free-router-errors'
 
 import { createOpenRouter } from '@openrouter/ai-sdk-provider'
 import type {
@@ -34,6 +35,7 @@ import {
   trustedOverlayFreeOptions,
 } from './overlay-free-request-policy'
 import { doOverlayFreeStream } from './overlay-free-router-stream'
+import { confirmOpenRouterGenerationCost } from './openrouter-generation-cost'
 import { getOrCreateGateway, getGatewayModelId, resolveOpenRouterApiKey } from './gateway-runtime'
 import { lazyConvex as convex } from '@/server/database/lazy-convex'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
@@ -56,6 +58,24 @@ export function isEmptyOverlayFreeCompletion(content: LanguageModelV4GenerateRes
   const hasText = content.some((part) => part.type === 'text' && part.text.trim().length > 0)
   const hasToolCall = content.some((part) => part.type === 'tool-call')
   return !hasText && !hasToolCall
+}
+
+function shouldRetryEmptyCompletion(
+  safe: boolean,
+  content: LanguageModelV4GenerateResult['content'],
+): boolean {
+  return safe && isEmptyOverlayFreeCompletion(content)
+}
+
+function resultAfterGenerateAttempts(
+  lastEmpty: LanguageModelV4GenerateResult | undefined,
+  capacityRejected: boolean,
+  ambiguousAttempt: boolean,
+  lastError: unknown,
+): LanguageModelV4GenerateResult {
+  if (lastEmpty) return lastEmpty
+  if (capacityRejected && !ambiguousAttempt) throw new OverlayFreeRouteBusyError()
+  throw lastError
 }
 
 function receiptSummary(value: ReturnType<typeof assessFreeReceipt>): OverlayFreeReceiptSummary {
@@ -92,6 +112,46 @@ function logUnsafeReceipt(route: OverlayFreeRoute, receipt: OverlayFreeReceiptSu
     cost: receipt.cost,
     reason: receipt.reason ?? 'unsafe receipt',
   })
+}
+
+type GenerateFailureResult = {
+  capacityRejected: boolean
+  ambiguousAttempt: boolean
+  rethrow: boolean
+}
+
+async function settleGenerateFailure(
+  repository: OverlayFreeRepository,
+  route: OverlayFreeRoute,
+  token: string,
+  now: () => number,
+  error: unknown,
+  generationStarted: boolean,
+  aborted: boolean,
+): Promise<GenerateFailureResult> {
+  if (aborted) {
+    if (!generationStarted) {
+      await repository.cooldown(route.routeKey, token, now())
+      return { capacityRejected: false, ambiguousAttempt: false, rethrow: true }
+    }
+    await repository.settle({
+      routeKey: route.routeKey, leaseToken: token, now: now(),
+      receipt: { safe: false, cost: null, reason: 'request aborted' },
+      safe: false, cost: null, reason: 'request aborted',
+    })
+    return { capacityRejected: false, ambiguousAttempt: true, rethrow: true }
+  }
+  const rateLimited = isRateLimited(error)
+  if (!generationStarted || rateLimited) {
+    await repository.cooldown(route.routeKey, token, now())
+    return { capacityRejected: generationStarted && rateLimited, ambiguousAttempt: false, rethrow: false }
+  }
+  await repository.settle({
+    routeKey: route.routeKey, leaseToken: token, now: now(),
+    receipt: { safe: false, cost: null, reason: 'missing receipt' },
+    safe: false, cost: null, reason: 'missing receipt',
+  })
+  return { capacityRejected: false, ambiguousAttempt: true, rethrow: false }
 }
 
 export function createSingleRequestFetch(fetcher: typeof fetch): typeof fetch {
@@ -206,10 +266,13 @@ class OverlayFreeLanguageModel implements LanguageModelV4 {
       ...candidates.filter((route) => route.transport === 'openrouter').slice(0, 1),
     ]
     let lastError: unknown = new Error('overlay_free_no_eligible_route')
+    let capacityRejected = false
+    let ambiguousAttempt = false
     let lastEmpty: LanguageModelV4GenerateResult | undefined
     for (const candidate of attempts) {
       if (options.abortSignal?.aborted) throw options.abortSignal.reason ?? new Error('aborted')
       const claimed = await this.claim(candidate)
+      if (claimed.status === 'busy' || claimed.status === 'cooldown') capacityRejected = true
       const route = claimed.route
       const token = route?.activeLeaseToken
       if (claimed.status !== 'claimed' || !route || !token) continue
@@ -251,7 +314,7 @@ class OverlayFreeLanguageModel implements LanguageModelV4 {
           ...result,
           providerMetadata: overlayMetadata(result.providerMetadata, checked.route, summary),
         }
-        if (value.safe && isEmptyOverlayFreeCompletion(result.content)) {
+        if (shouldRetryEmptyCompletion(value.safe, result.content)) {
           lastEmpty = completedResult
           logger.warn('[overlay-free] empty completion, trying next route', { routeKey: checked.route.routeKey })
           continue
@@ -261,31 +324,16 @@ class OverlayFreeLanguageModel implements LanguageModelV4 {
         clearTimeout(timer)
         if (settlementAttempted) throw error
         lastError = error
-        if (options.abortSignal?.aborted) {
-          if (generationStarted) {
-            await this.config.repository.settle({
-              routeKey: route.routeKey, leaseToken: token, now: this.clock(),
-              receipt: { safe: false, cost: null, reason: 'request aborted' },
-              safe: false, cost: null, reason: 'request aborted',
-            })
-          } else {
-            await this.config.repository.cooldown(route.routeKey, token, this.clock())
-          }
-          throw error
-        }
-        if (!generationStarted || isRateLimited(error)) {
-          await this.config.repository.cooldown(route.routeKey, token, this.clock())
-        } else {
-          await this.config.repository.settle({
-            routeKey: route.routeKey, leaseToken: token, now: this.clock(),
-            receipt: { safe: false, cost: null, reason: 'missing receipt' },
-            safe: false, cost: null, reason: 'missing receipt',
-          })
-        }
+        const failure = await settleGenerateFailure(
+          this.config.repository, route, token, () => this.clock(), error, generationStarted,
+          options.abortSignal?.aborted ?? false,
+        )
+        capacityRejected ||= failure.capacityRejected
+        ambiguousAttempt ||= failure.ambiguousAttempt
+        if (failure.rethrow) throw error
       }
     }
-    if (lastEmpty) return lastEmpty
-    throw lastError
+    return resultAfterGenerateAttempts(lastEmpty, capacityRejected, ambiguousAttempt, lastError)
   }
 
   async doStream(options: LanguageModelV4CallOptions): Promise<LanguageModelV4StreamResult> {
@@ -303,6 +351,7 @@ class OverlayFreeLanguageModel implements LanguageModelV4 {
       claim: (route) => this.claim(route),
       preflight: (route, token, callOptions, deadlineAt) => this.preflight(route, token, callOptions, deadlineAt),
       model: (route) => this.model(route),
+      confirmOpenRouterGenerationCost: this.config.confirmOpenRouterGenerationCost,
       now: () => this.clock(),
       onModelCaptured: this.config.onModelCaptured,
     })
@@ -345,7 +394,13 @@ export function createOverlayFreeRepository(): OverlayFreeRepository {
       }, { throwOnError: true })
       const routes = required(await convex.query<OverlayFreeRoute[]>(
         'platform/overlayFreeSafety:listEligibleByServer',
-        { serverSecret: secret(), now: Date.now(), generation: state.generation },
+        {
+          serverSecret: secret(),
+          now: Date.now(),
+          generation: state.generation,
+          includeBusy: true,
+          includeCooldown: true,
+        },
         { throwOnError: true },
       ), 'route_list')
       if (!Array.isArray(routes)) throw new Error('overlay_free_storage_route_list_failed')
@@ -386,6 +441,10 @@ export async function createRuntimeOverlayFreeLanguageModel(options: {
     onModelCaptured: options.onModelCaptured,
     modelId: options.modelId,
     fallbackOnly: options.fallbackOnly,
+    confirmOpenRouterGenerationCost: async (generationId) => {
+      const apiKey = await resolveOpenRouterApiKey()
+      return apiKey ? confirmOpenRouterGenerationCost(generationId, apiKey) : false
+    },
     providers: {
       gateway: async (modelId) => (await getOrCreateGateway())(modelId),
       openrouter: async () => {

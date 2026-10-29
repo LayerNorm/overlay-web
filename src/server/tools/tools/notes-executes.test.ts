@@ -9,6 +9,7 @@ import {
   executeGetNote,
   executeListNotes,
   executeReplaceNoteSection,
+  executeUpdateNote,
 } from './notes-executes'
 import type { OverlayToolsOptions } from './types'
 
@@ -69,11 +70,59 @@ test('create_note links new notes to its conversation only when available', asyn
     return Response.json({ id: 'note_created', note: null })
   }) as typeof fetch
   try {
-    await executeCreateNote({ ...options, conversationId: 'conv_1' }, { title: 'Plan', content: '# Plan' })
-    await executeCreateNote(options, { title: 'Personal', content: '# Personal' })
+    const created = await executeCreateNote({ ...options, conversationId: 'conv_1' }, { title: 'Plan', content: '# Plan' })
+    const personal = await executeCreateNote(options, { title: 'Personal', content: '# Personal' })
 
     assert.equal(bodies[0]?.conversationId, 'conv_1')
     assert.equal('conversationId' in (bodies[1] ?? {}), false)
+    assert.deepEqual(created.saved, { title: 'Plan', tags: [] })
+    assert.deepEqual(personal.saved, { title: 'Personal', tags: [] })
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('create_note without a title echoes the persisted Untitled title', async () => {
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = (async () => Response.json({
+    id: 'note_created',
+    note: { _id: 'note_created', title: 'Untitled', tags: ['source'], updatedAt: 7 },
+  })) as typeof fetch
+  try {
+    const result = await executeCreateNote(options, { content: 'A note body' })
+    assert.deepEqual(result.saved, { title: 'Untitled', tags: ['source'] })
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('create_note with a title echoes the persisted title', async () => {
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = (async () => Response.json({
+    id: 'note_created',
+    note: { _id: 'note_created', title: 'Persisted title', tags: [], updatedAt: 7 },
+  })) as typeof fetch
+  try {
+    const result = await executeCreateNote(options, { title: 'Requested title', content: 'A note body' })
+    assert.deepEqual(result.saved, { title: 'Persisted title', tags: [] })
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('update_note echoes fields from the persisted note', async () => {
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = (async () => Response.json({
+    success: true,
+    note: { _id: 'note_1', title: 'Persisted title', tags: ['saved'], updatedAt: 8 },
+  })) as typeof fetch
+  try {
+    const result = await executeUpdateNote(options, {
+      noteId: 'note_1',
+      title: 'Requested title',
+      tags: ['requested'],
+    })
+    assert.deepEqual(result.saved, { title: 'Persisted title', tags: ['saved'] })
   } finally {
     globalThis.fetch = originalFetch
   }

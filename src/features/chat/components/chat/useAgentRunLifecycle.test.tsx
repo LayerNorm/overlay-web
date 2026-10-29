@@ -40,7 +40,9 @@ test('run snapshot merge applies newer and different runs but ignores stale same
 })
 
 test('run snapshot merge preserves active runs when a null snapshot arrives', () => {
-  assert.equal(shouldApplyRunSnapshot({ id: 'run_1', status: 'waiting_for_approval', updatedAt: 100 }, null), false)
+  for (const status of ['waiting_for_approval', 'waiting_for_input', 'waiting_for_children'] as const) {
+    assert.equal(shouldApplyRunSnapshot({ id: 'run_1', status, updatedAt: 100 }, null), false)
+  }
   assert.equal(shouldApplyRunSnapshot({ id: 'run_1', status: 'completed', updatedAt: 100 }, null), true)
   assert.equal(shouldApplyRunSnapshot(null, null), true)
 })

@@ -2506,6 +2506,22 @@
                     "exclusiveMinimum": true,
                     "minimum": 0
                   },
+                  "harnessBudget": {
+                    "type": "object",
+                    "properties": {
+                      "maxProviderCostUsd": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 100
+                      },
+                      "durationMs": {
+                        "type": "integer",
+                        "minimum": 30000,
+                        "maximum": 604800000
+                      }
+                    },
+                    "additionalProperties": false
+                  },
                   "mentions": {
                     "type": "array",
                     "items": {
@@ -2971,6 +2987,104 @@
                   "agentRunId",
                   "token",
                   "approved"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/conversations/run/input": {
+      "post": {
+        "operationId": "postConversationsRunInput",
+        "summary": "Provide requested input to a waiting personal or native Harness AgentRun",
+        "tags": [
+          "Conversations"
+        ],
+        "security": [
+          {
+            "browserSession": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response. Stable response schemas are documented in workflow guides when available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Response shape is route-specific and may be backed by @overlay/app-core contracts."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "conversationId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  },
+                  "agentRunId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  },
+                  "token": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  },
+                  "text": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32000
+                  }
+                },
+                "required": [
+                  "conversationId",
+                  "agentRunId",
+                  "token",
+                  "text"
                 ],
                 "additionalProperties": false
               }

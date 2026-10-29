@@ -3,6 +3,8 @@ import test from 'node:test'
 import { generateText, stepCountIs, tool } from 'ai'
 import { z } from 'zod/v3'
 import { getGatewayLanguageModel } from './ai-gateway'
+import { OverlayFreeRouteBusyError, OverlayFreeRouteInterruptedError } from './overlay-free-router-errors'
+import { confirmOpenRouterGenerationCost as confirmGenerationCost } from './openrouter-generation-cost'
 import type {
   LanguageModelV4,
   LanguageModelV4CallOptions,
@@ -14,6 +16,7 @@ import {
   type OverlayFreeRepository,
   type OverlayFreeRoute,
 } from './overlay-free-router'
+import { FREE_ROUTE_IDLE_TIMEOUT_MS, FREE_ROUTE_LEASE_MS, FREE_ROUTE_TIMEOUT_MS } from '@/shared/ai/gateway/overlay-free-policy'
 
 const now = Date.now()
 
@@ -30,7 +33,7 @@ function route(transport: 'gateway' | 'openrouter', modelId: string, provider: s
       supportsVision: true,
       supportsJson: true,
     }),
-    pricingJson: JSON.stringify({ input: '0', output: '0' }),
+    pricingJson: JSON.stringify({ prompt: '0', completion: '0' }),
     catalogVerifiedAt: now,
     catalogExpiresAt: now + 3_600_000,
     generation: 1,
@@ -57,7 +60,7 @@ function options(): LanguageModelV4CallOptions {
 function model(
   provider: string,
   generate: (options: LanguageModelV4CallOptions) => Promise<Awaited<ReturnType<LanguageModelV4['doGenerate']>>>,
-  stream?: () => ReadableStream<LanguageModelV4StreamPart>,
+  stream?: (options: LanguageModelV4CallOptions) => ReadableStream<LanguageModelV4StreamPart>,
 ): LanguageModelV4 {
   return {
     specificationVersion: 'v4',
@@ -65,11 +68,75 @@ function model(
     modelId: provider,
     supportedUrls: {},
     doGenerate: generate,
-    doStream: async () => {
+    doStream: async (options) => {
       if (!stream) throw new Error('stream not used')
-      return { stream: stream(), request: {}, response: { headers: {} } }
+      return { stream: stream(options), request: {}, response: { headers: {} } }
     },
   }
+}
+
+function abortableStream(
+  options: LanguageModelV4CallOptions,
+  emitFirstChunk: boolean,
+  intervalMs?: number,
+  finishAfterChunks?: number,
+  generationId?: string,
+): ReadableStream<LanguageModelV4StreamPart> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  let chunkCount = 0
+  let controllerRef: ReadableStreamDefaultController<LanguageModelV4StreamPart> | undefined
+  const signal = options.abortSignal
+  const onAbort = () => controllerRef?.error(signal?.reason ?? new Error('aborted'))
+  return new ReadableStream({
+    start(controller) {
+      controllerRef = controller
+      if (signal?.aborted) onAbort()
+      else signal?.addEventListener('abort', onAbort, { once: true })
+      if (generationId) {
+        controller.enqueue({
+          type: 'response-metadata',
+          id: generationId,
+          modelId: 'openrouter/free',
+          headers: {},
+        })
+      }
+      if (emitFirstChunk) controller.enqueue({ type: 'text-delta', id: 'timed-text-0', delta: 'a' })
+    },
+    pull(controller) {
+      if (intervalMs === undefined || timer !== undefined) return
+      timer = setTimeout(() => {
+        timer = undefined
+        chunkCount += 1
+        if (finishAfterChunks !== undefined && chunkCount > finishAfterChunks) {
+          controller.enqueue({
+            type: 'finish',
+            finishReason: { unified: 'stop', raw: 'stop' },
+            usage: usage(),
+            providerMetadata: { openrouter: { usage: { cost: '0' } } },
+          })
+          controller.close()
+        } else {
+          controller.enqueue({ type: 'text-delta', id: `timed-text-${chunkCount}`, delta: 'a' })
+        }
+      }, intervalMs)
+    },
+    cancel() {
+      if (timer !== undefined) clearTimeout(timer)
+      signal?.removeEventListener('abort', onAbort)
+    },
+  })
+}
+
+async function readAfterTimer(
+  reader: ReadableStreamDefaultReader<LanguageModelV4StreamPart>,
+  milliseconds: number,
+  tick: (milliseconds: number) => void,
+) {
+  const pending = reader.read()
+  await Promise.resolve()
+  await Promise.resolve()
+  tick(milliseconds)
+  return await pending
 }
 
 function dependencies(routes: OverlayFreeRoute[], calls: string[], overrides: Partial<OverlayFreeRepository> = {}) {
@@ -89,6 +156,78 @@ function dependencies(routes: OverlayFreeRoute[], calls: string[], overrides: Pa
       capabilities: JSON.parse(value.capabilitiesJson),
     }),
   }
+}
+
+function interruptionSetup(input: {
+  candidate?: OverlayFreeRoute
+  generationId?: string
+  status: number
+  body?: unknown
+  leaseDurationMs?: number
+  failAfterOutput?: boolean
+}) {
+  const calls: string[] = []
+  const settlements: Parameters<NonNullable<OverlayFreeRepository['settle']>>[0][] = []
+  const candidate = input.candidate ?? route('openrouter', 'openrouter/free', 'openrouter')
+  const deps = dependencies([candidate], calls, {
+    settle: async settlement => { settlements.push(settlement) },
+  })
+  if (input.leaseDurationMs !== undefined) {
+    const claim = deps.repository.claim
+    deps.repository.claim = async (routeKey, leaseToken, generation, purpose) => {
+      const claimed = await claim(routeKey, leaseToken, generation, purpose)
+      return {
+        ...claimed,
+        route: claimed.route
+          ? { ...claimed.route, activeLeaseExpiresAt: Date.now() + input.leaseDurationMs! }
+          : null,
+      }
+    }
+  }
+  let requests = 0
+  const confirmOpenRouterGenerationCost = (generationId: string) => confirmGenerationCost(
+    generationId,
+    'server-key',
+    {
+      fetcher: async () => {
+        requests += 1
+        return new Response(input.body === undefined ? null : JSON.stringify(input.body), { status: input.status })
+      },
+      sleep: async () => undefined,
+      timeoutSignal: () => new AbortController().signal,
+    },
+  )
+  const routed = createOverlayFreeLanguageModel({
+    ...deps,
+    confirmOpenRouterGenerationCost,
+    providers: {
+      gateway: async () => model('gateway', async () => openRouterReceipt(), request =>
+        abortableStream(request, true, undefined, undefined, input.generationId)),
+      openrouter: async () => model('openrouter', async () => openRouterReceipt(), request => {
+        if (!input.failAfterOutput) return abortableStream(request, true, undefined, undefined, input.generationId)
+        let emitted = false
+        return new ReadableStream<LanguageModelV4StreamPart>({
+          start(controller) {
+            controller.enqueue({
+              type: 'response-metadata',
+              id: input.generationId,
+              modelId: 'openrouter/free',
+              headers: {},
+            })
+          },
+          pull(controller) {
+            if (!emitted) {
+              emitted = true
+              controller.enqueue({ type: 'text-delta', id: 'interrupt-text', delta: 'partial' })
+            } else {
+              controller.error(new Error('upstream stream interrupted'))
+            }
+          },
+        })
+      }),
+    },
+  })
+  return { routed, requests: () => requests, settlements, calls }
 }
 
 function gatewayReceipt(modelId: string, provider: string, cost = '0') {
@@ -153,6 +292,98 @@ test('claims, revalidates, pins one provider, strips caller controls, and settle
     'settle:gateway:second/model:second:true',
   ])
 })
+
+for (const method of ['doStream', 'doGenerate'] as const) {
+  test(`${method} identifies busy capacity only when no provider inference was attempted`, async () => {
+    const calls: string[] = []
+    const routes = [route('gateway', 'provider/model', 'provider'), route('openrouter', 'openrouter/free', 'openrouter')]
+    let firstRouteBusy = true
+    const deps = dependencies(routes, calls, { claim: async (key, token) => firstRouteBusy || key.startsWith('openrouter:')
+      ? { status: 'busy', route: null }
+      : { status: 'claimed', route: { ...routes[0], activeLeaseToken: token } } })
+    const dispatch = async () => { calls.push('inference'); throw new Error('ambiguous timeout') }
+    const languageModel = createOverlayFreeLanguageModel({ ...deps, providers: {
+      gateway: async () => ({ ...model('provider', dispatch), doStream: dispatch }),
+      openrouter: async () => { throw new Error('busy route must not dispatch') },
+    } })
+    await assert.rejects(languageModel[method](options()), OverlayFreeRouteBusyError)
+    assert.deepEqual(calls, [])
+    firstRouteBusy = false
+    await assert.rejects(languageModel[method](options()), error => {
+      assert.ok(error instanceof Error)
+      assert.ok(!(error instanceof OverlayFreeRouteBusyError))
+      return true
+    })
+    assert.deepEqual(calls, ['inference', `settle:${routes[0].routeKey}:false`])
+  })
+}
+
+for (const method of ['doStream', 'doGenerate'] as const) {
+  test(`${method} treats a listed cooled route as busy capacity`, async () => {
+    const calls: string[] = []
+    const routes = [{ ...route('openrouter', 'openrouter/free', 'openrouter'), cooldownUntil: now + 60_000 }]
+    const deps = dependencies(routes, calls, {
+      claim: async () => ({ status: 'cooldown', route: null }),
+    })
+    const languageModel = createOverlayFreeLanguageModel({
+      ...deps,
+      providers: {
+        gateway: async () => { throw new Error('unexpected Gateway call') },
+        openrouter: async () => { throw new Error('cooled route must not dispatch') },
+      },
+    })
+    await assert.rejects(languageModel[method](options()), OverlayFreeRouteBusyError)
+    assert.deepEqual(calls, [])
+  })
+}
+
+for (const method of ['doStream', 'doGenerate'] as const) {
+  test(`${method} classifies a pre-response 429 as busy capacity and cools the route`, async () => {
+    const calls: string[] = []
+    const routes = [route('openrouter', 'openrouter/free', 'openrouter')]
+    const rateLimit = Object.assign(new Error('upstream 429'), { statusCode: 429 })
+    const deps = dependencies(routes, calls)
+    const languageModel = createOverlayFreeLanguageModel({
+      ...deps,
+      providers: {
+        gateway: async () => { throw new Error('unexpected Gateway call') },
+        openrouter: async () => model('openrouter', async () => { throw rateLimit }, () => { throw rateLimit }),
+      },
+    })
+    await assert.rejects(languageModel[method](options()), OverlayFreeRouteBusyError)
+    assert.deepEqual(calls, [`cooldown:${routes[0]!.routeKey}`])
+  })
+}
+
+for (const method of ['doStream', 'doGenerate'] as const) {
+  test(`${method} preserves a post-generation 500 and settles a missing receipt`, async () => {
+    const calls: string[] = []
+    const routes = [route('openrouter', 'openrouter/free', 'openrouter')]
+    const upstreamFailure = new Error('upstream 500')
+    const deps = dependencies(routes, calls)
+    const languageModel = createOverlayFreeLanguageModel({
+      ...deps,
+      providers: {
+        gateway: async () => { throw new Error('unexpected Gateway call') },
+        openrouter: async () => method === 'doGenerate'
+          ? model('openrouter', async () => { throw upstreamFailure })
+          : model('openrouter', async () => openRouterReceipt(), () => new ReadableStream({
+            start(controller) {
+              controller.enqueue({ type: 'error', error: upstreamFailure })
+              controller.close()
+            },
+          })),
+      },
+    })
+    if (method === 'doGenerate') {
+      await assert.rejects(languageModel.doGenerate(options()), /upstream 500/)
+    } else {
+      const response = await languageModel.doStream(options())
+      await assert.rejects(response.stream.getReader().read(), /upstream 500/)
+    }
+    assert.deepEqual(calls, [`settle:${routes[0]!.routeKey}:false`])
+  })
+}
 
 test('rechecks current catalog before constructing a provider and tries the next route', async () => {
   const routes = [
@@ -316,6 +547,30 @@ test('returns the last safe empty completion after trying every candidate', asyn
   assert.ok(calls.includes('generate:second'))
   assert.ok(calls.includes('settle:gateway:first/model:first:true'))
   assert.ok(calls.includes('settle:gateway:second/model:second:true'))
+})
+
+test('returns an empty completion from the only candidate without waiting for capacity', async () => {
+  const candidate = route('gateway', 'only/model', 'only')
+  const calls: string[] = []
+  const languageModel = createOverlayFreeLanguageModel({
+    ...dependencies([candidate], calls),
+    providers: {
+      gateway: async (modelId, provider) => model(provider, async () => {
+        calls.push('generate:only')
+        return gatewayReceiptWithContent(modelId, provider, [])
+      }),
+      openrouter: async () => { throw new Error('unexpected OpenRouter call') },
+    },
+    now: () => now,
+  })
+
+  const result = await languageModel.doGenerate(options())
+
+  assert.deepEqual(result.content, [])
+  assert.deepEqual(calls, [
+    'generate:only',
+    'settle:gateway:only/model:only:true',
+  ])
 })
 
 test('does not fail over after a tool-call-only completion', async () => {
@@ -759,4 +1014,307 @@ test('preflight network failures cool down without quarantining an uncalled prov
   })
   await assert.rejects(routed.doGenerate(options()), /overlay_free_no_eligible_route/)
   assert.deepEqual(calls, ['cooldown:gateway:first/model:first'])
+})
+
+test('stream preflight catalog failures remain no-eligible-route', async () => {
+  const calls: string[] = []
+  const routed = createOverlayFreeLanguageModel({
+    ...dependencies([route('gateway', 'first/model', 'first')], calls),
+    preflight: async () => { throw new Error('catalog unavailable') },
+    providers: {
+      gateway: async () => { throw new Error('must not call') },
+      openrouter: async () => { throw new Error('must not call') },
+    },
+  })
+  await assert.rejects(routed.doStream(options()), /overlay_free_no_eligible_route/)
+  assert.deepEqual(calls, ['cooldown:gateway:first/model:first'])
+})
+
+test('steady output can run beyond the first-output timeout and settles safely', async (t) => {
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'] })
+  const calls: string[] = []
+  const routed = createOverlayFreeLanguageModel({
+    ...dependencies([route('openrouter', 'openrouter/free', 'openrouter')], calls),
+    providers: {
+      gateway: async () => { throw new Error('unexpected Gateway call') },
+      openrouter: async () => model('openrouter', async () => openRouterReceipt(), (request) =>
+        abortableStream(request, true, 20_000, 3)),
+    },
+  })
+  const response = await routed.doStream(options())
+  const reader = response.stream.getReader()
+
+  assert.equal((await reader.read()).value?.type, 'text-delta')
+  for (let index = 0; index < 4; index += 1) {
+    const next = await readAfterTimer(reader, 20_000, (milliseconds) => t.mock.timers.tick(milliseconds))
+    assert.equal(next.value?.type, index === 3 ? 'finish' : 'text-delta')
+  }
+  assert.equal((await reader.read()).done, true)
+  assert.ok(4 * 20_000 > FREE_ROUTE_TIMEOUT_MS)
+  assert.deepEqual(calls, ['settle:openrouter:openrouter/free:openrouter:true'])
+})
+
+test('silence after semantic output aborts at the idle timeout and settles unsafe', async (t) => {
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'] })
+  const calls: string[] = []
+  const routed = createOverlayFreeLanguageModel({
+    ...dependencies([route('openrouter', 'openrouter/free', 'openrouter')], calls),
+    providers: {
+      gateway: async () => { throw new Error('unexpected Gateway call') },
+      openrouter: async () => model('openrouter', async () => openRouterReceipt(), (request) =>
+        abortableStream(request, true)),
+    },
+  })
+  const response = await routed.doStream(options())
+  const reader = response.stream.getReader()
+
+  assert.equal((await reader.read()).value?.type, 'text-delta')
+  await assert.rejects(readAfterTimer(
+    reader,
+    FREE_ROUTE_IDLE_TIMEOUT_MS,
+    (milliseconds) => t.mock.timers.tick(milliseconds),
+  ))
+  assert.deepEqual(calls, ['settle:openrouter:openrouter/free:openrouter:false'])
+})
+
+test('no semantic output before the first-output timeout aborts and settles a missing receipt', async (t) => {
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'] })
+  const calls: string[] = []
+  const routed = createOverlayFreeLanguageModel({
+    ...dependencies([route('openrouter', 'openrouter/free', 'openrouter')], calls),
+    providers: {
+      gateway: async () => { throw new Error('unexpected Gateway call') },
+      openrouter: async () => model('openrouter', async () => openRouterReceipt(), (request) =>
+        abortableStream(request, false)),
+    },
+  })
+  const response = await routed.doStream(options())
+  const reader = response.stream.getReader()
+  const pending = reader.read()
+  await Promise.resolve()
+  await Promise.resolve()
+
+  await assert.rejects(async () => {
+    t.mock.timers.tick(FREE_ROUTE_TIMEOUT_MS)
+    await pending
+  })
+  assert.deepEqual(calls, ['settle:openrouter:openrouter/free:openrouter:false'])
+})
+
+test('the absolute lease cap aborts a never-ending steady stream before lease expiry', async (t) => {
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'] })
+  const calls: string[] = []
+  const deps = dependencies([route('openrouter', 'openrouter/free', 'openrouter')], calls)
+  const claim = deps.repository.claim
+  let leaseExpiresAt = 0
+  deps.repository.claim = async (routeKey, leaseToken, generation, purpose) => {
+    const claimed = await claim(routeKey, leaseToken, generation, purpose)
+    leaseExpiresAt = Date.now() + FREE_ROUTE_LEASE_MS
+    return {
+      ...claimed,
+      route: claimed.route ? { ...claimed.route, activeLeaseExpiresAt: leaseExpiresAt } : null,
+    }
+  }
+  const routed = createOverlayFreeLanguageModel({
+    ...deps,
+    providers: {
+      gateway: async () => { throw new Error('unexpected Gateway call') },
+      openrouter: async () => model('openrouter', async () => openRouterReceipt(), (request) =>
+        abortableStream(request, true, 10_000)),
+    },
+  })
+  const response = await routed.doStream(options())
+  const reader = response.stream.getReader()
+
+  assert.equal((await reader.read()).value?.type, 'text-delta')
+  for (let index = 0; index < 16; index += 1) {
+    assert.equal((await readAfterTimer(reader, 10_000, (milliseconds) =>
+      t.mock.timers.tick(milliseconds))).value?.type, 'text-delta')
+  }
+  await assert.rejects(readAfterTimer(reader, 5_000, (milliseconds) =>
+    t.mock.timers.tick(milliseconds)))
+  assert.ok(Date.now() < leaseExpiresAt)
+  assert.deepEqual(calls, ['settle:openrouter:openrouter/free:openrouter:false'])
+})
+
+test('a confirmed zero-cost interruption settles safely and the idle timer remains 90 seconds', async (t) => {
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'] })
+  const body = {
+    data: { id: 'gen-confirmed', total_cost: 0, is_byok: false, upstream_inference_cost: null },
+  }
+  const setup = interruptionSetup({ generationId: 'gen-confirmed', status: 200, body })
+  const response = await setup.routed.doStream(options())
+  const reader = response.stream.getReader()
+  let part: ReadableStreamReadResult<LanguageModelV4StreamPart>
+  do {
+    part = await reader.read()
+  } while (!part.done && part.value?.type !== 'text-delta')
+
+  const interrupted = reader.read()
+  await Promise.resolve()
+  await Promise.resolve()
+  t.mock.timers.tick(30_000)
+  await Promise.resolve()
+  assert.equal(setup.requests(), 0)
+  t.mock.timers.tick(60_000)
+  await assert.rejects(interrupted, OverlayFreeRouteInterruptedError)
+
+  assert.equal(setup.requests(), 1)
+  assert.equal(setup.settlements.length, 1)
+  assert.equal(setup.settlements[0]?.safe, true)
+  assert.equal(setup.settlements[0]?.cost, 0)
+  assert.equal(setup.settlements[0]?.reason, 'interrupted after output; zero cost confirmed')
+  assert.deepEqual(setup.settlements[0]?.receipt, {
+    safe: true, cost: 0, reason: 'interrupted after output; zero cost confirmed',
+  })
+})
+
+test('skips cost confirmation when the bounded lookup cannot fit before the lease margin', async () => {
+  const setup = interruptionSetup({
+    generationId: 'gen-short-lease',
+    status: 200,
+    body: { data: { id: 'gen-short-lease', total_cost: 0, is_byok: false, upstream_inference_cost: 0 } },
+    leaseDurationMs: 45_000,
+    failAfterOutput: true,
+  })
+  const reader = (await setup.routed.doStream(options())).stream.getReader()
+  let part: ReadableStreamReadResult<LanguageModelV4StreamPart>
+  do {
+    part = await reader.read()
+  } while (!part.done && part.value?.type !== 'text-delta')
+  await assert.rejects(reader.read())
+
+  assert.equal(setup.requests(), 0)
+  assert.equal(setup.settlements[0]?.safe, false)
+  assert.equal(setup.settlements[0]?.reason, 'stream interrupted after output')
+})
+
+const invalidGenerationCases = [
+  {
+    name: '404 on every poll',
+    status: 404,
+    expectedRequests: 6,
+    body: undefined,
+  },
+  {
+    name: 'positive total cost',
+    status: 200,
+    expectedRequests: 1,
+    body: { data: { id: 'gen-case', total_cost: 0.01, is_byok: false, upstream_inference_cost: 0 } },
+  },
+  {
+    name: 'BYOK generation',
+    status: 200,
+    expectedRequests: 1,
+    body: { data: { id: 'gen-case', total_cost: 0, is_byok: true, upstream_inference_cost: 0 } },
+  },
+  {
+    name: 'generation ID mismatch',
+    status: 200,
+    expectedRequests: 1,
+    body: { data: { id: 'gen-other', total_cost: 0, is_byok: false, upstream_inference_cost: 0 } },
+  },
+  {
+    name: 'nonzero upstream inference cost',
+    status: 200,
+    expectedRequests: 1,
+    body: { data: { id: 'gen-case', total_cost: 0, is_byok: false, upstream_inference_cost: 0.01 } },
+  },
+] as const
+
+for (const scenario of invalidGenerationCases) {
+  test(`unconfirmed ${scenario.name} retains unsafe settlement and quarantine reason`, async t => {
+    t.mock.timers.enable({ apis: ['Date', 'setTimeout'] })
+    const setup = interruptionSetup({
+      generationId: 'gen-case',
+      status: scenario.status,
+      body: scenario.body,
+    })
+    const reader = (await setup.routed.doStream(options())).stream.getReader()
+    let part: ReadableStreamReadResult<LanguageModelV4StreamPart>
+    do {
+      part = await reader.read()
+    } while (!part.done && part.value?.type !== 'text-delta')
+    const interrupted = reader.read()
+    await Promise.resolve()
+    await Promise.resolve()
+    t.mock.timers.tick(FREE_ROUTE_IDLE_TIMEOUT_MS)
+    await assert.rejects(interrupted)
+
+    assert.equal(setup.requests(), scenario.expectedRequests)
+    assert.equal(setup.settlements.length, 1)
+    assert.equal(setup.settlements[0]?.safe, false)
+    assert.equal(setup.settlements[0]?.reason, 'stream interrupted after output')
+  })
+}
+
+test('missing IDs, nonzero pricing and non-OpenRouter routes skip cost lookup', async t => {
+  const candidates = [
+    {
+      name: 'missing generation ID',
+      candidate: route('openrouter', 'openrouter/free', 'openrouter'),
+      generationId: undefined,
+    },
+    {
+      name: 'nonzero route pricing',
+      candidate: {
+        ...route('openrouter', 'openrouter/free', 'openrouter'),
+        pricingJson: JSON.stringify({ prompt: '0.01', completion: '0' }),
+      },
+      generationId: 'gen-route-pricing',
+    },
+    {
+      name: 'non-OpenRouter transport',
+      candidate: route('gateway', 'provider/free', 'provider'),
+      generationId: 'gen-gateway',
+    },
+  ] as const
+
+  for (const scenario of candidates) {
+    await t.test(scenario.name, async t => {
+      t.mock.timers.enable({ apis: ['Date', 'setTimeout'] })
+      const setup = interruptionSetup({
+        candidate: scenario.candidate,
+        generationId: scenario.generationId,
+        status: 200,
+        body: { data: { id: scenario.generationId, total_cost: 0, is_byok: false, upstream_inference_cost: 0 } },
+      })
+      const reader = (await setup.routed.doStream(options())).stream.getReader()
+      let part: ReadableStreamReadResult<LanguageModelV4StreamPart>
+      do {
+        part = await reader.read()
+      } while (!part.done && part.value?.type !== 'text-delta')
+      const interrupted = reader.read()
+      await Promise.resolve()
+      await Promise.resolve()
+      t.mock.timers.tick(FREE_ROUTE_IDLE_TIMEOUT_MS)
+      await assert.rejects(interrupted)
+
+      assert.equal(setup.requests(), 0)
+      assert.equal(setup.settlements[0]?.safe, false)
+      assert.equal(setup.settlements[0]?.reason, 'stream interrupted after output')
+    })
+  }
+})
+
+test('caller aborts after output never query OpenRouter generation cost', async t => {
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'] })
+  const setup = interruptionSetup({
+    generationId: 'gen-caller-abort',
+    status: 200,
+    body: { data: { id: 'gen-caller-abort', total_cost: 0, is_byok: false, upstream_inference_cost: 0 } },
+  })
+  const abort = new AbortController()
+  const reader = (await setup.routed.doStream({ ...options(), abortSignal: abort.signal })).stream.getReader()
+  let part: ReadableStreamReadResult<LanguageModelV4StreamPart>
+  do {
+    part = await reader.read()
+  } while (!part.done && part.value?.type !== 'text-delta')
+  const interrupted = reader.read()
+  await Promise.resolve()
+  abort.abort(new Error('caller stopped'))
+  await assert.rejects(interrupted)
+  assert.equal(setup.requests(), 0)
+  assert.equal(setup.settlements[0]?.safe, false)
+  assert.equal(setup.settlements[0]?.reason, 'stream interrupted after output')
 })

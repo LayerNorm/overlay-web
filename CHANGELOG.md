@@ -4,7 +4,18 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Keep Chat and Work available during the Harness web-first rollout by checking backend readiness before admission; recognize already-terminal workflows during Stop cleanup.
+
+- Preserve native Harness approval waits beyond the legacy room lease; only the durable run deadline ends those waits.
+
+- Allow the initiating user to answer native Harness input waits after rechecking current room participation.
+
+- Recheck personal Harness tool approvals at execution and require the authenticated controller decision before an approval-required effect.
+
+- Settle model usage before durable approval waits so Approve and Deny can resume without reusing a model reservation or blocking context compaction.
+
 - Show "Backed by verdict." above the landing headline and replace the Hermes agent chip with "+ more".
+
 - Run Linux GitHub Actions jobs on the shared Namespace runner profile.
 
 - Reuse exact CI dependency trees and compiler/lint/type caches, run lint and typechecking independently, and balance exhaustive test shards without weakening required checks.
@@ -66,6 +77,30 @@ This file records user-visible and operational changes that reach `main`. Pull r
 - Move Account outside workspace settings, add workspace-specific profiles with provider-photo fallbacks, and let workspace admins choose or upload icons. Retire the outdated interactive demo.
 
 - Keep native agents running after a failed tool-progress write and compact live tool results before saving them to the transcript.
+
+- Retry delayed Gateway usage before settling known token counts from catalog pricing, preserve reservation-integrity errors, and safely cancel named descendants after an ancestor stops.
+
+- Separate tagged model reasoning from Harness final answers and delegated result summaries using the AI SDK middleware, preserving provider usage receipts.
+
+- Join active Harness children with durable waits instead of model polling, and explicitly request the final deliverable once all plan evidence is complete.
+
+- Wait durably for busy free-model routes before inference, retaining exclusive route leases and zero-cost rejection receipts. Convex accepts the same bounded rejection reasons as the runtime. Ambiguous provider failures still retain billing holds and never authorize another Harness dispatch.
+
+- Persist completed child-run results as parent observations so delegated milestones can reference their output without treating it as independent verification. Reading a completed result first settles the parent's child state, avoiding a completion race while retaining unresolved-usage safeguards. Children inherit their parent's planning policy instead of requiring unnecessary plans for trivial replies.
+
+- Fix Harness Workflow initialization by configuring model retry limits on compiler-safe step functions, keeping credentials and authorization inside durable execution.
+
+- Recover personal Chat and Work sends after a pre-dispatch session rejection, using the shared browser session refresh and preserving turn identity without replaying provider failures.
+
+- Add the shared Overlay Harness execution and persistence foundations: evidence-gated plans, durable state operations, semantic continuation, secure model references and single-workflow ownership. Authenticated personal Chat and Work now use these foundations; other surfaces await migration and parity QA.
+
+- Add workflow-owned input/approval wait storage, child attention notifications and an owner-only personal run input API for the upcoming harness migration. Personal tool approvals also remain owner-only in shared conversations.
+
+- Route authenticated personal Chat and Work turns through durable Harness Workflow admission with a default $1 Overlay model-cost cap and 24-hour deadline, configurable up to $100 and seven days. New personal AgentRuns carry the immutable `executionEngine: 'overlay_harness'` discriminator; legacy rows and same-turn replays remain unmarked and owned by their existing runners. In-flight runs and internal automation remain on legacy runners; UI work, other surfaces and hosted parity QA are pending.
+
+- Bind a personal delivery AgentRun to its root harness atomically at admission and fence the root atomically when Stop cancels that delivery. Workflow SDK cancellation is best-effort physical cleanup after the durable fence; it does not promise to abort provider work already dispatched. Final result summaries remain separately persisted from working summaries.
+
+- Add bounded, freshly authorized model fallback to the personal harness after confirmed pre-inference rejections. Ambiguous provider failures keep their unresolved spend holds and do not dispatch again. Fallback notices stream and persist with the final transcript for authenticated personal Chat and Work.
 
 - Saved collaborative message edits now update rendered text and retain attachments instead of showing the original message.
 

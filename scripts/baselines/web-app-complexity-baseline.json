@@ -36,6 +36,12 @@
       "recordedAt": "2026-10-12T14:08:57.759Z"
     },
     {
+      "file": "packages/overlay-agent-runtime/src/harness-state.ts",
+      "loc": 521,
+      "complexity": 244,
+      "recordedAt": "2026-10-27T16:05:34.734Z"
+    },
+    {
       "file": "packages/overlay-app-core/src/app-shell.ts",
       "loc": 524,
       "complexity": 25,

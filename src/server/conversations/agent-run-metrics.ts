@@ -65,7 +65,7 @@ export async function observeWorkflowRunMetrics(workflowRunId: string): Promise<
   AgentRunMetrics,
   'workflowStepCount' | 'workflowRetryCount' | 'workflowObservedStorageBytes' | 'toolRetryCount'
 >> {
-  const world = getWorld()
+  const world = await getWorld()
   const [steps, events] = await Promise.all([
     listAll((cursor) => world.steps.list({
       runId: workflowRunId,

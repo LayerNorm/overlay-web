@@ -1297,6 +1297,7 @@ export default defineSchema({
     assistantMessageId: v.id('conversationMessages'),
     mode: v.union(v.literal('chat'), v.literal('work'), v.literal('room')),
     runner: v.union(v.literal('tool_loop'), v.literal('workflow'), v.literal('remote')),
+    executionEngine: v.optional(v.literal('overlay_harness')),
     // Set for `room` runs: which workspace agent answered, and as which
     // principal. Absent on personal-chat runs, which have no agent author.
     agentId: v.optional(v.string()),
@@ -1309,12 +1310,15 @@ export default defineSchema({
       v.literal('queued'),
       v.literal('running'),
       v.literal('waiting_for_approval'),
+      v.literal('waiting_for_input'),
+      v.literal('waiting_for_children'),
       v.literal('completed'),
       v.literal('failed'),
       v.literal('cancelled'),
     ),
     variantIndex: v.optional(v.number()),
     workflowRunId: v.optional(v.string()),
+    harnessRunId: v.optional(v.string()),
     leaseExpiresAt: v.optional(v.number()),
     startedAt: v.optional(v.number()),
     completedAt: v.optional(v.number()),
@@ -1324,6 +1328,11 @@ export default defineSchema({
       code: v.string(),
       message: v.string(),
       retryable: v.boolean(),
+    })),
+    inputRequest: v.optional(v.object({
+      token: v.string(),
+      requestedAt: v.number(),
+      question: v.string(),
     })),
     approval: v.optional(v.object({
       token: v.string(),
@@ -2787,4 +2796,98 @@ export default defineSchema({
     .index('by_workspaceId_sourceChannelId_sourceMessageTs', [
       'workspaceId', 'sourceChannelId', 'sourceMessageTs',
     ]),
+
+  // Durable Overlay Harness state. The pure reducer in
+  // `@overlay/agent-runtime/harness-state` remains authoritative for
+  // transitions; these tables are its normalized storage. `metadataJson` is the
+  // snapshot without plan, evidence and children, which live in their own rows
+  // so a long run never grows one document.
+  harnessRuns: defineTable({
+    runId: v.string(),
+    actorUserId: v.string(),
+    rootRunId: v.string(),
+    deliveryAgentRunId: v.optional(v.string()),
+    parentRunId: v.optional(v.string()),
+    activeDescendantCount: v.number(),
+    sourceJson: v.string(),
+    /** Immutable admission, so an admission retry is compared, never rewritten. */
+    admissionJson: v.string(),
+    metadataJson: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index('by_runId', ['runId'])
+    .index('by_rootRunId', ['rootRunId'])
+    .index('by_parentRunId', ['parentRunId']),
+
+  harnessPlanSteps: defineTable({
+    runId: v.string(),
+    stepId: v.string(),
+    position: v.number(),
+    stepJson: v.string(),
+  }).index('by_runId_stepId', ['runId', 'stepId'])
+    .index('by_runId', ['runId']),
+
+  harnessPlanRevisions: defineTable({
+    runId: v.string(),
+    planRevision: v.number(),
+    planJson: v.string(),
+    createdAt: v.number(),
+  }).index('by_runId_planRevision', ['runId', 'planRevision']),
+
+  harnessEvidence: defineTable({
+    runId: v.string(),
+    evidenceId: v.string(),
+    evidenceJson: v.string(),
+    createdAt: v.number(),
+  }).index('by_runId_evidenceId', ['runId', 'evidenceId'])
+    .index('by_runId_createdAt', ['runId', 'createdAt']),
+
+  /** Exactly-once billing: one row per (runId, receiptId). */
+  harnessReceipts: defineTable({
+    runId: v.string(),
+    receiptId: v.string(),
+    receiptJson: v.string(),
+    createdAt: v.number(),
+  }).index('by_runId_receiptId', ['runId', 'receiptId'])
+    .index('by_runId_createdAt', ['runId', 'createdAt']),
+
+  /** The parent's reservation for a delegated child; the child run itself is a separate `harnessRuns` row. */
+  harnessChildren: defineTable({
+    runId: v.string(),
+    childRunId: v.string(),
+    childJson: v.string(),
+  }).index('by_runId_childRunId', ['runId', 'childRunId'])
+    .index('by_runId', ['runId']),
+
+  harnessWaits: defineTable({
+    runId: v.string(),
+    rootRunId: v.string(),
+    workflowRunId: v.string(),
+    token: v.string(),
+    kind: v.union(v.literal('input'), v.literal('approval')),
+    requestJson: v.string(),
+    question: v.string(),
+    createdAt: v.number(),
+    resolvedAt: v.optional(v.number()),
+  }).index('by_token', ['token'])
+    .index('by_runId_resolvedAt', ['runId', 'resolvedAt', 'createdAt'])
+    .index('by_rootRunId_resolvedAt', ['rootRunId', 'resolvedAt', 'createdAt']),
+
+  /** Immutable ledger of committed operations, keyed by the caller's operation id. */
+  harnessOperations: defineTable({
+    runId: v.string(),
+    operationId: v.string(),
+    operationJson: v.string(),
+    appliedRevision: v.number(),
+    createdAt: v.number(),
+  }).index('by_runId_operationId', ['runId', 'operationId']),
+
+  harnessCheckpoints: defineTable({
+    runId: v.string(),
+    operationId: v.string(),
+    revision: v.number(),
+    metadataJson: v.string(),
+    planRevision: v.number(),
+    createdAt: v.number(),
+  }).index('by_runId_revision', ['runId', 'revision']),
 })

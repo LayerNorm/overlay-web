@@ -28,6 +28,15 @@ async function jsonBody(call: RecordedRequest): Promise<unknown> {
   return JSON.parse(call.init?.body as string)
 }
 
+test('personal run input uses the bounded-input endpoint without creating a turn', async () => {
+  const { calls, client } = createRecordedClient()
+  const body = { conversationId: 'conversation', agentRunId: 'run', token: 'token', text: 'The quarterly report.' }
+  await client.conversations.submitRunInput(body)
+  assert.equal(String(calls[0]!.input), 'https://example.test/api/v1/conversations/run/input')
+  assert.equal(calls[0]!.init?.method, 'POST')
+  assert.deepEqual(await jsonBody(calls[0]!), body)
+})
+
 test('file methods preserve route paths, methods, queries, and JSON bodies', async () => {
   const { calls, client } = createRecordedClient()
 

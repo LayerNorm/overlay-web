@@ -2,7 +2,6 @@ import 'server-only'
 import { getStepMetadata } from 'workflow'
 
 import {
-  asSchema,
   jsonSchema,
   streamText,
   tool,
@@ -13,22 +12,20 @@ import { agentRunService } from '@/server/conversations/http'
 import { getLanguageModel } from '@/server/ai/model-runtime'
 import { logger } from '@/server/observability/logger'
 import { getOverlayServerContext } from '@/server/bootstrap'
+import { asConversationId } from '@/server/conversations/ActConversationRepository'
 import { ActConversationServiceError, ActEntitlementService } from '@/server/conversations/ActEntitlementService'
 import {
   executePersonalChatWorkToolResult,
-  sanitizeWorkflowToolSchemaValue,
 } from '@/server/conversations/personal-chat-work-tools'
 import { buildWorkspaceAgentTooling } from './agent-tooling'
 import {
   buildAgentSystemPrompt,
   loadRoomTurnContext,
-  agentModelAttempts,
   reconcileUnverifiedAgentActionClaims,
   type WorkspaceAgentTurnResult,
 } from './workspace-agent-invocation'
-import { buildAgentTurnContext } from './agent-turn-context'
+import { prepareWorkspaceAgentInputs } from './workspace-agent-preparation'
 import { createAgentMessageStream, appendAgentTextPart, persistAgentToolProgress } from './agent-message-stream'
-import { hashOperationalIdentifier } from '@/server/security/operational-key-hash'
 import { agentMemoryOwnerId } from '@/shared/agents/agent-memory'
 import {
   refusedAmbiguousWorkspaceAgentToolRetry,
@@ -100,72 +97,20 @@ export async function prepareWorkspaceAgentTurn(input: {
   runId: string
 }): Promise<WorkspaceAgentPreparedContext> {
   'use step'
-  const context = await loadRoomTurnContext(input)
-  const agent = context.directory.agents.find(candidate => candidate.id === input.agentId)
-  if (!agent || agent.archivedAt) throw new Error('The agent is no longer available.')
   const server = getOverlayServerContext()
-  const invocationNonce = `agent:${input.messageId}:${input.agentId}`
-  const requestFingerprint = hashOperationalIdentifier('workspace-agent-invocation', invocationNonce)
-  const entitlementService = new ActEntitlementService({
-    repository: server.appData.repositories.conversations,
-    usagePolicy: server.chatUsagePolicy,
+  const run = await server.appData.repositories.conversations.getLatestAgentRun({
+    agentRunId: input.runId,
+    conversationId: asConversationId(input.conversationId),
+    userId: input.actorUserId,
   })
-  let gate: Awaited<ReturnType<ActEntitlementService['gateModelAccess']>> | undefined
-  let modelId = agent.modelId
-  for (const attempt of agentModelAttempts(agent.modelId)) {
-    try {
-      gate = await entitlementService.gateModelAccess({
-        effectiveModelId: attempt,
-        programmaticSubjectId: `agent:${agent.id}`,
-        userId: input.actorUserId,
-        workspaceId: input.workspaceId,
-      })
-      modelId = attempt
-      break
-    } catch (_error) { /* fallback to the next entitled model */ }
+  if (run?.executionEngine === 'overlay_harness') {
+    throw new FatalError('This room turn is owned by the native Harness workflow.')
   }
-  if (!gate) throw new Error('No agent model attempt succeeded')
-  const tooling = await buildWorkspaceAgentTooling({
-    actorUserId: input.actorUserId,
-    agentPrincipalId: agent.principalId,
-    conversationId: input.conversationId,
-    effectiveModelId: modelId,
-    entitlements: gate.runtimeEntitlements,
-    grant: { agentId: agent.id, allowedToolIds: agent.allowedToolIds, isDefaultMaster: Boolean(agent.isDefault || agent.name.toLowerCase() === 'overlay') },
-    approvalMode: agent.harness === 'overlay' && agent.permissionMode === 'auto' ? 'auto' : 'ask',
-    computerApprovalContext: 'work',
-    idempotencyKey: invocationNonce,
-    latestUserText: context.latestUserText,
-    memoryEnabled: input.memoryEnabled,
-    paid: gate.paid,
-    requestFingerprint,
-    turnId: `agent_${input.messageId}_${agent.id}`,
-    workspaceId: input.workspaceId,
-  })
-  const turnContext = await buildAgentTurnContext({
-    actorUserId: input.actorUserId,
-    agentName: agent.name,
-    agentPrincipalId: agent.principalId,
-    billingProgrammaticSubjectId: `agent:${agent.id}`,
-    channelVisibility: (context.conversation as { channelVisibility?: string | null }).channelVisibility,
-    conversationTitle: context.conversation.title,
-    conversationType: context.conversationType,
-    history: context.history,
-    idempotencyKey: `${invocationNonce}:context`,
-    latestUserText: context.latestUserText,
-    memoryEnabled: input.memoryEnabled,
-    participants: context.participants.map(participant => ({ displayName: participant.displayName, principalId: participant.principalId, principalType: participant.principalType })),
-    requestFingerprint,
-    workspaceId: input.workspaceId,
-  })
-  const toolDefinitions = await Promise.all(Object.entries(tooling.tools).map(async ([name, definition]) => ({
-    name,
-    description: typeof definition.description === 'string' ? definition.description : undefined,
-    inputSchema: sanitizeWorkflowToolSchemaValue(await asSchema(definition.inputSchema).jsonSchema) as Record<string, unknown>,
-  })))
+  const shared = await prepareWorkspaceAgentInputs(input)
+  const { room, agent, gate, modelId, invocationNonce, requestFingerprint, turnContext, toolDefinitions } = shared
   const reservation = await server.chatUsagePolicy.reserveForAttempt({
     entitlements: gate.runtimeEntitlements,
-    estimatedInputTokens: Math.ceil(JSON.stringify(context.history.slice(-24)).length / 4) + 1_000,
+    estimatedInputTokens: Math.ceil(JSON.stringify(room.history.slice(-24)).length / 4) + 1_000,
     idempotencyKey: invocationNonce,
     maxOutputTokens: MAX_OUTPUT_TOKENS_AGENT,
     modelId,
@@ -183,10 +128,11 @@ export async function prepareWorkspaceAgentTurn(input: {
     conversationId: input.conversationId, messageId: input.messageId, turnMessageId: input.turnMessageId,
     ...(input.threadRootMessageId ? { threadRootMessageId: input.threadRootMessageId } : {}),
     workspaceId: input.workspaceId, runId: input.runId, memoryEnabled: input.memoryEnabled, modelId, paid: gate.paid,
-    maxSteps: context.maxToolSteps,
+    maxSteps: room.maxToolSteps,
     runtimeEntitlements: gate.runtimeEntitlements as unknown as Record<string, unknown>, reservationId: reservation.reservationId,
     requestFingerprint, invocationNonce, turnId: `agent_${input.messageId}_${agent.id}`,
-    contextBlock: turnContext.contextBlock, messages: turnContext.messages, toolDefinitions,
+    contextBlock: turnContext.contextBlock, messages: turnContext.messages,
+    toolDefinitions: toolDefinitions.map(({ name, description, inputSchema }) => ({ name, description, inputSchema })),
   }
 }
 

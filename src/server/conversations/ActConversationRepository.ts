@@ -125,6 +125,8 @@ export type ActUsageEvent = {
   inputTokens: number
   outputTokens: number
   cachedTokens: number
+  countAsRequest?: boolean
+  providerCostUsd?: number
   cost: number
   timestamp: number
 }
@@ -310,6 +312,7 @@ export interface ActConversationRepository {
     mode: AgentRunMode
     modelId: string
     runner: AgentRunRunner
+    executionEngine?: 'overlay_harness'
     turnId: string
     userId: string
     userMessageId: Id<'conversationMessages'>
@@ -318,6 +321,8 @@ export interface ActConversationRepository {
   }): Promise<AgentRun | null>
   transitionAgentRun(args: {
     approval?: AgentRunApproval
+    inputRequest?: AgentRun['inputRequest']
+    expectedWorkflowRunId?: string
     leaseExpiresAt?: number
     runId: string
     status: AgentRunStatus
@@ -354,6 +359,7 @@ export interface ActConversationRepository {
     cancelledRunIds: string[]
     cancelledWorkflowRunIds: string[]
     cancelledWorkflows: Array<{ agentRunId: string; workflowRunId: string }>
+    cancelledHarnessRoots?: Array<{ agentRunId: string; runId: string }>
     /** Connected-agent runs the caller must cancel through the control plane (left untouched here). */
     remoteRunIds?: string[]
     stoppedCount: number
@@ -361,6 +367,8 @@ export interface ActConversationRepository {
   getLatestAgentRun(args: {
     agentRunId?: string
     remoteRunId?: string
+    turnId?: string
+    agentId?: string
     conversationId: ConversationId
     userId: string
   }): Promise<AgentRun | null>

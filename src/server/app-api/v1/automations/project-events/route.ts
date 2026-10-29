@@ -24,7 +24,8 @@ export function projectableEvent(event: Event): WorkflowProjectionPage['events']
 async function readPage(input: {workflowRunId: string; cursor: string | null}): Promise<WorkflowProjectionPage> {
   // Read terminal status first so an event arriving during this read is revisited next tick.
   const status = await getRun(input.workflowRunId).status
-  const page = await getWorld().events.list({
+  const world = await getWorld()
+  const page = await world.events.list({
     runId: input.workflowRunId, resolveData: 'none',
     pagination: {limit: 100, sortOrder: 'asc', ...(input.cursor ? {cursor: input.cursor} : {})},
   })

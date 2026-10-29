@@ -16,6 +16,7 @@ export async function calculateLanguageModelTokenCostOrNull(
   inputTokens: number,
   cachedInputTokens: number,
   outputTokens: number,
+  cacheWriteTokens = 0,
 ): Promise<number | null> {
   if (isFreeTierChatModelId(modelId)) return 0
 
@@ -27,6 +28,7 @@ export async function calculateLanguageModelTokenCostOrNull(
       inputTokens,
       cachedInputTokens,
       outputTokens,
+      cacheWriteTokens,
     )
   } catch (error) {
     logger.error('[ai/gateway] Failed to resolve live model pricing', {

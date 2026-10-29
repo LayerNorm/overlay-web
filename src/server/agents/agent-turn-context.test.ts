@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { buildAgentMessages, buildRoomContext } from './agent-turn-context'
+import { buildAgentMessages, buildRoomContext, CLOSED_AGENT_TURN_NOTE } from './agent-turn-context'
 
 const participants = [
   { displayName: 'Divyansh', principalId: 'human-1', principalType: 'human' as const },
@@ -43,6 +43,48 @@ test('deleted and empty messages never reach the model', () => {
     participants,
   })
   assert.deepEqual(messages, [{ role: 'user', content: 'Divyansh: kept' }])
+})
+
+test('an earlier failed agent turn is marked closed even when it has an error message', () => {
+  const messages = buildAgentMessages({
+    agentPrincipalId: 'agent-1',
+    history: [
+      { _id: 'm1', authorKind: 'agent', authorPrincipalId: 'agent-1', content: 'Provider failed.', status: 'error' },
+    ],
+    participants,
+  })
+  assert.deepEqual(messages, [{ role: 'assistant', content: CLOSED_AGENT_TURN_NOTE }])
+})
+
+test('an empty completed agent turn is marked closed and an empty generating turn is dropped', () => {
+  const messages = buildAgentMessages({
+    agentPrincipalId: 'agent-1',
+    history: [
+      { _id: 'm1', authorKind: 'agent', authorPrincipalId: 'agent-1', content: '', status: 'completed' },
+      { _id: 'm2', authorKind: 'agent', authorPrincipalId: 'agent-1', content: '  ', status: 'generating' },
+    ],
+    participants,
+  })
+  assert.deepEqual(messages, [{ role: 'assistant', content: CLOSED_AGENT_TURN_NOTE }])
+})
+
+test('the current message closes the transcript to later self-authored turns only', () => {
+  const messages = buildAgentMessages({
+    agentPrincipalId: 'agent-1',
+    currentMessageId: 'trigger',
+    history: [
+      { _id: 'before', authorKind: 'agent', authorPrincipalId: 'agent-1', content: 'Earlier reply' },
+      { _id: 'trigger', authorKind: 'human', authorPrincipalId: 'human-1', content: 'Current request' },
+      { _id: 'self-after', authorKind: 'agent', authorPrincipalId: 'agent-1', content: 'Later reply' },
+      { _id: 'human-after', authorKind: 'human', authorPrincipalId: 'human-1', content: 'New room message' },
+    ],
+    participants,
+  })
+  assert.deepEqual(messages, [
+    { role: 'assistant', content: 'Earlier reply' },
+    { role: 'user', content: 'Divyansh: Current request' },
+    { role: 'user', content: 'Divyansh: New room message' },
+  ])
 })
 
 test('an unknown author still gets a name rather than an empty prefix', () => {

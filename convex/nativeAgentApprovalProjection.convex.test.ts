@@ -412,4 +412,173 @@ describe('native agent approval projection', () => {
     expect(cancelledRun?.approval).toBeUndefined()
     expect(cancelledMessage?.parts?.some(part => part.type === 'data-native-agent-approval')).toBe(false)
   })
+
+  test('input and child waits remain active, resumable, and cancellable', async () => {
+    for (const status of ['waiting_for_input', 'waiting_for_children'] as const) {
+      const convex = convexTest(schema, modules)
+      const seeded = await convex.run(async ctx => {
+        const now = Date.now()
+        const conversationId = await ctx.db.insert('conversations', {
+          userId: initiatorUserId,
+          title: `Wait ${status}`,
+          lastModified: now,
+          updatedAt: now,
+          createdAt: now,
+          lastMode: 'act',
+          askModelIds: [],
+          actModelId: 'openrouter/free',
+        })
+        const userMessageId = await ctx.db.insert('conversationMessages', {
+          conversationId,
+          userId: initiatorUserId,
+          turnId: `wait-user-${status}`,
+          role: 'user',
+          mode: 'act',
+          content: 'Continue this task.',
+          contentType: 'text',
+          createdAt: now,
+          updatedAt: now,
+        })
+        const waitingAssistantMessageId = await ctx.db.insert('conversationMessages', {
+          conversationId,
+          userId: initiatorUserId,
+          turnId: `wait-assistant-${status}`,
+          role: 'assistant',
+          mode: 'act',
+          content: 'Waiting.',
+          contentType: 'text',
+          parts: [{ type: 'text', text: 'Waiting.' }],
+          status: 'generating',
+          createdAt: now,
+          updatedAt: now,
+        })
+        const waitingRunId = await ctx.db.insert('conversationAgentRuns', {
+          conversationId,
+          turnId: `wait-assistant-${status}`,
+          userId: initiatorUserId,
+          userMessageId,
+          assistantMessageId: waitingAssistantMessageId,
+          mode: 'work',
+          runner: 'workflow',
+          workflowRunId: 'wait-workflow',
+          ...(status === 'waiting_for_input' ? { inputRequest: { token: 'input-token', requestedAt: now, question: 'Which file?' } } : {}),
+          status,
+          createdAt: now,
+          updatedAt: now,
+        })
+        const terminalRunIds = await Promise.all(
+          (['completed', 'failed', 'cancelled'] as const).map(async (terminalStatus, index) => {
+            const terminalAssistantMessageId = await ctx.db.insert('conversationMessages', {
+              conversationId,
+              userId: initiatorUserId,
+              turnId: `terminal-assistant-${status}-${terminalStatus}`,
+              role: 'assistant',
+              mode: 'act',
+              content: 'Terminal run.',
+              contentType: 'text',
+              parts: [{ type: 'text', text: 'Terminal run.' }],
+              status: terminalStatus === 'failed' ? 'error' : 'completed',
+              createdAt: now + index + 1,
+              updatedAt: now + index + 1,
+            })
+            return await ctx.db.insert('conversationAgentRuns', {
+              conversationId,
+              turnId: `terminal-assistant-${status}-${terminalStatus}`,
+              userId: initiatorUserId,
+              userMessageId,
+              assistantMessageId: terminalAssistantMessageId,
+              mode: 'work',
+              runner: 'workflow',
+              status: terminalStatus,
+              createdAt: now + index + 1,
+              updatedAt: now + index + 1,
+            })
+          }),
+        )
+        return { conversationId, userMessageId, waitingRunId, terminalRunIds }
+      })
+
+      const latest = await convex.query(api.chat.conversations.getLatestAgentRun, {
+        conversationId: seeded.conversationId,
+        userId: initiatorUserId,
+        serverSecret,
+      })
+      expect(latest).toMatchObject({ _id: seeded.waitingRunId, status })
+
+      await expect(convex.mutation(api.chat.conversations.transitionAgentRun, {
+        runId: seeded.waitingRunId, serverSecret, status: 'running', userId: initiatorUserId,
+        expectedWorkflowRunId: 'wrong-workflow',
+      })).rejects.toThrow('AgentRun workflow ownership changed')
+      if (status === 'waiting_for_input') expect(latest?.inputRequest?.token).toBe('input-token')
+
+      const resumed = await convex.mutation(api.chat.conversations.transitionAgentRun, {
+        runId: seeded.waitingRunId,
+        expectedWorkflowRunId: 'wait-workflow',
+        serverSecret,
+        status: 'running',
+        userId: initiatorUserId,
+      })
+      expect(resumed?.status).toBe('running')
+      expect(resumed?.inputRequest).toBeUndefined()
+
+      const cancellableRunId = await convex.run(async ctx => {
+        const now = Date.now()
+        const assistantMessageId = await ctx.db.insert('conversationMessages', {
+          conversationId: seeded.conversationId,
+          userId: initiatorUserId,
+          turnId: `wait-cancel-${status}`,
+          role: 'assistant',
+          mode: 'act',
+          content: 'Waiting to be cancelled.',
+          contentType: 'text',
+          parts: [{ type: 'text', text: 'Waiting to be cancelled.' }],
+          status: 'generating',
+          createdAt: now,
+          updatedAt: now,
+        })
+        return await ctx.db.insert('conversationAgentRuns', {
+          conversationId: seeded.conversationId,
+          turnId: `wait-cancel-${status}`,
+          userId: initiatorUserId,
+          userMessageId: seeded.userMessageId,
+          assistantMessageId,
+          mode: 'work',
+          runner: 'workflow',
+          status,
+          createdAt: now,
+          updatedAt: now,
+        })
+      })
+      await convex.mutation(api.chat.conversations.cancelAgentRuns, {
+        conversationId: seeded.conversationId,
+        userId: initiatorUserId,
+        serverSecret,
+      })
+      const cancelled = await convex.query(api.chat.conversations.getLatestAgentRun, {
+        conversationId: seeded.conversationId,
+        agentRunId: seeded.waitingRunId,
+        userId: initiatorUserId,
+        serverSecret,
+      })
+      expect(cancelled?.status).toBe('cancelled')
+      const cancelledWhileWaiting = await convex.query(api.chat.conversations.getLatestAgentRun, {
+        conversationId: seeded.conversationId,
+        agentRunId: cancellableRunId,
+        userId: initiatorUserId,
+        serverSecret,
+      })
+      expect(cancelledWhileWaiting?.status).toBe('cancelled')
+
+      for (const terminalRunId of seeded.terminalRunIds) {
+        for (const waitingStatus of ['waiting_for_input', 'waiting_for_children'] as const) {
+          await expect(convex.mutation(api.chat.conversations.transitionAgentRun, {
+            runId: terminalRunId,
+            serverSecret,
+            status: waitingStatus,
+            userId: initiatorUserId,
+          })).rejects.toThrow(/Invalid AgentRun transition/)
+        }
+      }
+    }
+  })
 })

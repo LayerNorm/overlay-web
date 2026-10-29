@@ -214,10 +214,12 @@ export async function executeCreateNote(
   input: { title?: string; content: string; tags?: string[] },
 ) {
   try {
+    const title = input.title?.trim() || 'Untitled'
+    const tags = input.tags ?? []
     const res = await callInternalApi(
       NOTES_PATH,
       {
-        title: input.title?.trim() || 'Untitled',
+        title,
         content: input.content,
         ...(input.tags ? { tags: input.tags } : {}),
         ...(options.conversationId ? { conversationId: options.conversationId } : {}),
@@ -233,6 +235,9 @@ export async function executeCreateNote(
       success: true,
       noteId: data.id,
       revision: data.note ? revisionOf(data.note) : undefined,
+      saved: data.note
+        ? { title: data.note.title, tags: data.note.tags ?? [] }
+        : { title, tags },
     }
   } catch (err) {
     return failure(err, 'Failed to create note')
@@ -256,10 +261,15 @@ export async function executeUpdateNote(
       ...(expectedUpdatedAt !== undefined ? { expectedUpdatedAt } : {}),
     })
     if (written.ok) {
+      const fetched = written.note ? written.note : await fetchNote(options, input.noteId).catch((_error) => null)
+      const saved = !fetched || 'success' in fetched
+        ? { title: input.title, tags: input.tags }
+        : { title: fetched.title, tags: fetched.tags ?? [] }
       return {
         success: true,
         noteId: input.noteId.trim(),
         revision: written.note ? revisionOf(written.note) : undefined,
+        saved,
       }
     }
     if (written.conflict) return staleRevision(input.expectedRevision ?? '', written.currentRevision ?? 'unknown')

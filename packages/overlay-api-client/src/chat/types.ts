@@ -86,7 +86,7 @@ export type AgentRunResource = {
   mode: 'chat' | 'work' | 'room'
   runner: 'tool_loop' | 'workflow' | 'remote'
   liveness?: RemoteRunLiveness
-  status: 'queued' | 'running' | 'waiting_for_approval' | 'completed' | 'failed' | 'cancelled'
+  status: 'queued' | 'running' | 'waiting_for_approval' | 'waiting_for_input' | 'waiting_for_children' | 'completed' | 'failed' | 'cancelled'
   variantIndex?: number
   workflowRunId?: string
   leaseExpiresAt?: number
@@ -95,6 +95,7 @@ export type AgentRunResource = {
   failedAt?: number
   cancelledAt?: number
   terminalError?: { code: string; message: string; retryable: boolean }
+  inputRequest?: { token: string; requestedAt: number; question: string }
   approval?: {
     token: string
     requestedAt: number

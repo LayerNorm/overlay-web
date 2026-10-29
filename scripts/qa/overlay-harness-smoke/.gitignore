@@ -1,0 +1,5 @@
+node_modules
+.workflow-data/
+.workflow-vitest/
+artifacts/
+/.swc

@@ -19,6 +19,11 @@ import {
 } from '@/shared/agents/agent-lineage'
 import type { ConversationMessageRow } from '@/server/conversations/ActConversationRepository'
 import type { ConversationCollaborationRepository } from '@/server/conversations/ConversationCollaborationRepository'
+import type { AgentRun } from '@/shared/agents/agent-run'
+import {
+  HARNESS_DISPATCH_REQUIRED_CODE,
+  HARNESS_DISPATCH_REQUIRED_MESSAGE,
+} from '@/shared/agents/harness-dispatch-refusal'
 
 const REPLY_WAIT_MS = 80_000
 const REPLY_POLL_MS = 2_000
@@ -48,6 +53,10 @@ export type AgentAskResult = {
 }
 
 export type AgentPostResult = { posted: true; messageId: string; conversationId: string; asked: string[] }
+type StartTurns = (args: {
+  actorUserId: string; conversationId: string; messageId: string; mentionedPrincipalIds: string[]
+  initiatorPrincipalId: string; prompt: string; turnId: string; workspaceId: string
+}) => Promise<Array<{ agentId: string; turnId: string }>>
 
 type BudgetClaim = { ok: true } | { ok: false; reason: 'budget' | 'turn_limit' }
 type Caller = { agentId: string; conversationId: string; turnId: string }
@@ -67,6 +76,7 @@ type Person = { actorUserId: string; actorPrincipalId: string; workspaceId: stri
 export class AgentAskService {
   constructor(private readonly dependencies: {
     collaboration: Collaboration
+    getCallerRun: (args: { actorUserId: string; conversationId: string; turnId: string; agentId: string }) => Promise<AgentRun | null>
     /** The agents the person can see, which is also who they can ask. */
     directory: (actorUserId: string, workspaceId: string) => Promise<WorkspaceAgentDirectoryItem[]>
     /** Takes one question from the request's and the turn's budgets. */
@@ -77,10 +87,7 @@ export class AgentAskService {
     recordReply: (args: { workspaceId: string; rootKey: string; conversationId: string; turnId: string }) => Promise<void>
     listReplies: (args: { workspaceId: string; rootKey: string }) => Promise<Array<{ conversationId: string; turnId: string }>>
     /** Starts the addressed agents' turns for a message; returns the turns it opened. */
-    startTurns: (args: {
-      actorUserId: string; conversationId: string; messageId: string; mentionedPrincipalIds: string[]
-      initiatorPrincipalId: string; prompt: string; turnId: string; workspaceId: string
-    }) => Promise<Array<{ agentId: string; turnId: string }>>
+    startTurns: StartTurns
     sleep?: (ms: number) => Promise<void>
     now?: () => number
     waitMs?: number
@@ -104,7 +111,9 @@ export class AgentAskService {
     target: string
     message: string
     wait: boolean
+    startTurns?: StartTurns
   }): Promise<AgentAskResult> {
+    if (args.caller && !args.startTurns) await this.refuseHarnessCaller(args, args.caller)
     const message = this.cleanMessage(args.message)
     const visible = await this.visibleAgents(args)
     const target = this.findAgent(visible, args.target)
@@ -132,7 +141,7 @@ export class AgentAskService {
       const questionTurnId = `ask_${createHash('sha256').update(`${args.caller.turnId}:${target.id}:${message}`).digest('hex').slice(0, 24)}`
       const posted = await this.postAsAgent({
         person: args, caller, conversationId: room.conversationId, content, turnId: questionTurnId, lineage: next.lineage,
-        mentions: [target], rootKey: keys.rootKey,
+        mentions: [target], rootKey: keys.rootKey, startTurns: args.startTurns,
       })
       const turn = posted.turns.find((candidate) => candidate.agentId === target.id)
       if (!turn) throw new AgentAskError(`${target.name} could not be reached.`, 502, 'agent_unreachable')
@@ -154,7 +163,9 @@ export class AgentAskService {
     conversationId: string
     text: string
     mentions: string[]
+    startTurns?: StartTurns
   }): Promise<AgentPostResult> {
+    if (!args.startTurns) await this.refuseHarnessCaller(args, args.caller)
     const text = this.cleanMessage(args.text)
     if (args.mentions.length > MAX_MENTIONS) throw new AgentAskError(`Mention at most ${MAX_MENTIONS} agents in one message.`, 400, 'too_many_mentions')
     const visible = await this.visibleAgents(args)
@@ -210,7 +221,8 @@ export class AgentAskService {
       const turnId = `post_${createHash('sha256').update(`${args.caller.turnId}:${args.conversationId}:${text}`).digest('hex').slice(0, 24)}`
       const posted = await this.postAsAgent({
         person: args, caller, conversationId: args.conversationId, content: text, turnId,
-        ...(next?.ok ? { lineage: next.lineage } : {}), mentions: targets, rootKey: `root:${lineage.rootTurnId}`,
+        ...(next?.ok ? { lineage: next.lineage } : {}), mentions: targets,
+        rootKey: `root:${lineage.rootTurnId}`, startTurns: args.startTurns,
       })
       return { posted: true, messageId: posted.messageId, conversationId: args.conversationId, asked: targets.map((target) => target.name) }
     } catch (error) {
@@ -234,6 +246,26 @@ export class AgentAskService {
     if (!message) throw new AgentAskError('Say what you need from the agent.', 400, 'message_required')
     if (message.length > MAX_QUESTION_CHARS) throw new AgentAskError('That message is too long; shorten it.', 400, 'message_too_long')
     return message
+  }
+
+  private async refuseHarnessCaller(
+    person: Person,
+    caller: Caller,
+  ): Promise<void> {
+    const run = await this.dependencies.getCallerRun({
+      actorUserId: person.actorUserId,
+      conversationId: caller.conversationId,
+      turnId: caller.turnId,
+      agentId: caller.agentId,
+    })
+    if (run?.userId === person.actorUserId && run.conversationId === caller.conversationId && run.turnId === caller.turnId
+      && run.agentId === caller.agentId && run.executionEngine === 'overlay_harness') {
+      throw new AgentAskError(
+        HARNESS_DISPATCH_REQUIRED_MESSAGE,
+        409,
+        HARNESS_DISPATCH_REQUIRED_CODE,
+      )
+    }
   }
 
   private async visibleAgents(args: { actorUserId: string; workspaceId: string }) {
@@ -294,6 +326,7 @@ export class AgentAskService {
     lineage?: AgentLineage
     mentions: WorkspaceAgentDirectoryItem[]
     rootKey: string
+    startTurns?: StartTurns
   }) {
     const messageId = await this.dependencies.collaboration.addAgentMessage({
       actorUserId: args.person.actorUserId,
@@ -307,7 +340,7 @@ export class AgentAskService {
       workspaceId: args.person.workspaceId,
     })
     if (args.mentions.length === 0) return { messageId, turns: [] }
-    const turns = await this.dependencies.startTurns({
+    const turns = await (args.startTurns ?? this.dependencies.startTurns)({
       actorUserId: args.person.actorUserId,
       conversationId: args.conversationId,
       initiatorPrincipalId: args.person.actorPrincipalId,

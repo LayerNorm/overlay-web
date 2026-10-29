@@ -70,6 +70,13 @@ export const AgentRunApprovalRequest = z.object({
   reason: z.string().max(1000).optional(),
 })
 
+export const AgentRunInputRequest = z.object({
+  conversationId: z.string().min(1).max(256),
+  agentRunId: z.string().min(1).max(256),
+  token: z.string().min(1).max(256),
+  text: z.string().trim().min(1).max(32_000),
+}).strict()
+
 export const AgentRunMetricEventRequest = z.object({
   conversationId: z.string().min(1),
   agentRunId: z.string().min(1),
@@ -114,6 +121,10 @@ export const ActConversationRequest = z.object({
   requestedToolIds: z.unknown().optional(),
   memoryEnabled: z.boolean().optional(),
   actAbortTimeoutMs: z.number().finite().positive().optional(),
+  harnessBudget: z.object({
+    maxProviderCostUsd: z.number().finite().min(0).max(100).optional(),
+    durationMs: z.number().int().min(30_000).max(7 * 24 * 60 * 60 * 1_000).optional(),
+  }).optional(),
   mentions: z.array(z.object({
     type: z.string(),
     id: z.string(),

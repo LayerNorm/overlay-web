@@ -98,7 +98,7 @@ export async function GET(request: NextRequest, context?: AppApiRouteContext,
         sendEvent({ type: 'connected', workflowRunId })
 
         try {
-          const world = getWorld()
+          const world = await getWorld()
           const run = getRun(workflowRunId)
 
           // Check if run exists

@@ -12,7 +12,7 @@ const agent = (id: string, name: string, extra: Partial<WorkspaceAgentDirectoryI
 
 type Row = Record<string, unknown> & { _id: string; turnId: string }
 
-function setup(options: { agents?: WorkspaceAgentDirectoryItem[]; trigger?: Row | null; replyAfterPolls?: number; replyStatus?: 'completed' | 'error' | 'generating'; startFails?: boolean; roomParticipants?: string[]; recorded?: Array<{ conversationId: string; turnId: string }>; replyTokens?: number; claimDenied?: 'budget' | 'turn_limit' } = {}) {
+function setup(options: { agents?: WorkspaceAgentDirectoryItem[]; trigger?: Row | null; replyAfterPolls?: number; replyStatus?: 'completed' | 'error' | 'generating'; startFails?: boolean; roomParticipants?: string[]; recorded?: Array<{ conversationId: string; turnId: string }>; replyTokens?: number; claimDenied?: 'budget' | 'turn_limit'; callerRun?: Record<string, unknown> } = {}) {
   const agents = options.agents ?? [agent('scout', 'Scout'), agent('planner', 'Planner'), agent('writer', 'Writer')]
   const trigger: Row | null = options.trigger === undefined
     ? { _id: 'm1', turnId: 'human-turn-1', authorKind: 'human', content: 'hi', role: 'user', mode: 'act', contentType: 'text', createdAt: 0 } as Row
@@ -23,9 +23,11 @@ function setup(options: { agents?: WorkspaceAgentDirectoryItem[]; trigger?: Row 
   const releases: Array<Record<string, unknown>> = []
   const recordedReplies: Array<Record<string, unknown>> = []
   const personMessages: Array<Record<string, unknown>> = []
+  const callerLookups: Array<Record<string, unknown>> = []
   let polls = 0
   let clock = 0
   const service = new AgentAskService({
+    getCallerRun: async (args) => { callerLookups.push(args); return (options.callerRun ?? null) as never },
     directory: async () => agents,
     collaboration: {
       createDirectMessage: async () => ({ conversationId: 'room-1', workspaceId: 'ws', title: '', participants: [], created: true } as never),
@@ -60,7 +62,7 @@ function setup(options: { agents?: WorkspaceAgentDirectoryItem[]; trigger?: Row 
     caller: { agentId: 'scout', conversationId: 'c1', turnId: 'agent_m1_scout' },
     conversationId: 'channel-1', text: 'Update for the room', mentions: [], ...overrides,
   } as never)
-  return { service, ask, post, posted, started, claims, releases, recordedReplies, personMessages }
+  return { service, ask, post, posted, started, claims, releases, recordedReplies, personMessages, callerLookups }
 }
 
 test('an agent asks another by name; the question is posted by the asking agent with its lineage and the answer comes back', async () => {
@@ -216,4 +218,34 @@ test('an outside app asks an agent as the person: their own message, a fresh cha
     (error: AgentAskError) => error.code === 'ask_outside_limit',
   )
   assert.equal(limited.personMessages.length, 0)
+})
+
+test('Harness callers are refused before budgets, messages, or turn starts for ask and post', async () => {
+  const callerRun = {
+    userId: 'u1',
+    conversationId: 'c1',
+    turnId: 'agent_m1_scout',
+    agentId: 'scout',
+    executionEngine: 'overlay_harness',
+  }
+  const asked = setup({ callerRun })
+  await assert.rejects(asked.ask(), (error: AgentAskError) =>
+    error.message === 'Asking other agents is not available in this run yet.'
+      && error.statusCode === 409 && error.code === 'harness_dispatch_required')
+  assert.deepEqual(asked.callerLookups[0], {
+    actorUserId: 'u1', conversationId: 'c1', turnId: 'agent_m1_scout', agentId: 'scout',
+  })
+  assert.equal(asked.claims.length, 0)
+  assert.equal(asked.posted.length, 0)
+  assert.equal(asked.personMessages.length, 0)
+  assert.equal(asked.started.length, 0)
+
+  const posted = setup({ callerRun })
+  await assert.rejects(posted.post(), (error: AgentAskError) =>
+    error.message === 'Asking other agents is not available in this run yet.'
+      && error.statusCode === 409 && error.code === 'harness_dispatch_required')
+  assert.equal(posted.claims.length, 0)
+  assert.equal(posted.posted.length, 0)
+  assert.equal(posted.personMessages.length, 0)
+  assert.equal(posted.started.length, 0)
 })

@@ -62,12 +62,56 @@ const statusValidator = v.union(
 const claimPurpose = v.union(v.literal('user'), v.literal('canary'))
 
 const LOCK_KEY = 'overlay-free'
+const ZERO_PRICING_FIELDS = [
+  'prompt',
+  'completion',
+  'request',
+  'image',
+  'image_output',
+  'web_search',
+  'internal_reasoning',
+  'input_cache_read',
+] as const
+const REQUIRED_ZERO_PRICING_FIELDS = ['prompt', 'completion'] as const
+const NUMERIC_STRING_PATTERN = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i
 
 async function findRoute(ctx: QueryCtx | MutationCtx, routeKey: string) {
   return await ctx.db
     .query('overlayFreeRoutes')
     .withIndex('by_routeKey', (q) => q.eq('routeKey', routeKey))
     .first()
+}
+
+function hasZeroQuarantinePricing(pricingJson: string): boolean {
+  let value: unknown
+  try {
+    value = JSON.parse(pricingJson)
+  } catch {
+    return false
+  }
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
+  const pricing = value as Record<string, unknown>
+  const isZeroPrice = (price: unknown) => {
+    if (typeof price === 'number') return Number.isFinite(price) && price === 0
+    return typeof price === 'string' && /^\+?0+(?:\.0+)?(?:e[+-]?\d+)?$/i.test(price.trim())
+  }
+  if (!REQUIRED_ZERO_PRICING_FIELDS.every((field) =>
+    Object.prototype.hasOwnProperty.call(pricing, field) && isZeroPrice(pricing[field])
+  )) return false
+
+  for (const field of ZERO_PRICING_FIELDS) {
+    if (Object.prototype.hasOwnProperty.call(pricing, field) && !isZeroPrice(pricing[field])) return false
+  }
+  for (const [field, price] of Object.entries(pricing)) {
+    if (field === 'discount' || ZERO_PRICING_FIELDS.includes(field as (typeof ZERO_PRICING_FIELDS)[number])) continue
+    if (typeof price === 'number') {
+      if (!Number.isFinite(price) || price !== 0) return false
+    } else if (typeof price === 'string' && NUMERIC_STRING_PATTERN.test(price.trim())) {
+      const numericPrice = Number(price)
+      if (!Number.isFinite(numericPrice) || numericPrice !== 0) return false
+    }
+  }
+  return true
 }
 
 async function findLock(ctx: QueryCtx | MutationCtx) {
@@ -104,7 +148,13 @@ function routeWithoutLease(row: NonNullable<Awaited<ReturnType<typeof findRoute>
 }
 
 export const listEligibleByServer = query({
-  args: { serverSecret: v.string(), now: v.number(), generation: v.number() },
+  args: {
+    serverSecret: v.string(),
+    now: v.number(),
+    generation: v.number(),
+    includeBusy: v.optional(v.boolean()),
+    includeCooldown: v.optional(v.boolean()),
+  },
   returns: v.array(routeValidator),
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
@@ -114,8 +164,8 @@ export const listEligibleByServer = query({
       row.catalogExpiresAt > args.now &&
       (row.transport === 'openrouter' || (row.canaryExpiresAt ?? 0) > args.now) &&
       !row.quarantineReason &&
-      (!row.cooldownUntil || row.cooldownUntil <= args.now) &&
-      (!row.activeLeaseToken || row.activeLeaseExpiresAt !== undefined && row.activeLeaseExpiresAt <= args.now)
+      (args.includeCooldown || !row.cooldownUntil || row.cooldownUntil <= args.now) &&
+      (args.includeBusy || !row.activeLeaseToken || row.activeLeaseExpiresAt !== undefined && row.activeLeaseExpiresAt <= args.now)
     ).map(routeWithoutLease)
   },
 })
@@ -480,5 +530,36 @@ export const clearExpiredLeasesInternal = internalMutation({
       count += 1
     }
     return count
+  },
+})
+
+export const clearRouteQuarantine = internalMutation({
+  args: {
+    routeKey: ROUTE_KEY,
+    expectedReason: v.string(),
+    now: v.number(),
+  },
+  returns: v.union(
+    v.object({ status: v.literal('missing') }),
+    v.object({ status: v.literal('not_quarantined') }),
+    v.object({ status: v.literal('reason_mismatch') }),
+    v.object({ status: v.literal('leased') }),
+    v.object({ status: v.literal('nonzero_pricing') }),
+    v.object({ status: v.literal('cleared'), routeKey: v.string() }),
+  ),
+  handler: async (ctx, args) => {
+    const row = await findRoute(ctx, args.routeKey)
+    if (!row) return { status: 'missing' as const }
+    if (!row.quarantineReason) return { status: 'not_quarantined' as const }
+    if (row.quarantineReason !== args.expectedReason) return { status: 'reason_mismatch' as const }
+    if (row.activeLeaseToken !== undefined) return { status: 'leased' as const }
+    if (!hasZeroQuarantinePricing(row.pricingJson)) return { status: 'nonzero_pricing' as const }
+    await ctx.db.patch(row._id, {
+      quarantineReason: undefined,
+      quarantineAt: undefined,
+      cooldownUntil: undefined,
+      updatedAt: args.now,
+    })
+    return { status: 'cleared' as const, routeKey: row.routeKey }
   },
 })

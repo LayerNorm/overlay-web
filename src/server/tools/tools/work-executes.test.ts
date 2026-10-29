@@ -39,11 +39,25 @@ function mockApi(handler: (url: URL, init: RequestInit, body: Record<string, unk
 test('create resolves case-insensitive names, me, and priority labels, with conditional attribution', async () => {
   const api = mockApi((url, _init, body) => {
     if (url.pathname.endsWith('/context')) return contextBody
-    return { item: { ...task, ...body, id: 'new-task', priority: body?.priority, assigneePrincipalId: body?.assigneePrincipalId } }
+    return {
+      item: {
+        ...task,
+        ...body,
+        id: 'new-task',
+        title: 'Persisted Draft',
+        status: 'done',
+        dueDate: '2026-10-10',
+        priority: body?.priority,
+        assigneePrincipalId: body?.assigneePrincipalId,
+      },
+    }
   })
   try {
     const result = await executeCreateTask(baseOptions, { title: 'Draft', assignee: 'researcher', reviewer: 'ME', priority: 'high' })
     assert.equal(result.success, true)
+    if (result.success) {
+      assert.deepEqual(result.saved, { title: 'Persisted Draft', status: 'done', dueDate: '2026-10-10' })
+    }
     const create = api.requests.find((request) => request.method === 'POST')!
     assert.equal(create.body?.assigneePrincipalId, 'p-agent')
     assert.equal(create.body?.reviewerUserId, 'u1')
@@ -104,7 +118,10 @@ test('fields, status, scope and agent attribution use one atomic update', async 
     assert.equal(writes[0]?.body?.scope, 'workspace')
     assert.equal(writes[0]?.body?.expectedUpdatedAt, 10)
     assert.ok(result.success)
-    if (result.success) assert.equal(result.task.status, 'done')
+    if (result.success) {
+      assert.equal(result.task.status, 'done')
+      assert.deepEqual(result.saved, { title: 'Changed', status: 'done' })
+    }
   } finally {
     api.restore()
   }

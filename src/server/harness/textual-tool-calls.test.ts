@@ -1,0 +1,71 @@
+import { expect, test } from 'vitest'
+import { stripTextualToolCalls } from './textual-tool-calls'
+
+const toolNames = new Set(['harness_update_step', 'read_file'])
+
+test('strips XML and Python protocol forms while preserving surrounding text', () => {
+  expect(stripTextualToolCalls(
+    'The answer is Paris.\n\n<tool_call><arg_key>name</arg_key>harness_update_step</tool_call>\n\nVerified.',
+    toolNames,
+  )).toBe('The answer is Paris.\n\nVerified.')
+  expect(stripTextualToolCalls('Paris\n<|python_tag|>{"name":"read_file"}', toolNames)).toBe('Paris')
+})
+
+test('strips unterminated tool-call blocks and leaves incomplete marker text alone', () => {
+  expect(stripTextualToolCalls('Paris\n\n<tool_call>harness_update_step args', toolNames)).toBe('Paris')
+  expect(stripTextualToolCalls('The marker is <tool_cal', toolNames)).toBe('The marker is <tool_cal')
+})
+
+test('strips known tool JSON objects and arrays, including fenced blocks and standalone lines', () => {
+  const call = '{"name":"harness_update_step","parameters":{"id":"step1","status":"done"}}'
+  expect(stripTextualToolCalls(call, toolNames)).toBe('')
+  expect(stripTextualToolCalls(`Before\n\n\`\`\`json\n${call}\n\`\`\`\n\nAfter`, toolNames)).toBe('Before\n\nAfter')
+  expect(stripTextualToolCalls(
+    `Before\n${call}\nAfter`,
+    toolNames,
+  )).toBe('Before\nAfter')
+  expect(stripTextualToolCalls(
+    '[{"name":"harness_update_step","arguments":{"id":"step1"}}]',
+    toolNames,
+  )).toBe('')
+  expect(stripTextualToolCalls(
+    '[[{"name":"harness_update_step","parameters":{"id":"step1","status":"done"}}]]',
+    toolNames,
+  )).toBe('')
+})
+
+test('strips the nested create_note protocol leaked in QA354', () => {
+  const leaked = '[[{"name":"create_note","parameters":{"title":"QA354-01","content":"1"}},{"name":"create_note","parameters":{"title":"QA354-02","content":"2"}},{"name":"create_note","parameters":{"title":"QA354-03","content":"3"}}]]'
+  const names = new Set([...toolNames, 'create_note'])
+  expect(stripTextualToolCalls(`Before\n\n${leaked}\n\nAfter`, names)).toBe('Before\n\nAfter')
+  expect(stripTextualToolCalls('The requested payload is ' + leaked + ' for illustration.', names))
+    .toBe('The requested payload is ' + leaked + ' for illustration.')
+  const code = '```json\n{"name":"unknown_tool","parameters":{"path":"a"}}\n```'
+  expect(stripTextualToolCalls(code, names)).toBe(code)
+})
+
+test('preserves unknown-tool JSON and JSON embedded in ordinary prose', () => {
+  const unknown = '{"name":"unknown_tool","parameters":{"path":"a"}}'
+  const known = '{"name":"read_file","arguments":{"path":"a"}}'
+  expect(stripTextualToolCalls(unknown, toolNames)).toBe(unknown)
+  expect(stripTextualToolCalls(`The payload is ${known} and is only an example.`, toolNames))
+    .toBe(`The payload is ${known} and is only an example.`)
+})
+
+test('strips malformed known-tool JSON segments from QA344 while preserving surrounding paragraphs', () => {
+  const malformedPlan = '[\n[{"name": "harness_set_plan", "parameters": {...}}]'
+  const malformedNote = '[[{ "name": "create_note", "parameters": { "content": "2", "tags": ["QA344-GROUND"] } }]'
+  const names = new Set([...toolNames, 'harness_set_plan', 'create_note'])
+  expect(stripTextualToolCalls(malformedPlan, names)).toBe('')
+  expect(stripTextualToolCalls(malformedNote, names)).toBe('')
+  expect(stripTextualToolCalls(`Result before.\n\n${malformedNote}\n\nResult after.`, names))
+    .toBe('Result before.\n\nResult after.')
+  expect(stripTextualToolCalls(`\`\`\`json\n${malformedPlan}\n\`\`\``, names)).toBe('')
+  expect(stripTextualToolCalls('[[{"name":"future_tool","parameters":{}}]', names))
+    .toBe('[[{"name":"future_tool","parameters":{}}]')
+})
+
+test('collapses blank lines after removing protocol blocks', () => {
+  expect(stripTextualToolCalls(`Paris\n\n\n<tool_call>call</tool_call>\n\n\nFrance`, toolNames))
+    .toBe('Paris\n\nFrance')
+})

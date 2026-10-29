@@ -18,7 +18,7 @@ export function ensureAssistantPersistContent(content: string): string {
   return content.trim() ? content : ASSISTANT_EMPTY_CONTENT_PLACEHOLDER
 }
 
-const MAX_PERSISTED_ASSISTANT_CONTENT_CHARS = 160_000
+export const MAX_PERSISTED_ASSISTANT_CONTENT_CHARS = 160_000
 const MAX_PERSISTED_TEXT_PART_CHARS = 80_000
 const MAX_PERSISTED_REASONING_PART_CHARS = 24_000
 const MAX_PERSISTED_TOOL_VALUE_CHARS = 4_000

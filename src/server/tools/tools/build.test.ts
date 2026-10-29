@@ -441,6 +441,21 @@ test('Overlay tools expose Gateway-compatible input schemas', async () => {
   }))
 })
 
+test('create_note requires a non-empty title', () => {
+  const tools = buildOverlayToolSet({
+    userId: 'user-test',
+    baseUrl: 'http://localhost:3000',
+    allowedToolIds: ['create_note'],
+  })
+  const inputSchema = tools.create_note.inputSchema as {
+    safeParse(input: unknown): { success: boolean }
+  }
+
+  assert.equal(inputSchema.safeParse({ content: 'Markdown body' }).success, false)
+  assert.equal(inputSchema.safeParse({ title: '   ', content: 'Markdown body' }).success, false)
+  assert.equal(inputSchema.safeParse({ title: 'Note title', content: 'Markdown body' }).success, true)
+})
+
 test('present_generated_ui accepts a bounded conversational questionnaire without permission fields', () => {
   const inputSchema = buildTestTools().present_generated_ui.inputSchema as {
     safeParse(input: unknown): { success: boolean }

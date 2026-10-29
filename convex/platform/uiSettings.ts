@@ -101,11 +101,12 @@ export const getByServer = query({
     userId: v.string(),
     serverSecret: v.string(),
   },
-  returns: uiSettingsValidator,
+  // Server-owned deployment metadata, never a stored or writable preference.
+  returns: v.object({ ...uiSettingsValidator.fields, harnessRevision: v.literal('overlay-harness-v1') }),
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
     const existing = await getExistingSettings(ctx, args.userId)
-    if (!existing) return defaultUiSettings()
+    if (!existing) return { ...defaultUiSettings(), harnessRevision: 'overlay-harness-v1' as const }
     const settings = {
       theme: existing.theme,
       lightThemePreset: existing.lightThemePreset ?? 'default-light',
@@ -130,6 +131,7 @@ export const getByServer = query({
     }
     return {
       ...settings,
+      harnessRevision: 'overlay-harness-v1' as const,
       ...(safeModelId(existing.defaultActModelId) ? { defaultActModelId: safeModelId(existing.defaultActModelId) } : {}),
       ...(safeModelId(existing.defaultImageModelId) ? { defaultImageModelId: safeModelId(existing.defaultImageModelId) } : {}),
       ...(safeModelId(existing.defaultVideoModelId) ? { defaultVideoModelId: safeModelId(existing.defaultVideoModelId) } : {}),

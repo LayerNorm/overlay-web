@@ -1,6 +1,7 @@
 import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
 import { resumeHook } from 'workflow/api'
+import { HookNotFoundError } from 'workflow/internal/errors'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getAuthorizedResourceUserId } from '@/server/app-api/bff-context'
 import { getOverlayServerContext } from '@/server/bootstrap'
@@ -63,6 +64,9 @@ export async function POST(
     })
     return NextResponse.json({ success: true })
   } catch (error) {
+    if (HookNotFoundError.is(error)) {
+      return NextResponse.json({ error: 'This approval request is no longer active.' }, { status: 409 })
+    }
     logger.error('[conversations/run/approval POST]', error)
     return NextResponse.json({ error: 'Could not submit approval.' }, { status: 500 })
   }

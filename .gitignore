@@ -103,6 +103,7 @@ agent/memory/*
 .almanac/.ingest-*
 /.swc
 .workflow-data/
+/src/app/.well-known/workflow/
 
 # Security audit reports (local only, not committed)
 SECURITY_AUDIT_REPORT.md

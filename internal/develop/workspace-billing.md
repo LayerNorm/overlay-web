@@ -67,6 +67,11 @@ Advance only one stage at a time: `internal`, then `selected`, then `general`. T
 ## Reservation reconciliation
 
 The usage ledger automatically releases expired reservations only when provider work never started. Provider-started reservations are quarantined until authoritative evidence establishes whether to finalize the measured cost or release the reservation.
+Harness model reservations are an exception when Gateway usage stays unavailable: after about ten minutes of 404 retries, observed tokens settle at catalog pricing when a rate exists. Non-404 lookup failures and unknown catalog rates remain quarantined.
+Approval-paused SDK steps settle their known model usage before suspension.
+WorkflowAgent returns these steps through its end callback without a step-end
+callback; the Harness deduplicates callbacks by invocation step number, advances
+the receipt identity once, and reserves any later compaction/inference separately.
 
 Inspect the development queue without mutating it:
 

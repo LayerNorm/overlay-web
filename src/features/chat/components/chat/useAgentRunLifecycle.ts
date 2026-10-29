@@ -11,12 +11,13 @@ import {
 } from 'react'
 import type { AgentRunResource } from '@overlay/api-client'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { ACTIVE_AGENT_RUN_STATUSES } from '@/shared/agents/agent-run'
 import { trackAgentRunRecovery } from '@/shared/observability/client-metrics'
 import { useQuery } from '@/components/providers/convex-hooks'
 import { api } from '../../../../../convex/_generated/api'
 import type { Id } from '../../../../../convex/_generated/dataModel'
 
-const ACTIVE_STATUSES = new Set(['queued', 'running', 'waiting_for_approval'])
+const ACTIVE_STATUSES: ReadonlySet<string> = new Set(ACTIVE_AGENT_RUN_STATUSES)
 const TERMINAL_SYNC_GRACE_MS = 10_000
 const CONVEX_SAFETY_POLL_MS = 5_000
 
@@ -36,6 +37,7 @@ type ConvexAgentRunDoc = {
   createdAt: number
   terminalError?: { code: string; message: string; retryable: boolean }
   approval?: AgentRunResource['approval']
+  inputRequest?: AgentRunResource['inputRequest']
   metrics?: {
     browserDisconnectedAt?: number
     browserReconnectedAt?: number
@@ -97,6 +99,7 @@ export function toAgentRunResource(doc: ConvexAgentRunDoc): AgentRunResource | n
     updatedAt: doc.updatedAt,
     terminalError: doc.terminalError,
     approval: doc.approval,
+    inputRequest: doc.inputRequest,
     metrics: doc.metrics as AgentRunResource['metrics'],
   } as unknown as AgentRunResource
 }

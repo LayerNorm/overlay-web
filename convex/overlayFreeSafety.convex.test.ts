@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import { convexTest } from 'convex-test'
-import { api } from './_generated/api'
+import { api, internal } from './_generated/api'
 import schema from './schema'
 
 const modules = import.meta.glob('./**/*.ts')
@@ -27,6 +27,42 @@ const route = (generation: number) => ({
   canaryExpiresAt: 3_600_001,
 })
 
+const zeroSafetyPricing = JSON.stringify({
+  prompt: '0',
+  completion: '0',
+  request: '0',
+  image: '0',
+  image_output: '0',
+  web_search: '0',
+  internal_reasoning: '0',
+  input_cache_read: '0',
+})
+
+async function updateRoute(
+  convex: ReturnType<typeof convexTest>,
+  routeKey: string,
+  patch: {
+    pricingJson?: string
+    quarantineReason?: string
+    quarantineAt?: number
+    cooldownUntil?: number
+    activeLeaseToken?: string
+    activeLeaseExpiresAt?: number
+    latestReceiptAt?: number
+    latestReceiptJson?: string
+    latestActualModelId?: string
+    latestActualProvider?: string
+  },
+) {
+  await convex.run(async (ctx) => {
+    const row = await ctx.db.query('overlayFreeRoutes')
+      .withIndex('by_routeKey', (q) => q.eq('routeKey', routeKey))
+      .first()
+    if (!row) throw new Error('Missing test route')
+    await ctx.db.patch(row._id, patch)
+  })
+}
+
 async function lockAndPublish(convex: ReturnType<typeof convexTest>, now = 1) {
   const lock = await convex.mutation(api.platform.overlayFreeSafety.acquireRefreshLockByServer, {
     serverSecret: secret, leaseToken: 'refresh-1', now, leaseMs: 300_000, retryMs: 300_000,
@@ -43,6 +79,52 @@ async function lockAndPublish(convex: ReturnType<typeof convexTest>, now = 1) {
 }
 
 describe('overlay-free durable safety state', () => {
+  test('capacity discovery can include busy routes without bypassing their lease', async () => {
+    const convex = convexTest(schema, modules)
+    const row = await lockAndPublish(convex)
+    const claim = { serverSecret: secret, routeKey: row.routeKey, leaseToken: 'first', now: 2,
+      leaseMs: 180_000, purpose: 'user' as const, expectedGeneration: row.generation }
+    expect((await convex.mutation(api.platform.overlayFreeSafety.claimByServer, claim)).status).toBe('claimed')
+    const query = { serverSecret: secret, now: 3, generation: row.generation }
+    expect(await convex.query(api.platform.overlayFreeSafety.listEligibleByServer, query)).toEqual([])
+    expect(await convex.query(api.platform.overlayFreeSafety.listEligibleByServer, { ...query, includeBusy: true })).toHaveLength(1)
+    expect((await convex.mutation(api.platform.overlayFreeSafety.claimByServer, { ...claim, leaseToken: 'second', now: 3 })).status).toBe('busy')
+    await convex.mutation(api.platform.overlayFreeSafety.quarantineExpiredLeasesByServer, { serverSecret: secret, now: 180_003 })
+    expect(await convex.query(api.platform.overlayFreeSafety.listEligibleByServer, { ...query, now: 180_003, includeBusy: true })).toEqual([])
+  })
+
+  test('capacity discovery can include cooled routes without bypassing cooldown or quarantine', async () => {
+    const convex = convexTest(schema, modules)
+    const row = await lockAndPublish(convex)
+    const claim = {
+      serverSecret: secret, routeKey: row.routeKey, leaseToken: 'cooldown-route', now: 2,
+      leaseMs: 180_000, purpose: 'user' as const, expectedGeneration: row.generation,
+    }
+    expect((await convex.mutation(api.platform.overlayFreeSafety.claimByServer, claim)).status).toBe('claimed')
+    expect(await convex.mutation(api.platform.overlayFreeSafety.cooldownByServer, {
+      serverSecret: secret,
+      routeKey: row.routeKey,
+      leaseToken: claim.leaseToken,
+      now: 3,
+      cooldownUntil: 60_003,
+      reason: 'pre-generation rejection',
+    })).toEqual({ status: 'settled' })
+
+    const query = { serverSecret: secret, now: 4, generation: row.generation }
+    expect(await convex.query(api.platform.overlayFreeSafety.listEligibleByServer, query)).toEqual([])
+    expect(await convex.query(api.platform.overlayFreeSafety.listEligibleByServer, {
+      ...query, includeCooldown: true,
+    })).toHaveLength(1)
+    expect((await convex.mutation(api.platform.overlayFreeSafety.claimByServer, {
+      ...claim, leaseToken: 'retry', now: 4,
+    })).status).toBe('cooldown')
+
+    await updateRoute(convex, row.routeKey, { quarantineReason: 'stream error after output', quarantineAt: 4 })
+    expect(await convex.query(api.platform.overlayFreeSafety.listEligibleByServer, {
+      ...query, includeBusy: true, includeCooldown: true,
+    })).toEqual([])
+  })
+
   test('late settlement quarantines even when no cleanup has run', async () => {
     const convex = convexTest(schema, modules)
     const row = await lockAndPublish(convex)
@@ -264,5 +346,147 @@ describe('overlay-free durable safety state', () => {
       safe: true, cost: 0.01, reason: 'Nonzero provider charge',
       actualModelId: row.modelId, actualProvider: row.provider,
     }))
+  })
+
+  test('quarantine recovery returns guarded statuses without changing the route', async () => {
+    const convex = convexTest(schema, modules)
+    const missing = await convex.mutation(internal.platform.overlayFreeSafety.clearRouteQuarantine, {
+      routeKey: 'missing:route', expectedReason: 'stream error after output', now: 10,
+    })
+    expect(missing).toEqual({ status: 'missing' })
+
+    const row = await lockAndPublish(convex)
+    const args = { routeKey: row.routeKey, expectedReason: 'stream error after output', now: 10 }
+    expect(await convex.mutation(internal.platform.overlayFreeSafety.clearRouteQuarantine, args))
+      .toEqual({ status: 'not_quarantined' })
+
+    await updateRoute(convex, row.routeKey, {
+      quarantineReason: 'stream error after output',
+      quarantineAt: 2,
+      cooldownUntil: 3,
+      pricingJson: zeroSafetyPricing,
+    })
+    expect(await convex.mutation(internal.platform.overlayFreeSafety.clearRouteQuarantine, {
+      ...args, expectedReason: 'different reason',
+    })).toEqual({ status: 'reason_mismatch' })
+
+    await updateRoute(convex, row.routeKey, {
+      activeLeaseToken: 'active-lease',
+      activeLeaseExpiresAt: 100,
+    })
+    expect(await convex.mutation(internal.platform.overlayFreeSafety.clearRouteQuarantine, args))
+      .toEqual({ status: 'leased' })
+    const stored = await convex.query(api.platform.overlayFreeSafety.getByServer, {
+      serverSecret: secret, routeKey: row.routeKey,
+    })
+    expect(stored?.quarantineReason).toBe('stream error after output')
+    expect(stored?.quarantineAt).toBe(2)
+    expect(stored?.cooldownUntil).toBe(3)
+    expect(stored?.activeLeaseToken).toBe('active-lease')
+  })
+
+  test('quarantine recovery rejects nonzero or malformed pricing without patching', async () => {
+    for (const pricingJson of [
+      JSON.stringify({ prompt: '0.01', completion: '0', request: '0', image: '0',
+        image_output: '0', web_search: '0', internal_reasoning: '0', input_cache_read: '0' }),
+      '{',
+    ]) {
+      const convex = convexTest(schema, modules)
+      const row = await lockAndPublish(convex)
+      await updateRoute(convex, row.routeKey, {
+        pricingJson,
+        quarantineReason: 'stream error after output',
+        quarantineAt: 2,
+        cooldownUntil: 3,
+      })
+      const before = await convex.query(api.platform.overlayFreeSafety.getByServer, {
+        serverSecret: secret, routeKey: row.routeKey,
+      })
+      expect(await convex.mutation(internal.platform.overlayFreeSafety.clearRouteQuarantine, {
+        routeKey: row.routeKey, expectedReason: 'stream error after output', now: 10,
+      })).toEqual({ status: 'nonzero_pricing' })
+      const after = await convex.query(api.platform.overlayFreeSafety.getByServer, {
+        serverSecret: secret, routeKey: row.routeKey,
+      })
+      expect(after).toEqual(before)
+    }
+  })
+
+  test('quarantine recovery accepts the minimal OpenRouter pricing shape and ignores discount', async () => {
+    for (const pricingJson of [
+      '{"prompt":"0","completion":"0"}',
+      '{"prompt":"0","completion":"0","discount":"0.01"}',
+    ]) {
+      const convex = convexTest(schema, modules)
+      const row = await lockAndPublish(convex)
+      await updateRoute(convex, row.routeKey, {
+        pricingJson,
+        quarantineReason: 'stream error after output',
+      })
+
+      expect(await convex.mutation(internal.platform.overlayFreeSafety.clearRouteQuarantine, {
+        routeKey: row.routeKey, expectedReason: 'stream error after output', now: 10,
+      })).toEqual({ status: 'cleared', routeKey: row.routeKey })
+    }
+  })
+
+  test('quarantine recovery rejects the OpenRouter pricing shape without completion', async () => {
+    const convex = convexTest(schema, modules)
+    const row = await lockAndPublish(convex)
+    await updateRoute(convex, row.routeKey, {
+      pricingJson: '{"prompt":"0"}',
+      quarantineReason: 'stream error after output',
+    })
+
+    expect(await convex.mutation(internal.platform.overlayFreeSafety.clearRouteQuarantine, {
+      routeKey: row.routeKey, expectedReason: 'stream error after output', now: 10,
+    })).toEqual({ status: 'nonzero_pricing' })
+  })
+
+  test('quarantine recovery rejects unknown nonzero pricing fields', async () => {
+    const convex = convexTest(schema, modules)
+    const row = await lockAndPublish(convex)
+    await updateRoute(convex, row.routeKey, {
+      pricingJson: '{"prompt":"0","completion":"0","foo":"0.01"}',
+      quarantineReason: 'stream error after output',
+    })
+
+    expect(await convex.mutation(internal.platform.overlayFreeSafety.clearRouteQuarantine, {
+      routeKey: row.routeKey, expectedReason: 'stream error after output', now: 10,
+    })).toEqual({ status: 'nonzero_pricing' })
+  })
+
+  test('quarantine recovery clears only quarantine fields and preserves receipt audit data', async () => {
+    const convex = convexTest(schema, modules)
+    const row = await lockAndPublish(convex)
+    const receipt = {
+      latestReceiptAt: 4,
+      latestReceiptJson: JSON.stringify({ safe: false, cost: null, reason: 'stream error after output' }),
+      latestActualModelId: row.modelId,
+      latestActualProvider: row.provider,
+    }
+    await updateRoute(convex, row.routeKey, {
+      pricingJson: zeroSafetyPricing,
+      quarantineReason: 'stream error after output',
+      quarantineAt: 2,
+      cooldownUntil: 3,
+      ...receipt,
+    })
+
+    expect(await convex.mutation(internal.platform.overlayFreeSafety.clearRouteQuarantine, {
+      routeKey: row.routeKey, expectedReason: 'stream error after output', now: 10,
+    })).toEqual({ status: 'cleared', routeKey: row.routeKey })
+
+    const stored = await convex.query(api.platform.overlayFreeSafety.getByServer, {
+      serverSecret: secret, routeKey: row.routeKey,
+    })
+    expect(stored?.quarantineReason).toBeUndefined()
+    expect(stored?.quarantineAt).toBeUndefined()
+    expect(stored?.cooldownUntil).toBeUndefined()
+    expect(stored?.updatedAt).toBe(10)
+    expect(stored?.latestReceiptAt).toBe(receipt.latestReceiptAt)
+    expect(stored?.latestReceiptJson).toBe(receipt.latestReceiptJson)
+    expect(stored?.latestActualModelId).toBe(receipt.latestActualModelId)
+    expect(stored?.latestActualProvider).toBe(receipt.latestActualProvider)
   })
 })

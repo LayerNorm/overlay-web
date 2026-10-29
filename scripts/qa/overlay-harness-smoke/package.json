@@ -1,0 +1,36 @@
+{
+  "name": "overlay-harness-smoke",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run --config vitest.config.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "ai": "7.0.93",
+    "@ai-sdk/workflow": "2.0.24",
+    "@ai-sdk/provider": "4.0.10",
+    "@workflow/serde": "4.1.0",
+    "workflow": "5.1.0",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@workflow/vitest": "5.0.2",
+    "@types/node": "22.19.19",
+    "typescript": "5.9.3",
+    "vitest": "4.1.6"
+  },
+  "overrides": {
+    "devalue": "5.9.4",
+    "zod@>=4": "$zod",
+    "@workflow/core": {
+      "nanoid": "5.1.16"
+    },
+    "@workflow/world-local": {
+      "undici": "7.30.1"
+    },
+    "@workflow/world-vercel": {
+      "undici": "7.30.1"
+    }
+  }
+}

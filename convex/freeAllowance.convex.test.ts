@@ -30,6 +30,31 @@ const used = async (convex: Convex, userId: string) => {
 }
 
 describe('the free allowance belongs to the workspace', () => {
+  test('one durable root consumes one request across many model calls and child receipts', async () => {
+    const convex = convexTest(schema, modules)
+    await setActiveWorkspace(convex, 'alice', 'ws-original')
+    const root = { serverSecret: secret, userId: 'alice', workspaceId: 'ws-original', operationId: 'harness:root:request',
+      events: [{ ...askTurn, countAsRequest: true }] }
+    await convex.mutation(recordBatch, root)
+    await convex.mutation(recordBatch, root)
+    await turn(convex, 'alice', 14)
+    await expect(turn(convex, 'alice')).rejects.toThrow(/weekly ask limit/)
+    await convex.run(async ctx => {
+      const preference = await ctx.db.query('workspaceUserPreferences').first()
+      await ctx.db.patch(preference!._id, { activeWorkspaceId: 'ws-new' })
+    })
+    const internal = { serverSecret: secret, userId: 'alice', workspaceId: 'ws-original', operationId: 'harness:root:models',
+      events: Array.from({ length: 40 }, () => ({ ...askTurn, countAsRequest: false, inputTokens: 10, outputTokens: 2, cachedTokens: 8, cost: 0.01 })) }
+    await convex.mutation(recordBatch, internal)
+    await convex.mutation(recordBatch, internal)
+    expect(await used(convex, 'alice')).toBe(0)
+    const rows = await convex.run(async ctx => ({ counters: await ctx.db.query('dailyUsage').collect(), usage: await ctx.db.query('tokenUsage').first() }))
+    expect(rows.counters.find(row => row.userId === 'workspace:ws-original')?.askCount).toBe(15)
+    expect(rows.usage).toMatchObject({ inputTokens: 400, outputTokens: 80, cachedInputTokens: 320 })
+    await expect(convex.mutation(recordBatch, { ...root, operationId: 'harness:another:request' })).rejects.toThrow(/weekly ask limit/)
+    await expect(convex.mutation(recordBatch, { ...internal, operationId: 'unauthorized', serverSecret: 'invalid' })).rejects.toThrow()
+  })
+
   test('two free people in one workspace draw from the same count', async () => {
     const convex = convexTest(schema, modules)
     await setActiveWorkspace(convex, 'alice', 'ws-team')

@@ -81,17 +81,21 @@ export function calculateGatewayLanguageTokenCostOrNull(
   inputTokens: number,
   cachedInputTokens: number,
   outputTokens: number,
+  cacheWriteTokens = 0,
 ): number | null {
-  const uncachedInputTokens = Math.max(0, inputTokens - cachedInputTokens)
+  if (![inputTokens, cachedInputTokens, outputTokens, cacheWriteTokens].every(value => Number.isSafeInteger(value) && value >= 0)
+    || cachedInputTokens + cacheWriteTokens > inputTokens) return null
+  const uncachedInputTokens = inputTokens - cachedInputTokens - cacheWriteTokens
   const input = tieredTokenCost(uncachedInputTokens, parsePrice(pricing.input), pricing.input_tiers)
   const cachedInput = tieredTokenCost(
     cachedInputTokens,
     parsePrice(pricing.input_cache_read) ?? parsePrice(pricing.input),
     pricing.input_cache_read_tiers,
   )
+  const cacheWrite = tieredTokenCost(cacheWriteTokens, parsePrice(pricing.input_cache_write), pricing.input_cache_write_tiers)
   const output = tieredTokenCost(outputTokens, parsePrice(pricing.output), pricing.output_tiers)
-  if (input === null || cachedInput === null || output === null) return null
-  return input + cachedInput + output
+  if (input === null || cachedInput === null || cacheWrite === null || output === null) return null
+  return input + cachedInput + cacheWrite + output
 }
 
 export function calculateGatewayEmbeddingCostOrNull(

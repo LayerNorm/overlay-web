@@ -28,6 +28,26 @@ export type ActBudgetReservationResult =
   | { ok: true; reservationId: string | null }
   | { ok: false; failure: ActBudgetFailure }
 
+export type ActFinishedUsage = {
+  forceFreeTierLimits: boolean
+  countAsRequest?: boolean
+  workspaceId?: string
+  /** Durable callers must not advance past a failed accounting write. */
+  requireRecorded?: boolean
+  inputTokens: number
+  cachedInputTokens?: number
+  cacheWriteTokens?: number
+  /** Validated provider receipt, in USD; never supplied by a client. */
+  providerCostUsd?: number
+  /** A previously resolved catalog quote, never exposed as an exact provider receipt. */
+  catalogCostUsd?: number
+  modelId: string
+  outputTokens: number
+  reservationId: string | null
+  userId: string
+  operationId?: string
+}
+
 export interface ActUsagePolicy {
   getEntitlements(args: {
     userId: string
@@ -47,15 +67,7 @@ export interface ActUsagePolicy {
     workspaceId?: string
     programmaticSubjectId?: string
   }): Promise<ActBudgetReservationResult>
-  recordFinishedUsage(args: {
-    forceFreeTierLimits: boolean
-    inputTokens: number
-    modelId: string
-    outputTokens: number
-    reservationId: string | null
-    userId: string
-    operationId?: string
-  }): Promise<{ finalized: boolean; reservationId: string | null }>
+  recordFinishedUsage(args: ActFinishedUsage): Promise<{ finalized: boolean; reservationId: string | null }>
   markReservationStarted(args: {
     reservationId: string | null | undefined
     userId: string
@@ -113,15 +125,7 @@ export class UnlimitedUsagePolicy implements ActUsagePolicy {
     return { ok: true, reservationId: null }
   }
 
-  async recordFinishedUsage(_args: {
-    forceFreeTierLimits: boolean
-    inputTokens: number
-    modelId: string
-    outputTokens: number
-    reservationId: string | null
-    userId: string
-    operationId?: string
-  }): Promise<{ finalized: boolean; reservationId: string | null }> {
+  async recordFinishedUsage(_args: ActFinishedUsage): Promise<{ finalized: boolean; reservationId: string | null }> {
     return { finalized: false, reservationId: null }
   }
   async markReservationStarted(_args: {
@@ -179,6 +183,69 @@ export function isFreeTierAllocationExhausted(entitlements: Pick<
   if (metered.length === 0) return false
 
   return metered.every((bucket) => (usage[bucket] ?? 0) >= Number(limits[bucket]))
+}
+
+type FinishedUsageEvent = {
+  type: 'agent'
+  modelId: string
+  inputTokens: number
+  outputTokens: number
+  cachedTokens: number
+  countAsRequest?: boolean
+  providerCostUsd?: number
+  cost: number
+  timestamp: number
+}
+
+function validateFinishedUsageReceipts(args: ActFinishedUsage): {
+  cachedInputTokens: number
+  cacheWriteTokens: number
+} {
+  const cachedInputTokens = args.cachedInputTokens ?? 0
+  const cacheWriteTokens = args.cacheWriteTokens ?? 0
+  if (![cachedInputTokens, cacheWriteTokens].every(value => Number.isSafeInteger(value) && value >= 0)
+    || cachedInputTokens + cacheWriteTokens > args.inputTokens) {
+    throw new Error('Invalid cached token usage.')
+  }
+  if (args.providerCostUsd !== undefined && (!Number.isFinite(args.providerCostUsd) || args.providerCostUsd < 0)) {
+    throw new Error('Invalid provider cost receipt.')
+  }
+  if (args.catalogCostUsd !== undefined && (!Number.isFinite(args.catalogCostUsd) || args.catalogCostUsd < 0)) {
+    throw new Error('Invalid catalog cost estimate.')
+  }
+  return { cachedInputTokens, cacheWriteTokens }
+}
+
+async function resolveFinishedUsageCost(
+  args: ActFinishedUsage,
+  cachedInputTokens: number,
+  cacheWriteTokens: number,
+): Promise<number | null> {
+  return args.providerCostUsd ?? args.catalogCostUsd ?? await calculateLanguageModelTokenCostOrNull(
+    args.modelId,
+    args.inputTokens,
+    cachedInputTokens,
+    args.outputTokens,
+    cacheWriteTokens,
+  )
+}
+
+function buildFinishedUsageEvents(
+  args: ActFinishedUsage,
+  cachedInputTokens: number,
+  costCents: number,
+): FinishedUsageEvent[] {
+  return [{
+    type: 'agent',
+    modelId: args.modelId,
+    inputTokens: args.inputTokens,
+    outputTokens: args.outputTokens,
+    cachedTokens: cachedInputTokens,
+    ...(args.countAsRequest !== undefined ? { countAsRequest: args.countAsRequest } : {}),
+    ...(args.providerCostUsd !== undefined ? { providerCostUsd: args.providerCostUsd } : {}),
+    cost: costCents,
+    timestamp: Date.now(),
+  }]
 }
 
 export class BillingBackedActUsagePolicy implements ActUsagePolicy {
@@ -279,81 +346,53 @@ export class BillingBackedActUsagePolicy implements ActUsagePolicy {
     return { ok: true, reservationId: reservation.reservationId }
   }
 
-  async recordFinishedUsage(args: {
-    forceFreeTierLimits: boolean
-    inputTokens: number
-    modelId: string
-    outputTokens: number
-    reservationId: string | null
-    userId: string
-    operationId?: string
-  }): Promise<{ finalized: boolean; reservationId: string | null }> {
-    const providerCostUsd = await calculateLanguageModelTokenCostOrNull(
-      args.modelId,
-      args.inputTokens,
-      0,
-      args.outputTokens,
-    )
-    if (providerCostUsd === null) {
-      logger.error('[conversations/act] Missing pricing for completed provider call', { modelId: args.modelId })
-      if (args.reservationId) {
-        await this.markReservationForReconcile({
-          userId: args.userId,
-          reservationId: args.reservationId,
-          errorMessage: `pricing_missing:${args.modelId}`,
-        }).catch((err) => logger.error('[conversations/act] Failed to mark reservation for reconcile:', summarizeErrorForLog(err)))
-        return { finalized: false, reservationId: null }
-      }
-      return { finalized: false, reservationId: args.reservationId }
-    }
-
+  async recordFinishedUsage(args: ActFinishedUsage): Promise<{ finalized: boolean; reservationId: string | null }> {
+    const { cachedInputTokens, cacheWriteTokens } = validateFinishedUsageReceipts(args)
+    const providerCostUsd = await resolveFinishedUsageCost(args, cachedInputTokens, cacheWriteTokens)
+    if (providerCostUsd === null) return await this.handleMissingFinishedUsagePricing(args)
     const costCents = billableBudgetCentsFromProviderUsd(providerCostUsd)
-    if (costCents <= 0 && args.inputTokens <= 0 && args.outputTokens <= 0) {
+    if (!args.requireRecorded && costCents <= 0 && args.inputTokens <= 0 && args.outputTokens <= 0) {
       return { finalized: false, reservationId: args.reservationId }
     }
 
-    const events = [{
-      type: 'agent' as const,
-      modelId: args.modelId,
-      inputTokens: args.inputTokens,
-      outputTokens: args.outputTokens,
-      cachedTokens: 0,
-      cost: costCents,
-      timestamp: Date.now(),
-    }]
+    const events = buildFinishedUsageEvents(args, cachedInputTokens, costCents)
+    return await this.persistFinishedUsage(args, providerCostUsd, events)
+  }
 
+  private async handleMissingFinishedUsagePricing(args: ActFinishedUsage): Promise<{ finalized: boolean; reservationId: string | null }> {
+    logger.error('[conversations/act] Missing pricing for completed provider call', { modelId: args.modelId })
+    if (!args.reservationId) {
+      if (args.requireRecorded) throw new Error('Model pricing requires reconciliation.')
+      return { finalized: false, reservationId: args.reservationId }
+    }
+    await this.markReservationForReconcile({
+      userId: args.userId,
+      reservationId: args.reservationId,
+      errorMessage: `pricing_missing:${args.modelId}`,
+    }).catch((err) => logger.error('[conversations/act] Failed to mark reservation for reconcile:', summarizeErrorForLog(err)))
+    if (args.requireRecorded) throw new Error('Model pricing requires reconciliation.')
+    return { finalized: false, reservationId: null }
+  }
+
+  private async persistFinishedUsage(
+    args: ActFinishedUsage,
+    providerCostUsd: number,
+    events: FinishedUsageEvent[],
+  ): Promise<{ finalized: boolean; reservationId: string | null }> {
     try {
       if (args.reservationId) {
-        await finalizeProviderBudgetReservation({
+        const settlement = await finalizeProviderBudgetReservation({
           userId: args.userId,
           reservationId: args.reservationId,
           actualProviderCostUsd: providerCostUsd,
           events,
         })
+        if (args.requireRecorded && (!settlement || !('status' in settlement) || settlement.status !== 'finalized')) {
+          throw new Error('The model reservation has not settled.')
+        }
         return { finalized: true, reservationId: null }
       }
-      if ('recordBatch' in this.deps.repository) {
-        await this.deps.repository.recordBatch({
-          operationId: args.operationId ?? `act_${globalThis.crypto.randomUUID()}`,
-          userId: args.userId,
-          forceFreeTierLimits: args.forceFreeTierLimits,
-          events: events.map((event) => ({
-            cachedTokens: event.cachedTokens,
-            costCents: event.cost,
-            inputTokens: event.inputTokens,
-            kind: event.type,
-            modelId: event.modelId,
-            occurredAt: event.timestamp,
-            outputTokens: event.outputTokens,
-          })),
-        })
-      } else {
-        await this.deps.repository.recordUsageBatch({
-          events,
-          forceFreeTierLimits: args.forceFreeTierLimits,
-          userId: args.userId,
-        })
-      }
+      await this.recordFinishedUsageEvents(args, events)
       return { finalized: false, reservationId: null }
     } catch (err) {
       logger.error('[conversations/act] Failed to record usage:', summarizeErrorForLog(err))
@@ -363,9 +402,40 @@ export class BillingBackedActUsagePolicy implements ActUsagePolicy {
           reservationId: args.reservationId,
           errorMessage: summarizeErrorForLog(err),
         }).catch((reconcileErr) => logger.error('[conversations/act] Failed to mark reservation for reconcile:', summarizeErrorForLog(reconcileErr)))
+        if (args.requireRecorded) throw new Error('Model usage could not be recorded; reconciliation is required.')
         return { finalized: false, reservationId: null }
       }
+      if (args.requireRecorded) throw new Error('Model usage could not be recorded.')
       return { finalized: false, reservationId: args.reservationId }
+    }
+  }
+
+  private async recordFinishedUsageEvents(args: ActFinishedUsage, events: FinishedUsageEvent[]): Promise<void> {
+    if ('recordBatch' in this.deps.repository) {
+      await this.deps.repository.recordBatch({
+        operationId: args.operationId ?? `act_${globalThis.crypto.randomUUID()}`,
+        userId: args.userId,
+        forceFreeTierLimits: args.forceFreeTierLimits,
+        ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
+        events: events.map((event) => ({
+          cachedTokens: event.cachedTokens,
+          ...(args.countAsRequest !== undefined ? { countAsRequest: args.countAsRequest } : {}),
+          ...(args.providerCostUsd !== undefined ? { providerCostUsd: args.providerCostUsd } : {}),
+          costCents: event.cost,
+          inputTokens: event.inputTokens,
+          kind: event.type,
+          modelId: event.modelId,
+          occurredAt: event.timestamp,
+          outputTokens: event.outputTokens,
+        })),
+      })
+    } else {
+      if (args.requireRecorded) throw new Error('Durable accounting requires an idempotent usage repository.')
+      await this.deps.repository.recordUsageBatch({
+        events,
+        forceFreeTierLimits: args.forceFreeTierLimits,
+        userId: args.userId,
+      })
     }
   }
 

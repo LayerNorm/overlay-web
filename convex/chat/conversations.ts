@@ -1,13 +1,15 @@
 import { hydrateRemoteMessages, deleteRemoteMessageText } from '../lib/remoteMessageText'
 import { v } from 'convex/values'
 import { DEFAULT_MODEL_ID } from '../../src/shared/ai/gateway/model-types'
+import { ACTIVE_AGENT_RUN_STATUSES as CANONICAL_ACTIVE_AGENT_RUN_STATUSES } from '../../src/shared/agents/agent-run'
 import { internalMutation, mutation, query } from '../_generated/server'
 import { internal } from '../_generated/api'
 import type { Doc } from '../_generated/dataModel'
-import type { QueryCtx } from '../_generated/server'
+import type { MutationCtx, QueryCtx } from '../_generated/server'
 import { requireAccessToken, validateServerSecret } from '../lib/auth'
 import { recordConversationEvent } from '../collaboration/events'
 import { requireConversationAccess } from '../collaboration/directMessages'
+import { cancelHarnessDelivery } from '../harness/runs'
 import { conversationListVersion } from '../lib/conversationListVersion'
 import { deleteChunksForSource } from '../knowledge/knowledge'
 
@@ -109,6 +111,8 @@ const agentRunStatus = v.union(
   v.literal('queued'),
   v.literal('running'),
   v.literal('waiting_for_approval'),
+  v.literal('waiting_for_input'),
+  v.literal('waiting_for_children'),
   v.literal('completed'),
   v.literal('failed'),
   v.literal('cancelled'),
@@ -135,11 +139,13 @@ const agentRunMetrics = v.object({
   staleDetectedAt: v.optional(v.number()),
 })
 
-const ACTIVE_AGENT_RUN_STATUSES = new Set(['queued', 'running', 'waiting_for_approval'])
+const ACTIVE_AGENT_RUN_STATUSES = new Set<string>(CANONICAL_ACTIVE_AGENT_RUN_STATUSES)
 const AGENT_RUN_TRANSITIONS: Record<string, ReadonlySet<string>> = {
   queued: new Set(['running', 'failed', 'cancelled']),
-  running: new Set(['running', 'waiting_for_approval', 'completed', 'failed', 'cancelled']),
+  running: new Set(['running', 'waiting_for_approval', 'waiting_for_input', 'waiting_for_children', 'completed', 'failed', 'cancelled']),
   waiting_for_approval: new Set(['running', 'failed', 'cancelled']),
+  waiting_for_input: new Set(['running', 'failed', 'cancelled']),
+  waiting_for_children: new Set(['running', 'failed', 'cancelled']),
   completed: new Set(),
   failed: new Set(),
   cancelled: new Set(),
@@ -159,6 +165,113 @@ function clampAskModels(ids: string[]): string[] {
   const uniq = [...new Set(ids.filter(Boolean))]
   if (uniq.length === 0) return [DEFAULT_MODEL_ID]
   return uniq.slice(0, 4)
+}
+
+type CancellationHarnessRun = Doc<'harnessRuns'>
+type CancellationAgentRun = Doc<'conversationAgentRuns'>
+
+async function loadCancellationHarnessRuns(
+  ctx: MutationCtx,
+  matching: CancellationAgentRun[],
+  userId: string,
+): Promise<Map<string, CancellationHarnessRun>> {
+  const matchedRunIds = [...new Set(matching.flatMap(run =>
+    run.userId === userId && run.runner !== 'remote' && run.harnessRunId ? [run.harnessRunId] : [],
+  ))]
+  const matchedRows = await Promise.all(matchedRunIds.map(runId => ctx.db.query('harnessRuns')
+    .withIndex('by_runId', query => query.eq('runId', runId))
+    .unique()))
+  const rootRunIds = [...new Set(matchedRows.flatMap(run => run ? [run.rootRunId] : []))]
+  const treeRows = await Promise.all(rootRunIds.map(rootRunId => ctx.db.query('harnessRuns')
+    .withIndex('by_rootRunId', query => query.eq('rootRunId', rootRunId))
+    .collect()))
+  const rows = new Map<string, CancellationHarnessRun>()
+  for (const run of [...matchedRows, ...treeRows.flat()]) {
+    if (run?.actorUserId === userId) rows.set(run.runId, run)
+  }
+  return rows
+}
+
+function isHarnessRunDescendant(
+  run: CancellationHarnessRun,
+  ancestor: CancellationHarnessRun,
+  rows: Map<string, CancellationHarnessRun>,
+): boolean {
+  if (run.rootRunId !== ancestor.rootRunId || run.actorUserId !== ancestor.actorUserId) return false
+  let parentRunId = run.parentRunId
+  const seen = new Set<string>()
+  while (parentRunId && !seen.has(parentRunId)) {
+    if (parentRunId === ancestor.runId) return true
+    seen.add(parentRunId)
+    parentRunId = rows.get(parentRunId)?.parentRunId
+  }
+  return false
+}
+
+function cancellationHarnessDepth(run: CancellationHarnessRun, rows: Map<string, CancellationHarnessRun>): number {
+  let depth = 0
+  let parentRunId = run.parentRunId
+  const seen = new Set<string>([run.runId])
+  while (parentRunId && !seen.has(parentRunId)) {
+    const parent = rows.get(parentRunId)
+    if (!parent) break
+    seen.add(parentRunId)
+    depth++
+    parentRunId = parent.parentRunId
+  }
+  return depth
+}
+
+function orderCancellationRunsDeepestFirst(
+  runs: CancellationAgentRun[],
+  harnessRuns: Map<string, CancellationHarnessRun>,
+): CancellationAgentRun[] {
+  return runs.map((run, index) => ({
+    run,
+    index,
+    depth: run.harnessRunId && harnessRuns.has(run.harnessRunId)
+      ? cancellationHarnessDepth(harnessRuns.get(run.harnessRunId)!, harnessRuns)
+      : -1,
+  })).sort((left, right) => right.depth - left.depth || left.index - right.index).map(entry => entry.run)
+}
+
+function isTerminalCancellationHarnessRun(run: CancellationHarnessRun): boolean {
+  const status = (JSON.parse(run.metadataJson) as { status?: string }).status
+  return status === 'completed' || status === 'cancelled' || status === 'failed'
+}
+
+async function findHarnessDescendantAgentRuns(
+  ctx: MutationCtx,
+  matching: CancellationAgentRun[],
+  harnessRuns: Map<string, CancellationHarnessRun>,
+  userId: string,
+): Promise<CancellationAgentRun[]> {
+  const matchedIds = new Set(matching.map(run => run._id))
+  const matchedHarnessRuns = matching.flatMap(run => {
+    if (run.userId !== userId || run.runner === 'remote' || !run.harnessRunId) return []
+    const harnessRun = harnessRuns.get(run.harnessRunId)
+    return harnessRun ? [harnessRun] : []
+  })
+  const matchedHarnessRunIds = new Set(matchedHarnessRuns.map(run => run.runId))
+  const descendants = [...harnessRuns.values()].filter(run =>
+    run.actorUserId === userId
+      && !matchedHarnessRunIds.has(run.runId)
+      && !isTerminalCancellationHarnessRun(run)
+      && matchedHarnessRuns.some(parent => run.rootRunId === parent.runId
+        || isHarnessRunDescendant(run, parent, harnessRuns)),
+  )
+  const agentRuns = await Promise.all(descendants.map(async harnessRun => {
+    const agentRunId = /^(?:workspace|personal):(.+)$/.exec(harnessRun.runId)?.[1]
+    if (!agentRunId) return null
+    const normalizedId = ctx.db.normalizeId('conversationAgentRuns', agentRunId)
+    if (!normalizedId) return null
+    const agentRun = await ctx.db.get(normalizedId)
+    if (!agentRun || matchedIds.has(agentRun._id) || agentRun.harnessRunId !== harnessRun.runId
+      || agentRun.userId !== userId || agentRun.runner !== 'workflow'
+      || !ACTIVE_AGENT_RUN_STATUSES.has(agentRun.status)) return null
+    return agentRun
+  }))
+  return agentRuns.filter((run): run is CancellationAgentRun => run !== null)
 }
 
 async function authorizeUserAccess(params: {
@@ -814,6 +927,7 @@ export const startAgentRun = mutation({
     mode: v.union(v.literal('chat'), v.literal('work')),
     modelId: v.string(),
     runner: v.union(v.literal('tool_loop'), v.literal('workflow'), v.literal('remote')),
+    executionEngine: v.optional(v.literal('overlay_harness')),
     serverSecret: v.string(),
     turnId: v.string(),
     userId: v.string(),
@@ -870,6 +984,7 @@ export const startAgentRun = mutation({
       assistantMessageId,
       mode: args.mode,
       runner: args.runner,
+      ...(args.executionEngine ? { executionEngine: args.executionEngine } : {}),
       status: 'queued',
       variantIndex,
       workflowRunId: args.workflowRunId,
@@ -884,6 +999,8 @@ export const startAgentRun = mutation({
 
 export const transitionAgentRun = mutation({
   args: {
+    inputRequest: v.optional(v.object({ token: v.string(), requestedAt: v.number(), question: v.string() })),
+    expectedWorkflowRunId: v.optional(v.string()),
     approval: v.optional(v.object({
       token: v.string(),
       requestedAt: v.number(),
@@ -905,6 +1022,9 @@ export const transitionAgentRun = mutation({
     if (!validateServerSecret(args.serverSecret)) throw new Error('Unauthorized')
     const run = await ctx.db.get(args.runId)
     if (!run || run.userId !== args.userId) throw new Error('Unauthorized')
+    if (args.expectedWorkflowRunId !== undefined && run.workflowRunId !== args.expectedWorkflowRunId) {
+      throw new Error('AgentRun workflow ownership changed')
+    }
     assertAgentRunTransition(run.status, args.status)
     const now = Date.now()
     await ctx.db.patch(run._id, {
@@ -912,6 +1032,7 @@ export const transitionAgentRun = mutation({
       leaseExpiresAt: args.leaseExpiresAt ?? run.leaseExpiresAt,
       startedAt: args.status === 'running' ? (run.startedAt ?? now) : run.startedAt,
       approval: args.status === 'waiting_for_approval' ? args.approval : undefined,
+      inputRequest: args.status === 'waiting_for_input' ? args.inputRequest : undefined,
       updatedAt: now,
     })
     const message = await ctx.db.get(run.assistantMessageId)
@@ -996,6 +1117,7 @@ export const completeAgentRun = mutation({
       completedAt: now,
       leaseExpiresAt: undefined,
       approval: undefined,
+      inputRequest: undefined,
       metrics: { ...run.metrics, ...args.metrics },
       updatedAt: now,
     })
@@ -1044,6 +1166,7 @@ export const failAgentRun = mutation({
       failedAt: now,
       leaseExpiresAt: undefined,
       approval: undefined,
+      inputRequest: undefined,
       terminalError: args.error,
       metrics: { ...run.metrics, ...args.metrics },
       updatedAt: now,
@@ -1058,6 +1181,8 @@ export const getLatestAgentRun = query({
     conversationId: v.id('conversations'),
     agentRunId: v.optional(v.id('conversationAgentRuns')),
     remoteRunId: v.optional(v.string()),
+    turnId: v.optional(v.string()),
+    agentId: v.optional(v.string()),
     serverSecret: v.string(),
     userId: v.string(),
   },
@@ -1080,9 +1205,15 @@ export const getLatestAgentRun = query({
       const run = await ctx.db.get(args.agentRunId)
       return run?.conversationId === args.conversationId ? run : null
     }
+    if (args.turnId) {
+      const run = await ctx.db.query('conversationAgentRuns')
+        .withIndex('by_turn_variant', q => q.eq('conversationId', args.conversationId).eq('turnId', args.turnId!))
+        .first()
+      return run?.userId === args.userId && (!args.agentId || run.agentId === args.agentId) ? run : null
+    }
     const active: Doc<'conversationAgentRuns'>[] = []
     const runsByStatus = await Promise.all(
-      (['queued', 'running', 'waiting_for_approval'] as const).map((status) =>
+      CANONICAL_ACTIVE_AGENT_RUN_STATUSES.map((status) =>
         ctx.db
           .query('conversationAgentRuns')
           .withIndex('by_conversationId_status_updatedAt', (q) => q
@@ -1193,25 +1324,40 @@ export const cancelAgentRuns = mutation({
   handler: async (ctx, args) => {
     if (!validateServerSecret(args.serverSecret)) throw new Error('Unauthorized')
     const conversation = await ctx.db.get(args.conversationId)
-    if (!conversation || conversation.userId !== args.userId || conversation.deletedAt) {
+    if (!conversation || conversation.deletedAt) {
       throw new Error('Unauthorized')
     }
+    const isRoom = (conversation.conversationType ?? 'personal') !== 'personal'
+    if (isRoom && conversation.workspaceId) {
+      await requireConversationAccess(ctx, { actorUserId: args.userId, conversationId: args.conversationId,
+        workspaceId: conversation.workspaceId, serverSecret: args.serverSecret })
+    } else if (isRoom || conversation.userId !== args.userId) throw new Error('Unauthorized')
     const runs = await ctx.db
       .query('conversationAgentRuns')
       .withIndex('by_conversationId_createdAt', (q) => q.eq('conversationId', args.conversationId))
       .collect()
     const matching = runs.filter((run) =>
       ACTIVE_AGENT_RUN_STATUSES.has(run.status) &&
+      (!isRoom || run.userId === args.userId) &&
       (!args.messageId || run.assistantMessageId === args.messageId),
     )
     // A connected agent's run is cancelled through the control plane (it tells the agent's machine to stop and settles
     // billing); the caller does that for the ids returned here, so it is left untouched.
     const remoteRunIds = matching.flatMap((run) => (run.runner === 'remote' && run.externalRunId ? [run.externalRunId] : []))
-    const activeRuns = matching.filter((run) => run.runner !== 'remote')
+    const harnessRuns = await loadCancellationHarnessRuns(ctx, matching, args.userId)
+    const descendants = await findHarnessDescendantAgentRuns(ctx, matching, harnessRuns, args.userId)
+    const activeRuns = [
+      ...orderCancellationRunsDeepestFirst(descendants, harnessRuns),
+      ...orderCancellationRunsDeepestFirst(matching.filter((run) => run.runner !== 'remote'), harnessRuns),
+    ]
     const now = Date.now()
     const sentinel = '\n\n[Interrupted by user. Continue?]'
     for (const run of activeRuns) {
       assertAgentRunTransition(run.status, 'cancelled')
+    }
+    const cancelledHarnessRoots: Array<{ agentRunId: string; runId: string }> = []
+    for (const run of activeRuns) {
+      if (run.harnessRunId) cancelledHarnessRoots.push(await cancelHarnessDelivery(ctx, run, now, args.serverSecret))
     }
     const runMessages = await Promise.all(
       activeRuns.map((run) => ctx.db.get(run.assistantMessageId)),
@@ -1241,6 +1387,7 @@ export const cancelAgentRuns = mutation({
         cancelledAt: now,
         leaseExpiresAt: undefined,
         approval: undefined,
+        inputRequest: undefined,
         terminalError: {
           code: 'cancelled_by_user',
           message: 'The run was cancelled by the user.',
@@ -1263,6 +1410,7 @@ export const cancelAgentRuns = mutation({
       cancelledWorkflows: activeRuns.flatMap((run) => run.workflowRunId
         ? [{ agentRunId: run._id, workflowRunId: run.workflowRunId }]
         : []),
+      cancelledHarnessRoots,
       remoteRunIds,
       stoppedCount: activeRuns.length + remoteRunIds.length,
     }
@@ -1326,12 +1474,11 @@ export const expireToolLoopAgentRunLeases = internalMutation({
   handler: async (ctx) => {
     const now = Date.now()
     const expired = []
-    // Room turns run as durable workflows rather than in-request tool loops,
-    // but they expire the same way: the lease is the outer bound on a run whose
-    // executor disappeared, whichever executor that was. Work-mode runs carry
-    // no lease and are excluded by the `mode` check below.
+    // Only legacy executors use liveness leases. Harness waits and completion
+    // are owned by their durable root deadline. Exclude absent leases in the
+    // index so durable runs cannot crowd expired legacy runs out of the batch.
     for (const runner of ['tool_loop', 'workflow'] as const) {
-      for (const status of ['queued', 'running', 'waiting_for_approval'] as const) {
+      for (const status of CANONICAL_ACTIVE_AGENT_RUN_STATUSES) {
         const remaining = 100 - expired.length
         if (remaining <= 0) break
         const rows = await ctx.db
@@ -1339,10 +1486,12 @@ export const expireToolLoopAgentRunLeases = internalMutation({
           .withIndex('by_runner_status_leaseExpiresAt', (q) => q
             .eq('runner', runner)
             .eq('status', status)
+            .gt('leaseExpiresAt', 0)
             .lt('leaseExpiresAt', now))
           .take(remaining)
         expired.push(...rows.filter((row) => (
-          row.runner === 'tool_loop' || row.mode === 'room'
+          row.executionEngine !== 'overlay_harness'
+            && (row.runner === 'tool_loop' || row.mode === 'room')
         )))
       }
     }
@@ -1503,11 +1652,10 @@ export const watchAgentRun = query({
     const conversation = await ctx.db.get(conversationId)
     if (!conversation || conversation.userId !== userId || conversation.deletedAt) return null
 
-    // Check for active runs first (queued, running, waiting_for_approval).
-    const activeStatuses = ['queued', 'running', 'waiting_for_approval'] as const
+    // Check for canonical active runs before falling back to a terminal run.
     const active: Doc<'conversationAgentRuns'>[] = []
     const runsByStatus = await Promise.all(
-      activeStatuses.map((status) =>
+      CANONICAL_ACTIVE_AGENT_RUN_STATUSES.map((status) =>
         ctx.db
           .query('conversationAgentRuns')
           .withIndex('by_conversationId_status_updatedAt', (q) => q

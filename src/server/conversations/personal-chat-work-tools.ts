@@ -108,6 +108,7 @@ async function reconstructTooling(
     mode: context.mode ?? 'chat',
     preloadTasks: preloadActExternalToolTasks({
       userId: context.userId,
+      workspaceId: context.workspaceId,
       serverSecret: getInternalApiSecret(),
       approvalMode: context.approvalMode,
       computerApprovalContext: context.automationExecution === true ? 'automation' : 'work',
@@ -123,6 +124,7 @@ export async function executePersonalChatWorkTool(
     context: PersonalChatWorkToolingContext & {
       agentRunId?: string
       automationRunId?: string
+      harnessRunId?: string
       toolName: string
     }
     messages: unknown[]
@@ -131,8 +133,10 @@ export async function executePersonalChatWorkTool(
 ): Promise<unknown> {
   'use step'
 
-  const { agentRunId, automationRunId, toolName, ...toolingContext } = options.context
-  const runNamespace = agentRunId
+  const { agentRunId, automationRunId, harnessRunId, toolName, ...toolingContext } = options.context
+  const runNamespace = harnessRunId
+    ? `harness-run:${harnessRunId}`
+    : agentRunId
     ? `agent-run:${agentRunId}`
     : `automation-run:${automationRunId ?? 'unknown'}`
   const logicalStepId = options.toolCallId || getStepMetadata().stepId

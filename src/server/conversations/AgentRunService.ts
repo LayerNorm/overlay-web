@@ -37,6 +37,28 @@ export class AgentRunService {
     }) ?? undefined
   }
 
+  async startPersonalWorkflow(args: {
+    conversationId?: ConversationId
+    mode: 'chat' | 'work'
+    modelId: string
+    turnId: string
+    userId: string
+    userMessageId?: Id<'conversationMessages'>
+  }): Promise<AgentRun | undefined> {
+    if (!args.conversationId || !args.userMessageId) return undefined
+    return await this.repository.startAgentRun({
+      conversationId: args.conversationId,
+      mode: args.mode,
+      modelId: args.modelId,
+      runner: 'workflow',
+      executionEngine: 'overlay_harness',
+      turnId: args.turnId,
+      userId: args.userId,
+      userMessageId: args.userMessageId,
+      variantIndex: 0,
+    }) ?? undefined
+  }
+
   async startWork(args: {
     conversationId?: ConversationId
     modelId: string
@@ -136,7 +158,29 @@ export class AgentRunService {
     }) ?? undefined
   }
 
-  async resumeAfterApproval(args: {
+  async waitForInput(args: {
+    leaseExpiresAt?: number
+    runId: string
+    userId: string
+  }): Promise<AgentRun | undefined> {
+    return await this.repository.transitionAgentRun({
+      ...args,
+      status: 'waiting_for_input',
+    }) ?? undefined
+  }
+
+  async waitForChildren(args: {
+    leaseExpiresAt?: number
+    runId: string
+    userId: string
+  }): Promise<AgentRun | undefined> {
+    return await this.repository.transitionAgentRun({
+      ...args,
+      status: 'waiting_for_children',
+    }) ?? undefined
+  }
+
+  async resumeAfterWait(args: {
     runId: string
     userId: string
   }): Promise<AgentRun | undefined> {
@@ -144,6 +188,13 @@ export class AgentRunService {
       ...args,
       status: 'running',
     }) ?? undefined
+  }
+
+  async resumeAfterApproval(args: {
+    runId: string
+    userId: string
+  }): Promise<AgentRun | undefined> {
+    return await this.resumeAfterWait(args)
   }
 
   async fail(args: {

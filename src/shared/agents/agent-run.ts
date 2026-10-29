@@ -21,10 +21,16 @@ export const ROOM_AGENT_RUN_LEASE_MS = 30 * 60 * 1_000
 export const AGENT_RUN_RUNNERS = ['tool_loop', 'workflow', 'remote'] as const
 export type AgentRunRunner = (typeof AGENT_RUN_RUNNERS)[number]
 
-export const AGENT_RUN_STATUSES = [
+export const ACTIVE_AGENT_RUN_STATUSES = [
   'queued',
   'running',
   'waiting_for_approval',
+  'waiting_for_input',
+  'waiting_for_children',
+] as const
+
+export const AGENT_RUN_STATUSES = [
+  ...ACTIVE_AGENT_RUN_STATUSES,
   'completed',
   'failed',
   'cancelled',
@@ -92,9 +98,11 @@ export type AgentRun = {
   remoteSessionId?: string
   mode: AgentRunMode
   runner: AgentRunRunner
+  executionEngine?: 'overlay_harness'
   status: AgentRunStatus
   variantIndex?: number
   workflowRunId?: string
+  harnessRunId?: string
   leaseExpiresAt?: number
   startedAt?: number
   completedAt?: number
@@ -102,6 +110,7 @@ export type AgentRun = {
   cancelledAt?: number
   terminalError?: AgentRunTerminalError
   approval?: AgentRunApproval
+  inputRequest?: { token: string; requestedAt: number; question: string }
   metrics?: AgentRunMetrics
   /** Connected-agent transport counters; remote runs only. */
   streamStats?: RemoteRunStreamStats
@@ -112,8 +121,10 @@ export type AgentRun = {
 
 const ALLOWED_TRANSITIONS: Readonly<Record<AgentRunStatus, readonly AgentRunStatus[]>> = {
   queued: ['running', 'failed', 'cancelled'],
-  running: ['waiting_for_approval', 'completed', 'failed', 'cancelled'],
+  running: ['waiting_for_approval', 'waiting_for_input', 'waiting_for_children', 'completed', 'failed', 'cancelled'],
   waiting_for_approval: ['running', 'failed', 'cancelled'],
+  waiting_for_input: ['running', 'failed', 'cancelled'],
+  waiting_for_children: ['running', 'failed', 'cancelled'],
   completed: [],
   failed: [],
   cancelled: [],

@@ -79,6 +79,8 @@ export type ProviderUsageEvent = {
   inputTokens?: number
   outputTokens?: number
   cachedTokens?: number
+  countAsRequest?: boolean
+  providerCostUsd?: number
   cost: number
   durationSeconds?: number
   timestamp: number
@@ -447,6 +449,8 @@ async function billingCapabilityEnabled(): Promise<boolean> {
 function toUsageEvent(event: ProviderUsageEvent): UsageEvent {
   return {
     cachedTokens: event.cachedTokens,
+    countAsRequest: event.countAsRequest,
+    providerCostUsd: event.providerCostUsd,
     costCents: event.cost,
     durationSeconds: event.durationSeconds,
     inputTokens: event.inputTokens,
