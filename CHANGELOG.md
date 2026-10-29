@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Run Linux GitHub Actions jobs on the shared Namespace runner profile.
+
 - Reuse exact CI dependency trees and compiler/lint/type caches, run lint and typechecking independently, and balance exhaustive test shards without weakening required checks.
 
 - Add trusted-main Preview fixture recovery so coding-agent VMs can request bounded quota/credit recovery without receiving a Convex deploy key.

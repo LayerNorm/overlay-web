@@ -22,7 +22,7 @@ jobs:
         contains(github.event.deployment.environment, 'Production') &&
         contains(github.event.deployment.environment, 'overlay-landing')) ||
       (github.event_name == 'workflow_dispatch' && inputs.run_paid_gateway_canary)
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-overlay-ci-benchmark
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # actions/checkout v4

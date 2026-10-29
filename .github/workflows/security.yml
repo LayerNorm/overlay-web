@@ -20,7 +20,7 @@ concurrency:
 jobs:
   secret-scan:
     name: Secret Scan
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-overlay-ci-benchmark
     env:
       GITLEAKS_VERSION: 8.30.1
     steps:
@@ -47,7 +47,7 @@ jobs:
 
   public-env-guard:
     name: Guard Public Env Names
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-overlay-ci-benchmark
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # actions/checkout v4
@@ -88,7 +88,7 @@ jobs:
       contents: read
       pull-requests: read
       security-events: read
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-overlay-ci-benchmark
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # actions/checkout v4
@@ -103,7 +103,7 @@ jobs:
 
   static:
     name: Lint and boundary checks
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-overlay-ci-benchmark
     timeout-minutes: 20
     env:
       INTERNAL_API_SECRET: test-internal-secret
@@ -144,7 +144,7 @@ jobs:
 
   typecheck:
     name: Typecheck and boundary contracts
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-overlay-ci-benchmark
     timeout-minutes: 20
     env:
       INTERNAL_API_SECRET: test-internal-secret
@@ -175,7 +175,7 @@ jobs:
 
   build:
     name: Production compilation
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-overlay-ci-benchmark
     timeout-minutes: 20
     env:
       INTERNAL_API_SECRET: test-internal-secret
@@ -218,7 +218,7 @@ jobs:
 
   tests:
     name: Full suite (${{ matrix.shard }}/2)
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-overlay-ci-benchmark
     timeout-minutes: 20
     strategy:
       fail-fast: false
@@ -248,7 +248,7 @@ jobs:
     name: Schema and Routing Contracts
     if: ${{ always() }}
     needs: tests
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-overlay-ci-benchmark
     steps:
       - name: Require successful contract execution
         env:
@@ -262,7 +262,7 @@ jobs:
     name: Required Quality and Security Gates
     if: ${{ always() }}
     needs: [static, typecheck, build, tests, secret-scan, public-env-guard, dependency-review, admin-console]
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-overlay-ci-benchmark
     steps:
       - name: Require every quality lane
         env:

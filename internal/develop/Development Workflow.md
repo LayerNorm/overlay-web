@@ -392,6 +392,11 @@ Main changes automatically deploy to production through Vercel’s Git integrati
 
 ### Required CI checks
 
+All workflow jobs previously using `ubuntu-latest` use the shared Namespace
+Linux AMD64 profile `namespace-profile-overlay-ci-benchmark` (8 vCPU, 16 GB).
+Runner selection does not change required contexts, event triggers, credentials,
+cache keys or fail-closed aggregation. Keep Vercel hosting settings separate.
+
 `Security Checks` runs lint/boundaries, typechecking, production compilation and
 two complete test shards in parallel. Both ordinary-test shards use Node 24, matching the Agent Host
 CLI's minimum runtime so built-CLI contracts run without skipping or weakening the

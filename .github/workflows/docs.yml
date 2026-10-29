@@ -20,7 +20,7 @@ concurrency:
 jobs:
   docs:
     name: Docs Check
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-overlay-ci-benchmark
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # actions/checkout v4

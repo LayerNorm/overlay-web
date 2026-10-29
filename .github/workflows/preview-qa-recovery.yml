@@ -29,7 +29,7 @@ permissions:
 jobs:
   recover:
     if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-overlay-ci-benchmark
     environment: release-control
     timeout-minutes: 5
     concurrency:

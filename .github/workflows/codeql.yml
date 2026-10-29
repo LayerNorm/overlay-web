@@ -24,7 +24,7 @@ concurrency:
 jobs:
   analyze:
     name: Analyze JavaScript and TypeScript
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-overlay-ci-benchmark
     strategy:
       fail-fast: false
       matrix:
