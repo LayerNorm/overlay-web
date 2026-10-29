@@ -1,18 +1,43 @@
 import 'server-only'
 
-import { FatalError, RetryableError } from 'workflow'
+import { FatalError, getStepMetadata, RetryableError } from 'workflow'
 import type { HarnessReceipt } from '@overlay/agent-runtime/harness-state'
 import { getOrCreateGateway } from '@/server/ai/gateway/gateway-runtime'
 import { calculateLanguageModelTokenCostOrNull } from '@/server/ai/gateway/live-model-pricing'
 import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
 import { harnessCostMicros, type HarnessModelObservation } from './model-usage'
 
+const GATEWAY_USAGE_MAX_RETRIES = 14
+const GATEWAY_USAGE_MAX_RETRY_SECONDS = 60
+
+type HarnessModelUsageResolution = {
+  receipt: HarnessReceipt
+  providerCostUsd: number | null
+  catalogCostUsd: number | null
+}
+
+type HarnessReceiptBase = Omit<HarnessReceipt, 'costMicros' | 'costSource' | 'externalCostMicros'>
+
+async function resolveCatalogUsage(
+  observation: Omit<HarnessModelObservation, 'generationId'>,
+  base: HarnessReceiptBase,
+): Promise<HarnessModelUsageResolution> {
+  const estimate = await calculateLanguageModelTokenCostOrNull(observation.modelId,
+    observation.inputTokens, observation.cacheReadTokens, observation.outputTokens, observation.cacheWriteTokens)
+  if (estimate === null) throw new FatalError('Provider cost is unknown; reconcile the model reservation.')
+  return {
+    receipt: { ...base, costMicros: harnessCostMicros(estimate), costSource: 'catalog' },
+    providerCostUsd: null,
+    catalogCostUsd: estimate,
+  }
+}
+
 export async function resolveHarnessModelUsage(input: {
   receiptId: string
   requestedModelId: string
   contextWindow: number | null
   observation: HarnessModelObservation
-}): Promise<{ receipt: HarnessReceipt; providerCostUsd: number | null; catalogCostUsd: number | null }> {
+}): Promise<HarnessModelUsageResolution> {
   'use step'
 
   const { generationId, ...observation } = input.observation
@@ -31,7 +56,12 @@ export async function resolveHarnessModelUsage(input: {
       generation = await gateway.getGenerationInfo({ id: generationId })
     } catch (error) {
       if (error && typeof error === 'object' && 'statusCode' in error && error.statusCode === 404) {
-        throw new RetryableError('Gateway usage has not been ingested yet.', { retryAfter: '2s' })
+        const { attempt } = getStepMetadata()
+        if (attempt <= GATEWAY_USAGE_MAX_RETRIES) {
+          const retryAfterSeconds = Math.min(2 ** attempt, GATEWAY_USAGE_MAX_RETRY_SECONDS)
+          throw new RetryableError('Gateway usage has not been ingested yet.', { retryAfter: `${retryAfterSeconds}s` })
+        }
+        return resolveCatalogUsage(observation, base)
       }
       throw new FatalError('Gateway usage lookup failed; reconcile the model reservation.')
     }
@@ -45,14 +75,7 @@ export async function resolveHarnessModelUsage(input: {
       catalogCostUsd: null,
     }
   }
-  const estimate = await calculateLanguageModelTokenCostOrNull(observation.modelId,
-    observation.inputTokens, observation.cacheReadTokens, observation.outputTokens, observation.cacheWriteTokens)
-  if (estimate === null) throw new FatalError('Provider cost is unknown; reconcile the model reservation.')
-  return {
-    receipt: { ...base, costMicros: harnessCostMicros(estimate), costSource: 'catalog' },
-    providerCostUsd: null,
-    catalogCostUsd: estimate,
-  }
+  return resolveCatalogUsage(observation, base)
 }
 
-resolveHarnessModelUsage.maxRetries = 10
+resolveHarnessModelUsage.maxRetries = GATEWAY_USAGE_MAX_RETRIES

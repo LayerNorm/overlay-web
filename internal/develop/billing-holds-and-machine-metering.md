@@ -16,6 +16,7 @@ Everything below is about Overlay credit.
 A **hold** (a `budgetReservations` row in `reserved` or `reconcile_required`) is credit set aside before a model or provider call and settled afterwards. The sidebar bar and `allowancePercentUsed` show spend only, so while holds exist the bar reads lower than the credit that is actually left. `GET /api/v1/subscription` returns both `budgetUsedCents` and `budgetRemainingCents`; if `total − used ≠ remaining`, holds are outstanding.
 
 Native workspace-agent turns keep one reservation across durable model steps and aggregate the provider-reported token usage. Known, unambiguous usage is settled idempotently on both success and failure; an ambiguous provider outcome or failed settlement keeps the reservation for reconciliation with the observed token totals. A reservation is released only when the provider was not called or confirmed no usage. Transcript finalization is a separate workflow step.
+Gateway usage 404s retry with exponential backoff for about ten minutes, then settle from catalog pricing using observed token counts when a rate is available. Non-404 lookup failures and missing catalog rates remain unresolved for reconciliation.
 
 Harness terminal cancellation and failure may release a zero-cost free-router model hold only when no provider billing reservation exists. Paid, externally billed, nonzero-cost, and provider-started holds remain unresolved until authoritative usage evidence settles them.
 
@@ -32,7 +33,7 @@ A call that failed, or finished costing more than was held, used to leave its re
 
 The first run on the affected account charged 122 finished agent runs ($8.63) and released 234 failed calls ($3.03): usage went from 36.8% to 80.1%, remaining from $0.99 to $3.98, and remaining now equals allowance minus spend.
 
-Known sources of failed holds, still open (see the follow-up task): `knowledge.compile-memory-profile` failing with "No object generated: response did not match schema" on `gemini-2.5-flash-lite` (a new hold on every run), billing document write conflicts ("Documents read from or written to the billing…"), a provider path returning not found, and agent reservations that are estimated lower than real cost.
+Known sources of failed holds, still open (see the follow-up task): `knowledge.compile-memory-profile` failing with "No object generated: response did not match schema" on `gemini-2.5-flash-lite` (a new hold on every run), billing document write conflicts ("Documents read from or written to the billing…"), provider usage lookups returning not found when no catalog rate is available, and agent reservations that are estimated lower than real cost.
 
 To look at a person's holds in production: `CONVEX_DEPLOYMENT=prod:colorful-chickadee-419 npx convex data budgetReservations --limit 5000 --order desc --format jsonLines`, filter by `userId` and `status`.
 
