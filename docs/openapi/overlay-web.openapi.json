@@ -2506,6 +2506,22 @@
                     "exclusiveMinimum": true,
                     "minimum": 0
                   },
+                  "harnessBudget": {
+                    "type": "object",
+                    "properties": {
+                      "maxProviderCostUsd": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 100
+                      },
+                      "durationMs": {
+                        "type": "integer",
+                        "minimum": 30000,
+                        "maximum": 604800000
+                      }
+                    },
+                    "additionalProperties": false
+                  },
                   "mentions": {
                     "type": "array",
                     "items": {
