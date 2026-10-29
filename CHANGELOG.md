@@ -4,6 +4,9 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Add the versioned macOS desktop bridge, native settings/composer controls and compact chat/notes panels while sharing the full web app and session. Retire the duplicate desktop application and preserve local upgrade data.
+
+
 - Keep Chat and Work available during the Harness web-first rollout by checking backend readiness before admission; recognize already-terminal workflows during Stop cleanup.
 
 - Preserve native Harness approval waits beyond the legacy room lease; only the durable run deadline ends those waits.

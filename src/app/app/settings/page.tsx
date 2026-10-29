@@ -2,6 +2,9 @@
 
 // Compatibility wrapper: canonical settings registry metadata lives in @overlay/app-core,
 // with reusable panel rendering primitives in @overlay/modules-react.
+import { getDesktopBridge } from '@overlay/desktop-bridge'
+import { DesktopSettings } from '@/features/settings/components/DesktopSettings'
+import { useDesktopBridge } from '@/components/desktop/DesktopProvider'
 import { Suspense, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { redirect, useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
@@ -333,6 +336,7 @@ function SettingsSectionContent({
     return <MemoriesSettingsSection onHeaderStateChange={onMemoriesHeaderStateChange} />
   }
   if (section === 'providers') return <ProviderConnectionsSetting />
+  if (section === 'desktop') return <DesktopSettings />
   if (section === 'webhooks') return <WebhookSettings />
   if (section === 'agent-environments') return <AgentEnvironmentSettings />
   if (section === 'agent-accounts') return <AgentsSettingsSection settings={settings} busy={busy} updateSettings={updateSettings} />
@@ -365,7 +369,8 @@ function SettingsPage() {
     () => resolveOverlayAppShellConfig(overlayAppConfig, { capabilities }),
     [capabilities],
   )
-  const sections = appShell.settingsSections
+  const desktop = useDesktopBridge()
+  const sections = useMemo(() => desktop ? [...appShell.settingsSections, { id: 'desktop', label: 'Desktop', icon: 'Monitor' }] : appShell.settingsSections, [appShell.settingsSections, desktop])
   const settingsPanels = appShell.settingsPanels
   const defaultSectionId = sections[0]?.id ?? 'general'
   const sectionIds = useMemo(() => new Set<string>(sections.map((s) => s.id)), [sections])
@@ -401,10 +406,11 @@ function SettingsPage() {
   )
 
   useEffect(() => {
+    if (rawSection === 'desktop' && !desktop && getDesktopBridge()) return
     if (!sectionIds.has(rawSection)) {
       window.history.replaceState(null, '', `/app/settings?section=${section}`)
     }
-  }, [rawSection, section, router, sectionIds])
+  }, [rawSection, section, router, sectionIds, desktop])
 
   useEffect(() => {
     if (!capabilities.billing) return

@@ -98,6 +98,7 @@ The `internal/develop/` directory contains living documentation that coding agen
 | `internal/develop/api-route-catalog.md` | Any change to a web API route's existence, methods, behavior, authentication boundary, or implementation files. Keep the exhaustive route descriptions current. |
 | `internal/develop/compact-api-route-catalog.md` | Any change to a web API route's existence or exported HTTP methods. Keep it synchronized with the full route catalog. |
 | `internal/develop/customization.md` | Any change to theming, settings panels, or workspace configuration. |
+| `internal/develop/desktop-web-shell.md` | Any change to the native desktop bridge, desktop settings, panel surfaces, migration or desktop QA/release contract. |
 | `internal/develop/interface-design.md` | Any change to shared UI controls, selection layouts, or editor save patterns. |
 | `docs/developer/contribute/local-integrations.mdx` | Any change to local integration setup, connector configuration, or OAuth flow. |
 | `internal/develop/external-imports.md` | Any change to the external import architecture, canonical import model, adapter interface, or Slack/Teams/Discord/Telegram import implementation. |
@@ -129,7 +130,7 @@ The `internal/develop/` directory contains living documentation that coding agen
 
 <!-- BEGIN:nextjs-agent-rules -->
 
-# This is NOT the Next.js you know
+## This is NOT the Next.js you know
 
 This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
 

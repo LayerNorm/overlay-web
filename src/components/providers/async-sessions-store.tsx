@@ -1,6 +1,7 @@
 'use client'
 
-import React, { createContext, useContext, useReducer, useMemo, useCallback } from 'react'
+import { useDesktopBridge } from '@/components/desktop/DesktopProvider'
+import React, { createContext, useContext, useReducer, useMemo, useCallback, useEffect, useRef } from 'react'
 
 interface StreamingSession {
   id: string
@@ -91,6 +92,17 @@ const INITIAL_STATE: AsyncSessionsState = {
 
 export function AsyncSessionsProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(reducer, INITIAL_STATE)
+  const desktop = useDesktopBridge()
+  const previous = useRef<Record<string, StreamingSession>>({})
+  useEffect(() => {
+    if (desktop?.info.capabilities.includes('notifications') && !document.hasFocus()) {
+      for (const session of Object.values(state.sessions)) {
+        if (session.status !== 'done' || previous.current[session.id]?.status !== 'streaming') continue
+        void desktop.bridge.call('notifications.show', { title: 'Overlay reply', body: session.title.slice(0, 200), route: `/app/chat?id=${encodeURIComponent(session.id)}` }).catch(() => {})
+      }
+    }
+    previous.current = state.sessions
+  }, [desktop, state.sessions])
 
   const startSession = useCallback((id: string, mode: 'act', title: string, messageCountAtStart: number) => {
     dispatch({ type: 'START_SESSION', id, mode, title, messageCountAtStart })

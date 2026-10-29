@@ -1,7 +1,8 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
-import { usePathname, useRouter } from 'next/navigation'
+import { useDesktopBridge } from '@/components/desktop/DesktopProvider'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { Button } from '@overlay/ui/primitives'
 import { useAuth } from '@/contexts/AuthContext'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
@@ -18,6 +19,10 @@ type ShellProps = { sidebar: ReactNode; children: ReactNode }
 export function OnboardingShell(props: ShellProps) {
   const { user } = useAuth()
   const { activeWorkspaceId } = useWorkspace()
+  const desktop = useDesktopBridge()
+  const search = useSearchParams()
+  const path = usePathname()
+  if (desktop && search?.get('surface') === 'panel' && /\/(chat|notes)$/.test(path ?? '')) return <main data-desktop-panel className="app-main min-w-0 flex-1 overflow-hidden rounded-xl border bg-background pt-8"><div data-desktop-drag className="fixed inset-x-0 top-0 h-8 border-b bg-background" />{props.children}</main>
   if (!user || !activeWorkspaceId) return <>{props.sidebar}<main className="app-main min-w-0 flex-1 overflow-hidden pt-14 md:pt-0">{props.children}</main></>
   return <AuthenticatedOnboardingShell key={`${user.id}:${activeWorkspaceId}`} {...props} workspaceId={activeWorkspaceId} />
 }

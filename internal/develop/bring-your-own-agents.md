@@ -1742,3 +1742,12 @@ Interactive browser actions use the bound Computer's `computer_browser` driver
 and visible desktop, including on Boat. There is no separate hosted browser
 provider. E2B remains a self-hosted Computer option; acceptance must name the
 provider actually tested.
+
+## macOS desktop web shell
+
+The desktop loads the web Agents flow and starts its pinned local Agent Host
+through the origin-checked desktop bridge. Enrollment remains explicitly initiated
+by the user; selected-root approval and heartbeat readiness stay server-owned.
+The window owns the cookie session. Sign-out stops the child and closes panels;
+native code never stores a second rotating WorkOS session. See
+[Desktop web shell](desktop-web-shell.md) for the bridge and QA contract.
