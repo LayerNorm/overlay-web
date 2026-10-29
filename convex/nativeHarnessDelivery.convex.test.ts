@@ -245,16 +245,24 @@ test('named admission binds a cross-room delivery authored by the current parent
     .parentRunId).toBe(parent.runId)
   await apply(convex, parent.runId, { type: 'claim_execution', workflowRunId: 'root-workflow' })
   await apply(convex, childRunId, { type: 'claim_execution', workflowRunId: 'named-child-workflow' })
-  await convex.mutation(mutation('chat/conversations:cancelAgentRuns'), {
+  const cancelled = await convex.mutation(mutation('chat/conversations:cancelAgentRuns'), {
     conversationId: fixture.conversationId, userId: 'alice', serverSecret: secret,
   })
+  expect(cancelled.cancelledHarnessRoots).toEqual(expect.arrayContaining([
+    { agentRunId: parentTurn.runId, runId: parent.runId },
+    { agentRunId: targetTurn.runId, runId: childRunId },
+  ]))
   expect((await convex.query(query('harness/runs:get'), {
     actorUserId: 'alice', runId: childRunId, serverSecret: secret,
   })).status).toBe('cancelled')
-  const workflows = await convex.query(query('harness/runs:listDeliveryWorkflowRuns'), {
+  const rootWorkflows = await convex.query(query('harness/runs:listDeliveryWorkflowRuns'), {
     actorUserId: 'alice', agentRunId: parentTurn.runId, rootRunId: parent.runId, cursor: null, serverSecret: secret,
   })
-  expect(workflows.workflowRunIds).toEqual(expect.arrayContaining(['root-workflow', 'named-child-workflow']))
+  expect(rootWorkflows.workflowRunIds).toEqual(['root-workflow'])
+  const childWorkflows = await convex.query(query('harness/runs:listDeliveryWorkflowRuns'), {
+    actorUserId: 'alice', agentRunId: targetTurn.runId, rootRunId: childRunId, cursor: null, serverSecret: secret,
+  })
+  expect(childWorkflows.workflowRunIds).toEqual(['named-child-workflow'])
 })
 
 test.each(['wrong-engine', 'non-participant', 'foreign-workspace', 'trigger-author', 'already-bound'])
@@ -334,7 +342,95 @@ test('named-child Stop cancels only that cross-room subtree and leaves its paren
   expect(workflows.workflowRunIds).toEqual(['named-child-workflow'])
 })
 
-test('parent Stop cancels its same-room named subtree deepest-first', async () => {
+test('parent Stop cancels named descendants across conversations and leaves another tree active', async () => {
+  const convex = convexTest(schema, modules)
+  const fixture = await namedAdmissionFixture(convex)
+  await apply(convex, fixture.parent.runId, fixture.operation)
+  const grandchild = await createNamedChild(convex, {
+    conversationId: fixture.target.conversationId,
+    parentRunId: fixture.childRunId,
+    parentAgentPrincipalId: 'target-principal',
+    targetAgentId: 'grandchild',
+    targetPrincipalId: 'grandchild-principal',
+    key: 'cross-room-grandchild',
+  })
+  const unrelatedUserMessageId = await convex.run(ctx => ctx.db.insert('conversationMessages', {
+    conversationId: fixture.target.conversationId,
+    userId: 'alice',
+    turnId: 'unrelated-cross-room-question',
+    role: 'user',
+    mode: 'act',
+    content: 'Inspect an unrelated tree.',
+    contentType: 'text',
+    authorKind: 'agent',
+    authorPrincipalId: 'agent-principal',
+    createdAt: Date.now(),
+  }))
+  const unrelatedTurn = await open(convex, {
+    ...fixture.fixture,
+    conversationId: fixture.target.conversationId,
+    userMessageId: unrelatedUserMessageId,
+  }, 'alice', true, 'unrelated-cross-room')
+  const unrelatedHarness = admission(fixture.target.conversationId, unrelatedTurn.runId)
+  await convex.mutation(mutation('harness/runs:admit'), { ...unrelatedHarness, serverSecret: secret })
+  await claimAndAttachWorkflow(convex, fixture.parent.runId, fixture.parentTurn.runId, 'parent-workflow')
+  await claimAndAttachWorkflow(convex, fixture.childRunId, fixture.targetTurn.runId, 'child-workflow')
+  await claimAndAttachWorkflow(convex, grandchild.runId, grandchild.turn.runId, 'grandchild-workflow')
+  await claimAndAttachWorkflow(convex, unrelatedHarness.runId, unrelatedTurn.runId, 'unrelated-workflow')
+
+  const cancelled = await convex.mutation(mutation('chat/conversations:cancelAgentRuns'), {
+    conversationId: fixture.fixture.conversationId,
+    messageId: fixture.parentTurn.messageId,
+    userId: 'alice',
+    serverSecret: secret,
+  })
+  expect(cancelled.stoppedCount).toBe(3)
+  expect(cancelled.cancelledRunIds).toEqual(expect.arrayContaining([
+    fixture.parentTurn.runId, fixture.targetTurn.runId, grandchild.turn.runId,
+  ]))
+  expect(cancelled.cancelledRunIds).not.toContain(unrelatedTurn.runId)
+  expect(cancelled.cancelledWorkflowRunIds).toEqual(expect.arrayContaining([
+    'parent-workflow', 'child-workflow', 'grandchild-workflow',
+  ]))
+  expect(cancelled.cancelledWorkflows).toEqual(expect.arrayContaining([
+    { agentRunId: fixture.parentTurn.runId, workflowRunId: 'parent-workflow' },
+    { agentRunId: fixture.targetTurn.runId, workflowRunId: 'child-workflow' },
+    { agentRunId: grandchild.turn.runId, workflowRunId: 'grandchild-workflow' },
+  ]))
+  expect(cancelled.cancelledHarnessRoots).toEqual(expect.arrayContaining([
+    { agentRunId: fixture.parentTurn.runId, runId: fixture.parent.runId },
+    { agentRunId: fixture.targetTurn.runId, runId: fixture.childRunId },
+    { agentRunId: grandchild.turn.runId, runId: grandchild.runId },
+  ]))
+
+  const cancelledAgentRuns = await convex.run(ctx => Promise.all([
+    fixture.parentTurn.runId, fixture.targetTurn.runId, grandchild.turn.runId,
+  ].map(runId => ctx.db.get(runId))))
+  expect(cancelledAgentRuns.map(run => run?.status)).toEqual(['cancelled', 'cancelled', 'cancelled'])
+  const cancelledMessages = await convex.run(ctx => Promise.all([
+    fixture.parentTurn.messageId, fixture.targetTurn.messageId, grandchild.turn.messageId,
+  ].map(messageId => ctx.db.get(messageId))))
+  expect(cancelledMessages.map(message => message?.status)).toEqual(['completed', 'completed', 'completed'])
+  expect(cancelledMessages.map(message => message?.content)).toEqual([
+    expect.stringContaining('[Interrupted by user. Continue?]'),
+    expect.stringContaining('[Interrupted by user. Continue?]'),
+    expect.stringContaining('[Interrupted by user. Continue?]'),
+  ])
+  const cancelledHarnessStates = await Promise.all([
+    fixture.parent.runId, fixture.childRunId, grandchild.runId,
+  ].map(runId => convex.query(query('harness/runs:get'), { actorUserId: 'alice', runId, serverSecret: secret })))
+  expect(cancelledHarnessStates.map(run => run.status)).toEqual(['cancelled', 'cancelled', 'cancelled'])
+  const finalCounts = await convex.run(async ctx => Promise.all([
+    fixture.parent.runId, fixture.childRunId, grandchild.runId,
+  ].map(runId => ctx.db.query('harnessRuns').withIndex('by_runId', queryBuilder => queryBuilder.eq('runId', runId)).unique())))
+  expect(finalCounts.map(run => run?.activeDescendantCount)).toEqual([0, 0, 0])
+  expect((await convex.run(ctx => ctx.db.get(unrelatedTurn.runId)))?.status).toBe('running')
+  expect((await convex.query(query('harness/runs:get'), {
+    actorUserId: 'alice', runId: unrelatedHarness.runId, serverSecret: secret,
+  })).status).toBe('running')
+})
+
+test('parent Stop cancels its same-conversation named subtree deepest-first', async () => {
   const convex = convexTest(schema, modules)
   const fixture = await namedAdmissionFixture(convex, 'same-room')
   await apply(convex, fixture.parent.runId, fixture.operation)

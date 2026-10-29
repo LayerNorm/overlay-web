@@ -235,26 +235,43 @@ function orderCancellationRunsDeepestFirst(
   })).sort((left, right) => right.depth - left.depth || left.index - right.index).map(entry => entry.run)
 }
 
-function findHarnessDescendantAgentRuns(
-  runs: CancellationAgentRun[],
+function isTerminalCancellationHarnessRun(run: CancellationHarnessRun): boolean {
+  const status = (JSON.parse(run.metadataJson) as { status?: string }).status
+  return status === 'completed' || status === 'cancelled' || status === 'failed'
+}
+
+async function findHarnessDescendantAgentRuns(
+  ctx: MutationCtx,
   matching: CancellationAgentRun[],
   harnessRuns: Map<string, CancellationHarnessRun>,
   userId: string,
-): CancellationAgentRun[] {
+): Promise<CancellationAgentRun[]> {
   const matchedIds = new Set(matching.map(run => run._id))
   const matchedHarnessRuns = matching.flatMap(run => {
     if (run.userId !== userId || run.runner === 'remote' || !run.harnessRunId) return []
     const harnessRun = harnessRuns.get(run.harnessRunId)
     return harnessRun ? [harnessRun] : []
   })
-  return runs.filter(run => {
-    if (matchedIds.has(run._id) || run.userId !== userId || run.runner === 'remote'
-      || !ACTIVE_AGENT_RUN_STATUSES.has(run.status) || !run.harnessRunId) return false
-    const harnessRun = harnessRuns.get(run.harnessRunId)
-    if (!harnessRun) return false
-    return matchedHarnessRuns.some(parent => harnessRun.rootRunId === parent.runId
-      || isHarnessRunDescendant(harnessRun, parent, harnessRuns))
-  })
+  const matchedHarnessRunIds = new Set(matchedHarnessRuns.map(run => run.runId))
+  const descendants = [...harnessRuns.values()].filter(run =>
+    run.actorUserId === userId
+      && !matchedHarnessRunIds.has(run.runId)
+      && !isTerminalCancellationHarnessRun(run)
+      && matchedHarnessRuns.some(parent => run.rootRunId === parent.runId
+        || isHarnessRunDescendant(run, parent, harnessRuns)),
+  )
+  const agentRuns = await Promise.all(descendants.map(async harnessRun => {
+    const agentRunId = /^(?:workspace|personal):(.+)$/.exec(harnessRun.runId)?.[1]
+    if (!agentRunId) return null
+    const normalizedId = ctx.db.normalizeId('conversationAgentRuns', agentRunId)
+    if (!normalizedId) return null
+    const agentRun = await ctx.db.get(normalizedId)
+    if (!agentRun || matchedIds.has(agentRun._id) || agentRun.harnessRunId !== harnessRun.runId
+      || agentRun.userId !== userId || agentRun.runner !== 'workflow'
+      || !ACTIVE_AGENT_RUN_STATUSES.has(agentRun.status)) return null
+    return agentRun
+  }))
+  return agentRuns.filter((run): run is CancellationAgentRun => run !== null)
 }
 
 async function authorizeUserAccess(params: {
@@ -1328,7 +1345,7 @@ export const cancelAgentRuns = mutation({
     // billing); the caller does that for the ids returned here, so it is left untouched.
     const remoteRunIds = matching.flatMap((run) => (run.runner === 'remote' && run.externalRunId ? [run.externalRunId] : []))
     const harnessRuns = await loadCancellationHarnessRuns(ctx, matching, args.userId)
-    const descendants = findHarnessDescendantAgentRuns(runs, matching, harnessRuns, args.userId)
+    const descendants = await findHarnessDescendantAgentRuns(ctx, matching, harnessRuns, args.userId)
     const activeRuns = [
       ...orderCancellationRunsDeepestFirst(descendants, harnessRuns),
       ...orderCancellationRunsDeepestFirst(matching.filter((run) => run.runner !== 'remote'), harnessRuns),
