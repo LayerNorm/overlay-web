@@ -1,12 +1,15 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
-import { ChevronDown } from 'lucide-react'
+import { useImperativeHandle, useRef, useState, type ComponentProps } from 'react'
 import { cn } from '../../utils/cn'
+import { Select as SelectRoot, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '../ui/select'
 
 export interface ListboxOption<T extends string> {
   value: T
   label: string
+  /** Optional visual grouping, rendered as a non-selectable heading. */
+  group?: string
+  disabled?: boolean
 }
 
 export interface ListboxSelectProps<T extends string> {
@@ -17,95 +20,102 @@ export interface ListboxSelectProps<T extends string> {
   className?: string
   buttonClassName?: string
   menuClassName?: string
+  id?: string
+  name?: string
   'aria-label'?: string
+  'aria-labelledby'?: string
+  'aria-describedby'?: string
+  placeholder?: string
+  /** Defaults to true so the listbox can escape clipping parents. */
+  portal?: boolean
+  /** Native control attributes used by the option-child compatibility wrapper. */
+  triggerProps?: Omit<ComponentProps<typeof SelectTrigger>, 'children' | 'value' | 'className'>
 }
 
 export function ListboxSelect<T extends string>({
-  value,
-  options,
-  onChange,
-  disabled,
-  className,
-  buttonClassName,
-  menuClassName,
-  'aria-label': ariaLabel,
+  value, options, onChange, disabled, className, buttonClassName, menuClassName,
+  id, name, 'aria-label': ariaLabel, 'aria-labelledby': ariaLabelledBy,
+  'aria-describedby': ariaDescribedBy, placeholder, portal = true, triggerProps,
 }: ListboxSelectProps<T>) {
   const [open, setOpen] = useState(false)
-  const rootRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const tabTarget = useRef<HTMLElement | null>(null)
+  useImperativeHandle(triggerProps?.ref, () => triggerRef.current!)
+  // Disabling an open control closes it permanently, rather than reopening it
+  // when an asynchronous busy state clears.
+  if (disabled && open) setOpen(false)
 
-  const selected = options.find((option) => option.value === value)?.label ?? value
-
-  useEffect(() => {
-    if (!open) return
-    function handlePointerDown(event: MouseEvent) {
-      if (rootRef.current && !rootRef.current.contains(event.target as Node)) {
-        setOpen(false)
-      }
-    }
-    function handleEscape(event: KeyboardEvent) {
-      if (event.key === 'Escape') setOpen(false)
-    }
-    document.addEventListener('mousedown', handlePointerDown)
-    document.addEventListener('keydown', handleEscape)
-    return () => {
-      document.removeEventListener('mousedown', handlePointerDown)
-      document.removeEventListener('keydown', handleEscape)
-    }
-  }, [open])
+  // Radix forbids empty item values. Index IDs also avoid sentinel collisions with
+  // arbitrary public values. Only the adapter knows these IDs; forms/callbacks
+  // continue using the caller's values (including selectable empty options).
+  const selectedIndex = options.findIndex((option) => option.value === value)
+  const selected = selectedIndex < 0 ? (placeholder ?? value) : options[selectedIndex].label
+  const groups = options.reduce<{ group?: string; indices: number[] }[]>((result, option, index) => {
+    const last = result.at(-1)
+    if (last && last.group === option.group) last.indices.push(index)
+    else result.push({ group: option.group, indices: [index] })
+    return result
+  }, [])
 
   return (
-    <div ref={rootRef} className={cn('relative min-w-0', className)}>
-      <button
-        type="button"
+    <div className={cn('relative min-w-0', className)} onChangeCapture={(event) => {
+      // Radix's unnamed internal form control contains private IDs. Do not let
+      // its implementation events leak into the caller's form.
+      if (event.target instanceof HTMLSelectElement) event.stopPropagation()
+    }}>
+      {name ? <input type="hidden" name={name} value={value} disabled={disabled} /> : null}
+      <SelectRoot
+        value={selectedIndex < 0 ? '' : `option-${selectedIndex}`}
         disabled={disabled}
-        aria-label={ariaLabel}
-        aria-expanded={open}
-        aria-haspopup="listbox"
-        onClick={() => !disabled && setOpen((current) => !current)}
-        className={cn(
-          'flex w-full min-w-0 items-center justify-between gap-2 rounded-md bg-[var(--surface-subtle)] px-2.5 py-1.5 text-left text-xs',
-          disabled
-            ? 'cursor-not-allowed text-[var(--muted-light)]'
-            : 'text-[var(--muted)] hover:bg-[var(--border)]',
-          buttonClassName,
-        )}
+        open={open && !disabled}
+        onOpenChange={setOpen}
+        onValueChange={(key) => {
+          const option = options[Number(key.slice('option-'.length))]
+          if (option && !option.disabled) onChange(option.value)
+        }}
       >
-        <span className="min-w-0 truncate">{selected}</span>
-        <ChevronDown size={11} className={cn('shrink-0 transition-transform', open ? 'rotate-180' : '')} />
-      </button>
-      {open ? (
-        <div
-          className={cn(
-            'overlay-pop-in absolute left-0 right-0 top-full z-50 mt-1 max-h-60 overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg',
-            menuClassName,
-          )}
-          role="listbox"
+        <SelectTrigger {...triggerProps} ref={triggerRef} id={id} aria-label={ariaLabel} aria-labelledby={ariaLabelledBy} aria-describedby={ariaDescribedBy} className={buttonClassName}>
+          <SelectValue placeholder={selected}>{selected}</SelectValue>
+        </SelectTrigger>
+        <SelectContent
+          portal={portal}
+          className={cn(!portal && 'z-50', menuClassName)}
+          onKeyDown={(event) => {
+            // Radix traps Tab by default. Overlay's form controls should close
+            // and continue through the form, without escaping an enclosing dialog.
+            if (event.key !== 'Tab' || !triggerRef.current) return
+            event.preventDefault()
+            const trigger = triggerRef.current
+            const dialog = trigger.closest('[aria-modal="true"]')
+            const scope = dialog ?? document
+            const controls = Array.from(scope.querySelectorAll<HTMLElement>('button, input, select, textarea, a[href], [tabindex]'))
+              .filter((node) => node.tabIndex >= 0 && !node.matches(':disabled') && !node.hasAttribute('data-radix-focus-guard') && !event.currentTarget.contains(node) && node.getClientRects().length > 0)
+            const index = controls.indexOf(trigger)
+            const adjacent = controls[index + (event.shiftKey ? -1 : 1)]
+            const wrapped = controls[event.shiftKey ? controls.length - 1 : 0]
+            tabTarget.current = adjacent ?? wrapped ?? trigger
+            setOpen(false)
+          }}
+          onCloseAutoFocus={(event) => {
+            if (!tabTarget.current) return
+            event.preventDefault()
+            const target = tabTarget.current
+            tabTarget.current = null
+            target.focus()
+          }}
         >
-          {options.map((option) => {
-            const active = option.value === value
-            return (
-              <button
-                key={option.value}
-                type="button"
-                role="option"
-                aria-selected={active}
-                className={cn(
-                  'flex w-full items-center px-3 py-2 text-left text-xs transition-colors',
-                  active
-                    ? 'bg-[var(--surface-muted)] font-medium text-[var(--foreground)]'
-                    : 'text-[var(--muted)] hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]',
-                )}
-                onClick={() => {
-                  onChange(option.value)
-                  setOpen(false)
-                }}
-              >
-                {option.label}
-              </button>
-            )
-          })}
-        </div>
-      ) : null}
+          {groups.map(({ group, indices }, groupIndex) => (
+            <SelectGroup key={groupIndex}>
+              {group ? <SelectLabel>{group}</SelectLabel> : null}
+              {indices.map((index) => (
+                <SelectItem key={`option-${index}`} value={`option-${index}`} disabled={options[index].disabled} textValue={options[index].label}>
+                  {options[index].label}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          ))}
+        </SelectContent>
+      </SelectRoot>
     </div>
   )
 }

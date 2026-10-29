@@ -1,9 +1,10 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { findRuntimeLicenseException } from './license-exceptions.ts'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-const readJson = (relative) =>
+const readJson = (relative: string): Record<string, any> =>
   JSON.parse(fs.readFileSync(path.join(root, relative), 'utf8'))
 const failures = []
 
@@ -31,9 +32,32 @@ const packageDirs = fs
   .map((entry) => entry.name)
   .sort()
 
+const privatePackageLicenses = new Map<string, string>([
+  ['overlay-shell-react', 'AGPL-3.0-only'],
+  ['overlay-ui', 'AGPL-3.0-only']
+])
+let apachePackageCount = 0
+let privateAgplPackageCount = 0
+
 for (const directory of packageDirs) {
   const relative = `packages/${directory}`
   const manifest = readJson(`${relative}/package.json`)
+  const privateLicense = privatePackageLicenses.get(directory)
+  if (privateLicense) {
+    privateAgplPackageCount += 1
+    if (manifest.license !== privateLicense) {
+      failures.push(`${relative}/package.json must declare ${privateLicense}`)
+    }
+    if (manifest.private !== true) {
+      failures.push(`${relative}/package.json must explicitly set private to true`)
+    }
+    if (manifest.publishConfig) {
+      failures.push(`${relative}/package.json must not set publishConfig`)
+    }
+    continue
+  }
+
+  apachePackageCount += 1
   if (manifest.license !== 'Apache-2.0') {
     failures.push(`${relative}/package.json must declare Apache-2.0`)
   }
@@ -84,12 +108,7 @@ for (const [packagePath, metadata] of Object.entries(lock.packages ?? {})) {
   const license = stringifyLicense(metadata.license ?? metadata.licenses)
   if (isAcceptableLicenseExpression(license)) continue
   const packageName = packageNameFromLockPath(packagePath)
-  const exception = allowlist.find(
-    (entry) =>
-      matchesPackagePattern(packageName, entry.package) &&
-      entry.licenses.includes(license) &&
-      entry.reason.trim()
-  )
+  const exception = findRuntimeLicenseException(packageName, license, allowlist)
   if (!exception) {
     failures.push(`${packagePath} has unreviewed runtime license "${license}"`)
   }
@@ -102,11 +121,14 @@ if (failures.length) {
 }
 
 console.log(
-  `License check passed: AGPL desktop, ${packageDirs.length} Apache packages, ` +
+  `License check passed: AGPL desktop, ${apachePackageCount} Apache packages, ` +
+    `${privateAgplPackageCount} private AGPL packages, ` +
     `${audited} runtime dependency entries, and required notices verified.`
 )
 
-function stringifyLicense(license) {
+function stringifyLicense(
+  license: string | Array<string | { type?: string }> | null | undefined
+): string {
   if (!license) return 'MISSING'
   if (typeof license === 'string') return license
   return (
@@ -117,7 +139,7 @@ function stringifyLicense(license) {
   )
 }
 
-function isAcceptableLicenseExpression(value) {
+function isAcceptableLicenseExpression(value: string): boolean {
   const expression = stripOuterParens(value.trim())
   if (!expression || expression === 'MISSING') return false
   const orParts = expression.split(/\s+OR\s+/i).map(stripOuterParens)
@@ -127,7 +149,7 @@ function isAcceptableLicenseExpression(value) {
   return allowedLicenseIds.has(expression)
 }
 
-function stripOuterParens(value) {
+function stripOuterParens(value: string): string {
   let current = value.trim()
   while (current.startsWith('(') && current.endsWith(')')) {
     current = current.slice(1, -1).trim()
@@ -135,16 +157,8 @@ function stripOuterParens(value) {
   return current
 }
 
-function packageNameFromLockPath(packagePath) {
+function packageNameFromLockPath(packagePath: string): string {
   const tail = packagePath.split('node_modules/').filter(Boolean).pop()
   const parts = tail.split('/')
   return parts[0].startsWith('@') ? `${parts[0]}/${parts[1]}` : parts[0]
-}
-
-function matchesPackagePattern(packageName, pattern) {
-  const escaped = pattern
-    .split('*')
-    .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
-    .join('.*')
-  return new RegExp(`^${escaped}$`).test(packageName)
 }

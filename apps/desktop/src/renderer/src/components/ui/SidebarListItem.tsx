@@ -10,13 +10,13 @@ import { CheckSquare, Square } from 'lucide-react'
 import type { Theme } from '../../utils/theme'
 import { resolveSidebarListItemColors } from './SidebarListItem.styles'
 
-const ITEM_HEIGHT = 28
-const ITEM_PADDING = '5px 10px'
-const ITEM_GAP = 6
+const ITEM_HEIGHT = 32
+const ITEM_PADDING = '7px 8px'
+const ITEM_GAP = 10
 const ITEM_RADIUS = 6
-const FONT_SIZE = 12
-const LINE_HEIGHT = '18px'
-const ICON_SIZE = 13
+const FONT_SIZE = 14
+const LINE_HEIGHT = '20px'
+const ICON_SIZE = 16
 const ACTION_ICON_SIZE = 11
 
 export interface SidebarListItemProps {
@@ -126,7 +126,7 @@ export function SidebarListItem({
         <Icon
           size={ICON_SIZE}
           color={isActive ? theme.selectionText : (iconColor ?? theme.textSecondary)}
-          style={{ flexShrink: 0 }}
+          style={{ flexShrink: 0, marginInline: 4 }}
           {...iconProps}
         />
       )}

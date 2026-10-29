@@ -31,7 +31,9 @@ protocol.registerSchemesAsPrivileged([
 ])
 const isChatParityFixtureMode = !app.isPackaged && process.env.OVERLAY_CHAT_PARITY_FIXTURE === '1'
 const isFileParityFixtureMode = !app.isPackaged && process.env.OVERLAY_FILE_PARITY_FIXTURE === '1'
-const isParityFixtureMode = isChatParityFixtureMode || isFileParityFixtureMode
+const isSidebarParityFixtureMode = !app.isPackaged && process.env.OVERLAY_SIDEBAR_PARITY_FIXTURE === '1'
+const isParityFixtureMode =
+  isChatParityFixtureMode || isFileParityFixtureMode || isSidebarParityFixtureMode
 import { getResourcePath } from './utils/resources'
 import { electronApp } from '@electron-toolkit/utils'
 import { autoUpdaterService } from './services/auto-updater'
@@ -683,7 +685,41 @@ function createFileParityFixtureWindow(): BrowserWindow {
   return fixtureWindow
 }
 
+function createSidebarParityFixtureWindow(): BrowserWindow {
+  const rendererUrl = process.env.ELECTRON_RENDERER_URL
+  if (!rendererUrl)
+    throw new Error('Electron renderer URL is unavailable for sidebar parity fixture mode')
+
+  const theme = process.env.SIDEBAR_PARITY_THEME === 'dark' ? 'dark' : 'light'
+  const state = process.env.SIDEBAR_PARITY_STATE?.trim() || 'chats-expanded'
+  const query = new URLSearchParams({
+    window: 'sidebar-parity-fixture',
+    theme,
+    state,
+  })
+  const fixtureWindow = new BrowserWindow({
+    width: 1040,
+    height: 820,
+    minWidth: 760,
+    minHeight: 600,
+    show: false,
+    title: 'Overlay sidebar parity fixture',
+    titleBarStyle: 'hiddenInset',
+    backgroundColor: theme === 'dark' ? '#09090b' : '#fafafa',
+    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
+  })
+  void fixtureWindow.loadURL(`${rendererUrl}?${query.toString()}`)
+  fixtureWindow.once('ready-to-show', () => fixtureWindow.show())
+  fixtureWindow.on('closed', () => app.quit())
+  return fixtureWindow
+}
+
 app.whenReady().then(async () => {
+  if (isSidebarParityFixtureMode) {
+    console.log('[Fixture] Starting isolated desktop sidebar parity harness')
+    createSidebarParityFixtureWindow()
+    return
+  }
   if (isFileParityFixtureMode) {
     console.log('[Fixture] Starting isolated desktop files parity harness')
     createFileParityFixtureWindow()

@@ -29,6 +29,8 @@ import { EnvironmentProvider } from './contexts/EnvironmentContext'
 import { AppBootstrapProvider, useAppBootstrap } from './contexts/AppBootstrapContext'
 import { migrateLocalChatsToCloud } from './utils/chatStorage'
 import { migrateLegacyDesktopKnowledge } from './services/desktop-knowledge-migration'
+import { getActiveWorkspaceId } from './services/workspace-store'
+import { readDesktopShellNav, writeDesktopShellNav } from './shell/navigation'
 
 interface DownloadProgress {
   modelId: string
@@ -41,7 +43,6 @@ function MainApp(): ReactElement<any> {
   const [showSettings, setShowSettings] = useState(false)
   const [showOnboarding, setShowOnboarding] = useState<boolean | null>(null)
   const [showAuthOnly, setShowAuthOnly] = useState(false)
-  const [sidebarExpanded, setSidebarExpanded] = useState(false)
   const [downloadProgress, setDownloadProgress] = useState<DownloadProgress | null>(null)
   const { settings } = useSettings()
   const { refreshBootstrap } = useAppBootstrap()
@@ -229,7 +230,14 @@ function MainApp(): ReactElement<any> {
     }
   }
 
-  const handleOpenSettings = useCallback((): void => {
+  const handleOpenSettings = useCallback((section = 'general'): void => {
+    try {
+      const workspaceId = getActiveWorkspaceId()
+      const state = readDesktopShellNav(localStorage, workspaceId)
+      writeDesktopShellNav(localStorage, workspaceId, { ...state, settingsSection: section })
+    } catch {
+      // Settings can still open when browser storage is unavailable.
+    }
     setShowSettings(true)
   }, [])
 
@@ -301,15 +309,11 @@ function MainApp(): ReactElement<any> {
           <SettingsPage
             onBack={handleCloseSettings}
             onSignOut={handleSignOut}
-            sidebarExpanded={sidebarExpanded}
-            onToggleSidebar={() => setSidebarExpanded((prev) => !prev)}
           />
         ) : (
           <MainWindow
             onOpenSettings={handleOpenSettings}
             onSignOut={handleSignOut}
-            sidebarExpanded={sidebarExpanded}
-            onToggleSidebar={() => setSidebarExpanded((prev) => !prev)}
           />
         )}
       </div>

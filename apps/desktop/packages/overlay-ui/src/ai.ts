@@ -1,0 +1,17 @@
+'use client'
+
+// AI chat primitives. Kept out of the main barrel so Shiki only loads where chat renders.
+export * from './components/ui/attachment'
+export * from './components/ui/bubble'
+export * from './components/ui/code-block'
+export * from './components/ui/collapsible'
+export * from './components/ui/hover-card'
+export * from './components/ui/input-group'
+export * from './components/ui/item'
+export * from './components/ui/message'
+export * from './components/ui/message-scroller'
+export * from './components/ui/provider-logo'
+export * from './components/ui/spinner'
+export * from './components/ui/trace'
+export { highlightCode, loadHighlighter } from './lib/highlighter'
+export { useHighlightedCode } from './hooks/use-highlighted-code'

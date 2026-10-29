@@ -59,8 +59,7 @@ for (const relative of [
   'package-lock.json',
   'electron.vite.config.ts',
   'tsconfig.node.json',
-  'tsconfig.web.json',
-  'tailwind.config.js'
+  'tsconfig.web.json'
 ]) {
   const source = fs.readFileSync(path.join(root, relative), 'utf8')
   for (const forbidden of ['../packages/', '../scripts/', '../convex/', "resolve('../public')"]) {
@@ -85,10 +84,12 @@ if (failures.length) {
 
 console.log(`Standalone repository check passed for ${expectedPackages.size} versioned packages.`)
 
+// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 function readJson(relative) {
   return JSON.parse(fs.readFileSync(path.join(root, relative), 'utf8'))
 }
 
+// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 function walk(directory) {
   return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
     const absolute = path.join(directory, entry.name)

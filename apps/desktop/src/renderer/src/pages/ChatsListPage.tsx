@@ -258,7 +258,7 @@ export function ChatsListPage({
 
   const activeSubnavId: ChatSubnavId = activityView
     ? 'activity'
-    : chatView === 'all'
+    : chatView === 'all' || chatView === 'workspace'
       ? 'personal'
       : chatView
 

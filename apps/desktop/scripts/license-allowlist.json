@@ -1,6 +1,11 @@
 {
   "runtimeLicenseExceptions": [
     {
+      "package": "@fontsource-variable/geist",
+      "licenses": ["OFL-1.1"],
+      "reason": "Geist font, bundled in the renderer; SIL OFL 1.1 permits embedding. Owner-approved."
+    },
+    {
       "package": "posthog-js",
       "licenses": ["SEE LICENSE IN LICENSE"],
       "reason": "The bundled package license file declares Apache-2.0."

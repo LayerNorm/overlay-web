@@ -1,31 +1,28 @@
 import { useState, useEffect, useCallback, ReactElement } from 'react'
 import { useSettings } from '../hooks/useSettings'
-import { AccountDialog } from '../components/AccountDialog'
 import {
+  Home,
   MessageSquare,
   Bot,
   BookOpen,
   Globe,
   Mic,
-  FolderOpen,
   FileText,
-  ChevronLeft,
-  ChevronRight,
-  Plus,
   Puzzle,
-  Search,
-  Square,
   Workflow
 } from 'lucide-react'
-import overlayLogo from '../../../../resources/logos/logo-big-no-bg.png'
+import { OverlayMark } from '@overlay/ui'
+import {
+  ShellAdapterProvider,
+  UnifiedSidebar,
+  type PrimaryRailItem,
+  type SecondaryPanelNav,
+} from '@overlay/shell-react'
 import { getTheme } from '../utils/theme'
 import { getPanelTheme } from '../hooks/usePanelTheme'
 import { UpdateNotification } from '../components/ui/UpdateNotification'
-import { ChatsListPage } from './ChatsListPage'
-import { AgentsDirectoryPage } from './AgentsDirectoryPage'
 import { AgentDetailPage } from './AgentDetailPage'
 import { AgentEditorPanel } from './AgentEditorPanel'
-import { TranscriptionListPage } from './TranscriptionListPage'
 import { ProjectsListPage } from './ProjectsListPage'
 import { FilesListPage } from './FilesListPage'
 import {
@@ -43,6 +40,7 @@ import { ProjectDetailPage } from './ProjectDetailPage'
 import { OutputPreviewPage } from './OutputPreviewPage'
 import { RemoteFilePreviewPage } from './RemoteFilePreviewPage'
 import { LocalDocumentPreviewPage } from './LocalDocumentPreviewPage'
+import { useTranscriptions } from '../hooks/useTranscriptions'
 import {
   createDesktopKnowledgeRepository,
   createDesktopNoteReplicaPort
@@ -57,17 +55,19 @@ import { PROJECTS_CHANGED_EVENT } from '../utils/projectStorage'
 import { desktopAppJson } from '../services/app-api-client'
 import { subscribeWorkspaceChanged } from '../services/workspace-store'
 import { useWorkspace } from '../contexts/WorkspaceContext'
-
-type ActiveTool =
-  | 'home'
-  | 'projects'
-  | 'chat'
-  | 'agents'
-  | 'files'
-  | 'extensions'
-  | 'automations'
-  | 'transcriptions'
-  | 'browser'
+import { desktopShellAdapter } from '../shell/DesktopShellAdapter'
+import { DesktopWorkspaceSwitcher } from '../shell/DesktopWorkspaceSwitcher'
+import {
+  AgentSidebarSection,
+  ChatSidebarSection,
+  VoiceSidebarSection,
+} from '../shell/DesktopSidebarSections'
+import {
+  DESKTOP_MORE_GROUPS,
+  DESKTOP_SETTINGS_GROUPS,
+  type ActiveTool,
+} from '../shell/navigation'
+import { useDesktopShellNav } from '../shell/useDesktopShellNav'
 
 interface UpdateState {
   status: 'idle' | 'checking' | 'downloading' | 'ready' | 'error'
@@ -77,55 +77,45 @@ interface UpdateState {
 }
 
 interface MainWindowProps {
-  onOpenSettings?: () => void
+  onOpenSettings?: (section?: string) => void
   onSignOut?: () => void
-  sidebarExpanded: boolean
-  onToggleSidebar: () => void
 }
 
-const SIDEBAR_TOOLS: {
-  id: ActiveTool
-  icon: React.ComponentType<{ size?: number; strokeWidth?: number; color?: string }>
-  label: string
-}[] = [
-  { id: 'agents', icon: Bot, label: 'agents' },
-  { id: 'chat', icon: MessageSquare, label: 'chats' },
-  { id: 'files', icon: FileText, label: 'files' },
-  { id: 'extensions', icon: Puzzle, label: 'extensions' },
-  { id: 'projects', icon: FolderOpen, label: 'projects' },
-  { id: 'automations', icon: Workflow, label: 'automations' },
-  { id: 'browser', icon: Globe, label: 'browser' },
-  { id: 'transcriptions', icon: Mic, label: 'voice' }
-]
-
 const PANEL_TITLES: Partial<Record<ActiveTool, string>> = {
-  projects: 'projects',
   chat: 'chats',
   agents: 'agents',
   files: 'files',
   extensions: 'extensions',
   automations: 'automations',
-  transcriptions: 'voice',
+  voice: 'voice',
   browser: 'browser'
 }
 
-const COLLAPSED_WIDTH = 68
-const EXPANDED_WIDTH = 180
 const TITLEBAR_HEIGHT = 44
 
-interface HeaderAction {
-  key: string
-  title: string
-  icon: React.ComponentType<{ size?: number; strokeWidth?: number; color?: string }>
-  onClick: () => void
-  active?: boolean
+function scopedRows(page: ActiveTool, _scope: string) {
+  const rows =
+    page === 'files'
+      ? [
+          { id: 'files', label: 'Files' },
+          { id: 'projects', label: 'Projects' }
+        ]
+      : page === 'agents'
+        ? [
+            { id: 'agents', label: 'Agents' },
+            { id: 'threads', label: 'Threads' }
+          ]
+        : [{ id: page, label: PANEL_TITLES[page] ?? page }]
+  const withScope = (value: string) => rows.map((row) => ({ ...row, id: `${value}:${row.id}` }))
+  return [
+    { id: 'personal', label: 'Personal', children: withScope('personal') },
+    { id: 'workspace', label: 'Workspace', children: withScope('workspace') }
+  ]
 }
 
 export function MainWindow({
   onOpenSettings,
-  onSignOut,
-  sidebarExpanded,
-  onToggleSidebar
+  onSignOut
 }: MainWindowProps): ReactElement<any> {
   const { settings } = useSettings()
   const theme = getTheme(settings.darkMode, settings.lightThemePreset, settings.darkThemePreset)
@@ -138,8 +128,12 @@ export function MainWindow({
     ...panelTheme,
     panelBg: theme.background
   }
-  const isDark = settings.darkMode
-  const [activeTool, setActiveTool] = useState<ActiveTool>('home')
+  const { activeWorkspaceId } = useWorkspace()
+  const shellNav = useDesktopShellNav(activeWorkspaceId)
+  const { transcriptions } = useTranscriptions()
+  const selectedTranscription = transcriptions.find((item) => item.id === shellNav.itemId)
+  const activeTool = shellNav.page
+  const setActiveTool = shellNav.setPage
   const [updateState, setUpdateState] = useState<UpdateState>({ status: 'idle' })
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null)
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null)
@@ -154,63 +148,14 @@ export function MainWindow({
   const [projectsRefreshToken, setProjectsRefreshToken] = useState(0)
   const [automationsRefreshToken, setAutomationsRefreshToken] = useState(0)
   const [activeExtensionView, setActiveExtensionView] = useState<ExtensionView>('connectors')
-  const [accountOpen, setAccountOpen] = useState(false)
-  const { activeWorkspace, activeWorkspaceId } = useWorkspace()
   // Keying the workspace surface forces every list (chats, files, projects,
   // automations, memories, skills, agents) to remount and refetch under the
   // new scope. Module caches were already dropped before the change event.
   const workspaceSurfaceKey = activeWorkspaceId ?? 'no-workspace'
 
-  // Per-tool secondary panel collapsed state (persisted in localStorage)
-  const PANEL_COLLAPSED_KEY = 'overlay-main-panel-collapsed'
-  const [collapsedState, setCollapsedState] = useState<
-    Record<Exclude<ActiveTool, 'home'>, boolean>
-  >(() => {
-    try {
-      const raw = localStorage.getItem(PANEL_COLLAPSED_KEY)
-      const parsed = raw ? (JSON.parse(raw) as Record<string, boolean>) : {}
-      return {
-        projects: parsed.projects ?? false,
-        chat: parsed.chat ?? false,
-        agents: parsed.agents ?? false,
-        files: parsed.files ?? false,
-        automations: parsed.automations ?? false,
-        transcriptions: parsed.transcriptions ?? false,
-        browser: parsed.browser ?? false,
-        extensions: parsed.extensions ?? false
-      }
-    } catch {
-      return {
-        projects: false,
-        chat: false,
-        agents: false,
-        files: false,
-        automations: false,
-        transcriptions: false,
-        browser: false,
-        extensions: false
-      }
-    }
-  })
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(PANEL_COLLAPSED_KEY, JSON.stringify(collapsedState))
-    } catch {
-      // ignore storage failures
-    }
-  }, [collapsedState])
-
-  const isCollapsed = activeTool !== 'home' && collapsedState[activeTool]
-  const toggleCollapsed = useCallback(() => {
-    if (activeTool === 'home') return
-    setCollapsedState((prev) => ({ ...prev, [activeTool]: !prev[activeTool] }))
-  }, [activeTool])
 
   const [chatSearchOpen, setChatSearchOpen] = useState(false)
   const [chatSearchQuery, setChatSearchQuery] = useState('')
-  const [chatSelectMode, setChatSelectMode] = useState(false)
-
   const [filesSearchOpen, setFilesSearchOpen] = useState(false)
   const [filesSearchQuery, setFilesSearchQuery] = useState('')
   const [filesSelectMode, setFilesSelectMode] = useState(false)
@@ -218,10 +163,6 @@ export function MainWindow({
   const [browserSearchOpen, setBrowserSearchOpen] = useState(false)
   const [browserSearchQuery, setBrowserSearchQuery] = useState('')
   const [browserSelectMode, setBrowserSelectMode] = useState(false)
-
-  const [transcriptionSearchOpen, setTranscriptionSearchOpen] = useState(false)
-  const [transcriptionSearchQuery, setTranscriptionSearchQuery] = useState('')
-  const [transcriptionSelectMode, setTranscriptionSelectMode] = useState(false)
 
   useEffect(() => {
     const authority = getDesktopKnowledgeAuthority() === 'cloud' ? 'cloud' : 'on-this-mac'
@@ -313,7 +254,6 @@ export function MainWindow({
   useEffect(() => {
     return subscribeWorkspaceChanged(() => {
       resetEmbeddedSelections()
-      setAccountOpen(false)
       setAutomationsRefreshToken((prev) => prev + 1)
       setProjectsRefreshToken((prev) => prev + 1)
       window.dispatchEvent(new Event(AUTOMATIONS_UPDATED_EVENT))
@@ -323,6 +263,13 @@ export function MainWindow({
 
   const handleNewChat = useCallback(async (): Promise<void> => {
     const chat = await createNewChat()
+    setLastOpenedChatId(chat.id)
+    setActiveTool('chat')
+    setSelectedChatId(chat.id)
+  }, [])
+
+  const handleNewAgentThread = useCallback(async (): Promise<void> => {
+    const chat = await createNewChat(undefined, undefined, true, 'New thread')
     setLastOpenedChatId(chat.id)
     setActiveTool('chat')
     setSelectedChatId(chat.id)
@@ -450,12 +397,10 @@ export function MainWindow({
 
   const handleToolSelect = useCallback(
     (tool: ActiveTool): void => {
-      setActiveTool((prev) => {
-        if (prev !== tool) resetEmbeddedSelections()
-        return prev === tool ? 'home' : tool
-      })
+      if (activeTool !== tool) resetEmbeddedSelections()
+      setActiveTool(tool)
     },
-    [resetEmbeddedSelections]
+    [activeTool, resetEmbeddedSelections, setActiveTool]
   )
 
   const handleInstallUpdate = useCallback((): void => {
@@ -467,188 +412,6 @@ export function MainWindow({
     window.bridge?.updater?.dismissUpdate?.()
   }, [])
 
-  const toggleSearch = useCallback((tool: 'chat' | 'files' | 'browser' | 'transcriptions') => {
-    switch (tool) {
-      case 'chat':
-        setChatSearchOpen((prev) => {
-          if (prev) setChatSearchQuery('')
-          return !prev
-        })
-        break
-      case 'files':
-        setFilesSearchOpen((prev) => {
-          if (prev) setFilesSearchQuery('')
-          return !prev
-        })
-        break
-      case 'browser':
-        setBrowserSearchOpen((prev) => {
-          if (prev) setBrowserSearchQuery('')
-          return !prev
-        })
-        break
-      case 'transcriptions':
-        setTranscriptionSearchOpen((prev) => {
-          if (prev) setTranscriptionSearchQuery('')
-          return !prev
-        })
-        break
-    }
-  }, [])
-
-  const showPanel = activeTool !== 'home'
-
-  const iconColor = (_id: ActiveTool): string => theme.text
-
-  const toolButtonBg = (id: ActiveTool): string =>
-    activeTool === id ? (isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)') : 'transparent'
-
-  const sidebarWidth = sidebarExpanded ? EXPANDED_WIDTH : COLLAPSED_WIDTH
-
-  const labelStyle = (color: string): React.CSSProperties => ({
-    fontSize: '13px',
-    fontFamily: "'Libre Baskerville', Georgia, serif",
-    color,
-    whiteSpace: 'nowrap',
-    overflow: 'hidden',
-    maxWidth: sidebarExpanded ? '140px' : '0px',
-    opacity: sidebarExpanded ? 1 : 0,
-    transition: sidebarExpanded
-      ? 'max-width 0.2s ease, opacity 0.12s ease 0.1s'
-      : 'max-width 0.2s ease 0.02s, opacity 0.06s ease',
-    lineHeight: 'normal',
-    pointerEvents: 'none'
-  })
-
-  const sidebarRowStyle = (bg: string): React.CSSProperties => ({
-    width: '100%',
-    height: '36px',
-    display: 'flex',
-    alignItems: 'center',
-    background: bg,
-    border: 'none',
-    borderRadius: '8px',
-    cursor: 'pointer',
-    transition: 'background 0.15s ease',
-    padding: '0 6px',
-    flexShrink: 0,
-    overflow: 'hidden'
-  })
-
-  const headerActionButtonStyle = (active = false): React.CSSProperties => ({
-    width: '28px',
-    height: '28px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    background: active ? (isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)') : 'transparent',
-    border: 'none',
-    borderRadius: '6px',
-    cursor: 'pointer',
-    color: active ? theme.text : theme.textSecondary,
-    transition: 'background 0.1s ease',
-    flexShrink: 0
-  })
-
-  const getHeaderActions = (): HeaderAction[] => {
-    switch (activeTool) {
-      case 'projects':
-        return [{ key: 'new-project', title: 'New project', icon: Plus, onClick: handleNewProject }]
-      case 'chat':
-        return [
-          {
-            key: 'search-chats',
-            title: 'Search chats',
-            icon: Search,
-            onClick: () => toggleSearch('chat'),
-            active: chatSearchOpen
-          },
-          {
-            key: 'select-chats',
-            title: 'Select chats',
-            icon: Square,
-            onClick: () => setChatSelectMode((prev) => !prev),
-            active: chatSelectMode
-          },
-          { key: 'new-chat', title: 'New chat', icon: Plus, onClick: handleNewChat }
-        ]
-      case 'agents':
-        return [
-          {
-            key: 'new-agent',
-            title: 'New agent',
-            icon: Plus,
-            onClick: handleNewAgent
-          }
-        ]
-      case 'files':
-        return [
-          {
-            key: 'search-files',
-            title: 'Search files',
-            icon: Search,
-            onClick: () => toggleSearch('files'),
-            active: filesSearchOpen
-          },
-          {
-            key: 'select-files',
-            title: 'Select files',
-            icon: Square,
-            onClick: () => setFilesSelectMode((prev) => !prev),
-            active: filesSelectMode
-          },
-          { key: 'add-file', title: 'Add file', icon: Plus, onClick: handleAddFile }
-        ]
-      case 'automations':
-        return [
-          {
-            key: 'new-automation',
-            title: 'New automation',
-            icon: Plus,
-            onClick: handleNewAutomation
-          }
-        ]
-      case 'browser':
-        return [
-          {
-            key: 'search-tabs',
-            title: 'Search tabs',
-            icon: Search,
-            onClick: () => toggleSearch('browser'),
-            active: browserSearchOpen
-          },
-          {
-            key: 'select-tabs',
-            title: 'Select tabs',
-            icon: Square,
-            onClick: () => setBrowserSelectMode((prev) => !prev),
-            active: browserSelectMode
-          },
-          { key: 'new-tab', title: 'New tab', icon: Plus, onClick: handleNewBrowserTab }
-        ]
-      case 'transcriptions':
-        return [
-          {
-            key: 'search-voice',
-            title: 'Search voice',
-            icon: Search,
-            onClick: () => toggleSearch('transcriptions'),
-            active: transcriptionSearchOpen
-          },
-          {
-            key: 'select-voice',
-            title: 'Select voice',
-            icon: Square,
-            onClick: () => setTranscriptionSelectMode((prev) => !prev),
-            active: transcriptionSelectMode
-          }
-        ]
-      default:
-        return []
-    }
-  }
-
-  const headerActions = getHeaderActions()
   const shouldStretchContent =
     (activeTool === 'chat' && selectedChatId) ||
     (activeTool === 'agents' && (selectedAgentId || agentEditorOpen)) ||
@@ -657,38 +420,171 @@ export function MainWindow({
     (activeTool === 'files' && selectedOutputId) ||
     (activeTool === 'files' && selectedFileId) ||
     (activeTool === 'files' && selectedLocalDocumentId) ||
-    (activeTool === 'projects' && selectedProjectId) ||
+    (activeTool === 'files' && selectedProjectId) ||
     activeTool === 'extensions' ||
-    activeTool === 'browser'
+    activeTool === 'browser' ||
+    (activeTool === 'voice' && Boolean(selectedTranscription))
 
-  const expandButton = isCollapsed ? (
-    <button
-      type="button"
-      title="Expand panel"
-      onClick={toggleCollapsed}
-      style={{
-        width: '28px',
-        height: '28px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: 'transparent',
-        border: 'none',
-        borderRadius: '6px',
-        cursor: 'pointer',
-        color: theme.textSecondary,
-        transition: 'background 0.1s ease'
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)'
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.background = 'transparent'
-      }}
-    >
-      <ChevronRight size={16} strokeWidth={1.5} />
-    </button>
-  ) : null
+  const sidebarPanelNav: SecondaryPanelNav | undefined =
+    activeTool === 'home'
+      ? undefined
+      : {
+          items: scopedRows(activeTool, shellNav.scope),
+          activeId: shellNav.scope,
+          activeChildId: shellNav.itemId ?? `${shellNav.scope}:${activeTool}`,
+          onSelect: (id) => {
+            if (id === 'personal' || id === 'workspace') {
+              shellNav.setScope(id)
+              shellNav.setItemId(null)
+            } else {
+              shellNav.setItemId(id)
+            }
+          }
+        }
+  const shellItems: PrimaryRailItem[] = [
+    { id: 'home', label: 'Home', icon: Home, active: activeTool === 'home', onSelect: () => setActiveTool('home') },
+    { id: 'agents', label: 'Agents', icon: Bot, active: activeTool === 'agents', onSelect: () => handleToolSelect('agents') },
+    { id: 'chats', label: 'Chats', icon: MessageSquare, active: activeTool === 'chat', onSelect: () => handleToolSelect('chat') },
+    { id: 'automations', label: 'Automations', icon: Workflow, active: activeTool === 'automations', onSelect: () => handleToolSelect('automations') },
+    { id: 'files', label: 'Files', icon: FileText, active: activeTool === 'files', onSelect: () => handleToolSelect('files') },
+    { id: 'extensions', label: 'Extensions', icon: Puzzle, active: activeTool === 'extensions', onSelect: () => handleToolSelect('extensions') },
+    { id: 'voice', label: 'Voice', icon: Mic, active: activeTool === 'voice', onSelect: () => handleToolSelect('voice') },
+    { id: 'browser', label: 'Browser', icon: Globe, active: activeTool === 'browser', onSelect: () => handleToolSelect('browser') }
+  ]
+
+  const renderSidebarSection = (id: string): ReactElement<any> | null => {
+    if (activeTool === 'chat') {
+      return (
+        <ChatSidebarSection
+          theme={theme}
+          scope={shellNav.scope}
+          selectedChatId={selectedChatId}
+          searchOpen={chatSearchOpen}
+          searchQuery={chatSearchQuery}
+          onSearchQueryChange={setChatSearchQuery}
+          onSelectChat={(chatId) => {
+            setSelectedChatId(chatId)
+            shellNav.setItemId(`${shellNav.scope}:chat`)
+          }}
+        />
+      )
+    }
+    if (activeTool === 'agents' && id === 'agents') {
+      return (
+        <AgentSidebarSection
+          theme={theme}
+          selectedAgentId={selectedAgentId}
+          onSelectAgent={handleSelectAgent}
+          onNewAgent={handleNewAgent}
+          onNewThread={() => {
+            void handleNewAgentThread()
+          }}
+        />
+      )
+    }
+    if (activeTool === 'agents' && id === 'threads') {
+      return (
+        <ChatSidebarSection
+          theme={theme}
+          scope="workspace"
+          selectedChatId={selectedChatId}
+          includeAgentChats
+          searchOpen={chatSearchOpen}
+          searchQuery={chatSearchQuery}
+          onSearchQueryChange={setChatSearchQuery}
+          onSelectChat={(chatId) => {
+            setSelectedChatId(chatId)
+            setActiveTool('chat')
+          }}
+        />
+      )
+    }
+    if (activeTool === 'files' && id === 'projects') {
+      return (
+        <ProjectsListPage
+          theme={theme}
+          refreshToken={projectsRefreshToken}
+          selectedProjectId={selectedProjectId}
+          onSelectProject={(projectId) => {
+            setSelectedProjectId(projectId)
+            setActiveTool('files')
+          }}
+        />
+      )
+    }
+    if (activeTool === 'files') {
+      return (
+        <FilesListPage
+          theme={theme}
+          onSelectNote={(noteId) => {
+            setSelectedOutputId(null)
+            setSelectedFileId(null)
+            setSelectedLocalDocumentId(null)
+            setSelectedNoteId(noteId)
+          }}
+          onSelectOutput={(outputId) => {
+            setSelectedNoteId(null)
+            setSelectedFileId(null)
+            setSelectedLocalDocumentId(null)
+            setSelectedOutputId(outputId)
+          }}
+          onSelectFile={(fileId) => {
+            setSelectedNoteId(null)
+            setSelectedOutputId(null)
+            setSelectedLocalDocumentId(null)
+            setSelectedFileId(fileId)
+          }}
+          onSelectLocalDocument={handleOpenLocalDocument}
+          selectedNoteId={selectedNoteId}
+          selectedOutputId={selectedOutputId}
+          selectedFileId={selectedFileId}
+          selectedLocalDocumentId={selectedLocalDocumentId}
+          isSearchOpen={filesSearchOpen}
+          searchQuery={filesSearchQuery}
+          onSearchQueryChange={setFilesSearchQuery}
+          isSelectMode={filesSelectMode}
+          onSelectModeChange={setFilesSelectMode}
+        />
+      )
+    }
+    if (activeTool === 'automations') {
+      return (
+        <AutomationsListPage
+          theme={theme}
+          selectedAutomationId={selectedAutomationId}
+          selectedConversationId={selectedAutomationChatId}
+          onSelectAutomation={handleSelectAutomation}
+          refreshToken={automationsRefreshToken}
+        />
+      )
+    }
+    if (activeTool === 'extensions') {
+      return <ExtensionsNav theme={theme} activeView={activeExtensionView} onSelectView={setActiveExtensionView} />
+    }
+    if (activeTool === 'voice') {
+      return (
+        <VoiceSidebarSection
+          theme={theme}
+          selectedId={shellNav.itemId}
+          onSelect={(transcription) => shellNav.setItemId(transcription.id)}
+        />
+      )
+    }
+    if (activeTool === 'browser') {
+      return (
+        <BrowserListPage
+          theme={theme}
+          openBehavior="embedded"
+          isSearchOpen={browserSearchOpen}
+          searchQuery={browserSearchQuery}
+          onSearchQueryChange={setBrowserSearchQuery}
+          isSelectMode={browserSelectMode}
+          onSelectModeChange={setBrowserSelectMode}
+        />
+      )
+    }
+    return null
+  }
 
   return (
     <div
@@ -705,9 +601,10 @@ export function MainWindow({
       }}
     >
       <style>{`
-        @keyframes panelSlideIn {
-          from { opacity: 0; transform: translateX(-6px); }
-          to { opacity: 1; transform: translateX(0); }
+        .desktop-shell-controls button,
+        .desktop-shell-controls a,
+        .desktop-shell-controls input {
+          -webkit-app-region: no-drag;
         }
         @keyframes mainFadeIn {
           from { opacity: 0; transform: translateY(6px); }
@@ -722,166 +619,67 @@ export function MainWindow({
             height: `${TITLEBAR_HEIGHT}px`,
             position: 'absolute',
             top: 0,
-            left: 0,
+            left: '80px',
             right: 0,
-            zIndex: 1000
+            zIndex: 1000,
+            pointerEvents: 'none'
           } as React.CSSProperties
         }
       />
 
-      <div
-        style={{
-          width: `${sidebarWidth}px`,
-          transition: 'width 0.2s ease',
-          height: '100%',
-          flexShrink: 0,
-          display: 'flex',
-          flexDirection: 'column',
-          background: theme.background,
-          overflow: 'hidden',
-          zIndex: 5,
-          paddingTop: `${TITLEBAR_HEIGHT + 10}px`,
-          paddingBottom: '16px',
-          paddingLeft: '10px',
-          paddingRight: '10px',
-          boxSizing: 'border-box'
-        }}
-      >
-        <div style={{ flex: 1 }} />
-
-        <button
-          onClick={() => setActiveTool('home')}
-          title="Home"
-          style={{
-            ...sidebarRowStyle('transparent'),
-            marginBottom: '4px'
-          }}
-        >
-          <span
-            style={{
-              width: '36px',
-              display: 'flex',
-              justifyContent: 'center',
-              alignItems: 'center',
-              flexShrink: 0
-            }}
-          >
-            <img
-              src={overlayLogo}
-              alt="Overlay"
-              style={{ width: '16px', height: '16px', objectFit: 'contain' }}
-            />
-          </span>
-          <span style={labelStyle(theme.text)}>overlay</span>
-        </button>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-          {SIDEBAR_TOOLS.map(({ id, icon: Icon, label }) => (
-            <button
-              key={id}
-              onClick={() => handleToolSelect(id)}
-              title={label}
-              style={sidebarRowStyle(toolButtonBg(id))}
-              onMouseEnter={(e) => {
-                if (activeTool !== id) e.currentTarget.style.background = theme.border
-              }}
-              onMouseLeave={(e) => {
-                if (activeTool !== id) e.currentTarget.style.background = toolButtonBg(id)
-              }}
-            >
-              <span
-                style={{
-                  width: '36px',
-                  display: 'flex',
-                  justifyContent: 'center',
-                  alignItems: 'center',
-                  flexShrink: 0
-                }}
-              >
-                <Icon size={16} strokeWidth={1.5} color={iconColor(id)} />
+      <div className="shared-app-scope h-full shrink-0">
+        <ShellAdapterProvider value={desktopShellAdapter}>
+          <UnifiedSidebar
+            brand={
+              <span className="flex items-baseline gap-[0.4em] font-serif text-[17px]">
+                <OverlayMark size={8.5} className="-translate-y-[0.02em]" />
+                <span>overlay</span>
               </span>
-              <span style={labelStyle(iconColor(id))}>{label}</span>
-            </button>
-          ))}
-        </div>
-
-        <div style={{ flex: 1 }} />
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-          <button
-            onClick={() => setAccountOpen((prev) => !prev)}
-            title="Account and workspaces"
-            aria-haspopup="menu"
-            aria-expanded={accountOpen}
-            style={sidebarRowStyle(accountOpen ? theme.border : 'transparent')}
-            onMouseEnter={(e) => {
-              if (!accountOpen) e.currentTarget.style.background = theme.border
+            }
+            collapsed={shellNav.collapsed}
+            onCollapsedChange={shellNav.setCollapsed}
+            items={shellItems}
+            panelKind={activeTool === 'home' ? null : activeTool}
+            panelNav={sidebarPanelNav}
+            sectionActions={{
+              chat: { label: 'New chat', onClick: handleNewChat },
+              agents: { label: 'New agent', onClick: handleNewAgent },
+              threads: { label: 'New thread', onClick: handleNewChat },
+              files: { label: 'Add file', onClick: handleAddFile },
+              projects: { label: 'New project', onClick: handleNewProject },
+              automations: { label: 'New automation', onClick: handleNewAutomation },
+              browser: { label: 'New tab', onClick: handleNewBrowserTab }
             }}
-            onMouseLeave={(e) => {
-              if (!accountOpen) e.currentTarget.style.background = 'transparent'
+            renderSection={renderSidebarSection}
+            onSearch={() => {
+              if (activeTool === 'files') setFilesSearchOpen(true)
+              else if (activeTool === 'browser') setBrowserSearchOpen(true)
+              else {
+                setActiveTool('chat')
+                setChatSearchOpen(true)
+              }
             }}
-          >
-            <span
-              style={{
-                width: '36px',
-                display: 'flex',
-                justifyContent: 'center',
-                alignItems: 'center',
-                flexShrink: 0
-              }}
-            >
-              <span
-                style={{
-                  width: '20px',
-                  height: '20px',
-                  borderRadius: '9999px',
-                  background: theme.surface,
-                  border: `1px solid ${theme.border}`,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: '10px',
-                  fontWeight: 600,
-                  color: theme.text,
-                  fontFamily: 'system-ui, -apple-system, sans-serif'
+            scope={shellNav.scope}
+            moreGroups={DESKTOP_MORE_GROUPS}
+            settingsGroups={DESKTOP_SETTINGS_GROUPS}
+            account={
+              <DesktopWorkspaceSwitcher
+                onOpenAccount={() => {
+                  shellNav.setSettingsSection('account')
+                  onOpenSettings?.('account')
                 }}
-              >
-                {activeWorkspace?.name?.trim()?.[0]?.toUpperCase() ?? '?'}
-              </span>
-            </span>
-            <span style={labelStyle(theme.text)}>
-              {activeWorkspace?.name ?? 'account'}
-            </span>
-          </button>
-          <button
-            onClick={onToggleSidebar}
-            title={sidebarExpanded ? 'Hide' : 'Show'}
-            style={sidebarRowStyle('transparent')}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = theme.border
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = 'transparent'
-            }}
-          >
-            <span
-              style={{
-                width: '36px',
-                display: 'flex',
-                justifyContent: 'center',
-                alignItems: 'center',
-                flexShrink: 0
-              }}
-            >
-              {sidebarExpanded ? (
-                <ChevronLeft size={16} strokeWidth={1.5} color={theme.text} />
-              ) : (
-                <ChevronRight size={16} strokeWidth={1.5} color={theme.text} />
-              )}
-            </span>
-            <span style={labelStyle(theme.text)}>{sidebarExpanded ? 'hide' : 'show'}</span>
-          </button>
-        </div>
+                onOpenSettings={() => {
+                  shellNav.setSettingsSection('general')
+                  onOpenSettings?.('general')
+                }}
+                onSignOut={() => onSignOut?.()}
+              />
+            }
+            keyboardShortcut
+            resizable
+            className="desktop-shell-controls h-full shrink-0"
+          />
+        </ShellAdapterProvider>
       </div>
 
       <div
@@ -907,193 +705,6 @@ export function MainWindow({
             borderTopLeftRadius: '8px'
           }}
         >
-          {showPanel && (
-            <div
-              style={{
-                width: isCollapsed ? 0 : 260,
-                height: '100%',
-                borderRight: isCollapsed ? 'none' : `1px solid ${theme.border}`,
-                display: 'flex',
-                flexDirection: 'column',
-                overflow: 'hidden',
-                flexShrink: 0,
-                transition: 'width 0.2s ease, opacity 0.1s ease',
-                opacity: isCollapsed ? 0 : 1,
-                animation: isCollapsed ? undefined : 'panelSlideIn 0.18s ease-out'
-              }}
-            >
-              <div
-                style={{
-                  height: '44px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  padding: '0 12px 0 16px',
-                  borderBottom: `1px solid ${theme.border}`,
-                  flexShrink: 0
-                }}
-              >
-                <span
-                  style={{
-                    fontFamily: "'Libre Baskerville', Georgia, serif",
-                    fontSize: '19px',
-                    fontWeight: 400,
-                    color: theme.text,
-                    lineHeight: 1
-                  }}
-                >
-                  {PANEL_TITLES[activeTool]}
-                </span>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
-                  {headerActions.map(({ key, title, icon: Icon, onClick, active }) => (
-                    <button
-                      key={key}
-                      title={title}
-                      onClick={onClick}
-                      style={headerActionButtonStyle(active)}
-                      onMouseEnter={(e) => {
-                        if (!active) {
-                          e.currentTarget.style.background = isDark
-                            ? 'rgba(255,255,255,0.08)'
-                            : 'rgba(0,0,0,0.06)'
-                        }
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.background = active
-                          ? isDark
-                            ? 'rgba(255,255,255,0.1)'
-                            : 'rgba(0,0,0,0.08)'
-                          : 'transparent'
-                      }}
-                    >
-                      <Icon size={13} />
-                    </button>
-                  ))}
-                  <button
-                    type="button"
-                    title={isCollapsed ? 'Expand panel' : 'Collapse panel'}
-                    onClick={toggleCollapsed}
-                    style={headerActionButtonStyle(false)}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.background = isDark
-                        ? 'rgba(255,255,255,0.08)'
-                        : 'rgba(0,0,0,0.06)'
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = 'transparent'
-                    }}
-                  >
-                    <ChevronLeft size={16} strokeWidth={1.5} />
-                  </button>
-                </div>
-              </div>
-
-              <div
-                style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}
-              >
-                {activeTool === 'projects' && (
-                  <ProjectsListPage
-                    theme={theme}
-                    refreshToken={projectsRefreshToken}
-                    selectedProjectId={selectedProjectId}
-                    onSelectProject={setSelectedProjectId}
-                  />
-                )}
-                {activeTool === 'chat' && (
-                  <ChatsListPage
-                    theme={theme}
-                    onSelectChat={setSelectedChatId}
-                    selectedChatId={selectedChatId}
-                    isSearchOpen={chatSearchOpen}
-                    searchQuery={chatSearchQuery}
-                    onSearchQueryChange={setChatSearchQuery}
-                    isSelectMode={chatSelectMode}
-                    onSelectModeChange={setChatSelectMode}
-                  />
-                )}
-                {activeTool === 'agents' && (
-                  <AgentsDirectoryPage
-                    theme={theme}
-                    selectedAgentId={selectedAgentId}
-                    onSelectAgent={handleSelectAgent}
-                    onNewAgent={handleNewAgent}
-                  />
-                )}
-                {activeTool === 'files' && (
-                  <FilesListPage
-                    theme={theme}
-                    onSelectNote={(noteId) => {
-                      setSelectedOutputId(null)
-                      setSelectedFileId(null)
-                      setSelectedLocalDocumentId(null)
-                      setSelectedNoteId(noteId)
-                    }}
-                    onSelectOutput={(outputId) => {
-                      setSelectedNoteId(null)
-                      setSelectedFileId(null)
-                      setSelectedLocalDocumentId(null)
-                      setSelectedOutputId(outputId)
-                    }}
-                    onSelectFile={(fileId) => {
-                      setSelectedNoteId(null)
-                      setSelectedOutputId(null)
-                      setSelectedLocalDocumentId(null)
-                      setSelectedFileId(fileId)
-                    }}
-                    onSelectLocalDocument={handleOpenLocalDocument}
-                    selectedNoteId={selectedNoteId}
-                    selectedOutputId={selectedOutputId}
-                    selectedFileId={selectedFileId}
-                    selectedLocalDocumentId={selectedLocalDocumentId}
-                    isSearchOpen={filesSearchOpen}
-                    searchQuery={filesSearchQuery}
-                    onSearchQueryChange={setFilesSearchQuery}
-                    isSelectMode={filesSelectMode}
-                    onSelectModeChange={setFilesSelectMode}
-                  />
-                )}
-                {activeTool === 'automations' && (
-                  <AutomationsListPage
-                    theme={theme}
-                    selectedAutomationId={selectedAutomationId}
-                    selectedConversationId={selectedAutomationChatId}
-                    onSelectAutomation={handleSelectAutomation}
-                    refreshToken={automationsRefreshToken}
-                  />
-                )}
-                {activeTool === 'extensions' && (
-                  <ExtensionsNav
-                    theme={theme}
-                    activeView={activeExtensionView}
-                    onSelectView={setActiveExtensionView}
-                  />
-                )}
-                {activeTool === 'transcriptions' && (
-                  <TranscriptionListPage
-                    theme={theme}
-                    isSearchOpen={transcriptionSearchOpen}
-                    searchQuery={transcriptionSearchQuery}
-                    onSearchQueryChange={setTranscriptionSearchQuery}
-                    isSelectMode={transcriptionSelectMode}
-                    onSelectModeChange={setTranscriptionSelectMode}
-                  />
-                )}
-                {activeTool === 'browser' && (
-                  <BrowserListPage
-                    theme={theme}
-                    openBehavior="embedded"
-                    isSearchOpen={browserSearchOpen}
-                    searchQuery={browserSearchQuery}
-                    onSearchQueryChange={setBrowserSearchQuery}
-                    isSelectMode={browserSelectMode}
-                    onSelectModeChange={setBrowserSelectMode}
-                  />
-                )}
-              </div>
-            </div>
-          )}
-
           <div
             style={{
               flex: 1,
@@ -1107,22 +718,6 @@ export function MainWindow({
               background: theme.background
             }}
           >
-            {isCollapsed && !shouldStretchContent && (
-              <div
-                style={{
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  height: 44,
-                  display: 'flex',
-                  alignItems: 'center',
-                  paddingLeft: 16,
-                  zIndex: 2
-                }}
-              >
-                {expandButton}
-              </div>
-            )}
             {activeTool === 'home' && (
               <div
                 style={{
@@ -1145,16 +740,7 @@ export function MainWindow({
                     gap: '4px'
                   }}
                 >
-                  <img
-                    src={overlayLogo}
-                    alt="Overlay"
-                    style={{
-                      width: '44px',
-                      height: '44px',
-                      objectFit: 'contain',
-                      marginBottom: '4px'
-                    }}
-                  />
+                  <OverlayMark size={44} className="mb-1" />
                   <span
                     style={{
                       fontFamily: "'Libre Baskerville', Georgia, serif",
@@ -1245,7 +831,6 @@ export function MainWindow({
                     theme={embeddedPanelTheme}
                     onChatIdChange={setSelectedChatId}
                     embedded
-                    headerLeftSlot={expandButton}
                   />
                 </ChatErrorBoundary>
               </div>
@@ -1259,7 +844,6 @@ export function MainWindow({
                 <AgentDetailPage
                   theme={theme}
                   agentId={selectedAgentId}
-                  headerLeftSlot={expandButton}
                   onEditAgent={() => setAgentEditorOpen('edit')}
                 />
               </div>
@@ -1273,7 +857,6 @@ export function MainWindow({
                 <AgentEditorPanel
                   theme={theme}
                   mode="new"
-                  headerLeftSlot={expandButton}
                   onClose={handleCloseAgentEditor}
                   onSaved={handleAgentSaved}
                 />
@@ -1289,7 +872,6 @@ export function MainWindow({
                   theme={theme}
                   mode="edit"
                   agentId={selectedAgentId}
-                  headerLeftSlot={expandButton}
                   onClose={handleCloseAgentEditor}
                   onSaved={handleAgentSaved}
                 />
@@ -1308,7 +890,6 @@ export function MainWindow({
                     onChatIdChange={setSelectedAutomationChatId}
                     mode="automate"
                     embedded
-                    headerLeftSlot={expandButton}
                   />
                 </ChatErrorBoundary>
               </div>
@@ -1323,7 +904,6 @@ export function MainWindow({
                   noteId={selectedNoteId}
                   hideBackButton
                   compactHeader
-                  headerLeading={expandButton}
                 />
               </div>
             )}
@@ -1333,7 +913,7 @@ export function MainWindow({
                 key={selectedOutputId}
                 style={{ width: '100%', height: '100%', animation: 'mainFadeIn 0.15s ease-out' }}
               >
-                <OutputPreviewPage outputId={selectedOutputId} headerLeftSlot={expandButton} />
+                <OutputPreviewPage outputId={selectedOutputId} />
               </div>
             )}
 
@@ -1342,7 +922,7 @@ export function MainWindow({
                 key={selectedFileId}
                 style={{ width: '100%', height: '100%', animation: 'mainFadeIn 0.15s ease-out' }}
               >
-                <RemoteFilePreviewPage fileId={selectedFileId} headerLeftSlot={expandButton} />
+                <RemoteFilePreviewPage fileId={selectedFileId} />
               </div>
             )}
 
@@ -1353,12 +933,11 @@ export function MainWindow({
               >
                 <LocalDocumentPreviewPage
                   documentId={selectedLocalDocumentId}
-                  headerLeftSlot={expandButton}
                 />
               </div>
             )}
 
-            {activeTool === 'projects' && selectedProjectId && (
+            {activeTool === 'files' && selectedProjectId && (
               <div
                 key={selectedProjectId}
                 style={{ width: '100%', height: '100%', animation: 'mainFadeIn 0.15s ease-out' }}
@@ -1366,7 +945,6 @@ export function MainWindow({
                 <ProjectDetailPage
                   projectId={selectedProjectId}
                   theme={theme}
-                  headerLeftSlot={expandButton}
                   onOpenChat={(chatId) => {
                     setLastOpenedChatId(chatId)
                     setSelectedChatId(chatId)
@@ -1387,9 +965,25 @@ export function MainWindow({
                 <ExtensionsPage
                   theme={theme}
                   activeView={activeExtensionView}
-                  headerLeftSlot={expandButton}
                 />
               </div>
+            )}
+
+            {activeTool === 'voice' && selectedTranscription && (
+              <article
+                key={selectedTranscription.id}
+                className="h-full w-full overflow-auto p-8"
+              >
+                <h1 className="mb-4 text-xl font-medium text-(--foreground)">
+                  Voice session
+                </h1>
+                <time className="mb-6 block text-sm text-(--muted)">
+                  {new Date(selectedTranscription.timestamp).toLocaleString()}
+                </time>
+                <p className="whitespace-pre-wrap text-sm leading-7 text-(--foreground)">
+                  {selectedTranscription.text}
+                </p>
+              </article>
             )}
 
             {activeTool === 'browser' && (
@@ -1400,7 +994,7 @@ export function MainWindow({
                   animation: 'mainFadeIn 0.15s ease-out'
                 }}
               >
-                <BrowserPanel embedded headerLeftSlot={expandButton} />
+                <BrowserPanel embedded />
               </div>
             )}
 
@@ -1412,7 +1006,7 @@ export function MainWindow({
               !(activeTool === 'files' && selectedOutputId) &&
               !(activeTool === 'files' && selectedFileId) &&
               !(activeTool === 'files' && selectedLocalDocumentId) &&
-              !(activeTool === 'projects' && selectedProjectId) &&
+              !(activeTool === 'files' && selectedProjectId) &&
               activeTool !== 'extensions' &&
               activeTool !== 'browser' && (
                 <div
@@ -1444,46 +1038,6 @@ export function MainWindow({
           </div>
         </div>
       </div>
-
-      {accountOpen && (
-        <>
-          <button
-            type="button"
-            aria-label="Close account menu"
-            onClick={() => setAccountOpen(false)}
-            style={{
-              position: 'fixed',
-              inset: 0,
-              background: 'transparent',
-              border: 'none',
-              padding: 0,
-              cursor: 'default',
-              zIndex: 9990
-            }}
-          />
-          <div
-            style={{
-              position: 'fixed',
-              left: `${sidebarWidth + 8}px`,
-              bottom: '12px',
-              zIndex: 9991
-            }}
-          >
-            <AccountDialog
-              theme={theme}
-              onOpenSettings={() => {
-                setAccountOpen(false)
-                onOpenSettings?.()
-              }}
-              onSignOut={() => {
-                setAccountOpen(false)
-                onSignOut?.()
-              }}
-              onClose={() => setAccountOpen(false)}
-            />
-          </div>
-        </>
-      )}
 
       {updateState.status === 'ready' && !updateState.dismissed && (
         <UpdateNotification

@@ -95,6 +95,19 @@ describe('chat-list-cache views', () => {
     expect(sent[0].path).toContain('view=dms')
   })
 
+  it('fetches workspace chats by scope without including DMs and channels', async () => {
+    bridgeJsonResponse({
+      data: [{ _id: 'workspace-chat', title: 'Workspace chat', createdAt: 1, updatedAt: 2 }],
+      hasMore: false
+    })
+    const { fetchChatListResult } = await import('./chat-list-cache')
+    const outcome = await fetchChatListResult({ force: true, view: 'workspace' })
+    expect(outcome.status).toBe('success')
+    const sent = bridgeState.request.mock.calls[0] as unknown as [{ path: string }]
+    expect(sent[0].path).toContain('scope=workspace')
+    expect(sent[0].path).not.toContain('view=all')
+  })
+
   it('normalizes the archived bare-array response', async () => {
     bridgeJsonResponse([{ _id: 'a1', title: 'Old', createdAt: 1, updatedAt: 2 }])
     const { fetchChatListResult, getCachedChatList } = await import('./chat-list-cache')

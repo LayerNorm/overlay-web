@@ -72,6 +72,12 @@
       "@overlay/modules-react/*": [
         "packages/overlay-modules-react/src/*"
       ],
+      "@overlay/shell-react": [
+        "packages/overlay-shell-react/src/index.ts"
+      ],
+      "@overlay/shell-react/*": [
+        "packages/overlay-shell-react/src/*"
+      ],
       "@overlay/tools-core": [
         "packages/overlay-tools-core/src/index.ts"
       ],

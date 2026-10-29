@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState } from 'react'
 import { useSettings } from '../hooks/useSettings'
 import { GeneralSettings } from '../components/settings/GeneralSettings'
 import { ShortcutSettings } from '../components/settings/ShortcutSettings'
@@ -12,21 +12,19 @@ import { AccountSettings } from '../components/settings/AccountSettings'
 import { WorkspaceSettings } from '../components/settings/WorkspaceSettings'
 import { ModelsSettings } from '../components/settings/ModelsSettings'
 import { MemoryListPage } from './MemoryListPage'
-import {
-  BackIcon,
-  SettingsIcon,
-  KeyboardIcon,
-  MicrophoneIcon,
-  OutputIcon,
-  ChatIcon,
-  NotebookIcon,
-  BrowserIcon,
-  UserIcon
-} from '../components/icons'
 import { getTheme } from '../utils/theme'
-import { TierBadge } from '../components/ui/TierBadge'
-import { useSubscription } from '../hooks/useSubscription'
-import { Bot, Brain, ChevronLeft, ChevronRight, Cpu, Plus, Search, Square, Users } from 'lucide-react'
+import { OverlayMark } from '@overlay/ui'
+import {
+  ShellAdapterProvider,
+  UnifiedSidebar,
+  type PrimaryRailItem,
+} from '@overlay/shell-react'
+import { desktopShellAdapter } from '../shell/DesktopShellAdapter'
+import { DesktopWorkspaceSwitcher } from '../shell/DesktopWorkspaceSwitcher'
+import { DESKTOP_SETTINGS_GROUPS, DESKTOP_SETTINGS_ITEMS } from '../shell/navigation'
+import { useDesktopShellNav } from '../shell/useDesktopShellNav'
+import { useWorkspace } from '../contexts/WorkspaceContext'
+import { ArrowLeft, Plus, Search, Square } from 'lucide-react'
 
 type SettingsTab =
   | 'general'
@@ -45,102 +43,38 @@ type SettingsTab =
 interface SettingsPageProps {
   onBack: () => void
   onSignOut: () => void
-  sidebarExpanded: boolean
-  onToggleSidebar: () => void
 }
 
-const COLLAPSED_WIDTH = 68
-const EXPANDED_WIDTH = 200
 const TITLEBAR_HEIGHT = 52
-
-const SETTINGS_ITEMS: {
-  id: SettingsTab
-  label: string
-  icon: React.ComponentType<{ color?: string; size?: number; strokeWidth?: number }>
-}[] = [
-  { id: 'general', label: 'general', icon: SettingsIcon },
-  { id: 'shortcuts', label: 'shortcuts', icon: KeyboardIcon },
-  { id: 'transcription', label: 'transcription', icon: MicrophoneIcon },
-  { id: 'assistant', label: 'agent', icon: Bot },
-  { id: 'memories', label: 'memories', icon: Brain },
-  { id: 'output', label: 'output', icon: OutputIcon },
-  { id: 'models', label: 'models', icon: Cpu },
-  { id: 'chat', label: 'chat', icon: ChatIcon },
-  { id: 'notebook', label: 'notes', icon: NotebookIcon },
-  { id: 'browser', label: 'browser', icon: BrowserIcon },
-  { id: 'workspace', label: 'workspace', icon: Users }
-]
 
 export function SettingsPage({
   onBack,
-  onSignOut,
-  sidebarExpanded,
-  onToggleSidebar
+  onSignOut
 }: SettingsPageProps): React.ReactElement<any> {
-  const [settingsTab, setSettingsTab] = useState<SettingsTab>('general')
+  const { activeWorkspaceId } = useWorkspace()
+  const shellNav = useDesktopShellNav(activeWorkspaceId)
+  const settingsTab = shellNav.settingsSection as SettingsTab
   const [memorySearchOpen, setMemorySearchOpen] = useState(false)
   const [memorySearchQuery, setMemorySearchQuery] = useState('')
   const [memorySelectMode, setMemorySelectMode] = useState(false)
   const [memoryAddDialogOpen, setMemoryAddDialogOpen] = useState(false)
   const { settings, updateSetting } = useSettings()
   const theme = getTheme(settings.darkMode, settings.lightThemePreset, settings.darkThemePreset)
-  const subscription = useSubscription()
-
-  const handleTabChange = useCallback(
-    (tab: SettingsTab): void => {
-      if (tab === settingsTab) return
-      setSettingsTab(tab)
-    },
-    [settingsTab]
-  )
-
-  const handleBack = useCallback((): void => {
-    onBack()
-  }, [onBack])
-
-  const isActive = (id: string): boolean => settingsTab === id
-
+  const settingsPanelNav = {
+    items: DESKTOP_SETTINGS_ITEMS,
+    activeId: settingsTab,
+    onSelect: (id: string) => shellNav.setSettingsSection(id)
+  }
+  const settingsSidebarItems: PrimaryRailItem[] = [
+    {
+      id: 'settings-close',
+      label: 'Back to app',
+      icon: ArrowLeft,
+      onSelect: onBack
+    }
+  ]
   const activeBg = settings.darkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)'
   const hoverBg = settings.darkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)'
-
-  // Icon fixed at same x position whether collapsed or expanded — padding: '0 6px' keeps it static
-  const rowStyle = (id: string): React.CSSProperties => ({
-    width: '100%',
-    height: '36px',
-    display: 'flex',
-    alignItems: 'center',
-    background: isActive(id) ? activeBg : 'transparent',
-    border: 'none',
-    borderRadius: '8px',
-    cursor: 'pointer',
-    transition: 'background 0.15s ease',
-    padding: '0 6px',
-    flexShrink: 0,
-    overflow: 'hidden'
-  })
-
-  const labelStyle = (): React.CSSProperties => ({
-    fontSize: '13px',
-    fontFamily: "'Libre Baskerville', Georgia, serif",
-    color: theme.text,
-    whiteSpace: 'nowrap',
-    overflow: 'hidden',
-    maxWidth: sidebarExpanded ? '150px' : '0px',
-    opacity: sidebarExpanded ? 1 : 0,
-    transition: sidebarExpanded
-      ? 'max-width 0.2s ease, opacity 0.12s ease 0.1s'
-      : 'max-width 0.2s ease 0.02s, opacity 0.06s ease',
-    lineHeight: 'normal',
-    pointerEvents: 'none'
-  })
-
-  const iconContainer: React.CSSProperties = {
-    width: '36px',
-    display: 'flex',
-    justifyContent: 'center',
-    alignItems: 'center',
-    flexShrink: 0
-  }
 
   return (
     <div
@@ -171,148 +105,45 @@ export function SettingsPage({
         }
       />
 
+      <ShellAdapterProvider value={desktopShellAdapter}>
+        <UnifiedSidebar
+          brand={
+            <span className="flex items-baseline gap-[0.4em] font-serif text-[15px] text-(--foreground)">
+              <OverlayMark size={8} className="translate-y-[0.1em]" />
+              <span>overlay</span>
+            </span>
+          }
+          collapsed={shellNav.collapsed}
+          onCollapsedChange={shellNav.setCollapsed}
+          items={settingsSidebarItems}
+          panelKind="settings"
+          panelNav={settingsPanelNav}
+          scope={shellNav.scope}
+          settingsGroups={DESKTOP_SETTINGS_GROUPS}
+          account={
+            <DesktopWorkspaceSwitcher
+              onOpenAccount={() => shellNav.setSettingsSection('account')}
+              onOpenSettings={() => shellNav.setSettingsSection('general')}
+              onSignOut={onSignOut}
+            />
+          }
+          keyboardShortcut
+          resizable
+          className="desktop-shell-controls h-full shrink-0"
+        />
+      </ShellAdapterProvider>
+
       <style>{`
+        .desktop-shell-controls button,
+        .desktop-shell-controls a,
+        .desktop-shell-controls input {
+          -webkit-app-region: no-drag;
+        }
         @keyframes settingsFadeIn {
           from { opacity: 0; transform: translateY(6px); }
           to { opacity: 1; transform: translateY(0); }
         }
       `}</style>
-
-      {/* Sidebar */}
-      <div
-        style={{
-          width: `${sidebarExpanded ? EXPANDED_WIDTH : COLLAPSED_WIDTH}px`,
-          transition: 'width 0.2s ease',
-          height: '100%',
-          flexShrink: 0,
-          display: 'flex',
-          flexDirection: 'column',
-          background: theme.background,
-          overflow: 'hidden',
-          zIndex: 5,
-          paddingTop: `${TITLEBAR_HEIGHT + 10}px`,
-          paddingBottom: '16px',
-          paddingLeft: '10px',
-          paddingRight: '10px',
-          boxSizing: 'border-box'
-        }}
-      >
-        {/* Top spacer — centers items group vertically */}
-        <div style={{ flex: 1 }} />
-
-        {/* Settings items */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-          {SETTINGS_ITEMS.map(({ id, label, icon: Icon }) => (
-            <button
-              key={id}
-              onClick={() => handleTabChange(id)}
-              title={label}
-              style={rowStyle(id)}
-              onMouseEnter={(e) => {
-                if (!isActive(id)) e.currentTarget.style.background = hoverBg
-              }}
-              onMouseLeave={(e) => {
-                if (!isActive(id)) e.currentTarget.style.background = 'transparent'
-              }}
-            >
-              <span style={iconContainer}>
-                <Icon color={theme.text} size={16} strokeWidth={1.5} />
-              </span>
-              <span style={labelStyle()}>{label}</span>
-            </button>
-          ))}
-
-          {/* Account */}
-          <button
-            onClick={() => handleTabChange('account')}
-            title="Account"
-            style={rowStyle('account')}
-            onMouseEnter={(e) => {
-              if (!isActive('account')) e.currentTarget.style.background = hoverBg
-            }}
-            onMouseLeave={(e) => {
-              if (!isActive('account')) e.currentTarget.style.background = 'transparent'
-            }}
-          >
-            <span style={iconContainer}>
-              <UserIcon color={theme.text} size={16} />
-            </span>
-            <span style={{ ...labelStyle(), display: 'flex', alignItems: 'center', gap: '6px' }}>
-              account
-              <TierBadge tier={subscription.tier} />
-            </span>
-          </button>
-        </div>
-
-        {/* Bottom spacer — equal to top spacer */}
-        <div style={{ flex: 1 }} />
-
-        {/* Back + Toggle row */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-          <button
-            onClick={handleBack}
-            title="Back"
-            style={{
-              width: '100%',
-              height: '36px',
-              display: 'flex',
-              alignItems: 'center',
-              background: 'transparent',
-              border: 'none',
-              borderRadius: '8px',
-              cursor: 'pointer',
-              transition: 'background 0.15s ease',
-              padding: '0 6px',
-              flexShrink: 0,
-              overflow: 'hidden'
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = hoverBg
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = 'transparent'
-            }}
-          >
-            <span style={iconContainer}>
-              <BackIcon color={theme.text} size={16} />
-            </span>
-            <span style={labelStyle()}>back</span>
-          </button>
-          <button
-            onClick={onToggleSidebar}
-            title={sidebarExpanded ? 'Hide' : 'Show'}
-            style={{
-              width: '100%',
-              height: '36px',
-              display: 'flex',
-              alignItems: 'center',
-              background: 'transparent',
-              border: 'none',
-              borderRadius: '8px',
-              cursor: 'pointer',
-              transition: 'background 0.15s ease',
-              padding: '0 6px',
-              flexShrink: 0,
-              overflow: 'hidden'
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = hoverBg
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = 'transparent'
-            }}
-          >
-            <span style={iconContainer}>
-              {sidebarExpanded ? (
-                <ChevronLeft size={16} strokeWidth={1.5} color={theme.text} />
-              ) : (
-                <ChevronRight size={16} strokeWidth={1.5} color={theme.text} />
-              )}
-            </span>
-            <span style={labelStyle()}>{sidebarExpanded ? 'hide' : 'show'}</span>
-          </button>
-        </div>
-      </div>
 
       {/* Right side */}
       <div

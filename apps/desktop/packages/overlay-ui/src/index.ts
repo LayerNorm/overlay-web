@@ -1,4 +1,5 @@
 export * from './primitives'
+export * from './components/orb/Orb'
 export * from './hooks'
 export * from './feedback'
 export * from './overlays'

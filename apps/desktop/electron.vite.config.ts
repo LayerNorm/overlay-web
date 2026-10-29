@@ -224,6 +224,14 @@ export default defineConfig(({ mode }) => {
           '@overlay/ui/chat': resolve('packages/overlay-ui/src/chat.ts'),
           '@overlay/ui/overlays': resolve('packages/overlay-ui/src/overlays.ts'),
           '@overlay/ui/primitives': resolve('packages/overlay-ui/src/primitives.ts'),
+          '@overlay/ui/control-reset': resolve('packages/overlay-ui/src/control-reset.ts'),
+          '@overlay/ui/typeset.css': resolve('packages/overlay-ui/src/typeset.css'),
+          '@overlay/ui/tokens': resolve('packages/overlay-ui/src/tokens.ts'),
+          '@overlay/ui/hooks': resolve('packages/overlay-ui/src/hooks.ts'),
+          '@overlay/ui/feedback': resolve('packages/overlay-ui/src/feedback.ts'),
+          '@overlay/ui/ai': resolve('packages/overlay-ui/src/ai.ts'),
+          '@overlay/shell-react/': `${resolve('packages/overlay-shell-react/src')}/`,
+          '@overlay/shell-react': resolve('packages/overlay-shell-react/src/index.ts'),
           '@overlay/chat-react/chat-surface.css': resolve(
             'packages/overlay-chat-react/src/styles/chat-surface.css'
           ),

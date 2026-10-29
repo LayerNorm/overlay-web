@@ -5,10 +5,11 @@ import type { PaginatedEnvelope } from '@overlay/api-client'
 export type CachedChat = ConversationSummary
 
 /** Mirrors the web secondary-panel chat views (backed by server `view` + `archived`). */
-export type ChatListView = 'personal' | 'dms' | 'channels' | 'all' | 'archived'
+export type ChatListView = 'personal' | 'workspace' | 'dms' | 'channels' | 'all' | 'archived'
 
 export const CHAT_LIST_VIEWS: readonly ChatListView[] = [
   'personal',
+  'workspace',
   'dms',
   'channels',
   'all',
@@ -103,8 +104,12 @@ export async function fetchChatListResult(
       : overlayDesktopAppClient.conversations
           .getResponse({
             limit: INITIAL_CHAT_LIST_LIMIT,
-            ...(view === 'personal' ? {} : { view })
-          } as { limit: number; view?: string })
+            ...(view === 'workspace'
+              ? { scope: 'workspace' as const }
+              : view === 'personal'
+                ? {}
+                : { view })
+          })
           .then(async (res): Promise<ChatListFetchOutcome> => {
             if (!res.ok) {
               if (res.status === 401 || res.status === 403) return { status: 'unauthenticated' }
