@@ -89,7 +89,7 @@ test('the route selector admits only authenticated personal requests, including 
 
 test('executeActTurn dispatches personal turns before the legacy Work runner', () => {
   const route = readFileSync(new URL('./ActTurnOrchestrationService.ts', import.meta.url), 'utf8')
-  const eligibility = route.indexOf('const usePersonalHarness = isPersonalHarnessRouteEligible(')
+  const eligibility = route.indexOf('isPersonalHarnessRouteEligible({')
   const personalDispatch = route.indexOf('return await startPersonalHarnessTurn({', eligibility)
   const legacyWork = route.indexOf('if (useWorkRunner) {', personalDispatch)
 
