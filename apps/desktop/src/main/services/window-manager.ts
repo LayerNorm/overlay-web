@@ -6,9 +6,11 @@ import { is } from '@electron-toolkit/utils'
 import { WindowType } from '../types'
 import { restorePersistentOverlayWindow } from '../utils/persistent-overlay'
 import { registerTrustedIpcWindow } from './security/secure-ipc-main'
+import { isWebShellEnabled, loadWebShell, WEB_SHELL_PARTITION } from './web-shell'
 
 class WindowManager {
   private overlayWindow: BrowserWindow | null = null
+  private webShellMainWindow: BrowserWindow | null = null
   private overlayDisplayPollInterval: ReturnType<typeof setInterval> | null = null
   private overlaySpaceChangeSubscriptionId: number | null = null
   private lastOverlaySpaceReassertAt = 0
@@ -177,6 +179,7 @@ class WindowManager {
   }
 
   createMainWindow(showImmediately = true, focusOnShow = true): BrowserWindow {
+    const webShell = isWebShellEnabled()
     const mainWindow = new BrowserWindow({
       width: 1000,
       height: 750,
@@ -195,20 +198,36 @@ class WindowManager {
       show: false,
       title: '',
       icon: getResourcePath('icon.png'),
-      webPreferences: {
-        preload: join(__dirname, '../preload/index.js'),
-        sandbox: true,
-        devTools: is.dev,
-        nodeIntegration: false,
-        contextIsolation: true,
-        webSecurity: true
-      }
+      webPreferences: webShell
+        ? {
+            partition: WEB_SHELL_PARTITION,
+            sandbox: true,
+            devTools: is.dev,
+            nodeIntegration: false,
+            contextIsolation: true,
+            webSecurity: true
+          }
+        : {
+            preload: join(__dirname, '../preload/index.js'),
+            sandbox: true,
+            devTools: is.dev,
+            nodeIntegration: false,
+            contextIsolation: true,
+            webSecurity: true
+          }
     })
-    registerTrustedIpcWindow(mainWindow, 'main')
 
-    if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
+    if (webShell) {
+      this.webShellMainWindow = mainWindow
+      mainWindow.once('closed', () => {
+        if (this.webShellMainWindow === mainWindow) this.webShellMainWindow = null
+      })
+      loadWebShell(mainWindow)
+    } else if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
+      registerTrustedIpcWindow(mainWindow, 'main')
       mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'] + '?window=main')
     } else {
+      registerTrustedIpcWindow(mainWindow, 'main')
       mainWindow.loadFile(join(__dirname, '../renderer/index.html'), {
         query: { window: 'main' }
       })
@@ -277,6 +296,9 @@ class WindowManager {
   findWindowByType(type: WindowType): BrowserWindow | undefined {
     if (type === 'overlay' && this.overlayWindow && !this.overlayWindow.isDestroyed()) {
       return this.overlayWindow
+    }
+    if (type === 'main' && this.webShellMainWindow && !this.webShellMainWindow.isDestroyed()) {
+      return this.webShellMainWindow
     }
     return BrowserWindow.getAllWindows().find((win) =>
       win.webContents.getURL().includes(`window=${type}`)
