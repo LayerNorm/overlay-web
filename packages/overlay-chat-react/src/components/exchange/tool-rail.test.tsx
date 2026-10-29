@@ -10,8 +10,10 @@ test('every trace step uses the SVG O mark in the trace icon slot, not a raster 
   assert.doesNotMatch(markup, /<img/)
   assert.match(markup, /data-slot="trace-icon"/)
   assert.match(markup, /<svg/)
-  assert.match(markup, /size-\[0\.5em\]/)
-  assert.match(markup, /width="6.5"/)
+  assert.match(markup, /data-slot="trace-icon"[^>]*size-\[1em\]/)
+  assert.match(markup, /<svg[^>]*size-\[1em\]!/)
+  assert.doesNotMatch(markup, /0\.5em/)
+  assert.match(markup, /width="13"/)
   assert.match(markup, /aria-hidden="true"/)
 })
 

@@ -120,7 +120,7 @@
 .sl .m-agent b { font-weight: 500; }
 .sl .steps { display: flex; align-items: center; gap: 0.4em; height: 22px; color: var(--sl-muted); font-size: 12.5px; margin-bottom: 6px; }
 .sl .steps .i { color: var(--sl-faint); }
-.sl .steps > span:first-child, .sl .steps > span:first-child svg { width: 0.5em !important; height: 0.5em !important; }
+.sl .steps > .overlay-mark { width: 1em; height: 1em; flex-shrink: 0; }
 .sl .composer { margin: 14px 18px 18px; border: 1px solid var(--sl-line-2); border-radius: 14px; padding: 11px 12px 9px; background: var(--sl-card); }
 .sl .composer .ph { color: var(--sl-faint); }
 .sl .composer .row { margin-top: 12px; display: flex; align-items: center; gap: 8px; color: var(--sl-muted); }

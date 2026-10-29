@@ -5,8 +5,8 @@ import React from 'react'
 /** The mark sits in every Trace step's icon slot; its eyes move while the step runs. */
 export function TraceMark({ running = false }: { running?: boolean }) {
   return (
-    <TraceIcon className="size-[0.5em]">
-      <OverlayMark size={6.5} motion={running ? 'look' : 'none'} label="" className="size-[0.5em]! select-none [&_svg]:size-full!" />
+    <TraceIcon className="size-[1em]">
+      <OverlayMark size={13} motion={running ? 'look' : 'none'} label="" className="size-[1em]! select-none [&_svg]:size-full!" />
     </TraceIcon>
   )
 }

@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Match tool-call and thinking marks to their label text size so the O and eyes remain legible.
+
 - Replace Overlay web branding and static assets with the O-with-eyes mark, capitalized lockup, eye-motion loaders and record-backed default-agent avatar.
 
 - Keep Chat and Work available during the Harness web-first rollout by checking backend readiness before admission; recognize already-terminal workflows during Stop cleanup.

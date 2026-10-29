@@ -491,6 +491,8 @@ screen again.
 
 ## Brand lockup
 
+Tool-call summaries, tool rows and labeled loading rows use the O mark at `1em`, matching the label's font size, centered vertically with a `0.4em` gap. Running marks move only their eyes. This sizing is independent of the wordmark below.
+
 `BrandLockup` (`src/components/brand/BrandLockup.tsx`, re-exported from `@overlay/ui`) is the canonical "Overlay" wordmark: the O-with-eyes `OverlayMark` followed by "verlay" in Libre Baskerville Regular. Size it with `font-size`. Shared styles in `packages/overlay-ui/src/styles.css` use a `0.86em` mark, a `0.043em` gap and a `0.045em` baseline translation. The word sits inside the overflow-hidden `.brand-lockup-mask` so the boot entrance can reveal it from behind the mark. Use the shared component for loader, auth, marketing and shell branding rather than composing a separate mark and full word.
 
 App startup renders a single loading screen wherever the shell is still resolving: `AppBootLoader` (`src/components/layout/AppBootLoader.tsx`) behind `InitialAppLoading`/`AppShellLoadingFallback`, the `/` entry fallback, and the workspace-hydration gate (`WorkspaceAppBoundary`, which renders it `settled` so the handoff shows no second splash). It renders `BrandLockup` at `24px`; the mark fades in, the word reveals from behind it, the eyes look around without pulsing the lockup, with the "Opening workspace..." line beneath on the same screen. The reveal plays once per boot; later mounts render the settled screen.

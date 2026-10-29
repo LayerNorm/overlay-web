@@ -79,7 +79,7 @@ export function LandingProductShot() {
           <div className="m-agent">
             <LandingAgent id="operations" size={20} />
             <div>
-              <div className="steps"><OverlayMark size={7} label="" />Worked for 2m 14s, called 9 tools<ChevronRight className="i sm" /></div>
+              <div className="steps"><OverlayMark size={13} label="" />Worked for 2m 14s, called 9 tools<ChevronRight className="i sm" /></div>
               <div>Three venues fit the dates and budget. I added them to the planning doc:</div>
               <ol>
                 <li><b>Casa do Rio</b>, €3,450, river view</li>
