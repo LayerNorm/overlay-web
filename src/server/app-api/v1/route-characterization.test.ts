@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { NextRequest } from 'next/server'
-import { deriveOverlayCapabilities } from '@overlay/app-core'
+import { DEFAULT_APP_SETTINGS, deriveOverlayCapabilities } from '@overlay/app-core'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import type { AppDataCapabilities } from '@/server/app-data/capabilities'
 import { automationService } from '@/server/automations/http'
@@ -832,7 +832,7 @@ test('conversations act preserves premium gating response shape for free users',
       }
     }
     if (path === 'platform/uiSettings:getByServer') {
-      return null
+      return DEFAULT_APP_SETTINGS
     }
     throw new Error(`Unexpected Convex query: ${path}`)
   })
@@ -878,7 +878,7 @@ test('conversations act swallows user-message persistence failure before later f
         budgetRemainingCents: 0,
       }
     }
-    if (path === 'platform/uiSettings:getByServer') return null
+    if (path === 'platform/uiSettings:getByServer') return DEFAULT_APP_SETTINGS
     if (path === 'knowledge/memories:list') return []
     if (path === 'integrations/skills:list') return []
     if (path === 'integrations/mcpServers:listEnabled') return []

@@ -209,11 +209,11 @@ export async function executeActTurn(
     actWebhookSkip = automationExecution === true
     const { auth } = context
     const userId = auth.userId
-    const usePersonalHarness = isPersonalHarnessRouteEligible({
+    let usePersonalHarness = isPersonalHarnessRouteEligible({
       authType: auth.authType,
       automationExecution,
       automationMode,
-    }) && await isHarnessBackendReady(userId)
+    })
     const conversationUserId = getAuthorizedResourceUserId(context)
     const billingWorkspaceId = context.workspace.workspace.id
     const mentionedAgent = rawMentions?.find((mention) => mention.type === 'agent')
@@ -305,6 +305,7 @@ export async function executeActTurn(
         { status: 403 },
       )
     }
+    usePersonalHarness = usePersonalHarness && isHarnessBackendReady(appSettings)
     const modelCandidates = usePersonalHarness
       ? await prepareActModelCandidates({
           authorization: authorizationService,
