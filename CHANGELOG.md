@@ -4,6 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Show "Backed by verdict." above the landing headline and replace the Hermes agent chip with "+ more".
 - Run Linux GitHub Actions jobs on the shared Namespace runner profile.
 
 - Reuse exact CI dependency trees and compiler/lint/type caches, run lint and typechecking independently, and balance exhaustive test shards without weakening required checks.

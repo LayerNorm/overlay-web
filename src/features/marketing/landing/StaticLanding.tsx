@@ -2,6 +2,7 @@
 
 import type { CSSProperties } from 'react'
 import Link from 'next/link'
+import { Lusitana } from 'next/font/google'
 import { ArrowRight } from 'lucide-react'
 import { GithubMark } from './GithubMark'
 import { useAuth } from '@/contexts/AuthContext'
@@ -11,6 +12,8 @@ import { LandingFaq } from './LandingFaq'
 import { LandingLogo, type LogoName } from './LandingLogo'
 import { LandingProductShot } from './LandingProductShot'
 import { ControlSection, GetOverlaySection, OnePlaceSection, SuperpowersSection, TeamsSection } from './LandingSections'
+
+const lusitana = Lusitana({ subsets: ['latin'], weight: '400', variable: '--font-lusitana', display: 'swap' })
 
 /** Each underlined headline phrase links to the section that explains it. */
 const PHRASES: Record<string, { text: string; href: string; color: string }> = {
@@ -26,11 +29,10 @@ function Phrase({ k }: { k: keyof typeof PHRASES }) {
   return <a className="k" href={p.href} style={{ '--k': p.color } as CSSProperties}>{p.text}</a>
 }
 
-const BYOA: Array<{ name: string; logo?: LogoName }> = [
+const BYOA: Array<{ name: string; logo: LogoName }> = [
   { name: 'Claude Code', logo: 'claude' },
   { name: 'Codex', logo: 'openai' },
   { name: 'Cursor', logo: 'cursor' },
-  { name: 'Hermes' },
 ]
 
 /**
@@ -43,6 +45,7 @@ export function StaticLanding() {
   return (
     <StaticMarketingShell>
       <section className="hero">
+        <a className={`backed ${lusitana.variable}`} href="https://verdictcap.com" target="_blank" rel="noopener noreferrer">Backed by <span>verdict.</span></a>
         <h1 className="h1">
           The <Phrase k="oss" /> <Phrase k="multi" /> <Phrase k="cloud" />
           <span className="br-lg" /> <Phrase k="cp" /> for <Phrase k="ai" />
@@ -56,10 +59,11 @@ export function StaticLanding() {
           <span>Bring your own agents</span>
           {BYOA.map((agent) => (
             <span className="chip" key={agent.name}>
-              {agent.logo ? <LandingLogo name={agent.logo} className="logo" /> : <span className="dot" />}
+              <LandingLogo name={agent.logo} className="logo" />
               {agent.name}
             </span>
           ))}
+          <span className="more">+ more</span>
         </div>
         <LandingProductShot />
       </section>
