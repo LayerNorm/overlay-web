@@ -545,6 +545,13 @@ Visual rules for these and every new component:
 
 ## Streamed agent replies
 
+Agent reply placeholders hand their local row identity to the first matching new
+server reply (same agent and thread). Preserve that identity through later snapshots
+and use it for both transcript and thread-panel keys; nested message components
+must not add a second key that remounts the reply. Unanswered placeholders expire.
+The agent details sidebar has its own Close button, wired to the same saved open
+state as the thread header toggle; closing either way must allow reopening there.
+
 Markdown table cells wrap long identifiers and hashes without changing their text.
 Keep horizontal scrolling for genuinely wide tables with many columns; a single
 unbroken value must not force an otherwise narrow table beyond the chat pane.
