@@ -173,7 +173,7 @@ The build wrapper resolves missing PR-number metadata by public branch/SHA looku
 Run `node scripts/release/preview-doctor.mjs <PR>` before browser QA. It checks
 the canonical alias against the current PR SHA and reports missing capability
 settings without credential values. `--require-full` additionally rejects missing
-capability configuration. This is configuration evidence, not live provider or
+capability configuration. Each metadata subprocess has a thirty-second deadline. This is configuration evidence, not live provider or
 browser acceptance. The complete REST inventory avoids connector summaries that
 truncate environment lists to 100 entries; never create another key because a
 summary omitted an existing one.

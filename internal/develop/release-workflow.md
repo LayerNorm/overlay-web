@@ -41,7 +41,8 @@ calls. Convex's five-day preview retention is renewed while PRs are open and is
 independent of credential lifetime. Closure or label removal deletes the owned
 backend and synthetic data after settling builds, with confirmed absence.
 The manual `Preview QA Recovery` workflow runs trusted main in `release-control`
-and shares the PR controller's concurrency group. It reuses the pinned Preview
+and serializes recovery requests in its own concurrency group, so it cannot
+displace a requested Preview build. It reuses the pinned Preview
 credential to recover only named synthetic fixtures after current-head/backend
 ownership checks. No PR code is checked out, no VM deploy key is needed, and
 recovery neither deploys code nor raises the provider-spend cap. See Development

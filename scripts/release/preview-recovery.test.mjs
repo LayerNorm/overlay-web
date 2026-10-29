@@ -69,6 +69,7 @@ test('manual recovery keeps secrets on trusted main without checking out PR code
   assert.match(source, /workflow_dispatch:/)
   assert.match(source, /github\.ref == 'refs\/heads\/main'/)
   assert.match(source, /environment: release-control/)
+  assert.match(source, /group: pr-preview-recovery-/)
   assert.match(source, /ref: main/)
   assert.match(source, /persist-credentials: false/)
   assert.doesNotMatch(source, /pull_request_target:|pull_request:|workflow_run:/)
