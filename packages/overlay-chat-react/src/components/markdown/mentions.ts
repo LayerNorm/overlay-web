@@ -5,6 +5,7 @@ export type ChatMessageMention = {
   /** Agent mentions carry creature identity so chips can show the avatar. */
   avatarColor?: string
   avatarShape?: string
+  isDefault?: boolean
 }
 
 type MarkdownNode = {

@@ -2,7 +2,7 @@
 
 import type { ComponentProps } from 'react'
 import { Button } from '@overlay/ui/primitives'
-import { TraceOrb } from '../exchange/tool-rail'
+import { TraceMark } from '../exchange/tool-rail'
 
 function join(...classes: Array<string | false | null | undefined>): string {
   return classes.filter(Boolean).join(' ')
@@ -23,7 +23,7 @@ export function Confirmation({ className, ...props }: ComponentProps<'div'>) {
 export function ConfirmationIcon({ running = false }: { running?: boolean }) {
   return (
     <span className="mt-0.5 flex shrink-0">
-      <TraceOrb running={running} />
+      <TraceMark running={running} />
     </span>
   )
 }

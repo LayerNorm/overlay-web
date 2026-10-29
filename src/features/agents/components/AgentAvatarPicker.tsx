@@ -6,7 +6,7 @@ import { Button, Popover, PopoverContent, PopoverTrigger } from '@overlay/ui/pri
 import { useState } from 'react'
 import { Pencil } from 'lucide-react'
 import type { WorkspaceAgentCreatureShape } from '@overlay/workspace-contracts'
-import { Creature, CREATURE_SHAPES } from '@/components/orb/Creature'
+import { AgentCreature, Creature, CREATURE_SHAPES } from '@/components/orb/Creature'
 import { AVATAR_COLORS } from '../lib/agent-editor-utils'
 import { AvatarColorPicker } from './AvatarColorPicker'
 
@@ -15,7 +15,8 @@ import { AvatarColorPicker } from './AvatarColorPicker'
  * popover with every body shape (previewed in the current color) and the color
  * swatches. Outside click and Escape close it.
  */
-export function AgentAvatarPicker({ shape, color, onShapeChange, onColorChange, size = 72, align = 'center' }: {
+export function AgentAvatarPicker({ isDefault, shape, color, onShapeChange, onColorChange, size = 72, align = 'center' }: {
+  isDefault?: boolean
   shape: WorkspaceAgentCreatureShape
   color: string
   onShapeChange(shape: WorkspaceAgentCreatureShape): void
@@ -45,7 +46,7 @@ export function AgentAvatarPicker({ shape, color, onShapeChange, onColorChange, 
             aria-label="Edit avatar"
             className={unstyledButton(`group relative rounded-2xl outline-hidden focus-visible:ring-1 focus-visible:ring-(--foreground)`)}
           >
-            <Creature shape={shape} color={color} size={size} label="Agent avatar" />
+            {isDefault ? <AgentCreature agent={{ name: 'Agent' }} isDefault size={size} /> : <Creature shape={shape} color={color} size={size} label="Agent avatar" />}
             <span className="absolute inset-[14%] flex items-center justify-center rounded-full bg-black/40 text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
               <Pencil size={18} strokeWidth={1.75} />
             </span>

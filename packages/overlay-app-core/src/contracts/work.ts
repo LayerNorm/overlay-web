@@ -62,6 +62,7 @@ export interface WorkPerson {
   agentVisibility?: 'workspace' | 'creator'
   avatarColor?: string
   avatarShape?: string
+  isDefault?: boolean
 }
 
 /** Who is asking and who a task can go to. */

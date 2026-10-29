@@ -205,6 +205,7 @@ export const context = query({
       agentVisibility: v.optional(v.union(v.literal('workspace'), v.literal('creator'))),
       avatarColor: v.optional(v.string()),
       avatarShape: v.optional(v.string()),
+      isDefault: v.optional(v.boolean()),
     })),
   })),
   handler: async (ctx, { userId, workspaceId, accessToken, serverSecret }) => {
@@ -237,6 +238,7 @@ export const context = query({
           agentVisibility: agent.visibility,
           ...(agent.avatarColor !== undefined ? { avatarColor: agent.avatarColor } : {}),
           ...(agent.avatarShape !== undefined ? { avatarShape: agent.avatarShape } : {}),
+          ...(agent.isDefault !== undefined ? { isDefault: agent.isDefault } : {}),
         }
       }
       if (p.type !== 'human' || !roleByPrincipal.has(p.principalId) || roleByPrincipal.get(p.principalId) === 'guest') return null

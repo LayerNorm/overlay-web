@@ -1,7 +1,7 @@
 'use client'
 
 import { AppBootLoader } from '@/components/layout/AppBootLoader'
-import { bootAppShown } from '@/components/layout/boot-loader-pulse'
+import { bootAppShown } from '@/components/layout/boot-loader-state'
 
 function SkeletonBlock({ className = '' }: { className?: string }) {
   return <div className={`ui-skeleton-line rounded-md ${className}`} aria-hidden />

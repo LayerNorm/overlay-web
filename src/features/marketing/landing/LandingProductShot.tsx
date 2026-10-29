@@ -1,6 +1,6 @@
 import { ArrowUp, Bot, ChevronDown, ChevronRight, Ellipsis, Lock, ListChecks, MessageSquare, PanelLeft, Plus, RotateCw, Search, Workflow } from 'lucide-react'
 import { BrandLockup } from '@/components/brand/BrandLockup'
-import { OverlayMark } from '@/components/orb/Orb'
+import { OverlayMark } from '@/components/brand/OverlayMark'
 import { LandingAgent, type LandingAgentId } from './LandingAgent'
 
 const NAV = [

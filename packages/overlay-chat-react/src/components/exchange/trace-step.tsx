@@ -8,7 +8,7 @@ import {
 } from '@overlay/ui/ai'
 import type { ReactNode } from 'react'
 
-import { TraceOrb } from './tool-rail'
+import { TraceMark } from './tool-rail'
 
 /** One work step: the mark and a title, plus details behind a collapsible trigger when there are any. */
 export function TraceStep({
@@ -30,7 +30,7 @@ export function TraceStep({
 }) {
   const line = (
     <TraceLine status={running ? 'running' : error ? 'error' : undefined}>
-      <TraceOrb running={running} />
+      <TraceMark running={running} />
       <TraceTitle className="whitespace-normal">{label}</TraceTitle>
     </TraceLine>
   )

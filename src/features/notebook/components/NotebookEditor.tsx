@@ -1,7 +1,7 @@
 'use client'
 
 import dynamic from 'next/dynamic'
-import { OverlayMark } from '@/components/orb/Orb'
+import { OverlayMark } from '@/components/brand/OverlayMark'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   readStoredPanelPresentation,
@@ -181,7 +181,7 @@ export default function NotebookEditor({
       renderMarkdown={(text, streaming) => <MarkdownMessage text={text} isStreaming={streaming} />}
       logo={(
         <span className="mt-0.5 shrink-0 select-none">
-          <OverlayMark size={14} label="" />
+          <OverlayMark motion="look" size={14} label="" />
         </span>
       )}
     />

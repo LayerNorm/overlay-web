@@ -184,24 +184,6 @@ body {
   }
 }
 
-/* Lockup breathing: the same opacity-only pulse the chat stream marker uses.
-   It is phased to start at full opacity the moment the entrance finishes
-   (800ms) so the loader flows into it with no flicker and never fades out
-   completely. */
-@keyframes appBrandLoaderPulse {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.15;
-  }
-}
-
-.app-brand-loader-pulse {
-  animation: appBrandLoaderPulse 1.4s ease-in-out 800ms infinite;
-}
-
 /* The workspace status line fades up as the word reveal lands. */
 @keyframes appBrandWslineFade {
   from {
@@ -232,6 +214,7 @@ body {
 
 .app-brand-loader-lockup .brand-lockup-word {
   opacity: 1;
+  animation: appBrandWordReveal 440ms ease-out 360ms both;
 }
 
 /* Settled variant: the identical screen with the entrance already played. Every
@@ -247,7 +230,6 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .app-brand-loader-pulse,
   .app-brand-loader-wsline .animate-spin {
     animation: none;
   }

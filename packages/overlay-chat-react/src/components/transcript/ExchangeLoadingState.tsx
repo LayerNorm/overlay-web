@@ -64,7 +64,7 @@ export function ExchangeLoadingState({
     >
       {compact ? (
         <span
-          className="overlay-stream-marker overlay-stream-marker--standalone scale-75 opacity-80"
+          className="overlay-stream-marker overlay-stream-marker--standalone scale-75"
           aria-hidden="true"
         >
           <OverlayMark motion="look" size={20} label="" />
@@ -72,7 +72,7 @@ export function ExchangeLoadingState({
       ) : (
         <>
           <span className="overlay-loading-tool-logo" aria-hidden="true">
-            <ToolLineLogo />
+            <ToolLineLogo running />
           </span>
           <span className="overlay-loading-word-viewport" aria-hidden="true">
             <span className="overlay-loading-word-track">

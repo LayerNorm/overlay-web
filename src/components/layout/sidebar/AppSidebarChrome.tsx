@@ -29,7 +29,7 @@ import {
   Button,
 } from '@overlay/ui/primitives'
 import { SidebarListSkeleton } from '@overlay/ui/feedback'
-import { OverlayMark } from '@/components/orb/Orb'
+import { OverlayMark } from '@/components/brand/OverlayMark'
 import { BrandLockup } from '@/components/brand/BrandLockup'
 import { FilesInlinePanel } from '@/components/layout/AppSidebarInlinePanels'
 import { AgentsInlinePanel } from '@/components/layout/AppSidebarAgentsPanel'

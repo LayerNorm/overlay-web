@@ -328,6 +328,7 @@ export type WorkspaceManagementItem = {
   /** An agent's own avatar, so pickers can show it instead of a generic icon. */
   avatarColor?: string
   avatarShape?: string
+  isDefault?: boolean
   role?: WorkspaceMembershipRole
   status?: WorkspaceMembershipStatus | WorkspaceInvitationStatus
   invitationId?: string

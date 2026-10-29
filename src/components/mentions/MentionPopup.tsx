@@ -287,7 +287,7 @@ function ItemRow({
   return (
     <OptionButton {...base} compact onClick={() => onSelect(item)}>
       {item.type === 'person' && item.principalType === 'agent' ? (
-        <AgentCreature agent={{ name: item.name, avatarColor: item.avatarColor, avatarShape: item.avatarShape }} size={20} />
+        <AgentCreature isDefault={item.isDefault} agent={{ name: item.name, avatarColor: item.avatarColor, avatarShape: item.avatarShape }} size={20} />
       ) : item.type === 'person' ? (
         <Avatar className="h-5 w-5 shrink-0">
           <AvatarImage src={item.photoUrl ?? undefined} alt="" />

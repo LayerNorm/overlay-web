@@ -727,7 +727,8 @@ export function AgentSurfacesSection({
   )
 }
 
-export function AgentAvatar({ color, shape, name, description, namePlaceholder, descriptionPlaceholder, onNameChange, onDescriptionChange, onChange, onShapeChange }: {
+export function AgentAvatar({ isDefault, color, shape, name, description, namePlaceholder, descriptionPlaceholder, onNameChange, onDescriptionChange, onChange, onShapeChange }: {
+  isDefault?: boolean
   color: string
   shape: WorkspaceAgentCreatureShape
   name: string
@@ -741,7 +742,7 @@ export function AgentAvatar({ color, shape, name, description, namePlaceholder, 
 }) {
   return (
     <div className="space-y-3.5">
-      <AgentAvatarPicker shape={shape} color={color} onShapeChange={onShapeChange} onColorChange={onChange} />
+      <AgentAvatarPicker isDefault={isDefault} shape={shape} color={color} onShapeChange={onShapeChange} onColorChange={onChange} />
       <div>
         <FieldLabel htmlFor="agent-editor-name">Name</FieldLabel>
         <Input id="agent-editor-name" autoComplete="off" value={name} onChange={(event) => onNameChange(event.target.value)} placeholder={namePlaceholder} />

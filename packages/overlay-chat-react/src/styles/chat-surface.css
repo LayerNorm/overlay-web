@@ -267,28 +267,6 @@
   text-underline-offset: 0.18em;
 }
 
-@keyframes overlayChatStreamMarkerPulse {
-  0%,
-  100% {
-    opacity: 0.5;
-  }
-  50% {
-    opacity: 1;
-  }
-}
-
-/* Keep the active-response cue visible for people who reduce spatial motion.
-   This variant changes opacity only; it does not scale or move the mark. */
-@keyframes overlayChatStreamMarkerReducedPulse {
-  0%,
-  100% {
-    opacity: 0.55;
-  }
-  50% {
-    opacity: 1;
-  }
-}
-
 /* Loading copy advances like a compact mechanical reel: most of each beat is
    still, with a short upward transition between words. The duplicated final
    word makes the loop seam visually identical to its first frame. */
@@ -330,7 +308,6 @@
   display: inline-flex;
   align-items: center;
   flex: none;
-  animation: overlayChatStreamMarkerPulse 1.3s ease-in-out infinite;
 }
 
 :where(.overlay-chat-surface) .overlay-stream-marker {
@@ -341,7 +318,6 @@
   height: 0.95em;
   margin-left: 0.35em;
   vertical-align: -0.12em;
-  animation: overlayChatStreamMarkerPulse 1.3s ease-in-out infinite;
   pointer-events: none;
   min-width: 14px;
   min-height: 14px;
@@ -532,12 +508,6 @@
 @media (prefers-reduced-motion: reduce) {
   :where(.overlay-chat-surface) .chat-exchange-actions--hover {
     transition: none;
-  }
-
-  :where(.overlay-chat-surface) .overlay-stream-marker,
-  :where(.overlay-chat-surface) .overlay-loading-tool-logo {
-    animation: overlayChatStreamMarkerReducedPulse 1.8s ease-in-out infinite;
-    transform: none;
   }
 
   

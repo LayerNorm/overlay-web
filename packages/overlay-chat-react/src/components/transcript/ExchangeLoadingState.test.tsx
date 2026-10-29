@@ -49,6 +49,7 @@ test('standalone loading reuses the tool-row mark and rotating thinking vocabula
   )
 
   assert.match(markup, /overlay-loading-tool-logo/)
+  assert.match(markup, /overlay-mark--look/)
   assert.match(markup, /width="6\.5"/)
   assert.match(markup, /height="6\.5"/)
   assert.match(markup, /overlay-loading-word-track/)
@@ -66,6 +67,7 @@ test('compact loading keeps the mark without adding the word reel', () => {
   )
 
   assert.match(markup, /overlay-stream-marker--standalone/)
+  assert.match(markup, /overlay-mark--look/)
   assert.doesNotMatch(markup, /overlay-loading-word-track/)
 })
 
@@ -76,4 +78,9 @@ test('loading word reel holds each label for 2000ms and is not disabled by reduc
     chatSurfaceCss,
     /overlay-loading-word-track\s*\{\s*animation:\s*none/,
   )
+})
+
+test('stream markers stay opaque even with reduced motion', () => {
+  assert.doesNotMatch(chatSurfaceCss, /overlayChatStreamMarker(?:Reduced)?Pulse/)
+  assert.doesNotMatch(chatSurfaceCss, /overlay-stream-marker[^}]*animation:/)
 })

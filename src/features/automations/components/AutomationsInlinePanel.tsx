@@ -236,7 +236,7 @@ export function AutomationsInlinePanel({
         )}
         renderLeadingIcon={(automation) => {
           const agent = automation.agentId ? agentsById.get(automation.agentId) : undefined
-          return agent ? <AgentCreature agent={agent} size={16} /> : null
+          return agent ? <AgentCreature isDefault={agent.isDefault} agent={agent} size={16} /> : null
         }}
       />
       {hasMore ? (
