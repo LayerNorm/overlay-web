@@ -1,130 +1,35 @@
-"use node";
+import { v } from 'convex/values'
+import { WorkflowProjectionPage } from '@/shared/schemas/workflow-projection'
+import { internal } from '../_generated/api'
+import { internalAction } from '../_generated/server'
+import { fetchAppCallback } from '../lib/appCallback'
 
-import { v } from "convex/values";
-import { internal } from "../_generated/api";
-import { internalAction } from "../_generated/server";
-import type { Id } from "../_generated/dataModel";
-
-/**
- * Cron-triggered action that polls the Workflow SDK event log for active
- * runs and projects new events into the workflowStepEvents table.
- *
- * This replaces per-client SSE polling (every 2 seconds per client) with
- * a single server-side poller (every 10 seconds). Clients subscribe to
- * the projected events via Convex subscription for instant updates.
- *
- * This file uses "use node" because the Workflow SDK imports Node.js
- * built-ins (node:assert, node:crypto via undici). The queries and
- * mutations it calls live in workflowEventProjector.ts (default runtime).
- */
+/** SDK state belongs to the web deployment, never the Convex action host. */
 export const runProjectionTick = internalAction({
-  args: {},
-  returns: v.null(),
-  handler: async (ctx) => {
-    const serverSecret = process.env.INTERNAL_API_SECRET;
-    if (!serverSecret) return null;
-
-    const activeRuns = await ctx.runQuery(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (internal as any).automations.workflowEventProjector
-        .listActiveWorkflowRuns,
-      {
-        serverSecret,
-        limit: 20,
-      },
-    );
-
-    if (activeRuns.length === 0) return null;
-
-    // Import Workflow SDK lazily (only when there are active runs)
-    const [{ getRun }, { getWorld }] = await Promise.all([
-      import("workflow/api"),
-      import("workflow/runtime"),
-    ]);
-
-    let world: Awaited<ReturnType<typeof getWorld>>;
-    try {
-      world = await getWorld();
-    } catch {
-      // Workflow SDK not available in this environment
-      return null;
-    }
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await Promise.all((activeRuns as any[]).map(async (run: any) => {
+  args: {}, returns: v.null(),
+  handler: async ctx => {
+    const serverSecret = process.env.INTERNAL_API_SECRET
+    const origin = process.env.NEXT_PUBLIC_APP_URL
+    if (!serverSecret || !origin) throw new Error('Workflow projection callback is not configured')
+    const runs = await ctx.runQuery(internal.automations.workflowEventProjector.listActiveWorkflowRuns, {serverSecret, limit: 20})
+    await Promise.all(runs.map(async run => {
       try {
-        const workflowRun = getRun(run.workflowRunId)
-        const exists = await workflowRun.exists
-        if (!exists) return
-
-        // Get the latest projected event timestamp for this run
-        const latestCursor = await ctx.runQuery(
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          (internal as any).automations.workflowEventProjector
-            .getLatestEventCursor,
-          {
-            workflowRunId: run.workflowRunId,
-            serverSecret,
-          },
-        );
-
-        // Fetch events from the Workflow SDK
-        const eventPage = await world.events.list({
-          runId: run.workflowRunId,
-          resolveData: "none",
-        });
-
-        // Project new events into Convex
-        for (const event of eventPage.data) {
-          const eventTime = event.createdAt.getTime();
-          if (latestCursor && eventTime <= latestCursor) continue;
-
-          const eventData = (
-            "eventData" in event ? event.eventData : undefined
-          ) as Record<string, unknown> | undefined;
-
-          // Only project step-level events
-          const stepName = eventData?.stepName as string | undefined;
-          if (!stepName) continue;
-
-          const eventType = event.eventType;
-          const stepStatus: "running" | "completed" | "failed" =
-            eventType === "step_created"
-              ? "running"
-              : eventType === "step_completed"
-                ? "completed"
-                : eventType === "step_failed"
-                  ? "failed"
-                  : eventType === "step_retrying"
-                    ? "running"
-                    : "running";
-
-          const error = eventData?.error as string | undefined;
-          const stack = eventData?.stack as string | undefined;
-          const attempt = eventData?.attempt as number | undefined;
-
-          // Step events are ordered (created → completed); a parallel batch
-          // could commit them out of order, so keep this loop sequential.
-          /* eslint-disable @typescript-eslint/no-explicit-any */
-          // react-doctor-disable-next-line react-doctor/async-await-in-loop
-          await ctx.runMutation((internal as any).automations.workflowEventProjector.recordStepEventInternal, {
-            userId: run.userId,
-            workflowRunId: run.workflowRunId,
-            stepName,
-            stepStatus,
-            ...(run._id ? { automationRunId: run._id as Id<'automationRuns'> } : {}),
-            ...(attempt !== undefined ? { attempt } : {}),
-            ...(error ? { error: error.slice(0, 500) } : {}),
-            ...(stack ? { stack: stack.slice(0, 1000) } : {}),
-            serverSecret,
-          })
-        }
-      } catch {
-        // Skip this run on error, continue with the next one
+        const response = await fetchAppCallback(new URL('/api/v1/automations/project-events', origin).href, {
+          method: 'POST', headers: {'content-type': 'application/json', 'x-internal-api-secret': serverSecret},
+          body: JSON.stringify({workflowRunId: run.workflowRunId, cursor: run.cursor ?? null}),
+          signal: AbortSignal.timeout(30_000),
+        })
+        if (!response.ok) throw new Error(`Projection callback HTTP ${response.status}`)
+        const page = WorkflowProjectionPage.parse(await response.json())
+        await ctx.runMutation(internal.automations.workflowEventProjector.recordProjectionPage, {
+          serverSecret, automationRunId: run._id, workflowRunId: run.workflowRunId,
+          expectedCursor: run.cursor ?? null, ...page,
+        })
+      } catch (error) {
+        console.error('Workflow projection failed', {workflowRunId: run.workflowRunId,
+          type: error instanceof Error ? error.name : 'unknown'})
       }
-      /* eslint-enable @typescript-eslint/no-explicit-any */
     }))
-
-    return null;
+    return null
   },
-});
+})

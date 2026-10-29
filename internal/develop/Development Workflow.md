@@ -191,7 +191,7 @@ Preview registers the production schedule from its first deployment. Background
 work requires isolated providers, exact PR callback URLs and hosting access on
 the backend; outbound guards fail closed until those settings are present. Verify
 automations, ingestion, projections, supervision and reconciliation through their
-normal schedules. Email/webhooks additionally require the test destination lists
+normal schedules. Workflow projection must read SDK events through the authenticated web callback; a running cron or manually seeded subscription row does not prove projection. Include a run that finishes between ticks and verify its projected events without manual inserts. Email/webhooks additionally require the test destination lists
 in Convex Workflow. Browser access does not prove server callback access.
 
 For exhausted fixtures, invoke internal `dev/qa:recover` only on the verified PR

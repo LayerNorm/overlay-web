@@ -87,7 +87,7 @@ server configuration on the same captured URL as the browser; generic runtime
 crons register the same schedule as production on the first deployment; no
 second deployment or background-job opt-in is needed. Outbound boundaries
 require the isolated provider, exact PR callback configuration and hosting access.
-Email and webhook delivery require exact test-recipient and HTTPS-origin lists
+Workflow event projection reads SDK state through the deployment-secret web bridge and persists paged events/cursors atomically; Convex must not import the web-host SDK runtime. Email and webhook delivery require exact test-recipient and HTTPS-origin lists
 (`OVERLAY_PREVIEW_EMAIL_RECIPIENTS`, `OVERLAY_PREVIEW_WEBHOOK_ORIGINS`); unlisted
 destinations fail delivery and retain retry diagnostics. Webhooks cannot redirect. Project preview defaults contain matching internal API/service secrets,
 the sandbox client ID and seed identity; passwords stay on the web app only.
