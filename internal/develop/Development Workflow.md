@@ -422,7 +422,7 @@ hit is not a successful check. Lint and typechecking run independently and both
 must pass the fail-closed aggregate. Keep hosted build validation unchanged.
 
 The runner inventories every tracked `*.test.{ts,tsx,mts,mjs}` file and classifies
-the ten live-only suites in `scripts/ci/integration-tests.mjs` separately.
+the live-only suites in `scripts/ci/integration-tests.mjs` separately.
 `npm run test:all` runs all ordinary suites, including mixed unit/live files.
 `npm run test:integration -- --list` lists opt-in live suites;
 `npm run test:integration -- --only <group>` runs explicitly configured ones.
