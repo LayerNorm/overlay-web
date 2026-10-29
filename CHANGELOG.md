@@ -12,6 +12,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Recheck personal Harness tool approvals at execution and require the authenticated controller decision before an approval-required effect.
 
+- Settle model usage before durable approval waits so Approve and Deny can resume without reusing a model reservation or blocking context compaction.
+
 - Show "Backed by verdict." above the landing headline and replace the Hermes agent chip with "+ more".
 
 - Run Linux GitHub Actions jobs on the shared Namespace runner profile.

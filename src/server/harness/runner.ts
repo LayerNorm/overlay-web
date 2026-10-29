@@ -346,6 +346,13 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
     let stagnantCalls = 0
     let invocationSteps: StepResult<ToolSet>[] = []
     let invocationMessages = messages
+    const recordedSteps = new Set<number>()
+    const recordModelStep = async (step: Parameters<HarnessExecutionPorts['recordModelStep']>[0]) => {
+      if (recordedSteps.has(step.stepNumber)) return
+      await ports.recordModelStep(step, `model:${modelCall}`)
+      modelCall++
+      recordedSteps.add(step.stepNumber)
+    }
     const agent = new WorkflowAgent({
       model: new HarnessLanguageModel(input.model),
       instructions,
@@ -408,12 +415,16 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
           ...(prepared.model ? { model: new HarnessLanguageModel(prepared.model) } : {}),
         }
       },
-      onStepEnd: async step => ports.recordModelStep(step, `model:${modelCall++}`),
+      onStepEnd: recordModelStep,
       onToolExecutionEnd: async event => {
         if (!controls.has(event.toolCall.toolName)) await ports.recordToolResult(event)
         observedState = await ports.read()
       },
       onEnd: async result => {
+        // WorkflowAgent returns approval-paused steps before its iterator's
+        // onStepEnd callback. Model usage is already known and must settle
+        // before suspension or another preparation/compaction reservation.
+        for (const step of result.steps) await recordModelStep(step)
         invocationSteps = result.steps
         invocationMessages = result.messages
       },

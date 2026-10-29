@@ -401,15 +401,19 @@ test('the model reservation remains held while its returned tools execute', asyn
 test.each([true, false])('SDK approvals reconstruct the request/response protocol, approved=%s', async approved => {
   const f = fixture(false)
   const execute = vi.fn(async () => 'Changed')
-  model(index => index === 0 ? [call('write', 'write')] : 'The decision was applied.')
+  const provider = model(index => index === 0 ? [call('write', 'write')] : 'The decision was applied.')
   f.ports.waitForApproval = async requests => {
     expect(execute).not.toHaveBeenCalled()
+    expect((await f.ports.read()).modelReservation).toBeUndefined()
+    expect(f.receipts.size).toBe(1)
     return requests.map(request => ({ approvalId: request.approvalId, approved }))
   }
   const result = await runOverlayHarness({ ...input, tools: { write: tool({ inputSchema: z.object({}), needsApproval: true, execute }) } }, f.ports)
   expect(execute).toHaveBeenCalledTimes(approved ? 1 : 0)
   if (approved) expect(execute).toHaveBeenCalledWith({}, expect.objectContaining({ harnessApproved: true }))
   expect(result.snapshot.status).toBe('completed')
+  expect(f.receipts.size).toBe(provider.doStreamCalls.length)
+  expect(result.snapshot.modelReservation).toBeUndefined()
 })
 
 test('an executable tool requiring approval remains pending for the approval wait', async () => {

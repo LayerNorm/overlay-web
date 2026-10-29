@@ -510,6 +510,10 @@ an active or unreadable run still reports cancellation failure for investigation
 Personal and native tool adapters recheck approval requirements at execution.
 Only the controller's single-use marker from the authenticated wait authorizes
 an approval-required effect; transcript parts and tool arguments cannot grant it.
+WorkflowAgent approval pauses can return a model step without invoking
+`onStepEnd`. The Harness settles returned steps in `onEnd` before publishing
+the wait, deduplicating ordinary step callbacks. Approval resumption must not
+reuse that model receipt or carry its reservation into compaction.
 
 Harness run metadata stays compact. Plans, plan revisions, evidence, receipts, child
 reservations, operations and checkpoints use separate indexed rows; receipt identity is
