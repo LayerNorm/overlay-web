@@ -131,6 +131,40 @@ kbd{font-family:'Geist Mono',monospace;font-size:11px;background:var(--acc);bord
 .board .col{background:var(--muted);border-radius:12px;padding:8px;display:flex;flex-direction:column;gap:6px;min-height:300px}
 .board .col .ch{font-size:12px;color:var(--muted-fg);padding:4px 6px}
 .board .it{background:var(--bg);border-radius:8px;padding:10px;font-size:13px;display:flex;flex-direction:column;gap:8px}
+
+.side{width:264px;background:var(--side);display:flex;flex-direction:column;padding:0;flex:none;transition:width .15s}
+.side.col{width:56px}
+.sh{display:flex;align-items:center;gap:2px;padding:0 8px 6px}
+.sh .ws{flex:1;min-width:0}
+.side.col .sh{flex-direction:column;gap:4px}
+.scope{margin:0 8px 8px;display:grid;grid-template-columns:1fr 1fr;gap:2px;background:var(--acc);border-radius:8px;padding:2px}
+.scope span{height:28px;display:grid;place-items:center;border-radius:6px;font-size:12px;font-weight:500;color:var(--muted-fg);cursor:pointer}
+.scope span.on{background:var(--bg);color:var(--fg);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.sc{flex:1;overflow-y:auto;overflow-x:hidden;padding:0 8px;position:relative}
+.sc .nav{margin-top:0}
+.side.col .nav a{justify-content:center;padding:0}.side.col .nav a span,.side.col .nav a .k{display:none}
+.sec{position:sticky;z-index:2;background:var(--side);height:30px;display:flex;align-items:center;gap:2px}
+.sec .sl{display:flex;align-items:center;gap:4px;padding:0 8px;height:30px;font-size:12px;font-weight:500;color:var(--muted-fg);cursor:pointer}
+.sec .sl:hover{color:var(--fg)}.sec .sl.on{color:var(--fg)}
+.sec .sl svg{width:14px;height:14px;transition:transform .15s}.sec.closed .sl svg{transform:rotate(-90deg)}
+.sec .sp{flex:1}.sec .bd{font-size:10px;font-weight:500;color:var(--muted-fg);padding:0 4px}
+.sec .add{width:28px;height:28px;border-radius:6px;display:grid;place-items:center;color:var(--muted-fg)}.sec .add:hover{background:var(--acc);color:var(--fg)}
+.sec .add svg{width:14px;height:14px}
+.secb{padding-bottom:12px;display:flex;flex-direction:column;gap:1px}
+.it{display:flex;align-items:center;gap:8px;height:32px;padding:0 8px;border-radius:8px;cursor:pointer;color:var(--fg);min-width:0}
+.it:hover{background:var(--acc)}.it.on{background:var(--acc);font-weight:500}
+.it .t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.it .m{font-size:12px;color:var(--muted-fg)}.it .bdg{min-width:18px;height:18px;border-radius:9px;background:var(--fg);color:var(--bg);font-size:10px;font-weight:600;display:grid;place-items:center;padding:0 5px}
+.it .cr{width:18px;height:18px}.it .av{width:18px;height:18px;font-size:9px}
+.it.sub{padding-left:34px}
+.it .ad{width:22px;height:22px;border-radius:6px;display:grid;place-items:center;color:var(--muted-fg)}.it .ad svg{width:14px;height:14px}
+.more{position:absolute;left:8px;right:8px;z-index:5;background:var(--bg);border-radius:10px;box-shadow:0 8px 30px rgba(0,0,0,.14),0 0 0 1px var(--border);padding:4px}
+.more a{display:flex;align-items:center;gap:8px;height:32px;padding:0 8px;border-radius:6px;cursor:pointer}.more a:hover{background:var(--acc)}
+.more .lbl{font-size:12px;color:var(--muted-fg);padding:6px 8px 4px}
+.ssearch{margin:6px 0 4px;height:32px;border-radius:8px;background:var(--acc);display:flex;align-items:center;gap:8px;padding:0 10px;color:var(--muted-fg);font-size:13px}
+.ssearch svg{width:14px;height:14px}
+.sgl{font-size:12px;color:var(--muted-fg);padding:14px 8px 6px}
+.side .foot{padding:8px}
 </style>
 </head>
 <body>
@@ -138,7 +172,7 @@ kbd{font-family:'Geist Mono',monospace;font-size:11px;background:var(--acc);bord
 <div id="stage"></div>
 <script>
 const ORB_SVG = `<svg viewBox="0 0 200 200" aria-hidden="true"><defs><radialGradient id="ob1" cx="38%" cy="28%" r="78%"><stop offset="0%" stop-color="#fff"/><stop offset="22%" stop-color="#eceef1"/><stop offset="46%" stop-color="#a8adb5"/><stop offset="72%" stop-color="#4c5158"/><stop offset="100%" stop-color="#17191d"/></radialGradient><linearGradient id="or1" x1="0" y1="0" x2="0" y2="1"><stop offset="52%" stop-color="#fff" stop-opacity="0"/><stop offset="80%" stop-color="#fff" stop-opacity=".75"/><stop offset="100%" stop-color="#fff" stop-opacity="0"/></linearGradient><filter id="os16" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="6"/></filter><filter id="os12" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="2"/></filter><filter id="os114" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="14"/></filter><clipPath id="oc1"><circle cx="100" cy="100" r="96"/></clipPath></defs><g clip-path="url(#oc1)"><circle cx="100" cy="100" r="96" fill="url(#ob1)"/><ellipse cx="138" cy="142" rx="44" ry="34" fill="#000" opacity=".22" filter="url(#os114)"/><ellipse cx="80" cy="72" rx="54" ry="42" fill="#fff" opacity=".26" filter="url(#os114)" transform="rotate(-20 80 72)"/><circle cx="100" cy="100" r="88" fill="none" stroke="url(#or1)" stroke-width="7" filter="url(#os16)"/><ellipse cx="100" cy="168" rx="54" ry="13" fill="#fff" opacity=".3" filter="url(#os16)"/><ellipse cx="73" cy="59" rx="27" ry="17" fill="#fff" opacity=".9" filter="url(#os16)" transform="rotate(-24 73 59)"/><ellipse cx="67" cy="51" rx="10" ry="7" fill="#fff" opacity=".95" filter="url(#os12)" transform="rotate(-24 67 51)"/></g></svg>`;
-const ICONS={
+const ICONS={left:'<path d="m12 19-7-7 7-7"/><path d="M19 12H5"/>',
 home:'<path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/>',
 search:'<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
 work:'<path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/>',
@@ -182,23 +216,54 @@ const sel=(v)=>`<span class="sel">${v}${ic('updown')}</span>`;
 const btn=(v,i)=>`<button class="btn">${i?ic(i):''}${v}</button>`;
 const k=(...a)=>a.map(x=>`<kbd>${x}</kbd>`).join(' ');
 
-const S={mode:'app',view:'home',set:'general',chat:0,agent:null,wtab:'List',xtab:'Connectors',ctab:'Personal',rtab:'Computer'};
+const S={scope:'personal',closed:new Set(),col:false,more:false,thread:0,mode:'app',view:'home',set:'general',chat:0,agent:null,wtab:'List',xtab:'Connectors',ctab:'Personal',rtab:'Computer'};
 const NAV=[['work','Work','work'],['agents','Agents','bot'],['chats','Chats','chat'],['files','Files','file'],['extensions','Extensions','puzzle'],['automations','Automations','flow']];
 const MAC=[['voice','Voice','wave'],['browser','Browser','globe']];
 const LABEL={home:'Home',work:'Work',agents:'Agents',chats:'Chats',files:'Files',extensions:'Extensions',automations:'Automations',voice:'Voice',browser:'Browser',account:'Account',settings:'Settings',onboarding:'Welcome'};
 
+const PEOPLE=[['Kenji Sato','K',2],['Maya Ortiz','M',0]];
+const CHANNELS=[['launch',3],['support',0],['eng',0]];
+const PCHATS=[['Reply to Alex','wave'],['Pricing page copy','chat'],['Summarize Safari tab','wave'],['Trip to Tokyo','chat'],['Weekly brief draft','chat']];
+const WCHATS=[['Launch checklist','chat'],['Q4 review prep','chat']];
+const THREADS={'Overlay':['Reply to Alex','Morning brief','Pricing page copy'],'Coding bot':['Fix flaky tests','Pill v2 states'],'Support':['Refund for Acme'],'Research':['Voice latency survey']};
+const row=(l,lead,o={})=>`<div class="it ${o.on?'on':''} ${o.sub?'sub':''}" ${o.d||''}>${lead||''}<span class="t">${l}</span>${o.m?`<span class="m">${o.m}</span>`:''}${o.b?`<span class="bdg">${o.b}</span>`:''}${o.add?`<span class="ad">${ic('plus')}</span>`:''}</div>`;
+function sections(){
+ const v=S.view, ws=S.scope==='workspace';
+ if(v==='chats') return ws?[
+  ['dms','Direct messages',2,PEOPLE.map(([n,a,b],i)=>row(n,`<span class="av">${a}</span>`,{b,on:S.chat===10+i,d:`data-ch="${10+i}"`}))],
+  ['channels','Channels',3,CHANNELS.map(([n,b],i)=>row(n,ic('hash'),{b,on:S.chat===20+i,d:`data-ch="${20+i}"`}))],
+  ['activity','Activity',0,[row('Kenji mentioned you in #launch',ic('bell'),{m:'1h'}),row('Coding bot finished Pill v2',cre(),{m:'3h'})]],
+  ['ai','AI chats',0,WCHATS.map(([n,i],k)=>row(n,ic(i),{on:S.chat===30+k,d:`data-ch="${30+k}"`}))]]
+  :[['chats','Chats',0,PCHATS.map(([n,i],k)=>row(n,ic(i),{on:S.chat===k,d:`data-ch="${k}"`}))]];
+ if(v==='agents') return [['agents','Agents',0,AG.flatMap(([n,a])=>[row(n,a,{add:1,on:S.agent===n&&!S.thread,d:`data-ag="${n}"`}),...((S.agent===n||(!S.agent&&n==='Overlay'))?THREADS[n].map((t,i)=>row(t,'',{sub:1,on:S.agent===n&&S.thread===i+1,d:`data-ag="${n}" data-th="${i+1}"`})):[])])]];
+ if(v==='work') return [['mine','Assigned to me',0,TASKS.flatMap(g=>g[1]).filter(t=>t[1]==='Dev').map(([n,,d])=>row(n,`<span class="dot ${d}"></span>`))]];
+ if(v==='files') return [['files','Files',0,[row('Notes',ic('pen')),row('Uploads',ic('up')),row('Outputs',ic('file')),row('Meeting notes',ic('file'),{sub:1}),row('Desktop parity plan.md',ic('file'),{sub:1})]]];
+ if(v==='extensions') return [['ext','Installed',0,[['Gmail','Connector'],['Linear','Connector'],['GitHub','MCP'],['Release notes','Skill']].map(([n,m])=>row(n,ic('puzzle'),{m}))]];
+ if(v==='automations') return [['auto','Automations',0,[['Morning brief','9:00 AM'],['Triage support inbox','1h'],['Weekly metrics','Mon'],['Nightly test run','2:00 AM']].map(([n,m])=>row(n,ic('flow'),{m}))]];
+ if(v==='voice') return [['voice','Voice',0,[['Reply to Alex','Mail'],['Sounds good, I will push...','Slack'],['Summarize this page','Safari'],['Pill states listening...','Notes']].map(([n,m])=>row(n,ic('wave'),{m}))]];
+ if(v==='browser') return [['tabs','Tabs',0,[row('getoverlay.io',ic('globe'),{on:1}),row('Linear',ic('globe')),row('GitHub',ic('globe'))]]];
+ if(v==='home'||v==='search') return [['recent','Recent',0,[row('Reply to Alex',ov(),{m:'2m'}),row('Fix flaky tests',cre(),{m:'1h'}),row('Pricing page copy',ov(),{m:'3h'})]]];
+ return [];
+}
+function secHtml(list){const n=list.length;return list.map(([id,l,b,items],i)=>{const closed=S.closed.has(id);
+ return `<div class="sec ${closed?'closed':''}" style="top:${i*30}px;bottom:${(n-1-i)*30}px"><span class="sl" data-sec="${id}">${l}${ic('down')}</span><span class="sp"></span>${b?`<span class="bd">${b}</span>`:''}<span class="add">${ic('plus')}</span></div>${closed?'':`<div class="secb">${items.join('')}</div>`}`}).join('');}
+function settingsNav(){const grp=[['Personal',['general','customization','shortcuts','memories','archived']],['Workspace',['profile','workspace','agent-accounts','agent-environments','computers','providers']],['Integrations',['connected-apps','webhooks']],['This Mac',['voice','pill','permissions','local-models','browser-settings','updates']],['Support',['contact']]];
+ return `<div class="nav"><a data-v="home">${ic('left')}<span>Back to app</span></a><div class="ssearch">${ic('search')}Search settings</div>${grp.map(([g,ids])=>`<div class="sgl">${g}</div>${ids.map(id=>{const x=SET.find(s=>s[0]===id);return `<a class="${S.set===id?'on':''}" data-s="${id}">${ic(x[2])}<span>${x[1]}</span></a>`}).join('')}`).join('')}</div>`;}
 function sidebar(){
-  const a=(id,l,i,kk='')=>`<a href="#" class="${S.view===id?'on':''}" data-v="${id}">${ic(i)}${l}${kk?`<span class="k">${kk}</span>`:''}</a>`;
-  return `<aside class="side"><div class="tl"><i></i><i></i><i></i></div>
-  <button class="ws"><span style="flex:1"><span class="lock">${ORB_SVG}overlay</span><small>LayerNorm</small></span>${ic('updown')}</button>
-  <nav class="nav">${a('search','Search','search','⌘K')}${a('home','Home','home')}
-  <div class="lbl">Workspace</div>${NAV.map(n=>a(...n)).join('')}
-  <div class="lbl">This Mac</div>${MAC.map(n=>a(...n)).join('')}</nav>
-  <div class="foot"><div class="meter">Usage this month<b><i></i></b></div>
-  <button class="me" data-v="account"><span class="av">DL</span><span style="flex:1;text-align:left">Dev Lalwani</span><span class="ib" data-v="settings" style="width:24px;height:24px">${ic('gear')}</span></button></div></aside>`;
+  const col=S.col, inSet=S.view==='settings';
+  const a=(id,l,i)=>`<a href="#" class="${S.view===id?'on':''}" data-v="${id}" title="${l}">${ic(i)}<span>${l}</span></a>`;
+  const moreOn=['files','extensions','voice','browser'].includes(S.view);
+  const more=S.more?`<div class="more" style="top:${S.moreTop||220}px"><a data-v="files">${ic('file')}Files</a><a data-v="extensions">${ic('puzzle')}Extensions</a><div class="lbl">This Mac</div><a data-v="voice">${ic('wave')}Voice</a><a data-v="browser">${ic('globe')}Browser</a></div>`:'';
+  return `<aside class="side ${col?'col':''}"><div class="tl"><i></i><i></i><i></i></div>
+  <div class="sh">${col?'':`<button class="ws"><span class="lock">${ORB_SVG}overlay</span>${ic('down')}</button>`}${inSet||col?'':`<span class="ib" title="Search ⌘K" data-v="search">${ic('search')}</span>`}<span class="ib" data-a="col">${ic('panel')}</span></div>
+  ${col||inSet?'':`<div class="scope"><span class="${S.scope==='personal'?'on':''}" data-sc="personal">Personal</span><span class="${S.scope==='workspace'?'on':''}" data-sc="workspace">Workspace</span></div>`}
+  <div class="sc">${inSet&&!col?settingsNav():`<nav class="nav">${a('home','Home','home')}${NAV.filter(n=>!['files','extensions'].includes(n[0])).map(n=>a(...n)).join('')}<a href="#" class="${moreOn?'on':''}" data-a="more" title="More">${ic('more')}<span>More</span></a></nav>
+  ${col?'':`<div style="margin-top:12px">${secHtml(sections())}</div>`}`}${more}</div>
+  <div class="foot">${col?'':'<div class="meter">Usage this month<b><i></i></b></div>'}
+  <button class="me" data-v="account"><span class="av">DL</span>${col?'':`<span style="flex:1;text-align:left">Dev Lalwani</span><span class="ib" data-v="settings" style="width:24px;height:24px">${ic('gear')}</span>`}</button></div></aside>`;
 }
 function topbar(){
-  const v=S.view, crumbs=v==='settings'?`<span>Settings</span>${ic('right')}<b>${SET.find(s=>s[0]===S.set)[1]}</b>`:(v==='agents'&&S.agent)?`<span>Agents</span>${ic('right')}<b>${S.agent}</b>`:`<b>${LABEL[v]||v}</b>`;
+  const v=S.view, sc=`<span>${S.scope==='workspace'?'Workspace':'Personal'}</span>${ic('right')}`, crumbs=v==='settings'?`<span>Settings</span>${ic('right')}<b>${SET.find(s=>s[0]===S.set)[1]}</b>`:(v==='agents'&&S.agent)?sc+`<span>Agents</span>${ic('right')}`+(S.thread?`<span>${S.agent}</span>${ic('right')}<b>${THREADS[S.agent][S.thread-1]}</b>`:`<b>${S.agent}</b>`):['account','onboarding'].includes(v)?`<b>${LABEL[v]}</b>`:sc+`<b>${LABEL[v]||v}</b>`;
   const act={work:btn('New task','plus'),agents:S.agent?'':btn('New agent','plus'),chats:btn('New chat','pen'),files:btn('Upload','up'),extensions:btn('Add','plus'),automations:btn('New automation','plus'),voice:'',home:`<span class="ib">${ic('bell')}</span>`}[v]||'';
   const rp=(v==='agents'&&S.agent)?`<span class="ib" data-a="rs">${ic('panelr')}</span>`:'';
   return `<div class="top"><span class="ib">${ic('panel')}</span><div class="crumb">${crumbs}</div><div class="r">${act}${rp}</div></div>`;
@@ -239,9 +304,7 @@ function agentThread(){const a=AG.find(x=>x[0]===S.agent);const isO=S.agent==='O
  ${composer('Message '+S.agent)}</div>${rs}</div>`;}
 
 const CHATS=[['Reply to Alex','Overlay','2m',1],['Pricing page copy','Overlay','1h'],['#launch','Channel','3h'],['Kenji','DM','Yesterday']];
-V.chats=()=>`<div class="tabs">${['Personal','DMs','Channels','Activity'].map(x=>`<span class="${S.ctab===x?'on':''}" data-c="${x}">${x}</span>`).join('')}</div>
-<div class="split"><div class="list"><div class="rows">${CHATS.map(([n,w,t,v],i)=>`<div class="row" style="${i===S.chat?'background:var(--acc)':''}" data-ch="${i}">${v?ic('wave'):w==='Channel'?ic('hash'):w==='DM'?'<span class="av" style="width:20px;height:20px;font-size:10px">K</span>':ic('chat')}<span class="t">${n}</span><span class="m">${t}</span></div>`).join('')}</div></div>
-<div class="thread"><div class="msgs">
+V.chats=()=>`<div class="split" style="margin-top:-8px"><div class="thread"><div class="msgs">
 <div class="um"><div class="src">${ic('mic')}Voice in Mail</div>Reply to Alex, say Thursday works and attach the deck</div>
 <div class="am">${ov()}<div><div class="who">Overlay<span>9:41 PM</span></div>
 <div class="trace"><div>${orb()}Read selected email in Mail</div><div>${orb()}Found Q4 deck.pdf in Files</div><div>${orb()}Drafted reply</div></div>
@@ -290,9 +353,7 @@ permissions:()=>g('macOS',r('Microphone','',`<span class="chip"><span class="dot
 'local-models':()=>g('',r('Parakeet','Dictation · 600 MB',`<span class="chip">Installed</span>`),r('WhisperKit large','Dictation · 1.5 GB',btn('Download','dl')),r('Prefer on device','',sw(1))),
 'browser-settings':()=>g('',r('Let agents use Browser','',sw(1)),r('History','',btn('Clear')),r('Cookies','',btn('Clear')),r('Bookmarks','',btn('Clear'))),
 updates:()=>g('',r('Overlay 2.0.1','Up to date',btn('Check')),r('Install automatically','',sw(1)),r('Beta builds','',sw(0)))};
-V.settings=()=>{const it=s=>`<a class="${S.set===s[0]?'on':''}" data-s="${s[0]}">${ic(s[2])}${s[1]}</a>`;
- return `<div class="set"><div class="snav">${SET.filter(s=>!s[3]).map(it).join('')}<div class="lbl">This Mac</div>${SET.filter(s=>s[3]).map(it).join('')}</div>
- <div class="spage"><h1>${SET.find(s=>s[0]===S.set)[1]}</h1>${SP[S.set]()}</div></div>`;};
+V.settings=()=>`<div class="spage" style="padding:0 8px 24px"><h1>${SET.find(s=>s[0]===S.set)[1]}</h1>${SP[S.set]()}</div>`;
 
 V.onboarding=()=>`<div class="center" style="display:flex;flex-direction:column;flex:1"><div class="msgs">
 <div class="am">${ov()}<div><div class="who">Overlay</div>Hi, I'm Overlay. What should I call you?</div></div>
@@ -322,12 +383,14 @@ function render(){
  st.innerHTML=`<div class="win">${sidebar()}<main class="main">${topbar()}<div class="body">${V[view]()}</div></main></div>`;
  S.view=saved;
 }
-document.addEventListener('click',e=>{const t=e.target.closest('[data-v],[data-m],[data-t],[data-s],[data-w],[data-x],[data-c],[data-ag],[data-r],[data-a],[data-ch]');if(!t)return;e.preventDefault();e.stopPropagation();const d=t.dataset;
- if(d.v){S.view=d.v;S.mode='app';if(d.v==='agents')S.agent=null;}
+document.addEventListener('click',e=>{if(S.more&&!e.target.closest('[data-a=more],.more')){S.more=false;render();}const t=e.target.closest('[data-sec],[data-sc],[data-th],[data-v],[data-m],[data-t],[data-s],[data-w],[data-x],[data-c],[data-ag],[data-r],[data-a],[data-ch]');if(!t)return;e.preventDefault();e.stopPropagation();const d=t.dataset;
+ if(d.v){S.view=d.v;S.mode='app';S.more=false;if(d.v==='agents'){S.agent=null;S.thread=0;}}
+ if(d.sec){S.closed.has(d.sec)?S.closed.delete(d.sec):S.closed.add(d.sec);}
+ if(d.sc)S.scope=d.sc; if(d.a==='col')S.col=!S.col; if(d.a==='more'){S.more=!S.more;S.moreTop=t.offsetTop+34;}
  if(d.m)S.mode=d.m; if(d.t)document.documentElement.dataset.theme=document.documentElement.dataset.theme==='dark'?'light':'dark';
- if(d.s)S.set=d.s; if(d.w)S.wtab=d.w; if(d.x)S.xtab=d.x; if(d.c)S.ctab=d.c; if(d.ag)S.agent=d.ag; if(d.r)S.rtab=d.r; if(d.a==='rs')S.rs=S.rs===false?true:false; if(d.ch)S.chat=+d.ch;
+ if(d.s)S.set=d.s; if(d.w)S.wtab=d.w; if(d.x)S.xtab=d.x; if(d.c)S.ctab=d.c; if(d.ag){S.agent=d.ag;S.view='agents';S.thread=d.th?+d.th:0;} if(d.r)S.rtab=d.r; if(d.a==='rs')S.rs=S.rs===false?true:false; if(d.ch){S.chat=+d.ch;S.view='chats';}
  render();});
-const h=location.hash.slice(1);if(h){const [a,b]=h.split('/');if(a==='pill'||a==='onboarding')S.mode=a;else{S.view=a;if(b){if(a==='settings')S.set=b;if(a==='agents')S.agent=decodeURIComponent(b);}}}
+const q=new URLSearchParams(location.search);if(q.get('scope'))S.scope=q.get('scope');if(q.get('col'))S.col=true;const h=location.hash.slice(1);if(h){const [a,b]=h.split('/');if(a==='pill'||a==='onboarding')S.mode=a;else{S.view=a;if(b){if(a==='settings')S.set=b;if(a==='agents')S.agent=decodeURIComponent(b);}}}
 render();
 </script>
 </body>
