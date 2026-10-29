@@ -1474,10 +1474,9 @@ export const expireToolLoopAgentRunLeases = internalMutation({
   handler: async (ctx) => {
     const now = Date.now()
     const expired = []
-    // Room turns run as durable workflows rather than in-request tool loops,
-    // but they expire the same way: the lease is the outer bound on a run whose
-    // executor disappeared, whichever executor that was. Work-mode runs carry
-    // no lease and are excluded by the `mode` check below.
+    // Only legacy executors use liveness leases. Harness waits and completion
+    // are owned by their durable root deadline. Exclude absent leases in the
+    // index so durable runs cannot crowd expired legacy runs out of the batch.
     for (const runner of ['tool_loop', 'workflow'] as const) {
       for (const status of CANONICAL_ACTIVE_AGENT_RUN_STATUSES) {
         const remaining = 100 - expired.length
@@ -1487,10 +1486,12 @@ export const expireToolLoopAgentRunLeases = internalMutation({
           .withIndex('by_runner_status_leaseExpiresAt', (q) => q
             .eq('runner', runner)
             .eq('status', status)
+            .gt('leaseExpiresAt', 0)
             .lt('leaseExpiresAt', now))
           .take(remaining)
         expired.push(...rows.filter((row) => (
-          row.runner === 'tool_loop' || row.mode === 'room'
+          row.executionEngine !== 'overlay_harness'
+            && (row.runner === 'tool_loop' || row.mode === 'room')
         )))
       }
     }

@@ -495,6 +495,10 @@ another engine. No failed admission, model call or tool effect is replayed.
 The check is fresh per admission, so atomic publication of the matching Convex
 functions switches new turns to Harness without another web deployment.
 Existing turns retain their immutable engine ownership.
+Harness room deliveries carry no legacy liveness lease. The legacy sweep
+excludes Harness-owned rows, including older rows with a lease, and uses an
+indexed positive-lease range so lease-free durable runs cannot hide expired
+legacy work. Harness approval/input/child waits retain their durable deadline.
 Do not infer readiness from missing-function error text: production Convex
 redacts that text to a generic server error.
 

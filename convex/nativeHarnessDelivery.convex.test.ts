@@ -63,6 +63,27 @@ function admission(conversationId: string, deliveryAgentRunId: string): HarnessA
       deadlineAt: Date.now() + 60_000, maxCostMicros: 0, maxDepth: 2, maxParallelChildren: 2 } }
 }
 
+test('legacy lease sweep preserves durable Harness waits and still expires legacy rooms', async () => {
+  const convex = convexTest(schema, modules)
+  const fixture = await seed(convex)
+  const harness = await open(convex, fixture, 'alice', true, 'durable')
+  const legacy = await open(convex, fixture, 'alice', false, 'legacy')
+  await convex.run(async ctx => {
+    const durableRun = await ctx.db.get(harness.runId)
+    expect(durableRun?.leaseExpiresAt).toBeUndefined()
+    // Cover already-admitted Harness rows carrying an old executor lease.
+    for (const runId of [harness.runId, legacy.runId]) {
+      await ctx.db.patch(runId, { status: 'waiting_for_approval', leaseExpiresAt: Date.now() - 1 })
+    }
+  })
+  const result = await convex.mutation(mutation('chat/conversations:expireToolLoopAgentRunLeases'), {})
+  expect(result.expiredCount).toBe(1)
+  await convex.run(async ctx => {
+    expect((await ctx.db.get(harness.runId))?.status).toBe('waiting_for_approval')
+    expect((await ctx.db.get(legacy.runId))?.status).toBe('failed')
+  })
+})
+
 async function namedAdmissionFixture(convex: Convex, scenario?: string) {
   const fixture = await seed(convex)
   const parentTurn = await open(convex, fixture)

@@ -6,6 +6,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Keep Chat and Work available during the Harness web-first rollout by checking backend readiness before admission; recognize already-terminal workflows during Stop cleanup.
 
+- Preserve native Harness approval waits beyond the legacy room lease; only the durable run deadline ends those waits.
+
 - Show "Backed by verdict." above the landing headline and replace the Hermes agent chip with "+ more".
 
 - Run Linux GitHub Actions jobs on the shared Namespace runner profile.

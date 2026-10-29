@@ -944,7 +944,9 @@ export const startAgentTurn = mutation({
       // A room turn has no heartbeat, so the lease is an outer bound: a sweep
       // fails whatever is still active past it rather than leaving a reply
       // generating forever.
-      leaseExpiresAt: now + ROOM_AGENT_RUN_LEASE_MS,
+      // Harness waits are bounded by their durable root deadline, not the
+      // legacy room executor's 30-minute liveness lease.
+      ...(args.executionEngine === 'overlay_harness' ? {} : { leaseExpiresAt: now + ROOM_AGENT_RUN_LEASE_MS }),
       createdAt: now,
       updatedAt: now,
     })
