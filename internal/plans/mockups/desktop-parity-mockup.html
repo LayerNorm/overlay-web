@@ -165,6 +165,24 @@ kbd{font-family:'Geist Mono',monospace;font-size:11px;background:var(--acc);bord
 .ssearch svg{width:14px;height:14px}
 .sgl{font-size:12px;color:var(--muted-fg);padding:14px 8px 6px}
 .side .foot{padding:8px}
+
+.wsb{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:8px;width:100%;text-align:left;cursor:pointer}
+.wsb:hover,.wsb.open{background:var(--acc)}
+.wsi{width:28px;height:28px;border-radius:7px;background:#4a154b;color:#fff;display:grid;place-items:center;font-size:13px;font-weight:600;flex:none}
+.wsi.p{background:#2563eb}
+.wsb .n{display:flex;flex-direction:column;min-width:0;flex:1;line-height:1.25}.wsb .n b{font-weight:500;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.wsb .n span{font-size:12px;color:var(--muted-fg)}
+.wsb .i{width:16px;height:16px;color:var(--muted-fg)}
+.wsm{position:absolute;left:8px;bottom:58px;width:280px;z-index:20;background:var(--bg);border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.14),0 0 0 1px var(--border);padding:4px;font-size:12px}
+.wsm .h{display:flex;align-items:center;justify-content:space-between;padding:6px 8px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted-fg)}
+.wsm .h svg{width:14px;height:14px}
+.wsm .w{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:8px;cursor:pointer}.wsm .w:hover{background:var(--acc)}
+.wsm .w .wsi{width:24px;height:24px;font-size:11px;border-radius:6px}
+.wsm .w .n{flex:1;display:flex;flex-direction:column;line-height:1.25}.wsm .w .n b{font-weight:500;font-size:13px}.wsm .w .n span{color:var(--muted-fg)}
+.wsm .w svg{width:14px;height:14px}
+.wsm .a{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;color:var(--muted-fg);cursor:pointer}.wsm .a:hover{background:var(--acc);color:var(--fg)}.wsm .a svg{width:13px;height:13px}
+.wsm .sep{border-top:1px solid var(--border);margin:4px 0}
+.wsm .mb{padding:2px 10px 8px}.wsm .lr{display:flex;justify-content:space-between;color:var(--muted-fg);margin-bottom:6px}.wsm .tr{display:block;height:4px;border-radius:2px;background:var(--border);overflow:hidden}.wsm .fl{display:block;height:100%;background:var(--fg);opacity:.6}
+.side{position:relative}
 </style>
 </head>
 <body>
@@ -172,7 +190,7 @@ kbd{font-family:'Geist Mono',monospace;font-size:11px;background:var(--acc);bord
 <div id="stage"></div>
 <script>
 const ORB_SVG = `<svg viewBox="0 0 200 200" aria-hidden="true"><defs><radialGradient id="ob1" cx="38%" cy="28%" r="78%"><stop offset="0%" stop-color="#fff"/><stop offset="22%" stop-color="#eceef1"/><stop offset="46%" stop-color="#a8adb5"/><stop offset="72%" stop-color="#4c5158"/><stop offset="100%" stop-color="#17191d"/></radialGradient><linearGradient id="or1" x1="0" y1="0" x2="0" y2="1"><stop offset="52%" stop-color="#fff" stop-opacity="0"/><stop offset="80%" stop-color="#fff" stop-opacity=".75"/><stop offset="100%" stop-color="#fff" stop-opacity="0"/></linearGradient><filter id="os16" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="6"/></filter><filter id="os12" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="2"/></filter><filter id="os114" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="14"/></filter><clipPath id="oc1"><circle cx="100" cy="100" r="96"/></clipPath></defs><g clip-path="url(#oc1)"><circle cx="100" cy="100" r="96" fill="url(#ob1)"/><ellipse cx="138" cy="142" rx="44" ry="34" fill="#000" opacity=".22" filter="url(#os114)"/><ellipse cx="80" cy="72" rx="54" ry="42" fill="#fff" opacity=".26" filter="url(#os114)" transform="rotate(-20 80 72)"/><circle cx="100" cy="100" r="88" fill="none" stroke="url(#or1)" stroke-width="7" filter="url(#os16)"/><ellipse cx="100" cy="168" rx="54" ry="13" fill="#fff" opacity=".3" filter="url(#os16)"/><ellipse cx="73" cy="59" rx="27" ry="17" fill="#fff" opacity=".9" filter="url(#os16)" transform="rotate(-24 73 59)"/><ellipse cx="67" cy="51" rx="10" ry="7" fill="#fff" opacity=".95" filter="url(#os12)" transform="rotate(-24 67 51)"/></g></svg>`;
-const ICONS={left:'<path d="m12 19-7-7 7-7"/><path d="M19 12H5"/>',
+const ICONS={user:'<circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 0 0-16 0"/>',out:'<path d="m16 17 5-5-5-5"/><path d="M21 12H9"/><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>',left:'<path d="m12 19-7-7 7-7"/><path d="M19 12H5"/>',
 home:'<path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/>',
 search:'<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
 work:'<path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/>',
@@ -216,7 +234,7 @@ const sel=(v)=>`<span class="sel">${v}${ic('updown')}</span>`;
 const btn=(v,i)=>`<button class="btn">${i?ic(i):''}${v}</button>`;
 const k=(...a)=>a.map(x=>`<kbd>${x}</kbd>`).join(' ');
 
-const S={scope:'personal',closed:new Set(),col:false,more:false,thread:0,mode:'app',view:'home',set:'general',chat:0,agent:null,wtab:'List',xtab:'Connectors',ctab:'Personal',rtab:'Computer'};
+const S={wsm:false,scope:'personal',closed:new Set(),col:false,more:false,thread:0,mode:'app',view:'home',set:'general',chat:0,agent:null,wtab:'List',xtab:'Connectors',ctab:'Personal',rtab:'Computer'};
 const NAV=[['work','Work','work'],['agents','Agents','bot'],['chats','Chats','chat'],['files','Files','file'],['extensions','Extensions','puzzle'],['automations','Automations','flow']];
 const MAC=[['voice','Voice','wave'],['browser','Browser','globe']];
 const LABEL={home:'Home',work:'Work',agents:'Agents',chats:'Chats',files:'Files',extensions:'Extensions',automations:'Automations',voice:'Voice',browser:'Browser',account:'Account',settings:'Settings',onboarding:'Welcome'};
@@ -255,12 +273,17 @@ function sidebar(){
   const moreOn=['files','extensions','voice','browser'].includes(S.view);
   const more=S.more?`<div class="more" style="top:${S.moreTop||220}px"><a data-v="files">${ic('file')}Files</a><a data-v="extensions">${ic('puzzle')}Extensions</a><div class="lbl">This Mac</div><a data-v="voice">${ic('wave')}Voice</a><a data-v="browser">${ic('globe')}Browser</a></div>`:'';
   return `<aside class="side ${col?'col':''}"><div class="tl"><i></i><i></i><i></i></div>
-  <div class="sh">${col?'':`<button class="ws"><span class="lock">${ORB_SVG}overlay</span>${ic('down')}</button>`}${inSet||col?'':`<span class="ib" title="Search ⌘K" data-v="search">${ic('search')}</span>`}<span class="ib" data-a="col">${ic('panel')}</span></div>
+  <div class="sh">${col?'':`<span class="ws"><span class="lock">${ORB_SVG}overlay</span></span>`}${inSet||col?'':`<span class="ib" title="Search ⌘K" data-v="search">${ic('search')}</span>`}<span class="ib" data-a="col">${ic('panel')}</span></div>
   ${col||inSet?'':`<div class="scope"><span class="${S.scope==='personal'?'on':''}" data-sc="personal">Personal</span><span class="${S.scope==='workspace'?'on':''}" data-sc="workspace">Workspace</span></div>`}
   <div class="sc">${inSet&&!col?settingsNav():`<nav class="nav">${a('home','Home','home')}${NAV.filter(n=>!['files','extensions'].includes(n[0])).map(n=>a(...n)).join('')}<a href="#" class="${moreOn?'on':''}" data-a="more" title="More">${ic('more')}<span>More</span></a></nav>
   ${col?'':`<div style="margin-top:12px">${secHtml(sections())}</div>`}`}${more}</div>
-  <div class="foot">${col?'':'<div class="meter">Usage this month<b><i></i></b></div>'}
-  <button class="me" data-v="account"><span class="av">DL</span>${col?'':`<span style="flex:1;text-align:left">Dev Lalwani</span><span class="ib" data-v="settings" style="width:24px;height:24px">${ic('gear')}</span>`}</button></div></aside>`;
+  <div class="foot"><div class="wsb ${S.wsm?'open':''}" data-a="wsm" title="Workspace and account"><span class="wsi">L</span>${col?'':`<span class="n"><b>LayerNorm</b><span>Dev Lalwani</span></span>${ic('down')}`}</div></div>${S.wsm?`<div class="wsm"><div class="h">Workspaces${ic('down')}</div>
+<div class="w"><span class="wsi">L</span><span class="n"><b>LayerNorm</b><span>3 members</span></span>${ic('check')}</div>
+<div class="w"><span class="wsi p">D</span><span class="n"><b>Dev's workspace</b><span>Just you</span></span></div>
+<div class="a">${ic('plus')}Create workspace</div><div class="a">All workspaces</div>
+<div class="sep"></div><div class="mb"><div class="lr"><span>Usage</span><span>38%</span></div><span class="tr"><span class="fl" style="width:38%"></span></span></div>
+<div class="mb"><div class="lr"><span>Storage</span><span>1.2 of 10 GB</span></div><span class="tr"><span class="fl" style="width:12%"></span></span></div>
+<div class="sep"></div><div class="a" data-v="account">${ic('user')}Account</div><div class="sep"></div><div class="a" data-v="settings">${ic('gear')}Settings</div><div class="sep"></div><div class="a">${ic('out')}Sign out</div></div>`:''}</aside>`;
 }
 function topbar(){
   const v=S.view, sc=`<span>${S.scope==='workspace'?'Workspace':'Personal'}</span>${ic('right')}`, crumbs=v==='settings'?`<span>Settings</span>${ic('right')}<b>${SET.find(s=>s[0]===S.set)[1]}</b>`:(v==='agents'&&S.agent)?sc+`<span>Agents</span>${ic('right')}`+(S.thread?`<span>${S.agent}</span>${ic('right')}<b>${THREADS[S.agent][S.thread-1]}</b>`:`<b>${S.agent}</b>`):['account','onboarding'].includes(v)?`<b>${LABEL[v]}</b>`:sc+`<b>${LABEL[v]||v}</b>`;
@@ -383,14 +406,14 @@ function render(){
  st.innerHTML=`<div class="win">${sidebar()}<main class="main">${topbar()}<div class="body">${V[view]()}</div></main></div>`;
  S.view=saved;
 }
-document.addEventListener('click',e=>{if(S.more&&!e.target.closest('[data-a=more],.more')){S.more=false;render();}const t=e.target.closest('[data-sec],[data-sc],[data-th],[data-v],[data-m],[data-t],[data-s],[data-w],[data-x],[data-c],[data-ag],[data-r],[data-a],[data-ch]');if(!t)return;e.preventDefault();e.stopPropagation();const d=t.dataset;
+document.addEventListener('click',e=>{if(S.more&&!e.target.closest('[data-a=more],.more')){S.more=false;render();}if(S.wsm&&!e.target.closest('[data-a=wsm],.wsm .w,.wsm .h')){S.wsm=false;render();}const t=e.target.closest('[data-sec],[data-sc],[data-th],[data-v],[data-m],[data-t],[data-s],[data-w],[data-x],[data-c],[data-ag],[data-r],[data-a],[data-ch]');if(!t)return;e.preventDefault();e.stopPropagation();const d=t.dataset;
  if(d.v){S.view=d.v;S.mode='app';S.more=false;if(d.v==='agents'){S.agent=null;S.thread=0;}}
  if(d.sec){S.closed.has(d.sec)?S.closed.delete(d.sec):S.closed.add(d.sec);}
- if(d.sc)S.scope=d.sc; if(d.a==='col')S.col=!S.col; if(d.a==='more'){S.more=!S.more;S.moreTop=t.offsetTop+34;}
+ if(d.sc)S.scope=d.sc; if(d.a==='col')S.col=!S.col; if(d.a==='wsm')S.wsm=!S.wsm; if(d.a==='more'){S.more=!S.more;S.moreTop=t.offsetTop+34;}
  if(d.m)S.mode=d.m; if(d.t)document.documentElement.dataset.theme=document.documentElement.dataset.theme==='dark'?'light':'dark';
  if(d.s)S.set=d.s; if(d.w)S.wtab=d.w; if(d.x)S.xtab=d.x; if(d.c)S.ctab=d.c; if(d.ag){S.agent=d.ag;S.view='agents';S.thread=d.th?+d.th:0;} if(d.r)S.rtab=d.r; if(d.a==='rs')S.rs=S.rs===false?true:false; if(d.ch){S.chat=+d.ch;S.view='chats';}
  render();});
-const q=new URLSearchParams(location.search);if(q.get('scope'))S.scope=q.get('scope');if(q.get('col'))S.col=true;const h=location.hash.slice(1);if(h){const [a,b]=h.split('/');if(a==='pill'||a==='onboarding')S.mode=a;else{S.view=a;if(b){if(a==='settings')S.set=b;if(a==='agents')S.agent=decodeURIComponent(b);}}}
+const q=new URLSearchParams(location.search);if(q.get('scope'))S.scope=q.get('scope');if(q.get('col'))S.col=true;if(q.get('wsm'))S.wsm=true;const h=location.hash.slice(1);if(h){const [a,b]=h.split('/');if(a==='pill'||a==='onboarding')S.mode=a;else{S.view=a;if(b){if(a==='settings')S.set=b;if(a==='agents')S.agent=decodeURIComponent(b);}}}
 render();
 </script>
 </body>
