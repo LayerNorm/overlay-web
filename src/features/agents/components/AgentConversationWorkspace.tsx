@@ -441,6 +441,7 @@ function AgentConversationWorkspaceContent() {
         conversationId={conversationId}
         activeTab={sidebarPreferences.tab}
         onTabChange={updateSidebarTab}
+        onClose={closeRightSidebar}
 
         editor={sidebarEditor}
         controlled={Boolean(computerControl)}

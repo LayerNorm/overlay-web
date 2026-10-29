@@ -114,6 +114,7 @@ export type RoomMessageRecord = {
   editHistory?: Array<{ content: string; editedAt: number }>
   deletedAt?: number
   clientNonce?: string
+  rowIdentity?: string
   threadRootMessageId?: string
   delivery?: 'sending' | 'failed'
   status?: 'generating' | 'completed' | 'error'
@@ -152,8 +153,31 @@ export function mergeRoomMessages(
     const existing = merged.get(key)
     const currentIsNewer = existing && isNewerRoomMessage(message, existing)
     if (!existing || (existing.delivery && !message.delivery) || currentIsNewer) merged.set(key, message)
+    else if (message.rowIdentity) merged.set(key, { ...existing, rowIdentity: message.rowIdentity })
   }
-  return [...merged.values()].sort(compareRoomMessageRecords)
+  const rows = [...merged.values()].sort(compareRoomMessageRecords)
+  const claimed = new Set<string>()
+  const knownIds = new Set(current.filter((message) => !message.id.startsWith('optimistic_')).map((message) => message.id))
+  const replaced = new Set<string>()
+  const identities = new Map<string, string>()
+  for (const pending of rows.filter((message) => message.id.startsWith('optimistic_pending_reply_'))) {
+    const reply = rows.find((message) => (
+      !message.id.startsWith('optimistic_')
+      && !knownIds.has(message.id)
+      && !claimed.has(message.id)
+      && message.authorKind === 'agent'
+      && message.authorPrincipalId === pending.authorPrincipalId
+      && message.threadRootMessageId === pending.threadRootMessageId
+      && message.createdAt >= (pending.updatedAt ?? pending.createdAt) - 2_000
+    ))
+    if (!reply) continue
+    identities.set(reply.id, pending.rowIdentity ?? pending.id)
+    claimed.add(reply.id)
+    replaced.add(pending.id)
+  }
+  return rows.filter((message) => !replaced.has(message.id)).map((message) => (
+    identities.has(message.id) ? { ...message, rowIdentity: identities.get(message.id) } : message
+  ))
 }
 
 /**
@@ -163,8 +187,8 @@ export function mergeRoomMessages(
  * blink). The server echoes `clientNonce` back on the persisted row, so the
  * nonce is the stable identity across that transition.
  */
-export function roomMessageRowKey(message: Pick<RoomMessageRecord, 'id' | 'clientNonce'>): string {
-  return `room-message-row-${message.clientNonce ?? message.id}`
+export function roomMessageRowKey(message: Pick<RoomMessageRecord, 'id' | 'clientNonce' | 'rowIdentity'>): string {
+  return `room-message-row-${message.rowIdentity ?? message.clientNonce ?? message.id}`
 }
 
 /** The server appends "[Attached 2 images: a.png]" to stored content; thumbnails already say that. */

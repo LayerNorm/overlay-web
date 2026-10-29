@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import { getDescriptiveToolLabel } from '@overlay/chat-core'
-import { isRoomAgentResponding, mergeRoomMessages, toRoomMessageView, type RoomMessageRecord } from './room-message-view'
+import { isRoomAgentResponding, mergeRoomMessages, roomMessageRowKey, toRoomMessageView, type RoomMessageRecord } from './room-message-view'
 
 function record(overrides: Partial<RoomMessageRecord> = {}): RoomMessageRecord {
   return {
@@ -15,6 +15,35 @@ function record(overrides: Partial<RoomMessageRecord> = {}): RoomMessageRecord {
     ...overrides,
   }
 }
+
+test('pending reply hands its row identity to streaming, completed, and failed snapshots', () => {
+  const pending = record({ id: 'optimistic_pending_reply_send_agent', content: '', createdAt: 31_000,
+    updatedAt: 1_000, status: 'generating' })
+  const reply = record({ id: 'server-reply', content: '', createdAt: 1_100, status: 'generating' })
+  let current = mergeRoomMessages([reply], [pending])
+  assert.equal(current.length, 1)
+  assert.equal(roomMessageRowKey(current[0]!), roomMessageRowKey(pending))
+  assert.equal(reply.rowIdentity, undefined)
+  for (const status of ['generating', 'completed', 'error'] as const) {
+    current = mergeRoomMessages([{ ...reply, status, content: 'Hello', updatedAt: 2_000 }], current)
+    assert.equal(current.length, 1)
+    assert.equal(current[0]!.id, reply.id)
+    assert.equal(roomMessageRowKey(current[0]!), roomMessageRowKey(pending))
+  }
+})
+
+test('pending reply remains for empty snapshots and does not claim other authors, threads or old replies', () => {
+  const pending = record({ id: 'optimistic_pending_reply_send_agent', createdAt: 40_000, updatedAt: 10_000 })
+  assert.deepEqual(mergeRoomMessages([], [pending]), [pending])
+  const priorReply = record({ id: 'prior', createdAt: 10_000 })
+  assert.equal(mergeRoomMessages([priorReply], [priorReply, pending]).length, 2)
+  for (const reply of [record({ createdAt: 1 }), record({ authorPrincipalId: 'other' }),
+    record({ createdAt: 10_100, threadRootMessageId: 'thread' })]) {
+    const rows = mergeRoomMessages([reply], [pending])
+    assert.equal(rows.length, 2)
+    assert.ok(rows.every((row) => !row.rowIdentity))
+  }
+})
 
 test('pending native approval survives transcript reload and is hidden on terminal or human messages', () => {
   const approval = {
