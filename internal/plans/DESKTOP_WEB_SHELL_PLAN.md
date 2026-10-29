@@ -1,8 +1,52 @@
 # Desktop app as a web shell
 
-Status: In progress (2026-10-29). Phase 0 spike on desktop main; phase 1 sign-in in progress.
+Status: In progress (2026-10-29). Phases 0 and 1 landed behind `OVERLAY_WEB_SHELL=1`;
+manual flow checks and Google sign-in from a real browser are still open.
 
 Repos: `LayerNorm/overlay-web` (this repo) and `LayerNorm/overlay-desktop`.
+
+## Progress
+
+| Phase | State | Where |
+| --- | --- | --- |
+| Groundwork | Done | Desktop `verify` CI runs tests and builds again (overlay-desktop#74: audit fixes, Electron 42.11.18); shared sidebar and Tailwind 4 landed (overlay-desktop#67, #68) |
+| 0: spike | Code landed; flow checks open | overlay-desktop `933e842` |
+| 1: sign-in | Code landed; real Google sign-in open | overlay-web `7f62ce390`, overlay-desktop `9e7969f` |
+| 1: end-to-end test | Done | overlay-desktop `a5f0d49` (`npm run test:e2e`) |
+| 2–6 | Not started | — |
+
+What is in place:
+
+- `src/main/services/web-shell.ts` (desktop): with `OVERLAY_WEB_SHELL=1` the
+  main window loads `<serverOrigin>/app` in `persist:overlay` with no
+  preload. Same-origin navigation and WorkOS sign-in pages stay in the
+  window; other links open in the system browser. Media, notifications,
+  clipboard writes and fullscreen are granted only to the server origin.
+  Injected CSS pads the sidebar 28px for the traffic lights and makes that
+  strip a drag region. `window-manager` keeps a reference to the window so
+  `findWindowByType('main')` still finds it.
+- SSO sign-in (desktop + web): an SSO click in the window
+  (`/api/auth/sso/*`) starts the existing PKCE browser handoff. When the
+  browser returns `overlay://auth/transfer?token=...`, the window loads
+  `/auth/desktop/complete` with the verifier header; the web route
+  (`src/app/auth/desktop/complete/route.ts`,
+  `src/server/auth/desktop-web-session-policy.ts`, 5 tests) consumes the
+  token, sets the session cookie and redirects to `/app`. `desktop-link`
+  now carries `emailVerified`.
+- `e2e/web-shell.e2e.ts` (desktop, Playwright Electron, throwaway profile,
+  against the configured server): signed-out window shows the web sign-in
+  dialog with no preload bridge; Google opens the handoff instead of
+  navigating; the transfer link is redeemed in the window with a verifier
+  whose hash matches the challenge.
+
+Still open from phases 0 and 1:
+
+- Manual checks in the window: chat send and stream, agent thread, file
+  upload, title bar spacing and drag, external links.
+- Google sign-in with a real browser session, restart keeps the session,
+  and web sign-out signs the window out.
+- The spike skips the desktop's own sign-in UI and native features that
+  read the stored native session; phase 3 moves those onto the bridge.
 
 ## Goal
 
@@ -245,9 +289,13 @@ Rules for adding a method:
 
 Each phase ends in a working app and lands on main. The desktop app is not
 live yet, so desktop work can land directly on desktop main after checks.
-Web changes follow the normal web workflow (PR, preview, merge queue).
+Web changes follow the repo's integration workflow (local owner pushes after
+checks, or PR and merge queue).
 
 ### Phase 0: spike (desktop, 1–2 days)
+
+State: code landed (`933e842`); flow checks open.
+
 
 - Behind `OVERLAY_WEB_SHELL=1`, the main window loads `<serverOrigin>/app`
   in `persist:overlay` instead of the local renderer.
@@ -263,6 +311,8 @@ system browser. Record which flows break; that list feeds phases 1–3.
 
 ### Phase 1: sign-in into the window (web + desktop)
 
+State: code and end-to-end test landed; real Google sign-in open.
+
 - Web: `/auth/desktop/complete` redeems the browser's transfer token into
   the window's cookie, with tests for a missing verifier, malformed or used
   tokens and rate limiting.
@@ -270,7 +320,7 @@ system browser. Record which flows break; that list feeds phases 1–3.
   redeemed in the window with the verifier header.
 
 Done when: Google sign-in works end to end from a fresh install, restarts
-keep the session, and signing out on either side signs out both.
+keep the session, and signing out on web signs the window out.
 
 ### Phase 2: bridge contract and desktop-aware shell (web + desktop)
 
