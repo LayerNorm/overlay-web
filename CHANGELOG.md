@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Add trusted-main Preview fixture recovery so coding-agent VMs can request bounded quota/credit recovery without receiving a Convex deploy key.
+
 - Repair scheduled workflow event projection through the authenticated web host, with paged, replay-safe Convex storage and catch-up for short completed runs.
 
 - Return Stripe checkout, top-up and portal flows to the workspace that started them, including when another tab changes the active workspace.

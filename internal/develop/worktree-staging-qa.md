@@ -32,15 +32,17 @@ part of the release path. Historical staging drills are preserved in
    PR backends. Re-adding the label creates a fresh backend and fixtures.
    Closed and unknown preview hosts must return HTTPS 404.
 
-For funded machine acceptance, `OVERLAY_PREVIEW_QA_FIXTURES=computer-workspace`
-opts only the selected Preview branch into a separate synthetic Computer QA
-workspace. Its initial $5 wallet covers normal paid admission for Computers or
-Overlay Cloud; no Computer is allocated by the seed. Existing fixtures, balances,
-holds and plan changes are preserved on reruns. Keep the ordinary Personal
-workspace free, use the existing scoped Preview provider credential, and record
-actual resource cleanup. The $1 layout fixture is below the default cloud startup
-floor and is not a runtime-funding fixture. Synthetic ledger credit does not pay
-the provider's real compute bill.
+Shared Preview defaults combine paid, Computer and exhausted fixtures. The
+`computer-workspace` fixture creates a separate Computer QA workspace with an
+initial $5 synthetic wallet; the seed allocates no machine. Existing balances,
+holds, memberships and plan changes survive rebuilding. Use the trusted Preview
+QA Recovery workflow for an explicit refill rather than creating another deploy
+key. The real provider cap remains independent of synthetic credit.
+
+Keep Personal free for negative admission checks and use Computer QA for funded
+lifecycle tests. Use the existing restricted Preview Boat credential, allocate
+one disposable machine at a time, and verify stop/delete and metering cleanup.
+The $1 paid layout fixture is below the default cloud startup floor.
 
 ## Production
 

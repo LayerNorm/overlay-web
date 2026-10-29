@@ -1,0 +1,54 @@
+name: Preview QA Recovery
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Open internal needs-preview PR with a current READY Preview
+        required: true
+        type: string
+      fixture:
+        description: Synthetic fixture to recover
+        required: true
+        type: choice
+        default: paid-workspace
+        options: [personal, paid-workspace, computer-workspace, exhausted-workspace]
+      available_cents:
+        description: Synthetic available cents (0-5000) for paid fixtures; leave blank for free quota reset
+        required: false
+        type: string
+      request_id:
+        description: Optional non-secret recovery ID; rerunning the same Actions run is replay-safe
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  recover:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: release-control
+    timeout-minutes: 5
+    concurrency:
+      group: pr-preview-${{ inputs.pr_number }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+      - run: node scripts/release/preview-recovery.mjs
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          VERCEL_PREVIEW_TOKEN: ${{ secrets.VERCEL_PREVIEW_TOKEN }}
+          CONVEX_PREVIEW_CONTROL_KEY: ${{ secrets.CONVEX_PREVIEW_CONTROL_KEY }}
+          PR_NUMBER: ${{ inputs.pr_number }}
+          QA_FIXTURE: ${{ inputs.fixture }}
+          QA_AVAILABLE_CENTS: ${{ inputs.available_cents }}
+          QA_REQUEST_ID: ${{ inputs.request_id }}
