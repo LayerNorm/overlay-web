@@ -97,4 +97,4 @@ Rough total: about 10 sessions after S1. S2 and S3 can run in parallel with S4.
 
 1. Home row: keep it on desktop (web has none), or make the Overlay lockup the way home?
 2. Voice and Browser: under More in a "This Mac" group (mockup), or top-level rows?
-3. Should desktop also get web's scope toggle hidden for solo workspaces, as web does with `useIsSoloWorkspace`?
+3. Solo workspaces: web resolves the default scope with `useIsSoloWorkspace` but still shows the toggle. Keep that on desktop, or hide the toggle when there is one member?
