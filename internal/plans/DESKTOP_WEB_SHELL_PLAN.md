@@ -1,6 +1,6 @@
 # Desktop app as a web shell
 
-Status: In progress (2026-10-29). Phases 2–5 implemented in the desktop-web-shell worktree; current-source web/desktop acceptance and phase 6 release gates remain in progress. Real Google sign-in is still open.
+Status: In progress (2026-10-29). Phases 2–5 implemented in the desktop-web-shell worktree; current-source web/desktop acceptance and phase 6 release gates remain in progress. Real Google browser sign-in and native session handoff passed preliminary Preview QA; final-head acceptance is still required.
 
 Repos: `LayerNorm/overlay-web` (this repo) and `LayerNorm/overlay-desktop`.
 
@@ -10,7 +10,7 @@ Repos: `LayerNorm/overlay-web` (this repo) and `LayerNorm/overlay-desktop`.
 | --- | --- | --- |
 | Groundwork | Done | Desktop `verify` CI runs tests and builds again (overlay-desktop#74: audit fixes, Electron 42.11.18); shared sidebar and Tailwind 4 landed (overlay-desktop#67, #68) |
 | 0: spike | Code landed; flow checks open | overlay-desktop `933e842` |
-| 1: sign-in | Code landed; real Google sign-in open | overlay-web `7f62ce390`, overlay-desktop `9e7969f` |
+| 1: sign-in | Implemented; real Google and native handoff exercised | overlay-web `7f62ce390`, overlay-desktop `9e7969f` |
 | 1: end-to-end test | Done | overlay-desktop `a5f0d49` (`npm run test:e2e`) |
 | 2: bridge | Implemented; acceptance in progress | Shared v1 contract, exact-origin preload/router, desktop chrome and settings |
 | 3: native capabilities | Implemented; hardware/live acceptance open | Dictation, models, hotkeys, panels, notifications/badge, host, updates, capture |
@@ -58,8 +58,8 @@ Still open from phases 0 and 1:
 
 - Manual checks in the window: chat send and stream, agent thread, file
   upload, title bar spacing and drag, external links.
-- Google sign-in with a real browser session, restart keeps the session,
-  and web sign-out signs the window out.
+- Restart keeps the real-browser-transferred session, and web sign-out signs the
+  window out. Real Google sign-in and transfer succeeded in preliminary QA.
 - The spike skips the desktop's own sign-in UI and native features that
   read the stored native session; phase 3 moves those onto the bridge.
 

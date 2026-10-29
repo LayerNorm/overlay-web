@@ -105,3 +105,7 @@ it from existing project access; never create a per-feature key or commit the fi
 Release builds embed only the configured public crash-reporting DSN. The native
 crash-reporting toggle is opt-in, stored per device and checked again before each
 event is sent; diagnostics controls are omitted when the build has no DSN.
+
+Signing CI uses an ephemeral keychain with a random password distinct from the
+certificate password and removes both its certificate file and keychain. Account
+handoffs must never log their one-time transfer links.
