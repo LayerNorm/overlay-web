@@ -165,9 +165,9 @@ jobs:
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: tsconfig.tsbuildinfo
-          key: types-v1-${{ runner.os }}-${{ hashFiles('package-lock.json', '**/tsconfig*.json') }}-${{ github.sha }}
+          key: types-v1-${{ runner.os }}-${{ hashFiles('package-lock.json', 'tsconfig*.json', 'packages/*/tsconfig*.json', 'apps/*/tsconfig*.json') }}-${{ github.sha }}
           restore-keys: |
-            types-v1-${{ runner.os }}-${{ hashFiles('package-lock.json', '**/tsconfig*.json') }}-
+            types-v1-${{ runner.os }}-${{ hashFiles('package-lock.json', 'tsconfig*.json', 'packages/*/tsconfig*.json', 'apps/*/tsconfig*.json') }}-
       - name: Generate current route types
         run: npx next typegen
       - name: Typecheck and boundary contracts
