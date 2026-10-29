@@ -79,3 +79,4 @@ ParakeetServer/.build/*
 
 # Mobile app (separate repository)
 mobile/
+test-results/
