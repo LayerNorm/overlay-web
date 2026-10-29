@@ -214,12 +214,35 @@ test('parallel lanes preserve complete test discovery, runtime-specific contract
   assert.ok(build.includes('npm run build'))
   assert.ok(build.indexOf('npm run build') < build.indexOf('npm run check:on-prem-convex-boundaries'))
   assert.equal(jobs.build.env.OVERLAY_SKIP_BUILD_TYPECHECK, '1')
-  const types = jobs.static.steps.map(s => s.run)
+  const types = jobs.typecheck.steps.map(s => s.run)
   assert.ok(types.includes('npx next typegen'))
   assert.ok(types.indexOf('npx next typegen') < types.indexOf('npm run typecheck'))
-  assert.ok(types.includes('npm run security:audit'))
+  assert.ok(jobs.static.steps.some(s => s.run === 'npm run security:audit'))
+  assert.equal(jobs.static.needs, undefined, 'lint runs independently of typechecking')
+  assert.equal(jobs.typecheck.needs, undefined, 'typechecking runs independently of lint')
+  assert.ok(jobs['dependency-audit'].needs.includes('typecheck'))
   assert.ok(jobs.build.steps.some(s => s.run === 'npm run check:config && npm run test:release-safety'))
   assert.equal(workflow('docs').on.push.paths, undefined, 'docs health must still run for every main push')
+})
+
+test('dependency caches require exact install inputs and misses retain locked script-free installation', () => {
+  const action = parse(readFileSync(new URL('../../.github/actions/ci-dependencies/action.yml', import.meta.url), 'utf8'))
+  const cache = action.runs.steps.find(step => step.id === 'dependencies')
+  assert.equal(cache.with['restore-keys'], undefined, 'never restore a different dependency tree')
+  for (const input of ['runner.os', 'runner.arch', 'inputs.node-version', 'package-lock.json', 'package.json', '.npmrc']) {
+    assert.ok(cache.with.key.includes(input), input)
+  }
+  const install = action.runs.steps.find(step => step.name === 'Install from lockfile')
+  assert.equal(install.if, "steps.dependencies.outputs.cache-hit != 'true'")
+  assert.equal(install.run, 'npm ci --ignore-scripts --no-audit --no-fund')
+  const { jobs } = workflow('security')
+  for (const name of ['static', 'typecheck', 'build', 'tests']) {
+    assert.ok(jobs[name].steps.some(step => step.uses === './.github/actions/ci-dependencies'))
+  }
+  const buildCache = jobs.build.steps.find(step => step.name === 'Restore Next.js compiler cache')
+  assert.equal(buildCache.with.path, '.next/cache', 'cache compiler state, never deploy artifacts or env files')
+  const lint = jobs.static.steps.find(step => step.name === 'Lint')
+  assert.match(lint.run, /--cache-strategy content/)
 })
 
 test('scanner findings stay blocking and publish diagnostics; dependency updates retain their cooldown', () => {

@@ -103,8 +103,11 @@ Commands and guards are in [Staging and Production Promotion](./worktree-staging
 
 ### Verified workspace and queue protections
 
-CI runs static checks, production compilation and two exhaustive test shards in
-parallel, retaining all nine required contexts. The required quality aggregate
+CI runs lint/boundaries, typechecking, production compilation and two exhaustive
+test shards independently, retaining all nine required contexts. Exact installed
+dependency caches and incremental compiler/lint/type caches reuse work without
+skipping checks. Test assignment balances atomic package work with ordinary
+suites; coverage remains complete and disjoint. The required quality aggregate
 fails on failed, cancelled, absent or unexpectedly skipped lanes. Gateway contract
 results come from the test lane in `Security Checks`; Docs remains a separate
 required workflow. Current route types are generated before standalone typechecking,

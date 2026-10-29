@@ -203,9 +203,9 @@ if (listOnly) {
 
 const results = []
 for (const [name, group] of selected) {
+  const started = Date.now()
   const { cmd, argv, env } = commandFor(group)
   console.log(`\n▶ ${name}: ${group.files.length} file(s)`)
-  const started = Date.now()
   const run = spawnSync(cmd, argv, {
     cwd: path.join(root, group.cwd),
     env,
