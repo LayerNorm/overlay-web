@@ -173,7 +173,7 @@ The build wrapper resolves missing PR-number metadata by public branch/SHA looku
 Run `node scripts/release/preview-doctor.mjs <PR>` before browser QA. It checks
 the canonical alias against the current PR SHA and reports missing capability
 settings without credential values. `--require-full` additionally rejects missing
-capability configuration. This is configuration evidence, not live provider or
+capability configuration. Each metadata subprocess has a thirty-second deadline. This is configuration evidence, not live provider or
 browser acceptance. The complete REST inventory avoids connector summaries that
 truncate environment lists to 100 entries; never create another key because a
 summary omitted an existing one.
@@ -194,12 +194,24 @@ automations, ingestion, projections, supervision and reconciliation through thei
 normal schedules. Workflow projection must read SDK events through the authenticated web callback; a running cron or manually seeded subscription row does not prove projection. Include a run that finishes between ticks and verify its projected events without manual inserts. Email/webhooks additionally require the test destination lists
 in Convex Workflow. Browser access does not prove server callback access.
 
-For exhausted fixtures, invoke internal `dev/qa:recover` only on the verified PR
-backend, with a new `requestId`, fixture `personal`, `paid-workspace` or
-`computer-workspace` or `exhausted-workspace`, and `availableCents` for paid fixtures. Use a Preview-scoped
-key-only file or authenticated CLI with the full project/Preview reference.
-Never pass `.env.local`. Recovery is explicit and audited; deployment seeding
-never resets usage or credit. Synthetic credits do not pay real provider costs.
+For exhausted fixtures, prefer the trusted `Preview QA Recovery` workflow on
+`main`. For example, `gh workflow run preview-qa-recovery.yml --ref main -f
+pr_number=<PR> -f fixture=paid-workspace -f available_cents=1000` requests synthetic
+available credit; choose `personal` or `exhausted-workspace` and omit
+`available_cents` for a free-quota reset. `computer-workspace` is also supported.
+Wait for the current-head READY Preview first. The workflow reuses existing
+`release-control` credentials, verifies the internal labeled PR, exact web head
+and owned Preview backend, and invokes only `dev/qa:recover`. Builders need GitHub
+workflow-dispatch access, not a Convex deploy key in their VM. It never deploys
+code or changes the real provider cap. Rerunning the same Actions run is
+replay-safe; an optional non-secret `request_id` can identify a specific recovery.
+
+An authenticated operator can still invoke internal `dev/qa:recover` directly on
+the verified Preview reference with a unique `requestId`, one of the four
+fixtures and `availableCents` for paid fixtures. Use a Preview-scoped key-only
+file or authenticated CLI, never `.env.local`. Recovery is explicit and audited;
+deployment seeding never resets usage or credit. Synthetic credits do not pay
+real provider costs.
 
 For a quarantined free-model route, inspect its failure first. Preview-only
 internal `dev/qa:recoverRoute` accepts the exact `routeKey`, `expectedReason` and

@@ -206,3 +206,11 @@ sending. A visible composer alone does not prove route hydration is complete.
 Live diagnostics reproduced an early send using default model/runtime state;
 waiting for the transcript fixed immediate reply rendering and reload persistence.
 Both suites clean their own synthetic conversations after success or failure.
+
+### Recover Preview fixtures
+
+Use `Preview QA Recovery` from trusted main for a named fixture on an open
+`needs-preview` PR after its current web/backend are ready. Existing credentials
+stay in `release-control`; a Builder VM needs workflow-dispatch access rather
+than a copied Convex key. See Development Workflow for the command, bounds and
+replay-safe request IDs. Fixture credit never increases the real provider cap.

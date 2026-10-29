@@ -111,8 +111,8 @@ Metering alerts are emitted once per sweep for each running lease whose last met
 
 ### Isolated Computer preview QA
 
-Ordinary Preview seeding retains the free Personal workspace. Explicit branch build
-opt-in `OVERLAY_PREVIEW_QA_FIXTURES=computer-workspace` runs the internal Preview-only
+Ordinary Preview seeding retains the free Personal workspace. Shared Preview
+defaults include `computer-workspace` in the combined fixture list, running the internal Preview-only
 `dev/seed:initComputerQa` and adds a separate
 `Computer QA` workspace for the configured sandbox identity. Its workspace account
 has $5 of synthetic included credit, no Stripe customer/subscription, and no
@@ -120,9 +120,9 @@ automatic top-ups. Re-seeding never restores spent credit or changes an existing
 fixture's plan, balance, holds or membership. The seed refuses non-Preview backends.
 This is test ledger credit, not a payment or free provider compute.
 
-Enable `OVERLAY_FEATURE_COMPUTERS=1` only on the feature's Preview branch, reusing
-the shared Preview Boat credential. Keep production and other Preview branches
-unchanged. Test free admission in Personal and funded lifecycle in Computer QA;
+The shared Preview profile enables Computers and reuses the restricted Preview
+Boat credential; no per-feature flag or key is needed. Preserve Production
+rollout settings. Test free admission in Personal and funded lifecycle in Computer QA;
 allocate at most one small disposable Computer, then stop and delete that resource.
 Record its ID, provider reference and operation timestamps for cost reconciliation.
 Preview registers the production schedule from its first deployment. Background
@@ -130,8 +130,9 @@ callbacks require verified PR configuration and hosting access (see Convex Workf
 is not proof of Overlay's ten-minute idle supervisor: verify scheduled metering,
 idle-stop and settlement through their actual jobs. A successful desktop open
 does not establish them. Combine paid and Computer fixtures with a comma-separated
-fixture list. Explicit `dev/qa:recover` can refill synthetic available credit while
-preserving spend and holds; rebuilds never refill it.
+fixture list. The trusted Preview QA Recovery workflow invokes `dev/qa:recover`
+for explicit synthetic refills without a VM deploy key. It preserves spend and
+holds and cannot raise the real provider cap; rebuilds never refill it.
 
 V2 remote tasks bind reservations to the logical run through `remoteRunId`.
 Expired/stale-hold policy preserves a task's hold while execution or terminal

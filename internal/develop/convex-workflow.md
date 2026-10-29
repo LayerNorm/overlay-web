@@ -104,6 +104,14 @@ it also contains live Stripe, a production OpenRouter key, and shared-dev backen
 selectors. Keep per-lane session/internal secrets and the build-injected backend
 URL. Cloudflare bucket permissions and model budgets need separate verification.
 
+`Preview QA Recovery` on trusted main provides a credential-free VM entry point
+for `dev/qa:recover`. It checks the current READY web revision and pinned backend
+ownership before obtaining that backend's existing authorization and invoking
+only the named fixture recovery. It rejects production, dev, foreign/ambiguous
+backends and closed/unlabeled PRs. The project Preview key stays in
+`release-control`; mutation results and diagnostics never print credentials.
+The backend's own Preview/synthetic-fixture guards remain authoritative.
+
 `dev/qa:recoverRoute` is an internal Preview-only, audited route-quarantine
 recovery operation. Supply the inspected reason and a unique request ID; it
 preserves provider receipts, rejects unsettled leases/nonzero pricing, and
