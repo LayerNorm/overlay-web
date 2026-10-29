@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import type { LucideIcon } from 'lucide-react'
 import { ChevronRight, Loader2 } from 'lucide-react'
 import { SidebarListSkeleton } from '@overlay/ui/feedback'
 import {
@@ -39,6 +38,9 @@ import {
 import { cn } from '@overlay/ui'
 
 import { arrayOrEmpty } from './sidebar-nav'
+import type { InlineNavItem } from '@overlay/shell-react'
+export type { InlineNavItem } from '@overlay/shell-react'
+
 const nextSidebarMutation = createKnowledgeMutationPublisher(
   `web-sidebar:${globalThis.crypto?.randomUUID?.() ?? Date.now()}`,
 )
@@ -203,19 +205,6 @@ export function FilesInlinePanel({
 
 
 
-
-export interface InlineNavItem {
-  id: string
-  label: string
-  icon?: LucideIcon
-  locked?: boolean
-  /** Items with an href render as links so they support open-in-new-tab. */
-  href?: string
-  badgeCount?: number
-  /** Rows shown inside the guide-line sub list beneath this one while it is `expanded`. */
-  children?: ReadonlyArray<InlineNavItem>
-  expanded?: boolean
-}
 
 export function InlineNavChildren({
   id,

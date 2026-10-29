@@ -3,9 +3,9 @@
  * the URL carries it as `?scope=`, and the last choice is remembered so the next page opens on it. Archived items are not a
  * scope: they all live in Settings → Archived (older links with `?scope=archived` are sent there).
  */
-import type { ResourceScope } from './resource-scope'
+import type { PanelScope } from '@overlay/shell-react'
 
-export type PanelScope = ResourceScope
+export type { PanelScope } from '@overlay/shell-react'
 
 export const PANEL_SCOPES: readonly PanelScope[] = ['personal', 'workspace']
 

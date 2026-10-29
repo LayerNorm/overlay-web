@@ -2,7 +2,7 @@
 
 import { Loader2 } from 'lucide-react'
 import { TabButton, TabsList } from '@overlay/ui/primitives'
-import { usePageSubviews } from './sidebar/pageSubviewStore'
+import { usePageSubviews } from '@overlay/shell-react'
 
 export function PageSubviewTabs() {
   const subviews = usePageSubviews()

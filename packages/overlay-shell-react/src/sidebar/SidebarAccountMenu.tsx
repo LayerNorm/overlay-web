@@ -1,39 +1,28 @@
 'use client'
+
+import type { ReactNode } from 'react'
 import { unstyledButton } from '@overlay/ui/control-reset'
-import Link from 'next/link'
 import { LogOut, Settings, UserRound } from 'lucide-react'
-import { CollapsibleSection, Button } from '@overlay/ui/primitives'
-import { StorageBar, UsageBar, type SidebarEntitlements } from './SidebarUsageMeters'
+import { Button } from '@overlay/ui/primitives'
+import { useShellAdapter } from '../adapter'
 
 export function SidebarAccountMenu({
-  billingEnabled,
-  entitlements,
+  usageMeters,
   itemPaddingClass = 'py-2',
   onAccountClick,
+  onSettingsClick = onAccountClick,
   onSignOut,
 }: {
-  billingEnabled: boolean
-  entitlements: SidebarEntitlements | null
+  usageMeters?: ReactNode
   itemPaddingClass?: string
   onAccountClick: () => void
+  onSettingsClick?: () => void
   onSignOut: () => void
 }) {
+  const { Link } = useShellAdapter()
   return (
     <>
-      {billingEnabled ? (
-        <>
-          <CollapsibleSection label="Usage">
-            <div className="px-3 pb-1">
-              <UsageBar entitlements={entitlements} />
-            </div>
-          </CollapsibleSection>
-          <CollapsibleSection label="Storage" className="border-t border-(--border)">
-            <div className="px-3 pb-1">
-              <StorageBar entitlements={entitlements} />
-            </div>
-          </CollapsibleSection>
-        </>
-      ) : null}
+      {usageMeters}
       <div className="border-t border-(--border)">
         <Link
           href="/account"
@@ -47,7 +36,7 @@ export function SidebarAccountMenu({
       <div className="border-t border-(--border)">
         <Link
           href="/app/settings"
-          onClick={onAccountClick}
+          onClick={onSettingsClick}
           className={`flex w-full items-center gap-2 px-3 ${itemPaddingClass} text-xs text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)`}
         >
           <Settings size={13} />

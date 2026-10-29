@@ -3,9 +3,9 @@ import test from 'node:test'
 import React from 'react'
 import { Bell, FileText, Hash, ListChecks, Mail, MessageSquare, Puzzle } from 'lucide-react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { UnifiedSidebar, type UnifiedSidebarProps } from './UnifiedSidebar'
+import { groupMoreItems, UnifiedSidebar, type UnifiedSidebarProps } from './UnifiedSidebar'
 import { publishPageSubviews } from './pageSubviewStore'
-import type { SecondaryPanelNav } from './AppSidebarSecondaryPanel'
+import type { SecondaryPanelNav } from '../types'
 
 ;(globalThis as typeof globalThis & { React: typeof React }).React = React
 
@@ -61,6 +61,28 @@ test('main pages render as links and Files and Extensions move under More', () =
   assert.doesNotMatch(html, /href="\/app\/tools"/)
   assert.match(html, /aria-label="More"/)
   assert.match(html, />3</)
+})
+
+test('More groups keep labelled items grouped away from the primary rail', () => {
+  const desktopItems: UnifiedSidebarProps['items'] = [
+    ...items,
+    { id: 'voice', label: 'Voice', icon: Bell, href: '/app/voice', onSelect: noop },
+    { id: 'browser', label: 'Browser', icon: Hash, href: '/app/browser', onSelect: noop },
+  ]
+  const groups = [{ ids: ['files', 'extensions'] }, { label: 'This Mac', ids: ['voice', 'browser'] }]
+  const html = render({ items: desktopItems, moreGroups: groups })
+
+  assert.doesNotMatch(html, /href="\/app\/voice"|href="\/app\/browser"/)
+  assert.deepEqual(
+    groupMoreItems(desktopItems, groups).map((group) => ({
+      label: group.label,
+      ids: group.items.map((item) => item.id),
+    })),
+    [
+      { label: undefined, ids: ['files', 'extensions'] },
+      { label: 'This Mac', ids: ['voice', 'browser'] },
+    ],
+  )
 })
 
 test('the scope toggle remains available to solo workspaces', () => {
@@ -147,13 +169,14 @@ test('settings turn the sidebar into a settings sidebar with search and grouped 
   const html = render({
     panelKind: 'settings',
     panelNav: settingsNav,
+    settingsGroups: [{ label: 'Desktop settings', ids: ['general', 'customization', 'connected-apps'] }],
     items: [...items, { id: 'settings-close', label: 'Settings', icon: Puzzle, active: true, onSelect: noop }],
   })
   assert.match(html, /overlay/)
   assert.match(html, /Back to app/)
   assert.match(html, /aria-label="Search settings"/)
-  assert.match(html, />Personal</)
-  assert.match(html, />Integrations</)
+  assert.match(html, />Desktop settings</)
+  assert.doesNotMatch(html, />Personal</)
   assert.match(html, /href="\/app\/settings\?section=customization"/)
   assert.match(html, /aria-current="page"[^>]*href="\/app\/settings\?section=general"|href="\/app\/settings\?section=general"[^>]*aria-current="page"/)
   assert.doesNotMatch(html, /href="\/app\/work"/)

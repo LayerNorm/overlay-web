@@ -18,6 +18,7 @@ function render(status: 'idle' | 'loading' | 'ready') {
       placement="footer"
       accountMenu={<div>Account items</div>}
       userLabel="Dev Doe"
+      renderAvatar={() => <span>Workspace avatar</span>}
       status={status}
       workspaces={[]}
       activeWorkspace={null}
@@ -29,10 +30,6 @@ function render(status: 'idle' | 'loading' | 'ready') {
       onSelectWorkspace={noop}
       onCreateRequest={noop}
       onOpenChange={noop}
-      createOpen={false}
-      createBusy={false}
-      onCreateOpenChange={noop}
-      onCreate={async () => undefined}
     />,
   )
 }

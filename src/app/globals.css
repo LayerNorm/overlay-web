@@ -16,6 +16,7 @@
 @source '../../../packages/overlay-ui/src/**/*.{ts,tsx,mdx}';
 @source '../../../packages/overlay-chat-react/src/**/*.{ts,tsx,mdx}';
 @source '../../../packages/overlay-modules-react/src/**/*.{ts,tsx,mdx}';
+@source '../../../packages/overlay-shell-react/src/**/*.{ts,tsx,mdx}';
 @source '../../node_modules/streamdown/dist/*.js';
 
 /* `dark:` follows the app's [data-theme] attribute (set by

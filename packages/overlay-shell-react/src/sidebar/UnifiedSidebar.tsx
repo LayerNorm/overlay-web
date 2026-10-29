@@ -1,7 +1,6 @@
 'use client'
 
 import { Fragment, useEffect, useRef, useState, type ReactNode, type CSSProperties } from 'react'
-import Link from 'next/link'
 import { ChevronRight, Ellipsis, Loader2, PanelLeft, Search } from 'lucide-react'
 import {
   Button,
@@ -13,6 +12,7 @@ import {
   SidebarContent,
   SidebarFooter,
   SidebarGroup,
+  SidebarGroupLabel,
   SidebarMenu,
   SidebarMenuBadge,
   SidebarMenuButton,
@@ -22,23 +22,40 @@ import {
 import { unstyledButton } from '@overlay/ui/control-reset'
 import { cn } from '@overlay/ui'
 import { DelayedTooltip } from '@overlay/ui/overlays'
-import { rememberPanelScope } from '@/hooks/use-panel-scope'
-import type { PanelScope } from '@/shared/workspaces/panel-scope'
-import type { InlineNavItem } from '@/components/layout/AppSidebarInlinePanels'
-import type { PrimaryRailItem } from './AppSidebarPrimaryRail'
-import type { SecondaryPanelNav } from './AppSidebarSecondaryPanel'
+import { useShellAdapter } from '../adapter'
+import type { InlineNavItem, PanelScope, PrimaryRailItem, SecondaryPanelNav } from '../types'
 import { publishPageSubviews } from './pageSubviewStore'
 import { SettingsSidebarNav } from './SettingsSidebarNav'
 import { PageSections, badgeLabel } from './PageSections'
 
-/** Pages that live behind the More menu instead of the main list. */
-const MORE_ITEM_IDS = new Set(['files', 'extensions'])
+type MoreGroup = { label?: string; ids: readonly string[] }
+type MoreItemGroup = { label?: string; items: readonly PrimaryRailItem[] }
+
+const DEFAULT_MORE_GROUPS: ReadonlyArray<MoreGroup> = [{ ids: ['files', 'extensions'] }]
+
+export function groupMoreItems(
+  items: readonly PrimaryRailItem[],
+  groups: ReadonlyArray<MoreGroup>,
+): ReadonlyArray<MoreItemGroup> {
+  const itemsById = new Map(items.map((item) => [item.id, item] as const))
+  return groups
+    .map((group) => ({
+      label: group.label,
+      items: group.ids.flatMap((id) => {
+        const item = itemsById.get(id)
+        return item ? [item] : []
+      }),
+    }))
+    .filter((group) => group.items.length > 0)
+}
+
 /** Pages whose subviews are different views of one page, so they become header tabs. */
 const TAB_PANEL_KINDS = new Set(['work', 'files', 'notes', 'tools'])
 const MORE_CLOSE_DELAY_MS = 150
 
 
 function NavRow({ item, collapsed }: { item: PrimaryRailItem; collapsed: boolean }) {
+  const { Link } = useShellAdapter()
   const Icon = item.pending ? Loader2 : item.icon
   const content = (
     <>
@@ -80,8 +97,8 @@ function NavRow({ item, collapsed }: { item: PrimaryRailItem; collapsed: boolean
   )
 }
 
-/** Files and Extensions. Opens on hover with a short close delay; click, Enter and touch still open it. */
-function MoreMenu({ items, collapsed }: { items: readonly PrimaryRailItem[]; collapsed: boolean }) {
+/** More pages. Opens on hover with a short close delay; click, Enter and touch still open it. */
+function MoreMenu({ groups, collapsed }: { groups: ReadonlyArray<MoreItemGroup>; collapsed: boolean }) {
   const [open, setOpen] = useState(false)
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   // A click right after hover opened the menu should keep it open, not toggle it shut.
@@ -101,8 +118,8 @@ function MoreMenu({ items, collapsed }: { items: readonly PrimaryRailItem[]; col
     setOpen(next)
   }
   useEffect(() => cancelClose, [])
-  if (items.length === 0) return null
-  const activeItem = items.find((item) => item.active)
+  if (groups.length === 0) return null
+  const activeItem = groups.flatMap((group) => group.items).find((item) => item.active)
   const label = 'More'
   const hoverOpen = (event: React.PointerEvent) => {
     if (event.pointerType !== 'mouse') return
@@ -159,12 +176,21 @@ function MoreMenu({ items, collapsed }: { items: readonly PrimaryRailItem[]; col
           }}
         >
           <SidebarMenu>
-            {items.map((item) => (
-              <NavRow
-                key={item.id}
-                item={{ ...item, onSelect: () => { changeOpen(false); item.onSelect() } }}
-                collapsed={false}
-              />
+            {groups.map((group, index) => (
+              <Fragment key={`${group.label ?? 'group'}-${index}`}>
+                {group.label ? (
+                  <SidebarMenuItem>
+                    <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
+                  </SidebarMenuItem>
+                ) : null}
+                {group.items.map((item) => (
+                  <NavRow
+                    key={item.id}
+                    item={{ ...item, onSelect: () => { changeOpen(false); item.onSelect() } }}
+                    collapsed={false}
+                  />
+                ))}
+              </Fragment>
             ))}
           </SidebarMenu>
         </PopoverContent>
@@ -253,6 +279,8 @@ export interface UnifiedSidebarProps {
   resizable?: boolean
   /** List More pages as plain rows (the phone drawer has no room for a side menu). */
   inlineMore?: boolean
+  moreGroups?: ReadonlyArray<{ label?: string; ids: readonly string[] }>
+  settingsGroups?: ReadonlyArray<{ label: string; ids: readonly string[] }>
   /** Owns the header tabs; a second copy (the phone drawer) must not clear them when it closes. */
   publishSubviews?: boolean
   children?: ReactNode
@@ -349,16 +377,20 @@ export function UnifiedSidebar({
   keyboardShortcut = false,
   resizable = false,
   inlineMore = false,
+  moreGroups = DEFAULT_MORE_GROUPS,
+  settingsGroups,
   publishSubviews = true,
   children,
   className,
 }: UnifiedSidebarProps) {
+  const { rememberScope } = useShellAdapter()
   const [width, setWidth] = useState(264)
   const [resizing, setResizing] = useState(false)
   const settingsNav = panelKind === 'settings' ? panelNav : undefined
   const settingsBack = items.find((item) => item.id === 'settings-close')
-  const mainItems = items.filter((item) => !MORE_ITEM_IDS.has(item.id))
-  const moreItems = items.filter((item) => MORE_ITEM_IDS.has(item.id))
+  const groupedMoreItems = groupMoreItems(items, moreGroups)
+  const moreItemIds = new Set(groupedMoreItems.flatMap((group) => group.items.map((item) => item.id)))
+  const mainItems = items.filter((item) => !moreItemIds.has(item.id))
   const scopedNav = panelKind && panelKind !== 'settings' ? panelNav : undefined
   const rows = scopeChildren(scopedNav, scope)
   const tabsPage = Boolean(panelKind && TAB_PANEL_KINDS.has(panelKind))
@@ -383,7 +415,7 @@ export function UnifiedSidebar({
   const changeScope = (next: PanelScope) => {
     if (next === scope) return
     if (scopedNav) scopedNav.onSelect(next)
-    else rememberPanelScope(next)
+    else rememberScope(next)
   }
   const activePage = items.find((item) => item.active)
   const pageTitle = activePage?.label ?? ''
@@ -400,14 +432,14 @@ export function UnifiedSidebar({
       {collapsed || settingsNav ? null : <ScopeToggle scope={scope} workspaceLocked={false} onChange={changeScope} />}
       {settingsNav ? (
         <SidebarContent>
-          <SettingsSidebarNav nav={settingsNav} collapsed={collapsed} onBack={settingsBack?.onSelect} />
+          <SettingsSidebarNav nav={settingsNav} collapsed={collapsed} onBack={settingsBack?.onSelect} settingsGroups={settingsGroups} />
         </SidebarContent>
       ) : (
       <SidebarContent>
         <SidebarGroup>
           <SidebarMenu>
             {(inlineMore ? items : mainItems).map((item) => <NavRow key={item.id} item={item} collapsed={collapsed} />)}
-            {inlineMore ? null : <MoreMenu items={moreItems} collapsed={collapsed} />}
+            {inlineMore ? null : <MoreMenu groups={groupedMoreItems} collapsed={collapsed} />}
           </SidebarMenu>
         </SidebarGroup>
         {collapsed ? null : (

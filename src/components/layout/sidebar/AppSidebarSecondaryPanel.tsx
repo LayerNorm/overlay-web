@@ -12,20 +12,10 @@ import {
   type SidebarResourceAction,
   type SidebarResourceSearch,
 } from '@overlay/ui/primitives'
-import { InlineNavChildren, type InlineNavItem } from '@/components/layout/AppSidebarInlinePanels'
+import { InlineNavChildren } from '@/components/layout/AppSidebarInlinePanels'
+import type { SecondaryPanelNav } from '@overlay/shell-react'
 
-export interface SecondaryPanelNav {
-  /** Addressable id so a controlling button can own aria-controls. */
-  id?: string
-  items: ReadonlyArray<InlineNavItem>
-  /** Empty when no subview is selected, so nothing reads as pre-selected. */
-  activeId: string
-  /** The selected row among an expanded item's `children` (scope sub-rows). */
-  activeChildId?: string
-  /** The subpage whose navigation has started but has not committed yet. */
-  pendingId?: string | null
-  onSelect: (id: string) => void
-}
+export type { SecondaryPanelNav } from '@overlay/shell-react'
 
 export interface SecondaryPanelContentProps {
   nav?: SecondaryPanelNav

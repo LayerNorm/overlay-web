@@ -39,7 +39,7 @@ Replace the primary rail + secondary panel with one shadcn-style sidebar (ChatGP
 
 ## Target architecture
 
-- **`UnifiedSidebar`** (new, `src/components/layout/sidebar/UnifiedSidebar.tsx`), built only from `@overlay/ui` sidebar primitives. It reuses `useAppSidebarState` for routing, gating, badges and account state, so feature flags, capabilities, white-label brand and public showcase keep working.
+- **`UnifiedSidebar`** (new, `packages/overlay-shell-react/src/sidebar/UnifiedSidebar.tsx`), built only from `@overlay/ui` sidebar primitives. It reuses `useAppSidebarState` for routing, gating, badges and account state, so feature flags, capabilities, white-label brand and public showcase keep working.
 - **`AppSidebar`** picks the layout: `useSecondarySidebar ? <ClassicSidebar /> : <UnifiedSidebar />`. Classic is today's rail + panel, minus borders.
 - **Nav placement** becomes data: add `placement?: 'primary' | 'explore'` to `OverlayNavigationItem` (Files and Extensions are `explore`), so white-label configs can move items without code changes.
 - **Global scope.** One Personal/Workspace value drives every page via the existing `resolvePanelScope` (URL `?scope=`, then the saved choice). Chats stop deriving scope from `chatsView`: `chatScopeForView` only maps old links. Solo workspaces hide the toggle, like today.

@@ -370,7 +370,7 @@ never remounts form state.
 
 ## The single sidebar (default)
 
-The default shell is one shadcn sidebar (`src/components/layout/sidebar/UnifiedSidebar.tsx`): the brand, search and
+The default shell is one shadcn sidebar (`packages/overlay-shell-react/src/sidebar/UnifiedSidebar.tsx`): the brand, search and
 collapse controls, the Personal/Workspace toggle (hidden for a solo workspace), the main pages with Files and
 Extensions under an Explore menu that opens on hover (click, Enter and touch also open it), then the current page's own
 rows and items, then the account. It reuses `useAppSidebarState`, so routes, scope persistence, badges and pending states

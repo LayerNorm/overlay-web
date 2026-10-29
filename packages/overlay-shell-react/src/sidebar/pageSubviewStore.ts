@@ -1,7 +1,7 @@
 'use client'
 
 import { useSyncExternalStore } from 'react'
-import type { InlineNavItem } from '@/components/layout/AppSidebarInlinePanels'
+import type { InlineNavItem } from '../types'
 
 /** The current page's subviews (Work's List/Board/Timeline, Files and Extensions categories), shown as header tabs. */
 export interface PageSubviews {
