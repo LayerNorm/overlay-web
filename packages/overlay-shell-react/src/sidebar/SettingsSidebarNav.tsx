@@ -1,7 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import Link from 'next/link'
 import { ArrowLeft, Loader2, Search } from 'lucide-react'
 import {
   SidebarGroup,
@@ -11,11 +10,12 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from '@overlay/ui/primitives'
-import type { InlineNavItem } from '@/components/layout/AppSidebarInlinePanels'
-import type { SecondaryPanelNav } from './AppSidebarSecondaryPanel'
+import { useShellAdapter } from '../adapter'
+import type { InlineNavItem, SecondaryPanelNav } from '../types'
 import { groupSettingsItems } from './settingsSearch'
 
 function SettingsRow({ item, nav, collapsed }: { item: InlineNavItem; nav: SecondaryPanelNav; collapsed: boolean }) {
+  const { Link } = useShellAdapter()
   const pending = nav.pendingId === item.id
   const Icon = pending ? Loader2 : item.icon
   const active = nav.activeId === item.id

@@ -2,27 +2,24 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
+import { CollapsibleSection } from '@overlay/ui/primitives'
 import { SidebarAccountMenu } from './SidebarAccountMenu'
 
 ;(globalThis as typeof globalThis & { React: typeof React }).React = React
 
-const ENTITLEMENTS = {
-  tier: 'pro' as const,
-  planKind: 'paid' as const,
-  creditsUsed: 0,
-  creditsTotal: 20,
-  budgetUsedCents: 250,
-  budgetTotalCents: 2000,
-  dailyUsage: { ask: 0, write: 0, agent: 0 },
-  overlayStorageBytesUsed: 108 * 1024 * 1024,
-  overlayStorageBytesLimit: 1024 * 1024 * 1024,
-}
-
 function render() {
   return renderToStaticMarkup(
     <SidebarAccountMenu
-      billingEnabled
-      entitlements={ENTITLEMENTS}
+      usageMeters={
+        <>
+          <CollapsibleSection label="Usage">
+            <div className="px-3 pb-1">Usage details</div>
+          </CollapsibleSection>
+          <CollapsibleSection label="Storage" className="border-t border-(--border)">
+            <div className="px-3 pb-1">Storage details</div>
+          </CollapsibleSection>
+        </>
+      }
       onAccountClick={() => undefined}
       onSignOut={() => undefined}
     />,

@@ -2,21 +2,19 @@
 
 import { unstyledButton } from '@overlay/ui/control-reset'
 
-import { workspaceMemberLabel } from '@/shared/workspaces/solo-workspace'
 import { type ReactNode, type RefObject } from 'react'
-import Link from 'next/link'
 import { Check, ChevronDown, Loader2, Plus, RefreshCw } from 'lucide-react'
 import { CollapsibleSection, MenuItem, Popover, PopoverContent, PopoverTrigger, Button } from '@overlay/ui/primitives'
-import { CreateWorkspaceDialog } from './CreateWorkspaceDialog'
-import { WorkspaceAvatar } from '@/components/identity/WorkspaceAvatar'
-import type { WorkspaceLifecycleStatus, WorkspaceSummary } from '@/shared/workspaces/types'
+import { useShellAdapter } from '../adapter'
+import type { ShellWorkspace, WorkspaceLifecycleStatus } from '../types'
 
 type WorkspaceListProps = {
   status: WorkspaceLifecycleStatus
-  workspaces: readonly WorkspaceSummary[]
+  workspaces: readonly ShellWorkspace[]
   activeWorkspaceId: string | null
   switchingWorkspaceId: string | null
   error: string | null
+  renderAvatar(workspace: ShellWorkspace, size: 'sm' | 'md' | 'lg'): ReactNode
   onRetry(): void
   onSelectWorkspace(workspaceId: string): void
   onCreateRequest(): void
@@ -28,10 +26,12 @@ function WorkspaceList({
   activeWorkspaceId,
   switchingWorkspaceId,
   error,
+  renderAvatar,
   onRetry,
   onSelectWorkspace,
   onCreateRequest,
 }: WorkspaceListProps) {
+  const { Link } = useShellAdapter()
   return (
     <>
       {status === 'loading' ? (
@@ -70,7 +70,7 @@ function WorkspaceList({
             const selected = workspace.id === activeWorkspaceId
             const switching = workspace.id === switchingWorkspaceId
             // Every workspace reads the same: a name and how many people are in it.
-            const memberLabel = workspaceMemberLabel(workspace) ?? '1 member'
+            const memberLabel = workspace.memberLabel ?? '1 member'
             return (
               <MenuItem
                 key={workspace.id}
@@ -79,7 +79,7 @@ function WorkspaceList({
                 className="rounded-lg py-2"
                 onClick={() => onSelectWorkspace(workspace.id)}
               >
-                <WorkspaceAvatar workspace={workspace} size="sm" />
+                {renderAvatar(workspace, 'sm')}
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-medium text-(--foreground)">
                     {workspace.name}
@@ -157,7 +157,8 @@ type WorkspaceSwitcherTriggerProps = {
   compact: boolean
   isFooter: boolean
   status: WorkspaceLifecycleStatus
-  activeWorkspace: WorkspaceSummary | null
+  activeWorkspace: ShellWorkspace | null
+  renderAvatar(workspace: ShellWorkspace, size: 'sm' | 'md' | 'lg'): ReactNode
   userLabel?: string
 }
 
@@ -171,7 +172,7 @@ function triggerButtonClassName(isFooter: boolean, compact: boolean): string {
 
 function triggerWorkspaceLabel(
   status: WorkspaceLifecycleStatus,
-  activeWorkspace: WorkspaceSummary | null,
+  activeWorkspace: ShellWorkspace | null,
 ): string {
   if (status === 'loading') return 'Loading workspace…'
   return activeWorkspace?.name ?? 'Choose a workspace'
@@ -181,7 +182,7 @@ function triggerSecondaryLabel(
   compact: boolean,
   isFooter: boolean,
   userLabel: string | undefined,
-  activeWorkspace: WorkspaceSummary | null,
+  activeWorkspace: ShellWorkspace | null,
 ): string | null | undefined {
   if (!isFooter && !compact) return userLabel ?? activeWorkspace?.role
   if (isFooter) return userLabel
@@ -192,13 +193,15 @@ function WorkspaceSwitcherTriggerAvatar({
   compact,
   isFooter,
   activeWorkspace,
+  renderAvatar,
 }: {
   compact: boolean
   isFooter: boolean
-  activeWorkspace: WorkspaceSummary | null
+  activeWorkspace: ShellWorkspace | null
+  renderAvatar(workspace: ShellWorkspace, size: 'sm' | 'md' | 'lg'): ReactNode
 }) {
   if (activeWorkspace) {
-    return <WorkspaceAvatar workspace={activeWorkspace} size={compact || isFooter ? 'sm' : 'md'} />
+    return renderAvatar(activeWorkspace, compact || isFooter ? 'sm' : 'md')
   }
   return (
     <span className={`${compact || isFooter ? 'h-6 w-6' : 'h-8 w-8'} shrink-0 animate-pulse rounded-lg bg-(--surface-subtle)`} />
@@ -234,6 +237,7 @@ function WorkspaceSwitcherTrigger({
   isFooter,
   status,
   activeWorkspace,
+  renderAvatar,
   userLabel,
 }: WorkspaceSwitcherTriggerProps) {
   return (
@@ -248,6 +252,7 @@ function WorkspaceSwitcherTrigger({
           compact={compact}
           isFooter={isFooter}
           activeWorkspace={activeWorkspace}
+          renderAvatar={renderAvatar}
         />
         {!compact ? (
           <WorkspaceSwitcherTriggerLabels
@@ -274,10 +279,12 @@ export type WorkspaceSwitcherViewProps = {
   compact: boolean
   placement: 'header' | 'footer'
   accountMenu?: ReactNode
+  createDialog?: ReactNode
   userLabel?: string
+  renderAvatar(workspace: ShellWorkspace, size: 'sm' | 'md' | 'lg'): ReactNode
   status: WorkspaceLifecycleStatus
-  workspaces: readonly WorkspaceSummary[]
-  activeWorkspace: WorkspaceSummary | null
+  workspaces: readonly ShellWorkspace[]
+  activeWorkspace: ShellWorkspace | null
   activeWorkspaceId: string | null
   switchingWorkspaceId: string | null
   error: string | null
@@ -286,10 +293,6 @@ export type WorkspaceSwitcherViewProps = {
   onSelectWorkspace(workspaceId: string): void
   onCreateRequest(): void
   onOpenChange(open: boolean): void
-  createOpen: boolean
-  createBusy: boolean
-  onCreateOpenChange(open: boolean): void
-  onCreate(name: string): Promise<void>
 }
 
 export function WorkspaceSwitcherView({
@@ -299,7 +302,9 @@ export function WorkspaceSwitcherView({
   compact,
   placement,
   accountMenu,
+  createDialog,
   userLabel,
+  renderAvatar,
   status,
   workspaces,
   activeWorkspace,
@@ -311,10 +316,6 @@ export function WorkspaceSwitcherView({
   onSelectWorkspace,
   onCreateRequest,
   onOpenChange,
-  createOpen,
-  createBusy,
-  onCreateOpenChange,
-  onCreate,
 }: WorkspaceSwitcherViewProps) {
   const isFooter = placement === 'footer'
 
@@ -332,6 +333,7 @@ export function WorkspaceSwitcherView({
             isFooter={isFooter}
             status={status}
             activeWorkspace={activeWorkspace}
+            renderAvatar={renderAvatar}
             userLabel={userLabel}
           />
           <WorkspaceSwitcherMenu
@@ -341,6 +343,7 @@ export function WorkspaceSwitcherView({
             activeWorkspaceName={activeWorkspace?.name}
             actionError={actionError}
             accountMenu={accountMenu}
+            renderAvatar={renderAvatar}
             status={status}
             workspaces={workspaces}
             activeWorkspaceId={activeWorkspaceId}
@@ -352,19 +355,7 @@ export function WorkspaceSwitcherView({
           />
         </div>
       </Popover>
-      {createOpen ? (
-        <CreateWorkspaceDialog
-          open
-          busy={createBusy}
-          error={actionError}
-          onOpenChange={onCreateOpenChange}
-          onCreate={onCreate}
-          onCloseAutoFocus={(event) => {
-            event.preventDefault()
-            rootRef.current?.querySelector<HTMLButtonElement>('button')?.focus()
-          }}
-        />
-      ) : null}
+      {createDialog}
     </>
   )
 }

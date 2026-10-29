@@ -10,8 +10,7 @@ import {
 } from '@overlay/ui/primitives'
 import { cn } from '@overlay/ui'
 import { DelayedTooltip } from '@overlay/ui/overlays'
-import type { InlineNavItem } from '@/components/layout/AppSidebarInlinePanels'
-import type { SecondaryPanelNav } from './AppSidebarSecondaryPanel'
+import type { InlineNavItem, SecondaryPanelNav } from '../types'
 
 export function badgeLabel(count: number) {
   return count > 99 ? '99+' : String(count)

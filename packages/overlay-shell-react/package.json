@@ -1,0 +1,23 @@
+{
+  "name": "@overlay/shell-react",
+  "version": "0.0.1",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*"
+  },
+  "scripts": {
+    "test": "NODE_OPTIONS='--require=../../scripts/ci/register-style-noop.cjs --require=../../scripts/ci/register-react.cjs' node --import tsx --test src/sidebar/UnifiedSidebar.test.tsx src/sidebar/settingsSearch.test.ts src/sidebar/SidebarAccountMenu.test.tsx src/workspaces/WorkspaceSwitcherView.test.tsx test/no-web-imports.test.mjs"
+  },
+  "dependencies": {
+    "@overlay/ui": "file:../overlay-ui"
+  },
+  "peerDependencies": {
+    "lucide-react": "^0.575.0",
+    "react": ">=18",
+    "react-dom": ">=18"
+  }
+}

@@ -5,7 +5,7 @@ import { Bell, FileText, Hash, ListChecks, Mail, MessageSquare, Puzzle } from 'l
 import { renderToStaticMarkup } from 'react-dom/server'
 import { UnifiedSidebar, type UnifiedSidebarProps } from './UnifiedSidebar'
 import { publishPageSubviews } from './pageSubviewStore'
-import type { SecondaryPanelNav } from './AppSidebarSecondaryPanel'
+import type { SecondaryPanelNav } from '../types'
 
 ;(globalThis as typeof globalThis & { React: typeof React }).React = React
 

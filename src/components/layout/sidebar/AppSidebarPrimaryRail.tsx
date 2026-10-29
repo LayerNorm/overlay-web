@@ -3,7 +3,6 @@
 import { cn } from '@overlay/ui'
 import { useState, type ReactNode, type CSSProperties } from 'react'
 import Link from 'next/link'
-import type { LucideIcon } from 'lucide-react'
 import { Loader2 } from 'lucide-react'
 import {
   PanelResizeHandle,
@@ -17,22 +16,9 @@ import {
   SidebarProvider,
   SidebarSeparator,
 } from '@overlay/ui/primitives'
-import type { InlineNavItem } from '@/components/layout/AppSidebarInlinePanels'
+import type { InlineNavItem, PrimaryRailItem } from '@overlay/shell-react'
 
-export interface PrimaryRailItem {
-  id: string
-  label: string
-  icon: LucideIcon
-  active?: boolean
-  pending?: boolean
-  disabled?: boolean
-  badgeCount?: number
-  /** Real destinations stay anchors so modifier-click can open a new tab. */
-  href?: string
-  title?: string
-  dataTour?: string
-  onSelect: () => void
-}
+export type { PrimaryRailItem } from '@overlay/shell-react'
 
 function RailBadge({ count, expanded }: { count: number; expanded: boolean }) {
   return (

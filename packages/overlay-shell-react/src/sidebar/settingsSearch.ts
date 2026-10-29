@@ -1,4 +1,4 @@
-import type { InlineNavItem } from '@/components/layout/AppSidebarInlinePanels'
+import type { InlineNavItem } from '../types'
 
 const SETTINGS_GROUPS: ReadonlyArray<{ label: string; ids: readonly string[] }> = [
   { label: 'Personal', ids: ['general', 'customization', 'shortcuts', 'memories', 'archived'] },

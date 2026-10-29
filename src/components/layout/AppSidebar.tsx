@@ -1,8 +1,10 @@
 'use client'
 
+import NextLink from 'next/link'
 import dynamic from 'next/dynamic'
-const GlobalSearchDialog = dynamic(() => import('./GlobalSearchDialog').then((mod) => ({ default: mod.GlobalSearchDialog })))
-import { SidebarAccountMenu } from './sidebar/SidebarAccountMenu'
+import { CollapsibleSection } from '@overlay/ui/primitives'
+import { ShellAdapterProvider, SidebarAccountMenu, UnifiedSidebar, type ShellAdapter } from '@overlay/shell-react'
+import { StorageBar, UsageBar } from './sidebar/SidebarUsageMeters'
 import { AppSidebarPrimaryRail } from './sidebar/AppSidebarPrimaryRail'
 import { AppSidebarSecondaryPanel } from './sidebar/AppSidebarSecondaryPanel'
 import {
@@ -14,16 +16,18 @@ import {
   SidebarBrandLink,
   SidebarRailBrand,
 } from './sidebar/AppSidebarChrome'
-import { UnifiedSidebar } from './sidebar/UnifiedSidebar'
 import { signOutToLanding } from './sidebar/appSidebarNav'
+import { rememberPanelScope } from '@/hooks/use-panel-scope'
 import { useOptionalAppSettings } from '@/components/providers/AppSettingsProvider'
 import { useAppSidebarState } from './sidebar/useAppSidebarState'
 import { EMPTY_COLLABORATION_NOTIFICATIONS, type AppSidebarProps } from './appSidebarTypes'
 import { WORK_FILTER_LABELS, type WorkFilter } from '@/shared/work/query'
-import type { InlineNavItem } from './AppSidebarInlinePanels'
+import type { InlineNavItem } from '@overlay/shell-react'
 
+const GlobalSearchDialog = dynamic(() => import('./GlobalSearchDialog').then((mod) => ({ default: mod.GlobalSearchDialog })))
 const WORK_SECTION_ORDER: readonly WorkFilter[] = ['needs-you', 'mine', 'all']
 const WORK_SECTION_ROWS: ReadonlyArray<InlineNavItem> = WORK_SECTION_ORDER.map((id) => ({ id, label: WORK_FILTER_LABELS[id] }))
+const shellAdapter = { Link: NextLink, rememberScope: rememberPanelScope } satisfies ShellAdapter
 
 export type {
   AppSidebarChatPanelContext,
@@ -64,10 +68,21 @@ export default function AppSidebar({
     />
   )
 
-  const accountMenuProps = {
-    billingEnabled: s.billingEnabled,
-    entitlements: s.entitlements,
-  }
+  const usageMeters = s.billingEnabled ? (
+    <>
+      <CollapsibleSection label="Usage">
+        <div className="px-3 pb-1">
+          <UsageBar entitlements={s.entitlements} />
+        </div>
+      </CollapsibleSection>
+      <CollapsibleSection label="Storage" className="border-t border-(--border)">
+        <div className="px-3 pb-1">
+          <StorageBar entitlements={s.entitlements} />
+        </div>
+      </CollapsibleSection>
+    </>
+  ) : null
+  const accountMenuProps = { usageMeters }
   const accountMenuContent = (
     <SidebarAccountMenu
       {...accountMenuProps}
@@ -142,6 +157,7 @@ export default function AppSidebar({
   const sectionActions = workSections ? { all: s.panelAction } : s.panelSectionActions
 
   return (
+    <ShellAdapterProvider value={shellAdapter}>
     <>
       <MobileTopBar
         hidden={s.hideTemporaryChatChrome}
@@ -313,5 +329,6 @@ export default function AppSidebar({
         }}
       />
     </>
+    </ShellAdapterProvider>
   )
 }

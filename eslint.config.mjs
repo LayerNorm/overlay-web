@@ -119,6 +119,7 @@ const rawInteractiveControlRules = {
     "src/**/*.{tsx,jsx}",
     "packages/overlay-chat-react/src/**/*.{tsx,jsx}",
     "packages/overlay-modules-react/src/**/*.{tsx,jsx}",
+    "packages/overlay-shell-react/src/**/*.{tsx,jsx}",
   ],
   ignores: [
     "**/*.test.{tsx,jsx}",

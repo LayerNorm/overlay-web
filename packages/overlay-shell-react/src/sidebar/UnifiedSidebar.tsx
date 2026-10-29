@@ -1,7 +1,6 @@
 'use client'
 
 import { Fragment, useEffect, useRef, useState, type ReactNode, type CSSProperties } from 'react'
-import Link from 'next/link'
 import { ChevronRight, Ellipsis, Loader2, PanelLeft, Search } from 'lucide-react'
 import {
   Button,
@@ -22,11 +21,8 @@ import {
 import { unstyledButton } from '@overlay/ui/control-reset'
 import { cn } from '@overlay/ui'
 import { DelayedTooltip } from '@overlay/ui/overlays'
-import { rememberPanelScope } from '@/hooks/use-panel-scope'
-import type { PanelScope } from '@/shared/workspaces/panel-scope'
-import type { InlineNavItem } from '@/components/layout/AppSidebarInlinePanels'
-import type { PrimaryRailItem } from './AppSidebarPrimaryRail'
-import type { SecondaryPanelNav } from './AppSidebarSecondaryPanel'
+import { useShellAdapter } from '../adapter'
+import type { InlineNavItem, PanelScope, PrimaryRailItem, SecondaryPanelNav } from '../types'
 import { publishPageSubviews } from './pageSubviewStore'
 import { SettingsSidebarNav } from './SettingsSidebarNav'
 import { PageSections, badgeLabel } from './PageSections'
@@ -39,6 +35,7 @@ const MORE_CLOSE_DELAY_MS = 150
 
 
 function NavRow({ item, collapsed }: { item: PrimaryRailItem; collapsed: boolean }) {
+  const { Link } = useShellAdapter()
   const Icon = item.pending ? Loader2 : item.icon
   const content = (
     <>
@@ -353,6 +350,7 @@ export function UnifiedSidebar({
   children,
   className,
 }: UnifiedSidebarProps) {
+  const { rememberScope } = useShellAdapter()
   const [width, setWidth] = useState(264)
   const [resizing, setResizing] = useState(false)
   const settingsNav = panelKind === 'settings' ? panelNav : undefined
@@ -383,7 +381,7 @@ export function UnifiedSidebar({
   const changeScope = (next: PanelScope) => {
     if (next === scope) return
     if (scopedNav) scopedNav.onSelect(next)
-    else rememberPanelScope(next)
+    else rememberScope(next)
   }
   const activePage = items.find((item) => item.active)
   const pageTitle = activePage?.label ?? ''
