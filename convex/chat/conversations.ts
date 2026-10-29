@@ -5,7 +5,7 @@ import { ACTIVE_AGENT_RUN_STATUSES as CANONICAL_ACTIVE_AGENT_RUN_STATUSES } from
 import { internalMutation, mutation, query } from '../_generated/server'
 import { internal } from '../_generated/api'
 import type { Doc } from '../_generated/dataModel'
-import type { QueryCtx } from '../_generated/server'
+import type { MutationCtx, QueryCtx } from '../_generated/server'
 import { requireAccessToken, validateServerSecret } from '../lib/auth'
 import { recordConversationEvent } from '../collaboration/events'
 import { requireConversationAccess } from '../collaboration/directMessages'
@@ -165,6 +165,96 @@ function clampAskModels(ids: string[]): string[] {
   const uniq = [...new Set(ids.filter(Boolean))]
   if (uniq.length === 0) return [DEFAULT_MODEL_ID]
   return uniq.slice(0, 4)
+}
+
+type CancellationHarnessRun = Doc<'harnessRuns'>
+type CancellationAgentRun = Doc<'conversationAgentRuns'>
+
+async function loadCancellationHarnessRuns(
+  ctx: MutationCtx,
+  matching: CancellationAgentRun[],
+  userId: string,
+): Promise<Map<string, CancellationHarnessRun>> {
+  const matchedRunIds = [...new Set(matching.flatMap(run =>
+    run.userId === userId && run.runner !== 'remote' && run.harnessRunId ? [run.harnessRunId] : [],
+  ))]
+  const matchedRows = await Promise.all(matchedRunIds.map(runId => ctx.db.query('harnessRuns')
+    .withIndex('by_runId', query => query.eq('runId', runId))
+    .unique()))
+  const rootRunIds = [...new Set(matchedRows.flatMap(run => run ? [run.rootRunId] : []))]
+  const treeRows = await Promise.all(rootRunIds.map(rootRunId => ctx.db.query('harnessRuns')
+    .withIndex('by_rootRunId', query => query.eq('rootRunId', rootRunId))
+    .collect()))
+  const rows = new Map<string, CancellationHarnessRun>()
+  for (const run of [...matchedRows, ...treeRows.flat()]) {
+    if (run?.actorUserId === userId) rows.set(run.runId, run)
+  }
+  return rows
+}
+
+function isHarnessRunDescendant(
+  run: CancellationHarnessRun,
+  ancestor: CancellationHarnessRun,
+  rows: Map<string, CancellationHarnessRun>,
+): boolean {
+  if (run.rootRunId !== ancestor.rootRunId || run.actorUserId !== ancestor.actorUserId) return false
+  let parentRunId = run.parentRunId
+  const seen = new Set<string>()
+  while (parentRunId && !seen.has(parentRunId)) {
+    if (parentRunId === ancestor.runId) return true
+    seen.add(parentRunId)
+    parentRunId = rows.get(parentRunId)?.parentRunId
+  }
+  return false
+}
+
+function cancellationHarnessDepth(run: CancellationHarnessRun, rows: Map<string, CancellationHarnessRun>): number {
+  let depth = 0
+  let parentRunId = run.parentRunId
+  const seen = new Set<string>([run.runId])
+  while (parentRunId && !seen.has(parentRunId)) {
+    const parent = rows.get(parentRunId)
+    if (!parent) break
+    seen.add(parentRunId)
+    depth++
+    parentRunId = parent.parentRunId
+  }
+  return depth
+}
+
+function orderCancellationRunsDeepestFirst(
+  runs: CancellationAgentRun[],
+  harnessRuns: Map<string, CancellationHarnessRun>,
+): CancellationAgentRun[] {
+  return runs.map((run, index) => ({
+    run,
+    index,
+    depth: run.harnessRunId && harnessRuns.has(run.harnessRunId)
+      ? cancellationHarnessDepth(harnessRuns.get(run.harnessRunId)!, harnessRuns)
+      : -1,
+  })).sort((left, right) => right.depth - left.depth || left.index - right.index).map(entry => entry.run)
+}
+
+function findHarnessDescendantAgentRuns(
+  runs: CancellationAgentRun[],
+  matching: CancellationAgentRun[],
+  harnessRuns: Map<string, CancellationHarnessRun>,
+  userId: string,
+): CancellationAgentRun[] {
+  const matchedIds = new Set(matching.map(run => run._id))
+  const matchedHarnessRuns = matching.flatMap(run => {
+    if (run.userId !== userId || run.runner === 'remote' || !run.harnessRunId) return []
+    const harnessRun = harnessRuns.get(run.harnessRunId)
+    return harnessRun ? [harnessRun] : []
+  })
+  return runs.filter(run => {
+    if (matchedIds.has(run._id) || run.userId !== userId || run.runner === 'remote'
+      || !ACTIVE_AGENT_RUN_STATUSES.has(run.status) || !run.harnessRunId) return false
+    const harnessRun = harnessRuns.get(run.harnessRunId)
+    if (!harnessRun) return false
+    return matchedHarnessRuns.some(parent => harnessRun.rootRunId === parent.runId
+      || isHarnessRunDescendant(harnessRun, parent, harnessRuns))
+  })
 }
 
 async function authorizeUserAccess(params: {
@@ -1237,7 +1327,12 @@ export const cancelAgentRuns = mutation({
     // A connected agent's run is cancelled through the control plane (it tells the agent's machine to stop and settles
     // billing); the caller does that for the ids returned here, so it is left untouched.
     const remoteRunIds = matching.flatMap((run) => (run.runner === 'remote' && run.externalRunId ? [run.externalRunId] : []))
-    const activeRuns = matching.filter((run) => run.runner !== 'remote')
+    const harnessRuns = await loadCancellationHarnessRuns(ctx, matching, args.userId)
+    const descendants = findHarnessDescendantAgentRuns(runs, matching, harnessRuns, args.userId)
+    const activeRuns = [
+      ...orderCancellationRunsDeepestFirst(descendants, harnessRuns),
+      ...orderCancellationRunsDeepestFirst(matching.filter((run) => run.runner !== 'remote'), harnessRuns),
+    ]
     const now = Date.now()
     const sentinel = '\n\n[Interrupted by user. Continue?]'
     for (const run of activeRuns) {

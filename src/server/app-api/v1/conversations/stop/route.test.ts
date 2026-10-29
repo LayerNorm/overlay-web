@@ -72,3 +72,38 @@ test('legacy stop results do not schedule a harness cleanup', async () => {
   expect(response.status).toBe(200)
   expect(callbacks).toHaveLength(0)
 })
+
+test('stop cancels workflows and schedules cleanup for returned named-child deliveries', async () => {
+  const callbacks: Array<() => Promise<void>> = []
+  const cleanup = vi.fn().mockResolvedValue(undefined)
+  const cancelWorkflow = vi.fn().mockResolvedValue(undefined)
+  const deps = {
+    ...dependencies({
+      cancelledRunIds: ['parent-agent-run', 'child-agent-run'],
+      cancelledWorkflowRunIds: ['parent-workflow', 'child-workflow'],
+      cancelledWorkflows: [
+        { agentRunId: 'parent-agent-run', workflowRunId: 'parent-workflow' },
+        { agentRunId: 'child-agent-run', workflowRunId: 'child-workflow' },
+      ],
+      cancelledHarnessRoots: [
+        { agentRunId: 'parent-agent-run', runId: 'parent-root' },
+        { agentRunId: 'child-agent-run', runId: 'named-child' },
+      ],
+      stoppedCount: 2,
+    }, callbacks, cleanup),
+    cancelWorkflow,
+  }
+
+  const response = await POST(request(), context, deps)
+  expect(response.status).toBe(200)
+  expect(await response.json()).toEqual({
+    success: true, stoppedCount: 2, cancelledRunIds: ['parent-agent-run', 'child-agent-run'],
+    abortedLocalCount: 0, cancelledWorkflowCount: 2,
+  })
+  expect(cancelWorkflow).toHaveBeenCalledWith('child-workflow')
+  expect(callbacks).toHaveLength(2)
+  await Promise.all(callbacks.map(callback => callback()))
+  expect(cleanup).toHaveBeenCalledWith({
+    actorUserId: 'owner', agentRunId: 'child-agent-run', rootRunId: 'named-child',
+  })
+})

@@ -276,10 +276,13 @@ its compiled route files are generated output and should not be committed.
 
 Personal root admission binds exactly one queued personal delivery AgentRun to the
 root in the same Convex transaction. Stop cancels that delivery and the bound
-root in one transaction, so the durable terminal root fences descendants without
-rewriting every child row. Pending model holds remain until their matching late
+root in one transaction. For native Harness runs, Stop also cancels each active,
+same-user local descendant deepest-first before its matched parent, preserving
+active-descendant counts while leaving terminal runs and unrelated trees untouched.
+The durable terminal root fences descendants that are not represented by a
+conversation AgentRun. Pending model holds remain until their matching late
 receipt settles them. The server may subsequently perform best-effort SDK
-Workflow cancellation for claimed root and child runs; that cleanup is physical
+Workflow cancellation for every returned claimed run; that cleanup is physical
 resource cleanup only and cannot promise to abort provider work already dispatched.
 Admission and cancellation bindings are additive, so legacy generic harness
 admissions remain unchanged. Existing in-flight Work runs and internal automation
