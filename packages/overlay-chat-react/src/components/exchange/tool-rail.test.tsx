@@ -4,7 +4,7 @@ import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { ToolLineLogo } from './tool-rail'
 
-test('every trace step uses the SVG orb in the trace icon slot, not a raster logo', () => {
+test('every trace step uses the SVG O mark in the trace icon slot, not a raster logo', () => {
   const markup = renderToStaticMarkup(<ToolLineLogo />)
 
   assert.doesNotMatch(markup, /<img/)
@@ -13,4 +13,13 @@ test('every trace step uses the SVG orb in the trace icon slot, not a raster log
   assert.match(markup, /size-\[0\.5em\]/)
   assert.match(markup, /width="6.5"/)
   assert.match(markup, /aria-hidden="true"/)
+})
+
+test('only running trace steps move their eyes', () => {
+  const idle = renderToStaticMarkup(<ToolLineLogo />)
+  const running = renderToStaticMarkup(<ToolLineLogo running />)
+
+  assert.match(idle, /overlay-mark--none/)
+  assert.doesNotMatch(idle, /overlay-mark--look/)
+  assert.match(running, /overlay-mark--look/)
 })

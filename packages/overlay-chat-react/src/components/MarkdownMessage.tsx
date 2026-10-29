@@ -1,5 +1,5 @@
 import 'katex/dist/katex.min.css'
-import { Orb } from '@overlay/ui'
+import { OverlayMark } from '@overlay/ui'
 import { type ReactNode, memo, useMemo, useState } from 'react'
 import { AtSign, BookOpen, Bot, FileText, Hash, Plug, Server, Sparkles } from 'lucide-react'
 import { Streamdown } from 'streamdown'
@@ -261,7 +261,7 @@ function MarkdownMessageImpl({
       </Streamdown>
       {showInlineMarker ? (
         <span className="overlay-stream-marker" aria-hidden>
-          <Orb variant="metal" size={14} animated={false} label="" />
+          <OverlayMark motion="look" size={14} label="" />
         </span>
       ) : null}
     </div>

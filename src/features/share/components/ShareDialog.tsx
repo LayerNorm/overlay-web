@@ -5,6 +5,7 @@ import { Button } from '@overlay/ui/primitives'
 import { useMemo, useState } from 'react'
 import { Check, Linkedin, Link2, X } from 'lucide-react'
 import { Dialog, DialogContent } from '@overlay/ui'
+import { BrandLockup } from '@/components/brand/BrandLockup'
 import { safeHttpUrl } from '@/shared/security/safe-url'
 
 type Resource = {
@@ -134,10 +135,7 @@ export function ShareDialog({
               className="flex aspect-1200/630 w-full flex-col justify-between bg-linear-to-br from-[#0a0a0a] via-[#111418] to-[#0a0a0a] p-6 text-white"
             >
               <div className="flex items-center gap-2.5">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white text-base font-bold text-black">
-                  o
-                </div>
-                <div className="text-base font-medium tracking-tight">overlay</div>
+                <BrandLockup className="text-base" />
               </div>
               <div className="text-2xl font-semibold leading-tight tracking-tight line-clamp-3 sm:text-3xl">
                 {resource.title}

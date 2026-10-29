@@ -15,7 +15,7 @@ test('invitation email uses Overlay brand treatment', () => {
   assert.match(email.html, /background:#ffffff/)
   assert.match(email.html, /Libre Baskerville/)
   assert.match(email.html, /https:\/\/www\.getoverlay\.io\/assets\/overlay-logo\.png/)
-  assert.match(email.html, />\s*overlay\s*</)
+  assert.match(email.html, />\s*Overlay\s*</)
   assert.match(email.html, /Join Acme Corp/)
   assert.match(email.html, /Invited you as member/)
   assert.match(email.html, /Sign in with the email address that received this invitation/)

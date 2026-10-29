@@ -14,7 +14,7 @@ import {
 
 ;(globalThis as typeof globalThis & { React: typeof React }).React = React
 
-test('approval card is flat, uses the Orb, and lists Approve before Deny', () => {
+test('approval card is flat, uses the O mark, and lists Approve before Deny', () => {
   const html = renderToStaticMarkup(
     <Confirmation>
       <ConfirmationIcon />
@@ -30,6 +30,6 @@ test('approval card is flat, uses the Orb, and lists Approve before Deny', () =>
   )
   assert.match(html, /data-slot="confirmation" role="group"/)
   assert.doesNotMatch(html, /\bborder\b/)
-  assert.match(html, /data-overlay-orb|<svg/)
+  assert.match(html, /class="overlay-mark /)
   assert.ok(html.indexOf('Approve') < html.indexOf('Deny'))
 })

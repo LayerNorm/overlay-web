@@ -81,7 +81,7 @@ export default async function OpengraphImage(
             o
           </div>
           <div style={{ fontSize: 28, fontWeight: 500, letterSpacing: -0.5 }}>
-            overlay
+            Overlay
           </div>
         </div>
 

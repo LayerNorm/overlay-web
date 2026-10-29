@@ -8,7 +8,7 @@ function join(...classes: Array<string | false | null | undefined>): string {
   return classes.filter(Boolean).join(' ')
 }
 
-/** Tool approval card: flat fill, Orb, title, requests, Approve / Deny. */
+/** Tool approval card: flat fill, mark, title, requests, Approve / Deny. */
 export function Confirmation({ className, ...props }: ComponentProps<'div'>) {
   return (
     <div

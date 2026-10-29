@@ -334,7 +334,7 @@ function renderHtml(content: EmailContent, originUrl: string, preferencesUrl: st
         <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:480px;">
           <tr>
             <td style="padding:0 4px 18px;">
-              <span style="line-height:1;"><img src="${logoUrl}" width="12" height="12" alt="" style="display:inline-block;vertical-align:middle;border:0;"><span style="font-family:${SERIF};font-size:20px;font-weight:500;letter-spacing:-0.02em;color:#0a0a0a;padding-left:8px;vertical-align:middle;">overlay</span></span>
+              <span style="line-height:1;"><img src="${logoUrl}" width="12" height="12" alt="" style="display:inline-block;vertical-align:middle;border:0;"><span style="font-family:${SERIF};font-size:20px;font-weight:500;letter-spacing:-0.02em;color:#0a0a0a;padding-left:8px;vertical-align:middle;">Overlay</span></span>
             </td>
           </tr>
           <tr>

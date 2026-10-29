@@ -10,7 +10,7 @@ import {
   type ReactNode,
   type Ref,
 } from 'react'
-import { Orb } from '@overlay/ui'
+import { OverlayMark } from '@overlay/ui'
 import { EditorContent } from '@tiptap/react'
 import {
   Check,
@@ -698,7 +698,7 @@ export function CanonicalNotebookEditor({
 
   const overlayLogo = logo ?? (
     <span className="overlay-stream-marker h-3.5 w-3.5" aria-hidden>
-      <Orb variant="metal" size={14} animated={false} label="" />
+      <OverlayMark motion="look" size={14} label="" />
     </span>
   )
   const resolvingRequestedNote = Boolean(selectionPending || (noteId && activeNote?._id !== noteId))

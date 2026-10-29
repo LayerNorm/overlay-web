@@ -162,45 +162,6 @@ body {
   overflow-x: hidden;
 }
 
-/* Canonical Overlay lockup: the orb resting on the wordmark's text baseline.
-   Everything scales off font-size — the orb is 0.5em, the gap 0.4em — so the
-   lockup's size is set by font-size on .brand-lockup or an ancestor. */
-.brand-lockup {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 0.4em;
-  font-family: var(--font-serif);
-  font-weight: 500;
-  letter-spacing: -0.025em;
-  line-height: 1;
-}
-
-.brand-lockup-orb {
-  display: inline-flex;
-  flex: none;
-  width: 0.5em;
-  height: 0.5em;
-}
-
-/* !important beats OverlayMark's inline width/height (same as .lp .orb). */
-.brand-lockup-orb > span,
-.brand-lockup-orb svg {
-  width: 100% !important;
-  height: 100% !important;
-  display: block;
-}
-
-.brand-lockup-mask {
-  display: inline-flex;
-  overflow: hidden;
-  padding: 0.2em 0;
-  margin: -0.2em 0;
-}
-
-.brand-lockup-word {
-  display: inline-block;
-}
-
 @keyframes appBrandLogoFade {
   from {
     opacity: 0;
@@ -258,14 +219,11 @@ body {
   animation: appBrandWslineFade 420ms ease-out 560ms forwards;
 }
 
-/* The loader's lockup matches the canonical lockup geometry: at 24px the orb
-   is 12px and sits on the text baseline. The orb carries the surface color and
-   a z-index so the word slides out from behind it through the mask. */
 .app-brand-loader-lockup {
   font-size: 24px;
 }
 
-.app-brand-loader-lockup .brand-lockup-orb {
+.app-brand-loader-lockup .brand-lockup-mark {
   position: relative;
   z-index: 1;
   background: var(--background);
@@ -278,7 +236,7 @@ body {
 
 /* Settled variant: the identical screen with the entrance already played. Every
    gate after the first uses it so the word never re-reveals. */
-.app-brand-loader--steady .brand-lockup-orb,
+.app-brand-loader--steady .brand-lockup-mark,
 .app-brand-loader--steady .brand-lockup-word,
 .app-brand-loader--steady .app-brand-loader-wsline {
   animation: none;
@@ -294,7 +252,7 @@ body {
     animation: none;
   }
 
-  .app-brand-loader-lockup .brand-lockup-orb,
+  .app-brand-loader-lockup .brand-lockup-mark,
   .app-brand-loader-lockup .brand-lockup-word,
   .app-brand-loader-wsline {
     animation-duration: 1ms;
