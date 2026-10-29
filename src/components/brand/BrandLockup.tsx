@@ -1,1 +1,1 @@
-export { BrandLockup } from '@overlay/ui'
+export { BrandLockup } from '../../../packages/overlay-ui/src/components/orb/BrandLockup'
