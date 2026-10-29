@@ -33,12 +33,12 @@ if (lockfiles.join(',') !== 'package-lock.json') {
 }
 
 for (const [name, expected] of Object.entries({
-  electron: '39.8.10',
+  electron: '42.11.18',
   'electron-builder': '26.15.3',
   '@electron/fuses': '2.1.3',
-  axios: '1.18.1',
+  axios: '1.21.0',
   'form-data': '4.0.6',
-  dompurify: '3.4.12'
+  dompurify: '3.4.17'
 })) {
   const actual = packageJson.dependencies?.[name] ?? packageJson.devDependencies?.[name]
   if (actual !== expected)

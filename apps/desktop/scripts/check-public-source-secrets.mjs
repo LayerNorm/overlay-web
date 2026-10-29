@@ -82,7 +82,7 @@ try {
     const content = bytes.toString('utf8')
     if (
       !workstationPathFixtureFiles.has(relative) &&
-      /\/Users\/[^/\s]+\/|\/var\/folders\//.test(content)
+      /\/Users\/(?!you\/)[^/\s]+\/|\/var\/folders\//.test(content)
     ) {
       failures.push(`private workstation path: ${relative}`)
     }
