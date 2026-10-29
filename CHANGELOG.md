@@ -10,6 +10,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Allow the initiating user to answer native Harness input waits after rechecking current room participation.
 
+- Recheck personal Harness tool approvals at execution and require the authenticated controller decision before an approval-required effect.
+
 - Show "Backed by verdict." above the landing headline and replace the Hermes agent chip with "+ more".
 
 - Run Linux GitHub Actions jobs on the shared Namespace runner profile.

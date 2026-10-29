@@ -507,6 +507,9 @@ deploy Convex from clean current canonical main, then smoke Chat and Work.
 Keep Harness tables/functions and legacy handlers through rollback and draining.
 Stop acknowledges an already-terminal Workflow only after SDK status readback;
 an active or unreadable run still reports cancellation failure for investigation.
+Personal and native tool adapters recheck approval requirements at execution.
+Only the controller's single-use marker from the authenticated wait authorizes
+an approval-required effect; transcript parts and tool arguments cannot grant it.
 
 Harness run metadata stays compact. Plans, plan revisions, evidence, receipts, child
 reservations, operations and checkpoints use separate indexed rows; receipt identity is
