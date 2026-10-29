@@ -1,0 +1,334 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Overlay Desktop, full surface mockup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono&family=Libre+Baskerville&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#fff;--fg:#0a0a0a;--muted:#f5f5f5;--muted-fg:#737373;--border:#e5e5e5;--side:#fafafa;--acc:#f0f0f0;--card:#fff;--ring:#a3a3a3;--agent:#f59e0b;--wall:#d9dde3;--ok:#16a34a}
+[data-theme=dark]{--bg:#0a0a0a;--fg:#fafafa;--muted:#262626;--muted-fg:#a3a3a3;--border:#262626;--side:#171717;--acc:#262626;--card:#171717;--ring:#525252;--wall:#1c1f24}
+*{box-sizing:border-box;margin:0}
+body{font-family:Geist,system-ui,sans-serif;font-size:14px;color:var(--fg);background:var(--wall);min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:16px 16px 40px;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+.i{width:16px;height:16px;stroke-width:1.75;flex:none}
+.bar{display:flex;gap:4px;margin-bottom:12px;background:var(--bg);padding:4px;border-radius:10px}
+.bar button{padding:5px 10px;border-radius:7px;color:var(--muted-fg);font-size:13px}
+.bar button.on{background:var(--acc);color:var(--fg)}
+.win{width:1280px;height:800px;background:var(--bg);border-radius:12px;box-shadow:0 0 0 .5px rgba(0,0,0,.25),0 24px 60px rgba(0,0,0,.25);display:flex;overflow:hidden;position:relative}
+.side{width:240px;background:var(--side);display:flex;flex-direction:column;padding:0 8px 8px;flex:none}
+.tl{display:flex;gap:8px;padding:16px 8px 12px}
+.tl i{width:12px;height:12px;border-radius:50%;background:#ff5f57}.tl i:nth-child(2){background:#febc2e}.tl i:nth-child(3){background:#28c840}
+.ws{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:8px;width:100%;text-align:left}
+.ws:hover,.nav a:hover{background:var(--acc)}
+.lock{font-family:'Libre Baskerville',serif;font-size:17px;display:inline-flex;align-items:baseline;gap:.4em}
+.lock svg{width:.5em;height:.5em;transform:translateY(-.02em)}
+.ws small{display:block;color:var(--muted-fg);font-size:12px}
+.nav{display:flex;flex-direction:column;gap:1px;margin-top:8px}
+.nav .lbl{font-size:12px;color:var(--muted-fg);padding:14px 8px 6px}
+.nav a{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:8px;color:var(--fg);text-decoration:none;height:32px}
+.nav a.on{background:var(--acc);font-weight:500}
+.nav a .k{margin-left:auto;color:var(--muted-fg);font-size:12px}
+.foot{margin-top:auto;display:flex;flex-direction:column;gap:8px}
+.meter{padding:10px;border-radius:10px;background:var(--acc);font-size:12px;color:var(--muted-fg)}
+.meter b{display:block;height:4px;border-radius:2px;background:var(--border);margin-top:6px;overflow:hidden}.meter b i{display:block;height:100%;width:38%;background:var(--fg);opacity:.6}
+.me{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:8px;width:100%}
+.me:hover{background:var(--acc)}
+.av{width:24px;height:24px;border-radius:50%;background:#d4d4d4;display:grid;place-items:center;font-size:11px;font-weight:500;color:#404040;flex:none}
+.cr{width:22px;height:22px;flex:none}
+.main{flex:1;display:flex;flex-direction:column;min-width:0}
+.top{height:52px;display:flex;align-items:center;gap:8px;padding:0 16px;flex:none}
+.crumb{display:flex;align-items:center;gap:6px;color:var(--muted-fg)}.crumb b{color:var(--fg);font-weight:500}
+.top .r{margin-left:auto;display:flex;gap:4px}
+.ib{width:32px;height:32px;border-radius:8px;display:grid;place-items:center;color:var(--muted-fg)}
+.ib:hover{background:var(--acc);color:var(--fg)}
+.btn{height:32px;padding:0 12px;border-radius:8px;background:var(--acc);display:inline-flex;align-items:center;gap:6px;font-weight:500;font-size:13px}
+.btn:hover{background:var(--border)}
+.body{flex:1;overflow:auto;padding:8px 24px 24px;display:flex;flex-direction:column}
+.tabs{display:flex;gap:4px;margin-bottom:16px}
+.tabs span{padding:5px 10px;border-radius:7px;color:var(--muted-fg);font-size:13px;cursor:pointer}.tabs span.on{background:var(--acc);color:var(--fg)}
+.rows{display:flex;flex-direction:column}
+.row{display:flex;align-items:center;gap:12px;padding:10px 8px;border-radius:8px}
+.row:hover{background:var(--muted)}
+.row .t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .m{color:var(--muted-fg);font-size:13px}
+.grp{font-size:12px;color:var(--muted-fg);padding:16px 8px 4px;display:flex;gap:6px;align-items:center}
+.chip{display:inline-flex;align-items:center;gap:4px;height:22px;padding:0 8px;border-radius:6px;background:var(--acc);font-size:12px;color:var(--muted-fg)}
+.dot{width:8px;height:8px;border-radius:50%;border:1.5px solid var(--muted-fg)}.dot.p{border-color:#f59e0b}.dot.d{background:var(--ok);border-color:var(--ok)}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.card{background:var(--muted);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:8px}
+.card .h{display:flex;align-items:center;gap:10px;font-weight:500}
+.card p{color:var(--muted-fg);font-size:13px;line-height:1.45}
+.center{max-width:720px;width:100%;margin:0 auto}
+.hello{font-size:28px;font-weight:500;letter-spacing:-.02em;text-align:center;margin:96px 0 24px;display:flex;align-items:center;justify-content:center;gap:12px}
+.hello .cr{width:36px;height:36px}
+.comp{background:var(--muted);border-radius:16px;padding:12px 12px 10px}
+.comp .ph{color:var(--muted-fg);padding:4px 4px 14px;font-size:15px}
+.comp .ctl{display:flex;align-items:center;gap:6px}
+.comp .ctl .r{margin-left:auto;display:flex;gap:6px;align-items:center}
+.mic{width:32px;height:32px;border-radius:50%;background:var(--border);color:var(--fg);display:grid;place-items:center}
+.hint{text-align:center;color:var(--muted-fg);font-size:12px;margin-top:10px}
+kbd{font-family:'Geist Mono',monospace;font-size:11px;background:var(--acc);border-radius:5px;padding:2px 6px;color:var(--fg)}
+.split{display:flex;flex:1;min-height:0;margin:0 -24px -24px}
+.list{width:300px;padding:0 12px;overflow:auto;flex:none}
+.thread{flex:1;display:flex;flex-direction:column;min-width:0;padding:0 24px 16px}
+.msgs{flex:1;overflow:auto;display:flex;flex-direction:column;gap:18px;padding:8px 0 16px}
+.um{align-self:flex-end;max-width:70%;background:var(--muted);border-radius:14px;padding:10px 14px;line-height:1.5}
+.um .src{display:flex;align-items:center;gap:4px;color:var(--muted-fg);font-size:12px;margin-bottom:4px}
+.am{display:flex;gap:10px;line-height:1.55}
+.am .who{font-weight:500;font-size:13px;margin-bottom:4px}.am .who span{color:var(--muted-fg);font-weight:400;margin-left:6px}
+.trace{display:flex;flex-direction:column;gap:6px;margin:4px 0 8px;color:var(--muted-fg);font-size:13px}
+.trace div{display:flex;align-items:center;gap:.4em}.trace svg.o{width:.5em*1;width:7px;height:7px}
+.appr{border:1px solid var(--border);border-radius:12px;padding:12px;margin-top:8px;display:flex;align-items:center;gap:12px}
+.appr .t{flex:1}.appr .t small{display:block;color:var(--muted-fg);font-size:12px}
+.rs{width:320px;flex:none;background:var(--side);padding:12px;display:flex;flex-direction:column;gap:12px;overflow:auto}
+.screen{aspect-ratio:16/10;border-radius:10px;background:linear-gradient(135deg,#cfd6df,#9aa6b5);position:relative;overflow:hidden}
+.screen .w{position:absolute;left:12%;top:14%;width:62%;height:62%;background:#fff;border-radius:6px;box-shadow:0 6px 20px rgba(0,0,0,.2)}
+.screen .w:before{content:'';position:absolute;left:8px;top:7px;width:30px;height:6px;border-radius:3px;background:#e5e5e5}
+.screen .cur{position:absolute;left:52%;top:48%;width:10px;height:10px;border-radius:50%;background:#3b82f6;box-shadow:0 0 0 6px rgba(59,130,246,.25)}
+.kv{display:flex;justify-content:space-between;font-size:13px;padding:6px 0}.kv span:first-child{color:var(--muted-fg)}
+.set{display:flex;flex:1;min-height:0;margin:0 -24px -24px}
+.snav{width:220px;padding:0 12px;overflow:auto;flex:none}
+.snav a{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:8px;height:32px;cursor:pointer}
+.snav a:hover{background:var(--muted)}.snav a.on{background:var(--acc);font-weight:500}
+.snav .lbl{font-size:12px;color:var(--muted-fg);padding:14px 8px 6px}
+.spage{flex:1;overflow:auto;padding:0 32px 32px}.spage>*{max-width:680px}
+.spage h1{font-size:20px;font-weight:600;letter-spacing:-.01em;margin:4px 0 20px}
+.sg{margin-bottom:24px}.sg h2{font-size:13px;font-weight:500;color:var(--muted-fg);margin-bottom:8px}
+.sbox{background:var(--muted);border-radius:12px}
+.srow{display:flex;align-items:center;gap:16px;padding:12px 16px;min-height:56px}
+.srow+.srow{box-shadow:0 -1px 0 var(--border)}
+.srow .t{flex:1}.srow .t small{display:block;color:var(--muted-fg);font-size:12px;margin-top:2px}
+.sw{width:32px;height:18px;border-radius:9px;background:var(--border);position:relative;flex:none}
+.sw:after{content:'';position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.2);transition:.15s}
+.sw.on{background:var(--fg)}.sw.on:after{left:16px;background:var(--bg)}
+.sel{height:32px;padding:0 10px;border-radius:8px;background:var(--bg);display:inline-flex;align-items:center;gap:6px;font-size:13px;box-shadow:0 0 0 1px var(--border)}
+.wall{width:1280px;height:800px;border-radius:12px;background:linear-gradient(160deg,#c8d0db,#8e9aab);position:relative;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,.25)}
+[data-theme=dark] .wall{background:linear-gradient(160deg,#2a3039,#111418)}
+.mac{position:absolute;inset:0 0 auto 0;height:26px;background:rgba(255,255,255,.35);backdrop-filter:blur(20px);display:flex;align-items:center;padding:0 16px;gap:18px;font-size:13px;font-weight:500;color:#111}
+.mail{position:absolute;left:90px;top:70px;width:620px;height:420px;background:#fff;border-radius:10px;box-shadow:0 18px 50px rgba(0,0,0,.25);padding:44px 28px;color:#111;line-height:1.6}
+.mail .sel-t{background:#bfdbfe}
+.pills{position:absolute;right:48px;top:70px;display:flex;flex-direction:column;gap:18px;width:460px}
+.pl{font-size:12px;color:rgba(0,0,0,.55);margin-bottom:6px}[data-theme=dark] .pl{color:rgba(255,255,255,.6)}
+.pill{background:rgba(23,23,23,.92);color:#fafafa;border-radius:999px;height:44px;display:inline-flex;align-items:center;gap:10px;padding:0 16px 0 12px;box-shadow:0 10px 30px rgba(0,0,0,.3);font-size:13px}
+.pill .cr{width:22px;height:22px}
+.wave{display:flex;gap:3px;align-items:center;height:18px}.wave i{width:3px;border-radius:2px;background:#fafafa;animation:w 1s ease-in-out infinite}
+@keyframes w{0%,100%{height:4px}50%{height:18px}}
+.dots{display:flex;gap:4px}.dots i{width:5px;height:5px;border-radius:50%;background:#a3a3a3;animation:b 1.2s infinite}.dots i:nth-child(2){animation-delay:.2s}.dots i:nth-child(3){animation-delay:.4s}
+@keyframes b{0%,100%{opacity:.3}50%{opacity:1}}
+.pcard{background:rgba(23,23,23,.94);color:#fafafa;border-radius:18px;padding:14px 16px;box-shadow:0 10px 30px rgba(0,0,0,.3);font-size:13px;line-height:1.5}
+.pcard .hd{display:flex;align-items:center;gap:8px;color:#a3a3a3;font-size:12px;margin-bottom:8px}
+.pcard .ac{display:flex;gap:6px;margin-top:12px}
+.pcard .ac button{height:28px;padding:0 10px;border-radius:7px;background:#262626;font-size:12px;font-weight:500}
+.pcard .ac button.p{background:#404040}
+.permc{display:flex;align-items:center;gap:12px;background:var(--muted);border-radius:12px;padding:12px 14px;margin-top:8px}
+.permc .t{flex:1}.permc small{display:block;color:var(--muted-fg);font-size:12px}
+.browser{flex:1;border-radius:12px;background:var(--muted);display:flex;flex-direction:column;overflow:hidden}
+.url{display:flex;align-items:center;gap:8px;padding:8px}.url .u{flex:1;height:32px;border-radius:8px;background:var(--bg);display:flex;align-items:center;padding:0 12px;color:var(--muted-fg);font-size:13px}
+.page{flex:1;margin:0 8px 8px;border-radius:8px;background:var(--bg);display:grid;place-items:center;color:var(--muted-fg)}
+.board{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.board .col{background:var(--muted);border-radius:12px;padding:8px;display:flex;flex-direction:column;gap:6px;min-height:300px}
+.board .col .ch{font-size:12px;color:var(--muted-fg);padding:4px 6px}
+.board .it{background:var(--bg);border-radius:8px;padding:10px;font-size:13px;display:flex;flex-direction:column;gap:8px}
+</style>
+</head>
+<body>
+<div class="bar" id="bar"></div>
+<div id="stage"></div>
+<script>
+const ORB_SVG = `<svg viewBox="0 0 200 200" aria-hidden="true"><defs><radialGradient id="ob1" cx="38%" cy="28%" r="78%"><stop offset="0%" stop-color="#fff"/><stop offset="22%" stop-color="#eceef1"/><stop offset="46%" stop-color="#a8adb5"/><stop offset="72%" stop-color="#4c5158"/><stop offset="100%" stop-color="#17191d"/></radialGradient><linearGradient id="or1" x1="0" y1="0" x2="0" y2="1"><stop offset="52%" stop-color="#fff" stop-opacity="0"/><stop offset="80%" stop-color="#fff" stop-opacity=".75"/><stop offset="100%" stop-color="#fff" stop-opacity="0"/></linearGradient><filter id="os16" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="6"/></filter><filter id="os12" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="2"/></filter><filter id="os114" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="14"/></filter><clipPath id="oc1"><circle cx="100" cy="100" r="96"/></clipPath></defs><g clip-path="url(#oc1)"><circle cx="100" cy="100" r="96" fill="url(#ob1)"/><ellipse cx="138" cy="142" rx="44" ry="34" fill="#000" opacity=".22" filter="url(#os114)"/><ellipse cx="80" cy="72" rx="54" ry="42" fill="#fff" opacity=".26" filter="url(#os114)" transform="rotate(-20 80 72)"/><circle cx="100" cy="100" r="88" fill="none" stroke="url(#or1)" stroke-width="7" filter="url(#os16)"/><ellipse cx="100" cy="168" rx="54" ry="13" fill="#fff" opacity=".3" filter="url(#os16)"/><ellipse cx="73" cy="59" rx="27" ry="17" fill="#fff" opacity=".9" filter="url(#os16)" transform="rotate(-24 73 59)"/><ellipse cx="67" cy="51" rx="10" ry="7" fill="#fff" opacity=".95" filter="url(#os12)" transform="rotate(-24 67 51)"/></g></svg>`;
+const ICONS={
+home:'<path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/>',
+search:'<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
+work:'<path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/>',
+bot:'<path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/>',
+chat:'<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
+file:'<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 13H8"/><path d="M16 17H8"/>',
+puzzle:'<path d="M19.4 7.3a1 1 0 0 0 .6-.9V5a2 2 0 0 0-2-2h-1.4a1 1 0 0 0-.9.6 2 2 0 1 1-3.4 0 1 1 0 0 0-.9-.6H10a2 2 0 0 0-2 2v1.4a1 1 0 0 1-.6.9 2 2 0 1 0 0 3.4 1 1 0 0 1 .6.9V14a2 2 0 0 0 2 2h1.4a1 1 0 0 0 .9-.6 2 2 0 1 1 3.4 0 1 1 0 0 0 .9.6H18a2 2 0 0 0 2-2v-1.4a1 1 0 0 0-.6-.9 2 2 0 1 1 0-3.4z"/>',
+flow:'<rect width="8" height="8" x="3" y="3" rx="2"/><path d="M7 11v4a2 2 0 0 0 2 2h4"/><rect width="8" height="8" x="13" y="13" rx="2"/>',
+mic:'<path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><path d="M12 19v3"/>',
+wave:'<path d="M2 10v3"/><path d="M6 6v11"/><path d="M10 3v18"/><path d="M14 8v7"/><path d="M18 5v13"/><path d="M22 10v3"/>',
+globe:'<circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/>',
+gear:'<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>',
+down:'<path d="m6 9 6 6 6-6"/>',right:'<path d="m9 18 6-6-6-6"/>',updown:'<path d="m7 15 5 5 5-5"/><path d="m7 9 5-5 5 5"/>',
+plus:'<path d="M5 12h14"/><path d="M12 5v14"/>',panel:'<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/>',panelr:'<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M15 3v18"/>',
+user:'<circle cx="12" cy="8" r="4"/><path d="M6 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/>',users:'<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
+check:'<path d="M20 6 9 17l-5-5"/>',x:'<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',kb:'<rect width="20" height="16" x="2" y="4" rx="2"/><path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M8 12h.01M12 12h.01M16 12h.01M7 16h10"/>',
+brain:'<path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/><path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"/>',
+key:'<path d="m15.5 7.5 2.3 2.3a1 1 0 0 0 1.4 0l2.1-2.1a1 1 0 0 0 0-1.4L19 4"/><path d="m21 2-9.6 9.6"/><circle cx="7.5" cy="15.5" r="5.5"/>',
+hook:'<path d="M18 16.98h-5.99c-1.1 0-1.95.94-2.48 1.9A4 4 0 0 1 2 17c.01-.7.2-1.4.57-2"/><path d="m6 17 3.13-5.78c.53-.97.1-2.18-.5-3.1a4 4 0 1 1 6.89-4.06"/><path d="m12 6 3.13 5.73C15.66 12.7 16.9 13 18 13a4 4 0 0 1 0 8"/>',
+server:'<rect width="20" height="8" x="2" y="2" rx="2"/><rect width="20" height="8" x="2" y="14" rx="2"/><path d="M6 6h.01M6 18h.01"/>',
+plug:'<path d="M12 22v-5"/><path d="M9 8V2"/><path d="M15 8V2"/><path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z"/>',
+monitor:'<rect width="20" height="14" x="2" y="3" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/>',laptop:'<path d="M20 16V7a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v9m16 0H4m16 0 1.28 2.55a1 1 0 0 1-.9 1.45H3.62a1 1 0 0 1-.9-1.45L4 16"/>',
+archive:'<rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/>',
+mail:'<rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>',
+palette:'<circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/>',
+shield:'<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/>',
+cpu:'<rect width="16" height="16" x="4" y="4" rx="2"/><rect width="6" height="6" x="9" y="9" rx="1"/><path d="M15 2v2M15 20v2M2 15h2M2 9h2M20 15h2M20 9h2M9 2v2M9 20v2"/>',
+dl:'<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/>',
+up:'<path d="m5 12 7-7 7 7"/><path d="M12 19V5"/>',pen:'<path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.4 2.6a2.1 2.1 0 0 1 3 3L12 15l-4 1 1-4Z"/>',
+more:'<circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/>',bell:'<path d="M10.27 21a2 2 0 0 0 3.46 0"/><path d="M3.26 15.33A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.67C19.41 13.96 18 12.5 18 8A6 6 0 0 0 6 8c0 4.5-1.41 5.96-2.74 7.33"/>',
+clock:'<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>',pill:'<rect width="20" height="8" x="2" y="8" rx="4"/>',moon:'<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>',
+help:'<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>',paper:'<path d="m16 6-8.414 8.586a2 2 0 0 0 2.829 2.829l8.414-8.586a4 4 0 1 0-5.657-5.657l-8.379 8.551a6 6 0 1 0 8.485 8.485l8.379-8.551"/>',
+hash:'<path d="M4 9h16M4 15h16M10 3 8 21M16 3l-2 18"/>',terminal:'<path d="m4 17 6-6-6-6"/><path d="M12 19h8"/>',zap:'<path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/>'};
+const ic=(n,c='')=>`<svg class="i ${c}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">${ICONS[n]||''}</svg>`;
+const orb=(s=7)=>ORB_SVG.replace('<svg ',`<svg class="o" style="width:${s}px;height:${s}px;flex:none" `);
+const cre=(c='var(--agent)')=>`<svg class="cr" viewBox="0 0 100 100" aria-hidden="true"><path d="M50 8c16 0 24 9 27 18 12 2 19 12 17 25-1 12-10 20-20 21-5 12-15 18-26 18-13 0-23-8-26-19C10 69 4 59 6 47c2-12 11-19 21-20C31 15 38 8 50 8z" fill="${c}"/><rect x="36" y="34" width="9" height="20" rx="4.5" fill="#111" transform="rotate(-12 40 44)"/><rect x="56" y="34" width="9" height="20" rx="4.5" fill="#111" transform="rotate(-12 60 44)"/></svg>`;
+const ov=()=>`<svg class="cr" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="45" fill="#64748b"/><rect x="35" y="39" width="10" height="22" rx="5" fill="#fff"/><rect x="55" y="39" width="10" height="22" rx="5" fill="#fff"/></svg>`;
+const blob=c=>`<svg class="cr" viewBox="0 0 100 100" aria-hidden="true"><rect x="8" y="12" width="84" height="76" rx="30" fill="${c}"/><rect x="34" y="38" width="9" height="20" rx="4.5" fill="#111"/><rect x="57" y="38" width="9" height="20" rx="4.5" fill="#111"/></svg>`;
+const sw=(on)=>`<span class="sw ${on?'on':''}" onclick="this.classList.toggle('on')"></span>`;
+const sel=(v)=>`<span class="sel">${v}${ic('updown')}</span>`;
+const btn=(v,i)=>`<button class="btn">${i?ic(i):''}${v}</button>`;
+const k=(...a)=>a.map(x=>`<kbd>${x}</kbd>`).join(' ');
+
+const S={mode:'app',view:'home',set:'general',chat:0,agent:null,wtab:'List',xtab:'Connectors',ctab:'Personal',rtab:'Computer'};
+const NAV=[['work','Work','work'],['agents','Agents','bot'],['chats','Chats','chat'],['files','Files','file'],['extensions','Extensions','puzzle'],['automations','Automations','flow']];
+const MAC=[['voice','Voice','wave'],['browser','Browser','globe']];
+const LABEL={home:'Home',work:'Work',agents:'Agents',chats:'Chats',files:'Files',extensions:'Extensions',automations:'Automations',voice:'Voice',browser:'Browser',account:'Account',settings:'Settings',onboarding:'Welcome'};
+
+function sidebar(){
+  const a=(id,l,i,kk='')=>`<a href="#" class="${S.view===id?'on':''}" data-v="${id}">${ic(i)}${l}${kk?`<span class="k">${kk}</span>`:''}</a>`;
+  return `<aside class="side"><div class="tl"><i></i><i></i><i></i></div>
+  <button class="ws"><span style="flex:1"><span class="lock">${ORB_SVG}overlay</span><small>LayerNorm</small></span>${ic('updown')}</button>
+  <nav class="nav">${a('search','Search','search','⌘K')}${a('home','Home','home')}
+  <div class="lbl">Workspace</div>${NAV.map(n=>a(...n)).join('')}
+  <div class="lbl">This Mac</div>${MAC.map(n=>a(...n)).join('')}</nav>
+  <div class="foot"><div class="meter">Usage this month<b><i></i></b></div>
+  <button class="me" data-v="account"><span class="av">DL</span><span style="flex:1;text-align:left">Dev Lalwani</span><span class="ib" data-v="settings" style="width:24px;height:24px">${ic('gear')}</span></button></div></aside>`;
+}
+function topbar(){
+  const v=S.view, crumbs=v==='settings'?`<span>Settings</span>${ic('right')}<b>${SET.find(s=>s[0]===S.set)[1]}</b>`:(v==='agents'&&S.agent)?`<span>Agents</span>${ic('right')}<b>${S.agent}</b>`:`<b>${LABEL[v]||v}</b>`;
+  const act={work:btn('New task','plus'),agents:S.agent?'':btn('New agent','plus'),chats:btn('New chat','pen'),files:btn('Upload','up'),extensions:btn('Add','plus'),automations:btn('New automation','plus'),voice:'',home:`<span class="ib">${ic('bell')}</span>`}[v]||'';
+  const rp=(v==='agents'&&S.agent)?`<span class="ib" data-a="rs">${ic('panelr')}</span>`:'';
+  return `<div class="top"><span class="ib">${ic('panel')}</span><div class="crumb">${crumbs}</div><div class="r">${act}${rp}</div></div>`;
+}
+const composer=(ph='Ask Overlay or hold ⌃ Space')=>`<div class="comp"><div class="ph">${ph}</div><div class="ctl"><span class="ib">${ic('plus')}</span><span class="chip">${ic('laptop')}This Mac</span><div class="r"><span class="chip">Auto${ic('down')}</span><span class="mic">${ic('mic')}</span></div></div></div>`;
+
+const V={};
+V.home=()=>`<div class="center"><div class="hello">${ov()}Good evening, Dev</div>${composer()}
+<div class="hint">Hold ${k('⌃','Space')} anywhere to talk</div>
+<div class="grp" style="margin-top:40px">Needs you</div><div class="rows">
+<div class="row">${cre()}<span class="t">Coding bot wants to run <b>npm test</b> on This Mac</span><button class="btn">Review</button></div>
+<div class="row">${ov()}<span class="t">Reply to Alex drafted in Mail</span><span class="m">2m</span></div></div>
+<div class="grp">Today</div><div class="rows">
+<div class="row"><span class="dot p"></span><span class="t">Ship desktop pill v2</span><span class="m">Due today</span></div>
+<div class="row">${ic('flow')}<span class="t">Morning brief ran</span><span class="m">9:00 AM</span></div></div></div>`;
+
+const TASKS=[['In progress',[['Ship desktop pill v2','Coding bot','p'],['Voice profile sync','Dev','p']]],['Todo',[['This Mac computer target','Coding bot',''],['Settings registry on desktop','Dev',''],['Conversational onboarding','Overlay','']]],['Done',[['Resync vendored packages','Coding bot','d']]]];
+const who=w=>w==='Dev'?'<span class="av" style="width:20px;height:20px;font-size:10px">DL</span>':w==='Overlay'?ov():cre();
+V.work=()=>{const t=`<div class="tabs">${['List','Board','Timeline'].map(x=>`<span class="${S.wtab===x?'on':''}" data-w="${x}">${x}</span>`).join('')}</div>`;
+ if(S.wtab==='Board')return t+`<div class="board">${[...TASKS,['Backlog',[['Wake word','Dev','']]]].map(([g,it])=>`<div class="col"><div class="ch">${g}</div>${it.map(([n,w,d])=>`<div class="it">${n}<span style="display:flex;align-items:center;gap:6px;color:var(--muted-fg);font-size:12px">${who(w)}${w}</span></div>`).join('')}</div>`).join('')}</div>`;
+ if(S.wtab==='Timeline')return t+`<div class="rows">${TASKS.flatMap(g=>g[1]).map(([n,w],i)=>`<div class="row" style="gap:16px"><span style="width:220px" class="t">${n}</span><span style="flex:1;position:relative;height:22px"><span style="position:absolute;left:${i*11}%;width:${22+i*4}%;height:22px;border-radius:6px;background:var(--acc)"></span></span></div>`).join('')}</div>`;
+ return t+TASKS.map(([g,it])=>`<div class="grp">${g}<span>${it.length}</span></div><div class="rows">${it.map(([n,w,d])=>`<div class="row"><span class="dot ${d}"></span><span class="t">${n}</span>${who(w)}<span class="m" style="width:70px">${w}</span></div>`).join('')}</div>`).join('');};
+
+const AG=[['Overlay',ov(),'Default · Voice, Slack','Auto'],['Coding bot',cre(),'Claude Code · This Mac','Claude Opus 4.5'],['Support',blob('#60a5fa'),'Slack #support','GPT-5'],['Research',blob('#a78bfa'),'Cloud computer','Gemini 3 Pro']];
+V.agents=()=>{ if(S.agent)return agentThread();
+ return `<div class="grid">${AG.map(([n,a,d,m])=>`<div class="card" data-ag="${n}" style="cursor:pointer"><div class="h">${a}${n}</div><p>${d}</p><span class="chip" style="align-self:flex-start">${m}</span></div>`).join('')}</div>`;};
+function agentThread(){const a=AG.find(x=>x[0]===S.agent);const isO=S.agent==='Overlay';
+ const rs=S.rs===false?'':`<div class="rs"><div class="tabs" style="margin:0">${['Details','Library','Computer'].map(x=>`<span class="${S.rtab===x?'on':''}" data-r="${x}">${x}</span>`).join('')}</div>${
+  S.rtab==='Computer'?`<div class="screen"><div class="w"></div><span class="cur"></span></div><div class="kv"><span>Computer</span><span>This Mac</span></div><div class="kv"><span>Access</span><span>Ask for approval</span></div><div class="kv"><span>Roots</span><span>~/repos</span></div>${btn('Switch to cloud','monitor')}`:
+  S.rtab==='Details'?`<div class="kv"><span>Model</span><span>${a[3]}</span></div><div class="kv"><span>Reachable on</span><span>${isO?'Desktop, Slack':'Desktop'}</span></div><div class="kv"><span>Hotkey</span><span>${isO?'⌃ Space':'None'}</span></div><div class="kv"><span>Tools</span><span>14</span></div><div class="kv"><span>Memory</span><span>Personal, Workspace</span></div>`:
+  `<div class="rows">${['pill-v2.patch','test-run.log','Screenshot 9.41.png'].map(f=>`<div class="row">${ic('file')}<span class="t">${f}</span></div>`).join('')}</div>`}</div>`;
+ return `<div class="split" style="margin-top:-8px"><div class="thread"><div class="msgs">
+ <div class="um">Run the test suite and fix anything flaky</div>
+ <div class="am">${a[1]}<div><div class="who">${S.agent}<span>11:31 AM</span></div>
+ <div class="trace"><div>${orb()}Worked for 4m 48s, called 6 tools ${ic('right')}</div></div>
+ Two flaky tests in <code>pill.test.ts</code> were waiting on a fixed timeout. Switched them to fake timers. All 412 tests pass.
+ <div class="appr">${ic('terminal')}<div class="t">git push origin pill-v2<small>This Mac · ~/repos/overlay-desktop</small></div>${btn('Deny')}${btn('Approve','check')}</div></div></div></div>
+ ${composer('Message '+S.agent)}</div>${rs}</div>`;}
+
+const CHATS=[['Reply to Alex','Overlay','2m',1],['Pricing page copy','Overlay','1h'],['#launch','Channel','3h'],['Kenji','DM','Yesterday']];
+V.chats=()=>`<div class="tabs">${['Personal','DMs','Channels','Activity'].map(x=>`<span class="${S.ctab===x?'on':''}" data-c="${x}">${x}</span>`).join('')}</div>
+<div class="split"><div class="list"><div class="rows">${CHATS.map(([n,w,t,v],i)=>`<div class="row" style="${i===S.chat?'background:var(--acc)':''}" data-ch="${i}">${v?ic('wave'):w==='Channel'?ic('hash'):w==='DM'?'<span class="av" style="width:20px;height:20px;font-size:10px">K</span>':ic('chat')}<span class="t">${n}</span><span class="m">${t}</span></div>`).join('')}</div></div>
+<div class="thread"><div class="msgs">
+<div class="um"><div class="src">${ic('mic')}Voice in Mail</div>Reply to Alex, say Thursday works and attach the deck</div>
+<div class="am">${ov()}<div><div class="who">Overlay<span>9:41 PM</span></div>
+<div class="trace"><div>${orb()}Read selected email in Mail</div><div>${orb()}Found Q4 deck.pdf in Files</div><div>${orb()}Drafted reply</div></div>
+Drafted a reply to Alex confirming Thursday, with the deck attached.
+<div class="appr">${ic('mail')}<div class="t">Send reply to Alex Chen<small>Mail · 1 attachment</small></div>${btn('Edit')}${btn('Send','check')}</div></div></div></div>
+${composer('Message Overlay')}</div></div>`;
+
+V.files=()=>`<div class="rows">${[['Q4 deck.pdf','Dev','Oct 26'],['Desktop parity plan.md','Overlay','Today'],['Meeting notes','Dev','Yesterday'],['pill-v2.patch','Coding bot','Today'],['Brand assets','Dev','Oct 12']].map(([n,w,d])=>`<div class="row">${ic('file')}<span class="t">${n}</span>${who(w)}<span class="m" style="width:80px">${w}</span><span class="m" style="width:80px;text-align:right">${d}</span></div>`).join('')}</div>`;
+
+V.extensions=()=>{const D={Connectors:[['Gmail','Connected'],['Slack','Connected'],['Linear','Connect'],['GitHub','Connected'],['Notion','Connect'],['Calendar','Connected']],Skills:[['Weekly brief','Installed'],['Code review','Installed'],['Meeting notes','Add']],MCPs:[['Figma','Connected'],['Postgres','Add']],Apps:[['Mail','On this Mac'],['Safari','On this Mac'],['Terminal','On this Mac']]};
+ return `<div class="tabs">${Object.keys(D).map(x=>`<span class="${S.xtab===x?'on':''}" data-x="${x}">${x}</span>`).join('')}</div><div class="grid">${D[S.xtab].map(([n,s])=>`<div class="card"><div class="h"><span class="av" style="border-radius:7px">${n[0]}</span>${n}</div><span class="chip" style="align-self:flex-start">${s}</span></div>`).join('')}</div>`;};
+
+V.automations=()=>`<div class="rows">${[['Morning brief','Every day 9:00 AM','Speak on this Mac',1],['Triage support inbox','Every hour','Slack #support',1],['Weekly metrics','Mondays 8:00 AM','Notification',0],['Nightly test run','Every day 2:00 AM','Coding bot',1]].map(([n,s,t,on])=>`<div class="row">${ic('flow')}<span class="t">${n}</span><span class="m" style="width:160px">${s}</span><span class="chip" style="width:140px">${t}</span>${sw(on)}</div>`).join('')}</div>`;
+
+V.voice=()=>`<div class="tabs"><span class="on">All</span><span>Agent</span><span>Dictation</span></div>
+<div class="grp">Today</div><div class="rows">${[['Agent','Mail','Reply to Alex, say Thursday works and attach the deck','9:41 PM'],['Dictation','Slack','Sounds good, I will push the fix tonight','8:12 PM'],['Agent','Safari','Summarize this page into my notes','6:30 PM'],['Dictation','Notes','Pill states listening thinking answer approval','4:05 PM']].map(([m,a,t,tm])=>`<div class="row">${m==='Agent'?ic('bot'):ic('mic')}<span class="chip" style="width:80px">${a}</span><span class="t">${t}</span><span class="m">${tm}</span></div>`).join('')}</div>`;
+
+V.browser=()=>`<div class="browser"><div class="url"><span class="ib">${ic('right')}</span><span class="u">${ic('globe')}&nbsp;getoverlay.io</span><span class="chip">${ov()}Ask</span></div><div class="page"><span class="lock" style="font-size:28px">${ORB_SVG}overlay</span></div></div>`;
+
+V.account=()=>`<div class="center" style="max-width:640px"><div style="display:flex;align-items:center;gap:14px;margin:16px 0 28px"><span class="av" style="width:48px;height:48px;font-size:16px">DL</span><div><div style="font-size:18px;font-weight:600">Dev Lalwani</div><div class="m" style="color:var(--muted-fg)">life.dlalwani@gmail.com</div></div></div>
+<div class="sg"><h2>Workspaces</h2><div class="sbox">${[['LayerNorm','Pro · 4 members',1],['Personal','Free',0]].map(([n,p,a])=>`<div class="srow"><span class="av" style="border-radius:7px">${n[0]}</span><div class="t">${n}<small>${p}</small></div>${a?'<span class="chip">Current</span>':btn('Switch')}</div>`).join('')}<div class="srow">${btn('New workspace','plus')}</div></div></div>
+<div class="sg"><h2>Session</h2><div class="sbox"><div class="srow"><div class="t">This Mac<small>Signed in · Overlay 2.0</small></div>${btn('Sign out')}</div><div class="srow"><div class="t">Delete account</div>${btn('Delete')}</div></div></div></div>`;
+
+const SET=[['general','General','gear'],['profile','Profile','user'],['workspace','Workspace','users'],['customization','Customization','palette'],['shortcuts','Shortcuts','kb'],['memories','Memories','brain'],['providers','Providers','key'],['webhooks','Webhooks','hook'],['agent-environments','Environments','server'],['agent-accounts','Agents','bot'],['connected-apps','Connected apps','plug'],['computers','Computers','monitor'],['archived','Archived','archive'],['contact','Contact','help'],
+['voice','Voice','wave',1],['pill','Overlay pill','pill',1],['permissions','Permissions','shield',1],['local-models','Local models','cpu',1],['browser-settings','Browser','globe',1],['updates','Updates','dl',1]];
+const r=(t,d,c)=>`<div class="srow"><div class="t">${t}${d?`<small>${d}</small>`:''}</div>${c}</div>`;
+const g=(h,...rows)=>`<div class="sg">${h?`<h2>${h}</h2>`:''}<div class="sbox">${rows.join('')}</div></div>`;
+const SP={
+general:()=>g('',r('Theme','',sel('System')),r('Launch at login','',sw(1)),r('Sound effects','',sw(1)),r('Notifications','',sw(1)),r('Language','',sel('English')))+g('Window',r('Snap to edges','',sw(1)),r('Open on launch','',sel('Home'))),
+profile:()=>g('',r('Name','',sel('Dev Lalwani')),r('What should Overlay call you','',sel('Dev')),r('Role','',sel('Founder')),r('Timezone','',sel('America/Los_Angeles'))),
+workspace:()=>g('',r('Name','',sel('LayerNorm')),r('Handle','',sel('layernorm')))+g('Members',r('Dev Lalwani','Owner',''),r('Kenji Sato','Member',''),r('',''  ,btn('Invite','plus')))+g('Plan',r('Pro','Renews Nov 28',btn('Manage'))),
+customization:()=>g('',r('Accent','',sel('Neutral')),r('Font','',sel('Geist')),r('Density','',sel('Comfortable')))+g('Chat',r('Default model','',sel('Auto')),r('Show tool calls','',sw(1))),
+shortcuts:()=>g('Voice',r('Talk to Overlay','Hold',k('⌃','Space')),r('Dictate','Hold',k('fn')),r('Toggle dictation','',k('⌃','⌥','D')))+g('Panels',r('Quick chat','',k('⌥','Space')),r('Notes','',k('⌥','N')),r('Browser','',k('⌥','B')))+g('App',r('Search','',k('⌘','K')),r('New chat','',k('⌘','N'))),
+memories:()=>g('',r('Learn from chats and voice','',sw(1)),r('Use memories in replies','',sw(1)))+g('Personal',r('Prefers short replies','From voice · Oct 27',ic('more')),r('Works in Pacific time','From profile',ic('more')),r('Calls Alex Chen "Alex"','From Mail · Oct 26',ic('more')))+g('Workspace',r('Ship to main through PRs','Added by Dev',ic('more'))),
+providers:()=>g('Subscriptions',r('Claude','Connected',btn('Manage')),r('ChatGPT','Not connected',btn('Connect')))+g('API keys',r('OpenAI','',btn('Add')),r('Anthropic','sk-ant-…4f2',btn('Edit')),r('OpenRouter','',btn('Add'))),
+webhooks:()=>g('',r('Linear issue created','POST /hooks/linear',sw(1)),r('Stripe payment','POST /hooks/stripe',sw(0)),r('','',btn('New webhook','plus'))),
+'agent-environments':()=>g('',r('This Mac','Agent Host · Online',`<span class="chip"><span class="dot d"></span>Online</span>`),r('Dev MacBook Air','Offline 2d','<span class="chip">Offline</span>'),r('','',btn('Run on this Mac','laptop'))),
+'agent-accounts':()=>g('',r('Claude Code','Subscription',sw(1)),r('Codex','Subscription',sw(1)),r('Cursor','Not connected',btn('Connect'))),
+'connected-apps':()=>g('',r('Gmail','dev@layernorm.ai',btn('Disconnect')),r('Slack','LayerNorm',btn('Disconnect')),r('GitHub','DevelopedByDev',btn('Disconnect'))),
+computers:()=>g('',r('This Mac','Local · Free',`<span class="chip"><span class="dot d"></span>Ready</span>`),r('Cloud computer','Boat · Pro',`<span class="chip">Asleep</span>`))+g('Default',r('Agents use','',sel('This Mac when open'))),
+archived:()=>g('',r('Old onboarding','Chat · Sep 12',btn('Restore')),r('Projects export','File · Sep 17',btn('Restore')),r('Draft bot','Agent · Aug 30',btn('Restore'))),
+contact:()=>g('',r('Email support','support@getoverlay.io',btn('Email','mail')),r('Send feedback','',btn('Write')),r('Diagnostics','Attach logs to feedback',sw(1))),
+voice:()=>g('Talk',r('Agent','',sel('Overlay')),r('Wake word','Say "Hey Overlay"',sw(0)),r('Spoken replies','',sw(1)),r('Voice','',sel('Calm')),r('Include screen','Send a screenshot with each turn',sw(0)),r('Include selection','',sw(1)))+g('Dictation',r('Engine','',sel('On device')),r('Mode','',sel('Smart')),r('Auto paste','',sw(1)),r('Press Enter after','',sw(0)),r('Dictionary','24 words',btn('Edit')),r('Replacements','6 rules',btn('Edit')))+g('Microphone',r('Input','',sel('MacBook Pro Microphone')),r('Keep mic warm','',sw(1)),r('Mute media while talking','',sw(1)),r('Keep recordings','',sel('7 days'))),
+pill:()=>g('',r('Show pill','',sw(1)),r('Position','',sel('Bottom center')),r('Float above Dock','',sw(1)),r('Expand answers','',sel('Short card')),r('Opacity','',sel('Adaptive'))),
+permissions:()=>g('macOS',r('Microphone','',`<span class="chip"><span class="dot d"></span>Allowed</span>`),r('Accessibility','',`<span class="chip"><span class="dot d"></span>Allowed</span>`),r('Screen recording','',btn('Allow')),r('Automation','System Events',`<span class="chip"><span class="dot d"></span>Allowed</span>`))+g('Agent access',r('Access','',sel('Ask for approval')),r('Folders','~/repos, ~/Documents',btn('Edit')),r('Never read','1Password, Messages',btn('Edit'))),
+'local-models':()=>g('',r('Parakeet','Dictation · 600 MB',`<span class="chip">Installed</span>`),r('WhisperKit large','Dictation · 1.5 GB',btn('Download','dl')),r('Prefer on device','',sw(1))),
+'browser-settings':()=>g('',r('Let agents use Browser','',sw(1)),r('History','',btn('Clear')),r('Cookies','',btn('Clear')),r('Bookmarks','',btn('Clear'))),
+updates:()=>g('',r('Overlay 2.0.1','Up to date',btn('Check')),r('Install automatically','',sw(1)),r('Beta builds','',sw(0)))};
+V.settings=()=>{const it=s=>`<a class="${S.set===s[0]?'on':''}" data-s="${s[0]}">${ic(s[2])}${s[1]}</a>`;
+ return `<div class="set"><div class="snav">${SET.filter(s=>!s[3]).map(it).join('')}<div class="lbl">This Mac</div>${SET.filter(s=>s[3]).map(it).join('')}</div>
+ <div class="spage"><h1>${SET.find(s=>s[0]===S.set)[1]}</h1>${SP[S.set]()}</div></div>`;};
+
+V.onboarding=()=>`<div class="center" style="display:flex;flex-direction:column;flex:1"><div class="msgs">
+<div class="am">${ov()}<div><div class="who">Overlay</div>Hi, I'm Overlay. What should I call you?</div></div>
+<div class="um">Dev</div>
+<div class="am">${ov()}<div><div class="who">Overlay</div>Nice to meet you, Dev. To hear you anywhere on your Mac, I need two things.
+<div class="permc">${ic('mic')}<div class="t">Microphone<small>To hear you</small></div><span class="chip"><span class="dot d"></span>Allowed</span></div>
+<div class="permc">${ic('shield')}<div class="t">Accessibility<small>To read and type in apps</small></div>${btn('Allow')}</div></div></div>
+<div class="am">${ov()}<div><div class="who">Overlay</div>Then hold ${k('⌃','Space')} and ask me anything.</div></div></div>${composer('Reply to Overlay')}</div>`;
+V.search=()=>`<div class="center" style="max-width:600px"><div class="comp" style="margin-top:40px"><div class="ph" style="padding-bottom:4px">${ic('search')} Search chats, files, agents</div></div><div class="grp">Recent</div><div class="rows">${['Reply to Alex','Q4 deck.pdf','Coding bot','Morning brief'].map(x=>`<div class="row">${ic('clock')}<span class="t">${x}</span></div>`).join('')}</div></div>`;
+
+function pills(){const wv=`<span class="wave">${[0,.2,.4,.1,.3,.5,.15].map(d=>`<i style="animation-delay:${d}s"></i>`).join('')}</span>`;
+ return `<div class="wall"><div class="mac"><b></b><span>Mail</span><span style="font-weight:400">File</span><span style="font-weight:400">Edit</span><span style="margin-left:auto;display:flex;gap:10px;align-items:center">${ORB_SVG.replace('<svg ','<svg style="width:12px;height:12px" ')}9:41 PM</span></div>
+ <div class="mail"><b>Alex Chen</b><div style="color:#737373;font-size:13px;margin-bottom:16px">Re: Q4 review</div><span class="sel-t">Could we move the review to Thursday? Also, can you send the deck before then?</span><br><br>Thanks,<br>Alex</div>
+ <div class="pills">
+ <div><div class="pl">Listening</div><span class="pill">${ov()}${wv}<span style="color:#a3a3a3">Mail · selection</span></span></div>
+ <div><div class="pl">Thinking</div><span class="pill">${ov()}<span class="dots"><i></i><i></i><i></i></span></span></div>
+ <div><div class="pl">Approval</div><div class="pcard"><div class="hd">${ov()}Overlay</div>Send this reply to Alex Chen with Q4 deck.pdf?<div class="ac"><button class="p">Send</button><button>Edit</button><button>Open in Overlay</button></div></div></div>
+ <div><div class="pl">Answer</div><div class="pcard"><div class="hd">${ov()}Overlay</div>Sent. I also added Thursday 2 PM to your calendar.<div class="ac"><button>Undo</button><button>Open in Overlay</button></div></div></div>
+ </div></div>`;}
+
+function render(){
+ document.getElementById('bar').innerHTML=[['app','App'],['pill','Voice pill'],['onboarding','Onboarding']].map(([m,l])=>`<button class="${S.mode===m?'on':''}" data-m="${m}">${l}</button>`).join('')+`<button data-t="1">${ic('moon')}</button>`;
+ const st=document.getElementById('stage');
+ if(S.mode==='pill'){st.innerHTML=pills();return;}
+ const view=S.mode==='onboarding'?'onboarding':S.view;
+ const saved=S.view;S.view=view;
+ st.innerHTML=`<div class="win">${sidebar()}<main class="main">${topbar()}<div class="body">${V[view]()}</div></main></div>`;
+ S.view=saved;
+}
+document.addEventListener('click',e=>{const t=e.target.closest('[data-v],[data-m],[data-t],[data-s],[data-w],[data-x],[data-c],[data-ag],[data-r],[data-a],[data-ch]');if(!t)return;e.preventDefault();e.stopPropagation();const d=t.dataset;
+ if(d.v){S.view=d.v;S.mode='app';if(d.v==='agents')S.agent=null;}
+ if(d.m)S.mode=d.m; if(d.t)document.documentElement.dataset.theme=document.documentElement.dataset.theme==='dark'?'light':'dark';
+ if(d.s)S.set=d.s; if(d.w)S.wtab=d.w; if(d.x)S.xtab=d.x; if(d.c)S.ctab=d.c; if(d.ag)S.agent=d.ag; if(d.r)S.rtab=d.r; if(d.a==='rs')S.rs=S.rs===false?true:false; if(d.ch)S.chat=+d.ch;
+ render();});
+const h=location.hash.slice(1);if(h){const [a,b]=h.split('/');if(a==='pill'||a==='onboarding')S.mode=a;else{S.view=a;if(b){if(a==='settings')S.set=b;if(a==='agents')S.agent=decodeURIComponent(b);}}}
+render();
+</script>
+</body>
+</html>
