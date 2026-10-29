@@ -8,6 +8,7 @@ import { getOverlayServerContext } from '@/server/bootstrap'
 import { readValidatedJson } from '@/server/app-api/validated-input'
 import { asConversationId } from '@/server/conversations/ActConversationRepository'
 import { AgentRunInputRequest } from '@/shared/schemas/chat'
+import type { AgentRun } from '@/shared/agents/agent-run'
 
 type Repositories = ReturnType<typeof getOverlayServerContext>['appData']['repositories']
 type InputRouteDependencies = {
@@ -17,6 +18,19 @@ type InputRouteDependencies = {
 }
 
 const inactive = () => NextResponse.json({ error: 'This input request is no longer active.' }, { status: 409 })
+
+function matchesInputWait(
+  run: AgentRun | null,
+  input: { agentRunId: string; conversationId: string; token: string },
+  actorUserId: string,
+  isRoom: boolean,
+): boolean {
+  if (!run || run.id !== input.agentRunId || run.conversationId !== input.conversationId
+    || run.userId !== actorUserId || (run.mode === 'room') !== isRoom) return false
+  if (isRoom && run.executionEngine !== 'overlay_harness') return false
+  return run.runner === 'workflow' && Boolean(run.workflowRunId)
+    && run.status === 'waiting_for_input' && run.inputRequest?.token === input.token
+}
 
 export async function POST(request: NextRequest, context: AppApiRouteContext, dependencies?: InputRouteDependencies) {
   try {
@@ -43,11 +57,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext, de
       return NextResponse.json({ error: 'Not found' }, { status: 404 })
     }
     const run = await conversations.getLatestAgentRun({ conversationId, userId: actorUserId, agentRunId: body.data.agentRunId })
-    if (!run || run.id !== body.data.agentRunId || run.conversationId !== body.data.conversationId
-      || run.userId !== actorUserId || (run.mode === 'room') !== Boolean(isRoom)
-      || (isRoom && run.executionEngine !== 'overlay_harness')
-      || run.runner !== 'workflow' || !run.workflowRunId
-      || run.status !== 'waiting_for_input' || run.inputRequest?.token !== body.data.token) return inactive()
+    if (!matchesInputWait(run, body.data, actorUserId, Boolean(isRoom))) return inactive()
     // This is input to an existing work artifact, not a new turn. The hook
     // retains the full reply; the harness records bounded user-input evidence.
     await (dependencies?.resume ?? resumeHook)(body.data.token, { text: body.data.text })
