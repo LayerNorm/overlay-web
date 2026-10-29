@@ -1,6 +1,6 @@
 # Desktop sidebar plan
 
-Status: proposal. Mockup: `internal/plans/mockups/desktop-parity-mockup.html` (sidebar is the approved direction). Parent plan: `DESKTOP_PARITY_PLAN.md` (this expands item #5).
+Status: approved, in implementation. Mockup: `internal/plans/mockups/desktop-parity-mockup.html` (sidebar is the approved direction). Parent plan: `DESKTOP_PARITY_PLAN.md` (this expands item #5).
 
 ## Goal
 
@@ -93,8 +93,18 @@ Rough total: about 10 sessions after S1. S2 and S3 can run in parallel with S4.
 - Extracting the web sidebar touches a hot surface. S4 is a pure move with tests green before and after; no behavior changes in the same PR.
 - Sticky headers inside the Electron scroll container need a check on macOS overlay scrollbars.
 
-## Open questions
+## Decisions
 
-1. Home row: keep it on desktop (web has none), or make the Overlay lockup the way home?
-2. Voice and Browser: under More in a "This Mac" group (mockup), or top-level rows?
-3. Solo workspaces: web resolves the default scope with `useIsSoloWorkspace` but still shows the toggle. Keep that on desktop, or hide the toggle when there is one member?
+1. Keep the Home row on desktop.
+2. Voice and Browser stay under More, in the "This Mac" group.
+3. Scope toggle mimics web: always shown, solo workspaces only change the default scope (`useIsSoloWorkspace`).
+4. S1: keep vendoring for now. Desktop main has no sync script or `packages/UPSTREAM.json` (an unmerged `devin/1760594400-desktop-phase0-vendor-sync` branch exists), so this work copies `@overlay/ui` and the new `@overlay/shell-react` by hand and records the source SHA. The monorepo move (parity #1) stays a separate decision.
+
+## Delivery
+
+| PR | Repo | Items |
+| --- | --- | --- |
+| A | overlay-web | S4: extract `@overlay/shell-react` (pure move, web unchanged). Web-only dependencies (`next/link`, `rememberPanelScope`, workspace avatar, create dialog, solo check) come in through a `ShellAdapterProvider` context or props. |
+| B | overlay-desktop | S2, S3: Tailwind v4 (no preflight) and web tokens in the renderer; sync `@overlay/ui` with `components/ui`. |
+| C | overlay-desktop | S5 to S10: vendor `@overlay/shell-react`, adapters, mount in `MainWindow`, footer menu, settings mode, remove old sidebar, list panel column and `AccountDialog`. |
+| D | overlay-desktop | S11: tests and QA. |
