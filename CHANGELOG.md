@@ -8,6 +8,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Preserve native Harness approval waits beyond the legacy room lease; only the durable run deadline ends those waits.
 
+- Allow the initiating user to answer native Harness input waits after rechecking current room participation.
+
 - Show "Backed by verdict." above the landing headline and replace the Hermes agent chip with "+ more".
 
 - Run Linux GitHub Actions jobs on the shared Namespace runner profile.

@@ -281,7 +281,11 @@ credentials are never public contract fields.
   display projection and is never consulted to decide whether Stop is active.
 - `POST /api/v1/conversations/run/approval` accepts the active conversation,
   AgentRun and hook token plus an approve/deny decision. It rejects stale tokens
-  and resumes only the current `waiting_for_approval` Work run.
+  and resumes only the current `waiting_for_approval` run for its initiating user.
+- `POST /api/v1/conversations/run/input` resumes a personal or native Harness
+  input wait for the initiating user, exact active run and hook token. Native
+  rooms require current workspace participation; creator ownership alone is
+  insufficient. Replies remain in the existing work artifact.
 - `GET /api/v1/conversations/run/metrics?from=<epoch-ms>&to=<epoch-ms>&limit=<n>` returns
   per-runner observations with explicit sample counts. It reports latency,
   provider cost, Workflow step/storage observations, disconnect and recovery

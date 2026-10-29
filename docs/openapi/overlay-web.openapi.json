@@ -2982,7 +2982,7 @@
     "/api/v1/conversations/run/input": {
       "post": {
         "operationId": "postConversationsRunInput",
-        "summary": "Provide requested input to a waiting personal AgentRun",
+        "summary": "Provide requested input to a waiting personal or native Harness AgentRun",
         "tags": [
           "Conversations"
         ],

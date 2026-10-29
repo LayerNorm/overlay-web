@@ -638,7 +638,7 @@ export const webApiBoundaryDefinitions = [
     method: 'POST',
     path: '/api/v1/conversations/run/input',
     schema: { json: AgentRunInputRequest },
-    summary: 'Provide requested input to a waiting personal AgentRun',
+    summary: 'Provide requested input to a waiting personal or native Harness AgentRun',
     tag: 'Conversations',
   },
   {

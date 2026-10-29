@@ -1718,6 +1718,9 @@ durable root deadline through approval, input and child waits. They have no
 legacy room liveness lease, and the legacy stale-run sweep must not expire
 Harness-owned rows, including older deliveries that still carry a lease.
 Production native Harness admission remains gated by `OVERLAY_NATIVE_HARNESS=1`.
+The existing run-input endpoint accepts native Harness input waits only from
+the initiating user with current room participation in the selected workspace.
+Revoked participants, other initiators and legacy/remote runs cannot wake it.
 
 Native agent tool calls in direct messages and rooms run through separate durable
 preparation, model, tool, and finalization steps. Ask approvals attach to the exact

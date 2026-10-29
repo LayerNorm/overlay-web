@@ -72,3 +72,30 @@ test('arbitrary message roles and empty or oversized text are rejected at the bo
     assert.equal(response.status, 400)
   }
 })
+
+test('only the initiating user with current room access can resume a native Harness input wait', async () => {
+  const room = { ...conversation, userId: 'room-creator', conversationType: 'dm' as const }
+  const nativeRun = { ...run, mode: 'room' as const, executionEngine: 'overlay_harness' as const }
+  for (const scenario of ['allowed', 'revoked', 'other-initiator', 'legacy', 'other-workspace']) {
+    let resumed = false
+    const response = await POST(request(), context, {
+      conversations: {
+        getConversationById: async () => room,
+        getLatestAgentRun: async () => ({
+          ...nativeRun,
+          ...(scenario === 'other-initiator' ? { userId: 'other-user' } : {}),
+          ...(scenario === 'legacy' ? { executionEngine: undefined } : {}),
+        }),
+      },
+      collaboration: {
+        getAccessibleConversation: async args => {
+          assert.deepEqual(args, { actorUserId: 'owner', conversationId: 'conversation', workspaceId: 'workspace' })
+          return scenario === 'revoked' ? null : { ...room, ...(scenario === 'other-workspace' ? { workspaceId: 'other' } : {}) }
+        },
+      },
+      resume: async () => { resumed = true },
+    })
+    assert.equal(response.status, scenario === 'allowed' ? 200 : ['revoked', 'other-workspace'].includes(scenario) ? 404 : 409)
+    assert.equal(resumed, scenario === 'allowed')
+  }
+})
