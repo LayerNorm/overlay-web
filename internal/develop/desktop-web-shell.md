@@ -38,9 +38,12 @@ stops the host, closes panels, cancels dictation (including microphone tracks an
 Regular browsers receive neither Desktop settings nor native composer controls.
 Titlebar CSS reserves traffic-light space and makes interactive header children
 non-draggable. Chat and notes support `?surface=panel` only with the bridge;
-the compact surface keeps app providers and authorization boundaries.
+the compact surface keeps app providers and authorization boundaries. Native panel
+bounds leave other apps clickable outside the panel, and close/toggle actions use
+the retained focus-yield helper. Transparent corners and display-change clamping
+are native window behavior; no full-screen renderer mask is needed.
 
-Settings → Desktop exposes model downloads, dictation preferences, shortcuts,
+Settings → Desktop exposes model downloads, dictation preferences, recorded key combinations,
 panels, Agent Host controls and updates. Composer controls use native local/cloud
 dictation and screenshot attachments. Agent enrollment starts the local host from
 the existing Agents connection flow. Notifications use the existing activity feed;
@@ -98,3 +101,7 @@ fresh private bootstrap file for the existing CLI `--hosting-auth-file` option.
 The CLI verifies owner-only permissions and exact server origin, consumes the file
 before networking and keeps hosting access out of provider environments. Provision
 it from existing project access; never create a per-feature key or commit the file.
+
+Release builds embed only the configured public crash-reporting DSN. The native
+crash-reporting toggle is opt-in, stored per device and checked again before each
+event is sent; diagnostics controls are omitted when the build has no DSN.

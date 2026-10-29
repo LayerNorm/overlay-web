@@ -617,4 +617,4 @@ html[data-desktop="mac"] aside[aria-label="Sidebar"] { padding-top: 28px; }
 html[data-desktop="mac"] aside[aria-label="Sidebar"]::before { content: ''; position: absolute; inset: 0 0 auto; height: 28px; -webkit-app-region: drag; }
 html[data-desktop] [data-desktop-drag], html[data-desktop] .app-main header { -webkit-app-region: drag; }
 html[data-desktop] :is(button, input, textarea, select, a, [role="button"]) { -webkit-app-region: no-drag; }
-html:has([data-desktop-panel]) { background: transparent; }
+html:has([data-desktop-panel]), html:has([data-desktop-panel]) body, html:has([data-desktop-panel]) [data-app-shell] { background: transparent; }

@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Record desktop shortcuts directly from key presses and expose per-device crash-reporting consent when available; bound native sign-out cleanup so web logout stays responsive.
+
 - Add the versioned macOS desktop bridge, native settings/composer controls and compact chat/notes panels while sharing the full web app and session. Retire the duplicate desktop application and preserve local upgrade data.
 
 

@@ -78,7 +78,7 @@ async function AppShellContent({
     >
       <DesktopProvider><WorkspaceAppBoundary hasAuthenticatedUser={Boolean(user)}>
         <GatewayModelCatalogPrefetch />
-        <div className="flex h-screen overflow-hidden bg-background text-foreground">
+        <div data-app-shell className="flex h-screen overflow-hidden bg-background text-foreground">
           <AsyncSessionsProvider>
             <NavigationProgressProvider>
               <NavigationProgressBar />
