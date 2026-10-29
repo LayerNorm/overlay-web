@@ -15,6 +15,7 @@ function findTabsRoot(node: ReactNode): ReactElement | undefined {
 
 test('right sidebar renders its hero and tabs and forwards tab changes', () => {
   const changes: string[] = []
+  let closed = false
   const sidebarProps = {
     ariaLabel: 'Agent details',
     hero: {
@@ -28,7 +29,8 @@ test('right sidebar renders its hero and tabs and forwards tab changes', () => {
       { id: 'library', label: 'Library', content: <span>Conversation files</span> },
     ],
     activeTab: 'details',
-    onTabChange: (id) => changes.push(id),
+    onTabChange: (id: string) => changes.push(id),
+    onClose: () => { closed = true },
   }
   const sidebar = RightSidebar(sidebarProps)
   const markup = renderToStaticMarkup(sidebar)
@@ -40,6 +42,12 @@ test('right sidebar renders its hero and tabs and forwards tab changes', () => {
   assert.match(markup, /Details/)
   assert.match(markup, /Library/)
   assert.match(markup, /Agent settings/)
+  assert.match(markup, /aria-label="Close"/)
+  const closeButton = React.Children.toArray((sidebar.props as { children: ReactNode }).children)
+    .find((node) => React.isValidElement(node) && (node.props as { 'aria-label'?: string })['aria-label'] === 'Close')
+  assert.ok(React.isValidElement(closeButton))
+  ;(closeButton.props as { onClick(): void }).onClick()
+  assert.equal(closed, true)
   assert.doesNotMatch(markup, /Conversation files/)
 
   const tabsRoot = findTabsRoot(sidebar)

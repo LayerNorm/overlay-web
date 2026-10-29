@@ -17,6 +17,7 @@ export function AgentRightSidebar({
   conversationId,
   activeTab,
   onTabChange,
+  onClose,
 
   editor,
   controlled,
@@ -27,6 +28,7 @@ export function AgentRightSidebar({
   conversationId: string
   activeTab: string
   onTabChange(id: string): void
+  onClose(): void
 
   editor: ReturnType<typeof useAgentEditorController>
   controlled: boolean
@@ -127,6 +129,7 @@ export function AgentRightSidebar({
       tabs={tabs}
       activeTab={selectedTab}
       onTabChange={onTabChange}
+      onClose={onClose}
     />
   )
 }

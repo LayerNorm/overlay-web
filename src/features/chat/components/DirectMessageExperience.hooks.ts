@@ -1039,18 +1039,11 @@ export function useSendMessage({
   const soloAgentParticipantRef = useRef(soloAgentParticipant)
   soloAgentParticipantRef.current = soloAgentParticipant
 
-  // A pending reply row goes once the agent's real reply row exists (or after a minute, so none can linger).
+  // Unanswered placeholders expire after a minute; reconciliation replaces answered ones atomically.
   useEffect(() => {
     const pending = messages.filter((message) => message.id.startsWith(PENDING_AGENT_REPLY_PREFIX))
     if (!pending.length) return
-    const settled = pending.filter((placeholder) => messages.some((message) => (
-      !message.id.startsWith(PENDING_AGENT_REPLY_PREFIX)
-      && message.authorKind === 'agent'
-      && message.authorPrincipalId === placeholder.authorPrincipalId
-      && message.createdAt >= (placeholder.updatedAt ?? placeholder.createdAt) - 2_000
-    )))
     const drop = (ids: Set<string>) => setMessages((current) => current.filter((message) => !ids.has(message.id)))
-    if (settled.length) drop(new Set(settled.map((message) => message.id)))
     const timer = window.setTimeout(() => drop(new Set(pending.map((message) => message.id))), 60_000)
     return () => window.clearTimeout(timer)
   }, [messages, setMessages])
