@@ -69,6 +69,7 @@ export type Events = {
   'updates.status': UpdateStatus
   'transcription.start': { target: 'composer' | 'system'; model: string }
   'transcription.stop': undefined
+  'transcription.cancel': undefined
   'transcription.final': { text: string }
 }
 export interface DesktopBridge {
@@ -96,4 +97,13 @@ export async function openExternal(url: string): Promise<void> {
   } else if (typeof window !== 'undefined') {
     window.open(parsed.href, '_blank', 'noopener,noreferrer')
   }
+}
+
+/** Stop native work even when sign-out happens outside the workspace shell. */
+export async function notifyDesktopSignedOut(): Promise<void> {
+  const bridge = getDesktopBridge()
+  if (!bridge) return
+  try {
+    if ((await bridge.handshake()).capabilities.includes('auth')) await bridge.call('auth.signedOut', undefined)
+  } catch { /* Native cleanup must never prevent the normal web sign-out. */ }
 }

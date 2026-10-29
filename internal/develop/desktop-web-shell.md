@@ -28,9 +28,11 @@ privileged desktop window. No CSP relaxation or injected layout CSS is needed.
 The web window owns its normal httpOnly cookie session. Main redeems transfer links
 by attaching the pending PKCE verifier to `/auth/desktop/complete`; it neither stores
 nor refreshes a second WorkOS session. Old encrypted native credentials are cleared
-on upgrade. Native server calls use the window partition's authenticated fetch.
+on upgrade. Native server calls use the window partition's authenticated fetch. Account sign-out
+and session loss notify native cleanup through AuthContext too, so leaving the
+workspace shell cannot keep a host or microphone active.
 Agent Host starts and online panels verify the actual server session; sign-out
-stops the host, closes panels, cancels dictation and clears the badge.
+stops the host, closes panels, cancels dictation (including microphone tracks and stale paste results) and clears the badge.
 
 `DesktopProvider` negotiates the handshake and marks the root `data-desktop`.
 Regular browsers receive neither Desktop settings nor native composer controls.
@@ -45,8 +47,8 @@ the existing Agents connection flow. Notifications use the existing activity fee
 desktop keeps its subscription active while hidden and applies the native badge.
 
 Local transcription runs without a network connection. Cloud transcription uses
-the web transcription API and the same plan/budget checks. The local HUD captures
-audio; main validates bounded audio bytes, invokes a pinned native model helper or
+the web transcription API and the same plan/budget checks. The dictation shortcut keeps the existing tap-to-toggle / hold-to-talk manager
+and recovers after sleep/unlock. The local HUD captures audio; main validates bounded audio bytes, invokes a pinned native model helper or
 the cookie-authenticated cloud endpoint, then pastes into the prior app. Screen and
 microphone permissions remain OS-controlled. Downloaded updates install only after
 an explicit restart action and stable increasing-version validation.
@@ -71,7 +73,9 @@ startup opens Work. No new arbitrary-origin picker is exposed remotely.
 
 Run bridge package tests, web type/lint checks and desktop `npm test`, `npm run
 build`, `npm run check:no-provider-sdks`, and `npm run test:e2e`. Electron Playwright
-uses throwaway profiles. Its boundary fixture tests the actual sandboxed preload,
+uses throwaway profiles. The macOS clean-clone CI runs the Electron boundary
+fixture and unsigned packaging; heavy compilation and exhaustive tests belong in
+CI when laptop responsiveness is a concern. Run local checks sequentially. Its boundary fixture tests the actual sandboxed preload,
 invalid calls, frame/origin isolation, shared panel cookies and sign-out cleanup.
 The configured-server test exercises signed-out web rendering and the PKCE handoff;
 it does not substitute for real-provider sign-in.

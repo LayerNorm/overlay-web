@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { getDesktopBridge, isTrustedFrame, methodSchemas } from './index'
+import { getDesktopBridge, isTrustedFrame, methodSchemas, notifyDesktopSignedOut } from './index'
 
 test('ordinary browser and server rendering have no desktop bridge', () => {
   assert.equal(getDesktopBridge(), null)
@@ -19,4 +19,25 @@ test('external protocol, panel, enrollment and native input boundaries fail clos
   assert.equal(methodSchemas['panels.show'].safeParse({ kind: 'chat', url: 'https://evil.test' }).success, false)
   assert.equal(methodSchemas['transcription.transcribe'].safeParse({ audio: new Uint8Array(), mime: 'audio/wav', model: 'parakeet_v2' }).success, false)
   assert.equal(methodSchemas['notifications.show'].safeParse({ title: 'Test', body: '', route: '/app\\evil' }).success, false)
+})
+
+test('sign-out outside the shell checks the capability and awaits native cleanup', async () => {
+  let hasAuth = false
+  let calls = 0
+  const original = Object.getOwnPropertyDescriptor(globalThis, 'window')
+  Object.defineProperty(globalThis, 'window', { configurable: true, value: { overlayDesktop: {
+    handshake: async () => ({ capabilities: hasAuth ? ['auth'] : [] }),
+    call: async () => { calls++ },
+    on: () => () => {},
+  } } })
+  try {
+    await notifyDesktopSignedOut()
+    assert.equal(calls, 0)
+    hasAuth = true
+    await notifyDesktopSignedOut()
+    assert.equal(calls, 1)
+  } finally {
+    if (original) Object.defineProperty(globalThis, 'window', original)
+    else Reflect.deleteProperty(globalThis, 'window')
+  }
 })

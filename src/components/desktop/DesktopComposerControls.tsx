@@ -12,17 +12,29 @@ export function DesktopComposerControls({ input, onInputChange, onImages }: { in
   const [error, setError] = useState('')
   const recorder = useRef<MediaRecorder | null>(null)
   const stream = useRef<MediaStream | null>(null)
+  const recordingEpoch = useRef(0)
   const current = useRef({ input, onInputChange })
   useEffect(() => { current.current = { input, onInputChange } }, [input, onInputChange])
-  useEffect(() => () => { if (recorder.current) recorder.current.onstop = null; stream.current?.getTracks().forEach((track) => track.stop()) }, [])
+  useEffect(() => {
+    const release = () => {
+      recordingEpoch.current++
+      if (recorder.current) recorder.current.onstop = null
+      stream.current?.getTracks().forEach((track) => track.stop())
+    }
+    const cancel = () => { release(); setRecording(false) }
+    const off = desktop?.bridge.on('transcription.cancel', cancel)
+    return () => { off?.(); release() }
+  }, [desktop])
   if (!desktop) return null
   const { bridge, info } = desktop
   const toggle = async () => {
     setError('')
     if (recorder.current?.state === 'recording') { recorder.current.stop(); return }
     try {
+      const epoch = ++recordingEpoch.current
       const status = await bridge.call('transcription.status', undefined)
       stream.current = await navigator.mediaDevices.getUserMedia({ audio: true })
+      if (epoch !== recordingEpoch.current) { stream.current.getTracks().forEach((track) => track.stop()); return }
       const capture = new MediaRecorder(stream.current)
       recorder.current = capture
       const chunks: Blob[] = []
@@ -32,6 +44,7 @@ export function DesktopComposerControls({ input, onInputChange, onImages }: { in
         try {
           const audio = new Uint8Array(await new Blob(chunks).arrayBuffer())
           const result = await bridge.call('transcription.transcribe', { audio, mime: capture.mimeType.split(';')[0] as Input<'transcription.transcribe'>['mime'], model: status.model as Input<'transcription.transcribe'>['model'] })
+          if (epoch !== recordingEpoch.current) return
           const latest = current.current
           latest.onInputChange(`${latest.input}${latest.input && !/\s$/.test(latest.input) ? ' ' : ''}${result.text}`)
         } catch (err) { setError(err instanceof Error ? err.message : 'Dictation failed.') }

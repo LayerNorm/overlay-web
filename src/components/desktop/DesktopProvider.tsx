@@ -43,4 +43,3 @@ export function DesktopProvider({ children }: { children: ReactNode }) {
     {children}
   </DesktopContext.Provider>
 }
-

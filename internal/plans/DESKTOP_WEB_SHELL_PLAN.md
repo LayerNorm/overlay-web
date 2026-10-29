@@ -1,7 +1,6 @@
 # Desktop app as a web shell
 
-Status: In progress (2026-10-29). Phases 0 and 1 landed behind `OVERLAY_WEB_SHELL=1`;
-manual flow checks and Google sign-in from a real browser are still open.
+Status: In progress (2026-10-29). Phases 2–5 implemented in the desktop-web-shell worktree; current-source web/desktop acceptance and phase 6 release gates remain in progress. Real Google sign-in is still open.
 
 Repos: `LayerNorm/overlay-web` (this repo) and `LayerNorm/overlay-desktop`.
 
@@ -13,9 +12,13 @@ Repos: `LayerNorm/overlay-web` (this repo) and `LayerNorm/overlay-desktop`.
 | 0: spike | Code landed; flow checks open | overlay-desktop `933e842` |
 | 1: sign-in | Code landed; real Google sign-in open | overlay-web `7f62ce390`, overlay-desktop `9e7969f` |
 | 1: end-to-end test | Done | overlay-desktop `a5f0d49` (`npm run test:e2e`) |
-| 2–6 | Not started | — |
+| 2: bridge | Implemented; acceptance in progress | Shared v1 contract, exact-origin preload/router, desktop chrome and settings |
+| 3: native capabilities | Implemented; hardware/live acceptance open | Dictation, models, hotkeys, panels, notifications/badge, host, updates, capture |
+| 4: web panels | Implemented; authenticated flow QA open | Shared session and compact chat/notes routes |
+| 5: duplicate removal | Implemented; checks in progress | Native-only startup and dependency guard |
+| 6: release readiness | In progress | Preserved-data export/migration, signed build and real-device acceptance pending |
 
-What is in place:
+Baseline completed before this continuation:
 
 - `src/main/services/web-shell.ts` (desktop): with `OVERLAY_WEB_SHELL=1` the
   main window loads `<serverOrigin>/app` in `persist:overlay` with no
@@ -38,6 +41,18 @@ What is in place:
   dialog with no preload bridge; Google opens the handoff instead of
   navigating; the transfer link is redeemed in the window with a verifier
   whose hash matches the challenge.
+
+Current implementation (companion web and desktop branches):
+
+- Web shell is the default, without injected CSS or the spike flag. The shared
+  v1 bridge validates origin, top frame and bounded arguments in main.
+- Native settings, dictation/composer capture, panels, activity notifications,
+  Agent Host enrollment and updates use the bridge. Sign-out cancels capture and
+  closes native work. Chat/notes panels share the main window's cookie partition.
+- Duplicate provider/chat/agent/renderer code is removed. A dependency guard and
+  macOS CI cover the retained native code, Electron boundary flows and packaging.
+- Upgrade exports local transcripts/preferences and preserves recordings,
+  knowledge files and journals. Existing native model and panel choices migrate.
 
 Still open from phases 0 and 1:
 
@@ -424,13 +439,13 @@ sharply, and `verify` passes.
 | Startup feels slower than a local bundle. | Show a native splash until first paint, keep the partition cache, and preload panel windows (already done today). |
 | Losing local-only data from the current app. | Phase 6 inventory and migration before the first public release. |
 
-## Open questions
+## Decisions for the web-shell migration
 
-1. Does the desktop-controlled browser (`agent-browser-service`) stay, or do
-   Overlay Cloud machines replace it?
-2. Does the voice assistant overlay (`ai-assistant`, `unified-voice-agent`)
-   come back as a web surface on top of the bridge, or is it dropped?
-3. Should the main window open on `/app/work` or remember the last route?
-4. For self-hosted servers, should the desktop allow picking the server in
-   onboarding (today it comes from configuration), and how is that origin
-   pinned?
+1. Retire the duplicate desktop-controlled browser and independent voice-agent
+   pipeline. Web Computer/Agents own those workflows; native dictation and screen
+   capture remain available to the web composer.
+2. Open `/app/work` at startup. Panel windows open their shared chat/notes routes.
+3. Keep self-hosted origin selection in the existing verified server-profile
+   configuration; do not expose an arbitrary remote origin picker through v1.
+4. Preserve local knowledge data for import rather than uploading it implicitly.
+   Keep the release gates open until the real upgrade profile is accepted.

@@ -357,6 +357,7 @@
     "src/app/api/auth/convex-token/route.ts",
     "src/app/api/auth/desktop-link/route.ts",
     "src/app/api/share/file/[token]/route.ts",
+    "src/app/auth/desktop/complete/route.ts",
     "src/app/share/f/[token]/opengraph-image.tsx",
     "src/app/share/f/[token]/page.tsx",
     "src/components/providers/AppClientProviders.tsx",
