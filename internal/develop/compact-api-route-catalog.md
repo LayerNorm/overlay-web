@@ -1,10 +1,10 @@
 # Compact web API route catalog
 
-A one-line-per-route summary derived from a filesystem audit of every `src/app/api/**/route.ts`. It contains the same 219 routes as the full `api-route-catalog.md` but omits the per-route descriptions and implementation file lists.
+A one-line-per-route summary derived from a filesystem audit of every `src/app/api/**/route.ts`. It contains the same 220 routes as the full `api-route-catalog.md` but omits the per-route descriptions and implementation file lists.
 
-- **Total routes:** 219
+- **Total routes:** 220
 - **Non-versioned routes:** 40
-- **`/api/v1` routes:** 179
+- **`/api/v1` routes:** 180
 - **Verification status:** 0 missing, 0 stale, 0 HTTP-method mismatches against the route filesystem.
 
 For a description of what each route does and its associated implementation files, see the [full web API route catalog](./api-route-catalog.md).
