@@ -18,7 +18,7 @@ Replace the primary rail + secondary panel with one shadcn-style sidebar (ChatGP
 5. **Chat header** shows only the open conversation: avatar + name, or "# channel" + member count, plus search and a menu. Activity shows "Mark all read".
 6. **No dividers.** The header is sticky, translucent with backdrop blur, no bottom border. The sidebar sits on `--sidebar-surface` with no right border.
 7. **Two-rail layout** stays available in Settings, Customization: "Sidebar layout: Single sidebar / Rail + panel".
-8. **Agent identity stays.** Agent rows keep the `Creature` avatars (shapes and googly eyes) from `src/components/orb/Creature.tsx`.
+8. **Agent identity.** Agent rows use `AgentCreature` from `src/components/orb/Creature.tsx`. Creatures remain the identity for ordinary agents; the default Overlay agent renders the O-with-eyes mark through its record-backed `isDefault` flag.
 9. **Rollout:** single sidebar is the default for everyone at once; dividers ship as "None" only. Web only (no desktop or mobile app changes).
 10. **Collapse to icons** with Ctrl/Cmd+B (existing shortcut and `sidebarCollapsedStore`). On phones the sidebar is a sheet with the same content.
 

@@ -6,9 +6,9 @@ Replace the metallic orb and lowercase "overlay" wordmark with the uppercase Lib
 - Source assets (SVG, PNG, generator): `internal/plans/mockups/overlay-brand/`
 - Full line-by-line inventory: Appendix below (about 680 rows)
 
-## Decisions to confirm
+## Approved decisions
 
-1. **One component, `OverlayMark`**, rewritten in `@overlay/ui` to render the O. Props: `size`, `motion: 'none' | 'blink' | 'look'`. Below 24px it switches to the larger small-size eyes. `Orb` is deleted, not kept as an alias.
+1. **One component, `OverlayMark`**, rewritten in `@overlay/ui` to render the O. Props: `size`, `motion: 'none' | 'blink' | 'look'`. At sizes <= 24px it switches to the larger small-size eyes. `Orb` is deleted, not kept as an alias.
 2. **Motion mapping.** Idle brand marks: static. Overlay agent avatar: blink (same as creatures). Thinking, loading, streaming, running tool rows: `look` (eyes glance left and right). Reduced motion: static.
 3. **Wordmark** is real "Overlay" text in Libre Baskerville with the O swapped for the mark (`BrandLockup` renders mark + "verlay"), so it stays selectable and sized by `font-size`. Outlined SVG is used only where fonts can't load (OG images, email PNG, desktop tray, docs).
 4. **Overlay agent identity.** `AgentCreature` gains an `isDefault` input (from `agent.isDefault`, already stored) and renders `OverlayMark` for it. Gray color alone is not used, so user agents that happen to be gray stay creatures.
@@ -17,17 +17,17 @@ Replace the metallic orb and lowercase "overlay" wordmark with the uppercase Lib
 
 ## Phases
 
-| # | Scope | Main files |
-|---|---|---|
-| 1 | New `OverlayMark` + eye motion in `@overlay/ui`; delete `Orb`, `OVERLAY_ORB_DEFAULT_COLOR`, glow variant, metal palette | `packages/overlay-ui/src/components/orb/Orb.tsx`, `src/components/orb/Orb.tsx`, package exports |
-| 2 | Wordmark: `BrandLockup` to "Overlay", plus sidebar, admin, auth, landing, footer, docs headers | `src/components/brand/BrandLockup.tsx`, `AppSidebar` `BrandMark`, `apps/admin` |
-| 3 | Loaders and thinking: chat response loading, streaming rows, boot loader, page loaders; replace opacity pulse CSS with `motion="look"` | chat-react loading rows, boot loader, `ovorb-*` / pulse CSS |
-| 4 | Tool, trace, approval, notebook markers; `TraceOrb` becomes `OverlayMark` with `look` while running | tool rail, trace, approval, notebook components |
-| 5 | Overlay agent avatar: pass `isDefault` through every `AgentCreature` caller (sidebar, agent list, chat header, mentions, tasks, automations) | `src/components/orb/Creature.tsx` and 98 consumer rows |
-| 6 | Static assets: favicon, apple-touch, `overlay-logo.png`, OG images and OG routes (lowercase o square), JSON-LD logo, email PNG | `public/`, `src/app/**/opengraph-image*`, `src/shared/email/lifecycle-email.ts` |
-| 7 | Desktop (`overlay-desktop` submodule): app icon, tray, onboarding, raster stream markers, `ToolLineLogo`, vendored package copies; separate PR in that repo | `overlay-desktop/resources/**`, desktop renderer |
-| 8 | Mobile (`overlay-mobile`): icon, adaptive icon, splash. Not in this checkout; inventory when it is cloned | `overlay-mobile/assets/**`, `app.json` |
-| 9 | Docs, rules, tests: AGENTS.md brand and avatar rules, design docs, snapshots, stories | `AGENTS.md`, `internal/**`, tests listed in Appendix |
+| # | Status | Scope | Main files |
+|---|---|---|---|
+| 1 | Done | New `OverlayMark` + eye motion in `@overlay/ui`; delete `Orb`, `OVERLAY_ORB_DEFAULT_COLOR`, glow variant, metal palette | `packages/overlay-ui/src/components/orb/OverlayMark.tsx`, `src/components/brand/OverlayMark.tsx`, package exports |
+| 2 | Done | Wordmark: `BrandLockup` to "Overlay", plus sidebar, admin, auth, landing, footer, docs headers | `src/components/brand/BrandLockup.tsx`, `AppSidebar` `BrandMark`, `apps/admin` |
+| 3 | Done | Loaders and thinking: chat response loading, streaming rows, boot loader, page loaders; replace opacity pulse CSS with `motion="look"` | chat-react loading rows, boot loader, `ovorb-*` / pulse CSS |
+| 4 | Done | Tool, trace, approval, notebook markers; `TraceMark` uses `OverlayMark` with `look` while running | tool rail, trace, approval, notebook components |
+| 5 | Done | Overlay agent avatar: pass `isDefault` through every `AgentCreature` caller (sidebar, agent list, chat header, mentions, tasks, automations) | `src/components/orb/Creature.tsx` and 98 consumer rows |
+| 6 | Done | Static assets: favicon, apple-touch, `overlay-logo.png`, OG images and OG routes (lowercase o square), JSON-LD logo, email PNG | `public/`, `src/app/**/opengraph-image*`, `src/shared/email/lifecycle-email.ts` |
+| 7 | Deferred | Desktop (`overlay-desktop` submodule): app icon, tray, onboarding, raster stream markers, `ToolLineLogo`, vendored package copies; separate PR in that repo | `overlay-desktop/resources/**`, desktop renderer |
+| 8 | Deferred | Mobile (`overlay-mobile`): icon, adaptive icon, splash. Not in this checkout; inventory when it is cloned | `overlay-mobile/assets/**`, `app.json` |
+| 9 | Done | Docs, rules, tests: AGENTS.md brand and avatar rules, design docs, snapshots, stories | `AGENTS.md`, `internal/**`, tests listed in Appendix |
 
 Each phase is one PR to main with a preview; phases 1 and 2 land first since the rest depend on the component.
 
@@ -41,12 +41,15 @@ Each phase is one PR to main with a preview; phases 1 and 2 land first since the
 ## Known gaps
 
 - `overlay-mobile/` is not in this checkout.
-- Binary images and screenshots were inventoried by filename and reference; artwork inside them is not visually checked.
+- Web brand assets and representative favicon/app-icon/logo PNGs are regenerated and visually checked. Marketing screenshots contain no old Overlay mark and remain unchanged. No existing Apple-specific, ICO or admin icon files were found.
 - Desktop vendored package copies differ from web and need their own pass.
 
 ---
 
 # Appendix: full inventory
+
+Historical pre-rollout inventory. Paths, line numbers and observations below describe the research snapshot, not the current implementation. The approved decisions and phase status above take precedence.
+
 
 
 Research-only filesystem inventory of `/home/ubuntu/repos/overlay-web`. Paths below are relative to that root, including the checked-out `overlay-desktop/` submodule. No source files were changed. Pre-existing and concurrently created `internal/plans/mockups/` work was left untouched and excluded.

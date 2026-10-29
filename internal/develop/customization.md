@@ -26,23 +26,28 @@ Custom identity images use authenticated media routes, never public object URLs.
 Reads require active shared membership; writes require the matching account/member,
 or owner/admin access for workspace icons. Uploads accept PNG/JPEG/WebP up to 5 MB,
 authorize before decoding, and re-encode to bounded 512px WebP without metadata.
-Agent identity continues to use creature avatars.
+Agent identity uses creature avatars, except the default Overlay agent identified by its record's `isDefault` flag.
 
 `src/overlay.config.ts` is a serializable app registry. It can replace brand metadata, add navigation destinations, hide feature-gated surfaces, register settings panels, and describe custom tools or integrations.
 
-The default brand mark is the `OverlayMark` SVG orb component (`@overlay/ui`, re-exported from
-`src/components/orb/Orb.tsx`), not the `logoSrc` raster: the sidebar renders the orb whenever
-`brand.logoSrc` is the default `/assets/overlay-logo.png`, and only renders the `next/image` raster
-when a custom brand overrides it. The same `Orb` component also renders the small marks inside the
-chat surface — tool-call rails, the reasoning ("Thinking"/"Thought") row, the streaming tail marker,
-the exchange loading state, and the notebook agent panel — so no surface falls back to the PNG.
-The PNG asset stays on disk for lifecycle emails and favicons, which require raster. Agent avatars
-are anthropomorphic creatures (`AgentCreature` in `src/components/orb/Creature.tsx`): a solid-color
-body in one of eight shapes (`avatarShape`: circle, blob, squircle, pill, triangle, hexagon, cloud,
-droplet) with Grokbot-style blinking eyes whose dark/light tone derives from the body luminance.
-Both shape and color (`avatarColor`) persist on the workspace agent record — nullable columns with a
-circle default, so existing agents keep working — and are picked in the agent editor's Identity
-section, which previews shapes and colors as live creatures.
+The default brand mark is the inline SVG O-with-eyes `OverlayMark` from
+`@overlay/ui`, re-exported at `src/components/brand/OverlayMark.tsx`.
+The sidebar renders it whenever `brand.logoSrc` is the default
+`/assets/overlay-logo.png`; custom overrides still render their configured image.
+`BrandLockup` combines the mark with "verlay" in Libre Baskerville Regular to
+read "Overlay". The PNG remains available for lifecycle email and static metadata.
+
+Chat tool rails, reasoning rows, streaming markers, loading states and notebook
+panels use the same mark. Running markers use `motion="look"`, completed markers
+use `motion="none"`, and reduced motion disables the eye animations. Never pulse
+the mark's opacity or size.
+
+Agent avatars use `AgentCreature` in `src/components/orb/Creature.tsx`.
+The default Overlay agent renders the foreground mark with `motion="blink"`
+when the caller passes its record's `isDefault`. Other agents keep their
+`avatarShape` body, `avatarColor` and blinking eyes, including legacy color
+normalization. Neither the name nor the color identifies the default agent.
+
 
 ```ts
 import {
