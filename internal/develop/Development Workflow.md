@@ -392,8 +392,13 @@ Main changes automatically deploy to production through Vercel’s Git integrati
 
 ### Required CI checks
 
-`Security Checks` runs lint/types, production compilation and two complete test
-shards in parallel. Both ordinary-test shards use Node 24, matching the Agent Host
+All workflow jobs previously using `ubuntu-latest` use the shared Namespace
+Linux AMD64 profile `namespace-profile-overlay-ci-benchmark` (8 vCPU, 16 GB).
+Runner selection does not change required contexts, event triggers, credentials,
+cache keys or fail-closed aggregation. Keep Vercel hosting settings separate.
+
+`Security Checks` runs lint/boundaries, typechecking, production compilation and
+two complete test shards in parallel. Both ordinary-test shards use Node 24, matching the Agent Host
 CLI's minimum runtime so built-CLI contracts run without skipping or weakening the
 version guard. `next typegen` generates current route validators before the
 required standalone typecheck; only the CI compilation job skips the duplicate
@@ -406,13 +411,31 @@ Configuration and Convex boundary checks that depend on generated Workflow route
 stay after compilation. Gateway tests retain their react-server condition in a
 dedicated discovered group; route and gateway suites run once through the shards.
 
+CI shares an exact installed-dependency cache keyed by OS/architecture, Node/npm,
+lockfile, workspace manifests and installation policy. There is no fallback to a
+different dependency tree; misses run `npm ci --ignore-scripts --no-audit --no-fund`.
+The dedicated dependency audit remains required. Docs uses the same root install;
+admin keeps its isolated workspace installation. GitHub's PR cache scope prevents
+PR writes from replacing main caches. Never cache secrets or use these caches in
+privileged release/publication jobs.
+
+Persist only `.next/cache`, the content-based ESLint cache and TypeScript
+incremental state for compilation/check reuse. Cache keys cover the relevant tool
+configuration and dependencies, with per-revision snapshots. Always compile the
+current source, regenerate route types, and execute the required checks. A cache
+hit is not a successful check. Lint and typechecking run independently and both
+must pass the fail-closed aggregate. Keep hosted build validation unchanged.
+
 The runner inventories every tracked `*.test.{ts,tsx,mts,mjs}` file and classifies
-the ten live-only suites in `scripts/ci/integration-tests.mjs` separately.
+the live-only suites in `scripts/ci/integration-tests.mjs` separately.
 `npm run test:all` runs all ordinary suites, including mixed unit/live files.
 `npm run test:integration -- --list` lists opt-in live suites;
 `npm run test:integration -- --only <group>` runs explicitly configured ones.
 Select service credentials explicitly; never point CI at production.
-Package groups build once and execute only their selected files. Each shard
+Package groups build once and execute only their selected files. Weighted
+assignment accounts for expensive atomic package builds before distributing
+ordinary files; unknown suites still participate. Group timings include package
+builds. Keep two exhaustive shards and verify every file runs exactly once. Each shard
 verifies complete, disjoint coverage; package test commands that build their own
 outputs stay atomic on one worker. Invalid/empty selections fail. The existing
 `Schema and Routing Contracts` context now reports the test jobs' result from this

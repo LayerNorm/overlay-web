@@ -1,0 +1,32 @@
+name: CI dependencies
+description: Restore an exact dependency tree or install from the lockfile without lifecycle scripts.
+inputs:
+  node-version:
+    description: Node.js major version
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Set up Node.js
+      uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: npm
+    - name: Pin npm
+      shell: bash
+      run: npm install -g npm@11.11.0 --no-audit --no-fund
+    # No restore prefix: a different lockfile, workspace manifest, runtime or
+    # install policy must get a fresh tree. GitHub also isolates PR cache writes.
+    - name: Restore installed dependencies
+      id: dependencies
+      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      with:
+        path: |
+          node_modules
+          packages/*/node_modules
+          apps/*/node_modules
+        key: ci-dependencies-v1-${{ runner.os }}-${{ runner.arch }}-node${{ inputs.node-version }}-npm11.11.0-${{ hashFiles('package-lock.json', 'package.json', 'packages/*/package.json', 'apps/*/package.json', '.npmrc', '.github/actions/ci-dependencies/action.yml') }}
+    - name: Install from lockfile
+      if: steps.dependencies.outputs.cache-hit != 'true'
+      shell: bash
+      run: npm ci --ignore-scripts --no-audit --no-fund

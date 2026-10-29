@@ -18,7 +18,7 @@ env:
 jobs:
   publish:
     name: Publish ${{ matrix.image }}
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-overlay-ci-benchmark
     # Scoped to this job: only the publish step needs to write to GHCR.
     permissions:
       contents: read

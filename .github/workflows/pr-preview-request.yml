@@ -10,7 +10,7 @@ permissions: {}
 jobs:
   request:
     if: github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-overlay-ci-benchmark
     permissions:
       actions: write
     steps:

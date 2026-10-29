@@ -136,3 +136,6 @@ benchmarks/memory/sweep-*.ts
 /tests/workflow-runtime/node_modules/
 
 /tests/workflow-runtime/.gitignore
+
+# Incremental CI lint results
+/.cache/eslint

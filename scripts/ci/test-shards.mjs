@@ -8,12 +8,35 @@ export function parseShard(value) {
   return { index, total }
 }
 
+// Relative scheduling weights from CI group timings, not test exclusions.
+// In particular the Host build/tests must count against its shard's TSX load.
+const WEIGHTS = {
+  'package:overlay-agent-host': 120,
+  'package:overlay-agent-bridge-protocol': 6,
+  'vitest:convex': 2,
+  'vitest:workflow': 25,
+}
+
 export function selectShard(groups, { index, total }) {
-  return groups.flatMap(([name, group], groupIndex) => {
-    // Package scripts build and run their own complete glob. Keep each atomic.
-    const files = group.kind === 'npm-test'
-      ? (groupIndex % total === index - 1 ? group.files : [])
-      : group.files.filter((_, fileIndex) => fileIndex % total === index - 1)
+  parseShard(`${index}/${total}`)
+  const units = groups.flatMap(([name, group]) => {
+    // Packages build before executing their complete selected file list.
+    if (group.kind === 'npm-test') return [{ name, files: group.files, weight: WEIGHTS[name] ?? group.files.length }]
+    return group.files.map(file => ({ name, files: [file], weight: WEIGHTS[name] ?? 1 }))
+  })
+  units.sort((a, b) => b.weight - a.weight)
+  const loads = Array(total).fill(0)
+  const selected = new Map()
+  for (const unit of units) {
+    const target = loads.indexOf(Math.min(...loads))
+    loads[target] += unit.weight
+    if (target !== index - 1) continue
+    if (!selected.has(unit.name)) selected.set(unit.name, new Set())
+    for (const file of unit.files) selected.get(unit.name).add(file)
+  }
+  // Preserve discovery order within each runner even though assignment is weighted.
+  return groups.flatMap(([name, group]) => {
+    const files = group.files.filter(file => selected.get(name)?.has(file))
     return files.length ? [[name, { ...group, files }]] : []
   })
 }
