@@ -4,7 +4,7 @@ import { Button } from '@overlay/ui/primitives'
 
 import { useLayoutEffect, useState } from 'react'
 import { X } from 'lucide-react'
-import { OverlayMark } from '@/components/orb/Orb'
+import { OverlayMark } from '@/components/brand/OverlayMark'
 import { usePathname } from 'next/navigation'
 import { SignInForm } from '@/features/auth/components/SignInForm'
 

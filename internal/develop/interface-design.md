@@ -330,17 +330,22 @@ Creation dialogs carry no hint lines. Labels are one or two words; anything
 that needs explaining gets an `InfoTip` (Lucide `Info`, `DelayedTooltip`) after
 the label, via `FieldLabel` in `src/features/agents/components/InfoTip.tsx`.
 
-## Agents are creatures, never orbs
+## Agent identity
 
-Every surface that identifies an agent — rosters, chat headers, message
-authors, marketing app shots and HTML mockups — renders its creature
-(`AgentCreature`: `avatarShape` body, `avatarColor` fill, eyes). Do not use the
-`Orb` glow variant or any colored sphere as an agent identity; the metal orb is
-the Overlay brand mark and system marker only.
+Every surface that identifies an agent uses its creature
+(`AgentCreature`: `avatarShape` body, `avatarColor` fill and eyes), except the
+default Overlay agent. Pass the agent record's `isDefault` to `AgentCreature`:
+it renders the foreground O-with-eyes `OverlayMark motion="blink"` in the same
+avatar box. Do not infer default identity from a name or gray color.
+Non-default creatures retain legacy color normalization.
+
 
 ## Avatars are edited in place
 
-The agent avatar is a button: hover shows a pencil, click opens
+The default Overlay agent has a fixed, read-only brand mark; do not expose shape/color
+controls or dirty its form for customization that cannot be displayed.
+
+A custom agent avatar is a button: hover shows a pencil, click opens
 `AgentAvatarPicker` with every creature shape (previewed in the current color)
 and the `AVATAR_COLORS` swatches. The new-agent dialog centres it above the
 name; the editor's identity section anchors the popover to its left edge.
@@ -469,21 +474,18 @@ The agent settings (`AgentEditorPage`) have several independent loaders (the age
 
 ## One boot loader
 
-Reduced motion disables the lockup pulse and workspace spinner; entrance elements
+The loader uses `OverlayMark motion="look"`, never an opacity or size pulse.
+Reduced motion disables eye motion and the workspace spinner; entrance elements
 settle immediately, with the workspace status text remaining visible.
-Pulse instances share their first document-timeline start time, applied before
-paint, so replacing a loading boundary preserves opacity and never restarts the
-800 ms pulse delay. Keep this clock shared by animated and settled instances.
-The brand entrance (mark fade + word reveal) is likewise claimed once per boot:
+The brand entrance (mark fade + word reveal) is claimed once per boot through
+`createBootEntranceClaim` in `src/components/layout/boot-loader-state.ts`:
 the first loader to mount plays it and records it played, so every later gate
 renders the settled screen and the word never re-reveals. The loader is also
 always the first paint: `WorkspaceHydrationBoundary` only treats 'idle' as
 decided once the auth check has resolved (guests settle there; a session user
 enables workspaces after first paint), so children stay gated until status is
-'ready' and the app can never paint before the loader. The wordmark paints
-only in Libre Baskerville: the Regular face is preloaded in the root layout
-and the loader keeps the word hidden (`app-brand-loader--fontwait`) until
-`document.fonts` reports it loaded (1.5s cap). The loader is boot-only:
+'ready' and the app can never paint before the loader. The wordmark uses Libre
+Baskerville Regular. The loader is boot-only:
 once the app has rendered real content, `bootAppShown` is marked
 module-wide, so `WorkspaceHydrationBoundary` remounts (workspace switches)
 can never re-gate and `InitialAppLoading`/`AppShellLoadingFallback` swap to
@@ -492,9 +494,11 @@ screen again.
 
 ## Brand lockup
 
-`BrandLockup` (`src/components/brand/BrandLockup.tsx`) is the canonical orb + serif "overlay" wordmark. Its geometry is `em`-scaled: the orb is `0.5em` resting on the wordmark's text baseline with a `0.4em` gap (`align-items: baseline` on `.brand-lockup` in `globals.css`), the same configuration the landing `.lp .lockup` defines. Size it with `font-size` on the component or an ancestor. The word sits inside `.brand-lockup-mask`, an `overflow: hidden` window, so reveals can slide it out from behind the orb. Use it wherever the logo and wordmark appear together (loader, auth pages, marketing nav/footer, skeletons) rather than composing `OverlayMark` plus text ad hoc.
+Tool, reasoning, worked-for, trace, confirmation and approval rows are logo-free. Active assistant responses show one 24px `OverlayMark motion="look"` below the complete output, and the mark disappears when the response settles. Only its eyes move. `ChatExchange` suppresses the generic inline Markdown marker, which remains available to other consumers.
 
-App startup renders a single loading screen wherever the shell is still resolving: `AppBootLoader` (`src/components/layout/AppBootLoader.tsx`) behind `InitialAppLoading`/`AppShellLoadingFallback`, the `/` entry fallback, and the workspace-hydration gate (`WorkspaceAppBoundary`, which renders it `settled` so the handoff shows no second splash). It renders `BrandLockup` at `24px`; the mark fades in, the word reveals from behind it, then the whole lockup breathes with the same opacity-only pulse as the chat stream marker (`appBrandLoaderPulse` in `globals.css`), with the "Opening workspace…" line beneath on the same screen.
+`BrandLockup` (`src/components/brand/BrandLockup.tsx`, re-exported from `@overlay/ui`) is the canonical "Overlay" wordmark: the O-with-eyes `OverlayMark` followed by "verlay" in Libre Baskerville Regular. Size it with `font-size`. Shared styles in `packages/overlay-ui/src/styles.css` use a `0.86em` mark, a `0.043em` gap and a `0.045em` baseline translation. The word sits inside the overflow-hidden `.brand-lockup-mask` so the boot entrance can reveal it from behind the mark. Use the shared component for loader, auth, marketing and shell branding rather than composing a separate mark and full word.
+
+App startup renders a single loading screen wherever the shell is still resolving: `AppBootLoader` (`src/components/layout/AppBootLoader.tsx`) behind `InitialAppLoading`/`AppShellLoadingFallback`, the `/` entry fallback, and the workspace-hydration gate (`WorkspaceAppBoundary`, which renders it `settled` so the handoff shows no second splash). It renders `BrandLockup` at `24px`; the mark fades in, the word reveals from behind it, the eyes look around without pulsing the lockup, with the "Opening workspace..." line beneath on the same screen. The reveal plays once per boot; later mounts render the settled screen.
 
 ## Avatar colors
 
@@ -534,7 +538,7 @@ avatar. Sidebar rows without a conversation open the automation itself.
 
 ## Chat AI primitives (`@overlay/ui/ai`)
 
-Chat surfaces build on shadcn AI Elements primitives copied into `packages/overlay-ui/src/components/ui` and exported from `@overlay/ui/ai` (kept out of the main barrel so Shiki only loads where chat renders): `Message`, `Bubble`, `Trace`, `CodeBlock` (+ `useHighlightedCode`, Shiki JS engine, GitHub light/dark themes that presets never tint), `MessageScroller` (`@shadcn/react`), `Item`, `InputGroup`, `Attachment`, `HoverCard`, `Collapsible`, `Spinner`. Upstream semantic classes are rewritten to Overlay variables (`bg-(--surface-subtle)`, `text-(--muted)`, `text-(--danger)`); `--muted` is a text color here, so never add a `--color-muted` theme alias. Every Trace step uses the Orb in `TraceIcon`; a running step's title shimmers (CSS in `styles.css`, off under reduced motion).
+Chat surfaces build on shadcn AI Elements primitives copied into `packages/overlay-ui/src/components/ui` and exported from `@overlay/ui/ai` (kept out of the main barrel so Shiki only loads where chat renders): `Message`, `Bubble`, `Trace`, `CodeBlock` (+ `useHighlightedCode`, Shiki JS engine, GitHub light/dark themes that presets never tint), `MessageScroller` (`@shadcn/react`), `Item`, `InputGroup`, `Attachment`, `HoverCard`, `Collapsible`, `Spinner`. Upstream semantic classes are rewritten to Overlay variables (`bg-(--surface-subtle)`, `text-(--muted)`, `text-(--danger)`); `--muted` is a text color here, so never add a `--color-muted` theme alias. Trace rows are text-only; `TraceMark`, `ToolLineLogo` and `ToolLogoColumn` remain empty compatibility exports. Running titles may shimmer (CSS in `styles.css`, off under reduced motion). The one active-response mark is 24px and sits after all assistant output.
 
 Visual rules for these and every new component:
 
@@ -558,8 +562,9 @@ unbroken value must not force an otherwise narrow table beyond the chat pane.
 
 Render streamed text as complete formatted chunks. Markdown defaults to paragraph
 blocks plus a shimmed in-flight tail, with no per-character pacing or character
-spans. Room/agent transcripts suppress inline markers and keep one loading-dots
-row at the bottom throughout the run, including while tools are working.
+spans. Room/agent transcripts suppress inline markers and keep one 24px
+`OverlayMark motion="look"` at the bottom throughout the run, including while
+tools are working.
 
 Keep the message action rail visible whenever it offers Stop. An active reply's
 Stop control must not require hovering the message; completed messages retain

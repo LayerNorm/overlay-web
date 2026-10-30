@@ -19,6 +19,7 @@ export function AgentSidebarHero({
   return {
     avatar: (
       <AgentAvatarPicker
+        isDefault={agent?.isDefault}
         shape={form.avatarShape}
         color={form.avatarColor}
         onShapeChange={(shape) => {

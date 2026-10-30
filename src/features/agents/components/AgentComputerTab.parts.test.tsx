@@ -30,10 +30,12 @@ function renderComputerTab(state: {
   controlled?: boolean
   currentUserId?: string
   controlBusy?: boolean
+  isDefault?: boolean
 }) {
   return renderToStaticMarkup(
     <AgentComputerTabView
       agentName="Research"
+      isDefault={state.isDefault}
       computer={state.computer}
       computerLoading={false}
       computerError={null}
@@ -154,4 +156,9 @@ test('control actions are disabled while server confirmation is pending', () => 
     controlBusy: true,
   })
   assert.match(selfControlled, /disabled[^>]*>Releasing control\.\.\./)
+})
+
+test('default-agent sleeping computer uses the blinking brand avatar', () => {
+  const html = renderComputerTab({ computer: { ...computer, status: 'stopped' }, isDefault: true })
+  assert.match(html, /overlay-mark--blink/)
 })

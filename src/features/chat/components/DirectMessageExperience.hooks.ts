@@ -638,6 +638,7 @@ export function useRoomLifecycle({
 }
 
 type AgentDirectoryEntry = {
+  isDefault?: boolean
   id?: string
   name: string
   avatarColor?: string
@@ -670,6 +671,7 @@ export function useAgentDirectory({
       const existing = merged.get(principalId)
       merged.set(principalId, {
         id: existing?.id,
+        isDefault: existing?.isDefault,
         name: draft.name,
         avatarColor: draft.avatarColor ?? existing?.avatarColor,
         avatarShape: draft.avatarShape ?? existing?.avatarShape,
@@ -695,6 +697,7 @@ export function useAgentDirectory({
           name: agent.name,
           avatarColor: agent.avatarColor,
           avatarShape: agent.avatarShape,
+          isDefault: agent.isDefault,
         }])))
       }).catch(() => undefined)
     }
@@ -875,6 +878,7 @@ export function useRoomViewModels({
       name: participant.displayName,
       avatarColor: agent?.avatarColor,
       avatarShape: agent?.avatarShape,
+      isDefault: agent?.isDefault,
     }
   }), [directoryAgentsByPrincipal, participants])
 
@@ -886,10 +890,14 @@ export function useRoomViewModels({
         id: participant.principalId,
         name: participant.displayName,
         description: participant.principalType === 'agent' ? 'Agent' : 'Member',
+        principalType: participant.principalType,
+        avatarColor: directoryAgentsByPrincipal.get(participant.principalId)?.avatarColor,
+        avatarShape: directoryAgentsByPrincipal.get(participant.principalId)?.avatarShape,
+        isDefault: directoryAgentsByPrincipal.get(participant.principalId)?.isDefault,
         icon: 'UsersRound',
       }))
     return items.length ? [{ type: 'person', label: 'Members', icon: 'UsersRound', items }] : []
-  }, [currentPrincipalId, participants])
+  }, [currentPrincipalId, directoryAgentsByPrincipal, participants])
 
   const pinnedSummaries = pins
     .map((pin) => {
@@ -1916,6 +1924,7 @@ export type RoomMessageContext = {
     name: string
     avatarColor?: string
     avatarShape?: string
+    isDefault?: boolean
   }>
   reactions: MessageReaction[]
   pins: ConversationPin[]

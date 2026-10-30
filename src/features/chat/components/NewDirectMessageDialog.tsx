@@ -170,7 +170,7 @@ function MemberListItem({
     >
       {item.principalType === 'agent' ? (
         <span className="flex h-8 w-8 shrink-0 items-center justify-center">
-          <AgentCreature agent={{ name: item.name, avatarColor: item.avatarColor, avatarShape: item.avatarShape }} size={32} />
+          <AgentCreature isDefault={item.isDefault} agent={{ name: item.name, avatarColor: item.avatarColor, avatarShape: item.avatarShape }} size={32} />
         </span>
       ) : (
         <Avatar className="h-8 w-8 shrink-0">

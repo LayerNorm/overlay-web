@@ -4,6 +4,10 @@ Status: implemented (2026-09-18). Supersedes the earlier dual Convex/Postgres di
 
 ## Decision
 
+The runtime inventory includes non-API route handlers that consume Convex, including
+the PKCE-bound desktop session completion route. Review new imports before updating
+`config/on-prem-convex-runtime-baseline.json`; keep the inventory check mandatory.
+
 Standardize on Convex as the only backend runtime. Convex Cloud serves the hosted product; the open-source `convex-backend` binary serves enterprise self-hosting (BYOC). The bespoke Postgres repository layer, Drizzle schema/migrations, and the parity harness are deleted. Postgres survives only as Convex's optional persistence engine and as Better Auth's separate auth-scoped database.
 
 ## Why Convex-only wins

@@ -316,7 +316,7 @@ The competitor's screen connects a paid plan to a named specialist that is ready
 
 Useful patterns: one clear question, short explanation, generous spacing, a bounded set of choices, visible selection states, concise connect dialogs, and obvious skip/back actions.
 
-For Overlay specifically: keep the chat, orb introduction, centered inline setup panels, Personal memory default, and workspace reveal. Replace the reported heavy tour border with a quiet borderless highlight. Any new account page or material flow redesign should be mocked up for approval before implementation.
+For Overlay specifically: keep the chat, O-with-eyes brand introduction, centered inline setup panels, Personal memory default, and workspace reveal. Replace the reported heavy tour border with a quiet borderless highlight. Any new account page or material flow redesign should be mocked up for approval before implementation.
 
 ## Suggested next design checkpoint, not implemented
 

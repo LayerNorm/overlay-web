@@ -509,7 +509,7 @@ function AgentListRow({
           <span className="flex size-6 shrink-0 items-center justify-center">
             {isOpening
               ? <Loader2 size={16} className="animate-spin" />
-              : <AgentCreature agent={agent} size={24} />}
+              : <AgentCreature isDefault={agent.isDefault} agent={agent} size={24} />}
           </span>
           <span className="truncate">{agent.name}</span>
         </SidebarMenuButton>

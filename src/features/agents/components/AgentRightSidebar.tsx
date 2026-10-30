@@ -95,6 +95,7 @@ export function AgentRightSidebar({
           agentName={agentName}
           agentColor={agent?.avatarColor}
           agentShape={agent?.avatarShape}
+          isDefault={agent?.isDefault}
           unavailable={!computersEnabled}
           computer={computerAccess.computer}
           computerLoading={computerAccess.computerLoading}

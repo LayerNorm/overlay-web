@@ -76,6 +76,7 @@ export async function agentAssignability(
   createdByPrincipalId: string
   avatarColor?: string
   avatarShape?: string
+  isDefault?: boolean
 } | null> {
   const principal = args.principal
   if (principal.type !== 'agent' || principal.workspaceId !== args.workspaceId || principal.archivedAt !== undefined || !principal.agentId) return null
@@ -89,6 +90,7 @@ export async function agentAssignability(
     createdByPrincipalId: definition.createdByPrincipalId,
     ...(definition.avatarColor !== undefined ? { avatarColor: definition.avatarColor } : {}),
     ...(definition.avatarShape !== undefined ? { avatarShape: definition.avatarShape } : {}),
+    ...(definition.isDefault !== undefined ? { isDefault: definition.isDefault } : {}),
   }
 }
 

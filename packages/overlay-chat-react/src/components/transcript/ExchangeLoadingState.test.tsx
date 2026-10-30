@@ -4,11 +4,8 @@ import test from 'node:test'
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import type { AssistantVisualBlock } from '@overlay/chat-core'
-import {
-  EXCHANGE_LOADING_LABELS,
-  ExchangeLoadingState,
-  exchangeLoadingPresentation,
-} from './ExchangeLoadingState'
+import { ChatExchange } from './ChatExchange'
+import { ExchangeLoadingState, exchangeLoadingPresentation } from './ExchangeLoadingState'
 
 const text = [{ kind: 'text', text: 'Partial' }] satisfies AssistantVisualBlock[]
 const file = [{ kind: 'file', url: 'data:image/png;base64,AA==', mediaType: 'image/png' }] satisfies AssistantVisualBlock[]
@@ -23,57 +20,109 @@ const chatSurfaceCss = readFileSync(
   'utf8',
 )
 
-test('loading presentation follows normalized exchange status and visible output', () => {
-  assert.deepEqual(exchangeLoadingPresentation('submitted', []), {
-    active: true,
-    inlineTextMarker: false,
-    marker: 'standalone',
-  })
-  assert.deepEqual(exchangeLoadingPresentation('streaming', text), {
-    active: true,
-    inlineTextMarker: true,
-    marker: 'none',
-  })
-  assert.equal(exchangeLoadingPresentation('streaming', file).marker, 'compact')
-  assert.equal(exchangeLoadingPresentation('executing-tool', tool).marker, 'none')
-  assert.equal(exchangeLoadingPresentation('completed', text).active, false)
-  assert.equal(exchangeLoadingPresentation('interrupted', text).active, false)
-  assert.equal(exchangeLoadingPresentation('error', text).active, false)
+const lookMarks = (markup: string) => markup.match(/overlay-mark--look/g)?.length ?? 0
+
+test('active exchange statuses show one 24px footer mark and suppress inline markers', () => {
+  const activeCases = [
+    ['submitted', []],
+    ['streaming', text],
+    ['streaming', file],
+    ['executing-tool', tool],
+    ['awaiting-approval', tool],
+  ] as const
+
+  for (const [status, blocks] of activeCases) {
+    const presentation = exchangeLoadingPresentation(status, blocks)
+    assert.deepEqual(presentation, {
+      active: true,
+      inlineTextMarker: false,
+      marker: 'standalone',
+    })
+
+    const markup = renderToStaticMarkup(<ExchangeLoadingState presentation={presentation} />)
+    assert.equal(lookMarks(markup), 1, status)
+    assert.match(markup, /width="24"/, status)
+    assert.match(markup, /height="24"/, status)
+    assert.match(markup, /data-loading-presentation="standalone"/, status)
+    assert.doesNotMatch(markup, /Thinking|Contemplating|Comprehending|Reasoning|Pondering|Considering/, status)
+  }
 })
 
-test('standalone loading reuses the tool-row mark and rotating thinking vocabulary', () => {
-  const markup = renderToStaticMarkup(
-    <ExchangeLoadingState
-      presentation={{ active: true, inlineTextMarker: false, marker: 'standalone' }}
-    />,
-  )
-
-  assert.match(markup, /overlay-loading-tool-logo/)
-  assert.match(markup, /width="6\.5"/)
-  assert.match(markup, /height="6\.5"/)
-  assert.match(markup, /overlay-loading-word-track/)
-  assert.match(markup, /overlay-loading-word tool-line-shimmer/)
-  for (const label of EXCHANGE_LOADING_LABELS) assert.ok(markup.includes(label))
-  assert.ok(EXCHANGE_LOADING_LABELS.every((label) => !label.endsWith('…')))
-  assert.match(markup, /aria-label="Thinking"/)
+test('settled exchange statuses render no loading mark', () => {
+  for (const status of ['completed', 'interrupted', 'error'] as const) {
+    const presentation = exchangeLoadingPresentation(status, text)
+    assert.deepEqual(presentation, {
+      active: false,
+      inlineTextMarker: false,
+      marker: 'none',
+    })
+    assert.equal(renderToStaticMarkup(<ExchangeLoadingState presentation={presentation} />), '')
+  }
 })
 
-test('compact loading keeps the mark without adding the word reel', () => {
+test('legacy compact presentation remains accepted as the same footer mark', () => {
   const markup = renderToStaticMarkup(
     <ExchangeLoadingState
       presentation={{ active: true, inlineTextMarker: false, marker: 'compact' }}
     />,
   )
 
-  assert.match(markup, /overlay-stream-marker--standalone/)
-  assert.doesNotMatch(markup, /overlay-loading-word-track/)
+  assert.equal(lookMarks(markup), 1)
+  assert.match(markup, /width="24"/)
+  assert.match(markup, /data-loading-presentation="standalone"/)
+  assert.equal(
+    renderToStaticMarkup(
+      <ExchangeLoadingState
+        presentation={{ active: false, inlineTextMarker: false, marker: 'none' }}
+      />,
+    ),
+    '',
+  )
 })
 
-test('loading word reel holds each label for 2000ms and is not disabled by reduced motion', () => {
-  assert.match(chatSurfaceCss, /animation: overlayChatLoadingWordReel 14s linear infinite/)
-  assert.match(chatSurfaceCss, /0%,\s*12\.5%\s*\{\s*transform: translate3d\(0, 0, 0\)/)
-  assert.doesNotMatch(
-    chatSurfaceCss,
-    /overlay-loading-word-track\s*\{\s*animation:\s*none/,
+test('ChatExchange places its only loading mark after active tool and text output', () => {
+  const blocks = [
+    ...tool,
+    { kind: 'text', text: 'Assistant output sentinel' },
+  ] satisfies AssistantVisualBlock[]
+  const markup = renderToStaticMarkup(
+    <ChatExchange
+      userMsgId="user-1"
+      userBodyText="Question"
+      userDocumentNames={[]}
+      userImages={[]}
+      exchIdx={0}
+      responseModelId="model"
+      assistantVisualBlocks={blocks}
+      isStreaming
+      isTextStreaming
+      errorMessage={null}
+      responseInProgress
+      status="executing-tool"
+      turnIdForActions={null}
+      modelLabel="Model"
+      onDeleteTurn={() => {}}
+      onReply={() => {}}
+      actionsLocked={false}
+      replyThreadMeta={null}
+      onJumpToReply={() => {}}
+      onOpenDraft={() => {}}
+      onCreateAutomationDraft={() => {}}
+      isSourcesOpenForThis={false}
+    />,
   )
+  const outputIndex = markup.indexOf('Assistant output sentinel')
+  const loadingIndex = markup.indexOf('data-loading-presentation="standalone"')
+
+  assert.ok(outputIndex >= 0)
+  assert.ok(loadingIndex > outputIndex)
+  assert.equal(lookMarks(markup), 1)
+  assert.match(markup.slice(loadingIndex), /width="24"/)
+  assert.doesNotMatch(markup, /overlay-stream-marker/)
+})
+
+test('obsolete loading reel styles are gone while generic inline marker styles remain', () => {
+  assert.doesNotMatch(chatSurfaceCss, /overlayChatLoadingWordReel|overlay-loading-word|overlay-loading-tool-logo/)
+  assert.match(chatSurfaceCss, /\.overlay-stream-marker \{/)
+  assert.match(chatSurfaceCss, /\.overlay-stream-marker--standalone \{/)
 })

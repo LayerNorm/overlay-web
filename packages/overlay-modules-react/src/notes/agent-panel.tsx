@@ -2,7 +2,7 @@
 import { Button } from '@overlay/ui/primitives'
 import type { ReactNode } from 'react'
 import type { NotebookAgentUiItem } from '@overlay/app-core'
-import { Orb } from '@overlay/ui'
+import { OverlayMark } from '@overlay/ui'
 import { Send } from 'lucide-react'
 import { AppScreenSidePanel } from '../shell'
 
@@ -63,7 +63,7 @@ export function NotebookAgentPanel({
                   aria-label={item.text}
                   role="img"
                 >
-                  <Orb variant="metal" size={16} animated={false} label="" />
+                  <OverlayMark motion="look" size={16} label="" />
                 </span>
               </div>
             )

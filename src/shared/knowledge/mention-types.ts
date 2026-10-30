@@ -11,6 +11,7 @@ export interface MentionItem {
   principalType?: 'human' | 'agent' | 'service'
   avatarColor?: string
   avatarShape?: string
+  isDefault?: boolean
   icon?: string
   logoUrl?: string
   meta?: Record<string, unknown>

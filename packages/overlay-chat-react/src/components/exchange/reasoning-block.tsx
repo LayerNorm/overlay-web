@@ -10,7 +10,7 @@ import {
 import { useEffect, useRef, useState } from 'react'
 import { MarkdownMessage } from '../MarkdownMessage'
 
-import { TraceOrb } from './tool-rail'
+import { TraceMark } from './tool-rail'
 
 /**
  * Reasoning as a Trace step: open while the reasoning streams (rendered through
@@ -35,7 +35,7 @@ export function ReasoningBlock({
   const hasContent = text.trim().length > 0
   const line = (
     <TraceLine status={streaming ? 'running' : undefined}>
-      <TraceOrb running={streaming} />
+      <TraceMark running={streaming} />
       <TraceTitle>{streaming ? 'Thinking' : 'Thought'}</TraceTitle>
     </TraceLine>
   )

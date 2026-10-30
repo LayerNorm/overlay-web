@@ -198,13 +198,13 @@ export function RoomHeaderLeading({
   surfacePlatform,
 }: {
   soloAgentParticipant: ConversationParticipant | null
-  headerAgent: { name: string; avatarColor?: string; avatarShape?: string } | null
+  headerAgent: { isDefault?: boolean; name: string; avatarColor?: string; avatarShape?: string } | null
   conversationType: 'dm' | 'channel'
   otherCount: number
   surfacePlatform?: string | null
 }) {
   if (soloAgentParticipant) {
-    return <AgentCreature agent={headerAgent ?? { name: soloAgentParticipant.displayName }} size={32} />
+    return <AgentCreature isDefault={headerAgent?.isDefault} agent={headerAgent ?? { name: soloAgentParticipant.displayName }} size={32} />
   }
   return (
     <span className="flex h-8 w-8 items-center justify-center rounded-full bg-(--surface-muted) text-(--muted)">
@@ -456,6 +456,7 @@ export function RoomMessage({
     authorPhotoUrl: author?.principalType === 'human' ? author.photoUrl : undefined,
     authorColor: authorAgent?.avatarColor,
     authorShape: authorAgent?.avatarShape,
+    authorIsDefault: authorAgent?.isDefault,
     mentions: ctx.participantMentions,
     streaming: message.status === 'generating',
   })

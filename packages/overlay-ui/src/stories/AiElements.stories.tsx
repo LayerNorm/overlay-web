@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Bubble, BubbleContent, CodeBlock, CodeBlockActions, CodeBlockContent, CodeBlockCopyButton, CodeBlockHeader, CodeBlockTitle, Message, MessageContent, Trace, TraceCollapsible, TraceCollapsibleContent, TraceCollapsibleTrigger, TraceIcon, TraceLine, TraceTitle, useHighlightedCode } from '../ai'
-import { Orb } from '../components/orb/Orb'
+import { OverlayMark } from '../components/orb/OverlayMark'
 
 const meta = { title: 'AI Elements' }
 export default meta
@@ -21,12 +21,12 @@ export function Turn() {
         <MessageContent>
           <Trace>
             <TraceCollapsible open={open} onOpenChange={setOpen}>
-              <TraceCollapsibleTrigger><TraceLine><TraceIcon><Orb size={14} /></TraceIcon><TraceTitle>Worked for 14s</TraceTitle></TraceLine></TraceCollapsibleTrigger>
+              <TraceCollapsibleTrigger><TraceLine><TraceIcon><OverlayMark size={14} /></TraceIcon><TraceTitle>Worked for 14s</TraceTitle></TraceLine></TraceCollapsibleTrigger>
               <TraceCollapsibleContent>
                 <Trace>
-                  <TraceLine><TraceIcon><Orb size={14} /></TraceIcon><TraceTitle>Read churn_q3.csv</TraceTitle></TraceLine>
-                  <TraceLine status="error"><TraceIcon><Orb size={14} /></TraceIcon><TraceTitle>Failed to fetch billing events</TraceTitle></TraceLine>
-                  <TraceLine status="running"><TraceIcon><Orb size={14} /></TraceIcon><TraceTitle>Searching the web</TraceTitle></TraceLine>
+                  <TraceLine><TraceIcon><OverlayMark size={14} /></TraceIcon><TraceTitle>Read churn_q3.csv</TraceTitle></TraceLine>
+                  <TraceLine status="error"><TraceIcon><OverlayMark size={14} /></TraceIcon><TraceTitle>Failed to fetch billing events</TraceTitle></TraceLine>
+                  <TraceLine status="running"><TraceIcon><OverlayMark motion="look" size={14} /></TraceIcon><TraceTitle>Searching the web</TraceTitle></TraceLine>
                 </Trace>
               </TraceCollapsibleContent>
             </TraceCollapsible>

@@ -170,6 +170,7 @@ export async function GET(_request: Request, context: AppApiRouteContext) {
             principalType: principal.type,
             ...(avatarByPrincipal.get(principal.id)?.avatarColor ? { avatarColor: avatarByPrincipal.get(principal.id)!.avatarColor } : {}),
             ...(avatarByPrincipal.get(principal.id)?.avatarShape ? { avatarShape: avatarByPrincipal.get(principal.id)!.avatarShape } : {}),
+            isDefault: avatarByPrincipal.get(principal.id)?.isDefault,
             role: membership.role,
             status: membership.status,
           })),

@@ -70,6 +70,7 @@ export type RoomMessageView = {
   authorColor?: string
   /** Creature body shape for agent authors; absent means circle. */
   authorShape?: string
+  authorIsDefault?: boolean
   /** Present for messages imported from Slack: shown in the author detail card. */
   authorEmail?: string
   authorStatus?: 'member' | 'invited' | 'not_invited'
@@ -159,6 +160,7 @@ const AUTHOR_STATUS_META = {
 const renderMentionAvatar = (mention: ChatMessageMention) =>
   mention.type === 'agent' ? (
     <AgentCreature
+      isDefault={mention.isDefault}
       agent={{ name: mention.name, avatarColor: mention.avatarColor, avatarShape: mention.avatarShape }}
       size={14}
     />
@@ -446,6 +448,7 @@ function RoomMessageAvatar({ message }: { message: RoomMessageView }) {
         aria-hidden
       >
         <AgentCreature
+          isDefault={message.authorIsDefault}
           agent={{ name: message.authorName, avatarColor: message.authorColor, avatarShape: message.authorShape }}
           size={32}
           animated={message.streaming}

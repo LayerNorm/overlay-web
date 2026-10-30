@@ -60,6 +60,7 @@ export function useChatMentions({
           principalType: item.principalType,
           avatarColor: item.avatarColor,
           avatarShape: item.avatarShape,
+          isDefault: item.isDefault,
           ...(item.principalType === 'human' && item.photoUrl ? { photoUrl: item.photoUrl } : {}),
           icon: 'UsersRound',
         })

@@ -2,8 +2,7 @@
 
 The operator console lives in `apps/admin` — a standalone Next.js app that is
 deployed as its own Vercel project (`overlay-admin`) on `admin.getoverlay.io`
-(Stage 3, per `docs/plans/ADMIN_CONSOLE_SEPARATION_PLAN.md`). It replaces the
-in-app `/app/admin` surface, which stays in place until Stage 3.
+It replaces the retired in-app `/app/admin` surface.
 
 ## Status
 
@@ -55,6 +54,10 @@ needs HTTPS: `PORT=3100 npx next dev --experimental-https` inside
 `apps/admin` (self-signed cert, accept the warning once).
 
 ## Architecture
+
+- Operator sign-in and denied pages use the shared `@overlay/ui` `BrandLockup`
+  (the O-with-eyes mark plus Libre Baskerville wordmark), with the same theme
+  colors and static idle mark as customer web. No operator-specific artwork.
 
 - `src/server/convex-admin.ts` is the **only** module that talks to Convex. It
   injects `ADMIN_API_SECRET` as `serverSecret` on every call, forwards the

@@ -155,6 +155,7 @@ function AgentEditorFormSection({
 
       <div className="mt-5 space-y-5">
         <AgentAvatar
+          isDefault={agent?.isDefault}
           color={avatarColor}
           shape={avatarShape}
           name={name}

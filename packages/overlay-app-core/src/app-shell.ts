@@ -28,8 +28,8 @@ import {
 import { LIGHT_PRESETS, DARK_PRESETS, PRESET_CSS_VAR_KEYS, PRESETS } from './theme'
 
 export const DEFAULT_OVERLAY_BRAND_CONFIG: OverlayBrandConfig = {
-  name: 'overlay',
-  shortName: 'overlay',
+  name: 'Overlay',
+  shortName: 'Overlay',
   logoSrc: '/assets/overlay-logo.png',
   logoAlt: '',
   homeHref: '/app/work',

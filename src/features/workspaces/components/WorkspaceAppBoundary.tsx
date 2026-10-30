@@ -10,7 +10,7 @@ import { workspaceClient } from '../lib/workspace-client'
 import { useAuth } from '@/contexts/AuthContext'
 import { WorkspaceProvider, useWorkspace } from '@/contexts/WorkspaceContext'
 import { AppBootLoader } from '@/components/layout/AppBootLoader'
-import { bootAppShown } from '@/components/layout/boot-loader-pulse'
+import { bootAppShown } from '@/components/layout/boot-loader-state'
 import { WorkspaceDirectory } from './WorkspaceDirectory'
 import { AcceptWorkspaceInvitation } from './invitations/AcceptWorkspaceInvitation'
 

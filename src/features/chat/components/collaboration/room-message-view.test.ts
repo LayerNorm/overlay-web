@@ -230,3 +230,16 @@ test('generating native agent messages show text around tool parts exactly once'
   assert.deepEqual(view.blocks.map((block) => block.kind), ['text', 'tool', 'text'])
   assert.deepEqual(view.blocks.filter((block) => block.kind === 'text').map((block) => block.text), ['Before tool', 'After tool'])
 })
+
+test('default-agent identity reaches room authors and mention chips without name inference', () => {
+  const view = toRoomMessageView({
+    message: record(),
+    currentPrincipalId: 'me',
+    authorName: 'Renamed assistant',
+    authorIsDefault: true,
+    mentions: [{ type: 'agent', id: 'agent-1', name: 'Renamed assistant', isDefault: true }],
+  })
+  assert.equal(view.authorIsDefault, true)
+  assert.equal(view.mentions?.[0]?.isDefault, true)
+  assert.equal(toRoomMessageView({ message: record(), currentPrincipalId: 'me', authorName: 'Overlay' }).authorIsDefault, undefined)
+})

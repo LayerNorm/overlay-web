@@ -21,6 +21,7 @@ import {
   normalizeCreatureShape,
   themeCreatureFills,
 } from '@/shared/agents/agent-creature'
+import { OverlayMark } from '@/components/brand/OverlayMark'
 import styles from './Creature.module.css'
 
 export type CreatureShape = WorkspaceAgentCreatureShape
@@ -121,11 +122,30 @@ export function AgentCreature({
   agent,
   size = 32,
   animated = false,
+  isDefault = false,
 }: {
   agent: { name: string; avatarColor?: string; avatarShape?: string }
   size?: number
   animated?: boolean
+  isDefault?: boolean
 }) {
+  if (isDefault) {
+    return (
+      <span style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: size,
+        height: size,
+        flexShrink: 0,
+        paddingTop: size * 0.06,
+        boxSizing: 'border-box',
+        color: 'var(--foreground)',
+      }}>
+        <OverlayMark size={size * 0.84} motion="blink" label={`${agent.name} avatar`} />
+      </span>
+    )
+  }
   return (
     <Creature
       shape={agent.avatarShape}
