@@ -17,6 +17,7 @@ import {
 } from './web-search-entity'
 
 const ELO_BASE_URL = 'https://api.withgrowl.com/v1'
+const TINYFISH_SEARCH_URL = 'https://api.search.tinyfish.ai'
 const TINYFISH_FETCH_URL = 'https://api.fetch.tinyfish.ai'
 
 /** Flat per-provider-call price billed to the user — provider cost to us is ~$0. */
@@ -108,6 +109,119 @@ export const webFetchInputSchema = z.object({
 export type WebSearchInput = z.infer<typeof webSearchInputSchema>
 export type DeepSearchInput = z.infer<typeof deepSearchInputSchema>
 export type WebFetchInput = z.infer<typeof webFetchInputSchema>
+
+export function buildTinyfishSearchParams(
+  query: string,
+  input: Omit<WebSearchInput, 'query'>,
+  purpose?: string,
+): URLSearchParams {
+  const params = new URLSearchParams({ query })
+  if (purpose) params.set('purpose', purpose.slice(0, 2000))
+  if (input.country) params.set('location', input.country.toUpperCase())
+  const domains = splitDomainFilter(input.searchDomainFilter)
+  if (domains.include.length) params.set('include_domains', domains.include.join(','))
+  if (domains.exclude.length) params.set('exclude_domains', domains.exclude.join(','))
+  if (input.searchAfterDate) params.set('after_date', input.searchAfterDate)
+  if (input.searchBeforeDate) params.set('before_date', input.searchBeforeDate)
+  if (!input.searchAfterDate && !input.searchBeforeDate && input.searchRecencyFilter) {
+    const minutes = { day: 1440, week: 10080, month: 43200, year: 525600 }
+    params.set('recency_minutes', String(minutes[input.searchRecencyFilter]))
+  }
+  return params
+}
+
+export async function fetchTinyfishSearch(
+  query: string,
+  input: Omit<WebSearchInput, 'query'>,
+  apiKey: string,
+  purpose?: string,
+): Promise<unknown> {
+  const params = buildTinyfishSearchParams(query, input, purpose)
+  const res = await fetch(`${TINYFISH_SEARCH_URL}?${params}`, {
+    headers: { 'X-API-Key': apiKey },
+    signal: AbortSignal.timeout(ELO_TIMEOUT_MS),
+  })
+  if (!res.ok) throw new Error(`Web search failed (TinyFish, HTTP ${res.status})`)
+  const output: unknown = await res.json()
+  if (!output || typeof output !== 'object' || !('results' in output) || !Array.isArray(output.results)) {
+    throw new Error('Web search failed (TinyFish, invalid response)')
+  }
+  const results = output.results.slice(0, input.maxResults ?? 10).map((result: unknown) => {
+    if (!result || typeof result !== 'object' || !('url' in result) || typeof result.url !== 'string'
+      || !('title' in result) || typeof result.title !== 'string') {
+      throw new Error('Web search failed (TinyFish, invalid result)')
+    }
+    const snippet = 'snippet' in result && typeof result.snippet === 'string' ? result.snippet : ''
+    return { ...result, content: snippet }
+  })
+  return { query, results, provider: 'tinyfish' }
+}
+
+const searchProviders = {
+  tinyfish: async (query: string, input: Omit<WebSearchInput, 'query'>, purpose?: string) => {
+    const apiKey = await getServerProviderKey('tinyfish')
+    if (!apiKey) throw new Error('TINYFISH_API_KEY is not configured (needed for web search)')
+    return fetchTinyfishSearch(query, input, apiKey, purpose)
+  },
+  elo: postEloSearch,
+}
+
+export async function searchWebWithFallback(
+  query: string,
+  input: Omit<WebSearchInput, 'query'>,
+  providers = searchProviders,
+): Promise<unknown> {
+  try {
+    return await providers.tinyfish(query, input)
+  } catch (_error) {
+    logger.warn('[web-search] TinyFish unavailable; falling back to Elo')
+    return providers.elo('tavily', buildTavilyRequestBody(query, input))
+  }
+}
+
+export async function searchDeepWithFallback(
+  input: DeepSearchInput,
+  clientModelId?: string,
+  providers = searchProviders,
+): Promise<{ output: unknown; providerCalls: number }> {
+  try {
+    const output = await providers.elo('parallel', buildParallelRequestBody(input, clientModelId))
+    return { output, providerCalls: 1 }
+  } catch (_error) {
+    logger.warn('[web-search] Elo research unavailable; falling back to TinyFish snippets')
+    const queries = input.searchQueries?.length ? input.searchQueries : [input.objective]
+    const outputs = await Promise.all(queries.map((query) => providers.tinyfish(query, {
+      maxResults: input.maxResults,
+      searchDomainFilter: [
+        ...(input.includeDomains ?? []),
+        ...(input.excludeDomains ?? []).map((domain) => `-${domain}`),
+      ],
+      searchAfterDate: input.afterDate,
+    }, input.objective)))
+    const merged = mergeSearchOutputs(queries, outputs)
+    let remainingChars = input.maxCharsTotal ?? 200_000
+    const results = searchResults(merged).slice(0, input.maxResults ?? 10).map((result) => {
+      const content = typeof result.content === 'string' ? result.content : ''
+      const excerpt = content.slice(0, Math.min(input.maxCharsPerResult ?? 20_000, remainingChars))
+      remainingChars -= excerpt.length
+      return { ...result, content: excerpt, snippet: excerpt, excerpts: [excerpt] }
+    })
+    return {
+      output: {
+        ...merged,
+        results,
+        provider: 'tinyfish',
+        search_strategy: 'deep_search_snippet_fallback',
+        search_note: 'Deep research is unavailable. These are web search snippets, not full-page research excerpts. Effort and cache-age controls are unavailable; use web_fetch to read the sources.',
+      },
+      providerCalls: queries.length,
+    }
+  }
+}
+
+async function hasSearchProvider(): Promise<boolean> {
+  return Boolean(await getServerProviderKey('tinyfish') || await getServerProviderKey('elo'))
+}
 
 export function buildTavilyRequestBody(
   query: string,
@@ -295,8 +409,8 @@ export async function executeDeepSearch(
   }
   const meter = await reserveWebSearch({ billingContext, input, toolName: 'deep_search' })
   try {
-    const output = await postEloSearch('parallel', buildParallelRequestBody(input, clientModelId))
-    await finalizeWebSearch({ billingContext: billingContext!, meter, providerCalls: 1, toolName: 'deep_search' })
+    const { output, providerCalls } = await searchDeepWithFallback(input, clientModelId)
+    await finalizeWebSearch({ billingContext: billingContext!, meter, providerCalls, toolName: 'deep_search' })
     return output
   } catch (error) {
     await reconcileWebSearch(meter, billingContext, error)
@@ -313,9 +427,9 @@ async function executeWebSearch(
   const meter = await reserveWebSearch({ billingContext, input, toolName: 'web_search' })
   try {
     const outputs = await Promise.all(
-      queries.map((q) => postEloSearch('tavily', buildTavilyRequestBody(q, input))),
+      queries.map((q) => searchWebWithFallback(q, input)),
     )
-    const merged = mergeTavilyOutputs(queries, outputs)
+    const merged = mergeSearchOutputs(queries, outputs)
     const fallbackPlan = buildExactEntityFallbackPlan(queries, input.country)
     let output: unknown = merged
     if (fallbackPlan) {
@@ -365,14 +479,14 @@ export async function getWebSearchTool(
   chatModelId?: string,
   billingContext?: WebSearchBillingContext,
 ) {
-  if (!await getServerProviderKey('elo')) {
-    logger.error('[web-search] unavailable — ELO_API_KEY not configured')
+  if (!await hasSearchProvider()) {
+    logger.error('[web-search] unavailable: neither TINYFISH_API_KEY nor ELO_API_KEY is configured')
     return null
   }
   return tool({
     description:
       'Search the public web for quick lookups, news, and general questions. Supports up to 5 batched queries, ' +
-      'domain allow/deny lists, and recency filters; returns results plus a short synthesized answer. ' +
+      'domain allow/deny lists, and recency filters; returns titles, URLs, and snippets. ' +
       'For a named person or entity use the exact name without recency unless the user asks for current news; ' +
       'exact-name results are filtered automatically. For deep multi-source research use deep_search; ' +
       'for a known URL use web_fetch.',
@@ -385,13 +499,14 @@ export async function getDeepSearchTool(
   chatModelId?: string,
   billingContext?: WebSearchBillingContext,
 ) {
-  if (!await getServerProviderKey('elo')) {
-    logger.error('[web-search] unavailable — ELO_API_KEY not configured')
+  if (!await hasSearchProvider()) {
+    logger.error('[web-search] unavailable: neither TINYFISH_API_KEY nor ELO_API_KEY is configured')
     return null
   }
   return tool({
     description:
       'Deep web research: LLM-optimized long excerpts across many sources, with domain scoping ' +
+      '(falls back to explicitly labeled web snippets if research is unavailable). ' +
       '(includeDomains e.g. arxiv.org, nature.com), date filters, and an effort knob. Give a self-contained ' +
       'objective plus 2-3 short searchQueries. Use for synthesis, citations, and academic or multi-source ' +
       'review. For the full text of a specific result, follow up with web_fetch. Do not call alongside ' +
@@ -418,7 +533,7 @@ export async function getWebFetchTool(
   })
 }
 
-function mergeTavilyOutputs(queries: string[], outputs: unknown[]): Record<string, unknown> {
+function mergeSearchOutputs(queries: string[], outputs: unknown[]): Record<string, unknown> {
   const seenUrls = new Set<string>()
   const results: Record<string, unknown>[] = []
   const answers: string[] = []

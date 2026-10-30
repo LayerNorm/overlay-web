@@ -12,7 +12,113 @@ import {
   buildParallelRequestBody,
   buildTavilyRequestBody,
   buildTinyfishRequestBody,
+  buildTinyfishSearchParams,
+  fetchTinyfishSearch,
+  searchWebWithFallback,
+  searchDeepWithFallback,
 } from './web-search'
+
+test('TinyFish maps domain, country, recency and explicit date filters', () => {
+  const params = buildTinyfishSearchParams('a & b', {
+    country: 'gb', searchDomainFilter: ['example.com', '-bad.com'], searchRecencyFilter: 'week',
+  }, 'find evidence')
+  assert.equal(params.get('query'), 'a & b')
+  assert.equal(params.get('location'), 'GB')
+  assert.equal(params.get('include_domains'), 'example.com')
+  assert.equal(params.get('exclude_domains'), 'bad.com')
+  assert.equal(params.get('recency_minutes'), '10080')
+  assert.equal(params.get('purpose'), 'find evidence')
+  const dated = buildTinyfishSearchParams('q', {
+    searchAfterDate: '2026-01-01', searchBeforeDate: '2026-02-01', searchRecencyFilter: 'day',
+  })
+  assert.equal(dated.get('after_date'), '2026-01-01')
+  assert.equal(dated.get('before_date'), '2026-02-01')
+  assert.equal(dated.has('recency_minutes'), false)
+})
+
+test('TinyFish uses server-side header auth, normalizes snippets and caps results', async (t) => {
+  t.mock.method(globalThis, 'fetch', async (url: string, options: RequestInit) => {
+    assert.equal(new URL(url).origin, 'https://api.search.tinyfish.ai')
+    assert.equal(new URL(url).searchParams.get('query'), 'hello & world')
+    assert.equal(url.includes('test-key'), false)
+    assert.deepEqual(options.headers, { 'X-API-Key': 'test-key' })
+    assert.ok(options.signal)
+    return Response.json({ results: [
+      { title: 'Hello', url: 'https://example.com', snippet: 'Useful content' },
+      { title: 'Other', url: 'https://example.org', snippet: 'Other content' },
+    ] })
+  })
+  const output = await fetchTinyfishSearch('hello & world', { maxResults: 1 }, 'test-key')
+  assert.equal(searchResults(output).length, 1)
+  assert.equal(searchResults(output)[0].content, 'Useful content')
+})
+
+test('TinyFish empty results succeed; invalid payloads and HTTP errors fail', async (t) => {
+  const fetchMock = t.mock.method(globalThis, 'fetch', async () => Response.json({ results: [] }))
+  assert.deepEqual(searchResults(await fetchTinyfishSearch('q', {}, 'test-key')), [])
+  fetchMock.mock.mockImplementation(async () => Response.json({ error: 'bad response' }))
+  await assert.rejects(fetchTinyfishSearch('q', {}, 'test-key'), /invalid response/)
+  fetchMock.mock.mockImplementation(async () => new Response('private diagnostic', { status: 500 }))
+  await assert.rejects(fetchTinyfishSearch('q', {}, 'test-key'), { message: 'Web search failed (TinyFish, HTTP 500)' })
+})
+
+test('web search prefers TinyFish and does not fall back on empty results', async () => {
+  const result = { results: [] }
+  assert.equal(await searchWebWithFallback('q', {}, {
+    tinyfish: async () => result,
+    elo: async () => { throw new Error('Elo must not run') },
+  }), result)
+})
+
+test('web search falls back to Elo with original filters on provider failures', async () => {
+  for (const reason of ['missing key', 'HTTP 401', 'HTTP 402', 'HTTP 429', 'HTTP 500', 'timeout', 'invalid response']) {
+    const calls: string[] = []
+    const result = { results: [{ url: 'https://example.com' }] }
+    assert.equal(await searchWebWithFallback('hello', { searchRecencyFilter: 'day' }, {
+      tinyfish: async () => { calls.push('tinyfish'); throw new Error(reason) },
+      elo: async (provider, body) => {
+        calls.push(provider)
+        assert.equal(body.query, 'hello')
+        assert.equal(body.time_range, 'day')
+        return result
+      },
+    }), result)
+    assert.deepEqual(calls, ['tinyfish', 'tavily'])
+  }
+  await assert.rejects(searchWebWithFallback('q', {}, {
+    tinyfish: async () => { throw new Error('TinyFish down') },
+    elo: async () => { throw new Error('Elo down') },
+  }), /Elo down/)
+})
+
+test('deep search preserves rich Elo results when available', async () => {
+  const output = { results: [{ excerpts: ['full excerpt'] }] }
+  assert.deepEqual(await searchDeepWithFallback({ objective: 'research' }, undefined, {
+    elo: async (provider) => { assert.equal(provider, 'parallel'); return output },
+    tinyfish: async () => { throw new Error('TinyFish must not run') },
+  }), { output, providerCalls: 1 })
+})
+
+test('deep search falls back to deduplicated, bounded and labeled snippets with call accounting', async () => {
+  const { output, providerCalls } = await searchDeepWithFallback({
+    objective: 'research goal', searchQueries: ['one', 'two'], includeDomains: ['example.com'],
+    excludeDomains: ['bad.com'], afterDate: '2026-01-01', maxCharsPerResult: 200, maxCharsTotal: 2000,
+  }, undefined, {
+    elo: async () => { throw new Error('HTTP 500') },
+    tinyfish: async (query, options, purpose) => {
+      assert.deepEqual(options.searchDomainFilter, ['example.com', '-bad.com'])
+      assert.equal(options.searchAfterDate, '2026-01-01')
+      assert.equal(purpose, 'research goal')
+      return { results: [{ title: query, url: 'https://example.com', content: 'x'.repeat(300) }] }
+    },
+  })
+  assert.equal(providerCalls, 2)
+  const result = output as Record<string, unknown>
+  assert.equal(result.search_strategy, 'deep_search_snippet_fallback')
+  assert.match(String(result.search_note), /not full-page research excerpts/)
+  assert.equal(searchResults(output).length, 1)
+  assert.equal(String(searchResults(output)[0].content).length, 200)
+})
 
 test('buildTavilyRequestBody maps filters and dates', () => {
   const body = buildTavilyRequestBody('overlay ai funding', {

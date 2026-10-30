@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Use TinyFish as the primary web search provider with Elo fallback, and keep deep research available as labeled TinyFish snippets during Elo outages.
+
 - Use text-only tool, reasoning, worked-for and approval rows, with one 24px look-motion mark below active assistant output; only its eyes move.
 
 - Replace Overlay web branding and static assets with the O-with-eyes mark, capitalized lockup, eye-motion loaders and record-backed, read-only default-agent avatar.

@@ -131,9 +131,12 @@ export function mergeExactEntityFallbackResults(
   return {
     ...primaryOutput,
     results,
-    search_strategy: 'exact_entity_deep_augmentation',
+    search_strategy: fallbackOutput.search_strategy === 'deep_search_snippet_fallback'
+      ? 'exact_entity_snippet_augmentation' : 'exact_entity_deep_augmentation',
     search_note:
-      `Exact matches for "${plan.label}" were enriched with deeper exact-entity search results. ` +
+      (fallbackOutput.search_strategy === 'deep_search_snippet_fallback'
+        ? `Exact matches for "${plan.label}" were enriched with web snippets because deep research is unavailable. Use web_fetch for full source text. `
+        : `Exact matches for "${plan.label}" were enriched with deeper exact-entity search results. `) +
       'Treat the first detailed profile as the primary identity. Do not infer separate people solely from conflicting specialties in sparse directories unless distinct identifiers support that conclusion.',
   }
 }
