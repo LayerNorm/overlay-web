@@ -122,6 +122,11 @@ The desktop clean-clone workflow also tests a real throwaway legacy file-origin
 profile. Its opt-in `local_transcription` dispatch synthesizes speech and exercises
 a downloaded pinned local model through the real Electron bridge on the macOS
 runner, avoiding local model downloads/inference during laptop-sensitive QA.
+For an unpublished Agent Host, dispatch BYO Agent Host compatibility with
+`candidate_artifacts=true`. CI install-smokes and packs the exact source revision;
+use that candidate only in an isolated QA profile/workspace and record its SHA.
+This verifies the native lifecycle before package publication without changing
+the production rollout or the public package pin.
 
 Native cloud dictation forwards the trusted calling frame’s workspace route as
 its Referer; hotkey dictation uses the main window route. Web billing admission
