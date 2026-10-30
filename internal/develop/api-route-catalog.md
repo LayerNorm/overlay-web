@@ -302,3 +302,7 @@ The highest-value route families for separate dashboards and security test suite
 ## Maintenance rule
 
 When adding, removing, or moving an app route, update this catalog in the same change and update `internal/develop/api-source-of-truth.md` if the transport/domain contract changes. Re-run a filesystem count and route-path comparison; do not rely on the OpenAPI file alone for coverage.
+
+Hosted transcription uses the shared quota policy: absent or zero legacy seconds
+limits do not block a credit-funded paid workspace. Positive seconds caps, paid
+plan admission and provider budget reservation/finalization remain enforced.

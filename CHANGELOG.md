@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Allow credit-funded cloud dictation when no legacy seconds cap is configured, while retaining paid-plan, explicit quota and budget reservation checks.
+
 - Keep desktop floating panels compact after chat navigation and reload by using native window identity.
 
 - Keep agent model routing aligned with the admitted model after a free-plan or budget fallback, so an agent turn can start instead of failing before inference.

@@ -42,7 +42,7 @@ Billing settings presents uninitialized and initialized-but-unpaid workspaces as
 
 Workspace reservations use the account-keyed balance and optionally a fixed-period subject limit. Subjects are either `member` for human-attributed spend or `programmatic` for shared agents, automations, and service callers. Reservation creation locks the workspace balance and subject limit in one transaction. Finalize, release, expiry, and evidence-based reconciliation update the workspace balance and subject counters together. Wallet creation grants no credits; funding remains an explicit later operation.
 
-The launch coverage gate lives in `src/server/billing/billable-feature-coverage.ts`. Shared conversations/agents, embeddings/search, browser/sandbox, hosted media/transcription, and automation/API provider calls are metered. Workflow runs additionally charge a conservative 20-step estimate at Vercel's Workflow Steps rate ($2.50 per 100,000 steps) with the same 25% markup. Functions, integrations, and MCP tools are bounded to 12 steps per agent turn and 50,000 result characters; file ingestion is bounded to 20 requests per hour and the account storage cap. Do not enable `workspaceWallets` in a deployment unless `npm run check:owner-funded-boundary` and the coverage test pass.
+The launch coverage gate lives in `src/server/billing/billable-feature-coverage.ts`. Shared conversations/agents, embeddings/search, browser/sandbox, hosted media/transcription, and automation/API provider calls are metered. Workflow runs additionally charge a conservative 20-step estimate at Vercel's Workflow Steps rate ($2.50 per 100,000 steps) with the same 25% markup. Functions, integrations, and MCP tools are bounded to 12 steps per agent turn and 50,000 result characters; file ingestion is bounded to 20 requests per hour and the account storage cap. Keep `npm run check:owner-funded-boundary` and the coverage test passing for every hosted-cost entry point.
 
 The workspace billing contract runs against Convex:
 
@@ -52,17 +52,14 @@ npm run test:workspace-billing-contract:convex
 
 The contract covers empty-wallet hard stops, concurrent account/member limits, account/workspace spoof rejection, removed-member denial, allowance/top-up separation, actual-cost margin reporting, and reconciliation SLA visibility. The Stripe webhook suite separately proves duplicate event no-ops and stale-event ordering.
 
-## Production activation gate
+## Release verification
 
-Deploy the Convex functions before the matching web release, then keep the rollout stage `off` until all of these checks pass against the same environment:
-
-1. The personal backfill reports balance parity and the read-only Stripe verifier finds exactly six unchanged active subscriptions.
-2. Both provider contract suites pass, along with `npm run check:owner-funded-boundary` and the billable-feature coverage test.
-3. `npm run billing:audit:reconciliation` reports no item older than the 15-minute SLA.
-4. An internal organization workspace is initialized and funded, then smoke-tested for shared chat, agents, files, tools, browser, sandbox, media, and automation usage.
-5. Its Billing tab shows actual provider cost, retail credits, realized margin, full cost coverage, and a healthy reconciliation queue.
-
-Advance only one stage at a time: `internal`, then `selected`, then `general`. The kill switch is the master flag or `stage=off`; either restores the personal compatibility path globally and should be used only as a deliberate rollback.
+Workspace billing is always on; the retired wallet activation stages are not a
+release lane. Validate billing changes in the PR's isolated Preview, including
+shared credit admission, zero-credit hard stops and reservation reconciliation.
+Follow the authoritative Development Workflow for integration. Customer Convex
+synchronization runs only from clean canonical main after matching production
+web is live; never deploy it from a feature worktree.
 
 ## Reservation reconciliation
 
@@ -125,3 +122,11 @@ Machine Metering for provider-account limits and excluded external charges.
 Browser interaction is billed through the bound Computer's machine lease and
 ordinary model usage. The separate browser-task provider and charge path are
 retired; historical browser-task ledger rows remain visible.
+
+Hosted transcription uses the shared quota policy: absent or zero legacy seconds
+limits do not block a credit-funded paid workspace. Positive seconds caps, paid
+plan admission and provider budget reservation/finalization remain enforced.
+
+The owner-funded boundary guard follows the current Act orchestration, Harness
+model dispatch and Convex knowledge payer path. It also rejects retired Postgres
+and desktop billing implementations and native client-calculated usage writes.

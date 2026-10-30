@@ -120,3 +120,9 @@ The desktop clean-clone workflow also tests a real throwaway legacy file-origin
 profile. Its opt-in `local_transcription` dispatch synthesizes speech and exercises
 a downloaded pinned local model through the real Electron bridge on the macOS
 runner, avoiding local model downloads/inference during laptop-sensitive QA.
+
+Native cloud dictation forwards the trusted calling frame’s workspace route as
+its Referer; hotkey dictation uses the main window route. Web billing admission
+remains authoritative, including membership, paid-plan and workspace-credit checks.
+Whisper downloads include pinned tokenizer files; older downloads can repair the
+missing offline dependencies without replacing model weights.
