@@ -67,8 +67,10 @@ Current acceptance limitations:
   the isolated QA workspace, including scoped-root approval, online state, stop
   and revoked-credential rejection. Temporary rollout settings were removed.
   Public package publication remains a separate release requirement.
-- Clean/old-install signed-app, physical microphone/hotkey and notification-click
-  acceptance remain required before binary publication. The publish freeze stays in force.
+- Signed/notarized CI acceptance passed with clean and legacy profiles: sandbox,
+  panels, sign-out, restart cookies and private migration. Physical microphone/
+  hotkey and notification-click acceptance remain open. The final notification
+  lifetime fix is being checked in CI; binary publication remains frozen.
 
 ## Goal
 

@@ -4,6 +4,10 @@ description: "Brand, theme, navigation, extensions, and feature visibility for e
 ---
 The web app is the canonical surface for enterprise customization. Self-hosters should start in `src/overlay.config.ts`, then use the shared package APIs from `@overlay/app-core`, `@overlay/extension-sdk`, `@overlay/api-client`, `@overlay/ui`, `@overlay/chat-core`, `@overlay/chat-react`, and `@overlay/modules-react`.
 
+Settings → Desktop is native-only. Dictation defaults to Control+Space while
+preserving saved shortcuts. Its test-notification action reports OS permission
+failures; notification permissions remain in macOS System Settings.
+
 ## Brand, Theme, And Navigation
 
 Account is the workspace-independent `/account` page, linked above Settings in the

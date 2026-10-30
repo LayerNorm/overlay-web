@@ -60,7 +60,9 @@ shortcuts remain per-device. Notification delivery reports native permission
 failures through the bridge. macOS notification acceptance must use the signed
 Overlay bundle, since development Electron has a separate notification identity.
 Desktop settings includes a test-notification action and surfaces its permission
-error so a missing macOS alert is diagnosable.
+error so a missing macOS alert is diagnosable. Native retains up to 50 delivered
+notification objects until interaction, closes them on sign-out/quit and restores
+a minimized main window before click routing.
 
 Local transcription runs without a network connection. Cloud transcription uses
 the web transcription API and the same plan/budget checks. The dictation shortcut keeps the existing tap-to-toggle / hold-to-talk manager
