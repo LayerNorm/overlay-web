@@ -112,6 +112,14 @@ test('keeps compact numeric equations as inline math', () => {
   assert.equal(normalizeAssistantMathMarkdown(input), input)
 })
 
+test('keeps tightly delimited numeric math without confusing adjacent currency amounts', () => {
+  for (const value of ['0.2', '42', '1.25']) {
+    assert.equal(normalizeAssistantMathMarkdown(`The value is \\(${value}\\).`), `The value is $${value}$.`)
+    assert.equal(normalizeAssistantMathMarkdown(`The value is $${value}$.`), `The value is $${value}$.`)
+  }
+  assert.equal(normalizeAssistantMathMarkdown('Prices: $5 $10 and $12.50 per seat.'), 'Prices: \\$5 \\$10 and $12.50 per seat.')
+})
+
 test('promotes raw matrix assignment lines to display math', () => {
   const input = 'where:\nL = \\begin{bmatrix} 1 & 0 \\\\ l_{21} & 1 \\end{bmatrix}, \\quad U = \\begin{bmatrix} u_{11} & u_{12} \\\\ 0 & u_{22} \\end{bmatrix}'
   const out = normalizeBareLatexLines(input)

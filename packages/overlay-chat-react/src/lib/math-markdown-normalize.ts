@@ -863,6 +863,9 @@ function findCurrencyClose(text: string, from: number): number {
  * operands on both sides so markdown bold runs (`**`) never count.
  */
 function isMathAfterCurrencyOpener(inner: string): boolean {
+  // A tightly closed numeric span is math, including converted `\(0.2\)`.
+  // Do not trim here: the space in `$5 $10` separates two currency amounts.
+  if (/^\d+(?:\.\d+)?$/.test(inner)) return true
   const trimmed = inner.trim()
   if (trimmed.length === 0) return false
   if (TEX_COMMAND.test(trimmed) || BIG_O_ATOM.test(trimmed) || /[\^_{}]/.test(trimmed)) return true

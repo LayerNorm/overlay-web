@@ -71,6 +71,14 @@ test('clearance math stays inline without swallowing the explanatory sentence', 
   assert.equal((html.match(/class="katex"/g) ?? []).length, 2)
 })
 
+test('numeric inline values render as math beside prose and currency', () => {
+  const html = rendered(String.raw`The assay costs $5 and analysis costs $12.50. The fraction doubles to \(0.2\) while \(CL_{\text{int}}\) remains unchanged. The count is $42$.`)
+  assert.equal((html.match(/class="katex"/g) ?? []).length, 3)
+  assert.doesNotMatch(html, /katex-error|\$0\.2\$|\$42\$/)
+  assert.match(html, /The assay costs \$5 and analysis costs \$12\.50/)
+  assert.match(html, /remains unchanged\./)
+})
+
 test('a broken equation does not throw', () => {
   assert.doesNotThrow(() => rendered('Bad $\\frac{1}{$ math'))
 })
