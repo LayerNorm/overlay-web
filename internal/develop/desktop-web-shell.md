@@ -145,6 +145,10 @@ missing offline dependencies without replacing model weights.
 The recorder HUD keeps its state in a private script scope so it cannot collide
 with the non-configurable preload bridge. CI captures synthetic audio through the
 actual HUD, in addition to testing direct transcription and downloaded models.
+For local models, both isolated preloads decode captured WebM/MP4 into bounded
+16 kHz mono PCM WAV before IPC; Core Audio does not decode Chromium's WebM capture.
+The HUD carries a native capture epoch through decoding and transcription so
+sign-out/cancel rejects late audio and never clears a newer recording's state.
 
 Agent reply acceptance includes answer-only milestones. Their empty evidence-tool
 arrays are normalized to omission before persistence; action milestones retain

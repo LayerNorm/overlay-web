@@ -61,9 +61,8 @@ The native bridge now owns the integrations omitted by the original spike.
 
 Current acceptance limitations:
 
-- A dedicated Preview transcription credential is configured; cloud dictation
-  acceptance awaits the deployment that includes it. Paid workspace checkout and
-  billing admission have been exercised.
+- Paid workspace checkout, billing admission and actual cloud transcription passed.
+  Captured-audio offline inference is being checked after the Core Audio format fix.
 - Agent Host lifecycle acceptance passed with an exact-source CI candidate in
   the isolated QA workspace, including scoped-root approval, online state, stop
   and revoked-credential rejection. Temporary rollout settings were removed.
