@@ -115,6 +115,23 @@ test('promotes raw Doolittle formula tail after prose prefix', () => {
   )
 })
 
+test('consumes complete identifiers and nested suffix arguments', () => {
+  const input = String.raw`The clearance: CL_{\text{int}} = \frac{a}{b}`
+  const out = normalizeBareLatexLines(input)
+  assert.equal(out, String.raw`The clearance:
+
+$$
+CL_{\text{int}} = \frac{a}{b}
+$$
+`)
+})
+
+test('does not backtrack through long suffix runs without an equation', () => {
+  for (const input of [`A_${'!_'.repeat(400)}`, `A^${'!^'.repeat(400)}`]) {
+    assert.equal(normalizeBareLatexLines(input), input)
+  }
+})
+
 test('normalizeAssistantMathMarkdown runs delimiter + promotion', () => {
   const input = 'eq $$x + y$$'
   const out = normalizeAssistantMathMarkdown(input)

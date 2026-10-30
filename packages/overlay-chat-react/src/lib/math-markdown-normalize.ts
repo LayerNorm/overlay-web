@@ -578,9 +578,116 @@ function promoteBareLatexInTableRow(line: string): string {
   return promoted.join('|')
 }
 
+const MAX_UNBRACED_SUFFIX_LENGTH = 40
+
+function isAsciiLetter(char: string | undefined): boolean {
+  if (!char) return false
+  const code = char.charCodeAt(0)
+  return (code >= 0x41 && code <= 0x5a) || (code >= 0x61 && code <= 0x7a)
+}
+
+function isLatexIdentifierLetter(char: string | undefined): boolean {
+  if (isAsciiLetter(char)) return true
+  if (!char) return false
+  const code = char.charCodeAt(0)
+  return (code >= 0x391 && code <= 0x3a9) || (code >= 0x3b1 && code <= 0x3c9)
+}
+
+function isLatexWhitespace(char: string | undefined): boolean {
+  return char === ' ' || char === '\t' || char === '\r' || char === '\n'
+}
+
+function consumeLatexIdentifier(line: string, start: number): number {
+  if (line[start] === '\\') {
+    let end = start + 1
+    while (end < line.length && isAsciiLetter(line[end])) end++
+    return end > start + 1 ? end : start
+  }
+
+  let end = start
+  while (end < line.length && isLatexIdentifierLetter(line[end])) end++
+  return end
+}
+
+function consumeBalancedLatexArgument(line: string, start: number): number {
+  if (line[start] !== '{') return -1
+
+  let depth = 1
+  for (let index = start + 1; index < line.length; index++) {
+    const char = line[index]
+    if (char === '\\') {
+      index++
+      continue
+    }
+    if (char === '{') {
+      depth++
+    } else if (char === '}') {
+      depth--
+      if (depth === 0) return index + 1
+    }
+  }
+  return -1
+}
+
+function consumeUnbracedSuffixAtom(line: string, start: number): number {
+  let end = start
+  while (
+    end < line.length &&
+    end - start < MAX_UNBRACED_SUFFIX_LENGTH &&
+    !isLatexWhitespace(line[end]) &&
+    line[end] !== '=' &&
+    line[end] !== ';' &&
+    line[end] !== ')' &&
+    line[end] !== '_' &&
+    line[end] !== '^'
+  ) {
+    end++
+  }
+  return end > start ? end : -1
+}
+
+function consumeLatexSuffixes(line: string, start: number): { end: number; valid: boolean } {
+  let end = start
+  while (line[end] === '_' || line[end] === '^') {
+    end++
+    if (line[end] === '{') {
+      const argumentEnd = consumeBalancedLatexArgument(line, end)
+      if (argumentEnd < 0) return { end: line.length, valid: false }
+      end = argumentEnd
+      continue
+    }
+
+    const atomEnd = consumeUnbracedSuffixAtom(line, end)
+    if (atomEnd < 0) return { end, valid: false }
+    end = atomEnd
+  }
+  return { end, valid: true }
+}
+
+function findEquationStart(line: string): number {
+  let index = 0
+  while (index < line.length) {
+    const startsCommand = line[index] === '\\' && isAsciiLetter(line[index + 1])
+    if (!startsCommand && !isLatexIdentifierLetter(line[index])) {
+      index++
+      continue
+    }
+
+    const candidate = index
+    const identifierEnd = consumeLatexIdentifier(line, index)
+    const suffixes = consumeLatexSuffixes(line, identifierEnd)
+    let equals = suffixes.end
+    while (isLatexWhitespace(line[equals])) equals++
+    if (suffixes.valid && line[equals] === '=') return candidate
+
+    index = Math.max(candidate + 1, suffixes.end)
+  }
+  return -1
+}
+
 function findBareLatexStart(line: string): number {
   const candidates: number[] = []
-  const equation = line.search(/(?:[A-Za-zΑ-Ωα-ω]+|\\[A-Za-z]+)(?:_\{?[^=\s;)]{1,40}\}?|\^\{?[^=\s;)]{1,40}\}?)*\s*=/)
+  const equation = findEquationStart(line)
   if (equation >= 0) candidates.push(equation)
 
   const begin = line.search(/\\begin\{/)
