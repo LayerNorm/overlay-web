@@ -2,6 +2,7 @@ from fontTools.ttLib import TTFont
 from fontTools.pens.svgPathPen import SVGPathPen
 from fontTools.pens.boundsPen import BoundsPen
 from fontTools.pens.transformPen import TransformPen
+import json
 from pathlib import Path
 ASSET_DIR = Path(__file__).resolve().parent
 REPO_ROOT = ASSET_DIR.parents[3]
@@ -66,5 +67,5 @@ files={
 }
 for n, s in files.items():
     (ASSET_DIR / n).write_text(s)
-json.dump({'O':O,'eyes':eyes_path(),'E':E,'word':''.join(paths),'wordBox':[minx,maxx]},open('brand-geometry.json','w'))
+(ASSET_DIR / 'brand-geometry.json').write_text(json.dumps({'O':O,'eyes':eyes_path(),'E':E,'word':''.join(paths),'wordBox':[minx,maxx]}))
 print('kern O-v',kern(cmap[ord('O')],cmap[ord('v')]),'width',x)
