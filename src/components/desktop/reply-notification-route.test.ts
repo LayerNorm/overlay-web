@@ -19,3 +19,8 @@ test('first replies wait for persistence and never link a pending marker', () =>
 test('temporary replies have no saved-chat notification destination', () => {
   assert.equal(captureReplyDestination('workspace', '/app/chat', '__overlay_temporary_chat__'),null)
 })
+
+test('canonical workspace chat paths preserve their scope without a view query', () => {
+  assert.equal(captureReplyDestination('original-workspace', '/w/team/workspace/chat', 'saved-chat')?.route,
+    '/app/w/original-workspace/chat?view=workspace-chats&id=saved-chat')
+})

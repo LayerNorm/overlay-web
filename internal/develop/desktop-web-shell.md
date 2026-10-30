@@ -167,5 +167,6 @@ microphone stream. Desktop settings subscribes to native host/update events and
 rejects older status reads that arrive after an event.
 
 Reply notifications capture their workspace and chat view when a stream starts.
+Scope is retained from canonical chat paths even without a view query.
 First replies wait for the persisted conversation ID; temporary replies do not
 produce saved-chat links. A later workspace switch cannot retarget a notification.
