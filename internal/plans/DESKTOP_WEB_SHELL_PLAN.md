@@ -1,6 +1,6 @@
 # Desktop app as a web shell
 
-Status: In progress (2026-10-29). Phases 2–5 are implemented and automated acceptance passed, including real Google/native session handoff, live isolated Agent Host lifecycle, and captured-audio offline inference. Final signed-candidate and physical-input confirmation remain in progress; binary publication stays frozen under the separate release gates.
+Status: Source acceptance complete (2026-10-29). The web-shell implementation, signed clean/upgrade-profile CI, isolated Agent Host lifecycle, offline inference and owner-confirmed notification/Control+Space microphone acceptance have passed. Binary publication remains frozen under the separate release gates; this plan remains until release acceptance is complete.
 
 Repos: `LayerNorm/overlay-web` (this repo) and `LayerNorm/overlay-desktop`.
 
@@ -13,10 +13,10 @@ Repos: `LayerNorm/overlay-web` (this repo) and `LayerNorm/overlay-desktop`.
 | 1: sign-in | Implemented; real Google and native handoff exercised | overlay-web `7f62ce390`, overlay-desktop `9e7969f` |
 | 1: end-to-end test | Done | overlay-desktop `a5f0d49` (`npm run test:e2e`) |
 | 2: bridge | Implemented; boundary acceptance passed | Shared v1 contract, exact-origin preload/router, desktop chrome and settings |
-| 3: native capabilities | Implemented; hardware/live acceptance open | Dictation, models, hotkeys, panels, notifications/badge, host, updates, capture |
+| 3: native capabilities | Implemented; source and owner-device acceptance passed | Dictation, models, hotkeys, panels, notifications/badge, host, updates, capture |
 | 4: web panels | Implemented; authenticated send/persistence/reload exercised | Shared session and compact chat/notes routes |
 | 5: duplicate removal | Implemented; CI passed | Native-only startup and dependency guard |
-| 6: release readiness | In progress | Signed/notarized CI and legacy-profile/offline-model tests passed; real-device release acceptance remains |
+| 6: release readiness | Source ready; publication gates remain | Signed clean/legacy-profile CI, offline-model and owner-device checks passed; independent review and release-Mac acceptance remain separate |
 
 Baseline completed before this continuation:
 
@@ -68,9 +68,10 @@ Current acceptance limitations:
   and revoked-credential rejection. Temporary rollout settings were removed.
   Public package publication remains a separate release requirement.
 - Signed/notarized CI acceptance passed with clean and legacy profiles: sandbox,
-  panels, sign-out, restart cookies and private migration. Physical microphone/
-  hotkey and notification-click acceptance remain open. The final notification
-  lifetime fix is being checked in CI; binary publication remains frozen.
+  panels, sign-out, restart cookies and private migration. The owner confirmed
+  notification-to-chat activation and Control+Space microphone/paste in the signed
+  candidate. Independent review and full release-Mac acceptance remain required
+  before binary publication; the publish freeze stays in force.
 
 ## Goal
 
