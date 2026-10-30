@@ -89,6 +89,22 @@ export function DesktopSettings() {
           {error}
         </p>
       ) : null}
+      {info.capabilities.includes('notifications') ? (
+        <SettingsGroup>
+          <SettingsActionRow
+            icon={null}
+            title="Notifications"
+            description="Allow Overlay in macOS System Settings → Notifications to receive alerts."
+            action={
+              <Button size="sm" variant="outline" disabled={busy} onClick={() => void run(() => bridge.call('notifications.show', {
+                title: 'Overlay', body: 'Desktop notifications are working.', route: '/app/work',
+              }))}>
+                Send test notification
+              </Button>
+            }
+          />
+        </SettingsGroup>
+      ) : null}
       {info.capabilities.includes('transcription') ? (
         <SettingsGroup>
           <SettingsActionRow

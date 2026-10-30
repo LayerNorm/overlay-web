@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Default desktop dictation to Control+Space and add a test-notification action with macOS permission guidance.
+
 - Fix native dictation capture startup and exercise the actual recorder HUD and signed clean/upgrade profiles in macOS CI.
 
 - Stop native desktop work and close floating panels when signing out from the sidebar.

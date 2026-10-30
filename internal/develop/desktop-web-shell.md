@@ -52,6 +52,12 @@ panels, Agent Host controls and updates. Composer controls use native local/clou
 dictation and screenshot attachments. Agent enrollment starts the local host from
 the existing Agents connection flow. Notifications use the existing activity feed;
 desktop keeps its subscription active while hidden and applies the native badge.
+Default dictation is Control+Space (tap to toggle, hold to talk); saved custom
+shortcuts remain per-device. Notification delivery reports native permission
+failures through the bridge. macOS notification acceptance must use the signed
+Overlay bundle, since development Electron has a separate notification identity.
+Desktop settings includes a test-notification action and surfaces its permission
+error so a missing macOS alert is diagnosable.
 
 Local transcription runs without a network connection. Cloud transcription uses
 the web transcription API and the same plan/budget checks. The dictation shortcut keeps the existing tap-to-toggle / hold-to-talk manager
