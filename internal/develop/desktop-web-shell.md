@@ -31,6 +31,8 @@ nor refreshes a second WorkOS session. Old encrypted native credentials are clea
 on upgrade. Native server calls use the window partition's authenticated fetch. Account sign-out
 and session loss notify native cleanup through AuthContext too, so leaving the
 workspace shell cannot keep a host or microphone active.
+The sidebar's direct sign-out action also awaits the bounded native cleanup
+before deleting its web session and navigating away.
 Agent Host starts and online panels verify the actual server session; sign-out
 stops the host, closes panels, cancels dictation (including microphone tracks and stale paste results) and clears the badge.
 

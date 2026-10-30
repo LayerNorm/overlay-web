@@ -14,9 +14,9 @@ Repos: `LayerNorm/overlay-web` (this repo) and `LayerNorm/overlay-desktop`.
 | 1: end-to-end test | Done | overlay-desktop `a5f0d49` (`npm run test:e2e`) |
 | 2: bridge | Implemented; acceptance in progress | Shared v1 contract, exact-origin preload/router, desktop chrome and settings |
 | 3: native capabilities | Implemented; hardware/live acceptance open | Dictation, models, hotkeys, panels, notifications/badge, host, updates, capture |
-| 4: web panels | Implemented; authenticated flow QA open | Shared session and compact chat/notes routes |
-| 5: duplicate removal | Implemented; checks in progress | Native-only startup and dependency guard |
-| 6: release readiness | In progress | Preserved-data export/migration, signed build and real-device acceptance pending |
+| 4: web panels | Implemented; authenticated send/persistence/reload exercised | Shared session and compact chat/notes routes |
+| 5: duplicate removal | Implemented; CI passed | Native-only startup and dependency guard |
+| 6: release readiness | In progress | Signed/notarized CI and legacy-profile/offline-model tests passed; real-device release acceptance remains |
 
 Baseline completed before this continuation:
 
@@ -54,14 +54,18 @@ Current implementation (companion web and desktop branches):
 - Upgrade exports local transcripts/preferences and preserves recordings,
   knowledge files and journals. Existing native model and panel choices migrate.
 
-Still open from phases 0 and 1:
+Authenticated acceptance has exercised real Google browser sign-in and native
+transfer, restart persistence, chat streaming/model selection, file attachment,
+an agent reply, and floating-panel message persistence in the main window.
+The native bridge now owns the integrations omitted by the original spike.
 
-- Manual checks in the window: chat send and stream, agent thread, file
-  upload, title bar spacing and drag, external links.
-- Restart keeps the real-browser-transferred session, and web sign-out signs the
-  window out. Real Google sign-in and transfer succeeded in preliminary QA.
-- The spike skips the desktop's own sign-in UI and native features that
-  read the stored native session; phase 3 moves those onto the bridge.
+Current acceptance limitations:
+
+- Preview cloud dictation requires a test-scoped transcription provider credential;
+  paid workspace checkout and billing admission have been exercised.
+- Live Agent Host acceptance requires its gated runtime and published host package.
+- Clean/old-install signed-app, physical microphone/hotkey and notification-click
+  acceptance remain required before binary publication. The publish freeze stays in force.
 
 ## Goal
 

@@ -1,8 +1,37 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { resolveSidebarRouteState, SETTINGS_SECTION_ICONS } from './appSidebarNav'
+import { resolveSidebarRouteState, SETTINGS_SECTION_ICONS, signOutToLanding } from './appSidebarNav'
 import { agentHref, agentThreadHref } from '@/components/layout/sidebar-nav'
 import { resolveWorkspaceSurface } from '@/shared/workspaces/routing'
+
+test('sidebar sign-out stops native work before clearing the session and navigating', async () => {
+  const events: string[] = []
+  const previousWindow = Object.getOwnPropertyDescriptor(globalThis, 'window')
+  const originalFetch = globalThis.fetch
+  const location = { href: '/app/work' }
+  Object.defineProperty(globalThis, 'window', { configurable: true, value: {
+    location,
+    overlayDesktop: {
+      handshake: async () => ({ capabilities: ['auth'] }),
+      call: async (method: string) => { events.push(method) },
+      on: () => () => {},
+    },
+  } })
+  globalThis.fetch = async () => {
+    events.push('session.signOut')
+    assert.equal(location.href, '/app/work')
+    return new Response(null, { status: 204 })
+  }
+  try {
+    await signOutToLanding()
+    assert.deepEqual(events, ['auth.signedOut', 'session.signOut'])
+    assert.equal(location.href, '/')
+  } finally {
+    globalThis.fetch = originalFetch
+    if (previousWindow) Object.defineProperty(globalThis, 'window', previousWindow)
+    else Reflect.deleteProperty(globalThis, 'window')
+  }
+})
 
 test('every settings section has its own icon', () => {
   const sections = ['general', 'profile', 'workspace', 'customization', 'shortcuts', 'memories', 'providers', 'models', 'webhooks', 'agent-environments', 'agent-accounts', 'connected-apps', 'computers', 'archived', 'contact']
