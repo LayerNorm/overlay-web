@@ -342,7 +342,10 @@ Non-default creatures retain legacy color normalization.
 
 ## Avatars are edited in place
 
-The agent avatar is a button: hover shows a pencil, click opens
+The default Overlay agent has a fixed, read-only brand mark; do not expose shape/color
+controls or dirty its form for customization that cannot be displayed.
+
+A custom agent avatar is a button: hover shows a pencil, click opens
 `AgentAvatarPicker` with every creature shape (previewed in the current color)
 and the `AVATAR_COLORS` swatches. The new-agent dialog centres it above the
 name; the editor's identity section anchors the popover to its left edge.

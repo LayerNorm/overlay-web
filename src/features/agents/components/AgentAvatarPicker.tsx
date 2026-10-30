@@ -30,6 +30,14 @@ export function AgentAvatarPicker({ isDefault, shape, color, onShapeChange, onCo
   const isCustomColor = !(AVATAR_COLORS as readonly string[]).includes(color.toLowerCase())
   const [customOpen, setCustomOpen] = useState(false)
 
+  if (isDefault) {
+    return (
+      <div className="flex justify-center">
+        <AgentCreature agent={{ name: 'Overlay' }} isDefault size={size} />
+      </div>
+    )
+  }
+
   return (
     <Popover
       open={open}
@@ -46,7 +54,7 @@ export function AgentAvatarPicker({ isDefault, shape, color, onShapeChange, onCo
             aria-label="Edit avatar"
             className={unstyledButton(`group relative rounded-2xl outline-hidden focus-visible:ring-1 focus-visible:ring-(--foreground)`)}
           >
-            {isDefault ? <AgentCreature agent={{ name: 'Agent' }} isDefault size={size} /> : <Creature shape={shape} color={color} size={size} label="Agent avatar" />}
+            <Creature shape={shape} color={color} size={size} label="Agent avatar" />
             <span className="absolute inset-[14%] flex items-center justify-center rounded-full bg-black/40 text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
               <Pencil size={18} strokeWidth={1.75} />
             </span>

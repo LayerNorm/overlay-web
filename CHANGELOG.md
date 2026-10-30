@@ -6,7 +6,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Use text-only tool, reasoning, worked-for and approval rows, with one 24px look-motion mark below active assistant output; only its eyes move.
 
-- Replace Overlay web branding and static assets with the O-with-eyes mark, capitalized lockup, eye-motion loaders and record-backed default-agent avatar.
+- Replace Overlay web branding and static assets with the O-with-eyes mark, capitalized lockup, eye-motion loaders and record-backed, read-only default-agent avatar.
 
 - Keep Chat and Work available during the Harness web-first rollout by checking backend readiness before admission; recognize already-terminal workflows during Stop cleanup.
 
