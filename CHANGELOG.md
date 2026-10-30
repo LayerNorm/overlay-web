@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Keep desktop floating panels compact after chat navigation and reload by using native window identity.
+
 - Keep agent model routing aligned with the admitted model after a free-plan or budget fallback, so an agent turn can start instead of failing before inference.
 
 - Record desktop shortcuts directly from key presses and expose per-device crash-reporting consent when available; bound native sign-out cleanup so web logout stays responsive.

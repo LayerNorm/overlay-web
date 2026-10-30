@@ -38,7 +38,9 @@ stops the host, closes panels, cancels dictation (including microphone tracks an
 Regular browsers receive neither Desktop settings nor native composer controls.
 Titlebar CSS reserves traffic-light space and makes interactive header children
 non-draggable. Chat and notes support `?surface=panel` only with the bridge;
-the compact surface keeps app providers and authorization boundaries. Native panel
+the compact surface keeps app providers and authorization boundaries. The optional
+handshake `surface` comes from native window registration and survives chat URL
+replacement or reload; the query flag remains an older-client fallback. Native panel
 bounds leave other apps clickable outside the panel, and close/toggle actions use
 the retained focus-yield helper. Transparent corners and display-change clamping
 are native window behavior; no full-screen renderer mask is needed.
