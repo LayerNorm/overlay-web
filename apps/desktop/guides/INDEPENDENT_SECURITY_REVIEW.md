@@ -13,8 +13,8 @@ supply-chain review.
 
 ## Inputs
 
-- the private source repository and full history;
-- the exact history-free public export candidate;
+- the current desktop source repository and full history;
+- the exact source revision used for the signed candidate;
 - the canonical Overlay Server source and deployed test environment;
 - a signed/notarized macOS arm64 release candidate;
 - SBOM, release manifest, provenance, signing identity, and CI logs;
@@ -58,7 +58,8 @@ npm run generate:sbom
 ```
 
 Run the backend negative-security suite from the canonical Overlay Server
-repository, including both Convex and Postgres contract configurations. The
+repository against its current Convex contracts. Historical PostgreSQL
+conformance is not a release gate. The
 remote-provider suites require dedicated non-production deployments and are not
 replaced by mocked unit tests.
 
@@ -76,6 +77,7 @@ risks. Every Critical must be fixed. Every High must be fixed unless the
 reviewer explicitly agrees to a written exception with a compensating control,
 owner, and expiry.
 
-The accepted desktop-chat exception must be called out plainly: Full access is
-unsandboxed host execution, microVM isolation is deferred, and the exception
-expires or must be renewed by 2027-01-24.
+The web shell has no independent local chat/tool execution pipeline. Review
+connected Agent Host execution and its explicit filesystem grants separately;
+an all-user-files grant remains broader than selected project roots. The former
+desktop-chat Full access exception does not authorize widening the native bridge.

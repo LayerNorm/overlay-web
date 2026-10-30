@@ -33,6 +33,7 @@ const packageDirs = fs
   .sort()
 
 const privatePackageLicenses = new Map<string, string>([
+  ['overlay-desktop-bridge', 'AGPL-3.0-only'],
   ['overlay-shell-react', 'AGPL-3.0-only'],
   ['overlay-ui', 'AGPL-3.0-only']
 ])

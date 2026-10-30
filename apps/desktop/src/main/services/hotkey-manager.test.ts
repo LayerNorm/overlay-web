@@ -187,3 +187,23 @@ describe('HotkeyManager panel lifecycle', () => {
     expect(mocks.panelLatencyMarkHotkey).not.toHaveBeenCalled()
   })
 })
+
+it('accepts Electron accelerators for tap/hold dictation and cancels native state', () => {
+  const manager = new HotkeyManager()
+  const start = vi.fn()
+  const cancel = vi.fn()
+  mocks.systemPreferences.isTrustedAccessibilityClient.mockReturnValue(true)
+  manager.initialize(
+    { onRecordingStart: start, onRecordingStop: vi.fn(), onRecordingCancel: cancel },
+    () => true
+  )
+  expect(manager.registerHotkey('transcription', 'Control+Space')).toBe(true)
+  expect(manager.registerHotkey('push-to-talk', 'Control+Space')).toBe(true)
+  mocks.globalHandlers.get('Control+Space')?.()
+  expect(start).toHaveBeenCalledOnce()
+  expect(manager.getRecordingState().isRecording).toBe(true)
+  manager.cancelRecording()
+  expect(manager.getRecordingState().isRecording).toBe(false)
+  expect(cancel).toHaveBeenCalledOnce()
+  manager.unregisterAll()
+})

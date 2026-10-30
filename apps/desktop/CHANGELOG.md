@@ -5,6 +5,41 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+- Cancel pending microphone permission requests safely; stale captures cannot start behind a hidden dictation HUD or stop a newer recording.
+
+- Retain notification click handlers after delivery, restore minimized windows and clear delivered alerts on sign-out.
+
+- Convert captured audio to PCM WAV before local inference so offline models can decode HUD and composer recordings.
+
+- Use Control+Space for default dictation and report macOS notification permission failures instead of silently losing alerts.
+
+- Fix native dictation HUD startup by isolating its recorder state from the preload bridge, and cover actual audio capture in Electron CI.
+
+- Exercise signed macOS candidates with clean and upgraded profiles in CI before release publication.
+
+- Scope cloud dictation to the trusted calling window’s workspace route.
+
+- Include pinned tokenizer files in local Whisper model downloads and repair
+  existing downloads so first-use dictation can run without networking.
+
+- Keep floating panel identity across conversation URL changes and reloads.
+
+- Let Quit finish while a floating panel is open, while keeping ordinary panel
+  close actions as hide-and-return-focus.
+
+- Use an ephemeral signing keychain with its own password for macOS CI, and
+  explain cloud dictation plan limits in the native controls.
+
+- Add opt-in crash diagnostics, clamp floating panels after display changes, and
+  allow a failed legacy export to retry while the web app still opens.
+
+- Load the full web app by default with a versioned, origin-checked native bridge.
+  Keep dictation, compact chat/notes panels, screenshots, notifications, local
+  Agent Host controls and updates; retire duplicate chat/UI/provider code.
+- Preserve legacy transcripts, preferences, recordings and knowledge files during
+  upgrade. Cancel active microphone capture and native work on web sign-out.
+- Exercise the sandboxed bridge and package the native app in macOS CI.
+
 ### Added
 
 - Public history-free source repository at

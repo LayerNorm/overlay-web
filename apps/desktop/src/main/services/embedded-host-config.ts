@@ -8,19 +8,16 @@ import { delimiter, join } from 'node:path'
  * Keep EMBEDDED_HOST_PACKAGE_SPEC in sync with OVERLAY_AGENT_HOST_PACKAGE_VERSION
  * in the web `src/server/agents/agent-enrollment-command.ts`.
  */
-export const EMBEDDED_HOST_PACKAGE_SPEC = '@layernorm/overlay-agent-host@0.3.5'
+export const EMBEDDED_HOST_PACKAGE_SPEC = '@layernorm/overlay-agent-host@0.4.3'
 export const EMBEDDED_HOST_NODE_SPEC = 'node@24'
 
 export const EMBEDDED_HOST_ADAPTERS = ['codex', 'claude-code', 'hermes'] as const
 export type EmbeddedHostAdapter = (typeof EMBEDDED_HOST_ADAPTERS)[number]
 
-export const ENROLLMENT_CODE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9-]{3,127}$/
+export const ENROLLMENT_CODE_PATTERN = /^[A-Za-z0-9_-]{6,128}$/
 
 export function isEmbeddedHostAdapter(value: unknown): value is EmbeddedHostAdapter {
-  return (
-    typeof value === 'string' &&
-    (EMBEDDED_HOST_ADAPTERS as readonly string[]).includes(value)
-  )
+  return typeof value === 'string' && (EMBEDDED_HOST_ADAPTERS as readonly string[]).includes(value)
 }
 
 export function isValidServerOrigin(value: string): boolean {
@@ -64,13 +61,15 @@ export function resolveNpxPath(
       candidates.push(join(directory, 'npx'))
     }
   }
-  return candidates.find((candidate) => {
-    try {
-      return exists(candidate)
-    } catch {
-      return false
-    }
-  }) ?? null
+  return (
+    candidates.find((candidate) => {
+      try {
+        return exists(candidate)
+      } catch {
+        return false
+      }
+    }) ?? null
+  )
 }
 
 export function buildEmbeddedHostArgs(args: {
@@ -79,6 +78,7 @@ export function buildEmbeddedHostArgs(args: {
   origin: string
   stateDir: string
   name: string
+  hostingAuthFile?: string
 }): string[] {
   return [
     '--yes',
@@ -99,6 +99,7 @@ export function buildEmbeddedHostArgs(args: {
     args.name,
     '--kind',
     'local',
-    '--run'
+    '--run',
+    ...(args.hostingAuthFile ? ['--hosting-auth-file', args.hostingAuthFile] : [])
   ]
 }

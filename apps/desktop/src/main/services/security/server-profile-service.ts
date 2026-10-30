@@ -1,7 +1,7 @@
 import { app } from 'electron'
 import { chmodSync, existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import type { OverlayServerDiscovery } from '@overlay/api-client'
+import type { OverlayServerDiscovery } from './server-discovery'
 import { readBoundedJson } from './bounded-json-response'
 
 const PROFILE_FILE = 'overlay-server-profile.json'

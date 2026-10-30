@@ -88,6 +88,15 @@ jobs:
           RELEASE_SOURCE_SHA: ${{ inputs.release_source_sha }}
         run: npm run verify:mac-artifact
 
+      - name: Save signed acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: signed-acceptance-${{ inputs.release_source_sha }}
+          path: test-results/signed-acceptance/
+          if-no-files-found: warn
+          retention-days: 7
+
       - name: Attest verified artifacts
         uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
         with:

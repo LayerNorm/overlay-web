@@ -110,6 +110,18 @@ describe('native authentication boundary', () => {
     await expect(startNativeSignIn()).rejects.toThrow('native_auth_secure_storage_unavailable')
     expect(mocks.openExternal).not.toHaveBeenCalled()
   })
+  it('uses the window partition transport for protected-server discovery', async () => {
+    const transport = vi.fn(
+      async () =>
+        new Response(JSON.stringify(discovery), { headers: { 'Content-Type': 'application/json' } })
+    )
+    await startNativeSignIn(false, transport)
+    expect(transport).toHaveBeenCalledWith(
+      'https://www.getoverlay.io/api/v1/discovery',
+      expect.any(Object)
+    )
+    expect(mocks.openExternal).toHaveBeenCalledOnce()
+  })
 })
 
 function jsonResponse(value: unknown, status = 200): Response {

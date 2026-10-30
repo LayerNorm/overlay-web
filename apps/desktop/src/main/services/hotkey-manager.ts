@@ -60,6 +60,7 @@ export class HotkeyManager {
   private configuredPanelHotkeys: Map<PanelToggleMode, string> = new Map()
   private activeToggles: Set<HotkeyMode> = new Set()
   private callbacks: HotkeyCallbacks | null = null
+  private canUseHotkeys = (): boolean => settingsService.isAuthenticated
   private panelCallbacks: PanelToggleCallbacks | null = null
   private isRecording = false
   private currentMode: HotkeyMode | null = null
@@ -90,6 +91,14 @@ export class HotkeyManager {
    */
   private convertToAccelerator(displayHotkey: string): string {
     const keyMap: Record<string, string> = {
+      CommandOrControl: process.platform === 'darwin' ? 'Command' : 'Control',
+      Command: 'Command',
+      Control: 'Control',
+      Ctrl: 'Control',
+      Alt: 'Alt',
+      Option: 'Alt',
+      Shift: 'Shift',
+      Space: 'Space',
       'Cmd ⌘': 'Command',
       'Ctrl ⌃': 'Control',
       'Option ⌥': 'Alt',
@@ -105,7 +114,7 @@ export class HotkeyManager {
       '→': 'Right'
     }
 
-    const parts = displayHotkey.split(' + ').map((part) => part.trim())
+    const parts = displayHotkey.split(/\s*\+\s*/).map((part) => part.trim())
     const acceleratorParts = parts.map((part) => {
       if (keyMap[part]) {
         return keyMap[part]
@@ -121,6 +130,14 @@ export class HotkeyManager {
    */
   private convertToKeycodes(displayHotkey: string): number[][] {
     const KEY_TO_KEYCODE: Record<string, number[]> = {
+      CommandOrControl: process.platform === 'darwin' ? [3675, 3676] : [29, 3613],
+      Command: [3675, 3676],
+      Control: [29, 3613],
+      Ctrl: [29, 3613],
+      Alt: [56, 3640],
+      Option: [56, 3640],
+      Shift: [42, 54],
+      Space: [57],
       'Cmd ⌘': [3675, 3676],
       'Ctrl ⌃': [29, 3613],
       'Option ⌥': [56, 3640],
@@ -183,7 +200,7 @@ export class HotkeyManager {
       Z: [44]
     }
 
-    const parts = displayHotkey.split(' + ').map((part) => part.trim())
+    const parts = displayHotkey.split(/\s*\+\s*/).map((part) => part.trim())
     const keyGroups: number[][] = []
 
     for (const part of parts) {
@@ -213,8 +230,9 @@ export class HotkeyManager {
   /**
    * Initialize the hotkey manager with callbacks
    */
-  initialize(callbacks: HotkeyCallbacks): void {
+  initialize(callbacks: HotkeyCallbacks, authorize?: () => boolean): void {
     this.callbacks = callbacks
+    if (authorize) this.canUseHotkeys = authorize
   }
 
   /**
@@ -241,7 +259,7 @@ export class HotkeyManager {
       this.unregisterPanelHotkey(panel, false)
       const accelerator = this.convertToAccelerator(displayHotkey)
       const success = globalShortcut.register(accelerator, () => {
-        if (!settingsService.isAuthenticated) {
+        if (!this.canUseHotkeys()) {
           console.log(`[HotkeyManager] Panel toggle blocked - not authenticated`)
           return
         }
@@ -347,7 +365,6 @@ export class HotkeyManager {
         this.activeToggles.add('transcription')
         console.log('[HotkeyManager] Combined: tap (keyup), switched to transcription')
       }
-
     })
 
     try {
@@ -527,7 +544,7 @@ export class HotkeyManager {
         if (transcriptionAcc === accelerator) {
           globalShortcut.unregister(accelerator)
           const success = globalShortcut.register(accelerator, () => {
-            if (!settingsService.isAuthenticated) return
+            if (!this.canUseHotkeys()) return
             this.handleCombinedHotkeyPress()
           })
           if (success) {
@@ -545,7 +562,7 @@ export class HotkeyManager {
 
         // Normal push-to-talk registration
         const success = globalShortcut.register(accelerator, () => {
-          if (!settingsService.isAuthenticated) return
+          if (!this.canUseHotkeys()) return
           this.startPushToTalkRecording()
         })
         if (success) {
@@ -572,7 +589,7 @@ export class HotkeyManager {
         if (pushToTalkAcc === accelerator) {
           globalShortcut.unregister(accelerator)
           const success = globalShortcut.register(accelerator, () => {
-            if (!settingsService.isAuthenticated) return
+            if (!this.canUseHotkeys()) return
             this.handleCombinedHotkeyPress()
           })
           if (success) {
@@ -590,7 +607,7 @@ export class HotkeyManager {
 
         // Normal transcription registration
         const success = globalShortcut.register(accelerator, () => {
-          if (!settingsService.isAuthenticated) return
+          if (!this.canUseHotkeys()) return
           this.handleToggleHotkey('transcription')
         })
         if (success) {
@@ -605,7 +622,7 @@ export class HotkeyManager {
         this.unregisterHotkey(mode, false)
         const accelerator = this.convertToAccelerator(displayHotkey)
         const success = globalShortcut.register(accelerator, () => {
-          if (!settingsService.isAuthenticated) return
+          if (!this.canUseHotkeys()) return
           this.handleToggleHotkey(mode)
         })
         if (success) {
@@ -667,14 +684,14 @@ export class HotkeyManager {
       if (mode === 'push-to-talk') {
         // Keep transcription working individually
         const ok = globalShortcut.register(combinedAcc, () => {
-          if (!settingsService.isAuthenticated) return
+          if (!this.canUseHotkeys()) return
           this.handleToggleHotkey('transcription')
         })
         if (ok) this.registeredHotkeys.set('transcription', combinedAcc)
       } else {
         // Keep push-to-talk working individually
         const ok = globalShortcut.register(combinedAcc, () => {
-          if (!settingsService.isAuthenticated) return
+          if (!this.canUseHotkeys()) return
           this.startPushToTalkRecording()
         })
         if (ok) this.registeredHotkeys.set('push-to-talk', combinedAcc)
@@ -779,6 +796,18 @@ export class HotkeyManager {
   /**
    * Unregister all hotkeys and cleanup
    */
+  cancelRecording(notify = true): void {
+    const mode = this.currentMode
+    this.activeToggles.clear()
+    this.isRecording = false
+    this.currentMode = null
+    this.recordingStartTime = null
+    this.pendingCombinedPress = false
+    if (this.combinedHoldTimeout) clearTimeout(this.combinedHoldTimeout)
+    this.combinedHoldTimeout = null
+    if (mode && notify) this.callbacks?.onRecordingCancel(mode)
+  }
+
   unregisterAll(): void {
     globalShortcut.unregisterAll()
     this.registeredHotkeys.clear()

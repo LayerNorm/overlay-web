@@ -1,6 +1,12 @@
 name: Clean public clone
 
 on:
+  workflow_dispatch:
+    inputs:
+      local_transcription:
+        description: Run the pinned local-model transcription smoke
+        type: boolean
+        default: false
   pull_request:
   push:
     branches:
@@ -40,6 +46,7 @@ jobs:
           # Gate on production dependencies only. Dev-tool advisories (eslint,
           # electron-builder toolchain) do not ship in the macOS app artifact.
           npm run check:dependencies:prod
+          npm run check:release-security
           npm run check:launch-controls
           npm run check:public-source-secrets
 
@@ -48,7 +55,28 @@ jobs:
           npm test
           npm run build
 
+      - name: Exercise the sandboxed Electron bridge
+        run: npx playwright test e2e/bridge.e2e.ts e2e/migration.e2e.ts e2e/recorder.e2e.ts
+
+      - name: Transcribe synthetic speech with a pinned local model
+        if: ${{ inputs.local_transcription == true }}
+        run: npx playwright test e2e/transcription.e2e.ts
+
       - name: Package an unsigned Apple Silicon app
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
         run: npx electron-builder --mac --arm64 --dir --publish never
+
+      - name: Record compiled-source provenance
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          node -e 'require("node:fs").writeFileSync("out/provenance.json", JSON.stringify({ builtSha: process.env.GITHUB_SHA, headSha: process.env.PR_HEAD_SHA }))'
+
+      - name: Save compiled shell for interactive QA
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: desktop-web-shell-build
+          path: out/
+          retention-days: 7
+          if-no-files-found: error

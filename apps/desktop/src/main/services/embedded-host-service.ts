@@ -3,7 +3,7 @@ import { app } from 'electron'
 import { mkdirSync } from 'node:fs'
 import { hostname } from 'node:os'
 import { join } from 'node:path'
-import { windowManager } from './window-manager'
+import { emitDesktopEvent } from './desktop-events'
 import { serverProfileService } from './security/server-profile-service'
 import { createLocalHelperEnvironment } from './security/local-helper-process'
 import {
@@ -58,6 +58,7 @@ class EmbeddedHostService {
   private startedAt: number | null = null
   private lastExit: EmbeddedHostExit | null = null
   private logLines: string[] = []
+  private enrollmentCode: string | null = null
   private stopTimer: NodeJS.Timeout | null = null
 
   getStatus(): EmbeddedHostStatus {
@@ -89,6 +90,7 @@ class EmbeddedHostService {
     const stateDir = join(app.getPath('userData'), 'agent-host')
     mkdirSync(stateDir, { recursive: true })
 
+    this.enrollmentCode = code
     this.state = 'starting'
     this.adapterId = input.adapterId
     this.startedAt = Date.now()
@@ -96,17 +98,24 @@ class EmbeddedHostService {
     this.logLines = []
     this.broadcast()
 
-    const child = spawn(npxPath, buildEmbeddedHostArgs({
-      code,
-      adapterId: input.adapterId,
-      origin,
-      stateDir,
-      name: `${hostname()} (Desktop)`
-    }), {
-      env: createLocalHelperEnvironment(),
-      stdio: ['ignore', 'pipe', 'pipe'],
-      windowsHide: true
-    })
+    const child = spawn(
+      npxPath,
+      buildEmbeddedHostArgs({
+        code,
+        adapterId: input.adapterId,
+        origin,
+        stateDir,
+        name: `${hostname()} (Desktop)`,
+        ...(process.env.OVERLAY_DESKTOP_HOSTING_AUTH_FILE
+          ? { hostingAuthFile: process.env.OVERLAY_DESKTOP_HOSTING_AUTH_FILE }
+          : {})
+      }),
+      {
+        env: createLocalHelperEnvironment(),
+        stdio: ['ignore', 'pipe', 'pipe'],
+        windowsHide: true
+      }
+    )
     this.child = child
     this.appendLog(`Starting embedded agent host (${EMBEDDED_HOST_PACKAGE_SPEC})…`)
 
@@ -192,7 +201,9 @@ class EmbeddedHostService {
     // The enrollment code travels via argv only (same-user process list) and is
     // never written to these logs.
     for (const line of chunk.split(/\r?\n/)) {
-      const trimmed = line.trim()
+      const trimmed = (
+        this.enrollmentCode ? line.replaceAll(this.enrollmentCode, '[redacted]') : line
+      ).trim()
       if (!trimmed) continue
       this.logLines.push(trimmed.slice(0, 500))
       if (this.logLines.length > LOG_LINE_LIMIT) {
@@ -202,7 +213,7 @@ class EmbeddedHostService {
   }
 
   private broadcast(): void {
-    windowManager.broadcastToAllWindows('embedded-host:state', this.getStatus())
+    emitDesktopEvent('agentHost.status', this.getStatus())
   }
 }
 

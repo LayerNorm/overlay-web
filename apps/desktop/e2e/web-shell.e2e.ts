@@ -2,7 +2,13 @@ import { createHash } from 'node:crypto'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { _electron as electron, expect, test, type ElectronApplication, type Page } from '@playwright/test'
+import {
+  _electron as electron,
+  expect,
+  test,
+  type ElectronApplication,
+  type Page
+} from '@playwright/test'
 
 // Drives the built app in web shell mode with a throwaway profile, so the run
 // starts signed out and never touches the developer's own session.
@@ -32,19 +38,24 @@ test.beforeAll(async () => {
     env: { ...process.env, OVERLAY_WEB_SHELL: '1' }
   })
   await app.evaluate(({ shell, session }) => {
-    const state = globalThis as unknown as { opened: string[]; completeHeaders: Record<string, string> | null }
+    const state = globalThis as unknown as {
+      opened: string[]
+      completeHeaders: Record<string, string> | null
+    }
     state.opened = []
     state.completeHeaders = null
     shell.openExternal = async (url: string) => {
       state.opened.push(url)
     }
-    session.fromPartition('persist:overlay').webRequest.onBeforeSendHeaders(
-      { urls: ['https://*/auth/desktop/complete*', 'http://localhost/auth/desktop/complete*'] },
-      (details, callback) => {
-        state.completeHeaders = details.requestHeaders
-        callback({ requestHeaders: details.requestHeaders })
-      }
-    )
+    session
+      .fromPartition('persist:overlay')
+      .webRequest.onBeforeSendHeaders(
+        { urls: ['https://*/auth/desktop/complete*', 'http://localhost/auth/desktop/complete*'] },
+        (details, callback) => {
+          state.completeHeaders = details.requestHeaders
+          callback({ requestHeaders: details.requestHeaders })
+        }
+      )
   })
 })
 
@@ -53,12 +64,13 @@ test.afterAll(async () => {
   rmSync(profileDir, { recursive: true, force: true })
 })
 
-test('signed-out window shows the web app sign-in dialog with no preload bridge', async () => {
+test('signed-out window shows web sign-in and the restricted desktop bridge', async () => {
   const page = await webShellWindow(app)
   await expect(page).toHaveURL(/\/app/)
   const dialog = page.getByRole('dialog', { name: /sign in/i })
   await expect(dialog.getByRole('button', { name: /continue with google/i })).toBeVisible()
   expect(await page.evaluate(() => 'overlay' in window || 'electron' in window)).toBe(false)
+  expect((await page.evaluate(() => window.overlayDesktop.handshake())).bridgeVersion).toBe(1)
 })
 
 test('Google sign-in opens the browser handoff, then the transfer link is redeemed in the window', async () => {
@@ -95,9 +107,11 @@ test('Google sign-in opens the browser handoff, then the transfer link is redeem
   // (a real token would land on /app).
   await expect(page).toHaveURL(/\/auth\/sign-in\?error=desktop_sign_in_failed/)
   const headers = await app.evaluate(
-    () => (globalThis as unknown as { completeHeaders: Record<string, string> | null }).completeHeaders
+    () =>
+      (globalThis as unknown as { completeHeaders: Record<string, string> | null }).completeHeaders
   )
-  const verifier = headers?.['x-overlay-code-verifier'] ?? headers?.['X-Overlay-Code-Verifier'] ?? ''
+  const verifier =
+    headers?.['x-overlay-code-verifier'] ?? headers?.['X-Overlay-Code-Verifier'] ?? ''
   expect(verifier).toMatch(/^[A-Za-z0-9._~-]{43,128}$/)
   expect(createHash('sha256').update(verifier, 'ascii').digest('base64url')).toBe(challenge)
 })

@@ -17,11 +17,8 @@ const packageJson = JSON.parse(read('package.json'))
 const builder = read('electron-builder.yml')
 const entitlements = read('build/entitlements.mac.plist')
 const workflow = read('.github/workflows/release-mac.yml')
-const updater = read('src/main/services/auto-updater.ts')
-const settingsIpc = read('src/main/ipc/settings-ipc.ts')
-const analytics = read('src/renderer/src/services/analytics.ts')
+const updater = read('src/main/services/desktop-runtime.ts')
 const sentryMain = read('src/main/services/sentry.ts')
-const sentryRenderer = read('src/renderer/src/services/monitoring.ts')
 const securityService = read('src/main/services/security/security-service.ts')
 const modelDownloads = read('src/main/services/model-download-service.ts')
 
@@ -36,9 +33,7 @@ for (const [name, expected] of Object.entries({
   electron: '42.11.18',
   'electron-builder': '26.15.3',
   '@electron/fuses': '2.1.3',
-  axios: '1.21.0',
-  'form-data': '4.0.6',
-  dompurify: '3.4.17'
+  axios: '1.21.0'
 })) {
   const actual = packageJson.dependencies?.[name] ?? packageJson.devDependencies?.[name]
   if (actual !== expected)
@@ -118,23 +113,8 @@ for (const text of [
   requireText(updater, text, `updater policy is missing: ${text}`)
 }
 
-requireText(
-  settingsIpc,
-  'if (!settingsService.analyticsConsentEnabled) return null',
-  'analytics token must be gated on explicit consent'
-)
-requireText(
-  analytics,
-  'if (!consentEnabled) return',
-  'usage tracking must fail closed without consent'
-)
-requireText(
-  analytics,
-  'clearStoredStats()',
-  'revoking consent must delete locally retained analytics'
-)
 requireText(sentryMain, 'beforeSend:', 'main Sentry must redact before sending')
-requireText(sentryRenderer, 'beforeSend:', 'renderer Sentry must redact before sending')
+requireText(sentryMain, '!settingsService.analyticsConsentEnabled', 'native Sentry must require explicit consent')
 rejectText(securityService, 'PINNED_CERTIFICATES', 'inert certificate pinning must stay removed')
 rejectText(
   securityService,

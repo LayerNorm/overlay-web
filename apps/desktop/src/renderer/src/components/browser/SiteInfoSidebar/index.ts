@@ -1,5 +1,0 @@
-export { SiteInfoSidebar } from './SiteInfoSidebar'
-export { SiteInfoMain } from './SiteInfoMain'
-export { SiteInfoCookies } from './SiteInfoCookies'
-export { SiteInfoCookiesList } from './SiteInfoCookiesList'
-export { SiteInfoPermissions } from './SiteInfoPermissions'

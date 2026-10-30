@@ -58,8 +58,7 @@ for (const relative of [
   'package.json',
   'package-lock.json',
   'electron.vite.config.ts',
-  'tsconfig.node.json',
-  'tsconfig.web.json'
+  'tsconfig.node.json'
 ]) {
   const source = fs.readFileSync(path.join(root, relative), 'utf8')
   for (const forbidden of ['../packages/', '../scripts/', '../convex/', "resolve('../public')"]) {

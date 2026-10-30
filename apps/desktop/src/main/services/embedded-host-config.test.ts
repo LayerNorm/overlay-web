@@ -13,7 +13,7 @@ import {
 
 describe('embedded-host-config', () => {
   it('pins the same host release line as the web enrollment command', () => {
-    expect(EMBEDDED_HOST_PACKAGE_SPEC).toBe('@layernorm/overlay-agent-host@0.3.5')
+    expect(EMBEDDED_HOST_PACKAGE_SPEC).toBe('@layernorm/overlay-agent-host@0.4.3')
   })
 
   it('accepts only the built-in harness adapters', () => {
@@ -35,6 +35,7 @@ describe('embedded-host-config', () => {
 
   it('rejects malformed enrollment codes', () => {
     expect(ENROLLMENT_CODE_PATTERN.test('ABCD-1234-xyz')).toBe(true)
+    expect(ENROLLMENT_CODE_PATTERN.test('_base64url-123_')).toBe(true)
     expect(ENROLLMENT_CODE_PATTERN.test('')).toBe(false)
     expect(ENROLLMENT_CODE_PATTERN.test('a')).toBe(false)
     expect(ENROLLMENT_CODE_PATTERN.test('code with spaces')).toBe(false)
@@ -44,13 +45,15 @@ describe('embedded-host-config', () => {
   it('resolves npx from PATH without a shell', () => {
     const directory = mkdtempSync(join(tmpdir(), 'overlay-npx-'))
     writeFileSync(join(directory, 'npx'), '#!/bin/sh\nexit 0\n')
-    expect(resolveNpxPath({ PATH: `/nonexistent:${directory}` }, (path) => {
-      try {
-        return path === join(directory, 'npx')
-      } catch {
-        return false
-      }
-    })).toBe(join(directory, 'npx'))
+    expect(
+      resolveNpxPath({ PATH: `/nonexistent:${directory}` }, (path) => {
+        try {
+          return path === join(directory, 'npx')
+        } catch {
+          return false
+        }
+      })
+    ).toBe(join(directory, 'npx'))
   })
 
   it('returns null when npx is nowhere to be found', () => {
@@ -70,7 +73,7 @@ describe('embedded-host-config', () => {
       '--package',
       'node@24',
       '--package',
-      '@layernorm/overlay-agent-host@0.3.5',
+      '@layernorm/overlay-agent-host@0.4.3',
       'overlay-agent-host',
       'connect',
       'ABCD-1234',

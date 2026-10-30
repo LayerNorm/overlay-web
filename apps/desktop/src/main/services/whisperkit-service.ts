@@ -108,6 +108,8 @@ class WhisperKitService {
     modelId?: string
   ): Promise<TranscriptionResult> {
     const targetModelId = modelId || this.currentModelId
+    if (!(await modelDownloadService.isModelInstalled(targetModelId)))
+      throw new Error('Download this local model in Desktop settings to finish its offline setup.')
     if (!this.isServerReady(targetModelId)) {
       await this.startServerForModel(targetModelId)
     }
@@ -131,6 +133,8 @@ class WhisperKitService {
         temporaryAudioPath,
         '--model-path',
         this.getModelPath(targetModelId),
+        '--download-tokenizer-path',
+        modelDownloadService.getTokenizerPath(targetModelId),
         '--report',
         '--report-path',
         temporaryDirectory,
@@ -171,7 +175,11 @@ class WhisperKitService {
       if (!reportPath) throw new Error('missing_whisper_transcription_report')
 
       const parsed = JSON.parse(readFileSync(reportPath, 'utf8')) as unknown
-      if (!parsed || typeof parsed !== 'object' || typeof (parsed as { text?: unknown }).text !== 'string') {
+      if (
+        !parsed ||
+        typeof parsed !== 'object' ||
+        typeof (parsed as { text?: unknown }).text !== 'string'
+      ) {
         throw new Error('invalid_whisper_transcription_report')
       }
       const result = parsed as { text: string; language?: unknown; duration?: unknown }

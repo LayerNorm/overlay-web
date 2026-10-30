@@ -10,8 +10,18 @@ const PARAKEET_REPO = 'FluidInference/parakeet-tdt-0.6b-v2-coreml'
 const HUGGINGFACE_BASE_URL = 'https://huggingface.co'
 const HUGGINGFACE_REVISIONS: Readonly<Record<string, string>> = {
   [WHISPERKIT_REPO]: '97a5bf9bbc74c7d9c12c755d04dea59e672e3808',
-  [PARAKEET_REPO]: 'ee09c569f73759e6d44c9bd16766f477b2b36d39'
+  [PARAKEET_REPO]: 'ee09c569f73759e6d44c9bd16766f477b2b36d39',
+  'openai/whisper-base': 'e37978b90ca9030d5170a5c07aadb050351a65bb',
+  'openai/whisper-small': '973afd24965f72e36ca33b3055d56a652f456b4d',
+  'openai/whisper-large-v3': '06f233fe06e710322aca913c1bc4249a0d71fce1'
 }
+
+const WHISPER_TOKENIZERS: Readonly<Record<string, string>> = {
+  'openai_whisper-base': 'openai/whisper-base',
+  'openai_whisper-small': 'openai/whisper-small',
+  'openai_whisper-large-v3_turbo': 'openai/whisper-large-v3'
+}
+const TOKENIZER_FILES = ['tokenizer.json', 'tokenizer_config.json'] as const
 
 type ParakeetModelId = 'parakeet_v2' | 'parakeet_v3'
 
@@ -87,6 +97,20 @@ class ModelDownloadService {
    */
   public getModelsBasePath(): string {
     return this.modelsBasePath
+  }
+
+  public getTokenizerPath(modelId: string): string {
+    return join(this.validateModelPath(modelId, this.modelsBasePath), 'tokenizer')
+  }
+
+  private async downloadTokenizer(modelId: string): Promise<void> {
+    const repo = WHISPER_TOKENIZERS[modelId]
+    if (!repo) throw new Error('Unsupported local transcription model.')
+    const directory = this.getTokenizerPath(modelId)
+    for (const file of TOKENIZER_FILES) {
+      const local = join(directory, file)
+      if (!existsSync(local)) await this.downloadFile(file, local, undefined, repo)
+    }
   }
 
   /**
@@ -257,7 +281,8 @@ class ModelDownloadService {
 
     // Check if model already exists
     if (existsSync(modelPath)) {
-      console.log('[ModelDownload] Model already exists, skipping download')
+      console.log('[ModelDownload] Checking offline tokenizer for existing model')
+      await this.downloadTokenizer(modelId)
       return
     }
 
@@ -307,6 +332,8 @@ class ModelDownloadService {
 
         downloadedSize += file.size || 0
       }
+
+      await this.downloadTokenizer(modelId)
 
       // Final progress update
       if (callback) {
@@ -523,7 +550,10 @@ class ModelDownloadService {
    */
   public async isModelInstalled(modelId: string): Promise<boolean> {
     const modelPath = this.validateModelPath(modelId, this.modelsBasePath)
-    return existsSync(modelPath)
+    return (
+      existsSync(modelPath) &&
+      TOKENIZER_FILES.every((file) => existsSync(join(this.getTokenizerPath(modelId), file)))
+    )
   }
 
   /**
@@ -559,7 +589,7 @@ class ModelDownloadService {
    */
   public async getModelInfo(modelId: string): Promise<ModelInfo> {
     const modelPath = this.validateModelPath(modelId, this.modelsBasePath)
-    const downloaded = existsSync(modelPath)
+    const downloaded = await this.isModelInstalled(modelId)
 
     let size = 0
     if (downloaded) {

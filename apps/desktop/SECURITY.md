@@ -36,3 +36,17 @@ ask reporters to allow time for investigation and coordinated disclosure.
 Detailed audits and active remediation notes are maintained privately. Public
 security documentation describes supported behavior without publishing
 unresolved exploit details.
+
+## Remote web shell
+
+The macOS shell pins one server origin. Only its top-level document receives the
+versioned desktop bridge; sandboxing, context isolation and web security remain
+enabled. Main checks registered window identity and exact sender-frame origin,
+validates allow-listed methods with bounded schemas and limits concurrent calls.
+Subframes, offline pages and foreign origins receive no bridge. Permissions are
+denied outside trusted main frames. External URLs permit HTTP(S)/mailto only.
+
+The window owns its cookie session. Native code never stores or refreshes a second
+WorkOS session; SSO transfer requires the pending PKCE verifier. Sign-out stops the
+local Agent Host and closes panels. Native model helpers remain revision-pinned,
+updates require a stable increasing version, and telemetry requires consent.

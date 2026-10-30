@@ -1,6 +1,6 @@
 import { app, shell } from 'electron'
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
-import type { OverlayServerDiscovery } from '@overlay/api-client'
+import type { OverlayServerDiscovery } from './server-discovery'
 import {
   safeStorageService,
   type AuthSession,
@@ -71,13 +71,16 @@ function validateDiscovery(value: unknown, expectedOrigin: string): OverlayServe
   return discovery as OverlayServerDiscovery
 }
 
-export async function startNativeSignIn(forceSignIn = false): Promise<void> {
+export async function startNativeSignIn(
+  forceSignIn = false,
+  fetchDiscovery: (url: string, init: RequestInit) => Promise<Response> = fetch
+): Promise<void> {
   if (!safeStorageService.isEncryptionAvailable()) {
     throw new Error('native_auth_secure_storage_unavailable')
   }
 
   const serverOrigin = getConfiguredServerOrigin()
-  const discoveryResponse = await fetch(`${serverOrigin}/api/v1/discovery`, {
+  const discoveryResponse = await fetchDiscovery(`${serverOrigin}/api/v1/discovery`, {
     headers: { Accept: 'application/json' },
     signal: AbortSignal.timeout(AUTH_REQUEST_TIMEOUT_MS)
   })

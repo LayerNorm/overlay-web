@@ -32,7 +32,6 @@ files:
   - '!node_modules/onnxruntime-web/**'
 asarUnpack:
   - resources/**
-  - node_modules/node-pty/**
 extraResources:
   - from: resources
     to: resources
