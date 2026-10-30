@@ -91,33 +91,204 @@ test('web search falls back to Elo with original filters on provider failures', 
   }), /Elo down/)
 })
 
-test('deep search preserves rich Elo results when available', async () => {
+test('deep search falls back to Elo when TinyFish is unavailable', async () => {
   const output = { results: [{ excerpts: ['full excerpt'] }] }
   assert.deepEqual(await searchDeepWithFallback({ objective: 'research' }, undefined, {
     elo: async (provider) => { assert.equal(provider, 'parallel'); return output },
-    tinyfish: async () => { throw new Error('TinyFish must not run') },
+    tinyfish: async () => { throw new Error('TinyFish unavailable') },
+    tinyfishFetch: async () => { throw new Error('Fetch must not run') },
   }), { output, providerCalls: 1 })
 })
 
-test('deep search falls back to deduplicated, bounded and labeled snippets with call accounting', async () => {
+test('deep search prefers TinyFish search and page text with filters, caps and call accounting', async () => {
   const { output, providerCalls } = await searchDeepWithFallback({
     objective: 'research goal', searchQueries: ['one', 'two'], includeDomains: ['example.com'],
     excludeDomains: ['bad.com'], afterDate: '2026-01-01', maxCharsPerResult: 200, maxCharsTotal: 2000,
+    maxAgeSeconds: 600,
   }, undefined, {
-    elo: async () => { throw new Error('HTTP 500') },
+    elo: async () => { throw new Error('Elo must not run') },
     tinyfish: async (query, options, purpose) => {
       assert.deepEqual(options.searchDomainFilter, ['example.com', '-bad.com'])
       assert.equal(options.searchAfterDate, '2026-01-01')
       assert.equal(purpose, 'research goal')
       return { results: [{ title: query, url: 'https://example.com', content: 'x'.repeat(300) }] }
     },
+    tinyfishFetch: async (body) => {
+      assert.deepEqual(body.urls, ['https://example.com/'])
+      assert.equal(body.ttl, 600)
+      assert.equal(body.format, 'markdown')
+      assert.equal(body.purpose, 'research goal')
+      assert.equal(body.per_url_timeout_ms, 45000)
+      return { results: [{ url: 'https://example.com/', text: 'real page '.repeat(100) }] }
+    },
   })
-  assert.equal(providerCalls, 2)
+  assert.equal(providerCalls, 4)
   const result = output as Record<string, unknown>
-  assert.equal(result.search_strategy, 'deep_search_snippet_fallback')
-  assert.match(String(result.search_note), /not full-page research excerpts/)
+  assert.equal(result.search_strategy, 'deep_search_search_and_fetch')
+  assert.equal(result.partial, false)
   assert.equal(searchResults(output).length, 1)
   assert.equal(String(searchResults(output)[0].content).length, 200)
+  assert.match(String(searchResults(output)[0].content), /^real page/)
+  assert.equal(searchResults(output)[0].source_type, 'page_text')
+})
+
+test('deep search keeps readable pages and labels partial snippet evidence', async () => {
+  const { output, providerCalls } = await searchDeepWithFallback({ objective: 'goal', searchQueries: ['failed'] }, undefined, {
+    tinyfish: async (query) => {
+      if (query === 'failed') throw new Error('timeout')
+      return { results: [
+        { url: 'https://example.com/a', title: 'A', content: 'snippet A' },
+        { url: 'https://example.com/b', title: 'B', content: 'snippet B' },
+      ] }
+    },
+    tinyfishFetch: async () => ({ results: [{ url: 'https://example.com/b', text: 'page B' }], errors: [{ url: 'https://example.com/a', error: 'timeout' }] }),
+    elo: async () => { throw new Error('Elo must not run') },
+  })
+  assert.equal(providerCalls, 2)
+  assert.deepEqual(searchResults(output).map((r) => [r.content, r.source_type]), [
+    ['page B', 'page_text'], ['snippet A', 'search_snippet'],
+  ])
+  assert.equal((output as Record<string, unknown>).partial, true)
+})
+
+test('deep search falls back to Elo when page fetch times out', async () => {
+  const output = { results: [{ url: 'https://elo.example', excerpts: ['Elo research'] }] }
+  const response = await searchDeepWithFallback({ objective: 'goal' }, undefined, {
+    tinyfish: async () => ({ results: [{ title: 'A', url: 'https://example.com/a', content: 'snippet' }] }),
+    tinyfishFetch: async () => {
+      const error = new Error('The operation timed out')
+      error.name = 'TimeoutError'
+      throw error
+    },
+    elo: async (provider) => {
+      assert.equal(provider, 'parallel')
+      return output
+    },
+  })
+  assert.deepEqual(response, { output, providerCalls: 2 })
+})
+
+test('deep search filters source domains and rejects out-of-scope redirects', async () => {
+  const fetchedUrls: string[][] = []
+  const output = { results: [{ url: 'https://elo.example', excerpts: ['Elo research'] }] }
+  const response = await searchDeepWithFallback({
+    objective: 'goal',
+    searchQueries: ['supplement'],
+    includeDomains: ['example.com'],
+    excludeDomains: ['blocked.example.com'],
+    maxResults: 3,
+  }, undefined, {
+    tinyfish: async (_query, options) => {
+      assert.deepEqual(options.searchDomainFilter, ['example.com', '-blocked.example.com'])
+      return { results: [
+        { title: 'Allowed', url: 'https://example.com/article#source', content: 'snippet' },
+        { title: 'Duplicate', url: 'https://example.com/article#other', content: 'snippet' },
+        { title: 'Excluded', url: 'https://blocked.example.com/article', content: 'snippet' },
+        { title: 'Outside', url: 'https://outside.test/article', content: 'snippet' },
+      ] }
+    },
+    tinyfishFetch: async (body) => {
+      const urls = body.urls as string[]
+      fetchedUrls.push(urls)
+      assert.deepEqual(urls, ['https://example.com/article'])
+      return { results: [{
+        url: urls[0],
+        final_url: 'https://blocked.example.com/redirected',
+        text: 'out-of-scope page text',
+      }] }
+    },
+    elo: async () => output,
+  })
+  assert.deepEqual(fetchedUrls, [['https://example.com/article']])
+  assert.deepEqual(response, { output, providerCalls: 4 })
+})
+
+test('deep search falls back on empty, failed or malformed extraction and accounts completed calls', async () => {
+  for (const fetched of [{ results: [], errors: [] }, { error: 'invalid response' }, { results: [{ url: 'https://other.com', text: 'unrequested' }] }]) {
+    const output = { results: [{ url: 'https://elo.example', excerpts: ['Elo research'] }] }
+    const response = await searchDeepWithFallback({ objective: 'goal', effort: 'standard' }, undefined, {
+      tinyfish: async () => ({ results: [{ title: 'A', url: 'https://example.com', content: 'snippet' }] }),
+      tinyfishFetch: async () => fetched,
+      elo: async (provider, body) => {
+        assert.equal(provider, 'parallel')
+        assert.equal(body.mode, 'basic')
+        return output
+      },
+    })
+    assert.deepEqual(response, { output, providerCalls: 3 })
+  }
+  await assert.rejects(searchDeepWithFallback({ objective: 'goal' }, undefined, {
+    tinyfish: async () => ({ results: [] }),
+    tinyfishFetch: async () => { throw new Error('Fetch must not run') },
+    elo: async () => { throw new Error('Elo unavailable') },
+  }), /Elo unavailable/)
+})
+
+test('deep search maximum TinyFish work plus Elo fallback stays within the reservation', async () => {
+  const queries: string[] = []
+  const batches: string[][] = []
+  const output = { results: [{ url: 'https://elo.example', excerpts: ['Elo research'] }] }
+  const response = await searchDeepWithFallback({
+    objective: 'objective',
+    searchQueries: ['one', 'two', 'three', 'four', 'five', 'six'],
+    effort: 'deep',
+    maxResults: 20,
+  }, undefined, {
+    tinyfish: async (query) => {
+      queries.push(query)
+      return {
+        results: Array.from({ length: 20 }, (_, index) => ({
+          title: `${query} ${index}`,
+          url: `https://example.com/${query}/${index}`,
+          content: 'snippet',
+        })),
+      }
+    },
+    tinyfishFetch: async (body) => {
+      const urls = body.urls as string[]
+      batches.push(urls)
+      assert.ok(urls.length <= 10)
+      return { results: [] }
+    },
+    elo: async (provider) => {
+      assert.equal(provider, 'parallel')
+      return output
+    },
+  })
+  assert.deepEqual(queries, ['objective', 'one', 'two', 'three', 'four', 'five'])
+  assert.equal(batches.length, 2)
+  assert.equal(batches.flat().length, 20)
+  assert.deepEqual(response, { output, providerCalls: 9 })
+  assert.ok(response.providerCalls * 0.005 <= 0.05)
+})
+
+test('deep search bounds effort, fetch batches and total text within the reservation', async () => {
+  for (const [effort, expectedQueries, expectedPages] of [['fast', 2, 3], ['standard', 4, 6], ['deep', 6, 20]] as const) {
+    let queries = 0
+    const batches: string[][] = []
+    const { output, providerCalls } = await searchDeepWithFallback({
+      objective: 'goal', searchQueries: ['a', 'b', 'c', 'd', 'e', 'f'],
+      effort, maxResults: 20, maxCharsTotal: 2000,
+    }, undefined, {
+      tinyfish: async (query) => {
+        queries++
+        return { results: Array.from({ length: 20 }, (_, i) => ({ url: `https://example.com/${query}/${i}`, title: query, content: 'snippet' })) }
+      },
+      tinyfishFetch: async (body) => {
+        const urls = body.urls as string[]
+        batches.push(urls)
+        assert.ok(urls.length <= 10)
+        return { results: urls.map((url) => ({ url, text: 'x'.repeat(1000) })) }
+      },
+      elo: async () => { throw new Error('Elo must not run') },
+    })
+    assert.equal(queries, expectedQueries)
+    assert.equal(batches.flat().length, expectedPages)
+    assert.equal(providerCalls, expectedQueries + Math.ceil(expectedPages / 10))
+    assert.ok(providerCalls * 0.005 <= 0.05)
+    assert.equal(searchResults(output).reduce((sum, r) => sum + String(r.content).length, 0), 2000)
+    assert.match(batches[0][1], /\/a\/0$/)
+  }
 })
 
 test('buildTavilyRequestBody maps filters and dates', () => {
@@ -226,8 +397,10 @@ test('mergeExactEntityFallbackResults dedupes and marks augmentation', () => {
       { url: 'https://a.com/dario-amodei', title: 'dup', excerpts: ['e'] },
       { url: 'https://b.com/dario-amodei-profile', title: 'Dario Amodei profile' },
     ],
+    search_note: 'Entries labeled search_snippet are not page text.',
   }
   const merged = mergeExactEntityFallbackResults(primary, fallback, plan) as Record<string, unknown>
   assert.equal(merged.search_strategy, 'exact_entity_deep_augmentation')
+  assert.match(String(merged.search_note), /Entries labeled search_snippet are not page text/)
   assert.equal(searchResults(merged).length, 2)
 })

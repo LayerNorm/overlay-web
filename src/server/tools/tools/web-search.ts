@@ -8,11 +8,11 @@ import { providerRequestFingerprint } from '@/server/billing/ServerProviderUsage
 import { billableBudgetCentsFromProviderUsd } from '@/server/billing/billing-runtime'
 import { logger } from '@/server/observability/logger'
 import type { Entitlements } from '@/shared/app/app-contracts'
+import { searchTinyfishDeep } from './web-search-deep'
 import {
   buildExactEntityFallbackPlan,
   filterExactEntityResults,
   mergeExactEntityFallbackResults,
-  searchResults,
 } from './web-search-entity'
 import {
   deepSearchInputSchema,
@@ -117,12 +117,13 @@ const searchProviders = {
     return fetchTinyfishSearch(query, input, apiKey, purpose)
   },
   elo: postEloSearch,
+  tinyfishFetch: postTinyfishFetch,
 }
 
 export async function searchWebWithFallback(
   query: string,
   input: Omit<WebSearchInput, 'query'>,
-  providers = searchProviders,
+  providers: Pick<typeof searchProviders, 'tinyfish' | 'elo'> = searchProviders,
 ): Promise<unknown> {
   try {
     return await providers.tinyfish(query, input)
@@ -137,38 +138,14 @@ export async function searchDeepWithFallback(
   clientModelId?: string,
   providers = searchProviders,
 ): Promise<{ output: unknown; providerCalls: number }> {
+  let providerCalls = 0
   try {
-    const output = await providers.elo('parallel', buildParallelRequestBody(input, clientModelId))
-    return { output, providerCalls: 1 }
+    const output = await searchTinyfishDeep(input, providers, () => { providerCalls++ })
+    return { output, providerCalls }
   } catch (_error) {
-    logger.warn('[web-search] Elo research unavailable; falling back to TinyFish snippets')
-    const queries = input.searchQueries?.length ? input.searchQueries : [input.objective]
-    const outputs = await Promise.all(queries.map((query) => providers.tinyfish(query, {
-      maxResults: input.maxResults,
-      searchDomainFilter: [
-        ...(input.includeDomains ?? []),
-        ...(input.excludeDomains ?? []).map((domain) => `-${domain}`),
-      ],
-      searchAfterDate: input.afterDate,
-    }, input.objective)))
-    const merged = mergeSearchOutputs(queries, outputs)
-    let remainingChars = input.maxCharsTotal ?? 200_000
-    const results = searchResults(merged).slice(0, input.maxResults ?? 10).map((result) => {
-      const content = typeof result.content === 'string' ? result.content : ''
-      const excerpt = content.slice(0, Math.min(input.maxCharsPerResult ?? 20_000, remainingChars))
-      remainingChars -= excerpt.length
-      return { ...result, content: excerpt, snippet: excerpt, excerpts: [excerpt] }
-    })
-    return {
-      output: {
-        ...merged,
-        results,
-        provider: 'tinyfish',
-        search_strategy: 'deep_search_snippet_fallback',
-        search_note: 'Deep research is unavailable. These are web search snippets, not full-page research excerpts. Effort and cache-age controls are unavailable; use web_fetch to read the sources.',
-      },
-      providerCalls: queries.length,
-    }
+    logger.warn('[web-search] TinyFish research unavailable; falling back to Elo')
+    const output = await providers.elo('parallel', buildParallelRequestBody(input, clientModelId))
+    return { output, providerCalls: providerCalls + 1 }
   }
 }
 
@@ -459,10 +436,11 @@ export async function getDeepSearchTool(
   return tool({
     description:
       'Deep web research: LLM-optimized long excerpts across many sources, with domain scoping ' +
-      '(falls back to explicitly labeled web snippets if research is unavailable). ' +
+      '(TinyFish search plus page extraction, with Elo research fallback). ' +
       '(includeDomains e.g. arxiv.org, nature.com), date filters, and an effort knob. Give a self-contained ' +
       'objective plus 2-3 short searchQueries. Use for synthesis, citations, and academic or multi-source ' +
-      'review. For the full text of a specific result, follow up with web_fetch. Do not call alongside ' +
+      'review. Synthesize the returned evidence with citations and search again for unresolved gaps. ' +
+      'For the full text of a specific result, follow up with web_fetch. Do not call alongside ' +
       'web_search for a simple named-person or named-entity lookup; web_search already deep-augments those.',
     inputSchema: deepSearchInputSchema,
     execute: async (input) => executeDeepSearch(input, billingContext, chatModelId),
