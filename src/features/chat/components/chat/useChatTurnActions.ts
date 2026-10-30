@@ -136,6 +136,7 @@ export function useChatTurnActions({
       })
       if (!sourceRes.ok) throw new Error('Could not load source chat')
       const sourceData = await sourceRes.json() as {
+        title?: string
         messages?: Array<{
           turnId?: string
           mode?: 'ask' | 'act'
@@ -153,7 +154,7 @@ export function useChatTurnActions({
       if (targetIdx < 0) throw new Error('Could not find that turn')
       const branchRows = rows.slice(0, targetIdx + 1)
       const branchChatId = await createNewChat({
-        title: `${activeChatTitle || DEFAULT_CHAT_TITLE} branch`,
+        title: `${sourceData.title?.trim() || activeChatTitle || DEFAULT_CHAT_TITLE} branch`,
         deferActivation: true,
       })
       if (!branchChatId) throw new Error('Could not create branch')
