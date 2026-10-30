@@ -3,6 +3,7 @@ import 'server-only'
 import type { LanguageModelV4CallOptions } from '@ai-sdk/provider'
 import { FatalError } from 'workflow'
 import { getGatewayCatalogModel } from '@/server/ai/gateway/gateway-catalog'
+import { languageModelReservationCost } from '@/server/ai/gateway/model-reservation-pricing'
 import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
 import { isFreeTierChatModelId } from '@/shared/ai/gateway/model-types'
 import { harnessCostMicros } from './model-usage'
@@ -25,30 +26,6 @@ export function estimateHarnessInputTokens(options: LanguageModelV4CallOptions, 
   return bytes + 1_024 + options.prompt.length * 32 + (options.tools?.length ?? 0) * 128
 }
 
-function maximumRate(pricing: Record<string, unknown>, key: string, required: boolean): number | null {
-  const values: unknown[] = []
-  if (pricing[key] !== undefined) values.push(pricing[key])
-  const tiers = pricing[`${key}_tiers`]
-  if (tiers !== undefined) {
-    if (!Array.isArray(tiers)) throw new FatalError('Invalid model pricing tiers.')
-    for (const tier of tiers) {
-      if (!tier || typeof tier !== 'object' || !('cost' in tier)) throw new FatalError('Invalid model pricing tier.')
-      values.push(tier.cost)
-    }
-  }
-  if (!values.length) {
-    if (required) throw new FatalError('Model pricing is unavailable.')
-    return null
-  }
-  const rates = values.map(value => {
-    if ((typeof value !== 'number' && typeof value !== 'string') || String(value).trim() === '') throw new FatalError('Invalid model token price.')
-    const number = Number(value)
-    if (!Number.isFinite(number) || number < 0) throw new FatalError('Invalid model token price.')
-    return number
-  })
-  return Math.max(...rates)
-}
-
 export async function forecastHarnessModelCost(input: {
   modelId: string
   inputTokenBudget: number
@@ -66,11 +43,7 @@ export async function forecastHarnessModelCost(input: {
   }
   const model = await getGatewayCatalogModel(input.modelId)
   if (!model || model.type !== 'language') throw new FatalError('Language model pricing is unavailable.')
-  const inputRate = maximumRate(model.pricing, 'input', true)!
-  const readRate = maximumRate(model.pricing, 'input_cache_read', false) ?? inputRate
-  const writeRate = maximumRate(model.pricing, 'input_cache_write', input.cacheWrites) ?? inputRate
-  const outputRate = maximumRate(model.pricing, 'output', true)!
-  return harnessCostMicros(input.inputTokenBudget * Math.max(inputRate, readRate, writeRate) + input.maxOutputTokens * outputRate)
+  return harnessCostMicros(await languageModelReservationCost(model, input.inputTokenBudget, input.maxOutputTokens, input.cacheWrites))
 }
 
 export function hasHarnessCacheWrites(options: LanguageModelV4CallOptions): boolean {

@@ -10,6 +10,23 @@ import {
 } from '@/shared/ai/gateway/model-pricing'
 import { isFreeTierChatModelId } from '@/shared/ai/gateway/model-types'
 import { getGatewayCatalogModel } from './gateway-catalog'
+import { languageModelReservationCost } from './model-reservation-pricing'
+
+export async function calculateLanguageModelReservationCostOrNull(
+  modelId: string, inputTokens: number, outputTokens: number,
+): Promise<number | null> {
+  if (isFreeTierChatModelId(modelId)) return 0
+  try {
+    const model = await getGatewayCatalogModel(modelId)
+    if (!model || model.type !== 'language') return null
+    return await languageModelReservationCost(model, inputTokens, outputTokens)
+  } catch (error) {
+    logger.error('[ai/gateway] Failed to resolve reservation pricing', {
+      modelId, error: summarizeErrorForLog(error),
+    })
+    return null
+  }
+}
 
 export async function calculateLanguageModelTokenCostOrNull(
   modelId: string,

@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Reserve model budgets against Gateway provider, regional, fast and peak prices rather than only headline rates, preventing underfunded chat and context-summary settlements when routing selects a more expensive provider.
+
 - Release Computer wake claims when provider reconnection fails, and safely reconcile expired maintenance before retrying without replacing the disk or bypassing usage settlement.
 
 - Keep Chat and Work available during the Harness web-first rollout by checking backend readiness before admission; recognize already-terminal workflows during Stop cleanup.
