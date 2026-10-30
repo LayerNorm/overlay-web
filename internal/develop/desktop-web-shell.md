@@ -109,3 +109,7 @@ event is sent; diagnostics controls are omitted when the build has no DSN.
 Signing CI uses an ephemeral keychain with a random password distinct from the
 certificate password and removes both its certificate file and keychain. Account
 handoffs must never log their one-time transfer links.
+
+Agent smoke acceptance covers the web-owned execution path too. When admission
+falls back from a configured model, the native harness candidate chain must begin
+with that admitted model and exclude candidates already rejected by admission.
