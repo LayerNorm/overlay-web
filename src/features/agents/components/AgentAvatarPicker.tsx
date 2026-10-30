@@ -6,7 +6,7 @@ import { Button, Popover, PopoverContent, PopoverTrigger } from '@overlay/ui/pri
 import { useState } from 'react'
 import { Pencil } from 'lucide-react'
 import type { WorkspaceAgentCreatureShape } from '@overlay/workspace-contracts'
-import { Creature, CREATURE_SHAPES } from '@/components/orb/Creature'
+import { AgentCreature, Creature, CREATURE_SHAPES } from '@/components/orb/Creature'
 import { AVATAR_COLORS } from '../lib/agent-editor-utils'
 import { AvatarColorPicker } from './AvatarColorPicker'
 
@@ -15,7 +15,8 @@ import { AvatarColorPicker } from './AvatarColorPicker'
  * popover with every body shape (previewed in the current color) and the color
  * swatches. Outside click and Escape close it.
  */
-export function AgentAvatarPicker({ shape, color, onShapeChange, onColorChange, size = 72, align = 'center' }: {
+export function AgentAvatarPicker({ isDefault, shape, color, onShapeChange, onColorChange, size = 72, align = 'center' }: {
+  isDefault?: boolean
   shape: WorkspaceAgentCreatureShape
   color: string
   onShapeChange(shape: WorkspaceAgentCreatureShape): void
@@ -28,6 +29,14 @@ export function AgentAvatarPicker({ shape, color, onShapeChange, onColorChange, 
   // Whether the custom color editor is showing under the swatches. 
   const isCustomColor = !(AVATAR_COLORS as readonly string[]).includes(color.toLowerCase())
   const [customOpen, setCustomOpen] = useState(false)
+
+  if (isDefault) {
+    return (
+      <div className="flex justify-center">
+        <AgentCreature agent={{ name: 'Overlay' }} isDefault size={size} />
+      </div>
+    )
+  }
 
   return (
     <Popover

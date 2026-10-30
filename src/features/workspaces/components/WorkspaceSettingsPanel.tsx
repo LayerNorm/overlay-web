@@ -219,7 +219,7 @@ export function WorkspaceManagementContent({
           const busy = busyItemId === item.id
           return (
             <div key={item.id} className="flex min-h-16 items-center gap-3 px-5 py-3">
-              {item.principalType === 'agent' ? <AgentCreature agent={item} size={36} /> : item.principalType === 'human' ? <Avatar className="size-9"><AvatarImage src={item.photoUrl ?? undefined} alt="" /><AvatarFallback>{identityInitials(item.name)}</AvatarFallback></Avatar> : <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-(--border) bg-(--surface-subtle) text-(--muted)">
+              {item.principalType === 'agent' ? <AgentCreature isDefault={item.isDefault} agent={item} size={36} /> : item.principalType === 'human' ? <Avatar className="size-9"><AvatarImage src={item.photoUrl ?? undefined} alt="" /><AvatarFallback>{identityInitials(item.name)}</AvatarFallback></Avatar> : <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-(--border) bg-(--surface-subtle) text-(--muted)">
                 <Icon size={15} />
               </span>}
               <span className="min-w-0 flex-1">

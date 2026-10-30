@@ -16,6 +16,7 @@ test('a locked text model picker keeps the generation toggle visible and disable
       onGenerationModeChange={() => {}}
       isActiveLoading={false}
       modelPickerListScrollRef={createRef<HTMLDivElement>()}
+      modelSearchInputRef={createRef<HTMLInputElement>()}
       textModelsLoading={false}
       isFreeTier
       imageModels={[]}

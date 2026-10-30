@@ -107,7 +107,7 @@ This is designed so any agent that knows shadcn can navigate instantly:
   `check:bundle-budgets` already enforce package edges and JS cost.
 - **Sidebar migration:** PR #212 moved the secondary panel to shadcn Sidebar
   parts. The primary rail now uses the same parts.
-- **Keep bespoke:** `OverlayMark`/Orb (brand rule), `UsageMeterBar`,
+- **Keep bespoke:** `OverlayMark` (O-with-eyes brand rule), `UsageMeterBar`,
   `SidebarRailBrand` controls, and domain surfaces (`ComprehensiveModelPicker`, composer,
   xyflow canvas, TipTap editor). shadcn provides primitives, not product
   surfaces.

@@ -42,7 +42,7 @@ export function StatusIcon({ status, size = 16, className = '' }: { status: Work
 }
 
 /** A person is a round badge with initials; an agent is its creature avatar. Unassigned is a dashed circle. */
-export function Avatar({ person, size = 22, title }: { person: Pick<WorkPerson, 'displayName' | 'type' | 'avatarColor' | 'avatarShape' | 'photoUrl'> | null; size?: number; title?: string }) {
+export function Avatar({ person, size = 22, title }: { person: Pick<WorkPerson, 'displayName' | 'type' | 'isDefault' | 'avatarColor' | 'avatarShape' | 'photoUrl'> | null; size?: number; title?: string }) {
   const dimension = { width: size, height: size, fontSize: Math.max(9, Math.round(size * 0.42)) }
   if (!person) {
     return (
@@ -65,6 +65,7 @@ export function Avatar({ person, size = 22, title }: { person: Pick<WorkPerson, 
         aria-label={title ?? person.displayName}
       >
         <AgentCreature
+          isDefault={person.isDefault}
           agent={{ name: person.displayName, avatarColor: person.avatarColor, avatarShape: person.avatarShape }}
           size={size}
         />

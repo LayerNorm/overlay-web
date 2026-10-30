@@ -29,6 +29,7 @@ type ContextResult = {
     agentVisibility?: 'workspace' | 'creator'
     avatarColor?: string
     avatarShape?: string
+    isDefault?: boolean
   }>
 }
 

@@ -14,7 +14,7 @@ Why now:
 - **Consistency.** Today each step type has its own markup: `ReasoningBlock`,
   `ToolCallRowWithReasoning`, `ToolCallsCollapsedGroup`, `WorkedForGroup`,
   `WebSearchToolBlock`, `MemoryToolBlock`, `BrowserToolBlock`, `GatedPaidFeatureCallout`,
-  plus a hand-built orb rail (`ToolLogoColumn`). AI Elements puts all of them on
+  plus a hand-built mark rail (`ToolLogoColumn`). AI Elements puts all of them on
   [Trace](https://ui.shadcn.com/docs/components/radix/trace), so every step is a
   `TraceLine` with the same icon, title, status and collapsible body.
 - **Performance.** [Message Scroller](https://ui.shadcn.com/docs/components/radix/message-scroller)
@@ -112,7 +112,7 @@ Adaptation rules for every copied file (from `SHADCN_MIGRATION_PLAN.md` and AGEN
 | `ToolCallRowWithReasoning`, `SingleToolCallRow` | **Tool**: `TraceLine` while running, `TraceCollapsible` once output exists, body is `CodeBlock size="sm"` (input + output, `variant="destructive"` on error) | `input-streaming`/`input-available` = running ("Running ..."); after stream stops = error, except client tools, which wait; `output-available` = none ("Ran ..."); `output-error` = error ("Failed to ..."); `output-denied` = none ("Denied ..."). Titles keep coming from `getDescriptiveToolLabel` phases. |
 | `ToolCallsCollapsedGroup` ("3 tools called") | Nested `Trace` inside a `TraceCollapsible` group line | Default collapsed, sequential (AGENTS.md: tool UIs minimal, collapsed, sequential). |
 | `WorkedForGroup` ("Worked for 12s, called 3 tools") | **Chain of Thought**: a summary line that expands into the steps | Keeps the current mode-toggle behavior: settled turns fold all work behind one line. |
-| `ToolLogoColumn` / `ToolLineLogo` (orb rail + connector line) | `TraceIcon` slot holds the Orb on every step (owner decision) | Running/error/denied state shows through `TraceLine status` styling and the title, not by swapping the orb for a status icon. The connector line goes away (Trace owns spacing). |
+| `ToolLogoColumn` / `ToolLineLogo` (mark rail + connector line) | `TraceIcon` slot holds `OverlayMark` on every step (owner decision) | Running/error/denied state shows through `TraceLine status` styling and the title, not by swapping the mark for a status icon. The connector line goes away (Trace owns spacing). |
 | `WebSearchToolBlock`, `SourcesPanel`, `ChatSourcesPanel` | **Sources**: "Used N sources" line that opens into one link row per source (deduped by URL, hostname fallback, favicon in `TraceIcon`) | The side panel stays for "view all"; the in-turn list becomes Sources. |
 | `WebSourceTooltip` + inline `[n]` chips in `MarkdownMessage` | **Inline Citation**: Hover Card on a `secondary` `xs` Button | Knowledge citations (`knowledgeChipLabel`) use the same component. |
 | `MemoryToolBlock` | Tool line with a `TraceDescription` of what was saved | |
@@ -220,7 +220,7 @@ Owner requirement, applied to every component in this migration and recorded in 
 
 | # | Topic | Decision |
 |---|---|---|
-| 1 | Step icon | The Orb in `TraceIcon` on every step. Status reads from `TraceLine status` and the title. |
+| 1 | Step icon | `OverlayMark` in `TraceIcon` on every step. Running marks use `motion="look"`; completed marks use `motion="none"`. Status also reads from `TraceLine status` and the title. |
 | 2 | Markdown renderer | Approved: Streamdown, because the current renderer flickers. LaTeX is kept through `@streamdown/math` with `singleDollarTextMath: true` (same KaTeX stack as today). |
 | 3 | Code theme | Shiki `github-light` / `github-dark-default` on Overlay surface colors. Theme presets do not tint code. |
 | 4 | Scroll position | A thread opens at the very bottom (`defaultScrollPosition="end"`). Follow the live edge while at the bottom, jump-to-latest button when scrolled up. |

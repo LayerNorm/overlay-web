@@ -72,8 +72,8 @@
 /* Hero */
 .sl .hero { padding: 104px 40px 96px; text-align: center; }
 .sl .hero .h1 { max-width: 1000px; margin: 0 auto; }
-.sl .hero .backed { display: inline-block; margin-bottom: 26px; font-family: var(--font-lusitana), Georgia, serif; font-size: 17px; line-height: 1; letter-spacing: 0; color: var(--sl-muted); transition: color .15s; }
-.sl .hero .backed span { color: var(--sl-text); font-size: 24px; margin-left: 2px; }
+.sl .hero .backed { display: inline-block; margin-bottom: 26px; font-family: var(--sl-sans); font-size: 17px; line-height: 1; letter-spacing: 0; color: var(--sl-muted); transition: color .15s; }
+.sl .hero .backed span { font-family: var(--font-lusitana), Georgia, serif; color: var(--sl-text); font-size: 24px; margin-left: 2px; }
 .sl .hero .backed:hover { color: var(--sl-text); }
 .sl .br-lg { display: block; }
 .sl .hero .k, .sl .page-head .k { white-space: nowrap; text-decoration: underline; text-decoration-color: var(--k); text-decoration-thickness: .075em; text-underline-offset: .14em; text-decoration-skip-ink: none; transition: text-decoration-thickness .15s; }
@@ -120,7 +120,6 @@
 .sl .m-agent b { font-weight: 500; }
 .sl .steps { display: flex; align-items: center; gap: 0.4em; height: 22px; color: var(--sl-muted); font-size: 12.5px; margin-bottom: 6px; }
 .sl .steps .i { color: var(--sl-faint); }
-.sl .steps > span:first-child, .sl .steps > span:first-child svg { width: 0.5em !important; height: 0.5em !important; }
 .sl .composer { margin: 14px 18px 18px; border: 1px solid var(--sl-line-2); border-radius: 14px; padding: 11px 12px 9px; background: var(--sl-card); }
 .sl .composer .ph { color: var(--sl-faint); }
 .sl .composer .row { margin-top: 12px; display: flex; align-items: center; gap: 8px; color: var(--sl-muted); }

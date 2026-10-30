@@ -15,7 +15,7 @@ import { useState } from 'react'
 import { getDescriptiveToolLabel } from '../../lib/tool-labels'
 
 import { ReasoningBlock } from './reasoning-block'
-import { TraceOrb } from './tool-rail'
+import { TraceMark } from './tool-rail'
 
 export function ToolCallRowWithReasoning({
   block,
@@ -47,7 +47,7 @@ export function ToolCallRowWithReasoning({
         status={running ? 'running' : err ? 'error' : undefined}
         className={`${variant === 'nested' ? 'py-0.5' : 'py-1'} text-[13px] leading-5`}
       >
-        <TraceOrb running={running} />
+        <TraceMark running={running} />
         <TraceTitle className="whitespace-normal">{label}</TraceTitle>
       </TraceLine>
     </div>
@@ -78,7 +78,7 @@ export function GatedPaidFeatureCallout({
   return (
     <div className="w-full px-1 py-0.5">
       <div className="flex w-full max-w-full items-center justify-start gap-[0.4em] text-[11px]">
-        <TraceOrb />
+        <TraceMark />
         <p className="w-fit max-w-[min(100%,22rem)] rounded-lg bg-(--surface-subtle) px-2.5 py-1.5 text-[11px] leading-relaxed text-(--muted)">
           {line} {upgradeLink}
         </p>
@@ -130,7 +130,7 @@ export function ToolCallsCollapsedGroup({
       <TraceCollapsible open={open} onOpenChange={setOpen}>
         <TraceCollapsibleTrigger className="py-1 text-[13px] leading-5">
           <TraceLine status={anyErr ? 'error' : anyRunning ? 'running' : undefined}>
-            <TraceOrb running={anyRunning && !anyErr} />
+            <TraceMark running={anyRunning && !anyErr} />
             <TraceTitle>{summary}</TraceTitle>
           </TraceLine>
         </TraceCollapsibleTrigger>

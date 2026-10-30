@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Overlay brand rollout</title>
+<link href="https://fonts.googleapis.com/css2?family=Libre+Baskerville:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#fafafa;--fg:#0a0a0a;--muted:#71717a;--card:#fff;--line:#e4e4e7;--side:#f4f4f5;--bubble:#f4f4f5}
+html.dark{--bg:#0a0a0a;--fg:#fafafa;--muted:#a1a1aa;--card:#141414;--line:#27272a;--side:#171717;--bubble:#1f1f1f}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:'Libre Baskerville',serif}
+header.top{display:flex;justify-content:space-between;align-items:center;padding:28px 40px}
+h1{font-size:22px;font-weight:400;margin:0}
+h2{font-size:15px;font-weight:400;color:var(--muted);margin:0 0 12px}
+button{font:inherit;font-size:13px;background:var(--card);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:6px 12px;cursor:pointer}
+main{padding:0 40px 60px;display:flex;flex-direction:column;gap:36px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.sans{font-family:ui-sans-serif,system-ui,sans-serif}
+/* mark */
+svg.mark{display:inline-block;flex-shrink:0;overflow:visible}
+svg.mark path{fill:currentColor}
+svg.word{display:block;overflow:visible}svg.word path{fill:currentColor}
+.eyes{transform-box:fill-box;transform-origin:center}
+.blink .eyes{animation:blink 6s infinite}
+@keyframes blink{0%,94%,100%{transform:scaleY(1)}96.5%{transform:scaleY(.1)}}
+.look .eyes{animation:look 2.4s ease-in-out infinite}
+@keyframes look{0%,100%{transform:translateX(0)}20%,40%{transform:translateX(-95px)}60%,80%{transform:translateX(95px)}}
+@media (prefers-reduced-motion:reduce){.look .eyes,.blink .eyes{animation:none}}
+/* assets */
+.assets{display:grid;grid-template-columns:repeat(4,1fr)}
+.assets>div{display:flex;align-items:center;justify-content:center;height:180px;border-right:1px solid var(--line)}
+.assets>div:last-child{border:0}
+.assets .inv{background:var(--fg);color:var(--bg)}
+.icon{display:flex;align-items:center;justify-content:center;border-radius:22%;background:#0a0a0a;color:#fafafa}
+.icon.l{background:#fafafa;color:#0a0a0a;border:1px solid #e4e4e7}
+/* landing */
+.landing{display:flex;justify-content:space-between;align-items:center;padding:20px 28px;border-bottom:1px solid var(--line)}
+.landing nav{display:flex;gap:22px;font-size:14px;color:var(--muted)}
+.lhero{padding:70px 28px;text-align:center;font-size:40px}
+/* app */
+.app{display:grid;grid-template-columns:240px 1fr;height:560px}
+.sb{background:var(--side);border-right:1px solid var(--line);padding:16px 10px;font-size:13.5px}
+.sb .hd{padding:2px 8px 14px}
+.cap{font-size:11px;color:var(--muted);margin:14px 8px 6px}
+.r{display:flex;align-items:center;gap:10px;padding:6px 8px;border-radius:8px}
+.r.on{background:var(--line)}
+.chat{display:flex;flex-direction:column}
+.chat .ch{display:flex;align-items:center;gap:10px;padding:14px 22px;border-bottom:1px solid var(--line);font-size:14px}
+.msgs{flex:1;padding:24px 22px;display:flex;flex-direction:column;gap:18px;font-size:14px;line-height:1.55}
+.u{align-self:flex-end;background:var(--bubble);padding:9px 14px;border-radius:14px;max-width:60%}
+.tool{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:13px}
+.loading{display:flex;align-items:center;gap:8px}
+.comp{margin:0 22px 20px;border:1px solid var(--line);border-radius:14px;padding:14px;color:var(--muted);font-size:14px}
+/* boot + tab + email */
+.row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px}
+.boot{height:240px;display:flex;align-items:center;justify-content:center}
+.tab{padding:18px}
+.tabbar{display:flex;gap:6px;background:var(--side);border-radius:10px 10px 0 0;padding:8px 8px 0}
+.t{display:flex;align-items:center;gap:8px;background:var(--card);border-radius:8px 8px 0 0;padding:8px 12px;font-size:12px;width:180px}
+.t.off{background:transparent;color:var(--muted)}
+.url{border:1px solid var(--line);border-top:0;padding:10px 12px;font-size:12px;color:var(--muted);border-radius:0 0 10px 10px}
+.email{padding:24px;background:#fff;color:#0a0a0a;font-size:13px;line-height:1.6;height:100%}
+</style>
+</head>
+<body>
+<header class="top"><h1>Overlay brand rollout</h1><button onclick="document.documentElement.classList.toggle('dark')">Light / dark</button></header>
+<main id="m"></main>
+<script>
+const EYES_SMALL='M347.0 -447.0A46.0 46.0 0 0 1 439.0 -447.0L439.0 -363.0A46.0 46.0 0 0 1 347.0 -363.0ZM507.0 -447.0A46.0 46.0 0 0 1 599.0 -447.0L599.0 -363.0A46.0 46.0 0 0 1 507.0 -363.0Z';
+const O='M473 -780Q561 -780 636.5 -749.5Q712 -719 768.5 -664.5Q825 -610 857.0 -537.0Q889 -464 889 -379Q889 -298 857.0 -227.0Q825 -156 768.0 -103.0Q711 -50 635.5 -20.0Q560 10 473 10Q386 10 310.5 -20.0Q235 -50 178.0 -103.0Q121 -156 89.0 -227.0Q57 -298 57 -379Q57 -464 89.0 -537.0Q121 -610 177.5 -664.5Q234 -719 309.5 -749.5Q385 -780 473 -780ZM473 -45Q561 -45 625.0 -85.5Q689 -126 724.0 -200.5Q759 -275 759 -376Q759 -483 724.0 -561.5Q689 -640 625.0 -682.5Q561 -725 473 -725Q385 -725 321.0 -682.5Q257 -640 222.0 -561.5Q187 -483 187 -376Q187 -275 222.0 -200.5Q257 -126 321.0 -85.5Q385 -45 473 -45Z', EYES='M377.0 -451.0A33.0 33.0 0 0 1 443.0 -451.0L443.0 -379.0A33.0 33.0 0 0 1 377.0 -379.0ZM503.0 -451.0A33.0 33.0 0 0 1 569.0 -451.0L569.0 -379.0A33.0 33.0 0 0 1 503.0 -379.0Z', WORD='M473 -780Q561 -780 636.5 -749.5Q712 -719 768.5 -664.5Q825 -610 857.0 -537.0Q889 -464 889 -379Q889 -298 857.0 -227.0Q825 -156 768.0 -103.0Q711 -50 635.5 -20.0Q560 10 473 10Q386 10 310.5 -20.0Q235 -50 178.0 -103.0Q121 -156 89.0 -227.0Q57 -298 57 -379Q57 -464 89.0 -537.0Q121 -610 177.5 -664.5Q234 -719 309.5 -749.5Q385 -780 473 -780ZM473 -45Q561 -45 625.0 -85.5Q689 -126 724.0 -200.5Q759 -275 759 -376Q759 -483 724.0 -561.5Q689 -640 625.0 -682.5Q561 -725 473 -725Q385 -725 321.0 -682.5Q257 -640 222.0 -561.5Q187 -483 187 -376Q187 -275 222.0 -200.5Q257 -126 321.0 -85.5Q385 -45 473 -45ZM1219 11 1050 -406Q1034 -447 1021.5 -465.0Q1009 -483 993.0 -488.5Q977 -494 951 -495V-530H1216V-495Q1190 -494 1175.0 -492.0Q1160 -490 1154.5 -483.0Q1149 -476 1149 -460Q1149 -444 1153.5 -428.5Q1158 -413 1163 -398L1269 -108H1273L1364 -323Q1385 -373 1394.0 -403.5Q1403 -434 1403 -456Q1403 -479 1391.0 -487.0Q1379 -495 1339 -495V-530H1538V-495Q1522 -495 1509.0 -487.0Q1496 -479 1486 -467Q1476 -453 1464.0 -426.0Q1452 -399 1442.0 -372.0Q1432 -345 1424 -328L1277 11ZM2025 -121 2056 -93Q1971 10 1845 10Q1767 10 1708.0 -24.0Q1649 -58 1616.0 -118.5Q1583 -179 1583 -259Q1583 -341 1618.0 -404.5Q1653 -468 1714.5 -504.0Q1776 -540 1857 -540Q1953 -540 2006.5 -487.5Q2060 -435 2060 -337Q2060 -324 2054.5 -320.5Q2049 -317 2029 -317H1700Q1698 -309 1697.0 -297.5Q1696 -286 1696 -272Q1696 -203 1718.0 -151.0Q1740 -99 1780.0 -70.5Q1820 -42 1873 -42Q1914 -42 1951.0 -61.0Q1988 -80 2025 -121ZM1707 -363H1891Q1932 -363 1941.5 -368.0Q1951 -373 1951 -391Q1951 -437 1921.0 -464.5Q1891 -492 1841 -492Q1788 -492 1754.0 -459.5Q1720 -427 1707 -363ZM2329 -193V-159Q2329 -104 2333.5 -78.5Q2338 -53 2355.5 -45.5Q2373 -38 2411 -35V0H2145V-35Q2184 -37 2202.0 -45.0Q2220 -53 2225.5 -77.5Q2231 -102 2231 -152V-269Q2231 -337 2229.0 -375.5Q2227 -414 2219.0 -431.0Q2211 -448 2193.0 -452.0Q2175 -456 2143 -456V-491L2318 -529L2332 -405H2336Q2363 -465 2411.0 -502.5Q2459 -540 2510 -540Q2542 -540 2560.5 -524.5Q2579 -509 2579 -483Q2579 -459 2564.0 -445.5Q2549 -432 2521 -432Q2500 -432 2487.0 -438.5Q2474 -445 2464.0 -451.0Q2454 -457 2442 -457Q2415 -457 2388.0 -422.5Q2361 -388 2346 -335Q2338 -307 2333.5 -270.0Q2329 -233 2329 -193ZM2793 -830V-156Q2793 -106 2799.0 -80.5Q2805 -55 2824.5 -46.0Q2844 -37 2882 -35V0H2606V-35Q2646 -37 2666.0 -46.0Q2686 -55 2693.0 -79.0Q2700 -103 2700 -149V-580Q2700 -634 2698.5 -670.5Q2697 -707 2694 -720Q2689 -743 2670.5 -751.0Q2652 -759 2604 -759V-793ZM3353 10Q3310 10 3288.0 -18.0Q3266 -46 3266 -97H3261Q3234 -48 3188.0 -19.5Q3142 9 3086 9Q3045 9 3015.0 -6.0Q2985 -21 2968.5 -47.5Q2952 -74 2952 -110Q2952 -157 2987.0 -196.5Q3022 -236 3114 -276L3258 -339V-380Q3258 -443 3232.5 -472.5Q3207 -502 3152 -502Q3120 -502 3105.5 -489.0Q3091 -476 3078 -437Q3067 -409 3056.5 -399.0Q3046 -389 3026 -389Q3002 -389 2989.0 -402.0Q2976 -415 2976 -439Q2976 -487 3027.0 -513.5Q3078 -540 3172 -540Q3273 -540 3314.5 -505.0Q3356 -470 3356 -384V-160Q3356 -98 3368.0 -72.0Q3380 -46 3406 -46Q3416 -46 3429.5 -50.5Q3443 -55 3450 -68L3464 -44Q3452 -21 3420.0 -5.5Q3388 10 3353 10ZM3131 -51Q3167 -51 3196.0 -73.5Q3225 -96 3241.5 -134.0Q3258 -172 3258 -217V-296Q3182 -267 3137.0 -239.0Q3092 -211 3072.5 -183.5Q3053 -156 3053 -127Q3053 -93 3075.0 -72.0Q3097 -51 3131 -51ZM3941 -328 3723 157Q3701 207 3664.0 233.5Q3627 260 3580 260Q3549 260 3533.0 248.5Q3517 237 3517 213Q3517 188 3534.5 176.0Q3552 164 3599 157Q3640 150 3661.5 134.0Q3683 118 3702 81L3737 11L3545 -406Q3528 -443 3515.5 -461.5Q3503 -480 3488.0 -486.5Q3473 -493 3446 -495V-530H3711V-495Q3677 -495 3660.5 -487.0Q3644 -479 3644 -462Q3644 -449 3652.0 -421.0Q3660 -393 3672 -364L3782 -98H3787L3878 -323Q3896 -367 3905.0 -390.5Q3914 -414 3917.0 -427.0Q3920 -440 3920 -451Q3920 -477 3905.5 -486.0Q3891 -495 3850 -495V-530H4070V-495Q4051 -495 4037.5 -489.5Q4024 -484 4011.0 -467.5Q3998 -451 3981.5 -417.5Q3965 -384 3941 -328Z', WB=[40, 4101];
+const mark=(px,cls='blink')=>`<svg class="mark ${cls}" viewBox="43 -815 860 860" width="${px}" height="${px}" aria-label="Overlay"><path d="${O}"/><g class="eyes"><path d="${px<=24?EYES_SMALL:EYES}"/></g></svg>`;
+// Wordmark sized by text height: viewBox height 1120 units = 1.12em
+const word=(fs,cls='blink')=>`<svg class="word ${cls}" viewBox="${WB[0]} -820 ${WB[1]-WB[0]} 1120" style="height:${fs*1.12}px;width:${fs*1.12*(WB[1]-WB[0])/1120}px" aria-label="Overlay"><path d="${WORD}"/><g class="eyes"><path d="${EYES}"/></g></svg>`;
+const creature=(body)=>`<svg viewBox="0 0 100 100" width="20" height="20">${body}<g fill="#fafafa"><rect x="36" y="45" width="9.5" height="17" rx="4.75"/><rect x="54.5" y="45" width="9.5" height="17" rx="4.75"/></g></svg>`;
+const sales=creature('<rect x="12" y="14" width="76" height="78" rx="24" fill="#f97316"/>');
+const research=creature('<circle cx="50" cy="53" r="40" fill="#3b82f6"/>');
+document.getElementById('m').innerHTML=`
+<section><h2>Brand files</h2><div class="card assets">
+ <div>${mark(110)}</div>
+ <div class="inv">${mark(110)}</div>
+ <div>${word(56)}</div>
+ <div style="gap:18px"><span class="icon" style="width:96px;height:96px">${mark(60)}</span><span class="icon l" style="width:96px;height:96px">${mark(60)}</span></div>
+</div></section>
+
+<section><h2>Landing header</h2><div class="card">
+ <div class="landing">${word(22)}<nav><span>Pricing</span><span>Docs</span><span>Sign in</span></nav></div>
+ <div class="lhero">AI employees for your team.</div>
+</div></section>
+
+<section><h2>App: sidebar, Overlay agent, response loading, tool rows</h2><div class="card app sans">
+ <aside class="sb">
+  <div class="hd">${word(18)}</div>
+  <div class="r">Work</div><div class="r">Chats</div><div class="r">Files</div>
+  <div class="cap">Agents</div>
+  <div class="r on">${mark(20)}Overlay</div>
+  <div class="r">${sales}Sales</div>
+  <div class="r">${research}Research</div>
+ </aside>
+ <div class="chat">
+  <div class="ch">${mark(22)}Overlay<span style="color:var(--muted);font-size:12px">Chief of staff</span></div>
+  <div class="msgs">
+   <div class="u">Prep me for the Acme renewal call tomorrow.</div>
+   <div class="tool">${mark(14,'')}Searched Gmail for "Acme"</div>
+   <div class="tool">${mark(14,'')}Read Q3 usage report</div>
+   <div>Acme's usage is up 40% since spring, mostly from the support team. Two open asks: SSO and a lower per-seat price.</div>
+   <div class="u">Draft a reply to their CFO.</div>
+   <div class="loading">${mark(20,'look')}</div>
+  </div>
+  <div class="comp">Ask Overlay anything</div>
+ </div>
+</div></section>
+
+<section class="row3">
+ <div><h2>Boot loader</h2><div class="card boot">${word(26,'look')}</div></div>
+ <div><h2>Browser tab</h2><div class="card tab sans"><div class="tabbar"><div class="t"><span class="icon" style="width:16px;height:16px;border-radius:4px">${mark(11,'')}</span>Overlay</div><div class="t off">New tab</div></div><div class="url">getoverlay.io</div></div></div>
+ <div><h2>Email</h2><div class="card" style="height:240px"><div class="email sans"><div style="color:#0a0a0a;margin-bottom:18px">${word(20,'')}</div>Your workspace is ready. Overlay, your chief of staff, is waiting for you.</div></div></div>
+</section>`;
+</script>
+</body>
+</html>

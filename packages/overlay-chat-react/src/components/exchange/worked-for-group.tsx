@@ -3,7 +3,7 @@ import { Button } from '@overlay/ui/primitives'
 import { Trace, TraceIcon, TraceLine, TraceTitle } from '@overlay/ui/ai'
 import { ChevronRight } from 'lucide-react'
 
-import { TraceOrb } from './tool-rail'
+import { TraceMark } from './tool-rail'
 
 /** "Worked for 12s" / "Worked for 1m 5s" — the settled-turn label. */
 export function formatWorkDuration(ms: number): string {
@@ -45,7 +45,7 @@ export function WorkedForGroup({
         className={unstyledButton('h-auto w-fit max-w-full rounded-lg p-0 py-1 text-[13px] leading-snug hover:bg-transparent')}
       >
         <TraceLine>
-          <TraceOrb />
+          <TraceMark />
           <TraceTitle>{label}</TraceTitle>
           <TraceIcon className={`transition-transform duration-200 ${expanded ? 'rotate-90' : ''}`}>
             <ChevronRight />

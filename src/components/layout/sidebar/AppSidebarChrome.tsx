@@ -29,7 +29,8 @@ import {
   Button,
 } from '@overlay/ui/primitives'
 import { SidebarListSkeleton } from '@overlay/ui/feedback'
-import { OverlayMark } from '@/components/orb/Orb'
+import { OverlayMark } from '@/components/brand/OverlayMark'
+import { BrandLockup } from '@/components/brand/BrandLockup'
 import { FilesInlinePanel } from '@/components/layout/AppSidebarInlinePanels'
 import { AgentsInlinePanel } from '@/components/layout/AppSidebarAgentsPanel'
 import { SecondaryPanelContent } from './AppSidebarSecondaryPanel'
@@ -45,10 +46,6 @@ import type { MobileNavItemVm, SecondaryPanelKind, SidebarNavItem } from './appS
 /** Default brand mark path. Custom brand configs keep rendering their image. */
 const DEFAULT_BRAND_LOGO_SRC = '/assets/overlay-logo.png'
 
-/**
- * Brand mark: the SVG Overlay orb by default, the configured raster image
- * only when a custom brand overrides the logo (white-label seam).
- */
 function BrandMark({ logoSrc, logoAlt, size, className }: {
   logoSrc: string
   logoAlt?: string
@@ -84,10 +81,16 @@ export function SidebarBrandLink({
 }) {
   return (
     <Link href={href} className={className} onClick={onNavigate}>
-      <BrandMark logoSrc={logoSrc} logoAlt={logoAlt} size={10} className="shrink-0" />
-      <span className={labelClassName} style={{ fontFamily: 'var(--font-serif)' }}>
-        {label}
-      </span>
+      {logoSrc === DEFAULT_BRAND_LOGO_SRC && (label === 'Overlay' || label === 'overlay') ? (
+        <BrandLockup className={labelClassName} />
+      ) : (
+        <>
+          <BrandMark logoSrc={logoSrc} logoAlt={logoAlt} size={10} className="shrink-0" />
+          <span className={labelClassName} style={{ fontFamily: 'var(--font-serif)' }}>
+            {label}
+          </span>
+        </>
+      )}
     </Link>
   )
 }
@@ -120,7 +123,7 @@ export function SidebarRailBrand({
         aria-label="Expand sidebar"
         title="Expand sidebar"
       >
-        <BrandMark logoSrc={logoSrc} logoAlt={logoAlt} size={10} className="shrink-0 group-hover:hidden" />
+        <BrandMark logoSrc={logoSrc} logoAlt={logoAlt} size={logoSrc === DEFAULT_BRAND_LOGO_SRC ? 20 : 10} className="shrink-0 group-hover:hidden" />
         <ChevronRight size={16} className="hidden text-(--foreground) group-hover:block" />
       </Button>
     )
@@ -133,13 +136,19 @@ export function SidebarRailBrand({
         aria-label="Home"
         title="Home"
       >
-        <BrandMark logoSrc={logoSrc} logoAlt={logoAlt} size={10} className="shrink-0" />
-        <span
-          className="truncate text-lg font-medium tracking-tight text-(--foreground)"
-          style={{ fontFamily: 'var(--font-serif)' }}
-        >
-          {label}
-        </span>
+        {logoSrc === DEFAULT_BRAND_LOGO_SRC && (label === 'Overlay' || label === 'overlay') ? (
+          <BrandLockup className="text-lg text-(--foreground)" />
+        ) : (
+          <>
+            <BrandMark logoSrc={logoSrc} logoAlt={logoAlt} size={10} className="shrink-0" />
+            <span
+              className="truncate text-lg font-medium tracking-tight text-(--foreground)"
+              style={{ fontFamily: 'var(--font-serif)' }}
+            >
+              {label}
+            </span>
+          </>
+        )}
       </Link>
       <Button variant="ghost"
         type="button"

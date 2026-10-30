@@ -55,6 +55,7 @@ async function addAgent(
     deletedDefinition?: boolean
     avatarColor?: string
     avatarShape?: string
+    isDefault?: boolean
   },
 ) {
   await convex.run(async (ctx) => {
@@ -68,6 +69,7 @@ async function addAgent(
       visibility: args.visibility, createdByPrincipalId: args.creatorPrincipalId, createdAt: now, updatedAt: now,
       ...(args.avatarColor !== undefined ? { avatarColor: args.avatarColor } : {}),
       ...(args.avatarShape !== undefined ? { avatarShape: args.avatarShape } : {}),
+      ...(args.isDefault !== undefined ? { isDefault: args.isDefault } : {}),
       ...(args.archivedDefinition ? { archivedAt: now } : {}),
       ...(args.deletedDefinition ? { deletedAt: now } : {}),
     })
@@ -485,13 +487,14 @@ describe('fields, assignees and validation', () => {
       visibility: 'creator',
       avatarColor: '#b45309',
       avatarShape: 'hexagon',
+      isDefault: true,
     })
     await addAgent(convex, { principalId: 'p-bob-agent', agentId: 'agent-bob', creatorPrincipalId: 'p-bob', visibility: 'creator' })
     const ctxResult = await convex.query(q('work/workItems:context'), auth('alice')) as {
       principalId: string
       role: string
       canCreateInWorkspace: boolean
-      assignees: Array<{ principalId: string; agentVisibility?: string; avatarColor?: string; avatarShape?: string }>
+      assignees: Array<{ principalId: string; agentVisibility?: string; avatarColor?: string; avatarShape?: string; isDefault?: boolean }>
     }
     expect(ctxResult.principalId).toBe('p-alice')
     expect(ctxResult.canCreateInWorkspace).toBe(true)
@@ -501,6 +504,7 @@ describe('fields, assignees and validation', () => {
     expect(ctxResult.assignees.find((a) => a.principalId === 'p-alice-agent')).toMatchObject({
       avatarColor: '#b45309',
       avatarShape: 'hexagon',
+      isDefault: true,
     })
     expect(ctxResult.assignees.some((a) => a.principalId === 'p-bob-agent')).toBe(false)
     expect(await convex.query(q('work/workItems:context'), auth('gus'))).toBeNull()

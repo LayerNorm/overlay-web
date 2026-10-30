@@ -46,10 +46,9 @@ html.dark {
   color: var(--ov-text);
 }
 
-/* Logo: the lockup SVG is 1.13em tall (ascender to descender), so this height
-   sets the wordmark at the landing nav's 22px. */
+/* The outlined wordmark includes its descender in the viewBox. */
 #navbar .nav-logo {
-  height: 24.86px;
+  height: 24.64px;
 }
 
 /* "Open app": the landing's pill button. */

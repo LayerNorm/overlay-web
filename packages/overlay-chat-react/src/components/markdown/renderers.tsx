@@ -10,7 +10,7 @@ import {
   useHighlightedCode,
 } from '@overlay/ui/ai'
 import { Check, Code2, PanelRightOpen, Play, Plug } from 'lucide-react'
-import { Orb } from '@overlay/ui'
+import { OverlayMark } from '@overlay/ui'
 import { isValidElement, useId, useState, type ReactNode } from 'react'
 import type {
   AttachmentPreview,
@@ -287,7 +287,7 @@ export const baseMdComponents = {
       const standalone = classes.includes('overlay-stream-marker--standalone')
       return (
         <span className={className} aria-hidden="true">
-          <Orb variant="metal" size={standalone ? 20 : 14} animated={false} label="" />
+          <OverlayMark motion="look" size={standalone ? 20 : 14} label="" />
         </span>
       )
     }

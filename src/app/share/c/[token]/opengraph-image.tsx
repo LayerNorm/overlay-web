@@ -1,7 +1,8 @@
 import { ImageResponse } from 'next/og'
+import { OpengraphMark } from '@/components/brand/OpengraphMark'
 import { loadSharedConversation } from '@/server/conversations/load-shared-conversation'
 
-export const alt = 'Shared chat — Overlay'
+export const alt = 'Shared chat - Overlay'
 export const contentType = 'image/png'
 export const size = { width: 1200, height: 630 }
 
@@ -51,25 +52,9 @@ export default async function OpengraphImage(
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-          <div
-            style={{
-              width: 56,
-              height: 56,
-              borderRadius: 14,
-              background: 'white',
-              color: '#0a0a0a',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: 30,
-              fontWeight: 700,
-              letterSpacing: -1,
-            }}
-          >
-            o
-          </div>
+          <OpengraphMark />
           <div style={{ fontSize: 28, fontWeight: 500, letterSpacing: -0.5 }}>
-            overlay
+            Overlay
           </div>
         </div>
 

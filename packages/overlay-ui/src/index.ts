@@ -1,5 +1,6 @@
 export * from './primitives'
-export * from './components/orb/Orb'
+export * from './components/orb/OverlayMark'
+export * from './components/orb/BrandLockup'
 export * from './hooks'
 export * from './feedback'
 export * from './overlays'

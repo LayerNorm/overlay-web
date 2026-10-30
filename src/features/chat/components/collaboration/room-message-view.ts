@@ -256,6 +256,7 @@ export function toRoomMessageView({
   authorPhotoUrl,
   authorColor,
   authorShape,
+  authorIsDefault,
   mentions = [],
   streaming = false,
 }: {
@@ -265,7 +266,8 @@ export function toRoomMessageView({
   authorPhotoUrl?: string
   authorColor?: string
   authorShape?: string
-  mentions?: Array<{ type: string; id: string; name: string; avatarColor?: string; avatarShape?: string }>
+  authorIsDefault?: boolean
+  mentions?: Array<{ type: string; id: string; name: string; avatarColor?: string; avatarShape?: string; isDefault?: boolean }>
   streaming?: boolean
 }): RoomMessageView {
   const mine = isOwnRoomMessage(message, currentPrincipalId)
@@ -303,6 +305,7 @@ export function toRoomMessageView({
     authorKind: message.authorKind,
     authorColor,
     authorShape,
+    authorIsDefault,
     createdAt: message.createdAt,
     eventSequence: message.eventSequence,
     editedAt: message.editedAt,

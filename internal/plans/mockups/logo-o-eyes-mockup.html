@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Overlay logo: the O with eyes</title>
+<link href="https://fonts.googleapis.com/css2?family=Libre+Baskerville:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#fafafa;--fg:#0a0a0a;--muted:#71717a;--card:#fff;--line:#e4e4e7;--side:#f4f4f5}
+html.dark{--bg:#0a0a0a;--fg:#fafafa;--muted:#a1a1aa;--card:#141414;--line:#27272a;--side:#171717}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:'Libre Baskerville',serif}
+header{display:flex;justify-content:space-between;align-items:center;padding:28px 40px}
+h1{font-size:22px;font-weight:400;margin:0}
+button{font:inherit;font-size:13px;background:var(--card);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:6px 12px;cursor:pointer}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;padding:0 40px 40px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:28px;display:flex;flex-direction:column;gap:28px}
+.hero{display:flex;justify-content:center;align-items:flex-end;height:240px;padding:10px 0;font-size:200px;line-height:1}
+.name{font-size:15px}
+.row2{display:flex;align-items:center;justify-content:space-between}
+.word{font-size:34px;letter-spacing:-.01em}
+.sizes{display:flex;align-items:center;gap:16px}
+svg.o{height:1.24em;vertical-align:-.27em;overflow:visible}
+svg.o path,svg.o rect{fill:currentColor}
+.eyes{transform-box:fill-box;transform-origin:center}
+.blink .eyes{animation:blink 5s infinite}
+@keyframes blink{0%,92%,100%{transform:scaleY(1)}95%{transform:scaleY(.1)}}
+.app{display:flex;align-items:center;justify-content:center}
+.chip{display:flex;align-items:center;justify-content:center;border-radius:22%;background:var(--fg);color:var(--bg)}
+.side{background:var(--side);border:1px solid var(--line);border-radius:12px;padding:14px;font-family:ui-sans-serif,system-ui,sans-serif;font-size:13.5px}
+.side .hd{font-family:'Libre Baskerville',serif;font-size:18px;margin:0 0 12px 6px}
+.r{display:flex;align-items:center;gap:10px;padding:6px 8px;border-radius:8px}
+.r.on{background:var(--line)}
+.av{width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center;font-size:16px;line-height:1}
+.av svg.o{vertical-align:0;height:auto;width:20px}
+</style>
+</head>
+<body>
+<header><h1>The o and O with eyes</h1><button onclick="document.documentElement.classList.toggle('dark')">Light / dark</button></header>
+<div class="grid" id="grid"></div>
+<script>
+// Real Libre Baskerville "o" / "O" outlines (font units, y up); eyes sized like the agent creatures.
+// adv = advance width, box = square crop [x, yTop, size] for standalone marks.
+const V={
+ 'Lowercase, Regular':{w:400,word:'verlay',adv:654,box:[20,570,614],d:'M325 540Q382 540 433.0 520.0Q484 500 522.5 463.5Q561 427 583.5 377.5Q606 328 606 269Q606 208 583.5 157.0Q561 106 522.5 68.5Q484 31 433.0 10.5Q382 -10 325 -10Q269 -10 219.0 10.5Q169 31 130.5 68.5Q92 106 70.0 157.0Q48 208 48 269Q48 348 86.0 409.0Q124 470 187.0 505.0Q250 540 325 540ZM325 492Q276 492 239.0 464.0Q202 436 181.5 385.5Q161 335 161 268Q161 165 205.5 103.0Q250 41 325 41Q402 41 447.5 103.0Q493 165 493 268Q493 335 472.0 385.0Q451 435 413.5 463.5Q376 492 325 492Z',eyes:{cx:327,cy:290,w:46,h:96,gap:42}},
+ 'Lowercase, Bold':{w:700,word:'verlay',adv:660,box:[23,570,614],d:'M328 540Q388 540 441.0 520.0Q494 500 535.0 463.5Q576 427 599.5 377.5Q623 328 623 269Q623 208 599.5 157.0Q576 106 535.0 68.5Q494 31 441.0 10.5Q388 -10 328 -10Q269 -10 216.5 10.5Q164 31 123.5 68.5Q83 106 60.0 157.0Q37 208 37 269Q37 348 77.0 409.0Q117 470 183.0 505.0Q249 540 328 540ZM328 482Q288 482 257.5 455.0Q227 428 210.5 380.0Q194 332 194 268Q194 169 230.5 110.0Q267 51 328 51Q391 51 428.5 110.5Q466 170 466 268Q466 332 449.0 380.0Q432 428 401.0 455.0Q370 482 328 482Z',eyes:{cx:330,cy:290,w:44,h:92,gap:36}},
+ 'Uppercase, Regular':{w:400,word:'verlay',adv:946,box:[43,820,860],d:'M473 780Q561 780 636.5 749.5Q712 719 768.5 664.5Q825 610 857.0 537.0Q889 464 889 379Q889 298 857.0 227.0Q825 156 768.0 103.0Q711 50 635.5 20.0Q560 -10 473 -10Q386 -10 310.5 20.0Q235 50 178.0 103.0Q121 156 89.0 227.0Q57 298 57 379Q57 464 89.0 537.0Q121 610 177.5 664.5Q234 719 309.5 749.5Q385 780 473 780ZM473 45Q561 45 625.0 85.5Q689 126 724.0 200.5Q759 275 759 376Q759 483 724.0 561.5Q689 640 625.0 682.5Q561 725 473 725Q385 725 321.0 682.5Q257 640 222.0 561.5Q187 483 187 376Q187 275 222.0 200.5Q257 126 321.0 85.5Q385 45 473 45Z',eyes:{cx:473,cy:415,w:66,h:138,gap:60}},
+ 'Uppercase, Bold':{w:700,word:'verlay',adv:943,box:[42,820,860],d:'M472 780Q562 780 639.5 749.5Q717 719 775.5 664.5Q834 610 866.5 537.0Q899 464 899 379Q899 298 866.0 227.0Q833 156 774.5 103.0Q716 50 638.5 20.0Q561 -10 472 -10Q383 -10 305.5 20.0Q228 50 169.5 103.0Q111 156 78.0 227.0Q45 298 45 379Q45 464 77.5 537.0Q110 610 168.5 664.5Q227 719 304.5 749.5Q382 780 472 780ZM472 55Q550 55 606.5 94.0Q663 133 694.0 205.5Q725 278 725 376Q725 480 694.5 556.0Q664 632 607.0 673.5Q550 715 472 715Q394 715 337.5 673.5Q281 632 250.0 556.0Q219 480 219 376Q219 278 250.0 205.5Q281 133 337.5 94.0Q394 55 472 55Z',eyes:{cx:472,cy:415,w:64,h:134,gap:54}},
+};
+const shape=v=>{const e=v.eyes,x1=e.cx-e.gap/2-e.w,x2=e.cx+e.gap/2,y=e.cy-e.h/2;
+ return `<g transform="scale(1,-1)"><path d="${v.d}"/><g class="eyes"><rect x="${x1}" y="${y}" width="${e.w}" height="${e.h}" rx="${e.w/2}"/><rect x="${x2}" y="${y}" width="${e.w}" height="${e.h}" rx="${e.w/2}"/></g></g>`};
+// Full em box (ascent 970, descent 270) so the glyph sits on the text baseline beside real type.
+const O=(k,cls='')=>{const v=V[k];return `<svg class="o ${cls}" viewBox="0 -970 ${v.adv} 1240" style="width:${v.adv/1000}em" aria-label="Overlay">${shape(v)}</svg>`};
+const Otight=(k,px)=>{const v=V[k],[x,y,s]=v.box;return `<svg class="o" viewBox="${x} -${y} ${s} ${s}" style="width:${px}px;height:${px}px;vertical-align:middle" aria-label="Overlay">${shape(v)}</svg>`};
+const creature=(body)=>`<svg viewBox="0 0 100 100" width="20">${body}<g fill="#fafafa"><rect x="36" y="45" width="9.5" height="17" rx="4.75"/><rect x="54.5" y="45" width="9.5" height="17" rx="4.75"/></g></svg>`;
+document.getElementById('grid').innerHTML=Object.keys(V).map(k=>`
+<div class="card">
+ <div class="hero blink">${O(k,'')}</div>
+ <div class="row2"><span class="word">${O(k)}${V[k].word}</span>
+  <span class="sizes">${Otight(k,32)}${Otight(k,20)}${Otight(k,14)}</span></div>
+ <div class="row2">
+  <span class="sizes">
+   <span class="chip" style="width:64px;height:64px">${Otight(k,44)}</span>
+   <span class="chip" style="width:32px;height:32px">${Otight(k,22)}</span>
+  </span>
+  <div class="side" style="width:220px"><div class="hd">${O(k)}${V[k].word}</div>
+   <div class="r on"><span class="av">${Otight(k,20)}</span>Overlay</div>
+   <div class="r"><span class="av">${creature('<rect x="12" y="14" width="76" height="78" rx="24" fill="#f97316"/>')}</span>Sales</div>
+   <div class="r"><span class="av">${creature('<circle cx="50" cy="53" r="40" fill="#3b82f6"/>')}</span>Research</div>
+  </div>
+ </div>
+ <div class="name">${k}</div>
+</div>`).join('');
+</script>
+</body>
+</html>

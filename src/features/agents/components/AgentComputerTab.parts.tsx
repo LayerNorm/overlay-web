@@ -10,6 +10,7 @@ export function AgentComputerTabView({
   agentName,
   agentColor,
   agentShape,
+  isDefault,
   unavailable = false,
   computer,
   computerLoading,
@@ -28,6 +29,7 @@ export function AgentComputerTabView({
 }: {
   agentName: string
   agentColor?: string
+  isDefault?: boolean
   agentShape?: WorkspaceAgentCreatureShape
   unavailable?: boolean
   computer: Computer | null
@@ -50,6 +52,7 @@ export function AgentComputerTabView({
       <div className="space-y-2">
         <div className="relative flex aspect-[16/10] flex-col items-center justify-center gap-2 overflow-hidden rounded-xl bg-(--surface-subtle) text-center text-xs text-(--muted)">
           <AgentCreature
+            isDefault={isDefault}
             agent={{ name: agentName, avatarColor: agentColor, avatarShape: agentShape }}
             size={44}
           />
@@ -80,6 +83,7 @@ export function AgentComputerTabView({
       <div className="space-y-2">
         <div className="flex aspect-[16/10] flex-col items-center justify-center gap-2 rounded-xl bg-(--surface-subtle) text-xs text-(--muted)">
           <AgentCreature
+            isDefault={isDefault}
             agent={{ name: agentName, avatarColor: agentColor, avatarShape: agentShape }}
             size={44}
           />
