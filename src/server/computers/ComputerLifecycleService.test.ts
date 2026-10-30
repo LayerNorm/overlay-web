@@ -444,6 +444,7 @@ function lifecycleFixture(options: {
     async claimComputerMaintenance(args: {
       workspaceId: string; leaseId: string; kind: 'provision' | 'wake' | 'stop' | 'delete' | 'idle'
       token: string; now: number; expiresAt: number; force?: boolean; reconcileToken?: string
+      recoveryProtocol?: 'computer-recovery-v1'
       actorUserId?: string; expectedProviderReference?: string | null
     }) {
       if (args.kind === 'wake' && nullWakeClaims > 0) {
@@ -456,6 +457,9 @@ function lifecycleFixture(options: {
       const usage = lease.usage
       const lifecycle = (usage.computerLifecycle ?? {}) as Record<string, unknown>
       const current = lifecycle.maintenance as { token?: string; expiresAt?: number; kind?: string } | undefined
+      if (args.kind === 'stop' && args.force === false) {
+        assert.equal(args.recoveryProtocol, 'computer-recovery-v1')
+      }
       if (args.reconcileToken && (current?.token !== args.reconcileToken || (current.expiresAt ?? Infinity) > args.now)) return null
       if (args.reconcileToken && args.kind === 'stop' && !args.force) {
         const activity = lifecycle.activityTokens as Record<string, { expiresAt?: number }> | undefined

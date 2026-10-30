@@ -286,10 +286,13 @@ describe('Convex computers repository surface', () => {
     const recovery = {
       workspaceId: 'ws_1', leaseId: 'computer:computer_recovery', kind: 'stop', token: 'recovery',
       expectedProviderReference: 'box-ref', reconcileToken: 'abandoned', force: false,
+      recoveryProtocol: 'computer-recovery-v1',
       now: 5_000, expiresAt: 365_000, serverSecret: secret,
     }
     const claim = agentMutationRef('claimComputerMaintenanceByServer')
-    expect(await convex.mutation(claim, { ...recovery, now: 1_500, force: true })).toBeNull()
+    expect(await convex.mutation(claim, { ...recovery, reconcileToken: undefined })).toBeNull()
+    expect(await convex.mutation(claim, { ...recovery, force: true })).toBeNull()
+    expect(await convex.mutation(claim, { ...recovery, now: 1_500 })).toBeNull()
     expect(await convex.mutation(claim, { ...recovery, now: 3_000 })).toBeNull()
     expect(await convex.mutation(claim, { ...recovery, reconcileToken: 'stale' })).toBeNull()
     expect(await convex.mutation(claim, recovery)).toMatchObject({ token: 'recovery' })

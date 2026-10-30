@@ -434,6 +434,7 @@ export class ComputerLifecycleService {
       workspaceId: computer.workspaceId, leaseId: lease.id, kind: claimedKind, token, now: this.now(),
       expiresAt: this.now() + MAINTENANCE_MS, force: !reconcileToken && kind !== 'idle',
       actorUserId, expectedProviderReference: computer.providerRef,
+      ...(reconcileToken ? { recoveryProtocol: 'computer-recovery-v1' as const } : {}),
       ...(kind === 'idle' ? { idleBefore: this.now() - 10 * 60_000 } : {}),
       ...(kind === 'idle' ? { ownerType: computer.ownerType, ownerId: computer.ownerId } : {}),
       ...(existing?.token && (existing.expiresAt ?? 0) <= this.now() ? { reconcileToken: existing.token } : {}),
