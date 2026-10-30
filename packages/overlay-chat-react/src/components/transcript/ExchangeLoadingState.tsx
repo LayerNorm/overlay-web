@@ -1,17 +1,6 @@
 import type { AssistantVisualBlock, ChatExchangeStatus } from '@overlay/chat-core'
 import { OverlayMark } from '@overlay/ui'
 import React from 'react'
-import { ToolLineLogo } from '../exchange/tool-rail'
-
-export const EXCHANGE_LOADING_LABELS = [
-  'Thinking',
-  'Contemplating',
-  'Comprehending',
-  'Reasoning',
-  'Pondering',
-  'Considering',
-  'Still generating; the answer will appear when complete',
-] as const
 
 const ACTIVE_EXCHANGE_STATUSES = new Set<ChatExchangeStatus>([
   'submitted',
@@ -28,22 +17,11 @@ export interface ExchangeLoadingPresentation {
 
 export function exchangeLoadingPresentation(
   status: ChatExchangeStatus,
-  blocks: readonly AssistantVisualBlock[],
+  _blocks: readonly AssistantVisualBlock[],
 ): ExchangeLoadingPresentation {
+  void _blocks
   const active = ACTIVE_EXCHANGE_STATUSES.has(status)
-  if (!active) return { active: false, inlineTextMarker: false, marker: 'none' }
-  if (blocks.length === 0) {
-    return { active: true, inlineTextMarker: false, marker: 'standalone' }
-  }
-
-  const lastBlock = blocks[blocks.length - 1]
-  if (status === 'streaming' && lastBlock?.kind === 'text') {
-    return { active: true, inlineTextMarker: true, marker: 'none' }
-  }
-  if (status === 'executing-tool' || status === 'awaiting-approval') {
-    return { active: true, inlineTextMarker: false, marker: 'none' }
-  }
-  return { active: true, inlineTextMarker: false, marker: 'compact' }
+  return { active, inlineTextMarker: false, marker: active ? 'standalone' : 'none' }
 }
 
 export function ExchangeLoadingState({
@@ -51,40 +29,17 @@ export function ExchangeLoadingState({
 }: {
   presentation: ExchangeLoadingPresentation
 }) {
-  if (presentation.marker === 'none') return null
-  const compact = presentation.marker === 'compact'
+  if (!presentation.active || presentation.marker === 'none') return null
   return (
     <div
-      className={`flex px-1 ${compact ? 'min-h-5 items-center py-1' : 'items-center gap-[0.4em] py-1 text-[13px] leading-snug'}`}
+      className="flex items-center px-1 py-1 text-(--muted)"
       aria-live="polite"
       aria-busy="true"
-      aria-label={compact ? 'Response still generating' : 'Thinking'}
+      aria-label="Overlay is responding"
       role="status"
-      data-loading-presentation={presentation.marker}
+      data-loading-presentation="standalone"
     >
-      {compact ? (
-        <span
-          className="overlay-stream-marker overlay-stream-marker--standalone scale-75"
-          aria-hidden="true"
-        >
-          <OverlayMark motion="look" size={20} label="" />
-        </span>
-      ) : (
-        <>
-          <span className="overlay-loading-tool-logo" aria-hidden="true">
-            <ToolLineLogo running />
-          </span>
-          <span className="overlay-loading-word-viewport" aria-hidden="true">
-            <span className="overlay-loading-word-track">
-              {[...EXCHANGE_LOADING_LABELS, EXCHANGE_LOADING_LABELS[0]].map((label, index) => (
-                <span className="overlay-loading-word tool-line-shimmer" key={`${label}-${index}`}>
-                  {label}
-                </span>
-              ))}
-            </span>
-          </span>
-        </>
-      )}
+      <OverlayMark motion="look" size={24} label="" />
     </div>
   )
 }

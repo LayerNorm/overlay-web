@@ -1,6 +1,5 @@
 import { ArrowUp, Bot, ChevronDown, ChevronRight, Ellipsis, Lock, ListChecks, MessageSquare, PanelLeft, Plus, RotateCw, Search, Workflow } from 'lucide-react'
 import { BrandLockup } from '@/components/brand/BrandLockup'
-import { OverlayMark } from '@/components/brand/OverlayMark'
 import { LandingAgent, type LandingAgentId } from './LandingAgent'
 
 const NAV = [
@@ -79,7 +78,7 @@ export function LandingProductShot() {
           <div className="m-agent">
             <LandingAgent id="operations" size={20} />
             <div>
-              <div className="steps"><OverlayMark size={13} label="" />Worked for 2m 14s, called 9 tools<ChevronRight className="i sm" /></div>
+              <div className="steps">Worked for 2m 14s, called 9 tools<ChevronRight className="i sm" /></div>
               <div>Three venues fit the dates and budget. I added them to the planning doc:</div>
               <ol>
                 <li><b>Casa do Rio</b>, €3,450, river view</li>

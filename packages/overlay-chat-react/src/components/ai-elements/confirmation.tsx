@@ -8,7 +8,7 @@ function join(...classes: Array<string | false | null | undefined>): string {
   return classes.filter(Boolean).join(' ')
 }
 
-/** Tool approval card: flat fill, mark, title, requests, Approve / Deny. */
+/** Tool approval card: flat fill, title, requests, Approve / Deny. */
 export function Confirmation({ className, ...props }: ComponentProps<'div'>) {
   return (
     <div
@@ -21,11 +21,7 @@ export function Confirmation({ className, ...props }: ComponentProps<'div'>) {
 }
 
 export function ConfirmationIcon({ running = false }: { running?: boolean }) {
-  return (
-    <span className="mt-0.5 flex shrink-0">
-      <TraceMark running={running} />
-    </span>
-  )
+  return <TraceMark running={running} />
 }
 
 export function ConfirmationBody({ className, ...props }: ComponentProps<'div'>) {

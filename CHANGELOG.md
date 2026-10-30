@@ -4,7 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
-- Match tool-call and thinking marks to their label text size so the O and eyes remain legible.
+- Use text-only tool, reasoning, worked-for and approval rows, with one 24px look-motion mark below active assistant output; only its eyes move.
 
 - Replace Overlay web branding and static assets with the O-with-eyes mark, capitalized lockup, eye-motion loaders and record-backed default-agent avatar.
 

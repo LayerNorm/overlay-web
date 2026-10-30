@@ -491,7 +491,7 @@ screen again.
 
 ## Brand lockup
 
-Tool-call summaries, tool rows and labeled loading rows use the O mark at `1em`, matching the label's font size, centered vertically with a `0.4em` gap. Running marks move only their eyes. This sizing is independent of the wordmark below.
+Tool, reasoning, worked-for, trace, confirmation and approval rows are logo-free. Active assistant responses show one 24px `OverlayMark motion="look"` below the complete output, and the mark disappears when the response settles. Only its eyes move. `ChatExchange` suppresses the generic inline Markdown marker, which remains available to other consumers.
 
 `BrandLockup` (`src/components/brand/BrandLockup.tsx`, re-exported from `@overlay/ui`) is the canonical "Overlay" wordmark: the O-with-eyes `OverlayMark` followed by "verlay" in Libre Baskerville Regular. Size it with `font-size`. Shared styles in `packages/overlay-ui/src/styles.css` use a `0.86em` mark, a `0.043em` gap and a `0.045em` baseline translation. The word sits inside the overflow-hidden `.brand-lockup-mask` so the boot entrance can reveal it from behind the mark. Use the shared component for loader, auth, marketing and shell branding rather than composing a separate mark and full word.
 
@@ -535,7 +535,7 @@ avatar. Sidebar rows without a conversation open the automation itself.
 
 ## Chat AI primitives (`@overlay/ui/ai`)
 
-Chat surfaces build on shadcn AI Elements primitives copied into `packages/overlay-ui/src/components/ui` and exported from `@overlay/ui/ai` (kept out of the main barrel so Shiki only loads where chat renders): `Message`, `Bubble`, `Trace`, `CodeBlock` (+ `useHighlightedCode`, Shiki JS engine, GitHub light/dark themes that presets never tint), `MessageScroller` (`@shadcn/react`), `Item`, `InputGroup`, `Attachment`, `HoverCard`, `Collapsible`, `Spinner`. Upstream semantic classes are rewritten to Overlay variables (`bg-(--surface-subtle)`, `text-(--muted)`, `text-(--danger)`); `--muted` is a text color here, so never add a `--color-muted` theme alias. Every Trace step uses `TraceMark` with `OverlayMark` in `TraceIcon`: `motion="look"` while running and `motion="none"` when done. The mark never opacity-pulses or size-pulses. A running step's title shimmers (CSS in `styles.css`, off under reduced motion).
+Chat surfaces build on shadcn AI Elements primitives copied into `packages/overlay-ui/src/components/ui` and exported from `@overlay/ui/ai` (kept out of the main barrel so Shiki only loads where chat renders): `Message`, `Bubble`, `Trace`, `CodeBlock` (+ `useHighlightedCode`, Shiki JS engine, GitHub light/dark themes that presets never tint), `MessageScroller` (`@shadcn/react`), `Item`, `InputGroup`, `Attachment`, `HoverCard`, `Collapsible`, `Spinner`. Upstream semantic classes are rewritten to Overlay variables (`bg-(--surface-subtle)`, `text-(--muted)`, `text-(--danger)`); `--muted` is a text color here, so never add a `--color-muted` theme alias. Trace rows are text-only; `TraceMark`, `ToolLineLogo` and `ToolLogoColumn` remain empty compatibility exports. Running titles may shimmer (CSS in `styles.css`, off under reduced motion). The one active-response mark is 24px and sits after all assistant output.
 
 Visual rules for these and every new component:
 
@@ -559,8 +559,9 @@ unbroken value must not force an otherwise narrow table beyond the chat pane.
 
 Render streamed text as complete formatted chunks. Markdown defaults to paragraph
 blocks plus a shimmed in-flight tail, with no per-character pacing or character
-spans. Room/agent transcripts suppress inline markers and keep one loading-dots
-row at the bottom throughout the run, including while tools are working.
+spans. Room/agent transcripts suppress inline markers and keep one 24px
+`OverlayMark motion="look"` at the bottom throughout the run, including while
+tools are working.
 
 Keep the message action rail visible whenever it offers Stop. An active reply's
 Stop control must not require hovering the message; completed messages retain

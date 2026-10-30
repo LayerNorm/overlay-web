@@ -10,7 +10,7 @@ import type { ReactNode } from 'react'
 
 import { TraceMark } from './tool-rail'
 
-/** One work step: the mark and a title, plus details behind a collapsible trigger when there are any. */
+/** One work step: a title, plus details behind a collapsible trigger when there are any. */
 export function TraceStep({
   label,
   running,
