@@ -8,10 +8,10 @@ import { fallbackChatTitle, sanitizeChatTitle } from '@/shared/chat/chat-title'
 import { isPaidPlan, type Entitlements } from '@overlay/billing'
 import { extractTitle } from './extract-title'
 import { runTitleAttempts } from './title-attempts'
+import { buildTitleRequest } from './title-request'
 
 const TITLE_MODEL_ID = 'z-ai/glm-5.3-flash'
 const FALLBACK_TITLE = 'New Chat'
-const MAX_PROMPT_CHARS = 1200
 const MAX_OUTPUT_TOKENS = 2048
 
 const TITLE_INSTRUCTIONS =
@@ -39,8 +39,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const fallback = fallbackChatTitle(text)
     if (!entitlements || !isPaidPlan(entitlements)) return NextResponse.json({ title: fallback })
 
-    const prompt = `Generate a concise title for a conversation that starts with this message:\n\n${text.slice(0, MAX_PROMPT_CHARS)}`
-    const estimatedInputTokens = Math.ceil(Math.min(text.length, MAX_PROMPT_CHARS) / 4) + 80
+    const { prompt, estimatedInputTokens } = buildTitleRequest(text, TITLE_INSTRUCTIONS)
 
     const outcome = await runTitleAttempts(
       (abortSignal) => generateTitleWithModel({
