@@ -83,6 +83,38 @@ test('a broken equation does not throw', () => {
   assert.doesNotThrow(() => rendered('Bad $\\frac{1}{$ math'))
 })
 
+test('unfinished escaped displays never expose internal link placeholders', () => {
+  const prefix = 'Before the equation; keep this prose.\n\n'
+  const chunks = [
+    String.raw`\[
+CL_H=\frac{Q_H f_{u,p}`,
+    String.raw` CL_{\mathrm{int}}}{Q_H+f_{u,p}CL_{\mathrm{int}}}`,
+    '\n\\]\n\nAfter the equation; ordinary prose.',
+  ]
+  let text = prefix
+  for (const chunk of chunks) {
+    text += chunk
+    const html = rendered(text, true)
+    assert.doesNotMatch(html, /streamdown:incomplete-link/)
+    assert.match(html, /Before the equation; keep this prose\./)
+  }
+  for (const streaming of [true, false]) {
+    const html = rendered(text, streaming)
+    assert.match(html, /katex-display/)
+    assert.doesNotMatch(html, /katex-error/)
+    assert.match(html, /After the equation; ordinary prose\./)
+  }
+})
+
+test('unfinished links retain their text and completed links retain their destination', () => {
+  for (const text of ['Read [the guide', 'Read [the guide](', 'Read [the guide](https://example.com']) {
+    const html = rendered(text, true)
+    assert.match(html, /the guide/)
+    assert.doesNotMatch(html, /streamdown:incomplete-link|href=/)
+  }
+  assert.match(rendered('Read [the guide](https://example.com).'), /href="https:\/\/example.com"/)
+})
+
 test('fenced code renders the shared Code Block', () => {
   assert.match(rendered('```python\na = 1\n```'), /data-slot="code-block"/)
 })

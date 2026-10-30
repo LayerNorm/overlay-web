@@ -251,6 +251,7 @@ function MarkdownMessageImpl({
         mode="streaming"
         isAnimating={isStreaming}
         parseIncompleteMarkdown
+        remend={STREAMDOWN_REMEND}
         controls={false}
         remarkPlugins={activeRemarkPlugins}
         rehypePlugins={streamdownRehypePlugins}
@@ -269,6 +270,8 @@ function MarkdownMessageImpl({
 }
 
 const STREAMDOWN_PLUGINS = { math: streamdownMath }
+// Escaped, unfinished TeX brackets must not expose internal link placeholder URLs.
+const STREAMDOWN_REMEND = { linkMode: 'text-only' as const }
 
 function sameWebSources(a?: WebSourceItem[], b?: WebSourceItem[]): boolean {
   if (a === b) return true
