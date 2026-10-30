@@ -113,9 +113,10 @@ function isSourcesOpenForMessage(message: UIMessage, sourcesPanel: TextChatMessa
   return !!turnId && sourcesPanel?.turnId === turnId
 }
 
-function areTextChatMessagePropsEqual(prev: TextChatMessageProps, next: TextChatMessageProps): boolean {
+export function areTextChatMessagePropsEqual(prev: TextChatMessageProps, next: TextChatMessageProps): boolean {
   if (prev.message !== next.message || prev.exchangeIndex !== next.exchangeIndex) return false
   if (prev.latestExchangeIndex !== next.latestExchangeIndex) return false
+  if (prev.isActiveLoading !== next.isActiveLoading) return false
 
   const exchangeIndex = next.exchangeIndex
   if (exchangeIndex === next.latestExchangeIndex) return false

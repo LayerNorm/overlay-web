@@ -105,11 +105,13 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
           contentType,
           parts: normalizedParts,
           modelId,
-          variantIndex: 0,
+          variantIndex: body.variantIndex ?? 0,
           ...(body.replyToTurnId?.trim()
             ? { replyToTurnId: body.replyToTurnId.trim(), replySnippet: body.replySnippet?.trim() }
             : {}),
         })
+
+    if (!messageId) throw new Error('Failed to save message')
 
     // Record message activity and publish workspace.mention lifecycle events for
     // human @-mentions in workspace conversations (DMs and channels).

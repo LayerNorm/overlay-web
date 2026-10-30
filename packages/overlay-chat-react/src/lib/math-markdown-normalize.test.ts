@@ -10,6 +10,30 @@ import {
   normalizeAssistantMathMarkdown,
 } from './math-markdown-normalize'
 
+test('keeps clearance equations separate from the surrounding paragraph', () => {
+  const input = String.raw`The target concentration is \(C_{target,total}=C_{target,unbound}/f_{u,p}\). The product is \(CL \times C_{target,total}\) and protein binding cancels out.`
+  assert.equal(normalizeAssistantMathMarkdown(input), String.raw`The target concentration is $C_{target,total}=C_{target,unbound}/f_{u,p}$. The product is $CL \times C_{target,total}$ and protein binding cancels out.`)
+})
+
+test('does not promote a bare equation followed by prose into one display block', () => {
+  const input = String.raw`CL = f_{u,p} \times CL_{int}. The product is independent of protein binding and this remains true at the target concentration.`
+  assert.equal(normalizeAssistantMathMarkdown(input), input)
+})
+
+test('escaped inline delimiters allow nested parentheses and square brackets', () => {
+  const input = String.raw`Use \(f(x) = [\alpha + g(x)]\) here.`
+  assert.equal(normalizeAssistantMathMarkdown(input), String.raw`Use $f(x) = [\alpha + g(x)]$ here.`)
+})
+
+test('math normalization leaves code examples untouched', () => {
+  for (const input of [
+    'Use `\\(x^2\\)` literally.',
+    '```tex\n\\[x^2\\]\n```',
+    '~~~tex\n\\(f(x)\\)\n~~~',
+    '```tex\n\\[unfinished\\]',
+  ]) assert.equal(normalizeAssistantMathMarkdown(input), input)
+})
+
 test('promotes heavy one-line $$…$$ after prose to flow math fences', () => {
   const input = 'So R has the form $$\\begin{bmatrix} a \\end{bmatrix}$$ and more.'
   const out = promoteHeavyInlineMathToFlowBlocks(input)
@@ -31,6 +55,20 @@ test('leaves short inline $$…$$ alone', () => {
 test('converts short inline $$…$$ to standard inline math', () => {
   const input = 'Lift ($$C_L$$) is fine.'
   assert.equal(normalizeDoubleDollarMath(input), 'Lift ($C_L$) is fine.')
+})
+
+test('preserves standalone single-line dollar equations as display math', () => {
+  for (const equation of [String.raw`h(x)=\sqrt{1+\left[\log(1+x)\right]^2}.`, 'E=mc^2', '2']) {
+    const input = `Before.\n\n$$${equation}$$\n\nAfter.`
+    const normalized = normalizeAssistantMathMarkdown(input).replace(/\n{3,}/g, '\n\n')
+    assert.equal(normalized, `Before.\n\n$$\n${equation}\n$$\n\nAfter.`)
+  }
+})
+
+test('does not promote compact dollar equations sharing a line with prose', () => {
+  for (const input of ['$$x+y$$ is the sum.', 'The sum is $$x+y$$', 'Use $$x+y$$ and $$x-y$$ here.']) {
+    assert.equal(normalizeAssistantMathMarkdown(input), input.replaceAll('$$', '$'))
+  }
 })
 
 test('keeps heavy inline $$…$$ as display math fences', () => {
@@ -74,6 +112,14 @@ test('keeps compact numeric equations as inline math', () => {
   assert.equal(normalizeAssistantMathMarkdown(input), input)
 })
 
+test('keeps tightly delimited numeric math without confusing adjacent currency amounts', () => {
+  for (const value of ['0.2', '42', '1.25']) {
+    assert.equal(normalizeAssistantMathMarkdown(`The value is \\(${value}\\).`), `The value is $${value}$.`)
+    assert.equal(normalizeAssistantMathMarkdown(`The value is $${value}$.`), `The value is $${value}$.`)
+  }
+  assert.equal(normalizeAssistantMathMarkdown('Prices: $5 $10 and $12.50 per seat.'), 'Prices: \\$5 \\$10 and $12.50 per seat.')
+})
+
 test('promotes raw matrix assignment lines to display math', () => {
   const input = 'where:\nL = \\begin{bmatrix} 1 & 0 \\\\ l_{21} & 1 \\end{bmatrix}, \\quad U = \\begin{bmatrix} u_{11} & u_{12} \\\\ 0 & u_{22} \\end{bmatrix}'
   const out = normalizeBareLatexLines(input)
@@ -89,6 +135,23 @@ test('promotes raw Doolittle formula tail after prose prefix', () => {
     out,
     '2. The formulas:\n\n$$\nU_{i,j} = A_{i,j} - \\sum_{k=1}^{j-1} L_{i,k} U_{k,j} \\quad \\text{for } i \\le j\n$$\n',
   )
+})
+
+test('consumes complete identifiers and nested suffix arguments', () => {
+  const input = String.raw`The clearance: CL_{\text{int}} = \frac{a}{b}`
+  const out = normalizeBareLatexLines(input)
+  assert.equal(out, String.raw`The clearance:
+
+$$
+CL_{\text{int}} = \frac{a}{b}
+$$
+`)
+})
+
+test('does not backtrack through long suffix runs without an equation', () => {
+  for (const input of [`A_${'!_'.repeat(400)}`, `A^${'!^'.repeat(400)}`]) {
+    assert.equal(normalizeBareLatexLines(input), input)
+  }
 })
 
 test('normalizeAssistantMathMarkdown runs delimiter + promotion', () => {
