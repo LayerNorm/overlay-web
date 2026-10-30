@@ -1,7 +1,6 @@
 import 'server-only'
 
 import { tool } from 'ai'
-import { z } from 'zod/v3'
 import { getServerProviderKey } from '@/server/ai/gateway/server-provider-keys'
 import { getGatewayModelId } from '@/server/ai/gateway/gateway-runtime'
 import { getOverlayServerContext } from '@/server/bootstrap'
@@ -15,6 +14,34 @@ import {
   mergeExactEntityFallbackResults,
   searchResults,
 } from './web-search-entity'
+import {
+  deepSearchInputSchema,
+  webFetchInputSchema,
+  webSearchInputSchema,
+} from './web-search-schemas'
+import type {
+  DeepSearchInput,
+  WebFetchInput,
+  WebSearchInput,
+} from './web-search-schemas'
+import {
+  capFetchText,
+  compactObject,
+  mergeSearchOutputs,
+  splitDomainFilter,
+  tavilyCountryName,
+} from './web-search-utils'
+
+export {
+  deepSearchInputSchema,
+  webFetchInputSchema,
+  webSearchInputSchema,
+}
+export type {
+  DeepSearchInput,
+  WebFetchInput,
+  WebSearchInput,
+}
 
 const ELO_BASE_URL = 'https://api.withgrowl.com/v1'
 const TINYFISH_SEARCH_URL = 'https://api.search.tinyfish.ai'
@@ -35,80 +62,6 @@ export type WebSearchBillingContext = {
   userId: string
   workspaceId?: string
 }
-
-export const webSearchInputSchema = z.object({
-  query: z
-    .union([z.string().min(1), z.array(z.string().min(1)).min(1).max(5)])
-    .describe('The search query, or up to 5 queries to batch'),
-  maxResults: z.number().int().min(1).max(20).optional(),
-  searchDomainFilter: z
-    .array(z.string().min(1))
-    .max(20)
-    .optional()
-    .describe("Allowlist e.g. arxiv.org — or '-reddit.com' to exclude (max 20)"),
-  searchRecencyFilter: z
-    .enum(['day', 'week', 'month', 'year'])
-    .optional()
-    .describe('Relative time window. Use day/week for news'),
-  searchAfterDate: z.string().optional().describe('YYYY-MM-DD'),
-  searchBeforeDate: z.string().optional().describe('YYYY-MM-DD'),
-  country: z
-    .string()
-    .length(2)
-    .optional()
-    .describe("ISO 3166-1 alpha-2 (e.g. 'US')"),
-})
-
-export const deepSearchInputSchema = z.object({
-  objective: z
-    .string()
-    .min(1)
-    .max(5000)
-    .describe(
-      'Natural-language research goal; for academic work say so and name domains (e.g. arxiv, PubMed).',
-    ),
-  searchQueries: z
-    .array(z.string().min(1).max(200))
-    .max(6)
-    .optional()
-    .describe('Short keyword queries (2-3 work best) to supplement the objective'),
-  effort: z
-    .enum(['fast', 'standard', 'deep'])
-    .optional()
-    .describe('Retrieval thoroughness; default deep'),
-  maxResults: z.number().int().min(1).max(20).optional(),
-  includeDomains: z.array(z.string().min(1)).optional(),
-  excludeDomains: z.array(z.string().min(1)).optional(),
-  afterDate: z
-    .string()
-    .optional()
-    .describe('YYYY-MM-DD; only include sources published after this date'),
-  maxCharsPerResult: z.number().int().min(200).max(20_000).optional(),
-  maxCharsTotal: z.number().int().min(2000).max(200_000).optional(),
-  maxAgeSeconds: z.number().int().min(600).optional(),
-})
-
-export const webFetchInputSchema = z.object({
-  urls: z
-    .array(z.string().url())
-    .min(1)
-    .max(10)
-    .describe('One or more URLs to fetch (up to 10)'),
-  format: z.enum(['markdown', 'html', 'json']).optional(),
-  maxCharsPerPage: z.number().int().min(500).max(100_000).optional(),
-  ttl: z
-    .number()
-    .int()
-    .min(0)
-    .optional()
-    .describe('Cache freshness in seconds; 0 forces a live fetch'),
-  includeSelectors: z.array(z.string().min(1)).max(20).optional(),
-  excludeSelectors: z.array(z.string().min(1)).max(20).optional(),
-})
-
-export type WebSearchInput = z.infer<typeof webSearchInputSchema>
-export type DeepSearchInput = z.infer<typeof deepSearchInputSchema>
-export type WebFetchInput = z.infer<typeof webFetchInputSchema>
 
 export function buildTinyfishSearchParams(
   query: string,
@@ -531,71 +484,4 @@ export async function getWebFetchTool(
     inputSchema: webFetchInputSchema,
     execute: async (input) => executeWebFetch(input, billingContext),
   })
-}
-
-function mergeSearchOutputs(queries: string[], outputs: unknown[]): Record<string, unknown> {
-  const seenUrls = new Set<string>()
-  const results: Record<string, unknown>[] = []
-  const answers: string[] = []
-  for (let i = 0; i < outputs.length; i++) {
-    for (const result of searchResults(outputs[i])) {
-      const url = typeof result.url === 'string' ? result.url : ''
-      if (url && seenUrls.has(url)) continue
-      if (url) seenUrls.add(url)
-      results.push(queries.length > 1 ? { ...result, query: queries[i] } : result)
-    }
-    const answer = outputs[i] && typeof outputs[i] === 'object'
-      ? (outputs[i] as Record<string, unknown>).answer
-      : undefined
-    if (typeof answer === 'string' && answer.trim()) answers.push(answer)
-  }
-  const out: Record<string, unknown> = { results }
-  if (answers.length) out.answers = answers
-  if (queries.length > 1) out.queries = queries
-  return out
-}
-
-function capFetchText(output: unknown, maxCharsPerPage: number): unknown {
-  if (typeof output !== 'object' || output === null || !Array.isArray((output as Record<string, unknown>).results)) {
-    return output
-  }
-  const results = (output as { results: Record<string, unknown>[] }).results.map((result) => {
-    if (typeof result.text === 'string' && result.text.length > maxCharsPerPage) {
-      return { ...result, text: result.text.slice(0, maxCharsPerPage), truncated: true }
-    }
-    return result
-  })
-  return { ...(output as Record<string, unknown>), results }
-}
-
-// Tavily's `country` takes an English country name, not an ISO code.
-const regionNames = new Intl.DisplayNames(['en'], { type: 'region' })
-function tavilyCountryName(alpha2: string | undefined): string | undefined {
-  if (!alpha2) return undefined
-  const code = alpha2.toUpperCase()
-  try {
-    const name = regionNames.of(code)
-    // of() echoes the input back for well-formed but unknown codes — omit those.
-    return name && name !== code ? name : undefined
-  } catch (_error) {
-    return undefined
-  }
-}
-
-function splitDomainFilter(filter: string[] | undefined): { include: string[]; exclude: string[] } {
-  const include: string[] = []
-  const exclude: string[] = []
-  for (const entry of filter ?? []) {
-    if (entry.startsWith('-')) exclude.push(entry.slice(1))
-    else include.push(entry)
-  }
-  return { include, exclude }
-}
-
-function compactObject(input: Record<string, unknown>): Record<string, unknown> {
-  return Object.fromEntries(
-    Object.entries(input).filter(([, value]) => (
-      Array.isArray(value) ? value.length > 0 : value !== undefined && value !== null
-    )),
-  )
 }
