@@ -9,9 +9,11 @@ import { useChatStopController } from './useChatStopController'
 function renderStopAction({
   conversationId,
   cleanup,
+  activateWhileStopping = false,
 }: {
   conversationId: string
   cleanup: string[]
+  activateWhileStopping?: boolean
 }) {
   const message = { id: 'user-message', role: 'user', parts: [{ type: 'text', text: 'hello' }] }
   const runtime = {
@@ -19,7 +21,17 @@ function renderStopAction({
     actChat: {
       messages: [message],
       status: 'streaming',
-      stop: () => cleanup.push('act stop'),
+      stop: () => {
+        cleanup.push('act stop')
+        if (activateWhileStopping) {
+          queueMicrotask(() => {
+            runtime.askChats[0]!.messages = []
+            runtime.actChat.messages = []
+            activeChatIdRef.current = conversationId
+            cleanup.push('first turn activated')
+          })
+        }
+      },
     },
     ui: {},
   }
@@ -83,6 +95,32 @@ test('stopping a pending first turn uses its real conversation id when the activ
     'act messages:1',
     'interrupted:0',
     'render',
+  ])
+})
+
+test('first-turn activation during backend cancellation cannot replace the visible transcript with the reset preview', async (t) => {
+  const cleanup: string[] = []
+  t.mock.method(overlayAppClient.conversations, 'stopResponse', async () => {
+    await Promise.resolve()
+    cleanup.push('backend cancelled')
+    return new Response(null, { status: 200 })
+  })
+
+  await renderStopAction({
+    conversationId: 'conversation-pending',
+    cleanup,
+    activateWhileStopping: true,
+  })
+
+  assert.deepEqual(cleanup, [
+    'ask stop',
+    'act stop',
+    'chat messages:1',
+    'act messages:1',
+    'interrupted:0',
+    'render',
+    'first turn activated',
+    'backend cancelled',
   ])
 })
 

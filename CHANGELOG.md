@@ -5,6 +5,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 ## Unreleased
 
 - Render durable personal-run input requests, persist authenticated approval-resumed tool outcomes, and use one plain-language interruption notice without duplicate copy.
+- Preserve the visible first-turn transcript when Stop activates the saved conversation during backend cancellation.
 
 - Unify personal Chat and Work into one durable Chat experience with backend-capability-selected execution, while preserving approval, billing, and usage-limit checks.
 

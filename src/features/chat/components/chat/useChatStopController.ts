@@ -63,8 +63,16 @@ export function useChatStopController({
     const userTurns = primaryMessages.filter((message) => message.role === 'user').length
     const idx = userTurns > 0 ? userTurns - 1 : -1
     const chatId = activeChatIdRef.current ?? activeChatId
+    const askMessages = [...runtime.askChats[0].messages] as UIMessage[]
+    const actMessages = [...runtime.actChat.messages] as UIMessage[]
     activeAskChats.forEach((chat) => chat.stop())
     runtime.actChat.stop()
+
+    // First-turn activation can reset this runtime while backend cancellation awaits.
+    chat0.setMessages(askMessages)
+    actChat.setMessages(actMessages)
+    if (idx >= 0) setInterruptedExchangeIdx(idx)
+    forceLiveSyncRender()
 
     if (chatId) {
       try {
@@ -79,12 +87,6 @@ export function useChatStopController({
         toast.error('Could not confirm that the response stopped. It may still be running.')
       }
     }
-
-    chat0.setMessages([...runtime.askChats[0].messages] as UIMessage[])
-    actChat.setMessages([...runtime.actChat.messages] as UIMessage[])
-
-    if (idx >= 0) setInterruptedExchangeIdx(idx)
-    forceLiveSyncRender()
 
     if (!chatId) return
     setTimeout(() => {
