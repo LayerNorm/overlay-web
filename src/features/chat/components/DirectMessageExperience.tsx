@@ -361,6 +361,7 @@ export function DirectMessageExperience({
               <SurfaceReadOnlyComposer surfacePlatform={transcript.surfacePlatform} />
             ) : (
               <RoomComposer
+                conversationId={conversationId}
                 guided={guided?.composer ?? undefined}
                 composer={composer}
                 mentionCategories={vm.mentionCategories}

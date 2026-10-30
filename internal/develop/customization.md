@@ -4,6 +4,10 @@ description: "Brand, theme, navigation, extensions, and feature visibility for e
 ---
 The web app is the canonical surface for enterprise customization. Self-hosters should start in `src/overlay.config.ts`, then use the shared package APIs from `@overlay/app-core`, `@overlay/extension-sdk`, `@overlay/api-client`, `@overlay/ui`, `@overlay/chat-core`, `@overlay/chat-react`, and `@overlay/modules-react`.
 
+Settings → Desktop is native-only. Dictation defaults to Control+Space while
+preserving saved shortcuts. Its test-notification action reports OS permission
+failures; notification permissions remain in macOS System Settings.
+
 ## Brand, Theme, And Navigation
 
 Account is the workspace-independent `/account` page, linked above Settings in the
@@ -170,3 +174,11 @@ The workspace Billing tab shows the plan and credit, the itemized usage for the 
 Register model provider metadata in `modelProviders`. Use `modelPolicy` hooks for local model filtering and defaults. Hooks are not serialized to bootstrap; only serializable model provider metadata is returned to other surfaces.
 
 Settings > Providers supports OpenCode Go as a locked OpenCode subscription endpoint. Its chat models use Chat Completions, Grok and GPT Luna models use Responses, and Claude Haiku models use Messages. Requests include a stable conversation session header so one OpenCode Go subscription can be used across chat turns.
+
+## Native desktop settings
+
+Settings → Desktop is added only after the native bridge handshake. It configures
+OS shortcuts, local transcription models, panels, the local Agent Host and updates.
+These preferences stay in the native store; shared workspace settings retain their
+existing backend. Normal browsers omit the section and native composer controls.
+See [Desktop web shell](desktop-web-shell.md).

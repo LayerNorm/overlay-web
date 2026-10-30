@@ -341,3 +341,20 @@ test('unrelated children cannot supply parent completion evidence', async () => 
   )).rejects.toThrow('Invalid child lineage')
   expect(f.apply).not.toHaveBeenCalled()
 })
+
+test('answer-only plans normalize empty evidence tools without relaxing action proof', async () => {
+  const f = fixture()
+  const initial = planningGateState()
+  const apply: HarnessExecutionPorts['apply'] = async (_id, operation) => {
+    if (operation.type !== 'replace_plan') throw new Error('Unexpected operation')
+    return replaceHarnessPlan(initial, operation.steps, Date.now())
+  }
+  const plan = createHarnessControlTools({ ...f.ports, apply }).harness_set_plan
+  const step = { id: 'answer', title: 'Answer the question', dependsOn: [],
+    acceptanceCriteria: ['Return the requested answer'], answerOnly: true, evidenceTools: [] }
+  const result = await plan.execute!({ steps: [step] }, { toolCallId: 'answer-plan', messages: [] })
+  expect(result).toMatchObject({ plan: [{ id: 'answer', answerOnly: true }] })
+  await expect(plan.execute!({ steps: [{ ...step, answerOnly: false }] }, {
+    toolCallId: 'action-plan', messages: [],
+  })).rejects.toThrow('must declare evidenceTools')
+})

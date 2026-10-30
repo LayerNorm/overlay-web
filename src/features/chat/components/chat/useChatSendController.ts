@@ -1,4 +1,5 @@
 'use client'
+import { useAsyncSessions } from '@/components/providers/async-sessions-store'
 
 import {
   useCallback,
@@ -218,7 +219,10 @@ export function useChatSendController({
     temporaryChatSnapshot,
   }), [activeChatIdRef, isTemporaryChatRef, pendingFirstSendRef])
 
+  const { resolveSession } = useAsyncSessions()
   const tryActivatePendingFirstSend = useCallback(() => {
+    const pending = pendingFirstSendRef.current
+    if (pending?.realChatId && pending.streamDone) resolveSession(PENDING_FIRST_CHAT_ID, pending.realChatId)
     activatePendingFirstSend({
       activeChatIdRef,
       applyUiStateToView,
@@ -246,6 +250,7 @@ export function useChatSendController({
     setRuntimeHydrationVersion,
     startFirstMessageRename,
     syncStandaloneChatUrl,
+    resolveSession,
   ])
 
   const createNewChat = useCallback(async (options: CreateNewChatOptions = {}): Promise<string | null> => {

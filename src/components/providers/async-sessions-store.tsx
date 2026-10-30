@@ -1,6 +1,9 @@
 'use client'
 
-import React, { createContext, useContext, useReducer, useMemo, useCallback } from 'react'
+import { useWorkspace } from '@/contexts/WorkspaceContext'
+import { captureReplyDestination, resolveReplyDestination } from '@/components/desktop/reply-notification-route'
+import { useDesktopBridge } from '@/components/desktop/DesktopProvider'
+import React, { createContext, useContext, useReducer, useMemo, useCallback, useEffect, useRef } from 'react'
 
 interface StreamingSession {
   id: string
@@ -9,6 +12,7 @@ interface StreamingSession {
   startedAt: number
   messageCountAtStart: number
   status: 'streaming' | 'done'
+  notification: { base: string; route: string | null } | null
 }
 
 interface AsyncSessionsState {
@@ -18,8 +22,9 @@ interface AsyncSessionsState {
 }
 
 type Action =
-  | { type: 'START_SESSION'; id: string; mode: 'act'; title: string; messageCountAtStart: number }
+  | { type: 'START_SESSION'; id: string; mode: 'act'; title: string; messageCountAtStart: number; notification: StreamingSession['notification'] }
   | { type: 'COMPLETE_SESSION'; id: string; isActive: boolean }
+  | { type: 'RESOLVE_DESTINATION'; id: string; conversationId: string }
   | { type: 'MARK_READ'; id: string }
   | { type: 'SET_ACTIVE_VIEWER'; id: string | null }
 
@@ -37,6 +42,7 @@ function reducer(state: AsyncSessionsState, action: Action): AsyncSessionsState 
             startedAt: Date.now(),
             messageCountAtStart: action.messageCountAtStart,
             status: 'streaming',
+            notification: action.notification,
           },
         },
       }
@@ -52,6 +58,15 @@ function reducer(state: AsyncSessionsState, action: Action): AsyncSessionsState 
         sessions: { ...state.sessions, [action.id]: { ...session, status: 'done' } },
         unreadCounts: newUnread,
       }
+    }
+    case 'RESOLVE_DESTINATION': {
+      const session = state.sessions[action.id]
+      if (!session?.notification) return state
+      const route = resolveReplyDestination(session.notification.base, action.conversationId)
+      if (!route || route === session.notification.route) return state
+      return { ...state, sessions: { ...state.sessions, [action.id]: {
+        ...session, notification: { ...session.notification, route },
+      } } }
     }
     case 'MARK_READ': {
       if (!state.unreadCounts[action.id]) return state
@@ -73,6 +88,7 @@ function reducer(state: AsyncSessionsState, action: Action): AsyncSessionsState 
 interface AsyncSessionsContextValue {
   startSession(id: string, mode: 'act', title: string, messageCountAtStart: number): void
   completeSession(id: string, isActive: boolean): void
+  resolveSession(id: string, conversationId: string): void
   markRead(id: string): void
   setActiveViewer(id: string | null): void
   getUnread(id: string): number
@@ -91,9 +107,28 @@ const INITIAL_STATE: AsyncSessionsState = {
 
 export function AsyncSessionsProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(reducer, INITIAL_STATE)
+  const desktop = useDesktopBridge()
+  const { activeWorkspaceId } = useWorkspace()
+  const previous = useRef<Record<string, StreamingSession>>({})
+  useEffect(() => {
+    if (desktop?.info.capabilities.includes('notifications') && !document.hasFocus()) {
+      for (const session of Object.values(state.sessions)) {
+        const prior = previous.current[session.id]
+        if (session.status !== 'done' || !session.notification?.route || !prior ||
+          (prior.status !== 'streaming' && prior.notification?.route)) continue
+        void desktop.bridge.call('notifications.show', { title: 'Overlay reply', body: session.title.slice(0, 200), route: session.notification.route }).catch(() => {})
+      }
+    }
+    previous.current = state.sessions
+  }, [desktop, state.sessions])
 
   const startSession = useCallback((id: string, mode: 'act', title: string, messageCountAtStart: number) => {
-    dispatch({ type: 'START_SESSION', id, mode, title, messageCountAtStart })
+    dispatch({ type: 'START_SESSION', id, mode, title, messageCountAtStart,
+      notification: activeWorkspaceId ? captureReplyDestination(activeWorkspaceId, window.location.href, id) : null })
+  }, [activeWorkspaceId])
+
+  const resolveSession = useCallback((id: string, conversationId: string) => {
+    dispatch({ type: 'RESOLVE_DESTINATION', id, conversationId })
   }, [])
 
   const completeSession = useCallback((id: string, isActive: boolean) => {
@@ -111,13 +146,14 @@ export function AsyncSessionsProvider({ children }: { children: React.ReactNode 
   const value = useMemo<AsyncSessionsContextValue>(() => ({
     startSession,
     completeSession,
+    resolveSession,
     markRead,
     setActiveViewer,
     getUnread: (id: string) => state.unreadCounts[id] ?? 0,
     sessions: state.sessions,
     activeViewerIds: state.activeViewerIds,
     totalUnread: Object.values(state.unreadCounts).reduce((sum, n) => sum + n, 0),
-  }), [state, startSession, completeSession, markRead, setActiveViewer])
+  }), [state, startSession, completeSession, resolveSession, markRead, setActiveViewer])
 
   return (
     <AsyncSessionsContext.Provider value={value}>

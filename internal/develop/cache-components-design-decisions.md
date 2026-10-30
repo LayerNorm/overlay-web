@@ -225,3 +225,10 @@ shell needs the same treatment.
 ### Turbopack route bootstrap and nonce CSP
 
 Keep `experimental.turbopackSharedRuntime: false` in `next.config.ts`. The shared runtime introduced in Next.js 16.4 emits an inline route bootstrap in the prerendered shell without a request nonce; enforcing CSP blocks it and prevents hydration. External route runtimes avoid this mismatch while retaining nonce CSP, Cache Components and partial prefetching. Validate framework upgrades with an optimized build and a fresh authenticated hard navigation under `SECURITY_CSP_NONCE=true`; a development server or a preview with nonces disabled cannot establish this acceptance.
+
+## Desktop compact panels
+
+The existing app-shell Suspense boundary also contains the client-only desktop
+panel query check in OnboardingShell. `surface=panel` changes chat/notes chrome
+only after bridge negotiation; it adds no route opt-out or server cookie branch.
+Plain browsers retain the ordinary shell for the same URL.

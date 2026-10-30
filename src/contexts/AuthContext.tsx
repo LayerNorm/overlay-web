@@ -1,5 +1,7 @@
 'use client'
 
+import { notifyDesktopSignedOut } from '@overlay/desktop-bridge'
+
 import { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef, type ReactNode } from 'react'
 import { KNOWLEDGE_RECONCILE_EVENT } from '@overlay/app-core'
 import { trackSessionRefresh } from '@/shared/observability/client-metrics'
@@ -37,6 +39,7 @@ export function AuthProvider({
   const [isLoading, setIsLoading] = useState(!initialSessionResolved)
   const reconciledUserId = useRef(initialUser?.id ?? null)
   const lastCheckAtRef = useRef(0)
+  const hadSession = useRef(Boolean(initialUser))
 
   const [prevInitial, setPrevInitial] = useState({ user: initialUser, resolved: initialSessionResolved })
   if (initialUser !== prevInitial.user || initialSessionResolved !== prevInitial.resolved) {
@@ -80,8 +83,11 @@ export function AuthProvider({
         success,
       })
       if (result.status === 'authenticated') {
+        hadSession.current = true
         setUser(await applyAccountIdentity(result.user))
       } else if (result.status === 'unauthenticated') {
+        if (hadSession.current) await notifyDesktopSignedOut()
+        hadSession.current = false
         setUser(null)
       }
     } finally {
@@ -100,6 +106,7 @@ export function AuthProvider({
 
   const signOut = useCallback(async () => {
     try {
+      await notifyDesktopSignedOut()
       try {
         const { default: posthog } = await import('posthog-js')
         posthog.capture('user_signed_out')

@@ -1,3 +1,4 @@
+import { evaluateQuota } from '@overlay/billing'
 import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
 import { getBillingProgrammaticSubjectId, getTrustedAutomationBillingSubjectId, type AppApiRouteContext } from '@/server/app-api/bff-context'
@@ -36,9 +37,8 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         { status: 403 },
       )
     }
-    const remainingSeconds =
-      (entitlements.transcriptionSecondsLimit ?? 0) - (entitlements.transcriptionSecondsUsed ?? 0)
-    if (!entitlements.localTranscriptionEnabled && remainingSeconds <= 0) {
+    const quota = evaluateQuota(entitlements, { transcriptionSecondsRequested: 1 })
+    if (!entitlements.localTranscriptionEnabled && !quota.allowed) {
       return NextResponse.json({ error: 'transcription_limit_exceeded' }, { status: 403 })
     }
 

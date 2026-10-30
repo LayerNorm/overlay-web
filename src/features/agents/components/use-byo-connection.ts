@@ -1,5 +1,7 @@
 'use client'
 
+import { useDesktopBridge } from '@/components/desktop/DesktopProvider'
+
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { AgentEnvironmentResource } from '@overlay/api-client'
 import type { WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
@@ -42,6 +44,7 @@ export function useByoConnection(args: {
   const [workingDirectory, setWorkingDirectory] = useState('')
   const [environmentBusy, setEnvironmentBusy] = useState<string | null>(null)
   const [environmentError, setEnvironmentError] = useState<string | null>(null)
+  const desktop = useDesktopBridge()
   const [command, setCommand] = useState('')
   const [copied, setCopied] = useState(false)
   const [setupEnvironmentId, setSetupEnvironmentId] = useState<string | null>(null)
@@ -168,6 +171,9 @@ export function useByoConnection(args: {
         adapterId: adapterId as BuiltInByoHarnessId,
       })
       setCommand(result.command)
+      if (desktop?.info.capabilities.includes('agentHost')) {
+        await desktop.bridge.call('agentHost.start', { adapter: adapterId as 'codex' | 'claude-code', enrollmentCode: result.code })
+      }
     } catch (value) {
       setEnvironmentError(value instanceof Error ? value.message : 'Could not create the connection command.')
     } finally {

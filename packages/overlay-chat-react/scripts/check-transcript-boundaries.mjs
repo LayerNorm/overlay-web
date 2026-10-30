@@ -1,3 +1,4 @@
+import { desktopWebShellViolations } from '../../../scripts/ci/desktop-web-shell-boundary.mjs'
 import { builtinModules } from 'node:module'
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { basename, dirname, join, relative } from 'node:path'
@@ -7,7 +8,6 @@ const packageRoot = dirname(dirname(fileURLToPath(import.meta.url)))
 const workspaceRoot = dirname(dirname(packageRoot))
 const chatReactSourceRoot = join(packageRoot, 'src')
 const chatCoreSourceRoot = join(workspaceRoot, 'packages/overlay-chat-core/src')
-const desktopRoot = join(workspaceRoot, 'overlay-desktop')
 
 const retiredPaths = [
   'src/components/ExchangeBlock.tsx',
@@ -109,12 +109,6 @@ const requiredImports = [
     message: 'the web app must import the canonical chat stylesheet'
   },
   {
-    path: join(desktopRoot, 'src/renderer/src/styles/shared-chat.css'),
-    matches: (source) =>
-      new RegExp(`@import\\s+["']${canonicalStylesheet.replaceAll('/', '\\/')}["']`).test(source),
-    message: 'desktop shared-chat.css must import the canonical chat stylesheet'
-  },
-  {
     path: join(workspaceRoot, 'src/features/chat/components/ChatMessageList.tsx'),
     matches: (source) => source.includes('ChatTranscript'),
     message: 'web ChatMessageList must render through ChatTranscript'
@@ -167,13 +161,15 @@ const fixtureContractSource = existsSync(fixtureContractTest)
 for (const token of [
   'CHAT_PARITY_TEXT_SCENARIOS',
   'createWebChatTranscriptAdapter',
-  'createDesktopChatTranscriptAdapter',
-  'assert.deepEqual(desktopView, webView)'
+  'assert.equal(exchange.user.text, fixture.userText)',
+  'assert.equal(responseText, assistantText)'
 ]) {
   if (!fixtureContractSource.includes(token)) {
     violations.push(`the cross-platform fixture adapter contract test must contain ${token}`)
   }
 }
+
+violations.push(...desktopWebShellViolations(workspaceRoot))
 
 if (violations.length) {
   console.error(

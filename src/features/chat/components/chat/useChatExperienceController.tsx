@@ -1108,6 +1108,7 @@ export function useChatExperienceController({
     input,
     inputRef,
     inputRevision,
+    setInput,
     handleComposerInputChange,
     hasComposerText,
     textareaRef,

@@ -74,6 +74,19 @@ describe('@overlay/billing', () => {
     assert.equal(budgetDecision.code, 'insufficient_budget')
   })
 
+  it('supports credit-funded transcription without a seconds quota while retaining explicit caps', () => {
+    for (const limit of [undefined, 0]) {
+      assert.equal(evaluateQuota(paidEntitlements({ transcriptionSecondsLimit: limit }), {
+        transcriptionSecondsRequested: 1,
+      }).allowed, true)
+    }
+    const exhausted = evaluateQuota(paidEntitlements({ transcriptionSecondsLimit: 60, transcriptionSecondsUsed: 60 }), {
+      transcriptionSecondsRequested: 1,
+    })
+    assert.equal(exhausted.allowed, false)
+    assert.equal(exhausted.code, 'transcription_limit_exceeded')
+  })
+
   it('checks provider-backed quotas with QuotaEnforcer', async () => {
     const enforcer = new QuotaEnforcer({
       async getEntitlements() {

@@ -15,6 +15,11 @@ on:
       - '.github/workflows/byo-agent-host.yml'
       - '.github/workflows/publish-agent-host.yml'
   workflow_dispatch:
+    inputs:
+      candidate_artifacts:
+        description: Pack the unpublished host/protocol for isolated desktop acceptance
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -45,3 +50,18 @@ jobs:
         run: npm run verify:agent-host-release
       - if: runner.os == 'Linux'
         run: npm run pack:agent-host-release
+      - name: Pack isolated acceptance candidate
+        if: runner.os == 'Linux' && inputs.candidate_artifacts == true
+        run: |
+          npm run smoke:agent-host-release
+          mkdir -p artifacts/agent-host-candidate
+          npm pack --workspace=@layernorm/overlay-agent-bridge-protocol --pack-destination artifacts/agent-host-candidate
+          npm pack --workspace=@layernorm/overlay-agent-host --pack-destination artifacts/agent-host-candidate
+          node -e 'require("node:fs").writeFileSync("artifacts/agent-host-candidate/provenance.json", JSON.stringify({sourceSha:process.env.GITHUB_SHA}))'
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: runner.os == 'Linux' && inputs.candidate_artifacts == true
+        with:
+          name: agent-host-candidate
+          path: artifacts/agent-host-candidate/
+          if-no-files-found: error
+          retention-days: 3
