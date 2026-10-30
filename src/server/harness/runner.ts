@@ -17,6 +17,13 @@ import type { HarnessApprovalRequest, HarnessExecutionPorts, HarnessModelSetting
 import { HarnessLanguageModel, type HarnessModelReference } from './secure-model'
 import { createHarnessToolApprovals, type HarnessToolApprovals, type HarnessToolExecutionOptions } from './tool-approvals'
 import { harnessToolInputDigest } from './tool-input-digest'
+import {
+  captureAuthenticatedToolDenials,
+  captureObservedToolOutcome,
+  withObservedToolOutcomes,
+  type AuthenticatedToolDenial,
+  type ObservedToolOutcome,
+} from './tool-outcome-persistence'
 import { stripTextualToolCalls } from './textual-tool-calls'
 
 const DUPLICATE_GUARDED_CREATE_TOOLS = new Set([
@@ -37,112 +44,6 @@ export type HarnessExecutionResult = {
   snapshot: HarnessSnapshot
   messages: ModelMessage[]
   steps: StepResult<ToolSet>[]
-}
-
-type ObservedToolOutcome =
-  | { toolCallId: string; toolName: string; input: unknown; success: true; output: unknown }
-  | { toolCallId: string; toolName: string; input: unknown; success: false; error: unknown }
-
-type AuthenticatedToolDenial = {
-  approvalId: string
-  approved: false
-  reason?: string
-  toolCall: { type: 'tool-call'; toolCallId: string; toolName: string; input: unknown }
-}
-
-function matchingCall(value: unknown, toolCallId: string, toolName: string): boolean {
-  return value !== null && typeof value === 'object'
-    && 'toolCallId' in value && value.toolCallId === toolCallId
-    && 'toolName' in value && value.toolName === toolName
-}
-
-function normalizeExecutionSteps(
-  steps: StepResult<ToolSet>[],
-  outcomes: ReadonlyMap<string, ObservedToolOutcome>,
-  denials: ReadonlyMap<string, AuthenticatedToolDenial>,
-): StepResult<ToolSet>[] {
-  return steps.map(step => {
-    const calls = [
-      ...(step.toolCalls ?? []),
-      ...(step.content ?? []).filter(part => part.type === 'tool-call'),
-    ]
-    let content: NonNullable<StepResult<ToolSet>['content']> | undefined
-    const ensureContent = () => {
-      content ??= step.content?.length
-        ? [...step.content]
-        : [
-            ...(step.reasoningText?.trim() ? [{ type: 'reasoning' as const, text: step.reasoningText }] : []),
-            ...(step.toolCalls ?? []).map(call => ({ ...call, type: 'tool-call' as const })),
-            ...(step.text?.trim() ? [{ type: 'text' as const, text: step.text }] : []),
-          ]
-      return content
-    }
-
-    const seenCalls = new Set<string>()
-    for (const call of calls) {
-      const { toolCallId, toolName } = call
-      const identity = `${toolCallId}\u0000${toolName}`
-      if (seenCalls.has(identity)) continue
-      seenCalls.add(identity)
-      const denial = denials.get(toolCallId)
-      const outcome = outcomes.get(toolCallId)
-      const match = denial
-        ? denial.toolCall.toolName === toolName
-        : outcome?.toolName === toolName
-      if (!match) continue
-      const existing = [
-        ...(content ?? step.content ?? []),
-        ...(step.toolResults ?? []),
-      ].some(part => (
-        part.type === 'tool-result' || part.type === 'tool-error' || part.type === 'tool-approval-response'
-      ) && matchingCall(part.type === 'tool-approval-response' && 'toolCall' in part
-        ? part.toolCall
-        : part, toolCallId, toolName))
-      if (existing) continue
-
-      const part = denial
-        ? {
-            type: 'tool-approval-response' as const,
-            approvalId: denial.approvalId,
-            approved: false as const,
-            ...(denial.reason === undefined ? {} : { reason: denial.reason }),
-            toolCall: denial.toolCall,
-          }
-        : outcome?.success
-          ? {
-              type: 'tool-result' as const,
-              toolCallId,
-              toolName,
-              input: outcome.input,
-              output: outcome.output,
-            }
-          : outcome
-            ? {
-                type: 'tool-error' as const,
-                toolCallId,
-                toolName,
-                input: outcome.input,
-                error: outcome.error,
-              }
-            : null
-      if (!part) continue
-
-      const nextContent = ensureContent()
-      const callIndex = nextContent.findIndex(candidate => (
-        candidate.type === 'tool-call' && matchingCall(candidate, toolCallId, toolName)
-      ))
-      nextContent.splice(callIndex < 0 ? nextContent.length : callIndex + 1, 0, part)
-    }
-    return content ? { ...step, content } : step
-  })
-}
-
-function withObservedToolOutcomes(
-  result: HarnessExecutionResult,
-  outcomes: ReadonlyMap<string, ObservedToolOutcome>,
-  denials: ReadonlyMap<string, AuthenticatedToolDenial>,
-): HarnessExecutionResult {
-  return { ...result, steps: normalizeExecutionSteps(result.steps, outcomes, denials) }
 }
 
 class HarnessYield extends Error {}
@@ -336,22 +237,7 @@ async function resumePendingApprovals(
   const state = await ports.read()
   if (isTerminal(state)) return { kind: 'restart', messages, resetStagnation: false }
   assertApprovalDecisions(pending, decisions)
-  for (const decision of decisions) {
-    if (decision.approved) continue
-    const request = pending.find(item => item.approvalId === decision.approvalId)
-    if (!request) continue
-    authenticatedDenials.set(request.toolCallId, {
-      approvalId: request.approvalId,
-      approved: false,
-      ...(decision.reason === undefined ? {} : { reason: decision.reason }),
-      toolCall: {
-        type: 'tool-call',
-        toolCallId: request.toolCallId,
-        toolName: request.toolName,
-        input: request.input,
-      },
-    })
-  }
+  captureAuthenticatedToolDenials(pending, decisions, authenticatedDenials)
   const resumedMessages = appendApprovalMessages(messages, pending, decisions)
   await ports.apply(`resume-approval:${segment}`, { type: 'resume' })
   approvals.record(pending, decisions)
@@ -552,21 +438,7 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
       onToolExecutionEnd: async event => {
         if (!controls.has(event.toolCall.toolName)) {
           await ports.recordToolResult(event)
-          executionOutcomes.set(event.toolCall.toolCallId, event.success
-            ? {
-                toolCallId: event.toolCall.toolCallId,
-                toolName: event.toolCall.toolName,
-                input: event.toolCall.input,
-                success: true,
-                output: event.output,
-              }
-            : {
-                toolCallId: event.toolCall.toolCallId,
-                toolName: event.toolCall.toolName,
-                input: event.toolCall.input,
-                success: false,
-                error: event.error,
-              })
+          captureObservedToolOutcome(event, executionOutcomes)
         }
         observedState = await ports.read()
       },
