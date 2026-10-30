@@ -84,6 +84,7 @@ export async function POST(request: Request) {
       email: session.user.email,
       firstName: session.user.firstName || '',
       lastName: session.user.lastName || '',
+      emailVerified: session.user.emailVerified,
       accessToken: session.accessToken,
       refreshToken: session.refreshToken,
       expiresAt: session.expiresAt,
