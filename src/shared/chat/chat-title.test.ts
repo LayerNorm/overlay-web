@@ -4,7 +4,15 @@ import {
   isPlaceholderChatTitle,
   mergeChatTitle,
   resolveChatModifiedTitle,
+  fallbackChatTitle,
 } from './chat-title'
+
+test('fallback titles use a short, clean excerpt of the first message', () => {
+  assert.equal(fallbackChatTitle('  **Plan** a\nweekend in Kyoto. '), 'Plan a weekend in Kyoto')
+  assert.equal(fallbackChatTitle('one two three four five six seven eight nine'), 'one two three four five six seven eight')
+  assert.ok(fallbackChatTitle('x'.repeat(100)).length <= 60)
+  assert.equal(fallbackChatTitle('  '), 'New Chat')
+})
 
 test('recognizes empty and placeholder chat titles', () => {
   for (const title of ['', '  ', 'New Chat', ' New thread ']) {

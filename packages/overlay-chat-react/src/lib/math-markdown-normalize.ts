@@ -122,6 +122,12 @@ export function normalizeBracketDelimitedLatex(text: string): string {
       break
     }
 
+    if (isInsideSingleDollarSpan(text, open, close)) {
+      parts.push('[')
+      i = open + 1
+      continue
+    }
+
     const inner = text.slice(open + 1, close).trim()
     if (inner.length >= 2 && TEX_COMMAND.test(inner)) {
       parts.push(`$$${inner}$$`)
@@ -190,8 +196,8 @@ export function normalizeParenDelimitedLatex(text: string): string {
 
 /** Run bracket then paren so nested structures and `$$` output stay consistent. */
 export function normalizeLatexDelimiters(text: string): string {
-  return normalizeEscapedLatexDelimiters(
-    normalizeParenDelimitedLatex(normalizeBracketDelimitedLatex(text)),
+  return normalizeParenDelimitedLatex(
+    normalizeBracketDelimitedLatex(normalizeEscapedLatexDelimiters(text)),
   )
 }
 
@@ -203,7 +209,7 @@ export function normalizeEscapedLatexDelimiters(text: string): string {
   if (!text.includes('\\')) return text
   return text
     .replace(/\\\[((?:.|\n)*?)\\\]/g, (_match, inner: string) => `\n\n$$\n${inner.trim()}\n$$\n\n`)
-    .replace(/\\\(([^()\n]{1,500}?)\\\)/g, (_match, inner: string) => `$${inner.trim()}$`)
+    .replace(/\\\(([\s\S]*?)\\\)/g, (_match, inner: string) => `$${inner.trim()}$`)
 }
 
 /**
@@ -499,6 +505,11 @@ function shouldPromoteBareLatexLine(line: string): boolean {
   if (trimmed.includes('```') || trimmed.includes('$$')) return false
 
   const withoutInlineMath = stripInlineMathSpans(trimmed)
+  // Never turn prose surrounding valid inline equations into one display equation.
+  if (withoutInlineMath !== trimmed) return false
+  const start = findBareLatexStart(withoutInlineMath)
+  const outsideTexArguments = withoutInlineMath.slice(Math.max(0, start)).replace(/\\[A-Za-z]+\{[^{}]*\}/g, '')
+  if (looksLikeProse(outsideTexArguments) || /\b(?:and|because|which|the|this|that|is|are)\b/i.test(outsideTexArguments)) return false
   if (!/[\\_^]/.test(withoutInlineMath)) return false
 
   const hasTexCommand = TEX_COMMAND.test(withoutInlineMath)
@@ -569,7 +580,7 @@ function promoteBareLatexInTableRow(line: string): string {
 
 function findBareLatexStart(line: string): number {
   const candidates: number[] = []
-  const equation = line.search(/(?:[A-Za-zΑ-Ωα-ω]|\\[A-Za-z]+)(?:_\{?[^=\s;)]{1,40}\}?|\^\{?[^=\s;)]{1,40}\}?)*\s*=/)
+  const equation = line.search(/(?:[A-Za-zΑ-Ωα-ω]+|\\[A-Za-z]+)(?:_\{?[^=\s;)]{1,40}\}?|\^\{?[^=\s;)]{1,40}\}?)*\s*=/)
   if (equation >= 0) candidates.push(equation)
 
   const begin = line.search(/\\begin\{/)
@@ -863,6 +874,13 @@ function isLikelyCurrencyProseSpan(match: string, inner: string, offset: number,
 
 /** Full math-oriented markdown normalization (delimiters + display promotion). */
 export function normalizeAssistantMathMarkdown(text: string): string {
+  // Code is literal, including examples of math delimiters and unfinished fences.
+  return text.split(/((?:^|\n)(`{3,}|~{3,})[^\n]*\n[\s\S]*?(?:\n\2[^\n]*(?=\n|$)|$)|`+[^`\n]*`+)/g)
+    .map((part, index) => index % 3 === 0 ? normalizeMathRegion(part) : index % 3 === 1 ? part : '')
+    .join('')
+}
+
+function normalizeMathRegion(text: string): string {
   return normalizeBareBigONotation(
     escapeProsePseudoMath(
       reflowDisplayMathFences(normalizeBareLatexLines(reflowDisplayMathFences(normalizeDoubleDollarMath(normalizeLatexDelimiters(text))))),

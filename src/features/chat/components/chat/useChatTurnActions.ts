@@ -148,17 +148,14 @@ export function useChatTurnActions({
           replySnippet?: string
         }>
       }
-      const rows: NonNullable<typeof sourceData.messages> = []
-      for (const message of sourceData.messages ?? []) {
-        rows.push(message)
-        if (message.turnId === targetTurnId && message.role === 'assistant') {
-          continue
-        }
-      }
+      const rows = sourceData.messages ?? []
       const targetIdx = rows.findLastIndex((message) => message.turnId === targetTurnId)
       if (targetIdx < 0) throw new Error('Could not find that turn')
       const branchRows = rows.slice(0, targetIdx + 1)
-      const branchChatId = await createNewChat({ title: `${activeChatTitle || DEFAULT_CHAT_TITLE} branch` })
+      const branchChatId = await createNewChat({
+        title: `${activeChatTitle || DEFAULT_CHAT_TITLE} branch`,
+        deferActivation: true,
+      })
       if (!branchChatId) throw new Error('Could not create branch')
       const branchCopyRequestPrefix = createIdempotencyKey()
       for (const [messageIndex, message] of branchRows.entries()) {
@@ -193,7 +190,10 @@ export function useChatTurnActions({
             ].join(':'),
           },
         )
-        if (!res.ok) throw new Error('Could not copy branch messages')
+        const result = await res.json() as { success?: boolean; messageId?: string; error?: string }
+        if (!res.ok || !result.success || !result.messageId) {
+          throw new Error(result.error || 'Could not copy branch messages')
+        }
       }
       const branchRuntime = runtimesRef.current.get(branchChatId)
       if (branchRuntime) branchRuntime.hydrated = false

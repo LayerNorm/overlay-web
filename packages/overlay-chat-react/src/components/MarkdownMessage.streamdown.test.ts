@@ -20,6 +20,13 @@ test('block double-dollar math renders as display math', () => {
   assert.match(rendered('$$\nE = mc^2\n$$'), /katex-display/)
 })
 
+test('clearance math stays inline without swallowing the explanatory sentence', () => {
+  const html = rendered(String.raw`Protein binding cancels out. \(CL = f_u \times CL_{int}\), and \(C_{target,total} = C_{target,unbound}/f_u\). The product is independent of protein binding.`)
+  assert.doesNotMatch(html, /katex-display|katex-error/)
+  assert.match(html, /The product is independent of protein binding\./)
+  assert.equal((html.match(/class="katex"/g) ?? []).length, 2)
+})
+
 test('a broken equation does not throw', () => {
   assert.doesNotThrow(() => rendered('Bad $\\frac{1}{$ math'))
 })

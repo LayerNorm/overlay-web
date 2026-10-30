@@ -10,6 +10,30 @@ import {
   normalizeAssistantMathMarkdown,
 } from './math-markdown-normalize'
 
+test('keeps clearance equations separate from the surrounding paragraph', () => {
+  const input = String.raw`The target concentration is \(C_{target,total}=C_{target,unbound}/f_{u,p}\). The product is \(CL \times C_{target,total}\) and protein binding cancels out.`
+  assert.equal(normalizeAssistantMathMarkdown(input), String.raw`The target concentration is $C_{target,total}=C_{target,unbound}/f_{u,p}$. The product is $CL \times C_{target,total}$ and protein binding cancels out.`)
+})
+
+test('does not promote a bare equation followed by prose into one display block', () => {
+  const input = String.raw`CL = f_{u,p} \times CL_{int}. The product is independent of protein binding and this remains true at the target concentration.`
+  assert.equal(normalizeAssistantMathMarkdown(input), input)
+})
+
+test('escaped inline delimiters allow nested parentheses and square brackets', () => {
+  const input = String.raw`Use \(f(x) = [\alpha + g(x)]\) here.`
+  assert.equal(normalizeAssistantMathMarkdown(input), String.raw`Use $f(x) = [\alpha + g(x)]$ here.`)
+})
+
+test('math normalization leaves code examples untouched', () => {
+  for (const input of [
+    'Use `\\(x^2\\)` literally.',
+    '```tex\n\\[x^2\\]\n```',
+    '~~~tex\n\\(f(x)\\)\n~~~',
+    '```tex\n\\[unfinished\\]',
+  ]) assert.equal(normalizeAssistantMathMarkdown(input), input)
+})
+
 test('promotes heavy one-line $$…$$ after prose to flow math fences', () => {
   const input = 'So R has the form $$\\begin{bmatrix} a \\end{bmatrix}$$ and more.'
   const out = promoteHeavyInlineMathToFlowBlocks(input)

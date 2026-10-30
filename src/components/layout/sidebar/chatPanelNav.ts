@@ -65,7 +65,7 @@ export async function resolveRecentChatHref(baseHref: string, scope: 'personal' 
   }
 }
 
-const WORKSPACE_CHATS_ITEM = { id: 'workspace-chats', label: 'AI chats', icon: MessageSquare }
+const WORKSPACE_CHATS_ITEM = { id: 'workspace-chats', label: 'Chats', icon: MessageSquare }
 const WORKSPACE_CHAT_IDS = new Set(['dms', 'channels', 'activity'])
 
 export function buildChatPanelNav({

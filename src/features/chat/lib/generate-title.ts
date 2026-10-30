@@ -1,4 +1,5 @@
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { fallbackChatTitle, isPlaceholderChatTitle } from '@/shared/chat/chat-title'
 
 /**
  * In-flight/recent title requests keyed by the seed message.
@@ -78,10 +79,12 @@ export async function requestTitle(
 ): Promise<string | null> {
   for (let attempt = 0; attempt < MAX_REQUEST_ATTEMPTS; attempt++) {
     const result = await requestTitleAttempt(text, timeoutMs)
-    if (result.kind === 'resolved') return result.title
-    if (result.kind === 'stop') return null
+    if (result.kind === 'resolved') {
+      return isPlaceholderChatTitle(result.title) ? fallbackChatTitle(text) : result.title
+    }
+    if (result.kind === 'stop') return fallbackChatTitle(text)
   }
-  return null
+  return fallbackChatTitle(text)
 }
 
 function track(key: string, promise: Promise<string | null>): Promise<string | null> {
