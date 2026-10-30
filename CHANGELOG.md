@@ -4,7 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
-- Fix chat branching silently losing copied messages, use GLM 5.3 Flash for budget-authorized titles with a local fallback, preserve prose and code around LaTeX, and label workspace AI conversations "Chats".
+- Fix chat branching silently losing copied messages, use GLM 5.3 Flash for budget-authorized titles with a local fallback, preserve prose, code and standalone display equations around LaTeX, and label workspace AI conversations "Chats".
 
 - Use TinyFish as the primary web search provider and power deep search with bounded multi-query Search + Fetch, with Elo fallback for both tools.
 

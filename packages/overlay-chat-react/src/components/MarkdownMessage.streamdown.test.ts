@@ -20,6 +20,50 @@ test('block double-dollar math renders as display math', () => {
   assert.match(rendered('$$\nE = mc^2\n$$'), /katex-display/)
 })
 
+test('single-line dollar displays retain display semantics between prose paragraphs', () => {
+  const text = String.raw`Before the equations.
+
+$$h(x)=\sqrt{1+\left[\log(1+x)\right]^2}.$$
+
+Between the equations.
+
+$$E=mc^2$$
+
+After the equations.`
+  for (const streaming of [false, true]) {
+    const html = rendered(text, streaming)
+    assert.equal((html.match(/class="katex-display"/g) ?? []).length, 2)
+    assert.doesNotMatch(html, /katex-error/)
+    for (const prose of ['Before the equations.', 'Between the equations.', 'After the equations.']) {
+      assert.ok(html.includes(`<p>${prose}</p>`))
+    }
+  }
+})
+
+test('long inline equations and multiple mixed delimiters preserve sentence boundaries', () => {
+  const html = rendered(String.raw`Before \(E_j=\frac{\sum_{i=1}^{n}w_i(C_i-\bar C_j)^2}{\sqrt{1+\left(\frac{\sigma_j}{\mu_j}\right)^2}}\left[1+\log\left(1+\frac{T_j}{\tau_j}\right)\right]\) remains inside the sentence. Next \(AUC=\frac{D}{CL}\), $t_{1/2}=\frac{\ln 2}{k_e}$, and \(V_d=\frac{CL}{k_e}\) connect exposure and volume. End of paragraph.`)
+  assert.equal((html.match(/class="katex"/g) ?? []).length, 4)
+  assert.doesNotMatch(html, /katex-display|katex-error/)
+  assert.match(html, /remains inside the sentence\. Next/)
+  assert.match(html, /connect exposure and volume\. End of paragraph\.<\/p>/)
+})
+
+test('long displays, aligned derivations, cases and matrices render together', () => {
+  const equations = [
+    String.raw`\widehat{CL}_{j}=\frac{\displaystyle\sum_{i=1}^{N_j}\frac{w_{ij}\left[C_i(t_i)-C_i(t_{i-1})\right]}{\sqrt{1+\left(\frac{\sigma_{ij}}{\mu_j}\right)^2}}+\int_0^{T_j}\frac{f_{u,p,j}CL_{\mathrm{int},j}C_p(t)}{Q_{H,j}+f_{u,p,j}CL_{\mathrm{int},j}}\,dt}{\displaystyle\left[\sum_{i=1}^{N_j}w_{ij}\left(\frac{AUC_{ij}}{D_{ij}}\right)\right]^{1/2}+\frac{\lambda_j}{1+\frac{\alpha_j}{\beta_j+\sqrt{\gamma_j}}}}`,
+    String.raw`\begin{aligned}\frac{dC}{dt}&=-k_eC,\\\ln\left(\frac{C(t)}{C_0}\right)&=-k_et,\\C(t)&=C_0e^{-k_et}.\end{aligned}`,
+    String.raw`R(t)=\begin{cases}R_0(1-e^{-k_et}),&0\le t<T,\\R_0(1-e^{-k_eT})e^{-k_e(t-T)},&t\ge T.\end{cases}`,
+    String.raw`\frac{d\mathbf{x}_j}{dt}=\begin{bmatrix}-(k_{10,j}+k_{12,j})&k_{21,j}\\k_{12,j}&-k_{21,j}\end{bmatrix}\begin{bmatrix}A_{1,j}\\A_{2,j}\end{bmatrix}`,
+  ]
+  const text = equations.map((equation, index) => `Equation ${index + 1}.\n\n$$${equation}$$\n\nEnd ${index + 1}.`).join('\n\n')
+  const html = rendered(text)
+  assert.equal((html.match(/class="katex-display"/g) ?? []).length, equations.length)
+  assert.doesNotMatch(html, /katex-error/)
+  for (const index of equations.keys()) {
+    assert.ok(html.includes(`<p>End ${index + 1}.</p>`))
+  }
+})
+
 test('clearance math stays inline without swallowing the explanatory sentence', () => {
   const html = rendered(String.raw`Protein binding cancels out. \(CL = f_u \times CL_{int}\), and \(C_{target,total} = C_{target,unbound}/f_u\). The product is independent of protein binding.`)
   assert.doesNotMatch(html, /katex-display|katex-error/)

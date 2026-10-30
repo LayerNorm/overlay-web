@@ -57,6 +57,20 @@ test('converts short inline $$…$$ to standard inline math', () => {
   assert.equal(normalizeDoubleDollarMath(input), 'Lift ($C_L$) is fine.')
 })
 
+test('preserves standalone single-line dollar equations as display math', () => {
+  for (const equation of [String.raw`h(x)=\sqrt{1+\left[\log(1+x)\right]^2}.`, 'E=mc^2', '2']) {
+    const input = `Before.\n\n$$${equation}$$\n\nAfter.`
+    const normalized = normalizeAssistantMathMarkdown(input).replace(/\n{3,}/g, '\n\n')
+    assert.equal(normalized, `Before.\n\n$$\n${equation}\n$$\n\nAfter.`)
+  }
+})
+
+test('does not promote compact dollar equations sharing a line with prose', () => {
+  for (const input of ['$$x+y$$ is the sum.', 'The sum is $$x+y$$', 'Use $$x+y$$ and $$x-y$$ here.']) {
+    assert.equal(normalizeAssistantMathMarkdown(input), input.replaceAll('$$', '$'))
+  }
+})
+
 test('keeps heavy inline $$…$$ as display math fences', () => {
   const input = 'So R has the form $$\\begin{bmatrix} a \\\\ b \\end{bmatrix}$$ and more.'
   const out = normalizeDoubleDollarMath(input)

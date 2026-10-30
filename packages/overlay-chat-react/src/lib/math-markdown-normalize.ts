@@ -286,7 +286,7 @@ export function promoteHeavyInlineMathToFlowBlocks(text: string): string {
  * Older prompts asked models to use `$$...$$` inline. That works until one delimiter
  * arrives late or is omitted, at which point remark-math can feed a whole paragraph to
  * KaTeX. Normalize compact same-line double-dollar spans to standard inline `$...$`,
- * keep heavy spans as display blocks, and defuse obvious stray delimiters around short
+ * keep standalone equations and heavy spans as display blocks, and defuse stray delimiters around short
  * math atoms so one bad token cannot turn the rest of the message red.
  */
 export function normalizeDoubleDollarMath(text: string): string {
@@ -332,10 +332,13 @@ function rewriteBalancedDoubleDollarMath(text: string): string {
       const beforeOnLine = text.slice(lineStart, i)
       const opensAtLineStart = /^\s*$/.test(beforeOnLine)
       const looksLikeFlowBlock = opensAtLineStart && inner.startsWith('\n')
+      const lineEnd = text.indexOf('\n', close + 2)
+      const afterOnLine = text.slice(close + 2, lineEnd < 0 ? text.length : lineEnd)
+      const isStandalone = opensAtLineStart && /^\s*$/.test(afterOnLine)
 
       if (looksLikeFlowBlock) {
         out += text.slice(i, close + 2)
-      } else if (isHeavyMath(trimmed)) {
+      } else if (isStandalone || isHeavyMath(trimmed)) {
         out += `\n\n$$\n${trimmed}\n$$\n\n`
       } else if (looksLikeMath(trimmed) && !looksLikeProse(trimmed)) {
         out += `$${trimmed}$`
