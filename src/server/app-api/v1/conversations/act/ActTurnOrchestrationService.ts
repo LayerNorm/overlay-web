@@ -188,7 +188,6 @@ export async function executeActTurn(
       replyContextForModel,
       historyBaseModelId,
       mode,
-      personalChatMode,
       automationMode,
       automationExecution,
       automationId,
@@ -209,7 +208,7 @@ export async function executeActTurn(
     actWebhookSkip = automationExecution === true
     const { auth } = context
     const userId = auth.userId
-    let usePersonalHarness = isPersonalHarnessRouteEligible({
+    const personalWorkflowEligible = isPersonalHarnessRouteEligible({
       authType: auth.authType,
       automationExecution,
       automationMode,
@@ -305,7 +304,7 @@ export async function executeActTurn(
         { status: 403 },
       )
     }
-    usePersonalHarness = usePersonalHarness && isHarnessBackendReady(appSettings)
+    const usePersonalHarness = personalWorkflowEligible && isHarnessBackendReady(appSettings)
     const modelCandidates = usePersonalHarness
       ? await prepareActModelCandidates({
           authorization: authorizationService,
@@ -333,12 +332,12 @@ export async function executeActTurn(
       attachmentNames,
     })
 
-    const tid = usePersonalHarness
+    const tid = personalWorkflowEligible
       ? turnId?.trim() || context.requestIdempotencyKey?.trim() || randomUUID()
       : resolveActTurnId(turnId)
     let cid = conversationId ? asConversationId(conversationId) : undefined
     const trimmedClientId = conversationClientId?.trim()
-    const durableClientId = trimmedClientId || (!conversationId && usePersonalHarness
+    const durableClientId = trimmedClientId || (!conversationId && personalWorkflowEligible
       ? personalHarnessConversationClientId({
           actorUserId: userId,
           workspaceId: billingWorkspaceId,
@@ -381,7 +380,7 @@ export async function executeActTurn(
       accessToken,
       serverSecret,
       workspaceId: context.workspace.workspace.id,
-      computerApprovalContext: usePersonalHarness || personalChatMode === 'work' ? 'work' : undefined,
+      computerApprovalContext: personalWorkflowEligible ? 'work' : undefined,
     })
     const accountAllowedToolIdsTask = filterCatalogResources({
       authorization: authorizationService,
@@ -412,7 +411,7 @@ export async function executeActTurn(
       latestUserParts,
       attachmentNames,
       skipMemoryExtraction: !memoryEnabled,
-      mode: personalChatMode === 'work' ? 'act' : 'ask',
+      mode: 'ask',
       billingActorUserId: userId,
       billingAccountId: resolvedBillingPayer.scope === 'workspace'
         ? resolvedBillingPayer.billingAccountId
@@ -601,19 +600,18 @@ export async function executeActTurn(
     })
     const agentRunLeaseExpiresAt = Date.now() + actAbortTimeoutMsResolved + 60_000
     const agentRunEligible = Boolean(cid) && automationExecution !== true && automationMode !== true
-    const useWorkRunner = !usePersonalHarness && agentRunEligible && personalChatMode === 'work'
+    const useWorkRunner = !usePersonalHarness && personalWorkflowEligible && agentRunEligible
     const agentRunTask = agentRunEligible
       ? (usePersonalHarness
           ? agentRunService.startPersonalWorkflow({
               conversationId: cid,
-              mode: personalChatMode ?? 'chat',
               modelId: effectiveModelId,
               turnId: tid,
               userId: conversationUserId,
               userMessageId,
             })
           : useWorkRunner
-            ? agentRunService.startWork({
+            ? agentRunService.startLegacyPersonalWorkflow({
               conversationId: cid,
               modelId: effectiveModelId,
               turnId: tid,
@@ -764,7 +762,7 @@ export async function executeActTurn(
     }
 
     if (useWorkRunner) {
-      if (!agentRun || !cid) throw new Error('Work mode requires an AgentRun and conversation')
+      if (!agentRun || !cid) throw new Error('Durable chat requires an AgentRun and conversation')
       await uploadFilePartsForModel(uiMessages as Array<{
         role: string
         parts?: Array<{
@@ -794,7 +792,7 @@ export async function executeActTurn(
       if (!workReservation.ok) {
         const errorText = typeof workReservation.failure.payload.message === 'string'
           ? workReservation.failure.payload.message
-          : 'Work mode could not reserve usage.'
+          : 'Chat could not reserve usage.'
         await agentRunService.fail({
           error: { code: 'budget_reservation_failed', message: errorText, retryable: true },
           errorText,

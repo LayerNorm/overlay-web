@@ -43,7 +43,7 @@ export function workspaceAgentToolResultFromOutput(input: {
         type: 'error-text',
         value: input.error
           ?? (typeof outputError === 'string' ? outputError : undefined)
-          ?? 'This action needs approval. Use Work mode, or set this agent\'s Permissions to Auto.',
+          ?? 'This action needs approval. Review it in personal chat, or set this agent\'s Permissions to Auto.',
       },
       display: input.display,
       ...(input.error ? { error: input.error } : {}),

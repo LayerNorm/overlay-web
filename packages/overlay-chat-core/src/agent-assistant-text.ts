@@ -1,3 +1,77 @@
+export const INTERRUPTED_RESPONSE_NOTICE = 'This response was interrupted. Should I continue?'
+
+const LEGACY_INTERRUPTED_RESPONSE_NOTICE = '[Interrupted by user. Continue?]'
+
+function interruptionFence(line: string) {
+  const match = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line)
+  return match ? { marker: match[1]!, rest: match[2]! } : null
+}
+
+function normalizeLegacyInterruptionNotice(text: string): string {
+  let fenceCharacter: string | null = null
+  let fenceLength = 0
+  return text.split(/(\r?\n)/).map((part, index) => {
+    if (index % 2 === 1) return part
+    const fence = interruptionFence(part)
+    if (fence) {
+      if (!fenceCharacter) {
+        fenceCharacter = fence.marker[0]!
+        fenceLength = fence.marker.length
+      } else if (
+        fence.marker[0] === fenceCharacter
+        && fence.marker.length >= fenceLength
+        && !fence.rest.trim()
+      ) {
+        fenceCharacter = null
+        fenceLength = 0
+      }
+      return part
+    }
+    if (fenceCharacter || /^(?: {4,}|\t)/.test(part) || part.trimStart().startsWith('>')) return part
+    return part.trim() === LEGACY_INTERRUPTED_RESPONSE_NOTICE
+      ? part.replace(LEGACY_INTERRUPTED_RESPONSE_NOTICE, INTERRUPTED_RESPONSE_NOTICE)
+      : part
+  }).join('')
+}
+
+function endsWithStandaloneInterruptionNotice(text: string): boolean {
+  let fenceCharacter: string | null = null
+  let fenceLength = 0
+  let lastNonemptyLine: string | undefined
+  let lastLineIsPlain = false
+  for (const line of text.split(/\r?\n/)) {
+    const fence = interruptionFence(line)
+    if (fence) {
+      if (!fenceCharacter) {
+        fenceCharacter = fence.marker[0]!
+        fenceLength = fence.marker.length
+      } else if (
+        fence.marker[0] === fenceCharacter
+        && fence.marker.length >= fenceLength
+        && !fence.rest.trim()
+      ) {
+        fenceCharacter = null
+        fenceLength = 0
+      }
+      continue
+    }
+    if (!line.trim()) continue
+    lastNonemptyLine = line
+    lastLineIsPlain = !fenceCharacter && !/^(?: {4,}|\t)/.test(line) && !line.trimStart().startsWith('>')
+  }
+  return lastLineIsPlain && lastNonemptyLine?.trim() === INTERRUPTED_RESPONSE_NOTICE
+}
+
+export function hasInterruptionNotice(text: string): boolean {
+  return endsWithStandaloneInterruptionNotice(normalizeAgentAssistantText(text).trim())
+}
+
+export function appendInterruptionNotice(text: string): string {
+  const normalized = normalizeAgentAssistantText(text).trim()
+  if (hasInterruptionNotice(normalized)) return normalized
+  return normalized ? `${normalized}\n\n${INTERRUPTED_RESPONSE_NOTICE}` : INTERRUPTED_RESPONSE_NOTICE
+}
+
 /**
  * NIM / weak free-tier models sometimes put chain-of-thought in the `text` channel (not
  * `reasoning` parts), so the UI shows planning + backend ids. These patterns only match
@@ -260,7 +334,7 @@ export function normalizeAgentAssistantText(s: string): string {
     '',
   )
   t = redactOpaqueNotebookFileIdsInVisibleText(t)
-  return t
+  return normalizeLegacyInterruptionNotice(t)
 }
 
 /**

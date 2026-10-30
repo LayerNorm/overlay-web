@@ -5,9 +5,12 @@ import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateActio
 import { AlertCircle, FileText, Play, Reply } from 'lucide-react'
 import type { AssistantVisualBlock, ChatExchangeStatus, ChatTranscriptSourceView, DraftModalState } from '@overlay/chat-core'
 import {
+  appendInterruptionNotice,
   assistantBlocksToPlainText,
   buildAssistantVisualSegments,
   computeToolChainFlags,
+  hasInterruptionNotice,
+  INTERRUPTED_RESPONSE_NOTICE,
   isUsageExhaustedError,
   planAssistantWorkCollapse,
 } from '@overlay/chat-core'
@@ -224,6 +227,7 @@ export function ChatExchange({
           segmentCtx={segmentCtx}
           errorMessage={errorMessage}
           loadingPresentation={loadingPresentation}
+          hasPersistedInterruptionNotice={hasInterruptionNotice(assistantPlainText)}
           responseInProgress={responseInProgress}
           interrupted={interrupted}
           responseSettled={responseSettled}
@@ -263,6 +267,7 @@ type ChatExchangeAssistantBodyProps = {
   segmentCtx: AssistantSegmentRenderContext
   errorMessage: ChatExchangeProps['errorMessage']
   loadingPresentation: ReturnType<typeof exchangeLoadingPresentation>
+  hasPersistedInterruptionNotice: boolean
   responseInProgress: ChatExchangeProps['responseInProgress']
   interrupted: boolean
   responseSettled: boolean
@@ -299,6 +304,7 @@ function ChatExchangeAssistantBody({
   segmentCtx,
   errorMessage,
   loadingPresentation,
+  hasPersistedInterruptionNotice,
   responseInProgress,
   interrupted,
   responseSettled,
@@ -353,7 +359,7 @@ function ChatExchangeAssistantBody({
         )}
 
         <ExchangeSettledNotices
-          interrupted={interrupted}
+          interrupted={interrupted && !hasPersistedInterruptionNotice}
           responseSettled={responseSettled}
           errorMessage={errorMessage}
           onContinue={onContinue}
@@ -402,9 +408,7 @@ function interruptedCopyText(
   errorMessage: string | null | undefined,
 ) {
   return interrupted && !errorMessage
-    ? assistantPlainText.trim()
-      ? `${assistantPlainText}\n\nResponse was interrupted.`
-      : 'Response was interrupted.'
+    ? appendInterruptionNotice(assistantPlainText)
     : assistantPlainText
 }
 
@@ -566,7 +570,7 @@ function ExchangeSettledNotices({
     <>
       {interrupted && responseSettled && !errorMessage && (
         <div className="flex justify-start px-1 py-1">
-          <p className="text-sm text-(--muted)">Response was interrupted.</p>
+          <p className="text-sm text-(--muted)">{INTERRUPTED_RESPONSE_NOTICE}</p>
         </div>
       )}
 

@@ -41,44 +41,6 @@ export function GenerationModeToggle({
   )
 }
 
-export type PersonalChatMode = 'chat' | 'work'
-
-const PERSONAL_CHAT_MODES: { value: PersonalChatMode; label: string; description: string }[] = [
-  {
-    value: 'chat',
-    label: 'Chat',
-    description: 'A quick conversation for questions and lightweight tool use.',
-  },
-  {
-    value: 'work',
-    label: 'Work',
-    description: 'Durable, resumable work for longer tasks with tools and approvals.',
-  },
-]
-
-export function PersonalChatModeToggle({
-  mode,
-  onChange,
-  disabled,
-  className = '',
-}: {
-  mode: PersonalChatMode
-  onChange: (mode: PersonalChatMode) => void
-  disabled?: boolean
-  className?: string
-}) {
-  return (
-    <SegmentedControl
-      value={mode}
-      options={PERSONAL_CHAT_MODES}
-      onChange={onChange}
-      ariaLabel="Personal chat mode"
-      disabled={disabled}
-      className={className}
-    />
-  )
-}
-
 export function GenerationModeSelect({
   mode,
   onChange,

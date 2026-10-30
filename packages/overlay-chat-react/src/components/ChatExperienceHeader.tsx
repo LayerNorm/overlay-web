@@ -22,8 +22,6 @@ import type {
 import { VIDEO_SUB_MODES, VIDEO_SUB_MODE_LABELS } from '@overlay/chat-core'
 import {
   GenerationModeToggle,
-  PersonalChatModeToggle,
-  type PersonalChatMode,
 } from '@overlay/ui/chat'
 import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger, Button, Input } from '@overlay/ui/primitives'
 import { DelayedTooltip } from '@overlay/ui/overlays'
@@ -128,8 +126,6 @@ export interface ChatExperienceHeaderProps {
   onTemporaryChatToggle: () => void
   onGenerationModeChange: (mode: GenerationMode) => void
   generationMode: GenerationMode
-  personalChatMode: PersonalChatMode
-  onPersonalChatModeChange: (mode: PersonalChatMode) => void
   renderExportMenu: () => ReactNode
   modelPickerRef: RefObject<HTMLDivElement | null>
   videoSubModePickerRef: RefObject<HTMLDivElement | null>
@@ -917,9 +913,6 @@ export function ChatModelControls({
 
 function ChatHeaderControls(props: ChatExperienceHeaderProps) {
   const {
-    hasAutomationContext,
-    personalChatMode,
-    onPersonalChatModeChange,
     appMode,
     isTemporaryChat,
     isActiveLoading,
@@ -929,12 +922,6 @@ function ChatHeaderControls(props: ChatExperienceHeaderProps) {
   return (
     <div className="flex w-full min-w-0 flex-col gap-2 md:w-auto md:min-w-0 md:shrink-0 md:flex-row md:items-center md:justify-end md:gap-2">
       <div className="flex w-full min-w-0 items-center justify-between gap-2 md:contents">
-        {!hasAutomationContext ? (
-          <PersonalChatModeToggle
-            mode={personalChatMode}
-            onChange={onPersonalChatModeChange}
-          />
-        ) : null}
         {props.modelControlsInComposer ? null : <ChatModelControls {...props} />}
         <div className="flex shrink-0 items-center gap-1.5 md:hidden">
           {appMode === 'chat' ? (

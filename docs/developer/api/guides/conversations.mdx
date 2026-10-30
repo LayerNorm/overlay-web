@@ -13,6 +13,8 @@ Typical flow:
 4. On reconnect, read `/api/v1/conversations/run` and reload the authoritative conversation state; AgentRun decides whether a turn is still active.
 5. Stop an active turn with `/api/v1/conversations/stop`.
 
-Chat mode streams directly while the request is connected and persists the final assistant message once. If the connection closes, the client shows the active AgentRun and reloads the completed message through normal conversation synchronization. Work mode also streams the UI message response over the same `/api/v1/conversations/act` SSE connection while the workflow runs, then persists the final assistant message through the same AgentRun lifecycle.
+Personal Act requests use one Chat experience and a durable AgentRun. Backend capability selects the Overlay Harness when available; a successful readiness response from an older backend selects the existing durable personal workflow. Readiness failures remain fail-closed. New personal runs use `mode: "chat"` and preserve authorization, approval, billing, and usage-limit checks.
+
+For compatibility, `/api/v1/conversations/act` still accepts the optional `personalChatMode: "chat" | "work"` field. It is deprecated and ignored; it does not select execution behavior. Existing stored preferences and AgentRuns are left untouched.
 
 Conversation messages may contain text, file references, generated UI data, and tool invocation parts. Keep generated and persisted message shapes aligned with `@overlay/app-core`.

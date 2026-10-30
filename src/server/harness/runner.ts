@@ -17,6 +17,13 @@ import type { HarnessApprovalRequest, HarnessExecutionPorts, HarnessModelSetting
 import { HarnessLanguageModel, type HarnessModelReference } from './secure-model'
 import { createHarnessToolApprovals, type HarnessToolApprovals, type HarnessToolExecutionOptions } from './tool-approvals'
 import { harnessToolInputDigest } from './tool-input-digest'
+import {
+  captureAuthenticatedToolDenials,
+  captureObservedToolOutcome,
+  withObservedToolOutcomes,
+  type AuthenticatedToolDenial,
+  type ObservedToolOutcome,
+} from './tool-outcome-persistence'
 import { stripTextualToolCalls } from './textual-tool-calls'
 
 const DUPLICATE_GUARDED_CREATE_TOOLS = new Set([
@@ -221,6 +228,7 @@ async function resumePendingApprovals(
   ports: HarnessExecutionPorts,
   segment: number,
   approvals: HarnessToolApprovals,
+  authenticatedDenials: Map<string, AuthenticatedToolDenial>,
 ): Promise<ApprovalResumeOutcome> {
   assertPendingApprovalsExecutable(pending, tools)
   await ports.apply(`approval:${segment}`, { type: 'block', blocker: { kind: 'approval', question: 'Approval is required before executing these actions.' } })
@@ -229,6 +237,7 @@ async function resumePendingApprovals(
   const state = await ports.read()
   if (isTerminal(state)) return { kind: 'restart', messages, resetStagnation: false }
   assertApprovalDecisions(pending, decisions)
+  captureAuthenticatedToolDenials(pending, decisions, authenticatedDenials)
   const resumedMessages = appendApprovalMessages(messages, pending, decisions)
   await ports.apply(`resume-approval:${segment}`, { type: 'resume' })
   approvals.record(pending, decisions)
@@ -312,13 +321,19 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
   if (input.messages.some(message => message.role === 'system')) throw new Error('Supply trusted system content through harness instructions, not conversation messages.')
   let messages = input.messages
   const steps: StepResult<ToolSet>[] = []
+  const executionOutcomes = new Map<string, ObservedToolOutcome>()
+  const authenticatedDenials = new Map<string, AuthenticatedToolDenial>()
   const controls = new Set<string>(HARNESS_CONTROL_TOOLS)
   const toolNames = new Set([...Object.keys(input.tools), ...HARNESS_CONTROL_TOOLS])
   assertNoControlToolReplacement(input.tools, controls)
   const initial = await ports.read()
   let observedState = initial
-  if (isTerminal(initial)) return { outcome: 'finished', snapshot: initial, messages, steps }
-  if (!await ports.claim()) return { outcome: 'already_running', snapshot: await ports.read(), messages, steps }
+  if (isTerminal(initial)) {
+    return withObservedToolOutcomes({ outcome: 'finished', snapshot: initial, messages, steps }, executionOutcomes, authenticatedDenials)
+  }
+  if (!await ports.claim()) {
+    return withObservedToolOutcomes({ outcome: 'already_running', snapshot: await ports.read(), messages, steps }, executionOutcomes, authenticatedDenials)
+  }
   const approvals = createHarnessToolApprovals()
   const tools = wrapAuthorizedTools(input.tools, ports, controls, approvals)
   const toolDefinitions = await prepareToolDefinitions(tools)
@@ -331,10 +346,14 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
 
   while (true) {
     const state = await ports.read()
-    if (isTerminal(state)) return { outcome: 'finished', snapshot: state, messages, steps }
+    if (isTerminal(state)) {
+      return withObservedToolOutcomes({ outcome: 'finished', snapshot: state, messages, steps }, executionOutcomes, authenticatedDenials)
+    }
     const waiting = await handleWaitingState(state, messages, ports, invocation)
     if (waiting) {
-      if (waiting.kind === 'blocked') return { outcome: 'blocked', snapshot: waiting.snapshot, messages, steps }
+      if (waiting.kind === 'blocked') {
+        return withObservedToolOutcomes({ outcome: 'blocked', snapshot: waiting.snapshot, messages, steps }, executionOutcomes, authenticatedDenials)
+      }
       messages = waiting.messages
       invocation = waiting.invocation
       if (waiting.resetStagnation) stagnantSegments = 0
@@ -417,7 +436,10 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
       },
       onStepEnd: recordModelStep,
       onToolExecutionEnd: async event => {
-        if (!controls.has(event.toolCall.toolName)) await ports.recordToolResult(event)
+        if (!controls.has(event.toolCall.toolName)) {
+          await ports.recordToolResult(event)
+          captureObservedToolOutcome(event, executionOutcomes)
+        }
         observedState = await ports.read()
       },
       onEnd: async result => {
@@ -456,9 +478,9 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
     truncatedResponse = finishReason === 'length'
     if (updatedState.status !== 'running') continue
     if (pending.length) {
-      const approval = await resumePendingApprovals(pending, tools, messages, ports, segment, approvals)
+      const approval = await resumePendingApprovals(pending, tools, messages, ports, segment, approvals, authenticatedDenials)
       if (approval.kind === 'blocked') {
-        return { outcome: 'blocked', snapshot: approval.snapshot, messages, steps }
+        return withObservedToolOutcomes({ outcome: 'blocked', snapshot: approval.snapshot, messages, steps }, executionOutcomes, authenticatedDenials)
       }
       messages = approval.messages
       if (approval.resetStagnation) stagnantSegments = 0
@@ -466,7 +488,7 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
     }
     const continuation = await finishOrCheckpointInvocation(updatedState, ports, segment, before, steps, toolNames, truncatedResponse, stagnantSegments)
     if (continuation.kind === 'finished') {
-      return { outcome: 'finished', snapshot: continuation.snapshot, messages, steps }
+      return withObservedToolOutcomes({ outcome: 'finished', snapshot: continuation.snapshot, messages, steps }, executionOutcomes, authenticatedDenials)
     }
     stagnantSegments = continuation.stagnantSegments
     finalAnswerRequired = continuation.finalAnswerRequired

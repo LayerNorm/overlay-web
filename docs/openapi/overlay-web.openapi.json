@@ -2474,7 +2474,8 @@
                     "enum": [
                       "chat",
                       "work"
-                    ]
+                    ],
+                    "description": "Deprecated compatibility field. Accepted but ignored; personal chat execution is selected by backend capability."
                   },
                   "automationMode": {
                     "type": "boolean"

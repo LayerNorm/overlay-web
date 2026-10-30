@@ -110,7 +110,7 @@ test('computer screenshot returns image content and computer input validates act
   })
 })
 
-test('computer_browser typing is marked for Work-mode approval', async () => {
+test('computer_browser typing in durable personal runs requires approval', async () => {
   const tools = buildOverlayToolSet({
     userId: 'user-test',
     baseUrl: 'http://localhost:3000',
@@ -144,7 +144,7 @@ test('computer input fails closed before operate for typing while scroll still o
   assert.deepEqual(await computerInput.execute({ action: 'type', text: 'hello' }, {}), {
     success: false,
     error: 'approval_required',
-    message: "This action needs approval. Use Work mode, or set this agent's Permissions to Auto.",
+    message: "This action needs approval. Review it in personal chat with a connected Computer, or set this agent's Permissions to Auto.",
   })
 
   let operateCalls = 0
@@ -162,7 +162,7 @@ test('computer input fails closed before operate for typing while scroll still o
   assert.deepEqual(typing, {
     success: false,
     error: 'approval_required',
-    message: "This action needs approval. Use Work mode, or set this agent's Permissions to Auto.",
+    message: "This action needs approval. Review it in personal chat with a connected Computer, or set this agent's Permissions to Auto.",
   })
   assert.equal(operateCalls, 0)
 

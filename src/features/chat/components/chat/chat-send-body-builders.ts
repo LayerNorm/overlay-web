@@ -272,7 +272,6 @@ export function buildCommonActBody({
   selectedToolIdsSnapshot,
   memoryEnabledSnapshot,
   reasoning,
-  personalChatMode,
 }: {
   chatId: string
   scope?: 'personal' | 'workspace'
@@ -290,7 +289,6 @@ export function buildCommonActBody({
   selectedToolIdsSnapshot: ChatToolRequestId[]
   memoryEnabledSnapshot: boolean
   reasoning?: ReasoningLevel
-  personalChatMode?: 'chat' | 'work'
 }) {
   return {
     ...(temporaryChatSnapshot
@@ -313,6 +311,5 @@ export function buildCommonActBody({
     requestedToolIds: selectedToolIdsSnapshot,
     memoryEnabled: memoryEnabledSnapshot,
     ...(reasoning && reasoning !== 'provider-default' ? { reasoning } : {}),
-    ...(personalChatMode ? { personalChatMode } : {}),
   }
 }

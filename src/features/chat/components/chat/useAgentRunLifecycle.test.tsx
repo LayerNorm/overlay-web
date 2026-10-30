@@ -65,3 +65,25 @@ test('Work approval card renders Approve and Deny for a projected waiting run', 
   assert.match(markup, /Approve/)
   assert.match(markup, /Deny/)
 })
+
+test('input waits render the persisted question and a reply control instead of approval buttons', () => {
+  const run = toAgentRunResource({
+    ...waitingRunDoc,
+    status: 'waiting_for_input',
+    approval: undefined,
+    inputRequest: { token: 'input-token', requestedAt: 100, question: 'Which folder should I use?' },
+  })
+  function InputCard() {
+    const { workApprovalContent } = useWorkApproval({
+      agentRunLifecycle: { run, refresh: async () => run } as never,
+      activeChatId: 'conversation_1',
+    })
+    return createElement('div', null, workApprovalContent)
+  }
+  const markup = renderToStaticMarkup(createElement(InputCard))
+  assert.match(markup, /Which folder should I use\?/)
+  assert.match(markup, /aria-label="Your reply"/)
+  assert.match(markup, /Send reply/)
+  assert.doesNotMatch(markup, />Approve<|>Deny</)
+  assert.doesNotMatch(markup, /input-token/)
+})

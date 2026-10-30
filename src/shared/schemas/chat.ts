@@ -112,7 +112,9 @@ export const ActConversationRequest = z.object({
   replyContextForModel: z.string().optional(),
   historyBaseModelId: z.string().optional(),
   mode: z.enum(['chat', 'automate']).optional(),
-  personalChatMode: z.enum(['chat', 'work']).optional(),
+  personalChatMode: z.enum(['chat', 'work']).optional().describe(
+    'Deprecated compatibility field. Accepted but ignored; personal chat execution is selected by backend capability.',
+  ),
   automationMode: z.boolean().optional(),
   automationExecution: z.boolean().optional(),
   automationId: z.string().optional(),

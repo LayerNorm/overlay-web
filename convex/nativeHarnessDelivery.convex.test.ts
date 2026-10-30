@@ -433,9 +433,9 @@ test('parent Stop cancels named descendants across conversations and leaves anot
   ].map(messageId => ctx.db.get(messageId))))
   expect(cancelledMessages.map(message => message?.status)).toEqual(['completed', 'completed', 'completed'])
   expect(cancelledMessages.map(message => message?.content)).toEqual([
-    expect.stringContaining('[Interrupted by user. Continue?]'),
-    expect.stringContaining('[Interrupted by user. Continue?]'),
-    expect.stringContaining('[Interrupted by user. Continue?]'),
+    expect.stringContaining('This response was interrupted. Should I continue?'),
+    expect.stringContaining('This response was interrupted. Should I continue?'),
+    expect.stringContaining('This response was interrupted. Should I continue?'),
   ])
   const cancelledHarnessStates = await Promise.all([
     fixture.parent.runId, fixture.childRunId, grandchild.runId,
@@ -512,9 +512,9 @@ test('parent Stop cancels its same-conversation named subtree deepest-first', as
   ].map(messageId => ctx.db.get(messageId))))
   expect(cancelledMessages.map(message => message?.status)).toEqual(['completed', 'completed', 'completed'])
   expect(cancelledMessages.map(message => message?.content)).toEqual([
-    expect.stringContaining('[Interrupted by user. Continue?]'),
-    expect.stringContaining('[Interrupted by user. Continue?]'),
-    expect.stringContaining('[Interrupted by user. Continue?]'),
+    expect.stringContaining('This response was interrupted. Should I continue?'),
+    expect.stringContaining('This response was interrupted. Should I continue?'),
+    expect.stringContaining('This response was interrupted. Should I continue?'),
   ])
 
   const finalCounts = await convex.run(async ctx => Promise.all([
@@ -622,7 +622,7 @@ test('child Stop cancels an active descendant after its Harness parent is termin
   expect(parentAfterStop?.activeDescendantCount).toBe(0)
   expect((await convex.run(ctx => ctx.db.get(fixture.targetTurn.runId)))?.status).toBe('cancelled')
   expect((await convex.run(ctx => ctx.db.get(fixture.targetTurn.messageId)))?.content)
-    .toContain('[Interrupted by user. Continue?]')
+    .toContain('This response was interrupted. Should I continue?')
 })
 
 test.each(['legacy', 'foreign-actor', 'external-agent', 'archived-agent', 'wrong-principal', 'removed-agent', 'removed-invoker', 'foreign-message'])

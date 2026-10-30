@@ -39,7 +39,6 @@ export class AgentRunService {
 
   async startPersonalWorkflow(args: {
     conversationId?: ConversationId
-    mode: 'chat' | 'work'
     modelId: string
     turnId: string
     userId: string
@@ -48,7 +47,7 @@ export class AgentRunService {
     if (!args.conversationId || !args.userMessageId) return undefined
     return await this.repository.startAgentRun({
       conversationId: args.conversationId,
-      mode: args.mode,
+      mode: 'chat',
       modelId: args.modelId,
       runner: 'workflow',
       executionEngine: 'overlay_harness',
@@ -59,7 +58,7 @@ export class AgentRunService {
     }) ?? undefined
   }
 
-  async startWork(args: {
+  async startLegacyPersonalWorkflow(args: {
     conversationId?: ConversationId
     modelId: string
     turnId: string
@@ -69,7 +68,7 @@ export class AgentRunService {
     if (!args.conversationId || !args.userMessageId) return undefined
     return await this.repository.startAgentRun({
       conversationId: args.conversationId,
-      mode: 'work',
+      mode: 'chat',
       modelId: args.modelId,
       runner: 'workflow',
       turnId: args.turnId,
@@ -80,7 +79,7 @@ export class AgentRunService {
   }
 
   /**
-   * Opens a durable room agent turn. Unlike `startChat` / `startWork`, the run
+   * Opens a durable room agent turn. Unlike personal turns, the run
    * and its reply row are created by the collaboration repository, because a
    * room turn is authored by an agent principal and authorized by room
    * membership rather than by conversation ownership.

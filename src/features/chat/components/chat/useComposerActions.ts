@@ -4,10 +4,9 @@ import { useCallback, useEffect, useRef } from 'react'
 import type { RefObject } from 'react'
 import type { UIMessage } from '@/shared/chat/ai-ui-message'
 import type { GenerationMode } from '@/shared/ai/gateway/model-types'
-import type { PersonalChatMode } from '@overlay/ui/chat'
 import { assistantBlocksToPlainText, buildAssistantVisualSequence } from '@overlay/chat-core'
 import { safeSetLocalStorage } from './model-selection-utils'
-import { CHAT_GEN_MODE_KEY, PERSONAL_CHAT_MODE_KEY } from '../chat-interface/constants'
+import { CHAT_GEN_MODE_KEY } from '../chat-interface/constants'
 import type { EmptyAutomateSuggestionId, EmptyChatSuggestionId } from '../ChatEmptyState'
 import type { useGuestGate } from '@/components/providers/GuestGateProvider'
 import type { useChatSendController } from './useChatSendController'
@@ -32,8 +31,6 @@ export function useComposerActions({
   setGenerationChip,
   setInput,
   textareaRef,
-  personalChatMode,
-  setPersonalChatMode,
   handleModeChange,
   setSelectedToolIds,
   autoContinueEnabled,
@@ -52,8 +49,6 @@ export function useComposerActions({
   setGenerationChip: ChatPrefs['setGenerationChip']
   setInput: ReturnType<typeof useComposerTextState>['setInput']
   textareaRef: RefObject<MentionInputHandle | null>
-  personalChatMode: ChatPrefs['personalChatMode']
-  setPersonalChatMode: ChatPrefs['setPersonalChatMode']
   handleModeChange: ReturnType<typeof useChatModelSelectionController>['handleModeChange']
   setSelectedToolIds: ReturnType<typeof useComposerTools>['setSelectedToolIds']
   autoContinueEnabled: boolean
@@ -79,24 +74,13 @@ export function useComposerActions({
     }, 0)
   }, [textareaRef])
 
-  const handlePersonalChatModeChange = useCallback((nextMode: PersonalChatMode) => {
-    setPersonalChatMode(nextMode)
-    safeSetLocalStorage(PERSONAL_CHAT_MODE_KEY, nextMode)
-  }, [setPersonalChatMode])
-
   const handleGenerationModeChange = useCallback((nextMode: GenerationMode) => {
-    if (nextMode !== 'text' && personalChatMode === 'work') {
-      handlePersonalChatModeChange('chat')
-    }
     handleModeChange(nextMode)
-  }, [handleModeChange, handlePersonalChatModeChange, personalChatMode])
+  }, [handleModeChange])
 
   const handleGenerationChipChange = useCallback((chip: 'image' | 'video' | null) => {
-    if (chip && personalChatMode === 'work') {
-      handlePersonalChatModeChange('chat')
-    }
     setGenerationChip(chip)
-  }, [handlePersonalChatModeChange, personalChatMode, setGenerationChip])
+  }, [setGenerationChip])
 
   const handleEmptySuggestion = useCallback(
     (id: EmptyChatSuggestionId) => {
@@ -233,7 +217,6 @@ export function useComposerActions({
   return {
     effectiveHandleSend,
     focusComposer,
-    handlePersonalChatModeChange,
     handleGenerationModeChange,
     handleGenerationChipChange,
     handleEmptySuggestion,

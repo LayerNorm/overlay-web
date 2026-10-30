@@ -4,6 +4,11 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Render durable personal-run input requests, persist authenticated approval-resumed tool outcomes, and use one plain-language interruption notice without duplicate copy.
+- Preserve the visible first-turn transcript when Stop activates the saved conversation during backend cancellation.
+
+- Unify personal Chat and Work into one durable Chat experience with backend-capability-selected execution, while preserving approval, billing, and usage-limit checks.
+
 - Fix chat branching silently losing copied messages, use GLM 5.3 Flash for budget-authorized titles with UTF-8-safe input holds and a local fallback, preserve prose, code and standalone display equations around LaTeX without leaking partial-stream placeholders, and label workspace AI conversations "Chats".
 
 - Use TinyFish as the primary web search provider and power deep search with bounded multi-query Search + Fetch, with Elo fallback for both tools.

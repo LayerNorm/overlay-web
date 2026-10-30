@@ -1289,7 +1289,7 @@ export type ComputerTerminalAction =
   | { action: 'list' }
 
 const COMPUTER_ACTION_APPROVAL_MESSAGE =
-  "This action needs approval. Use Work mode, or set this agent's Permissions to Auto."
+  "This action needs approval. Review it in personal chat with a connected Computer, or set this agent's Permissions to Auto."
 
 const COMPUTER_USER_IN_CONTROL_RESULT = {
   success: false as const,

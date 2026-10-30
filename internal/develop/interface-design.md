@@ -545,6 +545,7 @@ Visual rules for these and every new component:
 1. **Flat surfaces.** No resting borders or rings on cards, code blocks, chips, buttons, approval items, popovers or sidebars. Surfaces differ by fill only (page, sidebar, subtle, elevated). The shared composer is the exception: a subtle 1px `--border` outline separates its elevated fill from the page in both themes. Floating layers keep a soft shadow. Focus rings stay for keyboard focus; destructive states tint the fill.
 2. **Solid headers, no blur.** Page and sidebar headers use the same fill as the surface below them, with no divider and no backdrop blur.
 3. **One model selector.** Model menus render `ModelSelector` from `@overlay/chat-react`: Text / Image / Video at the top, a filled search field, then a provider rail (Favorites star, then one `ProviderLogo` per provider) beside the list grouped by provider. Rows read logo, name, favorite star, selected check, capability chips. Search collapses to one flat list. Free-tier Auto stays pinned on top. Favorites are per browser (`overlay:favorite-models`) and survive blocked storage in memory.
+   Personal Chat has no separate Chat/Work selector; the backend selects its durable execution engine from reported capability.
 4. **One Prompt Input.** Every chat composer is built from `PromptInput` parts in `@overlay/chat-react` (`PromptInputBody`, `PromptInputFooter`, `PromptInputTools`, `PromptInputButton`, `PromptInputSubmit`). Footer order: +, @, optional /, tool chips, model controls, submit (ArrowUp, spinner while submitted, stop while streaming). In web chat the model button lives in the composer, not the header.
 
 ## Streamed agent replies
@@ -570,7 +571,7 @@ Keep the message action rail visible whenever it offers Stop. An active reply's
 Stop control must not require hovering the message; completed messages retain
 the usual hover/focus behavior.
 
-Cancelled and failed/recoverable remote replies keep their earlier narrative visible. Only tool details fold; stopping must not make the written answer appear to disappear behind the work summary.
+Cancelled replies use the plain notice “This response was interrupted. Should I continue?”; historical standalone interruption markers normalize to the same sentence. If persisted content already contains the notice, local interrupted state must not duplicate it in the transcript, reply text or copied text. Failed/recoverable remote replies keep their earlier narrative visible. Only tool details fold; stopping must not make the written answer appear to disappear behind the work summary.
 Cancelled remote replies show a small status label even when no text was produced
 and the viewer cannot control the run. History serialization retains status and other metadata alongside legacy text fallback, so reload preserves this label and any partial answer.
 

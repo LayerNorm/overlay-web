@@ -6,9 +6,9 @@ import type { UIMessageChunk } from 'ai'
  * Attaches message metadata to a UI message stream that has none.
  *
  * `toUIMessageStream` takes a `messageMetadata` callback, but a stream built by
- * `createModelCallToUIChunkTransform` — which is how Work mode reaches the
+ * `createModelCallToUIChunkTransform` — which is how durable personal Chat reaches the
  * client — carries only the raw model call. Without this, metadata-driven UI
- * such as source citations simply never arrives for a Work turn, even though
+ * such as source citations simply never arrives for a durable personal turn, even though
  * the citations were resolved before the turn started.
  *
  * Metadata rides both the `start` and `finish` chunks, matching the chat path:

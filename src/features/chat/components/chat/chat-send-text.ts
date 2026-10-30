@@ -37,7 +37,6 @@ export function sendTextTurn({
   completeSessionForStream,
   createNewChat,
   reasoning,
-  personalChatMode,
   emptyRuntime,
   ensureConversationRuntime,
   isFirstMessage,
@@ -80,7 +79,6 @@ export function sendTextTurn({
   replyContext: ReplyContext
   selectedActModelSnapshot: string
   reasoning?: ReasoningLevel
-  personalChatMode: 'chat' | 'work'
   setIsFirstMessage: (isFirstMessage: boolean) => void
   setRuntimeHydrationVersion: Dispatch<SetStateAction<number>>
   snapshot: SubmittedComposerSnapshot
@@ -240,7 +238,6 @@ export function sendTextTurn({
     selectedToolIdsSnapshot: snapshot.selectedToolIdsSnapshot,
     memoryEnabledSnapshot: snapshot.memoryEnabledSnapshot,
     reasoning,
-    personalChatMode,
   })
 
   const refreshAfterActTextTurn = async () => {
