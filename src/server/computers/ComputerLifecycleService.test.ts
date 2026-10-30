@@ -460,7 +460,8 @@ function lifecycleFixture(options: {
       if (args.kind === 'stop' && args.force === false) {
         assert.equal(args.recoveryProtocol, 'computer-recovery-v1')
       }
-      if (args.reconcileToken && (current?.token !== args.reconcileToken || (current.expiresAt ?? Infinity) > args.now)) return null
+      if (args.reconcileToken && current?.token !== args.token
+        && (current?.token !== args.reconcileToken || (current.expiresAt ?? Infinity) > args.now)) return null
       if (args.reconcileToken && args.kind === 'stop' && !args.force) {
         const activity = lifecycle.activityTokens as Record<string, { expiresAt?: number }> | undefined
         if (Object.values(activity ?? {}).some(value => (value.expiresAt ?? 0) > args.now)) return null

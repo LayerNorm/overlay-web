@@ -296,6 +296,7 @@ describe('Convex computers repository surface', () => {
     expect(await convex.mutation(claim, { ...recovery, now: 3_000 })).toBeNull()
     expect(await convex.mutation(claim, { ...recovery, reconcileToken: 'stale' })).toBeNull()
     expect(await convex.mutation(claim, recovery)).toMatchObject({ token: 'recovery' })
+    expect(await convex.mutation(claim, recovery)).toMatchObject({ token: 'recovery' })
     expect(await convex.mutation(claim, { ...recovery, token: 'second', force: true })).toBeNull()
     await convex.mutation(agentMutationRef('transitionComputerLifecycleByServer'), {
       workspaceId: 'ws_1', computerId: 'computer_recovery', leaseId: recovery.leaseId,

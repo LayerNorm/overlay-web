@@ -2122,7 +2122,7 @@ export const claimComputerMaintenanceByServer = mutation({
     const lifecycle = computerLifecycleUsage(usage)
     const current = lifecycle.maintenance as { token?: string; kind?: string; expiresAt?: number } | undefined
     if (args.recoveryProtocol && (args.kind !== 'stop' || args.force || !args.reconcileToken)) return null
-    if (args.reconcileToken && (current?.token !== args.reconcileToken
+    if (args.reconcileToken && current?.token !== args.token && (current?.token !== args.reconcileToken
       || (current.expiresAt ?? Number.MAX_SAFE_INTEGER) > args.now)) return null
     if (args.reconcileToken && args.kind === 'stop' && !args.force) {
       const activity = lifecycle.activityTokens as Record<string, { expiresAt?: number }> | undefined
