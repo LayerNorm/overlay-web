@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Fix native dictation capture startup and exercise the actual recorder HUD and signed clean/upgrade profiles in macOS CI.
+
 - Stop native desktop work and close floating panels when signing out from the sidebar.
 
 - Normalize empty evidence-tool lists for answer-only agent milestones so simple replies can finish; action milestones still require execution evidence.

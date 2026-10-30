@@ -136,6 +136,9 @@ Preview-only secret settings. Production credentials must not be copied into
 Preview; rebuild the current Preview after adding or replacing its provider key.
 Whisper downloads include pinned tokenizer files; older downloads can repair the
 missing offline dependencies without replacing model weights.
+The recorder HUD keeps its state in a private script scope so it cannot collide
+with the non-configurable preload bridge. CI captures synthetic audio through the
+actual HUD, in addition to testing direct transcription and downloaded models.
 
 Agent reply acceptance includes answer-only milestones. Their empty evidence-tool
 arrays are normalized to omission before persistence; action milestones retain
