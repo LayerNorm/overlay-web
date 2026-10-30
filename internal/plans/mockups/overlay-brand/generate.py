@@ -2,8 +2,10 @@ from fontTools.ttLib import TTFont
 from fontTools.pens.svgPathPen import SVGPathPen
 from fontTools.pens.boundsPen import BoundsPen
 from fontTools.pens.transformPen import TransformPen
-import json,os
-F='/home/ubuntu/repos/overlay-web/overlay-desktop/resources/fonts/Libre_Baskerville/static/LibreBaskerville-Regular.ttf'
+from pathlib import Path
+ASSET_DIR = Path(__file__).resolve().parent
+REPO_ROOT = ASSET_DIR.parents[3]
+F = REPO_ROOT / 'public/assets/fonts/Libre_Baskerville/static/LibreBaskerville-Regular.ttf'
 t=TTFont(F); gs=t.getGlyphSet(); cmap=t.getBestCmap()
 # kerning from GPOS pair adjustments (format 1 and 2)
 def kern(l,r):
@@ -62,6 +64,7 @@ files={
  'overlay-app-icon-dark.svg':mark_svg('#fafafa',bg='#0a0a0a',rx=190),
  'overlay-app-icon-light.svg':mark_svg('#0a0a0a',bg='#fafafa',rx=190),
 }
-for n,s in files.items(): open(n,'w').write(s)
+for n, s in files.items():
+    (ASSET_DIR / n).write_text(s)
 json.dump({'O':O,'eyes':eyes_path(),'E':E,'word':''.join(paths),'wordBox':[minx,maxx]},open('brand-geometry.json','w'))
 print('kern O-v',kern(cmap[ord('O')],cmap[ord('v')]),'width',x)
