@@ -115,3 +115,8 @@ handoffs must never log their one-time transfer links.
 Agent smoke acceptance covers the web-owned execution path too. When admission
 falls back from a configured model, the native harness candidate chain must begin
 with that admitted model and exclude candidates already rejected by admission.
+
+The desktop clean-clone workflow also tests a real throwaway legacy file-origin
+profile. Its opt-in `local_transcription` dispatch synthesizes speech and exercises
+a downloaded pinned local model through the real Electron bridge on the macOS
+runner, avoiding local model downloads/inference during laptop-sensitive QA.
