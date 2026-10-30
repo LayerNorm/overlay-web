@@ -374,7 +374,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       'When the user only needs information, return complete=true with a direct answer in assistantText and no toolRequest.',
       'When browser interaction is needed, return complete=false with at most one toolRequest for the next step.',
       'Return complete=true only when the task is done and you can answer the user directly without further tools.',
-      'Prefer local extension tools for the user’s current browser state. For remote browser work, use an Overlay Computer in Work mode.',
+      'Prefer local extension tools for the user’s current browser state. For remote browser work, use an Overlay Computer connected to personal chat.',
       'Use DOM-first tools before coordinate tools. Use coordinate tools only when selectors/text are not reliable.',
       'Read-only tools: tabs.list, windows.list, page.inspect, page.find, page.wait_for, page.screenshot.',
       'Mutating tools require approval: tabs.open, tabs.focus, tabs.close, tabs.navigate, tabs.reload, windows.focus, page.click, page.type, page.press, page.select, page.scroll, page.hover, page.click_at, page.move_mouse, page.drag.',

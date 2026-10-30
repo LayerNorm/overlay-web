@@ -3,6 +3,7 @@ import { afterEach, expect, test, vi } from 'vitest'
 import type { AgentRun } from '@/shared/agents/agent-run'
 import type { UIMessage } from '@/server/ai/sdk'
 import type { AuthenticatedAppUser } from '@/server/auth/app-api-auth'
+import { ActConversationRequest } from '@/shared/schemas/chat'
 import {
   isPersonalHarnessRouteEligible,
   personalHarnessConversationClientId,
@@ -49,15 +50,15 @@ vi.mock('@/server/harness/personal-admission', () => {
 
 afterEach(() => vi.resetAllMocks())
 
-function makeAgentRun(mode: 'chat' | 'work'): AgentRun {
+function makeAgentRun(): AgentRun {
   return {
-    id: `run-${mode}`,
+    id: 'run-chat',
     conversationId: 'conversation',
-    turnId: `turn-${mode}`,
+    turnId: 'turn-chat',
     userId: 'user',
-    userMessageId: `user-message-${mode}`,
-    assistantMessageId: `assistant-message-${mode}`,
-    mode,
+    userMessageId: 'user-message-chat',
+    assistantMessageId: 'assistant-message-chat',
+    mode: 'chat',
     runner: 'workflow',
     executionEngine: 'overlay_harness',
     status: 'queued',
@@ -87,13 +88,27 @@ test('the route selector admits only authenticated personal requests, including 
   expect(isPersonalHarnessRouteEligible({ authType: 'session' })).toBe(true)
 })
 
-test('executeActTurn dispatches personal turns before the legacy Work runner', () => {
+test('legacy personalChatMode values are accepted but ignored by orchestration', () => {
+  expect(ActConversationRequest.safeParse({ messages: [] }).success).toBe(true)
+  for (const personalChatMode of ['chat', 'work'] as const) {
+    expect(ActConversationRequest.safeParse({ messages: [], personalChatMode }).success).toBe(true)
+  }
+  const route = readFileSync(new URL('./ActTurnOrchestrationService.ts', import.meta.url), 'utf8')
+  expect(route).not.toContain('personalChatMode')
+})
+
+test('executeActTurn selects the Harness or durable legacy workflow by backend capability', () => {
   const route = readFileSync(new URL('./ActTurnOrchestrationService.ts', import.meta.url), 'utf8')
   const eligibility = route.indexOf('isPersonalHarnessRouteEligible({')
   const personalDispatch = route.indexOf('return await startPersonalHarnessTurn({', eligibility)
   const legacyWork = route.indexOf('if (useWorkRunner) {', personalDispatch)
 
   expect(eligibility).toBeGreaterThanOrEqual(0)
+  expect(route).toContain('const usePersonalHarness = personalWorkflowEligible && isHarnessBackendReady(appSettings)')
+  expect(route).toContain('const useWorkRunner = !usePersonalHarness && personalWorkflowEligible && agentRunEligible')
+  expect(route).toContain('const tid = personalWorkflowEligible')
+  expect(route).toContain('const durableClientId = trimmedClientId || (!conversationId && personalWorkflowEligible')
+  expect(route).toContain('personalHarnessConversationClientId({')
   expect(personalDispatch).toBeGreaterThan(eligibility)
   expect(legacyWork).toBeGreaterThan(personalDispatch)
   expect(route.slice(personalDispatch, legacyWork)).not.toContain('actUsageBudgetService.reserveForAttempt')
@@ -109,8 +124,8 @@ test('generated conversation IDs are bounded, stable, and workspace-specific', (
   expect(first.length).toBeLessThanOrEqual(48)
 })
 
-test.each(['chat', 'work'] as const)('%s streams admitted multimodal history through the durable adapter', async mode => {
-  const run = makeAgentRun(mode)
+test('streams admitted multimodal history through the durable adapter', async () => {
+  const run = makeAgentRun()
   const filePart = {
     type: 'file',
     mediaType: 'image/png',
@@ -118,7 +133,7 @@ test.each(['chat', 'work'] as const)('%s streams admitted multimodal history thr
     filename: 'image.png',
   }
   const messages = [{
-    id: `message-${mode}`,
+    id: 'message-chat',
     role: 'user',
     parts: [{ type: 'text', text: 'Inspect this image.' }, filePart],
   }] as UIMessage[]
@@ -170,7 +185,7 @@ test.each(['chat', 'work'] as const)('%s streams admitted multimodal history thr
     modelCandidates: ['candidate-0', 'candidate-1'],
     paid: true,
     principalId: 'principal',
-    rawReasoning: mode === 'work' ? 'provider-default' : 'high',
+    rawReasoning: 'high',
     requestId: 'request-1',
     releaseConcurrency,
     recordProgress,
@@ -186,10 +201,10 @@ test.each(['chat', 'work'] as const)('%s streams admitted multimodal history thr
       latestUserText: 'Inspect this image.',
       mediaToolIntent: 'image',
       memoryEnabled: false,
-      mode: mode === 'work' ? 'automate' : 'chat',
+      mode: 'chat',
       requestFingerprint: 'request-fingerprint',
       requestedToolIds: ['read_file'],
-      turnId: `turn-${mode}`,
+      turnId: 'turn-chat',
       userId: 'user',
       workspaceId: 'workspace',
     },
@@ -209,20 +224,18 @@ test.each(['chat', 'work'] as const)('%s streams admitted multimodal history thr
     url: 'https://files.example/image.png',
     providerReference: { gateway: 'file-ref' },
   })
-  expect(workflowInput.context.mode).toBe(mode === 'work' ? 'automate' : 'chat')
+  expect(workflowInput.context.mode).toBe('chat')
   expect(workflowInput.context.mediaToolIntent).toBe('image')
   expect(workflowInput.definitions).toEqual([{ name: 'read_file' }])
   expect(workflowInput.delivery).toEqual({ emitWebhook: true, sourceCitations })
-  expect(workflowInput.settings).toEqual(mode === 'work'
-    ? { maxOutputTokens: 8_192 }
-    : { maxOutputTokens: 8_192, reasoning: 'high' })
+  expect(workflowInput.settings).toEqual({ maxOutputTokens: 8_192, reasoning: 'high' })
   expect(workflowInput.context).toMatchObject({
     accountAllowedConnectorIds: ['connector-1'],
     accountAllowedToolIds: ['read_file'],
     billingProgrammaticSubjectId: 'billing-subject',
     requestFingerprint: 'request-fingerprint',
     requestedToolIds: ['read_file'],
-    turnId: `turn-${mode}`,
+    turnId: 'turn-chat',
     workspaceId: 'workspace',
   })
   expect(workflowInput.access.authentication).toEqual({ type: 'session' })

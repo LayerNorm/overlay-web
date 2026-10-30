@@ -134,30 +134,25 @@ execution; `conversationMessages.status` is a rendering projection. Convex
 creates the assistant placeholder and AgentRun together, and completes,
 fails, or cancels both records in one storage transaction.
 
-Chat mode continues to use the AI SDK `ToolLoopAgent`. It streams directly to
-the connected browser, while Next `after()` drains a tee of the stream for a
-persistent conversation. Overlay does not write token deltas for this path and
-does not use the Cloudflare chat relay. The final assistant content, parts,
-usage, routed model, and terminal AgentRun state are written once when the run
-ends. On reconnect, the client polls `GET /api/v1/conversations/run` and reloads
-the final message; a non-terminal run shows the disconnected generating state.
+Personal Chat uses one durable AgentRun lifecycle. A successful backend
+capability response selects the Overlay Harness; a successful readiness response
+from an older backend selects the existing `workflows/personal-chat-work.ts`
+workflow. Readiness errors remain fail-closed and do not switch to a direct
+ToolLoop. Both paths stream the UI message response over the Act SSE connection
+and persist the final assistant content, usage, routed model, and terminal
+AgentRun state. On reconnect, the client polls `GET /api/v1/conversations/run`
+and reloads the final message; a non-terminal run shows the disconnected
+generating state.
 
-ToolLoop runs tolerate browser disconnection but not a process crash. Their
-lease expires to a structured `tool_loop_lease_expired` failure through the
-Convex cron. Stop first cancels AgentRun, then
-best-effort aborts the in-process `AbortController`; late completion cannot
-overwrite cancellation.
+Automation, service-auth, and room execution retain their separate paths.
 
-Work mode uses `@ai-sdk/workflow`'s `WorkflowAgent` behind the same AgentRun
-contract. The request route performs the same authorization, context and memory
-construction, model policy, tool filtering, billing reservation, and user-message
-persistence as Chat mode, then starts `workflows/personal-chat-work.ts`. Model
-calls and tool executions are durable Workflow steps; the workflow ID is stored
-on AgentRun. Work mode exposes the workflow's writable stream as a UI message
-SSE stream: the `WorkflowAgent` writes `ModelCallStreamPart` chunks to the run
-stream and the route pipes them through `createModelCallToUIChunkTransform`. The
-client renders tokens, tool calls, and approval requests in real time, then
-receives the final persisted message through the normal conversation data path.
+The two durable engines perform the same authorization, context and memory
+construction, model policy, tool filtering, billing reservation, and
+user-message persistence. Workflow calls and tool executions are durable steps;
+the workflow identity remains stored on its AgentRun. Approval-required tools
+transition AgentRun to `waiting_for_approval`; Stop cancels the run and its
+workflow. New personal AgentRuns use `mode: "chat"`; historical mode values and
+engine ownership remain readable and unchanged.
 
 Approval-required tools transition AgentRun to `waiting_for_approval` with a
 durable hook token and tool-call summary. `POST
@@ -168,10 +163,8 @@ idempotency key. Connector providers outside Overlay must still honor their own
 idempotency semantics; Workflow step replay alone cannot make an external API
 idempotent.
 
-Both runners write comparable observations onto the terminal AgentRun. Chat
-records first-token and completion latency from its direct stream; Work records
-first-token latency from the workflow stream, completion latency, and durable
-step observations. Provider token usage and
+Both execution engines write comparable observations onto the terminal
+AgentRun. Provider token usage and
 estimated provider cost, tool outcomes and retries, cancellation timing,
 browser-disconnect outcomes, lease/process-loss observations, and stale-run
 detection feed `GET /api/v1/conversations/run/metrics`. The report keeps raw

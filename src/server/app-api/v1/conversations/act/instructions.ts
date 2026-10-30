@@ -192,7 +192,7 @@ function requestedToolsNote(
         ? '- Memory: the user selected memory for this message. Use the provided memory context, and call search_memory if stored memory is needed beyond that context.'
         : '- Memory: the user selected memory, but memory is off for this turn. Do not use memory tools or memory context.')
     } else if (toolId === 'browser') {
-      lines.push('- Computer browser: the user selected browser work for this message. Use computer_browser on the bound Computer for UI interaction, authenticated browsing, screenshots, or a JS-heavy page. If a Computer is unavailable, explain that the user needs a Computer in Work mode.')
+      lines.push('- Computer browser: use computer_browser on a connected Computer for UI interaction, authenticated browsing, screenshots, or a JS-heavy page. If none is available, explain that the user can connect a Computer to personal chat.')
     }
   }
   return lines.length > 0

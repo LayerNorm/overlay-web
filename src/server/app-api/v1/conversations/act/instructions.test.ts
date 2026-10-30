@@ -89,3 +89,14 @@ test('buildActAgentInstructions does not advertise tools when none are registere
   assert.doesNotMatch(instructions, /You also have an computer_browser tool/)
   assert.doesNotMatch(instructions, /PAID_REALITY/)
 })
+
+test('computer browser guidance uses the connected Computer in personal chat', () => {
+  const instructions = buildInstructions({
+    availableToolIds: ['computer_browser'],
+    requestedToolIds: ['browser'],
+  })
+
+  assert.match(instructions, /connected Computer/)
+  assert.match(instructions, /connect a Computer to personal chat/)
+  assert.doesNotMatch(instructions, /Work mode/)
+})

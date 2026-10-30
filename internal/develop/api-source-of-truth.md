@@ -255,18 +255,19 @@ providers use `ConnectedAgentRepository` for durable command claims and ordered
 event acknowledgement. Provider-branded sandbox identifiers and reusable host
 credentials are never public contract fields.
 
-- `POST /api/v1/conversations/act` streams Chat mode directly over SSE. For a
-  persistent conversation, the server drains a second stream branch after a
-  browser disconnect and performs one final assistant-message write; it does
-  not persist token deltas or mirror the stream through Cloudflare.
-- The same endpoint accepts `personalChatMode: "work"`. It starts a durable
-  WorkflowAgent and immediately returns the workflow's default writable stream
-  as an SSE UI message stream. The WorkflowAgent writes raw
-  `ModelCallStreamPart` chunks to the run stream, which the route transforms
-  through `createModelCallToUIChunkTransform` so the client receives token,
-  tool, and approval updates in real time. Work mode closes the stream when the
-  workflow finalizes or fails.
-- Both Chat and Work streams preserve provider-native `source-url` and
+- `POST /api/v1/conversations/act` exposes one personal Chat experience. Eligible
+  authenticated personal calls use the Overlay Harness when the backend reports
+  that capability; a successful readiness response from an older backend selects
+  the existing durable `personal-chat-work` workflow instead. Readiness errors
+  fail closed and never select a direct tool loop. Both paths generate durable
+  turn and client IDs when omitted, create new AgentRuns with `mode: "chat"`, and
+  retain the same authorization, approvals, billing, and usage limits.
+- The optional `personalChatMode: "chat" | "work"` request field is deprecated,
+  accepted for compatibility, and ignored. Old stored preference values are not
+  read by the client; existing AgentRun modes and engine ownership remain
+  readable and unchanged. Automation, service-auth, and room execution paths
+  retain their separate behavior.
+- Both personal streams preserve provider-native `source-url` and
   `source-document` UI parts. The transcript adapter owns compatibility with the
   legacy `source` shape and projects incomplete tool/reasoning part states to a
   terminal state once their response is completed, cancelled, interrupted, or failed.

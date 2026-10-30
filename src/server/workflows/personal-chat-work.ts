@@ -315,7 +315,7 @@ export async function personalChatWorkWorkflow(input: PersonalChatWorkWorkflowIn
     let stepsSinceApproval = 0
     while (true) {
       if (stepsSinceApproval >= MAX_WORK_MODEL_STEPS) {
-        throw new FatalError(`Work mode exceeded ${MAX_WORK_MODEL_STEPS} model steps without finishing.`)
+        throw new FatalError(`Personal chat exceeded ${MAX_WORK_MODEL_STEPS} model steps without finishing.`)
       }
       stepsSinceApproval += 1
       const call = await callWorkModelStep({
@@ -412,7 +412,7 @@ export async function personalChatWorkWorkflow(input: PersonalChatWorkWorkflowIn
 
         if (pending.length > 0) {
           if (approvalCycle >= MAX_WORK_APPROVAL_CYCLES) {
-            throw new FatalError('Work mode exceeded the maximum number of approval cycles.')
+            throw new FatalError('Personal chat exceeded the maximum number of approval cycles.')
           }
           const token = buildPersonalChatWorkApprovalToken(input.agentRunId, approvalCycle)
           approvalCycle += 1

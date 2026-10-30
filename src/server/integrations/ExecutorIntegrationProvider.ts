@@ -275,7 +275,7 @@ export class ExecutorIntegrationProvider implements IntegrationProvider {
     const approvalRequiredResult = {
       success: false,
       error: 'approval_required',
-      message: "This action needs approval. Use Work mode, or set this agent's Permissions to Auto.",
+      message: "This action needs approval. Review it in personal chat, or set this agent's Permissions to Auto.",
     } as const
     return {
       EXECUTOR_SEARCH_TOOLS: tool({

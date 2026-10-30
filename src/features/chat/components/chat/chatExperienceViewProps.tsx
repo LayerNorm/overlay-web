@@ -96,8 +96,6 @@ export function buildChatExperienceViewProps(
       onTemporaryChatToggle: c.handleTemporaryChatToggle,
       onGenerationModeChange: c.handleGenerationModeChange,
       generationMode: c.generationMode,
-      personalChatMode: c.personalChatMode,
-      onPersonalChatModeChange: c.handlePersonalChatModeChange,
       renderExportMenu,
       ...c.headerModelProps,
       pickerTextModels: c.pickerTextModels,

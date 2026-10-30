@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { GenerationMode, VideoSubMode } from '@/shared/ai/gateway/model-types'
 import type { ReasoningLevel } from '@overlay/chat-core'
-import type { PersonalChatMode } from '@overlay/ui/chat'
 import {
   DEFAULT_IMAGE_MODEL_ID,
   DEFAULT_MODEL_ID,
@@ -26,7 +25,6 @@ import {
   VIDEO_MODEL_KEY,
   LEGACY_SELECTED_IMAGE_MODELS_KEY,
   LEGACY_SELECTED_VIDEO_MODELS_KEY,
-  PERSONAL_CHAT_MODE_KEY,
   VIDEO_SUB_MODE_KEY,
 } from '../chat-interface/constants'
 
@@ -36,7 +34,6 @@ export function useChatPreferences() {
   const [chatPrefsHydrated, setChatPrefsHydrated] = useState(false)
   const [hasStoredTextModelSelection, setHasStoredTextModelSelection] = useState(false)
   const [generationMode, setGenerationMode] = useState<GenerationMode>('text')
-  const [personalChatMode, setPersonalChatMode] = useState<PersonalChatMode>('chat')
   const [generationChip, setGenerationChip] = useState<'image' | 'video' | null>(null)
   const [selectedImageModels, setSelectedImageModels] = useState<string[]>([DEFAULT_IMAGE_MODEL_ID])
   const [selectedVideoModels, setSelectedVideoModels] = useState<string[]>([DEFAULT_VIDEO_MODEL_ID])
@@ -48,11 +45,6 @@ export function useChatPreferences() {
     try {
       const savedMode = localStorage.getItem(CHAT_GEN_MODE_KEY) as GenerationMode | null
       if (savedMode && ['text', 'image', 'video'].includes(savedMode)) setGenerationMode(savedMode)
-
-      const savedPersonalChatMode = localStorage.getItem(PERSONAL_CHAT_MODE_KEY)
-      if (savedPersonalChatMode === 'chat' || savedPersonalChatMode === 'work') {
-        setPersonalChatMode(savedPersonalChatMode)
-      }
 
       const savedVideoSubMode = localStorage.getItem(VIDEO_SUB_MODE_KEY)
       if (savedVideoSubMode) setVideoSubMode(savedVideoSubMode as VideoSubMode)
@@ -145,8 +137,6 @@ export function useChatPreferences() {
     hasStoredTextModelSelection,
     generationMode,
     setGenerationMode,
-    personalChatMode,
-    setPersonalChatMode,
     generationChip,
     setGenerationChip,
     selectedImageModels,

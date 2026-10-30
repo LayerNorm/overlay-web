@@ -158,15 +158,34 @@ test('builds pending-first and normal act bodies without null conversation ids',
     indexedAttachments: [],
     replyContext: null,
     userMeta: {},
-    selectedToolIdsSnapshot: [],
-    memoryEnabledSnapshot: false,
-    personalChatMode: 'work',
+    selectedToolIdsSnapshot: ['web_search'],
+    memoryEnabledSnapshot: true,
   })
   const normalRecord = normalBody as Record<string, unknown>
   assert.equal(normalRecord.conversationId, 'chat-1')
   assert.equal(normalRecord.conversationClientId, undefined)
   assert.equal(normalRecord.scope, undefined)
-  assert.equal(normalRecord.personalChatMode, 'work')
+  assert.deepEqual(normalRecord.requestedToolIds, ['web_search'])
+  assert.equal(normalRecord.memoryEnabled, true)
+  assert.equal('personalChatMode' in normalRecord, false)
+
+  const temporaryBody = buildCommonActBody({
+    chatId: 'chat-2',
+    pendingConversationClientId: null,
+    temporaryChatSnapshot: true,
+    textModelsForTurn: ['model-a'],
+    turnId: 'turn-2',
+    requestMode: 'chat',
+    automationIdParam: null,
+    indexedFileNames: [],
+    indexedAttachments: [],
+    replyContext: null,
+    userMeta: {},
+    selectedToolIdsSnapshot: [],
+    memoryEnabledSnapshot: false,
+  }) as Record<string, unknown>
+  assert.equal(temporaryBody.temporaryChat, true)
+  assert.equal(temporaryBody.conversationId, undefined)
 })
 
 test('builds media prompt with reply context only when user text exists', () => {

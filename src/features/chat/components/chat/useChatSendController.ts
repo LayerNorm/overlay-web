@@ -84,7 +84,6 @@ export function useChatSendController({
   pendingChatDocuments,
   pendingScrollChatIdRef,
   pendingScrollTurnIdRef,
-  personalChatMode,
   persistActiveRuntimeUiState,
   pendingFirstSendRef,
   refreshSelectedAutomation,
@@ -160,7 +159,6 @@ export function useChatSendController({
   pendingChatDocuments: PendingChatDocument[]
   pendingScrollChatIdRef: MutableRefObject<string | null>
   pendingScrollTurnIdRef: MutableRefObject<string | null>
-  personalChatMode: 'chat' | 'work'
   persistActiveRuntimeUiState: () => void
   pendingFirstSendRef: MutableRefObject<PendingFirstSendState | null>
   refreshSelectedAutomation: (options?: { showLoading?: boolean; conversationId?: string }) => Promise<void>
@@ -454,7 +452,6 @@ export function useChatSendController({
       replyContext: replyCtxSnapshot,
       selectedActModelSnapshot: snapshot.selectedActModelSnapshot,
       reasoning,
-      personalChatMode,
       setIsFirstMessage,
       setRuntimeHydrationVersion,
       snapshot,
@@ -498,7 +495,6 @@ export function useChatSendController({
     pendingScrollChatIdRef,
     pendingScrollTurnIdRef,
     pendingFirstSendRef,
-    personalChatMode,
     refreshSelectedAutomation,
     replyContext,
     requireAuth,

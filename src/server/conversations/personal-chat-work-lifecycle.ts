@@ -170,7 +170,7 @@ export async function failPersonalChatWork(input: {
       message: input.errorMessage,
       retryable: true,
     },
-    errorText: `Work mode failed: ${input.errorMessage}`,
+    errorText: `Personal chat failed: ${input.errorMessage}`,
     runId: input.agentRunId,
     userId: input.resourceUserId,
     metrics: {

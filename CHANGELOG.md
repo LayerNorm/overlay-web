@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Unify personal Chat and Work into one durable Chat experience with backend-capability-selected execution, while preserving approval, billing, and usage-limit checks.
+
 - Use TinyFish as the primary web search provider and power deep search with bounded multi-query Search + Fetch, with Elo fallback for both tools.
 
 - Reserve model budgets against Gateway provider, regional, fast and peak prices rather than only headline rates, preventing underfunded chat and context-summary settlements when routing selects a more expensive provider.

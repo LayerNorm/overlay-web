@@ -207,10 +207,12 @@ Convex code may import browser-safe shared modules from `src/shared`. Convex mus
 
 `src/server/workflows/personal-harness.ts` composes `runOverlayHarness` with personal
 authorization, model billing, tool reconstruction, durable waits and transcript
-delivery. Authenticated personal Chat and Work requests in the conversation Act
-endpoint are admitted to this workflow. In-flight runs and internal service or
-automation execution remain on legacy runners until a later migration. Other
-surfaces and hosted parity QA remain pending.
+delivery. Eligible personal Chat requests use this workflow when the backend
+reports the Harness capability. A successful readiness response from an older
+backend selects the existing durable `personal-chat-work` workflow instead.
+Readiness errors fail closed. In-flight runs and internal service or automation
+execution remain on their retained runners. Other surfaces and hosted parity QA
+remain pending.
 `mode: 'automate'` alone remains a configuration chat; only the automation
 execution flags keep a request on the legacy path.
 
@@ -232,7 +234,7 @@ Each action milestone declares `evidenceTools`; only results from those tools
 can support it, and a tool result can support only one action milestone.
 Read-only runs can answer without action milestones by using one answer-only
 milestone. Native descendants derive the same policy from their admitted tools.
-Personal Chat and Work roots and descendants remain plan-optional.
+Personal Chat roots and descendants remain plan-optional.
 When OpenRouter cost confirmation proves an interrupted free-route stream cost
 zero, the Harness records a durable `route_interrupted` receipt and immediately
 retries the same model. It permits two such retries per run; a third interruption
@@ -296,12 +298,14 @@ Admission and cancellation bindings are additive, so legacy generic harness
 admissions remain unchanged. Existing in-flight Work runs and internal automation
 continue on their legacy runner until that traffic is migrated.
 
-New personal Chat and Work AgentRuns are created with the immutable optional
-`executionEngine: 'overlay_harness'` discriminator. Existing rows remain
-unmarked, including legacy Work runs whose `runner` is already `workflow`.
-Replaying `startAgentRun` returns the existing row without changing its engine,
-and personal Harness admission and delivery ownership reject unmarked rows.
-Legacy stop and cleanup authorization remains compatible with in-flight runs.
+New personal AgentRuns use canonical `mode: 'chat'`. Harness runs carry the
+immutable optional `executionEngine: 'overlay_harness'` discriminator; the
+older-backend personal workflow keeps its existing workflow identity without an
+engine marker. Existing rows, including historical `mode: 'work'` runs and their
+engine ownership, remain unchanged and readable. Replaying `startAgentRun`
+returns the existing row without changing its engine, and personal Harness
+admission and delivery ownership reject unmarked rows. Legacy stop and cleanup
+authorization remains compatible with in-flight runs.
 
 Canonical `AgentRun` status includes active `waiting_for_input` and
 `waiting_for_children` states. Each can resume to `running` or end as failed or
@@ -320,7 +324,7 @@ harness stores a bounded user-input evidence summary. Model/tool authorization i
 rechecked after resumption. Delivery transitions can be fenced by workflow ID.
 
 The canonical personal workflow connects this adapter with child launch,
-finalization and transcript delivery for authenticated personal Chat and Work.
+finalization and transcript delivery for authenticated personal Chat.
 Input controls and the Context/Plan/Queue presentation still require mockup approval.
 
 Personal workflow inputs may carry an admitted ordered model candidate list, with
@@ -379,7 +383,7 @@ Durable accounting binds the workspace explicitly so a tab switch cannot move
 usage to another workspace. `requireRecorded: true` prevents a caller from
 advancing after a failed write or a reservation that still needs reconciliation.
 
-`personal-tools.ts` reconstructs personal Chat/Work tools inside authorized durable
+`personal-tools.ts` reconstructs personal Chat tools inside authorized durable
 steps. `personal-access.ts` refreshes workspace membership, principal identity,
 conversation and delivery-run access, API key validity, model policy, entitlements
 and catalog grants at execution time. Admission grants are an upper bound, not a
@@ -457,10 +461,13 @@ reconciliation rather than a fabricated zero-cost charge. Existing callers keep
 their uncached behavior until they supply these fields; BYOK external charges
 must not be inferred from Overlay's zero billing for user-owned credentials.
 
-Authenticated Personal Chat and Work use the shared controller once the selected
-backend publishes its Harness capability marker. Native agents additionally require
-the default-off server setting `OVERLAY_NATIVE_HARNESS=1`. Automations, messaging
-and notebook loops remain on their retained implementations until adapter parity.
+Authenticated personal Chat uses the shared controller when the backend publishes
+its Harness capability marker. After a successful readiness response from an older
+backend, all eligible personal calls use the existing durable
+`personal-chat-work` workflow instead. Readiness failures remain fail-closed; they
+do not fall back to a direct tool loop. Native agents additionally require the
+default-off server setting `OVERLAY_NATIVE_HARNESS=1`. Automations, messaging and
+notebook loops remain on their retained implementations until adapter parity.
 Its focused QA uses
 the real SDK with a mock provider, including more than twenty calls, natural early
 return, input suspension, approval/denial, revoked authorization, cancellation,
@@ -489,7 +496,7 @@ Before creating a personal AgentRun, the web reads the server-owned
 `harnessRevision` marker from the existing authenticated
 `platform/uiSettings:getByServer` query. It is deployment metadata, not a stored
 or writable preference. A successful old-backend response without the marker
-keeps new turns on the retained Chat/Work runner. Authentication, transport,
+keeps new turns on the retained durable personal-chat workflow. Authentication, transport,
 unexpected revision and other runtime failures fail closed; they never select
 another engine. No failed admission, model call or tool effect is replayed.
 The check is fresh per admission, so atomic publication of the matching Convex
@@ -503,7 +510,7 @@ Do not infer readiness from missing-function error text: production Convex
 redacts that text to a generic server error.
 
 Release in the normal order: merge, verify matching native Git web is live,
-deploy Convex from clean current canonical main, then smoke Chat and Work.
+deploy Convex from clean current canonical main, then smoke personal Chat.
 Keep Harness tables/functions and legacy handlers through rollback and draining.
 Stop acknowledges an already-terminal Workflow only after SDK status readback;
 an active or unreadable run still reports cancellation failure for investigation.
