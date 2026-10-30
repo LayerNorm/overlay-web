@@ -38,7 +38,8 @@ export async function prepareWorkspaceAgentInputs(input: {
   })
   let gate: Awaited<ReturnType<ActEntitlementService['gateModelAccess']>> | undefined
   let modelId = agent.modelId
-  for (const attempt of agentModelAttempts(agent.modelId)) {
+  const modelAttempts = agentModelAttempts(agent.modelId)
+  for (const attempt of modelAttempts) {
     try {
       gate = await entitlementService.gateModelAccess({
         effectiveModelId: attempt,
@@ -97,7 +98,9 @@ export async function prepareWorkspaceAgentInputs(input: {
     gate,
     tooling,
     modelId,
-    modelCandidates: agentModelAttempts(agent.modelId),
+    // Exclude candidates already rejected by admission. The execution contract
+    // starts at the selected entitled model, including a free-plan fallback.
+    modelCandidates: modelAttempts.slice(modelAttempts.indexOf(modelId)),
     turnContext,
     toolDefinitions,
     ...identity,

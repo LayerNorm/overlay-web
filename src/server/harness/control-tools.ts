@@ -81,7 +81,8 @@ export function createHarnessControlTools(ports: HarnessExecutionPorts) {
           dependsOn: step.dependsOn,
           acceptanceCriteria: step.acceptanceCriteria,
           requiresVerification: step.requiresVerification === true,
-          ...(step.evidenceTools ? { evidenceTools: step.evidenceTools } : {}),
+          ...(step.evidenceTools && (step.evidenceTools.length > 0 || step.answerOnly !== true)
+            ? { evidenceTools: step.evidenceTools } : {}),
           ...(step.answerOnly === true ? { answerOnly: true } : {}),
         }))
         const state = await ports.apply(`control:${toolCallId}`, { type: 'replace_plan', steps: normalizedSteps })

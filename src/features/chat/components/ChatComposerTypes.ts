@@ -33,6 +33,8 @@ export type ChatComposerRuntime = {
   blockedComposerContent: ReactNode
 }
 export type ChatComposerInputState = {
+  draftIdentity: string
+  onAppendText: (text: string) => void
   replyContext: ReplyContext; setReplyContext: (context: ReplyContext) => void; textareaRef: RefObject<MentionInputHandle | null>
   input: string; inputRevision: number; onInputChange: (text: string) => void; onMentionsChange: (mentions: MentionItem[]) => void
   onPaste: ClipboardEventHandler; hasComposerText: boolean

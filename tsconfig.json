@@ -148,6 +148,9 @@
       ],
       "@overlay/workspace-contracts/*": [
         "./packages/overlay-workspace-contracts/src/*"
+      ],
+      "@overlay/desktop-bridge": [
+        "./packages/overlay-desktop-bridge/src/index.ts"
       ]
     }
   },

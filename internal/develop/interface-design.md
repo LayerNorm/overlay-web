@@ -591,3 +591,11 @@ replace their original URL with an OAuth button when integrations are enabled an
 the service name resolves to a supported connector. Otherwise keep the link usable.
 Refresh connection state on window focus after an OAuth tab returns. Inline provider
 marks use monochrome foreground paths; discard filled export backgrounds.
+
+## Native desktop surfaces
+
+Desktop controls are capability-gated through the shared desktop bridge. Use the
+existing settings rows and UI primitives. Reserve traffic-light space only when
+the bridge marks the document; header buttons and links remain non-draggable.
+Chat/notes `surface=panel` uses the compact desktop layout with the same providers
+and permission boundaries. See [Desktop web shell](desktop-web-shell.md).

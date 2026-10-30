@@ -420,3 +420,11 @@ Paid feature routes also never accept a billing-account identifier. The BFF reso
 `GET /api/v1/subscription` and `GET /api/v1/bootstrap` expose the effective payer entitlement for the active workspace. An eligible organization workspace returns its workspace billing-account plan and remaining budget to every active member; personal workspaces and organizations outside the rollout retain personal entitlements. Clients send `x-overlay-workspace-id` on workspace-scoped entitlement reads so the model picker and the server-side charge path resolve the same payer. Billing settings, checkout, top-up, and portal mutations remain personal or workspace-manager operations and never become member-authorized merely because entitlement reads are shared.
 
 Task archive/restore/move requests preserve optional `actingAgentPrincipalId` through the scope request schema. The scope handler forwards it only for service-authenticated Work operations; browser callers retain human attribution and permissions.
+
+## Desktop web shell
+
+The desktop now loads the web application, so its chat/agent/file routes use the
+same client and cookie session directly. Native-only server operations (session
+verification and cloud transcription) use the persistent window partition, with
+bounded timeouts and the existing API authorization/billing checks. Main does not
+store or refresh a second WorkOS session or run a parallel provider client.

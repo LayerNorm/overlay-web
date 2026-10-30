@@ -70,7 +70,7 @@ test('shared preparation retains model fallback, grants and schema only without 
     memoryEnabled: true, workspaceId: 'workspace', includeAutoRetrieval: false,
   })
   expect(prepared.modelId).toBe('model-fallback')
-  expect(prepared.modelCandidates).toEqual(['model-primary', 'model-fallback'])
+  expect(prepared.modelCandidates).toEqual(['model-fallback'])
   expect(mocks.buildTooling).toHaveBeenCalledWith(expect.objectContaining({
     actorUserId: 'user', agentPrincipalId: 'agent-principal', conversationId: 'room',
     effectiveModelId: 'model-fallback', grant: { agentId: 'agent', allowedToolIds: ['files'], isDefaultMaster: false },
@@ -84,3 +84,13 @@ test('shared preparation retains model fallback, grants and schema only without 
   expect(prepared.toolDefinitions[0]).not.toHaveProperty('execute')
   expect(mocks.server.chatUsagePolicy.reserveForAttempt).not.toHaveBeenCalled()
 })
+
+ test('an entitled primary keeps its admitted fallback order', async () => {
+  mocks.gate.mockResolvedValue({ runtimeEntitlements: { tools: ['files'] }, paid: true })
+  const prepared = await prepareWorkspaceAgentInputs({
+    actorUserId: 'user', agentId: 'agent', conversationId: 'room', messageId: 'question',
+    memoryEnabled: true, workspaceId: 'workspace',
+  })
+  expect(prepared.modelId).toBe('model-primary')
+  expect(prepared.modelCandidates).toEqual(['model-primary', 'model-fallback'])
+ })

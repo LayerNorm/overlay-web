@@ -1,9 +1,10 @@
+import { desktopWebShellViolations } from './desktop-web-shell-boundary.mjs'
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = dirname(dirname(dirname(fileURLToPath(import.meta.url))))
-const failures = []
+const failures = desktopWebShellViolations(root)
 const read = (path) => readFileSync(join(root, path), 'utf8')
 const requireText = (path, pattern, message) => {
   const source = read(path)
@@ -23,11 +24,7 @@ for (const stylesheet of stylesheets) {
     new RegExp(`@import ['"]@overlay/modules-react/${stylesheet.replace('.', '\\.')}['"]`),
     `web must import ${stylesheet}`,
   )
-  requireText(
-    'overlay-desktop/src/renderer/src/styles/shared-chat.css',
-    new RegExp(`@import ['"]@overlay/modules-react/${stylesheet.replace('.', '\\.')}['"]`),
-    `desktop must import ${stylesheet}`,
-  )
+
 }
 
 if (/\.app-note-editor\b/.test(read('src/app/globals.css'))) {
@@ -39,32 +36,6 @@ requireText(
   /NODE_ENV === 'production'.*FILE_PARITY_FIXTURES/s,
   'web fixture route must stay production-gated',
 )
-requireText(
-  'overlay-desktop/src/main/index.ts',
-  /!app\.isPackaged && process\.env\.OVERLAY_FILE_PARITY_FIXTURE === '1'/,
-  'Electron fixture mode must stay unpackaged-only',
-)
-requireText(
-  'overlay-desktop/src/renderer/src/main.tsx',
-  /import\.meta\.env\.DEV && fixtureWindow === 'file-parity-fixture'/,
-  'renderer fixture entry must stay development-only',
-)
-
-for (const productionEditor of [
-  'overlay-desktop/src/renderer/src/pages/NotebookPanel.tsx',
-  'overlay-desktop/src/renderer/src/pages/MainWindow.tsx',
-]) {
-  requireText(
-    productionEditor,
-    /DesktopNotebookEditor/,
-    'desktop notebook consumers must use the shared editor adapter',
-  )
-  forbidText(
-    productionEditor,
-    /\buseEditor\s*\(|NotebookStyles|NotebookToolbar|InlineDiffExtension|SlashMenu/,
-    'desktop notebook consumers cannot restore an independent renderer',
-  )
-}
 
 const sharedNotebookFiles = [
   'packages/overlay-modules-react/src/notes/editor.tsx',
@@ -129,11 +100,7 @@ const retiredPlatformFiles = [
   'src/features/knowledge/components/KnowledgeToolbarMenus.tsx',
   'src/features/notebook/components/SlashMenu.tsx',
   'src/features/notebook/components/InlineDiffExtension.ts',
-  'overlay-desktop/src/renderer/src/pages/NotesListPage.tsx',
-  'overlay-desktop/src/renderer/src/pages/InlineNoteView.tsx',
-  'overlay-desktop/src/renderer/src/pages/inlineNoteSaveQueue.ts',
-  'overlay-desktop/src/renderer/src/features/files/shared-files-surface-flag.ts',
-  'overlay-desktop/src/renderer/src/components/ui/ProjectFileTree.tsx',
+
 ]
 for (const path of retiredPlatformFiles) {
   if (existsSync(join(root, path))) failures.push(`${path}: retired compatibility or independent renderer must stay deleted`)
@@ -143,9 +110,7 @@ const platformFileSources = [
   ...sourceFiles('src/features/files'),
   ...sourceFiles('src/features/knowledge'),
   ...sourceFiles('src/features/notebook'),
-  ...sourceFiles('overlay-desktop/src/renderer/src/features/files'),
-  ...sourceFiles('overlay-desktop/src/renderer/src/features/notebook'),
-  ...sourceFiles('overlay-desktop/src/renderer/src/pages'),
+
 ]
 for (const path of platformFileSources) {
   const source = read(path)
@@ -163,57 +128,19 @@ for (const path of platformFileSources) {
 
 for (const [path, required] of [
   ['src/app/app/_components/KnowledgeViewHost.tsx', "from '@overlay/modules-react/knowledge'"],
-  ['overlay-desktop/src/renderer/src/pages/RemoteFilePreviewPage.tsx', "from '@overlay/modules-react/knowledge'"],
-  ['overlay-desktop/src/renderer/src/pages/OutputPreviewPage.tsx', "from '@overlay/modules-react/knowledge'"],
-  ['overlay-desktop/src/renderer/src/features/notebook/DesktopNotebookEditor.tsx', "from '@overlay/modules-react/notes'"],
-  ['overlay-desktop/src/renderer/src/components/ui/NativeProjectFileTreeHost.tsx', "from '@overlay/modules-react/projects'"],
-  ['overlay-desktop/src/renderer/src/components/chat/DesktopAttachmentPreview.tsx', 'AttachmentPreviewPanel'],
-  ['overlay-desktop/src/renderer/src/components/chat/DesktopAttachmentPreview.tsx', 'FileViewerPanel'],
+
 ]) {
   requireText(path, new RegExp(required.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), `embedded consumer must retain canonical shared boundary: ${required}`)
 }
 
-requireText(
-  'overlay-desktop/src/renderer/src/pages/MainWindow.tsx',
-  /<FilesListPage\b/,
-  'desktop MainWindow must retain its compact native files sidebar',
-)
-for (const sharedConsumer of ['DesktopNotebookEditor', 'RemoteFilePreviewPage', 'OutputPreviewPage']) {
-  requireText(
-    'overlay-desktop/src/renderer/src/pages/MainWindow.tsx',
-    new RegExp(`<${sharedConsumer}\\b`),
-    `desktop file content must retain the shared ${sharedConsumer} consumer`,
-  )
-}
-forbidText(
-  'overlay-desktop/src/renderer/src/pages/MainWindow.tsx',
-  /sharedFilesSurfaceEnabled|VITE_DESKTOP_SHARED_FILES_SURFACE|<SharedDesktopFilesSurface\b/,
-  'desktop MainWindow cannot restore the files rollback flag or replace the native sidebar',
-)
-forbidText(
-  'overlay-desktop/src/renderer/src/adapters/desktopKnowledgeSurfaceAdapters.ts',
-  /mergeDesktopFileList|reconcileLocalNoteItems/,
-  'desktop cannot silently merge raw local and remote entities',
-)
-requireText(
-  'overlay-desktop/src/renderer/src/pages/SharedDesktopFilesSurface.tsx',
-  /authority === 'on-this-mac'[\s\S]*createDesktopLocalKnowledgeSurfaceAdapters/,
-  'desktop local-only operation must be explicit and must not merge with cloud entities',
-)
-forbidText(
-  'overlay-desktop/src/renderer/src/services/files-list-cache.ts',
-  /mergeDesktopFileList|Promise\.all\(\s*\[\s*fetchRemoteFiles/,
-  'desktop sidebar cache must select one authority and never merge raw local and remote entities',
-)
-
 for (const adapterTest of [
   'src/features/knowledge/adapters/webKnowledgeSurfaceAdapters.test.ts',
-  'overlay-desktop/src/renderer/src/adapters/desktopKnowledgeSurfaceAdapters.test.ts',
+
 ]) {
   requireText(
     adapterTest,
     /exerciseKnowledgeAdapterContract\(adapters\)/,
-    'web and desktop adapters must execute the identical contract fixture',
+    'web adapter used by both surfaces must execute the canonical contract fixture',
   )
 }
 requireText(
@@ -258,21 +185,7 @@ for (const [path, pattern, message] of [
     /lastFileTriggerRef[\s\S]*requestAnimationFrame[\s\S]*\.focus\(\)/,
     'closing a file must restore focus to the element that opened it',
   ],
-  [
-    'overlay-desktop/src/renderer/src/components/chat/DesktopAttachmentPreview.tsx',
-    /contentResponse\(nextPreview\.fileId,\s*\{[\s\S]*signal: controller\.signal/,
-    'desktop attachment previews must cancel abandoned content requests',
-  ],
-  [
-    'overlay-desktop/src/renderer/src/adapters/desktopLocalKnowledgeSurfaceAdapters.test.ts',
-    /never merges cloud rows/,
-    'local authority must retain explicit no-merge contract coverage',
-  ],
-  [
-    'overlay-desktop/src/renderer/src/adapters/desktopKnowledgeSurfaceAdapters.test.ts',
-    /opens 100 files without refetching the list/,
-    'desktop adapter must retain the 100-open zero-refetch performance gate',
-  ],
+
   [
     'packages/overlay-app-core/src/notebook-editor-controller.test.ts',
     /hydrating 100 notes causes zero writes[\s\S]*100-edit burst produces one bounded save/,

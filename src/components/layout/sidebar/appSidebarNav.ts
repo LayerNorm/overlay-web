@@ -1,4 +1,5 @@
 import type { LucideIcon } from 'lucide-react'
+import { notifyDesktopSignedOut } from '@overlay/desktop-bridge'
 import {
   Archive,
   Bot,
@@ -427,6 +428,7 @@ export function selectMobileNavItem(
 }
 
 export async function signOutToLanding() {
+  await notifyDesktopSignedOut()
   await fetch('/api/auth/sign-out', { method: 'POST' })
   window.location.href = '/'
 }

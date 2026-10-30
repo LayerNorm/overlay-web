@@ -8,6 +8,30 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Release Computer wake claims when provider reconnection fails, and safely reconcile expired maintenance before retrying without replacing the disk or bypassing usage settlement.
 
+- Keep desktop reply notifications in their original workspace and wait for saved chat IDs.
+
+- Keep desktop dictation and screenshots scoped to their original draft; release cancelled microphones and refresh native status live.
+
+- Decode desktop capture to PCM for offline models and reject stale recordings after cancellation.
+
+- Default desktop dictation to Control+Space and add a test-notification action with macOS permission guidance.
+
+- Fix native dictation capture startup and exercise the actual recorder HUD and signed clean/upgrade profiles in macOS CI.
+
+- Stop native desktop work and close floating panels when signing out from the sidebar.
+
+- Normalize empty evidence-tool lists for answer-only agent milestones so simple replies can finish; action milestones still require execution evidence.
+
+- Allow credit-funded cloud dictation when no legacy seconds cap is configured, while retaining paid-plan, explicit quota and budget reservation checks.
+
+- Keep desktop floating panels compact after chat navigation and reload by using native window identity.
+
+- Keep agent model routing aligned with the admitted model after a free-plan or budget fallback, so an agent turn can start instead of failing before inference.
+
+- Record desktop shortcuts directly from key presses and expose per-device crash-reporting consent when available; bound native sign-out cleanup so web logout stays responsive.
+
+- Add the versioned macOS desktop bridge, native settings/composer controls and compact chat/notes panels while sharing the full web app and session. Retire the duplicate desktop application and preserve local upgrade data.
+
 - Use text-only tool, reasoning, worked-for and approval rows, with one 24px look-motion mark below active assistant output; only its eyes move.
 
 - Replace Overlay web branding and static assets with the O-with-eyes mark, capitalized lockup, eye-motion loaders and record-backed, read-only default-agent avatar.

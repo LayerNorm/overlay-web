@@ -1,3 +1,4 @@
+import { DesktopProvider } from '@/components/desktop/DesktopProvider'
 import { ensureDefaultUserRole } from '@/server/authorization/ensure-default-user-role'
 import { Suspense } from 'react'
 import { OnboardingShell } from './onboarding/OnboardingShell'
@@ -75,9 +76,9 @@ async function AppShellContent({
       initialUser={user}
       requiresConvexClient={appDataCapabilities.requiresConvexClient}
     >
-      <WorkspaceAppBoundary hasAuthenticatedUser={Boolean(user)}>
+      <DesktopProvider><WorkspaceAppBoundary hasAuthenticatedUser={Boolean(user)}>
         <GatewayModelCatalogPrefetch />
-        <div className="flex h-screen overflow-hidden bg-background text-foreground">
+        <div data-app-shell className="flex h-screen overflow-hidden bg-background text-foreground">
           <AsyncSessionsProvider>
             <NavigationProgressProvider>
               <NavigationProgressBar />
@@ -104,7 +105,7 @@ async function AppShellContent({
             </NavigationProgressProvider>
           </AsyncSessionsProvider>
         </div>
-      </WorkspaceAppBoundary>
+      </WorkspaceAppBoundary></DesktopProvider>
     </AppClientProviders>
   )
 }

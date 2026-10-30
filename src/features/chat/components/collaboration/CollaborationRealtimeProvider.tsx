@@ -6,9 +6,12 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react'
+import { useDesktopBridge } from '@/components/desktop/DesktopProvider'
+import { buildWorkspaceHref } from '@/shared/workspaces/routing'
 import type { WorkspaceNotification } from '@overlay/workspace-contracts'
 import { useQuery } from '@/components/providers/convex-hooks'
 import { useConvexAuthToken } from '@/components/providers/ConvexAuthProvider'
@@ -102,6 +105,8 @@ export function CollaborationRealtimeProvider({ children }: { children: ReactNod
   const { activeWorkspaceId } = useWorkspace()
   const accessToken = useConvexAuthToken()
   const visible = usePageVisibility()
+  const desktop = useDesktopBridge()
+  const seen = useRef<Set<string> | null>(null)
   const [notifications, setNotifications] = useState<WorkspaceNotification[]>([])
   const [notificationsReady, setNotificationsReady] = useState(false)
   const [conversationListVersion, setConversationListVersion] = useState<number | null>(null)
@@ -113,6 +118,7 @@ export function CollaborationRealtimeProvider({ children }: { children: ReactNod
     let alive = true
     void Promise.resolve().then(() => {
       if (!alive) return
+      seen.current = null
       setNotifications([])
       setNotificationsReady(false)
       setConversationListVersion(null)
@@ -123,9 +129,18 @@ export function CollaborationRealtimeProvider({ children }: { children: ReactNod
   const refreshNotifications = useCallback(() => {}, [])
 
   const handleNotifications = useCallback((next: WorkspaceNotification[]) => {
+    if (desktop?.info.capabilities.includes('window')) void desktop.bridge.call('window.setBadgeCount', { count: Math.min(99999, next.filter((item) => !item.readAt).length) }).catch(() => {})
+    if (seen.current && desktop?.info.capabilities.includes('notifications') && !visible) {
+      for (const item of next) {
+        if (seen.current.has(item.id) || item.readAt || item.conversationState === 'deleted') continue
+        const route = buildWorkspaceHref(item.workspaceId, '/app/chat') + (item.conversationId ? `?id=${encodeURIComponent(item.conversationId)}` : '')
+        void desktop.bridge.call('notifications.show', { title: item.title.slice(0, 200), body: (item.body ?? '').slice(0, 2000), route }).catch(() => {})
+      }
+    }
+    seen.current = new Set(next.map((item) => item.id))
     setNotifications(next)
     setNotificationsReady(true)
-  }, [])
+  }, [desktop, visible])
 
   const value = useMemo(() => ({
     conversationListVersion,
@@ -140,7 +155,7 @@ export function CollaborationRealtimeProvider({ children }: { children: ReactNod
         <ConvexCollaborationSubscriptions
           accessToken={accessToken}
           actorUserId={user?.id ?? null}
-          enabled={visible}
+          enabled={visible || Boolean(desktop)}
           onConversationListVersion={setConversationListVersion}
           onNotifications={handleNotifications}
           workspaceId={activeWorkspaceId}

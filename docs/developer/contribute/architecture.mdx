@@ -358,3 +358,12 @@ npm run convex:push:prod
 ```
 
 Never run a Convex deploy from a feature worktree, never use `convex:push:all`, and do not pass `.env.local` to production Convex deploy commands; that can point deploys at the dev slug.
+
+## Desktop web shell
+
+The macOS desktop loads the same web app and routes in a sandboxed Electron
+window. `@overlay/desktop-bridge` defines the typed, versioned contract for native
+capabilities such as dictation, panels and screenshots. Browser code uses those
+capabilities only after a successful handshake; ordinary browsers omit the native
+controls. The desktop validates origin, top-frame identity and arguments again in
+main. Web owns chat, agent execution, files, billing and the cookie session.

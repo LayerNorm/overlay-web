@@ -1,5 +1,7 @@
 'use client'
 
+import { useDesktopBridge } from '@/components/desktop/DesktopProvider'
+
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useEffect, useState, useCallback, useMemo, useRef, useSyncExternalStore, type Dispatch, type SetStateAction } from 'react'
 import { TOUR_NAVIGATION_EVENT } from './tour-navigation'
@@ -87,11 +89,12 @@ function useSidebarNavConfig({ appShell, capabilities, allows,  user }: SidebarN
       })),
     [allows, appShell.navigation,  user],
   )
+  const desktop = useDesktopBridge()
   const settingsSections = useMemo(
-    () => appShell.settingsSections.filter((section) => (
+    () => [...appShell.settingsSections, ...(desktop ? [{ id: 'desktop', label: 'Desktop', icon: 'monitor' as const, order: 100 }] : [])].filter((section) => (
       !user || allows(getSettingsSectionAuthorizationRequirement(section.id))
     )),
-    [allows, appShell.settingsSections,  user],
+    [allows, appShell.settingsSections, desktop, user],
   )
   return { availableToolsInlineItems, navItems, settingsSections }
 }

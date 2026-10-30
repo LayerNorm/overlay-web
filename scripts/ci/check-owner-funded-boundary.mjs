@@ -1,7 +1,10 @@
-import { readFileSync } from 'node:fs'
+import { readFileSync, existsSync, readdirSync } from 'node:fs'
+import { join } from 'node:path'
+import { desktopWebShellViolations } from './desktop-web-shell-boundary.mjs'
 
 const rules = [
-  ['src/server/app-api/v1/conversations/act/route.ts', 'reserveForAttempt', 'markReservationStarted'],
+  ['src/server/app-api/v1/conversations/act/ActTurnOrchestrationService.ts', 'reserveForAttempt', 'markReservationStarted'],
+  ['src/server/harness/model-dispatch.ts', 'reserveProviderBudget', 'markProviderBudgetStarted'],
   ['src/server/app-api/v1/conversations/act/extension-plan/route.ts', 'reserveProviderBudget', 'markProviderBudgetStarted'],
   ['src/server/app-api/v1/generate-title/route.ts', 'reserveForAttempt', 'markReservationStarted'],
   ['src/server/app-api/v1/generate-tab-group-label/route.ts', 'reserveProviderBudget', 'markProviderBudgetStarted'],
@@ -28,31 +31,36 @@ if (
   failures.push('BFF does not fail closed when an owner-funded mutation omits Idempotency-Key')
 }
 
-const postgresRuntime = readFileSync('src/server/jobs/postgres-runtime.ts', 'utf8')
-const bootstrap = readFileSync('src/server/bootstrap.ts', 'utf8')
-if (!postgresRuntime.includes('new ServerProviderUsageMeter(usage)')) {
-  failures.push('Postgres background providers are not wired to the usage meter')
-}
-if (!bootstrap.includes('new ServerProviderUsageMeter(appData.repositories.usage)')) {
-  failures.push('Postgres request-time embeddings are not wired to the usage meter')
-}
-
-const desktopUsage = [
+// Convex owns background embeddings; retired Postgres and desktop billing
+// implementations must not return alongside the authoritative server pipeline.
+for (const retired of [
+  'src/server/jobs/postgres-runtime.ts',
+  'src/server/knowledge/PostgresKnowledgeSearchRepository.ts',
   'overlay-desktop/src/main/services/subscription-service.ts',
   'overlay-desktop/src/main/services/security/usage-tracking-service.ts',
-].map((file) => readFileSync(file, 'utf8')).join('\n')
-if (desktopUsage.includes("platform/usage:recordBatch")) {
-  failures.push('Desktop still writes client-calculated usage to the authoritative ledger')
+]) {
+  if (existsSync(retired)) failures.push(`${retired}: retired billing implementation returned`)
+}
+failures.push(...desktopWebShellViolations(process.cwd()))
+function nativeSources(directory) {
+  return readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
+    const path = join(directory, entry.name)
+    return entry.isDirectory() ? nativeSources(path) : path.endsWith('.ts') ? [path] : []
+  })
+}
+for (const path of nativeSources('overlay-desktop/src/main')) {
+  if (readFileSync(path, 'utf8').includes('platform/usage:recordBatch'))
+    failures.push(`${path}: desktop still writes client-calculated usage to the authoritative ledger`)
 }
 
 const knowledgeRoute = readFileSync('src/server/app-api/v1/knowledge/search/route.ts', 'utf8')
-const knowledgeRepository = readFileSync('src/server/knowledge/PostgresKnowledgeSearchRepository.ts', 'utf8')
+const knowledgeRepository = readFileSync('src/server/knowledge/ConvexKnowledgeSearchRepository.ts', 'utf8')
 const convexKnowledge = readFileSync('convex/knowledge/knowledge.ts', 'utf8')
 if (!knowledgeRoute.includes('requestIdempotencyKey') || !knowledgeRoute.includes('requestFingerprint')) {
   failures.push('Knowledge search does not bind embedding spend to the API request identity')
 }
-if (!knowledgeRepository.includes('usageMeter.run') || !knowledgeRepository.includes('idempotencyKey')) {
-  failures.push('Postgres knowledge search bypasses authoritative embedding metering')
+if (!knowledgeRepository.includes('resolveBillingPayer') || !knowledgeRepository.includes('billingAccountId') || !knowledgeRepository.includes('...providerBilling')) {
+  failures.push('Convex knowledge search bypasses the workspace payer and provider billing context')
 }
 if (
   !convexKnowledge.includes('markBudgetReservationStartedByServer') ||
