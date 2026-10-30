@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, type MutableRefObject } from 'react'
+import { toast } from '@overlay/ui/primitives'
 import type { UIMessage } from '@/shared/chat/ai-ui-message'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import type {
@@ -67,14 +68,15 @@ export function useChatStopController({
 
     if (chatId) {
       try {
-        await Promise.race([
+        const response = await Promise.race([
           overlayAppClient.conversations.stopResponse({ conversationId: chatId }),
           new Promise<never>((_, reject) =>
             setTimeout(() => reject(new Error('timeout')), 5000),
           ),
         ])
+        if (!response.ok) throw new Error('Stop request was rejected.')
       } catch {
-        // Backend call failed or timed out; local cleanup still makes the UI usable.
+        toast.error('Could not confirm that the response stopped. It may still be running.')
       }
     }
 

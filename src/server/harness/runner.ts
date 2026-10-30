@@ -39,6 +39,112 @@ export type HarnessExecutionResult = {
   steps: StepResult<ToolSet>[]
 }
 
+type ObservedToolOutcome =
+  | { toolCallId: string; toolName: string; input: unknown; success: true; output: unknown }
+  | { toolCallId: string; toolName: string; input: unknown; success: false; error: unknown }
+
+type AuthenticatedToolDenial = {
+  approvalId: string
+  approved: false
+  reason?: string
+  toolCall: { type: 'tool-call'; toolCallId: string; toolName: string; input: unknown }
+}
+
+function matchingCall(value: unknown, toolCallId: string, toolName: string): boolean {
+  return value !== null && typeof value === 'object'
+    && 'toolCallId' in value && value.toolCallId === toolCallId
+    && 'toolName' in value && value.toolName === toolName
+}
+
+function normalizeExecutionSteps(
+  steps: StepResult<ToolSet>[],
+  outcomes: ReadonlyMap<string, ObservedToolOutcome>,
+  denials: ReadonlyMap<string, AuthenticatedToolDenial>,
+): StepResult<ToolSet>[] {
+  return steps.map(step => {
+    const calls = [
+      ...(step.toolCalls ?? []),
+      ...(step.content ?? []).filter(part => part.type === 'tool-call'),
+    ]
+    let content: NonNullable<StepResult<ToolSet>['content']> | undefined
+    const ensureContent = () => {
+      content ??= step.content?.length
+        ? [...step.content]
+        : [
+            ...(step.reasoningText?.trim() ? [{ type: 'reasoning' as const, text: step.reasoningText }] : []),
+            ...(step.toolCalls ?? []).map(call => ({ ...call, type: 'tool-call' as const })),
+            ...(step.text?.trim() ? [{ type: 'text' as const, text: step.text }] : []),
+          ]
+      return content
+    }
+
+    const seenCalls = new Set<string>()
+    for (const call of calls) {
+      const { toolCallId, toolName } = call
+      const identity = `${toolCallId}\u0000${toolName}`
+      if (seenCalls.has(identity)) continue
+      seenCalls.add(identity)
+      const denial = denials.get(toolCallId)
+      const outcome = outcomes.get(toolCallId)
+      const match = denial
+        ? denial.toolCall.toolName === toolName
+        : outcome?.toolName === toolName
+      if (!match) continue
+      const existing = [
+        ...(content ?? step.content ?? []),
+        ...(step.toolResults ?? []),
+      ].some(part => (
+        part.type === 'tool-result' || part.type === 'tool-error' || part.type === 'tool-approval-response'
+      ) && matchingCall(part.type === 'tool-approval-response' && 'toolCall' in part
+        ? part.toolCall
+        : part, toolCallId, toolName))
+      if (existing) continue
+
+      const part = denial
+        ? {
+            type: 'tool-approval-response' as const,
+            approvalId: denial.approvalId,
+            approved: false as const,
+            ...(denial.reason === undefined ? {} : { reason: denial.reason }),
+            toolCall: denial.toolCall,
+          }
+        : outcome?.success
+          ? {
+              type: 'tool-result' as const,
+              toolCallId,
+              toolName,
+              input: outcome.input,
+              output: outcome.output,
+            }
+          : outcome
+            ? {
+                type: 'tool-error' as const,
+                toolCallId,
+                toolName,
+                input: outcome.input,
+                error: outcome.error,
+              }
+            : null
+      if (!part) continue
+
+      const nextContent = ensureContent()
+      const callIndex = nextContent.findIndex(candidate => (
+        candidate.type === 'tool-call' && matchingCall(candidate, toolCallId, toolName)
+      ))
+      nextContent.splice(callIndex < 0 ? nextContent.length : callIndex + 1, 0, part)
+    }
+    return content ? { ...step, content } : step
+  })
+}
+
+function withObservedToolOutcomes(
+  result: HarnessExecutionResult,
+  outcomes: ReadonlyMap<string, ObservedToolOutcome>,
+  denials: ReadonlyMap<string, AuthenticatedToolDenial>,
+): HarnessExecutionResult {
+  return { ...result, steps: normalizeExecutionSteps(result.steps, outcomes, denials) }
+}
+
 class HarnessYield extends Error {}
 
 function isTerminal(state: HarnessSnapshot) {
@@ -221,6 +327,7 @@ async function resumePendingApprovals(
   ports: HarnessExecutionPorts,
   segment: number,
   approvals: HarnessToolApprovals,
+  authenticatedDenials: Map<string, AuthenticatedToolDenial>,
 ): Promise<ApprovalResumeOutcome> {
   assertPendingApprovalsExecutable(pending, tools)
   await ports.apply(`approval:${segment}`, { type: 'block', blocker: { kind: 'approval', question: 'Approval is required before executing these actions.' } })
@@ -229,6 +336,22 @@ async function resumePendingApprovals(
   const state = await ports.read()
   if (isTerminal(state)) return { kind: 'restart', messages, resetStagnation: false }
   assertApprovalDecisions(pending, decisions)
+  for (const decision of decisions) {
+    if (decision.approved) continue
+    const request = pending.find(item => item.approvalId === decision.approvalId)
+    if (!request) continue
+    authenticatedDenials.set(request.toolCallId, {
+      approvalId: request.approvalId,
+      approved: false,
+      ...(decision.reason === undefined ? {} : { reason: decision.reason }),
+      toolCall: {
+        type: 'tool-call',
+        toolCallId: request.toolCallId,
+        toolName: request.toolName,
+        input: request.input,
+      },
+    })
+  }
   const resumedMessages = appendApprovalMessages(messages, pending, decisions)
   await ports.apply(`resume-approval:${segment}`, { type: 'resume' })
   approvals.record(pending, decisions)
@@ -312,13 +435,19 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
   if (input.messages.some(message => message.role === 'system')) throw new Error('Supply trusted system content through harness instructions, not conversation messages.')
   let messages = input.messages
   const steps: StepResult<ToolSet>[] = []
+  const executionOutcomes = new Map<string, ObservedToolOutcome>()
+  const authenticatedDenials = new Map<string, AuthenticatedToolDenial>()
   const controls = new Set<string>(HARNESS_CONTROL_TOOLS)
   const toolNames = new Set([...Object.keys(input.tools), ...HARNESS_CONTROL_TOOLS])
   assertNoControlToolReplacement(input.tools, controls)
   const initial = await ports.read()
   let observedState = initial
-  if (isTerminal(initial)) return { outcome: 'finished', snapshot: initial, messages, steps }
-  if (!await ports.claim()) return { outcome: 'already_running', snapshot: await ports.read(), messages, steps }
+  if (isTerminal(initial)) {
+    return withObservedToolOutcomes({ outcome: 'finished', snapshot: initial, messages, steps }, executionOutcomes, authenticatedDenials)
+  }
+  if (!await ports.claim()) {
+    return withObservedToolOutcomes({ outcome: 'already_running', snapshot: await ports.read(), messages, steps }, executionOutcomes, authenticatedDenials)
+  }
   const approvals = createHarnessToolApprovals()
   const tools = wrapAuthorizedTools(input.tools, ports, controls, approvals)
   const toolDefinitions = await prepareToolDefinitions(tools)
@@ -331,10 +460,14 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
 
   while (true) {
     const state = await ports.read()
-    if (isTerminal(state)) return { outcome: 'finished', snapshot: state, messages, steps }
+    if (isTerminal(state)) {
+      return withObservedToolOutcomes({ outcome: 'finished', snapshot: state, messages, steps }, executionOutcomes, authenticatedDenials)
+    }
     const waiting = await handleWaitingState(state, messages, ports, invocation)
     if (waiting) {
-      if (waiting.kind === 'blocked') return { outcome: 'blocked', snapshot: waiting.snapshot, messages, steps }
+      if (waiting.kind === 'blocked') {
+        return withObservedToolOutcomes({ outcome: 'blocked', snapshot: waiting.snapshot, messages, steps }, executionOutcomes, authenticatedDenials)
+      }
       messages = waiting.messages
       invocation = waiting.invocation
       if (waiting.resetStagnation) stagnantSegments = 0
@@ -417,7 +550,24 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
       },
       onStepEnd: recordModelStep,
       onToolExecutionEnd: async event => {
-        if (!controls.has(event.toolCall.toolName)) await ports.recordToolResult(event)
+        if (!controls.has(event.toolCall.toolName)) {
+          await ports.recordToolResult(event)
+          executionOutcomes.set(event.toolCall.toolCallId, event.success
+            ? {
+                toolCallId: event.toolCall.toolCallId,
+                toolName: event.toolCall.toolName,
+                input: event.toolCall.input,
+                success: true,
+                output: event.output,
+              }
+            : {
+                toolCallId: event.toolCall.toolCallId,
+                toolName: event.toolCall.toolName,
+                input: event.toolCall.input,
+                success: false,
+                error: event.error,
+              })
+        }
         observedState = await ports.read()
       },
       onEnd: async result => {
@@ -456,9 +606,9 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
     truncatedResponse = finishReason === 'length'
     if (updatedState.status !== 'running') continue
     if (pending.length) {
-      const approval = await resumePendingApprovals(pending, tools, messages, ports, segment, approvals)
+      const approval = await resumePendingApprovals(pending, tools, messages, ports, segment, approvals, authenticatedDenials)
       if (approval.kind === 'blocked') {
-        return { outcome: 'blocked', snapshot: approval.snapshot, messages, steps }
+        return withObservedToolOutcomes({ outcome: 'blocked', snapshot: approval.snapshot, messages, steps }, executionOutcomes, authenticatedDenials)
       }
       messages = approval.messages
       if (approval.resetStagnation) stagnantSegments = 0
@@ -466,7 +616,7 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
     }
     const continuation = await finishOrCheckpointInvocation(updatedState, ports, segment, before, steps, toolNames, truncatedResponse, stagnantSegments)
     if (continuation.kind === 'finished') {
-      return { outcome: 'finished', snapshot: continuation.snapshot, messages, steps }
+      return withObservedToolOutcomes({ outcome: 'finished', snapshot: continuation.snapshot, messages, steps }, executionOutcomes, authenticatedDenials)
     }
     stagnantSegments = continuation.stagnantSegments
     finalAnswerRequired = continuation.finalAnswerRequired

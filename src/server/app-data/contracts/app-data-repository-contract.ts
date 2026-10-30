@@ -320,7 +320,7 @@ export async function runAppDataRepositoryContractSuite(
       const cancelledAssistant = afterAgentRunCancel.find(
         (message) => message._id === cancellableRun.assistantMessageId,
       )
-      assert.match(cancelledAssistant?.content ?? '', /Interrupted by user/)
+      assert.match(cancelledAssistant?.content ?? '', /This response was interrupted\. Should I continue\?/)
 
       const publicShare = await backend.conversations.setShare({
         conversationId,

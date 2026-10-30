@@ -1016,7 +1016,7 @@ export function useChatExperienceController({
     stopActiveChat,
   } = useChatStopController({
     activeAskChats,
-    activeChatId,
+    activeChatId: runConversationId,
     activeChatIdRef,
     actChat,
     chat0,

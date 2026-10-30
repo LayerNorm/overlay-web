@@ -12,6 +12,7 @@ import { requireConversationAccess } from '../collaboration/directMessages'
 import { cancelHarnessDelivery } from '../harness/runs'
 import { conversationListVersion } from '../lib/conversationListVersion'
 import { deleteChunksForSource } from '../knowledge/knowledge'
+import { INTERRUPTED_RESPONSE_NOTICE } from '../../src/shared/chat/agent-assistant-text'
 
 const generatedUiVariant = v.object({
   id: v.string(),
@@ -1351,7 +1352,7 @@ export const cancelAgentRuns = mutation({
       ...orderCancellationRunsDeepestFirst(matching.filter((run) => run.runner !== 'remote'), harnessRuns),
     ]
     const now = Date.now()
-    const sentinel = '\n\n[Interrupted by user. Continue?]'
+    const sentinel = `\n\n${INTERRUPTED_RESPONSE_NOTICE}`
     for (const run of activeRuns) {
       assertAgentRunTransition(run.status, 'cancelled')
     }

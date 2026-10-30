@@ -571,7 +571,7 @@ Keep the message action rail visible whenever it offers Stop. An active reply's
 Stop control must not require hovering the message; completed messages retain
 the usual hover/focus behavior.
 
-Cancelled and failed/recoverable remote replies keep their earlier narrative visible. Only tool details fold; stopping must not make the written answer appear to disappear behind the work summary.
+Cancelled replies use the plain notice “This response was interrupted. Should I continue?”; historical standalone interruption markers normalize to the same sentence. If persisted content already contains the notice, local interrupted state must not duplicate it in the transcript, reply text or copied text. Failed/recoverable remote replies keep their earlier narrative visible. Only tool details fold; stopping must not make the written answer appear to disappear behind the work summary.
 Cancelled remote replies show a small status label even when no text was produced
 and the viewer cannot control the run. History serialization retains status and other metadata alongside legacy text fallback, so reload preserves this label and any partial answer.
 

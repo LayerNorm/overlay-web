@@ -11,6 +11,7 @@ import { getLanguageModel } from '@/server/ai/model-runtime'
 import { runOverlayHarness } from './runner'
 import { harnessToolResultEvidence } from './tool-evidence'
 import type { HarnessToolExecutionOptions } from './tool-approvals'
+import { buildPersonalHarnessDelivery } from './personal-delivery'
 
 vi.mock('@/server/ai/model-runtime', () => ({ getLanguageModel: vi.fn() }))
 beforeEach(() => { vi.mocked(getLanguageModel).mockReset() })
@@ -414,6 +415,124 @@ test.each([true, false])('SDK approvals reconstruct the request/response protoco
   expect(result.snapshot.status).toBe('completed')
   expect(f.receipts.size).toBe(provider.doStreamCalls.length)
   expect(result.snapshot.modelReservation).toBeUndefined()
+})
+
+test('approval-resume persists the authenticated execution output once for personal delivery', async () => {
+  const f = fixture(false)
+  const output = {
+    overlayModelOutput: { success: true, detail: 'The page was updated.' },
+    display: 'The page is now updated.',
+  }
+  const execute = vi.fn(async () => output)
+  const provider = model(index => index === 0 ? [call('write', 'approved-write')] : 'The page is updated.')
+  f.ports.waitForApproval = async requests => requests.map(request => ({
+    approvalId: request.approvalId,
+    approved: true,
+  }))
+
+  const result = await runOverlayHarness({
+    ...input,
+    tools: { write: tool({ inputSchema: z.object({}), needsApproval: true, execute }) },
+  }, f.ports)
+
+  expect(execute).toHaveBeenCalledTimes(1)
+  const savedOutcome = result.steps.flatMap(step => step.content).find(part => (
+    part.type === 'tool-result' && part.toolCallId === 'approved-write'
+  ))
+  expect(savedOutcome).toEqual(expect.objectContaining({
+    toolName: 'write',
+    output,
+  }))
+  const delivery = buildPersonalHarnessDelivery(result)
+  expect(delivery.parts).toContainEqual(expect.objectContaining({
+    type: 'tool-invocation',
+    toolInvocation: expect.objectContaining({
+      toolCallId: 'approved-write',
+      state: 'output-available',
+      toolOutput: output.display,
+    }),
+  }))
+  expect(delivery.metrics.toolCallCount).toBe(1)
+  expect(delivery.metrics.toolSuccessCount).toBe(1)
+  expect(provider.doStreamCalls.length).toBe(2)
+})
+
+test('approval-resume retains the authenticated execution error', async () => {
+  const f = fixture(false)
+  const execute = vi.fn(async () => { throw new Error('Approved execution failed.') })
+  model(index => index === 0 ? [call('write', 'failed-write')] : 'The approved action failed.')
+  f.ports.waitForApproval = async requests => requests.map(request => ({
+    approvalId: request.approvalId,
+    approved: true,
+  }))
+
+  const result = await runOverlayHarness({
+    ...input,
+    tools: { write: tool({ inputSchema: z.object({}), needsApproval: true, execute }) },
+  }, f.ports)
+
+  expect(execute).toHaveBeenCalledTimes(1)
+  expect(result.steps.flatMap(step => step.content)).toContainEqual(expect.objectContaining({
+    type: 'tool-error',
+    toolCallId: 'failed-write',
+    toolName: 'write',
+    error: expect.stringContaining('Approved execution failed.'),
+  }))
+})
+
+test('ordinary tool results are not duplicated when callback outcomes are merged', async () => {
+  const f = fixture(false)
+  const execute = vi.fn(async () => 'Record read.')
+  model(index => index === 0 ? [call('read', 'ordinary-read')] : 'The record was read.')
+
+  const result = await runOverlayHarness({
+    ...input,
+    tools: { read: tool({ inputSchema: z.object({}), execute }) },
+  }, f.ports)
+
+  expect(execute).toHaveBeenCalledTimes(1)
+  expect(result.steps.flatMap(step => step.toolCalls).filter(item => item.toolCallId === 'ordinary-read')).toHaveLength(1)
+  expect(result.steps.flatMap(step => step.content).filter(part => (
+    part.type === 'tool-result' && part.toolCallId === 'ordinary-read'
+  ))).toHaveLength(1)
+  expect(result.steps.flatMap(step => step.toolResults).filter(item => item.toolCallId === 'ordinary-read')).toHaveLength(1)
+})
+
+test('authenticated denied approvals persist as denied outcomes without executing the tool', async () => {
+  const f = fixture(false)
+  const execute = vi.fn(async () => 'Must not execute')
+  model(index => index === 0 ? [call('write', 'denied-write')] : 'The action was not taken.')
+  f.ports.waitForApproval = async requests => requests.map(request => ({
+    approvalId: request.approvalId,
+    approved: false,
+    reason: 'Not approved.',
+  }))
+
+  const result = await runOverlayHarness({
+    ...input,
+    tools: { write: tool({ inputSchema: z.object({}), needsApproval: true, execute }) },
+  }, f.ports)
+
+  expect(execute).not.toHaveBeenCalled()
+  expect(result.steps.flatMap(step => step.content)).toContainEqual(expect.objectContaining({
+    type: 'tool-approval-response',
+    approvalId: 'approval-denied-write',
+    approved: false,
+    reason: 'Not approved.',
+    toolCall: expect.objectContaining({
+      toolCallId: 'denied-write',
+      toolName: 'write',
+      input: {},
+    }),
+  }))
+  const delivery = buildPersonalHarnessDelivery(result)
+  expect(delivery.parts).toContainEqual(expect.objectContaining({
+    type: 'tool-invocation',
+    toolInvocation: expect.objectContaining({
+      toolCallId: 'denied-write',
+      state: 'output-denied',
+    }),
+  }))
 })
 
 test('an executable tool requiring approval remains pending for the approval wait', async () => {

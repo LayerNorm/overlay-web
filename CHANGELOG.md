@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Render durable personal-run input requests, persist authenticated approval-resumed tool outcomes, and use one plain-language interruption notice without duplicate copy.
+
 - Unify personal Chat and Work into one durable Chat experience with backend-capability-selected execution, while preserving approval, billing, and usage-limit checks.
 
 - Use TinyFish as the primary web search provider and power deep search with bounded multi-query Search + Fetch, with Elo fallback for both tools.

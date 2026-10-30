@@ -322,6 +322,16 @@ exact waiting personal run. It resumes existing work rather than creating a new
 conversation turn. The workflow hook durably retains the full reply and the
 harness stores a bounded user-input evidence summary. Model/tool authorization is
 rechecked after resumption. Delivery transitions can be fenced by workflow ID.
+The chat renders the persisted question in a reply control for
+`waiting_for_input`; a failed submission keeps the reply editable. Approval
+resumption remains a separate authenticated decision flow.
+
+Harness tool outcomes are retained from the SDK's authenticated execution-end
+callback and merged into the originating tool-call step. This includes actual
+outputs and errors from approval-resumed executions, so personal and native
+delivery persist the same result without inferring it from assistant text.
+Denied decisions are retained only after the approval wait's decision set has
+been validated; provider-supplied approval content never grants authority.
 
 The canonical personal workflow connects this adapter with child launch,
 finalization and transcript delivery for authenticated personal Chat.

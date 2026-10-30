@@ -16,7 +16,7 @@ import type {
   GeneratedUiConnectorActions,
   ChatTranscriptPresentation,
 } from '@overlay/chat-react'
-import { normalizeAgentAssistantText } from '@/shared/chat/agent-assistant-text'
+import { appendInterruptionNotice, INTERRUPTED_RESPONSE_NOTICE, normalizeAgentAssistantText } from '@/shared/chat/agent-assistant-text'
 import {
   assistantBlocksToPlainText,
   errorLabel,
@@ -256,9 +256,9 @@ function resolveTurnReplyState(
   const isExiting = !!turnId && exitingTurnIds.includes(turnId)
   const errLabelForTurn = errorLabel(instError)
   const interruptedHere = interruptedExchangeIdx === exchangeIndex && !errLabelForTurn
-  const replyPlain = interruptedHere && assistantPlainForReply.trim()
-    ? `${assistantPlainForReply}\n\nResponse was interrupted.`
-    : interruptedHere ? 'Response was interrupted.' : assistantPlainForReply
+  const replyPlain = interruptedHere
+    ? appendInterruptionNotice(assistantPlainForReply)
+    : assistantPlainForReply
   return { turnId, isExiting, errLabelForTurn, interruptedHere, replyPlain }
 }
 
@@ -302,7 +302,11 @@ function computeRetryDisabled({
   return !turnId || isExiting || (isLatest && isActiveLoading) || instLoading
 }
 
-const CONTINUE_PROMPTS = ['[Request timed out after 300s. Continue?]', '[Interrupted by user. Continue?]'] as const
+const CONTINUE_PROMPTS = [
+  '[Request timed out after 300s. Continue?]',
+  '[Interrupted by user. Continue?]',
+  INTERRUPTED_RESPONSE_NOTICE,
+] as const
 
 function resolveContinueHandler(assistantPlainForReply: string, onContinue: () => void): (() => void) | undefined {
   return CONTINUE_PROMPTS.some((s) => assistantPlainForReply.includes(s)) ? onContinue : undefined
