@@ -779,6 +779,7 @@ export const upsertContextSummary = mutation({
 
 export const addMessage = mutation({
   args: {
+    workspaceId: v.optional(v.string()),
     billingAccountId: v.optional(v.string()),
     billingActorUserId: v.optional(v.string()),
     billingSpendSubjectId: v.optional(v.string()),
@@ -822,7 +823,8 @@ export const addMessage = mutation({
       serverSecret: args.serverSecret,
     })
     const conversation = await ctx.db.get(args.conversationId)
-    if (!conversation || conversation.userId !== args.userId || conversation.deletedAt) {
+    if (!conversation || conversation.userId !== args.userId || conversation.deletedAt ||
+      (args.workspaceId !== undefined && conversation.workspaceId !== args.workspaceId)) {
       throw new Error('Unauthorized')
     }
     const existing = await ctx.db

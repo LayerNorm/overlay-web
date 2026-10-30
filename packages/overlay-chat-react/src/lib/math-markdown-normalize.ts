@@ -122,6 +122,12 @@ export function normalizeBracketDelimitedLatex(text: string): string {
       break
     }
 
+    if (isInsideSingleDollarSpan(text, open, close)) {
+      parts.push('[')
+      i = open + 1
+      continue
+    }
+
     const inner = text.slice(open + 1, close).trim()
     if (inner.length >= 2 && TEX_COMMAND.test(inner)) {
       parts.push(`$$${inner}$$`)
@@ -190,8 +196,8 @@ export function normalizeParenDelimitedLatex(text: string): string {
 
 /** Run bracket then paren so nested structures and `$$` output stay consistent. */
 export function normalizeLatexDelimiters(text: string): string {
-  return normalizeEscapedLatexDelimiters(
-    normalizeParenDelimitedLatex(normalizeBracketDelimitedLatex(text)),
+  return normalizeParenDelimitedLatex(
+    normalizeBracketDelimitedLatex(normalizeEscapedLatexDelimiters(text)),
   )
 }
 
@@ -203,7 +209,7 @@ export function normalizeEscapedLatexDelimiters(text: string): string {
   if (!text.includes('\\')) return text
   return text
     .replace(/\\\[((?:.|\n)*?)\\\]/g, (_match, inner: string) => `\n\n$$\n${inner.trim()}\n$$\n\n`)
-    .replace(/\\\(([^()\n]{1,500}?)\\\)/g, (_match, inner: string) => `$${inner.trim()}$`)
+    .replace(/\\\(([\s\S]*?)\\\)/g, (_match, inner: string) => `$${inner.trim()}$`)
 }
 
 /**
@@ -280,7 +286,7 @@ export function promoteHeavyInlineMathToFlowBlocks(text: string): string {
  * Older prompts asked models to use `$$...$$` inline. That works until one delimiter
  * arrives late or is omitted, at which point remark-math can feed a whole paragraph to
  * KaTeX. Normalize compact same-line double-dollar spans to standard inline `$...$`,
- * keep heavy spans as display blocks, and defuse obvious stray delimiters around short
+ * keep standalone equations and heavy spans as display blocks, and defuse stray delimiters around short
  * math atoms so one bad token cannot turn the rest of the message red.
  */
 export function normalizeDoubleDollarMath(text: string): string {
@@ -326,10 +332,13 @@ function rewriteBalancedDoubleDollarMath(text: string): string {
       const beforeOnLine = text.slice(lineStart, i)
       const opensAtLineStart = /^\s*$/.test(beforeOnLine)
       const looksLikeFlowBlock = opensAtLineStart && inner.startsWith('\n')
+      const lineEnd = text.indexOf('\n', close + 2)
+      const afterOnLine = text.slice(close + 2, lineEnd < 0 ? text.length : lineEnd)
+      const isStandalone = opensAtLineStart && /^\s*$/.test(afterOnLine)
 
       if (looksLikeFlowBlock) {
         out += text.slice(i, close + 2)
-      } else if (isHeavyMath(trimmed)) {
+      } else if (isStandalone || isHeavyMath(trimmed)) {
         out += `\n\n$$\n${trimmed}\n$$\n\n`
       } else if (looksLikeMath(trimmed) && !looksLikeProse(trimmed)) {
         out += `$${trimmed}$`
@@ -499,6 +508,11 @@ function shouldPromoteBareLatexLine(line: string): boolean {
   if (trimmed.includes('```') || trimmed.includes('$$')) return false
 
   const withoutInlineMath = stripInlineMathSpans(trimmed)
+  // Never turn prose surrounding valid inline equations into one display equation.
+  if (withoutInlineMath !== trimmed) return false
+  const start = findBareLatexStart(withoutInlineMath)
+  const outsideTexArguments = withoutInlineMath.slice(Math.max(0, start)).replace(/\\[A-Za-z]+\{[^{}]*\}/g, '')
+  if (looksLikeProse(outsideTexArguments) || /\b(?:and|because|which|the|this|that|is|are)\b/i.test(outsideTexArguments)) return false
   if (!/[\\_^]/.test(withoutInlineMath)) return false
 
   const hasTexCommand = TEX_COMMAND.test(withoutInlineMath)
@@ -567,9 +581,116 @@ function promoteBareLatexInTableRow(line: string): string {
   return promoted.join('|')
 }
 
+const MAX_UNBRACED_SUFFIX_LENGTH = 40
+
+function isAsciiLetter(char: string | undefined): boolean {
+  if (!char) return false
+  const code = char.charCodeAt(0)
+  return (code >= 0x41 && code <= 0x5a) || (code >= 0x61 && code <= 0x7a)
+}
+
+function isLatexIdentifierLetter(char: string | undefined): boolean {
+  if (isAsciiLetter(char)) return true
+  if (!char) return false
+  const code = char.charCodeAt(0)
+  return (code >= 0x391 && code <= 0x3a9) || (code >= 0x3b1 && code <= 0x3c9)
+}
+
+function isLatexWhitespace(char: string | undefined): boolean {
+  return char === ' ' || char === '\t' || char === '\r' || char === '\n'
+}
+
+function consumeLatexIdentifier(line: string, start: number): number {
+  if (line[start] === '\\') {
+    let end = start + 1
+    while (end < line.length && isAsciiLetter(line[end])) end++
+    return end > start + 1 ? end : start
+  }
+
+  let end = start
+  while (end < line.length && isLatexIdentifierLetter(line[end])) end++
+  return end
+}
+
+function consumeBalancedLatexArgument(line: string, start: number): number {
+  if (line[start] !== '{') return -1
+
+  let depth = 1
+  for (let index = start + 1; index < line.length; index++) {
+    const char = line[index]
+    if (char === '\\') {
+      index++
+      continue
+    }
+    if (char === '{') {
+      depth++
+    } else if (char === '}') {
+      depth--
+      if (depth === 0) return index + 1
+    }
+  }
+  return -1
+}
+
+function consumeUnbracedSuffixAtom(line: string, start: number): number {
+  let end = start
+  while (
+    end < line.length &&
+    end - start < MAX_UNBRACED_SUFFIX_LENGTH &&
+    !isLatexWhitespace(line[end]) &&
+    line[end] !== '=' &&
+    line[end] !== ';' &&
+    line[end] !== ')' &&
+    line[end] !== '_' &&
+    line[end] !== '^'
+  ) {
+    end++
+  }
+  return end > start ? end : -1
+}
+
+function consumeLatexSuffixes(line: string, start: number): { end: number; valid: boolean } {
+  let end = start
+  while (line[end] === '_' || line[end] === '^') {
+    end++
+    if (line[end] === '{') {
+      const argumentEnd = consumeBalancedLatexArgument(line, end)
+      if (argumentEnd < 0) return { end: line.length, valid: false }
+      end = argumentEnd
+      continue
+    }
+
+    const atomEnd = consumeUnbracedSuffixAtom(line, end)
+    if (atomEnd < 0) return { end, valid: false }
+    end = atomEnd
+  }
+  return { end, valid: true }
+}
+
+function findEquationStart(line: string): number {
+  let index = 0
+  while (index < line.length) {
+    const startsCommand = line[index] === '\\' && isAsciiLetter(line[index + 1])
+    if (!startsCommand && !isLatexIdentifierLetter(line[index])) {
+      index++
+      continue
+    }
+
+    const candidate = index
+    const identifierEnd = consumeLatexIdentifier(line, index)
+    const suffixes = consumeLatexSuffixes(line, identifierEnd)
+    let equals = suffixes.end
+    while (isLatexWhitespace(line[equals])) equals++
+    if (suffixes.valid && line[equals] === '=') return candidate
+
+    index = Math.max(candidate + 1, suffixes.end)
+  }
+  return -1
+}
+
 function findBareLatexStart(line: string): number {
   const candidates: number[] = []
-  const equation = line.search(/(?:[A-Za-zΑ-Ωα-ω]|\\[A-Za-z]+)(?:_\{?[^=\s;)]{1,40}\}?|\^\{?[^=\s;)]{1,40}\}?)*\s*=/)
+  const equation = findEquationStart(line)
   if (equation >= 0) candidates.push(equation)
 
   const begin = line.search(/\\begin\{/)
@@ -742,6 +863,9 @@ function findCurrencyClose(text: string, from: number): number {
  * operands on both sides so markdown bold runs (`**`) never count.
  */
 function isMathAfterCurrencyOpener(inner: string): boolean {
+  // A tightly closed numeric span is math, including converted `\(0.2\)`.
+  // Do not trim here: the space in `$5 $10` separates two currency amounts.
+  if (/^\d+(?:\.\d+)?$/.test(inner)) return true
   const trimmed = inner.trim()
   if (trimmed.length === 0) return false
   if (TEX_COMMAND.test(trimmed) || BIG_O_ATOM.test(trimmed) || /[\^_{}]/.test(trimmed)) return true
@@ -863,6 +987,13 @@ function isLikelyCurrencyProseSpan(match: string, inner: string, offset: number,
 
 /** Full math-oriented markdown normalization (delimiters + display promotion). */
 export function normalizeAssistantMathMarkdown(text: string): string {
+  // Code is literal, including examples of math delimiters and unfinished fences.
+  return text.split(/((?:^|\n)(`{3,}|~{3,})[^\n]*\n[\s\S]*?(?:\n\2[^\n]*(?=\n|$)|$)|`+[^`\n]*`+)/g)
+    .map((part, index) => index % 3 === 0 ? normalizeMathRegion(part) : index % 3 === 1 ? part : '')
+    .join('')
+}
+
+function normalizeMathRegion(text: string): string {
   return normalizeBareBigONotation(
     escapeProsePseudoMath(
       reflowDisplayMathFences(normalizeBareLatexLines(reflowDisplayMathFences(normalizeDoubleDollarMath(normalizeLatexDelimiters(text))))),

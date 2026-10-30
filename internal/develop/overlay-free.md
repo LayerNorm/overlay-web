@@ -3,6 +3,13 @@
 Onboarding does not call this router. Its questions, employee suggestions, and
 starter tasks are scripted, so every user gets the same flow for the same answers.
 
+Chat titles also bypass this router. Budget-authorized paid accounts use GLM 5.3
+Flash with one bounded attempt and normal usage settlement. Its input hold covers
+the complete UTF-8 prompt and instructions plus framing headroom, including
+non-Latin text; character-based token estimates are not admission ceilings. Free accounts, denied
+reservations, empty results and failed requests use a short excerpt of the first
+message instead of leaving the conversation named "New Chat".
+
 Overlay Free uses the configured AI Gateway and OpenRouter credentials from the
 web runtime. The private hourly refresh callback requires `OVERLAY_BFF_URL` and
 the existing `INTERNAL_API_SECRET`. Missing configuration or Convex safety

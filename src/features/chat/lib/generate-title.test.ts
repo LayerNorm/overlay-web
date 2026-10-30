@@ -25,7 +25,7 @@ test('does not retry a non-retryable client error', async (t) => {
     async () => new Response(null, { status: 400 }),
   )
 
-  assert.equal(await requestTitle('first message', 20), null)
+  assert.equal(await requestTitle('first message', 20), 'first message')
   assert.equal(mock.mock.callCount(), 1)
 })
 
@@ -55,4 +55,12 @@ test('retries a network failure once', async (t) => {
 
   assert.equal(await requestTitle('first message', 20), 'A generated title')
   assert.equal(mock.mock.callCount(), 2)
+})
+
+test('uses a useful title after exhausted retries or an empty model result', async (t) => {
+  for (const response of [new Response(null, { status: 503 }), Response.json({ title: null }), Response.json({ title: 'New Chat' })]) {
+    const mock = t.mock.method(overlayAppClient.chat, 'generateTitleResponse', async () => response.clone())
+    assert.equal(await requestTitle('Plan a weekend in Kyoto', 20), 'Plan a weekend in Kyoto')
+    mock.mock.restore()
+  }
 })

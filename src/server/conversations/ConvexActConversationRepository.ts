@@ -167,6 +167,7 @@ export class ConvexActConversationRepository implements ActConversationRepositor
   }
 
   async addMessage(args: {
+    workspaceId?: string
     billingAccountId?: string
     billingActorUserId?: string
     billingSpendSubjectId?: string
@@ -195,7 +196,7 @@ export class ConvexActConversationRepository implements ActConversationRepositor
     return await convex.mutation<Id<'conversationMessages'> | null>('chat/conversations:addMessage', {
       ...args,
       serverSecret: this.serverSecret,
-    })
+    }, { throwOnError: true })
   }
 
   async listMemories(args: {

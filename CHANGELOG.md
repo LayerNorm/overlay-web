@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Fix chat branching silently losing copied messages, use GLM 5.3 Flash for budget-authorized titles with UTF-8-safe input holds and a local fallback, preserve prose, code and standalone display equations around LaTeX without leaking partial-stream placeholders, and label workspace AI conversations "Chats".
+
 - Use TinyFish as the primary web search provider and power deep search with bounded multi-query Search + Fetch, with Elo fallback for both tools.
 
 - Reserve model budgets against Gateway provider, regional, fast and peak prices rather than only headline rates, preventing underfunded chat and context-summary settlements when routing selects a more expensive provider.

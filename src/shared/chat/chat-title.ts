@@ -70,6 +70,11 @@ export function sanitizeChatTitle(title: string | null | undefined, fallback = F
   return limited || fallback
 }
 
+export function fallbackChatTitle(text: string): string {
+  const words = text.replace(/[`*_#<>]/g, '').trim().split(/\s+/).slice(0, 8).join(' ')
+  return sanitizeChatTitle(words)
+}
+
 export function dispatchChatTitleUpdated(detail: ChatTitleUpdatedDetail) {
   if (typeof window === 'undefined') return
   window.dispatchEvent(new CustomEvent<ChatTitleUpdatedDetail>(CHAT_TITLE_UPDATED_EVENT, { detail }))
