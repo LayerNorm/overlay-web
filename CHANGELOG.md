@@ -6,6 +6,10 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Use TinyFish as the primary web search provider and power deep search with bounded multi-query Search + Fetch, with Elo fallback for both tools.
 
+- Reserve model budgets against Gateway provider, regional, fast and peak prices rather than only headline rates, preventing underfunded chat and context-summary settlements when routing selects a more expensive provider.
+
+- Release Computer wake claims when provider reconnection fails, and safely reconcile expired maintenance before retrying without replacing the disk or bypassing usage settlement.
+
 - Keep desktop reply notifications in their original workspace and wait for saved chat IDs.
 
 - Keep desktop dictation and screenshots scoped to their original draft; release cancelled microphones and refresh native status live.

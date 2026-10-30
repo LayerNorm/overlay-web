@@ -400,6 +400,7 @@ export interface ConnectedAgentRepository {
     force?: boolean
     idleBefore?: number
     reconcileToken?: string
+    recoveryProtocol?: 'computer-recovery-v1'
     expectedProviderReference?: string | null
     actorUserId?: string
     ownerType?: 'agent' | 'user'

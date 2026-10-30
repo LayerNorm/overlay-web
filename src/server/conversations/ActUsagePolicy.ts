@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { logger } from '@/server/observability/logger'
-import { calculateLanguageModelTokenCostOrNull } from '@/server/ai/gateway/live-model-pricing'
+import { calculateLanguageModelReservationCostOrNull, calculateLanguageModelTokenCostOrNull } from '@/server/ai/gateway/live-model-pricing'
 import { isPremiumModel } from '@/server/ai/pricing'
 import {
   billableBudgetCentsFromProviderUsd,
@@ -304,10 +304,9 @@ export class BillingBackedActUsagePolicy implements ActUsagePolicy {
       }
       return { ok: true, reservationId: null }
     }
-    const estimatedProviderCostUsd = await calculateLanguageModelTokenCostOrNull(
+    const estimatedProviderCostUsd = await calculateLanguageModelReservationCostOrNull(
       args.modelId,
       args.estimatedInputTokens,
-      0,
       args.maxOutputTokens,
     )
     if (estimatedProviderCostUsd === null) {

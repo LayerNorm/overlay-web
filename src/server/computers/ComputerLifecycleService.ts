@@ -269,9 +269,14 @@ export class ComputerLifecycleService {
     computer = await this.dependencies.repository.get(computer.id) ?? computer
     lease = await this.dependencies.billing.lease(computer)
     if (!computer.providerRef) throw new Error('COMPUTER_UNAVAILABLE')
+    const maintenance = (lease.usage.computerLifecycle as { maintenance?: ComputerMaintenance } | undefined)?.maintenance
+    if (maintenance?.token && (maintenance.expiresAt ?? Infinity) <= this.now()
+      && ['wake', 'stop', 'idle', 'provision'].includes(maintenance.kind ?? '')) {
+      await this.stop(computer, args.actorUserId, false, false, maintenance.token)
+      computer = await this.dependencies.repository.get(computer.id) ?? computer
+      lease = await this.dependencies.billing.lease(computer)
+    }
     const wakeToken = await this.requireMaintenance(computer, 'wake', this.newId(), false, args.actorUserId, true)
-    const runtime = this.requireRuntime(computer.provider)
-    const instance = await runtime.reconnect(computer.providerRef, { resume: false })
     const activityToken = this.newId()
     const actionDeadline = Math.min(10 * 60_000, Math.max(1, args.actionDeadlineMs ?? 2 * 60_000))
     const activityExpiresAt = this.now() + actionDeadline + ACTIVITY_GRACE_MS
@@ -279,6 +284,8 @@ export class ComputerLifecycleService {
     let wakeArmed = false
     let resumeMayHaveOccurred = false
     try {
+      const runtime = this.requireRuntime(computer.provider)
+      const instance = await runtime.reconnect(computer.providerRef!, { resume: false })
       const status = await instance.status()
       if (status === 'stopped' || status === 'archived') {
         const stoppedUsage = await instance.usage()
@@ -341,7 +348,7 @@ export class ComputerLifecycleService {
     })
   }
 
-  async stop(computer: Computer, actorUserId: string, explicitDelete = false, idle = false): Promise<void> {
+  async stop(computer: Computer, actorUserId: string, explicitDelete = false, idle = false, reconcileToken?: string): Promise<void> {
     const enrolledLease = await this.ensureEnrolled(computer)
     await this.adoptLegacy(computer, enrolledLease)
     computer = await this.dependencies.repository.get(computer.id) ?? computer
@@ -389,7 +396,7 @@ export class ComputerLifecycleService {
         })
         if (!completed) throw new Error('COMPUTER_STOP_COMPLETION_STALE')
       }
-    }, actorUserId)
+    }, actorUserId, reconcileToken)
   }
 
   async openDesktop(computer: Computer, actorUserId: string, mode?: 'webrtc' | 'vnc'): Promise<DesktopStreamTicket> {
@@ -414,15 +421,20 @@ export class ComputerLifecycleService {
     kind: 'stop' | 'delete' | 'idle',
     operation: (computer: Computer, instance: SandboxInstance | null, token: string) => Promise<void>,
     actorUserId: string,
+    reconcileToken?: string,
   ) {
     const lease = await this.dependencies.billing.lease(computer)
     const existing = (lease.usage.computerLifecycle as { maintenance?: { kind?: string; token?: string; expiresAt?: number } } | undefined)?.maintenance
+    if (reconcileToken && (existing?.token !== reconcileToken || existing.kind === 'delete')) {
+      throw new Error('COMPUTER_MAINTENANCE_IN_PROGRESS')
+    }
     const token = this.newId()
     const claimedKind = existing?.kind === 'delete' ? 'delete' : kind
     const claim = await this.dependencies.leases.claimComputerMaintenance?.({
       workspaceId: computer.workspaceId, leaseId: lease.id, kind: claimedKind, token, now: this.now(),
-      expiresAt: this.now() + MAINTENANCE_MS, force: kind !== 'idle',
+      expiresAt: this.now() + MAINTENANCE_MS, force: !reconcileToken && kind !== 'idle',
       actorUserId, expectedProviderReference: computer.providerRef,
+      ...(reconcileToken ? { recoveryProtocol: 'computer-recovery-v1' as const } : {}),
       ...(kind === 'idle' ? { idleBefore: this.now() - 10 * 60_000 } : {}),
       ...(kind === 'idle' ? { ownerType: computer.ownerType, ownerId: computer.ownerId } : {}),
       ...(existing?.token && (existing.expiresAt ?? 0) <= this.now() ? { reconcileToken: existing.token } : {}),

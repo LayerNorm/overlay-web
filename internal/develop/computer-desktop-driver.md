@@ -1,5 +1,9 @@
 # Computer desktop driver
 
+Computer operations release their wake claim if provider reconnection fails. An expired wake, stop, idle, or bound provision claim is recovered by confirming a stop and settling usage before reserving and resuming the same machine. Recovery requires the exact expired claim and cannot preempt live activity or deletion; failed settlement keeps the computer blocked rather than bypassing accounting.
+
+Recovery claims include `recoveryProtocol: 'computer-recovery-v1'`. Older Convex validators reject this marker, so the web-first rollout cannot stop machines without the new atomic recovery guards. Recovery becomes available after the matching backend is synchronized through the canonical-main release workflow.
+
 Overlay's desktop tools use one provider-neutral Python 3 driver installed inside a desktop-capable sandbox. The driver communicates with the server using one JSON request and response per command. It reports capabilities, captures PNG screenshots, and supports click, move, drag, type, key, scroll, and wait actions. Input uses `xdotool`; screenshots select the first available of ImageMagick `import`, `scrot`, or `ffmpeg` with X11 capture.
 
 Input failures keep the stable user-facing message and include bounded exit, timeout, or spawn status, the xdotool subcommand, and stderr. Typed text is redacted from stderr.

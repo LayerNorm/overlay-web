@@ -322,6 +322,44 @@ test('a failed summary with an unsettled reservation cannot dispatch the main ca
   expect(current.modelReservation?.dispatch).toBeDefined()
 })
 
+test('provider-variable compaction settles actual usage before reserving the response', async () => {
+  const modelId = 'fixture/provider-priced-compaction'
+  const model = provider()
+  mocks.catalog.mockResolvedValue({ gatewayId: modelId, type: 'language', contextWindow: 64_000, maxTokens: 1_000,
+    pricing: { input: '0.0000000001', output: '0.0000000001', varies_by_provider: true } })
+  const endpoint = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ data: {
+    id: modelId, endpoints: [{ pricing: { prompt: '0.000002', completion: '0.000008' } }],
+  } })))
+  const settled: { id: string; reserved: number; actual: number }[] = []
+  mocks.settle.mockImplementation(async ({ receiptId, observation, contextWindow }) => {
+    const reserved = current.modelReservation!.maxCostMicros
+    const actual = observation.inputTokens * 2 + observation.outputTokens * 8
+    expect(current.modelReservation?.id).toBe(receiptId)
+    expect(reserved).toBeGreaterThanOrEqual(actual)
+    current = state.recordHarnessReceipt(current, { ...observation, id: receiptId, contextWindow,
+      costMicros: actual, costSource: 'provider' }, Date.now())
+    settled.push({ id: receiptId, reserved, actual })
+    return current.latestReceipt
+  })
+  try {
+    const ports = createPersonalHarnessExecutionPorts({ access, context: { ...context, effectiveModelId: modelId },
+      contextBudgetTokens: 8_192 }, surface)
+    const result = await runOverlayHarness({ ...execution, model: { ...execution.model, modelId }, messages: history() }, ports)
+    expect(result.snapshot.status).toBe('completed')
+    expect(settled.length).toBeGreaterThan(1)
+    expect(settled.slice(0, -1).every(receipt => receipt.id.startsWith('summary:model:0:'))).toBe(true)
+    expect(settled.at(-1)?.id).toBe('model:0')
+    expect(settled).toHaveLength(model.doStreamCalls.length)
+    expect(result.snapshot.usage.costMicros).toBe(settled.reduce((sum, receipt) => sum + receipt.actual, 0))
+    expect(result.snapshot.modelReservation).toBeUndefined()
+    expect(result.snapshot.workingSummary).toContain('Do not publish')
+    expect(endpoint).toHaveBeenCalledOnce()
+    expect(mocks.admit).toHaveBeenCalledOnce()
+  } finally {
+    endpoint.mockRestore()
+  }
+})
+
 test('summary calls reserve reasoning headroom while the prompt retains the summary target', async () => {
   const model = provider()
   mocks.catalog.mockResolvedValue({ type: 'language', contextWindow: 128_000, maxTokens: 8_192 })

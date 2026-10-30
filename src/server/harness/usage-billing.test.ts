@@ -1,15 +1,16 @@
 import { beforeEach, expect, test, vi } from 'vitest'
 
-const mocks = vi.hoisted(() => ({ pricing: vi.fn(), finalize: vi.fn(), reconcile: vi.fn() }))
+const mocks = vi.hoisted(() => ({ pricing: vi.fn(), reservationPricing: vi.fn(), reserve: vi.fn(), finalize: vi.fn(), reconcile: vi.fn() }))
 vi.mock('server-only', () => ({}))
 vi.mock('@/server/observability/logger', () => ({ logger: { error: vi.fn() } }))
-vi.mock('@/server/ai/gateway/live-model-pricing', () => ({ calculateLanguageModelTokenCostOrNull: mocks.pricing }))
+vi.mock('@/server/ai/gateway/live-model-pricing', () => ({ calculateLanguageModelTokenCostOrNull: mocks.pricing,
+  calculateLanguageModelReservationCostOrNull: mocks.reservationPricing }))
 vi.mock('@/server/ai/pricing', () => ({ isPremiumModel: () => true }))
 vi.mock('@/server/billing/billing-runtime', () => ({
   billableBudgetCentsFromProviderUsd: (dollars: number) => dollars * 100,
   finalizeProviderBudgetReservation: mocks.finalize,
   markProviderBudgetReconcile: mocks.reconcile,
-  getPayerEntitlements: vi.fn(), markProviderBudgetStarted: vi.fn(), releaseProviderBudgetReservation: vi.fn(), reserveProviderBudget: vi.fn(),
+  getPayerEntitlements: vi.fn(), markProviderBudgetStarted: vi.fn(), releaseProviderBudgetReservation: vi.fn(), reserveProviderBudget: mocks.reserve,
 }))
 
 import { BillingBackedActUsagePolicy, type ActFinishedUsage } from '@/server/conversations/ActUsagePolicy'
@@ -24,6 +25,30 @@ const policy = new BillingBackedActUsagePolicy({
 })
 
 beforeEach(() => { vi.clearAllMocks(); mocks.pricing.mockResolvedValue(0.00071) })
+
+test('legacy admission uses the reservation ceiling without changing personal or workspace settlement amounts', async () => {
+  mocks.reservationPricing.mockResolvedValue(0.00839)
+  mocks.reserve.mockResolvedValue({ ok: true, reservationId: 'reservation' })
+  mocks.finalize.mockResolvedValue({ status: 'finalized' })
+  for (const workspaceId of [undefined, 'workspace']) {
+    const args: Parameters<typeof policy.reserveForAttempt>[0] = {
+      entitlements: {} as Parameters<typeof policy.reserveForAttempt>[0]['entitlements'],
+      userId: 'user', workspaceId, paid: true, modelId: 'provider/model',
+      estimatedInputTokens: 19_772, maxOutputTokens: 2_048, operationId: 'operation', requestFingerprint: 'request',
+    }
+    expect(await policy.reserveForAttempt(args)).toEqual({ ok: true, reservationId: 'reservation' })
+    expect(mocks.reserve).toHaveBeenLastCalledWith(expect.objectContaining({ providerCostUsd: 0.00839, workspaceId }))
+    await policy.recordFinishedUsage({ ...usage, workspaceId, providerCostUsd: 0.006292, requireRecorded: true })
+    expect(mocks.finalize).toHaveBeenLastCalledWith(expect.objectContaining({ actualProviderCostUsd: 0.006292 }))
+  }
+  expect(mocks.pricing).not.toHaveBeenCalled()
+  mocks.reservationPricing.mockResolvedValue(null)
+  const count = mocks.reserve.mock.calls.length
+  expect(await policy.reserveForAttempt({ entitlements: {} as Parameters<typeof policy.reserveForAttempt>[0]['entitlements'],
+    userId: 'user', paid: true, modelId: 'provider/model', estimatedInputTokens: 1, maxOutputTokens: 1,
+    operationId: 'unknown', requestFingerprint: 'unknown' })).toMatchObject({ ok: false })
+  expect(mocks.reserve).toHaveBeenCalledTimes(count)
+})
 
 test('harness usage carries cache reads and writes into pricing and the billing event', async () => {
   await policy.recordFinishedUsage(usage)

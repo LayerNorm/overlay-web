@@ -2099,6 +2099,7 @@ export const claimComputerMaintenanceByServer = mutation({
     kind: v.union(v.literal('provision'), v.literal('wake'), v.literal('stop'), v.literal('delete'), v.literal('idle')),
     token: v.string(), now: v.number(), expiresAt: v.number(), force: v.optional(v.boolean()),
     idleBefore: v.optional(v.number()), reconcileToken: v.optional(v.string()),
+    recoveryProtocol: v.optional(v.literal('computer-recovery-v1')),
     expectedProviderReference: v.optional(v.union(v.string(), v.null())),
     actorUserId: v.optional(v.string()),
     ownerType: v.optional(v.union(v.literal('agent'), v.literal('user'))), ownerId: v.optional(v.string()),
@@ -2120,6 +2121,13 @@ export const claimComputerMaintenanceByServer = mutation({
     const usage = (lease.usage ?? {}) as Record<string, unknown>
     const lifecycle = computerLifecycleUsage(usage)
     const current = lifecycle.maintenance as { token?: string; kind?: string; expiresAt?: number } | undefined
+    if (args.recoveryProtocol && (args.kind !== 'stop' || args.force || !args.reconcileToken)) return null
+    if (args.reconcileToken && current?.token !== args.token && (current?.token !== args.reconcileToken
+      || (current.expiresAt ?? Number.MAX_SAFE_INTEGER) > args.now)) return null
+    if (args.reconcileToken && args.kind === 'stop' && !args.force) {
+      const activity = lifecycle.activityTokens as Record<string, { expiresAt?: number }> | undefined
+      if (Object.values(activity ?? {}).some(value => (value.expiresAt ?? 0) > args.now)) return null
+    }
     const activeIntent = Boolean(current?.token && current.token !== args.token
       && (current.expiresAt ?? Number.MAX_SAFE_INTEGER) > args.now)
     const mayPreempt = args.force === true && ['stop', 'delete'].includes(args.kind)
