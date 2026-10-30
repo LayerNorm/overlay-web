@@ -165,3 +165,7 @@ or screenshot results. Dictation appends through the programmatic draft setter,
 including text typed since recording began. Each capture releases only its own
 microphone stream. Desktop settings subscribes to native host/update events and
 rejects older status reads that arrive after an event.
+
+Reply notifications capture their workspace and chat view when a stream starts.
+First replies wait for the persisted conversation ID; temporary replies do not
+produce saved-chat links. A later workspace switch cannot retarget a notification.

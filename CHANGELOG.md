@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Keep desktop reply notifications in their original workspace and wait for saved chat IDs.
+
 - Keep desktop dictation and screenshots scoped to their original draft; release cancelled microphones and refresh native status live.
 
 - Decode desktop capture to PCM for offline models and reject stale recordings after cancellation.
