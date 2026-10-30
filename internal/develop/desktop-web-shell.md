@@ -126,6 +126,9 @@ runner, avoiding local model downloads/inference during laptop-sensitive QA.
 Native cloud dictation forwards the trusted calling frame’s workspace route as
 its Referer; hotkey dictation uses the main window route. Web billing admission
 remains authoritative, including membership, paid-plan and workspace-credit checks.
+Hosted Preview cloud transcription uses its own non-expiring Groq credential in
+Preview-only secret settings. Production credentials must not be copied into
+Preview; rebuild the current Preview after adding or replacing its provider key.
 Whisper downloads include pinned tokenizer files; older downloads can repair the
 missing offline dependencies without replacing model weights.
 

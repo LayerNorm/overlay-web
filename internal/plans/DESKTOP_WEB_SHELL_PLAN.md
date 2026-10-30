@@ -61,8 +61,9 @@ The native bridge now owns the integrations omitted by the original spike.
 
 Current acceptance limitations:
 
-- Preview cloud dictation requires a test-scoped transcription provider credential;
-  paid workspace checkout and billing admission have been exercised.
+- A dedicated Preview transcription credential is configured; cloud dictation
+  acceptance awaits the deployment that includes it. Paid workspace checkout and
+  billing admission have been exercised.
 - Live Agent Host acceptance requires its gated runtime and published host package.
 - Clean/old-install signed-app, physical microphone/hotkey and notification-click
   acceptance remain required before binary publication. The publish freeze stays in force.
