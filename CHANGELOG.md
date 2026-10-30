@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Normalize empty evidence-tool lists for answer-only agent milestones so simple replies can finish; action milestones still require execution evidence.
+
 - Allow credit-funded cloud dictation when no legacy seconds cap is configured, while retaining paid-plan, explicit quota and budget reservation checks.
 
 - Keep desktop floating panels compact after chat navigation and reload by using native window identity.

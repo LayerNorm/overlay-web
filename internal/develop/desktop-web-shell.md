@@ -126,3 +126,7 @@ its Referer; hotkey dictation uses the main window route. Web billing admission
 remains authoritative, including membership, paid-plan and workspace-credit checks.
 Whisper downloads include pinned tokenizer files; older downloads can repair the
 missing offline dependencies without replacing model weights.
+
+Agent reply acceptance includes answer-only milestones. Their empty evidence-tool
+arrays are normalized to omission before persistence; action milestones retain
+the required execution-evidence checks.
