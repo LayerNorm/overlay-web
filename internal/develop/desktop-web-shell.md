@@ -18,6 +18,9 @@ Main checks both the registered WebContents and the sender frame on every call,
 rejects unknown methods/extra arguments, validates inputs and bounds concurrent
 calls. Remote windows have sandbox/context isolation/web security enabled, no Node
 integration, a dedicated preload and the shared `persist:overlay` cookie partition.
+The preload builds as one self-contained sandbox-compatible bundle. Web and
+recorder entry modules keep separate origin gates; a window carrying the remote
+origin argument never receives the private file-recorder API, including offline fallback.
 Default-session native pages have no remote bridge. Permission checks deny unknown
 origins, frames and permissions. External URLs allow HTTP(S)/mailto only. Same-origin
 SSO navigations use the PKCE browser handoff; no third-party auth host loads in a
