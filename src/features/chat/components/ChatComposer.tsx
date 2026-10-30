@@ -232,7 +232,7 @@ function ComposerControls(props: ComposerControlsProps) {
   const hasAgentCommands = Boolean(props.agentCommands?.length)
   return (
     <PromptInputFooter>
-      {!props.textOnly ? <DesktopComposerControls input={props.input} onInputChange={props.onInputChange} onImages={props.onAddImages} /> : null}
+      {!props.textOnly ? <DesktopComposerControls key={props.draftIdentity} onAppendText={props.onAppendText} onImages={props.onAddImages} /> : null}
       {props.textOnly ? null : <AttachMenu {...props} />}
       {props.textOnly ? null : <DelayedTooltip label={mentionTooltip} side="top">
         <PromptInputButton onClick={() => props.textareaRef.current?.openMentionPopup()} aria-label="Insert mention">

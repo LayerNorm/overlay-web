@@ -158,3 +158,10 @@ sign-out/cancel rejects late audio and never clears a newer recording's state.
 Agent reply acceptance includes answer-only milestones. Their empty evidence-tool
 arrays are normalized to omission before persistence; action milestones retain
 the required execution-evidence checks.
+
+Composer capture belongs to its workspace/conversation draft. Switching drafts or
+signing out cancels pending microphone acquisition and discards late transcription
+or screenshot results. Dictation appends through the programmatic draft setter,
+including text typed since recording began. Each capture releases only its own
+microphone stream. Desktop settings subscribes to native host/update events and
+rejects older status reads that arrive after an event.

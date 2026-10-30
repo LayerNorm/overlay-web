@@ -1,87 +1,131 @@
-'use client'
+"use client";
 
-import { useCallback, useEffect, useState, type KeyboardEvent } from 'react'
-import { Button, Input, ListboxSelect } from '@overlay/ui/primitives'
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+} from "react";
+import { Button, Input, ListboxSelect } from "@overlay/ui/primitives";
 import {
   SettingsActionRow,
   SettingsGroup,
   SettingRow,
-} from '@overlay/modules-react/settings'
-import { useDesktopBridge } from '@/components/desktop/DesktopProvider'
+} from "@overlay/modules-react/settings";
+import { useDesktopBridge } from "@/components/desktop/DesktopProvider";
 import type {
   Input as BridgeInput,
   HostStatus,
   Model,
   TranscriptionStatus,
   UpdateStatus,
-} from '@overlay/desktop-bridge'
+} from "@overlay/desktop-bridge";
 
 export function DesktopSettings() {
-  const desktop = useDesktopBridge()
-  const [host, setHost] = useState<HostStatus | null>(null)
-  const [update, setUpdate] = useState<UpdateStatus | null>(null)
+  const desktop = useDesktopBridge();
+  const [host, setHost] = useState<HostStatus | null>(null);
+  const [update, setUpdate] = useState<UpdateStatus | null>(null);
   const [transcription, setTranscription] =
-    useState<TranscriptionStatus | null>(null)
-  const [models, setModels] = useState<Model[]>([])
-  const [keys, setKeys] = useState<Record<string, string>>({})
-  const [code, setCode] = useState('')
-  const [adapter, setAdapter] = useState<'codex' | 'claude-code'>('codex')
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
-  const [diagnostics, setDiagnostics] = useState(false)
+    useState<TranscriptionStatus | null>(null);
+  const [models, setModels] = useState<Model[]>([]);
+  const [keys, setKeys] = useState<Record<string, string>>({});
+  const [code, setCode] = useState("");
+  const [adapter, setAdapter] = useState<"codex" | "claude-code">("codex");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [diagnostics, setDiagnostics] = useState(false);
+  const statusVersions = useRef({ host: 0, update: 0 });
   const refresh = useCallback(async () => {
-    if (!desktop) return
-    const { bridge, info } = desktop
-    const tasks = []
-    if (info.capabilities.includes('diagnostics'))
+    if (!desktop) return;
+    const { bridge, info } = desktop;
+    const hostVersion = ++statusVersions.current.host;
+    const updateVersion = ++statusVersions.current.update;
+    const tasks = [];
+    if (info.capabilities.includes("diagnostics"))
       tasks.push(
         bridge
-          .call('diagnostics.status', undefined)
+          .call("diagnostics.status", undefined)
           .then((status) => setDiagnostics(status.enabled)),
-      )
-    if (info.capabilities.includes('agentHost'))
-      tasks.push(bridge.call('agentHost.status', undefined).then(setHost))
-    if (info.capabilities.includes('updates'))
-      tasks.push(bridge.call('updates.status', undefined).then(setUpdate))
-    if (info.capabilities.includes('hotkeys'))
-      tasks.push(bridge.call('hotkeys.list', undefined).then(setKeys))
-    if (info.capabilities.includes('transcription'))
+      );
+    if (info.capabilities.includes("agentHost"))
       tasks.push(
-        bridge.call('transcription.status', undefined).then(setTranscription),
-        bridge.call('transcription.listModels', undefined).then(setModels),
-      )
-    await Promise.all(tasks)
-  }, [desktop])
+        bridge.call("agentHost.status", undefined).then((status) => {
+          if (statusVersions.current.host === hostVersion) setHost(status);
+        }),
+      );
+    if (info.capabilities.includes("updates"))
+      tasks.push(
+        bridge.call("updates.status", undefined).then((status) => {
+          if (statusVersions.current.update === updateVersion)
+            setUpdate(status);
+        }),
+      );
+    if (info.capabilities.includes("hotkeys"))
+      tasks.push(bridge.call("hotkeys.list", undefined).then(setKeys));
+    if (info.capabilities.includes("transcription"))
+      tasks.push(
+        bridge.call("transcription.status", undefined).then(setTranscription),
+        bridge.call("transcription.listModels", undefined).then(setModels),
+      );
+    await Promise.all(tasks);
+  }, [desktop]);
   useEffect(() => {
-    void refresh().catch(() => setError('Could not read desktop settings.'))
-  }, [refresh])
+    let active = true;
+    const versions = statusVersions.current;
+    const bridge = desktop?.bridge;
+    const offHost = desktop?.info.capabilities.includes("agentHost")
+      ? bridge?.on("agentHost.status", (status) => {
+          statusVersions.current.host++;
+          if (active) setHost(status);
+        })
+      : undefined;
+    const offUpdate = desktop?.info.capabilities.includes("updates")
+      ? bridge?.on("updates.status", (status) => {
+          statusVersions.current.update++;
+          if (active) setUpdate(status);
+        })
+      : undefined;
+    void refresh().catch(() => {
+      if (active) setError("Could not read desktop settings.");
+    });
+    return () => {
+      active = false;
+      versions.host++;
+      versions.update++;
+      offHost?.();
+      offUpdate?.();
+    };
+  }, [desktop, refresh]);
   const run = async (action: () => Promise<unknown>) => {
-    setBusy(true)
-    setError('')
+    setBusy(true);
+    setError("");
     try {
-      await action()
-      await refresh()
+      await action();
+      await refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Desktop operation failed.')
+      setError(
+        err instanceof Error ? err.message : "Desktop operation failed.",
+      );
     } finally {
-      setBusy(false)
+      setBusy(false);
     }
-  }
-  if (!desktop) return null
-  const { bridge, info } = desktop
+  };
+  if (!desktop) return null;
+  const { bridge, info } = desktop;
   return (
     <div className="space-y-6">
       <Button
         size="sm"
         variant="outline"
         onClick={() =>
-          void run(() => bridge.call('window.openDataFolder', undefined))
+          void run(() => bridge.call("window.openDataFolder", undefined))
         }
       >
         Open local recordings and preserved data
       </Button>
       <p className="text-sm text-muted-foreground">
-        Overlay for {info.platform === 'darwin' ? 'Mac' : info.platform} ·{' '}
+        Overlay for {info.platform === "darwin" ? "Mac" : info.platform} ·{" "}
         {info.appVersion}
       </p>
       {error ? (
@@ -89,23 +133,34 @@ export function DesktopSettings() {
           {error}
         </p>
       ) : null}
-      {info.capabilities.includes('notifications') ? (
+      {info.capabilities.includes("notifications") ? (
         <SettingsGroup>
           <SettingsActionRow
             icon={null}
             title="Notifications"
             description="Allow Overlay in macOS System Settings → Notifications to receive alerts."
             action={
-              <Button size="sm" variant="outline" disabled={busy} onClick={() => void run(() => bridge.call('notifications.show', {
-                title: 'Overlay', body: 'Desktop notifications are working.', route: '/app/work',
-              }))}>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={busy}
+                onClick={() =>
+                  void run(() =>
+                    bridge.call("notifications.show", {
+                      title: "Overlay",
+                      body: "Desktop notifications are working.",
+                      route: "/app/work",
+                    }),
+                  )
+                }
+              >
                 Send test notification
               </Button>
             }
           />
         </SettingsGroup>
       ) : null}
-      {info.capabilities.includes('transcription') ? (
+      {info.capabilities.includes("transcription") ? (
         <SettingsGroup>
           <SettingsActionRow
             icon={null}
@@ -113,17 +168,18 @@ export function DesktopSettings() {
             description="Local models run on your Mac, including offline. Cloud dictation uses your Overlay account."
             action={
               <ListboxSelect
-                value={transcription?.model ?? 'cloud'}
+                value={transcription?.model ?? "cloud"}
                 options={[
-                  { value: 'cloud', label: 'Cloud' },
+                  { value: "cloud", label: "Cloud" },
                   ...models.map((m) => ({ value: m.id, label: m.name })),
                 ]}
                 aria-label="Dictation model"
                 disabled={busy}
                 onChange={(model) =>
                   void run(() =>
-                    bridge.call('transcription.configure', {
-                      model: model as BridgeInput<'transcription.configure'>['model'],
+                    bridge.call("transcription.configure", {
+                      model:
+                        model as BridgeInput<"transcription.configure">["model"],
                     }),
                   )
                 }
@@ -137,8 +193,8 @@ export function DesktopSettings() {
               title={model.name}
               description={
                 model.downloaded
-                  ? 'Ready on this Mac'
-                  : 'Download to use offline'
+                  ? "Ready on this Mac"
+                  : "Download to use offline"
               }
               action={
                 <Button
@@ -147,27 +203,27 @@ export function DesktopSettings() {
                   disabled={busy || model.downloaded}
                   onClick={() =>
                     void run(() =>
-                      bridge.call('transcription.downloadModel', {
-                        id: model.id as BridgeInput<'transcription.downloadModel'>['id'],
+                      bridge.call("transcription.downloadModel", {
+                        id: model.id as BridgeInput<"transcription.downloadModel">["id"],
                       }),
                     )
                   }
                 >
-                  {model.downloaded ? 'Downloaded' : 'Download'}
+                  {model.downloaded ? "Downloaded" : "Download"}
                 </Button>
               }
             />
           ))}
           <p className="px-4 pb-3 text-xs text-muted-foreground">
-            Microphone: {transcription?.microphone ?? 'checking'} ·
-            Accessibility:{' '}
+            Microphone: {transcription?.microphone ?? "checking"} ·
+            Accessibility:{" "}
             {transcription?.accessibility
-              ? 'allowed'
-              : 'enable in System Settings for dictation into other apps'}
+              ? "allowed"
+              : "enable in System Settings for dictation into other apps"}
           </p>
         </SettingsGroup>
       ) : null}
-      {info.capabilities.includes('hotkeys') ? (
+      {info.capabilities.includes("hotkeys") ? (
         <SettingsGroup>
           {Object.entries(keys).map(([id, value]) => (
             <SettingsActionRow
@@ -180,18 +236,18 @@ export function DesktopSettings() {
                   <Input
                     aria-label={`${id} shortcut`}
                     className="w-52"
-                    value={shortcutLabel(value, info.platform === 'darwin')}
+                    value={shortcutLabel(value, info.platform === "darwin")}
                     readOnly
                     disabled={busy}
                     onKeyDown={(event) => {
-                      const accelerator = shortcutFromKey(event)
+                      const accelerator = shortcutFromKey(event);
                       if (accelerator)
                         void run(() =>
-                          bridge.call('hotkeys.set', {
-                            id: id as BridgeInput<'hotkeys.set'>['id'],
+                          bridge.call("hotkeys.set", {
+                            id: id as BridgeInput<"hotkeys.set">["id"],
                             accelerator,
                           }),
-                        )
+                        );
                     }}
                   />
                   <Button
@@ -200,8 +256,8 @@ export function DesktopSettings() {
                     disabled={busy}
                     onClick={() =>
                       void run(() =>
-                        bridge.call('hotkeys.reset', {
-                          id: id as BridgeInput<'hotkeys.set'>['id'],
+                        bridge.call("hotkeys.reset", {
+                          id: id as BridgeInput<"hotkeys.set">["id"],
                         }),
                       )
                     }
@@ -214,13 +270,13 @@ export function DesktopSettings() {
           ))}
         </SettingsGroup>
       ) : null}
-      {info.capabilities.includes('panels') ? (
+      {info.capabilities.includes("panels") ? (
         <SettingsGroup>
-          {(['chat', 'notes'] as const).map((kind) => (
+          {(["chat", "notes"] as const).map((kind) => (
             <SettingsActionRow
               icon={null}
               key={kind}
-              title={`${kind === 'chat' ? 'Chat' : 'Notes'} panel`}
+              title={`${kind === "chat" ? "Chat" : "Notes"} panel`}
               description="Keep a compact Overlay window over your other apps."
               action={
                 <div className="flex gap-2">
@@ -228,7 +284,7 @@ export function DesktopSettings() {
                     size="sm"
                     variant="outline"
                     onClick={() =>
-                      void run(() => bridge.call('panels.toggle', { kind }))
+                      void run(() => bridge.call("panels.toggle", { kind }))
                     }
                   >
                     Toggle
@@ -238,9 +294,9 @@ export function DesktopSettings() {
                     variant="ghost"
                     onClick={() =>
                       void run(() =>
-                        bridge.call('panels.setDocked', {
+                        bridge.call("panels.setDocked", {
                           kind,
-                          edge: 'right',
+                          edge: "right",
                         }),
                       )
                     }
@@ -252,7 +308,7 @@ export function DesktopSettings() {
                     variant="ghost"
                     onClick={() =>
                       void run(() =>
-                        bridge.call('panels.setDocked', { kind, edge: 'none' }),
+                        bridge.call("panels.setDocked", { kind, edge: "none" }),
                       )
                     }
                   >
@@ -264,21 +320,21 @@ export function DesktopSettings() {
           ))}
         </SettingsGroup>
       ) : null}
-      {info.capabilities.includes('agentHost') ? (
+      {info.capabilities.includes("agentHost") ? (
         <SettingsGroup>
           <SettingsActionRow
             icon={null}
             title="Local Agent Host"
-            description={`State: ${host?.state ?? 'checking'}. Create a connection code in Agents, then start the host on this Mac.`}
+            description={`State: ${host?.state ?? "checking"}. Create a connection code in Agents, then start the host on this Mac.`}
             action={
               <Button
                 size="sm"
                 variant="outline"
                 disabled={
-                  busy || !host || !['running', 'starting'].includes(host.state)
+                  busy || !host || !["running", "starting"].includes(host.state)
                 }
                 onClick={() =>
-                  void run(() => bridge.call('agentHost.stop', undefined))
+                  void run(() => bridge.call("agentHost.stop", undefined))
                 }
               >
                 Stop
@@ -289,8 +345,8 @@ export function DesktopSettings() {
             <ListboxSelect
               value={adapter}
               options={[
-                { value: 'codex', label: 'Codex' },
-                { value: 'claude-code', label: 'Claude Code' },
+                { value: "codex", label: "Codex" },
+                { value: "claude-code", label: "Claude Code" },
               ]}
               onChange={setAdapter}
               aria-label="Agent adapter"
@@ -308,11 +364,11 @@ export function DesktopSettings() {
               disabled={busy || !code.trim()}
               onClick={() =>
                 void run(async () => {
-                  await bridge.call('agentHost.start', {
+                  await bridge.call("agentHost.start", {
                     adapter,
                     enrollmentCode: code,
-                  })
-                  setCode('')
+                  });
+                  setCode("");
                 })
               }
             >
@@ -321,12 +377,12 @@ export function DesktopSettings() {
           </div>
           {host?.logTail.length ? (
             <pre className="max-h-40 overflow-auto px-4 pb-4 text-xs">
-              {host.logTail.join('\n')}
+              {host.logTail.join("\n")}
             </pre>
           ) : null}
         </SettingsGroup>
       ) : null}
-      {info.capabilities.includes('diagnostics') ? (
+      {info.capabilities.includes("diagnostics") ? (
         <SettingsGroup>
           <SettingRow
             icon={null}
@@ -336,18 +392,18 @@ export function DesktopSettings() {
             disabled={busy}
             onChange={() =>
               void run(() =>
-                bridge.call('diagnostics.configure', { enabled: !diagnostics }),
+                bridge.call("diagnostics.configure", { enabled: !diagnostics }),
               )
             }
           />
         </SettingsGroup>
       ) : null}
-      {info.capabilities.includes('updates') ? (
+      {info.capabilities.includes("updates") ? (
         <SettingsGroup>
           <SettingsActionRow
             icon={null}
             title="Updates"
-            description={update?.message ?? update?.state ?? 'Checking'}
+            description={update?.message ?? update?.state ?? "Checking"}
             action={
               <div className="flex gap-2">
                 <Button
@@ -355,16 +411,16 @@ export function DesktopSettings() {
                   variant="outline"
                   disabled={busy}
                   onClick={() =>
-                    void run(() => bridge.call('updates.check', undefined))
+                    void run(() => bridge.call("updates.check", undefined))
                   }
                 >
                   Check for updates
                 </Button>
-                {update?.state === 'downloaded' ? (
+                {update?.state === "downloaded" ? (
                   <Button
                     size="sm"
                     onClick={() =>
-                      void run(() => bridge.call('updates.install', undefined))
+                      void run(() => bridge.call("updates.install", undefined))
                     }
                   >
                     Restart to update
@@ -376,62 +432,62 @@ export function DesktopSettings() {
         </SettingsGroup>
       ) : null}
     </div>
-  )
+  );
 }
 
 function shortcutLabel(accelerator: string, mac: boolean): string {
   const labels: Record<string, string> = {
-    CommandOrControl: mac ? '⌘' : 'Ctrl',
-    Command: '⌘',
-    Control: mac ? '⌃' : 'Ctrl',
-    Alt: mac ? '⌥' : 'Alt',
-    Shift: mac ? '⇧' : 'Shift',
-  }
+    CommandOrControl: mac ? "⌘" : "Ctrl",
+    Command: "⌘",
+    Control: mac ? "⌃" : "Ctrl",
+    Alt: mac ? "⌥" : "Alt",
+    Shift: mac ? "⇧" : "Shift",
+  };
   return accelerator
-    .split('+')
+    .split("+")
     .map((key) => labels[key] ?? key)
-    .join(mac ? ' ' : ' + ')
+    .join(mac ? " " : " + ");
 }
 function shortcutFromKey(
   event: KeyboardEvent<HTMLInputElement>,
 ): string | null {
-  if (event.key === 'Tab') return null
-  event.preventDefault()
-  if (['Escape', 'Meta', 'Control', 'Alt', 'Shift'].includes(event.key))
-    return null
+  if (event.key === "Tab") return null;
+  event.preventDefault();
+  if (["Escape", "Meta", "Control", "Alt", "Shift"].includes(event.key))
+    return null;
   if (
     !event.metaKey &&
     !event.ctrlKey &&
     !event.altKey &&
     !/^F\d+$/.test(event.key)
   )
-    return null
+    return null;
   const physical: Record<string, string> = {
-    Space: 'Space',
-    Period: '.',
-    Comma: ',',
-    Slash: '/',
-    Backslash: '\\',
-    BracketLeft: '[',
-    BracketRight: ']',
-    Minus: '-',
-    Equal: '=',
-    Semicolon: ';',
+    Space: "Space",
+    Period: ".",
+    Comma: ",",
+    Slash: "/",
+    Backslash: "\\",
+    BracketLeft: "[",
+    BracketRight: "]",
+    Minus: "-",
+    Equal: "=",
+    Semicolon: ";",
     Quote: "'",
-    Backquote: '`',
-  }
+    Backquote: "`",
+  };
   const key =
     physical[event.code] ??
     (/^(Key|Digit)/.test(event.code)
-      ? event.code.replace(/^(Key|Digit)/, '')
-      : event.key.replace('Arrow', ''))
+      ? event.code.replace(/^(Key|Digit)/, "")
+      : event.key.replace("Arrow", ""));
   return [
-    event.metaKey ? 'Command' : '',
-    event.ctrlKey ? 'Control' : '',
-    event.altKey ? 'Alt' : '',
-    event.shiftKey ? 'Shift' : '',
+    event.metaKey ? "Command" : "",
+    event.ctrlKey ? "Control" : "",
+    event.altKey ? "Alt" : "",
+    event.shiftKey ? "Shift" : "",
     key,
   ]
     .filter(Boolean)
-    .join('+')
+    .join("+");
 }

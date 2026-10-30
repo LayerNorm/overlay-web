@@ -1,126 +1,129 @@
-'use client'
+"use client";
 
-import { useEffect, useRef, useState } from 'react'
-import { Camera, Mic, Square } from 'lucide-react'
-import { PromptInputButton } from '@overlay/chat-react'
-import { useDesktopBridge } from './DesktopProvider'
-import type { Input } from '@overlay/desktop-bridge'
+import { useLayoutEffect, useRef, useState } from "react";
+import { Camera, Mic, Square } from "lucide-react";
+import { PromptInputButton } from "@overlay/chat-react";
+import { methodSchemas } from "@overlay/desktop-bridge";
+import { useDesktopBridge } from "./DesktopProvider";
+import {
+  createComposerDictation,
+  type DictationPhase,
+} from "./composer-dictation";
 
 export function DesktopComposerControls({
-  input,
-  onInputChange,
+  onAppendText,
   onImages,
 }: {
-  input: string
-  onInputChange: (value: string) => void
-  onImages: (files: File[]) => void
+  onAppendText: (text: string) => void;
+  onImages: (files: File[]) => void;
 }) {
-  const desktop = useDesktopBridge()
-  const [recording, setRecording] = useState(false)
-  const [error, setError] = useState('')
-  const recorder = useRef<MediaRecorder | null>(null)
-  const stream = useRef<MediaStream | null>(null)
-  const recordingEpoch = useRef(0)
-  const current = useRef({ input, onInputChange })
-  useEffect(() => {
-    current.current = { input, onInputChange }
-  }, [input, onInputChange])
-  useEffect(() => {
-    const release = () => {
-      recordingEpoch.current++
-      if (recorder.current) recorder.current.onstop = null
-      stream.current?.getTracks().forEach((track) => track.stop())
-    }
-    const cancel = () => {
-      release()
-      setRecording(false)
-    }
-    const off = desktop?.bridge.on('transcription.cancel', cancel)
+  const desktop = useDesktopBridge();
+  const [phase, setPhase] = useState<DictationPhase>("idle");
+  const [error, setError] = useState("");
+  const current = useRef({ onAppendText, onImages });
+  const attachment = useRef<{ active: boolean } | null>(null);
+  const dictation = useRef<ReturnType<typeof createComposerDictation> | null>(
+    null,
+  );
+  useLayoutEffect(() => {
+    current.current = { onAppendText, onImages };
+  }, [onAppendText, onImages]);
+  useLayoutEffect(() => {
+    if (!desktop) return;
+    const capture = createComposerDictation({
+      readModel: async () =>
+        methodSchemas["transcription.transcribe"].shape.model.parse(
+          (await desktop.bridge.call("transcription.status", undefined)).model,
+        ),
+      acquire: async () => {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: true,
+        });
+        return {
+          release: () => stream.getTracks().forEach((track) => track.stop()),
+          createCapture: () => {
+            const recorder = new MediaRecorder(stream);
+            return {
+              mime: methodSchemas["transcription.transcribe"].shape.mime.parse(
+                recorder.mimeType.split(";")[0],
+              ),
+              start: () => recorder.start(),
+              stop: () => recorder.stop(),
+              discard: () => {
+                recorder.onstop = null;
+                recorder.ondataavailable = null;
+                if (recorder.state !== "inactive") recorder.stop();
+              },
+              onData: (callback: (chunk: Blob) => void) => {
+                recorder.ondataavailable = (event) => callback(event.data);
+              },
+              onStop: (callback: () => void) => {
+                recorder.onstop = callback;
+              },
+            };
+          },
+        };
+      },
+      transcribe: (audio) =>
+        desktop.bridge.call("transcription.transcribe", audio),
+      append: (text) => current.current.onAppendText(text),
+      phase: setPhase,
+      error: setError,
+    });
+    dictation.current = capture;
+    const ticket = { active: true };
+    attachment.current = ticket;
+    const off = desktop.bridge.on("transcription.cancel", () =>
+      capture.cancel(),
+    );
     return () => {
-      off?.()
-      release()
-    }
-  }, [desktop])
-  if (!desktop) return null
-  const { bridge, info } = desktop
-  const toggle = async () => {
-    setError('')
-    if (recorder.current?.state === 'recording') {
-      recorder.current.stop()
-      return
-    }
-    try {
-      const epoch = ++recordingEpoch.current
-      const status = await bridge.call('transcription.status', undefined)
-      stream.current = await navigator.mediaDevices.getUserMedia({
-        audio: true,
-      })
-      if (epoch !== recordingEpoch.current) {
-        stream.current.getTracks().forEach((track) => track.stop())
-        return
-      }
-      const capture = new MediaRecorder(stream.current)
-      recorder.current = capture
-      const chunks: Blob[] = []
-      capture.ondataavailable = (event) => {
-        if (event.data.size) chunks.push(event.data)
-      }
-      capture.onstop = async () => {
-        setRecording(false)
-        stream.current?.getTracks().forEach((track) => track.stop())
-        try {
-          const audio = new Uint8Array(await new Blob(chunks).arrayBuffer())
-          const result = await bridge.call('transcription.transcribe', {
-            audio,
-            mime: capture.mimeType.split(
-              ';',
-            )[0] as Input<'transcription.transcribe'>['mime'],
-            model: status.model as Input<'transcription.transcribe'>['model'],
-          })
-          if (epoch !== recordingEpoch.current) return
-          const latest = current.current
-          latest.onInputChange(
-            `${latest.input}${latest.input && !/\s$/.test(latest.input) ? ' ' : ''}${result.text}`,
-          )
-        } catch (err) {
-          setError(err instanceof Error ? err.message : 'Dictation failed.')
-        }
-      }
-      capture.start()
-      setRecording(true)
-    } catch {
-      stream.current?.getTracks().forEach((track) => track.stop())
-      setError(
-        'Could not start dictation. Check microphone permissions in Desktop settings.',
-      )
-    }
-  }
+      off?.();
+      ticket.active = false;
+      capture.cancel();
+      dictation.current = null;
+    };
+  }, [desktop]);
+  if (!desktop) return null;
+  const { bridge, info } = desktop;
+  const capturing = phase === "opening" || phase === "recording";
   return (
     <>
-      {info.capabilities.includes('transcription') ? (
+      {info.capabilities.includes("transcription") ? (
         <PromptInputButton
-          aria-label={recording ? 'Stop dictation' : 'Dictate message'}
-          onClick={() => void toggle()}
+          aria-label={
+            capturing
+              ? "Stop dictation"
+              : phase === "transcribing"
+                ? "Transcribing message"
+                : "Dictate message"
+          }
+          disabled={phase === "transcribing"}
+          onClick={() => dictation.current?.toggle()}
         >
-          {recording ? <Square size={16} /> : <Mic size={16} />}
+          {capturing ? <Square size={16} /> : <Mic size={16} />}
         </PromptInputButton>
       ) : null}
-      {info.capabilities.includes('capture') ? (
+      {info.capabilities.includes("capture") ? (
         <PromptInputButton
           aria-label="Attach screenshot"
           onClick={() => {
-            setError('')
+            setError("");
+            const ticket = attachment.current;
             void bridge
-              .call('capture.screenshot', {})
+              .call("capture.screenshot", {})
               .then(async (shot) => {
-                const blob = await (await fetch(shot.dataUrl)).blob()
-                onImages([new File([blob], shot.name, { type: blob.type })])
+                const blob = await (await fetch(shot.dataUrl)).blob();
+                if (ticket?.active)
+                  current.current.onImages([
+                    new File([blob], shot.name, { type: blob.type }),
+                  ]);
               })
-              .catch(() =>
-                setError(
-                  'Could not capture the screen. Check Screen Recording permissions in System Settings.',
-                ),
-              )
+              .catch(() => {
+                if (ticket?.active)
+                  setError(
+                    "Could not capture the screen. Check Screen Recording permissions in System Settings.",
+                  );
+              });
           }}
         >
           <Camera size={16} />
@@ -132,5 +135,5 @@ export function DesktopComposerControls({
         </span>
       ) : null}
     </>
-  )
+  );
 }

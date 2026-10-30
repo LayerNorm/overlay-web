@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Keep desktop dictation and screenshots scoped to their original draft; release cancelled microphones and refresh native status live.
+
 - Decode desktop capture to PCM for offline models and reject stale recordings after cancellation.
 
 - Default desktop dictation to Control+Space and add a test-notification action with macOS permission guidance.
