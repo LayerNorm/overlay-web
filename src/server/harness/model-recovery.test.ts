@@ -55,27 +55,44 @@ test('free interruptions and capacity rejections share bounded backoff and respe
   expect(state.usage.costMicros).toBe(0)
 })
 
-test('durable retry uses the stored time and rechecks ownership and cancellation after waking', async () => {
-  const state = recordHarnessReceipt(initial(), receipt('model:0'), 1_000)
-  mocks.read.mockResolvedValue(state)
-  expect(await waitForHarnessModelRecovery(reference, 'model:0')).toBe(true)
-  expect(mocks.sleep).toHaveBeenCalledExactlyOnceWith(new Date(6_000))
-  mocks.read.mockResolvedValueOnce(state).mockResolvedValueOnce({ ...state, status: 'cancelled' })
-  expect(await waitForHarnessModelRecovery(reference, 'model:0')).toBe(false)
-  mocks.read.mockResolvedValueOnce(state).mockResolvedValueOnce({ ...state, workflowRunId: 'other' })
-  expect(await waitForHarnessModelRecovery(reference, 'model:0')).toBe(false)
+test('summary recovery has independent durable attempts without resetting response recovery or advancing progress', () => {
+  let state = recordHarnessReceipt(initial(), receipt('model:0'), 1_000)
+  const responseRecovery = state.modelRecovery
+  const progress = state.progressRevision
+  for (const [attempt, nextRetryAt] of [[1, 7_000], [2, 12_000]]) {
+    state = recordHarnessReceipt(state, receipt(`summary:model:1:${attempt}`), 2_000)
+    state = JSON.parse(JSON.stringify(state)) as HarnessSnapshot
+    expect(state.summaryRecovery).toMatchObject({ attempt, nextRetryAt, firstFailureAt: 2_000, code: 'empty_response' })
+    expect(state.modelRecovery).toEqual(responseRecovery)
+    expect(state.progressRevision).toBe(progress)
+  }
+  state = recordHarnessReceipt(state, { ...receipt('summary:model:1:usable'), responseFailure: undefined }, 3_000)
+  expect(state.summaryRecovery).toBeUndefined()
+  expect(state.modelRecovery).toEqual(responseRecovery)
+  expect(state.usage.costMicros).toBe(4)
 })
 
-test('unsettled usage, stale receipts and foreign owners cannot authorize a retry or release a hold', async () => {
-  const state = recordHarnessReceipt(initial(), receipt('model:0'), 1_000)
+test.each(['model:0', 'summary:model:0:0'])('durable retry %s uses the stored time and rechecks ownership and cancellation after waking', async id => {
+  const state = recordHarnessReceipt(initial(), receipt(id), 1_000)
+  mocks.read.mockResolvedValue(state)
+  expect(await waitForHarnessModelRecovery(reference, id)).toBe(true)
+  expect(mocks.sleep).toHaveBeenCalledExactlyOnceWith(new Date(6_000))
+  mocks.read.mockResolvedValueOnce(state).mockResolvedValueOnce({ ...state, status: 'cancelled' })
+  expect(await waitForHarnessModelRecovery(reference, id)).toBe(false)
+  mocks.read.mockResolvedValueOnce(state).mockResolvedValueOnce({ ...state, workflowRunId: 'other' })
+  expect(await waitForHarnessModelRecovery(reference, id)).toBe(false)
+})
+
+test.each(['model:0', 'summary:model:0:0'])('unsettled usage, stale receipts and foreign owners cannot authorize retry %s or release a hold', async id => {
+  const state = recordHarnessReceipt(initial(), receipt(id), 1_000)
   for (const candidate of [
-    { ...state, modelReservation: { id: 'model:0', maxCostMicros: 50 } },
+    { ...state, modelReservation: { id, maxCostMicros: 50 } },
     { ...state, workflowRunId: 'other' },
     { ...state, latestReceipt: receipt('other') },
     { ...state, status: 'failed' as const },
   ]) {
     mocks.read.mockResolvedValue(candidate)
-    expect(await waitForHarnessModelRecovery(reference, 'model:0')).toBe(false)
+    expect(await waitForHarnessModelRecovery(reference, id)).toBe(false)
   }
   expect(mocks.sleep).not.toHaveBeenCalled()
 })

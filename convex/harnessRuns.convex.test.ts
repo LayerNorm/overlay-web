@@ -101,18 +101,19 @@ function oneStep(id: string, requiresVerification = false, evidenceTools = ['too
 }
 
 describe('durable harness runs', () => {
-  test('persists settled model recovery metadata and clears it after a usable response', async () => {
+  test.each(['model', 'summary:model'])('persists settled %s recovery metadata and clears it after a usable response', async prefix => {
     const convex = convexTest(schema, modules)
     const input = admission('model-recovery', await seedConversation(convex))
+    const recoveryKey = prefix === 'model' ? 'modelRecovery' : 'summaryRecovery'
     await admit(convex, input)
     let state = (await apply(convex, input, 'reserve-empty', 0, {
-      type: 'reserve_model', id: 'model:0', maxCostMicros: 100,
+      type: 'reserve_model', id: `${prefix}:0`, maxCostMicros: 100,
     })).snapshot
     state = (await apply(convex, input, 'dispatch-empty', state.revision, {
-      type: 'bind_model_dispatch', id: 'model:0', modelId: 'fixture/model', billingReservationId: 'billing-empty',
+      type: 'bind_model_dispatch', id: `${prefix}:0`, modelId: 'fixture/model', billingReservationId: 'billing-empty',
     })).snapshot
     const emptyReceipt = {
-      id: 'model:0', modelId: 'fixture/model', provider: 'fixture',
+      id: `${prefix}:0`, modelId: 'fixture/model', provider: 'fixture',
       inputTokens: 10, outputTokens: 0, reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0,
       contextWindow: 32_000, costMicros: 1, costSource: 'provider' as const, responseFailure: 'empty_response' as const,
     }
@@ -122,37 +123,37 @@ describe('durable harness runs', () => {
     const loaded = await get(convex, input.runId)
     expect(loaded?.modelReservation).toBeUndefined()
     expect(loaded?.latestReceipt).toEqual(emptyReceipt)
-    expect(loaded?.modelRecovery).toMatchObject({
-      receiptId: 'model:0', modelId: 'fixture/model', code: 'empty_response', attempt: 1,
+    expect(loaded?.[recoveryKey]).toMatchObject({
+      receiptId: `${prefix}:0`, modelId: 'fixture/model', code: 'empty_response', attempt: 1,
     })
-    expect(loaded?.modelRecovery?.nextRetryAt).toBe(loaded!.updatedAt + 5_000)
+    expect(loaded?.[recoveryKey]?.nextRetryAt).toBe(loaded!.updatedAt + 5_000)
     expect(loaded?.usage.costMicros).toBe(1)
 
     const replay = await apply(convex, input, 'settle-empty-replay', loaded!.revision, {
       type: 'record_receipt', receipt: emptyReceipt,
     })
     expect(replay.applied).toBe(false)
-    expect(replay.snapshot.modelRecovery).toEqual(loaded?.modelRecovery)
+    expect(replay.snapshot[recoveryKey]).toEqual(loaded?.[recoveryKey])
     expect(replay.snapshot.usage.costMicros).toBe(1)
 
     state = (await apply(convex, input, 'reserve-usable', replay.snapshot.revision, {
-      type: 'reserve_model', id: 'model:1', maxCostMicros: 100,
+      type: 'reserve_model', id: `${prefix}:1`, maxCostMicros: 100,
     })).snapshot
     state = (await apply(convex, input, 'dispatch-usable', state.revision, {
-      type: 'bind_model_dispatch', id: 'model:1', modelId: 'fixture/model', billingReservationId: 'billing-usable',
+      type: 'bind_model_dispatch', id: `${prefix}:1`, modelId: 'fixture/model', billingReservationId: 'billing-usable',
     })).snapshot
     const usableReceipt = {
-      id: 'model:1', modelId: 'fixture/model', provider: 'fixture',
+      id: `${prefix}:1`, modelId: 'fixture/model', provider: 'fixture',
       inputTokens: 10, outputTokens: 5, reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0,
       contextWindow: 32_000, costMicros: 2, costSource: 'provider' as const,
     }
     const usable = await apply(convex, input, 'settle-usable', state.revision, {
       type: 'record_receipt', receipt: usableReceipt,
     })
-    expect(usable.snapshot.modelRecovery).toBeUndefined()
-    expect((await get(convex, input.runId))?.modelRecovery).toBeUndefined()
+    expect(usable.snapshot[recoveryKey]).toBeUndefined()
+    expect((await get(convex, input.runId))?.[recoveryKey]).toBeUndefined()
     expect((await get(convex, input.runId))?.usage.costMicros).toBe(3)
-    expect(first.snapshot.modelRecovery).toEqual(loaded?.modelRecovery)
+    expect(first.snapshot[recoveryKey]).toEqual(loaded?.[recoveryKey])
   })
 
   test.each(['budget', 'model_unavailable', 'route_capacity'] as const)('persists a zero-usage %s rejection through the mutation boundary', async rejectionReason => {

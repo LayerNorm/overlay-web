@@ -233,11 +233,11 @@ beforeEach(() => {
   })
 })
 
-function provider(finishReason: 'stop' | 'length' = 'stop', failSummary = false, summaryText?: string) {
+function provider(finishReason: 'stop' | 'length' = 'stop', failSummary = false, summaryText?: string | (() => string)) {
   const model = new MockLanguageModelV4({ doStream: async () => {
     if (failSummary && current.modelReservation?.id.startsWith('summary:')) throw new Error('Summary stream aborted.')
     const text = current.modelReservation?.id.startsWith('summary:')
-      ? summaryText ?? 'Earlier records were read. Do not publish. Verify the final result. The user asked to check the supplied records and preserve the original constraints. No external changes were made. Confirm each result before reporting it, and use the persisted observations as the source of truth.'
+      ? (typeof summaryText === 'function' ? summaryText() : summaryText) ?? 'Earlier records were read. Do not publish. Verify the final result. The user asked to check the supplied records and preserve the original constraints. No external changes were made. Confirm each result before reporting it, and use the persisted observations as the source of truth.'
       : 'The observations are checked.'
     const parts: LanguageModelV4StreamPart[] = [{ type: 'stream-start', warnings: [] }, { type: 'text-start', id: 'text' },
       { type: 'text-delta', id: 'text', delta: text }, { type: 'text-end', id: 'text' },
@@ -328,6 +328,35 @@ test('a failed summary with an unsettled reservation cannot dispatch the main ca
   expect(model.doStreamCalls).toHaveLength(1)
   expect(current.workingSummary).toBe('')
   expect(current.modelReservation?.dispatch).toBeDefined()
+  expect(mocks.sleep).not.toHaveBeenCalled()
+})
+
+test('settled empty summaries retry with durable backoff before compacting or dispatching the response', async () => {
+  let summaries = 0
+  const model = provider('stop', false, () => ++summaries <= 2 ? ''
+    : 'Earlier records were read. Do not publish. Verify the final result. The user asked to check the supplied records and preserve the original constraints. No external changes were made. Confirm each result before reporting it, and use the persisted observations as the source of truth.')
+  const delays: number[] = []
+  mocks.sleep.mockImplementation(async (until: Date) => {
+    expect(current.workingSummary).toBe('')
+    expect(current.modelReservation).toBeUndefined()
+    expect(current.summaryRecovery?.receiptId).toBe(current.latestReceipt?.id)
+    expect(current.summaryRecovery?.attempt).toBe(delays.length + 1)
+    delays.push(until.getTime() - current.updatedAt)
+  })
+  const ports = createPersonalHarnessExecutionPorts({ access, context, contextBudgetTokens: 8_192 }, surface)
+  const result = await runOverlayHarness({ ...execution, messages: history() }, ports)
+  expect(result.snapshot.status).toBe('completed')
+  expect(delays).toEqual([5_000, 10_000])
+  const receiptIds = mocks.settle.mock.calls.map(([call]) => call.receiptId)
+  expect(receiptIds.slice(0, 3)).toEqual(['summary:model:0:0', 'summary:model:0:0:retry:1', 'summary:model:0:0:retry:2'])
+  expect(new Set(receiptIds).size).toBe(receiptIds.length)
+  expect(receiptIds.filter(id => !id.startsWith('summary:'))).toEqual(['model:0'])
+  expect(result.snapshot.usage.costMicros).toBe(receiptIds.length * 120)
+  expect(result.snapshot.summaryRecovery).toBeUndefined()
+  expect(result.snapshot.workingSummary).toContain('Do not publish')
+  expect(model.doStreamCalls).toHaveLength(receiptIds.length)
+  expect(mocks.admit).toHaveBeenCalledOnce()
+  expect(mocks.capacity).not.toHaveBeenCalled()
 })
 
 test('provider-variable compaction settles actual usage before reserving the response', async () => {

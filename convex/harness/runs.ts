@@ -294,6 +294,7 @@ function metadataFromSnapshot(snapshot: HarnessSnapshot): HarnessMetadata {
     ...(snapshot.latestReceipt === undefined ? {} : { latestReceipt: snapshot.latestReceipt }),
     ...(snapshot.routeInterruptionCount === undefined ? {} : { routeInterruptionCount: snapshot.routeInterruptionCount }),
     ...(snapshot.modelRecovery === undefined ? {} : { modelRecovery: snapshot.modelRecovery }),
+    ...(snapshot.summaryRecovery === undefined ? {} : { summaryRecovery: snapshot.summaryRecovery }),
     ...(snapshot.modelReservation === undefined ? {} : { modelReservation: snapshot.modelReservation }),
     usage: snapshot.usage,
     updatedAt: snapshot.updatedAt,

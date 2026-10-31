@@ -93,11 +93,15 @@ export function createHarnessModelPorts(input: {
   async function summarize(prompt: string, targetSummaryTokens: number, receiptId: string): Promise<string> {
     let attempt = 0
     while (true) {
-      const id = attempt ? `${receiptId}:capacity:${attempt}` : receiptId
+      const id = attempt ? `${receiptId}:retry:${attempt}` : receiptId
       try {
         return await summarizeAttempt(prompt, targetSummaryTokens, id)
       } catch (error) {
-        if (!await capacity.wait(await readHarnessState(reference), id, candidates[candidateIndex])) throw error
+        const state = await readHarnessState(reference)
+        const recovered = state.summaryRecovery?.receiptId === id
+          ? await waitForHarnessModelRecovery(reference, id)
+          : await capacity.wait(state, id, candidates[candidateIndex])
+        if (!recovered) throw error
         attempt++
       }
     }

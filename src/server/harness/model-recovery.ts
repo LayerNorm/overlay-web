@@ -44,14 +44,15 @@ export async function runHarnessModelInvocation(
 
 export async function waitForHarnessModelRecovery(reference: HarnessExecutionReference, receiptId: string): Promise<boolean> {
   const state = await readHarnessState(reference)
-  const recovery = state.modelRecovery
+  const recoveryKey = receiptId.startsWith('summary:') ? 'summaryRecovery' : 'modelRecovery'
+  const recovery = state[recoveryKey]
   if (state.workflowRunId !== reference.workflowRunId || state.status !== 'running' || state.modelReservation
     || state.latestReceipt?.id !== receiptId || recovery?.receiptId !== receiptId) return false
   await sleep(new Date(recovery.nextRetryAt))
   const resumed = await readHarnessState(reference)
   return resumed.workflowRunId === reference.workflowRunId && resumed.status === 'running'
     && !resumed.modelReservation && resumed.latestReceipt?.id === receiptId
-    && resumed.modelRecovery?.receiptId === receiptId
+    && resumed[recoveryKey]?.receiptId === receiptId
 }
 
 export async function terminateOnProviderFailure(

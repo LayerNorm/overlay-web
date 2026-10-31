@@ -120,6 +120,7 @@ export type HarnessSnapshot = {
   latestReceipt?: HarnessReceipt
   routeInterruptionCount?: number
   modelRecovery?: HarnessModelRecovery
+  summaryRecovery?: HarnessModelRecovery
   modelReservation?: {
     id: string
     maxCostMicros: number
@@ -432,17 +433,16 @@ function addHarnessUsage(target: HarnessUsage, delta: HarnessUsage) {
   }
 }
 
-function nextModelRecovery(state: HarnessSnapshot, receipt: HarnessReceipt, now: number): HarnessModelRecovery | undefined {
-  if (receipt.id.startsWith('summary:')) return state.modelRecovery
+function nextModelRecovery(previous: HarnessModelRecovery | undefined, receipt: HarnessReceipt, now: number, deadlineAt: number): HarnessModelRecovery | undefined {
   const code = receipt.responseFailure ?? (receipt.rejectionReason === 'route_capacity'
     || receipt.rejectionReason === 'route_interrupted' ? receipt.rejectionReason : undefined)
-  if (!code) return receipt.rejectionReason ? state.modelRecovery : undefined
-  const attempt = Math.min((state.modelRecovery?.attempt ?? 0) + 1, Number.MAX_SAFE_INTEGER)
+  if (!code) return receipt.rejectionReason ? previous : undefined
+  const attempt = Math.min((previous?.attempt ?? 0) + 1, Number.MAX_SAFE_INTEGER)
   const delay = Math.min(5_000 * 2 ** Math.min(attempt - 1, 6), 300_000)
   return {
     receiptId: receipt.id, modelId: receipt.modelId, code, attempt,
-    firstFailureAt: state.modelRecovery?.firstFailureAt ?? now,
-    nextRetryAt: Math.min(now + delay, state.policy.deadlineAt),
+    firstFailureAt: previous?.firstFailureAt ?? now,
+    nextRetryAt: Math.min(now + delay, deadlineAt),
   }
 }
 
@@ -456,7 +456,8 @@ export function recordHarnessReceipt(state: HarnessSnapshot, receipt: HarnessRec
   const next = mutable(state)
   if (next.modelReservation?.id === receipt.id) next.modelReservation = undefined
   next.latestReceipt = { ...receipt }
-  next.modelRecovery = nextModelRecovery(state, receipt, now)
+  const recoveryKey = receipt.id.startsWith('summary:') ? 'summaryRecovery' : 'modelRecovery'
+  next[recoveryKey] = nextModelRecovery(state[recoveryKey], receipt, now, state.policy.deadlineAt)
   if (receipt.rejectionReason === 'route_interrupted') {
     next.routeInterruptionCount = (next.routeInterruptionCount ?? 0) + 1
   }
