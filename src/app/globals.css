@@ -4,6 +4,7 @@
 @import '@overlay/modules-react/notebook-editor.css' layer(base);
 @import 'sonner/dist/styles.css' layer(components);
 @import '@overlay/ui/typeset.css';
+@import './double-sidebar.css';
 
 @import 'tailwindcss';
 @import 'tw-animate-css';

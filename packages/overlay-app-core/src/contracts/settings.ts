@@ -100,7 +100,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   dismissedZdrWarningModelIds: [],
   enabledChatModelIds: [],
   modelOrder: [],
-  useSecondarySidebar: false,
+  useSecondarySidebar: true,
 }
 
 export interface ChatModel {

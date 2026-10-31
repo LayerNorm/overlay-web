@@ -1,0 +1,182 @@
+@media (min-width: 768px) {
+  [data-app-shell]:has([data-double-sidebar]) {
+    --shell-chrome: var(--surface-muted);
+    --shell-panel: var(--background);
+    --shell-fill: var(--surface-subtle);
+    --shell-selected: var(--surface-muted);
+    --shell-outline: var(--border);
+    --shell-guide: var(--border);
+    background: var(--shell-chrome);
+    padding: 8px 8px 8px 0;
+  }
+
+  [data-app-shell]:has([data-double-sidebar]):has([data-onboarding-locked='true']) {
+    padding-left: 8px;
+  }
+
+  [data-app-shell]:has([data-shell-preset='default-light']) {
+    --shell-chrome: #f4f4f5;
+    --shell-panel: #fff;
+    --shell-fill: #e9e9eb;
+    --shell-selected: #e0e0e3;
+    --shell-outline: #e4e4e7;
+    --shell-guide: #d4d4d8;
+  }
+
+  [data-app-shell]:has([data-shell-preset='default-dark']) {
+    --shell-chrome: #0d0d0d;
+    --shell-panel: #151515;
+    --shell-fill: #1f1f1f;
+    --shell-selected: #282828;
+    --shell-outline: #242424;
+    --shell-guide: #3f3f46;
+  }
+
+  [data-app-shell]:has([data-double-sidebar]) .app-main:not([data-desktop-panel]) {
+    --background: var(--shell-panel);
+    border: 1px solid var(--shell-outline);
+    border-radius: 12px;
+    background: var(--shell-panel);
+    isolation: isolate;
+  }
+
+  [data-app-shell]:has([data-double-sidebar]) [data-slot='app-screen-header'] {
+    min-height: 48px;
+    padding: 8px 10px;
+  }
+
+  [data-app-shell]:has([data-double-sidebar]) .app-main:not([data-desktop-panel]):has([data-slot='app-screen-shell']) {
+    border: 0;
+    border-radius: 0;
+    background: var(--shell-chrome);
+  }
+
+  /* Only the outer screen owns the frame; embedded editors keep their own layout. */
+  [data-app-shell]:has([data-double-sidebar]) .app-main:not([data-desktop-panel]) [data-slot='app-screen-shell']:not([data-slot='app-screen-shell'] [data-slot='app-screen-shell']) {
+    background: transparent;
+
+    > [data-slot='app-screen-layout'] > [data-slot='app-screen-main'] {
+      overflow: hidden;
+      border: 1px solid var(--shell-outline);
+      border-radius: 12px;
+      background: var(--shell-panel);
+    }
+
+    > [data-slot='app-screen-layout'] > [data-slot='app-screen-right-panel'] {
+      --sidebar-surface: var(--shell-panel);
+      border: 1px solid var(--shell-outline);
+      border-radius: 12px;
+      background: var(--shell-panel);
+    }
+
+    > [data-slot='app-screen-layout'] > [data-slot='app-screen-right-panel'] [data-slot='right-sidebar'] {
+      border-left: 0;
+    }
+  }
+
+  .double-sidebar-panel:not([data-collapsed='true']) {
+    --sidebar-surface: var(--shell-panel);
+    margin-right: 8px;
+    border: 1px solid var(--shell-outline);
+    border-radius: 12px;
+    background: var(--shell-panel);
+  }
+
+  [data-app-shell]:has([data-double-sidebar]) [data-slot='prompt-input'] {
+    background: var(--shell-chrome);
+    border-color: var(--shell-outline);
+  }
+
+  .double-sidebar {
+    --sidebar-surface: var(--shell-chrome);
+    --surface-subtle: var(--shell-fill);
+  }
+
+  .double-sidebar-rail [data-slot='sidebar-menu-button'] {
+    height: 40px;
+    width: 40px;
+    border-radius: 10px;
+    color: var(--muted);
+  }
+
+  .double-sidebar-rail [data-slot='sidebar-menu-button'] > svg {
+    width: 18px;
+    height: 18px;
+    stroke-width: 1.6;
+  }
+
+  .double-sidebar [data-slot='sidebar-menu-button'][data-active='true'],
+  .double-sidebar [data-slot='sidebar-menu-sub-button'][data-active='true'] {
+    background: var(--shell-selected);
+    color: var(--foreground);
+  }
+
+  .double-sidebar-panel [data-slot='sidebar-menu-button'],
+  .double-sidebar-panel [data-slot='sidebar-menu-sub-button'] {
+    border-radius: 8px;
+  }
+
+  .double-sidebar .agent-thread-tree {
+    margin: 0 0 8px 36px;
+    width: calc(100% - 36px);
+  }
+
+  .double-sidebar .agent-thread-tree > li::before {
+    content: '';
+    position: absolute;
+    left: -13px;
+    top: 5px;
+    width: 10px;
+    height: 10px;
+    border-left: 1.5px solid var(--shell-guide);
+    border-bottom: 1.5px solid var(--shell-guide);
+    border-bottom-left-radius: 4px;
+    pointer-events: none;
+  }
+
+  .double-sidebar .agent-thread-tree [data-slot='sidebar-menu-sub-button'] {
+    height: 30px;
+    font-size: 13px;
+    color: var(--muted);
+  }
+
+  .double-sidebar .agent-thread-tree [data-slot='sidebar-menu-sub-button'][data-active='true'] {
+    color: var(--foreground);
+  }
+
+  .double-sidebar .agent-thread-tree .lucide-message-square {
+    display: none;
+  }
+
+  html[data-desktop='mac'] [data-app-shell]:has([data-double-sidebar]) {
+    padding-top: 32px;
+  }
+
+  html[data-desktop='mac'] [data-app-shell]:has([data-double-sidebar])::before {
+    content: '';
+    position: absolute;
+    inset: 0 0 auto;
+    height: 28px;
+    -webkit-app-region: drag;
+  }
+}
+
+@media (min-width: 1024px) {
+  [data-app-shell]:has([data-double-sidebar]) .app-main:not([data-desktop-panel]) [data-slot='app-screen-shell']:not([data-slot='app-screen-shell'] [data-slot='app-screen-shell']) > [data-slot='app-screen-layout'] > [data-slot='app-screen-right-panel'][data-mode='docked'] {
+    margin-left: 8px;
+
+    &[aria-hidden='true'] {
+      margin-left: 0;
+      border-width: 0;
+    }
+  }
+}
+
+.context-sidebar-toggle {
+  margin-right: 8px;
+  align-self: center;
+}
+
+html:has([data-desktop-panel]) .context-sidebar-toggle {
+  display: none;
+}

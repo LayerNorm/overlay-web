@@ -114,7 +114,7 @@ export function ChatMessageList({
           aria-label="Conversation"
           className="overflow-x-hidden px-3 py-3 sm:px-4 sm:py-4"
         >
-          <MessageScrollerContent className="mx-auto w-full min-w-0 max-w-4xl gap-5 sm:gap-6">
+          <MessageScrollerContent data-chat-transcript className="mx-auto w-full min-w-0 max-w-4xl gap-5 sm:gap-6">
             {showLoadingState ? (
               <ChatMessageListSkeleton />
             ) : (

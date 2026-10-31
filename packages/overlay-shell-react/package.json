@@ -10,7 +10,7 @@
     "./*": "./src/*"
   },
   "scripts": {
-    "test": "NODE_OPTIONS='--require=../../scripts/ci/register-style-noop.cjs --require=../../scripts/ci/register-react.cjs' node --import tsx --test src/sidebar/UnifiedSidebar.test.tsx src/sidebar/settingsSearch.test.ts src/sidebar/SidebarAccountMenu.test.tsx src/workspaces/WorkspaceSwitcherView.test.tsx test/no-web-imports.test.mjs"
+    "test": "NODE_OPTIONS='--require=../../scripts/ci/register-style-noop.cjs --require=../../scripts/ci/register-react.cjs' node --import tsx --test src/sidebar/DoubleSidebar.test.tsx src/sidebar/UnifiedSidebar.test.tsx src/sidebar/settingsSearch.test.ts src/sidebar/SidebarAccountMenu.test.tsx src/workspaces/WorkspaceSwitcherView.test.tsx test/no-web-imports.test.mjs"
   },
   "dependencies": {
     "@overlay/ui": "file:../overlay-ui"

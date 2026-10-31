@@ -2,13 +2,14 @@
 
 const SIDEBAR_COLLAPSED_STORAGE_KEY = 'overlay:app-sidebar-collapsed'
 const SIDEBAR_COLLAPSED_EVENT = 'overlay:sidebar-collapsed-change'
+let fallbackCollapsed = false
 
 export function getSidebarCollapsedSnapshot(): boolean {
   if (typeof window === 'undefined') return false
   try {
     return window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === 'true'
   } catch {
-    return false
+    return fallbackCollapsed
   }
 }
 
@@ -30,10 +31,11 @@ export function subscribeToSidebarCollapsed(onStoreChange: () => void): () => vo
 
 export function setStoredSidebarCollapsed(next: boolean) {
   if (typeof window === 'undefined') return
+  fallbackCollapsed = next
   try {
     window.localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, next ? 'true' : 'false')
-    window.dispatchEvent(new Event(SIDEBAR_COLLAPSED_EVENT))
   } catch {
-    // ignore
+    // Private browsers can deny storage; the toggle still works for this page.
   }
+  window.dispatchEvent(new Event(SIDEBAR_COLLAPSED_EVENT))
 }

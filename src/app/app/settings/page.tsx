@@ -194,8 +194,8 @@ function CustomizationSettingsSection({
       />
       <SettingRow
         icon={<PanelsLeftBottom size={18} strokeWidth={1.8} />}
-        title="Rail and panel"
-        description="Split the sidebar into a narrow rail and a panel for the current page."
+        title="Double sidebar"
+        description="Keep an icon rail beside the current page's sidebar. Turn off for a single sidebar."
         checked={settings.useSecondarySidebar}
         disabled={busy}
         onChange={() => void updateSettings({ useSecondarySidebar: !settings.useSecondarySidebar })}

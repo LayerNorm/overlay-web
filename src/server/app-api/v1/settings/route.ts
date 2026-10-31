@@ -31,7 +31,7 @@ function isSafeAspectRatio(value: unknown): value is string {
 }
 
 function publicSettingsPayload(settings: AppSettings) {
-  return { ...settings, useSecondarySidebar: settings.useSecondarySidebar === true, chatStreamingMode: 'token' as const }
+  return { ...settings, useSecondarySidebar: settings.useSecondarySidebar !== false, chatStreamingMode: 'token' as const }
 }
 
 export async function GET(request: NextRequest, context: AccountAppApiRouteContext) {
