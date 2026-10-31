@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   admit: vi.fn(),
   startWorkflow: vi.fn(),
   workflow: vi.fn(),
+  surface: vi.fn(),
   server: { appData: { repositories: { conversations: {} } }, chatUsagePolicy: {} },
 }))
 
@@ -19,6 +20,7 @@ vi.mock('./native-workflow-input-builder', () => ({ buildNativeHarnessWorkflowIn
 vi.mock('./ConvexHarnessRepository', () => ({
   ConvexHarnessRepository: class {
     admit(input: unknown) { return mocks.admit(input) }
+    getSurfaceExecutionByHarnessRunId(id: string) { return mocks.surface(id) }
   },
 }))
 vi.mock('@/server/workflows/native-harness', () => ({ nativeHarnessWorkflow: mocks.workflow }))
@@ -46,6 +48,7 @@ const run = {
 
 beforeEach(() => {
   vi.resetAllMocks()
+  mocks.surface.mockResolvedValue(null)
   mocks.admit.mockResolvedValue({ runId: 'workspace:agent-run', status: 'running' })
   mocks.startWorkflow.mockResolvedValue({})
 })

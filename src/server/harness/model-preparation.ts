@@ -6,7 +6,6 @@ import type { PersonalChatWorkToolingContext } from '@/shared/agents/personal-ch
 import { quoteHarnessModel } from './model-quote'
 import { refreshPersonalHarnessAccess, type PersonalHarnessAccess } from './personal-access'
 import { serializePersonalHarnessAuthentication } from './personal-authentication'
-import { surfaceHarnessTurnId } from './surface-authority'
 import type { HarnessModelReference } from './secure-model'
 
 export async function readHarnessModelLimits(modelId: string): Promise<{ contextWindow: number | null; maxOutputTokens: number | null }> {
@@ -52,12 +51,6 @@ export async function preparePersonalHarnessModel(input: {
         requestFingerprint: context.requestFingerprint,
         ...(access.authentication.type === 'automation' ? { automationContext: {
           turnId: context.turnId,
-          accountAllowedToolIds: context.accountAllowedToolIds ?? [],
-          accountAllowedConnectorIds: context.accountAllowedConnectorIds ?? [],
-          integrationToolIds: context.integrationToolIds ?? [],
-        } } : {}),
-        ...(access.authentication.type === 'surface' ? { surfaceContext: {
-          turnId: surfaceHarnessTurnId(access.authentication),
           accountAllowedToolIds: context.accountAllowedToolIds ?? [],
           accountAllowedConnectorIds: context.accountAllowedConnectorIds ?? [],
           integrationToolIds: context.integrationToolIds ?? [],

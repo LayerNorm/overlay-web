@@ -2,18 +2,13 @@ import 'server-only'
 
 import { FatalError } from 'workflow'
 import { getOverlayServerContext } from '@/server/bootstrap'
-import { resolveAgentGrant } from '@/server/agents/agent-tooling'
-import { agentMemoryOwnerId } from '@/shared/agents/agent-memory'
 import { asConversationId } from '@/server/conversations/ActConversationRepository'
-import type { PersonalChatWorkToolingContext } from '@/shared/agents/personal-chat-work'
-import type { PersonalHarnessAccess } from './personal-access'
 import { surfaceHarnessTurnId, type SurfaceHarnessIdentity } from './surface-authority'
+import type { SurfaceTurnExecution } from '@/shared/agents/surface-turn-execution'
 
 type ServerContext = ReturnType<typeof getOverlayServerContext>
 type SurfaceSource = Awaited<ReturnType<ServerContext['surfaceService']['resolveInboundBindings']>>[number]
 type Conversation = Awaited<ReturnType<ServerContext['appData']['repositories']['conversations']['getConversationById']>>
-type GrantContext = Pick<PersonalChatWorkToolingContext,
-  'turnId' | 'accountAllowedToolIds' | 'accountAllowedConnectorIds' | 'integrationToolIds'>
 
 function assertSourceBinding(source: SurfaceSource | undefined, input: {
   actorUserId: string
@@ -22,6 +17,7 @@ function assertSourceBinding(source: SurfaceSource | undefined, input: {
 }): asserts source is SurfaceSource {
   const expected = input.surface
   if (!source || source.binding.status !== 'active' || source.connection.status !== 'active'
+    || source.connection.platform !== 'slack' || source.connection.externalTeamId !== expected.teamId
     || source.connection.id !== expected.connectionId || source.connection.workspaceId !== input.workspaceId
     || source.binding.connectionId !== expected.connectionId || source.binding.channelId !== expected.channelId
     || source.binding.agentId !== expected.agentId || source.agent.id !== expected.agentId
@@ -75,52 +71,55 @@ export function assertSurfaceConversation(input: {
   }
 }
 
-export async function refreshSurfaceHarnessSource(
-  access: PersonalHarnessAccess,
-  context: GrantContext,
-  rootWorkflowRunId: string,
+export async function assertPersistedSurfaceSource(
+  execution: SurfaceTurnExecution,
+  expectedWorkflowRunId?: string,
 ) {
-  const authority = access.authentication
-  if (authority.type !== 'surface') throw new FatalError('Surface authentication is required.')
-  if (authority.originWorkflowRunId !== rootWorkflowRunId || context.turnId !== surfaceHarnessTurnId(authority)) {
-    throw new FatalError('Surface workflow ownership changed.')
+  if (execution.platform !== 'slack' || execution.turnId !== `surface:slack:${execution.bindingId}:${execution.messageId}`
+    || execution.harnessRunId !== `workspace:${execution.agentRunId}`
+    || (expectedWorkflowRunId && execution.workflowRunId !== expectedWorkflowRunId)) {
+    throw new FatalError('Persisted surface execution identity changed.')
+  }
+  const identity: SurfaceHarnessIdentity = {
+    platform: 'slack', bindingId: execution.bindingId, connectionId: execution.connectionId,
+    teamId: execution.teamId, channelId: execution.channelId, threadId: execution.threadId,
+    messageId: execution.messageId, agentId: execution.agentId,
+    agentPrincipalId: execution.agentPrincipalId, creatorPrincipalId: execution.creatorPrincipalId,
   }
   const source = await assertSurfaceAdmissionSource({
-    actorUserId: access.actorUserId, workspaceId: access.workspaceId,
-    turnId: context.turnId, surface: authority,
+    actorUserId: execution.actorUserId, workspaceId: execution.workspaceId,
+    turnId: execution.turnId, surface: identity,
   })
-  if (source.creatorPrincipalId !== access.principalId) throw new FatalError('Surface principal changed.')
-  const conversations = getOverlayServerContext().appData.repositories.conversations
+  if (source.agent.principalId !== execution.agentPrincipalId
+    || source.creatorPrincipalId !== execution.creatorPrincipalId) {
+    throw new FatalError('Persisted surface source principals changed.')
+  }
+  const server = getOverlayServerContext()
   const [conversation, run] = await Promise.all([
-    conversations.getConversationById({
-      conversationId: asConversationId(access.conversationId), userId: access.actorUserId, workspaceId: access.workspaceId,
+    server.appData.repositories.conversations.getConversationById({
+      conversationId: asConversationId(execution.conversationId),
+      userId: execution.actorUserId,
+      workspaceId: execution.workspaceId,
     }),
-    conversations.getLatestAgentRun({
-      conversationId: asConversationId(access.conversationId), userId: access.actorUserId, agentRunId: access.agentRunId,
+    server.appData.repositories.conversations.getLatestAgentRun({
+      conversationId: asConversationId(execution.conversationId),
+      userId: execution.actorUserId,
+      agentRunId: execution.agentRunId,
     }),
   ])
-  assertSurfaceConversation({ ...access, surface: authority }, conversation)
-  if (!run || run.id !== access.agentRunId || run.userId !== access.actorUserId
-    || run.conversationId !== access.conversationId || run.turnId !== context.turnId
-    || run.workflowRunId !== authority.originWorkflowRunId
-    || run.executionEngine !== 'overlay_harness' || run.runner !== 'workflow' || run.mode === 'room') {
-    throw new FatalError('Surface delivery ownership changed.')
+  assertSurfaceConversation({
+    actorUserId: execution.actorUserId, workspaceId: execution.workspaceId,
+    principalId: execution.creatorPrincipalId, surface: identity,
+  }, conversation)
+  if (!run || run.id !== execution.agentRunId || run.userId !== execution.actorUserId
+    || run.conversationId !== execution.conversationId || run.agentId !== execution.agentId
+    || run.agentPrincipalId !== execution.agentPrincipalId
+    || run.initiatorPrincipalId !== execution.creatorPrincipalId
+    || run.turnId !== execution.turnId || run.userMessageId !== execution.userMessageId
+    || run.assistantMessageId !== execution.assistantMessageId || run.harnessRunId !== execution.harnessRunId
+    || (run.workflowRunId && run.workflowRunId !== execution.workflowRunId) || run.mode !== 'room'
+    || run.runner !== 'workflow' || run.executionEngine !== 'overlay_harness') {
+    throw new FatalError('Persisted native surface delivery ownership changed.')
   }
-  return surfaceSourceGrant(source, context)
-}
-
-function surfaceSourceGrant(source: SurfaceSource, context: GrantContext) {
-  const grant = resolveAgentGrant({
-    agentId: source.agent.id, allowedToolIds: source.agent.allowedToolIds, isDefaultMaster: source.agent.isDefault === true,
-  })
-  const integrations = grant.capabilities.has('integrations')
-  return {
-    approvalMode: source.agent.permissionMode === 'auto' ? 'auto' as const : 'ask' as const,
-    allowedToolIds: [
-      ...(context.accountAllowedToolIds ?? []).filter(id => grant.overlayToolIds.includes(id)),
-      ...(integrations ? context.integrationToolIds ?? [] : []),
-    ],
-    allowedConnectorIds: integrations ? context.accountAllowedConnectorIds ?? [] : [],
-    memoryOwnerId: agentMemoryOwnerId(source.agent.id),
-  }
+  return { source, conversation, run, identity }
 }

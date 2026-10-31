@@ -171,7 +171,7 @@ Internal state names may reuse equivalent existing variants. Migration must pres
    - [x] Personal HTTP and named-room admission now use native Harness only; unsupported automation and surface execution rejects explicitly.
    - [x] Personal admission fails closed when the Harness capability is missing, stale, unknown, or unreadable.
    - [x] Automation run-backed and scheduler-owned execution uses native Harness with owner-fenced settlement/replay, refreshed bound-agent grants, truthful one-shot approval denial, and focused checks for fresh admission and serialized model authorization.
-   - [x] Slack surface turns use the shared personal Harness lifecycle with explicit source authority, refreshed grants, canonical per-dispatch billing, agent-scoped memory, and safe wait/terminal delivery; legacy execution retirement and video acceptance remain open.
+- [x] Slack surface turns enter the native room Harness lifecycle with immutable execution ownership, source-revalidated preparation and delivery, canonical per-dispatch billing, and persisted input/approval wait projection and resume coverage; full legacy retirement and video acceptance remain open.
 2. Inventory active legacy runs and in-flight external operations.
 3. Fence legacy dispatch and callbacks; revoke old execution authority before replacement execution begins.
 4. Reconcile already-issued operations. Preserve output, usage, and receipts. Do not replay an uncertain external write.

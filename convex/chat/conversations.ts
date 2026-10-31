@@ -87,6 +87,17 @@ const messagePart = v.union(
     }),
   }),
   v.object({
+    type: v.literal('data-native-agent-input'),
+    data: v.object({
+      runId: v.string(),
+      conversationId: v.string(),
+      userId: v.string(),
+      token: v.string(),
+      requestedAt: v.number(),
+      question: v.string(),
+    }),
+  }),
+  v.object({
     type: v.literal('tool-invocation'),
     toolInvocation: v.object({
       toolCallId: v.optional(v.string()),
@@ -1040,7 +1051,8 @@ export const transitionAgentRun = mutation({
     })
     const message = await ctx.db.get(run.assistantMessageId)
     if (message && run.mode === 'room') {
-      const parts = (message.parts ?? []).filter((part) => part.type !== 'data-native-agent-approval')
+      const parts = (message.parts ?? []).filter((part) =>
+        part.type !== 'data-native-agent-approval' && part.type !== 'data-native-agent-input')
       if (args.status === 'waiting_for_approval' && args.approval) {
         parts.push({
           type: 'data-native-agent-approval',
@@ -1051,6 +1063,19 @@ export const transitionAgentRun = mutation({
             token: args.approval.token,
             requestedAt: args.approval.requestedAt,
             requests: args.approval.requests,
+          },
+        })
+      }
+      if (args.status === 'waiting_for_input' && args.inputRequest) {
+        parts.push({
+          type: 'data-native-agent-input',
+          data: {
+            runId: run._id,
+            conversationId: run.conversationId,
+            userId: run.userId,
+            token: args.inputRequest.token,
+            requestedAt: args.inputRequest.requestedAt,
+            question: args.inputRequest.question,
           },
         })
       }
@@ -1108,7 +1133,8 @@ export const completeAgentRun = mutation({
     if (message) {
       await ctx.db.patch(message._id, {
         content: args.content,
-        parts: args.parts.filter((part) => part.type !== 'data-native-agent-approval'),
+        parts: args.parts.filter((part) =>
+          part.type !== 'data-native-agent-approval' && part.type !== 'data-native-agent-input'),
         routedModelId: args.routedModelId,
         tokens: args.tokens,
         status: 'completed',
@@ -1151,7 +1177,8 @@ export const failAgentRun = mutation({
     const now = Date.now()
     const message = await ctx.db.get(run.assistantMessageId)
     if (message) {
-      const parts = (message.parts ?? []).filter((part) => part.type !== 'data-native-agent-approval')
+      const parts = (message.parts ?? []).filter((part) =>
+        part.type !== 'data-native-agent-approval' && part.type !== 'data-native-agent-input')
       const hasContentPart = parts.some((part) => part.type === 'text')
       await ctx.db.patch(message._id, {
         ...(message.status === 'generating'
@@ -1375,13 +1402,16 @@ export const cancelAgentRuns = mutation({
           : message.parts ?? [{ type: 'text', text: baseContent }]
         writes.push(ctx.db.patch(message._id, {
           content: `${baseContent.trimEnd()}${sentinel}`,
-          parts: [...baseParts.filter((part) => part.type !== 'data-native-agent-approval'), { type: 'text', text: sentinel }],
+          parts: [...baseParts.filter((part) =>
+            part.type !== 'data-native-agent-approval' && part.type !== 'data-native-agent-input'), { type: 'text', text: sentinel }],
           status: 'completed',
           updatedAt: now,
         }))
-      } else if (message?.parts?.some((part) => part.type === 'data-native-agent-approval')) {
+      } else if (message?.parts?.some((part) =>
+        part.type === 'data-native-agent-approval' || part.type === 'data-native-agent-input')) {
         writes.push(ctx.db.patch(message._id, {
-          parts: message.parts.filter((part) => part.type !== 'data-native-agent-approval'),
+          parts: message.parts.filter((part) =>
+            part.type !== 'data-native-agent-approval' && part.type !== 'data-native-agent-input'),
           updatedAt: now,
         }))
       }

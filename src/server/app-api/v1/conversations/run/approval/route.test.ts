@@ -88,6 +88,30 @@ test('the initiator can decide an active approval, including legacy personal con
   }
 })
 
+test('the initiator can approve an active native Harness room run in a Slack channel', async () => {
+  const channel = {
+    ...conversation,
+    userId: 'room-creator',
+    conversationType: 'channel' as const,
+    externalPlatform: 'slack' as const,
+    externalChannelId: 'channel',
+    externalThreadId: 'thread',
+    surfaceBindingId: 'binding',
+  }
+  const nativeRun = { ...run, executionEngine: 'overlay_harness' as const }
+  let resumed = false
+  const response = await POST(request(), context('owner'), {
+    conversations: {
+      getConversationById: async () => null,
+      getLatestAgentRun: async () => nativeRun,
+    },
+    collaboration: { getAccessibleConversation: async () => channel },
+    resume: async () => { resumed = true },
+  })
+  assert.equal(response.status, 200)
+  assert.equal(resumed, true)
+})
+
 test('an accessible conversation does not make a stale token valid', async () => {
   const response = await POST(request(true, 'stale'), context('owner'), {
     conversations: { getConversationById: async () => conversation, getLatestAgentRun: async () => run },

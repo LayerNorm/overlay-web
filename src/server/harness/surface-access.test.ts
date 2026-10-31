@@ -1,43 +1,72 @@
 import { beforeEach, expect, test, vi } from 'vitest'
-import { assertSurfaceAdmissionSource, refreshSurfaceHarnessSource } from './surface-access'
-import { surfaceHarnessTurnId, type SurfaceHarnessAuthentication } from './surface-authority'
+import { assertPersistedSurfaceSource, assertSurfaceAdmissionSource } from './surface-access'
+import type { SurfaceTurnExecution } from '@/shared/agents/surface-turn-execution'
 
 const mocks = vi.hoisted(() => ({ bindings: vi.fn(), workspace: vi.fn(), conversation: vi.fn(), run: vi.fn() }))
 vi.mock('server-only', () => ({}))
-vi.mock('@/server/agents/agent-tooling', () => ({
-  resolveAgentGrant: ({ allowedToolIds }: { allowedToolIds: string[] }) => ({
-    overlayToolIds: allowedToolIds,
-    capabilities: new Set(allowedToolIds.includes('integrations') ? ['integrations'] : []),
-  }),
-}))
 vi.mock('@/server/bootstrap', () => ({ getOverlayServerContext: () => ({
   surfaceService: { resolveInboundBindings: mocks.bindings },
   workspaceService: { resolveActiveWorkspace: mocks.workspace },
   appData: { repositories: { conversations: { getConversationById: mocks.conversation, getLatestAgentRun: mocks.run } } },
 }) }))
+vi.mock('@/server/conversations/ActConversationRepository', () => ({ asConversationId: (id: string) => id }))
 
-const authentication: SurfaceHarnessAuthentication = {
-  type: 'surface', platform: 'slack', bindingId: 'binding', connectionId: 'connection', teamId: 'team',
-  channelId: 'channel', threadId: 'thread', messageId: 'message', agentId: 'agent',
-  agentPrincipalId: 'agent-principal', creatorPrincipalId: 'principal', originWorkflowRunId: 'workflow',
-}
-const access = {
-  actorUserId: 'user', workspaceId: 'workspace', principalId: 'principal', runId: 'personal:delivery',
-  workflowRunId: 'workflow', conversationId: 'conversation', agentRunId: 'delivery', authentication,
-}
-const context = {
-  turnId: surfaceHarnessTurnId(authentication), accountAllowedToolIds: ['read_file', 'write_file'],
-  accountAllowedConnectorIds: ['connector'], integrationToolIds: ['connector_tool'],
+const execution: SurfaceTurnExecution = {
+  turnId: 'surface:slack:binding:message',
+  workflowRunId: 'workflow',
+  actorUserId: 'user',
+  workspaceId: 'workspace',
+  creatorPrincipalId: 'principal',
+  agentId: 'agent',
+  agentPrincipalId: 'agent-principal',
+  platform: 'slack',
+  teamId: 'team',
+  channelId: 'channel',
+  threadId: 'thread',
+  messageId: 'message',
+  bindingId: 'binding',
+  connectionId: 'connection',
+  conversationId: 'conversation',
+  agentRunId: 'delivery',
+  userMessageId: 'question',
+  assistantMessageId: 'answer',
+  harnessRunId: 'workspace:delivery',
+  placeholderTs: 'placeholder',
+  createdAt: 100,
+  updatedAt: 100,
 }
 const source = {
   binding: { id: 'binding', connectionId: 'connection', channelId: 'channel', agentId: 'agent', status: 'active' },
-  connection: { id: 'connection', workspaceId: 'workspace', status: 'active' },
+  connection: { id: 'connection', platform: 'slack', externalTeamId: 'team', workspaceId: 'workspace', status: 'active' },
   agent: { id: 'agent', principalId: 'agent-principal', harness: 'overlay', allowedToolIds: ['read_file'], permissionMode: 'ask' },
-  creatorUserId: 'user', creatorPrincipalId: 'principal',
+  creatorUserId: 'user',
+  creatorPrincipalId: 'principal',
 }
 const conversation = {
-  userId: 'user', workspaceId: 'workspace', conversationType: 'channel', createdByPrincipalId: 'principal',
-  externalPlatform: 'slack', externalChannelId: 'channel', externalThreadId: 'thread', surfaceBindingId: 'binding',
+  userId: 'user',
+  workspaceId: 'workspace',
+  conversationType: 'channel',
+  createdByPrincipalId: 'principal',
+  externalPlatform: 'slack',
+  externalChannelId: 'channel',
+  externalThreadId: 'thread',
+  surfaceBindingId: 'binding',
+}
+const run = {
+  id: 'delivery',
+  userId: 'user',
+  conversationId: 'conversation',
+  agentId: 'agent',
+  agentPrincipalId: 'agent-principal',
+  initiatorPrincipalId: 'principal',
+  turnId: execution.turnId,
+  userMessageId: 'question',
+  assistantMessageId: 'answer',
+  harnessRunId: 'workspace:delivery',
+  workflowRunId: undefined,
+  mode: 'room',
+  runner: 'workflow',
+  executionEngine: 'overlay_harness',
 }
 
 beforeEach(() => {
@@ -45,41 +74,65 @@ beforeEach(() => {
   mocks.bindings.mockResolvedValue([source])
   mocks.workspace.mockResolvedValue({ workspace: { id: 'workspace' }, principal: { id: 'principal' } })
   mocks.conversation.mockResolvedValue(conversation)
-  mocks.run.mockResolvedValue({ id: 'delivery', userId: 'user', conversationId: 'conversation',
-    turnId: context.turnId, workflowRunId: 'workflow', runner: 'workflow', executionEngine: 'overlay_harness' })
+  mocks.run.mockResolvedValue(run)
 })
 
-test('surface admission checks the canonical inbound identity before conversation writes', async () => {
-  const input = { actorUserId: 'user', workspaceId: 'workspace', turnId: context.turnId, surface: authentication }
-  expect(await assertSurfaceAdmissionSource(input)).toEqual(source)
+test('fresh source admission validates the active binding, team, workspace, and creator', async () => {
+  await expect(assertSurfaceAdmissionSource({
+    actorUserId: 'user',
+    workspaceId: 'workspace',
+    turnId: execution.turnId,
+    surface: {
+      platform: 'slack',
+      bindingId: execution.bindingId,
+      connectionId: execution.connectionId,
+      teamId: execution.teamId,
+      channelId: execution.channelId,
+      threadId: execution.threadId,
+      messageId: execution.messageId,
+      agentId: execution.agentId,
+      agentPrincipalId: execution.agentPrincipalId,
+      creatorPrincipalId: execution.creatorPrincipalId,
+    },
+  })).resolves.toEqual(source)
   expect(mocks.bindings).toHaveBeenCalledWith({ platform: 'slack', externalTeamId: 'team', channelId: 'channel' })
-  await expect(assertSurfaceAdmissionSource({ ...input, turnId: 'other' })).rejects.toThrow('identity')
-  await expect(assertSurfaceAdmissionSource({ ...input, actorUserId: 'other' })).rejects.toThrow('authorization')
-  expect(mocks.conversation).not.toHaveBeenCalled()
+  mocks.bindings.mockResolvedValueOnce([{ ...source, connection: { ...source.connection, externalTeamId: 'other-team' } }])
+  await expect(assertSurfaceAdmissionSource({
+    actorUserId: 'user', workspaceId: 'workspace', turnId: execution.turnId,
+    surface: {
+      platform: 'slack',
+      bindingId: execution.bindingId,
+      connectionId: execution.connectionId,
+      teamId: execution.teamId,
+      channelId: execution.channelId,
+      threadId: execution.threadId,
+      messageId: execution.messageId,
+      agentId: execution.agentId,
+    },
+  })).rejects.toThrow('authorization')
 })
 
-test('surface refresh narrows the current grant and rejects revoked bindings after a wait', async () => {
-  expect(await refreshSurfaceHarnessSource(access, context, 'workflow')).toMatchObject({
-    allowedToolIds: ['read_file'], allowedConnectorIds: [], approvalMode: 'ask', memoryOwnerId: 'agent-memory:agent',
+test('persisted source validates the exact native room conversation and root delivery', async () => {
+  await expect(assertPersistedSurfaceSource(execution, 'workflow')).resolves.toMatchObject({
+    source,
+    conversation,
+    run: { id: 'delivery', mode: 'room', executionEngine: 'overlay_harness' },
   })
-  mocks.bindings.mockResolvedValueOnce([{ ...source, agent: { ...source.agent, allowedToolIds: ['read_file', 'integrations'], permissionMode: 'auto' } }])
-  expect(await refreshSurfaceHarnessSource(access, context, 'workflow')).toMatchObject({
-    allowedToolIds: ['read_file', 'connector_tool'], allowedConnectorIds: ['connector'], approvalMode: 'auto',
+  expect(mocks.conversation).toHaveBeenCalledWith({
+    conversationId: 'conversation',
+    userId: 'user',
+    workspaceId: 'workspace',
   })
-  mocks.bindings.mockResolvedValueOnce([])
-  await expect(refreshSurfaceHarnessSource(access, context, 'workflow')).rejects.toThrow('authorization')
+  mocks.conversation.mockResolvedValueOnce({ ...conversation, externalThreadId: 'other-thread' })
+  await expect(assertPersistedSurfaceSource(execution, 'workflow')).rejects.toThrow('conversation ownership')
+  await expect(assertPersistedSurfaceSource(execution, 'foreign-workflow')).rejects.toThrow('identity')
 })
 
-test('surface refresh does not accept another thread, workflow, or delivery turn', async () => {
-  mocks.conversation.mockResolvedValueOnce({ ...conversation, externalThreadId: 'other' })
-  await expect(refreshSurfaceHarnessSource(access, context, 'workflow')).rejects.toThrow('conversation ownership')
-  await expect(refreshSurfaceHarnessSource(access, context, 'other')).rejects.toThrow('workflow ownership')
-  mocks.run.mockResolvedValueOnce({ id: 'delivery', userId: 'user', conversationId: 'conversation',
-    turnId: 'other', workflowRunId: 'workflow', runner: 'workflow', executionEngine: 'overlay_harness' })
-  await expect(refreshSurfaceHarnessSource(access, context, 'workflow')).rejects.toThrow('delivery ownership')
-})
-
-test('descendants preserve the root surface identity rather than replacing it with the child workflow', async () => {
-  expect(await refreshSurfaceHarnessSource({ ...access, runId: 'child', workflowRunId: 'child-workflow' }, context, 'workflow'))
-    .toMatchObject({ allowedToolIds: ['read_file'] })
+test('persisted source rejects mismatched actor, assistant, run, or workflow ownership', async () => {
+  mocks.run.mockResolvedValueOnce({ ...run, userId: 'other-user' })
+  await expect(assertPersistedSurfaceSource(execution, 'workflow')).rejects.toThrow('delivery ownership')
+  mocks.run.mockResolvedValueOnce({ ...run, assistantMessageId: 'other-answer' })
+  await expect(assertPersistedSurfaceSource(execution, 'workflow')).rejects.toThrow('delivery ownership')
+  mocks.run.mockResolvedValueOnce({ ...run, workflowRunId: 'foreign-workflow' })
+  await expect(assertPersistedSurfaceSource(execution, 'workflow')).rejects.toThrow('delivery ownership')
 })

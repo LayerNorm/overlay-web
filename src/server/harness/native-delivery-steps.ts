@@ -16,6 +16,10 @@ import type { NativeHarnessAccess } from './native-access'
 import type { buildPersonalHarnessDelivery } from './personal-delivery'
 import { projectHarnessDeliveryWait, type HarnessWaitProjection } from './delivery-wait-projection'
 import type { HarnessModelRouting } from './model-ports'
+import { postSlackAgentMessage } from '@/server/surfaces/slack-reply'
+import { buildWorkspaceHref } from '@/shared/workspaces/routing'
+import { getBaseUrl } from '@/server/web/app-url'
+import { assertPersistedSurfaceSource } from './surface-access'
 
 type Delivery = ReturnType<typeof buildPersonalHarnessDelivery>
 
@@ -83,7 +87,46 @@ export async function projectNativeHarnessWait(
   assertNativeDeliveryOwnership(access, state, run)
   if (!run) throw new FatalError('Native delivery ownership changed.')
   if (['completed', 'cancelled', 'failed'].includes(state.status)) return 'inactive'
-  return projectHarnessDeliveryWait(access, run, projection)
+  const result = await projectHarnessDeliveryWait(access, run, projection)
+  if (result !== 'projected') return result
+  try {
+    const repository = new ConvexHarnessRepository()
+    if (state.runId !== state.rootRunId) return result
+    const execution = await repository.getSurfaceExecutionByHarnessRunId(state.rootRunId)
+    if (!execution?.placeholderTs || execution.agentRunId !== access.agentRunId
+      || execution.assistantMessageId !== access.assistantMessageId
+      || execution.workflowRunId !== state.workflowRunId || run.workflowRunId !== execution.workflowRunId) return result
+    const { source, run: sourceRun } = await assertPersistedSurfaceSource(execution, state.workflowRunId)
+    if (sourceRun.id !== run.id || sourceRun.assistantMessageId !== execution.assistantMessageId) return result
+    if ('wait' in projection) {
+      const expected = projection.wait.kind === 'input' ? 'waiting_for_input' : 'waiting_for_approval'
+      if (sourceRun.status !== expected) return result
+    } else if (sourceRun.status !== projection.status) return result
+    const link = `${getBaseUrl()}${buildWorkspaceHref(
+      execution.workspaceId,
+      `/app/chat?${new URLSearchParams({ id: execution.conversationId, view: 'channels' })}`,
+    )}`
+    const text = 'wait' in projection
+      ? projection.wait.kind === 'approval'
+        ? `This task needs approval in Overlay. Open ${link} to approve or deny it; Slack replies will not resume the task.`
+        : `This task needs input in Overlay. Open ${link} to respond; Slack replies will not resume the task.`
+      : 'Working in Overlay…'
+    const { getSlackAdapter } = await import(
+      /* step-only */ '@/server/surfaces/chat'
+    )
+    await postSlackAgentMessage({
+      adapter: await getSlackAdapter(),
+      teamId: execution.teamId,
+      channelId: execution.channelId,
+      threadTs: execution.threadId || undefined,
+      text,
+      agentName: source.agent.name,
+      editTs: execution.placeholderTs,
+    }).catch((_error) => ({ posted: false }))
+  } catch (_error) {
+    // Slack projection is best-effort after the durable wait is committed.
+  }
+  return result
 }
 
 export async function finishNativeHarnessDelivery(

@@ -24,7 +24,7 @@ const state = { workflowRunId: 'workflow', revision: 1, modelReservation: { id: 
 
 beforeEach(() => {
   vi.resetAllMocks()
-  mocks.refresh.mockResolvedValue({ entitlements: { planKind: 'pro' } })
+  mocks.refresh.mockResolvedValue({ entitlements: { planKind: 'pro' }, billingProgrammaticSubjectId: 'agent:agent' })
   mocks.read.mockResolvedValue(state)
   mocks.forecast.mockResolvedValue(40)
   mocks.reserve.mockResolvedValue({ ok: true, reservationId: 'billing' })
@@ -42,6 +42,17 @@ test('native dispatch refreshes authority then atomically binds a human-funded, 
   } }))
   expect(mocks.refresh.mock.invocationCallOrder[0]).toBeLessThan(mocks.reserve.mock.invocationCallOrder[0])
   expect(mocks.apply.mock.invocationCallOrder[0]).toBeLessThan(mocks.started.mock.invocationCallOrder[0])
+})
+
+test('native surface dispatch reserves against the refreshed canonical binding subject', async () => {
+  mocks.refresh.mockResolvedValueOnce({
+    entitlements: { planKind: 'pro' },
+    billingProgrammaticSubjectId: 'surface:slack:binding',
+  })
+  await authorizeNativeHarnessModelDispatch(reference, options)
+  expect(mocks.reserve).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+    programmaticSubjectId: 'surface:slack:binding',
+  }))
 })
 
 test('native budget rejection records the receipt and does not start inference', async () => {

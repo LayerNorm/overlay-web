@@ -16,6 +16,5 @@ export type PersonalHarnessWorkflowInput = {
     emitWebhook: boolean
     sourceCitations?: SourceCitationMap
     closeStream?: boolean
-    surface?: { placeholderTs?: string }
   }
 }

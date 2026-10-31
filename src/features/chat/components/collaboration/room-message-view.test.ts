@@ -67,6 +67,16 @@ test('questionnaires stay busy through pending and persisted agent generation, t
   assert.equal(isRoomAgentResponding([], null), false)
 })
 
+test('native input waits survive reload and are hidden for settled or non-agent messages', () => {
+  const input = { runId: 'r1', conversationId: 'c1', userId: 'u1', token: 'h1', requestedAt: 1, question: 'Which file?' }
+  const message = record({ status: 'generating', parts: [{ type: 'data-native-agent-input', data: input }] })
+  const view = (value: RoomMessageRecord) => toRoomMessageView({ message: value, currentPrincipalId: 'me', authorName: 'Agent' })
+  assert.deepEqual(view(JSON.parse(JSON.stringify(message))).nativeInput, input)
+  for (const status of ['completed', 'error'] as const) assert.equal(view({ ...message, status }).nativeInput, undefined)
+  assert.equal(view({ ...message, authorKind: 'human' }).nativeInput, undefined)
+  assert.equal(view({ ...message, parts: [{ type: 'data-native-agent-input', data: { ...input, token: '' } }] }).nativeInput, undefined)
+})
+
 test('saved drive summaries retain file links separately from the provider answer and reject malformed paths', () => {
   const status = { state: 'saved', fileCount: 1, folderCount: 0,
     entries: [{ fileId: 'report', path: 'reports/result.md', kind: 'file' }] }

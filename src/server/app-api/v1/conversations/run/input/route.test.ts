@@ -74,7 +74,15 @@ test('arbitrary message roles and empty or oversized text are rejected at the bo
 })
 
 test('only the initiating user with current room access can resume a native Harness input wait', async () => {
-  const room = { ...conversation, userId: 'room-creator', conversationType: 'dm' as const }
+  const room = {
+    ...conversation,
+    userId: 'room-creator',
+    conversationType: 'channel' as const,
+    externalPlatform: 'slack' as const,
+    externalChannelId: 'channel',
+    externalThreadId: 'thread',
+    surfaceBindingId: 'binding',
+  }
   const nativeRun = { ...run, mode: 'room' as const, executionEngine: 'overlay_harness' as const }
   for (const scenario of ['allowed', 'revoked', 'other-initiator', 'legacy', 'other-workspace']) {
     let resumed = false

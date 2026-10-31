@@ -36,7 +36,7 @@ async function freshTooling(call: NativeToolCall) {
     actorUserId: call.access.actorUserId, agentPrincipalId: call.access.agentPrincipalId,
     conversationId: call.access.conversationId, effectiveModelId: call.context.modelId,
     entitlements: authority.entitlements, paid: authority.paid,
-    grant: { agentId: agent.id, allowedToolIds: agent.allowedToolIds, isDefaultMaster: Boolean(agent.isDefault || agent.name.toLowerCase() === 'overlay') },
+    grant: { agentId: agent.id, allowedToolIds: agent.allowedToolIds, isDefaultMaster: Boolean(agent.isDefault) },
     approvalMode: agent.permissionMode === 'auto' ? 'auto' : 'ask', computerApprovalContext: 'work',
     idempotencyKey: idempotencyKey(call), latestUserText: authority.latestUserText,
     memoryEnabled: call.context.memoryEnabled, requestFingerprint: call.context.requestFingerprint,
@@ -216,18 +216,20 @@ export async function dispatchNativeHarnessAgentRequest(
         workspaceId: args.workspaceId,
       })
       try {
+        const parent = await repository.get(access)
+        if (!parent || parent.workflowRunId !== access.workflowRunId
+          || parent.policy.actorUserId !== access.actorUserId || parent.policy.workspaceId !== access.workspaceId) {
+          throw new FatalError('Native parent run is no longer available.')
+        }
         const workflowInput = await buildNativeHarnessWorkflowInput({
           actorUserId: access.actorUserId,
           workspaceId: args.workspaceId,
           conversationId: args.conversationId,
           runId: turn.runId,
           memoryEnabled: false,
+          surfaceRootRunId: parent.rootRunId,
+          expectedSurfaceWorkflowRunId: access.workflowRunId,
         })
-        const parent = await repository.get(access)
-        if (!parent || parent.workflowRunId !== access.workflowRunId
-          || parent.policy.actorUserId !== access.actorUserId || parent.policy.workspaceId !== access.workspaceId) {
-          throw new FatalError('Native parent run is no longer available.')
-        }
         const allowedToolIds = [...new Set(workflowInput.definitions
           .map(definition => definition.name)
           .filter(name => parent.policy.allowedToolIds.includes(name)))].sort()

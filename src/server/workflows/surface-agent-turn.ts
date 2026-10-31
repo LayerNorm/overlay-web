@@ -1,228 +1,224 @@
-/**
- * Surface Agent Turn — source-admitted execution of a Slack message through
- * the shared personal Harness lifecycle.
- */
-
 import { FatalError, getWorkflowMetadata } from 'workflow'
-import type {
-  AutomationAgentTurnInput,
-  SurfaceTurnContext,
-} from '@/server/automations/automation-turn-runner'
-import { ensureSurfaceConversation } from '@/server/surfaces/surface-conversations'
+import type { AutomationAgentTurnInput } from '@/server/automations/automation-turn-runner'
+import { getOverlayServerContext } from '@/server/bootstrap'
+import { ConvexHarnessRepository } from '@/server/harness/ConvexHarnessRepository'
+import { assertPersistedSurfaceSource } from '@/server/harness/surface-access'
+import { prepareNativeHarnessTurn } from '@/server/harness/native-turn-start'
 import { postSlackAgentMessage } from '@/server/surfaces/slack-reply'
-import {
-  assertSurfaceAdmissionSource,
-  assertSurfaceConversation,
-  refreshSurfaceHarnessSource,
-} from '@/server/harness/surface-access'
-import type { SurfaceHarnessAuthentication } from '@/server/harness/surface-authority'
-import type { PersonalHarnessAccess } from '@/server/harness/personal-access'
-import type { PersonalChatWorkToolingContext } from '@/shared/agents/personal-chat-work'
-import { personalHarnessWorkflow } from './personal-harness'
-import {
-  admitSurfaceHarnessStep,
-  admitSurfaceSourceStep,
-  assertSurfaceConversationStep,
-  prepareSurfaceTurnStep,
-  readSurfaceDeliveryStep,
-  startSurfaceAgentRunStep,
-  surfaceAccessForDelivery,
-} from './surface-harness-steps'
+import { ensureSurfaceConversation } from '@/server/surfaces/surface-conversations'
+import type { SurfaceTurnExecution } from '@/shared/agents/surface-turn-execution'
+import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
+import { nativeHarnessWorkflow } from './native-harness'
+import { admitSurfaceSourceStep, assertSurfaceConversationStep } from './surface-harness-steps'
 
-export type SurfaceAgentTurnInput = Omit<
-  AutomationAgentTurnInput,
-  'surface' | 'workspaceId'
-> & {
+export type SurfaceAgentTurnInput = Omit<AutomationAgentTurnInput, 'surface' | 'workspaceId'> & {
   workspaceId: string
-  surface: SurfaceTurnContext
+  surface: NonNullable<AutomationAgentTurnInput['surface']>
 }
 
-async function ensureSurfaceConversationStep(input: SurfaceAgentTurnInput): Promise<{
-  conversationId: string
-  workspaceId: string
-}> {
+async function ensureSurfaceConversationStep(input: SurfaceAgentTurnInput) {
   'use step'
   return await ensureSurfaceConversation(input)
 }
 
-async function postSurfaceReplyStep(args: {
-  authority: SurfaceHarnessAuthentication
-  userId: string
-  workspaceId: string
-  conversationId: string
+async function beginNativeSurfaceTurnStep(input: {
+  turnInput: SurfaceAgentTurnInput
   workflowRunId: string
-  text: string
-  editTs?: string
-  access?: PersonalHarnessAccess
-  context?: Pick<PersonalChatWorkToolingContext,
-    'turnId' | 'accountAllowedToolIds' | 'accountAllowedConnectorIds' | 'integrationToolIds'>
-}): Promise<{ posted: boolean }> {
+  conversationId: string
+}) {
   'use step'
-  if (args.authority.originWorkflowRunId !== args.workflowRunId) return { posted: false }
-  const source = await assertSurfaceAdmissionSource({
-    actorUserId: args.userId,
-    workspaceId: args.workspaceId,
-    turnId: `surface:slack:${args.authority.bindingId}:${args.authority.messageId}`,
-    surface: args.authority,
+  return await new ConvexHarnessRepository().beginSurfaceTurn({
+    turnId: input.turnInput.turnId,
+    workflowRunId: input.workflowRunId,
+    actorUserId: input.turnInput.userId,
+    workspaceId: input.turnInput.workspaceId,
+    creatorPrincipalId: input.turnInput.surface.creatorPrincipalId!,
+    agentId: input.turnInput.surface.agentId,
+    agentPrincipalId: input.turnInput.surface.agentPrincipalId!,
+    platform: 'slack',
+    teamId: input.turnInput.surface.teamId,
+    channelId: input.turnInput.surface.channelId,
+    threadId: input.turnInput.surface.threadId,
+    messageId: input.turnInput.surface.messageId,
+    bindingId: input.turnInput.surface.bindingId,
+    connectionId: input.turnInput.surface.connectionId,
+    conversationId: input.conversationId,
+    userContent: input.turnInput.instructions,
+    importedAuthorName: input.turnInput.surface.authorName,
+    importedAuthorEmail: input.turnInput.surface.authorEmail,
+    importedAuthorStatus: input.turnInput.surface.authorStatus,
+    modelId: input.turnInput.modelId ?? DEFAULT_MODEL_ID,
+    placeholderTs: input.turnInput.surface.placeholderTs,
   })
-  if (args.access && args.context) {
-    await refreshSurfaceHarnessSource(args.access, args.context, args.workflowRunId)
-  }
-  const server = await import('@/server/bootstrap')
-  const conversation = await server.getOverlayServerContext().appData.repositories.conversations.getConversationById({
-    conversationId: args.conversationId as never,
-    userId: args.userId,
-    workspaceId: args.workspaceId,
-  })
-  assertSurfaceConversation({
-    actorUserId: args.userId,
-    workspaceId: args.workspaceId,
-    principalId: source.creatorPrincipalId,
-    surface: args.authority,
-  }, conversation)
-  if (args.authority.platform !== 'slack') return { posted: false }
-  // Keep this dynamic import hidden from workflow bundle discovery. See
-  // workflow-imports.test.ts and surfaces/chat.ts.
-  const { getSlackAdapter } = await import(
-    /* step-only */ '@/server/surfaces/chat'
-  )
-  const result = await postSlackAgentMessage({
-    adapter: await getSlackAdapter(),
-    teamId: args.authority.teamId,
-    channelId: args.authority.channelId,
-    threadTs: args.authority.threadId || undefined,
-    text: args.text,
-    agentName: source.agent.name,
-    editTs: args.editTs,
-  }).catch((_error) => ({ posted: false }))
-  return { posted: result.posted }
 }
 
-function terminalSlackText(status: string, terminalReason?: string): string {
-  if (status === 'cancelled') return 'This task was cancelled in Overlay.'
-  if (status === 'failed') return 'This task could not complete. Details are available in the Overlay conversation.'
-  return terminalReason ? 'Task status is available in the Overlay conversation.' : 'Task status is available in Overlay.'
+async function prepareNativeSurfaceStep(input: {
+  actorUserId: string
+  workspaceId: string
+  conversationId: string
+  runId: string
+  workflowRunId: string
+}) {
+  'use step'
+  try {
+    const prepared = await prepareNativeHarnessTurn({
+      ...input,
+      memoryEnabled: true,
+      expectedSurfaceWorkflowRunId: input.workflowRunId,
+    })
+    if (!prepared) return { ok: false as const, message: 'Native Harness preparation returned no workflow input.' }
+    return { ok: true as const, workflowInput: prepared.workflowInput }
+  } catch (_error) {
+    return { ok: false as const, message: 'Native Harness preparation or admission failed.' }
+  }
+}
+
+async function recordNativeSurfaceFailureStep(input: {
+  execution: SurfaceTurnExecution
+  workflowRunId: string
+}) {
+  'use step'
+  return await new ConvexHarnessRepository().failOwnedSurfaceTurn({
+    turnId: input.execution.turnId,
+    workflowRunId: input.workflowRunId,
+    agentRunId: input.execution.agentRunId,
+    assistantMessageId: input.execution.assistantMessageId,
+  })
+}
+
+async function readNativeSurfaceResultStep(input: {
+  execution: SurfaceTurnExecution
+  workflowRunId: string
+}) {
+  'use step'
+  const repository = getOverlayServerContext().appData.repositories.conversations
+  const run = await repository.getLatestAgentRun({
+    userId: input.execution.actorUserId,
+    conversationId: input.execution.conversationId as never,
+    agentRunId: input.execution.agentRunId,
+  })
+  if (!run || run.id !== input.execution.agentRunId
+    || run.assistantMessageId !== input.execution.assistantMessageId
+    || run.harnessRunId !== input.execution.harnessRunId
+    || (run.workflowRunId && run.workflowRunId !== input.workflowRunId)) {
+    return { status: 'unavailable', text: '' }
+  }
+  const messages = await repository.getConversationMessages({
+    userId: input.execution.actorUserId,
+    conversationId: input.execution.conversationId as never,
+  })
+  return {
+    status: run.status,
+    text: messages.find(message => message._id === input.execution.assistantMessageId)?.content ?? '',
+  }
+}
+
+async function postNativeSurfaceResultStep(input: {
+  execution: SurfaceTurnExecution
+  status: string
+  workflowRunId: string
+  preparationFailure?: boolean
+}) {
+  'use step'
+  if (!['completed', 'failed', 'cancelled'].includes(input.status)) return { posted: false }
+  try {
+    const repository = new ConvexHarnessRepository()
+    const current = await repository.getSurfaceExecutionByHarnessRunId(input.execution.harnessRunId)
+    if (!current || current.turnId !== input.execution.turnId
+      || current.workflowRunId !== input.workflowRunId
+      || current.agentRunId !== input.execution.agentRunId
+      || current.assistantMessageId !== input.execution.assistantMessageId) return { posted: false }
+    const { source, run } = await assertPersistedSurfaceSource(current, input.workflowRunId)
+    const state = await repository.get({ actorUserId: current.actorUserId, runId: current.harnessRunId })
+    if ((!input.preparationFailure && (!state || state.workflowRunId !== current.workflowRunId
+        || state.status !== input.status))
+      || (state && state.workflowRunId !== current.workflowRunId)
+      || run.status !== input.status || !current.placeholderTs) return { posted: false }
+    const messages = await getOverlayServerContext().appData.repositories.conversations.getConversationMessages({
+      conversationId: current.conversationId as never,
+      userId: current.actorUserId,
+    })
+    const content = messages.find(message => message._id === current.assistantMessageId)?.content ?? ''
+    if (input.status === 'completed' && !content) return { posted: false }
+    const { getSlackAdapter } = await import(
+      /* step-only */ '@/server/surfaces/chat'
+    )
+    const text = input.status === 'cancelled'
+      ? 'This task was cancelled in Overlay.'
+      : input.status === 'failed'
+        ? 'This task failed in Overlay. Open the conversation for details.'
+        : content
+    const result = await postSlackAgentMessage({
+      adapter: await getSlackAdapter(),
+      teamId: current.teamId,
+      channelId: current.channelId,
+      threadTs: current.threadId || undefined,
+      text,
+      agentName: source.agent.name,
+      editTs: current.placeholderTs,
+    })
+    return { posted: result.posted }
+  } catch (_error) {
+    return { posted: false }
+  }
 }
 
 export async function surfaceAgentTurnWorkflow(input: SurfaceAgentTurnInput) {
   'use workflow'
-
   const { workflowRunId } = getWorkflowMetadata()
   if (input.automationId || input.runId) throw new FatalError('Surface turns cannot carry automation identity.')
-  const admittedSource = await admitSurfaceSourceStep(input, workflowRunId)
-  const ensured = await ensureSurfaceConversationStep(admittedSource.turnInput)
+  const admitted = await admitSurfaceSourceStep(input, workflowRunId)
+  const ensured = await ensureSurfaceConversationStep(admitted.turnInput)
   const authorizedInput = {
-    ...admittedSource.turnInput,
+    ...admitted.turnInput,
     conversationId: ensured.conversationId,
     workspaceId: ensured.workspaceId,
   }
   await assertSurfaceConversationStep(authorizedInput)
-
-  let prepared
-  try {
-    prepared = await prepareSurfaceTurnStep(authorizedInput, workflowRunId)
-  } catch (error) {
-    await postSurfaceReplyStep({
-      authority: admittedSource.authority,
-      userId: admittedSource.turnInput.userId,
-      workspaceId: admittedSource.turnInput.workspaceId,
-      conversationId: ensured.conversationId,
-      workflowRunId,
-      text: 'Sorry — this task could not start. The details are in the Overlay conversation.',
-    }).catch((_error) => undefined)
-    throw error
-  }
-  const agentRun = await startSurfaceAgentRunStep({
-    conversationId: prepared.plan.conversationId,
-    modelId: prepared.plan.effectiveModelId,
-    turnId: prepared.turnInput.turnId,
-    userId: prepared.turnInput.userId,
-    userMessageId: prepared.plan.userMessageId,
-  })
-  if (agentRun.workflowRunId && agentRun.workflowRunId !== workflowRunId) {
-    return { conversationId: prepared.plan.conversationId, status: 'already_running', deliveryStatus: 'not_attempted' }
-  }
-  const access = surfaceAccessForDelivery({
-    authority: prepared.authority,
-    userId: prepared.turnInput.userId,
-    workspaceId: prepared.turnInput.workspaceId,
-    conversationId: prepared.plan.conversationId,
-    agentRunId: agentRun.id,
+  const begun = await beginNativeSurfaceTurnStep({
+    turnInput: authorizedInput,
     workflowRunId,
+    conversationId: ensured.conversationId,
   })
-  const admitted = await admitSurfaceHarnessStep({
-    goal: prepared.plan.instructions,
-    actorUserId: prepared.turnInput.userId,
-    workspaceId: prepared.turnInput.workspaceId,
-    modelId: prepared.plan.effectiveModelId,
-    paid: prepared.plan.paid,
-    createdAt: agentRun.createdAt,
-    allowedToolIds: prepared.plan.toolDefinitions.map(tool => tool.name),
-    conversationId: prepared.plan.conversationId,
-    deliveryAgentRunId: agentRun.id,
-  })
-  if (admitted.workflowRunId && admitted.workflowRunId !== workflowRunId) {
-    return { conversationId: prepared.plan.conversationId, status: 'already_running', deliveryStatus: 'not_attempted' }
+  if (begun.owner === 'foreign' || !begun.execution) {
+    return { status: 'already_running', deliveryStatus: 'not_attempted' }
   }
-
-  if (['completed', 'failed', 'cancelled'].includes(admitted.status)) {
-    const content = await readSurfaceDeliveryStep({
-      conversationId: prepared.plan.conversationId,
-      agentRunId: agentRun.id,
-      userId: prepared.turnInput.userId,
-      turnId: prepared.turnInput.turnId,
-    })
-    const replayText = admitted.status === 'completed'
-      ? content
-      : terminalSlackText(admitted.status, admitted.terminalReason)
-    const delivery = replayText ? await postSurfaceReplyStep({
-      authority: prepared.authority,
-      userId: prepared.turnInput.userId,
-      workspaceId: prepared.turnInput.workspaceId,
-      conversationId: prepared.plan.conversationId,
-      workflowRunId,
-      text: replayText,
-      editTs: prepared.turnInput.surface.placeholderTs,
-      access,
-      context: prepared.plan.toolingContext,
-    }).catch((_error) => ({ posted: false })) : { posted: false }
+  const execution = begun.execution
+  const previous = await readNativeSurfaceResultStep({ execution, workflowRunId })
+  if (['completed', 'failed', 'cancelled'].includes(previous.status)) {
+    const delivery = await postNativeSurfaceResultStep({ execution, status: previous.status, workflowRunId })
     return {
-      conversationId: prepared.plan.conversationId,
-      status: admitted.status,
-      replyText: content,
-      deliveryStatus: !replayText ? 'not_attempted' : delivery.posted ? 'posted' : 'failed',
+      status: previous.status,
+      deliveryStatus: delivery.posted ? 'posted' : 'not_attempted',
     }
   }
-
-  const result = await personalHarnessWorkflow({
-    access,
-    context: prepared.plan.toolingContext,
-    definitions: prepared.plan.toolDefinitions,
-    instructions: prepared.plan.instructions,
-    messages: prepared.plan.messages,
-    modelCandidates: [prepared.plan.effectiveModelId],
-    delivery: {
-      emitWebhook: false,
-      closeStream: false,
-      surface: { placeholderTs: prepared.turnInput.surface?.placeholderTs },
-    },
-  })
-  if (result.status === 'already_running') {
-    return { conversationId: prepared.plan.conversationId, status: result.status, deliveryStatus: 'not_attempted' }
-  }
-  const content = result.status === 'completed'
-    ? result.replyText || 'This task completed in Overlay.'
-    : terminalSlackText(result.status, result.terminalReason)
-  const delivery = await postSurfaceReplyStep({
-    authority: prepared.authority,
-    userId: prepared.turnInput.userId,
-    workspaceId: prepared.turnInput.workspaceId,
-    conversationId: prepared.plan.conversationId,
+  const prepared = await prepareNativeSurfaceStep({
+    actorUserId: authorizedInput.userId,
+    workspaceId: authorizedInput.workspaceId,
+    conversationId: ensured.conversationId,
+    runId: execution.agentRunId,
     workflowRunId,
-    text: content,
-    editTs: prepared.turnInput.surface.placeholderTs,
-    access,
-    context: prepared.plan.toolingContext,
-  }).catch((_error) => ({ posted: false }))
-  return { ...result, deliveryStatus: delivery.posted ? 'posted' : 'failed' }
+  })
+  if (!prepared.ok) {
+    const failure = await recordNativeSurfaceFailureStep({ execution, workflowRunId })
+    if (failure.persisted) await postNativeSurfaceResultStep({
+      execution, status: 'failed', workflowRunId, preparationFailure: true,
+    })
+    throw new FatalError(prepared.message)
+  }
+  const nativeResult = await nativeHarnessWorkflow(prepared.workflowInput)
+  const terminal = await readNativeSurfaceResultStep({ execution, workflowRunId })
+  if (!['completed', 'failed', 'cancelled'].includes(terminal.status)
+    || nativeResult.status !== terminal.status) {
+    return { status: nativeResult.status, deliveryStatus: 'not_attempted' }
+  }
+  const delivery = await postNativeSurfaceResultStep({
+    execution,
+    status: terminal.status,
+    workflowRunId,
+  })
+  return {
+    status: terminal.status,
+    deliveryStatus: delivery.posted ? 'posted' : 'not_attempted',
+  }
 }

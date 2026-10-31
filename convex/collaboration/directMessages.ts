@@ -888,14 +888,65 @@ async function openAgentMessageRow(
   return { messageId, resumed: false }
 }
 
+export type StartAgentTurnInTransactionArgs = {
+  actorUserId: string
+  agentId: string
+  authorPrincipalId: string
+  clientNonce: string
+  conversationId: Id<'conversations'>
+  initiatorPrincipalId?: string
+  modelId: string
+  executionEngine?: 'overlay_harness'
+  threadRootMessageId?: Id<'conversationMessages'>
+  turnId: string
+  userMessageId: Id<'conversationMessages'>
+  workspaceId: string
+  serverSecret?: string
+  harnessRunIdPrefix?: string
+}
+
+export async function startAgentTurnInTransaction(
+  ctx: Pick<MutationCtx, 'db'>,
+  args: StartAgentTurnInTransactionArgs,
+) {
+  await requireAgentAuthor(ctx, args)
+  const [{ messageId, resumed }, existingRun] = await Promise.all([
+    openAgentMessageRow(ctx as MutationCtx, args),
+    ctx.db.query('conversationAgentRuns')
+      .withIndex('by_turn_variant', (q) => (
+        q.eq('conversationId', args.conversationId).eq('turnId', args.turnId)
+      ))
+      .first(),
+  ])
+  if (existingRun) return { messageId, resumed: true, runId: existingRun._id }
+
+  const now = Date.now()
+  const runId = await ctx.db.insert('conversationAgentRuns', {
+    conversationId: args.conversationId,
+    turnId: args.turnId,
+    userId: args.actorUserId,
+    userMessageId: args.userMessageId,
+    assistantMessageId: messageId,
+    agentId: args.agentId,
+    agentPrincipalId: args.authorPrincipalId,
+    ...(args.initiatorPrincipalId ? { initiatorPrincipalId: args.initiatorPrincipalId } : {}),
+    mode: 'room',
+    runner: 'workflow',
+    ...(args.executionEngine ? { executionEngine: args.executionEngine } : {}),
+    status: 'queued',
+    ...(args.executionEngine === 'overlay_harness' ? {} : { leaseExpiresAt: now + ROOM_AGENT_RUN_LEASE_MS }),
+    createdAt: now,
+    updatedAt: now,
+  })
+  if (args.harnessRunIdPrefix) {
+    await ctx.db.patch(runId, { harnessRunId: `${args.harnessRunIdPrefix}${runId}` })
+  }
+  return { messageId, resumed, runId }
+}
+
 /**
  * Opens a durable room agent turn: the reply row plus the run record that owns
- * it. Both exist before the model is called, so a turn the runtime loses is
- * still visible and still resumable rather than silently gone.
- *
- * `resumed` tells the caller a turn for this (message, agent) already exists,
- * which is how a duplicate trigger avoids starting a second workflow against
- * the same reply.
+ * it. Both exist before the model is called.
  */
 export const startAgentTurn = mutation({
   args: {
@@ -913,45 +964,7 @@ export const startAgentTurn = mutation({
     workspaceId: v.string(),
     serverSecret: v.optional(v.string()),
   },
-  handler: async (ctx, args) => {
-    await requireAgentAuthor(ctx, args)
-    // A room turn carries no variant index, so the turn prefix of this index
-    // identifies at most one run.
-    const [{ messageId, resumed }, existingRun] = await Promise.all([
-      openAgentMessageRow(ctx, args),
-      ctx.db.query('conversationAgentRuns')
-      .withIndex('by_turn_variant', (q) => (
-        q.eq('conversationId', args.conversationId).eq('turnId', args.turnId)
-      ))
-        .first(),
-    ])
-    if (existingRun) return { messageId, resumed: true, runId: existingRun._id }
-
-    const now = Date.now()
-    const runId = await ctx.db.insert('conversationAgentRuns', {
-      conversationId: args.conversationId,
-      turnId: args.turnId,
-      userId: args.actorUserId,
-      userMessageId: args.userMessageId,
-      assistantMessageId: messageId,
-      agentId: args.agentId,
-      agentPrincipalId: args.authorPrincipalId,
-      ...(args.initiatorPrincipalId ? { initiatorPrincipalId: args.initiatorPrincipalId } : {}),
-      mode: 'room',
-      runner: 'workflow',
-      ...(args.executionEngine ? { executionEngine: args.executionEngine } : {}),
-      status: 'queued',
-      // A room turn has no heartbeat, so the lease is an outer bound: a sweep
-      // fails whatever is still active past it rather than leaving a reply
-      // generating forever.
-      // Harness waits are bounded by their durable root deadline, not the
-      // legacy room executor's 30-minute liveness lease.
-      ...(args.executionEngine === 'overlay_harness' ? {} : { leaseExpiresAt: now + ROOM_AGENT_RUN_LEASE_MS }),
-      createdAt: now,
-      updatedAt: now,
-    })
-    return { messageId, resumed, runId }
-  },
+  handler: async (ctx, args) => await startAgentTurnInTransaction(ctx, args),
 })
 
 export const startAgentMessage = mutation({

@@ -26,12 +26,21 @@ export async function prepareWorkspaceAgentInputs(input: {
   memoryEnabled: boolean
   workspaceId: string
   includeAutoRetrieval?: boolean
+  turnIdOverride?: string
+  requestFingerprintOverride?: string
+  billingProgrammaticSubjectId?: string
 }) {
   const room = await loadRoomTurnContext(input)
   const agent = room.directory.agents.find(candidate => candidate.id === input.agentId)
   if (!agent || agent.archivedAt) throw new Error('The agent is no longer available.')
   const server = getOverlayServerContext()
-  const identity = workspaceAgentInvocationIdentity(input.messageId, input.agentId)
+  const identity = input.turnIdOverride
+    ? {
+        invocationNonce: `surface:${input.turnIdOverride}`,
+        requestFingerprint: input.requestFingerprintOverride ?? hashOperationalIdentifier('workspace-agent-invocation', input.turnIdOverride),
+        turnId: input.turnIdOverride,
+      }
+    : workspaceAgentInvocationIdentity(input.messageId, input.agentId)
   const entitlementService = new ActEntitlementService({
     repository: server.appData.repositories.conversations,
     usagePolicy: server.chatUsagePolicy,
@@ -43,7 +52,7 @@ export async function prepareWorkspaceAgentInputs(input: {
     try {
       gate = await entitlementService.gateModelAccess({
         effectiveModelId: attempt,
-        programmaticSubjectId: `agent:${agent.id}`,
+        programmaticSubjectId: input.billingProgrammaticSubjectId ?? `agent:${agent.id}`,
         userId: input.actorUserId,
         workspaceId: input.workspaceId,
       })
@@ -58,7 +67,7 @@ export async function prepareWorkspaceAgentInputs(input: {
     conversationId: input.conversationId,
     effectiveModelId: modelId,
     entitlements: gate.runtimeEntitlements,
-    grant: { agentId: agent.id, allowedToolIds: agent.allowedToolIds, isDefaultMaster: Boolean(agent.isDefault || agent.name.toLowerCase() === 'overlay') },
+    grant: { agentId: agent.id, allowedToolIds: agent.allowedToolIds, isDefaultMaster: Boolean(agent.isDefault) },
     approvalMode: agent.harness === 'overlay' && agent.permissionMode === 'auto' ? 'auto' : 'ask',
     computerApprovalContext: 'work',
     idempotencyKey: identity.invocationNonce,
@@ -73,7 +82,7 @@ export async function prepareWorkspaceAgentInputs(input: {
     actorUserId: input.actorUserId,
     agentName: agent.name,
     agentPrincipalId: agent.principalId,
-    billingProgrammaticSubjectId: `agent:${agent.id}`,
+    billingProgrammaticSubjectId: input.billingProgrammaticSubjectId ?? `agent:${agent.id}`,
     channelVisibility: (room.conversation as { channelVisibility?: string | null }).channelVisibility,
     conversationTitle: room.conversation.title,
     conversationType: room.conversationType,

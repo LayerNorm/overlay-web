@@ -137,8 +137,6 @@ export async function personalHarnessWorkflow(input: PersonalHarnessWorkflowInpu
       ...createPersonalHarnessWaitPorts({
         access,
         wake: wake[Symbol.asyncIterator](),
-        context: input.context,
-        surface: input.delivery?.surface,
       }),
       readChild: childRunId => readHarnessChild(access, childRunId),
       delegate: async (delegation, toolCallId) => {
