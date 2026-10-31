@@ -41,6 +41,14 @@ import {
   type AutomationAgentTurnPlan,
   type AutomationModelCallResult,
 } from '@/server/automations/automation-turn-runner'
+import { getOverlayServerContext } from '@/server/bootstrap'
+import { isHarnessBackendReady } from '@/server/harness/backend-readiness'
+import { assertAutomationAdmissionSource } from '@/server/harness/automation-access'
+import { ConvexHarnessRepository } from '@/server/harness/ConvexHarnessRepository'
+import { personalHarnessPolicy } from '@/server/harness/personal-admission-policy'
+import { harnessToolsRequirePlan } from '@/server/harness/write-tools'
+import { personalHarnessWorkflow } from './personal-harness'
+import { agentRunService } from '@/server/conversations/http'
 
 export type { AutomationAgentTurnInput, AutomationAgentTurnPlan }
 
@@ -65,18 +73,68 @@ async function ensureConversationStep(input: AutomationAgentTurnInput): Promise<
   return await ensureAutomationConversation(input)
 }
 
-async function markRunStartedStep(input: {
-  runId: string
-  userId: string
-  conversationId: string
-  turnId: string
-}): Promise<void> {
+async function admitAutomationSourceStep(input: AutomationAgentTurnInput & {
+  originWorkflowRunId: string
+  actorUserId?: string
+  conversationId?: string
+}) {
   'use step'
-  await automationService.markRunStarted({
-    runId: input.runId,
-    userId: input.userId,
-    conversationId: input.conversationId,
+  const server = getOverlayServerContext()
+  const settings = await server.appData.repositories.conversations.getAppSettings({ userId: input.userId })
+  if (!isHarnessBackendReady(settings)) throw new FatalError('Harness backend is unavailable.')
+  if (!input.automationId) throw new FatalError('Automation identity is required.')
+  return await assertAutomationAdmissionSource({
+    ...input, automationId: input.automationId, actorUserId: input.actorUserId ?? input.userId,
+  })
+}
+
+async function startAutomationAgentRunStep(input: {
+  conversationId: string
+  modelId: string
+  turnId: string
+  userId: string
+  userMessageId: string
+}) {
+  'use step'
+  const run = await agentRunService.startPersonalWorkflow({
+    conversationId: input.conversationId as never,
+    modelId: input.modelId,
     turnId: input.turnId,
+    userId: input.userId,
+    userMessageId: input.userMessageId as never,
+  })
+  if (!run) throw new FatalError('Automation AgentRun could not be admitted.')
+  return run
+}
+
+async function admitAutomationHarnessStep(input: {
+  runId: string
+  goal: string
+  actorUserId: string
+  workspaceId: string
+  modelId: string
+  paid: boolean
+  createdAt: number
+  allowedToolIds: string[]
+  conversationId: string
+  deliveryAgentRunId: string
+}) {
+  'use step'
+  return await new ConvexHarnessRepository().admit({
+    runId: `personal:${input.deliveryAgentRunId}`,
+    goal: input.goal.slice(0, 32_000) || 'Respond to the automation instructions.',
+    constraints: [],
+    policy: personalHarnessPolicy({
+      actorUserId: input.actorUserId,
+      workspaceId: input.workspaceId,
+      allowedToolIds: input.allowedToolIds,
+      requiresPlan: harnessToolsRequirePlan(input.allowedToolIds),
+      modelId: input.modelId,
+      paid: input.paid,
+      createdAt: input.createdAt,
+    }),
+    source: { conversationId: input.conversationId },
+    deliveryAgentRunId: input.deliveryAgentRunId,
   })
 }
 
@@ -164,21 +222,55 @@ export async function checkAutomationEnabled(input: {
 export async function runAutomationAgentTurn(
   input: AutomationAgentTurnInput,
 ): Promise<{ conversationId: string; replyText: string }> {
+  if (input.surface) return await runDurableAgentTurn(input as AutomationAgentTurnInput & { conversationId: string; workspaceId: string })
+  const { workflowRunId } = getWorkflowMetadata()
+  const source = await admitAutomationSourceStep({
+    ...input, actorUserId: input.userId, originWorkflowRunId: workflowRunId,
+  })
   const ensured = await ensureConversationStep(input)
   const turnInput = { ...input, conversationId: ensured.conversationId, workspaceId: ensured.workspaceId }
-
-  // Mark the run row started before the heavy prepare so a failure below lands
-  // on a 'running' record instead of leaving it queued forever.
-  if (input.runId) {
-    await markRunStartedStep({
-      runId: input.runId,
-      userId: input.userId,
-      conversationId: ensured.conversationId,
-      turnId: input.turnId,
-    })
+  await admitAutomationSourceStep({
+    ...turnInput, actorUserId: input.userId, originWorkflowRunId: workflowRunId,
+  })
+  const plan = await prepareTurnStep(turnInput)
+  const agentRun = await startAutomationAgentRunStep({
+    conversationId: plan.conversationId, modelId: plan.effectiveModelId, turnId: input.turnId,
+    userId: input.userId, userMessageId: plan.userMessageId,
+  })
+  const access = {
+    actorUserId: input.userId, runId: `personal:${agentRun.id}`, workflowRunId,
+    conversationId: plan.conversationId, agentRunId: agentRun.id, workspaceId: ensured.workspaceId,
+    principalId: source.principalId,
+    authentication: {
+      type: 'automation' as const, automationId: input.automationId!,
+      ...(input.runId ? { automationRunId: input.runId } : {}),
+      originWorkflowRunId: workflowRunId,
+    },
   }
-
-  return await runDurableAgentTurn(turnInput)
+  const admitted = await admitAutomationHarnessStep({
+    runId: input.runId ?? input.turnId, goal: input.instructions, actorUserId: input.userId,
+    workspaceId: ensured.workspaceId, modelId: plan.effectiveModelId, paid: plan.paid,
+    createdAt: agentRun.createdAt, allowedToolIds: plan.toolDefinitions.map(tool => tool.name),
+    conversationId: plan.conversationId, deliveryAgentRunId: agentRun.id,
+  })
+  if (['completed', 'failed', 'cancelled'].includes(admitted.status)) {
+    return { conversationId: plan.conversationId, replyText: '' }
+  }
+  const result = await personalHarnessWorkflow({
+    access,
+    context: plan.toolingContext,
+    definitions: plan.toolDefinitions,
+    instructions: plan.instructions,
+    messages: plan.messages,
+    modelCandidates: [plan.effectiveModelId],
+    delivery: { emitWebhook: false, sourceCitations: plan.sourceCitations, closeStream: false },
+  })
+  if (result.status === 'completed' && input.runId) {
+    await automationService.markRunCompleted({ runId: input.runId, userId: input.userId, conversationId: plan.conversationId })
+  } else if (result.status === 'failed' && input.runId) {
+    await automationService.markRunFailed({ runId: input.runId, userId: input.userId, error: 'Automation Harness execution failed.' })
+  }
+  return { conversationId: plan.conversationId, replyText: 'replyText' in result ? result.replyText ?? '' : '' }
 }
 
 /**
@@ -191,6 +283,7 @@ export async function runAutomationAgentTurn(
 export async function runDurableAgentTurn(
   turnInput: AutomationAgentTurnInput & { conversationId: string; workspaceId: string },
 ): Promise<{ conversationId: string; replyText: string }> {
+  if (!turnInput.surface) throw new FatalError('The legacy durable agent loop is reserved for surface turns.')
   const { workflowRunId } = getWorkflowMetadata()
   const input = turnInput
 

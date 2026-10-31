@@ -41,7 +41,12 @@ export class HarnessLanguageModel implements LanguageModelV4 {
           workspaceId: personal.access.workspaceId, principalId: personal.access.principalId,
           authentication: personal.access.authentication.type === 'api-key'
             ? { type: 'api-key' as const, apiKeyId: personal.access.authentication.apiKeyId }
-            : { type: personal.access.authentication.type },
+            : personal.access.authentication.type === 'automation'
+              ? { type: 'automation' as const, automationId: personal.access.authentication.automationId,
+                ...(personal.access.authentication.automationRunId
+                  ? { automationRunId: personal.access.authentication.automationRunId } : {}),
+                originWorkflowRunId: personal.access.authentication.originWorkflowRunId }
+              : { type: personal.access.authentication.type },
         },
         receiptId: personal.receiptId, memoryEnabled: personal.memoryEnabled, requestFingerprint: personal.requestFingerprint,
         ...(personal.billingProgrammaticSubjectId ? { billingProgrammaticSubjectId: personal.billingProgrammaticSubjectId } : {}),

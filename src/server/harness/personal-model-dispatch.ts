@@ -18,6 +18,11 @@ export async function authorizePersonalHarnessModelDispatch(reference: HarnessMo
     baseUrl: '', userId: input.access.actorUserId, workspaceId: input.access.workspaceId,
     conversationId: input.access.conversationId, effectiveModelId: reference.modelId,
     turnId: input.receiptId, requestFingerprint: input.requestFingerprint, memoryEnabled: input.memoryEnabled,
-    billingProgrammaticSubjectId: input.billingProgrammaticSubjectId, requestedToolIds: [], approvalMode: 'ask',
+    billingProgrammaticSubjectId: input.billingProgrammaticSubjectId
+      ?? (input.access.authentication.type === 'automation'
+        ? `automation:${input.access.authentication.automationId}` : undefined),
+    requestedToolIds: [], approvalMode: input.access.authentication.type === 'automation' ? 'ask' : undefined,
+    ...(input.access.authentication.type === 'automation'
+      ? { automationExecution: true, automationId: input.access.authentication.automationId } : {}),
   }))
 }

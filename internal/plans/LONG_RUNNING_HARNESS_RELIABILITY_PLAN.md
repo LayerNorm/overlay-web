@@ -170,6 +170,7 @@ Internal state names may reuse equivalent existing variants. Migration must pres
 1. Stop new legacy admission.
    - [x] Personal HTTP and named-room admission now use native Harness only; unsupported automation and surface execution rejects explicitly.
    - [x] Personal admission fails closed when the Harness capability is missing, stale, unknown, or unreadable.
+   - [x] Automation admission now validates the scheduler/run owner and uses native Harness authority; surface migration and full legacy retirement remain open.
 2. Inventory active legacy runs and in-flight external operations.
 3. Fence legacy dispatch and callbacks; revoke old execution authority before replacement execution begins.
 4. Reconcile already-issued operations. Preserve output, usage, and receipts. Do not replay an uncertain external write.

@@ -46,7 +46,11 @@ export async function preparePersonalHarnessModel(input: {
           runId: access.runId, workflowRunId: access.workflowRunId, conversationId: access.conversationId, agentRunId: access.agentRunId,
           authentication: access.authentication.type === 'api-key'
             ? { type: 'api-key', apiKeyId: access.authentication.apiKeyId }
-            : { type: access.authentication.type },
+            : access.authentication.type === 'automation'
+              ? { type: 'automation', automationId: access.authentication.automationId,
+                ...(access.authentication.automationRunId ? { automationRunId: access.authentication.automationRunId } : {}),
+                originWorkflowRunId: access.authentication.originWorkflowRunId }
+              : { type: access.authentication.type },
         },
         receiptId: input.receiptId, memoryEnabled: context.memoryEnabled,
         requestFingerprint: context.requestFingerprint,

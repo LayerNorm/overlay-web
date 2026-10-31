@@ -158,6 +158,8 @@ export type AutomationAgentTurnPlan = {
   paid: boolean
   providerOptions?: Record<string, Record<string, unknown>>
   reservationId: string | null
+  userMessageId: string
+  principalId: string
   sourceCitations?: SourceCitationMap
   toolDefinitions: PersonalChatWorkToolDefinition[]
   toolingContext: PersonalChatWorkToolingContext
@@ -274,10 +276,19 @@ export async function ensureAutomationConversation(
     input.workspaceId,
   )
   if (input.conversationId) {
+    const conversation = await overlayContext.appData.repositories.conversations.getConversationById({
+      conversationId: asConversationId(input.conversationId), userId: input.userId, workspaceId: workspace.workspace.id,
+    })
+    if (!conversation || conversation.userId !== input.userId || conversation.deletedAt != null
+      || (conversation.workspaceId && conversation.workspaceId !== workspace.workspace.id)
+      || (conversation.conversationType && conversation.conversationType !== 'personal')) {
+      throw new AutomationTurnError('Automation conversation ownership changed.', 409)
+    }
     return { conversationId: input.conversationId, workspaceId: workspace.workspace.id }
   }
   const conversationId = await overlayContext.appData.repositories.conversations
     .createConversation({
+      clientId: `automation:${input.automationId ?? 'unknown'}:${input.runId ?? input.turnId}`,
       userId: input.userId,
       title: `Automation: ${input.name || 'Untitled'}`,
       askModelIds: [input.modelId || DEFAULT_MODEL_ID],
@@ -518,7 +529,7 @@ export async function prepareAutomationAgentTurn(
     })
   })()
 
-  const [_userMessageId, turnContext, resolvedMediaToolIntent] = await Promise.all([
+  const [userMessageId, turnContext, resolvedMediaToolIntent] = await Promise.all([
     saveUserMessageTask,
     turnContextTask,
     mediaIntentTask,
@@ -679,8 +690,7 @@ export async function prepareAutomationAgentTurn(
     accessToken: undefined,
     agentId: surface?.agentId,
     agentPrincipalId: surface?.agentPrincipalId,
-    automationExecution: true,
-    automationId: input.automationId,
+    ...(surface ? {} : { automationExecution: true, automationId: input.automationId }),
     computerApprovalContext: 'automation',
     approvalMode,
     baseUrl,
@@ -745,11 +755,9 @@ export async function prepareAutomationAgentTurn(
     automationMode: false,
   })
 
-  // Turn-level usage reservation — same shape the Work runner holds so usage
-  // accounting stays consistent if the workflow dies mid-turn.
-  const [modelMessages, reservation] = await Promise.all([
-    convertToModelMessages(messagesForModel),
-    actUsageBudgetService.reserveForAttempt({
+  const modelMessages = await convertToModelMessages(messagesForModel)
+  if (!userMessageId) throw new AutomationTurnError('Automation user message was not persisted.')
+  const reservation = surface ? await actUsageBudgetService.reserveForAttempt({
     entitlements: runtimeEntitlements,
     estimatedInputTokens: Math.ceil(JSON.stringify(messagesForModel).length / 4) + 2_000,
     idempotencyKey: requestIdempotencyKey,
@@ -761,8 +769,7 @@ export async function prepareAutomationAgentTurn(
     userId,
     workspaceId: billingWorkspaceId,
     programmaticSubjectId: billingProgrammaticSubjectId,
-    }),
-  ])
+    }) : { ok: true as const, reservationId: null as string | null }
   if (!reservation.ok) {
     const payload = reservation.failure.payload as Record<string, unknown>
     throw new AutomationTurnError(
@@ -771,10 +778,12 @@ export async function prepareAutomationAgentTurn(
       payload,
     )
   }
-  await actUsageBudgetService.markReservationStarted({
-    reservationId: reservation.reservationId,
-    userId,
-  })
+  if (surface) {
+    await actUsageBudgetService.markReservationStarted({
+      reservationId: reservation.reservationId,
+      userId,
+    })
+  }
 
   const toolDefinitions = await describePersonalChatWorkTools(
     actTooling.tools,
@@ -814,6 +823,8 @@ export async function prepareAutomationAgentTurn(
       ? { providerOptions: { gateway: { zeroDataRetention: true } } }
       : {}),
     reservationId: reservation.reservationId,
+    userMessageId: String(userMessageId),
+    principalId: workspaceAccess.principal.id,
     sourceCitations: sourceCitationMap,
     toolDefinitions,
     toolingContext,
@@ -842,6 +853,7 @@ export async function finalizeAutomationAgentTurn(args: {
   workflowRunId?: string
 }): Promise<void> {
   const { input, plan } = args
+  if (!input.surface) return
   const usage = aggregateAutomationTurnUsage(args.steps)
   await actUsageBudgetService.recordFinishedUsage({
     forceFreeTierLimits: !plan.paid,

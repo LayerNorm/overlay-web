@@ -11,13 +11,17 @@ import { asConversationId } from '@/server/conversations/ActConversationReposito
 import { actEntitlementService } from '@/server/conversations/http'
 import { ConvexHarnessRepository } from './ConvexHarnessRepository'
 import type { HarnessExecutionReference } from './state-steps'
+import { refreshAutomationHarnessSource } from './automation-access'
 
 export type PersonalHarnessAccess = HarnessExecutionReference & {
   conversationId: string
   agentRunId: string
   workspaceId: string
   principalId: string
-  authentication: { type: 'session' | 'access-token' } | { type: 'api-key'; apiKeyId: string }
+  authentication:
+    | { type: 'session' | 'access-token' }
+    | { type: 'api-key'; apiKeyId: string }
+    | { type: 'automation'; automationId: string; automationRunId?: string; originWorkflowRunId: string }
 }
 
 export type PersonalHarnessExecutionContext = PersonalChatWorkToolingContext & {
@@ -29,9 +33,13 @@ type HarnessState = NonNullable<Awaited<ReturnType<ConvexHarnessRepository['get'
 type ServerContext = ReturnType<typeof getOverlayServerContext>
 
 function assertSuppliedContext(access: PersonalHarnessAccess, context: PersonalContext): void {
+  const automationAuthority = access.authentication.type === 'automation' ? access.authentication : undefined
   if (context.userId !== access.actorUserId || context.workspaceId !== access.workspaceId
-    || context.conversationId !== access.conversationId || context.automationExecution
-    || context.automationId || context.approvalMode === 'auto') {
+    || context.conversationId !== access.conversationId
+    || (!automationAuthority && (context.automationExecution || context.automationId || context.approvalMode === 'auto'))
+    || (automationAuthority && (!context.automationExecution
+      || context.automationId !== automationAuthority.automationId
+      || context.billingProgrammaticSubjectId !== `automation:${automationAuthority.automationId}`))) {
     throw new FatalError('Personal harness identity does not match its tooling context.')
   }
   if (!access.workspaceId || !access.principalId || !access.conversationId) {
@@ -85,7 +93,8 @@ async function assertApiKeyStillAllowed(access: PersonalHarnessAccess, server: S
       || key.expiresAt <= Date.now() || !hasRequiredApiKeyScopes(key.scopes, ['chat:write'])) {
       throw new FatalError('The API key that authorized this run is no longer permitted.')
     }
-  } else if (access.authentication.type !== 'session' && access.authentication.type !== 'access-token') {
+  } else if (access.authentication.type !== 'session' && access.authentication.type !== 'access-token'
+    && access.authentication.type !== 'automation') {
     throw new FatalError('Personal harness authentication is not supported.')
   }
 }
@@ -187,8 +196,11 @@ function buildExecutionContext(
   accountAllowedToolIds: string[],
   accountAllowedConnectorIds: string[],
   gate: Awaited<ReturnType<typeof actEntitlementService.gateModelPolicy>>,
+  automationGrant?: { approvalMode: 'ask' | 'auto'; allowedToolIds: string[] },
 ): PersonalHarnessExecutionContext {
-  const allowedTools = (context.accountAllowedToolIds ?? []).filter(id => accountAllowedToolIds.includes(id))
+  const allowedTools = (context.accountAllowedToolIds ?? [])
+    .filter(id => accountAllowedToolIds.includes(id))
+    .filter(id => !automationGrant || automationGrant.allowedToolIds.includes(id))
   const allowedConnectors = (context.accountAllowedConnectorIds ?? []).filter(id => accountAllowedConnectorIds.includes(id))
   return {
     baseUrl: context.baseUrl,
@@ -209,7 +221,10 @@ function buildExecutionContext(
     workspaceId: access.workspaceId,
     accountAllowedToolIds: allowedTools,
     accountAllowedConnectorIds: allowedConnectors,
-    approvalMode: 'ask',
+    ...(access.authentication.type === 'automation'
+      ? { automationExecution: true, automationId: access.authentication.automationId,
+        approvalMode: automationGrant?.approvalMode ?? 'ask' }
+      : { approvalMode: 'ask' as const }),
   }
 }
 
@@ -224,7 +239,12 @@ export async function refreshPersonalHarnessAccess(
   const repository = new ConvexHarnessRepository()
   const { state, root } = await readCurrentHarnessAuthority(repository, access, toolName)
   const server = getOverlayServerContext()
-  await assertApiKeyStillAllowed(access, server)
+  let automationGrant: Awaited<ReturnType<typeof refreshAutomationHarnessSource>> | undefined
+  if (access.authentication.type === 'automation') {
+    automationGrant = await refreshAutomationHarnessSource(access, context)
+  } else {
+    await assertApiKeyStillAllowed(access, server)
+  }
   const [workspace, conversation, agentRun, subject] = await Promise.all([
     server.workspaceService.resolveActiveWorkspace(access.actorUserId, access.workspaceId),
     server.appData.repositories.conversations.getConversationById({
@@ -244,5 +264,5 @@ export async function refreshPersonalHarnessAccess(
   await assertModelCatalogAccess(authorization, subject, context.effectiveModelId)
   const grants = await readCurrentModelAndGrants(authorization, subject, access, context)
   await assertCurrentModelPolicy(context.effectiveModelId, access.actorUserId, grants.gate.runtimeEntitlements)
-  return buildExecutionContext(access, context, grants.accountAllowedToolIds, grants.accountAllowedConnectorIds, grants.gate)
+  return buildExecutionContext(access, context, grants.accountAllowedToolIds, grants.accountAllowedConnectorIds, grants.gate, automationGrant)
 }

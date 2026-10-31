@@ -117,7 +117,7 @@ export async function personalHarnessWorkflow(input: PersonalHarnessWorkflowInpu
       tools,
       writable: getWritable<ModelCallStreamPart<ToolSet>>(),
     }, ports)
-    if (result.outcome === 'already_running') return { runId: initial.runId, status: 'already_running' }
+    if (result.outcome === 'already_running') return { runId: initial.runId, status: 'already_running' as const }
     if (!['completed', 'failed', 'cancelled'].includes(result.snapshot.status)) {
       result.snapshot = await applyHarnessOperation(access, 'blocked-finalization', {
         type: 'terminate', status: 'failed', reason: result.snapshot.blocker?.question || 'The task is blocked and cannot continue.',
@@ -141,6 +141,14 @@ export async function personalHarnessWorkflow(input: PersonalHarnessWorkflowInpu
   } else {
     await notifyHarnessAncestors(access)
   }
-  await closePersonalHarnessStream(result.snapshot.status === 'failed' ? result.snapshot.terminalReason : undefined)
-  return { runId: result.snapshot.runId, status: result.snapshot.status }
+  if (input.delivery?.closeStream !== false) {
+    await closePersonalHarnessStream(result.snapshot.status === 'failed' ? result.snapshot.terminalReason : undefined)
+  }
+  return {
+    runId: result.snapshot.runId,
+    status: result.snapshot.status,
+    ...(input.delivery?.closeStream === false && isRoot && result.snapshot.status === 'completed'
+      ? { replyText: buildPersonalHarnessDelivery(result, input.delivery?.sourceCitations, fallbackNotices, activeToolNames).content }
+      : {}),
+  }
 }

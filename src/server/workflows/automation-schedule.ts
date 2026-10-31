@@ -73,7 +73,9 @@ export async function automationScheduleWorkflow(input: AutomationScheduleWorkfl
   if (input.oneShot) {
     // Manual run — execute immediately, no scheduling loop
     if (input.approvalRequired) {
-      await waitForApproval(input)
+      if (!await waitForApproval(input)) {
+        return { automationId: input.automationId, completed: false, skipped: true }
+      }
     }
     await executeAutomationRun(input)
     return { automationId: input.automationId, completed: true }
@@ -155,9 +157,9 @@ async function waitForApproval(input: AutomationScheduleWorkflowInput): Promise<
 
 // Date.now() inside 'use workflow' is pinned to the run's fixed replay
 // timestamp, so a per-iteration turn id has to come from a step's real clock.
-async function generateTurnId(automationId: string): Promise<string> {
+async function generateTurnId(input: Pick<AutomationScheduleWorkflowInput, 'automationId' | 'runId' | 'scheduledFor'>): Promise<string> {
   'use step'
-  return `automation-${automationId}-${Date.now()}`
+  return `automation-${input.automationId}-${input.runId ?? input.scheduledFor ?? Date.now()}`
 }
 
 async function executeAutomationRun(input: AutomationScheduleWorkflowInput): Promise<void> {
@@ -173,7 +175,7 @@ async function executeAutomationRun(input: AutomationScheduleWorkflowInput): Pro
     instructions: input.instructions,
     modelId: input.modelId,
     conversationId: input.conversationId,
-    turnId: await generateTurnId(input.automationId),
+    turnId: await generateTurnId(input),
     scheduledFor: now,
     workspaceId: input.workspaceId,
   })
