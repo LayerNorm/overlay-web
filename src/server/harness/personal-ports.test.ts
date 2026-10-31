@@ -13,9 +13,14 @@ import { runOverlayHarness } from './runner'
 import { estimateHarnessInputTokens } from './model-forecast'
 
 const mocks = vi.hoisted(() => ({ read: vi.fn(), apply: vi.fn(), claim: vi.fn(), refresh: vi.fn(), catalog: vi.fn(),
-  model: vi.fn(), authorize: vi.fn(), settle: vi.fn(), releaseSummary: vi.fn(), admit: vi.fn(), capacity: vi.fn(), capacityReset: vi.fn() }))
+  model: vi.fn(), authorize: vi.fn(), settle: vi.fn(), releaseSummary: vi.fn(), admit: vi.fn(), capacity: vi.fn(),
+  capacityReset: vi.fn(), sleep: vi.fn() }))
 vi.mock('./model-capacity', () => ({ createHarnessCapacityWaiter: () => ({ wait: mocks.capacity, reset: mocks.capacityReset }) }))
 vi.mock('server-only', () => ({}))
+vi.mock('workflow', async importOriginal => {
+  const actual = await importOriginal<typeof import('workflow')>()
+  return { ...actual, sleep: mocks.sleep }
+})
 vi.mock('./personal-access', () => ({ refreshPersonalHarnessAccess: mocks.refresh }))
 vi.mock('@/server/ai/gateway/gateway-catalog', () => ({ getGatewayCatalogModel: mocks.catalog }))
 vi.mock('@/server/ai/model-runtime', () => ({ getLanguageModel: mocks.model }))
@@ -118,14 +123,15 @@ test('confirmed capacity rejection resumes the same free model with a fresh rece
   provider()
   const onFallback = vi.fn()
   const freeContext = { ...context, effectiveModelId: 'openrouter/free' }
+  let nextRetryAt: number | undefined
   mocks.refresh.mockImplementation(async (_access, supplied) => ({ ...supplied, requiresZeroDataRetention: false }))
-  mocks.capacity.mockResolvedValue(true)
   mocks.authorize.mockImplementation(async reference => {
     current = state.bindHarnessModelDispatch(current, reference.personal.receiptId, { modelId: reference.modelId, billingReservationId: null }, Date.now())
   }).mockImplementationOnce(async reference => {
     current = state.recordHarnessReceipt(current, { id: reference.personal.receiptId, modelId: reference.modelId,
       provider: 'overlay-free-router', inputTokens: 0, outputTokens: 0, reasoningTokens: 0, cacheReadTokens: 0,
       cacheWriteTokens: 0, contextWindow: null, costMicros: 0, costSource: 'catalog', rejectionReason: 'route_capacity' }, Date.now())
+    nextRetryAt = current.modelRecovery?.nextRetryAt
     throw new Error('Confirmed capacity rejection before inference.')
   })
   mocks.settle.mockImplementation(async ({ receiptId, observation, contextWindow }) => {
@@ -136,7 +142,8 @@ test('confirmed capacity rejection resumes the same free model with a fresh rece
     { candidateIds: ['openrouter/free'], onFallback })
   const result = await runOverlayHarness({ ...execution, model: { ...execution.model, modelId: 'openrouter/free' } }, ports)
   expect(result.snapshot.status).toBe('completed')
-  expect(mocks.capacity).toHaveBeenCalledExactlyOnceWith(expect.anything(), 'model:0', 'openrouter/free')
+  expect(mocks.sleep).toHaveBeenCalledExactlyOnceWith(new Date(nextRetryAt!))
+  expect(mocks.capacity).not.toHaveBeenCalled()
   expect(mocks.model).toHaveBeenCalledExactlyOnceWith('openrouter/free', undefined, 'user', expect.objectContaining({ allowLowBalanceFallback: false }))
   expect(mocks.settle).toHaveBeenCalledWith(expect.objectContaining({ receiptId: 'model:1' }))
   expect(mocks.admit).toHaveBeenCalledOnce()
@@ -185,6 +192,7 @@ test('Kimi K3 reasoning is prepared for the active fallback candidate', async ()
 
 beforeEach(() => {
   vi.resetAllMocks()
+  mocks.sleep.mockResolvedValue(undefined)
   current = state.claimHarnessExecution(state.createHarnessSnapshot({ runId: 'run', goal: 'Check observations', constraints: ['Do not publish'], policy: {
     actorUserId: 'user', workspaceId: 'workspace', requiresPlan: false, allowedToolIds: [], maxCostMicros: 1_000_000,
     deadlineAt: Date.now() + 60_000, maxDepth: 1, maxParallelChildren: 2,
