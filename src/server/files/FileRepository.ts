@@ -1,4 +1,5 @@
 import 'server-only'
+import type { UploadedFileInput } from '@/shared/storage/file-publication'
 
 export type FileRecord = {
   _id: string
@@ -72,6 +73,7 @@ export interface FileRepository {
   listFilesPage?(args: Record<string, unknown> & { userId: string }): Promise<FileListPage>
   createFile(args: Record<string, unknown> & { userId: string }): Promise<string | null>
   createFileWithStorage(args: Record<string, unknown> & { userId: string }): Promise<string | null>
+  commitUploadedFile(args: UploadedFileInput): Promise<string>
   createExtractedDocument(args: {
     mimeType: string
     parentId?: string

@@ -20,7 +20,7 @@ import {
   uploadBuffer,
 } from '@/server/storage/object-store'
 import { checkGlobalR2Budget } from '@/server/storage/r2-budget'
-import type { FileRepository, FileUploadIntentRecord } from './FileRepository'
+import type { FileRepository } from './FileRepository'
 import {
   assertAllowedMimeType,
   assignTextContent,
@@ -734,28 +734,13 @@ export class FileService {
     if (!objectHead) {
       serviceError({ error: 'Uploaded object not found' }, 400)
     }
-    const uploadIntent = args.kind === 'output'
-      ? null
-      : await this.deps.repository.getUploadIntent({
-          userId: args.userId,
-          r2Key,
-          now: this.clock.now(),
-        })
-    if (args.kind !== 'output' && !uploadIntent) {
-      await this.storage.deleteObjects([r2Key]).catch((_error) => undefined)
-      serviceError({ error: 'Upload authorization expired or was not found' }, 400)
-    }
-    const declaredSize =
-      uploadIntent?.declaredSizeBytes ??
-      (typeof args.declaredSizeBytes === 'number' ? Math.max(0, Math.round(args.declaredSizeBytes)) : 0)
     const actualSize = Math.max(0, Math.round(objectHead.sizeBytes))
-    if (declaredSize > 0 && actualSize > declaredSize) {
-      await this.storage.deleteObjects([r2Key]).catch((_error) => undefined)
-      await this.expireUploadIntentBestEffort(args.userId, uploadIntent)
-      serviceError({ error: 'Uploaded object exceeds authorized size' }, 413)
-    }
     await this.storage.checkGlobalR2Budget(actualSize)
     if (args.kind === 'output') {
+      const declaredSize = typeof args.declaredSizeBytes === 'number' ? Math.max(0, Math.round(args.declaredSizeBytes)) : 0
+      if (declaredSize > 0 && actualSize > declaredSize) {
+        serviceError({ error: 'Uploaded object exceeds authorized size' }, 413)
+      }
       return await this.deps.repository.createFile({
         ...args.fileArgs,
         type: 'file',
@@ -764,34 +749,30 @@ export class FileService {
       })
     }
 
-    const { type: _type, ...storageArgs } = args.fileArgs
-    void _type
-    let id: string | null
+    const { name, parentId, workspaceId, scope, extension } = args.fileArgs
     try {
-      id = await this.deps.repository.createFileWithStorage({
-        ...storageArgs,
-        r2Key,
-        sizeBytes: actualSize,
+      return await this.deps.repository.commitUploadedFile({
+        userId: args.userId, name, r2Key, sizeBytes: actualSize,
+        mimeType: normalizeMimeType(objectHead.contentType),
+        ...(typeof parentId === 'string' ? { parentId } : {}),
+        ...(typeof workspaceId === 'string' ? { workspaceId } : {}),
+        ...(scope === 'personal' || scope === 'workspace' ? { scope } : {}),
+        ...(typeof extension === 'string' ? { extension } : {}),
       })
     } catch (error) {
-      await this.storage.deleteObjects([r2Key]).catch((_error) => undefined)
-      await this.expireUploadIntentBestEffort(args.userId, uploadIntent)
+      // A lost acknowledgement can mean registration already committed. Keep the object for reconciliation.
+      const message = error instanceof Error ? error.message : String(error)
+      if (/upload_intent_(not_found|expired)/.test(message)) serviceError({ error: 'Upload authorization expired or was not found' }, 400)
+      if (message.includes('upload_size_exceeds_intent')) serviceError({ error: 'Uploaded object exceeds authorized size' }, 413)
+      if (/upload_(publication_conflict|mime_mismatch|destination_mismatch)/.test(message)) {
+        serviceError({ error: 'The upload no longer matches its publication. Refresh Files before retrying.' }, 409)
+      }
+      if (/Unauthorized|WORKSPACE_ACCESS_DENIED|RESOURCE_SCOPE_FORBIDDEN/.test(message)) {
+        serviceError({ error: 'You do not have access to this upload destination.' }, 403)
+      }
+      if (message.includes('storage_limit_exceeded')) serviceError({ error: 'Overlay storage limit reached.' }, 403)
       throw error
     }
-    if (!id) throw new Error('File create returned no id')
-    if (uploadIntent) {
-      await this.deps.repository.finalizeUploadIntent({
-        userId: args.userId,
-        r2Key,
-        actualSizeBytes: actualSize,
-        fileId: id,
-        now: this.clock.now(),
-      }).catch(async (error) => {
-        logger.warn('[FilesCreate] Uploaded file saved but upload intent finalization failed', error)
-        await this.expireUploadIntentBestEffort(args.userId, uploadIntent)
-      })
-    }
-    return id
   }
 
   private async assertPresignedUploadAllowed(args: {
@@ -830,18 +811,6 @@ export class FileService {
     await this.storage.deleteObject(r2Key).catch((error) => {
       logger.warn(`[ingest-document] failed to delete orphaned R2 object key=${r2Key}`, error)
     })
-  }
-
-  private async expireUploadIntentBestEffort(
-    userId: string,
-    uploadIntent: FileUploadIntentRecord | null | undefined,
-  ): Promise<void> {
-    if (!uploadIntent) return
-    await this.deps.repository.expireUploadIntent({
-      userId,
-      intentId: uploadIntent._id,
-      now: this.clock.now(),
-    }).catch((_error) => undefined)
   }
 
   private throwIngestCreateError(error: unknown): never {

@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Register presigned uploads, consume their intent and account for storage atomically. Repeated publication returns the existing file, while lost acknowledgements and refused registrations preserve bytes for reconciliation instead of deleting potentially published objects.
+
 - Retry settled empty/error context summaries with separate durable backoff and receipt accounting, without resetting response recovery or releasing unresolved model usage.
 
 - Show persisted native-agent failure reasons in personal and room transcripts, preserve unfinished prose, and stop labeling unknown historical failures as connection loss.

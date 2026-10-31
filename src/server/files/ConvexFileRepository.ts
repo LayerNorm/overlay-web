@@ -2,6 +2,7 @@ import 'server-only'
 
 import { lazyConvex as convex } from '@/server/database/lazy-convex'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
+import type { UploadedFileInput } from '@/shared/storage/file-publication'
 import { cleanupExpiredR2UploadIntents } from '@/server/storage/r2-upload-intents'
 import type {
   FileRepository,
@@ -84,6 +85,14 @@ export class ConvexFileRepository implements FileRepository {
       ...args,
       serverSecret: this.serverSecret,
     }, { throwOnError: true })
+  }
+
+  async commitUploadedFile(args: UploadedFileInput): Promise<string> {
+    const id = await convex.mutation<string>('files/files:commitUploadByServer', {
+      ...args, serverSecret: this.serverSecret,
+    }, { throwOnError: true })
+    if (!id) throw new Error('Upload publication returned no file id')
+    return id
   }
 
   async createExtractedDocument(args: {

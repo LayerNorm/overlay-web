@@ -88,6 +88,10 @@ function createRepository(overrides: Partial<FileRepository> = {}): FileReposito
       createdFiles.push(args)
       return `file_${createdFiles.length}`
     },
+    async commitUploadedFile(args) {
+      createdFiles.push(args)
+      return `file_${createdFiles.length}`
+    },
     async createExtractedDocument(args) {
       args.parts.forEach((part) => createdFiles.push({ ...part, userId: args.userId }))
       return args.parts.map((_, index) => `file_${index + 1}`)
@@ -213,6 +217,42 @@ test('FileService.createFile rejects legacy Convex storage uploads', async () =>
       error.statusCode === 400 &&
       error.payload.error === 'Convex file storage is no longer supported. Upload to R2 and pass r2Key from the upload-url flow.',
   )
+})
+
+test('FileService upload registration retries a lost acknowledgement without deleting bytes or duplicating finalization', async () => {
+  let calls = 0
+  const repository = createRepository({
+    async commitUploadedFile(args) {
+      assert.equal(args.sizeBytes, 12)
+      assert.equal(args.mimeType, 'text/plain')
+      assert.equal(args.workspaceId, 'workspace_1')
+      if (++calls === 1) throw new Error('Lost acknowledgement after commit')
+      return 'saved_file'
+    },
+    async getUploadIntent() { throw new Error('Publication must authorize atomically') },
+    async finalizeUploadIntent() { throw new Error('Publication must finalize atomically') },
+    async expireUploadIntent() { throw new Error('Uncertain publication must remain recoverable') },
+  })
+  const storage = createStorage()
+  const service = createService(repository, storage)
+  const args = { userId: 'user_1', workspaceId: 'workspace_1', body: {
+    name: 'file.txt', r2Key: 'users/user_1/files/id/file.txt', sizeBytes: 1, mimeType: 'video/mp4',
+  } }
+  await assert.rejects(service.createFile(args), /Lost acknowledgement/)
+  assert.equal((await service.createFile(args)).id, 'saved_file')
+  assert.deepEqual(storage.deletedKeys, [])
+  assert.deepEqual(repository.createdFiles, [])
+})
+
+test('FileService upload refusal preserves objects for safe reconciliation and reports the specific reason', async () => {
+  for (const [reason, status] of [['upload_intent_not_found', 400], ['upload_size_exceeds_intent', 413], ['upload_publication_conflict', 409]] as const) {
+    const repository = createRepository({ async commitUploadedFile() { throw new Error(reason) } })
+    const storage = createStorage()
+    await assert.rejects(createService(repository, storage).createFile({ userId: 'user_1', body: {
+      name: 'file.txt', r2Key: 'users/user_1/files/id/file.txt',
+    } }), error => error instanceof FileServiceError && error.statusCode === status)
+    assert.deepEqual(storage.deletedKeys, [])
+  }
 })
 
 const roomyStorage = {

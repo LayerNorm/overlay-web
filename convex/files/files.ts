@@ -14,6 +14,7 @@ import {
   getStorageLimitForUser,
 } from './lib/storageQuota'
 import { assertOwnedFileR2Key, isOwnedFileR2Key, isOwnedOutputR2Key } from '../../src/shared/storage/storage-keys'
+import { commitUploadedFile } from './lib/uploadPublication'
 
 const utf8Encoder = new TextEncoder()
 
@@ -1008,6 +1009,30 @@ export const createWithStorage = mutation({
     })
     await applyStorageUsageDelta(ctx as never, args.userId, args.sizeBytes)
     return id
+  },
+})
+
+export const commitUploadByServer = mutation({
+  args: {
+    userId: v.string(), serverSecret: v.string(), workspaceId: v.optional(v.string()),
+    name: v.string(), parentId: v.optional(v.string()), r2Key: v.string(), sizeBytes: v.number(),
+    mimeType: v.optional(v.string()), extension: v.optional(v.string()), scope: scopeArg,
+  },
+  returns: v.id('files'),
+  handler: async (ctx, args) => {
+    requireServerAccess(args.serverSecret)
+    assertOwnedFileR2Key(args.userId, args.r2Key)
+    await assertParentAndProject(ctx, args)
+    const scope = await assertCanCreateInScope(ctx, {
+      kind: 'content', scope: args.scope, workspaceId: args.workspaceId, userId: args.userId,
+    })
+    if (args.parentId) {
+      const parent = await ctx.db.get(args.parentId as Id<'files'>)
+      if (parent?.workspaceId !== args.workspaceId || (parent?.scope ?? 'personal') !== scope) {
+        throw new Error('upload_destination_mismatch')
+      }
+    }
+    return await commitUploadedFile(ctx, { ...args, scope, extension: args.extension ?? extensionOf(args.name) }, Date.now())
   },
 })
 
