@@ -3,8 +3,7 @@ import {
   type ModelCallStreamPart,
   type WorkflowAgentStreamResult,
 } from '@ai-sdk/workflow'
-import { asSchema, isLoopFinished, type ModelMessage, type StepResult, type ToolSet } from 'ai'
-import type { LanguageModelV4FunctionTool } from '@ai-sdk/provider'
+import { isLoopFinished, type ModelMessage, type StepResult, type ToolSet } from 'ai'
 import {
   assertHarnessRunnable,
   harnessCompletionIssues,
@@ -12,10 +11,14 @@ import {
   type HarnessSnapshot,
 } from '@overlay/agent-runtime/harness-state'
 import { createHarnessControlTools } from './control-tools'
-import { buildHarnessInstructions, buildHarnessStepInstructions, HARNESS_CONTROL_TOOLS, harnessProgressFingerprint } from './context'
+import {
+  buildHarnessInstructions, buildHarnessStepInstructions, buildHarnessStuckQuestion,
+  HARNESS_CONTROL_TOOLS, harnessProgressFingerprint,
+} from './context'
 import type { HarnessApprovalRequest, HarnessExecutionPorts, HarnessModelSettings } from './ports'
 import { HarnessLanguageModel, type HarnessModelReference } from './secure-model'
 import { createHarnessToolApprovals, type HarnessToolApprovals, type HarnessToolExecutionOptions } from './tool-approvals'
+import { assertNoControlToolReplacement, prepareToolDefinitions } from './tool-definitions'
 import { harnessToolInputDigest } from './tool-input-digest'
 import {
   captureAuthenticatedToolDenials,
@@ -63,12 +66,6 @@ function duplicateCreateEvidence(state: HarnessSnapshot, name: string, input: un
     && evidence.verdict !== 'failed' && evidence.source === name && evidence.inputDigest === inputDigest)
 }
 
-function assertNoControlToolReplacement(tools: ToolSet, controls: Set<string>): void {
-  if (Object.keys(tools).some(name => controls.has(name))) {
-    throw new Error('Surface tools cannot replace harness control tools.')
-  }
-}
-
 function wrapAuthorizedTools(
   surfaceTools: ToolSet,
   ports: HarnessExecutionPorts,
@@ -110,20 +107,6 @@ function wrapAuthorizedTools(
   }))
 }
 
-async function prepareToolDefinitions(tools: ToolSet): Promise<LanguageModelV4FunctionTool[]> {
-  return Promise.all(Object.entries(tools).map(async ([name, definition]) => {
-    if (definition.type === 'provider' || typeof definition.description === 'function') {
-      throw new Error('Harness tools must have prepared function schemas and descriptions.')
-    }
-    return {
-      type: 'function' as const, name, description: definition.description,
-      inputSchema: await asSchema(definition.inputSchema).jsonSchema,
-      strict: definition.strict, inputExamples: definition.inputExamples as LanguageModelV4FunctionTool['inputExamples'],
-      providerOptions: definition.providerOptions,
-    }
-  }))
-}
-
 type WaitingStateOutcome =
   | { kind: 'blocked'; snapshot: HarnessSnapshot }
   | { kind: 'restart'; messages: ModelMessage[]; invocation: number; resetStagnation: boolean }
@@ -135,37 +118,6 @@ type ApprovalResumeOutcome =
 
 const STAGNATION_RECOVERY_START = 2
 const STAGNATION_PAUSE_AFTER = 6
-
-function safeFailedEvidenceSummary(state: HarnessSnapshot): string {
-  const failed = state.evidence
-    .filter(evidence => evidence.kind === 'tool_result' && evidence.verdict === 'failed')
-    .slice(-3)
-    .map(evidence => {
-      const summary = evidence.summary
-        .replace(/\b(?:authorization|bearer|cookie|password|secret|token|api[_ -]?key)\b(?:\s*[:=]\s*|\s+(?:is\s+)?)(?:"[^"]*"|'[^']*'|\S+)/gi, '[redacted]')
-        .replace(/\bbearer\s+\S+/gi, 'Bearer [redacted]')
-        .replace(/\b(?:sk|pk|rk|api)[-_][A-Za-z0-9_-]{10,}\b/gi, '[redacted]')
-        .replace(/\b[A-Za-z0-9+/_=-]{32,}\b/g, '[redacted]')
-        .replace(/https?:\/\/\S+/gi, '[URL]')
-        .replace(/\s+/g, ' ')
-        .trim()
-        .slice(0, 180)
-      const id = evidence.id.replace(/[^A-Za-z0-9:_-]/g, '').slice(0, 120)
-      const source = evidence.source.replace(/[^A-Za-z0-9_.:-]/g, '').slice(0, 80)
-      return `${id || 'tool result'} (${source || 'tool'}): ${summary || 'failed tool result'}`
-    })
-  return failed.join('; ')
-}
-
-function stuckQuestion(state: HarnessSnapshot): string {
-  const evidence = safeFailedEvidenceSummary(state)
-  return [
-    `No meaningful progress after ${STAGNATION_PAUSE_AFTER} continuation segments.`,
-    'Diagnose the recent failed evidence, missing capabilities and unmet dependencies; revise the approach before continuing.',
-    evidence ? `Recent failed evidence: ${evidence}` : 'No recent failed tool evidence was available.',
-    'Reply with the missing input, permission or resource only if one is genuinely required.',
-  ].join(' ')
-}
 
 async function handleWaitingState(
   state: HarnessSnapshot,
@@ -322,7 +274,10 @@ async function finishOrCheckpointInvocation(
   }
   const nextStagnantSegments = harnessProgressFingerprint(state) === before ? stagnantSegments + 1 : 0
   if (nextStagnantSegments >= STAGNATION_PAUSE_AFTER) {
-    await ports.apply(`stuck:${segment}`, { type: 'block', blocker: { kind: 'stuck', question: stuckQuestion(state) } })
+    await ports.apply(`stuck:${segment}`, {
+      type: 'block',
+      blocker: { kind: 'stuck', question: buildHarnessStuckQuestion(state, STAGNATION_PAUSE_AFTER) },
+    })
     return { kind: 'continue', stagnantSegments: nextStagnantSegments, finalAnswerRequired }
   }
   const summary = stripTextualToolCalls(state.workingSummary, toolNames)
