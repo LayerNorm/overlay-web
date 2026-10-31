@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Preserve declared byte length and requested short lifetime when creating scoped upload URLs through the configured storage provider, with optional validated SHA-256 binding for binary publication.
+
 - Register presigned uploads, consume their intent and account for storage atomically. Repeated publication returns the existing file, while lost acknowledgements and refused registrations preserve bytes for reconciliation instead of deleting potentially published objects.
 
 - Retry settled empty/error context summaries with separate durable backoff and receipt accounting, without resetting response recovery or releasing unresolved model usage.

@@ -27,10 +27,20 @@ export async function generatePresignedUploadUrl(
   mimeType: string,
   sizeBytes: number,
   ttlSeconds?: number,
+  checksumSha256?: string,
 ): Promise<string> {
-  void sizeBytes
-  void ttlSeconds
-  return (await getOverlayServerContext().objectStore.getUploadUrl(key, mimeType)).url
+  if (!Number.isSafeInteger(sizeBytes) || sizeBytes < 0) throw new Error('STORAGE_INVALID_UPLOAD_SIZE')
+  if (ttlSeconds !== undefined && (!Number.isSafeInteger(ttlSeconds) || ttlSeconds <= 0)) {
+    throw new Error('STORAGE_INVALID_UPLOAD_LIFETIME')
+  }
+  if (checksumSha256 !== undefined && !/^[a-f0-9]{64}$/.test(checksumSha256)) {
+    throw new Error('STORAGE_INVALID_UPLOAD_CHECKSUM')
+  }
+  return (await getOverlayServerContext().objectStore.getUploadUrl(key, mimeType, {
+    contentLength: sizeBytes,
+    ...(ttlSeconds === undefined ? {} : { expiresIn: Math.min(ttlSeconds, 900) }),
+    ...(checksumSha256 === undefined ? {} : { checksumSha256 }),
+  })).url
 }
 
 export async function generatePresignedDownloadUrl(
