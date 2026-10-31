@@ -934,3 +934,33 @@ test('two recovered interruptions retry before the third interruption fails the 
   expect(recover).toHaveBeenCalledTimes(3)
   expect(provider.doStreamCalls).toHaveLength(3)
 })
+
+test('model recovery preserves completed tool results and settled steps before the failed call', async () => {
+  const f = fixture(false)
+  const recover = vi.fn(async (receiptId: string) => {
+    f.recordInterruption(receiptId)
+    return true
+  })
+  f.ports.recoverModelFailure = recover
+  const provider = model(index => {
+    if (index === 0) return [call('write', 'completed-write')]
+    if (index === 1) throw new Error('stream interruption after a completed tool')
+    return 'The existing job is ready.'
+  })
+  const execute = vi.fn(async () => ({ jobId: 'existing-job-123' }))
+  const result = await runOverlayHarness({
+    ...input,
+    model: { ...input.model, modelId: 'openrouter/free' },
+    tools: { write: tool({ inputSchema: z.object({}), execute }) },
+  }, f.ports)
+
+  expect(recover).toHaveBeenCalledExactlyOnceWith('model:1')
+  const resumedPrompt = JSON.stringify(provider.doStreamCalls[2]?.prompt)
+  expect(resumedPrompt).toContain('completed-write')
+  expect(resumedPrompt).toContain('existing-job-123')
+  expect(execute).toHaveBeenCalledTimes(1)
+  expect(result.steps).toHaveLength(2)
+  expect(result.steps[0].toolResults[0].toolCallId).toBe('completed-write')
+  expect([...f.receipts]).toEqual(['model:0', 'model:2'])
+  expect(result.snapshot.status).toBe('completed')
+})

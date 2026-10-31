@@ -399,12 +399,16 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
     let stagnantCalls = 0
     let invocationSteps: StepResult<ToolSet>[] = []
     let invocationMessages = messages
+    const settledSteps: StepResult<ToolSet>[] = []
+    let recoverySteps: StepResult<ToolSet>[] = []
+    let recoveryMessages = messages
     const recordedSteps = new Set<number>()
     const recordModelStep = async (step: Parameters<HarnessExecutionPorts['recordModelStep']>[0]) => {
       if (recordedSteps.has(step.stepNumber)) return
       await ports.recordModelStep(step, `model:${modelCall}`)
       modelCall++
       recordedSteps.add(step.stepNumber)
+      settledSteps.push(step)
     }
     const agent = new WorkflowAgent({
       model: new HarnessLanguageModel(input.model),
@@ -419,6 +423,9 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
         return observedState.status !== 'running' || onlyChildrenRemain(observedState) || stagnantCalls >= 3
       }],
       prepareStep: async ({ messages: prompt }) => {
+        // This boundary includes completed tools, but none of the next call's partial output.
+        recoveryMessages = prompt.filter(message => message.role !== 'system')
+        recoverySteps = [...settledSteps]
         let current = await ports.read()
         if (current.status !== 'running') throw new HarnessYield()
         try {
@@ -503,7 +510,11 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
         recoveredModel = true
       }
     }
-    if (recoveredModel) continue
+    if (recoveredModel) {
+      messages = recoveryMessages
+      steps.push(...recoverySteps)
+      continue
+    }
     // WorkflowAgent returns its system prompt in history. Rebuild it exclusively
     // from trusted instructions and current durable state on every invocation.
     messages = invocationMessages.filter(message => message.role !== 'system')
