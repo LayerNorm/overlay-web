@@ -174,8 +174,8 @@ produce saved-chat links. A later workspace switch cannot retarget a notificatio
 
 ### Dictation capture and delivery
 
-The isolated HUD prepares a suspended 16 kHz Web Audio graph at launch without
-opening a microphone. A native shortcut starts device acquisition immediately;
+The isolated HUD initializes the 16 kHz AudioWorklet thread at launch using a
+silent output sink, then suspends the graph without opening a microphone. A native shortcut starts device acquisition immediately;
 cloud session admission runs independently and must pass before any upload.
 The AudioWorklet batches mono PCM every 256 samples and flushes a bounded WAV at
 release, avoiding a whole-recording decode. Groq still transcribes completed

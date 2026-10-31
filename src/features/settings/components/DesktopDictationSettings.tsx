@@ -63,7 +63,7 @@ export function DesktopDictationSettings({
         <SettingsActionRow
           icon={null}
           title="Dictation microphone"
-          description="Automatic prefers the built-in microphone. If a chosen device disconnects, dictation uses the system default."
+          description="For the dictation shortcut. Automatic prefers the built-in microphone; a disconnected input falls back to the system default."
           action={
             <ListboxSelect
               aria-label="Dictation microphone"
