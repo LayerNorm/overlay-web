@@ -44,18 +44,24 @@ async function harness() {
         return node()
       }
       createAnalyser = () => node()
+      createConstantSource = () => ({
+        ...node(),
+        offset: { value: 0 },
+        start: () => {},
+        stop: () => {}
+      })
     }
   )
   vi.stubGlobal(
     'AudioWorkletNode',
     class {
       port: {
-        onmessage: ((event: { data: string }) => void) | null
+        onmessage: ((event: { data: Float32Array }) => void) | null
         close(): void
         postMessage(): void
       } = { onmessage: null, close: () => {}, postMessage: () => {} }
       constructor() {
-        queueMicrotask(() => this.port.onmessage?.({ data: 'prepared' }))
+        queueMicrotask(() => this.port.onmessage?.({ data: new Float32Array(256) }))
       }
       connect = () => {}
       disconnect = () => {}
