@@ -290,9 +290,13 @@ isolation; the original Personal workspace and its billing remain unchanged.
 
 Computer lifecycle QA uses `OVERLAY_PREVIEW_QA_FIXTURES=computer-workspace` on its exact Preview branch to invoke `dev/seed:initComputerQa`. Ordinary seeding remains free; the existing `paid-workspace` fixture is separate. Combine fixtures with `OVERLAY_PREVIEW_QA_FIXTURES=paid-workspace,computer-workspace`; duplicate names run once and unknown names fail before deployment. Both are Preview-only, preserve spent balances on rebuild, and use the existing scoped credential.
 
-Retired-thread QA is an explicit, internal, Preview-only fixture. After verifying
-the current-head READY build and its isolated backend, use the same private
-Preview-key-only environment file (never `.env.local` or a Production key):
+Retired-thread QA is an explicit, internal, Preview-only fixture. Prefer setting
+`OVERLAY_PREVIEW_QA_FIXTURES=native-thread-retirement` on the exact Preview branch
+and requesting its next build. This uses the trusted controller's existing key
+without exporting credentials. It composes with the other comma-separated fixture
+names. Alternatively, after verifying the current-head READY build and its
+isolated backend, use the same private Preview-key-only environment file (never
+`.env.local` or a Production key):
 
 ```sh
 npx convex run dev/nativeThreadQa:init '{}' --deployment preview/pr-<number> --env-file <preview-key-only-file>

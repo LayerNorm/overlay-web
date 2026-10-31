@@ -30,6 +30,16 @@ The new `nativeThreadQa.convex.test.ts` then passed 6/6 after correcting its
 historical assistant-message status to the schema-supported `error` value.
 Hosted UI acceptance and the one-run video-delivery gate remain open.
 
+The fixture head passed all 22 checks and its isolated Preview became READY.
+Hosted setup stopped before retirement assertions: the saved Preview key was
+development-scoped, so the scope guard correctly rejected it without a backend
+request. The trusted controller already has the proper Preview key. An opt-in
+`native-thread-retirement` build fixture now reuses that path without exporting
+credentials. The build-wrapper tests passed 15/15, and targeted ESLint and
+TypeScript checks passed. The isolated Preview redeployment and hosted
+UI/retirement assertions remain open; no hosted acceptance is claimed from setup
+alone.
+
 Requested by: Divyansh Lalwani
 
 Source discussion: https://app.devin.ai/sessions/3483c60e0e4248a9927afab674050a75
