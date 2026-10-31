@@ -1,6 +1,6 @@
 import { ConvexError } from 'convex/values'
 import { FatalError, RetryableError } from 'workflow'
-import type { HarnessEvidence, HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
+import { HarnessPlanValidationError, type HarnessEvidence, type HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
 import type { HarnessMutationResult, HarnessOperation } from '@overlay/agent-runtime/harness-store'
 import { ConvexHarnessRepository } from './ConvexHarnessRepository'
 
@@ -13,7 +13,8 @@ export type HarnessExecutionReference = {
 function rejectedOperationMessage(error: unknown): string | null {
   if (!(error instanceof ConvexError) || !error.data || typeof error.data !== 'object') return null
   const data = error.data as { code?: unknown; message?: unknown }
-  return data.code === 'HARNESS_OPERATION_REJECTED' && typeof data.message === 'string' ? data.message : null
+  return (data.code === 'HARNESS_OPERATION_REJECTED' || data.code === 'HARNESS_PLAN_VALIDATION')
+    && typeof data.message === 'string' ? data.message : null
 }
 
 export async function readHarnessState(reference: HarnessExecutionReference): Promise<HarnessSnapshot> {
@@ -59,7 +60,12 @@ export async function applyHarnessOperation(
       })
     } catch (error) {
       const message = rejectedOperationMessage(error)
-      if (message !== null) throw new FatalError(message)
+      if (message !== null) {
+        if (error instanceof ConvexError && typeof error.data === 'object' && (error.data as { code?: unknown }).code === 'HARNESS_PLAN_VALIDATION') {
+          throw new HarnessPlanValidationError(message)
+        }
+        throw new FatalError(message)
+      }
       if (error instanceof Error && error.message.includes('ArgumentValidationError')) {
         throw new FatalError('Harness operation rejected: invalid operation arguments.')
       }

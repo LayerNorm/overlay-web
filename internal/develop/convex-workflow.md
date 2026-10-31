@@ -203,6 +203,8 @@ Convex code may import browser-safe shared modules from `src/shared`. Convex mus
 
 ## Overlay Harness storage
 
+The initial recovery slice keeps compaction checkpoints additive and non-blocking. Continuation stagnation is owned by the runner: after two unchanged segments it adds a trusted recovery instruction, and after six it persists an actionable `stuck` blocker through the existing authenticated input-wait path. A reply resumes the same root run and resets its stagnation counter. Do not use checkpoint or model-receipt writes as progress, and do not deploy Convex from feature worktrees while validating this path.
+
 ### Personal workflow integration
 
 `src/server/workflows/personal-harness.ts` composes `runOverlayHarness` with personal

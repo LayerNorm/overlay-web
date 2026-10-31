@@ -292,7 +292,7 @@ test('plan revisions reject cycles and invalidate completed downstream work', ()
   assert.throws(() => replaceHarnessPlan(state, [steps[0]!], now), /Keep existing/)
 })
 
-test('telemetry is not progress and context occupancy is current rather than cumulative', () => {
+test('telemetry is not progress and compaction does not count as continuation stagnation', () => {
   let state = make()
   for (let call = 0; call < 2; call++) state = recordHarnessReceipt(state, {
     id: `call-${call}`, modelId: 'model', provider: 'provider', inputTokens: 200, outputTokens: 10,
@@ -304,8 +304,15 @@ test('telemetry is not progress and context occupancy is current rather than cum
   assert.equal(recordHarnessReceipt(state, state.latestReceipt!, now), state)
   state = checkpointHarness(state, 'No change', now)
   state = checkpointHarness(state, 'Still no change', now)
-  assert.equal(state.status, 'waiting_for_input')
-  assert.equal(state.blocker?.kind, 'stuck')
+  assert.equal(state.status, 'running')
+  assert.equal(state.stalledContinuations, 2)
+  const continuations = state.continuations
+  state = checkpointHarness(state, 'Compacted context', now, 'compaction')
+  state = checkpointHarness(state, 'Compacted context again', now, 'compaction')
+  assert.equal(state.status, 'running')
+  assert.equal(state.continuations, continuations)
+  assert.equal(state.stalledContinuations, 2)
+  assert.equal(state.progressRevision, 0)
 })
 
 test('child reservations enforce capabilities, root spending, concurrency and depth', () => {

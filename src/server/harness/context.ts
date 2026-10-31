@@ -30,6 +30,7 @@ export type HarnessInstructionContext = {
   continuation: boolean
   truncatedResponse: boolean
   finalAnswerRequired?: boolean
+  stagnationRecoveryAttempt?: number
 }
 
 export function buildHarnessStepInstructions(state: HarnessSnapshot, context: HarnessInstructionContext): string {
@@ -48,6 +49,9 @@ export function buildHarnessStepInstructions(state: HarnessSnapshot, context: Ha
       ? '\nAll plan milestones and required evidence are complete. Do not call tools or describe more actions. Return the final answer to the original user request, respecting its requested output format. Use the existing evidence and completed child summaries.'
       : context.continuation ? '\nInternal continuation: complete the remaining milestones, using the existing evidence. This is not a new user request.' : '')
     + (context.truncatedResponse ? '\nThe previous response reached its output limit, not task completion. Continue from the saved partial response without repeating it.' : '')
+    + (context.stagnationRecoveryAttempt !== undefined
+      ? `\nRecovery attempt ${context.stagnationRecoveryAttempt}: inspect recent failed tool evidence, missing capabilities and unmet dependencies; revise the approach and use different authorized tools. Do not manufacture progress by repeating the same plan, checkpoint or tool call. Call harness_report_blocker only when a genuinely missing user input, permission or resource requires a durable wait.`
+      : '')
     + (context.finalAnswerRequired ? '\nAll milestones are complete. Reply to the user now in plain text with the results; do not write tool calls as text.' : '')
 }
 
@@ -86,7 +90,7 @@ export function buildHarnessWorkingContext(state: HarnessSnapshot): string {
 }
 
 export function harnessProgressFingerprint(state: HarnessSnapshot): string {
-  const observations = [...new Set(state.evidence.map(evidence => JSON.stringify({
+  const observations = [...new Set(state.evidence.filter(evidence => evidence.verdict !== 'failed').map(evidence => JSON.stringify({
     kind: evidence.kind,
     source: evidence.source,
     summary: evidence.summary,
@@ -97,17 +101,11 @@ export function harnessProgressFingerprint(state: HarnessSnapshot): string {
   return JSON.stringify({
     plan: state.plan.map(step => ({
       id: step.id,
-      title: step.title,
-      dependsOn: [...step.dependsOn].sort(),
-      acceptanceCriteria: step.acceptanceCriteria,
-      requiresVerification: step.requiresVerification,
-      evidenceTools: step.evidenceTools,
-      answerOnly: step.answerOnly,
       status: step.status,
-      childRunId: step.childRunId,
-      skipReason: step.skipReason,
+      evidenceRefs: step.evidenceRefs,
     })),
     observations,
-    children: state.children.map(child => ({ id: child.id, status: child.status, summary: child.summary })),
+    children: state.children.filter(child => child.status === 'completed')
+      .map(child => ({ id: child.id, summary: child.summary, evidenceRefs: child.evidenceRefs })),
   })
 }

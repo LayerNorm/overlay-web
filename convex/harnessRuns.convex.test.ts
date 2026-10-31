@@ -544,6 +544,27 @@ describe('durable harness runs', () => {
     expect(persisted.evidence).toHaveLength(0)
   })
 
+  test('persists compaction purpose without counting it as an execution continuation', async () => {
+    const convex = convexTest(schema, modules)
+    const input = admission('run-compaction', await seedConversation(convex))
+    let state = await admit(convex, input)
+    for (const [index, summary] of ['First compaction', 'Repeated compaction'].entries()) {
+      state = (await apply(convex, input, `compact-${index}`, state.revision, {
+        type: 'checkpoint', summary, purpose: 'compaction',
+      })).snapshot
+      expect(state.status).toBe('running')
+      expect(state.continuations).toBe(0)
+      expect(state.progressRevision).toBe(0)
+    }
+    const checkpoints = await convex.run(ctx => ctx.db.query('harnessCheckpoints')
+      .withIndex('by_runId_revision', q => q.eq('runId', input.runId)).collect())
+    expect(checkpoints.map(checkpoint => checkpoint.purpose)).toEqual(['compaction', 'compaction'])
+    state = (await apply(convex, input, 'continuation', state.revision, {
+      type: 'checkpoint', summary: 'Continue normally.',
+    })).snapshot
+    expect(state.continuations).toBe(1)
+  })
+
   test('deduplicates receipt A, B, A across operation ids', async () => {
     const convex = convexTest(schema, modules)
     const input = admission('run-receipts', await seedConversation(convex))

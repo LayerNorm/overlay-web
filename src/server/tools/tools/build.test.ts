@@ -466,6 +466,37 @@ test('present_generated_ui accepts a bounded conversational questionnaire withou
   assert.equal(inputSchema.safeParse({ ...question, approveExecution: true }).success, false)
 })
 
+test('present_generated_ui returns bounded repair details for invalid generated UI input', async () => {
+  const execute = (buildTestTools().present_generated_ui as unknown as {
+    execute(input: unknown): Promise<Record<string, unknown>>
+  }).execute
+  const result = await execute({
+    kind: 'questionnaire',
+    prompt: 'Which focus?',
+    choices: [{ id: 'same', label: 'One' }, { id: 'same', label: 'Two' }],
+  })
+  assert.equal(result.success, false)
+  assert.equal(result.code, 'tool_validation_failure')
+  assert.deepEqual(result.issues, [{
+    path: 'generatedUi',
+    code: 'normalization_failed',
+    message: 'The payload could not be normalized to an allowed generated UI card.',
+  }])
+  assert.match(String(result.hint), /harness_report_blocker/)
+})
+
+test('present_generated_ui schema failures include bounded issue paths without echoing payloads', async () => {
+  const execute = (buildTestTools().present_generated_ui as unknown as {
+    execute(input: unknown): Promise<Record<string, unknown>>
+  }).execute
+  const result = await execute({ kind: 'draft.email', body: 'Draft text', privateMarker: 'do-not-echo' })
+  assert.equal(result.success, false)
+  assert.equal(result.code, 'tool_validation_failure')
+  assert.ok(Array.isArray(result.issues))
+  assert.ok((result.issues as Array<{ path: string }>).some(issue => issue.path === 'subject'))
+  assert.ok(!(JSON.stringify(result).includes('do-not-echo')))
+})
+
 test('free-tier stub tools expose Gateway-compatible input schemas', async () => {
   await assertGatewayCompatibleToolSet(createFreeTierGatedStubTools(true))
 })

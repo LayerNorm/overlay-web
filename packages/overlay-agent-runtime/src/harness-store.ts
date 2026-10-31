@@ -1,5 +1,5 @@
 import type {
-  HarnessChild, HarnessEvidence, HarnessPlanInput, HarnessPolicy, HarnessReceipt,
+  HarnessCheckpointPurpose, HarnessChild, HarnessEvidence, HarnessPlanInput, HarnessPolicy, HarnessReceipt,
   HarnessSnapshot, HarnessStepStatus,
 } from './harness-state'
 
@@ -22,7 +22,7 @@ export type HarnessOperation =
   | { type: 'transition_step'; id: string; status: HarnessStepStatus; evidenceRefs?: string[]; skipReason?: string }
   | { type: 'record_evidence'; evidence: HarnessEvidence }
   | { type: 'record_receipt'; receipt: HarnessReceipt }
-  | { type: 'checkpoint'; summary: string }
+  | { type: 'checkpoint'; summary: string; purpose?: HarnessCheckpointPurpose }
   | { type: 'block'; blocker: NonNullable<HarnessSnapshot['blocker']> }
   | { type: 'resume' }
   | { type: 'wait_for_children' }

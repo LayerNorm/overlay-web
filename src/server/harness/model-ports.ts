@@ -160,7 +160,9 @@ export function createHarnessModelPorts(input: {
         instructions = fallbackInstructions
         responseMaxOutputTokens = fallbackMaxOutputTokens
       } else if (compacted.didCompact) {
-        state = await applyHarnessOperation(reference, `compact:${request.receiptId}`, { type: 'checkpoint', summary: compacted.summary })
+        state = await applyHarnessOperation(reference, `compact:${request.receiptId}`, {
+          type: 'checkpoint', summary: compacted.summary, purpose: 'compaction',
+        })
         instructions = buildHarnessStepInstructions(state, request.instructionContext)
       } else {
         state = await readHarnessState(reference)

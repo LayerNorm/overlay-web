@@ -116,6 +116,16 @@ export type HarnessSnapshot = {
 }
 
 export type HarnessPlanInput = Pick<HarnessPlanStep, 'id' | 'title' | 'dependsOn' | 'acceptanceCriteria' | 'requiresVerification' | 'evidenceTools' | 'answerOnly'>
+export type HarnessCheckpointPurpose = 'continuation' | 'compaction'
+
+export class HarnessPlanValidationError extends Error {
+  readonly code = 'HARNESS_PLAN_VALIDATION'
+
+  constructor(message: string) {
+    super(message)
+    this.name = 'HarnessPlanValidationError'
+  }
+}
 
 export function createHarnessSnapshot(input: {
   runId: string
@@ -188,7 +198,7 @@ function validateStepEvidenceTools(state: HarnessSnapshot, step: HarnessPlanInpu
 
 export function replaceHarnessPlan(state: HarnessSnapshot, steps: HarnessPlanInput[], now: number): HarnessSnapshot {
   assertActive(state)
-  if (!steps.length || steps.length > 128) throw new Error('Use between one and 128 meaningful milestones.')
+  if (!steps.length || steps.length > 128) throw new HarnessPlanValidationError('Use between one and 128 meaningful milestones.')
   const normalizedSteps = steps.map(step => {
     const previous = state.plan.find(candidate => candidate.id === step.id)
     if (!previous?.childRunId || (previous.evidenceTools === undefined && step.evidenceTools === undefined)) return step
@@ -198,20 +208,25 @@ export function replaceHarnessPlan(state: HarnessSnapshot, steps: HarnessPlanInp
     }
   })
   const byId = new Map(normalizedSteps.map(step => [step.id, step]))
-  if (byId.size !== normalizedSteps.length) throw new Error('Plan IDs must be unique.')
+  if (byId.size !== normalizedSteps.length) throw new HarnessPlanValidationError('Plan IDs must be unique.')
   for (const step of normalizedSteps) {
-    if (!step.id.trim() || !step.title.trim() || !step.acceptanceCriteria.length || step.acceptanceCriteria.some(criterion => !criterion.trim())) throw new Error('Each milestone needs an identity, title and acceptance criteria.')
-    if (step.dependsOn.some(id => !byId.has(id))) throw new Error('Unknown dependency.')
-    validateStepEvidenceTools(state, step)
+    if (!step.id.trim() || !step.title.trim() || !step.acceptanceCriteria.length || step.acceptanceCriteria.some(criterion => !criterion.trim())) throw new HarnessPlanValidationError('Each milestone needs an identity, title and acceptance criteria.')
+    if (step.dependsOn.some(id => !byId.has(id))) throw new HarnessPlanValidationError('Unknown dependency.')
+    try {
+      validateStepEvidenceTools(state, step)
+    } catch (error) {
+      if (error instanceof Error) throw new HarnessPlanValidationError(error.message)
+      throw error
+    }
     const previous = state.plan.find(candidate => candidate.id === step.id)
     if (step.answerOnly && (step.requiresVerification || ('childRunId' in step && step.childRunId !== undefined) || previous?.childRunId)) {
-      throw new Error('Answer-only milestones cannot require verification or delegate work.')
+      throw new HarnessPlanValidationError('Answer-only milestones cannot require verification or delegate work.')
     }
   }
   const visited = new Set<string>()
   const visiting = new Set<string>()
   const visit = (id: string) => {
-    if (visiting.has(id)) throw new Error('The plan contains a dependency cycle.')
+    if (visiting.has(id)) throw new HarnessPlanValidationError('The plan contains a dependency cycle.')
     if (visited.has(id)) return
     visiting.add(id)
     for (const dependency of byId.get(id)!.dependsOn) visit(dependency)
@@ -219,7 +234,7 @@ export function replaceHarnessPlan(state: HarnessSnapshot, steps: HarnessPlanInp
     visited.add(id)
   }
   for (const step of normalizedSteps) visit(step.id)
-  if (state.plan.some(step => !byId.has(step.id))) throw new Error('Keep existing milestones; explicitly skip obsolete work with a reason.')
+  if (state.plan.some(step => !byId.has(step.id))) throw new HarnessPlanValidationError('Keep existing milestones; explicitly skip obsolete work with a reason.')
   const next = mutable(state)
   next.plan = normalizedSteps.map(step => {
     const previous = state.plan.find(candidate => candidate.id === step.id)
@@ -228,7 +243,7 @@ export function replaceHarnessPlan(state: HarnessSnapshot, steps: HarnessPlanInp
       && JSON.stringify(previous.evidenceTools) === JSON.stringify(step.evidenceTools)
       && JSON.stringify(previous.acceptanceCriteria) === JSON.stringify(step.acceptanceCriteria)
       && JSON.stringify(previous.dependsOn) === JSON.stringify(step.dependsOn)
-    if (previous?.childRunId && !same) throw new Error('A delegated milestone cannot be revised while attached to a child.')
+    if (previous?.childRunId && !same) throw new HarnessPlanValidationError('A delegated milestone cannot be revised while attached to a child.')
     return same ? { ...previous, evidenceRefs: [...previous.evidenceRefs] } : {
       ...step,
       ...(step.evidenceTools ? { evidenceTools: [...step.evidenceTools] } : {}),
@@ -559,6 +574,8 @@ export function resumeHarness(state: HarnessSnapshot, now: number): HarnessSnaps
   const next = mutable(state)
   next.blocker = undefined
   next.status = 'running'
+  next.stalledContinuations = 0
+  next.lastContinuationProgressRevision = next.progressRevision
   return changed(next, now)
 }
 
@@ -591,15 +608,20 @@ export function waitForHarnessChildren(state: HarnessSnapshot, now: number): Har
   return changed(next, now, false)
 }
 
-export function checkpointHarness(state: HarnessSnapshot, summary: string, now: number): HarnessSnapshot {
+export function checkpointHarness(
+  state: HarnessSnapshot,
+  summary: string,
+  now: number,
+  purpose: HarnessCheckpointPurpose = 'continuation',
+): HarnessSnapshot {
   assertActive(state)
   if (summary.length > 8_000) throw new Error('Keep the working summary under 8,000 characters; store larger outputs as artifacts.')
   const next = mutable(state)
   next.workingSummary = summary
+  if (purpose === 'compaction') return changed(next, now, false)
   next.continuations++
   next.stalledContinuations = state.progressRevision === state.lastContinuationProgressRevision ? state.stalledContinuations + 1 : 0
   next.lastContinuationProgressRevision = state.progressRevision
-  if (next.stalledContinuations >= 2) return blockHarness(next, { kind: 'stuck', question: 'No durable progress after two continuation attempts. User input or a revised approach is required.' }, now)
   return changed(next, now, false)
 }
 

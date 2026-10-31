@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Initial long-running harness recovery slice: separate context-compaction checkpoints from continuation stagnation, provide trusted bounded recovery before durable stuck waits, and return repairable generated-UI and plan-validation feedback.
+
 - Right-size Namespace CI runners, prioritize required checks, preserve exact dependency caching with an opt-in protected local-volume experiment, and add project-aware pre-push typechecking and opt-in compiler/lint/test-selection parity tools.
 
 - Render durable personal-run input requests, persist authenticated approval-resumed tool outcomes, and use one plain-language interruption notice without duplicate copy.

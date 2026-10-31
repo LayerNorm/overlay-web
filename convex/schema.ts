@@ -2888,6 +2888,7 @@ export default defineSchema({
     revision: v.number(),
     metadataJson: v.string(),
     planRevision: v.number(),
+    purpose: v.optional(v.union(v.literal('continuation'), v.literal('compaction'))),
     createdAt: v.number(),
   }).index('by_runId_revision', ['runId', 'revision']),
 })

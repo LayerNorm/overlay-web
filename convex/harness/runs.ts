@@ -13,6 +13,7 @@ import {
   claimHarnessExecution,
   createHarnessSnapshot,
   finishHarness,
+  HarnessPlanValidationError,
   recordHarnessEvidence,
   recordHarnessChildReceipt,
   recordHarnessReceipt,
@@ -190,7 +191,11 @@ const operationValidator = v.union(
   }),
   v.object({ type: v.literal('record_evidence'), evidence: evidenceValidator }),
   v.object({ type: v.literal('record_receipt'), receipt: receiptValidator }),
-  v.object({ type: v.literal('checkpoint'), summary: v.string() }),
+  v.object({
+    type: v.literal('checkpoint'),
+    summary: v.string(),
+    purpose: v.optional(v.union(v.literal('continuation'), v.literal('compaction'))),
+  }),
   v.object({
     type: v.literal('block'),
     blocker: v.object({
@@ -850,7 +855,8 @@ function assertActiveWaitLineage(lineage: LineageEntry[]): void {
 function waitBlockerQuestion(metadata: HarnessMetadata, kind: HarnessWaitRequest['kind']): string {
   const expectedStatus = kind === 'input' ? 'waiting_for_input' : 'waiting_for_approval'
   const blocker = metadata.blocker
-  if (metadata.status !== expectedStatus || !blocker || blocker.kind !== kind) {
+  const matches = blocker?.kind === kind || (kind === 'input' && blocker?.kind === 'stuck')
+  if (metadata.status !== expectedStatus || !blocker || !matches) {
     throw new Error('HARNESS_WAIT_KIND_MISMATCH')
   }
   const question = blocker.question
@@ -1210,7 +1216,7 @@ async function applyReducer(
       }
       return { snapshot: recordHarnessReceipt(current, operation.receipt, now) }
     case 'checkpoint':
-      return { snapshot: checkpointHarness(current, operation.summary, now) }
+      return { snapshot: checkpointHarness(current, operation.summary, now, operation.purpose) }
     case 'block':
       return { snapshot: blockHarness(current, operation.blocker, now) }
     case 'resume':
@@ -1502,7 +1508,7 @@ export const apply = mutation({
       result = await applyReducer(ctx, run, currentState, operation, args.serverSecret, now)
     } catch (error) {
       throw new ConvexError({
-        code: 'HARNESS_OPERATION_REJECTED',
+        code: error instanceof HarnessPlanValidationError ? 'HARNESS_PLAN_VALIDATION' : 'HARNESS_OPERATION_REJECTED',
         message: error instanceof Error ? error.message : 'Harness operation rejected.',
       })
     }
@@ -1581,6 +1587,7 @@ export const apply = mutation({
         revision: next.revision,
         metadataJson: stableJson(metadataFromSnapshot(next)),
         planRevision: next.planRevision,
+        purpose: operation.purpose ?? 'continuation',
         createdAt: now,
       })
     }

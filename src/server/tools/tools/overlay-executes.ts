@@ -108,7 +108,13 @@ export async function executePresentGeneratedUi(
     version: GENERATED_UI_VERSION,
   })
   if (!generatedUi) {
-    return { success: false, error: 'Invalid generated UI payload.' }
+    return {
+      success: false,
+      code: 'tool_validation_failure',
+      error: 'Invalid generated UI payload.',
+      issues: [{ path: 'generatedUi', code: 'normalization_failed', message: 'The payload could not be normalized to an allowed generated UI card.' }],
+      hint: 'Correct the generated UI fields and retry. For a question, ask it in plain text and call harness_report_blocker to create a durable wait.',
+    }
   }
   return {
     success: true,
