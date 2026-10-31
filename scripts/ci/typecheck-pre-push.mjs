@@ -18,7 +18,7 @@ function git(args) {
 }
 const range = args[rangeIndex + 1];
 const changed = git(['diff', '--name-only', '-z', range]).split('\0').filter(Boolean);
-const isSource = file => /\.[cm]?[jt]sx?$/.test(file) && !/\.test\.[cm]?[jt]sx?$/.test(file);
+const isSource = file => /(?:\.[cm]?[jt]sx?|\.json)$/.test(file) && !/\.test\.[cm]?[jt]sx?$/.test(file);
 const rootRelevant = file => /^(?:src|convex|packages)\//.test(file) && (isSource(file) || /(?:^|\/)(?:package(?:-lock)?\.json|tsconfig[^/]*\.json)$/.test(file))
   || /^(?:package(?:-lock)?\.json|tsconfig[^/]*\.json|next\.config\.[cm]?[jt]s|next-env\.d\.ts|\.npmrc)$/.test(file)
   || file === 'overlay-desktop' || file === '.gitmodules'

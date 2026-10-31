@@ -76,7 +76,7 @@ try {
     const inventory = command(tool, ['-p', aligned.config, '--listFilesOnly', '--pretty', 'false']);
     if (inventory.status !== 0) throw new Error(`${tool.name}: project inventory failed: ${inventory.text.slice(0, 1500)}`);
     // Compiler standard libraries differ by version/location; all other reachable files must match.
-    const files = inventory.text.split(/\r?\n/).filter(line => /\.(?:[cm]?tsx?|jsx?)$/.test(line) && !/[/\\](?:typescript|typescript-[^/\\]+)[/\\]lib[/\\]lib\.[^/\\]+\.d\.ts$/.test(line) && !line.startsWith('bundled:///libs/')).map(file => path.relative(root, file)).sort();
+    const files = inventory.text.split(/\r?\n/).filter(line => /\.(?:[cm]?tsx?|jsx?|json)$/.test(line) && !/[/\\](?:typescript|typescript-[^/\\]+)[/\\]lib[/\\]lib\.[^/\\]+\.d\.ts$/.test(line) && !line.startsWith('bundled:///libs/')).map(file => path.relative(root, file)).sort();
     const canonicalFiles = [...new Set(files.map(identity))].sort();
     if (files.length < 100 || !files.some(file => file === '.next/types/validator.ts') || !files.some(file => file.startsWith('convex/'))) throw new Error(`${tool.name}: incomplete project inventory`);
     report.tools[tool.name] = { version: version.stdout.trim(), files: files.length, canonicalFiles: canonicalFiles.length, negativeDiagnostics: diagnostics(negative.text) };

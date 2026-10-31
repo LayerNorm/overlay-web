@@ -25,6 +25,7 @@ try {
  writeFileSync(path.join(dir,'src/app.ts'),'export const x = "uncommitted";');
  assert.match(check(`${base}..HEAD`,false).stderr,/uncommitted/);
  git('restore','src/app.ts');
+ const beforeJson=git('rev-parse','HEAD');writeFileSync(path.join(dir,'src/options.json'),'{"enabled":true}');git('add','.');git('commit','-qm','source JSON');assert.equal(JSON.parse(check(`${beforeJson}..HEAD`).stdout).web,true);
  const beforeTests=git('rev-parse','HEAD');writeFileSync(path.join(dir,'scripts/ci/typecheck-probe.test.mjs'),'export {};');git('add','.');git('commit','-qm','tests');assert.match(check(`${beforeTests}..HEAD`).stdout,/no application/);
  const beforeAdmin=git('rev-parse','HEAD');mkdirSync(path.join(dir,'apps/admin/src'),{recursive:true});writeFileSync(path.join(dir,'apps/admin/src/app.ts'),'export const x = 1;');git('add','.');git('commit','-qm','admin');
  const admin=JSON.parse(check(`${beforeAdmin}..HEAD`).stdout);assert.equal(admin.web,false);assert.equal(admin.admin,true);
