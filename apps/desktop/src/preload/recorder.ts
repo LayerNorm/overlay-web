@@ -19,6 +19,7 @@ if (
     },
     transcribe: async (input: unknown, epoch: number) =>
       ipcRenderer.invoke('recorder:transcribe', await prepareTranscriptionAudio(input), epoch),
+    pointer: (interactive: boolean) => ipcRenderer.send('recorder:pointer', interactive),
     ready: (epoch: number, firstAudioMs: number) =>
       ipcRenderer.send('recorder:ready', epoch, firstAudioMs),
     failed: (epoch: number) => ipcRenderer.send('recorder:failed', epoch),

@@ -25,6 +25,7 @@ function state(next, message, detail = '') {
   buttons.retry.hidden = next !== 'error' || !audio
   buttons.copy.hidden = next !== 'ready'
 }
+const bins = new Uint8Array(128)
 let levels = Array(9).fill(2),
   last = 0
 function draw(now) {
@@ -35,12 +36,14 @@ function draw(now) {
   }
   ctx.setTransform(ratio, 0, 0, ratio, 0, 0)
   ctx.clearRect(0, 0, 42, 22)
-  const bins = new Uint8Array(128)
+  bins.fill(0)
   capture?.analyser?.getByteFrequencyData(bins)
   const dt = Math.min(50, now - (last || now))
   last = now
   for (let i = 0; i < 9; i++) {
-    const energy = Math.max(...bins.slice(2 + i * 3, 5 + i * 3)) / 255
+    let peak = 0
+    for (let bin = 2 + i * 3; bin < 5 + i * 3; bin++) peak = Math.max(peak, bins[bin])
+    const energy = peak / 255
     const target = phase === 'listening' ? 2 + Math.pow(energy, 1.4) * 18 : 2
     levels[i] += (target - levels[i]) * (1 - Math.exp(-dt / (target > levels[i] ? 30 : 110)))
     const height = reducedMotion.matches ? (phase === 'listening' ? 6 : 2) : levels[i]
@@ -49,7 +52,7 @@ function draw(now) {
     ctx.roundRect(i * 4.7, (22 - height) / 2, 2.3, height, 1.2)
     ctx.fill()
   }
-  frame = requestAnimationFrame(draw)
+  if (phase === 'opening' || phase === 'listening') frame = requestAnimationFrame(draw)
 }
 function release() {
   ++epoch
@@ -170,9 +173,19 @@ buttons.copy.onclick = async () => {
     await window.recorder.copy(recordingEpoch)
     state('copied', 'Copied')
     audio = undefined
+    const started = epoch
+    setTimeout(() => {
+      if (started === epoch) window.recorder.cancel()
+    }, 550)
   } catch {
-    state('error', 'Copy failed', 'Please try again.')
+    state('ready', 'Ready to copy', 'Copy failed. Please try again.')
   }
 }
 // No stream is opened until the native shortcut is activated.
 void prepareAudio().catch(() => {})
+
+// Transparent padding passes pointer input through; only visible controls intercept clicks.
+for (const element of [document.querySelector('.pill'), notice]) {
+  element.addEventListener('mouseenter', () => window.recorder.pointer(true))
+  element.addEventListener('mouseleave', () => window.recorder.pointer(false))
+}

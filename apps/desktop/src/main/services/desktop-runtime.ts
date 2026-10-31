@@ -171,7 +171,8 @@ function startRecording(target: 'system' | 'composer', selectedModel: string): v
     void hudReady.then(() => {
       if (recording && sessionEpoch === epoch) {
         const area = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea
-        hud?.setPosition(Math.round(area.x + (area.width - 360) / 2), area.y + area.height - 142)
+        hud?.setPosition(Math.round(area.x + (area.width - 360) / 2), area.y + area.height - 182)
+        hud?.setIgnoreMouseEvents(true, { forward: true })
         hud?.showInactive()
         hud?.webContents.send('recorder:start', selectedModel, epoch, inputDeviceId)
       }
@@ -590,7 +591,7 @@ export function registerDesktopRuntime(): void {
   }
   hud = new BrowserWindow({
     width: 360,
-    height: 136,
+    height: 176,
     focusable: false,
     hasShadow: false,
     frame: false,
@@ -606,6 +607,7 @@ export function registerDesktopRuntime(): void {
       nodeIntegration: false
     }
   })
+  hud.setIgnoreMouseEvents(true, { forward: true })
   hud.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
   hudReady = hud.loadFile(join(__dirname, '../renderer/recorder.html'))
   hud.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
@@ -639,6 +641,13 @@ export function registerDesktopRuntime(): void {
     if ((!processing && phase !== 'error') || recordingEpoch !== sessionEpoch || retainedResult)
       throw new Error('Dictation was cancelled.')
     const epoch = sessionEpoch
+    if (phase === 'error') {
+      takeAdmission =
+        methodSchemas['transcription.transcribe'].parse(input).model === 'cloud'
+          ? authenticated()
+          : Promise.resolve()
+      void takeAdmission.catch(() => {})
+    }
     clearTimeout(retainedTimer)
     processing = true
     phase = 'processing'
@@ -680,6 +689,10 @@ export function registerDesktopRuntime(): void {
     event.sender === hud.webContents &&
     event.senderFrame === event.sender.mainFrame &&
     event.senderFrame?.url.startsWith('file:') === true
+  ipcMain.on('recorder:pointer', (event, interactive) => {
+    if (fromHud(event) && typeof interactive === 'boolean')
+      hud?.setIgnoreMouseEvents(!interactive, { forward: true })
+  })
   ipcMain.on('recorder:cancel', (event) => {
     if (fromHud(event)) cancelRecording()
   })

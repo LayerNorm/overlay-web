@@ -13,8 +13,9 @@ export async function deliverDictation<T>(
   }
 ): Promise<'inserted' | 'copy'> {
   if (!text.trim() || !io.active() || target === null) return 'copy'
+  if ((await io.currentTarget()) !== target || !io.active()) return 'copy'
   const original = io.snapshot()
-  if (original === null || (await io.currentTarget()) !== target || !io.active()) return 'copy'
+  if (original === null) return 'copy'
   io.write(text)
   try {
     // Recheck after the asynchronous target lookup, before injecting a key.
