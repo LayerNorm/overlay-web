@@ -83,6 +83,8 @@ export type OptimisticMessage = RoomMessageRecord
 export type RoomSendResult = {
   accepted: boolean
   safetyRejected?: boolean
+  notSubmitted?: boolean
+  scopeChanged?: boolean
   error?: unknown
 }
 
@@ -106,7 +108,28 @@ export function useThreadPanel({
 }) {
   const [threadRootId, setThreadRootId] = useState<string | null>(null)
   const [threadFollowing, setThreadFollowing] = useState(false)
-  const [threadInput, setThreadInput] = useState('')
+  const [threadInput, setThreadInputState] = useState('')
+  const threadInputRef = useRef(threadInput)
+  const threadScopeRef = useRef({ conversationId, threadRootId })
+  useLayoutEffect(() => {
+    threadScopeRef.current = { conversationId, threadRootId }
+  }, [conversationId, threadRootId])
+  const setThreadInput = useCallback((value: string) => {
+    threadInputRef.current = value
+    setThreadInputState(value)
+  }, [])
+  const clearSubmittedThreadInput = useCallback((scope: {
+    conversationId: string
+    threadRootMessageId: string
+    text: string
+  }) => {
+    const current = threadScopeRef.current
+    if (
+      current.conversationId === scope.conversationId
+      && current.threadRootId === scope.threadRootMessageId
+      && threadInputRef.current === scope.text
+    ) setThreadInput('')
+  }, [setThreadInput])
 
   useEffect(() => {
     if (!threadRootId) {
@@ -146,6 +169,7 @@ export function useThreadPanel({
     threadFollowing,
     threadInput,
     setThreadInput,
+    clearSubmittedThreadInput,
     toggleThreadFollow,
     openThread,
   }
@@ -1211,7 +1235,18 @@ export function useSendMessage({
     parts?: RoomMessageRecord['parts']
     threadRootMessageId?: string
   }): Promise<RoomSendResult | null> {
-    if (canSendToThread?.(threadRootMessageId) === false) return { accepted: false }
+    if (canSendToThread?.(threadRootMessageId) === false) {
+      const status = threadRootMessageId && threadRootMessageId === currentThreadRootRef.current
+        ? selectedThreadSafetyStatus
+        : nativeThreadSafetyStatusValue
+      return {
+        accepted: false,
+        safetyRejected: status === 'retired' || status === 'unavailable',
+        error: status === 'retired' || status === 'unavailable'
+          ? { code: status === 'retired' ? 'native_runner_retired' : 'native_thread_compatibility_unavailable' }
+          : undefined,
+      }
+    }
     if (!text && !parts?.length) return { accepted: false }
     const preflightKey = `${conversationId}:${threadRootMessageId ?? ''}`
     if (pendingPreflightsRef.current.has(preflightKey)) return { accepted: false }
@@ -1248,17 +1283,17 @@ export function useSendMessage({
     const text = content.trim()
     const parts = options?.parts ?? options?.existing?.parts
     const preflightResult = await preflightRoomMessage({ text, parts, threadRootMessageId })
-    if (preflightResult) return preflightResult
+    if (preflightResult) return { ...preflightResult, notSubmitted: true }
     if (
       conversationIdRef.current !== conversationId
       || (options?.requireCurrentThread && threadRootMessageId !== currentThreadRootRef.current)
-    ) return { accepted: false }
+    ) return { accepted: false, scopeChanged: true }
     let ownsThreadRename = false
     const clientNonce = options?.existing?.clientNonce ?? crypto.randomUUID()
     const turnId = options?.existing?.turnId ?? `human_${crypto.randomUUID()}`
     const optimisticId = `optimistic_${clientNonce}`
-    const sendKey = `${conversationId}:${threadRootMessageId ?? ''}:${clientNonce}`
-    if (inFlightSendsRef.current.has(sendKey)) return { accepted: false }
+    const sendKey = `${conversationId}:${threadRootMessageId ?? ''}`
+    if (inFlightSendsRef.current.has(sendKey)) return { accepted: false, notSubmitted: true }
     inFlightSendsRef.current.add(sendKey)
 
     setMessages((current) => [
@@ -1346,8 +1381,12 @@ export function useSendMessage({
     pendingCollaborationSafetyCheckRef.current = conversationId
     void (async () => {
       try {
+        if (canSendToThread?.() !== true) {
+          pendingCollaborationSafetyCheckRef.current = null
+          return
+        }
         const admission = await ensureCanSendToThread()
-        if (!admission.accepted) {
+        if (!admission.accepted || conversationIdRef.current !== conversationId) {
           pendingCollaborationSafetyCheckRef.current = null
           return
         }
@@ -1367,7 +1406,10 @@ export function useSendMessage({
         }
         pendingCollaborationMessageSentRef.current = conversationId
         const result = await sendMessage(pending.content)
-        if (!result.accepted && (result.safetyRejected || isNativeThreadSafetyError(result.error))) {
+        if (
+          !result.accepted
+          && (result.notSubmitted || result.safetyRejected || result.scopeChanged || isNativeThreadSafetyError(result.error))
+        ) {
           restorePendingCollaborationMessage(pending)
           pendingCollaborationMessageSentRef.current = null
           pendingCollaborationSafetyCheckRef.current = null
@@ -1450,6 +1492,24 @@ export function useRoomComposer({
     addImages,
     handlePaste,
   } = useChatAttachments()
+  const latestDraftStateRef = useRef({
+    conversationId,
+    activeWorkspaceId,
+    attachedImages,
+    pendingChatDocuments,
+    replyContext,
+    mentions,
+  })
+  useLayoutEffect(() => {
+    latestDraftStateRef.current = {
+      conversationId,
+      activeWorkspaceId,
+      attachedImages,
+      pendingChatDocuments,
+      replyContext,
+      mentions,
+    }
+  }, [activeWorkspaceId, attachedImages, conversationId, mentions, pendingChatDocuments, replyContext])
 
   // Restore a half-written message when the room reopens. Storage failures are
   // absorbed by the draft module, so private browsing simply starts empty.
@@ -1501,10 +1561,7 @@ export function useRoomComposer({
     const replySnippet = replyContext?.snippet
 
     const submittedInput = inputRef.current ?? input
-    const submittedImages = attachedImages.map((image) => `${image.name}:${image.dataUrl}`).join('|')
-    const submittedDocuments = pendingChatDocuments.map((document) => `${document.clientId}:${document.status}`).join('|')
-    const submittedReply = JSON.stringify(replyContext)
-    const submittedMentions = JSON.stringify(mentions)
+    const submittedState = latestDraftStateRef.current
     const result = await sendMessage(`${text}${documentMarker}`, {
       existing: { turnId, clientNonce: crypto.randomUUID(), createdAt: Date.now(), parts: payload.partsForModel },
       parts: payload.partsForModel,
@@ -1512,12 +1569,15 @@ export function useRoomComposer({
       ...(replyContext ? { reply: { replyToTurnId: replyContext.replyToTurnId, snippet: replySnippet ?? '' } } : {}),
     })
     if (!result.accepted) return
+    const latest = latestDraftStateRef.current
     const draftStillMatches = sessionIdRef.current === conversationId
-      && (inputRef.current ?? input) === submittedInput
-      && attachedImages.map((image) => `${image.name}:${image.dataUrl}`).join('|') === submittedImages
-      && pendingChatDocuments.map((document) => `${document.clientId}:${document.status}`).join('|') === submittedDocuments
-      && JSON.stringify(replyContext) === submittedReply
-      && JSON.stringify(mentions) === submittedMentions
+      && latest.conversationId === conversationId
+      && latest.activeWorkspaceId === activeWorkspaceId
+      && inputRef.current === submittedInput
+      && latest.attachedImages === submittedState.attachedImages
+      && latest.pendingChatDocuments === submittedState.pendingChatDocuments
+      && latest.replyContext === submittedState.replyContext
+      && latest.mentions === submittedState.mentions
     if (!draftStillMatches) return
     setInput('')
     composerRef.current?.clear()
@@ -2249,6 +2309,9 @@ export function useDirectMessageRoom({
     workspaceId: activeWorkspaceId,
     threadRootMessageId: thread.threadRootId ?? undefined,
   })
+  const effectiveSelectedThreadSafety = nativeThreadSafety.readOnly
+    ? nativeThreadSafety
+    : selectedThreadSafety
   const checkMainRoomWritable = nativeThreadSafety.checkWritable
   const checkSelectedThreadWritable = selectedThreadSafety.checkWritable
   const canSendToThread = useCallback((root?: string) => !nativeThreadSafety.readOnly
@@ -2398,9 +2461,26 @@ export function useDirectMessageRoom({
     messageCount: transcript.messages.length,
   })
   const buildWorkspaceHref = useWorkspaceHref()
+  const handoffToRoomRoot = async (handoff: string) => {
+    const mainAdmission = await nativeThreadSafety.checkWritable()
+    if (!mainAdmission.accepted || !nativeThreadSafety.isCurrentScope() || !selectedThreadSafety.isCurrentScope()) return
+    const rootDraftScope = { workspaceId: activeWorkspaceId, conversationId }
+    const existingRootDraft = composer.inputRef.current || readDraft(rootDraftScope)
+    const separator = existingRootDraft.trim() ? '\n\n' : ''
+    const availableHandoffLength = Math.max(0, 20_000 - existingRootDraft.length - separator.length)
+    const combinedDraft = `${existingRootDraft}${availableHandoffLength > 0
+      ? `${separator}${handoff.slice(0, availableHandoffLength)}`
+      : ''}`
+    writeDraft(rootDraftScope, combinedDraft)
+    composer.setInput(combinedDraft)
+    thread.setThreadRootId(null)
+    thread.setThreadInput('')
+    setRoomPanel(null)
+    composer.composerRef.current?.focus()
+  }
   const startNewNativeThread = async () => {
     const rootId = thread.threadRootId
-    const safety = rootId ? selectedThreadSafety : nativeThreadSafety
+    const safety = rootId ? effectiveSelectedThreadSafety : nativeThreadSafety
     if (!safety.readOnly) {
       thread.setThreadRootId(null)
       thread.setThreadInput('')
@@ -2422,21 +2502,8 @@ export function useDirectMessageRoom({
       ...(root ? { threadRootMessageId: root.id } : {}),
       messages: handoffMessages,
     })
-    if (root) {
-      const rootDraftScope = { workspaceId: activeWorkspaceId, conversationId }
-      const currentRootDraft = composer.inputRef.current ?? composer.input
-      const existingRootDraft = currentRootDraft || readDraft(rootDraftScope)
-      const separator = existingRootDraft.trim() ? '\n\n' : ''
-      const availableHandoffLength = Math.max(0, 20_000 - existingRootDraft.length - separator.length)
-      const combinedDraft = `${existingRootDraft}${availableHandoffLength > 0
-        ? `${separator}${handoff.slice(0, availableHandoffLength)}`
-        : ''}`
-      writeDraft(rootDraftScope, combinedDraft)
-      composer.setInput(combinedDraft)
-      thread.setThreadRootId(null)
-      thread.setThreadInput('')
-      setRoomPanel(null)
-      composer.composerRef.current?.focus()
+    if (root && rootId && !nativeThreadSafety.readOnly) {
+      await handoffToRoomRoot(handoff)
       return
     }
     const agentId = nativeThreadSafety.agentId
@@ -2539,7 +2606,7 @@ export function useDirectMessageRoom({
     roomActions,
     messageCtx,
     nativeThreadSafety,
-    selectedThreadSafety: nativeThreadSafety.readOnly ? nativeThreadSafety : selectedThreadSafety,
+    selectedThreadSafety: effectiveSelectedThreadSafety,
     startNewNativeThread,
     isReadOnlyMessage,
   }

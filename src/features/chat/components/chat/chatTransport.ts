@@ -229,6 +229,8 @@ export function startActTextStream(params: StartActTextStreamParams) {
 }
 
 export function startActRetryStream(params: StartActTextStreamParams) {
+  const retryOwner = {}
+  retryOwners.set(params.targetRuntime, retryOwner)
   const actMessagesBeforeRetry = [...params.targetRuntime.actChat.messages]
   const askMessagesBeforeRetry = [...params.targetRuntime.askChats[0].messages]
   const actMessagesAfterRetry = stripAssistantAfterUserTurn(actMessagesBeforeRetry, params.turnId)
@@ -239,12 +241,15 @@ export function startActRetryStream(params: StartActTextStreamParams) {
   const restoreBeforeRetry = (error: unknown) => {
     if (!isNativeThreadSafetyError(error)) return
     if (params.isRuntimeCurrent?.(params.chatId, params.targetRuntime) === false) return
+    if (retryOwners.get(params.targetRuntime) !== retryOwner) return
+    if (params.targetRuntime.actChat.messages !== retryActMessages) return
+    if (params.targetRuntime.askChats[0].messages !== retryAskMessages) return
     params.targetRuntime.actChat.messages = actMessagesBeforeRetry
     params.targetRuntime.askChats[0].messages = askMessagesBeforeRetry
   }
 
   /* eslint-disable @typescript-eslint/no-explicit-any -- AI SDK UIMessage payload */
-  return params.targetRuntime.actChat
+  const completion = params.targetRuntime.actChat
     .sendMessage(
       {
         role: 'user',
@@ -261,7 +266,10 @@ export function startActRetryStream(params: StartActTextStreamParams) {
         },
       },
     )
-    .then(() => {
+  // The parts-based SDK send synchronously replaces the retried user message.
+  const retryActMessages = params.targetRuntime.actChat.messages
+  const retryAskMessages = params.targetRuntime.askChats[0].messages
+  return completion.then(() => {
       const error = resolvedChatError(params.targetRuntime)
       if (!error) {
         finishTextTurn(params)
@@ -276,6 +284,8 @@ export function startActRetryStream(params: StartActTextStreamParams) {
     })
   /* eslint-enable @typescript-eslint/no-explicit-any */
 }
+
+const retryOwners = new WeakMap<ConversationRuntime, object>()
 
 function resolvedChatError(runtime: ConversationRuntime): unknown {
   const chat = runtime.actChat as unknown as { error?: unknown; status?: string }

@@ -20,9 +20,12 @@ export function useNativeThreadSafety({
   threadRootMessageId?: string
 }) {
   const scope = JSON.stringify([workspaceId, conversationId, threadRootMessageId])
-  const activeScope = useRef(scope)
+  const activeScope = useRef<string | null>(scope)
   useLayoutEffect(() => {
     activeScope.current = scope
+    return () => {
+      if (activeScope.current === scope) activeScope.current = null
+    }
   }, [scope])
   const request = useRef(0)
   const writeCheck = useRef<{ scope: string } | null>(null)

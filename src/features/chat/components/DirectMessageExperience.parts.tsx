@@ -711,7 +711,13 @@ export function RoomSidePanel({
             threadRootMessageId: threadRoot.id,
             requireCurrentThread: true,
           }).then((result) => {
-            if (result.accepted && threadInput === text) setThreadInput('')
+            if (result.accepted) {
+              thread.clearSubmittedThreadInput({
+                conversationId: ctx.conversationId,
+                threadRootMessageId: threadRoot.id,
+                text,
+              })
+            }
           })
         }}
         readOnlyNotice={readOnlyNotice}

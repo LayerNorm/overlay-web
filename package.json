@@ -330,6 +330,7 @@
     "mintlify": "^4.2.816",
     "playwright": "^1.61.1",
     "postcss": "8.5.26",
+    "react-test-renderer": "19.2.8",
     "tailwindcss": "^4.3.3",
     "typescript": "^5",
     "vitest": "^4.1.11",

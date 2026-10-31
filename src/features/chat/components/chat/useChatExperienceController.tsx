@@ -21,6 +21,7 @@ import { useChatListController } from './useChatListController'
 import { useChatModelSelectionController } from './useChatModelSelectionController'
 import { useChatRetryController } from './useChatRetryController'
 import { useNativeThreadSafety } from './useNativeThreadSafety'
+import { saveGeneratedUiChange } from './generated-ui-mutation'
 import { useChatRouteController } from './useChatRouteController'
 import {
   TEMPORARY_CHAT_ID,
@@ -589,35 +590,11 @@ export function useChatExperienceController({
     workspaceId: activeWorkspaceId,
   })
   const isRuntimeCurrent = useCallback((chatId: string, runtime: ConversationRuntime) => (
-    activeChatIdRef.current === chatId && runtimesRef.current.get(chatId) === runtime
-  ), [activeChatIdRef, runtimesRef])
+    runtimesRef.current.get(chatId) === runtime
+  ), [runtimesRef])
 
   const handleGeneratedUiChange = useCallback(async (messageId: string, partId: string, data: GeneratedUiData) => {
     if (nativeThreadSafety.readOnly) return
-    const patchMessages = (messages: UIMessage[]): { changed: boolean; messages: UIMessage[] } => {
-      let changed = false
-      const nextMessages = messages.map((message) => {
-        const current = message as unknown as { id?: string; parts?: Array<Record<string, unknown>> }
-        if (current.id !== messageId || !Array.isArray(current.parts)) return message
-        let partsChanged = false
-        const nextParts = current.parts.map((part) => {
-          if (
-            part.type === 'data' &&
-            part.id === partId &&
-            part.dataType === 'overlay.generated_ui'
-          ) {
-            partsChanged = true
-            return { ...part, data }
-          }
-          return part
-        })
-        if (!partsChanged) return message
-        changed = true
-        return { ...message, parts: nextParts } as UIMessage
-      })
-      return { changed, messages: changed ? nextMessages : messages }
-    }
-
     const targetChatId = isTemporaryChatRef.current ? TEMPORARY_CHAT_ID : activeChatIdRef.current
     const runtime = isTemporaryChatRef.current
       ? emptyRuntimeRef.current
@@ -626,35 +603,18 @@ export function useChatExperienceController({
         : null
     if (!runtime) return
 
-    if (!isTemporaryChatRef.current && targetChatId && targetChatId !== TEMPORARY_CHAT_ID) {
-      try {
-        const res = await overlayAppClient.conversations.updateMessageUiPartResponse({
-          conversationId: targetChatId,
-          messageId,
-          partId,
-          data,
-        })
-        if (!res.ok) {
-          const payload = await res.json().catch(() => null) as { error?: string } | null
-          toast.error(payload?.error || 'Could not save draft edits.')
-          return
-        }
-      } catch {
-        toast.error('Could not save draft edits.')
-        return
-      }
-    }
-
     let changed = false
-    const actPatch = patchMessages(runtime.actChat.messages as UIMessage[])
-    if (actPatch.changed) {
-      runtime.actChat.messages = actPatch.messages as never
-      changed = true
-    }
-    const askPatch = patchMessages(runtime.askChats[0].messages as UIMessage[])
-    if (askPatch.changed) {
-      runtime.askChats[0].messages = askPatch.messages as never
-      changed = true
+    try {
+      changed = await saveGeneratedUiChange({
+        conversationId: targetChatId === TEMPORARY_CHAT_ID ? null : targetChatId,
+        runtime, messageId, partId, data,
+        isCurrent: () => targetChatId === TEMPORARY_CHAT_ID
+          ? emptyRuntimeRef.current === runtime
+          : Boolean(targetChatId && runtimesRef.current.get(targetChatId) === runtime),
+      })
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not save draft edits.')
+      return
     }
     if (changed) {
       if (targetChatId === (isTemporaryChatRef.current ? TEMPORARY_CHAT_ID : activeChatIdRef.current)) {

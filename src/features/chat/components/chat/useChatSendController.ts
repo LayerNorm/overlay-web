@@ -3,6 +3,8 @@ import { useAsyncSessions } from '@/components/providers/async-sessions-store'
 
 import {
   useCallback,
+  useLayoutEffect,
+  useMemo,
   useRef,
   type Dispatch,
   type MutableRefObject,
@@ -214,6 +216,12 @@ export function useChatSendController({
   videoSubMode: VideoSubMode
 }) {
   const preflightInFlight = useRef(false)
+  const composerState = useMemo(() => ({ attachedImages, pendingChatDocuments, replyContext, mentions }),
+    [attachedImages, pendingChatDocuments, replyContext, mentions])
+  const latestComposerStateRef = useRef(composerState)
+  useLayoutEffect(() => {
+    latestComposerStateRef.current = composerState
+  }, [composerState])
   const isStreamChatActive = useCallback((
     chatId: string,
     temporaryChatSnapshot: boolean,
@@ -340,6 +348,8 @@ export function useChatSendController({
       return
     }
     const replyCtxSnapshot = replyContext
+    const submittedInput = inputRef.current
+    const submittedComposerState = latestComposerStateRef.current
     const snapshot = buildSubmittedComposerSnapshot({
       selectedModels,
       selectedActModel,
@@ -353,7 +363,7 @@ export function useChatSendController({
       mode,
       selectedToolIds,
       memoryEnabled,
-      text: inputRef.current.trim(),
+      text: submittedInput.trim(),
     })
     const clearSubmittedComposer = () => {
       textareaRef.current?.clear()
@@ -403,6 +413,8 @@ export function useChatSendController({
       || !isCurrentScope()
       || activeChatIdRef.current !== originalChatId
       || isTemporaryChatRef.current !== originalTemporary
+      || inputRef.current !== submittedInput
+      || latestComposerStateRef.current !== submittedComposerState
     ) return
 
     posthog.capture('chat_message_sent', {
