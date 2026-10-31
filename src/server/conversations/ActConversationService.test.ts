@@ -30,6 +30,7 @@ function repository(overrides: Partial<ActConversationRepository> = {}): ActConv
   return {
     createConversation: () => unexpected('createConversation'),
     getConversationById: () => unexpected('getConversationById'),
+    getNativeThreadCompatibility: () => unexpected('getNativeThreadCompatibility'),
     listConversations: () => unexpected('listConversations'),
     listConversationsByProject: () => unexpected('listConversationsByProject'),
     getRecentMessages: () => unexpected('getRecentMessages'),

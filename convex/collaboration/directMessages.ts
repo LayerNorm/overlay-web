@@ -10,6 +10,7 @@ import { recordConversationEvent } from './events'
 import { conversationListVersion } from '../lib/conversationListVersion'
 import { resolveConversationActivityState } from '../../src/shared/chat/conversation-activity-state'
 import { assertNativeHarnessRun, assertSupportedAgentExecution, nativeRunRetiredError } from '../../src/shared/agents/native-run-retirement'
+import { assertNativeThreadWritable } from '../lib/nativeThreadCompatibility'
 import { agentMemoryOwnerId } from '../../src/shared/agents/agent-memory'
 import { stripTextualToolCalls, stripTextualToolCallsFromParts } from '../../src/shared/ai/textual-tool-calls'
 import { resolveIdentityDisplayName, versionedIdentityUrl } from '../../src/shared/workspaces/identity-resolution'
@@ -577,12 +578,16 @@ export const addMessage = mutation({
     if (args.threadRootMessageId) {
       await getMessageForThread(ctx, args.conversationId, args.threadRootMessageId)
     }
+    await assertNativeThreadWritable(ctx, access.conversation, args.threadRootMessageId)
     if (args.clientNonce) {
       const existing = await ctx.db.query('conversationMessages')
         .withIndex('by_conversationId', (q) => q.eq('conversationId', args.conversationId))
         .collect()
       const match = existing.find((message) => message.clientNonce === args.clientNonce)
-      if (match) return match._id
+      if (match) {
+        await assertNativeThreadWritable(ctx, access.conversation, match.threadRootMessageId ?? match._id)
+        return match._id
+      }
     }
     const now = Date.now()
     const messageId = await ctx.db.insert('conversationMessages', {
@@ -638,17 +643,20 @@ export const addAgentMessage = mutation({
     serverSecret: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    await requireAgentAuthor(ctx, args)
+    const access = await requireAgentAuthor(ctx, args)
     if (!args.messagePurpose) throw nativeRunRetiredError()
     if (args.threadRootMessageId) {
       await getMessageForThread(ctx, args.conversationId, args.threadRootMessageId)
     }
+    await assertNativeThreadWritable(ctx, access.conversation, args.threadRootMessageId)
     const existing = await ctx.db.query('conversationMessages')
       .withIndex('by_conversationId', (q) => q.eq('conversationId', args.conversationId))
       .collect()
     const match = existing.find((message) => message.clientNonce === args.clientNonce)
-    if (match) return match._id
-
+    if (match) {
+      await assertNativeThreadWritable(ctx, access.conversation, match.threadRootMessageId ?? match._id)
+      return match._id
+    }
     const now = Date.now()
     const messageId = await ctx.db.insert('conversationMessages', {
       conversationId: args.conversationId,
@@ -916,8 +924,24 @@ export async function startAgentTurnInTransaction(
   ctx: Pick<MutationCtx, 'db'>,
   args: StartAgentTurnInTransactionArgs,
 ) {
-  await requireAgentAuthor(ctx, args)
+  const access = await requireAgentAuthor(ctx, args)
   assertNativeHarnessRun({ runner: 'workflow', executionEngine: args.executionEngine })
+  const trigger = await ctx.db.get(args.userMessageId)
+  if (!trigger || trigger.conversationId !== args.conversationId || trigger.deletedAt) {
+    throw new Error('MESSAGE_NOT_FOUND')
+  }
+  await assertNativeThreadWritable(ctx, access.conversation, trigger.threadRootMessageId ?? trigger._id)
+  if (args.threadRootMessageId) {
+    await getMessageForThread(ctx, args.conversationId, args.threadRootMessageId)
+    await assertNativeThreadWritable(ctx, access.conversation, args.threadRootMessageId)
+  }
+  const existingMessages = await ctx.db.query('conversationMessages')
+    .withIndex('by_conversationId', q => q.eq('conversationId', args.conversationId))
+    .collect()
+  const existingMessage = existingMessages.find(message => message.clientNonce === args.clientNonce)
+  if (existingMessage) {
+    await assertNativeThreadWritable(ctx, access.conversation, existingMessage.threadRootMessageId ?? existingMessage._id)
+  }
   const [{ messageId, resumed }, existingRun] = await Promise.all([
     openAgentMessageRow(ctx as MutationCtx, args),
     ctx.db.query('conversationAgentRuns')
@@ -1009,7 +1033,20 @@ export const recordAgentStartFailure = mutation({
     serverSecret: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    await requireAgentAuthor(ctx, args)
+    const access = await requireAgentAuthor(ctx, args)
+    if (args.threadRootMessageId) {
+      await getMessageForThread(ctx, args.conversationId, args.threadRootMessageId)
+      await assertNativeThreadWritable(ctx, access.conversation, args.threadRootMessageId)
+    } else {
+      await assertNativeThreadWritable(ctx, access.conversation)
+    }
+    const existingMessages = await ctx.db.query('conversationMessages')
+      .withIndex('by_conversationId', q => q.eq('conversationId', args.conversationId))
+      .collect()
+    const existingMessage = existingMessages.find(message => message.clientNonce === args.clientNonce)
+    if (existingMessage) {
+      await assertNativeThreadWritable(ctx, access.conversation, existingMessage.threadRootMessageId ?? existingMessage._id)
+    }
     const { messageId } = await openAgentMessageRow(ctx, args)
     const message = await ctx.db.get(messageId)
     if (message?.status !== 'generating') return messageId
@@ -2142,6 +2179,7 @@ export const editMessage = mutation({
       || message.authorPrincipalId !== access.actor.principalId
       || message.deletedAt
     ) return false
+    await assertNativeThreadWritable(ctx, access.conversation, message.threadRootMessageId ?? message._id)
     const hydrated = await hydrateRemoteMessage(ctx, message)
     const parts: NonNullable<Doc<'conversationMessages'>['parts']> = [
       { type: 'text', text: content },
@@ -2150,6 +2188,7 @@ export const editMessage = mutation({
     const textPatch = message.remoteTextStored
       ? await prepareRemoteMessageText(ctx, message, { content, parts })
       : { content, parts }
+    await assertNativeThreadWritable(ctx, access.conversation, message.threadRootMessageId ?? message._id)
     const now = Date.now()
     await ctx.db.patch(message._id, {
       content: textPatch.content,

@@ -1416,6 +1416,7 @@ export default defineSchema({
   })
     .index('by_conversationId_createdAt', ['conversationId', 'createdAt'])
     .index('by_conversationId_status_updatedAt', ['conversationId', 'status', 'updatedAt'])
+    .index('by_conversationId_runner_executionEngine', ['conversationId', 'runner', 'executionEngine'])
     .index('by_userId_createdAt', ['userId', 'createdAt'])
     .index('by_environmentId_createdAt', ['environmentId', 'createdAt'])
     .index('by_agentId_status', ['agentId', 'status'])

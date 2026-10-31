@@ -3,6 +3,7 @@ import type { Doc } from '../_generated/dataModel'
 import { requireConversationAccess } from '../collaboration/directMessages'
 import { validateServerSecret } from '../lib/auth'
 import { getReadableRow } from '../lib/resourceScope'
+import { assertNativeThreadWritable } from '../lib/nativeThreadCompatibility'
 import { isHarnessDeliveryConversation, validateNativeHarnessDelivery } from './nativeDelivery'
 import {
   admitHarnessChild,
@@ -1384,6 +1385,20 @@ export const admit = mutation({
     const delivery = admission.deliveryAgentRunId
       ? await validateHarnessDeliveryAdmission(ctx, admission, source, serverSecret)
       : undefined
+    if ('conversationId' in source && typeof source.conversationId === 'string') {
+      const conversationId = ctx.db.normalizeId('conversations', source.conversationId)
+      const conversation = conversationId ? await ctx.db.get(conversationId) : null
+      if (!conversation) throw new Error('HARNESS_DELIVERY_SOURCE_DENIED')
+      const trigger = delivery ? await ctx.db.get(delivery.userMessageId) : null
+      if (delivery && (!trigger || trigger.conversationId !== conversation._id || trigger.deletedAt)) {
+        throw new Error('HARNESS_DELIVERY_TARGET_DENIED')
+      }
+      await assertNativeThreadWritable(
+        ctx,
+        conversation,
+        trigger?.threadRootMessageId ?? trigger?._id,
+      )
+    }
     const now = Date.now()
     const snapshot = createHarnessSnapshot({
       runId: admission.runId,

@@ -23,6 +23,7 @@ import type { Doc, Id } from '../../../convex/_generated/dataModel'
 import type {
   AgentRun,
 } from '@/shared/agents/agent-run'
+import type { NativeThreadCompatibility } from '@/shared/agents/native-run-retirement'
 
 export class ConvexActConversationRepository implements ActConversationRepository {
   private get serverSecret(): string {
@@ -62,6 +63,20 @@ export class ConvexActConversationRepository implements ActConversationRepositor
       ...args,
       serverSecret: this.serverSecret,
     })
+  }
+
+  async getNativeThreadCompatibility(args: {
+    conversationId: ConversationId
+    threadRootMessageId?: string
+    userId: string
+    workspaceId?: string
+  }) {
+    const compatibility = await convex.query<NativeThreadCompatibility | null>('chat/conversations:getNativeThreadCompatibility', {
+      ...args,
+      serverSecret: this.serverSecret,
+    })
+    if (!compatibility) throw new Error('Native thread compatibility query returned no result')
+    return compatibility
   }
 
   async listConversations(args: {

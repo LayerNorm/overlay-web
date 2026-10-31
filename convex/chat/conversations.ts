@@ -14,6 +14,7 @@ import { conversationListVersion } from '../lib/conversationListVersion'
 import { deleteChunksForSource } from '../knowledge/knowledge'
 import { INTERRUPTED_RESPONSE_NOTICE } from '../../src/shared/chat/agent-assistant-text'
 import { assertNativeHarnessRun, assertSupportedAgentExecution } from '../../src/shared/agents/native-run-retirement'
+import { assertNativeThreadWritable, nativeThreadCompatibility } from '../lib/nativeThreadCompatibility'
 
 const generatedUiVariant = v.object({
   id: v.string(),
@@ -852,6 +853,7 @@ export const addMessage = mutation({
         modelId: args.modelId,
       }),
     )
+    await assertNativeThreadWritable(ctx, conversation, match?.threadRootMessageId ?? match?._id)
     const now = Date.now()
     const payload = {
       conversationId: args.conversationId,
@@ -965,6 +967,7 @@ export const startAgentRun = mutation({
       throw new Error('Unauthorized')
     }
 
+    await assertNativeThreadWritable(ctx, conversation, userMessage.threadRootMessageId ?? userMessage._id)
     const variantIndex = args.variantIndex ?? 0
     assertNativeHarnessRun(args)
     const runsForTurn = await ctx.db
@@ -1489,6 +1492,7 @@ export const updateMessageUiPart = mutation({
     ) {
       throw new Error('Message not found')
     }
+    await assertNativeThreadWritable(ctx, conversation, message.threadRootMessageId ?? message._id)
     const parts = Array.isArray(message.parts) ? message.parts : []
     let changed = false
     const nextParts = parts.map((part) => {
@@ -1772,6 +1776,10 @@ export const deleteTurn = mutation({
       .collect()
 
     const turnMessages = messages.filter((m) => m.turnId === tid)
+    await assertNativeThreadWritable(ctx, conv)
+    for (const message of turnMessages) {
+      await assertNativeThreadWritable(ctx, conv, message.threadRootMessageId ?? message._id)
+    }
     // Purge the message's knowledge chunks in the same transaction —
     // orphaned sourceKind:'message' chunks would stay retrievable.
     await Promise.all(turnMessages.flatMap((m) => [
@@ -1819,6 +1827,20 @@ export const addMessages = mutation({
       .query('conversationMessages')
       .withIndex('by_conversationId', (q) => q.eq('conversationId', conversationId))
       .collect()
+    await assertNativeThreadWritable(ctx, conversation)
+    for (const row of rows) {
+      const match = existing.find(
+        (message) => sameMessageVariant(message, {
+          turnId: row.turnId,
+          role: row.role,
+          variantIndex: row.variantIndex,
+          modelId: row.modelId,
+        }),
+      )
+      if (match) {
+        await assertNativeThreadWritable(ctx, conversation, match.threadRootMessageId ?? match._id)
+      }
+    }
     const ids = await Promise.all(rows.map(async (row) => {
       const match = existing.find(
         (message) => sameMessageVariant(message, {
@@ -1846,6 +1868,42 @@ export const addMessages = mutation({
     }))
     await ctx.db.patch(conversationId, { lastModified: now, updatedAt: now })
     return ids
+  },
+})
+
+export const getNativeThreadCompatibility = query({
+  args: {
+    accessToken: v.optional(v.string()),
+    conversationId: v.id('conversations'),
+    serverSecret: v.optional(v.string()),
+    threadRootMessageId: v.optional(v.id('conversationMessages')),
+    userId: v.string(),
+    workspaceId: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    await authorizeUserAccess({
+      userId: args.userId,
+      accessToken: args.accessToken,
+      serverSecret: args.serverSecret,
+    })
+    const conversation = await ctx.db.get(args.conversationId)
+    if (!conversation || conversation.deletedAt) throw new Error('Unauthorized')
+    if ((conversation.conversationType ?? 'personal') === 'personal') {
+      if (conversation.userId !== args.userId
+        || (args.workspaceId !== undefined && conversation.workspaceId !== args.workspaceId)) {
+        throw new Error('Unauthorized')
+      }
+    } else {
+      if (!args.workspaceId) throw new Error('Unauthorized')
+      await requireConversationAccess(ctx, {
+        actorUserId: args.userId,
+        accessToken: args.accessToken,
+        conversationId: args.conversationId,
+        serverSecret: args.serverSecret,
+        workspaceId: args.workspaceId,
+      })
+    }
+    return await nativeThreadCompatibility(ctx, conversation, args.threadRootMessageId)
   },
 })
 

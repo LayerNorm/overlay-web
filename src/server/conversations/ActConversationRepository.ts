@@ -15,6 +15,7 @@ export function asConversationId(id: string): ConversationId {
 import type { UIMessage } from '@/server/ai/sdk'
 import type { ContextSummarySnapshot } from '@/server/chat/context-compaction'
 import type { AppSettings, Entitlements } from '@/shared/app/app-contracts'
+import type { NativeThreadCompatibility } from '@/shared/agents/native-run-retirement'
 import type { Id } from '../../../convex/_generated/dataModel'
 import type {
   AgentRun,
@@ -187,6 +188,12 @@ export interface ActConversationRepository {
     userId: string
     workspaceId?: string
   }): Promise<ConversationListRow | null>
+  getNativeThreadCompatibility(args: {
+    conversationId: ConversationId
+    threadRootMessageId?: string
+    userId: string
+    workspaceId?: string
+  }): Promise<NativeThreadCompatibility>
   listConversations(args: {
     includeDeleted?: boolean
     updatedSince?: number

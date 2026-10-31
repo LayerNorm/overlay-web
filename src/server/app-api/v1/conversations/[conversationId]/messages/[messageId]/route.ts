@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getOverlayServerContext } from '@/server/bootstrap'
+import { nativeRunRetirementErrorResponse } from '@/server/conversations/native-run-retirement-http'
 
 async function ids(context: AppApiRouteContext) {
   const { conversationId, messageId } = await context.params
@@ -26,7 +27,9 @@ export async function PATCH(_request: Request, context: AppApiRouteContext) {
     return updated
       ? NextResponse.json({ updated: true })
       : NextResponse.json({ error: 'Not found' }, { status: 404 })
-  } catch (_error) {
+  } catch (error) {
+    const retirement = nativeRunRetirementErrorResponse(error)
+    if (retirement) return retirement
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
 }
@@ -42,7 +45,9 @@ export async function DELETE(_request: Request, context: AppApiRouteContext) {
     return deleted
       ? NextResponse.json({ deleted: true })
       : NextResponse.json({ error: 'Not found' }, { status: 404 })
-  } catch (_error) {
+  } catch (error) {
+    const retirement = nativeRunRetirementErrorResponse(error)
+    if (retirement) return retirement
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
 }

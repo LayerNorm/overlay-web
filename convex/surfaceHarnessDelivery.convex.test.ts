@@ -243,4 +243,17 @@ test('surface admission claims an authentic native room delivery and projects/re
     const user = await ctx.db.get(run!.userMessageId)
     expect(user?.importedAuthorName).toBe('External User')
   })
+
+  await convex.run(async ctx => {
+    const binding = await ctx.db.query('surfaceBindings').withIndex('by_entityId', q => q.eq('id', 'binding')).unique()
+    await ctx.db.patch(binding!._id, { status: 'active', updatedAt: Date.now() })
+    await ctx.db.patch(execution.agentRunId as never, { runner: 'tool_loop', executionEngine: undefined })
+  })
+  await expect(convex.mutation(mutation('surfaces/surfaceExecutions:beginSurfaceTurn'), {
+    ...begin, turnId: 'surface:slack:binding:retired-message', messageId: 'retired-message',
+  })).rejects.toThrow('native_runner_retired')
+  await convex.run(async ctx => {
+    const messages = await ctx.db.query('conversationMessages').collect()
+    expect(messages.some(message => message.turnId === 'surface:slack:binding:retired-message')).toBe(false)
+  })
 })

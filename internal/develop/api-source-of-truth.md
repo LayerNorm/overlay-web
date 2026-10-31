@@ -136,6 +136,15 @@ Note revision conflicts carry `NOTE_REVISION_CONFLICT`, mapped to the existing
 `409` response without exposing internal failures. Legacy message matching remains
 for web-first deployment overlap with older backends.
 
+Conversation reads remain available for recorded retired native runs. The single-conversation
+and `messages=true` forms of `GET /api/v1/conversations` include an authenticated
+`nativeThreadCompatibility` projection: `{ readOnly: false }`, or
+`{ readOnly: true, code: "native_runner_retired", message: "The harness has changed. Start a new thread to continue." }`.
+The optional `threadRootMessageId` query parameter selects a shared-room root; list responses
+do not fan out this check. New writes and admissions rejected by the same tracked-run fence
+return HTTP `410` with `{ code: "native_runner_retired", error: "The harness has changed. Start a new thread to continue." }`.
+This slice does not classify untracked historical transcript rows or provide the new-thread UI action.
+
 ## Bootstrap
 
 `/api/v1/bootstrap` returns the canonical serializable frontend registry:
