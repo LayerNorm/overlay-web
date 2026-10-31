@@ -397,9 +397,13 @@ Dependency-owning jobs use Namespace Linux AMD64 profiles: `overlay-ci-small`
 standalone typechecking, `overlay-ci-benchmark` (8 vCPU, 16 GB) for compilation,
 and `overlay-ci-tests` (8 vCPU, 16 GB) for Node 24 test shards. Other checks,
 controllers and publication use equivalent explicit Namespace shapes without
-writable cache volumes. Runner controls bind jobs to
+writable cache volumes. CodeQL retains 8 vCPU/16 GB for source analysis; it is
+not a lightweight guard. Runner controls bind jobs to
 `github.run_id` to avoid cross-run assignment, prioritize compilation, and give
-background publishing/canaries lower priority than required checks. PR revisions
+background publishing/canaries lower priority than required checks. Main and
+merge-group checks precede ordinary PRs, which precede Dependabot PRs; compiler
+jobs lead within each class. Priorities order pending work without cancelling
+active checks or weakening any required context. PR revisions
 cancel obsolete checks; main/merge-group runs use unique concurrency groups so
 GitHub cannot replace an older pending run. Keep Vercel hosting settings separate.
 

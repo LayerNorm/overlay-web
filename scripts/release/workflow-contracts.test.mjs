@@ -85,6 +85,25 @@ test('new PR revisions cancel obsolete checks without canceling main releases or
   assert.equal(workflow('pr-preview').jobs.preview.concurrency['cancel-in-progress'], false)
 })
 
+test('main and merge-queue work cannot be overtaken by a new dependency PR', () => {
+  for (const name of ['security', 'docs', 'codeql', 'semgrep', 'admin']) {
+    for (const [id, job] of Object.entries(workflow(name).jobs)) {
+      if (!job['runs-on']) continue
+      const labels = Array.isArray(job['runs-on']) ? job['runs-on'] : [job['runs-on']]
+      const expression = labels.find(label => label.includes('job.priority='))
+        ?.match(/job\.priority=\$\{\{ (.+) \}\}/)?.[1]
+      assert.ok(expression, `${name}/${id} needs an event-aware priority`)
+      const priority = (ref, event_name, actor) => vm.runInNewContext(expression, { github: { ref, event_name, actor } })
+      const main = priority('refs/heads/main', 'push', 'DevelopedByDev')
+      assert.equal(priority('refs/heads/gh-readonly-queue/main', 'merge_group', 'github-merge-queue[bot]'), main)
+      const pull = priority('refs/pull/123/merge', 'pull_request', 'Contributor')
+      const bot = priority('refs/pull/124/merge', 'pull_request', 'dependabot[bot]')
+      assert.ok(main < pull && pull < bot && bot < 10, `${name}/${id}: ${main}, ${pull}, ${bot}`)
+      assert.equal(main, name === 'security' && id === 'build' ? 1 : 2)
+    }
+  }
+})
+
 test('every required workflow reports on merge groups; required PR checks have no paths filter', () => {
   for (const name of ['security', 'docs', 'codeql', 'semgrep', 'cla']) {
     const config = workflow(name)

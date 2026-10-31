@@ -21,7 +21,7 @@ jobs:
   secret-scan:
     name: Secret Scan
     runs-on:
-      - nscloud-ubuntu-24.04-amd64-2x4-with-features-with-builders;job.priority=2
+      - nscloud-ubuntu-24.04-amd64-2x4-with-features-with-builders;job.priority=${{ (github.ref == 'refs/heads/main' || github.event_name == 'merge_group') && 2 || github.actor == 'dependabot[bot]' && 6 || 4 }}
       - nscloud-no-remote-builders
       - namespace-features:github.run-id=${{ github.run_id }}
     env:
@@ -51,7 +51,7 @@ jobs:
   public-env-guard:
     name: Guard Public Env Names
     runs-on:
-      - nscloud-ubuntu-24.04-amd64-2x4-with-features-with-builders;job.priority=2
+      - nscloud-ubuntu-24.04-amd64-2x4-with-features-with-builders;job.priority=${{ (github.ref == 'refs/heads/main' || github.event_name == 'merge_group') && 2 || github.actor == 'dependabot[bot]' && 6 || 4 }}
       - nscloud-no-remote-builders
       - namespace-features:github.run-id=${{ github.run_id }}
     steps:
@@ -95,7 +95,7 @@ jobs:
       pull-requests: read
       security-events: read
     runs-on:
-      - nscloud-ubuntu-24.04-amd64-2x4-with-features-with-builders;job.priority=2
+      - nscloud-ubuntu-24.04-amd64-2x4-with-features-with-builders;job.priority=${{ (github.ref == 'refs/heads/main' || github.event_name == 'merge_group') && 2 || github.actor == 'dependabot[bot]' && 6 || 4 }}
       - nscloud-no-remote-builders
       - namespace-features:github.run-id=${{ github.run_id }}
     steps:
@@ -112,7 +112,7 @@ jobs:
 
   static:
     name: Lint and boundary checks
-    runs-on: namespace-profile-overlay-ci-small;github.run-id=${{ github.run_id }};job.priority=2
+    runs-on: namespace-profile-overlay-ci-small;github.run-id=${{ github.run_id }};job.priority=${{ (github.ref == 'refs/heads/main' || github.event_name == 'merge_group') && 2 || github.actor == 'dependabot[bot]' && 6 || 4 }}
     timeout-minutes: 20
     env:
       INTERNAL_API_SECRET: test-internal-secret
@@ -153,7 +153,7 @@ jobs:
 
   typecheck:
     name: Typecheck and boundary contracts
-    runs-on: namespace-profile-overlay-ci-medium;github.run-id=${{ github.run_id }};job.priority=2
+    runs-on: namespace-profile-overlay-ci-medium;github.run-id=${{ github.run_id }};job.priority=${{ (github.ref == 'refs/heads/main' || github.event_name == 'merge_group') && 2 || github.actor == 'dependabot[bot]' && 6 || 4 }}
     timeout-minutes: 20
     env:
       INTERNAL_API_SECRET: test-internal-secret
@@ -181,7 +181,7 @@ jobs:
 
   build:
     name: Production compilation
-    runs-on: namespace-profile-overlay-ci-benchmark;github.run-id=${{ github.run_id }};job.priority=1
+    runs-on: namespace-profile-overlay-ci-benchmark;github.run-id=${{ github.run_id }};job.priority=${{ (github.ref == 'refs/heads/main' || github.event_name == 'merge_group') && 1 || github.actor == 'dependabot[bot]' && 5 || 3 }}
     timeout-minutes: 20
     env:
       INTERNAL_API_SECRET: test-internal-secret
@@ -224,7 +224,7 @@ jobs:
 
   tests:
     name: Full suite (${{ matrix.shard }}/2)
-    runs-on: namespace-profile-overlay-ci-tests;github.run-id=${{ github.run_id }};job.priority=2
+    runs-on: namespace-profile-overlay-ci-tests;github.run-id=${{ github.run_id }};job.priority=${{ (github.ref == 'refs/heads/main' || github.event_name == 'merge_group') && 2 || github.actor == 'dependabot[bot]' && 6 || 4 }}
     timeout-minutes: 20
     strategy:
       fail-fast: false
@@ -255,7 +255,7 @@ jobs:
     if: ${{ always() }}
     needs: tests
     runs-on:
-      - nscloud-ubuntu-24.04-amd64-2x4-with-features-with-builders;job.priority=2
+      - nscloud-ubuntu-24.04-amd64-2x4-with-features-with-builders;job.priority=${{ (github.ref == 'refs/heads/main' || github.event_name == 'merge_group') && 2 || github.actor == 'dependabot[bot]' && 6 || 4 }}
       - nscloud-no-remote-builders
       - namespace-features:github.run-id=${{ github.run_id }}
     steps:
@@ -272,7 +272,7 @@ jobs:
     if: ${{ always() }}
     needs: [static, typecheck, build, tests, secret-scan, public-env-guard, dependency-review, admin-console]
     runs-on:
-      - nscloud-ubuntu-24.04-amd64-2x4-with-features-with-builders;job.priority=2
+      - nscloud-ubuntu-24.04-amd64-2x4-with-features-with-builders;job.priority=${{ (github.ref == 'refs/heads/main' || github.event_name == 'merge_group') && 2 || github.actor == 'dependabot[bot]' && 6 || 4 }}
       - nscloud-no-remote-builders
       - namespace-features:github.run-id=${{ github.run_id }}
     steps:

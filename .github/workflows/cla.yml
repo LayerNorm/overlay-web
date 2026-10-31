@@ -20,7 +20,7 @@ jobs:
     name: CLA Signatures
     if: github.event_name == 'pull_request' || github.event_name == 'merge_group' || (github.event_name == 'issue_comment' && github.event.issue.pull_request)
     runs-on:
-      - nscloud-ubuntu-24.04-amd64-2x4-with-features-with-builders;job.priority=2
+      - nscloud-ubuntu-24.04-amd64-2x4-with-features-with-builders;job.priority=${{ (github.ref == 'refs/heads/main' || github.event_name == 'merge_group') && 2 || github.actor == 'dependabot[bot]' && 6 || 4 }}
       - nscloud-no-remote-builders
       - namespace-features:github.run-id=${{ github.run_id }}
     steps:

@@ -25,7 +25,7 @@ jobs:
   analyze:
     name: Analyze JavaScript and TypeScript
     runs-on:
-      - nscloud-ubuntu-24.04-amd64-4x8-with-features-with-builders;job.priority=2
+      - nscloud-ubuntu-24.04-amd64-8x16-with-features-with-builders;job.priority=${{ (github.ref == 'refs/heads/main' || github.event_name == 'merge_group') && 2 || github.actor == 'dependabot[bot]' && 6 || 4 }}
       - nscloud-no-remote-builders
       - namespace-features:github.run-id=${{ github.run_id }}
     strategy:
