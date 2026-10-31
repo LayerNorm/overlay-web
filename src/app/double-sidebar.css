@@ -41,8 +41,41 @@
     padding: 8px 10px;
   }
 
-  [data-app-shell]:has([data-double-sidebar]) :is([data-chat-transcript], [data-chat-composer]:not([data-centered='true'])) {
-    max-width: 680px;
+  [data-app-shell]:has([data-double-sidebar]) .app-main:not([data-desktop-panel]):has([data-slot='app-screen-shell']) {
+    border: 0;
+    border-radius: 0;
+    background: var(--shell-chrome);
+  }
+
+  /* Only the outer screen owns the frame; embedded editors keep their own layout. */
+  [data-app-shell]:has([data-double-sidebar]) .app-main:not([data-desktop-panel]) [data-slot='app-screen-shell']:not([data-slot='app-screen-shell'] [data-slot='app-screen-shell']) {
+    background: transparent;
+
+    > [data-slot='app-screen-layout'] > [data-slot='app-screen-main'] {
+      overflow: hidden;
+      border: 1px solid var(--shell-outline);
+      border-radius: 12px;
+      background: var(--shell-panel);
+    }
+
+    > [data-slot='app-screen-layout'] > [data-slot='app-screen-right-panel'] {
+      --sidebar-surface: var(--shell-panel);
+      border: 1px solid var(--shell-outline);
+      border-radius: 12px;
+      background: var(--shell-panel);
+    }
+
+    > [data-slot='app-screen-layout'] > [data-slot='app-screen-right-panel'] [data-slot='right-sidebar'] {
+      border-left: 0;
+    }
+  }
+
+  .double-sidebar-panel:not([data-collapsed='true']) {
+    --sidebar-surface: var(--shell-panel);
+    margin-right: 8px;
+    border: 1px solid var(--shell-outline);
+    border-radius: 12px;
+    background: var(--shell-panel);
   }
 
   [data-app-shell]:has([data-double-sidebar]) [data-slot='prompt-input'] {
@@ -121,6 +154,17 @@
     inset: 0 0 auto;
     height: 28px;
     -webkit-app-region: drag;
+  }
+}
+
+@media (min-width: 1024px) {
+  [data-app-shell]:has([data-double-sidebar]) .app-main:not([data-desktop-panel]) [data-slot='app-screen-shell']:not([data-slot='app-screen-shell'] [data-slot='app-screen-shell']) > [data-slot='app-screen-layout'] > [data-slot='app-screen-right-panel'][data-mode='docked'] {
+    margin-left: 8px;
+
+    &[aria-hidden='true'] {
+      margin-left: 0;
+      border-width: 0;
+    }
   }
 }
 

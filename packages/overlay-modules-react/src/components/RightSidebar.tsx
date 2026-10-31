@@ -29,6 +29,7 @@ export function RightSidebar({
 
   return (
     <aside
+      data-slot="right-sidebar"
       aria-label={ariaLabel}
       className="relative flex h-full min-h-0 w-full flex-col overflow-hidden border-l border-(--border) bg-(--sidebar-surface)"
     >

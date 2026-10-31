@@ -54,3 +54,18 @@ test('right panels preserve their width without external width control', () => {
   const controlled = renderToStaticMarkup(<AppScreenShell rightPanel={<div>Details</div>} rightPanelWidth={480} onRightPanelResize={() => {}} />)
   assert.match(controlled, /--app-screen-panel-width:480px/)
 })
+
+test('screen shell exposes separate main and right-panel surfaces for both panel modes', () => {
+  for (const mode of ['docked', 'floating'] as const) {
+    const html = renderToStaticMarkup(
+      <AppScreenShell rightPanel={<div>Sources</div>} rightPanelMode={mode}>
+        <span>Conversation</span>
+      </AppScreenShell>,
+    )
+    assert.match(html, /data-slot="app-screen-shell"/)
+    assert.match(html, /data-slot="app-screen-layout"/)
+    assert.match(html, /data-slot="app-screen-main"[\s\S]*Conversation[\s\S]*data-slot="app-screen-right-panel"/)
+    assert.match(html, new RegExp(`data-slot="app-screen-right-panel" data-mode="${mode}"`))
+    assert.match(html, /Sources/)
+  }
+})

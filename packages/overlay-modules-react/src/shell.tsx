@@ -146,6 +146,8 @@ function ScreenRightPanel({
     <>
       <RightPanelOverlay visible={visible} onClose={onClose} />
       <aside
+        data-slot="app-screen-right-panel"
+        data-mode={floating ? 'floating' : 'docked'}
         className={cn(
           'absolute right-0 z-30 flex min-h-0 w-full max-w-[min(24rem,100vw)] shrink-0 overflow-hidden bg-(--sidebar-surface) transition-[transform,width,opacity] duration-300 ease-(--overlay-ease)',
           resizing ? 'transition-none' : null,
@@ -203,6 +205,7 @@ export function AppScreenShell({
 
   return (
     <div
+      data-slot="app-screen-shell"
       className={cn(
         'flex h-full min-h-0 w-full bg-(--background) text-(--foreground)',
         className,
@@ -220,8 +223,8 @@ export function AppScreenShell({
           {sidebar}
         </aside>
       ) : null}
-      <div className="relative flex min-h-0 min-w-0 flex-1">
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <div data-slot="app-screen-layout" className="relative flex min-h-0 min-w-0 flex-1">
+        <div data-slot="app-screen-main" className="flex min-h-0 min-w-0 flex-1 flex-col">
           {header}
           <div className={cn('min-h-0 min-w-0 flex-1', contentClassName)}>{children}</div>
         </div>
