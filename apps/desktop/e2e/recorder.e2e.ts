@@ -140,6 +140,7 @@ test('the native HUD captures audio and delivers the transcription without a pre
     await hud.waitForTimeout(150)
     await hud.getByRole('button', { name: 'Finish dictation' }).click()
     await expect(hud.getByRole('button', { name: 'Retry transcription' })).toBeVisible()
+    await expect(hud.locator('#notice')).not.toContainText('remote method')
     const beforeRetry = requests
     await hud.getByRole('button', { name: 'Retry transcription' }).click()
     await expect.poll(() => requests).toBe(beforeRetry + 1)

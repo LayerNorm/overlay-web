@@ -67,7 +67,12 @@ function release() {
 function fail(error) {
   capture?.cancel()
   capture = undefined
-  state('error', 'Try again', error?.message || 'Dictation failed. Check Desktop settings.')
+  state(
+    'error',
+    'Try again',
+    error?.message?.replace(/^Error invoking remote method '[^']+': (?:Error: )?/, '') ||
+      'Dictation failed. Check Desktop settings.'
+  )
   window.recorder.failed(recordingEpoch)
   clearTimeout(retryTimer)
   retryTimer = setTimeout(() => {
