@@ -101,8 +101,7 @@ export async function nativeHarnessWorkflow(input: NativeHarnessWorkflowInput) {
       tools,
     }, ports)
     if (result.outcome === 'already_running') return { runId: initial.runId, status: 'already_running' }
-    if (!['completed', 'failed', 'cancelled'].includes(result.snapshot.status)
-      && result.snapshot.blocker?.kind !== 'stuck') {
+    if (!['completed', 'failed', 'cancelled'].includes(result.snapshot.status)) {
       result.snapshot = await applyHarnessOperation(access, 'blocked-finalization', {
         type: 'terminate', status: 'failed', reason: result.snapshot.blocker?.question || 'The task is blocked and cannot continue.',
       })
