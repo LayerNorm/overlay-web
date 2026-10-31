@@ -1717,7 +1717,8 @@ Native Harness room turns (`executionEngine: overlay_harness`) retain their
 durable root deadline through approval, input and child waits. They have no
 legacy room liveness lease, and the legacy stale-run sweep must not expire
 Harness-owned rows, including older deliveries that still carry a lease.
-Production native Harness admission remains gated by `OVERLAY_NATIVE_HARNESS=1`.
+Native Overlay room admission always uses the Harness; the former
+`OVERLAY_NATIVE_HARNESS` flag no longer selects an execution path.
 The existing run-input endpoint accepts native Harness input waits only from
 the initiating user with current room participation in the selected workspace.
 Revoked participants, other initiators and legacy/remote runs cannot wake it.

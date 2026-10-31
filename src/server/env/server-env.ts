@@ -12,7 +12,6 @@ export const serverEnv = {
   vercelUrl: read('VERCEL_URL'),
   devAppUrlOverride: read('DEV_NEXT_PUBLIC_APP_URL'),
   sentryDsn: read('SENTRY_DSN'),
-  overlayNativeHarness: read('OVERLAY_NATIVE_HARNESS'),
 } as const
 
 export function isDevelopmentRuntime(): boolean {

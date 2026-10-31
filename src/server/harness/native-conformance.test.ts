@@ -603,18 +603,17 @@ it('Lineage — depth, cycles, and external targets are refused before dispatch'
   })).rejects.toThrow("External agents can't be asked from this run yet.")
 })
 
-it('Legacy — legacy rows keep the old dispatcher under either flag, while native-owned rows fail closed', async () => {
+it('Cutover: native dispatch is unconditional and legacy execution refuses native-owned rows', async () => {
   const invocation = {
     agentId: 'agent', agentName: 'Agent', agentPrincipalId: 'principal-agent', invocationNonce: 'nonce',
     modelId: 'fixture/model', harness: 'overlay' as const, externalAgent: false, turnId: 'turn',
   }
-  const run = async (enabled: boolean) => {
+  const run = async () => {
     const starts: string[] = []
     await startWorkspaceAgentTurns({
       actorUserId: 'human', conversationId: 'room', messageId: 'message', mentionedPrincipalIds: [], initiatorPrincipalId: 'human',
       prompt: 'work', memoryEnabled: false, turnId: 'human-turn', workspaceId: 'workspace',
     }, {
-      nativeHarnessEnabled: () => enabled,
       resolveInvocations: async () => [invocation],
       getCollaboration: () => ({
         enqueueMemoryExtraction: async () => undefined,
@@ -622,13 +621,11 @@ it('Legacy — legacy rows keep the old dispatcher under either flag, while nati
         startAgentMessage: async () => 'failure',
         failAgentMessage: async () => undefined,
       } as never),
-      startWorkflow: async () => { starts.push('legacy') },
       startNative: async () => { starts.push('native') },
     })
     return starts
   }
-  expect(await run(false)).toEqual(['legacy'])
-  expect(await run(true)).toEqual(['native'])
+  expect(await run()).toEqual(['native'])
   mocks.getLatestAgentRun.mockResolvedValue({ executionEngine: 'overlay_harness' })
   await expect(prepareWorkspaceAgentTurn({
     actorUserId: 'human', agentId: 'agent', conversationId: 'room', messageId: 'message',

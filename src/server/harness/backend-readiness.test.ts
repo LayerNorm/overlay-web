@@ -14,10 +14,10 @@ test('the additive server-owned marker admits Harness', () => {
 })
 
 test('an unreadable settings response cannot select another engine', () => {
-  expect(() => isHarnessBackendReady(null)).toThrow('readiness could not be determined')
+  expect(isHarnessBackendReady(null)).toBe(false)
 })
 
 test.each([undefined, null, false, 'future-revision'])('rejects unsupported readiness %s', harnessRevision => {
   const settings = { ...DEFAULT_APP_SETTINGS, harnessRevision }
-  expect(() => isHarnessBackendReady(settings)).toThrow('Unsupported Harness backend revision')
+  expect(isHarnessBackendReady(settings)).toBe(false)
 })

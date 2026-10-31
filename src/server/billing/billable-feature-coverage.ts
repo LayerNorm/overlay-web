@@ -68,7 +68,7 @@ export const BILLABLE_FEATURE_COVERAGE: readonly BillableFeatureCoverage[] = [
     category: 'functions_integrations_and_mcp',
     enforcement: [
       'packages/overlay-tools-core/src/policy.ts#MAX_TOOL_STEPS_ACT',
-      'src/server/app-api/v1/conversations/act/ActTurnOrchestrationService.ts#isStepCount',
+      'src/server/tools/tools/policy.ts#MAX_TOOL_STEPS_ACT',
       'src/server/tools/mcp-tools.ts#MAX_MCP_TOOL_RESULT_CHARS',
     ],
     id: 'tool-calls-per-agent-turn',
