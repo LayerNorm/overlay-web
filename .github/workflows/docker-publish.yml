@@ -18,7 +18,10 @@ env:
 jobs:
   publish:
     name: Publish ${{ matrix.image }}
-    runs-on: namespace-profile-overlay-ci-benchmark;github.run-id=${{ github.run_id }};job.priority=10
+    runs-on:
+      - nscloud-ubuntu-24.04-amd64-8x16-with-features-with-builders;job.priority=10
+      - nscloud-no-remote-builders
+      - namespace-features:github.run-id=${{ github.run_id }}
     # Scoped to this job: only the publish step needs to write to GHCR.
     permissions:
       contents: read

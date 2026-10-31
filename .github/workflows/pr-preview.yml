@@ -16,7 +16,10 @@ permissions:
 jobs:
   inventory:
     if: github.event_name == 'schedule' && github.ref == 'refs/heads/main'
-    runs-on: namespace-profile-overlay-ci-small;github.run-id=${{ github.run_id }};job.priority=2
+    runs-on:
+      - nscloud-ubuntu-24.04-amd64-2x4-with-features-with-builders;job.priority=2
+      - nscloud-no-remote-builders
+      - namespace-features:github.run-id=${{ github.run_id }}
     environment: release-control
     outputs:
       numbers: ${{ steps.inventory.outputs.numbers }}
@@ -34,7 +37,10 @@ jobs:
 
   preview:
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
-    runs-on: namespace-profile-overlay-ci-small;github.run-id=${{ github.run_id }};job.priority=2
+    runs-on:
+      - nscloud-ubuntu-24.04-amd64-2x4-with-features-with-builders;job.priority=2
+      - nscloud-no-remote-builders
+      - namespace-features:github.run-id=${{ github.run_id }}
     environment: release-control
     timeout-minutes: 40
     concurrency:
@@ -58,7 +64,10 @@ jobs:
   reconcile:
     needs: inventory
     if: github.event_name == 'schedule' && github.ref == 'refs/heads/main' && needs.inventory.outputs.numbers != '[]'
-    runs-on: namespace-profile-overlay-ci-small;github.run-id=${{ github.run_id }};job.priority=2
+    runs-on:
+      - nscloud-ubuntu-24.04-amd64-2x4-with-features-with-builders;job.priority=2
+      - nscloud-no-remote-builders
+      - namespace-features:github.run-id=${{ github.run_id }}
     environment: release-control
     timeout-minutes: 40
     strategy:

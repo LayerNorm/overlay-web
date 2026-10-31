@@ -392,10 +392,12 @@ Main changes automatically deploy to production through Vercel’s Git integrati
 
 ### Required CI checks
 
-Namespace Linux AMD64 runners use three profiles: `overlay-ci-small` (2 vCPU,
-4 GB) for small checks/controllers, `overlay-ci-medium` (4 vCPU, 8 GB) for
-standalone typechecking, admin and CodeQL, and `overlay-ci-benchmark` (8 vCPU,
-16 GB) for compilation/tests and Docker publishing. Runner controls bind jobs to
+Dependency-owning jobs use Namespace Linux AMD64 profiles: `overlay-ci-small`
+(2 vCPU, 4 GB) for docs/static checks, `overlay-ci-medium` (4 vCPU, 8 GB) for
+standalone typechecking, `overlay-ci-benchmark` (8 vCPU, 16 GB) for compilation,
+and `overlay-ci-tests` (8 vCPU, 16 GB) for Node 24 test shards. Other checks,
+controllers and publication use equivalent explicit Namespace shapes without
+writable cache volumes. Runner controls bind jobs to
 `github.run_id` to avoid cross-run assignment, prioritize compilation, and give
 background publishing/canaries lower priority than required checks. PR revisions
 cancel obsolete checks; main/merge-group runs use unique concurrency groups so
@@ -424,8 +426,10 @@ links, cache completion is atomic, and retention is bounded to two exact trees. 
 admin keeps its isolated workspace installation. **Each Namespace profile must
 have Protected branches enabled for `main` in the account settings before this
 cache is used.** PR-editable runner labels alone are insufficient protection.
-Keep volumes per profile/repository; do not override cache tags across trust
-boundaries. Never cache secrets or reuse installed trees in privileged
+Keep the default per-profile/repository cache identities, without explicit
+shared tags. Node 24 tests have a separate profile; background jobs have no
+writable dependency volume. Namespace uses last-write-wins snapshots, so those
+jobs must not discard newly seeded installs from another role or runtime. Never cache secrets or reuse installed trees in privileged
 release/publication jobs. The dependency audit remains required.
 
 Persist only `.next/cache` and the content-based ESLint cache for compiler/lint

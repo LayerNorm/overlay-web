@@ -20,7 +20,10 @@ concurrency:
 jobs:
   secret-scan:
     name: Secret Scan
-    runs-on: namespace-profile-overlay-ci-small;github.run-id=${{ github.run_id }};job.priority=2
+    runs-on:
+      - nscloud-ubuntu-24.04-amd64-2x4-with-features-with-builders;job.priority=2
+      - nscloud-no-remote-builders
+      - namespace-features:github.run-id=${{ github.run_id }}
     env:
       GITLEAKS_VERSION: 8.30.1
     steps:
@@ -47,7 +50,10 @@ jobs:
 
   public-env-guard:
     name: Guard Public Env Names
-    runs-on: namespace-profile-overlay-ci-small;github.run-id=${{ github.run_id }};job.priority=2
+    runs-on:
+      - nscloud-ubuntu-24.04-amd64-2x4-with-features-with-builders;job.priority=2
+      - nscloud-no-remote-builders
+      - namespace-features:github.run-id=${{ github.run_id }}
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # actions/checkout v4
@@ -88,7 +94,10 @@ jobs:
       contents: read
       pull-requests: read
       security-events: read
-    runs-on: namespace-profile-overlay-ci-small;github.run-id=${{ github.run_id }};job.priority=2
+    runs-on:
+      - nscloud-ubuntu-24.04-amd64-2x4-with-features-with-builders;job.priority=2
+      - nscloud-no-remote-builders
+      - namespace-features:github.run-id=${{ github.run_id }}
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # actions/checkout v4
@@ -215,7 +224,7 @@ jobs:
 
   tests:
     name: Full suite (${{ matrix.shard }}/2)
-    runs-on: namespace-profile-overlay-ci-benchmark;github.run-id=${{ github.run_id }};job.priority=2
+    runs-on: namespace-profile-overlay-ci-tests;github.run-id=${{ github.run_id }};job.priority=2
     timeout-minutes: 20
     strategy:
       fail-fast: false
@@ -245,7 +254,10 @@ jobs:
     name: Schema and Routing Contracts
     if: ${{ always() }}
     needs: tests
-    runs-on: namespace-profile-overlay-ci-small;github.run-id=${{ github.run_id }};job.priority=2
+    runs-on:
+      - nscloud-ubuntu-24.04-amd64-2x4-with-features-with-builders;job.priority=2
+      - nscloud-no-remote-builders
+      - namespace-features:github.run-id=${{ github.run_id }}
     steps:
       - name: Require successful contract execution
         env:
@@ -259,7 +271,10 @@ jobs:
     name: Required Quality and Security Gates
     if: ${{ always() }}
     needs: [static, typecheck, build, tests, secret-scan, public-env-guard, dependency-review, admin-console]
-    runs-on: namespace-profile-overlay-ci-small;github.run-id=${{ github.run_id }};job.priority=2
+    runs-on:
+      - nscloud-ubuntu-24.04-amd64-2x4-with-features-with-builders;job.priority=2
+      - nscloud-no-remote-builders
+      - namespace-features:github.run-id=${{ github.run_id }}
     steps:
       - name: Require every quality lane
         env:

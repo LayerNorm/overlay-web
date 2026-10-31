@@ -24,7 +24,10 @@ concurrency:
 jobs:
   analyze:
     name: Analyze JavaScript and TypeScript
-    runs-on: namespace-profile-overlay-ci-medium;github.run-id=${{ github.run_id }};job.priority=2
+    runs-on:
+      - nscloud-ubuntu-24.04-amd64-4x8-with-features-with-builders;job.priority=2
+      - nscloud-no-remote-builders
+      - namespace-features:github.run-id=${{ github.run_id }}
     strategy:
       fail-fast: false
       matrix:
