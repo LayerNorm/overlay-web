@@ -498,7 +498,7 @@
     "src/server/webhooks/index.ts",
     "src/server/work/ConvexWorkRepository.ts",
     "src/server/work/index.ts",
-    "src/server/workflows/automation-agent-turn.ts",
+    "src/server/workflows/automation-harness-steps.ts",
     "src/server/workflows/native-harness.ts",
     "src/server/workflows/personal-harness.ts",
     "src/server/workspaces/ConvexWorkspaceRepository.ts"

@@ -11,10 +11,12 @@ vi.mock('workflow', () => ({
   getWorkflowMetadata: () => ({ workflowRunId: 'workflow' }),
   sleep: vi.fn(),
 }))
-vi.mock('@/server/workflows/automation-agent-turn', () => ({
+vi.mock('@/server/workflows/automation-harness-steps', () => ({
   checkAutomationEnabled: vi.fn(),
-  runAutomationAgentTurn: mocks.run,
   settleDeniedAutomationRun: mocks.settleDenied,
+}))
+vi.mock('@/server/workflows/automation-agent-turn', () => ({
+  runAutomationAgentTurn: mocks.run,
 }))
 
 const input = {

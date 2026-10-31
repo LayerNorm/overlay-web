@@ -272,6 +272,20 @@ export async function ensureAutomationConversation(
   input: AutomationAgentTurnInput,
 ): Promise<{ conversationId: string; workspaceId: string }> {
   const overlayContext = getOverlayServerContext()
+  const source = await readAutomationConversationSource(input, overlayContext)
+  assertAutomationConversationTarget(input, source)
+  const workspace = await resolveAutomationConversationWorkspace(input, source.automation, overlayContext)
+  if (source.canonicalConversationId) {
+    await validateOwnedAutomationConversation(input, source, workspace.workspace.id, overlayContext)
+    return { conversationId: source.canonicalConversationId, workspaceId: workspace.workspace.id }
+  }
+  return await createOwnedAutomationConversation(input, workspace.workspace.id, overlayContext)
+}
+
+async function readAutomationConversationSource(
+  input: AutomationAgentTurnInput,
+  overlayContext: ReturnType<typeof getOverlayServerContext>,
+) {
   if (!input.automationId) throw new AutomationTurnError('Automation identity is required.', 409)
   const automation = await automationService.getAutomationForExecution({
     automationId: input.automationId,
@@ -296,13 +310,28 @@ export async function ensureAutomationConversation(
     ? automation.conversationId
     : undefined
   const canonicalConversationId = ownedConversationId ?? run?.run.conversationId
+  return { automation, run, ownedConversationId, canonicalConversationId }
+}
+
+function assertAutomationConversationTarget(
+  input: AutomationAgentTurnInput,
+  source: Awaited<ReturnType<typeof readAutomationConversationSource>>,
+): void {
+  const { ownedConversationId, canonicalConversationId, run } = source
   if (input.conversationId && input.conversationId !== canonicalConversationId) {
     throw new AutomationTurnError('Automation conversation binding changed.', 409)
   }
   if (run?.run.conversationId && ownedConversationId
-    && run.run.conversationId !== ownedConversationId) {
+      && run.run.conversationId !== ownedConversationId) {
     throw new AutomationTurnError('Automation run conversation binding changed.', 409)
   }
+}
+
+async function resolveAutomationConversationWorkspace(
+  input: AutomationAgentTurnInput,
+  automation: NonNullable<Awaited<ReturnType<typeof automationService.getAutomationForExecution>>>,
+  overlayContext: ReturnType<typeof getOverlayServerContext>,
+) {
   if (automation.workspaceId && input.workspaceId && automation.workspaceId !== input.workspaceId) {
     throw new AutomationTurnError('Automation workspace binding changed.', 409)
   }
@@ -316,60 +345,68 @@ export async function ensureAutomationConversation(
   if (input.workspaceId && workspace.workspace.id !== input.workspaceId) {
     throw new AutomationTurnError('Automation workspace binding changed.', 409)
   }
-  if (canonicalConversationId) {
-    const conversation = await overlayContext.appData.repositories.conversations.getConversationById({
-      conversationId: asConversationId(canonicalConversationId), userId: input.userId, workspaceId: workspace.workspace.id,
-    })
-    if (!conversation || conversation.userId !== input.userId || conversation.deletedAt != null
-      || conversation.workspaceId !== workspace.workspace.id
-      || (conversation.conversationType && conversation.conversationType !== 'personal')) {
-      throw new AutomationTurnError('Automation conversation ownership changed.', 409)
-    }
-    if (!ownedConversationId) {
-      await automationService.attachOwnedConversation({
-        automationId: input.automationId,
-        conversationId: canonicalConversationId,
-        userId: input.userId,
-      })
-      const attached = await automationService.getAutomationForExecution({
-        automationId: input.automationId,
-        userId: input.userId,
-      })
-      if (attached?.conversationId !== canonicalConversationId) {
-        throw new AutomationTurnError('Automation conversation could not be bound safely.', 409)
-      }
-    }
-    return { conversationId: canonicalConversationId, workspaceId: workspace.workspace.id }
+  return workspace
+}
+
+async function validateOwnedAutomationConversation(
+  input: AutomationAgentTurnInput,
+  source: Awaited<ReturnType<typeof readAutomationConversationSource>>,
+  workspaceId: string,
+  overlayContext: ReturnType<typeof getOverlayServerContext>,
+): Promise<void> {
+  const conversationId = source.canonicalConversationId!
+  const conversation = await overlayContext.appData.repositories.conversations.getConversationById({
+    conversationId: asConversationId(conversationId), userId: input.userId, workspaceId,
+  })
+  if (!conversation || conversation.userId !== input.userId || conversation.deletedAt != null
+    || conversation.workspaceId !== workspaceId
+    || (conversation.conversationType && conversation.conversationType !== 'personal')) {
+    throw new AutomationTurnError('Automation conversation ownership changed.', 409)
   }
+  if (!source.ownedConversationId) await attachOwnedAutomationConversation(input, conversationId)
+}
+
+async function attachOwnedAutomationConversation(
+  input: AutomationAgentTurnInput,
+  conversationId: string,
+): Promise<void> {
+  await automationService.attachOwnedConversation({
+    automationId: input.automationId!,
+    conversationId,
+    userId: input.userId,
+  })
+  const attached = await automationService.getAutomationForExecution({
+    automationId: input.automationId!,
+    userId: input.userId,
+  })
+  if (attached?.conversationId !== conversationId) {
+    throw new AutomationTurnError('Automation conversation could not be bound safely.', 409)
+  }
+}
+
+async function createOwnedAutomationConversation(
+  input: AutomationAgentTurnInput,
+  workspaceId: string,
+  overlayContext: ReturnType<typeof getOverlayServerContext>,
+): Promise<{ conversationId: string; workspaceId: string }> {
   const conversationId = await overlayContext.appData.repositories.conversations
     .createConversation({
-      clientId: `automation:${input.automationId}:owned`,
+      clientId: `automation:${input.automationId!}:owned`,
       userId: input.userId,
       title: `Automation: ${input.name || 'Untitled'}`,
       askModelIds: [input.modelId || DEFAULT_MODEL_ID],
       actModelId: input.modelId || DEFAULT_MODEL_ID,
       lastMode: 'act',
       isAutomation: true,
-      workspaceId: workspace.workspace.id,
+      workspaceId,
     })
   if (!conversationId) {
     throw new AutomationTurnError('Failed to create automation conversation')
   }
-  await automationService.attachOwnedConversation({
-    automationId: input.automationId,
-    conversationId: String(conversationId),
-    userId: input.userId,
-  })
-  const attached = await automationService.getAutomationForExecution({
-    automationId: input.automationId,
-    userId: input.userId,
-  })
-  if (attached?.conversationId !== String(conversationId)) {
-    throw new AutomationTurnError('Automation conversation could not be bound safely.', 409)
-  }
+  await attachOwnedAutomationConversation(input, String(conversationId))
   return {
     conversationId: String(conversationId),
-    workspaceId: workspace.workspace.id,
+    workspaceId,
   }
 }
 
@@ -421,6 +458,62 @@ function narrowToolIdsToSurfaceAgent(
     agentGrant,
     allowedToolIds: accountAllowedToolIds.filter((toolId) => agentGrant.overlayToolIds.includes(toolId)),
   }
+}
+
+type AutomationBoundAgent = Awaited<ReturnType<
+  ReturnType<typeof getOverlayServerContext>['workspaceAgentService']['get']
+>>
+
+async function resolveTurnAgentAuthorization(
+  input: AutomationAgentTurnInput,
+  userId: string,
+  workspaceId: string,
+  overlayContext: ReturnType<typeof getOverlayServerContext>,
+  surface: SurfaceTurnContext | undefined,
+) {
+  let approvalMode: 'ask' | 'auto' = surface?.agentPermissionMode ?? 'ask'
+  let automationAgent: AutomationBoundAgent | null = null
+  let automationAgentId: string | undefined
+  if (!surface && input.automationId) {
+    const automation = await automationService.getAutomationForExecution({
+      automationId: input.automationId,
+      userId,
+    })
+    const agentId = automation?.agentId
+    if (agentId) {
+      automationAgentId = agentId
+      automationAgent = await overlayContext.workspaceAgentService.get({
+        actorUserId: userId,
+        workspaceId,
+        agentId,
+      })
+      if (automationAgent.harness !== 'overlay' || automationAgent.archivedAt) {
+        throw new AutomationTurnError('The bound automation agent is no longer available.', 409)
+      }
+      approvalMode = automationAgent.permissionMode === 'auto' ? 'auto' : 'ask'
+    }
+  }
+  return { approvalMode, automationAgent, automationAgentId }
+}
+
+function narrowTurnAgentGrant(
+  surface: SurfaceTurnContext | undefined,
+  automationAgent: AutomationBoundAgent | null,
+  automationAgentId: string | undefined,
+  accountAllowedToolIds: string[],
+  accountAllowedConnectorIds: string[],
+) {
+  let { agentGrant, allowedToolIds } = narrowToolIdsToSurfaceAgent(surface, accountAllowedToolIds)
+  if (!surface && automationAgent) {
+    agentGrant = resolveAgentGrant({
+      agentId: automationAgentId ?? '',
+      allowedToolIds: automationAgent.allowedToolIds,
+      isDefaultMaster: automationAgent.isDefault === true,
+    })
+    allowedToolIds = accountAllowedToolIds.filter(id => agentGrant!.overlayToolIds.includes(id))
+    if (!agentGrant.capabilities.has('integrations')) accountAllowedConnectorIds.length = 0
+  }
+  return { agentGrant, allowedToolIds }
 }
 
 export async function prepareAutomationAgentTurn(
@@ -700,28 +793,9 @@ export async function prepareAutomationAgentTurn(
     userId,
   })
 
-  let approvalMode: 'ask' | 'auto' = surface?.agentPermissionMode ?? 'ask'
-  let automationAgent: Awaited<ReturnType<typeof overlayContext.workspaceAgentService.get>> | null = null
-  let automationAgentId: string | undefined
-  if (!surface && input.automationId) {
-    const automation = await automationService.getAutomationForExecution({
-      automationId: input.automationId,
-      userId,
-    })
-    const agentId = automation?.agentId
-    if (agentId) {
-      automationAgentId = agentId
-      automationAgent = await overlayContext.workspaceAgentService.get({
-        actorUserId: userId,
-        workspaceId: billingWorkspaceId,
-        agentId,
-      })
-      if (automationAgent.harness !== 'overlay' || automationAgent.archivedAt) {
-        throw new AutomationTurnError('The bound automation agent is no longer available.', 409)
-      }
-      approvalMode = automationAgent.permissionMode === 'auto' ? 'auto' : 'ask'
-    }
-  }
+  const { approvalMode, automationAgent, automationAgentId } = await resolveTurnAgentAuthorization(
+    input, userId, billingWorkspaceId, overlayContext, surface,
+  )
   const toolPreloadTasks = preloadActExternalToolTasks({
     userId,
     serverSecret,
@@ -751,19 +825,9 @@ export async function prepareAutomationAgentTurn(
     accountAllowedConnectorIdsTask,
   ])
 
-  let { agentGrant, allowedToolIds: surfaceAllowedToolIds } = narrowToolIdsToSurfaceAgent(
-    surface,
-    accountAllowedToolIds,
+  const { agentGrant, allowedToolIds: surfaceAllowedToolIds } = narrowTurnAgentGrant(
+    surface, automationAgent, automationAgentId, accountAllowedToolIds, accountAllowedConnectorIds,
   )
-  if (!surface && automationAgent) {
-    agentGrant = resolveAgentGrant({
-      agentId: automationAgentId ?? '',
-      allowedToolIds: automationAgent.allowedToolIds,
-      isDefaultMaster: automationAgent.isDefault === true,
-    })
-    surfaceAllowedToolIds = accountAllowedToolIds.filter(id => agentGrant!.overlayToolIds.includes(id))
-    if (!agentGrant.capabilities.has('integrations')) accountAllowedConnectorIds.length = 0
-  }
 
   const baseUrl = getBaseUrl()
   const actTooling = await prepareActTooling({

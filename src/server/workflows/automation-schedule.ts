@@ -28,9 +28,9 @@ import type { AutomationSchedule } from "@/shared/automations/schedule"
 import { msUntilNextRun } from "@/shared/automations/schedule"
 import {
   checkAutomationEnabled,
-  runAutomationAgentTurn,
   settleDeniedAutomationRun,
-} from './automation-agent-turn'
+} from './automation-harness-steps'
+import { runAutomationAgentTurn } from './automation-agent-turn'
 
 export {
   buildAutomationUserMessage,

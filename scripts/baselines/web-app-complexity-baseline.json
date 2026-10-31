@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-31T04:23:45.357Z",
+  "generatedAt": "2026-10-20T19:59:20.711Z",
   "budgets": {
     "maxProductionFileLoc": 500,
     "maxFunctionComplexity": 25,
@@ -430,12 +430,6 @@
       "loc": 1031,
       "complexity": 16,
       "recordedAt": "2026-09-11T05:17:27.991Z"
-    },
-    {
-      "file": "src/server/workflows/automation-agent-turn.ts",
-      "loc": 631,
-      "complexity": 87,
-      "recordedAt": "2026-10-31T04:23:45.357Z"
     }
   ],
   "complexFunctionCounts": {
@@ -488,12 +482,7 @@
     "src/server/app-api/v1/conversations/act/extension-plan/route.ts#POST": 1,
     "packages/overlay-chat-core/src/tool-labels.ts#getDescriptiveToolLabel": 1,
     "src/components/agents/AgentAccountDialog.tsx#AccountDialog": 1,
-    "src/server/tools/mcp-tools.ts#execute": 1,
-    "src/server/automations/automation-turn-runner.ts#ensureAutomationConversation": 1,
-    "src/server/harness/automation-access.ts#assertAutomationAdmissionSource": 1,
-    "src/server/harness/automation-access.ts#refreshAutomationHarnessSource": 1,
-    "src/server/automations/automation-turn-runner.ts#prepareAutomationAgentTurn": 1,
-    "src/server/workflows/automation-agent-turn.ts#runAutomationAgentTurn": 1
+    "src/server/tools/mcp-tools.ts#execute": 1
   },
   "routeHandlersOverBudget": [
     {
