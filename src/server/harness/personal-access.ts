@@ -225,6 +225,7 @@ function buildExecutionContext(
     workspaceId: access.workspaceId,
     accountAllowedToolIds: allowedTools,
     accountAllowedConnectorIds: allowedConnectors,
+    integrationToolIds: context.integrationToolIds,
     ...(access.authentication.type === 'automation'
       ? { automationExecution: true, automationId: access.authentication.automationId,
         automationRunId: access.authentication.automationRunId,

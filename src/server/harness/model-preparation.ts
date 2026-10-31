@@ -54,6 +54,12 @@ export async function preparePersonalHarnessModel(input: {
         },
         receiptId: input.receiptId, memoryEnabled: context.memoryEnabled,
         requestFingerprint: context.requestFingerprint,
+        ...(access.authentication.type === 'automation' ? { automationContext: {
+          turnId: context.turnId,
+          accountAllowedToolIds: context.accountAllowedToolIds ?? [],
+          accountAllowedConnectorIds: context.accountAllowedConnectorIds ?? [],
+          integrationToolIds: context.integrationToolIds ?? [],
+        } } : {}),
         ...(context.billingProgrammaticSubjectId ? { billingProgrammaticSubjectId: context.billingProgrammaticSubjectId } : {}),
         inputTokenBudget, maxOutputTokens: maxOutputTokens!, contextWindow,
       },

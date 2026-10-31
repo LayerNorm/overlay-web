@@ -870,9 +870,8 @@ export class AutomationService {
     status: 'completed' | 'failed' | 'cancelled' | 'skipped'
     userId: string
   }): Promise<boolean> {
-    const settle = this.deps.repository.settleManualRun
-    if (!settle) throw new Error('Owner-fenced automation settlement is unavailable.')
-    return await settle(args)
+    if (!this.deps.repository.settleManualRun) throw new Error('Owner-fenced automation settlement is unavailable.')
+    return await this.deps.repository.settleManualRun(args)
   }
 
   private assertScheduleAllowed(schedule: AutomationSchedule | undefined): void {

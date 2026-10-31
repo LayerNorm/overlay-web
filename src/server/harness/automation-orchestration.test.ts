@@ -89,7 +89,7 @@ beforeEach(() => {
   mocks.markRunStarted.mockResolvedValue(undefined)
   mocks.prepare.mockResolvedValue(plan)
   mocks.startAgentRun.mockResolvedValue({ id: 'delivery', createdAt: 1 })
-  mocks.admit.mockResolvedValue({ runId: 'personal:delivery', workflowRunId: 'workflow', status: 'running' })
+  mocks.admit.mockResolvedValue({ runId: 'personal:delivery', status: 'queued' })
   mocks.harnessWorkflow.mockResolvedValue({ runId: 'personal:delivery', status: 'completed', replyText: 'persisted reply' })
   mocks.getRun.mockResolvedValue({ run: { _id: 'run', automationId: 'automation', userId: 'user',
     status: 'running', workflowRunId: 'workflow', turnId: 'automation-run:run' } })

@@ -9,11 +9,20 @@ import type { HarnessModelReference } from './secure-model'
 export type PersonalHarnessModelDispatch = Omit<HarnessModelDispatch, 'access'> & {
   access: PersonalHarnessAccess
   memoryEnabled: boolean
+  automationContext?: {
+    turnId: string
+    accountAllowedToolIds: string[]
+    accountAllowedConnectorIds: string[]
+    integrationToolIds: string[]
+  }
 }
 
 export async function authorizePersonalHarnessModelDispatch(reference: HarnessModelReference, options: LanguageModelV4CallOptions): Promise<void> {
   const input = reference.personal
   if (!input) throw new FatalError('Personal model dispatch identity or routing is invalid.')
+  if (input.access.authentication.type === 'automation' && !input.automationContext?.turnId) {
+    throw new FatalError('Automation model dispatch context is missing.')
+  }
   await authorizeHarnessModelDispatch(reference, options, input, () => refreshPersonalHarnessAccess(input.access, {
     baseUrl: '', userId: input.access.actorUserId, workspaceId: input.access.workspaceId,
     conversationId: input.access.conversationId, effectiveModelId: reference.modelId,
@@ -23,7 +32,7 @@ export async function authorizePersonalHarnessModelDispatch(reference: HarnessMo
         ? `automation:${input.access.authentication.automationId}` : undefined),
     requestedToolIds: [], approvalMode: input.access.authentication.type === 'automation' ? 'ask' : undefined,
     ...(input.access.authentication.type === 'automation'
-      ? { automationExecution: true, automationId: input.access.authentication.automationId,
+      ? { ...input.automationContext, automationExecution: true, automationId: input.access.authentication.automationId,
         automationRunId: input.access.authentication.automationRunId } : {}),
   }))
 }

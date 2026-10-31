@@ -49,6 +49,12 @@ export class HarnessLanguageModel implements LanguageModelV4 {
               : { type: personal.access.authentication.type },
         },
         receiptId: personal.receiptId, memoryEnabled: personal.memoryEnabled, requestFingerprint: personal.requestFingerprint,
+        ...(personal.access.authentication.type === 'automation' && personal.automationContext ? { automationContext: {
+          turnId: personal.automationContext.turnId,
+          accountAllowedToolIds: [...personal.automationContext.accountAllowedToolIds],
+          accountAllowedConnectorIds: [...personal.automationContext.accountAllowedConnectorIds],
+          integrationToolIds: [...personal.automationContext.integrationToolIds],
+        } } : {}),
         ...(personal.billingProgrammaticSubjectId ? { billingProgrammaticSubjectId: personal.billingProgrammaticSubjectId } : {}),
         inputTokenBudget: personal.inputTokenBudget, maxOutputTokens: personal.maxOutputTokens, contextWindow: personal.contextWindow,
       } } : {}),

@@ -447,13 +447,10 @@ export async function runAutomationAgentTurn(
     createdAt: agentRun.createdAt, allowedToolIds: resolvedPlan.toolDefinitions.map(tool => tool.name),
     conversationId: resolvedPlan.conversationId, deliveryAgentRunId: agentRun.id,
   })
-  if (admitted.workflowRunId !== workflowRunId) {
+  if (admitted.workflowRunId && admitted.workflowRunId !== workflowRunId) {
     return { conversationId: resolvedPlan.conversationId, replyText: '', status: 'already_running' }
   }
   if (['completed', 'failed', 'cancelled'].includes(admitted.status)) {
-    if (admitted.workflowRunId !== workflowRunId) {
-      return { conversationId: resolvedPlan.conversationId, replyText: '', status: 'already_running' }
-    }
     const replyText = await readAutomationDeliveryStep({
       conversationId: resolvedPlan.conversationId, agentRunId: agentRun.id, userId: input.userId,
     })
