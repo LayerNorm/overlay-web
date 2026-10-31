@@ -10,6 +10,10 @@
     padding: 8px 8px 8px 0;
   }
 
+  [data-app-shell]:has([data-double-sidebar]):has([data-onboarding-locked='true']) {
+    padding-left: 8px;
+  }
+
   [data-app-shell]:has([data-shell-preset='default-light']) {
     --shell-chrome: #f4f4f5;
     --shell-panel: #fff;

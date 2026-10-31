@@ -147,6 +147,7 @@ function AuthenticatedOnboardingShell({
         {sidebar}
       </div>
       <main
+        data-onboarding-locked={locked}
         className={`app-main ${styles.main} ${locked ? "" : "pt-14 md:pt-0"}`}
       >
         {!bypass && !result ? (
