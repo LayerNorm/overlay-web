@@ -10,6 +10,7 @@ import {
   wrapUiMessageStreamForTtft,
 } from '@/shared/chat/ttft-client-debug'
 import { fetchWithSessionRecovery } from '@/shared/auth/session-fetch'
+import { notifyNativeThreadSafetyChanged } from './native-thread-safety'
 
 type ChatBody = object | undefined
 type ChatFetch = NonNullable<HttpChatTransportInitOptions<UIMessage>['fetch']>
@@ -29,6 +30,7 @@ export class ChatTransportHttpError extends Error {
   readonly phase: string | null
   readonly requestId: string | null
   readonly status: number
+  readonly code?: string
 
   constructor(params: {
     endpoint: string
@@ -37,6 +39,7 @@ export class ChatTransportHttpError extends Error {
     phase: string | null
     requestId: string | null
     status: number
+    code?: string
   }) {
     super(params.message)
     this.name = 'ChatTransportHttpError'
@@ -45,6 +48,7 @@ export class ChatTransportHttpError extends Error {
     this.phase = params.phase
     this.requestId = params.requestId
     this.status = params.status
+    this.code = params.code
   }
 }
 
@@ -100,6 +104,7 @@ export function createChatDiagnosticFetch(fetchImpl?: ChatFetch): ChatFetch {
 
       const text = await response.clone().text().catch(() => '')
       const payload = parseErrorPayload(text)
+      notifyNativeThreadSafetyChanged(payload.code)
       const responseRequestId = response.headers.get('x-request-id')
       const resolvedRequestId =
         (typeof payload.requestId === 'string' ? payload.requestId : null)
@@ -122,6 +127,7 @@ export function createChatDiagnosticFetch(fetchImpl?: ChatFetch): ChatFetch {
         elapsedMs: Math.round(performance.now() - startedAt),
       })
       throw new ChatTransportHttpError({
+        code: typeof payload.code === 'string' ? payload.code : undefined,
         endpoint,
         fallbackSafe,
         message,

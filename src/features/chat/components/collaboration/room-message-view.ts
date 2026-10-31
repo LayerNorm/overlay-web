@@ -123,6 +123,7 @@ export type RoomMessageRecord = {
   rowIdentity?: string
   threadRootMessageId?: string
   delivery?: 'sending' | 'failed'
+  deliveryError?: string
   status?: 'generating' | 'completed' | 'error'
 }
 
@@ -318,6 +319,7 @@ export function toRoomMessageView({
     editHistory: message.editHistory,
     deletedAt: message.deletedAt,
     delivery: message.delivery,
+    deliveryError: message.deliveryError,
     text: bodyText,
     blocks,
     images: imageAttachments(message.parts),

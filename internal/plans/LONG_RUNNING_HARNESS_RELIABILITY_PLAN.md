@@ -18,6 +18,10 @@ Implementation note (initial recovery slice): the runner now owns the six-segmen
 
 Checked items record completed work only. The detailed acceptance checklists below remain unchecked until verified.
 
+Current UI slice: personal and room read-only footers, fresh send/retry and room-send admission, delete/generated-UI mutation guards, structured-error invalidation, accepted-send/draft handling, pending-collaboration restoration, and bounded editable fresh-thread handoffs are implemented. Compatibility response observation is limited to mutation methods so a structured unavailable GET cannot recursively trigger another compatibility GET; POST diagnostics remain covered. The approved `internal/plans/mockups/native-thread-footer-mockup.html` remains the design reference.
+
+Verification for this slice: the prescribed focused Node command initially reported 50 passed and 2 failed; both failures were test assertions (SSR controls do not render `outline`/`sm` as text, and the pending-message test left the restored item queued). The corrected footer and pending-message tests then passed in a 3-test targeted rerun. The full focused set was not rerun after those corrections. `npx tsc --noEmit --pretty false` passed; targeted ESLint passed with 0 errors and 6 warnings; `npm run check:web-complexity` passed with 46 complex functions and no new over-threshold function; `npm run check:shared-isomorphic` passed with 212 modules before the final UI-only edits, which did not change shared modules; `git diff --check` passed after this documentation update. SSR footer coverage, handoff helper coverage, pending-message restoration, GET observation, and an installed-AI-SDK retry regression are included. Mounted hook/race behavior, application visual interaction, and hosted verification remain unverified; the read-only UI acceptance item and the broader workstream are not complete.
+
 Owner: Overlay native harness
 
 Requested by: Divyansh Lalwani

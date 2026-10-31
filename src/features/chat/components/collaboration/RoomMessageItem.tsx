@@ -82,6 +82,7 @@ export type RoomMessageView = {
   editHistory?: Array<{ content: string; editedAt: number }>
   deletedAt?: number
   delivery?: 'sending' | 'failed'
+  deliveryError?: string
   /** Plain text used for copy, edit, and quote-reply. */
   text: string
   /** Ordered tool/text/file blocks for messages rendered as agent output. */
@@ -105,6 +106,7 @@ export type RoomMessageView = {
 }
 
 export type RoomMessageItemProps = {
+  readOnly?: boolean
   remoteStatus?: ReactNode
   /** Hides reactions, edit, pin and the other message actions (guided onboarding). */
   hideToolbar?: boolean
@@ -270,6 +272,7 @@ function AuthorIdentityPopover({
  * - **Agents:** full-width assistant blocks with the same meta chrome.
  */
 export function RoomMessageItem({
+  readOnly = false,
   message,
   reactions,
   replyCount,
@@ -339,7 +342,7 @@ export function RoomMessageItem({
       alignEnd={mine}
       floating={!personalChatStyle}
       copyText={message.text}
-      canEdit={mine}
+      canEdit={mine && !readOnly}
       canReport={!mine}
       pinned={pinned}
       saved={saved}
@@ -392,6 +395,7 @@ export function RoomMessageItem({
   if (mine && !isAgent) {
     return (
       <SentRoomMessage
+        readOnly={readOnly}
         rootProps={rootProps}
         highlightClass={highlightClass}
         toolbar={toolbar}
@@ -785,7 +789,8 @@ function AgentMessageBody({ message, onOpenAttachmentPreview, onControlRemoteQue
   )
 }
 
-function SentRoomMessage({ rootProps, highlightClass, toolbar, content, onRetrySend }: {
+function SentRoomMessage({ rootProps, highlightClass, toolbar, content, onRetrySend, readOnly }: {
+  readOnly: boolean
   rootProps: RoomMessageRootProps
   highlightClass: string
   toolbar: ReactNode
@@ -812,9 +817,11 @@ function SentRoomMessage({ rootProps, highlightClass, toolbar, content, onRetryS
           <SentMessageContent message={message} />
         )}
         {message.delivery === 'failed' ? (
+          readOnly ? <p className="text-[11px] text-(--muted)">{message.deliveryError ?? 'Could not send this message.'}</p> : (
           <Button variant="ghost" type="button" className="h-auto p-0 text-[11px] font-medium text-red-500 hover:bg-transparent hover:text-red-500 hover:underline" onClick={onRetrySend}>
-            Failed to send · Retry
+            {message.deliveryError ?? 'Failed to send'} · Retry
           </Button>
+          )
         ) : null}
         <RoomReactionRow reactions={content.reactions} alignEnd onToggleReaction={content.onToggleReaction} />
         <RoomThreadEntry mine replyCount={content.replyCount} threadTeaser={content.threadTeaser} onOpenThread={content.onOpenThread} />

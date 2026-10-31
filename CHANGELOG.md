@@ -18,6 +18,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Keep tracked-thread safety compatible with web-first rollout: older backends preserve transcript reads with explicit unavailable metadata and block new thread writes/admissions with a retriable 503 until the server-owned backend marker is present. The new backend remains authoritative for 410 retirement classification; already-admitted remote execution remains unchanged.
 
+- Show read-only footers for retired or temporarily unavailable native threads, gate personal and room mutations on fresh safety checks, preserve drafts after compatibility rejections, provide editable bounded handoffs to fresh threads, and keep compatibility GET failures from triggering recheck loops.
+
 - Switch existing accounts to double sidebar once across all workspaces, while allowing subsequent single-sidebar opt-outs.
 
 - Keep the gray gutters equal on both sides of onboarding while its navigation is hidden.

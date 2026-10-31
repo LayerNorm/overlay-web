@@ -20,9 +20,11 @@ import { useConversationUiState } from './useConversationUiState'
 import { useChatListController } from './useChatListController'
 import { useChatModelSelectionController } from './useChatModelSelectionController'
 import { useChatRetryController } from './useChatRetryController'
+import { useNativeThreadSafety } from './useNativeThreadSafety'
 import { useChatRouteController } from './useChatRouteController'
 import {
   TEMPORARY_CHAT_ID,
+  PENDING_FIRST_CHAT_ID,
   useChatSendController,
 } from './useChatSendController'
 import { useChatStopController } from './useChatStopController'
@@ -53,7 +55,11 @@ import { useChatMentions } from '../use-chat-mentions'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import { recordRender } from '@overlay/chat-react/lib/perf-debug'
-import type { Conversation } from '../chat-interface/types'
+import { clearDraft, readDraft, writeDraft } from '@/shared/chat/conversation-drafts'
+import { buildNativeThreadHandoff } from '@/shared/chat/native-thread-handoff'
+import { agentConversationRedirect } from '@/shared/chat/chat-view-navigation'
+import { dispatchChatCreated } from '@/shared/chat/chat-title'
+import type { Conversation, ConversationRuntime } from '../chat-interface/types'
 import type { MentionInputHandle } from '../chat-interface/MentionInput'
 import type { ConversationLoadSnapshot } from './chatTransport'
 import type { PendingFirstSendState } from './chat-send-pending-first'
@@ -578,7 +584,16 @@ export function useChatExperienceController({
     updateRuntimeUiState,
   })
 
-  const handleGeneratedUiChange = useCallback((messageId: string, partId: string, data: GeneratedUiData) => {
+  const nativeThreadSafety = useNativeThreadSafety({
+    conversationId: isTemporaryChat || activeChatId === PENDING_FIRST_CHAT_ID ? null : activeChatId,
+    workspaceId: activeWorkspaceId,
+  })
+  const isRuntimeCurrent = useCallback((chatId: string, runtime: ConversationRuntime) => (
+    activeChatIdRef.current === chatId && runtimesRef.current.get(chatId) === runtime
+  ), [activeChatIdRef, runtimesRef])
+
+  const handleGeneratedUiChange = useCallback(async (messageId: string, partId: string, data: GeneratedUiData) => {
+    if (nativeThreadSafety.readOnly) return
     const patchMessages = (messages: UIMessage[]): { changed: boolean; messages: UIMessage[] } => {
       let changed = false
       const nextMessages = messages.map((message) => {
@@ -611,6 +626,25 @@ export function useChatExperienceController({
         : null
     if (!runtime) return
 
+    if (!isTemporaryChatRef.current && targetChatId && targetChatId !== TEMPORARY_CHAT_ID) {
+      try {
+        const res = await overlayAppClient.conversations.updateMessageUiPartResponse({
+          conversationId: targetChatId,
+          messageId,
+          partId,
+          data,
+        })
+        if (!res.ok) {
+          const payload = await res.json().catch(() => null) as { error?: string } | null
+          toast.error(payload?.error || 'Could not save draft edits.')
+          return
+        }
+      } catch {
+        toast.error('Could not save draft edits.')
+        return
+      }
+    }
+
     let changed = false
     const actPatch = patchMessages(runtime.actChat.messages as UIMessage[])
     if (actPatch.changed) {
@@ -623,31 +657,50 @@ export function useChatExperienceController({
       changed = true
     }
     if (changed) {
-      if (isTemporaryChatRef.current || (targetChatId && activeChatIdRef.current === targetChatId)) {
+      if (targetChatId === (isTemporaryChatRef.current ? TEMPORARY_CHAT_ID : activeChatIdRef.current)) {
         actChatRef.current.setMessages([...runtime.actChat.messages] as UIMessage[])
         chat0Ref.current.setMessages([...runtime.askChats[0]!.messages] as UIMessage[])
       }
       forceLiveSyncRender((value) => value + 1)
     }
 
-    if (isTemporaryChatRef.current || !targetChatId || targetChatId === TEMPORARY_CHAT_ID) return
-    void overlayAppClient.conversations.updateMessageUiPartResponse({
-      conversationId: targetChatId,
-      messageId,
-      partId,
-      data,
-    }).then((res) => {
-      if (res.ok) return
-      toast.error('Could not save draft edits.')
-    }).catch(() => {
-      toast.error('Could not save draft edits.')
-    })
-  }, [actChatRef, chat0Ref, emptyRuntimeRef, forceLiveSyncRender,  isTemporaryChatRef, runtimesRef])
+  }, [actChatRef, chat0Ref, emptyRuntimeRef, forceLiveSyncRender, isTemporaryChatRef, nativeThreadSafety.readOnly, runtimesRef])
 
   /** Hide header rename until `loadChat` has applied messages/meta (`runtime.hydrated`). */
   const activeChatHydrated = Boolean(
     activeChatId && runtimesRef.current.get(activeChatId)?.hydrated,
   )
+  useEffect(() => {
+    if (
+      searchParams.get('handoff') !== '1'
+      || !activeChatId
+      || !activeChatHydrated
+      || !authUser
+      || nativeThreadSafety.status !== 'writable'
+      || !nativeThreadSafety.isCurrentScope()
+      || inputRef.current.trim()
+    ) return
+    const draftScope = { workspaceId: activeWorkspaceId, conversationId: activeChatId }
+    const handoff = readDraft(draftScope)
+    if (handoff) {
+      setInput(handoff)
+      textareaRef.current?.focus()
+      clearDraft(draftScope)
+    }
+    const params = new URLSearchParams(searchParams.toString())
+    params.delete('handoff')
+    router.replace(`${pathname}?${params.toString()}`)
+  }, [
+    activeChatHydrated,
+    activeChatId,
+    activeWorkspaceId,
+    authUser,
+    nativeThreadSafety,
+    pathname,
+    router,
+    searchParams,
+    setInput,
+  ])
 
   useEffect(() => {
     if (authLoading) return
@@ -816,6 +869,10 @@ export function useChatExperienceController({
   })
 
   const { handleRetryExchange } = useChatRetryController({
+    nativeThreadReadOnly: nativeThreadSafety.readOnly,
+    ensureWritable: nativeThreadSafety.ensureWritable,
+    isCurrentScope: nativeThreadSafety.isCurrentScope,
+    isRuntimeCurrent,
     activeChatId,
     activeChatIdRef,
     activeChatTitle,
@@ -840,6 +897,9 @@ export function useChatExperienceController({
     createNewChat,
     handleSend,
   } = useChatSendController({
+    nativeThreadReadOnly: nativeThreadSafety.readOnly,
+    ensureWritable: nativeThreadSafety.ensureWritable,
+    isCurrentScope: nativeThreadSafety.isCurrentScope,
     activeChatId,
     activeChatIdRef,
     activeChatTitle,
@@ -922,6 +982,7 @@ export function useChatExperienceController({
     handleBranchConversationAtTurn,
     handleDeleteTurnById,
   } = useChatTurnActions({
+    nativeThreadReadOnly: nativeThreadSafety.readOnly,
     activeRuntime,
     isActiveLoading,
     setReplyContext,
@@ -1031,6 +1092,70 @@ export function useChatExperienceController({
     setInterruptedExchangeIdx,
   })
 
+  const startNewNativeThread = useCallback(async () => {
+    if (!nativeThreadSafety.readOnly) {
+      resetToBlankChatSurface({ temporary: false })
+      setInput('')
+      textareaRef.current?.focus()
+      return
+    }
+    if (nativeThreadSafety.status !== 'retired') return
+    const sourceConversationId = activeChatIdRef.current
+    const sourceMessages = sourceConversationId ? primaryMessages : []
+    const outputIds = [...generationResults.values()]
+      .flat()
+      .filter((result) => result.status === 'completed' && result.outputId)
+      .map((result) => result.outputId!)
+    const handoff = buildNativeThreadHandoff({
+      conversationId: sourceConversationId ?? 'temporary',
+      messages: sourceMessages,
+      files: outputIds.map((id) => ({ id })),
+    })
+    const agentId = nativeThreadSafety.agentId
+    if (agentId && activeWorkspaceId) {
+      const { thread: next } = await overlayAppClient.agents.createThread(activeWorkspaceId, agentId, {})
+      if (!nativeThreadSafety.isCurrentScope()) return
+      writeDraft({ workspaceId: activeWorkspaceId, conversationId: next.conversationId }, handoff)
+      dispatchChatCreated({ chat: {
+        _id: next.conversationId, title: next.title, lastModified: Date.now(), conversationType: 'dm',
+      } })
+      const params = new URLSearchParams(window.location.search)
+      params.set('id', next.conversationId)
+      params.set('handoff', '1')
+      params.delete('message')
+      params.delete('draft')
+      const agentRoute = agentConversationRedirect({
+        pathname,
+        workspaceId: activeWorkspaceId,
+        agentId,
+        conversationId: next.conversationId,
+        guided: false,
+      })
+      if (agentRoute) {
+        const target = new URL(agentRoute, window.location.origin)
+        target.searchParams.set('handoff', '1')
+        router.push(`${target.pathname}?${target.searchParams.toString()}`)
+      } else {
+        router.push(`${pathname}?${params.toString()}`)
+      }
+      return
+    }
+    resetToBlankChatSurface({ temporary: false })
+    setInput(handoff)
+    textareaRef.current?.focus()
+  }, [
+    activeChatIdRef,
+    activeWorkspaceId,
+    generationResults,
+    nativeThreadSafety,
+    pathname,
+    primaryMessages,
+    resetToBlankChatSurface,
+    router,
+    setInput,
+    textareaRef,
+    ])
+
   return {
     chats,
     favoriteScope: authUser?.id ?? userId,
@@ -1110,6 +1235,8 @@ export function useChatExperienceController({
     replyContext,
     setReplyContext,
     composerNotice,
+    nativeThreadSafety,
+    startNewNativeThread,
     showAttachMenu,
     setShowAttachMenu,
     attachMenuRef,
