@@ -1,5 +1,6 @@
 import type { WorkflowAgentOnStepEndCallback } from '@ai-sdk/workflow'
 import type { ToolSet } from 'ai'
+import type { HarnessResponseFailure } from '@overlay/agent-runtime/harness-state'
 import { asRecord } from '@/shared/ai/gateway/overlay-free-policy'
 
 export type HarnessModelObservation = {
@@ -11,6 +12,15 @@ export type HarnessModelObservation = {
   cacheReadTokens: number
   cacheWriteTokens: number
   generationId?: string
+  responseFailure?: HarnessResponseFailure
+}
+
+export function harnessModelResponseFailure(
+  step: Pick<Parameters<WorkflowAgentOnStepEndCallback<ToolSet>>[0], 'finishReason' | 'text' | 'toolCalls'>,
+): HarnessResponseFailure | undefined {
+  if (step.finishReason === 'error') return 'provider_error'
+  if (step.finishReason === 'other') return 'provider_other'
+  if (step.finishReason === 'stop' && !step.text.trim() && !step.toolCalls.length) return 'empty_response'
 }
 
 function tokenCount(value: number | undefined, required = false): number {
@@ -38,6 +48,7 @@ export function captureHarnessModelUsage(
   const cacheWriteTokens = tokenCount(step.usage.inputTokenDetails.cacheWriteTokens)
   if (cacheReadTokens + cacheWriteTokens > inputTokens) throw new Error('Provider cache counts exceed its total input usage.')
   const generationId = identity(gateway.generationId)
+  const responseFailure = harnessModelResponseFailure(step)
   return {
     modelId,
     provider: identity(routing.finalProvider) ?? 'unreported',
@@ -47,6 +58,7 @@ export function captureHarnessModelUsage(
     cacheReadTokens,
     cacheWriteTokens,
     ...(generationId ? { generationId } : {}),
+    ...(responseFailure ? { responseFailure } : {}),
   }
 }
 

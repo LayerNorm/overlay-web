@@ -12,7 +12,9 @@ import { runOverlayHarness } from './runner'
 import { harnessToolResultEvidence } from './tool-evidence'
 import type { HarnessToolExecutionOptions } from './tool-approvals'
 import { buildPersonalHarnessDelivery } from './personal-delivery'
+import { harnessModelResponseFailure } from './model-usage'
 
+vi.mock('server-only', () => ({}))
 vi.mock('@/server/ai/model-runtime', () => ({ getLanguageModel: vi.fn() }))
 beforeEach(() => { vi.mocked(getLanguageModel).mockReset() })
 
@@ -80,6 +82,7 @@ function fixture(requiresPlan = true, extraAllowedToolIds: string[] = []) {
         id, modelId: 'fixture/model', provider: 'fixture', inputTokens: step.usage.inputTokens ?? 0,
         outputTokens: step.usage.outputTokens ?? 0, reasoningTokens: 0, cacheReadTokens: step.usage.inputTokenDetails.cacheReadTokens ?? 0,
         cacheWriteTokens: 0, contextWindow: 1000, costMicros: 0,
+        ...(harnessModelResponseFailure(step) ? { responseFailure: harnessModelResponseFailure(step) } : {}),
       }, Date.now())
     },
     recordToolResult: async event => {
@@ -963,4 +966,32 @@ test('model recovery preserves completed tool results and settled steps before t
   expect(result.steps[0].toolResults[0].toolCallId).toBe('completed-write')
   expect([...f.receipts]).toEqual(['model:0', 'model:2'])
   expect(result.snapshot.status).toBe('completed')
+})
+
+test('settled empty and provider-error responses retry without losing tools, duplicating receipts or keeping failed prose', async () => {
+  const f = fixture(false)
+  const recover = vi.fn(async (receiptId: string) => (await f.ports.read()).modelRecovery?.receiptId === receiptId)
+  f.ports.recoverModelFailure = recover
+  const provider = model(index => {
+    if (index === 0) return [call('write', 'existing-write')]
+    if (index === 1) return ''
+    if (index === 2) return 'Discard this failed response.'
+    return 'Completed using the existing job.'
+  }, ['tool-calls', 'stop', 'error', 'stop'])
+  const execute = vi.fn(async () => ({ jobId: 'existing-job' }))
+  const result = await runOverlayHarness({ ...input,
+    tools: { write: tool({ inputSchema: z.object({}), execute }) },
+  }, f.ports)
+
+  expect(recover.mock.calls.map(args => args[0])).toEqual(['model:1', 'model:2'])
+  expect([...f.receipts]).toEqual(['model:0', 'model:1', 'model:2', 'model:3'])
+  expect(execute).toHaveBeenCalledOnce()
+  expect(provider.doStreamCalls).toHaveLength(4)
+  for (const resumed of provider.doStreamCalls.slice(2)) {
+    expect(JSON.stringify(resumed.prompt)).toContain('existing-job')
+    expect(JSON.stringify(resumed.prompt)).not.toContain('Discard this failed response.')
+  }
+  expect(result.snapshot.status).toBe('completed')
+  expect(result.snapshot.modelRecovery).toBeUndefined()
+  expect(result.steps).toHaveLength(2)
 })

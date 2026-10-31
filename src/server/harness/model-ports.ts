@@ -14,6 +14,7 @@ import { HarnessLanguageModel, type HarnessModelReference } from './secure-model
 import { releaseFreeSummaryFailure, settleHarnessModelUsage } from './settle-model-step'
 import { applyHarnessOperation, readHarnessState, type HarnessExecutionReference } from './state-steps'
 import { createHarnessCapacityWaiter } from './model-capacity'
+import { waitForHarnessModelRecovery } from './model-recovery'
 
 export type PreparedHarnessModel = {
   model: HarnessModelReference
@@ -106,8 +107,12 @@ export function createHarnessModelPorts(input: {
     recoverModelFailure: async receiptId => {
       const state = await readHarnessState(reference)
       const receipt = state.latestReceipt
-      if (state.status !== 'running' || state.modelReservation || receipt?.id !== receiptId
-        || !receipt.rejectionReason || receipt.modelId !== candidates[candidateIndex]) return false
+      if (state.status !== 'running' || state.modelReservation || receipt?.id !== receiptId) return false
+      if (state.modelRecovery?.receiptId === receiptId) {
+        preparedCalls.delete(receiptId)
+        return waitForHarnessModelRecovery(reference, receiptId)
+      }
+      if (!receipt.rejectionReason || receipt.modelId !== candidates[candidateIndex]) return false
       if (receipt.rejectionReason === 'route_capacity') {
         preparedCalls.delete(receiptId)
         return capacity.wait(state, receiptId, candidates[candidateIndex])

@@ -23,7 +23,8 @@ test('readiness is available only to the authenticated server', async () => {
   const convex = convexTest(schema, modules)
   const settings = makeFunctionReference<'query'>('platform/uiSettings:getByServer')
   expect(await convex.query(settings, { userId: 'alice', serverSecret: secret }))
-    .toMatchObject({ harnessRevision: 'overlay-harness-v1', nativeThreadCompatibilityRevision: 'tracked-native-v1' })
+    .toMatchObject({ harnessRevision: 'overlay-harness-v1', harnessModelRecoveryRevision: 'settled-retry-v1',
+      nativeThreadCompatibilityRevision: 'tracked-native-v1' })
   await expect(convex.query(settings, { userId: 'alice', serverSecret: 'invalid' })).rejects.toThrow('Unauthorized')
 })
 
@@ -100,6 +101,60 @@ function oneStep(id: string, requiresVerification = false, evidenceTools = ['too
 }
 
 describe('durable harness runs', () => {
+  test('persists settled model recovery metadata and clears it after a usable response', async () => {
+    const convex = convexTest(schema, modules)
+    const input = admission('model-recovery', await seedConversation(convex))
+    await admit(convex, input)
+    let state = (await apply(convex, input, 'reserve-empty', 0, {
+      type: 'reserve_model', id: 'model:0', maxCostMicros: 100,
+    })).snapshot
+    state = (await apply(convex, input, 'dispatch-empty', state.revision, {
+      type: 'bind_model_dispatch', id: 'model:0', modelId: 'fixture/model', billingReservationId: 'billing-empty',
+    })).snapshot
+    const emptyReceipt = {
+      id: 'model:0', modelId: 'fixture/model', provider: 'fixture',
+      inputTokens: 10, outputTokens: 0, reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0,
+      contextWindow: 32_000, costMicros: 1, costSource: 'provider' as const, responseFailure: 'empty_response' as const,
+    }
+    const first = await apply(convex, input, 'settle-empty', state.revision, {
+      type: 'record_receipt', receipt: emptyReceipt,
+    })
+    const loaded = await get(convex, input.runId)
+    expect(loaded?.modelReservation).toBeUndefined()
+    expect(loaded?.latestReceipt).toEqual(emptyReceipt)
+    expect(loaded?.modelRecovery).toMatchObject({
+      receiptId: 'model:0', modelId: 'fixture/model', code: 'empty_response', attempt: 1,
+    })
+    expect(loaded?.modelRecovery?.nextRetryAt).toBe(loaded!.updatedAt + 5_000)
+    expect(loaded?.usage.costMicros).toBe(1)
+
+    const replay = await apply(convex, input, 'settle-empty-replay', loaded!.revision, {
+      type: 'record_receipt', receipt: emptyReceipt,
+    })
+    expect(replay.applied).toBe(false)
+    expect(replay.snapshot.modelRecovery).toEqual(loaded?.modelRecovery)
+    expect(replay.snapshot.usage.costMicros).toBe(1)
+
+    state = (await apply(convex, input, 'reserve-usable', replay.snapshot.revision, {
+      type: 'reserve_model', id: 'model:1', maxCostMicros: 100,
+    })).snapshot
+    state = (await apply(convex, input, 'dispatch-usable', state.revision, {
+      type: 'bind_model_dispatch', id: 'model:1', modelId: 'fixture/model', billingReservationId: 'billing-usable',
+    })).snapshot
+    const usableReceipt = {
+      id: 'model:1', modelId: 'fixture/model', provider: 'fixture',
+      inputTokens: 10, outputTokens: 5, reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0,
+      contextWindow: 32_000, costMicros: 2, costSource: 'provider' as const,
+    }
+    const usable = await apply(convex, input, 'settle-usable', state.revision, {
+      type: 'record_receipt', receipt: usableReceipt,
+    })
+    expect(usable.snapshot.modelRecovery).toBeUndefined()
+    expect((await get(convex, input.runId))?.modelRecovery).toBeUndefined()
+    expect((await get(convex, input.runId))?.usage.costMicros).toBe(3)
+    expect(first.snapshot.modelRecovery).toEqual(loaded?.modelRecovery)
+  })
+
   test.each(['budget', 'model_unavailable', 'route_capacity'] as const)('persists a zero-usage %s rejection through the mutation boundary', async rejectionReason => {
     const convex = convexTest(schema, modules)
     const input = admission('rejection', await seedConversation(convex))

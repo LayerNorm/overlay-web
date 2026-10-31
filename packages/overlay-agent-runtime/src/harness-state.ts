@@ -26,6 +26,17 @@ export type HarnessEvidence = {
   verification?: { stepId: string; planRevision: number }
 }
 
+export type HarnessResponseFailure = 'empty_response' | 'provider_error' | 'provider_other'
+
+export type HarnessModelRecovery = {
+  receiptId: string
+  modelId: string
+  code: HarnessResponseFailure | 'route_capacity' | 'route_interrupted'
+  attempt: number
+  firstFailureAt: number
+  nextRetryAt: number
+}
+
 export type HarnessReceipt = {
   id: string
   modelId: string
@@ -43,6 +54,8 @@ export type HarnessReceipt = {
   externalCostMicros?: number | null
   /** Zero-usage rejection or failure of a zero-cost summary attempt. */
   rejectionReason?: 'budget' | 'model_unavailable' | 'route_capacity' | 'route_interrupted' | 'summary_failed'
+  /** A settled response can be unusable even when its token usage is known. */
+  responseFailure?: HarnessResponseFailure
 }
 
 export type HarnessPolicy = {
@@ -106,6 +119,7 @@ export type HarnessSnapshot = {
   stalledContinuations: number
   latestReceipt?: HarnessReceipt
   routeInterruptionCount?: number
+  modelRecovery?: HarnessModelRecovery
   modelReservation?: {
     id: string
     maxCostMicros: number
@@ -356,23 +370,51 @@ export function transitionHarnessStep(state: HarnessSnapshot, input: {
   return changed(next, now)
 }
 
-export function validateHarnessReceipt(receipt: HarnessReceipt) {
+function validateResponseFailure(receipt: HarnessReceipt) {
+  if (receipt.responseFailure !== undefined && (receipt.rejectionReason !== undefined
+    || !['empty_response', 'provider_error', 'provider_other'].includes(receipt.responseFailure))) {
+    throw new Error('Invalid settled model response failure.')
+  }
+}
+
+function validateRejection(receipt: HarnessReceipt) {
   if (receipt.rejectionReason !== undefined && (
     !['budget', 'model_unavailable', 'route_capacity', 'route_interrupted', 'summary_failed'].includes(receipt.rejectionReason)
     || [receipt.inputTokens, receipt.outputTokens, receipt.reasoningTokens, receipt.cacheReadTokens,
       receipt.cacheWriteTokens, receipt.costMicros].some(value => value !== 0)
     || receipt.costSource !== 'catalog' || receipt.externalCostMicros !== undefined
   )) throw new Error('Rejected inference must have confirmed zero usage and cost.')
+}
+
+function validateUsage(receipt: HarnessReceipt) {
   for (const value of [receipt.inputTokens, receipt.outputTokens, receipt.reasoningTokens, receipt.cacheReadTokens, receipt.cacheWriteTokens, receipt.costMicros]) {
     if (!Number.isSafeInteger(value) || value < 0) throw new Error('Usage and cost must be known nonnegative integers.')
   }
+}
+
+function validateReceiptIdentity(receipt: HarnessReceipt) {
   if (!receipt.id || !receipt.modelId || !receipt.provider) throw new Error('A receipt requires actual routing identity.')
   if (receipt.contextWindow !== null && (!Number.isSafeInteger(receipt.contextWindow) || receipt.contextWindow <= 0)) throw new Error('Invalid context window.')
+}
+
+function validateReceiptUsageShape(receipt: HarnessReceipt) {
   if (receipt.cacheReadTokens + receipt.cacheWriteTokens > receipt.inputTokens) throw new Error('Cached tokens exceed total input usage.')
+}
+
+function validateExternalCost(receipt: HarnessReceipt) {
   if (receipt.externalCostMicros !== undefined) {
     if (receipt.costMicros !== 0 || receipt.costSource !== 'external'
       || (receipt.externalCostMicros !== null && (!Number.isSafeInteger(receipt.externalCostMicros) || receipt.externalCostMicros < 0))) throw new Error('Invalid external provider cost.')
   } else if (receipt.costSource === 'external') throw new Error('External provider cost must be reported or explicitly unknown.')
+}
+
+export function validateHarnessReceipt(receipt: HarnessReceipt) {
+  validateResponseFailure(receipt)
+  validateRejection(receipt)
+  validateUsage(receipt)
+  validateReceiptIdentity(receipt)
+  validateReceiptUsageShape(receipt)
+  validateExternalCost(receipt)
 }
 
 const usageKeys = ['inputTokens', 'outputTokens', 'reasoningTokens', 'cacheReadTokens', 'cacheWriteTokens', 'costMicros', 'externalCostMicros', 'unpricedExternalCalls'] as const
@@ -390,6 +432,20 @@ function addHarnessUsage(target: HarnessUsage, delta: HarnessUsage) {
   }
 }
 
+function nextModelRecovery(state: HarnessSnapshot, receipt: HarnessReceipt, now: number): HarnessModelRecovery | undefined {
+  if (receipt.id.startsWith('summary:')) return state.modelRecovery
+  const code = receipt.responseFailure ?? (receipt.rejectionReason === 'route_capacity'
+    || receipt.rejectionReason === 'route_interrupted' ? receipt.rejectionReason : undefined)
+  if (!code) return receipt.rejectionReason ? state.modelRecovery : undefined
+  const attempt = Math.min((state.modelRecovery?.attempt ?? 0) + 1, Number.MAX_SAFE_INTEGER)
+  const delay = Math.min(5_000 * 2 ** Math.min(attempt - 1, 6), 300_000)
+  return {
+    receiptId: receipt.id, modelId: receipt.modelId, code, attempt,
+    firstFailureAt: state.modelRecovery?.firstFailureAt ?? now,
+    nextRetryAt: Math.min(now + delay, state.policy.deadlineAt),
+  }
+}
+
 // The caller must atomically deduplicate receipt.id per run before recording.
 export function recordHarnessReceipt(state: HarnessSnapshot, receipt: HarnessReceipt, now: number): HarnessSnapshot {
   if (state.latestReceipt?.id === receipt.id) {
@@ -400,6 +456,7 @@ export function recordHarnessReceipt(state: HarnessSnapshot, receipt: HarnessRec
   const next = mutable(state)
   if (next.modelReservation?.id === receipt.id) next.modelReservation = undefined
   next.latestReceipt = { ...receipt }
+  next.modelRecovery = nextModelRecovery(state, receipt, now)
   if (receipt.rejectionReason === 'route_interrupted') {
     next.routeInterruptionCount = (next.routeInterruptionCount ?? 0) + 1
   }

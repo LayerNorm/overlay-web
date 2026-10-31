@@ -92,6 +92,7 @@ export function buildHarnessWorkingContext(state: HarnessSnapshot): string {
     goal: state.goal,
     constraints: state.constraints,
     status: state.status,
+    ...(state.modelRecovery ? { modelRecovery: state.modelRecovery } : {}),
     planRevision: state.planRevision,
     planRequired: state.policy.requiresPlan,
     plan: state.plan,

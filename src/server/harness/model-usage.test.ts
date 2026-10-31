@@ -1,7 +1,7 @@
 import { beforeEach, expect, test, vi } from 'vitest'
 import type { WorkflowAgentOnStepEndCallback } from '@ai-sdk/workflow'
 import type { ToolSet } from 'ai'
-import { captureHarnessModelUsage, harnessCostMicros } from './model-usage'
+import { captureHarnessModelUsage, harnessCostMicros, harnessModelResponseFailure } from './model-usage'
 import { resolveHarnessModelUsage } from './usage-steps'
 
 const mocks = vi.hoisted(() => ({ generation: vi.fn(), pricing: vi.fn(), attempt: 1 }))
@@ -17,10 +17,18 @@ vi.mock('workflow', async importOriginal => {
 })
 
 const step = {
+  finishReason: 'stop',
+  text: 'A usable response.',
+  toolCalls: [],
   usage: { inputTokens: 1_000, outputTokens: 100, inputTokenDetails: { cacheReadTokens: 600, cacheWriteTokens: 200 }, outputTokenDetails: { reasoningTokens: 20 } },
   providerMetadata: { gateway: { generationId: 'gen_fixture', routing: { canonicalSlug: 'provider/actual', finalProvider: 'provider' },
     asyncJob: { webhookSigningSecret: 'fixture-do-not-store' }, unrelated: 'fixture-do-not-store' } },
 } as unknown as Parameters<WorkflowAgentOnStepEndCallback<ToolSet>>[0]
+const response = (
+  finishReason: Parameters<WorkflowAgentOnStepEndCallback<ToolSet>>[0]['finishReason'],
+  text: string,
+  toolCalls: Parameters<WorkflowAgentOnStepEndCallback<ToolSet>>[0]['toolCalls'] = [],
+) => ({ finishReason, text, toolCalls })
 const request = () => ({ receiptId: 'model:0', requestedModelId: 'provider/requested', contextWindow: 100_000,
   observation: captureHarnessModelUsage(step, 'provider/requested') })
 
@@ -47,6 +55,23 @@ test('allows only normalized token counts and routing references across the dura
   expect(() => captureHarnessModelUsage({ ...step, usage: { ...step.usage, inputTokens: 700 } }, 'provider/requested')).toThrow(/cache counts/)
 })
 
+test.each([
+  ['stop', '', 'empty_response'],
+  ['error', 'partial prose', 'provider_error'],
+  ['other', '', 'provider_other'],
+] as const)('classifies settled %s responses without usable text', (finishReason, text, expected) => {
+  expect(harnessModelResponseFailure(response(finishReason, text))).toBe(expected)
+})
+
+test.each([
+  ['stop', 'A usable response.', []],
+  ['stop', '', [{}]],
+  ['content-filter', '', []],
+  ['length', '', []],
+] as const)('does not classify %s responses with content, tools, or non-retryable finish reasons', (finishReason, text, toolCalls) => {
+  expect(harnessModelResponseFailure(response(finishReason, text, toolCalls))).toBeUndefined()
+})
+
 test('uses exact Gateway receipts, including zero, without persisting unrelated generation data', async () => {
   for (const totalCost of [0.00071, 0]) {
     mocks.generation.mockResolvedValue({ id: 'gen_fixture', model: 'provider/actual', providerName: 'provider', isByok: false, totalCost,
@@ -57,6 +82,21 @@ test('uses exact Gateway receipts, including zero, without persisting unrelated 
     expect(JSON.stringify(result)).not.toContain('fixture-do-not-store')
   }
   expect(mocks.pricing).not.toHaveBeenCalled()
+})
+
+test('propagates response failure to a charged provider receipt without treating it as a rejection', async () => {
+  mocks.generation.mockResolvedValue({
+    id: 'gen_fixture', model: 'provider/actual', providerName: 'provider', isByok: false, totalCost: 0.00071,
+  })
+  const observation = captureHarnessModelUsage({ ...step, ...response('error', 'Partial provider output.') }, 'provider/requested')
+  const result = await resolveHarnessModelUsage({ ...request(), observation })
+  expect(result.receipt).toMatchObject({
+    responseFailure: 'provider_error',
+    costMicros: 710,
+    costSource: 'provider',
+  })
+  expect(result.receipt).not.toHaveProperty('rejectionReason')
+  expect(result.providerCostUsd).toBe(0.00071)
 })
 
 test('delayed receipt ingestion retries only lookup, while other lookup failures require reconciliation', async () => {

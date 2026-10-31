@@ -105,6 +105,7 @@ export const getByServer = query({
   returns: v.object({
     ...uiSettingsValidator.fields,
     harnessRevision: v.literal('overlay-harness-v1'),
+    harnessModelRecoveryRevision: v.literal('settled-retry-v1'),
     nativeThreadCompatibilityRevision: v.literal('tracked-native-v1'),
   }),
   handler: async (ctx, args) => {
@@ -113,6 +114,7 @@ export const getByServer = query({
     if (!existing) return {
       ...defaultUiSettings(),
       harnessRevision: 'overlay-harness-v1' as const,
+      harnessModelRecoveryRevision: 'settled-retry-v1' as const,
       nativeThreadCompatibilityRevision: 'tracked-native-v1' as const,
     }
     const settings = {
@@ -140,6 +142,7 @@ export const getByServer = query({
     return {
       ...settings,
       harnessRevision: 'overlay-harness-v1' as const,
+      harnessModelRecoveryRevision: 'settled-retry-v1' as const,
       nativeThreadCompatibilityRevision: 'tracked-native-v1' as const,
       ...(safeModelId(existing.defaultActModelId) ? { defaultActModelId: safeModelId(existing.defaultActModelId) } : {}),
       ...(safeModelId(existing.defaultImageModelId) ? { defaultImageModelId: safeModelId(existing.defaultImageModelId) } : {}),

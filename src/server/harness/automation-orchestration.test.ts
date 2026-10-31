@@ -81,7 +81,10 @@ const input = {
 beforeEach(() => {
   vi.resetAllMocks()
   mocks.ready.mockReturnValue(true)
-  mocks.getAppSettings.mockResolvedValue({ harnessRevision: 'overlay-harness-v1' })
+  mocks.getAppSettings.mockResolvedValue({
+    harnessRevision: 'overlay-harness-v1',
+    harnessModelRecoveryRevision: 'settled-retry-v1',
+  })
   mocks.assertSource.mockResolvedValue(source)
   mocks.ensureConversation.mockResolvedValue({ conversationId: 'conversation', workspaceId: 'workspace' })
   mocks.markRunStarted.mockResolvedValue(undefined)

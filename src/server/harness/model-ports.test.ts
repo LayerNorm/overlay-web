@@ -4,12 +4,13 @@ import type { HarnessExecutionReference } from './state-steps'
 import type { HarnessModelReference } from './secure-model'
 import { createHarnessModelPorts } from './model-ports'
 
-const mocks = vi.hoisted(() => ({ read: vi.fn(), wait: vi.fn(), reset: vi.fn() }))
+const mocks = vi.hoisted(() => ({ read: vi.fn(), wait: vi.fn(), reset: vi.fn(), recovery: vi.fn() }))
 vi.mock('server-only', () => ({}))
 vi.mock('./state-steps', () => ({ readHarnessState: mocks.read, applyHarnessOperation: vi.fn() }))
 vi.mock('./model-capacity', () => ({
   createHarnessCapacityWaiter: () => ({ wait: mocks.wait, reset: mocks.reset }),
 }))
+vi.mock('./model-recovery', () => ({ waitForHarnessModelRecovery: mocks.recovery }))
 
 const reference = {} as HarnessExecutionReference
 
@@ -52,7 +53,7 @@ beforeEach(() => {
   vi.resetAllMocks()
 })
 
-test('retries the same free model immediately twice and rejects the third interruption', async () => {
+test('legacy interruption snapshots without recovery metadata keep the two-attempt limit', async () => {
   for (const count of [1, 2, 3]) {
     const onFallback = vi.fn()
     mocks.read.mockResolvedValue(stateWithInterruptionCount(count))
@@ -71,4 +72,36 @@ test('retries the same free model immediately twice and rejects the third interr
     expect(onFallback).not.toHaveBeenCalled()
   }
   expect(mocks.wait).not.toHaveBeenCalled()
+})
+
+test('routes persisted recovery attempts beyond the legacy limit through the durable waiter', async () => {
+  const onFallback = vi.fn()
+  const state = {
+    ...stateWithInterruptionCount(3),
+    modelRecovery: {
+      receiptId: 'model:0',
+      modelId: 'openrouter/free',
+      code: 'route_interrupted' as const,
+      attempt: 3,
+      firstFailureAt: 1,
+      nextRetryAt: 5_001,
+    },
+  }
+  mocks.read.mockResolvedValue(state)
+  mocks.recovery.mockResolvedValue(true)
+  const ports = createHarnessModelPorts({
+    reference,
+    modelId: 'openrouter/free',
+    prepare: async () => ({
+      model: {} as HarnessModelReference,
+      options: { prompt: [] },
+      contextWindow: null,
+      estimatedCostMicros: 0,
+    }),
+  }, { candidateIds: ['openrouter/free', 'fixture/fallback'], onFallback })
+
+  expect(await ports.recoverModelFailure('model:0')).toBe(true)
+  expect(mocks.recovery).toHaveBeenCalledExactlyOnceWith(reference, 'model:0')
+  expect(mocks.wait).not.toHaveBeenCalled()
+  expect(onFallback).not.toHaveBeenCalled()
 })

@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Persist settled Harness response failures with bounded durable retries and receipt accounting, while preserving the existing Harness revision and requiring the additive server-owned `settled-retry-v1` admission marker for new web code.
+
 - Initial long-running harness recovery slice: separate context-compaction checkpoints from continuation stagnation, provide trusted bounded recovery before durable stuck waits, and return repairable generated-UI and plan-validation feedback.
 
 - Cut over personal HTTP and named-room admission to native Harness with explicit retirement responses for unsupported execution paths and truthful fail-closed backend readiness.

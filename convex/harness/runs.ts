@@ -158,6 +158,7 @@ const receiptValidator = v.object({
     v.literal('route_interrupted'),
     v.literal('summary_failed'),
   )),
+  responseFailure: v.optional(v.union(v.literal('empty_response'), v.literal('provider_error'), v.literal('provider_other'))),
 })
 
 const childValidator = v.object({
@@ -292,6 +293,7 @@ function metadataFromSnapshot(snapshot: HarnessSnapshot): HarnessMetadata {
     stalledContinuations: snapshot.stalledContinuations,
     ...(snapshot.latestReceipt === undefined ? {} : { latestReceipt: snapshot.latestReceipt }),
     ...(snapshot.routeInterruptionCount === undefined ? {} : { routeInterruptionCount: snapshot.routeInterruptionCount }),
+    ...(snapshot.modelRecovery === undefined ? {} : { modelRecovery: snapshot.modelRecovery }),
     ...(snapshot.modelReservation === undefined ? {} : { modelReservation: snapshot.modelReservation }),
     usage: snapshot.usage,
     updatedAt: snapshot.updatedAt,

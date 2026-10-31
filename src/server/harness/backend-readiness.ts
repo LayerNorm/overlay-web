@@ -11,4 +11,6 @@ export function isHarnessBackendReady(settings: AppSettings | null): boolean {
   if (!settings) return false
   if (!('harnessRevision' in settings)) return false
   return settings.harnessRevision === 'overlay-harness-v1'
+    && 'harnessModelRecoveryRevision' in settings
+    && settings.harnessModelRecoveryRevision === 'settled-retry-v1'
 }

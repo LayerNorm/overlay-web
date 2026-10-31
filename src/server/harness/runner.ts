@@ -19,6 +19,8 @@ import type { HarnessApprovalRequest, HarnessExecutionPorts, HarnessModelSetting
 import { HarnessLanguageModel, type HarnessModelReference } from './secure-model'
 import { createHarnessToolApprovals, type HarnessToolApprovals, type HarnessToolExecutionOptions } from './tool-approvals'
 import { assertNoControlToolReplacement, prepareToolDefinitions } from './tool-definitions'
+import { harnessModelResponseFailure } from './model-usage'
+import { HarnessYield, runHarnessModelInvocation, terminateOnProviderFailure } from './model-recovery'
 import { harnessToolInputDigest } from './tool-input-digest'
 import {
   captureAuthenticatedToolDenials,
@@ -48,8 +50,6 @@ export type HarnessExecutionResult = {
   messages: ModelMessage[]
   steps: StepResult<ToolSet>[]
 }
-
-class HarnessYield extends Error {}
 
 function isTerminal(state: HarnessSnapshot) {
   return ['completed', 'failed', 'cancelled'].includes(state.status)
@@ -230,21 +230,6 @@ async function resumePendingApprovals(
   return { kind: 'restart', messages: resumedMessages, resetStagnation: true }
 }
 
-async function terminateOnProviderFailure(
-  state: HarnessSnapshot,
-  finishReason: string | undefined,
-  ports: HarnessExecutionPorts,
-  segment: number,
-): Promise<boolean> {
-  if (!isTerminal(state) && (finishReason === 'content-filter' || finishReason === 'error' || finishReason === 'other')) {
-    await ports.apply(`provider-failure:${segment}`, {
-      type: 'terminate', status: 'failed', reason: `The provider could not finish the response (${finishReason}).`,
-    })
-    return true
-  }
-  return false
-}
-
 type InvocationContinuation =
   | { kind: 'finished'; snapshot: HarnessSnapshot }
   | { kind: 'continue'; stagnantSegments: number; finalAnswerRequired: boolean }
@@ -357,6 +342,7 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
     const settledSteps: StepResult<ToolSet>[] = []
     let recoverySteps: StepResult<ToolSet>[] = []
     let recoveryMessages = messages
+    let preparedReceiptId = `model:${modelCall}`
     const recordedSteps = new Set<number>()
     const recordModelStep = async (step: Parameters<HarnessExecutionPorts['recordModelStep']>[0]) => {
       if (recordedSteps.has(step.stepNumber)) return
@@ -400,6 +386,7 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
             ? { stagnationRecoveryAttempt: stagnantSegments - STAGNATION_RECOVERY_START + 1 } : {}),
         }
         const receiptId = `model:${modelCall}`
+        preparedReceiptId = receiptId
         const prepared = await ports.prepareModel({ receiptId, state: current, messages: prompt, instructionContext,
           toolNames: Object.keys(tools), toolDefinitions, settings: input.settings ?? {} })
         if (!Number.isSafeInteger(prepared.estimatedCostMicros) || prepared.estimatedCostMicros < 0) throw new Error('Invalid model cost reservation.')
@@ -452,18 +439,21 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
 
     let pending: HarnessApprovalRequest[] = []
     let recoveredModel = false
-    try {
-      const result = await agent.stream({ messages, writable: input.writable, preventClose: true, sendFinish: false })
-      invocationMessages = result.messages
-      invocationSteps = result.steps
-      if ('error' in result && result.error) throw result.error
-      pending = unresolvedApprovalCalls(result)
-    } catch (error) {
-      if (!(error instanceof HarnessYield)) {
-        if (!await ports.recoverModelFailure?.(`model:${modelCall}`)) throw error
-        modelCall++
-        recoveredModel = true
-      }
+    const invocationResult = await runHarnessModelInvocation(
+      () => agent.stream({ messages, writable: input.writable, preventClose: true, sendFinish: false }),
+      () => ({ messages: invocationMessages, steps: invocationSteps, preparedReceiptId, modelCall }),
+      unresolvedApprovalCalls,
+      ports.recoverModelFailure,
+    )
+    invocationMessages = invocationResult.messages
+    invocationSteps = invocationResult.steps
+    preparedReceiptId = invocationResult.preparedReceiptId
+    modelCall = invocationResult.modelCall
+    pending = invocationResult.pending
+    recoveredModel = invocationResult.recovered
+    const lastStep = invocationSteps.at(-1)
+    if (!recoveredModel && lastStep && harnessModelResponseFailure(lastStep)) {
+      recoveredModel = await ports.recoverModelFailure?.(preparedReceiptId) ?? false
     }
     if (recoveredModel) {
       messages = recoveryMessages
