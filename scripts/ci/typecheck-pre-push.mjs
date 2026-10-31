@@ -21,6 +21,7 @@ const changed = git(['diff', '--name-only', '-z', range]).split('\0').filter(Boo
 const isSource = file => /\.[cm]?[jt]sx?$/.test(file) && !/\.test\.[cm]?[jt]sx?$/.test(file);
 const rootRelevant = file => /^(?:src|convex|packages)\//.test(file) && (isSource(file) || /(?:^|\/)(?:package(?:-lock)?\.json|tsconfig[^/]*\.json)$/.test(file))
   || /^(?:package(?:-lock)?\.json|tsconfig[^/]*\.json|next\.config\.[cm]?[jt]s|next-env\.d\.ts|\.npmrc)$/.test(file)
+  || file === 'overlay-desktop' || file === '.gitmodules'
   || /^scripts\/ci\/(?:check-|typecheck)/.test(file) && !/\.test\.[cm]?[jt]sx?$/.test(file);
 const adminRelevant = file => /^apps\/admin\//.test(file) && (isSource(file) || /(?:^|\/)(?:package(?:-lock)?\.json|tsconfig[^/]*\.json)$/.test(file));
 const web = changed.some(rootRelevant);
