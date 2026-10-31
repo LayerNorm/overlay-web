@@ -33,7 +33,8 @@ describe('generated UI conversation persistence', () => {
       conversationId,
       mode: 'chat',
       modelId: 'test-model',
-      runner: 'tool_loop',
+      runner: 'workflow',
+      executionEngine: 'overlay_harness',
       serverSecret,
       turnId: 'questionnaire-turn',
       userId,
@@ -51,7 +52,7 @@ describe('generated UI conversation persistence', () => {
       userMessageId,
     })
     expect(replay._id).toBe(run._id)
-    expect(replay.executionEngine).toBeUndefined()
+    expect(replay.executionEngine).toBe('overlay_harness')
     await convex.mutation(api.chat.conversations.transitionAgentRun, {
       leaseExpiresAt: Date.now() + 60_000,
       runId: run._id,

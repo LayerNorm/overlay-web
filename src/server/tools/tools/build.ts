@@ -372,7 +372,17 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
     execute: async (input) => {
       const parsed = presentGeneratedUiVariantSchema.safeParse(input)
       if (!parsed.success) {
-        return { success: false, error: 'Invalid generated UI payload.' }
+        return {
+          success: false,
+          code: 'tool_validation_failure',
+          error: 'Invalid generated UI payload.',
+          issues: parsed.error.issues.slice(0, 12).map(issue => ({
+            path: issue.path.join('.'),
+            code: issue.code,
+            message: issue.message,
+          })),
+          hint: 'Correct the listed fields and retry. If this is a question, ask it in plain text, then call harness_report_blocker to create a durable wait before acting.',
+        }
       }
       return executePresentGeneratedUi(options, parsed.data as Record<string, unknown>)
     },

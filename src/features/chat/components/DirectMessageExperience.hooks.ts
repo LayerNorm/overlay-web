@@ -27,7 +27,11 @@ import type { MentionCategory, MentionItem } from '@/shared/knowledge/mention-ty
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { resolveMentionedPrincipalIds } from '@/shared/mentions/principal-mentions'
 import { clearDraft, readDraft, writeDraft } from '@/shared/chat/conversation-drafts'
-import { isTransientConversationDraft } from '@/shared/chat/chat-view-navigation'
+import { buildNativeThreadHandoff } from '@/shared/chat/native-thread-handoff'
+import {
+  agentConversationRedirect,
+  isTransientConversationDraft,
+} from '@/shared/chat/chat-view-navigation'
 import {
   CHAT_TITLE_UPDATED_EVENT,
   dispatchChatArchived,
@@ -44,7 +48,10 @@ import {
   AGENT_DRAFT_PREVIEW_EVENT,
   type AgentDraftPreviewEventDetail,
 } from '@/shared/workspace/sidebar-events'
-import { takePendingCollaborationMessage } from '../lib/pending-collaboration-message'
+import {
+  restorePendingCollaborationMessage,
+  takePendingCollaborationMessage,
+} from '../lib/pending-collaboration-message'
 import { shouldRenameAgentThread } from '../lib/agent-thread-title'
 import { defaultMemoryEnabled } from '@/shared/chat/tool-requests'
 import { prefetchTitle } from '@/features/chat/lib/generate-title'
@@ -62,9 +69,24 @@ import { useChatPanels } from './chat/useChatPanels'
 import { useChatShellPanels } from './chat/useChatShellPanels'
 import { useChatAttachments } from './useChatAttachments'
 import { useComposerTextState } from './chat/useComposerTextState'
+import { useNativeThreadSafety } from './chat/useNativeThreadSafety'
+import {
+  isNativeThreadSafetyError,
+  nativeThreadSafetyErrorStatus,
+  nativeThreadSafetyStatus,
+  type NativeThreadSafetyStatus,
+} from '@/shared/chat/native-thread-safety'
 import { buildTextTurnPayload } from './chat/chat-send-body-builders'
+import { createHandoffConversation } from './chat/chat-send-create'
 
 export type OptimisticMessage = RoomMessageRecord
+export type RoomSendResult = {
+  accepted: boolean
+  safetyRejected?: boolean
+  notSubmitted?: boolean
+  scopeChanged?: boolean
+  error?: unknown
+}
 
 /** Ids of the client-only rows that show an agent is about to reply (see `useSendMessage`). */
 const PENDING_AGENT_REPLY_PREFIX = 'optimistic_pending_reply_'
@@ -86,7 +108,28 @@ export function useThreadPanel({
 }) {
   const [threadRootId, setThreadRootId] = useState<string | null>(null)
   const [threadFollowing, setThreadFollowing] = useState(false)
-  const [threadInput, setThreadInput] = useState('')
+  const [threadInput, setThreadInputState] = useState('')
+  const threadInputRef = useRef(threadInput)
+  const threadScopeRef = useRef({ conversationId, threadRootId })
+  useLayoutEffect(() => {
+    threadScopeRef.current = { conversationId, threadRootId }
+  }, [conversationId, threadRootId])
+  const setThreadInput = useCallback((value: string) => {
+    threadInputRef.current = value
+    setThreadInputState(value)
+  }, [])
+  const clearSubmittedThreadInput = useCallback((scope: {
+    conversationId: string
+    threadRootMessageId: string
+    text: string
+  }) => {
+    const current = threadScopeRef.current
+    if (
+      current.conversationId === scope.conversationId
+      && current.threadRootId === scope.threadRootMessageId
+      && threadInputRef.current === scope.text
+    ) setThreadInput('')
+  }, [setThreadInput])
 
   useEffect(() => {
     if (!threadRootId) {
@@ -126,6 +169,7 @@ export function useThreadPanel({
     threadFollowing,
     threadInput,
     setThreadInput,
+    clearSubmittedThreadInput,
     toggleThreadFollow,
     openThread,
   }
@@ -998,6 +1042,11 @@ export function useDraftConversation({
 }
 
 export function useSendMessage({
+  canSendToThread,
+  ensureCanSendToThread,
+  nativeThreadSafetyStatusValue,
+  selectedThreadSafetyStatus,
+  currentThreadRootId,
 
   currentPrincipalId,
   setMessages,
@@ -1017,6 +1066,15 @@ export function useSendMessage({
   messages,
   mentions,
 }: {
+  canSendToThread?: (threadRootMessageId?: string) => boolean
+  ensureCanSendToThread: (threadRootMessageId?: string) => Promise<{
+    accepted: boolean
+    error?: unknown
+    status?: NativeThreadSafetyStatus
+  }>
+  nativeThreadSafetyStatusValue: NativeThreadSafetyStatus
+  selectedThreadSafetyStatus: NativeThreadSafetyStatus
+  currentThreadRootId: string | null
 
   currentPrincipalId: string
   setMessages: Dispatch<SetStateAction<OptimisticMessage[]>>
@@ -1038,14 +1096,19 @@ export function useSendMessage({
 }) {
   const threadRenameRequestedRef = useRef<string | null>(null)
   const pendingCollaborationMessageSentRef = useRef<string | null>(null)
+  const pendingCollaborationSafetyCheckRef = useRef<string | null>(null)
   const conversationIdRef = useRef(conversationId)
   conversationIdRef.current = conversationId
+  const currentThreadRootRef = useRef<string | null>(null)
+  currentThreadRootRef.current = currentThreadRootId
   const conversationTitleRef = useRef(conversationTitle)
   conversationTitleRef.current = conversationTitle
   const loadingRef = useRef(loading)
   loadingRef.current = loading
   const soloAgentParticipantRef = useRef(soloAgentParticipant)
   soloAgentParticipantRef.current = soloAgentParticipant
+  const inFlightSendsRef = useRef(new Set<string>())
+  const pendingPreflightsRef = useRef(new Set<string>())
 
   // Unanswered placeholders expire after a minute; reconciliation replaces answered ones atomically.
   useEffect(() => {
@@ -1068,24 +1131,170 @@ export function useSendMessage({
     return Array.from(new Set([...fromChips, ...fromText]))
   }
 
+  function getInvokedAgents(mentionedPrincipalIds: string[], threadRootMessageId?: string) {
+    const agentParticipants = participants.filter((participant) => participant.principalType === 'agent')
+    const humanParticipants = participants.filter((participant) => participant.principalType === 'human')
+    const threadAgentId = threadRootMessageId
+      ? messages.find((message) => message.id === threadRootMessageId && message.authorKind === 'agent')?.authorPrincipalId
+      : undefined
+    const mentionedPrincipalIdSet = new Set(mentionedPrincipalIds)
+    return agentParticipants.filter((participant) => (
+      (conversationType === 'dm' && agentParticipants.length === 1 && humanParticipants.length === 1)
+      || mentionedPrincipalIdSet.has(participant.principalId)
+      || threadAgentId === participant.principalId
+    ))
+  }
+
+  function appendPendingAgentReplies(
+    clientNonce: string,
+    threadRootMessageId: string | undefined,
+    invokedAgents: ConversationParticipant[],
+  ) {
+    if (!invokedAgents.length) return
+    setAgentResponding(invokedAgents.length === 1 ? invokedAgents[0]!.displayName : 'Agents')
+    const pendingAt = Date.now()
+    setMessages((current) => [
+      ...current.filter((message) => !message.id.startsWith(`${PENDING_AGENT_REPLY_PREFIX}${clientNonce}`)),
+      ...invokedAgents.map((agent) => ({
+        id: `${PENDING_AGENT_REPLY_PREFIX}${clientNonce}_${agent.principalId}`,
+        turnId: `${PENDING_AGENT_REPLY_PREFIX}${clientNonce}_${agent.principalId}`,
+        authorKind: 'agent' as const,
+        authorPrincipalId: agent.principalId,
+        content: '',
+        createdAt: pendingAt + PENDING_AGENT_REPLY_SORT_LEAD_MS,
+        updatedAt: pendingAt,
+        status: 'generating' as const,
+        threadRootMessageId,
+      } satisfies OptimisticMessage)),
+    ].sort(compareRoomMessageRecords))
+  }
+
+  function scheduleAgentThreadRename(
+    shouldRename: boolean,
+    agent: ConversationParticipant | null,
+    titlePromise: Promise<string | null> | null,
+    titleAtSend: string | null,
+  ) {
+    if (!shouldRename || !agent) return
+    const agentName = agent.displayName
+    const previousTitle = titleAtSend ?? 'New thread'
+    void titlePromise?.then(async (aiTitle) => {
+      if (!aiTitle) {
+        if (threadRenameRequestedRef.current === conversationId) {
+          threadRenameRequestedRef.current = null
+        }
+        return
+      }
+      const title = sanitizeChatTitle(aiTitle, agentName)
+      dispatchChatTitleUpdated({ chatId: conversationId, title })
+      if (conversationIdRef.current === conversationId) setConversationTitle(title)
+      try {
+        const res = await overlayAppClient.conversations.updateResponse({ conversationId, title })
+        if (!res.ok) throw new Error('Could not update conversation title')
+      } catch {
+        dispatchChatTitleUpdated({ chatId: conversationId, title: previousTitle })
+        if (conversationIdRef.current === conversationId) setConversationTitle(previousTitle)
+        if (threadRenameRequestedRef.current === conversationId) {
+          threadRenameRequestedRef.current = null
+        }
+      }
+    })
+  }
+
+  function markRoomSendFailure(
+    clientNonce: string,
+    error: unknown,
+    ownsThreadRename: boolean,
+  ) {
+    if (ownsThreadRename && threadRenameRequestedRef.current === conversationId) {
+      threadRenameRequestedRef.current = null
+    }
+    if (isNativeThreadSafetyError(error)) {
+      setMessages((current) => current
+        .filter((message) => !message.id.startsWith(`${PENDING_AGENT_REPLY_PREFIX}${clientNonce}`))
+        .filter((message) => message.clientNonce !== clientNonce))
+    } else {
+      setMessages((current) => current
+        .filter((message) => !message.id.startsWith(`${PENDING_AGENT_REPLY_PREFIX}${clientNonce}`))
+        .map((message) => (
+          message.clientNonce === clientNonce ? {
+            ...message,
+            delivery: 'failed',
+            deliveryError: error instanceof Error ? error.message : 'Could not send this message.',
+          } : message
+        )))
+    }
+  }
+
+  async function preflightRoomMessage({
+    text,
+    parts,
+    threadRootMessageId,
+  }: {
+    text: string
+    parts?: RoomMessageRecord['parts']
+    threadRootMessageId?: string
+  }): Promise<RoomSendResult | null> {
+    if (canSendToThread?.(threadRootMessageId) === false) {
+      const status = threadRootMessageId && threadRootMessageId === currentThreadRootRef.current
+        ? selectedThreadSafetyStatus
+        : nativeThreadSafetyStatusValue
+      return {
+        accepted: false,
+        safetyRejected: status === 'retired' || status === 'unavailable',
+        error: status === 'retired' || status === 'unavailable'
+          ? { code: status === 'retired' ? 'native_runner_retired' : 'native_thread_compatibility_unavailable' }
+          : undefined,
+      }
+    }
+    if (!text && !parts?.length) return { accepted: false }
+    const preflightKey = `${conversationId}:${threadRootMessageId ?? ''}`
+    if (pendingPreflightsRef.current.has(preflightKey)) return { accepted: false }
+    pendingPreflightsRef.current.add(preflightKey)
+    let admission: { accepted: boolean; error?: unknown; status?: NativeThreadSafetyStatus }
+    try {
+      admission = await ensureCanSendToThread(threadRootMessageId)
+    } catch (error) {
+      admission = { accepted: false, error }
+    } finally {
+      pendingPreflightsRef.current.delete(preflightKey)
+    }
+    if (admission.accepted) return null
+    const status = admission.status ?? nativeThreadSafetyErrorStatus(admission.error)
+    return {
+      accepted: false,
+      safetyRejected: status === 'retired' || status === 'unavailable',
+      error: admission.error,
+    }
+  }
+
   async function sendMessage(
     content: string,
     options?: {
       existing?: Pick<OptimisticMessage, 'clientNonce' | 'turnId' | 'createdAt' | 'parts'>
       threadRootMessageId?: string
+      requireCurrentThread?: boolean
       parts?: RoomMessageRecord['parts']
       attachmentNames?: string[]
       reply?: { replyToTurnId?: string; snippet: string } | null
     },
-  ) {
+  ): Promise<RoomSendResult> {
+    const threadRootMessageId = options?.threadRootMessageId
     const text = content.trim()
     const parts = options?.parts ?? options?.existing?.parts
-    if (!text && !parts?.length) return
+    const preflightResult = await preflightRoomMessage({ text, parts, threadRootMessageId })
+    if (preflightResult) return { ...preflightResult, notSubmitted: true }
+    if (
+      conversationIdRef.current !== conversationId
+      || (options?.requireCurrentThread && threadRootMessageId !== currentThreadRootRef.current)
+    ) return { accepted: false, scopeChanged: true }
     let ownsThreadRename = false
     const clientNonce = options?.existing?.clientNonce ?? crypto.randomUUID()
     const turnId = options?.existing?.turnId ?? `human_${crypto.randomUUID()}`
     const optimisticId = `optimistic_${clientNonce}`
-    const threadRootMessageId = options?.threadRootMessageId
+    const sendKey = `${conversationId}:${threadRootMessageId ?? ''}`
+    if (inFlightSendsRef.current.has(sendKey)) return { accepted: false, notSubmitted: true }
+    inFlightSendsRef.current.add(sendKey)
 
     setMessages((current) => [
       ...current.filter((message) => message.clientNonce !== clientNonce),
@@ -1125,38 +1334,8 @@ export function useSendMessage({
         ownsThreadRename = true
         threadRenameRequestedRef.current = conversationId
       }
-      const agentParticipants = participants.filter((participant) => participant.principalType === 'agent')
-      const humanParticipants = participants.filter((participant) => participant.principalType === 'human')
-      const threadAgentId = threadRootMessageId
-        ? messages.find((message) => message.id === threadRootMessageId && message.authorKind === 'agent')?.authorPrincipalId
-        : undefined
-      const mentionedPrincipalIdSet = new Set(mentionedPrincipalIds)
-      const invokedAgents = agentParticipants.filter((participant) => (
-        (conversationType === 'dm' && agentParticipants.length === 1 && humanParticipants.length === 1)
-        || mentionedPrincipalIdSet.has(participant.principalId)
-        || threadAgentId === participant.principalId
-      ))
-      if (invokedAgents.length) {
-        setAgentResponding(invokedAgents.length === 1 ? invokedAgents[0]!.displayName : 'Agents')
-        // Show each invoked agent's avatar with its loading dots at once; the real row replaces it when the server creates it.
-        const pendingAt = Date.now()
-        setMessages((current) => [
-          ...current.filter((message) => !message.id.startsWith(`${PENDING_AGENT_REPLY_PREFIX}${clientNonce}`)),
-          ...invokedAgents.map((agent) => ({
-            id: `${PENDING_AGENT_REPLY_PREFIX}${clientNonce}_${agent.principalId}`,
-            turnId: `${PENDING_AGENT_REPLY_PREFIX}${clientNonce}_${agent.principalId}`,
-            authorKind: 'agent' as const,
-            authorPrincipalId: agent.principalId,
-            content: '',
-            // Sorts after the message it answers even once that message takes the server's (possibly later) timestamp;
-            // the real send time is kept in updatedAt for matching the real reply.
-            createdAt: pendingAt + PENDING_AGENT_REPLY_SORT_LEAD_MS,
-            updatedAt: pendingAt,
-            status: 'generating' as const,
-            threadRootMessageId,
-          } satisfies OptimisticMessage)),
-        ].sort(compareRoomMessageRecords))
-      }
+      const invokedAgents = getInvokedAgents(mentionedPrincipalIds, threadRootMessageId)
+      appendPendingAgentReplies(clientNonce, threadRootMessageId, invokedAgents)
       const saved = await overlayAppClient.conversations.addMessage({
         conversationId,
         turnId,
@@ -1177,44 +1356,16 @@ export function useSendMessage({
       // Saving the message is what starts the agent turn; the server owns it
       // from here. The reply arrives in the transcript on its own, so there is
       // nothing for this client to hold open and nothing to wait for.
-      if (renameAgentThread && renameAgent) {
-        const agentName = renameAgent.displayName
-        const previousTitle = titleAtSend ?? 'New thread'
-        void titlePromise?.then(async (aiTitle) => {
-          if (!aiTitle) {
-            if (threadRenameRequestedRef.current === conversationId) {
-              threadRenameRequestedRef.current = null
-            }
-            return
-          }
-          const title = sanitizeChatTitle(aiTitle, agentName)
-          dispatchChatTitleUpdated({ chatId: conversationId, title })
-          if (conversationIdRef.current === conversationId) setConversationTitle(title)
-          try {
-            const res = await overlayAppClient.conversations.updateResponse({ conversationId, title })
-            if (!res.ok) throw new Error('Could not update conversation title')
-          } catch {
-            dispatchChatTitleUpdated({ chatId: conversationId, title: previousTitle })
-            if (conversationIdRef.current === conversationId) setConversationTitle(previousTitle)
-            if (threadRenameRequestedRef.current === conversationId) {
-              threadRenameRequestedRef.current = null
-            }
-          }
-        })
-      }
-      if (!convexRoomSubscriptionEnabled) await loadMessages()
+      scheduleAgentThreadRename(renameAgentThread, renameAgent, titlePromise, titleAtSend)
+      if (!convexRoomSubscriptionEnabled) await loadMessages().catch(() => undefined)
       commitDraftConversation()
       void saved
-    } catch {
-      if (ownsThreadRename && threadRenameRequestedRef.current === conversationId) {
-        threadRenameRequestedRef.current = null
-      }
-      setMessages((current) => current
-        .filter((message) => !message.id.startsWith(`${PENDING_AGENT_REPLY_PREFIX}${clientNonce}`))
-        .map((message) => (
-          message.clientNonce === clientNonce ? { ...message, delivery: 'failed' } : message
-        )))
+      return { accepted: true }
+    } catch (error) {
+      markRoomSendFailure(clientNonce, error, ownsThreadRename)
+      return { accepted: false, safetyRejected: isNativeThreadSafetyError(error), error }
     } finally {
+      inFlightSendsRef.current.delete(sendKey)
       setAgentResponding(null)
     }
   }
@@ -1225,24 +1376,62 @@ export function useSendMessage({
       || loading
       || !participants.length
       || pendingCollaborationMessageSentRef.current === conversationId
+      || pendingCollaborationSafetyCheckRef.current === conversationId
     ) return
-    const pending = takePendingCollaborationMessage(
-      conversationId,
-      (message) => {
-        if (!message.expectedAgentPrincipalId) return true
-        const senderIsLoaded = participants.some((participant) => (
-          participant.principalId === currentPrincipalId && participant.principalType === 'human'
-        ))
-        return senderIsLoaded && soloAgentParticipant?.principalId === message.expectedAgentPrincipalId
-      },
-    )
-    if (!pending) return
-    pendingCollaborationMessageSentRef.current = conversationId
-    void sendMessage(pending.content)
+    pendingCollaborationSafetyCheckRef.current = conversationId
+    void (async () => {
+      try {
+        if (canSendToThread?.() !== true) {
+          pendingCollaborationSafetyCheckRef.current = null
+          return
+        }
+        const admission = await ensureCanSendToThread()
+        if (!admission.accepted || conversationIdRef.current !== conversationId) {
+          pendingCollaborationSafetyCheckRef.current = null
+          return
+        }
+        const pending = takePendingCollaborationMessage(
+          conversationId,
+          (message) => {
+            if (!message.expectedAgentPrincipalId) return true
+            const senderIsLoaded = participants.some((participant) => (
+              participant.principalId === currentPrincipalId && participant.principalType === 'human'
+            ))
+            return senderIsLoaded && soloAgentParticipant?.principalId === message.expectedAgentPrincipalId
+          },
+        )
+        if (!pending) {
+          pendingCollaborationSafetyCheckRef.current = null
+          return
+        }
+        pendingCollaborationMessageSentRef.current = conversationId
+        const result = await sendMessage(pending.content)
+        if (
+          !result.accepted
+          && (result.notSubmitted || result.safetyRejected || result.scopeChanged || isNativeThreadSafetyError(result.error))
+        ) {
+          restorePendingCollaborationMessage(pending)
+          pendingCollaborationMessageSentRef.current = null
+          pendingCollaborationSafetyCheckRef.current = null
+        }
+      } catch {
+        pendingCollaborationSafetyCheckRef.current = null
+      }
+    })()
   // `sendMessage` is intentionally omitted: it is recreated while room state
   // changes, whereas a pending conversion must be consumed exactly once.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [conversationId, currentPrincipalId, participants, soloAgentParticipant, loading])
+  }, [
+    conversationId,
+    currentPrincipalId,
+    participants,
+    soloAgentParticipant,
+    loading,
+    canSendToThread,
+    ensureCanSendToThread,
+    nativeThreadSafetyStatusValue,
+    selectedThreadSafetyStatus,
+  ])
 
   return sendMessage
 }
@@ -1261,13 +1450,7 @@ export function useRoomComposer({
   activeWorkspaceId: string | null | undefined
   conversationId: string
   sessionIdRef: RefObject<string | null>
-  sendMessage: (content: string, options?: {
-    existing?: Pick<OptimisticMessage, 'clientNonce' | 'turnId' | 'createdAt' | 'parts'>
-    threadRootMessageId?: string
-    parts?: RoomMessageRecord['parts']
-    attachmentNames?: string[]
-    reply?: { replyToTurnId?: string; snippet: string } | null
-  }) => Promise<void>
+  sendMessage: SendMessage
   mentions: MentionItem[]
   setMentions: Dispatch<SetStateAction<MentionItem[]>>
   /** Surface-mirrored rooms accept no uploads. */
@@ -1309,6 +1492,24 @@ export function useRoomComposer({
     addImages,
     handlePaste,
   } = useChatAttachments()
+  const latestDraftStateRef = useRef({
+    conversationId,
+    activeWorkspaceId,
+    attachedImages,
+    pendingChatDocuments,
+    replyContext,
+    mentions,
+  })
+  useLayoutEffect(() => {
+    latestDraftStateRef.current = {
+      conversationId,
+      activeWorkspaceId,
+      attachedImages,
+      pendingChatDocuments,
+      replyContext,
+      mentions,
+    }
+  }, [activeWorkspaceId, attachedImages, conversationId, mentions, pendingChatDocuments, replyContext])
 
   // Restore a half-written message when the room reopens. Storage failures are
   // absorbed by the draft module, so private browsing simply starts empty.
@@ -1334,6 +1535,7 @@ export function useRoomComposer({
    * replaces with the stored row.
    */
   async function handleSend() {
+    if (readOnly) return
     const text = (inputRef.current ?? input).trim()
     const readyDocuments = pendingChatDocuments.filter((document) => document.status === 'ready')
     if (pendingChatDocuments.some((document) => document.status === 'uploading')) {
@@ -1358,6 +1560,25 @@ export function useRoomComposer({
       : ''
     const replySnippet = replyContext?.snippet
 
+    const submittedInput = inputRef.current ?? input
+    const submittedState = latestDraftStateRef.current
+    const result = await sendMessage(`${text}${documentMarker}`, {
+      existing: { turnId, clientNonce: crypto.randomUUID(), createdAt: Date.now(), parts: payload.partsForModel },
+      parts: payload.partsForModel,
+      attachmentNames: payload.indexedFileNames,
+      ...(replyContext ? { reply: { replyToTurnId: replyContext.replyToTurnId, snippet: replySnippet ?? '' } } : {}),
+    })
+    if (!result.accepted) return
+    const latest = latestDraftStateRef.current
+    const draftStillMatches = sessionIdRef.current === conversationId
+      && latest.conversationId === conversationId
+      && latest.activeWorkspaceId === activeWorkspaceId
+      && inputRef.current === submittedInput
+      && latest.attachedImages === submittedState.attachedImages
+      && latest.pendingChatDocuments === submittedState.pendingChatDocuments
+      && latest.replyContext === submittedState.replyContext
+      && latest.mentions === submittedState.mentions
+    if (!draftStillMatches) return
     setInput('')
     composerRef.current?.clear()
     setMentions([])
@@ -1366,13 +1587,6 @@ export function useRoomComposer({
     setAttachmentError(null)
     setReplyContext(null)
     clearDraft({ workspaceId: activeWorkspaceId, conversationId })
-
-    await sendMessage(`${text}${documentMarker}`, {
-      existing: { turnId, clientNonce: crypto.randomUUID(), createdAt: Date.now(), parts: payload.partsForModel },
-      parts: payload.partsForModel,
-      attachmentNames: payload.indexedFileNames,
-      ...(replyContext ? { reply: { replyToTurnId: replyContext.replyToTurnId, snippet: replySnippet ?? '' } } : {}),
-    })
   }
 
   function onComposerInput(text: string) {
@@ -1535,6 +1749,7 @@ export function useRemoteAgentControls({
 }
 
 export function useMessageActions({
+  isReadOnlyMessage,
   conversationId,
   currentPrincipalId,
 
@@ -1547,6 +1762,7 @@ export function useMessageActions({
   setMessages,
   loadMessages,
 }: {
+  isReadOnlyMessage?: (messageId: string) => boolean
   conversationId: string
   currentPrincipalId: string
 
@@ -1619,18 +1835,27 @@ export function useMessageActions({
   }
 
   async function saveEdit(messageId: string) {
+    if (isReadOnlyMessage?.(messageId)) return
     const content = editingContent.trim()
     if (!content) return
 
-    await overlayAppClient.conversations.editCollaborativeMessage(conversationId, messageId, content)
-    setEditingId(null)
-    await loadMessages()
+    try {
+      await overlayAppClient.conversations.editCollaborativeMessage(conversationId, messageId, content)
+      setEditingId(null)
+      await loadMessages()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not edit this message.')
+    }
   }
 
   async function deleteMessage(messageId: string) {
-
-    await overlayAppClient.conversations.deleteCollaborativeMessage(conversationId, messageId)
-    await loadMessages()
+    if (isReadOnlyMessage?.(messageId)) return
+    try {
+      await overlayAppClient.conversations.deleteCollaborativeMessage(conversationId, messageId)
+      await loadMessages()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not delete this message.')
+    }
   }
 
   return {
@@ -1913,6 +2138,7 @@ export function useRoomPanels({
 }
 
 export type RoomMessageContext = {
+  isReadOnlyMessage?: (messageId: string) => boolean
   conversationId: string
   conversationType: 'dm' | 'channel'
   currentPrincipalId: string
@@ -1960,12 +2186,14 @@ export type RoomMessageContext = {
 export type SendMessage = (content: string, options?: {
   existing?: Pick<OptimisticMessage, 'clientNonce' | 'turnId' | 'createdAt' | 'parts'>
   threadRootMessageId?: string
+  requireCurrentThread?: boolean
   parts?: RoomMessageRecord['parts']
   attachmentNames?: string[]
   reply?: { replyToTurnId?: string; snippet: string } | null
-}) => Promise<void>
+}) => Promise<RoomSendResult>
 
 export function buildRoomMessageContext({
+  isReadOnlyMessage,
   conversationId,
   conversationType,
   roster,
@@ -1980,6 +2208,7 @@ export function buildRoomMessageContext({
   remoteControls,
   onOpenAttachmentPreview,
 }: {
+  isReadOnlyMessage?: (messageId: string) => boolean
   conversationId: string
   conversationType: 'dm' | 'channel'
   roster: ReturnType<typeof useRoomRoster>
@@ -1995,6 +2224,7 @@ export function buildRoomMessageContext({
   onOpenAttachmentPreview: RoomMessageContext['onOpenAttachmentPreview']
 }): RoomMessageContext {
   return {
+    isReadOnlyMessage,
     conversationId,
     conversationType,
     currentPrincipalId: roster.currentPrincipalId,
@@ -2073,6 +2303,45 @@ export function useDirectMessageRoom({
   })
   const collab = useRoomCollaboration({ conversationId, conversationType,  })
   const thread = useThreadPanel({ conversationId,  setRoomPanel })
+  const nativeThreadSafety = useNativeThreadSafety({ conversationId, workspaceId: activeWorkspaceId })
+  const selectedThreadSafety = useNativeThreadSafety({
+    conversationId: thread.threadRootId ? conversationId : null,
+    workspaceId: activeWorkspaceId,
+    threadRootMessageId: thread.threadRootId ?? undefined,
+  })
+  const effectiveSelectedThreadSafety = nativeThreadSafety.readOnly
+    ? nativeThreadSafety
+    : selectedThreadSafety
+  const checkMainRoomWritable = nativeThreadSafety.checkWritable
+  const checkSelectedThreadWritable = selectedThreadSafety.checkWritable
+  const canSendToThread = useCallback((root?: string) => !nativeThreadSafety.readOnly
+    && (!root || root !== thread.threadRootId || !selectedThreadSafety.readOnly),
+  [nativeThreadSafety.readOnly, selectedThreadSafety.readOnly, thread.threadRootId])
+  const ensureCanSendToThread = useCallback(async (root?: string) => {
+    if (!root) {
+      return checkMainRoomWritable()
+    }
+    if (root === thread.threadRootId) {
+      return checkSelectedThreadWritable()
+    }
+    try {
+      const result = await overlayAppClient.conversations.get<{
+        nativeThreadCompatibility?: unknown
+      }>({ conversationId, threadRootMessageId: root })
+      const status = nativeThreadSafetyStatus(result.nativeThreadCompatibility)
+      return {
+        accepted: status === 'writable',
+        status,
+      }
+    } catch (error) {
+      return { accepted: false, status: nativeThreadSafetyErrorStatus(error), error }
+    }
+  }, [
+    conversationId,
+    checkMainRoomWritable,
+    checkSelectedThreadWritable,
+    thread.threadRootId,
+  ])
   const transcript = useRoomTranscript({
     conversationId,
     threadRootId: thread.threadRootId,
@@ -2122,6 +2391,11 @@ export function useDirectMessageRoom({
     messagesRef: transcript.messagesRef,
   })
   const sendMessage = useSendMessage({
+    canSendToThread,
+    ensureCanSendToThread,
+    nativeThreadSafetyStatusValue: nativeThreadSafety.status,
+    selectedThreadSafetyStatus: selectedThreadSafety.status,
+    currentThreadRootId: thread.threadRootId,
 
     currentPrincipalId: roster.currentPrincipalId,
     setMessages: transcript.setMessages,
@@ -2149,7 +2423,7 @@ export function useDirectMessageRoom({
     sendMessage,
     mentions,
     setMentions,
-    readOnly: Boolean(transcript.surfacePlatform),
+    readOnly: Boolean(transcript.surfacePlatform) || nativeThreadSafety.readOnly,
   })
   const remoteControls = useRemoteAgentControls({
     activeWorkspaceId,
@@ -2158,7 +2432,12 @@ export function useDirectMessageRoom({
     setMessages: transcript.setMessages,
     setAttachmentError: composer.setAttachmentError,
   })
+  const isReadOnlyMessage = (messageId: string) => {
+    const message = transcript.messages.find((row) => row.id === messageId)
+    return !canSendToThread(message?.threadRootMessageId ?? messageId)
+  }
   const actions = useMessageActions({
+    isReadOnlyMessage,
     conversationId,
     currentPrincipalId: roster.currentPrincipalId,
 
@@ -2181,6 +2460,92 @@ export function useDirectMessageRoom({
     setRoomPanel,
     messageCount: transcript.messages.length,
   })
+  const buildWorkspaceHref = useWorkspaceHref()
+  const handoffToRoomRoot = async (handoff: string) => {
+    const mainAdmission = await nativeThreadSafety.checkWritable()
+    if (!mainAdmission.accepted || !nativeThreadSafety.isCurrentScope() || !selectedThreadSafety.isCurrentScope()) return
+    const rootDraftScope = { workspaceId: activeWorkspaceId, conversationId }
+    const existingRootDraft = composer.inputRef.current || readDraft(rootDraftScope)
+    const separator = existingRootDraft.trim() ? '\n\n' : ''
+    const availableHandoffLength = Math.max(0, 20_000 - existingRootDraft.length - separator.length)
+    const combinedDraft = `${existingRootDraft}${availableHandoffLength > 0
+      ? `${separator}${handoff.slice(0, availableHandoffLength)}`
+      : ''}`
+    writeDraft(rootDraftScope, combinedDraft)
+    composer.setInput(combinedDraft)
+    thread.setThreadRootId(null)
+    thread.setThreadInput('')
+    setRoomPanel(null)
+    composer.composerRef.current?.focus()
+  }
+  const startNewNativeThread = async () => {
+    const rootId = thread.threadRootId
+    const safety = rootId ? effectiveSelectedThreadSafety : nativeThreadSafety
+    if (!safety.readOnly) {
+      thread.setThreadRootId(null)
+      thread.setThreadInput('')
+      setRoomPanel(null)
+      composer.composerRef.current?.focus()
+      return
+    }
+    if (safety.status !== 'retired') return
+    const root = rootId ? transcript.messages.find((message) => message.id === rootId) : undefined
+    if (rootId && !root) {
+      toast.error('Could not load the original thread for this handoff. Try again.')
+      return
+    }
+    const handoffMessages = root
+      ? [root, ...transcript.messages.filter((message) => message.threadRootMessageId === root.id)]
+      : transcript.messages
+    const handoff = buildNativeThreadHandoff({
+      conversationId,
+      ...(root ? { threadRootMessageId: root.id } : {}),
+      messages: handoffMessages,
+    })
+    if (root && rootId && !nativeThreadSafety.readOnly) {
+      await handoffToRoomRoot(handoff)
+      return
+    }
+    const agentId = nativeThreadSafety.agentId
+    if (agentId && activeWorkspaceId) {
+      const { thread: next } = await overlayAppClient.agents.createThread(activeWorkspaceId, agentId, {})
+      if (!safety.isCurrentScope()) return
+      writeDraft({ workspaceId: activeWorkspaceId, conversationId: next.conversationId }, handoff)
+      dispatchChatCreated({ chat: {
+        _id: next.conversationId, title: next.title, lastModified: Date.now(), conversationType: 'dm',
+      } })
+      const targetHref = agentConversationRedirect({
+        pathname: window.location.pathname,
+        workspaceId: activeWorkspaceId ?? null,
+        agentId,
+        conversationId: next.conversationId,
+        guided: false,
+      })
+      const target = new URL(targetHref ?? window.location.href, window.location.origin)
+      target.searchParams.set('id', next.conversationId)
+      target.searchParams.set('handoff', '1')
+      target.searchParams.delete('message')
+      target.searchParams.delete('draft')
+      router.push(`${target.pathname}?${target.searchParams.toString()}`)
+    } else {
+      const newConversationId = await createHandoffConversation({
+        workspaceId: activeWorkspaceId ?? null,
+        title: 'Continued thread',
+      })
+      if (!newConversationId) throw new Error('Could not create a new conversation for the handoff.')
+      if (!safety.isCurrentScope()) return
+      writeDraft({ workspaceId: activeWorkspaceId, conversationId: newConversationId }, handoff)
+      dispatchChatCreated({ chat: {
+        _id: newConversationId,
+        title: 'Continued thread',
+        lastModified: Date.now(),
+        conversationType: 'personal',
+      } })
+      const params = new URLSearchParams({ id: newConversationId, handoff: '1' })
+      if (activeWorkspaceId) params.set('view', 'workspace-chats')
+      router.push(buildWorkspaceHref(activeWorkspaceId ?? null, `/app/chat?${params.toString()}`))
+    }
+  }
   const roomActions = useRoomActions({
     conversationId,
     conversationType,
@@ -2194,6 +2559,7 @@ export function useDirectMessageRoom({
     setMenuOpen,
   })
   const messageCtx = buildRoomMessageContext({
+    isReadOnlyMessage,
     conversationId,
     conversationType,
     roster,
@@ -2239,5 +2605,9 @@ export function useDirectMessageRoom({
     navigation,
     roomActions,
     messageCtx,
+    nativeThreadSafety,
+    selectedThreadSafety: effectiveSelectedThreadSafety,
+    startNewNativeThread,
+    isReadOnlyMessage,
   }
 }

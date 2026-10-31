@@ -9,6 +9,7 @@ import {
   personalHarnessConversationClientId,
   startPersonalHarnessTurn,
 } from './personal-harness-turn'
+import { actRoutePolicyResponse, decidePersonalActRoute } from './act-route-policy'
 
 const mocks = vi.hoisted(() => ({
   after: vi.fn(),
@@ -97,23 +98,47 @@ test('legacy personalChatMode values are accepted but ignored by orchestration',
   expect(route).not.toContain('personalChatMode')
 })
 
-test('executeActTurn selects the Harness or durable legacy workflow by backend capability', () => {
+test('personal Act cutover admits only the native Harness route', () => {
   const route = readFileSync(new URL('./ActTurnOrchestrationService.ts', import.meta.url), 'utf8')
-  const eligibility = route.indexOf('isPersonalHarnessRouteEligible({')
-  const personalDispatch = route.indexOf('return await startPersonalHarnessTurn({', eligibility)
-  const legacyWork = route.indexOf('if (useWorkRunner) {', personalDispatch)
+  expect(route).toContain('startPersonalHarnessTurn({')
+  expect(route).toContain('startPersonalWorkflow({')
+  expect(route).toContain("computerApprovalContext: 'work'")
+  expect(route).not.toContain('useWorkRunner')
+  expect(route).not.toContain('personalChatWorkWorkflow')
+  expect(route).not.toContain('startLegacyPersonalWorkflow')
+  expect(route).not.toContain('agentRunService.startChat')
+  expect(route).not.toContain('agentRunService.attachWorkflow')
+  expect(route).not.toContain('actUsageBudgetService.reserveForAttempt')
+  expect(route).not.toContain('actUsageBudgetService.recordFinishedUsage')
+})
 
-  expect(eligibility).toBeGreaterThanOrEqual(0)
-  expect(route).toContain('const usePersonalHarness = personalWorkflowEligible && isHarnessBackendReady(appSettings)')
-  expect(route).toContain('const useWorkRunner = !usePersonalHarness && personalWorkflowEligible && agentRunEligible')
-  expect(route).toContain('const tid = personalWorkflowEligible')
-  expect(route).toContain('const durableClientId = trimmedClientId || (!conversationId && personalWorkflowEligible')
-  expect(route).toContain('personalHarnessConversationClientId({')
-  expect(personalDispatch).toBeGreaterThan(eligibility)
-  expect(legacyWork).toBeGreaterThan(personalDispatch)
-  expect(route.slice(personalDispatch, legacyWork)).not.toContain('actUsageBudgetService.reserveForAttempt')
-  expect(route.slice(personalDispatch, legacyWork)).not.toContain('agentRunService.attachWorkflow')
-  expect(route).toContain("computerApprovalContext: usePersonalHarness || useWorkRunner ? 'work' : undefined")
+test('personal Act policy rejects retired execution and fails closed on Harness readiness', () => {
+  expect(decidePersonalActRoute({ authType: 'service' })).toEqual({ kind: 'legacy_execution_retired' })
+  expect(decidePersonalActRoute({ authType: 'session', automationExecution: true })).toEqual({ kind: 'legacy_execution_retired' })
+  expect(decidePersonalActRoute({ authType: 'session', automationMode: true })).toEqual({ kind: 'legacy_execution_retired' })
+  expect(decidePersonalActRoute({ authType: 'session', harnessReady: false })).toEqual({ kind: 'harness_unavailable' })
+  expect(decidePersonalActRoute({ authType: 'session', harnessReady: true })).toEqual({ kind: 'admit' })
+  expect(decidePersonalActRoute({ authType: 'session', mode: 'automate' })).toEqual({ kind: 'admit' })
+  expect(decidePersonalActRoute({ authType: 'session' })).toEqual({ kind: 'admit' })
+})
+
+test('personal Act policy responses include truthful status, code, message, and request ID', async () => {
+  const retired = actRoutePolicyResponse('legacy_execution_retired', 'request-retired')
+  expect(retired.status).toBe(410)
+  await expect(retired.json()).resolves.toMatchObject({
+    code: 'legacy_execution_retired',
+    error: 'legacy_execution_retired',
+    message: expect.stringContaining('supported durable automation or surface entry point'),
+    requestId: 'request-retired',
+  })
+
+  const unavailable = actRoutePolicyResponse('harness_unavailable', 'request-unavailable')
+  expect(unavailable.status).toBe(503)
+  await expect(unavailable.json()).resolves.toMatchObject({
+    code: 'harness_unavailable',
+    error: 'harness_unavailable',
+    requestId: 'request-unavailable',
+  })
 })
 
 test('generated conversation IDs are bounded, stable, and workspace-specific', () => {

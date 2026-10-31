@@ -1,5 +1,6 @@
 import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
+import { NATIVE_RUN_RETIRED_CODE, NATIVE_RUN_RETIRED_MESSAGE } from '@/shared/agents/native-run-retirement'
 import { resumeHook } from 'workflow/api'
 import { HookNotFoundError } from 'workflow/internal/errors'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
@@ -56,6 +57,9 @@ export async function POST(
     }
     if (access === 'initiator-only') {
       return NextResponse.json({ error: 'Only the initiating user can approve this run.' }, { status: 403 })
+    }
+    if (access === 'retired') {
+      return NextResponse.json({ error: NATIVE_RUN_RETIRED_MESSAGE, code: NATIVE_RUN_RETIRED_CODE }, { status: 410 })
     }
     const resume = dependencies?.resume ?? resumeHook
     await resume(body.data.token, {

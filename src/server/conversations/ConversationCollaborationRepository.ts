@@ -62,6 +62,7 @@ export interface ConversationCollaborationRepository {
     workspaceId: string
   }): Promise<string>
   addAgentMessage(args: {
+    messagePurpose: 'greeting' | 'prepared_onboarding' | 'agent_request'
     actorUserId: string
     authorPrincipalId: string
     clientNonce: string
@@ -84,17 +85,12 @@ export interface ConversationCollaborationRepository {
     turnId: string
     workspaceId: string
   }): Promise<void>
-  /**
-   * Durable agent turn persistence. A room agent writes its reply as it is
-   * generated rather than once at the end, so the transcript itself — not a
-   * client-held stream — is what survives a reload and what every other
-   * participant reads. `startAgentMessage` is idempotent on `clientNonce`, so a
-   * retried or replayed turn reuses the same row instead of posting twice.
-   */
-  startAgentMessage(args: {
+  /** Persist a terminal admission error without opening an unowned generation. */
+  recordAgentStartFailure(args: {
     actorUserId: string
     authorPrincipalId: string
     clientNonce: string
+    content: string
     conversationId: string
     modelId: string
     threadRootMessageId?: string

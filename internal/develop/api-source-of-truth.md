@@ -136,6 +136,31 @@ Note revision conflicts carry `NOTE_REVISION_CONFLICT`, mapped to the existing
 `409` response without exposing internal failures. Legacy message matching remains
 for web-first deployment overlap with older backends.
 
+Conversation history remains readable for recorded retired native runs. The single-conversation
+and `messages=true` forms of `GET /api/v1/conversations` include authenticated
+`nativeThreadCompatibility` metadata: `{ readOnly: false }`, the tracked-retirement
+projection `{ readOnly: true, code: "native_runner_retired", message: "The harness has changed. Start a new thread to continue." }`,
+or the deployment-overlap projection `{ readOnly: true, code: "native_thread_compatibility_unavailable", message: "Thread safety checks are temporarily unavailable. Your history is preserved. Please try again shortly." }`.
+The optional `threadRootMessageId` query parameter selects a shared-room root; list responses
+do not fan out this check.
+
+Before querying the newer compatibility function, the web server reads the server-owned
+`nativeThreadCompatibilityRevision: "tracked-native-v1"` marker from the existing authenticated
+`platform/uiSettings:getByServer` query. If an older backend omits the marker, history reads still
+succeed with unavailable metadata and the web does not call the absent compatibility function.
+The check is not cached; authorization and query failures propagate. New message, edit/delete,
+and native-admission calls covered by the web repository gate fail before invoking their backend
+mutation when the marker is absent; human-facing HTTP handlers return `503`, code
+`native_thread_compatibility_unavailable`, and `Retry-After: 10`.
+Once available, the new backend's tracked-run classifier is authoritative and rejects retired
+threads with HTTP `410` and `{ code: "native_runner_retired", error: "The harness has changed. Start a new thread to continue." }`.
+New human sends, including sends in connected-agent threads, pause during this overlap; connected
+remote AgentRun admission, progress, cancellation, and already-admitted execution callbacks are
+not readiness-gated.
+
+This slice does not classify untracked historical transcript rows, provide the new-thread UI action,
+or drain deployed workers.
+
 ## Bootstrap
 
 `/api/v1/bootstrap` returns the canonical serializable frontend registry:
@@ -233,6 +258,7 @@ New owner sessions use `flowVersion: 2` and revision-checked name, about, team, 
   Other Personal members may be invited, managed, and removed normally.
 - `POST /api/v1/conversations/message` returns the persisted `messageId`. Agent-invocation callers use that ID directly; transcript refetch state is not an identity source.
 - `POST /api/v1/conversations/message` accepts an optional `memoryEnabled` turn preference. Saving an agent-triggering room message opens the durable agent run server-side; the retired browser-held `/api/v1/conversations/agent-reply` path is not a public contract. Hosted and connected turns load bounded workspace memory and room context only when the preference is enabled. The provider-neutral collaboration repository schedules validated human- and agent-message extraction, while Convex enforces room, author, owner, and idempotency rules. Extraction-model context is separately bounded to messages from the target human or exact agent principal; other room participants are not sent to that additional provider call.
+- Convex room transcript append, finalize, failure, and sanitization writes require a linked supported native Harness or connected remote AgentRun. The unowned `startAgentMessage` mutation and unmarked buffered agent posts are retired; native streaming uses the assistant message admitted by `startAgentTurn`, and startup failures are persisted directly as terminal errors. This does not grant tool-effect authority or reconcile uncertain receipts; late tool receipts may still be retained on a completed message without reopening execution.
 - Serialized collaboration messages may include `editedAt` and `editHistory: Array<{ content, editedAt }>`. Convex appends the replaced body before an edit.
 - `PATCH /api/v1/conversations/notifications` accepts either `notificationIds` or `conversationId`. Opening a DM or channel uses `conversationId` so only that room's unread activity is cleared.
 - Convex-backed browsers use native `watchConversationListVersion` and `watchNotifications` subscriptions. `/api/v1/conversations/events` remains a long-poll fallback for non-realtime clients and must not be mounted as a browser subscription path.
@@ -283,10 +309,14 @@ credentials are never public contract fields.
 - `POST /api/v1/conversations/run/approval` accepts the active conversation,
   AgentRun and hook token plus an approve/deny decision. It rejects stale tokens
   and resumes only the current `waiting_for_approval` run for its initiating user.
+  Owner-matching waits on retired non-remote runs return 410 with
+  `native_runner_retired` and new-thread guidance without resuming the old workflow.
 - `POST /api/v1/conversations/run/input` resumes a personal or native Harness
   input wait for the initiating user, exact active run and hook token. Native
   rooms require current workspace participation; creator ownership alone is
-  insufficient. Replies remain in the existing work artifact.
+  insufficient. Owner-matching retired non-remote waits return 410 with
+  `native_runner_retired` and new-thread guidance without resuming the old workflow.
+  Replies remain in the existing work artifact.
 - `GET /api/v1/conversations/run/metrics?from=<epoch-ms>&to=<epoch-ms>&limit=<n>` returns
   per-runner observations with explicit sample counts. It reports latency,
   provider cost, Workflow step/storage observations, disconnect and recovery

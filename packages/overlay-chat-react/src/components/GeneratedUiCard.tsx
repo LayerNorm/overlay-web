@@ -3,7 +3,7 @@
 import { unstyledButton, unstyledInput, unstyledTextarea } from '@overlay/ui/control-reset'
 import { Button, Input, Textarea } from '@overlay/ui/primitives'
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   Check,
   ChevronDown,
@@ -268,31 +268,37 @@ export function GeneratedUiCard({
   const [copied, setCopied] = useState(false)
   const timerRef = useRef<number | null>(null)
   const latestDataRef = useRef(data)
-  const [prevPart, setPrevPart] = useState<{ id: string; data: typeof part.data }>({ id: part.id, data: part.data })
+  const [prevPart, setPrevPart] = useState({ id: part.id, data: part.data, readOnly })
+  const activeScope = useRef<{ id: string; readOnly: boolean } | null>({ id: part.id, readOnly })
   const streaming = part.transient === true
 
   useEffect(() => {
     latestDataRef.current = data
   }, [data])
 
-  if (prevPart.id !== part.id) {
-    setPrevPart({ id: part.id, data: part.data })
-      setData(part.data)
-      setEditing(false)
-      setExpanded(false)
+  if (prevPart.id !== part.id || prevPart.readOnly !== readOnly) {
+    setPrevPart({ id: part.id, data: part.data, readOnly })
+    setData(part.data)
+    setEditing(false)
+    setExpanded(false)
   } else if (prevPart.data !== part.data) {
-    setPrevPart({ id: part.id, data: part.data })
+    setPrevPart({ id: part.id, data: part.data, readOnly })
     if (!editing) {
       setData(part.data)
     }
   }
 
-  useEffect(() => () => {
-    if (timerRef.current != null) window.clearTimeout(timerRef.current)
-  }, [])
+  useLayoutEffect(() => {
+    activeScope.current = { id: part.id, readOnly }
+    return () => {
+      activeScope.current = null
+      if (timerRef.current != null) window.clearTimeout(timerRef.current)
+      timerRef.current = null
+    }
+  }, [part.id, readOnly])
 
   function flush(nextData = latestDataRef.current) {
-    if (readOnly || !onDataChange) return
+    if (readOnly || !onDataChange || activeScope.current?.id !== part.id || activeScope.current.readOnly) return
     if (timerRef.current != null) {
       window.clearTimeout(timerRef.current)
       timerRef.current = null
@@ -301,9 +307,9 @@ export function GeneratedUiCard({
   }
 
   function update(nextData: GeneratedUiData, immediate = false) {
+    if (readOnly || !onDataChange || activeScope.current?.id !== part.id || activeScope.current.readOnly) return
     latestDataRef.current = nextData
     setData(nextData)
-    if (readOnly || !onDataChange) return
     if (timerRef.current != null) window.clearTimeout(timerRef.current)
     if (immediate) {
       onDataChange(part.id, nextData)
@@ -311,12 +317,13 @@ export function GeneratedUiCard({
     }
     timerRef.current = window.setTimeout(() => {
       timerRef.current = null
+      if (activeScope.current?.id !== part.id || activeScope.current.readOnly) return
       onDataChange(part.id, latestDataRef.current)
     }, 700)
   }
 
   const plainText = useMemo(() => generatedUiDataToPlainText(data), [data])
-  const canEdit = !readOnly && !streaming && (data.kind === 'draft.text' || data.kind === 'draft.email')
+  const canEdit = !readOnly && !streaming && !!onDataChange && (data.kind === 'draft.text' || data.kind === 'draft.email')
 
   async function handleCopy() {
     if (!plainText) return

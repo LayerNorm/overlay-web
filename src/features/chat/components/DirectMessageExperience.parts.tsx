@@ -381,6 +381,7 @@ function buildRoomMessageItemProps({
 }) {
   return {
     message: view,
+    readOnly: ctx.isReadOnlyMessage?.(message.id),
     reactions: ctx.reactions
       .filter((reaction) => reaction.messageId === message.id && reaction.count > 0)
       .map((reaction) => ({
@@ -630,6 +631,7 @@ export function RoomTranscript({
 }
 
 export function RoomSidePanel({
+  readOnlyFooter,
   roomPanel,
   conversationType,
   title,
@@ -645,6 +647,7 @@ export function RoomSidePanel({
   ctx,
   readOnlyNotice,
 }: {
+  readOnlyFooter?: ReactNode
   roomPanel: RoomPanelKind | null
   conversationType: 'dm' | 'channel'
   title: string
@@ -702,11 +705,23 @@ export function RoomSidePanel({
         input={threadInput}
         onInputChange={setThreadInput}
         onSubmit={() => {
+          if (readOnlyFooter || readOnlyNotice) return
           const text = threadInput
-          setThreadInput('')
-          void sendMessage(text, { threadRootMessageId: threadRoot.id })
+          void sendMessage(text, {
+            threadRootMessageId: threadRoot.id,
+            requireCurrentThread: true,
+          }).then((result) => {
+            if (result.accepted) {
+              thread.clearSubmittedThreadInput({
+                conversationId: ctx.conversationId,
+                threadRootMessageId: threadRoot.id,
+                text,
+              })
+            }
+          })
         }}
         readOnlyNotice={readOnlyNotice}
+        readOnlyFooter={readOnlyFooter}
         onClose={() => {
           onClosePanel()
           setThreadRootId(null)

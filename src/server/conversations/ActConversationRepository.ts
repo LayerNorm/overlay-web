@@ -15,6 +15,7 @@ export function asConversationId(id: string): ConversationId {
 import type { UIMessage } from '@/server/ai/sdk'
 import type { ContextSummarySnapshot } from '@/server/chat/context-compaction'
 import type { AppSettings, Entitlements } from '@/shared/app/app-contracts'
+import type { NativeThreadCompatibility } from '@/shared/agents/native-run-retirement'
 import type { Id } from '../../../convex/_generated/dataModel'
 import type {
   AgentRun,
@@ -73,6 +74,7 @@ export type ConversationListRow = {
   shareToken?: string | null
   isAutomation?: boolean
   conversationType?: 'personal' | 'dm' | 'channel'
+  createdByPrincipalId?: string
   /** Sidebar scope for AI chats; missing means personal. */
   scope?: 'personal' | 'workspace'
   /** Active participant types other than the current actor, for DM presentation. */
@@ -186,6 +188,12 @@ export interface ActConversationRepository {
     userId: string
     workspaceId?: string
   }): Promise<ConversationListRow | null>
+  getNativeThreadCompatibility(args: {
+    conversationId: ConversationId
+    threadRootMessageId?: string
+    userId: string
+    workspaceId?: string
+  }): Promise<NativeThreadCompatibility>
   listConversations(args: {
     includeDeleted?: boolean
     updatedSince?: number

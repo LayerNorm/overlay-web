@@ -49,6 +49,7 @@ type CommonMessageProps = {
 }
 
 type TextChatMessageProps = CommonMessageProps & {
+  readOnly?: boolean
   kind: 'text'
   primaryMessages: UIMessage[]
   latestExchangeIndex: number
@@ -117,6 +118,7 @@ export function areTextChatMessagePropsEqual(prev: TextChatMessageProps, next: T
   if (prev.message !== next.message || prev.exchangeIndex !== next.exchangeIndex) return false
   if (prev.latestExchangeIndex !== next.latestExchangeIndex) return false
   if (prev.isActiveLoading !== next.isActiveLoading) return false
+  if (prev.readOnly !== next.readOnly) return false
 
   const exchangeIndex = next.exchangeIndex
   if (exchangeIndex === next.latestExchangeIndex) return false
@@ -356,8 +358,12 @@ function TextChatMessage(props: TextChatMessageProps) {
       sourceCitations={(response.responseMsg as { metadata?: { sourceCitations?: SourceCitationMap } } | undefined)?.metadata?.sourceCitations}
       turnIdForActions={turn.turnId}
       modelLabel={modelLabel}
-      onDeleteTurn={() => turn.turnId && props.onDeleteTurn(turn.turnId)}
-      onReply={() => props.onReplyToAssistantText(turn.replyPlain, turn.turnId)}
+      onDeleteTurn={() => {
+        if (!props.readOnly && turn.turnId) return props.onDeleteTurn(turn.turnId)
+      }}
+      onReply={() => {
+        if (!props.readOnly) props.onReplyToAssistantText(turn.replyPlain, turn.turnId)
+      }}
       onBranch={() => props.onBranch(turn.turnId)}
       interrupted={turn.interruptedHere}
       actionsLocked={response.isLatest && props.isActiveLoading}
@@ -368,7 +374,7 @@ function TextChatMessage(props: TextChatMessageProps) {
       onCreateAutomationDraft={props.onCreateAutomationDraft}
       onOpenSources={props.onOpenSources}
       isSourcesOpenForThis={computeSourcesOpen(props.sourcesPanel, turn.turnId, message.id)}
-      onRetry={() => props.onRetry(message, exchangeIndex, selection.isActExchange, selection.selectedModelId)}
+      onRetry={props.readOnly ? undefined : () => props.onRetry(message, exchangeIndex, selection.isActExchange, selection.selectedModelId)}
       retryDisabled={computeRetryDisabled({
         turnId: turn.turnId,
         isExiting: turn.isExiting,
@@ -379,9 +385,10 @@ function TextChatMessage(props: TextChatMessageProps) {
       onOpenFilePreview={props.onOpenFilePreview}
       onOpenAttachmentPreview={props.onOpenAttachmentPreview}
       userMentions={userDisplay.userMentions}
-      onContinue={resolveContinueHandler(assistantPlainForReply, props.onContinue)}
-      onGeneratedUiChange={responseMessageId ? (partId, data) => props.onGeneratedUiChange(responseMessageId, partId, data) : undefined}
-      generatedUiConnectorActions={props.generatedUiConnectorActions}
+      onContinue={props.readOnly ? undefined : resolveContinueHandler(assistantPlainForReply, props.onContinue)}
+      onGeneratedUiChange={!props.readOnly && responseMessageId ? (partId, data) => props.onGeneratedUiChange(responseMessageId, partId, data) : undefined}
+      generatedUiReadOnly={props.readOnly}
+      generatedUiConnectorActions={props.readOnly ? undefined : props.generatedUiConnectorActions}
       presentation={props.presentation}
     />
   )

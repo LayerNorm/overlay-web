@@ -40,7 +40,9 @@ import type { DriveSyncStatus } from '@layernorm/overlay-agent-bridge-protocol'
 import { RemoteDriveStatus, useSavedDriveLinkResolver } from './RemoteDriveStatus'
 import { RemoteRunTrace } from './RemoteRunTrace'
 import { NativeAgentApprovalCard } from './NativeAgentApprovalCard'
+import { NativeAgentInputCard } from './NativeAgentInputCard'
 import type { NativeAgentApproval } from '@/shared/agents/native-agent-approval'
+import type { NativeAgentInput } from '@/shared/agents/native-agent-input'
 
 export type RoomMessageReaction = {
   emoji: string
@@ -80,6 +82,7 @@ export type RoomMessageView = {
   editHistory?: Array<{ content: string; editedAt: number }>
   deletedAt?: number
   delivery?: 'sending' | 'failed'
+  deliveryError?: string
   /** Plain text used for copy, edit, and quote-reply. */
   text: string
   /** Ordered tool/text/file blocks for messages rendered as agent output. */
@@ -92,6 +95,7 @@ export type RoomMessageView = {
   /** Set when this message is one agent's question to another, on a person's behalf: who asked, and how far down the chain it is. */
   askedBy?: { name: string; hop: number; parentConversationId?: string }
   nativeApproval?: NativeAgentApproval
+  nativeInput?: NativeAgentInput
   remoteQueue?: { runId: string; environmentName: string; queueExpiresAt: number }
   remoteRequest?: { pendingDelivery?: boolean; expiresAt?: number; machineCostContinues?: boolean; runId: string; requestKey: string; kind: 'permission' | 'elicitation'; prompt: string;
     options: Array<{ id: string; label: string }>; requestedSchema?: Record<string, unknown> }
@@ -102,6 +106,7 @@ export type RoomMessageView = {
 }
 
 export type RoomMessageItemProps = {
+  readOnly?: boolean
   remoteStatus?: ReactNode
   /** Hides reactions, edit, pin and the other message actions (guided onboarding). */
   hideToolbar?: boolean
@@ -267,6 +272,7 @@ function AuthorIdentityPopover({
  * - **Agents:** full-width assistant blocks with the same meta chrome.
  */
 export function RoomMessageItem({
+  readOnly = false,
   message,
   reactions,
   replyCount,
@@ -336,7 +342,7 @@ export function RoomMessageItem({
       alignEnd={mine}
       floating={!personalChatStyle}
       copyText={message.text}
-      canEdit={mine}
+      canEdit={mine && !readOnly}
       canReport={!mine}
       pinned={pinned}
       saved={saved}
@@ -371,6 +377,7 @@ export function RoomMessageItem({
     onToggleReaction,
     onOpenThread,
     personalChatStyle,
+    readOnly,
   }
 
   if (message.deletedAt) {
@@ -389,6 +396,7 @@ export function RoomMessageItem({
   if (mine && !isAgent) {
     return (
       <SentRoomMessage
+        readOnly={readOnly}
         rootProps={rootProps}
         highlightClass={highlightClass}
         toolbar={toolbar}
@@ -437,6 +445,7 @@ type RoomMessageContentProps = {
   onToggleReaction: (emoji: string) => void
   onOpenThread: () => void
   personalChatStyle: boolean
+  readOnly: boolean
 }
 
 function RoomMessageAvatar({ message }: { message: RoomMessageView }) {
@@ -713,9 +722,10 @@ function RoomMessageMetaRow({ message, timeLabel, grouped, pinned }: {
   )
 }
 
-function AgentMessageBody({ message, onOpenAttachmentPreview, onControlRemoteQueue, onResolveRemoteRequest, remoteStatus }: {
+function AgentMessageBody({ message, readOnly, onOpenAttachmentPreview, onControlRemoteQueue, onResolveRemoteRequest, remoteStatus }: {
   remoteStatus?: ReactNode
   message: RoomMessageView
+  readOnly: boolean
   onOpenAttachmentPreview: RoomMessageItemProps['onOpenAttachmentPreview']
   onControlRemoteQueue: RoomMessageItemProps['onControlRemoteQueue']
   onResolveRemoteRequest: RoomMessageItemProps['onResolveRemoteRequest']
@@ -753,6 +763,7 @@ function AgentMessageBody({ message, onOpenAttachmentPreview, onControlRemoteQue
         onOpenDraft={NOOP_DRAFT}
         onCreateAutomationDraft={NOOP_DRAFT}
         onOpenAttachmentPreview={onOpenAttachmentPreview}
+        generatedUiReadOnly={readOnly}
       />
       {message.remoteDrive ? <RemoteDriveStatus status={message.remoteDrive} /> : null}
       {message.streaming ? (
@@ -768,6 +779,7 @@ function AgentMessageBody({ message, onOpenAttachmentPreview, onControlRemoteQue
         </div>
       ) : null}
       {message.nativeApproval ? <NativeAgentApprovalCard key={message.nativeApproval.token} approval={message.nativeApproval} /> : null}
+      {message.nativeInput ? <NativeAgentInputCard key={message.nativeInput.token} request={message.nativeInput} /> : null}
       {message.remoteRun ? <RemoteRunDeadline deadlineAt={message.remoteRun.hardDeadlineAt} state={message.remoteRun.state} /> : null}
       {message.remoteRun?.recovered ? <p className="mt-1 text-xs text-(--muted)" role="status">Recovered</p> : null}
       {message.remoteRun?.state === 'cancelled' ? <p className='mt-2 text-xs text-(--muted)' role='status'>Cancelled</p> : null}
@@ -781,7 +793,8 @@ function AgentMessageBody({ message, onOpenAttachmentPreview, onControlRemoteQue
   )
 }
 
-function SentRoomMessage({ rootProps, highlightClass, toolbar, content, onRetrySend }: {
+function SentRoomMessage({ rootProps, highlightClass, toolbar, content, onRetrySend, readOnly }: {
+  readOnly: boolean
   rootProps: RoomMessageRootProps
   highlightClass: string
   toolbar: ReactNode
@@ -808,9 +821,11 @@ function SentRoomMessage({ rootProps, highlightClass, toolbar, content, onRetryS
           <SentMessageContent message={message} />
         )}
         {message.delivery === 'failed' ? (
+          readOnly ? <p className="text-[11px] text-(--muted)">{message.deliveryError ?? 'Could not send this message.'}</p> : (
           <Button variant="ghost" type="button" className="h-auto p-0 text-[11px] font-medium text-red-500 hover:bg-transparent hover:text-red-500 hover:underline" onClick={onRetrySend}>
-            Failed to send · Retry
+            {message.deliveryError ?? 'Failed to send'} · Retry
           </Button>
+          )
         ) : null}
         <RoomReactionRow reactions={content.reactions} alignEnd onToggleReaction={content.onToggleReaction} />
         <RoomThreadEntry mine replyCount={content.replyCount} threadTeaser={content.threadTeaser} onOpenThread={content.onOpenThread} />
@@ -854,6 +869,7 @@ function ReceivedRoomMessage({ rootProps, highlightClass, toolbar, content, isAg
           <AgentMessageBody
             remoteStatus={content.remoteStatus}
             message={message}
+            readOnly={content.readOnly}
             onOpenAttachmentPreview={content.onOpenAttachmentPreview}
             onControlRemoteQueue={onControlRemoteQueue}
             onResolveRemoteRequest={onResolveRemoteRequest}

@@ -1,6 +1,24 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { createOverlayAppClient } from './index'
+import { ApiRequestError } from './shared/http'
+
+test('API errors preserve structured compatibility codes separately from status and copy', async () => {
+  for (const [status, code] of [[410, 'native_runner_retired'], [503, 'native_thread_compatibility_unavailable']] as const) {
+    const client = createOverlayAppClient({
+      fetch: async () => Response.json({ code, error: 'Specific failure' }, { status }),
+    })
+    await assert.rejects(client.conversations.get({ conversationId: 'conversation' }), (error: unknown) => {
+      assert.ok(error instanceof ApiRequestError)
+      assert.equal(error.status, status)
+      assert.equal(error.code, code)
+      assert.equal(error.message, 'Specific failure')
+      return true
+    })
+  }
+  const error = new ApiRequestError('Other failure', 410)
+  assert.equal(error.code, undefined)
+})
 
 interface RecordedRequest {
   input: RequestInfo | URL

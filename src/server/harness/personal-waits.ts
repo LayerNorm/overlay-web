@@ -9,6 +9,8 @@ export function createPersonalHarnessWaitPorts(input: {
   return createHarnessWaitPorts({
     reference: input.access,
     wake: input.wake,
-    projectWait: projection => projectPersonalHarnessWait(input.access, projection),
+    projectWait: async projection => {
+      return await projectPersonalHarnessWait(input.access, projection)
+    },
   })
 }

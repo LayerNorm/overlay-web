@@ -431,6 +431,7 @@
     "src/server/computers/ConvexComputerRepository.ts",
     "src/server/conversations/ConvexActConversationRepository.ts",
     "src/server/conversations/ConvexConversationCollaborationRepository.ts",
+    "src/server/conversations/native-thread-compatibility-backend.ts",
     "src/server/database/convex.ts",
     "src/server/database/lazy-convex.ts",
     "src/server/email/ConvexEmailSuppressionRepository.ts",
@@ -451,6 +452,7 @@
     "src/server/harness/native-named-child-launch.ts",
     "src/server/harness/native-tool-steps.ts",
     "src/server/harness/native-turn-start.ts",
+    "src/server/harness/native-workflow-input-builder.ts",
     "src/server/harness/personal-access.ts",
     "src/server/harness/personal-admission.ts",
     "src/server/harness/personal-cancellation.ts",
@@ -498,8 +500,10 @@
     "src/server/webhooks/index.ts",
     "src/server/work/ConvexWorkRepository.ts",
     "src/server/work/index.ts",
+    "src/server/workflows/automation-harness-steps.ts",
     "src/server/workflows/native-harness.ts",
     "src/server/workflows/personal-harness.ts",
+    "src/server/workflows/surface-agent-turn.ts",
     "src/server/workspaces/ConvexWorkspaceRepository.ts"
   ],
   "convexScheduledCallFiles": [

@@ -97,6 +97,7 @@ export interface ChatExchangeProps {
   userMentions?: Array<{ type: string; id: string; name: string }>
   onContinue?: () => void
   generatedUiConnectorActions?: GeneratedUiConnectorActions
+  generatedUiReadOnly?: boolean
   onGeneratedUiChange?: (partId: string, data: GeneratedUiData) => void
   presentation?: Partial<ChatTranscriptPresentation>
 }
@@ -146,7 +147,7 @@ export function ChatExchange({
   responseInProgress, status, sourceCitations,
   turnIdForActions, modelLabel, onDeleteTurn, onReply, onBranch, interrupted = false, actionsLocked, isExiting = false, replyThreadMeta, onJumpToReply,
   onOpenDraft, onCreateAutomationDraft, onOpenSources, isSourcesOpenForThis, onRetry, retryDisabled = true, onOpenFilePreview, onOpenAttachmentPreview, userMentions, onContinue,
-  generatedUiConnectorActions, onGeneratedUiChange, presentation,
+  generatedUiConnectorActions, generatedUiReadOnly, onGeneratedUiChange, presentation,
 }: ChatExchangeProps) {
     recordRender(isStreaming ? 'ChatExchange(streaming)' : 'ChatExchange')
     const assistantPlainText = assistantBlocksToPlainText(assistantVisualBlocks)
@@ -180,6 +181,7 @@ export function ChatExchange({
       onCreateAutomationDraft,
       onOpenAttachmentPreview,
       generatedUiConnectorActions,
+      generatedUiReadOnly,
       onGeneratedUiChange,
     }
     const copyPlainText = interruptedCopyText(assistantPlainText, interrupted, errorMessage)

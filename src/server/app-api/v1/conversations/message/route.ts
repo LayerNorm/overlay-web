@@ -10,6 +10,7 @@ import { normalizeGeneratedUiData } from '@overlay/chat-core/generated-ui'
 import { startWorkspaceAgentTurns } from '@/server/agents/start-agent-turns'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
 import { asConversationId } from '@/server/conversations/ActConversationRepository'
+import { nativeRunRetirementErrorResponse } from '@/server/conversations/native-run-retirement-http'
 
 export async function POST(request: NextRequest, context: AppApiRouteContext) {
   try {
@@ -177,6 +178,8 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         ...(body.threadRootMessageId?.trim() ? { threadRootMessageId: body.threadRootMessageId.trim() } : {}),
         workspaceId,
       }).catch((error) => {
+        const retirement = nativeRunRetirementErrorResponse(error)
+        if (retirement) throw error
         // `resolveWorkspaceAgentInvocations` throws when no agent was addressed,
         // which is the common case for a message between people.
         logger.debug('[conversations/message POST] No agent turn started', { error })
@@ -185,6 +188,8 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
 
     return NextResponse.json({ success: true, conversationId: body.conversationId, turnId, messageId })
   } catch (e) {
+    const retirement = nativeRunRetirementErrorResponse(e)
+    if (retirement) return retirement
     logger.error('[conversations/message POST]', e)
     const msg = e instanceof Error ? e.message : 'Failed to save message'
     return NextResponse.json({ error: msg }, { status: 500 })
@@ -213,6 +218,8 @@ export async function DELETE(request: NextRequest, context: AppApiRouteContext) 
         turnId,
       })
     } catch (err) {
+      const retirement = nativeRunRetirementErrorResponse(err)
+      if (retirement) return retirement
       const msg = err instanceof Error ? err.message : String(err)
       if (msg === 'Unauthorized' || msg.includes('Unauthorized')) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
@@ -223,6 +230,8 @@ export async function DELETE(request: NextRequest, context: AppApiRouteContext) 
 
     return NextResponse.json({ success: true, conversationId, turnId })
   } catch (e) {
+    const retirement = nativeRunRetirementErrorResponse(e)
+    if (retirement) return retirement
     logger.error('[conversations/message DELETE]', e)
     return NextResponse.json({ error: 'Failed to delete turn' }, { status: 500 })
   }
@@ -262,6 +271,8 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
         return NextResponse.json({ error: 'Generated UI part not found' }, { status: 404 })
       }
     } catch (err) {
+      const retirement = nativeRunRetirementErrorResponse(err)
+      if (retirement) return retirement
       const msg = err instanceof Error ? err.message : String(err)
       if (msg === 'Unauthorized' || msg.includes('Unauthorized')) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
@@ -275,6 +286,8 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
 
     return NextResponse.json({ success: true, conversationId, messageId, partId })
   } catch (e) {
+    const retirement = nativeRunRetirementErrorResponse(e)
+    if (retirement) return retirement
     logger.error('[conversations/message PATCH]', e)
     return NextResponse.json({ error: 'Failed to update generated UI part' }, { status: 500 })
   }

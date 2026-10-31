@@ -1,11 +1,8 @@
 import 'server-only'
 
-import { start } from 'workflow/api'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { logger } from '@/server/observability/logger'
-import { workspaceAgentTurnWorkflow } from '@/server/workflows/workspace-agent-turn'
 import { startNativeHarnessTurn } from '@/server/harness/native-turn-start'
-import { serverEnv } from '@/server/env/server-env'
 import { agentStartFailureMessage } from '@/server/app-api/v1/conversations/message/agent-start-failure'
 import {
   resolveWorkspaceAgentInvocations,
@@ -33,9 +30,7 @@ export type WorkspaceAgentTurnDispatcherDependencies = {
   resolveInvocations?: typeof resolveWorkspaceAgentInvocations
   startRemote?: typeof startRemoteWorkspaceAgentTurn
   getCollaboration?: () => ReturnType<typeof getOverlayServerContext>['appData']['repositories']['conversationCollaboration']
-  startWorkflow?: typeof start
   startNative?: typeof startNativeHarnessTurn
-  nativeHarnessEnabled?: () => boolean
 }
 
 /**
@@ -93,18 +88,17 @@ export async function startWorkspaceAgentTurns(
         })
         return
       }
-      const useNativeHarness = invocation.harness === 'overlay'
-        && (dependencies.nativeHarnessEnabled?.() ?? serverEnv.overlayNativeHarness === '1')
+      if (invocation.harness !== 'overlay') {
+        throw new WorkspaceAgentInvocationError('not_entitled', 'This agent does not have a supported execution runtime.')
+      }
       const turn = await collaboration.startAgentTurn({
         actorUserId: args.actorUserId,
         agentId: invocation.agentId,
         authorPrincipalId: invocation.agentPrincipalId,
         clientNonce: invocation.invocationNonce,
         conversationId: args.conversationId,
-        ...(useNativeHarness ? {
-          executionEngine: 'overlay_harness' as const,
-          initiatorPrincipalId: args.initiatorPrincipalId,
-        } : {}),
+        executionEngine: 'overlay_harness',
+        initiatorPrincipalId: args.initiatorPrincipalId,
         modelId: invocation.modelId,
         threadRootMessageId: args.threadRootMessageId,
         turnId: invocation.turnId,
@@ -115,33 +109,14 @@ export async function startWorkspaceAgentTurns(
       // or a retried send. Starting a second workflow against the same reply
       // row would bill the turn twice.
       if (turn.resumed) return
-      if (useNativeHarness) {
-        await (dependencies.startNative ?? startNativeHarnessTurn)({
-          actorUserId: args.actorUserId,
-          workspaceId: args.workspaceId,
-          conversationId: args.conversationId,
-          runId: turn.runId,
-          memoryEnabled: args.memoryEnabled,
-          ...(args.threadRootMessageId ? { threadRootMessageId: args.threadRootMessageId } : {}),
-        })
-        return
-      }
-      const workflowArgs: Parameters<typeof workspaceAgentTurnWorkflow> = [{
+      await (dependencies.startNative ?? startNativeHarnessTurn)({
         actorUserId: args.actorUserId,
-        agentId: invocation.agentId,
-        conversationId: args.conversationId,
-        messageId: args.messageId,
-        memoryEnabled: args.memoryEnabled,
-        runId: turn.runId,
-        ...(args.threadRootMessageId ? { threadRootMessageId: args.threadRootMessageId } : {}),
-        turnMessageId: turn.messageId,
         workspaceId: args.workspaceId,
-      }]
-      if (dependencies.startWorkflow) {
-        await dependencies.startWorkflow(workspaceAgentTurnWorkflow, workflowArgs)
-      } else {
-        await start(workspaceAgentTurnWorkflow, workflowArgs)
-      }
+        conversationId: args.conversationId,
+        runId: turn.runId,
+        memoryEnabled: args.memoryEnabled,
+        ...(args.threadRootMessageId ? { threadRootMessageId: args.threadRootMessageId } : {}),
+      })
     } catch (error) {
       const turnErrorCode = error instanceof WorkspaceAgentInvocationError ? error.reasonCode : 'unexpected'
       const turnErrorDetail = error instanceof Error ? error.message.slice(0, 300) : String(error).slice(0, 300)
@@ -152,23 +127,16 @@ export async function startWorkspaceAgentTurns(
         messageId: args.messageId,
       })
       const failureMessage = agentStartFailureMessage(invocation.agentName, error)
-      await collaboration.startAgentMessage({
+      await collaboration.recordAgentStartFailure({
         actorUserId: args.actorUserId,
         authorPrincipalId: invocation.agentPrincipalId,
         clientNonce: invocation.invocationNonce,
+        content: failureMessage,
         conversationId: args.conversationId,
         modelId: invocation.modelId,
         threadRootMessageId: args.threadRootMessageId,
         turnId: invocation.turnId,
         workspaceId: args.workspaceId,
-      }).then(async (failureMessageId) => {
-        await collaboration.failAgentMessage({
-          actorUserId: args.actorUserId,
-          content: failureMessage,
-          conversationId: args.conversationId,
-          messageId: failureMessageId,
-          workspaceId: args.workspaceId,
-        })
       }).catch((persistenceError) => {
         logger.error('[conversations/message POST] Failed to persist agent-start failure', {
           agentId: invocation.agentId,

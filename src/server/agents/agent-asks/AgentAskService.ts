@@ -329,6 +329,7 @@ export class AgentAskService {
     startTurns?: StartTurns
   }) {
     const messageId = await this.dependencies.collaboration.addAgentMessage({
+      messagePurpose: 'agent_request',
       actorUserId: args.person.actorUserId,
       authorPrincipalId: args.caller.principalId,
       clientNonce: args.turnId,

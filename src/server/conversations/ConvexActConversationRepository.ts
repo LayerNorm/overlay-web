@@ -23,6 +23,8 @@ import type { Doc, Id } from '../../../convex/_generated/dataModel'
 import type {
   AgentRun,
 } from '@/shared/agents/agent-run'
+import { nativeThreadCompatibilityUnavailable, type NativeThreadCompatibility } from '@/shared/agents/native-run-retirement'
+import { isNativeThreadCompatibilityBackendReady, requireNativeThreadCompatibilityBackend } from './native-thread-compatibility-backend'
 
 export class ConvexActConversationRepository implements ActConversationRepository {
   private get serverSecret(): string {
@@ -62,6 +64,23 @@ export class ConvexActConversationRepository implements ActConversationRepositor
       ...args,
       serverSecret: this.serverSecret,
     })
+  }
+
+  async getNativeThreadCompatibility(args: {
+    conversationId: ConversationId
+    threadRootMessageId?: string
+    userId: string
+    workspaceId?: string
+  }) {
+    if (!await isNativeThreadCompatibilityBackendReady(args.userId)) {
+      return nativeThreadCompatibilityUnavailable()
+    }
+    const compatibility = await convex.query<NativeThreadCompatibility | null>('chat/conversations:getNativeThreadCompatibility', {
+      ...args,
+      serverSecret: this.serverSecret,
+    }, { throwOnError: true })
+    if (!compatibility) throw new Error('Native thread compatibility query returned no result')
+    return compatibility
   }
 
   async listConversations(args: {
@@ -193,6 +212,7 @@ export class ConvexActConversationRepository implements ActConversationRepositor
     importedAuthorEmail?: string
     importedAuthorStatus?: 'member' | 'invited' | 'not_invited'
   }): Promise<Id<'conversationMessages'> | null> {
+    await requireNativeThreadCompatibilityBackend(args.userId)
     return await convex.mutation<Id<'conversationMessages'> | null>('chat/conversations:addMessage', {
       ...args,
       serverSecret: this.serverSecret,
@@ -298,6 +318,7 @@ export class ConvexActConversationRepository implements ActConversationRepositor
   }
 
   async startAgentRun(args: Parameters<ActConversationRepository['startAgentRun']>[0]): Promise<AgentRun | null> {
+    if (args.runner !== 'remote') await requireNativeThreadCompatibilityBackend(args.userId)
     const run = await convex.mutation<ConvexAgentRunDoc | null>('chat/conversations:startAgentRun', {
       ...args,
       serverSecret: this.serverSecret,
@@ -405,6 +426,7 @@ export class ConvexActConversationRepository implements ActConversationRepositor
     turnId: string
     userId: string
   }): Promise<{ deletedMessages: number }> {
+    await requireNativeThreadCompatibilityBackend(args.userId)
     const result = await convex.mutation<{ deletedMessages: number }>('chat/conversations:deleteTurn', {
       ...args,
       serverSecret: this.serverSecret,
@@ -419,6 +441,7 @@ export class ConvexActConversationRepository implements ActConversationRepositor
     data: Record<string, unknown>
     userId: string
   }): Promise<boolean> {
+    await requireNativeThreadCompatibilityBackend(args.userId)
     await convex.mutation('chat/conversations:updateMessageUiPart', {
       ...args,
       serverSecret: this.serverSecret,

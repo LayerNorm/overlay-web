@@ -4,6 +4,26 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Initial long-running harness recovery slice: separate context-compaction checkpoints from continuation stagnation, provide trusted bounded recovery before durable stuck waits, and return repairable generated-UI and plan-validation feedback.
+
+- Cut over personal HTTP and named-room admission to native Harness with explicit retirement responses for unsupported execution paths and truthful fail-closed backend readiness.
+
+- Route automation run-backed and scheduler-owned turns through native Harness with owner-fenced settlement/replay, refreshed bound-agent grants, and approval-denial handling; surface migration and broader legacy retirement remain open.
+
+- Reject new native admissions that attempt to use or adopt retired runners, fence retired-run attachment and transitions, and give owners new-thread guidance instead of resuming legacy approval/input waits while preserving connected remote-agent behavior.
+
+- Fence active retired-run transcript writes, retire unowned room generation, and persist startup failures atomically as terminal errors while preserving native streaming, connected remote writes, and late tool receipts.
+
+- Fence new writes and admissions for conversations or roots with recorded retired native runs, expose authorized read-only compatibility metadata while keeping history readable, and return a truthful 410 retirement response. Untracked historical transcripts, deployed-worker drain, and the new-thread UI remain open.
+
+- Keep tracked-thread safety compatible with web-first rollout: older backends preserve transcript reads with explicit unavailable metadata and block new thread writes/admissions with a retriable 503 until the server-owned backend marker is present. The new backend remains authoritative for 410 retirement classification; already-admitted remote execution remains unchanged.
+
+- Show read-only footers for retired or temporarily unavailable native threads, gate personal and room mutations on fresh safety checks, preserve drafts after compatibility rejections, provide editable bounded handoffs to fresh threads, and keep compatibility GET failures from triggering recheck loops.
+
+- Keep Generated UI edits unavailable without a persistence callback, explicitly pass retired-thread safety through personal and room transcripts, and discard local edits when a card becomes read-only.
+
+- Add an opt-in Preview-only historical-thread retirement fixture for hosted UI QA without scheduling workflows or replenishing existing QA allowance. Preview builds can seed it through the trusted controller without exporting database credentials.
+
 - Switch existing accounts to double sidebar once across all workspaces, while allowing subsequent single-sidebar opt-outs.
 
 - Keep the gray gutters equal on both sides of onboarding while its navigation is hidden.

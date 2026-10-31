@@ -20,8 +20,6 @@ export default defineConfig({
       'scripts/**/*.test.ts',
       'src/server/harness/**/*.test.ts',
       'src/server/agents/workspace-agent-preparation.test.ts',
-      'src/server/agents/workspace-agent-durable.test.ts',
-      'src/server/workflows/workspace-agent-turn.test.ts',
       'src/server/app-api/v1/conversations/act/model-candidates.test.ts',
       'src/server/app-api/v1/conversations/act/personal-harness-turn.test.ts',
       'src/server/app-api/v1/conversations/stop/route.test.ts',

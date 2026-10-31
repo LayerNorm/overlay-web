@@ -33,6 +33,7 @@ export function isPersonalChatWorkToolOutputEnvelope(
 export type PersonalChatWorkToolingContext = {
   accountAllowedConnectorIds?: string[]
   accountAllowedToolIds?: string[]
+  integrationToolIds?: string[]
   baseUrl: string
   billingProgrammaticSubjectId?: string
   conversationId: string
@@ -40,6 +41,7 @@ export type PersonalChatWorkToolingContext = {
   entitlements: Entitlements
   latestUserText?: string
   mediaToolIntent?: 'image' | 'video' | null
+  memoryOwnerId?: string
   memoryEnabled: boolean
   /** Conversation-mode hint for tool gating; automation turns leave it unset. */
   mode?: 'chat' | 'automate'
@@ -52,5 +54,6 @@ export type PersonalChatWorkToolingContext = {
   /** Marks the turn as an automation execution (withholds automation tools). */
   automationExecution?: boolean
   automationId?: string
+  automationRunId?: string
   approvalMode?: 'ask' | 'auto'
 }

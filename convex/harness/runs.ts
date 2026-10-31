@@ -3,6 +3,7 @@ import type { Doc } from '../_generated/dataModel'
 import { requireConversationAccess } from '../collaboration/directMessages'
 import { validateServerSecret } from '../lib/auth'
 import { getReadableRow } from '../lib/resourceScope'
+import { assertNativeThreadWritable } from '../lib/nativeThreadCompatibility'
 import { isHarnessDeliveryConversation, validateNativeHarnessDelivery } from './nativeDelivery'
 import {
   admitHarnessChild,
@@ -13,6 +14,7 @@ import {
   claimHarnessExecution,
   createHarnessSnapshot,
   finishHarness,
+  HarnessPlanValidationError,
   recordHarnessEvidence,
   recordHarnessChildReceipt,
   recordHarnessReceipt,
@@ -190,7 +192,11 @@ const operationValidator = v.union(
   }),
   v.object({ type: v.literal('record_evidence'), evidence: evidenceValidator }),
   v.object({ type: v.literal('record_receipt'), receipt: receiptValidator }),
-  v.object({ type: v.literal('checkpoint'), summary: v.string() }),
+  v.object({
+    type: v.literal('checkpoint'),
+    summary: v.string(),
+    purpose: v.optional(v.union(v.literal('continuation'), v.literal('compaction'))),
+  }),
   v.object({
     type: v.literal('block'),
     blocker: v.object({
@@ -850,7 +856,8 @@ function assertActiveWaitLineage(lineage: LineageEntry[]): void {
 function waitBlockerQuestion(metadata: HarnessMetadata, kind: HarnessWaitRequest['kind']): string {
   const expectedStatus = kind === 'input' ? 'waiting_for_input' : 'waiting_for_approval'
   const blocker = metadata.blocker
-  if (metadata.status !== expectedStatus || !blocker || blocker.kind !== kind) {
+  const matches = blocker?.kind === kind || (kind === 'input' && blocker?.kind === 'stuck')
+  if (metadata.status !== expectedStatus || !blocker || !matches) {
     throw new Error('HARNESS_WAIT_KIND_MISMATCH')
   }
   const question = blocker.question
@@ -937,6 +944,22 @@ async function persistMetadata(ctx: MutationCtx, run: RunRow, snapshot: HarnessS
     metadataJson: stableJson(metadataFromSnapshot(snapshot)),
     updatedAt: snapshot.updatedAt,
   })
+}
+
+export async function failUnclaimedNativeHarnessInTransaction(ctx: MutationCtx, input: {
+  runId: string
+  actorUserId: string
+  deliveryAgentRunId: string
+  reason: string
+}): Promise<boolean> {
+  const run = await findRun(ctx, input.runId)
+  if (!run) return true
+  if (run.actorUserId !== input.actorUserId || run.deliveryAgentRunId !== input.deliveryAgentRunId
+    || run.rootRunId !== run.runId || run.activeDescendantCount !== 0) return false
+  const snapshot = await hydrateSnapshot(ctx, run)
+  if (snapshot.workflowRunId || snapshot.modelReservation || isTerminalStatus(snapshot.status)) return false
+  await persistMetadata(ctx, run, terminateHarness(snapshot, 'failed', input.reason, Date.now()))
+  return true
 }
 
 async function persistPlan(
@@ -1210,7 +1233,7 @@ async function applyReducer(
       }
       return { snapshot: recordHarnessReceipt(current, operation.receipt, now) }
     case 'checkpoint':
-      return { snapshot: checkpointHarness(current, operation.summary, now) }
+      return { snapshot: checkpointHarness(current, operation.summary, now, operation.purpose) }
     case 'block':
       return { snapshot: blockHarness(current, operation.blocker, now) }
     case 'resume':
@@ -1362,6 +1385,20 @@ export const admit = mutation({
     const delivery = admission.deliveryAgentRunId
       ? await validateHarnessDeliveryAdmission(ctx, admission, source, serverSecret)
       : undefined
+    if ('conversationId' in source && typeof source.conversationId === 'string') {
+      const conversationId = ctx.db.normalizeId('conversations', source.conversationId)
+      const conversation = conversationId ? await ctx.db.get(conversationId) : null
+      if (!conversation) throw new Error('HARNESS_DELIVERY_SOURCE_DENIED')
+      const trigger = delivery ? await ctx.db.get(delivery.userMessageId) : null
+      if (delivery && (!trigger || trigger.conversationId !== conversation._id || trigger.deletedAt)) {
+        throw new Error('HARNESS_DELIVERY_TARGET_DENIED')
+      }
+      await assertNativeThreadWritable(
+        ctx,
+        conversation,
+        trigger?.threadRootMessageId ?? trigger?._id,
+      )
+    }
     const now = Date.now()
     const snapshot = createHarnessSnapshot({
       runId: admission.runId,
@@ -1502,7 +1539,7 @@ export const apply = mutation({
       result = await applyReducer(ctx, run, currentState, operation, args.serverSecret, now)
     } catch (error) {
       throw new ConvexError({
-        code: 'HARNESS_OPERATION_REJECTED',
+        code: error instanceof HarnessPlanValidationError ? 'HARNESS_PLAN_VALIDATION' : 'HARNESS_OPERATION_REJECTED',
         message: error instanceof Error ? error.message : 'Harness operation rejected.',
       })
     }
@@ -1581,6 +1618,7 @@ export const apply = mutation({
         revision: next.revision,
         metadataJson: stableJson(metadataFromSnapshot(next)),
         planRevision: next.planRevision,
+        purpose: operation.purpose ?? 'continuation',
         createdAt: now,
       })
     }

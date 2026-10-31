@@ -46,6 +46,7 @@ export interface AssistantVisualBlocksProps {
     options?: AttachmentPreviewOpenOptions,
   ) => void
   generatedUiConnectorActions?: GeneratedUiConnectorActions
+  generatedUiReadOnly?: boolean
   onGeneratedUiChange?: (partId: string, data: GeneratedUiData) => void
 }
 
@@ -76,6 +77,7 @@ export function AssistantVisualBlocks({
   onCreateAutomationDraft,
   onOpenAttachmentPreview,
   generatedUiConnectorActions,
+  generatedUiReadOnly,
   onGeneratedUiChange,
 }: AssistantVisualBlocksProps) {
   const segments = useMemo(() => buildAssistantVisualSegments(blocks), [blocks])
@@ -134,12 +136,13 @@ export function AssistantVisualBlocks({
     onCreateAutomationDraft,
     onOpenAttachmentPreview,
     generatedUiConnectorActions,
+    generatedUiReadOnly,
     onGeneratedUiChange,
   }), [
     blockKeyPrefix, markdownKeyPrefix, blocks.length, lastTextBlockIndex,
     isStreaming, isTextStreaming, sourceCitations, webSources,
     suppressTypingIndicator, resolveFileHref, onOpenDraft, onCreateAutomationDraft,
-    onOpenAttachmentPreview, generatedUiConnectorActions, onGeneratedUiChange,
+    onOpenAttachmentPreview, generatedUiConnectorActions, generatedUiReadOnly, onGeneratedUiChange,
   ])
 
   return (

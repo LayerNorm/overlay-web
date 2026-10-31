@@ -11,13 +11,15 @@ import { asConversationId } from '@/server/conversations/ActConversationReposito
 import { actEntitlementService } from '@/server/conversations/http'
 import { ConvexHarnessRepository } from './ConvexHarnessRepository'
 import type { HarnessExecutionReference } from './state-steps'
+import { refreshAutomationHarnessSource } from './automation-access'
+import type { PersonalHarnessAuthentication } from './personal-authentication'
 
 export type PersonalHarnessAccess = HarnessExecutionReference & {
   conversationId: string
   agentRunId: string
   workspaceId: string
   principalId: string
-  authentication: { type: 'session' | 'access-token' } | { type: 'api-key'; apiKeyId: string }
+  authentication: PersonalHarnessAuthentication
 }
 
 export type PersonalHarnessExecutionContext = PersonalChatWorkToolingContext & {
@@ -28,10 +30,30 @@ type PersonalContext = Omit<PersonalChatWorkToolingContext, 'entitlements' | 'pa
 type HarnessState = NonNullable<Awaited<ReturnType<ConvexHarnessRepository['get']>>>
 type ServerContext = ReturnType<typeof getOverlayServerContext>
 
+function hasValidPersonalContext(context: PersonalContext): boolean {
+  return !context.automationExecution && !context.automationId && !context.automationRunId
+    && context.approvalMode !== 'auto' && !context.memoryOwnerId
+}
+
+function hasValidAutomationContext(
+  context: PersonalContext,
+  authority: Extract<PersonalHarnessAuthentication, { type: 'automation' }>,
+): boolean {
+  return context.automationExecution === true
+    && context.automationId === authority.automationId
+    && context.automationRunId === authority.automationRunId
+    && context.billingProgrammaticSubjectId === `automation:${authority.automationId}`
+    && !context.memoryOwnerId
+}
+
 function assertSuppliedContext(access: PersonalHarnessAccess, context: PersonalContext): void {
+  const automationAuthority = access.authentication.type === 'automation' ? access.authentication : undefined
+  const authorityMatches = automationAuthority
+    ? hasValidAutomationContext(context, automationAuthority)
+    : hasValidPersonalContext(context)
   if (context.userId !== access.actorUserId || context.workspaceId !== access.workspaceId
-    || context.conversationId !== access.conversationId || context.automationExecution
-    || context.automationId || context.approvalMode === 'auto') {
+    || context.conversationId !== access.conversationId
+    || !authorityMatches) {
     throw new FatalError('Personal harness identity does not match its tooling context.')
   }
   if (!access.workspaceId || !access.principalId || !access.conversationId) {
@@ -85,7 +107,8 @@ async function assertApiKeyStillAllowed(access: PersonalHarnessAccess, server: S
       || key.expiresAt <= Date.now() || !hasRequiredApiKeyScopes(key.scopes, ['chat:write'])) {
       throw new FatalError('The API key that authorized this run is no longer permitted.')
     }
-  } else if (access.authentication.type !== 'session' && access.authentication.type !== 'access-token') {
+  } else if (access.authentication.type !== 'session' && access.authentication.type !== 'access-token'
+    && access.authentication.type !== 'automation') {
     throw new FatalError('Personal harness authentication is not supported.')
   }
 }
@@ -187,9 +210,14 @@ function buildExecutionContext(
   accountAllowedToolIds: string[],
   accountAllowedConnectorIds: string[],
   gate: Awaited<ReturnType<typeof actEntitlementService.gateModelPolicy>>,
+  sourceGrant?: { approvalMode: 'ask' | 'auto'; allowedToolIds: string[]; allowedConnectorIds: string[] },
 ): PersonalHarnessExecutionContext {
-  const allowedTools = (context.accountAllowedToolIds ?? []).filter(id => accountAllowedToolIds.includes(id))
-  const allowedConnectors = (context.accountAllowedConnectorIds ?? []).filter(id => accountAllowedConnectorIds.includes(id))
+  const allowedTools = (context.accountAllowedToolIds ?? [])
+    .filter(id => accountAllowedToolIds.includes(id))
+    .filter(id => !sourceGrant || sourceGrant.allowedToolIds.includes(id))
+  const allowedConnectors = (context.accountAllowedConnectorIds ?? [])
+    .filter(id => accountAllowedConnectorIds.includes(id))
+    .filter(id => !sourceGrant || sourceGrant.allowedConnectorIds.includes(id))
   return {
     baseUrl: context.baseUrl,
     billingProgrammaticSubjectId: context.billingProgrammaticSubjectId,
@@ -209,7 +237,12 @@ function buildExecutionContext(
     workspaceId: access.workspaceId,
     accountAllowedToolIds: allowedTools,
     accountAllowedConnectorIds: allowedConnectors,
-    approvalMode: 'ask',
+    integrationToolIds: context.integrationToolIds,
+    ...(access.authentication.type === 'automation'
+      ? { automationExecution: true, automationId: access.authentication.automationId,
+        automationRunId: access.authentication.automationRunId,
+        approvalMode: sourceGrant?.approvalMode ?? 'ask' }
+      : { approvalMode: 'ask' as const }),
   }
 }
 
@@ -224,7 +257,12 @@ export async function refreshPersonalHarnessAccess(
   const repository = new ConvexHarnessRepository()
   const { state, root } = await readCurrentHarnessAuthority(repository, access, toolName)
   const server = getOverlayServerContext()
-  await assertApiKeyStillAllowed(access, server)
+  let sourceGrant: Awaited<ReturnType<typeof refreshAutomationHarnessSource>> | undefined
+  if (access.authentication.type === 'automation') {
+    sourceGrant = await refreshAutomationHarnessSource(access, context)
+  } else {
+    await assertApiKeyStillAllowed(access, server)
+  }
   const [workspace, conversation, agentRun, subject] = await Promise.all([
     server.workspaceService.resolveActiveWorkspace(access.actorUserId, access.workspaceId),
     server.appData.repositories.conversations.getConversationById({
@@ -243,6 +281,20 @@ export async function refreshPersonalHarnessAccess(
   assertPersonalCapabilities(authorization, subject, context, toolName)
   await assertModelCatalogAccess(authorization, subject, context.effectiveModelId)
   const grants = await readCurrentModelAndGrants(authorization, subject, access, context)
+  if (sourceGrant) {
+    const integrationToolIds = new Set(context.integrationToolIds ?? [])
+    const currentConnectors = grants.accountAllowedConnectorIds
+    const initialConnectors = context.accountAllowedConnectorIds ?? []
+    const connectorGrantChanged = initialConnectors.length !== currentConnectors.length
+      || initialConnectors.some(id => !currentConnectors.includes(id))
+    const currentSourceToolIds = sourceGrant.allowedToolIds.filter(id => integrationToolIds.has(id)
+      ? !connectorGrantChanged
+      : grants.accountAllowedToolIds.includes(id))
+    const revokedSnapshotTools = state.policy.allowedToolIds.filter(id => !currentSourceToolIds.includes(id))
+    if (revokedSnapshotTools.length || (toolName && !currentSourceToolIds.includes(toolName))) {
+      throw new FatalError('Automation agent permissions have been revoked.')
+    }
+  }
   await assertCurrentModelPolicy(context.effectiveModelId, access.actorUserId, grants.gate.runtimeEntitlements)
-  return buildExecutionContext(access, context, grants.accountAllowedToolIds, grants.accountAllowedConnectorIds, grants.gate)
+  return buildExecutionContext(access, context, grants.accountAllowedToolIds, grants.accountAllowedConnectorIds, grants.gate, sourceGrant)
 }

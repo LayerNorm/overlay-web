@@ -120,6 +120,46 @@ test('child execution receives a focused brief and tool subset while retaining s
   expect(bounded.delivery).toBeUndefined()
 })
 
+test('automation children preserve their original source workflow and run authority', () => {
+  const automationInput: PersonalHarnessWorkflowInput = {
+    ...input,
+    access: {
+      ...input.access,
+      authentication: {
+        type: 'automation',
+        automationId: 'automation',
+        automationRunId: 'automation-run',
+        originWorkflowRunId: 'origin-workflow',
+      },
+    },
+    context: {
+      ...input.context,
+      automationExecution: true,
+      automationId: 'automation',
+      automationRunId: 'automation-run',
+      billingProgrammaticSubjectId: 'automation:automation',
+    },
+  }
+  const child = { ...state, runId: 'child', parentRunId: 'root', workflowRunId: 'child-workflow' }
+  const bounded = personalHarnessChildInput(automationInput, child)
+  expect(bounded.access).toMatchObject({
+    runId: 'child',
+    authentication: {
+      type: 'automation',
+      automationId: 'automation',
+      automationRunId: 'automation-run',
+      originWorkflowRunId: 'origin-workflow',
+    },
+  })
+  expect(bounded.access).not.toHaveProperty('workflowRunId')
+  expect(bounded.context).toMatchObject({
+    automationExecution: true,
+    automationId: 'automation',
+    automationRunId: 'automation-run',
+    billingProgrammaticSubjectId: 'automation:automation',
+  })
+})
+
 test('retrying child launch reuses claimed child ownership instead of starting again', async () => {
   const child = { ...state, runId: 'child', parentRunId: 'root', workflowRunId: 'child-workflow' }
   state.children = [{ id: 'child', stepId: 'read', status: 'running', maxCostMicros: 0, costMicros: 0, allowedToolIds: ['read'], evidenceRefs: [] }]
@@ -139,7 +179,9 @@ test('execution failure is persisted before a child wakes its parent', async () 
   state.parentRunId = 'parent'
   mocks.run.mockRejectedValue(new Error('Access was revoked.'))
   mocks.apply.mockResolvedValue({ ...state, status: 'failed', terminalReason: 'Access was revoked.' })
-  expect(await personalHarnessWorkflow(input)).toEqual({ runId: 'root', status: 'failed' })
+  expect(await personalHarnessWorkflow(input)).toEqual({
+    runId: 'root', status: 'failed', terminalReason: 'Access was revoked.',
+  })
   expect(mocks.apply).toHaveBeenCalledWith(expect.anything(), 'execution-failed', { type: 'terminate', status: 'failed', reason: 'Access was revoked.' })
   expect(mocks.apply.mock.invocationCallOrder[0]).toBeLessThan(mocks.notify.mock.invocationCallOrder[0])
 })

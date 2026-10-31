@@ -9,7 +9,8 @@ import { requireAccessToken, validateServerSecret } from '../lib/auth'
 import { recordConversationEvent } from './events'
 import { conversationListVersion } from '../lib/conversationListVersion'
 import { resolveConversationActivityState } from '../../src/shared/chat/conversation-activity-state'
-import { ROOM_AGENT_RUN_LEASE_MS } from '../../src/shared/agents/agent-run'
+import { assertNativeHarnessRun, assertSupportedAgentExecution, nativeRunRetiredError } from '../../src/shared/agents/native-run-retirement'
+import { assertNativeThreadWritable } from '../lib/nativeThreadCompatibility'
 import { agentMemoryOwnerId } from '../../src/shared/agents/agent-memory'
 import { stripTextualToolCalls, stripTextualToolCallsFromParts } from '../../src/shared/ai/textual-tool-calls'
 import { resolveIdentityDisplayName, versionedIdentityUrl } from '../../src/shared/workspaces/identity-resolution'
@@ -577,12 +578,16 @@ export const addMessage = mutation({
     if (args.threadRootMessageId) {
       await getMessageForThread(ctx, args.conversationId, args.threadRootMessageId)
     }
+    await assertNativeThreadWritable(ctx, access.conversation, args.threadRootMessageId)
     if (args.clientNonce) {
-      const existing = await ctx.db.query('conversationMessages')
-        .withIndex('by_conversationId', (q) => q.eq('conversationId', args.conversationId))
-        .collect()
-      const match = existing.find((message) => message.clientNonce === args.clientNonce)
-      if (match) return match._id
+      const match = await ctx.db.query('conversationMessages')
+        .withIndex('by_conversationId_clientNonce', q => q
+          .eq('conversationId', args.conversationId).eq('clientNonce', args.clientNonce))
+        .first()
+      if (match) {
+        await assertNativeThreadWritable(ctx, access.conversation, match.threadRootMessageId ?? match._id)
+        return match._id
+      }
     }
     const now = Date.now()
     const messageId = await ctx.db.insert('conversationMessages', {
@@ -623,6 +628,7 @@ export const addMessage = mutation({
  * invoker's room access and the agent's active participation in that room. */
 export const addAgentMessage = mutation({
   args: {
+    messagePurpose: v.optional(v.union(v.literal('greeting'), v.literal('prepared_onboarding'), v.literal('agent_request'))),
     actorUserId: v.string(),
     authorPrincipalId: v.string(),
     clientNonce: v.string(),
@@ -637,16 +643,20 @@ export const addAgentMessage = mutation({
     serverSecret: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    await requireAgentAuthor(ctx, args)
+    const access = await requireAgentAuthor(ctx, args)
+    if (!args.messagePurpose) throw nativeRunRetiredError()
     if (args.threadRootMessageId) {
       await getMessageForThread(ctx, args.conversationId, args.threadRootMessageId)
     }
-    const existing = await ctx.db.query('conversationMessages')
-      .withIndex('by_conversationId', (q) => q.eq('conversationId', args.conversationId))
-      .collect()
-    const match = existing.find((message) => message.clientNonce === args.clientNonce)
-    if (match) return match._id
-
+    await assertNativeThreadWritable(ctx, access.conversation, args.threadRootMessageId)
+    const match = await ctx.db.query('conversationMessages')
+      .withIndex('by_conversationId_clientNonce', q => q
+        .eq('conversationId', args.conversationId).eq('clientNonce', args.clientNonce))
+      .first()
+    if (match) {
+      await assertNativeThreadWritable(ctx, access.conversation, match.threadRootMessageId ?? match._id)
+      return match._id
+    }
     const now = Date.now()
     const messageId = await ctx.db.insert('conversationMessages', {
       conversationId: args.conversationId,
@@ -824,7 +834,12 @@ async function loadGeneratingAgentMessage(
     throw new Error('MESSAGE_NOT_FOUND')
   }
   if (message.authorKind !== 'agent') throw new Error('AGENT_MESSAGE_REQUIRED')
-  return message.status === 'generating' ? message : null
+  if (message.status !== 'generating') return null
+  const run = await ctx.db.query('conversationAgentRuns')
+    .withIndex('by_assistantMessageId', q => q.eq('assistantMessageId', message._id)).unique()
+  if (!run) throw nativeRunRetiredError()
+  assertSupportedAgentExecution(run)
+  return message
 }
 
 /**
@@ -853,10 +868,10 @@ async function openAgentMessageRow(
   if (args.threadRootMessageId) {
     await getMessageForThread(ctx, args.conversationId, args.threadRootMessageId)
   }
-  const existing = await ctx.db.query('conversationMessages')
-    .withIndex('by_conversationId', (q) => q.eq('conversationId', args.conversationId))
-    .collect()
-  const match = existing.find((message) => message.clientNonce === args.clientNonce)
+  const match = await ctx.db.query('conversationMessages')
+    .withIndex('by_conversationId_clientNonce', q => q
+      .eq('conversationId', args.conversationId).eq('clientNonce', args.clientNonce))
+    .first()
   if (match) return { messageId: match._id, resumed: true }
 
   const now = Date.now()
@@ -888,14 +903,84 @@ async function openAgentMessageRow(
   return { messageId, resumed: false }
 }
 
+export type StartAgentTurnInTransactionArgs = {
+  actorUserId: string
+  agentId: string
+  authorPrincipalId: string
+  clientNonce: string
+  conversationId: Id<'conversations'>
+  initiatorPrincipalId?: string
+  modelId: string
+  executionEngine?: 'overlay_harness'
+  threadRootMessageId?: Id<'conversationMessages'>
+  turnId: string
+  userMessageId: Id<'conversationMessages'>
+  workspaceId: string
+  serverSecret?: string
+  harnessRunIdPrefix?: string
+}
+
+export async function startAgentTurnInTransaction(
+  ctx: Pick<MutationCtx, 'db'>,
+  args: StartAgentTurnInTransactionArgs,
+) {
+  const access = await requireAgentAuthor(ctx, args)
+  assertNativeHarnessRun({ runner: 'workflow', executionEngine: args.executionEngine })
+  const trigger = await ctx.db.get(args.userMessageId)
+  if (!trigger || trigger.conversationId !== args.conversationId || trigger.deletedAt) {
+    throw new Error('MESSAGE_NOT_FOUND')
+  }
+  await assertNativeThreadWritable(ctx, access.conversation, trigger.threadRootMessageId ?? trigger._id)
+  if (args.threadRootMessageId) {
+    await getMessageForThread(ctx, args.conversationId, args.threadRootMessageId)
+    await assertNativeThreadWritable(ctx, access.conversation, args.threadRootMessageId)
+  }
+  const existingMessage = await ctx.db.query('conversationMessages')
+    .withIndex('by_conversationId_clientNonce', q => q
+      .eq('conversationId', args.conversationId).eq('clientNonce', args.clientNonce))
+    .first()
+  if (existingMessage) {
+    await assertNativeThreadWritable(ctx, access.conversation, existingMessage.threadRootMessageId ?? existingMessage._id)
+  }
+  const [{ messageId, resumed }, existingRun] = await Promise.all([
+    openAgentMessageRow(ctx as MutationCtx, args),
+    ctx.db.query('conversationAgentRuns')
+      .withIndex('by_turn_variant', (q) => (
+        q.eq('conversationId', args.conversationId).eq('turnId', args.turnId)
+      ))
+      .first(),
+  ])
+  if (existingRun) {
+    assertNativeHarnessRun(existingRun)
+    return { messageId, resumed: true, runId: existingRun._id }
+  }
+
+  const now = Date.now()
+  const runId = await ctx.db.insert('conversationAgentRuns', {
+    conversationId: args.conversationId,
+    turnId: args.turnId,
+    userId: args.actorUserId,
+    userMessageId: args.userMessageId,
+    assistantMessageId: messageId,
+    agentId: args.agentId,
+    agentPrincipalId: args.authorPrincipalId,
+    ...(args.initiatorPrincipalId ? { initiatorPrincipalId: args.initiatorPrincipalId } : {}),
+    mode: 'room',
+    runner: 'workflow',
+    executionEngine: 'overlay_harness',
+    status: 'queued',
+    createdAt: now,
+    updatedAt: now,
+  })
+  if (args.harnessRunIdPrefix) {
+    await ctx.db.patch(runId, { harnessRunId: `${args.harnessRunIdPrefix}${runId}` })
+  }
+  return { messageId, resumed, runId }
+}
+
 /**
  * Opens a durable room agent turn: the reply row plus the run record that owns
- * it. Both exist before the model is called, so a turn the runtime loses is
- * still visible and still resumable rather than silently gone.
- *
- * `resumed` tells the caller a turn for this (message, agent) already exists,
- * which is how a duplicate trigger avoids starting a second workflow against
- * the same reply.
+ * it. Both exist before the model is called.
  */
 export const startAgentTurn = mutation({
   args: {
@@ -913,45 +998,7 @@ export const startAgentTurn = mutation({
     workspaceId: v.string(),
     serverSecret: v.optional(v.string()),
   },
-  handler: async (ctx, args) => {
-    await requireAgentAuthor(ctx, args)
-    // A room turn carries no variant index, so the turn prefix of this index
-    // identifies at most one run.
-    const [{ messageId, resumed }, existingRun] = await Promise.all([
-      openAgentMessageRow(ctx, args),
-      ctx.db.query('conversationAgentRuns')
-      .withIndex('by_turn_variant', (q) => (
-        q.eq('conversationId', args.conversationId).eq('turnId', args.turnId)
-      ))
-        .first(),
-    ])
-    if (existingRun) return { messageId, resumed: true, runId: existingRun._id }
-
-    const now = Date.now()
-    const runId = await ctx.db.insert('conversationAgentRuns', {
-      conversationId: args.conversationId,
-      turnId: args.turnId,
-      userId: args.actorUserId,
-      userMessageId: args.userMessageId,
-      assistantMessageId: messageId,
-      agentId: args.agentId,
-      agentPrincipalId: args.authorPrincipalId,
-      ...(args.initiatorPrincipalId ? { initiatorPrincipalId: args.initiatorPrincipalId } : {}),
-      mode: 'room',
-      runner: 'workflow',
-      ...(args.executionEngine ? { executionEngine: args.executionEngine } : {}),
-      status: 'queued',
-      // A room turn has no heartbeat, so the lease is an outer bound: a sweep
-      // fails whatever is still active past it rather than leaving a reply
-      // generating forever.
-      // Harness waits are bounded by their durable root deadline, not the
-      // legacy room executor's 30-minute liveness lease.
-      ...(args.executionEngine === 'overlay_harness' ? {} : { leaseExpiresAt: now + ROOM_AGENT_RUN_LEASE_MS }),
-      createdAt: now,
-      updatedAt: now,
-    })
-    return { messageId, resumed, runId }
-  },
+  handler: async (ctx, args) => await startAgentTurnInTransaction(ctx, args),
 })
 
 export const startAgentMessage = mutation({
@@ -968,7 +1015,55 @@ export const startAgentMessage = mutation({
   },
   handler: async (ctx, args) => {
     await requireAgentAuthor(ctx, args)
-    return (await openAgentMessageRow(ctx, args)).messageId
+    throw nativeRunRetiredError()
+  },
+})
+
+export const recordAgentStartFailure = mutation({
+  args: {
+    actorUserId: v.string(),
+    authorPrincipalId: v.string(),
+    clientNonce: v.string(),
+    content: v.string(),
+    conversationId: v.id('conversations'),
+    modelId: v.string(),
+    threadRootMessageId: v.optional(v.id('conversationMessages')),
+    turnId: v.string(),
+    workspaceId: v.string(),
+    serverSecret: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const access = await requireAgentAuthor(ctx, args)
+    if (args.threadRootMessageId) {
+      await getMessageForThread(ctx, args.conversationId, args.threadRootMessageId)
+      await assertNativeThreadWritable(ctx, access.conversation, args.threadRootMessageId)
+    } else {
+      await assertNativeThreadWritable(ctx, access.conversation)
+    }
+    const existingMessage = await ctx.db.query('conversationMessages')
+      .withIndex('by_conversationId_clientNonce', q => q
+        .eq('conversationId', args.conversationId).eq('clientNonce', args.clientNonce))
+      .first()
+    if (existingMessage) {
+      await assertNativeThreadWritable(ctx, access.conversation, existingMessage.threadRootMessageId ?? existingMessage._id)
+    }
+    const { messageId } = await openAgentMessageRow(ctx, args)
+    const message = await ctx.db.get(messageId)
+    if (message?.status !== 'generating') return messageId
+    const run = await ctx.db.query('conversationAgentRuns')
+      .withIndex('by_assistantMessageId', q => q.eq('assistantMessageId', messageId)).unique()
+    if (run) assertSupportedAgentExecution(run)
+    await ctx.db.patch(messageId, {
+      content: args.content,
+      parts: [{ type: 'text', text: args.content }],
+      status: 'error',
+      updatedAt: Date.now(),
+    })
+    await recordConversationEvent(ctx, {
+      conversationId: args.conversationId, workspaceId: args.workspaceId,
+      userId: args.actorUserId, messageId, type: 'message.failed',
+    })
+    return messageId
   },
 })
 
@@ -1122,6 +1217,10 @@ export const sanitizeAgentMessageTextParts = mutation({
     if (!message || message.conversationId !== args.conversationId
       || message.authorKind !== 'agent' || message.authorPrincipalId !== args.authorPrincipalId
       || message.turnId !== args.turnId) return
+    const run = await ctx.db.query('conversationAgentRuns')
+      .withIndex('by_assistantMessageId', q => q.eq('assistantMessageId', message._id)).unique()
+    if (!run) throw nativeRunRetiredError()
+    assertSupportedAgentExecution(run)
     const toolNames = new Set(args.toolNames)
     await ctx.db.patch(args.messageId, {
       content: stripTextualToolCalls(message.content, toolNames),
@@ -2080,6 +2179,7 @@ export const editMessage = mutation({
       || message.authorPrincipalId !== access.actor.principalId
       || message.deletedAt
     ) return false
+    await assertNativeThreadWritable(ctx, access.conversation, message.threadRootMessageId ?? message._id)
     const hydrated = await hydrateRemoteMessage(ctx, message)
     const parts: NonNullable<Doc<'conversationMessages'>['parts']> = [
       { type: 'text', text: content },
@@ -2122,6 +2222,7 @@ export const deleteMessage = mutation({
       || message.authorPrincipalId !== access.actor.principalId
       || message.deletedAt
     ) return false
+    await assertNativeThreadWritable(ctx, access.conversation, message.threadRootMessageId ?? message._id)
     const now = Date.now()
     await ctx.db.patch(message._id, { content: '', parts: [], deletedAt: now, updatedAt: now })
     await ctx.runMutation(internal.knowledge.knowledge.purgeKnowledgeSource, {

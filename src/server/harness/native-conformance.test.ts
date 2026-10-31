@@ -16,7 +16,6 @@ import { projectNativeHarnessToolProgress } from './native-tool-progress'
 import { harnessToolResultEvidence } from './tool-evidence'
 import { AgentAskError, AgentAskService } from '@/server/agents/agent-asks/AgentAskService'
 import { startWorkspaceAgentTurns } from '@/server/agents/start-agent-turns'
-import { prepareWorkspaceAgentTurn } from '@/server/agents/workspace-agent-durable'
 import { agentMemoryOwnerId } from '@/shared/agents/agent-memory'
 import type { WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
 
@@ -492,7 +491,7 @@ it('Plan: write claims without a plan stay blocked, while answer-only Q&A comple
   expect(blocked.outcome).toBe('blocked')
   expect(blocked.snapshot.status).not.toBe('completed')
   expect(blocked.snapshot.blocker?.kind).toBe('stuck')
-  expect(textOnly.doStreamCalls).toHaveLength(2)
+  expect(textOnly.doStreamCalls).toHaveLength(6)
   expect(textOnly.doStreamCalls[0]?.toolChoice).toEqual({ type: 'required' })
 
   const qaFixture = harnessFixture({ allowedToolIds: ['write_file'] })
@@ -603,38 +602,29 @@ it('Lineage — depth, cycles, and external targets are refused before dispatch'
   })).rejects.toThrow("External agents can't be asked from this run yet.")
 })
 
-it('Legacy — legacy rows keep the old dispatcher under either flag, while native-owned rows fail closed', async () => {
+it('Native dispatch always starts a Harness run', async () => {
   const invocation = {
     agentId: 'agent', agentName: 'Agent', agentPrincipalId: 'principal-agent', invocationNonce: 'nonce',
     modelId: 'fixture/model', harness: 'overlay' as const, externalAgent: false, turnId: 'turn',
   }
-  const run = async (enabled: boolean) => {
+  const run = async () => {
     const starts: string[] = []
     await startWorkspaceAgentTurns({
       actorUserId: 'human', conversationId: 'room', messageId: 'message', mentionedPrincipalIds: [], initiatorPrincipalId: 'human',
       prompt: 'work', memoryEnabled: false, turnId: 'human-turn', workspaceId: 'workspace',
     }, {
-      nativeHarnessEnabled: () => enabled,
       resolveInvocations: async () => [invocation],
       getCollaboration: () => ({
         enqueueMemoryExtraction: async () => undefined,
         startAgentTurn: async (input: Record<string, unknown>) => ({ resumed: false, runId: 'run', messageId: 'reply', ...input }),
-        startAgentMessage: async () => 'failure',
+        recordAgentStartFailure: async () => 'failure',
         failAgentMessage: async () => undefined,
       } as never),
-      startWorkflow: async () => { starts.push('legacy') },
       startNative: async () => { starts.push('native') },
     })
     return starts
   }
-  expect(await run(false)).toEqual(['legacy'])
-  expect(await run(true)).toEqual(['native'])
-  mocks.getLatestAgentRun.mockResolvedValue({ executionEngine: 'overlay_harness' })
-  await expect(prepareWorkspaceAgentTurn({
-    actorUserId: 'human', agentId: 'agent', conversationId: 'room', messageId: 'message',
-    memoryEnabled: true, runId: 'run', turnMessageId: 'reply', workspaceId: 'workspace',
-  })).rejects.toThrow('native Harness workflow')
-  expect(mocks.reserveForAttempt).not.toHaveBeenCalled()
+  expect(await run()).toEqual(['native'])
 })
 
 it('Unbounded loop — more tool calls than legacy maxSteps complete, and premature done continues while plan work remains', async () => {

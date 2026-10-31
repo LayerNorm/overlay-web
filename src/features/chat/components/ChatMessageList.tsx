@@ -44,6 +44,7 @@ export type ChatMessageListState = {
 }
 
 export type ChatMessageListRuntime = {
+  readOnly?: boolean
   actChat: ChatInstance
   chatInstances: ChatInstance[]
   isActiveLoading: boolean
@@ -208,6 +209,7 @@ function ChatMessages({
     return (
       <ChatMessage
         kind="text"
+        readOnly={runtime.readOnly}
         message={message}
         exchangeIndex={exchange.index}
         primaryMessages={state.primaryMessages}

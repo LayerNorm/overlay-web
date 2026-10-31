@@ -19,6 +19,7 @@ const run: AgentRun = {
   assistantMessageId: 'message-agent',
   mode: 'room',
   runner: 'workflow',
+  executionEngine: 'overlay_harness',
   status: 'waiting_for_approval',
   approval: { token: 'token-a', requestedAt: 1, requests: [] },
   createdAt: 1,
@@ -40,4 +41,10 @@ test('personal Work approval authority remains unchanged', () => {
     { ...run, mode: 'work', userId: 'work-owner' },
     { ...request, actorUserId: 'work-owner' },
   ), 'allowed')
+})
+
+test('retired native approvals are rejected without retiring connected agents', () => {
+  assert.equal(agentRunApprovalAccess({ ...run, executionEngine: undefined }, request), 'retired')
+  assert.equal(agentRunApprovalAccess({ ...run, runner: 'tool_loop' }, request), 'retired')
+  assert.equal(agentRunApprovalAccess({ ...run, runner: 'remote', executionEngine: undefined }, request), 'allowed')
 })

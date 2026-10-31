@@ -1,6 +1,6 @@
 import { expect, test, vi } from 'vitest'
 import {
-  admitHarnessChild, blockHarness, createHarnessSnapshot, recordHarnessEvidence, replaceHarnessPlan,
+  admitHarnessChild, blockHarness, createHarnessSnapshot, HarnessPlanValidationError, recordHarnessEvidence, replaceHarnessPlan,
   settleHarnessChild, transitionHarnessStep, type HarnessSnapshot,
 } from '@overlay/agent-runtime/harness-state'
 import { createHarnessControlTools } from './control-tools'
@@ -111,6 +111,29 @@ test('plan execution normalizes raw omitted verification input before applying t
       evidenceTools: ['ask_agent'],
     }],
   })
+})
+
+test('invalid evidenceTools is repairable and a corrected plan can be applied', async () => {
+  let attempts = 0
+  const apply = vi.fn<HarnessExecutionPorts['apply']>(async () => {
+    attempts++
+    if (attempts === 1) throw new HarnessPlanValidationError('Milestone "work" lists unsupported evidence tool "missing_tool".')
+    return replaceHarnessPlan(planningGateState(), [{
+      id: 'work', title: 'Use the available tool', dependsOn: [], acceptanceCriteria: ['Use ask_agent'],
+      requiresVerification: false, evidenceTools: ['ask_agent'],
+    }], Date.now())
+  })
+  const plan = createHarnessControlTools({ ...fixture().ports, apply }).harness_set_plan
+  const invalid = await plan.execute!({
+    steps: [{ id: 'work', title: 'Use a missing tool', dependsOn: [], acceptanceCriteria: ['Try it'],
+      requiresVerification: false, evidenceTools: ['missing_tool'] }],
+  }, { toolCallId: 'invalid-plan', messages: [] })
+  expect(invalid).toMatchObject({ success: false, code: 'tool_validation_failure' })
+  const corrected = await plan.execute!({
+    steps: [{ id: 'work', title: 'Use the available tool', dependsOn: [], acceptanceCriteria: ['Use ask_agent'],
+      requiresVerification: false, evidenceTools: ['ask_agent'] }],
+  }, { toolCallId: 'corrected-plan', messages: [] })
+  expect(corrected).toMatchObject({ plan: [{ id: 'work' }] })
 })
 
 test('blockers are rejected until a required plan exists', async () => {
@@ -356,5 +379,9 @@ test('answer-only plans normalize empty evidence tools without relaxing action p
   expect(result).toMatchObject({ plan: [{ id: 'answer', answerOnly: true }] })
   await expect(plan.execute!({ steps: [{ ...step, answerOnly: false }] }, {
     toolCallId: 'action-plan', messages: [],
-  })).rejects.toThrow('must declare evidenceTools')
+  })).resolves.toMatchObject({
+    success: false,
+    code: 'tool_validation_failure',
+    error: expect.stringContaining('must declare evidenceTools'),
+  })
 })

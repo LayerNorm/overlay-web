@@ -21,6 +21,20 @@ class CapturingEventBus implements EventBus {
   }
 }
 
+test('owner-fenced settlement retains the repository instance for its server credentials', async () => {
+  const repository = createRepository({
+    async settleManualRun(): Promise<boolean> {
+      assert.equal(this, repository)
+      return true
+    },
+  })
+  const { service } = createService(repository)
+  assert.equal(await service.settleRun({
+    runId: 'run', userId: 'user', expectedWorkflowRunId: 'workflow', expectedStatus: 'running',
+    expectedTurnId: 'turn', status: 'completed',
+  }), true)
+})
+
 function createRepository(overrides: Partial<AutomationRepository> = {}): AutomationRepository & {
   createdAutomations: Array<Record<string, unknown>>
   failedRuns: Array<Record<string, unknown>>

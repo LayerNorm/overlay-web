@@ -33,7 +33,7 @@ function invocation(
     agentPrincipalId: `principal-${agentId}`,
     invocationNonce: `nonce-${agentId}`,
     modelId: options.externalAgent ? 'byo/codex' : 'overlay/default',
-    ...(options.harness ? { harness: options.harness } : {}),
+    harness: options.harness ?? 'overlay',
     externalAgent: options.externalAgent ?? false,
     turnId: `turn-${agentId}`,
     ...(options.remoteTarget ? {
@@ -56,13 +56,12 @@ function invocation(
 function fixture(
   invocations: WorkspaceAgentInvocation[],
   startRemote: NonNullable<WorkspaceAgentTurnDispatcherDependencies['startRemote']>,
-  options: { nativeEnabled?: boolean; resumed?: boolean; nativeStartFails?: boolean } = {},
+  options: { resumed?: boolean; nativeStartFails?: boolean } = {},
 ) {
   const nativeStarts: string[] = []
   const remoteStarts: string[] = []
   const failures: string[] = []
   const turnInputs: Array<Record<string, unknown>> = []
-  const legacyStarts: string[] = []
   const harnessStarts: string[] = []
   const collaboration = {
     async enqueueMemoryExtraction() {},
@@ -71,7 +70,7 @@ function fixture(
       turnInputs.push(input)
       return { resumed: options.resumed ?? true, runId: 'run-1', messageId: 'turn-message-1' }
     },
-    async startAgentMessage(input: { authorPrincipalId: string }) {
+    async recordAgentStartFailure(input: { authorPrincipalId: string }) {
       failures.push(input.authorPrincipalId)
       return 'failure-message'
     },
@@ -86,12 +85,10 @@ function fixture(
       remoteStarts.push(input.invocation.agentId)
       return await startRemote(input)
     },
-    startWorkflow: async (_workflow, workflowArgs) => { legacyStarts.push(workflowArgs[0].runId) },
     startNative: async (input) => {
       harnessStarts.push(input.runId)
       if (options.nativeStartFails) throw new Error('native start failed')
     },
-    nativeHarnessEnabled: () => options.nativeEnabled ?? false,
   }
   return {
     run: () => startWorkspaceAgentTurns(args, dependencies),
@@ -99,7 +96,6 @@ function fixture(
     remoteStarts,
     failures,
     turnInputs,
-    legacyStarts,
     harnessStarts,
   }
 }
@@ -147,38 +143,35 @@ test('an enabled external peer with a target uses remote dispatch', async () => 
   assert.deepEqual(f.failures, [])
 })
 
-test('flag-off overlay agents use the unchanged legacy dispatcher without native row markers', async () => {
+test('unsupported native identities never open a legacy delivery', async () => {
   const f = fixture(
-    [invocation('native', { harness: 'overlay' })],
+    [invocation('unsupported', { harness: 'retired' })],
     async () => {},
-    { resumed: false, nativeEnabled: false },
+    { resumed: false },
   )
   await f.run()
-  assert.equal(f.turnInputs.length, 1)
-  assert.equal(Object.hasOwn(f.turnInputs[0]!, 'executionEngine'), false)
-  assert.equal(Object.hasOwn(f.turnInputs[0]!, 'initiatorPrincipalId'), false)
-  assert.deepEqual(f.legacyStarts, ['run-1'])
+  assert.equal(f.turnInputs.length, 0)
   assert.deepEqual(f.harnessStarts, [])
+  assert.deepEqual(f.failures, ['principal-unsupported'])
 })
 
-test('the default-off flag selects native Harness only for an overlay agent and marks its delivery row', async () => {
+test('overlay agents always use native Harness and mark its delivery row', async () => {
   const f = fixture(
     [invocation('native', { harness: 'overlay' })],
     async () => {},
-    { resumed: false, nativeEnabled: true },
+    { resumed: false },
   )
   await f.run()
   assert.equal(f.turnInputs[0]!.executionEngine, 'overlay_harness')
   assert.equal(f.turnInputs[0]!.initiatorPrincipalId, args.initiatorPrincipalId)
   assert.deepEqual(f.harnessStarts, ['run-1'])
-  assert.deepEqual(f.legacyStarts, [])
 })
 
-test('remote and external invocations stay outside the native flag and resumed turns do not start again', async () => {
+test('remote and external invocations stay outside native dispatch and resumed turns do not start again', async () => {
   const remote = fixture(
     [invocation('remote', { harness: 'overlay', remoteTarget: true }), invocation('external', { externalAgent: true })],
     async () => {},
-    { nativeEnabled: true, resumed: false },
+    { resumed: false },
   )
   await remote.run()
   assert.deepEqual(remote.remoteStarts, ['remote'])
@@ -188,18 +181,17 @@ test('remote and external invocations stay outside the native flag and resumed t
   const resumed = fixture(
     [invocation('native', { harness: 'overlay' })],
     async () => {},
-    { nativeEnabled: true, resumed: true },
+    { resumed: true },
   )
   await resumed.run()
   assert.deepEqual(resumed.harnessStarts, [])
-  assert.deepEqual(resumed.legacyStarts, [])
 })
 
 test('a native workflow start failure uses the existing failure-message path', async () => {
   const f = fixture(
     [invocation('native', { harness: 'overlay' })],
     async () => {},
-    { nativeEnabled: true, resumed: false, nativeStartFails: true },
+    { resumed: false, nativeStartFails: true },
   )
   await f.run()
   assert.deepEqual(f.failures, ['principal-native'])

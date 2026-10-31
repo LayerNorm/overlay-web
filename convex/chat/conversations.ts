@@ -13,6 +13,8 @@ import { cancelHarnessDelivery } from '../harness/runs'
 import { conversationListVersion } from '../lib/conversationListVersion'
 import { deleteChunksForSource } from '../knowledge/knowledge'
 import { INTERRUPTED_RESPONSE_NOTICE } from '../../src/shared/chat/agent-assistant-text'
+import { assertNativeHarnessRun, assertSupportedAgentExecution } from '../../src/shared/agents/native-run-retirement'
+import { assertNativeThreadWritable, nativeThreadCompatibility } from '../lib/nativeThreadCompatibility'
 
 const generatedUiVariant = v.object({
   id: v.string(),
@@ -84,6 +86,17 @@ const messagePart = v.union(
         toolName: v.string(),
         input: v.any(),
       })),
+    }),
+  }),
+  v.object({
+    type: v.literal('data-native-agent-input'),
+    data: v.object({
+      runId: v.string(),
+      conversationId: v.string(),
+      userId: v.string(),
+      token: v.string(),
+      requestedAt: v.number(),
+      question: v.string(),
     }),
   }),
   v.object({
@@ -840,6 +853,12 @@ export const addMessage = mutation({
         modelId: args.modelId,
       }),
     )
+    await assertNativeThreadWritable(ctx, conversation)
+    for (const message of existing) {
+      if (message.turnId === args.turnId) {
+        await assertNativeThreadWritable(ctx, conversation, message.threadRootMessageId ?? message._id)
+      }
+    }
     const now = Date.now()
     const payload = {
       conversationId: args.conversationId,
@@ -953,7 +972,9 @@ export const startAgentRun = mutation({
       throw new Error('Unauthorized')
     }
 
+    await assertNativeThreadWritable(ctx, conversation, userMessage.threadRootMessageId ?? userMessage._id)
     const variantIndex = args.variantIndex ?? 0
+    assertNativeHarnessRun(args)
     const runsForTurn = await ctx.db
       .query('conversationAgentRuns')
       .withIndex('by_turn_variant', (q) => q
@@ -961,7 +982,10 @@ export const startAgentRun = mutation({
         .eq('turnId', args.turnId))
       .collect()
     const existing = runsForTurn.find((run) => (run.variantIndex ?? 0) === variantIndex)
-    if (existing) return existing
+    if (existing) {
+      assertNativeHarnessRun(existing)
+      return existing
+    }
 
     const now = Date.now()
     const assistantMessageId = await ctx.db.insert('conversationMessages', {
@@ -1028,6 +1052,7 @@ export const transitionAgentRun = mutation({
     if (args.expectedWorkflowRunId !== undefined && run.workflowRunId !== args.expectedWorkflowRunId) {
       throw new Error('AgentRun workflow ownership changed')
     }
+    assertSupportedAgentExecution(run)
     assertAgentRunTransition(run.status, args.status)
     const now = Date.now()
     await ctx.db.patch(run._id, {
@@ -1040,7 +1065,8 @@ export const transitionAgentRun = mutation({
     })
     const message = await ctx.db.get(run.assistantMessageId)
     if (message && run.mode === 'room') {
-      const parts = (message.parts ?? []).filter((part) => part.type !== 'data-native-agent-approval')
+      const parts = (message.parts ?? []).filter((part) =>
+        part.type !== 'data-native-agent-approval' && part.type !== 'data-native-agent-input')
       if (args.status === 'waiting_for_approval' && args.approval) {
         parts.push({
           type: 'data-native-agent-approval',
@@ -1051,6 +1077,19 @@ export const transitionAgentRun = mutation({
             token: args.approval.token,
             requestedAt: args.approval.requestedAt,
             requests: args.approval.requests,
+          },
+        })
+      }
+      if (args.status === 'waiting_for_input' && args.inputRequest) {
+        parts.push({
+          type: 'data-native-agent-input',
+          data: {
+            runId: run._id,
+            conversationId: run.conversationId,
+            userId: run.userId,
+            token: args.inputRequest.token,
+            requestedAt: args.inputRequest.requestedAt,
+            question: args.inputRequest.question,
           },
         })
       }
@@ -1074,6 +1113,7 @@ export const attachAgentRunWorkflow = mutation({
     if (run.workflowRunId && run.workflowRunId !== args.workflowRunId) {
       throw new Error('AgentRun is already attached to another workflow')
     }
+    assertSupportedAgentExecution(run)
     if (run.status !== 'queued' && run.status !== 'running') return run
     const now = Date.now()
     await ctx.db.patch(run._id, {
@@ -1102,13 +1142,15 @@ export const completeAgentRun = mutation({
     const run = await ctx.db.get(args.runId)
     if (!run || run.userId !== args.userId) throw new Error('Unauthorized')
     if (!ACTIVE_AGENT_RUN_STATUSES.has(run.status)) return run
+    assertSupportedAgentExecution(run)
     assertAgentRunTransition(run.status, 'completed')
     const now = Date.now()
     const message = await ctx.db.get(run.assistantMessageId)
     if (message) {
       await ctx.db.patch(message._id, {
         content: args.content,
-        parts: args.parts.filter((part) => part.type !== 'data-native-agent-approval'),
+        parts: args.parts.filter((part) =>
+          part.type !== 'data-native-agent-approval' && part.type !== 'data-native-agent-input'),
         routedModelId: args.routedModelId,
         tokens: args.tokens,
         status: 'completed',
@@ -1147,11 +1189,13 @@ export const failAgentRun = mutation({
     const run = await ctx.db.get(args.runId)
     if (!run || run.userId !== args.userId) throw new Error('Unauthorized')
     if (!ACTIVE_AGENT_RUN_STATUSES.has(run.status)) return run
+    assertSupportedAgentExecution(run)
     assertAgentRunTransition(run.status, 'failed')
     const now = Date.now()
     const message = await ctx.db.get(run.assistantMessageId)
     if (message) {
-      const parts = (message.parts ?? []).filter((part) => part.type !== 'data-native-agent-approval')
+      const parts = (message.parts ?? []).filter((part) =>
+        part.type !== 'data-native-agent-approval' && part.type !== 'data-native-agent-input')
       const hasContentPart = parts.some((part) => part.type === 'text')
       await ctx.db.patch(message._id, {
         ...(message.status === 'generating'
@@ -1259,6 +1303,7 @@ export const recordAgentRunProgress = mutation({
     const run = await ctx.db.get(args.runId)
     if (!run || run.userId !== args.userId) throw new Error('Unauthorized')
     if (!ACTIVE_AGENT_RUN_STATUSES.has(run.status)) return
+    assertSupportedAgentExecution(run)
     const message = await ctx.db.get(run.assistantMessageId)
     if (message?.status !== 'generating') return
     if (message.content === args.content) return
@@ -1375,13 +1420,16 @@ export const cancelAgentRuns = mutation({
           : message.parts ?? [{ type: 'text', text: baseContent }]
         writes.push(ctx.db.patch(message._id, {
           content: `${baseContent.trimEnd()}${sentinel}`,
-          parts: [...baseParts.filter((part) => part.type !== 'data-native-agent-approval'), { type: 'text', text: sentinel }],
+          parts: [...baseParts.filter((part) =>
+            part.type !== 'data-native-agent-approval' && part.type !== 'data-native-agent-input'), { type: 'text', text: sentinel }],
           status: 'completed',
           updatedAt: now,
         }))
-      } else if (message?.parts?.some((part) => part.type === 'data-native-agent-approval')) {
+      } else if (message?.parts?.some((part) =>
+        part.type === 'data-native-agent-approval' || part.type === 'data-native-agent-input')) {
         writes.push(ctx.db.patch(message._id, {
-          parts: message.parts.filter((part) => part.type !== 'data-native-agent-approval'),
+          parts: message.parts.filter((part) =>
+            part.type !== 'data-native-agent-approval' && part.type !== 'data-native-agent-input'),
           updatedAt: now,
         }))
       }
@@ -1449,6 +1497,7 @@ export const updateMessageUiPart = mutation({
     ) {
       throw new Error('Message not found')
     }
+    await assertNativeThreadWritable(ctx, conversation, message.threadRootMessageId ?? message._id)
     const parts = Array.isArray(message.parts) ? message.parts : []
     let changed = false
     const nextParts = parts.map((part) => {
@@ -1732,6 +1781,10 @@ export const deleteTurn = mutation({
       .collect()
 
     const turnMessages = messages.filter((m) => m.turnId === tid)
+    await assertNativeThreadWritable(ctx, conv)
+    for (const message of turnMessages) {
+      await assertNativeThreadWritable(ctx, conv, message.threadRootMessageId ?? message._id)
+    }
     // Purge the message's knowledge chunks in the same transaction —
     // orphaned sourceKind:'message' chunks would stay retrievable.
     await Promise.all(turnMessages.flatMap((m) => [
@@ -1779,6 +1832,13 @@ export const addMessages = mutation({
       .query('conversationMessages')
       .withIndex('by_conversationId', (q) => q.eq('conversationId', conversationId))
       .collect()
+    await assertNativeThreadWritable(ctx, conversation)
+    const requestedTurnIds = new Set(rows.map(row => row.turnId))
+    for (const message of existing) {
+      if (requestedTurnIds.has(message.turnId)) {
+        await assertNativeThreadWritable(ctx, conversation, message.threadRootMessageId ?? message._id)
+      }
+    }
     const ids = await Promise.all(rows.map(async (row) => {
       const match = existing.find(
         (message) => sameMessageVariant(message, {
@@ -1806,6 +1866,42 @@ export const addMessages = mutation({
     }))
     await ctx.db.patch(conversationId, { lastModified: now, updatedAt: now })
     return ids
+  },
+})
+
+export const getNativeThreadCompatibility = query({
+  args: {
+    accessToken: v.optional(v.string()),
+    conversationId: v.id('conversations'),
+    serverSecret: v.optional(v.string()),
+    threadRootMessageId: v.optional(v.id('conversationMessages')),
+    userId: v.string(),
+    workspaceId: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    await authorizeUserAccess({
+      userId: args.userId,
+      accessToken: args.accessToken,
+      serverSecret: args.serverSecret,
+    })
+    const conversation = await ctx.db.get(args.conversationId)
+    if (!conversation || conversation.deletedAt) throw new Error('Unauthorized')
+    if ((conversation.conversationType ?? 'personal') === 'personal') {
+      if (conversation.userId !== args.userId
+        || (args.workspaceId !== undefined && conversation.workspaceId !== args.workspaceId)) {
+        throw new Error('Unauthorized')
+      }
+    } else {
+      if (!args.workspaceId) throw new Error('Unauthorized')
+      await requireConversationAccess(ctx, {
+        actorUserId: args.userId,
+        accessToken: args.accessToken,
+        conversationId: args.conversationId,
+        serverSecret: args.serverSecret,
+        workspaceId: args.workspaceId,
+      })
+    }
+    return await nativeThreadCompatibility(ctx, conversation, args.threadRootMessageId)
   },
 })
 

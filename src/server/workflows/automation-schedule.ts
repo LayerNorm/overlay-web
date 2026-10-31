@@ -23,13 +23,14 @@
  * Inspect: npx workflow web
  */
 
-import { sleep, FatalError, createHook } from "workflow"
+import { sleep, FatalError, createHook, getWorkflowMetadata } from "workflow"
 import type { AutomationSchedule } from "@/shared/automations/schedule"
 import { msUntilNextRun } from "@/shared/automations/schedule"
 import {
   checkAutomationEnabled,
-  runAutomationAgentTurn,
-} from './automation-agent-turn'
+  settleDeniedAutomationRun,
+} from './automation-harness-steps'
+import { runAutomationAgentTurn } from './automation-agent-turn'
 
 export {
   buildAutomationUserMessage,
@@ -73,10 +74,32 @@ export async function automationScheduleWorkflow(input: AutomationScheduleWorkfl
   if (input.oneShot) {
     // Manual run — execute immediately, no scheduling loop
     if (input.approvalRequired) {
-      await waitForApproval(input)
+      if (!await waitForApproval(input)) {
+        if (input.runId) {
+          const { workflowRunId } = getWorkflowMetadata()
+          const settled = await settleDeniedAutomationRun({
+            automationId: input.automationId,
+            runId: input.runId,
+            userId: input.userId,
+            workflowRunId,
+            reason: 'Approval was denied or timed out before automation execution.',
+          })
+          if (!settled) throw new FatalError('Denied automation run could not be settled by its owner.')
+        }
+        return {
+          automationId: input.automationId,
+          completed: false,
+          skipped: true,
+          reason: 'Approval was denied or timed out before automation execution.',
+        }
+      }
     }
-    await executeAutomationRun(input)
-    return { automationId: input.automationId, completed: true }
+    const result = await executeAutomationRun(input)
+    return {
+      automationId: input.automationId,
+      completed: result.status === 'completed',
+      status: result.status,
+    }
   }
 
   // Scheduled loop — sleep until next run, execute, repeat
@@ -127,26 +150,25 @@ async function waitForApproval(input: AutomationScheduleWorkflowInput): Promise<
   })
 
   // If a timeout is set, race the hook against a sleep
-  if (input.approvalTimeoutMs && input.approvalTimeoutMs > 0) {
-    try {
+  try {
+    if (input.approvalTimeoutMs && input.approvalTimeoutMs > 0) {
       const result = await Promise.race([
         hook,
         sleep(input.approvalTimeoutMs).then(() => null),
       ])
       if (result === null) {
-        hook.dispose()
         return false // Timed out
       }
       return result.approved !== false
-    } catch (_error) {
-      hook.dispose()
-      return false
     }
+    // No timeout — wait indefinitely for approval
+    const result = await hook
+    return result.approved !== false
+  } catch (_error) {
+    return false
+  } finally {
+    hook.dispose()
   }
-
-  // No timeout — wait indefinitely for approval
-  const result = await hook
-  return result.approved !== false
 }
 
 // ---------------------------------------------------------------------------
@@ -155,16 +177,18 @@ async function waitForApproval(input: AutomationScheduleWorkflowInput): Promise<
 
 // Date.now() inside 'use workflow' is pinned to the run's fixed replay
 // timestamp, so a per-iteration turn id has to come from a step's real clock.
-async function generateTurnId(automationId: string): Promise<string> {
+export async function generateTurnId(input: Pick<AutomationScheduleWorkflowInput, 'automationId' | 'runId'>): Promise<string> {
   'use step'
-  return `automation-${automationId}-${Date.now()}`
+  return input.runId
+    ? `automation-run:${input.runId}`
+    : `automation-${input.automationId}-${Date.now()}-${globalThis.crypto.randomUUID()}`
 }
 
-async function executeAutomationRun(input: AutomationScheduleWorkflowInput): Promise<void> {
+async function executeAutomationRun(input: AutomationScheduleWorkflowInput) {
   // Claimed scheduler runs carry their real due time; manual/loop runs fall
   // back to the pinned replay clock.
   const now = input.scheduledFor ?? Date.now()
-  await runAutomationAgentTurn({
+  return await runAutomationAgentTurn({
     automationId: input.automationId,
     runId: input.runId,
     userId: input.userId,
@@ -173,7 +197,7 @@ async function executeAutomationRun(input: AutomationScheduleWorkflowInput): Pro
     instructions: input.instructions,
     modelId: input.modelId,
     conversationId: input.conversationId,
-    turnId: await generateTurnId(input.automationId),
+    turnId: await generateTurnId(input),
     scheduledFor: now,
     workspaceId: input.workspaceId,
   })

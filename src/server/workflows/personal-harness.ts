@@ -21,9 +21,54 @@ import { stripTextualToolCalls } from '@/server/harness/textual-tool-calls'
 import type { PersonalHarnessAccess } from '@/server/harness/personal-access'
 import type { PersonalHarnessWorkflowInput } from '@/server/harness/personal-workflow-input'
 import { persistPersonalChatWorkProgress } from '@/server/conversations/personal-chat-work-lifecycle'
+import { hasSamePersonalHarnessAuthentication } from '@/server/harness/personal-authentication'
+
+function hasChildExecutionIdentity(parent: PersonalHarnessAccess, input: PersonalHarnessWorkflowInput): boolean {
+  return input.access.actorUserId === parent.actorUserId
+    && input.access.agentRunId === parent.agentRunId
+    && input.access.conversationId === parent.conversationId
+    && input.access.workspaceId === parent.workspaceId
+}
+
+function hasChildContextAuthority(
+  parent: PersonalHarnessWorkflowInput['context'],
+  child: PersonalHarnessWorkflowInput['context'],
+): boolean {
+  return child.turnId === parent.turnId
+    && child.billingProgrammaticSubjectId === parent.billingProgrammaticSubjectId
+    && child.automationExecution === parent.automationExecution
+    && child.automationId === parent.automationId
+    && child.automationRunId === parent.automationRunId
+    && child.memoryOwnerId === parent.memoryOwnerId
+    && JSON.stringify(child.accountAllowedToolIds ?? []) === JSON.stringify(parent.accountAllowedToolIds ?? [])
+    && JSON.stringify(child.accountAllowedConnectorIds ?? []) === JSON.stringify(parent.accountAllowedConnectorIds ?? [])
+    && JSON.stringify(child.integrationToolIds ?? []) === JSON.stringify(parent.integrationToolIds ?? [])
+}
+
+function isTerminalHarnessStatus(status: string): boolean {
+  return ['completed', 'failed', 'cancelled'].includes(status)
+}
+
+function childLaunchMatchesParent(
+  parent: PersonalHarnessAccess,
+  parentContext: PersonalHarnessWorkflowInput['context'],
+  input: PersonalHarnessWorkflowInput,
+  parentState: HarnessSnapshot | null,
+  child: HarnessSnapshot | null,
+): child is HarnessSnapshot {
+  return Boolean(parentState && child
+    && parentState.workflowRunId === parent.workflowRunId
+    && parentState.children.some(entry => entry.id === child.runId)
+    && child.parentRunId === parent.runId
+    && child.rootRunId === parentState.rootRunId
+    && hasChildExecutionIdentity(parent, input)
+    && hasSamePersonalHarnessAuthentication(parent.authentication, input.access.authentication)
+    && hasChildContextAuthority(parentContext, input.context))
+}
 
 async function startPersonalHarnessChild(
   parent: PersonalHarnessAccess,
+  parentContext: PersonalHarnessWorkflowInput['context'],
   input: PersonalHarnessWorkflowInput,
 ): Promise<string> {
   'use step'
@@ -31,16 +76,13 @@ async function startPersonalHarnessChild(
   const repository = new ConvexHarnessRepository()
   const parentState = await repository.get(parent)
   const child = await repository.get({ actorUserId: parent.actorUserId, runId: input.access.runId })
-  if (!parentState || parentState.workflowRunId !== parent.workflowRunId
-    || !parentState.children.some(entry => entry.id === child?.runId)
-    || !child || child.parentRunId !== parent.runId || child.rootRunId !== parentState.rootRunId
-    || input.access.actorUserId !== parent.actorUserId || input.access.agentRunId !== parent.agentRunId
-    || input.access.conversationId !== parent.conversationId || input.access.workspaceId !== parent.workspaceId) {
+  if (!parentState || !childLaunchMatchesParent(parent, parentContext, input, parentState, child)) {
     throw new FatalError('Invalid child launch authority.')
   }
   if (child.workflowRunId) return child.workflowRunId
-  if (['completed', 'failed', 'cancelled'].includes(parentState.status)
-    || ['completed', 'failed', 'cancelled'].includes(child.status)) throw new FatalError('Child launch is no longer active.')
+  if (isTerminalHarnessStatus(parentState.status) || isTerminalHarnessStatus(child.status)) {
+    throw new FatalError('Child launch is no longer active.')
+  }
   // An ambiguous start can launch another workflow, but only one can claim this
   // admitted child. A losing workflow never executes a model or tool.
   return (await start(personalHarnessWorkflow, [input])).runId
@@ -62,13 +104,24 @@ export function personalHarnessChildInput(
   }
 }
 
-export async function personalHarnessWorkflow(input: PersonalHarnessWorkflowInput) {
+export async function personalHarnessWorkflow(input: PersonalHarnessWorkflowInput): Promise<{
+  runId: string
+  status: string
+  replyText?: string
+  terminalReason?: string
+}> {
   'use workflow'
 
   const { workflowRunId } = getWorkflowMetadata()
   const access = { ...input.access, workflowRunId }
   const initial = await readHarnessState(access)
-  if (['completed', 'failed', 'cancelled'].includes(initial.status)) return { runId: initial.runId, status: initial.status }
+  if (['completed', 'failed', 'cancelled'].includes(initial.status)) {
+    return {
+      runId: initial.runId,
+      status: initial.status,
+      ...(initial.terminalReason ? { terminalReason: initial.terminalReason } : {}),
+    }
+  }
   if (!await claimHarnessState(access)) return { runId: initial.runId, status: 'already_running' }
   const isRoot = !initial.parentRunId
   using wake = createHook<unknown>({ token: harnessWakeToken(workflowRunId) })
@@ -81,12 +134,15 @@ export async function personalHarnessWorkflow(input: PersonalHarnessWorkflowInpu
     if (isRoot) await attachPersonalHarnessDelivery(access)
     const execution = { access, context: input.context }
     const ports = createPersonalHarnessExecutionPorts(execution, {
-      ...createPersonalHarnessWaitPorts({ access, wake: wake[Symbol.asyncIterator]() }),
+      ...createPersonalHarnessWaitPorts({
+        access,
+        wake: wake[Symbol.asyncIterator](),
+      }),
       readChild: childRunId => readHarnessChild(access, childRunId),
       delegate: async (delegation, toolCallId) => {
         const child = await admitPersonalHarnessChild(execution, delegation, toolCallId)
         const snapshot = await readHarnessChild(access, child.id)
-        await startPersonalHarnessChild(access, personalHarnessChildInput(input, snapshot))
+        await startPersonalHarnessChild(access, input.context, personalHarnessChildInput(input, snapshot))
         return child
       },
       recordToolResult: async event => {
@@ -117,7 +173,7 @@ export async function personalHarnessWorkflow(input: PersonalHarnessWorkflowInpu
       tools,
       writable: getWritable<ModelCallStreamPart<ToolSet>>(),
     }, ports)
-    if (result.outcome === 'already_running') return { runId: initial.runId, status: 'already_running' }
+    if (result.outcome === 'already_running') return { runId: initial.runId, status: 'already_running' as const }
     if (!['completed', 'failed', 'cancelled'].includes(result.snapshot.status)) {
       result.snapshot = await applyHarnessOperation(access, 'blocked-finalization', {
         type: 'terminate', status: 'failed', reason: result.snapshot.blocker?.question || 'The task is blocked and cannot continue.',
@@ -141,6 +197,15 @@ export async function personalHarnessWorkflow(input: PersonalHarnessWorkflowInpu
   } else {
     await notifyHarnessAncestors(access)
   }
-  await closePersonalHarnessStream(result.snapshot.status === 'failed' ? result.snapshot.terminalReason : undefined)
-  return { runId: result.snapshot.runId, status: result.snapshot.status }
+  if (input.delivery?.closeStream !== false) {
+    await closePersonalHarnessStream(result.snapshot.status === 'failed' ? result.snapshot.terminalReason : undefined)
+  }
+  return {
+    runId: result.snapshot.runId,
+    status: result.snapshot.status,
+    ...(result.snapshot.terminalReason ? { terminalReason: result.snapshot.terminalReason } : {}),
+    ...(input.delivery?.closeStream === false && isRoot && result.snapshot.status === 'completed'
+      ? { replyText: buildPersonalHarnessDelivery(result, input.delivery?.sourceCitations, fallbackNotices, activeToolNames).content }
+      : {}),
+  }
 }

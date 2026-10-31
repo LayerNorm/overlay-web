@@ -1,6 +1,6 @@
 import { tool } from 'ai'
 import { z } from 'zod'
-import type { HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
+import { HarnessPlanValidationError, type HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
 import type { HarnessExecutionPorts } from './ports'
 
 const id = z.string().min(1).max(256)
@@ -85,7 +85,20 @@ export function createHarnessControlTools(ports: HarnessExecutionPorts) {
             ? { evidenceTools: step.evidenceTools } : {}),
           ...(step.answerOnly === true ? { answerOnly: true } : {}),
         }))
-        const state = await ports.apply(`control:${toolCallId}`, { type: 'replace_plan', steps: normalizedSteps })
+        let state: HarnessSnapshot
+        try {
+          state = await ports.apply(`control:${toolCallId}`, { type: 'replace_plan', steps: normalizedSteps })
+        } catch (error) {
+          if (error instanceof HarnessPlanValidationError) {
+            return {
+              success: false,
+              code: 'tool_validation_failure',
+              error: error.message,
+              hint: 'Correct the plan fields and retry. Preserve existing milestone IDs and cite only authorized evidenceTools.',
+            }
+          }
+          throw error
+        }
         return { planRevision: state.planRevision, plan: state.plan }
       },
     }),

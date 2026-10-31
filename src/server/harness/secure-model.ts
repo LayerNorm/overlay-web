@@ -2,6 +2,7 @@ import type { LanguageModelV4, LanguageModelV4CallOptions } from '@ai-sdk/provid
 import { WORKFLOW_DESERIALIZE, WORKFLOW_SERIALIZE } from '@workflow/serde'
 import type { PersonalHarnessModelDispatch } from './personal-model-dispatch'
 import type { NativeHarnessModelDispatch } from './native-model-dispatch'
+import { serializePersonalHarnessAuthentication } from './personal-authentication'
 
 export type HarnessModelReference = {
   modelId: string
@@ -39,11 +40,15 @@ export class HarnessLanguageModel implements LanguageModelV4 {
           actorUserId: personal.access.actorUserId, runId: personal.access.runId, workflowRunId: personal.access.workflowRunId,
           conversationId: personal.access.conversationId, agentRunId: personal.access.agentRunId,
           workspaceId: personal.access.workspaceId, principalId: personal.access.principalId,
-          authentication: personal.access.authentication.type === 'api-key'
-            ? { type: 'api-key' as const, apiKeyId: personal.access.authentication.apiKeyId }
-            : { type: personal.access.authentication.type },
+          authentication: serializePersonalHarnessAuthentication(personal.access.authentication),
         },
         receiptId: personal.receiptId, memoryEnabled: personal.memoryEnabled, requestFingerprint: personal.requestFingerprint,
+        ...(personal.access.authentication.type === 'automation' && personal.automationContext ? { automationContext: {
+          turnId: personal.automationContext.turnId,
+          accountAllowedToolIds: [...personal.automationContext.accountAllowedToolIds],
+          accountAllowedConnectorIds: [...personal.automationContext.accountAllowedConnectorIds],
+          integrationToolIds: [...personal.automationContext.integrationToolIds],
+        } } : {}),
         ...(personal.billingProgrammaticSubjectId ? { billingProgrammaticSubjectId: personal.billingProgrammaticSubjectId } : {}),
         inputTokenBudget: personal.inputTokenBudget, maxOutputTokens: personal.maxOutputTokens, contextWindow: personal.contextWindow,
       } } : {}),

@@ -133,6 +133,40 @@ type ApprovalResumeOutcome =
   | { kind: 'blocked'; snapshot: HarnessSnapshot }
   | { kind: 'restart'; messages: ModelMessage[]; resetStagnation: boolean }
 
+const STAGNATION_RECOVERY_START = 2
+const STAGNATION_PAUSE_AFTER = 6
+
+function safeFailedEvidenceSummary(state: HarnessSnapshot): string {
+  const failed = state.evidence
+    .filter(evidence => evidence.kind === 'tool_result' && evidence.verdict === 'failed')
+    .slice(-3)
+    .map(evidence => {
+      const summary = evidence.summary
+        .replace(/\b(?:authorization|bearer|cookie|password|secret|token|api[_ -]?key)\b(?:\s*[:=]\s*|\s+(?:is\s+)?)(?:"[^"]*"|'[^']*'|\S+)/gi, '[redacted]')
+        .replace(/\bbearer\s+\S+/gi, 'Bearer [redacted]')
+        .replace(/\b(?:sk|pk|rk|api)[-_][A-Za-z0-9_-]{10,}\b/gi, '[redacted]')
+        .replace(/\b[A-Za-z0-9+/_=-]{32,}\b/g, '[redacted]')
+        .replace(/https?:\/\/\S+/gi, '[URL]')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 180)
+      const id = evidence.id.replace(/[^A-Za-z0-9:_-]/g, '').slice(0, 120)
+      const source = evidence.source.replace(/[^A-Za-z0-9_.:-]/g, '').slice(0, 80)
+      return `${id || 'tool result'} (${source || 'tool'}): ${summary || 'failed tool result'}`
+    })
+  return failed.join('; ')
+}
+
+function stuckQuestion(state: HarnessSnapshot): string {
+  const evidence = safeFailedEvidenceSummary(state)
+  return [
+    `No meaningful progress after ${STAGNATION_PAUSE_AFTER} continuation segments.`,
+    'Diagnose the recent failed evidence, missing capabilities and unmet dependencies; revise the approach before continuing.',
+    evidence ? `Recent failed evidence: ${evidence}` : 'No recent failed tool evidence was available.',
+    'Reply with the missing input, permission or resource only if one is genuinely required.',
+  ].join(' ')
+}
+
 async function handleWaitingState(
   state: HarnessSnapshot,
   messages: ModelMessage[],
@@ -146,7 +180,7 @@ async function handleWaitingState(
     return { kind: 'restart', messages, invocation: invocation + (isTerminal(current) ? 0 : 1), resetStagnation: false }
   }
   if (state.status === 'running') return null
-  if (state.blocker?.kind !== 'input') return { kind: 'blocked', snapshot: state }
+  if (state.blocker?.kind !== 'input' && state.blocker?.kind !== 'stuck') return { kind: 'blocked', snapshot: state }
   const reply = await ports.waitForInput(state)
   if (!reply) return { kind: 'blocked', snapshot: await ports.read() }
   const current = await ports.read()
@@ -287,13 +321,13 @@ async function finishOrCheckpointInvocation(
     return { kind: 'finished', snapshot: completed }
   }
   const nextStagnantSegments = harnessProgressFingerprint(state) === before ? stagnantSegments + 1 : 0
-  if (nextStagnantSegments >= 2) {
-    await ports.apply(`stuck:${segment}`, { type: 'block', blocker: { kind: 'stuck', question: 'No durable progress after two continuation attempts. Review the plan or provide the missing input before retrying.' } })
+  if (nextStagnantSegments >= STAGNATION_PAUSE_AFTER) {
+    await ports.apply(`stuck:${segment}`, { type: 'block', blocker: { kind: 'stuck', question: stuckQuestion(state) } })
     return { kind: 'continue', stagnantSegments: nextStagnantSegments, finalAnswerRequired }
   }
   const summary = stripTextualToolCalls(state.workingSummary, toolNames)
     || latestCheckpointSummaryText(runSteps, toolNames)
-  await ports.apply(`checkpoint:${segment}`, { type: 'checkpoint', summary: summary.slice(0, 8_000) })
+  await ports.apply(`checkpoint:${segment}`, { type: 'checkpoint', summary: summary.slice(0, 8_000), purpose: 'continuation' })
   return { kind: 'continue', stagnantSegments: nextStagnantSegments, finalAnswerRequired }
 }
 
@@ -400,6 +434,8 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
           continuation: segment > 0,
           truncatedResponse,
           finalAnswerRequired,
+          ...(stagnantSegments >= STAGNATION_RECOVERY_START
+            ? { stagnationRecoveryAttempt: stagnantSegments - STAGNATION_RECOVERY_START + 1 } : {}),
         }
         const receiptId = `model:${modelCall}`
         const prepared = await ports.prepareModel({ receiptId, state: current, messages: prompt, instructionContext,

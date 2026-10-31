@@ -850,6 +850,33 @@ export default defineSchema({
     .index('by_connectionId_channelId', ['connectionId', 'channelId'])
     .index('by_agentId', ['agentId']),
 
+  surfaceTurnExecutions: defineTable({
+    turnId: v.string(),
+    workflowRunId: v.string(),
+    actorUserId: v.string(),
+    workspaceId: v.string(),
+    creatorPrincipalId: v.string(),
+    agentId: v.string(),
+    agentPrincipalId: v.string(),
+    platform: v.literal('slack'),
+    teamId: v.string(),
+    channelId: v.string(),
+    threadId: v.string(),
+    messageId: v.string(),
+    bindingId: v.string(),
+    connectionId: v.string(),
+    conversationId: v.id('conversations'),
+    agentRunId: v.id('conversationAgentRuns'),
+    userMessageId: v.id('conversationMessages'),
+    assistantMessageId: v.id('conversationMessages'),
+    harnessRunId: v.string(),
+    placeholderTs: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_turnId', ['turnId'])
+    .index('by_harnessRunId', ['harnessRunId']),
+
   // Chat SDK state for surfaces (installations and bot tokens, thread
   // subscriptions, locks, dedupe keys, lists, queues). Serverless instances
   // share it through surfaces/chatState; values are JSON strings. List and
@@ -1389,6 +1416,7 @@ export default defineSchema({
   })
     .index('by_conversationId_createdAt', ['conversationId', 'createdAt'])
     .index('by_conversationId_status_updatedAt', ['conversationId', 'status', 'updatedAt'])
+    .index('by_conversationId_runner_executionEngine', ['conversationId', 'runner', 'executionEngine'])
     .index('by_userId_createdAt', ['userId', 'createdAt'])
     .index('by_environmentId_createdAt', ['environmentId', 'createdAt'])
     .index('by_agentId_status', ['agentId', 'status'])
@@ -1519,6 +1547,17 @@ export default defineSchema({
                 toolName: v.string(),
                 input: v.any(),
               })),
+            }),
+          }),
+          v.object({
+            type: v.literal('data-native-agent-input'),
+            data: v.object({
+              runId: v.string(),
+              conversationId: v.string(),
+              userId: v.string(),
+              token: v.string(),
+              requestedAt: v.number(),
+              question: v.string(),
             }),
           }),
           v.object({
@@ -2888,6 +2927,7 @@ export default defineSchema({
     revision: v.number(),
     metadataJson: v.string(),
     planRevision: v.number(),
+    purpose: v.optional(v.union(v.literal('continuation'), v.literal('compaction'))),
     createdAt: v.number(),
   }).index('by_runId_revision', ['runId', 'revision']),
 })

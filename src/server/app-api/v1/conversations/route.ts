@@ -62,7 +62,13 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
         workspaceId: context.workspace.workspace.id,
       })
       if (!conv) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-      return NextResponse.json(conv)
+      const nativeThreadCompatibility = await repository.getNativeThreadCompatibility({
+        conversationId: asConversationId(conversationId),
+        userId: auth.userId,
+        workspaceId: context.workspace.workspace.id,
+        ...(threadRootMessageId ? { threadRootMessageId } : {}),
+      })
+      return NextResponse.json({ ...conv, nativeThreadCompatibility })
     }
 
     if (conversationId && includeMessages) {
@@ -76,6 +82,12 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
         workspaceId: context.workspace.workspace.id,
       })
       if (!conv) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+      const nativeThreadCompatibility = await repository.getNativeThreadCompatibility({
+        conversationId: asConversationId(conversationId),
+        userId: auth.userId,
+        workspaceId: context.workspace.workspace.id,
+        ...(threadRootMessageId ? { threadRootMessageId } : {}),
+      })
 
       let messages: ConversationMessageRow[]
       if ((conv.conversationType ?? 'personal') !== 'personal') {
@@ -123,6 +135,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
         conversationId,
         title: conv.title,
         conversationType: conv.conversationType ?? 'personal',
+        nativeThreadCompatibility,
         ...(conv.externalPlatform ? {
           externalPlatform: conv.externalPlatform,
           externalChannelId: conv.externalChannelId,
