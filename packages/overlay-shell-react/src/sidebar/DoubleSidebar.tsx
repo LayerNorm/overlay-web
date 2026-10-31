@@ -124,7 +124,7 @@ export function DoubleSidebar({
         className={cn('double-sidebar-panel border-0 bg-transparent transition-[width,opacity] duration-200 motion-reduce:transition-none', collapsed ? 'invisible w-0 opacity-0' : 'w-(--context-sidebar-width) opacity-100', resizing && 'transition-none')}
       >
         <div className="flex h-12 min-h-12 items-center gap-0.5 pl-3 pr-1.5">
-          <h2 className="min-w-0 flex-1 truncate text-[15px] font-semibold tracking-tight">{title}</h2>
+          <h2 className="min-w-0 flex-1 truncate text-[15px] font-semibold capitalize tracking-tight">{title}</h2>
           {onSearch ? <DelayedTooltip label="Search" side="bottom"><Button variant="ghost" size="icon" aria-label={`Search ${title.toLowerCase()}`} onClick={onSearch} className="size-8 text-(--muted)"><Search size={16} aria-hidden /></Button></DelayedTooltip> : null}
           {panelAction ? <DelayedTooltip label={panelAction.label} side="bottom"><Button variant="ghost" size="icon" aria-label={panelAction.label} onClick={panelAction.onClick} className="size-8 text-(--muted)"><Plus size={16} aria-hidden /></Button></DelayedTooltip> : null}
         </div>
