@@ -6,7 +6,7 @@ Status: Implementation in progress. Application changes are being developed on `
 
 - [x] Revalidated canonical main and created an isolated feature worktree from `80f17d148`; preserved newer approval-outcome persistence fixes.
 - [x] Inspected native dispatch, continuation, compaction, waits, delivery, and Computer/FileService transfer boundaries.
-- [ ] Initial recovery slice: separate compaction from stagnation, provide bounded recovery before a durable input wait, and expose actionable tool-validation details.
+- [x] Initial recovery slice: separate compaction from stagnation, provide bounded recovery before a durable input wait, and expose actionable tool-validation details. Focused runtime, runner, Convex wait, generated-UI, and serialized validation tests passed. Direct TypeScript compilation passed; the repository typecheck command remains blocked by unrelated desktop integration checks. This slice does not complete provider recovery, deadline renewal, or the hard cutover.
 
 Implementation note (initial recovery slice): the runner now owns the six-segment recovery bound and routes the resulting stuck blocker through the authenticated input wait; compaction checkpoints remain additive housekeeping and cannot pause a run. This note does not mark any broad plan phase complete.
 - [ ] Unified native admission and complete legacy runner retirement.
