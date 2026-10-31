@@ -16,6 +16,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Fence new writes and admissions for conversations or roots with recorded retired native runs, expose authorized read-only compatibility metadata while keeping history readable, and return a truthful 410 retirement response. Untracked historical transcripts, deployed-worker drain, and the new-thread UI remain open.
 
+- Switch existing accounts to double sidebar once across all workspaces, while allowing subsequent single-sidebar opt-outs.
+
 - Keep the gray gutters equal on both sides of onboarding while its navigation is hidden.
 
 - Add the curved double-sidebar layout: a persistent icon rail, independently collapsible contextual panels, matching rounded borders around navigation and detail panels, and indented agent threads. Align the composer with the full message stream. New layout preferences default to double sidebar; saved single-sidebar choices remain unchanged.
