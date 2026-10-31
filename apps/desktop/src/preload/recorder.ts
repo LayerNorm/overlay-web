@@ -11,6 +11,9 @@ if (
         callback(model, epoch, deviceId)
       )
     },
+    onError: (callback: (epoch: number, message: string) => void) => {
+      ipcRenderer.on('recorder:error', (_event, epoch, message) => callback(epoch, message))
+    },
     onStop: (callback: () => void) => {
       ipcRenderer.on('recorder:stop', callback)
     },

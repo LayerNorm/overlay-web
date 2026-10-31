@@ -152,6 +152,12 @@ function cancelRecording(): void {
   hud?.hide()
   emitDesktopEvent('transcription.cancel', undefined)
 }
+function presentHud(): void {
+  const area = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea
+  hud?.setPosition(Math.round(area.x + (area.width - 360) / 2), area.y + area.height - 182)
+  hud?.setIgnoreMouseEvents(true, { forward: true })
+  hud?.showInactive()
+}
 function startRecording(target: 'system' | 'composer', selectedModel: string): void {
   if (recording || processing || transcriptionBusy) throw new Error('Dictation is already running.')
   takeAbort.abort()
@@ -170,13 +176,32 @@ function startRecording(target: 'system' | 'composer', selectedModel: string): v
     const epoch = sessionEpoch
     void hudReady.then(() => {
       if (recording && sessionEpoch === epoch) {
-        const area = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea
-        hud?.setPosition(Math.round(area.x + (area.width - 360) / 2), area.y + area.height - 182)
-        hud?.setIgnoreMouseEvents(true, { forward: true })
-        hud?.showInactive()
+        presentHud()
         hud?.webContents.send('recorder:start', selectedModel, epoch, inputDeviceId)
       }
     })
+    void takeAdmission.catch((error) =>
+      hudReady.then(() => {
+        if (sessionEpoch !== epoch || (!recording && !processing)) return
+        takeAbort.abort()
+        recording = false
+        processing = false
+        phase = 'error'
+        hotkeyManager.cancelRecording(false)
+        presentHud()
+        hud?.webContents.send(
+          'recorder:error',
+          epoch,
+          error instanceof Error && error.message === 'Sign in to Overlay first.'
+            ? error.message
+            : 'Cloud dictation is unavailable. Check your connection or choose a local model in Desktop settings.'
+        )
+        clearTimeout(retainedTimer)
+        retainedTimer = setTimeout(() => {
+          if (sessionEpoch === epoch) cancelRecording()
+        }, 60_000)
+      })
+    )
   } else emitDesktopEvent('transcription.start', { target, model: selectedModel })
 }
 function stopRecording(): void {

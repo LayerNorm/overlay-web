@@ -155,6 +155,11 @@ window.recorder.onStop(async () => {
     if (started === epoch) fail(error)
   }
 })
+window.recorder.onError((take, message) => {
+  release()
+  recordingEpoch = take
+  state('error', 'Unavailable', message)
+})
 window.recorder.onCancel(() => {
   release()
   state('idle', 'Ready')

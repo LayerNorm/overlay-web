@@ -8,6 +8,7 @@ test('the native HUD captures audio and delivers the transcription without a pre
   const profile = mkdtempSync(join(tmpdir(), 'overlay-recorder-qa-'))
   let audioBytes = 0
   let holdAuth = true
+  let authAllowed = true
   const pendingAuth: ServerResponse[] = []
   let failNext = false
   let requests = 0
@@ -17,7 +18,7 @@ test('the native HUD captures audio and delivers the transcription without a pre
     if (request.url === '/api/auth/session') {
       response.setHeader('Content-Type', 'application/json')
       if (holdAuth) pendingAuth.push(response)
-      else response.end(JSON.stringify({ authenticated: true }))
+      else response.end(JSON.stringify({ authenticated: authAllowed }))
     } else if (request.url === '/api/v1/transcribe') {
       request.on('data', (chunk) => {
         audioBytes += chunk.length
@@ -104,7 +105,7 @@ test('the native HUD captures audio and delivers the transcription without a pre
     ).toBe('live')
     // First audio is real even while session admission is deliberately blocked.
     holdAuth = false
-    for (const response of pendingAuth) response.end(JSON.stringify({ authenticated: true }))
+    for (const response of pendingAuth) response.end(JSON.stringify({ authenticated: authAllowed }))
     await hud.waitForTimeout(150)
     await hud.screenshot({ path: 'test-results/dictation-listening.png', omitBackground: true })
     // Give the synthetic media source a short, measured capture interval.
@@ -205,6 +206,22 @@ test('the native HUD captures audio and delivers the transcription without a pre
       }
     })
     expect(staleRejected).toBe(true)
+    await expect
+      .poll(() =>
+        hud.evaluate(() =>
+          (window as unknown as { qaStreams: MediaStream[] }).qaStreams.every((stream) =>
+            stream.getTracks().every((track) => track.readyState === 'ended')
+          )
+        )
+      )
+      .toBe(true)
+    expect(audioBytes).toBe(firstRequestBytes)
+    authAllowed = false
+    await page.evaluate(() =>
+      window.overlayDesktop.call('transcription.start', { target: 'system', model: 'cloud' })
+    )
+    await expect(hud.getByRole('status')).toHaveText('Unavailable')
+    await expect(hud.locator('#notice')).toHaveText('Sign in to Overlay first.')
     await expect
       .poll(() =>
         hud.evaluate(() =>
