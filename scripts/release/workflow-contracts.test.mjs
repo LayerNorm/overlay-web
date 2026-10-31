@@ -104,6 +104,19 @@ test('main and merge-queue work cannot be overtaken by a new dependency PR', () 
   }
 })
 
+test('only superseded automatic main image publications cancel each other', () => {
+  const config = workflow('docker-publish').concurrency
+  const evaluate = (source, event_name, ref, run_id) => source.replace(/\$\{\{ (.+?) \}\}/g,
+    (_match, expression) => String(vm.runInNewContext(expression, { github: { event_name, ref, run_id } })))
+  assert.equal(evaluate(config.group, 'push', 'refs/heads/main', 1), 'docker-main')
+  assert.equal(evaluate(config.group, 'push', 'refs/heads/main', 2), 'docker-main')
+  assert.equal(evaluate(config['cancel-in-progress'], 'push', 'refs/heads/main', 2), 'true')
+  for (const [event, ref] of [['push', 'refs/tags/v1.2.3'], ['workflow_dispatch', 'refs/heads/main']]) {
+    assert.notEqual(evaluate(config.group, event, ref, 1), evaluate(config.group, event, ref, 2))
+    assert.equal(evaluate(config['cancel-in-progress'], event, ref, 2), 'false')
+  }
+})
+
 test('every required workflow reports on merge groups; required PR checks have no paths filter', () => {
   for (const name of ['security', 'docs', 'codeql', 'semgrep', 'cla']) {
     const config = workflow(name)

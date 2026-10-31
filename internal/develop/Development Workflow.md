@@ -407,6 +407,11 @@ active checks or weakening any required context. PR revisions
 cancel obsolete checks; main/merge-group runs use unique concurrency groups so
 GitHub cannot replace an older pending run. Keep Vercel hosting settings separate.
 
+Automatic main Docker publishers share a cancellation group: a new main revision
+cancels the obsolete publisher, reducing wasted runner capacity and stale
+mutable image-tag publication risk. Version-tag and manual publications keep unique
+groups. Required main/merge-group quality checks are never cancelled by this rule.
+
 `Security Checks` runs lint/boundaries, typechecking, production compilation and
 two complete test shards in parallel. Both ordinary-test shards use Node 24, matching the Agent Host
 CLI's minimum runtime so built-CLI contracts run without skipping or weakening the

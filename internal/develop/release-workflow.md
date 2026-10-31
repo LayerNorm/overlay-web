@@ -33,6 +33,9 @@ for `overlay-landing`, production branch `main`, on 2026-10-14. Keep root
 `git.deploymentEnabled.main=true`. The custom production workflow, promotion
 script and deployment token are retired. Native Git deploys web only; backend
 synchronization and application smoke remain Integration responsibilities.
+Automatic main Docker publications cancel obsolete main publishers and keep the
+latest revision as the automatic publisher, reducing stale mutable-tag races. Tag and manual publications
+remain independent; this does not cancel required quality checks or Vercel builds.
 Never pass `.env.local` or feature-worktree source to production commands.
 
 Shared Preview test credentials are configured once in `overlay-landing` Preview, with no
@@ -169,7 +172,7 @@ Vercel CLI 63 non-interactive deployment JSON is parsed explicitly, including na
 
 ### Historical asynchronous production build submission
 
-Production uses `vercel deploy --prod --skip-domain --no-wait` and the owned exact-SHA READY poll. Other release commands retain a bounded 16 MiB capture. The earlier synchronous attempt stopped at local ENOBUFS while its remote build continued, preserving the customer alias and backend. The corrected complete command passed on the release recorded above; both unpublished earlier builds remain historical.
+The retired production command used `vercel deploy --prod --skip-domain --no-wait` and the owned exact-SHA READY poll. Other release commands retain a bounded 16 MiB capture. The earlier synchronous attempt stopped at local ENOBUFS while its remote build continued, preserving the customer alias and backend. The corrected complete command passed on the release recorded above; both unpublished earlier builds remain historical.
 
 ### Preview configuration acceptance
 
