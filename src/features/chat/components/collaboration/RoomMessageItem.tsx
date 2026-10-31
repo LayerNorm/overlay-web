@@ -377,6 +377,7 @@ export function RoomMessageItem({
     onToggleReaction,
     onOpenThread,
     personalChatStyle,
+    readOnly,
   }
 
   if (message.deletedAt) {
@@ -444,6 +445,7 @@ type RoomMessageContentProps = {
   onToggleReaction: (emoji: string) => void
   onOpenThread: () => void
   personalChatStyle: boolean
+  readOnly: boolean
 }
 
 function RoomMessageAvatar({ message }: { message: RoomMessageView }) {
@@ -720,9 +722,10 @@ function RoomMessageMetaRow({ message, timeLabel, grouped, pinned }: {
   )
 }
 
-function AgentMessageBody({ message, onOpenAttachmentPreview, onControlRemoteQueue, onResolveRemoteRequest, remoteStatus }: {
+function AgentMessageBody({ message, readOnly, onOpenAttachmentPreview, onControlRemoteQueue, onResolveRemoteRequest, remoteStatus }: {
   remoteStatus?: ReactNode
   message: RoomMessageView
+  readOnly: boolean
   onOpenAttachmentPreview: RoomMessageItemProps['onOpenAttachmentPreview']
   onControlRemoteQueue: RoomMessageItemProps['onControlRemoteQueue']
   onResolveRemoteRequest: RoomMessageItemProps['onResolveRemoteRequest']
@@ -760,6 +763,7 @@ function AgentMessageBody({ message, onOpenAttachmentPreview, onControlRemoteQue
         onOpenDraft={NOOP_DRAFT}
         onCreateAutomationDraft={NOOP_DRAFT}
         onOpenAttachmentPreview={onOpenAttachmentPreview}
+        generatedUiReadOnly={readOnly}
       />
       {message.remoteDrive ? <RemoteDriveStatus status={message.remoteDrive} /> : null}
       {message.streaming ? (
@@ -865,6 +869,7 @@ function ReceivedRoomMessage({ rootProps, highlightClass, toolbar, content, isAg
           <AgentMessageBody
             remoteStatus={content.remoteStatus}
             message={message}
+            readOnly={content.readOnly}
             onOpenAttachmentPreview={content.onOpenAttachmentPreview}
             onControlRemoteQueue={onControlRemoteQueue}
             onResolveRemoteRequest={onResolveRemoteRequest}

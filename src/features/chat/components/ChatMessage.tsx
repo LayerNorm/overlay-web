@@ -387,6 +387,7 @@ function TextChatMessage(props: TextChatMessageProps) {
       userMentions={userDisplay.userMentions}
       onContinue={props.readOnly ? undefined : resolveContinueHandler(assistantPlainForReply, props.onContinue)}
       onGeneratedUiChange={!props.readOnly && responseMessageId ? (partId, data) => props.onGeneratedUiChange(responseMessageId, partId, data) : undefined}
+      generatedUiReadOnly={props.readOnly}
       generatedUiConnectorActions={props.readOnly ? undefined : props.generatedUiConnectorActions}
       presentation={props.presentation}
     />
