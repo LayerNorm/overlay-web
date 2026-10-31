@@ -24,6 +24,12 @@ Verification for this slice: the new `chatTransport.test.ts` and `generated-ui-m
 
 Owner: Overlay native harness
 
+Preview fixture checkpoint: the focused fixture run passed 14 tests in
+`nativeThreadCompatibility.convex.test.ts` and `previewQaSeed.convex.test.ts`.
+The new `nativeThreadQa.convex.test.ts` then passed 6/6 after correcting its
+historical assistant-message status to the schema-supported `error` value.
+Hosted UI acceptance and the one-run video-delivery gate remain open.
+
 Requested by: Divyansh Lalwani
 
 Source discussion: https://app.devin.ai/sessions/3483c60e0e4248a9927afab674050a75

@@ -20,6 +20,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Show read-only footers for retired or temporarily unavailable native threads, gate personal and room mutations on fresh safety checks, preserve drafts after compatibility rejections, provide editable bounded handoffs to fresh threads, and keep compatibility GET failures from triggering recheck loops.
 
+- Add an opt-in Preview-only historical-thread retirement fixture for hosted UI QA without scheduling workflows or replenishing existing QA allowance.
+
 - Switch existing accounts to double sidebar once across all workspaces, while allowing subsequent single-sidebar opt-outs.
 
 - Keep the gray gutters equal on both sides of onboarding while its navigation is hidden.

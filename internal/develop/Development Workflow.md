@@ -290,6 +290,23 @@ isolation; the original Personal workspace and its billing remain unchanged.
 
 Computer lifecycle QA uses `OVERLAY_PREVIEW_QA_FIXTURES=computer-workspace` on its exact Preview branch to invoke `dev/seed:initComputerQa`. Ordinary seeding remains free; the existing `paid-workspace` fixture is separate. Combine fixtures with `OVERLAY_PREVIEW_QA_FIXTURES=paid-workspace,computer-workspace`; duplicate names run once and unknown names fail before deployment. Both are Preview-only, preserve spent balances on rebuild, and use the existing scoped credential.
 
+Retired-thread QA is an explicit, internal, Preview-only fixture. After verifying
+the current-head READY build and its isolated backend, use the same private
+Preview-key-only environment file (never `.env.local` or a Production key):
+
+```sh
+npx convex run dev/nativeThreadQa:init '{}' --deployment preview/pr-<number> --env-file <preview-key-only-file>
+```
+
+It creates/reuses Preview QA Team and its synthetic paid allowance, without
+replenishing spent credit. Returned IDs identify a retired personal chat, named
+agent thread, and channel reply root whose main channel remains writable. It
+inserts terminal historical AgentRuns and generated-UI drafts only; no worker,
+workflow, provider call, or scheduled action starts. Reruns preserve history and
+new handoff threads. Ordinary preview seeding does not invoke it. Select Preview
+QA Team before opening the returned conversations; do not infer retirement from
+mocked client responses or manufacture these records on other backends.
+
 Other Builders can use the configured sandbox QA identity or the
 [preview login recipe](browser-testing-with-agent-browser.md). Exercise the
 feature as a user would:
