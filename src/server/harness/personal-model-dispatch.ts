@@ -23,6 +23,7 @@ export async function authorizePersonalHarnessModelDispatch(reference: HarnessMo
         ? `automation:${input.access.authentication.automationId}` : undefined),
     requestedToolIds: [], approvalMode: input.access.authentication.type === 'automation' ? 'ask' : undefined,
     ...(input.access.authentication.type === 'automation'
-      ? { automationExecution: true, automationId: input.access.authentication.automationId } : {}),
+      ? { automationExecution: true, automationId: input.access.authentication.automationId,
+        automationRunId: input.access.authentication.automationRunId } : {}),
   }))
 }

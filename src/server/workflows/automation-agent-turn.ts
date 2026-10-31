@@ -22,7 +22,7 @@
  */
 
 import type { ModelMessage, StepResult, ToolSet } from 'ai'
-import { FatalError, getWorkflowMetadata } from 'workflow'
+import { FatalError, RetryableError, getWorkflowMetadata } from 'workflow'
 import {
   executePersonalChatWorkTool,
   personalChatWorkToolNeedsApproval,
@@ -45,6 +45,7 @@ import { getOverlayServerContext } from '@/server/bootstrap'
 import { isHarnessBackendReady } from '@/server/harness/backend-readiness'
 import { assertAutomationAdmissionSource } from '@/server/harness/automation-access'
 import { ConvexHarnessRepository } from '@/server/harness/ConvexHarnessRepository'
+import type { PersonalHarnessAccess } from '@/server/harness/personal-access'
 import { personalHarnessPolicy } from '@/server/harness/personal-admission-policy'
 import { harnessToolsRequirePlan } from '@/server/harness/write-tools'
 import { personalHarnessWorkflow } from './personal-harness'
@@ -73,6 +74,111 @@ async function ensureConversationStep(input: AutomationAgentTurnInput): Promise<
   return await ensureAutomationConversation(input)
 }
 
+async function settleOwnedAutomationRunStep(input: {
+  automationId: string
+  conversationId?: string
+  error?: string
+  runId?: string
+  status: 'completed' | 'failed' | 'cancelled' | 'skipped'
+  turnId?: string
+  userId: string
+  workflowRunId: string
+}): Promise<boolean> {
+  'use step'
+  if (!input.runId) return true
+  const payload = await getOverlayServerContext().appData.repositories.automations
+    .getRunForExecution({ runId: input.runId })
+  if (!payload || payload.run.userId !== input.userId
+    || payload.run.automationId !== input.automationId
+    || payload.run.workflowRunId !== input.workflowRunId
+    || (input.turnId && payload.run.turnId !== input.turnId)) return false
+  return await automationService.settleRun({
+    runId: input.runId,
+    userId: input.userId,
+    expectedWorkflowRunId: input.workflowRunId,
+    expectedStatus: payload.run.status,
+    expectedTurnId: payload.run.turnId,
+    status: input.status,
+    conversationId: input.conversationId,
+    error: input.error,
+  })
+}
+
+async function readAutomationDeliveryStep(input: {
+  conversationId: string
+  agentRunId: string
+  userId: string
+}): Promise<string> {
+  'use step'
+  const conversations = getOverlayServerContext().appData.repositories.conversations
+  const [run, messages] = await Promise.all([
+    conversations.getLatestAgentRun({
+      conversationId: input.conversationId as never, userId: input.userId, agentRunId: input.agentRunId,
+    }),
+    conversations.getConversationMessages({
+      conversationId: input.conversationId as never, userId: input.userId,
+    }),
+  ])
+  if (!run || run.id !== input.agentRunId || run.userId !== input.userId) return ''
+  return messages.find(message => message.role === 'assistant' && message.turnId === run.turnId)?.content ?? ''
+}
+
+async function reconcileAutomationHarnessTerminalStep(input: {
+  access: PersonalHarnessAccess
+  automationId: string
+  runId?: string
+  turnId: string
+  userId: string
+  workflowRunId: string
+}): Promise<'completed' | 'failed' | 'cancelled' | null> {
+  'use step'
+  const { ConvexHarnessRepository } = await import('@/server/harness/ConvexHarnessRepository')
+  const snapshot = await new ConvexHarnessRepository().get(input.access)
+  if (!snapshot || snapshot.workflowRunId !== input.workflowRunId
+    || !['completed', 'failed', 'cancelled'].includes(snapshot.status)) return null
+  if (input.runId) {
+    const payload = await getOverlayServerContext().appData.repositories.automations
+      .getRunForExecution({ runId: input.runId })
+    if (!payload || payload.run.userId !== input.userId || payload.run.automationId !== input.automationId
+      || payload.run.workflowRunId !== input.workflowRunId || payload.run.turnId !== input.turnId) return null
+    const settled = await automationService.settleRun({
+      runId: input.runId,
+      userId: input.userId,
+      expectedWorkflowRunId: input.workflowRunId,
+      expectedStatus: payload.run.status,
+      expectedTurnId: input.turnId,
+      status: snapshot.status as 'completed' | 'failed' | 'cancelled',
+      conversationId: input.access.conversationId,
+      error: snapshot.terminalReason,
+    })
+    if (!settled) return null
+  }
+  return snapshot.status as 'completed' | 'failed' | 'cancelled'
+}
+
+export async function settleDeniedAutomationRun(input: {
+  automationId: string
+  runId: string
+  userId: string
+  workflowRunId: string
+  reason: string
+}): Promise<boolean> {
+  'use step'
+  const payload = await getOverlayServerContext().appData.repositories.automations
+    .getRunForExecution({ runId: input.runId })
+  if (!payload || payload.run.userId !== input.userId || payload.run.automationId !== input.automationId
+    || payload.run.workflowRunId !== input.workflowRunId || payload.run.turnId !== undefined) return false
+  return await automationService.settleRun({
+    runId: input.runId,
+    userId: input.userId,
+    expectedWorkflowRunId: input.workflowRunId,
+    expectedStatus: payload.run.status,
+    expectedTurnId: payload.run.turnId,
+    status: 'skipped',
+    error: input.reason,
+  })
+}
+
 async function admitAutomationSourceStep(input: AutomationAgentTurnInput & {
   originWorkflowRunId: string
   actorUserId?: string
@@ -80,11 +186,46 @@ async function admitAutomationSourceStep(input: AutomationAgentTurnInput & {
 }) {
   'use step'
   const server = getOverlayServerContext()
-  const settings = await server.appData.repositories.conversations.getAppSettings({ userId: input.userId })
+  let settings
+  try {
+    settings = await server.appData.repositories.conversations.getAppSettings({ userId: input.userId })
+  } catch (_error) {
+    throw new FatalError('Harness backend is unavailable.')
+  }
   if (!isHarnessBackendReady(settings)) throw new FatalError('Harness backend is unavailable.')
   if (!input.automationId) throw new FatalError('Automation identity is required.')
   return await assertAutomationAdmissionSource({
     ...input, automationId: input.automationId, actorUserId: input.actorUserId ?? input.userId,
+  })
+}
+
+async function startAutomationRunStep(input: {
+  automationId: string
+  runId?: string
+  userId: string
+  workflowRunId: string
+  conversationId: string
+  turnId: string
+  workspaceId: string
+}) {
+  'use step'
+  if (input.runId) {
+    await automationService.markRunStarted({
+      runId: input.runId,
+      userId: input.userId,
+      conversationId: input.conversationId,
+      turnId: input.turnId,
+      expectedWorkflowRunId: input.workflowRunId,
+    })
+  }
+  return await assertAutomationAdmissionSource({
+    automationId: input.automationId,
+    actorUserId: input.userId,
+    originWorkflowRunId: input.workflowRunId,
+    runId: input.runId,
+    conversationId: input.conversationId,
+    workspaceId: input.workspaceId,
+    turnId: input.turnId,
   })
 }
 
@@ -143,6 +284,20 @@ async function prepareTurnStep(
 ): Promise<AutomationAgentTurnPlan> {
   'use step'
   try {
+    if (!input.surface) {
+      if (!input.automationId || !input.originWorkflowRunId) {
+        throw new FatalError('Automation source identity is required.')
+      }
+      await assertAutomationAdmissionSource({
+        automationId: input.automationId,
+        actorUserId: input.userId,
+        originWorkflowRunId: input.originWorkflowRunId,
+        runId: input.runId,
+        conversationId: input.conversationId,
+        workspaceId: input.workspaceId,
+        turnId: input.turnId,
+      })
+    }
     return await prepareAutomationAgentTurn(input)
   } catch (error) {
     // Terminal denials (unsupported model, policy denial, budget refusal) can
@@ -208,7 +363,7 @@ export async function checkAutomationEnabled(input: {
       userId: input.userId,
     })
     if (!automation) return { enabled: false, deleted: true }
-    return { enabled: automation.enabled !== false, deleted: false }
+    return { enabled: automation.enabled === true, deleted: false }
   } catch (_error) {
     // Fail open — a transient read failure should not cancel the schedule.
     return { enabled: true, deleted: false }
@@ -221,25 +376,64 @@ export async function checkAutomationEnabled(input: {
 
 export async function runAutomationAgentTurn(
   input: AutomationAgentTurnInput,
-): Promise<{ conversationId: string; replyText: string }> {
-  if (input.surface) return await runDurableAgentTurn(input as AutomationAgentTurnInput & { conversationId: string; workspaceId: string })
+): Promise<{ conversationId: string; replyText: string; status: string }> {
+  if (input.surface) throw new FatalError('Surface turns must use the surface workflow.')
   const { workflowRunId } = getWorkflowMetadata()
-  const source = await admitAutomationSourceStep({
-    ...input, actorUserId: input.userId, originWorkflowRunId: workflowRunId,
-  })
-  const ensured = await ensureConversationStep(input)
-  const turnInput = { ...input, conversationId: ensured.conversationId, workspaceId: ensured.workspaceId }
-  await admitAutomationSourceStep({
-    ...turnInput, actorUserId: input.userId, originWorkflowRunId: workflowRunId,
-  })
-  const plan = await prepareTurnStep(turnInput)
+  if (!input.automationId) throw new FatalError('Automation identity is required.')
+  let source: Awaited<ReturnType<typeof admitAutomationSourceStep>> | undefined
+  let turnInput: AutomationAgentTurnInput & { conversationId: string; workspaceId: string }
+  let plan: AutomationAgentTurnPlan | undefined
+  const canonicalInput: AutomationAgentTurnInput = {
+    ...input,
+    turnId: input.runId ? `automation-run:${input.runId}` : input.turnId,
+  }
+  try {
+    source = await admitAutomationSourceStep({
+      ...canonicalInput, actorUserId: input.userId, originWorkflowRunId: workflowRunId,
+    })
+    const authorizedInput = {
+      ...canonicalInput,
+      originWorkflowRunId: workflowRunId,
+      conversationId: source.conversationId,
+      turnId: source.turnId,
+      workspaceId: source.workspaceId,
+    }
+    const ensured = await ensureConversationStep(authorizedInput)
+    turnInput = { ...authorizedInput, conversationId: ensured.conversationId, workspaceId: ensured.workspaceId }
+    source = await startAutomationRunStep({
+      automationId: input.automationId, runId: input.runId, userId: input.userId,
+      workflowRunId, conversationId: ensured.conversationId, turnId: source.turnId,
+      workspaceId: ensured.workspaceId,
+    })
+    turnInput = { ...turnInput, conversationId: source.conversationId ?? ensured.conversationId, turnId: source.turnId }
+    plan = await prepareTurnStep(turnInput)
+  } catch (error) {
+    if (error instanceof RetryableError) throw error
+    const settled = await settleOwnedAutomationRunStep({
+      automationId: input.automationId,
+      runId: input.runId,
+      userId: input.userId,
+      workflowRunId,
+      status: 'failed',
+      error: error instanceof Error ? error.message : 'Automation admission failed.',
+    })
+    if (input.runId && !settled && source) {
+      throw new FatalError('Automation run failure could not be settled by its owner.')
+    }
+    throw error
+  }
+  const resolvedPlan = plan
+  if (!resolvedPlan || !source) throw new FatalError('Automation preparation did not complete.')
   const agentRun = await startAutomationAgentRunStep({
-    conversationId: plan.conversationId, modelId: plan.effectiveModelId, turnId: input.turnId,
-    userId: input.userId, userMessageId: plan.userMessageId,
+    conversationId: resolvedPlan.conversationId, modelId: resolvedPlan.effectiveModelId, turnId: turnInput.turnId,
+    userId: input.userId, userMessageId: resolvedPlan.userMessageId,
   })
+  if (agentRun.workflowRunId && agentRun.workflowRunId !== workflowRunId) {
+    return { conversationId: resolvedPlan.conversationId, replyText: '', status: 'already_running' }
+  }
   const access = {
     actorUserId: input.userId, runId: `personal:${agentRun.id}`, workflowRunId,
-    conversationId: plan.conversationId, agentRunId: agentRun.id, workspaceId: ensured.workspaceId,
+    conversationId: resolvedPlan.conversationId, agentRunId: agentRun.id, workspaceId: source.workspaceId,
     principalId: source.principalId,
     authentication: {
       type: 'automation' as const, automationId: input.automationId!,
@@ -248,29 +442,78 @@ export async function runAutomationAgentTurn(
     },
   }
   const admitted = await admitAutomationHarnessStep({
-    runId: input.runId ?? input.turnId, goal: input.instructions, actorUserId: input.userId,
-    workspaceId: ensured.workspaceId, modelId: plan.effectiveModelId, paid: plan.paid,
-    createdAt: agentRun.createdAt, allowedToolIds: plan.toolDefinitions.map(tool => tool.name),
-    conversationId: plan.conversationId, deliveryAgentRunId: agentRun.id,
+    runId: input.runId ?? turnInput.turnId, goal: input.instructions, actorUserId: input.userId,
+    workspaceId: source.workspaceId, modelId: resolvedPlan.effectiveModelId, paid: resolvedPlan.paid,
+    createdAt: agentRun.createdAt, allowedToolIds: resolvedPlan.toolDefinitions.map(tool => tool.name),
+    conversationId: resolvedPlan.conversationId, deliveryAgentRunId: agentRun.id,
   })
+  if (admitted.workflowRunId !== workflowRunId) {
+    return { conversationId: resolvedPlan.conversationId, replyText: '', status: 'already_running' }
+  }
   if (['completed', 'failed', 'cancelled'].includes(admitted.status)) {
-    return { conversationId: plan.conversationId, replyText: '' }
+    if (admitted.workflowRunId !== workflowRunId) {
+      return { conversationId: resolvedPlan.conversationId, replyText: '', status: 'already_running' }
+    }
+    const replyText = await readAutomationDeliveryStep({
+      conversationId: resolvedPlan.conversationId, agentRunId: agentRun.id, userId: input.userId,
+    })
+    const settled = await settleOwnedAutomationRunStep({
+      automationId: input.automationId,
+      runId: input.runId, userId: input.userId, workflowRunId, turnId: turnInput.turnId,
+      status: admitted.status as 'completed' | 'failed' | 'cancelled',
+      conversationId: resolvedPlan.conversationId,
+      error: admitted.terminalReason,
+    })
+    if (input.runId && !settled) {
+      return { conversationId: resolvedPlan.conversationId, replyText: '', status: 'already_running' }
+    }
+    return { conversationId: resolvedPlan.conversationId, replyText, status: admitted.status }
   }
-  const result = await personalHarnessWorkflow({
-    access,
-    context: plan.toolingContext,
-    definitions: plan.toolDefinitions,
-    instructions: plan.instructions,
-    messages: plan.messages,
-    modelCandidates: [plan.effectiveModelId],
-    delivery: { emitWebhook: false, sourceCitations: plan.sourceCitations, closeStream: false },
-  })
-  if (result.status === 'completed' && input.runId) {
-    await automationService.markRunCompleted({ runId: input.runId, userId: input.userId, conversationId: plan.conversationId })
-  } else if (result.status === 'failed' && input.runId) {
-    await automationService.markRunFailed({ runId: input.runId, userId: input.userId, error: 'Automation Harness execution failed.' })
+  let result: Awaited<ReturnType<typeof personalHarnessWorkflow>>
+  try {
+    result = await personalHarnessWorkflow({
+      access,
+      context: resolvedPlan.toolingContext,
+      definitions: resolvedPlan.toolDefinitions,
+      instructions: resolvedPlan.instructions,
+      messages: resolvedPlan.messages,
+      modelCandidates: [resolvedPlan.effectiveModelId],
+      delivery: { emitWebhook: false, sourceCitations: resolvedPlan.sourceCitations, closeStream: false },
+    })
+  } catch (error) {
+    const reconciled = await reconcileAutomationHarnessTerminalStep({
+      access, automationId: input.automationId, runId: input.runId, turnId: turnInput.turnId,
+      userId: input.userId, workflowRunId,
+    })
+    if (!reconciled) throw error
+    return {
+      conversationId: resolvedPlan.conversationId,
+      replyText: reconciled === 'completed'
+        ? await readAutomationDeliveryStep({ conversationId: resolvedPlan.conversationId, agentRunId: agentRun.id, userId: input.userId })
+        : '',
+      status: reconciled,
+    }
   }
-  return { conversationId: plan.conversationId, replyText: 'replyText' in result ? result.replyText ?? '' : '' }
+  if (result.status === 'already_running') {
+    return { conversationId: resolvedPlan.conversationId, replyText: '', status: 'already_running' }
+  }
+  if (['completed', 'failed', 'cancelled'].includes(result.status)) {
+    const settled = await settleOwnedAutomationRunStep({
+      automationId: input.automationId,
+      runId: input.runId, userId: input.userId, workflowRunId, turnId: turnInput.turnId,
+      status: result.status as 'completed' | 'failed' | 'cancelled',
+      conversationId: resolvedPlan.conversationId,
+      error: result.terminalReason,
+    })
+    if (input.runId && !settled) {
+      return { conversationId: resolvedPlan.conversationId, replyText: '', status: 'already_running' }
+    }
+  }
+  return {
+    conversationId: resolvedPlan.conversationId,
+    replyText: 'replyText' in result ? result.replyText ?? '' : '',
+    status: result.status,
+  }
 }
 
 /**

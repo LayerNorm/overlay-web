@@ -218,6 +218,30 @@ test('runner recovers with a trusted instruction before pausing after six unchan
     .toContain('Recovery attempt 1')
 })
 
+test('runner continues through more than the retired fixed tool-step ceiling', async () => {
+  const f = fixture(false)
+  const steps = Array.from({ length: 14 }, (_, index) => ({
+    id: `work-${index}`, title: `Read record ${index}`, dependsOn: [], acceptanceCriteria: [`Record ${index} read`],
+    requiresVerification: false, evidenceTools: ['read'],
+  }))
+  const provider = model(index => {
+    if (index === 0) return [call('harness_set_plan', 'plan', { steps })]
+    if (index > steps.length * 2) return 'All fourteen records were read.'
+    const operation = index - 1
+    const stepIndex = Math.floor(operation / 2)
+    if (operation % 2 === 0) return [call('read', `read-${stepIndex}`, { index: stepIndex })]
+    return [call('harness_update_step', `done-${stepIndex}`, {
+      id: `work-${stepIndex}`, status: 'done', evidenceRefs: [`tool:read-${stepIndex}`],
+    })]
+  })
+  const result = await runOverlayHarness({
+    ...input,
+    tools: { read: tool({ inputSchema: z.object({ index: z.number() }), execute: async ({ index }) => `Record ${index} read.` }) },
+  }, f.ports)
+  expect(result.snapshot.status).toBe('completed')
+  expect(provider.doStreamCalls.length).toBeGreaterThan(12)
+})
+
 test('runner checkpoint summary falls back to sanitized step text', async () => {
   const f = fixture()
   const protocol = '<tool_call>harness_update_step<arg_key>id</arg_key><arg_value>step1</arg_value><arg_key>status</arg_key><arg_value>done</arg_value></tool_call>'

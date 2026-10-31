@@ -49,6 +49,50 @@ test('refreshes identity, reserves a stable account hold, claims dispatch atomic
   expect(mocks.release).not.toHaveBeenCalled()
 })
 
+test('automation model dispatch rebuilds run and source identity from serialized authority', async () => {
+  const automationAccess = {
+    ...access,
+    authentication: {
+      type: 'automation' as const,
+      automationId: 'automation',
+      automationRunId: 'automation-run',
+      originWorkflowRunId: 'origin-workflow',
+    },
+  }
+  const automationReference: HarnessModelReference = {
+    ...reference,
+    personal: { ...reference.personal!, access: automationAccess },
+  }
+  await authorizePersonalHarnessModelDispatch(automationReference, options)
+  expect(mocks.refresh).toHaveBeenCalledWith(automationAccess, expect.objectContaining({
+    automationExecution: true,
+    automationId: 'automation',
+    automationRunId: 'automation-run',
+    billingProgrammaticSubjectId: 'automation:automation',
+  }))
+})
+
+test('automation model dispatch revalidates source before reserving provider funds', async () => {
+  const automationAccess = {
+    ...access,
+    authentication: {
+      type: 'automation' as const,
+      automationId: 'automation',
+      automationRunId: 'automation-run',
+      originWorkflowRunId: 'origin-workflow',
+    },
+  }
+  const automationReference: HarnessModelReference = {
+    ...reference,
+    personal: { ...reference.personal!, access: automationAccess },
+  }
+  mocks.refresh.mockRejectedValueOnce(new Error('Automation run was cancelled.'))
+  await expect(authorizePersonalHarnessModelDispatch(automationReference, options))
+    .rejects.toThrow(/Automation run was cancelled/)
+  expect(mocks.reserve).not.toHaveBeenCalled()
+  expect(mocks.apply).not.toHaveBeenCalled()
+})
+
 test('revocation, larger token limits and changed pricing never reserve provider funds', async () => {
   mocks.refresh.mockRejectedValueOnce(new Error('revoked'))
   await expect(authorizePersonalHarnessModelDispatch(reference, options)).rejects.toThrow(/revoked/)

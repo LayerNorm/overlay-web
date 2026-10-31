@@ -36,9 +36,11 @@ function assertSuppliedContext(access: PersonalHarnessAccess, context: PersonalC
   const automationAuthority = access.authentication.type === 'automation' ? access.authentication : undefined
   if (context.userId !== access.actorUserId || context.workspaceId !== access.workspaceId
     || context.conversationId !== access.conversationId
-    || (!automationAuthority && (context.automationExecution || context.automationId || context.approvalMode === 'auto'))
+    || (!automationAuthority && (context.automationExecution || context.automationId
+      || context.automationRunId || context.approvalMode === 'auto'))
     || (automationAuthority && (!context.automationExecution
       || context.automationId !== automationAuthority.automationId
+      || context.automationRunId !== automationAuthority.automationRunId
       || context.billingProgrammaticSubjectId !== `automation:${automationAuthority.automationId}`))) {
     throw new FatalError('Personal harness identity does not match its tooling context.')
   }
@@ -196,12 +198,14 @@ function buildExecutionContext(
   accountAllowedToolIds: string[],
   accountAllowedConnectorIds: string[],
   gate: Awaited<ReturnType<typeof actEntitlementService.gateModelPolicy>>,
-  automationGrant?: { approvalMode: 'ask' | 'auto'; allowedToolIds: string[] },
+  automationGrant?: { approvalMode: 'ask' | 'auto'; allowedToolIds: string[]; allowedConnectorIds: string[] },
 ): PersonalHarnessExecutionContext {
   const allowedTools = (context.accountAllowedToolIds ?? [])
     .filter(id => accountAllowedToolIds.includes(id))
     .filter(id => !automationGrant || automationGrant.allowedToolIds.includes(id))
-  const allowedConnectors = (context.accountAllowedConnectorIds ?? []).filter(id => accountAllowedConnectorIds.includes(id))
+  const allowedConnectors = (context.accountAllowedConnectorIds ?? [])
+    .filter(id => accountAllowedConnectorIds.includes(id))
+    .filter(id => !automationGrant || automationGrant.allowedConnectorIds.includes(id))
   return {
     baseUrl: context.baseUrl,
     billingProgrammaticSubjectId: context.billingProgrammaticSubjectId,
@@ -223,6 +227,7 @@ function buildExecutionContext(
     accountAllowedConnectorIds: allowedConnectors,
     ...(access.authentication.type === 'automation'
       ? { automationExecution: true, automationId: access.authentication.automationId,
+        automationRunId: access.authentication.automationRunId,
         approvalMode: automationGrant?.approvalMode ?? 'ask' }
       : { approvalMode: 'ask' as const }),
   }
@@ -263,6 +268,20 @@ export async function refreshPersonalHarnessAccess(
   assertPersonalCapabilities(authorization, subject, context, toolName)
   await assertModelCatalogAccess(authorization, subject, context.effectiveModelId)
   const grants = await readCurrentModelAndGrants(authorization, subject, access, context)
+  if (automationGrant) {
+    const integrationToolIds = new Set(context.integrationToolIds ?? [])
+    const currentConnectors = grants.accountAllowedConnectorIds
+    const initialConnectors = context.accountAllowedConnectorIds ?? []
+    const connectorGrantChanged = initialConnectors.length !== currentConnectors.length
+      || initialConnectors.some(id => !currentConnectors.includes(id))
+    const currentAutomationToolIds = automationGrant.allowedToolIds.filter(id => integrationToolIds.has(id)
+      ? !connectorGrantChanged
+      : grants.accountAllowedToolIds.includes(id))
+    const revokedSnapshotTools = state.policy.allowedToolIds.filter(id => !currentAutomationToolIds.includes(id))
+    if (revokedSnapshotTools.length || (toolName && !currentAutomationToolIds.includes(toolName))) {
+      throw new FatalError('Automation agent permissions have been revoked.')
+    }
+  }
   await assertCurrentModelPolicy(context.effectiveModelId, access.actorUserId, grants.gate.runtimeEntitlements)
   return buildExecutionContext(access, context, grants.accountAllowedToolIds, grants.accountAllowedConnectorIds, grants.gate, automationGrant)
 }

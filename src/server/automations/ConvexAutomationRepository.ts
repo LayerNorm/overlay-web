@@ -202,6 +202,7 @@ export class ConvexAutomationRepository implements AutomationRepository {
     runId: string
     turnId: string
     userId: string
+    expectedWorkflowRunId?: string
   }): Promise<void> {
     await convex.mutation('automations/automations:markManualRunStarted', {
       ...args,
@@ -216,6 +217,8 @@ export class ConvexAutomationRepository implements AutomationRepository {
     now: number
     runId: string
     userId: string
+    expectedWorkflowRunId?: string
+    expectedTurnId?: string
   }): Promise<void> {
     await convex.mutation('automations/automations:markManualRunCompleted', {
       ...args,
@@ -231,12 +234,33 @@ export class ConvexAutomationRepository implements AutomationRepository {
     now: number
     runId: string
     userId: string
+    expectedWorkflowRunId?: string
+    expectedTurnId?: string
+    status?: 'failed' | 'cancelled' | 'skipped'
   }): Promise<void> {
     await convex.mutation('automations/automations:markManualRunFailed', {
       ...args,
       runId: args.runId as Id<'automationRuns'>,
       serverSecret: this.serverSecret,
     })
+  }
+
+  async settleManualRun(args: {
+    conversationId?: string
+    error?: string
+    expectedWorkflowRunId: string
+    expectedStatus: 'queued' | 'running' | 'completed' | 'succeeded' | 'failed' | 'cancel_requested' | 'cancelled' | 'skipped' | 'dead_letter'
+    expectedTurnId?: string
+    runId: string
+    status: 'completed' | 'failed' | 'cancelled' | 'skipped'
+    userId: string
+  }): Promise<boolean> {
+    return await convex.mutation<boolean>('automations/automations:settleManualRunByServer', {
+      ...args,
+      conversationId: (args.conversationId || undefined) as Id<'conversations'> | undefined,
+      runId: args.runId as Id<'automationRuns'>,
+      serverSecret: this.serverSecret,
+    }, { throwOnError: true }) ?? false
   }
 
   async getRunForExecution(args: {

@@ -62,13 +62,24 @@ export function personalHarnessChildInput(
   }
 }
 
-export async function personalHarnessWorkflow(input: PersonalHarnessWorkflowInput) {
+export async function personalHarnessWorkflow(input: PersonalHarnessWorkflowInput): Promise<{
+  runId: string
+  status: string
+  replyText?: string
+  terminalReason?: string
+}> {
   'use workflow'
 
   const { workflowRunId } = getWorkflowMetadata()
   const access = { ...input.access, workflowRunId }
   const initial = await readHarnessState(access)
-  if (['completed', 'failed', 'cancelled'].includes(initial.status)) return { runId: initial.runId, status: initial.status }
+  if (['completed', 'failed', 'cancelled'].includes(initial.status)) {
+    return {
+      runId: initial.runId,
+      status: initial.status,
+      ...(initial.terminalReason ? { terminalReason: initial.terminalReason } : {}),
+    }
+  }
   if (!await claimHarnessState(access)) return { runId: initial.runId, status: 'already_running' }
   const isRoot = !initial.parentRunId
   using wake = createHook<unknown>({ token: harnessWakeToken(workflowRunId) })
@@ -147,6 +158,7 @@ export async function personalHarnessWorkflow(input: PersonalHarnessWorkflowInpu
   return {
     runId: result.snapshot.runId,
     status: result.snapshot.status,
+    ...(result.snapshot.terminalReason ? { terminalReason: result.snapshot.terminalReason } : {}),
     ...(input.delivery?.closeStream === false && isRoot && result.snapshot.status === 'completed'
       ? { replyText: buildPersonalHarnessDelivery(result, input.delivery?.sourceCitations, fallbackNotices, activeToolNames).content }
       : {}),

@@ -568,12 +568,33 @@ export const markManualRunStarted = mutation({
     conversationId: v.optional(v.id('conversations')),
     turnId: v.string(),
     now: v.number(),
+    expectedWorkflowRunId: v.optional(v.string()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
     await authorizeUserAccess(args)
     const run = await ctx.db.get(args.runId)
-    if (!run || run.userId !== args.userId || run.status !== 'queued') return null
+    if (!run || run.userId !== args.userId) return null
+    if (args.expectedWorkflowRunId !== undefined && run.workflowRunId !== args.expectedWorkflowRunId) {
+      throw new Error('Automation workflow ownership changed')
+    }
+    if (run.status === 'running') {
+      if (args.expectedWorkflowRunId !== undefined
+        && ((run.turnId && run.turnId !== args.turnId)
+          || (run.conversationId && run.conversationId !== args.conversationId))) {
+        throw new Error('Automation run binding changed')
+      }
+      if (args.expectedWorkflowRunId !== undefined
+        && (run.turnId !== args.turnId || run.conversationId !== args.conversationId)) {
+        await ctx.db.patch(args.runId, {
+          turnId: args.turnId,
+          conversationId: args.conversationId ?? run.conversationId,
+          updatedAt: args.now,
+        })
+      }
+      return null
+    }
+    if (run.status !== 'queued') throw new Error('Automation run is not startable')
     await ctx.db.patch(args.runId, {
       status: 'running',
       startedAt: args.now,
@@ -592,6 +613,8 @@ export const markManualRunCompleted = mutation({
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
     conversationId: v.optional(v.id('conversations')),
+    expectedWorkflowRunId: v.optional(v.string()),
+    expectedTurnId: v.optional(v.string()),
     now: v.number(),
   },
   returns: v.null(),
@@ -599,6 +622,9 @@ export const markManualRunCompleted = mutation({
     await authorizeUserAccess(args)
     const run = await ctx.db.get(args.runId)
     if (!run || run.userId !== args.userId) return null
+    if ((args.expectedWorkflowRunId !== undefined && run.workflowRunId !== args.expectedWorkflowRunId)
+      || (args.expectedTurnId !== undefined && run.turnId !== args.expectedTurnId)
+      || run.status !== 'running') return null
     await ctx.db.patch(args.runId, {
       status: 'completed',
       completedAt: args.now,
@@ -623,6 +649,9 @@ export const markManualRunFailed = mutation({
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
     error: v.string(),
+    expectedWorkflowRunId: v.optional(v.string()),
+    expectedTurnId: v.optional(v.string()),
+    status: v.optional(v.union(v.literal('failed'), v.literal('cancelled'), v.literal('skipped'))),
     now: v.number(),
   },
   returns: v.null(),
@@ -630,8 +659,11 @@ export const markManualRunFailed = mutation({
     await authorizeUserAccess(args)
     const run = await ctx.db.get(args.runId)
     if (!run || run.userId !== args.userId) return null
+    if ((args.expectedWorkflowRunId !== undefined && run.workflowRunId !== args.expectedWorkflowRunId)
+      || (args.expectedTurnId !== undefined && run.turnId !== args.expectedTurnId)
+      || !['queued', 'running'].includes(run.status)) return null
     await ctx.db.patch(args.runId, {
-      status: 'failed',
+      status: args.status ?? 'failed',
       completedAt: args.now,
       error: args.error,
       updatedAt: args.now,
@@ -643,6 +675,57 @@ export const markManualRunFailed = mutation({
     })
     await enqueueTerminalWebhook(ctx, run, { type: 'automation.failed', error: args.error }, args.now)
     return null
+  },
+})
+
+export const settleManualRunByServer = mutation({
+  args: {
+    runId: v.id('automationRuns'),
+    userId: v.string(),
+    serverSecret: v.string(),
+    expectedWorkflowRunId: v.string(),
+    expectedStatus: v.union(
+      v.literal('queued'), v.literal('running'), v.literal('completed'), v.literal('succeeded'),
+      v.literal('failed'), v.literal('cancel_requested'), v.literal('cancelled'), v.literal('skipped'),
+      v.literal('dead_letter'),
+    ),
+    expectedTurnId: v.optional(v.string()),
+    status: v.union(v.literal('completed'), v.literal('failed'), v.literal('cancelled'), v.literal('skipped')),
+    conversationId: v.optional(v.id('conversations')),
+    error: v.optional(v.string()),
+  },
+  returns: v.boolean(),
+  handler: async (ctx, args) => {
+    if (!validateServerSecret(args.serverSecret)) throw new Error('Unauthorized')
+    const run = await ctx.db.get(args.runId)
+    if (!run || run.userId !== args.userId
+      || run.workflowRunId !== args.expectedWorkflowRunId
+      || run.turnId !== args.expectedTurnId) return false
+    if (run.status === args.status) return true
+    if (run.status !== args.expectedStatus) return false
+    if (!['queued', 'running'].includes(run.status)) return false
+    if (args.status === 'completed' && run.status !== 'running') return false
+    const now = Date.now()
+    await ctx.db.patch(args.runId, {
+      status: args.status,
+      completedAt: now,
+      ...(args.conversationId ? { conversationId: args.conversationId } : {}),
+      ...(args.error ? { error: args.error } : {}),
+      updatedAt: now,
+    })
+    await ctx.db.patch(run.automationId, {
+      ...(args.conversationId ? { conversationId: args.conversationId } : {}),
+      lastRunAt: now,
+      lastRunStatus: args.status,
+      lastError: args.status === 'completed' ? undefined : args.error,
+      updatedAt: now,
+    })
+    if (args.status === 'completed') {
+      await enqueueTerminalWebhook(ctx, run, { type: 'automation.finished', conversationId: args.conversationId }, now)
+    } else if (args.status === 'failed') {
+      await enqueueTerminalWebhook(ctx, run, { type: 'automation.failed', error: args.error ?? 'Automation failed' }, now)
+    }
+    return true
   },
 })
 
@@ -684,6 +767,7 @@ export const attachConversationByServer = mutation({
       currentOwned
       && currentOwned.userId === args.userId
       && !currentOwned.deletedAt
+      && currentOwned._id !== automation.sourceConversationId
       && (!automation.workspaceId || currentOwned.workspaceId === automation.workspaceId),
     )
     if (!currentOwnedIsValid) {
@@ -713,6 +797,12 @@ export const updateRunWorkflowRunIdByServer = mutation({
     if (!validateServerSecret(args.serverSecret)) throw new Error('Unauthorized')
     const run = await ctx.db.get(args.runId)
     if (!run) return null
+    if (run.workflowRunId && run.workflowRunId !== args.workflowRunId) {
+      throw new Error('Automation run is already owned by another workflow')
+    }
+    if (!['queued', 'running'].includes(run.status)) {
+      throw new Error('Automation run is no longer startable')
+    }
     await ctx.db.patch(args.runId, {
       workflowRunId: args.workflowRunId,
       updatedAt: Date.now(),
