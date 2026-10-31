@@ -79,7 +79,7 @@ test('new PR revisions cancel obsolete checks without canceling main releases or
     assert.equal(config.concurrency['cancel-in-progress'], "${{ github.event_name == 'pull_request' }}")
     assert.match(config.concurrency.group, /github\.workflow/)
     assert.match(config.concurrency.group, /github\.event_name/)
-    assert.match(config.concurrency.group, /github\.event\.pull_request\.number \|\| github\.ref/)
+    assert.match(config.concurrency.group, /github\.event\.pull_request\.number \|\| github\.run_id/)
   }
   // Deployment controllers must settle remote builds before releasing their locks.
   assert.equal(workflow('pr-preview').jobs.preview.concurrency['cancel-in-progress'], false)
@@ -216,6 +216,7 @@ test('parallel lanes preserve complete test discovery, runtime-specific contract
   assert.equal(jobs.build.env.OVERLAY_SKIP_BUILD_TYPECHECK, '1')
   const types = jobs.typecheck.steps.map(s => s.run)
   assert.ok(types.includes('npx next typegen'))
+  assert.equal(jobs.typecheck.steps.find(step => step.name === 'Set up pinned native typechecker').with['bun-version'], '1.4.4')
   assert.ok(types.indexOf('npx next typegen') < types.indexOf('npm run typecheck'))
   assert.ok(jobs.static.steps.some(s => s.run === 'npm run security:audit'))
   assert.equal(jobs.static.needs, undefined, 'lint runs independently of typechecking')
@@ -227,14 +228,14 @@ test('parallel lanes preserve complete test discovery, runtime-specific contract
 
 test('dependency caches require exact install inputs and misses retain locked script-free installation', () => {
   const action = parse(readFileSync(new URL('../../.github/actions/ci-dependencies/action.yml', import.meta.url), 'utf8'))
-  const cache = action.runs.steps.find(step => step.id === 'dependencies')
-  assert.equal(cache.with['restore-keys'], undefined, 'never restore a different dependency tree')
-  for (const input of ['runner.os', 'runner.arch', 'inputs.node-version', 'package-lock.json', 'package.json', '.npmrc']) {
-    assert.ok(cache.with.key.includes(input), input)
-  }
-  const install = action.runs.steps.find(step => step.name === 'Install from lockfile')
-  assert.equal(install.if, "steps.dependencies.outputs.cache-hit != 'true'")
-  assert.equal(install.run, 'npm ci --ignore-scripts --no-audit --no-fund')
+  const mount = action.runs.steps.find(step => step.name === 'Mount local dependency cache')
+  assert.match(mount.uses, /^namespacelabs\/nscloud-cache-action@[a-f0-9]{40}$/)
+  assert.equal(mount.with.path, '~/.cache/overlay-ci-dependencies')
+  const install = action.runs.steps.find(step => step.name === 'Restore or install exact dependencies')
+  assert.equal(install.run, 'node scripts/ci/dependency-cache.mjs')
+  const source = readFileSync(new URL('../ci/dependency-cache.mjs', import.meta.url), 'utf8')
+  for (const input of ['process.version', 'process.platform', 'process.arch', 'package-lock.json', 'package.json', '.npmrc']) assert.ok(source.includes(input), input)
+  assert.match(source, /'ci', '--ignore-scripts', '--no-audit', '--no-fund'/)
   const { jobs } = workflow('security')
   for (const name of ['static', 'typecheck', 'build', 'tests']) {
     assert.ok(jobs[name].steps.some(step => step.uses === './.github/actions/ci-dependencies'))

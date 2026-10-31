@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Right-size Namespace CI runners, prioritize required checks, reuse exact dependencies on protected local volumes, and add project-aware pre-push typechecking and opt-in compiler/lint/test-selection parity tools.
+
 - Render durable personal-run input requests, persist authenticated approval-resumed tool outcomes, and use one plain-language interruption notice without duplicate copy.
 - Preserve the visible first-turn transcript when Stop activates the saved conversation during backend cancellation.
 

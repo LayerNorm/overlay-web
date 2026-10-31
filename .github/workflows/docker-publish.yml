@@ -18,7 +18,7 @@ env:
 jobs:
   publish:
     name: Publish ${{ matrix.image }}
-    runs-on: namespace-profile-overlay-ci-benchmark
+    runs-on: namespace-profile-overlay-ci-benchmark;github.run-id=${{ github.run_id }};job.priority=10
     # Scoped to this job: only the publish step needs to write to GHCR.
     permissions:
       contents: read

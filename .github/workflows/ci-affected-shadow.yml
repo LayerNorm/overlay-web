@@ -1,0 +1,34 @@
+name: Affected test selection shadow
+
+on:
+  workflow_dispatch:
+    inputs:
+      base-sha:
+        description: Full base commit SHA to compare with the selected revision
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  shadow:
+    name: Advisory affected-test graph
+    runs-on: namespace-profile-overlay-ci-small;github.run-id=${{ github.run_id }};job.priority=10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/ci-dependencies
+        with:
+          node-version: 22
+      - name: Compare advisory selection
+        env:
+          BASE_SHA: ${{ inputs.base-sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$BASE_SHA" =~ ^[a-f0-9]{40}$ ]]
+          git fetch --no-tags --depth=1 origin "$BASE_SHA"
+          node scripts/ci/affected-shadow.mjs "$BASE_SHA"
+      # This workflow never changes the two exhaustive required test shards.

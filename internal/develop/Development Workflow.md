@@ -392,10 +392,14 @@ Main changes automatically deploy to production through Vercel’s Git integrati
 
 ### Required CI checks
 
-All workflow jobs previously using `ubuntu-latest` use the shared Namespace
-Linux AMD64 profile `namespace-profile-overlay-ci-benchmark` (8 vCPU, 16 GB).
-Runner selection does not change required contexts, event triggers, credentials,
-cache keys or fail-closed aggregation. Keep Vercel hosting settings separate.
+Namespace Linux AMD64 runners use three profiles: `overlay-ci-small` (2 vCPU,
+4 GB) for small checks/controllers, `overlay-ci-medium` (4 vCPU, 8 GB) for
+standalone typechecking, admin and CodeQL, and `overlay-ci-benchmark` (8 vCPU,
+16 GB) for compilation/tests and Docker publishing. Runner controls bind jobs to
+`github.run_id` to avoid cross-run assignment, prioritize compilation, and give
+background publishing/canaries lower priority than required checks. PR revisions
+cancel obsolete checks; main/merge-group runs use unique concurrency groups so
+GitHub cannot replace an older pending run. Keep Vercel hosting settings separate.
 
 `Security Checks` runs lint/boundaries, typechecking, production compilation and
 two complete test shards in parallel. Both ordinary-test shards use Node 24, matching the Agent Host
@@ -411,20 +415,49 @@ Configuration and Convex boundary checks that depend on generated Workflow route
 stay after compilation. Gateway tests retain their react-server condition in a
 dedicated discovered group; route and gateway suites run once through the shards.
 
-CI shares an exact installed-dependency cache keyed by OS/architecture, Node/npm,
-lockfile, workspace manifests and installation policy. There is no fallback to a
-different dependency tree; misses run `npm ci --ignore-scripts --no-audit --no-fund`.
-The dedicated dependency audit remains required. Docs uses the same root install;
-admin keeps its isolated workspace installation. GitHub's PR cache scope prevents
-PR writes from replacing main caches. Never cache secrets or use these caches in
-privileged release/publication jobs.
+CI reuses exact installed trees through Namespace local cache volumes rather
+than downloading dependency archives. The key covers full Node/npm version,
+OS/architecture, lockfile, workspace manifests and installation policy/helper.
+Incomplete snapshots are rejected; misses run
+`npm ci --ignore-scripts --no-audit --no-fund`. Copies preserve relative workspace
+links, cache completion is atomic, and retention is bounded to two exact trees. Docs uses the same root installation;
+admin keeps its isolated workspace installation. **Each Namespace profile must
+have Protected branches enabled for `main` in the account settings before this
+cache is used.** PR-editable runner labels alone are insufficient protection.
+Keep volumes per profile/repository; do not override cache tags across trust
+boundaries. Never cache secrets or reuse installed trees in privileged
+release/publication jobs. The dependency audit remains required.
 
-Persist only `.next/cache`, the content-based ESLint cache and TypeScript
-incremental state for compilation/check reuse. Cache keys cover the relevant tool
+Persist only `.next/cache` and the content-based ESLint cache for compiler/lint
+reuse. The native checker gets fresh project inputs on each run. Cache keys cover the relevant tool
 configuration and dependencies, with per-revision snapshots. Always compile the
 current source, regenerate route types, and execute the required checks. A cache
 hit is not a successful check. Lint and typechecking run independently and both
 must pass the fail-closed aggregate. Keep hosted build validation unchanged.
+
+The standalone compiler uses pinned Bun's native checker, while the installed
+TypeScript API remains available to Next/Convex. `typecheck-native.mjs` derives
+the legacy compiler's automatic ambient types and type roots into a temporary
+project config, preserving the source project and generated route validators.
+CI fails if the pinned checker is unavailable; local machines without it retain
+`tsc`. The boundary-check chain remains required. Re-run the opt-in
+`typecheck-benchmark.mjs` parity/negative probes before changing the checker.
+Hosted Next builds keep their own TypeScript validation.
+
+Full cached ESLint remains required. The opt-in `lint-oxlint-parity.mjs` checks
+migration against intentionally invalid fixtures and real files; a stock Oxlint
+migration currently drops custom syntax/import controls and changes scoped rule
+behavior. Do not replace ESLint until those rules pass equivalent checks.
+
+Affected selection is advisory only: `affected-shadow.mjs <full-base-SHA>` reports
+transitive test candidates; configuration, unknown imports/deleted inputs and
+missing coverage fall back to the full inventory. It never changes shard
+execution. Before activating pruning, compare shadow results with exhaustive CI
+and intentionally failing real-repository changes, including workspace/package,
+route, dependency and configuration changes. Package atomic groups and live-only
+classification must remain intact. Pool/isolation/startup experiments are opt-in;
+retain process/file isolation unless Linux runner measurements and leakage
+negative controls prove a safe improvement.
 
 The runner inventories every tracked `*.test.{ts,tsx,mts,mjs}` file and classifies
 the live-only suites in `scripts/ci/integration-tests.mjs` separately.

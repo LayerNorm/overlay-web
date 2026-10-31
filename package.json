@@ -89,7 +89,7 @@
     "chat-parity:manifest": "node scripts/ci/chat-parity-baseline-manifest.mjs",
     "file-parity:manifest": "node scripts/ci/file-parity-baseline-manifest.mjs",
     "check:desktop-provider-key-boundary": "NODE_OPTIONS=--require=./scripts/ci/register-server-only.cjs tsx --test src/server/ai/gateway/hosted-provider-kill-switch.test.ts && node scripts/ci/check-desktop-provider-key-boundary.mjs",
-    "typecheck": "npm run check:desktop-provider-key-boundary && npm run check:chat-transcript-boundaries && npm run check:file-parity-boundaries && npm run check:knowledge-surface-contract && tsc --noEmit",
+    "typecheck": "npm run check:desktop-provider-key-boundary && npm run check:chat-transcript-boundaries && npm run check:file-parity-boundaries && npm run check:knowledge-surface-contract && node scripts/ci/typecheck-native.mjs",
     "ui:typecheck": "npm --prefix packages/overlay-ui run typecheck",
     "ui:test": "npm --prefix packages/overlay-ui run test",
     "ui:storybook": "npm --prefix packages/overlay-ui run storybook",
@@ -339,7 +339,7 @@
   "overrides": {
     "axios": "1.20.0",
     "devalue": "5.9.4",
-    "follow-redirects": "1.16.1",
+    "follow-redirects": "1.16.2",
     "postcss": "8.5.26",
     "protobufjs": "8.6.6",
     "sharp": "0.35.5",

@@ -19,7 +19,7 @@ jobs:
   cla:
     name: CLA Signatures
     if: github.event_name == 'pull_request' || github.event_name == 'merge_group' || (github.event_name == 'issue_comment' && github.event.issue.pull_request)
-    runs-on: namespace-profile-overlay-ci-benchmark
+    runs-on: namespace-profile-overlay-ci-small;github.run-id=${{ github.run_id }};job.priority=2
     steps:
       - name: Record and verify CLA signatures
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # actions/github-script v9.0.0

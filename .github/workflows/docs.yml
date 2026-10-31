@@ -14,13 +14,13 @@ permissions:
   contents: read
 
 concurrency:
-  group: checks-${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  group: checks-${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   docs:
     name: Docs Check
-    runs-on: namespace-profile-overlay-ci-benchmark
+    runs-on: namespace-profile-overlay-ci-small;github.run-id=${{ github.run_id }};job.priority=2
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # actions/checkout v4

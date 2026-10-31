@@ -18,13 +18,13 @@ permissions:
   security-events: write
 
 concurrency:
-  group: checks-${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  group: checks-${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   analyze:
     name: Analyze JavaScript and TypeScript
-    runs-on: namespace-profile-overlay-ci-benchmark
+    runs-on: namespace-profile-overlay-ci-medium;github.run-id=${{ github.run_id }};job.priority=2
     strategy:
       fail-fast: false
       matrix:

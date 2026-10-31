@@ -29,7 +29,7 @@ permissions:
 jobs:
   recover:
     if: github.ref == 'refs/heads/main'
-    runs-on: namespace-profile-overlay-ci-benchmark
+    runs-on: namespace-profile-overlay-ci-small;github.run-id=${{ github.run_id }};job.priority=2
     environment: release-control
     timeout-minutes: 5
     concurrency:

@@ -95,6 +95,14 @@ lint, typecheck, build, the tracked full suite, and config/boundary checks. A gr
 build does not prove authenticated product behavior. Expand Preview QA for
 sensitive flows; every feature PR still targets main.
 
+The pre-push hook lints the pushed range, then runs full project typechecking
+for changed web/shared/Convex inputs or the isolated admin project for admin
+inputs. It generates current Next route validators and preserves boundary checks;
+it never runs `tsc` against individual changed files. Docs/test-only pushes skip
+this local typecheck. Relevant dirty files or a pushed revision other than HEAD
+must be resolved so evidence matches the push. Explicit emergency opt-outs remain
+local only; required CI still runs every lane.
+
 ### Dark release flags
 
 `createReleaseFlags` in `src/server/releases/feature-flags.ts` evaluates an
