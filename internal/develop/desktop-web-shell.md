@@ -150,8 +150,9 @@ missing offline dependencies without replacing model weights.
 The recorder HUD keeps its state in a private script scope so it cannot collide
 with the non-configurable preload bridge. CI captures synthetic audio through the
 actual HUD, in addition to testing direct transcription and downloaded models.
-For local models, both isolated preloads decode captured WebM/MP4 into bounded
+For local composer capture, the isolated preload decodes WebM/MP4 into bounded
 16 kHz mono PCM WAV before IPC; Core Audio does not decode Chromium's WebM capture.
+The native HUD captures PCM directly and bypasses that decode.
 The HUD carries a native capture epoch through decoding and transcription so
 sign-out/cancel rejects late audio and never clears a newer recording's state.
 
@@ -170,3 +171,30 @@ Reply notifications capture their workspace and chat view when a stream starts.
 Scope is retained from canonical chat paths even without a view query.
 First replies wait for the persisted conversation ID; temporary replies do not
 produce saved-chat links. A later workspace switch cannot retarget a notification.
+
+### Dictation capture and delivery
+
+The isolated HUD prepares a suspended 16 kHz Web Audio graph at launch without
+opening a microphone. A native shortcut starts device acquisition immediately;
+cloud session admission runs independently and must pass before any upload.
+The AudioWorklet batches mono PCM every 256 samples and flushes a bounded WAV at
+release, avoiding a whole-recording decode. Groq still transcribes completed
+recordings; this path does not claim streaming recognition. Local helpers and
+cloud requests accept cancellation, with session epochs fencing late delivery.
+
+The bottom-centered, non-focusable capsule renders nine audio-driven bars with
+fast attack and slower release, reduced-motion support and explicit finish,
+dismiss, retry and copy controls. Automatic device selection prefers the built-in
+microphone when labels are available; disconnected selections fall back to the
+system default. Settings persists device IDs locally and refreshes status while
+visible. `firstAudioMs` measures HUD-start to first captured PCM, not shortcut
+latency or provider inference; use physical-device QA for the full latency path.
+
+Delivery checks the original frontmost application PID before paste. A changed
+or unknown destination, unsupported clipboard format or failed injection retains
+the result for explicit copy. The PID guard cannot detect movement between fields
+inside one app. Supported clipboard content is restored after insertion unless
+the user has copied something else. No speech or result history is persisted:
+retry audio and results are memory-only, bounded to 25 MiB, cleared on a new take,
+sign-out/dismiss/quit, and expire after 60 seconds. Retry requires an explicit
+click and can incur another cloud transcription charge.

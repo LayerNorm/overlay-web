@@ -76,9 +76,13 @@ export const methodSchemas = {
     })
     .strict(),
   "transcription.listModels": empty,
+  "transcription.listDevices": empty,
   "transcription.downloadModel": z.object({ id: modelId }).strict(),
   "transcription.configure": z
-    .object({ model: z.union([modelId, z.literal("cloud")]) })
+    .object({
+      model: z.union([modelId, z.literal("cloud")]),
+      inputDeviceId: z.string().min(1).max(512).optional(),
+    })
     .strict(),
   "capture.screenshot": z
     .object({ display: z.string().max(100).optional() })
@@ -131,6 +135,9 @@ export type UpdateStatus = {
   message?: string;
 };
 export type TranscriptionStatus = {
+  phase?: string;
+  firstAudioMs?: number;
+  inputDeviceId?: string;
   recording: boolean;
   model: string;
   microphone: string;
@@ -156,6 +163,7 @@ export type Results = {
   "transcription.stop": void;
   "transcription.transcribe": { text: string };
   "transcription.listModels": Model[];
+  "transcription.listDevices": { id: string; label: string }[];
   "transcription.downloadModel": void;
   "transcription.configure": void;
   "capture.screenshot": { dataUrl: string; name: string };

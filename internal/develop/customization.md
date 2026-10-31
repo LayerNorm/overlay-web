@@ -182,3 +182,9 @@ OS shortcuts, local transcription models, panels, the local Agent Host and updat
 These preferences stay in the native store; shared workspace settings retain their
 existing backend. Normal browsers omit the section and native composer controls.
 See [Desktop web shell](desktop-web-shell.md).
+
+Desktop dictation microphone selection is local to the Mac, alongside its model
+and shortcuts. Automatic prefers an identified built-in input and falls back to
+the system default. A missing saved input remains visible as disconnected;
+permission is requested only when dictation starts. Older shells without the
+additive device/status bridge fields keep their existing settings controls.

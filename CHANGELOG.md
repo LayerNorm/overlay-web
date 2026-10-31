@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Add desktop dictation microphone selection and live capture status, alongside immediate native PCM capture, a compact audio-reactive pill, cancellation and temporary retry/copy recovery.
+
 - Switch existing accounts to double sidebar once across all workspaces, while allowing subsequent single-sidebar opt-outs.
 
 - Keep the gray gutters equal on both sides of onboarding while its navigation is hidden.

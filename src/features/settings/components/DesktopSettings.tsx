@@ -28,6 +28,7 @@ export function DesktopSettings() {
   const [update, setUpdate] = useState<UpdateStatus | null>(null);
   const [transcription, setTranscription] =
     useState<TranscriptionStatus | null>(null);
+  const [devices, setDevices] = useState<{ id: string; label: string }[]>([]);
   const [models, setModels] = useState<Model[]>([]);
   const [keys, setKeys] = useState<Record<string, string>>({});
   const [code, setCode] = useState("");
@@ -67,6 +68,11 @@ export function DesktopSettings() {
       tasks.push(
         bridge.call("transcription.status", undefined).then(setTranscription),
         bridge.call("transcription.listModels", undefined).then(setModels),
+        // Older installed shells do not expose device selection.
+        bridge
+          .call("transcription.listDevices", undefined)
+          .then(setDevices)
+          .catch(() => {}),
       );
     await Promise.all(tasks);
   }, [desktop]);
@@ -97,6 +103,33 @@ export function DesktopSettings() {
       offUpdate?.();
     };
   }, [desktop, refresh]);
+  useEffect(() => {
+    if (!desktop?.info.capabilities.includes("transcription")) return;
+    let active = true,
+      pending = false;
+    const read = async () => {
+      if (pending || document.visibilityState !== "visible") return;
+      pending = true;
+      try {
+        const status = await desktop.bridge.call(
+          "transcription.status",
+          undefined,
+        );
+        if (active) setTranscription(status);
+      } catch {
+        /* A closing native window needs no settings error. */
+      } finally {
+        pending = false;
+      }
+    };
+    const timer = window.setInterval(() => void read(), 1000);
+    window.addEventListener("focus", read);
+    return () => {
+      active = false;
+      clearInterval(timer);
+      window.removeEventListener("focus", read);
+    };
+  }, [desktop]);
   const run = async (action: () => Promise<unknown>) => {
     setBusy(true);
     setError("");
@@ -174,7 +207,11 @@ export function DesktopSettings() {
                   ...models.map((m) => ({ value: m.id, label: m.name })),
                 ]}
                 aria-label="Dictation model"
-                disabled={busy}
+                disabled={
+                  busy ||
+                  transcription?.recording ||
+                  transcription?.phase === "processing"
+                }
                 onChange={(model) =>
                   void run(() =>
                     bridge.call("transcription.configure", {
@@ -186,6 +223,49 @@ export function DesktopSettings() {
               />
             }
           />
+          {transcription?.inputDeviceId !== undefined ? (
+            <SettingsActionRow
+              icon={null}
+              title="Dictation microphone"
+              description="Automatic prefers the built-in microphone. If a chosen device disconnects, dictation uses the system default."
+              action={
+                <ListboxSelect
+                  aria-label="Dictation microphone"
+                  value={transcription.inputDeviceId}
+                  disabled={
+                    busy ||
+                    transcription.recording ||
+                    transcription.phase === "processing"
+                  }
+                  options={[
+                    { value: "auto", label: "Automatic" },
+                    ...devices.map((device) => ({
+                      value: device.id,
+                      label: device.label,
+                    })),
+                    ...(transcription.inputDeviceId !== "auto" &&
+                    !devices.some((d) => d.id === transcription.inputDeviceId)
+                      ? [
+                          {
+                            value: transcription.inputDeviceId,
+                            label: "Disconnected microphone",
+                          },
+                        ]
+                      : []),
+                  ]}
+                  onChange={(inputDeviceId) =>
+                    void run(() =>
+                      bridge.call("transcription.configure", {
+                        model:
+                          transcription.model as BridgeInput<"transcription.configure">["model"],
+                        inputDeviceId,
+                      }),
+                    )
+                  }
+                />
+              }
+            />
+          ) : null}
           {models.map((model) => (
             <SettingsActionRow
               icon={null}
