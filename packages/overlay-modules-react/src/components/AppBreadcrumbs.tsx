@@ -46,7 +46,7 @@ export function AppBreadcrumbs({ title, items = [], leading, 'aria-label': ariaL
             <Fragment key={index}>
               {index > 0 ? <BreadcrumbSeparator className="shrink-0" /> : null}
               <BreadcrumbItem className={`min-w-0 ${current ? 'flex-1' : ''}`}>
-                {item.leading ? <span className="shrink-0">{item.leading}</span> : null}
+                {item.leading ? <span className="inline-flex shrink-0 items-center">{item.leading}</span> : null}
                 {current
                   ? asHeading
                     ? <h1 className="m-0 min-w-0 truncate text-sm leading-5">{currentLabel}</h1>

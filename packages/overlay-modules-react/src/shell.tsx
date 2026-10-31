@@ -269,7 +269,7 @@ function AppScreenHeaderTitle({
   return (
     <div className="flex min-w-0 flex-1 items-center">
       <div className="min-w-0 flex-1">
-        <div className="flex min-w-0 items-baseline">
+        <div className="flex min-w-0 items-center">
           <AppBreadcrumbs asHeading title={title} items={breadcrumbs} leading={leading} />
           {subtitle ? <span className="ml-2 truncate text-sm text-(--muted)">{subtitle}</span> : null}
           {metadata ? <span className="ml-2 shrink-0 text-xs leading-5 text-(--muted)">{metadata}</span> : null}
