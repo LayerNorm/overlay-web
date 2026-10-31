@@ -2,7 +2,36 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { AppScreenHeader, AppScreenShell } from './shell'
+import { AppBreadcrumbContext, AppScreenHeader, AppScreenShell } from './shell'
+
+test('the sidebar toggle precedes header leading controls and breadcrumbs', () => {
+  const html = renderToStaticMarkup(
+    <AppBreadcrumbContext.Provider value={{ leading: <span>Sidebar toggle</span>, items: [{ label: 'Personal' }, { label: 'Agents' }] }}>
+      <AppScreenHeader leading={<span>Back control</span>} title="Agent editor" />
+    </AppBreadcrumbContext.Provider>,
+  )
+  assert.match(html, /Sidebar toggle[\s\S]*Back control[\s\S]*Personal[\s\S]*Agents[\s\S]*Agent editor/)
+})
+
+test('header leading controls render without a breadcrumb trail', () => {
+  const html = renderToStaticMarkup(<AppScreenHeader leading={<span>Back control</span>} />)
+  assert.match(html, /Back control/)
+})
+
+test('agent thread headers keep the avatar beside the agent breadcrumb, not before the toggle', () => {
+  for (const title of ['Weekly report', 'Researcher']) {
+    const html = renderToStaticMarkup(
+      <AppBreadcrumbContext.Provider value={{ leading: <span>Sidebar toggle</span>, items: [{ label: 'Personal' }, { label: 'Agents' }] }}>
+        <AppScreenHeader breadcrumbs={[{ label: 'Researcher', leading: <span>Agent avatar</span> }]} title={title} />
+      </AppBreadcrumbContext.Provider>,
+    )
+    assert.match(html, /Sidebar toggle[\s\S]*Personal[\s\S]*Agents[\s\S]*Agent avatar[\s\S]*Researcher/)
+    assert.equal(html.match(/Agent avatar/g)?.length, 1)
+    assert.equal(html.match(/Researcher/g)?.length, 1)
+    assert.equal(html.match(/aria-current="page"/g)?.length, 1)
+    if (title === 'Weekly report') assert.match(html, /Researcher[\s\S]*Weekly report/)
+  }
+})
 
 test('header puts view tabs before actions and aligns title metadata on the baseline', () => {
   const markup = renderToStaticMarkup(
