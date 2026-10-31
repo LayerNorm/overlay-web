@@ -17,6 +17,7 @@ const run: AgentRun = {
   id: 'run-a', conversationId: 'room-a', turnId: 'turn-a', userId: 'owner',
   userMessageId: 'message-user', assistantMessageId: 'message-agent',
   mode: 'room', runner: 'workflow', status: 'waiting_for_approval',
+  executionEngine: 'overlay_harness',
   approval: { token: 'token-a', requestedAt: 1, requests: [] }, createdAt: 1, updatedAt: 1,
 }
 function context(userId: string): AppApiRouteContext {
@@ -38,6 +39,23 @@ function request(approved = true, token = 'token-a') {
     body: JSON.stringify({ conversationId: 'room-a', agentRunId: 'run-a', token, approved }),
   })
 }
+
+test('legacy approvals return retirement instead of waking an old workflow', async () => {
+  for (const mode of ['room', 'chat', 'work'] as const) {
+    const response = await POST(request(), context('owner'), {
+      conversations: {
+        getConversationById: async () => conversation,
+        getLatestAgentRun: async () => ({ ...run, mode, executionEngine: undefined }),
+      },
+      collaboration: { getAccessibleConversation: async () => conversation },
+      resume: async () => assert.fail('Retired workflows must not resume'),
+    })
+    assert.equal(response.status, 410)
+    assert.deepEqual(await response.json(), {
+      code: 'native_runner_retired', error: 'The harness has changed. Start a new thread to continue.',
+    })
+  }
+})
 
 test('outsiders cannot approve or deny a private room, even with its valid hook token', async () => {
   for (const approved of [true, false]) {

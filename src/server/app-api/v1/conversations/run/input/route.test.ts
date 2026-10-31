@@ -12,6 +12,7 @@ const conversation: ConversationListRow = { _id: 'conversation', userId: 'owner'
   lastMode: 'act', lastModified: 1, createdAt: 1, updatedAt: 1, askModelIds: [], actModelId: 'model' }
 const run: AgentRun = { id: 'run', conversationId: 'conversation', turnId: 'turn', userId: 'owner',
   userMessageId: 'user-message', assistantMessageId: 'assistant-message', mode: 'work', runner: 'workflow',
+  executionEngine: 'overlay_harness',
   workflowRunId: 'workflow', status: 'waiting_for_input', inputRequest: { token: 'token', requestedAt: 1, question: 'Which file?' },
   createdAt: 1, updatedAt: 1 }
 const context: AppApiRouteContext = {
@@ -40,6 +41,17 @@ test('the owner can submit bounded text to the exact waiting run', async () => {
   }, resume: async (token, reply) => { replies.push({ token, reply }) } })
   assert.equal(response.status, 200)
   assert.deepEqual(replies, [{ token: 'token', reply: { text: 'The quarterly report.' } }])
+})
+
+test('legacy personal input returns an explicit retirement error without waking its workflow', async () => {
+  const response = await POST(request(), context, { conversations: {
+    getConversationById: async () => conversation,
+    getLatestAgentRun: async () => ({ ...run, executionEngine: undefined }),
+  }, resume: async () => assert.fail('Retired workflows must not resume') })
+  assert.equal(response.status, 410)
+  assert.deepEqual(await response.json(), {
+    code: 'native_runner_retired', error: 'The harness has changed. Start a new thread to continue.',
+  })
 })
 
 test('missing access and a different workspace cannot resume a hook even with its token', async () => {
@@ -103,7 +115,7 @@ test('only the initiating user with current room access can resume a native Harn
       },
       resume: async () => { resumed = true },
     })
-    assert.equal(response.status, scenario === 'allowed' ? 200 : ['revoked', 'other-workspace'].includes(scenario) ? 404 : 409)
+    assert.equal(response.status, scenario === 'allowed' ? 200 : scenario === 'legacy' ? 410 : ['revoked', 'other-workspace'].includes(scenario) ? 404 : 409)
     assert.equal(resumed, scenario === 'allowed')
   }
 })

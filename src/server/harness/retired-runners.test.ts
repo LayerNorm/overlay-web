@@ -27,6 +27,7 @@ const retiredIdentifiers = [
   'runWorkspaceAgentTurnLoop',
   'workspaceAgentTurnWorkflow',
   'personalChatWorkWorkflow',
+  'startLegacyPersonalWorkflow',
 ]
 
 async function listProductionSources(directory: string): Promise<string[]> {

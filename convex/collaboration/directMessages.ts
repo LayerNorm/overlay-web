@@ -9,7 +9,7 @@ import { requireAccessToken, validateServerSecret } from '../lib/auth'
 import { recordConversationEvent } from './events'
 import { conversationListVersion } from '../lib/conversationListVersion'
 import { resolveConversationActivityState } from '../../src/shared/chat/conversation-activity-state'
-import { ROOM_AGENT_RUN_LEASE_MS } from '../../src/shared/agents/agent-run'
+import { assertNativeHarnessRun } from '../../src/shared/agents/native-run-retirement'
 import { agentMemoryOwnerId } from '../../src/shared/agents/agent-memory'
 import { stripTextualToolCalls, stripTextualToolCallsFromParts } from '../../src/shared/ai/textual-tool-calls'
 import { resolveIdentityDisplayName, versionedIdentityUrl } from '../../src/shared/workspaces/identity-resolution'
@@ -910,6 +910,7 @@ export async function startAgentTurnInTransaction(
   args: StartAgentTurnInTransactionArgs,
 ) {
   await requireAgentAuthor(ctx, args)
+  assertNativeHarnessRun({ runner: 'workflow', executionEngine: args.executionEngine })
   const [{ messageId, resumed }, existingRun] = await Promise.all([
     openAgentMessageRow(ctx as MutationCtx, args),
     ctx.db.query('conversationAgentRuns')
@@ -918,7 +919,10 @@ export async function startAgentTurnInTransaction(
       ))
       .first(),
   ])
-  if (existingRun) return { messageId, resumed: true, runId: existingRun._id }
+  if (existingRun) {
+    assertNativeHarnessRun(existingRun)
+    return { messageId, resumed: true, runId: existingRun._id }
+  }
 
   const now = Date.now()
   const runId = await ctx.db.insert('conversationAgentRuns', {
@@ -932,9 +936,8 @@ export async function startAgentTurnInTransaction(
     ...(args.initiatorPrincipalId ? { initiatorPrincipalId: args.initiatorPrincipalId } : {}),
     mode: 'room',
     runner: 'workflow',
-    ...(args.executionEngine ? { executionEngine: args.executionEngine } : {}),
+    executionEngine: 'overlay_harness',
     status: 'queued',
-    ...(args.executionEngine === 'overlay_harness' ? {} : { leaseExpiresAt: now + ROOM_AGENT_RUN_LEASE_MS }),
     createdAt: now,
     updatedAt: now,
   })

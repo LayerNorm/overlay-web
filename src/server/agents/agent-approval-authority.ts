@@ -1,6 +1,7 @@
 import type { AgentRun } from '@/shared/agents/agent-run'
+import { isRetiredNativeRun } from '@/shared/agents/native-run-retirement'
 
-export type AgentRunApprovalAccess = 'allowed' | 'inactive' | 'initiator-only'
+export type AgentRunApprovalAccess = 'allowed' | 'inactive' | 'initiator-only' | 'retired'
 
 export function agentRunApprovalAccess(
   run: AgentRun | null | undefined,
@@ -19,5 +20,6 @@ export function agentRunApprovalAccess(
     run.approval?.token !== request.token
   ) return 'inactive'
   if (run.userId !== request.actorUserId) return 'initiator-only'
+  if (isRetiredNativeRun(run)) return 'retired'
   return 'allowed'
 }

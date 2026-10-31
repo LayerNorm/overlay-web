@@ -52,41 +52,9 @@ test('metrics reports fetch one lookahead row to identify truncation exactly', a
   assert.equal(report.runners.tool_loop.runs, 2)
 })
 
-test('startLegacyPersonalWorkflow creates a chat AgentRun without an engine marker', async () => {
-  let received: Parameters<ActConversationRepository['startAgentRun']>[0] | undefined
-  const repository = {
-    async startAgentRun(args: Parameters<ActConversationRepository['startAgentRun']>[0]) {
-      received = args
-      return {
-        id: `run_${args.variantIndex ?? 0}`,
-        conversationId: args.conversationId,
-        turnId: args.turnId,
-        userId: args.userId,
-        userMessageId: args.userMessageId,
-        assistantMessageId: `msg_${args.variantIndex ?? 0}`,
-        mode: args.mode,
-        runner: args.runner,
-        status: 'queued',
-        variantIndex: args.variantIndex,
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-      } as unknown as AgentRun
-    },
-  } as unknown as ActConversationRepository
-  const service = new AgentRunService(repository)
-
-  const run0 = await service.startLegacyPersonalWorkflow({
-    conversationId: 'conv_1' as never,
-    modelId: 'model-a',
-    turnId: 'turn_1',
-    userId: 'user_1',
-    userMessageId: 'msg_u1' as never,
-  })
-  assert.equal(received?.variantIndex, 0)
-  assert.equal(received?.mode, 'chat')
-  assert.equal(received?.runner, 'workflow')
-  assert.equal(received?.executionEngine, undefined)
-  assert.equal(run0?.id, 'run_0')
+test('retired personal admission helpers are not exposed', () => {
+  assert.equal('startChat' in AgentRunService.prototype, false)
+  assert.equal('startLegacyPersonalWorkflow' in AgentRunService.prototype, false)
 })
 
 test('startPersonalWorkflow creates the Harness workflow as canonical chat', async () => {

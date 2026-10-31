@@ -10,6 +10,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Route automation run-backed and scheduler-owned turns through native Harness with owner-fenced settlement/replay, refreshed bound-agent grants, and approval-denial handling; surface migration and broader legacy retirement remain open.
 
+- Reject new native admissions that attempt to use or adopt retired runners, fence retired-run attachment and transitions, and give owners new-thread guidance instead of resuming legacy approval/input waits while preserving connected remote-agent behavior.
+
 - Keep the gray gutters equal on both sides of onboarding while its navigation is hidden.
 
 - Add the curved double-sidebar layout: a persistent icon rail, independently collapsible contextual panels, matching rounded borders around navigation and detail panels, and indented agent threads. Align the composer with the full message stream. New layout preferences default to double sidebar; saved single-sidebar choices remain unchanged.

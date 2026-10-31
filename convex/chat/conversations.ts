@@ -13,6 +13,7 @@ import { cancelHarnessDelivery } from '../harness/runs'
 import { conversationListVersion } from '../lib/conversationListVersion'
 import { deleteChunksForSource } from '../knowledge/knowledge'
 import { INTERRUPTED_RESPONSE_NOTICE } from '../../src/shared/chat/agent-assistant-text'
+import { assertNativeHarnessRun, assertSupportedAgentExecution } from '../../src/shared/agents/native-run-retirement'
 
 const generatedUiVariant = v.object({
   id: v.string(),
@@ -965,6 +966,7 @@ export const startAgentRun = mutation({
     }
 
     const variantIndex = args.variantIndex ?? 0
+    assertNativeHarnessRun(args)
     const runsForTurn = await ctx.db
       .query('conversationAgentRuns')
       .withIndex('by_turn_variant', (q) => q
@@ -972,7 +974,10 @@ export const startAgentRun = mutation({
         .eq('turnId', args.turnId))
       .collect()
     const existing = runsForTurn.find((run) => (run.variantIndex ?? 0) === variantIndex)
-    if (existing) return existing
+    if (existing) {
+      assertNativeHarnessRun(existing)
+      return existing
+    }
 
     const now = Date.now()
     const assistantMessageId = await ctx.db.insert('conversationMessages', {
@@ -1039,6 +1044,7 @@ export const transitionAgentRun = mutation({
     if (args.expectedWorkflowRunId !== undefined && run.workflowRunId !== args.expectedWorkflowRunId) {
       throw new Error('AgentRun workflow ownership changed')
     }
+    assertSupportedAgentExecution(run)
     assertAgentRunTransition(run.status, args.status)
     const now = Date.now()
     await ctx.db.patch(run._id, {
@@ -1099,6 +1105,7 @@ export const attachAgentRunWorkflow = mutation({
     if (run.workflowRunId && run.workflowRunId !== args.workflowRunId) {
       throw new Error('AgentRun is already attached to another workflow')
     }
+    assertSupportedAgentExecution(run)
     if (run.status !== 'queued' && run.status !== 'running') return run
     const now = Date.now()
     await ctx.db.patch(run._id, {

@@ -176,12 +176,13 @@ Internal state names may reuse equivalent existing variants. Migration must pres
 - [ ] Reconcile Slack delivery when the initial placeholder is missing or an external post has an uncertain outcome. Missing placeholders now report delivery failure; do not blindly repost an uncertain external write. This does not change the task's outcome in Overlay.
 2. Inventory active legacy runs and in-flight external operations.
 3. Fence legacy dispatch and callbacks; revoke old execution authority before replacement execution begins.
+   - [x] Require the native Harness marker for new personal and room admission, reject replay/adoption of historical retired runs, reject retired-run workflow attachment and status transitions, and return `native_runner_retired` with new-thread guidance instead of resuming owner-matching retired approval/input waits. Connected `remote` admission and transitions remain supported. Verified by 38 Convex tests, 30 Node tests, 16 Harness unit tests, TypeScript, changed-file ESLint, complexity, and shared-isomorphic checks. This does not fence progress/finalization/tool writers or drain deployed workers.
 4. Reconcile already-issued operations. Preserve output, usage, and receipts. Do not replay an uncertain external write.
 5. Mark unsupported old tasks explicitly paused/retired with the new-thread explanation.
 6. Remove runnable legacy implementations once they have no live execution dependency.
    - [x] Remove the obsolete capped workspace-agent and personal-chat-work runner source and test fixtures after dispatchers moved to Harness; the retired-runner boundary and focused Harness/preparation checks pass. This records source removal only, not deployed worker drain or fencing.
 - [ ] Inventory and drain executions already active on deployed legacy workers.
-- [ ] Fence legacy backend admission and callbacks before replacement execution.
+- [ ] Complete remaining legacy writer fences for progress, finalization, tool effects, and callbacks; drain active old workers before claiming all backend write paths are fenced.
 - [ ] Make incompatible old threads read-only and offer an explicit new-thread action.
 
 At the final cutover, no old native runner is reachable. This source removal does not prove that workers already deployed on older revisions or their callbacks have been drained or fenced. Keeping audit records or an endpoint that only returns an explicit retirement response is not backward-compatible execution.
