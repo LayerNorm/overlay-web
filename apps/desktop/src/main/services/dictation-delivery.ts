@@ -16,7 +16,8 @@ export async function deliverDictation<T>(
   if ((await io.currentTarget()) !== target || !io.active()) return 'copy'
   const original = io.snapshot()
   if (original === null) return 'copy'
-  io.write(text)
+  const insertion = /\s$/.test(text) ? text : text + ' '
+  io.write(insertion)
   try {
     // Recheck after the asynchronous target lookup, before injecting a key.
     if (!io.active()) return 'copy'
@@ -26,6 +27,6 @@ export async function deliverDictation<T>(
     return 'copy'
   } finally {
     // Preserve a copy the user made while insertion was in flight.
-    if (io.read() === text) io.restore(original)
+    if (io.read() === insertion) io.restore(original)
   }
 }

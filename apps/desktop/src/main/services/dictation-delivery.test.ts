@@ -22,6 +22,7 @@ describe('dictation destination and clipboard protection', () => {
     const io = setup()
     expect(await deliverDictation('hello', 42, io)).toBe('inserted')
     expect(io.paste).toHaveBeenCalledOnce()
+    expect(io.write).toHaveBeenCalledWith('hello ')
     expect(io.read()).toBe('original')
   })
   it.each([null, 7])(
