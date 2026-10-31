@@ -210,13 +210,12 @@ The initial recovery slice keeps compaction checkpoints additive and non-blockin
 `src/server/workflows/personal-harness.ts` composes `runOverlayHarness` with personal
 authorization, model billing, tool reconstruction, durable waits and transcript
 delivery. Eligible personal Chat requests use this workflow when the backend
-reports the Harness capability; this slice also admits named rooms through the
-native Harness. Missing, old, unknown, or unreadable capability state returns a
-truthful unavailable response instead of selecting a legacy workflow.
-Automation, surface adapters, stale-workflow fencing, and hosted parity QA
-remain pending.
-`mode: 'automate'` alone remains a configuration chat; only the automation
-execution flags keep a request on the legacy path.
+reports the Harness capability. Missing, old, unknown, or unreadable capability
+state returns a truthful unavailable response instead of selecting a legacy
+workflow. The personal Act route returns `410 legacy_execution_retired` for
+automation execution flags; `mode: 'automate'` alone remains a configuration
+chat. Automation and surface workflow migration remain pending, and this route
+cutover does not revoke already-deployed legacy workflow execution.
 
 Native Overlay room turns always dispatch through the native Harness. There is
 no environment-flag fallback to the retired workspace-agent workflow. Remote
@@ -473,13 +472,15 @@ reconciliation rather than a fabricated zero-cost charge. Existing callers keep
 their uncached behavior until they supply these fields; BYOK external charges
 must not be inferred from Overlay's zero billing for user-owned credentials.
 
-Authenticated personal Chat and named-room admission use the shared controller
-when the backend publishes its Harness capability marker. Missing or stale
-capability state fails closed with a truthful availability response; it does not
-fall back to `personal-chat-work` or a direct tool loop. Native agents additionally
-use native Harness dispatch without an environment flag. Automations, surface
-adapters, messaging and notebook loops, and stale-workflow retirement fencing
-remain open for a following phase.
+Personal HTTP admission requires the backend Harness capability marker and
+fails closed with a truthful availability response when it is missing or stale;
+it does not fall back to `personal-chat-work` or a direct tool loop. Named-room
+turns dispatch through native Harness, but this slice does not add a capability
+readiness check to named-room admission. Native agents additionally use native
+Harness dispatch without an environment flag. Automations, surface adapters,
+messaging and notebook loops, and stale-workflow retirement fencing remain open
+for a following phase. This source-route cutover does not revoke already-deployed
+legacy workflow execution.
 Its focused QA uses
 the real SDK with a mock provider, including more than twenty calls, natural early
 return, input suspension, approval/denial, revoked authorization, cancellation,

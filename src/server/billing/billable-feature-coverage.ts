@@ -67,14 +67,11 @@ export const BILLABLE_FEATURE_COVERAGE: readonly BillableFeatureCoverage[] = [
   {
     category: 'functions_integrations_and_mcp',
     enforcement: [
-      'packages/overlay-tools-core/src/policy.ts#MAX_TOOL_STEPS_ACT',
-      'src/server/tools/tools/policy.ts#MAX_TOOL_STEPS_ACT',
-      'src/server/tools/mcp-tools.ts#MAX_MCP_TOOL_RESULT_CHARS',
+      'src/server/harness/model-dispatch.ts#reserveProviderBudget',
+      'src/server/harness/request-usage-step.ts#admitHarnessRequestUsage',
     ],
-    id: 'tool-calls-per-agent-turn',
-    limit: 12,
-    mode: 'bounded_quota',
-    window: 'per_agent_turn',
+    id: 'native-harness-execution',
+    mode: 'metered',
   },
   {
     category: 'browser_and_sandbox',
