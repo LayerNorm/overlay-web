@@ -580,10 +580,10 @@ export const addMessage = mutation({
     }
     await assertNativeThreadWritable(ctx, access.conversation, args.threadRootMessageId)
     if (args.clientNonce) {
-      const existing = await ctx.db.query('conversationMessages')
-        .withIndex('by_conversationId', (q) => q.eq('conversationId', args.conversationId))
-        .collect()
-      const match = existing.find((message) => message.clientNonce === args.clientNonce)
+      const match = await ctx.db.query('conversationMessages')
+        .withIndex('by_conversationId_clientNonce', q => q
+          .eq('conversationId', args.conversationId).eq('clientNonce', args.clientNonce))
+        .first()
       if (match) {
         await assertNativeThreadWritable(ctx, access.conversation, match.threadRootMessageId ?? match._id)
         return match._id
@@ -649,10 +649,10 @@ export const addAgentMessage = mutation({
       await getMessageForThread(ctx, args.conversationId, args.threadRootMessageId)
     }
     await assertNativeThreadWritable(ctx, access.conversation, args.threadRootMessageId)
-    const existing = await ctx.db.query('conversationMessages')
-      .withIndex('by_conversationId', (q) => q.eq('conversationId', args.conversationId))
-      .collect()
-    const match = existing.find((message) => message.clientNonce === args.clientNonce)
+    const match = await ctx.db.query('conversationMessages')
+      .withIndex('by_conversationId_clientNonce', q => q
+        .eq('conversationId', args.conversationId).eq('clientNonce', args.clientNonce))
+      .first()
     if (match) {
       await assertNativeThreadWritable(ctx, access.conversation, match.threadRootMessageId ?? match._id)
       return match._id
@@ -868,10 +868,10 @@ async function openAgentMessageRow(
   if (args.threadRootMessageId) {
     await getMessageForThread(ctx, args.conversationId, args.threadRootMessageId)
   }
-  const existing = await ctx.db.query('conversationMessages')
-    .withIndex('by_conversationId', (q) => q.eq('conversationId', args.conversationId))
-    .collect()
-  const match = existing.find((message) => message.clientNonce === args.clientNonce)
+  const match = await ctx.db.query('conversationMessages')
+    .withIndex('by_conversationId_clientNonce', q => q
+      .eq('conversationId', args.conversationId).eq('clientNonce', args.clientNonce))
+    .first()
   if (match) return { messageId: match._id, resumed: true }
 
   const now = Date.now()
@@ -935,10 +935,10 @@ export async function startAgentTurnInTransaction(
     await getMessageForThread(ctx, args.conversationId, args.threadRootMessageId)
     await assertNativeThreadWritable(ctx, access.conversation, args.threadRootMessageId)
   }
-  const existingMessages = await ctx.db.query('conversationMessages')
-    .withIndex('by_conversationId', q => q.eq('conversationId', args.conversationId))
-    .collect()
-  const existingMessage = existingMessages.find(message => message.clientNonce === args.clientNonce)
+  const existingMessage = await ctx.db.query('conversationMessages')
+    .withIndex('by_conversationId_clientNonce', q => q
+      .eq('conversationId', args.conversationId).eq('clientNonce', args.clientNonce))
+    .first()
   if (existingMessage) {
     await assertNativeThreadWritable(ctx, access.conversation, existingMessage.threadRootMessageId ?? existingMessage._id)
   }
@@ -1040,10 +1040,10 @@ export const recordAgentStartFailure = mutation({
     } else {
       await assertNativeThreadWritable(ctx, access.conversation)
     }
-    const existingMessages = await ctx.db.query('conversationMessages')
-      .withIndex('by_conversationId', q => q.eq('conversationId', args.conversationId))
-      .collect()
-    const existingMessage = existingMessages.find(message => message.clientNonce === args.clientNonce)
+    const existingMessage = await ctx.db.query('conversationMessages')
+      .withIndex('by_conversationId_clientNonce', q => q
+        .eq('conversationId', args.conversationId).eq('clientNonce', args.clientNonce))
+      .first()
     if (existingMessage) {
       await assertNativeThreadWritable(ctx, access.conversation, existingMessage.threadRootMessageId ?? existingMessage._id)
     }
@@ -2188,7 +2188,6 @@ export const editMessage = mutation({
     const textPatch = message.remoteTextStored
       ? await prepareRemoteMessageText(ctx, message, { content, parts })
       : { content, parts }
-    await assertNativeThreadWritable(ctx, access.conversation, message.threadRootMessageId ?? message._id)
     const now = Date.now()
     await ctx.db.patch(message._id, {
       content: textPatch.content,
@@ -2223,6 +2222,7 @@ export const deleteMessage = mutation({
       || message.authorPrincipalId !== access.actor.principalId
       || message.deletedAt
     ) return false
+    await assertNativeThreadWritable(ctx, access.conversation, message.threadRootMessageId ?? message._id)
     const now = Date.now()
     await ctx.db.patch(message._id, { content: '', parts: [], deletedAt: now, updatedAt: now })
     await ctx.runMutation(internal.knowledge.knowledge.purgeKnowledgeSource, {

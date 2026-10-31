@@ -118,7 +118,8 @@ test('shared legacy roots are read-only while new top-level roots remain allowed
     await ctx.db.insert('conversationParticipants', { conversationId, workspaceId: 'ws', principalId: 'agent-principal',
       principalType: 'agent', role: 'member', status: 'active', notificationLevel: 'all', joinedAt: now, updatedAt: now })
     const rootMessageId = await ctx.db.insert('conversationMessages', { conversationId, userId: 'owner',
-      turnId: 'root', role: 'user', mode: 'act', content: 'old', contentType: 'text', createdAt: now })
+      authorKind: 'human', authorPrincipalId: 'human', turnId: 'root', role: 'user', mode: 'act',
+      content: 'old', contentType: 'text', createdAt: now })
     const replyId = await ctx.db.insert('conversationMessages', { conversationId, userId: 'owner', authorKind: 'agent',
       authorPrincipalId: 'agent-principal', turnId: 'reply', role: 'assistant', mode: 'act',
       content: 'reply', contentType: 'text', status: 'completed',
@@ -138,6 +139,36 @@ test('shared legacy roots are read-only while new top-level roots remain allowed
     actorUserId: 'owner', conversationId: ids.conversationId, workspaceId: 'ws', serverSecret: secret,
     clientNonce: 'old', turnId: 'old-reply', content: 'blocked', threadRootMessageId: ids.replyId,
   })).rejects.toThrow('native_runner_retired')
+  const rootBeforeRefusals = await t.run(ctx => ctx.db.get(ids.rootMessageId))
+  await expect(t.mutation(mutation('collaboration/directMessages:editMessage'), {
+    actorUserId: 'owner', conversationId: ids.conversationId, messageId: ids.rootMessageId,
+    workspaceId: 'ws', serverSecret: secret, content: 'edited old task',
+  })).rejects.toThrow('native_runner_retired')
+  await expect(t.mutation(mutation('collaboration/directMessages:deleteMessage'), {
+    actorUserId: 'owner', conversationId: ids.conversationId, messageId: ids.rootMessageId,
+    workspaceId: 'ws', serverSecret: secret,
+  })).rejects.toThrow('native_runner_retired')
+  expect(await t.run(ctx => ctx.db.get(ids.rootMessageId))).toEqual(rootBeforeRefusals)
+  await expect(t.mutation(mutation('chat/conversations:addMessage'), {
+    conversationId: ids.conversationId, userId: 'owner', workspaceId: 'ws', serverSecret: secret,
+    turnId: 'root', role: 'assistant', variantIndex: 1, mode: 'act', content: 'new variant',
+    contentType: 'text', parts: [], modelId: 'model',
+  })).rejects.toThrow('native_runner_retired')
+  await expect(t.mutation(mutation('chat/conversations:addMessages'), {
+    conversationId: ids.conversationId, userId: 'owner', serverSecret: secret,
+    rows: [{ turnId: 'root', role: 'assistant', variantIndex: 1, mode: 'act',
+      content: 'new variant replay', contentType: 'text', parts: [], modelId: 'model' }],
+  })).rejects.toThrow('native_runner_retired')
+  await expect(t.mutation(mutation('chat/conversations:addMessage'), {
+    conversationId: ids.conversationId, userId: 'owner', workspaceId: 'ws', serverSecret: secret,
+    turnId: 'clean-generic', role: 'user', mode: 'act', content: 'clean task',
+    contentType: 'text', parts: [], skipMemoryExtraction: true,
+  })).resolves.toBeDefined()
+  await expect(t.mutation(mutation('chat/conversations:addMessages'), {
+    conversationId: ids.conversationId, userId: 'owner', serverSecret: secret,
+    rows: [{ turnId: 'clean-bulk', role: 'user', mode: 'act',
+      content: 'clean bulk task', contentType: 'text', parts: [] }],
+  })).resolves.toBeDefined()
   const admission = {
     actorUserId: 'owner', agentId: 'agent', authorPrincipalId: 'agent-principal',
     conversationId: ids.conversationId, modelId: 'model', userMessageId: ids.replyId,

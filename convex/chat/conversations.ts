@@ -853,7 +853,12 @@ export const addMessage = mutation({
         modelId: args.modelId,
       }),
     )
-    await assertNativeThreadWritable(ctx, conversation, match?.threadRootMessageId ?? match?._id)
+    await assertNativeThreadWritable(ctx, conversation)
+    for (const message of existing) {
+      if (message.turnId === args.turnId) {
+        await assertNativeThreadWritable(ctx, conversation, message.threadRootMessageId ?? message._id)
+      }
+    }
     const now = Date.now()
     const payload = {
       conversationId: args.conversationId,
@@ -1828,17 +1833,10 @@ export const addMessages = mutation({
       .withIndex('by_conversationId', (q) => q.eq('conversationId', conversationId))
       .collect()
     await assertNativeThreadWritable(ctx, conversation)
-    for (const row of rows) {
-      const match = existing.find(
-        (message) => sameMessageVariant(message, {
-          turnId: row.turnId,
-          role: row.role,
-          variantIndex: row.variantIndex,
-          modelId: row.modelId,
-        }),
-      )
-      if (match) {
-        await assertNativeThreadWritable(ctx, conversation, match.threadRootMessageId ?? match._id)
+    const requestedTurnIds = new Set(rows.map(row => row.turnId))
+    for (const message of existing) {
+      if (requestedTurnIds.has(message.turnId)) {
+        await assertNativeThreadWritable(ctx, conversation, message.threadRootMessageId ?? message._id)
       }
     }
     const ids = await Promise.all(rows.map(async (row) => {
