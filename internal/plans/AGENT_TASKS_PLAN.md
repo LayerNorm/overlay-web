@@ -2,6 +2,10 @@
 
 Status: approved. Decisions 2 to 5 accepted as recommended; decision 1 replaced by the explicit Start/Queue button. Phase 1 implemented; Phase 2 in review. Later execution phases remain planned.
 
+## Current assignment execution
+
+Creating a task with an agent or changing its assignee to an agent starts the run server-side through `WorkService` and the existing collaboration/agent-turn pipeline. The persisted assignment execution reuses its thread, message and turn identity for unchanged assignments; human assignments and status-only edits do not dispatch. Dispatch failures are persisted, but a start may be uncertain, so check the agent thread before clearing or reassigning; clearing and reassigning creates a new assignment identity.
+
 Goal: a task in Work can be given to an agent the same way it is given to a person. The agent picks it up in its own
 thread, works it, keeps the task up to date, and hands it back for review or asks for input. Any chat (personal chat,
 agent thread, connected agent, outside MCP client) can create, edit, start, finish and archive tasks through the same
@@ -19,7 +23,8 @@ manage it.
   (`convex/collaboration/agents.ts`). `work/workItems:context` already returns agents as assignees, and `OwnerPicker`
   already has an "Agents" section.
 - Personal tasks accept the creator and usable agents; Workspace tasks accept only workspace-visible agents.
-  Context hides other members' creator-only agents. Agent assignment does not start a run.
+  Context hides other members' creator-only agents. Creating or reassigning a task to an agent starts a run server-side;
+  human assignments and status-only edits do not dispatch.
 - Phase 2 adds seven task tools through the existing Work API. Updates enforce revisions and combine fields,
   status and scope in one Convex transaction. Agent activity attribution is service-only; human permissions remain authoritative.
 - Agent threads: `agents/agentThreads:createThreadByServer` creates a fresh thread under an agent. Turns start through

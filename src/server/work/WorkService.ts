@@ -76,7 +76,16 @@ export class WorkService {
 
   private async dispatchIfAgentAssigned(args: Actor, item: WorkItem, assigneePrincipalId: string): Promise<WorkItem> {
     const context = await this.context(args)
-    if (!context.people.some((person) => person.principalId === assigneePrincipalId && person.type === 'agent')) return item
+    if (!context.people.some((person) => person.principalId === assigneePrincipalId && person.type === 'agent')) {
+      if (item.assignmentExecution) {
+        throw new WorkServiceError(
+          `Task ${item.id} was saved, but its assigned agent is no longer available or visible. Restore its availability or assign another agent.`,
+          409,
+          'work_agent_unavailable',
+        )
+      }
+      return item
+    }
     const generation = item.assignmentExecution?.generation ?? item.updatedAt
     const prepared = await this.guard(() => this.repository.prepareAssignment({
       ...args,
@@ -95,7 +104,7 @@ export class WorkService {
       }
       if (execution.status === 'failed') {
         throw new WorkServiceError(
-          execution.error ?? `Task ${item.id} was saved, but the agent failed to start. Clear and reassign the agent to retry.`,
+          execution.error ?? `Task ${item.id} was saved, but the agent start could not be confirmed. Check its agent thread before clearing or reassigning.`,
           502,
           'work_agent_start_failed',
         )
@@ -120,7 +129,7 @@ export class WorkService {
       })
     } catch (error) {
       const detail = error instanceof Error ? error.message.slice(0, 300) : 'Agent startup failed.'
-      const failure = `Task ${item.id} was saved, but the agent failed to start: ${detail} Clear and reassign the agent to retry.`
+      const failure = `Task ${item.id} was saved, but the agent start could not be confirmed: ${detail} Check its agent thread before clearing or reassigning.`
       await this.repository.completeAssignment({
         ...args,
         id: item.id,

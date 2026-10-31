@@ -93,6 +93,63 @@ test('an agent assignment is prepared and dispatched once; same-assignee edits d
   assert.equal(dispatches, 1)
 })
 
+test('a persisted agent assignment missing from context is reported with the saved task id', async () => {
+  const agentItem = {
+    ...item,
+    id: 'task-5',
+    assigneePrincipalId: 'agent-1',
+    assignmentExecution: { assignedByUserId: 'u1', assigneePrincipalId: 'agent-1', generation: 46, status: 'pending' as const },
+  } as WorkItem
+  let preparations = 0
+  let dispatches = 0
+  const service = new WorkService(repository({
+    context: async () => ({
+      principalId: 'person-1',
+      role: 'member',
+      canCreateInWorkspace: true,
+      people: [],
+    }),
+    create: async () => agentItem,
+    prepareAssignment: async () => {
+      preparations += 1
+      return null
+    },
+  }), async () => { dispatches += 1; return [] })
+
+  await assert.rejects(
+    service.create({ ...actor, input: { title: 'Task', assigneePrincipalId: 'agent-1' } }),
+    (error: unknown) => error instanceof WorkServiceError
+      && error.statusCode === 409
+      && error.code === 'work_agent_unavailable'
+      && /task-5/.test(error.message),
+  )
+  assert.equal(preparations, 0)
+  assert.equal(dispatches, 0)
+})
+
+test('human assignments remain no-ops', async () => {
+  const humanItem = { ...item, id: 'task-6', assigneePrincipalId: 'person-2' } as WorkItem
+  let preparations = 0
+  let dispatches = 0
+  const service = new WorkService(repository({
+    context: async () => ({
+      principalId: 'person-1',
+      role: 'member',
+      canCreateInWorkspace: true,
+      people: [{ principalId: 'person-2', type: 'human', displayName: 'Person', userId: 'u2' }],
+    }),
+    create: async () => humanItem,
+    prepareAssignment: async () => {
+      preparations += 1
+      return null
+    },
+  }), async () => { dispatches += 1; return [] })
+
+  assert.equal(await service.create({ ...actor, input: { title: 'Task', assigneePrincipalId: 'person-2' } }), humanItem)
+  assert.equal(preparations, 0)
+  assert.equal(dispatches, 0)
+})
+
 test('agent launch failures are persisted and reported with the saved task id', async () => {
   const agentItem = {
     ...item,
@@ -135,7 +192,8 @@ test('agent launch failures are persisted and reported with the saved task id', 
     (error: unknown) => error instanceof WorkServiceError
       && error.statusCode === 502
       && /task-2/.test(error.message)
-      && /provider unavailable/.test(error.message),
+      && /provider unavailable/.test(error.message)
+      && /Check its agent thread before clearing or reassigning/.test(error.message),
   )
   assert.equal(state, 'failed')
   assert.match(storedError, /task-2/)
