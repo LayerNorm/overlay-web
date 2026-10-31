@@ -119,16 +119,19 @@ function roomHeaderPresentation({
   headerAgent,
   title,
   conversationTitle,
+  leading,
 }: {
   guided: boolean
   headerAgent: ReturnType<typeof useDirectMessageRoom>['vm']['headerAgent']
   title: string
   conversationTitle: string | null | undefined
+  leading: ReactNode
 }) {
   const activeTitle = headerAgent ? conversationTitle || title : title
   return {
     title: roomHeaderTitle(guided, activeTitle),
-    breadcrumbs: headerAgent ? [{ label: headerAgent.name }] : undefined,
+    breadcrumbs: headerAgent ? [{ label: headerAgent.name, leading }] : undefined,
+    leading: headerAgent ? undefined : leading,
   }
 }
 
@@ -277,6 +280,15 @@ export function DirectMessageExperience({
     headerAgent: vm.headerAgent,
     title: vm.title,
     conversationTitle: transcript.conversationTitle,
+    leading: (
+      <RoomHeaderLeading
+        soloAgentParticipant={vm.soloAgentParticipant}
+        headerAgent={vm.headerAgent}
+        conversationType={conversationType}
+        otherCount={vm.otherParticipants.length}
+        surfacePlatform={transcript.surfacePlatform}
+      />
+    ),
   })
 
   return (
@@ -314,15 +326,7 @@ export function DirectMessageExperience({
             title={header.title}
             breadcrumbs={header.breadcrumbs}
             subtitle={guided ? 'Your chief of staff' : roster.participants.length > 2 ? `${roster.participants.length} people` : vm.online > 0 ? 'Online' : undefined}
-            leading={(
-              <RoomHeaderLeading
-                soloAgentParticipant={vm.soloAgentParticipant}
-                headerAgent={vm.headerAgent}
-                conversationType={conversationType}
-                otherCount={vm.otherParticipants.length}
-                surfacePlatform={transcript.surfacePlatform}
-              />
-            )}
+            leading={header.leading}
             actions={guided ? guided.headerActions : (
               <RoomHeaderActions
                 vm={vm}

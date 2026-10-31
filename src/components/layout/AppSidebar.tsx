@@ -2,11 +2,10 @@
 
 import NextLink from 'next/link'
 import dynamic from 'next/dynamic'
+import { CircleHelp, Moon, Settings, Sun } from 'lucide-react'
 import { CollapsibleSection } from '@overlay/ui/primitives'
-import { ShellAdapterProvider, SidebarAccountMenu, UnifiedSidebar, type ShellAdapter } from '@overlay/shell-react'
+import { DoubleSidebar, ShellAdapterProvider, SidebarAccountMenu, UnifiedSidebar, type PrimaryRailItem, type ShellAdapter } from '@overlay/shell-react'
 import { StorageBar, UsageBar } from './sidebar/SidebarUsageMeters'
-import { AppSidebarPrimaryRail } from './sidebar/AppSidebarPrimaryRail'
-import { AppSidebarSecondaryPanel } from './sidebar/AppSidebarSecondaryPanel'
 import {
   DesktopAccountSlot,
   MobileDrawer,
@@ -14,7 +13,6 @@ import {
   MobileTopBar,
   SecondaryPanelResourceList,
   SidebarBrandLink,
-  SidebarRailBrand,
 } from './sidebar/AppSidebarChrome'
 import { signOutToLanding } from './sidebar/appSidebarNav'
 import { rememberPanelScope } from '@/hooks/use-panel-scope'
@@ -23,6 +21,7 @@ import { useAppSidebarState } from './sidebar/useAppSidebarState'
 import { EMPTY_COLLABORATION_NOTIFICATIONS, type AppSidebarProps } from './appSidebarTypes'
 import { WORK_FILTER_LABELS, type WorkFilter } from '@/shared/work/query'
 import type { InlineNavItem } from '@overlay/shell-react'
+import { MARKETING_DOCS_URL } from '@/shared/marketing/marketing'
 
 const GlobalSearchDialog = dynamic(() => import('./GlobalSearchDialog').then((mod) => ({ default: mod.GlobalSearchDialog })))
 const WORK_SECTION_ORDER: readonly WorkFilter[] = ['needs-you', 'mine', 'all']
@@ -51,8 +50,9 @@ export default function AppSidebar({
 
     workspace,
   })
-  const classicLayout = useOptionalAppSettings()?.settings.useSecondarySidebar === true
-  const railExpanded = !s.sidebarCollapsed
+  const appSettings = useOptionalAppSettings()
+  const classicLayout = appSettings?.settings.useSecondarySidebar !== false
+  const railExpanded = !classicLayout && !s.sidebarCollapsed
   const brandHomeHref = s.brandConfig.homeHref
   const brandLabel = s.brandConfig.shortName ?? s.brandConfig.name
 
@@ -155,6 +155,19 @@ export default function AppSidebar({
     : renderChatSection
   const sectionRows = workSections ? WORK_SECTION_ROWS : undefined
   const sectionActions = workSections ? { all: s.panelAction } : s.panelSectionActions
+  const settingsHref = s.activeWorkspaceId
+    ? s.buildWorkspaceHref(s.activeWorkspaceId, '/app/settings')
+    : '/app/settings'
+  const railFooterItems: PrimaryRailItem[] = [
+    ...(appSettings ? [{
+      id: 'theme', label: appSettings.settings.theme === 'dark' ? 'Use light theme' : 'Use dark theme',
+      icon: appSettings.settings.theme === 'dark' ? Sun : Moon,
+      onSelect: () => { void appSettings.updateSettings({ theme: appSettings.settings.theme === 'dark' ? 'light' : 'dark' }) },
+    }] : []),
+    { id: 'help', label: 'Help', icon: CircleHelp, href: `${MARKETING_DOCS_URL}/help`, onSelect: () => { window.open(`${MARKETING_DOCS_URL}/help`, '_blank', 'noopener,noreferrer') } },
+    { id: 'settings', label: 'Settings', icon: Settings, active: s.routeState.panelKind === 'settings', href: settingsHref, onSelect: () => s.router.push(settingsHref) },
+    ...s.railFooterItems,
+  ]
 
   return (
     <ShellAdapterProvider value={shellAdapter}>
@@ -215,56 +228,35 @@ export default function AppSidebar({
         </UnifiedSidebar>
       )}
 
-      {classicLayout ? (
-      <>
-      <AppSidebarPrimaryRail
-        brand={
-          <SidebarRailBrand
-            collapsed={s.sidebarCollapsed}
-            homeHref={brandHomeHref}
-            logoSrc={s.brandConfig.logoSrc}
-            logoAlt={s.brandConfig.logoAlt}
-            label={brandLabel}
-            onExpand={() => s.setSidebarCollapsed(false)}
-            onCollapse={() => {
-              s.setAccountMenuOpen(false)
-              s.setSidebarCollapsed(true)
-            }}
-          />
-        }
+      {classicLayout && !s.hideTemporaryChatChrome ? (
+      <DoubleSidebar
+        brand={brandLink}
+        railBrand={<SidebarBrandLink href={brandHomeHref} logoSrc={s.brandConfig.logoSrc} logoAlt={s.brandConfig.logoAlt} label={brandLabel} onNavigate={s.closeMobileDrawer} className="flex size-10 items-center justify-center rounded-lg" labelClassName="sr-only" markOnly />}
+        title={s.panelTitle}
+        panelId="app-context-sidebar"
+        themePreset={appSettings?.settings.theme === 'dark' ? appSettings.settings.darkThemePreset : appSettings?.settings.lightThemePreset}
+        keyboardShortcut
+        resizable
+        collapsed={s.sidebarCollapsed}
+        onCollapsedChange={(collapsed) => {
+          s.setAccountMenuOpen(false)
+          s.setSidebarCollapsed(collapsed)
+        }}
         items={s.railItems}
-        footerItems={s.railFooterItems}
-        sectionNav={s.sidebarCollapsed ? s.panelNav : undefined}
+        footerItems={railFooterItems}
+        panelKind={s.routeState.panelKind}
+        panelNav={s.panelNav}
+        panelAction={s.panelAction}
+        sectionActions={sectionActions}
+        renderSection={renderSection}
+        sectionRows={sectionRows}
+        onSearch={() => s.openGlobalSearch(null)}
+        scope={s.routeState.scope}
         account={desktopAccountSlot}
-        expanded={railExpanded}
-        className={`hidden h-full transition-[width,opacity,border-color] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] md:flex ${
-          s.hideTemporaryChatChrome
-            ? 'w-0 border-transparent opacity-0 pointer-events-none'
-            : `${railExpanded ? 'w-(--primary-sidebar-width)' : 'w-[72px]'} opacity-100`
-        }`}
-      />
-
-      {s.routeState.showSecondaryPanel ? (
-        <AppSidebarSecondaryPanel
-          title={s.panelTitle}
-          nav={s.panelNav}
-          action={s.panelAction}
-          search={s.panelSearch}
-          open={!s.sidebarCollapsed}
-          onOpenChange={(open) => {
-            s.setAccountMenuOpen(false)
-            s.setSidebarCollapsed(!open)
-          }}
-          className={`hidden h-full transition-[width,opacity,border-color] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] md:flex ${
-            s.sidebarCollapsed || s.hideTemporaryChatChrome
-              ? 'w-0 border-transparent opacity-0 pointer-events-none invisible'
-              : 'w-(--secondary-sidebar-width) opacity-100'
-          }`}
-        >
-          {panelChildren}
-        </AppSidebarSecondaryPanel>
-      ) : null}
-      </>
+        className={s.hideTemporaryChatChrome ? 'hidden' : 'hidden md:flex'}
+      >
+        {panelChildren}
+      </DoubleSidebar>
       ) : null}
 
       {classicLayout ? (

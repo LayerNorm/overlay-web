@@ -6,18 +6,21 @@ import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbP
 export interface AppBreadcrumbItem {
   label: ReactNode
   href?: string
+  leading?: ReactNode
 }
 
 interface BreadcrumbContextValue {
   items: AppBreadcrumbItem[]
+  leading?: ReactNode
   renderLink?: (item: AppBreadcrumbItem, className: string) => ReactNode
 }
 
 export const AppBreadcrumbContext = createContext<BreadcrumbContextValue>({ items: [] })
 
-export function AppBreadcrumbs({ title, items = [], 'aria-label': ariaLabel = 'Breadcrumb', asHeading = false }: {
+export function AppBreadcrumbs({ title, items = [], leading, 'aria-label': ariaLabel = 'Breadcrumb', asHeading = false }: {
   title?: ReactNode
   items?: AppBreadcrumbItem[]
+  leading?: ReactNode
   'aria-label'?: string
   asHeading?: boolean
 }) {
@@ -27,8 +30,12 @@ export function AppBreadcrumbs({ title, items = [], 'aria-label': ariaLabel = 'B
     if (item.label !== trail.at(-1)?.label) trail.push(item)
   }
   if (title && title !== trail.at(-1)?.label) trail.push({ label: title })
-  if (!trail.length) return null
+  const leadingContent = leading ? <div className="mr-2 shrink-0 self-center">{leading}</div> : null
+  if (!trail.length) return leadingContent
   return (
+    <>
+    {context.leading}
+    {leadingContent}
     <Breadcrumb aria-label={ariaLabel} className="min-w-0 flex-1">
       <BreadcrumbList className="min-w-0 flex-nowrap">
         {trail.map((item, index) => {
@@ -39,6 +46,7 @@ export function AppBreadcrumbs({ title, items = [], 'aria-label': ariaLabel = 'B
             <Fragment key={index}>
               {index > 0 ? <BreadcrumbSeparator className="shrink-0" /> : null}
               <BreadcrumbItem className={`min-w-0 ${current ? 'flex-1' : ''}`}>
+                {item.leading ? <span className="inline-flex shrink-0 items-center">{item.leading}</span> : null}
                 {current
                   ? asHeading
                     ? <h1 className="m-0 min-w-0 truncate text-sm leading-5">{currentLabel}</h1>
@@ -54,5 +62,6 @@ export function AppBreadcrumbs({ title, items = [], 'aria-label': ariaLabel = 'B
         })}
       </BreadcrumbList>
     </Breadcrumb>
+    </>
   )
 }

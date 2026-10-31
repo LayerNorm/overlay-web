@@ -54,7 +54,7 @@ const TAB_PANEL_KINDS = new Set(['work', 'files', 'notes', 'tools'])
 const MORE_CLOSE_DELAY_MS = 150
 
 
-function NavRow({ item, collapsed }: { item: PrimaryRailItem; collapsed: boolean }) {
+export function NavRow({ item, collapsed }: { item: PrimaryRailItem; collapsed: boolean }) {
   const { Link } = useShellAdapter()
   const Icon = item.pending ? Loader2 : item.icon
   const content = (
@@ -98,7 +98,7 @@ function NavRow({ item, collapsed }: { item: PrimaryRailItem; collapsed: boolean
 }
 
 /** More pages. Opens on hover with a short close delay; click, Enter and touch still open it. */
-function MoreMenu({ groups, collapsed }: { groups: ReadonlyArray<MoreItemGroup>; collapsed: boolean }) {
+export function MoreMenu({ groups, collapsed }: { groups: ReadonlyArray<MoreItemGroup>; collapsed: boolean }) {
   const [open, setOpen] = useState(false)
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   // A click right after hover opened the menu should keep it open, not toggle it shut.
@@ -201,7 +201,7 @@ function MoreMenu({ groups, collapsed }: { groups: ReadonlyArray<MoreItemGroup>;
 
 export const WORKSPACE_LOCKED_HINT = 'To enable Workspace features, invite members.'
 
-function ScopeToggle({
+export function ScopeToggle({
   scope,
   workspaceLocked,
   onChange,
@@ -249,7 +249,7 @@ function ScopeToggle({
 }
 
 /** Rows under the selected scope (for Chats: Direct messages, Channels, Activity). */
-function scopeChildren(nav: SecondaryPanelNav | undefined, scope: PanelScope): ReadonlyArray<InlineNavItem> {
+export function scopeChildren(nav: SecondaryPanelNav | undefined, scope: PanelScope): ReadonlyArray<InlineNavItem> {
   if (!nav) return []
   const row = nav.items.find((item) => item.id === scope)
   if (row?.children?.length) return row.children
@@ -287,7 +287,7 @@ export interface UnifiedSidebarProps {
   className?: string
 }
 
-function useCollapseShortcut(enabled: boolean, collapsed: boolean, onCollapsedChange: (collapsed: boolean) => void) {
+export function useCollapseShortcut(enabled: boolean, collapsed: boolean, onCollapsedChange: (collapsed: boolean) => void) {
   useEffect(() => {
     if (!enabled) return
     const onKeyDown = (event: KeyboardEvent) => {

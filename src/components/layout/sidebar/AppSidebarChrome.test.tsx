@@ -3,7 +3,45 @@ import test from 'node:test'
 import React from 'react'
 import { Circle } from 'lucide-react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { MobileNavStep, SidebarBrandLink, SidebarRailBrand } from './AppSidebarChrome'
+import { getDesktopSidebarViewportSnapshot, MobileNavStep, SidebarBrandLink, SidebarRailBrand, subscribeToDesktopSidebarViewport } from './AppSidebarChrome'
+
+test('mobile drawer viewport subscription tracks the desktop breakpoint and cleans up', () => {
+  const originalWindow = Object.getOwnPropertyDescriptor(globalThis, 'window')
+  let listener: (() => void) | undefined
+  let notifications = 0
+  const viewport = {
+    matches: false,
+    addEventListener(event: string, callback: () => void) {
+      assert.equal(event, 'change')
+      listener = callback
+    },
+    removeEventListener(event: string, callback: () => void) {
+      assert.equal(event, 'change')
+      assert.equal(callback, listener)
+      listener = undefined
+    },
+  }
+  Object.defineProperty(globalThis, 'window', {
+    configurable: true,
+    value: { matchMedia(query: string) { assert.equal(query, '(min-width: 768px)'); return viewport } },
+  })
+  try {
+    const unsubscribe = subscribeToDesktopSidebarViewport(() => { notifications += 1 })
+    assert.equal(getDesktopSidebarViewportSnapshot(), false)
+    viewport.matches = true
+    listener?.()
+    assert.equal(getDesktopSidebarViewportSnapshot(), true)
+    viewport.matches = false
+    listener?.()
+    assert.equal(getDesktopSidebarViewportSnapshot(), false)
+    assert.equal(notifications, 2)
+    unsubscribe()
+    assert.equal(listener, undefined)
+  } finally {
+    if (originalWindow) Object.defineProperty(globalThis, 'window', originalWindow)
+    else Reflect.deleteProperty(globalThis, 'window')
+  }
+})
 
 test('mobile navigation exposes the actual rows as tour targets', () => {
   const ids = ['work', 'agents', 'chat', 'automations', 'files', 'extensions']

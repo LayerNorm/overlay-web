@@ -36,9 +36,10 @@ const bundle = {
   ],
 } as unknown as WorkspaceAgentBundle
 
-test('an agent\'s threads share the icon column without redundant labels or creation rows', () => {
+test('agent threads expose a scoped tree hook without redundant labels or creation rows', () => {
   const html = render(bundle)
   assert.match(html, /data-slot="sidebar-menu"/)
+  assert.match(html, /agent-thread-tree/)
   assert.doesNotMatch(html, /data-slot="sidebar-menu-sub"/)
   assert.doesNotMatch(html, /border-l|ml-3\.5|pl-2/)
   assert.match(html, /\[&amp;&gt;svg\]:mx-1/)

@@ -146,6 +146,8 @@ function ScreenRightPanel({
     <>
       <RightPanelOverlay visible={visible} onClose={onClose} />
       <aside
+        data-slot="app-screen-right-panel"
+        data-mode={floating ? 'floating' : 'docked'}
         className={cn(
           'absolute right-0 z-30 flex min-h-0 w-full max-w-[min(24rem,100vw)] shrink-0 overflow-hidden bg-(--sidebar-surface) transition-[transform,width,opacity] duration-300 ease-(--overlay-ease)',
           resizing ? 'transition-none' : null,
@@ -203,6 +205,7 @@ export function AppScreenShell({
 
   return (
     <div
+      data-slot="app-screen-shell"
       className={cn(
         'flex h-full min-h-0 w-full bg-(--background) text-(--foreground)',
         className,
@@ -220,8 +223,8 @@ export function AppScreenShell({
           {sidebar}
         </aside>
       ) : null}
-      <div className="relative flex min-h-0 min-w-0 flex-1">
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <div data-slot="app-screen-layout" className="relative flex min-h-0 min-w-0 flex-1">
+        <div data-slot="app-screen-main" className="flex min-h-0 min-w-0 flex-1 flex-col">
           {header}
           <div className={cn('min-h-0 min-w-0 flex-1', contentClassName)}>{children}</div>
         </div>
@@ -268,10 +271,9 @@ function AppScreenHeaderTitle({
 }: Pick<AppScreenHeaderProps, 'title' | 'breadcrumbs' | 'subtitle' | 'description' | 'leading' | 'metadata'>) {
   return (
     <div className="flex min-w-0 flex-1 items-center">
-      {leading ? <div className="mr-2 shrink-0">{leading}</div> : null}
       <div className="min-w-0 flex-1">
-        <div className="flex min-w-0 items-baseline">
-          <AppBreadcrumbs asHeading title={title} items={breadcrumbs} />
+        <div className="flex min-w-0 items-center">
+          <AppBreadcrumbs asHeading title={title} items={breadcrumbs} leading={leading} />
           {subtitle ? <span className="ml-2 truncate text-sm text-(--muted)">{subtitle}</span> : null}
           {metadata ? <span className="ml-2 shrink-0 text-xs leading-5 text-(--muted)">{metadata}</span> : null}
         </div>
@@ -293,6 +295,7 @@ export function AppScreenHeader({
 }: AppScreenHeaderProps) {
   return (
     <header
+      data-slot="app-screen-header"
       className={cn(
         'flex min-h-14 shrink-0 flex-col justify-center gap-2 px-3 py-2.5 sm:px-6 md:min-h-16 md:gap-3 md:py-3',
         border ? 'border-b border-(--border)' : null,

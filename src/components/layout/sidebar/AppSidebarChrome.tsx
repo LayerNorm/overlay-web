@@ -3,7 +3,7 @@ import { unstyledButton } from '@overlay/ui/control-reset'
 import Image from 'next/image'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Suspense } from 'react'
+import { Suspense, useEffect, useSyncExternalStore } from 'react'
 import type { ReactNode } from 'react'
 import {
   ChevronLeft,
@@ -70,6 +70,7 @@ export function SidebarBrandLink({
   onNavigate,
   className,
   labelClassName,
+  markOnly = false,
 }: {
   href: string
   logoSrc: string
@@ -78,10 +79,11 @@ export function SidebarBrandLink({
   onNavigate: () => void
   className: string
   labelClassName: string
+  markOnly?: boolean
 }) {
   return (
-    <Link href={href} className={className} onClick={onNavigate}>
-      {logoSrc === DEFAULT_BRAND_LOGO_SRC && (label === 'Overlay' || label === 'overlay') ? (
+    <Link href={href} aria-label={markOnly ? label : undefined} className={className} onClick={onNavigate}>
+      {markOnly ? <BrandMark logoSrc={logoSrc} logoAlt={logoAlt} size={22} /> : logoSrc === DEFAULT_BRAND_LOGO_SRC && (label === 'Overlay' || label === 'overlay') ? (
         <BrandLockup className={labelClassName} />
       ) : (
         <>
@@ -782,6 +784,20 @@ export function MobileSidebar({
   )
 }
 
+const DESKTOP_SIDEBAR_QUERY = '(min-width: 768px)'
+
+export function subscribeToDesktopSidebarViewport(onChange: () => void) {
+  const viewport = window.matchMedia(DESKTOP_SIDEBAR_QUERY)
+  viewport.addEventListener('change', onChange)
+  return () => viewport.removeEventListener('change', onChange)
+}
+
+export function getDesktopSidebarViewportSnapshot() {
+  return window.matchMedia(DESKTOP_SIDEBAR_QUERY).matches
+}
+
+const getServerDesktopSidebarViewport = () => false
+
 export function MobileDrawer({
   open,
   hidden,
@@ -793,6 +809,14 @@ export function MobileDrawer({
   onClose: () => void
   children?: ReactNode
 }) {
+  const isDesktop = useSyncExternalStore(subscribeToDesktopSidebarViewport, getDesktopSidebarViewportSnapshot, getServerDesktopSidebarViewport)
+  useEffect(() => {
+    if (isDesktop && open) onClose()
+  }, [isDesktop, open, onClose])
+
+  // CSS hiding interrupts Sheet's exit animation and can strand its focus/aria-hidden locks.
+  if (isDesktop) return null
+
   return (
     <Sheet open={open && !hidden} onOpenChange={(nextOpen) => { if (!nextOpen) onClose() }}>
       <SheetContent
