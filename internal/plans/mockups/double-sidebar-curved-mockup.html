@@ -1,0 +1,459 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Overlay · Double sidebar (curved)</title>
+<script>
+  (function () {
+    var t = null
+    try { t = localStorage.getItem('overlay-mockup-theme') } catch (e) {}
+    if (t !== 'light' && t !== 'dark') t = 'dark'
+    document.documentElement.dataset.theme = t
+  })()
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Libre+Baskerville&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --background: #ffffff;
+    --foreground: #0a0a0a;
+    --muted: #71717a;
+    --muted-light: #a1a1aa;
+    --chrome: #f4f4f5;
+    --fill: #e9e9eb;
+    --fill-2: #e0e0e3;
+    --panel: #ffffff;
+    --popover: #ffffff;
+    --outline: #e4e4e7;
+    --shadow-pop: 0 18px 50px -18px rgba(0,0,0,.28), 0 2px 8px rgba(0,0,0,.06);
+    --ease: cubic-bezier(0.23, 1, 0.32, 1);
+    --guide: #d4d4d8;
+  }
+  :root[data-theme="dark"] {
+    --background: #0d0d0d;
+    --foreground: #f2f2f2;
+    --muted: #a1a1aa;
+    --muted-light: #71717a;
+    --chrome: #0d0d0d;
+    --fill: #1f1f1f;
+    --fill-2: #282828;
+    --panel: #151515;
+    --popover: #1c1c1c;
+    --outline: #242424;
+    --shadow-pop: 0 18px 50px -18px rgba(0,0,0,.85), 0 2px 8px rgba(0,0,0,.4);
+    --guide: #3f3f46;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { background: var(--chrome); color: var(--foreground); font: 14px/1.5 'Geist', system-ui, sans-serif; -webkit-font-smoothing: antialiased; overflow: hidden; }
+  button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+  input, textarea { font: inherit; color: inherit; }
+  svg.i { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+  svg.i.sm { width: 16px; height: 16px; }
+
+  .app { display: flex; height: 100vh; padding: 8px 8px 8px 0; }
+
+  /* ── Rail: app sections ── */
+  .rail { position: relative; z-index: 10; width: 60px; flex: none; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 0 4px; }
+  .rail .brand { width: 40px; height: 40px; display: grid; place-items: center; margin-bottom: 10px; color: var(--foreground); border-radius: 10px; }
+  .rail .brand:hover { background: var(--fill); }
+  .rail-btn { position: relative; width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; color: var(--muted); transition: background .15s var(--ease), color .15s var(--ease); }
+  .rail-btn:hover { background: var(--fill); color: var(--foreground); }
+  .rail-btn.on { background: var(--fill-2); color: var(--foreground); }
+  .rail-btn .tip { position: absolute; left: 48px; top: 50%; transform: translate(-4px, -50%); white-space: nowrap; background: var(--popover); color: var(--foreground); border: 1px solid var(--outline); box-shadow: var(--shadow-pop); padding: 4px 8px; border-radius: 6px; font-size: 12px; opacity: 0; pointer-events: none; transition: opacity .12s, transform .12s var(--ease); z-index: 20; }
+  .rail-btn:hover .tip { opacity: 1; transform: translate(0, -50%); }
+  .rail .sep { width: 20px; height: 1px; background: var(--outline); margin: 6px 0; }
+  .rail .spacer { flex: 1; }
+  .avatar { width: 28px; height: 28px; border-radius: 50%; background: #e8a33d; color: #111; font-size: 11px; font-weight: 600; display: grid; place-items: center; margin-top: 6px; }
+
+  .more-menu { position: absolute; left: 56px; background: var(--popover); border: 1px solid var(--outline); box-shadow: var(--shadow-pop); border-radius: 10px; padding: 4px; width: 180px; z-index: 30; opacity: 0; transform: scale(.97); transform-origin: left top; pointer-events: none; transition: opacity .14s, transform .14s var(--ease); }
+  .more-menu.open { opacity: 1; transform: scale(1); pointer-events: auto; }
+  .more-menu button { display: flex; align-items: center; gap: 10px; width: 100%; height: 34px; padding: 0 10px; border-radius: 6px; color: var(--foreground); }
+  .more-menu button:hover { background: var(--fill); }
+
+  /* ── Main sidebar: contents of the selected section ── */
+  .side { width: 272px; flex: none; display: flex; flex-direction: column; min-height: 0; transition: width .22s var(--ease), opacity .18s; overflow: hidden; }
+  .app.collapsed .side { width: 0; opacity: 0; }
+  .side-head { display: flex; align-items: center; height: 48px; padding: 0 6px 0 12px; gap: 2px; }
+  .side-head h1 { flex: 1; margin: 0; font-size: 15px; font-weight: 600; letter-spacing: -.01em; }
+  .icon-btn { width: 32px; height: 32px; border-radius: 8px; display: grid; place-items: center; color: var(--muted); }
+  .icon-btn:hover { background: var(--fill); color: var(--foreground); }
+  .side-body { flex: 1; overflow-y: auto; padding: 4px 8px 12px; scrollbar-width: none; }
+  .row { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 34px; padding: 0 10px; border-radius: 8px; color: var(--foreground); text-align: left; }
+  .row:hover { background: var(--fill); }
+  .row.on { background: var(--fill-2); }
+  .row .ic { color: var(--muted); display: inline-flex; }
+  .row .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .row .meta { color: var(--muted-light); font-size: 12px; }
+  .row .badge { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--fill-2); color: var(--foreground); font-size: 11px; display: grid; place-items: center; }
+  .label { display: flex; align-items: center; justify-content: space-between; color: var(--muted-light); font-size: 12px; padding: 16px 10px 4px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+
+  /* agent rows: Akeru-style two-line items */
+  .agent { display: flex; gap: 10px; align-items: center; width: 100%; padding: 6px 6px 6px 10px; border-radius: 10px; text-align: left; cursor: pointer; }
+  .agent:hover { background: var(--fill); }
+  .agent.on { background: var(--fill-2); }
+  .agent .body { flex: 1; min-width: 0; }
+  .agent .top { display: flex; align-items: baseline; gap: 8px; }
+  .agent .name { flex: 1; font-weight: 500; }
+  .agent .time { color: var(--muted-light); font-size: 12px; }
+  .agent .prev { color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .agent .add { width: 24px; height: 24px; border-radius: 6px; display: none; place-items: center; color: var(--muted); }
+  .agent .add:hover { background: var(--fill-2); color: var(--foreground); }
+  .agent:hover .add { display: grid; }
+  .agent:hover .time { display: none; }
+  .agent .time { min-width: 24px; text-align: right; padding-right: 4px; }
+  .agent .live { width: 6px; height: 6px; border-radius: 50%; background: #4ade80; display: inline-block; margin-left: 6px; vertical-align: middle; }
+  .agent-group { margin-bottom: 2px; }
+  .threads { display: none; margin: 0 0 8px; }
+  /* Curved branch from the agent's avatar to each thread */
+  .thread-row { position: relative; margin-left: 36px; width: calc(100% - 36px) !important; overflow: visible; }
+  .thread-row::before { content: ''; position: absolute; left: -13px; top: 5px; width: 10px; height: 10px; border-left: 1.5px solid var(--guide); border-bottom: 1.5px solid var(--guide); border-bottom-left-radius: 4px; pointer-events: none; }
+  .agent-group.open .threads { display: block; }
+  .thread-row { display: flex; align-items: center; gap: 8px; width: 100%; height: 30px; padding: 0 10px; border-radius: 7px; color: var(--muted); text-align: left; font-size: 13px; }
+  .thread-row:hover { background: var(--fill); color: var(--foreground); }
+  .thread-row.on { background: var(--fill-2); color: var(--foreground); }
+  .thread-row .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .thread-row .meta { color: var(--muted-light); font-size: 12px; }
+  .thread-row.new { color: var(--muted-light); }
+
+  /* Personal / Workspace scope */
+  .scope { display: flex; gap: 2px; margin: 0 8px 6px; padding: 3px; border-radius: 10px; background: var(--fill); }
+  .scope button { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; height: 28px; border-radius: 7px; color: var(--muted); font-size: 13px; transition: background .15s var(--ease), color .15s var(--ease); }
+  .scope button:hover { color: var(--foreground); }
+  .scope button.on { background: var(--panel); color: var(--foreground); box-shadow: 0 1px 2px rgba(0,0,0,.12); }
+  :root[data-theme="dark"] .scope button.on { background: var(--fill-2); box-shadow: none; }
+  .scope.hidden { display: none; }
+
+  /* ── Main page ── */
+  .main { flex: 1; min-width: 0; background: var(--panel); border: 1px solid var(--outline); border-radius: 12px; display: flex; flex-direction: column; overflow: hidden; }
+  .main-head { height: 48px; flex: none; display: flex; align-items: center; gap: 10px; padding: 0 10px; }
+  .main-head .title { font-weight: 500; display: flex; align-items: center; gap: 8px; }
+  .main-head .crumb { color: var(--muted); }
+  .thread { flex: 1; overflow-y: auto; display: flex; flex-direction: column; align-items: center; padding: 32px 24px; }
+  .thread .col { width: 100%; max-width: 680px; display: flex; flex-direction: column; gap: 20px; }
+  .msg-user { align-self: flex-end; background: var(--fill); padding: 8px 14px; border-radius: 16px; max-width: 75%; }
+  .msg-ai { color: var(--foreground); line-height: 1.65; }
+  .msg-ai p { margin: 0 0 10px; }
+  .composer-wrap { padding: 0 24px 20px; display: flex; justify-content: center; }
+  .composer { width: 100%; max-width: 680px; border: 1px solid var(--outline); background: var(--background); border-radius: 16px; padding: 12px 12px 10px 16px; }
+  .composer .ph { color: var(--muted-light); height: 24px; }
+  .composer .bar { display: flex; justify-content: flex-end; }
+  .send { width: 30px; height: 30px; border-radius: 50%; background: var(--fill-2); color: var(--foreground); display: grid; place-items: center; }
+  .empty { flex: 1; display: grid; place-items: center; color: var(--muted); }
+  .empty .box { text-align: center; }
+  .empty .box div:first-child { color: var(--foreground); font-weight: 500; margin-bottom: 4px; }
+
+  .wordmark { font-family: 'Libre Baskerville', serif; font-size: 17px; letter-spacing: -.01em; display: inline-flex; align-items: center; gap: 0; }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <symbol id="mark" viewBox="43 -815 860 860"><path fill="currentColor" d="M473 -780Q561 -780 636.5 -749.5Q712 -719 768.5 -664.5Q825 -610 857.0 -537.0Q889 -464 889 -379Q889 -298 857.0 -227.0Q825 -156 768.0 -103.0Q711 -50 635.5 -20.0Q560 10 473 10Q386 10 310.5 -20.0Q235 -50 178.0 -103.0Q121 -156 89.0 -227.0Q57 -298 57 -379Q57 -464 89.0 -537.0Q121 -610 177.5 -664.5Q234 -719 309.5 -749.5Q385 -780 473 -780ZM473 -45Q561 -45 625.0 -85.5Q689 -126 724.0 -200.5Q759 -275 759 -376Q759 -483 724.0 -561.5Q689 -640 625.0 -682.5Q561 -725 473 -725Q385 -725 321.0 -682.5Q257 -640 222.0 -561.5Q187 -483 187 -376Q187 -275 222.0 -200.5Q257 -126 321.0 -85.5Q385 -45 473 -45Z"/><path fill="currentColor" d="M347.0 -447.0A46.0 46.0 0 0 1 439.0 -447.0L439.0 -363.0A46.0 46.0 0 0 1 347.0 -363.0ZM507.0 -447.0A46.0 46.0 0 0 1 599.0 -447.0L599.0 -363.0A46.0 46.0 0 0 1 507.0 -363.0Z"/></symbol>
+    <!-- Lucide -->
+    <symbol id="i-work" viewBox="0 0 24 24"><path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/></symbol>
+    <symbol id="i-bot" viewBox="0 0 24 24"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></symbol>
+    <symbol id="i-chat" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></symbol>
+    <symbol id="i-more" viewBox="0 0 24 24"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></symbol>
+    <symbol id="i-puzzle" viewBox="0 0 24 24"><path d="M15.39 4.39a1 1 0 0 0 1.68-.474 2.5 2.5 0 1 1 3.014 3.015 1 1 0 0 0-.474 1.68l1.683 1.682a2.414 2.414 0 0 1 0 3.414L19.61 15.39a1 1 0 0 1-1.68-.474 2.5 2.5 0 1 0-3.014 3.015 1 1 0 0 1 .474 1.68l-1.683 1.682a2.414 2.414 0 0 1-3.414 0L8.61 19.61a1 1 0 0 0-1.68.474 2.5 2.5 0 1 1-3.014-3.015 1 1 0 0 0 .474-1.68l-1.683-1.682a2.414 2.414 0 0 1 0-3.414L4.39 8.61a1 1 0 0 1 1.68.474 2.5 2.5 0 1 0 3.014-3.015 1 1 0 0 1-.474-1.68l1.683-1.682a2.414 2.414 0 0 1 3.414 0z"/></symbol>
+    <symbol id="i-flow" viewBox="0 0 24 24"><rect width="8" height="8" x="3" y="3" rx="2"/><path d="M7 11v4a2 2 0 0 0 2 2h4"/><rect width="8" height="8" x="13" y="13" rx="2"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></symbol>
+    <symbol id="i-pen" viewBox="0 0 24 24"><path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></symbol>
+    <symbol id="i-panel" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></symbol>
+    <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></symbol>
+    <symbol id="i-gear" viewBox="0 0 24 24"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="i-list" viewBox="0 0 24 24"><path d="M3 12h.01"/><path d="M3 18h.01"/><path d="M3 6h.01"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M8 6h13"/></symbol>
+    <symbol id="i-board" viewBox="0 0 24 24"><path d="M6 5v11"/><path d="M12 5v6"/><path d="M18 5v14"/></symbol>
+    <symbol id="i-timeline" viewBox="0 0 24 24"><path d="M8 6h10"/><path d="M6 12h9"/><path d="M11 18h7"/></symbol>
+    <symbol id="i-inbox" viewBox="0 0 24 24"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></symbol>
+    <symbol id="i-hash" viewBox="0 0 24 24"><path d="M4 9h16"/><path d="M4 15h16"/><path d="M10 3 8 21"/><path d="M16 3l-2 18"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></symbol>
+    <symbol id="i-plug" viewBox="0 0 24 24"><path d="M12 22v-5"/><path d="M9 8V2"/><path d="M15 8V2"/><path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z"/></symbol>
+    <symbol id="i-spark" viewBox="0 0 24 24"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/></symbol>
+    <symbol id="i-server" viewBox="0 0 24 24"><rect width="20" height="8" x="2" y="2" rx="2"/><rect width="20" height="8" x="2" y="14" rx="2"/><path d="M6 6h.01"/><path d="M6 18h.01"/></symbol>
+    <symbol id="i-grid" viewBox="0 0 24 24"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></symbol>
+    <symbol id="i-user" viewBox="0 0 24 24"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></symbol>
+    <symbol id="i-users" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
+    <symbol id="i-up" viewBox="0 0 24 24"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></symbol>
+    <!-- Creature bodies (src/components/orb/Creature.tsx) -->
+    <symbol id="c-cloud" viewBox="0 0 100 100"><g fill="currentColor"><circle cx="34" cy="61" r="16"/><circle cx="50" cy="49" r="20"/><circle cx="67" cy="61" r="16"/><rect x="21" y="58" width="59" height="23" rx="11.5"/></g></symbol>
+    <symbol id="c-triangle" viewBox="0 0 100 100"><path d="M50 16 L86 82 Q89 90 81 90 L19 90 Q11 90 14 82 Z" fill="currentColor" stroke="currentColor" stroke-width="7" stroke-linejoin="round"/></symbol>
+    <symbol id="c-droplet" viewBox="0 0 100 100"><path d="M50 10 C50 10 79 45 79 64 A29 29 0 1 1 21 64 C21 45 50 10 50 10 Z" fill="currentColor"/></symbol>
+    <symbol id="c-hexagon" viewBox="0 0 100 100"><path d="M50 12 L84 31 L84 71 L50 90 L16 71 L16 31 Z" fill="currentColor" stroke="currentColor" stroke-width="7" stroke-linejoin="round"/></symbol>
+    <symbol id="c-blob" viewBox="0 0 100 100"><path d="M50 12 C70 12 90 28 89 55 C88 80 70 93 50 93 C30 93 11 80 12 54 C13 29 30 12 50 12 Z" fill="currentColor"/></symbol>
+    <symbol id="c-squircle" viewBox="0 0 100 100"><rect x="12" y="14" width="76" height="78" rx="24" fill="currentColor"/></symbol>
+    <symbol id="c-eyes" viewBox="0 0 100 100"><g fill="#1a1a1a"><rect x="36" y="45" width="9.5" height="17" rx="4.75"/><rect x="54.5" y="45" width="9.5" height="17" rx="4.75"/></g></symbol>
+  </defs>
+</svg>
+
+<div class="app" id="app">
+  <nav class="rail" id="rail">
+    <button class="brand" title="Workspace"><svg width="24" height="24"><use href="#mark"/></svg></button>
+    <button class="rail-btn" data-section="work"><svg class="i"><use href="#i-work"/></svg><span class="tip">Work</span></button>
+    <button class="rail-btn" data-section="agents"><svg class="i"><use href="#i-bot"/></svg><span class="tip">Agents</span></button>
+    <button class="rail-btn on" data-section="chats"><svg class="i"><use href="#i-chat"/></svg><span class="tip">Chats</span></button>
+    <button class="rail-btn" id="moreBtn"><svg class="i"><use href="#i-more"/></svg><span class="tip">More</span></button>
+    <div class="spacer"></div>
+    <button class="rail-btn" id="themeBtn"><svg class="i"><use href="#i-sun"/></svg><span class="tip">Theme</span></button>
+    <button class="rail-btn"><svg class="i"><use href="#i-help"/></svg><span class="tip">Help</span></button>
+    <button class="rail-btn"><svg class="i"><use href="#i-gear"/></svg><span class="tip">Settings</span></button>
+    <div class="avatar">DL</div>
+  </nav>
+
+  <div class="more-menu" id="moreMenu">
+    <button data-section="files"><svg class="i sm"><use href="#i-file"/></svg>Files</button>
+    <button data-section="extensions"><svg class="i sm"><use href="#i-puzzle"/></svg>Extensions</button>
+    <button data-section="automations"><svg class="i sm"><use href="#i-flow"/></svg>Automations</button>
+  </div>
+
+  <aside class="side">
+    <div class="side-head">
+      <h1 id="sideTitle">Chats</h1>
+      <button class="icon-btn" title="Search"><svg class="i sm"><use href="#i-search"/></svg></button>
+      <button class="icon-btn" id="newBtn" title="New"><svg class="i sm"><use href="#i-pen"/></svg></button>
+    </div>
+    <div class="scope" id="scope">
+      <button data-scope="personal" class="on"><svg class="i sm"><use href="#i-user"/></svg>Personal</button>
+      <button data-scope="workspace"><svg class="i sm"><use href="#i-users"/></svg>Workspace</button>
+    </div>
+    <div class="side-body" id="sideBody"></div>
+  </aside>
+
+  <main class="main">
+    <div class="main-head">
+      <button class="icon-btn" id="collapseBtn" title="Toggle sidebar"><svg class="i sm"><use href="#i-panel"/></svg></button>
+      <div class="title" id="mainTitle"></div>
+    </div>
+    <div id="mainBody" style="flex:1;display:flex;flex-direction:column;min-height:0"></div>
+  </main>
+</div>
+
+<script>
+  const I = (id, cls = 'i sm') => `<svg class="${cls}"><use href="#${id}"/></svg>`
+  const creature = (shape, color, size = 28) => `<svg width="${size}" height="${size}" viewBox="0 0 100 100" style="flex:none;color:${color}"><use href="#c-${shape}"/><use href="#c-eyes"/></svg>`
+  const overlayAvatar = (size = 28) => `<span style="width:${size}px;height:${size}px;display:inline-grid;place-items:center;flex:none"><svg width="${size * .84}" height="${size * .84}"><use href="#mark"/></svg></span>`
+
+  const agents = [
+    { id: 'overlay', scope: 'personal', name: 'Overlay', av: () => overlayAvatar(), time: '9:41 AM', prev: 'Moved the launch review to Thursday and told the team.', live: true,
+      threads: [['Main thread', '9:41 AM'], ['Plan the launch week', '9:02 AM'], ['Inbox zero for Monday', 'Tue']] },
+    { id: 'wren', scope: 'personal', name: 'Wren', av: () => creature('droplet', '#ec5f9e'), time: '8:57 AM', prev: 'Here’s a draft: “Friday works for us…”',
+      threads: [['Main thread', '8:57 AM'], ['Reschedule dentist', 'Mon']] },
+    { id: 'sable', scope: 'personal', name: 'Sable', av: () => creature('blob', '#4b86f0'), time: 'Sat', prev: 'Only the direct flights are under budget.',
+      threads: [['Main thread', 'Sat'], ['Lisbon trip in May', 'Sat'], ['Hotel shortlist', 'Fri']] },
+    { id: 'juno', scope: 'workspace', name: 'Juno', av: () => creature('cloud', '#f5a742'), time: '9:12 AM', prev: '31 support emails, mostly login questions.', live: true,
+      threads: [['Main thread', '9:12 AM'], ['Login error spike', '8:40 AM'], ['Refund backlog', 'Wed']] },
+    { id: 'otto', scope: 'workspace', name: 'Otto', av: () => creature('hexagon', '#4fbf78'), time: 'Mon', prev: 'A fixture still used the old currency code.',
+      threads: [['Main thread', 'Mon'], ['Billing webhook migration', 'Mon']] },
+    { id: 'pax', scope: 'workspace', name: 'Pax', av: () => creature('triangle', '#f0793a'), time: 'Sun', prev: 'Renamed six screens and their routes.',
+      threads: [['Main thread', 'Sun'], ['Onboarding copy pass', 'Sun'], ['Settings page audit', 'Thu']] },
+  ]
+
+  let scope = 'personal'
+  let openAgent = { personal: 'overlay', workspace: 'juno' }
+
+  const sections = {
+    chats: {
+      title: 'Chats', icon: 'i-chat',
+      render: () => scope === 'personal' ? `
+        <button class="row" data-item="New chat"><span class="ic">${I('i-pen')}</span><span class="t">New chat</span></button>
+        <div class="label">Recents</div>
+        ${['Q4 pricing page copy', 'Investor update draft', 'Compare vector databases', 'Onboarding email sequence', 'Hiring plan for design', 'Refund policy questions', 'Launch checklist review', 'Board meeting prep'].map((t, i) => `<button class="row${i === 0 ? ' on' : ''}" data-item="${t}"><span class="t">${t}</span></button>`).join('')}
+      ` : `
+        <button class="row" data-item="New chat"><span class="ic">${I('i-pen')}</span><span class="t">New chat</span></button>
+        <div class="label">Channels</div>
+        ${[['general', 0], ['launch', 3], ['design', 0]].map(([n, c], i) => `<button class="row${i === 1 ? ' on' : ''}" data-item="#${n}"><span class="ic">${I('i-hash')}</span><span class="t">${n}</span>${c ? `<span class="badge">${c}</span>` : ''}</button>`).join('')}
+        <div class="label">Direct messages</div>
+        ${[['Maya Chen', '#a78bfa'], ['Sam Ortiz', '#34d399']].map(([n, c]) => `<button class="row" data-item="${n}"><span class="dot" style="background:${c}"></span><span class="t">${n}</span></button>`).join('')}
+        <div class="label">Shared AI chats</div>
+        ${['Q3 roadmap tradeoffs', 'Support macros rewrite', 'Pricing experiment results'].map(t => `<button class="row" data-item="${t}"><span class="t">${t}</span></button>`).join('')}
+      `,
+    },
+    agents: {
+      title: 'Agents', icon: 'i-bot',
+      render: () => agents.filter(a => a.scope === scope).map(a => {
+        const open = openAgent[scope] === a.id
+        return `
+        <div class="agent-group${open ? ' open' : ''}" data-agent="${a.id}">
+          <div class="agent" role="button" tabindex="0" data-agent-toggle="${a.id}">
+            ${a.av()}
+            <span class="body">
+              <span class="top"><span class="name">${a.name}${a.live ? '<span class="live"></span>' : ''}</span></span>
+            </span>
+            <span class="time">${a.time}</span>
+            <button class="add" data-new-thread="${a.id}" title="New thread" aria-label="New thread with ${a.name}">${I('i-plus')}</button>
+          </div>
+          <div class="threads">
+            ${a.threads.map(([t, m], i) => `<button class="thread-row${open && i === 0 ? ' on' : ''}" data-item="${t}" data-agent-id="${a.id}"><span class="t">${t}</span><span class="meta">${m}</span></button>`).join('')}
+          </div>
+        </div>`
+      }).join(''),
+    },
+    work: {
+      title: 'Work', icon: 'i-work',
+      render: () => `
+        ${scope === 'personal'
+          ? `<button class="row on" data-item="My work"><span class="ic">${I('i-inbox')}</span><span class="t">My work</span><span class="meta">7</span></button>`
+          : `<button class="row on" data-item="All work"><span class="ic">${I('i-work')}</span><span class="t">All work</span><span class="meta">42</span></button>
+             <button class="row" data-item="Assigned to agents"><span class="ic">${I('i-bot')}</span><span class="t">Assigned to agents</span><span class="meta">11</span></button>`}
+        <div class="label">Views</div>
+        <button class="row" data-item="List"><span class="ic">${I('i-list')}</span><span class="t">List</span></button>
+        <button class="row" data-item="Board"><span class="ic">${I('i-board')}</span><span class="t">Board</span></button>
+        <button class="row" data-item="Timeline"><span class="ic">${I('i-timeline')}</span><span class="t">Timeline</span></button>
+        <div class="label">In progress</div>
+        ${[['Ship pricing page', '#4b86f0'], ['Clean up support inbox', '#f5a742'], ['Migrate billing webhooks', '#4fbf78'], ['Plan offsite agenda', '#ec5f9e']].map(([t, c]) => `<button class="row" data-item="${t}"><span class="dot" style="background:${c}"></span><span class="t">${t}</span></button>`).join('')}
+      `,
+    },
+    files: {
+      title: 'Files', icon: 'i-file',
+      render: () => `
+        <button class="row on" data-item="Recent"><span class="ic">${I('i-clock')}</span><span class="t">Recent</span></button>
+        <div class="label">Folders</div>
+        ${(scope === 'personal' ? ['Notes', 'Travel', 'Drafts'] : ['Product', 'Finance', 'Design', 'Legal']).map(t => `<button class="row" data-item="${t}"><span class="ic">${I('i-folder')}</span><span class="t">${t}</span></button>`).join('')}
+        <div class="label">Recent</div>
+        ${['Launch plan.md', 'Pricing research.md', 'Q3 board deck notes.md', 'Hiring rubric.md'].map(t => `<button class="row" data-item="${t}"><span class="ic">${I('i-file')}</span><span class="t">${t}</span></button>`).join('')}
+      `,
+    },
+    extensions: {
+      title: 'Extensions', icon: 'i-puzzle',
+      render: () => `
+        ${[['Connectors', 'i-plug', 12], ['Skills', 'i-spark', 8], ['MCP servers', 'i-server', 3], ['Apps', 'i-grid', 5]].map(([t, ic, n], i) => `<button class="row${i === 0 ? ' on' : ''}" data-item="${t}"><span class="ic">${I(ic)}</span><span class="t">${t}</span><span class="meta">${n}</span></button>`).join('')}
+        <div class="label">Connected</div>
+        ${['Gmail', 'Google Calendar', 'Slack', 'GitHub', 'Linear', 'Notion'].map(t => `<button class="row" data-item="${t}"><span class="dot" style="background:#4ade80"></span><span class="t">${t}</span></button>`).join('')}
+      `,
+    },
+    automations: {
+      title: 'Automations', icon: 'i-flow',
+      render: () => `
+        <div class="label" style="padding-top:4px">Active</div>
+        ${[['Morning briefing', 'Daily 8:00'], ['Triage support inbox', 'Hourly'], ['Weekly metrics recap', 'Mon 9:00']].map(([t, m], i) => `<button class="row${i === 0 ? ' on' : ''}" data-item="${t}"><span class="t">${t}</span><span class="meta">${m}</span></button>`).join('')}
+        <div class="label">Paused</div>
+        ${['Invoice reminders', 'Competitor watch'].map(t => `<button class="row" data-item="${t}" style="color:var(--muted)"><span class="t">${t}</span></button>`).join('')}
+      `,
+    },
+  }
+
+  const chatBody = (title) => `
+    <div class="thread"><div class="col">
+      <div class="msg-user">Can you tighten the copy for ${title.toLowerCase()}?</div>
+      <div class="msg-ai"><p>Here’s a tighter version. I kept the structure and cut about a third of the words.</p><p>The headline now leads with the outcome instead of the feature, and the three supporting points each fit on one line.</p></div>
+    </div></div>
+    <div class="composer-wrap"><div class="composer"><div class="ph">Reply…</div><div class="bar"><button class="send">${I('i-up')}</button></div></div></div>`
+
+  const sideBody = document.getElementById('sideBody')
+  const mainTitle = document.getElementById('mainTitle')
+  const mainBody = document.getElementById('mainBody')
+  let current = 'chats'
+
+  function showItem(name) {
+    const s = sections[current]
+    if (current === 'agents') {
+      const a = agents.find(x => x.id === openAgent[scope]) || agents[0]
+      mainTitle.innerHTML = `${a.id === 'overlay' ? overlayAvatar(22) : a.av().replace(/28/g, '22')}<span>${a.name}</span><span class="crumb">/</span><span class="crumb">${name}</span>`
+      mainBody.innerHTML = name === 'New thread'
+        ? `<div class="empty"><div class="box"><div>New thread with ${a.name}</div><div>Ask ${a.name} to take something on.</div></div></div><div class="composer-wrap"><div class="composer"><div class="ph">Message ${a.name}…</div><div class="bar"><button class="send">${I('i-up')}</button></div></div></div>`
+        : chatBody('the launch email')
+    } else if (current === 'chats') {
+      mainTitle.innerHTML = `<span>${name}</span>`
+      mainBody.innerHTML = chatBody(name.replace('#', '') )
+    } else {
+      mainTitle.innerHTML = `<span class="crumb">${s.title}</span><span class="crumb">/</span><span>${name}</span>`
+      mainBody.innerHTML = `<div class="empty"><div class="box"><div>${name}</div><div>Page content for ${s.title} lives here.</div></div></div>`
+    }
+  }
+
+  function setSection(id) {
+    current = id
+    const s = sections[id]
+    document.getElementById('sideTitle').textContent = s.title
+    document.querySelectorAll('.rail-btn[data-section]').forEach(b => b.classList.toggle('on', b.dataset.section === id))
+    const inMore = ['files', 'extensions', 'automations'].includes(id)
+    document.getElementById('moreBtn').classList.toggle('on', inMore)
+    document.getElementById('app').classList.remove('collapsed')
+    renderSide()
+  }
+
+  function renderSide() {
+    sideBody.innerHTML = sections[current].render()
+    const first = sideBody.querySelector('.on') || sideBody.querySelector('[data-item]')
+    showItem(first ? first.dataset.item : sections[current].title)
+  }
+
+  document.getElementById('scope').addEventListener('click', e => {
+    const b = e.target.closest('[data-scope]')
+    if (!b || b.dataset.scope === scope) return
+    scope = b.dataset.scope
+    document.querySelectorAll('#scope button').forEach(x => x.classList.toggle('on', x === b))
+    renderSide()
+  })
+
+  sideBody.addEventListener('click', e => {
+    const add = e.target.closest('[data-new-thread]')
+    if (add) {
+      openAgent[scope] = add.dataset.newThread
+      sideBody.innerHTML = sections[current].render()
+      sideBody.querySelectorAll('.on').forEach(x => x.classList.remove('on'))
+      const threads = sideBody.querySelector('.agent-group.open .threads')
+      threads.insertAdjacentHTML('afterbegin', `<button class="thread-row on" data-item="New thread" data-agent-id="${openAgent[scope]}"><span class="t">New thread</span><span class="meta">Now</span></button>`)
+      showItem('New thread')
+      return
+    }
+    const toggle = e.target.closest('[data-agent-toggle]')
+    if (toggle) {
+      const id = toggle.dataset.agentToggle
+      const group = toggle.parentElement
+      if (openAgent[scope] === id) { group.classList.toggle('open'); return }
+      openAgent[scope] = id
+      renderSide()
+      return
+    }
+    const el = e.target.closest('[data-item]')
+    if (!el) return
+    if (el.dataset.agentId) openAgent[scope] = el.dataset.agentId
+    sideBody.querySelectorAll('.on').forEach(x => x.classList.remove('on'))
+    el.classList.add('on')
+    showItem(el.dataset.item)
+  })
+
+  document.querySelectorAll('.rail-btn[data-section]').forEach(b => b.addEventListener('click', () => {
+    if (b.dataset.section === current) { document.getElementById('app').classList.toggle('collapsed'); return }
+    setSection(b.dataset.section)
+  }))
+
+  const moreBtn = document.getElementById('moreBtn')
+  const moreMenu = document.getElementById('moreMenu')
+  moreBtn.addEventListener('click', e => {
+    e.stopPropagation()
+    const r = moreBtn.getBoundingClientRect()
+    moreMenu.style.top = r.top + 'px'
+    moreMenu.classList.toggle('open')
+  })
+  moreMenu.addEventListener('click', e => {
+    const b = e.target.closest('[data-section]')
+    if (b) { setSection(b.dataset.section); moreMenu.classList.remove('open') }
+  })
+  document.addEventListener('click', () => moreMenu.classList.remove('open'))
+
+  document.getElementById('collapseBtn').addEventListener('click', () => document.getElementById('app').classList.toggle('collapsed'))
+
+  const themeBtn = document.getElementById('themeBtn')
+  function syncThemeIcon() { themeBtn.querySelector('use').setAttribute('href', document.documentElement.dataset.theme === 'dark' ? '#i-sun' : '#i-moon') }
+  themeBtn.addEventListener('click', () => {
+    const t = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'
+    document.documentElement.dataset.theme = t
+    try { localStorage.setItem('overlay-mockup-theme', t) } catch (e) {}
+    syncThemeIcon()
+  })
+  syncThemeIcon()
+  setSection('chats')
+</script>
+</body>
+</html>
