@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { WorkspaceAgentServiceError } from '@/server/agents/WorkspaceAgentService'
+import { nativeRunRetirementErrorResponse } from '@/server/conversations/native-run-retirement-http'
 
 const GREETING_TEXT = 'Hi! What do you want to call me, and what should I work on?'
 
@@ -42,6 +43,8 @@ export async function POST(_request: Request, context: AppApiRouteContext) {
     })
     return NextResponse.json({ messageId })
   } catch (error) {
+    const retirement = nativeRunRetirementErrorResponse(error)
+    if (retirement) return retirement
     if (error instanceof WorkspaceAgentServiceError && error.code === 'not_found') {
       return NextResponse.json({ error: 'Agent not found' }, { status: 404 })
     }

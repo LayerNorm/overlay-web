@@ -16,6 +16,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Fence new writes and admissions for conversations or roots with recorded retired native runs, expose authorized read-only compatibility metadata while keeping history readable, and return a truthful 410 retirement response. Untracked historical transcripts, deployed-worker drain, and the new-thread UI remain open.
 
+- Keep tracked-thread safety compatible with web-first rollout: older backends preserve transcript reads with explicit unavailable metadata and block new thread writes/admissions with a retriable 503 until the server-owned backend marker is present. The new backend remains authoritative for 410 retirement classification; already-admitted remote execution remains unchanged.
+
 - Switch existing accounts to double sidebar once across all workspaces, while allowing subsequent single-sidebar opt-outs.
 
 - Keep the gray gutters equal on both sides of onboarding while its navigation is hidden.

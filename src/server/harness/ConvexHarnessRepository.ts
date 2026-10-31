@@ -13,6 +13,7 @@ import type { HarnessEvidence, HarnessSnapshot } from '@overlay/agent-runtime/ha
 import type { SurfaceTurnExecution } from '@/shared/agents/surface-turn-execution'
 import { lazyConvex as convex } from '@/server/database/lazy-convex'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
+import { requireNativeThreadCompatibilityBackend } from '@/server/conversations/native-thread-compatibility-backend'
 
 export class ConvexHarnessRepository implements HarnessRepository {
   private get serverSecret(): string {
@@ -20,6 +21,7 @@ export class ConvexHarnessRepository implements HarnessRepository {
   }
 
   async admit(input: HarnessAdmission): Promise<HarnessSnapshot> {
+    await requireNativeThreadCompatibilityBackend(input.policy.actorUserId)
     const snapshot = await convex.mutation<HarnessSnapshot>('harness/runs:admit', {
       ...input,
       serverSecret: this.serverSecret,
@@ -52,6 +54,7 @@ export class ConvexHarnessRepository implements HarnessRepository {
     owner: 'same' | 'foreign'
     execution: SurfaceTurnExecution | null
   }> {
+    await requireNativeThreadCompatibilityBackend(input.actorUserId)
     const result = await convex.mutation<{
       owner: 'same' | 'foreign'
       execution: SurfaceTurnExecution | null

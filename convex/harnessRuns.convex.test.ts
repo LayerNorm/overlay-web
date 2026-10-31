@@ -23,7 +23,7 @@ test('readiness is available only to the authenticated server', async () => {
   const convex = convexTest(schema, modules)
   const settings = makeFunctionReference<'query'>('platform/uiSettings:getByServer')
   expect(await convex.query(settings, { userId: 'alice', serverSecret: secret }))
-    .toMatchObject({ harnessRevision: 'overlay-harness-v1' })
+    .toMatchObject({ harnessRevision: 'overlay-harness-v1', nativeThreadCompatibilityRevision: 'tracked-native-v1' })
   await expect(convex.query(settings, { userId: 'alice', serverSecret: 'invalid' })).rejects.toThrow('Unauthorized')
 })
 
