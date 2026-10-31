@@ -49,14 +49,21 @@ async function harness() {
   vi.stubGlobal(
     'AudioWorkletNode',
     class {
-      port = { onmessage: null, close: () => {}, postMessage: () => {} }
+      port: {
+        onmessage: ((event: { data: string }) => void) | null
+        close(): void
+        postMessage(): void
+      } = { onmessage: null, close: () => {}, postMessage: () => {} }
+      constructor() {
+        queueMicrotask(() => this.port.onmessage?.({ data: 'prepared' }))
+      }
       connect = () => {}
       disconnect = () => {}
     }
   )
-  const { captureAudio } = await import('../../native/dictation-audio.js')
+  const { captureAudio, prepareAudio } = await import('../../native/dictation-audio.js')
   const start = () => captureAudio({ onReady: vi.fn(), onFallback: vi.fn(), onError: vi.fn() })
-  return { start, pending, connected }
+  return { start, pending, connected, prepareAudio }
 }
 afterEach(() => vi.unstubAllGlobals())
 it('cancellation before permission resolves releases the late microphone without connecting it', async () => {
@@ -88,4 +95,12 @@ it('a late old microphone cannot replace or disconnect a newer take', async () =
   expect(next.track.stop).not.toHaveBeenCalled()
   second.cancel()
   expect(next.track.stop).toHaveBeenCalled()
+})
+
+it('prepares and suspends the processor without acquiring a microphone', async () => {
+  const h = await harness()
+  const context = await h.prepareAudio()
+  expect(context.state).toBe('suspended')
+  expect(h.pending).toHaveLength(0)
+  expect(h.connected).toHaveLength(0)
 })

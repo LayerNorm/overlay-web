@@ -14,6 +14,29 @@ export function prepareAudio() {
       try {
         await context.suspend()
         await context.audioWorklet.addModule(new URL('./dictation-worklet.js', import.meta.url))
+        // Initialize the processing thread at launch, with no microphone and no output device.
+        const warm = new AudioWorkletNode(context, 'overlay-dictation')
+        try {
+          await new Promise((resolve, reject) => {
+            const timer = setTimeout(() => reject(new Error('Audio preparation timed out.')), 5000)
+            warm.port.onmessage = ({ data }) => {
+              if (data === 'prepared') {
+                clearTimeout(timer)
+                resolve()
+              }
+            }
+            warm.connect(context.destination)
+            void context.resume().catch((error) => {
+              clearTimeout(timer)
+              reject(error)
+            })
+          })
+        } finally {
+          warm.disconnect()
+          warm.port.onmessage = null
+          warm.port.close()
+          await context.suspend()
+        }
         return context
       } catch (error) {
         await context.close()

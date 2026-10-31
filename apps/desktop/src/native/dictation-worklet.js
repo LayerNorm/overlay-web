@@ -4,6 +4,7 @@ class DictationCapture extends AudioWorkletProcessor {
     super()
     this.frames = new Float32Array(256)
     this.offset = 0
+    this.port.postMessage('prepared')
     this.port.onmessage = () => {
       if (this.offset) this.port.postMessage(this.frames.slice(0, this.offset))
       this.port.postMessage('flushed')
