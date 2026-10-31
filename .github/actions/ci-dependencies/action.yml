@@ -1,18 +1,23 @@
 name: CI dependencies
-description: Reuse an exact locked install from the trusted Namespace local cache volume.
+description: Restore an exact dependency tree; Namespace volumes are an opt-in transport experiment.
 inputs:
   node-version:
     description: Node.js major version
     required: true
+  local-volume-experiment:
+    description: Opt in only when measuring Namespace generation reuse against the default cache.
+    default: 'false'
 runs:
   using: composite
   steps:
     - name: Set up Node.js
+      id: node
       uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
       with:
         node-version: ${{ inputs.node-version }}
         package-manager-cache: false
     - name: Mount local dependency cache
+      if: inputs.local-volume-experiment == 'true'
       uses: namespacelabs/nscloud-cache-action@1124a6f3ce44e5cf84cc22111530961f4d2a15f9 # v1
       with:
         cache: npm
@@ -20,6 +25,21 @@ runs:
     - name: Pin npm
       shell: bash
       run: npm install -g npm@11.11.0 --no-audit --no-fund
+    - name: Restore installed dependencies
+      if: inputs.local-volume-experiment != 'true'
+      id: dependencies
+      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      with:
+        path: |
+          node_modules
+          packages/*/node_modules
+          apps/*/node_modules
+        key: ci-dependencies-v2-${{ runner.os }}-${{ runner.arch }}-node${{ inputs.node-version }}-${{ steps.node.outputs.node-version }}-npm11.11.0-${{ hashFiles('package-lock.json', 'package.json', 'packages/*/package.json', 'apps/*/package.json', '.npmrc', '.github/actions/ci-dependencies/action.yml') }}
+    - name: Install from lockfile
+      if: inputs.local-volume-experiment != 'true' && steps.dependencies.outputs.cache-hit != 'true'
+      shell: bash
+      run: npm ci --ignore-scripts --no-audit --no-fund
     - name: Restore or install exact dependencies
+      if: inputs.local-volume-experiment == 'true'
       shell: bash
       run: node scripts/ci/dependency-cache.mjs

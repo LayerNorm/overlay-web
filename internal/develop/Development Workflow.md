@@ -421,20 +421,25 @@ Configuration and Convex boundary checks that depend on generated Workflow route
 stay after compilation. Gateway tests retain their react-server condition in a
 dedicated discovered group; route and gateway suites run once through the shards.
 
-CI reuses exact installed trees through Namespace local cache volumes rather
-than downloading dependency archives. The key covers full Node/npm version,
-OS/architecture, lockfile, workspace manifests and installation policy/helper.
-Incomplete snapshots are rejected; misses run
-`npm ci --ignore-scripts --no-audit --no-fund`. Copies preserve relative workspace
-links, cache completion is atomic, and retention is bounded to two exact trees. Docs uses the same root installation;
-admin keeps its isolated workspace installation. **Each Namespace profile must
-have Protected branches enabled for `main` in the account settings before this
-cache is used.** PR-editable runner labels alone are insufficient protection.
-Keep the default per-profile/repository cache identities, without explicit
-shared tags. Node 24 tests have a separate profile; background jobs have no
-writable dependency volume. Namespace uses last-write-wins snapshots, so those
-jobs must not discard newly seeded installs from another role or runtime. Never cache secrets or reuse installed trees in privileged
-release/publication jobs. The dependency audit remains required.
+CI defaults to GitHub's scoped installed-dependency cache, keyed by OS/architecture,
+resolved Node version, pinned npm, lockfile, workspace manifests and install policy.
+No restore prefix may substitute a different tree. Misses run
+`npm ci --ignore-scripts --no-audit --no-fund`; all checks still execute after a
+hit. GitHub prevents PR cache writes from replacing main's trees. Docs uses the
+same root install; admin keeps its isolated workspace installation.
+
+Namespace local installed-tree reuse is **opt-in** through the composite action's
+`local-volume-experiment` input. Real runner placements produced cold generations
+instead of reliable warm reuse, so it must demonstrate a benefit before becoming
+the default. Its keys cover full Node/npm versions, OS/architecture, manifests,
+lockfile and helper/install policy; completion is atomic, copies preserve workspace
+links, and retention is bounded to two exact trees. Each cache-owning Namespace
+profile must have account-side Protected branches enabled for `main`; PR-editable
+labels alone are insufficient. Keep default per-profile/repository identities,
+without explicit shared tags. Node 24 tests have a separate profile and background
+jobs have no writable dependency volume, avoiding last-write-wins replacement by
+other roles/runtimes. Never cache secrets or reuse these installed trees in
+privileged publication jobs. The dependency audit remains required.
 
 Persist only `.next/cache` and the content-based ESLint cache for compiler/lint
 reuse. The native checker gets fresh project inputs on each run. Cache keys cover the relevant tool

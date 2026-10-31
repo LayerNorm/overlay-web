@@ -247,14 +247,15 @@ test('parallel lanes preserve complete test discovery, runtime-specific contract
 
 test('dependency caches require exact install inputs and misses retain locked script-free installation', () => {
   const action = parse(readFileSync(new URL('../../.github/actions/ci-dependencies/action.yml', import.meta.url), 'utf8'))
-  const mount = action.runs.steps.find(step => step.name === 'Mount local dependency cache')
-  assert.match(mount.uses, /^namespacelabs\/nscloud-cache-action@[a-f0-9]{40}$/)
-  assert.equal(mount.with.path, '~/.cache/overlay-ci-dependencies')
-  const install = action.runs.steps.find(step => step.name === 'Restore or install exact dependencies')
-  assert.equal(install.run, 'node scripts/ci/dependency-cache.mjs')
-  const source = readFileSync(new URL('../ci/dependency-cache.mjs', import.meta.url), 'utf8')
-  for (const input of ['process.version', 'process.platform', 'process.arch', 'package-lock.json', 'package.json', '.npmrc']) assert.ok(source.includes(input), input)
-  assert.match(source, /'ci', '--ignore-scripts', '--no-audit', '--no-fund'/)
+  assert.equal(action.inputs['local-volume-experiment'].default, 'false')
+  const cache = action.runs.steps.find(step => step.id === 'dependencies')
+  assert.equal(cache.with['restore-keys'], undefined)
+  assert.equal(cache.if, "inputs.local-volume-experiment != 'true'")
+  for (const input of ['runner.os', 'runner.arch', 'steps.node.outputs.node-version', 'package-lock.json', 'package.json', '.npmrc']) assert.ok(cache.with.key.includes(input), input)
+  const install = action.runs.steps.find(step => step.name === 'Install from lockfile')
+  assert.equal(install.if, "inputs.local-volume-experiment != 'true' && steps.dependencies.outputs.cache-hit != 'true'")
+  assert.equal(install.run, 'npm ci --ignore-scripts --no-audit --no-fund')
+  for (const name of ['Mount local dependency cache', 'Restore or install exact dependencies']) assert.equal(action.runs.steps.find(step => step.name === name).if, "inputs.local-volume-experiment == 'true'")
   const { jobs } = workflow('security')
   for (const name of ['static', 'typecheck', 'build', 'tests']) {
     assert.ok(jobs[name].steps.some(step => step.uses === './.github/actions/ci-dependencies'))
