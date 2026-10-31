@@ -107,9 +107,10 @@ test('a room agent turn is owned by a durable run, not by an HTTP request', asyn
     readFile(`${root}/src/server/agents/workspace-agent-invocation.ts`, 'utf8'),
   ])
 
-  // Saving the human message is what starts the turn. The browser cannot be
-  // the trigger any more, which is what made closing the tab end the reply.
-  assert.match(messageRoute, /start\(workspaceAgentTurnWorkflow/)
+  // Persisting the room turn starts native Harness work; the HTTP request
+  // does not run the model loop itself.
+  assert.match(messageRoute, /startNativeHarnessTurn/)
+  assert.doesNotMatch(messageRoute, /start\(workspaceAgentTurnWorkflow/)
   assert.match(messageRoute, /resolveWorkspaceAgentInvocations/)
   assert.doesNotMatch(messageRoute, /deferAgentReply/)
   assert.doesNotMatch(policy, /conversations\/agent-reply/)
