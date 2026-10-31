@@ -236,6 +236,10 @@ export function useChatExperienceController({
   const generatedUiConnectorActions = useGeneratedUiConnectorActions({ enabled: capabilities.integrations })
 
   const [isDragging, setIsDragging] = useState(false)
+  const nativeThreadSafety = useNativeThreadSafety({
+    conversationId: isTemporaryChat || activeChatId === PENDING_FIRST_CHAT_ID ? null : activeChatId,
+    workspaceId: activeWorkspaceId,
+  })
   const {
     handleComposerInputChange,
     hasComposerText,
@@ -244,7 +248,7 @@ export function useChatExperienceController({
     inputRevision,
     setInput,
     subscribeToInput,
-  } = useComposerTextState()
+  } = useComposerTextState(nativeThreadSafety.readOnly)
 
   // Restore guest draft after hydration so server/client initial renders match
   useEffect(() => {
@@ -585,10 +589,6 @@ export function useChatExperienceController({
     updateRuntimeUiState,
   })
 
-  const nativeThreadSafety = useNativeThreadSafety({
-    conversationId: isTemporaryChat || activeChatId === PENDING_FIRST_CHAT_ID ? null : activeChatId,
-    workspaceId: activeWorkspaceId,
-  })
   const isRuntimeCurrent = useCallback((chatId: string, runtime: ConversationRuntime) => (
     runtimesRef.current.get(chatId) === runtime
   ), [runtimesRef])

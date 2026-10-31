@@ -1475,7 +1475,7 @@ export function useRoomComposer({
     inputRevision,
     setInput,
     subscribeToInput,
-  } = useComposerTextState()
+  } = useComposerTextState(readOnly)
   const {
     attachedImages,
     setAttachedImages,

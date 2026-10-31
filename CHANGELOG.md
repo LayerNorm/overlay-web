@@ -24,6 +24,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Keep a blank personal-chat handoff synchronized with the Next.js URL state when removing the prior conversation ID.
 
+- Preserve normally typed composer text when native-thread safety suspends and remounts the editor.
+
 - Add an opt-in Preview-only historical-thread retirement fixture for hosted UI QA without scheduling workflows or replenishing existing QA allowance. Preview builds can seed it through the trusted controller without exporting database credentials.
 
 - Switch existing accounts to double sidebar once across all workspaces, while allowing subsequent single-sidebar opt-outs.

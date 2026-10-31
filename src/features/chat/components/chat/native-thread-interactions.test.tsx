@@ -232,6 +232,27 @@ test('mounted nested draft completion never clears new text or another root', as
   assert.equal(hook.value.threadInput, 'original')
 })
 
+test('mounted room restores normally typed text after safety unmounts the composer', async (t) => {
+  browser(t)
+  t.mock.method(overlayAppClient.conversations, 'updatePresence', async () => ({}))
+  let sends = 0
+  const args: Parameters<typeof useRoomComposer>[0] = {
+    activeWorkspaceId: 'workspace', conversationId: 'room', sessionIdRef: { current: 'session' },
+    sendMessage: async () => { sends++; return { accepted: true } },
+    mentions: [], setMentions: noop, readOnly: false,
+  }
+  const hook = await mount(t, useRoomComposer, args)
+  await act(() => hook.value.onComposerInput('QA root draft - do not send'))
+  assert.equal(hook.value.input, '', 'normal typing intentionally avoids updating React input state')
+  assert.equal(hook.value.inputRef.current, 'QA root draft - do not send')
+  await hook.update({ ...args, readOnly: true })
+  await act(async () => { await hook.value.handleSend() })
+  await hook.update(args)
+  assert.equal(hook.value.input, 'QA root draft - do not send', 'remounted editor must receive the latest text')
+  assert.equal(hook.value.inputRef.current, hook.value.input)
+  assert.equal(sends, 0)
+})
+
 test('mounted pending conversion restores a rejected admission and resumes only once writable', async (t) => {
   const env = browser(t)
   const key = 'overlay:pending-collaboration-message'
