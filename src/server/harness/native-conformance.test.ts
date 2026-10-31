@@ -16,7 +16,6 @@ import { projectNativeHarnessToolProgress } from './native-tool-progress'
 import { harnessToolResultEvidence } from './tool-evidence'
 import { AgentAskError, AgentAskService } from '@/server/agents/agent-asks/AgentAskService'
 import { startWorkspaceAgentTurns } from '@/server/agents/start-agent-turns'
-import { prepareWorkspaceAgentTurn } from '@/server/agents/workspace-agent-durable'
 import { agentMemoryOwnerId } from '@/shared/agents/agent-memory'
 import type { WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
 
@@ -603,7 +602,7 @@ it('Lineage — depth, cycles, and external targets are refused before dispatch'
   })).rejects.toThrow("External agents can't be asked from this run yet.")
 })
 
-it('Cutover: native dispatch is unconditional and legacy execution refuses native-owned rows', async () => {
+it('Native dispatch always starts a Harness run', async () => {
   const invocation = {
     agentId: 'agent', agentName: 'Agent', agentPrincipalId: 'principal-agent', invocationNonce: 'nonce',
     modelId: 'fixture/model', harness: 'overlay' as const, externalAgent: false, turnId: 'turn',
@@ -626,12 +625,6 @@ it('Cutover: native dispatch is unconditional and legacy execution refuses nativ
     return starts
   }
   expect(await run()).toEqual(['native'])
-  mocks.getLatestAgentRun.mockResolvedValue({ executionEngine: 'overlay_harness' })
-  await expect(prepareWorkspaceAgentTurn({
-    actorUserId: 'human', agentId: 'agent', conversationId: 'room', messageId: 'message',
-    memoryEnabled: true, runId: 'run', turnMessageId: 'reply', workspaceId: 'workspace',
-  })).rejects.toThrow('native Harness workflow')
-  expect(mocks.reserveForAttempt).not.toHaveBeenCalled()
 })
 
 it('Unbounded loop — more tool calls than legacy maxSteps complete, and premature done continues while plan work remains', async () => {

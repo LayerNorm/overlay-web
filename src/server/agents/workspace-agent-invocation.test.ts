@@ -70,47 +70,45 @@ test('agent external-action claims require a successful tool result', () => {
 })
 
 test('workspace agents use participant-scoped room history and persistence', async () => {
-  const [service, contract, convexRoom] = await Promise.all([
+  const [service, preparation, contract, convexRoom, delivery] = await Promise.all([
     readFile(`${root}/src/server/agents/workspace-agent-invocation.ts`, 'utf8'),
+    readFile(`${root}/src/server/agents/workspace-agent-preparation.ts`, 'utf8'),
     readFile(`${root}/src/server/conversations/ConversationCollaborationRepository.ts`, 'utf8'),
     readFile(`${root}/convex/collaboration/directMessages.ts`, 'utf8'),
+    readFile(`${root}/src/server/harness/native-delivery-steps.ts`, 'utf8'),
   ])
 
   assert.match(service, /collaboration\.getAccessibleConversation/)
   assert.match(service, /collaboration\.listMessages/)
-  assert.match(service, /collaboration\.addAgentMessage/)
-  assert.match(service, /buildAssistantPersistenceFromSteps/)
-  assert.match(service, /parts: assistantPersistence\.parts/)
+  assert.match(preparation, /loadRoomTurnContext/)
+  assert.match(preparation, /buildAgentTurnContext/)
   assert.doesNotMatch(service, /conversations\.getConversationMessages/)
-  assert.match(contract, /addAgentMessage/)
-  assert.match(convexRoom, /export const addAgentMessage/)
-  assert.match(convexRoom, /AGENT_PARTICIPANT_REQUIRED/)
+  assert.match(contract, /getAccessibleConversation/)
+  assert.match(contract, /listMessages/)
+  assert.match(convexRoom, /export const startAgentTurn = mutation/)
+  assert.match(convexRoom, /requireAgentAuthor\(ctx, args\)/)
   assert.match(convexRoom, /authorKind: 'agent'/)
+  assert.match(delivery, /finalizeAgentMessage/)
+  assert.match(delivery, /failAgentMessage/)
   assert.match(service, /reasonCode/)
   assert.match(service, /no_agent_participant/)
 })
 
-test('a room agent turn is owned by a durable run, not by an HTTP request', async () => {
-  const [workflow, lifecycle, durable, usage, loop, approval, messageRoute, policy, service] = await Promise.all([
-    readFile(`${root}/src/server/workflows/workspace-agent-turn.ts`, 'utf8'),
-    readFile(`${root}/src/server/agents/workspace-agent-turn-lifecycle.ts`, 'utf8'),
-    readFile(`${root}/src/server/agents/workspace-agent-durable.ts`, 'utf8'),
-    readFile(`${root}/src/server/agents/workspace-agent-usage.ts`, 'utf8'),
-    readFile(`${root}/src/server/agents/workspace-agent-turn-loop.ts`, 'utf8'),
-    readFile(`${root}/src/server/workflows/workspace-agent-approval.ts`, 'utf8'),
+test('room agent turns use native Harness admission and delivery', async () => {
+  const [messageRoute, policy, nativeStart, workflowInput, preparation, delivery, secureModel] = await Promise.all([
     Promise.all([
       readFile(`${root}/src/server/app-api/v1/conversations/message/route.ts`, 'utf8'),
-      // The route hands the turn to this module, which opens the durable run.
       readFile(`${root}/src/server/agents/start-agent-turns.ts`, 'utf8'),
     ]).then((sources) => sources.join('\n')),
     readFile(`${root}/src/server/authorization/authorization-route-policy.ts`, 'utf8'),
-    readFile(`${root}/src/server/agents/workspace-agent-invocation.ts`, 'utf8'),
+    readFile(`${root}/src/server/harness/native-turn-start.ts`, 'utf8'),
+    readFile(`${root}/src/server/harness/native-workflow-input-builder.ts`, 'utf8'),
+    readFile(`${root}/src/server/agents/workspace-agent-preparation.ts`, 'utf8'),
+    readFile(`${root}/src/server/harness/native-delivery-steps.ts`, 'utf8'),
+    readFile(`${root}/src/server/harness/secure-model.ts`, 'utf8'),
   ])
 
-  // Persisting the room turn starts native Harness work; the HTTP request
-  // does not run the model loop itself.
   assert.match(messageRoute, /startNativeHarnessTurn/)
-  assert.doesNotMatch(messageRoute, /start\(workspaceAgentTurnWorkflow/)
   assert.match(messageRoute, /resolveWorkspaceAgentInvocations/)
   assert.doesNotMatch(messageRoute, /deferAgentReply/)
   assert.doesNotMatch(policy, /conversations\/agent-reply/)
@@ -119,100 +117,30 @@ test('a room agent turn is owned by a durable run, not by an HTTP request', asyn
     'the client-held agent-reply route should be gone',
   )
 
-  // A duplicate trigger must not bill the same reply twice.
   assert.match(messageRoute, /if \(turn\.resumed\) (?:continue|return)/)
-
-  assert.match(workflow, /'use workflow'/)
-  for (const step of [
-    'attachWorkspaceAgentRun',
-    'prepareWorkspaceAgentTurn',
-    'callWorkspaceAgentModel',
-    'inspectWorkspaceAgentTool',
-    'executeWorkspaceAgentTool',
-    'persistWorkspaceAgentToolProgress',
-    'finalizeWorkspaceAgentTurn',
-    'completeWorkspaceAgentRun',
-    'failWorkspaceAgentRun',
-  ]) {
-    assert.match(workflow, new RegExp(step), `workflow is missing ${step}`)
-    assert.match(lifecycle, new RegExp(step), `lifecycle is missing ${step}`)
-  }
-  for (const step of [
-    'prepareWorkspaceAgentTurn',
-    'callWorkspaceAgentModel',
-    'inspectWorkspaceAgentTool',
-    'executeWorkspaceAgentTool',
-    'persistWorkspaceAgentToolProgress',
-    'finalizeWorkspaceAgentTurn',
-  ]) {
-    assert.match(durable, new RegExp(`export async function ${step}[\\s\\S]*?'use step'`), `${step} must be durable`)
-  }
-  for (const step of ['settleWorkspaceAgentUsage', 'releaseWorkspaceAgentReservation']) {
-    assert.match(usage, new RegExp(`export async function ${step}[\\s\\S]*?'use step'`), `${step} must be durable`)
-    assert.match(lifecycle, new RegExp(`export const ${step}`), `${step} must be registered in the lifecycle`)
-  }
-  assert.match(approval, /hook\.getConflict\(\)/)
-  assert.match(approval, /sleep\('15m'\)/)
-  assert.match(workflow, /resumeWorkspaceAgentAfterApproval/)
-  assert.match(workflow, /runWorkspaceAgentTurnLoop/)
-  assert.match(workflow, /callModel: callWorkspaceAgentModel/)
-  assert.match(workflow, /inspectTool: inspectWorkspaceAgentTool/)
-  assert.match(workflow, /executeTool: executeWorkspaceAgentTool/)
-  assert.match(loop, /if \(!decision\.approved\)/)
-  assert.match(durable, /refusedAmbiguousWorkspaceAgentToolRetry\(getStepMetadata\(\)\.attempt, input\.toolCall\.toolName\)/)
-  assert.match(durable, /idempotencyKey: `\$\{input\.prepared\.runId\}:\$\{input\.toolCall\.toolCallId\}`/)
-  assert.equal(workflow.match(/callModel: callWorkspaceAgentModel/g)?.length, 1)
-  assert.equal(workflow.match(/executeTool: executeWorkspaceAgentTool/g)?.length, 1)
-  assert.match(loop, /for \(const toolCall of call\.toolCalls\)/)
-  assert.doesNotMatch(workflow, /executeWorkspaceAgentTurn\(/)
-
-  // A durable turn outlives the request that triggered it, so it must not
-  // depend on that request's credential.
-  assert.doesNotMatch(lifecycle, /accessToken/)
-  // Resolution and execution are separate so the trigger can return without
-  // waiting for any turn to finish.
-  assert.match(service, /export async function resolveWorkspaceAgentInvocations/)
-  assert.match(service, /export async function runWorkspaceAgentTurn/)
-  assert.doesNotMatch(service, /invokeWorkspaceAgentsForHumanMessage/)
-
-  // The turn's own reply row carries the invocation nonce, so the
-  // already-replied guard has to exclude it — comparing on the nonce alone
-  // makes every durable turn skip itself and reply to nothing.
-  assert.match(service, /priorReply\._id !== args\.existingMessageId/)
-
-  // The workflow sandbox cannot use Node built-ins. Keep server imports as
-  // steps, except for the pure loop helper that only orchestrates those steps.
-  const serverImports = [...workflow.matchAll(/import\s*\{([^}]*)\}\s*from\s*'@\/server[^']*'/g)]
-    .flatMap((match) => match[1]!.split(',').map((name) => name.trim().split(/\s+as\s+/)[0]!))
-    .filter((name) => name && !name.startsWith('type ') && name !== 'runWorkspaceAgentTurnLoop')
-  assert.ok(serverImports.length > 0)
-  for (const imported of serverImports) {
-    assert.match(
-      `${lifecycle}\n${durable}\n${usage}`,
-      new RegExp(`export async function ${imported}\\b[\\s\\S]*?'use step'`),
-      `${imported} is imported into the workflow but is not a step`,
-    )
-  }
-  assert.doesNotMatch(`${loop}\n${await readFile(`${root}/src/server/agents/workspace-agent-turn-utils.ts`, 'utf8')}`, /from ['"]node:|require\(|process\./)
-  assert.match(workflow, /function describeWorkspaceAgentFailure/)
+  assert.match(nativeStart, /prepareNativeHarnessTurn/)
+  assert.match(nativeStart, /repository\)\.admit/)
+  assert.match(nativeStart, /nativeHarnessWorkflow, \[prepared\.workflowInput\]/)
+  assert.match(workflowInput, /prepareWorkspaceAgentInputs/)
+  assert.match(preparation, /loadRoomTurnContext/)
+  assert.match(delivery, /finishNativeHarnessDelivery/)
+  assert.match(delivery, /finalizeAgentMessage/)
+  assert.match(secureModel, /serializePersonalHarnessAuthentication/)
 })
 
 test('an agent reply is persisted as it is generated, not only when it finishes', async () => {
-  const [service, contract, convexRoom] = await Promise.all([
-    readFile(`${root}/src/server/agents/workspace-agent-invocation.ts`, 'utf8'),
+  const [stream, delivery, contract, convexRoom] = await Promise.all([
+    readFile(`${root}/src/server/harness/native-model-stream.ts`, 'utf8'),
+    readFile(`${root}/src/server/harness/native-delivery-steps.ts`, 'utf8'),
     readFile(`${root}/src/server/conversations/ConversationCollaborationRepository.ts`, 'utf8'),
     readFile(`${root}/convex/collaboration/directMessages.ts`, 'utf8'),
   ])
 
-  // The turn writes into a `generating` row rather than holding the reply in
-  // the response stream, which is what lets it survive the sender's tab.
-  assert.match(service, /createAgentMessageStream/)
-  assert.match(service, /turnStream\.pushText\(event\.text,\s*liveParts\.map/)
-  assert.match(service, /turnStream\.finalize\(/)
-  // A turn that dies partway must not leave a row generating forever.
-  assert.match(service, /await agentStream\?\.fail\(\)/)
-  // The single terminal write stays as the fallback for a failed open.
-  assert.match(service, /collaboration\.addAgentMessage/)
+  assert.match(stream, /createAgentMessageStream/)
+  assert.match(stream, /stream\.pushText\(visible, parts\)/)
+  assert.match(stream, /store\.appendAgentMessageDelta/)
+  assert.match(delivery, /finalizeAgentMessage/)
+  assert.match(delivery, /failAgentMessage/)
 
   for (const method of [
     'startAgentMessage',
@@ -232,42 +160,41 @@ test('an agent reply is persisted as it is generated, not only when it finishes'
 })
 
 test('agent turns run the shared act tool pipeline, not a private subset', async () => {
-  const [invocation, tooling] = await Promise.all([
-    readFile(`${root}/src/server/agents/workspace-agent-invocation.ts`, 'utf8'),
+  const [preparation, tooling] = await Promise.all([
+    readFile(`${root}/src/server/agents/workspace-agent-preparation.ts`, 'utf8'),
     readFile(`${root}/src/server/agents/agent-tooling.ts`, 'utf8'),
   ])
 
-  // Agents must inherit connected apps, MCP, and web search by going through
-  // the same builder personal chat uses. Reaching for buildOverlayToolSet here
-  // is what left agents years behind the act route the first time.
   assert.match(tooling, /prepareActTooling/)
-  assert.doesNotMatch(invocation, /buildOverlayToolSet/)
+  assert.match(preparation, /buildWorkspaceAgentTooling/)
+  assert.doesNotMatch(preparation, /buildOverlayToolSet/)
   assert.doesNotMatch(tooling, /buildOverlayToolSet/)
-  // The grant enters as account policy so it can only ever narrow.
   assert.match(tooling, /accountAllowedToolIds: overlayToolIds/)
 })
 
 test('agent turns carry role-tagged messages and loaded context, not a flattened prompt', async () => {
-  const invocation = await readFile(`${root}/src/server/agents/workspace-agent-invocation.ts`, 'utf8')
+  const [workflowInput, preparation] = await Promise.all([
+    readFile(`${root}/src/server/harness/native-workflow-input-builder.ts`, 'utf8'),
+    readFile(`${root}/src/server/agents/workspace-agent-preparation.ts`, 'utf8'),
+  ])
 
-  assert.match(invocation, /messages: turnContext\.messages/)
-  assert.match(invocation, /const systemPrompt = buildAgentSystemPrompt/)
-  assert.match(invocation, /system: systemPrompt/)
-  assert.match(invocation, /prepareAgentToolRecoveryStep/)
-  assert.match(invocation, /Never claim to have used a tool or changed a resource unless the tool call actually ran and returned success/)
-  // A single `prompt:` string is the shape that dropped roles, attachments, and
-  // every retrieved source on the floor.
-  assert.doesNotMatch(invocation, /^\s*prompt: \[/m)
+  assert.match(workflowInput, /messages: prepared\.turnContext\.messages/)
+  assert.match(workflowInput, /instructions: buildAgentSystemPrompt/)
+  assert.match(preparation, /buildAgentTurnContext/)
+  assert.match(preparation, /latestUserText: room\.latestUserText/)
+  assert.doesNotMatch(workflowInput, /^\s*prompt: \[/m)
 })
 
 test('an agent memory write is owned by the agent, not by whoever summoned it', async () => {
-  const [tooling, memoryRoute] = await Promise.all([
+  const [tooling, delivery, memoryRoute] = await Promise.all([
     readFile(`${root}/src/server/agents/agent-tooling.ts`, 'utf8'),
+    readFile(`${root}/src/server/harness/native-delivery-steps.ts`, 'utf8'),
     readFile(`${root}/src/server/app-api/v1/memory/route.ts`, 'utf8'),
   ])
 
   assert.match(tooling, /memoryOwnerId: agentMemoryOwnerId\(args\.grant\.agentId\)/)
-  // The owner is validated against the workspace rather than trusted as given.
+  assert.match(delivery, /memoryOwnerId: agentMemoryOwnerId\(access\.agentId\)/)
+  assert.match(delivery, /targetActor: 'agent'/)
   assert.match(memoryRoute, /resolveMemoryOwner/)
   assert.match(memoryRoute, /Unknown agent memory owner/)
 })
@@ -299,13 +226,15 @@ test('connected agents receive bounded memory and room context without confusing
 })
 
 test('room memory ingestion is owner-scoped and gated by the message toggle', async () => {
-  const [route, service, contract, convexRoom, convexExtractor, convexMemoryQuery] = await Promise.all([
+  const [route, preparation, workflowInput, delivery, contract, convexRoom, convexExtractor, convexMemoryQuery] = await Promise.all([
     Promise.all([
       readFile(`${root}/src/server/app-api/v1/conversations/message/route.ts`, 'utf8'),
       // The route hands the turn to this module, which opens the durable run.
       readFile(`${root}/src/server/agents/start-agent-turns.ts`, 'utf8'),
     ]).then((sources) => sources.join('\n')),
-    readFile(`${root}/src/server/agents/workspace-agent-invocation.ts`, 'utf8'),
+    readFile(`${root}/src/server/agents/workspace-agent-preparation.ts`, 'utf8'),
+    readFile(`${root}/src/server/harness/native-workflow-input-builder.ts`, 'utf8'),
+    readFile(`${root}/src/server/harness/native-delivery-steps.ts`, 'utf8'),
     readFile(`${root}/src/server/conversations/ConversationCollaborationRepository.ts`, 'utf8'),
     readFile(`${root}/convex/collaboration/directMessages.ts`, 'utf8'),
     readFile(`${root}/convex/knowledge/memoryExtractorNode.ts`, 'utf8'),
@@ -314,8 +243,9 @@ test('room memory ingestion is owner-scoped and gated by the message toggle', as
 
   assert.match(route, /args\.memoryEnabled && args\.extractHumanMemory !== false && invocations\.length > 0/)
   assert.match(route, /targetActor: 'human'/)
-  assert.match(service, /targetActor: 'agent'/)
-  assert.match(service, /memoryEnabled: args\.memoryEnabled/)
+  assert.match(preparation, /memoryEnabled: input\.memoryEnabled/)
+  assert.match(workflowInput, /memoryEnabled: args\.memoryEnabled/)
+  assert.match(delivery, /targetActor: 'agent'/)
   for (const source of [contract, convexRoom]) {
     assert.match(source, /enqueueMemoryExtraction/)
   }

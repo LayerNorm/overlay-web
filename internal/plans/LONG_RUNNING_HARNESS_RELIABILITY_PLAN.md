@@ -168,7 +168,7 @@ Internal state names may reuse equivalent existing variants. Migration must pres
 ### Active work during cutover
 
 1. Stop new legacy admission.
-   - [x] Personal HTTP and named-room admission now use native Harness only; unsupported automation and surface execution rejects explicitly.
+   - [x] Personal HTTP, named-room, automation, and Slack surface execution use native Harness adapters rather than separate model/tool runners.
    - [x] Personal admission fails closed when the Harness capability is missing, stale, unknown, or unreadable.
    - [x] Automation run-backed and scheduler-owned execution uses native Harness with owner-fenced settlement/replay, refreshed bound-agent grants, truthful one-shot approval denial, and focused checks for fresh admission and serialized model authorization.
 - [x] Slack surface turns enter the native room Harness lifecycle with immutable execution ownership, source-revalidated preparation and delivery, canonical per-dispatch billing, and persisted input/approval wait projection and resume coverage; full legacy retirement and video acceptance remain open.
@@ -179,8 +179,12 @@ Internal state names may reuse equivalent existing variants. Migration must pres
 4. Reconcile already-issued operations. Preserve output, usage, and receipts. Do not replay an uncertain external write.
 5. Mark unsupported old tasks explicitly paused/retired with the new-thread explanation.
 6. Remove runnable legacy implementations once they have no live execution dependency.
+   - [x] Remove the obsolete capped workspace-agent and personal-chat-work runner source and test fixtures after dispatchers moved to Harness; the retired-runner boundary and focused Harness/preparation checks pass. This records source removal only, not deployed worker drain or fencing.
+- [ ] Inventory and drain executions already active on deployed legacy workers.
+- [ ] Fence legacy backend admission and callbacks before replacement execution.
+- [ ] Make incompatible old threads read-only and offer an explicit new-thread action.
 
-At the final cutover, no old native runner is reachable. Keeping audit records or an endpoint that only returns an explicit retirement response is not backward-compatible execution.
+At the final cutover, no old native runner is reachable. This source removal does not prove that workers already deployed on older revisions or their callbacks have been drained or fenced. Keeping audit records or an endpoint that only returns an explicit retirement response is not backward-compatible execution.
 
 ### Acceptance
 
