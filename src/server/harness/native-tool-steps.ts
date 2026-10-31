@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { FatalError } from 'workflow'
-import { reservedHarnessCostMicros } from '@overlay/agent-runtime/harness-state'
+import { reservedHarnessCostMicros, type HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
 import { isFreeTierChatModelId } from '@/shared/ai/gateway/model-types'
 import { buildWorkspaceAgentTooling, type WorkspaceAgentToolingResult } from '@/server/agents/agent-tooling'
 import { resolveWorkspaceAgentInvocations } from '@/server/agents/workspace-agent-invocation'
@@ -11,7 +11,7 @@ import { buildNativeHarnessWorkflowInput } from './native-workflow-input-builder
 import { ConvexHarnessRepository } from './ConvexHarnessRepository'
 import { startNativeHarnessNamedChild } from './native-named-child-launch'
 import { executePersonalChatWorkToolResult } from '@/server/conversations/personal-chat-work-tools'
-import { refreshNativeHarnessAccess } from './native-access'
+import { refreshNativeHarnessAccess, type NativeHarnessAccess } from './native-access'
 import { logger } from '@/server/observability/logger'
 import { applyHarnessOperation } from './state-steps'
 import { harnessToolOutputEvidence, isToolFailureOutput } from './tool-evidence'
@@ -27,6 +27,32 @@ type NativeToolCall = HarnessToolCall & Pick<NativeHarnessToolsInput, 'access' |
 function idempotencyKey(call: NativeToolCall): string {
   if (!call.toolCallId || call.toolCallId.length > 256) throw new FatalError('Invalid native tool call identity.')
   return `harness-run:${call.access.runId}:tool:${call.toolCallId}`
+}
+
+async function loadNativeParentRun(
+  repository: ConvexHarnessRepository,
+  access: NativeHarnessAccess,
+): Promise<HarnessSnapshot> {
+  const parent = await repository.get(access)
+  if (!parent || parent.workflowRunId !== access.workflowRunId
+    || parent.policy.actorUserId !== access.actorUserId || parent.policy.workspaceId !== access.workspaceId) {
+    throw new FatalError('Native parent run is no longer available.')
+  }
+  return parent
+}
+
+async function loadNativeRootWorkflowRunId(
+  repository: ConvexHarnessRepository,
+  access: NativeHarnessAccess,
+  parent: HarnessSnapshot,
+): Promise<string> {
+  const root = parent.runId === parent.rootRunId ? parent
+    : await repository.get({ actorUserId: access.actorUserId, runId: parent.rootRunId })
+  if (!root?.workflowRunId || root.runId !== parent.rootRunId
+    || root.policy.actorUserId !== access.actorUserId || root.policy.workspaceId !== access.workspaceId) {
+    throw new FatalError('Native root run is no longer available.')
+  }
+  return root.workflowRunId
 }
 
 async function freshTooling(call: NativeToolCall) {
@@ -192,11 +218,7 @@ export async function dispatchNativeHarnessAgentRequest(
     if (invocations.some(invocation => invocation.externalAgent || invocation.remoteTarget || invocation.harness !== 'overlay')) {
       throw new Error("External agents can't be asked from this run yet.")
     }
-    const budgetParent = await repository.get(access)
-    if (!budgetParent || budgetParent.workflowRunId !== access.workflowRunId
-      || budgetParent.policy.actorUserId !== access.actorUserId || budgetParent.policy.workspaceId !== access.workspaceId) {
-      throw new FatalError('Native parent run is no longer available.')
-    }
+    const budgetParent = await loadNativeParentRun(repository, access)
     const remaining = Math.max(0,
       budgetParent.policy.maxCostMicros - budgetParent.usage.costMicros - reservedHarnessCostMicros(budgetParent))
     const childBudget = Math.floor(remaining / (invocations.length + 1))
@@ -216,11 +238,8 @@ export async function dispatchNativeHarnessAgentRequest(
         workspaceId: args.workspaceId,
       })
       try {
-        const parent = await repository.get(access)
-        if (!parent || parent.workflowRunId !== access.workflowRunId
-          || parent.policy.actorUserId !== access.actorUserId || parent.policy.workspaceId !== access.workspaceId) {
-          throw new FatalError('Native parent run is no longer available.')
-        }
+        const parent = await loadNativeParentRun(repository, access)
+        const expectedSurfaceWorkflowRunId = await loadNativeRootWorkflowRunId(repository, access, parent)
         const workflowInput = await buildNativeHarnessWorkflowInput({
           actorUserId: access.actorUserId,
           workspaceId: args.workspaceId,
@@ -228,7 +247,7 @@ export async function dispatchNativeHarnessAgentRequest(
           runId: turn.runId,
           memoryEnabled: false,
           surfaceRootRunId: parent.rootRunId,
-          expectedSurfaceWorkflowRunId: access.workflowRunId,
+          expectedSurfaceWorkflowRunId,
         })
         const allowedToolIds = [...new Set(workflowInput.definitions
           .map(definition => definition.name)
@@ -246,11 +265,7 @@ export async function dispatchNativeHarnessAgentRequest(
         }
         let admitted = false
         for (let attempt = 0; attempt < 8; attempt++) {
-          const state = attempt === 0 ? parent : await repository.get(access)
-          if (!state || state.workflowRunId !== access.workflowRunId
-            || state.policy.actorUserId !== access.actorUserId || state.policy.workspaceId !== access.workspaceId) {
-            throw new FatalError('Native parent run is no longer available.')
-          }
+          const state = attempt === 0 ? parent : await loadNativeParentRun(repository, access)
           const result = await repository.apply({
             actorUserId: access.actorUserId,
             runId: access.runId,

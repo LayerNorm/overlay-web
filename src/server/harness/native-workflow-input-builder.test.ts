@@ -139,7 +139,7 @@ test('surface root uses canonical source billing and preserves Slack context wit
   expect(mocks.prepare.mock.calls[0]?.[0].messageId).toBe('question')
 })
 
-test('named native child keeps its own turn while inheriting verified root source billing', async () => {
+test('named native child in a different room keeps its turn and inherits verified root source billing', async () => {
   const execution = {
     turnId: 'surface:slack:binding:message',
     workflowRunId: 'workflow',
@@ -156,6 +156,7 @@ test('named native child keeps its own turn while inheriting verified root sourc
   mocks.server.appData.repositories.conversations.getLatestAgentRun.mockResolvedValueOnce({
     ...run,
     id: 'child-run',
+    conversationId: 'child-room',
     agentId: 'child-agent',
     agentPrincipalId: 'child-principal',
     initiatorPrincipalId: 'parent-principal',
@@ -177,7 +178,7 @@ test('named native child keeps its own turn while inheriting verified root sourc
   })
 
   const result = await buildNativeHarnessWorkflowInput({
-    actorUserId: 'user', workspaceId: 'workspace', conversationId: 'room', runId: 'child-run',
+    actorUserId: 'user', workspaceId: 'workspace', conversationId: 'child-room', runId: 'child-run',
     memoryEnabled: true, surfaceRootRunId: 'workspace:run', expectedSurfaceWorkflowRunId: 'workflow',
   })
   expect(mocks.surface).toHaveBeenCalledWith('workspace:run')

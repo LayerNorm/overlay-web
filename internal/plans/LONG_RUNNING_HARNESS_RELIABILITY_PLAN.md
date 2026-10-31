@@ -172,6 +172,8 @@ Internal state names may reuse equivalent existing variants. Migration must pres
    - [x] Personal admission fails closed when the Harness capability is missing, stale, unknown, or unreadable.
    - [x] Automation run-backed and scheduler-owned execution uses native Harness with owner-fenced settlement/replay, refreshed bound-agent grants, truthful one-shot approval denial, and focused checks for fresh admission and serialized model authorization.
 - [x] Slack surface turns enter the native room Harness lifecycle with immutable execution ownership, source-revalidated preparation and delivery, canonical per-dispatch billing, and persisted input/approval wait projection and resume coverage; full legacy retirement and video acceptance remain open.
+- [x] Finish surface review follow-ups: preserve the original root owner for cross-room descendants, persist safe startup failure causes consistently in both run records, and distinguish task outcome from delivery outcome. Verified by the focused Convex and native dispatch/input-builder/orchestration/start-failure/preparation/access suites, TypeScript, and targeted ESLint.
+- [ ] Reconcile Slack delivery when the initial placeholder is missing or an external post has an uncertain outcome. Missing placeholders now report delivery failure; do not blindly repost an uncertain external write. This does not change the task's outcome in Overlay.
 2. Inventory active legacy runs and in-flight external operations.
 3. Fence legacy dispatch and callbacks; revoke old execution authority before replacement execution begins.
 4. Reconcile already-issued operations. Preserve output, usage, and receipts. Do not replay an uncertain external write.

@@ -4,6 +4,7 @@ import { getOverlayServerContext } from '@/server/bootstrap'
 import { ConvexHarnessRepository } from '@/server/harness/ConvexHarnessRepository'
 import { assertPersistedSurfaceSource } from '@/server/harness/surface-access'
 import { prepareNativeHarnessTurn } from '@/server/harness/native-turn-start'
+import { surfaceStartFailure } from '@/server/harness/surface-start-failure'
 import { postSlackAgentMessage } from '@/server/surfaces/slack-reply'
 import { ensureSurfaceConversation } from '@/server/surfaces/surface-conversations'
 import type { SurfaceTurnExecution } from '@/shared/agents/surface-turn-execution'
@@ -66,16 +67,17 @@ async function prepareNativeSurfaceStep(input: {
       memoryEnabled: true,
       expectedSurfaceWorkflowRunId: input.workflowRunId,
     })
-    if (!prepared) return { ok: false as const, message: 'Native Harness preparation returned no workflow input.' }
+    if (!prepared) throw new Error('Native Harness preparation returned no workflow input.')
     return { ok: true as const, workflowInput: prepared.workflowInput }
-  } catch (_error) {
-    return { ok: false as const, message: 'Native Harness preparation or admission failed.' }
+  } catch (error) {
+    return { ok: false as const, failure: surfaceStartFailure(error, input.runId) }
   }
 }
 
 async function recordNativeSurfaceFailureStep(input: {
   execution: SurfaceTurnExecution
   workflowRunId: string
+  failure: ReturnType<typeof surfaceStartFailure>
 }) {
   'use step'
   return await new ConvexHarnessRepository().failOwnedSurfaceTurn({
@@ -83,6 +85,7 @@ async function recordNativeSurfaceFailureStep(input: {
     workflowRunId: input.workflowRunId,
     agentRunId: input.execution.agentRunId,
     assistantMessageId: input.execution.assistantMessageId,
+    failure: input.failure,
   })
 }
 
@@ -117,29 +120,33 @@ async function postNativeSurfaceResultStep(input: {
   execution: SurfaceTurnExecution
   status: string
   workflowRunId: string
-  preparationFailure?: boolean
 }) {
   'use step'
-  if (!['completed', 'failed', 'cancelled'].includes(input.status)) return { posted: false }
+  let attempted = false
+  if (!['completed', 'failed', 'cancelled'].includes(input.status)) return { status: 'not_attempted' as const }
   try {
     const repository = new ConvexHarnessRepository()
     const current = await repository.getSurfaceExecutionByHarnessRunId(input.execution.harnessRunId)
     if (!current || current.turnId !== input.execution.turnId
       || current.workflowRunId !== input.workflowRunId
       || current.agentRunId !== input.execution.agentRunId
-      || current.assistantMessageId !== input.execution.assistantMessageId) return { posted: false }
+      || current.assistantMessageId !== input.execution.assistantMessageId) return { status: 'not_attempted' as const }
     const { source, run } = await assertPersistedSurfaceSource(current, input.workflowRunId)
     const state = await repository.get({ actorUserId: current.actorUserId, runId: current.harnessRunId })
-    if ((!input.preparationFailure && (!state || state.workflowRunId !== current.workflowRunId
-        || state.status !== input.status))
-      || (state && state.workflowRunId !== current.workflowRunId)
-      || run.status !== input.status || !current.placeholderTs) return { posted: false }
+    const ownedTerminal = state?.workflowRunId === current.workflowRunId && state?.status === input.status
+    const unstartedFailure = input.status === 'failed' && !run.startedAt
+      && (!state || (!state.workflowRunId && state.status === 'failed'))
+    if ((!ownedTerminal && !unstartedFailure) || run.status !== input.status) {
+      return { status: 'not_attempted' as const }
+    }
+    if (!current.placeholderTs) return { status: 'failed' as const }
     const messages = await getOverlayServerContext().appData.repositories.conversations.getConversationMessages({
       conversationId: current.conversationId as never,
       userId: current.actorUserId,
     })
     const content = messages.find(message => message._id === current.assistantMessageId)?.content ?? ''
-    if (input.status === 'completed' && !content) return { posted: false }
+    if (input.status === 'completed' && !content.trim()) return { status: 'not_attempted' as const }
+    attempted = true
     const { getSlackAdapter } = await import(
       /* step-only */ '@/server/surfaces/chat'
     )
@@ -157,9 +164,9 @@ async function postNativeSurfaceResultStep(input: {
       agentName: source.agent.name,
       editTs: current.placeholderTs,
     })
-    return { posted: result.posted }
+    return { status: result.posted ? 'posted' as const : 'failed' as const }
   } catch (_error) {
-    return { posted: false }
+    return { status: attempted ? 'failed' as const : 'not_attempted' as const }
   }
 }
 
@@ -189,7 +196,7 @@ export async function surfaceAgentTurnWorkflow(input: SurfaceAgentTurnInput) {
     const delivery = await postNativeSurfaceResultStep({ execution, status: previous.status, workflowRunId })
     return {
       status: previous.status,
-      deliveryStatus: delivery.posted ? 'posted' : 'not_attempted',
+      deliveryStatus: delivery.status,
     }
   }
   const prepared = await prepareNativeSurfaceStep({
@@ -200,11 +207,11 @@ export async function surfaceAgentTurnWorkflow(input: SurfaceAgentTurnInput) {
     workflowRunId,
   })
   if (!prepared.ok) {
-    const failure = await recordNativeSurfaceFailureStep({ execution, workflowRunId })
+    const failure = await recordNativeSurfaceFailureStep({ execution, workflowRunId, failure: prepared.failure })
     if (failure.persisted) await postNativeSurfaceResultStep({
-      execution, status: 'failed', workflowRunId, preparationFailure: true,
+      execution, status: 'failed', workflowRunId,
     })
-    throw new FatalError(prepared.message)
+    throw new FatalError(prepared.failure.message)
   }
   const nativeResult = await nativeHarnessWorkflow(prepared.workflowInput)
   const terminal = await readNativeSurfaceResultStep({ execution, workflowRunId })
@@ -219,6 +226,6 @@ export async function surfaceAgentTurnWorkflow(input: SurfaceAgentTurnInput) {
   })
   return {
     status: terminal.status,
-    deliveryStatus: delivery.posted ? 'posted' : 'not_attempted',
+    deliveryStatus: delivery.status,
   }
 }

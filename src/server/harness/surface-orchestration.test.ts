@@ -250,15 +250,37 @@ test('same-owner terminal replay delivers exact stored result without preparatio
 
 test('preparation failure persists onto the owned delivery and sends only a safe notice', async () => {
   mocks.prepare.mockRejectedValueOnce(new Error('private provider credential details'))
-  await expect(surfaceAgentTurnWorkflow(input)).rejects.toThrow('Native Harness preparation or admission failed.')
+  await expect(surfaceAgentTurnWorkflow(input)).rejects.toThrow('Reference: surface-start:delivery.')
   expect(mocks.failOwned).toHaveBeenCalledWith({
     turnId, workflowRunId: 'workflow', agentRunId: 'delivery', assistantMessageId: 'assistant',
+    failure: {
+      code: 'SURFACE_PREPARATION_FAILED', retryable: false,
+      message: 'Native task preparation or admission failed. The cause could not be safely displayed. Reference: surface-start:delivery.',
+    },
   })
   expect(mocks.postMessage).toHaveBeenCalledWith(expect.objectContaining({
     text: 'This task failed in Overlay. Open the conversation for details.',
   }))
   expect(mocks.postMessage.mock.calls[0]?.[0].text).not.toContain('private provider')
   expect(mocks.nativeWorkflow).not.toHaveBeenCalled()
+})
+
+test('known authorization failure keeps its actual safe reason in the persisted run', async () => {
+  mocks.prepare.mockRejectedValueOnce(new Error('The surface binding or agent authorization changed.'))
+  await expect(surfaceAgentTurnWorkflow(input)).rejects.toThrow('The surface binding or agent authorization changed.')
+  expect(mocks.failOwned).toHaveBeenCalledWith(expect.objectContaining({
+    failure: {
+      code: 'SURFACE_AUTHORIZATION_CHANGED', message: 'The surface binding or agent authorization changed.', retryable: false,
+    },
+  }))
+})
+
+test('transport exception or missing placeholder reports failed delivery, not a failed task', async () => {
+  mocks.postMessage.mockRejectedValueOnce(new Error('Slack unavailable'))
+  await expect(surfaceAgentTurnWorkflow(input)).resolves.toEqual({ status: 'completed', deliveryStatus: 'failed' })
+  mocks.getExecution.mockResolvedValueOnce({ ...execution, placeholderTs: undefined })
+  await expect(surfaceAgentTurnWorkflow(input)).resolves.toEqual({ status: 'completed', deliveryStatus: 'failed' })
+  expect(mocks.postMessage).toHaveBeenCalledOnce()
 })
 
 test('revoked source prevents terminal delivery without changing task outcome', async () => {
@@ -297,7 +319,7 @@ test('failed/cancelled outcomes remain truthful and Slack failure does not repla
   })
   mocks.postMessage.mockResolvedValueOnce({ posted: false })
   await expect(surfaceAgentTurnWorkflow(input)).resolves.toEqual({
-    status: 'failed', deliveryStatus: 'not_attempted',
+    status: 'failed', deliveryStatus: 'failed',
   })
   expect(mocks.postMessage.mock.calls[0]?.[0].text).toBe('This task failed in Overlay. Open the conversation for details.')
 

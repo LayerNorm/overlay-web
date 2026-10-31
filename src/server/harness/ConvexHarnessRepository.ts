@@ -68,6 +68,7 @@ export class ConvexHarnessRepository implements HarnessRepository {
     workflowRunId: string
     agentRunId: string
     assistantMessageId: string
+    failure: { code: string; message: string; retryable: boolean }
   }): Promise<{ persisted: boolean }> {
     const result = await convex.mutation<{ persisted: boolean }>('surfaces/surfaceExecutions:failOwnedSurfaceTurn', {
       ...input,

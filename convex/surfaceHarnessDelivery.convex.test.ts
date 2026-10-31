@@ -108,10 +108,44 @@ test('surface admission claims an authentic native room delivery and projects/re
     serverSecret: secret,
   })
   expect(admission.runId).toBe(execution.harnessRunId)
+  const failure = { code: 'SURFACE_AUTHORIZATION_CHANGED', message: 'Surface workspace authority changed.', retryable: false }
+  const failedBegin = await convex.mutation(mutation('surfaces/surfaceExecutions:beginSurfaceTurn'), {
+    ...begin, turnId: 'surface:slack:binding:failed-message', messageId: 'failed-message',
+  })
+  const failedExecution = failedBegin.execution
+  await convex.mutation(mutation('harness/runs:admit'), {
+    runId: failedExecution.harnessRunId, deliveryAgentRunId: failedExecution.agentRunId,
+    source: { conversationId: fixture.conversationId }, goal: 'Help me.', constraints: [],
+    policy: admission.policy, serverSecret: secret,
+  })
+  const failArgs = {
+    serverSecret: secret, turnId: failedExecution.turnId, workflowRunId: 'workflow',
+    agentRunId: failedExecution.agentRunId, assistantMessageId: failedExecution.assistantMessageId, failure,
+  }
+  expect(await convex.mutation(mutation('surfaces/surfaceExecutions:failOwnedSurfaceTurn'), {
+    ...failArgs, workflowRunId: 'foreign',
+  })).toEqual({ persisted: false })
+  expect(await convex.mutation(mutation('surfaces/surfaceExecutions:failOwnedSurfaceTurn'), failArgs))
+    .toEqual({ persisted: true })
+  expect(await convex.mutation(mutation('surfaces/surfaceExecutions:failOwnedSurfaceTurn'), failArgs))
+    .toEqual({ persisted: false })
+  await convex.run(async ctx => {
+    const run = await ctx.db.get(failedExecution.agentRunId)
+    const message = await ctx.db.get(failedExecution.assistantMessageId)
+    const harness = await ctx.db.query('harnessRuns')
+      .withIndex('by_runId', q => q.eq('runId', failedExecution.harnessRunId)).unique()
+    expect(run?.status).toBe('failed')
+    expect(run?.terminalError).toEqual(failure)
+    expect(message?.content).toBe(failure.message)
+    expect(JSON.parse(harness!.metadataJson)).toMatchObject({ status: 'failed', terminalReason: failure.message })
+  })
   await applyHarness(convex, execution.harnessRunId, { type: 'claim_execution', workflowRunId: 'workflow' })
   await convex.mutation(mutation('chat/conversations:attachAgentRunWorkflow'), {
     runId: execution.agentRunId, serverSecret: secret, userId: 'user', workflowRunId: 'workflow',
   })
+  expect(await convex.mutation(mutation('surfaces/surfaceExecutions:failOwnedSurfaceTurn'), {
+    ...failArgs, turnId: begin.turnId, agentRunId: execution.agentRunId, assistantMessageId: execution.assistantMessageId,
+  })).toEqual({ persisted: false })
 
   await applyHarness(convex, execution.harnessRunId, {
     type: 'block', blocker: { kind: 'input', question: 'Which document?' },

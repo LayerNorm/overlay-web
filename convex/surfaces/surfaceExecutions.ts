@@ -2,6 +2,7 @@ import { v } from 'convex/values'
 import { mutation, query } from '../_generated/server'
 import { requireServerSecret } from '../lib/auth'
 import { startAgentTurnInTransaction } from '../collaboration/directMessages'
+import { failUnclaimedNativeHarnessInTransaction } from '../harness/runs'
 
 export const beginSurfaceTurn = mutation({
   args: {
@@ -187,6 +188,7 @@ export const failOwnedSurfaceTurn = mutation({
     workflowRunId: v.string(),
     agentRunId: v.id('conversationAgentRuns'),
     assistantMessageId: v.id('conversationMessages'),
+    failure: v.object({ code: v.string(), message: v.string(), retryable: v.boolean() }),
   },
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
@@ -199,14 +201,17 @@ export const failOwnedSurfaceTurn = mutation({
     const run = await ctx.db.get(args.agentRunId)
     if (!run || run.userId !== execution.actorUserId || run.conversationId !== execution.conversationId
       || run.assistantMessageId !== execution.assistantMessageId || run.harnessRunId !== execution.harnessRunId
-      || (run.workflowRunId && run.workflowRunId !== args.workflowRunId)
-      || ['completed', 'failed', 'cancelled'].includes(run.status)) return { persisted: false }
+      || run.workflowRunId || run.status !== 'queued') return { persisted: false }
 
     const now = Date.now()
-    const text = 'This Slack task could not start in Overlay. Please retry or open the conversation for details.'
+    const text = args.failure.message
     const message = await ctx.db.get(execution.assistantMessageId)
     if (!message || message.conversationId !== execution.conversationId
       || message.turnId !== execution.turnId || message.role !== 'assistant') return { persisted: false }
+    if (!await failUnclaimedNativeHarnessInTransaction(ctx, {
+      runId: execution.harnessRunId, actorUserId: execution.actorUserId,
+      deliveryAgentRunId: execution.agentRunId, reason: text,
+    })) return { persisted: false }
     const parts = (message.parts ?? []).filter(part =>
       part.type !== 'data-native-agent-approval' && part.type !== 'data-native-agent-input')
     const hasContentPart = parts.some(part => part.type === 'text')
@@ -227,7 +232,7 @@ export const failOwnedSurfaceTurn = mutation({
       leaseExpiresAt: undefined,
       approval: undefined,
       inputRequest: undefined,
-      terminalError: { code: 'SURFACE_PREPARATION_FAILED', message: 'Native task preparation failed.', retryable: false },
+      terminalError: args.failure,
       updatedAt: now,
     })
     await ctx.db.patch(run.conversationId, { lastModified: now, updatedAt: now })

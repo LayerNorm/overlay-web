@@ -38,9 +38,9 @@ async function loadSurfaceExecution(args: NativeInputArgs, run: AgentRun): Promi
   if (!execution) return null
   const ownsDelivery = execution.actorUserId === args.actorUserId
     && execution.workspaceId === args.workspaceId
-    && execution.conversationId === args.conversationId
     && (execution.agentRunId !== run.id || (
-      execution.turnId === run.turnId
+      execution.conversationId === args.conversationId
+      && execution.turnId === run.turnId
       && execution.userMessageId === run.userMessageId
       && execution.assistantMessageId === run.assistantMessageId
     ))

@@ -945,6 +945,22 @@ async function persistMetadata(ctx: MutationCtx, run: RunRow, snapshot: HarnessS
   })
 }
 
+export async function failUnclaimedNativeHarnessInTransaction(ctx: MutationCtx, input: {
+  runId: string
+  actorUserId: string
+  deliveryAgentRunId: string
+  reason: string
+}): Promise<boolean> {
+  const run = await findRun(ctx, input.runId)
+  if (!run) return true
+  if (run.actorUserId !== input.actorUserId || run.deliveryAgentRunId !== input.deliveryAgentRunId
+    || run.rootRunId !== run.runId || run.activeDescendantCount !== 0) return false
+  const snapshot = await hydrateSnapshot(ctx, run)
+  if (snapshot.workflowRunId || snapshot.modelReservation || isTerminalStatus(snapshot.status)) return false
+  await persistMetadata(ctx, run, terminateHarness(snapshot, 'failed', input.reason, Date.now()))
+  return true
+}
+
 async function persistPlan(
   ctx: MutationCtx,
   runId: string,
