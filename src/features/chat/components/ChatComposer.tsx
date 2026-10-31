@@ -113,6 +113,8 @@ export function ChatComposer(props: ChatComposerProps) {
       >
         <ChatEmptyHero visible={viewProps.showCenteredEmptyChat} greetingLine={viewProps.greetingLine} />
         <div
+          data-chat-composer
+          data-centered={viewProps.showCenteredEmptyChat}
           className={`mx-auto w-full min-w-0 shrink-0 transition-[max-width] duration-780 ease-[cubic-bezier(0.16,1,0.3,1)] max-md:order-3 ${
             viewProps.showCenteredEmptyChat ? 'max-w-xl' : 'max-w-4xl'
           }`}

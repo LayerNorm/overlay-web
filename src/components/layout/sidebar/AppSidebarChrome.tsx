@@ -70,6 +70,7 @@ export function SidebarBrandLink({
   onNavigate,
   className,
   labelClassName,
+  markOnly = false,
 }: {
   href: string
   logoSrc: string
@@ -78,10 +79,11 @@ export function SidebarBrandLink({
   onNavigate: () => void
   className: string
   labelClassName: string
+  markOnly?: boolean
 }) {
   return (
-    <Link href={href} className={className} onClick={onNavigate}>
-      {logoSrc === DEFAULT_BRAND_LOGO_SRC && (label === 'Overlay' || label === 'overlay') ? (
+    <Link href={href} aria-label={markOnly ? label : undefined} className={className} onClick={onNavigate}>
+      {markOnly ? <BrandMark logoSrc={logoSrc} logoAlt={logoAlt} size={22} /> : logoSrc === DEFAULT_BRAND_LOGO_SRC && (label === 'Overlay' || label === 'overlay') ? (
         <BrandLockup className={labelClassName} />
       ) : (
         <>

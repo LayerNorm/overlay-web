@@ -10,6 +10,7 @@ export interface AppBreadcrumbItem {
 
 interface BreadcrumbContextValue {
   items: AppBreadcrumbItem[]
+  leading?: ReactNode
   renderLink?: (item: AppBreadcrumbItem, className: string) => ReactNode
 }
 
@@ -29,6 +30,8 @@ export function AppBreadcrumbs({ title, items = [], 'aria-label': ariaLabel = 'B
   if (title && title !== trail.at(-1)?.label) trail.push({ label: title })
   if (!trail.length) return null
   return (
+    <>
+    {context.leading}
     <Breadcrumb aria-label={ariaLabel} className="min-w-0 flex-1">
       <BreadcrumbList className="min-w-0 flex-nowrap">
         {trail.map((item, index) => {
@@ -54,5 +57,6 @@ export function AppBreadcrumbs({ title, items = [], 'aria-label': ariaLabel = 'B
         })}
       </BreadcrumbList>
     </Breadcrumb>
+    </>
   )
 }

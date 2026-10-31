@@ -34,7 +34,7 @@ export function DelayedTooltip({
   label: string
   children: ReactNode
   className?: string
-  side?: 'top' | 'bottom' | 'left'
+  side?: 'top' | 'bottom' | 'left' | 'right'
 }) {
   const [descriptionId, setDescriptionId] = useState<string | null>(null)
   const [open, setOpen] = useState(false)

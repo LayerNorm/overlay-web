@@ -3,6 +3,16 @@ title: "Interface Design"
 description: "Product UI decisions every surface follows: toggles-only controls, one-control-per-row layouts, and editors without save bars."
 ---
 
+## Double-sidebar shell
+
+The web shell's **Double sidebar** setting uses `DoubleSidebar` from `@overlay/shell-react`: a fixed 60px primary rail and a 272px contextual panel, resizable between 220px and 360px. The active rail destination toggles only its panel without navigating; another destination opens its panel and uses the existing scope-aware navigation handler. Files, Extensions, and Automations stay in More when their existing gates allow them.
+
+`src/app/double-sidebar.css` scopes the rounded content frame, default light/dark chrome, compact chat presentation, and curved agent-thread guides to this layout at desktop widths. Custom theme presets retain semantic colors. The mobile drawer, onboarding, and compact native desktop panel retain their existing layouts; macOS keeps a dedicated drag region above the shell.
+
+`useSecondarySidebar` still means rail-and-panel. New settings default to `true`; explicit saved `false` values continue to select `UnifiedSidebar`. Do not migrate or reinterpret those values. The frontend contract and Convex new-row defaults must agree. Deploy backend default changes only through the normal isolated preview/canonical-main release process, never to shared development from a feature branch.
+
+Regression checks: `npm --prefix packages/overlay-shell-react test`, focused sidebar/navigation/thread tests, `npm run check:raw-controls`, and `npm run check:module-boundaries`. Browser QA should compare light/dark and collapsed/expanded states with `internal/plans/mockups/double-sidebar-curved-mockup.html`, then check scope switching, Settings, More, agent thread actions, and mobile navigation on the isolated PR preview.
+
 # Overlay interface design
 
 Product UI decisions that every surface follows. When a new control is needed,

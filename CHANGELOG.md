@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Add the curved double-sidebar layout: a persistent icon rail, independently collapsible contextual panels, rounded content surfaces, and indented agent threads. New layout preferences default to double sidebar; saved single-sidebar choices remain unchanged.
+
 - Right-size Namespace CI runners, prioritize required checks, preserve exact dependency caching with an opt-in protected local-volume experiment, and add project-aware pre-push typechecking and opt-in compiler/lint/test-selection parity tools.
 
 - Render durable personal-run input requests, persist authenticated approval-resumed tool outcomes, and use one plain-language interruption notice without duplicate copy.

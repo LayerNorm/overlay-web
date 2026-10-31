@@ -15,7 +15,6 @@ function ThreadButton({ children, className, ...props }: ComponentProps<typeof S
   return <SidebarMenuSubButton className={`font-normal data-[active=true]:font-normal [&>svg]:mx-1 ${className ?? ''}`} {...props}>{children}</SidebarMenuSubButton>
 }
 
-/** Threads share the agent's icon column without a guide line or extra indentation. */
 export function AgentThreadRows({
   agent,
   bundle,
@@ -35,7 +34,7 @@ export function AgentThreadRows({
 }) {
   if (bundle === 'loading') {
     return (
-      <SidebarMenu className="mb-2.5" aria-label={`Loading ${agent.name} threads`}>
+      <SidebarMenu className="agent-thread-tree mb-2.5" aria-label={`Loading ${agent.name} threads`}>
         {[0, 1, 2].map((index) => (
           <SidebarMenuSubItem key={index}>
             <SidebarMenuSkeleton index={index} className="h-7 px-2" />
@@ -46,7 +45,7 @@ export function AgentThreadRows({
   }
   if (bundle === 'error') {
     return (
-      <SidebarMenu className="mb-2.5">
+      <SidebarMenu className="agent-thread-tree mb-2.5">
         <SidebarMenuSubItem>
           <p className="px-2 py-1.5 text-xs text-(--muted-light)">Could not load threads</p>
         </SidebarMenuSubItem>
@@ -56,7 +55,7 @@ export function AgentThreadRows({
   const threads = bundle.threads.filter((thread) => !thread.archivedAt)
   const automations = bundle.automations
   return (
-    <SidebarMenu className="mb-2.5" aria-label={`${agent.name} threads`}>
+    <SidebarMenu className="agent-thread-tree mb-2.5" aria-label={`${agent.name} threads`}>
       {threads.map((thread) => {
         const active = activeConversationId === thread.conversationId
         return (
