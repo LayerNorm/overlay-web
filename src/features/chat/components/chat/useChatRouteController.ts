@@ -92,7 +92,7 @@ export function useChatRouteController({
     if (hideSidebar || options.replaceUrl === false) return
     const replaceUrl = (href: string) => {
       if (typeof window !== 'undefined') {
-        window.history.replaceState(window.history.state, '', href)
+        window.history.replaceState(null, '', href)
       }
     }
     if (mode === 'automate') {

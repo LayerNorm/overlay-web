@@ -22,6 +22,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Keep Generated UI edits unavailable without a persistence callback, explicitly pass retired-thread safety through personal and room transcripts, and discard local edits when a card becomes read-only.
 
+- Keep a blank personal-chat handoff synchronized with the Next.js URL state when removing the prior conversation ID.
+
 - Add an opt-in Preview-only historical-thread retirement fixture for hosted UI QA without scheduling workflows or replenishing existing QA allowance. Preview builds can seed it through the trusted controller without exporting database credentials.
 
 - Switch existing accounts to double sidebar once across all workspaces, while allowing subsequent single-sidebar opt-outs.
