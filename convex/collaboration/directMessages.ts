@@ -9,7 +9,7 @@ import { requireAccessToken, validateServerSecret } from '../lib/auth'
 import { recordConversationEvent } from './events'
 import { conversationListVersion } from '../lib/conversationListVersion'
 import { resolveConversationActivityState } from '../../src/shared/chat/conversation-activity-state'
-import { assertNativeHarnessRun } from '../../src/shared/agents/native-run-retirement'
+import { assertNativeHarnessRun, assertSupportedAgentExecution, nativeRunRetiredError } from '../../src/shared/agents/native-run-retirement'
 import { agentMemoryOwnerId } from '../../src/shared/agents/agent-memory'
 import { stripTextualToolCalls, stripTextualToolCallsFromParts } from '../../src/shared/ai/textual-tool-calls'
 import { resolveIdentityDisplayName, versionedIdentityUrl } from '../../src/shared/workspaces/identity-resolution'
@@ -623,6 +623,7 @@ export const addMessage = mutation({
  * invoker's room access and the agent's active participation in that room. */
 export const addAgentMessage = mutation({
   args: {
+    messagePurpose: v.optional(v.union(v.literal('greeting'), v.literal('prepared_onboarding'), v.literal('agent_request'))),
     actorUserId: v.string(),
     authorPrincipalId: v.string(),
     clientNonce: v.string(),
@@ -638,6 +639,7 @@ export const addAgentMessage = mutation({
   },
   handler: async (ctx, args) => {
     await requireAgentAuthor(ctx, args)
+    if (!args.messagePurpose) throw nativeRunRetiredError()
     if (args.threadRootMessageId) {
       await getMessageForThread(ctx, args.conversationId, args.threadRootMessageId)
     }
@@ -824,7 +826,12 @@ async function loadGeneratingAgentMessage(
     throw new Error('MESSAGE_NOT_FOUND')
   }
   if (message.authorKind !== 'agent') throw new Error('AGENT_MESSAGE_REQUIRED')
-  return message.status === 'generating' ? message : null
+  if (message.status !== 'generating') return null
+  const run = await ctx.db.query('conversationAgentRuns')
+    .withIndex('by_assistantMessageId', q => q.eq('assistantMessageId', message._id)).unique()
+  if (!run) throw nativeRunRetiredError()
+  assertSupportedAgentExecution(run)
+  return message
 }
 
 /**
@@ -984,7 +991,42 @@ export const startAgentMessage = mutation({
   },
   handler: async (ctx, args) => {
     await requireAgentAuthor(ctx, args)
-    return (await openAgentMessageRow(ctx, args)).messageId
+    throw nativeRunRetiredError()
+  },
+})
+
+export const recordAgentStartFailure = mutation({
+  args: {
+    actorUserId: v.string(),
+    authorPrincipalId: v.string(),
+    clientNonce: v.string(),
+    content: v.string(),
+    conversationId: v.id('conversations'),
+    modelId: v.string(),
+    threadRootMessageId: v.optional(v.id('conversationMessages')),
+    turnId: v.string(),
+    workspaceId: v.string(),
+    serverSecret: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    await requireAgentAuthor(ctx, args)
+    const { messageId } = await openAgentMessageRow(ctx, args)
+    const message = await ctx.db.get(messageId)
+    if (message?.status !== 'generating') return messageId
+    const run = await ctx.db.query('conversationAgentRuns')
+      .withIndex('by_assistantMessageId', q => q.eq('assistantMessageId', messageId)).unique()
+    if (run) assertSupportedAgentExecution(run)
+    await ctx.db.patch(messageId, {
+      content: args.content,
+      parts: [{ type: 'text', text: args.content }],
+      status: 'error',
+      updatedAt: Date.now(),
+    })
+    await recordConversationEvent(ctx, {
+      conversationId: args.conversationId, workspaceId: args.workspaceId,
+      userId: args.actorUserId, messageId, type: 'message.failed',
+    })
+    return messageId
   },
 })
 
@@ -1138,6 +1180,10 @@ export const sanitizeAgentMessageTextParts = mutation({
     if (!message || message.conversationId !== args.conversationId
       || message.authorKind !== 'agent' || message.authorPrincipalId !== args.authorPrincipalId
       || message.turnId !== args.turnId) return
+    const run = await ctx.db.query('conversationAgentRuns')
+      .withIndex('by_assistantMessageId', q => q.eq('assistantMessageId', message._id)).unique()
+    if (!run) throw nativeRunRetiredError()
+    assertSupportedAgentExecution(run)
     const toolNames = new Set(args.toolNames)
     await ctx.db.patch(args.messageId, {
       content: stripTextualToolCalls(message.content, toolNames),

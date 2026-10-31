@@ -47,6 +47,10 @@ test('finalizing an assistant message strips textual tool-call parts and preserv
     await ctx.db.insert('workspacePrincipals', { principalId: 'human', workspaceId: 'qa', type: 'human', userId: 'owner', displayName: 'QA', createdAt: 1, updatedAt: 1 })
     await ctx.db.insert('workspaceMemberships', { membershipId: 'qa-member', workspaceId: 'qa', principalId: 'human', role: 'owner', status: 'active', joinedAt: 1, updatedAt: 1 })
     const conversationId = await ctx.db.insert('conversations', { userId: 'owner', workspaceId: 'qa', title: 'QA', conversationType: 'personal', lastModified: 1, updatedAt: 1, createdAt: 1, lastMode: 'act', askModelIds: [], actModelId: 'm' })
+    const userMessageId = await ctx.db.insert('conversationMessages', {
+      conversationId, userId: 'owner', turnId: 't', role: 'user', mode: 'act',
+      content: 'Read the note', contentType: 'text', status: 'completed', createdAt: 1, updatedAt: 1,
+    })
     const messageId = await ctx.db.insert('conversationMessages', {
       conversationId, userId: 'owner', authorKind: 'agent', authorPrincipalId: 'agent', turnId: 't',
       role: 'assistant', mode: 'act', content: 'Streaming', parts: [], contentType: 'text', status: 'generating',
@@ -70,6 +74,17 @@ test('finalizing an assistant message strips textual tool-call parts and preserv
       ],
       contentType: 'text', status: 'generating', createdAt: 3, updatedAt: 3,
     })
+    for (const [assistantMessageId, status] of [
+      [messageId, 'running'],
+      [retainedMessageId, 'completed'],
+      [failedMessageId, 'running'],
+    ] as const) {
+      await ctx.db.insert('conversationAgentRuns', {
+        conversationId, turnId: 't', userId: 'owner', userMessageId, assistantMessageId,
+        mode: 'chat', runner: 'workflow', executionEngine: 'overlay_harness', status,
+        createdAt: 1, updatedAt: 1,
+      })
+    }
     return { conversationId, messageId, retainedMessageId, failedMessageId }
   })
   const toolProgress = {

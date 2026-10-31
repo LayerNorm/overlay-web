@@ -83,3 +83,27 @@ test('supported native attachment and connected-agent transitions remain availab
   expect((await t.mutation(mutation('chat/conversations:transitionAgentRun'), { ...owner, status: 'waiting_for_approval' })).status)
     .toBe('waiting_for_approval')
 })
+
+test('legacy progress and terminal callbacks cannot overwrite persisted work, while metrics remain recordable', async () => {
+  const { t, args } = await fixture()
+  const run = await t.mutation(mutation('chat/conversations:startAgentRun'), args)
+  await t.run(async ctx => {
+    await ctx.db.patch(run._id, { executionEngine: undefined })
+    await ctx.db.patch(run.assistantMessageId, { content: 'Preserved work' })
+  })
+  const owner = { runId: run._id, userId: 'owner', serverSecret: secret }
+  for (const [name, input] of [
+    ['recordAgentRunProgress', { content: 'late progress' }],
+    ['completeAgentRun', { content: 'false completion', parts: [], tokens: { input: 1, output: 1 } }],
+    ['failAgentRun', { errorText: 'old error', error: { code: 'old_error', message: 'old error', retryable: false } }],
+  ] as const) {
+    await expect(t.mutation(mutation(`chat/conversations:${name}`), { ...owner, ...input }))
+      .rejects.toThrow('native_runner_retired')
+  }
+  await t.mutation(mutation('chat/conversations:recordAgentRunMetrics'), { ...owner, metrics: { outputTokens: 3 } })
+  await t.run(async ctx => {
+    expect((await ctx.db.get(run.assistantMessageId))?.content).toBe('Preserved work')
+    expect((await ctx.db.get(run._id))?.status).toBe('queued')
+    expect((await ctx.db.get(run._id))?.metrics?.outputTokens).toBe(3)
+  })
+})

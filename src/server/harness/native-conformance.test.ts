@@ -617,7 +617,7 @@ it('Native dispatch always starts a Harness run', async () => {
       getCollaboration: () => ({
         enqueueMemoryExtraction: async () => undefined,
         startAgentTurn: async (input: Record<string, unknown>) => ({ resumed: false, runId: 'run', messageId: 'reply', ...input }),
-        startAgentMessage: async () => 'failure',
+        recordAgentStartFailure: async () => 'failure',
         failAgentMessage: async () => undefined,
       } as never),
       startNative: async () => { starts.push('native') },

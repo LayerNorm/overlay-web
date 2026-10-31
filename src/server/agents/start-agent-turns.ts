@@ -127,23 +127,16 @@ export async function startWorkspaceAgentTurns(
         messageId: args.messageId,
       })
       const failureMessage = agentStartFailureMessage(invocation.agentName, error)
-      await collaboration.startAgentMessage({
+      await collaboration.recordAgentStartFailure({
         actorUserId: args.actorUserId,
         authorPrincipalId: invocation.agentPrincipalId,
         clientNonce: invocation.invocationNonce,
+        content: failureMessage,
         conversationId: args.conversationId,
         modelId: invocation.modelId,
         threadRootMessageId: args.threadRootMessageId,
         turnId: invocation.turnId,
         workspaceId: args.workspaceId,
-      }).then(async (failureMessageId) => {
-        await collaboration.failAgentMessage({
-          actorUserId: args.actorUserId,
-          content: failureMessage,
-          conversationId: args.conversationId,
-          messageId: failureMessageId,
-          workspaceId: args.workspaceId,
-        })
       }).catch((persistenceError) => {
         logger.error('[conversations/message POST] Failed to persist agent-start failure', {
           agentId: invocation.agentId,

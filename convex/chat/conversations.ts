@@ -1134,6 +1134,7 @@ export const completeAgentRun = mutation({
     const run = await ctx.db.get(args.runId)
     if (!run || run.userId !== args.userId) throw new Error('Unauthorized')
     if (!ACTIVE_AGENT_RUN_STATUSES.has(run.status)) return run
+    assertSupportedAgentExecution(run)
     assertAgentRunTransition(run.status, 'completed')
     const now = Date.now()
     const message = await ctx.db.get(run.assistantMessageId)
@@ -1180,6 +1181,7 @@ export const failAgentRun = mutation({
     const run = await ctx.db.get(args.runId)
     if (!run || run.userId !== args.userId) throw new Error('Unauthorized')
     if (!ACTIVE_AGENT_RUN_STATUSES.has(run.status)) return run
+    assertSupportedAgentExecution(run)
     assertAgentRunTransition(run.status, 'failed')
     const now = Date.now()
     const message = await ctx.db.get(run.assistantMessageId)
@@ -1293,6 +1295,7 @@ export const recordAgentRunProgress = mutation({
     const run = await ctx.db.get(args.runId)
     if (!run || run.userId !== args.userId) throw new Error('Unauthorized')
     if (!ACTIVE_AGENT_RUN_STATUSES.has(run.status)) return
+    assertSupportedAgentExecution(run)
     const message = await ctx.db.get(run.assistantMessageId)
     if (message?.status !== 'generating') return
     if (message.content === args.content) return

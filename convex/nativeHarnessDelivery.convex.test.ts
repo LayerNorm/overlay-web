@@ -63,6 +63,55 @@ function admission(conversationId: string, deliveryAgentRunId: string): HarnessA
       deadlineAt: Date.now() + 60_000, maxCostMicros: 0, maxDepth: 2, maxParallelChildren: 2 } }
 }
 
+test.each(['legacy', 'unowned', 'native', 'remote'])('message writes require a supported run: %s', async scenario => {
+  const convex = convexTest(schema, modules)
+  const fixture = await seed(convex)
+  const turn = await open(convex, fixture)
+  await convex.run(async ctx => {
+    await ctx.db.patch(turn.messageId, { content: 'Preserved work' })
+    if (scenario === 'legacy') await ctx.db.patch(turn.runId, { executionEngine: undefined })
+    if (scenario === 'unowned') await ctx.db.delete(turn.runId)
+    if (scenario === 'remote') await ctx.db.patch(turn.runId, { runner: 'remote', executionEngine: undefined })
+  })
+  const owner = { actorUserId: 'alice', workspaceId: 'workspace', conversationId: fixture.conversationId,
+    messageId: turn.messageId, serverSecret: secret }
+  if (scenario === 'legacy' || scenario === 'unowned') {
+    for (const [name, input] of [
+      ['appendAgentMessageDelta', { contentDelta: 'late delta' }],
+      ['finalizeAgentMessage', { content: 'false completion' }],
+      ['failAgentMessage', { content: 'old failure' }],
+      ['sanitizeAgentMessageTextParts', { authorPrincipalId: 'agent-principal', turnId: 'turn-alice', toolNames: [] }],
+    ] as const) {
+      await expect(convex.mutation(mutation(`collaboration/directMessages:${name}`), { ...owner, ...input }))
+        .rejects.toThrow('native_runner_retired')
+    }
+    expect((await convex.run(ctx => ctx.db.get(turn.messageId)))?.content).toBe('Preserved work')
+  } else {
+    await convex.mutation(mutation('collaboration/directMessages:appendAgentMessageDelta'), { ...owner, contentDelta: ' output' })
+    await convex.mutation(mutation('collaboration/directMessages:finalizeAgentMessage'), { ...owner, content: 'Verified output' })
+    expect((await convex.run(ctx => ctx.db.get(turn.messageId)))?.content).toBe('Verified output')
+  }
+})
+
+test('unowned generation is retired while explicit non-execution posts and atomic startup errors remain available', async () => {
+  const convex = convexTest(schema, modules)
+  const fixture = await seed(convex)
+  const args = { actorUserId: 'alice', authorPrincipalId: 'agent-principal', conversationId: fixture.conversationId,
+    clientNonce: 'nonce-failure', turnId: 'failure', modelId: 'openrouter/free', workspaceId: 'workspace', serverSecret: secret }
+  await expect(convex.mutation(mutation('collaboration/directMessages:startAgentMessage'), args))
+    .rejects.toThrow('native_runner_retired')
+  await expect(convex.mutation(mutation('collaboration/directMessages:addAgentMessage'), { ...args, content: 'Unowned answer' }))
+    .rejects.toThrow('native_runner_retired')
+  const messageId = await convex.mutation(mutation('collaboration/directMessages:recordAgentStartFailure'), { ...args, content: 'Admission failed' })
+  expect(await convex.mutation(mutation('collaboration/directMessages:recordAgentStartFailure'), { ...args, content: 'Replay' })).toBe(messageId)
+  const message = await convex.run(ctx => ctx.db.get(messageId))
+  expect(message).toMatchObject({ status: 'error', content: 'Admission failed' })
+  const greeting = await convex.mutation(mutation('collaboration/directMessages:addAgentMessage'), {
+    ...args, clientNonce: 'greeting', turnId: 'greeting', messagePurpose: 'greeting', content: 'Hello',
+  })
+  expect(await convex.run(ctx => ctx.db.get(greeting))).toMatchObject({ status: 'completed', content: 'Hello' })
+})
+
 test('legacy lease sweep preserves durable Harness waits and still expires legacy rooms', async () => {
   const convex = convexTest(schema, modules)
   const fixture = await seed(convex)

@@ -143,7 +143,7 @@ test('an agent reply is persisted as it is generated, not only when it finishes'
   assert.match(delivery, /failAgentMessage/)
 
   for (const method of [
-    'startAgentMessage',
+    'startAgentTurn',
     'appendAgentMessageDelta',
     'finalizeAgentMessage',
     'failAgentMessage',

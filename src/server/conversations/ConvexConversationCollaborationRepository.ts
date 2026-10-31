@@ -98,6 +98,7 @@ implements ConversationCollaborationRepository {
   }
 
   async addAgentMessage(args: {
+    messagePurpose: 'greeting' | 'prepared_onboarding' | 'agent_request'
     actorUserId: string
     authorPrincipalId: string
     clientNonce: string
@@ -137,23 +138,24 @@ implements ConversationCollaborationRepository {
     }, { throwOnError: true })
   }
 
-  async startAgentMessage(args: {
+  async recordAgentStartFailure(args: {
     actorUserId: string
     authorPrincipalId: string
     clientNonce: string
+    content: string
     conversationId: string
     modelId: string
     threadRootMessageId?: string
     turnId: string
     workspaceId: string
   }) {
-    const id = await convex.mutation<string>('collaboration/directMessages:startAgentMessage', {
+    const id = await convex.mutation<string>('collaboration/directMessages:recordAgentStartFailure', {
       ...args,
       conversationId: args.conversationId as Id<'conversations'>,
       threadRootMessageId: args.threadRootMessageId as Id<'conversationMessages'> | undefined,
       serverSecret: this.serverSecret,
     }, { throwOnError: true })
-    if (!id) throw new Error('Failed to open collaboration agent message')
+    if (!id) throw new Error('Failed to record agent-start failure')
     return id
   }
 

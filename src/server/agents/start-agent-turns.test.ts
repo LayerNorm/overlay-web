@@ -70,7 +70,7 @@ function fixture(
       turnInputs.push(input)
       return { resumed: options.resumed ?? true, runId: 'run-1', messageId: 'turn-message-1' }
     },
-    async startAgentMessage(input: { authorPrincipalId: string }) {
+    async recordAgentStartFailure(input: { authorPrincipalId: string }) {
       failures.push(input.authorPrincipalId)
       return 'failure-message'
     },

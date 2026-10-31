@@ -30,6 +30,7 @@ export async function POST(_request: Request, context: AppApiRouteContext) {
       return NextResponse.json({ error: 'Conversation not found' }, { status: 404 })
     }
     const messageId = await server.appData.repositories.conversationCollaboration.addAgentMessage({
+      messagePurpose: 'greeting',
       actorUserId: context.auth.userId,
       authorPrincipalId: agent.principalId,
       clientNonce: `greeting:${conversationId}:${agent.principalId}`,
