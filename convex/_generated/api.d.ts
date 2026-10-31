@@ -92,6 +92,7 @@ import type * as mcp_grants from "../mcp/grants.js";
 import type * as migrations_backfillAgentThreads from "../migrations/backfillAgentThreads.js";
 import type * as migrations_backfillAutomationConversations from "../migrations/backfillAutomationConversations.js";
 import type * as migrations_backfillWorkspaceIds from "../migrations/backfillWorkspaceIds.js";
+import type * as migrations_doubleSidebar from "../migrations/doubleSidebar.js";
 import type * as migrations_notesToMarkdown from "../migrations/notesToMarkdown.js";
 import type * as migrations_notesToMarkdownData from "../migrations/notesToMarkdownData.js";
 import type * as migrations_renameGenericWorkspaces from "../migrations/renameGenericWorkspaces.js";
@@ -209,6 +210,7 @@ declare const fullApi: ApiFromModules<{
   "migrations/backfillAgentThreads": typeof migrations_backfillAgentThreads;
   "migrations/backfillAutomationConversations": typeof migrations_backfillAutomationConversations;
   "migrations/backfillWorkspaceIds": typeof migrations_backfillWorkspaceIds;
+  "migrations/doubleSidebar": typeof migrations_doubleSidebar;
   "migrations/notesToMarkdown": typeof migrations_notesToMarkdown;
   "migrations/notesToMarkdownData": typeof migrations_notesToMarkdownData;
   "migrations/renameGenericWorkspaces": typeof migrations_renameGenericWorkspaces;
