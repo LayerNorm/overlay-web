@@ -41,6 +41,7 @@ export type PersonalChatWorkToolingContext = {
   entitlements: Entitlements
   latestUserText?: string
   mediaToolIntent?: 'image' | 'video' | null
+  memoryOwnerId?: string
   memoryEnabled: boolean
   /** Conversation-mode hint for tool gating; automation turns leave it unset. */
   mode?: 'chat' | 'automate'

@@ -501,6 +501,7 @@
     "src/server/workflows/automation-harness-steps.ts",
     "src/server/workflows/native-harness.ts",
     "src/server/workflows/personal-harness.ts",
+    "src/server/workflows/surface-harness-steps.ts",
     "src/server/workspaces/ConvexWorkspaceRepository.ts"
   ],
   "convexScheduledCallFiles": [

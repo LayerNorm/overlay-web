@@ -12,5 +12,10 @@ export type PersonalHarnessWorkflowInput = {
   messages: ModelMessage[]
   settings?: HarnessModelSettings
   modelCandidates?: string[]
-  delivery?: { emitWebhook: boolean; sourceCitations?: SourceCitationMap; closeStream?: boolean }
+  delivery?: {
+    emitWebhook: boolean
+    sourceCitations?: SourceCitationMap
+    closeStream?: boolean
+    surface?: { placeholderTs?: string }
+  }
 }

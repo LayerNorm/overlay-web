@@ -4,12 +4,13 @@ import { createPersonalHarnessWaitPorts } from './personal-waits'
 import { createHarnessWaitPorts } from './waits'
 
 const mocks = vi.hoisted(() => ({ hook: vi.fn(), sleep: vi.fn(), read: vi.fn(), apply: vi.fn(),
-  publish: vi.fn(), resolve: vi.fn(), list: vi.fn(), notify: vi.fn(), project: vi.fn(), child: vi.fn() }))
+  publish: vi.fn(), resolve: vi.fn(), list: vi.fn(), notify: vi.fn(), project: vi.fn(), child: vi.fn(), deliver: vi.fn() }))
 vi.mock('workflow', () => ({ createHook: mocks.hook, sleep: mocks.sleep, FatalError: class extends Error {} }))
 vi.mock('./state-steps', () => ({ readHarnessState: mocks.read, applyHarnessOperation: mocks.apply }))
 vi.mock('./personal-wait-steps', () => ({ publishHarnessWait: mocks.publish, resolveHarnessWait: mocks.resolve,
   listHarnessWaits: mocks.list, notifyHarnessAncestors: mocks.notify, projectPersonalHarnessWait: mocks.project,
   readHarnessChild: mocks.child }))
+vi.mock('./surface-wait-steps', () => ({ deliverSurfaceWaitNoticeStep: mocks.deliver }))
 
 const access = { actorUserId: 'user', runId: 'run', workflowRunId: 'workflow', conversationId: 'conversation',
   agentRunId: 'delivery', workspaceId: 'workspace', principalId: 'principal', authentication: { type: 'session' as const } }
@@ -25,6 +26,7 @@ function hook(reply: unknown) {
 beforeEach(() => {
   vi.resetAllMocks()
   disposed = vi.fn()
+  mocks.deliver.mockResolvedValue(undefined)
   state = { ...createHarnessSnapshot({ runId: 'run', goal: 'Check a document', constraints: [], policy: {
     actorUserId: 'user', allowedToolIds: [], requiresPlan: false, maxCostMicros: 100,
     deadlineAt: Date.now() + 60_000, maxDepth: 2, maxParallelChildren: 2,
@@ -57,6 +59,44 @@ test('commits hook registration before publishing input and returns only a user 
   }))
   expect(mocks.project).toHaveBeenLastCalledWith(access, { status: 'running' })
   expect(disposed).toHaveBeenCalledOnce()
+})
+
+test('surface wait notices use safe projection and delivery failure does not fail a persisted wait', async () => {
+  const surfaceAccess = {
+    ...access,
+    authentication: {
+      type: 'surface' as const,
+      platform: 'slack' as const,
+      bindingId: 'binding',
+      connectionId: 'connection',
+      teamId: 'team',
+      channelId: 'channel',
+      threadId: 'thread',
+      messageId: 'message',
+      agentId: 'agent',
+      agentPrincipalId: 'agent-principal',
+      creatorPrincipalId: 'principal',
+      originWorkflowRunId: 'workflow',
+    },
+  }
+  const context = {
+    turnId: 'surface:slack:binding:message',
+    accountAllowedToolIds: ['read_file'],
+    accountAllowedConnectorIds: ['connector'],
+    integrationToolIds: ['connector_tool'],
+  }
+  mocks.deliver.mockRejectedValueOnce(new Error('Slack is unavailable'))
+  const ports = createPersonalHarnessWaitPorts({
+    access: surfaceAccess, wake: { next: vi.fn() }, context, surface: { placeholderTs: 'placeholder' },
+  })
+  expect(await ports.waitForInput(state)).toEqual([{ role: 'user', content: 'The quarterly report.' }])
+  expect(mocks.deliver).toHaveBeenCalledTimes(2)
+  expect(mocks.deliver.mock.calls.map(([notice]) => notice.projection)).toEqual([
+    expect.objectContaining({ wait: expect.objectContaining({ kind: 'input' }) }),
+    { status: 'running' },
+  ])
+  expect(mocks.deliver.mock.calls[0]?.[0]).toMatchObject({ context, placeholderTs: 'placeholder' })
+  expect(mocks.project).toHaveBeenLastCalledWith(surfaceAccess, { status: 'running' })
 })
 
 test('child input notifies ancestors without changing root delivery status', async () => {

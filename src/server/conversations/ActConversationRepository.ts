@@ -73,6 +73,7 @@ export type ConversationListRow = {
   shareToken?: string | null
   isAutomation?: boolean
   conversationType?: 'personal' | 'dm' | 'channel'
+  createdByPrincipalId?: string
   /** Sidebar scope for AI chats; missing means personal. */
   scope?: 'personal' | 'workspace'
   /** Active participant types other than the current actor, for DM presentation. */

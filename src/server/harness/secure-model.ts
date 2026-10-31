@@ -2,6 +2,8 @@ import type { LanguageModelV4, LanguageModelV4CallOptions } from '@ai-sdk/provid
 import { WORKFLOW_DESERIALIZE, WORKFLOW_SERIALIZE } from '@workflow/serde'
 import type { PersonalHarnessModelDispatch } from './personal-model-dispatch'
 import type { NativeHarnessModelDispatch } from './native-model-dispatch'
+import { serializePersonalHarnessAuthentication } from './personal-authentication'
+import { surfaceHarnessTurnId } from './surface-authority'
 
 export type HarnessModelReference = {
   modelId: string
@@ -14,6 +16,15 @@ export type HarnessModelReference = {
 
 function assertSingleAuthority(reference: HarnessModelReference): void {
   if (reference.personal && reference.native) throw new Error('A model dispatch cannot have both personal and native authority.')
+}
+
+function assertSurfaceModelContext(personal: PersonalHarnessModelDispatch): void {
+  if (personal.access.authentication.type !== 'surface') return
+  const context = personal.surfaceContext
+  if (!context || context.turnId !== surfaceHarnessTurnId(personal.access.authentication)
+    || personal.billingProgrammaticSubjectId !== `surface:slack:${personal.access.authentication.bindingId}`) {
+    throw new Error('Surface model dispatch context is missing or invalid.')
+  }
 }
 
 export class HarnessLanguageModel implements LanguageModelV4 {
@@ -29,6 +40,7 @@ export class HarnessLanguageModel implements LanguageModelV4 {
     const personal = model.reference.personal
     const native = model.reference.native
     assertSingleAuthority(model.reference)
+    if (personal) assertSurfaceModelContext(personal)
     return {
       modelId: model.reference.modelId,
       credentialOwnerId: model.reference.credentialOwnerId,
@@ -39,14 +51,7 @@ export class HarnessLanguageModel implements LanguageModelV4 {
           actorUserId: personal.access.actorUserId, runId: personal.access.runId, workflowRunId: personal.access.workflowRunId,
           conversationId: personal.access.conversationId, agentRunId: personal.access.agentRunId,
           workspaceId: personal.access.workspaceId, principalId: personal.access.principalId,
-          authentication: personal.access.authentication.type === 'api-key'
-            ? { type: 'api-key' as const, apiKeyId: personal.access.authentication.apiKeyId }
-            : personal.access.authentication.type === 'automation'
-              ? { type: 'automation' as const, automationId: personal.access.authentication.automationId,
-                ...(personal.access.authentication.automationRunId
-                  ? { automationRunId: personal.access.authentication.automationRunId } : {}),
-                originWorkflowRunId: personal.access.authentication.originWorkflowRunId }
-              : { type: personal.access.authentication.type },
+          authentication: serializePersonalHarnessAuthentication(personal.access.authentication),
         },
         receiptId: personal.receiptId, memoryEnabled: personal.memoryEnabled, requestFingerprint: personal.requestFingerprint,
         ...(personal.access.authentication.type === 'automation' && personal.automationContext ? { automationContext: {
@@ -54,6 +59,12 @@ export class HarnessLanguageModel implements LanguageModelV4 {
           accountAllowedToolIds: [...personal.automationContext.accountAllowedToolIds],
           accountAllowedConnectorIds: [...personal.automationContext.accountAllowedConnectorIds],
           integrationToolIds: [...personal.automationContext.integrationToolIds],
+        } } : {}),
+        ...(personal.access.authentication.type === 'surface' && personal.surfaceContext ? { surfaceContext: {
+          turnId: personal.surfaceContext.turnId,
+          accountAllowedToolIds: [...personal.surfaceContext.accountAllowedToolIds],
+          accountAllowedConnectorIds: [...personal.surfaceContext.accountAllowedConnectorIds],
+          integrationToolIds: [...personal.surfaceContext.integrationToolIds],
         } } : {}),
         ...(personal.billingProgrammaticSubjectId ? { billingProgrammaticSubjectId: personal.billingProgrammaticSubjectId } : {}),
         inputTokenBudget: personal.inputTokenBudget, maxOutputTokens: personal.maxOutputTokens, contextWindow: personal.contextWindow,

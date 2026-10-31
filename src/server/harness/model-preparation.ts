@@ -5,6 +5,8 @@ import { getGatewayCatalogModel } from '@/server/ai/gateway/gateway-catalog'
 import type { PersonalChatWorkToolingContext } from '@/shared/agents/personal-chat-work'
 import { quoteHarnessModel } from './model-quote'
 import { refreshPersonalHarnessAccess, type PersonalHarnessAccess } from './personal-access'
+import { serializePersonalHarnessAuthentication } from './personal-authentication'
+import { surfaceHarnessTurnId } from './surface-authority'
 import type { HarnessModelReference } from './secure-model'
 
 export async function readHarnessModelLimits(modelId: string): Promise<{ contextWindow: number | null; maxOutputTokens: number | null }> {
@@ -44,18 +46,18 @@ export async function preparePersonalHarnessModel(input: {
         access: {
           actorUserId: access.actorUserId, workspaceId: access.workspaceId, principalId: access.principalId,
           runId: access.runId, workflowRunId: access.workflowRunId, conversationId: access.conversationId, agentRunId: access.agentRunId,
-          authentication: access.authentication.type === 'api-key'
-            ? { type: 'api-key', apiKeyId: access.authentication.apiKeyId }
-            : access.authentication.type === 'automation'
-              ? { type: 'automation', automationId: access.authentication.automationId,
-                ...(access.authentication.automationRunId ? { automationRunId: access.authentication.automationRunId } : {}),
-                originWorkflowRunId: access.authentication.originWorkflowRunId }
-              : { type: access.authentication.type },
+          authentication: serializePersonalHarnessAuthentication(access.authentication),
         },
         receiptId: input.receiptId, memoryEnabled: context.memoryEnabled,
         requestFingerprint: context.requestFingerprint,
         ...(access.authentication.type === 'automation' ? { automationContext: {
           turnId: context.turnId,
+          accountAllowedToolIds: context.accountAllowedToolIds ?? [],
+          accountAllowedConnectorIds: context.accountAllowedConnectorIds ?? [],
+          integrationToolIds: context.integrationToolIds ?? [],
+        } } : {}),
+        ...(access.authentication.type === 'surface' ? { surfaceContext: {
+          turnId: surfaceHarnessTurnId(access.authentication),
           accountAllowedToolIds: context.accountAllowedToolIds ?? [],
           accountAllowedConnectorIds: context.accountAllowedConnectorIds ?? [],
           integrationToolIds: context.integrationToolIds ?? [],

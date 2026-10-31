@@ -1,12 +1,13 @@
 import { beforeEach, expect, test, vi } from 'vitest'
 import { FatalError } from 'workflow'
 import { runAutomationAgentTurn } from '@/server/workflows/automation-agent-turn'
+import * as automationWorkflow from '@/server/workflows/automation-agent-turn'
 
 const mocks = vi.hoisted(() => ({
   ready: vi.fn(), getAppSettings: vi.fn(), assertSource: vi.fn(), ensureConversation: vi.fn(),
   markRunStarted: vi.fn(), prepare: vi.fn(), startAgentRun: vi.fn(), admit: vi.fn(),
   harnessWorkflow: vi.fn(), getRun: vi.fn(), settleRun: vi.fn(), getLatestAgentRun: vi.fn(),
-  getMessages: vi.fn(), readHarness: vi.fn(), legacy: vi.fn(),
+  getMessages: vi.fn(), readHarness: vi.fn(),
 }))
 
 vi.mock('server-only', () => ({}))
@@ -38,9 +39,6 @@ vi.mock('@/server/automations/automation-turn-runner', () => ({
   AutomationTurnError: class AutomationTurnError extends Error { statusCode = 400 },
   ensureAutomationConversation: mocks.ensureConversation,
   prepareAutomationAgentTurn: mocks.prepare,
-  callDurableAutomationModel: mocks.legacy,
-  failAutomationAgentTurn: vi.fn(),
-  finalizeAutomationAgentTurn: vi.fn(),
 }))
 vi.mock('@/server/harness/ConvexHarnessRepository', () => ({
   ConvexHarnessRepository: class { admit = mocks.admit; get = mocks.readHarness },
@@ -149,7 +147,10 @@ test('queued manual ACK starts before native Harness and never invokes the legac
   }))
   expect(mocks.markRunStarted.mock.invocationCallOrder[0]).toBeLessThan(mocks.prepare.mock.invocationCallOrder[0])
   expect(mocks.admit.mock.invocationCallOrder[0]).toBeLessThan(mocks.harnessWorkflow.mock.invocationCallOrder[0])
-  expect(mocks.legacy).not.toHaveBeenCalled()
+})
+
+test('legacy capped surface loop is no longer exported or callable', () => {
+  expect('runDurableAgentTurn' in automationWorkflow).toBe(false)
 })
 
 test('surface inputs are rejected without choosing an automation fallback', async () => {
@@ -158,7 +159,6 @@ test('surface inputs are rejected without choosing an automation fallback', asyn
   expect(mocks.ensureConversation).not.toHaveBeenCalled()
   expect(mocks.prepare).not.toHaveBeenCalled()
   expect(mocks.harnessWorkflow).not.toHaveBeenCalled()
-  expect(mocks.legacy).not.toHaveBeenCalled()
 })
 
 test('a foreign duplicate admission is returned without entering or settling the other worker', async () => {
