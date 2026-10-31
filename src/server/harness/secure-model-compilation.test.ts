@@ -5,6 +5,7 @@ import { applySwcTransform } from '@workflow/builders'
 import { WORKFLOW_DESERIALIZE, WORKFLOW_SERIALIZE } from '@workflow/serde'
 import { transform } from 'esbuild'
 import { expect, test, vi } from 'vitest'
+import { serializePersonalHarnessAuthentication } from './personal-authentication'
 import type { HarnessLanguageModel } from './secure-model'
 
 test.each([
@@ -83,6 +84,7 @@ test.each([false, true])('compiled workflow can load and dispatch the credential
     module: compiledModule,
     exports: compiledModule.exports,
     require: (id: string) => {
+      if (id === './personal-authentication') return { serializePersonalHarnessAuthentication }
       if (id !== '@workflow/serde') throw new Error(`Unexpected workflow import: ${id}`)
       return { WORKFLOW_SERIALIZE, WORKFLOW_DESERIALIZE }
     },
