@@ -17,7 +17,7 @@ const q = (name: string) => makeFunctionReference<'query'>(name)
 const m = (name: string) => makeFunctionReference<'mutation'>(name)
 
 type Convex = ReturnType<typeof convexTest>
-type Item = { _id: string; title: string; status: string; rank: string; scope: string; parentId?: string; assigneePrincipalId?: string; archivedAt?: number; blocked: boolean; updatedAt: number }
+type Item = { _id: string; title: string; status: string; rank: string; scope: string; parentId?: string; assigneePrincipalId?: string; assignmentExecution?: { assignedByUserId: string; assigneePrincipalId: string; generation: number; status: 'pending' | 'starting' | 'started' | 'failed'; conversationId?: string; messageId?: string; turnId?: string; clientNonce?: string }; archivedAt?: number; blocked: boolean; updatedAt: number }
 
 /** A workspace with an owner, an admin, two members, a guest, and an agent. */
 async function seed(convex: Convex, policy?: Record<string, unknown>) {
@@ -82,6 +82,7 @@ function api(convex: Convex) {
   return {
     create: (userId: string, args: Record<string, unknown>) => convex.mutation(m('work/workItems:create'), { ...auth(userId), title: 'Task', ...args }) as Promise<Item>,
     update: (userId: string, id: string, args: Record<string, unknown>) => convex.mutation(m('work/workItems:update'), { ...auth(userId), id, ...args }) as Promise<Item>,
+    prepareAssignment: (userId: string, id: string, assigneePrincipalId: string, generation: number, content: string) => convex.mutation(m('work/workItems:prepareAssignment'), { ...auth(userId), id, assigneePrincipalId, generation, content }) as Promise<{ execution: NonNullable<Item['assignmentExecution']>; claimed: boolean } | null>,
     move: (userId: string, id: string, args: Record<string, unknown>) => convex.mutation(m('work/workItems:move'), { ...auth(userId), id, ...args }) as Promise<Item>,
     list: async (userId: string, view?: string) => (await convex.query(q('work/workItems:list'), { ...auth(userId), ...(view ? { view } : {}) })) as Item[],
     titles: async (userId: string, view?: string) => (await convex.query(q('work/workItems:list'), { ...auth(userId), ...(view ? { view } : {}) }) as Item[]).map((i) => i.title),
@@ -475,6 +476,75 @@ describe('fields, assignees and validation', () => {
     expect((await work.update('alice', mine._id, { assigneePrincipalId: 'p-alice' })).assigneePrincipalId).toBe('p-alice')
     await expect(work.update('alice', shared._id, { reviewerUserId: 'gus' })).rejects.toThrow(/reviewer/)
     expect(await work.update('alice', shared._id, { reviewerUserId: 'owner' })).toMatchObject({ reviewerUserId: 'owner' })
+  })
+
+  test('assignment preparation is atomic and reuses one agent thread and task message', async () => {
+    const convex = convexTest(schema, modules)
+    await seed(convex)
+    const work = api(convex)
+    const task = await work.create('alice', { title: 'Assigned task', scope: 'workspace', assigneePrincipalId: 'p-agent' })
+    const generation = task.assignmentExecution!.generation
+    const [first, second] = await Promise.all([
+      work.prepareAssignment('alice', task._id, 'p-agent', generation, 'Task instructions'),
+      work.prepareAssignment('alice', task._id, 'p-agent', generation, 'Task instructions'),
+    ])
+    expect(first).not.toBeNull()
+    expect(second).not.toBeNull()
+    expect([first!.claimed, second!.claimed].filter(Boolean)).toHaveLength(1)
+    expect(first!.execution.conversationId).toBe(second!.execution.conversationId)
+    expect(first!.execution.messageId).toBe(second!.execution.messageId)
+    expect(first!.execution.clientNonce).toBe(`work-assignment:${task._id}:${generation}`)
+
+    const stored = await convex.run(async (ctx) => {
+      const conversation = await ctx.db.get(first!.execution.conversationId as never)
+      const messages = await ctx.db.query('conversationMessages')
+        .withIndex('by_conversationId', (q) => q.eq('conversationId', conversation!._id))
+        .collect()
+      const participants = await ctx.db.query('conversationParticipants')
+        .withIndex('by_conversationId_principalId', (q) => q.eq('conversationId', conversation!._id))
+        .collect()
+      return { conversation, messages, participants }
+    })
+    expect(stored.conversation).toMatchObject({ agentId: 'agent-1', workspaceId, userId: 'alice' })
+    expect(stored.messages).toHaveLength(1)
+    expect(stored.messages[0]).toMatchObject({ content: 'Task instructions', clientNonce: first!.execution.clientNonce, turnId: `work_assignment_${task._id}_${generation}` })
+    expect(stored.participants).toHaveLength(2)
+    expect(stored.participants.map((participant) => participant.principalId)).toEqual(expect.arrayContaining(['p-alice', 'p-agent']))
+  })
+
+  test('stale and archived agent assignments cannot prepare a run', async () => {
+    const convex = convexTest(schema, modules)
+    await seed(convex)
+    await addAgent(convex, { principalId: 'p-second-agent', agentId: 'second-agent', creatorPrincipalId: 'p-owner', visibility: 'workspace' })
+    const work = api(convex)
+    const task = await work.create('alice', { title: 'Change assignment', scope: 'workspace', assigneePrincipalId: 'p-agent' })
+    const staleGeneration = task.assignmentExecution!.generation
+    const reassigned = await work.update('alice', task._id, { assigneePrincipalId: 'p-second-agent' })
+    expect(await work.prepareAssignment('alice', task._id, 'p-agent', staleGeneration, 'Stale prompt')).toBeNull()
+    expect(reassigned.assignmentExecution?.assigneePrincipalId).toBe('p-second-agent')
+
+    await work.archive('alice', task._id)
+    expect(await work.prepareAssignment(
+      'alice',
+      task._id,
+      'p-second-agent',
+      reassigned.assignmentExecution!.generation,
+      'Archived prompt',
+    )).toBeNull()
+  })
+
+  test('agent-attributed task edits keep event identity and cannot bypass personal-task access', async () => {
+    const convex = convexTest(schema, modules)
+    await seed(convex)
+    const work = api(convex)
+    const shared = await work.create('alice', { title: 'Shared', scope: 'workspace' })
+    await work.update('alice', shared._id, { status: 'progress', actingAgentPrincipalId: 'p-agent' })
+    expect((await work.get('alice', shared._id))?.status).toBe('progress')
+    expect((await work.events('alice', shared._id)).at(-1)?.actorPrincipalId).toBe('p-agent')
+
+    const privateTask = await work.create('alice', { title: 'Private' })
+    await expect(work.update('bob', privateTask._id, { status: 'done', actingAgentPrincipalId: 'p-agent' })).rejects.toThrow(/Unauthorized/)
+    expect((await work.get('alice', privateTask._id))?.status).toBe('todo')
   })
 
   test('the picker context lists people and visible agents only', async () => {

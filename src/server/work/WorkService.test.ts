@@ -6,7 +6,7 @@ import { WorkService, WorkServiceError, translateWorkError } from './WorkService
 import type { WorkRepository } from './WorkRepository'
 
 const actor = { userId: 'u1', workspaceId: 'w1' }
-const item = { id: 'i1', title: 'Task' } as WorkItem
+const item = { id: 'i1', title: 'Task', status: 'todo', doneWhen: [], context: [], blockedBy: [] } as WorkItem
 
 function repository(overrides: Partial<WorkRepository> = {}): WorkRepository {
   return {
@@ -15,6 +15,8 @@ function repository(overrides: Partial<WorkRepository> = {}): WorkRepository {
     context: async () => ({ principalId: 'p1', role: 'member', canCreateInWorkspace: true, people: [] }),
     create: async () => item,
     update: async () => item,
+    prepareAssignment: async () => null,
+    completeAssignment: async () => true,
     move: async () => item,
     listEvents: async () => [],
     addComment: async () => undefined,
@@ -41,6 +43,183 @@ test('refusals from Convex become plain messages with a status', () => {
 
   const other = new Error('network down')
   assert.equal(translateWorkError(other), other)
+})
+
+test('an agent assignment is prepared and dispatched once; same-assignee edits do not duplicate it', async () => {
+  const agentItem = {
+    ...item,
+    id: 'task-1',
+    title: 'Write a plan',
+    assigneePrincipalId: 'agent-1',
+    updatedAt: 42,
+    assignmentExecution: { assignedByUserId: 'u1', assigneePrincipalId: 'agent-1', generation: 42, status: 'pending' as const },
+  } as WorkItem
+  let state: 'starting' | 'started' | 'failed' = 'starting'
+  let dispatches = 0
+  const repo = repository({
+    context: async () => ({
+      principalId: 'person-1',
+      role: 'member',
+      canCreateInWorkspace: true,
+      people: [{ principalId: 'agent-1', type: 'agent', displayName: 'Agent', userId: null }],
+    }),
+    create: async () => agentItem,
+    update: async () => agentItem,
+    prepareAssignment: async () => ({
+      execution: {
+        assignedByUserId: 'u1',
+        assigneePrincipalId: 'agent-1',
+        generation: 42,
+        status: state,
+        conversationId: 'conversation-1',
+        messageId: 'message-1',
+        turnId: 'turn-1',
+      },
+      claimed: state === 'starting',
+    }),
+    completeAssignment: async (args) => {
+      state = args.status
+      return true
+    },
+  })
+  const service = new WorkService(repo, async () => { dispatches += 1; return [] })
+
+  const created = await service.create({ ...actor, input: { title: 'Write a plan', assigneePrincipalId: 'agent-1' } })
+  assert.equal(dispatches, 1)
+  assert.equal(state, 'started')
+  assert.equal(created.assignmentExecution?.status, 'started')
+
+  await service.update({ ...actor, id: 'task-1', input: { assigneePrincipalId: 'agent-1' } })
+  assert.equal(dispatches, 1)
+})
+
+test('agent launch failures are persisted and reported with the saved task id', async () => {
+  const agentItem = {
+    ...item,
+    id: 'task-2',
+    assigneePrincipalId: 'agent-1',
+    updatedAt: 43,
+    assignmentExecution: { assignedByUserId: 'u1', assigneePrincipalId: 'agent-1', generation: 43, status: 'pending' as const },
+  } as WorkItem
+  let state: 'starting' | 'failed' = 'starting'
+  let storedError = ''
+  const repo = repository({
+    context: async () => ({
+      principalId: 'person-1',
+      role: 'member',
+      canCreateInWorkspace: true,
+      people: [{ principalId: 'agent-1', type: 'agent', displayName: 'Agent', userId: null }],
+    }),
+    create: async () => agentItem,
+    prepareAssignment: async () => ({
+      execution: {
+        assignedByUserId: 'u1',
+        assigneePrincipalId: 'agent-1',
+        generation: 43,
+        status: state,
+        conversationId: 'conversation-2',
+        messageId: 'message-2',
+        turnId: 'turn-2',
+      },
+      claimed: state === 'starting',
+    }),
+    completeAssignment: async (args) => {
+      state = 'failed'
+      storedError = args.error ?? ''
+      return true
+    },
+  })
+  const service = new WorkService(repo, async () => { throw new Error('provider unavailable') })
+  await assert.rejects(
+    service.create({ ...actor, input: { title: 'Task', assigneePrincipalId: 'agent-1' } }),
+    (error: unknown) => error instanceof WorkServiceError
+      && error.statusCode === 502
+      && /task-2/.test(error.message)
+      && /provider unavailable/.test(error.message),
+  )
+  assert.equal(state, 'failed')
+  assert.match(storedError, /task-2/)
+})
+
+test('an assignment already starting is reported as in progress', async () => {
+  const agentItem = {
+    ...item,
+    id: 'task-3',
+    assigneePrincipalId: 'agent-1',
+    assignmentExecution: { assignedByUserId: 'u1', assigneePrincipalId: 'agent-1', generation: 44, status: 'pending' as const },
+  } as WorkItem
+  const service = new WorkService(repository({
+    context: async () => ({
+      principalId: 'person-1',
+      role: 'member',
+      canCreateInWorkspace: true,
+      people: [{ principalId: 'agent-1', type: 'agent', displayName: 'Agent', userId: null }],
+    }),
+    update: async () => agentItem,
+    prepareAssignment: async () => ({
+      execution: {
+        assignedByUserId: 'u1',
+        assigneePrincipalId: 'agent-1',
+        generation: 44,
+        status: 'starting',
+      },
+      claimed: false,
+    }),
+  }), async () => {
+    throw new Error('A concurrent start should not dispatch again')
+  })
+
+  await assert.rejects(
+    service.update({ ...actor, id: 'task-3', input: { assigneePrincipalId: 'agent-1' } }),
+    (error: unknown) => error instanceof WorkServiceError
+      && error.statusCode === 409
+      && error.code === 'work_assignment_in_progress',
+  )
+})
+
+test('an unconfirmed agent start is not marked failed or offered for retry', async () => {
+  const agentItem = {
+    ...item,
+    id: 'task-4',
+    assigneePrincipalId: 'agent-1',
+    assignmentExecution: { assignedByUserId: 'u1', assigneePrincipalId: 'agent-1', generation: 45, status: 'pending' as const },
+  } as WorkItem
+  const completionStatuses: string[] = []
+  const service = new WorkService(repository({
+    context: async () => ({
+      principalId: 'person-1',
+      role: 'member',
+      canCreateInWorkspace: true,
+      people: [{ principalId: 'agent-1', type: 'agent', displayName: 'Agent', userId: null }],
+    }),
+    create: async () => agentItem,
+    prepareAssignment: async () => ({
+      execution: {
+        assignedByUserId: 'u1',
+        assigneePrincipalId: 'agent-1',
+        generation: 45,
+        status: 'starting',
+        conversationId: 'conversation-4',
+        messageId: 'message-4',
+        turnId: 'turn-4',
+      },
+      claimed: true,
+    }),
+    completeAssignment: async ({ status }) => {
+      completionStatuses.push(status)
+      if (status === 'started') throw new Error('confirmation unavailable')
+      return true
+    },
+  }), async () => [])
+
+  await assert.rejects(
+    service.create({ ...actor, input: { title: 'Task', assigneePrincipalId: 'agent-1' } }),
+    (error: unknown) => error instanceof WorkServiceError
+      && error.statusCode === 503
+      && error.code === 'work_assignment_unconfirmed'
+      && /Do not clear or reassign/.test(error.message),
+  )
+  assert.deepEqual(completionStatuses, ['started'])
 })
 
 test('a production-redacted revision conflict remains an HTTP 409', () => {

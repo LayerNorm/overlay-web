@@ -92,7 +92,7 @@ async function callerArchivedAt(
   return participant?.archivedAt
 }
 
-async function insertThread(
+export async function insertThread(
   ctx: MutationCtx,
   args: { workspaceId: string; userId: string; title: string; dmIdentityKey?: string },
   actor: Doc<'workspacePrincipals'>,
