@@ -15,7 +15,7 @@ const previousEnv = {
 process.env.NEXT_PHASE = 'phase-production-build'
 process.env.NODE_ENV = 'development'
 process.env.INTERNAL_API_SECRET = 'test-internal-secret'
-process.env.MCP_CREDENTIAL_ENCRYPTION_KEY = 'mcp-test-encryption-key-1234567890'
+process.env.MCP_CREDENTIAL_ENCRYPTION_KEY = 'test-test-test-test-test-test-test-test'
 test.after(() => {
   if (previousEnv.phase === undefined) delete process.env.NEXT_PHASE
   else process.env.NEXT_PHASE = previousEnv.phase
