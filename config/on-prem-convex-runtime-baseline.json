@@ -431,6 +431,7 @@
     "src/server/computers/ConvexComputerRepository.ts",
     "src/server/conversations/ConvexActConversationRepository.ts",
     "src/server/conversations/ConvexConversationCollaborationRepository.ts",
+    "src/server/conversations/native-thread-compatibility-backend.ts",
     "src/server/database/convex.ts",
     "src/server/database/lazy-convex.ts",
     "src/server/email/ConvexEmailSuppressionRepository.ts",

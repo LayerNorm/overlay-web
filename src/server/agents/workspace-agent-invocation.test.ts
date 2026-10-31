@@ -152,9 +152,9 @@ test('an agent reply is persisted as it is generated, not only when it finishes'
     assert.match(convexRoom, new RegExp(`export const ${method} = mutation`), `convex is missing ${method}`)
   }
 
-  // The row opens idempotently, so a retried or replayed turn reuses it instead
-  // of posting the reply twice.
-  assert.match(convexRoom, /message\.clientNonce === args\.clientNonce/)
+  // The row opens idempotently through the indexed nonce lookup, preserving the
+  // first historical match on retries or replays.
+  assert.match(convexRoom, /withIndex\('by_conversationId_clientNonce'[\s\S]*?\)\s*\.first\(\)/)
   // Agent authorization is not relaxed for the streaming path.
   assert.match(convexRoom, /requireAgentAuthor/)
 })
