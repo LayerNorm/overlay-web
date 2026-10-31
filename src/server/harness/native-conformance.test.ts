@@ -492,7 +492,7 @@ it('Plan: write claims without a plan stay blocked, while answer-only Q&A comple
   expect(blocked.outcome).toBe('blocked')
   expect(blocked.snapshot.status).not.toBe('completed')
   expect(blocked.snapshot.blocker?.kind).toBe('stuck')
-  expect(textOnly.doStreamCalls).toHaveLength(2)
+  expect(textOnly.doStreamCalls).toHaveLength(6)
   expect(textOnly.doStreamCalls[0]?.toolChoice).toEqual({ type: 'required' })
 
   const qaFixture = harnessFixture({ allowedToolIds: ['write_file'] })
