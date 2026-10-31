@@ -26,6 +26,7 @@ interface WhisperKitConfig {
 }
 
 interface TranscriptionOptions {
+  signal?: AbortSignal
   language?: string
   temperature?: number
   stream?: boolean
@@ -157,6 +158,7 @@ class WhisperKitService {
 
       await execFileAsync(binaryPath, args, {
         cwd: workingDir,
+        signal: options.signal,
         env: createLocalHelperEnvironment(),
         maxBuffer: MAX_REPORT_BYTES,
         encoding: 'utf8',

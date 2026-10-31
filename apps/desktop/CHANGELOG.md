@@ -5,6 +5,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+- Start microphone capture independently of cloud session admission, prepare a suspended PCM graph at launch, and capture WAV directly without a whole-recording decode.
+- Replace the recorder box with a non-focusable, bottom-centered capsule, real audio meter, reduced-motion support, finish/dismiss controls and temporary retry/copy recovery.
+- Add microphone selection, cancellation of inference, frontmost-app delivery checks and clipboard preservation. Audio/results remain in memory and expire after 60 seconds.
+
 - Cancel pending microphone permission requests safely; stale captures cannot start behind a hidden dictation HUD or stop a newer recording.
 
 - Retain notification click handlers after delivery, restore minimized windows and clear delivered alerts on sign-out.

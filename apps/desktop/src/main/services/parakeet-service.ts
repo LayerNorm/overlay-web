@@ -18,6 +18,7 @@ interface ParakeetConfig {
 type ParakeetModelId = 'parakeet_v2' | 'parakeet_v3'
 
 interface TranscriptionOptions {
+  signal?: AbortSignal
   language?: string
   temperature?: number
   stream?: boolean
@@ -131,6 +132,7 @@ class ParakeetService {
     try {
       const { stdout } = await execFileAsync(binaryPath, args, {
         cwd: workingDir,
+        signal: options.signal,
         env: createLocalHelperEnvironment(),
         maxBuffer: MAX_HELPER_OUTPUT_BYTES,
         encoding: 'utf8',

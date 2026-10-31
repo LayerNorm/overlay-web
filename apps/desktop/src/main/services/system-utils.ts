@@ -5,6 +5,7 @@ import { join } from 'path'
 import { getResourcePath } from '../utils/resources'
 import { tmpdir } from 'node:os'
 import { ScreenshotResult } from '../types'
+import { deliverDictation } from './dictation-delivery'
 import { sendGlobalKey, type GlobalKeyCommand } from './global-keyboard'
 
 const execFileAsync = promisify(execFile)
@@ -55,6 +56,38 @@ class SystemUtils {
       sendWithSystemEvents: (requestedCommand) => this.sendSystemEventsGlobalKey(requestedCommand)
     })
     console.log(`[GlobalKeyboard] Sent ${command} via ${driver}`)
+  }
+
+  async dictationTarget(): Promise<number | null> {
+    if (process.platform !== 'darwin') return null
+    try {
+      const { stdout } = await execFileAsync('osascript', ['-e',
+        'tell application "System Events" to get unix id of first application process whose frontmost is true'
+      ], { timeout: 1500, maxBuffer: 1024 })
+      const pid = Number(stdout.trim())
+      return Number.isSafeInteger(pid) && pid > 0 ? pid : null
+    } catch { return null }
+  }
+
+  async deliverDictation(text: string, target: number | null, active: () => boolean): Promise<'inserted' | 'copy'> {
+    return deliverDictation(text, target, {
+      currentTarget: () => this.dictationTarget(),
+      snapshot: () => {
+        const formats = clipboard.availableFormats()
+        // File promises and application-specific formats must not be destroyed by dictation.
+        if (formats.some(format => !['text/plain', 'text/html', 'text/rtf', 'image/png',
+          'public.utf8-plain-text', 'public.html', 'public.rtf', 'public.png'].includes(format))) return null
+        return { text: clipboard.readText(), html: clipboard.readHTML(), rtf: clipboard.readRTF(), image: clipboard.readImage() }
+      },
+      write: value => clipboard.writeText(value),
+      read: () => clipboard.readText(),
+      restore: value => { clipboard.clear(); clipboard.write(value) },
+      paste: async () => {
+        await this.sendGlobalKey('paste')
+        await new Promise(resolve => setTimeout(resolve, 300))
+      },
+      active,
+    })
   }
 
   playSound(soundFile: string, volume: number = 0.1, soundEffectsEnabled: boolean): void {

@@ -1,5 +1,5 @@
 import { _electron as electron, expect, test } from '@playwright/test'
-import { createServer } from 'node:http'
+import { createServer, type ServerResponse } from 'node:http'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -7,14 +7,22 @@ import { join } from 'node:path'
 test('the native HUD captures audio and delivers the transcription without a preload name collision', async () => {
   const profile = mkdtempSync(join(tmpdir(), 'overlay-recorder-qa-'))
   let audioBytes = 0
+  let holdAuth = true
+  const pendingAuth: ServerResponse[] = []
+  let failNext = false
+  let requests = 0
   const server = createServer((request, response) => {
     if (request.url === '/api/auth/session') {
       response.setHeader('Content-Type', 'application/json')
-      response.end(JSON.stringify({ authenticated: true }))
+      if (holdAuth) pendingAuth.push(response)
+      else response.end(JSON.stringify({ authenticated: true }))
     } else if (request.url === '/api/v1/transcribe') {
       request.on('data', chunk => { audioBytes += chunk.length })
       request.on('end', () => {
         response.setHeader('Content-Type', 'application/json')
+        requests++
+        response.statusCode = failNext ? 503 : 200
+        failNext = false
         response.end(JSON.stringify({ text: 'Recorder acceptance passed' }))
       })
     } else {
@@ -41,12 +49,30 @@ test('the native HUD captures audio and delivers the transcription without a pre
     await page.evaluate(() => window.overlayDesktop.call('transcription.start', { target: 'system', model: 'cloud' }))
     // Native media capture must actually be live before stopping it.
     await expect.poll(() => hud.evaluate(() => document.querySelector('#status')?.textContent)).toBe('Listening…')
+    expect(pendingAuth.length).toBeGreaterThan(0)
+    expect((await page.evaluate(() => window.overlayDesktop.call('transcription.status', undefined))).firstAudioMs).toBeGreaterThanOrEqual(0)
+    // First audio is real even while session admission is deliberately blocked.
+    holdAuth = false
+    for (const response of pendingAuth) response.end(JSON.stringify({ authenticated: true }))
+    await hud.screenshot({ path: 'test-results/dictation-listening.png', omitBackground: true })
     // Give the synthetic media source a short, measured capture interval.
     await hud.waitForTimeout(300)
     await page.evaluate(() => window.overlayDesktop.call('transcription.stop', undefined))
     await expect.poll(() => page.evaluate(() => (window as unknown as { recorderResult: string }).recorderResult)).toBe('Recorder acceptance passed')
     expect(audioBytes).toBeGreaterThan(100)
     expect((await page.evaluate(() => window.overlayDesktop.call('transcription.status', undefined))).recording).toBe(false)
+    // A provider failure retains audio for an explicit retry, without reopening the mic.
+    failNext = true
+    await page.evaluate(() => window.overlayDesktop.call('transcription.start', { target: 'system', model: 'cloud' }))
+    await expect(hud.getByRole('status')).toHaveText('Listening…')
+    await hud.waitForTimeout(150)
+    await hud.getByRole('button', { name: 'Finish dictation' }).click()
+    await expect(hud.getByRole('button', { name: 'Retry transcription' })).toBeVisible()
+    const beforeRetry = requests
+    await hud.getByRole('button', { name: 'Retry transcription' }).click()
+    await expect.poll(() => requests).toBe(beforeRetry + 1)
+    await expect.poll(async () => (await page.evaluate(() => window.overlayDesktop.call('transcription.status', undefined))).phase).toMatch(/ready|delivered/)
+    await hud.getByRole('button', { name: 'Dismiss dictation' }).click()
     const firstRequestBytes = audioBytes
     await hud.evaluate(() => {
       const local = window as unknown as { recorder: { onStart(callback: (model: string, epoch: number) => void): void }; cancelledCaptureEpoch: number }

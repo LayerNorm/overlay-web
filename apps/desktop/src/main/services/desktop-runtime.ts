@@ -1,5 +1,6 @@
 import {
   app,
+  clipboard,
   BrowserWindow,
   ipcMain,
   globalShortcut,
@@ -49,13 +50,25 @@ import { settingsService } from './settings-service'
 import { hotkeyManager, hasAccessibilityPermission } from './hotkey-manager'
 import { isAllowedStableUpgrade } from './auto-updater-policy'
 
-const defaults = { dictation: 'Control+Space', chat: 'CommandOrControl+.', notes: 'CommandOrControl+/' }
+const defaults = {
+  dictation: 'Control+Space',
+  chat: 'CommandOrControl+.',
+  notes: 'CommandOrControl+/'
+}
 const keys = { ...defaults }
 let holdEnabled = false
 let model = 'cloud'
 let recording = false
 let processing = false
 let transcriptionBusy = false
+let takeAdmission: Promise<void> = Promise.resolve()
+let takeAbort = new AbortController()
+let recordingDestination: Promise<number | null> = Promise.resolve(null)
+let retainedResult: string | undefined
+let retainedTimer: ReturnType<typeof setTimeout> | undefined
+let firstAudioMs: number | undefined
+let inputDeviceId = 'auto'
+let phase = 'idle'
 let recordingTarget: 'composer' | 'system' = 'composer'
 let update: UpdateStatus = {
   state: app.isPackaged ? 'idle' : 'development',
@@ -76,7 +89,7 @@ function clearNotifications(): void {
 let hudReady: Promise<void> = Promise.resolve()
 const settingsPath = () => join(app.getPath('userData'), 'web-shell-settings.json')
 function persist(): void {
-  writeFileSync(settingsPath(), JSON.stringify({ keys, model }), { mode: 0o600 })
+  writeFileSync(settingsPath(), JSON.stringify({ keys, model, inputDeviceId }), { mode: 0o600 })
 }
 async function authenticated(): Promise<void> {
   if (Date.now() - lastSessionCheck > 5000) {
@@ -127,6 +140,11 @@ function registerShortcut(id: keyof typeof defaults, accelerator: string): void 
   persist()
 }
 function cancelRecording(): void {
+  takeAbort.abort()
+  clearTimeout(retainedTimer)
+  retainedResult = undefined
+  phase = 'idle'
+  hotkeyManager.cancelRecording(false)
   processing = false
   sessionEpoch++
   recording = false
@@ -136,6 +154,15 @@ function cancelRecording(): void {
 }
 function startRecording(target: 'system' | 'composer', selectedModel: string): void {
   if (recording || processing || transcriptionBusy) throw new Error('Dictation is already running.')
+  takeAbort.abort()
+  takeAbort = new AbortController()
+  clearTimeout(retainedTimer)
+  retainedResult = undefined
+  firstAudioMs = undefined
+  phase = 'opening'
+  takeAdmission = selectedModel === 'cloud' ? authenticated() : Promise.resolve()
+  void takeAdmission.catch(() => {})
+  recordingDestination = target === 'system' ? systemUtils.dictationTarget() : Promise.resolve(null)
   recording = true
   sessionEpoch++
   recordingTarget = target
@@ -143,8 +170,10 @@ function startRecording(target: 'system' | 'composer', selectedModel: string): v
     const epoch = sessionEpoch
     void hudReady.then(() => {
       if (recording && sessionEpoch === epoch) {
+        const area = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea
+        hud?.setPosition(Math.round(area.x + (area.width - 360) / 2), area.y + area.height - 142)
         hud?.showInactive()
-        hud?.webContents.send('recorder:start', selectedModel, epoch)
+        hud?.webContents.send('recorder:start', selectedModel, epoch, inputDeviceId)
       }
     })
   } else emitDesktopEvent('transcription.start', { target, model: selectedModel })
@@ -154,27 +183,32 @@ function stopRecording(): void {
   recording = false
   if (recordingTarget === 'system') {
     processing = true
+    phase = 'processing'
+    hotkeyManager.cancelRecording(false)
     hud?.webContents.send('recorder:stop')
   } else emitDesktopEvent('transcription.stop', undefined)
 }
 async function transcribe(
   input: Input<'transcription.transcribe'>,
-  sourceUrl?: string
+  sourceUrl?: string,
+  signal?: AbortSignal
 ): Promise<{ text: string }> {
   if (transcriptionBusy) throw new Error('Dictation is still processing.')
   transcriptionBusy = true
   try {
-    return await transcribeAudio(input, sourceUrl)
+    return await transcribeAudio(input, sourceUrl, signal)
   } finally {
     transcriptionBusy = false
   }
 }
 async function transcribeAudio(
   input: Input<'transcription.transcribe'>,
-  sourceUrl?: string
+  sourceUrl?: string,
+  signal?: AbortSignal
 ): Promise<{ text: string }> {
   if (input.model === 'cloud') {
     await authenticated()
+    signal?.throwIfAborted()
     const form = new FormData()
     form.append(
       'audio',
@@ -199,7 +233,9 @@ async function transcribeAudio(
         headers: { 'Idempotency-Key': `desktop:${randomUUID()}`, Referer: referer },
         body: form,
         redirect: 'error',
-        signal: AbortSignal.timeout(120_000)
+        signal: signal
+          ? AbortSignal.any([signal, AbortSignal.timeout(120_000)])
+          : AbortSignal.timeout(120_000)
       })
     if (!response.ok) {
       const failure = await response.json().catch(() => null)
@@ -229,8 +265,12 @@ async function transcribeAudio(
     )
     writeFileSync(file, input.audio, { mode: 0o600 })
     return input.model.startsWith('parakeet_')
-      ? await parakeetService.transcribe(file, {}, input.model as 'parakeet_v2' | 'parakeet_v3')
-      : await whisperKitService.transcribe(file, {}, input.model)
+      ? await parakeetService.transcribe(
+          file,
+          { signal },
+          input.model as 'parakeet_v2' | 'parakeet_v3'
+        )
+      : await whisperKitService.transcribe(file, { signal }, input.model)
   } finally {
     rmSync(directory, { recursive: true, force: true })
   }
@@ -313,22 +353,35 @@ const handlers: { [M in Method]: (input: Input<M>) => Promise<Results[M]> | Resu
     }
     return {
       recording,
+      phase,
+      firstAudioMs,
+      inputDeviceId,
       model,
       microphone: systemPreferences.getMediaAccessStatus('microphone'),
       accessibility:
         process.platform !== 'darwin' || systemPreferences.isTrustedAccessibilityClient(false)
     }
   },
-  'transcription.configure': ({ model: next }) => {
+  'transcription.configure': ({ model: next, inputDeviceId: device }) => {
+    if (recording || processing) throw new Error('Finish dictation before changing its settings.')
     model = next
+    if (device !== undefined) inputDeviceId = device
     persist()
   },
   'transcription.start': async ({ target, model: selected }) => {
-    if (selected === 'cloud') await authenticated()
+    if (target === 'composer' && selected === 'cloud') await authenticated()
     startRecording(target, selected)
   },
   'transcription.stop': () => stopRecording(),
   'transcription.transcribe': transcribe,
+  'transcription.listDevices': async () => {
+    await hudReady
+    return (
+      hud?.webContents.executeJavaScript(
+        `navigator.mediaDevices.enumerateDevices().then(devices => devices.filter(d => d.kind === 'audioinput' && d.deviceId).map((d, i) => ({ id: d.deviceId, label: d.label || 'Microphone ' + (i + 1) })))`
+      ) ?? []
+    )
+  },
   'transcription.listModels': async () => {
     const ids = [
       'parakeet_v2',
@@ -371,7 +424,8 @@ const handlers: { [M in Method]: (input: Input<M>) => Promise<Results[M]> | Resu
     return { dataUrl: source.thumbnail.toDataURL(), name: 'Screenshot.png' }
   },
   'notifications.show': ({ title, body, route }) => {
-    if (!Notification.isSupported()) throw new Error('Notifications are unavailable on this system.')
+    if (!Notification.isSupported())
+      throw new Error('Notifications are unavailable on this system.')
     const notification = new Notification({ title, body })
     if (deliveredNotifications.size >= 50) {
       const oldest = deliveredNotifications.values().next().value!
@@ -392,10 +446,21 @@ const handlers: { [M in Method]: (input: Input<M>) => Promise<Results[M]> | Resu
       const timer = setTimeout(() => {
         deliveredNotifications.delete(notification)
         notification.close()
-        reject(new Error('Could not show the notification. Check notification permissions in System Settings.'))
+        reject(
+          new Error(
+            'Could not show the notification. Check notification permissions in System Settings.'
+          )
+        )
       }, 5000)
-      notification.once('show', () => { clearTimeout(timer); resolve() })
-      notification.once('failed', () => { clearTimeout(timer); deliveredNotifications.delete(notification); reject(new Error('Allow Overlay notifications in System Settings to receive alerts.')) })
+      notification.once('show', () => {
+        clearTimeout(timer)
+        resolve()
+      })
+      notification.once('failed', () => {
+        clearTimeout(timer)
+        deliveredNotifications.delete(notification)
+        reject(new Error('Allow Overlay notifications in System Settings to receive alerts.'))
+      })
       notification.show()
     })
   },
@@ -426,6 +491,8 @@ export function registerDesktopRuntime(): void {
   try {
     if (existsSync(settingsPath())) {
       const saved = JSON.parse(readFileSync(settingsPath(), 'utf8'))
+      if (typeof saved.inputDeviceId === 'string' && saved.inputDeviceId.length <= 512)
+        inputDeviceId = saved.inputDeviceId
       if (saved.keys)
         for (const id of Object.keys(defaults) as (keyof typeof defaults)[])
           if (typeof saved.keys[id] === 'string') keys[id] = saved.keys[id]
@@ -488,13 +555,11 @@ export function registerDesktopRuntime(): void {
   hotkeyManager.initialize(
     {
       onRecordingStart: () => {
-        const epoch = sessionEpoch
-        void (model === 'cloud' ? authenticated() : Promise.resolve())
-          .then(() => {
-            if (epoch === sessionEpoch && hotkeyManager.getRecordingState().isRecording)
-              startRecording('system', model)
-          })
-          .catch(() => hotkeyManager.cancelRecording())
+        try {
+          startRecording('system', model)
+        } catch {
+          hotkeyManager.cancelRecording(false)
+        }
       },
       onRecordingStop: () => stopRecording(),
       onRecordingCancel: () => cancelRecording()
@@ -524,8 +589,10 @@ export function registerDesktopRuntime(): void {
     }
   }
   hud = new BrowserWindow({
-    width: 300,
-    height: 90,
+    width: 360,
+    height: 136,
+    focusable: false,
+    hasShadow: false,
     frame: false,
     transparent: true,
     alwaysOnTop: true,
@@ -533,11 +600,13 @@ export function registerDesktopRuntime(): void {
     resizable: false,
     webPreferences: {
       preload: join(__dirname, '../preload/web-shell.js'),
+      autoplayPolicy: 'no-user-gesture-required',
       sandbox: true,
       contextIsolation: true,
       nodeIntegration: false
     }
   })
+  hud.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
   hudReady = hud.loadFile(join(__dirname, '../renderer/recorder.html'))
   hud.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   hud.webContents.on('will-navigate', (event) => event.preventDefault())
@@ -567,26 +636,87 @@ export function registerDesktopRuntime(): void {
       !event.senderFrame?.url.startsWith('file:')
     )
       throw new Error('Untrusted recorder.')
-    if (!processing || recordingEpoch !== sessionEpoch) throw new Error('Dictation was cancelled.')
+    if ((!processing && phase !== 'error') || recordingEpoch !== sessionEpoch || retainedResult)
+      throw new Error('Dictation was cancelled.')
     const epoch = sessionEpoch
+    clearTimeout(retainedTimer)
+    processing = true
+    phase = 'processing'
     try {
-      const result = await transcribe(methodSchemas['transcription.transcribe'].parse(input))
+      await takeAdmission
       if (epoch !== sessionEpoch) throw new Error('Dictation was cancelled.')
-      await systemUtils.pasteText(result.text, false, false)
+      const result = await transcribe(
+        methodSchemas['transcription.transcribe'].parse(input),
+        undefined,
+        takeAbort.signal
+      )
+      if (epoch !== sessionEpoch) throw new Error('Dictation was cancelled.')
+      if (!result.text.trim()) throw new Error('No speech detected. Try again.')
+      retainedResult = result.text
+      const delivery = await systemUtils
+        .deliverDictation(result.text, await recordingDestination, () => epoch === sessionEpoch)
+        .catch(() => 'copy' as const)
+      if (epoch !== sessionEpoch) throw new Error('Dictation was cancelled.')
+      phase = delivery === 'inserted' ? 'delivered' : 'ready'
       emitDesktopEvent('transcription.final', result)
-      return result
+      return { ...result, delivery }
+    } catch (error) {
+      if (epoch === sessionEpoch) phase = 'error'
+      throw error
     } finally {
       if (epoch === sessionEpoch) {
         recording = false
         processing = false
-        hud.hide()
+        hotkeyManager.cancelRecording(false)
+        clearTimeout(retainedTimer)
+        retainedTimer = setTimeout(() => {
+          if (epoch === sessionEpoch) cancelRecording()
+        }, 60_000)
       }
     }
   })
+  const fromHud = (event: Electron.IpcMainEvent | Electron.IpcMainInvokeEvent): boolean =>
+    !!hud &&
+    event.sender === hud.webContents &&
+    event.senderFrame === event.sender.mainFrame &&
+    event.senderFrame?.url.startsWith('file:') === true
   ipcMain.on('recorder:cancel', (event) => {
-    if (hud && event.sender === hud.webContents) cancelRecording()
+    if (fromHud(event)) cancelRecording()
+  })
+  ipcMain.on('recorder:finish', (event) => {
+    if (fromHud(event)) stopRecording()
+  })
+  ipcMain.on('recorder:failed', (event, epoch) => {
+    if (fromHud(event) && epoch === sessionEpoch) {
+      recording = false
+      processing = false
+      phase = 'error'
+      hotkeyManager.cancelRecording(false)
+    }
+  })
+  ipcMain.on('recorder:ready', (event, epoch, milliseconds) => {
+    if (
+      fromHud(event) &&
+      epoch === sessionEpoch &&
+      recording &&
+      typeof milliseconds === 'number' &&
+      Number.isFinite(milliseconds) &&
+      milliseconds >= 0 &&
+      milliseconds <= 60_000
+    ) {
+      firstAudioMs = Math.round(milliseconds)
+      phase = 'listening'
+    }
+  })
+  ipcMain.handle('recorder:copy', (event, epoch) => {
+    if (!fromHud(event) || epoch !== sessionEpoch || !retainedResult)
+      throw new Error('No transcription to copy.')
+    clipboard.writeText(retainedResult)
+    retainedResult = undefined
+    phase = 'copied'
   })
   app.on('before-quit', () => {
+    cancelRecording()
     clearNotifications()
     embeddedHostService.stopImmediately()
     hotkeyManager.unregisterAll()
