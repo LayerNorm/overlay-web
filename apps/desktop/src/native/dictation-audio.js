@@ -6,7 +6,11 @@ let prepared
 export function prepareAudio() {
   if (!prepared) {
     prepared = (async () => {
-      const context = new AudioContext({ sampleRate: SAMPLE_RATE, latencyHint: 'interactive' })
+      const context = new AudioContext({
+        sampleRate: SAMPLE_RATE,
+        latencyHint: 'interactive',
+        sinkId: { type: 'none' }
+      })
       try {
         await context.suspend()
         await context.audioWorklet.addModule(new URL('./dictation-worklet.js', import.meta.url))

@@ -57,12 +57,17 @@ test('the native HUD captures audio and delivers the transcription without a pre
       .poll(() => app.windows().some((page) => page.url().includes('recorder.html')))
       .toBe(true)
     const hud = app.windows().find((page) => page.url().includes('recorder.html'))!
+    hud.on('console', (message) => {
+      if (message.text().startsWith('Microphone acquisition:')) console.info(message.text())
+    })
     await hud.evaluate(() => {
       const qa = window as unknown as { qaStreams: MediaStream[] }
       qa.qaStreams = []
       const open = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices)
       navigator.mediaDevices.getUserMedia = async (constraints) => {
+        const began = performance.now()
         const stream = await open(constraints)
+        console.info(`Microphone acquisition: ${Math.round(performance.now() - began)}ms`)
         qa.qaStreams.push(stream)
         return stream
       }
@@ -128,6 +133,9 @@ test('the native HUD captures audio and delivers the transcription without a pre
       window.overlayDesktop.call('transcription.start', { target: 'system', model: 'cloud' })
     )
     await expect(hud.getByRole('status')).toHaveText('Listening…')
+    console.info(
+      `Repeated native PCM frame: ${(await page.evaluate(() => window.overlayDesktop.call('transcription.status', undefined))).firstAudioMs}ms`
+    )
     await hud.waitForTimeout(150)
     await hud.getByRole('button', { name: 'Finish dictation' }).click()
     await expect(hud.getByRole('button', { name: 'Retry transcription' })).toBeVisible()
@@ -151,6 +159,9 @@ test('the native HUD captures audio and delivers the transcription without a pre
       window.overlayDesktop.call('transcription.start', { target: 'system', model: 'cloud' })
     )
     await expect(hud.getByRole('status')).toHaveText('Listening…')
+    console.info(
+      `Repeated native PCM frame: ${(await page.evaluate(() => window.overlayDesktop.call('transcription.status', undefined))).firstAudioMs}ms`
+    )
     await hud.waitForTimeout(150)
     await hud.getByRole('button', { name: 'Finish dictation' }).click()
     await expect.poll(() => pendingTranscriptions.length).toBe(1)
@@ -174,6 +185,9 @@ test('the native HUD captures audio and delivers the transcription without a pre
       window.overlayDesktop.call('transcription.start', { target: 'system', model: 'cloud' })
     )
     await expect(hud.getByRole('status')).toHaveText('Listening…')
+    console.info(
+      `Repeated native PCM frame: ${(await page.evaluate(() => window.overlayDesktop.call('transcription.status', undefined))).firstAudioMs}ms`
+    )
     await page.evaluate(() => window.overlayDesktop.call('auth.signedOut', undefined))
     const staleRejected = await hud.evaluate(async () => {
       const local = window as unknown as {
