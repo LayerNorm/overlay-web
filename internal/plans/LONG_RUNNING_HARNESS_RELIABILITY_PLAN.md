@@ -36,6 +36,10 @@ Settled-response recovery checkpoint: charged receipts now preserve `empty_respo
 
 Owner: Overlay native harness
 
+The settled-response recovery head and its durable-capacity test correction passed all 22 GitHub checks (Paid Gateway Canary skipped). Trusted controller run `41244955792` published exact `523afb4ff587eb3f9955868387c4d7a3800367e2` as READY `dpl_7vUi1b3S6DLCwu8fFmcd9RpfKhZj` on isolated `pastel-crane-401`. This is compilation/backend-isolation evidence, not a browser pass of recovery behavior.
+
+Failure-display slice in progress: native `failAgentRun` atomically projects a bounded, redacted terminal error part (code, message, retryable, run ID and failure time) into the failed transcript without replacing partial prose. Personal and room readers use that part rather than infer a cause from assistant content; unknown historical failures have an explicitly unknown reason. Personal historical turns retain their error notice, persisted failure overrides stale streaming state, and an explicit non-retryable flag removes the retry action. The schema change is additive; old backends emit no new part and new readers fall back safely. The focused display/message/API tests passed 34/34 and the three Convex suites passed 8/8; the added generic-token and client-secret redaction cases then passed 2/2. Targeted ESLint reported no errors and one unused-parameter warning in `packages/overlay-chat-core/src/messages.ts`; TypeScript, web complexity (46 complex functions), shared-isomorphic (213 modules), and diff checks passed. Hosted checks and browser acceptance of this display slice remain pending. Existing terminal classification/retry flags, live model-recovery status projection, broader provider recovery and the final video gate remain open.
+
 Preview fixture checkpoint: the focused fixture run passed 14 tests in
 `nativeThreadCompatibility.convex.test.ts` and `previewQaSeed.convex.test.ts`.
 The new `nativeThreadQa.convex.test.ts` then passed 6/6 after correcting its

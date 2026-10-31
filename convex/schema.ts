@@ -2,6 +2,7 @@ import { driveUploadFields } from './lib/agentDriveUploadSchema'
 import { remoteLifecycleValidator } from './agents/remoteRunModel'
 import {nativeStartAdmissionValidator} from './lib/nativeStartAdmission'
 import { agentMcpCallState } from './lib/agentMcpCallSchema'
+import { nativeAgentErrorPart } from './lib/nativeAgentErrorPart'
 import { defineSchema, defineTable } from 'convex/server'
 import { v } from 'convex/values'
 
@@ -1560,6 +1561,7 @@ export default defineSchema({
               question: v.string(),
             }),
           }),
+          nativeAgentErrorPart,
           v.object({
             type: v.literal('tool-invocation'),
             toolInvocation: v.object({

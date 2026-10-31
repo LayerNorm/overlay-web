@@ -26,7 +26,6 @@ import {
   getUserMessageDocNames,
   getUserReplyThreadMeta,
   getUserTurnId,
-  looksLikeStoredGenerationError,
   persistedGenerationErrorMessage,
   resolveActAssistant,
   splitUserDisplayText,
@@ -37,6 +36,7 @@ import type { DraftModalState } from './chat-interface/types'
 import { recordRender } from '@overlay/chat-react/lib/perf-debug'
 import { ChatToolSurface } from './ChatToolSurface'
 import { ChatMediaMessage } from './ChatMediaMessage'
+import { readNativeAgentError } from '@/shared/agents/native-agent-error'
 
 type ChatInstance = UseChatHelpers<UIMessage>
 
@@ -191,7 +191,7 @@ function resolveStreamLoadState(props: TextChatMessageProps, selection: StreamSe
   const { actChat, isActiveLoading, isOptimisticLoading } = props
   const { isActExchange, slotInstance } = selection
   const { isLatest, persistedStatus, responseText } = response
-  const activeHttpLoading = isLatest && (
+  const activeHttpLoading = persistedStatus !== 'error' && isLatest && (
     (isActExchange
       ? (actChat.status === 'streaming' || actChat.status === 'submitted')
       : !!slotInstance && (slotInstance.status === 'streaming' || slotInstance.status === 'submitted')) ||
@@ -201,14 +201,15 @@ function resolveStreamLoadState(props: TextChatMessageProps, selection: StreamSe
   const persistedErrorText = persistedStatus === 'error'
     ? persistedGenerationErrorMessage(responseText)
     : 'Generation failed'
-  const instError = isLatest
-    ? persistedStatus === 'error'
-      ? new Error(persistedErrorText)
-      : isActExchange
+  const persistedError = persistedStatus === 'error' ? readNativeAgentError(response.responseParts) : undefined
+  const instError = persistedStatus === 'error'
+    ? new Error(persistedErrorText)
+    : isLatest
+      ? isActExchange
         ? actChat.error
         : slotInstance?.error ?? null
-    : null
-  return { instLoading: activeHttpLoading, instError }
+      : null
+  return { instLoading: activeHttpLoading, instError, persistedError }
 }
 
 function buildNormalizedAssistant({
@@ -222,9 +223,6 @@ function buildNormalizedAssistant({
   responseParts: unknown[] | undefined
   status: ChatExchangeStatus
 }) {
-  if (persistedStatus === 'error' && looksLikeStoredGenerationError(responseText)) {
-    return { blocks: [], sources: [] }
-  }
   const terminalState = persistedStatus === 'completed'
     ? 'completed'
     : persistedStatus === 'error'
@@ -253,11 +251,12 @@ function resolveTurnReplyState(
   props: TextChatMessageProps,
   instError: Error | null | undefined,
   assistantPlainForReply: string,
+  persistedErrorMessage?: string,
 ) {
   const { message, exitingTurnIds, interruptedExchangeIdx, exchangeIndex } = props
   const turnId = getUserTurnId(message)
   const isExiting = !!turnId && exitingTurnIds.includes(turnId)
-  const errLabelForTurn = errorLabel(instError)
+  const errLabelForTurn = persistedErrorMessage ?? errorLabel(instError)
   const interruptedHere = interruptedExchangeIdx === exchangeIndex && !errLabelForTurn
   const replyPlain = interruptedHere
     ? appendInterruptionNotice(assistantPlainForReply)
@@ -320,7 +319,7 @@ function TextChatMessage(props: TextChatMessageProps) {
   const { message, exchangeIndex } = props
   const selection = resolveStreamSelection(props)
   const response = resolveExchangeResponse(props, selection)
-  const { instLoading, instError } = resolveStreamLoadState(props, selection, response)
+  const { instLoading, instError, persistedError } = resolveStreamLoadState(props, selection, response)
   const normalizedAssistant = buildNormalizedAssistant({
     persistedStatus: response.persistedStatus,
     responseText: response.responseText,
@@ -333,7 +332,7 @@ function TextChatMessage(props: TextChatMessageProps) {
   const isStreaming = instLoading && hasAssistantActivity
   const isTextStreaming = instLoading && hasAssistantText
   const assistantPlainForReply = assistantBlocksToPlainText(assistantVisualBlocks)
-  const turn = resolveTurnReplyState(props, instError, assistantPlainForReply)
+  const turn = resolveTurnReplyState(props, instError, assistantPlainForReply, persistedError?.message)
   const modelLabel = resolveModelLabel(response.responseMsg, selection.selectedModelId)
   const userDisplay = resolveUserDisplayParts(message)
   const responseMessageId = response.responseMessageId
@@ -374,7 +373,7 @@ function TextChatMessage(props: TextChatMessageProps) {
       onCreateAutomationDraft={props.onCreateAutomationDraft}
       onOpenSources={props.onOpenSources}
       isSourcesOpenForThis={computeSourcesOpen(props.sourcesPanel, turn.turnId, message.id)}
-      onRetry={props.readOnly ? undefined : () => props.onRetry(message, exchangeIndex, selection.isActExchange, selection.selectedModelId)}
+      onRetry={props.readOnly || persistedError?.retryable === false ? undefined : () => props.onRetry(message, exchangeIndex, selection.isActExchange, selection.selectedModelId)}
       retryDisabled={computeRetryDisabled({
         turnId: turn.turnId,
         isExiting: turn.isExiting,

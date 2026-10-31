@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Show persisted native-agent failure reasons in personal and room transcripts, preserve unfinished prose, and stop labeling unknown historical failures as connection loss.
+
 - Persist settled Harness response failures with bounded durable retries and receipt accounting, while preserving the existing Harness revision and requiring the additive server-owned `settled-retry-v1` admission marker for new web code.
 
 - Initial long-running harness recovery slice: separate context-compaction checkpoints from continuation stagnation, provide trusted bounded recovery before durable stuck waits, and return repairable generated-UI and plan-validation feedback.

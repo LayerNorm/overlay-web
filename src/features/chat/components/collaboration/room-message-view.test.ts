@@ -16,6 +16,22 @@ function record(overrides: Partial<RoomMessageRecord> = {}): RoomMessageRecord {
   }
 }
 
+test('failed agent rows display recorded causes after reload, not assistant network claims', () => {
+  const message = record({ status: 'error', content: 'My network connection failed.', parts: [
+    { type: 'text', text: 'My network connection failed.' },
+    { type: 'data-native-agent-error', data: {
+      runId: 'run', code: 'harness_failed', message: 'No durable progress.', retryable: false, failedAt: 1,
+    } },
+  ] })
+  const view = (value: RoomMessageRecord) => toRoomMessageView({ message: value, currentPrincipalId: 'me', authorName: 'Agent' })
+  const reloaded = view(JSON.parse(JSON.stringify(message)))
+  assert.equal(reloaded.generationError, 'No durable progress.')
+  assert.ok(reloaded.blocks.some(block => block.kind === 'text' && block.text === message.content))
+  assert.equal(view({ ...message, parts: [] }).generationError, 'This response failed. No failure reason is available.')
+  for (const status of ['generating', 'completed'] as const) assert.equal(view({ ...message, status }).generationError, undefined)
+  assert.equal(view({ ...message, authorKind: 'human' }).generationError, undefined)
+})
+
 test('pending reply hands its row identity to streaming, completed, and failed snapshots', () => {
   const pending = record({ id: 'optimistic_pending_reply_send_agent', content: '', createdAt: 31_000,
     updatedAt: 1_000, status: 'generating' })

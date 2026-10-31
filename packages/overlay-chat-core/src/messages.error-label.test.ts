@@ -23,10 +23,10 @@ test('persistedGenerationErrorMessage does not treat assistant prose as the erro
   const prose =
     'Love this instinct — the landing page is your highest-leverage retention/distribution asset right now.'
   assert.equal(looksLikeStoredGenerationError(prose), false)
-  assert.equal(persistedGenerationErrorMessage(prose), 'generation_interrupted_connection')
+  assert.equal(persistedGenerationErrorMessage(prose), 'generation_failed_unknown')
   assert.equal(
     errorLabel(new Error(persistedGenerationErrorMessage(prose))),
-    'Connection lost mid-response. Check your network and try again.',
+    'This response failed. No failure reason is available.',
   )
 })
 
@@ -49,12 +49,11 @@ test('weekly usage errors keep their free chat label', () => {
   assert.equal(errorLabel(new Error('Weekly limit reached')), freeChatsLabel)
 })
 
-test('persistedGenerationErrorMessage keeps real stored error strings', () => {
-  assert.equal(persistedGenerationErrorMessage('Generation failed.'), 'Generation failed.')
-  assert.equal(
-    persistedGenerationErrorMessage('generation_interrupted_server_timeout'),
-    'generation_interrupted_server_timeout',
-  )
+test('persisted content cannot establish a failure cause, even when it resembles an error', () => {
+  for (const content of ['Generation failed.', 'generation_interrupted_connection',
+    'generation_interrupted_server_timeout', 'Failed to fetch', 'insufficient_credits', '', null]) {
+    assert.equal(persistedGenerationErrorMessage(content), 'generation_failed_unknown')
+  }
 })
 
 test('provider error labels preserve ordered terms and line boundaries for long untrusted input', () => {

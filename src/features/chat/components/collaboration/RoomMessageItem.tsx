@@ -96,6 +96,7 @@ export type RoomMessageView = {
   askedBy?: { name: string; hop: number; parentConversationId?: string }
   nativeApproval?: NativeAgentApproval
   nativeInput?: NativeAgentInput
+  generationError?: string
   remoteQueue?: { runId: string; environmentName: string; queueExpiresAt: number }
   remoteRequest?: { pendingDelivery?: boolean; expiresAt?: number; machineCostContinues?: boolean; runId: string; requestKey: string; kind: 'permission' | 'elicitation'; prompt: string;
     options: Array<{ id: string; label: string }>; requestedSchema?: Record<string, unknown> }
@@ -780,6 +781,7 @@ function AgentMessageBody({ message, readOnly, onOpenAttachmentPreview, onContro
       ) : null}
       {message.nativeApproval ? <NativeAgentApprovalCard key={message.nativeApproval.token} approval={message.nativeApproval} /> : null}
       {message.nativeInput ? <NativeAgentInputCard key={message.nativeInput.token} request={message.nativeInput} /> : null}
+      {message.generationError ? <p className="mt-2 text-sm text-destructive" role="alert">{message.generationError}</p> : null}
       {message.remoteRun ? <RemoteRunDeadline deadlineAt={message.remoteRun.hardDeadlineAt} state={message.remoteRun.state} /> : null}
       {message.remoteRun?.recovered ? <p className="mt-1 text-xs text-(--muted)" role="status">Recovered</p> : null}
       {message.remoteRun?.state === 'cancelled' ? <p className='mt-2 text-xs text-(--muted)' role='status'>Cancelled</p> : null}

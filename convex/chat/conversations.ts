@@ -15,6 +15,8 @@ import { deleteChunksForSource } from '../knowledge/knowledge'
 import { INTERRUPTED_RESPONSE_NOTICE } from '../../src/shared/chat/agent-assistant-text'
 import { assertNativeHarnessRun, assertSupportedAgentExecution } from '../../src/shared/agents/native-run-retirement'
 import { assertNativeThreadWritable, nativeThreadCompatibility } from '../lib/nativeThreadCompatibility'
+import { nativeAgentErrorPart } from '../lib/nativeAgentErrorPart'
+import { NATIVE_AGENT_ERROR_PART, nativeAgentErrorMessage } from '../../src/shared/agents/native-agent-error'
 
 const generatedUiVariant = v.object({
   id: v.string(),
@@ -65,6 +67,7 @@ const generatedUiData = v.union(
 
 /** Matches AI SDK UI parts we persist; `tool-invocation` restores tool chips after reload. */
 const messagePart = v.union(
+  nativeAgentErrorPart,
   v.object({
     type: v.literal('data'),
     id: v.string(),
@@ -1191,20 +1194,28 @@ export const failAgentRun = mutation({
     if (!ACTIVE_AGENT_RUN_STATUSES.has(run.status)) return run
     assertSupportedAgentExecution(run)
     assertAgentRunTransition(run.status, 'failed')
+    const isNative = run.runner === 'workflow' && run.executionEngine === 'overlay_harness'
     const now = Date.now()
     const message = await ctx.db.get(run.assistantMessageId)
     if (message) {
       const parts = (message.parts ?? []).filter((part) =>
-        part.type !== 'data-native-agent-approval' && part.type !== 'data-native-agent-input')
+        part.type !== 'data-native-agent-approval' && part.type !== 'data-native-agent-input'
+        && part.type !== NATIVE_AGENT_ERROR_PART)
+      if (isNative) {
+        parts.push({ type: NATIVE_AGENT_ERROR_PART, data: {
+          ...args.error, message: nativeAgentErrorMessage(args.error.message), runId: String(run._id), failedAt: now,
+        } })
+      }
+      const content = isNative ? message.content : message.content || args.errorText
       const hasContentPart = parts.some((part) => part.type === 'text')
       await ctx.db.patch(message._id, {
         ...(message.status === 'generating'
           ? {
-              content: message.content || args.errorText,
-              parts: hasContentPart ? parts : [...parts, { type: 'text', text: message.content || args.errorText }],
+              content,
+              parts: hasContentPart || !content ? parts : [...parts, { type: 'text', text: content }],
               status: 'error' as const,
             }
-          : { parts }),
+          : { parts, ...(isNative ? { status: 'error' as const } : {}) }),
         updatedAt: now,
       })
     }

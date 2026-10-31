@@ -386,6 +386,16 @@ describe('native agent approval projection', () => {
     expect(failedMessage?.content).toBe('Partial failure output.')
     expect(failedMessage?.parts?.some(part => part.type === 'data-native-agent-approval')).toBe(false)
     expect(failedMessage?.parts?.some(part => part.type === 'tool-invocation')).toBe(true)
+    expect(failedMessage?.parts?.find(part => part.type === 'data-native-agent-error')).toEqual({
+      type: 'data-native-agent-error', data: {
+        ...failedRun!.terminalError, runId: String(seeded.runB), failedAt: failedRun!.failedAt,
+      },
+    })
+    await convex.mutation(api.chat.conversations.failAgentRun, {
+      error: { code: 'different', message: 'A late duplicate must not replace the reason.', retryable: true },
+      errorText: 'late', runId: seeded.runB, serverSecret, userId: initiatorUserId,
+    })
+    expect((await convex.run(ctx => ctx.db.get(seeded.assistantMessageB)))?.parts).toEqual(failedMessage?.parts)
 
     await convex.mutation(api.chat.conversations.transitionAgentRun, {
       runId: seeded.runC,
