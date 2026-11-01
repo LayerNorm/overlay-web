@@ -2,6 +2,7 @@ import type { WorkflowAgentOnStepEndCallback } from '@ai-sdk/workflow'
 import type { ToolSet } from 'ai'
 import type { HarnessResponseFailure } from '@overlay/agent-runtime/harness-state'
 import { asRecord } from '@/shared/ai/gateway/overlay-free-policy'
+import { isFreeTierChatModelId } from '@/shared/ai/gateway/model-types'
 
 export type HarnessModelObservation = {
   modelId: string
@@ -12,6 +13,7 @@ export type HarnessModelObservation = {
   cacheReadTokens: number
   cacheWriteTokens: number
   generationId?: string
+  freeCostVerified?: true
   responseFailure?: HarnessResponseFailure
 }
 
@@ -41,7 +43,9 @@ export function captureHarnessModelUsage(
 ): HarnessModelObservation {
   const gateway = asRecord(step.providerMetadata?.gateway)
   const routing = asRecord(gateway.routing)
-  const modelId = identity(routing.canonicalSlug) ?? identity(requestedModelId)
+  const free = isFreeTierChatModelId(requestedModelId)
+  const freeReceipt = asRecord(step.providerMetadata?.overlayFree)
+  const modelId = free ? requestedModelId : identity(routing.canonicalSlug) ?? identity(requestedModelId)
   if (!modelId) throw new Error('Missing model identity.')
   const inputTokens = tokenCount(step.usage.inputTokens, true)
   const cacheReadTokens = tokenCount(step.usage.inputTokenDetails.cacheReadTokens)
@@ -51,13 +55,14 @@ export function captureHarnessModelUsage(
   const responseFailure = harnessModelResponseFailure(step)
   return {
     modelId,
-    provider: identity(routing.finalProvider) ?? 'unreported',
+    provider: free ? 'overlay-free-router' : identity(routing.finalProvider) ?? 'unreported',
     inputTokens,
     outputTokens: tokenCount(step.usage.outputTokens, true),
     reasoningTokens: tokenCount(step.usage.outputTokenDetails.reasoningTokens),
     cacheReadTokens,
     cacheWriteTokens,
     ...(generationId ? { generationId } : {}),
+    ...(free && freeReceipt.safe === true && freeReceipt.cost === 0 ? { freeCostVerified: true as const } : {}),
     ...(responseFailure ? { responseFailure } : {}),
   }
 }

@@ -7,6 +7,8 @@ vi.mock('server-only', () => ({}))
 vi.mock('./ConvexHarnessRepository', () => ({ ConvexHarnessRepository: class { get = mocks.read } }))
 vi.mock('./usage-steps', () => ({ resolveHarnessModelUsage: mocks.resolve }))
 vi.mock('./state-steps', () => ({ applyHarnessOperation: mocks.apply, readHarnessState: mocks.read }))
+vi.mock('@/server/ai/gateway/gateway-runtime', () => ({ getOrCreateGateway: vi.fn() }))
+vi.mock('@/server/ai/gateway/live-model-pricing', () => ({ calculateLanguageModelTokenCostOrNull: vi.fn(async () => 0) }))
 vi.mock('@/server/bootstrap', () => ({ getOverlayServerContext: () => ({
   chatUsagePolicy: { recordFinishedUsage: mocks.bill },
   appData: { repositories: { usage: { recordBatch: mocks.batch } } },
@@ -88,4 +90,17 @@ test('catalog settlement carries the original quote without fabricating an exact
   await settleHarnessModelUsage(input)
   expect(mocks.bill.mock.calls[0][0]).toMatchObject({ catalogCostUsd: 0.0001, reservationId: null })
   expect(mocks.bill.mock.calls[0][0]).not.toHaveProperty('providerCostUsd')
+})
+
+test.each(['openrouter/free', 'overlay-free'])('unconfirmed %s usage leaves its reservation untouched through real usage resolution', async modelId => {
+  const held = state(null, modelId, 0)
+  mocks.read.mockResolvedValue(held)
+  const { resolveHarnessModelUsage } = await vi.importActual<typeof import('./usage-steps')>('./usage-steps')
+  mocks.resolve.mockImplementation(resolveHarnessModelUsage)
+  await expect(settleHarnessModelUsage({ ...input, observation: { ...observation, modelId, provider: 'overlay-free-router' } }))
+    .rejects.toThrow(/unconfirmed/)
+  expect(mocks.bill).not.toHaveBeenCalled()
+  expect(mocks.batch).not.toHaveBeenCalled()
+  expect(mocks.apply).not.toHaveBeenCalled()
+  expect(held.modelReservation).toMatchObject({ id: input.receiptId, maxCostMicros: 0, dispatch: { modelId } })
 })

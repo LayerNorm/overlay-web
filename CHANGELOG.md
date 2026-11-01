@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Require verified zero-cost router receipts before settling native free-model usage. Missing, unsafe or contradictory provider costs keep the model reservation unresolved instead of being priced as free from the catalog.
+
 - Preserve unresolved free-model summary reservations instead of fabricating a zero-cost failure receipt. Summary fallback and retry require existing settled usage or a confirmed rejection; unknown provider outcomes remain held for reconciliation.
 
 - Keep internal Harness checkpoint summaries out of final assistant replies. Delivery retains explicit results and actual assistant output instead of presenting continuity notes as a user-facing answer after an interruption.

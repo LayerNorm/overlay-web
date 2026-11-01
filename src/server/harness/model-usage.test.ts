@@ -175,3 +175,45 @@ test('rejects invalid costs and receipts from another generation or funding sour
     await expect(resolveHarnessModelUsage(request())).rejects.toThrow(/reconciliation/)
   }
 })
+
+test.each(['openrouter/free', 'overlay-free'])('requires verified provider cost for %s even when catalog pricing is zero', async modelId => {
+  mocks.pricing.mockResolvedValue(0)
+  for (const overlayFree of [undefined, { safe: false, cost: null }, { safe: false, cost: 0 },
+    { safe: true, cost: null }, { safe: true, cost: 0.01 }, { safe: true, cost: '0' }]) {
+    const observation = captureHarnessModelUsage({ ...step, providerMetadata: {
+      ...step.providerMetadata, ...(overlayFree ? { overlayFree } : {}),
+    } }, modelId)
+    expect(observation.freeCostVerified).toBeUndefined()
+    await expect(resolveHarnessModelUsage({ ...request(), requestedModelId: modelId, observation })).rejects.toThrow(/unconfirmed/)
+  }
+  expect(mocks.pricing).not.toHaveBeenCalled()
+  expect(mocks.generation).not.toHaveBeenCalled()
+})
+
+test.each(['openrouter/free', 'overlay-free'])('settles %s only from its verified router receipt without persisting extra metadata', async modelId => {
+  const observation = captureHarnessModelUsage({ ...step, providerMetadata: {
+    ...step.providerMetadata, overlayFree: { safe: true, cost: 0, route: 'provider/actual', secret: 'fixture-do-not-store' },
+  } }, modelId)
+  expect(observation).toMatchObject({ modelId, provider: 'overlay-free-router', freeCostVerified: true })
+  expect(JSON.stringify(observation)).not.toContain('fixture-do-not-store')
+  const result = await resolveHarnessModelUsage({ ...request(), requestedModelId: modelId, observation })
+  expect(result).toMatchObject({ providerCostUsd: 0, catalogCostUsd: null,
+    receipt: { modelId, provider: 'overlay-free-router', costMicros: 0, costSource: 'provider', inputTokens: 1_000 } })
+  expect(result.receipt).not.toHaveProperty('freeCostVerified')
+  for (const mismatch of [{ modelId: 'provider/other' }, { provider: 'unreported' }]) {
+    await expect(resolveHarnessModelUsage({ ...request(), requestedModelId: modelId,
+      observation: { ...observation, ...mismatch } })).rejects.toThrow(/unconfirmed/)
+  }
+  expect(mocks.pricing).not.toHaveBeenCalled()
+  expect(mocks.generation).not.toHaveBeenCalled()
+})
+
+test('a free-router marker does not authorize a free receipt for a paid dispatch', async () => {
+  const observation = captureHarnessModelUsage({ ...step, providerMetadata: {
+    ...step.providerMetadata, overlayFree: { safe: true, cost: 0 },
+  } }, 'provider/requested')
+  expect(observation.freeCostVerified).toBeUndefined()
+  mocks.generation.mockResolvedValue({ id: 'gen_fixture', model: 'provider/actual', providerName: 'provider', isByok: false, totalCost: 0.001 })
+  const result = await resolveHarnessModelUsage({ ...request(), observation })
+  expect(result.receipt).toMatchObject({ costMicros: 1_000, costSource: 'provider' })
+})
