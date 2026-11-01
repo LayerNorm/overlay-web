@@ -140,6 +140,7 @@ class WhisperKitService {
         '--report-path',
         temporaryDirectory,
         '--skip-special-tokens',
+        '--use-prefill-prompt',
         '--without-timestamps'
       ]
       if (options.language && /^[A-Za-z-]{2,16}$/.test(options.language)) {

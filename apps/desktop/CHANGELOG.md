@@ -5,6 +5,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+- Initialize Whisper decoder task/language tokens explicitly for timestamp-free local dictation.
+
 - Start microphone capture independently of cloud session admission, prepare a suspended PCM graph at launch, and capture WAV directly without a whole-recording decode.
 - Replace the recorder box with a non-focusable, bottom-centered capsule, real audio meter, reduced-motion support, finish/dismiss controls and temporary retry/copy recovery.
 - Add microphone selection, cancellation of inference, frontmost-app delivery checks and clipboard preservation. Audio/results remain in memory and expire after 60 seconds.
