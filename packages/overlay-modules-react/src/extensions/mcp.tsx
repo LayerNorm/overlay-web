@@ -426,7 +426,7 @@ export function McpServerDialog({
       />}
     >
       <Tabs defaultValue="configuration">
-        <TabsList className="mb-5"><TabsTrigger value="configuration">Configuration</TabsTrigger><TabsTrigger value="tools">Tools</TabsTrigger></TabsList>
+        <TabsList className="mb-5 self-start"><TabsTrigger value="configuration">Configuration</TabsTrigger><TabsTrigger value="tools">Tools</TabsTrigger></TabsList>
         <TabsContent value="configuration" className="space-y-5">
           <McpServerFormFields values={values} update={update} />
           <McpAuthSecretFields values={values} update={update} />
