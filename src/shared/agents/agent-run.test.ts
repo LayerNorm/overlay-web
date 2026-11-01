@@ -20,6 +20,7 @@ describe('AgentRun lifecycle', () => {
       'waiting_for_approval',
       'waiting_for_input',
       'waiting_for_children',
+      'waiting_for_resources',
     ])
     assert.deepEqual(AGENT_RUN_STATUSES, [
       ...ACTIVE_AGENT_RUN_STATUSES,
@@ -42,6 +43,10 @@ describe('AgentRun lifecycle', () => {
         assert.equal(canTransitionAgentRun(terminal, status), false)
       }
     }
+    assert.equal(canTransitionAgentRun('waiting_for_resources', 'running'), false)
+    assert.equal(canTransitionAgentRun('waiting_for_resources', 'completed'), false)
+    assert.equal(canTransitionAgentRun('waiting_for_resources', 'failed'), true)
+    assert.equal(canTransitionAgentRun('waiting_for_resources', 'cancelled'), true)
     assert.equal(canTransitionAgentRun('running', 'completed'), true)
     assert.equal(canTransitionAgentRun('completed', 'running'), false)
     assert.equal(canTransitionAgentRun('cancelled', 'completed'), false)

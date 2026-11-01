@@ -657,7 +657,7 @@ export function pauseHarnessForResources(state: HarnessSnapshot, token: string, 
   if (state.status === 'running' && state.blocker !== undefined) {
     throw new Error('A running harness cannot carry a blocker.')
   }
-  if (state.status === 'waiting_for_input' && state.blocker?.kind !== 'input') {
+  if (state.status === 'waiting_for_input' && state.blocker?.kind !== 'input' && state.blocker?.kind !== 'stuck') {
     throw new Error('Only an input wait can be suspended by a resource pause.')
   }
   if (state.status === 'waiting_for_approval' && state.blocker?.kind !== 'approval') {
@@ -708,7 +708,7 @@ export function consumeHarnessResourcePause(
   input: {
     token: string
     previousStatus: Extract<HarnessStatus, 'running' | 'waiting_for_input' | 'waiting_for_approval'>
-    previousBlocker?: { kind: 'input' | 'approval'; question: string }
+    previousBlocker?: { kind: 'input' | 'approval' | 'stuck'; question: string }
   },
   now: number,
 ): HarnessSnapshot {

@@ -3,6 +3,7 @@ import { remoteLifecycleValidator } from './agents/remoteRunModel'
 import {nativeStartAdmissionValidator} from './lib/nativeStartAdmission'
 import { agentMcpCallState } from './lib/agentMcpCallSchema'
 import { nativeAgentErrorPart } from './lib/nativeAgentErrorPart'
+import { agentRunResourceRequestValidator } from './harness/resource-validators'
 import { defineSchema, defineTable } from 'convex/server'
 import { v } from 'convex/values'
 
@@ -1340,6 +1341,7 @@ export default defineSchema({
       v.literal('waiting_for_approval'),
       v.literal('waiting_for_input'),
       v.literal('waiting_for_children'),
+      v.literal('waiting_for_resources'),
       v.literal('completed'),
       v.literal('failed'),
       v.literal('cancelled'),
@@ -1373,6 +1375,7 @@ export default defineSchema({
         input: v.any(),
       })),
     })),
+    resourceRequest: v.optional(agentRunResourceRequestValidator),
     metrics: v.optional(v.object({
       firstTokenAt: v.optional(v.number()),
       inputTokens: v.optional(v.number()),

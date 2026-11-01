@@ -42,10 +42,16 @@ export type HarnessResourceGrantReceipt = {
   deadlineAt: number
 }
 
+export type HarnessResourceDeliveryProjection = {
+  request: HarnessResourceRequest
+  receipt?: HarnessResourceGrantReceipt
+  awaitingReceipt: boolean
+}
+
 export type HarnessResourceRequestRecord = {
   request: HarnessResourceRequest
   previousStatus: Extract<HarnessStatus, 'running' | 'waiting_for_input' | 'waiting_for_approval'>
-  previousBlocker?: { kind: 'input' | 'approval'; question: string }
+  previousBlocker?: { kind: 'input' | 'approval' | 'stuck'; question: string }
   authority: {
     actorUserId: string
     workspaceId: string

@@ -418,6 +418,12 @@ async function requireActivePersonalWorkspaceMembership(
   return workspace
 }
 
+function hasUnsupportedResourceConversationSurface(conversation: Doc<'conversations'>): boolean {
+  return Boolean(conversation.isAutomation || conversation.externalPlatform !== undefined
+    || conversation.externalChannelId !== undefined || conversation.externalThreadId !== undefined
+    || conversation.surfaceBindingId !== undefined)
+}
+
 async function assertResourcePauseAdmissionContext(ctx: MutationCtx, admission: HarnessAdmission): Promise<void> {
   if (admission.policy.resourcePauseVersion !== 1) return
   if (!('conversationId' in admission.source) || !admission.policy.workspaceId
@@ -428,8 +434,9 @@ async function assertResourcePauseAdmissionContext(ctx: MutationCtx, admission: 
   const conversationId = ctx.db.normalizeId('conversations', (admission.source as Extract<HarnessSource, { conversationId: string }>).conversationId)
   const conversation = conversationId ? await ctx.db.get(conversationId) : null
   if (!conversation || conversation.deletedAt || conversation.userId !== admission.policy.actorUserId
+    || hasUnsupportedResourceConversationSurface(conversation)
     || (conversation.conversationType ?? 'personal') !== 'personal'
-    || (conversation.workspaceId !== undefined && conversation.workspaceId !== admission.policy.workspaceId)) {
+    || conversation.workspaceId !== admission.policy.workspaceId) {
     throw new Error('HARNESS_RESOURCE_ADMISSION_DENIED')
   }
 }
@@ -1935,6 +1942,26 @@ function resourceRecord(row: ResourceRow): HarnessResourceRequestRecord {
   }
 }
 
+function resourceDeliveryProjection(record: HarnessResourceRequestRecord, awaitingReceipt: boolean) {
+  return {
+    request: record.request,
+    ...(record.receipt ? { receipt: record.receipt } : {}),
+    awaitingReceipt,
+  }
+}
+
+async function projectResourceRequest(
+  ctx: MutationCtx,
+  delivery: Doc<'conversationAgentRuns'>,
+  record: HarnessResourceRequestRecord,
+  awaitingReceipt: boolean,
+  now: number,
+): Promise<void> {
+  const projection = resourceDeliveryProjection(record, awaitingReceipt)
+  if (stableJson(delivery.resourceRequest) === stableJson(projection)) return
+  await ctx.db.patch(delivery._id, { resourceRequest: projection, updatedAt: now })
+}
+
 function assertResourceRequestBinding(
   record: HarnessResourceRequestRecord,
   authority: Awaited<ReturnType<typeof loadResourceMutationAuthority>>,
@@ -1988,12 +2015,15 @@ async function loadResourceMutationAuthority(
   const deliveryId = ctx.db.normalizeId('conversationAgentRuns', run.deliveryAgentRunId)
   const delivery = deliveryId ? await ctx.db.get(deliveryId) : null
   if (!conversation || conversation.deletedAt || conversation.workspaceId !== workspace.workspaceId
+    || hasUnsupportedResourceConversationSurface(conversation)
     || (conversation.conversationType ?? 'personal') !== 'personal'
     || conversation.userId !== reference.actorUserId
     || !delivery || delivery.conversationId !== conversation._id || delivery.userId !== reference.actorUserId
     || delivery.harnessRunId !== run.runId || delivery.runner !== 'workflow'
     || delivery.executionEngine !== 'overlay_harness'
     || (delivery.mode !== 'chat' && delivery.mode !== 'work')
+    || delivery.workflowRunId !== reference.workflowRunId
+    || delivery.status === 'completed' || delivery.status === 'failed' || delivery.status === 'cancelled'
     || delivery.completedAt !== undefined || delivery.failedAt !== undefined || delivery.cancelledAt !== undefined) {
     throw new Error('HARNESS_RESOURCE_SOURCE_DENIED')
   }
@@ -2043,7 +2073,9 @@ export const pauseForResources = mutation({
       throw new Error('HARNESS_RESOURCE_NOT_EXHAUSTED')
     }
     const previousStatus = snapshot.status as HarnessResourceRequestRecord['previousStatus']
-    const previousBlocker = snapshot.blocker?.kind === 'input' || snapshot.blocker?.kind === 'approval'
+    const previousBlocker = snapshot.blocker?.kind === 'input'
+      || snapshot.blocker?.kind === 'approval'
+      || snapshot.blocker?.kind === 'stuck'
       ? { kind: snapshot.blocker.kind, question: snapshot.blocker.question } : undefined
     const request: HarnessResourceRequest = {
       token: args.token, runId: snapshot.runId, rootRunId: snapshot.rootRunId, workflowRunId: args.workflowRunId,
@@ -2073,6 +2105,11 @@ export const pauseForResources = mutation({
     }
     await ctx.db.insert('harnessResourceRequests', row)
     await persistMetadata(ctx, authority.run, next)
+    await ctx.db.patch(authority.delivery._id, {
+      status: 'waiting_for_resources',
+      resourceRequest: resourceDeliveryProjection(resourceRecord(row as ResourceRow), Boolean(snapshot.modelReservation)),
+      updatedAt: now,
+    })
     return resourceRecord(row as ResourceRow)
   },
 })
@@ -2124,6 +2161,10 @@ export const grantResources = mutation({
     const next = applyHarnessResourceGrant(snapshot, receipt, receipt.grantedAt)
     await ctx.db.patch(row._id, { state: 'accepted', receiptJson: stableJson(receipt), wakePending: true, updatedAt: receipt.grantedAt })
     await persistMetadata(ctx, authority.run, next)
+    await ctx.db.patch(authority.delivery._id, {
+      resourceRequest: resourceDeliveryProjection({ ...record, receipt }, Boolean(snapshot.modelReservation)),
+      updatedAt: receipt.grantedAt,
+    })
     return receipt
   },
 })
@@ -2139,15 +2180,24 @@ export const consumeResourceGrant = mutation({
     const record = resourceRecord(row)
     assertResourceRequestBinding(record, authority, args.actorUserId)
     if (row.state === 'consumed') return { status: 'consumed', request: record }
-    if (row.state === 'pending' || !record.receipt) return { status: 'pending' }
     const snapshot = await currentSnapshot(ctx, authority.run, authority.lineage)
-    if (snapshot.modelReservation) return { status: 'pending', reason: 'awaiting_receipt' }
     const now = Date.now()
+    if (row.state === 'pending' || !record.receipt) {
+      await projectResourceRequest(ctx, authority.delivery, record, Boolean(snapshot.modelReservation), now)
+      return { status: 'pending' }
+    }
+    await projectResourceRequest(ctx, authority.delivery, record, Boolean(snapshot.modelReservation), now)
+    if (snapshot.modelReservation) return { status: 'pending', reason: 'awaiting_receipt' }
     const next = consumeHarnessResourcePause(snapshot, {
       token: args.token, previousStatus: record.previousStatus, previousBlocker: record.previousBlocker,
     }, now)
     await ctx.db.patch(row._id, { state: 'consumed', wakePending: false, consumedAt: now, updatedAt: now })
     await persistMetadata(ctx, authority.run, next)
+    await ctx.db.patch(authority.delivery._id, {
+      status: next.status as 'running' | 'waiting_for_input' | 'waiting_for_approval',
+      resourceRequest: undefined,
+      updatedAt: now,
+    })
     return { status: 'consumed', request: resourceRecord({ ...row, state: 'consumed', wakePending: false, consumedAt: now }) }
   },
 })

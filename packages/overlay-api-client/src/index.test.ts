@@ -55,6 +55,21 @@ test('personal run input uses the bounded-input endpoint without creating a turn
   assert.deepEqual(await jsonBody(calls[0]!), body)
 })
 
+test('resource grants use the authenticated resource endpoint with the typed grant body', async () => {
+  const { calls, client } = createRecordedClient()
+  const body = {
+    conversationId: 'conversation',
+    agentRunId: 'run',
+    token: 'resource-token',
+    policyRevision: 2,
+    grant: { kind: 'time' as const, durationMs: 86_400_000 },
+  }
+  await client.conversations.grantRunResources(body)
+  assert.equal(String(calls[0]!.input), 'https://example.test/api/v1/conversations/run/resources')
+  assert.equal(calls[0]!.init?.method, 'POST')
+  assert.deepEqual(await jsonBody(calls[0]!), body)
+})
+
 test('file methods preserve route paths, methods, queries, and JSON bodies', async () => {
   const { calls, client } = createRecordedClient()
 

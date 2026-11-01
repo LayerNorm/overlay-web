@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Add an authenticated personal-owner resource-grant API/client contract and atomic `waiting_for_resources` AgentRun projection. Resource admission remains inactive; workflow polling, wake recovery, and card integration are still open.
+
 - Recheck current room participation and workspace scope before resuming an approval, including requests from the room creator. Revoked access and cross-workspace callbacks cannot wake the task.
 
 - Reconcile missing OpenRouter terminal costs through exact-generation lookup without repeating inference, only under a live zero-priced route lease. Invalid or contradictory metadata, nonzero charges, BYOK, expired leases and cancellation remain fail-closed; late storage acknowledgements cannot authorize settlement.

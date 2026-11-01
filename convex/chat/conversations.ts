@@ -130,6 +130,7 @@ const agentRunStatus = v.union(
   v.literal('waiting_for_approval'),
   v.literal('waiting_for_input'),
   v.literal('waiting_for_children'),
+  v.literal('waiting_for_resources'),
   v.literal('completed'),
   v.literal('failed'),
   v.literal('cancelled'),
@@ -163,6 +164,7 @@ const AGENT_RUN_TRANSITIONS: Record<string, ReadonlySet<string>> = {
   waiting_for_approval: new Set(['running', 'failed', 'cancelled']),
   waiting_for_input: new Set(['running', 'failed', 'cancelled']),
   waiting_for_children: new Set(['running', 'failed', 'cancelled']),
+  waiting_for_resources: new Set(['failed', 'cancelled']),
   completed: new Set(),
   failed: new Set(),
   cancelled: new Set(),
@@ -1056,6 +1058,10 @@ export const transitionAgentRun = mutation({
       throw new Error('AgentRun workflow ownership changed')
     }
     assertSupportedAgentExecution(run)
+    if (args.status === 'waiting_for_resources'
+      || (run.status === 'waiting_for_resources' && !['failed', 'cancelled'].includes(args.status))) {
+      throw new Error('Resource pauses may only be changed by resource mutations.')
+    }
     assertAgentRunTransition(run.status, args.status)
     const now = Date.now()
     await ctx.db.patch(run._id, {
@@ -1064,6 +1070,7 @@ export const transitionAgentRun = mutation({
       startedAt: args.status === 'running' ? (run.startedAt ?? now) : run.startedAt,
       approval: args.status === 'waiting_for_approval' ? args.approval : undefined,
       inputRequest: args.status === 'waiting_for_input' ? args.inputRequest : undefined,
+      resourceRequest: ['completed', 'failed', 'cancelled'].includes(args.status) ? undefined : run.resourceRequest,
       updatedAt: now,
     })
     const message = await ctx.db.get(run.assistantMessageId)
@@ -1166,6 +1173,7 @@ export const completeAgentRun = mutation({
       leaseExpiresAt: undefined,
       approval: undefined,
       inputRequest: undefined,
+      resourceRequest: undefined,
       metrics: { ...run.metrics, ...args.metrics },
       updatedAt: now,
     })
@@ -1225,6 +1233,7 @@ export const failAgentRun = mutation({
       leaseExpiresAt: undefined,
       approval: undefined,
       inputRequest: undefined,
+      resourceRequest: undefined,
       terminalError: args.error,
       metrics: { ...run.metrics, ...args.metrics },
       updatedAt: now,
@@ -1450,6 +1459,7 @@ export const cancelAgentRuns = mutation({
         leaseExpiresAt: undefined,
         approval: undefined,
         inputRequest: undefined,
+        resourceRequest: undefined,
         terminalError: {
           code: 'cancelled_by_user',
           message: 'The run was cancelled by the user.',

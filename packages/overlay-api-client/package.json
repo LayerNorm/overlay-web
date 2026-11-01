@@ -10,6 +10,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
+    "@overlay/agent-runtime": "file:../overlay-agent-runtime",
     "@overlay/workspace-contracts": "file:../overlay-workspace-contracts",
     "zod": "^4.6.7"
   },

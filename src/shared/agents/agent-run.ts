@@ -1,6 +1,7 @@
 import type { RemoteRunLiveness } from './remote-run-liveness'
 import type { RemoteRunState } from './remote-run'
 import type { RemoteRunStreamStats } from './remote-run-stream-stats'
+import type { HarnessResourceDeliveryProjection } from '@overlay/agent-runtime/harness-resource'
 
 /**
  * `room` is a workspace-agent turn in a DM or channel. It is a distinct mode
@@ -27,6 +28,7 @@ export const ACTIVE_AGENT_RUN_STATUSES = [
   'waiting_for_approval',
   'waiting_for_input',
   'waiting_for_children',
+  'waiting_for_resources',
 ] as const
 
 export const AGENT_RUN_STATUSES = [
@@ -79,6 +81,8 @@ export type AgentRunMetrics = {
   staleDetectedAt?: number
 }
 
+export type AgentRunResourceRequest = HarnessResourceDeliveryProjection
+
 export type AgentRun = {
   /** Only remote runs select the versioned lifecycle; personal Work mode is unchanged. */
   remoteLifecycle?: RemoteRunState
@@ -111,6 +115,7 @@ export type AgentRun = {
   terminalError?: AgentRunTerminalError
   approval?: AgentRunApproval
   inputRequest?: { token: string; requestedAt: number; question: string }
+  resourceRequest?: AgentRunResourceRequest
   metrics?: AgentRunMetrics
   /** Connected-agent transport counters; remote runs only. */
   streamStats?: RemoteRunStreamStats
@@ -125,6 +130,7 @@ const ALLOWED_TRANSITIONS: Readonly<Record<AgentRunStatus, readonly AgentRunStat
   waiting_for_approval: ['running', 'failed', 'cancelled'],
   waiting_for_input: ['running', 'failed', 'cancelled'],
   waiting_for_children: ['running', 'failed', 'cancelled'],
+  waiting_for_resources: ['failed', 'cancelled'],
   completed: [],
   failed: [],
   cancelled: [],
