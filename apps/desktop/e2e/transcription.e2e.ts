@@ -27,7 +27,6 @@ cp.execFile=function(file,args,options,callback){
  const mode=globalThis.asrDiagnosticMode||'default';
  const policy=mode==='ip-only'?'(version 1)(allow default)(deny network-outbound (remote ip "*:*"))(deny network-inbound (local ip "*:*"))':'(version 1)(allow default)(deny network*)';
  const extra=mode==='vad-none'?['--chunking-strategy','none']:[];
- if(${JSON.stringify(process.env.OVERLAY_ASR_ALL_CPU_DIAGNOSTIC === '1')})extra.push('--audio-encoder-compute-units','cpuOnly','--text-decoder-compute-units','cpuOnly');
  const actualArgs=mode==='timestamps'?args.filter(arg=>arg!=='--without-timestamps'):args;
  return original('/usr/bin/sandbox-exec',['-p',policy,file,...actualArgs,...extra,'--verbose'],options,(error,stdout,stderr)=>{
    fs.writeFileSync(${JSON.stringify(test.info().outputPath('whisper-helper-'))}+mode+'.log',String(stdout||'')+'\\n'+String(stderr||''));

@@ -8,7 +8,7 @@ permissions:
   contents: read
   actions: read
 jobs:
-  all-cpu:
+  current-upstream:
     runs-on: macos-15
     timeout-minutes: 20
     steps:
@@ -21,21 +21,23 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
-      - name: Use previously source-verified CPU mel diagnostic helper
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Build pinned upstream v1.1.1 without product changes
         run: |
-          gh run download 41257031009 --name whisper-cpu-mel-diagnostic --dir /tmp/cpu-mel-helper
-          echo '0c97eb5ebc4a3a68768fc88b34e085974743fcaff5ef62f38846c0f38c275675  /tmp/cpu-mel-helper/whisperkit-cli' | shasum -a 256 -c -
-          cp /tmp/cpu-mel-helper/whisperkit-cli whisperkit-bundle/whisperkit-cli
+          git init /tmp/overlay-whisper-upstream
+          git -C /tmp/overlay-whisper-upstream remote add origin https://github.com/argmaxinc/WhisperKit.git
+          git -C /tmp/overlay-whisper-upstream fetch --depth 1 origin 1bbc57cb7fe6410248a685b1c5a3c6d56adc2ed4
+          git -C /tmp/overlay-whisper-upstream checkout --detach FETCH_HEAD
+          swift build --package-path /tmp/overlay-whisper-upstream --configuration release --product whisperkit-cli --disable-automatic-resolution
+          cp /tmp/overlay-whisper-upstream/.build/release/whisperkit-cli whisperkit-bundle/whisperkit-cli
           chmod +x whisperkit-bundle/whisperkit-cli
-      - name: Transcribe with every compute stage on CPU
-        env:
-          OVERLAY_ASR_ALL_CPU_DIAGNOSTIC: '1'
+          shasum -a 256 whisperkit-bundle/whisperkit-cli
+      - name: Transcribe with current upstream helper
         run: npx playwright test e2e/transcription.e2e.ts
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
         with:
-          name: offline-all-cpu-diagnostic
-          path: test-results/
+          name: offline-upstream-diagnostic
+          path: |
+            test-results/
+            whisperkit-bundle/whisperkit-cli
           retention-days: 7
