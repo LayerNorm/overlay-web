@@ -13,7 +13,8 @@ Important native and model components include:
 - Electron and Chromium — licenses distributed by the Electron project.
 - WhisperKit — MIT-licensed upstream source pinned to
   `cb00a08d08d2dad37ca8aa488ee0695e97ab6045`. The bundled helper hash and build
-  recipe are recorded in `native-artifacts.json`.
+  recipe are recorded in `native-artifacts.json`, including the digest of Overlay's
+  CPU-only mel preprocessing patch in `patches/whisperkit-cpu-mel.patch`.
 - FluidAudio/Parakeet helper — Apache-2.0 upstream code pinned through
   `Package.resolved` to `2d18c856aad09b509d07322ae2e811f06c98a2a9`.
 - NVIDIA Parakeet CoreML model files — CC-BY-4.0, downloaded from immutable

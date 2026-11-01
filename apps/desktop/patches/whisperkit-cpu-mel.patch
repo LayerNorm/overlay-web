@@ -1,0 +1,12 @@
+diff --git a/Sources/WhisperKitCLI/TranscribeCLIUtils.swift b/Sources/WhisperKitCLI/TranscribeCLIUtils.swift
+index 98dbfe4..2a66baa 100644
+--- a/Sources/WhisperKitCLI/TranscribeCLIUtils.swift
++++ b/Sources/WhisperKitCLI/TranscribeCLIUtils.swift
+@@ -20,6 +20,7 @@ internal class TranscribeCLIUtils {
+         }
+ 
+         let computeOptions = ModelComputeOptions(
++            melCompute: .cpuOnly,
+             audioEncoderCompute: audioEncoderComputeUnits,
+             textDecoderCompute: textDecoderComputeUnits
+         )

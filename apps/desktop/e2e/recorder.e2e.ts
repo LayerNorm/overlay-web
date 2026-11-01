@@ -32,7 +32,7 @@ test('the native HUD captures audio and delivers the transcription without a pre
         }
         response.statusCode = failNext ? 503 : 200
         failNext = false
-        response.end(JSON.stringify({ text: 'Recorder acceptance passed' }))
+        response.end(JSON.stringify({ text: '  Recorder acceptance passed  ' }))
       })
     } else {
       response.setHeader('Content-Type', 'text/html')

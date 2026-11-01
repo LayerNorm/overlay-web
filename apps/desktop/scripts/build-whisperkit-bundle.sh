@@ -10,6 +10,7 @@ WHISPERKIT_COMMIT="cb00a08d08d2dad37ca8aa488ee0695e97ab6045"
 SOURCE_ROOT="/tmp/overlay-native/WhisperKit-$WHISPERKIT_COMMIT"
 BUNDLE_DIR="$PROJECT_ROOT/whisperkit-bundle"
 PUBLIC_SOURCE_ROOT="/usr/src/overlay/WhisperKit"
+PATCH_PATH="$PROJECT_ROOT/patches/whisperkit-cpu-mel.patch"
 
 if [[ ! "$WHISPERKIT_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
   echo "WhisperKit source must be pinned to a full commit SHA" >&2
@@ -29,8 +30,15 @@ if [ "$(git -C "$SOURCE_ROOT" rev-parse HEAD)" != "$WHISPERKIT_COMMIT" ]; then
   exit 1
 fi
 
+# Recover only our known patch if an interrupted previous build left it applied.
+if git -C "$SOURCE_ROOT" apply --reverse --check "$PATCH_PATH" 2>/dev/null; then
+  git -C "$SOURCE_ROOT" apply --reverse "$PATCH_PATH"
+fi
 git -C "$SOURCE_ROOT" diff --quiet
 git -C "$SOURCE_ROOT" diff --cached --quiet
+git -C "$SOURCE_ROOT" apply --check "$PATCH_PATH"
+git -C "$SOURCE_ROOT" apply "$PATCH_PATH"
+trap 'git -C "$SOURCE_ROOT" apply --reverse "$PATCH_PATH"' EXIT
 
 swift build \
   --package-path "$SOURCE_ROOT" \

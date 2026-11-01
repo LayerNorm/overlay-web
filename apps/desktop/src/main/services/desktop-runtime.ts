@@ -222,7 +222,8 @@ async function transcribe(
   if (transcriptionBusy) throw new Error('Dictation is still processing.')
   transcriptionBusy = true
   try {
-    return await transcribeAudio(input, sourceUrl, signal)
+    const result = await transcribeAudio(input, sourceUrl, signal)
+    return { ...result, text: result.text.trim() }
   } finally {
     transcriptionBusy = false
   }
