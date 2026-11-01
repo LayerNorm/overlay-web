@@ -11,7 +11,7 @@ import { captureHarnessModelUsage } from './model-usage'
 import { readHarnessModelLimits } from './model-preparation'
 import type { HarnessExecutionPorts } from './ports'
 import { HarnessLanguageModel, type HarnessModelReference } from './secure-model'
-import { releaseFreeSummaryFailure, settleHarnessModelUsage } from './settle-model-step'
+import { settleHarnessModelUsage } from './settle-model-step'
 import { applyHarnessOperation, readHarnessState, type HarnessExecutionReference } from './state-steps'
 import { createHarnessCapacityWaiter } from './model-capacity'
 import { waitForHarnessModelRecovery } from './model-recovery'
@@ -67,27 +67,21 @@ export function createHarnessModelPorts(input: {
       maxOutputTokens, prompt: [{ role: 'system', content: instructions }, { role: 'user', content: [{ type: 'text', text: prompt }] }],
     } })
     await applyHarnessOperation(reference, `reserve:${receiptId}`, { type: 'reserve_model', id: receiptId, maxCostMicros: prepared.estimatedCostMicros })
-    try {
-      const agent = new WorkflowAgent({
-        model: new HarnessLanguageModel(prepared.model), instructions, tools: {}, stopWhen: isLoopFinished(), maxRetries: 0,
-        maxOutputTokens, providerOptions: prepared.options.providerOptions,
-        onStepEnd: async step => settle(step, receiptId, prepared),
-      })
-      const result = await agent.stream({ messages: [{ role: 'user', content: prompt }] })
-      if ('error' in result && result.error) throw result.error
-      if (result.steps.length !== 1 || result.steps[0].finishReason !== 'stop') {
-        throw new FatalError('Context summarization did not finish; the full history was preserved.')
-      }
-      const summary = result.steps[0].text
-      if (summary.trim().length < 200 || /^\s*(user|response) safety\s*:/im.test(summary)) {
-        throw new FatalError('Context summarization did not produce a usable summary; the full history was preserved.')
-      }
-      return summary
-    } catch (error) {
-      await releaseFreeSummaryFailure({ reference, receiptId, modelId: prepared.model.modelId,
-        contextWindow: prepared.contextWindow })
-      throw error
+    const agent = new WorkflowAgent({
+      model: new HarnessLanguageModel(prepared.model), instructions, tools: {}, stopWhen: isLoopFinished(), maxRetries: 0,
+      maxOutputTokens, providerOptions: prepared.options.providerOptions,
+      onStepEnd: async step => settle(step, receiptId, prepared),
+    })
+    const result = await agent.stream({ messages: [{ role: 'user', content: prompt }] })
+    if ('error' in result && result.error) throw result.error
+    if (result.steps.length !== 1 || result.steps[0].finishReason !== 'stop') {
+      throw new FatalError('Context summarization did not finish; the full history was preserved.')
     }
+    const summary = result.steps[0].text
+    if (summary.trim().length < 200 || /^\s*(user|response) safety\s*:/im.test(summary)) {
+      throw new FatalError('Context summarization did not produce a usable summary; the full history was preserved.')
+    }
+    return summary
   }
 
   async function summarize(prompt: string, targetSummaryTokens: number, receiptId: string): Promise<string> {
