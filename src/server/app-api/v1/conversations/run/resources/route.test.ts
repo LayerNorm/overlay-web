@@ -129,6 +129,23 @@ test('automation and surface conversations fail before grant or wake', async () 
   }
 })
 
+test('an inactive delivery returns a definite changed-request conflict', async () => {
+  let called = false
+  const response = await POST(request(), context(), {
+    ...dependencies({
+      run: { ...run, status: 'completed' },
+      grant: async () => { called = true; return receipt },
+      resume: async () => { called = true; return { runId: 'workflow' } },
+    }),
+  })
+  assert.equal(response.status, 409)
+  assert.deepEqual(await response.json(), {
+    code: 'resource_request_changed',
+    error: 'The resource request is no longer active.',
+  })
+  assert.equal(called, false)
+})
+
 test('an exact duplicate after consumption reaches backend idempotence and wake failure keeps receipt', async () => {
   let grantCalls = 0
   const response = await POST(request(), context(), {
@@ -153,8 +170,13 @@ test('a missing wake acknowledgement keeps the committed receipt', async () => {
 test('stale or incompatible grants return conflict and never wake', async () => {
   for (const error of [
     'HARNESS_RESOURCE_STALE',
+    'HARNESS_RESOURCE_TOKEN_CONFLICT',
+    'HARNESS_RESOURCE_GRANT_CONFLICT',
     'The model-spend grant must cover current commitments and the forecast.',
     'The grant scope must match the resource request reason.',
+    'The model-spend grant must increase the cap without exceeding 100,000,000 micros.',
+    'The time grant duration is unsupported.',
+    'The resulting resource deadline is outside the safe range.',
   ]) {
     let woken = false
     const response = await POST(request(), context(), {
@@ -164,15 +186,21 @@ test('stale or incompatible grants return conflict and never wake', async () => 
       }),
     })
     assert.equal(response.status, 409)
-    assert.deepEqual(await response.json(), { error: 'The resource request changed; refresh the run and try again.' })
+    assert.deepEqual(await response.json(), {
+      code: 'resource_request_changed',
+      error: 'The resource request changed; refresh the run and try again.',
+    })
     assert.equal(woken, false)
   }
 })
 
 test('revoked backend authority is non-leaking and never wakes', async () => {
   for (const code of [
-    'HARNESS_RESOURCE_NOT_AUTHORIZED', 'HARNESS_RESOURCE_MEMBERSHIP_DENIED',
-    'HARNESS_RESOURCE_WORKSPACE_DENIED', 'HARNESS_RESOURCE_PAYER_DENIED',
+    'HARNESS_RESOURCE_NOT_AUTHORIZED', 'HARNESS_RESOURCE_AUTHORITY_CHANGED',
+    'HARNESS_RESOURCE_MEMBERSHIP_DENIED', 'HARNESS_RESOURCE_WORKSPACE_DENIED',
+    'HARNESS_RESOURCE_PAYER_DENIED', 'HARNESS_RESOURCE_SOURCE_DENIED',
+    'HARNESS_RESOURCE_NOT_FOUND', 'WORKSPACE_ACCESS_DENIED', 'CONVERSATION_ACCESS_DENIED',
+    'HARNESS_ACCESS_DENIED',
   ]) {
     let woken = false
     const response = await POST(request(), context(), {
@@ -182,20 +210,32 @@ test('revoked backend authority is non-leaking and never wakes', async () => {
       }),
     })
     assert.equal(response.status, 403)
-    assert.deepEqual(await response.json(), { error: 'This resource grant is not authorized.' })
+    assert.deepEqual(await response.json(), {
+      code: 'resource_not_authorized',
+      error: 'This resource grant is not authorized.',
+    })
     assert.equal(woken, false)
   }
 })
 
-test('ambiguous grant failures remain server errors and never wake', async () => {
-  let woken = false
-  const response = await POST(request(), context(), {
-    ...dependencies({
-      grant: async () => { throw new Error('transport lost after mutation dispatch') },
-      resume: async () => { woken = true },
-    }),
-  })
-  assert.equal(response.status, 500)
-  assert.deepEqual(await response.json(), { error: 'Could not commit the resource grant.' })
-  assert.equal(woken, false)
+test('ambiguous infrastructure failures remain unconfirmed and never wake', async () => {
+  for (const error of [
+    'transport lost after mutation dispatch',
+    'invalid gateway response after mutation dispatch',
+    'unsupported response encoding',
+  ]) {
+    let woken = false
+    const response = await POST(request(), context(), {
+      ...dependencies({
+        grant: async () => { throw new Error(error) },
+        resume: async () => { woken = true },
+      }),
+    })
+    assert.equal(response.status, 500)
+    assert.deepEqual(await response.json(), {
+      code: 'resource_grant_unconfirmed',
+      error: 'Could not confirm the resource grant. Refresh the run to check its authorization.',
+    })
+    assert.equal(woken, false)
+  }
 })

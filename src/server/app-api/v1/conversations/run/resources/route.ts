@@ -83,15 +83,56 @@ function hasWakeAcknowledgement(value: unknown): value is { runId: string } {
     && 'runId' in value && typeof value.runId === 'string'
 }
 
+const resourceGrantConflictCodes = [
+  'HARNESS_RESOURCE_STALE',
+  'HARNESS_RESOURCE_TOKEN_CONFLICT',
+  'HARNESS_RESOURCE_GRANT_CONFLICT',
+] as const
+
+const resourceGrantAuthorityCodes = [
+  'HARNESS_RESOURCE_NOT_AUTHORIZED',
+  'HARNESS_RESOURCE_AUTHORITY_CHANGED',
+  'HARNESS_RESOURCE_MEMBERSHIP_DENIED',
+  'HARNESS_RESOURCE_PAYER_DENIED',
+  'HARNESS_RESOURCE_SOURCE_DENIED',
+  'HARNESS_RESOURCE_WORKSPACE_DENIED',
+  'HARNESS_RESOURCE_NOT_FOUND',
+  'WORKSPACE_ACCESS_DENIED',
+  'CONVERSATION_ACCESS_DENIED',
+  'HARNESS_ACCESS_DENIED',
+] as const
+
+const resourceGrantConflictMessages = [
+  'The grant scope must match the resource request reason.',
+  'The model-spend grant must increase the cap without exceeding 100,000,000 micros.',
+  'The model-spend grant must cover current commitments and the forecast.',
+  'The time grant duration is unsupported.',
+  'The resulting resource deadline is outside the safe range.',
+] as const
+
+function includesKnownCode(message: string, codes: readonly string[]): boolean {
+  return codes.some(code => new RegExp(`(?:^|[^A-Z0-9_])${code}(?:$|[^A-Z0-9_])`).test(message))
+}
+
 function responseForGrantError(error: unknown): NextResponse {
   const message = errorText(error)
-  if (/STALE|CONFLICT|EXHAUSTED|unsupported|invalid|TERMINAL|must (?:increase the cap|cover current commitments)|grant scope must match|outside the safe range/i.test(message)) {
-    return NextResponse.json({ error: 'The resource request changed; refresh the run and try again.' }, { status: 409 })
+  if (includesKnownCode(message, resourceGrantConflictCodes)
+    || resourceGrantConflictMessages.some(sentence => message.includes(sentence))) {
+    return NextResponse.json({
+      code: 'resource_request_changed',
+      error: 'The resource request changed; refresh the run and try again.',
+    }, { status: 409 })
   }
-  if (/HARNESS_RESOURCE_(?:NOT_AUTHORIZED|AUTHORITY_CHANGED|MEMBERSHIP_DENIED|PAYER_DENIED|SOURCE_DENIED|WORKSPACE_DENIED)|WORKSPACE_ACCESS_DENIED|HARNESS_ACCESS_DENIED|NOT_FOUND|ACCESS_DENIED|UNAUTHORIZED/i.test(message)) {
-    return NextResponse.json({ error: 'This resource grant is not authorized.' }, { status: 403 })
+  if (includesKnownCode(message, resourceGrantAuthorityCodes)) {
+    return NextResponse.json({
+      code: 'resource_not_authorized',
+      error: 'This resource grant is not authorized.',
+    }, { status: 403 })
   }
-  return NextResponse.json({ error: 'Could not commit the resource grant.' }, { status: 500 })
+  return NextResponse.json({
+    code: 'resource_grant_unconfirmed',
+    error: 'Could not confirm the resource grant. Refresh the run to check its authorization.',
+  }, { status: 500 })
 }
 
 export async function POST(
@@ -124,7 +165,10 @@ export async function POST(
       userId: actorUserId,
     })
     if (!activePersonalHarnessRun(run, body.data.agentRunId, body.data.conversationId, actorUserId)) {
-      return NextResponse.json({ error: 'The resource request is no longer active.' }, { status: 409 })
+      return NextResponse.json({
+        code: 'resource_request_changed',
+        error: 'The resource request is no longer active.',
+      }, { status: 409 })
     }
     let receipt: HarnessResourceGrantReceipt
     try {
