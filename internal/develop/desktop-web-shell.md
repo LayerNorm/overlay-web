@@ -86,6 +86,8 @@ voice commands can be entered into the web agent composer. Old browser bookmarks
 chat-tab state and assistant preferences remain in the old store but are unused.
 Self-hosted origin selection remains through the verified server-profile config;
 startup opens Work. No new arbitrary-origin picker is exposed remotely.
+Register the main window's visibility listener before starting navigation so a
+fast initial render cannot leave the launched app hidden.
 
 ## Verification and release
 
@@ -200,10 +202,8 @@ retry audio and results are memory-only, bounded to 25 MiB, cleared on a new tak
 sign-out/dismiss/quit, and expire after 60 seconds. Retry requires an explicit
 click and can incur another cloud transcription charge.
 
-The bundled Whisper helper applies a small source-pinned CPU mel preprocessing
-patch; encoder/decoder compute policies remain unchanged. The binary digest and
-`sourcePatchSha256` are verified together in `native-artifacts.json`. Rebuild the
-helper through Clean public clone's `helper_diagnostics` dispatch input rather
-than compiling on a laptop-sensitive QA run. Keep the patch, upstream revision,
-build script, notices and artifact digest synchronized. Native transcription
+The bundled Whisper helper and upstream revision are pinned in
+`native-artifacts.json`. Keep its build script, notices and artifact digest
+synchronized. Run actual offline transcription in the clean-clone CI job with
+isolated app data and model/tokenizer integrity verification. Native transcription
 normalizes provider padding before delivery while preserving internal formatting.
