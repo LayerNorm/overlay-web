@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Standardize MCP and Skills cards and editors on shared shadcn components with flat layouts, accessible Active switches, explicit Manage actions, and deletion confirmation.
+
 - Preserve OAuth MCP authentication, start assigned-agent tasks through the existing collaboration thread and agent-turn pipeline with stable identity and cautious failure reporting, and place contextual/docked resize handles in their gutters.
 
 - Switch existing accounts to double sidebar once across all workspaces, while allowing subsequent single-sidebar opt-outs.
