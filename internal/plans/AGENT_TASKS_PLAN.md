@@ -1,6 +1,10 @@
 # Agent Tasks Plan
 
-Status: approved. Decisions 2 to 5 accepted as recommended; decision 1 replaced by the explicit Start/Queue button. Phase 1 implemented; Phase 2 in review. Later execution phases remain planned.
+Status: approved. Initial assignment now starts an agent automatically; the earlier explicit Start/Queue decision is superseded for initial dispatch. Later Start/Queue sections remain future retry/dependency-control proposals. Decisions 2 to 5 remain accepted. Phase 1 implemented; Phase 2 in review. Later execution phases remain planned.
+
+## Current assignment execution
+
+Creating a task with an agent or changing its assignee to an agent starts the run server-side through `WorkService` and the existing collaboration/agent-turn pipeline. The persisted assignment execution reuses its thread, message and turn identity for unchanged assignments; human assignments and status-only edits do not dispatch. Dispatch failures are persisted, but a start may be uncertain, so check the agent thread before clearing or reassigning; clearing and reassigning creates a new assignment identity.
 
 Goal: a task in Work can be given to an agent the same way it is given to a person. The agent picks it up in its own
 thread, works it, keeps the task up to date, and hands it back for review or asks for input. Any chat (personal chat,
@@ -19,7 +23,8 @@ manage it.
   (`convex/collaboration/agents.ts`). `work/workItems:context` already returns agents as assignees, and `OwnerPicker`
   already has an "Agents" section.
 - Personal tasks accept the creator and usable agents; Workspace tasks accept only workspace-visible agents.
-  Context hides other members' creator-only agents. Agent assignment does not start a run.
+  Context hides other members' creator-only agents. Creating or reassigning a task to an agent starts a run server-side;
+  human assignments and status-only edits do not dispatch.
 - Phase 2 adds seven task tools through the existing Work API. Updates enforce revisions and combine fields,
   status and scope in one Convex transaction. Agent activity attribution is service-only; human permissions remain authoritative.
 - Agent threads: `agents/agentThreads:createThreadByServer` creates a fresh thread under an agent. Turns start through
@@ -39,9 +44,7 @@ manage it.
 ## The flow
 
 1. Assign. In a task, pick an agent in Owner (or ask any chat: "give the onboarding doc task to Research Agent").
-2. Start. Assigning an agent does not start anything, so the rest of the task can still be edited. Once the owner is
-   an agent, a "Start Task" button appears at the bottom of the task menu. If the task has open blockers it reads
-   "Queue Task" instead, and the run starts by itself when the last blocker is done. Chats use `start_task`.
+2. Start. Creating or changing an agent assignment starts the existing agent-turn pipeline. Human assignments and status-only edits do not dispatch. Automatic dependency queueing and explicit retry controls remain later work; check the persisted agent thread before clearing or reassigning an uncertain start.
 3. Thread. Overlay opens a new thread under the agent, titled with the task, and posts a kickoff brief as the
    assigner: title, description, done-when checklist, context links (resolved so the agent can read them), parent
    and blockers, due date, and who reviews. The task links to the thread and the thread shows the task.

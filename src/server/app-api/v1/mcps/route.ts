@@ -161,7 +161,7 @@ function parseTransport(value: unknown): McpTransport | null {
 }
 
 function parseAuthType(value: unknown): McpAuthType {
-  return value === 'bearer' || value === 'header' ? value : 'none'
+  return value === 'bearer' || value === 'header' || value === 'oauth' ? value : 'none'
 }
 
 function parsePolicy(value: unknown): McpToolPolicyMode | null {

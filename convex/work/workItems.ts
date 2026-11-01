@@ -2,6 +2,8 @@ import { ConvexError, v } from 'convex/values'
 import { mutation, query, type MutationCtx } from '../_generated/server'
 import type { Id } from '../_generated/dataModel'
 import { validateServerSecret } from '../lib/auth'
+import { insertCollaborationMessage } from '../collaboration/directMessages'
+import { insertThread } from '../agents/agentThreads'
 import { assertCanCreateInScope, getReadableRow, listScopedRows, loadScopeContext, scopeContextLoader } from '../lib/resourceScope'
 import { scopeMutations } from '../lib/scopeMutations'
 import {
@@ -41,6 +43,23 @@ const contextArg = v.array(v.object({
   id: v.string(),
   label: v.string(),
 }))
+
+async function initialAssignmentExecution(
+  ctx: MutationCtx,
+  args: { assignedByUserId: string; workspaceId: string; principalId: string; generation: number },
+) {
+  const principal = await ctx.db.query('workspacePrincipals')
+    .withIndex('by_principalId', (q) => q.eq('principalId', args.principalId))
+    .unique()
+  if (!principal || principal.type !== 'agent') return undefined
+  if (!await agentAssignability(ctx, { workspaceId: args.workspaceId, principal })) return undefined
+  return {
+    assignedByUserId: args.assignedByUserId,
+    assigneePrincipalId: args.principalId,
+    generation: args.generation,
+    status: 'pending' as const,
+  }
+}
 
 const auth = {
   userId: v.string(),
@@ -100,6 +119,7 @@ async function tidyLinksAfterMove(ctx: MutationCtx, args: { movedIds: string[]; 
         const canKeep = agent !== null && (agent.visibility === 'workspace' || agent.createdByPrincipalId === ownPrincipalId)
         if (!canKeep) {
           patch.assigneePrincipalId = undefined
+          patch.assignmentExecution = undefined
           await logWorkEvent(ctx, { workItemId: task._id, workspaceId: task.workspaceId, actorPrincipalId: args.actorPrincipalId, kind: 'assignee', data: { from: task.assigneePrincipalId, to: null } })
         }
       }
@@ -115,6 +135,7 @@ async function tidyLinksAfterMove(ctx: MutationCtx, args: { movedIds: string[]; 
         const agent = await agentAssignability(ctx, { workspaceId: task.workspaceId, principal })
         if (!agent || agent.visibility !== 'workspace') {
           patch.assigneePrincipalId = undefined
+          patch.assignmentExecution = undefined
           await logWorkEvent(ctx, { workItemId: task._id, workspaceId: task.workspaceId, actorPrincipalId: args.actorPrincipalId, kind: 'assignee', data: { from: task.assigneePrincipalId, to: null } })
         }
       }
@@ -438,6 +459,14 @@ export const create = mutation({
     if (args.assigneePrincipalId) {
       await assertAssignable(ctx, { workspaceId: args.workspaceId, scope, creatorPrincipalId: viewer.principalId, principalId: args.assigneePrincipalId })
     }
+    const assignmentExecution = args.assigneePrincipalId
+      ? await initialAssignmentExecution(ctx, {
+          workspaceId: args.workspaceId,
+          assignedByUserId: args.userId,
+          principalId: args.assigneePrincipalId,
+          generation: Date.now(),
+        })
+      : undefined
     if (args.reviewerUserId) {
       await assertReviewer(ctx, { workspaceId: args.workspaceId, scope, creatorUserId: args.userId, reviewerUserId: args.reviewerUserId })
     }
@@ -455,6 +484,7 @@ export const create = mutation({
       priority: args.priority !== undefined ? normalizePriority(args.priority) : DEFAULT_WORK_PRIORITY,
       rank: await endRank(ctx, args.workspaceId, status),
       ...(args.assigneePrincipalId ? { assigneePrincipalId: args.assigneePrincipalId } : {}),
+      ...(assignmentExecution ? { assignmentExecution } : {}),
       ...(args.reviewerUserId ? { reviewerUserId: args.reviewerUserId } : {}),
       ...(startDate !== undefined ? { startDate } : {}),
       ...(dueDate !== undefined ? { dueDate } : {}),
@@ -546,10 +576,17 @@ export const update = mutation({
     }
     if (args.assigneePrincipalId !== undefined && (args.assigneePrincipalId ?? undefined) !== row.assigneePrincipalId) {
       if (args.assigneePrincipalId !== null) {
-        const creatorPrincipalId = (await loadWorkViewer(ctx, row.workspaceId, row.userId)).principalId
-        await assertAssignable(ctx, { workspaceId: row.workspaceId, scope, creatorPrincipalId, principalId: args.assigneePrincipalId })
+        await assertAssignable(ctx, { workspaceId: row.workspaceId, scope, creatorPrincipalId: viewer.principalId, principalId: args.assigneePrincipalId })
       }
       patch.assigneePrincipalId = args.assigneePrincipalId ?? undefined
+      patch.assignmentExecution = args.assigneePrincipalId
+        ? await initialAssignmentExecution(ctx, {
+            workspaceId: row.workspaceId,
+            assignedByUserId: args.userId,
+            principalId: args.assigneePrincipalId,
+            generation: Math.max(Date.now(), row.updatedAt + 1),
+          })
+        : undefined
       events.push({ kind: 'assignee', data: { from: row.assigneePrincipalId ?? null, to: args.assigneePrincipalId } })
     }
     if (args.reviewerUserId !== undefined && (args.reviewerUserId ?? undefined) !== row.reviewerUserId) {
@@ -597,11 +634,142 @@ export const update = mutation({
     if (args.context !== undefined) patch.context = normalizeContext(args.context)
 
     if (Object.keys(patch).length === 0) return row
-    await ctx.db.patch(row._id, { ...patch, updatedAt: Math.max(Date.now(), row.updatedAt + 1) })
+    const updatedAt = Math.max(Date.now(), row.updatedAt + 1)
+    if (patch.assignmentExecution?.status === 'pending') {
+      patch.assignmentExecution.generation = updatedAt
+    }
+    await ctx.db.patch(row._id, { ...patch, updatedAt })
     for (const event of events) {
       await logWorkEvent(ctx, { workItemId: row._id, workspaceId: row.workspaceId, actorPrincipalId, ...event })
     }
     return await ctx.db.get(row._id)
+  },
+})
+
+const assignmentExecutionValidator = v.object({
+  assignedByUserId: v.string(),
+  assigneePrincipalId: v.string(),
+  generation: v.number(),
+  status: v.union(v.literal('pending'), v.literal('starting'), v.literal('started'), v.literal('failed')),
+  conversationId: v.optional(v.id('conversations')),
+  messageId: v.optional(v.id('conversationMessages')),
+  turnId: v.optional(v.string()),
+  clientNonce: v.optional(v.string()),
+  error: v.optional(v.string()),
+})
+
+export const prepareAssignment = mutation({
+  args: {
+    ...auth,
+    id: v.string(),
+    assigneePrincipalId: v.string(),
+    generation: v.number(),
+    content: v.string(),
+  },
+  returns: v.union(v.null(), v.object({
+    execution: assignmentExecutionValidator,
+    claimed: v.boolean(),
+  })),
+  handler: async (ctx, args) => {
+    await authorize(args)
+    const viewer = await loadWorkViewer(ctx, args.workspaceId, args.userId)
+    const row = await getReadableRow(ctx, {
+      row: await loadWorkItem(ctx, args.id),
+      userId: args.userId,
+      workspaceId: args.workspaceId,
+    })
+    if (!row || !canWork(row, viewer)) throw new Error('Unauthorized')
+    if (row.archivedAt !== undefined || row.assigneePrincipalId !== args.assigneePrincipalId) return null
+    const current = row.assignmentExecution
+    if (current) {
+      if (current.assigneePrincipalId !== args.assigneePrincipalId || current.generation !== args.generation) return null
+      if (current.status === 'starting' || current.status === 'started' || current.status === 'failed') {
+        return { execution: current, claimed: false }
+      }
+    } else if (row.updatedAt !== args.generation) {
+      return null
+    }
+
+    await assertAssignable(ctx, {
+      workspaceId: row.workspaceId,
+      scope: rowScope(row),
+      creatorPrincipalId: viewer.principalId,
+      principalId: args.assigneePrincipalId,
+    })
+    const agentPrincipal = await ctx.db.query('workspacePrincipals')
+      .withIndex('by_principalId', (q) => q.eq('principalId', args.assigneePrincipalId))
+      .unique()
+    if (!agentPrincipal?.agentId) return null
+    const agent = await ctx.db.query('workspaceAgentDefinitions')
+      .withIndex('by_agentId', (q) => q.eq('agentId', agentPrincipal.agentId!))
+      .unique()
+    if (!agent || agent.workspaceId !== row.workspaceId || agent.principalId !== agentPrincipal.principalId || agent.archivedAt !== undefined || agent.deletedAt !== undefined) {
+      return null
+    }
+    const actorPrincipal = await ctx.db.query('workspacePrincipals')
+      .withIndex('by_principalId', (q) => q.eq('principalId', viewer.principalId))
+      .unique()
+    if (!actorPrincipal || actorPrincipal.type !== 'human') throw new Error('Unauthorized')
+    const threadId = await insertThread(
+      ctx,
+      { workspaceId: row.workspaceId, userId: args.userId, title: `Task: ${row.title}`.slice(0, 120) },
+      actorPrincipal,
+      agent,
+      agentPrincipal,
+    )
+    const clientNonce = `work-assignment:${row._id}:${args.generation}`
+    const messageId = await insertCollaborationMessage(ctx, {
+      actorUserId: args.userId,
+      clientNonce,
+      content: args.content,
+      conversationId: threadId,
+      turnId: `work_assignment_${row._id}_${args.generation}`,
+      workspaceId: row.workspaceId,
+      serverSecret: args.serverSecret,
+    })
+    const execution = {
+      assignedByUserId: args.userId,
+      assigneePrincipalId: args.assigneePrincipalId,
+      generation: args.generation,
+      status: 'starting' as const,
+      conversationId: threadId,
+      messageId,
+      turnId: `agent_${messageId}_${agent.agentId}`,
+      clientNonce,
+    }
+    await ctx.db.patch(row._id, { assignmentExecution: execution })
+    return { execution, claimed: true }
+  },
+})
+
+export const completeAssignment = mutation({
+  args: {
+    ...auth,
+    id: v.string(),
+    assigneePrincipalId: v.string(),
+    generation: v.number(),
+    status: v.union(v.literal('started'), v.literal('failed')),
+    error: v.optional(v.string()),
+  },
+  returns: v.boolean(),
+  handler: async (ctx, args) => {
+    await authorize(args)
+    const row = await loadWorkItem(ctx, args.id)
+    if (!row || row.workspaceId !== args.workspaceId) return false
+    const execution = row.assignmentExecution
+    if (!execution
+      || execution.assignedByUserId !== args.userId
+      || execution.assigneePrincipalId !== args.assigneePrincipalId
+      || execution.generation !== args.generation
+      || execution.status !== 'starting') return false
+    await ctx.db.patch(row._id, {
+      assignmentExecution: {
+        ...execution,
+        status: args.status,
+        ...(args.error ? { error: args.error.slice(0, 500) } : { error: undefined }),
+      },
+    })
+    return true
   },
 })
 

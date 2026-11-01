@@ -5,6 +5,7 @@ import type {
   MoveWorkItemRequest,
   ResourceView,
   UpdateWorkItemRequest,
+  WorkAssignmentExecution,
   WorkContext,
   WorkEvent,
   WorkItem,
@@ -18,6 +19,19 @@ export interface WorkRepository {
   context(args: Actor): Promise<WorkContext | null>
   create(args: Actor & { input: CreateWorkItemRequest }): Promise<WorkItem>
   update(args: Actor & { id: string; input: UpdateWorkItemRequest }): Promise<WorkItem>
+  prepareAssignment(args: Actor & {
+    id: string
+    assigneePrincipalId: string
+    generation: number
+    content: string
+  }): Promise<{ execution: WorkAssignmentExecution; claimed: boolean } | null>
+  completeAssignment(args: Actor & {
+    id: string
+    assigneePrincipalId: string
+    generation: number
+    status: 'started' | 'failed'
+    error?: string
+  }): Promise<boolean>
   move(args: Actor & { id: string; input: MoveWorkItemRequest }): Promise<WorkItem>
   listEvents(args: Actor & { id: string }): Promise<WorkEvent[]>
   addComment(args: Actor & { id: string; body: string }): Promise<void>

@@ -27,6 +27,8 @@ type WorkspaceAgentTurnsArgs = {
   workspaceId: string
   /** False when the message was written by an agent, not a person, so there is no person's message to learn from. */
   extractHumanMemory?: boolean
+  /** Assignment callers must know when a run could not be started. */
+  strictErrors?: boolean
 }
 
 export type WorkspaceAgentTurnDispatcherDependencies = {
@@ -56,6 +58,10 @@ export async function startWorkspaceAgentTurns(
   const collaboration = dependencies.getCollaboration?.()
     ?? getOverlayServerContext().appData.repositories.conversationCollaboration
   const invocations = await (dependencies.resolveInvocations ?? resolveWorkspaceAgentInvocations)(args)
+  if (args.strictErrors && invocations.length === 0) {
+    throw new WorkspaceAgentInvocationError('no_agent_participant')
+  }
+  const failures: unknown[] = []
   if (args.memoryEnabled && args.extractHumanMemory !== false && invocations.length > 0) {
     await collaboration.enqueueMemoryExtraction({
       actorUserId: args.actorUserId,
@@ -143,6 +149,7 @@ export async function startWorkspaceAgentTurns(
         await start(workspaceAgentTurnWorkflow, workflowArgs)
       }
     } catch (error) {
+      failures.push(error)
       const turnErrorCode = error instanceof WorkspaceAgentInvocationError ? error.reasonCode : 'unexpected'
       const turnErrorDetail = error instanceof Error ? error.message.slice(0, 300) : String(error).slice(0, 300)
       logger.error(`[conversations/message POST] Failed to start an agent turn: ${turnErrorCode} ${turnErrorDetail}`, {
@@ -179,5 +186,8 @@ export async function startWorkspaceAgentTurns(
       })
     }
   }))
+  if (args.strictErrors && failures.length > 0) {
+    throw failures[0] instanceof Error ? failures[0] : new Error('Agent turn could not be started.')
+  }
   return invocations
 }

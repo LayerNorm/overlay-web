@@ -15,6 +15,18 @@ export type WorkEventKind =
 export interface WorkDoneWhen { text: string; checked: boolean }
 export interface WorkContextRef { type: WorkContextType; id: string; label: string }
 
+export interface WorkAssignmentExecution {
+  assignedByUserId: string
+  assigneePrincipalId: string
+  generation: number
+  status: 'pending' | 'starting' | 'started' | 'failed'
+  conversationId?: string
+  messageId?: string
+  turnId?: string
+  clientNonce?: string
+  error?: string
+}
+
 export interface WorkItem {
   id: string
   workspaceId: string
@@ -41,6 +53,7 @@ export interface WorkItem {
   archivedFromScope: ResourceScope | null
   createdAt: number
   updatedAt: number
+  assignmentExecution?: WorkAssignmentExecution
 }
 
 export interface WorkEvent {

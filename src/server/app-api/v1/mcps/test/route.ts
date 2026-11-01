@@ -8,7 +8,7 @@ import {
 } from '@/server/tools/mcp-tools'
 
 function parseAuthType(value: unknown): McpServerConfig['authType'] {
-  if (value === 'bearer' || value === 'header') return value
+  if (value === 'bearer' || value === 'header' || value === 'oauth') return value
   return 'none'
 }
 

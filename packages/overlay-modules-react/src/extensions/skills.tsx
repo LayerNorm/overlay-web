@@ -1,26 +1,14 @@
 'use client'
-import { unstyledButton, unstyledInput, unstyledTextarea } from '@overlay/ui/control-reset'
 import type {
 SkillFormValues,
 SkillSummary
 } from '@overlay/app-core'
 import { skillToFormValues } from '@overlay/app-core/extensions'
-import {
-Check,
-Loader2,
-Pencil,
-Plus,
-Sparkles,
-ToggleLeft,
-ToggleRight,
-Trash2,
-X
-} from 'lucide-react'
-import { useEffect,useRef,useState,type MouseEvent,type ReactNode } from 'react'
-import { Tile, TileIcon, TileGrid, Button, Input, Textarea } from '@overlay/ui/primitives'
-import { Dialog, DialogContent } from '@overlay/ui'
+import { Check, Loader2, Plus, Sparkles, BookOpen, PenLine } from 'lucide-react'
+import { useState,type MouseEvent,type ReactNode } from 'react'
+import { Button, Input, Textarea } from '@overlay/ui'
 
-import { EnabledToggle, Field } from './shared'
+import { DeleteExtensionButton, ExtensionCard, ExtensionDialog, Field } from './shared'
 import { AppScreenBody } from '../shell'
 
 export interface SkillDialogProps {
@@ -39,39 +27,41 @@ export function SkillDialog({ state, onClose, onSave, onDelete, scopeActions }: 
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [saved, setSaved] = useState(false)
-  const nameRef = useRef<HTMLInputElement>(null)
-
-  useEffect(() => {
-    nameRef.current?.focus()
-    nameRef.current?.select()
-  }, [])
+  const [error, setError] = useState<string | null>(null)
 
   const update = <Key extends keyof SkillFormValues>(key: Key, value: SkillFormValues[Key]) => {
     setValues((current) => ({ ...current, [key]: value }))
   }
 
   async function handleSave() {
-    if (saving) return
+    if (saving || deleting || saved) return
+    setError(null)
     setSaving(true)
     try {
       const ok = await onSave(values)
-      if (ok === false) return
+      if (ok === false) { setError('Could not save this skill.'); return }
       setSaved(true)
       window.setTimeout(() => {
         setSaved(false)
         onClose()
       }, 800)
+    } catch {
+      setError('Could not save this skill.')
     } finally {
       setSaving(false)
     }
   }
 
   async function handleDelete() {
-    if (!isEdit || !initial || deleting) return
+    if (!isEdit || !initial || deleting || saving || saved) return
+    setError(null)
     setDeleting(true)
     try {
       const ok = await onDelete(initial)
       if (ok !== false) onClose()
+      else setError('Could not delete this skill.')
+    } catch {
+      setError('Could not delete this skill.')
     } finally {
       setDeleting(false)
     }
@@ -79,92 +69,34 @@ export function SkillDialog({ state, onClose, onSave, onDelete, scopeActions }: 
 
   const scopeLabel = initial?.archivedAt !== undefined ? 'Archived' : (initial?.scope ?? 'personal') === 'workspace' ? 'Shared with the workspace' : 'Only you'
 
+  const busy = saving || deleting || saved
+
   return (
-    <Dialog open onOpenChange={(open) => { if (!open) onClose() }}>
-      <DialogContent
-        showCloseButton={false}
-        overlayClassName="overlay-backdrop-in z-50 bg-(--overlay-scrim) p-4"
-        aria-labelledby="skill-dialog-title"
-        className="overlay-dialog-in flex w-[calc(100%-2rem)] max-w-xl gap-0 flex-col p-0"
-        style={{ maxHeight: 'calc(100vh - 80px)' }}
-      >
-        <div className="flex shrink-0 items-center justify-between border-b border-(--border) px-5 py-4">
-          <h3 id="skill-dialog-title" className="text-sm font-medium text-(--foreground)">{isEdit ? 'Edit Skill' : 'New Skill'}</h3>
-          <Button variant="ghost" type="button" aria-label="Close" onClick={onClose} className={unstyledButton("rounded-sm p-1 text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)")}>
-            <X size={16} />
+    <ExtensionDialog
+      title={isEdit ? initial?.name || 'Edit skill' : 'New skill'}
+      description="Instructions your agents can use."
+      icon={<PenLine size={20} strokeWidth={1.6} />}
+      onClose={onClose} busy={busy}
+      enabled={values.enabled} onEnabledChange={enabled => update('enabled', enabled)}
+      activeDescription="Make this skill available to your agents."
+      scopeActions={isEdit ? scopeActions : undefined} scopeLabel={scopeLabel}
+      footer={<>
+        <div>{isEdit && initial ? <DeleteExtensionButton name={initial.name || 'this skill'} kind="skill" disabled={busy} onConfirm={() => void handleDelete()} /> : null}</div>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" disabled={busy} onClick={onClose}>Cancel</Button>
+          <Button variant="primary" onClick={() => void handleSave()} disabled={busy || !values.name.trim()}>
+            {saving ? <Loader2 size={14} className="animate-spin" /> : saved ? <Check size={14} /> : null}
+            {saving ? 'Saving...' : saved ? 'Saved' : isEdit ? 'Save changes' : 'Create skill'}
           </Button>
         </div>
-        {isEdit && scopeActions ? (
-          <div className="flex shrink-0 items-center justify-between gap-3 border-b border-(--border) px-5 py-3">
-            <span className="text-xs text-(--muted)">{scopeLabel}</span>
-            {scopeActions}
-          </div>
-        ) : null}
-
-        <div className="flex-1 space-y-4 overflow-y-auto px-5 py-5">
-          <Field label="Name">
-            <Input
-              ref={nameRef}
-              aria-label="Name"
-              value={values.name}
-              onChange={(event) => update('name', event.target.value)}
-              placeholder="e.g. Concise Responder"
-              className={unstyledInput("w-full rounded-lg border border-(--border) bg-(--surface-muted) px-3 py-2 text-sm text-(--foreground) outline-hidden transition-colors placeholder:text-(--muted-light) focus:border-(--muted) focus:bg-(--surface-elevated)")}
-            />
-          </Field>
-
-          <Field label="Description">
-            <Input
-              aria-label="Description"
-              value={values.description}
-              onChange={(event) => update('description', event.target.value)}
-              placeholder="Brief description of what this skill does"
-              className={unstyledInput("w-full rounded-lg border border-(--border) bg-(--surface-muted) px-3 py-2 text-sm text-(--foreground) outline-hidden transition-colors placeholder:text-(--muted-light) focus:border-(--muted) focus:bg-(--surface-elevated)")}
-            />
-          </Field>
-
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <label htmlFor="skill-instructions" className="text-[11px] font-medium uppercase tracking-[0.12em] text-(--muted-light)">Instructions</label>
-              <span className="text-[10px] text-(--muted-light)">Markdown supported</span>
-            </div>
-            <Textarea
-              id="skill-instructions"
-              value={values.instructions}
-              onChange={(event) => update('instructions', event.target.value)}
-              placeholder={'Describe what the AI should do differently when this skill is active.\n\nExample:\n- Always respond in bullet points\n- Keep answers under 3 sentences\n- Use a formal tone'}
-              rows={12}
-              className={unstyledTextarea("w-full resize-none rounded-lg border border-(--border) bg-(--surface-muted) px-3 py-2.5 font-mono text-xs leading-relaxed text-(--foreground) outline-hidden transition-colors placeholder:text-(--muted-light) focus:border-(--muted) focus:bg-(--surface-elevated)")}
-            />
-          </div>
-        </div>
-
-        <div className="flex shrink-0 items-center justify-between border-t border-(--border) px-5 py-3">
-          <div className="flex items-center gap-3">
-            <EnabledToggle enabled={values.enabled} onChange={() => update('enabled', !values.enabled)} />
-            {isEdit && initial ? (
-              <Button variant="ghost"
-                type="button"
-                onClick={() => void handleDelete()}
-                disabled={deleting}
-                className={unstyledButton("flex items-center gap-1 text-xs text-(--muted) transition-colors hover:text-red-400 disabled:opacity-50")}
-              >
-                {deleting ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
-                Delete
-              </Button>
-            ) : null}
-          </div>
-          <Button variant="primary" size="sm"
-            type="button"
-            onClick={() => void handleSave()}
-            disabled={saving}
-          >
-            {saving ? <Loader2 size={12} className="animate-spin" /> : saved ? <Check size={12} /> : null}
-            {saving ? 'Saving…' : saved ? 'Saved' : isEdit ? 'Save' : 'Create'}
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
+      </>}
+    >
+      <Field label="Name"><Input aria-label="Name" value={values.name} onChange={event => update('name', event.target.value)} placeholder="My skill" /></Field>
+      <Field label="Description"><Input aria-label="Description" value={values.description} onChange={event => update('description', event.target.value)} placeholder="What should this skill help with?" /></Field>
+      <Field label="Instructions"><Textarea aria-label="Instructions" value={values.instructions} onChange={event => update('instructions', event.target.value)} placeholder="Describe how your agent should approach this work." className="min-h-50 resize-y rounded-md text-sm leading-relaxed" /></Field>
+      <p className="text-xs text-(--muted)">Markdown is supported.</p>
+      {error ? <p role="alert" className="text-sm text-red-500">{error}</p> : null}
+    </ExtensionDialog>
   )
 }
 
@@ -178,7 +110,7 @@ export interface SkillsPanelProps {
   onToggle: (skill: SkillSummary, event: MouseEvent) => void
 }
 
-export function SkillsPanel({ loading, skills, filteredSkills, onCreate, onEdit, onToggle }: SkillsPanelProps) {
+export function SkillsPanel({ loading, skills, filteredSkills, onCreate, onEdit }: SkillsPanelProps) {
   if (loading) {
     return (
       <AppScreenBody padding="none" maxWidth="none" className="flex h-full items-center justify-center">
@@ -196,7 +128,7 @@ export function SkillsPanel({ loading, skills, filteredSkills, onCreate, onEdit,
           <p className="text-xs text-(--muted-light)">Create reusable instructions that are automatically injected into every conversation</p>
         </div>
         {onCreate ? (
-          <Button variant="secondary" size="md" type="submit"
+          <Button variant="secondary" size="md" type="button"
             onClick={onCreate}
           >
             <Plus size={14} />
@@ -209,63 +141,26 @@ export function SkillsPanel({ loading, skills, filteredSkills, onCreate, onEdit,
 
   return (
     <AppScreenBody padding="none" maxWidth="none" className="h-full">
-      <div className="mx-auto max-w-3xl px-6 py-6">
-        <TileGrid columns={3}>
+      <div className="mx-auto max-w-6xl px-6 py-6">
+        <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
           {filteredSkills.map((skill) => (
-            <SkillCard key={skill._id} skill={skill} onEdit={onEdit} onToggle={onToggle} />
+            <SkillCard key={skill._id} skill={skill} onEdit={onEdit} />
           ))}
-        </TileGrid>
+        </div>
       </div>
     </AppScreenBody>
   )
 }
 
-function SkillCard({
-  skill,
-  onEdit,
-  onToggle,
-}: {
-  skill: SkillSummary
-  onEdit: (skill: SkillSummary) => void
-  onToggle: (skill: SkillSummary, event: MouseEvent) => void
-}) {
-  return (
-    <Tile
-      onClick={() => onEdit(skill)}
-      leading={<TileIcon><Sparkles size={15} strokeWidth={1.75} /></TileIcon>}
-      title={skill.name || 'Untitled'}
-      description={skill.description}
-      topRight={(
-        <span
-          className={`h-2 w-2 rounded-full transition-colors ${skill.enabled !== false ? 'bg-(--foreground)' : 'bg-(--muted-light)'}`}
-          title={skill.enabled !== false ? 'Active' : 'Disabled'}
-        />
-      )}
-      footer={skill.instructions ? (
-        <span className="line-clamp-2 font-mono text-[10px] text-(--muted-light)">{skill.instructions}</span>
-      ) : undefined}
-    >
-      <div className="absolute bottom-3 right-3 hidden items-center gap-1 group-hover:flex">
-        <Button variant="ghost"
-          type="button"
-          onClick={(event) => onToggle(skill, event)}
-          className={unstyledButton("rounded-sm p-1 text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)")}
-          title={skill.enabled !== false ? 'Disable' : 'Enable'}
-        >
-          {skill.enabled !== false ? <ToggleRight size={14} /> : <ToggleLeft size={14} />}
-        </Button>
-        <Button variant="ghost"
-          type="button"
-          onClick={(event) => {
-            event.stopPropagation()
-            onEdit(skill)
-          }}
-          className={unstyledButton("rounded-sm p-1 text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)")}
-          title="Edit"
-        >
-          <Pencil size={13} />
-        </Button>
-      </div>
-    </Tile>
-  )
+function SkillCard({ skill, onEdit }: { skill: SkillSummary; onEdit: (skill: SkillSummary) => void }) {
+  return <ExtensionCard
+    icon={<PenLine size={20} strokeWidth={1.6} />}
+    title={skill.name || 'Untitled'}
+    description={skill.description}
+    status={skill.enabled !== false ? 'Active' : 'Inactive'}
+    statusTone={skill.enabled !== false ? 'active' : 'muted'}
+    metadata={<><BookOpen size={14} />Agent instructions</>}
+    detail={(skill.scope ?? 'personal') === 'workspace' ? 'Workspace skill' : 'Personal skill'}
+    onEdit={() => onEdit(skill)}
+  />
 }
