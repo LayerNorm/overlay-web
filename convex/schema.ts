@@ -3,7 +3,7 @@ import { remoteLifecycleValidator } from './agents/remoteRunModel'
 import {nativeStartAdmissionValidator} from './lib/nativeStartAdmission'
 import { agentMcpCallState } from './lib/agentMcpCallSchema'
 import { nativeAgentErrorPart } from './lib/nativeAgentErrorPart'
-import { agentRunResourceRequestValidator } from './harness/resource-validators'
+import { agentRunResourceRequestValidator } from './harness/resourceValidators'
 import { defineSchema, defineTable } from 'convex/server'
 import { v } from 'convex/values'
 

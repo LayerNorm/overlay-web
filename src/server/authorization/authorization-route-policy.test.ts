@@ -35,6 +35,10 @@ test('route policies are exact and expose typed resource requirements', () => {
     { access: 'internal' },
   )
   assert.deepEqual(
+    getAuthorizationRoutePolicy('POST', '/api/v1/conversations/run/resources'),
+    { access: 'authenticated' },
+  )
+  assert.deepEqual(
     getAuthorizationRoutePolicy('DELETE', '/api/v1/files'),
     {
       access: 'resource',
