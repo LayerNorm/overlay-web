@@ -568,61 +568,80 @@ export const addMessage = mutation({
     serverSecret: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const access = await requireConversationAccess(ctx, args)
-    if ((access.conversation.conversationType ?? 'personal') === 'personal') {
-      throw new Error('COLLABORATION_CONVERSATION_REQUIRED')
-    }
-    if (access.conversation.externalPlatform) {
-      throw new Error('SURFACE_CONVERSATION_READ_ONLY')
-    }
-    if (args.threadRootMessageId) {
-      await getMessageForThread(ctx, args.conversationId, args.threadRootMessageId)
-    }
-    await assertNativeThreadWritable(ctx, access.conversation, args.threadRootMessageId)
-    if (args.clientNonce) {
-      const match = await ctx.db.query('conversationMessages')
-        .withIndex('by_conversationId_clientNonce', q => q
-          .eq('conversationId', args.conversationId).eq('clientNonce', args.clientNonce))
-        .first()
-      if (match) {
-        await assertNativeThreadWritable(ctx, access.conversation, match.threadRootMessageId ?? match._id)
-        return match._id
-      }
-    }
-    const now = Date.now()
-    const messageId = await ctx.db.insert('conversationMessages', {
-      conversationId: args.conversationId,
-      userId: args.actorUserId,
-      authorKind: 'human',
-      authorPrincipalId: access.actor.principalId,
-      turnId: args.turnId,
-      role: 'user',
-      mode: 'act',
-      content: args.content,
-      contentType: 'text',
-      parts: args.parts,
-      replyToTurnId: args.replyToTurnId,
-      replySnippet: args.replySnippet,
-      clientNonce: args.clientNonce,
-      threadRootMessageId: args.threadRootMessageId,
-      status: 'completed',
-      createdAt: now,
-      updatedAt: now,
-    })
-    await ctx.db.patch(args.conversationId, { lastModified: now, updatedAt: now })
-    await recordConversationEvent(ctx, {
-      conversationId: args.conversationId,
-      workspaceId: args.workspaceId,
-      userId: args.actorUserId,
-      type: 'message.created',
-      messageId,
-    })
-    await ctx.scheduler.runAfter(0, internal.knowledge.knowledge.reindexMessageInternal, {
-      messageId,
-    })
-    return messageId
+    return await insertCollaborationMessage(ctx, args)
   },
 })
+
+export async function insertCollaborationMessage(
+  ctx: MutationCtx,
+  args: {
+    actorUserId: string
+    clientNonce?: string
+    content: string
+    conversationId: Id<'conversations'>
+    parts?: Doc<'conversationMessages'>['parts']
+    replySnippet?: string
+    replyToTurnId?: string
+    threadRootMessageId?: Id<'conversationMessages'>
+    turnId: string
+    workspaceId: string
+    serverSecret?: string
+  },
+) {
+  const access = await requireConversationAccess(ctx, args)
+  if ((access.conversation.conversationType ?? 'personal') === 'personal') {
+    throw new Error('COLLABORATION_CONVERSATION_REQUIRED')
+  }
+  if (access.conversation.externalPlatform) {
+    throw new Error('SURFACE_CONVERSATION_READ_ONLY')
+  }
+  if (args.threadRootMessageId) {
+    await getMessageForThread(ctx, args.conversationId, args.threadRootMessageId)
+  }
+  await assertNativeThreadWritable(ctx, access.conversation, args.threadRootMessageId)
+  if (args.clientNonce) {
+    const match = await ctx.db.query('conversationMessages')
+      .withIndex('by_conversationId_clientNonce', q => q
+        .eq('conversationId', args.conversationId).eq('clientNonce', args.clientNonce))
+      .first()
+    if (match) {
+      await assertNativeThreadWritable(ctx, access.conversation, match.threadRootMessageId ?? match._id)
+      return match._id
+    }
+  }
+  const now = Date.now()
+  const messageId = await ctx.db.insert('conversationMessages', {
+    conversationId: args.conversationId,
+    userId: args.actorUserId,
+    authorKind: 'human',
+    authorPrincipalId: access.actor.principalId,
+    turnId: args.turnId,
+    role: 'user',
+    mode: 'act',
+    content: args.content,
+    contentType: 'text',
+    parts: args.parts,
+    replyToTurnId: args.replyToTurnId,
+    replySnippet: args.replySnippet,
+    clientNonce: args.clientNonce,
+    threadRootMessageId: args.threadRootMessageId,
+    status: 'completed',
+    createdAt: now,
+    updatedAt: now,
+  })
+  await ctx.db.patch(args.conversationId, { lastModified: now, updatedAt: now })
+  await recordConversationEvent(ctx, {
+    conversationId: args.conversationId,
+    workspaceId: args.workspaceId,
+    userId: args.actorUserId,
+    type: 'message.created',
+    messageId,
+  })
+  await ctx.scheduler.runAfter(0, internal.knowledge.knowledge.reindexMessageInternal, {
+    messageId,
+  })
+  return messageId
+}
 
 /** Persists a streamed workspace-agent reply after validating both the human
  * invoker's room access and the agent's active participation in that room. */

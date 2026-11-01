@@ -8,6 +8,7 @@ import type {
   WorkContext,
   WorkEvent,
   WorkItem,
+  WorkAssignmentExecution,
 } from '@overlay/app-core'
 import { lazyConvex as convex } from '@/server/database/lazy-convex'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
@@ -57,6 +58,13 @@ export function mapWorkItemDoc(doc: WorkItemDoc): WorkItem {
     archivedFromScope: doc.archivedFromScope ?? null,
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
+    ...(doc.assignmentExecution ? {
+      assignmentExecution: {
+        ...doc.assignmentExecution,
+        ...(doc.assignmentExecution.conversationId ? { conversationId: String(doc.assignmentExecution.conversationId) } : {}),
+        ...(doc.assignmentExecution.messageId ? { messageId: String(doc.assignmentExecution.messageId) } : {}),
+      } as WorkAssignmentExecution,
+    } : {}),
   }
 }
 
@@ -115,6 +123,37 @@ export class ConvexWorkRepository implements WorkRepository {
     const doc = await convex.mutation<WorkItemDoc | null>('work/workItems:update', { ...this.base(args), id: args.id, ...args.input, ...(args.actingAgentPrincipalId ? { actingAgentPrincipalId: args.actingAgentPrincipalId } : {}) }, { throwOnError: true })
     if (!doc) throw new Error('Failed to update task')
     return mapWorkItemDoc(doc)
+  }
+
+  async prepareAssignment(args: {
+    userId: string
+    workspaceId: string
+    id: string
+    assigneePrincipalId: string
+    generation: number
+    content: string
+  }): Promise<{ execution: WorkAssignmentExecution; claimed: boolean } | null> {
+    return await convex.mutation<{ execution: WorkAssignmentExecution; claimed: boolean } | null>(
+      'work/workItems:prepareAssignment',
+      { ...this.base(args), id: args.id, assigneePrincipalId: args.assigneePrincipalId, generation: args.generation, content: args.content },
+      { throwOnError: true },
+    )
+  }
+
+  async completeAssignment(args: {
+    userId: string
+    workspaceId: string
+    id: string
+    assigneePrincipalId: string
+    generation: number
+    status: 'started' | 'failed'
+    error?: string
+  }): Promise<boolean> {
+    return await convex.mutation<boolean>(
+      'work/workItems:completeAssignment',
+      { ...this.base(args), id: args.id, assigneePrincipalId: args.assigneePrincipalId, generation: args.generation, status: args.status, ...(args.error ? { error: args.error } : {}) },
+      { throwOnError: true },
+    ) ?? false
   }
 
   async move(args: { userId: string; workspaceId: string; id: string; input: MoveWorkItemRequest; actingAgentPrincipalId?: string }): Promise<WorkItem> {

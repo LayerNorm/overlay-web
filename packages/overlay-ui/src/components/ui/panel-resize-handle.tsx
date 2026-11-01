@@ -6,12 +6,13 @@ import { cn } from '../../utils/cn'
 /** The edge names its physical position on the panel, not the panel's side of the screen. */
 export function PanelResizeHandle({
   width, onResize, onResizingChange, edge = 'left', minWidth = 260, maxWidth = 720,
-  label = 'Resize side panel', className,
+  label = 'Resize side panel', placement = 'inset', className,
 }: {
   width: number
   onResize: (width: number) => void
   onResizingChange: (resizing: boolean) => void
   edge?: 'left' | 'right'
+  placement?: 'inset' | 'outside'
   minWidth?: number
   maxWidth?: number
   label?: string
@@ -35,7 +36,10 @@ export function PanelResizeHandle({
       aria-valuenow={width}
       className={cn(
         'group/resize absolute inset-y-0 z-40 w-2 cursor-col-resize touch-none select-none outline-none',
-        edge === 'left' ? 'left-0' : 'right-0', className,
+        placement === 'outside'
+          ? edge === 'left' ? 'right-full' : 'left-full'
+          : edge === 'left' ? 'left-0' : 'right-0',
+        className,
       )}
       onPointerDown={(event) => {
         if (event.button !== 0) return

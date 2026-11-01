@@ -4,6 +4,11 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Use saved OAuth sessions when testing MCP connections and keep the MCP editor tabs sized to their labels.
+
+- Standardize MCP and Skills cards and editors on shared shadcn components with flat layouts, accessible Active switches, explicit Manage actions, and deletion confirmation.
+
+- Preserve OAuth MCP authentication, start assigned-agent tasks through the existing collaboration thread and agent-turn pipeline with stable identity and cautious failure reporting, and place contextual/docked resize handles in their gutters.
 - Add desktop dictation microphone selection with live device refresh and capture status, alongside native PCM capture without a network admission wait, a compact audio-reactive pill, cancellation and temporary retry/copy recovery.
 
 - Keep the original human reply buffered across opt-in versioned root input, approval, and stuck-wait deadline renewals; production resource admission remains inactive.

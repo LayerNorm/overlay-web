@@ -9,6 +9,9 @@ import type {
   WorkEvent,
   WorkItem,
 } from '@overlay/app-core'
+import { logger } from '@/server/observability/logger'
+import { workAssignmentMessage } from '@/shared/work/assignment-message'
+import { startWorkspaceAgentTurns } from '@/server/agents/start-agent-turns'
 import { parseWorkErrorReason, workErrorMessage, workErrorStatus } from '@/shared/work/errors'
 import type { WorkRepository } from './WorkRepository'
 
@@ -27,7 +30,10 @@ type Actor = { userId: string; workspaceId: string; actingAgentPrincipalId?: str
  * refusals into messages the app can show and keeps the HTTP layer thin.
  */
 export class WorkService {
-  constructor(private readonly repository: WorkRepository) {}
+  constructor(
+    private readonly repository: WorkRepository,
+    private readonly dispatchAssignment: typeof startWorkspaceAgentTurns = startWorkspaceAgentTurns,
+  ) {}
 
   /** Runs a repository call and translates Convex's refusals. */
   private async guard<T>(run: () => Promise<T>): Promise<T> {
@@ -54,12 +60,120 @@ export class WorkService {
     return context
   }
 
-  create(args: Actor & { input: CreateWorkItemRequest }): Promise<WorkItem> {
-    return this.guard(() => this.repository.create(args))
+  async create(args: Actor & { input: CreateWorkItemRequest }): Promise<WorkItem> {
+    const item = await this.guard(() => this.repository.create(args))
+    return args.input.assigneePrincipalId
+      ? this.dispatchIfAgentAssigned(args, item, args.input.assigneePrincipalId)
+      : item
   }
 
-  update(args: Actor & { id: string; input: UpdateWorkItemRequest }): Promise<WorkItem> {
-    return this.guard(() => this.repository.update(args))
+  async update(args: Actor & { id: string; input: UpdateWorkItemRequest }): Promise<WorkItem> {
+    const item = await this.guard(() => this.repository.update(args))
+    return args.input.assigneePrincipalId
+      ? this.dispatchIfAgentAssigned(args, item, args.input.assigneePrincipalId)
+      : item
+  }
+
+  private async dispatchIfAgentAssigned(args: Actor, item: WorkItem, assigneePrincipalId: string): Promise<WorkItem> {
+    const context = await this.context(args)
+    if (!context.people.some((person) => person.principalId === assigneePrincipalId && person.type === 'agent')) {
+      if (item.assignmentExecution) {
+        throw new WorkServiceError(
+          `Task ${item.id} was saved, but its assigned agent is no longer available or visible. Restore its availability or assign another agent.`,
+          409,
+          'work_agent_unavailable',
+        )
+      }
+      return item
+    }
+    const generation = item.assignmentExecution?.generation ?? item.updatedAt
+    const prepared = await this.guard(() => this.repository.prepareAssignment({
+      ...args,
+      id: item.id,
+      assigneePrincipalId,
+      generation,
+      content: workAssignmentMessage(item),
+    }))
+    if (!prepared) {
+      throw new WorkServiceError(`Task ${item.id} was saved, but its assignment changed before the agent could start. No agent was launched.`, 409, 'work_assignment_changed')
+    }
+    const { execution, claimed } = prepared
+    if (!claimed) {
+      if (execution.status === 'starting') {
+        throw new WorkServiceError(`Task ${item.id} was saved; agent startup is already in progress.`, 409, 'work_assignment_in_progress')
+      }
+      if (execution.status === 'failed') {
+        throw new WorkServiceError(
+          execution.error ?? `Task ${item.id} was saved, but the agent start could not be confirmed. Check its agent thread before clearing or reassigning.`,
+          502,
+          'work_agent_start_failed',
+        )
+      }
+      return item
+    }
+    if (!execution.conversationId || !execution.messageId || !execution.turnId) {
+      throw new WorkServiceError(`Task ${item.id} was saved, but its agent assignment could not be prepared.`, 502, 'work_agent_start_failed')
+    }
+    try {
+      await this.dispatchAssignment({
+        actorUserId: args.userId,
+        conversationId: execution.conversationId,
+        messageId: execution.messageId,
+        mentionedPrincipalIds: [assigneePrincipalId],
+        initiatorPrincipalId: context.principalId,
+        prompt: workAssignmentMessage(item),
+        memoryEnabled: true,
+        turnId: execution.turnId,
+        workspaceId: args.workspaceId,
+        strictErrors: true,
+      })
+    } catch (error) {
+      const detail = error instanceof Error ? error.message.slice(0, 300) : 'Agent startup failed.'
+      const failure = `Task ${item.id} was saved, but the agent start could not be confirmed: ${detail} Check its agent thread before clearing or reassigning.`
+      await this.repository.completeAssignment({
+        ...args,
+        id: item.id,
+        assigneePrincipalId,
+        generation,
+        status: 'failed',
+        error: failure,
+      }).catch((_error) => {
+        logger.error('Failed to persist work assignment startup failure', {
+          taskId: item.id,
+          generation,
+        })
+      })
+      throw new WorkServiceError(failure, 502, 'work_agent_start_failed')
+    }
+
+    let completed: boolean
+    try {
+      completed = await this.repository.completeAssignment({
+        ...args,
+        id: item.id,
+        assigneePrincipalId,
+        generation,
+        status: 'started',
+      })
+    } catch (_error) {
+      logger.error('Failed to persist work assignment startup confirmation', {
+        taskId: item.id,
+        generation,
+      })
+      throw new WorkServiceError(
+        `Task ${item.id} was saved and agent startup was requested, but its status could not be confirmed. Do not clear or reassign it; check its agent thread before retrying.`,
+        503,
+        'work_assignment_unconfirmed',
+      )
+    }
+    if (!completed) {
+      throw new WorkServiceError(
+        `Task ${item.id} was saved and agent startup was requested, but the assignment changed before confirmation. Check its agent thread before retrying.`,
+        409,
+        'work_assignment_changed',
+      )
+    }
+    return { ...item, assignmentExecution: { ...execution, status: 'started' } }
   }
 
   move(args: Actor & { id: string; input: MoveWorkItemRequest }): Promise<WorkItem> {
