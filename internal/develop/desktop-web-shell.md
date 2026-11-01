@@ -205,5 +205,8 @@ click and can incur another cloud transcription charge.
 The bundled Whisper helper and upstream revision are pinned in
 `native-artifacts.json`. Keep its build script, notices and artifact digest
 synchronized. Run actual offline transcription in the clean-clone CI job with
-isolated app data and model/tokenizer integrity verification. Native transcription
+isolated app data and model/tokenizer integrity verification. Its opt-in model
+lane uses macOS 26; ordinary checks retain macOS 15. When runner behavior differs,
+verify actual words on a physical Mac with helper networking denied rather than
+treating a successful process exit as recognition acceptance. Native transcription
 normalizes provider padding before delivery while preserving internal formatting.
