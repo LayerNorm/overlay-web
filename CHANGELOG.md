@@ -28,7 +28,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Add Harness-scoped binary Computer publication with immutable artifact identity, create-only scoped upload authority, streamed SHA-256 verification, and atomic Files registration. The owner validated the launch-video creation and Overlay Files delivery gate on the PR using their own account; fault-injection and multi-day qualification remain follow-up work.
 
-- Correct binary publication to use the configured FileService, authorize the tool caller before registry or Computer access, refresh grants before snapshot/signing/commit, and treat cleanup after commit as best effort. Enforce the first-version 100 MiB ceiling (or the lower configured direct-upload limit), reject mismatched MIME and dangling folder ancestry, and return safe retry guidance. Local regression coverage passes; hosted transfer and the complete skill/video acceptance remain open.
+- Correct binary publication to use the configured FileService, authorize the tool caller before registry or Computer access, refresh grants before snapshot/signing/commit, and treat cleanup after commit as best effort. Enforce the first-version 100 MiB ceiling (or the lower configured direct-upload limit), reject mismatched MIME and dangling folder ancestry, and return safe retry guidance. The owner-accepted video gate covers delivery; replacement-Computer and interrupted-transfer qualification remain follow-up work.
 
 - Preserve declared byte length and requested short lifetime when creating scoped upload URLs through the configured storage provider, with optional validated SHA-256 binding for binary publication.
 
