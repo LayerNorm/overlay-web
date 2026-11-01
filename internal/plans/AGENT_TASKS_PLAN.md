@@ -1,6 +1,6 @@
 # Agent Tasks Plan
 
-Status: approved. Decisions 2 to 5 accepted as recommended; decision 1 replaced by the explicit Start/Queue button. Phase 1 implemented; Phase 2 in review. Later execution phases remain planned.
+Status: approved. Initial assignment now starts an agent automatically; the earlier explicit Start/Queue decision is superseded for initial dispatch. Later Start/Queue sections remain future retry/dependency-control proposals. Decisions 2 to 5 remain accepted. Phase 1 implemented; Phase 2 in review. Later execution phases remain planned.
 
 ## Current assignment execution
 
@@ -44,9 +44,7 @@ manage it.
 ## The flow
 
 1. Assign. In a task, pick an agent in Owner (or ask any chat: "give the onboarding doc task to Research Agent").
-2. Start. Assigning an agent does not start anything, so the rest of the task can still be edited. Once the owner is
-   an agent, a "Start Task" button appears at the bottom of the task menu. If the task has open blockers it reads
-   "Queue Task" instead, and the run starts by itself when the last blocker is done. Chats use `start_task`.
+2. Start. Creating or changing an agent assignment starts the existing agent-turn pipeline. Human assignments and status-only edits do not dispatch. Automatic dependency queueing and explicit retry controls remain later work; check the persisted agent thread before clearing or reassigning an uncertain start.
 3. Thread. Overlay opens a new thread under the agent, titled with the task, and posts a kickoff brief as the
    assigner: title, description, done-when checklist, context links (resolved so the agent can read them), parent
    and blockers, due date, and who reviews. The task links to the thread and the thread shows the task.
