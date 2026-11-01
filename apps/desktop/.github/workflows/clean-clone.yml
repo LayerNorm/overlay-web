@@ -21,7 +21,9 @@ concurrency:
 
 jobs:
   verify:
-    runs-on: macos-15
+    # Actual Core ML acceptance uses the current macOS generation. Keep the
+    # ordinary compilation/interaction lane on the older supported image.
+    runs-on: ${{ inputs.local_transcription == true && 'macos-26' || 'macos-15' }}
     timeout-minutes: 45
 
     steps:
