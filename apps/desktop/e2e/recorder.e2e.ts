@@ -225,6 +225,54 @@ test('the native HUD captures audio and delivers the transcription without a pre
       .toBe(true)
     expect(audioBytes).toBe(firstRequestBytes)
     authAllowed = false
+    // A cancelled stop may still be waiting for its worklet flush when the
+    // next take starts. Withhold the flush on the real shared AudioContext.
+    const overlap = await hud.evaluate(async () => {
+      const { captureAudio } = await import(new URL('./dictation-audio.js', location.href).href)
+      const post = MessagePort.prototype.postMessage
+      Object.defineProperty(MessagePort.prototype, 'postMessage', {
+        configurable: true,
+        writable: true,
+        value: function (this: MessagePort, message: unknown) {
+          if (message !== 'flush') post.call(this, message)
+        }
+      })
+      const errors: string[] = []
+      const options = {
+        onReady: () => undefined,
+        onFallback: () => undefined,
+        onError: (error: Error) => errors.push(error.message)
+      }
+      const first = captureAudio(options)
+      let second: ReturnType<typeof captureAudio> | undefined
+      try {
+        await first.ready
+        const stopping = first.stop().then(
+          () => 'resolved',
+          (error: Error) => error.name
+        )
+        await Promise.resolve()
+        first.cancel()
+        let frames = 0
+        second = captureAudio({ ...options, onReady: () => frames++ })
+        await second.ready
+        await new Promise((resolve) => setTimeout(resolve, 220))
+        return {
+          cancelledStop: await stopping,
+          state: second.analyser.context.state,
+          frames,
+          errors
+        }
+      } finally {
+        first.cancel()
+        second?.cancel()
+        MessagePort.prototype.postMessage = post
+      }
+    })
+    expect(overlap.cancelledStop).toBe('AbortError')
+    expect(overlap.state).toBe('running')
+    expect(overlap.frames).toBeGreaterThan(0)
+    expect(overlap.errors).toEqual([])
     await page.evaluate(() =>
       window.overlayDesktop.call('transcription.start', { target: 'system', model: 'cloud' })
     )

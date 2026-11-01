@@ -1,6 +1,7 @@
 export const SAMPLE_RATE = 16000
 const MAX_SAMPLES = (25 * 1024 * 1024 - 44) / 2
 let prepared
+let currentCapture
 
 // Preparing a suspended graph never acquires a microphone or records idle audio.
 export function prepareAudio() {
@@ -123,6 +124,8 @@ async function microphone(deviceId, signal, onFallback) {
 }
 
 export function captureAudio({ deviceId = 'auto', onReady, onFallback, onError }) {
+  const owner = {}
+  currentCapture = owner
   const abort = new AbortController()
   const chunks = []
   let stream, source, processor, analyser, context, stopped, resolveFlush
@@ -141,7 +144,9 @@ export function captureAudio({ deviceId = 'auto', onReady, onFallback, onError }
       processor.port.onmessage = null
       processor.port.close()
     }
-    if (context && context.state !== 'closed') await context.suspend().catch(() => {})
+    const audioContext = context ?? (await graph.catch(() => undefined))
+    if (currentCapture === owner && audioContext && audioContext.state !== 'closed')
+      await audioContext.suspend().catch(() => {})
   }
   // Start device acquisition and graph preparation together; neither waits for cloud auth.
   const device = microphone(deviceId, abort.signal, onFallback)
@@ -214,13 +219,17 @@ export function captureAudio({ deviceId = 'auto', onReady, onFallback, onError }
             new Promise((resolve) => setTimeout(resolve, 120))
           ])
         }
+        abort.signal.throwIfAborted()
         await cleanup()
+        abort.signal.throwIfAborted()
         return encodeWav(chunks)
       })()
       return stopped
     },
     cancel() {
       abort.abort()
+      resolveFlush?.()
+      resolveFlush = undefined
       chunks.length = 0
       void cleanup()
       void device.then(
