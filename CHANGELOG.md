@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Retry personal Harness response and summary preparation after authoritative time renewal when an opt-in run expires before preparation. Recheck access on retry; resource admission remains disabled and provider-dispatch expiry is separate follow-up work.
+
 - Use saved OAuth sessions when testing MCP connections and keep the MCP editor tabs sized to their labels.
 
 - Standardize MCP and Skills cards and editors on shared shadcn components with flat layouts, accessible Active switches, explicit Manage actions, and deletion confirmation.

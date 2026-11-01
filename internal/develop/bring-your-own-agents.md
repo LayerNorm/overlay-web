@@ -385,6 +385,13 @@ tool grants, entitlements, takeover protection, or deny policy. Release QA must
 cover approval denial and approval resumption, cancellation and revoked grants,
 and exact-run authorization before rollout.
 
+For opt-in version-one personal Harness roots, time expiry during response or
+summary preparation returns a typed step result. Workflow orchestration waits for
+an authoritative grant, then retries the same preparation with fresh access checks.
+This does not retry provider inference or release billing holds. Resource admission
+remains disabled until provider-dispatch expiry and the remaining lifecycle gates
+are complete; unversioned runs retain their existing deadline rejection.
+
 A connected agent gets the same Overlay workspace tools a native agent with the same grant gets —
 notes (including the patch-style `edit_note`, `replace_note_section`, and `append_to_note`), files
 (`list_files`, `read_file`, `write_file`, `create_folder`, `move_file`), memory, knowledge search,

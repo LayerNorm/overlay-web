@@ -6,7 +6,8 @@ import type { PersonalChatWorkToolingContext } from '@/shared/agents/personal-ch
 import { quoteHarnessModel } from './model-quote'
 import { refreshPersonalHarnessAccess, type PersonalHarnessAccess } from './personal-access'
 import { serializePersonalHarnessAuthentication } from './personal-authentication'
-import type { HarnessModelReference } from './secure-model'
+import type { PreparedHarnessModel } from './model-ports'
+import { HarnessTimeAuthorizationExpired } from './model-time-authorization'
 
 export async function readHarnessModelLimits(modelId: string): Promise<{ contextWindow: number | null; maxOutputTokens: number | null }> {
   'use step'
@@ -19,19 +20,14 @@ export async function readHarnessModelLimits(modelId: string): Promise<{ context
   }
 }
 
-export async function preparePersonalHarnessModel(input: {
+type PersonalModelPreparationInput = {
   access: PersonalHarnessAccess
   context: Omit<PersonalChatWorkToolingContext, 'entitlements' | 'paid'>
   receiptId: string
   options: LanguageModelV4CallOptions
-}): Promise<{
-  model: HarnessModelReference
-  options: LanguageModelV4CallOptions
-  contextWindow: number | null
-  estimatedCostMicros: number
-}> {
-  'use step'
+}
 
+async function preparePersonalHarnessModelValue(input: PersonalModelPreparationInput): Promise<PreparedHarnessModel> {
   const context = await refreshPersonalHarnessAccess(input.access, input.context)
   const { options, contextWindow, estimatedCostMicros, inputTokenBudget, maxOutputTokens } = await quoteHarnessModel({
     modelId: context.effectiveModelId, requiresZeroDataRetention: context.requiresZeroDataRetention, options: input.options,
@@ -60,5 +56,18 @@ export async function preparePersonalHarnessModel(input: {
       },
     },
     options, contextWindow, estimatedCostMicros,
+  }
+}
+
+export async function preparePersonalHarnessModel(input: PersonalModelPreparationInput): Promise<
+  | PreparedHarnessModel
+  | { code: 'HARNESS_TIME_REQUIRED' }
+> {
+  'use step'
+  try {
+    return await preparePersonalHarnessModelValue(input)
+  } catch (error) {
+    if (error instanceof HarnessTimeAuthorizationExpired) return { code: 'HARNESS_TIME_REQUIRED' }
+    throw error
   }
 }

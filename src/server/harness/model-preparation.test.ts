@@ -1,6 +1,7 @@
 import { beforeEach, expect, test, vi } from 'vitest'
 import type { PersonalChatWorkToolingContext } from '@/shared/agents/personal-chat-work'
-import { preparePersonalHarnessModel } from './model-preparation'
+import { preparePersonalHarnessModel as prepareStep } from './model-preparation'
+import { HarnessTimeAuthorizationExpired } from './model-time-authorization'
 
 const mocks = vi.hoisted(() => ({ refresh: vi.fn(), catalog: vi.fn(), zdr: vi.fn() }))
 vi.mock('server-only', () => ({}))
@@ -17,6 +18,20 @@ const context: Omit<PersonalChatWorkToolingContext, 'entitlements' | 'paid'> = {
 const input = { access, context, receiptId: 'model:0', options: {
   prompt: [{ role: 'user' as const, content: [{ type: 'text' as const, text: 'Read the document.' }] }], maxOutputTokens: 100,
 } }
+
+async function preparePersonalHarnessModel(value: Parameters<typeof prepareStep>[0]) {
+  const result = await prepareStep(value)
+  if ('code' in result) throw new Error('Unexpected time authorization request in preparation fixture.')
+  return result
+}
+
+test('time expiry returns serializable control data before quoting instead of crossing the step as an error', async () => {
+  mocks.refresh.mockRejectedValueOnce(new HarnessTimeAuthorizationExpired())
+  expect(await prepareStep(input)).toEqual({ code: 'HARNESS_TIME_REQUIRED' })
+  expect(mocks.catalog).not.toHaveBeenCalled()
+  mocks.refresh.mockRejectedValueOnce(new Error('The authorized run deadline is exhausted.'))
+  await expect(prepareStep(input)).rejects.toThrow('The authorized run deadline is exhausted.')
+})
 
 beforeEach(() => {
   vi.resetAllMocks()

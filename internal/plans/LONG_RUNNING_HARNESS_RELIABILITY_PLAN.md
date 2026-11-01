@@ -1,6 +1,13 @@
 # Long-running harness reliability and video-delivery implementation plan
 
-Status: Current iteration accepted by the owner for review and merge. Divyansh reports that the entire launch-video gate passed on PR #362 using his own account. Further implementation is deferred until he merges the PR himself.
+Status: The owner-accepted iteration merged in PR #362. Post-merge deadline-recovery work is in progress on a separate branch. Resource admission remains disabled.
+
+## Post-merge preparation recovery
+
+- [x] Verify typed deadline expiry during personal model preparation. Return serializable control data from the step, wait for authoritative renewal in Workflow orchestration, then repeat the same preparation request with fresh access checks. Preserve the successful step payload for replay compatibility. Includes response and summary preparation; no provider inference or hold release happens here.
+- [ ] Close the separate provider-dispatch race, including atomic binding and confirmed release of unused reservations, before enabling resource admission.
+
+The preparation changes are on the post-merge follow-up branch, not in merged PR #362. Focused unit tests passed 42/42 across five files, and the compiled Workflow fixture passed 3/3; targeted ESLint, TypeScript, docs health, and whitespace checks also passed. This verifies only opt-in version-one personal-root response and summary preparation expiry, serialized control data, and retry of the same request after a fresh access check. Provider-dispatch expiry and hold release, broader deadline/finalization behavior, live callback/UI acceptance, and production resource admission remain unverified; resource admission remains disabled.
 
 ## Review handoff and remaining work
 

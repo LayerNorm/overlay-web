@@ -2,6 +2,7 @@ import { beforeEach, expect, test, vi } from 'vitest'
 import { createHarnessSnapshot } from '@overlay/agent-runtime/harness-state'
 import type { PersonalChatWorkToolingContext } from '@/shared/agents/personal-chat-work'
 import { refreshPersonalHarnessAccess, type PersonalHarnessAccess } from './personal-access'
+import { HarnessTimeAuthorizationExpired } from './model-time-authorization'
 
 const mocks = vi.hoisted(() => ({
   state: vi.fn(), keys: vi.fn(), workspace: vi.fn(), conversation: vi.fn(), agentRun: vi.fn(),
@@ -82,6 +83,15 @@ test('rejects stale execution, cancelled delivery, changed principals and out-of
   await expect(refreshPersonalHarnessAccess(access, context)).rejects.toThrow(/resource access/)
   mocks.conversation.mockResolvedValueOnce({ userId: 'user', workspaceId: 'other-workspace' })
   await expect(refreshPersonalHarnessAccess(access, context)).rejects.toThrow(/resource access/)
+})
+
+test('versioned deadline expiry is distinct from a stale or foreign execution', async () => {
+  const expired = snapshot()
+  Object.assign(expired.policy, { resourcePauseVersion: 1, maxDepth: 0, maxParallelChildren: 0, deadlineAt: 0 })
+  mocks.state.mockResolvedValue(expired)
+  await expect(refreshPersonalHarnessAccess(access, context)).rejects.toBeInstanceOf(HarnessTimeAuthorizationExpired)
+  mocks.state.mockResolvedValue({ ...expired, workflowRunId: 'foreign' })
+  await expect(refreshPersonalHarnessAccess(access, context)).rejects.not.toBeInstanceOf(HarnessTimeAuthorizationExpired)
 })
 
 test('API key resumes check current revocation, expiration, owner and scopes without persisting the key', async () => {
