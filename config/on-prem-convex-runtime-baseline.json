@@ -287,6 +287,11 @@
       "target": "(internal as any).platform.metrics.cleanupOldMetricsInternal"
     },
     {
+      "cadence": "{ hourUTC: 0, minuteUTC: 20 }",
+      "name": "growth daily totals",
+      "target": "internal.platform.growth.startDaily"
+    },
+    {
       "cadence": "{ hourUTC: 4, minuteUTC: 30 }",
       "name": "knowledge orphan-chunk sweep",
       "target": "(internal as any).knowledge.knowledge.sweepOrphanedChunks"
@@ -518,6 +523,7 @@
     "convex/knowledge/memories.ts",
     "convex/knowledge/memoryExtractorNode.ts",
     "convex/lib/agentDriveFiles.ts",
+    "convex/platform/growth.ts",
     "convex/platform/usage.ts",
     "convex/webhooks/deliveryRunner.ts"
   ]
