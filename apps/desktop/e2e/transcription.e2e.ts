@@ -24,6 +24,7 @@ const original=cp.execFile;globalThis.offlineTranscriptions=0;
 cp.execFile=function(file,args,options,callback){
  if(!file.endsWith('/whisperkit-cli'))return original(file,args,options,callback);
  globalThis.offlineTranscriptions++;
+ fs.copyFileSync(args[args.indexOf('--audio-path')+1],${JSON.stringify(test.info().outputPath('helper-input-'))}+globalThis.offlineTranscriptions+'.wav');
  const mode=globalThis.asrDiagnosticMode||'default';
  const policy=mode==='ip-only'?'(version 1)(allow default)(deny network-outbound (remote ip "*:*"))(deny network-inbound (local ip "*:*"))':'(version 1)(allow default)(deny network*)';
  const extra=mode==='vad-none'?['--chunking-strategy','none']:[];
@@ -219,7 +220,7 @@ cp.execFile=function(file,args,options,callback){
     // Chromium's default fake microphone is a tone, not spoken audio.
     await hud.evaluate(
       async (bytes) => {
-        const context = new AudioContext()
+        const context = new AudioContext({ sampleRate: 16000, sinkId: { type: 'none' } })
         const buffer = await context.decodeAudioData(Uint8Array.from(bytes).buffer)
         const destination = context.createMediaStreamDestination()
         navigator.mediaDevices.getUserMedia = async () => {
