@@ -6,6 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 - Normalize provider whitespace and preserve spacing between successive dictation insertions.
+- Register initial window visibility before navigation to avoid missing a fast first render.
 
 
 - Start microphone capture independently of cloud session admission, prepare a suspended PCM graph at launch, and capture WAV directly without a whole-recording decode.

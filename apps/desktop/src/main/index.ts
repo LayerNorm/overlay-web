@@ -30,8 +30,8 @@ function createMain(): BrowserWindow {
     webPreferences: remotePreferences(),
     show: false
   })
-  loadWebShell(main)
   main.once('ready-to-show', () => main?.show())
+  loadWebShell(main)
   main.on('focus', () => main?.webContents.send('overlay-desktop:event', 'window.focus', true))
   main.on('blur', () => main?.webContents.send('overlay-desktop:event', 'window.focus', false))
   return main
