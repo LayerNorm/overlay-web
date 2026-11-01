@@ -771,7 +771,7 @@ export function checkpointHarness(
 }
 
 export function finishHarness(state: HarnessSnapshot, now: number, resultSummary?: string): HarnessSnapshot {
-  assertHarnessRunnable(state, now)
+  assertActive(state)
   if (resultSummary !== undefined && resultSummary.length > 8_000) throw new Error('Keep the result summary under 8,000 characters.')
   const issues = harnessCompletionIssues(state)
   if (issues.length) throw new Error(issues.join(' '))

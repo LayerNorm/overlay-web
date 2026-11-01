@@ -131,6 +131,28 @@ test('reasoning stays separate from the durable final result shared with parents
   expect(result.snapshot.usage.outputTokens).toBe(1)
 })
 
+test('runner finalizes a settled answer when its authorization expires after the last model call', async () => {
+  const f = fixture(false)
+  const provider = model(() => 'The work is complete.')
+  const record = f.ports.recordModelStep
+  const clock = vi.spyOn(Date, 'now')
+  try {
+    f.ports.recordModelStep = async (step, receiptId) => {
+      await record(step, receiptId)
+      clock.mockReturnValue((await f.ports.read()).policy.deadlineAt)
+    }
+    const result = await runOverlayHarness({ ...input, tools: {} }, f.ports)
+    expect(result.snapshot.status).toBe('completed')
+    expect(result.snapshot.resultSummary).toBe('The work is complete.')
+    expect(result.snapshot.modelReservation).toBeUndefined()
+    expect(result.snapshot.updatedAt).toBe(result.snapshot.policy.deadlineAt)
+    expect(provider.doStreamCalls).toHaveLength(1)
+    expect(f.receipts.size).toBe(1)
+  } finally {
+    clock.mockRestore()
+  }
+})
+
 test('runner stores sanitized final text and ignores a trailing textual tool call', async () => {
   const f = fixture(false)
   const protocol = '<tool_call>harness_update_step<arg_key>id</arg_key><arg_value>step1</arg_value><arg_key>status</arg_key><arg_value>done</arg_value></tool_call>'

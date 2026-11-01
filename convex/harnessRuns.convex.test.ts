@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, test } from 'vitest'
+import { beforeAll, describe, expect, test, vi } from 'vitest'
 import { convexTest } from 'convex-test'
 import { makeFunctionReference } from 'convex/server'
 import { ConvexError } from 'convex/values'
@@ -102,6 +102,44 @@ function oneStep(id: string, requiresVerification = false, evidenceTools = ['too
 }
 
 describe('durable harness runs', () => {
+  test('persists completed work after authorization expires without authorizing more work', async () => {
+    const convex = convexTest(schema, modules)
+    const input = admission('late-completion', await seedConversation(convex), { requiresPlan: false })
+    const clock = vi.spyOn(Date, 'now')
+    try {
+      let state = await admit(convex, input)
+      state = (await apply(convex, input, 'reserve-final', state.revision, {
+        type: 'reserve_model', id: 'final', maxCostMicros: input.policy.maxCostMicros,
+      })).snapshot
+      clock.mockReturnValue(input.policy.deadlineAt + 1)
+      await expect(apply(convex, input, 'finish-held', state.revision, { type: 'finish' }))
+        .rejects.toThrow(/reconciliation/)
+      state = (await apply(convex, input, 'settle-final', state.revision, {
+        type: 'record_receipt', receipt: {
+          id: 'final', modelId: 'fixture/model', provider: 'fixture', inputTokens: 10, outputTokens: 1,
+          reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, contextWindow: 32_000,
+          costMicros: input.policy.maxCostMicros + 1, costSource: 'provider',
+        },
+      })).snapshot
+      await expect(apply(convex, input, 'reserve-more', state.revision, {
+        type: 'reserve_model', id: 'extra', maxCostMicros: 0,
+      })).rejects.toThrow(/deadline/)
+      await expect(apply(convex, input, 'foreign-finish', state.revision, { type: 'finish' }, 'bob'))
+        .rejects.toThrow()
+      const operation = { type: 'finish' as const, resultSummary: 'The work is complete.' }
+      const finished = await apply(convex, input, 'finish', state.revision, operation)
+      expect(finished.snapshot.status).toBe('completed')
+      expect(finished.snapshot.policy).toEqual(state.policy)
+      expect(finished.snapshot.usage).toEqual(state.usage)
+      expect(await get(convex, input.runId)).toEqual(finished.snapshot)
+      const replay = await apply(convex, input, 'finish', state.revision, operation)
+      expect(replay.applied).toBe(false)
+      expect(replay.snapshot).toEqual(finished.snapshot)
+    } finally {
+      clock.mockRestore()
+    }
+  })
+
   test.each(['model', 'summary:model'])('persists settled %s recovery metadata and clears it after a usable response', async prefix => {
     const convex = convexTest(schema, modules)
     const input = admission('model-recovery', await seedConversation(convex))

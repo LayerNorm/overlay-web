@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Allow fully settled Harness results to finish after time or spending authorization is exhausted, without authorizing new work or clearing blockers, child work, or unresolved model holds.
+
 - Add a durable resource-wait component and authoritative step adapters with polling fallback for lost grant notifications. Runner integration and resource admission remain inactive pending lifecycle qualification.
 
 - Add an authenticated personal-owner resource-grant API/client contract and atomic `waiting_for_resources` AgentRun projection. Resource admission remains inactive; workflow polling, wake recovery, and card integration are still open.

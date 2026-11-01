@@ -188,6 +188,42 @@ test('completion requires persisted evidence, satisfied dependencies and indepen
   assert.equal(state.status, 'running')
 })
 
+test('settled completion does not require new time or spending authorization', () => {
+  const initial = make()
+  const running = { ...initial, policy: { ...initial.policy, requiresPlan: false } }
+  const reserved = reserveHarnessModel(running, 'final-call', running.policy.maxCostMicros, now)
+  const settled = recordHarnessReceipt(reserved, {
+    id: 'final-call', modelId: 'model', provider: 'provider', inputTokens: 10, outputTokens: 1,
+    reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, contextWindow: null,
+    costMicros: running.policy.maxCostMicros + 1,
+  }, now)
+  for (const at of [now, settled.policy.deadlineAt, settled.policy.deadlineAt + 1]) {
+    assert.throws(() => assertHarnessRunnable(settled, at), /exhausted/)
+    const finished = finishHarness(settled, at, 'The result is complete.')
+    assert.equal(finished.status, 'completed')
+    assert.equal(finished.resultSummary, 'The result is complete.')
+    assert.deepEqual(finished.policy, settled.policy)
+    assert.deepEqual(finished.usage, settled.usage)
+    assert.equal(finished.modelReservation, undefined)
+  }
+})
+
+test('expired authorization cannot bypass completion blockers or unresolved holds', () => {
+  const initial = make()
+  const running = { ...initial, policy: { ...initial.policy, requiresPlan: false } }
+  const at = running.policy.deadlineAt + 1
+  const reserved = reserveHarnessModel(running, 'unresolved', 1, now)
+  assert.throws(() => finishHarness(reserved, at), /reconciliation/)
+  assert.throws(() => finishHarness(make(), at), /plan is required/)
+  const blocked = blockHarness(running, { kind: 'input', question: 'Which result?' }, now)
+  assert.throws(() => finishHarness(blocked, at), /blocker/)
+  assert.throws(() => finishHarness({ ...running, status: 'waiting_for_resources', resourceRequestToken: 'pending' }, at), /not running/)
+  assert.throws(() => finishHarness({ ...running, children: [child('pending', 'step', 0)] }, at), /Child work/)
+  for (const status of ['completed', 'failed', 'cancelled'] as const) {
+    assert.throws(() => finishHarness({ ...running, status }, at), /terminal/)
+  }
+})
+
 test('answer-only milestones need no evidence after their dependencies are complete', () => {
   const answerOnly = {
     id: 'answer',
