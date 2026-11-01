@@ -1866,6 +1866,8 @@ export default defineSchema({
     shareToken: v.optional(v.string()),
     shareVisibility: v.optional(v.union(v.literal('private'), v.literal('public'))),
     sharedAt: v.optional(v.number()),
+    // Set when an agent created the file (agent drive), so growth analytics doesn't credit the owner with it.
+    createdByAgent: v.optional(v.boolean()),
   }).index('by_workspaceId_scope_archivedAt', ['workspaceId', 'scope', 'archivedAt']).index('by_workspaceId_userId_archivedAt', ['workspaceId', 'userId', 'archivedAt'])
     .index('by_workspaceId', ['workspaceId']).index('by_workspaceId_userId', ['workspaceId', 'userId']).index('by_userId', ['userId'])
     .index('by_workspaceId_userId_updatedAt', ['workspaceId', 'userId', 'updatedAt'])
@@ -2548,12 +2550,14 @@ export default defineSchema({
   // ─── Growth analytics (nightly rollups read by the admin console) ────────
   growthDailyTotals: defineTable(growthTables.growthDailyTotals).index('by_day', ['day']),
   growthUserDays: defineTable(growthTables.growthUserDays).index('by_day', ['day']).index('by_userId_day', ['userId', 'day']),
-  growthUsers: defineTable(growthTables.growthUsers).index('by_userId', ['userId']).index('by_lastActiveDay', ['lastActiveDay']),
+  growthUsers: defineTable(growthTables.growthUsers).index('by_userId', ['userId']),
   growthCohortWeeks: defineTable(growthTables.growthCohortWeeks).index('by_weekStart', ['weekStart']),
   growthPaidAccounts: defineTable(growthTables.growthPaidAccounts)
     .index('by_billingAccountId', ['billingAccountId']).index('by_firstPaidDay', ['firstPaidDay']),
   growthJobState: defineTable(growthTables.growthJobState).index('by_key', ['key']),
   growthFileEdits: defineTable(growthTables.growthFileEdits).index('by_day', ['day']).index('by_fileId_day', ['fileId', 'day']),
+  growthWorkspaceUsage: defineTable(growthTables.growthWorkspaceUsage)
+    .index('by_day_workspaceId', ['day', 'workspaceId']).index('by_day_cents', ['day', 'cents']),
 
   // ─── Slack import jobs ───────────────────────────────────────────────────
   // Durable jobs for importing Slack workspace data into Overlay conversations

@@ -20,12 +20,6 @@ export const growthCountFields = {
   activeUsers: v.number(),
 }
 
-export const growthAccountUsageValidator = v.object({
-  billingAccountId: v.string(),
-  cents: v.number(),
-  sandboxSeconds: v.number(),
-})
-
 export const growthWorkspaceUsageValidator = v.object({
   workspaceId: v.string(),
   cents: v.number(),
@@ -37,12 +31,11 @@ export const growthTables = {
   growthDailyTotals: {
     day: v.string(),
     ...growthCountFields,
-    /** Distinct active users over the 7 / 30 days ending on `day`; absent when the day was re-run after later days. */
-    weeklyActiveUsers: v.optional(v.number()),
-    monthlyActiveUsers: v.optional(v.number()),
+    /** Distinct active users over the 7 / 30 days ending on `day`. */
+    weeklyActiveUsers: v.number(),
+    monthlyActiveUsers: v.number(),
     /** Paid subscriptions active when the day was counted; only recorded for the live (yesterday) run. */
     paidSubscriptions: v.optional(v.number()),
-    newPaidSubscriptions: v.number(),
     /** Largest workspaces by Overlay-billed spend that day. */
     topWorkspaces: v.array(growthWorkspaceUsageValidator),
     computedAt: v.number(),
@@ -52,11 +45,10 @@ export const growthTables = {
     userId: v.string(),
     day: v.string(),
   },
-  /** One row per user: signup day, last active day and whether each retention window was hit. */
+  /** One row per user: signup day and whether each retention window was hit. */
   growthUsers: {
     userId: v.string(),
     signupDay: v.optional(v.string()),
-    lastActiveDay: v.optional(v.string()),
     w1Active: v.boolean(),
     w4Active: v.boolean(),
   },
@@ -67,11 +59,11 @@ export const growthTables = {
     w1Active: v.number(),
     w4Active: v.number(),
   },
-  /** First night each billing account was seen on a paid plan. */
+  /** First day each billing account was on a paid plan; new paid subscriptions per day are counted from these. */
   growthPaidAccounts: {
     billingAccountId: v.string(),
     firstPaidDay: v.string(),
-    /** Backfilled from the subscription's createdAt, not seen live. */
+    /** Already paid at the first snapshot, so dated by the subscription's createdAt rather than seen turning paid. */
     approximate: v.boolean(),
   },
   /** One row per (file, UTC day) whose text changed, written as the edit happens; editors are people only. */
@@ -80,17 +72,23 @@ export const growthTables = {
     day: v.string(),
     editorUserIds: v.array(v.string()),
   },
+  /** Overlay-billed spend per (UTC day, workspace). Rebuilt each time the day is counted. */
+  growthWorkspaceUsage: {
+    day: v.string(),
+    workspaceId: v.string(),
+    cents: v.number(),
+    sandboxSeconds: v.number(),
+  },
   /** The single row driving the job: the day being counted and how far it got. */
   growthJobState: {
     key: v.literal('daily'),
     lastCompletedDay: v.optional(v.string()),
-    /** Latest day ever completed; a re-run of an earlier day keeps its stored weekly/monthly numbers. */
-    maxCompletedDay: v.optional(v.string()),
+    /** The first night paid plans were snapshotted; accounts already paid then are dated approximately. */
+    firstPaidSnapshotDay: v.optional(v.string()),
     day: v.optional(v.string()),
     step: v.optional(v.number()),
     cursor: v.optional(v.string()),
     counts: v.optional(v.object(growthCountFields)),
-    accountUsage: v.optional(v.array(growthAccountUsageValidator)),
     weeklyActiveUsers: v.optional(v.number()),
     monthlyActiveUsers: v.optional(v.number()),
     paidSubscriptions: v.optional(v.number()),

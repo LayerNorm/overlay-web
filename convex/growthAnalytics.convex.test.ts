@@ -57,6 +57,8 @@ async function seed(convex: Convex) {
     await ctx.db.insert('files', { userId: 'user-a', name: 'Note', type: 'file', kind: 'note', createdAt: now, updatedAt: now })
     await ctx.db.insert('files', { userId: 'user-a', name: 'Folder', type: 'folder', kind: 'folder', createdAt: now, updatedAt: now })
     await ctx.db.insert('files', { userId: 'user-a', name: 'Image', type: 'file', kind: 'output', createdAt: now, updatedAt: now })
+    // An agent saves a file under user-c: it counts as created, but user-c did nothing.
+    await ctx.db.insert('files', { userId: 'user-c', name: 'Report', type: 'file', kind: 'upload', createdByAgent: true, createdAt: now, updatedAt: now })
 
     const thread = { title: 'Chat', lastModified: now, createdAt: now, lastMode: 'act' as const, askModelIds: [], actModelId: 'm' }
     const chat = await ctx.db.insert('conversations', { ...thread, userId: 'user-a' })
@@ -74,7 +76,9 @@ async function seed(convex: Convex) {
     await ctx.db.insert('automationRuns', { ...run, status: 'skipped' })
 
     const topUp = { userId: 'user-b', billingPeriodStart: now, amountCents: 1_000, source: 'manual' as const, createdAt: now, updatedAt: now }
-    await ctx.db.insert('budgetTopUps', { ...topUp, status: 'succeeded', refundedAmountCents: 200 })
+    // Partly refunded (marked refunded, 800 kept), fully refunded, and pending.
+    await ctx.db.insert('budgetTopUps', { ...topUp, status: 'refunded', refundedAmountCents: 200 })
+    await ctx.db.insert('budgetTopUps', { ...topUp, status: 'refunded', refundedAmountCents: 1_000 })
     await ctx.db.insert('budgetTopUps', { ...topUp, status: 'pending' })
 
     await ctx.db.insert('billingAccounts', {
@@ -85,6 +89,11 @@ async function seed(convex: Convex) {
     await ctx.db.insert('usageOperations', {
       userId: 'user-a', billingAccountId: 'ba-w1', operationId: 'op-2', recorded: 1, cents: 5, kind: 'sandbox', usageSeconds: 30, createdAt: now,
     })
+    const reservation = { userId: 'user-a', billingAccountId: 'ba-w1', kind: 'ask' as const, reservedCents: 50, createdAt: now, updatedAt: now }
+    await ctx.db.insert('budgetReservations', { ...reservation, reservationId: 'r-1', status: 'finalized', finalizedCents: 20 })
+    await ctx.db.insert('budgetReservations', { ...reservation, reservationId: 'r-2', status: 'released' })
+    // An operation billed through a reservation carries no charge of its own.
+    await ctx.db.insert('usageOperations', { userId: 'user-a', billingAccountId: 'ba-w1', operationId: 'op-3', recorded: 1, kind: 'ask', createdAt: now })
     await ctx.db.insert('billingAccountSubscriptions', {
       billingAccountId: 'ba-w1', provider: 'stripe', planKind: 'paid', planVersion: 'variable_v2', planAmountCents: 2_000,
       markupBasisPoints: 2_500, status: 'active', autoTopUpEnabled: false, autoTopUpAmountCents: 0, createdAt: now, updatedAt: now,
@@ -131,11 +140,11 @@ describe('nightly growth rollups', () => {
 
     const first = await totals(convex, DAY1)
     expect(first).toMatchObject({
-      usersCreated: 2, tasksCreated: 2, agentsCreated: 1, automationsCreated: 1, filesCreated: 1, filesEdited: 0,
+      usersCreated: 2, tasksCreated: 2, agentsCreated: 1, automationsCreated: 1, filesCreated: 2, filesEdited: 0,
       threadsCreated: 1, messagesSent: 20, automationRuns: 2, automationRunsSucceeded: 1, automationRunsFailed: 1,
-      topUps: 1, topUpCents: 800, usageCents: 55, sandboxSeconds: 30, activeUsers: 2,
-      weeklyActiveUsers: 2, monthlyActiveUsers: 2, newPaidSubscriptions: 1,
-      topWorkspaces: [{ workspaceId: 'w1', cents: 55, sandboxSeconds: 30 }],
+      topUps: 1, topUpCents: 800, usageCents: 75, sandboxSeconds: 30, activeUsers: 2,
+      weeklyActiveUsers: 2, monthlyActiveUsers: 2,
+      topWorkspaces: [{ workspaceId: 'w1', cents: 75, sandboxSeconds: 30 }],
     })
     // Paid plans are only known as they are now, so a historic day gets no snapshot.
     expect(first?.paidSubscriptions).toBeUndefined()
@@ -175,12 +184,59 @@ describe('nightly growth rollups', () => {
     expect(await convex.run(async (ctx) => await ctx.db.system.query('_scheduled_functions')
       .filter((q) => q.eq(q.field('state.kind'), 'pending')).collect())).toHaveLength(0)
 
-    // Two nights missed: both days are counted in order.
+    // A top-up confirmed after the night it was counted.
+    await convex.run(async (ctx) => {
+      const pending = await ctx.db.query('budgetTopUps').filter((q) => q.eq(q.field('status'), 'pending')).first()
+      await ctx.db.patch(pending!._id, { status: 'succeeded' })
+    })
+
+    // Two nights missed: both days are counted in order, and the days before are re-counted.
     vi.setSystemTime(at(addDays(DAY1, 3), 0))
     await convex.mutation(startDaily, {})
     await runAll(convex)
     const counted = await convex.run(async (ctx) => (await ctx.db.query('growthDailyTotals').collect()).map((row) => row.day).sort())
-    expect(counted).toEqual([DAY1, addDays(DAY1, 1), addDays(DAY1, 2)])
+    expect(counted).toEqual([addDays(DAY1, -1), DAY1, addDays(DAY1, 1), addDays(DAY1, 2)])
+    expect(await totals(convex, DAY1)).toMatchObject({ topUps: 2, topUpCents: 1_800, paidSubscriptions: 1 })
+  })
+
+  test('a backfill after the first nightly run still gets weekly actives and dates paid accounts by their subscription', async () => {
+    const convex = convexTest(schema, modules)
+    await seed(convex)
+    const day8 = addDays(DAY1, 7)
+    vi.setSystemTime(at(addDays(day8, 1), 0))
+    await convex.mutation(startDaily, {})
+    await runAll(convex)
+
+    await convex.mutation(startBackfill, {})
+    await runAll(convex)
+    expect(await totals(convex, DAY1)).toMatchObject({ activeUsers: 2, weeklyActiveUsers: 2, monthlyActiveUsers: 2 })
+    expect(await totals(convex, addDays(DAY1, 3))).toMatchObject({ weeklyActiveUsers: 2 })
+    expect(await totals(convex, day8)).toMatchObject({ activeUsers: 2, weeklyActiveUsers: 2, monthlyActiveUsers: 2, paidSubscriptions: 1 })
+    expect(await convex.run(async (ctx) => await ctx.db.query('growthPaidAccounts').collect()))
+      .toMatchObject([{ billingAccountId: 'ba-w1', firstPaidDay: DAY1, approximate: true }])
+    expect(await convex.run(async (ctx) =>
+      await ctx.db.query('growthCohortWeeks').withIndex('by_weekStart', (q) => q.eq('weekStart', DAY1)).unique()))
+      .toMatchObject({ users: 2, w1Active: 2 })
+  })
+
+  test('an account that turns paid after the first snapshot is dated by the night it was seen', async () => {
+    const convex = convexTest(schema, modules)
+    await seed(convex)
+    vi.setSystemTime(at(addDays(DAY1, 1), 0))
+    await convex.mutation(startDaily, {})
+    await runAll(convex)
+    await convex.run(async (ctx) => {
+      await ctx.db.insert('billingAccountSubscriptions', {
+        billingAccountId: 'ba-new', provider: 'stripe', planKind: 'paid', planVersion: 'variable_v2', planAmountCents: 2_000,
+        markupBasisPoints: 2_500, status: 'active', autoTopUpEnabled: false, autoTopUpAmountCents: 0, createdAt: at(DAY1), updatedAt: at(DAY1),
+      })
+    })
+    vi.setSystemTime(at(addDays(DAY1, 2), 0))
+    await convex.mutation(startDaily, {})
+    await runAll(convex)
+    const paid = await convex.run(async (ctx) => await ctx.db.query('growthPaidAccounts')
+      .withIndex('by_billingAccountId', (q) => q.eq('billingAccountId', 'ba-new')).unique())
+    expect(paid).toMatchObject({ firstPaidDay: addDays(DAY1, 1), approximate: false })
   })
 
   test('a live night with no paid plans records zero, and a recount after a cancellation drops to zero', async () => {
@@ -231,6 +287,21 @@ describe('file edit tracking', () => {
     await convex.mutation(updateFile, { userId: 'user_1', serverSecret: secret, fileId, content: 'Third' })
     await convex.run(ctx => recordFileEdit(ctx, fileId, 'user_2', Date.now()))
     await convex.run(ctx => recordFileEdit(ctx, fileId, undefined, Date.now()))
+
+    // Text in object storage: the prefix stays the same, the full-text hash changes.
+    const large = await convex.run(ctx => ctx.db.insert('files', {
+      userId: 'user_1', name: 'Big', type: 'file', kind: 'upload', content: 'prefix', contentHash: 'hash-1',
+      textInObjectStore: true, createdAt: 1, updatedAt: 1,
+    }))
+    await convex.mutation(updateFile, { userId: 'user_1', serverSecret: secret, fileId: large, content: 'prefix', contentHash: 'hash-1' })
+    expect((await edits()).length).toBe(1)
+    await convex.mutation(updateFile, { userId: 'user_1', serverSecret: secret, fileId: large, content: 'prefix', contentHash: 'hash-2' })
+    expect((await edits()).length).toBe(2)
+    await convex.run(ctx => ctx.db.delete(large))
+    await convex.run(async (ctx) => {
+      const row = await ctx.db.query('growthFileEdits').withIndex('by_fileId_day', (q) => q.eq('fileId', large)).first()
+      await ctx.db.delete(row!._id)
+    })
 
     // An edit just after midnight starts a new day and leaves yesterday's in place.
     vi.setSystemTime(at(addDays(DAY1, 1), 0))

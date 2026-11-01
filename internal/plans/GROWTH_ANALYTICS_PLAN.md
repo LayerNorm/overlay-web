@@ -30,18 +30,18 @@ their original timestamp in it.
 | Created | Tasks | `workItems` | the `created` event's actor (below), not `userId`: an agent can create a task owned by a person |
 | Created | Agents | `workspaceAgentDefinitions`, excluding `isDefault` | `createdByPrincipalId` → `workspacePrincipals.userId` (human only) |
 | Created | Automations | `automations` | `userId` |
-| Created | Files | `files` where `kind` is `note` or `upload` (folders and AI outputs excluded) | `userId` |
+| Created | Files | `files` where `kind` is `note` or `upload` (folders and AI outputs excluded) | `userId`, unless `createdByAgent` (agent drive saves under the owner) |
 | Work | Threads created | `conversations`, excluding `isAutomation` | `userId` |
 | Work | Messages sent | `conversationMessages` where `role = 'user'`, `importedAuthorName` unset and `authorKind` is unset or `human` | `userId` |
 | Work | Automations run | `automationRuns`, split by final status (succeeded/completed vs failed/dead_letter) | only when `triggerSource` is `manual` or `retry` |
 | Work | Task created or changed | `workItemEvents`, every kind (used for "active" only, not shown) | `actorPrincipalId` → `workspacePrincipals.userId` (human only) |
 | Work | Files edited | new `growthFileEdits` rows for the day (Phase 1) | each row's `editorUserIds` |
 | Usage | Users created | `subscriptions`: one row per user, inserted at first sign-in by `auth/users:syncUserProfileByServer` (`isNewUser`). There's no separate users table. | the new user |
-| Usage | Daily / weekly / monthly active users | distinct users in `growthUserDays` | n/a |
+| Usage | Daily / weekly / monthly active users | distinct users in `growthUserDays` for the day / last 7 / last 30 days | n/a |
 | Usage | Paid subscriptions | `billingAccountSubscriptions` where `planKind = 'paid'` and `status` is `active`/`trialing` (snapshot each night) | n/a |
-| Usage | New paid subscriptions | accounts paid tonight that weren't paid in any earlier snapshot (`growthPaidAccounts`) | n/a |
-| Usage | Top-ups purchased | `budgetTopUps` where `status = 'succeeded'`: count and `amountCents` (net of `refundedAmountCents`) | n/a |
-| Usage | Resources used | `usageOperations`: total `cents` (Overlay-billed AI and compute), plus `usageSeconds` where `kind = 'sandbox'` (agent machine time), grouped by `billingAccountId` → `billingAccounts.workspaceId` | n/a |
+| Usage | New paid subscriptions | `growthPaidAccounts` rows by `firstPaidDay` (read by the panel, not stored per day) | n/a |
+| Usage | Top-ups purchased | `budgetTopUps` with `status` `succeeded` or `refunded` (a partial refund is marked refunded): count and `amountCents` net of `refundedAmountCents`, when anything was kept | n/a |
+| Usage | Resources used | as `billing/usageTotals` computes it: finalized `budgetReservations` (`finalizedCents`) plus `usageOperations` that carry their own `cents` (machine-time meter, batch usage); `usageSeconds` where `kind = 'sandbox'`. Grouped by `billingAccountId` → `billingAccounts.workspaceId` | n/a |
 | Retention | W1, W4 | see definition below | n/a |
 
 **Units of work** (used for "active"): thread created, message sent, manual
@@ -61,15 +61,21 @@ Agents and automations acting by themselves never make anyone active.
 2. **No history of when an account became paid.** `billingAccountSubscriptions` is
    updated in place (`convex/billing/accountSubscriptions.ts`), so the date it
    turned paid is lost. The nightly snapshot plus `growthPaidAccounts` (first night
-   seen paid) records it from now on. For the backfill, each paid account's
-   `createdAt` is used as its best-known date and marked approximate in the panel.
+   seen paid) records it from now on. Accounts already paid at the very first
+   snapshot are dated by their subscription's `createdAt` and marked approximate,
+   whether the backfill runs before or after that night.
 3. **Slack-surface messages.** For conversations linked to Slack (`externalPlatform`
    set), `conversationMessages.userId` may be the person who connected Slack, not
    the person who wrote in Slack. These messages count in "Messages sent" but don't
    make anyone active until the author can be mapped.
 4. **`dailyUsage` / `tokenUsage` aren't used.** They hold per-user counters and
-   billing-period totals, not per-day spend. `usageOperations` has one row per
-   billed operation with `cents`, so it's the right source.
+   billing-period totals, not per-day spend. Billed spend is split between
+   finalized reservations and self-charged usage operations, the same sources
+   `billing/usageTotals` sums.
+5. **Outcomes settle after midnight.** A top-up confirmed late, an automation run
+   still going, or a reservation finalized later changes after its day is first
+   counted. Each night re-counts the two days before, which covers ordinary
+   delays; a refund weeks later is not reflected in the old day.
 
 **Retention.** Group users by signup week. W1 is the share active at least once
 on days 7–13 after signup. W4 is the share active on days 28–34. A signup
@@ -80,32 +86,37 @@ week's figure is reported only once that window has fully passed.
 Shared validators live in `convex/lib/growthSchema.ts`; the job is
 `convex/platform/growth.ts`.
 
+Every number comes out the same whatever order days are counted in, so the
+nightly run, the backfill and repairs can overlap in history safely.
+
 - `growthDailyTotals`: one row per UTC day with every count above, weekly and
-  monthly actives, paid subscriptions (live nights only), new paid
-  subscriptions, the top 10 workspaces by Overlay-billed spend, and `computedAt`.
+  monthly actives, paid subscriptions (live nights only), the top 10 workspaces
+  by Overlay-billed spend, and `computedAt`.
 - `growthUserDays`: one row per (user, UTC day) the user did a unit of work.
-- `growthUsers`: one row per user: `signupDay`, `lastActiveDay`, and whether the
-  W1 and W4 windows were hit. Weekly/monthly actives count users by
-  `lastActiveDay`, which is only right while no later day has been counted, so a
-  re-run of an earlier day keeps that day's stored weekly/monthly numbers.
+  Weekly/monthly actives look each user up here for the window.
+- `growthUsers`: one row per user: `signupDay` and whether the W1 and W4 windows
+  were hit. Retention is checked both when a signup is counted and when a new
+  user-day is added, so either can come first.
 - `growthCohortWeeks`: per signup week (Monday, UTC), the user count and how many
   hit W1 and W4. Updated as each window is first hit, so the panel reads it
   directly.
-- `growthPaidAccounts`: the first night each billing account was seen paid
-  (`approximate: true` for backfilled rows).
+- `growthPaidAccounts`: the first day each billing account was paid
+  (`approximate: true` for accounts already paid at the first snapshot).
+- `growthWorkspaceUsage`: Overlay-billed spend per (day, workspace), rebuilt each
+  time the day is counted. The top 10 are copied into `growthDailyTotals`.
 - `growthJobState`: one row: the day being counted, the step and page cursor,
-  running counts, and the last and latest completed days.
-
+  running counts, the last completed day and the first paid-snapshot day.
 - `growthFileEdits`: one row per (file, UTC day) whose text changed, with every
   person who edited it that day. Written at edit time by `recordFileEdit`
   (`convex/lib/growthFileEdits.ts`): `files:update` calls it when the text really
-  changes (not for AI outputs), and agent drive overwrites call it with no editor.
+  changes (by full-text hash when present, since object-stored text sends only a
+  prefix; never for AI outputs), and agent drive overwrites call it with no editor.
 
-No existing tables change.
+One existing table changes: `files.createdByAgent` (optional), set by agent
+drive uploads.
 
-Resources used are summed per workspace in `growthDailyTotals` as a small
-top-N list. Personal billing accounts count in the totals only. The panel
-shows totals and that list, nothing per user.
+Personal billing accounts count in the spend totals only. The panel shows
+totals and the workspace list, nothing per user.
 
 ## Phases
 
@@ -123,12 +134,12 @@ Sources, filters and gaps are recorded in the Metrics section above.
   never double-counts; re-running a day starts its counts from zero. Pages stay
   small for tables with large rows (files 10, messages 15).
 - Cron `growth daily totals` runs `platform/growth:startDaily` at 00:20 UTC. It
-  counts every day after the last completed one, up to yesterday. The first run
-  on a deployment counts only yesterday. A run with no progress for 2 hours is
-  restarted from that day's first step.
+  counts every day after the last completed one, up to yesterday, and re-counts
+  the two days before. The first run on a deployment counts only yesterday. A
+  run with no progress for 2 hours is restarted from that day's first step.
 - Backfill: `platform/growth:startBackfill` (optional `fromDay`, default the
   first signup; `force` restarts a running job) recounts each day to yesterday
-  in order, and seeds paid accounts with their subscription's creation day.
+  in order. It can run before or after the first nightly run.
   After the production deploy, run it once from the dashboard or with
   `npx convex run platform/growth:startBackfill '{}'` against the selected
   deployment, following `internal/develop/convex-workflow.md`.
@@ -139,7 +150,8 @@ Sources, filters and gaps are recorded in the Metrics section above.
 - Convex: `admin/console:getGrowthSummary`, admin-secret guarded like the other
   console queries, reading only the growth tables. It returns the last 90 days
   of totals, DAU/WAU/MAU, a retention table by signup week (last 12 weeks), and
-  the top workspaces by resources used.
+  the top workspaces by resources used. New paid subscriptions per day come
+  from `growthPaidAccounts` by `firstPaidDay`, marking approximate dates.
 - Admin app: `GET /api/v1/admin/growth` through `adminRoute`. It's open to
   `admin`, `auditor` and `billing_admin` and recorded with an audit action
   `administration.growth.read`.

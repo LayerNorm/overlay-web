@@ -187,7 +187,7 @@ export const commitByServer = mutation({
       // An agent overwrite: counted as an edit, credited to no person.
       await recordFileEdit(ctx, existing._id, undefined, now)
       fileId = existing._id
-    } else fileId = await ctx.db.insert('files', { ...fields, userId: upload.ownerUserId,
+    } else fileId = await ctx.db.insert('files', { ...fields, userId: upload.ownerUserId, createdByAgent: true,
       workspaceId: authority.scope.workspaceId, scope: authority.scope.kind, type: 'file', kind: 'upload',
       parentId: upload.parentId, extension: name.includes('.') ? name.slice(name.lastIndexOf('.') + 1).toLowerCase() : undefined,
       createdAt: now })

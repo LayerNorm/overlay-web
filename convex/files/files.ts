@@ -1210,7 +1210,11 @@ export const update = mutation({
           ? await findCanonicalDuplicate(ctx as never, userId, updates.contentHash, fileId)
           : null
       patch.content = nextText
-      if (kind !== 'output' && nextText !== existingText) {
+      // Text kept in object storage sends only a prefix as `content`, so its full-text hash decides.
+      const textChanged = updates.contentHash && existing.contentHash
+        ? updates.contentHash !== existing.contentHash
+        : nextText !== existingText
+      if (kind !== 'output' && textChanged) {
         await recordFileEdit(ctx, fileId, callerId, patch.updatedAt as number)
       }
       // Legacy rows can still carry textContent, which readers prefer over

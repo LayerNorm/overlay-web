@@ -1,8 +1,8 @@
-import { v, type Infer } from 'convex/values'
+import { v } from 'convex/values'
 import { internal } from '../_generated/api'
 import type { Doc } from '../_generated/dataModel'
 import { internalMutation, type MutationCtx } from '../_generated/server'
-import { growthAccountUsageValidator, growthCountFields } from '../lib/growthSchema'
+import { growthCountFields } from '../lib/growthSchema'
 
 /**
  * Nightly growth rollups (see internal/plans/GROWTH_ANALYTICS_PLAN.md).
@@ -10,17 +10,24 @@ import { growthAccountUsageValidator, growthCountFields } from '../lib/growthSch
  * One UTC day is counted as a chain of small mutations: each reads one page of
  * one source table, adds to the running counts in `growthJobState`, and
  * schedules the next page. A page and its counts commit together, so a retry
- * never double-counts, and re-running a day starts its counts from zero.
+ * never double-counts, and re-counting a day starts its counts from zero. Every
+ * step gives the same answer whatever order days are counted in, so the
+ * nightly run, a backfill and a repair can overlap in history safely.
  */
 
 type Counts = { [Field in keyof typeof growthCountFields]: number }
-type AccountUsage = Infer<typeof growthAccountUsageValidator>
 type JobState = Doc<'growthJobState'>
 
 const DAY_MS = 86_400_000
 /** A run with no progress for this long is treated as stopped and restarted. */
 const STALE_RUN_MS = 2 * 60 * 60 * 1_000
 const TOP_WORKSPACES = 10
+/**
+ * Each night also re-counts this many earlier days, so outcomes that settle
+ * after midnight (a top-up confirmed late, a run still going, a reservation
+ * finalized later) are picked up.
+ */
+const RECOUNT_DAYS = 2
 
 export function dayOf(ms: number): string {
   return new Date(ms).toISOString().slice(0, 10)
@@ -73,40 +80,48 @@ async function bumpCohort(ctx: MutationCtx, signupDay: string, field: 'users' | 
   }
 }
 
+/** Whether the user did any work on a day between `fromDay` and `toDay`. */
+async function activeBetween(ctx: MutationCtx, userId: string, fromDay: string, toDay: string): Promise<boolean> {
+  const row = await ctx.db.query('growthUserDays')
+    .withIndex('by_userId_day', (q) => q.eq('userId', userId).gte('day', fromDay).lte('day', toDay)).first()
+  return row !== null
+}
+
+/** Credits W1 / W4 once each, whichever order the signup and the activity are counted in. */
+async function creditRetention(ctx: MutationCtx, user: Doc<'growthUsers'>) {
+  if (!user.signupDay) return
+  const patch: Partial<Doc<'growthUsers'>> = {}
+  if (!user.w1Active && await activeBetween(ctx, user.userId, addDays(user.signupDay, 7), addDays(user.signupDay, 13))) {
+    patch.w1Active = true
+    await bumpCohort(ctx, user.signupDay, 'w1Active')
+  }
+  if (!user.w4Active && await activeBetween(ctx, user.userId, addDays(user.signupDay, 28), addDays(user.signupDay, 34))) {
+    patch.w4Active = true
+    await bumpCohort(ctx, user.signupDay, 'w4Active')
+  }
+  if (Object.keys(patch).length > 0) await ctx.db.patch(user._id, patch)
+}
+
 async function recordSignup(ctx: MutationCtx, userId: string, day: string) {
   const existing = await growthUser(ctx, userId)
   if (existing?.signupDay) return
   if (existing) await ctx.db.patch(existing._id, { signupDay: day })
   else await ctx.db.insert('growthUsers', { userId, signupDay: day, w1Active: false, w4Active: false })
   await bumpCohort(ctx, day, 'users')
+  const user = await growthUser(ctx, userId)
+  if (user) await creditRetention(ctx, user)
 }
 
-/** Marks each person active on `day`: one user-day row, last active day, and the retention windows. */
+/** Marks each person active on `day` and credits any retention window that day falls in. */
 async function creditActive(ctx: MutationCtx, userIds: Iterable<string>, day: string) {
   for (const userId of new Set(userIds)) {
     const userDay = await ctx.db.query('growthUserDays')
       .withIndex('by_userId_day', (q) => q.eq('userId', userId).eq('day', day)).unique()
-    if (!userDay) await ctx.db.insert('growthUserDays', { userId, day })
-
+    if (userDay) continue
+    await ctx.db.insert('growthUserDays', { userId, day })
     const user = await growthUser(ctx, userId)
-    if (!user) {
-      await ctx.db.insert('growthUsers', { userId, lastActiveDay: day, w1Active: false, w4Active: false })
-      continue
-    }
-    const patch: Partial<Doc<'growthUsers'>> = {}
-    if (!user.lastActiveDay || user.lastActiveDay < day) patch.lastActiveDay = day
-    if (user.signupDay) {
-      const offset = daysBetween(user.signupDay, day)
-      if (!user.w1Active && offset >= 7 && offset <= 13) {
-        patch.w1Active = true
-        await bumpCohort(ctx, user.signupDay, 'w1Active')
-      }
-      if (!user.w4Active && offset >= 28 && offset <= 34) {
-        patch.w4Active = true
-        await bumpCohort(ctx, user.signupDay, 'w4Active')
-      }
-    }
-    if (Object.keys(patch).length > 0) await ctx.db.patch(user._id, patch)
+    if (user) await creditRetention(ctx, user)
+    else await ctx.db.insert('growthUsers', { userId, w1Active: false, w4Active: false })
   }
 }
 
@@ -121,19 +136,63 @@ async function principalUserIds(ctx: MutationCtx, principalIds: Iterable<string>
   return userIds
 }
 
+/** Adds spend to the day's workspace row. Personal billing accounts count in the totals only. */
+async function addWorkspaceUsage(
+  ctx: MutationCtx,
+  day: string,
+  usage: Map<string, { cents: number; sandboxSeconds: number }>,
+) {
+  for (const [billingAccountId, { cents, sandboxSeconds }] of usage) {
+    const account = await ctx.db.query('billingAccounts')
+      .withIndex('by_billingAccountId', (q) => q.eq('billingAccountId', billingAccountId)).first()
+    if (account?.scope !== 'workspace' || !account.workspaceId) continue
+    const workspaceId = account.workspaceId
+    const row = await ctx.db.query('growthWorkspaceUsage')
+      .withIndex('by_day_workspaceId', (q) => q.eq('day', day).eq('workspaceId', workspaceId)).unique()
+    if (row) await ctx.db.patch(row._id, { cents: row.cents + cents, sandboxSeconds: row.sandboxSeconds + sandboxSeconds })
+    else await ctx.db.insert('growthWorkspaceUsage', { day, workspaceId, cents, sandboxSeconds })
+  }
+}
+
+function addCharge(
+  usage: Map<string, { cents: number; sandboxSeconds: number }>,
+  counts: Counts,
+  charge: { billingAccountId?: string; cents: number; sandboxSeconds: number },
+) {
+  counts.usageCents += charge.cents
+  counts.sandboxSeconds += charge.sandboxSeconds
+  if (!charge.billingAccountId) return
+  const total = usage.get(charge.billingAccountId) ?? { cents: 0, sandboxSeconds: 0 }
+  total.cents += charge.cents
+  total.sandboxSeconds += charge.sandboxSeconds
+  usage.set(charge.billingAccountId, total)
+}
+
 // ─── Steps ───────────────────────────────────────────────────────────────
 
 type StepInput = { ctx: MutationCtx; state: JobState; day: string; cursor: string | null; counts: Counts }
 type StepResult = { isDone: boolean; continueCursor: string }
 type Step = (input: StepInput) => Promise<StepResult>
 
+const SKIP: StepResult = { isDone: true, continueCursor: '' }
+
 function isCountedFile(file: Doc<'files'>): boolean {
   if (file.kind) return file.kind === 'note' || file.kind === 'upload'
   return file.type === 'file' && !file.outputType
 }
 
-/** Steps run in this order for every day. Signups come first so later activity can find the signup day. */
+function isPaid(subscription: Doc<'billingAccountSubscriptions'>): boolean {
+  return subscription.planKind === 'paid' && (subscription.status === 'active' || subscription.status === 'trialing')
+}
+
+/** Steps run in this order for every day. */
 const STEPS: Step[] = [
+  // Workspace spend is rebuilt from scratch each time a day is counted.
+  async ({ ctx, day }) => {
+    const rows = await ctx.db.query('growthWorkspaceUsage').withIndex('by_day_workspaceId', (q) => q.eq('day', day)).take(500)
+    for (const row of rows) await ctx.db.delete(row._id)
+    return { isDone: rows.length < 500, continueCursor: '' }
+  },
   async ({ ctx, day, cursor, counts }) => {
     const { start, end } = dayRange(day)
     const page = await ctx.db.query('subscriptions')
@@ -189,7 +248,8 @@ const STEPS: Step[] = [
       .paginate({ cursor, numItems: 10 })
     const files = page.page.filter(isCountedFile)
     counts.filesCreated += files.length
-    await creditActive(ctx, files.map((file) => file.userId), day)
+    // Agent drive files are saved under the owner, who didn't make them.
+    await creditActive(ctx, files.filter((file) => !file.createdByAgent).map((file) => file.userId), day)
     return page
   },
   async ({ ctx, day, cursor, counts }) => {
@@ -255,31 +315,49 @@ const STEPS: Step[] = [
       .withIndex('by_creation_time', (q) => q.gte('_creationTime', start).lt('_creationTime', end))
       .paginate({ cursor, numItems: 200 })
     for (const topUp of page.page) {
-      if (topUp.status !== 'succeeded') continue
+      // A partly refunded top-up is marked refunded but still kept the rest.
+      if (topUp.status !== 'succeeded' && topUp.status !== 'refunded') continue
+      const kept = topUp.amountCents - (topUp.refundedAmountCents ?? 0)
+      if (kept <= 0) continue
       counts.topUps += 1
-      counts.topUpCents += topUp.amountCents - (topUp.refundedAmountCents ?? 0)
+      counts.topUpCents += kept
     }
     return page
   },
-  async ({ ctx, state, day, cursor, counts }) => {
+  // Billed spend matches billing's own totals (billing/usageTotals): finalized
+  // reservations, plus usage operations that carry their own charge.
+  async ({ ctx, day, cursor, counts }) => {
+    const { start, end } = dayRange(day)
+    const page = await ctx.db.query('budgetReservations')
+      .withIndex('by_creation_time', (q) => q.gte('_creationTime', start).lt('_creationTime', end))
+      .paginate({ cursor, numItems: 200 })
+    const usage = new Map<string, { cents: number; sandboxSeconds: number }>()
+    for (const reservation of page.page) {
+      if (reservation.status !== 'finalized') continue
+      addCharge(usage, counts, {
+        billingAccountId: reservation.billingAccountId,
+        cents: reservation.finalizedCents ?? 0,
+        sandboxSeconds: reservation.kind === 'sandbox' ? reservation.usageSeconds ?? 0 : 0,
+      })
+    }
+    await addWorkspaceUsage(ctx, day, usage)
+    return page
+  },
+  async ({ ctx, day, cursor, counts }) => {
     const { start, end } = dayRange(day)
     const page = await ctx.db.query('usageOperations')
       .withIndex('by_creation_time', (q) => q.gte('_creationTime', start).lt('_creationTime', end))
       .paginate({ cursor, numItems: 200 })
-    const byAccount = new Map((state.accountUsage ?? []).map((usage) => [usage.billingAccountId, { ...usage }]))
+    const usage = new Map<string, { cents: number; sandboxSeconds: number }>()
     for (const operation of page.page) {
-      const cents = operation.cents ?? 0
-      const seconds = operation.kind === 'sandbox' ? operation.usageSeconds ?? 0 : 0
-      counts.usageCents += cents
-      counts.sandboxSeconds += seconds
-      if (!operation.billingAccountId) continue
-      const usage = byAccount.get(operation.billingAccountId)
-        ?? { billingAccountId: operation.billingAccountId, cents: 0, sandboxSeconds: 0 }
-      usage.cents += cents
-      usage.sandboxSeconds += seconds
-      byAccount.set(operation.billingAccountId, usage)
+      if (!operation.cents || !operation.kind) continue
+      addCharge(usage, counts, {
+        billingAccountId: operation.billingAccountId,
+        cents: operation.cents,
+        sandboxSeconds: operation.kind === 'sandbox' ? operation.usageSeconds ?? 0 : 0,
+      })
     }
-    state.accountUsage = [...byAccount.values()]
+    await addWorkspaceUsage(ctx, day, usage)
     return page
   },
   async ({ ctx, day, cursor, counts }) => {
@@ -288,83 +366,73 @@ const STEPS: Step[] = [
     counts.activeUsers += page.page.length
     return page
   },
-  // Weekly/monthly actives use each user's last active day, which is only right
-  // when no later day has been counted yet.
+  // Weekly/monthly actives look each user's activity up directly, so they're
+  // right whichever order days were counted in.
   async ({ ctx, state, day, cursor }) => {
-    if (state.maxCompletedDay && state.maxCompletedDay >= day) return { isDone: true, continueCursor: '' }
     const monthStart = addDays(day, -29)
     const weekStart = addDays(day, -6)
-    const page = await ctx.db.query('growthUsers')
-      .withIndex('by_lastActiveDay', (q) => q.gte('lastActiveDay', monthStart).lte('lastActiveDay', day))
-      .paginate({ cursor, numItems: 1_000 })
-    state.monthlyActiveUsers = (state.monthlyActiveUsers ?? 0) + page.page.length
-    state.weeklyActiveUsers = (state.weeklyActiveUsers ?? 0)
-      + page.page.filter((user) => user.lastActiveDay && user.lastActiveDay >= weekStart).length
+    const page = await ctx.db.query('growthUsers').paginate({ cursor, numItems: 200 })
+    for (const user of page.page) {
+      const latest = await ctx.db.query('growthUserDays')
+        .withIndex('by_userId_day', (q) => q.eq('userId', user.userId).gte('day', monthStart).lte('day', day))
+        .order('desc').first()
+      if (!latest) continue
+      state.monthlyActiveUsers = (state.monthlyActiveUsers ?? 0) + 1
+      if (latest.day >= weekStart) state.weeklyActiveUsers = (state.weeklyActiveUsers ?? 0) + 1
+    }
     return page
   },
   // Paid plans are only known as they are now, so the snapshot is taken for yesterday only.
   async ({ ctx, state, day, cursor }) => {
-    if (day !== addDays(dayOf(Date.now()), -1)) return { isDone: true, continueCursor: '' }
+    if (day !== addDays(dayOf(Date.now()), -1)) return SKIP
     // A live night with no paid plans is a real zero, not a missing snapshot.
     if (cursor === null) state.paidSubscriptions = 0
+    state.firstPaidSnapshotDay ??= day
+    // On the first snapshot every paid account is pre-existing: date it by its subscription, approximately.
+    const firstSnapshot = state.firstPaidSnapshotDay === day
     const page = await ctx.db.query('billingAccountSubscriptions').paginate({ cursor, numItems: 500 })
     for (const subscription of page.page) {
       if (!isPaid(subscription)) continue
       state.paidSubscriptions = (state.paidSubscriptions ?? 0) + 1
       const seen = await ctx.db.query('growthPaidAccounts')
         .withIndex('by_billingAccountId', (q) => q.eq('billingAccountId', subscription.billingAccountId)).first()
-      if (!seen) {
-        await ctx.db.insert('growthPaidAccounts', { billingAccountId: subscription.billingAccountId, firstPaidDay: day, approximate: false })
-      }
+      if (seen) continue
+      await ctx.db.insert('growthPaidAccounts', {
+        billingAccountId: subscription.billingAccountId,
+        firstPaidDay: firstSnapshot ? dayOf(subscription.createdAt) : day,
+        approximate: firstSnapshot,
+      })
     }
     return page
   },
 ]
 
-function isPaid(subscription: Doc<'billingAccountSubscriptions'>): boolean {
-  return subscription.planKind === 'paid' && (subscription.status === 'active' || subscription.status === 'trialing')
-}
-
-async function topWorkspaces(ctx: MutationCtx, accountUsage: AccountUsage[]) {
-  const top: Array<{ workspaceId: string; cents: number; sandboxSeconds: number }> = []
-  for (const usage of [...accountUsage].sort((a, b) => b.cents - a.cents)) {
-    if (top.length >= TOP_WORKSPACES) break
-    const account = await ctx.db.query('billingAccounts')
-      .withIndex('by_billingAccountId', (q) => q.eq('billingAccountId', usage.billingAccountId)).first()
-    // Personal accounts are people, not workspaces; they stay in the totals only.
-    if (account?.scope !== 'workspace' || !account.workspaceId) continue
-    top.push({ workspaceId: account.workspaceId, cents: usage.cents, sandboxSeconds: usage.sandboxSeconds })
-  }
-  return top
-}
-
 async function finishDay(ctx: MutationCtx, state: JobState, day: string) {
-  const counts = state.counts ?? zeroCounts()
-  const newPaid = await ctx.db.query('growthPaidAccounts').withIndex('by_firstPaidDay', (q) => q.eq('firstPaidDay', day)).collect()
   const existing = await ctx.db.query('growthDailyTotals').withIndex('by_day', (q) => q.eq('day', day)).unique()
-  const rerun = Boolean(state.maxCompletedDay && state.maxCompletedDay >= day)
+  const topWorkspaces = await ctx.db.query('growthWorkspaceUsage')
+    .withIndex('by_day_cents', (q) => q.eq('day', day)).order('desc').take(TOP_WORKSPACES)
   const totals = {
     day,
-    ...counts,
-    weeklyActiveUsers: rerun ? existing?.weeklyActiveUsers : state.weeklyActiveUsers ?? 0,
-    monthlyActiveUsers: rerun ? existing?.monthlyActiveUsers : state.monthlyActiveUsers ?? 0,
+    ...(state.counts ?? zeroCounts()),
+    weeklyActiveUsers: state.weeklyActiveUsers ?? 0,
+    monthlyActiveUsers: state.monthlyActiveUsers ?? 0,
+    // A recount of an earlier day keeps the snapshot taken on its live night.
     paidSubscriptions: state.paidSubscriptions ?? existing?.paidSubscriptions,
-    newPaidSubscriptions: newPaid.length,
-    topWorkspaces: await topWorkspaces(ctx, state.accountUsage ?? []),
+    topWorkspaces: topWorkspaces.map(({ workspaceId, cents, sandboxSeconds }) => ({ workspaceId, cents, sandboxSeconds })),
     computedAt: Date.now(),
   }
   if (existing) await ctx.db.replace(existing._id, totals)
   else await ctx.db.insert('growthDailyTotals', totals)
 
-  const maxCompletedDay = rerun ? state.maxCompletedDay : day
+  const lastCompletedDay = state.lastCompletedDay && state.lastCompletedDay > day ? state.lastCompletedDay : day
   if (state.untilDay && day < state.untilDay) {
-    await ctx.db.patch(state._id, { lastCompletedDay: day, maxCompletedDay })
+    await ctx.db.patch(state._id, { lastCompletedDay })
     await beginDay(ctx, addDays(day, 1))
     return
   }
   await ctx.db.patch(state._id, {
-    lastCompletedDay: day, maxCompletedDay, day: undefined, step: undefined, cursor: undefined, counts: undefined,
-    accountUsage: undefined, weeklyActiveUsers: undefined, monthlyActiveUsers: undefined, paidSubscriptions: undefined,
+    lastCompletedDay, day: undefined, step: undefined, cursor: undefined, counts: undefined,
+    weeklyActiveUsers: undefined, monthlyActiveUsers: undefined, paidSubscriptions: undefined,
     untilDay: undefined, updatedAt: Date.now(),
   })
 }
@@ -372,7 +440,7 @@ async function finishDay(ctx: MutationCtx, state: JobState, day: string) {
 async function beginDay(ctx: MutationCtx, day: string, untilDay?: string) {
   const state = await getState(ctx)
   const fresh = {
-    day, step: 0, cursor: undefined, counts: zeroCounts(), accountUsage: [],
+    day, step: 0, cursor: undefined, counts: zeroCounts(),
     weeklyActiveUsers: undefined, monthlyActiveUsers: undefined, paidSubscriptions: undefined, updatedAt: Date.now(),
   }
   if (state) await ctx.db.patch(state._id, { ...fresh, ...(untilDay ? { untilDay } : {}) })
@@ -399,10 +467,10 @@ export const runStep = internalMutation({
     const result = await STEPS[state.step]!({ ctx, state: working, day, cursor: state.cursor ?? null, counts })
     await ctx.db.patch(state._id, {
       counts,
-      accountUsage: working.accountUsage,
       weeklyActiveUsers: working.weeklyActiveUsers,
       monthlyActiveUsers: working.monthlyActiveUsers,
       paidSubscriptions: working.paidSubscriptions,
+      firstPaidSnapshotDay: working.firstPaidSnapshotDay,
       step: result.isDone ? state.step + 1 : state.step,
       cursor: result.isDone ? undefined : result.continueCursor,
       updatedAt: Date.now(),
@@ -412,7 +480,10 @@ export const runStep = internalMutation({
   },
 })
 
-/** Nightly cron: counts every day since the last completed one, up to yesterday. */
+/**
+ * Nightly cron: counts every day since the last completed one, up to
+ * yesterday, re-counting the RECOUNT_DAYS before it.
+ */
 export const startDaily = internalMutation({
   args: {},
   returns: v.null(),
@@ -426,18 +497,14 @@ export const startDaily = internalMutation({
       await beginDay(ctx, state.day, state.untilDay ?? yesterday)
       return null
     }
-    const nextDay = state?.lastCompletedDay ? addDays(state.lastCompletedDay, 1) : yesterday
-    if (nextDay > yesterday) return null
-    await beginDay(ctx, nextDay, yesterday)
+    if (state?.lastCompletedDay && state.lastCompletedDay >= yesterday) return null
+    const fromDay = state?.lastCompletedDay ? addDays(state.lastCompletedDay, 1 - RECOUNT_DAYS) : yesterday
+    await beginDay(ctx, fromDay, yesterday)
     return null
   },
 })
 
-/**
- * One-time (or repair) backfill: recounts every day from `fromDay` (default:
- * the first signup) to yesterday. Paid accounts get their subscription's
- * creation day, marked approximate.
- */
+/** One-time (or repair) backfill: recounts every day from `fromDay` (default: the first signup) to yesterday. */
 export const startBackfill = internalMutation({
   args: { fromDay: v.optional(v.string()), force: v.optional(v.boolean()) },
   returns: v.object({ fromDay: v.union(v.string(), v.null()), untilDay: v.string() }),
@@ -451,17 +518,6 @@ export const startBackfill = internalMutation({
     const firstSignup = await ctx.db.query('subscriptions').order('asc').first()
     const start = fromDay ?? (firstSignup ? dayOf(firstSignup._creationTime) : null)
     if (!start || start > untilDay) return { fromDay: null, untilDay }
-
-    for (const subscription of await ctx.db.query('billingAccountSubscriptions').take(5_000)) {
-      if (!isPaid(subscription)) continue
-      const seen = await ctx.db.query('growthPaidAccounts')
-        .withIndex('by_billingAccountId', (q) => q.eq('billingAccountId', subscription.billingAccountId)).first()
-      if (!seen) {
-        await ctx.db.insert('growthPaidAccounts', {
-          billingAccountId: subscription.billingAccountId, firstPaidDay: dayOf(subscription.createdAt), approximate: true,
-        })
-      }
-    }
     await beginDay(ctx, start, untilDay)
     return { fromDay: start, untilDay }
   },
