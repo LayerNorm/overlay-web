@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Add a durable resource-wait component and authoritative step adapters with polling fallback for lost grant notifications. Runner integration and resource admission remain inactive pending lifecycle qualification.
+
 - Add an authenticated personal-owner resource-grant API/client contract and atomic `waiting_for_resources` AgentRun projection. Resource admission remains inactive; workflow polling, wake recovery, and card integration are still open.
 
 - Recheck current room participation and workspace scope before resuming an approval, including requests from the room creator. Revoked access and cross-workspace callbacks cannot wake the task.
