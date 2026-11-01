@@ -53,7 +53,7 @@ export async function verifyArtifactObject(args: {
   }
   if (!response.ok || !response.body) {
     await response.body?.cancel().catch((_error) => undefined)
-    throw new Error(`ARTIFACT_READBACK_HTTP_${response.status}`)
+    throw new Error('ARTIFACT_READBACK_FAILED')
   }
 
   const reader = response.body.getReader()

@@ -4,7 +4,7 @@ import { createServer } from 'node:http'
 import { unlink, writeFile } from 'node:fs/promises'
 import { promisify } from 'node:util'
 import { beforeEach, expect, test, vi } from 'vitest'
-import { publishComputerFile, runHelper, type ComputerPublicationInstance } from './computer-publication'
+import { publishComputerFile, runHelper, safeFailure, type ComputerPublicationInstance } from './computer-publication'
 import { verifyArtifactObject } from './verify-artifact-object'
 
 const controllerMocks = vi.hoisted(() => ({
@@ -32,6 +32,7 @@ vi.mock('./FileService', () => ({
     }
   },
 }))
+vi.mock('./http', () => ({ fileService: controllerMocks.service }))
 
 const execFileAsync = promisify(execFile)
 
@@ -73,6 +74,203 @@ beforeEach(() => {
     workflowRunId: 'workflow',
   })
   controllerMocks.service.getComputerArtifactMaxBytes.mockReturnValue(1024 * 1024)
+})
+
+test('uses the caller actor and workspace rather than authority fields before touching publication state', async () => {
+  controllerMocks.authorize.mockImplementation(async ({ userId, workspaceId, artifactPublicationAuthority }) => {
+    const access = artifactPublicationAuthority?.access
+    if (userId !== access?.actorUserId || workspaceId !== access?.workspaceId || !workspaceId) {
+      throw new Error('HARNESS_PUBLICATION_NOT_AUTHORIZED')
+    }
+    return { actorUserId: userId, runId: 'run', workflowRunId: 'workflow' }
+  })
+  for (const identity of [
+    { userId: 'caller', workspaceId: 'workspace', authorityUserId: 'authority-user', authorityWorkspaceId: 'workspace' },
+    { userId: 'caller', workspaceId: 'other-workspace', authorityUserId: 'caller', authorityWorkspaceId: 'workspace' },
+  ]) {
+    const resolveComputer = vi.fn()
+    const result = await publishComputerFile({
+      request: {
+        artifactId: 'mismatch',
+        sourcePath: '/tmp/mismatch.mp4',
+        name: 'mismatch.mp4',
+        mimeType: 'video/mp4',
+        scope: 'personal',
+      },
+      authority: {
+        kind: 'native',
+        access: {
+          actorUserId: identity.authorityUserId,
+          workspaceId: identity.authorityWorkspaceId,
+        } as never,
+        context: {} as never,
+      },
+      userId: identity.userId,
+      workspaceId: identity.workspaceId,
+      resolveComputer,
+    })
+    expect(result).toMatchObject({ success: false, error: 'HARNESS_PUBLICATION_NOT_AUTHORIZED' })
+    expect(resolveComputer).not.toHaveBeenCalled()
+  }
+  expect(controllerMocks.service.getComputerArtifact).not.toHaveBeenCalled()
+  expect(controllerMocks.service.prepareComputerArtifact).not.toHaveBeenCalled()
+  expect(controllerMocks.service.getComputerArtifactUploadUrl).not.toHaveBeenCalled()
+  expect(controllerMocks.service.verifyAndCommitComputerArtifact).not.toHaveBeenCalled()
+  expect(controllerMocks.authorize).toHaveBeenCalledTimes(2)
+})
+
+test('revocation after the source snapshot prevents scoped signing and upload', async () => {
+  const sourcePath = `/tmp/overlay-revoked-${randomUUID()}.bin`
+  await writeFile(sourcePath, Buffer.from('source bytes'), { mode: 0o600 })
+  controllerMocks.service.getComputerArtifact.mockResolvedValue(null)
+  controllerMocks.authorize
+    .mockResolvedValueOnce({ actorUserId: 'user', runId: 'run', workflowRunId: 'workflow' })
+    .mockResolvedValueOnce({ actorUserId: 'user', runId: 'run', workflowRunId: 'workflow' })
+    .mockRejectedValueOnce(new Error('HARNESS_PUBLICATION_NOT_AUTHORIZED'))
+  controllerMocks.service.prepareComputerArtifact.mockResolvedValue({
+    artifactId: 'revoked',
+    sourcePath,
+    name: 'revoked.mp4',
+    mimeType: 'video/mp4',
+    scope: 'personal',
+    sourceComputerId: 'computer-1',
+    stagingPath: `/tmp/overlay-artifact-${randomUUID()}.bin`,
+    checksumSha256: 'a'.repeat(64),
+    sizeBytes: 12,
+    userId: 'user',
+    workspaceId: 'workspace',
+    rootRunId: 'root',
+    r2Key: 'private-key',
+    uploadExpiresAt: Date.now() + 60_000,
+    createdAt: 1,
+    updatedAt: 1,
+  })
+  const resolveComputer = vi.fn(async () => ({
+    ok: true as const,
+    computer: { id: 'computer-1' },
+    operate: async <T>(operation: (instance: ComputerPublicationInstance) => Promise<T>) =>
+      await operation(localComputer()),
+  }))
+  try {
+    const result = await publishComputerFile({
+      request: {
+        artifactId: 'revoked',
+        sourcePath,
+        name: 'revoked.mp4',
+        mimeType: 'video/mp4',
+        scope: 'personal',
+      },
+      authority: {
+        kind: 'native',
+        access: { actorUserId: 'user', workspaceId: 'workspace' } as never,
+        context: {} as never,
+      },
+      userId: 'user',
+      workspaceId: 'workspace',
+      resolveComputer,
+    })
+    expect(result).toMatchObject({ success: false, error: 'HARNESS_PUBLICATION_NOT_AUTHORIZED' })
+    expect(controllerMocks.service.prepareComputerArtifact).toHaveBeenCalled()
+    expect(controllerMocks.service.getComputerArtifactUploadUrl).not.toHaveBeenCalled()
+  } finally {
+    await unlink(sourcePath).catch(() => undefined)
+  }
+})
+
+test('returns a verified publication when post-commit Computer cleanup fails', async () => {
+  const sourcePath = `/tmp/overlay-cleanup-${randomUUID()}.bin`
+  await writeFile(sourcePath, Buffer.from('cleanup bytes'), { mode: 0o600 })
+  const server = createServer((_request, response) => response.writeHead(200).end())
+  const origin = await listen(server)
+  const artifact = {
+    artifactId: 'cleanup',
+    sourcePath,
+    name: 'cleanup.mp4',
+    mimeType: 'video/mp4',
+    scope: 'personal' as const,
+    artifactIdentity: JSON.stringify(['root', 'cleanup']),
+    fileId: 'files:cleanup',
+    rootRunId: 'root',
+    checksumSha256: 'a'.repeat(64),
+    sizeBytes: 13,
+    workspaceId: 'workspace',
+  }
+  controllerMocks.service.getComputerArtifact.mockResolvedValue(null)
+  controllerMocks.service.prepareComputerArtifact.mockImplementation(async ({ input, snapshot }) => ({
+    ...input,
+    ...snapshot,
+    userId: 'user',
+    workspaceId: 'workspace',
+    rootRunId: 'root',
+    r2Key: 'private-key',
+    uploadExpiresAt: Date.now() + 60_000,
+    createdAt: 1,
+    updatedAt: 1,
+  }))
+  controllerMocks.service.getComputerArtifactUploadUrl.mockResolvedValue(`${origin}/upload`)
+  controllerMocks.service.verifyAndCommitComputerArtifact.mockResolvedValue({ kind: 'published', artifact })
+  let operations = 0
+  const resolveComputer = vi.fn(async () => ({
+    ok: true as const,
+    computer: { id: 'computer-1' },
+    operate: async <T>(operation: (instance: ComputerPublicationInstance) => Promise<T>) => {
+      operations += 1
+      if (operations === 3) throw new Error('Computer stopped during cleanup')
+      return await operation(localComputer())
+    },
+  }))
+  try {
+    const result = await publishComputerFile({
+      request: {
+        artifactId: 'cleanup',
+        sourcePath,
+        name: 'cleanup.mp4',
+        mimeType: 'video/mp4',
+        scope: 'personal',
+      },
+      authority: {
+        kind: 'native',
+        access: { actorUserId: 'user', workspaceId: 'workspace' } as never,
+        context: {} as never,
+      },
+      userId: 'user',
+      workspaceId: 'workspace',
+      resolveComputer,
+    })
+    expect(result).toEqual({ success: true, artifact })
+    expect(operations).toBe(3)
+  } finally {
+    await new Promise<void>(resolve => server.close(() => resolve()))
+    await unlink(sourcePath).catch(() => undefined)
+  }
+})
+
+test('normalizes only allowlisted failure identifiers and keeps unknown errors opaque', () => {
+  const cases = [
+    [new Error('Uncaught Error: storage_limit_exceeded: used=1 cap=0'), 'storage_limit_exceeded', false],
+    [new Error('R2GlobalBudgetError: r2_global_budget_exceeded: used=1 cap=0'), 'r2_global_budget_exceeded', false],
+    [new Error('ARTIFACT_UPLOAD_UNCERTAIN'), 'ARTIFACT_UPLOAD_UNCERTAIN', true],
+    [new Error('ConvexError: {"code":"WORKSPACE_ACCESS_DENIED"}'), 'WORKSPACE_ACCESS_DENIED', false],
+    [new Error('Uncaught Error: HARNESS_ACCESS_DENIED'), 'HARNESS_ACCESS_DENIED', false],
+    [new Error('Uncaught Error: Unauthorized'), 'Unauthorized', false],
+    [new Error('artifact_identity_conflict'), 'artifact_identity_conflict', false],
+    [new Error('artifact_manifest_not_found'), 'artifact_manifest_not_found', false],
+    [new Error('artifact_destination_mismatch'), 'artifact_destination_mismatch', false],
+    [new Error('ARTIFACT_AUTHORITY_EXPIRED'), 'ARTIFACT_AUTHORITY_EXPIRED', false],
+    [new Error('ARTIFACT_HEAD_FAILED'), 'ARTIFACT_HEAD_FAILED', true],
+    [new Error('ARTIFACT_READBACK_FAILED'), 'ARTIFACT_READBACK_FAILED', true],
+    [new Error('COMPUTER_UNAVAILABLE: internal details'), 'COMPUTER_UNAVAILABLE', false],
+    [{ payload: { error: 'File type not allowed: application/x-test' } }, 'FILE_MIME_NOT_ALLOWED', false],
+    [{ payload: { error: 'File is too large for direct upload. 100MiB' } }, 'ARTIFACT_SIZE_LIMIT_EXCEEDED', false],
+    [new Error('provider failed at https://signed.example/token'), 'ARTIFACT_PUBLICATION_UNKNOWN', false],
+  ] as const
+  for (const [error, code, retryable] of cases) {
+    const result = safeFailure(error)
+    expect(result.error).toBe(code)
+    expect(result.retryable).toBe(retryable)
+    expect(JSON.stringify(result)).not.toContain('https://')
+    if (code === 'COMPUTER_UNAVAILABLE') expect(result.message).toContain('Enable or bind a Computer')
+  }
 })
 
 function listen(server: ReturnType<typeof createServer>): Promise<string> {
@@ -183,6 +381,8 @@ test('a finalized retry returns the canonical Files artifact without resolving a
       access: { actorUserId: 'user', workspaceId: 'workspace' } as never,
       context: {} as never,
     },
+    userId: 'user',
+    workspaceId: 'workspace',
     resolveComputer,
   })
   expect(resolveComputer).not.toHaveBeenCalled()
@@ -211,6 +411,8 @@ test('a missing Computer source does not allocate a Files publication', async ()
       access: { actorUserId: 'user', workspaceId: 'workspace' } as never,
       context: {} as never,
     },
+    userId: 'user',
+    workspaceId: 'workspace',
     resolveComputer,
   })
   expect(result).toMatchObject({ success: false, error: 'ARTIFACT_SOURCE_UNAVAILABLE' })
@@ -260,6 +462,8 @@ test('a restored Computer cannot change bytes pinned to an existing artifactId',
         access: { actorUserId: 'user', workspaceId: 'workspace' } as never,
         context: {} as never,
       },
+      userId: 'user',
+      workspaceId: 'workspace',
       resolveComputer,
     })
     expect(result).toMatchObject({ success: false, error: 'artifact_identity_conflict' })
@@ -317,6 +521,8 @@ test('a prepared object is reconciled before Computer resolution', async () => {
       access: { actorUserId: 'user', workspaceId: 'workspace' } as never,
       context: {} as never,
     },
+    userId: 'user',
+    workspaceId: 'workspace',
     resolveComputer,
   })
   expect(resolveComputer).not.toHaveBeenCalled()
@@ -406,6 +612,8 @@ test('a restored Computer with identical bytes refreshes an expired URL for the 
         access: { actorUserId: 'user', workspaceId: 'workspace' } as never,
         context: {} as never,
       },
+      userId: 'user',
+      workspaceId: 'workspace',
       resolveComputer,
     })
     expect(uploaded).toBe(2)
@@ -491,6 +699,8 @@ test('the controller reconciles after the upload acknowledgement is lost', async
         access: { actorUserId: 'user', workspaceId: 'workspace' } as never,
         context: {} as never,
       },
+      userId: 'user',
+      workspaceId: 'workspace',
       resolveComputer,
     })
     expect(storedBytes).toBe(bytes.length)

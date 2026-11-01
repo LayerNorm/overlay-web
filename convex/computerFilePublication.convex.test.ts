@@ -132,6 +132,45 @@ test('manifest identity and frozen content metadata cannot be changed on replay'
   }))).rejects.toThrow('artifact_identity_conflict')
 })
 
+test('prepare rejects mismatched MIME and authorization rejects dangling folder ancestry', async () => {
+  const { convex, reference } = await fixture()
+  await expect(convex.mutation(publicationMutation('prepare'), publicationArgs(reference, input, {
+    ...snapshot,
+    mimeType: 'video/webm',
+  }))).rejects.toThrow('artifact_identity_conflict')
+
+  const childFolder = await convex.run(async ctx => {
+    const ancestor = await ctx.db.insert('files', {
+      userId,
+      workspaceId,
+      scope: 'personal',
+      name: 'removed ancestor',
+      type: 'folder',
+      kind: 'folder',
+      createdAt: 1,
+      updatedAt: 1,
+    })
+    const child = await ctx.db.insert('files', {
+      userId,
+      workspaceId,
+      scope: 'personal',
+      name: 'dangling child',
+      type: 'folder',
+      kind: 'folder',
+      parentId: ancestor,
+      createdAt: 1,
+      updatedAt: 1,
+    })
+    await ctx.db.delete(ancestor)
+    return child
+  })
+  await expect(convex.query(publicationQuery, {
+    reference,
+    input: { ...input, parentId: childFolder },
+    serverSecret: secret,
+  })).rejects.toThrow('Unauthorized')
+})
+
 test('rejects wrong actors, revoked workspace membership, archived destinations, and expired authority', async () => {
   const { convex, reference, membership, folder, otherFolder } = await fixture()
   const args = publicationArgs(reference)

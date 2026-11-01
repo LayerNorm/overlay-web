@@ -1092,6 +1092,8 @@ export async function executeComputerPublishFile(
   return await publishComputerFile({
     request: { ...input, scope: roomListScope(options, input.scope) ?? input.scope },
     authority: options.artifactPublicationAuthority,
+    userId: options.userId,
+    workspaceId: options.workspaceId,
     resolveComputer: () => computerInstanceFor(options),
   })
 }

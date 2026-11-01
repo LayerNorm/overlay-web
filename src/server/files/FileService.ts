@@ -55,6 +55,7 @@ import type {
 } from '@/shared/storage/file-publication'
 
 const MAX_INGEST_BYTES = 12 * 1024 * 1024
+export const MAX_COMPUTER_ARTIFACT_BYTES = 100 * 1024 * 1024
 
 export { FileServiceError } from './FileServiceErrors'
 
@@ -166,7 +167,7 @@ export class FileService {
   }
 
   getComputerArtifactMaxBytes(): number {
-    return this.storage.getMaxPresignedUploadBytes()
+    return Math.min(this.storage.getMaxPresignedUploadBytes(), MAX_COMPUTER_ARTIFACT_BYTES)
   }
 
   async prepareComputerArtifact(args: ComputerArtifactPrepare): Promise<ComputerArtifactManifest> {
@@ -175,7 +176,7 @@ export class FileService {
     if (normalizeMimeType(args.input.mimeType) !== mimeType) {
       throw new Error('artifact_mime_invalid')
     }
-    const maxBytes = this.storage.getMaxPresignedUploadBytes()
+    const maxBytes = this.getComputerArtifactMaxBytes()
     if (!Number.isSafeInteger(args.snapshot.sizeBytes) || args.snapshot.sizeBytes <= 0
       || args.snapshot.sizeBytes > maxBytes) {
       throw new Error('ARTIFACT_SIZE_LIMIT_EXCEEDED')
@@ -193,7 +194,7 @@ export class FileService {
     if (remainingSeconds < 1) throw new Error('ARTIFACT_AUTHORITY_EXPIRED')
     const expiresIn = Math.min(120, Math.floor(remainingSeconds))
     if (expiresIn < 1) throw new Error('ARTIFACT_AUTHORITY_EXPIRED')
-    if (manifest.sizeBytes > this.storage.getMaxPresignedUploadBytes()) {
+    if (manifest.sizeBytes > this.getComputerArtifactMaxBytes()) {
       throw new Error('ARTIFACT_SIZE_LIMIT_EXCEEDED')
     }
     await this.storage.checkGlobalR2Budget(manifest.sizeBytes)
@@ -217,7 +218,7 @@ export class FileService {
       sizeBytes: manifest.sizeBytes,
       mimeType: manifest.mimeType,
       checksumSha256: manifest.checksumSha256,
-      maxBytes: this.storage.getMaxPresignedUploadBytes(),
+      maxBytes: this.getComputerArtifactMaxBytes(),
       headObject: key => this.storage.headObject(key),
       generatePresignedDownloadUrl: key => this.storage.generatePresignedDownloadUrl(key),
     })

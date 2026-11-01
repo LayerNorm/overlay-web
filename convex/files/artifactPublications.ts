@@ -181,6 +181,9 @@ export const prepare = mutation({
     const authority = await requireHarnessPublicationAuthority(ctx, args.reference, args.serverSecret)
     assertArtifactInput(args.input)
     assertSnapshot(args.snapshot)
+    if (args.input.mimeType !== args.snapshot.mimeType) {
+      throw new Error('artifact_identity_conflict')
+    }
     const scope = await authorizeDestination(ctx, args.input, args.reference.actorUserId, authority.workspaceId)
     const now = Date.now()
     if (authority.deadlineAt <= now) throw new Error('artifact_authority_expired')

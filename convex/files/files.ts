@@ -234,7 +234,7 @@ export async function assertParentAndProject(ctx: { db: { get: (id: Id<'files'>)
   workspaceId?: string
   scope?: 'personal' | 'workspace'
 }) {
-  if (args.parentId) {
+  if (args.parentId !== undefined) {
     const parent = await ctx.db.get(args.parentId as Id<'files'>) as Doc<'files'> | null
     if (!parent || parent.userId !== args.userId || parent.deletedAt || parent.archivedAt || inferKind(parent) !== 'folder'
       || (args.workspaceId !== undefined && parent.workspaceId !== args.workspaceId)
@@ -246,12 +246,17 @@ export async function assertParentAndProject(ctx: { db: { get: (id: Id<'files'>)
     while (cursor) {
       if (seen.has(cursor._id)) throw new Error('File parent cycle detected')
       seen.add(cursor._id)
-      cursor = cursor.parentId
-        ? await ctx.db.get(cursor.parentId as Id<'files'>) as Doc<'files'> | null
-        : null
-      if (cursor && (cursor.userId !== args.userId || cursor.deletedAt || cursor.archivedAt
+      if (cursor.parentId === undefined) {
+        cursor = null
+        continue
+      }
+      const ancestor = await ctx.db.get(cursor.parentId as Id<'files'>) as Doc<'files'> | null
+      if (!ancestor) throw new Error('Unauthorized')
+      cursor = ancestor
+      if (cursor.userId !== args.userId || cursor.deletedAt || cursor.archivedAt
+        || inferKind(cursor) !== 'folder'
         || (args.workspaceId !== undefined && cursor.workspaceId !== args.workspaceId)
-        || (args.scope !== undefined && (cursor.scope ?? 'personal') !== args.scope))) {
+        || (args.scope !== undefined && (cursor.scope ?? 'personal') !== args.scope)) {
         throw new Error('Unauthorized')
       }
     }
