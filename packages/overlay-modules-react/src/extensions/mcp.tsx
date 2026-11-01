@@ -340,6 +340,41 @@ function McpDialogBanners({
   )
 }
 
+function McpServerDialogFooter({
+  isEdit,
+  initial,
+  busy,
+  saving,
+  saved,
+  values,
+  onClose,
+  onSave,
+  onDelete,
+}: {
+  isEdit: boolean
+  initial: McpServerSummary | undefined
+  busy: boolean
+  saving: boolean
+  saved: boolean
+  values: McpServerFormValues
+  onClose: () => void
+  onSave: () => void
+  onDelete: () => void
+}) {
+  return (
+    <>
+      <div>{isEdit && initial ? <DeleteExtensionButton name={initial.name || 'this server'} kind="server" disabled={busy} onConfirm={onDelete} /> : null}</div>
+      <div className="flex items-center gap-2">
+        <Button variant="outline" disabled={busy} onClick={onClose}>Cancel</Button>
+        <Button variant="primary" onClick={onSave} disabled={busy || !values.name.trim() || !values.url.trim()}>
+          {saving ? <Loader2 size={14} className="animate-spin" /> : saved ? <Check size={14} /> : null}
+          {saving ? 'Saving...' : saved ? 'Saved' : isEdit ? 'Save changes' : 'Add server'}
+        </Button>
+      </div>
+    </>
+  )
+}
+
 export function McpServerDialog({
   state,
   onClose,
@@ -385,16 +420,10 @@ export function McpServerDialog({
       enabled={values.enabled} onEnabledChange={enabled => update('enabled', enabled)}
       activeDescription="Make this server available to your agents."
       scopeActions={isEdit ? scopeActions : undefined} scopeLabel={scopeLabel}
-      footer={<>
-        <div>{isEdit && initial ? <DeleteExtensionButton name={initial.name || 'this server'} kind="server" disabled={busy} onConfirm={() => void handleDelete()} /> : null}</div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" disabled={busy} onClick={onClose}>Cancel</Button>
-          <Button variant="primary" onClick={() => void handleSave()} disabled={busy || !values.name.trim() || !values.url.trim()}>
-            {saving ? <Loader2 size={14} className="animate-spin" /> : saved ? <Check size={14} /> : null}
-            {saving ? 'Saving...' : saved ? 'Saved' : isEdit ? 'Save changes' : 'Add server'}
-          </Button>
-        </div>
-      </>}
+      footer={<McpServerDialogFooter
+        isEdit={isEdit} initial={initial} busy={busy} saving={saving} saved={saved} values={values}
+        onClose={onClose} onSave={() => void handleSave()} onDelete={() => void handleDelete()}
+      />}
     >
       <Tabs defaultValue="configuration">
         <TabsList className="mb-5"><TabsTrigger value="configuration">Configuration</TabsTrigger><TabsTrigger value="tools">Tools</TabsTrigger></TabsList>
