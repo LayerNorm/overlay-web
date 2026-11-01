@@ -1,0 +1,43 @@
+name: Native helper diagnostics
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  whisper-cpu-mel:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Build pinned WhisperKit with CPU audio preprocessing
+        shell: bash
+        run: |
+          set -euo pipefail
+          revision=cb00a08d08d2dad37ca8aa488ee0695e97ab6045
+          source_root="/tmp/overlay-native/WhisperKit-$revision"
+          mkdir -p "$source_root"
+          git -C "$source_root" init
+          git -C "$source_root" remote add origin https://github.com/argmaxinc/WhisperKit.git
+          git -C "$source_root" fetch --depth 1 origin "$revision"
+          git -C "$source_root" checkout --detach FETCH_HEAD
+          python3 - "$source_root/Sources/WhisperKitCLI/TranscribeCLIUtils.swift" <<'PY'
+          import pathlib,sys
+          p=pathlib.Path(sys.argv[1]);s=p.read_text()
+          old='let computeOptions = ModelComputeOptions(\n'
+          assert s.count(old)==1
+          p.write_text(s.replace(old,old+'            melCompute: .cpuOnly,\n'))
+          PY
+          swift build --package-path "$source_root" --configuration release --product whisperkit-cli --disable-automatic-resolution -Xswiftc -debug-prefix-map -Xswiftc "$source_root=/usr/src/overlay/WhisperKit" -Xcc "-fdebug-prefix-map=$source_root=/usr/src/overlay/WhisperKit" -Xcc "-ffile-prefix-map=$source_root=/usr/src/overlay/WhisperKit"
+          binary_path="$(swift build --package-path "$source_root" --configuration release --show-bin-path)/whisperkit-cli"
+          mkdir -p helper-diagnostics
+          cp "$binary_path" helper-diagnostics/whisperkit-cli
+          shasum -a 256 helper-diagnostics/whisperkit-cli
+          git -C "$source_root" diff > helper-diagnostics/source.patch
+          printf '%s\n' "$GITHUB_SHA" > helper-diagnostics/tested-source-sha
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: whisper-cpu-mel-diagnostic
+          path: helper-diagnostics/
+          retention-days: 7
