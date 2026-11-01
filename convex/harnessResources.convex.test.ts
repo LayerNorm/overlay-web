@@ -105,6 +105,79 @@ test('version-one admissions reject a source without an owned active personal wo
     .rejects.toThrow('HARNESS_RESOURCE_WORKSPACE_DENIED')
 })
 
+test.each(['child_depth', 'child_slots', 'room'] as const)('version-one admission rejects unsupported %s before persisting a run', async scope => {
+  const convex = convexTest(schema, modules)
+  const { conversationId, deliveryId } = await seedEligibleAuthority(convex)
+  const input = { ...resourceAdmission(conversationId, 1), deliveryAgentRunId: deliveryId }
+  if (scope === 'child_depth') input.policy.maxDepth = 1
+  if (scope === 'child_slots') input.policy.maxParallelChildren = 1
+  if (scope === 'room') await convex.run(async ctx => {
+    await ctx.db.patch(conversationId, { conversationType: 'channel' })
+    await ctx.db.patch(deliveryId, { mode: 'room' })
+  })
+  await expect(convex.mutation(admit, { ...input, serverSecret: secret })).rejects.toThrow(
+    scope === 'room' ? 'HARNESS_RESOURCE_ADMISSION_DENIED' : 'Resource-pause admission is limited',
+  )
+  expect(await convex.run(ctx => ctx.db.query('harnessRuns').collect())).toEqual([])
+  expect(await convex.run(ctx => ctx.db.query('harnessResourceRequests').collect())).toEqual([])
+})
+
+test('an ordinary unversioned root cannot opt into resource waits after admission', async () => {
+  const convex = convexTest(schema, modules)
+  const { conversationId, deliveryId } = await seedEligibleAuthority(convex)
+  const input = { ...resourceAdmission(conversationId), deliveryAgentRunId: deliveryId, resourcePauseAuthority: undefined }
+  let state = await convex.mutation(admit, { ...input, serverSecret: secret }) as HarnessSnapshot
+  state = (await resourceApply(convex, input, 'resource-workflow', state.revision, {
+    type: 'claim_execution', workflowRunId: 'resource-workflow',
+  })).snapshot
+  await expect(convex.mutation(makeFunctionReference<'mutation'>('harness/runs:pauseForResources'), {
+    actorUserId: 'alice', runId: input.runId, workflowRunId: 'resource-workflow', expectedRevision: state.revision,
+    token: 'resource-unversioned', reason: 'model_spend', requiredCostMicros: 1_001, serverSecret: secret,
+  })).rejects.toThrow('HARNESS_RESOURCE_NOT_AUTHORIZED')
+  expect(await convex.run(ctx => ctx.db.query('harnessResourceRequests').collect())).toEqual([])
+})
+
+test.each(['input', 'approval'] as const)('resource authorization restores a suspended %s wait without answering or replacing it', async kind => {
+  const convex = convexTest(schema, modules)
+  const { conversationId, deliveryId } = await seedEligibleAuthority(convex)
+  const input = { ...resourceAdmission(conversationId, 1), deliveryAgentRunId: deliveryId }
+  const reference = { actorUserId: 'alice', runId: input.runId, workflowRunId: 'resource-workflow', serverSecret: secret }
+  let state = await convex.mutation(admit, { ...input, serverSecret: secret }) as HarnessSnapshot
+  state = (await resourceApply(convex, input, reference.workflowRunId, state.revision, {
+    type: 'claim_execution', workflowRunId: reference.workflowRunId,
+  })).snapshot
+  const blocker = { kind, question: 'Review the next action.' }
+  state = (await resourceApply(convex, input, reference.workflowRunId, state.revision, { type: 'block', blocker })).snapshot
+  const request = kind === 'input' ? { kind, token: 'ordinary-wait' } : {
+    kind, token: 'ordinary-wait', requests: [{ approvalId: 'approval:one', toolCallId: 'tool:one', toolName: 'read', input: {} }],
+  }
+  const wait = await convex.mutation(makeFunctionReference<'mutation'>('harness/runs:publishWait'), { ...reference, request })
+  await convex.mutation(makeFunctionReference<'mutation'>('harness/runs:pauseForResources'), {
+    ...reference, expectedRevision: state.revision, token: 'resource-suspended', reason: 'model_spend', requiredCostMicros: 1_001,
+  })
+  await convex.mutation(makeFunctionReference<'mutation'>('harness/runs:grantResources'), {
+    ...reference, workspaceId: 'personal-alice', token: 'resource-suspended', policyRevision: 0,
+    grant: { kind: 'model_spend', newMaxCostMicros: 2_000 },
+  })
+  const paused = await convex.query(makeFunctionReference<'query'>('harness/runs:get'), {
+    actorUserId: reference.actorUserId, runId: reference.runId, serverSecret: secret,
+  }) as HarnessSnapshot
+  expect(paused.status).toBe('waiting_for_resources')
+  for (const operation of [{ type: 'resume' }, { type: 'block', blocker }]) {
+    await expect(resourceApply(convex, input, reference.workflowRunId, paused.revision, operation)).rejects.toThrow('A resource pause must be consumed')
+  }
+  await convex.mutation(makeFunctionReference<'mutation'>('harness/runs:consumeResourceGrant'), {
+    ...reference, token: 'resource-suspended',
+  })
+  const restored = await convex.query(makeFunctionReference<'query'>('harness/runs:get'), {
+    actorUserId: reference.actorUserId, runId: reference.runId, serverSecret: secret,
+  }) as HarnessSnapshot
+  expect(restored).toMatchObject({ status: `waiting_for_${kind}`, blocker, workflowRunId: reference.workflowRunId })
+  expect(restored.resourceRequestToken).toBeUndefined()
+  expect(await convex.query(makeFunctionReference<'query'>('harness/runs:listPendingWaits'), reference)).toEqual([wait])
+  expect(restored.progressRevision).toBe(state.progressRevision)
+})
+
 test('an eligible personal root pauses, grants once, and consumes after an unresolved receipt settles', async () => {
   const convex = convexTest(schema, modules)
   const { conversationId, deliveryId, membershipId, accountId } = await seedEligibleAuthority(convex)
