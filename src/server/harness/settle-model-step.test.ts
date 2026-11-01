@@ -1,12 +1,14 @@
 import { beforeEach, expect, test, vi } from 'vitest'
 import { bindHarnessModelDispatch, createHarnessSnapshot, reserveHarnessModel, type HarnessReceipt } from '@overlay/agent-runtime/harness-state'
-import { releaseFreeSummaryFailure, settleHarnessModelUsage } from './settle-model-step'
+import { settleHarnessModelUsage } from './settle-model-step'
 
 const mocks = vi.hoisted(() => ({ read: vi.fn(), resolve: vi.fn(), bill: vi.fn(), batch: vi.fn(), apply: vi.fn() }))
 vi.mock('server-only', () => ({}))
 vi.mock('./ConvexHarnessRepository', () => ({ ConvexHarnessRepository: class { get = mocks.read } }))
 vi.mock('./usage-steps', () => ({ resolveHarnessModelUsage: mocks.resolve }))
 vi.mock('./state-steps', () => ({ applyHarnessOperation: mocks.apply, readHarnessState: mocks.read }))
+vi.mock('@/server/ai/gateway/gateway-runtime', () => ({ getOrCreateGateway: vi.fn() }))
+vi.mock('@/server/ai/gateway/live-model-pricing', () => ({ calculateLanguageModelTokenCostOrNull: vi.fn(async () => 0) }))
 vi.mock('@/server/bootstrap', () => ({ getOverlayServerContext: () => ({
   chatUsagePolicy: { recordFinishedUsage: mocks.bill },
   appData: { repositories: { usage: { recordBatch: mocks.batch } } },
@@ -67,22 +69,6 @@ test('rejects mismatched execution ownership or an unbound model hold before cha
   expect(mocks.bill).not.toHaveBeenCalled()
 })
 
-test('summary failure clears only a zero-cost free-route hold with a rejected receipt', async () => {
-  mocks.read.mockResolvedValue(state(null, 'openrouter/free', 0))
-  await releaseFreeSummaryFailure({ reference, receiptId: 'model:0', modelId: 'openrouter/free', contextWindow: 128_000 })
-  expect(mocks.apply).toHaveBeenCalledExactlyOnceWith(reference, 'summary-failed:model:0', {
-    type: 'record_receipt',
-    receipt: expect.objectContaining({
-      id: 'model:0', modelId: 'openrouter/free', rejectionReason: 'summary_failed',
-      inputTokens: 0, outputTokens: 0, costMicros: 0, costSource: 'catalog',
-    }),
-  })
-  mocks.apply.mockClear()
-  mocks.read.mockResolvedValue(state(null, 'openrouter/free', 100))
-  await releaseFreeSummaryFailure({ reference, receiptId: 'model:0', modelId: 'openrouter/free', contextWindow: 128_000 })
-  expect(mocks.apply).not.toHaveBeenCalled()
-})
-
 test('BYOK writes token audit with unknown external cost but no Overlay charge', async () => {
   mocks.read.mockResolvedValue(state(null, 'byok/connection/model'))
   const external: HarnessReceipt = { ...receipt, costMicros: 0, costSource: 'external', externalCostMicros: null }
@@ -104,4 +90,17 @@ test('catalog settlement carries the original quote without fabricating an exact
   await settleHarnessModelUsage(input)
   expect(mocks.bill.mock.calls[0][0]).toMatchObject({ catalogCostUsd: 0.0001, reservationId: null })
   expect(mocks.bill.mock.calls[0][0]).not.toHaveProperty('providerCostUsd')
+})
+
+test.each(['openrouter/free', 'overlay-free'])('unconfirmed %s usage leaves its reservation untouched through real usage resolution', async modelId => {
+  const held = state(null, modelId, 0)
+  mocks.read.mockResolvedValue(held)
+  const { resolveHarnessModelUsage } = await vi.importActual<typeof import('./usage-steps')>('./usage-steps')
+  mocks.resolve.mockImplementation(resolveHarnessModelUsage)
+  await expect(settleHarnessModelUsage({ ...input, observation: { ...observation, modelId, provider: 'overlay-free-router' } }))
+    .rejects.toThrow(/unconfirmed/)
+  expect(mocks.bill).not.toHaveBeenCalled()
+  expect(mocks.batch).not.toHaveBeenCalled()
+  expect(mocks.apply).not.toHaveBeenCalled()
+  expect(held.modelReservation).toMatchObject({ id: input.receiptId, maxCostMicros: 0, dispatch: { modelId } })
 })

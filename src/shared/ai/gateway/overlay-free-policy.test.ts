@@ -30,6 +30,21 @@ test('OpenRouter SDK receipt cost is read from usage metadata', () => {
   assert.equal(assessFreeReceipt({}, expected).safe, false)
 })
 
+test('only entirely missing costs are eligible for lookup, not invalid or contradictory metadata', () => {
+  const expected = { transport: 'openrouter', modelId: 'openrouter/free', provider: 'openrouter' } as const
+  assert.equal(assessFreeReceipt({}, expected).code, 'missing_cost')
+  for (const usage of [{ cost: null }, { cost: 'invalid' }, { cost: 0.01 }, { cost: 0, surchargeCost: 0.01 },
+    { cost: null, surchargeCost: 0.01 }, { cost_details: { upstream_inference_cost: 0.01 } },
+    { costDetails: { upstreamInferenceCost: 0.01 } }]) {
+    const receipt = assessFreeReceipt({ providerMetadata: { openrouter: { usage } } }, expected)
+    assert.equal(receipt.safe, false)
+    assert.notEqual(receipt.code, 'missing_cost')
+  }
+  assert.equal(assessFreeReceipt({ providerMetadata: { openrouter: {
+    usage: { cost: 0, costDetails: { upstreamInferenceCost: 0.01 } },
+  } } }, expected).code, 'nonzero_cost')
+})
+
 test('capabilities are admitted only with explicit evidence', () => {
   assert.equal(freeEndpointCapabilities({}), null)
   assert.deepEqual(freeEndpointCapabilities({ context_length: 1000, max_completion_tokens: 200,

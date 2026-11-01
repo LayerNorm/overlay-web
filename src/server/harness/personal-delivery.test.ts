@@ -3,6 +3,37 @@ import { buildPersonalHarnessDelivery } from './personal-delivery'
 
 const protocol = '<tool_call>harness_update_step<arg_key>id</arg_key><arg_value>step1</arg_value><arg_key>status</arg_key><arg_value>done</arg_value></tool_call>'
 
+test.each(['failed', 'cancelled', 'completed'])('personal %s delivery does not publish internal checkpoint summaries', status => {
+  const workingSummary = 'Internal continuity: inspect pending render and reconcile provider receipt.'
+  const result = {
+    snapshot: {
+      status,
+      workingSummary,
+      usage: { inputTokens: 0, outputTokens: 0, costMicros: 0 },
+    },
+    messages: [],
+    steps: [],
+  } as never
+  const delivery = buildPersonalHarnessDelivery(result)
+  expect(JSON.stringify(delivery)).not.toContain(workingSummary)
+  expect(delivery.content).toBe('[Empty response]')
+})
+
+test('personal delivery preserves the actual answer instead of replacing it with a checkpoint summary', () => {
+  const answer = 'The render has started.'
+  const result = {
+    snapshot: {
+      workingSummary: 'Internal continuity: render job is pending.',
+      usage: { inputTokens: 0, outputTokens: 0, costMicros: 0 },
+    },
+    messages: [],
+    steps: [{ text: answer, content: [], toolCalls: [], toolResults: [] }],
+  } as never
+  const delivery = buildPersonalHarnessDelivery(result)
+  expect(delivery.content).toBe(answer)
+  expect(delivery.parts).toEqual([{ type: 'text', text: answer }])
+})
+
 test('personal transcript keeps the latest answer when the final step is a textual tool call', () => {
   const result = {
     snapshot: {

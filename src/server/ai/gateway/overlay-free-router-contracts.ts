@@ -6,6 +6,7 @@ import type {
 } from '@ai-sdk/provider'
 import type {
   FreeRouteCapabilities,
+  FreeReceipt,
   OPENROUTER_FREE_MODEL_ID,
   OVERLAY_FREE_MODEL_ID,
 } from '@/shared/ai/gateway/overlay-free-policy'
@@ -70,6 +71,7 @@ export type OverlayFreeReceiptSummary = {
   safe: boolean
   cost: number | null
   reason?: string
+  code?: FreeReceipt['code']
   actualModelId?: string
   actualProvider?: string
 }
@@ -96,6 +98,7 @@ export type OverlayFreeAttempt = {
   controller: AbortController
   settled: boolean
   generationId?: string
+  generationIdConflicted?: boolean
 }
 
 export type OverlayFreePreparedAttempt = {

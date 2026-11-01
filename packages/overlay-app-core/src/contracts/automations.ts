@@ -78,6 +78,7 @@ export interface AutomationSummary extends ScopedResourceFields {
   agentId?: string
   /** The creator; only they can move it between scopes. */
   userId?: string
+  workspaceId?: string
   name?: string
   title?: string
   description?: string

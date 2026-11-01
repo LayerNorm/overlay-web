@@ -9,6 +9,7 @@ import { ActMessagePersistenceService } from './ActMessagePersistenceService'
 import { ActUsageBudgetService } from './ActUsageBudgetService'
 import { AgentRunService } from './AgentRunService'
 import type { ActConversationRepository } from './ActConversationRepository'
+import { nativeRunRetirementErrorResponse } from './native-run-retirement-http'
 
 export const actConversationRepository = repositoryProxy<ActConversationRepository>(
   () => getOverlayServerContext().appData.repositories.conversations,
@@ -42,6 +43,8 @@ export const actUsageBudgetService = new ActUsageBudgetService({
 })
 
 export function actConversationErrorResponse(error: unknown) {
+  const retirement = nativeRunRetirementErrorResponse(error)
+  if (retirement) return retirement
   if (error instanceof ActConversationServiceError) {
     return NextResponse.json(error.payload, { status: error.statusCode })
   }

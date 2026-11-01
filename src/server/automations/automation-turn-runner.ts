@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { jsonSchema, tool, type ModelMessage, type StepResult, type ToolSet, type UIMessage } from 'ai'
+import type { ModelMessage, UIMessage } from 'ai'
 import type { CapabilityCheck } from '@overlay/app-core'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import type { WorkspaceAccess } from '@overlay/workspace-contracts'
@@ -19,11 +19,6 @@ import { resolveAuthorizedModelIds } from '@/server/ai/model-policy-authority'
 import { meterAutomationWorkflowRun } from '@/server/billing/automation-workflow-billing'
 import { resolveBillingPayer } from '@/server/billing/billing-runtime'
 import { providerRequestFingerprint } from '@/server/billing/ServerProviderUsageMeter'
-import {
-  calculateProviderCostMicros,
-  observeWorkflowRunMetrics,
-  summarizeAgentToolMetrics,
-} from '@/server/conversations/agent-run-metrics'
 import { asConversationId } from '@/server/conversations/ActConversationRepository'
 import { describePersonalChatWorkTools } from '@/server/conversations/personal-chat-work-tools'
 import {
@@ -50,7 +45,6 @@ import { MATH_FORMAT_INSTRUCTION } from '@/shared/markdown/math-format-instructi
 import { TABLE_FORMAT_INSTRUCTION } from '@/shared/markdown/markdown-table-instructions'
 import { buildActAgentInstructions } from '@/server/app-api/v1/conversations/act/instructions'
 import {
-  MAX_ACT_OUTPUT_TOKENS_PER_STEP,
   resolveEffectiveActModelId,
 } from '@/server/app-api/v1/conversations/act/route-helpers'
 import {
@@ -142,13 +136,13 @@ export type AutomationAgentTurnInput = {
   turnId: string
   scheduledFor: number
   workspaceId?: string
+  originWorkflowRunId?: string
   surface?: SurfaceTurnContext
 }
 
 /**
- * The serializable plan produced by `prepareAutomationAgentTurn`. It carries
- * everything the durable agent loop needs so no request-scoped state has to
- * leak across the workflow step boundary.
+ * The serializable preparation plan consumed by the personal Harness
+ * workflow. It carries no request-scoped state across workflow boundaries.
  */
 export type AutomationAgentTurnPlan = {
   conversationId: string
@@ -158,25 +152,11 @@ export type AutomationAgentTurnPlan = {
   paid: boolean
   providerOptions?: Record<string, Record<string, unknown>>
   reservationId: string | null
+  userMessageId: string
+  principalId: string
   sourceCitations?: SourceCitationMap
   toolDefinitions: PersonalChatWorkToolDefinition[]
   toolingContext: PersonalChatWorkToolingContext
-}
-
-/**
- * Serializable result of one durable model call. A `LanguageModel` cannot
- * cross the step boundary (methods + captured credentials do not serialize),
- * so the step rebuilds it via `getLanguageModel` and returns only data.
- */
-export type AutomationModelCallResult = {
-  finishReason: string
-  reasoning?: unknown[]
-  reasoningText?: string
-  responseMessages: ModelMessage[]
-  routedModelId?: string
-  text: string
-  toolCalls: Array<{ toolCallId: string; toolName: string; input: unknown }>
-  usage: { inputTokens?: number; outputTokens?: number }
 }
 
 /**
@@ -196,72 +176,6 @@ export class AutomationTurnError extends Error {
 }
 
 /**
- * One model call of the durable agent loop, executed inside a `'use step'`.
- *
- * This is the piece `WorkflowAgent` cannot provide: its internal model step
- * resolves `gateway.languageModel(<id>)`, so BYOK / OpenRouter / NVIDIA NIM
- * models could never run durably. Here the model is rebuilt inside the step
- * via `getLanguageModel` — the same resolution the act route uses — so every
- * provider the app supports works, and user credentials are fetched at call
- * time instead of being persisted in the workflow event log.
- *
- * Tools are reconstructed from their serializable definitions *without*
- * `execute` — the model emits `toolCalls` only; execution happens in the
- * caller's tool steps so each call is independently durable and retryable.
- */
-export async function callDurableAutomationModel(args: {
-  instructions: string
-  maxOutputTokens: number
-  messages: ModelMessage[]
-  modelId: string
-  providerOptions?: Record<string, Record<string, unknown>>
-  reasoning?: 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
-  toolDefinitions: PersonalChatWorkToolDefinition[]
-  conversationId: string
-  userId: string
-}): Promise<AutomationModelCallResult> {
-  const model = await getLanguageModel(args.modelId, undefined, args.userId, {
-    sessionId: args.conversationId,
-  })
-  const tools = Object.fromEntries(args.toolDefinitions.map((definition) => [
-    definition.name,
-    tool({
-      description: definition.description,
-      inputSchema: jsonSchema(definition.inputSchema),
-    }),
-  ]))
-  const result = await generateText({
-    model,
-    system: args.instructions,
-    messages: args.messages,
-    tools,
-    maxOutputTokens: args.maxOutputTokens,
-    // The workflow step itself retries on throw — in-step SDK retries would
-    // multiply attempts on transient provider errors.
-    maxRetries: 0,
-    ...(args.providerOptions ? { providerOptions: args.providerOptions as never } : {}),
-    ...(args.reasoning ? { reasoning: args.reasoning } : {}),
-  })
-  return {
-    finishReason: result.finishReason,
-    reasoning: result.reasoning as unknown[] | undefined,
-    reasoningText: result.reasoningText,
-    responseMessages: result.response.messages,
-    routedModelId: result.response.modelId ?? undefined,
-    text: result.text,
-    toolCalls: result.toolCalls.map((call) => ({
-      toolCallId: call.toolCallId,
-      toolName: call.toolName,
-      input: call.input,
-    })),
-    usage: {
-      inputTokens: result.usage?.inputTokens,
-      outputTokens: result.usage?.outputTokens,
-    },
-  }
-}
-
-/**
  * Create (or reuse) the conversation an automation turn writes into, bound to
  * the same workspace the BFF would resolve for the acting user.
  */
@@ -269,39 +183,144 @@ export async function ensureAutomationConversation(
   input: AutomationAgentTurnInput,
 ): Promise<{ conversationId: string; workspaceId: string }> {
   const overlayContext = getOverlayServerContext()
+  const source = await readAutomationConversationSource(input, overlayContext)
+  assertAutomationConversationTarget(input, source)
+  const workspace = await resolveAutomationConversationWorkspace(input, source.automation, overlayContext)
+  if (source.canonicalConversationId) {
+    await validateOwnedAutomationConversation(input, source, workspace.workspace.id, overlayContext)
+    return { conversationId: source.canonicalConversationId, workspaceId: workspace.workspace.id }
+  }
+  return await createOwnedAutomationConversation(input, workspace.workspace.id, overlayContext)
+}
+
+async function readAutomationConversationSource(
+  input: AutomationAgentTurnInput,
+  overlayContext: ReturnType<typeof getOverlayServerContext>,
+) {
+  if (!input.automationId) throw new AutomationTurnError('Automation identity is required.', 409)
+  const automation = await automationService.getAutomationForExecution({
+    automationId: input.automationId,
+    userId: input.userId,
+  })
+  if (!automation || automation.deletedAt) throw new AutomationTurnError('Automation is no longer available.', 409)
+  if (!input.originWorkflowRunId) throw new AutomationTurnError('Automation workflow identity is required.', 409)
+  const run = input.runId
+    ? await overlayContext.appData.repositories.automations.getRunForExecution({ runId: input.runId })
+    : null
+  if (input.runId) {
+    if (!run || run.run.automationId !== input.automationId || run.run.userId !== input.userId
+      || run.run.workflowRunId !== input.originWorkflowRunId
+      || !['queued', 'running'].includes(run.run.status)) {
+      throw new AutomationTurnError('Automation run ownership changed.', 409)
+    }
+  } else if (automation.schedulerWorkflowRunId !== input.originWorkflowRunId || automation.enabled !== true) {
+    throw new AutomationTurnError('Automation scheduler ownership changed.', 409)
+  }
+  const ownedConversationId = automation.conversationId
+    && automation.conversationId !== automation.sourceConversationId
+    ? automation.conversationId
+    : undefined
+  const canonicalConversationId = ownedConversationId ?? run?.run.conversationId
+  return { automation, run, ownedConversationId, canonicalConversationId }
+}
+
+function assertAutomationConversationTarget(
+  input: AutomationAgentTurnInput,
+  source: Awaited<ReturnType<typeof readAutomationConversationSource>>,
+): void {
+  const { ownedConversationId, canonicalConversationId, run } = source
+  if (input.conversationId && input.conversationId !== canonicalConversationId) {
+    throw new AutomationTurnError('Automation conversation binding changed.', 409)
+  }
+  if (run?.run.conversationId && ownedConversationId
+      && run.run.conversationId !== ownedConversationId) {
+    throw new AutomationTurnError('Automation run conversation binding changed.', 409)
+  }
+}
+
+async function resolveAutomationConversationWorkspace(
+  input: AutomationAgentTurnInput,
+  automation: NonNullable<Awaited<ReturnType<typeof automationService.getAutomationForExecution>>>,
+  overlayContext: ReturnType<typeof getOverlayServerContext>,
+) {
+  if (automation.workspaceId && input.workspaceId && automation.workspaceId !== input.workspaceId) {
+    throw new AutomationTurnError('Automation workspace binding changed.', 409)
+  }
   const workspace = await overlayContext.workspaceService.resolveActiveWorkspace(
     input.userId,
-    input.workspaceId,
+    automation.workspaceId ?? input.workspaceId,
   )
-  if (input.conversationId) {
-    return { conversationId: input.conversationId, workspaceId: workspace.workspace.id }
+  if (automation.workspaceId && workspace.workspace.id !== automation.workspaceId) {
+    throw new AutomationTurnError('Automation workspace binding changed.', 409)
   }
+  if (input.workspaceId && workspace.workspace.id !== input.workspaceId) {
+    throw new AutomationTurnError('Automation workspace binding changed.', 409)
+  }
+  return workspace
+}
+
+async function validateOwnedAutomationConversation(
+  input: AutomationAgentTurnInput,
+  source: Awaited<ReturnType<typeof readAutomationConversationSource>>,
+  workspaceId: string,
+  overlayContext: ReturnType<typeof getOverlayServerContext>,
+): Promise<void> {
+  const conversationId = source.canonicalConversationId!
+  const conversation = await overlayContext.appData.repositories.conversations.getConversationById({
+    conversationId: asConversationId(conversationId), userId: input.userId, workspaceId,
+  })
+  if (!conversation || conversation.userId !== input.userId || conversation.deletedAt != null
+    || conversation.workspaceId !== workspaceId
+    || (conversation.conversationType && conversation.conversationType !== 'personal')) {
+    throw new AutomationTurnError('Automation conversation ownership changed.', 409)
+  }
+  if (!source.ownedConversationId) await attachOwnedAutomationConversation(input, conversationId)
+}
+
+async function attachOwnedAutomationConversation(
+  input: AutomationAgentTurnInput,
+  conversationId: string,
+): Promise<void> {
+  await automationService.attachOwnedConversation({
+    automationId: input.automationId!,
+    conversationId,
+    userId: input.userId,
+  })
+  const attached = await automationService.getAutomationForExecution({
+    automationId: input.automationId!,
+    userId: input.userId,
+  })
+  if (attached?.conversationId !== conversationId) {
+    throw new AutomationTurnError('Automation conversation could not be bound safely.', 409)
+  }
+}
+
+async function createOwnedAutomationConversation(
+  input: AutomationAgentTurnInput,
+  workspaceId: string,
+  overlayContext: ReturnType<typeof getOverlayServerContext>,
+): Promise<{ conversationId: string; workspaceId: string }> {
   const conversationId = await overlayContext.appData.repositories.conversations
     .createConversation({
+      clientId: `automation:${input.automationId!}:owned`,
       userId: input.userId,
       title: `Automation: ${input.name || 'Untitled'}`,
       askModelIds: [input.modelId || DEFAULT_MODEL_ID],
       actModelId: input.modelId || DEFAULT_MODEL_ID,
       lastMode: 'act',
       isAutomation: true,
-      workspaceId: workspace.workspace.id,
+      workspaceId,
     })
   if (!conversationId) {
     throw new AutomationTurnError('Failed to create automation conversation')
   }
+  await attachOwnedAutomationConversation(input, String(conversationId))
   return {
     conversationId: String(conversationId),
-    workspaceId: workspace.workspace.id,
+    workspaceId,
   }
 }
 
-/**
- * Replicates the act route's request preamble inside a durable step:
- * entitlement gating, workflow-step metering, billing payer, model policy,
- * catalog authorization, user-message persistence, context assembly
- * (history, memory, mentions, skills), tool construction, instruction
- * assembly, and the turn-level usage reservation.
- */
 /**
  * Billing subject, idempotency key, and operation-id prefix for a turn:
  * surface turns bill to `surface:<platform>:<bindingId>`, automations to the
@@ -345,6 +364,62 @@ function narrowToolIdsToSurfaceAgent(
   }
 }
 
+type AutomationBoundAgent = Awaited<ReturnType<
+  ReturnType<typeof getOverlayServerContext>['workspaceAgentService']['get']
+>>
+
+async function resolveTurnAgentAuthorization(
+  input: AutomationAgentTurnInput,
+  userId: string,
+  workspaceId: string,
+  overlayContext: ReturnType<typeof getOverlayServerContext>,
+  surface: SurfaceTurnContext | undefined,
+) {
+  let approvalMode: 'ask' | 'auto' = surface?.agentPermissionMode ?? 'ask'
+  let automationAgent: AutomationBoundAgent | null = null
+  let automationAgentId: string | undefined
+  if (!surface && input.automationId) {
+    const automation = await automationService.getAutomationForExecution({
+      automationId: input.automationId,
+      userId,
+    })
+    const agentId = automation?.agentId
+    if (agentId) {
+      automationAgentId = agentId
+      automationAgent = await overlayContext.workspaceAgentService.get({
+        actorUserId: userId,
+        workspaceId,
+        agentId,
+      })
+      if (automationAgent.harness !== 'overlay' || automationAgent.archivedAt) {
+        throw new AutomationTurnError('The bound automation agent is no longer available.', 409)
+      }
+      approvalMode = automationAgent.permissionMode === 'auto' ? 'auto' : 'ask'
+    }
+  }
+  return { approvalMode, automationAgent, automationAgentId }
+}
+
+function narrowTurnAgentGrant(
+  surface: SurfaceTurnContext | undefined,
+  automationAgent: AutomationBoundAgent | null,
+  automationAgentId: string | undefined,
+  accountAllowedToolIds: string[],
+  accountAllowedConnectorIds: string[],
+) {
+  let { agentGrant, allowedToolIds } = narrowToolIdsToSurfaceAgent(surface, accountAllowedToolIds)
+  if (!surface && automationAgent) {
+    agentGrant = resolveAgentGrant({
+      agentId: automationAgentId ?? '',
+      allowedToolIds: automationAgent.allowedToolIds,
+      isDefaultMaster: automationAgent.isDefault === true,
+    })
+    allowedToolIds = accountAllowedToolIds.filter(id => agentGrant!.overlayToolIds.includes(id))
+    if (!agentGrant.capabilities.has('integrations')) accountAllowedConnectorIds.length = 0
+  }
+  return { agentGrant, allowedToolIds }
+}
+
 export async function prepareAutomationAgentTurn(
   input: AutomationAgentTurnInput & { conversationId: string; workspaceId: string },
 ): Promise<AutomationAgentTurnPlan> {
@@ -372,8 +447,8 @@ export async function prepareAutomationAgentTurn(
     workspaceId: billingWorkspaceId,
   })
 
-  // Automation workflow metering is per automation run — surface turns bill
-  // through the turn-level reservation below instead.
+  // Automation workflow metering is per automation run. Surface model calls
+  // are billed by the Harness provider dispatch, not a turn-wide reservation.
   if (!surface) {
     const workflowMeter = await meterAutomationWorkflowRun({
       entitlements: runtimeEntitlements,
@@ -518,7 +593,7 @@ export async function prepareAutomationAgentTurn(
     })
   })()
 
-  const [_userMessageId, turnContext, resolvedMediaToolIntent] = await Promise.all([
+  const [userMessageId, turnContext, resolvedMediaToolIntent] = await Promise.all([
     saveUserMessageTask,
     turnContextTask,
     mediaIntentTask,
@@ -622,22 +697,9 @@ export async function prepareAutomationAgentTurn(
     userId,
   })
 
-  let approvalMode: 'ask' | 'auto' = surface?.agentPermissionMode ?? 'ask'
-  if (!surface && input.automationId) {
-    const automation = await automationService.getAutomationForExecution({
-      automationId: input.automationId,
-      userId,
-    })
-    const agentId = (automation as { agentId?: string } | null)?.agentId
-    if (agentId) {
-      const agent = await overlayContext.workspaceAgentService.get({
-        actorUserId: userId,
-        workspaceId: billingWorkspaceId,
-        agentId,
-      })
-      if (agent.harness === 'overlay' && agent.permissionMode === 'auto') approvalMode = 'auto'
-    }
-  }
+  const { approvalMode, automationAgent, automationAgentId } = await resolveTurnAgentAuthorization(
+    input, userId, billingWorkspaceId, overlayContext, surface,
+  )
   const toolPreloadTasks = preloadActExternalToolTasks({
     userId,
     serverSecret,
@@ -667,9 +729,8 @@ export async function prepareAutomationAgentTurn(
     accountAllowedConnectorIdsTask,
   ])
 
-  const { agentGrant, allowedToolIds: surfaceAllowedToolIds } = narrowToolIdsToSurfaceAgent(
-    surface,
-    accountAllowedToolIds,
+  const { agentGrant, allowedToolIds: surfaceAllowedToolIds } = narrowTurnAgentGrant(
+    surface, automationAgent, automationAgentId, accountAllowedToolIds, accountAllowedConnectorIds,
   )
 
   const baseUrl = getBaseUrl()
@@ -680,7 +741,7 @@ export async function prepareAutomationAgentTurn(
     agentId: surface?.agentId,
     agentPrincipalId: surface?.agentPrincipalId,
     automationExecution: true,
-    automationId: input.automationId,
+    ...(!surface ? { automationId: input.automationId } : {}),
     computerApprovalContext: 'automation',
     approvalMode,
     baseUrl,
@@ -745,37 +806,8 @@ export async function prepareAutomationAgentTurn(
     automationMode: false,
   })
 
-  // Turn-level usage reservation — same shape the Work runner holds so usage
-  // accounting stays consistent if the workflow dies mid-turn.
-  const [modelMessages, reservation] = await Promise.all([
-    convertToModelMessages(messagesForModel),
-    actUsageBudgetService.reserveForAttempt({
-    entitlements: runtimeEntitlements,
-    estimatedInputTokens: Math.ceil(JSON.stringify(messagesForModel).length / 4) + 2_000,
-    idempotencyKey: requestIdempotencyKey,
-    maxOutputTokens: MAX_ACT_OUTPUT_TOKENS_PER_STEP,
-    modelId: effectiveModelId,
-    operationId: operationIdPrefix,
-    paid,
-    requestFingerprint,
-    userId,
-    workspaceId: billingWorkspaceId,
-    programmaticSubjectId: billingProgrammaticSubjectId,
-    }),
-  ])
-  if (!reservation.ok) {
-    const payload = reservation.failure.payload as Record<string, unknown>
-    throw new AutomationTurnError(
-      typeof payload.message === 'string' ? payload.message : 'Automation turn could not reserve usage.',
-      reservation.failure.statusCode,
-      payload,
-    )
-  }
-  await actUsageBudgetService.markReservationStarted({
-    reservationId: reservation.reservationId,
-    userId,
-  })
-
+  const modelMessages = await convertToModelMessages(messagesForModel)
+  if (!userMessageId) throw new AutomationTurnError('Automation user message was not persisted.')
   const toolDefinitions = await describePersonalChatWorkTools(
     actTooling.tools,
     Boolean(actTooling.toolApproval),
@@ -784,7 +816,8 @@ export async function prepareAutomationAgentTurn(
 
   const toolingContext: PersonalChatWorkToolingContext = {
     accountAllowedConnectorIds: [...accountAllowedConnectorIds],
-    accountAllowedToolIds: [...accountAllowedToolIds],
+    accountAllowedToolIds: [...surfaceAllowedToolIds],
+    integrationToolIds: [...actTooling.integrationToolIds],
     baseUrl,
     billingProgrammaticSubjectId,
     conversationId: cid,
@@ -793,6 +826,7 @@ export async function prepareAutomationAgentTurn(
     latestUserText: userText,
     mediaToolIntent: resolvedMediaToolIntent,
     memoryEnabled,
+    ...(surface ? { memoryOwnerId: agentMemoryOwnerId(surface.agentId) } : {}),
     paid,
     requestFingerprint,
     requestedToolIds: [],
@@ -800,7 +834,7 @@ export async function prepareAutomationAgentTurn(
     userId,
     workspaceId: billingWorkspaceId,
     automationExecution: true,
-    automationId: input.automationId,
+    ...(!surface ? { automationId: input.automationId, automationRunId: input.runId } : {}),
     approvalMode,
   }
 
@@ -813,175 +847,11 @@ export async function prepareAutomationAgentTurn(
     ...(modelSupportsZeroDataRetention(effectiveModelId)
       ? { providerOptions: { gateway: { zeroDataRetention: true } } }
       : {}),
-    reservationId: reservation.reservationId,
+    reservationId: null,
+    userMessageId: String(userMessageId),
+    principalId: workspaceAccess.principal.id,
     sourceCitations: sourceCitationMap,
     toolDefinitions,
     toolingContext,
-  }
-}
-
-export function aggregateAutomationTurnUsage(steps: StepResult<ToolSet>[]) {
-  return steps.reduce((usage, step) => ({
-    inputTokens: usage.inputTokens + (step.usage?.inputTokens ?? 0),
-    outputTokens: usage.outputTokens + (step.usage?.outputTokens ?? 0),
-  }), { inputTokens: 0, outputTokens: 0 })
-}
-
-/**
- * Settles a successful turn: finalizes the usage reservation, persists the
- * assistant reply (idempotent on turnId), and marks the automation run row
- * completed when one exists.
- */
-export async function finalizeAutomationAgentTurn(args: {
-  input: AutomationAgentTurnInput & { conversationId: string }
-  plan: AutomationAgentTurnPlan
-  steps: StepResult<ToolSet>[]
-  text: string
-  /** Serializable — a Map would not survive the step boundary. */
-  toolFailures?: Array<{ toolCallId: string; toolName: string; error: string }>
-  workflowRunId?: string
-}): Promise<void> {
-  const { input, plan } = args
-  const usage = aggregateAutomationTurnUsage(args.steps)
-  await actUsageBudgetService.recordFinishedUsage({
-    forceFreeTierLimits: !plan.paid,
-    inputTokens: usage.inputTokens,
-    modelId: plan.effectiveModelId,
-    operationId: input.surface
-      ? `surface:${input.surface.platform}:${input.surface.bindingId}:${input.turnId}:usage`
-      : `automation-run:${input.runId ?? input.turnId}:usage`,
-    outputTokens: usage.outputTokens,
-    reservationId: plan.reservationId,
-    userId: input.userId,
-  })
-  const finishedToolCallIds = new Set<string>()
-  for (const step of args.steps) {
-    for (const result of step.toolResults ?? []) {
-      if (result.toolCallId) finishedToolCallIds.add(result.toolCallId)
-    }
-  }
-  const [providerCostMicros, workflowMetrics] = await Promise.all([
-    calculateProviderCostMicros({
-      inputTokens: usage.inputTokens,
-      modelId: plan.effectiveModelId,
-      outputTokens: usage.outputTokens,
-    }),
-    args.workflowRunId
-      ? observeWorkflowRunMetrics(args.workflowRunId).catch((_error) => ({}))
-      : Promise.resolve({}),
-  ])
-  await actMessagePersistenceService.persistAssistantFinish({
-    attemptModelId: plan.effectiveModelId,
-    conversationId: plan.conversationId as never,
-    // The act route skips webhooks for automation executions.
-    emitWebhook: false,
-    event: { steps: args.steps, text: args.text, usage },
-    finishedToolCallIds,
-    agentRunMetrics: {
-      inputTokens: usage.inputTokens,
-      outputTokens: usage.outputTokens,
-      providerCostMicros,
-      ...summarizeAgentToolMetrics(args.steps),
-      ...workflowMetrics,
-    },
-    importedAuthorName: input.name,
-    sourceCitations: plan.sourceCitations,
-    timedOut: false,
-    timeoutMs: 0,
-    toolFailuresByCallId: new Map(
-      (args.toolFailures ?? []).map((failure) => [
-        failure.toolCallId,
-        { toolName: failure.toolName, error: failure.error },
-      ]),
-    ),
-    turnId: input.turnId,
-    userId: input.userId,
-    throwOnError: true,
-  })
-  if (input.runId) {
-    await automationService.markRunCompleted({
-      runId: input.runId,
-      userId: input.userId,
-      conversationId: plan.conversationId,
-    })
-  }
-}
-
-/**
- * Settles a failed turn: releases the usage reservation (if one was taken),
- * records a failure assistant message so the automation conversation shows
- * what went wrong, and marks the run row failed when one exists.
- */
-export async function failAutomationAgentTurn(args: {
-  input: AutomationAgentTurnInput & { conversationId?: string }
-  plan?: AutomationAgentTurnPlan
-  steps?: StepResult<ToolSet>[]
-  /** Failure message — the step boundary serializes inputs, so pass a string. */
-  error: string
-  toolFailures?: Array<{ toolCallId: string; toolName: string; error: string }>
-  workflowRunId?: string
-}): Promise<void> {
-  const { input } = args
-  const message = args.error
-  const steps = args.steps ?? []
-
-  if (args.plan?.reservationId) {
-    await actUsageBudgetService.releaseReservation({
-      reason: message,
-      reservationId: args.plan.reservationId,
-      userId: input.userId,
-    }).catch((_error) => undefined)
-  }
-
-  const conversationId = args.plan?.conversationId ?? input.conversationId
-  if (conversationId) {
-    try {
-      await actMessagePersistenceService.persistAssistantFinish({
-        attemptModelId: args.plan?.effectiveModelId ?? input.modelId ?? DEFAULT_MODEL_ID,
-        conversationId: conversationId as never,
-        emitWebhook: false,
-        event: {
-          steps,
-          text: input.surface
-            ? `Surface turn failed: ${message}`
-            : `Automation run failed: ${message}`,
-          usage: aggregateAutomationTurnUsage(steps),
-        },
-        finishedToolCallIds: new Set(
-          steps.flatMap((step) => (step.toolResults ?? [])
-            .map((result) => result.toolCallId)
-            .filter(Boolean)),
-        ),
-        importedAuthorName: input.name,
-        timedOut: false,
-        timeoutMs: 0,
-        toolFailuresByCallId: new Map(
-          (args.toolFailures ?? []).map((failure) => [
-            failure.toolCallId,
-            { toolName: failure.toolName, error: failure.error },
-          ]),
-        ),
-        turnId: input.turnId,
-        userId: input.userId,
-      })
-    } catch (persistError) {
-      logger.warn('[automations/turn] failure message persistence failed', {
-        turnId: input.turnId,
-        error: summarizeErrorForLog(persistError),
-      })
-    }
-  }
-
-  if (input.runId) {
-    await automationService.markRunFailed({
-      runId: input.runId,
-      userId: input.userId,
-      error: message,
-    }).catch((markError) => {
-      logger.warn('[automations/turn] markRunFailed failed', {
-        runId: input.runId,
-        error: summarizeErrorForLog(markError),
-      })
-    })
   }
 }

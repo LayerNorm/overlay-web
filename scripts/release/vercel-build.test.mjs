@@ -185,3 +185,13 @@ test('Computer QA fixtures require explicit isolated preview opt-in', () => {
   assert.deepEqual(plan.after[1].args, ['run', 'dev/seed:initComputerQa', '{}', '--deployment', 'preview/pr-123'])
   assert.equal(buildPlan({ VERCEL_ENV: 'production', OVERLAY_PREVIEW_QA_FIXTURES: 'computer-workspace' }).command, 'npm')
 })
+
+test('retirement QA fixture uses the trusted preview key without ordinary or production seeding', () => {
+  const plan = buildPlan({ ...preview, OVERLAY_PREVIEW_QA_FIXTURES: 'native-thread-retirement,native-thread-retirement' })
+  assert.deepEqual(plan.after.map(step => step.args), [
+    ['run', 'dev/seed:init', '{}', '--deployment', 'preview/pr-123'],
+    ['run', 'dev/nativeThreadQa:init', '{}', '--deployment', 'preview/pr-123'],
+  ])
+  assert.equal(buildPlan(preview).after.length, 1)
+  assert.equal(buildPlan({ VERCEL_ENV: 'production', OVERLAY_PREVIEW_QA_FIXTURES: 'native-thread-retirement' }).command, 'npm')
+})

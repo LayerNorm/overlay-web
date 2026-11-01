@@ -1,42 +1,20 @@
 import { randomUUID } from 'node:crypto'
 import { logger } from '@/server/observability/logger'
-import { after, NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { readValidatedJson } from '@/server/app-api/validated-input'
 import {
   acquireConcurrentRequestSlot,
   concurrentRequestLimitResponse,
 } from '@/server/security/concurrent-request-limiter'
-import { createModelCallToUIChunkTransform } from '@ai-sdk/workflow'
-import { createUiMessageMetadataTransform } from '@/server/chat/ui-message-metadata-transform'
-import { drainWorkProgress } from '@/server/chat/work-progress-drain'
-import { convertToModelMessages, createUIMessageStreamResponse, generateText, isStepCount, toUIMessageStream, ToolLoopAgent, type ToolApprovalConfiguration, type UIMessage } from '@/server/ai/sdk'
-import type { LanguageModel } from '@/server/ai/provider-types'
+import type { UIMessage } from '@/server/ai/sdk'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import {
   assertUserCanUseByokModel,
-  getLanguageModel,
-  getGatewayModelId,
-  isSubscriptionModelForUser,
 } from '@/server/ai/model-runtime'
-import { createRuntimeOverlayFreeLanguageModel } from '@/server/ai/gateway/overlay-free-router'
-import { modelSupportsZeroDataRetention, modelUsesAiGatewayTransport } from '@/shared/ai/gateway/model-data'
-import { FREE_TIER_DEFAULT_MODEL_ID, isKimiK3ModelId } from '@/shared/ai/gateway/model-types'
-import {
-  getChatModelFallbackCandidates,
-  getLowCreditFallbackAttemptModelIds,
-} from '@/shared/ai/gateway/model-fallbacks'
-import { isGatewayCreditLow } from '@/server/ai/gateway/gateway-credits'
-import { resolveModelContextWindow, summaryGenerationOptions } from '@/server/chat/context-compaction'
 import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
 import { userFacingOpenRouterError } from '@/server/ai/model-runtime'
-import { uploadFilePartsForModel } from '@/server/ai/file-upload'
-import {
-  isFreeTierChatModelId,
-  OPENROUTER_FREE_MODEL_ID,
-} from '@/shared/ai/gateway/model-types'
 import { normalizeChatToolRequestIds } from '@/shared/chat/tool-requests'
-import { MAX_TOOL_STEPS_ACT } from '@/server/tools/tools/policy'
 import { OVERLAY_TOOL_IDS } from '@overlay/tools-core'
 import { getInternalApiBaseUrl } from '@/server/web/app-url'
 import { automationService } from '@/server/automations/http'
@@ -44,7 +22,6 @@ import { getOverlayServerContext } from '@/server/bootstrap'
 import { buildSecondarySystemPromptExtension } from '@/server/agent/operator-system-prompt'
 import {
   summarizeErrorForLog,
-  summarizeToolInputForLog,
 } from '@/shared/security/safe-log'
 import { ActConversationRequest } from '@/shared/schemas/chat'
 import {
@@ -54,7 +31,6 @@ import {
   actEntitlementService,
   agentRunService,
   actMessagePersistenceService,
-  actUsageBudgetService,
 } from '@/server/conversations/http'
 import type { ActEntitlementService } from '@/server/conversations/ActEntitlementService'
 import {
@@ -67,25 +43,10 @@ import { resolveAuthorizedModelIds } from '@/server/ai/model-policy-authority'
 import { mergeReplyContextIntoMessagesForModel } from '@/shared/chat/reply-context-for-model'
 import { sanitizeUiMessagesForModelApi } from '@/shared/chat/sanitize-ui-messages-for-model'
 import { ensureActConversationId } from '@/server/conversations/ensure-act-conversation'
-import { registerToolLoopRun } from '@/server/conversations/tool-loop-run-registry'
 import {
   asConversationId,
 } from '@/server/conversations/ActConversationRepository'
-import {
-  MAX_ACT_MODEL_ATTEMPTS,
-  MAX_ACT_OUTPUT_TOKENS_PER_STEP,
-  drainReadableStream,
-  estimateToolLoopReservationTokens,
-  messagesRequireVision,
-  observeFirstTextToken,
-  prefixFallbackNoticeAfterStart,
-  resolveActAbortTimeoutMs,
-  resolveActTurnId,
-  resolveEffectiveActModelId,
-  runActModelAttempts,
-  summarizeToolOutputForLog,
-  type ActModelAttemptFailureReason,
-} from './route-helpers'
+import { messagesRequireVision, resolveActAbortTimeoutMs, resolveActTurnId, resolveEffectiveActModelId } from './route-helpers'
 import { buildActAgentInstructions } from './instructions'
 import {
   authorizeActRequest,
@@ -103,11 +64,7 @@ import {
   filterCatalogResources,
 } from '@/server/authorization'
 import type { AuthorizationService } from '@/server/authorization/AuthorizationService'
-import { meterAutomationWorkflowRun } from '@/server/billing/automation-workflow-billing'
 import { resolveBillingPayer } from '@/server/billing/billing-runtime'
-import { start } from 'workflow/api'
-import { personalChatWorkWorkflow } from '@/server/workflows/personal-chat-work'
-import { describePersonalChatWorkTools } from '@/server/conversations/personal-chat-work-tools'
 import { prepareActModelCandidates } from './model-candidates'
 import { isHarnessBackendReady } from '@/server/harness/backend-readiness'
 import {
@@ -115,10 +72,7 @@ import {
   personalHarnessConversationClientId,
   startPersonalHarnessTurn,
 } from './personal-harness-turn'
-import {
-  calculateProviderCostMicros,
-  summarizeAgentToolMetrics,
-} from '@/server/conversations/agent-run-metrics'
+import { actRoutePolicyResponse, decidePersonalActRoute } from './act-route-policy'
 
 export interface ActRouteDependencies {
   authorizationService?: AuthorizationService
@@ -131,12 +85,6 @@ export async function executeActTurn(
   dependencies: ActRouteDependencies = {},
 ) {
   const requestId = request.headers.get('x-request-id')?.trim() || crypto.randomUUID()
-  let pendingAgentRunId: string | undefined
-  let budgetReservationId: string | null = null
-  let budgetReservationFinalized = false
-  let currentUserId: string | undefined
-  let currentResourceUserId: string | undefined
-  let actWebhookSkip = false
   let concurrencySlot: { release: () => void } | null = null
   let requestModelId: string | undefined
   try {
@@ -159,10 +107,8 @@ export async function executeActTurn(
       import('@/shared/markdown/markdown-table-instructions'),
     ])
     const _ttftDebug = process.env.TTFT_DEBUG === 'true'
-    let _t0 = 0, _tAuth = 0, _tPrep = 0, _tTools = 0, _tStreamCall = 0
+    let _t0 = 0, _tAuth = 0, _tPrep = 0, _tTools = 0
     let _tEnsureConversationMs = 0
-    let _tFirstToolCall = 0
-    let _firstToolCallLogged = false
     if (_ttftDebug) _t0 = performance.now()
     const bodyResult = await readValidatedJson(request, context, ActConversationRequest)
     if (!bodyResult.ok) {
@@ -191,7 +137,6 @@ export async function executeActTurn(
       automationMode,
       automationExecution,
       automationId,
-      automationName,
       mediaToolIntent,
       requestedToolIds: rawRequestedToolIds,
       memoryEnabled: rawMemoryEnabled,
@@ -205,7 +150,6 @@ export async function executeActTurn(
     }
     const uiMessages = messages as UIMessage[]
     const overlayContext = getOverlayServerContext()
-    actWebhookSkip = automationExecution === true
     const { auth } = context
     const userId = auth.userId
     const personalWorkflowEligible = isPersonalHarnessRouteEligible({
@@ -213,6 +157,15 @@ export async function executeActTurn(
       automationExecution,
       automationMode,
     })
+    const eligibility = decidePersonalActRoute({
+      authType: auth.authType,
+      automationExecution,
+      automationMode,
+      mode,
+    })
+    if (eligibility.kind !== 'admit') {
+      return actRoutePolicyResponse(eligibility.kind, requestId)
+    }
     const conversationUserId = getAuthorizedResourceUserId(context)
     const billingWorkspaceId = context.workspace.workspace.id
     const mentionedAgent = rawMentions?.find((mention) => mention.type === 'agent')
@@ -224,8 +177,6 @@ export async function executeActTurn(
           ? `agent:${mentionedAgent.id}`
           : undefined,
     )
-    currentUserId = userId
-    currentResourceUserId = conversationUserId
     // C-10: Limit concurrent in-flight act requests per user to prevent
     // resource exhaustion. Each request can run for up to 800 seconds;
     // without this, a user could fire 60 concurrent requests instantly.
@@ -259,31 +210,34 @@ export async function executeActTurn(
       requestedToolIds,
     })
     if (dynamicAuthorization) return dynamicAuthorization
+    let modelGate: Awaited<ReturnType<ActEntitlementService['gateModelAccess']>>
+    try {
+      modelGate = await (dependencies.entitlementService ?? actEntitlementService).gateModelAccess({
+        effectiveModelId,
+        programmaticSubjectId: billingProgrammaticSubjectId,
+        userId,
+        workspaceId: billingWorkspaceId,
+      })
+    } catch (error) {
+      if (!actConversationErrorResponse(error)) {
+        return actRoutePolicyResponse('harness_unavailable', requestId)
+      }
+      throw error
+    }
     const {
       appSettings,
       paid,
       runtimeEntitlements,
-    } = await (dependencies.entitlementService ?? actEntitlementService).gateModelAccess({
-      effectiveModelId,
-      programmaticSubjectId: billingProgrammaticSubjectId,
-      userId,
-      workspaceId: billingWorkspaceId,
+    } = modelGate
+    const readiness = decidePersonalActRoute({
+      authType: auth.authType,
+      automationExecution,
+      automationMode,
+      harnessReady: isHarnessBackendReady(appSettings),
+      mode,
     })
-    if (automationExecution === true) {
-      const workflowMeter = await meterAutomationWorkflowRun({
-        entitlements: runtimeEntitlements,
-        idempotencyKey: context.requestIdempotencyKey,
-        programmaticSubjectId: billingProgrammaticSubjectId ?? `automation:${automationId ?? turnId}`,
-        requestFingerprint: context.requestFingerprint,
-        userId,
-        workspaceId: billingWorkspaceId,
-      })
-      if (!workflowMeter.ok) {
-        return NextResponse.json(
-          { ...workflowMeter.payload, error: workflowMeter.code },
-          { status: workflowMeter.status },
-        )
-      }
+    if (readiness.kind !== 'admit') {
+      return actRoutePolicyResponse(readiness.kind, requestId)
     }
     const resolvedBillingPayer = await resolveBillingPayer({
       programmaticSubjectId: billingProgrammaticSubjectId,
@@ -304,9 +258,7 @@ export async function executeActTurn(
         { status: 403 },
       )
     }
-    const usePersonalHarness = personalWorkflowEligible && isHarnessBackendReady(appSettings)
-    const modelCandidates = usePersonalHarness
-      ? await prepareActModelCandidates({
+    const modelCandidates = await prepareActModelCandidates({
           authorization: authorizationService,
           context,
           modelId: effectiveModelId,
@@ -315,7 +267,6 @@ export async function executeActTurn(
           requiresVision: messagesRequireVision(uiMessages),
           authorizedModelIds: authorizedModelIds.chat,
         })
-      : undefined
     if (modelCandidates?.length) {
       effectiveModelId = modelCandidates[0]!
       requestModelId = effectiveModelId
@@ -344,7 +295,6 @@ export async function executeActTurn(
           turnId: tid,
         })
       : undefined)
-    const parallelCreate = !conversationId && Boolean(durableClientId)
     if (!cid && durableClientId) {
       const ensureStartedAt = _ttftDebug ? performance.now() : 0
       cid = await ensureActConversationId({
@@ -504,130 +454,20 @@ export async function executeActTurn(
       historyBaseModelId,
     })
     messagesForModel = cloneMessagesWithIndexedFileHint(messagesForModel, indexedAttachmentList, hasPreloadedDocContext)
-    if (usePersonalHarness) {
-      messagesForModel = sanitizeUiMessagesForModelApi(
-        mergeReplyContextIntoMessagesForModel(messagesForModel, replyContextForModel),
-      )
-    } else {
-      const summaryModelId = isByokModelId(effectiveModelId)
-        ? effectiveModelId
-        : FREE_TIER_DEFAULT_MODEL_ID
-      messagesForModel = await actContextService.prepareExistingMessagesForModel({
-        accessToken,
-        conversationId: cid,
-        generateSummaryText: async ({ prompt, targetSummaryTokens }) => {
-          const estimatedInputTokens = Math.ceil(prompt.length / 4) + 64
-          const summaryReservation = await actUsageBudgetService.reserveForAttempt({
-            entitlements: runtimeEntitlements,
-            estimatedInputTokens,
-            idempotencyKey: context.requestIdempotencyKey,
-            maxOutputTokens: targetSummaryTokens,
-            modelId: summaryModelId,
-            operationId: 'conversation.act.context-summary',
-            paid,
-            requestFingerprint: context.requestFingerprint,
-            userId,
-            workspaceId: billingWorkspaceId,
-            programmaticSubjectId: billingProgrammaticSubjectId,
-          })
-          if (!summaryReservation.ok) {
-            throw new Error(String(summaryReservation.failure.payload.error ?? 'context_summary_budget_denied'))
-          }
-          let providerWorkStarted = false
-          try {
-            await actUsageBudgetService.markReservationStarted({
-              reservationId: summaryReservation.reservationId,
-              userId,
-            })
-            providerWorkStarted = true
-            const summaryModel = await getLanguageModel(summaryModelId, accessToken, userId)
-            const isSubscription = await isSubscriptionModelForUser(summaryModelId, userId)
-            const summaryResult = await generateText({
-              model: summaryModel,
-              ...summaryGenerationOptions({ prompt, targetSummaryTokens, isSubscription }),
-            })
-            const summaryUsage = (summaryResult as unknown as {
-              usage?: { inputTokens?: number; outputTokens?: number }
-            }).usage
-            await actUsageBudgetService.recordFinishedUsage({
-              forceFreeTierLimits: false,
-              inputTokens: summaryUsage?.inputTokens ?? estimatedInputTokens,
-              modelId: summaryModelId,
-              outputTokens: summaryUsage?.outputTokens ?? targetSummaryTokens,
-              reservationId: summaryReservation.reservationId,
-              userId,
-            })
-            return summaryResult.text.trim()
-          } catch (error) {
-            await actUsageBudgetService.releaseReservation({
-              reason: error instanceof Error ? error.message : 'context_summary_provider_failed',
-              reservationId: summaryReservation.reservationId,
-              userId,
-            }).catch((_releaseError) => undefined)
-            if (providerWorkStarted && summaryReservation.reservationId) {
-              await actUsageBudgetService.markReservationForReconcile({
-                errorMessage: error instanceof Error ? error.message : 'context_summary_provider_failed',
-                reservationId: summaryReservation.reservationId,
-                userId,
-              }).catch((_reconcileError) => undefined)
-            }
-            throw error
-          }
-        },
-        historyBaseModelId,
-        messages: messagesForModel,
-        replyContextForModel,
-        targetModelId: effectiveModelId,
-        summarizerModelId: summaryModelId,
-        userId: conversationUserId,
-        modelUserId: userId,
-      })
-    }
+    messagesForModel = sanitizeUiMessagesForModelApi(
+      mergeReplyContextIntoMessagesForModel(messagesForModel, replyContextForModel),
+    )
     const userSystemPromptExtension = buildSecondarySystemPromptExtension(systemPrompt)
 
-    const mediaHeuristicSkipped =
-      paid &&
-      structuredMediaToolIntent == null &&
-      !mayNeedMediaGenerationTools(latestUserText) &&
-      resolvedMediaToolIntent == null
-
 	    if (_ttftDebug) _tPrep = performance.now()
-	    // Declared before the primary LLM is chosen so the OpenRouter fetch callback can set it during calls.
-	    let streamedRoutedModelId: string | undefined
-    const actAbortTimeoutMsResolved = resolveActAbortTimeoutMs({
-      requestedTimeoutMs: actAbortTimeoutMs,
-      automationExecution: automationExecution === true,
+    const agentRunTask = agentRunService.startPersonalWorkflow({
+      conversationId: cid,
+      modelId: effectiveModelId,
+      turnId: tid,
+      userId: conversationUserId,
+      userMessageId,
     })
-    const agentRunLeaseExpiresAt = Date.now() + actAbortTimeoutMsResolved + 60_000
-    const agentRunEligible = Boolean(cid) && automationExecution !== true && automationMode !== true
-    const useWorkRunner = !usePersonalHarness && personalWorkflowEligible && agentRunEligible
-    const agentRunTask = agentRunEligible
-      ? (usePersonalHarness
-          ? agentRunService.startPersonalWorkflow({
-              conversationId: cid,
-              modelId: effectiveModelId,
-              turnId: tid,
-              userId: conversationUserId,
-              userMessageId,
-            })
-          : useWorkRunner
-            ? agentRunService.startLegacyPersonalWorkflow({
-              conversationId: cid,
-              modelId: effectiveModelId,
-              turnId: tid,
-              userId: conversationUserId,
-              userMessageId,
-            })
-            : agentRunService.startChat({
-              conversationId: cid,
-              leaseExpiresAt: agentRunLeaseExpiresAt,
-              modelId: effectiveModelId,
-              turnId: tid,
-              userId: conversationUserId,
-              userMessageId,
-            }))
-      : Promise.resolve(undefined)
-	    const [agentRun, actTooling] = await Promise.all([
+    const [agentRun, actTooling] = await Promise.all([
         agentRunTask,
 		      prepareActTooling({
 		        accountAllowedConnectorIds,
@@ -636,7 +476,7 @@ export async function executeActTurn(
 	        automationExecution: automationExecution === true,
 	        automationMode: automationMode === true,
 	        automationId,
-	        computerApprovalContext: usePersonalHarness || useWorkRunner ? 'work' : undefined,
+	        computerApprovalContext: 'work',
 	        baseUrl: getInternalApiBaseUrl(request),
 	        conversationId: cid,
         entitlements: runtimeEntitlements,
@@ -657,18 +497,8 @@ export async function executeActTurn(
 	        billingProgrammaticSubjectId,
 	      }),
 		    ])
-    if (agentRunEligible && !agentRun) {
+    if (!agentRun) {
       throw new Error('Failed to establish AgentRun before generation')
-    }
-    pendingAgentRunId = usePersonalHarness ? undefined : agentRun?.id
-    if (!useWorkRunner && !usePersonalHarness && agentRun?.status === 'queued') {
-      await agentRunService.markRunning({
-        leaseExpiresAt: agentRunLeaseExpiresAt,
-        runId: agentRun.id,
-        userId: conversationUserId,
-      })
-    } else if (!useWorkRunner && !usePersonalHarness && agentRun && agentRun.status !== 'running') {
-      throw new Error(`AgentRun ${agentRun.id} is already ${agentRun.status}`)
     }
     if (_ttftDebug) _tTools = performance.now()
     logActTooling(actTooling)
@@ -702,10 +532,9 @@ export async function executeActTurn(
       automationMode: automationMode === true,
     })
 
-    if (usePersonalHarness) {
-      if (!agentRun || !cid || !modelCandidates) throw new Error('Personal harness requires an admitted AgentRun and model candidates.')
-      const personalAgentRun = agentRun
-      return await startPersonalHarnessTurn({
+    if (!agentRun || !cid || !modelCandidates) throw new Error('Personal harness requires an admitted AgentRun and model candidates.')
+    const personalAgentRun = agentRun
+    return await startPersonalHarnessTurn({
         agentRun: personalAgentRun,
         auth,
         budget: {
@@ -716,7 +545,7 @@ export async function executeActTurn(
               : undefined),
         },
         conversationId: cid,
-        emitWebhook: !actWebhookSkip,
+        emitWebhook: true,
         effectiveModelId,
         goal: latestUserText ?? '',
         hasDynamicApproval: Boolean(actTooling.toolApproval),
@@ -759,709 +588,7 @@ export async function executeActTurn(
         },
         workspaceId: billingWorkspaceId,
       })
-    }
-
-    if (useWorkRunner) {
-      if (!agentRun || !cid) throw new Error('Durable chat requires an AgentRun and conversation')
-      await uploadFilePartsForModel(uiMessages as Array<{
-        role: string
-        parts?: Array<{
-          type: string
-          url?: string
-          mediaType?: string
-          fileName?: string
-          filename?: string
-          providerReference?: Record<string, string>
-        }>
-      }>, effectiveModelId)
-      const workMessages = await convertToModelMessages(messagesForModel)
-      const workMaxOutputTokens = 32_768
-      const workReservation = await actUsageBudgetService.reserveForAttempt({
-        userId,
-        entitlements: runtimeEntitlements,
-        idempotencyKey: context.requestIdempotencyKey,
-        modelId: effectiveModelId,
-        paid,
-        estimatedInputTokens: Math.ceil(JSON.stringify(messagesForModel).length / 4) + 2_000,
-        maxOutputTokens: workMaxOutputTokens,
-        operationId: 'conversation.work',
-        programmaticSubjectId: billingProgrammaticSubjectId,
-        requestFingerprint: context.requestFingerprint,
-        workspaceId: billingWorkspaceId,
-      })
-      if (!workReservation.ok) {
-        const errorText = typeof workReservation.failure.payload.message === 'string'
-          ? workReservation.failure.payload.message
-          : 'Chat could not reserve usage.'
-        await agentRunService.fail({
-          error: { code: 'budget_reservation_failed', message: errorText, retryable: true },
-          errorText,
-          runId: agentRun.id,
-          userId: conversationUserId,
-        })
-        concurrencySlot?.release()
-        concurrencySlot = null
-        return NextResponse.json(
-          workReservation.failure.payload,
-          { status: workReservation.failure.statusCode },
-        )
-      }
-      budgetReservationId = workReservation.reservationId
-      await actUsageBudgetService.markReservationStarted({
-        reservationId: budgetReservationId,
-        userId,
-      })
-      const toolDefinitions = await describePersonalChatWorkTools(
-        tools,
-        Boolean(actTooling.toolApproval),
-      )
-      const workReasoning = isKimiK3ModelId(effectiveModelId) && rawReasoning && rawReasoning !== 'provider-default'
-        ? 'xhigh'
-        : rawReasoning === 'provider-default'
-          ? undefined
-          : rawReasoning
-      const ownedReservationId = budgetReservationId
-      const workflowRun = await start(personalChatWorkWorkflow, [{
-        agentRunId: agentRun.id,
-        billingUserId: userId,
-        conversationId: cid,
-        emitWebhook: !actWebhookSkip,
-        instructions: actInstructions,
-        messages: workMessages,
-        modelId: effectiveModelId,
-        paid,
-        ...(modelSupportsZeroDataRetention(effectiveModelId)
-          ? { providerOptions: { gateway: { zeroDataRetention: true } } }
-          : {}),
-        ...(workReasoning ? { reasoning: workReasoning } : {}),
-        reservationId: ownedReservationId,
-        resourceUserId: conversationUserId,
-        sourceCitations: sourceCitationMap,
-        toolDefinitions,
-        toolingContext: {
-          accountAllowedConnectorIds: [...accountAllowedConnectorIds],
-          accountAllowedToolIds: [...accountAllowedToolIds],
-          baseUrl: getInternalApiBaseUrl(request),
-          billingProgrammaticSubjectId,
-          conversationId: cid,
-          effectiveModelId,
-          entitlements: runtimeEntitlements,
-          latestUserText,
-          memoryEnabled,
-          paid,
-          requestFingerprint: context.requestFingerprint,
-          requestedToolIds: [...requestedToolIds],
-          turnId: tid,
-          userId,
-          workspaceId: billingWorkspaceId,
-        },
-        turnId: tid,
-      }])
-      await agentRunService.attachWorkflow({
-        runId: agentRun.id,
-        userId: conversationUserId,
-        workflowRunId: workflowRun.runId,
-      })
-      budgetReservationId = null
-      budgetReservationFinalized = true
-      concurrencySlot?.release()
-      concurrencySlot = null
-      // The model-call transform carries no metadata hook, so source citations
-      // have to be attached here or the client never sees them for a Work turn.
-      const _uiStream = workflowRun.getReadable()
-        .pipeThrough(createModelCallToUIChunkTransform())
-        .pipeThrough(createUiMessageMetadataTransform(
-          Object.keys(sourceCitationMap).length > 0
-            ? { sourceCitations: sourceCitationMap }
-            : undefined,
-        ))
-      // One branch to the browser, one to the transcript. The workflow can only
-      // persist at step boundaries; reading the same stream here fills in the
-      // finer grain, so a reload mid-turn shows the reply mid-sentence.
-      const [_clientChunks, _progressChunks] = _uiStream.tee()
-      const _uiResp = createUIMessageStreamResponse({ stream: _clientChunks })
-      const progressRunId = agentRun.id
-      after(async () => {
-        await drainWorkProgress(_progressChunks, {
-          publish: async (content) => {
-            await agentRunService.recordProgress({
-              content,
-              runId: progressRunId,
-              userId: conversationUserId,
-            })
-          },
-          runId: progressRunId,
-        })
-      })
-      const responseHeaders = new Headers(_uiResp.headers)
-      responseHeaders.set('x-request-id', requestId)
-      if (agentRun?.id) responseHeaders.set('x-overlay-agent-run-id', agentRun.id)
-      return new Response(_uiResp.body, { headers: responseHeaders, status: _uiResp.status, statusText: _uiResp.statusText })
-    }
-
-    const runActStream = async (params: {
-      languageModel: LanguageModel
-      modelId: string
-      fallbackNotice?: string
-    }) => {
-    const attemptModelId = params.modelId
-    const attemptModelSupportsZdr = modelSupportsZeroDataRetention(attemptModelId)
-    // Resolved in the background so the catalog lookup never delays the first token.
-    let attemptContextWindow: number | undefined
-    let lastStepUsage: { inputTokens?: number; outputTokens?: number } | undefined
-    void resolveModelContextWindow(attemptModelId)
-      .then((contextWindow) => {
-        attemptContextWindow = contextWindow
-      })
-      .catch((_error: unknown) => undefined)
-    // Kimi K3 always reasons and the AI SDK provider only exposes max effort.
-    // Do not send a stale persisted `none` value that the provider cannot honor.
-    const effectiveReasoning = isKimiK3ModelId(attemptModelId) && rawReasoning && rawReasoning !== 'provider-default'
-      ? 'xhigh'
-      : rawReasoning
-
-    // v7: Upload large file attachments to the provider's file storage and
-    // add provider references. Falls back to inline when the provider doesn't
-    // support file uploads or no API key is set.
-    await uploadFilePartsForModel(uiMessages as Array<{
-      role: string
-      parts?: Array<{
-        type: string
-        url?: string
-        mediaType?: string
-        fileName?: string
-        filename?: string
-        providerReference?: Record<string, string>
-      }>
-    }>, attemptModelId)
-    // Convert only after uploads so AI SDK v7 sees providerReference on file parts.
-    const modelMessages = await convertToModelMessages(messagesForModel)
-
-    const agent = new ToolLoopAgent({
-      model: params.languageModel,
-      tools,
-      ...(actTooling.toolsContext
-        ? { toolsContext: actTooling.toolsContext as never }
-        : {}),
-      ...(attemptModelSupportsZdr
-        ? { providerOptions: { gateway: { zeroDataRetention: true } } }
-        : {}),
-      stopWhen: isStepCount(MAX_TOOL_STEPS_ACT),
-      // Defense-in-depth: bound every model call. The reservation below covers
-      // this ceiling across the full tool loop.
-      maxOutputTokens: MAX_ACT_OUTPUT_TOKENS_PER_STEP,
-      instructions: actInstructions,
-      // allowSystemInMessages: context-compaction.ts injects a trusted server-generated
-      // summary as a system message. This is not user input — safe to pass through.
-      allowSystemInMessages: true,
-      // v7: top-level reasoning parameter standardizes reasoning effort across providers.
-      // Only set when the user explicitly chose a level (not 'provider-default').
-      ...(effectiveReasoning && effectiveReasoning !== 'provider-default'
-        ? { reasoning: effectiveReasoning }
-        : {}),
-      // v7: OpenTelemetry traces for AI SDK calls. The functionId groups all
-      // spans for this act turn under a single label.
-      telemetry: {
-        functionId: `act:${attemptModelId}`,
-      },
-      // v7: toolApproval replaces deprecated per-tool needsApproval. The MCP
-      // approval function checks call_mcp_tool's input (serverId/toolName)
-      // against the MCP server's policy at call time.
-      ...(actTooling.toolApproval
-        ? { toolApproval: actTooling.toolApproval as unknown as ToolApprovalConfiguration<typeof tools, unknown> }
-        : {}),
-    })
-
-    const toolFailuresByCallId = new Map<string, { toolName: string; error: string }>()
-    const finishedToolCallIds = new Set<string>()
-
-    // Abort before Vercel's hard kill so onFinish can finalize gracefully.
-    let wasAbortedByTimeout = false
-    const abortController = new AbortController()
-    const unregisterToolLoopRun = registerToolLoopRun(agentRun?.id, abortController)
-    const hardTimeout = setTimeout(() => {
-      wasAbortedByTimeout = true
-      abortController.abort()
-    }, actAbortTimeoutMsResolved)
-
-    if (_ttftDebug) _tStreamCall = performance.now()
-    let _tModelStreamReady = 0
-    let result: Awaited<ReturnType<typeof agent.stream>>
-    try {
-      result = await agent.stream({
-      messages: modelMessages,
-      abortSignal: abortController.signal,
-      onToolExecutionStart: ({ toolCall }) => {
-        if (!toolCall) return
-        if (_ttftDebug && !_firstToolCallLogged) {
-          _firstToolCallLogged = true
-          _tFirstToolCall = performance.now()
-        }
-        const n = toolCall.toolName
-        if (n !== 'web_search' && n !== 'deep_search' && n !== 'web_fetch') return
-        const input = toolCall.input as Record<string, unknown> | undefined
-        logger.info(`[conversations/act] ${n} START`, {
-          toolCallId: toolCall.toolCallId,
-          input: summarizeToolInputForLog(input),
-        })
-      },
-      onToolExecutionEnd: ({ toolCall, toolOutput, toolExecutionMs }) => {
-        if (!toolCall?.toolName) return
-        if (toolCall.toolCallId) finishedToolCallIds.add(toolCall.toolCallId)
-        const success = toolOutput.type === 'tool-result'
-        const output = success ? toolOutput.output : undefined
-        const error = !success ? toolOutput.error : undefined
-        const durationMs = toolExecutionMs
-        if (!success && toolCall.toolCallId) {
-          toolFailuresByCallId.set(toolCall.toolCallId, {
-            toolName: toolCall.toolName,
-            error: summarizeErrorForLog(error),
-          })
-        }
-        const n = toolCall.toolName
-        if (n === 'web_search' || n === 'deep_search' || n === 'web_fetch') {
-          if (success) {
-            logger.info(`[conversations/act] ${n} OK`, {
-              toolCallId: toolCall.toolCallId,
-              durationMs,
-              output: summarizeToolOutputForLog(output),
-            })
-          } else {
-            logger.error(`[conversations/act] ${n} FAILED`, {
-              toolCallId: toolCall.toolCallId,
-              durationMs,
-              error: summarizeErrorForLog(error),
-            })
-          }
-        }
-        {
-          void import('@/server/tools/tools/record-tool-invocation')
-            .then(({ fireAndForgetRecordToolInvocation }) => {
-              fireAndForgetRecordToolInvocation({
-                serverSecret,
-                userId,
-                toolName: toolCall.toolName,
-                mode: 'act',
-                modelId: attemptModelId,
-                conversationId: conversationId ?? undefined,
-                turnId: tid,
-                success,
-                durationMs,
-                error,
-              })
-            })
-            .catch((importError) => {
-              logger.warn('[conversations/act] Tool invocation recorder unavailable:', summarizeErrorForLog(importError))
-            })
-        }
-      },
-      onEnd: async (event) => {
-        try {
-        const usage = event.usage
-        const totalInputTokens = usage?.inputTokens ?? 0
-        const totalOutputTokens = usage?.outputTokens ?? 0
-        // Fallback: if the fetch-interceptor did not capture the model yet, try the step response.
-        if (isFreeTierChatModelId(attemptModelId) && !streamedRoutedModelId) {
-          const rid = event.steps.at(-1)?.response.modelId
-          if (typeof rid === 'string' && rid) streamedRoutedModelId = rid
-        }
-        const usageResult = await actUsageBudgetService.recordFinishedUsage({
-          userId,
-          modelId: attemptModelId,
-          inputTokens: totalInputTokens,
-          outputTokens: totalOutputTokens,
-          forceFreeTierLimits: !paid,
-          reservationId: budgetReservationId,
-        })
-        budgetReservationId = usageResult.reservationId
-        budgetReservationFinalized = usageResult.finalized
-        const providerCostMicros = await calculateProviderCostMicros({
-          inputTokens: totalInputTokens,
-          modelId: attemptModelId,
-          outputTokens: totalOutputTokens,
-        })
-        logger.info('[conversations/act] stream finish', {
-          requestId,
-          modelId: attemptModelId,
-          finishReason: event.finishReason,
-          inputTokens: totalInputTokens,
-          outputTokens: totalOutputTokens,
-          reservationFinalized: budgetReservationFinalized,
-          routedModelId: streamedRoutedModelId ?? null,
-        })
-
-        await actMessagePersistenceService.persistAssistantFinish({
-          accessToken,
-          attemptModelId,
-          conversationId: cid,
-          emitWebhook: !actWebhookSkip,
-          event,
-          fallbackNotice: params.fallbackNotice,
-          finishedToolCallIds,
-          agentRunId: agentRun?.id,
-          agentRunMetrics: {
-            inputTokens: totalInputTokens,
-            outputTokens: totalOutputTokens,
-            providerCostMicros,
-            ...summarizeAgentToolMetrics(event.steps),
-            toolRetryCount: 0,
-          },
-          importedAuthorName:
-            automationExecution === true && auth.authType === 'service'
-              ? automationName?.trim() || undefined
-              : undefined,
-          routedModelId: streamedRoutedModelId,
-          sourceCitations: sourceCitationMap,
-          timedOut: wasAbortedByTimeout,
-          timeoutMs: actAbortTimeoutMsResolved,
-          toolFailuresByCallId,
-          turnId: tid,
-          userId: conversationUserId,
-        })
-        } finally {
-          clearTimeout(hardTimeout)
-          unregisterToolLoopRun()
-        }
-      },
-      })
-    } catch (err) {
-      clearTimeout(hardTimeout)
-      unregisterToolLoopRun()
-      throw err
-    }
-
-    if (_ttftDebug) _tModelStreamReady = performance.now()
-
-    const hasCitations = Object.keys(sourceCitationMap).length > 0
-
-    const _uiStream = toUIMessageStream({
-      stream: result.stream,
-      originalMessages: uiMessages,
-      sendSources: true,
-      onError: (error: unknown) => {
-        logger.error('[conversations/act] stream error', {
-          requestId,
-          modelId: attemptModelId,
-          error: summarizeErrorForLog(error),
-        })
-        return isByokModelId(attemptModelId)
-          ? userFacingByokError(error)
-          : userFacingOpenRouterError(error)
-      },
-      messageMetadata: ({ part }) => {
-        const metadata: Record<string, unknown> = {}
-        if (hasCitations && (part.type === 'start' || part.type === 'finish')) {
-          // Send early so the client can linkify **Sources:** while the reply streams.
-          metadata.sourceCitations = sourceCitationMap
-        }
-        if (
-          isFreeTierChatModelId(attemptModelId) &&
-          part.type === 'finish' &&
-          streamedRoutedModelId
-        ) {
-          metadata.routedModelId = streamedRoutedModelId
-        }
-        if (part.type === 'finish-step') lastStepUsage = part.usage
-        // Context left for the next turn is the last step's prompt plus its reply;
-        // totalUsage sums every tool step and overstates it.
-        const contextUsage = part.type === 'finish' ? lastStepUsage ?? part.totalUsage : undefined
-        if (contextUsage) {
-          const inputTokens = contextUsage.inputTokens
-          const outputTokens = contextUsage.outputTokens
-          metadata.usage = {
-            inputTokens,
-            outputTokens,
-            totalTokens: (inputTokens ?? 0) + (outputTokens ?? 0),
-          }
-          if (attemptContextWindow) metadata.contextWindow = attemptContextWindow
-        }
-        return Object.keys(metadata).length > 0 ? metadata : undefined
-      },
-    })
-    const _uiResp = createUIMessageStreamResponse({ stream: _uiStream })
-    let responseBody: ReadableStream<Uint8Array<ArrayBufferLike>> | null =
-      prefixFallbackNoticeAfterStart(_uiResp.body, params.fallbackNotice)
-    const responseHeaders = new Headers(_uiResp.headers)
-    responseHeaders.set('x-request-id', requestId)
-    if (agentRun?.id) responseHeaders.set('x-overlay-agent-run-id', agentRun.id)
-    if (responseBody && agentRun?.id) {
-      responseBody = observeFirstTextToken(responseBody, () => {
-        void agentRunService.recordMetrics({
-          metrics: { firstTokenAt: Date.now() },
-          runId: agentRun.id,
-          userId: conversationUserId,
-        }).catch((_error) => undefined)
-      })
-    }
-    if (responseBody) {
-      if (cid) {
-        const [clientBody, backgroundBody] = responseBody.tee()
-        responseBody = clientBody
-        after(async () => {
-          try {
-            await drainReadableStream(backgroundBody)
-          } catch (err) {
-            const reason = summarizeErrorForLog(err)
-            const isAbort = reason.includes('abort') || reason.includes('AbortError')
-            logger.error('[conversations/act] Background stream drain failed:', { reason, isAbort })
-            if (budgetReservationId && !budgetReservationFinalized) {
-              await actUsageBudgetService.releaseReservation({
-                userId,
-                reservationId: budgetReservationId,
-                reason,
-              }).catch((releaseErr) => logger.error('[conversations/act] Failed to release budget reservation:', summarizeErrorForLog(releaseErr)))
-              budgetReservationId = null
-            }
-            const failure = isAbort
-              ? new Error('generation_interrupted_server_timeout')
-              : err
-            if (agentRun?.id) {
-              const errorText = userFacingOpenRouterError(failure)
-              await agentRunService.fail({
-                error: {
-                  code: isAbort ? 'generation_interrupted' : 'stream_drain_failed',
-                  message: errorText,
-                  retryable: true,
-                },
-                errorText,
-                runId: agentRun.id,
-                userId: conversationUserId,
-              }).catch((_error) => undefined)
-            }
-          }
-        })
-      }
-    }
-    if (_ttftDebug && responseBody) {
-      const _decoder = new TextDecoder()
-      let _buf = ''
-      let _firstByteAt = 0
-      let _firstEventAt = 0
-      let _deltaLogged = false
-      const _transform = new TransformStream<Uint8Array, Uint8Array>({
-        transform(chunk, controller) {
-          if (!_deltaLogged) {
-            if (_firstByteAt === 0) _firstByteAt = performance.now()
-            _buf += _decoder.decode(chunk, { stream: true })
-            // First meaningful UI-message-stream frame: tool-*, text*, or reasoning*
-            // (skips the initial "start" and "start-step" scaffolding frames).
-            if (_firstEventAt === 0 && /"type"\s*:\s*"(tool-|text|reasoning)/.test(_buf)) {
-              _firstEventAt = performance.now()
-            }
-            // First actual text frame ("text" or "text-delta") — true first-token moment.
-            if (/"type"\s*:\s*"text(?:-delta)?"/.test(_buf)) {
-              _deltaLogged = true
-              _buf = '' // release
-              const _tDelta = performance.now()
-              logger.info('[TTFT][act]', {
-                model: attemptModelId,
-                conversationClientId: trimmedClientId ?? null,
-                parallelCreate,
-                mediaHeuristicSkipped,
-                mcpCatalog_ms: actTooling.ttft?.mcpCatalogMs ?? null,
-                total_ms: +(_tDelta - _t0).toFixed(1),
-                auth_ms: +(_tAuth - _t0).toFixed(1),
-                ensureConversation_ms: _tEnsureConversationMs
-                  ? +_tEnsureConversationMs.toFixed(1)
-                  : null,
-                prep_ms: +(_tPrep - _tAuth).toFixed(1),
-                tools_ms: +(_tTools - _tPrep).toFixed(1),
-                streamCall_ms: +(_tStreamCall - _tTools).toFixed(1),
-                modelStreamReady_ms: _tModelStreamReady
-                  ? +(_tModelStreamReady - _tStreamCall).toFixed(1)
-                  : null,
-                firstToolCall_ms:
-                  _tFirstToolCall > 0
-                    ? +(_tFirstToolCall - _tStreamCall).toFixed(1)
-                    : null,
-                firstByte_ms: +(_firstByteAt - _tStreamCall).toFixed(1),
-                firstEvent_ms: _firstEventAt
-                  ? +(_firstEventAt - _tStreamCall).toFixed(1)
-                  : null,
-                firstDelta_ms: +(_tDelta - _tStreamCall).toFixed(1),
-              })
-            } else if (_buf.length > 8192) {
-              // Keep only the tail so the regex can still match across chunks without unbounded growth.
-              _buf = _buf.slice(-1024)
-            }
-          }
-          controller.enqueue(chunk)
-        },
-      })
-      return new Response(responseBody.pipeThrough(_transform), {
-        status: _uiResp.status,
-        headers: responseHeaders,
-      })
-    }
-    // Release the concurrency slot when the stream ends or is cancelled.
-    if (responseBody) {
-      const releaseSlot = concurrencySlot
-      concurrencySlot = null // transfer ownership to the stream wrapper
-      const releaseTransform = new TransformStream<Uint8Array, Uint8Array>({
-        transform(chunk, controller) { controller.enqueue(chunk) },
-        flush() { releaseSlot?.release() },
-      })
-      responseBody = responseBody.pipeThrough(releaseTransform)
-    }
-    return new Response(responseBody, {
-      status: _uiResp.status,
-      headers: responseHeaders,
-    })
-    }
-
-    const initialEstimatedInputTokens = Math.ceil(JSON.stringify(messagesForModel).length / 4) + 2_000
-    const reservedTokens = estimateToolLoopReservationTokens({
-      estimatedInputTokens: initialEstimatedInputTokens,
-      maxOutputTokensPerStep: MAX_ACT_OUTPUT_TOKENS_PER_STEP,
-      maxSteps: MAX_TOOL_STEPS_ACT,
-    })
-    const reserveBudgetForAttempt = async (attemptModelId: string) => {
-      streamedRoutedModelId = undefined
-      const reservation = await actUsageBudgetService.reserveForAttempt({
-        userId,
-        entitlements: runtimeEntitlements,
-        idempotencyKey: context.requestIdempotencyKey,
-        modelId: attemptModelId,
-        paid,
-        estimatedInputTokens: reservedTokens.estimatedInputTokens,
-        maxOutputTokens: reservedTokens.maxOutputTokens,
-        operationId: 'conversation.act',
-        programmaticSubjectId: billingProgrammaticSubjectId,
-        requestFingerprint: context.requestFingerprint,
-        workspaceId: billingWorkspaceId,
-      })
-      if (!reservation.ok) {
-        const errorCode = typeof reservation.failure.payload.error === 'string'
-          ? reservation.failure.payload.error
-          : undefined
-        logger.warn('[conversations/act] model attempt skipped before provider call', {
-          requestId,
-          modelId: attemptModelId,
-          reason: errorCode ?? 'budget_reservation_failed',
-          statusCode: reservation.failure.statusCode,
-        })
-        return {
-          ok: false as const,
-          reason: modelAttemptFailureReasonFromReservation(errorCode),
-          response: NextResponse.json(reservation.failure.payload, { status: reservation.failure.statusCode }),
-        }
-      }
-      budgetReservationId = reservation.reservationId
-      budgetReservationFinalized = false
-      return { ok: true as const }
-    }
-
-    const languageModelForAttempt = async (attemptModelId: string): Promise<LanguageModel> => {
-      if (isFreeTierChatModelId(attemptModelId)) {
-        return createRuntimeOverlayFreeLanguageModel({
-          modelId: attemptModelId,
-          fallbackOnly: attemptModelId === OPENROUTER_FREE_MODEL_ID,
-          onModelCaptured: (m) => { streamedRoutedModelId = m },
-        })
-      }
-
-      return getLanguageModel(attemptModelId, accessToken, userId, {
-        // The attempt list already leads with free models when credit is low;
-        // remaining paid entries are deliberate last resorts, so they must
-        // reach the gateway rather than being swapped back to a free model.
-        allowLowBalanceFallback: !gatewayCreditLow,
-        sessionId: cid ?? undefined,
-      })
-    }
-
-    const fallbackModelIds = (byokRequest ? [] : getChatModelFallbackCandidates({
-      modelId: effectiveModelId,
-      paid,
-      onlyAllowZdrModels: paid && appSettings?.onlyAllowZdrModels === true,
-      requiresVision: messagesRequireVision(uiMessages),
-      maxCandidates: MAX_ACT_MODEL_ATTEMPTS - 1,
-    })).filter((candidateId) => authorizedModelIds.chat.has(candidateId))
-    // Preserve remaining AI Gateway credit: when the global key drops below the
-    // low-balance threshold, try free models before spending on the paid path.
-    const gatewayCreditLow =
-      !byokRequest &&
-      modelUsesAiGatewayTransport(effectiveModelId) &&
-      !(paid && appSettings?.onlyAllowZdrModels === true) &&
-      (await isGatewayCreditLow())
-    if (gatewayCreditLow) {
-      logger.info('[conversations/act] low gateway credit — free models attempted first', {
-        requestId,
-        effectiveModelId,
-      })
-    }
-    const attemptModelIds = (
-      gatewayCreditLow
-        ? getLowCreditFallbackAttemptModelIds({
-            modelId: effectiveModelId,
-            paid,
-            onlyAllowZdrModels: paid && appSettings?.onlyAllowZdrModels === true,
-            requiresVision: messagesRequireVision(uiMessages),
-            paidFallbackModelIds: fallbackModelIds,
-            maxCandidates: MAX_ACT_MODEL_ATTEMPTS,
-          }).filter((candidateId) => candidateId === effectiveModelId || authorizedModelIds.chat.has(candidateId))
-        : [...new Set([effectiveModelId, ...fallbackModelIds])]
-    ).slice(0, MAX_ACT_MODEL_ATTEMPTS)
-    logger.info('[conversations/act] model attempts planned', {
-      requestId,
-      requestedModelId: modelId ?? null,
-      effectiveModelId,
-      attemptModelIds,
-      gatewayCreditLow,
-      paid,
-      onlyAllowZdrModels: paid && appSettings?.onlyAllowZdrModels === true,
-    })
-    const _actResponse = await runActModelAttempts<Response>({
-      attemptModelIds,
-      reserveBudgetForAttempt,
-      onFallback: (from, to, failedAttempts) => {
-        logger.warn('[conversations/act] model fallback', {
-          requestId,
-          from,
-          to,
-          failedAttempts,
-        })
-      },
-      onAttemptFailure: async (error, attemptModelId, hasFallback) => {
-        logger.warn('[conversations/act] model attempt failed', {
-          requestId,
-          modelId: attemptModelId,
-          hasFallback,
-          error: summarizeErrorForLog(error),
-        })
-        if (budgetReservationId && !budgetReservationFinalized) {
-          await actUsageBudgetService.releaseReservation({
-            userId,
-            reservationId: budgetReservationId,
-            reason: summarizeErrorForLog(error),
-          }).catch((releaseErr) => logger.error('[conversations/act] Failed to release budget reservation:', summarizeErrorForLog(releaseErr)))
-          budgetReservationId = null
-        }
-      },
-      runAttempt: async ({ attemptModelId, fallbackNotice }) => {
-        streamedRoutedModelId = undefined
-        logger.info('[conversations/act] model attempt starting', {
-          requestId,
-          effectiveModelId,
-          attemptModelId,
-          gatewayModelId: safeGatewayModelId(attemptModelId),
-          fallbackNotice: fallbackNotice ?? null,
-        })
-        const languageModel = await languageModelForAttempt(attemptModelId)
-        await actUsageBudgetService.markReservationStarted({
-          userId,
-          reservationId: budgetReservationId,
-        })
-        return await runActStream({
-          languageModel,
-          modelId: attemptModelId,
-          fallbackNotice,
-        })
-      },
-    })
-    concurrencySlot?.release()
-    concurrencySlot = null
-    return _actResponse
-	  } catch (error) {
+  } catch (error) {
     const serviceResponse = actConversationErrorResponse(error)
     if (serviceResponse) {
       serviceResponse.headers.set('x-request-id', requestId)
@@ -1476,28 +603,7 @@ export async function executeActTurn(
       requestId,
       error: summarizeErrorForLog(error),
     })
-	    if (budgetReservationId && !budgetReservationFinalized) {
-	      await actUsageBudgetService.releaseReservation({
-	        userId: currentUserId ?? 'unknown',
-	        reservationId: budgetReservationId,
-	        reason: summarizeErrorForLog(error),
-	      }).catch((releaseErr) => logger.error('[conversations/act] Failed to release budget reservation:', summarizeErrorForLog(releaseErr)))
-	      budgetReservationId = null
-	    }
     concurrencySlot?.release()
-    if (pendingAgentRunId) {
-      const errorText = userFacingOpenRouterError(error)
-      await agentRunService.fail({
-        error: {
-          code: 'generation_failed',
-          message: errorText,
-          retryable: true,
-        },
-        errorText,
-        runId: pendingAgentRunId,
-        userId: currentResourceUserId,
-      }).catch((_error) => undefined)
-    }
     return NextResponse.json(
       {
         error: requestModelId && isByokModelId(requestModelId)
@@ -1507,6 +613,9 @@ export async function executeActTurn(
       },
       { status: 500, headers: { 'x-request-id': requestId } },
     )
+  } finally {
+    concurrencySlot?.release()
+    concurrencySlot = null
   }
 }
 
@@ -1525,18 +634,4 @@ function userFacingByokError(error: unknown): string {
     return 'This provider model does not support the tools required by this chat.'
   }
   return 'The provider request failed. Retest the connection in Settings → Providers.'
-}
-
-function modelAttemptFailureReasonFromReservation(errorCode?: string): ActModelAttemptFailureReason {
-  if (errorCode === 'insufficient_budget') return 'budget'
-  if (errorCode === 'pricing_missing') return 'pricing'
-  return 'reservation'
-}
-
-function safeGatewayModelId(modelId: string): string | null {
-  try {
-    return getGatewayModelId(modelId)
-  } catch (_error) {
-    return null
-  }
 }

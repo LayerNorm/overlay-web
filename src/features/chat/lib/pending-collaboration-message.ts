@@ -1,6 +1,7 @@
 'use client'
 
 export {
+  restorePendingCollaborationMessage,
   savePendingCollaborationMessage,
   takePendingCollaborationMessage,
 } from '@/shared/chat/pending-collaboration-message'

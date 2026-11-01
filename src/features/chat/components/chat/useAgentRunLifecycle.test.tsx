@@ -20,6 +20,7 @@ const waitingRunDoc = {
   _id: 'run_1',
   _creationTime: 50,
   conversationId: 'conversation_1',
+  userId: 'user_1',
   status: 'waiting_for_approval',
   createdAt: 50,
   updatedAt: 100,
@@ -31,6 +32,22 @@ test('Convex run projection preserves approval metadata', () => {
   assert.equal(toAgentRunResource(waitingRunDoc)?.updatedAt, 100)
 })
 
+test('Convex run projection preserves resource metadata and user identity', () => {
+  const resourceRequest = {
+    request: {
+      token: 'resource-token', runId: 'harness-run', rootRunId: 'harness-run', workflowRunId: 'workflow',
+      policyRevision: 0, reason: 'model_spend' as const, currentMaxCostMicros: 100,
+      usedCostMicros: 100, reservedCostMicros: 0, requiredCostMicros: 1, deadlineAt: 200, requestedAt: 100,
+    },
+    awaitingReceipt: true,
+  }
+  const run = toAgentRunResource({
+    ...waitingRunDoc, status: 'waiting_for_resources', approval: undefined, resourceRequest,
+  })
+  assert.equal(run?.userId, 'user_1')
+  assert.deepEqual(run?.resourceRequest, resourceRequest)
+})
+
 test('run snapshot merge applies newer and different runs but ignores stale same-id runs', () => {
   const current = { id: 'run_1', status: 'running' as const, updatedAt: 200 }
   assert.equal(shouldApplyRunSnapshot(current, { ...current, updatedAt: 201 }), true)
@@ -40,7 +57,7 @@ test('run snapshot merge applies newer and different runs but ignores stale same
 })
 
 test('run snapshot merge preserves active runs when a null snapshot arrives', () => {
-  for (const status of ['waiting_for_approval', 'waiting_for_input', 'waiting_for_children'] as const) {
+  for (const status of ['waiting_for_approval', 'waiting_for_input', 'waiting_for_children', 'waiting_for_resources'] as const) {
     assert.equal(shouldApplyRunSnapshot({ id: 'run_1', status, updatedAt: 100 }, null), false)
   }
   assert.equal(shouldApplyRunSnapshot({ id: 'run_1', status: 'completed', updatedAt: 100 }, null), true)

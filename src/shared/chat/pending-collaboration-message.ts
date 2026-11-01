@@ -29,6 +29,25 @@ export function savePendingCollaborationMessage(
   }
 }
 
+export function restorePendingCollaborationMessage(message: PendingCollaborationMessage): void {
+  if (typeof window === 'undefined') return
+  try {
+    const current = window.sessionStorage.getItem(PENDING_COLLABORATION_MESSAGE_KEY)
+    if (current) {
+      const parsed = JSON.parse(current) as Partial<PendingCollaborationMessage>
+      if (
+        parsed.conversationId !== message.conversationId
+        || parsed.content !== message.content
+        || parsed.savedAt !== message.savedAt
+      ) return
+      return
+    }
+    window.sessionStorage.setItem(PENDING_COLLABORATION_MESSAGE_KEY, JSON.stringify(message))
+  } catch {
+    // A newer or inaccessible session draft must not be replaced.
+  }
+}
+
 export function takePendingCollaborationMessage(
   conversationId: string,
   canConsume?: (message: PendingCollaborationMessage) => boolean,

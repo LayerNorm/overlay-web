@@ -567,15 +567,10 @@ export function looksLikeStoredGenerationError(message: string): boolean {
 }
 
 /**
- * When a message is marked `status: 'error'`, Convex often keeps the partial
- * assistant reply in `content`. Only treat that text as the error when it looks
- * like a real failure string; otherwise surface a connection/interrupt label.
+ * Failed rows can retain assistant prose. Content is not a diagnostic source.
  */
-export function persistedGenerationErrorMessage(responseText: string | null | undefined): string {
-  const text = responseText?.trim() ?? ''
-  if (!text) return 'Generation failed'
-  if (looksLikeStoredGenerationError(text)) return text
-  return 'generation_interrupted_connection'
+export function persistedGenerationErrorMessage(_responseText: string | null | undefined): string {
+  return 'generation_failed_unknown'
 }
 
 export const USAGE_EXHAUSTED_LABEL =
@@ -598,6 +593,7 @@ function hasOrderedErrorTerms(message: string, prefix: string, suffixes: readonl
 export function errorLabel(err: Error | null | undefined): string | null {
   if (!err) return null
   const message = err.message || ''
+  if (message === 'generation_failed_unknown') return 'This response failed. No failure reason is available.'
   if (isUsageExhaustedError(message) || message.includes('Payment Required') || message.includes('payment required')) {
     return USAGE_EXHAUSTED_LABEL
   }

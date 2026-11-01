@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  restorePendingCollaborationMessage,
   savePendingCollaborationMessage,
   takePendingCollaborationMessage,
 } from './pending-collaboration-message'
@@ -26,7 +27,12 @@ test('pending instructions stay available until their conversation and agent are
       content: 'Run these instructions',
       expectedAgentPrincipalId: 'agent-principal',
     }, savedAt)
-
+    const original = {
+      conversationId: 'conversation-new',
+      content: 'Run these instructions',
+      expectedAgentPrincipalId: 'agent-principal',
+      savedAt,
+    }
     assert.equal(takePendingCollaborationMessage('conversation-old', undefined, savedAt), null)
     assert.equal(
       takePendingCollaborationMessage('conversation-new', (message) => (
@@ -38,12 +44,19 @@ test('pending instructions stay available until their conversation and agent are
       takePendingCollaborationMessage('conversation-new', (message) => (
         message.expectedAgentPrincipalId === 'agent-principal'
       ), savedAt),
-      {
-        conversationId: 'conversation-new',
-        content: 'Run these instructions',
-        expectedAgentPrincipalId: 'agent-principal',
-        savedAt,
-      },
+      original,
+    )
+    restorePendingCollaborationMessage(original)
+    assert.deepEqual(JSON.parse(values.get('overlay:pending-collaboration-message')!), original)
+    restorePendingCollaborationMessage({
+      conversationId: 'conversation-other',
+      content: 'Do not replace me',
+      savedAt,
+    })
+    assert.deepEqual(JSON.parse(values.get('overlay:pending-collaboration-message')!), original)
+    assert.deepEqual(
+      takePendingCollaborationMessage('conversation-new', undefined, savedAt),
+      original,
     )
     assert.equal(takePendingCollaborationMessage('conversation-new', undefined, savedAt), null)
 

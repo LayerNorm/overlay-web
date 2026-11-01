@@ -56,7 +56,8 @@ export const driveContentResultSchema = z.object({ fileId: id, updatedAt: revisi
   conflict: z.boolean(), objectStored: z.boolean(), sha256: hash, sizeBytes: bytes }).strict()
 export const driveUploadResponseSchema = z.discriminatedUnion('state', [
   z.object({ state: z.literal('pending'), uploadId: z.string().uuid(), url: z.string().url().max(16384),
-    headers: z.object({ 'content-type': z.string(), 'x-amz-checksum-sha256': z.string() }).strict(),
+    headers: z.object({ 'content-type': z.string(), 'x-amz-checksum-sha256': z.string(),
+      'if-none-match': z.literal('*').optional() }).strict(),
     sizeBytes: bytes, expiresIn: z.number().int().positive().max(120) }).strict(),
   z.object({ state: z.literal('committed'), uploadId: z.string().uuid(), result: driveContentResultSchema }).strict(),
 ])

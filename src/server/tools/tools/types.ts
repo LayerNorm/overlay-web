@@ -1,5 +1,6 @@
 import 'server-only'
 
+import type { ArtifactPublicationAuthority } from '@/server/files/ArtifactPublicationAuthority'
 export type { ToolCategory } from '@overlay/tools-core'
 
 /**
@@ -46,4 +47,5 @@ export interface OverlayToolsOptions {
   sharedRoom?: boolean
   /** Stable key supplied by durable runners for side-effecting internal API calls. */
   idempotencyKey?: string
+  artifactPublicationAuthority?: ArtifactPublicationAuthority
 }

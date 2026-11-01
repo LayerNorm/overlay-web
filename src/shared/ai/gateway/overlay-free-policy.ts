@@ -46,6 +46,7 @@ export type FreeReceipt = {
   safe: boolean
   cost: number | null
   reason: string | null
+  code?: 'missing_cost' | 'invalid_cost' | 'nonzero_cost' | 'route_mismatch'
   actualModelId?: string
   actualProvider?: string
 }
@@ -64,6 +65,10 @@ export function assessFreeReceipt(
   const rawUsage = asRecord(result.usage)
   const sources = expected.transport === 'gateway' ? [gateway, usage, rawUsage] : [openrouter, openrouterUsage, usage, rawUsage]
   const fields = sources.flatMap(source => COST_FIELDS.filter(key => key in source).map(key => source[key]))
+  for (const source of sources) {
+    const upstream = [asRecord(source.cost_details).upstream_inference_cost, asRecord(source.costDetails).upstreamInferenceCost]
+    fields.push(...upstream.filter(value => value !== undefined && value !== null))
+  }
   const hasTotal = sources.some(source => 'cost' in source || 'gatewayCost' in source || 'gateway_cost' in source)
   const valid = fields.every(field => (typeof field === 'number' || (typeof field === 'string' && field.trim() !== ''))
     && Number.isFinite(Number(field)) && Number(field) >= 0 && (Number(field) !== 0 || isExplicitZero(field)))
@@ -77,8 +82,10 @@ export function assessFreeReceipt(
   const reason = cost === null ? 'Missing or invalid cost receipt'
     : cost !== 0 ? 'Nonzero provider charge'
       : !routeMatches ? 'Missing or unexpected provider/model routing' : null
+  const code = cost === null ? (fields.length === 0 ? 'missing_cost' : 'invalid_cost')
+    : cost !== 0 ? 'nonzero_cost' : !routeMatches ? 'route_mismatch' : undefined
   return {
-    safe: reason === null, cost, reason,
+    safe: reason === null, cost, reason, ...(code ? { code } : {}),
     ...(typeof actualModelId === 'string' ? { actualModelId } : {}),
     ...(typeof actualProvider === 'string' ? { actualProvider } : {}),
   }

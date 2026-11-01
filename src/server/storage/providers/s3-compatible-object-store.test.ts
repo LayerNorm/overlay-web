@@ -62,3 +62,16 @@ test('S3 upload constraints sign an empty body, its hexadecimal digest and the r
   assert.ok(signed.includes('content-length'))
   assert.ok(signed.includes('x-amz-checksum-sha256'))
 })
+
+test('S3 create-only uploads sign If-None-Match and preserve the required checksum', async () => {
+  const store = new S3CompatibleObjectStore({ accessKeyId: 'AKIATESTKEY', secretAccessKey: 'test-secret-access-key',
+    bucketName: 'overlay-private', endpointUrl: 'https://s3.example.test', region: 'us-east-1' })
+  const sha256 = 'a'.repeat(64)
+  const url = new URL((await store.getUploadUrl('users/user/files/staging/video.mp4', 'video/mp4',
+    { contentLength: 1024, checksumSha256: sha256, createOnly: true, expiresIn: 120 })).url)
+  const signed = (url.searchParams.get('X-Amz-SignedHeaders') ?? '').split(';')
+  assert.ok(signed.includes('content-length'))
+  assert.ok(signed.includes('x-amz-checksum-sha256'))
+  assert.ok(signed.includes('if-none-match'))
+  assert.equal(url.searchParams.get('X-Amz-Expires'), '120')
+})

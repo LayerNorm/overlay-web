@@ -69,6 +69,7 @@ export interface AssistantSegmentRenderContext {
     options?: AttachmentPreviewOpenOptions,
   ) => void
   generatedUiConnectorActions?: GeneratedUiConnectorActions
+  generatedUiReadOnly?: boolean
   onGeneratedUiChange?: (partId: string, data: GeneratedUiData) => void
 }
 
@@ -284,6 +285,7 @@ function GeneratedUiSegmentItem({ seg, ctx }: SegmentItemProps<'generated-ui'>) 
     >
       <GeneratedUiCard
         part={seg.block.part}
+        readOnly={ctx.generatedUiReadOnly}
         connectorActions={ctx.generatedUiConnectorActions}
         onDataChange={ctx.onGeneratedUiChange}
       />

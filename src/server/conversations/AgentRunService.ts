@@ -15,28 +15,6 @@ import type { ConversationCollaborationRepository } from './ConversationCollabor
 export class AgentRunService {
   constructor(private readonly repository: ActConversationRepository) {}
 
-  async startChat(args: {
-    conversationId?: ConversationId
-    leaseExpiresAt: number
-    modelId: string
-    turnId: string
-    userId: string
-    userMessageId?: Id<'conversationMessages'>
-  }): Promise<AgentRun | undefined> {
-    if (!args.conversationId || !args.userMessageId) return undefined
-    return await this.repository.startAgentRun({
-      conversationId: args.conversationId,
-      leaseExpiresAt: args.leaseExpiresAt,
-      mode: 'chat',
-      modelId: args.modelId,
-      runner: 'tool_loop',
-      turnId: args.turnId,
-      userId: args.userId,
-      userMessageId: args.userMessageId,
-      variantIndex: 0,
-    }) ?? undefined
-  }
-
   async startPersonalWorkflow(args: {
     conversationId?: ConversationId
     modelId: string
@@ -51,26 +29,6 @@ export class AgentRunService {
       modelId: args.modelId,
       runner: 'workflow',
       executionEngine: 'overlay_harness',
-      turnId: args.turnId,
-      userId: args.userId,
-      userMessageId: args.userMessageId,
-      variantIndex: 0,
-    }) ?? undefined
-  }
-
-  async startLegacyPersonalWorkflow(args: {
-    conversationId?: ConversationId
-    modelId: string
-    turnId: string
-    userId: string
-    userMessageId?: Id<'conversationMessages'>
-  }): Promise<AgentRun | undefined> {
-    if (!args.conversationId || !args.userMessageId) return undefined
-    return await this.repository.startAgentRun({
-      conversationId: args.conversationId,
-      mode: 'chat',
-      modelId: args.modelId,
-      runner: 'workflow',
       turnId: args.turnId,
       userId: args.userId,
       userMessageId: args.userMessageId,

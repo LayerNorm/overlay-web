@@ -3,7 +3,6 @@ import { join } from 'node:path'
 import { desktopWebShellViolations } from './desktop-web-shell-boundary.mjs'
 
 const rules = [
-  ['src/server/app-api/v1/conversations/act/ActTurnOrchestrationService.ts', 'reserveForAttempt', 'markReservationStarted'],
   ['src/server/harness/model-dispatch.ts', 'reserveProviderBudget', 'markProviderBudgetStarted'],
   ['src/server/app-api/v1/conversations/act/extension-plan/route.ts', 'reserveProviderBudget', 'markProviderBudgetStarted'],
   ['src/server/app-api/v1/generate-title/route.ts', 'reserveForAttempt', 'markReservationStarted'],

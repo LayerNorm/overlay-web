@@ -16,7 +16,7 @@ const now = 1_000
 test('a rejection receipt cannot conceal consumed tokens or unknown costs', () => {
   const receipt: HarnessReceipt = { id: 'rejected', modelId: 'model', provider: 'overlay-admission', inputTokens: 0, outputTokens: 0,
     reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, contextWindow: null, costMicros: 0, costSource: 'catalog', rejectionReason: 'budget' }
-  for (const rejectionReason of ['budget', 'model_unavailable', 'route_capacity', 'route_interrupted', 'summary_failed'] as const) {
+  for (const rejectionReason of ['budget', 'model_unavailable', 'route_capacity', 'route_interrupted', 'route_unavailable', 'summary_failed'] as const) {
     validateHarnessReceipt({ ...receipt, rejectionReason })
     for (const delta of [{ inputTokens: 1 }, { outputTokens: 1 }, { costMicros: 1 }, { externalCostMicros: null }, { costSource: 'provider' as const }]) {
       assert.throws(() => validateHarnessReceipt({ ...receipt, rejectionReason, ...delta }), /confirmed zero/)
@@ -48,6 +48,12 @@ test('route interruption receipts count durably toward the per-run retry cap', (
   }
   assert.equal(state.routeInterruptionCount, 3)
   assert.equal(state.latestReceipt?.rejectionReason, 'route_interrupted')
+})
+
+test('generic block and resume cannot bypass a resource pause', () => {
+  const paused = { ...make(), status: 'waiting_for_resources' as const, resourceRequestToken: 'resource-token' }
+  assert.throws(() => resumeHarness(paused, now), /resource pause/)
+  assert.throws(() => blockHarness(paused, { kind: 'input', question: 'Continue?' }, now), /resource pause/)
 })
 
 const steps: HarnessPlanInput[] = [
@@ -182,6 +188,42 @@ test('completion requires persisted evidence, satisfied dependencies and indepen
   assert.equal(state.status, 'running')
 })
 
+test('settled completion does not require new time or spending authorization', () => {
+  const initial = make()
+  const running = { ...initial, policy: { ...initial.policy, requiresPlan: false } }
+  const reserved = reserveHarnessModel(running, 'final-call', running.policy.maxCostMicros, now)
+  const settled = recordHarnessReceipt(reserved, {
+    id: 'final-call', modelId: 'model', provider: 'provider', inputTokens: 10, outputTokens: 1,
+    reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, contextWindow: null,
+    costMicros: running.policy.maxCostMicros + 1,
+  }, now)
+  for (const at of [now, settled.policy.deadlineAt, settled.policy.deadlineAt + 1]) {
+    assert.throws(() => assertHarnessRunnable(settled, at), /exhausted/)
+    const finished = finishHarness(settled, at, 'The result is complete.')
+    assert.equal(finished.status, 'completed')
+    assert.equal(finished.resultSummary, 'The result is complete.')
+    assert.deepEqual(finished.policy, settled.policy)
+    assert.deepEqual(finished.usage, settled.usage)
+    assert.equal(finished.modelReservation, undefined)
+  }
+})
+
+test('expired authorization cannot bypass completion blockers or unresolved holds', () => {
+  const initial = make()
+  const running = { ...initial, policy: { ...initial.policy, requiresPlan: false } }
+  const at = running.policy.deadlineAt + 1
+  const reserved = reserveHarnessModel(running, 'unresolved', 1, now)
+  assert.throws(() => finishHarness(reserved, at), /reconciliation/)
+  assert.throws(() => finishHarness(make(), at), /plan is required/)
+  const blocked = blockHarness(running, { kind: 'input', question: 'Which result?' }, now)
+  assert.throws(() => finishHarness(blocked, at), /blocker/)
+  assert.throws(() => finishHarness({ ...running, status: 'waiting_for_resources', resourceRequestToken: 'pending' }, at), /not running/)
+  assert.throws(() => finishHarness({ ...running, children: [child('pending', 'step', 0)] }, at), /Child work/)
+  for (const status of ['completed', 'failed', 'cancelled'] as const) {
+    assert.throws(() => finishHarness({ ...running, status }, at), /terminal/)
+  }
+})
+
 test('answer-only milestones need no evidence after their dependencies are complete', () => {
   const answerOnly = {
     id: 'answer',
@@ -292,7 +334,7 @@ test('plan revisions reject cycles and invalidate completed downstream work', ()
   assert.throws(() => replaceHarnessPlan(state, [steps[0]!], now), /Keep existing/)
 })
 
-test('telemetry is not progress and context occupancy is current rather than cumulative', () => {
+test('telemetry is not progress and compaction does not count as continuation stagnation', () => {
   let state = make()
   for (let call = 0; call < 2; call++) state = recordHarnessReceipt(state, {
     id: `call-${call}`, modelId: 'model', provider: 'provider', inputTokens: 200, outputTokens: 10,
@@ -304,8 +346,15 @@ test('telemetry is not progress and context occupancy is current rather than cum
   assert.equal(recordHarnessReceipt(state, state.latestReceipt!, now), state)
   state = checkpointHarness(state, 'No change', now)
   state = checkpointHarness(state, 'Still no change', now)
-  assert.equal(state.status, 'waiting_for_input')
-  assert.equal(state.blocker?.kind, 'stuck')
+  assert.equal(state.status, 'running')
+  assert.equal(state.stalledContinuations, 2)
+  const continuations = state.continuations
+  state = checkpointHarness(state, 'Compacted context', now, 'compaction')
+  state = checkpointHarness(state, 'Compacted context again', now, 'compaction')
+  assert.equal(state.status, 'running')
+  assert.equal(state.continuations, continuations)
+  assert.equal(state.stalledContinuations, 2)
+  assert.equal(state.progressRevision, 0)
 })
 
 test('child reservations enforce capabilities, root spending, concurrency and depth', () => {

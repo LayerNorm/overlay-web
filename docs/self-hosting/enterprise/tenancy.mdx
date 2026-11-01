@@ -98,6 +98,7 @@ These user-owned tables intentionally do **not** have `tenantId` today because t
 | `knowledgeChunks` | `userId` | Deployment boundary | Add `tenantId`; search indexes must include `tenantId` as a filter field. |
 | `knowledgeChunkEmbeddings` | `userId` | Deployment boundary | Add `tenantId`; vector indexes must include `tenantId` as a filter field. |
 | `r2UploadIntents` | `userId` | Deployment boundary | Add `tenantId`; upload finalization must include tenant context. |
+| `harnessArtifacts` | `userId`; `workspaceId`; `rootRunId` | Publication manifests belong to the initiating user and Harness root; workspace destinations require exact membership and folder/scope authorization. | Add `tenantId`; tenant-scope root/artifact uniqueness, destination checks, and manifest reads/commits. |
 | `files` | `userId` | Deployment boundary | Add `tenantId`; file/folder/share indexes must define cross-tenant behavior. |
 | `webhookSubscriptions` | `userId` | Deployment boundary | Add `tenantId`; subscriptions, signing secrets, and event ownership must be tenant-scoped. |
 | `webhookDeliveries` | `userId` | Deployment boundary | Add `tenantId`; delivery runner claims and retries must enforce tenant ownership. |

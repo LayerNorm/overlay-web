@@ -11,6 +11,66 @@ This file records user-visible and operational changes that reach `main`. Pull r
 - Preserve OAuth MCP authentication, start assigned-agent tasks through the existing collaboration thread and agent-turn pipeline with stable identity and cautious failure reporting, and place contextual/docked resize handles in their gutters.
 - Add desktop dictation microphone selection with live device refresh and capture status, alongside native PCM capture without a network admission wait, a compact audio-reactive pill, cancellation and temporary retry/copy recovery.
 
+- Keep the original human reply buffered across opt-in versioned root input, approval, and stuck-wait deadline renewals; production resource admission remains inactive.
+
+- Add an opt-in versioned Harness resource waiter with polling fallback and authoritative consumption at settled response/summary boundaries, including reattachment to existing requests. Production admission remains inactive.
+
+- Allow fully settled Harness results to finish after time or spending authorization is exhausted, without authorizing new work or clearing blockers, child work, or unresolved model holds.
+
+- Add an authenticated personal-owner resource-grant API/client contract and atomic `waiting_for_resources` AgentRun projection. Resource admission remains inactive; workflow polling, wake recovery, and card integration are still open.
+
+- Recheck current room participation and workspace scope before resuming an approval, including requests from the room creator. Revoked access and cross-workspace callbacks cannot wake the task.
+
+- Reconcile missing OpenRouter terminal costs through exact-generation lookup without repeating inference, only under a live zero-priced route lease. Invalid or contradictory metadata, nonzero charges, BYOK, expired leases and cancellation remain fail-closed; late storage acknowledgements cannot authorize settlement.
+
+- Require verified zero-cost router receipts before settling native free-model usage. Missing, unsafe or contradictory provider costs keep the model reservation unresolved instead of being priced as free from the catalog.
+
+- Preserve unresolved free-model summary reservations instead of fabricating a zero-cost failure receipt. Summary fallback and retry require existing settled usage or a confirmed rejection; unknown provider outcomes remain held for reconciliation.
+
+- Keep internal Harness checkpoint summaries out of final assistant replies. Delivery retains explicit results and actual assistant output instead of presenting continuity notes as a user-facing answer after an interruption.
+
+- Recover confirmed free-route unavailability through durable Harness backoff instead of immediately failing unfinished work. Only typed no-inference outcomes can release matching zero-cost holds; ambiguous inference, quarantined routes, paid/BYOK reservations, and authorization limits remain protected.
+
+- Add Harness-scoped binary Computer publication with immutable artifact identity, create-only scoped upload authority, streamed SHA-256 verification, and atomic Files registration. The owner validated the launch-video creation and Overlay Files delivery gate on the PR using their own account; fault-injection and multi-day qualification remain follow-up work.
+
+- Correct binary publication to use the configured FileService, authorize the tool caller before registry or Computer access, refresh grants before snapshot/signing/commit, and treat cleanup after commit as best effort. Enforce the first-version 100 MiB ceiling (or the lower configured direct-upload limit), reject mismatched MIME and dangling folder ancestry, and return safe retry guidance. The owner-accepted video gate covers delivery; replacement-Computer and interrupted-transfer qualification remain follow-up work.
+
+- Preserve declared byte length and requested short lifetime when creating scoped upload URLs through the configured storage provider, with optional validated SHA-256 binding for binary publication.
+
+- Register presigned uploads, consume their intent and account for storage atomically. Repeated publication returns the existing file, while lost acknowledgements and refused registrations preserve bytes for reconciliation instead of deleting potentially published objects.
+
+- Retry settled empty/error context summaries with separate durable backoff and receipt accounting, without resetting response recovery or releasing unresolved model usage.
+
+- Show persisted native-agent failure reasons in personal and room transcripts, preserve unfinished prose, and stop labeling unknown historical failures as connection loss.
+
+- Persist settled Harness response failures with bounded durable retries and receipt accounting, while preserving the existing Harness revision and requiring the additive server-owned `settled-retry-v1` admission marker for new web code.
+
+- Initial long-running harness recovery slice: separate context-compaction checkpoints from continuation stagnation, provide trusted bounded recovery before durable stuck waits, and return repairable generated-UI and plan-validation feedback.
+
+- Cut over personal HTTP and named-room admission to native Harness with explicit retirement responses for unsupported execution paths and truthful fail-closed backend readiness.
+
+- Route automation run-backed and scheduler-owned turns through native Harness with owner-fenced settlement/replay, refreshed bound-agent grants, and approval-denial handling; surface migration and broader legacy retirement remain open.
+
+- Reject new native admissions that attempt to use or adopt retired runners, fence retired-run attachment and transitions, and give owners new-thread guidance instead of resuming legacy approval/input waits while preserving connected remote-agent behavior.
+
+- Fence active retired-run transcript writes, retire unowned room generation, and persist startup failures atomically as terminal errors while preserving native streaming, connected remote writes, and late tool receipts.
+
+- Fence new writes and admissions for conversations or roots with recorded retired native runs, expose authorized read-only compatibility metadata while keeping history readable, and return a truthful 410 retirement response. Untracked historical transcripts, deployed-worker drain, and the new-thread UI remain open.
+
+- Keep tracked-thread safety compatible with web-first rollout: older backends preserve transcript reads with explicit unavailable metadata and block new thread writes/admissions with a retriable 503 until the server-owned backend marker is present. The new backend remains authoritative for 410 retirement classification; already-admitted remote execution remains unchanged.
+
+- Show read-only footers for retired or temporarily unavailable native threads, gate personal and room mutations on fresh safety checks, preserve drafts after compatibility rejections, provide editable bounded handoffs to fresh threads, and keep compatibility GET failures from triggering recheck loops.
+
+- Keep Generated UI edits unavailable without a persistence callback, explicitly pass retired-thread safety through personal and room transcripts, and discard local edits when a card becomes read-only.
+
+- Keep a blank personal-chat handoff synchronized with the Next.js URL state when removing the prior conversation ID.
+
+- Preserve normally typed composer text when native-thread safety suspends and remounts the editor.
+
+- Preserve completed tool results when recovering a failed Harness model stream without carrying forward partial failed-call output.
+
+- Add an opt-in Preview-only historical-thread retirement fixture for hosted UI QA without scheduling workflows or replenishing existing QA allowance. Preview builds can seed it through the trusted controller without exporting database credentials.
+
 - Switch existing accounts to double sidebar once across all workspaces, while allowing subsequent single-sidebar opt-outs.
 
 - Keep the gray gutters equal on both sides of onboarding while its navigation is hidden.

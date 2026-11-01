@@ -1,7 +1,9 @@
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { unwrapPaginatedData } from '@/shared/api/pagination'
 import { trackChatOpenLatency } from '@/shared/observability/client-metrics'
+import { isNativeThreadSafetyError } from '@/shared/chat/native-thread-safety'
 import { toast } from '@overlay/ui/primitives'
+import { stripAssistantAfterUserTurn } from '@overlay/chat-core'
 import type { ChatMessageMetadata, ChatOutput, ConversationRuntime } from '../chat-interface/types'
 
 export type RawConversationMessage = {
@@ -175,6 +177,7 @@ export interface StartActTextStreamParams {
   loadSubscription: RefreshAfterTurn
   onError: (error: unknown, fallbackMessage: string) => void
   logPrefix: string
+  isRuntimeCurrent?: (chatId: string, runtime: ConversationRuntime) => boolean
 }
 
 function finishTextTurn(params: Pick<
@@ -199,7 +202,7 @@ function failTextTurn(
 
 export function startActTextStream(params: StartActTextStreamParams) {
   /* eslint-disable @typescript-eslint/no-explicit-any -- AI SDK UIMessage payload */
-  void params.targetRuntime.actChat
+  return params.targetRuntime.actChat
     .sendMessage(
       {
         role: 'user',
@@ -215,7 +218,9 @@ export function startActTextStream(params: StartActTextStreamParams) {
       },
     )
     .then(() => {
-      finishTextTurn(params)
+      const error = resolvedChatError(params.targetRuntime)
+      if (error) failTextTurn(params, error, 'Could not complete Act request. Try again.')
+      else finishTextTurn(params)
     })
     .catch((error) => {
       failTextTurn(params, error, 'Could not complete Act request. Try again.')
@@ -224,8 +229,27 @@ export function startActTextStream(params: StartActTextStreamParams) {
 }
 
 export function startActRetryStream(params: StartActTextStreamParams) {
+  const retryOwner = {}
+  retryOwners.set(params.targetRuntime, retryOwner)
+  const actMessagesBeforeRetry = [...params.targetRuntime.actChat.messages]
+  const askMessagesBeforeRetry = [...params.targetRuntime.askChats[0].messages]
+  const actMessagesAfterRetry = stripAssistantAfterUserTurn(actMessagesBeforeRetry, params.turnId)
+  const askMessagesAfterRetry = stripAssistantAfterUserTurn(askMessagesBeforeRetry, params.turnId)
+  params.targetRuntime.actChat.messages = actMessagesAfterRetry
+  params.targetRuntime.askChats[0].messages = askMessagesAfterRetry
+
+  const restoreBeforeRetry = (error: unknown) => {
+    if (!isNativeThreadSafetyError(error)) return
+    if (params.isRuntimeCurrent?.(params.chatId, params.targetRuntime) === false) return
+    if (retryOwners.get(params.targetRuntime) !== retryOwner) return
+    if (params.targetRuntime.actChat.messages !== retryActMessages) return
+    if (params.targetRuntime.askChats[0].messages !== retryAskMessages) return
+    params.targetRuntime.actChat.messages = actMessagesBeforeRetry
+    params.targetRuntime.askChats[0].messages = askMessagesBeforeRetry
+  }
+
   /* eslint-disable @typescript-eslint/no-explicit-any -- AI SDK UIMessage payload */
-  void params.targetRuntime.actChat
+  const completion = params.targetRuntime.actChat
     .sendMessage(
       {
         role: 'user',
@@ -242,13 +266,32 @@ export function startActRetryStream(params: StartActTextStreamParams) {
         },
       },
     )
-    .then(() => {
-      finishTextTurn(params)
+  // The parts-based SDK send synchronously replaces the retried user message.
+  const retryActMessages = params.targetRuntime.actChat.messages
+  const retryAskMessages = params.targetRuntime.askChats[0].messages
+  return completion.then(() => {
+      const error = resolvedChatError(params.targetRuntime)
+      if (!error) {
+        finishTextTurn(params)
+        return
+      }
+      restoreBeforeRetry(error)
+      failTextTurn(params, error, 'Could not retry. Try again.')
     })
     .catch((error) => {
+      restoreBeforeRetry(error)
       failTextTurn(params, error, 'Could not retry. Try again.')
     })
   /* eslint-enable @typescript-eslint/no-explicit-any */
+}
+
+const retryOwners = new WeakMap<ConversationRuntime, object>()
+
+function resolvedChatError(runtime: ConversationRuntime): unknown {
+  const chat = runtime.actChat as unknown as { error?: unknown; status?: string }
+  return chat.status === 'error'
+    ? chat.error ?? new Error('The Act request failed.')
+    : null
 }
 
 export function reportTextStreamError(

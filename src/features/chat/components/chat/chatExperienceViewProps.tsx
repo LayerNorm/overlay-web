@@ -26,6 +26,8 @@ export function buildChatExperienceViewProps(
   shell: ShellPanels,
 ) {
   const viewProps = {
+    nativeThreadSafety: c.nativeThreadSafety,
+    onNewNativeThread: c.startNewNativeThread,
     shell: {
       rightPanel: shell.shellRightPanel,
       rightPanelOpen: Boolean(shell.shellRightPanel),
@@ -42,6 +44,7 @@ export function buildChatExperienceViewProps(
       dragHandlers: {
         onDragEnter: (e: React.DragEvent) => {
           e.preventDefault()
+          if (c.nativeThreadSafety.readOnly) return
           c.dragCounterRef.current++
           if (e.dataTransfer.types.includes('Files')) c.setIsDragging(true)
         },
@@ -52,6 +55,7 @@ export function buildChatExperienceViewProps(
         },
         onDrop: (e: React.DragEvent) => {
           e.preventDefault()
+          if (c.nativeThreadSafety.readOnly) return
           c.dragCounterRef.current = 0
           c.setIsDragging(false)
           const all = Array.from(e.dataTransfer.files)
@@ -173,6 +177,7 @@ export function buildChatExperienceViewProps(
               exchangeModes: c.exchangeModes,
             },
             runtime: {
+              readOnly: c.nativeThreadSafety.readOnly,
               actChat: c.actChat,
               chatInstances: c.chatInstances,
               isActiveLoading: c.isActiveLoading,

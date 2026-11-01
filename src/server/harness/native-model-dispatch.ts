@@ -17,7 +17,7 @@ export async function authorizeNativeHarnessModelDispatch(reference: HarnessMode
   const input = reference.native
   if (!input) throw new FatalError('Native model dispatch identity or routing is invalid.')
   await authorizeHarnessModelDispatch(reference, options, {
-    ...input, billingProgrammaticSubjectId: `agent:${input.access.agentId}`,
+    ...input,
   }, () => refreshNativeHarnessAccess(input.access, {
     modelId: reference.modelId, memoryEnabled: input.memoryEnabled, sharedRoom: input.sharedRoom,
     requestFingerprint: input.requestFingerprint,

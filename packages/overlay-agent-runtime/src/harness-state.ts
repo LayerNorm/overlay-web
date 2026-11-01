@@ -1,4 +1,6 @@
-export type HarnessStatus = 'running' | 'waiting_for_input' | 'waiting_for_approval' | 'waiting_for_children' | 'completed' | 'cancelled' | 'failed'
+import type { HarnessResourceGrantReceipt } from './harness-resource'
+
+export type HarnessStatus = 'running' | 'waiting_for_input' | 'waiting_for_approval' | 'waiting_for_children' | 'waiting_for_resources' | 'completed' | 'cancelled' | 'failed'
 export type HarnessStepStatus = 'pending' | 'running' | 'blocked' | 'verifying' | 'done' | 'skipped'
 
 export type HarnessPlanStep = {
@@ -26,6 +28,17 @@ export type HarnessEvidence = {
   verification?: { stepId: string; planRevision: number }
 }
 
+export type HarnessResponseFailure = 'empty_response' | 'provider_error' | 'provider_other'
+
+export type HarnessModelRecovery = {
+  receiptId: string
+  modelId: string
+  code: HarnessResponseFailure | 'route_capacity' | 'route_interrupted' | 'route_unavailable'
+  attempt: number
+  firstFailureAt: number
+  nextRetryAt: number
+}
+
 export type HarnessReceipt = {
   id: string
   modelId: string
@@ -42,12 +55,15 @@ export type HarnessReceipt = {
   /** Present only for user-funded inference; null means the provider did not report its charge. */
   externalCostMicros?: number | null
   /** Zero-usage rejection or failure of a zero-cost summary attempt. */
-  rejectionReason?: 'budget' | 'model_unavailable' | 'route_capacity' | 'route_interrupted' | 'summary_failed'
+  rejectionReason?: 'budget' | 'model_unavailable' | 'route_capacity' | 'route_interrupted' | 'route_unavailable' | 'summary_failed'
+  /** A settled response can be unusable even when its token usage is known. */
+  responseFailure?: HarnessResponseFailure
 }
 
 export type HarnessPolicy = {
   actorUserId: string
   workspaceId?: string
+  resourcePauseVersion?: 1
   allowedToolIds: string[]
   requiresPlan: boolean
   deadlineAt: number
@@ -92,6 +108,8 @@ export type HarnessSnapshot = {
   policy: HarnessPolicy
   status: HarnessStatus
   revision: number
+  policyRevision?: number
+  resourceRequestToken?: string
   progressRevision: number
   planRevision: number
   plan: HarnessPlanStep[]
@@ -106,6 +124,8 @@ export type HarnessSnapshot = {
   stalledContinuations: number
   latestReceipt?: HarnessReceipt
   routeInterruptionCount?: number
+  modelRecovery?: HarnessModelRecovery
+  summaryRecovery?: HarnessModelRecovery
   modelReservation?: {
     id: string
     maxCostMicros: number
@@ -116,6 +136,16 @@ export type HarnessSnapshot = {
 }
 
 export type HarnessPlanInput = Pick<HarnessPlanStep, 'id' | 'title' | 'dependsOn' | 'acceptanceCriteria' | 'requiresVerification' | 'evidenceTools' | 'answerOnly'>
+export type HarnessCheckpointPurpose = 'continuation' | 'compaction'
+
+export class HarnessPlanValidationError extends Error {
+  readonly code = 'HARNESS_PLAN_VALIDATION'
+
+  constructor(message: string) {
+    super(message)
+    this.name = 'HarnessPlanValidationError'
+  }
+}
 
 export function createHarnessSnapshot(input: {
   runId: string
@@ -138,7 +168,8 @@ export function createHarnessSnapshot(input: {
     ...(input.parentRunId ? { parentRunId: input.parentRunId } : {}), depth,
     goal: input.goal, constraints: [...input.constraints],
     policy: { ...input.policy, allowedToolIds: [...new Set(input.policy.allowedToolIds)].sort() },
-    status: 'running', revision: 0, progressRevision: 0, planRevision: 0, plan: [], evidence: [], children: [], workingSummary: '',
+    status: 'running', revision: 0, ...(input.policy.resourcePauseVersion === 1 ? { policyRevision: 0 } : {}),
+    progressRevision: 0, planRevision: 0, plan: [], evidence: [], children: [], workingSummary: '',
     continuations: 0, lastContinuationProgressRevision: 0, stalledContinuations: 0, routeInterruptionCount: 0,
     usage: { inputTokens: 0, outputTokens: 0, reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, costMicros: 0 },
     updatedAt: now,
@@ -188,7 +219,7 @@ function validateStepEvidenceTools(state: HarnessSnapshot, step: HarnessPlanInpu
 
 export function replaceHarnessPlan(state: HarnessSnapshot, steps: HarnessPlanInput[], now: number): HarnessSnapshot {
   assertActive(state)
-  if (!steps.length || steps.length > 128) throw new Error('Use between one and 128 meaningful milestones.')
+  if (!steps.length || steps.length > 128) throw new HarnessPlanValidationError('Use between one and 128 meaningful milestones.')
   const normalizedSteps = steps.map(step => {
     const previous = state.plan.find(candidate => candidate.id === step.id)
     if (!previous?.childRunId || (previous.evidenceTools === undefined && step.evidenceTools === undefined)) return step
@@ -198,20 +229,25 @@ export function replaceHarnessPlan(state: HarnessSnapshot, steps: HarnessPlanInp
     }
   })
   const byId = new Map(normalizedSteps.map(step => [step.id, step]))
-  if (byId.size !== normalizedSteps.length) throw new Error('Plan IDs must be unique.')
+  if (byId.size !== normalizedSteps.length) throw new HarnessPlanValidationError('Plan IDs must be unique.')
   for (const step of normalizedSteps) {
-    if (!step.id.trim() || !step.title.trim() || !step.acceptanceCriteria.length || step.acceptanceCriteria.some(criterion => !criterion.trim())) throw new Error('Each milestone needs an identity, title and acceptance criteria.')
-    if (step.dependsOn.some(id => !byId.has(id))) throw new Error('Unknown dependency.')
-    validateStepEvidenceTools(state, step)
+    if (!step.id.trim() || !step.title.trim() || !step.acceptanceCriteria.length || step.acceptanceCriteria.some(criterion => !criterion.trim())) throw new HarnessPlanValidationError('Each milestone needs an identity, title and acceptance criteria.')
+    if (step.dependsOn.some(id => !byId.has(id))) throw new HarnessPlanValidationError('Unknown dependency.')
+    try {
+      validateStepEvidenceTools(state, step)
+    } catch (error) {
+      if (error instanceof Error) throw new HarnessPlanValidationError(error.message)
+      throw error
+    }
     const previous = state.plan.find(candidate => candidate.id === step.id)
     if (step.answerOnly && (step.requiresVerification || ('childRunId' in step && step.childRunId !== undefined) || previous?.childRunId)) {
-      throw new Error('Answer-only milestones cannot require verification or delegate work.')
+      throw new HarnessPlanValidationError('Answer-only milestones cannot require verification or delegate work.')
     }
   }
   const visited = new Set<string>()
   const visiting = new Set<string>()
   const visit = (id: string) => {
-    if (visiting.has(id)) throw new Error('The plan contains a dependency cycle.')
+    if (visiting.has(id)) throw new HarnessPlanValidationError('The plan contains a dependency cycle.')
     if (visited.has(id)) return
     visiting.add(id)
     for (const dependency of byId.get(id)!.dependsOn) visit(dependency)
@@ -219,7 +255,7 @@ export function replaceHarnessPlan(state: HarnessSnapshot, steps: HarnessPlanInp
     visited.add(id)
   }
   for (const step of normalizedSteps) visit(step.id)
-  if (state.plan.some(step => !byId.has(step.id))) throw new Error('Keep existing milestones; explicitly skip obsolete work with a reason.')
+  if (state.plan.some(step => !byId.has(step.id))) throw new HarnessPlanValidationError('Keep existing milestones; explicitly skip obsolete work with a reason.')
   const next = mutable(state)
   next.plan = normalizedSteps.map(step => {
     const previous = state.plan.find(candidate => candidate.id === step.id)
@@ -228,7 +264,7 @@ export function replaceHarnessPlan(state: HarnessSnapshot, steps: HarnessPlanInp
       && JSON.stringify(previous.evidenceTools) === JSON.stringify(step.evidenceTools)
       && JSON.stringify(previous.acceptanceCriteria) === JSON.stringify(step.acceptanceCriteria)
       && JSON.stringify(previous.dependsOn) === JSON.stringify(step.dependsOn)
-    if (previous?.childRunId && !same) throw new Error('A delegated milestone cannot be revised while attached to a child.')
+    if (previous?.childRunId && !same) throw new HarnessPlanValidationError('A delegated milestone cannot be revised while attached to a child.')
     return same ? { ...previous, evidenceRefs: [...previous.evidenceRefs] } : {
       ...step,
       ...(step.evidenceTools ? { evidenceTools: [...step.evidenceTools] } : {}),
@@ -341,23 +377,51 @@ export function transitionHarnessStep(state: HarnessSnapshot, input: {
   return changed(next, now)
 }
 
-export function validateHarnessReceipt(receipt: HarnessReceipt) {
+function validateResponseFailure(receipt: HarnessReceipt) {
+  if (receipt.responseFailure !== undefined && (receipt.rejectionReason !== undefined
+    || !['empty_response', 'provider_error', 'provider_other'].includes(receipt.responseFailure))) {
+    throw new Error('Invalid settled model response failure.')
+  }
+}
+
+function validateRejection(receipt: HarnessReceipt) {
   if (receipt.rejectionReason !== undefined && (
-    !['budget', 'model_unavailable', 'route_capacity', 'route_interrupted', 'summary_failed'].includes(receipt.rejectionReason)
+    !['budget', 'model_unavailable', 'route_capacity', 'route_interrupted', 'route_unavailable', 'summary_failed'].includes(receipt.rejectionReason)
     || [receipt.inputTokens, receipt.outputTokens, receipt.reasoningTokens, receipt.cacheReadTokens,
       receipt.cacheWriteTokens, receipt.costMicros].some(value => value !== 0)
     || receipt.costSource !== 'catalog' || receipt.externalCostMicros !== undefined
   )) throw new Error('Rejected inference must have confirmed zero usage and cost.')
+}
+
+function validateUsage(receipt: HarnessReceipt) {
   for (const value of [receipt.inputTokens, receipt.outputTokens, receipt.reasoningTokens, receipt.cacheReadTokens, receipt.cacheWriteTokens, receipt.costMicros]) {
     if (!Number.isSafeInteger(value) || value < 0) throw new Error('Usage and cost must be known nonnegative integers.')
   }
+}
+
+function validateReceiptIdentity(receipt: HarnessReceipt) {
   if (!receipt.id || !receipt.modelId || !receipt.provider) throw new Error('A receipt requires actual routing identity.')
   if (receipt.contextWindow !== null && (!Number.isSafeInteger(receipt.contextWindow) || receipt.contextWindow <= 0)) throw new Error('Invalid context window.')
+}
+
+function validateReceiptUsageShape(receipt: HarnessReceipt) {
   if (receipt.cacheReadTokens + receipt.cacheWriteTokens > receipt.inputTokens) throw new Error('Cached tokens exceed total input usage.')
+}
+
+function validateExternalCost(receipt: HarnessReceipt) {
   if (receipt.externalCostMicros !== undefined) {
     if (receipt.costMicros !== 0 || receipt.costSource !== 'external'
       || (receipt.externalCostMicros !== null && (!Number.isSafeInteger(receipt.externalCostMicros) || receipt.externalCostMicros < 0))) throw new Error('Invalid external provider cost.')
   } else if (receipt.costSource === 'external') throw new Error('External provider cost must be reported or explicitly unknown.')
+}
+
+export function validateHarnessReceipt(receipt: HarnessReceipt) {
+  validateResponseFailure(receipt)
+  validateRejection(receipt)
+  validateUsage(receipt)
+  validateReceiptIdentity(receipt)
+  validateReceiptUsageShape(receipt)
+  validateExternalCost(receipt)
 }
 
 const usageKeys = ['inputTokens', 'outputTokens', 'reasoningTokens', 'cacheReadTokens', 'cacheWriteTokens', 'costMicros', 'externalCostMicros', 'unpricedExternalCalls'] as const
@@ -375,6 +439,19 @@ function addHarnessUsage(target: HarnessUsage, delta: HarnessUsage) {
   }
 }
 
+function nextModelRecovery(previous: HarnessModelRecovery | undefined, receipt: HarnessReceipt, now: number, deadlineAt: number): HarnessModelRecovery | undefined {
+  const code = receipt.responseFailure ?? (receipt.rejectionReason === 'route_capacity'
+    || receipt.rejectionReason === 'route_interrupted' || receipt.rejectionReason === 'route_unavailable' ? receipt.rejectionReason : undefined)
+  if (!code) return receipt.rejectionReason ? previous : undefined
+  const attempt = Math.min((previous?.attempt ?? 0) + 1, Number.MAX_SAFE_INTEGER)
+  const delay = Math.min(5_000 * 2 ** Math.min(attempt - 1, 6), 300_000)
+  return {
+    receiptId: receipt.id, modelId: receipt.modelId, code, attempt,
+    firstFailureAt: previous?.firstFailureAt ?? now,
+    nextRetryAt: Math.min(now + delay, deadlineAt),
+  }
+}
+
 // The caller must atomically deduplicate receipt.id per run before recording.
 export function recordHarnessReceipt(state: HarnessSnapshot, receipt: HarnessReceipt, now: number): HarnessSnapshot {
   if (state.latestReceipt?.id === receipt.id) {
@@ -385,6 +462,8 @@ export function recordHarnessReceipt(state: HarnessSnapshot, receipt: HarnessRec
   const next = mutable(state)
   if (next.modelReservation?.id === receipt.id) next.modelReservation = undefined
   next.latestReceipt = { ...receipt }
+  const recoveryKey = receipt.id.startsWith('summary:') ? 'summaryRecovery' : 'modelRecovery'
+  next[recoveryKey] = nextModelRecovery(state[recoveryKey], receipt, now, state.policy.deadlineAt)
   if (receipt.rejectionReason === 'route_interrupted') {
     next.routeInterruptionCount = (next.routeInterruptionCount ?? 0) + 1
   }
@@ -546,6 +625,9 @@ export function assertHarnessRunnable(state: HarnessSnapshot, now: number, estim
 
 export function blockHarness(state: HarnessSnapshot, blocker: NonNullable<HarnessSnapshot['blocker']>, now: number): HarnessSnapshot {
   assertActive(state)
+  if (state.status === 'waiting_for_resources' || state.resourceRequestToken) {
+    throw new Error('A resource pause must be consumed before the run can be blocked.')
+  }
   if (!blocker.question.trim() || blocker.question.length > 2_000) throw new Error('A blocker requires a concise question or explanation.')
   const next = mutable(state)
   next.blocker = { ...blocker }
@@ -555,11 +637,91 @@ export function blockHarness(state: HarnessSnapshot, blocker: NonNullable<Harnes
 
 export function resumeHarness(state: HarnessSnapshot, now: number): HarnessSnapshot {
   assertActive(state)
+  if (state.status === 'waiting_for_resources' || state.resourceRequestToken) {
+    throw new Error('A resource pause must be consumed before the run can resume.')
+  }
   if (!state.blocker && state.status !== 'waiting_for_children') throw new Error('There is no blocker to resolve.')
   const next = mutable(state)
   next.blocker = undefined
   next.status = 'running'
+  next.stalledContinuations = 0
+  next.lastContinuationProgressRevision = next.progressRevision
   return changed(next, now)
+}
+
+export function pauseHarnessForResources(state: HarnessSnapshot, token: string, now: number): HarnessSnapshot {
+  assertActive(state)
+  if (state.policy.resourcePauseVersion !== 1) throw new Error('Resource pauses are not enabled for this run.')
+  if (!token.trim() || token.length > 256) throw new Error('A resource pause token is required.')
+  if (state.resourceRequestToken) throw new Error('A resource pause is already pending.')
+  if (state.status === 'running' && state.blocker !== undefined) {
+    throw new Error('A running harness cannot carry a blocker.')
+  }
+  if (state.status === 'waiting_for_input' && state.blocker?.kind !== 'input' && state.blocker?.kind !== 'stuck') {
+    throw new Error('Only an input wait can be suspended by a resource pause.')
+  }
+  if (state.status === 'waiting_for_approval' && state.blocker?.kind !== 'approval') {
+    throw new Error('Only an approval wait can be suspended by a resource pause.')
+  }
+  if (state.status !== 'running' && state.status !== 'waiting_for_input' && state.status !== 'waiting_for_approval') {
+    throw new Error('Only an active harness can be paused for resources.')
+  }
+  const next = mutable(state)
+  next.status = 'waiting_for_resources'
+  next.resourceRequestToken = token
+  return changed(next, now, false)
+}
+
+export function applyHarnessResourceGrant(
+  state: HarnessSnapshot,
+  receipt: HarnessResourceGrantReceipt,
+  now: number,
+): HarnessSnapshot {
+  assertActive(state)
+  if (state.status !== 'waiting_for_resources' || state.resourceRequestToken !== receipt.token) {
+    throw new Error('The resource grant does not match the pending pause.')
+  }
+  if ((state.policyRevision ?? 0) !== receipt.policyRevisionBefore
+    || receipt.policyRevisionAfter !== receipt.policyRevisionBefore + 1) {
+    throw new Error('The resource grant policy revision is stale.')
+  }
+  if (receipt.grant.kind === 'model_spend') {
+    if (receipt.deadlineAt !== state.policy.deadlineAt || receipt.maxCostMicros <= state.policy.maxCostMicros) {
+      throw new Error('The model-spend grant changed an unrelated policy field.')
+    }
+  } else if (receipt.maxCostMicros !== state.policy.maxCostMicros
+    || receipt.deadlineAt <= state.policy.deadlineAt) {
+    throw new Error('The time grant changed an unrelated policy field.')
+  }
+  const next = mutable(state)
+  next.policy = {
+    ...state.policy,
+    maxCostMicros: receipt.maxCostMicros,
+    deadlineAt: receipt.deadlineAt,
+  }
+  next.policyRevision = receipt.policyRevisionAfter
+  return changed(next, now, false)
+}
+
+export function consumeHarnessResourcePause(
+  state: HarnessSnapshot,
+  input: {
+    token: string
+    previousStatus: Extract<HarnessStatus, 'running' | 'waiting_for_input' | 'waiting_for_approval'>
+    previousBlocker?: { kind: 'input' | 'approval' | 'stuck'; question: string }
+  },
+  now: number,
+): HarnessSnapshot {
+  assertActive(state)
+  if (state.status !== 'waiting_for_resources' || state.resourceRequestToken !== input.token) {
+    throw new Error('The resource pause does not match the run.')
+  }
+  const next = mutable(state)
+  next.status = input.previousStatus
+  if (input.previousBlocker === undefined) delete next.blocker
+  else next.blocker = { ...input.previousBlocker }
+  delete next.resourceRequestToken
+  return changed(next, now, false)
 }
 
 export function hasRunnableHarnessMilestones(state: HarnessSnapshot): boolean {
@@ -591,20 +753,25 @@ export function waitForHarnessChildren(state: HarnessSnapshot, now: number): Har
   return changed(next, now, false)
 }
 
-export function checkpointHarness(state: HarnessSnapshot, summary: string, now: number): HarnessSnapshot {
+export function checkpointHarness(
+  state: HarnessSnapshot,
+  summary: string,
+  now: number,
+  purpose: HarnessCheckpointPurpose = 'continuation',
+): HarnessSnapshot {
   assertActive(state)
   if (summary.length > 8_000) throw new Error('Keep the working summary under 8,000 characters; store larger outputs as artifacts.')
   const next = mutable(state)
   next.workingSummary = summary
+  if (purpose === 'compaction') return changed(next, now, false)
   next.continuations++
   next.stalledContinuations = state.progressRevision === state.lastContinuationProgressRevision ? state.stalledContinuations + 1 : 0
   next.lastContinuationProgressRevision = state.progressRevision
-  if (next.stalledContinuations >= 2) return blockHarness(next, { kind: 'stuck', question: 'No durable progress after two continuation attempts. User input or a revised approach is required.' }, now)
   return changed(next, now, false)
 }
 
 export function finishHarness(state: HarnessSnapshot, now: number, resultSummary?: string): HarnessSnapshot {
-  assertHarnessRunnable(state, now)
+  assertActive(state)
   if (resultSummary !== undefined && resultSummary.length > 8_000) throw new Error('Keep the result summary under 8,000 characters.')
   const issues = harnessCompletionIssues(state)
   if (issues.length) throw new Error(issues.join(' '))

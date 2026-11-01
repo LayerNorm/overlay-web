@@ -1,7 +1,8 @@
 import { beforeEach, expect, test, vi } from 'vitest'
 import type { LanguageModelV4CallOptions } from '@ai-sdk/provider'
+import { WORKFLOW_SERIALIZE } from '@workflow/serde'
 import { authorizePersonalHarnessModelDispatch } from './personal-model-dispatch'
-import type { HarnessModelReference } from './secure-model'
+import { HarnessLanguageModel, type HarnessModelReference } from './secure-model'
 
 const mocks = vi.hoisted(() => ({ refresh: vi.fn(), read: vi.fn(), apply: vi.fn(), reserve: vi.fn(), started: vi.fn(), release: vi.fn(), forecast: vi.fn(), reject: vi.fn() }))
 vi.mock('server-only', () => ({}))
@@ -17,6 +18,10 @@ const reference: HarnessModelReference = { modelId: 'provider/model', credential
   personal: { access, receiptId: 'model:0', memoryEnabled: true, requestFingerprint: 'fingerprint', inputTokenBudget: 100,
     maxOutputTokens: 50, contextWindow: 1_000 } }
 const options: LanguageModelV4CallOptions = { prompt: [], maxOutputTokens: 50 }
+const automationContext = {
+  turnId: 'automation-run:automation-run', accountAllowedToolIds: ['read_file'],
+  accountAllowedConnectorIds: ['gmail'], integrationToolIds: ['gmail_send'],
+}
 const state = { workflowRunId: 'workflow', revision: 1, modelReservation: { id: 'model:0', maxCostMicros: 60 } }
 
 test('budget rejection is durably recorded before failing and never binds or starts provider execution', async () => {
@@ -47,6 +52,52 @@ test('refreshes identity, reserves a stable account hold, claims dispatch atomic
   expect(mocks.refresh.mock.invocationCallOrder[0]).toBeLessThan(mocks.reserve.mock.invocationCallOrder[0])
   expect(mocks.apply.mock.invocationCallOrder[0]).toBeLessThan(mocks.started.mock.invocationCallOrder[0])
   expect(mocks.release).not.toHaveBeenCalled()
+})
+
+test('automation model dispatch rebuilds run and source identity from serialized authority', async () => {
+  const automationAccess = {
+    ...access,
+    authentication: {
+      type: 'automation' as const,
+      automationId: 'automation',
+      automationRunId: 'automation-run',
+      originWorkflowRunId: 'origin-workflow',
+    },
+  }
+  const automationReference: HarnessModelReference = {
+    ...reference,
+    personal: { ...reference.personal!, access: automationAccess, automationContext },
+  }
+  const serialized = HarnessLanguageModel[WORKFLOW_SERIALIZE](new HarnessLanguageModel(automationReference))
+  await authorizePersonalHarnessModelDispatch(serialized, options)
+  expect(mocks.refresh).toHaveBeenCalledWith(automationAccess, expect.objectContaining({
+    ...automationContext,
+    automationExecution: true,
+    automationId: 'automation',
+    automationRunId: 'automation-run',
+    billingProgrammaticSubjectId: 'automation:automation',
+  }))
+})
+
+test('automation model dispatch revalidates source before reserving provider funds', async () => {
+  const automationAccess = {
+    ...access,
+    authentication: {
+      type: 'automation' as const,
+      automationId: 'automation',
+      automationRunId: 'automation-run',
+      originWorkflowRunId: 'origin-workflow',
+    },
+  }
+  const automationReference: HarnessModelReference = {
+    ...reference,
+    personal: { ...reference.personal!, access: automationAccess, automationContext },
+  }
+  mocks.refresh.mockRejectedValueOnce(new Error('Automation run was cancelled.'))
+  await expect(authorizePersonalHarnessModelDispatch(automationReference, options))
+    .rejects.toThrow(/Automation run was cancelled/)
+  expect(mocks.reserve).not.toHaveBeenCalled()
+  expect(mocks.apply).not.toHaveBeenCalled()
 })
 
 test('revocation, larger token limits and changed pricing never reserve provider funds', async () => {

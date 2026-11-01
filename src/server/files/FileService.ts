@@ -20,7 +20,7 @@ import {
   uploadBuffer,
 } from '@/server/storage/object-store'
 import { checkGlobalR2Budget } from '@/server/storage/r2-budget'
-import type { FileRepository, FileUploadIntentRecord } from './FileRepository'
+import type { FileRepository } from './FileRepository'
 import {
   assertAllowedMimeType,
   assignTextContent,
@@ -44,8 +44,18 @@ import {
   utf8ByteLength,
 } from './FileServicePayloads'
 import { serviceError } from './FileServiceErrors'
+import { verifyArtifactObject } from './verify-artifact-object'
+import { authorizeComputerPublication, type ArtifactPublicationAuthority } from './ArtifactPublicationAuthority'
+import type {
+  ArtifactExecutionReference,
+  ComputerArtifactInput,
+  ComputerArtifactManifest,
+  ComputerArtifactPrepare,
+  PublishedComputerArtifact,
+} from '@/shared/storage/file-publication'
 
 const MAX_INGEST_BYTES = 12 * 1024 * 1024
+export const MAX_COMPUTER_ARTIFACT_BYTES = 100 * 1024 * 1024
 
 export { FileServiceError } from './FileServiceErrors'
 
@@ -60,6 +70,8 @@ export type FileServiceStorage = {
     mimeType: string,
     sizeBytes: number,
     expiresIn: number,
+    checksumSha256?: string,
+    createOnly?: boolean,
   ): Promise<string>
   getMaxPresignedUploadBytes(): number
   getR2PresignTtlSeconds(): number
@@ -143,6 +155,111 @@ export class FileService {
   constructor(private readonly deps: FileServiceDeps) {
     this.clock = deps.clock ?? defaultClock
     this.storage = deps.storage ?? defaultStorage
+  }
+
+  async getComputerArtifact(
+    reference: ArtifactExecutionReference,
+    input: ComputerArtifactInput,
+  ): Promise<ComputerArtifactManifest | null> {
+    const mimeType = normalizeMimeType(input.mimeType)
+    assertAllowedMimeType(mimeType)
+    return this.deps.repository.getComputerArtifact({ reference, input: { ...input, mimeType } })
+  }
+
+  getComputerArtifactMaxBytes(): number {
+    return Math.min(this.storage.getMaxPresignedUploadBytes(), MAX_COMPUTER_ARTIFACT_BYTES)
+  }
+
+  async prepareComputerArtifact(args: ComputerArtifactPrepare): Promise<ComputerArtifactManifest> {
+    const mimeType = normalizeMimeType(args.snapshot.mimeType)
+    assertAllowedMimeType(mimeType)
+    if (normalizeMimeType(args.input.mimeType) !== mimeType) {
+      throw new Error('artifact_mime_invalid')
+    }
+    const maxBytes = this.getComputerArtifactMaxBytes()
+    if (!Number.isSafeInteger(args.snapshot.sizeBytes) || args.snapshot.sizeBytes <= 0
+      || args.snapshot.sizeBytes > maxBytes) {
+      throw new Error('ARTIFACT_SIZE_LIMIT_EXCEEDED')
+    }
+    await this.storage.checkGlobalR2Budget(args.snapshot.sizeBytes)
+    return await this.deps.repository.prepareComputerArtifact({
+      ...args,
+      input: { ...args.input, mimeType },
+      snapshot: { ...args.snapshot, mimeType },
+    })
+  }
+
+  async getComputerArtifactUploadUrl(manifest: ComputerArtifactManifest): Promise<string> {
+    const remainingSeconds = (manifest.uploadExpiresAt - this.clock.now()) / 1000
+    if (remainingSeconds < 1) throw new Error('ARTIFACT_AUTHORITY_EXPIRED')
+    const expiresIn = Math.min(120, Math.floor(remainingSeconds))
+    if (expiresIn < 1) throw new Error('ARTIFACT_AUTHORITY_EXPIRED')
+    if (manifest.sizeBytes > this.getComputerArtifactMaxBytes()) {
+      throw new Error('ARTIFACT_SIZE_LIMIT_EXCEEDED')
+    }
+    await this.storage.checkGlobalR2Budget(manifest.sizeBytes)
+    return await this.storage.generatePresignedUploadUrl(
+      manifest.r2Key,
+      manifest.mimeType,
+      manifest.sizeBytes,
+      expiresIn,
+      manifest.checksumSha256,
+      true,
+    )
+  }
+
+  async verifyAndCommitComputerArtifact(args: {
+    manifest: ComputerArtifactManifest
+    authority: ArtifactPublicationAuthority
+  }): Promise<{ kind: 'missing' } | { kind: 'published'; artifact: PublishedComputerArtifact }> {
+    const { manifest } = args
+    const verification = await verifyArtifactObject({
+      key: manifest.r2Key,
+      sizeBytes: manifest.sizeBytes,
+      mimeType: manifest.mimeType,
+      checksumSha256: manifest.checksumSha256,
+      maxBytes: this.getComputerArtifactMaxBytes(),
+      headObject: key => this.storage.headObject(key),
+      generatePresignedDownloadUrl: key => this.storage.generatePresignedDownloadUrl(key),
+    })
+    if (verification.kind === 'missing') return { kind: 'missing' }
+    await this.storage.checkGlobalR2Budget(manifest.sizeBytes)
+    const reference = await authorizeComputerPublication({
+      userId: manifest.userId,
+      workspaceId: manifest.workspaceId,
+      artifactPublicationAuthority: args.authority,
+    })
+    const fileId = await this.deps.repository.commitComputerArtifact({
+      reference,
+      input: {
+        artifactId: manifest.artifactId,
+        sourcePath: manifest.sourcePath,
+        name: manifest.name,
+        mimeType: manifest.mimeType,
+        ...(manifest.parentId ? { parentId: manifest.parentId } : {}),
+        scope: manifest.scope,
+      },
+      r2Key: manifest.r2Key,
+      checksumSha256: verification.checksumSha256,
+      sizeBytes: verification.sizeBytes,
+    })
+    return {
+      kind: 'published',
+      artifact: {
+        artifactId: manifest.artifactId,
+        sourcePath: manifest.sourcePath,
+        name: manifest.name,
+        ...(manifest.parentId ? { parentId: manifest.parentId } : {}),
+        scope: manifest.scope,
+        artifactIdentity: JSON.stringify([manifest.rootRunId, manifest.artifactId]),
+        fileId,
+        rootRunId: manifest.rootRunId,
+        checksumSha256: verification.checksumSha256,
+        sizeBytes: verification.sizeBytes,
+        workspaceId: manifest.workspaceId,
+        mimeType: verification.mimeType,
+      },
+    }
   }
 
   async getOrListFiles(args: {
@@ -734,28 +851,13 @@ export class FileService {
     if (!objectHead) {
       serviceError({ error: 'Uploaded object not found' }, 400)
     }
-    const uploadIntent = args.kind === 'output'
-      ? null
-      : await this.deps.repository.getUploadIntent({
-          userId: args.userId,
-          r2Key,
-          now: this.clock.now(),
-        })
-    if (args.kind !== 'output' && !uploadIntent) {
-      await this.storage.deleteObjects([r2Key]).catch((_error) => undefined)
-      serviceError({ error: 'Upload authorization expired or was not found' }, 400)
-    }
-    const declaredSize =
-      uploadIntent?.declaredSizeBytes ??
-      (typeof args.declaredSizeBytes === 'number' ? Math.max(0, Math.round(args.declaredSizeBytes)) : 0)
     const actualSize = Math.max(0, Math.round(objectHead.sizeBytes))
-    if (declaredSize > 0 && actualSize > declaredSize) {
-      await this.storage.deleteObjects([r2Key]).catch((_error) => undefined)
-      await this.expireUploadIntentBestEffort(args.userId, uploadIntent)
-      serviceError({ error: 'Uploaded object exceeds authorized size' }, 413)
-    }
     await this.storage.checkGlobalR2Budget(actualSize)
     if (args.kind === 'output') {
+      const declaredSize = typeof args.declaredSizeBytes === 'number' ? Math.max(0, Math.round(args.declaredSizeBytes)) : 0
+      if (declaredSize > 0 && actualSize > declaredSize) {
+        serviceError({ error: 'Uploaded object exceeds authorized size' }, 413)
+      }
       return await this.deps.repository.createFile({
         ...args.fileArgs,
         type: 'file',
@@ -764,34 +866,30 @@ export class FileService {
       })
     }
 
-    const { type: _type, ...storageArgs } = args.fileArgs
-    void _type
-    let id: string | null
+    const { name, parentId, workspaceId, scope, extension } = args.fileArgs
     try {
-      id = await this.deps.repository.createFileWithStorage({
-        ...storageArgs,
-        r2Key,
-        sizeBytes: actualSize,
+      return await this.deps.repository.commitUploadedFile({
+        userId: args.userId, name, r2Key, sizeBytes: actualSize,
+        mimeType: normalizeMimeType(objectHead.contentType),
+        ...(typeof parentId === 'string' ? { parentId } : {}),
+        ...(typeof workspaceId === 'string' ? { workspaceId } : {}),
+        ...(scope === 'personal' || scope === 'workspace' ? { scope } : {}),
+        ...(typeof extension === 'string' ? { extension } : {}),
       })
     } catch (error) {
-      await this.storage.deleteObjects([r2Key]).catch((_error) => undefined)
-      await this.expireUploadIntentBestEffort(args.userId, uploadIntent)
+      // A lost acknowledgement can mean registration already committed. Keep the object for reconciliation.
+      const message = error instanceof Error ? error.message : String(error)
+      if (/upload_intent_(not_found|expired)/.test(message)) serviceError({ error: 'Upload authorization expired or was not found' }, 400)
+      if (message.includes('upload_size_exceeds_intent')) serviceError({ error: 'Uploaded object exceeds authorized size' }, 413)
+      if (/upload_(publication_conflict|mime_mismatch|destination_mismatch)/.test(message)) {
+        serviceError({ error: 'The upload no longer matches its publication. Refresh Files before retrying.' }, 409)
+      }
+      if (/Unauthorized|WORKSPACE_ACCESS_DENIED|RESOURCE_SCOPE_FORBIDDEN/.test(message)) {
+        serviceError({ error: 'You do not have access to this upload destination.' }, 403)
+      }
+      if (message.includes('storage_limit_exceeded')) serviceError({ error: 'Overlay storage limit reached.' }, 403)
       throw error
     }
-    if (!id) throw new Error('File create returned no id')
-    if (uploadIntent) {
-      await this.deps.repository.finalizeUploadIntent({
-        userId: args.userId,
-        r2Key,
-        actualSizeBytes: actualSize,
-        fileId: id,
-        now: this.clock.now(),
-      }).catch(async (error) => {
-        logger.warn('[FilesCreate] Uploaded file saved but upload intent finalization failed', error)
-        await this.expireUploadIntentBestEffort(args.userId, uploadIntent)
-      })
-    }
-    return id
   }
 
   private async assertPresignedUploadAllowed(args: {
@@ -830,18 +928,6 @@ export class FileService {
     await this.storage.deleteObject(r2Key).catch((error) => {
       logger.warn(`[ingest-document] failed to delete orphaned R2 object key=${r2Key}`, error)
     })
-  }
-
-  private async expireUploadIntentBestEffort(
-    userId: string,
-    uploadIntent: FileUploadIntentRecord | null | undefined,
-  ): Promise<void> {
-    if (!uploadIntent) return
-    await this.deps.repository.expireUploadIntent({
-      userId,
-      intentId: uploadIntent._id,
-      now: this.clock.now(),
-    }).catch((_error) => undefined)
   }
 
   private throwIngestCreateError(error: unknown): never {

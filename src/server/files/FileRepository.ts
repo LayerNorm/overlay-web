@@ -1,4 +1,11 @@
 import 'server-only'
+import type {
+  ComputerArtifactCommit,
+  ComputerArtifactLookup,
+  ComputerArtifactManifest,
+  ComputerArtifactPrepare,
+  UploadedFileInput,
+} from '@/shared/storage/file-publication'
 
 export type FileRecord = {
   _id: string
@@ -72,6 +79,10 @@ export interface FileRepository {
   listFilesPage?(args: Record<string, unknown> & { userId: string }): Promise<FileListPage>
   createFile(args: Record<string, unknown> & { userId: string }): Promise<string | null>
   createFileWithStorage(args: Record<string, unknown> & { userId: string }): Promise<string | null>
+  commitUploadedFile(args: UploadedFileInput): Promise<string>
+  getComputerArtifact(args: ComputerArtifactLookup): Promise<ComputerArtifactManifest | null>
+  prepareComputerArtifact(args: ComputerArtifactPrepare): Promise<ComputerArtifactManifest>
+  commitComputerArtifact(args: ComputerArtifactCommit): Promise<string>
   createExtractedDocument(args: {
     mimeType: string
     parentId?: string
