@@ -225,10 +225,11 @@ cp.execFile=function(file,args,options,callback){
         navigator.mediaDevices.getUserMedia = async () => {
           const source = context.createBufferSource()
           source.buffer = buffer
-          source.loop = true
           source.connect(destination)
           await context.resume()
-          source.start()
+          // Allow the worklet to connect before the first word. Play once;
+          // truncating a second loop changes the recognizer's input phrase.
+          source.start(context.currentTime + 0.5)
           return destination.stream
         }
       },
