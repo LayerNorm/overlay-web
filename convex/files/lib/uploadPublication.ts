@@ -4,7 +4,7 @@ import { assertWorkspaceMembership } from '../../lib/workspaceMembership'
 import type { UploadedFileInput } from '../../../src/shared/storage/file-publication'
 import { applyStorageUsageDelta, ensureStorageAvailable } from './storageQuota'
 
-function assertMatchingFile(file: Doc<'files'> | null, input: UploadedFileInput): asserts file is Doc<'files'> {
+export function assertMatchingFile(file: Doc<'files'> | null, input: UploadedFileInput): asserts file is Doc<'files'> {
   if (!file || file.deletedAt || file.archivedAt || file.type !== 'file' || file.kind !== 'upload'
     || file.userId !== input.userId || file.r2Key !== input.r2Key || file.sizeBytes !== input.sizeBytes
     || file.name !== input.name || file.parentId !== input.parentId || file.workspaceId !== input.workspaceId

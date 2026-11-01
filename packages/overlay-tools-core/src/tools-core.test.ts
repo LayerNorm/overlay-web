@@ -24,6 +24,7 @@ describe('@overlay/tools-core', () => {
     })
 
     assert.equal(ids.includes('computer_browser'), false)
+    assert.equal(ids.includes('computer_publish_file'), false)
   })
 
   it('exposes the task tools for explicit Work requests', () => {

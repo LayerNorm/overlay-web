@@ -4,22 +4,16 @@ import { scopeMutations } from '../lib/scopeMutations'
 import { Doc, Id } from '../_generated/dataModel'
 import { internal } from '../_generated/api'
 import { selectNoteClientIdCandidate } from '../../src/shared/knowledge/note-client-id'
-import { mutation, query, type MutationCtx, type QueryCtx } from '../_generated/server'
+import { mutation, query, type QueryCtx } from '../_generated/server'
 import { requireAccessToken, validateServerSecret } from '../lib/auth'
-import {
-  applyStorageUsageDelta,
-  ensureStorageAvailable,
-  getOrCreateSubscription,
-  getStorageBytesUsed,
-  getStorageLimitForUser,
-} from './lib/storageQuota'
+import { applyStorageUsageDelta, ensureStorageAvailable } from './lib/storageQuota'
 import { assertOwnedFileR2Key, isOwnedFileR2Key, isOwnedOutputR2Key } from '../../src/shared/storage/storage-keys'
 import { commitUploadedFile } from './lib/uploadPublication'
+import { reserveUploadIntent } from './lib/uploadIntents'
 
 const utf8Encoder = new TextEncoder()
 
 type FileKind = 'folder' | 'note' | 'upload' | 'output'
-type MutationDb = MutationCtx['db']
 const UPLOAD_INTENT_FINALIZE_GRACE_MS = 15 * 60_000
 const FILE_PREVIEW_CHARS = 1200
 
@@ -44,7 +38,7 @@ function requireServerAccess(serverSecret: string) {
   if (!validateServerSecret(serverSecret)) throw new Error('Unauthorized')
 }
 
-function extensionOf(name: string): string | undefined {
+export function extensionOf(name: string): string | undefined {
   const clean = name.trim()
   const dot = clean.lastIndexOf('.')
   if (dot <= 0 || dot === clean.length - 1) return undefined
@@ -233,14 +227,18 @@ function validStorageKeyForKind(userId: string, kind: FileKind, r2Key: string): 
   return kind === 'output' ? isOwnedOutputR2Key(userId, r2Key) : isOwnedFileR2Key(userId, r2Key)
 }
 
-async function assertParentAndProject(ctx: { db: { get: (id: Id<'files'>) => Promise<unknown> } }, args: {
+export async function assertParentAndProject(ctx: { db: { get: (id: Id<'files'>) => Promise<unknown> } }, args: {
   fileId?: Id<'files'>
   userId: string
   parentId?: string
+  workspaceId?: string
+  scope?: 'personal' | 'workspace'
 }) {
   if (args.parentId) {
     const parent = await ctx.db.get(args.parentId as Id<'files'>) as Doc<'files'> | null
-    if (!parent || parent.userId !== args.userId || parent.deletedAt || inferKind(parent) !== 'folder') {
+    if (!parent || parent.userId !== args.userId || parent.deletedAt || parent.archivedAt || inferKind(parent) !== 'folder'
+      || (args.workspaceId !== undefined && parent.workspaceId !== args.workspaceId)
+      || (args.scope !== undefined && (parent.scope ?? 'personal') !== args.scope)) {
       throw new Error('Unauthorized')
     }
     const seen = new Set<string>(args.fileId ? [args.fileId] : [])
@@ -251,19 +249,13 @@ async function assertParentAndProject(ctx: { db: { get: (id: Id<'files'>) => Pro
       cursor = cursor.parentId
         ? await ctx.db.get(cursor.parentId as Id<'files'>) as Doc<'files'> | null
         : null
-      if (cursor && (cursor.userId !== args.userId || cursor.deletedAt)) {
+      if (cursor && (cursor.userId !== args.userId || cursor.deletedAt || cursor.archivedAt
+        || (args.workspaceId !== undefined && cursor.workspaceId !== args.workspaceId)
+        || (args.scope !== undefined && (cursor.scope ?? 'personal') !== args.scope))) {
         throw new Error('Unauthorized')
       }
     }
   }
-}
-
-async function getPendingUploadIntentBytes(ctx: { db: MutationDb }, userId: string): Promise<number> {
-  const pending = await ctx.db
-    .query('r2UploadIntents')
-    .withIndex('by_userId_status_expiresAt', (q) => q.eq('userId', userId).eq('status', 'pending'))
-    .collect()
-  return pending.reduce((sum, intent) => sum + Math.max(0, intent.declaredSizeBytes), 0)
 }
 
 // ─── R2 Upload Intents ───────────────────────────────────────────────────────
@@ -279,38 +271,13 @@ export const createUploadIntentByServer = mutation({
   },
   handler: async (ctx, args) => {
     requireServerAccess(args.serverSecret)
-    assertOwnedFileR2Key(args.userId, args.r2Key)
-    const declaredSizeBytes = Math.round(args.declaredSizeBytes)
-    if (!Number.isFinite(declaredSizeBytes) || declaredSizeBytes <= 0) {
-      throw new Error('invalid_upload_intent_size')
-    }
-
-    const existing = await ctx.db
-      .query('r2UploadIntents')
-      .withIndex('by_r2Key', (q) => q.eq('r2Key', args.r2Key))
-      .first()
-    if (existing) {
-      throw new Error('upload_intent_already_exists')
-    }
-
-    const [subscription, pendingBytes] = await Promise.all([
-      getOrCreateSubscription(ctx, args.userId),
-      getPendingUploadIntentBytes(ctx, args.userId),
-    ])
-    const nextReservedBytes = getStorageBytesUsed(subscription) + pendingBytes + declaredSizeBytes
-    const storageLimitBytes = await getStorageLimitForUser(ctx, args.userId)
-    if (nextReservedBytes > storageLimitBytes) {
-      throw new Error(`storage_limit_exceeded:${nextReservedBytes}:${storageLimitBytes}`)
-    }
-
-    return await ctx.db.insert('r2UploadIntents', {
+    return await reserveUploadIntent(ctx, {
       userId: args.userId,
       r2Key: args.r2Key,
-      declaredSizeBytes,
+      declaredSizeBytes: args.declaredSizeBytes,
       mimeType: args.mimeType,
-      status: 'pending',
-      createdAt: Date.now(),
       expiresAt: args.expiresAt,
+      now: Date.now(),
     })
   },
 })

@@ -21,6 +21,16 @@ test('forwards exact binary size, checksum and short lifetime to the configured 
   })
 })
 
+test('forwards create-only upload authority to the configured provider', async () => {
+  await generatePresignedUploadUrl('artifact', 'video/mp4', 10, 120, 'a'.repeat(64), true)
+  expect(getUploadUrl).toHaveBeenCalledWith('artifact', 'video/mp4', {
+    contentLength: 10,
+    expiresIn: 120,
+    checksumSha256: 'a'.repeat(64),
+    createOnly: true,
+  })
+})
+
 test('preserves zero-byte constraints and provider default lifetime, and caps requested lifetime', async () => {
   await generatePresignedUploadUrl('empty', 'application/octet-stream', 0)
   expect(getUploadUrl).toHaveBeenLastCalledWith('empty', 'application/octet-stream', { contentLength: 0 })

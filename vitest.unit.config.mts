@@ -19,6 +19,8 @@ export default defineConfig({
       'packages/**/src/**/*.test.ts',
       'scripts/**/*.test.ts',
       'src/server/harness/**/*.test.ts',
+      'src/server/files/computer-publication.test.ts',
+      'src/server/files/ArtifactPublicationAuthority.test.ts',
       'src/server/storage/object-store.test.ts',
       'src/server/agents/workspace-agent-preparation.test.ts',
       'src/server/app-api/v1/conversations/act/model-candidates.test.ts',

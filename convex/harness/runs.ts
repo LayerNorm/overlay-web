@@ -856,6 +856,24 @@ function assertActiveWaitLineage(lineage: LineageEntry[]): void {
   }
 }
 
+export async function requireHarnessPublicationAuthority(
+  ctx: ReadContext,
+  reference: HarnessWaitReference,
+  serverSecret: string,
+) {
+  requireHarnessServerSecret(serverSecret)
+  const { run, lineage, metadata } = await loadWaitAuthority(ctx, reference, serverSecret)
+  assertActiveWaitLineage(lineage)
+  if (metadata.status !== 'running' || !metadata.policy.workspaceId
+    || !metadata.policy.allowedToolIds.includes('computer_publish_file')
+    || !metadata.policy.allowedToolIds.includes('write_file')
+    || lineage.some(entry => entry.metadata.policy.deadlineAt <= Date.now())) {
+    throw new Error('HARNESS_PUBLICATION_NOT_AUTHORIZED')
+  }
+  return { rootRunId: run.rootRunId, workspaceId: metadata.policy.workspaceId,
+    deadlineAt: Math.min(...lineage.map(entry => entry.metadata.policy.deadlineAt)) }
+}
+
 function waitBlockerQuestion(metadata: HarnessMetadata, kind: HarnessWaitRequest['kind']): string {
   const expectedStatus = kind === 'input' ? 'waiting_for_input' : 'waiting_for_approval'
   const blocker = metadata.blocker

@@ -44,6 +44,15 @@ import {
   utf8ByteLength,
 } from './FileServicePayloads'
 import { serviceError } from './FileServiceErrors'
+import { verifyArtifactObject } from './verify-artifact-object'
+import { authorizeComputerPublication, type ArtifactPublicationAuthority } from './ArtifactPublicationAuthority'
+import type {
+  ArtifactExecutionReference,
+  ComputerArtifactInput,
+  ComputerArtifactManifest,
+  ComputerArtifactPrepare,
+  PublishedComputerArtifact,
+} from '@/shared/storage/file-publication'
 
 const MAX_INGEST_BYTES = 12 * 1024 * 1024
 
@@ -60,6 +69,8 @@ export type FileServiceStorage = {
     mimeType: string,
     sizeBytes: number,
     expiresIn: number,
+    checksumSha256?: string,
+    createOnly?: boolean,
   ): Promise<string>
   getMaxPresignedUploadBytes(): number
   getR2PresignTtlSeconds(): number
@@ -143,6 +154,111 @@ export class FileService {
   constructor(private readonly deps: FileServiceDeps) {
     this.clock = deps.clock ?? defaultClock
     this.storage = deps.storage ?? defaultStorage
+  }
+
+  async getComputerArtifact(
+    reference: ArtifactExecutionReference,
+    input: ComputerArtifactInput,
+  ): Promise<ComputerArtifactManifest | null> {
+    const mimeType = normalizeMimeType(input.mimeType)
+    assertAllowedMimeType(mimeType)
+    return this.deps.repository.getComputerArtifact({ reference, input: { ...input, mimeType } })
+  }
+
+  getComputerArtifactMaxBytes(): number {
+    return this.storage.getMaxPresignedUploadBytes()
+  }
+
+  async prepareComputerArtifact(args: ComputerArtifactPrepare): Promise<ComputerArtifactManifest> {
+    const mimeType = normalizeMimeType(args.snapshot.mimeType)
+    assertAllowedMimeType(mimeType)
+    if (normalizeMimeType(args.input.mimeType) !== mimeType) {
+      throw new Error('artifact_mime_invalid')
+    }
+    const maxBytes = this.storage.getMaxPresignedUploadBytes()
+    if (!Number.isSafeInteger(args.snapshot.sizeBytes) || args.snapshot.sizeBytes <= 0
+      || args.snapshot.sizeBytes > maxBytes) {
+      throw new Error('ARTIFACT_SIZE_LIMIT_EXCEEDED')
+    }
+    await this.storage.checkGlobalR2Budget(args.snapshot.sizeBytes)
+    return await this.deps.repository.prepareComputerArtifact({
+      ...args,
+      input: { ...args.input, mimeType },
+      snapshot: { ...args.snapshot, mimeType },
+    })
+  }
+
+  async getComputerArtifactUploadUrl(manifest: ComputerArtifactManifest): Promise<string> {
+    const remainingSeconds = (manifest.uploadExpiresAt - this.clock.now()) / 1000
+    if (remainingSeconds < 1) throw new Error('ARTIFACT_AUTHORITY_EXPIRED')
+    const expiresIn = Math.min(120, Math.floor(remainingSeconds))
+    if (expiresIn < 1) throw new Error('ARTIFACT_AUTHORITY_EXPIRED')
+    if (manifest.sizeBytes > this.storage.getMaxPresignedUploadBytes()) {
+      throw new Error('ARTIFACT_SIZE_LIMIT_EXCEEDED')
+    }
+    await this.storage.checkGlobalR2Budget(manifest.sizeBytes)
+    return await this.storage.generatePresignedUploadUrl(
+      manifest.r2Key,
+      manifest.mimeType,
+      manifest.sizeBytes,
+      expiresIn,
+      manifest.checksumSha256,
+      true,
+    )
+  }
+
+  async verifyAndCommitComputerArtifact(args: {
+    manifest: ComputerArtifactManifest
+    authority: ArtifactPublicationAuthority
+  }): Promise<{ kind: 'missing' } | { kind: 'published'; artifact: PublishedComputerArtifact }> {
+    const { manifest } = args
+    const verification = await verifyArtifactObject({
+      key: manifest.r2Key,
+      sizeBytes: manifest.sizeBytes,
+      mimeType: manifest.mimeType,
+      checksumSha256: manifest.checksumSha256,
+      maxBytes: this.storage.getMaxPresignedUploadBytes(),
+      headObject: key => this.storage.headObject(key),
+      generatePresignedDownloadUrl: key => this.storage.generatePresignedDownloadUrl(key),
+    })
+    if (verification.kind === 'missing') return { kind: 'missing' }
+    await this.storage.checkGlobalR2Budget(manifest.sizeBytes)
+    const reference = await authorizeComputerPublication({
+      userId: manifest.userId,
+      workspaceId: manifest.workspaceId,
+      artifactPublicationAuthority: args.authority,
+    })
+    const fileId = await this.deps.repository.commitComputerArtifact({
+      reference,
+      input: {
+        artifactId: manifest.artifactId,
+        sourcePath: manifest.sourcePath,
+        name: manifest.name,
+        mimeType: manifest.mimeType,
+        ...(manifest.parentId ? { parentId: manifest.parentId } : {}),
+        scope: manifest.scope,
+      },
+      r2Key: manifest.r2Key,
+      checksumSha256: verification.checksumSha256,
+      sizeBytes: verification.sizeBytes,
+    })
+    return {
+      kind: 'published',
+      artifact: {
+        artifactId: manifest.artifactId,
+        sourcePath: manifest.sourcePath,
+        name: manifest.name,
+        ...(manifest.parentId ? { parentId: manifest.parentId } : {}),
+        scope: manifest.scope,
+        artifactIdentity: JSON.stringify([manifest.rootRunId, manifest.artifactId]),
+        fileId,
+        rootRunId: manifest.rootRunId,
+        checksumSha256: verification.checksumSha256,
+        sizeBytes: verification.sizeBytes,
+        workspaceId: manifest.workspaceId,
+        mimeType: verification.mimeType,
+      },
+    }
   }
 
   async getOrListFiles(args: {

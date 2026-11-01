@@ -92,6 +92,15 @@ function createRepository(overrides: Partial<FileRepository> = {}): FileReposito
       createdFiles.push(args)
       return `file_${createdFiles.length}`
     },
+    async getComputerArtifact() {
+      return null
+    },
+    async prepareComputerArtifact() {
+      return {} as never
+    },
+    async commitComputerArtifact() {
+      return 'file_artifact'
+    },
     async createExtractedDocument(args) {
       args.parts.forEach((part) => createdFiles.push({ ...part, userId: args.userId }))
       return args.parts.map((_, index) => `file_${index + 1}`)

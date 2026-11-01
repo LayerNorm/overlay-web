@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Add Harness-scoped binary Computer publication with immutable artifact identity, create-only scoped upload authority, streamed SHA-256 verification, and atomic Files registration. Local verification uses a binary HTTP surrogate and mocked storage; hosted transfer and live R2 checksum compatibility remain unverified. The complete motion-skill bundle and final video acceptance remain open.
+
 - Preserve declared byte length and requested short lifetime when creating scoped upload URLs through the configured storage provider, with optional validated SHA-256 binding for binary publication.
 
 - Register presigned uploads, consume their intent and account for storage atomically. Repeated publication returns the existing file, while lost acknowledgements and refused registrations preserve bytes for reconciliation instead of deleting potentially published objects.

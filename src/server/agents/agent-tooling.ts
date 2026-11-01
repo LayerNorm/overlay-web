@@ -16,6 +16,7 @@ import {
   type AgentToolCapability,
 } from '@/shared/agents/tool-groups'
 import type { Entitlements } from '@/shared/app/app-contracts'
+import type { ArtifactPublicationAuthority } from '@/server/files/ArtifactPublicationAuthority'
 
 /** Web-search tools, which have no overlay tool id to filter on. */
 const WEB_SEARCH_TOOL_IDS = ['web_search', 'deep_search', 'web_fetch'] as const
@@ -162,6 +163,7 @@ export async function buildExternalAppTooling(args: {
  * "Agent as principal", for the model that replaces this.
  */
 export async function buildWorkspaceAgentTooling(args: {
+  artifactPublicationAuthority?: ArtifactPublicationAuthority
   accessToken?: string
   approvalMode?: 'ask' | 'auto'
   computerApprovalContext?: 'work' | 'automation'
@@ -202,6 +204,7 @@ export async function buildWorkspaceAgentTooling(args: {
     effectiveModelId: args.effectiveModelId,
     entitlements: args.entitlements,
     idempotencyKey: args.idempotencyKey,
+    artifactPublicationAuthority: args.artifactPublicationAuthority,
     latestUserText: args.latestUserText,
     mediaToolIntent: null,
     memoryEnabled: args.memoryEnabled,

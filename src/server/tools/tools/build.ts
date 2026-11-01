@@ -37,6 +37,7 @@ import {
   executeComputerReadFile,
   executeComputerScreenshot,
   executeComputerWriteFile,
+  executeComputerPublishFile,
   executeComputerActionWithApproval,
   type ComputerTerminalAction,
   executeCreateAutomation,
@@ -993,6 +994,26 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
         return executeComputerWriteFile(options, input)
       },
     })
+    }
+
+    if (shouldExposeTool('computer_publish_file') && shouldExposeTool('write_file')) {
+      tools.computer_publish_file = tool({
+        description:
+          'Publish a binary file from the bound Computer into Overlay Files. Reuse the same artifactId when retrying identical bytes; use a new artifactId for different bytes. Never use computer_read_file for binary output.',
+        inputSchema: z.object({
+          sourcePath: z.string().min(1).max(4096).describe('Absolute path of the finished binary on the Computer'),
+          name: z.string().min(1).max(255).describe('Basename to use in Overlay Files'),
+          artifactId: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/).describe('Stable identity reused for retries of the same bytes'),
+          mimeType: z.string().min(1).max(255).describe('MIME type of the file'),
+          parentId: z.string().optional().describe('Optional destination folder ID'),
+          scope: z.enum(['personal', 'workspace']).describe('Destination visibility'),
+        }).strict(),
+        execute: async input => {
+          assertToolAllowed('computer_publish_file')
+          assertToolAllowed('write_file')
+          return executeComputerPublishFile(options, input)
+        },
+      })
     }
 
     if (shouldExposeTool('computer_list_files')) {

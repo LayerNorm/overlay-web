@@ -1783,6 +1783,29 @@ export default defineSchema({
     .index('by_r2Key', ['r2Key'])
     .index('by_userId_status_expiresAt', ['userId', 'status', 'expiresAt']),
 
+  harnessArtifacts: defineTable({
+    artifactId: v.string(),
+    sourcePath: v.string(),
+    name: v.string(),
+    parentId: v.optional(v.string()),
+    scope: v.union(v.literal('personal'), v.literal('workspace')),
+    userId: v.string(),
+    workspaceId: v.string(),
+    rootRunId: v.string(),
+    sourceComputerId: v.string(),
+    stagingPath: v.string(),
+    checksumSha256: v.string(),
+    sizeBytes: v.number(),
+    mimeType: v.string(),
+    r2Key: v.string(),
+    uploadExpiresAt: v.number(),
+    fileId: v.optional(v.id('files')),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_rootRunId_artifactId', ['rootRunId', 'artifactId'])
+    .index('by_fileId', ['fileId']),
+
   // Durable document ingestion jobs. The client uploads to R2 via a presigned
   // URL, then creates an ingestion job. The job is processed asynchronously
   // and the client subscribes to status updates via Convex subscription.

@@ -110,6 +110,21 @@ test('computer screenshot returns image content and computer input validates act
   })
 })
 
+test('binary publication requires both the computer-publication and write-file grants', () => {
+  const withoutFileGrant = buildOverlayToolSet({
+    userId: 'user-test',
+    baseUrl: 'http://localhost:3000',
+    allowedToolIds: ['computer_publish_file'],
+  })
+  const withBothGrants = buildOverlayToolSet({
+    userId: 'user-test',
+    baseUrl: 'http://localhost:3000',
+    allowedToolIds: ['computer_publish_file', 'write_file'],
+  })
+  assert.equal(withoutFileGrant.computer_publish_file, undefined)
+  assert.ok(withBothGrants.computer_publish_file)
+})
+
 test('computer_browser typing in durable personal runs requires approval', async () => {
   const tools = buildOverlayToolSet({
     userId: 'user-test',

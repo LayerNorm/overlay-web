@@ -107,6 +107,7 @@ export const getByServer = query({
     harnessRevision: v.literal('overlay-harness-v1'),
     harnessModelRecoveryRevision: v.literal('settled-retry-v1'),
     nativeThreadCompatibilityRevision: v.literal('tracked-native-v1'),
+    harnessArtifactPublicationRevision: v.literal('binary-artifact-v1'),
   }),
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
@@ -116,6 +117,7 @@ export const getByServer = query({
       harnessRevision: 'overlay-harness-v1' as const,
       harnessModelRecoveryRevision: 'settled-retry-v1' as const,
       nativeThreadCompatibilityRevision: 'tracked-native-v1' as const,
+      harnessArtifactPublicationRevision: 'binary-artifact-v1' as const,
     }
     const settings = {
       theme: existing.theme,
@@ -144,6 +146,7 @@ export const getByServer = query({
       harnessRevision: 'overlay-harness-v1' as const,
       harnessModelRecoveryRevision: 'settled-retry-v1' as const,
       nativeThreadCompatibilityRevision: 'tracked-native-v1' as const,
+      harnessArtifactPublicationRevision: 'binary-artifact-v1' as const,
       ...(safeModelId(existing.defaultActModelId) ? { defaultActModelId: safeModelId(existing.defaultActModelId) } : {}),
       ...(safeModelId(existing.defaultImageModelId) ? { defaultImageModelId: safeModelId(existing.defaultImageModelId) } : {}),
       ...(safeModelId(existing.defaultVideoModelId) ? { defaultVideoModelId: safeModelId(existing.defaultVideoModelId) } : {}),

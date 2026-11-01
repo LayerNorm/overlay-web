@@ -67,6 +67,7 @@ async function freshTooling(call: NativeToolCall) {
     idempotencyKey: idempotencyKey(call), latestUserText: authority.latestUserText,
     memoryEnabled: call.context.memoryEnabled, requestFingerprint: call.context.requestFingerprint,
     turnId: call.access.turnId, workspaceId: call.access.workspaceId,
+    artifactPublicationAuthority: { kind: 'native', access: call.access, context: call.context },
   })
   if (!tooling.tools[call.toolName]?.execute) throw new FatalError('This native tool is no longer authorized.')
   return tooling

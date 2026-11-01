@@ -57,6 +57,7 @@ test('native tools reconstruct current identity, grants and memory policy with c
     actorUserId: 'human', agentPrincipalId: 'agent-principal', conversationId: 'room', workspaceId: 'workspace',
     grant: { agentId: 'agent', allowedToolIds: ['files'], isDefaultMaster: false }, memoryEnabled: true,
     approvalMode: 'ask', computerApprovalContext: 'work', idempotencyKey: 'harness-run:child:tool:call',
+    artifactPublicationAuthority: { kind: 'native', access: input.access, context: input.context },
   }))
   expect(mocks.execute).toHaveBeenLastCalledWith({}, expect.objectContaining({
     context: { fresh: true }, agentRunId: 'delivery', logicalStepId: 'call', idempotencyKey: 'harness-run:child:tool:call',

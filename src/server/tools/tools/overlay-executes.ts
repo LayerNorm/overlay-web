@@ -20,6 +20,7 @@ import type { Computer, ComputerOwnerType } from '@overlay/workspace-contracts/c
 import { callInternalApi, callInternalApiGet, toolAuthBody } from './internal-api'
 import type { OverlayToolsOptions } from './types'
 import { toolRequiresApproval } from '@overlay/tools-core/policy'
+import { publishComputerFile } from '@/server/files/computer-publication'
 
 /**
  * Memory writes carry an explicit owner when an agent is driving the turn, so
@@ -999,7 +1000,7 @@ function computerErrorResult(err: unknown, fallback: string) {
   return { success: false as const, error: err instanceof Error ? err.message : fallback }
 }
 
-async function computerInstanceFor(
+export async function computerInstanceFor(
   options: OverlayToolsOptions,
 ): Promise<
   | {
@@ -1075,6 +1076,24 @@ async function computerInstanceFor(
     }
     return { ok: false, error: computerErrorResult(err, 'Computer unavailable').error ?? 'Computer unavailable' }
   }
+}
+
+export async function executeComputerPublishFile(
+  options: OverlayToolsOptions,
+  input: {
+    sourcePath: string
+    name: string
+    artifactId: string
+    mimeType: string
+    parentId?: string
+    scope: 'personal' | 'workspace'
+  },
+) {
+  return await publishComputerFile({
+    request: { ...input, scope: roomListScope(options, input.scope) ?? input.scope },
+    authority: options.artifactPublicationAuthority,
+    resolveComputer: () => computerInstanceFor(options),
+  })
 }
 
 export async function executeComputerExec(

@@ -28,6 +28,7 @@ export async function generatePresignedUploadUrl(
   sizeBytes: number,
   ttlSeconds?: number,
   checksumSha256?: string,
+  createOnly = false,
 ): Promise<string> {
   if (!Number.isSafeInteger(sizeBytes) || sizeBytes < 0) throw new Error('STORAGE_INVALID_UPLOAD_SIZE')
   if (ttlSeconds !== undefined && (!Number.isSafeInteger(ttlSeconds) || ttlSeconds <= 0)) {
@@ -40,6 +41,7 @@ export async function generatePresignedUploadUrl(
     contentLength: sizeBytes,
     ...(ttlSeconds === undefined ? {} : { expiresIn: Math.min(ttlSeconds, 900) }),
     ...(checksumSha256 === undefined ? {} : { checksumSha256 }),
+    ...(createOnly ? { createOnly: true } : {}),
   })).url
 }
 

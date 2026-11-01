@@ -13,10 +13,17 @@ test('a backend with only the original Harness marker remains unavailable to new
   expect(isHarnessBackendReady(settings)).toBe(false)
 })
 
-test('both server-owned markers admit Harness', () => {
+test('all server-owned markers admit Harness', () => {
+  const settings = { ...DEFAULT_APP_SETTINGS, harnessRevision: 'overlay-harness-v1',
+    harnessModelRecoveryRevision: 'settled-retry-v1',
+    harnessArtifactPublicationRevision: 'binary-artifact-v1' }
+  expect(isHarnessBackendReady(settings)).toBe(true)
+})
+
+test('a backend without binary artifact publication support remains unavailable', () => {
   const settings = { ...DEFAULT_APP_SETTINGS, harnessRevision: 'overlay-harness-v1',
     harnessModelRecoveryRevision: 'settled-retry-v1' }
-  expect(isHarnessBackendReady(settings)).toBe(true)
+  expect(isHarnessBackendReady(settings)).toBe(false)
 })
 
 test('an unreadable settings response cannot select another engine', () => {

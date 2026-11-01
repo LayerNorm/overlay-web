@@ -10,7 +10,7 @@ test('R2 constrained uploads sign the checksum header sent by the real drive cli
   for (const bytes of [Buffer.alloc(0), Buffer.from('full drive bytes ✓\n')]) {
     const sha256 = createHash('sha256').update(bytes).digest('hex')
     const upload = await store.getUploadUrl('users/test/staging/report.txt', 'text/plain', {
-      checksumSha256: sha256, contentLength: bytes.length, expiresIn: 120,
+      checksumSha256: sha256, contentLength: bytes.length, createOnly: true, expiresIn: 120,
     })
     let puts = 0
     const client = new AgentDriveClient({ apiUrl: 'https://preview.example.test/api/agent-drive',
@@ -20,8 +20,10 @@ test('R2 constrained uploads sign the checksum header sent by the real drive cli
         assert.equal(url.searchParams.has('x-amz-checksum-sha256'), false, 'R2 rejects a hoisted checksum duplicated in headers')
         const signed = (url.searchParams.get('X-Amz-SignedHeaders') ?? '').split(';')
         assert.ok(signed.includes('x-amz-checksum-sha256'))
+        assert.ok(signed.includes('if-none-match'))
         assert.ok(signed.includes('content-length'))
         assert.equal(headers.get('x-amz-checksum-sha256'), Buffer.from(sha256, 'hex').toString('base64'))
+        assert.equal(headers.get('if-none-match'), '*')
         assert.equal(headers.get('authorization'), null)
         assert.equal(init?.method, 'PUT')
         puts++
@@ -29,7 +31,7 @@ test('R2 constrained uploads sign the checksum header sent by the real drive cli
       },
     })
     await client.upload({ state: 'pending', uploadId: randomUUID(), url: upload.url,
-      headers: { 'content-type': 'text/plain', 'x-amz-checksum-sha256': Buffer.from(sha256, 'hex').toString('base64') },
+      headers: { 'content-type': 'text/plain', 'x-amz-checksum-sha256': Buffer.from(sha256, 'hex').toString('base64'), 'if-none-match': '*' },
       sizeBytes: bytes.length, expiresIn: 120 }, bytes, sha256)
     assert.equal(puts, 1)
   }
