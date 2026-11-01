@@ -1,4 +1,5 @@
 import 'server-only'
+import { receiptSummary, overlayMetadata, logUnsafeReceipt, reconcileMissingFreeReceipt } from './overlay-free-router-receipts'
 import { OverlayFreeRouteBusyError, OverlayFreeRouteUnavailableError } from './overlay-free-router-errors'
 
 import { createOpenRouter } from '@openrouter/ai-sdk-provider'
@@ -23,7 +24,6 @@ import type {
   OverlayFreeRepository,
   OverlayFreeRoute,
   OverlayFreeRouterOptions,
-  OverlayFreeReceiptSummary,
 } from './overlay-free-router-contracts'
 import {
   hasInsecureOverlayFreeImageUrl,
@@ -77,42 +77,6 @@ function resultAfterGenerateAttempts(
   if (capacityRejected && !ambiguousAttempt) throw new OverlayFreeRouteBusyError()
   if (!ambiguousAttempt) throw new OverlayFreeRouteUnavailableError()
   throw lastError
-}
-
-function receiptSummary(value: ReturnType<typeof assessFreeReceipt>): OverlayFreeReceiptSummary {
-  return {
-    safe: value.safe,
-    cost: value.cost,
-    ...(value.reason ? { reason: value.reason } : {}),
-    ...(value.actualModelId ? { actualModelId: value.actualModelId } : {}),
-    ...(value.actualProvider ? { actualProvider: value.actualProvider } : {}),
-  }
-}
-
-function overlayMetadata(
-  providerMetadata: LanguageModelV4GenerateResult['providerMetadata'],
-  route: OverlayFreeRoute,
-  receipt: OverlayFreeReceiptSummary,
-) {
-  return {
-    ...providerMetadata,
-    overlayFree: {
-      route: receipt.actualModelId ?? route.modelId,
-      provider: receipt.actualProvider ?? route.provider,
-      safe: receipt.safe,
-      cost: receipt.cost,
-      ...(receipt.reason ? { reason: receipt.reason } : {}),
-    },
-  }
-}
-
-function logUnsafeReceipt(route: OverlayFreeRoute, receipt: OverlayFreeReceiptSummary): void {
-  if (receipt.safe) return
-  logger.warn('[overlay-free] unsafe provider receipt', {
-    routeKey: route.routeKey,
-    cost: receipt.cost,
-    reason: receipt.reason ?? 'unsafe receipt',
-  })
 }
 
 type GenerateFailureResult = {
@@ -299,8 +263,12 @@ class OverlayFreeLanguageModel implements LanguageModelV4 {
           abortSignal: options.abortSignal ? AbortSignal.any([options.abortSignal, controller.signal]) : controller.signal,
         })
         clearTimeout(timer)
-        const value = assessFreeReceipt(result, {
+        const assessed = assessFreeReceipt(result, {
           transport: route.transport, modelId: route.modelId, provider: route.provider,
+        })
+        const value = await reconcileMissingFreeReceipt({
+          receipt: assessed, route, generationId: result.response?.id,
+          abortSignal: options.abortSignal, confirm: this.config.confirmOpenRouterGenerationCost,
         })
         const summary = receiptSummary(value)
         settlementAttempted = true
@@ -415,12 +383,13 @@ export function createOverlayFreeRepository(): OverlayFreeRepository {
       leaseMs: FREE_ROUTE_LEASE_MS, purpose, expectedGeneration: generation,
     }, { throwOnError: true }), 'claim'),
     settle: async (args) => {
-      await convex.mutation('platform/overlayFreeSafety:settleByServer', {
+      const settled = required(await convex.mutation<{ status: string }>('platform/overlayFreeSafety:settleByServer', {
         serverSecret: secret(), routeKey: args.routeKey, leaseToken: args.leaseToken,
         now: args.now, receiptJson: JSON.stringify(args.receipt), safe: args.safe,
         cost: args.cost, actualModelId: args.actualModelId,
         actualProvider: args.actualProvider, reason: args.reason,
-      }, { throwOnError: true })
+      }, { throwOnError: true }), 'settlement')
+      if (settled.status !== 'settled') throw new Error('overlay_free_storage_settlement_late')
     },
     cooldown: async (routeKey, leaseToken, now) => {
       await convex.mutation('platform/overlayFreeSafety:cooldownByServer', {

@@ -1,7 +1,7 @@
 import 'server-only'
+import { receiptSummary, overlayMetadata, logUnsafeReceipt, reconcileMissingFreeReceipt } from './overlay-free-router-receipts'
 
 import type {
-  LanguageModelV4GenerateResult,
   LanguageModelV4StreamPart,
   LanguageModelV4StreamResult,
 } from '@ai-sdk/provider'
@@ -12,11 +12,9 @@ import {
   FREE_ROUTE_TIMEOUT_MS,
   hasZeroPricing,
 } from '@/shared/ai/gateway/overlay-free-policy'
-import { logger } from '@/server/observability/logger'
 import {
   type OverlayFreeAttempt,
   type OverlayFreePreparedAttempt,
-  type OverlayFreeReceiptSummary,
   type OverlayFreeRoute,
   type OverlayFreeStreamContext,
 } from './overlay-free-router-contracts'
@@ -42,42 +40,6 @@ function clearAttemptTimers(attempt: AttemptTimers): void {
 function isRateLimited(error: unknown): boolean {
   return typeof error === 'object' && error !== null &&
     'statusCode' in error && (error as { statusCode?: unknown }).statusCode === 429
-}
-
-function receiptSummary(value: ReturnType<typeof assessFreeReceipt>): OverlayFreeReceiptSummary {
-  return {
-    safe: value.safe,
-    cost: value.cost,
-    ...(value.reason ? { reason: value.reason } : {}),
-    ...(value.actualModelId ? { actualModelId: value.actualModelId } : {}),
-    ...(value.actualProvider ? { actualProvider: value.actualProvider } : {}),
-  }
-}
-
-function overlayMetadata(
-  providerMetadata: LanguageModelV4GenerateResult['providerMetadata'],
-  route: OverlayFreeRoute,
-  receipt: OverlayFreeReceiptSummary,
-) {
-  return {
-    ...providerMetadata,
-    overlayFree: {
-      route: receipt.actualModelId ?? route.modelId,
-      provider: receipt.actualProvider ?? route.provider,
-      safe: receipt.safe,
-      cost: receipt.cost,
-      ...(receipt.reason ? { reason: receipt.reason } : {}),
-    },
-  }
-}
-
-function logUnsafeReceipt(route: OverlayFreeRoute, receipt: OverlayFreeReceiptSummary): void {
-  if (receipt.safe) return
-  logger.warn('[overlay-free] unsafe provider receipt', {
-    routeKey: route.routeKey,
-    cost: receipt.cost,
-    reason: receipt.reason ?? 'unsafe receipt',
-  })
 }
 
 export async function doOverlayFreeStream({
@@ -358,7 +320,7 @@ export async function doOverlayFreeStream({
   const handleFinish = async (part: Extract<LanguageModelV4StreamPart, { type: 'finish' }>, controller: ReadableStreamDefaultController<LanguageModelV4StreamPart>) => {
     const attempt = current!
     clearAttemptTimers(attempt)
-    const receipt = assessFreeReceipt({
+    const assessed = assessFreeReceipt({
       providerMetadata: part.providerMetadata,
       response: { modelId: responseModelId },
       usage: part.usage,
@@ -367,6 +329,12 @@ export async function doOverlayFreeStream({
       modelId: attempt.route.modelId,
       provider: attempt.route.provider,
     })
+    const receipt = await reconcileMissingFreeReceipt({
+      receipt: assessed, route: attempt.route, generationId: attempt.generationId,
+      abortSignal: AbortSignal.any([streamAbort.signal, ...(options.abortSignal ? [options.abortSignal] : [])]),
+      confirm: confirmOpenRouterGenerationCost,
+    })
+    if (closed || attempt.settled) return
     const summary = receiptSummary(receipt)
     attempt.settled = true
     await store(repository.settle({
@@ -401,9 +369,14 @@ export async function doOverlayFreeStream({
       if (part.type === 'response-metadata' && typeof part.modelId === 'string') {
         responseModelId = part.modelId
       }
-      if (part.type === 'response-metadata' && typeof part.id === 'string'
-        && /^gen-[0-9A-Za-z-]+$/.test(part.id)) {
-        current!.generationId = part.id
+      if (part.type === 'response-metadata' && typeof part.id === 'string') {
+        const attempt = current!
+        if (!/^gen-[0-9A-Za-z-]+$/.test(part.id) || (attempt.generationId && attempt.generationId !== part.id)) {
+          attempt.generationIdConflicted = true
+          attempt.generationId = undefined
+        } else if (!attempt.generationIdConflicted) {
+          attempt.generationId = part.id
+        }
       }
       if (!semantic) {
         const encoded = JSON.stringify(part)

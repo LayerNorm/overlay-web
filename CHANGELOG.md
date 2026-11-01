@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Reconcile missing OpenRouter terminal costs through exact-generation lookup without repeating inference, only under a live zero-priced route lease. Invalid or contradictory metadata, nonzero charges, BYOK, expired leases and cancellation remain fail-closed; late storage acknowledgements cannot authorize settlement.
+
 - Require verified zero-cost router receipts before settling native free-model usage. Missing, unsafe or contradictory provider costs keep the model reservation unresolved instead of being priced as free from the catalog.
 
 - Preserve unresolved free-model summary reservations instead of fabricating a zero-cost failure receipt. Summary fallback and retry require existing settled usage or a confirmed rejection; unknown provider outcomes remain held for reconciliation.
