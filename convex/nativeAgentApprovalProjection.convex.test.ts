@@ -174,6 +174,7 @@ describe('native agent approval projection', () => {
         assistantMessageId: assistantMessageA,
         mode: 'room',
         runner: 'workflow',
+        executionEngine: 'overlay_harness',
         status: 'running',
         createdAt: now,
         updatedAt: now,
@@ -186,6 +187,7 @@ describe('native agent approval projection', () => {
         assistantMessageId: assistantMessageB,
         mode: 'room',
         runner: 'workflow',
+        executionEngine: 'overlay_harness',
         status: 'running',
         createdAt: now,
         updatedAt: now,
@@ -198,6 +200,7 @@ describe('native agent approval projection', () => {
         assistantMessageId: assistantMessageC,
         mode: 'room',
         runner: 'workflow',
+        executionEngine: 'overlay_harness',
         status: 'running',
         createdAt: now,
         updatedAt: now,
@@ -383,6 +386,16 @@ describe('native agent approval projection', () => {
     expect(failedMessage?.content).toBe('Partial failure output.')
     expect(failedMessage?.parts?.some(part => part.type === 'data-native-agent-approval')).toBe(false)
     expect(failedMessage?.parts?.some(part => part.type === 'tool-invocation')).toBe(true)
+    expect(failedMessage?.parts?.find(part => part.type === 'data-native-agent-error')).toEqual({
+      type: 'data-native-agent-error', data: {
+        ...failedRun!.terminalError, runId: String(seeded.runB), failedAt: failedRun!.failedAt,
+      },
+    })
+    await convex.mutation(api.chat.conversations.failAgentRun, {
+      error: { code: 'different', message: 'A late duplicate must not replace the reason.', retryable: true },
+      errorText: 'late', runId: seeded.runB, serverSecret, userId: initiatorUserId,
+    })
+    expect((await convex.run(ctx => ctx.db.get(seeded.assistantMessageB)))?.parts).toEqual(failedMessage?.parts)
 
     await convex.mutation(api.chat.conversations.transitionAgentRun, {
       runId: seeded.runC,
@@ -460,6 +473,7 @@ describe('native agent approval projection', () => {
           assistantMessageId: waitingAssistantMessageId,
           mode: 'work',
           runner: 'workflow',
+          executionEngine: 'overlay_harness',
           workflowRunId: 'wait-workflow',
           ...(status === 'waiting_for_input' ? { inputRequest: { token: 'input-token', requestedAt: now, question: 'Which file?' } } : {}),
           status,
@@ -489,6 +503,7 @@ describe('native agent approval projection', () => {
               assistantMessageId: terminalAssistantMessageId,
               mode: 'work',
               runner: 'workflow',
+              executionEngine: 'overlay_harness',
               status: terminalStatus,
               createdAt: now + index + 1,
               updatedAt: now + index + 1,
@@ -544,6 +559,7 @@ describe('native agent approval projection', () => {
           assistantMessageId,
           mode: 'work',
           runner: 'workflow',
+          executionEngine: 'overlay_harness',
           status,
           createdAt: now,
           updatedAt: now,

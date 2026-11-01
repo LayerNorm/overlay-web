@@ -103,6 +103,21 @@ test('keeps the cacheable instruction prefix separate from changing working stat
   expect(JSON.parse(buildHarnessWorkingContext(planned)).plan[0].evidenceTools).toEqual(['read'])
 })
 
+test('includes durable model recovery metadata in trusted working state', () => {
+  const state = {
+    ...make(false),
+    modelRecovery: {
+      receiptId: 'model:2',
+      modelId: 'fixture/model',
+      code: 'empty_response' as const,
+      attempt: 2,
+      firstFailureAt: 2_000,
+      nextRetryAt: 8_000,
+    },
+  }
+  expect(JSON.parse(buildHarnessWorkingContext(state)).modelRecovery).toEqual(state.modelRecovery)
+})
+
 test('accounting and repeated identical observations do not masquerade as progress', () => {
   const state = recordHarnessEvidence(make(), {
     id: 'first', kind: 'tool_result', source: 'document:revision-1',

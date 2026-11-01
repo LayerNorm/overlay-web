@@ -1,6 +1,9 @@
 import type { RemoteRunLiveness } from '@overlay/workspace-contracts'
 import type { ConversationMessage, ConversationSummary } from '@overlay/app-core'
 import type { PaginationQuery } from '../shared/types'
+import type {
+  HarnessResourceDeliveryProjection,
+} from '@overlay/agent-runtime/harness-resource'
 
 export interface ConversationQuery extends PaginationQuery {
   view?: 'personal' | 'dms' | 'channels' | 'all'
@@ -76,6 +79,8 @@ export interface ConversationMessageRequest {
 
 export type ActConversationRequest = Record<string, unknown>
 
+export type AgentRunResourceRequest = HarnessResourceDeliveryProjection
+
 export type AgentRunResource = {
   id: string
   conversationId: string
@@ -86,7 +91,7 @@ export type AgentRunResource = {
   mode: 'chat' | 'work' | 'room'
   runner: 'tool_loop' | 'workflow' | 'remote'
   liveness?: RemoteRunLiveness
-  status: 'queued' | 'running' | 'waiting_for_approval' | 'waiting_for_input' | 'waiting_for_children' | 'completed' | 'failed' | 'cancelled'
+  status: 'queued' | 'running' | 'waiting_for_approval' | 'waiting_for_input' | 'waiting_for_children' | 'waiting_for_resources' | 'completed' | 'failed' | 'cancelled'
   variantIndex?: number
   workflowRunId?: string
   leaseExpiresAt?: number
@@ -96,6 +101,7 @@ export type AgentRunResource = {
   cancelledAt?: number
   terminalError?: { code: string; message: string; retryable: boolean }
   inputRequest?: { token: string; requestedAt: number; question: string }
+  resourceRequest?: AgentRunResourceRequest
   approval?: {
     token: string
     requestedAt: number

@@ -3,7 +3,7 @@ import test from 'node:test'
 import { generateText, stepCountIs, tool } from 'ai'
 import { z } from 'zod/v3'
 import { getGatewayLanguageModel } from './ai-gateway'
-import { OverlayFreeRouteBusyError, OverlayFreeRouteInterruptedError } from './overlay-free-router-errors'
+import { OverlayFreeRouteBusyError, OverlayFreeRouteInterruptedError, OverlayFreeRouteUnavailableError } from './overlay-free-router-errors'
 import { confirmOpenRouterGenerationCost as confirmGenerationCost } from './openrouter-generation-cost'
 import type {
   LanguageModelV4,
@@ -13,12 +13,119 @@ import type {
 } from '@ai-sdk/provider'
 import {
   createOverlayFreeLanguageModel,
+  createOverlayFreeRepository,
   type OverlayFreeRepository,
   type OverlayFreeRoute,
 } from './overlay-free-router'
 import { FREE_ROUTE_IDLE_TIMEOUT_MS, FREE_ROUTE_LEASE_MS, FREE_ROUTE_TIMEOUT_MS } from '@/shared/ai/gateway/overlay-free-policy'
+import { lazyConvex } from '@/server/database/lazy-convex'
+import { reconcileMissingFreeReceipt } from './overlay-free-router-receipts'
 
 const now = Date.now()
+
+for (const method of ['doGenerate', 'doStream'] as const) {
+  test(`${method} reconciles only missing terminal costs with the exact generation and no second inference`, async () => {
+    for (const scenario of ['confirmed', 'charged', 'wrong-id', 'byok', 'invalid', 'contradictory', 'details', 'no-id', 'conflicting-id'] as const) {
+      if (scenario === 'conflicting-id' && method === 'doGenerate') continue
+      const generationId = 'gen-Terminal-123'
+      const candidate = { ...route('openrouter', 'openrouter/free', 'openrouter'), activeLeaseExpiresAt: Date.now() + FREE_ROUTE_LEASE_MS }
+      const settlements: Parameters<OverlayFreeRepository['settle']>[0][] = []
+      let inference = 0
+      let lookups = 0
+      const metadata: LanguageModelV4GenerateResult['providerMetadata'] = { openrouter: { usage:
+        scenario === 'invalid' ? { cost: null }
+          : scenario === 'contradictory' ? { cost: null, surchargeCost: 0.01 }
+            : scenario === 'details' ? { costDetails: { upstreamInferenceCost: 0.01 } } : {},
+      } }
+      const provider = model('openrouter', async () => {
+        inference++
+        return { ...openRouterReceipt(), providerMetadata: metadata, response: {
+          ...(scenario === 'no-id' ? {} : { id: generationId }), modelId: 'example/actual',
+        } }
+      }, () => {
+        inference++
+        return new ReadableStream<LanguageModelV4StreamPart>({ start(controller) {
+          if (scenario !== 'no-id') controller.enqueue({ type: 'response-metadata', id: generationId, modelId: 'example/actual' })
+          if (scenario === 'conflicting-id') controller.enqueue({ type: 'response-metadata', id: 'gen-Other', modelId: 'example/actual' })
+          controller.enqueue({ type: 'text-delta', id: 'text', delta: 'completed' })
+          controller.enqueue({ type: 'finish', finishReason: { unified: 'stop', raw: 'stop' }, usage: usage(), providerMetadata: metadata })
+          controller.close()
+        } })
+      })
+      const routed = createOverlayFreeLanguageModel({
+        ...dependencies([candidate], [], { settle: async value => { settlements.push(value) } }),
+        providers: { gateway: async () => { throw new Error('unexpected Gateway call') }, openrouter: async () => provider },
+        confirmOpenRouterGenerationCost: id => confirmGenerationCost(id, 'fixture-key', {
+          fetcher: async url => {
+            lookups++
+            assert.equal(String(url), `https://openrouter.ai/api/v1/generation?id=${generationId}`)
+            return Response.json({ data: { id: scenario === 'wrong-id' ? 'gen-Other' : generationId,
+              total_cost: scenario === 'charged' ? 0.01 : 0, is_byok: scenario === 'byok' } })
+          },
+        }),
+      })
+      const result = await routed[method](options())
+      let verdict: unknown
+      if ('stream' in result) {
+        const reader = result.stream.getReader()
+        while (true) {
+          const part = await reader.read()
+          if (part.done) break
+          if (part.value.type === 'finish') verdict = part.value.providerMetadata?.overlayFree
+        }
+      } else verdict = result.providerMetadata?.overlayFree
+      const canLookup = ['confirmed', 'charged', 'wrong-id', 'byok'].includes(scenario)
+      assert.equal(lookups, canLookup ? 1 : 0, scenario)
+      assert.equal(inference, 1, scenario)
+      assert.equal(settlements.length, 1, scenario)
+      assert.equal(settlements[0]?.safe, scenario === 'confirmed', scenario)
+      assert.equal((verdict as { safe: boolean }).safe, scenario === 'confirmed', scenario)
+      if (scenario === 'confirmed') assert.equal(settlements[0]?.cost, 0)
+    }
+  })
+}
+
+test('terminal reconciliation requires a live zero-priced OpenRouter lease and remains unsafe on cancellation or expiry', async t => {
+  const receipt = { safe: false, cost: null, reason: 'missing', code: 'missing_cost' as const }
+  const candidate = { ...route('openrouter', 'openrouter/free', 'openrouter'), activeLeaseToken: 'lease', activeLeaseExpiresAt: Date.now() + FREE_ROUTE_LEASE_MS }
+  let lookups = 0
+  const base = { receipt, route: candidate, generationId: 'gen-Valid', confirm: async () => { lookups++; return true } }
+  for (const override of [
+    { route: { ...candidate, activeLeaseExpiresAt: Date.now() + 10_000 } },
+    { route: { ...candidate, activeLeaseExpiresAt: undefined } },
+    { route: { ...candidate, activeLeaseToken: undefined } },
+    { route: { ...candidate, quarantineReason: 'held' } },
+    { route: { ...candidate, pricingJson: '{' } },
+    { route: { ...candidate, pricingJson: '{"prompt":0,"completion":0.01}' } },
+    { route: { ...candidate, transport: 'gateway' as const } },
+    { abortSignal: AbortSignal.abort() },
+    { generationId: 'not-a-generation' },
+  ]) assert.equal(await reconcileMissingFreeReceipt({ ...base, ...override }), receipt)
+  assert.equal(lookups, 0)
+  const abort = new AbortController()
+  assert.equal(await reconcileMissingFreeReceipt({ ...base, abortSignal: abort.signal,
+    confirm: async () => { abort.abort(); return true } }), receipt)
+  assert.equal(await reconcileMissingFreeReceipt({ ...base,
+    confirm: async () => { t.mock.method(Date, 'now', () => candidate.activeLeaseExpiresAt); return true } }), receipt)
+  t.mock.restoreAll()
+  assert.equal(await reconcileMissingFreeReceipt({ ...base, confirm: async () => { throw new Error('lookup unavailable') } }), receipt)
+})
+
+test('runtime repository refuses late or missing settlement acknowledgements', async t => {
+  const previous = process.env.INTERNAL_API_SECRET
+  process.env.INTERNAL_API_SECRET = 'receipt-test-secret'
+  t.after(() => { if (previous === undefined) delete process.env.INTERNAL_API_SECRET; else process.env.INTERNAL_API_SECRET = previous })
+  let result: unknown = { status: 'late' }
+  t.mock.method(lazyConvex, 'mutation', async () => result)
+  const repository = createOverlayFreeRepository()
+  const input = { routeKey: 'openrouter:openrouter/free:openrouter', leaseToken: 'lease', now: Date.now(),
+    receipt: { safe: true, cost: 0 }, safe: true, cost: 0 }
+  await assert.rejects(repository.settle(input), /settlement_late/)
+  result = null
+  await assert.rejects(repository.settle(input), /settlement_failed/)
+  result = { status: 'settled' }
+  await repository.settle(input)
+})
 
 function route(transport: 'gateway' | 'openrouter', modelId: string, provider: string): OverlayFreeRoute {
   return {
@@ -156,6 +263,60 @@ function dependencies(routes: OverlayFreeRoute[], calls: string[], overrides: Pa
       capabilities: JSON.parse(value.capabilitiesJson),
     }),
   }
+}
+
+for (const method of ['doGenerate', 'doStream'] as const) {
+  test(`${method} distinguishes unavailable routes from ambiguous inference and recovers only an eligible route`, async () => {
+    const candidate = route('openrouter', 'openrouter/free', 'openrouter')
+    let eligible: OverlayFreeRoute[] = []
+    let fail = false
+    let requests = 0
+    const calls: string[] = []
+    const invoke = async () => {
+      requests++
+      if (fail) throw new Error('upstream connection closed')
+      return openRouterReceipt()
+    }
+    const provider = {
+      ...model('openrouter', invoke),
+      doStream: async () => {
+        const result = await invoke()
+        return { stream: new ReadableStream<LanguageModelV4StreamPart>({ start(controller) {
+          controller.enqueue({ type: 'text-delta', id: 'text', delta: 'free' })
+          controller.enqueue({ type: 'finish', finishReason: result.finishReason, usage: result.usage,
+            providerMetadata: result.providerMetadata })
+          controller.close()
+        } }) }
+      },
+    }
+    const routed = createOverlayFreeLanguageModel({
+      ...dependencies([candidate], calls, { listEligible: async () => eligible }),
+      providers: { gateway: async () => { throw new Error('unexpected Gateway call') }, openrouter: async () => provider },
+    })
+    await assert.rejects(routed[method](options()), OverlayFreeRouteUnavailableError)
+    assert.equal(requests, 0)
+    assert.deepEqual(calls, [])
+
+    eligible = [candidate]
+    const response = await routed[method](options())
+    if ('stream' in response) {
+      const reader = response.stream.getReader()
+      while (!(await reader.read()).done) { /* Drain the verified provider receipt. */ }
+      reader.releaseLock()
+    }
+    assert.equal(requests, 1)
+    assert.deepEqual(calls, [`settle:${candidate.routeKey}:true`])
+
+    fail = true
+    await assert.rejects(routed[method](options()), error => {
+      assert.ok(error instanceof Error)
+      assert.ok(!(error instanceof OverlayFreeRouteUnavailableError))
+      assert.ok(!(error instanceof OverlayFreeRouteBusyError))
+      return true
+    })
+    assert.equal(requests, 2)
+    assert.equal(calls.at(-1), `settle:${candidate.routeKey}:false`)
+  })
 }
 
 function interruptionSetup(input: {

@@ -1,8 +1,15 @@
 import type { AssistantVisualBlock } from '@overlay/chat-core'
-import { buildAssistantVisualSequence, splitUserDisplayText } from '@overlay/chat-core'
+import { buildAssistantVisualSequence, splitUserDisplayText, errorLabel, persistedGenerationErrorMessage } from '@overlay/chat-core'
 import type { RoomMessageAttachment, RoomMessageView } from './RoomMessageItem'
 import { driveSyncStatusSchema } from '@layernorm/overlay-agent-bridge-protocol'
 import { NATIVE_AGENT_APPROVAL_PART, readNativeAgentApproval } from '@/shared/agents/native-agent-approval'
+import { NATIVE_AGENT_INPUT_PART, readNativeAgentInput } from '@/shared/agents/native-agent-input'
+import { readNativeAgentError } from '@/shared/agents/native-agent-error'
+
+function nativeInputRequest(message: RoomMessageRecord): RoomMessageView['nativeInput'] {
+  if (message.authorKind !== 'agent' || message.status !== 'generating') return undefined
+  return readNativeAgentInput(message.parts?.find(part => part.type === NATIVE_AGENT_INPUT_PART)?.data)
+}
 
 export type RoomMessagePart = {
   toolInvocation?: Record<string, unknown>
@@ -117,6 +124,7 @@ export type RoomMessageRecord = {
   rowIdentity?: string
   threadRootMessageId?: string
   delivery?: 'sending' | 'failed'
+  deliveryError?: string
   status?: 'generating' | 'completed' | 'error'
 }
 
@@ -312,6 +320,7 @@ export function toRoomMessageView({
     editHistory: message.editHistory,
     deletedAt: message.deletedAt,
     delivery: message.delivery,
+    deliveryError: message.deliveryError,
     text: bodyText,
     blocks,
     images: imageAttachments(message.parts),
@@ -321,6 +330,10 @@ export function toRoomMessageView({
     remoteQueue,
     nativeApproval: message.authorKind === 'agent' && message.status === 'generating'
       ? readNativeAgentApproval(message.parts?.find((part) => part.type === NATIVE_AGENT_APPROVAL_PART)?.data)
+      : undefined,
+    nativeInput: nativeInputRequest(message),
+    generationError: isAgent && message.status === 'error' && !remoteRun
+      ? readNativeAgentError(message.parts)?.message ?? errorLabel(new Error(persistedGenerationErrorMessage(message.content))) ?? undefined
       : undefined,
     remoteRequest: remoteRequest(message.parts),
     remoteRun,

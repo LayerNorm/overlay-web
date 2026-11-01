@@ -12,6 +12,7 @@ import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvi
 import { useConvexAuthToken } from '@/components/providers/ConvexAuthProvider'
 import { useAuth } from '@/contexts/AuthContext'
 import { ChatDropOverlay } from './ChatDropOverlay'
+import { NativeThreadReadOnlyFooter } from './NativeThreadReadOnlyFooter'
 import { useCollaborationRealtime } from './collaboration/CollaborationRealtimeProvider'
 import { isRoomAgentResponding } from './collaboration/room-message-view'
 import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
@@ -32,6 +33,28 @@ import {
   surfaceReadOnlyNotice,
   RoomTranscript,
 } from './DirectMessageExperience.parts'
+import type { NativeThreadSafety } from './chat/useNativeThreadSafety'
+
+function RoomComposerArea({
+  safety,
+  onNewThread,
+  isGuided,
+  guidedComposer,
+  surfacePlatform,
+  composerProps,
+}: {
+  safety: NativeThreadSafety
+  onNewThread: () => void | Promise<void>
+  isGuided: boolean
+  guidedComposer?: GuidedRoomComposer
+  surfacePlatform?: string | null
+  composerProps: Omit<Parameters<typeof RoomComposer>[0], 'guided'>
+}) {
+  if (safety.readOnly) return <NativeThreadReadOnlyFooter safety={safety} onNewThread={onNewThread} />
+  if (isGuided && !guidedComposer) return null
+  if (surfacePlatform) return <SurfaceReadOnlyComposer surfacePlatform={surfacePlatform} />
+  return <RoomComposer {...composerProps} guided={guidedComposer} />
+}
 
 function shouldDisableQuestionnaireSuggestions(
 
@@ -89,6 +112,9 @@ function resolveRoomRightPanel({
         onAddPeople={() => room.setAddPeopleOpen(true)}
         onClosePanel={() => room.setRoomPanel(null)}
         ctx={messageCtx}
+        readOnlyFooter={room.selectedThreadSafety.readOnly
+          ? <NativeThreadReadOnlyFooter safety={room.selectedThreadSafety} onNewThread={room.startNewNativeThread} />
+          : undefined}
         readOnlyNotice={room.transcript.surfacePlatform
           ? surfaceReadOnlyNotice(room.transcript.surfacePlatform)
           : undefined}
@@ -292,7 +318,7 @@ export function DirectMessageExperience({
   })
 
   return (
-    <QuestionnaireComposerProvider value={composer.input} readDraft={() => composer.inputRef.current} subscribe={composer.subscribeToInput} disabled={shouldDisableQuestionnaireSuggestions(Boolean(guided), Boolean(transcript.surfacePlatform), isRoomAgentResponding(transcript.messages, room.agentResponding))} onChange={(value) => { composer.setInput(value); composer.onComposerInput(value); composer.composerRef.current?.focus() }}>
+    <QuestionnaireComposerProvider value={composer.input} readDraft={() => composer.inputRef.current} subscribe={composer.subscribeToInput} disabled={room.nativeThreadSafety.readOnly || shouldDisableQuestionnaireSuggestions(Boolean(guided), Boolean(transcript.surfacePlatform), isRoomAgentResponding(transcript.messages, room.agentResponding))} onChange={(value) => { composer.setInput(value); composer.onComposerInput(value); composer.composerRef.current?.focus() }}>
       <LinkOpenInterceptor
         preference={appSettings.linkOpenPreference}
         onOpenInOverlay={panels.openLinkPreview}
@@ -361,24 +387,26 @@ export function DirectMessageExperience({
               hideScrollbar={Boolean(guided)}
               guided={Boolean(guided)}
             />
-            {guided && !guided.composer ? null : transcript.surfacePlatform ? (
-              <SurfaceReadOnlyComposer surfacePlatform={transcript.surfacePlatform} />
-            ) : (
-              <RoomComposer
-                conversationId={conversationId}
-                guided={guided?.composer ?? undefined}
-                composer={composer}
-                mentionCategories={vm.mentionCategories}
-                agentCommands={vm.agentCommands}
-                capabilities={capabilities}
-                participantsHaveAgent={roster.participants.some((participant) => participant.principalType === 'agent')}
-                memoryEnabled={room.memoryEnabled}
-                setMemoryEnabled={room.setMemoryEnabled}
-                setMentions={room.setMentions}
-                onOpenAttachmentPreview={panels.openAttachmentPreview}
-                onOpenFilePreview={panels.openFilePreview}
-              />
-            )}
+            <RoomComposerArea
+              safety={room.nativeThreadSafety}
+              onNewThread={room.startNewNativeThread}
+              isGuided={Boolean(guided)}
+              guidedComposer={guided?.composer ?? undefined}
+              surfacePlatform={transcript.surfacePlatform}
+              composerProps={{
+                conversationId,
+                composer,
+                mentionCategories: vm.mentionCategories,
+                agentCommands: vm.agentCommands,
+                capabilities,
+                participantsHaveAgent: roster.participants.some((participant) => participant.principalType === 'agent'),
+                memoryEnabled: room.memoryEnabled,
+                setMemoryEnabled: room.setMemoryEnabled,
+                setMentions: room.setMentions,
+                onOpenAttachmentPreview: panels.openAttachmentPreview,
+                onOpenFilePreview: panels.openFilePreview,
+              }}
+            />
           </AppScreenBody>
           {bodyOverlay ? (
             <div className="absolute inset-0 z-30 min-h-0 bg-(--background)">

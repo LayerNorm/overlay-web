@@ -6,9 +6,11 @@ import { refreshPersonalHarnessAccess, type PersonalHarnessAccess } from './pers
 const mocks = vi.hoisted(() => ({
   state: vi.fn(), keys: vi.fn(), workspace: vi.fn(), conversation: vi.fn(), agentRun: vi.fn(),
   subject: vi.fn(), capability: vi.fn(), model: vi.fn(), filter: vi.fn(), gate: vi.fn(), models: vi.fn(), byok: vi.fn(),
+  automationGrant: vi.fn(),
 }))
 vi.mock('server-only', () => ({}))
 vi.mock('./ConvexHarnessRepository', () => ({ ConvexHarnessRepository: class { get = mocks.state } }))
+vi.mock('./automation-access', () => ({ refreshAutomationHarnessSource: mocks.automationGrant }))
 vi.mock('@/server/conversations/http', () => ({ actEntitlementService: { gateModelPolicy: mocks.gate } }))
 vi.mock('@/server/ai/model-policy-authority', () => ({ resolveAuthorizedModelIds: mocks.models }))
 vi.mock('@/server/ai/model-runtime', () => ({ assertUserCanUseByokModel: mocks.byok }))
@@ -48,6 +50,8 @@ beforeEach(() => {
   mocks.filter.mockImplementation(async ({ resourceIds }) => resourceIds)
   mocks.gate.mockResolvedValue({ paid: true, runtimeEntitlements: { tier: 'paid' } })
   mocks.models.mockResolvedValue({ chat: new Set(['provider/model']) })
+  mocks.automationGrant.mockResolvedValue({ approvalMode: 'auto', allowedToolIds: ['read_file', 'gmail_send'],
+    allowedConnectorIds: ['gmail', 'slack'] })
 })
 
 test('refreshes permissions and entitlements in the original workspace without expanding admission grants', async () => {
@@ -123,4 +127,35 @@ test('cannot reuse the personal adapter for an automation, another identity or a
     await expect(refreshPersonalHarnessAccess(access, { ...context, ...override })).rejects.toThrow(/identity/)
   }
   expect(mocks.state).not.toHaveBeenCalled()
+})
+
+test('automation resumes reject agent tool revocation and connector revocation after waits', async () => {
+  const automationAccess: PersonalHarnessAccess = {
+    ...access,
+    authentication: {
+      type: 'automation', automationId: 'automation', automationRunId: 'automation-run',
+      originWorkflowRunId: 'workflow',
+    },
+  }
+  const automationContext: PersonalChatWorkToolingContext = {
+    ...context,
+    accountAllowedToolIds: ['read_file'],
+    accountAllowedConnectorIds: ['gmail', 'slack'],
+    integrationToolIds: ['gmail_send'],
+    requestedToolIds: ['read_file'],
+    automationExecution: true,
+    automationId: 'automation',
+    automationRunId: 'automation-run',
+    billingProgrammaticSubjectId: 'automation:automation',
+  }
+  mocks.automationGrant.mockResolvedValueOnce({
+    approvalMode: 'ask', allowedToolIds: [], allowedConnectorIds: ['gmail', 'slack'],
+  })
+  mocks.state.mockResolvedValueOnce({ ...snapshot(), policy: { ...snapshot().policy, allowedToolIds: ['read_file'] } })
+  await expect(refreshPersonalHarnessAccess(automationAccess, automationContext, 'read_file')).rejects.toThrow(/permissions have been revoked/)
+
+  mocks.filter.mockImplementation(async ({ resourceType, resourceIds }) =>
+    resourceType === 'connector' ? resourceIds.filter((id: string) => id === 'slack') : resourceIds)
+  mocks.state.mockResolvedValueOnce({ ...snapshot(), policy: { ...snapshot().policy, allowedToolIds: ['read_file', 'gmail_send'] } })
+  await expect(refreshPersonalHarnessAccess(automationAccess, automationContext, 'gmail_send')).rejects.toThrow(/permissions have been revoked/)
 })

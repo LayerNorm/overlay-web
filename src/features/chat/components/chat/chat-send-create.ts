@@ -30,6 +30,30 @@ export type CreateNewChatOptions = {
   }) => void
 }
 
+export async function createHandoffConversation({
+  workspaceId,
+  title,
+}: {
+  workspaceId: string | null
+  title: string
+}): Promise<string | null> {
+  const scope = workspaceId ? 'workspace' : 'personal'
+  const response = await overlayAppClient.conversations.createResponse(
+    {
+      title,
+      askModelIds: ['openrouter/free'],
+      actModelId: 'openrouter/free',
+      lastMode: 'act',
+      ...(workspaceId ? { scope: 'workspace' as const } : {}),
+    },
+    { idempotencyKey: createIdempotencyKey() },
+  )
+  if (!response.ok) return null
+  const data = await response.json() as { id: string }
+  markConversationScopeVerified(scope, data.id)
+  return data.id
+}
+
 export async function createNewChatForSend({
   activeChatIdRef,
   applyUiStateToView,

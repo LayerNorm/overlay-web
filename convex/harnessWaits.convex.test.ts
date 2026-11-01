@@ -79,7 +79,7 @@ async function apply(
 async function createBlockedRun(
   convex: Convex,
   runId: string,
-  kind: 'input' | 'approval' = 'input',
+  kind: 'input' | 'approval' | 'stuck' = 'input',
 ) {
   const input = admission(runId, await seedConversation(convex))
   await admit(convex, input)
@@ -280,6 +280,28 @@ describe('durable harness waits', () => {
         { approvalId: 'second-approval', toolCallId: 'repeated', toolName: 'write_file', input: {} },
       ],
     })).rejects.toThrow(/duplicate approval or tool-call ids/)
+  })
+
+  test('stuck blockers use the authenticated input-wait contract without finalizing the run', async () => {
+    const convex = convexTest(schema, modules)
+    const stuckRun = await createBlockedRun(convex, 'stuck-run', 'stuck')
+    const request: HarnessWaitRequest = { kind: 'input', token: 'stuck-token' }
+    const wait = await publishWait(convex, stuckRun.reference, request)
+    expect(wait).toMatchObject({
+      kind: 'input',
+      token: 'stuck-token',
+      question: 'Question for stuck-run',
+      rootRunId: 'stuck-run',
+    })
+    const current = await convex.query(query('get'), {
+      actorUserId: stuckRun.reference.actorUserId,
+      runId: stuckRun.reference.runId,
+      serverSecret: secret,
+    }) as HarnessSnapshot
+    expect(current.status).toBe('waiting_for_input')
+    expect(current.blocker?.kind).toBe('stuck')
+    expect(current.terminalReason).toBeUndefined()
+    expect(await listPendingWaits(convex, stuckRun.reference)).toEqual([wait])
   })
 
   test('enforces actor, workflow, and globally unique token fences', async () => {

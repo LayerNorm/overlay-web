@@ -96,6 +96,26 @@ test('personal dispatch serializes only references, and reauthorizes before reso
   expect(generateHarnessModel).toHaveProperty('maxRetries', 0)
 })
 
+test('automation authority serializes only its allowlisted source identity', () => {
+  const automationPersonal: PersonalHarnessModelDispatch = {
+    ...personal,
+    access: {
+      ...personal.access,
+      authentication: {
+        type: 'automation',
+        automationId: 'automation',
+        automationRunId: 'automation-run',
+        originWorkflowRunId: 'origin-workflow',
+      },
+    },
+  }
+  const model = new HarnessLanguageModel({ ...reference, personal: automationPersonal })
+  const serialized = HarnessLanguageModel[WORKFLOW_SERIALIZE](model)
+  expect(serialized.personal).toEqual(automationPersonal)
+  expect(JSON.stringify(serialized)).not.toContain('accessToken')
+  expect(JSON.stringify(serialized)).not.toContain('rawKey')
+})
+
 test('serialization contains references only and does not resolve credentials', () => {
   const model = new HarnessLanguageModel({ ...reference, apiKey: 'fixture-secret' } as typeof reference)
   Object.assign(model, { credential: 'another-fixture-secret' })

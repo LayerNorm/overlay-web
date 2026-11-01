@@ -9,6 +9,7 @@ import { readValidatedJson } from '@/server/app-api/validated-input'
 import { asConversationId } from '@/server/conversations/ActConversationRepository'
 import { AgentRunInputRequest } from '@/shared/schemas/chat'
 import type { AgentRun } from '@/shared/agents/agent-run'
+import { isRetiredNativeRun, NATIVE_RUN_RETIRED_CODE, NATIVE_RUN_RETIRED_MESSAGE } from '@/shared/agents/native-run-retirement'
 
 type Repositories = ReturnType<typeof getOverlayServerContext>['appData']['repositories']
 type InputRouteDependencies = {
@@ -24,12 +25,10 @@ function matchesInputWait(
   input: { agentRunId: string; conversationId: string; token: string },
   actorUserId: string,
   isRoom: boolean,
-): boolean {
+): run is AgentRun {
   if (!run || run.id !== input.agentRunId || run.conversationId !== input.conversationId
     || run.userId !== actorUserId || (run.mode === 'room') !== isRoom) return false
-  if (isRoom && run.executionEngine !== 'overlay_harness') return false
-  return run.runner === 'workflow' && Boolean(run.workflowRunId)
-    && run.status === 'waiting_for_input' && run.inputRequest?.token === input.token
+  return run.status === 'waiting_for_input' && run.inputRequest?.token === input.token
 }
 
 export async function POST(request: NextRequest, context: AppApiRouteContext, dependencies?: InputRouteDependencies) {
@@ -58,6 +57,10 @@ export async function POST(request: NextRequest, context: AppApiRouteContext, de
     }
     const run = await conversations.getLatestAgentRun({ conversationId, userId: actorUserId, agentRunId: body.data.agentRunId })
     if (!matchesInputWait(run, body.data, actorUserId, Boolean(isRoom))) return inactive()
+    if (isRetiredNativeRun(run)) {
+      return NextResponse.json({ error: NATIVE_RUN_RETIRED_MESSAGE, code: NATIVE_RUN_RETIRED_CODE }, { status: 410 })
+    }
+    if (run.runner !== 'workflow' || !run.workflowRunId) return inactive()
     // This is input to an existing work artifact, not a new turn. The hook
     // retains the full reply; the harness records bounded user-input evidence.
     await (dependencies?.resume ?? resumeHook)(body.data.token, { text: body.data.text })

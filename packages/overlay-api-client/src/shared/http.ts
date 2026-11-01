@@ -57,6 +57,9 @@ async function mergeHeaders(
 export async function parseJson<T>(response: Response): Promise<T> {
   const value = await response.json().catch(() => null) as unknown
   if (!response.ok) {
+    const code = value && typeof value === 'object' && 'code' in value && typeof value.code === 'string'
+      ? value.code
+      : undefined
     const detail = value && typeof value === 'object'
       ? ('error' in value && typeof value.error === 'string'
           ? value.error
@@ -72,9 +75,10 @@ export async function parseJson<T>(response: Response): Promise<T> {
       throw new ApiRequestError(
         `${detail ?? 'Too many requests'}. This account has reached its temporary request limit. ${retryGuidance}`,
         response.status,
+        code,
       )
     }
-    throw new ApiRequestError(detail ?? `Request failed (${response.status})`, response.status)
+    throw new ApiRequestError(detail ?? `Request failed (${response.status})`, response.status, code)
   }
   return value as T
 }
@@ -82,7 +86,7 @@ export async function parseJson<T>(response: Response): Promise<T> {
 /** Request failure carrying the HTTP status so callers can distinguish a
  * gated-404 ("feature off for this workspace") from a real failure (401/500). */
 export class ApiRequestError extends Error {
-  constructor(message: string, readonly status: number) {
+  constructor(message: string, readonly status: number, readonly code?: string) {
     super(message)
     this.name = 'ApiRequestError'
   }

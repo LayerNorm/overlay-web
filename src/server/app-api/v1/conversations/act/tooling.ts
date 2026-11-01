@@ -43,6 +43,7 @@ import {
 } from '@/shared/security/safe-log'
 import type { ChatToolRequestId } from '@/shared/chat/tool-requests'
 import type { Entitlements } from '@/shared/app/app-contracts'
+import type { ArtifactPublicationAuthority } from '@/server/files/ArtifactPublicationAuthority'
 import { COMPUTER_TOOL_IDS } from '@/shared/agents/tool-groups'
 import { withoutSharedRoomWithheldTools, workspaceToolsOnly } from '@/server/tools/shared-room-policy'
 import { withPersonalComputerToolIds } from './personal-computer-tooling'
@@ -147,6 +148,7 @@ export async function prepareActTooling(params: {
   effectiveModelId: string
   forwardCookie?: string | null
   idempotencyKey?: string
+  artifactPublicationAuthority?: ArtifactPublicationAuthority
   latestUserText?: string
   memoryEnabled?: boolean
   /**
@@ -259,6 +261,7 @@ export async function prepareActTooling(params: {
         sharedRoom: params.sharedRoom,
         workspaceId: params.workspaceId,
         idempotencyKey: params.idempotencyKey,
+        artifactPublicationAuthority: params.artifactPublicationAuthority,
       }),
     ),
     params.paid && capabilities.webSearch

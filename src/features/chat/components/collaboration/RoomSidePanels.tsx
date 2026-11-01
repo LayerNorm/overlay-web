@@ -75,6 +75,7 @@ export function RoomPeoplePanel({
 }
 
 export function RoomThreadPanel({
+  readOnlyFooter,
   roomLabel,
   replyCount,
   messages,
@@ -86,6 +87,7 @@ export function RoomThreadPanel({
   onClose,
   readOnlyNotice,
 }: {
+  readOnlyFooter?: ReactNode
   roomLabel: string
   replyCount: number
   messages: ReactNode
@@ -120,7 +122,7 @@ export function RoomThreadPanel({
       <div className="overlay-chat-surface min-h-0 flex-1 overflow-y-auto p-4">
         <div className="flex flex-col gap-5">{messages}</div>
       </div>
-      {readOnlyNotice ? (
+      {readOnlyFooter ?? (readOnlyNotice ? (
         <div className="shrink-0 px-4 py-3 text-center text-xs text-(--muted)">
           {readOnlyNotice}
         </div>
@@ -156,7 +158,7 @@ export function RoomThreadPanel({
           <Send size={14} />
         </Button>
       </form>
-      )}
+      ))}
     </AppScreenSidePanel>
   )
 }

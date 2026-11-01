@@ -117,7 +117,7 @@ export async function projectNativeHarnessStream(
       ...identity, authorPrincipalId: access.agentPrincipalId, turnId: access.turnId,
       clientNonce: `harness:${access.runId}`, existingMessageId: access.assistantMessageId, modelId: reference.modelId,
       store: {
-        startAgentMessage: args => store.startAgentMessage(args),
+        startAgentMessage: async () => access.assistantMessageId,
         finalizeAgentMessage: args => store.finalizeAgentMessage(args),
         failAgentMessage: args => store.failAgentMessage(args),
         appendAgentMessageDelta: async args => {

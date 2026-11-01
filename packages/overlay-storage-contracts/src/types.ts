@@ -22,6 +22,8 @@ export type UploadConstraints = {
   contentLength?: number
   /** Lowercase hexadecimal SHA-256; providers encode the wire checksum. */
   checksumSha256?: string
+  /** Add a signed If-None-Match: * precondition so an existing object cannot be replaced. */
+  createOnly?: boolean
 }
 
 /** Presigned or public URL for downloading an object. */

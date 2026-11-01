@@ -93,7 +93,7 @@ function buildOperation(definition: WebApiBoundaryDefinition): JsonObject {
     operationId: operationIdFor(definition),
     summary: definition.summary,
     tags: [definition.tag],
-    security: [{ browserSession: [] }, { bearerAuth: [] }],
+    security: definition.security ?? [{ browserSession: [] }, { bearerAuth: [] }],
     responses: buildResponses(definition),
   }
 

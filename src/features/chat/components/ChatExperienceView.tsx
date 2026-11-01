@@ -13,6 +13,8 @@ import { ChatComposer } from './ChatComposer'
 import { ChatMessageList } from './ChatMessageList'
 import { ChatDropOverlay } from './ChatDropOverlay'
 import { UpgradeModelDialog } from './UpgradeModelDialog'
+import { NativeThreadReadOnlyFooter } from './NativeThreadReadOnlyFooter'
+import type { NativeThreadSafety } from './chat/useNativeThreadSafety'
 
 const DraftReviewModal = dynamic(
   () => import('./chat-interface/Modals').then((mod) => ({ default: mod.DraftReviewModal })),
@@ -36,6 +38,8 @@ type AutomationEditorProps = {
 }
 
 export type ChatExperienceViewProps = {
+  nativeThreadSafety: NativeThreadSafety
+  onNewNativeThread: () => void
   shell: {
     rightPanel: React.ReactNode
     rightPanelOpen: boolean
@@ -67,6 +71,8 @@ export type ChatExperienceViewProps = {
 }
 
 export function ChatExperienceView({
+  nativeThreadSafety,
+  onNewNativeThread,
   shell,
   main,
   headerProps,
@@ -125,12 +131,16 @@ export function ChatExperienceView({
 
             {messageListProps && <ChatMessageList {...messageListProps} />}
             {composerProps && (
+              nativeThreadSafety.readOnly ? (
+                <NativeThreadReadOnlyFooter safety={nativeThreadSafety} onNewThread={onNewNativeThread} />
+              ) : (
               <ChatComposer
                 {...composerProps}
                 surface={modelControlsInComposer
                   ? { ...composerProps.surface, modelControl: <ChatModelControls {...headerProps} placement="composer" /> }
                   : composerProps.surface}
               />
+              )
             )}
           </AppScreenBody>
 

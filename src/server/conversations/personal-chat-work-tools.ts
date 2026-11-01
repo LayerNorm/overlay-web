@@ -8,6 +8,7 @@ import type {
 } from '@/shared/agents/personal-chat-work'
 import { prepareActTooling, preloadActExternalToolTasks } from '@/server/app-api/v1/conversations/act/tooling'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
+import type { ArtifactPublicationAuthority } from '@/server/files/ArtifactPublicationAuthority'
 
 type PersonalChatWorkToolOutputMapper = (args: {
   toolCallId: string
@@ -93,6 +94,7 @@ export async function describePersonalChatWorkTools(
 async function reconstructTooling(
   context: PersonalChatWorkToolingContext,
   idempotencyKey?: string,
+  artifactPublicationAuthority?: ArtifactPublicationAuthority,
 ) {
   return await prepareActTooling({
     ...context,
@@ -104,6 +106,7 @@ async function reconstructTooling(
     automationMode: false,
     forwardCookie: undefined,
     idempotencyKey,
+    artifactPublicationAuthority,
     mediaToolIntent: context.mediaToolIntent ?? null,
     mode: context.mode ?? 'chat',
     preloadTasks: preloadActExternalToolTasks({
@@ -127,6 +130,7 @@ export async function executePersonalChatWorkTool(
       harnessRunId?: string
       toolName: string
     }
+    artifactPublicationAuthority?: ArtifactPublicationAuthority
     messages: unknown[]
     toolCallId: string
   },
@@ -141,7 +145,7 @@ export async function executePersonalChatWorkTool(
     : `automation-run:${automationRunId ?? 'unknown'}`
   const logicalStepId = options.toolCallId || getStepMetadata().stepId
   const idempotencyKey = `${runNamespace}:tool:${logicalStepId}`
-  const tooling = await reconstructTooling(toolingContext, idempotencyKey)
+  const tooling = await reconstructTooling(toolingContext, idempotencyKey, options.artifactPublicationAuthority)
   const definition = tooling.tools[toolName]
   if (!definition || typeof definition.execute !== 'function') {
     throw new Error(`Tool ${toolName} is no longer available for this durable run.`)

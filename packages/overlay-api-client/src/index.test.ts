@@ -1,6 +1,24 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { createOverlayAppClient } from './index'
+import { ApiRequestError } from './shared/http'
+
+test('API errors preserve structured compatibility codes separately from status and copy', async () => {
+  for (const [status, code] of [[410, 'native_runner_retired'], [503, 'native_thread_compatibility_unavailable']] as const) {
+    const client = createOverlayAppClient({
+      fetch: async () => Response.json({ code, error: 'Specific failure' }, { status }),
+    })
+    await assert.rejects(client.conversations.get({ conversationId: 'conversation' }), (error: unknown) => {
+      assert.ok(error instanceof ApiRequestError)
+      assert.equal(error.status, status)
+      assert.equal(error.code, code)
+      assert.equal(error.message, 'Specific failure')
+      return true
+    })
+  }
+  const error = new ApiRequestError('Other failure', 410)
+  assert.equal(error.code, undefined)
+})
 
 interface RecordedRequest {
   input: RequestInfo | URL
@@ -33,6 +51,21 @@ test('personal run input uses the bounded-input endpoint without creating a turn
   const body = { conversationId: 'conversation', agentRunId: 'run', token: 'token', text: 'The quarterly report.' }
   await client.conversations.submitRunInput(body)
   assert.equal(String(calls[0]!.input), 'https://example.test/api/v1/conversations/run/input')
+  assert.equal(calls[0]!.init?.method, 'POST')
+  assert.deepEqual(await jsonBody(calls[0]!), body)
+})
+
+test('resource grants use the authenticated resource endpoint with the typed grant body', async () => {
+  const { calls, client } = createRecordedClient()
+  const body = {
+    conversationId: 'conversation',
+    agentRunId: 'run',
+    token: 'resource-token',
+    policyRevision: 2,
+    grant: { kind: 'time' as const, durationMs: 86_400_000 },
+  }
+  await client.conversations.grantRunResources(body)
+  assert.equal(String(calls[0]!.input), 'https://example.test/api/v1/conversations/run/resources')
   assert.equal(calls[0]!.init?.method, 'POST')
   assert.deepEqual(await jsonBody(calls[0]!), body)
 })
