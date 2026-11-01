@@ -181,9 +181,18 @@ produce saved-chat links. A later workspace switch cannot retarget a notificatio
 ### Dictation capture and delivery
 
 The isolated HUD initializes the 16 kHz AudioWorklet thread at launch using a
-silent output sink, then suspends the graph without opening a microphone. A native shortcut starts device acquisition immediately;
-cloud session admission runs independently and must pass before any upload. A
+silent output sink, then suspends the graph without opening a microphone.
+Automatic microphone selection is discovered at launch and refreshed on device
+changes. Capture uses the last known built-in choice (or the system default while
+discovery is pending), never awaits enumeration, and retains missing-device
+fallback. Out-of-order device scans cannot overwrite a newer choice.
+A native shortcut starts device acquisition immediately. Cloud session admission
+runs independently and must pass before any upload. A
 failed admission stops and discards capture immediately.
+The HUD reuses that take's admission at release instead of repeating the native
+session request after a long take. Standalone bridge uploads and explicit retries
+still admit independently; the web endpoint always checks current authentication,
+workspace access, entitlements, reservations and settlement.
 The AudioWorklet batches mono PCM every 256 samples and flushes a bounded WAV at
 release, avoiding a whole-recording decode. Groq still transcribes completed
 recordings; this path does not claim streaming recognition. Local helpers and
