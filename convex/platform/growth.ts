@@ -253,10 +253,10 @@ const STEPS: Step[] = [
     return page
   },
   async ({ ctx, day, cursor, counts }) => {
+    // Editors were credited in growthUserDays when they saved.
     const page = await ctx.db.query('growthFileEdits').withIndex('by_day', (q) => q.eq('day', day))
       .paginate({ cursor, numItems: 500 })
     counts.filesEdited += page.page.length
-    await creditActive(ctx, page.page.flatMap((edit) => edit.editorUserIds), day)
     return page
   },
   async ({ ctx, day, cursor, counts }) => {
@@ -362,8 +362,14 @@ const STEPS: Step[] = [
   },
   async ({ ctx, day, cursor, counts }) => {
     const page = await ctx.db.query('growthUserDays').withIndex('by_day', (q) => q.eq('day', day))
-      .paginate({ cursor, numItems: 1_000 })
+      .paginate({ cursor, numItems: 200 })
     counts.activeUsers += page.page.length
+    // Some user-days are written outside this job (file edits), so retention is checked for all of them here.
+    for (const userDay of page.page) {
+      const user = await growthUser(ctx, userDay.userId)
+      if (user) await creditRetention(ctx, user)
+      else await ctx.db.insert('growthUsers', { userId: userDay.userId, w1Active: false, w4Active: false })
+    }
     return page
   },
   // Weekly/monthly actives look each user's activity up directly, so they're

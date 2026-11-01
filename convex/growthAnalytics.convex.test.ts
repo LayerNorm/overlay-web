@@ -276,8 +276,9 @@ describe('file edit tracking', () => {
     const fileId = await convex.run(ctx => ctx.db.insert('files', {
       userId: 'user_1', name: 'Note', type: 'file', kind: 'note', content: 'First', createdAt: 1, updatedAt: 1,
     }))
-    const edits = () => convex.run(async (ctx) => (await ctx.db.query('growthFileEdits').collect())
-      .map(({ day, editorUserIds }) => ({ day, editorUserIds })))
+    const edits = () => convex.run(async (ctx) => (await ctx.db.query('growthFileEdits').collect()).map(({ day }) => ({ day })))
+    const userDays = () => convex.run(async (ctx) => (await ctx.db.query('growthUserDays').collect())
+      .map(({ userId, day }) => `${userId}@${day}`).sort())
 
     await convex.mutation(updateFile, { userId: 'user_1', serverSecret: secret, fileId, indexStatus: 'indexed' })
     await convex.mutation(updateFile, { userId: 'user_1', serverSecret: secret, fileId, content: 'First' })
@@ -297,19 +298,40 @@ describe('file edit tracking', () => {
     expect((await edits()).length).toBe(1)
     await convex.mutation(updateFile, { userId: 'user_1', serverSecret: secret, fileId: large, content: 'prefix', contentHash: 'hash-2' })
     expect((await edits()).length).toBe(2)
-    await convex.run(ctx => ctx.db.delete(large))
     await convex.run(async (ctx) => {
       const row = await ctx.db.query('growthFileEdits').withIndex('by_fileId_day', (q) => q.eq('fileId', large)).first()
       await ctx.db.delete(row!._id)
+      await ctx.db.delete(large)
     })
 
     // An edit just after midnight starts a new day and leaves yesterday's in place.
     vi.setSystemTime(at(addDays(DAY1, 1), 0))
     await convex.mutation(updateFile, { userId: 'user_1', serverSecret: secret, fileId, content: 'Fourth' })
-    expect(await edits()).toEqual([
-      { day: DAY1, editorUserIds: ['user_1', 'user_2'] },
-      { day: addDays(DAY1, 1), editorUserIds: ['user_1'] },
-    ])
+    expect(await edits()).toEqual([{ day: DAY1 }, { day: addDays(DAY1, 1) }])
+    // Every editor is credited for the day they edited; the agent write credits no one.
+    expect(await userDays()).toEqual([`user_1@${DAY1}`, `user_1@${addDays(DAY1, 1)}`, `user_2@${DAY1}`])
+    vi.useRealTimers()
+  })
+})
+
+describe('account deletion', () => {
+  test("removes the person's growth rows and keeps anonymous totals", async () => {
+    vi.useFakeTimers()
+    const convex = convexTest(schema, modules)
+    await seed(convex)
+    vi.setSystemTime(at(addDays(DAY1, 8), 1))
+    await convex.mutation(startBackfill, {})
+    await runAll(convex)
+    const rowsFor = (userId: string) => convex.run(async (ctx) => ({
+      users: (await ctx.db.query('growthUsers').withIndex('by_userId', (q) => q.eq('userId', userId)).collect()).length,
+      days: (await ctx.db.query('growthUserDays').withIndex('by_userId_day', (q) => q.eq('userId', userId)).collect()).length,
+    }))
+    expect(await rowsFor('user-b')).toEqual({ users: 1, days: 2 })
+
+    await convex.mutation(makeFunctionReference<'mutation'>('auth/users:deleteUserAccountByServer'), { serverSecret: secret, userId: 'user-b' })
+    expect(await rowsFor('user-b')).toEqual({ users: 0, days: 0 })
+    expect(await rowsFor('user-a')).toMatchObject({ users: 1 })
+    expect(await totals(convex, DAY1)).toMatchObject({ usersCreated: 2, activeUsers: 2 })
     vi.useRealTimers()
   })
 })

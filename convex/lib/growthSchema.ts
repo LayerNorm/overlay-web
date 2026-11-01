@@ -66,11 +66,13 @@ export const growthTables = {
     /** Already paid at the first snapshot, so dated by the subscription's createdAt rather than seen turning paid. */
     approximate: v.boolean(),
   },
-  /** One row per (file, UTC day) whose text changed, written as the edit happens; editors are people only. */
+  /**
+   * One row per (file, UTC day) whose text changed, written as the edit happens.
+   * Who edited goes straight into `growthUserDays`, so account deletion removes it with the user's other rows.
+   */
   growthFileEdits: {
     fileId: v.id('files'),
     day: v.string(),
-    editorUserIds: v.array(v.string()),
   },
   /** Overlay-billed spend per (UTC day, workspace). Rebuilt each time the day is counted. */
   growthWorkspaceUsage: {

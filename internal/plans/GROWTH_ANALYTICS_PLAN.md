@@ -35,7 +35,7 @@ their original timestamp in it.
 | Work | Messages sent | `conversationMessages` where `role = 'user'`, `importedAuthorName` unset and `authorKind` is unset or `human` | `userId` |
 | Work | Automations run | `automationRuns`, split by final status (succeeded/completed vs failed/dead_letter) | only when `triggerSource` is `manual` or `retry` |
 | Work | Task created or changed | `workItemEvents`, every kind (used for "active" only, not shown) | `actorPrincipalId` → `workspacePrincipals.userId` (human only) |
-| Work | Files edited | new `growthFileEdits` rows for the day (Phase 1) | each row's `editorUserIds` |
+| Work | Files edited | new `growthFileEdits` rows for the day (Phase 1) | the editor, written to `growthUserDays` at save time |
 | Usage | Users created | `subscriptions`: one row per user, inserted at first sign-in by `auth/users:syncUserProfileByServer` (`isNewUser`). There's no separate users table. | the new user |
 | Usage | Daily / weekly / monthly active users | distinct users in `growthUserDays` for the day / last 7 / last 30 days | n/a |
 | Usage | Paid subscriptions | `billingAccountSubscriptions` where `planKind = 'paid'` and `status` is `active`/`trialing` (snapshot each night) | n/a |
@@ -56,7 +56,7 @@ Agents and automations acting by themselves never make anyone active.
    "last edited" field wouldn't work either: a second editor, or an edit just
    after midnight, would overwrite the earlier one before the nightly count.
    Phase 1 writes a `growthFileEdits` row per (file, UTC day) as each text change
-   happens, listing every person who edited it that day. Edits before that ships
+   happens, and credits each person who edited it that day. Edits before that ships
    can't be backfilled; the panel starts this metric from the deploy date.
 2. **No history of when an account became paid.** `billingAccountSubscriptions` is
    updated in place (`convex/billing/accountSubscriptions.ts`), so the date it
@@ -106,8 +106,9 @@ nightly run, the backfill and repairs can overlap in history safely.
   time the day is counted. The top 10 are copied into `growthDailyTotals`.
 - `growthJobState`: one row: the day being counted, the step and page cursor,
   running counts, the last completed day and the first paid-snapshot day.
-- `growthFileEdits`: one row per (file, UTC day) whose text changed, with every
-  person who edited it that day. Written at edit time by `recordFileEdit`
+- `growthFileEdits`: one row per (file, UTC day) whose text changed; it holds no
+  user id. The editor is credited in `growthUserDays` at the same time. Written
+  at edit time by `recordFileEdit`
   (`convex/lib/growthFileEdits.ts`): `files:update` calls it when the text really
   changes (by full-text hash when present, since object-stored text sends only a
   prefix; never for AI outputs), and agent drive overwrites call it with no editor.
@@ -115,7 +116,9 @@ nightly run, the backfill and repairs can overlap in history safely.
 One existing table changes: `files.createdByAgent` (optional), set by agent
 drive uploads.
 
-Personal billing accounts count in the spend totals only. The panel shows
+Account deletion (`auth/users:deleteUserAccountByServer`) removes the person's
+`growthUsers` and `growthUserDays` rows; only anonymous totals and cohort counts
+remain. Personal billing accounts count in the spend totals only. The panel shows
 totals and the workspace list, nothing per user.
 
 ## Phases

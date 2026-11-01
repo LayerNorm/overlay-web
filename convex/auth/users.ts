@@ -447,6 +447,19 @@ export const deleteUserAccountByServer = mutation({
         .withIndex('by_userId_date', (q) => q.eq('userId', userId))
         .collect(),
     )
+    // Growth analytics keeps only anonymous totals once a person leaves.
+    await deleteIndexed(() =>
+      ctx.db
+        .query('growthUsers')
+        .withIndex('by_userId', (q) => q.eq('userId', userId))
+        .collect(),
+    )
+    await deleteIndexed(() =>
+      ctx.db
+        .query('growthUserDays')
+        .withIndex('by_userId_day', (q) => q.eq('userId', userId))
+        .collect(),
+    )
     await deleteIndexed(() =>
       ctx.db
         .query('apiKeys')
