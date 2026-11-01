@@ -30,15 +30,20 @@ export async function POST(
     const conversations = dependencies?.conversations ?? repositories!.conversations
     const collaboration = dependencies?.collaboration ?? repositories!.conversationCollaboration
     const actorUserId = getAuthorizedResourceUserId(context)
-    const conversation = await conversations.getConversationById({
+    let conversation = await conversations.getConversationById({
       conversationId: asConversationId(body.data.conversationId),
       userId: actorUserId,
-    }) ?? await collaboration.getAccessibleConversation({
-      actorUserId,
-      conversationId: body.data.conversationId,
       workspaceId: context.workspace.workspace.id,
     })
-    if (!conversation) {
+    if (!conversation || (conversation.conversationType ?? 'personal') !== 'personal') {
+      conversation = await collaboration.getAccessibleConversation({
+        actorUserId,
+        conversationId: body.data.conversationId,
+        workspaceId: context.workspace.workspace.id,
+      })
+    }
+    if (!conversation || (conversation.workspaceId !== undefined
+      && conversation.workspaceId !== context.workspace.workspace.id)) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 })
     }
     const run = await conversations.getLatestAgentRun({

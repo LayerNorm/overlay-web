@@ -95,15 +95,61 @@ test('a shared personal conversation does not let another participant approve th
 
 test('the initiator can decide an active approval, including legacy personal conversations', async () => {
   for (const approved of [true, false]) {
+    const personal = { ...conversation, conversationType: undefined }
     const decisions: unknown[] = []
     const response = await POST(request(approved), context('owner'), {
-      conversations: { getConversationById: async () => conversation, getLatestAgentRun: async () => run },
+      conversations: { getConversationById: async () => personal, getLatestAgentRun: async () => ({ ...run, mode: 'work' }) },
       collaboration: { getAccessibleConversation: async () => assert.fail('Owner lookup already granted access') },
       resume: async (token, decision) => { decisions.push({ token, decision }) },
     })
     assert.equal(response.status, 200)
     assert.deepEqual(decisions, [{ token: 'token-a', decision: { approved } }])
   }
+})
+
+test('room creators with revoked membership cannot decide a pending approval', async () => {
+  for (const approved of [true, false]) {
+    const response = await POST(request(approved), context('owner'), {
+      conversations: {
+        getConversationById: async () => conversation,
+        getLatestAgentRun: async () => assert.fail('Revoked participation must be checked before reading the run'),
+      },
+      collaboration: { getAccessibleConversation: async args => {
+        assert.deepEqual(args, { actorUserId: 'owner', conversationId: 'room-a', workspaceId: 'workspace-a' })
+        return null
+      } },
+      resume: async () => assert.fail('Revoked participation must not resume the workflow'),
+    })
+    assert.equal(response.status, 404)
+  }
+})
+
+test('an owned personal conversation in another workspace cannot be approved', async () => {
+  const response = await POST(request(), context('owner'), {
+    conversations: {
+      getConversationById: async args => {
+        assert.equal(args.workspaceId, 'workspace-a')
+        return { ...conversation, conversationType: 'personal', workspaceId: 'workspace-b' }
+      },
+      getLatestAgentRun: async () => assert.fail('Workspace access must be checked before reading the run'),
+    },
+    collaboration: { getAccessibleConversation: async () => assert.fail('Personal owner lookup does not use room access') },
+    resume: async () => assert.fail('Another workspace must not resume the workflow'),
+  })
+  assert.equal(response.status, 404)
+})
+
+test('a room creator with current participation can decide a pending approval', async () => {
+  let membershipChecked = false
+  let resumed = false
+  const response = await POST(request(), context('owner'), {
+    conversations: { getConversationById: async () => conversation, getLatestAgentRun: async () => run },
+    collaboration: { getAccessibleConversation: async () => { membershipChecked = true; return conversation } },
+    resume: async () => { resumed = true },
+  })
+  assert.equal(response.status, 200)
+  assert.equal(membershipChecked, true)
+  assert.equal(resumed, true)
 })
 
 test('the initiator can approve an active native Harness room run in a Slack channel', async () => {
