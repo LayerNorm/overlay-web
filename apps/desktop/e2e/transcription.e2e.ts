@@ -22,8 +22,9 @@ cp.execFile=function(file,args,options,callback){
  globalThis.offlineTranscriptions++;
  const mode=globalThis.asrDiagnosticMode||'default';
  const policy=mode==='ip-only'?'(version 1)(allow default)(deny network-outbound (remote ip "*:*"))(deny network-inbound (local ip "*:*"))':'(version 1)(allow default)(deny network*)';
- const extra=mode==='cpu'?['--audio-encoder-compute-units','cpuOnly','--text-decoder-compute-units','cpuOnly']:mode==='english'?['--language','en']:[];
- return original('/usr/bin/sandbox-exec',['-p',policy,file,...args,...extra,'--verbose'],options,(error,stdout,stderr)=>{
+ const extra=mode==='vad-none'?['--chunking-strategy','none']:[];
+ const actualArgs=mode==='timestamps'?args.filter(arg=>arg!=='--without-timestamps'):args;
+ return original('/usr/bin/sandbox-exec',['-p',policy,file,...actualArgs,...extra,'--verbose'],options,(error,stdout,stderr)=>{
    fs.writeFileSync(${JSON.stringify(test.info().outputPath('whisper-helper-'))}+mode+'.log',String(stdout||'')+'\\n'+String(stderr||''));
    const directory=args[args.indexOf('--report-path')+1];
    if(directory&&fs.existsSync(directory))for(const name of fs.readdirSync(directory).filter(n=>n.endsWith('.json')))fs.copyFileSync(path.join(directory,name),${JSON.stringify(test.info().outputPath('whisper-report-'))}+mode+'-'+name);
@@ -107,7 +108,18 @@ cp.execFile=function(file,args,options,callback){
       )
     ).toBe(1)
     if (!result.text.toLowerCase().includes('desktop')) {
-      for (const mode of ['ip-only', 'cpu', 'english']) {
+      const floatingAudio = join(directory, 'speech-float.wav')
+      execFileSync('/usr/bin/afconvert', [
+        '-f',
+        'WAVE',
+        '-d',
+        'LEF32@16000',
+        '-c',
+        '1',
+        join(directory, 'speech.aiff'),
+        floatingAudio
+      ])
+      for (const mode of ['float32', 'timestamps', 'vad-none']) {
         await app.evaluate((_electron, value) => {
           ;(globalThis as unknown as { asrDiagnosticMode: string }).asrDiagnosticMode = value
         }, mode)
@@ -125,7 +137,7 @@ cp.execFile=function(file,args,options,callback){
               return { error: error instanceof Error ? error.message : 'unknown' }
             }
           },
-          [...readFileSync(audio)]
+          [...readFileSync(mode === 'float32' ? floatingAudio : audio)]
         )
         console.info('ASR diagnostic', mode, JSON.stringify(diagnostic))
       }
