@@ -149,7 +149,7 @@ function ScreenRightPanel({
         data-slot="app-screen-right-panel"
         data-mode={floating ? 'floating' : 'docked'}
         className={cn(
-          'absolute right-0 z-30 flex min-h-0 w-full max-w-[min(24rem,100vw)] shrink-0 overflow-hidden bg-(--sidebar-surface) transition-[transform,width,opacity] duration-300 ease-(--overlay-ease)',
+          'absolute right-0 z-30 flex min-h-0 w-full max-w-[min(24rem,100vw)] shrink-0 overflow-visible bg-(--sidebar-surface) transition-[transform,width,opacity] duration-300 ease-(--overlay-ease)',
           resizing ? 'transition-none' : null,
           floating
             ? 'inset-y-2 right-2 max-w-[calc(100vw-1rem)] rounded-xl border border-(--border) bg-(--sidebar-surface) shadow-xl lg:max-w-none'
@@ -163,6 +163,8 @@ function ScreenRightPanel({
         {onResize && visible ? (
           <PanelResizeHandle
             className="hidden lg:block"
+            edge="left"
+            placement={floating ? 'inset' : 'outside'}
             width={typeof width === 'number' ? width : 0}
             onResize={onResize}
             onResizingChange={onResizingChange}
@@ -170,11 +172,13 @@ function ScreenRightPanel({
         ) : null}
         {/* Fixed-width inner wrapper so content slides cleanly instead of
             reflowing while the column animates its width. */}
-        <div
-          className={cn('flex h-full min-h-0 w-full flex-col', widthClassName)}
-          style={widthStyle}
-        >
-          {children}
+        <div className="absolute inset-0 overflow-hidden rounded-[inherit]">
+          <div
+            className={cn('flex h-full min-h-0 w-full flex-col', widthClassName)}
+            style={widthStyle}
+          >
+            {children}
+          </div>
         </div>
       </aside>
     </>

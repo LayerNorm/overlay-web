@@ -76,7 +76,7 @@ exposes them as `client.work`.
 
 Personal task owners may be the creator, a live workspace-visible agent, or the
 creator's own creator-only agent. Workspace tasks accept only workspace-visible
-agents. Assignment never starts an agent run. Context hides other people's
+agents. Creating or changing an assignment to a usable agent starts its existing agent-turn pipeline through `WorkService`. A transaction prepares one persisted thread/message/turn identity per assignment generation; unchanged assignments and human assignments do not start another run. Startup failures can follow a saved task and return an explicit error; inspect the agent thread before clearing or reassigning an uncertain start. Context hides other people's
 creator-only agents and includes creature appearance metadata. Scope moves keep
 only assignees allowed in the destination and record any cleared assignee.
 

@@ -94,7 +94,7 @@ function fixture(
     nativeHarnessEnabled: () => options.nativeEnabled ?? false,
   }
   return {
-    run: () => startWorkspaceAgentTurns(args, dependencies),
+    run: (strictErrors = false) => startWorkspaceAgentTurns({ ...args, ...(strictErrors ? { strictErrors } : {}) }, dependencies),
     nativeStarts,
     remoteStarts,
     failures,
@@ -202,5 +202,15 @@ test('a native workflow start failure uses the existing failure-message path', a
     { nativeEnabled: true, resumed: false, nativeStartFails: true },
   )
   await f.run()
+  assert.deepEqual(f.failures, ['principal-native'])
+})
+
+test('strict assignment dispatch propagates a start failure after persisting the existing failure message', async () => {
+  const f = fixture(
+    [invocation('native', { harness: 'overlay' })],
+    async () => {},
+    { nativeEnabled: true, resumed: false, nativeStartFails: true },
+  )
+  await assert.rejects(f.run(true), /native start failed/)
   assert.deepEqual(f.failures, ['principal-native'])
 })

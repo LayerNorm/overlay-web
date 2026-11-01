@@ -913,6 +913,17 @@ export default defineSchema({
     rank: v.string(),
     /** A workspace principal: a person now, an agent later. */
     assigneePrincipalId: v.optional(v.string()),
+    assignmentExecution: v.optional(v.object({
+      assignedByUserId: v.string(),
+      assigneePrincipalId: v.string(),
+      generation: v.number(),
+      status: v.union(v.literal('pending'), v.literal('starting'), v.literal('started'), v.literal('failed')),
+      conversationId: v.optional(v.id('conversations')),
+      messageId: v.optional(v.id('conversationMessages')),
+      turnId: v.optional(v.string()),
+      clientNonce: v.optional(v.string()),
+      error: v.optional(v.string()),
+    })),
     reviewerUserId: v.optional(v.string()),
     startDate: v.optional(v.string()),
     dueDate: v.optional(v.string()),
