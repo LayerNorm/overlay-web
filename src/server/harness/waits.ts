@@ -4,6 +4,7 @@ import type { HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
 import { z } from 'zod'
 import type { HarnessExecutionPorts } from './ports'
 import { applyHarnessOperation, readHarnessState, type HarnessExecutionReference } from './state-steps'
+import { waitForHarnessHumanReply } from './resource-boundary'
 import {
   listHarnessWaits, notifyHarnessAncestors,
   publishHarnessWait, readHarnessChild, resolveHarnessWait,
@@ -40,7 +41,10 @@ export function createHarnessWaitPorts(input: {
     const state = await readHarnessState(access)
     await notifyHarnessAncestors(access)
     if (ownsDelivery(state) && await input.projectWait({ wait }) === 'inactive') return null
-    const result = await withDeadline(hook, state.policy.deadlineAt)
+    const result = state.policy.resourcePauseVersion === 1
+      ? await waitForHarnessHumanReply(access, hook, request.kind, () => readHarnessState(access))
+      : await withDeadline(hook, state.policy.deadlineAt)
+    if (result === null) return null
     await resolveHarnessWait(access, wait.token)
     await notifyHarnessAncestors(access)
     if (ownsDelivery(state)) await input.projectWait({ status: 'running' })

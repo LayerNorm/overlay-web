@@ -1,7 +1,8 @@
+import { createHook } from 'workflow'
 import type { HarnessResourceWaitPorts } from '../../src/server/harness/resource-waits'
 import { waitForHarnessResources } from '../../src/server/harness/resource-waits'
 import { createHarnessSnapshot, type HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
-import { waitForHarnessModelResources } from '../../src/server/harness/resource-boundary'
+import { waitForHarnessHumanReply, waitForHarnessModelResources } from '../../src/server/harness/resource-boundary'
 
 async function directory(id: string): Promise<string> {
   const { tmpdir } = await import('node:os')
@@ -32,7 +33,7 @@ async function completedStep(id: string): Promise<void> {
   await appendEvent(id, 'completed-step')
 }
 
-async function readResourceBoundaryFixture(id: string): Promise<HarnessSnapshot> {
+async function readResourceBoundaryFixture(id: string, kind?: 'input' | 'approval'): Promise<HarnessSnapshot> {
   'use step'
   const events = await readResourceFixture(id)
   const now = Date.now()
@@ -48,6 +49,8 @@ async function readResourceBoundaryFixture(id: string): Promise<HarnessSnapshot>
   return {
     ...state,
     workflowRunId: 'fixture',
+    status: kind === 'approval' ? 'waiting_for_approval' : kind ? 'waiting_for_input' : state.status,
+    blocker: kind ? { kind, question: kind === 'approval' ? 'Approve this action?' : 'Which film?' } : undefined,
     policy: { ...state.policy, deadlineAt: events.includes('consumed') ? now + 60_000 : 0 },
   }
 }
@@ -69,6 +72,11 @@ async function consumeResourceFixture(id: string): ReturnType<HarnessResourceWai
   }
   await appendEvent(id, granted ? 'consumed' : 'pending')
   return granted ? 'consumed' : 'pending'
+}
+
+async function recordReplyDeliveredFixture(id: string): Promise<void> {
+  'use step'
+  await appendEvent(id, 'reply-delivered')
 }
 
 export async function resourceWaitFixture(input: { id: string }) {
@@ -96,4 +104,24 @@ export async function resourceBoundaryFixture(input: { id: string }) {
       consume: () => consumeResourceFixture(input.id),
     },
   )
+}
+
+export async function humanResourceWaitFixture(input: { id: string }) {
+  'use workflow'
+  await completedStep(input.id)
+  using hook = createHook<unknown>({ token: `input:${input.id}` })
+  if (await hook.getConflict()) throw new Error('Fixture input hook is already owned.')
+  const reply = await waitForHarnessHumanReply(
+    { actorUserId: 'fixture', runId: input.id, workflowRunId: 'fixture' },
+    hook,
+    'input',
+    () => readResourceBoundaryFixture(input.id, 'input'),
+    {
+      token: async () => `resource:${input.id}`,
+      publish: () => publishResourceFixture(input.id),
+      consume: () => consumeResourceFixture(input.id),
+    },
+  )
+  if (reply !== null) await recordReplyDeliveredFixture(input.id)
+  return reply
 }

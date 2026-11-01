@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest'
 import { start, resumeHook } from 'workflow/api'
 import { waitForHook, waitForSleep } from '@workflow/vitest'
-import { grantResourceFixture, readResourceFixture, resourceBoundaryFixture, resourceWaitFixture } from './resource-wait-fixture'
+import { grantResourceFixture, humanResourceWaitFixture, readResourceFixture, resourceBoundaryFixture, resourceWaitFixture } from './resource-wait-fixture'
 
 test('resource polling survives SDK replay and lost wake delivery without trusting a hook payload', async () => {
   const id = crypto.randomUUID()
@@ -40,4 +40,26 @@ test('resource boundary resumes from its retained timer after an authoritative f
   expect(events.filter(event => event === 'completed-step')).toHaveLength(1)
   expect(events.filter(event => event === 'published')).toHaveLength(1)
   expect(events.filter(event => event === 'consumed')).toHaveLength(1)
+}, 60_000)
+
+test('human reply stays buffered until the retained resource timer observes authorization', async () => {
+  const id = crypto.randomUUID()
+  const inputToken = `input:${id}`
+  const run = await start(humanResourceWaitFixture, [{ id }])
+  await waitForHook(run, { token: inputToken })
+  await waitForHook(run, { token: `resource:${id}` })
+  const timer = await waitForSleep(run)
+  expect(await readResourceFixture(id)).toEqual(['completed-step', 'published', 'pending'])
+
+  await resumeHook(inputToken, { text: 'The original film' })
+  expect(await readResourceFixture(id)).not.toContain('reply-delivered')
+
+  await grantResourceFixture(id)
+  await run.wakeUp({ correlationIds: [timer] })
+
+  expect(await run.returnValue).toEqual({ text: 'The original film' })
+  const events = await readResourceFixture(id)
+  for (const event of ['completed-step', 'published', 'consumed', 'reply-delivered']) {
+    expect(events.filter(item => item === event)).toHaveLength(1)
+  }
 }, 60_000)
