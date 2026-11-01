@@ -199,3 +199,11 @@ the user has copied something else. No speech or result history is persisted:
 retry audio and results are memory-only, bounded to 25 MiB, cleared on a new take,
 sign-out/dismiss/quit, and expire after 60 seconds. Retry requires an explicit
 click and can incur another cloud transcription charge.
+
+The bundled Whisper helper applies a small source-pinned CPU mel preprocessing
+patch; encoder/decoder compute policies remain unchanged. The binary digest and
+`sourcePatchSha256` are verified together in `native-artifacts.json`. Rebuild the
+helper through Clean public clone's `helper_diagnostics` dispatch input rather
+than compiling on a laptop-sensitive QA run. Keep the patch, upstream revision,
+build script, notices and artifact digest synchronized. Native transcription
+normalizes provider padding before delivery while preserving internal formatting.
