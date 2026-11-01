@@ -119,7 +119,7 @@ cp.execFile=function(file,args,options,callback){
       }
     ]) {
       const response = await fetch(
-        `https://huggingface.co/api/models/${spec.repo}/tree/${spec.revision}${spec.folder ? "/" + spec.folder : ""}?recursive=true`,
+        `https://huggingface.co/api/models/${spec.repo}/tree/${spec.revision}${spec.folder ? '/' + spec.folder : ''}?recursive=true`,
         { signal: AbortSignal.timeout(30_000) }
       )
       expect(response.ok).toBe(true)
@@ -223,9 +223,11 @@ cp.execFile=function(file,args,options,callback){
         const context = new AudioContext({ sampleRate: 16000, sinkId: { type: 'none' } })
         const buffer = await context.decodeAudioData(Uint8Array.from(bytes).buffer)
         const destination = context.createMediaStreamDestination()
+        Object.assign(window, { qaSpeechFinished: false })
         navigator.mediaDevices.getUserMedia = async () => {
           const source = context.createBufferSource()
           source.buffer = buffer
+          source.onended = () => Object.assign(window, { qaSpeechFinished: true })
           source.connect(destination)
           await context.resume()
           // Allow the worklet to connect before the first word. Play once;
@@ -243,7 +245,16 @@ cp.execFile=function(file,args,options,callback){
       )
     )
     await expect(hud.getByRole('status')).toHaveText('Listening…')
-    await hud.waitForTimeout(5000)
+    // CI audio clocks can advance slower than wall time. Waiting a fixed five
+    // seconds can truncate the sentence even though capture itself is healthy.
+    await expect
+      .poll(
+        () =>
+          hud.evaluate(() => (window as unknown as { qaSpeechFinished: boolean }).qaSpeechFinished),
+        { timeout: 45_000 }
+      )
+      .toBe(true)
+    await hud.waitForTimeout(500)
     await page.evaluate(() =>
       (window as unknown as { overlayDesktop: DesktopBridge }).overlayDesktop.call(
         'transcription.stop',
