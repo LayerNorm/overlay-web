@@ -64,9 +64,13 @@ launches the real upgrade path, verifying private transcript export, secret
 exclusion, retained recordings/journals and a once-only migration notice.
 
 For real local-model QA, dispatch Clean public clone with `local_transcription`
-enabled. The macOS runner synthesizes a test phrase and downloads the pinned
+enabled. This opt-in lane uses macOS 26; ordinary checks remain on macOS 15.
+The runner synthesizes a test phrase and downloads the pinned
 Whisper Base model before transcribing through the actual sandboxed bridge. The ASR helper runs
 under a test-only macOS sandbox that denies networking, verifying offline inference.
+Model and tokenizer bytes are verified against their immutable upstream hashes
+in isolated app data. Include physical-device acceptance when investigating a
+Core ML runner discrepancy; a helper process exit alone does not prove recognition.
 This is an opt-in network/model smoke, separate from the ordinary fixture suite.
 
 Whisper downloads include pinned model-specific tokenizer files. Older downloads
