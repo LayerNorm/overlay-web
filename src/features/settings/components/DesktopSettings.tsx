@@ -13,6 +13,10 @@ import {
   SettingsGroup,
   SettingRow,
 } from "@overlay/modules-react/settings";
+import {
+  DesktopDictationSettings,
+  useLiveDictationStatus,
+} from "./DesktopDictationSettings";
 import { useDesktopBridge } from "@/components/desktop/DesktopProvider";
 import type {
   Input as BridgeInput,
@@ -28,6 +32,7 @@ export function DesktopSettings() {
   const [update, setUpdate] = useState<UpdateStatus | null>(null);
   const [transcription, setTranscription] =
     useState<TranscriptionStatus | null>(null);
+  const [devices, setDevices] = useState<{ id: string; label: string }[]>([]);
   const [models, setModels] = useState<Model[]>([]);
   const [keys, setKeys] = useState<Record<string, string>>({});
   const [code, setCode] = useState("");
@@ -67,6 +72,11 @@ export function DesktopSettings() {
       tasks.push(
         bridge.call("transcription.status", undefined).then(setTranscription),
         bridge.call("transcription.listModels", undefined).then(setModels),
+        // Older installed shells do not expose device selection.
+        bridge
+          .call("transcription.listDevices", undefined)
+          .then(setDevices)
+          .catch(() => {}),
       );
     await Promise.all(tasks);
   }, [desktop]);
@@ -97,6 +107,7 @@ export function DesktopSettings() {
       offUpdate?.();
     };
   }, [desktop, refresh]);
+  useLiveDictationStatus(desktop, setTranscription, setDevices);
   const run = async (action: () => Promise<unknown>) => {
     setBusy(true);
     setError("");
@@ -161,67 +172,14 @@ export function DesktopSettings() {
         </SettingsGroup>
       ) : null}
       {info.capabilities.includes("transcription") ? (
-        <SettingsGroup>
-          <SettingsActionRow
-            icon={null}
-            title="Dictation model"
-            description="Local models run on your Mac, including offline. Cloud dictation uses your Overlay account."
-            action={
-              <ListboxSelect
-                value={transcription?.model ?? "cloud"}
-                options={[
-                  { value: "cloud", label: "Cloud" },
-                  ...models.map((m) => ({ value: m.id, label: m.name })),
-                ]}
-                aria-label="Dictation model"
-                disabled={busy}
-                onChange={(model) =>
-                  void run(() =>
-                    bridge.call("transcription.configure", {
-                      model:
-                        model as BridgeInput<"transcription.configure">["model"],
-                    }),
-                  )
-                }
-              />
-            }
-          />
-          {models.map((model) => (
-            <SettingsActionRow
-              icon={null}
-              key={model.id}
-              title={model.name}
-              description={
-                model.downloaded
-                  ? "Ready on this Mac"
-                  : "Download to use offline"
-              }
-              action={
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={busy || model.downloaded}
-                  onClick={() =>
-                    void run(() =>
-                      bridge.call("transcription.downloadModel", {
-                        id: model.id as BridgeInput<"transcription.downloadModel">["id"],
-                      }),
-                    )
-                  }
-                >
-                  {model.downloaded ? "Downloaded" : "Download"}
-                </Button>
-              }
-            />
-          ))}
-          <p className="px-4 pb-3 text-xs text-muted-foreground">
-            Microphone: {transcription?.microphone ?? "checking"} ·
-            Accessibility:{" "}
-            {transcription?.accessibility
-              ? "allowed"
-              : "enable in System Settings for dictation into other apps"}
-          </p>
-        </SettingsGroup>
+        <DesktopDictationSettings
+          bridge={bridge}
+          models={models}
+          devices={devices}
+          transcription={transcription}
+          busy={busy}
+          run={run}
+        />
       ) : null}
       {info.capabilities.includes("hotkeys") ? (
         <SettingsGroup>

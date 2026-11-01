@@ -6,6 +6,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Add nightly growth rollups in Convex: daily counts of what was created and done, active users, W1/W4 retention cohorts, paid subscriptions, top-ups and billed usage, with a one-time backfill. Each file text change is now recorded per day with every person who made it.
 
+- Add desktop dictation microphone selection with live device refresh and capture status, alongside native PCM capture without a network admission wait, a compact audio-reactive pill, cancellation and temporary retry/copy recovery.
+
 - Switch existing accounts to double sidebar once across all workspaces, while allowing subsequent single-sidebar opt-outs.
 
 - Keep the gray gutters equal on both sides of onboarding while its navigation is hidden.
