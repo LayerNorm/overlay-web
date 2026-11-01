@@ -1,0 +1,38 @@
+name: Offline ASR diagnostic
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  all-cpu:
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Use previously source-verified CPU mel diagnostic helper
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download 41257031009 --name whisper-cpu-mel-diagnostic --dir /tmp/cpu-mel-helper
+          echo '0c97eb5ebc4a3a68768fc88b34e085974743fcaff5ef62f38846c0f38c275675  /tmp/cpu-mel-helper/whisperkit-cli' | shasum -a 256 -c -
+          cp /tmp/cpu-mel-helper/whisperkit-cli whisperkit-bundle/whisperkit-cli
+          chmod +x whisperkit-bundle/whisperkit-cli
+      - name: Transcribe with every compute stage on CPU
+        env:
+          OVERLAY_ASR_ALL_CPU_DIAGNOSTIC: '1'
+        run: npx playwright test e2e/transcription.e2e.ts
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: offline-all-cpu-diagnostic
+          path: test-results/
+          retention-days: 7
