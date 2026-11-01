@@ -5,6 +5,8 @@ import {
   requireOperator,
   type AdministrativeRole,
 } from '../lib/auth'
+import { growthCountFields } from '../lib/growthSchema'
+import { addDays } from '../platform/growth'
 
 // Stage 2 operator surface (docs/plans/ADMIN_CONSOLE_SEPARATION_PLAN.md).
 // Every function requires ADMIN_API_SECRET plus the caller's WorkOS identity
@@ -806,5 +808,87 @@ export const listUserDirectory = query({
       ? await ctx.db.query('subscriptions').withIndex('by_userId', (q) => q.eq('userId', args.userId!)).take(1)
       : await ctx.db.query('subscriptions').take(limit)
     return rows.map((row) => ({ userId: row.userId, email: row.email }))
+  },
+})
+
+const GROWTH_READ: readonly AdministrativeRole[] = ['admin', 'auditor', 'billing_admin']
+const GROWTH_DAYS = 90
+const GROWTH_COHORT_WEEKS = 12
+const GROWTH_TOP_WORKSPACE_DAYS = 30
+/** Spend rows read per day for the top-workspace list; the long tail is irrelevant there. */
+const GROWTH_WORKSPACE_ROWS_PER_DAY = 200
+
+/**
+ * Growth panel data, read only from the nightly growth tables
+ * (`platform/growth`). Nothing here scans source tables, and nothing is per user.
+ */
+export const getGrowthSummary = query({
+  args: { serverSecret: v.string() },
+  handler: async (ctx, args) => {
+    requireAdminSecret(args.serverSecret)
+    await requireOperator(ctx, GROWTH_READ)
+    const state = await ctx.db.query('growthJobState').withIndex('by_key', (q) => q.eq('key', 'daily')).unique()
+    const lastDay = state?.lastCompletedDay
+    if (!lastDay) return { lastCompletedDay: null, computedAt: null, days: [], cohorts: [], topWorkspaces: [] }
+
+    const fromDay = addDays(lastDay, -(GROWTH_DAYS - 1))
+    const totals = await ctx.db.query('growthDailyTotals')
+      .withIndex('by_day', (q) => q.gte('day', fromDay).lte('day', lastDay)).collect()
+    const paid = await ctx.db.query('growthPaidAccounts')
+      .withIndex('by_firstPaidDay', (q) => q.gte('firstPaidDay', fromDay).lte('firstPaidDay', lastDay)).collect()
+    const newPaid = new Map<string, { count: number; approximate: number }>()
+    for (const account of paid) {
+      const entry = newPaid.get(account.firstPaidDay) ?? { count: 0, approximate: 0 }
+      entry.count += 1
+      if (account.approximate) entry.approximate += 1
+      newPaid.set(account.firstPaidDay, entry)
+    }
+    const days = totals.map((row) => ({
+      day: row.day,
+      ...Object.fromEntries(Object.keys(growthCountFields).map((key) => [key, row[key as keyof typeof growthCountFields]])),
+      weeklyActiveUsers: row.weeklyActiveUsers,
+      monthlyActiveUsers: row.monthlyActiveUsers,
+      paidSubscriptions: row.paidSubscriptions,
+      computedAt: row.computedAt,
+      newPaidSubscriptions: newPaid.get(row.day)?.count ?? 0,
+      newPaidApproximate: newPaid.get(row.day)?.approximate ?? 0,
+    }))
+
+    // A cohort's rate is final once every member's window has passed: the
+    // week's last signup day (Sunday) plus the window's last day (13 / 34).
+    const cohortRows = await ctx.db.query('growthCohortWeeks')
+      .withIndex('by_weekStart', (q) => q.lte('weekStart', lastDay)).order('desc').take(GROWTH_COHORT_WEEKS)
+    const cohorts = cohortRows.map((row) => ({
+      weekStart: row.weekStart,
+      users: row.users,
+      w1Active: row.w1Active,
+      w4Active: row.w4Active,
+      w1Final: addDays(row.weekStart, 6 + 13) <= lastDay,
+      w4Final: addDays(row.weekStart, 6 + 34) <= lastDay,
+    }))
+
+    const spend = new Map<string, { cents: number; sandboxSeconds: number }>()
+    for (let offset = 0; offset < GROWTH_TOP_WORKSPACE_DAYS; offset += 1) {
+      const day = addDays(lastDay, -offset)
+      const rows = await ctx.db.query('growthWorkspaceUsage')
+        .withIndex('by_day_cents', (q) => q.eq('day', day)).order('desc').take(GROWTH_WORKSPACE_ROWS_PER_DAY)
+      for (const row of rows) {
+        const entry = spend.get(row.workspaceId) ?? { cents: 0, sandboxSeconds: 0 }
+        entry.cents += row.cents
+        entry.sandboxSeconds += row.sandboxSeconds
+        spend.set(row.workspaceId, entry)
+      }
+    }
+    const top = [...spend.entries()].sort((a, b) => b[1].cents - a[1].cents).slice(0, 10)
+    const topWorkspaces = await Promise.all(top.map(async ([workspaceId, usage]) => {
+      const workspace = await ctx.db.query('workspaces')
+        .withIndex('by_workspaceId', (q) => q.eq('workspaceId', workspaceId)).unique()
+      // Personal workspaces are named after a person; the panel shows only organizations by name.
+      const name = workspace?.kind === 'organization' ? workspace.name : null
+      return { workspaceId, name, kind: workspace?.kind ?? null, ...usage }
+    }))
+
+    const latest = totals.at(-1)
+    return { lastCompletedDay: lastDay, computedAt: latest?.computedAt ?? null, days, cohorts, topWorkspaces }
   },
 })

@@ -1,6 +1,6 @@
 # Growth analytics: admin Growth panel and PostHog cleanup
 
-Status: Phases 0 and 1 done (nightly job on branch `codex/growth-analytics`); Phase 2 next.
+Status: Phases 0–2 built (nightly job in `codex/growth-analytics`, admin panel in `codex/growth-admin-panel`); Phase 3 (PostHog cleanup) in `codex/growth-posthog-cleanup`, to merge after the panel is live.
 
 Answer "are we growing?" from the database, not from client events. A nightly
 Convex job counts what was created and done, and the admin console shows the
@@ -148,7 +148,7 @@ Sources, filters and gaps are recorded in the Metrics section above.
   deployment, following `internal/develop/convex-workflow.md`.
 - Tests: `convex/growthAnalytics.convex.test.ts`.
 
-### Phase 2: Admin Growth panel
+### Phase 2: Admin Growth panel (built)
 
 - Convex: `admin/console:getGrowthSummary`, admin-secret guarded like the other
   console queries, reading only the growth tables. It returns the last 90 days

@@ -14,6 +14,7 @@ import type {
 import type {
   AdminAuditRow,
   AdminCatalogResource,
+  AdminGrowthSummary,
   AdminPrincipal,
   AdminUsageRow,
 } from './admin-types'
@@ -81,6 +82,10 @@ export const adminApi = {
     async listAudit(query: { action?: string; actorUserId?: string; before?: number; limit?: number; resourceType?: string } = {}, init?: RequestInit) {
       const { events } = await checkedJson<{ events: AdminAuditRow[] }>(appendQuery('/api/v1/admin/audit', query), init)
       return events
+    },
+    async getGrowth(init?: RequestInit) {
+      const { growth } = await checkedJson<{ growth: AdminGrowthSummary }>('/api/v1/admin/growth', init)
+      return growth
     },
     async listPrincipals(init?: RequestInit) {
       const { principals } = await checkedJson<{ principals: AdminPrincipal[] }>('/api/v1/admin/principals', init)

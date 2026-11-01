@@ -8,12 +8,14 @@ import {
   RefreshCw,
   Search,
   ShieldCheck,
+  TrendingUp,
   UsersRound,
   type LucideIcon,
 } from 'lucide-react'
 import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
 import { AuthorizationAdminPanel } from '@/features/admin/authorization/AuthorizationAdminPanel'
 import { CatalogPolicyAdminPanel } from '@/features/admin/catalog/CatalogPolicyAdminPanel'
+import { GrowthPanel } from '@/features/admin/growth/GrowthPanel'
 import { PanelHeader } from './PanelHeader'
 
 type UsageRow = {
@@ -31,7 +33,7 @@ type AuditRow = {
   createdAt: number
 }
 
-type AdminSection = 'overview' | 'roles' | 'groups' | 'catalog'
+type AdminSection = 'overview' | 'growth' | 'roles' | 'groups' | 'catalog'
 
 type AdminSectionOption = {
   value: AdminSection
@@ -42,6 +44,7 @@ type AdminSectionOption = {
 type AdminPermissions = {
   canViewUsage: boolean
   canViewAudit: boolean
+  canViewGrowth: boolean
   canViewRoles: boolean
   canManageRoles: boolean
   canViewGroups: boolean
@@ -53,6 +56,7 @@ type AdminPermissions = {
 function useAdminSections({
   canViewUsage,
   canViewAudit,
+  canViewGrowth,
   canViewRoles,
   canViewGroups,
   canViewCatalog,
@@ -60,6 +64,7 @@ function useAdminSections({
   const [section, setSection] = useState<AdminSection>('overview')
   const sections: AdminSectionOption[] = [
     ...(canViewUsage || canViewAudit ? [{ value: 'overview' as const, label: 'Overview', Icon: LayoutDashboard }] : []),
+    ...(canViewGrowth ? [{ value: 'growth' as const, label: 'Growth', Icon: TrendingUp }] : []),
     ...(canViewRoles ? [{ value: 'roles' as const, label: 'Roles', Icon: ShieldCheck }] : []),
     ...(canViewGroups ? [{ value: 'groups' as const, label: 'Groups', Icon: UsersRound }] : []),
     ...(canViewCatalog ? [{ value: 'catalog' as const, label: 'Catalog', Icon: ListTree }] : []),
@@ -255,6 +260,8 @@ export function AdminConsolePage({ capabilities }: { capabilities: string[] }) {
   const permissions: AdminPermissions = {
     canViewUsage: can('usage.read') || can('support.access'),
     canViewAudit: can('audit.read'),
+    // Growth is open to admin, auditor and billing roles (the server checks the role itself).
+    canViewGrowth: can('audit.read') || can('usage.read'),
     canViewRoles: can('roles.read'),
     canManageRoles: can('roles.manage'),
     canViewGroups: can('groups.read'),
@@ -262,7 +269,7 @@ export function AdminConsolePage({ capabilities }: { capabilities: string[] }) {
     canViewCatalog: can('roles.read'),
     canManageCatalog: can('roles.manage'),
   }
-  const { canViewRoles, canManageRoles, canViewGroups, canManageGroups, canViewCatalog, canManageCatalog } = permissions
+  const { canViewGrowth, canViewRoles, canManageRoles, canViewGroups, canManageGroups, canViewCatalog, canManageCatalog } = permissions
   const { section, setSection, sections } = useAdminSections(permissions)
   const {
     usage,
@@ -276,6 +283,7 @@ export function AdminConsolePage({ capabilities }: { capabilities: string[] }) {
     setError,
     load,
   } = useAdminData(permissions)
+  const [growthReloadKey, setGrowthReloadKey] = useState(0)
 
   useEffect(() => {
     void load().catch((loadError) => setError(message(loadError)))
@@ -283,14 +291,16 @@ export function AdminConsolePage({ capabilities }: { capabilities: string[] }) {
 
   useEffect(() => {
     if (section === 'overview' && (permissions.canViewUsage || permissions.canViewAudit)) return
+    if (section === 'growth' && canViewGrowth) return
     if (section === 'roles' && canViewRoles) return
     if (section === 'groups' && canViewGroups) return
     if (section === 'catalog' && canViewCatalog) return
     if (permissions.canViewUsage || permissions.canViewAudit) setSection('overview')
+    else if (canViewGrowth) setSection('growth')
     else if (canViewRoles) setSection('roles')
     else if (canViewGroups) setSection('groups')
     else if (canViewCatalog) setSection('catalog')
-  }, [canViewCatalog, canViewGroups, canViewRoles, permissions.canViewAudit, permissions.canViewUsage, section, setSection])
+  }, [canViewCatalog, canViewGroups, canViewGrowth, canViewRoles, permissions.canViewAudit, permissions.canViewUsage, section, setSection])
 
   return (
     <AppScreenShell
@@ -308,7 +318,10 @@ export function AdminConsolePage({ capabilities }: { capabilities: string[] }) {
                 type="button"
                 aria-label="Refresh administration"
                 className="inline-flex size-8 items-center justify-center rounded-md text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
-                onClick={() => void load()}
+                onClick={() => {
+                  void load()
+                  setGrowthReloadKey((key) => key + 1)
+                }}
               >
                 <RefreshCw size={15} />
               </button>
@@ -330,6 +343,7 @@ export function AdminConsolePage({ capabilities }: { capabilities: string[] }) {
           <p className='mb-5 text-sm text-red-600 dark:text-red-400'>{error}</p>
         ) : null}
 
+        {section === 'growth' && canViewGrowth ? <GrowthPanel reloadKey={growthReloadKey} /> : null}
         {section === 'roles' && canViewRoles ? (
           <AuthorizationAdminPanel
             canManage={canManageRoles}

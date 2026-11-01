@@ -75,12 +75,26 @@ needs HTTPS: `PORT=3100 npx next dev --experimental-https` inside
 - `src/server/operator.ts` `resolveOperator()` is the single gate (session →
   allowlist → principal row); every API route wraps `adminRoute()` in
   `src/server/guard.ts` which maps it to 401/403 and re-mints the idle cookie.
-- `src/features/admin/` holds the ported UI (Overview, Roles, Groups, Catalog)
+- `src/features/admin/` holds the ported UI (Overview, Growth, Roles, Groups, Catalog)
   copied from `src/features/admin/*`; it reads data via
   `src/shared/admin-api.ts` (the same `overlayAppClient.admin*` /
   `adminAuthorization.*` surface, pointed at this app's `/api/v1/admin/*`).
 - `src/app/api/v1/admin/*` are thin route wrappers over the copied services in
   `src/server/admin/*` and `src/server/authorization/*`.
+
+## Growth section
+
+`GET /api/v1/admin/growth` (audit action `administration.growth.read` on denial)
+returns `admin/console:getGrowthSummary`: the last 90 days of
+`growthDailyTotals`, new paid accounts per day from `growthPaidAccounts`, the
+last 12 signup-week cohorts and the top 10 workspaces by spend over 30 days. It
+reads only the nightly growth tables (`convex/platform/growth.ts`), never source
+tables. Roles: `admin`, `auditor`, `billing_admin` (route, Convex and UI agree);
+`support` has no access. The panel (`src/features/admin/growth/`) shows rolling
+seven-day weeks ending on the last counted day, so the newest week is complete.
+Retention rates show only once every member's window has closed. Personal
+workspaces are never shown by name. Never paste real numbers from this panel
+into the repository, PRs or screenshots.
 
 ## Boundary rules (enforced by ESLint)
 

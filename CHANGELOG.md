@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Add a Growth section to the admin console for admin, auditor and billing operators: weekly active users, new users, messages and paid subscriptions against the prior week; weekly trends for what was created, work done and usage; W1/W4 retention by signup week; and the top workspaces by spend. It reads only the nightly growth rollups.
+
 - Add nightly growth rollups in Convex: daily counts of what was created and done, active users, W1/W4 retention cohorts, paid subscriptions, top-ups and billed usage, with a one-time backfill. Each file text change is now recorded per day with every person who made it.
 
 - Switch existing accounts to double sidebar once across all workspaces, while allowing subsequent single-sidebar opt-outs.
