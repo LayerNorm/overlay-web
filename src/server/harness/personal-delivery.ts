@@ -40,7 +40,6 @@ export function buildPersonalHarnessDelivery(
   }))
   const summary = [
     result.snapshot.resultSummary,
-    result.snapshot.workingSummary,
     ...steps.slice().reverse().map(step => step.text),
   ].map(candidate => typeof candidate === 'string' ? sanitize(candidate) : '')
     .find(candidate => candidate.length > 0) ?? ''

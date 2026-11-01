@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Keep internal Harness checkpoint summaries out of final assistant replies. Delivery retains explicit results and actual assistant output instead of presenting continuity notes as a user-facing answer after an interruption.
+
 - Recover confirmed free-route unavailability through durable Harness backoff instead of immediately failing unfinished work. Only typed no-inference outcomes can release matching zero-cost holds; ambiguous inference, quarantined routes, paid/BYOK reservations, and authorization limits remain protected.
 
 - Add Harness-scoped binary Computer publication with immutable artifact identity, create-only scoped upload authority, streamed SHA-256 verification, and atomic Files registration. Local verification uses a binary HTTP surrogate and mocked storage; hosted transfer and live R2 checksum compatibility remain unverified. The complete motion-skill bundle and final video acceptance remain open.
