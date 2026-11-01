@@ -18,6 +18,7 @@ export const CreateNoteRequest = z.object({
 export const UpdateNoteRequest = CreateNoteRequest.partial().extend({
   ...AuthFields,
   noteId: z.string().min(1),
+  byAgent: z.boolean().optional(),
 })
 
 export const DeleteNoteRequest = z.object({

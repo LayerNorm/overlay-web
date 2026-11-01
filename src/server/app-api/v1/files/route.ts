@@ -1,6 +1,6 @@
 import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
-import type { AppApiRouteContext } from '@/server/app-api/bff-context'
+import { isAutomatedCaller, type AppApiRouteContext } from '@/server/app-api/bff-context'
 import { fileErrorResponse, fileService } from '@/server/files/http'
 import { parseResourceView } from '@/shared/workspaces/resource-scope'
 
@@ -71,7 +71,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
     const result = await fileService.updateFile({
       userId: auth.userId,
       workspaceId: context.workspace.workspace.id,
-      body: body as Record<string, unknown>,
+      body: { ...(body as Record<string, unknown>), ...(isAutomatedCaller(auth) ? { byAgent: true } : {}) },
     })
     return NextResponse.json(result)
   } catch (error) {

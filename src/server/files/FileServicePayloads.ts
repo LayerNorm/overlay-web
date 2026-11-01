@@ -182,6 +182,7 @@ export function buildUpdateFileArgs(
   if (name !== undefined) updateArgs.name = name
   if (parentId !== undefined) updateArgs.parentId = parentId || null
   if (typeof body.expectedUpdatedAt === 'number') updateArgs.expectedUpdatedAt = body.expectedUpdatedAt
+  if (body.byAgent === true) updateArgs.byAgent = true
   const nextContent = textContent ?? content
   if (typeof nextContent === 'string') {
     updateArgs.content = nextContent

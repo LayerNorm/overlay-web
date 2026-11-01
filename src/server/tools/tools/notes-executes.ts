@@ -63,7 +63,7 @@ async function writeNote(
 ): Promise<WriteResult> {
   const res = await callInternalApi(
     NOTES_PATH,
-    { ...body, ...toolAuthBody(options) },
+    { ...body, byAgent: true, ...toolAuthBody(options) },
     options.accessToken,
     options.baseUrl,
     { method: 'PATCH', forwardCookie: options.forwardCookie },

@@ -1127,9 +1127,11 @@ export const update = mutation({
     outputCompletedAt: v.optional(v.number()),
     expiresAt: v.optional(v.number()),
     expectedUpdatedAt: v.optional(v.number()),
+    /** An agent or outside app made the change: counted as an edit, credited to no person. */
+    byAgent: v.optional(v.boolean()),
   },
   returns: v.null(),
-  handler: async (ctx, { userId: callerId, workspaceId, accessToken, serverSecret, fileId, ...updates }) => {
+  handler: async (ctx, { userId: callerId, workspaceId, accessToken, serverSecret, fileId, byAgent, ...updates }) => {
     await authorizeUserAccess({ userId: callerId, accessToken, serverSecret })
     const existing = await ctx.db.get(fileId)
     if (!existing || existing.deletedAt || (workspaceId !== undefined && existing.workspaceId !== workspaceId) || !(await scopeContextLoader(ctx, callerId).canEdit(existing))) throw new Error('Unauthorized')
@@ -1215,7 +1217,7 @@ export const update = mutation({
         ? updates.contentHash !== existing.contentHash
         : nextText !== existingText
       if (kind !== 'output' && textChanged) {
-        await recordFileEdit(ctx, fileId, callerId, patch.updatedAt as number)
+        await recordFileEdit(ctx, fileId, byAgent ? undefined : callerId, patch.updatedAt as number)
       }
       // Legacy rows can still carry textContent, which readers prefer over
       // content. Remove it when writing canonical text so it cannot mask a save.

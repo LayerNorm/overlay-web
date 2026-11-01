@@ -46,6 +46,8 @@ export interface UpdateNoteRequest {
   content?: string
   tags?: string[]
   expectedUpdatedAt?: number
+  /** An agent made the change, so it earns no person activity credit. */
+  byAgent?: boolean
   accessToken?: string
   userId?: string
   workspaceId?: string

@@ -228,6 +228,7 @@ export async function executeWriteFile(
       const res = await send(options, 'PATCH', {
         fileId: input.fileId.trim(),
         textContent: input.content,
+        byAgent: true,
         ...(input.name?.trim() ? { name: input.name.trim() } : {}),
         ...(expectedUpdatedAt !== undefined ? { expectedUpdatedAt } : {}),
       })

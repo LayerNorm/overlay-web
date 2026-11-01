@@ -60,6 +60,7 @@ export interface NoteRepository {
     content?: string
     tags?: string[]
     expectedUpdatedAt?: number
+    byAgent?: boolean
     workspaceId?: string
   }): Promise<NoteRecord | null>
   deleteNote(args: {
@@ -173,6 +174,7 @@ export class NoteService {
       content: args.content === undefined ? undefined : toCanonicalNoteMarkdown(args.content),
       tags: args.tags,
       expectedUpdatedAt: args.expectedUpdatedAt,
+      ...(args.byAgent ? { byAgent: true } : {}),
       ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
     })
     if (!note) {

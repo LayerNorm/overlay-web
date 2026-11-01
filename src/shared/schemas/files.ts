@@ -28,6 +28,7 @@ export const CreateFileRequest = z.object({
 export const UpdateFileRequest = CreateFileRequest.partial().extend({
   ...AuthFields,
   fileId: z.string().min(1),
+  byAgent: z.boolean().optional(),
 })
 
 export const DeleteFileRequest = z.object({

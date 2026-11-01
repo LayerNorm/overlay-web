@@ -109,6 +109,7 @@ export class ConvexNoteRepository implements NoteRepository {
     content?: string
     tags?: string[]
     expectedUpdatedAt?: number
+    byAgent?: boolean
     workspaceId?: string
   }): Promise<NoteRecord | null> {
     const existing = await this.getNote({
@@ -131,6 +132,7 @@ export class ConvexNoteRepository implements NoteRepository {
         ...(args.expectedUpdatedAt !== undefined
           ? { expectedUpdatedAt: args.expectedUpdatedAt }
           : {}),
+        ...(args.byAgent ? { byAgent: true } : {}),
         ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
       }, { throwOnError: true })
     } catch (error) {
