@@ -7,7 +7,8 @@ let capture,
   audio,
   retryTimer,
   frame,
-  phase = 'idle'
+  phase = 'idle',
+  microphoneNotice = ''
 const status = document.getElementById('status')
 const notice = document.getElementById('notice')
 const meter = document.getElementById('meter')
@@ -111,17 +112,21 @@ window.recorder.onStart((model, take, deviceId) => {
   recordingEpoch = take
   const started = epoch,
     began = performance.now()
+  microphoneNotice = ''
   state('opening', 'Opening mic…')
   frame = requestAnimationFrame(draw)
   capture = captureAudio({
     deviceId,
     onReady: () => {
       if (started !== epoch || phase !== 'opening') return
-      state('listening', 'Listening…')
+      state('listening', 'Listening…', microphoneNotice)
       window.recorder.ready(take, performance.now() - began)
     },
     onFallback: (message) => {
-      if (started === epoch) notice.textContent = message
+      if (started === epoch) {
+        microphoneNotice = message
+        notice.textContent = message
+      }
     },
     onError: (error) => {
       if (started === epoch) fail(error)

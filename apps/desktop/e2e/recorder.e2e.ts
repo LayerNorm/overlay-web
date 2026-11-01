@@ -85,12 +85,19 @@ test('the native HUD captures audio and delivers the transcription without a pre
       })
     })
     await page.evaluate(() =>
+      window.overlayDesktop.call('transcription.configure', {
+        model: 'cloud',
+        inputDeviceId: 'missing-qa-microphone'
+      })
+    )
+    await page.evaluate(() =>
       window.overlayDesktop.call('transcription.start', { target: 'system', model: 'cloud' })
     )
     // Native media capture must actually be live before stopping it.
     await expect
       .poll(() => hud.evaluate(() => document.querySelector('#status')?.textContent))
       .toBe('Listening…')
+    await expect(hud.locator('#notice')).toHaveText('Using the default microphone')
     expect(pendingAuth.length).toBeGreaterThan(0)
     const firstAudioMs = (
       await page.evaluate(() => window.overlayDesktop.call('transcription.status', undefined))
