@@ -141,6 +141,7 @@ export function DesktopDictationSettings({
 export function useLiveDictationStatus(
   desktop: ReturnType<typeof useDesktopBridge>,
   setTranscription: Dispatch<SetStateAction<TranscriptionStatus | null>>,
+  setDevices: Dispatch<SetStateAction<{ id: string; label: string }[]>>,
 ) {
   useEffect(() => {
     if (!desktop?.info.capabilities.includes("transcription")) return;
@@ -154,7 +155,16 @@ export function useLiveDictationStatus(
           "transcription.status",
           undefined,
         );
-        if (active) setTranscription(status);
+        if (active) {
+          setTranscription(status);
+          if (status.inputDeviceId !== undefined) {
+            const devices = await desktop.bridge.call(
+              "transcription.listDevices",
+              undefined,
+            );
+            if (active) setDevices(devices);
+          }
+        }
       } catch {
         /* A closing native window needs no settings error. */
       } finally {
@@ -168,5 +178,5 @@ export function useLiveDictationStatus(
       clearInterval(timer);
       window.removeEventListener("focus", read);
     };
-  }, [desktop, setTranscription]);
+  }, [desktop, setTranscription, setDevices]);
 }

@@ -4,7 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
-- Add desktop dictation microphone selection and live capture status, alongside native PCM capture without a network admission wait, a compact audio-reactive pill, cancellation and temporary retry/copy recovery.
+- Add desktop dictation microphone selection with live device refresh and capture status, alongside native PCM capture without a network admission wait, a compact audio-reactive pill, cancellation and temporary retry/copy recovery.
 
 - Switch existing accounts to double sidebar once across all workspaces, while allowing subsequent single-sidebar opt-outs.
 

@@ -51,7 +51,11 @@ the retained focus-yield helper. Transparent corners and display-change clamping
 are native window behavior; no full-screen renderer mask is needed.
 
 Settings → Desktop exposes model downloads, dictation preferences, recorded key combinations,
-panels, Agent Host controls and updates. Composer controls use native local/cloud
+panels, Agent Host controls and updates. Visible dictation settings refresh device
+choices with capture status and on focus, so connected inputs and disconnected
+preferences update without reopening settings. Shared audio-context cleanup is
+owned by the current take; cancellation settles pending flushes and stale work
+cannot suspend a newer recording. Composer controls use native local/cloud
 dictation and screenshot attachments. Agent enrollment starts the local host from
 the existing Agents connection flow. Notifications use the existing activity feed;
 desktop keeps its subscription active while hidden and applies the native badge.

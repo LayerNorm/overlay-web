@@ -107,7 +107,7 @@ export function DesktopSettings() {
       offUpdate?.();
     };
   }, [desktop, refresh]);
-  useLiveDictationStatus(desktop, setTranscription);
+  useLiveDictationStatus(desktop, setTranscription, setDevices);
   const run = async (action: () => Promise<unknown>) => {
     setBusy(true);
     setError("");
