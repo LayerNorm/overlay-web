@@ -538,10 +538,16 @@ test('a restored Computer with identical bytes refreshes an expired URL for the 
   const sourcePath = `/tmp/overlay-computer-retry-${randomUUID()}.bin`
   const digest = createHash('sha256').update(bytes).digest('hex')
   const urls: string[] = []
+  const receivedSizes: number[] = []
   let uploaded = 0
-  const server = createServer((_request, response) => {
-    uploaded += 1
-    response.writeHead(uploaded === 1 ? 403 : 200).end()
+  const server = createServer((request, response) => {
+    let received = 0
+    request.on('data', (chunk: Buffer) => { received += chunk.length })
+    request.on('end', () => {
+      receivedSizes.push(received)
+      uploaded += 1
+      response.writeHead(uploaded === 1 ? 403 : 200).end()
+    })
   })
   const origin = await listen(server)
   await writeFile(sourcePath, bytes, { mode: 0o600 })
@@ -617,6 +623,7 @@ test('a restored Computer with identical bytes refreshes an expired URL for the 
       resolveComputer,
     })
     expect(uploaded).toBe(2)
+    expect(receivedSizes).toEqual([bytes.length, bytes.length])
     expect(urls).toHaveLength(2)
     expect(controllerMocks.service.getComputerArtifactUploadUrl).toHaveBeenCalledTimes(2)
     expect(controllerMocks.service.verifyAndCommitComputerArtifact).toHaveBeenCalledTimes(3)
