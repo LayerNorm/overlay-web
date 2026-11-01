@@ -1,6 +1,30 @@
 # Long-running harness reliability and video-delivery implementation plan
 
-Status: Implementation in progress. Application changes are being developed on `codex/long-running-harness`; no acceptance run has passed yet.
+Status: Current iteration accepted by the owner for review and merge. Divyansh reports that the entire launch-video gate passed on PR #362 using his own account. Further implementation is deferred until he merges the PR himself.
+
+## Review handoff and remaining work
+
+The owner reported: "I've tested the entire video launch video gate on the PR using my own account, and it really worked very, very well." This closes the current iteration's video-creation and Overlay Files delivery gate based on owner acceptance, not a new Devin-run test. The report did not include a run URL, file ID, bundle revision or exact tested SHA; no per-assertion trace is invented here. Capturing that provenance for repeatable future tests is follow-up documentation, not a request to repeat or block the accepted run.
+
+Application scope is frozen at `456dc5daae7b6a4a95168d74e4819575686b3156`. That head passed 24 CI checks, with 0 failed, 0 pending and 3 skipped (Paid Gateway Canary, Agent Host macos-14 and Mintlify Deployment). Its trusted Preview `dpl_2SpNEvvqik1Apvu4RtP1KEWZSxbe` was READY at https://pr-362.preview.getoverlay.io on isolated backend `pastel-crane-401`. Review-handoff edits after that head change documentation only. Unverified model-preparation expiry edits were parked outside the PR rather than added after the owner's test.
+
+**Resource admission remains disabled.** The accepted video run does not establish live resource renewal, broader resource authority or multi-day reliability. The following is the consolidated post-merge backlog, not additional feature work to append before this review:
+
+1. [ ] **Deadline races and finalization.** Finish typed expiry handling during model preparation and immediately before provider dispatch, including atomic dispatch binding and confirmed release of unused provider reservations. Preserve bound/unknown holds and completed tools. Verify that outer workflow finalization cannot convert legitimate resource/input/approval waits into failed tasks. Revisit the parked preparation draft only after merging and testing against current main.
+2. [ ] **Live resource renewal.** Connect `RunResourceRequest` to actual requests and the grant API; complete live wake-intent consumption/reconciliation. Test same-task resume/reload, buffered human replies, duplicate/stale grants, failed acknowledgements, revoked access and cancellation. Add readiness/version gates before enabling admission; a committed grant is not proof that execution resumed.
+3. [ ] **Renewable execution leases and task ownership.** Separate leases from explicit time/spending authorization, remove the fixed task-lifetime ceiling safely, and add single-owner continuation/reconciliation for orphaned tasks, worker loss, lost launch acknowledgements and deployment rollover. Preserve one root identity and bounded durable history.
+4. [ ] **Broader resource authority.** Implement root/child resource allocations and safe extension of room, automation, surface and organization authority. Keep the current root-only, no-child restrictions until these paths are qualified.
+5. [ ] **Uncertain provider and external effects.** Reconcile outstanding model reservations, quarantined routes and unknown external receipts without inventing zero cost or blindly repeating inference/actions. Complete policy-aware outage recovery and resumable access blockers where recovery is not yet supported.
+6. [ ] **Durable Computer jobs and transfers.** Add tracked render/job IDs, heartbeat/progress, cancellation and cleanup, replacement-Computer restore/recompute, and durable artifact manifests. Qualify interrupted/expired uploads, lost finalization acknowledgements and storage/quota revocation. Add multipart/larger-file support beyond the first-version `min(configured direct-upload limit, 100 MiB)` ceiling.
+7. [ ] **Operational retirement and delivery.** Inventory and drain executions already active on deployed legacy workers; finish tool-effect authority/receipt reconciliation. Reconcile missing Slack placeholders and uncertain posts without duplicate external writes. Do not reopen deleted legacy runner routes.
+8. [ ] **Truthful cross-surface status and diagnostics.** Complete retry/pause/job progress projection across streaming, persisted reads and web/desktop/mobile; qualify real persisted-error/reconnect precedence rather than only simulated message reads. Add safe recovery/orphan/publication metrics and diagnostic identifiers.
+9. [ ] **Fault injection and long-horizon qualification.** Complete the remaining Section 12 matrix, including worker/deployment replacement, stale ownership, duplicate callbacks, unknown charges, Computer loss, cancellation and partial uploads. Run a real multi-day soak and measure history/storage growth. Retain the owner's accepted video gate and capture its provenance when available; do not claim week-long reliability from this run alone.
+
+Merge/release ownership stays with Divyansh. Production release verification and any required Convex synchronization follow the documented Integration workflow from clean canonical main after matching web is live. Do not merge, enqueue or deploy production from this feature worktree. Resume the backlog only after the owner's merge.
+
+## Historical implementation evidence
+
+The entries below preserve what was verified at each earlier checkpoint. Statements that video acceptance or the complete skill bundle were still missing describe those earlier attempts; the owner acceptance above supersedes that as a blocker for this iteration. Detailed protocol checkboxes remain granular evidence records, not a claim that Devin independently observed each action in the owner's run.
 
 ## Implementation progress
 
@@ -45,8 +69,8 @@ Free-summary unknown-hold correction (local verification complete; reconciliatio
 - [ ] Unified native admission and complete legacy runner retirement.
 - [ ] Durable lifecycle/retry/authorization extensions and truthful status projection.
 - [ ] Computer jobs, skill materialization, and verified binary artifact publication.
-- [ ] Complete skill bundle located and available to the acceptance agent.
-- [ ] One-run video creation and Overlay Files delivery acceptance.
+- [ ] Archive the exact skill bundle revision and run/file provenance used for the owner-accepted video test; no longer a blocker to this iteration's merge.
+- [x] One-run video creation and Overlay Files delivery acceptance, reported by Divyansh from his own account. See the review handoff above for evidence attribution.
 - [ ] Multi-day/deployment qualification and final release gates.
 
 Terminal free-receipt safety correction (local verification complete; reconciliation/hosted/final acceptance open): the router can forward terminal output with an unsafe or missing cost verdict, but Harness usage capture previously discarded that verdict and catalog pricing treated the free model ID as zero cost. Usage capture now carries only the trusted router's explicit `safe: true`, numeric-zero verdict, and settlement requires that evidence for the matching free-model dispatch. Unknown or contradictory outcomes fail closed before billing or receipt recording; catalog pricing and Gateway lookup cannot replace the missing evidence. Paid and BYOK paths remain separate. The focused verified/unconfirmed/free-router-marker filter passed 7 tests (22 skipped); the combined model-usage/settlement/personal-ports/recovery suite passed 61 tests; targeted ESLint, direct TypeScript, web-complexity (46 complex functions), and `git diff --check` passed. This prevents another unsafe hold release but does not reconcile an already ambiguous provider outcome, implement full reconciliation, or prove the earlier hosted failure's precise cause. Hosted behavior and final video/File acceptance remain open.
@@ -519,6 +543,8 @@ Verify a binary MP4 larger than the text-read truncation threshold, interrupted 
 
 ## 11. Mandatory video acceptance protocol
 
+Owner acceptance: Divyansh reports that this entire gate passed on the PR using his account. This iteration accepts that report. The unchecked detailed items below remain an unaudited per-assertion protocol for repeatable future qualification, not a request to rerun the accepted video before merge.
+
 Run through the actual Overlay interface and native harness in an isolated current-head preview with its own backend and authorized Computer. Use a real permitted model and real storage. A scripted fake tool/model test is not the product exit gate.
 
 ### A. Preflight and request
@@ -678,8 +704,8 @@ Fix adjacent harness defects needed for this task without requiring a separate s
 - [ ] Worker ownership and continuations survive restarts without duplicate effects.
 - [ ] Required skill assets and execution/media tools are available and discoverable.
 - [ ] Computer outputs can be published to canonical Overlay Files through a secure, binary-safe, retryable path.
-- [ ] An actual skill-compliant video is generated, validated, published, reopened, and played from Overlay Files in one logical run.
-- [ ] Final acceptance has no engineer completing the film/upload or manual “keep going” intervention.
+- [x] An actual skill-compliant video is generated, validated, published, reopened, and played from Overlay Files in one logical run. Accepted based on the owner's report that the entire video gate passed, not an independently inspected trace.
+- [x] Final acceptance has no engineer completing the film/upload or manual “keep going” intervention. Included in the owner's acceptance of the entire gate; no separate trace was supplied.
 - [ ] Multi-day/rollover tests support the long-horizon claim; remaining gaps are explicitly documented.
 - [ ] Preview evidence, focused tests, final gates, rollback behavior, and release documentation are complete.
 
