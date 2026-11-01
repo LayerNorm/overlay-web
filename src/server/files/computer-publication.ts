@@ -186,7 +186,7 @@ const FAILURE_DEFINITIONS: Record<string, FailureDefinition> = {
     retryable: false,
   },
   COMPUTER_UNAVAILABLE: {
-    message: 'No Computer is available. Enable or bind a Computer for this agent.',
+    message: 'Computer access is unavailable. Check that a Computer is enabled, bound, and accessible.',
     retryable: false,
   },
   helper_error: {
@@ -227,7 +227,7 @@ function extractFailureCode(error: unknown): string | undefined {
 export function safeFailure(error: unknown) {
   const code = extractFailureCode(error)
   const definition = code ? FAILURE_DEFINITIONS[code] : undefined
-  const retryable = definition?.retryable ?? false
+  const retryable = definition?.retryable ?? true
   const message = definition?.message ?? 'Artifact publication failed for an unknown reason.'
   return {
     success: false as const,

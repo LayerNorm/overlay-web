@@ -262,14 +262,14 @@ test('normalizes only allowlisted failure identifiers and keeps unknown errors o
     [new Error('COMPUTER_UNAVAILABLE: internal details'), 'COMPUTER_UNAVAILABLE', false],
     [{ payload: { error: 'File type not allowed: application/x-test' } }, 'FILE_MIME_NOT_ALLOWED', false],
     [{ payload: { error: 'File is too large for direct upload. 100MiB' } }, 'ARTIFACT_SIZE_LIMIT_EXCEEDED', false],
-    [new Error('provider failed at https://signed.example/token'), 'ARTIFACT_PUBLICATION_UNKNOWN', false],
+    [new Error('provider failed at https://signed.example/token'), 'ARTIFACT_PUBLICATION_UNKNOWN', true],
   ] as const
   for (const [error, code, retryable] of cases) {
     const result = safeFailure(error)
     expect(result.error).toBe(code)
     expect(result.retryable).toBe(retryable)
     expect(JSON.stringify(result)).not.toContain('https://')
-    if (code === 'COMPUTER_UNAVAILABLE') expect(result.message).toContain('Enable or bind a Computer')
+    if (code === 'COMPUTER_UNAVAILABLE') expect(result.message).toContain('Computer access is unavailable')
   }
 })
 
