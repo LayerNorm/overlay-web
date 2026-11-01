@@ -41,3 +41,13 @@ test('sign-out outside the shell checks the capability and awaits native cleanup
     else Reflect.deleteProperty(globalThis, 'window')
   }
 })
+
+
+test('microphone preferences are additive and bounded', () => {
+  const schema = methodSchemas['transcription.configure']
+  assert.equal(schema.safeParse({ model: 'cloud' }).success, true)
+  assert.equal(schema.safeParse({ model: 'cloud', inputDeviceId: 'auto' }).success, true)
+  for (const inputDeviceId of ['', 'x'.repeat(513), 42]) {
+    assert.equal(schema.safeParse({ model: 'cloud', inputDeviceId }).success, false)
+  }
+})
