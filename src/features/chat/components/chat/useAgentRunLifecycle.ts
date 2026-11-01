@@ -12,7 +12,6 @@ import {
 import type { AgentRunResource } from '@overlay/api-client'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { ACTIVE_AGENT_RUN_STATUSES } from '@/shared/agents/agent-run'
-import { trackAgentRunRecovery } from '@/shared/observability/client-metrics'
 import { useQuery } from '@/components/providers/convex-hooks'
 import { api } from '../../../../../convex/_generated/api'
 import type { Id } from '../../../../../convex/_generated/dataModel'
@@ -174,21 +173,6 @@ export function useAgentRunLifecycle({
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setTerminalSyncUntil(Date.now() + TERMINAL_SYNC_GRACE_MS)
       setTerminalSyncConversationId(conversationId)
-      const prevRun = currentRun
-      if (prevRun) {
-        const disconnected = prevRun.metrics?.browserDisconnectedAt !== undefined
-        const reconnectedAt = prevRun.metrics?.browserReconnectedAt
-        const disconnectDuration = disconnected && reconnectedAt && reconnectedAt >= (prevRun.metrics?.browserDisconnectedAt ?? 0)
-          ? reconnectedAt - (prevRun.metrics?.browserDisconnectedAt ?? 0)
-          : undefined
-        trackAgentRunRecovery({
-          runId: prevRun.id,
-          disconnected,
-          disconnectDurationMs: disconnectDuration,
-          completedAfterReconnect:
-            disconnected && nextRun?.status === 'completed',
-        })
-      }
     }
     const nextSnapshot = { conversationId, run: nextRun }
     snapshotRef.current = nextSnapshot
@@ -237,21 +221,6 @@ export function useAgentRunLifecycle({
       if (wasActive && !isActive) {
         setTerminalSyncUntil(Date.now() + TERMINAL_SYNC_GRACE_MS)
         setTerminalSyncConversationId(conversationId)
-        const prevRun = currentRun
-        if (prevRun) {
-          const disconnected = prevRun.metrics?.browserDisconnectedAt !== undefined
-          const reconnectedAt = prevRun.metrics?.browserReconnectedAt
-          const disconnectDuration = disconnected && reconnectedAt && reconnectedAt >= (prevRun.metrics?.browserDisconnectedAt ?? 0)
-            ? reconnectedAt - (prevRun.metrics?.browserDisconnectedAt ?? 0)
-            : undefined
-          trackAgentRunRecovery({
-            runId: prevRun.id,
-            disconnected,
-            disconnectDurationMs: disconnectDuration,
-            completedAfterReconnect:
-              disconnected && next.run?.status === 'completed',
-          })
-        }
       }
       const nextSnapshot = { conversationId, run: next.run }
       snapshotRef.current = nextSnapshot

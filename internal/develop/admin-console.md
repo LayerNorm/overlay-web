@@ -93,7 +93,15 @@ tables. Roles: `admin`, `auditor`, `billing_admin` (route, Convex and UI agree);
 `support` has no access. The panel (`src/features/admin/growth/`) shows rolling
 seven-day weeks ending on the last counted day, so the newest week is complete.
 Retention rates show only once every member's window has closed. Personal
-workspaces are never shown by name. Never paste real numbers from this panel
+workspaces are never shown by name.
+
+The nightly job is cron `growth daily totals` (00:20 UTC); see the comments in
+`convex/platform/growth.ts` for sources, filters and the recount window. A new
+deployment counts only yesterday, so after the first production deploy run the
+backfill once against the selected deployment, following `convex-workflow.md`:
+`npx convex run platform/growth:startBackfill '{}'`. File edits can't be
+backfilled and start from the deploy date. Growth numbers come only from these
+rollups; PostHog keeps pageviews, identify and the `user.signed_up` event. Never paste real numbers from this panel
 into the repository, PRs or screenshots.
 
 ## Boundary rules (enforced by ESLint)

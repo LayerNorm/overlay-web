@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useMemo, useRef, useState, type ReactNode } from 'react'
 import { useHotkeys } from 'react-hotkeys-hook'
 import { ListChecks, Plus } from 'lucide-react'
 import type { WorkItem } from '@overlay/app-core'
@@ -15,7 +15,6 @@ import { toWorkDate } from '@/shared/work/dates'
 import { countOpen, filterWork } from '@/shared/work/query'
 import { WORK_LIMITS } from '@/shared/work/status'
 import { WORK_VIEW_LABELS, type WorkView } from '@/shared/work/views'
-import { trackWork } from '../lib/work-analytics'
 import { useWorkRoute } from '../lib/use-work-route'
 import { useWorkUrlState } from '../lib/use-work-url-state'
 import { useWorkData, WorkDataProvider } from './WorkDataProvider'
@@ -117,7 +116,6 @@ function WorkScreen() {
   const quickAdd = useRef<WorkQuickAddHandle>(null)
   const today = useMemo(() => toWorkDate(new Date()), [])
 
-  useEffect(() => { trackWork('work_view_opened', { view, scope }) }, [scope, view])
   // C starts a new task from anywhere on the page (typing in a field is left alone).
   useHotkeys(requireShortcutHotkey('work.new'), () => quickAdd.current?.focus(), { preventDefault: true })
 

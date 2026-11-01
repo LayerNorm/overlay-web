@@ -8,7 +8,6 @@ import {
   type RefObject,
   type SetStateAction,
 } from 'react'
-import posthog from 'posthog-js'
 import type { UIMessage } from '@/shared/chat/ai-ui-message'
 import type { MentionItem } from '@/shared/knowledge/mention-types'
 import type { ChatToolRequestId } from '@/shared/chat/tool-requests'
@@ -376,13 +375,6 @@ export function useChatSendController({
       }))
       return
     }
-
-    posthog.capture('chat_message_sent', {
-      mode: 'act',
-      generation_type: effectiveGenType,
-      has_attachments: snapshot.attachedImagesSnapshot.length > 0 || snapshot.pendingChatDocumentsSnapshot.length > 0,
-      is_first_message: isFirstMessage,
-    })
 
     beginTtftClientTurn({
       model: snapshot.selectedActModelSnapshot,

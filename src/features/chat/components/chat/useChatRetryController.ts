@@ -4,7 +4,6 @@ import {
   useCallback,
   type MutableRefObject,
 } from 'react'
-import posthog from 'posthog-js'
 import type { UIMessage } from '@/shared/chat/ai-ui-message'
 import { normalizeChatModelSelection } from '@/shared/chat/chat-model-prefs'
 import {
@@ -68,11 +67,6 @@ export function useChatRetryController({
       const turnId = getUserTurnId(userMsg)
       if (!turnId) return
       if (!isActExch) return
-
-      posthog.capture('chat_response_retry_clicked', {
-        exchange_index: exchIdx,
-        mode: 'act',
-      })
 
       const runtime = ensureConversationRuntime(chatId)
       shouldScrollRef.current = true

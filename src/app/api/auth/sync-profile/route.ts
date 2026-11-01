@@ -3,7 +3,6 @@ import { NextResponse } from 'next/server'
 import { unstable_rethrow } from 'next/navigation'
 import { getOverlaySession } from '@/server/auth/session'
 import { getOverlayServerContext } from '@/server/bootstrap'
-import { captureProductEvent } from '@/server/observability/posthog-server'
 import { contextForRequest, withObservabilityContext } from '@/server/observability/context'
 
 export async function POST(request: Request) {
@@ -25,14 +24,6 @@ export async function POST(request: Request) {
           { error: 'Failed to sync profile' },
           { status: 502 },
         )
-      }
-
-      if (!result.isNewUser) {
-        captureProductEvent({
-          name: 'auth.session.signed_in',
-          properties: {},
-          userId: result.userId,
-        })
       }
 
       return NextResponse.json({

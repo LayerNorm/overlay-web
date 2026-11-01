@@ -4,7 +4,6 @@ import { notifyDesktopSignedOut } from '@overlay/desktop-bridge'
 
 import { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef, type ReactNode } from 'react'
 import { KNOWLEDGE_RECONCILE_EVENT } from '@overlay/app-core'
-import { trackSessionRefresh } from '@/shared/observability/client-metrics'
 import { requestSessionState, type BrowserAuthUser } from '@/shared/auth/browser-session'
 
 export type AuthUser = BrowserAuthUser
@@ -72,16 +71,9 @@ export function AuthProvider({
   const checkSession = useCallback(async (trigger: 'interval' | 'focus' | 'visibility' | 'manual' = 'manual') => {
     // Skip focus/visibility refreshes if we checked very recently.
     if ((trigger === 'focus' || trigger === 'visibility') && Date.now() - lastCheckAtRef.current < SESSION_MIN_STALE_BEFORE_FOCUS_MS) return
-    const startTime = performance.now()
     lastCheckAtRef.current = Date.now()
     try {
       const result = await requestSessionState()
-      const success = result.status === 'authenticated' || result.status === 'unauthenticated'
-      trackSessionRefresh({
-        trigger,
-        durationMs: Math.round(performance.now() - startTime),
-        success,
-      })
       if (result.status === 'authenticated') {
         hadSession.current = true
         setUser(await applyAccountIdentity(result.user))
@@ -107,12 +99,6 @@ export function AuthProvider({
   const signOut = useCallback(async () => {
     try {
       await notifyDesktopSignedOut()
-      try {
-        const { default: posthog } = await import('posthog-js')
-        posthog.capture('user_signed_out')
-      } catch {
-        // ignore
-      }
       await fetch('/api/auth/sign-out', { method: 'POST' })
       try {
         const { default: posthog } = await import('posthog-js')

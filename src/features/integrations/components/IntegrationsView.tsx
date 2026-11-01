@@ -11,7 +11,6 @@ import {
   useRef,
   useState,
 } from 'react'
-import posthog from 'posthog-js'
 import {
   DEFAULT_CONNECTOR_CATALOG,
   connectorFromIntegrationSummary,
@@ -233,7 +232,6 @@ export default function IntegrationsView({
             return next
           })
           notifyIntegrationsChanged()
-          posthog.capture('integration_disconnected', { integration: integration.providerKey, integration_name: integration.name })
         } else {
           const data = await res.json().catch(() => ({}))
           setConnectError(data.error || 'Failed to disconnect')
@@ -248,7 +246,6 @@ export default function IntegrationsView({
           const redirectUrl = safeHttpUrl(data.redirectUrl)!
           if (oauthTab) oauthTab.location.href = redirectUrl
           else window.open(redirectUrl, '_blank', 'noopener,noreferrer')
-          posthog.capture('integration_connect_initiated', { integration: integration.providerKey, integration_name: integration.name })
         } else {
           oauthTab?.close()
           setConnectError('No connection setup URL was returned')
@@ -275,12 +272,10 @@ export default function IntegrationsView({
       if (redirectUrl) {
         if (oauthTab) oauthTab.location.href = redirectUrl
         else window.open(redirectUrl, '_blank', 'noopener,noreferrer')
-        posthog.capture('integration_connect_initiated', { integration: slug })
       } else if (data.connectionId) {
         oauthTab?.close()
         setConnected((prev) => new Set([...prev, slug]))
         notifyIntegrationsChanged()
-        posthog.capture('integration_connect_initiated', { integration: slug })
       } else {
         oauthTab?.close()
         throw new Error('No connection setup URL returned')
@@ -300,7 +295,6 @@ export default function IntegrationsView({
       return next
     })
     notifyIntegrationsChanged()
-    posthog.capture('integration_disconnected', { integration: slug })
   }, [accountScope])
 
   const connectedRows = useMemo(() => getConnectedConnectorRows(connected, catalogItems), [connected, catalogItems])
