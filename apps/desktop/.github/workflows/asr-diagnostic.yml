@@ -1,6 +1,9 @@
 name: Offline ASR diagnostic
 on:
   workflow_dispatch:
+  push:
+    branches: [codex/instant-dictation]
+    paths: [.github/workflows/asr-diagnostic.yml]
 permissions:
   contents: read
   actions: read
