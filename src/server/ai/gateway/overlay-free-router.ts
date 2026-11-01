@@ -1,5 +1,5 @@
 import 'server-only'
-import { OverlayFreeRouteBusyError } from './overlay-free-router-errors'
+import { OverlayFreeRouteBusyError, OverlayFreeRouteUnavailableError } from './overlay-free-router-errors'
 
 import { createOpenRouter } from '@openrouter/ai-sdk-provider'
 import type {
@@ -75,6 +75,7 @@ function resultAfterGenerateAttempts(
 ): LanguageModelV4GenerateResult {
   if (lastEmpty) return lastEmpty
   if (capacityRejected && !ambiguousAttempt) throw new OverlayFreeRouteBusyError()
+  if (!ambiguousAttempt) throw new OverlayFreeRouteUnavailableError()
   throw lastError
 }
 

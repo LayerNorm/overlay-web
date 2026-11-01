@@ -5,6 +5,13 @@ export class OverlayFreeRouteBusyError extends Error {
   }
 }
 
+export class OverlayFreeRouteUnavailableError extends Error {
+  constructor() {
+    super('overlay_free_no_eligible_route')
+    this.name = 'OverlayFreeRouteUnavailableError'
+  }
+}
+
 export class OverlayFreeRouteInterruptedError extends Error {
   constructor() {
     super('overlay_free_route_interrupted')

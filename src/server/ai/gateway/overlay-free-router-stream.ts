@@ -21,7 +21,7 @@ import {
   type OverlayFreeStreamContext,
 } from './overlay-free-router-contracts'
 import { trustedOverlayFreeOptions } from './overlay-free-request-policy'
-import { OverlayFreeRouteBusyError, OverlayFreeRouteInterruptedError } from './overlay-free-router-errors'
+import { OverlayFreeRouteBusyError, OverlayFreeRouteInterruptedError, OverlayFreeRouteUnavailableError } from './overlay-free-router-errors'
 import { OPENROUTER_GENERATION_COST_MAX_DURATION_MS } from './openrouter-generation-cost'
 
 type AttemptTimers = {
@@ -231,6 +231,7 @@ export async function doOverlayFreeStream({
 
   let current = await safeOpenNext()
   if (!current && capacityRejected && !ambiguousAttempt) throw new OverlayFreeRouteBusyError()
+  if (!current && !ambiguousAttempt) throw new OverlayFreeRouteUnavailableError()
   if (!current) throw new Error('overlay_free_no_eligible_route')
   const initialResponse = current.response
 

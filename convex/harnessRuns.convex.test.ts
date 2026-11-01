@@ -184,7 +184,7 @@ describe('durable harness runs', () => {
     expect(replay.snapshot.latestReceipt).toEqual(receipt)
   })
 
-  test('accepts free route interruptions with a released zero-cost hold and rejects paid or BYOK models', async () => {
+  test.each(['route_interrupted', 'route_unavailable'] as const)('accepts %s with a released zero-cost hold and rejects paid or BYOK models', async rejectionReason => {
     const convex = convexTest(schema, modules)
     const input = admission('route-interruption', await seedConversation(convex))
     await admit(convex, input)
@@ -208,7 +208,7 @@ describe('durable harness runs', () => {
         contextWindow: null,
         costMicros: 0,
         costSource: 'catalog' as const,
-        rejectionReason: 'route_interrupted' as const,
+        rejectionReason,
       }
       if (index > 0) {
         state = (await apply(convex, input, `route-interruption-reserve-${index}`, state.revision, {
@@ -222,9 +222,10 @@ describe('durable harness runs', () => {
         type: 'record_receipt', receipt,
       })).snapshot
       expect(state.modelReservation).toBeUndefined()
-      expect(state.routeInterruptionCount).toBe(index + 1)
+      expect(state.routeInterruptionCount ?? 0).toBe(rejectionReason === 'route_interrupted' ? index + 1 : 0)
+      expect(state.modelRecovery).toMatchObject({ code: rejectionReason, attempt: index + 1 })
     }
-    expect((await get(convex, input.runId))?.routeInterruptionCount).toBe(3)
+    expect((await get(convex, input.runId))?.modelRecovery).toMatchObject({ code: rejectionReason, attempt: 3 })
 
     for (const [index, modelId] of ['fixture/paid', 'byok/connection/model'].entries()) {
       const rejectedConvex = convexTest(schema, modules)
@@ -241,9 +242,9 @@ describe('durable harness runs', () => {
         receipt: {
           id: 'model:0', modelId, provider: 'overlay-free-router',
           inputTokens: 0, outputTokens: 0, reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0,
-          contextWindow: null, costMicros: 0, costSource: 'catalog', rejectionReason: 'route_interrupted',
+          contextWindow: null, costMicros: 0, costSource: 'catalog', rejectionReason,
         },
-      })).rejects.toThrow(/route interruption requires/i)
+      })).rejects.toThrow(/route rejection requires/i)
     }
   })
 

@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Recover confirmed free-route unavailability through durable Harness backoff instead of immediately failing unfinished work. Only typed no-inference outcomes can release matching zero-cost holds; ambiguous inference, quarantined routes, paid/BYOK reservations, and authorization limits remain protected.
+
 - Add Harness-scoped binary Computer publication with immutable artifact identity, create-only scoped upload authority, streamed SHA-256 verification, and atomic Files registration. Local verification uses a binary HTTP surrogate and mocked storage; hosted transfer and live R2 checksum compatibility remain unverified. The complete motion-skill bundle and final video acceptance remain open.
 
 - Correct binary publication to use the configured FileService, authorize the tool caller before registry or Computer access, refresh grants before snapshot/signing/commit, and treat cleanup after commit as best effort. Enforce the first-version 100 MiB ceiling (or the lower configured direct-upload limit), reject mismatched MIME and dangling folder ancestry, and return safe retry guidance. Local regression coverage passes; hosted transfer and the complete skill/video acceptance remain open.

@@ -72,6 +72,23 @@ test('summary recovery has independent durable attempts without resetting respon
   expect(state.usage.costMicros).toBe(4)
 })
 
+test.each(['model:0', 'summary:model:0:0'])('route unavailability survives reload and waits from its durable receipt %s', async id => {
+  const rejection: HarnessReceipt = { ...receipt(id), modelId: 'openrouter/free', provider: 'overlay-free-router',
+    inputTokens: 0, costMicros: 0, responseFailure: undefined, rejectionReason: 'route_unavailable' }
+  const original = { ...initial(), modelReservation: { id, maxCostMicros: 0 } }
+  const state = JSON.parse(JSON.stringify(recordHarnessReceipt(original, rejection, 1_000))) as HarnessSnapshot
+  const recoveryKey = id.startsWith('summary:') ? 'summaryRecovery' : 'modelRecovery'
+  expect(state[recoveryKey]).toEqual({ receiptId: id, modelId: 'openrouter/free', code: 'route_unavailable',
+    attempt: 1, firstFailureAt: 1_000, nextRetryAt: 6_000 })
+  expect(state.modelReservation).toBeUndefined()
+  expect(state.progressRevision).toBe(original.progressRevision)
+  expect(state.usage.costMicros).toBe(0)
+  expect(state.status).toBe('running')
+  mocks.read.mockResolvedValue(state)
+  expect(await waitForHarnessModelRecovery(reference, id)).toBe(true)
+  expect(mocks.sleep).toHaveBeenCalledExactlyOnceWith(new Date(6_000))
+})
+
 test.each(['model:0', 'summary:model:0:0'])('durable retry %s uses the stored time and rechecks ownership and cancellation after waking', async id => {
   const state = recordHarnessReceipt(initial(), receipt(id), 1_000)
   mocks.read.mockResolvedValue(state)

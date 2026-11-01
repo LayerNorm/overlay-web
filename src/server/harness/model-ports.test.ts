@@ -74,14 +74,15 @@ test('legacy interruption snapshots without recovery metadata keep the two-attem
   expect(mocks.wait).not.toHaveBeenCalled()
 })
 
-test('routes persisted recovery attempts beyond the legacy limit through the durable waiter', async () => {
+test.each(['route_interrupted', 'route_unavailable'] as const)('routes persisted %s recovery beyond the legacy limit through the durable waiter', async code => {
   const onFallback = vi.fn()
   const state = {
     ...stateWithInterruptionCount(3),
+    latestReceipt: { ...stateWithInterruptionCount(3).latestReceipt, rejectionReason: code },
     modelRecovery: {
       receiptId: 'model:0',
       modelId: 'openrouter/free',
-      code: 'route_interrupted' as const,
+      code,
       attempt: 3,
       firstFailureAt: 1,
       nextRetryAt: 5_001,
@@ -103,5 +104,28 @@ test('routes persisted recovery attempts beyond the legacy limit through the dur
   expect(await ports.recoverModelFailure('model:0')).toBe(true)
   expect(mocks.recovery).toHaveBeenCalledExactlyOnceWith(reference, 'model:0')
   expect(mocks.wait).not.toHaveBeenCalled()
+  expect(onFallback).not.toHaveBeenCalled()
+})
+
+test('does not route unavailable receipts without a durable retry schedule to a fallback model', async () => {
+  const onFallback = vi.fn()
+  const state = {
+    ...stateWithInterruptionCount(0),
+    latestReceipt: { ...stateWithInterruptionCount(0).latestReceipt, rejectionReason: 'route_unavailable' as const },
+  }
+  mocks.read.mockResolvedValue(state)
+  const ports = createHarnessModelPorts({
+    reference,
+    modelId: 'openrouter/free',
+    prepare: async () => ({
+      model: {} as HarnessModelReference,
+      options: { prompt: [] },
+      contextWindow: null,
+      estimatedCostMicros: 0,
+    }),
+  }, { candidateIds: ['openrouter/free', 'fixture/fallback'], onFallback })
+
+  expect(await ports.recoverModelFailure('model:0')).toBe(false)
+  expect(mocks.recovery).not.toHaveBeenCalled()
   expect(onFallback).not.toHaveBeenCalled()
 })

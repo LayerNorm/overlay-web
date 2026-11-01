@@ -156,6 +156,7 @@ const receiptValidator = v.object({
     v.literal('model_unavailable'),
     v.literal('route_capacity'),
     v.literal('route_interrupted'),
+    v.literal('route_unavailable'),
     v.literal('summary_failed'),
   )),
   responseFailure: v.optional(v.union(v.literal('empty_response'), v.literal('provider_error'), v.literal('provider_other'))),
@@ -1241,7 +1242,7 @@ async function applyReducer(
       }
     }
     case 'record_receipt':
-      if (operation.receipt.rejectionReason === 'route_interrupted') {
+      if (operation.receipt.rejectionReason === 'route_interrupted' || operation.receipt.rejectionReason === 'route_unavailable') {
         const reservation = current.modelReservation
         if ((operation.receipt.modelId !== OPENROUTER_FREE_MODEL_ID && operation.receipt.modelId !== OVERLAY_FREE_MODEL_ID)
           || operation.receipt.provider !== 'overlay-free-router'
@@ -1249,7 +1250,7 @@ async function applyReducer(
           || reservation.maxCostMicros !== 0
           || reservation.dispatch?.modelId !== operation.receipt.modelId
           || reservation.dispatch.billingReservationId !== null) {
-          throw new Error('A route interruption requires a matching zero-cost free-router dispatch without billing.')
+          throw new Error('This route rejection requires a matching zero-cost free-router dispatch without billing.')
         }
       }
       return { snapshot: recordHarnessReceipt(current, operation.receipt, now) }

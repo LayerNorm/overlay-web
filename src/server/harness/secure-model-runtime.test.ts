@@ -1,6 +1,6 @@
 import { beforeEach, expect, test, vi } from 'vitest'
 import { MockLanguageModelV4 } from 'ai/test'
-import { OverlayFreeRouteBusyError, OverlayFreeRouteInterruptedError } from '@/server/ai/gateway/overlay-free-router-errors'
+import { OverlayFreeRouteBusyError, OverlayFreeRouteInterruptedError, OverlayFreeRouteUnavailableError } from '@/server/ai/gateway/overlay-free-router-errors'
 import type { HarnessModelReference } from './secure-model'
 import { secureModelDoGenerate, secureModelDoStream } from './secure-model-runtime'
 
@@ -66,6 +66,23 @@ test.each([reference, nativeReference])('records an async free-route interruptio
   const result = await secureModelDoStream(dispatchReference, { prompt: [] })
   await expect(result.stream.getReader().read()).rejects.toBe(interruption)
   expect(mocks.record).toHaveBeenCalledExactlyOnceWith(dispatchReference, 'route_interrupted')
+})
+
+test.each([
+  [secureModelDoStream, reference], [secureModelDoGenerate, reference],
+  [secureModelDoStream, nativeReference], [secureModelDoGenerate, nativeReference],
+] as const)('only confirmed route unavailability creates a settled retry receipt', async (invoke, dispatchReference) => {
+  let failure: Error = new OverlayFreeRouteUnavailableError()
+  const dispatch = async () => { throw failure }
+  mocks.model.mockResolvedValue(new MockLanguageModelV4({ doStream: dispatch, doGenerate: dispatch }))
+  await expect(invoke(dispatchReference, { prompt: [] })).rejects.toBe(failure)
+  expect(mocks.record).toHaveBeenCalledExactlyOnceWith(dispatchReference, 'route_unavailable')
+  failure = new Error('overlay_free_no_eligible_route')
+  await expect(invoke(dispatchReference, { prompt: [] })).rejects.toBe(failure)
+  expect(mocks.record).toHaveBeenCalledOnce()
+  failure = new OverlayFreeRouteUnavailableError()
+  mocks.record.mockRejectedValueOnce(new Error('receipt storage failed'))
+  await expect(invoke(dispatchReference, { prompt: [] })).rejects.toThrow('receipt storage failed')
 })
 
 test('BYOK stream interruptions do not create Harness rejection receipts', async () => {

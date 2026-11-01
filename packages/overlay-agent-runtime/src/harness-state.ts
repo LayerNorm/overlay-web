@@ -31,7 +31,7 @@ export type HarnessResponseFailure = 'empty_response' | 'provider_error' | 'prov
 export type HarnessModelRecovery = {
   receiptId: string
   modelId: string
-  code: HarnessResponseFailure | 'route_capacity' | 'route_interrupted'
+  code: HarnessResponseFailure | 'route_capacity' | 'route_interrupted' | 'route_unavailable'
   attempt: number
   firstFailureAt: number
   nextRetryAt: number
@@ -53,7 +53,7 @@ export type HarnessReceipt = {
   /** Present only for user-funded inference; null means the provider did not report its charge. */
   externalCostMicros?: number | null
   /** Zero-usage rejection or failure of a zero-cost summary attempt. */
-  rejectionReason?: 'budget' | 'model_unavailable' | 'route_capacity' | 'route_interrupted' | 'summary_failed'
+  rejectionReason?: 'budget' | 'model_unavailable' | 'route_capacity' | 'route_interrupted' | 'route_unavailable' | 'summary_failed'
   /** A settled response can be unusable even when its token usage is known. */
   responseFailure?: HarnessResponseFailure
 }
@@ -380,7 +380,7 @@ function validateResponseFailure(receipt: HarnessReceipt) {
 
 function validateRejection(receipt: HarnessReceipt) {
   if (receipt.rejectionReason !== undefined && (
-    !['budget', 'model_unavailable', 'route_capacity', 'route_interrupted', 'summary_failed'].includes(receipt.rejectionReason)
+    !['budget', 'model_unavailable', 'route_capacity', 'route_interrupted', 'route_unavailable', 'summary_failed'].includes(receipt.rejectionReason)
     || [receipt.inputTokens, receipt.outputTokens, receipt.reasoningTokens, receipt.cacheReadTokens,
       receipt.cacheWriteTokens, receipt.costMicros].some(value => value !== 0)
     || receipt.costSource !== 'catalog' || receipt.externalCostMicros !== undefined
@@ -435,7 +435,7 @@ function addHarnessUsage(target: HarnessUsage, delta: HarnessUsage) {
 
 function nextModelRecovery(previous: HarnessModelRecovery | undefined, receipt: HarnessReceipt, now: number, deadlineAt: number): HarnessModelRecovery | undefined {
   const code = receipt.responseFailure ?? (receipt.rejectionReason === 'route_capacity'
-    || receipt.rejectionReason === 'route_interrupted' ? receipt.rejectionReason : undefined)
+    || receipt.rejectionReason === 'route_interrupted' || receipt.rejectionReason === 'route_unavailable' ? receipt.rejectionReason : undefined)
   if (!code) return receipt.rejectionReason ? previous : undefined
   const attempt = Math.min((previous?.attempt ?? 0) + 1, Number.MAX_SAFE_INTEGER)
   const delay = Math.min(5_000 * 2 ** Math.min(attempt - 1, 6), 300_000)

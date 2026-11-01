@@ -3,7 +3,7 @@ import test from 'node:test'
 import { generateText, stepCountIs, tool } from 'ai'
 import { z } from 'zod/v3'
 import { getGatewayLanguageModel } from './ai-gateway'
-import { OverlayFreeRouteBusyError, OverlayFreeRouteInterruptedError } from './overlay-free-router-errors'
+import { OverlayFreeRouteBusyError, OverlayFreeRouteInterruptedError, OverlayFreeRouteUnavailableError } from './overlay-free-router-errors'
 import { confirmOpenRouterGenerationCost as confirmGenerationCost } from './openrouter-generation-cost'
 import type {
   LanguageModelV4,
@@ -156,6 +156,60 @@ function dependencies(routes: OverlayFreeRoute[], calls: string[], overrides: Pa
       capabilities: JSON.parse(value.capabilitiesJson),
     }),
   }
+}
+
+for (const method of ['doGenerate', 'doStream'] as const) {
+  test(`${method} distinguishes unavailable routes from ambiguous inference and recovers only an eligible route`, async () => {
+    const candidate = route('openrouter', 'openrouter/free', 'openrouter')
+    let eligible: OverlayFreeRoute[] = []
+    let fail = false
+    let requests = 0
+    const calls: string[] = []
+    const invoke = async () => {
+      requests++
+      if (fail) throw new Error('upstream connection closed')
+      return openRouterReceipt()
+    }
+    const provider = {
+      ...model('openrouter', invoke),
+      doStream: async () => {
+        const result = await invoke()
+        return { stream: new ReadableStream<LanguageModelV4StreamPart>({ start(controller) {
+          controller.enqueue({ type: 'text-delta', id: 'text', delta: 'free' })
+          controller.enqueue({ type: 'finish', finishReason: result.finishReason, usage: result.usage,
+            providerMetadata: result.providerMetadata })
+          controller.close()
+        } }) }
+      },
+    }
+    const routed = createOverlayFreeLanguageModel({
+      ...dependencies([candidate], calls, { listEligible: async () => eligible }),
+      providers: { gateway: async () => { throw new Error('unexpected Gateway call') }, openrouter: async () => provider },
+    })
+    await assert.rejects(routed[method](options()), OverlayFreeRouteUnavailableError)
+    assert.equal(requests, 0)
+    assert.deepEqual(calls, [])
+
+    eligible = [candidate]
+    const response = await routed[method](options())
+    if ('stream' in response) {
+      const reader = response.stream.getReader()
+      while (!(await reader.read()).done) { /* Drain the verified provider receipt. */ }
+      reader.releaseLock()
+    }
+    assert.equal(requests, 1)
+    assert.deepEqual(calls, [`settle:${candidate.routeKey}:true`])
+
+    fail = true
+    await assert.rejects(routed[method](options()), error => {
+      assert.ok(error instanceof Error)
+      assert.ok(!(error instanceof OverlayFreeRouteUnavailableError))
+      assert.ok(!(error instanceof OverlayFreeRouteBusyError))
+      return true
+    })
+    assert.equal(requests, 2)
+    assert.equal(calls.at(-1), `settle:${candidate.routeKey}:false`)
+  })
 }
 
 function interruptionSetup(input: {
