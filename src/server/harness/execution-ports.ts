@@ -1,6 +1,7 @@
 import type { HarnessExecutionPorts } from './ports'
 import { admitHarnessRequestUsage } from './request-usage-step'
 import { createHarnessStatePorts } from './state-ports'
+import { waitForHarnessModelResources } from './resource-boundary'
 import type { HarnessExecutionReference } from './state-steps'
 
 export type HarnessSurfacePorts = Pick<HarnessExecutionPorts,
@@ -18,6 +19,7 @@ export function createHarnessExecutionPorts(input: {
     ...input.surface,
     ...state,
     ...input.model,
+    waitForResources: requiredCostMicros => waitForHarnessModelResources(input.reference, requiredCostMicros, state.read),
     claim: async () => {
       if (!await state.claim()) return false
       await input.authorize()

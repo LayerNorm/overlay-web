@@ -4,6 +4,7 @@ import { createHarnessExecutionPorts } from './execution-ports'
 const mocks = vi.hoisted(() => ({ claim: vi.fn(), admit: vi.fn() }))
 vi.mock('./state-ports', () => ({ createHarnessStatePorts: () => ({ claim: mocks.claim }) }))
 vi.mock('./request-usage-step', () => ({ admitHarnessRequestUsage: mocks.admit }))
+vi.mock('./resource-boundary', () => ({ waitForHarnessModelResources: vi.fn() }))
 
 const reference = { actorUserId: 'actor', runId: 'run', workflowRunId: 'workflow' }
 const authorize = vi.fn()

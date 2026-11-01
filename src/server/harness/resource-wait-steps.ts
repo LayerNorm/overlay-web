@@ -1,9 +1,21 @@
 import 'server-only'
 
+import { createHash } from 'node:crypto'
 import { FatalError } from 'workflow'
 import type { HarnessResourcePauseInput, HarnessResourceRequestReference } from '@overlay/agent-runtime/harness-resource'
 import { ConvexHarnessRepository } from './ConvexHarnessRepository'
 import type { HarnessResourceConsumption, HarnessResourcePublication } from './resource-waits'
+
+export async function createHarnessResourceToken(input: {
+  runId: string
+  workflowRunId: string
+  expectedRevision: number
+}): Promise<string> {
+  'use step'
+  return `resource:${createHash('sha256').update(JSON.stringify([
+    input.runId, input.workflowRunId, input.expectedRevision,
+  ])).digest('hex')}`
+}
 
 async function isInactive(repository: ConvexHarnessRepository, reference: HarnessResourceRequestReference): Promise<boolean> {
   const state = await repository.get({ actorUserId: reference.actorUserId, runId: reference.runId })

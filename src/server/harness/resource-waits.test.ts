@@ -54,6 +54,16 @@ test('a conflicting owner cannot publish or consume a resource request', async (
   expect(h.disposed).toHaveBeenCalledOnce()
 })
 
+test('reattaching a pending request registers its hook but never republishes a guessed revision', async () => {
+  const h = harness()
+  h.registration.resolve(null)
+  const reference = { actorUserId: input.actorUserId, runId: input.runId, workflowRunId: input.workflowRunId, token: input.token }
+  expect(await waitForHarnessResources(reference, h)).toBe('consumed')
+  expect(h.publish).not.toHaveBeenCalled()
+  expect(h.consume).toHaveBeenCalledExactlyOnceWith(reference)
+  expect(h.disposed).toHaveBeenCalledOnce()
+})
+
 test('lost notifications use fresh durable polls without queuing multiple hook reads', async () => {
   const h = harness()
   h.registration.resolve(null)

@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest'
 import { start, resumeHook } from 'workflow/api'
 import { waitForHook, waitForSleep } from '@workflow/vitest'
-import { grantResourceFixture, readResourceFixture, resourceWaitFixture } from './resource-wait-fixture'
+import { grantResourceFixture, readResourceFixture, resourceBoundaryFixture, resourceWaitFixture } from './resource-wait-fixture'
 
 test('resource polling survives SDK replay and lost wake delivery without trusting a hook payload', async () => {
   const id = crypto.randomUUID()
@@ -19,4 +19,25 @@ test('resource polling survives SDK replay and lost wake delivery without trusti
   await run.wakeUp({ correlationIds: [timer] })
   expect(await run.returnValue).toBe('consumed')
   expect(await readResourceFixture(id)).toEqual(['completed-step', 'published', 'pending', 'pending', 'consumed'])
+}, 60_000)
+
+test('resource boundary resumes from its retained timer after an authoritative fake grant', async () => {
+  const id = crypto.randomUUID()
+  const run = await start(resourceBoundaryFixture, [{ id }])
+  await waitForHook(run, { token: `resource:${id}` })
+  const timer = await waitForSleep(run)
+  expect(await readResourceFixture(id)).toEqual(['completed-step', 'published', 'pending'])
+
+  await grantResourceFixture(id)
+  await run.wakeUp({ correlationIds: [timer] })
+
+  const state = await run.returnValue
+  expect(state.status).toBe('running')
+  expect(state.runId).toBe(id)
+  expect(state.policy).toMatchObject({ actorUserId: 'fixture', resourcePauseVersion: 1, maxCostMicros: 10 })
+  expect(state.policy.deadlineAt).toBeGreaterThan(Date.now())
+  const events = await readResourceFixture(id)
+  expect(events.filter(event => event === 'completed-step')).toHaveLength(1)
+  expect(events.filter(event => event === 'published')).toHaveLength(1)
+  expect(events.filter(event => event === 'consumed')).toHaveLength(1)
 }, 60_000)

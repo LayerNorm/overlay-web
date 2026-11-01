@@ -125,6 +125,10 @@ async function handleWaitingState(
   ports: HarnessExecutionPorts,
   invocation: number,
 ): Promise<WaitingStateOutcome | null> {
+  if (state.status === 'waiting_for_resources' && state.policy.resourcePauseVersion === 1 && ports.waitForResources) {
+    await ports.waitForResources(0)
+    return { kind: 'restart', messages, invocation, resetStagnation: false }
+  }
   if (state.status === 'waiting_for_children') {
     await ports.waitForChildren(state.children.filter(child => child.status === 'running').map(child => child.id))
     const current = await ports.read()
@@ -289,6 +293,29 @@ function latestCheckpointSummaryText(steps: StepResult<ToolSet>[], toolNames: Re
   return ''
 }
 
+async function authorizeModelBoundary(
+  state: HarnessSnapshot,
+  ports: HarnessExecutionPorts,
+  operationId: string,
+  estimatedCostMicros = 0,
+): Promise<HarnessSnapshot> {
+  if (state.policy.resourcePauseVersion === 1) {
+    if (!ports.waitForResources) throw new Error('This workflow does not support resource waits.')
+    state = await ports.waitForResources(estimatedCostMicros)
+  } else if (state.status === 'running') {
+    try {
+      assertHarnessRunnable(state, Date.now(), estimatedCostMicros)
+    } catch (_error) {
+      await ports.apply(operationId, {
+        type: 'block', blocker: { kind: 'budget', question: 'The authorized time or spending budget is exhausted. Review the partial result before starting more work.' },
+      })
+      throw new HarnessYield()
+    }
+  }
+  if (state.status !== 'running') throw new HarnessYield()
+  return state
+}
+
 // Called inside a surface's workflow, never inside a single durable step.
 // WorkflowAgent owns model/tool iteration; this controller owns task completion.
 export async function runOverlayHarness(input: HarnessExecutionInput, ports: HarnessExecutionPorts): Promise<HarnessExecutionResult> {
@@ -367,16 +394,7 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
         // This boundary includes completed tools, but none of the next call's partial output.
         recoveryMessages = prompt.filter(message => message.role !== 'system')
         recoverySteps = [...settledSteps]
-        let current = await ports.read()
-        if (current.status !== 'running') throw new HarnessYield()
-        try {
-          assertHarnessRunnable(current, Date.now())
-        } catch (_error) {
-          await ports.apply(`budget:${segment}:${modelCall}`, {
-            type: 'block', blocker: { kind: 'budget', question: 'The authorized time or spending budget is exhausted. Review the partial result before starting more work.' },
-          })
-          throw new HarnessYield()
-        }
+        let current = await authorizeModelBoundary(await ports.read(), ports, `budget:${segment}:${modelCall}`)
         const instructionContext = {
           instructions,
           continuation: segment > 0,
@@ -391,17 +409,8 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
           toolNames: Object.keys(tools), toolDefinitions, settings: input.settings ?? {} })
         if (!Number.isSafeInteger(prepared.estimatedCostMicros) || prepared.estimatedCostMicros < 0) throw new Error('Invalid model cost reservation.')
         if (prepared.model && prepared.model.credentialOwnerId !== input.model.credentialOwnerId) throw new Error('Model routing cannot change the credential owner.')
-        current = await ports.read()
-        if (current.status !== 'running') throw new HarnessYield()
+        current = await authorizeModelBoundary(await ports.read(), ports, `budget:${segment}:${modelCall}`, prepared.estimatedCostMicros)
         const complete = harnessCompletionIssues(current).length === 0 && current.plan.length > 0
-        try {
-          assertHarnessRunnable(current, Date.now(), prepared.estimatedCostMicros)
-        } catch (_error) {
-          await ports.apply(`budget:${segment}:${modelCall}`, {
-            type: 'block', blocker: { kind: 'budget', question: 'The authorized time or spending budget is exhausted. Review the partial result before starting more work.' },
-          })
-          throw new HarnessYield()
-        }
         current = await ports.apply(`reserve:${receiptId}`, { type: 'reserve_model', id: receiptId, maxCostMicros: prepared.estimatedCostMicros })
         const needsPlan = current.policy.requiresPlan && !current.plan.length
         observedState = current

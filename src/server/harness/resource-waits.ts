@@ -12,13 +12,15 @@ export type HarnessResourceWaitPorts = {
 // Call only at a settled boundary. A tool cannot wait for its model's receipt:
 // WorkflowAgent settles that receipt after the tool has returned.
 export async function waitForHarnessResources(
-  input: HarnessResourcePauseInput,
+  input: HarnessResourcePauseInput | HarnessResourceRequestReference,
   ports: HarnessResourceWaitPorts,
 ): Promise<'consumed' | 'retry' | 'inactive'> {
   using hook = createHook<unknown>({ token: input.token })
   if (await hook.getConflict()) throw new FatalError('Harness resource wait token is already owned.')
-  const publication = await ports.publish(input)
-  if (publication !== 'paused') return publication
+  if ('expectedRevision' in input) {
+    const publication = await ports.publish(input)
+    if (publication !== 'paused') return publication
+  }
   const reference = {
     actorUserId: input.actorUserId, runId: input.runId,
     workflowRunId: input.workflowRunId, token: input.token,

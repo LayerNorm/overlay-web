@@ -153,6 +153,45 @@ test('runner finalizes a settled answer when its authorization expires after the
   }
 })
 
+test('resource waits gate a quoted response and resume only after previous tool usage has settled', async () => {
+  const f = fixture(false)
+  Object.assign((await f.ports.read()).policy, { resourcePauseVersion: 1, maxDepth: 0, maxParallelChildren: 0, maxCostMicros: 0 })
+  const prepare = f.ports.prepareModel
+  f.ports.prepareModel = async request => ({ ...await prepare(request), estimatedCostMicros: 1 })
+  let spendingGrants = 0
+  let timeGrants = 0
+  const execute = vi.fn(async () => 'Records read.')
+  const provider = model(index => index === 0 ? [call('read', 'read-once')] : 'The work is complete.')
+  f.ports.waitForResources = async cost => {
+    const current = await f.ports.read()
+    expect(current.modelReservation).toBeUndefined()
+    if (current.policy.deadlineAt <= Date.now()) {
+      expect(f.receipts.size).toBe(1)
+      expect(execute).toHaveBeenCalledOnce()
+      expect(current.evidence.some(item => item.id === 'tool:read-once')).toBe(true)
+      current.policy.deadlineAt = Date.now() + 60_000
+      timeGrants++
+    }
+    if (cost > current.policy.maxCostMicros) {
+      expect(provider.doStreamCalls).toHaveLength(0)
+      current.policy.maxCostMicros = cost
+      spendingGrants++
+    }
+    return current
+  }
+  const record = f.ports.recordModelStep
+  f.ports.recordModelStep = async (step, receiptId) => {
+    await record(step, receiptId)
+    if (f.receipts.size === 1) (await f.ports.read()).policy.deadlineAt = 0
+  }
+  const result = await runOverlayHarness({ ...input, tools: { read: tool({ inputSchema: z.object({}), execute }) } }, f.ports)
+  expect(result.snapshot.status).toBe('completed')
+  expect(provider.doStreamCalls).toHaveLength(2)
+  expect(execute).toHaveBeenCalledOnce()
+  expect(spendingGrants).toBe(1)
+  expect(timeGrants).toBe(1)
+})
+
 test('runner stores sanitized final text and ignores a trailing textual tool call', async () => {
   const f = fixture(false)
   const protocol = '<tool_call>harness_update_step<arg_key>id</arg_key><arg_value>step1</arg_value><arg_key>status</arg_key><arg_value>done</arg_value></tool_call>'

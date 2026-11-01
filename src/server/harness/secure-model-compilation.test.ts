@@ -16,6 +16,7 @@ test.each([
   ['native-child-steps.ts', ['admitNativeHarnessChild']],
   ['native-delivery-steps.ts', ['writeNativeHarnessFallback', 'attachNativeHarnessDelivery',
     'projectNativeHarnessWait', 'finishNativeHarnessDelivery']],
+  ['resource-wait-steps.ts', ['createHarnessResourceToken', 'publishHarnessResourceWait', 'consumeHarnessResourceWait']],
 ] as const)('compiled %s exposes only durable server steps', async (filename, exports) => {
   const path = fileURLToPath(new URL(`./${filename}`, import.meta.url))
   const source = await readFile(path, 'utf8')

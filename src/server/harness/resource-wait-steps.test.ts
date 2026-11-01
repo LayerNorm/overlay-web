@@ -1,6 +1,6 @@
 import { beforeEach, expect, test, vi } from 'vitest'
 import { createHarnessSnapshot, type HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
-import { consumeHarnessResourceWait, publishHarnessResourceWait } from './resource-wait-steps'
+import { consumeHarnessResourceWait, createHarnessResourceToken, publishHarnessResourceWait } from './resource-wait-steps'
 
 const mocks = vi.hoisted(() => ({ get: vi.fn(), pause: vi.fn(), consume: vi.fn() }))
 vi.mock('server-only', () => ({}))
@@ -13,6 +13,16 @@ const input = {
   expectedRevision: 4, reason: 'time' as const, requiredCostMicros: 0,
 }
 let state: HarnessSnapshot
+
+test('resource tokens are deterministic, bounded and bound to run, workflow and revision', async () => {
+  const identity = { runId: 'r'.repeat(256), workflowRunId: 'w'.repeat(256), expectedRevision: 1 }
+  const token = await createHarnessResourceToken(identity)
+  expect(await createHarnessResourceToken(identity)).toBe(token)
+  expect(token.length).toBeLessThanOrEqual(256)
+  for (const patch of [{ runId: 'other' }, { workflowRunId: 'other' }, { expectedRevision: 2 }]) {
+    expect(await createHarnessResourceToken({ ...identity, ...patch })).not.toBe(token)
+  }
+})
 
 beforeEach(() => {
   vi.resetAllMocks()

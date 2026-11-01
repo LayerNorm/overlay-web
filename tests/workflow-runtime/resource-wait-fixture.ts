@@ -1,5 +1,7 @@
 import type { HarnessResourceWaitPorts } from '../../src/server/harness/resource-waits'
 import { waitForHarnessResources } from '../../src/server/harness/resource-waits'
+import { createHarnessSnapshot, type HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
+import { waitForHarnessModelResources } from '../../src/server/harness/resource-boundary'
 
 async function directory(id: string): Promise<string> {
   const { tmpdir } = await import('node:os')
@@ -28,6 +30,26 @@ async function completedStep(id: string): Promise<void> {
   const { mkdir } = await import('node:fs/promises')
   await mkdir(await directory(id), { recursive: true })
   await appendEvent(id, 'completed-step')
+}
+
+async function readResourceBoundaryFixture(id: string): Promise<HarnessSnapshot> {
+  'use step'
+  const events = await readResourceFixture(id)
+  const now = Date.now()
+  const state = createHarnessSnapshot({
+    runId: id,
+    goal: 'Wait for model resources',
+    constraints: [],
+    policy: {
+      actorUserId: 'fixture', allowedToolIds: [], requiresPlan: false, maxCostMicros: 10,
+      deadlineAt: now + 60_000, maxDepth: 0, maxParallelChildren: 0, resourcePauseVersion: 1,
+    },
+  }, now)
+  return {
+    ...state,
+    workflowRunId: 'fixture',
+    policy: { ...state.policy, deadlineAt: events.includes('consumed') ? now + 60_000 : 0 },
+  }
 }
 
 async function publishResourceFixture(id: string): ReturnType<HarnessResourceWaitPorts['publish']> {
@@ -59,4 +81,19 @@ export async function resourceWaitFixture(input: { id: string }) {
     publish: () => publishResourceFixture(input.id),
     consume: () => consumeResourceFixture(input.id),
   })
+}
+
+export async function resourceBoundaryFixture(input: { id: string }) {
+  'use workflow'
+  await completedStep(input.id)
+  return waitForHarnessModelResources(
+    { actorUserId: 'fixture', runId: input.id, workflowRunId: 'fixture' },
+    0,
+    () => readResourceBoundaryFixture(input.id),
+    {
+      token: async () => `resource:${input.id}`,
+      publish: () => publishResourceFixture(input.id),
+      consume: () => consumeResourceFixture(input.id),
+    },
+  )
 }
