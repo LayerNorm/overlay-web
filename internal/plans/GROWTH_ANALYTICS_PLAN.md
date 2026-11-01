@@ -27,15 +27,15 @@ their original timestamp in it.
 
 | Group | Metric | Source and filter | Person credited for "active" |
 | --- | --- | --- | --- |
-| Created | Tasks | `workItems` | `userId` (creator) |
+| Created | Tasks | `workItems` | the `created` event's actor (below), not `userId`: an agent can create a task owned by a person |
 | Created | Agents | `workspaceAgentDefinitions`, excluding `isDefault` | `createdByPrincipalId` → `workspacePrincipals.userId` (human only) |
 | Created | Automations | `automations` | `userId` |
 | Created | Files | `files` where `kind` is `note` or `upload` (folders and AI outputs excluded) | `userId` |
 | Work | Threads created | `conversations`, excluding `isAutomation` | `userId` |
 | Work | Messages sent | `conversationMessages` where `role = 'user'`, `importedAuthorName` unset and `authorKind` is unset or `human` | `userId` |
 | Work | Automations run | `automationRuns`, split by final status (succeeded/completed vs failed/dead_letter) | only when `triggerSource` is `manual` or `retry` |
-| Work | Task changes | `workItemEvents` excluding `kind = 'created'` (used for "active" only, not shown) | `actorPrincipalId` → `workspacePrincipals.userId` (human only) |
-| Work | Files edited | new `files.contentEditedAt` (Phase 1) | new `files.contentEditedBy` (Phase 1) |
+| Work | Task created or changed | `workItemEvents`, every kind (used for "active" only, not shown) | `actorPrincipalId` → `workspacePrincipals.userId` (human only) |
+| Work | Files edited | new `growthFileEdits` rows for the day (Phase 1) | each row's `editorUserIds` |
 | Usage | Users created | `subscriptions`: one row per user, inserted at first sign-in by `auth/users:syncUserProfileByServer` (`isNewUser`). There's no separate users table. | the new user |
 | Usage | Daily / weekly / monthly active users | distinct users in `growthUserDays` | n/a |
 | Usage | Paid subscriptions | `billingAccountSubscriptions` where `planKind = 'paid'` and `status` is `active`/`trialing` (snapshot each night) | n/a |
@@ -52,10 +52,12 @@ Agents and automations acting by themselves never make anyone active.
 
 1. **No reliable "content edited" time on files.** `files.updatedAt` also changes
    when a file is indexed, moved, renamed, deduplicated or deleted
-   (`convex/files/files.ts`), so it would count background work as edits. Phase 1
-   adds `contentEditedAt` and `contentEditedBy`, set only when `content`/`textContent`
-   changes, plus a `by_contentEditedAt` index. Edits before that ships can't be
-   backfilled; the panel starts this metric from the deploy date.
+   (`convex/files/files.ts`), so it would count background work as edits. A
+   "last edited" field wouldn't work either: a second editor, or an edit just
+   after midnight, would overwrite the earlier one before the nightly count.
+   Phase 1 writes a `growthFileEdits` row per (file, UTC day) as each text change
+   happens, listing every person who edited it that day. Edits before that ships
+   can't be backfilled; the panel starts this metric from the deploy date.
 2. **No history of when an account became paid.** `billingAccountSubscriptions` is
    updated in place (`convex/billing/accountSubscriptions.ts`), so the date it
    turned paid is lost. The nightly snapshot plus `growthPaidAccounts` (first night
@@ -94,10 +96,12 @@ Shared validators live in `convex/lib/growthSchema.ts`; the job is
 - `growthJobState`: one row: the day being counted, the step and page cursor,
   running counts, and the last and latest completed days.
 
-Changes to existing tables: `files.contentEditedAt`, `files.contentEditedBy`
-(both optional) and index `by_contentEditedAt`. `files:update` sets them when
-the text actually changes (not for AI outputs); agent drive overwrites set only
-`contentEditedAt`.
+- `growthFileEdits`: one row per (file, UTC day) whose text changed, with every
+  person who edited it that day. Written at edit time by `recordFileEdit`
+  (`convex/lib/growthFileEdits.ts`): `files:update` calls it when the text really
+  changes (not for AI outputs), and agent drive overwrites call it with no editor.
+
+No existing tables change.
 
 Resources used are summed per workspace in `growthDailyTotals` as a small
 top-N list. Personal billing accounts count in the totals only. The panel

@@ -1,6 +1,7 @@
 import { ConvexError, v } from 'convex/values'
 import { assertCanCreateInScope, getReadableRow, listScopedRows, scopeContextLoader } from '../lib/resourceScope'
 import { scopeMutations } from '../lib/scopeMutations'
+import { recordFileEdit } from '../lib/growthFileEdits'
 import { Doc, Id } from '../_generated/dataModel'
 import { internal } from '../_generated/api'
 import { selectNoteClientIdCandidate } from '../../src/shared/knowledge/note-client-id'
@@ -1210,8 +1211,7 @@ export const update = mutation({
           : null
       patch.content = nextText
       if (kind !== 'output' && nextText !== existingText) {
-        patch.contentEditedAt = patch.updatedAt
-        patch.contentEditedBy = callerId
+        await recordFileEdit(ctx, fileId, callerId, patch.updatedAt as number)
       }
       // Legacy rows can still carry textContent, which readers prefer over
       // content. Remove it when writing canonical text so it cannot mask a save.

@@ -4,7 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
-- Add nightly growth rollups in Convex: daily counts of what was created and done, active users, W1/W4 retention cohorts, paid subscriptions, top-ups and billed usage, with a one-time backfill. Files now record when and by whom their text last changed.
+- Add nightly growth rollups in Convex: daily counts of what was created and done, active users, W1/W4 retention cohorts, paid subscriptions, top-ups and billed usage, with a one-time backfill. Each file text change is now recorded per day with every person who made it.
 
 - Switch existing accounts to double sidebar once across all workspaces, while allowing subsequent single-sidebar opt-outs.
 

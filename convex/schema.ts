@@ -1866,12 +1866,8 @@ export default defineSchema({
     shareToken: v.optional(v.string()),
     shareVisibility: v.optional(v.union(v.literal('private'), v.literal('public'))),
     sharedAt: v.optional(v.number()),
-    // When the text last changed, and the person who changed it (absent for agent writes). Growth analytics counts edits from these.
-    contentEditedAt: v.optional(v.number()),
-    contentEditedBy: v.optional(v.string()),
   }).index('by_workspaceId_scope_archivedAt', ['workspaceId', 'scope', 'archivedAt']).index('by_workspaceId_userId_archivedAt', ['workspaceId', 'userId', 'archivedAt'])
     .index('by_workspaceId', ['workspaceId']).index('by_workspaceId_userId', ['workspaceId', 'userId']).index('by_userId', ['userId'])
-    .index('by_contentEditedAt', ['contentEditedAt'])
     .index('by_workspaceId_userId_updatedAt', ['workspaceId', 'userId', 'updatedAt'])
     .index('by_workspaceId_userId_parentId_updatedAt', ['workspaceId', 'userId', 'parentId', 'updatedAt'])
     .index('by_workspaceId_userId_conversationId_updatedAt', ['workspaceId', 'userId', 'conversationId', 'updatedAt'])
@@ -2557,6 +2553,7 @@ export default defineSchema({
   growthPaidAccounts: defineTable(growthTables.growthPaidAccounts)
     .index('by_billingAccountId', ['billingAccountId']).index('by_firstPaidDay', ['firstPaidDay']),
   growthJobState: defineTable(growthTables.growthJobState).index('by_key', ['key']),
+  growthFileEdits: defineTable(growthTables.growthFileEdits).index('by_day', ['day']).index('by_fileId_day', ['fileId', 'day']),
 
   // ─── Slack import jobs ───────────────────────────────────────────────────
   // Durable jobs for importing Slack workspace data into Overlay conversations

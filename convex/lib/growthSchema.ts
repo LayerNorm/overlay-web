@@ -74,6 +74,12 @@ export const growthTables = {
     /** Backfilled from the subscription's createdAt, not seen live. */
     approximate: v.boolean(),
   },
+  /** One row per (file, UTC day) whose text changed, written as the edit happens; editors are people only. */
+  growthFileEdits: {
+    fileId: v.id('files'),
+    day: v.string(),
+    editorUserIds: v.array(v.string()),
+  },
   /** The single row driving the job: the day being counted and how far it got. */
   growthJobState: {
     key: v.literal('daily'),

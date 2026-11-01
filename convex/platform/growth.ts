@@ -150,8 +150,8 @@ const STEPS: Step[] = [
     const page = await ctx.db.query('workItems')
       .withIndex('by_creation_time', (q) => q.gte('_creationTime', start).lt('_creationTime', end))
       .paginate({ cursor, numItems: 100 })
+    // Who to credit comes from the task's events: an agent creating a task for its owner isn't the owner's work.
     counts.tasksCreated += page.page.length
-    await creditActive(ctx, page.page.map((item) => item.userId), day)
     return page
   },
   async ({ ctx, day, cursor }) => {
@@ -159,8 +159,7 @@ const STEPS: Step[] = [
     const page = await ctx.db.query('workItemEvents')
       .withIndex('by_creation_time', (q) => q.gte('_creationTime', start).lt('_creationTime', end))
       .paginate({ cursor, numItems: 200 })
-    const actors = page.page.filter((event) => event.kind !== 'created').map((event) => event.actorPrincipalId)
-    await creditActive(ctx, await principalUserIds(ctx, actors), day)
+    await creditActive(ctx, await principalUserIds(ctx, page.page.map((event) => event.actorPrincipalId)), day)
     return page
   },
   async ({ ctx, day, cursor, counts }) => {
@@ -194,12 +193,10 @@ const STEPS: Step[] = [
     return page
   },
   async ({ ctx, day, cursor, counts }) => {
-    const { start, end } = dayRange(day)
-    const page = await ctx.db.query('files')
-      .withIndex('by_contentEditedAt', (q) => q.gte('contentEditedAt', start).lt('contentEditedAt', end))
-      .paginate({ cursor, numItems: 10 })
+    const page = await ctx.db.query('growthFileEdits').withIndex('by_day', (q) => q.eq('day', day))
+      .paginate({ cursor, numItems: 500 })
     counts.filesEdited += page.page.length
-    await creditActive(ctx, page.page.flatMap((file) => file.contentEditedBy ? [file.contentEditedBy] : []), day)
+    await creditActive(ctx, page.page.flatMap((edit) => edit.editorUserIds), day)
     return page
   },
   async ({ ctx, day, cursor, counts }) => {
@@ -308,6 +305,8 @@ const STEPS: Step[] = [
   // Paid plans are only known as they are now, so the snapshot is taken for yesterday only.
   async ({ ctx, state, day, cursor }) => {
     if (day !== addDays(dayOf(Date.now()), -1)) return { isDone: true, continueCursor: '' }
+    // A live night with no paid plans is a real zero, not a missing snapshot.
+    if (cursor === null) state.paidSubscriptions = 0
     const page = await ctx.db.query('billingAccountSubscriptions').paginate({ cursor, numItems: 500 })
     for (const subscription of page.page) {
       if (!isPaid(subscription)) continue

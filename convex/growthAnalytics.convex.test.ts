@@ -3,6 +3,7 @@ import { convexTest } from 'convex-test'
 import { makeFunctionReference } from 'convex/server'
 import schema from './schema'
 import { addDays, daysBetween, weekStartOf } from './platform/growth'
+import { recordFileEdit } from './lib/growthFileEdits'
 
 const modules = import.meta.glob('./**/*.ts')
 const startBackfill = makeFunctionReference<'mutation'>('platform/growth:startBackfill')
@@ -37,10 +38,15 @@ async function seed(convex: Convex) {
     await ctx.db.insert('workspacePrincipals', {
       principalId: 'p-a', workspaceId: 'w1', type: 'human', userId: 'user-a', displayName: 'A', createdAt: now, updatedAt: now,
     })
-    await ctx.db.insert('workItems', {
-      scope: 'workspace', workspaceId: 'w1', userId: 'user-a', title: 'Task', status: 'todo', blocked: false,
-      priority: 0, rank: 'a', createdAt: now, updatedAt: now,
+    await ctx.db.insert('workspacePrincipals', {
+      principalId: 'p-agent', workspaceId: 'w1', type: 'agent', agentId: 'agent-1', displayName: 'Helper', createdAt: now, updatedAt: now,
     })
+    const task = { scope: 'workspace' as const, workspaceId: 'w1', title: 'Task', status: 'todo' as const, blocked: false, priority: 0, rank: 'a', createdAt: now, updatedAt: now }
+    const byA = await ctx.db.insert('workItems', { ...task, userId: 'user-a' })
+    await ctx.db.insert('workItemEvents', { workItemId: byA, workspaceId: 'w1', actorPrincipalId: 'p-a', kind: 'created', createdAt: now })
+    // An agent creates a task owned by user-c: it counts, but user-c did nothing.
+    const byAgent = await ctx.db.insert('workItems', { ...task, userId: 'user-c' })
+    await ctx.db.insert('workItemEvents', { workItemId: byAgent, workspaceId: 'w1', actorPrincipalId: 'p-agent', kind: 'created', createdAt: now })
     const agent = {
       workspaceId: 'w1', principalId: 'p-agent', instructions: '', harness: 'overlay' as const, modelId: 'm',
       allowedToolIds: [], invocationPolicy: 'mention' as const, createdByPrincipalId: 'p-a', createdAt: now, updatedAt: now,
@@ -85,7 +91,7 @@ async function seed(convex: Convex) {
     })
   })
 
-  // A week later: A writes again (W1), B edits a note A owns (W1), and an agent overwrites a file (no one credited).
+  // A week later: A writes again (W1); B edits a note A owns, and so does A (both W1); an agent overwrites a file (no one credited).
   const day8 = addDays(DAY1, 7)
   await insertAt(convex, day8, async (ctx) => {
     const now = at(day8)
@@ -94,10 +100,10 @@ async function seed(convex: Convex) {
       conversationId: chat!._id, userId: 'user-a', turnId: 't2', role: 'user', mode: 'act', content: 'again', contentType: 'text', createdAt: now,
     })
     const note = await ctx.db.query('files').first()
-    await ctx.db.patch(note!._id, { contentEditedAt: now, contentEditedBy: 'user-b' })
-    await ctx.db.insert('files', {
-      userId: 'user-a', name: 'Agent file', type: 'file', kind: 'upload', createdAt: now, updatedAt: now, contentEditedAt: now,
-    })
+    await recordFileEdit(ctx, note!._id, 'user-b', now)
+    await recordFileEdit(ctx, note!._id, 'user-a', now)
+    const agentFile = await ctx.db.insert('files', { userId: 'user-a', name: 'Agent file', type: 'file', kind: 'upload', createdAt: now, updatedAt: now })
+    await recordFileEdit(ctx, agentFile, undefined, now)
   })
 }
 
@@ -125,7 +131,7 @@ describe('nightly growth rollups', () => {
 
     const first = await totals(convex, DAY1)
     expect(first).toMatchObject({
-      usersCreated: 2, tasksCreated: 1, agentsCreated: 1, automationsCreated: 1, filesCreated: 1, filesEdited: 0,
+      usersCreated: 2, tasksCreated: 2, agentsCreated: 1, automationsCreated: 1, filesCreated: 1, filesEdited: 0,
       threadsCreated: 1, messagesSent: 20, automationRuns: 2, automationRunsSucceeded: 1, automationRunsFailed: 1,
       topUps: 1, topUpCents: 800, usageCents: 55, sandboxSeconds: 30, activeUsers: 2,
       weeklyActiveUsers: 2, monthlyActiveUsers: 2, newPaidSubscriptions: 1,
@@ -177,6 +183,23 @@ describe('nightly growth rollups', () => {
     expect(counted).toEqual([DAY1, addDays(DAY1, 1), addDays(DAY1, 2)])
   })
 
+  test('a live night with no paid plans records zero, and a recount after a cancellation drops to zero', async () => {
+    const convex = convexTest(schema, modules)
+    await seed(convex)
+    vi.setSystemTime(at(addDays(DAY1, 1), 0))
+    await convex.mutation(startDaily, {})
+    await runAll(convex)
+    expect(await totals(convex, DAY1)).toMatchObject({ paidSubscriptions: 1 })
+
+    await convex.run(async (ctx) => {
+      const subscription = await ctx.db.query('billingAccountSubscriptions').first()
+      await ctx.db.patch(subscription!._id, { status: 'canceled' })
+    })
+    await convex.mutation(startBackfill, { fromDay: DAY1 })
+    await runAll(convex)
+    expect(await totals(convex, DAY1)).toMatchObject({ paidSubscriptions: 0 })
+  })
+
   test('a run that is still going is not started twice', async () => {
     const convex = convexTest(schema, modules)
     await seed(convex)
@@ -190,22 +213,32 @@ describe('nightly growth rollups', () => {
 })
 
 describe('file edit tracking', () => {
-  test('a text change records when and by whom; indexing updates and unchanged saves do not', async () => {
+  test('each text change is kept per file and day with every editor; indexing updates and unchanged saves are not edits', async () => {
+    vi.useFakeTimers()
     const convex = convexTest(schema, modules)
+    vi.setSystemTime(at(DAY1, 23))
     const fileId = await convex.run(ctx => ctx.db.insert('files', {
       userId: 'user_1', name: 'Note', type: 'file', kind: 'note', content: 'First', createdAt: 1, updatedAt: 1,
     }))
-    const read = () => convex.run(ctx => ctx.db.get(fileId))
+    const edits = () => convex.run(async (ctx) => (await ctx.db.query('growthFileEdits').collect())
+      .map(({ day, editorUserIds }) => ({ day, editorUserIds })))
 
     await convex.mutation(updateFile, { userId: 'user_1', serverSecret: secret, fileId, indexStatus: 'indexed' })
-    expect((await read())?.contentEditedAt).toBeUndefined()
-
     await convex.mutation(updateFile, { userId: 'user_1', serverSecret: secret, fileId, content: 'First' })
-    expect((await read())?.contentEditedAt).toBeUndefined()
+    expect(await edits()).toEqual([])
 
     await convex.mutation(updateFile, { userId: 'user_1', serverSecret: secret, fileId, content: 'Second' })
-    const edited = await read()
-    expect(edited).toMatchObject({ contentEditedBy: 'user_1', content: 'Second' })
-    expect(edited?.contentEditedAt).toBe(edited?.updatedAt)
+    await convex.mutation(updateFile, { userId: 'user_1', serverSecret: secret, fileId, content: 'Third' })
+    await convex.run(ctx => recordFileEdit(ctx, fileId, 'user_2', Date.now()))
+    await convex.run(ctx => recordFileEdit(ctx, fileId, undefined, Date.now()))
+
+    // An edit just after midnight starts a new day and leaves yesterday's in place.
+    vi.setSystemTime(at(addDays(DAY1, 1), 0))
+    await convex.mutation(updateFile, { userId: 'user_1', serverSecret: secret, fileId, content: 'Fourth' })
+    expect(await edits()).toEqual([
+      { day: DAY1, editorUserIds: ['user_1', 'user_2'] },
+      { day: addDays(DAY1, 1), editorUserIds: ['user_1'] },
+    ])
+    vi.useRealTimers()
   })
 })
