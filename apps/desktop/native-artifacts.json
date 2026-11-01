@@ -3,15 +3,13 @@
   "artifacts": [
     {
       "path": "whisperkit-bundle/whisperkit-cli",
-      "sha256": "0c97eb5ebc4a3a68768fc88b34e085974743fcaff5ef62f38846c0f38c275675",
+      "sha256": "c2c4ef6abde93ee905c7f2b7b7394f216e4c5a32f3cb947c5e4209af75d9466c",
       "architecture": "arm64",
       "source": "https://github.com/argmaxinc/WhisperKit.git",
       "sourceRevision": "cb00a08d08d2dad37ca8aa488ee0695e97ab6045",
       "sourceLicense": "MIT",
       "licenseFile": "third_party/licenses/WhisperKit-LICENSE",
-      "buildScript": "scripts/build-whisperkit-bundle.sh",
-      "sourcePatch": "patches/whisperkit-cpu-mel.patch",
-      "sourcePatchSha256": "509ec4cc2ce7b1552bb1e6b872548036bf87a5e18ffc444be910be1eb6e41dfc"
+      "buildScript": "scripts/build-whisperkit-bundle.sh"
     },
     {
       "path": "parakeet-bundle/parakeet-cli",

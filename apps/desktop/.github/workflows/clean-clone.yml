@@ -3,10 +3,6 @@ name: Clean public clone
 on:
   workflow_dispatch:
     inputs:
-      helper_diagnostics:
-        description: Rebuild the pinned Whisper helper in CI
-        type: boolean
-        default: false
       local_transcription:
         description: Run the pinned local-model transcription smoke
         type: boolean
@@ -93,27 +89,3 @@ jobs:
           path: test-results/
           retention-days: 7
           if-no-files-found: ignore
-
-  whisper-cpu-mel:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.helper_diagnostics == true }}
-    runs-on: macos-15
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          persist-credentials: false
-      - name: Build pinned WhisperKit with CPU audio preprocessing
-        shell: bash
-        run: |
-          set -euo pipefail
-          npm run build:whisperkit
-          mkdir -p helper-diagnostics
-          cp whisperkit-bundle/whisperkit-cli helper-diagnostics/whisperkit-cli
-          cp patches/whisperkit-cpu-mel.patch helper-diagnostics/source.patch
-          shasum -a 256 helper-diagnostics/whisperkit-cli
-          printf '%s\n' "$GITHUB_SHA" > helper-diagnostics/tested-source-sha
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: whisper-cpu-mel-diagnostic
-          path: helper-diagnostics/
-          retention-days: 7

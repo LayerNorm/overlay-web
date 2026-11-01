@@ -23,17 +23,6 @@ for (const artifact of manifest.artifacts ?? []) {
   if (artifact.source.startsWith('https://') && !buildScript.includes(artifact.sourceRevision)) {
     failures.push(`${artifact.buildScript} does not pin ${artifact.sourceRevision}`)
   }
-  if (artifact.sourcePatch) {
-    const patch = path.resolve(root, artifact.sourcePatch)
-    if (!patch.startsWith(`${root}${path.sep}`) || !fs.existsSync(patch)) {
-      failures.push(`${artifact.path} has a missing or invalid source patch`)
-    } else if (hashFile(patch) !== artifact.sourcePatchSha256) {
-      failures.push(`${artifact.path} source patch digest changed`)
-    }
-    if (!buildScript.includes(artifact.sourcePatch)) {
-      failures.push(`${artifact.buildScript} does not apply ${artifact.sourcePatch}`)
-    }
-  }
   if (artifact.upstreamRevision && !buildScript.includes(artifact.upstreamRevision)) {
     failures.push(`${artifact.buildScript} does not pin upstream ${artifact.upstreamRevision}`)
   }
@@ -74,15 +63,11 @@ if (axHelper?.sourceRevision !== axSourceDigest) {
 }
 
 if (failures.length) {
-  console.error(
-    `Native artifact verification failed:\n${failures.map((item) => `- ${item}`).join('\n')}`
-  )
+  console.error(`Native artifact verification failed:\n${failures.map((item) => `- ${item}`).join('\n')}`)
   process.exit(1)
 }
 
-console.log(
-  `Verified ${manifest.artifacts.length} pinned arm64 native artifacts and source records.`
-)
+console.log(`Verified ${manifest.artifacts.length} pinned arm64 native artifacts and source records.`)
 
 function hashFile(file) {
   return createHash('sha256').update(fs.readFileSync(file)).digest('hex')

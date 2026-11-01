@@ -1,7 +1,8 @@
 import { _electron as electron, expect, test } from '@playwright/test'
+import { createHash } from 'node:crypto'
 import { createServer } from 'node:http'
 import { execFileSync } from 'node:child_process'
-import { copyFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { DesktopBridge } from '../packages/overlay-desktop-bridge/src/index'
@@ -11,11 +12,14 @@ test('a pinned local model transcribes synthetic speech through the native bridg
   const directory = mkdtempSync(join(tmpdir(), 'overlay-asr-smoke-'))
   const audio = join(directory, 'speech.wav')
   const offlineHook = join(directory, 'offline.cjs')
+  const isolatedAppData = join(directory, 'app-data')
+  mkdirSync(isolatedAppData, { recursive: true })
   // Deny networking only to the actual ASR helper, after the model download.
   // The app still needs the trusted HTTP fixture to exercise its real preload.
   writeFileSync(
     offlineHook,
-    `const cp=require('node:child_process'),fs=require('node:fs'),path=require('node:path');
+    `require('electron').app.setPath('appData',${JSON.stringify(isolatedAppData)});
+const cp=require('node:child_process'),fs=require('node:fs'),path=require('node:path');
 const original=cp.execFile;globalThis.offlineTranscriptions=0;
 cp.execFile=function(file,args,options,callback){
  if(!file.endsWith('/whisperkit-cli'))return original(file,args,options,callback);
@@ -94,6 +98,60 @@ cp.execFile=function(file,args,options,callback){
       )
     )
     expect(models.find((model) => model.id === 'openai_whisper-base')?.downloaded).toBe(true)
+    const modelDirectory = join(
+      isolatedAppData,
+      'Overlay/models/whisperkit-coreml/openai_whisper-base'
+    )
+    const integrity: { path: string; expected: string; actual: string; size: number }[] = []
+    for (const spec of [
+      {
+        repo: 'argmaxinc/whisperkit-coreml',
+        revision: '97a5bf9bbc74c7d9c12c755d04dea59e672e3808',
+        folder: 'openai_whisper-base',
+        local: modelDirectory
+      },
+      {
+        repo: 'openai/whisper-base',
+        revision: 'e37978b90ca9030d5170a5c07aadb050351a65bb',
+        folder: '',
+        local: join(modelDirectory, 'tokenizer')
+      }
+    ]) {
+      const response = await fetch(
+        `https://huggingface.co/api/models/${spec.repo}/tree/${spec.revision}${spec.folder ? "/" + spec.folder : ""}?recursive=true`,
+        { signal: AbortSignal.timeout(30_000) }
+      )
+      expect(response.ok).toBe(true)
+      const entries = (await response.json()) as {
+        type: string
+        path: string
+        oid: string
+        size: number
+        lfs?: { oid: string; size: number }
+      }[]
+      for (const entry of entries.filter((e) => e.type === 'file')) {
+        if (!spec.folder && !['tokenizer.json', 'tokenizer_config.json'].includes(entry.path))
+          continue
+        const relative = spec.folder ? entry.path.slice(spec.folder.length + 1) : entry.path
+        const bytes = readFileSync(join(spec.local, relative))
+        const actual = entry.lfs
+          ? createHash('sha256').update(bytes).digest('hex')
+          : createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex')
+        integrity.push({
+          path: relative,
+          expected: entry.lfs?.oid ?? entry.oid,
+          actual,
+          size: bytes.length
+        })
+      }
+    }
+    writeFileSync(
+      test.info().outputPath('model-integrity.json'),
+      JSON.stringify(integrity, null, 2)
+    )
+    expect(integrity.length).toBeGreaterThan(5)
+    expect(integrity.filter((file) => file.expected !== file.actual)).toEqual([])
+    console.info('Verified model and tokenizer files:', integrity.length)
     const result = await page.evaluate(
       async (bytes) =>
         (window as unknown as { overlayDesktop: DesktopBridge }).overlayDesktop.call(
