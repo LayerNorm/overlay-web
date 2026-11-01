@@ -4,9 +4,9 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
-- Add an opt-in versioned Harness resource waiter with polling fallback and authoritative consumption at settled response/summary boundaries, including reattachment to existing requests. Production admission remains inactive.
-
 - Add desktop dictation microphone selection with live device refresh and capture status, alongside native PCM capture without a network admission wait, a compact audio-reactive pill, cancellation and temporary retry/copy recovery.
+
+- Add an opt-in versioned Harness resource waiter with polling fallback and authoritative consumption at settled response/summary boundaries, including reattachment to existing requests. Production admission remains inactive.
 
 - Allow fully settled Harness results to finish after time or spending authorization is exhausted, without authorizing new work or clearing blockers, child work, or unresolved model holds.
 
