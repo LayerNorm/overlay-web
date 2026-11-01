@@ -50,6 +50,12 @@ test('route interruption receipts count durably toward the per-run retry cap', (
   assert.equal(state.latestReceipt?.rejectionReason, 'route_interrupted')
 })
 
+test('generic block and resume cannot bypass a resource pause', () => {
+  const paused = { ...make(), status: 'waiting_for_resources' as const, resourceRequestToken: 'resource-token' }
+  assert.throws(() => resumeHarness(paused, now), /resource pause/)
+  assert.throws(() => blockHarness(paused, { kind: 'input', question: 'Continue?' }, now), /resource pause/)
+})
+
 const steps: HarnessPlanInput[] = [
   { id: 'read', title: 'Read source', acceptanceCriteria: ['Source read'], dependsOn: [], requiresVerification: false, evidenceTools: ['read', 'write'] },
   { id: 'report', title: 'Check report', acceptanceCriteria: ['Figures checked'], dependsOn: ['read'], requiresVerification: true, evidenceTools: ['read', 'write'] },

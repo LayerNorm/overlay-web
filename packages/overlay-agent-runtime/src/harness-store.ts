@@ -2,6 +2,15 @@ import type {
   HarnessCheckpointPurpose, HarnessChild, HarnessEvidence, HarnessPlanInput, HarnessPolicy, HarnessReceipt,
   HarnessSnapshot, HarnessStepStatus,
 } from './harness-state'
+import type {
+  HarnessConsumeResourceGrantInput,
+  HarnessGrantResourcesInput,
+  HarnessResourcePauseInput,
+  HarnessResourceRequestRecord,
+  HarnessResourceRequestReference,
+  HarnessResourceConsumeResult,
+  HarnessResourceGrantReceipt,
+} from './harness-resource'
 
 export type HarnessSource = { conversationId: string; noteId?: never } | { noteId: string; conversationId?: never }
 
@@ -12,6 +21,7 @@ export type HarnessAdmission = {
   policy: HarnessPolicy
   source: HarnessSource
   deliveryAgentRunId?: string
+  resourcePauseAuthority?: 'personal_chat_work'
 }
 
 export type HarnessOperation =
@@ -84,4 +94,8 @@ export interface HarnessRepository {
   publishWait(input: HarnessWaitReference & { request: HarnessWaitRequest }): Promise<HarnessWait>
   resolveWait(input: HarnessWaitReference & { token: string }): Promise<void>
   listPendingWaits(input: HarnessWaitReference): Promise<HarnessWait[]>
+  pauseForResources(input: HarnessResourcePauseInput): Promise<HarnessResourceRequestRecord>
+  getResourceRequest(input: HarnessResourceRequestReference): Promise<HarnessResourceRequestRecord | null>
+  grantResources(input: HarnessGrantResourcesInput): Promise<HarnessResourceGrantReceipt>
+  consumeResourceGrant(input: HarnessConsumeResourceGrantInput): Promise<HarnessResourceConsumeResult>
 }

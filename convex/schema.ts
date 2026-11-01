@@ -2937,6 +2937,27 @@ export default defineSchema({
     .index('by_runId_resolvedAt', ['runId', 'resolvedAt', 'createdAt'])
     .index('by_rootRunId_resolvedAt', ['rootRunId', 'resolvedAt', 'createdAt']),
 
+  harnessResourceRequests: defineTable({
+    runId: v.string(),
+    rootRunId: v.string(),
+    workflowRunId: v.string(),
+    token: v.string(),
+    policyRevision: v.number(),
+    stateRevisionAtRequest: v.number(),
+    requestJson: v.string(),
+    previousStatus: v.union(v.literal('running'), v.literal('waiting_for_input'), v.literal('waiting_for_approval')),
+    previousBlockerJson: v.optional(v.string()),
+    authorityJson: v.string(),
+    state: v.union(v.literal('pending'), v.literal('accepted'), v.literal('consumed')),
+    receiptJson: v.optional(v.string()),
+    wakePending: v.boolean(),
+    consumedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index('by_token', ['token'])
+    .index('by_runId_pending', ['runId', 'state', 'createdAt'])
+    .index('by_rootRunId_state', ['rootRunId', 'state', 'createdAt']),
+
   /** Immutable ledger of committed operations, keyed by the caller's operation id. */
   harnessOperations: defineTable({
     runId: v.string(),

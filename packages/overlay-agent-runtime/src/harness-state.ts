@@ -1,4 +1,6 @@
-export type HarnessStatus = 'running' | 'waiting_for_input' | 'waiting_for_approval' | 'waiting_for_children' | 'completed' | 'cancelled' | 'failed'
+import type { HarnessResourceGrantReceipt } from './harness-resource'
+
+export type HarnessStatus = 'running' | 'waiting_for_input' | 'waiting_for_approval' | 'waiting_for_children' | 'waiting_for_resources' | 'completed' | 'cancelled' | 'failed'
 export type HarnessStepStatus = 'pending' | 'running' | 'blocked' | 'verifying' | 'done' | 'skipped'
 
 export type HarnessPlanStep = {
@@ -61,6 +63,7 @@ export type HarnessReceipt = {
 export type HarnessPolicy = {
   actorUserId: string
   workspaceId?: string
+  resourcePauseVersion?: 1
   allowedToolIds: string[]
   requiresPlan: boolean
   deadlineAt: number
@@ -105,6 +108,8 @@ export type HarnessSnapshot = {
   policy: HarnessPolicy
   status: HarnessStatus
   revision: number
+  policyRevision?: number
+  resourceRequestToken?: string
   progressRevision: number
   planRevision: number
   plan: HarnessPlanStep[]
@@ -163,7 +168,8 @@ export function createHarnessSnapshot(input: {
     ...(input.parentRunId ? { parentRunId: input.parentRunId } : {}), depth,
     goal: input.goal, constraints: [...input.constraints],
     policy: { ...input.policy, allowedToolIds: [...new Set(input.policy.allowedToolIds)].sort() },
-    status: 'running', revision: 0, progressRevision: 0, planRevision: 0, plan: [], evidence: [], children: [], workingSummary: '',
+    status: 'running', revision: 0, ...(input.policy.resourcePauseVersion === 1 ? { policyRevision: 0 } : {}),
+    progressRevision: 0, planRevision: 0, plan: [], evidence: [], children: [], workingSummary: '',
     continuations: 0, lastContinuationProgressRevision: 0, stalledContinuations: 0, routeInterruptionCount: 0,
     usage: { inputTokens: 0, outputTokens: 0, reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, costMicros: 0 },
     updatedAt: now,
@@ -619,6 +625,9 @@ export function assertHarnessRunnable(state: HarnessSnapshot, now: number, estim
 
 export function blockHarness(state: HarnessSnapshot, blocker: NonNullable<HarnessSnapshot['blocker']>, now: number): HarnessSnapshot {
   assertActive(state)
+  if (state.status === 'waiting_for_resources' || state.resourceRequestToken) {
+    throw new Error('A resource pause must be consumed before the run can be blocked.')
+  }
   if (!blocker.question.trim() || blocker.question.length > 2_000) throw new Error('A blocker requires a concise question or explanation.')
   const next = mutable(state)
   next.blocker = { ...blocker }
@@ -628,6 +637,9 @@ export function blockHarness(state: HarnessSnapshot, blocker: NonNullable<Harnes
 
 export function resumeHarness(state: HarnessSnapshot, now: number): HarnessSnapshot {
   assertActive(state)
+  if (state.status === 'waiting_for_resources' || state.resourceRequestToken) {
+    throw new Error('A resource pause must be consumed before the run can resume.')
+  }
   if (!state.blocker && state.status !== 'waiting_for_children') throw new Error('There is no blocker to resolve.')
   const next = mutable(state)
   next.blocker = undefined
@@ -635,6 +647,81 @@ export function resumeHarness(state: HarnessSnapshot, now: number): HarnessSnaps
   next.stalledContinuations = 0
   next.lastContinuationProgressRevision = next.progressRevision
   return changed(next, now)
+}
+
+export function pauseHarnessForResources(state: HarnessSnapshot, token: string, now: number): HarnessSnapshot {
+  assertActive(state)
+  if (state.policy.resourcePauseVersion !== 1) throw new Error('Resource pauses are not enabled for this run.')
+  if (!token.trim() || token.length > 256) throw new Error('A resource pause token is required.')
+  if (state.resourceRequestToken) throw new Error('A resource pause is already pending.')
+  if (state.status === 'running' && state.blocker !== undefined) {
+    throw new Error('A running harness cannot carry a blocker.')
+  }
+  if (state.status === 'waiting_for_input' && state.blocker?.kind !== 'input') {
+    throw new Error('Only an input wait can be suspended by a resource pause.')
+  }
+  if (state.status === 'waiting_for_approval' && state.blocker?.kind !== 'approval') {
+    throw new Error('Only an approval wait can be suspended by a resource pause.')
+  }
+  if (state.status !== 'running' && state.status !== 'waiting_for_input' && state.status !== 'waiting_for_approval') {
+    throw new Error('Only an active harness can be paused for resources.')
+  }
+  const next = mutable(state)
+  next.status = 'waiting_for_resources'
+  next.resourceRequestToken = token
+  return changed(next, now, false)
+}
+
+export function applyHarnessResourceGrant(
+  state: HarnessSnapshot,
+  receipt: HarnessResourceGrantReceipt,
+  now: number,
+): HarnessSnapshot {
+  assertActive(state)
+  if (state.status !== 'waiting_for_resources' || state.resourceRequestToken !== receipt.token) {
+    throw new Error('The resource grant does not match the pending pause.')
+  }
+  if ((state.policyRevision ?? 0) !== receipt.policyRevisionBefore
+    || receipt.policyRevisionAfter !== receipt.policyRevisionBefore + 1) {
+    throw new Error('The resource grant policy revision is stale.')
+  }
+  if (receipt.grant.kind === 'model_spend') {
+    if (receipt.deadlineAt !== state.policy.deadlineAt || receipt.maxCostMicros <= state.policy.maxCostMicros) {
+      throw new Error('The model-spend grant changed an unrelated policy field.')
+    }
+  } else if (receipt.maxCostMicros !== state.policy.maxCostMicros
+    || receipt.deadlineAt <= state.policy.deadlineAt) {
+    throw new Error('The time grant changed an unrelated policy field.')
+  }
+  const next = mutable(state)
+  next.policy = {
+    ...state.policy,
+    maxCostMicros: receipt.maxCostMicros,
+    deadlineAt: receipt.deadlineAt,
+  }
+  next.policyRevision = receipt.policyRevisionAfter
+  return changed(next, now, false)
+}
+
+export function consumeHarnessResourcePause(
+  state: HarnessSnapshot,
+  input: {
+    token: string
+    previousStatus: Extract<HarnessStatus, 'running' | 'waiting_for_input' | 'waiting_for_approval'>
+    previousBlocker?: { kind: 'input' | 'approval'; question: string }
+  },
+  now: number,
+): HarnessSnapshot {
+  assertActive(state)
+  if (state.status !== 'waiting_for_resources' || state.resourceRequestToken !== input.token) {
+    throw new Error('The resource pause does not match the run.')
+  }
+  const next = mutable(state)
+  next.status = input.previousStatus
+  if (input.previousBlocker === undefined) delete next.blocker
+  else next.blocker = { ...input.previousBlocker }
+  delete next.resourceRequestToken
+  return changed(next, now, false)
 }
 
 export function hasRunnableHarnessMilestones(state: HarnessSnapshot): boolean {
