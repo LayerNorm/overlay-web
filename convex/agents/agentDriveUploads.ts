@@ -182,7 +182,8 @@ export const commitByServer = mutation({
     if (existing && !conflict) {
       await promoteDriveDuplicate(ctx, existing, now)
       await retireDriveContent(ctx, existing, now)
-      await ctx.db.patch(existing._id, fields)
+      // An agent overwrite: counted as an edit, credited to no person.
+      await ctx.db.patch(existing._id, { ...fields, contentEditedAt: now, contentEditedBy: undefined })
       fileId = existing._id
     } else fileId = await ctx.db.insert('files', { ...fields, userId: upload.ownerUserId,
       workspaceId: authority.scope.workspaceId, scope: authority.scope.kind, type: 'file', kind: 'upload',

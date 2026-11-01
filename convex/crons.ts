@@ -188,4 +188,8 @@ crons.interval(
   (internal as any).surfaces.chatState.pruneExpired,
 )
 
+// Counts yesterday (UTC) for the admin console's growth panel. Runs a little
+// after midnight so late writes for the day have landed.
+crons.daily('growth daily totals', { hourUTC: 0, minuteUTC: 20 }, internal.platform.growth.startDaily)
+
 export default crons
