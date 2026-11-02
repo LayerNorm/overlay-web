@@ -1,8 +1,9 @@
 import { CONFIG, PreviewBackends, previewAddress } from './preview-control.mjs'
 
 export const PREVIEW_STRIPE_EVENTS = ['customer.subscription.created', 'customer.subscription.updated',
-  'customer.subscription.deleted', 'invoice.payment_failed', 'payment_intent.succeeded',
-  'payment_intent.payment_failed', 'payment_intent.canceled', 'checkout.session.completed']
+  'customer.subscription.deleted', 'invoice.paid', 'invoice.payment_failed', 'payment_intent.succeeded',
+  'payment_intent.payment_failed', 'payment_intent.canceled', 'checkout.session.completed',
+  'checkout.session.async_payment_succeeded']
 
 export function stripeTestClient(key, fetchImpl = fetch) {
   if (typeof key !== 'string' || !/^(sk|rk)_test_[A-Za-z0-9_]+$/.test(key)) throw new Error('Preview payments require a Stripe test key')
