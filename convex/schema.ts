@@ -989,6 +989,8 @@ export default defineSchema({
 
   automations: defineTable({
     // Personal / Workspace / Archived. Absent `scope` means personal.
+    /** Made by an agent, API key or service rather than the person: counted, but not their activity. */
+    createdByAgent: v.optional(v.boolean()),
     scope: v.optional(v.union(v.literal('personal'), v.literal('workspace'))),
     archivedAt: v.optional(v.number()),
     archivedBy: v.optional(v.string()),

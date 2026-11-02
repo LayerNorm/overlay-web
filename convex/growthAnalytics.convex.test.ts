@@ -287,6 +287,21 @@ test('a stopped run is restarted through the current yesterday', async () => {
   vi.useRealTimers()
 })
 
+test('an automation an agent made is counted but is not the person\'s activity', async () => {
+  vi.useFakeTimers()
+  const convex = convexTest(schema, modules)
+  await insertAt(convex, DAY1, async (ctx) => {
+    const now = at(DAY1)
+    await ctx.db.insert('subscriptions', { userId: 'user-d' })
+    await ctx.db.insert('automations', { userId: 'user-d', createdByAgent: true, createdAt: now, updatedAt: now })
+  })
+  vi.setSystemTime(at(addDays(DAY1, 1), 1))
+  await convex.mutation(startBackfill, {})
+  await runAll(convex)
+  expect(await totals(convex, DAY1)).toMatchObject({ automationsCreated: 1, activeUsers: 0 })
+  vi.useRealTimers()
+})
+
 describe('file edit tracking', () => {
   test('each text change is kept per file and day with every editor; indexing updates and unchanged saves are not edits', async () => {
     vi.useFakeTimers()

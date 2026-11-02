@@ -247,7 +247,7 @@ const STEPS: Step[] = [
       .withIndex('by_creation_time', (q) => q.gte('_creationTime', start).lt('_creationTime', end))
       .paginate({ cursor, numItems: 100 })
     counts.automationsCreated += page.page.length
-    await creditActive(ctx, page.page.map((automation) => automation.userId), day)
+    await creditActive(ctx, page.page.filter((automation) => !automation.createdByAgent).map((automation) => automation.userId), day)
     return page
   },
   // Files can carry up to 1 MiB of text each, so their pages stay small.

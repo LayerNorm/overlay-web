@@ -39,9 +39,11 @@ export type CreateAutomationInput = {
   concurrencyPolicy?: 'skip' | 'queue'
   workspaceId?: string
   scope?: 'personal' | 'workspace'
+  /** An agent, API key or service made it, not the person. */
+  byAgent?: boolean
 }
 
-export type UpdateAutomationInput = Partial<Omit<CreateAutomationInput, 'userId'>> & {
+export type UpdateAutomationInput = Partial<Omit<CreateAutomationInput, 'userId' | 'byAgent'>> & {
   automationId: string
   userId: string
 }
