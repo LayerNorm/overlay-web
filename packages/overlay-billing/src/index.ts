@@ -1,5 +1,6 @@
 export * from './types'
 export * from './entitlements'
+export * from './paid-invoice'
 export * from './usage-meter'
 export * from './quota-enforcer'
 export * from './adapters'

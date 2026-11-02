@@ -45,14 +45,30 @@ test('test endpoint provisioning persists its secret and reuses it on rebuild', 
   const request = f.calls.find(call => call.method === 'POST')
   assert.equal(request.idempotencyKey, 'overlay-preview-123-test-backend-123')
   assert.equal(request.body.find(([key]) => key === 'metadata[overlayPreviewPr]')[1], '123')
+  const events = request.body.filter(([key]) => key === 'enabled_events[]').map(([, event]) => event)
+  assert.ok(events.includes('invoice.paid'))
+  assert.ok(events.includes('checkout.session.async_payment_succeeded'))
 })
 
-test('a persisted endpoint with missing events is repaired and read back', async () => {
-  const f = fixture({ initial: [endpoint({ enabled_events: [], status: 'disabled' })] })
+test('a persisted enabled endpoint missing payment events is repaired and read back', async () => {
+  const oldEvents = [
+    'customer.subscription.created', 'customer.subscription.updated', 'customer.subscription.deleted',
+    'invoice.payment_failed', 'payment_intent.succeeded', 'payment_intent.payment_failed',
+    'payment_intent.canceled', 'checkout.session.completed',
+  ]
+  const f = fixture({ initial: [endpoint({ enabled_events: oldEvents })] })
   await f.config.saveState({ id: 'we_fixture', secret: 'whsec_existing' })
-  await f.payments.provision(123, f.config)
+  assert.deepEqual(await f.payments.provision(123, f.config), { id: 'we_fixture', reused: true })
   assert.equal(f.creations(), 0)
-  assert.ok(f.calls.some(call => call.path.endsWith('/we_fixture') && call.method === 'POST'))
+  assert.deepEqual(f.state(), { id: 'we_fixture', secret: 'whsec_existing' })
+  const postIndex = f.calls.findIndex(call => call.path.endsWith('/we_fixture') && call.method === 'POST')
+  assert.ok(postIndex >= 0)
+  const events = f.calls[postIndex].body.filter(([key]) => key === 'enabled_events[]').map(([, event]) => event)
+  assert.ok(events.includes('invoice.paid'))
+  assert.ok(events.includes('checkout.session.async_payment_succeeded'))
+  const readbackIndex = f.calls.findIndex((call, index) =>
+    index > postIndex && call.path.endsWith('/we_fixture') && !call.method)
+  assert.ok(readbackIndex > postIndex)
 })
 
 test('a lost persistence response recovers the original creation secret without duplicating endpoints', async () => {

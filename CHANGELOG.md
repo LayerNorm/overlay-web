@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Prepare paid workspaces for paid-first execution with verified invoice funding and an operator-only, dry-run-first migration that preserves existing balances. Execution access and free-tier infrastructure are unchanged in this preparation release.
+
 - Clear the room and native-agent composer after an acknowledged send, including submitted attachments, without erasing newer drafts or drafts in a reopened conversation.
 - Preserve bounded, credential-redacted Harness error messages and causes across serialized and cross-realm exceptions, without changing retry or termination behavior.
 - Report provider content-filter rejections hidden inside serialized SDK validation errors explicitly, instead of presenting them as generic Harness failures.
