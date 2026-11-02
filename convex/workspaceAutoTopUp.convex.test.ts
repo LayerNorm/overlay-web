@@ -23,7 +23,11 @@ async function paidWorkspace(convex: Convex) {
   })
   await convex.mutation(api.billing.accountSubscriptions.upsertByServer, {
     billingAccountId: 'ba-1', serverSecret, planKind: 'paid', planAmountCents: 800, status: 'active',
-    stripeCustomerId: 'cus_1', currentPeriodStart: 1_000, currentPeriodEnd: 2_000_000_000_000,
+    stripeCustomerId: 'cus_1', stripeSubscriptionId: 'sub_1', currentPeriodStart: 1_000, currentPeriodEnd: 2_000_000_000_000,
+  })
+  await convex.mutation(api.billing.accountSubscriptions.fundPaidPeriodByServer, {
+    billingAccountId: 'ba-1', serverSecret, stripeCustomerId: 'cus_1', stripeSubscriptionId: 'sub_1',
+    paidInvoiceId: 'in_initial', paidPeriodStart: 1_000, paidPeriodEnd: 2_000_000_000_000, amountCents: 800,
   })
 }
 
@@ -95,9 +99,16 @@ describe('workspace automatic top-ups', () => {
     })
     const balance = () => convex.run(async (ctx) => (await ctx.db.query('billingAccountBalances').collect())[0])
     expect((await balance())?.topUpBalanceMicros).toBe(2_000 * 10_000)
-    // Renewal: the period moves forward by a month.
+    // Lifecycle metadata alone cannot expire or grant money.
+    const nextPeriodStart = 1_000 + 31 * 24 * 60 * 60 * 1000
+    const nextPeriodEnd = 2_000_000_000_000 + 31 * 24 * 60 * 60 * 1000
     await convex.mutation(api.billing.accountSubscriptions.upsertByServer, {
-      billingAccountId: 'ba-1', serverSecret, currentPeriodStart: 1_000 + 31 * 24 * 60 * 60 * 1000,
+      billingAccountId: 'ba-1', serverSecret, currentPeriodStart: nextPeriodStart, currentPeriodEnd: nextPeriodEnd,
+    })
+    expect((await balance())?.topUpBalanceMicros).toBe(2_000 * 10_000)
+    await convex.mutation(api.billing.accountSubscriptions.fundPaidPeriodByServer, {
+      billingAccountId: 'ba-1', serverSecret, stripeCustomerId: 'cus_1', stripeSubscriptionId: 'sub_1',
+      paidInvoiceId: 'in_renewal', paidPeriodStart: nextPeriodStart, paidPeriodEnd: nextPeriodEnd, amountCents: 800,
     })
     const after = await balance()
     expect(after?.topUpBalanceMicros).toBe(0)
@@ -106,4 +117,3 @@ describe('workspace automatic top-ups', () => {
     expect(after?.includedMicros).toBe(800 * 10_000)
   })
 })
-

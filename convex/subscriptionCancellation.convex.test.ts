@@ -41,16 +41,17 @@ describe('first provider subscription attachment', () => {
         route === 'internal' ? args : { ...args, serverSecret: secret })
       await update()
       await update()
-      expect((await snapshot(t)).balance).toMatchObject({ includedMicros: 8_000_000, usedMicros: 2_955_000,
+      expect((await snapshot(t)).balance).toMatchObject({ includedMicros: 20_000_000, usedMicros: 2_955_000,
         allowanceUsedMicros: 2_955_000, reservedMicros: 933_000, institutionalGrantMicros: 100,
         topUpPurchasedMicros: 200, topUpBalanceMicros: 200 })
       expect((await snapshot(t)).subscription).toMatchObject({ providerSubscriptionId: 'sub_first', planAmountCents: 800 })
+      expect((await snapshot(t)).subscription?.paidPeriodStart).toBeUndefined()
       const before = await snapshot(t)
       const renewal = { ...args, currentPeriodStart: 8_000_000, providerEventCreatedAt: 3 }
-      await expect(t.mutation(route === 'internal' ? internalUpdate : serverUpdate,
-        route === 'internal' ? renewal : { ...renewal, serverSecret: secret }))
-        .rejects.toThrow('billing_period_rollover_has_active_reservations')
-      expect(await snapshot(t)).toEqual(before)
+      await t.mutation(route === 'internal' ? internalUpdate : serverUpdate,
+        route === 'internal' ? renewal : { ...renewal, serverSecret: secret })
+      expect((await snapshot(t)).balance).toEqual(before.balance)
+      expect((await snapshot(t)).subscription?.paidPeriodStart).toBeUndefined()
     })
   }
 })
@@ -103,10 +104,12 @@ describe('subscription cancellation preserves paid usage accounting', () => {
     expect((await snapshot(t)).balance).toMatchObject({ includedMicros: 1000, institutionalGrantMicros: 700,
       topUpPurchasedMicros: 300, usedMicros: 1500, reservedMicros: 500 })
   })
-  test('ordinary active downgrades still refuse to remove consumed funding', async () => {
+  test('active plan metadata changes never remove consumed funding', async () => {
     const t = await fixture()
-    await expect(t.mutation(internalUpdate, { ...cancel, status: 'active' })).rejects.toThrow('remove already consumed')
-    expect((await snapshot(t)).subscription?.planKind).toBe('paid')
+    const before = await snapshot(t)
+    await t.mutation(internalUpdate, { ...cancel, status: 'active' })
+    expect((await snapshot(t)).balance).toEqual(before.balance)
+    expect((await snapshot(t)).subscription?.planKind).toBe('free')
   })
   test('an older provider event cannot reactivate the canceled plan', async () => {
     const t = await fixture()
