@@ -131,14 +131,14 @@ Primary areas: `src/shared/ai/gateway/`, `src/server/ai/gateway/`, `src/server/h
 
 ## 4. Existing-user migration and safe release
 
-Approved policy: new workspaces have no free execution at launch; existing free workspaces receive 14 days' notice and then become setup/history-only. The notice is a retirement window, not a new trial. There is no permanent grandfathered execution tier and no automatic charge.
+Approved policy: new workspaces have no free execution at launch; existing free workspaces become setup/history-only immediately at cutoff once existing paid workspaces are protected. The owner removed the earlier 14-day notice delay. There is no permanent grandfathered execution tier and no automatic charge. Production migration and merge still require the normal release authorization.
 
 Before release, produce a read-only, aggregate migration inventory: unpaid workspaces, active free runs/computers, scheduled work, saved free models, legacy trials if any, and paid workspaces affected by exhausted-budget fallback. Exact queries and definitions must be reviewed before relying on counts. Do not export customer content or credentials.
 
 Deployment approach:
 
 1. Ship a separate additive preparation release with payment proof, invoice reconciliation and the operator-only backfill, without enforcement or free-code removal. Populate and reconcile existing paid workspace proof before cutover.
-2. Give existing free workspaces 14 days' notice before the announced launch/cutoff. The final implementation cuts over all hosted workspaces together at that launch, after notice; it retains no grandfathered/free execution cohort or temporary activation switch.
+2. Prepare immediate cutoff after paid-workspace migration and reconciliation. The final implementation cuts over all hosted workspaces together at that launch without a notice delay; it retains no grandfathered/free execution cohort or temporary activation switch.
 3. Complete isolated PR Preview acceptance of the approved UI, server policy and older-client recovery, plus first-task economics checks. No free execution is offered to new workspaces from launch.
 4. At cutoff, drain or stop free jobs, settle legitimate existing reservations and shut down unfunded compute. Preserve data, task definitions and audit history.
 5. Release the final paid-first UI, enforcement and free-code deletion after prerequisite proof is populated. Do not merge the full feature PR as the additive preparation release: it immediately enforces paid access.
@@ -199,7 +199,7 @@ These are one coordinated launch, not independent releases that may leave unpaid
 
 Already settled by the user: no free tier or trial, pay before first task, BYO subscription optional, and complete removal of free-tier infrastructure at the end rather than leaving it disabled.
 
-Approved plan defaults: keep the current $8 monthly-credit minimum initially; keep pre-payment setup/history access; require funded paid access for all hosted execution including BYO; give existing free workspaces 14 days' notice; preserve self-hosted billing-disabled behavior. Price adequacy is a launch validation question, not a claim made by this plan.
+Approved plan defaults: keep the current $8 monthly-credit minimum initially; keep pre-payment setup/history access; require funded paid access for all hosted execution including BYO; cut off existing free workspaces immediately once paid workspaces are protected; preserve self-hosted billing-disabled behavior. Price adequacy is a launch validation question, not a claim made by this plan.
 
 Overall confidence: high in the policy and main affected architecture; medium in the exhaustive integration inventory until implementation call-site tracing and live configuration inspection. Core billing, entitlement, agent fallback, onboarding and marketing paths were reviewed, not every caller or dependency. No meaningful percentage-of-code-reviewed estimate is available. Production subscription states, provider terms/support, actual first-task economics and operational cutoff timing remain unverified.
 
