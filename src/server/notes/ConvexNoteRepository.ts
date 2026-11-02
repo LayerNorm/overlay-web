@@ -70,6 +70,7 @@ export class ConvexNoteRepository implements NoteRepository {
     userId: string
     title: string
     content: string
+    byAgent?: boolean
     tags?: string[]
     clientId?: string
     conversationId?: string
@@ -82,6 +83,7 @@ export class ConvexNoteRepository implements NoteRepository {
       clientId: args.clientId,
       ...(args.conversationId ? { conversationId: args.conversationId } : {}),
       name: args.title,
+      ...(args.byAgent ? { byAgent: true } : {}),
       ...(args.tags ? { tags: args.tags } : {}),
       kind: 'note',
       type: 'file',
@@ -109,6 +111,7 @@ export class ConvexNoteRepository implements NoteRepository {
     content?: string
     tags?: string[]
     expectedUpdatedAt?: number
+    byAgent?: boolean
     workspaceId?: string
   }): Promise<NoteRecord | null> {
     const existing = await this.getNote({
@@ -131,6 +134,7 @@ export class ConvexNoteRepository implements NoteRepository {
         ...(args.expectedUpdatedAt !== undefined
           ? { expectedUpdatedAt: args.expectedUpdatedAt }
           : {}),
+        ...(args.byAgent ? { byAgent: true } : {}),
         ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
       }, { throwOnError: true })
     } catch (error) {

@@ -98,6 +98,7 @@ import type * as migrations_notesToMarkdownData from "../migrations/notesToMarkd
 import type * as migrations_renameGenericWorkspaces from "../migrations/renameGenericWorkspaces.js";
 import type * as migrations_workspaceHandles from "../migrations/workspaceHandles.js";
 import type * as platform_gatewayCatalog from "../platform/gatewayCatalog.js";
+import type * as platform_growth from "../platform/growth.js";
 import type * as platform_http from "../platform/http.js";
 import type * as platform_idempotency from "../platform/idempotency.js";
 import type * as platform_metrics from "../platform/metrics.js";
@@ -216,6 +217,7 @@ declare const fullApi: ApiFromModules<{
   "migrations/renameGenericWorkspaces": typeof migrations_renameGenericWorkspaces;
   "migrations/workspaceHandles": typeof migrations_workspaceHandles;
   "platform/gatewayCatalog": typeof platform_gatewayCatalog;
+  "platform/growth": typeof platform_growth;
   "platform/http": typeof platform_http;
   "platform/idempotency": typeof platform_idempotency;
   "platform/metrics": typeof platform_metrics;

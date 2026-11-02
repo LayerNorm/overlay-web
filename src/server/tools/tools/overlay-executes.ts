@@ -605,6 +605,7 @@ export async function executeCreateAutomation(
         ...(automationId ? { automationId } : {}),
         sourceConversationId: input.sourceConversationId ?? options.conversationId,
         enabled: input.enabled ?? true,
+        ...(automationId ? {} : { byAgent: true }),
         ...toolAuthBody(options),
       },
       options.accessToken,

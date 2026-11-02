@@ -1,6 +1,6 @@
 import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
-import type { AppApiRouteContext } from '@/server/app-api/bff-context'
+import { isAutomatedCaller, type AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { scopeForbiddenResponse } from '@/server/app-api/scope-errors'
 import { parseResourceScope, parseResourceView } from '@/shared/workspaces/resource-scope'
@@ -86,6 +86,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const { auth } = context
 
     const result = await noteService.createNote({
+      byAgent: body.byAgent === true || isAutomatedCaller(auth),
       title: body.title,
       content: body.content,
       tags: body.tags,
@@ -114,6 +115,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       content: body.content,
       tags: body.tags,
       expectedUpdatedAt: body.expectedUpdatedAt,
+      byAgent: body.byAgent === true || isAutomatedCaller(auth),
       userId: auth.userId,
       workspaceId: context.workspace.workspace.id,
     })

@@ -1,6 +1,7 @@
 import { ConvexError, v } from 'convex/values'
 import { assertCanCreateInScope, getReadableRow, listScopedRows, scopeContextLoader } from '../lib/resourceScope'
 import { scopeMutations } from '../lib/scopeMutations'
+import { recordFileEdit } from '../lib/growthFileEdits'
 import { Doc, Id } from '../_generated/dataModel'
 import { internal } from '../_generated/api'
 import { selectNoteClientIdCandidate } from '../../src/shared/knowledge/note-client-id'
@@ -736,6 +737,7 @@ export const getR2KeysForSubtree = query({
 export const create = mutation({
   args: {
     userId: v.string(),
+    byAgent: v.optional(v.boolean()),
     workspaceId: v.optional(v.string()),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
@@ -890,6 +892,7 @@ export const create = mutation({
         : null
     const id = await ctx.db.insert('files', {
       userId: args.userId,
+      createdByAgent: args.byAgent || undefined,
       workspaceId: args.workspaceId,
       scope,
       clientId,
@@ -1123,9 +1126,11 @@ export const update = mutation({
     outputCompletedAt: v.optional(v.number()),
     expiresAt: v.optional(v.number()),
     expectedUpdatedAt: v.optional(v.number()),
+    /** An agent or outside app made the change: counted as an edit, credited to no person. */
+    byAgent: v.optional(v.boolean()),
   },
   returns: v.null(),
-  handler: async (ctx, { userId: callerId, workspaceId, accessToken, serverSecret, fileId, ...updates }) => {
+  handler: async (ctx, { userId: callerId, workspaceId, accessToken, serverSecret, fileId, byAgent, ...updates }) => {
     await authorizeUserAccess({ userId: callerId, accessToken, serverSecret })
     const existing = await ctx.db.get(fileId)
     if (!existing || existing.deletedAt || (workspaceId !== undefined && existing.workspaceId !== workspaceId) || !(await scopeContextLoader(ctx, callerId).canEdit(existing))) throw new Error('Unauthorized')
@@ -1206,6 +1211,13 @@ export const update = mutation({
           ? await findCanonicalDuplicate(ctx as never, userId, updates.contentHash, fileId)
           : null
       patch.content = nextText
+      // Text kept in object storage sends only a prefix as `content`, so its full-text hash decides.
+      const textChanged = updates.contentHash && existing.contentHash
+        ? updates.contentHash !== existing.contentHash
+        : nextText !== existingText
+      if (kind !== 'output' && textChanged) {
+        await recordFileEdit(ctx, fileId, byAgent ? undefined : callerId, patch.updatedAt as number)
+      }
       // Legacy rows can still carry textContent, which readers prefer over
       // content. Remove it when writing canonical text so it cannot mask a save.
       patch.textContent = undefined

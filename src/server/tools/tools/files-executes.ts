@@ -228,6 +228,7 @@ export async function executeWriteFile(
       const res = await send(options, 'PATCH', {
         fileId: input.fileId.trim(),
         textContent: input.content,
+        byAgent: true,
         ...(input.name?.trim() ? { name: input.name.trim() } : {}),
         ...(expectedUpdatedAt !== undefined ? { expectedUpdatedAt } : {}),
       })
@@ -250,6 +251,7 @@ export async function executeWriteFile(
     if (!name) return { success: false, error: 'name is required to create a file.' }
     const res = await send(options, 'POST', {
       name,
+      byAgent: true,
       type: 'file',
       kind: 'upload',
       mimeType: mimeTypeFor(name),

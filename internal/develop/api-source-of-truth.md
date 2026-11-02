@@ -460,3 +460,11 @@ same client and cookie session directly. Native-only server operations (session
 verification and cloud transcription) use the persistent window partition, with
 bounded timeouts and the existing API authorization/billing checks. Main does not
 store or refresh a second WorkOS session or run a parallel provider client.
+
+### Growth attribution
+
+File/note creation and edits carry `byAgent` for agent tools and API-key/service
+callers. Convex stores `createdByAgent` for creations; Harness binary publication
+and agent-drive uploads set it directly. These records count as work produced
+without crediting the owner as a human active user. Existing ownership, quota and
+revision checks still apply.

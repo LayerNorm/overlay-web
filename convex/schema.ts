@@ -2,6 +2,7 @@ import { driveUploadFields } from './lib/agentDriveUploadSchema'
 import { remoteLifecycleValidator } from './agents/remoteRunModel'
 import {nativeStartAdmissionValidator} from './lib/nativeStartAdmission'
 import { agentMcpCallState } from './lib/agentMcpCallSchema'
+import { growthTables } from './lib/growthSchema'
 import { nativeAgentErrorPart } from './lib/nativeAgentErrorPart'
 import { harnessDiagnosticValidator } from './lib/harnessDiagnosticValidator'
 import { agentRunResourceRequestValidator } from './harness/resourceValidators'
@@ -989,6 +990,8 @@ export default defineSchema({
 
   automations: defineTable({
     // Personal / Workspace / Archived. Absent `scope` means personal.
+    /** Made by an agent, API key or service rather than the person: counted, but not their activity. */
+    createdByAgent: v.optional(v.boolean()),
     scope: v.optional(v.union(v.literal('personal'), v.literal('workspace'))),
     archivedAt: v.optional(v.number()),
     archivedBy: v.optional(v.string()),
@@ -1945,6 +1948,8 @@ export default defineSchema({
     shareToken: v.optional(v.string()),
     shareVisibility: v.optional(v.union(v.literal('private'), v.literal('public'))),
     sharedAt: v.optional(v.number()),
+    // Set when an agent created the file (agent drive), so growth analytics doesn't credit the owner with it.
+    createdByAgent: v.optional(v.boolean()),
   }).index('by_workspaceId_scope_archivedAt', ['workspaceId', 'scope', 'archivedAt']).index('by_workspaceId_userId_archivedAt', ['workspaceId', 'userId', 'archivedAt'])
     .index('by_workspaceId', ['workspaceId']).index('by_workspaceId_userId', ['workspaceId', 'userId']).index('by_userId', ['userId'])
     .index('by_workspaceId_userId_updatedAt', ['workspaceId', 'userId', 'updatedAt'])
@@ -2623,6 +2628,18 @@ export default defineSchema({
   })
     .index('by_functionName_timestamp', ['functionName', 'timestamp'])
     .index('by_timestamp', ['timestamp']),
+
+  // ─── Growth analytics (nightly rollups read by the admin console) ────────
+  growthDailyTotals: defineTable(growthTables.growthDailyTotals).index('by_day', ['day']),
+  growthUserDays: defineTable(growthTables.growthUserDays).index('by_day', ['day']).index('by_userId_day', ['userId', 'day']),
+  growthUsers: defineTable(growthTables.growthUsers).index('by_userId', ['userId']),
+  growthCohortWeeks: defineTable(growthTables.growthCohortWeeks).index('by_weekStart', ['weekStart']),
+  growthPaidAccounts: defineTable(growthTables.growthPaidAccounts)
+    .index('by_billingAccountId', ['billingAccountId']).index('by_firstPaidDay', ['firstPaidDay']),
+  growthJobState: defineTable(growthTables.growthJobState).index('by_key', ['key']),
+  growthFileEdits: defineTable(growthTables.growthFileEdits).index('by_day', ['day']).index('by_fileId_day', ['fileId', 'day']),
+  growthWorkspaceUsage: defineTable(growthTables.growthWorkspaceUsage)
+    .index('by_day_workspaceId', ['day', 'workspaceId']).index('by_day_cents', ['day', 'cents']),
 
   // ─── Slack import jobs ───────────────────────────────────────────────────
   // Durable jobs for importing Slack workspace data into Overlay conversations

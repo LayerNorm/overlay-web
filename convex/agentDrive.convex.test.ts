@@ -500,6 +500,9 @@ test('stale revisions and colliding creates save distinct conflict copies while 
   const replacement = await f.convex.mutation(uploadCommit, { ...f.args, uploadId: second.uploadId,
     verifiedSha256: writeHash, verifiedSizeBytes: second.sizeBytes, textPrefix: 'replacement' })
   expect(replacement.fileId).toBe(initial.fileId)
+  const fileEdits = () => f.convex.run(async ctx => (await ctx.db.query('growthFileEdits').collect()).length)
+  // Saving identical bytes again is not an edit.
+  expect(await fileEdits()).toBe(0)
   const stale = { ...writeInput(3), operation: second.operation }
   await f.convex.mutation(uploadIntent, { ...f.args, ...stale })
   const conflict = await f.convex.mutation(uploadCommit, { ...f.args, uploadId: stale.uploadId,
@@ -513,6 +516,12 @@ test('stale revisions and colliding creates save distinct conflict copies while 
   expect(await f.convex.mutation(uploadCommit, { ...f.args, uploadId: collision.uploadId,
     verifiedSha256: writeHash, verifiedSizeBytes: collision.sizeBytes, textPrefix: 'collision' }))
     .toMatchObject({ name: 'report (agent 2).txt', conflict: true })
+  const changed = { ...writeInput(5), sha256: 'b'.repeat(64),
+    operation: { kind: 'replace', fileId: initial.fileId, path: 'report.txt', updatedAt: replacement.updatedAt } }
+  await f.convex.mutation(uploadIntent, { ...f.args, ...changed })
+  await f.convex.mutation(uploadCommit, { ...f.args, uploadId: changed.uploadId,
+    verifiedSha256: changed.sha256, verifiedSizeBytes: changed.sizeBytes, textPrefix: 'changed' })
+  expect(await fileEdits()).toBe(1)
 })
 
 test('superseded drive versions remain charged through retention, shared references and cleanup retries', async () => {
