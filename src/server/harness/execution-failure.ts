@@ -32,6 +32,14 @@ export function harnessExecutionFailureReason(error: unknown): string {
     seen.add(current)
     const message = field(current, 'message')
     const name = field(current, 'name')
+    if (name === 'AI_TypeValidationError') {
+      const value = field(current, 'value')
+      const providerError = value && typeof value === 'object' ? field(value, 'error') : undefined
+      if (providerError && typeof providerError === 'object'
+        && field(providerError, 'code') === 'data_inspection_failed') {
+        return 'The model provider blocked this response with its content filter (data_inspection_failed). Any partial response is incomplete.'
+      }
+    }
     const code = field(current, 'code')
     const label = [name, code]
       .filter((value): value is string => typeof value === 'string'

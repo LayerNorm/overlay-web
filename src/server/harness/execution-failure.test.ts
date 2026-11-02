@@ -26,6 +26,26 @@ test('redacts credentials before truncation', () => {
   expect(reason).toContain('Request failed:')
 })
 
+test('reports a provider content-filter rejection wrapped in a serialized validation error', () => {
+  const error = {
+    name: 'AI_TypeValidationError',
+    cause: { name: 'ZodError', message: 'Invalid input: expected array, received undefined at choices' },
+    value: {
+      error: { code: 'data_inspection_failed', type: 'data_inspection_failed',
+        message: '<400> InternalError.Algo.DataInspectionFailed: Output data may contain inappropriate content.' },
+      request_id: 'private-request-id',
+      content: 'private-provider-content',
+    },
+  }
+  const reason = 'The model provider blocked this response with its content filter (data_inspection_failed). Any partial response is incomplete.'
+  expect(harnessExecutionFailureReason(error)).toBe(reason)
+  expect(harnessExecutionFailureReason({ message: 'Stream failed.', cause: error })).toBe(reason)
+  expect(harnessExecutionFailureReason({ ...error, value: { error: { code: 'another_error' } } }))
+    .toBe('AI_TypeValidationError Caused by: ZodError: Invalid input: expected array, received undefined at choices')
+  expect(harnessExecutionFailureReason({ ...error, get value() { throw new Error('private'); } }))
+    .toBe('AI_TypeValidationError Caused by: ZodError: Invalid input: expected array, received undefined at choices')
+})
+
 test('normalization tolerates missing details, circular causes and throwing getters', () => {
   const circular: { message: string; cause?: unknown } = { message: 'Step failed.' }
   circular.cause = circular
