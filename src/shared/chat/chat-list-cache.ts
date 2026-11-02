@@ -1,7 +1,5 @@
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { isPaginatedEnvelope, type PaginatedEnvelope } from '@/shared/api/pagination'
-import { trackCacheState } from '@/shared/observability/client-metrics'
-import { recordRequest } from '@/shared/observability/duplicate-tracker'
 import { ROUTE_WORKSPACE_HEADER } from '@/shared/workspaces/constants'
 import { mergeChatTitle } from './chat-title'
 
@@ -184,31 +182,8 @@ export async function fetchChatListResult(options: { force?: boolean } = {}): Pr
   const cache = getWorkspaceCache(requestWorkspaceKey)
   const now = Date.now()
   if (!options.force && cache.cachedChats && now - cache.cachedAt < CACHE_TTL_MS) {
-    trackCacheState({
-      resource: 'chat_list',
-      key: requestWorkspaceKey,
-      state: 'hit',
-      ttlMs: CACHE_TTL_MS,
-      ageMs: now - cache.cachedAt,
-    })
     return { status: 'success', chats: cache.cachedChats }
   }
-  if (options.force && cache.cachedChats) {
-    trackCacheState({
-      resource: 'chat_list',
-      key: requestWorkspaceKey,
-      state: 'stale',
-      ttlMs: CACHE_TTL_MS,
-      ageMs: now - cache.cachedAt,
-    })
-  } else if (!cache.cachedChats) {
-    trackCacheState({
-      resource: 'chat_list',
-      key: requestWorkspaceKey,
-      state: 'miss',
-    })
-  }
-  recordRequest(`chat_list:${requestWorkspaceKey}`)
   // `force` bypasses the display TTL, not request coalescing. The app shell and
   // active chat can ask for the same refresh concurrently after a reconnect.
   // Sharing the promise prevents those refresh sources from multiplying one

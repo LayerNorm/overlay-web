@@ -75,12 +75,45 @@ needs HTTPS: `PORT=3100 npx next dev --experimental-https` inside
 - `src/server/operator.ts` `resolveOperator()` is the single gate (session →
   allowlist → principal row); every API route wraps `adminRoute()` in
   `src/server/guard.ts` which maps it to 401/403 and re-mints the idle cookie.
-- `src/features/admin/` holds the ported UI (Overview, Roles, Groups, Catalog)
-  copied from `src/features/admin/*`; it reads data via
-  `src/shared/admin-api.ts` (the same `overlayAppClient.admin*` /
+- `src/features/admin/` holds the UI: Growth, People, Audit log, Roles, Groups
+  and Catalog, grouped in the sidebar as Insights / Operations / Access. It
+  reads data via `src/shared/admin-api.ts` (the same `overlayAppClient.admin*` /
   `adminAuthorization.*` surface, pointed at this app's `/api/v1/admin/*`).
+- The shell (`src/app/admin-shell.css`) uses the web app's bordered
+  double-sidebar values: chrome background, 12px bordered panels, 8px gaps, Geist,
+  Lucide icons, `@overlay/ui` controls. It remaps the shared tokens so the
+  authorization and catalog panels inherit the palette. Light/dark is the
+  `overlay_admin_theme` cookie, read on the server because the nonce CSP rules
+  out an inline theme script. Tailwind `@source` paths in `globals.css` must
+  reach the repo-root `packages/` (four levels up) or package classes are dropped.
 - `src/app/api/v1/admin/*` are thin route wrappers over the copied services in
   `src/server/admin/*` and `src/server/authorization/*`.
+
+## Growth section
+
+`GET /api/v1/admin/growth` (audit action `administration.growth.read` on denial)
+returns `admin/console:getGrowthSummary`: the last 182 days (26 weeks) of
+`growthDailyTotals`, new paid accounts per day from `growthPaidAccounts`, the
+last 12 signup-week cohorts and the top 10 workspaces by spend over 30 days. It
+reads only the nightly growth tables (`convex/platform/growth.ts`), never source
+tables. Roles: `admin`, `auditor`, `billing_admin` (route, Convex and UI agree);
+`support` has no access. The panel (`src/features/admin/growth/`) shows rolling
+seven-day weeks ending on the last counted day, so the newest week is complete,
+over a 4, 12 or 26 week range: headline tiles, a weekly-active chart, retention,
+Created / Work / Money metrics and the top workspaces.
+On narrow screens, summary tiles stack in one column and header controls wrap
+so chart ranges and refresh remain reachable without clipped content.
+Retention rates show only once every member's window has closed. Personal
+workspaces are never shown by name.
+
+The nightly job is cron `growth daily totals` (00:20 UTC); see the comments in
+`convex/platform/growth.ts` for sources, filters and the recount window. A new
+deployment counts only yesterday, so after the first production deploy run the
+backfill once against the selected deployment, following `convex-workflow.md`:
+`npx convex run platform/growth:startBackfill '{}'`. File edits can't be
+backfilled and start from the deploy date. Growth numbers come only from these
+rollups; PostHog keeps pageviews, identify and the `user.signed_up` event. Never paste real numbers from this panel
+into the repository, PRs or screenshots.
 
 ## Boundary rules (enforced by ESLint)
 
@@ -141,7 +174,7 @@ The admin CI install selects only the admin workspace and its dependency closure
 
 The OAuth state envelope holds a one-use PKCE verifier; AuthKit gets its S256 challenge and callback exchanges the code with that verifier. Exchange failures log only event, error class, bounded provider code and status, never codes, tokens or credentials.
 
-The legacy `/api/v1/admin/usage` path is the People directory: admin, billing and support operators may read it; auditors use the audit view. The UI, route gate and Convex directory gate use that same policy.
+The legacy `/api/v1/admin/usage` path is the People directory: admin, billing and support operators may read it; auditors use the audit view. The UI, route gate and Convex directory gate use that same policy. Rows are newest sign-ups first with name, email, user ID, sign-up time, plan (paid when the billing account has an active or trialing paid subscription) and last active day (the latest `growthUserDays` row, so human activity up to the last nightly count). `?q=` matches an exact user ID or email, else part of a name or email among the newest 5,000 accounts.
 
 ## Isolated admin Preview provisioning
 

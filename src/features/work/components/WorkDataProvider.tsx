@@ -22,7 +22,6 @@ import { newItemScope } from '@/shared/workspaces/panel-scope'
 import type { WorkViewer } from '@/shared/work/query'
 import { useWorkRoute } from '../lib/use-work-route'
 import { publishSidebarWork } from './WorkSidebarSection'
-import { describeWorkChange, trackWork } from '../lib/work-analytics'
 import { applyItemPatch, endRankOf, rankForDrop, removeItem, upsertItem } from '../lib/work-state'
 
 export type WorkLoadState = 'loading' | 'ready' | 'error'
@@ -227,7 +226,6 @@ export function WorkDataProvider({ children }: { children: ReactNode }) {
     try {
       const { item } = await overlayAppClient.work.create({ ...input, ...(scopeToSend ? { scope: scopeToSend } : {}) })
       if (view.current === startedIn) setItems((current) => upsertItem(current, item))
-      trackWork('work_task_created', { scope: item.scope, status: item.status })
       return item
     } catch (caught) {
       toast.error(messageOf(caught, 'Could not add the task.'))
@@ -241,8 +239,6 @@ export function WorkDataProvider({ children }: { children: ReactNode }) {
     const target = findTask(id)
     if (!target) return Promise.resolve(null)
     const endRank = patch.status && patch.status !== target.status ? endRankOf(itemsRef.current, patch.status, id) : undefined
-    const change = describeWorkChange(patch)
-    trackWork(change.event, change.properties)
     return mutate(
       id,
       (current) => current.map((item) => (item.id === id ? applyItemPatch(item, patch, { now: Date.now(), endRank }) : item)),
@@ -261,7 +257,6 @@ export function WorkDataProvider({ children }: { children: ReactNode }) {
     if (!target) return Promise.resolve(null)
     const status = input.status ?? target.status
     const rank = rankForDrop(itemsRef.current, { id, status, afterId: input.afterId, beforeId: input.beforeId })
-    trackWork('work_task_moved', { status, changedColumn: status !== target.status })
     return mutate(
       id,
       (current) => current.map((item) => (item.id === id ? { ...item, status, rank, updatedAt: Date.now() } : item)),

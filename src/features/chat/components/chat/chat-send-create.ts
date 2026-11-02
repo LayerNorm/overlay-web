@@ -1,5 +1,4 @@
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react'
-import posthog from 'posthog-js'
 import { createIdempotencyKey } from '@overlay/api-client'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { normalizeChatModelSelection } from '@/shared/chat/chat-model-prefs'
@@ -157,8 +156,6 @@ export async function createNewChatForSend({
   upsertCachedChat(newChat)
   setChats((prev) => [newChat, ...prev])
   dispatchChatCreated({ chat: newChat })
-  posthog.capture('chat_new_chat_created', { mode: 'act' })
-
   if (options.deferActivation) {
     const pending = pendingFirstSendRef.current
     if (pending && trimmedClientId && pending.conversationClientId === trimmedClientId) {

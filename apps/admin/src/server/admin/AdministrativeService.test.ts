@@ -20,11 +20,11 @@ test('fixed administrative roles grant only their own controls', async () => {
     principal('support_1', 'support'),
   ])
 
-  assert.deepEqual(await checks(service, 'admin_1'), [true, true, true, true])
-  assert.deepEqual(await checks(service, 'auditor_1'), [false, true, false, false])
-  assert.deepEqual(await checks(service, 'billing_1'), [false, false, true, false])
-  assert.deepEqual(await checks(service, 'support_1'), [false, false, false, true])
-  assert.deepEqual(await checks(service, 'nobody'), [false, false, false, false])
+  assert.deepEqual(await checks(service, 'admin_1'), [true, true, true, true, true])
+  assert.deepEqual(await checks(service, 'auditor_1'), [false, true, false, false, true])
+  assert.deepEqual(await checks(service, 'billing_1'), [false, false, true, false, true])
+  assert.deepEqual(await checks(service, 'support_1'), [false, false, false, true, false])
+  assert.deepEqual(await checks(service, 'nobody'), [false, false, false, false, false])
 })
 
 test('a revoked principal loses every administrative control', async () => {
@@ -32,7 +32,7 @@ test('a revoked principal loses every administrative control', async () => {
     { ...principal('former_admin', 'admin'), revokedAt: 2, revokedBy: 'admin_1' },
   ])
 
-  assert.deepEqual(await checks(service, 'former_admin'), [false, false, false, false])
+  assert.deepEqual(await checks(service, 'former_admin'), [false, false, false, false, false])
   await assert.rejects(service.list('former_admin'), /Administrative authorization required/)
 })
 
@@ -77,6 +77,7 @@ async function checks(service: AdministrativeService, userId: string) {
     await service.canViewAudit(userId),
     await service.canManageBilling(userId),
     await service.canAccessSupportControls(userId),
+    await service.canViewGrowth(userId),
   ]
 }
 
