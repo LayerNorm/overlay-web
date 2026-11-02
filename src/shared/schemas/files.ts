@@ -17,6 +17,7 @@ export const FileContentQuery = z.object({})
 
 export const CreateFileRequest = z.object({
   ...AuthFields,
+  byAgent: z.boolean().optional(),
   name: z.string().min(1).optional(),
   mimeType: z.string().optional(),
   sizeBytes: z.number().nonnegative().optional(),

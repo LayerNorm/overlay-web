@@ -47,6 +47,7 @@ export interface NoteRepository {
     userId: string
     title: string
     content: string
+    byAgent?: boolean
     tags?: string[]
     clientId?: string
     conversationId?: string
@@ -147,6 +148,7 @@ export class NoteService {
     const result = await this.context.noteRepository.createNote({
       userId: args.userId,
       title: normalizeNoteTitle(args.title),
+      ...(args.byAgent ? { byAgent: true } : {}),
       content,
       tags: args.tags,
       clientId: args.clientId,

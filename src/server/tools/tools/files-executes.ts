@@ -251,6 +251,7 @@ export async function executeWriteFile(
     if (!name) return { success: false, error: 'name is required to create a file.' }
     const res = await send(options, 'POST', {
       name,
+      byAgent: true,
       type: 'file',
       kind: 'upload',
       mimeType: mimeTypeFor(name),

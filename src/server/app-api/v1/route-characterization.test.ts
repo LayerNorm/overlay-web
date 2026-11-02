@@ -218,6 +218,24 @@ test('files POST route preserves success response shape', async (t) => {
   assert.deepEqual(await readJson(response), { id: 'file_1' })
 })
 
+test('file creation forces automated attribution for API keys and services', async (t) => {
+  const bodies: Array<Record<string, unknown>> = []
+  t.mock.method(fileService, 'createFile', async ({ body }) => {
+    bodies.push(body)
+    return { id: 'file_1' }
+  })
+  const route = await import('./files/route')
+  for (const authType of ['session', 'api-key', 'service'] as const) {
+    const ctx = context()
+    ctx.auth.authType = authType
+    const response = await route.POST(request('/api/v1/files', {
+      method: 'POST', body: JSON.stringify({ name: 'x.txt', byAgent: false }),
+    }), ctx)
+    assert.equal(response.status, 200)
+  }
+  assert.deepEqual(bodies.map(body => body.byAgent), [false, true, true])
+})
+
 test('files upload-url and presign routes preserve success response shapes', async (t) => {
   t.mock.method(fileService, 'createUploadUrl', async () => ({
     uploadUrl: 'https://upload.test/file',

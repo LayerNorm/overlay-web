@@ -298,6 +298,7 @@ export const commit = mutation({
       extension: extensionOf(record.name),
       scope: record.scope,
     }, now)
+    await ctx.db.patch(fileId, { createdByAgent: true })
     await ctx.db.patch(record._id, { fileId, updatedAt: now })
     return fileId
   },

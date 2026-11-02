@@ -56,7 +56,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const result = await fileService.createFile({
       userId: auth.userId,
       workspaceId: context.workspace.workspace.id,
-      body: body as Record<string, unknown>,
+      body: { ...(body as Record<string, unknown>), ...(isAutomatedCaller(auth) ? { byAgent: true } : {}) },
     })
     return NextResponse.json(result)
   } catch (error) {

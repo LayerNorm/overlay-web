@@ -11,6 +11,7 @@ export const NoteListQuery = PaginationQuery.extend({
 export const CreateNoteRequest = z.object({
   ...AuthFields,
   title: z.string().max(200).optional(),
+  byAgent: z.boolean().optional(),
   content: z.string().optional(),
   scope: z.enum(['personal', 'workspace']).optional(),
 })

@@ -30,7 +30,7 @@ their original timestamp in it.
 | Created | Tasks | `workItems` | the `created` event's actor (below), not `userId`: an agent can create a task owned by a person |
 | Created | Agents | `workspaceAgentDefinitions`, excluding `isDefault` | `createdByPrincipalId` → `workspacePrincipals.userId` (human only) |
 | Created | Automations | `automations` | `userId` |
-| Created | Files | `files` where `kind` is `note` or `upload` (folders and AI outputs excluded) | `userId`, unless `createdByAgent` (agent drive saves under the owner) |
+| Created | Files | `files` where `kind` is `note` or `upload` (folders and AI outputs excluded) | `userId`, unless `createdByAgent` (agent tools, API/service callers, Computer publication and agent drive save under the owner) |
 | Work | Threads created | `conversations`, excluding `isAutomation` | `userId` |
 | Work | Messages sent | `conversationMessages` where `role = 'user'`, `importedAuthorName` unset and `authorKind` is unset or `human` | `userId` |
 | Work | Automations run | `automationRuns`, split by final status (succeeded/completed vs failed/dead_letter) | only when `triggerSource` is `manual` or `retry` |
@@ -113,8 +113,9 @@ nightly run, the backfill and repairs can overlap in history safely.
   changes (by full-text hash when present, since object-stored text sends only a
   prefix; never for AI outputs), and agent drive overwrites call it with no editor.
 
-One existing table changes: `files.createdByAgent` (optional), set by agent
-drive uploads.
+Existing tables add optional `createdByAgent` markers: files created through
+agent tools, API/service callers, Computer publication or agent drive, and
+automations created by automated callers. Human creation remains unmarked.
 
 Account deletion (`auth/users:deleteUserAccountByServer`) removes the person's
 `growthUsers` and `growthUserDays` rows; only anonymous totals and cohort counts

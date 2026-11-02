@@ -307,3 +307,8 @@ When adding, removing, or moving an app route, update this catalog in the same c
 Hosted transcription uses the shared quota policy: absent or zero legacy seconds
 limits do not block a credit-funded paid workspace. Positive seconds caps, paid
 plan admission and provider budget reservation/finalization remain enforced.
+
+Growth attribution on file and note POSTs mirrors PATCH: agent tools set
+`byAgent`, and the BFF forces it for API-key/service authentication. Binary
+Harness publication sets `createdByAgent` atomically with file registration.
+These markers suppress human activity credit only; authorization is unchanged.

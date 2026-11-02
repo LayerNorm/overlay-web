@@ -737,6 +737,7 @@ export const getR2KeysForSubtree = query({
 export const create = mutation({
   args: {
     userId: v.string(),
+    byAgent: v.optional(v.boolean()),
     workspaceId: v.optional(v.string()),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
@@ -891,6 +892,7 @@ export const create = mutation({
         : null
     const id = await ctx.db.insert('files', {
       userId: args.userId,
+      createdByAgent: args.byAgent || undefined,
       workspaceId: args.workspaceId,
       scope,
       clientId,

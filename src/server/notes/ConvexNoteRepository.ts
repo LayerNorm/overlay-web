@@ -70,6 +70,7 @@ export class ConvexNoteRepository implements NoteRepository {
     userId: string
     title: string
     content: string
+    byAgent?: boolean
     tags?: string[]
     clientId?: string
     conversationId?: string
@@ -82,6 +83,7 @@ export class ConvexNoteRepository implements NoteRepository {
       clientId: args.clientId,
       ...(args.conversationId ? { conversationId: args.conversationId } : {}),
       name: args.title,
+      ...(args.byAgent ? { byAgent: true } : {}),
       ...(args.tags ? { tags: args.tags } : {}),
       kind: 'note',
       type: 'file',

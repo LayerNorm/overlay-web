@@ -22,6 +22,8 @@ export interface NoteQueryContract extends PaginationQueryContract {
 }
 
 export interface CreateNoteRequest {
+  /** Created by automation rather than direct human activity. */
+  byAgent?: boolean
   title?: string
   content?: string
   tags?: string[]

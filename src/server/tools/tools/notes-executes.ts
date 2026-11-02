@@ -220,6 +220,7 @@ export async function executeCreateNote(
       NOTES_PATH,
       {
         title,
+        byAgent: true,
         content: input.content,
         ...(input.tags ? { tags: input.tags } : {}),
         ...(options.conversationId ? { conversationId: options.conversationId } : {}),

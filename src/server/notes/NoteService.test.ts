@@ -76,9 +76,11 @@ test('NoteService.createNote forwards a conversation id only when provided', asy
   }
   const service = new NoteService({ noteRepository: repository })
 
-  await service.createNote({ userId: 'user_1', title: 'Thread note', content: 'body', conversationId: 'conv_1' })
+  await service.createNote({ userId: 'user_1', title: 'Thread note', content: 'body', conversationId: 'conv_1', byAgent: true })
   await service.createNote({ userId: 'user_1', title: 'Personal note', content: 'body' })
 
+  assert.equal(createArgs[0]?.byAgent, true)
+  assert.equal(createArgs[1]?.byAgent, undefined)
   assert.equal(createArgs[0]?.conversationId, 'conv_1')
   assert.equal('conversationId' in createArgs[1]!, false)
 })

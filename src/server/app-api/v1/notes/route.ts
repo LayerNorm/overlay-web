@@ -86,6 +86,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const { auth } = context
 
     const result = await noteService.createNote({
+      byAgent: body.byAgent === true || isAutomatedCaller(auth),
       title: body.title,
       content: body.content,
       tags: body.tags,

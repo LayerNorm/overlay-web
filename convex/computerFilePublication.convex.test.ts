@@ -110,7 +110,9 @@ test('admitted and claimed run prepares concurrently once, then commits and repl
     artifactId: input.artifactId, fileId: committedId, r2Key: first.r2Key,
   })
   await convex.run(async ctx => {
-    expect((await ctx.db.query('files').collect()).filter(file => file.type === 'file')).toHaveLength(1)
+    const files = (await ctx.db.query('files').collect()).filter(file => file.type === 'file')
+    expect(files).toHaveLength(1)
+    expect(files[0]?.createdByAgent).toBe(true)
     expect(await ctx.db.query('r2UploadIntents').collect()).toHaveLength(1)
     expect(await ctx.db.query('subscriptions').collect()).toContainEqual(expect.objectContaining({
       userId, overlayStorageBytesUsed: snapshot.sizeBytes,

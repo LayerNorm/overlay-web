@@ -137,6 +137,8 @@ test('write_file links only created files to its conversation', async () => {
     await executeWriteFile(options, { name: 'standalone.md', content: '# Standalone' })
     await executeWriteFile(conversationOptions, { fileId: 'f2', content: '# Edited' })
 
+    assert.equal(bodies[0]?.byAgent, true)
+    assert.equal(bodies[1]?.byAgent, true)
     assert.equal(bodies[0]?.conversationId, 'conv_1')
     assert.equal('conversationId' in (bodies[1] ?? {}), false)
     assert.equal('conversationId' in (bodies[2] ?? {}), false)

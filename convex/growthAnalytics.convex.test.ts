@@ -302,6 +302,29 @@ test('an automation an agent made is counted but is not the person\'s activity',
   vi.useRealTimers()
 })
 
+test('agent-created notes and text uploads count as files without making their owner active', async () => {
+  vi.useFakeTimers()
+  try {
+    const convex = convexTest(schema, modules)
+    vi.setSystemTime(at(DAY1))
+    await convex.run(ctx => ctx.db.insert('subscriptions', { userId: 'passive-owner' }))
+    const create = makeFunctionReference<'mutation'>('files/files:create')
+    for (const kind of ['note', 'upload'] as const) {
+      const fileId = await convex.mutation(create, {
+        userId: 'passive-owner', serverSecret: secret, name: `${kind}.md`,
+        type: 'file', kind, byAgent: true,
+      })
+      expect(await convex.run(ctx => ctx.db.get(fileId))).toMatchObject({ createdByAgent: true })
+    }
+    vi.setSystemTime(at(addDays(DAY1, 1), 1))
+    await convex.mutation(startBackfill, {})
+    await runAll(convex)
+    expect(await totals(convex, DAY1)).toMatchObject({ filesCreated: 2, activeUsers: 0 })
+  } finally {
+    vi.useRealTimers()
+  }
+})
+
 describe('file edit tracking', () => {
   test('each text change is kept per file and day with every editor; indexing updates and unchanged saves are not edits', async () => {
     vi.useFakeTimers()
