@@ -1,5 +1,7 @@
 # Paid-first rollout
 
+Opt-in Preview QA workspaces carry explicitly synthetic `preview-fixture` paid-period records and bounded budgets. Re-seeding does not replenish credit or extend those periods. They are not payment evidence and must never be used to claim checkout acceptance: validate Stripe payment in a separate, initially unfunded workspace. The fixture handlers refuse production deployments.
+
 This is an operator runbook, not permission to deploy. Feature development has not changed production billing, stopped existing customers, or run the migration against a real backend.
 
 ## Release gates

@@ -130,6 +130,8 @@ async function seedComputerWorkspace(ctx: MutationCtx, { userId, email }: { user
     markupBasisPoints: account.markupBasisPoints, status: 'active',
     autoTopUpEnabled: false, autoTopUpAmountCents: 0,
     currentPeriodStart: now, currentPeriodEnd: now + 30 * 24 * 60 * 60_000,
+    paidInvoiceId: `preview-fixture:${workspaceId}`,
+    paidPeriodStart: now, paidPeriodEnd: now + 30 * 24 * 60 * 60_000,
     createdAt: now, updatedAt: now,
   })
   const balance = await ensureEmptyBalance(ctx, account.billingAccountId)
