@@ -260,7 +260,7 @@
 }
 
 @media (max-width: 820px) {
-  .growth-kpis { grid-template-columns: 1fr 1fr; }
+  .growth-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .growth-groups { grid-template-columns: 1fr; }
   .admin-side { width: 60px; }
   .admin-side .admin-nav-text, .admin-side .admin-nav-label, .admin-side .admin-tag, .admin-side .admin-lockup-full, .admin-me { display: none; }
@@ -273,4 +273,10 @@
   .audit-list .admin-list-head, .audit-list .admin-list-item { grid-template-columns: minmax(0, 1fr) 90px; }
   .admin-main-sub { visibility: hidden; }
   .admin-page { padding: 12px 16px 40px; }
+}
+
+@media (max-width: 560px) {
+  .growth-kpis { grid-template-columns: minmax(0, 1fr); }
+  .admin-main-head { height: auto; min-height: 52px; flex-wrap: wrap; padding: 12px; }
+  .admin-main-sub { display: none; }
 }

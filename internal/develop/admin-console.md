@@ -101,6 +101,8 @@ tables. Roles: `admin`, `auditor`, `billing_admin` (route, Convex and UI agree);
 seven-day weeks ending on the last counted day, so the newest week is complete,
 over a 4, 12 or 26 week range: headline tiles, a weekly-active chart, retention,
 Created / Work / Money metrics and the top workspaces.
+On narrow screens, summary tiles stack in one column and header controls wrap
+so chart ranges and refresh remain reachable without clipped content.
 Retention rates show only once every member's window has closed. Personal
 workspaces are never shown by name.
 
