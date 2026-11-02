@@ -193,6 +193,9 @@ The HUD reuses that take's admission at release instead of repeating the native
 session request after a long take. Standalone bridge uploads and explicit retries
 still admit independently; the web endpoint always checks current authentication,
 workspace access, entitlements, reservations and settlement.
+A 401 response gets one forced native session refresh and upload replay under the
+same idempotency key, covering credentials that expire during speech. Cancellation
+aborts the refresh; other failures retain explicit retry/copy recovery.
 The AudioWorklet batches mono PCM every 256 samples and flushes a bounded WAV at
 release, avoiding a whole-recording decode. Groq still transcribes completed
 recordings; this path does not claim streaming recognition. Local helpers and
