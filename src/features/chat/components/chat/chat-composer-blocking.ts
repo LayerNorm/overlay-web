@@ -1,11 +1,11 @@
 import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
+import { EXECUTION_ACCESS_MESSAGES } from '@/shared/billing/execution-access'
 
 export const CONNECTION_UNAVAILABLE_NOTICE =
   'This model connection is unavailable. Reconnect it in Settings > Providers or choose another model. No fallback has been selected.'
 
 const BUDGET_EXHAUSTED_NOTICE =
   'Budget exhausted. Add credit to continue model execution.'
-const PAID_MODEL_BLOCKED_NOTICE = 'This model requires a paid plan. Switch to Auto or upgrade.'
 
 export function hasUnavailableByokModel({
   chatPrefsHydrated,
@@ -46,6 +46,6 @@ export function getBlockedSendNotice({
 }) {
   if (isBudgetExhaustedPaid) return BUDGET_EXHAUSTED_NOTICE
   if (connectionUnavailable && !premiumModelBlocked) return CONNECTION_UNAVAILABLE_NOTICE
-  if (premiumModelBlocked) return PAID_MODEL_BLOCKED_NOTICE
+  if (premiumModelBlocked) return EXECUTION_ACCESS_MESSAGES.subscription_required
   return null
 }
