@@ -91,7 +91,7 @@ export const adminApi = {
       const { principals } = await checkedJson<{ principals: AdminPrincipal[] }>('/api/v1/admin/principals', init)
       return principals
     },
-    async listUsage(query: { limit?: number; userId?: string } = {}, init?: RequestInit) {
+    async listUsage(query: { limit?: number; q?: string; userId?: string } = {}, init?: RequestInit) {
       const { usage } = await checkedJson<{ usage: AdminUsageRow[] }>(appendQuery('/api/v1/admin/usage', query), init)
       return usage
     },

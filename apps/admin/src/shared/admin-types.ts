@@ -8,9 +8,16 @@ export type AdminCatalogResource = {
   resourceType: AdminCatalogResourceType
 }
 
+/** One person in the People directory. */
 export type AdminUsageRow = {
-  email?: string
   userId: string
+  email?: string
+  name?: string
+  /** Account creation time, ms. */
+  createdAt?: number
+  /** Latest UTC day counted as active by the nightly growth job. */
+  lastActiveDay?: string
+  plan?: 'paid' | 'free'
 }
 
 export type AdminAuditRow = {

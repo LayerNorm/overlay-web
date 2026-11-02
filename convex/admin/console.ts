@@ -1,5 +1,6 @@
 import { v } from 'convex/values'
-import { mutation, query } from '../_generated/server'
+import type { Doc } from '../_generated/dataModel'
+import { mutation, query, type QueryCtx } from '../_generated/server'
 import {
   requireAdminSecret,
   requireOperator,
@@ -798,21 +799,78 @@ export const appendAudit = mutation({
   },
 })
 
+/** Rows scanned when a People search is a name or partial email rather than an exact ID or address. */
+const USER_SEARCH_SCAN = 5000
+
+/**
+ * People directory, newest sign-ups first. `query` matches an exact user ID or
+ * email, or else part of a name or email. Last active is the latest day the
+ * nightly growth job counted the person as active (human activity only).
+ */
 export const listUserDirectory = query({
-  args: { serverSecret: v.string(), limit: v.optional(v.number()), userId: v.optional(v.string()) },
+  args: {
+    serverSecret: v.string(),
+    limit: v.optional(v.number()),
+    userId: v.optional(v.string()),
+    query: v.optional(v.string()),
+  },
   handler: async (ctx, args) => {
     requireAdminSecret(args.serverSecret)
     await requireOperator(ctx, USER_DIRECTORY)
     const limit = Math.min(Math.max(args.limit ?? 100, 1), 200)
-    const rows = args.userId
-      ? await ctx.db.query('subscriptions').withIndex('by_userId', (q) => q.eq('userId', args.userId!)).take(1)
-      : await ctx.db.query('subscriptions').take(limit)
-    return rows.map((row) => ({ userId: row.userId, email: row.email }))
+    const search = (args.query ?? args.userId ?? '').trim()
+    const rows = search ? await searchUsers(ctx, search, limit) : await ctx.db.query('subscriptions').order('desc').take(limit)
+    const seen = new Set<string>()
+    const people = []
+    for (const row of rows) {
+      if (seen.has(row.userId)) continue
+      seen.add(row.userId)
+      const lastDay = await ctx.db.query('growthUserDays')
+        .withIndex('by_userId_day', (q) => q.eq('userId', row.userId)).order('desc').first()
+      people.push({
+        userId: row.userId,
+        email: row.email,
+        name: displayName(row),
+        createdAt: row._creationTime,
+        lastActiveDay: lastDay?.day,
+        plan: await planOf(ctx, row.billingAccountId),
+      })
+    }
+    return people
   },
 })
 
+async function searchUsers(ctx: QueryCtx, search: string, limit: number): Promise<Doc<'subscriptions'>[]> {
+  const byId = await ctx.db.query('subscriptions').withIndex('by_userId', (q) => q.eq('userId', search)).take(1)
+  if (byId.length > 0) return byId
+  const byEmail = await ctx.db.query('subscriptions').withIndex('by_email', (q) => q.eq('email', search.toLowerCase())).take(1)
+  if (byEmail.length > 0) return byEmail
+  const needle = search.toLowerCase()
+  const matches: Doc<'subscriptions'>[] = []
+  for (const row of await ctx.db.query('subscriptions').order('desc').take(USER_SEARCH_SCAN)) {
+    const haystack = `${displayName(row) ?? ''} ${row.email ?? ''}`.toLowerCase()
+    if (haystack.includes(needle)) matches.push(row)
+    if (matches.length >= limit) break
+  }
+  return matches
+}
+
+function displayName(row: Doc<'subscriptions'>): string | undefined {
+  const full = [row.firstName, row.lastName].filter(Boolean).join(' ')
+  return row.displayNameOverride?.trim() || row.name?.trim() || full || undefined
+}
+
+async function planOf(ctx: QueryCtx, billingAccountId: string | undefined): Promise<'paid' | 'free'> {
+  if (!billingAccountId) return 'free'
+  const subscriptions = await ctx.db.query('billingAccountSubscriptions')
+    .withIndex('by_billingAccountId', (q) => q.eq('billingAccountId', billingAccountId)).take(10)
+  const paid = subscriptions.some((row) => row.planKind === 'paid' && (row.status === 'active' || row.status === 'trialing'))
+  return paid ? 'paid' : 'free'
+}
+
 const GROWTH_READ: readonly AdministrativeRole[] = ['admin', 'auditor', 'billing_admin']
-const GROWTH_DAYS = 90
+/** 26 weeks, the longest range the Growth page offers. */
+const GROWTH_DAYS = 182
 const GROWTH_COHORT_WEEKS = 12
 const GROWTH_TOP_WORKSPACE_DAYS = 30
 /** Spend rows read per day for the top-workspace list; the long tail is irrelevant there. */

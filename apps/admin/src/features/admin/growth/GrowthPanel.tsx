@@ -1,42 +1,70 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { TrendingUp } from 'lucide-react'
-import { EmptyState } from '@overlay/ui/primitives'
+import { ArrowDown, ArrowUp, TrendingUp } from 'lucide-react'
+import { EmptyState, SegmentedControl } from '@overlay/ui/primitives'
 
 import { adminApi } from '@/shared/admin-api'
-import type { AdminGrowthSummary } from '@/shared/admin-types'
+import type { AdminGrowthCohort, AdminGrowthSummary } from '@/shared/admin-types'
+import { AdminError, AdminScreen, errorMessage } from '../AdminScreen'
 import {
+  GROWTH_RANGES,
+  axisTicks,
   change,
   formatValue,
   growthGroups,
   growthWeeks,
   headline,
-  retentionRate,
+  retentionPercent,
   shortDay,
   type GrowthMetric,
+  type GrowthRange,
+  type GrowthWeek,
 } from './growth-view'
 
-export function GrowthPanel({ reloadKey }: { reloadKey: number }) {
+const RANGE_OPTIONS = GROWTH_RANGES.map((weeks) => ({ value: String(weeks) as `${GrowthRange}`, label: `${weeks} weeks` }))
+
+export function GrowthPanel() {
   const [summary, setSummary] = useState<AdminGrowthSummary | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [range, setRange] = useState<GrowthRange>(12)
+  const [reloadKey, setReloadKey] = useState(0)
 
   useEffect(() => {
     const controller = new AbortController()
     adminApi.admin.getGrowth({ signal: controller.signal })
       .then((growth) => { setSummary(growth); setError(null) })
       .catch((loadError: unknown) => {
-        if (!controller.signal.aborted) setError(loadError instanceof Error ? loadError.message : 'Failed to load growth')
+        if (!controller.signal.aborted) setError(errorMessage(loadError, 'Failed to load growth'))
       })
     return () => controller.abort()
   }, [reloadKey])
 
-  if (error) return <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
-  if (!summary) return <p className="py-12 text-sm text-(--muted)">Loading…</p>
-  return <GrowthView summary={summary} />
+  const subtitle = summary?.lastCompletedDay
+    ? `Week to ${shortDay(summary.lastCompletedDay)}${summary.computedAt ? ` · updated ${formatTime(summary.computedAt)}` : ''}`
+    : undefined
+
+  return (
+    <AdminScreen
+      title="Growth"
+      subtitle={subtitle}
+      onRefresh={() => setReloadKey((key) => key + 1)}
+      actions={(
+        <SegmentedControl
+          ariaLabel="Weeks shown"
+          value={String(range) as `${GrowthRange}`}
+          options={RANGE_OPTIONS}
+          onChange={(value) => setRange(Number(value) as GrowthRange)}
+        />
+      )}
+    >
+      <AdminError message={error} />
+      {summary ? <GrowthView summary={summary} range={range} /> : error ? null : <p className="admin-muted py-12 text-sm">Loading…</p>}
+    </AdminScreen>
+  )
 }
 
-export function GrowthView({ summary }: { summary: AdminGrowthSummary }) {
+export function GrowthView({ summary, range = 12 }: { summary: AdminGrowthSummary; range?: GrowthRange }) {
   if (!summary.lastCompletedDay || summary.days.length === 0) {
     return (
       <EmptyState
@@ -48,153 +76,217 @@ export function GrowthView({ summary }: { summary: AdminGrowthSummary }) {
     )
   }
 
-  const weeks = growthWeeks(summary.days)
-  const groups = growthGroups(weeks)
+  const weeks = growthWeeks(summary.days, range)
+  const kpis = headline(weeks)
 
   return (
-    <div data-testid="admin-growth" className="space-y-10">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="text-sm font-semibold">Growth</h2>
-        <p className="text-xs text-(--muted)">
-          Last 7 days to {shortDay(summary.lastCompletedDay)} (UTC)
-          {summary.computedAt ? ` · updated ${formatTime(summary.computedAt)}` : ''}
-        </p>
-      </div>
-
-      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-(--border) bg-(--border) md:grid-cols-4">
-        {headline(weeks).map((metric) => (
-          <div key={metric.key} className="bg-(--background) p-4">
-            <p className="text-xs text-(--muted)">{metric.label}</p>
-            <p className="mt-1 text-2xl font-semibold tabular-nums">{formatValue(metric.values.at(-1) ?? null, metric.format)}</p>
-            <Change values={metric.values} />
+    <div data-testid="admin-growth">
+      <div className="growth-kpis">
+        {kpis.map((metric) => (
+          <div key={metric.key} className="admin-card growth-kpi">
+            <div className="growth-kpi-label">{metric.label}</div>
+            <div className="growth-kpi-value num">{formatValue(metric.values.at(-1) ?? null, metric.format)}</div>
+            <div className="growth-kpi-foot">
+              <Change values={metric.values} />
+              <Spark values={metric.values.slice(-8)} />
+            </div>
           </div>
         ))}
       </div>
 
-      {groups.map((group) => (
-        <section key={group.title}>
-          <h3 className="text-xs font-medium uppercase tracking-wide text-(--muted)">{group.title}</h3>
-          <div className="mt-3 grid grid-cols-1 gap-x-10 border-t border-(--border) sm:grid-cols-2">
-            {group.metrics.map((metric) => <MetricRow key={metric.key} metric={metric} weekEnds={weeks.map((week) => week.endDay)} />)}
+      <div className="growth-row-2">
+        <div className="admin-card growth-chart-card">
+          <div className="admin-card-head">
+            <h2>Weekly active people</h2>
+            <span className="admin-note">Did any work in the 7 days</span>
           </div>
-        </section>
-      ))}
-
-      <section>
-        <h3 className="text-xs font-medium uppercase tracking-wide text-(--muted)">Retention by signup week</h3>
-        {summary.cohorts.length === 0 ? (
-          <p className="mt-3 text-sm text-(--muted)">No signups counted yet.</p>
-        ) : (
-          <table className="mt-3 w-full text-sm">
-            <thead>
-              <tr className="border-b border-(--border) text-left text-xs text-(--muted)">
-                <th className="py-2 font-normal">Week of</th>
-                <th className="py-2 text-right font-normal">Signups</th>
-                <th className="py-2 text-right font-normal" title="Active on days 7–13 after signup">W1</th>
-                <th className="py-2 text-right font-normal" title="Active on days 28–34 after signup">W4</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-(--border)">
-              {summary.cohorts.map((cohort) => (
-                <tr key={cohort.weekStart} className="tabular-nums">
-                  <td className="py-2">{shortDay(cohort.weekStart)}</td>
-                  <td className="py-2 text-right">{cohort.users.toLocaleString('en-US')}</td>
-                  <td className="py-2 text-right">{retentionRate(cohort, 'w1')}</td>
-                  <td className="py-2 text-right">{retentionRate(cohort, 'w4')}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-        <p className="mt-2 text-xs text-(--muted)">A dash means the window hasn&apos;t closed for everyone in that week yet.</p>
-      </section>
-
-      <section>
-        <h3 className="text-xs font-medium uppercase tracking-wide text-(--muted)">Top workspaces by spend, last 30 days</h3>
-        {summary.topWorkspaces.length === 0 ? (
-          <p className="mt-3 text-sm text-(--muted)">No billed usage in the last 30 days.</p>
-        ) : (
-          <div className="mt-3 divide-y divide-(--border) border-y border-(--border)">
-            {summary.topWorkspaces.map((workspace) => (
-              <div key={workspace.workspaceId} className="flex items-center justify-between gap-4 py-2.5 text-sm">
-                <div className="min-w-0">
-                  <p className="truncate">{workspace.name ?? (workspace.kind === 'personal' ? 'Personal workspace' : 'Unknown workspace')}</p>
-                  <p className="truncate text-xs text-(--muted)">{workspace.workspaceId}</p>
-                </div>
-                <div className="shrink-0 text-right tabular-nums">
-                  <p>{formatValue(workspace.cents, 'cents')}</p>
-                  {workspace.sandboxSeconds > 0 ? (
-                    <p className="text-xs text-(--muted)">{formatHours(workspace.sandboxSeconds)} machine time</p>
-                  ) : null}
-                </div>
-              </div>
-            ))}
+          <WeeklyChart weeks={weeks} metric={kpis[0]} />
+        </div>
+        <div className="admin-card">
+          <div className="admin-card-head">
+            <h2>Retention by signup week</h2>
+            <span className="admin-note">Active in week 1 / week 4</span>
           </div>
-        )}
-      </section>
-    </div>
-  )
-}
-
-function MetricRow({ metric, weekEnds }: { metric: GrowthMetric; weekEnds: string[] }) {
-  return (
-    <div className="flex items-center gap-4 border-b border-(--border) py-3">
-      <div className="min-w-0 flex-1">
-        <p className="text-xs text-(--muted)">{metric.label}</p>
-        <p className="mt-0.5 flex items-baseline gap-2">
-          <span className="text-lg font-semibold tabular-nums">{formatValue(metric.values.at(-1) ?? null, metric.format)}</span>
-          <Change values={metric.values} inline />
-        </p>
-        {metric.detail ? <p className="text-xs text-(--muted)">{metric.detail}</p> : null}
+          <Retention cohorts={summary.cohorts} />
+        </div>
       </div>
-      <WeeklyBars metric={metric} weekEnds={weekEnds} />
+
+      <div className="growth-groups">
+        {growthGroups(weeks).map((group) => (
+          <div key={group.title} className="admin-card">
+            <div className="admin-card-head">
+              <h2>{group.title}</h2>
+              <span className="admin-note">This week</span>
+            </div>
+            {group.metrics.map((metric) => <MetricRow key={metric.key} metric={metric} />)}
+          </div>
+        ))}
+      </div>
+
+      <div className="admin-card growth-workspaces">
+        <div className="admin-card-head">
+          <h2>Top workspaces by spend</h2>
+          <span className="admin-note">Last 30 days</span>
+        </div>
+        <TopWorkspaces summary={summary} />
+      </div>
     </div>
   )
 }
 
-/** One bar per week, newest on the right and darkest. */
-function WeeklyBars({ metric, weekEnds }: { metric: GrowthMetric; weekEnds: string[] }) {
-  const max = Math.max(1, ...metric.values.map((value) => value ?? 0))
-  const width = 8
-  const gap = 3
-  const height = 32
+function WeeklyChart({ weeks, metric }: { weeks: GrowthWeek[]; metric: GrowthMetric }) {
+  const [hovered, setHovered] = useState<number | null>(null)
+  const ticks = axisTicks(Math.max(0, ...metric.values.map((value) => value ?? 0)))
+  const max = ticks[0]
+  // Label every other week counting back from the newest (every fourth at 26 weeks) so labels never collide.
+  const every = weeks.length <= 6 ? 1 : weeks.length <= 13 ? 2 : 4
+  const showLabel = (index: number) => (weeks.length - 1 - index) % every === 0
+  const hoveredValue = hovered === null ? null : metric.values[hovered] ?? null
+
   return (
-    <svg
-      role="img"
-      aria-label={`${metric.label}, weekly`}
-      width={metric.values.length * (width + gap) - gap}
-      height={height}
-      className="shrink-0 text-(--foreground)"
-    >
-      {metric.values.map((value, index) => {
-        const barHeight = value ? Math.max(2, (value / max) * height) : 1
-        return (
-          <rect
-            key={weekEnds[index]}
-            x={index * (width + gap)}
-            y={height - barHeight}
-            width={width}
-            height={barHeight}
-            rx={1.5}
-            fill="currentColor"
-            opacity={index === metric.values.length - 1 ? 0.7 : 0.18}
+    <div className="growth-chart">
+      <div className="growth-yaxis num" aria-hidden>
+        {ticks.map((tick) => <span key={tick}>{tick.toLocaleString('en-US')}</span>)}
+      </div>
+      <div className="growth-plot">
+        {ticks.map((tick, index) => (
+          <div key={tick} className="growth-gridline" style={{ top: `calc(${index / (ticks.length - 1)} * (100% - 22px))` }} />
+        ))}
+        <div className="growth-bars" role="img" aria-label={`${metric.label}, weekly`}>
+          {weeks.map((week, index) => (
+            <div
+              key={week.endDay}
+              className={`growth-bar${index === weeks.length - 1 ? ' last' : ''}`}
+              onMouseEnter={() => setHovered(index)}
+              onMouseLeave={() => setHovered(null)}
+            >
+              <i style={{ height: `${((metric.values[index] ?? 0) / max) * 100}%` }} />
+            </div>
+          ))}
+        </div>
+        <div className="growth-xlabels" aria-hidden>
+          {weeks.map((week, index) => <span key={week.endDay}>{showLabel(index) ? shortDay(week.endDay) : ''}</span>)}
+        </div>
+        {hovered !== null ? (
+          <div
+            className="growth-tip"
+            style={{
+              left: `${((hovered + 0.5) / weeks.length) * 100}%`,
+              top: `calc((100% - 22px) * ${1 - (hoveredValue ?? 0) / max} - 8px)`,
+            }}
           >
-            <title>{`Week to ${shortDay(weekEnds[index])}: ${formatValue(value, metric.format)}`}</title>
-          </rect>
-        )
-      })}
-    </svg>
+            <span>Week to {shortDay(weeks[hovered].endDay)}</span>
+            <br />
+            <b className="num">{formatValue(hoveredValue, metric.format)}</b> active
+          </div>
+        ) : null}
+      </div>
+    </div>
   )
 }
 
-function Change({ values, inline = false }: { values: (number | null)[]; inline?: boolean }) {
+function Retention({ cohorts }: { cohorts: AdminGrowthCohort[] }) {
+  if (cohorts.length === 0) return <p className="admin-muted text-sm">No signups counted yet.</p>
+  return (
+    <table className="growth-table">
+      <thead>
+        <tr>
+          <th>Week of</th>
+          <th className="r">Signups</th>
+          <th className="r" title="Active on days 7–13 after signup">W1</th>
+          <th className="r" title="Active on days 28–34 after signup">W4</th>
+        </tr>
+      </thead>
+      <tbody>
+        {cohorts.slice(0, 8).map((cohort) => (
+          <tr key={cohort.weekStart}>
+            <td>{shortDay(cohort.weekStart)}</td>
+            <td className="r num">{cohort.users.toLocaleString('en-US')}</td>
+            <td className="r"><Heat percent={retentionPercent(cohort, 'w1')} /></td>
+            <td className="r"><Heat percent={retentionPercent(cohort, 'w4')} /></td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )
+}
+
+/** Retention cell, shaded darker the more of the week stayed. A dash means the window is still open. */
+function Heat({ percent }: { percent: number | null }) {
+  if (percent === null) return <span className="growth-heat na" title="Window still open">—</span>
+  const alpha = Math.min(0.6, 0.08 + (percent / 60) * 0.42)
+  return (
+    <span className="growth-heat" style={{ background: `rgb(var(--heat) / calc(${alpha.toFixed(3)} * var(--heat-strength)))` }}>
+      {percent}%
+    </span>
+  )
+}
+
+function MetricRow({ metric }: { metric: GrowthMetric }) {
+  const percent = change(metric.values)
+  return (
+    <div className="growth-metric">
+      <div className="growth-metric-name">
+        <div className="growth-metric-label">{metric.label}</div>
+        <div className="growth-metric-value num">
+          {formatValue(metric.values.at(-1) ?? null, metric.format)}
+          {percent === null ? null : <span className={`growth-change ${tone(percent)}`}>{percent > 0 ? '+' : ''}{percent}%</span>}
+        </div>
+        {metric.detail ? <div className="growth-metric-detail">{metric.detail}</div> : null}
+      </div>
+      <Spark values={metric.values} />
+    </div>
+  )
+}
+
+function TopWorkspaces({ summary }: { summary: AdminGrowthSummary }) {
+  if (summary.topWorkspaces.length === 0) return <p className="admin-muted text-sm">No billed usage in the last 30 days.</p>
+  const top = Math.max(1, summary.topWorkspaces[0].cents)
+  return (
+    <div>
+      {summary.topWorkspaces.map((workspace, index) => (
+        <div key={workspace.workspaceId} className="growth-ws">
+          <span className="growth-ws-rank num">{index + 1}</span>
+          <div className="growth-ws-info">
+            <div className="growth-ws-name" title={workspace.workspaceId}>
+              {workspace.name ?? (workspace.kind === 'personal' ? 'Personal workspace' : 'Unknown workspace')}
+            </div>
+            <div className="growth-meter"><i style={{ width: `${(workspace.cents / top) * 100}%` }} /></div>
+          </div>
+          <div className="growth-ws-amount">
+            {formatValue(workspace.cents, 'cents')}
+            {workspace.sandboxSeconds > 0 ? <span>{formatHours(workspace.sandboxSeconds)} machine time</span> : null}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function Spark({ values }: { values: (number | null)[] }) {
+  const max = Math.max(1, ...values.map((value) => value ?? 0))
+  return (
+    <div className="growth-spark" aria-hidden>
+      {values.map((value, index) => <i key={index} style={{ height: `${Math.max(2, ((value ?? 0) / max) * 26)}px` }} />)}
+    </div>
+  )
+}
+
+function Change({ values }: { values: (number | null)[] }) {
   const percent = change(values)
-  const text = percent === null ? 'no prior week' : `${percent > 0 ? '+' : ''}${percent}% vs prior week`
-  const tone = percent === null || percent === 0
-    ? 'text-(--muted)'
-    : percent > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'
-  if (inline) return percent === null ? null : <span className={`text-xs ${tone}`}>{percent > 0 ? '+' : ''}{percent}%</span>
-  return <p className={`mt-1 text-xs ${tone}`}>{text}</p>
+  if (percent === null) return <span className="growth-change flat">No prior week</span>
+  if (percent === 0) return <span className="growth-change flat">No change</span>
+  const Arrow = percent > 0 ? ArrowUp : ArrowDown
+  return (
+    <span className={`growth-change ${tone(percent)}`}>
+      <Arrow size={13} strokeWidth={1.8} />
+      {Math.abs(percent)}%<span className="of">&nbsp;vs prior week</span>
+    </span>
+  )
+}
+
+function tone(percent: number): 'up' | 'down' | 'flat' {
+  return percent > 0 ? 'up' : percent < 0 ? 'down' : 'flat'
 }
 
 function formatHours(seconds: number): string {
@@ -203,5 +295,5 @@ function formatHours(seconds: number): string {
 }
 
 function formatTime(ms: number): string {
-  return new Date(ms).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+  return new Date(ms).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'UTC', timeZoneName: 'short' })
 }

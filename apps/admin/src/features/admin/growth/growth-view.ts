@@ -7,6 +7,8 @@ import type { AdminGrowthCohort, AdminGrowthDay } from '@/shared/admin-types'
  */
 
 export const GROWTH_WEEKS = 12
+export const GROWTH_RANGES = [4, 12, 26] as const
+export type GrowthRange = (typeof GROWTH_RANGES)[number]
 
 export type GrowthWeek = {
   /** Last day of the window. */
@@ -51,43 +53,40 @@ const summed = (key: DayField, label: string, weeks: GrowthWeek[], format: Growt
   key, label, format, values: weeks.map((week) => sum(week, key)),
 })
 
-export function growthGroups(weeks: GrowthWeek[]): { title: string; metrics: GrowthMetric[] }[] {
+/** Every weekly metric the panel shows, by key. */
+export function growthMetrics(weeks: GrowthWeek[]): Record<string, GrowthMetric> {
   const latest = weeks.at(-1)
   const failed = latest ? sum(latest, 'automationRunsFailed') : 0
   const approximate = latest ? sum(latest, 'newPaidApproximate') : 0
+  const metrics: GrowthMetric[] = [
+    { key: 'weeklyActiveUsers', label: 'Weekly active', format: 'count', values: weeks.map((week) => last(week, 'weeklyActiveUsers')) },
+    summed('usersCreated', 'New people', weeks),
+    summed('tasksCreated', 'Tasks', weeks),
+    summed('agentsCreated', 'Agents', weeks),
+    summed('automationsCreated', 'Automations', weeks),
+    summed('filesCreated', 'Files', weeks),
+    summed('threadsCreated', 'Threads', weeks),
+    { ...summed('automationRuns', 'Automation runs', weeks), detail: failed ? `${failed} failed` : undefined },
+    summed('filesEdited', 'Files edited', weeks),
+    summed('messagesSent', 'Messages', weeks),
+    summed('usageCents', 'Spend', weeks, 'cents'),
+    summed('topUpCents', 'Top-ups', weeks, 'cents'),
+    { key: 'paidSubscriptions', label: 'Paid subscriptions', format: 'count', values: weeks.map((week) => latestSnapshot(week)) },
+    {
+      ...summed('newPaidSubscriptions', 'New paid', weeks),
+      detail: approximate ? `${approximate} dated approximately` : undefined,
+    },
+  ]
+  return Object.fromEntries(metrics.map((metric) => [metric.key, metric]))
+}
+
+export function growthGroups(weeks: GrowthWeek[]): { title: string; metrics: GrowthMetric[] }[] {
+  const metrics = growthMetrics(weeks)
+  const pick = (...keys: string[]) => keys.map((key) => metrics[key])
   return [
-    {
-      title: 'Created',
-      metrics: [
-        summed('tasksCreated', 'Tasks', weeks),
-        summed('agentsCreated', 'Agents', weeks),
-        summed('automationsCreated', 'Automations', weeks),
-        summed('filesCreated', 'Files', weeks),
-      ],
-    },
-    {
-      title: 'Work',
-      metrics: [
-        summed('threadsCreated', 'Threads', weeks),
-        summed('messagesSent', 'Messages', weeks),
-        { ...summed('automationRuns', 'Automation runs', weeks), detail: failed ? `${failed} failed` : undefined },
-        summed('filesEdited', 'Files edited', weeks),
-      ],
-    },
-    {
-      title: 'Usage',
-      metrics: [
-        summed('usersCreated', 'New users', weeks),
-        { key: 'weeklyActiveUsers', label: 'Weekly active', format: 'count', values: weeks.map((week) => last(week, 'weeklyActiveUsers')) },
-        {
-          ...summed('newPaidSubscriptions', 'New paid', weeks),
-          detail: approximate ? `${approximate} dated approximately` : undefined,
-        },
-        { key: 'paidSubscriptions', label: 'Paid subscriptions', format: 'count', values: weeks.map((week) => latestSnapshot(week)) },
-        summed('topUpCents', 'Top-ups', weeks, 'cents'),
-        summed('usageCents', 'Spend', weeks, 'cents'),
-      ],
-    },
+    { title: 'Created', metrics: pick('tasksCreated', 'agentsCreated', 'automationsCreated', 'filesCreated') },
+    { title: 'Work', metrics: pick('threadsCreated', 'automationRuns', 'filesEdited', 'messagesSent') },
+    { title: 'Money', metrics: pick('usageCents', 'topUpCents', 'paidSubscriptions', 'newPaidSubscriptions') },
   ]
 }
 
@@ -100,9 +99,9 @@ function latestSnapshot(week: GrowthWeek): number | null {
   return null
 }
 
-export function headline(weeks: GrowthWeek[]) {
-  const pick = (key: string) => growthGroups(weeks).flatMap((group) => group.metrics).find((metric) => metric.key === key)!
-  return [pick('weeklyActiveUsers'), pick('usersCreated'), pick('messagesSent'), pick('paidSubscriptions')]
+export function headline(weeks: GrowthWeek[]): GrowthMetric[] {
+  const metrics = growthMetrics(weeks)
+  return [metrics.weeklyActiveUsers, metrics.usersCreated, { ...metrics.messagesSent, label: 'Messages sent' }, metrics.paidSubscriptions]
 }
 
 /** Week-over-week change as a whole percent, or null when there is nothing to compare. */
@@ -123,11 +122,27 @@ export function formatValue(value: number | null, format: GrowthMetric['format']
   return value.toLocaleString('en-US')
 }
 
-export function retentionRate(cohort: AdminGrowthCohort, window: 'w1' | 'w4'): string {
+/** Whole percent of a signup week active in the window, or null while the window is still open. */
+export function retentionPercent(cohort: AdminGrowthCohort, window: 'w1' | 'w4'): number | null {
   const final = window === 'w1' ? cohort.w1Final : cohort.w4Final
-  if (!final || cohort.users === 0) return '—'
+  if (!final || cohort.users === 0) return null
   const active = window === 'w1' ? cohort.w1Active : cohort.w4Active
-  return `${Math.round((active / cohort.users) * 100)}%`
+  return Math.round((active / cohort.users) * 100)
+}
+
+export function retentionRate(cohort: AdminGrowthCohort, window: 'w1' | 'w4'): string {
+  const percent = retentionPercent(cohort, window)
+  return percent === null ? '—' : `${percent}%`
+}
+
+/** Even y-axis ticks from zero to a rounded-up maximum, highest first. */
+export function axisTicks(max: number, count = 4): number[] {
+  const raw = Math.max(1, max / (count - 1))
+  const magnitude = 10 ** Math.floor(Math.log10(raw))
+  const step = [1, 1.5, 2, 2.5, 3, 5, 10]
+    .map((factor) => factor * magnitude)
+    .find((candidate) => candidate >= raw && Number.isInteger(candidate))!
+  return Array.from({ length: count }, (_, index) => step * (count - 1 - index))
 }
 
 /** "Mar 2" for a UTC day. */
