@@ -1,4 +1,4 @@
-import { ChartGantt, List, SquareKanban } from 'lucide-react'
+import { ChartGantt, List, Network, SquareKanban } from 'lucide-react'
 import type { InlineNavItem } from '@/components/layout/AppSidebarInlinePanels'
 import { type PanelScope } from '@/shared/workspaces/panel-scope'
 import { WORK_VIEWS, WORK_VIEW_LABELS, WORK_VIEW_PARAM, parseWorkView, type WorkView } from '@/shared/work/views'
@@ -11,12 +11,11 @@ interface SidebarRouter {
 
 const WORK_VIEW_ICONS: Record<WorkView, InlineNavItem['icon']> = { list: List, board: SquareKanban, timeline: ChartGantt }
 
-/** List, Board, and Timeline: the same tasks, three ways. They sit under Personal and under Workspace. */
-export const workInlineItems: ReadonlyArray<InlineNavItem> = WORK_VIEWS.map((id) => ({
+export const workInlineItems: ReadonlyArray<InlineNavItem> = [...WORK_VIEWS.map((id) => ({
   id,
   label: WORK_VIEW_LABELS[id],
   icon: WORK_VIEW_ICONS[id],
-}))
+})), { id: 'organization', label: 'Organization', icon: Network }]
 
 export function buildWorkPanelNav({
   scope,
@@ -49,14 +48,15 @@ export function buildWorkPanelNav({
     onSelect: (nextScope, nextSub) => {
       closeMobileDrawer()
       const nextView = parseWorkView(nextSub) ?? workView
-      if (nextScope === scope && nextView === workView && (!organizationOpen || !nextSub)) return
+      const nextOrganizationOpen = nextSub ? nextSub === 'organization' : organizationOpen
+      if (nextScope === scope && nextView === workView && nextOrganizationOpen === organizationOpen) return
       beginSecondaryNavigation(nextSub ? `${nextScope}:${nextSub}` : nextScope)
       const params = new URLSearchParams(currentSearchParams.toString())
       params.delete('scope')
       // An open task may not exist in the scope being switched to.
       params.delete('task')
       params.set(WORK_VIEW_PARAM, nextView)
-      const path = organizationOpen && !nextSub ? '/app/work/organization' : '/app/work'
+      const path = nextOrganizationOpen ? '/app/work/organization' : '/app/work'
       const route = `${path}?${params.toString()}`
       if (activeWorkspaceId) {
         router.push(buildWorkspaceHref(activeWorkspaceId, route, nextScope))

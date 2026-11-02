@@ -153,11 +153,7 @@ export default function AppSidebar({
   const renderSection = workSections
     ? (filter: string) => renderWorkSection({ filter, onNavigate: s.closeMobileDrawer })
     : renderChatSection
-  const sectionRows = workSections ? [...WORK_SECTION_ROWS, {
-    id: 'organization', label: 'Organization',
-    onNavigate: s.closeMobileDrawer,
-    href: s.activeWorkspaceId ? s.buildWorkspaceHref(s.activeWorkspaceId, '/app/work/organization') : '/app/work/organization',
-  }] : undefined
+  const sectionRows = workSections ? WORK_SECTION_ROWS : undefined
   const sectionActions = workSections ? { all: s.panelAction } : s.panelSectionActions
   const settingsHref = s.activeWorkspaceId
     ? s.buildWorkspaceHref(s.activeWorkspaceId, '/app/settings')
@@ -276,7 +272,6 @@ export default function AppSidebar({
           panelAction={s.panelAction}
           panelSearch={s.panelSearch}
           panelChildren={panelChildren}
-          sectionLinks={sectionRows?.filter((row) => row.href)}
           brandLink={brandLink}
           navItems={s.mobileNavItems}
           onSelectItem={s.onSelectMobileNavItem}

@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Place Organization directly below Timeline in both Work scopes and use one editable header avatar in Organization agent details.
+
 - Separate personal-chief appearance identity from workspace-scoped executable bindings, provisioning distinct private and workspace-scope bindings per eligible owner, with conservative legacy adoption, atomic mixed appearance/config saves, and owner-only profile updates.
 - Pin workspace and personal chiefs in the threaded Agents sidebar, preserve owner labels through customization, and add read-only Work → Organization views without changing permissions or introducing delegation.
 - Allow the selected agent's thread list to stay collapsed until a different agent is selected, rather than reopening it on every render.

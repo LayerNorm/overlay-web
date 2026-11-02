@@ -3,35 +3,32 @@ import test from 'node:test'
 import React from 'react'
 import { Circle } from 'lucide-react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { ShellAdapterProvider, type ShellLinkProps } from '@overlay/shell-react'
+import { buildWorkPanelNav } from './workPanelNav'
 import { getDesktopSidebarViewportSnapshot, MobileNavStep, MobilePanelStep, SidebarBrandLink, SidebarRailBrand, subscribeToDesktopSidebarViewport } from './AppSidebarChrome'
 
-test('mobile Work panel renders the scoped Organization link and closes the drawer on navigation', () => {
-  for (const scope of ['personal', 'workspace']) {
+test('mobile Work panel renders Organization below Timeline and closes the drawer on navigation', () => {
+  for (const scope of ['personal', 'workspace'] as const) {
     let closed = false
-    let navigate: ShellLinkProps['onClick']
-    const href = `/w/team/${scope}/work/organization`
+    let href = ''
+    const nav = buildWorkPanelNav({
+      scope, workView: 'timeline', organizationOpen: false,
+      effectivePendingSecondaryNavId: null, currentSearchParams: new URLSearchParams(),
+      activeWorkspaceId: null, buildWorkspaceHref: (_id, path) => path,
+      router: { push: path => { href = path } },
+      closeMobileDrawer: () => { closed = true }, beginSecondaryNavigation() {},
+    })
     const html = renderToStaticMarkup(
-      <ShellAdapterProvider value={{
-        rememberScope() {},
-        Link(props) {
-          navigate = props.onClick
-          return <a {...props} />
-        },
-      }}>
-        <MobilePanelStep
-          panelTitle="Work" onBack={() => {}} onClose={() => {}}
-          nav={{ items: [], activeId: scope, activeChildId: `${scope}:organization`, onSelect() {} }}
-          sectionLinks={[{ id: 'organization', label: 'Organization', href, onNavigate: () => { closed = true } }]}
-        />
-      </ShellAdapterProvider>,
+      <MobilePanelStep
+        panelTitle="Work" onBack={() => {}} onClose={() => {}}
+        nav={nav}
+      />,
     )
-    assert.ok(html.includes(`href="${href}"`))
-    assert.match(html, /aria-current="page"/)
+    assert.equal(nav.activeChildId, `${scope}:timeline`)
     assert.match(html, />Organization</)
-    assert.ok(navigate)
-    navigate({} as React.MouseEvent<HTMLAnchorElement>)
+    assert.ok(html.indexOf('>Organization<') > html.indexOf('>Timeline<'))
+    nav.onSelect(`${scope}:organization`)
     assert.equal(closed, true)
+    assert.equal(href, `/app/work/organization?view=timeline&scope=${scope}`)
   }
 })
 

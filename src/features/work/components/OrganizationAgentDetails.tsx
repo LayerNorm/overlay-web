@@ -25,7 +25,9 @@ export function OrganizationAgentDetails({ agent, owner, onClose }: {
   const href = useWorkspaceHref()
   const scope = usePanelScope()
   return <RightSidebar ariaLabel="Agent details" activeTab="details" onTabChange={() => {}} onClose={onClose}
-    hero={{ avatar: <AgentCreature agent={{ ...agent, name, avatarColor: color, avatarShape: shape }} isDefault={agent.isDefault} size={72} />, title: name, titleText: name, subtitle: owner }}
+    hero={{ avatar: editable
+      ? <AgentAvatarPicker color={color} shape={shape} onColorChange={setColor} onShapeChange={setShape} size={72} />
+      : <AgentCreature agent={agent} isDefault={agent.isDefault} size={72} />, title: name, titleText: name, subtitle: owner }}
     tabs={[{ id: 'details', label: 'Details', content: <div className="space-y-5 text-sm">
       <dl className="space-y-3 text-xs"><div><dt className="text-(--muted)">Role</dt><dd className="mt-1">{chiefRoleLabel(agent)}</dd></div><div><dt className="text-(--muted)">Owner</dt><dd className="mt-1">{owner}</dd></div></dl>
       {editable ? <form className="space-y-4" onSubmit={async event => {
@@ -39,7 +41,6 @@ export function OrganizationAgentDetails({ agent, owner, onClose }: {
         } catch { setStatus('error') }
       }}>
         <p className="text-xs leading-5 text-(--muted)">Your name and avatar follow you across scopes. Owner, role, and permissions stay unchanged.</p>
-        <AgentAvatarPicker color={color} shape={shape} onColorChange={setColor} onShapeChange={setShape} size={48} />
         <label className="block space-y-1.5 text-xs"><span>Name</span><Input value={name} onChange={e => { setName(e.target.value); setStatus('idle') }} maxLength={80} required /></label>
         <label className="block space-y-1.5 text-xs"><span>Description</span><Textarea value={description} onChange={e => { setDescription(e.target.value); setStatus('idle') }} maxLength={240} /></label>
         <Button type="submit" size="sm" disabled={status === 'saving' || !name.trim()}>{status === 'saving' ? 'Saving...' : 'Save appearance'}</Button>
