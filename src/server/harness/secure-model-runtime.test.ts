@@ -1,8 +1,11 @@
 import { beforeEach, expect, test, vi } from 'vitest'
 import { MockLanguageModelV4 } from 'ai/test'
+import { APICallError, StreamProviderError } from 'ai'
+import type { LanguageModelV4StreamPart } from '@ai-sdk/provider'
 import { OverlayFreeRouteBusyError, OverlayFreeRouteInterruptedError, OverlayFreeRouteUnavailableError } from '@/server/ai/gateway/overlay-free-router-errors'
 import type { HarnessModelReference } from './secure-model'
 import { secureModelDoGenerate, secureModelDoStream } from './secure-model-runtime'
+import { harnessExecutionFailureReason } from './execution-failure'
 
 const mocks = vi.hoisted(() => ({ model: vi.fn(), record: vi.fn(), confirmed: vi.fn() }))
 vi.mock('@/server/ai/model-runtime', () => ({ getLanguageModel: mocks.model }))
@@ -23,6 +26,43 @@ const nativeReference: HarnessModelReference = { modelId: 'openrouter/free', cre
 } }
 
 beforeEach(() => { vi.resetAllMocks(); mocks.confirmed.mockReturnValue(false) })
+
+test.each([secureModelDoStream, secureModelDoGenerate])('preserves SDK details after recording provider rejection, with one dispatch', async invoke => {
+  const error = new APICallError({ message: 'private', url: 'https://private.test', requestBodyValues: {}, statusCode: 429 })
+  const dispatch = vi.fn(async () => { throw error })
+  mocks.model.mockResolvedValue(new MockLanguageModelV4({ doStream: dispatch, doGenerate: dispatch }))
+  mocks.confirmed.mockReturnValue(true)
+  await expect(invoke(reference, { prompt: [] })).rejects.toMatchObject({ name: 'HarnessModelFailure', message: harnessExecutionFailureReason(error) })
+  expect(mocks.confirmed).toHaveBeenCalledWith(error)
+  expect(mocks.record).toHaveBeenCalledExactlyOnceWith(reference, 'model_unavailable')
+  expect(dispatch).toHaveBeenCalledOnce()
+})
+
+test.each(['part', 'throw'] as const)('preserves mid-stream SDK %s failures and prior text, including BYOK', async mode => {
+  const error = new StreamProviderError({ message: 'private', statusCode: 503, isRetryable: true })
+  let emitted = false
+  const provider = new MockLanguageModelV4({ doStream: async () => ({
+    stream: new ReadableStream<LanguageModelV4StreamPart>({ pull(controller) {
+      if (!emitted) {
+        emitted = true
+        controller.enqueue({ type: 'text-delta', id: 'text', delta: 'Partial answer' })
+      } else if (mode === 'throw') controller.error(error)
+      else { controller.enqueue({ type: 'error', error }); controller.close() }
+    } }),
+  }) })
+  mocks.model.mockResolvedValue(provider)
+  const result = await secureModelDoStream({ ...reference, modelId: 'byok/fixture' }, { prompt: [] })
+  const reader = result.stream.getReader()
+  expect((await reader.read()).value).toMatchObject({ type: 'text-delta', delta: 'Partial answer' })
+  if (mode === 'throw') {
+    await expect(reader.read()).rejects.toMatchObject({ name: 'HarnessModelFailure', message: harnessExecutionFailureReason(error) })
+  } else {
+    expect((await reader.read()).value).toMatchObject({ type: 'error', error: { name: 'HarnessModelFailure', message: harnessExecutionFailureReason(error) } })
+    expect((await reader.read()).done).toBe(true)
+  }
+  expect(provider.doStreamCalls).toHaveLength(1)
+  expect(mocks.record).not.toHaveBeenCalled()
+})
 
 test('generated results separate tagged reasoning without changing provider accounting', async () => {
   const usage = { inputTokens: { total: 10, noCache: 10, cacheRead: 0, cacheWrite: 0 },

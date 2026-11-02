@@ -1735,6 +1735,42 @@ only the previous validator's explicit extra-`remoteRunId` rejection retries the
 read with the same actor and conversation. Its result must match the requested run;
 authorization and unrelated errors never trigger a fallback.
 
+### Native Harness failure descriptions
+
+Workspace and personal Harness execution failures use
+`src/server/harness/execution-failure.ts` before persisting the terminal reason.
+The existing native message error and personal chat stream delivery paths display
+that reason. `ai-sdk-failure.ts` maps the [AI SDK error catalog](https://ai-sdk.dev/docs/reference/ai-sdk-errors)
+to plain-language descriptions for provider requests, message conversion, generated
+outputs, provider configuration, tool calls and approvals. SDK class names remain
+visible for support. Valid HTTP error statuses add context for authentication,
+permissions, provider billing, rate limits, oversized requests, timeouts and server errors.
+
+Classification uses stable SDK names because Workflow serialization can remove
+class prototypes and symbol markers. It does not import the SDK into the Workflow
+sandbox. Native instances, serialized records and cross-realm errors use the same
+mapping. Traversal follows at most four errors, stops at cycles, and reads retry
+`lastError` or tool-repair `originalError` when applicable. Results remain capped at
+2,000 characters. Unknown SDK errors retain a generic description and safe class
+name; non-SDK errors retain the existing credential-redacted fallback.
+
+Step-error serialization also drops SDK-specific properties such as status codes
+and validation values. The no-retry model boundary therefore formats SDK failures
+after provider rejection accounting and transports only a `HarnessModelFailure`
+name and safe message. This covers dispatch exceptions, streamed error parts and
+stream read failures, including BYOK. The Workflow formatter recognizes that
+description through runtime wrappers without exposing step paths or duplicating it.
+Non-SDK errors retain their original identity, and model steps remain at zero retries.
+
+For SDK failures, raw messages and non-SDK wrapper/cause messages are omitted:
+even an SDK-generated message can embed a prompt, schema value, tool input or
+generated content. Request/response bodies, headers, URLs and provider metadata
+are not serialized into the reason. The known structured `data_inspection_failed`
+rejection retains its explicit content-filter explanation. Stream error descriptions
+warn that partial output is incomplete. No new retries, provider fallback, tool
+replay, billing changes or lifecycle transitions are introduced by classification;
+SDK `isRetryable` metadata is not an instruction to retry.
+
 ### Native Overlay agent approvals
 
 Native Harness room turns (`executionEngine: overlay_harness`) retain their

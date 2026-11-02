@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Explain AI SDK Harness failures in plain language, including provider HTTP failures, invalid inputs and tool approvals, missing outputs, and exhausted SDK retries. Preserve partial-stream warnings and nested SDK causes without exposing prompts, tool inputs, or provider payloads; retry, fallback, and billing behavior are unchanged.
+
 - Prepare paid workspaces for paid-first execution with verified invoice funding and an operator-only, dry-run-first migration that preserves existing balances. Execution access and free-tier infrastructure are unchanged in this preparation release.
 
 - Clear the room and native-agent composer after an acknowledged send, including submitted attachments, without erasing newer drafts or drafts in a reopened conversation.
