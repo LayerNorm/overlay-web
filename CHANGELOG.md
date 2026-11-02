@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Update connected-agent adapters to Claude ACP 0.100.0 and Codex ACP 2.5.0; prepare host/protocol 0.4.4 and image v11.
+
 - Redesign the operator console to match the app: bordered panels, grouped sidebar (Growth; People and Audit log; Roles, Groups and Catalog), light and dark themes. Growth gains a weekly-active chart, shaded retention and a 4/12/26-week range. People shows each person's name, email, user ID, sign-up date, last active day and plan, with search by name, email or ID. Fixes package styles missing from the admin build.
 
 - Stop sending usage events to PostHog now that growth is counted from Convex. Removed: the `overlay.metrics.*` client and server metrics (BFF requests, model tokens, cache, chat-open latency, duplicate requests, run recovery, session refresh), `retention.engaged`, `auth.session.signed_in`, chat, Work, integration, auth-callback and sign-out events, and the billing, automation and workspace lifecycle mappings. PostHog keeps pageviews, identify/reset, feature flags and one signup event, renamed from `activation.completed` to `user.signed_up`. The unused Convex `withMetrics` wrapper is gone; its table stays until the cleanup cron empties it.
